@@ -62,37 +62,41 @@ JM Apps/
 
 ### Regenerating the self-contained Hub after app changes
 
-Run this Python snippet from the `JM Apps/` directory:
+**`embed.py`** replaces the old inline Python snippet. Run from `JM Apps/`:
 
-```python
-import base64, re
-BASE = '/Users/jonmacicior/Library/CloudStorage/OneDrive-UniversityofDundee/0. General/JM Apps'
-hub_path = f'{BASE}/The Hub.html'
-src = open(hub_path, encoding='utf-8').read()
-
-for key, rel in [
-    ('echo', 'Echo Data Analysis/Echo_Data_Analysis.html'),
-    ('deg',  'Degradation Explorer/degradation_visualizer.html'),
-    ('lm',   'Labmate/labmate.html'),
-    ('ff',   'Figure Forge/figure_forge.html'),
-    ('pd',   'Plate Designer/plate_designer.html'),
-    ('dna',  'DNA Tools/dna_tools.html'),
-    ('pt',   'Protein Tools/protein_tools.html'),
-]:
-    b64 = base64.b64encode(open(f'{BASE}/{rel}', 'rb').read()).decode('ascii')
-    # APP_B64 uses 'key: "B64"' format (space after colon)
-    pattern = r'(?<=' + key + r': ")[A-Za-z0-9+/=]+'
-    new_src, n = re.subn(pattern, b64, src)
-    if n == 0:
-        # APP_B64_NEW uses placeholder strings
-        placeholder = key.upper()
-        new_src = src.replace(f'"PLACEHOLDER_{placeholder}"', f'"{b64}"')
-        n = 0 if new_src == src else 1
-    print(f'  {key}: {n} replacement(s)')
-    src = new_src
-
-open(hub_path, 'w', encoding='utf-8').write(src)
+```bash
+python embed.py                      # → The Hub.html  (local/offline use)
+python embed.py dist/index.html     # → dist/index.html  (CI/Pages build)
 ```
+
+`embed.py` reads from `hub-shell.html` (the lightweight ~28KB source-of-truth) and fills in each app's base64. The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix bug.
+
+### GitHub Actions auto-deploy
+
+**Repo:** `https://github.com/maciciorjon-hash/thehub` (private)  
+**Pages URL:** `https://maciciorjon-hash.github.io/thehub/`
+
+On every push to `main`:
+1. GitHub Actions runs `python embed.py dist/index.html`
+2. Deploys `dist/` to GitHub Pages
+3. Hub is live at the Pages URL within ~2 min
+
+**To enable Pages** (one-time setup): repo Settings → Pages → Source: **GitHub Actions**
+
+**Local dev workflow:**
+```bash
+# 1. Edit any standalone app file
+# 2. Run embed.py for local use
+python embed.py
+# 3. Open The Hub.html for local testing (The Hub.html is gitignored)
+# 4. Push app file changes to GitHub → Pages auto-rebuilds
+git add "Echo Data Analysis/Echo_Data_Analysis.html"
+git commit -m "Fix: echo FP params"
+git push
+```
+
+**Files tracked in git:** `hub-shell.html`, `embed.py`, `.gitignore`, `.github/`, all standalone app HTMLs, `CLAUDE.md`  
+**Files NOT tracked:** `The Hub.html` (18MB generated file), `dist/`, `Labmate/RDKit_minimal.*`
 
 ### Hub shell structure
 
@@ -239,8 +243,10 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-05-28 (Round 2 bugfixes)
+Last session: 2026-05-29 (GitHub CI/CD + Echo retry)
 Hub apps: 7 (echo, deg, lm, ff, pd, dna→Helix, pt)
-Hub file size: 18.30MB (18,295,221 chars)
-Fixes: Helix base64 was corrupted (PLACEHOLDER_DNA suffix leaked into b64); fixed embed regex to use [^"]* not [A-Za-z0-9+/=]+; app transitions now use position:fixed overlay (smooth crossfade, no blank frame); back-nav injection uses window.parent.backToHub() with postMessage fallback; selector updated to h1,.app-name so clicking app name also returns to Hub; race-condition guard on enterAppNav timer
+Hub file size: 18.30MB (18,295,497 chars)
+GitHub: repo init at maciciorjon-hash/thehub; embed.py created; hub-shell.html (28KB source-of-truth); .github/workflows/deploy.yml (push→Pages); .gitignore; initial commit 6ea4e18
+Echo: added Retry button to py-badge for runtime failures (main fix = HTTPS Pages serving)
+Root cause of Echo Chrome issues confirmed: Chrome blocks eval()+WASM in file:// context; Pages HTTPS fixes this
 <!-- LAST_SESSION_END -->
