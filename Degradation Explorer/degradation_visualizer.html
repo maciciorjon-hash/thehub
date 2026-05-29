@@ -79,6 +79,12 @@ body {
 .tab { padding: 10px 20px; font-size: 12px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text3); transition: color 0.12s, border-color 0.12s; user-select: none; }
 .tab:hover { color: var(--text2); }
 .tab.active { color: var(--text); border-bottom-color: var(--col1); }
+.pinfo{cursor:pointer;color:var(--col1);font-size:0.75em;vertical-align:super;user-select:none;}
+#pinfo-tip{position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;font-size:0.78rem;max-width:260px;box-shadow:0 2px 12px rgba(0,0,0,.15);z-index:9999;pointer-events:none;display:none;color:var(--text);}
+.guide-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:12px;}
+.guide-card h3{font-size:13px;font-weight:700;color:var(--col1);margin-bottom:6px;}
+.guide-card p,.guide-card li{font-size:12px;color:var(--text2);line-height:1.6;}
+.guide-card ul{padding-left:16px;margin-top:4px;}
 
 /* ── CONTENT ── */
 .content { padding: 20px 28px; }
@@ -231,6 +237,7 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
   <div class="tab active" onclick="switchTab('load')">Load Data</div>
   <div class="tab" onclick="switchTab('table')">Table</div>
   <div class="tab" onclick="switchTab('scatter')">DC50 vs Dmax</div>
+  <div class="tab" onclick="switchTab('guide')">Guide</div>
 </div>
 
 <div class="content">
@@ -248,12 +255,12 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
     <div class="controls">
       <input type="text" class="search-box" id="search" placeholder="Search compound…" oninput="applyFilters()">
       <div class="filter-group">
-        <label>Dmax ≥</label>
+        <label>Dmax ≥ <span class="pinfo" data-tip="Maximum degradation (%). Filter to show only compounds above this threshold.">ⓘ</span></label>
         <input type="range" id="dmax-min" min="0" max="100" value="0" step="5" oninput="document.getElementById('dmax-val').textContent=this.value+'%';debounceFilter(applyFilters)">
         <span class="val" id="dmax-val">0%</span>
       </div>
       <div class="filter-group">
-        <label>DC50 ≤</label>
+        <label>DC50 ≤ <span class="pinfo" data-tip="Concentration for 50% degradation (nM). Filter to show only potent compounds below this value.">ⓘ</span></label>
         <input type="range" id="dc50-max" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('dc50-val').textContent=this.value+'nM';debounceFilter(applyFilters)">
         <span class="val" id="dc50-val">1000nM</span>
       </div>
@@ -338,6 +345,22 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
       <canvas id="scatter-chart"></canvas>
     </div>
     <div class="axis-hint">X: DC50 (nM, log scale) · Y: Dmax (%) · Hover for details</div>
+  </div>
+
+  <!-- GUIDE PANEL -->
+  <div class="panel" id="panel-guide">
+    <div class="guide-card">
+      <h3>Load Data</h3>
+      <p>Drag and drop an Excel (.xlsx) file onto the drop zone, or click to browse. The app automatically detects target columns and assay metadata. Use <strong>Replace all</strong> to start fresh or <strong>Merge / append</strong> to combine datasets.</p>
+    </div>
+    <div class="guide-card">
+      <h3>Table</h3>
+      <p>Displays all loaded compounds with their DC50 and Dmax values per target. Use the search box and sliders to filter. Export the table as PNG (white/black/transparent background) or as CSV for downstream analysis.</p>
+    </div>
+    <div class="guide-card">
+      <h3>DC50 vs Dmax</h3>
+      <p>Scatter plot of degradation potency (DC50, X axis, log scale) vs maximum degradation (Dmax, Y axis). Points are coloured by target. Use the quality pills to highlight compounds meeting "Good" (Dmax ≥ 85%, DC50 ≤ 50 nM), "Moderate", or "Weak" criteria. Toggle labels and error bars as needed. Export PNG for presentations.</p>
+    </div>
   </div>
 
 </div>
@@ -838,7 +861,7 @@ function exportScatter(bg) {
   link.href = out.toDataURL('image/png', 1.0); link.click();
 }
 // ─── TABS ─────────────────────────────────────────────────────────────────────
-const TAB_NAMES = ['load','table','scatter'];
+const TAB_NAMES = ['load','table','scatter','guide'];
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', TAB_NAMES[i]===name));
   TAB_NAMES.forEach(n => {
@@ -1160,6 +1183,10 @@ async function tryAutoLoad() {
   switchTab('load');
 }
 tryAutoLoad();
+</script>
+<div id="pinfo-tip"></div>
+<script>
+(function(){var tip=document.getElementById('pinfo-tip');document.addEventListener('mouseover',function(e){var t=e.target.closest('.pinfo');if(!t)return;tip.textContent=t.dataset.tip;tip.style.display='block';tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px';});document.addEventListener('mouseout',function(e){if(e.target.closest('.pinfo'))tip.style.display='none';});document.addEventListener('mousemove',function(e){if(tip.style.display==='block'){tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px';}});})();
 </script>
 </body>
 </html>

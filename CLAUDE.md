@@ -243,10 +243,9 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-05-29 (GitHub CI/CD + Echo retry)
-Hub apps: 7 (echo, deg, lm, ff, pd, dna→Helix, pt)
-Hub file size: 18.30MB (18,295,497 chars)
-GitHub: repo init at maciciorjon-hash/thehub; embed.py created; hub-shell.html (28KB source-of-truth); .github/workflows/deploy.yml (push→Pages); .gitignore; initial commit 6ea4e18
-Echo: added Retry button to py-badge for runtime failures (main fix = HTTPS Pages serving)
-Root cause of Echo Chrome issues confirmed: Chrome blocks eval()+WASM in file:// context; Pages HTTPS fixes this
+Last session: 2026-05-29 (Echo JS rewrite + Helix gallery/pX458)
+Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
+Hub file size: 18.25MB (18,251,580 chars)
+Echo: FULL JS rewrite — removed Pyodide entirely; SheetJS (xlsx@0.18.5) for XLS parsing; custom LM 4PL fitting; app opens instantly, no ~100MB WASM download; works on Pages. Commit fa71e37
+Helix: show-all-maps gallery toggle (minmax 220px grid); cards wider (310px); pX458 added to CRISPR group (9288bp, SpCas9+EGFP+BbsI, CBh/U6, AmpR). Commit fa71e37
 <!-- LAST_SESSION_END -->

@@ -99,6 +99,13 @@ select:focus,input:focus{border-color:var(--accent);}
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
+.pinfo{cursor:pointer;color:var(--accent);font-size:0.75em;vertical-align:super;user-select:none;}
+#pinfo-tip{position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;font-size:0.78rem;max-width:260px;box-shadow:0 2px 12px rgba(0,0,0,.15);z-index:9999;pointer-events:none;display:none;color:var(--text);}
+.guide-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;}
+.guide-card h3{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:6px;}
+.guide-card p,.guide-card li{font-size:12px;color:var(--text2);line-height:1.6;}
+.guide-card ul{padding-left:16px;margin-top:4px;}
+.guide-card+.guide-card{margin-top:12px;}
 </style>
 </head>
 <body>
@@ -116,6 +123,7 @@ select:focus,input:focus{border-color:var(--accent);}
   <button class="tab" onclick="switchTab('compare',this)">Compare</button>
   <button class="tab" onclick="switchTab('orf',this)">ORF Finder</button>
   <button class="tab" onclick="switchTab('vectors',this)">Vector Library</button>
+  <button class="tab" onclick="switchTab('guide',this)">Guide</button>
 </div>
 <div class="content">
 
@@ -127,7 +135,7 @@ select:focus,input:focus{border-color:var(--accent);}
       <textarea id="tr-input" rows="7" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA"></textarea>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;min-width:180px;">
-      <label>Reading frame</label>
+      <label>Reading frame <span class="pinfo" data-tip="Choose which codon position to start translation from. Use −1/−2/−3 for the reverse complement strand.">ⓘ</span></label>
       <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1 ↩</option><option value="-2">-2 ↩</option><option value="-3">-3 ↩</option></select>
       <div class="vec-rc-note">−1/−2/−3 = reverse complement strand</div>
       <label style="margin-top:6px;">Codon table</label>
@@ -197,7 +205,7 @@ select:focus,input:focus{border-color:var(--accent);}
       <textarea id="orf-input" rows="6" placeholder="Paste nucleotide sequence…"></textarea>
     </div>
     <div style="min-width:200px;display:flex;flex-direction:column;gap:8px;">
-      <label>Min. ORF length (aa)</label>
+      <label>Min. ORF length (aa) <span class="pinfo" data-tip="Minimum protein length in amino acids. Increase to filter out short spurious ORFs.">ⓘ</span></label>
       <div class="range-wrap">
         <input type="range" id="orf-min" min="10" max="300" value="50" oninput="document.getElementById('orf-min-val').textContent=this.value">
         <span class="range-val" id="orf-min-val">50</span>
@@ -228,7 +236,32 @@ select:focus,input:focus{border-color:var(--accent);}
   <div style="font-size:11px;color:var(--text3);margin-top:4px;">Sizes are approximate from deposited sequences; verify with current Addgene entries.</div>
 </div>
 
+<!-- GUIDE -->
+<div class="panel" id="panel-guide">
+  <div class="guide-card">
+    <h3>Translate</h3>
+    <p>Paste a nucleotide sequence (plain or FASTA) and choose a reading frame. Helix translates the CDS and reports protein length, molecular weight, and stop codon position. Use −1/−2/−3 frames to translate the reverse complement strand.</p>
+  </div>
+  <div class="guide-card">
+    <h3>Sequence Tools</h3>
+    <p>Paste any DNA or RNA sequence for instant analysis: length, GC content, Tm estimate, reverse complement, and base composition. Updates live as you type.</p>
+  </div>
+  <div class="guide-card">
+    <h3>Compare</h3>
+    <p>Align two nucleotide sequences (FASTA accepted) to calculate percent identity, gaps, and mismatches. The alignment is displayed with colour-coded mismatches.</p>
+  </div>
+  <div class="guide-card">
+    <h3>ORF Finder</h3>
+    <p>Scans all six reading frames for open reading frames above the minimum length threshold. Results show frame, start/end positions, and the first 10 amino acids.</p>
+  </div>
+  <div class="guide-card">
+    <h3>Vector Library</h3>
+    <p>Searchable reference of common lab vectors. Filter by name, resistance marker, promoter, or application tag (e.g. "His", "CMV", "lentiviral"). Click a vector card to expand its map and details.</p>
+  </div>
+</div>
+
 </div><!-- end .content -->
+<div id="pinfo-tip"></div>
 <script>
 // ─── Theme ────────────────────────────────────────────────────────────────────
 function toggleTheme(){const html=document.documentElement,next=html.getAttribute('data-theme')==='dark'?'light':'dark';html.setAttribute('data-theme',next);document.getElementById('theme-btn').textContent=next==='dark'?'☀ Light':'☾ Dark';try{localStorage.setItem('helix_dark',next==='dark'?'true':'false');}catch(e){}}
@@ -897,6 +930,7 @@ function _fallbackCopy(txt){
   document.body.removeChild(ta);
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+(function(){var tip=document.getElementById('pinfo-tip');document.addEventListener('mouseover',function(e){var t=e.target.closest('.pinfo');if(!t)return;tip.textContent=t.dataset.tip;tip.style.display='block';tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px';});document.addEventListener('mouseout',function(e){if(e.target.closest('.pinfo'))tip.style.display='none';});document.addEventListener('mousemove',function(e){if(tip.style.display==='block'){tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px';}});})();
 </script>
 </body>
 </html>
