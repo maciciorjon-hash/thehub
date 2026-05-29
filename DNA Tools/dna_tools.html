@@ -67,8 +67,11 @@ select:focus,input:focus{border-color:var(--accent);}
 .orf-row{cursor:pointer;transition:background .1s;}
 .orf-row:hover td{background:var(--surface2);}
 .orf-row.selected-orf td{background:rgba(67,160,71,.1);}
-.vec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
-.vec-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .15s;}
+.vec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;}
+.vec-grid.gallery{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));}
+.vec-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;cursor:pointer;transition:border-color .15s;}
+.vec-card.gallery-card{padding:12px;text-align:center;}
+.vec-card.gallery-card .vec-map-svg{display:flex;justify-content:center;}
 .vec-card:hover{border-color:var(--accent);}
 .vec-card.expanded{border-color:var(--accent);background:var(--surface2);}
 .vec-name{font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;}
@@ -217,7 +220,10 @@ select:focus,input:focus{border-color:var(--accent);}
 
 <!-- VECTOR LIBRARY -->
 <div class="panel" id="panel-vectors">
-  <input class="search-input" id="vec-search" type="text" placeholder="Search vectors by name or tag (e.g. His, Gateway, AmpR…)" oninput="filterVectors()">
+  <div style="display:flex;gap:10px;align-items:center;">
+    <input class="search-input" id="vec-search" type="text" placeholder="Search vectors by name or tag (e.g. His, Gateway, AmpR…)" oninput="filterVectors()" style="flex:1;">
+    <button class="btn btn-sec" id="maps-toggle-btn" onclick="toggleAllMaps()" style="white-space:nowrap;flex-shrink:0;">⊞ Show all maps</button>
+  </div>
   <div id="vec-library"></div>
   <div style="font-size:11px;color:var(--text3);margin-top:4px;">Sizes are approximate from deposited sequences; verify with current Addgene entries.</div>
 </div>
@@ -708,6 +714,18 @@ const VEC_FEATURES={
     {n:'pUC ori',s:11100,e:11800,d:-1,t:'ori'},
     {n:'cPPT/CTS',s:9500,e:9750,d:1,t:'other'},
   ],
+  pX458:[
+    {n:'U6 promoter',s:1,e:250,d:1,t:'promoter'},
+    {n:'BbsI (sgRNA)',s:251,e:280,d:1,t:'mcs'},
+    {n:'sgRNA scaffold',s:281,e:400,d:1,t:'sgrna'},
+    {n:'CBh promoter',s:460,e:1200,d:1,t:'promoter'},
+    {n:'SpCas9',s:1201,e:6194,d:1,t:'cas9'},
+    {n:'2A',s:6195,e:6260,d:1,t:'other'},
+    {n:'EGFP',s:6261,e:6980,d:1,t:'reporter'},
+    {n:'bGH polyA',s:6981,e:7210,d:1,t:'terminator'},
+    {n:'AmpR',s:7600,e:8460,d:-1,t:'res'},
+    {n:'pUC ori',s:8500,e:9200,d:-1,t:'ori'},
+  ],
 };
 
 function drawPlasmidMap(vecId,totalBp){
@@ -775,13 +793,21 @@ const VECTORS=[
   {id:'pMD2G',name:'pMD2.G',group:'Lentiviral System',size:5822,promoter:'CMV',resistance:'AmpR',origin:'pUC',tags:'VSV-G envelope',use:'VSV-G envelope vector for pseudotyping lentiviral particles. Broad tropism.',keywords:['lentiviral','envelope','AmpR','VSV-G','pseudotyping','broad tropism']},
   {id:'pX330',name:'pX330-U6-Cas9',group:'CRISPR',size:8484,promoter:'U6 (sgRNA) · CBh (Cas9)',resistance:'AmpR',origin:'pUC',tags:'SpCas9 · U6-sgRNA',use:'All-in-one CRISPR vector. Express both sgRNA (U6) and SpCas9 (CBh) from a single plasmid.',keywords:['CRISPR','AmpR','SpCas9','sgRNA','U6','CBh','genome editing']},
   {id:'lentiCRISPRv2',name:'lentiCRISPRv2',group:'CRISPR',size:14000,promoter:'U6 (sgRNA) · EF1α (Cas9)',resistance:'AmpR / PuroR',origin:'pUC',tags:'SpCas9 · PuroR · sgRNA',use:'Lentiviral CRISPR for stable genome editing. Puromycin selection. EF1α-driven SpCas9.',keywords:['CRISPR','lentiviral','AmpR','PuroR','SpCas9','sgRNA','EF1α','stable']},
+  {id:'pX458',name:'pX458 (pSpCas9(BB)-2A-GFP)',group:'CRISPR',size:9288,promoter:'CBh (Cas9) · U6 (sgRNA)',resistance:'AmpR',origin:'pUC',tags:'SpCas9 · 2A-EGFP · BbsI sites',use:'All-in-one CRISPR vector. SpCas9 and EGFP co-expressed from CBh promoter via 2A peptide. sgRNA cloned via BbsI. Addgene #48138.',keywords:['CRISPR','AmpR','SpCas9','sgRNA','GFP','CBh','BbsI','Addgene 48138','knockout']},
 ];
 
 const VEC_GROUPS=['Bacterial Cloning','Bacterial Expression','Gateway / Recombination','Mammalian Expression','Lentiviral System','CRISPR'];
-let _vecQuery='', _expandedVec=null;
+let _vecQuery='', _expandedVec=null, _showAllMaps=false;
 
 function filterVectors(){
   _vecQuery=document.getElementById('vec-search').value.trim().toLowerCase();
+  renderVectorLibrary();
+}
+
+function toggleAllMaps(){
+  _showAllMaps=!_showAllMaps;
+  const btn=document.getElementById('maps-toggle-btn');
+  if(btn) btn.textContent=_showAllMaps?'⊟ Hide maps':'⊞ Show all maps';
   renderVectorLibrary();
 }
 
@@ -795,34 +821,56 @@ function renderVectorLibrary(){
     const vecs=VECTORS.filter(v=>v.group===grp&&(!q||(v.name.toLowerCase().includes(q)||v.keywords.some(k=>k.toLowerCase().includes(q)))));
     if(!vecs.length) return;
     anyVisible=true;
-    html+=`<div class="grp-hdr">${esc(grp)}</div><div class="vec-grid">`;
+    html+=`<div class="grp-hdr">${esc(grp)}</div><div class="vec-grid${_showAllMaps?' gallery':''}">`;
     vecs.forEach(v=>{
       const isExp=_expandedVec===v.id;
       const matchTags=q?v.keywords.filter(k=>k.toLowerCase().includes(q)):[];
-      html+=`<div class="vec-card${isExp?' expanded':''}" onclick="toggleVec('${v.id}')">
-        <div class="vec-name">${esc(v.name)}</div>
-        <div class="vec-size">${v.size.toLocaleString()} bp</div>
-        <div class="vec-tags">
-          ${v.resistance.split('/').map(r=>`<span class="vec-tag ${matchTags.some(m=>m.toLowerCase()===r.trim().toLowerCase())?'highlight':''}">${esc(r.trim())}</span>`).join('')}
-          ${v.tags?v.tags.split('·').map(t=>`<span class="vec-tag ${matchTags.some(m=>m.toLowerCase()===t.trim().toLowerCase())?'highlight':''}">${esc(t.trim())}</span>`).join(''):''}
-        </div>
-        <div class="vec-use">${esc(v.use)}</div>
-        <div class="vec-detail">
-          <div class="vec-map-wrap">
-            <div class="vec-map-svg">${drawPlasmidMap(v.id,v.size)}</div>
-            <div>
-              <dl class="vec-feat" style="margin-bottom:8px;">
-                <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
-                <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
-                <dt>Origin</dt><dd>${esc(v.origin)}</dd>
-                ${v.tags?`<dt>Tags</dt><dd>${esc(v.tags)}</dd>`:''}
-              </dl>
-              ${(VEC_FEATURES[v.id]||[]).map(f=>`<div class="vec-feat-item"><span class="vec-feat-dot" style="background:${TYPE_COLORS[f.t]||'#bdc3c7'}"></span><span class="vec-feat-name">${esc(f.n)}</span><span class="vec-feat-pos">${f.s}–${f.e} bp</span></div>`).join('')}
-            </div>
+      if(_showAllMaps){
+        // Gallery mode: map + name + tags only
+        html+=`<div class="vec-card gallery-card${isExp?' expanded':''}" onclick="toggleVec('${v.id}')">
+          <div class="vec-map-svg">${drawPlasmidMap(v.id,v.size)}</div>
+          <div class="vec-name" style="margin-top:8px;">${esc(v.name)}</div>
+          <div class="vec-size">${v.size.toLocaleString()} bp</div>
+          <div class="vec-tags" style="justify-content:center;">
+            ${v.resistance.split('/').map(r=>`<span class="vec-tag">${esc(r.trim())}</span>`).join('')}
           </div>
-          <div style="margin-top:8px;font-size:11px;color:var(--text3);">Click again to collapse</div>
-        </div>
-      </div>`;
+          <div class="vec-detail">
+            <dl class="vec-feat" style="text-align:left;margin-top:8px;">
+              <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
+              <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
+              <dt>Origin</dt><dd>${esc(v.origin)}</dd>
+              ${v.tags?`<dt>Tags</dt><dd>${esc(v.tags)}</dd>`:''}
+            </dl>
+            <div style="text-align:left;">${(VEC_FEATURES[v.id]||[]).map(f=>`<div class="vec-feat-item"><span class="vec-feat-dot" style="background:${TYPE_COLORS[f.t]||'#bdc3c7'}"></span><span class="vec-feat-name">${esc(f.n)}</span><span class="vec-feat-pos">${f.s}–${f.e} bp</span></div>`).join('')}</div>
+          </div>
+        </div>`;
+      } else {
+        // Normal mode: expandable card
+        html+=`<div class="vec-card${isExp?' expanded':''}" onclick="toggleVec('${v.id}')">
+          <div class="vec-name">${esc(v.name)}</div>
+          <div class="vec-size">${v.size.toLocaleString()} bp</div>
+          <div class="vec-tags">
+            ${v.resistance.split('/').map(r=>`<span class="vec-tag ${matchTags.some(m=>m.toLowerCase()===r.trim().toLowerCase())?'highlight':''}">${esc(r.trim())}</span>`).join('')}
+            ${v.tags?v.tags.split('·').map(t=>`<span class="vec-tag ${matchTags.some(m=>m.toLowerCase()===t.trim().toLowerCase())?'highlight':''}">${esc(t.trim())}</span>`).join(''):''}
+          </div>
+          <div class="vec-use">${esc(v.use)}</div>
+          <div class="vec-detail">
+            <div class="vec-map-wrap">
+              <div class="vec-map-svg">${drawPlasmidMap(v.id,v.size)}</div>
+              <div>
+                <dl class="vec-feat" style="margin-bottom:8px;">
+                  <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
+                  <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
+                  <dt>Origin</dt><dd>${esc(v.origin)}</dd>
+                  ${v.tags?`<dt>Tags</dt><dd>${esc(v.tags)}</dd>`:''}
+                </dl>
+                ${(VEC_FEATURES[v.id]||[]).map(f=>`<div class="vec-feat-item"><span class="vec-feat-dot" style="background:${TYPE_COLORS[f.t]||'#bdc3c7'}"></span><span class="vec-feat-name">${esc(f.n)}</span><span class="vec-feat-pos">${f.s}–${f.e} bp</span></div>`).join('')}
+              </div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--text3);">Click again to collapse</div>
+          </div>
+        </div>`;
+      }
     });
     html+='</div>';
   });
