@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Degradation Visualizer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+:root {
+  --sans:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+  --bg:#f6f4fc; --surface:#ffffff; --surface2:#edeaf6;
+  --border:#e0daf0; --border2:#cac2e8;
+  --text:#1b1630; --text2:#58527a; --text3:#9890b8;
+  --col1:#6e58c8; --col2:#c96a3a; --col3:#2e8fb5;
+  --col4:#2d9462; --col5:#a03080; --col6:#b58830;
+  --good:#2d9462; --mid:#b58830; --poor:#b84545; --none:#c8c4d8;
+  --sel-bg:#eae6f8; --hover-bg:#f5f2fc;
+  --chart-grid:#ede9f8; --chart-axis:#9890b8;
+  --tip-bg:#ffffff; --tip-border:#cac2e8; --tip-title:#1b1630; --tip-body:#58527a;
+}
+[data-theme="dark"] {
+  --bg:#0e0c18; --surface:#151222; --surface2:#1c192e;
+  --border:#272340; --border2:#383360;
+  --text:#e0daf2; --text2:#8c88aa; --text3:#545070;
+  --col1:#b09af8; --col2:#f8a87a; --col3:#7ad4f8;
+  --col4:#6ddca8; --col5:#e080c0; --col6:#f8cc6d;
+  --good:#6ddca8; --mid:#f8cc6d; --poor:#f89090; --none:#38344e;
+  --sel-bg:#272050; --hover-bg:#1c192e;
+  --chart-grid:#1e1c30; --chart-axis:#646080;
+  --tip-bg:#1c192e; --tip-border:#383360; --tip-title:#e0daf2; --tip-body:#8c88aa;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg); color: var(--text); min-height: 100vh;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  transition: background 0.18s, color 0.18s;
+}
+
+/* ── HEADER ── */
+.header {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 28px; height: 58px;
+  display: flex; align-items: center; gap: 14px;
+}
+.app-logo {
+  width: 32px; height: 32px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 20px; font-weight: 700;
+  color: #fff; flex-shrink: 0;
+}
+.header-info h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.2px; }
+.header-info p  { font-size: 11px; color: var(--text2); }
+.stats-row { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap; align-items: center; }
+.stat { text-align: center; }
+.stat .n { font-size: 20px; font-weight: 600; color: var(--text); line-height: 1; }
+.stat .label { font-size: 10px; color: var(--text3); margin-top: 2px; white-space: nowrap; }
+.btn-theme {
+  background: none; border: 1px solid var(--border2);
+  border-radius: 20px; padding: 0 12px; height: 30px;
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; font-family: var(--sans); cursor: pointer; color: var(--text2);
+  transition: background .2s, color .2s; flex-shrink: 0;
+}
+.btn-theme:hover { background: var(--surface2); color: var(--text); }
+.btn-import {
+  background: transparent; border: 1px solid var(--col1); border-radius: 6px;
+  padding: 6px 12px; font-size: 11px; font-weight: 500; color: var(--col1);
+  cursor: pointer; font-family: inherit; transition: all 0.15s; white-space: nowrap; opacity: 0.85;
+}
+.btn-import:hover { opacity: 1; background: color-mix(in srgb, var(--col1) 8%, transparent); }
+
+/* ── TABS ── */
+.tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 28px; }
+.tab { padding: 10px 20px; font-size: 12px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text3); transition: color 0.12s, border-color 0.12s; user-select: none; }
+.tab:hover { color: var(--text2); }
+.tab.active { color: var(--text); border-bottom-color: var(--col1); }
+
+/* ── CONTENT ── */
+.content { padding: 20px 28px; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* ── EXPORT STRIP ── */
+.export-strip { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; justify-content: flex-end; }
+.export-label { font-size: 10px; color: var(--text3); margin-right: 2px; }
+.bg-chip { width: 24px; height: 24px; border-radius: 5px; cursor: pointer; border: 1.5px solid var(--border2); transition: border-color 0.12s; font-size: 9px; font-family: inherit; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.bg-chip:hover { border-color: var(--col1); transform: scale(1.1); }
+.bg-chip-white { background: #ffffff; color: #999; }
+.bg-chip-black { background: #111111; color: #aaa; }
+.bg-chip-trans { background: repeating-conic-gradient(#ccc 0% 25%, #fff 0% 50%) 0 0 / 8px 8px; color: #666; }
+
+/* ── CONTROLS ── */
+.controls { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.search-box { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-family: inherit; font-size: 12px; color: var(--text); width: 170px; outline: none; transition: border-color 0.15s; }
+.search-box:focus { border-color: var(--col1); }
+.search-box::placeholder { color: var(--text3); }
+.filter-group { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
+.filter-group label { font-size: 11px; color: var(--text3); white-space: nowrap; }
+.filter-group input[type="range"] { width: 80px; accent-color: var(--col1); cursor: pointer; }
+.filter-group .val { font-size: 11px; color: var(--text2); min-width: 42px; }
+.count-badge { font-size: 10px; color: var(--text3); margin-left: auto; }
+.pill { padding: 4px 9px; border-radius: 20px; font-size: 10px; cursor: pointer; border: 1px solid transparent; transition: all 0.12s; font-family: inherit; }
+.pill-good { color: var(--good); border-color: color-mix(in srgb, var(--good) 35%, transparent); }
+.pill-good:hover,.pill-good.on { background: color-mix(in srgb, var(--good) 12%, transparent); border-color: var(--good); }
+.pill-mid { color: var(--mid); border-color: color-mix(in srgb, var(--mid) 35%, transparent); }
+.pill-mid:hover,.pill-mid.on { background: color-mix(in srgb, var(--mid) 12%, transparent); border-color: var(--mid); }
+.pill-poor { color: var(--poor); border-color: color-mix(in srgb, var(--poor) 35%, transparent); }
+.pill-poor:hover,.pill-poor.on { background: color-mix(in srgb, var(--poor) 12%, transparent); border-color: var(--poor); }
+.sep { width: 1px; height: 18px; background: var(--border); flex-shrink: 0; }
+
+/* ── TABLE ── */
+.table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th { background: var(--surface); padding: 7px 6px; text-align: left; font-weight: 500; font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; cursor: pointer; user-select: none; border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+thead th:hover { background: var(--surface2); }
+thead th .sort-icon { color: var(--text3); margin-left: 3px; font-size: 9px; }
+thead th.sorted { color: var(--col1); }
+.protein-header { text-align: center; padding: 5px 4px; font-size: 10px; letter-spacing: 0.08em; border-bottom: 2px solid; }
+tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; }
+tbody tr:hover { background: var(--hover-bg); }
+tbody tr.selected { background: var(--sel-bg) !important; }
+td { padding: 6px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.compound-name { font-size: 13px; font-weight: 500; color: var(--text); min-width: 110px; }
+td.val-cell { text-align: right; font-size: 12px; color: var(--text2); }
+td.val-cell span.sd { color: var(--text3); font-size: 11px; }
+td.dmax-cell { padding: 6px 6px; min-width: 90px; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: middle; flex-shrink: 0; }
+.dot-good{background:var(--good);} .dot-mid{background:var(--mid);} .dot-poor{background:var(--poor);} .dot-none{background:var(--none);}
+.no-data { color: var(--text3); font-size: 11px; }
+.dmax-bar-wrap { display: flex; align-items: center; gap: 5px; }
+.dmax-bar { height: 4px; border-radius: 2px; flex-shrink: 0; }
+.dmax-txt { font-size: 12px; color: var(--text2); }
+.table-container { max-height: 480px; overflow-y: auto; }
+.table-container::-webkit-scrollbar { width: 5px; }
+.table-container::-webkit-scrollbar-track { background: transparent; }
+.table-container::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── EMPTY STATE ── */
+.empty-state { padding: 48px 24px; text-align: center; color: var(--text3); }
+.empty-state .ei { font-size: 32px; margin-bottom: 10px; }
+.empty-state .et { font-size: 14px; color: var(--text2); margin-bottom: 6px; }
+.empty-state .es { font-size: 12px; }
+
+/* ── SCATTER ── */
+.scatter-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.protein-toggle { display: flex; gap: 1px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.pt-btn { padding: 5px 13px; font-size: 11px; font-weight: 500; cursor: pointer; background: var(--surface); border: none; color: var(--text3); font-family: inherit; transition: background 0.12s, color 0.12s; }
+.pt-btn:hover { background: var(--surface2); }
+.chart-container { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; position: relative; height: 460px; }
+.axis-hint { font-size: 10px; color: var(--text3); margin-top: 8px; text-align: center; }
+
+/* ── DETAIL CARD ── */
+.detail-card { background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; padding: 20px; margin-top: 16px; display: none; }
+.detail-card.visible { display: block; }
+.detail-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.detail-name { font-size: 20px; font-weight: 600; }
+.detail-close { margin-left: auto; cursor: pointer; color: var(--text3); font-size: 18px; line-height: 1; padding: 4px; }
+.detail-close:hover { color: var(--text); }
+.detail-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+.detail-protein { background: var(--surface2); border-radius: 8px; padding: 14px 16px; border: 1px solid var(--border); flex: 1; min-width: 160px; }
+.dp-header { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid; }
+.dp-row { margin-bottom: 10px; }
+.dp-label { font-size: 10px; color: var(--text3); margin-bottom: 2px; }
+.dp-value { font-size: 16px; font-weight: 600; color: var(--text); }
+.dp-sd { font-size: 11px; color: var(--text3); font-weight: 400; }
+.dp-bar-wrap { height: 5px; background: var(--border); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+.dp-bar { height: 100%; border-radius: 3px; }
+
+/* ── MODAL ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); backdrop-filter: blur(3px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+.modal-overlay.visible { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 28px; width: 560px; max-width: 95vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+.modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.modal .subtitle { font-size: 12px; color: var(--text3); margin-bottom: 20px; }
+.drop-zone { border: 2px dashed var(--border2); border-radius: 8px; padding: 28px 24px; text-align: center; cursor: pointer; transition: all 0.15s; margin-bottom: 16px; }
+.drop-zone:hover,.drop-zone.dragging { border-color: var(--col1); background: color-mix(in srgb, var(--col1) 5%, transparent); }
+.drop-zone .dz-icon { font-size: 28px; margin-bottom: 8px; }
+.drop-zone .dz-label { font-size: 13px; color: var(--text2); margin-bottom: 3px; }
+.drop-zone .dz-sub { font-size: 11px; color: var(--text3); }
+.drop-zone input[type="file"] { display: none; }
+.import-preview { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 9px 12px; font-size: 12px; margin-bottom: 14px; display: none; }
+.import-preview.visible { display: block; }
+.preview-ok{color:var(--good);} .preview-err{color:var(--poor);}
+.modal-mode { display: flex; gap: 8px; margin-bottom: 16px; }
+.mode-btn { flex: 1; padding: 7px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); transition: all 0.12s; font-family: inherit; text-align: center; }
+.mode-btn:hover { border-color: var(--border2); }
+.mode-btn.active { background: color-mix(in srgb, var(--col1) 10%, transparent); border-color: var(--col1); color: var(--col1); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
+.btn-cancel { background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 7px 14px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
+.btn-cancel:hover { border-color: var(--border2); color: var(--text); }
+.btn-apply { background: color-mix(in srgb, var(--col1) 10%, transparent); border: 1px solid var(--col1); border-radius: 6px; padding: 7px 18px; font-size: 12px; font-weight: 500; color: var(--col1); cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.btn-apply:hover:not(:disabled) { background: color-mix(in srgb, var(--col1) 18%, transparent); }
+.btn-apply:disabled { opacity: 0.35; cursor: not-allowed; }
+/* ── LOAD TAB ── */
+.load-panel { max-width: 560px; margin: 32px auto; }
+.load-panel .drop-zone { padding: 48px 32px; margin-bottom: 0; }
+.load-panel .drop-zone .dz-icon { font-size: 36px; }
+.load-panel .drop-zone .dz-label { font-size: 14px; }
+.load-preview { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 9px 12px; font-size: 12px; margin-top: 12px; display: none; }
+.load-preview.visible { display: block; }
+.load-preview.ok { color: var(--good); border-color: color-mix(in srgb, var(--good) 30%, transparent); }
+.load-preview.err { color: var(--poor); border-color: color-mix(in srgb, var(--poor) 30%, transparent); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="app-logo" style="background:var(--col1);">D</div>
+  <div class="header-info">
+    <h1>Degradation Explorer</h1>
+    <p id="meta-desc">Import an Excel file to load data</p>
+  </div>
+  <div class="stats-row">
+    <div class="stat"><div class="n" id="stat-total">—</div><div class="label">Compounds</div></div>
+    <div class="stat"><div class="n" id="stat-active">—</div><div class="label">w/ Data</div></div>
+    <div class="stat"><div class="n" id="stat-good" style="color:var(--good)">—</div><div class="label">Excellent ✦</div></div>
+    <button class="btn-theme" id="btn-theme" onclick="toggleTheme()">🌙 Dark</button>
+    <button class="btn-theme" onclick="downloadTemplate()">⬇ Template</button>
+    <button class="btn-import" onclick="openImport()">↑ Import Excel</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('load')">Load Data</div>
+  <div class="tab" onclick="switchTab('table')">Table</div>
+  <div class="tab" onclick="switchTab('scatter')">DC50 vs Dmax</div>
+</div>
+
+<div class="content">
+
+  <!-- TABLE PANEL -->
+  <div class="panel" id="panel-table">
+    <div class="export-strip">
+      <span class="export-label">Export PNG:</span>
+      <button class="bg-chip bg-chip-white" title="White background" onclick="exportTable('white')">W</button>
+      <button class="bg-chip bg-chip-black" title="Black background" onclick="exportTable('black')">B</button>
+      <button class="bg-chip bg-chip-trans" title="Transparent" onclick="exportTable('transparent')">T</button>
+      <span class="export-label" style="margin-left:12px;">Export CSV:</span>
+      <button class="bg-chip bg-chip-white" title="Export filtered data as CSV" onclick="exportCSV()" style="padding:0 10px;font-size:10px;letter-spacing:0.5px;">CSV</button>
+    </div>
+    <div class="controls">
+      <input type="text" class="search-box" id="search" placeholder="Search compound…" oninput="applyFilters()">
+      <div class="filter-group">
+        <label>Dmax ≥</label>
+        <input type="range" id="dmax-min" min="0" max="100" value="0" step="5" oninput="document.getElementById('dmax-val').textContent=this.value+'%';debounceFilter(applyFilters)">
+        <span class="val" id="dmax-val">0%</span>
+      </div>
+      <div class="filter-group">
+        <label>DC50 ≤</label>
+        <input type="range" id="dc50-max" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('dc50-val').textContent=this.value+'nM';debounceFilter(applyFilters)">
+        <span class="val" id="dc50-val">1000nM</span>
+      </div>
+      <div class="sep"></div>
+      <span class="pill pill-good" id="pill-good" onclick="togglePill('good')">Dmax≥85 / DC50≤50</span>
+      <span class="pill pill-mid" id="pill-mid" onclick="togglePill('mid')">Moderate</span>
+      <span class="pill pill-poor" id="pill-poor" onclick="togglePill('poor')">Weak</span>
+      <div class="sep"></div>
+      <label style="font-size:11px;color:var(--text3)"><input type="checkbox" id="hide-nodata" onchange="applyFilters()" style="accent-color:var(--col1)"> Hide no-data</label>
+      <span class="count-badge" id="count-badge">— compounds</span>
+    </div>
+    <div class="table-container table-wrap" id="table-capture">
+      <table id="main-table">
+        <colgroup id="main-colgroup"></colgroup>
+        <thead id="main-thead"></thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+    <div class="detail-card" id="detail-card">
+      <div class="detail-header">
+        <div class="detail-name" id="detail-name">—</div>
+        <div class="detail-close" onclick="closeDetail()">✕</div>
+      </div>
+      <div class="detail-grid" id="detail-grid"></div>
+    </div>
+  </div>
+
+  <!-- LOAD PANEL -->
+  <div class="panel active" id="panel-load">
+    <div class="load-panel">
+      <div class="drop-zone" id="load-dz" ondragover="loadDragOver(event)" ondragleave="loadDragLeave(event)" ondrop="loadDrop(event)" onclick="document.getElementById('load-input').click()">
+        <div class="dz-icon">📂</div>
+        <div class="dz-label">Drop <strong>*_degradation_summary.xlsx</strong> or click to browse</div>
+        <div class="dz-sub">Targets, cell line and time point are detected automatically</div>
+        <input type="file" id="load-input" accept=".xlsx,.xls,.xlsm" onchange="loadFileSelect(event)">
+      </div>
+      <div style="margin-top:10px;">
+        <button onclick="loadTestData()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text2);font-size:11px;font-family:var(--sans);cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='var(--col1)'" onmouseout="this.style.borderColor='var(--border2)'">⚗ Load test data</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);">
+        <span style="font-weight:500;color:var(--text);">Quality thresholds</span>
+        <label>Dmax ≥ <input id="q-dmax" type="number" value="85" min="0" max="100" step="1" oninput="setQThresh()" style="width:52px;padding:3px 6px;font-size:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;"> %</label>
+        <label>DC50 ≤ <input id="q-dc50" type="number" value="50" min="0" step="1" oninput="setQThresh()" style="width:60px;padding:3px 6px;font-size:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;"> nM</label>
+        <span style="font-size:11px;color:var(--text3);">Controls the "Good" badge and pill filter</span>
+      </div>
+      <div class="load-preview" id="load-preview"></div>
+    </div>
+  </div>
+
+  <!-- SCATTER PANEL -->
+  <div class="panel" id="panel-scatter">
+    <div class="export-strip">
+      <span class="export-label">Export PNG:</span>
+      <button class="bg-chip bg-chip-white" title="White background" onclick="exportScatter('white')">W</button>
+      <button class="bg-chip bg-chip-black" title="Black background" onclick="exportScatter('black')">B</button>
+      <button class="bg-chip bg-chip-trans" title="Transparent" onclick="exportScatter('transparent')">T</button>
+    </div>
+    <div class="scatter-controls">
+      <div class="protein-toggle" id="protein-toggle"></div>
+      <input type="text" class="search-box" id="scatter-search" placeholder="Search compound…" oninput="updateChart()">
+      <div class="filter-group">
+        <label>Dmax ≥</label>
+        <input type="range" id="scatter-dmax" min="0" max="100" value="0" step="5" oninput="document.getElementById('scatter-dmax-val').textContent=this.value+'%';debounceChart(updateChart)">
+        <span class="val" id="scatter-dmax-val">0%</span>
+      </div>
+      <div class="filter-group">
+        <label>DC50 ≤</label>
+        <input type="range" id="scatter-dc50" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('scatter-dc50-val').textContent=this.value+'nM';debounceChart(updateChart)">
+        <span class="val" id="scatter-dc50-val">1000nM</span>
+      </div>
+    </div>
+    <div class="controls" style="margin-top:-6px">
+      <span class="pill pill-good" id="s-pill-good" onclick="toggleScatterPill('good')">Dmax≥85 / DC50≤50</span>
+      <span class="pill pill-mid" id="s-pill-mid" onclick="toggleScatterPill('mid')">Moderate</span>
+      <span class="pill pill-poor" id="s-pill-poor" onclick="toggleScatterPill('poor')">Weak</span>
+      <div class="sep"></div>
+      <label style="font-size:11px;color:var(--text3)"><input type="checkbox" id="scatter-labels" onchange="refreshChart()" style="accent-color:var(--col1)" checked> Labels</label>
+      <label style="font-size:11px;color:var(--text3)"><input type="checkbox" id="scatter-errorbars" onchange="refreshChart()" style="accent-color:var(--col1)"> Error bars</label>
+      <span class="count-badge" id="scatter-count">— points</span>
+    </div>
+    <div class="chart-container">
+      <canvas id="scatter-chart"></canvas>
+    </div>
+    <div class="axis-hint">X: DC50 (nM, log scale) · Y: Dmax (%) · Hover for details</div>
+  </div>
+
+</div>
+
+<!-- IMPORT MODAL -->
+<div class="modal-overlay" id="import-modal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <h2>Import Excel data</h2>
+    <p class="subtitle">Drop your .xlsx file — the app reads targets, assay type, cell line and time point automatically.</p>
+    <div class="modal-mode">
+      <div class="mode-btn active" id="mode-replace" onclick="setMode('replace')">Replace all</div>
+      <div class="mode-btn" id="mode-merge" onclick="setMode('merge')">Merge / append</div>
+    </div>
+    <div class="drop-zone" id="drop-zone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" onclick="document.getElementById('file-input').click()">
+      <div class="dz-icon">📊</div>
+      <div class="dz-label">Drop your .xlsx file here, or click to browse</div>
+      <div class="dz-sub">Reads any sheet — targets detected automatically from column headers</div>
+      <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFileInput(event)">
+    </div>
+    <div class="import-preview" id="import-preview"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeImport()">Cancel</button>
+      <button class="btn-apply" id="btn-apply" onclick="applyImport()" disabled>Apply import</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+const BASE_RAW     = /*DATA_START*/[]/*DATA_END*/;
+const BASE_TARGETS = /*TARGETS_START*/[]/*TARGETS_END*/;
+const BASE_META    = /*META_START*/{}/*META_END*/;
+
+let RAW     = BASE_RAW.slice();
+let TARGETS = BASE_TARGETS.slice();
+let META    = Object.assign({}, BASE_META);
+
+// ─── COLORS ───────────────────────────────────────────────────────────────────
+const PALETTE_VARS = ['--col1','--col2','--col3','--col4','--col5','--col6'];
+function getColor(idx) {
+  const v = PALETTE_VARS[idx % PALETTE_VARS.length];
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+}
+
+// ─── THEME ────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('btn-theme').textContent = isDark ? '🌙 Dark' : '☀ Light';
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; updateChart(); }
+}
+function tv() {
+  const s = getComputedStyle(document.documentElement);
+  const g = v => s.getPropertyValue(v).trim();
+  return {
+    grid: g('--chart-grid'), axis: g('--chart-axis'),
+    tipBg: g('--tip-bg'), tipBorder: g('--tip-border'),
+    tipTitle: g('--tip-title'), tipBody: g('--tip-body'), text3: g('--text3'),
+  };
+}
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+function hasAnyData(c) {
+  return TARGETS.some(t => (c.targets[t] || {}).dc50 !== null);
+}
+function quality(c) {
+  const vals = TARGETS.map(t => c.targets[t] || {dc50:null,dmax:null}).filter(v => v.dc50 !== null);
+  if (!vals.length) return 'none';
+  const b50 = Math.min(...vals.map(v => v.dc50));
+  const bDmax = Math.max(...vals.map(v => v.dmax || 0));
+  if (bDmax >= qThreshDmax && b50 <= qThreshDC50) return 'good';
+  if (bDmax >= 60 || b50 <= 100) return 'mid';
+  return 'poor';
+}
+function fmtVal(v, sd) {
+  if (v === null || v === undefined) return '<span class="no-data">—</span>';
+  const sdStr = (sd !== null && sd !== undefined && sd > 0) ? ` <span class="sd">± ${sd%1===0?sd:sd.toFixed(1)}</span>` : '';
+  const vStr = v >= 100 ? Math.round(v) : (v%1===0 ? v : v.toFixed(1));
+  return `${vStr}${sdStr}`;
+}
+function dmaxBar(v) {
+  if (v === null || v === undefined) return '<span class="no-data">—</span>';
+  const pct = Math.min(v, 100);
+  const c = pct >= qThreshDmax ? 'var(--good)' : pct >= 60 ? 'var(--mid)' : 'var(--poor)';
+  return `<div class="dmax-bar-wrap"><div class="dmax-bar" style="width:${pct*0.36}px;background:${c}"></div><span class="dmax-txt">${Math.round(v)}%</span></div>`;
+}
+
+// ─── DEBOUNCE ─────────────────────────────────────────────────────────────────
+let _filterDebTimer = null, _chartDebTimer = null;
+function debounceFilter(fn) { clearTimeout(_filterDebTimer); _filterDebTimer = setTimeout(fn, 80); }
+function debounceChart(fn)  { clearTimeout(_chartDebTimer);  _chartDebTimer  = setTimeout(fn, 80); }
+
+// ─── QUALITY THRESHOLDS (configurable) ────────────────────────────────────────
+let qThreshDmax = 85, qThreshDC50 = 50;
+function setQThresh() {
+  const dm = parseFloat(document.getElementById('q-dmax').value);
+  const dc = parseFloat(document.getElementById('q-dc50').value);
+  if (!isNaN(dm)) qThreshDmax = dm;
+  if (!isNaN(dc)) qThreshDC50 = dc;
+  const lbl = `Dmax≥${qThreshDmax} / DC50≤${qThreshDC50}`;
+  ['pill-good','s-pill-good'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=lbl; });
+  renderTable(); if(chartInstance) updateChart();
+}
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let sortKey = 'compound', sortDir = 1;
+let activePills = new Set(), scatterActivePills = new Set();
+let selectedCompound = null, chartInstance = null;
+let activeTargets = new Set(TARGETS);
+
+// ─── META / HEADER ────────────────────────────────────────────────────────────
+function updateMeta() {
+  const parts = [META.assay, META.timePoint, META.cellLine].filter(Boolean);
+  document.getElementById('meta-label').textContent = parts.join(' · ') || 'Degradation Explorer';
+  document.getElementById('meta-desc').textContent = TARGETS.length ? TARGETS.join(' / ') : 'Import an Excel file to load data';
+}
+
+// ─── RENDER TABLE HEADER ──────────────────────────────────────────────────────
+function renderHeader() {
+  const colgroup = document.getElementById('main-colgroup');
+  const thead = document.getElementById('main-thead');
+  colgroup.innerHTML = '<col style="width:118px">' +
+    TARGETS.map(() => '<col style="width:82px"><col style="width:82px">').join('');
+  const hRow1 = TARGETS.map((t, i) => {
+    const col = getColor(i);
+    return `<th colspan="2" class="protein-header" style="color:${col};border-color:${col};background:color-mix(in srgb,${col} 6%,transparent)">${t}</th>`;
+  }).join('');
+  const hRow2 = TARGETS.map((t, i) => {
+    const col = getColor(i);
+    const key = t + '_';
+    return `<th onclick="sortTable('${key}dc50')" id="th-${key}dc50" style="color:${col};text-align:right">DC50 (nM) <span class="sort-icon">↕</span></th>` +
+           `<th onclick="sortTable('${key}dmax')" id="th-${key}dmax" style="color:${col}">Dmax (%) <span class="sort-icon">↕</span></th>`;
+  }).join('');
+  thead.innerHTML =
+    `<tr><th style="background:var(--bg);border-bottom:none"></th>${hRow1}</tr>` +
+    `<tr><th onclick="sortTable('compound')" id="th-compound">Compound <span class="sort-icon">↕</span></th>${hRow2}</tr>`;
+}
+
+// ─── PROTEIN TOGGLES ──────────────────────────────────────────────────────────
+function renderProteinToggles() {
+  activeTargets = new Set(TARGETS);
+  const container = document.getElementById('protein-toggle');
+  container.innerHTML = TARGETS.map((t, i) => {
+    const col = getColor(i);
+    return `<button class="pt-btn" id="pt-${t}" style="color:${col};background:color-mix(in srgb,${col} 12%,transparent)" onclick="toggleTarget('${t}')">${t}</button>`;
+  }).join('');
+}
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+function getFiltered() {
+  const search = document.getElementById('search').value.toLowerCase();
+  const dmaxMin = +document.getElementById('dmax-min').value;
+  const dc50Max = +document.getElementById('dc50-max').value;
+  const hideNoData = document.getElementById('hide-nodata').checked;
+  return RAW.filter(c => {
+    if (!c.compound.toLowerCase().includes(search)) return false;
+    if (hideNoData && !hasAnyData(c)) return false;
+    const q = quality(c);
+    if (activePills.size > 0 && !activePills.has(q)) return false;
+    if (dmaxMin > 0 || dc50Max < 1000) {
+      const passes = TARGETS.some(t => {
+        const d = c.targets[t];
+        return d && d.dc50 !== null && d.dc50 <= dc50Max && (d.dmax === null || d.dmax >= dmaxMin);
+      });
+      if (!passes) return false;
+    }
+    return true;
+  });
+}
+function sortData(data) {
+  return [...data].sort((a, b) => {
+    if (sortKey === 'compound') return sortDir * a.compound.localeCompare(b.compound);
+    let prop, target;
+    if (sortKey.endsWith('_dc50'))      { prop = 'dc50'; target = sortKey.slice(0, -5); }
+    else if (sortKey.endsWith('_dmax')) { prop = 'dmax'; target = sortKey.slice(0, -5); }
+    else return 0;
+    const va = (a.targets[target] || {})[prop], vb = (b.targets[target] || {})[prop];
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1; if (vb === null) return -1;
+    return sortDir * (va - vb);
+  });
+}
+function renderTable() {
+  if (!TARGETS.length) {
+    document.getElementById('table-body').innerHTML =
+      '<tr><td colspan="1"><div class="empty-state"><div class="ei">📊</div><div class="et">No data loaded</div><div class="es">Import an Excel file to get started</div></div></td></tr>';
+    document.getElementById('count-badge').textContent = '—';
+    return;
+  }
+  const filtered = sortData(getFiltered());
+  document.getElementById('count-badge').textContent = `${filtered.length} compounds`;
+  document.getElementById('table-body').innerHTML = filtered.map(c => {
+    const q = quality(c);
+    const dotClass = {good:'dot-good',mid:'dot-mid',poor:'dot-poor',none:'dot-none'}[q];
+    const sel = selectedCompound === c.compound ? ' selected' : '';
+    const cells = TARGETS.map(t => {
+      const d = c.targets[t] || {dc50:null,dc50_sd:null,dmax:null,dmax_sd:null};
+      return `<td class="val-cell">${fmtVal(d.dc50, d.dc50_sd)}</td><td class="dmax-cell">${dmaxBar(d.dmax)}</td>`;
+    }).join('');
+    return `<tr onclick="selectCompound('${c.compound.replace(/'/g,"\\'")}')" class="${sel}">
+      <td class="compound-name"><span class="dot ${dotClass}"></span>${c.compound}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+}
+function applyFilters() { renderTable(); }
+function sortTable(key) {
+  if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = 1; }
+  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+  const th = document.getElementById(`th-${key}`); if (th) th.classList.add('sorted');
+  renderTable();
+}
+function togglePill(q) {
+  const el = document.getElementById(`pill-${q}`);
+  if (activePills.has(q)) { activePills.delete(q); el.classList.remove('on'); }
+  else { activePills.add(q); el.classList.add('on'); }
+  renderTable();
+}
+function toggleScatterPill(q) {
+  const el = document.getElementById(`s-pill-${q}`);
+  if (scatterActivePills.has(q)) { scatterActivePills.delete(q); el.classList.remove('on'); }
+  else { scatterActivePills.add(q); el.classList.add('on'); }
+  updateChart();
+}
+
+// ─── DETAIL ───────────────────────────────────────────────────────────────────
+function selectCompound(name) {
+  if (selectedCompound === name) { closeDetail(); return; }
+  selectedCompound = name;
+  const c = RAW.find(r => r.compound === name);
+  document.getElementById('detail-name').textContent = c.compound;
+  document.getElementById('detail-grid').innerHTML = TARGETS.map((t, i) => {
+    const d = c.targets[t] || {dc50:null};
+    const col = getColor(i);
+    if (d.dc50 === null) return `<div class="detail-protein"><div class="dp-header" style="color:${col};border-color:${col}">${t}</div><div style="color:var(--text3);font-size:12px;padding:8px 0">No data</div></div>`;
+    return `<div class="detail-protein">
+      <div class="dp-header" style="color:${col};border-color:${col}">${t}</div>
+      <div class="dp-row"><div class="dp-label">DC50 (nM)</div>
+        <div class="dp-value">${d.dc50>=100?Math.round(d.dc50):d.dc50.toFixed(1)}<span class="dp-sd">${d.dc50_sd&&d.dc50_sd>0?' ± '+(d.dc50_sd%1===0?d.dc50_sd:d.dc50_sd.toFixed(1)):''}</span></div>
+      </div>
+      <div class="dp-row"><div class="dp-label">Dmax (%)</div>
+        <div class="dp-value">${Math.round(d.dmax||0)}<span class="dp-sd">${d.dmax_sd&&d.dmax_sd>0?' ± '+Math.round(d.dmax_sd):''}</span></div>
+        <div class="dp-bar-wrap"><div class="dp-bar" style="width:${Math.min(d.dmax||0,100)}%;background:${col}"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('detail-card').classList.add('visible');
+  renderTable();
+}
+function closeDetail() {
+  selectedCompound = null;
+  document.getElementById('detail-card').classList.remove('visible');
+  renderTable();
+}
+
+// ─── SCATTER ──────────────────────────────────────────────────────────────────
+function buildChartData() {
+  const t = tv();
+  const dmaxMin = +document.getElementById('scatter-dmax').value;
+  const dc50Max = +document.getElementById('scatter-dc50').value;
+  const search = document.getElementById('scatter-search').value.toLowerCase();
+  const datasets = []; let totalPts = 0;
+  TARGETS.forEach((tgt, i) => {
+    if (!activeTargets.has(tgt)) return;
+    const color = getColor(i);
+    const points = [];
+    RAW.forEach(c => {
+      if (!c.compound.toLowerCase().includes(search)) return;
+      if (scatterActivePills.size > 0 && !scatterActivePills.has(quality(c))) return;
+      const d = c.targets[tgt];
+      if (!d || d.dc50 === null || d.dmax === null) return;
+      if (d.dc50 > dc50Max || d.dmax < dmaxMin) return;
+      points.push({x: d.dc50, y: d.dmax, dc50_sd: d.dc50_sd, dmax_sd: d.dmax_sd, label: c.compound});
+    });
+    totalPts += points.length;
+    datasets.push({label:tgt, data:points, backgroundColor:color+'bb', borderColor:color, borderWidth:1, pointRadius:5, pointHoverRadius:7});
+  });
+  document.getElementById('scatter-count').textContent = `${totalPts} points`;
+  return datasets;
+}
+function refreshChart() { if (!chartInstance) return; chartInstance.data.datasets = buildChartData(); chartInstance.update('none'); }
+function updateChart() {
+  const datasets = buildChartData();
+  if (chartInstance) { chartInstance.data.datasets = datasets; chartInstance.update('none'); return; }
+  const t = tv(); const sf = 'ui-sans-serif, system-ui, sans-serif';
+  const ctx = document.getElementById('scatter-chart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'scatter', data: {datasets},
+    options: {
+      animation: false, responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: {type:'logarithmic', title:{display:true,text:'DC50 (nM)',color:t.axis,font:{size:11,family:sf}}, ticks:{color:t.axis,font:{size:10,family:sf}}, grid:{color:t.grid}},
+        y: {min:0, max:105, title:{display:true,text:'Dmax (%)',color:t.axis,font:{size:11,family:sf}}, ticks:{color:t.axis,font:{size:10,family:sf},callback:v=>v+'%'}, grid:{color:t.grid}},
+      },
+      plugins: {
+        legend: {display: false},
+        tooltip: {animation:false, backgroundColor:t.tipBg, borderColor:t.tipBorder, borderWidth:1, titleColor:t.tipTitle, bodyColor:t.tipBody,
+          titleFont:{family:sf,size:12}, bodyFont:{family:sf,size:11},
+          callbacks: {
+            title:items=>items[0].raw.label+' ('+items[0].dataset.label+')',
+            label:item=>{
+              const r=item.raw;
+              const lines=[`DC50: ${r.x.toFixed(1)}${r.dc50_sd&&r.dc50_sd>0?' ± '+r.dc50_sd.toFixed(1):''} nM`];
+              lines.push(`Dmax: ${r.y}${r.dmax_sd&&r.dmax_sd>0?' ± '+Math.round(r.dmax_sd):''}%`);
+              return lines;
+            }
+          }},
+      },
+    },
+    plugins: [
+      {id:'errorbars', afterDatasetsDraw(chart) {
+        if (!document.getElementById('scatter-errorbars')?.checked) return;
+        const ctx2 = chart.ctx; const cap = 4;
+        chart.data.datasets.forEach((ds, di) => {
+          const meta = chart.getDatasetMeta(di);
+          ctx2.save(); ctx2.strokeStyle = ds.borderColor; ctx2.lineWidth = 1.5; ctx2.globalAlpha = 0.75;
+          meta.data.forEach((pt, i) => {
+            const d = ds.data[i]; const cx = pt.x, cy = pt.y;
+            if (d.dmax_sd && d.dmax_sd > 0) {
+              const yT = chart.scales.y.getPixelForValue(d.y + d.dmax_sd);
+              const yB = chart.scales.y.getPixelForValue(Math.max(0, d.y - d.dmax_sd));
+              ctx2.beginPath(); ctx2.moveTo(cx,yT); ctx2.lineTo(cx,yB);
+              ctx2.moveTo(cx-cap,yT); ctx2.lineTo(cx+cap,yT);
+              ctx2.moveTo(cx-cap,yB); ctx2.lineTo(cx+cap,yB); ctx2.stroke();
+            }
+            if (d.dc50_sd && d.dc50_sd > 0) {
+              const xR = chart.scales.x.getPixelForValue(d.x + d.dc50_sd);
+              const xL = chart.scales.x.getPixelForValue(Math.max(0.01, d.x - d.dc50_sd));
+              ctx2.beginPath(); ctx2.moveTo(xL,cy); ctx2.lineTo(xR,cy);
+              ctx2.moveTo(xL,cy-cap); ctx2.lineTo(xL,cy+cap);
+              ctx2.moveTo(xR,cy-cap); ctx2.lineTo(xR,cy+cap); ctx2.stroke();
+            }
+          });
+          ctx2.restore();
+        });
+      }},
+      {id:'labels', afterDatasetsDraw(chart) {
+        if (!document.getElementById('scatter-labels').checked) return;
+        const t2 = tv(); const ctx2 = chart.ctx; ctx2.save();
+        ctx2.font = '9px ui-sans-serif, system-ui, sans-serif';
+        ctx2.fillStyle = t2.text3;
+        chart.data.datasets.forEach((ds, di) => {
+          const meta = chart.getDatasetMeta(di);
+          meta.data.forEach((pt, i) => { ctx2.fillText(ds.data[i].label, pt.x+6, pt.y-4); });
+        });
+        ctx2.restore();
+      }}
+    ]
+  });
+}
+function toggleTarget(tgt) {
+  const btn = document.getElementById(`pt-${tgt}`);
+  const i = TARGETS.indexOf(tgt);
+  const col = getColor(i);
+  if (activeTargets.has(tgt)) {
+    activeTargets.delete(tgt);
+    btn.style.background = 'var(--surface)'; btn.style.color = 'var(--text3)';
+  } else {
+    activeTargets.add(tgt);
+    btn.style.background = `color-mix(in srgb,${col} 12%,transparent)`; btn.style.color = col;
+  }
+  if (chartInstance) { chartInstance.data.datasets = buildChartData(); chartInstance.update('none'); }
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const data = sortData(getFiltered());
+  if (!data.length) { alert('No data to export.'); return; }
+  const cols = ['Compound', 'Quality', ...TARGETS.flatMap(t => [`${t} DC50 (nM)`, `${t} DC50 SD`, `${t} Dmax (%)`, `${t} Dmax SD`])];
+  const rows = [cols.join(',')];
+  data.forEach(c => {
+    const q = quality(c);
+    const cells = [JSON.stringify(c.compound), q];
+    TARGETS.forEach(t => {
+      const d = c.targets[t] || {dc50:null,dc50_sd:null,dmax:null,dmax_sd:null};
+      cells.push(d.dc50 ?? '', d.dc50_sd ?? '', d.dmax ?? '', d.dmax_sd ?? '');
+    });
+    rows.push(cells.join(','));
+  });
+  const blob = new Blob([rows.join('\n')], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'degradation_data.csv'; a.click();
+}
+
+function exportTable(bg) {
+  const data = sortData(getFiltered());
+  if (!data.length) { alert('No data to export.'); return; }
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const useDark = bg === 'black' || (bg === 'transparent' && isDark);
+  const P = useDark
+    ? { surface:'#151222', surface2:'#1c192e', text:'#e0daf2', text2:'#8c88aa', text3:'#545070', border:'#272340', good:'#6ddca8', mid:'#f8cc6d', poor:'#f89090', none:'#38344e' }
+    : { surface:'#ffffff', surface2:'#edeaf6', text:'#1b1630', text2:'#58527a', text3:'#9890b8', border:'#e0daf0', good:'#2d9462', mid:'#b58830', poor:'#b84545', none:'#c8c4d8' };
+  const PC = useDark ? ['#b09af8','#f8a87a','#7ad4f8','#6ddca8','#e080c0','#f8cc6d']
+                     : ['#6e58c8','#c96a3a','#2e8fb5','#2d9462','#a03080','#b58830'];
+  const S=3, F="system-ui,-apple-system,'Segoe UI',sans-serif";
+  const CW=150, DCW=88, DMW=100, RH=27, H1=22, H2=26, nT=TARGETS.length;
+  const TW = CW + nT*(DCW+DMW);
+  const TH = H1 + H2 + data.length*RH;
+  const cv = document.createElement('canvas'); cv.width=TW*S; cv.height=TH*S;
+  const cx = cv.getContext('2d'); cx.scale(S,S);
+  // background
+  if (bg !== 'transparent') { cx.fillStyle = useDark ? '#000000' : '#ffffff'; cx.fillRect(0,0,TW,TH); }
+  // protein group headers (row 1)
+  cx.font = `500 9px ${F}`; cx.textBaseline = 'middle';
+  TARGETS.forEach((t, i) => {
+    const col = PC[i % PC.length];
+    const x = CW + i*(DCW+DMW);
+    cx.fillStyle = col + '18';
+    cx.fillRect(x, 0, DCW+DMW, H1);
+    cx.strokeStyle = col;
+    cx.lineWidth = 1.5;
+    cx.beginPath(); cx.moveTo(x, H1-0.5); cx.lineTo(x+DCW+DMW, H1-0.5); cx.stroke();
+    cx.fillStyle = col;
+    cx.textAlign = 'center';
+    cx.fillText(t.toUpperCase(), x+(DCW+DMW)/2, H1/2);
+  });
+  // column subheaders (row 2)
+  cx.fillStyle = P.surface2; cx.fillRect(0, H1, TW, H2);
+  cx.strokeStyle = P.border; cx.lineWidth = 1;
+  cx.beginPath(); cx.moveTo(0, H1+H2-0.5); cx.lineTo(TW, H1+H2-0.5); cx.stroke();
+  cx.font = `500 9px ${F}`; cx.fillStyle = P.text3; cx.textAlign = 'left';
+  cx.fillText('COMPOUND', 8, H1+H2/2);
+  TARGETS.forEach((t, i) => {
+    const col = PC[i % PC.length];
+    const xDC = CW + i*(DCW+DMW);
+    const xDM = xDC + DCW;
+    cx.fillStyle = col;
+    cx.textAlign = 'right'; cx.fillText('DC50 (nM)', xDC+DCW-6, H1+H2/2);
+    cx.textAlign = 'left';  cx.fillText('Dmax (%)', xDM+6, H1+H2/2);
+  });
+  // data rows
+  data.forEach((c, ri) => {
+    const y = H1 + H2 + ri*RH;
+    cx.fillStyle = ri%2===0 ? P.surface : P.surface2;
+    cx.fillRect(0, y, TW, RH);
+    cx.strokeStyle = P.border; cx.lineWidth = 0.5;
+    cx.beginPath(); cx.moveTo(0, y+RH-0.5); cx.lineTo(TW, y+RH-0.5); cx.stroke();
+    // quality dot
+    const q = quality(c);
+    const dotColor = {good:P.good,mid:P.mid,poor:P.poor,none:P.none}[q];
+    cx.fillStyle = dotColor;
+    cx.beginPath(); cx.arc(8, y+RH/2, 3.5, 0, 2*Math.PI); cx.fill();
+    // compound name
+    cx.fillStyle = P.text; cx.font = `500 11px ${F}`; cx.textAlign = 'left';
+    cx.fillText(c.compound, 18, y+RH/2);
+    // target values
+    TARGETS.forEach((t, i) => {
+      const d = c.targets[t] || {};
+      const xDC = CW + i*(DCW+DMW);
+      const xDM = xDC + DCW;
+      // DC50
+      if (d.dc50 !== null && d.dc50 !== undefined) {
+        const vStr = d.dc50 >= 100 ? String(Math.round(d.dc50)) : d.dc50.toFixed(1);
+        cx.fillStyle = P.text2; cx.font = `400 11px ${F}`; cx.textAlign = 'right';
+        cx.fillText(vStr, xDC+DCW-6, y+RH/2-3);
+        if (d.dc50_sd && d.dc50_sd > 0) {
+          const sdStr = '± '+(d.dc50_sd%1===0?d.dc50_sd:d.dc50_sd.toFixed(1));
+          cx.fillStyle = P.text3; cx.font = `400 8px ${F}`;
+          cx.fillText(sdStr, xDC+DCW-6, y+RH/2+6);
+        }
+      } else {
+        cx.fillStyle = P.text3; cx.font = `400 11px ${F}`; cx.textAlign = 'right';
+        cx.fillText('—', xDC+DCW-6, y+RH/2);
+      }
+      // Dmax bar + value
+      if (d.dmax !== null && d.dmax !== undefined) {
+        const pct = Math.min(d.dmax, 100);
+        const barColor = pct>=85?P.good:pct>=60?P.mid:P.poor;
+        const barW = pct * 0.32;
+        cx.fillStyle = barColor + '33';
+        cx.fillRect(xDM+6, y+RH/2+1, 38, 4);
+        cx.fillStyle = barColor;
+        cx.fillRect(xDM+6, y+RH/2+1, barW, 4);
+        cx.fillStyle = P.text2; cx.font = `400 11px ${F}`; cx.textAlign = 'left';
+        cx.fillText(Math.round(d.dmax)+'%', xDM+48, y+RH/2);
+      } else {
+        cx.fillStyle = P.text3; cx.font = `400 11px ${F}`; cx.textAlign = 'left';
+        cx.fillText('—', xDM+6, y+RH/2);
+      }
+    });
+  });
+  const a = document.createElement('a');
+  a.download = `degradation-${bg}.png`;
+  a.href = cv.toDataURL('image/png');
+  a.click();
+}
+function exportScatter(bg) {
+  if (!chartInstance) { alert('Open the Scatter tab first.'); return; }
+  const src = chartInstance.canvas;
+  const out = document.createElement('canvas'); out.width = src.width; out.height = src.height;
+  const ctx = out.getContext('2d');
+  if (bg==='white') { ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,out.width,out.height); }
+  else if (bg==='black') { ctx.fillStyle='#000000'; ctx.fillRect(0,0,out.width,out.height); }
+  ctx.drawImage(src, 0, 0);
+  const link = document.createElement('a');
+  link.download = `degradation-scatter-${bg}.png`;
+  link.href = out.toDataURL('image/png', 1.0); link.click();
+}
+// ─── TABS ─────────────────────────────────────────────────────────────────────
+const TAB_NAMES = ['load','table','scatter'];
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', TAB_NAMES[i]===name));
+  TAB_NAMES.forEach(n => {
+    const p = document.getElementById('panel-'+n);
+    if (p) p.classList.toggle('active', n===name);
+  });
+  if (name==='scatter' && !chartInstance) updateChart();
+}
+
+// ─── LOAD TAB ─────────────────────────────────────────────────────────────────
+function loadDragOver(e) { e.preventDefault(); document.getElementById('load-dz').classList.add('dragging'); }
+function loadDragLeave() { document.getElementById('load-dz').classList.remove('dragging'); }
+function loadDrop(e) { e.preventDefault(); document.getElementById('load-dz').classList.remove('dragging'); const f=e.dataTransfer.files[0]; if(f) loadImmediate(f); }
+function loadFileSelect(e) { const f=e.target.files[0]; if(f) loadImmediate(f); }
+function loadImmediate(f) {
+  const preview = document.getElementById('load-preview');
+  preview.className = 'load-preview visible';
+  preview.textContent = 'Parsing…';
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const {compounds, targets: ts, meta} = parseXLSXBuf(new Uint8Array(ev.target.result));
+      RAW = compounds; TARGETS = ts; META = meta;
+      localStorage.setItem('dv_lastfile', './' + f.name);
+      if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+      selectedCompound = null;
+      document.getElementById('detail-card').classList.remove('visible');
+      updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+      const metaStr = [meta.assay, meta.timePoint, meta.cellLine].filter(Boolean).join(' · ');
+      preview.className = 'load-preview visible ok';
+      preview.innerHTML = `✓ <strong>${compounds.length} compounds</strong> · ${ts.length} targets: ${ts.join(', ')}${metaStr ? ' · ' + metaStr : ''}`;
+      document.getElementById('load-input').value = '';
+      setTimeout(() => switchTab('table'), 700);
+    } catch(err) {
+      preview.className = 'load-preview visible err';
+      preview.textContent = '✗ ' + err.message;
+    }
+  };
+  r.readAsArrayBuffer(f);
+}
+
+// ─── IMPORT ───────────────────────────────────────────────────────────────────
+let importMode = 'replace', pendingData = null, pendingTargets = null, pendingMeta = null, pendingFileName = null;
+function openImport() {
+  document.getElementById('import-modal').classList.add('visible');
+  document.getElementById('import-preview').classList.remove('visible');
+  document.getElementById('btn-apply').disabled = true;
+  document.getElementById('file-input').value = '';
+  pendingData = null; pendingTargets = null; pendingMeta = null;
+}
+function closeImport() { document.getElementById('import-modal').classList.remove('visible'); }
+function handleOverlayClick(e) { if (e.target===document.getElementById('import-modal')) closeImport(); }
+function setMode(m) {
+  importMode = m;
+  document.getElementById('mode-replace').classList.toggle('active', m==='replace');
+  document.getElementById('mode-merge').classList.toggle('active', m==='merge');
+}
+function handleDragOver(e) { e.preventDefault(); document.getElementById('drop-zone').classList.add('dragging'); }
+function handleDragLeave() { document.getElementById('drop-zone').classList.remove('dragging'); }
+function handleDrop(e) { e.preventDefault(); document.getElementById('drop-zone').classList.remove('dragging'); const f=e.dataTransfer.files[0]; if(f) loadFile(f); }
+function handleFileInput(e) { const f=e.target.files[0]; if(f) loadFile(f); }
+function loadFile(f) { loadXlsx(f); }
+
+function parseXLSXBuf(buf) {
+  const wb = XLSX.read(buf, {type:'array'});
+
+  // Prefer sheet named with "summary" (case-insensitive), then first sheet
+  const summaryName = wb.SheetNames.find(n => /summary/i.test(n)) || wb.SheetNames[0];
+  const ws = wb.Sheets[summaryName];
+  if (!ws) throw new Error('No sheet found');
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+
+  // Find row where col 0 = "Compound"
+  let compoundIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]||'').trim().toLowerCase() === 'compound') { compoundIdx = i; break; }
+  }
+  if (compoundIdx === -1) throw new Error('No "Compound" column found');
+
+  const toNum = v => {
+    if (v === null || v === undefined) return null;
+    const s = String(v).trim();
+    if (s === '' || s === '-' || s === '±' || s.startsWith('#') ||
+        s.toLowerCase() === 'nd' || s.toLowerCase() === 'n/a') return null;
+    const n = parseFloat(s.replace(/^[><]=?\s*/, '').replace(',', '.'));
+    return isNaN(n) ? null : n;
+  };
+
+  const isBlank = v => {
+    if (v === null || v === undefined) return true;
+    const s = String(v).trim();
+    return s === '' || s === '0' || s === '-';
+  };
+
+  // ── Try structured format: protein names in a grouping row above "Compound" ──
+  let proteinPositions = [];
+  for (let i = compoundIdx - 1; i >= 0; i--) {
+    const row = rows[i];
+    const named = [], seen = new Set();
+    for (let c = 1; c < row.length; c++) {
+      const v = row[c];
+      if (v && typeof v === 'string' && v.trim() && v !== '±' && !v.startsWith('#') && !/^dc50|^dmax|^d50/i.test(v.trim())) {
+        if (!seen.has(v.trim())) { named.push({name: v.trim(), col: c}); seen.add(v.trim()); }
+      }
+    }
+    if (named.length >= 2) { proteinPositions = named; break; }
+  }
+
+  let compounds = [], detectedTargets = [], meta = {assay:'', cellLine:'', timePoint:''};
+
+  if (proteinPositions.length >= 2) {
+    // Structured format
+    // Per protein block at col C: C=DC50, C+1=±, C+2=DC50_SD, C+3=Dmax, C+4=±, C+5=Dmax_SD
+    detectedTargets = proteinPositions.map(p => p.name);
+    const colMap = {};
+    proteinPositions.forEach(({name, col}) => {
+      colMap[name] = {dc50: col, dc50_sd: col+2, dmax: col+3, dmax_sd: col+5};
+    });
+
+    for (let i = compoundIdx + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const raw = row[0];
+      if (raw === null || raw === undefined) continue;
+      if (typeof raw === 'number' && raw === 0) continue;
+      const nameStr = String(raw).trim();
+      if (nameStr === '' || nameStr === '0' || nameStr === '-') continue;
+      const targets = {};
+      detectedTargets.forEach(t => { targets[t] = {dc50:null, dc50_sd:null, dmax:null, dmax_sd:null}; });
+      Object.entries(colMap).forEach(([t, c]) => {
+        targets[t].dc50    = toNum(row[c.dc50]);
+        targets[t].dc50_sd = toNum(row[c.dc50_sd]);
+        targets[t].dmax    = toNum(row[c.dmax]);
+        targets[t].dmax_sd = toNum(row[c.dmax_sd]);
+      });
+      compounds.push({compound: nameStr, targets});
+    }
+
+    // Metadata: try RAW Data sheet first, then scan current sheet
+    const rawWs = wb.Sheets['RAW Data'];
+    const metaRows = rawWs
+      ? XLSX.utils.sheet_to_json(rawWs, {header:1, defval:null, raw:true})
+      : rows;
+    for (let i = 0; i < Math.min(20, metaRows.length); i++) {
+      for (let c = 0; c < Math.min(6, (metaRows[i]||[]).length); c++) {
+        const cell = metaRows[i][c];
+        if (typeof cell !== 'string') continue;
+        for (const line of cell.split(/[\n;]+/)) {
+          if (/cell\s*line|cells/i.test(line)) { const m = line.match(/:\s*(.+)/); if (m) meta.cellLine = m[1].trim(); }
+          if (/incubation\s*time|time\s*point|timepoint/i.test(line)) { const m = line.match(/:\s*(.+)/); if (m) meta.timePoint = m[1].trim(); }
+          if (/^assay/i.test(line.trim())) { const m = line.match(/:\s*(.+)/); if (m) meta.assay = m[1].trim(); }
+        }
+      }
+    }
+    // If assay not found, infer from protein suffix (e.g. BRD2-HiBiT → HiBiT)
+    if (!meta.assay && detectedTargets.length) {
+      const m = detectedTargets[0].match(/-([A-Za-z0-9]+)$/);
+      if (m) meta.assay = m[1];
+    }
+
+  } else {
+    // ── Fallback: generic format (header row has "ProteinName DC50" columns) ──
+    const headerRow = rows[compoundIdx];
+    const metricPatterns = [
+      [/\bdc50\s*(sd|sem|±|error)$/i, 'dc50_sd'],
+      [/\bdmax\s*(sd|sem|±|error)$/i, 'dmax_sd'],
+      [/\bdc50$/i, 'dc50'],
+      [/\bdmax$/i, 'dmax'],
+      [/\bd50$/i, 'dc50'],
+      [/\bdc\s*50\s*(sd|sem)$/i, 'dc50_sd'],
+    ];
+    const colMap = {};
+    const seen = new Set();
+    for (let col = 1; col < headerRow.length; col++) {
+      const h = String(headerRow[col]||'').trim();
+      if (!h) continue;
+      for (const [pat, m] of metricPatterns) {
+        const match = h.match(pat);
+        if (match) {
+          const t = h.slice(0, match.index).replace(/[-_\s]+$/, '').trim();
+          colMap[col] = {target: t, metric: m};
+          if (!seen.has(t)) { detectedTargets.push(t); seen.add(t); }
+          break;
+        }
+      }
+    }
+    if (!detectedTargets.length) throw new Error('No target columns detected. Expected "Degradation Summary" sheet or column headers like "BRD2 DC50", "BRD2 Dmax".');
+    // Metadata from rows above compound row
+    for (let i = 0; i < compoundIdx; i++) {
+      const a = String(rows[i][0]||'').trim().toLowerCase();
+      if (a === 'assay' || a === 'assay type')               meta.assay    = String(rows[i][1]||'').trim();
+      if (a === 'cell line' || a === 'cells' || a === 'cell') meta.cellLine = String(rows[i][1]||'').trim();
+      if (a === 'time point' || a === 'timepoint' || a === 'time') meta.timePoint = String(rows[i][1]||'').trim();
+    }
+    for (let i = compoundIdx + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const raw = row[0];
+      if (!raw && raw !== 0) continue;
+      const nameStr = String(raw).trim();
+      if (!nameStr) continue;
+      const targets = {};
+      detectedTargets.forEach(t => { targets[t] = {dc50:null, dc50_sd:null, dmax:null, dmax_sd:null}; });
+      Object.entries(colMap).forEach(([col, {target, metric}]) => {
+        targets[target][metric] = toNum(row[+col]);
+      });
+      compounds.push({compound: nameStr, targets});
+    }
+  }
+
+  if (!compounds.length) throw new Error('No data rows found');
+  return {compounds, targets: detectedTargets, meta};
+}
+function loadXlsx(f) {
+  const preview = document.getElementById('import-preview');
+  preview.innerHTML = '<span style="color:var(--text3)">Parsing Excel…</span>';
+  preview.classList.add('visible');
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const {compounds, targets: detectedTargets, meta} = parseXLSXBuf(new Uint8Array(ev.target.result));
+      pendingData = compounds; pendingTargets = detectedTargets; pendingMeta = meta; pendingFileName = f.name;
+      const nc = importMode==='merge'
+        ? compounds.filter(c => !RAW.find(r => r.compound===c.compound)).length
+        : compounds.length;
+      const metaStr = [meta.assay, meta.timePoint, meta.cellLine].filter(Boolean).join(' · ');
+      preview.innerHTML = importMode==='replace'
+        ? `<span class="preview-ok">✓ ${compounds.length} compounds · ${detectedTargets.length} targets: ${detectedTargets.join(', ')}${metaStr?' · '+metaStr:''}</span>`
+        : `<span class="preview-ok">✓ ${compounds.length} compounds (${nc} new) · targets: ${detectedTargets.join(', ')}${metaStr?' · '+metaStr:''}</span>`;
+      document.getElementById('btn-apply').disabled = false;
+    } catch(err) {
+      pendingData=null; pendingTargets=null; pendingMeta=null;
+      preview.innerHTML = `<span class="preview-err">✗ ${err.message}</span>`;
+      document.getElementById('btn-apply').disabled = true;
+    }
+  };
+  r.readAsArrayBuffer(f);
+}
+
+function applyImport() {
+  if (!pendingData) return;
+  if (importMode==='replace') {
+    RAW = pendingData;
+    TARGETS = pendingTargets || TARGETS;
+    META = Object.assign({}, BASE_META, pendingMeta || {});
+  } else {
+    pendingData.forEach(inc => {
+      const i = RAW.findIndex(r => r.compound===inc.compound);
+      if (i>=0) RAW[i]=inc; else RAW.push(inc);
+    });
+    (pendingTargets||[]).forEach(t => { if (!TARGETS.includes(t)) TARGETS.push(t); });
+    if (pendingMeta) {
+      if (pendingMeta.assay)     META.assay     = pendingMeta.assay;
+      if (pendingMeta.cellLine)  META.cellLine  = pendingMeta.cellLine;
+      if (pendingMeta.timePoint) META.timePoint = pendingMeta.timePoint;
+    }
+  }
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+  selectedCompound = null;
+  document.getElementById('detail-card').classList.remove('visible');
+  if (pendingFileName) { localStorage.setItem('dv_lastfile', './' + pendingFileName); pendingFileName = null; }
+  updateMeta(); renderHeader(); renderProteinToggles();
+  updateStats(); renderTable(); closeImport();
+}
+
+// ─── STATS / INIT ─────────────────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('stat-total').textContent = RAW.length;
+  document.getElementById('stat-active').textContent = RAW.filter(hasAnyData).length;
+  document.getElementById('stat-good').textContent = RAW.filter(c => quality(c)==='good').length;
+}
+updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+function downloadTemplate() {
+  const aoa = [
+    ['Cell line', 'HEK293T'],
+    ['Time point', '6h'],
+    ['Assay', 'HiBiT'],
+    [],
+    ['Compound', 'Target1 DC50', 'Target1 DC50 SD', 'Target1 Dmax', 'Target1 Dmax SD', 'Target2 DC50', 'Target2 DC50 SD', 'Target2 Dmax', 'Target2 Dmax SD'],
+    ['Compound_A', '', '', '', '', '', '', '', ''],
+    ['Compound_B', '', '', '', '', '', '', '', ''],
+    ['Compound_C', '', '', '', '', '', '', '', ''],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:16},{wch:14},{wch:14},{wch:12},{wch:14},{wch:14},{wch:14},{wch:12},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Degradation Summary');
+  XLSX.writeFile(wb, 'degradation_template.xlsx');
+}
+
+function loadTestData() {
+  const compounds = [
+    {compound:'MZ1',    targets:{'BRD4':{dc50:12,  dc50_sd:2.1, dmax:94, dmax_sd:3.2},'BRD2':{dc50:28,  dc50_sd:4.5, dmax:88, dmax_sd:4.1}}},
+    {compound:'AT1',    targets:{'BRD4':{dc50:8,   dc50_sd:1.3, dmax:97, dmax_sd:2.8},'BRD2':{dc50:18,  dc50_sd:3.2, dmax:91, dmax_sd:3.5}}},
+    {compound:'dBET6',  targets:{'BRD4':{dc50:45,  dc50_sd:7.2, dmax:78, dmax_sd:5.6},'BRD2':{dc50:62,  dc50_sd:9.1, dmax:71, dmax_sd:6.2}}},
+    {compound:'ARV-771',targets:{'BRD4':{dc50:3.4, dc50_sd:0.8, dmax:99, dmax_sd:1.2},'BRD2':{dc50:7.2, dc50_sd:1.5, dmax:96, dmax_sd:2.1}}},
+    {compound:'dBET57', targets:{'BRD4':{dc50:22,  dc50_sd:3.8, dmax:85, dmax_sd:4.4},'BRD2':{dc50:38,  dc50_sd:6.3, dmax:79, dmax_sd:5.1}}},
+    {compound:'DMSO',   targets:{'BRD4':{dc50:null,dc50_sd:null,dmax:null,dmax_sd:null},'BRD2':{dc50:null,dc50_sd:null,dmax:null,dmax_sd:null}}},
+  ];
+  RAW = compounds; TARGETS = ['BRD4','BRD2']; META = {assay:'HiBiT',cellLine:'HEK293T',timePoint:'6h'};
+  updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+  setTimeout(() => switchTab('table'), 100);
+}
+
+async function tryAutoLoad() {
+  const candidates = [];
+  const last = localStorage.getItem('dv_lastfile');
+  if (last) candidates.push(last);
+  candidates.push('./degradation_summary.xlsx', './hibit_summary.xlsx', './degradation_summary.xls', './hibit_summary.xls', './degradation_summary.xlsm');
+  for (const url of candidates) {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const {compounds, targets: detectedTargets, meta} = parseXLSXBuf(new Uint8Array(await resp.arrayBuffer()));
+      if (!compounds.length) continue;
+      RAW = compounds; TARGETS = detectedTargets; META = meta;
+      updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+      return;
+    } catch(e) { continue; }
+  }
+  switchTab('load');
+}
+tryAutoLoad();
+</script>
+</body>
+</html>

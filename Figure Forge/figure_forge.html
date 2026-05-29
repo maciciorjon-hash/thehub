@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Figure Forge</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+:root{--bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--accent:#f06292;--accent2:#0079b9;--accent3:#00c896;--text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;--sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;}
+[data-theme="light"]{--bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;--border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);--text:#1a1d2e;--text2:#5a5f7a;--text3:#9ca0b8;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+header{border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;gap:14px;background:var(--surface);height:58px;flex-shrink:0;}
+.logo{width:32px;height:32px;border-radius:7px;background:#f06292;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:20px;font-weight:700;color:#fff;flex-shrink:0;}
+.app-name{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+.app-sub{font-size:11px;color:var(--text2);}
+.theme-btn{margin-left:auto;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;}
+.theme-btn:hover{background:var(--surface2);}
+
+/* Shell */
+#ff-shell{display:flex;height:calc(100vh - 58px);overflow:hidden;}
+#ff-sidebar{width:130px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:12px 8px;gap:4px;}
+.nav-item{width:100%;padding:9px 12px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-radius:8px;text-align:left;transition:background .15s,color .15s;}
+.nav-item:hover{background:var(--surface2);color:var(--text);}
+.nav-item.active{background:var(--accent);color:#fff;}
+#ff-content{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+.panel{display:none;flex:1;overflow:auto;padding:24px;flex-direction:column;gap:16px;}
+.panel.active{display:flex;}
+
+/* Buttons + controls */
+.btn{padding:7px 14px;border-radius:7px;border:none;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{opacity:.85;}
+.btn-sec{background:var(--surface3);color:var(--text);border:1px solid var(--border2);}
+.btn-sec:hover{background:var(--surface2);}
+.btn-sm{padding:5px 10px;font-size:11px;}
+
+/* Mode pills */
+.mode-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.mode-pill{padding:5px 14px;border-radius:20px;border:1px solid var(--border2);background:none;color:var(--text2);font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;}
+.mode-pill.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.mode-label{font-size:12px;font-weight:600;color:var(--text2);}
+
+/* Data table */
+.ff-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface);}
+.ff-data-table{border-collapse:collapse;font-size:13px;min-width:100%;}
+.ff-data-table th{background:var(--surface2);padding:0;border:1px solid var(--border);white-space:nowrap;vertical-align:middle;}
+.ff-data-table td{padding:0;border:1px solid var(--border);}
+.th-lbl{width:44px;background:var(--surface2);}
+.th-add{width:34px;background:var(--surface2);}
+.th-del-sp{width:26px;background:var(--surface2);}
+.th-x{background:var(--surface3)!important;width:90px;}
+.th-name{width:100%;padding:6px 8px;background:transparent;border:none;color:var(--text);font-family:var(--mono);font-size:12px;font-weight:600;outline:none;display:block;}
+.th-name:focus{background:var(--surface3);}
+td input[type="number"]{width:100%;padding:6px 8px;background:transparent;border:none;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;-moz-appearance:textfield;}
+input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;}
+td input[type="number"]:focus{background:var(--surface2);}
+.data-cell[data-excluded] input{text-decoration:line-through;color:var(--text3);}
+.row-lbl{width:44px;background:var(--surface2);}
+.td-row-del{width:26px;text-align:center;}
+.cell-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:2px 5px;font-family:var(--mono);}
+.cell-del:hover{color:#ff5760;}
+.btn-add-col{background:none;border:none;color:var(--accent);cursor:pointer;font-size:16px;padding:3px 7px;font-weight:700;}
+.stat-row td{background:var(--surface2)!important;font-style:italic;}
+.stat-lbl{padding:5px 8px;font-size:11px;font-weight:600;color:var(--text3);text-align:right;border:1px solid var(--border);}
+.stat-val{padding:5px 8px;font-family:var(--mono);font-size:11px;color:var(--text2);border:1px solid var(--border);}
+.stat-val-empty{color:var(--text3);}
+.x-lbl{padding:6px 8px;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text3);}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+.pill.ok{background:rgba(0,200,150,.12);color:#00c896;}
+.pill.warn{background:rgba(240,96,0,.12);color:#ff9800;}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--text3);font-size:13px;padding:60px 20px;text-align:center;height:300px;}
+
+/* Graph panel */
+.graph-wrap{display:flex;gap:16px;flex:1;min-height:0;overflow:hidden;}
+.graph-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;}
+.inline-edit{background:none;border:none;border-bottom:1px solid var(--border2);color:var(--text);font-family:var(--sans);font-size:14px;font-weight:600;padding:4px 0;outline:none;width:100%;text-align:center;}
+.inline-edit::placeholder{color:var(--text3);font-weight:400;}
+.inline-edit:focus{border-bottom-color:var(--accent);}
+.inline-edit-sm{font-size:12px;font-weight:500;text-align:left;}
+#ff-plot{flex:1;min-height:340px;}
+.axis-row{display:flex;gap:16px;}
+.axis-row .col{flex:1;}
+.axis-label-hint{font-size:10px;color:var(--text3);margin-bottom:3px;}
+
+/* Props panel */
+#ff-props{width:190px;flex-shrink:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
+.prop-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;}
+.prop-hdr{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;}
+.prop-pills{display:flex;flex-wrap:wrap;gap:5px;}
+.prop-pill{padding:4px 10px;border-radius:14px;border:1px solid var(--border2);background:none;color:var(--text2);font-family:var(--sans);font-size:11px;font-weight:600;cursor:pointer;}
+.prop-pill.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.pal-swatches{display:flex;gap:5px;flex-wrap:wrap;}
+.pal-swatch{width:36px;height:18px;border-radius:5px;cursor:pointer;overflow:hidden;display:flex;border:2px solid transparent;gap:1px;padding:1px;}
+.pal-swatch.active{border-color:var(--accent);}
+.pal-swatch span{flex:1;border-radius:2px;}
+.prop-check{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);cursor:pointer;}
+.prop-check input{cursor:pointer;}
+.brk-form{display:flex;flex-direction:column;gap:6px;}
+.brk-select{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:11px;outline:none;width:100%;}
+.brk-list{display:flex;flex-direction:column;gap:4px;margin-top:6px;}
+.brk-item{display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border-radius:6px;padding:5px 8px;font-size:11px;}
+.brk-stars{font-weight:700;color:var(--accent);}
+.brk-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px;font-family:var(--mono);}
+.brk-del:hover{color:#ff5760;}
+.export-btns{display:flex;flex-direction:column;gap:6px;}
+
+/* Stats panel */
+.stat-table{width:100%;border-collapse:collapse;font-size:13px;}
+.stat-table th{text-align:left;padding:8px 12px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);}
+.stat-table td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text2);}
+.stat-table tr:last-child td{border-bottom:none;}
+.stat-table td:first-child{color:var(--text);font-weight:600;}
+.pval-sig3{color:#00c896;font-weight:700;}
+.pval-sig2{color:#26a69a;font-weight:600;}
+.pval-sig1{color:#ff9800;font-weight:600;}
+.pval-ns{color:var(--text3);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;}
+.card-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:12px;}
+
+/* Context menu */
+#ff-ctx-menu{position:fixed;display:none;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:4px;min-width:150px;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.2);}
+.ctx-item{padding:8px 12px;border-radius:5px;font-size:13px;cursor:pointer;color:var(--text);}
+.ctx-item:hover{background:var(--surface2);}
+.ctx-item.danger{color:#ff5760;}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">F</div>
+  <div>
+    <div class="app-name">Figure Forge</div>
+    <div class="app-sub">Prism-style charts · stats · export</div>
+  </div>
+  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
+</header>
+
+<div id="ff-shell">
+  <nav id="ff-sidebar">
+    <button class="nav-item active" onclick="showPanel('data')">📋 Data</button>
+    <button class="nav-item" onclick="showPanel('results')">📐 Results</button>
+    <button class="nav-item" onclick="showPanel('graph')">📊 Graph</button>
+  </nav>
+  <div id="ff-content">
+
+    <!-- DATA PANEL -->
+    <div class="panel active" id="panel-data">
+      <div class="mode-bar">
+        <span class="mode-label">Mode:</span>
+        <button class="mode-pill active" onclick="setDataMode('grouped',this)">Grouped</button>
+        <button class="mode-pill" onclick="setDataMode('xy',this)">XY Pairs</button>
+        <div style="margin-left:auto;display:flex;gap:8px;">
+          <button class="btn btn-sec btn-sm" onclick="importFromClipboard()">⬆ Paste</button>
+          <button class="btn btn-sec btn-sm" onclick="loadExample()">Example</button>
+        </div>
+      </div>
+      <div class="ff-table-wrap">
+        <table class="ff-data-table" id="ff-data-table">
+          <thead><tr id="ff-header-row"></tr></thead>
+          <tbody id="ff-tbody"></tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sec btn-sm" onclick="addRow()">+ Add row</button>
+        <span id="parse-status"></span>
+      </div>
+    </div>
+
+    <!-- RESULTS PANEL -->
+    <div class="panel" id="panel-results">
+      <div id="stats-wrap">
+        <div class="empty-state"><div style="font-size:28px">📐</div><div>Enter data in the Data panel first.</div></div>
+      </div>
+    </div>
+
+    <!-- GRAPH PANEL -->
+    <div class="panel" id="panel-graph" style="padding:20px;overflow:hidden;">
+      <div class="graph-wrap">
+        <div class="graph-main">
+          <input class="inline-edit" id="ff-title" placeholder="Figure title" oninput="onTitleChange()">
+          <div id="ff-plot"></div>
+          <div class="axis-row">
+            <div class="col">
+              <div class="axis-label-hint">Y axis label</div>
+              <input class="inline-edit inline-edit-sm" id="ff-yaxis" placeholder="Y axis" oninput="onAxisChange()">
+            </div>
+            <div class="col">
+              <div class="axis-label-hint">X axis label</div>
+              <input class="inline-edit inline-edit-sm" id="ff-xaxis" placeholder="X axis" oninput="onAxisChange()">
+            </div>
+          </div>
+        </div>
+
+        <div id="ff-props">
+          <!-- Chart type -->
+          <div class="prop-section" id="prop-chart-type">
+            <div class="prop-hdr">Chart type</div>
+            <div class="prop-pills" id="chart-type-pills">
+              <button class="prop-pill active" data-ctype="box" onclick="setChartType('box',this)">Box</button>
+              <button class="prop-pill" data-ctype="bar" onclick="setChartType('bar',this)">Bar</button>
+              <button class="prop-pill" data-ctype="dot" onclick="setChartType('dot',this)">Dot</button>
+            </div>
+            <div class="prop-pills" id="xy-type-pills" style="display:none;">
+              <button class="prop-pill active" data-xytype="scatter" onclick="setXYType('scatter',this)">Scatter</button>
+              <button class="prop-pill" data-xytype="line" onclick="setXYType('line',this)">Line</button>
+            </div>
+          </div>
+
+          <!-- Error bars (bar mode only) -->
+          <div class="prop-section" id="prop-errorbars" style="display:none;">
+            <div class="prop-hdr">Error bars</div>
+            <div class="prop-pills">
+              <button class="prop-pill active" data-eb="sem" onclick="setErrorBar('sem',this)">SEM</button>
+              <button class="prop-pill" data-eb="sd" onclick="setErrorBar('sd',this)">SD</button>
+              <button class="prop-pill" data-eb="none" onclick="setErrorBar('none',this)">None</button>
+            </div>
+          </div>
+
+          <!-- Symbols -->
+          <div class="prop-section">
+            <div class="prop-hdr">Symbols</div>
+            <div class="prop-pills">
+              <button class="prop-pill active" data-sym="circle" onclick="setSymbol('circle',this)" title="Circle">●</button>
+              <button class="prop-pill" data-sym="square" onclick="setSymbol('square',this)" title="Square">■</button>
+              <button class="prop-pill" data-sym="diamond" onclick="setSymbol('diamond',this)" title="Diamond">◆</button>
+              <button class="prop-pill" data-sym="triangle-up" onclick="setSymbol('triangle-up',this)" title="Triangle">▲</button>
+            </div>
+          </div>
+
+          <!-- Palette -->
+          <div class="prop-section">
+            <div class="prop-hdr">Palette</div>
+            <div class="pal-swatches" id="pal-swatches"></div>
+          </div>
+
+          <!-- Scale -->
+          <div class="prop-section">
+            <div class="prop-hdr">Scale</div>
+            <label class="prop-check"><input type="checkbox" id="chk-logy" onchange="rebuildChart()"> Log Y</label>
+            <label class="prop-check" id="logx-wrap" style="margin-top:5px;display:none;"><input type="checkbox" id="chk-logx" onchange="rebuildChart()"> Log X</label>
+          </div>
+
+          <!-- Significance (grouped only) -->
+          <div class="prop-section" id="prop-sig">
+            <div class="prop-hdr">Significance</div>
+            <div class="brk-form">
+              <select class="brk-select" id="brk-g1"></select>
+              <select class="brk-select" id="brk-g2"></select>
+              <button class="btn btn-sec btn-sm" onclick="addBracket()" style="width:100%">+ Add bracket</button>
+            </div>
+            <div class="brk-list" id="brk-list"></div>
+          </div>
+
+          <!-- Export -->
+          <div class="prop-section">
+            <div class="prop-hdr">Export</div>
+            <div class="export-btns">
+              <button class="btn btn-sec btn-sm" onclick="exportSVG()">↓ SVG</button>
+              <button class="btn btn-sec btn-sm" onclick="exportPNG()">↓ PNG 300 dpi</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="ff-ctx-menu">
+  <div class="ctx-item" id="ctx-action" onclick="toggleExclude()">Exclude value</div>
+</div>
+
+<script>
+// ─── Theme ─────────────────────────────────────────────────────────────────
+function isDark(){return document.documentElement.getAttribute('data-theme')==='dark';}
+function toggleTheme(){
+  const next=isDark()?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  document.getElementById('theme-btn').textContent=next==='dark'?'☀ Light':'🌙 Dark';
+  try{localStorage.setItem('ff_dark',next==='dark'?'true':'false');}catch(e){}
+  rebuildChart();
+}
+(function(){
+  try{
+    if(localStorage.getItem('ff_dark')==='true'){
+      document.documentElement.setAttribute('data-theme','dark');
+      document.getElementById('theme-btn').textContent='☀ Light';
+    }
+  }catch(e){}
+})();
+
+// ─── Sidebar nav ────────────────────────────────────────────────────────────
+function showPanel(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  const btns=[...document.querySelectorAll('.nav-item')];
+  const map={data:0,results:1,graph:2};
+  btns[map[id]].classList.add('active');
+  if(id==='graph') setTimeout(rebuildChart,60);
+  if(id==='results'){ if(_dataMode==='xy') renderXYStats(); else renderStats(); }
+}
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let _groups={};
+let _xyData={xLabel:'X',series:[]};
+let _dataMode='grouped';
+let _chartType='box';
+let _xyChartType='scatter';
+let _errorBarType='sem';
+let _symbolType='circle';
+let _paletteKey='default';
+let _figTitle='';
+let _yAxisLabel='';
+let _xAxisLabel='';
+let _brackets=[];
+let _readTimer=null;
+let _ctxTarget=null;
+
+const PALETTES={
+  default:['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948'],
+  nature: ['#E64B35','#4DBBD5','#00A087','#3C5488','#F39B7F','#8491B4'],
+  science:['#3B4992','#EE0000','#008B45','#631879','#008280','#BB0021'],
+  colorblind:['#0072B2','#E69F00','#009E73','#CC79A7','#56B4E9','#D55E00']
+};
+
+// ─── Palette swatches ───────────────────────────────────────────────────────
+(function buildPalSwatches(){
+  const wrap=document.getElementById('pal-swatches');
+  Object.entries(PALETTES).forEach(([key,cols])=>{
+    const sw=document.createElement('div');
+    sw.className='pal-swatch'+(key==='default'?' active':'');
+    sw.title=key;
+    sw.onclick=()=>setPalette(key);
+    sw.id='swatch-'+key;
+    cols.slice(0,4).forEach(c=>{
+      const s=document.createElement('span');
+      s.style.background=c;
+      sw.appendChild(s);
+    });
+    wrap.appendChild(sw);
+  });
+})();
+
+function setPalette(key){
+  _paletteKey=key;
+  document.querySelectorAll('.pal-swatch').forEach(s=>s.classList.remove('active'));
+  document.getElementById('swatch-'+key).classList.add('active');
+  rebuildChart();
+}
+
+// ─── Data mode ──────────────────────────────────────────────────────────────
+function setDataMode(mode,btn){
+  if(_dataMode===mode)return;
+  _dataMode=mode;
+  document.querySelectorAll('.mode-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  _groups={};_xyData={xLabel:'X',series:[]};_brackets=[];
+  document.getElementById('ff-title').value='';
+  document.getElementById('ff-yaxis').value='';
+  document.getElementById('ff-xaxis').value='';
+  _figTitle='';_yAxisLabel='';_xAxisLabel='';
+  if(mode==='grouped'){
+    document.getElementById('chart-type-pills').style.display='';
+    document.getElementById('xy-type-pills').style.display='none';
+    document.getElementById('prop-sig').style.display='';
+    document.getElementById('logx-wrap').style.display='none';
+    buildGroupedTable(['Group 1','Group 2'],5);
+  } else {
+    document.getElementById('chart-type-pills').style.display='none';
+    document.getElementById('xy-type-pills').style.display='';
+    document.getElementById('prop-sig').style.display='none';
+    document.getElementById('logx-wrap').style.display='';
+    buildXYTable(['Series 1'],6);
+  }
+  document.getElementById('parse-status').innerHTML='';
+  document.getElementById('ff-plot').innerHTML='';
+}
+
+// ─── Grouped table ──────────────────────────────────────────────────────────
+function buildGroupedTable(groupNames,rowCount){
+  const thead=document.getElementById('ff-header-row');
+  const tbody=document.getElementById('ff-tbody');
+  thead.innerHTML='';tbody.innerHTML='';
+  const nCols=groupNames.length;
+
+  // Label col header
+  const thL=document.createElement('th');thL.className='th-lbl';thead.appendChild(thL);
+
+  groupNames.forEach((name,i)=>thead.appendChild(makeGroupHeader(name,nCols>1)));
+
+  const thAdd=document.createElement('th');thAdd.className='th-add';
+  const ab=document.createElement('button');ab.className='btn-add-col';ab.textContent='+';ab.title='Add group';ab.onclick=addGroupCol;
+  thAdd.appendChild(ab);thead.appendChild(thAdd);
+
+  const thDel=document.createElement('th');thDel.className='th-del-sp';thead.appendChild(thDel);
+
+  // Stat rows first (data rows inserted before them)
+  tbody.appendChild(makeStatRow('mean','Mean',nCols));
+  tbody.appendChild(makeStatRow('sem','SEM',nCols));
+
+  for(let r=0;r<rowCount;r++) addGroupedRow(nCols);
+}
+
+function makeGroupHeader(name,showDel){
+  const th=document.createElement('th');th.style.minWidth='90px';
+  const wrap=document.createElement('div');wrap.style.cssText='display:flex;align-items:center;';
+  const inp=document.createElement('input');
+  inp.type='text';inp.className='th-name';inp.value=name;inp.placeholder='Group';
+  inp.oninput=()=>scheduleRead();
+  const del=document.createElement('button');
+  del.className='cell-del';del.textContent='×';del.title='Remove group';
+  del.style.display=showDel?'':'none';
+  del.onclick=()=>removeGroupCol(th);
+  wrap.appendChild(inp);wrap.appendChild(del);th.appendChild(wrap);
+  return th;
+}
+
+function makeStatRow(type,label,nCols){
+  if(nCols===undefined) nCols=getGroupedColCount();
+  const tr=document.createElement('tr');tr.className='stat-row';tr.dataset.statType=type;
+  const tdL=document.createElement('td');tdL.className='stat-lbl';tdL.textContent=label;tr.appendChild(tdL);
+  for(let c=0;c<nCols;c++){
+    const td=document.createElement('td');td.className='stat-val stat-val-empty';td.textContent='—';tr.appendChild(td);
+  }
+  // Spacers for add-col and del columns
+  tr.appendChild(document.createElement('td'));
+  tr.appendChild(document.createElement('td'));
+  return tr;
+}
+
+function getGroupedColCount(){
+  return Math.max(0,document.querySelectorAll('#ff-header-row th').length-3);
+}
+
+function addGroupedRow(colCount){
+  const nCols=colCount??getGroupedColCount();
+  const tbody=document.getElementById('ff-tbody');
+  const tr=document.createElement('tr');
+
+  const tdL=document.createElement('td');tdL.className='row-lbl';tr.appendChild(tdL);
+
+  for(let c=0;c<nCols;c++){
+    const td=document.createElement('td');td.className='data-cell';
+    const inp=document.createElement('input');inp.type='number';inp.step='any';
+    inp.oninput=()=>scheduleRead();
+    td.appendChild(inp);tr.appendChild(td);
+  }
+
+  const tdDel=document.createElement('td');tdDel.className='td-row-del';
+  const delBtn=document.createElement('button');delBtn.className='cell-del';delBtn.textContent='×';
+  delBtn.onclick=e=>{e.currentTarget.closest('tr').remove();scheduleRead();};
+  tdDel.appendChild(delBtn);tr.appendChild(tdDel);
+
+  const firstStat=tbody.querySelector('.stat-row');
+  if(firstStat) tbody.insertBefore(tr,firstStat);
+  else tbody.appendChild(tr);
+  return tr;
+}
+
+function addGroupCol(){
+  const thead=document.getElementById('ff-header-row');
+  const cells=thead.querySelectorAll('th');
+  const nCols=cells.length-3;
+  const th=makeGroupHeader('Group '+(nCols+1),true);
+  thead.insertBefore(th,cells[cells.length-2]);
+
+  // Add del buttons to all existing group headers (in case we had only 1 before)
+  Array.from(thead.querySelectorAll('th')).slice(1,nCols+2).forEach(h=>{
+    const del=h.querySelector('.cell-del');if(del)del.style.display='';
+  });
+
+  // Add cell to every data row
+  document.querySelectorAll('#ff-tbody tr:not(.stat-row)').forEach(tr=>{
+    const td=document.createElement('td');td.className='data-cell';
+    const inp=document.createElement('input');inp.type='number';inp.step='any';inp.oninput=()=>scheduleRead();
+    td.appendChild(inp);
+    tr.insertBefore(td,tr.lastElementChild);
+  });
+
+  rebuildStatRows();
+  scheduleRead();
+}
+
+function removeGroupCol(th){
+  if(getGroupedColCount()<=1)return;
+  const allTh=Array.from(document.querySelectorAll('#ff-header-row th'));
+  const idx=allTh.indexOf(th)-1; // -1 for label col offset
+  th.remove();
+
+  document.querySelectorAll('#ff-tbody tr:not(.stat-row)').forEach(tr=>{
+    const dataCells=tr.querySelectorAll('td.data-cell');
+    if(dataCells[idx])dataCells[idx].remove();
+  });
+
+  if(getGroupedColCount()<=1){
+    const remaining=document.querySelector('#ff-header-row th:nth-child(2) .cell-del');
+    if(remaining)remaining.style.display='none';
+  }
+  rebuildStatRows();
+  scheduleRead();
+}
+
+function rebuildStatRows(){
+  const nCols=getGroupedColCount();
+  document.querySelectorAll('#ff-tbody .stat-row').forEach(r=>r.remove());
+  const tbody=document.getElementById('ff-tbody');
+  tbody.appendChild(makeStatRow('mean','Mean',nCols));
+  tbody.appendChild(makeStatRow('sem','SEM',nCols));
+  updateStatRows();
+}
+
+function updateStatRows(){
+  const nCols=getGroupedColCount();
+  const headers=Array.from(document.querySelectorAll('#ff-header-row th')).slice(1,1+nCols);
+  const groupNames=headers.map(th=>(th.querySelector('input')?.value||'').trim()||'Group');
+
+  ['mean','sem'].forEach(type=>{
+    const row=document.querySelector(`#ff-tbody .stat-row[data-stat-type="${type}"]`);
+    if(!row)return;
+    const cells=row.querySelectorAll('.stat-val');
+    groupNames.forEach((name,i)=>{
+      const vals=_groups[name]||[];
+      if(!cells[i])return;
+      if(!vals.length){cells[i].textContent='—';cells[i].className='stat-val stat-val-empty';return;}
+      const s=groupStats(vals);
+      cells[i].textContent=type==='mean'?s.mean.toFixed(3):(s.sd/Math.sqrt(s.n)).toFixed(3);
+      cells[i].className='stat-val';
+    });
+  });
+}
+
+function addRow(){
+  if(_dataMode==='grouped'){const tr=addGroupedRow();tr.querySelector('input').focus();}
+  else addXYRow();
+}
+
+// ─── XY table ───────────────────────────────────────────────────────────────
+function buildXYTable(seriesNames,rowCount){
+  const thead=document.getElementById('ff-header-row');
+  const tbody=document.getElementById('ff-tbody');
+  thead.innerHTML='';tbody.innerHTML='';
+
+  const thX=document.createElement('th');thX.className='th-x';
+  const xSpan=document.createElement('span');xSpan.className='x-lbl';xSpan.textContent='X';
+  thX.appendChild(xSpan);thead.appendChild(thX);
+
+  seriesNames.forEach(n=>thead.appendChild(makeXYSeriesHeader(n,seriesNames.length>1)));
+
+  const thAdd=document.createElement('th');thAdd.className='th-add';
+  const ab=document.createElement('button');ab.className='btn-add-col';ab.textContent='+';ab.onclick=addXYSeries;
+  thAdd.appendChild(ab);thead.appendChild(thAdd);
+
+  const thDel=document.createElement('th');thDel.className='th-del-sp';thead.appendChild(thDel);
+
+  for(let r=0;r<rowCount;r++) addXYRow(seriesNames.length);
+}
+
+function makeXYSeriesHeader(name,showDel){
+  const th=document.createElement('th');th.style.minWidth='90px';
+  const wrap=document.createElement('div');wrap.style.cssText='display:flex;align-items:center;';
+  const inp=document.createElement('input');inp.type='text';inp.className='th-name';inp.value=name;inp.placeholder='Series';inp.oninput=()=>scheduleRead();
+  const del=document.createElement('button');del.className='cell-del';del.textContent='×';del.style.display=showDel?'':'none';
+  del.onclick=()=>removeXYSeries(th);
+  wrap.appendChild(inp);wrap.appendChild(del);th.appendChild(wrap);
+  return th;
+}
+
+function getXYSeriesCount(){
+  return Math.max(0,document.querySelectorAll('#ff-header-row th').length-3);
+}
+
+function addXYSeries(){
+  const n=getXYSeriesCount();
+  const thead=document.getElementById('ff-header-row');
+  const cells=thead.querySelectorAll('th');
+  const th=makeXYSeriesHeader('Series '+(n+1),true);
+  thead.insertBefore(th,cells[cells.length-2]);
+  Array.from(thead.querySelectorAll('th')).slice(1,n+2).forEach(h=>{
+    const del=h.querySelector('.cell-del');if(del)del.style.display='';
+  });
+  document.querySelectorAll('#ff-tbody tr').forEach(tr=>{
+    const td=document.createElement('td');
+    const inp=document.createElement('input');inp.type='number';inp.step='any';inp.oninput=()=>scheduleRead();
+    td.appendChild(inp);tr.insertBefore(td,tr.lastElementChild);
+  });
+  scheduleRead();
+}
+
+function removeXYSeries(th){
+  if(getXYSeriesCount()<=1)return;
+  const allTh=Array.from(document.querySelectorAll('#ff-header-row th'));
+  const idx=allTh.indexOf(th);
+  th.remove();
+  document.querySelectorAll('#ff-tbody tr').forEach(tr=>{
+    if(tr.children[idx])tr.children[idx].remove();
+  });
+  if(getXYSeriesCount()<=1){
+    const d=document.querySelector('#ff-header-row th:nth-child(2) .cell-del');
+    if(d)d.style.display='none';
+  }
+  scheduleRead();
+}
+
+function addXYRow(nSeries){
+  const n=nSeries??getXYSeriesCount();
+  const tbody=document.getElementById('ff-tbody');
+  const tr=document.createElement('tr');
+  const tdX=document.createElement('td');
+  const xInp=document.createElement('input');xInp.type='number';xInp.step='any';xInp.oninput=()=>scheduleRead();
+  tdX.appendChild(xInp);tr.appendChild(tdX);
+  for(let i=0;i<n;i++){
+    const td=document.createElement('td');
+    const inp=document.createElement('input');inp.type='number';inp.step='any';inp.oninput=()=>scheduleRead();
+    td.appendChild(inp);tr.appendChild(td);
+  }
+  const tdDel=document.createElement('td');tdDel.className='td-row-del';
+  const del=document.createElement('button');del.className='cell-del';del.textContent='×';
+  del.onclick=e=>{e.currentTarget.closest('tr').remove();scheduleRead();};
+  tdDel.appendChild(del);tr.appendChild(tdDel);
+  tbody.appendChild(tr);
+  return tr;
+}
+
+// ─── Keyboard nav ────────────────────────────────────────────────────────────
+document.getElementById('ff-data-table').addEventListener('keydown',function(e){
+  if(e.key!=='Tab')return;
+  const t=e.target;
+  if(t.tagName!=='INPUT'||t.type==='text')return;
+  e.preventDefault();
+  const allInp=Array.from(this.querySelectorAll('tbody input[type="number"]')).filter(i=>!i.closest('.stat-row'));
+  const idx=allInp.indexOf(t);if(idx<0)return;
+  const rowLen=_dataMode==='grouped'?getGroupedColCount():getXYSeriesCount()+1;
+  const pos=idx%rowLen;
+  if(!e.shiftKey){
+    if(pos<rowLen-1){allInp[idx+1]?.focus();}
+    else{
+      const nxt=idx+1;
+      if(allInp[nxt])allInp[nxt].focus();
+      else{const tr=_dataMode==='grouped'?addGroupedRow():addXYRow();tr.querySelector('input').focus();}
+    }
+  } else {if(idx>0)allInp[idx-1]?.focus();}
+});
+
+// ─── Data extraction ─────────────────────────────────────────────────────────
+function scheduleRead(){clearTimeout(_readTimer);_readTimer=setTimeout(readTableData,280);}
+
+function readTableData(){
+  if(_dataMode==='grouped') readGroupedData();
+  else readXYData();
+}
+
+function readGroupedData(){
+  const nCols=getGroupedColCount();if(!nCols)return;
+  const headers=Array.from(document.querySelectorAll('#ff-header-row th')).slice(1,1+nCols);
+  const groupNames=headers.map(th=>(th.querySelector('input')?.value||'').trim()||'Group');
+  _groups={};groupNames.forEach(n=>_groups[n]=[]);
+
+  document.querySelectorAll('#ff-tbody tr:not(.stat-row)').forEach(tr=>{
+    tr.querySelectorAll('td.data-cell').forEach((td,ci)=>{
+      if(td.dataset.excluded==='true')return;
+      const v=parseFloat(td.querySelector('input')?.value);
+      if(!isNaN(v)&&groupNames[ci]!==undefined) _groups[groupNames[ci]].push(v);
+    });
+  });
+  Object.keys(_groups).forEach(k=>{if(!_groups[k].length)delete _groups[k];});
+
+  updateStatRows();
+  updateGroupSelects();
+
+  const total=Object.values(_groups).reduce((s,a)=>s+a.length,0);
+  const nG=Object.keys(_groups).length;
+  const st=document.getElementById('parse-status');
+  if(!total){st.innerHTML='';return;}
+  st.innerHTML=`<span class="pill ok">✓ ${total} values · ${nG} group${nG>1?'s':''}</span>`;
+  renderStats();
+  if(document.getElementById('panel-graph').classList.contains('active')) rebuildChart();
+}
+
+function readXYData(){
+  const n=getXYSeriesCount();if(!n)return;
+  const headers=Array.from(document.querySelectorAll('#ff-header-row th')).slice(1,1+n);
+  const names=headers.map(th=>(th.querySelector('input')?.value||'').trim()||'Series');
+  const rows=document.querySelectorAll('#ff-tbody tr');
+  const xVals=[],yArrs=names.map(()=>[]);
+  rows.forEach(tr=>{
+    const inps=tr.querySelectorAll('input[type="number"]');
+    const x=parseFloat(inps[0]?.value);if(isNaN(x))return;
+    xVals.push(x);
+    names.forEach((_,si)=>yArrs[si].push(parseFloat(inps[si+1]?.value??NaN)));
+  });
+  _xyData={xLabel:'X',series:names.map((name,i)=>({name,xVals:xVals.slice(),yVals:yArrs[i]}))};
+  const st=document.getElementById('parse-status');
+  if(!xVals.length){st.innerHTML='';return;}
+  st.innerHTML=`<span class="pill ok">✓ ${xVals.length} points · ${n} series</span>`;
+  renderXYStats();
+  if(document.getElementById('panel-graph').classList.contains('active')) rebuildChart();
+}
+
+// ─── Right-click context menu ─────────────────────────────────────────────
+document.getElementById('ff-tbody').addEventListener('contextmenu',function(e){
+  const td=e.target.closest('td.data-cell');
+  if(!td||!td.querySelector('input[type="number"]'))return;
+  e.preventDefault();
+  _ctxTarget=td;
+  const excl=td.dataset.excluded==='true';
+  const item=document.getElementById('ctx-action');
+  item.textContent=excl?'✓ Include value':'✕ Exclude value';
+  item.className='ctx-item'+(excl?'':' danger');
+  const menu=document.getElementById('ff-ctx-menu');
+  menu.style.left=e.clientX+'px';menu.style.top=e.clientY+'px';menu.style.display='block';
+});
+
+function toggleExclude(){
+  if(!_ctxTarget)return;
+  if(_ctxTarget.dataset.excluded==='true') delete _ctxTarget.dataset.excluded;
+  else _ctxTarget.dataset.excluded='true';
+  document.getElementById('ff-ctx-menu').style.display='none';
+  _ctxTarget=null;
+  scheduleRead();
+}
+
+document.addEventListener('click',()=>document.getElementById('ff-ctx-menu').style.display='none');
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('ff-ctx-menu').style.display='none';});
+
+// ─── Statistics (preserved) ──────────────────────────────────────────────────
+function groupStats(arr){
+  const n=arr.length;
+  const mean=arr.reduce((a,b)=>a+b,0)/n;
+  const sd=n>1?Math.sqrt(arr.reduce((s,v)=>s+(v-mean)**2,0)/(n-1)):0;
+  const sorted=arr.slice().sort((a,b)=>a-b);
+  const median=n%2===0?(sorted[n/2-1]+sorted[n/2])/2:sorted[Math.floor(n/2)];
+  const q1=sorted[Math.floor(n*0.25)];const q3=sorted[Math.floor(n*0.75)];
+  const iqr=q3-q1;
+  const whiskerLo=sorted.find(v=>v>=q1-1.5*iqr)??sorted[0];
+  const whiskerHi=[...sorted].reverse().find(v=>v<=q3+1.5*iqr)??sorted[n-1];
+  const outliers=sorted.filter(v=>v<whiskerLo||v>whiskerHi);
+  return{n,mean,sd,median,q1,q3,iqr,whiskerLo,whiskerHi,outliers,min:sorted[0],max:sorted[n-1],sorted};
+}
+function welchT(a,b){
+  if(a.length<2||b.length<2)return{t:NaN,p:NaN,df:NaN};
+  const sa=groupStats(a),sb=groupStats(b);
+  const se2a=sa.sd**2/sa.n,se2b=sb.sd**2/sb.n;
+  const se=Math.sqrt(se2a+se2b);
+  if(se===0)return{t:0,p:1,df:sa.n+sb.n-2};
+  const t=(sa.mean-sb.mean)/se;
+  const df=(se2a+se2b)**2/(se2a**2/(sa.n-1)+se2b**2/(sb.n-1));
+  return{t,p:tPvalue(Math.abs(t),df),df};
+}
+function mannWhitneyU(a,b){
+  const n1=a.length,n2=b.length;if(n1<1||n2<1)return{U:NaN,p:NaN};
+  let U=0;
+  for(let i=0;i<n1;i++)for(let j=0;j<n2;j++){if(a[i]>b[j])U++;else if(a[i]===b[j])U+=0.5;}
+  const mu=n1*n2/2,sigma=Math.sqrt(n1*n2*(n1+n2+1)/12);
+  const z=(U-mu)/sigma;
+  return{U,p:2*(1-normCDF(Math.abs(z))),z};
+}
+function lgamma(x){
+  const g=7,p=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if(x<0.5)return Math.log(Math.PI/Math.sin(Math.PI*x))-lgamma(1-x);
+  x-=1;let a=p[0];const t=x+g+0.5;
+  for(let i=1;i<g+2;i++)a+=p[i]/(x+i);
+  return 0.5*Math.log(2*Math.PI)+(x+0.5)*Math.log(t)-t+Math.log(a);
+}
+function incompleteBeta(x,a,b){
+  if(x<=0)return 0;if(x>=1)return 1;
+  if(x>(a+1)/(a+b+2))return 1-incompleteBeta(1-x,b,a);
+  const lbeta=lgamma(a)+lgamma(b)-lgamma(a+b);
+  const front=Math.exp(a*Math.log(x)+b*Math.log(1-x)-lbeta);
+  const qab=a+b,qap=a+1,qam=a-1;
+  let c=1,d=1-qab*x/qap;if(Math.abs(d)<1e-30)d=1e-30;d=1/d;let h=d;
+  for(let m=1;m<=200;m++){
+    const m2=2*m;
+    let aa=m*(b-m)*x/((qam+m2)*(a+m2));
+    d=1+aa*d;if(Math.abs(d)<1e-30)d=1e-30;c=1+aa/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;h*=d*c;
+    aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));
+    d=1+aa*d;if(Math.abs(d)<1e-30)d=1e-30;c=1+aa/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;
+    if(Math.abs(del-1)<=1e-10)break;
+  }
+  return front*h/a;
+}
+function tPvalue(t,df){return incompleteBeta(df/(df+t*t),df/2,0.5);}
+function normCDF(z){
+  const t=1/(1+0.2316419*Math.abs(z));
+  const poly=t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));
+  const pdf=Math.exp(-0.5*z*z)/Math.sqrt(2*Math.PI);
+  const p=1-pdf*poly;return z>=0?p:1-p;
+}
+function sigStars(p){if(isNaN(p))return '?';if(p<0.001)return '***';if(p<0.01)return '**';if(p<0.05)return '*';return 'ns';}
+function sigClass(p){if(isNaN(p))return '';if(p<0.001)return 'pval-sig3';if(p<0.01)return 'pval-sig2';if(p<0.05)return 'pval-sig1';return 'pval-ns';}
+
+// ─── Render stats ────────────────────────────────────────────────────────────
+function renderStats(){
+  const labels=Object.keys(_groups);
+  const sw=document.getElementById('stats-wrap');
+  if(!labels.length){sw.innerHTML='<div class="empty-state"><div style="font-size:28px">📐</div><div>No data loaded.</div></div>';return;}
+  const pal=PALETTES[_paletteKey];
+  let h='<div class="card" style="margin-bottom:16px;"><div class="card-hdr">Descriptive statistics</div><table class="stat-table"><thead><tr><th>Group</th><th>n</th><th>Mean</th><th>SD</th><th>SEM</th><th>Median</th><th>Q1</th><th>Q3</th></tr></thead><tbody>';
+  labels.forEach((lbl,i)=>{
+    const v=_groups[lbl],s=groupStats(v),sem=s.sd/Math.sqrt(s.n),c=pal[i%pal.length];
+    h+=`<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c};margin-right:6px;vertical-align:middle;"></span>${esc(lbl)}</td><td>${s.n}</td><td>${s.mean.toFixed(3)}</td><td>${s.sd.toFixed(3)}</td><td>${sem.toFixed(3)}</td><td>${s.median.toFixed(3)}</td><td>${s.q1.toFixed(3)}</td><td>${s.q3.toFixed(3)}</td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  if(labels.length>=2){
+    h+='<div class="card"><div class="card-hdr">Pairwise comparisons</div><table class="stat-table"><thead><tr><th>Group A</th><th>Group B</th><th>t-test p</th><th></th><th>Mann–Whitney p</th><th></th></tr></thead><tbody>';
+    for(let i=0;i<labels.length;i++)for(let j=i+1;j<labels.length;j++){
+      const a=_groups[labels[i]],b=_groups[labels[j]];
+      const tt=welchT(a,b),mw=mannWhitneyU(a,b);
+      const tp=isNaN(tt.p)?'—':tt.p<0.0001?'<0.0001':tt.p.toFixed(4);
+      const mp=isNaN(mw.p)?'—':mw.p<0.0001?'<0.0001':mw.p.toFixed(4);
+      h+=`<tr><td>${esc(labels[i])}</td><td>${esc(labels[j])}</td><td class="${sigClass(tt.p)}">${tp}</td><td class="${sigClass(tt.p)}">${sigStars(tt.p)}</td><td class="${sigClass(mw.p)}">${mp}</td><td class="${sigClass(mw.p)}">${sigStars(mw.p)}</td></tr>`;
+    }
+    h+='</tbody></table></div>';
+  }
+  sw.innerHTML=h;
+}
+
+function renderXYStats(){
+  const sw=document.getElementById('stats-wrap');
+  if(!_xyData.series.length){sw.innerHTML='<div class="empty-state"><div style="font-size:28px">📐</div><div>No data loaded.</div></div>';return;}
+  const pal=PALETTES[_paletteKey];
+  let h='<div class="card"><div class="card-hdr">Linear regression (per series)</div><table class="stat-table"><thead><tr><th>Series</th><th>n</th><th>Slope</th><th>Intercept</th><th>R²</th></tr></thead><tbody>';
+  _xyData.series.forEach((s,si)=>{
+    const pairs=s.xVals.map((x,i)=>[x,s.yVals[i]]).filter(([x,y])=>!isNaN(x)&&!isNaN(y));
+    const n=pairs.length;const c=pal[si%pal.length];
+    if(n<2){h+=`<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c};margin-right:6px;vertical-align:middle;"></span>${esc(s.name)}</td><td>${n}</td><td colspan="3">Need ≥2 pts</td></tr>`;return;}
+    const xs=pairs.map(p=>p[0]),ys=pairs.map(p=>p[1]);
+    const sx=xs.reduce((a,b)=>a+b,0),sy=ys.reduce((a,b)=>a+b,0);
+    const sxx=xs.reduce((a,b)=>a+b*b,0),sxy=xs.reduce((a,v,i)=>a+v*ys[i],0);
+    const den=n*sxx-sx*sx;
+    const slope=den===0?NaN:(n*sxy-sx*sy)/den;
+    const intercept=den===0?NaN:(sy-slope*sx)/n;
+    const yMean=sy/n;
+    const ssTot=ys.reduce((a,y)=>a+(y-yMean)**2,0);
+    const ssRes=ys.reduce((a,y,i)=>a+(y-(slope*xs[i]+intercept))**2,0);
+    const r2=ssTot===0?NaN:1-ssRes/ssTot;
+    h+=`<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c};margin-right:6px;vertical-align:middle;"></span>${esc(s.name)}</td><td>${n}</td><td>${isNaN(slope)?'—':slope.toFixed(4)}</td><td>${isNaN(intercept)?'—':intercept.toFixed(4)}</td><td>${isNaN(r2)?'—':r2.toFixed(4)}</td></tr>`;
+  });
+  h+='</tbody></table></div>';
+  sw.innerHTML=h;
+}
+
+// ─── Chart type / props ──────────────────────────────────────────────────────
+function setChartType(type,btn){
+  _chartType=type;
+  document.querySelectorAll('#chart-type-pills .prop-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('prop-errorbars').style.display=type==='bar'?'':'none';
+  rebuildChart();
+}
+function setXYType(type,btn){
+  _xyChartType=type;
+  document.querySelectorAll('#xy-type-pills .prop-pill').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  rebuildChart();
+}
+function setErrorBar(type,btn){
+  _errorBarType=type;
+  document.querySelectorAll('[data-eb]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  rebuildChart();
+}
+function setSymbol(type,btn){
+  _symbolType=type;
+  document.querySelectorAll('[data-sym]').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  rebuildChart();
+}
+
+// ─── Inline edits ────────────────────────────────────────────────────────────
+function onTitleChange(){
+  _figTitle=document.getElementById('ff-title').value;
+  if(document.getElementById('ff-plot').data) Plotly.relayout('ff-plot',{'title.text':_figTitle});
+}
+function onAxisChange(){
+  _yAxisLabel=document.getElementById('ff-yaxis').value;
+  _xAxisLabel=document.getElementById('ff-xaxis').value;
+  if(document.getElementById('ff-plot').data){
+    Plotly.relayout('ff-plot',{'yaxis.title.text':_yAxisLabel,'xaxis.title.text':_xAxisLabel});
+  }
+}
+
+// ─── Plotly layout builder ────────────────────────────────────────────────────
+function getPlotLayout(shapes,annotations){
+  const dark=isDark();
+  const grid=dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.07)';
+  const text=dark?'#8b90a8':'#5a5f7a';
+  const bg=dark?'#1c2030':'#ffffff';
+  const paper=dark?'#13161e':'#ffffff';
+  return{
+    paper_bgcolor:paper,plot_bgcolor:bg,
+    margin:{l:60,r:16,t:_figTitle?52:20,b:_xAxisLabel?56:40},
+    font:{family:"'IBM Plex Sans',sans-serif",size:12,color:text},
+    title:{text:_figTitle,font:{size:15,color:text},x:0.5},
+    showlegend:true,
+    legend:{bgcolor:'rgba(0,0,0,0)',bordercolor:'rgba(0,0,0,0)',font:{color:text,size:11}},
+    xaxis:{gridcolor:'rgba(0,0,0,0)',linecolor:dark?'rgba(255,255,255,0.12)':'rgba(0,0,0,0.12)',
+      tickfont:{color:text},title:{text:_xAxisLabel,font:{color:text,size:12}},zeroline:false},
+    yaxis:{gridcolor:grid,linecolor:dark?'rgba(255,255,255,0.12)':'rgba(0,0,0,0.12)',
+      tickfont:{color:text},title:{text:_yAxisLabel,font:{color:text,size:12}},zeroline:false,
+      type:document.getElementById('chk-logy')?.checked?'log':'linear'},
+    shapes:shapes||[],annotations:annotations||[],
+    hovermode:'closest',autosize:true
+  };
+}
+
+// ─── Significance brackets ───────────────────────────────────────────────────
+function updateGroupSelects(){
+  const names=Object.keys(_groups);
+  ['brk-g1','brk-g2'].forEach((id,pos)=>{
+    const sel=document.getElementById(id);
+    const cur=sel.value;
+    sel.innerHTML=names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    if(names.includes(cur))sel.value=cur;
+    else if(pos===1&&names.length>1)sel.selectedIndex=1;
+  });
+}
+
+function addBracket(){
+  const g1=document.getElementById('brk-g1').value;
+  const g2=document.getElementById('brk-g2').value;
+  if(!g1||!g2||g1===g2)return;
+  const v1=_groups[g1]||[],v2=_groups[g2]||[];
+  const tt=welchT(v1,v2);
+  const stars=sigStars(tt.p);
+  const allVals=Object.values(_groups).flat();
+  const yMax=allVals.length?Math.max(...allVals):1;
+  const yMin=allVals.length?Math.min(...allVals):0;
+  const range=yMax-yMin||1;
+  const prevTop=_brackets.length?Math.max(..._brackets.map(b=>b.ypos)):yMax;
+  const ypos=prevTop+range*0.18;
+  _brackets.push({g1,g2,stars,p:tt.p,ypos});
+  renderBracketList();
+  rebuildChart();
+}
+
+function removeBracket(i){
+  _brackets.splice(i,1);
+  renderBracketList();
+  rebuildChart();
+}
+
+function renderBracketList(){
+  const list=document.getElementById('brk-list');
+  list.innerHTML=_brackets.map((b,i)=>`
+    <div class="brk-item">
+      <span style="color:var(--text2);font-size:10px;">${esc(b.g1)} vs ${esc(b.g2)}</span>
+      <span class="brk-stars">${b.stars}</span>
+      <button class="brk-del" onclick="removeBracket(${i})">×</button>
+    </div>`).join('');
+}
+
+function buildBracketShapes(groups){
+  if(!_brackets.length)return{shapes:[],annotations:[]};
+  const shapes=[],annotations=[];
+  const names=groups.map(g=>g.name);
+  const allVals=groups.flatMap(g=>g.values);
+  const range=(Math.max(...allVals)-Math.min(...allVals))||1;
+  const tickH=range*0.04;
+  const lineColor=isDark()?'#aaa':'#555';
+  const txtColor=isDark()?'#e8eaf2':'#1a1d2e';
+
+  _brackets.forEach(b=>{
+    const xi1=names.indexOf(b.g1),xi2=names.indexOf(b.g2);
+    if(xi1<0||xi2<0)return;
+    const xL=Math.min(xi1,xi2),xR=Math.max(xi1,xi2);
+    const y=b.ypos;
+    shapes.push({type:'line',xref:'x',yref:'y',x0:xL,x1:xR,y0:y,y1:y,line:{color:lineColor,width:1.5}});
+    shapes.push({type:'line',xref:'x',yref:'y',x0:xL,x1:xL,y0:y-tickH,y1:y,line:{color:lineColor,width:1.5}});
+    shapes.push({type:'line',xref:'x',yref:'y',x0:xR,x1:xR,y0:y-tickH,y1:y,line:{color:lineColor,width:1.5}});
+    annotations.push({xref:'x',yref:'y',x:(xL+xR)/2,y,yshift:10,
+      text:`<b>${b.stars}</b>`,showarrow:false,font:{size:13,color:txtColor}});
+  });
+  return{shapes,annotations};
+}
+
+// ─── Chart builders ──────────────────────────────────────────────────────────
+function rebuildChart(){
+  if(_dataMode==='xy'){rebuildXYChart();return;}
+  rebuildGroupedChart();
+}
+
+function rebuildGroupedChart(){
+  const groups=Object.entries(_groups).map(([name,values])=>({name,values}));
+  if(!groups.length){
+    document.getElementById('ff-plot').innerHTML='<div class="empty-state"><div style="font-size:28px">📊</div><div>Enter data in the Data panel.</div></div>';
+    return;
+  }
+  const pal=PALETTES[_paletteKey];
+  const traces=[];
+
+  groups.forEach((g,i)=>{
+    const color=pal[i%pal.length];
+    if(_chartType==='box'){
+      traces.push({
+        type:'box',y:g.values,name:g.name,
+        marker:{color,size:5,line:{width:0}},
+        line:{color},fillcolor:color+'30',
+        boxpoints:'all',jitter:0.4,pointpos:0
+      });
+    } else if(_chartType==='bar'){
+      const s=groupStats(g.values);
+      const ebVal=_errorBarType==='sem'?s.sd/Math.sqrt(s.n):_errorBarType==='sd'?s.sd:0;
+      traces.push({
+        type:'bar',x:[g.name],y:[s.mean],name:g.name,
+        marker:{color:color+'cc',line:{color,width:1.5}},
+        error_y:{type:'data',array:[ebVal],visible:_errorBarType!=='none',color,thickness:2,width:8},
+        hovertemplate:`${esc(g.name)}<br>Mean: %{y:.3f}<extra></extra>`
+      });
+      traces.push({
+        type:'scatter',x:g.values.map(()=>g.name),y:g.values,
+        mode:'markers',showlegend:false,
+        marker:{color,size:6,symbol:_symbolType,line:{color:isDark()?'#13161e':'#fff',width:0.5}},
+        hovertemplate:`${esc(g.name)}: %{y:.3f}<extra></extra>`
+      });
+    } else if(_chartType==='dot'){
+      traces.push({
+        type:'box',y:g.values,name:g.name,
+        fillcolor:'rgba(0,0,0,0)',line:{color:'rgba(0,0,0,0)',width:0},
+        whiskerwidth:0,boxpoints:'all',jitter:0.5,pointpos:0,
+        marker:{color,size:7,symbol:_symbolType},
+        hovertemplate:`${esc(g.name)}: %{y:.3f}<extra></extra>`
+      });
+    }
+  });
+
+  const{shapes,annotations}=buildBracketShapes(groups);
+  const layout=getPlotLayout(shapes,annotations);
+  Plotly.react('ff-plot',traces,layout,{responsive:true,displayModeBar:false});
+}
+
+function rebuildXYChart(){
+  const series=_xyData.series.filter(s=>s.xVals.some((x,i)=>!isNaN(x)&&!isNaN(s.yVals[i])));
+  if(!series.length){
+    document.getElementById('ff-plot').innerHTML='<div class="empty-state"><div style="font-size:28px">📊</div><div>Enter XY data in the Data panel.</div></div>';
+    return;
+  }
+  const pal=PALETTES[_paletteKey];
+  const traces=series.map((s,si)=>{
+    const color=pal[si%pal.length];
+    const pairs=s.xVals.map((x,i)=>[x,s.yVals[i]]).filter(([x,y])=>!isNaN(x)&&!isNaN(y)).sort((a,b)=>a[0]-b[0]);
+    return{
+      type:'scatter',
+      mode:_xyChartType==='line'?'lines+markers':'markers',
+      x:pairs.map(p=>p[0]),y:pairs.map(p=>p[1]),
+      name:s.name,marker:{color,size:7,symbol:_symbolType},line:{color,width:2}
+    };
+  });
+  const layout=getPlotLayout([],[]);
+  if(document.getElementById('chk-logx')?.checked) layout.xaxis.type='log';
+  Plotly.react('ff-plot',traces,layout,{responsive:true,displayModeBar:false});
+}
+
+// ─── Export ──────────────────────────────────────────────────────────────────
+function exportSVG(){
+  const div=document.getElementById('ff-plot');
+  if(!div.data)return;
+  Plotly.downloadImage(div,{format:'svg',filename:'figure_forge',width:800,height:600});
+}
+function exportPNG(){
+  const div=document.getElementById('ff-plot');
+  if(!div.data)return;
+  Plotly.downloadImage(div,{format:'png',filename:'figure_forge',width:2400,height:1800,scale:1});
+}
+
+// ─── Import ──────────────────────────────────────────────────────────────────
+function importFromClipboard(){
+  if(!navigator.clipboard?.readText){
+    alert('Clipboard API not available. Paste data manually — the table updates automatically.');return;
+  }
+  navigator.clipboard.readText().then(text=>{
+    const lines=text.trim().split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length<2){alert('Need at least a header row and one data row.');return;}
+    const sep=lines[0].includes('\t')?'\t':',';
+    const headers=lines[0].split(sep).map(h=>h.trim().replace(/^"|"$/g,''));
+    const dataRows=lines.slice(1).map(l=>l.split(sep).map(c=>c.trim().replace(/^"|"$/g,'')));
+    if(_dataMode==='grouped'){
+      buildGroupedTable(headers,dataRows.length);
+      const allInp=document.querySelectorAll('#ff-tbody tr:not(.stat-row) td.data-cell input');
+      const nc=headers.length;
+      dataRows.forEach((row,ri)=>row.forEach((val,ci)=>{const i=allInp[ri*nc+ci];if(i)i.value=val;}));
+    } else {
+      buildXYTable(headers.slice(1),dataRows.length);
+      const allInp=document.querySelectorAll('#ff-tbody input[type="number"]');
+      const nc=headers.length;
+      dataRows.forEach((row,ri)=>row.forEach((val,ci)=>{const i=allInp[ri*nc+ci];if(i)i.value=val;}));
+    }
+    readTableData();
+  }).catch(()=>alert('Could not read clipboard. Check browser permissions.'));
+}
+
+// ─── Example data ────────────────────────────────────────────────────────────
+function loadExample(){
+  if(_dataMode==='grouped'){
+    buildGroupedTable(['Control','Treatment A','Treatment B'],6);
+    const vals=[[23.4,41.7,55.3],[19.1,38.2,58.7],[25.6,44.5,51.2],[21.8,39.8,60.4],[17.3,43.1,57.0],[26.0,46.0,53.8]];
+    const inps=document.querySelectorAll('#ff-tbody tr:not(.stat-row) td.data-cell input');
+    vals.forEach((row,ri)=>row.forEach((v,ci)=>{const i=inps[ri*3+ci];if(i)i.value=v;}));
+  } else {
+    buildXYTable(['Response'],10);
+    const xv=[0.001,0.01,0.1,1,3,10,30,100,300,1000];
+    const yv=[2.1,3.8,8.5,22.4,41.2,67.3,84.1,92.5,97.8,99.2];
+    const inps=document.querySelectorAll('#ff-tbody input[type="number"]');
+    xv.forEach((x,i)=>{if(inps[i*2])inps[i*2].value=x;if(inps[i*2+1])inps[i*2+1].value=yv[i];});
+  }
+  readTableData();
+}
+
+// ─── Util ────────────────────────────────────────────────────────────────────
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+buildGroupedTable(['Group 1','Group 2'],5);
+</script>
+</body>
+</html>

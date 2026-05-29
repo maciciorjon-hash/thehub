@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Helix</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--accent:#43a047;--accent2:#0079b9;--accent3:#00c896;--text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;--sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;}
+[data-theme="light"]{--bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;--border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);--text:#1a1d2e;--text2:#5a5f7a;--text3:#9ca0b8;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;gap:14px;background:var(--surface);height:58px;flex-shrink:0;}
+.logo{width:32px;height:32px;border-radius:7px;background:#43a047;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:20px;font-weight:700;color:#fff;flex-shrink:0;}
+.app-name{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+.app-sub{font-size:11px;color:var(--text2);}
+.theme-btn{margin-left:auto;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s;}
+.theme-btn:hover{background:var(--surface2);color:var(--text);}
+.tabs{display:flex;gap:2px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+.tab{padding:10px 16px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab:hover:not(.active){color:var(--text);}
+.content{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+.panel{display:none;flex:1;overflow:auto;padding:24px 28px;}
+.panel.active{display:flex;flex-direction:column;gap:16px;}
+
+/* Common */
+label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px;}
+textarea{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:12px;resize:vertical;line-height:1.6;outline:none;}
+textarea:focus{border-color:var(--accent);}
+select,input[type="number"],input[type="text"],input[type="range"]{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;}
+select:focus,input:focus{border-color:var(--accent);}
+.btn{padding:7px 16px;border-radius:7px;border:none;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{opacity:.88;}
+.btn-sec{background:var(--surface3);color:var(--text);border:1px solid var(--border2);}
+.btn-sec:hover{background:var(--surface2);}
+.row{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;}
+.col{flex:1;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
+.card-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:12px;}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:var(--surface3);color:var(--text2);}
+.pill.dna{background:rgba(67,160,71,.15);color:#43a047;}
+.pill.rna{background:rgba(239,83,80,.15);color:#ef5350;}
+.pill.prot{background:rgba(156,111,212,.15);color:#9c6fd4;}
+.pill.unk{background:var(--surface3);color:var(--text3);}
+.mono-out{font-family:var(--mono);font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;word-break:break-all;line-height:1.7;color:var(--text);}
+.result-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);}
+.result-row:last-child{border-bottom:none;}
+.res-lbl{font-size:12px;font-weight:600;color:var(--text2);min-width:160px;}
+.res-val{font-family:var(--mono);font-size:13px;color:var(--text);flex:1;}
+.copy-btn{padding:3px 9px;font-size:11px;border-radius:5px;background:var(--surface3);border:1px solid var(--border2);color:var(--text2);cursor:pointer;font-family:var(--sans);flex-shrink:0;}
+.copy-btn:hover{background:var(--surface2);color:var(--text);}
+.stat-table{width:100%;border-collapse:collapse;font-size:13px;}
+.stat-table th{text-align:left;padding:7px 10px;font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);}
+.stat-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);}
+.stat-table tr:last-child td{border-bottom:none;}
+.stat-table td:first-child{color:var(--text);font-weight:600;}
+.seq-disp{font-family:var(--mono);font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;line-height:1.9;word-break:break-all;white-space:pre-wrap;max-height:300px;overflow-y:auto;}
+.match-line{color:var(--accent3);letter-spacing:0;}
+.seq-a{color:var(--accent2);}
+.seq-b{color:var(--accent);}
+.range-wrap{display:flex;align-items:center;gap:10px;}
+.range-wrap input[type="range"]{flex:1;}
+.range-val{font-family:var(--mono);font-size:13px;min-width:40px;text-align:right;}
+.orf-row{cursor:pointer;transition:background .1s;}
+.orf-row:hover td{background:var(--surface2);}
+.orf-row.selected-orf td{background:rgba(67,160,71,.1);}
+.vec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
+.vec-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .15s;}
+.vec-card:hover{border-color:var(--accent);}
+.vec-card.expanded{border-color:var(--accent);background:var(--surface2);}
+.vec-name{font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;}
+.vec-size{font-size:11px;font-family:var(--mono);color:var(--text3);}
+.vec-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;}
+.vec-tag{font-size:10px;padding:2px 7px;border-radius:10px;background:var(--surface3);color:var(--text2);font-weight:500;}
+.vec-tag.highlight{background:rgba(67,160,71,.2);color:#43a047;}
+.vec-use{font-size:12px;color:var(--text2);margin-top:6px;line-height:1.5;}
+.vec-detail{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:none;}
+.vec-card.expanded .vec-detail{display:block;}
+.vec-feat{font-size:12px;color:var(--text2);display:grid;grid-template-columns:auto 1fr;gap:4px 10px;}
+.vec-feat dt{font-weight:600;color:var(--text3);}
+.grp-hdr{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:18px 0 8px;}
+.search-input{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;width:100%;}
+.search-input:focus{border-color:var(--accent);}
+.empty-msg{color:var(--text3);font-size:13px;padding:20px 0;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">H</div>
+  <div>
+    <div class="app-name">Helix</div>
+    <div class="app-sub">Translate · complement · Tm · ORF finder · vector library</div>
+  </div>
+  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
+</header>
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('translate',this)">Translate</button>
+  <button class="tab" onclick="switchTab('tools',this)">Sequence Tools</button>
+  <button class="tab" onclick="switchTab('compare',this)">Compare</button>
+  <button class="tab" onclick="switchTab('orf',this)">ORF Finder</button>
+  <button class="tab" onclick="switchTab('vectors',this)">Vector Library</button>
+</div>
+<div class="content">
+
+<!-- TRANSLATE -->
+<div class="panel active" id="panel-translate">
+  <div class="row" style="gap:16px;">
+    <div class="col">
+      <label>Nucleotide sequence (FASTA accepted)</label>
+      <textarea id="tr-input" rows="7" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA"></textarea>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;min-width:180px;">
+      <label>Reading frame</label>
+      <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1</option><option value="-2">-2</option><option value="-3">-3</option></select>
+      <label style="margin-top:6px;">Codon table</label>
+      <select id="tr-table"><option value="1">Standard (NCBI 1)</option><option value="2">Vertebrate Mitochondrial (2)</option></select>
+      <button class="btn btn-primary" onclick="runTranslate()" style="margin-top:8px;">Translate</button>
+      <button class="btn btn-sec" onclick="loadTrExample()">Example</button>
+    </div>
+  </div>
+  <div id="tr-type-pill"></div>
+  <div id="tr-result" style="display:none;">
+    <div class="card-hdr" style="margin-bottom:8px;">Protein sequence</div>
+    <div class="mono-out" id="tr-protein" style="max-height:160px;overflow-y:auto;"></div>
+    <div class="row" style="margin-top:10px;gap:20px;">
+      <div><span class="pill" id="tr-len-pill"></span></div>
+      <div><span class="pill" id="tr-mw-pill"></span></div>
+      <div><span class="pill" id="tr-stop-pill"></span></div>
+    </div>
+    <button class="btn btn-sec" onclick="copyText(document.getElementById('tr-protein').textContent)" style="margin-top:10px;font-size:12px;">Copy sequence</button>
+  </div>
+</div>
+
+<!-- SEQUENCE TOOLS -->
+<div class="panel" id="panel-tools">
+  <div>
+    <label>Nucleotide sequence (FASTA accepted)</label>
+    <textarea id="st-input" rows="6" placeholder="Paste DNA or RNA sequence…" oninput="runSeqTools()"></textarea>
+  </div>
+  <div id="st-type-pill"></div>
+  <div class="card" id="st-results" style="display:none;">
+    <div id="st-rows"></div>
+  </div>
+</div>
+
+<!-- COMPARE -->
+<div class="panel" id="panel-compare">
+  <div class="row" style="gap:16px;">
+    <div class="col">
+      <label>Sequence A (FASTA accepted)</label>
+      <textarea id="cmp-a" rows="6" placeholder=">Seq A&#10;ATGCGT…"></textarea>
+    </div>
+    <div class="col">
+      <label>Sequence B (FASTA accepted)</label>
+      <textarea id="cmp-b" rows="6" placeholder=">Seq B&#10;ATGCGG…"></textarea>
+    </div>
+  </div>
+  <div>
+    <button class="btn btn-primary" onclick="runCompare()">Compare</button>
+    <span id="cmp-warn" style="font-size:12px;color:#ff9800;margin-left:10px;"></span>
+  </div>
+  <div id="cmp-result" style="display:none;">
+    <div class="row" style="gap:10px;margin-bottom:14px;">
+      <span class="pill" id="cmp-id-pill"></span>
+      <span class="pill" id="cmp-len-pill"></span>
+      <span class="pill" id="cmp-gaps-pill"></span>
+      <span class="pill" id="cmp-mm-pill"></span>
+    </div>
+    <div class="card-hdr">Alignment</div>
+    <div class="seq-disp" id="cmp-aln"></div>
+  </div>
+</div>
+
+<!-- ORF FINDER -->
+<div class="panel" id="panel-orf">
+  <div class="row" style="gap:16px;">
+    <div class="col">
+      <label>Nucleotide sequence (FASTA accepted)</label>
+      <textarea id="orf-input" rows="6" placeholder="Paste nucleotide sequence…"></textarea>
+    </div>
+    <div style="min-width:200px;display:flex;flex-direction:column;gap:8px;">
+      <label>Min. ORF length (aa)</label>
+      <div class="range-wrap">
+        <input type="range" id="orf-min" min="10" max="300" value="50" oninput="document.getElementById('orf-min-val').textContent=this.value">
+        <span class="range-val" id="orf-min-val">50</span>
+      </div>
+      <button class="btn btn-primary" onclick="runORF()">Find ORFs</button>
+      <button class="btn btn-sec" onclick="loadORFExample()">Example</button>
+    </div>
+  </div>
+  <div id="orf-result" style="display:none;">
+    <div class="card" style="margin-bottom:12px;">
+      <table class="stat-table" id="orf-table">
+        <thead><tr><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th><th>First 10 AA</th></tr></thead>
+        <tbody id="orf-tbody"></tbody>
+      </table>
+    </div>
+    <div class="card-hdr">Sequence map</div>
+    <div class="seq-disp" id="orf-seq-disp"></div>
+  </div>
+</div>
+
+<!-- VECTOR LIBRARY -->
+<div class="panel" id="panel-vectors">
+  <input class="search-input" id="vec-search" type="text" placeholder="Search vectors by name or tag (e.g. His, Gateway, AmpR…)" oninput="filterVectors()">
+  <div id="vec-library"></div>
+  <div style="font-size:11px;color:var(--text3);margin-top:4px;">Sizes are approximate from deposited sequences; verify with current Addgene entries.</div>
+</div>
+
+</div><!-- end .content -->
+<script>
+// ─── Theme ────────────────────────────────────────────────────────────────────
+function toggleTheme(){const html=document.documentElement,next=html.getAttribute('data-theme')==='dark'?'light':'dark';html.setAttribute('data-theme',next);document.getElementById('theme-btn').textContent=next==='dark'?'☀ Light':'🌙 Dark';try{localStorage.setItem('helix_dark',next==='dark'?'true':'false');}catch(e){}}
+(function(){try{if(localStorage.getItem('helix_dark')==='true'){document.documentElement.setAttribute('data-theme','dark');document.getElementById('theme-btn').textContent='☀ Light';}}catch(e){}})();
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(id,btn){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  if(id==='vectors') renderVectorLibrary();
+}
+
+// ─── FASTA parser ─────────────────────────────────────────────────────────────
+function parseFASTA(raw){return raw.split('\n').filter(l=>!l.trim().startsWith('>')).join('').replace(/\s/g,'').toUpperCase();}
+
+function detectSeqType(seq){
+  const hasT=seq.includes('T'), hasU=seq.includes('U');
+  if(hasT&&!hasU) return 'dna';
+  if(hasU&&!hasT) return 'rna';
+  if(hasT&&hasU) return 'unk';
+  return 'dna'; // default if only ACGN
+}
+
+function revComp(seq, type){
+  const comp={A:'T',T:'A',C:'G',G:'C',U:'A',N:'N'};
+  const rnaComp={A:'U',U:'A',C:'G',G:'C',N:'N'};
+  const c = type==='rna' ? rnaComp : comp;
+  return seq.split('').reverse().map(b=>c[b]||b).join('');
+}
+function complement(seq, type){
+  const comp={A:'T',T:'A',C:'G',G:'C',U:'A',N:'N'};
+  const rnaComp={A:'U',U:'A',C:'G',G:'C',N:'N'};
+  const c = type==='rna' ? rnaComp : comp;
+  return seq.split('').map(b=>c[b]||b).join('');
+}
+
+// ─── CODON TABLES ─────────────────────────────────────────────────────────────
+const CODON_TABLE_1={
+  UUU:'F',UUC:'F',UUA:'L',UUG:'L',CUU:'L',CUC:'L',CUA:'L',CUG:'L',
+  AUU:'I',AUC:'I',AUA:'I',AUG:'M',GUU:'V',GUC:'V',GUA:'V',GUG:'V',
+  UCU:'S',UCC:'S',UCA:'S',UCG:'S',CCU:'P',CCC:'P',CCA:'P',CCG:'P',
+  ACU:'T',ACC:'T',ACA:'T',ACG:'T',GCU:'A',GCC:'A',GCA:'A',GCG:'A',
+  UAU:'Y',UAC:'Y',UAA:'*',UAG:'*',CAU:'H',CAC:'H',CAA:'Q',CAG:'Q',
+  AAU:'N',AAC:'N',AAA:'K',AAG:'K',GAU:'D',GAC:'D',GAA:'E',GAG:'E',
+  UGU:'C',UGC:'C',UGA:'*',UGG:'W',CGU:'R',CGC:'R',CGA:'R',CGG:'R',
+  AGU:'S',AGC:'S',AGA:'R',AGG:'R',GGU:'G',GGC:'G',GGA:'G',GGG:'G'
+};
+const CODON_TABLE_2={...CODON_TABLE_1,UGA:'W',AUA:'M',AGA:'*',AGG:'*'};
+
+function toRNA(seq){return seq.replace(/T/g,'U');}
+
+function translate(seq,frame,tableId){
+  const table=tableId==='2'?CODON_TABLE_2:CODON_TABLE_1;
+  let s=seq;
+  if(frame.startsWith('-')){
+    s=revComp(seq,'dna');
+    const f=parseInt(frame.slice(1))-1;
+    s=s.slice(f);
+  } else {
+    s=s.slice(parseInt(frame.slice(1))-1);
+  }
+  const rna=toRNA(s);
+  let protein='';
+  for(let i=0;i+2<rna.length;i+=3){
+    const codon=rna.slice(i,i+3);
+    const aa=table[codon]||'X';
+    protein+=aa;
+    if(aa==='*') break;
+  }
+  return protein;
+}
+
+// ─── Protein MW (from AA_AVG table) ──────────────────────────────────────────
+const AA_AVG={A:71.0788,R:156.1875,N:114.1038,D:115.0886,C:103.1388,E:129.1155,Q:128.1307,G:57.0519,H:137.1411,I:113.1594,L:113.1594,K:128.1741,M:131.1926,F:147.1766,P:97.1167,S:87.0782,T:101.1051,W:186.2132,Y:163.1760,V:99.1326};
+function proteinMW(seq){let mw=18.02;for(const aa of seq)if(AA_AVG[aa])mw+=AA_AVG[aa];return mw;}
+
+// ─── TAB 1: Translate ─────────────────────────────────────────────────────────
+function runTranslate(){
+  const raw=document.getElementById('tr-input').value.trim();
+  if(!raw){alert('Paste a sequence first.');return;}
+  const seq=parseFASTA(raw);
+  if(!seq){alert('No sequence found.');return;}
+  const type=detectSeqType(seq);
+  document.getElementById('tr-type-pill').innerHTML=`<span class="pill ${type}">${type.toUpperCase()} · ${seq.length} nt</span>`;
+  const frame=document.getElementById('tr-frame').value;
+  const tableId=document.getElementById('tr-table').value;
+  const protein=translate(seq,frame,tableId);
+  const mw=proteinMW(protein.replace(/\*/g,''));
+  const stops=(protein.match(/\*/g)||[]).length;
+  const cleanLen=protein.replace(/\*/g,'').length;
+  document.getElementById('tr-protein').textContent=protein;
+  document.getElementById('tr-len-pill').textContent=`${cleanLen} aa`;
+  document.getElementById('tr-mw-pill').textContent=`MW ≈ ${(mw/1000).toFixed(2)} kDa`;
+  document.getElementById('tr-stop-pill').textContent=`${stops} stop codon${stops!==1?'s':''}`;
+  document.getElementById('tr-result').style.display='';
+}
+
+function loadTrExample(){
+  document.getElementById('tr-input').value='>EGFP CDS\nATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTTCATCTGCACCACCGGCAAGCTGCCCGTGCCCTGGCCCACCCTCGTGACCACCCTGACCTACGGCGTGCAGTGCTTCAGCCGCTACCCCGACCACATGAAGCAGCACGACTTCTTCAAGTCCGCCATGCCCGAAGGCTACGTCCAGGAGCGCACCATCTTCTTCAAGGACGACGGCACCTACAAGACCCGCGCCGAGGTGAAGTTCGAGGGCGACACCCTGGTGAACCGCATCGAGCTGAAGGGCATCGACTTCAAGGAGGACGGCAACATCCTGGGGCACAAGCTGGAGTACAACTACATCAGCCACAACACAGAGCAACAGGAGGGCAATATGGATGGCATCCATGGCATGGATGAACTGTACAAATAA';
+  document.getElementById('tr-frame').value='+1';
+  document.getElementById('tr-table').value='1';
+}
+
+// ─── TAB 2: Sequence Tools ────────────────────────────────────────────────────
+// Breslauer 1986 nearest-neighbor ΔH (kcal/mol) and ΔS (cal/mol·K) for DNA
+const NN={AA:[-7.9,-22.2],TT:[-7.9,-22.2],AT:[-7.2,-20.4],TA:[-7.2,-21.3],CA:[-8.5,-22.7],TG:[-8.5,-22.7],GT:[-8.4,-22.4],AC:[-8.4,-22.4],CT:[-7.8,-21.0],AG:[-7.8,-21.0],GA:[-8.2,-22.2],TC:[-8.2,-22.2],CG:[-10.6,-27.2],GC:[-9.8,-24.4],GG:[-8.0,-19.9],CC:[-8.0,-19.9]};
+function tmNN(seq){
+  const dna=seq.replace(/U/g,'T');
+  let dH=0,dS=0;
+  for(let i=0;i<dna.length-1;i++){const d=NN[dna[i]+dna[i+1]];if(d){dH+=d[0];dS+=d[1];}}
+  if(!dH) return NaN;
+  const R=1.987, Ct=250e-9;
+  const tm=((dH*1000)/(dS+R*Math.log(Ct/4)))-273.15;
+  return tm;
+}
+function tmWallace(seq){const dna=seq.replace(/U/g,'T');const gc=(dna.match(/[GC]/g)||[]).length,at=(dna.match(/[AT]/g)||[]).length;return 4*gc+2*at;}
+function nucMW(seq,type){
+  if(type==='rna'){const r={A:329.2,U:306.2,G:345.2,C:305.2};let mw=18.02;for(const b of seq)if(r[b])mw+=r[b];return mw;}
+  const d={A:313.21,T:304.19,G:329.21,C:289.18};let mw=-61.96;for(const b of seq.replace(/U/g,'T'))if(d[b])mw+=d[b];return mw;
+}
+
+function runSeqTools(){
+  const raw=document.getElementById('st-input').value.trim();
+  if(!raw){document.getElementById('st-results').style.display='none';document.getElementById('st-type-pill').innerHTML='';return;}
+  const seq=parseFASTA(raw);
+  if(!seq){return;}
+  const type=detectSeqType(seq);
+  document.getElementById('st-type-pill').innerHTML=`<span class="pill ${type}">${type.toUpperCase()} · ${seq.length} nt</span>`;
+  const comp=complement(seq,type);
+  const rc=revComp(seq,type);
+  const gc=((seq.match(/[GC]/g)||[]).length/seq.length*100).toFixed(1);
+  const mw=nucMW(seq,type);
+  const tm = seq.length<=13 ? tmWallace(seq) : tmNN(seq);
+  const tmStr = isNaN(tm)?'N/A':(seq.length<=13?`${tm.toFixed(0)} °C (Wallace)`:`${tm.toFixed(1)} °C (nearest-neighbor)`);
+
+  const rows=[
+    {lbl:'Complement (5\'→3\')',val:comp},
+    {lbl:'Reverse complement',val:rc},
+    {lbl:'GC content',val:gc+' %'},
+    {lbl:'Length',val:seq.length+' nt'},
+    {lbl:'MW (single-stranded)',val:(mw/1000).toFixed(2)+' kDa (' + Math.round(mw) + ' Da)'},
+    {lbl:'Tm (estimate)',val:tmStr},
+  ];
+  let html='';
+  rows.forEach(r=>{
+    const canCopy=r.lbl!=='GC content'&&r.lbl!=='Length'&&!r.lbl.includes('Tm');
+    html+=`<div class="result-row"><span class="res-lbl">${r.lbl}</span><span class="res-val">${esc(r.val.length>80?r.val.slice(0,80)+'…':r.val)}</span>${canCopy?`<button class="copy-btn" onclick="copyText('${r.val.replace(/'/g,"\\'")}')">Copy</button>`:''}</div>`;
+  });
+  document.getElementById('st-rows').innerHTML=html;
+  document.getElementById('st-results').style.display='';
+}
+
+// ─── TAB 3: Compare ───────────────────────────────────────────────────────────
+function needlemanWunsch(a,b,match,mismatch,gap){
+  const n=a.length,m=b.length;
+  const S=(x,y)=>x===y?match:mismatch;
+  // Init matrix
+  const dp=Array.from({length:n+1},(_,i)=>Array.from({length:m+1},(_,j)=>i===0?gap*j:j===0?gap*i:0));
+  for(let i=1;i<=n;i++) dp[i][0]=gap*i;
+  for(let j=1;j<=m;j++) dp[0][j]=gap*j;
+  for(let i=1;i<=n;i++) for(let j=1;j<=m;j++){
+    dp[i][j]=Math.max(dp[i-1][j-1]+S(a[i-1],b[j-1]),dp[i-1][j]+gap,dp[i][j-1]+gap);
+  }
+  // Traceback
+  let aa='',ab='',i=n,j=m;
+  while(i>0||j>0){
+    if(i>0&&j>0&&dp[i][j]===dp[i-1][j-1]+S(a[i-1],b[j-1])){aa=a[i-1]+aa;ab=b[j-1]+ab;i--;j--;}
+    else if(i>0&&dp[i][j]===dp[i-1][j]+gap){aa=a[i-1]+aa;ab='-'+ab;i--;}
+    else{aa='-'+aa;ab=b[j-1]+ab;j--;}
+  }
+  let matches=0,gaps=0,mismatches=0;
+  for(let k=0;k<aa.length;k++){
+    if(aa[k]==='-'||ab[k]==='-') gaps++;
+    else if(aa[k]===ab[k]) matches++;
+    else mismatches++;
+  }
+  return{alignedA:aa,alignedB:ab,matches,gaps,mismatches,length:aa.length,identity:(matches/aa.length*100)};
+}
+
+function runCompare(){
+  const seqA=parseFASTA(document.getElementById('cmp-a').value.trim());
+  const seqB=parseFASTA(document.getElementById('cmp-b').value.trim());
+  if(!seqA||!seqB){alert('Enter both sequences.');return;}
+  const warn=document.getElementById('cmp-warn');
+  let a=seqA,b=seqB;
+  if(a.length>1500||b.length>1500){warn.textContent='Sequences capped at 1500 nt for performance.';a=a.slice(0,1500);b=b.slice(0,1500);}
+  else warn.textContent='';
+  const res=needlemanWunsch(a,b,1,-1,-2);
+  document.getElementById('cmp-id-pill').textContent=`Identity: ${res.identity.toFixed(1)}%`;
+  document.getElementById('cmp-len-pill').textContent=`Length: ${res.length}`;
+  document.getElementById('cmp-gaps-pill').textContent=`Gaps: ${res.gaps}`;
+  document.getElementById('cmp-mm-pill').textContent=`Mismatches: ${res.mismatches}`;
+  // Build aligned display (60 chars per line)
+  const W=60;let html='';
+  for(let i=0;i<res.length;i+=W){
+    const aa=res.alignedA.slice(i,i+W);
+    const ab=res.alignedB.slice(i,i+W);
+    let mid='';
+    for(let k=0;k<aa.length;k++) mid+=aa[k]==='-'||ab[k]==='-'?' ':aa[k]===ab[k]?'|':'×';
+    const pos=String(i+1).padStart(5,' ');
+    html+=`<span class="seq-a">${pos}  ${esc(aa)}</span>\n`;
+    html+=`<span class="match-line">       ${mid}</span>\n`;
+    html+=`<span class="seq-b">       ${esc(ab)}</span>\n\n`;
+  }
+  document.getElementById('cmp-aln').innerHTML=html;
+  document.getElementById('cmp-result').style.display='';
+}
+
+// ─── TAB 4: ORF Finder ────────────────────────────────────────────────────────
+const ORF_PALETTE=['#43a047','#0079b9','#f06292','#ff9800','#9c6fd4','#26a69a','#ef5350','#ffb74d'];
+let _orfs=[], _selectedOrfIdx=-1;
+
+function findORFs(seq,minLen){
+  const stops=new Set(['TAA','TAG','TGA']);
+  const results=[];
+  const frames=[1,2,3];
+  [seq, seq.split('').reverse().map(b=>({A:'T',T:'A',C:'G',G:'C',N:'N'}[b]||b)).join('')].forEach((s,strand)=>{
+    frames.forEach(f=>{
+      const offset=f-1;
+      for(let i=offset;i<s.length-2;){
+        if(s.slice(i,i+3)==='ATG'){
+          const start=i;
+          let j=i;
+          let stopFound=false;
+          while(j+2<s.length){
+            if(stops.has(s.slice(j,j+3))){stopFound=true;break;}
+            j+=3;
+          }
+          const end=stopFound?j+3:j;
+          const len=(end-start)/3;
+          if(len>=minLen){
+            const ntSeq=s.slice(start,end);
+            let prot='';for(let k=0;k<ntSeq.length-2;k+=3){const codon=toRNA(ntSeq.slice(k,k+3));prot+=CODON_TABLE_1[codon]||'X';}
+            const origStart=strand===0?start:seq.length-end;
+            const origEnd=strand===0?end:seq.length-start;
+            results.push({frame:(strand===0?'+':'-')+f, start:origStart+1, end:origEnd, length:Math.floor((end-start)/3), first10:prot.slice(0,10), ntStart:start, ntEnd:end, strand, seq:s});
+          }
+          i=stopFound?j+3:j+3;
+        } else i+=3;
+      }
+    });
+  });
+  results.sort((a,b)=>a.start-b.start);
+  return results;
+}
+
+function runORF(){
+  const raw=document.getElementById('orf-input').value.trim();
+  if(!raw){alert('Paste a sequence first.');return;}
+  const seq=parseFASTA(raw).replace(/U/g,'T');
+  const minLen=parseInt(document.getElementById('orf-min').value)||50;
+  _orfs=findORFs(seq,minLen);
+  _selectedOrfIdx=-1;
+  const tbody=document.getElementById('orf-tbody');
+  tbody.innerHTML='';
+  if(!_orfs.length){
+    tbody.innerHTML=`<tr><td colspan="5" style="color:var(--text3);font-style:italic;">No ORFs found with minimum length ${minLen} aa.</td></tr>`;
+  } else {
+    _orfs.forEach((orf,i)=>{
+      const tr=document.createElement('tr');
+      tr.className='orf-row';
+      tr.innerHTML=`<td><span style="color:${ORF_PALETTE[i%ORF_PALETTE.length]};font-weight:700;">${orf.frame}</span></td><td>${orf.start}</td><td>${orf.end}</td><td>${orf.length}</td><td style="font-family:var(--mono);font-size:12px;">${orf.first10}…</td>`;
+      tr.onclick=()=>highlightORF(i);
+      tbody.appendChild(tr);
+    });
+  }
+  // Colorized sequence display
+  const colorMap=new Array(seq.length).fill(-1);
+  _orfs.forEach((orf,i)=>{
+    if(orf.strand===0){
+      for(let p=orf.ntStart;p<orf.ntEnd;p++) if(colorMap[p]===-1) colorMap[p]=i;
+    }
+  });
+  const W=60; let seqHtml='';
+  for(let i=0;i<seq.length;i+=W){
+    const chunk=seq.slice(i,i+W);
+    const pos=String(i+1).padStart(6,' ');
+    seqHtml+=`<span style="color:var(--text3);">${pos}  </span>`;
+    for(let k=0;k<chunk.length;k++){
+      const idx=colorMap[i+k];
+      if(idx>=0){
+        const col=ORF_PALETTE[idx%ORF_PALETTE.length];
+        seqHtml+=`<span id="orf-pos-${i+k}" style="background:${col}22;color:${col};">${chunk[k]}</span>`;
+      } else {
+        seqHtml+=`<span id="orf-pos-${i+k}">${chunk[k]}</span>`;
+      }
+    }
+    seqHtml+='\n';
+  }
+  document.getElementById('orf-seq-disp').innerHTML=seqHtml;
+  document.getElementById('orf-result').style.display='';
+}
+
+function highlightORF(idx){
+  _selectedOrfIdx=idx;
+  document.querySelectorAll('.orf-row').forEach((r,i)=>r.classList.toggle('selected-orf',i===idx));
+  const orf=_orfs[idx];
+  if(orf.strand===0){
+    const el=document.getElementById('orf-pos-'+orf.ntStart);
+    if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+}
+
+function loadORFExample(){
+  document.getElementById('orf-input').value='>Example construct\nATGAAAGCCATCGCCCTGGCCGTCGTGATGATCATCCTGGGCATCGCGGTGATGGCCATCGCCGTGCTGATCATCCTGATCATCCTGGCCATCGCGGCGATGATGATCATCGCGGTGATGATCCTGATGGCCATCGCGGCGATCATCGTCGTGCTGATCATCATCGTGATCCTGGCGATCATGGCGATCATCATGGCGATCATCCTGGCCATGGCGATCATCATGGCGATCATCCTGATGGCGATCATCATGTAA';
+  document.getElementById('orf-min').value='30';
+  document.getElementById('orf-min-val').textContent='30';
+}
+
+// ─── TAB 5: Vector Library ────────────────────────────────────────────────────
+const VECTORS=[
+  {id:'pUC19',name:'pUC19',group:'Bacterial Cloning',size:2686,promoter:'lac',resistance:'AmpR',origin:'pMB1',tags:null,use:'General-purpose cloning vector with lacZ α-complementation for blue-white screening.',keywords:['cloning','AmpR','lacZ','MCS','E. coli','blue-white']},
+  {id:'pBS',name:'pBluescript SK+',group:'Bacterial Cloning',size:2961,promoter:'T3/T7',resistance:'AmpR',origin:'pUC/f1',tags:null,use:'Cloning and in vitro transcription. Flanking T3 and T7 promoters around MCS.',keywords:['cloning','AmpR','T3','T7','f1 ori','in vitro transcription']},
+  {id:'pET28a',name:'pET-28a(+)',group:'Bacterial Expression',size:5369,promoter:'T7/lac',resistance:'KanR',origin:'pMB1',tags:'N-His · Thrombin · C-His',use:'High-level E. coli expression (BL21) with both N- and C-terminal 6×His tags. IPTG inducible.',keywords:['expression','KanR','His-tag','T7','BL21','IPTG','His6']},
+  {id:'pET21a',name:'pET-21a(+)',group:'Bacterial Expression',size:5443,promoter:'T7/lac',resistance:'AmpR',origin:'pMB1',tags:'C-His',use:'E. coli expression with C-terminal 6×His tag. IPTG inducible via T7/lac promoter.',keywords:['expression','AmpR','His-tag','T7','BL21','IPTG','His6']},
+  {id:'pGEX4T1',name:'pGEX-4T-1',group:'Bacterial Expression',size:4969,promoter:'tac',resistance:'AmpR',origin:'pBR322',tags:'GST (N-term) · Thrombin',use:'GST-fusion expression for affinity purification. IPTG inducible. Thrombin cleavage site.',keywords:['expression','AmpR','GST','fusion','thrombin','IPTG','purification']},
+  {id:'pMALc2X',name:'pMAL-c2X',group:'Bacterial Expression',size:6646,promoter:'Ptac',resistance:'AmpR',origin:'pBR322',tags:'MBP (N-term) · Factor Xa',use:'MBP fusion for enhanced solubility. Factor Xa cleavage site for tag removal.',keywords:['expression','AmpR','MBP','fusion','Factor Xa','solubility','IPTG']},
+  {id:'pDONR221',name:'pDONR221',group:'Gateway / Recombination',size:4456,promoter:'—',resistance:'KanR / CmR',origin:'pUC',tags:'attP1 · attP2 · ccdB',use:'Universal Gateway donor vector. BP recombination to create sequence-verified entry clones.',keywords:['Gateway','KanR','CmR','attP','BP','entry clone','recombination']},
+  {id:'pDEST17',name:'pDEST17',group:'Gateway / Recombination',size:6227,promoter:'T7',resistance:'AmpR',origin:'pBR322',tags:'N-His · attR1 · attR2 · ccdB',use:'Gateway bacterial expression destination. LR reaction inserts GOI with N-terminal His-tag.',keywords:['Gateway','AmpR','His-tag','T7','destination','LR','recombination']},
+  {id:'pDESTHalo',name:'pDEST-HaloTag7',group:'Gateway / Recombination',size:7200,promoter:'CMV / T7',resistance:'AmpR',origin:'pUC',tags:'HaloTag · attR',use:'HaloTag fusion via Gateway LR for mammalian or in vitro expression and pull-downs.',keywords:['Gateway','AmpR','HaloTag','CMV','T7','destination','LR','pull-down']},
+  {id:'pcDNA31',name:'pcDNA3.1(+)',group:'Mammalian Expression',size:5428,promoter:'CMV',resistance:'AmpR / NeoR',origin:'pUC / SV40',tags:'BGH polyA',use:'High-level CMV-driven mammalian transient or stable expression. G418 selection for stables.',keywords:['mammalian','AmpR','NeoR','CMV','transient','stable','HEK293','CHO']},
+  {id:'pCMVTag2',name:'pCMV-Tag2',group:'Mammalian Expression',size:4300,promoter:'CMV',resistance:'KanR / G418',origin:'pBR322',tags:'FLAG (N-term)',use:'N-terminal FLAG-tagged mammalian expression. Useful for immunoprecipitation.',keywords:['mammalian','KanR','FLAG','CMV','IP','co-IP','pulldown']},
+  {id:'pLentiCMV',name:'pLenti-CMV-GFP-Blast',group:'Lentiviral System',size:8200,promoter:'CMV',resistance:'AmpR / BlastR',origin:'pUC',tags:'GFP · WPRE · LTR',use:'Lentiviral transfer vector. CMV-driven GFP with WPRE for enhanced expression. Blasticidin selection.',keywords:['lentiviral','AmpR','BlasticidinR','GFP','WPRE','CMV','stable','transfer']},
+  {id:'psPAX2',name:'psPAX2',group:'Lentiviral System',size:10703,promoter:'CMV',resistance:'AmpR',origin:'pUC',tags:'HIV gag · pol · rev',use:'2nd-generation HIV-1 packaging plasmid. Co-transfect with transfer vector + pMD2.G.',keywords:['lentiviral','packaging','AmpR','gag','pol','rev','2nd generation']},
+  {id:'pMD2G',name:'pMD2.G',group:'Lentiviral System',size:5822,promoter:'CMV',resistance:'AmpR',origin:'pUC',tags:'VSV-G envelope',use:'VSV-G envelope vector for pseudotyping lentiviral particles. Broad tropism.',keywords:['lentiviral','envelope','AmpR','VSV-G','pseudotyping','broad tropism']},
+  {id:'pX330',name:'pX330-U6-Cas9',group:'CRISPR',size:8484,promoter:'U6 (sgRNA) · CBh (Cas9)',resistance:'AmpR',origin:'pUC',tags:'SpCas9 · U6-sgRNA',use:'All-in-one CRISPR vector. Express both sgRNA (U6) and SpCas9 (CBh) from a single plasmid.',keywords:['CRISPR','AmpR','SpCas9','sgRNA','U6','CBh','genome editing']},
+  {id:'lentiCRISPRv2',name:'lentiCRISPRv2',group:'CRISPR',size:14000,promoter:'U6 (sgRNA) · EF1α (Cas9)',resistance:'AmpR / PuroR',origin:'pUC',tags:'SpCas9 · PuroR · sgRNA',use:'Lentiviral CRISPR for stable genome editing. Puromycin selection. EF1α-driven SpCas9.',keywords:['CRISPR','lentiviral','AmpR','PuroR','SpCas9','sgRNA','EF1α','stable']},
+];
+
+const VEC_GROUPS=['Bacterial Cloning','Bacterial Expression','Gateway / Recombination','Mammalian Expression','Lentiviral System','CRISPR'];
+let _vecQuery='', _expandedVec=null;
+
+function filterVectors(){
+  _vecQuery=document.getElementById('vec-search').value.trim().toLowerCase();
+  renderVectorLibrary();
+}
+
+function renderVectorLibrary(){
+  const lib=document.getElementById('vec-library');
+  if(!lib) return;
+  const q=_vecQuery;
+  let anyVisible=false;
+  let html='';
+  VEC_GROUPS.forEach(grp=>{
+    const vecs=VECTORS.filter(v=>v.group===grp&&(!q||(v.name.toLowerCase().includes(q)||v.keywords.some(k=>k.toLowerCase().includes(q)))));
+    if(!vecs.length) return;
+    anyVisible=true;
+    html+=`<div class="grp-hdr">${esc(grp)}</div><div class="vec-grid">`;
+    vecs.forEach(v=>{
+      const isExp=_expandedVec===v.id;
+      const matchTags=q?v.keywords.filter(k=>k.toLowerCase().includes(q)):[];
+      html+=`<div class="vec-card${isExp?' expanded':''}" onclick="toggleVec('${v.id}')">
+        <div class="vec-name">${esc(v.name)}</div>
+        <div class="vec-size">${v.size.toLocaleString()} bp</div>
+        <div class="vec-tags">
+          ${v.resistance.split('/').map(r=>`<span class="vec-tag ${matchTags.some(m=>m.toLowerCase()===r.trim().toLowerCase())?'highlight':''}">${esc(r.trim())}</span>`).join('')}
+          ${v.tags?v.tags.split('·').map(t=>`<span class="vec-tag ${matchTags.some(m=>m.toLowerCase()===t.trim().toLowerCase())?'highlight':''}">${esc(t.trim())}</span>`).join(''):''}
+        </div>
+        <div class="vec-use">${esc(v.use)}</div>
+        <div class="vec-detail">
+          <dl class="vec-feat">
+            <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
+            <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
+            <dt>Origin</dt><dd>${esc(v.origin)}</dd>
+            ${v.tags?`<dt>Tags</dt><dd>${esc(v.tags)}</dd>`:''}
+          </dl>
+          <div style="margin-top:8px;font-size:11px;color:var(--text3);">Click again to collapse</div>
+        </div>
+      </div>`;
+    });
+    html+='</div>';
+  });
+  if(!anyVisible) html='<div class="empty-msg">No vectors match "'+esc(q)+'".</div>';
+  lib.innerHTML=html;
+}
+
+function toggleVec(id){
+  _expandedVec=_expandedVec===id?null:id;
+  renderVectorLibrary();
+}
+
+// ─── Utils ────────────────────────────────────────────────────────────────────
+function copyText(txt){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).catch(()=>_fallbackCopy(txt));
+  } else { _fallbackCopy(txt); }
+}
+function _fallbackCopy(txt){
+  const ta=document.createElement('textarea');
+  ta.value=txt;ta.style.cssText='position:fixed;opacity:0;top:0;left:0;';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand('copy');}catch(e){}
+  document.body.removeChild(ta);
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+</script>
+</body>
+</html>

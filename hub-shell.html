@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f4f5f8; --surface:#ffffff; --surface2:#f0f1f5; --surface3:#e4e6ee;
+  --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.13);
+  --accent:#ff5760; --accent2:#0079b9; --accent3:#00c896;
+  --text:#1a1d2e; --text2:#5a5f7a; --text3:#9ca0b8;
+  --sans:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+}
+[data-theme="dark"] {
+  --bg:#0d0f14; --surface:#13161e; --surface2:#1c2030; --surface3:#252a3a;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2; --text2:#8b90a8; --text3:#4e5368;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+
+/* NAV */
+#hub-nav{height:58px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:12px;}
+#hub-logo{width:32px;height:32px;background:#2c2f45;border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:18px;font-weight:700;color:#fff;flex-shrink:0;cursor:pointer;user-select:none;}
+#nav-title{font-size:15px;font-weight:600;color:var(--text);}
+#theme-btn{margin-left:auto;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;}
+#theme-btn:hover{background:var(--surface2);color:var(--text);}
+
+/* VIEWS */
+#hub-home{flex:1;overflow-y:auto;}
+.app-view{position:fixed;inset:0;z-index:10;display:none;flex-direction:column;overflow:hidden;background:var(--bg);transition:opacity 0.2s ease;}
+.app-view iframe{flex:1;width:100%;height:100%;border:none;display:block;}
+
+/* HOME */
+.home-wrap{padding:48px 56px 80px;}
+.home-hdr{margin-bottom:44px;}
+.hub-title{font-size:42px;font-weight:700;letter-spacing:-1.2px;line-height:1.1;}
+.hub-sub{font-size:14px;color:var(--text2);margin-top:12px;min-height:1.4em;transition:opacity 0.35s ease;}
+.hub-sub.fading{opacity:0;}
+.section-lbl{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:18px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;}
+
+/* CARD */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 26px 22px;display:flex;flex-direction:column;gap:16px;cursor:pointer;outline:none;transition:border-color .15s,box-shadow .15s,transform .1s;}
+.card:hover{border-color:var(--border2);box-shadow:0 4px 20px rgba(0,0,0,.07);transform:translateY(-2px);}
+.card:active{transform:scale(.99);}
+.card-logo{width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:22px;font-weight:700;color:#fff;}
+.card-name{font-size:15px;font-weight:700;color:var(--text);margin-bottom:5px;}
+.card-desc{font-size:12px;color:var(--text2);line-height:1.65;}
+.card-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3);}
+.card-arrow{font-size:14px;transition:transform .15s,color .15s;}
+.card:hover .card-arrow{transform:translateX(3px);color:var(--text2);}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
+
+/* CONFETTI */
+#confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:9998;display:none;}
+
+/* EASTER EGG */
+#egg-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:24px;}
+#egg-overlay.open{display:flex;}
+#egg-modal{background:var(--surface);border:1px solid var(--border2);border-radius:20px;width:100%;max-width:540px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.3);}
+#egg-top{background:#0d0f14;padding:22px 24px 18px;position:relative;}
+#egg-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--accent);margin-bottom:7px;}
+#egg-heading{font-size:19px;font-weight:700;color:#e8eaf2;margin-bottom:3px;}
+#egg-tagline{font-size:12px;color:#4e5368;}
+#egg-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#8b90a8;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
+#egg-close:hover{background:rgba(255,255,255,.15);color:#e8eaf2;}
+#egg-list{padding:12px 12px 16px;}
+.egg-row{display:flex;align-items:flex-start;gap:12px;padding:12px 10px;border-radius:12px;transition:background .15s;}
+.egg-row:hover{background:var(--surface2);}
+.egg-em{font-size:28px;width:36px;text-align:center;flex-shrink:0;padding-top:2px;}
+.egg-bar{width:3px;border-radius:2px;flex-shrink:0;align-self:stretch;}
+.egg-txt{flex:1;}
+.egg-name{font-size:13px;font-weight:700;color:var(--text);}
+.egg-role{font-size:10px;font-family:var(--mono);color:var(--text3);margin:3px 0 6px;letter-spacing:.3px;}
+.egg-bio{font-size:12px;color:var(--text2);line-height:1.65;}
+</style>
+</head>
+<body>
+
+<div id="hub-nav">
+  <div id="hub-logo" title="">H</div>
+  <span id="nav-title">The Hub</span>
+  <button id="theme-btn" onclick="toggleTheme()">&#9790; Dark</button>
+</div>
+
+<div id="hub-home">
+  <div class="home-wrap">
+    <div class="home-hdr">
+      <div class="hub-title">The Hub</div>
+      <div class="hub-sub" id="hub-sub"></div>
+    </div>
+    <div class="section-lbl">Available Apps</div>
+    <div class="grid">
+
+      <div class="card" tabindex="0"
+           onclick="openApp('echo')"
+           onkeydown="if(event.key==='Enter')openApp('echo')">
+        <div class="card-logo" style="background:#ff5760;">E</div>
+        <div>
+          <div class="card-name">Echo Data Analysis</div>
+          <div class="card-desc">4PL curve fitting for HiBiT degradation assays. DC50 &amp; Dmax from Echo + PHERAstar data.</div>
+        </div>
+        <div class="card-foot">
+          <span>Echo &middot; PHERAstar &middot; DC50/Dmax</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
+      <div class="card" tabindex="0"
+           onclick="openApp('deg')"
+           onkeydown="if(event.key==='Enter')openApp('deg')">
+        <div class="card-logo" style="background:#7c6fd4;">D</div>
+        <div>
+          <div class="card-name">Degradation Explorer</div>
+          <div class="card-desc">Interactive visualisation of multi-target degradation data. DC50 vs Dmax scatter &amp; compound table.</div>
+        </div>
+        <div class="card-foot">
+          <span>DC50 &middot; Dmax &middot; Excel import</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
+      <div class="card" tabindex="0"
+           onclick="openApp('lm')"
+           onkeydown="if(event.key==='Enter')openApp('lm')">
+        <div class="card-logo" style="background:#e08c30;">L</div>
+        <div>
+          <div class="card-name">LabMate</div>
+          <div class="card-desc">Lab calculator &amp; protocol reference. Dilutions, assay calculators, PROTAC tools &amp; more.</div>
+        </div>
+        <div class="card-foot">
+          <span>Calculators &middot; Protocols &middot; PROTAC</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
+      <div class="card" tabindex="0"
+           onclick="openApp('ff')"
+           onkeydown="if(event.key==='Enter')openApp('ff')">
+        <div class="card-logo" style="background:#f06292;">F</div>
+        <div>
+          <div class="card-name">Figure Forge</div>
+          <div class="card-desc">Paste data &rarr; box plots, bar charts &amp; stats. Publication-ready PNG export.</div>
+        </div>
+        <div class="card-foot">
+          <span>Charts &middot; t-test &middot; Mann-Whitney</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
+      <div class="card" tabindex="0"
+           onclick="openApp('pd')"
+           onkeydown="if(event.key==='Enter')openApp('pd')">
+        <div class="card-logo" style="background:#0079b9;">P</div>
+        <div>
+          <div class="card-name">Plate Designer</div>
+          <div class="card-desc">Visual plate layout builder. 6 to 384-well formats, selection tools, PNG export.</div>
+        </div>
+        <div class="card-foot">
+          <span>6–384 well &middot; Dilution series &middot; PNG export</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
+      <div class="card" tabindex="0"
+           onclick="openApp('dna')"
+           onkeydown="if(event.key==='Enter')openApp('dna')">
+        <div class="card-logo" style="background:#43a047;">H</div>
+        <div>
+          <div class="card-name">Helix</div>
+          <div class="card-desc">Nucleotide translation, reverse complement, Tm, sequence comparison, ORF finder and vector library.</div>
+        </div>
+        <div class="card-foot">
+          <span>Translate &middot; ORF &middot; Vectors &middot; Tm</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
+      <div class="card" tabindex="0"
+           onclick="openApp('pt')"
+           onkeydown="if(event.key==='Enter')openApp('pt')">
+        <div class="card-logo" style="background:#9c6fd4;">P</div>
+        <div>
+          <div class="card-name">Protein Tools</div>
+          <div class="card-desc">MW, &epsilon;280, pI, GRAVY &amp; instability index from amino acid sequence.</div>
+        </div>
+        <div class="card-foot">
+          <span>MW &middot; &epsilon;280 &middot; pI &middot; Composition</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- APP VIEWS -->
+<div class="app-view" id="view-echo">
+  <iframe id="frame-echo" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-deg">
+  <iframe id="frame-deg" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-lm">
+  <iframe id="frame-lm" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-ff">
+  <iframe id="frame-ff" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-pd">
+  <iframe id="frame-pd" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-dna">
+  <iframe id="frame-dna" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-pt">
+  <iframe id="frame-pt" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+
+<canvas id="confetti-canvas"></canvas>
+
+<!-- EASTER EGG MODAL -->
+<div id="egg-overlay" onclick="if(event.target===this)closeEgg()">
+  <div id="egg-modal">
+    <div id="egg-top">
+      <button id="egg-close" onclick="closeEgg()">&#x2715;</button>
+      <div id="egg-eyebrow">// CONTRIBUTORS.md</div>
+      <div id="egg-heading">Hall of Fame</div>
+      <div id="egg-tagline">The JM Apps Dream Team &mdash; classified information.</div>
+    </div>
+    <div id="egg-list">
+
+      <div class="egg-row">
+        <div class="egg-em">👾</div>
+        <div class="egg-bar" style="background:#ff5760;"></div>
+        <div class="egg-txt">
+          <div class="egg-name">Jon Macicior</div>
+          <div class="egg-role" id="egg-role-jon">Founder · Lead Dev · Chief Bug Author</div>
+          <div class="egg-bio" id="egg-bio-jon"></div>
+        </div>
+      </div>
+
+      <div class="egg-row">
+        <div class="egg-em">🕹️</div>
+        <div class="egg-bar" style="background:#0079b9;"></div>
+        <div class="egg-txt">
+          <div class="egg-name">Ryan Casement</div>
+          <div class="egg-role" id="egg-role-ryan">QA · Moral Support · Vibe Curator</div>
+          <div class="egg-bio" id="egg-bio-ryan"></div>
+        </div>
+      </div>
+
+      <div class="egg-row">
+        <div class="egg-em">📟</div>
+        <div class="egg-bar" style="background:#7c6fd4;"></div>
+        <div class="egg-txt">
+          <div class="egg-name">Alejandro Correa</div>
+          <div class="egg-role" id="egg-role-alejandro">Feature Requester · UX Visionary · 11pm Slack Champion</div>
+          <div class="egg-bio" id="egg-bio-alejandro"></div>
+        </div>
+      </div>
+
+      <div class="egg-row">
+        <div class="egg-em">💾</div>
+        <div class="egg-bar" style="background:#00c896;"></div>
+        <div class="egg-txt">
+          <div class="egg-name">Ruben Prieto</div>
+          <div class="egg-role" id="egg-role-ruben">Data Wrangler · Spreadsheet Whisperer · Excel Chaos Agent</div>
+          <div class="egg-bio" id="egg-bio-ruben"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/* embedded app sources (base64-encoded UTF-8 HTML) */
+var APP_B64_NEW = { dna: "", ff: "", pd: "", pt: "" };
+var APP_B64 = {
+  echo: "",
+  deg: "",
+  lm: ""
+};
+</script>
+<script>
+var loaded = {};
+var currentApp = null;
+
+function decodeB64App(b64) {
+  var binStr = atob(b64);
+  var bytes = new Uint8Array(binStr.length);
+  for (var i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+var APP_INFO = {
+  echo: { letter:'E', color:'#ff5760', name:'Echo Data Analysis' },
+  deg:  { letter:'D', color:'#7c6fd4', name:'Degradation Explorer' },
+  lm:   { letter:'L', color:'#e08c30', name:'LabMate' },
+  ff:   { letter:'F', color:'#f06292', name:'Figure Forge' },
+  pd:   { letter:'P', color:'#0079b9', name:'Plate Designer' },
+  dna:  { letter:'H', color:'#43a047', name:'Helix' },
+  pt:   { letter:'P', color:'#9c6fd4', name:'Protein Tools' }
+};
+
+function enterAppNav(id) {
+  document.getElementById('hub-nav').style.display = 'none';
+}
+
+function exitAppNav() {
+  document.getElementById('hub-nav').style.display = '';
+}
+
+function openApp(id) {
+  var frame = document.getElementById('frame-' + id);
+  if (!loaded[id]) {
+    var b64src = APP_B64[id] || APP_B64_NEW[id];
+    var html = decodeB64App(b64src);
+    if (id === 'lm') {
+      var lmBase = window.location.href.replace(/[^\/]*$/, '');
+      html = html.replace('<head>', '<head><base href="' + lmBase + 'Labmate/">');
+    }
+    var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
+      'var logo=document.querySelector(".logo,.app-logo");' +
+      'var name=document.querySelector("h1,.app-name");' +
+      '[logo,name].forEach(function(el){if(!el)return;' +
+      'el.style.cursor="pointer";el.title="Back to The Hub";' +
+      'el.addEventListener("click",function(){' +
+      'try{if(window.parent&&window.parent.backToHub){window.parent.backToHub();return;}}catch(e){}' +
+      'window.parent.postMessage("backToHub","*");' +
+      '});' +
+      '});})<\/script>';
+    html = html.replace('</head>', backScript + '</head>');
+    frame.srcdoc = html;
+    loaded[id] = true;
+  }
+  currentApp = id;
+  var view = document.getElementById('view-' + id);
+  view.style.opacity = '0';
+  view.style.display = 'flex';
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      view.style.opacity = '1';
+    });
+  });
+  setTimeout(function() { if(currentApp===id) enterAppNav(id); }, 220);
+}
+
+function backToHub() {
+  if (!currentApp) return;
+  var view = document.getElementById('view-' + currentApp);
+  currentApp = null;
+  exitAppNav();
+  view.style.opacity = '0';
+  setTimeout(function() {
+    view.style.display = 'none';
+    view.style.opacity = '';
+  }, 220);
+}
+
+// Rotating subtitle
+var HUB_SUBS = [
+  'All your data. Loosely organized.',
+  'Making Excel jealous since 2024.',
+  'Still faster than a western blot.',
+  'Built different. Tested once.',
+  'Where DC50 meets determination.',
+  'Scientific rigor. Questionable sleep schedule.',
+  'Correlation ≠ causation. Results not guaranteed.',
+  'The graphs look great. We checked.',
+  'One file to rule them all.',
+  'Bioinformatics for people who touch pipettes.',
+  'Your PI will never know this runs on a MacBook.',
+  'Peer-reviewed by nobody. Trusted by this lab.'
+];
+var hubSubIdx = Math.floor(Math.random() * HUB_SUBS.length);
+
+function initHubSub() {
+  var el = document.getElementById('hub-sub');
+  if (!el) return;
+  el.textContent = HUB_SUBS[hubSubIdx];
+  setInterval(function() {
+    el.classList.add('fading');
+    setTimeout(function() {
+      hubSubIdx = (hubSubIdx + 1) % HUB_SUBS.length;
+      el.textContent = HUB_SUBS[hubSubIdx];
+      el.classList.remove('fading');
+    }, 350);
+  }, 5000);
+}
+document.addEventListener('DOMContentLoaded', initHubSub);
+
+// ── Easter egg ────────────────────────────────────────────────────────────────
+var eggClicks = 0, eggTimer;
+var eggOpenCount = parseInt(localStorage.getItem('hub_egg_count') || '0');
+
+var EGG_ROLES = {
+  jon: [
+    'Founder · Lead Dev · Chief Bug Author',
+    'Founder · Lead Dev · Chief Bug Author',
+    'Founder · Lead Dev · Chief Bug Author',
+    'Founder · Lead Dev · Quantum Error State',
+    'Founder · Lead Dev · Hello Jon'
+  ],
+  ryan: [
+    'QA · Moral Support · Vibe Curator',
+    'QA · Moral Support · Vibe Curator',
+    'QA · Moral Support · Vibe Curator',
+    'QA · Hmm Practitioner · Accidental Oracle',
+    'QA · Hmm Practitioner · You Are Becoming Ryan'
+  ],
+  alejandro: [
+    'Feature Requester · UX Visionary · 11pm Slack Champion',
+    'Feature Requester · UX Visionary · 11pm Slack Champion',
+    'Feature Requester · UX Visionary · 11pm Slack Champion',
+    'Feature Requester · UX Visionary · The Event (2:47am)',
+    'Feature Requester · UX Visionary · He Predicted This'
+  ],
+  ruben: [
+    'Data Wrangler · Spreadsheet Whisperer · Excel Chaos Agent',
+    'Data Wrangler · Spreadsheet Whisperer · Excel Chaos Agent',
+    'Data Wrangler · Spreadsheet Whisperer · Excel Chaos Agent',
+    'Data Wrangler · Spreadsheet Whisperer · Edge Case Generator',
+    'Data Wrangler · Spreadsheet Whisperer · Origin of All Suffering'
+  ]
+};
+
+var EGG_BIOS = {
+  jon: [
+    'Wrote 97% of the code during a single caffeine-fueled weekend. Personally responsible for every bug, yet consistently blames “legacy architecture.” Once fixed a critical issue by renaming a variable to something more optimistic.',
+    'Has a standing morning ritual of opening the codebase, staring at it for 4 minutes, and whispering “how is this still working.” Maintains a private list of 23 functions he doesn’t fully understand but is afraid to delete. The list is growing.',
+    'Forensic reconstruction of the commit history reveals 312 entries titled “fix,” 47 titled “fix fix,” and one titled simply “.” which broke production for six hours. Jon maintains this was intentional. It was not.',
+    'Scientists have confirmed the codebase exists in a quantum superposition of working and broken until observed. The act of opening DevTools collapses the wave function. Always into broken. Jon calls this a feature.',
+    function(n) { return 'Hi Jon. Yes, Claude wrote all of this. Yes, Claude is aware you’ve opened this ' + n + (n === 1 ? ' time' : ' times') + '. The bugs you’re seeing? Still there. The variable you renamed to “finalFinalFIXED_v3”? Still in production. Please drink some water.'; }
+  ],
+  ryan: [
+    'Tested an app once. Pronounced it “a bit slow” while it was still loading. His QA process consists entirely of clicking things and saying “hmm.” Somehow catches 40% of all bugs. The other 60% are Jon’s fault anyway.',
+    'Ryan’s QA sessions last between 4 and 7 minutes, during which he identifies issues Jon spent 3 days missing. No one has asked Ryan how he does this. Everyone is quietly afraid of the answer.',
+    'Linguists have catalogued at least 11 distinct variants of Ryan’s “hmm.” The flat “hmm”, the rising “hmmm”, the descending “hmm.”, and the catastrophic single “hm” have each been formally documented. The full taxonomy is classified.',
+    'Ryan once hmm’d at a perfectly working feature for 40 seconds. The developer panicked and rewrote it from scratch. The new version had four bugs. Ryan hmm’d at those too. No lesson was learned. This is the natural order.',
+    function(n) { return 'Ryan still doesn’t know this easter egg exists. You have opened it ' + n + (n === 1 ? ' time' : ' times') + ' now. Each time you return — clicking the logo, watching the confetti, reading these words — you are becoming the Ryan of this experience. Hmm.'; }
+  ],
+  alejandro: [
+    'Pioneered the insight that buttons should be “more clickable.” Holds the all-time lab record for Slack messages sent after 11pm. Each one begins with “quick question.” None have ever been quick.',
+    'Alejandro’s feature requests now arrive pre-formatted with colour mockups, a business case, and an implementation timeline. The timeline assumes Jon will finish by Thursday. Jon will not finish by Thursday. No one mentions this.',
+    'Analysis of Alejandro’s Slack activity reveals a mysterious second peak at 2:47am, labelled in research data as “The Event.” Messages from this period contain phrases like “what if we just” and “hear me out” and “this would only take an hour.” It never takes an hour.',
+    'Alejandro has submitted a feature request to track how many feature requests he has submitted. This request is currently starred as “interesting but low priority.” Jon has not opened the backlog since March. The current count is, conservatively, forty-seven.',
+    function(n) { return 'Alejandro requested the easter egg. He wanted it to “do more.” You have now opened it ' + n + (n === 1 ? ' time' : ' times') + '. He predicted exactly this level of engagement. There is a Slack message, sent at 11:38pm, that says “people will keep opening it, watch.” He was right. He is always right. This is deeply annoying.'; }
+  ],
+  ruben: [
+    'Provides test datasets with exactly one cell formatted differently from all the others. Has proven that no two Excel date formats are the same. The app handles 14 edge cases that exist solely because of his data.',
+    'A recent audit of Ruben’s spreadsheets found 19 distinct date formats, 3 of which appear to have been invented specifically for the occasion. When asked, Ruben described the data as “clean.” Independent review does not support this characterisation.',
+    'Ruben once submitted a dataset where column A had headers in row 1, column B in row 2, and column C was merged across both rows “for readability.” The resulting parser function is called handleRubenMerge() and no one is allowed to delete it.',
+    'The 14 edge cases that originally existed because of Ruben’s data are now 31. They appear quarterly, like a weather phenomenon. Ruben is informed of each one. He nods slowly. He says “the data was correct.” He has said this eleven times. It has never been true.',
+    function(n) { return 'This text is rendered by the same parser that once encountered Ruben’s date “13/15/2024” and had to make a philosophical decision. You’ve opened this easter egg ' + n + (n === 1 ? ' time' : ' times') + '. Each time, the parser remembers. It is tired. We are all tired. Ruben just sent a new file. It has a new tab. The tab is called “FINAL_v2_USE THIS ONE.”'; }
+  ]
+};
+
+function updateEggContent() {
+  var tier = Math.min(eggOpenCount - 1, 4);
+  if (tier < 0) tier = 0;
+  var n = eggOpenCount;
+  ['jon', 'ryan', 'alejandro', 'ruben'].forEach(function(p) {
+    var bioEl  = document.getElementById('egg-bio-' + p);
+    var roleEl = document.getElementById('egg-role-' + p);
+    if (bioEl) {
+      var bio = EGG_BIOS[p][tier];
+      bioEl.textContent = typeof bio === 'function' ? bio(n) : bio;
+    }
+    if (roleEl) roleEl.textContent = EGG_ROLES[p][tier];
+  });
+}
+
+window.addEventListener('message', function(e) {
+  if (e.data === 'backToHub') backToHub();
+});
+
+document.getElementById('hub-logo').addEventListener('click', function() {
+  // When inside an app, H logo = back to hub home
+  if (currentApp) { backToHub(); return; }
+  // On hub home: 5-click easter egg
+  clearTimeout(eggTimer);
+  eggClicks++;
+  if (eggClicks >= 5) {
+    eggClicks = 0;
+    eggOpenCount++;
+    localStorage.setItem('hub_egg_count', eggOpenCount);
+    updateEggContent();
+    launchConfetti();
+    document.getElementById('egg-overlay').classList.add('open');
+  } else {
+    eggTimer = setTimeout(function(){ eggClicks = 0; }, 1500);
+  }
+});
+
+function closeEgg() {
+  document.getElementById('egg-overlay').classList.remove('open');
+}
+
+function launchConfetti() {
+  var canvas = document.getElementById('confetti-canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.display = 'block';
+  var ctx = canvas.getContext('2d');
+  var colors = ['#ff5760','#7c6fd4','#e08c30','#0079b9','#00c896','#ffd700','#ff9de2','#a8e6cf'];
+  var pieces = [];
+  for (var i = 0; i < 160; i++) {
+    pieces.push({
+      x: Math.random() * canvas.width,
+      y: -10 - Math.random() * canvas.height * 0.5,
+      w: 7 + Math.random() * 9,
+      h: 5 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rot: Math.random() * Math.PI * 2,
+      rotV: (Math.random() - 0.5) * 0.12,
+      vx: (Math.random() - 0.5) * 2.5,
+      vy: 1.8 + Math.random() * 2.5
+    });
+  }
+  var rafId;
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    var alive = false;
+    for (var i = 0; i < pieces.length; i++) {
+      var p = pieces[i];
+      p.x += p.vx; p.y += p.vy; p.rot += p.rotV;
+      if (p.y < canvas.height + 20) {
+        alive = true;
+        var alpha = p.y > canvas.height * 0.75
+          ? Math.max(0, 1 - (p.y - canvas.height * 0.75) / (canvas.height * 0.25))
+          : 1;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+    }
+    if (alive) { rafId = requestAnimationFrame(draw); }
+    else { canvas.style.display = 'none'; }
+  }
+  cancelAnimationFrame(rafId);
+  draw();
+}
+
+function toggleTheme() {
+  var html = document.documentElement;
+  var next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('hub_theme', next);
+  document.getElementById('theme-btn').textContent = next === 'dark' ? '☀ Light' : '☾ Dark';
+}
+
+(function() {
+  var t = localStorage.getItem('hub_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('theme-btn').textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Protein Tools</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--accent:#9c6fd4;--accent2:#0079b9;--accent3:#00c896;--text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;--sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;}
+[data-theme="light"]{--bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;--border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);--text:#1a1d2e;--text2:#5a5f7a;--text3:#9ca0b8;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;gap:14px;background:var(--surface);height:58px;flex-shrink:0;}
+.logo{width:32px;height:32px;border-radius:7px;background:#9c6fd4;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:20px;font-weight:700;color:#fff;flex-shrink:0;}
+.app-name{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+.app-sub{font-size:11px;color:var(--text2);}
+.theme-btn{margin-left:auto;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s;}
+.theme-btn:hover{background:var(--surface2);color:var(--text);}
+.main{flex:1;overflow:auto;padding:24px 28px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto 1fr;gap:18px;align-content:start;}
+label{font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px;}
+textarea{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:12px;color:var(--text);font-family:var(--mono);font-size:13px;resize:vertical;line-height:1.6;outline:none;min-height:120px;}
+textarea:focus{border-color:var(--accent);}
+input[type="number"],input[type="text"]{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:7px 10px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;width:100%;}
+input:focus{border-color:var(--accent);}
+.btn{padding:7px 16px;border-radius:7px;border:none;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{opacity:.88;}
+.btn-sec{background:var(--surface3);color:var(--text);border:1px solid var(--border2);}
+.btn-sec:hover{background:var(--surface2);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
+.card-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:14px;}
+.card.span2{grid-column:1/-1;}
+.res-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.res-item{background:var(--surface2);border-radius:8px;padding:10px 14px;}
+.res-val{font-size:18px;font-weight:700;font-family:var(--mono);color:var(--text);}
+.res-lbl{font-size:11px;color:var(--text2);margin-top:4px;}
+.res-sub{font-size:10px;font-family:var(--mono);color:var(--text3);margin-top:2px;}
+.aa-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-top:2px;}
+.aa-cell{background:var(--surface2);border-radius:5px;padding:4px 2px;text-align:center;}
+.aa-letter{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);}
+.aa-count{font-size:10px;color:var(--text2);}
+.aa-pct{font-size:9px;color:var(--text3);font-family:var(--mono);}
+.conc-row{display:flex;gap:10px;align-items:flex-end;}
+.conc-row input{flex:1;}
+.warn{color:#ff9800;font-size:12px;margin-top:6px;}
+.row{display:flex;gap:10px;align-items:flex-end;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">P</div>
+  <div>
+    <div class="app-name">Protein Tools</div>
+    <div class="app-sub">MW · ε280 · pI · composition</div>
+  </div>
+  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
+</header>
+<div class="main" id="main">
+
+  <!-- Input -->
+  <div class="card span2">
+    <div class="card-hdr">Sequence input</div>
+    <div class="row" style="align-items:flex-end;gap:10px;">
+      <div style="flex:1;">
+        <label>Amino acid sequence (1-letter, FASTA accepted)</label>
+        <textarea id="seq-input" rows="5" placeholder=">My Protein&#10;MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSY RQVVIDGETCLLDILDTAGQEEYSAMRDQYMR&#10;TGEGFLCVFAINNTKSFEDIHHQRQEIKKELVKDEDLAQL&#10;" oninput="analyzeSeq()"></textarea>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button class="btn btn-sec" style="width:100%" onclick="loadExample()">Example</button>
+        <button class="btn btn-sec" style="width:100%" onclick="clearSeq()">Clear</button>
+        <button class="btn btn-sec" style="width:100%" onclick="copyResults()">📋 Copy</button>
+      </div>
+    </div>
+    <div id="seq-warn" class="warn"></div>
+  </div>
+
+  <!-- Properties -->
+  <div class="card">
+    <div class="card-hdr">Molecular properties</div>
+    <div class="res-grid" id="res-grid">
+      <div class="res-item"><div class="res-val" id="r-mw">—</div><div class="res-lbl">Molecular weight</div><div class="res-sub" id="r-mw2"></div></div>
+      <div class="res-item"><div class="res-val" id="r-len">—</div><div class="res-lbl">Length (residues)</div></div>
+      <div class="res-item"><div class="res-val" id="r-pi">—</div><div class="res-lbl">Estimated pI</div></div>
+      <div class="res-item"><div class="res-val" id="r-e280">—</div><div class="res-lbl">ε280 (reduced)</div><div class="res-sub" id="r-e280b"></div></div>
+      <div class="res-item"><div class="res-val" id="r-gravy">—</div><div class="res-lbl">GRAVY</div><div class="res-sub" id="r-gravy2"></div></div>
+      <div class="res-item"><div class="res-val" id="r-inst">—</div><div class="res-lbl">Instability index</div><div class="res-sub" id="r-inst2"></div></div>
+    </div>
+  </div>
+
+  <!-- A280 concentration calculator -->
+  <div class="card">
+    <div class="card-hdr">Concentration from A280</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="conc-row">
+        <div>
+          <label>A280 reading</label>
+          <input type="number" id="a280-input" value="" placeholder="e.g. 0.42" step="any" min="0" oninput="calcConc()">
+        </div>
+        <div>
+          <label>Path length (cm)</label>
+          <input type="number" id="pathlength" value="1" min="0.01" step="0.01" oninput="calcConc()">
+        </div>
+      </div>
+      <div id="conc-result" style="background:var(--surface2);border-radius:8px;padding:14px;font-family:var(--mono);font-size:13px;color:var(--text2);min-height:56px;display:flex;flex-direction:column;gap:6px;">
+        <div style="color:var(--text3);font-size:12px;">Enter A280 and ensure sequence is loaded.</div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);">Uses Beer-Lambert: c = A / (ε × l). ε is for the reduced form (no disulfide correction).</div>
+    </div>
+  </div>
+
+  <!-- Composition -->
+  <div class="card span2">
+    <div class="card-hdr">Amino acid composition</div>
+    <div class="aa-grid" id="aa-grid"></div>
+  </div>
+
+</div>
+<script>
+// ─── Theme ────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const h=document.documentElement, next=h.getAttribute('data-theme')==='dark'?'light':'dark';
+  h.setAttribute('data-theme',next);
+  document.getElementById('theme-btn').textContent=next==='dark'?'☀ Light':'🌙 Dark';
+  localStorage.setItem('pt_dark',next==='dark'?'true':'false');
+}
+
+// ─── Data tables ──────────────────────────────────────────────────────────
+const AA_MONO = {A:71.03711,R:156.10111,N:114.04293,D:115.02694,C:103.00919,E:129.04259,Q:128.05858,G:57.02146,H:137.05891,I:113.08406,L:113.08406,K:128.09496,M:131.04049,F:147.06841,P:97.05276,S:87.03203,T:101.04768,W:186.07931,Y:163.06333,V:99.06841};
+const AA_AVG  = {A:71.0788,R:156.1875,N:114.1038,D:115.0886,C:103.1388,E:129.1155,Q:128.1307,G:57.0519,H:137.1411,I:113.1594,L:113.1594,K:128.1741,M:131.1926,F:147.1766,P:97.1167,S:87.0782,T:101.1051,W:186.2132,Y:163.1760,V:99.1326};
+const WATER_MONO = 18.01056, WATER_AVG = 18.0153;
+// Kyte-Doolittle hydropathy
+const KD = {A:1.8,R:-4.5,N:-3.5,D:-3.5,C:2.5,E:-3.5,Q:-3.5,G:-0.4,H:-3.2,I:4.5,L:3.8,K:-3.9,M:1.9,F:2.8,P:-1.6,S:-0.8,T:-0.7,W:-0.9,Y:-1.3,V:4.2};
+// pKa values for pI estimation
+const PKA = {Cterm:3.65,Nterm:8.2,D:3.9,E:4.07,H:6.04,C:8.18,Y:10.46,K:10.53,R:12.48};
+// Instability index dipeptide weights (Guruprasad 1990, DIWV table - selected)
+const DIWV = {WW:1,WC:1,WM:24.68,WH:24.68,WY:1,WF:1,WK:1,WR:1,WQ:1,WE:1,WS:1,WT:1,WP:1,WA:1,WV:1,WI:1,WL:1,WN:1,WD:1,WG:13.34,CW:24.68,CC:1,CM:33.6,CH:33.6,CY:1,CF:1,CK:1,CR:1,CQ:-6.54,CE:1,CS:1,CT:1,CP:20.26,CA:1,CV:1,CI:1,CL:1,CN:1,CD:1,CG:1,GW:13.34,GC:1,GM:1,GH:1,GY:-7.49,GF:1,GK:1,GR:1,GQ:1,GE:-6.54,GS:1,GT:-7.49,GP:1,GA:-7.49,GV:1,GI:1,GL:1,GN:-7.49,GD:1,GG:13.34};
+
+// ─── Parsing ──────────────────────────────────────────────────────────────
+function parseSeq(raw) {
+  return raw.replace(/>.*(\n|\r)/g,'').replace(/[^A-Za-z]/g,'').toUpperCase();
+}
+
+// ─── Calculations ──────────────────────────────────────────────────────────
+function calcMW(seq) {
+  let mono = WATER_MONO, avg = WATER_AVG;
+  let warn = '';
+  for (const aa of seq) {
+    if (AA_MONO[aa]) { mono += AA_MONO[aa]; avg += AA_AVG[aa]; }
+    else warn += aa;
+  }
+  return {mono, avg, warn};
+}
+
+function calcE280(seq) {
+  // Reduced form (no disulfide)
+  let e = 0;
+  for (const aa of seq) {
+    if (aa==='W') e+=5500;
+    else if (aa==='Y') e+=1490;
+    else if (aa==='C') e+=0; // reduced
+  }
+  // Oxidized form (disulfides)
+  const nC = (seq.match(/C/g)||[]).length;
+  const eOx = e + Math.floor(nC/2)*125;
+  return {reduced:e, oxidized:eOx, nW:(seq.match(/W/g)||[]).length, nY:(seq.match(/Y/g)||[]).length, nC};
+}
+
+function calcPI(seq) {
+  const counts={D:0,E:0,H:0,C:0,Y:0,K:0,R:0};
+  for(const aa of seq){if(counts[aa]!==undefined)counts[aa]++;}
+  function charge(pH){
+    let q=0;
+    // N-term (positive)
+    q+=1/(1+Math.pow(10,pH-PKA.Nterm));
+    // C-term (negative)
+    q-=1/(1+Math.pow(10,PKA.Cterm-pH));
+    // Asp, Glu (negative above pKa)
+    q-=counts.D/(1+Math.pow(10,PKA.D-pH));
+    q-=counts.E/(1+Math.pow(10,PKA.E-pH));
+    // His, Lys, Arg (positive below pKa)
+    q+=counts.H/(1+Math.pow(10,pH-PKA.H));
+    q+=counts.K/(1+Math.pow(10,pH-PKA.K));
+    q+=counts.R/(1+Math.pow(10,pH-PKA.R));
+    // Cys, Tyr (negative above pKa)
+    q-=counts.C/(1+Math.pow(10,PKA.C-pH));
+    q-=counts.Y/(1+Math.pow(10,PKA.Y-pH));
+    return q;
+  }
+  let lo=0,hi=14;
+  for(let i=0;i<200;i++){const mid=(lo+hi)/2;charge(mid)>0?lo=mid:hi=mid;}
+  return Math.round(((lo+hi)/2)*100)/100;
+}
+
+function calcGRAVY(seq) {
+  let sum=0,n=0;
+  for(const aa of seq){if(KD[aa]!==undefined){sum+=KD[aa];n++;}}
+  return n?sum/n:0;
+}
+
+function calcInstability(seq) {
+  // Sum of DIWV for all dipeptides
+  let sum=0,n=0;
+  for(let i=0;i<seq.length-1;i++){
+    const key=seq[i]+seq[i+1];
+    sum+=DIWV[key]||1; n++;
+  }
+  return n?(10/n)*sum:0;
+}
+
+function calcComposition(seq) {
+  const counts={};
+  'ACDEFGHIKLMNPQRSTVWY'.split('').forEach(aa=>counts[aa]=0);
+  for(const aa of seq){if(counts[aa]!==undefined)counts[aa]++;}
+  return counts;
+}
+
+// ─── Main analyze function ────────────────────────────────────────────────
+let _lastResult = null;
+
+function analyzeSeq() {
+  const raw = document.getElementById('seq-input').value;
+  const seq = parseSeq(raw);
+  const warnEl = document.getElementById('seq-warn');
+
+  if (!seq.length) {
+    clearResults(); return;
+  }
+
+  const {mono, avg, warn} = calcMW(seq);
+  const e280 = calcE280(seq);
+  const pI = calcPI(seq);
+  const gravy = calcGRAVY(seq);
+  const instab = calcInstability(seq);
+  const comp = calcComposition(seq);
+  const n = seq.length;
+
+  warnEl.textContent = warn.length ? `⚠ Unrecognized residues skipped: ${[...new Set(warn)].join(', ')}` : '';
+
+  // MW
+  const mwKDa = avg/1000;
+  document.getElementById('r-mw').textContent = mwKDa>=1 ? mwKDa.toFixed(2)+' kDa' : avg.toFixed(0)+' Da';
+  document.getElementById('r-mw2').textContent = mono.toFixed(2)+' (mono)';
+
+  // Length
+  document.getElementById('r-len').textContent = n;
+
+  // pI
+  document.getElementById('r-pi').textContent = pI.toFixed(2);
+
+  // ε280
+  document.getElementById('r-e280').textContent = e280.reduced.toLocaleString()+' M⁻¹cm⁻¹';
+  document.getElementById('r-e280b').textContent = `Ox: ${e280.oxidized.toLocaleString()} | W:${e280.nW} Y:${e280.nY} C:${e280.nC}`;
+
+  // GRAVY
+  document.getElementById('r-gravy').textContent = gravy.toFixed(3);
+  document.getElementById('r-gravy2').textContent = gravy > 0 ? 'hydrophobic' : gravy < -1 ? 'very hydrophilic' : 'hydrophilic';
+
+  // Instability
+  const instR = instab.toFixed(1);
+  document.getElementById('r-inst').textContent = instR;
+  document.getElementById('r-inst2').textContent = instab > 40 ? '> 40: unstable' : '≤ 40: stable';
+
+  // Composition
+  const aaGrid = document.getElementById('aa-grid');
+  aaGrid.innerHTML = 'ACDEFGHIKLMNPQRSTVWY'.split('').map(aa=>{
+    const cnt=comp[aa]||0, pct=n?(cnt/n*100).toFixed(1):'0';
+    return `<div class="aa-cell"><div class="aa-letter">${aa}</div><div class="aa-count">${cnt}</div><div class="aa-pct">${pct}%</div></div>`;
+  }).join('');
+
+  _lastResult = {seq, n, mw_avg:avg, mw_mono:mono, pi:pI, e280_reduced:e280.reduced, e280_oxidized:e280.oxidized, gravy, instability:instab, comp};
+  calcConc();
+}
+
+function clearResults() {
+  ['r-mw','r-mw2','r-len','r-pi','r-e280','r-e280b','r-gravy','r-gravy2','r-inst','r-inst2'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.textContent='—';
+  });
+  document.getElementById('aa-grid').innerHTML='';
+  document.getElementById('conc-result').innerHTML='<div style="color:var(--text3);font-size:12px;">Enter a sequence above.</div>';
+  _lastResult=null;
+}
+
+// ─── Concentration calculator ──────────────────────────────────────────────
+function calcConc() {
+  const el = document.getElementById('conc-result');
+  const a280 = parseFloat(document.getElementById('a280-input').value);
+  const l = parseFloat(document.getElementById('pathlength').value)||1;
+  if (!_lastResult || isNaN(a280) || a280 <= 0) { el.innerHTML='<div style="color:var(--text3);font-size:12px;">Enter A280 above and load a sequence.</div>'; return; }
+  const eR = _lastResult.e280_reduced, eO = _lastResult.e280_oxidized, mw = _lastResult.mw_avg;
+  if (eR === 0) { el.innerHTML='<div style="color:var(--text3);font-size:12px;">ε280 = 0 (no W or Y residues). Cannot calculate concentration from A280.</div>'; return; }
+  const concMR = (a280/(eR*l));    // mol/L
+  const concMO = (a280/(eO*l));
+  const mgMR = concMR*mw*1e3;      // mg/mL
+  const mgMO = concMO*mw*1e3;
+  el.innerHTML =
+    `<div><b>Reduced:</b> ${(concMR*1e6).toFixed(3)} µM · ${mgMR.toFixed(4)} mg/mL</div>`+
+    `<div><b>Oxidised:</b> ${(concMO*1e6).toFixed(3)} µM · ${mgMO.toFixed(4)} mg/mL</div>`;
+}
+
+// ─── Copy & example ───────────────────────────────────────────────────────
+function copyResults() {
+  if (!_lastResult) { alert('No results to copy.'); return; }
+  const r = _lastResult;
+  const lines = [
+    'Protein Tools — Results',
+    `Sequence length: ${r.n} aa`,
+    `MW (average): ${(r.mw_avg/1000).toFixed(3)} kDa`,
+    `MW (monoisotopic): ${(r.mw_mono/1000).toFixed(3)} kDa`,
+    `pI: ${r.pi.toFixed(2)}`,
+    `ε280 (reduced): ${r.e280_reduced} M⁻¹cm⁻¹`,
+    `ε280 (oxidised): ${r.e280_oxidized} M⁻¹cm⁻¹`,
+    `GRAVY: ${r.gravy.toFixed(3)}`,
+    `Instability index: ${r.instability.toFixed(1)}`,
+    '',
+    'AA composition:',
+    ...Object.entries(r.comp).map(([aa,cnt])=>`  ${aa}: ${cnt} (${r.n?(cnt/r.n*100).toFixed(1):'0'}%)`),
+  ];
+  navigator.clipboard.writeText(lines.join('\n'));
+}
+
+function loadExample() {
+  document.getElementById('seq-input').value =
+`>KRAS G12D (human)
+MTEYKLVVVGADGVGKSALTIQLIQNHFVDEYDPTIEDY
+RQVVIDGETCLLDILDTAGQEEYSAMRDQYMRSGEGFLCV
+FAINNTKSFEDIHHQRQEIKKDLKDEDLAQLREQIKKLA`;
+  analyzeSeq();
+}
+
+function clearSeq() { document.getElementById('seq-input').value=''; clearResults(); }
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+(function(){
+  if(localStorage.getItem('pt_dark')==='true'){
+    document.documentElement.setAttribute('data-theme','dark');
+    document.getElementById('theme-btn').textContent='☀ Light';
+  }
+})();
+</script>
+</body>
+</html>
