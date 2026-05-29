@@ -81,6 +81,14 @@ select:focus,input:focus{border-color:var(--accent);}
 .vec-card.expanded .vec-detail{display:block;}
 .vec-feat{font-size:12px;color:var(--text2);display:grid;grid-template-columns:auto 1fr;gap:4px 10px;}
 .vec-feat dt{font-weight:600;color:var(--text3);}
+.vec-map-wrap{display:flex;gap:20px;align-items:flex-start;margin-top:12px;flex-wrap:wrap;}
+.vec-map-svg{flex-shrink:0;}
+.vec-feat-list{flex:1;min-width:160px;margin:0;}
+.vec-feat-item{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text2);padding:2px 0;}
+.vec-feat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.vec-feat-name{font-weight:600;color:var(--text);}
+.vec-feat-pos{font-family:var(--mono);color:var(--text3);font-size:10px;}
+.vec-rc-note{font-size:11px;color:var(--text3);margin-top:4px;padding:4px 8px;background:var(--surface2);border-radius:5px;border-left:2px solid var(--accent);}
 .grp-hdr{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:18px 0 8px;}
 .search-input{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;width:100%;}
 .search-input:focus{border-color:var(--accent);}
@@ -97,7 +105,7 @@ select:focus,input:focus{border-color:var(--accent);}
     <div class="app-name">Helix</div>
     <div class="app-sub">Translate · complement · Tm · ORF finder · vector library</div>
   </div>
-  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
+  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☾ Dark</button>
 </header>
 <div class="tabs">
   <button class="tab active" onclick="switchTab('translate',this)">Translate</button>
@@ -117,7 +125,8 @@ select:focus,input:focus{border-color:var(--accent);}
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;min-width:180px;">
       <label>Reading frame</label>
-      <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1</option><option value="-2">-2</option><option value="-3">-3</option></select>
+      <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1 ↩</option><option value="-2">-2 ↩</option><option value="-3">-3 ↩</option></select>
+      <div class="vec-rc-note">−1/−2/−3 = reverse complement strand</div>
       <label style="margin-top:6px;">Codon table</label>
       <select id="tr-table"><option value="1">Standard (NCBI 1)</option><option value="2">Vertebrate Mitochondrial (2)</option></select>
       <button class="btn btn-primary" onclick="runTranslate()" style="margin-top:8px;">Translate</button>
@@ -216,7 +225,7 @@ select:focus,input:focus{border-color:var(--accent);}
 </div><!-- end .content -->
 <script>
 // ─── Theme ────────────────────────────────────────────────────────────────────
-function toggleTheme(){const html=document.documentElement,next=html.getAttribute('data-theme')==='dark'?'light':'dark';html.setAttribute('data-theme',next);document.getElementById('theme-btn').textContent=next==='dark'?'☀ Light':'🌙 Dark';try{localStorage.setItem('helix_dark',next==='dark'?'true':'false');}catch(e){}}
+function toggleTheme(){const html=document.documentElement,next=html.getAttribute('data-theme')==='dark'?'light':'dark';html.setAttribute('data-theme',next);document.getElementById('theme-btn').textContent=next==='dark'?'☀ Light':'☾ Dark';try{localStorage.setItem('helix_dark',next==='dark'?'true':'false');}catch(e){}}
 (function(){try{if(localStorage.getItem('helix_dark')==='true'){document.documentElement.setAttribute('data-theme','dark');document.getElementById('theme-btn').textContent='☀ Light';}}catch(e){}})();
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
@@ -526,6 +535,229 @@ function loadORFExample(){
 }
 
 // ─── TAB 5: Vector Library ────────────────────────────────────────────────────
+
+const TYPE_COLORS={
+  promoter:'#f5a623',res:'#e74c3c',ori:'#3498db',tag:'#9b59b6',
+  mcs:'#95a5a6',reporter:'#27ae60',ltr:'#1abc9c',cas9:'#e67e22',
+  sgrna:'#16a085',terminator:'#7f8c8d',gene:'#2980b9',other:'#bdc3c7'
+};
+
+const VEC_FEATURES={
+  pUC19:[
+    {n:'lacZ-α',s:149,e:507,d:1,t:'reporter'},
+    {n:'MCS',s:396,e:452,d:1,t:'mcs'},
+    {n:'AmpR',s:1629,e:2489,d:1,t:'res'},
+    {n:'AmpR promoter',s:1520,e:1628,d:1,t:'promoter'},
+    {n:'pMB1 ori',s:878,e:1518,d:1,t:'ori'},
+    {n:'f1 ori',s:507,e:862,d:-1,t:'ori'},
+    {n:'lac promoter',s:2617,e:2686,d:1,t:'promoter'},
+  ],
+  pBS:[
+    {n:'T3 promoter',s:756,e:775,d:-1,t:'promoter'},
+    {n:'T7 promoter',s:392,e:411,d:1,t:'promoter'},
+    {n:'MCS',s:412,e:755,d:1,t:'mcs'},
+    {n:'lacZ-α',s:350,e:809,d:1,t:'reporter'},
+    {n:'AmpR',s:1629,e:2489,d:1,t:'res'},
+    {n:'pUC ori',s:900,e:1540,d:1,t:'ori'},
+    {n:'f1 ori',s:1,e:454,d:1,t:'ori'},
+  ],
+  pET28a:[
+    {n:'T7 promoter',s:370,e:386,d:1,t:'promoter'},
+    {n:'lac operator',s:387,e:403,d:1,t:'promoter'},
+    {n:'N-His tag',s:270,e:315,d:1,t:'tag'},
+    {n:'MCS',s:158,e:268,d:1,t:'mcs'},
+    {n:'Thrombin site',s:270,e:293,d:1,t:'other'},
+    {n:'C-His tag',s:123,e:140,d:1,t:'tag'},
+    {n:'T7 terminator',s:26,e:73,d:1,t:'terminator'},
+    {n:'KanR',s:1500,e:2314,d:-1,t:'res'},
+    {n:'pBR322 ori',s:2750,e:3420,d:1,t:'ori'},
+    {n:'f1 ori',s:3817,e:4270,d:1,t:'ori'},
+    {n:'lacI',s:4329,e:5369,d:-1,t:'gene'},
+  ],
+  pET21a:[
+    {n:'T7 promoter',s:370,e:386,d:1,t:'promoter'},
+    {n:'lac operator',s:387,e:403,d:1,t:'promoter'},
+    {n:'MCS',s:158,e:330,d:1,t:'mcs'},
+    {n:'C-His tag',s:123,e:140,d:1,t:'tag'},
+    {n:'T7 terminator',s:26,e:73,d:1,t:'terminator'},
+    {n:'AmpR',s:1629,e:2489,d:1,t:'res'},
+    {n:'pBR322 ori',s:2750,e:3420,d:1,t:'ori'},
+    {n:'f1 ori',s:3817,e:4270,d:1,t:'ori'},
+    {n:'lacI',s:4329,e:5443,d:-1,t:'gene'},
+  ],
+  pGEX4T1:[
+    {n:'tac promoter',s:4863,e:4969,d:1,t:'promoter'},
+    {n:'GST tag',s:1,e:789,d:1,t:'tag'},
+    {n:'Thrombin site',s:790,e:819,d:1,t:'other'},
+    {n:'MCS',s:820,e:906,d:1,t:'mcs'},
+    {n:'AmpR',s:1629,e:2489,d:-1,t:'res'},
+    {n:'pBR322 ori',s:2490,e:3250,d:1,t:'ori'},
+    {n:'lacI',s:3700,e:4862,d:-1,t:'gene'},
+  ],
+  pMALc2X:[
+    {n:'Ptac promoter',s:6500,e:6646,d:1,t:'promoter'},
+    {n:'MBP tag',s:1,e:1170,d:1,t:'tag'},
+    {n:'Factor Xa site',s:1171,e:1200,d:1,t:'other'},
+    {n:'MCS',s:1201,e:1320,d:1,t:'mcs'},
+    {n:'rrnB T1/T2 term',s:1321,e:1560,d:1,t:'terminator'},
+    {n:'AmpR',s:1629,e:2489,d:-1,t:'res'},
+    {n:'pBR322 ori',s:2490,e:3250,d:1,t:'ori'},
+    {n:'lacI',s:5000,e:6100,d:-1,t:'gene'},
+  ],
+  pDONR221:[
+    {n:'attP1',s:1,e:241,d:1,t:'other'},
+    {n:'ccdB',s:350,e:985,d:1,t:'gene'},
+    {n:'CmR',s:1055,e:1714,d:1,t:'res'},
+    {n:'attP2',s:1740,e:1980,d:-1,t:'other'},
+    {n:'KanR',s:2400,e:3215,d:-1,t:'res'},
+    {n:'pUC ori',s:3300,e:4100,d:1,t:'ori'},
+  ],
+  pDEST17:[
+    {n:'T7 promoter',s:6150,e:6170,d:1,t:'promoter'},
+    {n:'N-His tag',s:6050,e:6110,d:1,t:'tag'},
+    {n:'attR1',s:1,e:241,d:1,t:'other'},
+    {n:'ccdB',s:350,e:985,d:1,t:'gene'},
+    {n:'CmR',s:1055,e:1714,d:1,t:'res'},
+    {n:'attR2',s:1740,e:1980,d:-1,t:'other'},
+    {n:'AmpR',s:3100,e:3960,d:-1,t:'res'},
+    {n:'pBR322 ori',s:4000,e:4800,d:1,t:'ori'},
+  ],
+  pDESTHalo:[
+    {n:'CMV promoter',s:6900,e:7200,d:1,t:'promoter'},
+    {n:'T7 promoter',s:6700,e:6720,d:1,t:'promoter'},
+    {n:'HaloTag',s:1,e:951,d:1,t:'tag'},
+    {n:'attR1',s:1050,e:1290,d:1,t:'other'},
+    {n:'ccdB',s:1400,e:2035,d:1,t:'gene'},
+    {n:'CmR',s:2105,e:2764,d:1,t:'res'},
+    {n:'attR2',s:2790,e:3030,d:-1,t:'other'},
+    {n:'AmpR',s:4200,e:5060,d:-1,t:'res'},
+    {n:'pUC ori',s:5200,e:6050,d:1,t:'ori'},
+  ],
+  pcDNA31:[
+    {n:'CMV promoter',s:209,e:863,d:1,t:'promoter'},
+    {n:'MCS',s:890,e:1090,d:1,t:'mcs'},
+    {n:'BGH polyA',s:1098,e:1320,d:1,t:'terminator'},
+    {n:'SV40 ori',s:1426,e:1830,d:1,t:'ori'},
+    {n:'NeoR / KanR',s:1893,e:2687,d:1,t:'res'},
+    {n:'SV40 polyA',s:2695,e:2942,d:1,t:'terminator'},
+    {n:'f1 ori',s:3009,e:3464,d:-1,t:'ori'},
+    {n:'AmpR',s:3519,e:4379,d:-1,t:'res'},
+    {n:'pUC ori',s:4437,e:5107,d:-1,t:'ori'},
+    {n:'CMV enhancer',s:1,e:208,d:1,t:'promoter'},
+  ],
+  pCMVTag2:[
+    {n:'CMV promoter',s:1,e:750,d:1,t:'promoter'},
+    {n:'FLAG tag',s:751,e:785,d:1,t:'tag'},
+    {n:'MCS',s:786,e:910,d:1,t:'mcs'},
+    {n:'SV40 polyA',s:920,e:1160,d:1,t:'terminator'},
+    {n:'f1 ori',s:1200,e:1650,d:-1,t:'ori'},
+    {n:'KanR / NeoR',s:1700,e:2500,d:1,t:'res'},
+    {n:'pBR322 ori',s:2600,e:3300,d:1,t:'ori'},
+    {n:'SV40 promoter',s:3350,e:3550,d:1,t:'promoter'},
+  ],
+  pLentiCMV:[
+    {n:"5' LTR",s:1,e:634,d:1,t:'ltr'},
+    {n:'CMV promoter',s:650,e:1280,d:1,t:'promoter'},
+    {n:'GFP',s:1310,e:2023,d:1,t:'reporter'},
+    {n:'WPRE',s:2050,e:2643,d:1,t:'other'},
+    {n:"3' LTR (ΔU3)",s:2700,e:3300,d:1,t:'ltr'},
+    {n:'BlastR',s:3500,e:4000,d:1,t:'res'},
+    {n:'AmpR',s:5200,e:6060,d:-1,t:'res'},
+    {n:'pUC ori',s:6100,e:6800,d:-1,t:'ori'},
+    {n:'SV40 polyA',s:3350,e:3490,d:1,t:'terminator'},
+  ],
+  psPAX2:[
+    {n:'CMV promoter',s:1,e:780,d:1,t:'promoter'},
+    {n:'HIV-1 gag',s:800,e:2300,d:1,t:'gene'},
+    {n:'HIV-1 pol',s:2301,e:5100,d:1,t:'gene'},
+    {n:'HIV-1 rev',s:5200,e:5799,d:1,t:'gene'},
+    {n:'SV40 polyA',s:5850,e:6080,d:1,t:'terminator'},
+    {n:'AmpR',s:7000,e:7860,d:-1,t:'res'},
+    {n:'pUC ori',s:8000,e:8700,d:-1,t:'ori'},
+    {n:'CMV enhancer',s:8750,e:10703,d:1,t:'promoter'},
+  ],
+  pMD2G:[
+    {n:'CMV promoter',s:1,e:780,d:1,t:'promoter'},
+    {n:'VSV-G',s:800,e:2256,d:1,t:'gene'},
+    {n:'SV40 polyA',s:2290,e:2530,d:1,t:'terminator'},
+    {n:'AmpR',s:3400,e:4260,d:-1,t:'res'},
+    {n:'pUC ori',s:4300,e:5000,d:-1,t:'ori'},
+    {n:'CMV enhancer',s:5100,e:5822,d:1,t:'promoter'},
+  ],
+  pX330:[
+    {n:'U6 promoter',s:1,e:250,d:1,t:'promoter'},
+    {n:'sgRNA scaffold',s:270,e:390,d:1,t:'sgrna'},
+    {n:'CBh promoter',s:460,e:900,d:1,t:'promoter'},
+    {n:'SpCas9',s:901,e:5894,d:1,t:'cas9'},
+    {n:'2A-EGFP',s:5895,e:6614,d:1,t:'reporter'},
+    {n:'bGH polyA',s:6615,e:6843,d:1,t:'terminator'},
+    {n:'AmpR',s:7000,e:7860,d:-1,t:'res'},
+    {n:'pUC ori',s:7900,e:8484,d:-1,t:'ori'},
+  ],
+  lentiCRISPRv2:[
+    {n:"5' LTR",s:1,e:634,d:1,t:'ltr'},
+    {n:'U6 promoter',s:700,e:950,d:1,t:'promoter'},
+    {n:'sgRNA scaffold',s:970,e:1090,d:1,t:'sgrna'},
+    {n:'EF1α promoter',s:1200,e:1800,d:1,t:'promoter'},
+    {n:'Cas9',s:1801,e:6794,d:1,t:'cas9'},
+    {n:'P2A',s:6795,e:6863,d:1,t:'other'},
+    {n:'PuroR',s:6864,e:7463,d:1,t:'res'},
+    {n:'WPRE',s:7500,e:8093,d:1,t:'other'},
+    {n:"3' LTR (ΔU3)",s:8150,e:8750,d:1,t:'ltr'},
+    {n:'AmpR',s:10200,e:11060,d:-1,t:'res'},
+    {n:'pUC ori',s:11100,e:11800,d:-1,t:'ori'},
+    {n:'cPPT/CTS',s:9500,e:9750,d:1,t:'other'},
+  ],
+};
+
+function drawPlasmidMap(vecId,totalBp){
+  const feats=VEC_FEATURES[vecId];
+  if(!feats) return '';
+  const S=220,cx=S/2,cy=S/2,R=72,stroke=12;
+  function bpToAngle(bp){return (bp/totalBp)*2*Math.PI-Math.PI/2;}
+  function arcPath(s,e,r,ccw){
+    const a1=bpToAngle(s),a2=bpToAngle(e);
+    const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
+    const x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
+    const large=(e-s)/totalBp>0.5?1:0;
+    return `M${x1},${y1} A${r},${r},0,${large},${ccw?0:1},${x2},${y2}`;
+  }
+  function arrowTip(e,r,d){
+    const a=bpToAngle(e);
+    const tip=[cx+r*Math.cos(a),cy+r*Math.sin(a)];
+    const perp=[Math.cos(a+(d>0?-Math.PI/2:Math.PI/2)),Math.sin(a+(d>0?-Math.PI/2:Math.PI/2))];
+    const back=bpToAngle(e-(totalBp*0.015));
+    const bx=cx+r*Math.cos(back),by=cy+r*Math.sin(back);
+    const aw=stroke*0.7;
+    return `M${tip[0]},${tip[1]} L${bx+perp[0]*aw},${by+perp[1]*aw} L${bx-perp[0]*aw},${by-perp[1]*aw}Z`;
+  }
+  let paths='',labels='';
+  feats.forEach(f=>{
+    const col=TYPE_COLORS[f.t]||TYPE_COLORS.other;
+    const r=f.d>0?R:(R-stroke-2);
+    const sw=stroke-1;
+    const span=((f.e-f.s+totalBp)%totalBp);
+    if(span<3) return;
+    paths+=`<path d="${arcPath(f.s,f.e,r,false)}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="butt"/>`;
+    paths+=`<path d="${arrowTip(f.e,r,f.d)}" fill="${col}"/>`;
+    const midBp=(f.s+f.e)/2;
+    const ma=bpToAngle(midBp);
+    const lr=R+stroke+10;
+    const lx=cx+lr*Math.cos(ma),ly=cy+lr*Math.sin(ma);
+    const anchor=lx>cx+5?'start':(lx<cx-5?'end':'middle');
+    if(span/totalBp>0.04){
+      labels+=`<text x="${lx}" y="${ly}" text-anchor="${anchor}" dominant-baseline="middle" font-size="7.5" fill="${col}" font-family="IBM Plex Sans,sans-serif">${f.n}</text>`;
+    }
+  });
+  return `<svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--border2)" stroke-width="1.5"/>
+    ${paths}
+    <text x="${cx}" y="${cy-6}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text)" font-family="IBM Plex Sans,sans-serif">${(totalBp/1000).toFixed(1)}</text>
+    <text x="${cx}" y="${cy+8}" text-anchor="middle" font-size="8" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">kb</text>
+    ${labels}
+  </svg>`;
+}
+
 const VECTORS=[
   {id:'pUC19',name:'pUC19',group:'Bacterial Cloning',size:2686,promoter:'lac',resistance:'AmpR',origin:'pMB1',tags:null,use:'General-purpose cloning vector with lacZ α-complementation for blue-white screening.',keywords:['cloning','AmpR','lacZ','MCS','E. coli','blue-white']},
   {id:'pBS',name:'pBluescript SK+',group:'Bacterial Cloning',size:2961,promoter:'T3/T7',resistance:'AmpR',origin:'pUC/f1',tags:null,use:'Cloning and in vitro transcription. Flanking T3 and T7 promoters around MCS.',keywords:['cloning','AmpR','T3','T7','f1 ori','in vitro transcription']},
@@ -576,12 +808,18 @@ function renderVectorLibrary(){
         </div>
         <div class="vec-use">${esc(v.use)}</div>
         <div class="vec-detail">
-          <dl class="vec-feat">
-            <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
-            <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
-            <dt>Origin</dt><dd>${esc(v.origin)}</dd>
-            ${v.tags?`<dt>Tags</dt><dd>${esc(v.tags)}</dd>`:''}
-          </dl>
+          <div class="vec-map-wrap">
+            <div class="vec-map-svg">${drawPlasmidMap(v.id,v.size)}</div>
+            <div>
+              <dl class="vec-feat" style="margin-bottom:8px;">
+                <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
+                <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
+                <dt>Origin</dt><dd>${esc(v.origin)}</dd>
+                ${v.tags?`<dt>Tags</dt><dd>${esc(v.tags)}</dd>`:''}
+              </dl>
+              ${(VEC_FEATURES[v.id]||[]).map(f=>`<div class="vec-feat-item"><span class="vec-feat-dot" style="background:${TYPE_COLORS[f.t]||'#bdc3c7'}"></span><span class="vec-feat-name">${esc(f.n)}</span><span class="vec-feat-pos">${f.s}–${f.e} bp</span></div>`).join('')}
+            </div>
+          </div>
           <div style="margin-top:8px;font-size:11px;color:var(--text3);">Click again to collapse</div>
         </div>
       </div>`;

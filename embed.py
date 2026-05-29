@@ -15,7 +15,6 @@ APPS = [
     ('echo', 'Echo Data Analysis/Echo_Data_Analysis.html'),
     ('deg',  'Degradation Explorer/degradation_visualizer.html'),
     ('lm',   'Labmate/labmate.html'),
-    ('ff',   'Figure Forge/figure_forge.html'),
     ('pd',   'Plate Designer/plate_designer.html'),
     ('dna',  'DNA Tools/dna_tools.html'),
     ('pt',   'Protein Tools/protein_tools.html'),
