@@ -16,7 +16,7 @@ APPS = [
     ('deg',  'Degradation Explorer/degradation_visualizer.html'),
     ('lm',   'Labmate/labmate.html'),
     ('pd',   'Plate Designer/plate_designer.html'),
-    ('dna',  'DNA Tools/dna_tools.html'),
+    ('dna',  'Helix/helix.html'),
     ('pt',   'Protein Tools/protein_tools.html'),
 ]
 

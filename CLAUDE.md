@@ -243,9 +243,11 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-05-29 (Echo JS rewrite + Helix gallery/pX458)
-Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 18.25MB (18,251,580 chars)
-Echo: FULL JS rewrite — removed Pyodide entirely; SheetJS (xlsx@0.18.5) for XLS parsing; custom LM 4PL fitting; app opens instantly, no ~100MB WASM download; works on Pages. Commit fa71e37
-Helix: show-all-maps gallery toggle (minmax 220px grid); cards wider (310px); pX458 added to CRISPR group (9288bp, SpCas9+EGFP+BbsI, CBh/U6, AmpR). Commit fa71e37
+Last session: 2026-05-31 (Hub split, Plate canvas, Echo CDN fix, Protein Tools init)
+Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
+Hub file size: 18.12MB (18,121,629 chars)
+Hub: Options and Suggestions split into two pill buttons (#opts-btn/#sug-btn); #opts-panel empty placeholder; #sug-panel has Formspree form (xeokadev). Commit d950e91
+Echo: Critical fix — Chart.js CDN failure threw at top-level Chart.register(), stopping ALL init code after line 1905 (incl. _ctrlPickerSel Set). Guarded with _ensureChartPlugins(). Commit d950e91
+Protein Tools: Added clearResults() call on init so SVG charts show placeholder text; analyzeSeq wrapped in try/catch for error visibility. Commit d950e91
+Plate Designer: drawSelCanvas() now shows ALL row letters + ALL col numbers, uses roundRect (matching 384 style), sized from FORMATS.selWell/selGap; FORMATS updated with selWell/selGap; well sizes increased; calcWellPx MAX increased; 384 now shows ALL col numbers; subtitle changed to "High-res export". Commit d950e91
 <!-- LAST_SESSION_END -->

@@ -68,7 +68,20 @@ select:focus,input:focus{border-color:var(--accent);}
 .orf-row:hover td{background:var(--surface2);}
 .orf-row.selected-orf td{background:rgba(67,160,71,.1);}
 .vec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;}
-.vec-grid.gallery{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));}
+.vec-grid.gallery{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
+/* Modal */
+#vec-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;display:none;align-items:center;justify-content:center;padding:24px;}
+#vec-modal{background:var(--surface);border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.28);max-width:680px;width:100%;max-height:90vh;overflow-y:auto;position:relative;padding:28px;}
+.vec-modal-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);line-height:1;}
+.vec-modal-close:hover{color:var(--text);}
+.vec-modal-body{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;}
+.vec-modal-svg{flex-shrink:0;}
+.vec-modal-info{flex:1;min-width:200px;}
+.vec-modal-name{font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px;}
+.vec-modal-size{font-size:12px;font-family:var(--mono);color:var(--text3);margin-bottom:12px;}
+.vec-modal-use{font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:14px;}
+.vec-modal-link{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;padding:6px 12px;border:1.5px solid var(--accent);border-radius:7px;margin-top:4px;transition:background .15s;}
+.vec-modal-link:hover{background:rgba(0,121,185,.1);}
 .vec-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;cursor:pointer;transition:border-color .15s;}
 .vec-card.gallery-card{padding:12px;text-align:center;}
 .vec-card.gallery-card .vec-map-svg{display:flex;justify-content:center;}
@@ -761,10 +774,10 @@ const VEC_FEATURES={
   ],
 };
 
-function drawPlasmidMap(vecId,totalBp){
+function drawPlasmidMap(vecId,totalBp,S=220){
   const feats=VEC_FEATURES[vecId];
   if(!feats) return '';
-  const S=220,cx=S/2,cy=S/2,R=72,stroke=12;
+  const cx=S/2,cy=S/2,R=S*0.327,stroke=S*0.055;
   function bpToAngle(bp){return (bp/totalBp)*2*Math.PI-Math.PI/2;}
   function arcPath(s,e,r,ccw){
     const a1=bpToAngle(s),a2=bpToAngle(e);
@@ -793,40 +806,41 @@ function drawPlasmidMap(vecId,totalBp){
     paths+=`<path d="${arrowTip(f.e,r,f.d)}" fill="${col}"/>`;
     const midBp=(f.s+f.e)/2;
     const ma=bpToAngle(midBp);
-    const lr=R+stroke+10;
+    const lr=R+stroke+S*0.045;
     const lx=cx+lr*Math.cos(ma),ly=cy+lr*Math.sin(ma);
     const anchor=lx>cx+5?'start':(lx<cx-5?'end':'middle');
+    const fs=Math.max(6,S*0.034);
     if(span/totalBp>0.04){
-      labels+=`<text x="${lx}" y="${ly}" text-anchor="${anchor}" dominant-baseline="middle" font-size="7.5" fill="${col}" font-family="IBM Plex Sans,sans-serif">${f.n}</text>`;
+      labels+=`<text x="${lx}" y="${ly}" text-anchor="${anchor}" dominant-baseline="middle" font-size="${fs}" fill="${col}" font-family="IBM Plex Sans,sans-serif">${f.n}</text>`;
     }
   });
   return `<svg width="${S}" height="${S}" viewBox="0 0 ${S} ${S}" xmlns="http://www.w3.org/2000/svg">
     <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--border2)" stroke-width="1.5"/>
     ${paths}
-    <text x="${cx}" y="${cy-6}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text)" font-family="IBM Plex Sans,sans-serif">${(totalBp/1000).toFixed(1)}</text>
-    <text x="${cx}" y="${cy+8}" text-anchor="middle" font-size="8" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">kb</text>
+    <text x="${cx}" y="${cy-S*0.027}" text-anchor="middle" font-size="${S*0.05}" font-weight="700" fill="var(--text)" font-family="IBM Plex Sans,sans-serif">${(totalBp/1000).toFixed(1)}</text>
+    <text x="${cx}" y="${cy+S*0.036}" text-anchor="middle" font-size="${S*0.036}" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">kb</text>
     ${labels}
   </svg>`;
 }
 
 const VECTORS=[
-  {id:'pUC19',name:'pUC19',group:'Bacterial Cloning',size:2686,promoter:'lac',resistance:'AmpR',origin:'pMB1',tags:null,use:'General-purpose cloning vector with lacZ α-complementation for blue-white screening.',keywords:['cloning','AmpR','lacZ','MCS','E. coli','blue-white']},
-  {id:'pBS',name:'pBluescript SK+',group:'Bacterial Cloning',size:2961,promoter:'T3/T7',resistance:'AmpR',origin:'pUC/f1',tags:null,use:'Cloning and in vitro transcription. Flanking T3 and T7 promoters around MCS.',keywords:['cloning','AmpR','T3','T7','f1 ori','in vitro transcription']},
-  {id:'pET28a',name:'pET-28a(+)',group:'Bacterial Expression',size:5369,promoter:'T7/lac',resistance:'KanR',origin:'pMB1',tags:'N-His · Thrombin · C-His',use:'High-level E. coli expression (BL21) with both N- and C-terminal 6×His tags. IPTG inducible.',keywords:['expression','KanR','His-tag','T7','BL21','IPTG','His6']},
+  {id:'pUC19',name:'pUC19',group:'Bacterial Cloning',size:2686,promoter:'lac',resistance:'AmpR',origin:'pMB1',tags:null,addgeneId:50005,use:'General-purpose cloning vector with lacZ α-complementation for blue-white screening.',keywords:['cloning','AmpR','lacZ','MCS','E. coli','blue-white']},
+  {id:'pBS',name:'pBluescript SK+',group:'Bacterial Cloning',size:2961,promoter:'T3/T7',resistance:'AmpR',origin:'pUC/f1',tags:null,addgeneId:212205,use:'Cloning and in vitro transcription. Flanking T3 and T7 promoters around MCS.',keywords:['cloning','AmpR','T3','T7','f1 ori','in vitro transcription']},
+  {id:'pET28a',name:'pET-28a(+)',group:'Bacterial Expression',size:5369,promoter:'T7/lac',resistance:'KanR',origin:'pMB1',tags:'N-His · Thrombin · C-His',addgeneId:69864,use:'High-level E. coli expression (BL21) with both N- and C-terminal 6×His tags. IPTG inducible.',keywords:['expression','KanR','His-tag','T7','BL21','IPTG','His6']},
   {id:'pET21a',name:'pET-21a(+)',group:'Bacterial Expression',size:5443,promoter:'T7/lac',resistance:'AmpR',origin:'pMB1',tags:'C-His',use:'E. coli expression with C-terminal 6×His tag. IPTG inducible via T7/lac promoter.',keywords:['expression','AmpR','His-tag','T7','BL21','IPTG','His6']},
-  {id:'pGEX4T1',name:'pGEX-4T-1',group:'Bacterial Expression',size:4969,promoter:'tac',resistance:'AmpR',origin:'pBR322',tags:'GST (N-term) · Thrombin',use:'GST-fusion expression for affinity purification. IPTG inducible. Thrombin cleavage site.',keywords:['expression','AmpR','GST','fusion','thrombin','IPTG','purification']},
+  {id:'pGEX4T1',name:'pGEX-4T-1',group:'Bacterial Expression',size:4969,promoter:'tac',resistance:'AmpR',origin:'pBR322',tags:'GST (N-term) · Thrombin',addgeneId:27458,use:'GST-fusion expression for affinity purification. IPTG inducible. Thrombin cleavage site.',keywords:['expression','AmpR','GST','fusion','thrombin','IPTG','purification']},
   {id:'pMALc2X',name:'pMAL-c2X',group:'Bacterial Expression',size:6646,promoter:'Ptac',resistance:'AmpR',origin:'pBR322',tags:'MBP (N-term) · Factor Xa',use:'MBP fusion for enhanced solubility. Factor Xa cleavage site for tag removal.',keywords:['expression','AmpR','MBP','fusion','Factor Xa','solubility','IPTG']},
-  {id:'pDONR221',name:'pDONR221',group:'Gateway / Recombination',size:4456,promoter:'—',resistance:'KanR / CmR',origin:'pUC',tags:'attP1 · attP2 · ccdB',use:'Universal Gateway donor vector. BP recombination to create sequence-verified entry clones.',keywords:['Gateway','KanR','CmR','attP','BP','entry clone','recombination']},
-  {id:'pDEST17',name:'pDEST17',group:'Gateway / Recombination',size:6227,promoter:'T7',resistance:'AmpR',origin:'pBR322',tags:'N-His · attR1 · attR2 · ccdB',use:'Gateway bacterial expression destination. LR reaction inserts GOI with N-terminal His-tag.',keywords:['Gateway','AmpR','His-tag','T7','destination','LR','recombination']},
+  {id:'pDONR221',name:'pDONR221',group:'Gateway / Recombination',size:4456,promoter:'—',resistance:'KanR / CmR',origin:'pUC',tags:'attP1 · attP2 · ccdB',addgeneId:12536,use:'Universal Gateway donor vector. BP recombination to create sequence-verified entry clones.',keywords:['Gateway','KanR','CmR','attP','BP','entry clone','recombination']},
+  {id:'pDEST17',name:'pDEST17',group:'Gateway / Recombination',size:6227,promoter:'T7',resistance:'AmpR',origin:'pBR322',tags:'N-His · attR1 · attR2 · ccdB',addgeneId:11803,use:'Gateway bacterial expression destination. LR reaction inserts GOI with N-terminal His-tag.',keywords:['Gateway','AmpR','His-tag','T7','destination','LR','recombination']},
   {id:'pDESTHalo',name:'pDEST-HaloTag7',group:'Gateway / Recombination',size:7200,promoter:'CMV / T7',resistance:'AmpR',origin:'pUC',tags:'HaloTag · attR',use:'HaloTag fusion via Gateway LR for mammalian or in vitro expression and pull-downs.',keywords:['Gateway','AmpR','HaloTag','CMV','T7','destination','LR','pull-down']},
-  {id:'pcDNA31',name:'pcDNA3.1(+)',group:'Mammalian Expression',size:5428,promoter:'CMV',resistance:'AmpR / NeoR',origin:'pUC / SV40',tags:'BGH polyA',use:'High-level CMV-driven mammalian transient or stable expression. G418 selection for stables.',keywords:['mammalian','AmpR','NeoR','CMV','transient','stable','HEK293','CHO']},
+  {id:'pcDNA31',name:'pcDNA3.1(+)',group:'Mammalian Expression',size:5428,promoter:'CMV',resistance:'AmpR / NeoR',origin:'pUC / SV40',tags:'BGH polyA',addgeneId:128034,use:'High-level CMV-driven mammalian transient or stable expression. G418 selection for stables.',keywords:['mammalian','AmpR','NeoR','CMV','transient','stable','HEK293','CHO']},
   {id:'pCMVTag2',name:'pCMV-Tag2',group:'Mammalian Expression',size:4300,promoter:'CMV',resistance:'KanR / G418',origin:'pBR322',tags:'FLAG (N-term)',use:'N-terminal FLAG-tagged mammalian expression. Useful for immunoprecipitation.',keywords:['mammalian','KanR','FLAG','CMV','IP','co-IP','pulldown']},
-  {id:'pLentiCMV',name:'pLenti-CMV-GFP-Blast',group:'Lentiviral System',size:8200,promoter:'CMV',resistance:'AmpR / BlastR',origin:'pUC',tags:'GFP · WPRE · LTR',use:'Lentiviral transfer vector. CMV-driven GFP with WPRE for enhanced expression. Blasticidin selection.',keywords:['lentiviral','AmpR','BlasticidinR','GFP','WPRE','CMV','stable','transfer']},
-  {id:'psPAX2',name:'psPAX2',group:'Lentiviral System',size:10703,promoter:'CMV',resistance:'AmpR',origin:'pUC',tags:'HIV gag · pol · rev',use:'2nd-generation HIV-1 packaging plasmid. Co-transfect with transfer vector + pMD2.G.',keywords:['lentiviral','packaging','AmpR','gag','pol','rev','2nd generation']},
-  {id:'pMD2G',name:'pMD2.G',group:'Lentiviral System',size:5822,promoter:'CMV',resistance:'AmpR',origin:'pUC',tags:'VSV-G envelope',use:'VSV-G envelope vector for pseudotyping lentiviral particles. Broad tropism.',keywords:['lentiviral','envelope','AmpR','VSV-G','pseudotyping','broad tropism']},
-  {id:'pX330',name:'pX330-U6-Cas9',group:'CRISPR',size:8484,promoter:'U6 (sgRNA) · CBh (Cas9)',resistance:'AmpR',origin:'pUC',tags:'SpCas9 · U6-sgRNA',use:'All-in-one CRISPR vector. Express both sgRNA (U6) and SpCas9 (CBh) from a single plasmid.',keywords:['CRISPR','AmpR','SpCas9','sgRNA','U6','CBh','genome editing']},
-  {id:'lentiCRISPRv2',name:'lentiCRISPRv2',group:'CRISPR',size:14000,promoter:'U6 (sgRNA) · EF1α (Cas9)',resistance:'AmpR / PuroR',origin:'pUC',tags:'SpCas9 · PuroR · sgRNA',use:'Lentiviral CRISPR for stable genome editing. Puromycin selection. EF1α-driven SpCas9.',keywords:['CRISPR','lentiviral','AmpR','PuroR','SpCas9','sgRNA','EF1α','stable']},
-  {id:'pX458',name:'pX458 (pSpCas9(BB)-2A-GFP)',group:'CRISPR',size:9288,promoter:'CBh (Cas9) · U6 (sgRNA)',resistance:'AmpR',origin:'pUC',tags:'SpCas9 · 2A-EGFP · BbsI sites',use:'All-in-one CRISPR vector. SpCas9 and EGFP co-expressed from CBh promoter via 2A peptide. sgRNA cloned via BbsI. Addgene #48138.',keywords:['CRISPR','AmpR','SpCas9','sgRNA','GFP','CBh','BbsI','Addgene 48138','knockout']},
+  {id:'pLentiCMV',name:'pLenti-CMV-GFP-Blast',group:'Lentiviral System',size:8200,promoter:'CMV',resistance:'AmpR / BlastR',origin:'pUC',tags:'GFP · WPRE · LTR',addgeneId:17445,use:'Lentiviral transfer vector. CMV-driven GFP with WPRE for enhanced expression. Blasticidin selection.',keywords:['lentiviral','AmpR','BlasticidinR','GFP','WPRE','CMV','stable','transfer']},
+  {id:'psPAX2',name:'psPAX2',group:'Lentiviral System',size:10703,promoter:'CMV',resistance:'AmpR',origin:'pUC',tags:'HIV gag · pol · rev',addgeneId:12260,use:'2nd-generation HIV-1 packaging plasmid. Co-transfect with transfer vector + pMD2.G.',keywords:['lentiviral','packaging','AmpR','gag','pol','rev','2nd generation']},
+  {id:'pMD2G',name:'pMD2.G',group:'Lentiviral System',size:5822,promoter:'CMV',resistance:'AmpR',origin:'pUC',tags:'VSV-G envelope',addgeneId:12259,use:'VSV-G envelope vector for pseudotyping lentiviral particles. Broad tropism.',keywords:['lentiviral','envelope','AmpR','VSV-G','pseudotyping','broad tropism']},
+  {id:'pX330',name:'pX330-U6-Cas9',group:'CRISPR',size:8484,promoter:'U6 (sgRNA) · CBh (Cas9)',resistance:'AmpR',origin:'pUC',tags:'SpCas9 · U6-sgRNA',addgeneId:42230,use:'All-in-one CRISPR vector. Express both sgRNA (U6) and SpCas9 (CBh) from a single plasmid.',keywords:['CRISPR','AmpR','SpCas9','sgRNA','U6','CBh','genome editing']},
+  {id:'lentiCRISPRv2',name:'lentiCRISPRv2',group:'CRISPR',size:14000,promoter:'U6 (sgRNA) · EF1α (Cas9)',resistance:'AmpR / PuroR',origin:'pUC',tags:'SpCas9 · PuroR · sgRNA',addgeneId:52961,use:'Lentiviral CRISPR for stable genome editing. Puromycin selection. EF1α-driven SpCas9.',keywords:['CRISPR','lentiviral','AmpR','PuroR','SpCas9','sgRNA','EF1α','stable']},
+  {id:'pX458',name:'pX458 (pSpCas9(BB)-2A-GFP)',group:'CRISPR',size:9288,promoter:'CBh (Cas9) · U6 (sgRNA)',resistance:'AmpR',origin:'pUC',tags:'SpCas9 · 2A-EGFP · BbsI sites',addgeneId:48138,use:'All-in-one CRISPR vector. SpCas9 and EGFP co-expressed from CBh promoter via 2A peptide. sgRNA cloned via BbsI.',keywords:['CRISPR','AmpR','SpCas9','sgRNA','GFP','CBh','BbsI','knockout']},
 ];
 
 const VEC_GROUPS=['Bacterial Cloning','Bacterial Expression','Gateway / Recombination','Mammalian Expression','Lentiviral System','CRISPR'];
@@ -859,22 +873,14 @@ function renderVectorLibrary(){
       const isExp=_expandedVec===v.id;
       const matchTags=q?v.keywords.filter(k=>k.toLowerCase().includes(q)):[];
       if(_showAllMaps){
-        // Gallery mode: map + name + tags only
-        html+=`<div class="vec-card gallery-card${isExp?' expanded':''}" onclick="toggleVec('${v.id}')">
-          <div class="vec-map-svg">${drawPlasmidMap(v.id,v.size)}</div>
+        // Gallery mode: map + name + tags, click opens modal
+        html+=`<div class="vec-card gallery-card" onclick="openVecModal('${v.id}')">
+          <div class="vec-map-svg">${drawPlasmidMap(v.id,v.size,240)}</div>
           <div class="vec-name" style="margin-top:8px;">${esc(v.name)}</div>
           <div class="vec-size">${v.size.toLocaleString()} bp</div>
           <div class="vec-tags" style="justify-content:center;">
             ${v.resistance.split('/').map(r=>`<span class="vec-tag">${esc(r.trim())}</span>`).join('')}
-          </div>
-          <div class="vec-detail">
-            <dl class="vec-feat" style="text-align:left;margin-top:8px;">
-              <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
-              <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
-              <dt>Origin</dt><dd>${esc(v.origin)}</dd>
-              ${v.tags?`<dt>Tags</dt><dd>${esc(v.tags)}</dd>`:''}
-            </dl>
-            <div style="text-align:left;">${(VEC_FEATURES[v.id]||[]).map(f=>`<div class="vec-feat-item"><span class="vec-feat-dot" style="background:${TYPE_COLORS[f.t]||'#bdc3c7'}"></span><span class="vec-feat-name">${esc(f.n)}</span><span class="vec-feat-pos">${f.s}–${f.e} bp</span></div>`).join('')}</div>
+            ${v.addgeneId?`<span class="vec-tag" style="background:rgba(0,121,185,.12);color:var(--accent);">Addgene</span>`:''}
           </div>
         </div>`;
       } else {
@@ -930,7 +936,53 @@ function _fallbackCopy(txt){
   document.body.removeChild(ta);
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ─── Vector modal ─────────────────────────────────────────────────────────────
+function openVecModal(id) {
+  const v = VECTORS.find(x => x.id === id);
+  if (!v) return;
+  const svgHtml = drawPlasmidMap(v.id, v.size, 280);
+  const feats = VEC_FEATURES[v.id] || [];
+  const addgeneHtml = v.addgeneId
+    ? `<a class="vec-modal-link" href="https://www.addgene.org/${v.addgeneId}/" target="_blank" rel="noopener">&#8599; Addgene #${v.addgeneId}</a>`
+    : '';
+  document.getElementById('vec-modal-content').innerHTML = `
+    <div class="vec-modal-body">
+      <div class="vec-modal-svg">${svgHtml}</div>
+      <div class="vec-modal-info">
+        <div class="vec-modal-name">${esc(v.name)}</div>
+        <div class="vec-modal-size">${v.size.toLocaleString()} bp &nbsp;·&nbsp; ${(v.size/1000).toFixed(2)} kb</div>
+        <div class="vec-modal-use">${esc(v.use)}</div>
+        <dl class="vec-feat" style="margin-bottom:10px;">
+          <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
+          <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
+          <dt>Origin</dt><dd>${esc(v.origin)}</dd>
+          ${v.tags ? `<dt>Tags</dt><dd>${esc(v.tags)}</dd>` : ''}
+        </dl>
+        ${feats.length ? `<div>${feats.map(f=>`<div class="vec-feat-item"><span class="vec-feat-dot" style="background:${TYPE_COLORS[f.t]||'#bdc3c7'}"></span><span class="vec-feat-name">${esc(f.n)}</span><span class="vec-feat-pos">${f.s}–${f.e} bp</span></div>`).join('')}</div>` : ''}
+        ${addgeneHtml}
+      </div>
+    </div>`;
+  document.getElementById('vec-modal-overlay').style.display = 'flex';
+}
+
+function closeVecModal() {
+  document.getElementById('vec-modal-overlay').style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeVecModal();
+});
+
 (function(){var tip=document.getElementById('pinfo-tip');document.addEventListener('mouseover',function(e){var t=e.target.closest('.pinfo');if(!t)return;tip.textContent=t.dataset.tip;tip.style.display='block';tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px';});document.addEventListener('mouseout',function(e){if(e.target.closest('.pinfo'))tip.style.display='none';});document.addEventListener('mousemove',function(e){if(tip.style.display==='block'){tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px';}});})();
 </script>
+
+<div id="vec-modal-overlay" onclick="if(event.target===this)closeVecModal()">
+  <div id="vec-modal">
+    <button class="vec-modal-close" onclick="closeVecModal()">&#10005;</button>
+    <div id="vec-modal-content"></div>
+  </div>
+</div>
+
 </body>
 </html>

@@ -77,6 +77,12 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .sug-submit:hover{opacity:.88;}
 .sug-thanks{font-size:12px;color:var(--accent3);margin-top:8px;text-align:center;}
 .sug-thanks.hidden{display:none;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.opts-label{font-size:12px;color:var(--text2);}
+.theme-toggle-btn{padding:4px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-family:var(--sans);font-size:11px;cursor:pointer;transition:background .15s,color .15s;}
+.theme-toggle-btn:hover{background:var(--surface2);}
+.opts-divider{height:1px;background:var(--border);margin:12px 0;}
+.opts-version{font-size:11px;color:var(--text3);text-align:center;}
 
 /* CONFETTI */
 #confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:9998;display:none;}
@@ -113,7 +119,12 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 </div>
 <div id="opts-panel" class="opts-panel hidden">
   <div class="opts-title">Options</div>
-  <div style="font-size:12px;color:var(--text2);margin-top:8px;">More settings coming soon.</div>
+  <div class="opts-row">
+    <span class="opts-label">Appearance</span>
+    <button id="theme-toggle-opts" class="theme-toggle-btn" onclick="toggleTheme()">&#9790; Dark</button>
+  </div>
+  <div class="opts-divider"></div>
+  <div class="opts-version">The Hub &middot; v2.1</div>
 </div>
 <div id="sug-panel" class="opts-panel hidden">
   <div class="opts-title">Send a Suggestion</div>
@@ -579,7 +590,10 @@ function toggleTheme() {
   var next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
   html.setAttribute('data-theme', next);
   localStorage.setItem('hub_theme', next);
-  document.getElementById('theme-btn').textContent = next === 'dark' ? '☀ Light' : '☾ Dark';
+  var label = next === 'dark' ? '&#9728; Light' : '&#9790; Dark';
+  document.getElementById('theme-btn').innerHTML = label;
+  var optBtn = document.getElementById('theme-toggle-opts');
+  if (optBtn) optBtn.innerHTML = label;
   document.querySelectorAll('iframe').forEach(function(fr) {
     try { fr.contentDocument.documentElement.setAttribute('data-theme', next); } catch(e) {}
   });
@@ -611,12 +625,16 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('submit', function(e) {
       e.preventDefault();
       fetch(form.action, {method:'POST', body: new FormData(form), headers:{Accept:'application/json'}})
-        .then(function() {
+        .then(function(r) {
+          if (!r.ok) throw new Error('Server returned ' + r.status);
           form.reset();
+          document.getElementById('sug-thanks').textContent = 'Thanks! Your suggestion has been sent.';
+          document.getElementById('sug-thanks').style.color = '';
           document.getElementById('sug-thanks').classList.remove('hidden');
         })
-        .catch(function() {
-          document.getElementById('sug-thanks').textContent = 'Failed to send. Please try again.';
+        .catch(function(err) {
+          document.getElementById('sug-thanks').textContent = 'Could not send (' + (err.message||'network error') + '). Check formspree.io/f/xeokadev is active.';
+          document.getElementById('sug-thanks').style.color = 'var(--accent)';
           document.getElementById('sug-thanks').classList.remove('hidden');
         });
     });
@@ -627,7 +645,10 @@ document.addEventListener('DOMContentLoaded', function() {
   var t = localStorage.getItem('hub_theme') || 'light';
   document.documentElement.setAttribute('data-theme', t);
   document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('theme-btn').textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
+    var label = t === 'dark' ? '&#9728; Light' : '&#9790; Dark';
+    document.getElementById('theme-btn').innerHTML = label;
+    var optBtn = document.getElementById('theme-toggle-opts');
+    if (optBtn) optBtn.innerHTML = label;
   });
 })();
 </script>
