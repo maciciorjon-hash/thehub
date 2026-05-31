@@ -131,7 +131,7 @@ header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-i
   <div class="logo">P</div>
   <div>
     <div class="app-name">Plate Designer</div>
-    <div class="app-sub">Visual plate layout · 6 to 384-well · 600 DPI export</div>
+    <div class="app-sub">Visual plate layout · 6 to 384-well · High-res export</div>
   </div>
   <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☾ Dark</button>
 </header>
@@ -276,12 +276,12 @@ function switchTab(id, btn) {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const FORMATS = {
-  '6':  {rows:2,  cols:3,  wellPx:64, radius:'50%', gap:6},
-  '12': {rows:3,  cols:4,  wellPx:46, radius:'50%', gap:5},
-  '24': {rows:4,  cols:6,  wellPx:34, radius:'50%', gap:4},
-  '48': {rows:6,  cols:8,  wellPx:26, radius:'50%', gap:3},
-  '96': {rows:8,  cols:12, wellPx:20, radius:'50%', gap:3},
-  '384':{rows:16, cols:24, wellPx:12, radius:'3px', gap:2},
+  '6':   {rows:2,  cols:3,  wellPx:90,  radius:'50%', gap:8,  selWell:55, selGap:6},
+  '12':  {rows:3,  cols:4,  wellPx:68,  radius:'50%', gap:7,  selWell:44, selGap:5},
+  '24':  {rows:4,  cols:6,  wellPx:50,  radius:'50%', gap:6,  selWell:34, selGap:4},
+  '48':  {rows:6,  cols:8,  wellPx:38,  radius:'50%', gap:5,  selWell:26, selGap:3},
+  '96':  {rows:8,  cols:12, wellPx:28,  radius:'50%', gap:4,  selWell:20, selGap:3},
+  '384': {rows:16, cols:24, wellPx:16,  radius:'3px', gap:2,  selWell:12, selGap:2},
 };
 const ROWS_ALL = 'ABCDEFGHIJKLMNOP'.split('');
 const WELL_TYPES = [
@@ -369,7 +369,7 @@ function setFormat(f) {
 // ─── Plate (6/12/24/48/96-well CSS) ──────────────────────────────────────────
 function calcWellPx() {
   const avail = (document.getElementById('plate-scroll-area').clientWidth || 800) - 120;
-  const MAX = {'6':90,'12':68,'24':52,'48':38,'96':28,'384':16};
+  const MAX = {'6':120,'12':90,'24':66,'48':52,'96':36,'384':16};
   const px = Math.floor(avail / FORMATS[currentFormat].cols);
   return Math.max(12, Math.min(px, MAX[currentFormat]));
 }
@@ -510,9 +510,9 @@ function sizePlate384Canvas() {
   const canvas = document.getElementById('plate-canvas-384');
   if (!canvas) return;
   const dpr = window.devicePixelRatio || 1;
-  const WELL = 14, GAP = 2, PAD = 28, LABELW = 20, LABELH = 16;
-  const W = LABELW + 24*(WELL+GAP) + PAD;
-  const H = LABELH + 16*(WELL+GAP) + PAD;
+  const WELL = 16, GAP = 2, PAD = 8, LABELW = 20, LABELH = 16;
+  const W = PAD + LABELW + 24*(WELL+GAP) - GAP + PAD;
+  const H = PAD + LABELH + 16*(WELL+GAP) - GAP + PAD;
   canvas.width = W * dpr;
   canvas.height = H * dpr;
   canvas.style.width = W + 'px';
@@ -526,13 +526,13 @@ function sizePlate384Canvas() {
 }
 
 function get384Pos(canvas, mx, my) {
-  const WELL = canvas._WELL, GAP = canvas._GAP, LABELW = canvas._LABELW, LABELH = canvas._LABELH;
-  const x = mx - LABELW, y = my - LABELH;
+  const WELL = canvas._WELL, GAP = canvas._GAP, PAD = canvas._PAD || 8, LABELW = canvas._LABELW, LABELH = canvas._LABELH;
+  const x = mx - PAD - LABELW, y = my - PAD - LABELH;
   const c = Math.floor(x / (WELL + GAP));
   const r = Math.floor(y / (WELL + GAP));
   if (c < 0 || c >= 24 || r < 0 || r >= 16) return null;
-  const cx = LABELW + c*(WELL+GAP), cy = LABELH + r*(WELL+GAP);
-  if (mx < cx || mx > cx+WELL || my < cy || my > cy+WELL) return null;
+  const cx = c*(WELL+GAP), cy = r*(WELL+GAP);
+  if (x < cx || x > cx+WELL || y < cy || y > cy+WELL) return null;
   return {row:r, col:c, id: ROWS_ALL[r] + (c+1)};
 }
 
@@ -588,7 +588,7 @@ function drawPlate384() {
   const canvas = document.getElementById('plate-canvas-384');
   if (!canvas) return;
   const dpr = canvas._dpr || 1;
-  const WELL = canvas._WELL, GAP = canvas._GAP, LABELW = canvas._LABELW, LABELH = canvas._LABELH;
+  const WELL = canvas._WELL, GAP = canvas._GAP, PAD = canvas._PAD || 8, LABELW = canvas._LABELW, LABELH = canvas._LABELH;
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -603,24 +603,24 @@ function drawPlate384() {
   ctx.fillStyle = textColor;
   ctx.font = 'bold 8px "IBM Plex Mono",monospace';
   ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
   for (let r=0; r<16; r++) {
-    const y = LABELH + r*(WELL+GAP) + WELL/2 + 3;
-    ctx.fillText(ROWS_ALL[r], LABELW - 3, y);
+    const cy = PAD + LABELH + r*(WELL+GAP) + WELL/2;
+    ctx.fillText(ROWS_ALL[r], PAD + LABELW - 2, cy);
   }
-  // Col labels
+  // Col labels — ALL columns
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
   ctx.font = 'bold 7px "IBM Plex Mono",monospace';
   for (let c=0; c<24; c++) {
-    if ((c+1) % 4 === 0 || c === 0 || c === 23) {
-      const x = LABELW + c*(WELL+GAP) + WELL/2;
-      ctx.fillText(c+1, x, LABELH - 3);
-    }
+    const cx = PAD + LABELW + c*(WELL+GAP) + WELL/2;
+    ctx.fillText(c+1, cx, PAD + LABELH - 2);
   }
   // Wells
   for (let r=0; r<16; r++) {
     for (let c=0; c<24; c++) {
       const id = ROWS_ALL[r] + (c+1);
-      const wx = LABELW + c*(WELL+GAP), wy = LABELH + r*(WELL+GAP);
+      const wx = PAD + LABELW + c*(WELL+GAP), wy = PAD + LABELH + r*(WELL+GAP);
       const ws = wellState[id];
       const t = ws ? typeById(ws.typeId) : null;
       const isSel = selection.has(id);
@@ -637,13 +637,13 @@ function drawPlate384() {
         ctx.roundRect(wx+0.75, wy+0.75, WELL-1.5, WELL-1.5, 2);
         ctx.stroke();
       }
-      // Label text
-      if (ws && ws.label && WELL >= 10) {
+      if (ws && ws.label && WELL >= 12) {
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.font = '5px "IBM Plex Mono",monospace';
         ctx.textAlign = 'center';
-        const lbl = ws.label.length > 4 ? ws.label.slice(0,4) : ws.label;
-        ctx.fillText(lbl, wx+WELL/2, wy+WELL/2+1.8);
+        ctx.textBaseline = 'middle';
+        const lbl = ws.label.length > 5 ? ws.label.slice(0,5) : ws.label;
+        ctx.fillText(lbl, wx+WELL/2, wy+WELL/2);
       }
       ctx.restore();
     }
@@ -655,36 +655,84 @@ function drawSelCanvas() {
   const canvas = document.getElementById('sel-canvas');
   if (!canvas) return;
   const fmt = FORMATS[currentFormat];
+  const selWell = fmt.selWell || 20;
+  const selGap = fmt.selGap || 3;
   const dpr = window.devicePixelRatio || 1;
-  const W_CSS = 420, H_CSS = 140;
-  canvas.width = W_CSS * dpr;
-  canvas.height = H_CSS * dpr;
-  canvas.style.width = W_CSS + 'px';
-  canvas.style.height = H_CSS + 'px';
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+  const labelFont = Math.max(7, Math.min(10, selWell * 0.55));
+  const LABELW = Math.ceil(labelFont * 2.4);
+  const LABELH = Math.ceil(labelFont * 1.9);
+  const PAD = 4;
+
+  const cssW = PAD + LABELW + fmt.cols * (selWell + selGap) - selGap + PAD;
+  const cssH = PAD + LABELH + fmt.rows * (selWell + selGap) - selGap + PAD;
+
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.width = cssW + 'px';
+  canvas.style.height = cssH + 'px';
+  canvas._selMeta = {PAD, LABELW, LABELH, selWell, selGap, rows: fmt.rows, cols: fmt.cols};
+
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
   const bgColor = isDark ? '#13161e' : '#ffffff';
   const emptyColor = isDark ? '#1c2030' : '#e8e9ef';
+  const emptyStroke = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
+  const textColor = isDark ? '#4e5368' : '#9ca0b8';
   const selColor = '#0079b9';
+  const radius = Math.max(2, selWell * 0.15);
+
   ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, W_CSS, H_CSS);
-  const PAD = 8;
-  const cellW = (W_CSS - PAD*2) / fmt.cols;
-  const cellH = (H_CSS - PAD*2) / fmt.rows;
-  const r = Math.min(cellW, cellH) * 0.38;
-  for (let row=0; row<fmt.rows; row++) {
-    for (let col=0; col<fmt.cols; col++) {
-      const id = ROWS_ALL[row] + (col+1);
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  // Row labels
+  ctx.fillStyle = textColor;
+  ctx.font = `bold ${labelFont}px "IBM Plex Mono",monospace`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let r = 0; r < fmt.rows; r++) {
+    const cy = PAD + LABELH + r * (selWell + selGap) + selWell / 2;
+    ctx.fillText(ROWS_ALL[r], PAD + LABELW - 2, cy);
+  }
+
+  // Col labels — ALL columns
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  for (let c = 0; c < fmt.cols; c++) {
+    const cx = PAD + LABELW + c * (selWell + selGap) + selWell / 2;
+    ctx.fillText(c + 1, cx, PAD + LABELH - 1);
+  }
+
+  // Wells (roundRect)
+  for (let row = 0; row < fmt.rows; row++) {
+    for (let col = 0; col < fmt.cols; col++) {
+      const id = ROWS_ALL[row] + (col + 1);
+      const wx = PAD + LABELW + col * (selWell + selGap);
+      const wy = PAD + LABELH + row * (selWell + selGap);
       const isSel = selection.has(id);
       const ws = wellState[id];
       const t = ws ? typeById(ws.typeId) : null;
-      const cx = PAD + col*cellW + cellW/2;
-      const cy = PAD + row*cellH + cellH/2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.save();
       ctx.fillStyle = isSel ? selColor : (t ? t.color : emptyColor);
+      ctx.beginPath();
+      ctx.roundRect(wx, wy, selWell, selWell, radius);
       ctx.fill();
+      if (!isSel && !t) {
+        ctx.strokeStyle = emptyStroke;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+      if (isSel && selWell >= 14) {
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        const fs = Math.max(7, selWell * 0.4);
+        ctx.font = `bold ${fs}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✓', wx + selWell / 2, wy + selWell / 2);
+      }
+      ctx.restore();
     }
   }
 }
@@ -694,16 +742,17 @@ function drawSelCanvas() {
   let _selDragging = false, _selDragStart = null;
   function getSelPos(e) {
     const canvas = document.getElementById('sel-canvas');
-    if (!canvas) return null;
+    if (!canvas || !canvas._selMeta) return null;
     const rect = canvas.getBoundingClientRect();
-    const fmt = FORMATS[currentFormat];
-    const PAD = 8;
-    const cellW = rect.width / fmt.cols;
-    const cellH = rect.height / fmt.rows;
+    const {PAD, LABELW, LABELH, selWell, selGap, rows, cols} = canvas._selMeta;
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const col = Math.floor((mx - PAD) / cellW);
-    const row = Math.floor((my - PAD) / cellH);
-    if (col < 0 || col >= fmt.cols || row < 0 || row >= fmt.rows) return null;
+    const x = mx - PAD - LABELW, y = my - PAD - LABELH;
+    if (x < 0 || y < 0) return null;
+    const col = Math.floor(x / (selWell + selGap));
+    const row = Math.floor(y / (selWell + selGap));
+    if (col >= cols || row >= rows) return null;
+    const wellX = col * (selWell + selGap), wellY = row * (selWell + selGap);
+    if (x > wellX + selWell || y > wellY + selWell) return null;
     return {row, col};
   }
   document.addEventListener('mousedown', function(e) {
