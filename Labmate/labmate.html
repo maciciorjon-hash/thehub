@@ -9,7 +9,7 @@
 <title>LabMate — Ciulli Lab</title>
 <script>
 (function(){
-  try { if (localStorage.getItem('labmate_dark') === '1') document.documentElement.setAttribute('data-theme','dark'); } catch(e) {}
+  try { var _lmTheme=localStorage.getItem('hub_theme')||( localStorage.getItem('labmate_dark')==='1'?'dark':'light'); if(_lmTheme==='dark')document.documentElement.setAttribute('data-theme','dark'); localStorage.setItem('hub_theme',_lmTheme);document.addEventListener('DOMContentLoaded',function(){var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(_lmTheme==='dark');document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});});} catch(e) {}
 })();
 </script>
 <style>
@@ -1711,6 +1711,18 @@ img, canvas, svg, .pip { transition: none !important; }
 }
 .pinfo{cursor:pointer;color:var(--accent);font-size:0.75em;vertical-align:super;user-select:none;}
 #pinfo-tip{position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;font-size:0.78rem;max-width:260px;box-shadow:0 2px 12px rgba(0,0,0,.15);z-index:9999;pointer-events:none;display:none;color:var(--text);}
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-panel{display:none;position:fixed;top:58px;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 0 10px;padding:14px 18px;z-index:200;min-width:170px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
+.opts-panel.open{display:block;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.opts-label{font-size:13px;color:var(--text2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:22px;transition:.2s;border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
+input:checked + .theme-slider{background:var(--accent2);}
+input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;}
 </style>
 </head>
 <body>
@@ -1738,7 +1750,16 @@ img, canvas, svg, .pip { transition: none !important; }
       </div>
       <button class="mob-hamburger" onclick="openMobDrawer()" aria-label="Menu">☰</button>
       <button class="mob-home-btn" id="mob-home-btn" onclick="mobGoHome()" aria-label="Home" title="Home">⊞</button>
-<button class="theme-toggle" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle dark/light mode (T)" aria-label="Toggle theme">☾ Dark</button>
+<button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
+<div class="opts-panel" id="opts-panel">
+  <div class="opts-row">
+    <span class="opts-label">Dark mode</span>
+    <label class="theme-switch">
+      <input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()">
+      <span class="theme-slider"></span>
+    </label>
+  </div>
+</div>
     </div>
   </div>
   <div class="header-nav">
@@ -12937,19 +12958,18 @@ function _memApply(id, idx) {
   }
 })();
 /* ── Theme toggle ────────────────────────────────────────────────────────────── */
+function toggleOpts(){document.getElementById('opts-panel').classList.toggle('open');}
+
 function toggleTheme() {
   var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   applyDark(!isDark);
-  try { localStorage.setItem('labmate_dark', (!isDark) ? '1' : ''); } catch(e) {}
+  try { localStorage.setItem('labmate_dark', (!isDark) ? '1' : ''); try{localStorage.setItem('hub_theme',(!isDark)?'dark':'light');}catch(e){} var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(!isDark); } catch(e) {}
   _syncThemeBtn();
 }
 
 function _syncThemeBtn() {
-  var btn = document.getElementById('theme-toggle-btn');
-  if (!btn) return;
-  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  btn.textContent = isDark ? '☀ Light' : '☾ Dark';
-  btn.title = isDark ? 'Switch to light mode (T)' : 'Switch to dark mode (T)';
+  var chk = document.getElementById('theme-toggle-chk');
+  if (chk) chk.checked = (document.documentElement.getAttribute('data-theme') === 'dark');
 }
 
 /* ── Keyboard shortcuts ───────────────────────────────────────────────────────── */

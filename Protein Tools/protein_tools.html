@@ -15,8 +15,18 @@ header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-i
 .logo{width:32px;height:32px;border-radius:7px;background:#9c6fd4;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:20px;font-weight:700;color:#fff;flex-shrink:0;}
 .app-name{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
 .app-sub{font-size:11px;color:var(--text2);}
-.theme-btn{margin-left:auto;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s;}
-.theme-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-panel{display:none;position:fixed;top:58px;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 0 10px;padding:14px 18px;z-index:200;min-width:170px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
+.opts-panel.open{display:block;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.opts-label{font-size:13px;color:var(--text2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:22px;transition:.2s;border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
+input:checked + .theme-slider{background:var(--accent2);}
+input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;}
 .tabs{display:flex;gap:2px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;}
 .tab{padding:10px 16px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;white-space:nowrap;}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent);}
@@ -131,7 +141,16 @@ input:focus{border-color:var(--accent);}
     <div class="app-name">Protein Tools</div>
     <div class="app-sub">Properties · Charts · Cleavage · Structure · Target Intel</div>
   </div>
-  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☾ Dark</button>
+  <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
+<div class="opts-panel" id="opts-panel">
+  <div class="opts-row">
+    <span class="opts-label">Dark mode</span>
+    <label class="theme-switch">
+      <input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()">
+      <span class="theme-slider"></span>
+    </label>
+  </div>
+</div>
 </header>
 <div class="tabs">
   <button class="tab active" onclick="switchTab('props',this)">Properties</button>
@@ -333,12 +352,8 @@ input:focus{border-color:var(--accent);}
 <div id="pinfo-tip"></div>
 <script>
 // ─── Theme ────────────────────────────────────────────────────────────────
-function toggleTheme(){
-  const h=document.documentElement,next=h.getAttribute('data-theme')==='dark'?'light':'dark';
-  h.setAttribute('data-theme',next);
-  document.getElementById('theme-btn').textContent=next==='dark'?'☀ Light':'☾ Dark';
-  localStorage.setItem('pt_dark',next==='dark'?'true':'false');
-}
+function toggleOpts(){document.getElementById('opts-panel').classList.toggle('open');}
+function toggleTheme(){var html=document.documentElement;var next=html.getAttribute('data-theme')==='dark'?'light':'dark';html.setAttribute('data-theme',next);try{localStorage.setItem('hub_theme',next);}catch(e){}var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(next==='dark');}
 
 // ─── Data tables ──────────────────────────────────────────────────────────
 const AA_MONO={A:71.03711,R:156.10111,N:114.04293,D:115.02694,C:103.00919,E:129.04259,Q:128.05858,G:57.02146,H:137.05891,I:113.08406,L:113.08406,K:128.09496,M:131.04049,F:147.06841,P:97.05276,S:87.03203,T:101.04768,W:186.07931,Y:163.06333,V:99.06841};
@@ -827,16 +842,8 @@ function clearSeq(){document.getElementById('seq-input').value='';clearResults()
 
 // ─── Init ─────────────────────────────────────────────────────────────────
 (function(){
-  try {
-    const saved=localStorage.getItem('pt_dark');
-    if(saved==='true'){
-      document.documentElement.setAttribute('data-theme','dark');
-      document.getElementById('theme-btn').textContent='☀ Light';
-    } else if(saved==='false'){
-      document.documentElement.setAttribute('data-theme','light');
-      document.getElementById('theme-btn').textContent='☾ Dark';
-    }
-  } catch(e){}
+  try{var t=localStorage.getItem('hub_theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}
+  document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});
   clearResults();
 })();
 </script>
