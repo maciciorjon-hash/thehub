@@ -26,9 +26,6 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 #hub-nav{height:58px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 28px;gap:12px;}
 #hub-logo{width:32px;height:32px;background:#2c2f45;border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:18px;font-weight:700;color:#fff;flex-shrink:0;cursor:pointer;user-select:none;}
 #nav-title{font-size:15px;font-weight:600;color:var(--text);}
-#theme-btn{margin-left:auto;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;}
-#theme-btn:hover{background:var(--surface2);color:var(--text);}
-
 /* VIEWS */
 #hub-home{flex:1;overflow-y:auto;}
 .app-view{position:fixed;inset:0;z-index:10;display:none;flex-direction:column;overflow:hidden;background:var(--bg);transition:opacity 0.2s ease;}
@@ -63,7 +60,9 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .card-name{font-size:1.05rem;font-weight:700;line-height:1.3;text-align:left;}
 
 /* OPTIONS / SUGGESTIONS PANEL */
-#opts-btn,#sug-btn{margin-left:8px;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;}
+#opts-btn{margin-left:auto;}
+#opts-btn,#sug-btn{margin-right:0;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;}
+#sug-btn{margin-left:8px;}
 #opts-btn:hover,#sug-btn:hover{background:var(--surface2);color:var(--text);}
 .opts-panel{position:absolute;top:58px;right:12px;width:300px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:16px;box-shadow:0 4px 24px rgba(0,0,0,.18);z-index:200;}
 .opts-panel.hidden{display:none;}
@@ -79,8 +78,12 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .sug-thanks.hidden{display:none;}
 .opts-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .opts-label{font-size:12px;color:var(--text2);}
-.theme-toggle-btn{padding:4px 12px;border-radius:12px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-family:var(--sans);font-size:11px;cursor:pointer;transition:background .15s,color .15s;}
-.theme-toggle-btn:hover{background:var(--surface2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;flex-shrink:0;}
+.theme-switch input{opacity:0;width:0;height:0;position:absolute;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:22px;transition:.2s;border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
+.theme-switch input:checked + .theme-slider{background:var(--accent2);border-color:var(--accent2);}
+.theme-switch input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;}
 .opts-divider{height:1px;background:var(--border);margin:12px 0;}
 .opts-version{font-size:11px;color:var(--text3);text-align:center;}
 
@@ -113,15 +116,17 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 <div id="hub-nav">
   <div id="hub-logo" title="">H</div>
   <span id="nav-title">The Hub</span>
-  <button id="theme-btn" onclick="toggleTheme()">&#9790; Dark</button>
   <button id="opts-btn" onclick="toggleOpts()">&#9881; Options</button>
   <button id="sug-btn" onclick="toggleSug()">&#9993; Suggest</button>
 </div>
 <div id="opts-panel" class="opts-panel hidden">
   <div class="opts-title">Options</div>
   <div class="opts-row">
-    <span class="opts-label">Appearance</span>
-    <button id="theme-toggle-opts" class="theme-toggle-btn" onclick="toggleTheme()">&#9790; Dark</button>
+    <span class="opts-label">Dark mode</span>
+    <label class="theme-switch">
+      <input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()">
+      <span class="theme-slider"></span>
+    </label>
   </div>
   <div class="opts-divider"></div>
   <div class="opts-version">The Hub &middot; v2.1</div>
@@ -590,10 +595,8 @@ function toggleTheme() {
   var next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
   html.setAttribute('data-theme', next);
   localStorage.setItem('hub_theme', next);
-  var label = next === 'dark' ? '&#9728; Light' : '&#9790; Dark';
-  document.getElementById('theme-btn').innerHTML = label;
-  var optBtn = document.getElementById('theme-toggle-opts');
-  if (optBtn) optBtn.innerHTML = label;
+  var chk = document.getElementById('theme-toggle-chk');
+  if (chk) chk.checked = (next === 'dark');
   document.querySelectorAll('iframe').forEach(function(fr) {
     try { fr.contentDocument.documentElement.setAttribute('data-theme', next); } catch(e) {}
   });
@@ -645,10 +648,8 @@ document.addEventListener('DOMContentLoaded', function() {
   var t = localStorage.getItem('hub_theme') || 'light';
   document.documentElement.setAttribute('data-theme', t);
   document.addEventListener('DOMContentLoaded', function() {
-    var label = t === 'dark' ? '&#9728; Light' : '&#9790; Dark';
-    document.getElementById('theme-btn').innerHTML = label;
-    var optBtn = document.getElementById('theme-toggle-opts');
-    if (optBtn) optBtn.innerHTML = label;
+    var chk = document.getElementById('theme-toggle-chk');
+    if (chk) chk.checked = (t === 'dark');
   });
 })();
 </script>
