@@ -1,4 +1,4 @@
-# JM Apps — The Hub
+# The Hub
 
 > Auto-updated section at bottom. Static content below is maintained manually.
 
@@ -10,7 +10,7 @@
 
 **Individual standalone files** also exist in their subfolders and are kept in sync — they serve as standalone versions of each app.
 
-**Location:** `OneDrive › 0. General › JM Apps › The Hub.html`  
+**Location:** `Desktop › The_Hub › The Hub.html`  
 **Author:** Jon Macicior — postdoc, Ciulli Lab, University of Dundee  
 **Stack:** Vanilla HTML/CSS/JS only. No build step, no server. Open in browser directly.
 
@@ -39,7 +39,7 @@
 - When you change an individual app file, you must **re-run the Python embed script** to regenerate The Hub.
 
 ```
-JM Apps/
+The_Hub/
 ├── The Hub.html                              ← self-contained, ~18.2MB
 ├── Echo Data Analysis/
 │   └── Echo_Data_Analysis.html              ← standalone app
@@ -62,7 +62,7 @@ JM Apps/
 
 ### Regenerating the self-contained Hub after app changes
 
-**`embed.py`** replaces the old inline Python snippet. Run from `JM Apps/`:
+**`embed.py`** replaces the old inline Python snippet. Run from `The_Hub/`:
 
 ```bash
 python embed.py                      # → The Hub.html  (local/offline use)

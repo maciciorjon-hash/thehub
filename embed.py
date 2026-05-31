@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bundle all JM Apps into The Hub.
+"""Bundle all apps into The Hub.
 
 Usage:
   python embed.py                      ->  ./The Hub.html   (local dev)
