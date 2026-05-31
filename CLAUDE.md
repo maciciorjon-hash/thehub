@@ -243,11 +243,13 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-05-31 (Hub split, Plate canvas, Echo CDN fix, Protein Tools init)
+Last session: 2026-05-31 (Plate canvas rewrite, Helix rename/gallery/modal, Protein Tools example, Echo RDKit CDN)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 18.12MB (18,121,629 chars)
-Hub: Options and Suggestions split into two pill buttons (#opts-btn/#sug-btn); #opts-panel empty placeholder; #sug-panel has Formspree form (xeokadev). Commit d950e91
-Echo: Critical fix — Chart.js CDN failure threw at top-level Chart.register(), stopping ALL init code after line 1905 (incl. _ctrlPickerSel Set). Guarded with _ensureChartPlugins(). Commit d950e91
-Protein Tools: Added clearResults() call on init so SVG charts show placeholder text; analyzeSeq wrapped in try/catch for error visibility. Commit d950e91
-Plate Designer: drawSelCanvas() now shows ALL row letters + ALL col numbers, uses roundRect (matching 384 style), sized from FORMATS.selWell/selGap; FORMATS updated with selWell/selGap; well sizes increased; calcWellPx MAX increased; 384 now shows ALL col numbers; subtitle changed to "High-res export". Commit d950e91
+Hub file size: 5.65MB (5,646,926 chars) — down from 18MB after removing embedded RDKit WASM from Echo
+Standalone paths: Helix/helix.html (renamed from DNA Tools/dna_tools.html)
+Echo: Removed 8.8MB embedded RDKit WASM blob (was causing srcdoc iframe freeze); now loads RDKit lazily from unpkg CDN. Commit 4638285
+Plate Designer: Full canvas rewrite — unified drawPlateCanvas() for ALL formats (6/12/24/48/96/384); removed floating #sel-panel; inline #sel-toolbar (shows when selection.size>0); rubber-band select, paint drag, row/col label click-to-select, well tooltip, right-click to clear. Commit 4638285
+Helix: Renamed DNA Tools/→Helix/, dna_tools.html→helix.html; gallery cards enlarged (240px SVG); gallery click opens centered modal with 280px map, features, Addgene links; addgeneId added to most vectors; drawPlasmidMap(id, bp, S=220) now accepts size param. Commit 4638285
+Protein Tools: loadExample() now explicitly switches to Properties tab + scrolls to top. Commit 4638285
+Hub: Options panel has Dark/Light toggle + version v2.1; Formspree handler checks response.ok with specific error. Commit 4638285
 <!-- LAST_SESSION_END -->
