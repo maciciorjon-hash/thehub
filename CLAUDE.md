@@ -243,18 +243,19 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-01 (Hub persistent nav + search, Plate Designer popup, Echo fixes, Helix generic vectors, Labmate cleanup)
+Last session: 2026-06-01 (Round 8+9: LabMate nav fix, Echo blank-space fix, Plate Designer toolbar+size, Helix unified Tools, village animation)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.13MB (7,126,189 chars). Commit a7a8f79
-Hub: nav now position:fixed z-index:20; always visible above apps. app-view top:58px instead of inset:0.
-Hub: fuzzy bigram search bar in nav (hidden when inside app); navigates to app+tab via postMessage.
-Hub: openApp(id, tab) — optional tab param, postMessages switchTab to iframe after load.
-Hub: Formspree error shows mailto fallback (maciciorjon@gmail.com).
-Echo: min-height:0 on .app-panel.active + main → fixes blank space in Data Analysis panel.
-Echo: 'Control (Vehicle) wells range'; PDF reps toggle removed; hibit-ctg-params hidden for FP assay type.
-Echo: Bₚ/B⊥ info tooltips added; postMessage tab handler added.
-Plate Designer: type-palette removed from top-bar; active-type-indicator added. sel-toolbar → position:fixed floating popup (opacity:0→1, .open class).
-Protein Tools: postMessage tab handler + try-catch in init (stale hub embed was likely root cause of user's "nothing works" report).
+Hub file size: 7.15MB (7,150,353 chars). Commit 88767f6. Version v0.8.1
+Hub: per-app CSS injection — LabMate gets .header-top{display:none} only (preserves nav tabs); others get header{display:none}.
+Echo: .shell changed from display:grid to display:flex;flex-direction:column — fixes blank space from ghost grid rows when header hidden.
+Plate Designer: sel-toolbar auto-positions near plate top (getBoundingClientRect). _userDragged flag prevents auto-reposition after manual drag.
+Plate Designer: setFormat() preserves well pixel size when switching formats (saves prevWp, recalculates userScale for new format).
+Helix: Tools tab redesigned — single shared textarea #tools-seq drives all three tools simultaneously via Analyse button.
+  Results shown as visual cards: [Translation | Seq Analysis] two-column + [ORF Finder] full-width.
+  Old separate tr-input/st-input/orf-input removed. runAllTools() → _runTranslateWith/_runSeqToolsWith/_runORFWith.
+Hub background: replaced floating pixels with 8-bit Japanese village at bottom of screen.
+  9 buildings (shop/house/pagoda/tower/torii) unlock and grow over 5 minutes. Scaffold shown during construction.
+  Sky particles retained (18, subtler). Village tracked via RAF elapsed time (pauses when tab inactive).
 Helix: pET21a/pMALc2X/pDESTHalo/pCMVTag2 marked generic:true with manufacturer notes. Modal SVG 380px. Generic badge in gallery.
 Labmate: search bar removed from header. pip-tab-btn hidden; 5-click logo easter egg already existed → Pip story chapter VI covers retirement.
 All apps: postMessage window.addEventListener('message') for hub search tab switching.
