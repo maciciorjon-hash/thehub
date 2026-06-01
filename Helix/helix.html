@@ -129,6 +129,11 @@ select:focus,input:focus{border-color:var(--accent);}
 .guide-card p,.guide-card li{font-size:12px;color:var(--text2);line-height:1.6;}
 .guide-card ul{padding-left:16px;margin-top:4px;}
 .guide-card+.guide-card{margin-top:12px;}
+.tool-section{margin-bottom:4px;}
+.tool-section-hdr{font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--text3);margin-bottom:18px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.tool-divider{height:1px;background:var(--border);margin:28px 0;}
+.seq-mismatch{color:#ff5760;font-weight:700;}
+.mismatch-mark{color:#ff5760;font-weight:700;}
 </style>
 </head>
 <body>
@@ -150,54 +155,84 @@ select:focus,input:focus{border-color:var(--accent);}
 </div>
 </header>
 <div class="tabs">
-  <button class="tab active" onclick="switchTab('translate',this)">Translate</button>
-  <button class="tab" onclick="switchTab('tools',this)">Sequence Tools</button>
+  <button class="tab active" onclick="switchTab('tools',this)">Tools</button>
   <button class="tab" onclick="switchTab('compare',this)">Compare</button>
-  <button class="tab" onclick="switchTab('orf',this)">ORF Finder</button>
   <button class="tab" onclick="switchTab('vectors',this)">Vector Library</button>
   <button class="tab" onclick="switchTab('guide',this)">Guide</button>
 </div>
 <div class="content">
 
-<!-- TRANSLATE -->
-<div class="panel active" id="panel-translate">
-  <div class="row" style="gap:16px;">
-    <div class="col">
+<!-- TOOLS (Translate + Sequence Analysis + ORF Finder) -->
+<div class="panel active" id="panel-tools">
+  <div class="tool-section">
+    <div class="tool-section-hdr">Translate</div>
+    <div class="row" style="gap:16px;">
+      <div class="col">
+        <label>Nucleotide sequence (FASTA accepted)</label>
+        <textarea id="tr-input" rows="7" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA"></textarea>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:180px;">
+        <label>Reading frame <span class="pinfo" data-tip="Choose which codon position to start translation from. Use −1/−2/−3 for the reverse complement strand.">ⓘ</span></label>
+        <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1 ↩</option><option value="-2">-2 ↩</option><option value="-3">-3 ↩</option></select>
+        <div class="vec-rc-note">−1/−2/−3 = reverse complement strand</div>
+        <label style="margin-top:6px;">Codon table</label>
+        <select id="tr-table"><option value="1">Standard (NCBI 1)</option><option value="2">Vertebrate Mitochondrial (2)</option></select>
+        <button class="btn btn-primary" onclick="runTranslate()" style="margin-top:8px;">Translate</button>
+        <button class="btn btn-sec" onclick="loadTrExample()">Example</button>
+      </div>
+    </div>
+    <div id="tr-type-pill"></div>
+    <div id="tr-result" style="display:none;">
+      <div class="card-hdr" style="margin-bottom:8px;">Protein sequence</div>
+      <div class="mono-out" id="tr-protein" style="max-height:160px;overflow-y:auto;"></div>
+      <div class="row" style="margin-top:10px;gap:20px;">
+        <div><span class="pill" id="tr-len-pill"></span></div>
+        <div><span class="pill" id="tr-mw-pill"></span></div>
+        <div><span class="pill" id="tr-stop-pill"></span></div>
+      </div>
+      <button class="btn btn-sec" onclick="copyText(document.getElementById('tr-protein').textContent)" style="margin-top:10px;font-size:12px;">Copy sequence</button>
+    </div>
+  </div>
+  <div class="tool-divider"></div>
+  <div class="tool-section">
+    <div class="tool-section-hdr">Sequence Analysis</div>
+    <div>
       <label>Nucleotide sequence (FASTA accepted)</label>
-      <textarea id="tr-input" rows="7" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA"></textarea>
+      <textarea id="st-input" rows="6" placeholder="Paste DNA or RNA sequence…" oninput="runSeqTools()"></textarea>
     </div>
-    <div style="display:flex;flex-direction:column;gap:8px;min-width:180px;">
-      <label>Reading frame <span class="pinfo" data-tip="Choose which codon position to start translation from. Use −1/−2/−3 for the reverse complement strand.">ⓘ</span></label>
-      <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1 ↩</option><option value="-2">-2 ↩</option><option value="-3">-3 ↩</option></select>
-      <div class="vec-rc-note">−1/−2/−3 = reverse complement strand</div>
-      <label style="margin-top:6px;">Codon table</label>
-      <select id="tr-table"><option value="1">Standard (NCBI 1)</option><option value="2">Vertebrate Mitochondrial (2)</option></select>
-      <button class="btn btn-primary" onclick="runTranslate()" style="margin-top:8px;">Translate</button>
-      <button class="btn btn-sec" onclick="loadTrExample()">Example</button>
+    <div id="st-type-pill"></div>
+    <div class="card" id="st-results" style="display:none;">
+      <div id="st-rows"></div>
     </div>
   </div>
-  <div id="tr-type-pill"></div>
-  <div id="tr-result" style="display:none;">
-    <div class="card-hdr" style="margin-bottom:8px;">Protein sequence</div>
-    <div class="mono-out" id="tr-protein" style="max-height:160px;overflow-y:auto;"></div>
-    <div class="row" style="margin-top:10px;gap:20px;">
-      <div><span class="pill" id="tr-len-pill"></span></div>
-      <div><span class="pill" id="tr-mw-pill"></span></div>
-      <div><span class="pill" id="tr-stop-pill"></span></div>
+  <div class="tool-divider"></div>
+  <div class="tool-section">
+    <div class="tool-section-hdr">ORF Finder</div>
+    <div class="row" style="gap:16px;">
+      <div class="col">
+        <label>Nucleotide sequence (FASTA accepted)</label>
+        <textarea id="orf-input" rows="6" placeholder="Paste nucleotide sequence…"></textarea>
+      </div>
+      <div style="min-width:200px;display:flex;flex-direction:column;gap:8px;">
+        <label>Min. ORF length (aa) <span class="pinfo" data-tip="Minimum protein length in amino acids. Increase to filter out short spurious ORFs.">ⓘ</span></label>
+        <div class="range-wrap">
+          <input type="range" id="orf-min" min="10" max="300" value="50" oninput="document.getElementById('orf-min-val').textContent=this.value">
+          <span class="range-val" id="orf-min-val">50</span>
+        </div>
+        <button class="btn btn-primary" onclick="runORF()">Find ORFs</button>
+        <button class="btn btn-sec" onclick="loadORFExample()">Example</button>
+      </div>
     </div>
-    <button class="btn btn-sec" onclick="copyText(document.getElementById('tr-protein').textContent)" style="margin-top:10px;font-size:12px;">Copy sequence</button>
-  </div>
-</div>
-
-<!-- SEQUENCE TOOLS -->
-<div class="panel" id="panel-tools">
-  <div>
-    <label>Nucleotide sequence (FASTA accepted)</label>
-    <textarea id="st-input" rows="6" placeholder="Paste DNA or RNA sequence…" oninput="runSeqTools()"></textarea>
-  </div>
-  <div id="st-type-pill"></div>
-  <div class="card" id="st-results" style="display:none;">
-    <div id="st-rows"></div>
+    <div id="orf-result" style="display:none;">
+      <div class="card" style="margin-bottom:12px;">
+        <table class="stat-table" id="orf-table">
+          <thead><tr><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th><th>First 10 AA</th></tr></thead>
+          <tbody id="orf-tbody"></tbody>
+        </table>
+      </div>
+      <div class="card-hdr">Sequence map</div>
+      <div class="seq-disp" id="orf-seq-disp"></div>
+    </div>
   </div>
 </div>
 
@@ -226,35 +261,6 @@ select:focus,input:focus{border-color:var(--accent);}
     </div>
     <div class="card-hdr">Alignment</div>
     <div class="seq-disp" id="cmp-aln"></div>
-  </div>
-</div>
-
-<!-- ORF FINDER -->
-<div class="panel" id="panel-orf">
-  <div class="row" style="gap:16px;">
-    <div class="col">
-      <label>Nucleotide sequence (FASTA accepted)</label>
-      <textarea id="orf-input" rows="6" placeholder="Paste nucleotide sequence…"></textarea>
-    </div>
-    <div style="min-width:200px;display:flex;flex-direction:column;gap:8px;">
-      <label>Min. ORF length (aa) <span class="pinfo" data-tip="Minimum protein length in amino acids. Increase to filter out short spurious ORFs.">ⓘ</span></label>
-      <div class="range-wrap">
-        <input type="range" id="orf-min" min="10" max="300" value="50" oninput="document.getElementById('orf-min-val').textContent=this.value">
-        <span class="range-val" id="orf-min-val">50</span>
-      </div>
-      <button class="btn btn-primary" onclick="runORF()">Find ORFs</button>
-      <button class="btn btn-sec" onclick="loadORFExample()">Example</button>
-    </div>
-  </div>
-  <div id="orf-result" style="display:none;">
-    <div class="card" style="margin-bottom:12px;">
-      <table class="stat-table" id="orf-table">
-        <thead><tr><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th><th>First 10 AA</th></tr></thead>
-        <tbody id="orf-tbody"></tbody>
-      </table>
-    </div>
-    <div class="card-hdr">Sequence map</div>
-    <div class="seq-disp" id="orf-seq-disp"></div>
   </div>
 </div>
 
@@ -494,12 +500,30 @@ function runCompare(){
   for(let i=0;i<res.length;i+=W){
     const aa=res.alignedA.slice(i,i+W);
     const ab=res.alignedB.slice(i,i+W);
-    let mid='';
-    for(let k=0;k<aa.length;k++) mid+=aa[k]==='-'||ab[k]==='-'?' ':aa[k]===ab[k]?'|':'×';
+    let midHtml='';
+    let aHtml='';
+    let bHtml='';
+    for(let k=0;k<aa.length;k++){
+      const isMM=aa[k]!=='-'&&ab[k]!=='-'&&aa[k]!==ab[k];
+      const isGap=aa[k]==='-'||ab[k]==='-';
+      if(isMM){
+        aHtml+=`<span class="seq-mismatch">${esc(aa[k])}</span>`;
+        bHtml+=`<span class="seq-mismatch">${esc(ab[k])}</span>`;
+        midHtml+=`<span class="mismatch-mark">×</span>`;
+      } else if(isGap){
+        aHtml+=esc(aa[k]);
+        bHtml+=esc(ab[k]);
+        midHtml+=' ';
+      } else {
+        aHtml+=esc(aa[k]);
+        bHtml+=esc(ab[k]);
+        midHtml+='|';
+      }
+    }
     const pos=String(i+1).padStart(5,' ');
-    html+=`<span class="seq-a">${pos}  ${esc(aa)}</span>\n`;
-    html+=`<span class="match-line">       ${mid}</span>\n`;
-    html+=`<span class="seq-b">       ${esc(ab)}</span>\n\n`;
+    html+=`<span class="seq-a">${pos}  ${aHtml}</span>\n`;
+    html+=`<span class="match-line">       ${midHtml}</span>\n`;
+    html+=`<span class="seq-b">       ${bHtml}</span>\n\n`;
   }
   document.getElementById('cmp-aln').innerHTML=html;
   document.getElementById('cmp-result').style.display='';
@@ -999,6 +1023,7 @@ document.addEventListener('keydown', function(e) {
 window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='switchTab'||!e.data.tab)return;
   var id=e.data.tab;
+  if(id==='translate'||id==='orf') id='tools';
   var btn=document.querySelector('.tab[onclick*="\''+id+'\'"]');
   if(btn&&document.getElementById('panel-'+id)){
     document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active');});

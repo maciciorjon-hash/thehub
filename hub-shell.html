@@ -35,7 +35,8 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .sr-item:hover{background:var(--surface2);color:var(--text);}
 .sr-app{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.4px;}
 /* VIEWS */
-#hub-home{margin-top:58px;flex:1;overflow-y:auto;}
+#hub-home{margin-top:58px;flex:1;overflow-y:auto;position:relative;z-index:1;}
+#hub-bg-canvas{display:block;}
 .app-view{position:fixed;top:58px;left:0;right:0;bottom:0;z-index:10;display:none;flex-direction:column;overflow:hidden;background:var(--bg);transition:opacity 0.2s ease;}
 .app-view iframe{flex:1;width:100%;height:100%;border:none;display:block;}
 
@@ -183,6 +184,7 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
   <p id="sug-thanks" class="sug-thanks hidden">Thanks! Your suggestion has been sent.</p>
 </div>
 
+<canvas id="hub-bg-canvas" style="position:fixed;inset:0;z-index:0;pointer-events:none;"></canvas>
 <div id="hub-home">
   <div class="home-wrap">
     <div class="home-hdr">
@@ -395,16 +397,12 @@ function enterAppNav(id) {
   if (nm) nm.textContent = info.name || id;
   var crumb = document.getElementById('nav-crumb');
   if (crumb) crumb.style.display = 'flex';
-  var sw = document.getElementById('hub-search-wrap');
-  if (sw) sw.style.visibility = 'hidden';
 }
 
 function exitAppNav() {
   document.getElementById('hub-logo').title = '';
   var crumb = document.getElementById('nav-crumb');
   if (crumb) crumb.style.display = 'none';
-  var sw = document.getElementById('hub-search-wrap');
-  if (sw) sw.style.visibility = 'visible';
 }
 
 function openApp(id, tab) {
@@ -416,7 +414,15 @@ function openApp(id, tab) {
       var lmBase = window.location.href.replace(/[^\/]*$/, '');
       html = html.replace('<head>', '<head><base href="' + lmBase + 'Labmate/">');
     }
-    html = html.replace('</head>', '<style>.opts-btn{display:none!important;}.opts-panel{display:none!important;}</style></head>');
+    html = html.replace('</head>',
+      '<style>' +
+      '.opts-btn{display:none!important;}.opts-panel{display:none!important;}' +
+      'header{display:none!important;}' +
+      '.shell{grid-template-rows:40px 1fr!important;}' +
+      '.header-top{display:none!important;}' +
+      '.app-logo{display:none!important;}.header-info{display:none!important;}' +
+      '</style>' +
+      '</head>');
     var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
       'var logo=document.querySelector(".logo,.app-logo");' +
       'var name=document.querySelector("h1,.app-name");' +
@@ -702,19 +708,17 @@ document.addEventListener('DOMContentLoaded', function() {
   if (form) {
     form.addEventListener('submit', function(e) {
       e.preventDefault();
-      fetch(form.action, {method:'POST', body: new FormData(form), headers:{Accept:'application/json'}})
-        .then(function(r) {
-          if (!r.ok) throw new Error('Server returned ' + r.status);
-          form.reset();
-          document.getElementById('sug-thanks').textContent = 'Thanks! Your suggestion has been sent.';
-          document.getElementById('sug-thanks').style.color = '';
-          document.getElementById('sug-thanks').classList.remove('hidden');
-        })
-        .catch(function(err) {
-          document.getElementById('sug-thanks').innerHTML = 'Could not send — form unavailable.<br>Email suggestions to: <a href="mailto:maciciorjon@gmail.com" style="color:var(--accent2)">maciciorjon@gmail.com</a>';
-          document.getElementById('sug-thanks').style.color = 'var(--accent)';
-          document.getElementById('sug-thanks').classList.remove('hidden');
-        });
+      var name = (form.querySelector('[name="name"]') || {}).value || '';
+      var msg  = (form.querySelector('[name="message"]') || {}).value || '';
+      var body = (name.trim() ? 'From: ' + name.trim() + '\n\n' : '') + msg.trim();
+      var mailto = 'mailto:maciciorjon@gmail.com'
+        + '?subject=' + encodeURIComponent('Hub Suggestion')
+        + '&body='    + encodeURIComponent(body);
+      window.open(mailto, '_blank');
+      form.reset();
+      document.getElementById('sug-thanks').textContent = 'Opening your email client…';
+      document.getElementById('sug-thanks').style.color = 'var(--accent3)';
+      document.getElementById('sug-thanks').classList.remove('hidden');
     });
   }
 });
@@ -839,6 +843,39 @@ document.addEventListener('click',function(e){
     var chk = document.getElementById('theme-toggle-chk');
     if (chk) chk.checked = (t === 'dark');
   });
+})();
+
+// ── Background particle animation ─────────────────────────────────────────
+(function(){
+  var canvas = document.getElementById('hub-bg-canvas');
+  var ctx = canvas.getContext('2d');
+  var COLORS = ['#ff5760','#7c6fd4','#e08c30','#0079b9','#43a047','#9c6fd4','#00c896'];
+  var SIZES = [4,4,4,6,6,8,10];
+  var particles = [];
+  var N = 28;
+  function resize() { canvas.width=window.innerWidth; canvas.height=window.innerHeight; }
+  function init() {
+    resize(); particles = [];
+    for (var i=0;i<N;i++) {
+      var sz=SIZES[Math.floor(Math.random()*SIZES.length)];
+      particles.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,
+        vx:(Math.random()-0.5)*0.6,vy:(Math.random()-0.5)*0.6,sz:sz,
+        col:COLORS[Math.floor(Math.random()*COLORS.length)],alpha:0.12+Math.random()*0.18});
+    }
+  }
+  function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    particles.forEach(function(p){
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x=canvas.width; if(p.x>canvas.width)p.x=0;
+      if(p.y<0)p.y=canvas.height; if(p.y>canvas.height)p.y=0;
+      ctx.globalAlpha=p.alpha; ctx.fillStyle=p.col;
+      ctx.fillRect(Math.round(p.x/p.sz)*p.sz,Math.round(p.y/p.sz)*p.sz,p.sz,p.sz);
+    });
+    ctx.globalAlpha=1; requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize',function(){resize();particles.forEach(function(p){p.x=Math.min(p.x,canvas.width);p.y=Math.min(p.y,canvas.height);});});
+  init(); draw();
 })();
 </script>
 </body>
