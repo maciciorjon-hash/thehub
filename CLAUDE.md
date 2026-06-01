@@ -20,13 +20,12 @@
 
 | ID | Name | Logo | Accent | Standalone file |
 |----|------|------|--------|-----------------|
-| `echo` | Echo Data Analysis | `E` | `#ff5760` | `Echo Data Analysis/Echo_Data_Analysis.html` |
-| `deg` | Degradation Explorer | `D` | `#7c6fd4` | `Degradation Explorer/degradation_visualizer.html` |
+| `echo` | Echo Data Analysis | `E` | `#ff5760` | `Labcyte_Echo/labcyte_echo.html` |
+| `deg` | Degradation Explorer | `D` | `#7c6fd4` | `Degradation_Explorer/degradation_visualizer.html` |
 | `lm` | LabMate | `L` | `#e08c30` (amber) | `Labmate/labmate.html` |
-| `ff` | Figure Forge | `F` | `#f06292` | `Figure Forge/figure_forge.html` |
-| `pd` | Plate Designer | `P` | `#0079b9` | `Plate Designer/plate_designer.html` |
-| `dna` | Helix | `H` | `#43a047` | `DNA Tools/dna_tools.html` |
-| `pt` | Protein Tools | `P` | `#9c6fd4` | `Protein Tools/protein_tools.html` |
+| `pd` | Plate Designer | `P` | `#0079b9` | `Plate_Designer/plate_designer.html` |
+| `dna` | Helix | `H` | `#43a047` | `Helix/helix.html` |
+| `pt` | Protein Tools | `P` | `#9c6fd4` | `Protein_Tools/protein_tools.html` |
 
 ---
 
@@ -40,23 +39,19 @@
 
 ```
 The_Hub/
-├── The Hub.html                              ← self-contained, ~18.2MB
-├── Echo Data Analysis/
-│   └── Echo_Data_Analysis.html              ← standalone app
-├── Degradation Explorer/
+├── The Hub.html                              ← self-contained, ~7.2MB
+├── Labcyte_Echo/
+│   └── labcyte_echo.html                    ← standalone app
+├── Degradation_Explorer/
 │   └── degradation_visualizer.html          ← standalone app
 ├── Labmate/
 │   ├── labmate.html                         ← standalone app
 │   └── RDKit_minimal.js / .wasm             ← used when Labmate folder is present
-├── Figure Forge/
-│   └── figure_forge.html                    ← standalone app
-├── Plate Designer/
+├── Plate_Designer/
 │   └── plate_designer.html                  ← standalone app
-├── DNA Tools/
-│   └── dna_tools.html                       ← standalone app
-├── Kinetics/
-│   └── kinetics.html                        ← standalone only (removed from Hub)
-└── Protein Tools/
+├── Helix/
+│   └── helix.html                           ← standalone app
+└── Protein_Tools/
     └── protein_tools.html                   ← standalone app
 ```
 

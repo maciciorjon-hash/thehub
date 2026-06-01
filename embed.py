@@ -12,12 +12,12 @@ SHELL = os.path.join(BASE, 'hub-shell.html')
 OUT   = sys.argv[1] if len(sys.argv) > 1 else os.path.join(BASE, 'The Hub.html')
 
 APPS = [
-    ('echo', 'Labcyte Echo/labcyte_echo.html'),
-    ('deg',  'Degradation Explorer/degradation_visualizer.html'),
+    ('echo', 'Labcyte_Echo/labcyte_echo.html'),
+    ('deg',  'Degradation_Explorer/degradation_visualizer.html'),
     ('lm',   'Labmate/labmate.html'),
-    ('pd',   'Plate Designer/plate_designer.html'),
+    ('pd',   'Plate_Designer/plate_designer.html'),
     ('dna',  'Helix/helix.html'),
-    ('pt',   'Protein Tools/protein_tools.html'),
+    ('pt',   'Protein_Tools/protein_tools.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()
