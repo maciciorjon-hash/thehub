@@ -865,6 +865,30 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 function toggleOpts(){document.getElementById('opts-panel').classList.toggle('open');}
 function toggleTheme(){var html=document.documentElement;var next=html.getAttribute('data-theme')==='dark'?'light':'dark';html.setAttribute('data-theme',next);if(typeof scatterChart!=='undefined'&&scatterChart)updateScatterTheme();try{localStorage.setItem('hub_theme',next);}catch(e){}var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(next==='dark');}
 
+function onAssayTypeChange(){
+  var t=(document.getElementById('p-assay-type')||{}).value||'hibit';
+  var fpCard=document.getElementById('fp-params-card');
+  var zeroPctField=document.getElementById('p-zero-pct-field');
+  if(fpCard)fpCard.style.display=(t==='fp'||t==='trfret')?'':'none';
+  if(zeroPctField)zeroPctField.style.display=(t==='displacement'||t==='fp'||t==='trfret')?'':'none';
+}
+function updateFpKiPreview(){
+  var lcEl=document.getElementById('p-tracer-conc');
+  var kdEl=document.getElementById('p-tracer-kd');
+  var resEl=document.getElementById('fp-ki-result');
+  if(!lcEl||!kdEl||!resEl)return;
+  var lcVal=parseFloat(lcEl.value)||0;
+  var lcUnitStr=(document.getElementById('p-tracer-unit')||{}).value||'nM';
+  var kdVal=parseFloat(kdEl.value)||0;
+  var kdUnitStr=(document.getElementById('p-kd-unit')||{}).value||'nM';
+  if(!lcVal||!kdVal){resEl.style.display='none';return;}
+  var toNM=function(v,u){return u==='µM'?v*1000:v;};
+  var lcNM=toNM(lcVal,lcUnitStr);
+  var kdNM=toNM(kdVal,kdUnitStr);
+  resEl.style.display='';
+  resEl.textContent='Ki = IC₅₀ ÷ (1 + '+lcNM.toPrecision(3)+' nM / '+kdNM.toPrecision(3)+' nM)';
+}
+
 // ===== TABS =====
 const _allTabs = document.querySelectorAll('.tab');
 const _allPanes = document.querySelectorAll('.tabpane');
@@ -6118,7 +6142,7 @@ function updateCtrlPreview() {
     drawCtrlGrid();
   });
 })();
-(function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});})();
+(function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});onAssayTypeChange();})();
 </script>
 <div id="pinfo-tip" style="display:none;"></div>
 <div id="bat-corner">
@@ -6158,8 +6182,7 @@ function switchPanel(id, btn) {
   var panel = document.getElementById('panel-' + id);
   panel.classList.add('active');
   panel.scrollTop = 0;
-  var wrap = panel.querySelector('.ov-wrap, .grad-wrap');
-  if (wrap) wrap.scrollTop = 0;
+  panel.querySelectorAll('.ov-wrap, .grad-wrap, .left').forEach(function(el){el.scrollTop=0;});
   btn.classList.add('active');
 }
 </script>
@@ -6358,6 +6381,19 @@ function switchPanel(id, btn) {
       // Show warning but still suggest (they may use manual dilution)
     }
 
+    // ── Auto-add intermediates if needed for full coverage ─────────────
+    var nMin=1;
+    if(cInterTop>DROP&&cInterBot>0&&maxT>DROP){
+      nMin=Math.ceil(1+Math.log(cInterTop/cInterBot)/Math.log(maxT/DROP));
+    }
+    nMin=Math.max(nMin,1);
+    var autoAdded=0;
+    if(n<nMin){
+      autoAdded=nMin-n;
+      for(var ai=n+1;ai<=nMin;ai++) _egS.push({label:'Inter '+ai,val:1,unit:'1e-6'});
+      n=_egS.length-1;
+    }
+
     // ── Inter plate dilution chain feasibility ─────────────────────────
     // Max dilution achievable per Echo step into inter plate:
     var maxDilPerStep=interVol*1000/DROP; // = 12000 for 30µL / 2.5nL
@@ -6462,14 +6498,8 @@ function switchPanel(id, btn) {
       if(feasPt) feasible++;
     }
 
-    // n_min = minimum inters required for seamless coverage of entire range
-    var nMin=1;
-    if(cInterTop>DROP&&cInterBot>0&&maxT>DROP){
-      nMin=Math.ceil(1+Math.log(cInterTop/cInterBot)/Math.log(maxT/DROP));
-    }
-    nMin=Math.max(nMin,1);
-
     // ── Info banner ───────────────────────────────────────────────────
+    var autoHtml=autoAdded>0?'<br><span style="color:#22c55e">✦ Added <strong>'+autoAdded+'</strong> intermediate'+(autoAdded===1?'':'s')+' automatically for full coverage.</span>':'';
     var info='<strong>Suggested:</strong> '+_egS.slice(1).map(function(s){
       return s.label+' = '+s.val+' '+(s.unit==='1e-3'?'mM':s.unit==='1e-6'?'µM':'nM');
     }).join(' &rsaquo; ');
@@ -6478,16 +6508,11 @@ function switchPanel(id, btn) {
     if(feasible>=pts){
       coverageHtml='<br><span style="color:#22c55e">✓ All '+pts+'/'+pts+' concentration points covered.</span>';
     } else {
-      var need=nMin-n;
-      coverageHtml='<br><span style="color:#f59e0b">⚠ '+feasible+'/'+pts+' points feasible with '+n+
-        ' intermediate'+(n===1?'':'s')+'. '+
-        (need>0?'Add <strong>'+need+' more</strong> for full seamless coverage ('+nMin+' total needed).':
-          'Coverage gap — check DMSO % or assay volume.')+
-        '</span>';
+      coverageHtml='<br><span style="color:#f59e0b">⚠ '+feasible+'/'+pts+' points feasible — check DMSO % or assay volume.</span>';
     }
     if(wb) wb.innerHTML='<div style="background:rgba(99,102,241,.08);border:1px solid var(--accent);'+
       'border-radius:6px;padding:8px 12px;font-size:12px;color:var(--text2);margin-bottom:8px">'+
-      info+warnHtml+coverageHtml+'</div>';
+      info+autoHtml+warnHtml+coverageHtml+'</div>';
   };
 
   // ── Main calculation (live) ───────────────────────────────────────────────
