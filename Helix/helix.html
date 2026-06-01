@@ -27,10 +27,12 @@ header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-i
 .theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
 input:checked + .theme-slider{background:var(--accent2);}
 input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;}
-.tabs{display:flex;gap:2px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
-.tab{padding:10px 16px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tabs{display:flex;gap:2px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;position:relative;}
+.tab{padding:10px 16px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s;}
+.tab.active{color:var(--accent);border-bottom-color:transparent;}
 .tab:hover:not(.active){color:var(--text);}
+.tab-indicator{position:absolute;bottom:0;height:2px;background:var(--accent);border-radius:1px 1px 0 0;z-index:1;transition:none;}
+.tab-indicator.ready{transition:left .22s ease,width .22s ease;}
 .content{flex:1;overflow:hidden;display:flex;flex-direction:column;}
 .panel{display:none;flex:1;overflow:auto;padding:24px 28px;}
 .panel.active{display:flex;flex-direction:column;gap:16px;}
@@ -183,6 +185,7 @@ select:focus,input:focus{border-color:var(--accent);}
   <button class="tab" onclick="switchTab('compare',this)">Compare</button>
   <button class="tab" onclick="switchTab('vectors',this)">Vector Library</button>
   <button class="tab" onclick="switchTab('guide',this)">Guide</button>
+  <div class="tab-indicator"></div>
 </div>
 <div class="content">
 
@@ -326,13 +329,25 @@ function toggleTheme(){var html=document.documentElement;var next=html.getAttrib
 (function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');}var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});})();
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
+function updateTabIndicator(btn){
+  var ind=document.querySelector('.tabs .tab-indicator');
+  if(!ind)return;
+  ind.style.left=btn.offsetLeft+'px';
+  ind.style.width=btn.offsetWidth+'px';
+  requestAnimationFrame(function(){ind.classList.add('ready');});
+}
 function switchTab(id,btn){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.getElementById('panel-'+id).classList.add('active');
+  updateTabIndicator(btn);
   if(id==='vectors') renderVectorLibrary();
 }
+document.addEventListener('DOMContentLoaded',function(){
+  var a=document.querySelector('.tab.active');
+  if(a)updateTabIndicator(a);
+});
 
 // ─── FASTA parser ─────────────────────────────────────────────────────────────
 function parseFASTA(raw){return raw.split('\n').filter(l=>!l.trim().startsWith('>')).join('').replace(/\s/g,'').toUpperCase();}

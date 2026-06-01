@@ -27,10 +27,12 @@ header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-i
 .theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
 input:checked + .theme-slider{background:var(--accent2);}
 input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;}
-.tabs{display:flex;gap:2px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;}
-.tab{padding:10px 16px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;white-space:nowrap;}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tabs{display:flex;gap:2px;padding:0 28px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;position:relative;}
+.tab{padding:10px 16px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s;white-space:nowrap;}
+.tab.active{color:var(--accent);border-bottom-color:transparent;}
 .tab:hover:not(.active){color:var(--text);}
+.tab-indicator{position:absolute;bottom:0;height:2px;background:var(--accent);border-radius:1px 1px 0 0;z-index:1;transition:none;}
+.tab-indicator.ready{transition:left .22s ease,width .22s ease;}
 .content{flex:1;overflow:hidden;display:flex;flex-direction:column;}
 .panel{display:none;flex:1;overflow:auto;padding:24px 28px;flex-direction:column;gap:16px;}
 .panel.active{display:flex;}
@@ -168,6 +170,7 @@ input:focus{border-color:var(--accent);}
   <button class="tab" onclick="switchTab('structure',this)">Structure</button>
   <button class="tab" onclick="switchTab('ti',this)">Target Intel</button>
   <button class="tab" onclick="switchTab('guide',this)">Guide</button>
+  <div class="tab-indicator"></div>
 </div>
 <div class="content">
 
@@ -742,14 +745,26 @@ async function tiLookup(){
 }
 
 // ─── Tab switching ─────────────────────────────────────────────────────────
+function updateTabIndicator(btn){
+  var ind=document.querySelector('.tabs .tab-indicator');
+  if(!ind)return;
+  ind.style.left=btn.offsetLeft+'px';
+  ind.style.width=btn.offsetWidth+'px';
+  requestAnimationFrame(function(){ind.classList.add('ready');});
+}
 function switchTab(id,btn){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
   document.getElementById('panel-'+id).classList.add('active');
   btn.classList.add('active');
+  updateTabIndicator(btn);
   if(_lastResult&&id==='cleavage')renderCleavageTable();
   if(_lastResult&&id==='props'){renderHydroChart();renderChargeChart();}
 }
+document.addEventListener('DOMContentLoaded',function(){
+  var a=document.querySelector('.tab.active');
+  if(a)updateTabIndicator(a);
+});
 
 // ─── Main analyze ──────────────────────────────────────────────────────────
 let _lastResult=null;
