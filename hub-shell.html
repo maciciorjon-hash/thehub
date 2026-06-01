@@ -122,6 +122,25 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .egg-name{font-size:13px;font-weight:700;color:var(--text);}
 .egg-role{font-size:10px;font-family:var(--mono);color:var(--text3);margin:3px 0 6px;letter-spacing:.3px;}
 .egg-bio{font-size:12px;color:var(--text2);line-height:1.65;}
+@media(max-width:640px){
+  #hub-nav{padding:0 10px;gap:6px;}
+  #nav-title{font-size:13px;}
+  #hub-search-wrap{width:90px;max-width:90px;}
+  #hub-search{font-size:12px;padding:5px 10px;}
+  #opts-btn,#sug-btn{padding:0 9px;font-size:11px;}
+  .opts-panel{width:calc(100vw - 20px);left:10px;right:10px;top:58px;}
+  .home-wrap{padding:22px 14px 60px;}
+  .hub-title{font-size:26px;letter-spacing:-.5px;}
+  .hub-sub{font-size:12px;}
+  .home-hdr{margin-bottom:24px;}
+  .grid{grid-template-columns:1fr;}
+  .card{padding:16px 14px 14px;gap:10px;}
+  .card-logo{width:40px;height:40px;font-size:19px;}
+  .card-name{font-size:14px;}
+  .section-lbl{font-size:9px;margin-bottom:12px;}
+  #egg-modal{border-radius:14px;}
+  #egg-top{padding:16px 16px 14px;}
+}
 </style>
 </head>
 <body>
@@ -853,239 +872,327 @@ document.addEventListener('click',function(e){
   });
 })();
 
-// ── Background: 8-bit Japanese village that grows over time ──────────────
+// ── Background: layered 8-bit Japanese village, organic + depth ──────────
 (function(){
   var canvas = document.getElementById('hub-bg-canvas');
   var ctx = canvas.getContext('2d');
+  var P = 4; // pixel grid
 
-  // Ambient sky particles (subtle)
-  var PCOLS = ['#ff5760','#7c6fd4','#e08c30','#0079b9','#43a047','#9c6fd4'];
-  var particles = [], NP = 18;
-  var P = 4; // pixel grid size
-
-  // Village: grows from 0→1 over FULL_MS milliseconds
   var elapsed = 0, lastTs = null;
-  var FULL_MS = 5 * 60 * 1000; // 5 minutes
+  var FULL_MS = 120000; // 2 min to full village
 
-  // Building definitions: { xf, w, bodyH, type, col, roof, unlockAt }
-  var BLD = [
-    {xf:0.04, w:76, bodyH:46, type:'shop',   col:'#DEB887', roof:'#C0392B', unlockAt:0.00},
-    {xf:0.14, w:50, bodyH:70, type:'house',  col:'#FAEBD7', roof:'#8B4513', unlockAt:0.08},
-    {xf:0.24, w:44, bodyH:114,type:'pagoda', col:'#795548', roof:'#C0392B', unlockAt:0.18},
-    {xf:0.36, w:58, bodyH:50, type:'house',  col:'#DEB887', roof:'#E74C3C', unlockAt:0.12},
-    {xf:0.47, w:34, bodyH:98, type:'tower',  col:'#6D4C41', roof:'#795548', unlockAt:0.30},
-    {xf:0.57, w:64, bodyH:54, type:'shop',   col:'#FAEBD7', roof:'#E74C3C', unlockAt:0.05},
-    {xf:0.68, w:46, bodyH:72, type:'house',  col:'#DEB887', roof:'#8B4513', unlockAt:0.22},
-    {xf:0.78, w:52, bodyH:84, type:'torii',  col:'#E74C3C', roof:'#E74C3C', unlockAt:0.38},
-    {xf:0.90, w:48, bodyH:128,type:'pagoda', col:'#5D4037', roof:'#C0392B', unlockAt:0.50},
-  ];
-
-  function snap(v) { return Math.round(v / P) * P; }
-  function pr(x,y,w,h,col,a) {
-    ctx.globalAlpha = a == null ? 1 : a;
-    ctx.fillStyle = col;
-    ctx.fillRect(snap(x), snap(y), Math.max(P, snap(w)), Math.max(P, snap(h)));
+  // Session-seeded LCG for consistent randomization per load
+  var rs = (Date.now() ^ (Date.now() >>> 16)) & 0x7fffffff;
+  function rng(){rs=(rs*1664525+1013904223)&0x7fffffff;return rs/0x7fffffff;}
+  function rr(lo,hi){return lo+rng()*(hi-lo);}
+  function ri(lo,hi){return Math.floor(rr(lo,hi+0.9999));}
+  function rp(arr){return arr[Math.floor(rng()*arr.length)];}
+  function snap(v){return Math.round(v/P)*P;}
+  function pr(x,y,w,h,col,a){
+    if(w<P||h<P)return;
+    ctx.globalAlpha=a==null?1:a; ctx.fillStyle=col;
+    ctx.fillRect(snap(x),snap(y),snap(w),snap(h));
   }
+  function gat(u,g){if(g<=u)return 0;return Math.min(1,(g-u)/Math.max(0.01,1-u));}
 
-  // Growth factor 0→1 for a building given overall progress g
-  function gat(unlockAt, g) {
-    if (g <= unlockAt) return 0;
-    return Math.min(1, (g - unlockAt) / Math.max(0.01, 1 - unlockAt));
-  }
+  // Color palettes
+  var FC={shop:{col:'#DEB887',roof:'#C0392B',door:'#6D4C41',win:'#FFF9C4'},
+          house:{col:'#FAEBD7',roof:'#7B3F00',door:'#795548',win:'#FFF9C4'},
+          pagoda:{col:'#795548',roof:'#C0392B',door:'#5D4037',win:null},
+          tower:{col:'#6D4C41',roof:'#5D4037',door:'#4E342E',win:'#FFF9C4'},
+          torii:{col:'#E74C3C',roof:'#E74C3C',door:null,win:null}};
+  // Far/back building palette (blued/hazed)
+  var BC={shop:{col:'#bec9d0',roof:'#7a8fa0'},house:{col:'#ccd4da',roof:'#7a8fa0'},
+          pagoda:{col:'#b0bfc8',roof:'#6e8090'}};
+  var PCOLS=['#ff5760','#7c6fd4','#e08c30','#0079b9','#43a047','#9c6fd4'];
+  var WCOLS=['#F4A460','#8B4513','#D2691E','#A0522D'];
+  var BCOLS=['#4A90D9','#E74C3C','#27AE60','#8B4513','#9B59B6'];
 
-  function drawShop(b, curH, gY, cx) {
-    var bx = cx - b.w/2;
-    pr(bx, gY-curH, b.w, curH, b.col);
-    // overhanging canopy
-    var cH = Math.min(8, curH * 0.18);
-    pr(bx-6, gY-curH-cH, b.w+12, cH+2, b.roof);
-    // small sign strip
-    if (curH > 16) pr(bx+4, gY-curH+4, b.w-8, 6, '#A52A2A', 0.5);
-    // windows
-    if (curH > 22) {
-      ctx.globalAlpha = 0.55; ctx.fillStyle = '#FFF9C4';
-      for (var wx = bx+8; wx < bx+b.w-16; wx += 18)
-        ctx.fillRect(snap(wx), snap(gY-curH+curH*0.4), 10, 8);
-    }
-    // door
-    if (curH > 16) pr(cx-5, gY-Math.min(curH,20), 10, Math.min(curH,20), '#6D4C41', 0.65);
-  }
+  // Scene objects (regenerated each session)
+  var farPeaks=[],nearHills=[],frontBlds=[],backBlds=[],clouds=[],workers=[],particles=[];
 
-  function drawHouse(b, curH, gY, cx) {
-    var bx = cx - b.w/2;
-    pr(bx, gY-curH, b.w, curH, b.col);
-    // stepped peaked roof
-    var rh = Math.min(18, b.w * 0.38);
-    var steps = Math.floor(rh / 2);
-    ctx.globalAlpha = 1; ctx.fillStyle = b.roof;
-    for (var s = 0; s < steps; s++) {
-      var rw = b.w - s*2;
-      if (rw <= 0) break;
-      ctx.fillRect(snap(bx+s), snap(gY-curH-(s+1)*2), snap(rw), P);
-    }
-    // windows
-    if (curH > 24) {
-      ctx.globalAlpha = 0.55; ctx.fillStyle = '#FFF9C4';
-      ctx.fillRect(snap(cx-b.w*0.28), snap(gY-curH*0.6), 10, 8);
-      ctx.fillRect(snap(cx+b.w*0.08), snap(gY-curH*0.6), 10, 8);
-    }
-    // door
-    if (curH > 16) pr(cx-5, gY-Math.min(curH,22), 10, Math.min(curH,22), '#8B4513', 0.6);
-  }
+  function genScene(){
+    var W=canvas.width, H=canvas.height;
+    var gY=H-18, bgY=H*0.66;
 
-  function drawPagoda(b, curH, gY, cx) {
-    var tiers = 3;
-    var tierH = b.bodyH / tiers;
-    ctx.globalAlpha = 1;
-    for (var t = 0; t < tiers; t++) {
-      var drawn = Math.min(tierH, curH - tierH*t);
-      if (drawn <= 0) break;
-      var tw = b.w * (1 - t * 0.2);
-      var tx = cx - tw/2;
-      var ty = gY - tierH*t - drawn;
-      ctx.fillStyle = b.col;
-      ctx.fillRect(snap(tx), snap(ty), snap(tw), snap(drawn));
-      // eave overhang (only when tier fully grown)
-      if (drawn >= tierH - 2) {
-        ctx.fillStyle = b.roof;
-        ctx.fillRect(snap(tx-6), snap(ty), snap(tw+12), P);
-        ctx.fillRect(snap(tx-3), snap(ty+P), snap(tw+6), P);
-      }
-    }
-    // golden spire
-    if (curH >= b.bodyH * 0.95) {
-      var spH = 16 * Math.min(1, (curH/b.bodyH - 0.95)/0.05);
-      ctx.fillStyle = '#F39C12';
-      ctx.fillRect(snap(cx-2), snap(gY-curH-spH), 4, snap(spH));
-      ctx.fillStyle = '#E74C3C';
-      ctx.fillRect(snap(cx-4), snap(gY-curH-spH), 8, 4);
-    }
-  }
+    // Far mountain peaks
+    farPeaks=[];
+    var nfp=ri(3,6);
+    for(var i=0;i<nfp;i++)
+      farPeaks.push({x:W*(0.05+i*(0.9/nfp)+rr(-0.06,0.06)),
+        bY:H*rr(0.52,0.62),tY:H*rr(0.24,0.40),w:W*rr(0.10,0.20)});
 
-  function drawTower(b, curH, gY, cx) {
-    var bx = cx - b.w/2;
-    pr(bx, gY-curH, b.w, curH, b.col);
-    // stepped top
-    ctx.globalAlpha = 1; ctx.fillStyle = b.roof;
-    for (var sr = 0; sr < 3; sr++) {
-      var srw = b.w - sr*4;
-      if (srw <= 0) break;
-      ctx.fillRect(snap(bx+sr*2), snap(gY-curH-(sr+1)*4), snap(srw), 4);
+    // Near hills
+    nearHills=[];
+    var nnh=ri(2,4);
+    for(var j=0;j<nnh;j++)
+      nearHills.push({x:W*(0.04+j*(0.9/nnh)+rr(-0.06,0.06)),
+        bY:H*rr(0.62,0.70),tY:H*rr(0.44,0.56),w:W*rr(0.16,0.28)});
+
+    // Back row buildings (smaller, hazed, standing at bgY)
+    backBlds=[];
+    var nbb=ri(4,6), bzw=0.88/nbb;
+    for(var k=0;k<nbb;k++){
+      var t2=rp(['shop','shop','house','house','pagoda']);
+      var c2=BC[t2]||BC.house;
+      var sc=rr(0.38,0.52);
+      backBlds.push({xf:0.04+bzw*(k+rr(0.08,0.92)),type:t2,
+        col:c2.col,roof:c2.roof,win:null,door:null,
+        w:ri(50,75)*sc, bodyH:ri(40,100)*sc,
+        gY:bgY, unlockAt:rr(0,0.28), alpha:rr(0.38,0.55)});
     }
-    // window grid
-    if (curH > 20) {
-      ctx.globalAlpha = 0.4; ctx.fillStyle = '#FFF9C4';
-      for (var wy = gY-curH+8; wy < gY-8; wy += 14) {
-        ctx.fillRect(snap(cx-6), snap(wy), 5, 5);
-        ctx.fillRect(snap(cx+1), snap(wy), 5, 5);
-      }
+
+    // Front buildings — organic spacing, guaranteed pagoda + torii
+    frontBlds=[];
+    var nfb=ri(7,10), fzw=0.88/nfb;
+    var types=[];
+    for(var m=0;m<nfb;m++) types.push(rp(['shop','house','house','house','shop']));
+    types[ri(1,Math.floor(nfb*0.4))]='pagoda';
+    if(nfb>5) types[ri(Math.floor(nfb*0.55),nfb-2)]='torii';
+    for(var m=0;m<nfb;m++){
+      var ft=types[m], fc=FC[ft]||FC.house;
+      var fw,fh;
+      if(ft==='shop')   {fw=ri(58,90); fh=ri(38,56);}
+      else if(ft==='house')  {fw=ri(42,64); fh=ri(56,84);}
+      else if(ft==='pagoda') {fw=ri(36,50); fh=ri(96,132);}
+      else if(ft==='tower')  {fw=ri(26,38); fh=ri(78,106);}
+      else                   {fw=ri(40,56); fh=ri(68,96);}
+      frontBlds.push({xf:0.04+fzw*(m+rr(0.06,0.94)),type:ft,
+        col:fc.col,roof:fc.roof,door:fc.door,win:fc.win,
+        w:fw,bodyH:fh, gY:gY, unlockAt:rr(0.01,0.58)});
+    }
+    frontBlds.sort(function(a,b){return a.xf-b.xf;});
+
+    // Clouds (3-5, drift left at different speeds)
+    clouds=[];
+    var nc=ri(3,5);
+    for(var ci=0;ci<nc;ci++)
+      clouds.push({x:rr(-80,W),y:H*rr(0.03,0.20),
+        w:ri(56,140),h:ri(14,30),speed:rr(0.10,0.30),alpha:rr(0.35,0.60)});
+
+    // Workers — appear near construction sites, wander
+    workers=[];
+    var nw=ri(3,5);
+    for(var wi=0;wi<nw;wi++){
+      var wt=rp(['walk','walk','work','carry']);
+      workers.push({x:rr(0.08,0.92)*W,dir:rng()>0.5?1:-1,type:wt,
+        phase:ri(0,31),speed:rr(0.28,0.65),
+        bodyCol:rp(BCOLS),skinCol:rp(WCOLS),
+        gY:gY, unlockAt:0.05});
+    }
+
+    // Ambient sky particles
+    particles=[];
+    for(var pi=0;pi<14;pi++){
+      var sz=P*(rng()<0.5?1:2);
+      particles.push({x:rng()*W,y:rng()*(H*0.52),
+        vx:(rng()-0.5)*0.38,vy:(rng()-0.5)*0.38,sz:sz,
+        col:rp(PCOLS),alpha:0.06+rng()*0.09});
     }
   }
 
-  function drawTorii(b, curH, gY, cx) {
-    var pw = 6, bx = cx - b.w/2;
-    ctx.globalAlpha = 1; ctx.fillStyle = b.col;
-    // Left and right pillars
-    ctx.fillRect(snap(bx+pw), snap(gY-curH), pw, snap(curH));
-    ctx.fillRect(snap(bx+b.w-pw*2), snap(gY-curH), pw, snap(curH));
-    // Top bars (only if tall enough)
-    if (curH > 14) {
-      // Upper curved bar (extends past pillars)
-      ctx.fillRect(snap(bx), snap(gY-curH), snap(b.w), 6);
-      // curved ends (2px upward nudge each side)
-      ctx.fillRect(snap(bx-2), snap(gY-curH-2), pw, 6);
-      ctx.fillRect(snap(bx+b.w-pw+2), snap(gY-curH-2), pw, 6);
-    }
-    if (curH > 22) {
-      ctx.fillRect(snap(bx+pw*0.5), snap(gY-curH+10), snap(b.w-pw), 4);
-    }
-  }
-
-  function drawScaffold(b, curH, targetH, gY, cx) {
-    if (curH >= targetH) return;
-    var bx = cx - b.w/2;
-    ctx.globalAlpha = 0.18; ctx.fillStyle = '#795548';
-    // Vertical scaffold poles
-    ctx.fillRect(snap(bx-6), snap(gY-curH), 2, snap(curH));
-    ctx.fillRect(snap(bx+b.w+4), snap(gY-curH), 2, snap(curH));
-    // Horizontal cross-beams every 16px
-    for (var hy = gY-curH; hy < gY; hy += 16)
-      ctx.fillRect(snap(bx-8), snap(hy), snap(b.w+16), 2);
-  }
-
-  function drawGround(gY) {
-    ctx.globalAlpha = 0.3; ctx.fillStyle = '#2E7D32';
-    ctx.fillRect(0, snap(gY), canvas.width, canvas.height - snap(gY));
-    ctx.globalAlpha = 0.15; ctx.fillStyle = '#1B5E20';
-    ctx.fillRect(0, snap(gY), canvas.width, P);
-    ctx.globalAlpha = 1;
-  }
-
-  function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-
-  function initParticles() {
-    particles = [];
-    for (var i = 0; i < NP; i++) {
-      var sz = P * (Math.random() < 0.5 ? 1 : 2);
-      particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * (canvas.height - 200),
-        vx: (Math.random()-0.5)*0.45, vy:(Math.random()-0.5)*0.45,
-        sz: sz, col: PCOLS[Math.floor(Math.random()*PCOLS.length)],
-        alpha: 0.08 + Math.random()*0.12
-      });
-    }
-  }
-
-  function draw(ts) {
-    if (lastTs !== null) elapsed += ts - lastTs;
-    lastTs = ts;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    var gfrac = Math.min(1, elapsed / FULL_MS);
-    var gY = canvas.height - 16;
-
-    // Sky particles
-    particles.forEach(function(p) {
-      p.x += p.vx; p.y += p.vy;
-      if (p.x < 0) p.x = canvas.width; if (p.x > canvas.width) p.x = 0;
-      if (p.y < 0) p.y = gY - 200; if (p.y > gY - 200) p.y = 0;
-      ctx.globalAlpha = p.alpha; ctx.fillStyle = p.col;
-      ctx.fillRect(Math.round(p.x/p.sz)*p.sz, Math.round(p.y/p.sz)*p.sz, p.sz, p.sz);
+  // ── Draw helpers ────────────────────────────────────────────────────
+  function drawMountains(){
+    // Far peaks — icy blue-grey
+    farPeaks.forEach(function(m){
+      ctx.globalAlpha=0.20; ctx.fillStyle='#b8ccd8';
+      ctx.beginPath();ctx.moveTo(m.x-m.w/2,m.bY);ctx.lineTo(m.x,m.tY);ctx.lineTo(m.x+m.w/2,m.bY);ctx.closePath();ctx.fill();
+      // snow cap
+      ctx.globalAlpha=0.16; ctx.fillStyle='#e4ecf2';
+      var ch=(m.bY-m.tY)*0.22;
+      ctx.beginPath();ctx.moveTo(m.x-m.w*0.09,m.tY+ch);ctx.lineTo(m.x,m.tY);ctx.lineTo(m.x+m.w*0.09,m.tY+ch);ctx.closePath();ctx.fill();
     });
-    ctx.globalAlpha = 1;
+    // Near hills — muted green
+    nearHills.forEach(function(h){
+      ctx.globalAlpha=0.26; ctx.fillStyle='#7a9e78';
+      ctx.beginPath();ctx.moveTo(h.x-h.w/2,h.bY);ctx.lineTo(h.x,h.tY);ctx.lineTo(h.x+h.w/2,h.bY);ctx.closePath();ctx.fill();
+    });
+    ctx.globalAlpha=1;
+  }
 
-    // Village
-    if (gfrac > 0) {
-      drawGround(gY);
-      BLD.forEach(function(b) {
-        var g = gat(b.unlockAt, gfrac);
-        if (g <= 0) return;
-        var curH = Math.round(b.bodyH * g);
-        if (curH < P) return;
-        var cx = b.xf * canvas.width;
-        // Scaffold while under construction
-        drawScaffold(b, curH, b.bodyH, gY, cx);
-        // Building
-        ctx.globalAlpha = 1;
-        if (b.type === 'shop')   drawShop(b, curH, gY, cx);
-        if (b.type === 'house')  drawHouse(b, curH, gY, cx);
-        if (b.type === 'pagoda') drawPagoda(b, curH, gY, cx);
-        if (b.type === 'tower')  drawTower(b, curH, gY, cx);
-        if (b.type === 'torii')  drawTorii(b, curH, gY, cx);
-      });
+  function drawClouds(){
+    var W=canvas.width;
+    clouds.forEach(function(c){
+      c.x-=c.speed;
+      if(c.x+c.w<0)c.x=W+c.w*0.5;
+      ctx.globalAlpha=c.alpha*0.65; ctx.fillStyle='#dce6ed';
+      ctx.fillRect(snap(c.x),snap(c.y),snap(c.w),snap(c.h));
+      ctx.fillRect(snap(c.x+c.w*0.14),snap(c.y-c.h*0.42),snap(c.w*0.54),snap(c.h*0.68));
+      ctx.fillRect(snap(c.x+c.w*0.52),snap(c.y-c.h*0.20),snap(c.w*0.28),snap(c.h*0.48));
+    });
+    ctx.globalAlpha=1;
+  }
+
+  function drawGround(gY,alpha){
+    ctx.globalAlpha=(alpha||1)*0.28; ctx.fillStyle='#2E7D32';
+    ctx.fillRect(0,snap(gY),canvas.width,canvas.height-snap(gY));
+    ctx.globalAlpha=(alpha||1)*0.14; ctx.fillStyle='#1B5E20';
+    ctx.fillRect(0,snap(gY),canvas.width,P);
+    ctx.globalAlpha=1;
+  }
+
+  function drawBuilding(b,curH,a){
+    var W=canvas.width, cx=b.xf*W, gY=b.gY, bx=cx-b.w/2;
+    a=a||1;
+    if(b.type==='shop'){
+      pr(bx,gY-curH,b.w,curH,b.col,a);
+      var cH=Math.min(8,curH*0.18);
+      pr(bx-5,gY-curH-cH,b.w+10,cH+2,b.roof,a);
+      if(b.win&&curH>22){ctx.globalAlpha=0.48*a;ctx.fillStyle=b.win;
+        for(var wx=bx+8;wx<bx+b.w-14;wx+=18)ctx.fillRect(snap(wx),snap(gY-curH+curH*0.4),10,7);}
+      if(b.door&&curH>16)pr(cx-5,gY-Math.min(curH,20),10,Math.min(curH,20),b.door,a*0.62);
     }
+    else if(b.type==='house'){
+      pr(bx,gY-curH,b.w,curH,b.col,a);
+      var steps=Math.floor(Math.min(18,b.w*0.36)/2);
+      ctx.globalAlpha=a;ctx.fillStyle=b.roof;
+      for(var s=0;s<steps;s++){var rw=b.w-s*2;if(rw<=0)break;ctx.fillRect(snap(bx+s),snap(gY-curH-(s+1)*2),snap(rw),P);}
+      if(b.win&&curH>24){ctx.globalAlpha=0.50*a;ctx.fillStyle=b.win;
+        ctx.fillRect(snap(cx-b.w*0.28),snap(gY-curH*0.62),10,7);
+        ctx.fillRect(snap(cx+b.w*0.08),snap(gY-curH*0.62),10,7);}
+      if(b.door&&curH>16)pr(cx-5,gY-Math.min(curH,22),10,Math.min(curH,22),b.door,a*0.60);
+    }
+    else if(b.type==='pagoda'){
+      var tiers=3,tH=b.bodyH/tiers;
+      ctx.globalAlpha=a;
+      for(var t=0;t<tiers;t++){
+        var dr=Math.min(tH,curH-tH*t);if(dr<=0)break;
+        var tw=b.w*(1-t*0.2),tx=cx-tw/2,ty=gY-tH*t-dr;
+        ctx.fillStyle=b.col;ctx.fillRect(snap(tx),snap(ty),snap(tw),snap(dr));
+        if(dr>=tH-2){ctx.fillStyle=b.roof;
+          ctx.fillRect(snap(tx-6),snap(ty),snap(tw+12),P);
+          ctx.fillRect(snap(tx-3),snap(ty+P),snap(tw+6),P);}
+      }
+      if(curH>=b.bodyH*0.95){var sp=16*Math.min(1,(curH/b.bodyH-0.95)/0.05);
+        ctx.fillStyle='#F39C12';ctx.fillRect(snap(cx-2),snap(gY-curH-sp),4,snap(sp));
+        ctx.fillStyle='#E74C3C';ctx.fillRect(snap(cx-4),snap(gY-curH-sp),8,4);}
+      ctx.globalAlpha=1;
+    }
+    else if(b.type==='tower'){
+      pr(bx,gY-curH,b.w,curH,b.col,a);
+      ctx.globalAlpha=a;ctx.fillStyle=b.roof;
+      for(var sr=0;sr<3;sr++){var sw=b.w-sr*4;if(sw<=0)break;ctx.fillRect(snap(bx+sr*2),snap(gY-curH-(sr+1)*4),snap(sw),4);}
+      if(b.win&&curH>20){ctx.globalAlpha=0.36*a;ctx.fillStyle=b.win;
+        for(var wy=gY-curH+8;wy<gY-8;wy+=14){ctx.fillRect(snap(cx-6),snap(wy),5,5);ctx.fillRect(snap(cx+1),snap(wy),5,5);}}
+    }
+    else if(b.type==='torii'){
+      var pw=6,bx2=cx-b.w/2;
+      ctx.globalAlpha=a;ctx.fillStyle=b.col;
+      ctx.fillRect(snap(bx2+pw),snap(gY-curH),pw,snap(curH));
+      ctx.fillRect(snap(bx2+b.w-pw*2),snap(gY-curH),pw,snap(curH));
+      if(curH>14){ctx.fillRect(snap(bx2),snap(gY-curH),snap(b.w),6);
+        ctx.fillRect(snap(bx2-3),snap(gY-curH-3),pw,6);
+        ctx.fillRect(snap(bx2+b.w-pw+3),snap(gY-curH-3),pw,6);}
+      if(curH>22)ctx.fillRect(snap(bx2+pw),snap(gY-curH+10),snap(b.w-pw*2),4);
+    }
+    ctx.globalAlpha=1;
+  }
 
+  function drawScaffold(b,curH,a){
+    if(curH>=b.bodyH)return;
+    var W=canvas.width, cx=b.xf*W, bx=cx-b.w/2, gY=b.gY;
+    ctx.globalAlpha=0.16*(a||1); ctx.fillStyle='#8B6914';
+    ctx.fillRect(snap(bx-6),snap(gY-curH),2,snap(curH));
+    ctx.fillRect(snap(bx+b.w+4),snap(gY-curH),2,snap(curH));
+    for(var hy=gY-curH;hy<gY;hy+=16)ctx.fillRect(snap(bx-8),snap(hy),snap(b.w+16),2);
+    ctx.globalAlpha=1;
+  }
+
+  function drawWorkers(gfrac){
+    var W=canvas.width;
+    workers.forEach(function(w){
+      if(gfrac<w.unlockAt)return;
+      w.phase=(w.phase+1)&63;
+      var legSwing=(w.phase>>3)&1; // toggles every 8 frames
+      var x=w.x, y=snap(w.gY-14);
+
+      if(w.type==='walk'||w.type==='carry'){
+        w.x+=w.dir*w.speed;
+        if(w.x<20){w.x=20;w.dir=1;}
+        if(w.x>W-20){w.x=W-20;w.dir=-1;}
+      } else {
+        // work: bob slightly
+        y=snap(w.gY-14+((w.phase&15)<8?0:2));
+      }
+
+      ctx.globalAlpha=0.72;
+      // Hat
+      ctx.fillStyle='#4E342E';
+      ctx.fillRect(snap(x-4),snap(y-2),8,2);   // brim
+      ctx.fillRect(snap(x-2),snap(y-5),4,3);    // crown
+      // Head
+      ctx.fillStyle=w.skinCol;
+      ctx.fillRect(snap(x-2),snap(y),4,4);
+      // Body
+      ctx.fillStyle=w.bodyCol;
+      ctx.fillRect(snap(x-2),snap(y+4),4,5);
+      // Legs
+      ctx.fillStyle='#37474F';
+      if(legSwing===0){
+        ctx.fillRect(snap(x-2),snap(y+9),2,4);
+        ctx.fillRect(snap(x),  snap(y+9+2),2,4);
+      } else {
+        ctx.fillRect(snap(x-2),snap(y+9+2),2,4);
+        ctx.fillRect(snap(x),  snap(y+9),2,4);
+      }
+      // Carried plank
+      if(w.type==='carry'){
+        ctx.globalAlpha=0.60; ctx.fillStyle='#DEB887';
+        ctx.fillRect(snap(x+3),snap(y+3),8,3);
+      }
+      ctx.globalAlpha=1;
+    });
+  }
+
+  function drawParticles(){
+    var maxY=canvas.height*0.52;
+    particles.forEach(function(p){
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x=canvas.width; if(p.x>canvas.width)p.x=0;
+      if(p.y<0)p.y=maxY; if(p.y>maxY)p.y=0;
+      ctx.globalAlpha=p.alpha; ctx.fillStyle=p.col;
+      ctx.fillRect(Math.round(p.x/p.sz)*p.sz,Math.round(p.y/p.sz)*p.sz,p.sz,p.sz);
+    });
+    ctx.globalAlpha=1;
+  }
+
+  // ── Main loop ────────────────────────────────────────────────────────
+  function draw(ts){
+    if(lastTs!==null)elapsed+=ts-lastTs;
+    lastTs=ts;
+    var gfrac=Math.min(1,elapsed/FULL_MS);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    drawMountains();
+    drawClouds();
+    // Far-ground strip (background row)
+    if(gfrac>0){drawGround(canvas.height*0.66,0.6);}
+    // Back-row buildings (smaller, hazed, on the hills)
+    backBlds.forEach(function(b){
+      var g=gat(b.unlockAt,gfrac); if(g<=0)return;
+      var curH=Math.round(b.bodyH*g); if(curH<P)return;
+      drawScaffold(b,curH,b.alpha);
+      drawBuilding(b,curH,b.alpha);
+    });
+    // Front ground + buildings
+    drawGround(canvas.height-18,1);
+    frontBlds.forEach(function(b){
+      var g=gat(b.unlockAt,gfrac); if(g<=0)return;
+      var curH=Math.round(b.bodyH*g); if(curH<P)return;
+      drawScaffold(b,curH,1);
+      drawBuilding(b,curH,1);
+    });
+    drawWorkers(gfrac);
+    drawParticles();
     requestAnimationFrame(draw);
   }
 
-  window.addEventListener('resize', function() { resize(); initParticles(); });
-  resize();
-  initParticles();
+  function init(){
+    canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+    genScene();
+  }
+  window.addEventListener('resize',function(){init();});
+  init();
   requestAnimationFrame(draw);
 })();
 </script>
