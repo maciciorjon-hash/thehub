@@ -128,6 +128,11 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 <div id="hub-nav">
   <div id="hub-logo" title="">H</div>
   <span id="nav-title">The Hub</span>
+  <div id="nav-crumb" style="display:none;align-items:center;gap:6px;flex-shrink:0;">
+    <span style="color:var(--text3);font-size:15px;line-height:1;">›</span>
+    <div id="crumb-icon" style="width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#fff;font-family:var(--mono);flex-shrink:0;"></div>
+    <span id="crumb-name" style="font-size:14px;font-weight:500;color:var(--text);white-space:nowrap;"></span>
+  </div>
   <div id="hub-search-wrap">
     <input id="hub-search" type="text" placeholder="Search apps, tools, assays…" autocomplete="off" oninput="hubSearch(this.value)" onkeydown="hubSearchKey(event)">
     <div id="hub-search-results"></div>
@@ -384,12 +389,22 @@ var APP_INFO = {
 function enterAppNav(id) {
   var info = APP_INFO[id] || {};
   document.getElementById('hub-logo').title = 'Back to The Hub';
-  document.getElementById('nav-title').textContent = info.name || 'The Hub';
+  var icon = document.getElementById('crumb-icon');
+  if (icon) { icon.textContent = info.letter || '?'; icon.style.background = info.color || '#666'; }
+  var nm = document.getElementById('crumb-name');
+  if (nm) nm.textContent = info.name || id;
+  var crumb = document.getElementById('nav-crumb');
+  if (crumb) crumb.style.display = 'flex';
+  var sw = document.getElementById('hub-search-wrap');
+  if (sw) sw.style.visibility = 'hidden';
 }
 
 function exitAppNav() {
   document.getElementById('hub-logo').title = '';
-  document.getElementById('nav-title').textContent = 'The Hub';
+  var crumb = document.getElementById('nav-crumb');
+  if (crumb) crumb.style.display = 'none';
+  var sw = document.getElementById('hub-search-wrap');
+  if (sw) sw.style.visibility = 'visible';
 }
 
 function openApp(id, tab) {
@@ -401,6 +416,7 @@ function openApp(id, tab) {
       var lmBase = window.location.href.replace(/[^\/]*$/, '');
       html = html.replace('<head>', '<head><base href="' + lmBase + 'Labmate/">');
     }
+    html = html.replace('</head>', '<style>.opts-btn{display:none!important;}.opts-panel{display:none!important;}</style></head>');
     var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
       'var logo=document.querySelector(".logo,.app-logo");' +
       'var name=document.querySelector("h1,.app-name");' +
@@ -722,6 +738,58 @@ var HUB_SEARCH_INDEX=[
   {t:'pX330 CRISPR',id:'dna',tab:null,app:'Helix',kw:'crispr cas9 guide rna U6 transient'},
   {t:'pX458 CRISPR-GFP',id:'dna',tab:null,app:'Helix',kw:'crispr cas9 gfp flow sort'},
   {t:'pcDNA3.1 mammalian expression',id:'dna',tab:null,app:'Helix',kw:'mammalian expression cmv neomycin pcDNA'},
+  // LabMate — quickcalc
+  {t:'Simple Dilution',id:'lm',tab:'quickcalc',app:'LabMate',kw:'dilution c1v1 concentration volume stock'},
+  {t:'Serial Dilution',id:'lm',tab:'quickcalc',app:'LabMate',kw:'serial fold dilution range'},
+  {t:'Moles & Mass',id:'lm',tab:'quickcalc',app:'LabMate',kw:'moles mass molecular weight MW nmol umol'},
+  {t:'PCR Master Mix',id:'lm',tab:'quickcalc',app:'LabMate',kw:'pcr mastermix primer polymerase buffer reaction'},
+  {t:'PK Parameters',id:'lm',tab:'quickcalc',app:'LabMate',kw:'pharmacokinetics AUC Cmax half-life clearance'},
+  {t:'pH / Buffer Calculator',id:'lm',tab:'quickcalc',app:'LabMate',kw:'pH buffer Henderson-Hasselbalch pKa acid base'},
+  // LabMate — molbio
+  {t:'Gibson Assembly',id:'lm',tab:'molbio',app:'LabMate',kw:'gibson assembly cloning overlap ligation'},
+  {t:'Restriction Cloning',id:'lm',tab:'molbio',app:'LabMate',kw:'restriction enzyme digest cloning insert vector'},
+  {t:'Bacterial Transformation',id:'lm',tab:'molbio',app:'LabMate',kw:'transformation competent cells heat shock bacteria'},
+  {t:'Miniprep',id:'lm',tab:'molbio',app:'LabMate',kw:'miniprep plasmid extraction alkaline lysis column'},
+  {t:'NucleoSpin Cleanup',id:'lm',tab:'molbio',app:'LabMate',kw:'nucleospin gel PCR cleanup purification'},
+  // LabMate — cellbio
+  {t:'BCA Protein Assay',id:'lm',tab:'cellbio',app:'LabMate',kw:'BCA protein assay Bradford concentration lysate'},
+  {t:'Western Blot',id:'lm',tab:'cellbio',app:'LabMate',kw:'western blot SDS-PAGE transfer antibody immunoblot'},
+  {t:'Immunoprecipitation (IP)',id:'lm',tab:'cellbio',app:'LabMate',kw:'immunoprecipitation IP co-IP pull-down antibody beads'},
+  {t:'HiBiT Blot',id:'lm',tab:'cellbio',app:'LabMate',kw:'hibit blot luminescent lytic detection'},
+  {t:'Lentiviral Transduction',id:'lm',tab:'cellbio',app:'LabMate',kw:'lentiviral retroviral transduction virus packaging MOI'},
+  {t:'Transfection',id:'lm',tab:'cellbio',app:'LabMate',kw:'transfection lipofectamine fugene plasmid cells'},
+  {t:'HiBiT Lytic Assay',id:'lm',tab:'cellbio',app:'LabMate',kw:'hibit lytic assay luminescence NanoBiT'},
+  {t:'CellTiter-Glo (CTG) 2.0',id:'lm',tab:'cellbio',app:'LabMate',kw:'CTG CellTiterGlo viability ATP luminescence'},
+  // LabMate — crispr
+  {t:'gRNA Design',id:'lm',tab:'crispr',app:'LabMate',kw:'gRNA guide RNA sgRNA CRISPR design spacer PAM'},
+  {t:'CRISPR Knockout (PX458)',id:'lm',tab:'crispr',app:'LabMate',kw:'CRISPR knockout KO px458 cas9 transfection'},
+  {t:'CRISPR KI HDR',id:'lm',tab:'crispr',app:'LabMate',kw:'knock-in HDR homology directed repair donor template'},
+  {t:'CRISPR KI RNP + ssODN',id:'lm',tab:'crispr',app:'LabMate',kw:'RNP electroporation ssODN ribonucleoprotein'},
+  {t:'Single-cell Sorting',id:'lm',tab:'crispr',app:'LabMate',kw:'single cell sorting FACS flow cytometry clone'},
+  // LabMate — proteomics
+  {t:'S-Trap Digestion',id:'lm',tab:'proteomics',app:'LabMate',kw:'S-trap proteomics trypsin digest sample prep'},
+  {t:'DIA-NN Analysis',id:'lm',tab:'proteomics',app:'LabMate',kw:'DIA-NN data independent acquisition proteomics MS'},
+  {t:'Perseus Analysis',id:'lm',tab:'proteomics',app:'LabMate',kw:'Perseus proteomics statistics MaxQuant label free'},
+  // LabMate — structbio
+  {t:'PDB Search',id:'lm',tab:'structbio',app:'LabMate',kw:'PDB protein data bank crystal structure'},
+  {t:'AlphaFold Structure',id:'lm',tab:'structbio',app:'LabMate',kw:'AlphaFold predicted structure AI model'},
+  {t:'PyMOL Basics',id:'lm',tab:'structbio',app:'LabMate',kw:'PyMOL visualization molecular graphics commands'},
+  {t:'PyMOL Figures',id:'lm',tab:'structbio',app:'LabMate',kw:'PyMOL publication figure ray trace render'},
+  {t:'Binding Site Analysis',id:'lm',tab:'structbio',app:'LabMate',kw:'binding site pocket docking ligand'},
+  {t:'Ternary Complex',id:'lm',tab:'structbio',app:'LabMate',kw:'ternary complex PROTAC E3 target degrader'},
+  // LabMate — assays
+  {t:'TR-FRET Assay',id:'lm',tab:'assays',app:'LabMate',kw:'TR-FRET time resolved FRET binding fluorescence'},
+  {t:'Fluorescence Polarization Assay',id:'lm',tab:'assays',app:'LabMate',kw:'FP fluorescence polarization anisotropy binding'},
+  {t:'SPR Assay',id:'lm',tab:'assays',app:'LabMate',kw:'SPR surface plasmon resonance Biacore kinetics'},
+  // LabMate — reference
+  {t:'SDS-PAGE Reference',id:'lm',tab:'reference',app:'LabMate',kw:'SDS PAGE gel electrophoresis acrylamide'},
+  {t:'Fluorochrome Reference',id:'lm',tab:'reference',app:'LabMate',kw:'fluorochrome dye excitation emission spectra'},
+  {t:'Amino Acid Reference',id:'lm',tab:'reference',app:'LabMate',kw:'amino acid properties pKa hydrophobicity one letter'},
+  {t:'Gel Markers Reference',id:'lm',tab:'reference',app:'LabMate',kw:'gel marker ladder molecular weight bands'},
+  // LabMate — tools
+  {t:'Lab Timers',id:'lm',tab:'tools',app:'LabMate',kw:'timer countdown lab protocol incubation'},
+  {t:'Experiment Planner',id:'lm',tab:'tools',app:'LabMate',kw:'experiment planner schedule protocol steps'},
+  {t:'PROTAC Tools',id:'lm',tab:'tools',app:'LabMate',kw:'PROTAC degrader linker E3 ligase CRBN VHL warhead'},
 ];
 function hubFuzzy(q,text){
   q=q.toLowerCase();text=text.toLowerCase();

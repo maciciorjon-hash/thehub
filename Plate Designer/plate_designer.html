@@ -53,6 +53,16 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 /* Selection toolbar — floating popup */
 .sel-toolbar{position:fixed;right:14px;top:140px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:14px 16px;z-index:50;min-width:230px;box-shadow:0 4px 24px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .18s ease;display:flex!important;flex-direction:column;gap:10px;}
 .sel-toolbar.open{opacity:1;pointer-events:auto;}
+#panel-drag-handle{display:flex;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:8px;cursor:grab;user-select:none;flex-shrink:0;}
+#panel-drag-handle:active{cursor:grabbing;}
+.type-row{display:flex;align-items:center;gap:7px;padding:4px 2px;border-radius:5px;cursor:pointer;transition:background .12s;}
+.type-row:hover,.type-row.active-type{background:var(--surface2);}
+.type-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0;}
+.type-name-input{background:none;border:none;flex:1;font-size:12px;color:var(--text);font-family:var(--sans);padding:0 2px;cursor:pointer;outline:none;min-width:0;}
+.type-name-input:focus{cursor:text;background:var(--surface2);border-radius:3px;padding:0 4px;}
+.type-del-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:0;flex-shrink:0;width:18px;text-align:center;transition:color .12s;}
+.type-del-btn:hover{color:var(--accent);}
+#type-list-wrap{overflow-y:auto;max-height:200px;}
 .sel-count{font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap;min-width:80px;}
 .assign-btns{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
 .assign-btn{display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:6px;border:1.5px solid var(--border);background:none;cursor:pointer;font-size:12px;font-weight:500;color:var(--text2);font-family:var(--sans);transition:all .12s;}
@@ -126,53 +136,60 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 <div class="top-bar" id="top-bar">
   <div id="fmt-pills" style="display:flex;gap:4px;"></div>
   <div class="tb-sep"></div>
-  <div id="active-type-indicator" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);">
-    <span style="font-size:11px;color:var(--text3);">Paint:</span>
-    <span id="active-type-sw" style="width:11px;height:11px;border-radius:3px;background:#ab47bc;display:inline-block;flex-shrink:0;"></span>
-    <span id="active-type-name">Treatment</span>
-  </div>
-  <div class="tb-sep"></div>
-  <button class="btn btn-sec" onclick="showCustomTypeForm()" id="btn-add-custom" style="font-size:11px;padding:5px 10px;">+ Custom <span class="pinfo" data-tip="Add a custom well type with a name and colour.">ⓘ</span></button>
-  <div id="custom-type-form" style="display:none;" class="custom-form">
-    <input type="text" id="custom-name" placeholder="Name" maxlength="20">
-    <input type="color" id="custom-color" value="#ff5722">
-    <button class="btn btn-primary" onclick="addCustomType()" style="padding:4px 10px;">Add</button>
-    <button class="btn btn-sec" onclick="hideCustomTypeForm()" style="padding:4px 8px;">✕</button>
-  </div>
-  <div style="margin-left:auto;display:flex;gap:6px;">
+  <button class="btn btn-sec" id="btn-types-panel" onclick="toggleTypesPanel()" style="font-size:11px;padding:5px 10px;">Types &#9660;</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
     <button class="btn btn-sec" onclick="clearPlate()" style="font-size:11px;padding:5px 10px;">Clear plate</button>
     <button class="btn btn-primary" onclick="exportPNG()" style="font-size:11px;padding:5px 12px;">&#8595; Export PNG <span class="pinfo" data-tip="Exports at 600 DPI. Text auto-fits inside wells.">ⓘ</span></button>
+    <span style="font-size:11px;color:var(--text2);margin-left:4px;">Size</span>
+    <input type="range" id="well-size-slider" min="0.5" max="2.0" step="0.1" value="1.0" style="width:76px;" oninput="setUserScale(parseFloat(this.value))">
   </div>
 </div>
 
 <div class="sel-toolbar" id="sel-toolbar">
-  <div style="display:flex;align-items:center;justify-content:space-between;">
-    <span class="sel-count" id="sel-count" style="font-size:12px;font-weight:600;color:var(--text2);"></span>
-    <button class="btn btn-sec" onclick="clearSelection()" style="font-size:11px;padding:3px 8px;border-radius:6px;">&#10005;</button>
+  <div id="panel-drag-handle">
+    <span style="font-size:12px;font-weight:600;color:var(--text);">Well Types</span>
+    <button onclick="toggleTypesPanel()" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:15px;line-height:1;padding:0;" title="Close">&#10005;</button>
   </div>
-  <div class="assign-btns" id="assign-btns" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
-  <div style="height:1px;background:var(--border);margin:2px 0;"></div>
-  <div class="sp-label-wrap" style="display:flex;align-items:center;gap:6px;">
-    <label style="font-size:11px;color:var(--text3);white-space:nowrap;">Label <span class="pinfo" data-tip="Annotate selected wells. Labels appear inside wells and in the exported image.">ⓘ</span>:</label>
-    <input class="sp-input" type="text" id="sp-lbl-input" placeholder="e.g. DMSO" oninput="applyWellLabel(this.value)" style="flex:1;">
-  </div>
-  <div id="dil-sep" style="display:none;height:1px;background:var(--border);margin:2px 0;"></div>
-  <div class="dil-wrap" id="dil-wrap" style="display:none;">
-    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Dilution series</div>
-    <div class="dil-fields" style="display:flex;flex-direction:column;gap:5px;">
-      <div style="display:flex;align-items:center;gap:5px;">
-        <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Start conc <span class="pinfo" data-tip="Starting concentration for the dilution series (row: left→right, col: top→down).">ⓘ</span>:</label>
-        <input type="number" id="dil-start" step="any" placeholder="10000" style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 7px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;min-width:0;">
-        <select id="dil-unit" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 6px;color:var(--text2);font-family:var(--sans);font-size:11px;outline:none;"><option>nM</option><option>µM</option><option>mM</option></select>
-      </div>
-      <div style="display:flex;align-items:center;gap:5px;">
-        <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Fold dilution:</label>
-        <input type="number" id="dil-factor" value="3" step="any" min="1.001" style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 7px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;min-width:0;">
-        <button class="btn btn-primary" id="dil-btn" onclick="applyDilution('row')" style="font-size:11px;padding:4px 10px;">Apply &#8594;</button>
-      </div>
+  <div id="type-list-wrap"></div>
+  <button class="btn btn-sec" id="btn-add-custom-panel" onclick="showCustomFormPanel()" style="font-size:11px;padding:5px 10px;width:100%;margin-top:6px;">+ Add type</button>
+  <div id="custom-type-form-panel" style="display:none;margin-top:6px;flex-direction:column;gap:6px;">
+    <div style="display:flex;gap:6px;align-items:center;">
+      <input type="color" id="cp-panel" value="#ff5722" style="width:28px;height:28px;border:1px solid var(--border2);border-radius:4px;cursor:pointer;padding:1px;background:var(--surface2);">
+      <input type="text" id="cn-panel" placeholder="Type name" maxlength="24" style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 7px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;">
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-primary" onclick="addCustomTypeFromPanel()" style="flex:1;font-size:12px;padding:4px 8px;">Add</button>
+      <button class="btn btn-sec" onclick="hideCustomFormPanel()" style="font-size:12px;padding:4px 10px;">Cancel</button>
     </div>
   </div>
-  <button class="btn btn-sec" onclick="selectAll()" style="font-size:11px;padding:5px;width:100%;margin-top:2px;">Select All</button>
+  <div id="sel-section" style="display:none;">
+    <div style="height:1px;background:var(--border);margin:8px 0;"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <span id="sel-count" style="font-size:12px;font-weight:600;color:var(--text2);"></span>
+      <button class="btn btn-sec" onclick="clearSelection()" style="font-size:11px;padding:3px 8px;border-radius:6px;">&#10005;</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+      <label style="font-size:11px;color:var(--text3);white-space:nowrap;">Label:</label>
+      <input class="sp-input" type="text" id="sp-lbl-input" placeholder="e.g. DMSO" oninput="applyWellLabel(this.value)" style="flex:1;">
+    </div>
+    <div id="dil-sep" style="display:none;height:1px;background:var(--border);margin:4px 0;"></div>
+    <div class="dil-wrap" id="dil-wrap" style="display:none;">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Dilution series</div>
+      <div class="dil-fields" style="display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;gap:5px;">
+          <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Start conc <span class="pinfo" data-tip="Starting concentration for the dilution series (row: left→right, col: top→down).">ⓘ</span>:</label>
+          <input type="number" id="dil-start" step="any" placeholder="10000" style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 7px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;min-width:0;">
+          <select id="dil-unit" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 6px;color:var(--text2);font-family:var(--sans);font-size:11px;outline:none;"><option>nM</option><option>µM</option><option>mM</option></select>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Fold dilution:</label>
+          <input type="number" id="dil-factor" value="3" step="any" min="1.001" style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 7px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;min-width:0;">
+          <button class="btn btn-primary" id="dil-btn" onclick="applyDilution('row')" style="font-size:11px;padding:4px 10px;">Apply &#8594;</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-sec" onclick="selectAll()" style="font-size:11px;padding:5px;width:100%;margin-top:6px;">Select All</button>
+  </div>
 </div>
 
 <div class="plate-scroll-area" id="plate-scroll-area">
@@ -267,6 +284,7 @@ let selection = new Set();
 let lastClickedWell = null;
 let customTypes = [];
 var rowAnnotations = {}, colAnnotations = {};
+var userScale = 1.0;
 
 function allTypes() { return [...WELL_TYPES, ...customTypes]; }
 function typeById(id) { return allTypes().find(t => t.id === id); }
@@ -290,22 +308,80 @@ function buildTopBar() {
 }
 
 function renderTypePalette() {
-  updateActiveTypeIndicator();
+  renderTypeList();
 }
 
-function updateActiveTypeIndicator() {
-  const type = allTypes().find(t => t.id === activeTypeId);
-  if (!type) return;
-  const sw = document.getElementById('active-type-sw');
-  const nm = document.getElementById('active-type-name');
-  if (sw) sw.style.background = type.color;
-  if (nm) nm.textContent = type.name;
+function renderTypeList() {
+  const wrap = document.getElementById('type-list-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = allTypes().map(t => {
+    const isActive = (t.id === activeTypeId);
+    const isCustom = customTypes.some(c => c.id === t.id);
+    return '<div class="type-row' + (isActive ? ' active-type' : '') + '" onclick="setActiveTypeById(\'' + t.id + '\')">' +
+      '<div class="type-swatch" style="background:' + t.color + ';"></div>' +
+      '<input class="type-name-input" value="' + esc(t.name) + '" title="Click to rename" onclick="event.stopPropagation()" onchange="renameType(\'' + t.id + '\',this.value)">' +
+      (isActive ? '<span style="color:var(--accent);font-size:10px;flex-shrink:0;">●</span>' : '<span style="width:12px;flex-shrink:0;"></span>') +
+      (isCustom ? '<button class="type-del-btn" title="Delete type" onclick="event.stopPropagation();deleteCustomType(\'' + t.id + '\')">&#10005;</button>' : '<span style="width:18px;flex-shrink:0;"></span>') +
+      '</div>';
+  }).join('');
 }
 
 function setActiveType(id) {
   activeTypeId = id;
-  document.querySelectorAll('.assign-btn[data-type-id]').forEach(b => b.classList.toggle('active-assign', b.dataset.typeId === id));
-  updateActiveTypeIndicator();
+  renderTypeList();
+}
+
+function setActiveTypeById(id) {
+  activeTypeId = id;
+  if (selection.size > 0) {
+    selection.forEach(sid => { wellState[sid] = {typeId: id, label: wellState[sid] ? wellState[sid].label || '' : ''}; });
+    drawPlateCanvas(document.getElementById('plate-canvas-main'));
+    renderLegend();
+  }
+  renderTypeList();
+}
+
+function renameType(id, newName) {
+  newName = (newName || '').trim();
+  if (!newName) return;
+  const bt = WELL_TYPES.find(t => t.id === id);
+  if (bt) bt.name = newName;
+  else { const ct = customTypes.find(t => t.id === id); if (ct) ct.name = newName; }
+  renderTypeList();
+  renderLegend();
+  drawPlateCanvas(document.getElementById('plate-canvas-main'));
+}
+
+function deleteCustomType(id) {
+  const idx = customTypes.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  Object.keys(wellState).forEach(wid => { if (wellState[wid] && wellState[wid].typeId === id) delete wellState[wid]; });
+  customTypes.splice(idx, 1);
+  if (activeTypeId === id) activeTypeId = WELL_TYPES[0].id;
+  renderTypeList(); renderLegend();
+  drawPlateCanvas(document.getElementById('plate-canvas-main'));
+}
+
+function toggleTypesPanel() {
+  document.getElementById('sel-toolbar').classList.toggle('open');
+}
+
+function showCustomFormPanel() {
+  document.getElementById('custom-type-form-panel').style.display = 'flex';
+  document.getElementById('btn-add-custom-panel').style.display = 'none';
+}
+function hideCustomFormPanel() {
+  document.getElementById('custom-type-form-panel').style.display = 'none';
+  document.getElementById('btn-add-custom-panel').style.display = '';
+}
+function addCustomTypeFromPanel() {
+  const name = (document.getElementById('cn-panel').value || '').trim();
+  const color = document.getElementById('cp-panel').value;
+  if (!name) { alert('Enter a type name.'); return; }
+  customTypes.push({id: 'custom_' + Date.now(), name, color});
+  document.getElementById('cn-panel').value = '';
+  hideCustomFormPanel();
+  renderTypePalette(); renderLegend(); updateSelToolbar();
 }
 
 function setFormat(f) {
@@ -320,11 +396,16 @@ function setFormat(f) {
 
 // ─── Canvas plate (all formats) ───────────────────────────────────────────────
 function calcWellPx() {
-  const avail = (document.getElementById('plate-scroll-area').clientWidth || 800) - 80;
+  const area = document.getElementById('plate-scroll-area');
   const fmt = FORMATS[currentFormat];
-  const raw = Math.floor((avail - LABEL_W - fmt.gap * (fmt.cols - 1)) / fmt.cols);
-  return Math.max(12, Math.min(raw, MAX_WP[currentFormat]));
+  const availW = ((area ? area.clientWidth : 800) - 80);
+  const availH = ((area ? area.clientHeight : 600) - 80);
+  const wpW = Math.floor((availW - LABEL_W - fmt.gap * (fmt.cols - 1)) / fmt.cols);
+  const wpH = Math.floor((availH - LABEL_H - fmt.gap * (fmt.rows - 1)) / fmt.rows);
+  const wp = Math.min(wpW, wpH, MAX_WP[currentFormat] || 90);
+  return Math.max(12, Math.round(wp * userScale));
 }
+function setUserScale(v) { userScale = v; sizeAndDrawCanvas(); }
 
 function buildPlateArea() {
   const wrap = document.getElementById('plate-wrap');
@@ -349,7 +430,7 @@ function sizeAndDrawCanvas() {
   fmt.wellPx = wellPx;
   const canvasW = LABEL_W + fmt.cols * (wellPx + fmt.gap) - fmt.gap;
   const canvasH = LABEL_H + fmt.rows * (wellPx + fmt.gap) - fmt.gap;
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = Math.max(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(canvasW * dpr);
   canvas.height = Math.round(canvasH * dpr);
   canvas.style.width = canvasW + 'px';
@@ -372,6 +453,8 @@ function drawPlateCanvas(canvas) {
   const fontSize = Math.max(7, Math.min(10, wellPx * 0.55));
 
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const W = parseInt(canvas.style.width);
   const H = parseInt(canvas.style.height);
@@ -639,39 +722,29 @@ function handleWellClick(wellId, e) {
 
 // ─── Selection toolbar ────────────────────────────────────────────────────────
 function updateSelToolbar() {
-  const tb = document.getElementById('sel-toolbar');
-  if (!selection.size) { tb.classList.remove('open'); return; }
-  tb.classList.add('open');
+  const selSection = document.getElementById('sel-section');
+  if (!selSection) return;
+
+  if (!selection.size) {
+    selSection.style.display = 'none';
+    return;
+  }
+
+  // auto-show panel when wells selected
+  document.getElementById('sel-toolbar').classList.add('open');
+  selSection.style.display = '';
 
   const selArr = Array.from(selection);
+  document.getElementById('sel-count').textContent = selection.size + ' well' + (selection.size > 1 ? 's' : '') + ' selected';
+
   const prs = selArr.map(id => wellRowCol(id)).filter(Boolean);
   const sameRow = prs.length > 1 && prs.every(p => p.row === prs[0].row);
   const sameCol = prs.length > 1 && prs.every(p => p.col === prs[0].col);
-  const labels = selArr.map(id => wellState[id]?.label || '');
+  const labels = selArr.map(id => wellState[id] ? wellState[id].label || '' : '');
   const allSameLabel = labels.every(l => l === labels[0]);
 
-  document.getElementById('sel-count').textContent = selection.size + ' well' + (selection.size > 1 ? 's' : '') + ' selected';
-
-  const ab = document.getElementById('assign-btns');
-  ab.innerHTML = '';
-  allTypes().forEach(t => {
-    const btn = document.createElement('button');
-    btn.className = 'assign-btn' + (t.id === activeTypeId ? ' active-assign' : '');
-    btn.dataset.typeId = t.id;
-    btn.onclick = () => assignSelectionType(t.id);
-    const sw = document.createElement('span'); sw.className = 'assign-sw'; sw.style.background = t.color;
-    btn.appendChild(sw); btn.appendChild(document.createTextNode(t.name));
-    ab.appendChild(btn);
-  });
-  const clrBtn = document.createElement('button');
-  clrBtn.className = 'assign-btn'; clrBtn.style.color = 'var(--text3)';
-  clrBtn.onclick = clearSelectionType;
-  clrBtn.innerHTML = '<span class="assign-sw" style="background:var(--surface3);border:1px solid var(--border2)"></span>Clear';
-  ab.appendChild(clrBtn);
-
   const lblInput = document.getElementById('sp-lbl-input');
-  lblInput.placeholder = allSameLabel ? 'e.g. DMSO' : 'Mixed…';
-  lblInput.value = allSameLabel ? labels[0] : '';
+  if (lblInput) { lblInput.placeholder = allSameLabel ? 'e.g. DMSO' : 'Mixed…'; lblInput.value = allSameLabel ? labels[0] : ''; }
 
   const showDil = (sameRow || sameCol) && selArr.length >= 2;
   document.getElementById('dil-sep').style.display = showDil ? '' : 'none';
@@ -684,8 +757,7 @@ function updateSelToolbar() {
 }
 
 function assignSelectionType(typeId) {
-  setActiveType(typeId);
-  selection.forEach(id => { wellState[id] = {typeId, label: wellState[id]?.label || ''}; });
+  setActiveTypeById(typeId);
   drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
 }
 
@@ -727,18 +799,10 @@ function fmtConc(val, unit) {
   return parseFloat(val.toPrecision(3))+unit;
 }
 
-// ─── Custom types ─────────────────────────────────────────────────────────────
-function showCustomTypeForm() { document.getElementById('custom-type-form').style.display='flex'; document.getElementById('btn-add-custom').style.display='none'; }
-function hideCustomTypeForm() { document.getElementById('custom-type-form').style.display='none'; document.getElementById('btn-add-custom').style.display=''; }
-function addCustomType() {
-  const name = document.getElementById('custom-name').value.trim();
-  const color = document.getElementById('custom-color').value;
-  if (!name) { alert('Enter a type name.'); return; }
-  customTypes.push({id:'custom_'+Date.now(), name, color});
-  hideCustomTypeForm();
-  document.getElementById('custom-name').value = '';
-  renderTypePalette(); renderLegend(); updateSelToolbar();
-}
+// ─── Custom types (legacy stubs kept for safety) ───────────────────────────────
+function showCustomTypeForm() { showCustomFormPanel(); }
+function hideCustomTypeForm() { hideCustomFormPanel(); }
+function addCustomType() { addCustomTypeFromPanel(); }
 
 // ─── Legend ───────────────────────────────────────────────────────────────────
 function renderLegend() {
@@ -850,6 +914,34 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
   document.addEventListener('mousemove',function(e){if(tip.style.display==='block'){
     tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px'; tip.style.top=(e.clientY+14)+'px';
   }});
+})();
+
+// ─── Panel drag ───────────────────────────────────────────────────────────────
+(function(){
+  var handle, panel, dragging=false, ox=0, oy=0;
+  document.addEventListener('DOMContentLoaded', function() {
+    handle = document.getElementById('panel-drag-handle');
+    panel  = document.getElementById('sel-toolbar');
+    if (!handle || !panel) return;
+    handle.addEventListener('mousedown', function(e) {
+      if (e.target.tagName === 'BUTTON') return;
+      dragging = true;
+      var r = panel.getBoundingClientRect();
+      ox = e.clientX - r.left; oy = e.clientY - r.top;
+      handle.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      panel.style.right = 'auto';
+      panel.style.left = Math.max(0, e.clientX - ox) + 'px';
+      panel.style.top  = Math.max(58, e.clientY - oy) + 'px';
+    });
+    document.addEventListener('mouseup', function() {
+      dragging = false;
+      if (handle) handle.style.cursor = 'grab';
+    });
+  });
 })();
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
