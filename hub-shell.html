@@ -977,8 +977,8 @@ document.addEventListener('click',function(e){
   var BCOLS=['#4A90D9','#E74C3C','#27AE60','#8B4513','#9B59B6'];
 
   // Scene objects (regenerated each session)
-  var farPeaks=[],nearHills=[],frontBlds=[],backBlds=[],clouds=[],workers=[],particles=[];
-  var frontTerrain=[],backTerrain=[];
+  var mtL1=[],mtL2=[],mtL3=[],frontBlds=[],clouds=[],workers=[],particles=[];
+  var frontTerrain=[];
 
   function terrainDY(t,x){
     if(!t.length)return 0;
@@ -988,54 +988,28 @@ document.addEventListener('click',function(e){
     return t[t.length-1].dy;
   }
 
+  function mkPeak(W,H,i,n,tlo,thi,blo,bhi,wlo,whi){
+    return {x:W*(0.05+i*(0.9/n)+rr(-0.06,0.06)),
+      tY:H*rr(tlo,thi), bY:H*rr(blo,bhi), w:W*rr(wlo,whi),
+      r1:rr(0.16,0.30),r1h:rr(0.42,0.65),
+      r2:rr(0.64,0.84),r2h:rr(0.28,0.52),
+      sh:rr(0.04,0.13)};
+  }
+
   function genScene(){
     var W=canvas.width, H=canvas.height;
-    var gY=H-18, bgY=H*0.66;
+    var gY=H-18;
 
-    // Far mountain peaks — organic multi-ridge silhouettes
-    farPeaks=[];
-    var nfp=ri(3,6);
-    for(var i=0;i<nfp;i++)
-      farPeaks.push({x:W*(0.05+i*(0.9/nfp)+rr(-0.06,0.06)),
-        bY:H*rr(0.52,0.62),tY:H*rr(0.24,0.40),w:W*rr(0.10,0.22),
-        r1:rr(0.16,0.30),r1h:rr(0.42,0.65),   // left sub-ridge fracs (x from L, height from tY)
-        r2:rr(0.64,0.84),r2h:rr(0.28,0.52),   // right sub-ridge
-        sh:rr(0.05,0.14)});                     // shoulder width frac
+    // Three mountain layers — furthest to nearest, each progressively lower/larger/warmer
+    mtL1=[]; var n1=ri(4,7);  for(var i=0;i<n1;i++) mtL1.push(mkPeak(W,H,i,n1, 0.10,0.24, 0.28,0.42, 0.12,0.26));
+    mtL2=[]; var n2=ri(3,6);  for(var i=0;i<n2;i++) mtL2.push(mkPeak(W,H,i,n2, 0.22,0.38, 0.40,0.54, 0.16,0.30));
+    mtL3=[]; var n3=ri(2,4);  for(var i=0;i<n3;i++) mtL3.push(mkPeak(W,H,i,n3, 0.38,0.52, 0.52,0.65, 0.20,0.36));
 
-    // Near hills — organic lumpy silhouettes
-    nearHills=[];
-    var nnh=ri(2,4);
-    for(var j=0;j<nnh;j++)
-      nearHills.push({x:W*(0.04+j*(0.9/nnh)+rr(-0.06,0.06)),
-        bY:H*rr(0.62,0.70),tY:H*rr(0.44,0.56),w:W*rr(0.16,0.30),
-        b1:rr(0.08,0.26),b1dy:ri(5,16),        // left secondary bump (dy down from tY)
-        b2:rr(0.72,0.92),b2dy:ri(3,12)});       // right secondary bump
-
-    // Ground terrain profiles — bumps and mounds at both levels
+    // Front terrain profile
     frontTerrain=[];
     var nft=ri(9,15);
     for(var ti=0;ti<=nft;ti++)
       frontTerrain.push({x:W*ti/nft, dy:(ti===0||ti===nft)?ri(1,5):ri(-3,14)});
-
-    backTerrain=[];
-    var nbt=ri(5,9);
-    for(var ti2=0;ti2<=nbt;ti2++)
-      backTerrain.push({x:W*ti2/nbt, dy:(ti2===0||ti2===nbt)?ri(0,3):ri(-2,8)});
-
-    // Back row buildings (smaller, hazed, standing at bgY)
-    backBlds=[];
-    var nbb=ri(4,6), bzw=0.88/nbb;
-    for(var k=0;k<nbb;k++){
-      var t2=rp(['shop','shop','house','house','pagoda']);
-      var c2=BC[t2]||BC.house;
-      var sc=rr(0.38,0.52);
-      var bxf=0.04+bzw*(k+rr(0.08,0.92));
-      backBlds.push({xf:bxf,type:t2,
-        col:c2.col,roof:c2.roof,win:null,door:null,
-        w:ri(50,75)*sc, bodyH:ri(40,100)*sc,
-        gY:bgY, gYOff:-terrainDY(backTerrain,bxf*W),
-        unlockAt:rr(0,0.28), alpha:rr(0.38,0.55)});
-    }
 
     // Front buildings — organic spacing, guaranteed pagoda + torii
     frontBlds=[];
@@ -1089,39 +1063,36 @@ document.addEventListener('click',function(e){
   }
 
   // ── Draw helpers ────────────────────────────────────────────────────
-  function drawMountains(){
-    // Far peaks — organic multi-ridge silhouettes, icy blue-grey
-    farPeaks.forEach(function(m){
+  function drawMtLayer(arr,col,alpha,snow){
+    arr.forEach(function(m){
       var H=m.bY-m.tY, L=m.x-m.w/2, R=m.x+m.w/2;
-      ctx.globalAlpha=0.20; ctx.fillStyle='#b8ccd8';
+      ctx.globalAlpha=alpha; ctx.fillStyle=col;
       ctx.beginPath();
-      ctx.moveTo(L, m.bY);
-      ctx.lineTo(L+m.sh*m.w, m.bY);                          // base shoulder in
-      ctx.lineTo(L+m.r1*m.w, m.tY+H*(1-m.r1h));             // left sub-ridge
-      ctx.lineTo(m.x-m.w*0.07, m.tY+H*0.10);                // approach peak
-      ctx.lineTo(m.x, m.tY);                                  // main peak
-      ctx.lineTo(m.x+m.w*0.07, m.tY+H*0.13);                // leave peak
-      ctx.lineTo(L+m.r2*m.w, m.tY+H*(1-m.r2h));             // right sub-ridge
-      ctx.lineTo(R-m.sh*m.w, m.bY);                          // base shoulder out
-      ctx.lineTo(R, m.bY);
+      ctx.moveTo(L,m.bY);
+      ctx.lineTo(L+m.sh*m.w,m.bY);
+      ctx.lineTo(L+m.r1*m.w, m.tY+H*(1-m.r1h));
+      ctx.lineTo(m.x-m.w*0.07, m.tY+H*0.10);
+      ctx.lineTo(m.x, m.tY);
+      ctx.lineTo(m.x+m.w*0.07, m.tY+H*0.13);
+      ctx.lineTo(L+m.r2*m.w, m.tY+H*(1-m.r2h));
+      ctx.lineTo(R-m.sh*m.w,m.bY);
+      ctx.lineTo(R,m.bY);
       ctx.closePath(); ctx.fill();
-      // snow cap
-      ctx.globalAlpha=0.16; ctx.fillStyle='#e4ecf2';
-      var ch=H*0.22;
-      ctx.beginPath();ctx.moveTo(m.x-m.w*0.09,m.tY+ch);ctx.lineTo(m.x,m.tY);ctx.lineTo(m.x+m.w*0.09,m.tY+ch);ctx.closePath();ctx.fill();
+      if(snow){
+        ctx.globalAlpha=alpha*0.80; ctx.fillStyle='#eef4f8';
+        var ch=H*0.22;
+        ctx.beginPath();ctx.moveTo(m.x-m.w*0.09,m.tY+ch);ctx.lineTo(m.x,m.tY);ctx.lineTo(m.x+m.w*0.09,m.tY+ch);ctx.closePath();ctx.fill();
+      }
     });
-    // Near hills — organic lumpy shapes, muted green
-    nearHills.forEach(function(h){
-      var L=h.x-h.w/2, R=h.x+h.w/2;
-      ctx.globalAlpha=0.26; ctx.fillStyle='#7a9e78';
-      ctx.beginPath();
-      ctx.moveTo(L, h.bY);
-      ctx.lineTo(L+h.b1*h.w, h.tY+h.b1dy);    // left secondary bump
-      ctx.lineTo(h.x, h.tY);                    // main peak
-      ctx.lineTo(L+h.b2*h.w, h.tY+h.b2dy);    // right secondary bump
-      ctx.lineTo(R, h.bY);
-      ctx.closePath(); ctx.fill();
-    });
+  }
+
+  function drawMountains(){
+    // Layer 1 — furthest, very faint icy blue (most atmospheric haze)
+    drawMtLayer(mtL1, '#ccdce8', 0.11, true);
+    // Layer 2 — mid distance, faint blue-grey
+    drawMtLayer(mtL2, '#9ab4c0', 0.18, false);
+    // Layer 3 — nearest hills, moderate green-grey
+    drawMtLayer(mtL3, '#7a9e88', 0.28, false);
     ctx.globalAlpha=1;
   }
 
@@ -1295,15 +1266,6 @@ document.addEventListener('click',function(e){
 
     drawMountains();
     drawClouds();
-    // Far-ground strip (background row)
-    if(gfrac>0){drawGround(backTerrain,canvas.height*0.66,0.6);}
-    // Back-row buildings (smaller, hazed, on the hills)
-    backBlds.forEach(function(b){
-      var g=gat(b.unlockAt,gfrac); if(g<=0)return;
-      var curH=Math.round(b.bodyH*g); if(curH<P)return;
-      drawScaffold(b,curH,b.alpha);
-      drawBuilding(b,curH,b.alpha);
-    });
     // Front ground + buildings
     drawGround(frontTerrain,canvas.height-18,1);
     frontBlds.forEach(function(b){
