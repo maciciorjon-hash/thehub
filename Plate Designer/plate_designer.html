@@ -157,7 +157,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
     <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;"><input type="checkbox" id="export-transparent" style="cursor:pointer;"> Transparent</label>
     <button class="btn btn-primary" onclick="exportPNG()" style="font-size:11px;padding:5px 12px;">&#8595; Export PNG <span class="pinfo" data-tip="Exports at 600 DPI. Text auto-fits inside wells.">ⓘ</span></button>
     <span style="font-size:11px;color:var(--text2);margin-left:4px;">Size</span>
-    <input type="range" id="well-size-slider" min="0.5" max="2.0" step="0.1" value="1.3" style="width:76px;" oninput="setUserScale(parseFloat(this.value))">
+    <input type="range" id="well-size-slider" min="0.5" max="2.0" step="0.1" value="1.0" style="width:76px;" oninput="setUserScale(parseFloat(this.value))">
   </div>
 </div>
 
@@ -312,7 +312,8 @@ let selection = new Set();
 let lastClickedWell = null;
 let customTypes = [];
 var rowAnnotations = {}, colAnnotations = {};
-var userScale = 1.3;
+var userScale = 1.0;
+var _userScaledManually = false;
 
 function allTypes() { return [...WELL_TYPES, ...customTypes]; }
 function typeById(id) { return allTypes().find(t => t.id === id); }
@@ -415,25 +416,13 @@ function addCustomTypeFromPanel() {
 function setFormat(f) {
   if (f === currentFormat && !Object.keys(wellState).length) return;
   if (Object.keys(wellState).length > 0 && !confirm('Changing format clears all well assignments. Continue?')) return;
-  // Preserve well pixel size across format changes
-  var prevWp = calcWellPx();
   currentFormat = f;
   wellState = {}; selection.clear(); lastClickedWell = null;
-  // Compute new userScale so wells stay the same pixel size
-  var area = document.getElementById('plate-scroll-area');
-  var fmt = FORMATS[f];
-  var availW = ((area ? area.clientWidth : 800) - 80);
-  var availH = ((area ? area.clientHeight : 600) - 80);
-  var wpW = Math.floor((availW - LABEL_W - fmt.gap * (fmt.cols - 1)) / fmt.cols);
-  var wpH = Math.floor((availH - LABEL_H - fmt.gap * (fmt.rows - 1)) / fmt.rows);
-  var baseWp = Math.min(wpW, wpH, MAX_WP[f] || 90);
-  if (baseWp > 0) {
-    userScale = Math.max(0.5, Math.min(2.0, prevWp / baseWp));
-    var sl = document.getElementById('well-size-slider');
-    if (sl) sl.value = Math.round(userScale * 10) / 10;
-  }
+  _userScaledManually = false;
+  userScale = 1.0;
+  var sl = document.getElementById('well-size-slider');
+  if (sl) sl.value = 1.0;
   document.querySelectorAll('.fmt-pill').forEach(b => b.classList.toggle('active', b.textContent === f + '-well'));
-  // Reset toolbar auto-position for new plate
   var tb = document.getElementById('sel-toolbar');
   if (tb) tb._userDragged = false;
   buildPlateArea();
@@ -451,7 +440,23 @@ function calcWellPx() {
   const wp = Math.min(wpW, wpH, MAX_WP[currentFormat] || 90);
   return Math.max(12, Math.round(wp * userScale));
 }
-function setUserScale(v) { userScale = v; sizeAndDrawCanvas(); }
+function setUserScale(v) { userScale = v; _userScaledManually = true; sizeAndDrawCanvas(); }
+
+function autoFitScale() {
+  var area = document.getElementById('plate-scroll-area');
+  if (!area || area.clientWidth === 0) return;
+  var fmt = FORMATS[currentFormat];
+  var availW = area.clientWidth  - 80;
+  var availH = area.clientHeight - 80;
+  var wpW = (availW - LABEL_W - fmt.gap * (fmt.cols - 1)) / fmt.cols;
+  var wpH = (availH - LABEL_H - fmt.gap * (fmt.rows - 1)) / fmt.rows;
+  var targetWp = Math.min(wpW, wpH, MAX_WP[currentFormat] || 90);
+  if (targetWp < 12) return;
+  userScale = 1.0;
+  var sl = document.getElementById('well-size-slider');
+  if (sl) sl.value = 1.0;
+  sizeAndDrawCanvas();
+}
 
 function buildPlateArea() {
   const wrap = document.getElementById('plate-wrap');
@@ -1006,10 +1011,14 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 // ─── Init ─────────────────────────────────────────────────────────────────────
 buildTopBar();
 buildPlateArea();
+// Defer auto-fit so layout is complete and clientWidth/Height are valid
+setTimeout(function() { if (!_userScaledManually) autoFitScale(); }, 0);
 let _resizeTimer = null;
 window.addEventListener('resize', function() {
   clearTimeout(_resizeTimer);
-  _resizeTimer = setTimeout(sizeAndDrawCanvas, 150);
+  _resizeTimer = setTimeout(function() {
+    if (!_userScaledManually) autoFitScale(); else sizeAndDrawCanvas();
+  }, 150);
 });
 window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='switchTab'||!e.data.tab)return;
