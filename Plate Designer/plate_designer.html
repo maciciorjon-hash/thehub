@@ -387,9 +387,27 @@ function addCustomTypeFromPanel() {
 function setFormat(f) {
   if (f === currentFormat && !Object.keys(wellState).length) return;
   if (Object.keys(wellState).length > 0 && !confirm('Changing format clears all well assignments. Continue?')) return;
+  // Preserve well pixel size across format changes
+  var prevWp = calcWellPx();
   currentFormat = f;
   wellState = {}; selection.clear(); lastClickedWell = null;
+  // Compute new userScale so wells stay the same pixel size
+  var area = document.getElementById('plate-scroll-area');
+  var fmt = FORMATS[f];
+  var availW = ((area ? area.clientWidth : 800) - 80);
+  var availH = ((area ? area.clientHeight : 600) - 80);
+  var wpW = Math.floor((availW - LABEL_W - fmt.gap * (fmt.cols - 1)) / fmt.cols);
+  var wpH = Math.floor((availH - LABEL_H - fmt.gap * (fmt.rows - 1)) / fmt.rows);
+  var baseWp = Math.min(wpW, wpH, MAX_WP[f] || 90);
+  if (baseWp > 0) {
+    userScale = Math.max(0.5, Math.min(2.0, prevWp / baseWp));
+    var sl = document.getElementById('well-size-slider');
+    if (sl) sl.value = Math.round(userScale * 10) / 10;
+  }
   document.querySelectorAll('.fmt-pill').forEach(b => b.classList.toggle('active', b.textContent === f + '-well'));
+  // Reset toolbar auto-position for new plate
+  var tb = document.getElementById('sel-toolbar');
+  if (tb) tb._userDragged = false;
   buildPlateArea();
   updateSelToolbar(); renderLegend();
 }
@@ -731,8 +749,19 @@ function updateSelToolbar() {
   }
 
   // auto-show panel when wells selected
-  document.getElementById('sel-toolbar').classList.add('open');
+  var tb = document.getElementById('sel-toolbar');
+  tb.classList.add('open');
   selSection.style.display = '';
+  // Position toolbar near top of plate canvas if not manually dragged
+  if (!tb._userDragged) {
+    var canvas = document.getElementById('plate-canvas-main');
+    if (canvas) {
+      var rect = canvas.getBoundingClientRect();
+      tb.style.top = Math.max(68, rect.top + 4) + 'px';
+      tb.style.right = '14px';
+      tb.style.left = 'auto';
+    }
+  }
 
   const selArr = Array.from(selection);
   document.getElementById('sel-count').textContent = selection.size + ' well' + (selection.size > 1 ? 's' : '') + ' selected';
@@ -926,6 +955,7 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
     handle.addEventListener('mousedown', function(e) {
       if (e.target.tagName === 'BUTTON') return;
       dragging = true;
+      panel._userDragged = true;
       var r = panel.getBoundingClientRect();
       ox = e.clientX - r.left; oy = e.clientY - r.top;
       handle.style.cursor = 'grabbing';

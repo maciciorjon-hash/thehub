@@ -243,13 +243,19 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-05-31 (Plate canvas rewrite, Helix rename/gallery/modal, Protein Tools example, Echo RDKit CDN)
+Last session: 2026-06-01 (Hub persistent nav + search, Plate Designer popup, Echo fixes, Helix generic vectors, Labmate cleanup)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 5.65MB (5,646,926 chars) — down from 18MB after removing embedded RDKit WASM from Echo
-Standalone paths: Helix/helix.html (renamed from DNA Tools/dna_tools.html)
-Echo: Removed 8.8MB embedded RDKit WASM blob (was causing srcdoc iframe freeze); now loads RDKit lazily from unpkg CDN. Commit 4638285
-Plate Designer: Full canvas rewrite — unified drawPlateCanvas() for ALL formats (6/12/24/48/96/384); removed floating #sel-panel; inline #sel-toolbar (shows when selection.size>0); rubber-band select, paint drag, row/col label click-to-select, well tooltip, right-click to clear. Commit 4638285
-Helix: Renamed DNA Tools/→Helix/, dna_tools.html→helix.html; gallery cards enlarged (240px SVG); gallery click opens centered modal with 280px map, features, Addgene links; addgeneId added to most vectors; drawPlasmidMap(id, bp, S=220) now accepts size param. Commit 4638285
-Protein Tools: loadExample() now explicitly switches to Properties tab + scrolls to top. Commit 4638285
-Hub: Options panel has Dark/Light toggle + version v2.1; Formspree handler checks response.ok with specific error. Commit 4638285
+Hub file size: 7.13MB (7,126,189 chars). Commit a7a8f79
+Hub: nav now position:fixed z-index:20; always visible above apps. app-view top:58px instead of inset:0.
+Hub: fuzzy bigram search bar in nav (hidden when inside app); navigates to app+tab via postMessage.
+Hub: openApp(id, tab) — optional tab param, postMessages switchTab to iframe after load.
+Hub: Formspree error shows mailto fallback (maciciorjon@gmail.com).
+Echo: min-height:0 on .app-panel.active + main → fixes blank space in Data Analysis panel.
+Echo: 'Control (Vehicle) wells range'; PDF reps toggle removed; hibit-ctg-params hidden for FP assay type.
+Echo: Bₚ/B⊥ info tooltips added; postMessage tab handler added.
+Plate Designer: type-palette removed from top-bar; active-type-indicator added. sel-toolbar → position:fixed floating popup (opacity:0→1, .open class).
+Protein Tools: postMessage tab handler + try-catch in init (stale hub embed was likely root cause of user's "nothing works" report).
+Helix: pET21a/pMALc2X/pDESTHalo/pCMVTag2 marked generic:true with manufacturer notes. Modal SVG 380px. Generic badge in gallery.
+Labmate: search bar removed from header. pip-tab-btn hidden; 5-click logo easter egg already existed → Pip story chapter VI covers retirement.
+All apps: postMessage window.addEventListener('message') for hub search tab switching.
 <!-- LAST_SESSION_END -->
