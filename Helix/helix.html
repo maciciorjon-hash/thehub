@@ -129,11 +129,16 @@ select:focus,input:focus{border-color:var(--accent);}
 .guide-card p,.guide-card li{font-size:12px;color:var(--text2);line-height:1.6;}
 .guide-card ul{padding-left:16px;margin-top:4px;}
 .guide-card+.guide-card{margin-top:12px;}
-.tool-section{margin-bottom:4px;}
-.tool-section-hdr{font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--text3);margin-bottom:18px;padding-bottom:8px;border-bottom:1px solid var(--border);}
-.tool-divider{height:1px;background:var(--border);margin:28px 0;}
 .seq-mismatch{color:#ff5760;font-weight:700;}
 .mismatch-mark{color:#ff5760;font-weight:700;}
+.tools-opts{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
+.tools-opts>div{display:flex;flex-direction:column;gap:4px;}
+.tools-opts>div>label{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:0;}
+.tools-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.result-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px;}
+.result-card-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:2px;}
+#tools-results{display:none;flex-direction:column;gap:14px;}
+#tools-results.visible{display:flex;}
 </style>
 </head>
 <body>
@@ -162,76 +167,75 @@ select:focus,input:focus{border-color:var(--accent);}
 </div>
 <div class="content">
 
-<!-- TOOLS (Translate + Sequence Analysis + ORF Finder) -->
+<!-- TOOLS (unified: Translate + Sequence Analysis + ORF Finder) -->
 <div class="panel active" id="panel-tools">
-  <div class="tool-section">
-    <div class="tool-section-hdr">Translate</div>
-    <div class="row" style="gap:16px;">
-      <div class="col">
-        <label>Nucleotide sequence (FASTA accepted)</label>
-        <textarea id="tr-input" rows="7" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA"></textarea>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;min-width:180px;">
-        <label>Reading frame <span class="pinfo" data-tip="Choose which codon position to start translation from. Use −1/−2/−3 for the reverse complement strand.">ⓘ</span></label>
-        <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1 ↩</option><option value="-2">-2 ↩</option><option value="-3">-3 ↩</option></select>
-        <div class="vec-rc-note">−1/−2/−3 = reverse complement strand</div>
-        <label style="margin-top:6px;">Codon table</label>
-        <select id="tr-table"><option value="1">Standard (NCBI 1)</option><option value="2">Vertebrate Mitochondrial (2)</option></select>
-        <button class="btn btn-primary" onclick="runTranslate()" style="margin-top:8px;">Translate</button>
-        <button class="btn btn-sec" onclick="loadTrExample()">Example</button>
-      </div>
-    </div>
-    <div id="tr-type-pill"></div>
-    <div id="tr-result" style="display:none;">
-      <div class="card-hdr" style="margin-bottom:8px;">Protein sequence</div>
-      <div class="mono-out" id="tr-protein" style="max-height:160px;overflow-y:auto;"></div>
-      <div class="row" style="margin-top:10px;gap:20px;">
-        <div><span class="pill" id="tr-len-pill"></span></div>
-        <div><span class="pill" id="tr-mw-pill"></span></div>
-        <div><span class="pill" id="tr-stop-pill"></span></div>
-      </div>
-      <button class="btn btn-sec" onclick="copyText(document.getElementById('tr-protein').textContent)" style="margin-top:10px;font-size:12px;">Copy sequence</button>
-    </div>
+  <div>
+    <label>Nucleotide sequence <span style="font-weight:400;color:var(--text3);">(FASTA accepted — paste once, run all tools)</span></label>
+    <textarea id="tools-seq" rows="7" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA…"></textarea>
   </div>
-  <div class="tool-divider"></div>
-  <div class="tool-section">
-    <div class="tool-section-hdr">Sequence Analysis</div>
+  <div class="tools-opts">
     <div>
-      <label>Nucleotide sequence (FASTA accepted)</label>
-      <textarea id="st-input" rows="6" placeholder="Paste DNA or RNA sequence…" oninput="runSeqTools()"></textarea>
+      <label>Reading frame <span class="pinfo" data-tip="Translation frame. −1/−2/−3 = reverse complement strand.">ⓘ</span></label>
+      <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1 ↩</option><option value="-2">-2 ↩</option><option value="-3">-3 ↩</option></select>
     </div>
-    <div id="st-type-pill"></div>
-    <div class="card" id="st-results" style="display:none;">
-      <div id="st-rows"></div>
+    <div>
+      <label>Codon table</label>
+      <select id="tr-table"><option value="1">Standard</option><option value="2">Vertebrate Mito</option></select>
+    </div>
+    <div style="flex:1;min-width:140px;">
+      <label>Min. ORF length (aa) — <span id="orf-min-val">50</span></label>
+      <input type="range" id="orf-min" min="10" max="300" value="50" style="width:100%;margin-top:4px;" oninput="document.getElementById('orf-min-val').textContent=this.value">
+    </div>
+    <div style="display:flex;gap:8px;padding-bottom:2px;">
+      <button class="btn btn-primary" onclick="runAllTools()">Analyse</button>
+      <button class="btn btn-sec" onclick="loadTrExample()">Example</button>
+      <button class="btn btn-sec" onclick="clearTools()">Clear</button>
     </div>
   </div>
-  <div class="tool-divider"></div>
-  <div class="tool-section">
-    <div class="tool-section-hdr">ORF Finder</div>
-    <div class="row" style="gap:16px;">
-      <div class="col">
-        <label>Nucleotide sequence (FASTA accepted)</label>
-        <textarea id="orf-input" rows="6" placeholder="Paste nucleotide sequence…"></textarea>
-      </div>
-      <div style="min-width:200px;display:flex;flex-direction:column;gap:8px;">
-        <label>Min. ORF length (aa) <span class="pinfo" data-tip="Minimum protein length in amino acids. Increase to filter out short spurious ORFs.">ⓘ</span></label>
-        <div class="range-wrap">
-          <input type="range" id="orf-min" min="10" max="300" value="50" oninput="document.getElementById('orf-min-val').textContent=this.value">
-          <span class="range-val" id="orf-min-val">50</span>
+
+  <!-- Results (shown after Analyse) -->
+  <div id="tools-results">
+    <div class="tools-grid">
+      <!-- Translation card -->
+      <div class="result-card">
+        <div class="result-card-hdr">Translation</div>
+        <div id="tr-type-pill"></div>
+        <div id="tr-result" style="display:none;">
+          <div style="color:var(--text3);font-size:11px;margin-bottom:6px;">Protein sequence</div>
+          <div class="mono-out" id="tr-protein" style="max-height:120px;overflow-y:auto;"></div>
+          <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap;">
+            <span class="pill" id="tr-len-pill"></span>
+            <span class="pill" id="tr-mw-pill"></span>
+            <span class="pill" id="tr-stop-pill"></span>
+          </div>
+          <button class="btn btn-sec" onclick="copyText(document.getElementById('tr-protein').textContent)" style="margin-top:8px;font-size:12px;">Copy sequence</button>
         </div>
-        <button class="btn btn-primary" onclick="runORF()">Find ORFs</button>
-        <button class="btn btn-sec" onclick="loadORFExample()">Example</button>
+        <div id="tr-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
+      </div>
+      <!-- Sequence Analysis card -->
+      <div class="result-card">
+        <div class="result-card-hdr">Sequence Analysis</div>
+        <div id="st-type-pill"></div>
+        <div id="st-results" style="display:none;">
+          <div id="st-rows"></div>
+        </div>
+        <div id="st-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
       </div>
     </div>
-    <div id="orf-result" style="display:none;">
-      <div class="card" style="margin-bottom:12px;">
-        <table class="stat-table" id="orf-table">
-          <thead><tr><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th><th>First 10 AA</th></tr></thead>
-          <tbody id="orf-tbody"></tbody>
-        </table>
+    <!-- ORF Finder card -->
+    <div class="result-card">
+      <div class="result-card-hdr">ORF Finder</div>
+      <div id="orf-result" style="display:none;">
+        <div style="overflow-x:auto;margin-bottom:12px;">
+          <table class="stat-table" id="orf-table">
+            <thead><tr><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th><th>First 10 AA</th></tr></thead>
+            <tbody id="orf-tbody"></tbody>
+          </table>
+        </div>
+        <div class="card-hdr">Sequence map</div>
+        <div class="seq-disp" id="orf-seq-disp"></div>
       </div>
-      <div class="card-hdr">Sequence map</div>
-      <div class="seq-disp" id="orf-seq-disp"></div>
+      <div id="orf-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
     </div>
   </div>
 </div>
@@ -277,12 +281,8 @@ select:focus,input:focus{border-color:var(--accent);}
 <!-- GUIDE -->
 <div class="panel" id="panel-guide">
   <div class="guide-card">
-    <h3>Translate</h3>
-    <p>Paste a nucleotide sequence (plain or FASTA) and choose a reading frame. Helix translates the CDS and reports protein length, molecular weight, and stop codon position. Use −1/−2/−3 frames to translate the reverse complement strand.</p>
-  </div>
-  <div class="guide-card">
-    <h3>Sequence Tools</h3>
-    <p>Paste any DNA or RNA sequence for instant analysis: length, GC content, Tm estimate, reverse complement, and base composition. Updates live as you type.</p>
+    <h3>Tools tab</h3>
+    <p>Paste a nucleotide sequence once and click <strong>Analyse</strong>. Helix simultaneously runs three analyses: <strong>Translation</strong> (choose reading frame and codon table), <strong>Sequence Analysis</strong> (length, GC%, Tm, reverse complement, MW), and <strong>ORF Finder</strong> (all six frames, colour-coded sequence map). Use −1/−2/−3 frames for reverse complement translation.</p>
   </div>
   <div class="guide-card">
     <h3>Compare</h3>
@@ -379,29 +379,108 @@ function translate(seq,frame,tableId){
 const AA_AVG={A:71.0788,R:156.1875,N:114.1038,D:115.0886,C:103.1388,E:129.1155,Q:128.1307,G:57.0519,H:137.1411,I:113.1594,L:113.1594,K:128.1741,M:131.1926,F:147.1766,P:97.1167,S:87.0782,T:101.1051,W:186.2132,Y:163.1760,V:99.1326};
 function proteinMW(seq){let mw=18.02;for(const aa of seq)if(AA_AVG[aa])mw+=AA_AVG[aa];return mw;}
 
-// ─── TAB 1: Translate ─────────────────────────────────────────────────────────
-function runTranslate(){
-  const raw=document.getElementById('tr-input').value.trim();
-  if(!raw){alert('Paste a sequence first.');return;}
+// ─── UNIFIED TOOLS ────────────────────────────────────────────────────────────
+function runAllTools(){
+  const raw=document.getElementById('tools-seq').value.trim();
+  if(!raw){alert('Paste a nucleotide sequence first.');return;}
   const seq=parseFASTA(raw);
   if(!seq){alert('No sequence found.');return;}
+  document.getElementById('tools-results').classList.add('visible');
+  _runTranslateWith(seq);
+  _runSeqToolsWith(seq);
+  _runORFWith(seq);
+}
+
+function clearTools(){
+  document.getElementById('tools-seq').value='';
+  document.getElementById('tools-results').classList.remove('visible');
+}
+
+function _runTranslateWith(seq){
   const type=detectSeqType(seq);
   document.getElementById('tr-type-pill').innerHTML=`<span class="pill ${type}">${type.toUpperCase()} · ${seq.length} nt</span>`;
   const frame=document.getElementById('tr-frame').value;
   const tableId=document.getElementById('tr-table').value;
-  const protein=translate(seq,frame,tableId);
-  const mw=proteinMW(protein.replace(/\*/g,''));
-  const stops=(protein.match(/\*/g)||[]).length;
-  const cleanLen=protein.replace(/\*/g,'').length;
-  document.getElementById('tr-protein').textContent=protein;
-  document.getElementById('tr-len-pill').textContent=`${cleanLen} aa`;
-  document.getElementById('tr-mw-pill').textContent=`MW ≈ ${(mw/1000).toFixed(2)} kDa`;
-  document.getElementById('tr-stop-pill').textContent=`${stops} stop codon${stops!==1?'s':''}`;
-  document.getElementById('tr-result').style.display='';
+  try{
+    const protein=translate(seq,frame,tableId);
+    const mw=proteinMW(protein.replace(/\*/g,''));
+    const stops=(protein.match(/\*/g)||[]).length;
+    const cleanLen=protein.replace(/\*/g,'').length;
+    document.getElementById('tr-protein').textContent=protein;
+    document.getElementById('tr-len-pill').textContent=`${cleanLen} aa`;
+    document.getElementById('tr-mw-pill').textContent=`MW ≈ ${(mw/1000).toFixed(2)} kDa`;
+    document.getElementById('tr-stop-pill').textContent=`${stops} stop codon${stops!==1?'s':''}`;
+    document.getElementById('tr-result').style.display='';
+    document.getElementById('tr-empty').style.display='none';
+  }catch(e){document.getElementById('tr-empty').textContent='Translation error.';document.getElementById('tr-result').style.display='none';}
+}
+
+function _runSeqToolsWith(seq){
+  const type=detectSeqType(seq);
+  document.getElementById('st-type-pill').innerHTML=`<span class="pill ${type}">${type.toUpperCase()} · ${seq.length} nt</span>`;
+  const comp=complement(seq,type);
+  const rc=revComp(seq,type);
+  const gc=((seq.match(/[GC]/g)||[]).length/seq.length*100).toFixed(1);
+  const mw=nucMW(seq,type);
+  const tm=seq.length<=13?tmWallace(seq):tmNN(seq);
+  const tmStr=isNaN(tm)?'N/A':(seq.length<=13?`${tm.toFixed(0)} °C (Wallace)`:`${tm.toFixed(1)} °C (nearest-neighbor)`);
+  const rows=[
+    {lbl:'Complement (5\'→3\')',val:comp},
+    {lbl:'Reverse complement',val:rc},
+    {lbl:'GC content',val:gc+' %'},
+    {lbl:'Length',val:seq.length+' nt'},
+    {lbl:'MW (single-stranded)',val:(mw/1000).toFixed(2)+' kDa ('+Math.round(mw)+' Da)'},
+    {lbl:'Tm (estimate)',val:tmStr},
+  ];
+  let html='';
+  rows.forEach(r=>{
+    const canCopy=r.lbl!=='GC content'&&r.lbl!=='Length'&&!r.lbl.includes('Tm');
+    html+=`<div class="result-row"><span class="res-lbl">${r.lbl}</span><span class="res-val">${esc(r.val.length>80?r.val.slice(0,80)+'…':r.val)}</span>${canCopy?`<button class="copy-btn" onclick="copyText('${r.val.replace(/'/g,"\\'")}')">Copy</button>`:''}</div>`;
+  });
+  document.getElementById('st-rows').innerHTML=html;
+  document.getElementById('st-results').style.display='';
+  document.getElementById('st-empty').style.display='none';
+}
+
+function _runORFWith(seq){
+  const dnaSeq=seq.replace(/U/g,'T');
+  const minLen=parseInt(document.getElementById('orf-min').value)||50;
+  _orfs=findORFs(dnaSeq,minLen);
+  _selectedOrfIdx=-1;
+  const tbody=document.getElementById('orf-tbody');
+  tbody.innerHTML='';
+  if(!_orfs.length){
+    tbody.innerHTML=`<tr><td colspan="5" style="color:var(--text3);font-style:italic;">No ORFs found with minimum length ${minLen} aa.</td></tr>`;
+  } else {
+    _orfs.forEach((orf,i)=>{
+      const tr=document.createElement('tr');
+      tr.className='orf-row';
+      tr.innerHTML=`<td><span style="color:${ORF_PALETTE[i%ORF_PALETTE.length]};font-weight:700;">${orf.frame}</span></td><td>${orf.start}</td><td>${orf.end}</td><td>${orf.length}</td><td style="font-family:var(--mono);font-size:12px;">${orf.first10}…</td>`;
+      tr.onclick=()=>highlightORF(i);
+      tbody.appendChild(tr);
+    });
+  }
+  const colorMap=new Array(dnaSeq.length).fill(-1);
+  _orfs.forEach((orf,i)=>{if(orf.strand===0)for(let p=orf.ntStart;p<orf.ntEnd;p++)if(colorMap[p]===-1)colorMap[p]=i;});
+  const W=60; let seqHtml='';
+  for(let i=0;i<dnaSeq.length;i+=W){
+    const chunk=dnaSeq.slice(i,i+W);
+    const pos=String(i+1).padStart(6,' ');
+    seqHtml+=`<span style="color:var(--text3);">${pos}  </span>`;
+    for(let k=0;k<chunk.length;k++){
+      const idx=colorMap[i+k];
+      if(idx>=0){const col=ORF_PALETTE[idx%ORF_PALETTE.length];seqHtml+=`<span id="orf-pos-${i+k}" style="background:${col}22;color:${col};">${chunk[k]}</span>`;}
+      else seqHtml+=`<span id="orf-pos-${i+k}">${chunk[k]}</span>`;
+    }
+    seqHtml+='\n';
+  }
+  document.getElementById('orf-seq-disp').innerHTML=seqHtml;
+  document.getElementById('orf-result').style.display='';
+  document.getElementById('orf-empty').style.display='none';
 }
 
 function loadTrExample(){
-  document.getElementById('tr-input').value='>EGFP CDS\nATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTTCATCTGCACCACCGGCAAGCTGCCCGTGCCCTGGCCCACCCTCGTGACCACCCTGACCTACGGCGTGCAGTGCTTCAGCCGCTACCCCGACCACATGAAGCAGCACGACTTCTTCAAGTCCGCCATGCCCGAAGGCTACGTCCAGGAGCGCACCATCTTCTTCAAGGACGACGGCACCTACAAGACCCGCGCCGAGGTGAAGTTCGAGGGCGACACCCTGGTGAACCGCATCGAGCTGAAGGGCATCGACTTCAAGGAGGACGGCAACATCCTGGGGCACAAGCTGGAGTACAACTACATCAGCCACAACACAGAGCAACAGGAGGGCAATATGGATGGCATCCATGGCATGGATGAACTGTACAAATAA';
+  document.getElementById('tools-seq').value='>EGFP CDS\nATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTTCATCTGCACCACCGGCAAGCTGCCCGTGCCCTGGCCCACCCTCGTGACCACCCTGACCTACGGCGTGCAGTGCTTCAGCCGCTACCCCGACCACATGAAGCAGCACGACTTCTTCAAGTCCGCCATGCCCGAAGGCTACGTCCAGGAGCGCACCATCTTCTTCAAGGACGACGGCACCTACAAGACCCGCGCCGAGGTGAAGTTCGAGGGCGACACCCTGGTGAACCGCATCGAGCTGAAGGGCATCGACTTCAAGGAGGACGGCAACATCCTGGGGCACAAGCTGGAGTACAACTACATCAGCCACAACACAGAGCAACAGGAGGGCAATATGGATGGCATCCATGGCATGGATGAACTGTACAAATAA';
   document.getElementById('tr-frame').value='+1';
   document.getElementById('tr-table').value='1';
 }
@@ -424,36 +503,6 @@ function nucMW(seq,type){
   const d={A:313.21,T:304.19,G:329.21,C:289.18};let mw=-61.96;for(const b of seq.replace(/U/g,'T'))if(d[b])mw+=d[b];return mw;
 }
 
-function runSeqTools(){
-  const raw=document.getElementById('st-input').value.trim();
-  if(!raw){document.getElementById('st-results').style.display='none';document.getElementById('st-type-pill').innerHTML='';return;}
-  const seq=parseFASTA(raw);
-  if(!seq){return;}
-  const type=detectSeqType(seq);
-  document.getElementById('st-type-pill').innerHTML=`<span class="pill ${type}">${type.toUpperCase()} · ${seq.length} nt</span>`;
-  const comp=complement(seq,type);
-  const rc=revComp(seq,type);
-  const gc=((seq.match(/[GC]/g)||[]).length/seq.length*100).toFixed(1);
-  const mw=nucMW(seq,type);
-  const tm = seq.length<=13 ? tmWallace(seq) : tmNN(seq);
-  const tmStr = isNaN(tm)?'N/A':(seq.length<=13?`${tm.toFixed(0)} °C (Wallace)`:`${tm.toFixed(1)} °C (nearest-neighbor)`);
-
-  const rows=[
-    {lbl:'Complement (5\'→3\')',val:comp},
-    {lbl:'Reverse complement',val:rc},
-    {lbl:'GC content',val:gc+' %'},
-    {lbl:'Length',val:seq.length+' nt'},
-    {lbl:'MW (single-stranded)',val:(mw/1000).toFixed(2)+' kDa (' + Math.round(mw) + ' Da)'},
-    {lbl:'Tm (estimate)',val:tmStr},
-  ];
-  let html='';
-  rows.forEach(r=>{
-    const canCopy=r.lbl!=='GC content'&&r.lbl!=='Length'&&!r.lbl.includes('Tm');
-    html+=`<div class="result-row"><span class="res-lbl">${r.lbl}</span><span class="res-val">${esc(r.val.length>80?r.val.slice(0,80)+'…':r.val)}</span>${canCopy?`<button class="copy-btn" onclick="copyText('${r.val.replace(/'/g,"\\'")}')">Copy</button>`:''}</div>`;
-  });
-  document.getElementById('st-rows').innerHTML=html;
-  document.getElementById('st-results').style.display='';
-}
 
 // ─── TAB 3: Compare ───────────────────────────────────────────────────────────
 function needlemanWunsch(a,b,match,mismatch,gap){
@@ -567,53 +616,6 @@ function findORFs(seq,minLen){
   return results;
 }
 
-function runORF(){
-  const raw=document.getElementById('orf-input').value.trim();
-  if(!raw){alert('Paste a sequence first.');return;}
-  const seq=parseFASTA(raw).replace(/U/g,'T');
-  const minLen=parseInt(document.getElementById('orf-min').value)||50;
-  _orfs=findORFs(seq,minLen);
-  _selectedOrfIdx=-1;
-  const tbody=document.getElementById('orf-tbody');
-  tbody.innerHTML='';
-  if(!_orfs.length){
-    tbody.innerHTML=`<tr><td colspan="5" style="color:var(--text3);font-style:italic;">No ORFs found with minimum length ${minLen} aa.</td></tr>`;
-  } else {
-    _orfs.forEach((orf,i)=>{
-      const tr=document.createElement('tr');
-      tr.className='orf-row';
-      tr.innerHTML=`<td><span style="color:${ORF_PALETTE[i%ORF_PALETTE.length]};font-weight:700;">${orf.frame}</span></td><td>${orf.start}</td><td>${orf.end}</td><td>${orf.length}</td><td style="font-family:var(--mono);font-size:12px;">${orf.first10}…</td>`;
-      tr.onclick=()=>highlightORF(i);
-      tbody.appendChild(tr);
-    });
-  }
-  // Colorized sequence display
-  const colorMap=new Array(seq.length).fill(-1);
-  _orfs.forEach((orf,i)=>{
-    if(orf.strand===0){
-      for(let p=orf.ntStart;p<orf.ntEnd;p++) if(colorMap[p]===-1) colorMap[p]=i;
-    }
-  });
-  const W=60; let seqHtml='';
-  for(let i=0;i<seq.length;i+=W){
-    const chunk=seq.slice(i,i+W);
-    const pos=String(i+1).padStart(6,' ');
-    seqHtml+=`<span style="color:var(--text3);">${pos}  </span>`;
-    for(let k=0;k<chunk.length;k++){
-      const idx=colorMap[i+k];
-      if(idx>=0){
-        const col=ORF_PALETTE[idx%ORF_PALETTE.length];
-        seqHtml+=`<span id="orf-pos-${i+k}" style="background:${col}22;color:${col};">${chunk[k]}</span>`;
-      } else {
-        seqHtml+=`<span id="orf-pos-${i+k}">${chunk[k]}</span>`;
-      }
-    }
-    seqHtml+='\n';
-  }
-  document.getElementById('orf-seq-disp').innerHTML=seqHtml;
-  document.getElementById('orf-result').style.display='';
-}
-
 function highlightORF(idx){
   _selectedOrfIdx=idx;
   document.querySelectorAll('.orf-row').forEach((r,i)=>r.classList.toggle('selected-orf',i===idx));
@@ -624,11 +626,6 @@ function highlightORF(idx){
   }
 }
 
-function loadORFExample(){
-  document.getElementById('orf-input').value='>Example construct\nATGAAAGCCATCGCCCTGGCCGTCGTGATGATCATCCTGGGCATCGCGGTGATGGCCATCGCCGTGCTGATCATCCTGATCATCCTGGCCATCGCGGCGATGATGATCATCGCGGTGATGATCCTGATGGCCATCGCGGCGATCATCGTCGTGCTGATCATCATCGTGATCCTGGCGATCATGGCGATCATCATGGCGATCATCCTGGCCATGGCGATCATCATGGCGATCATCCTGATGGCGATCATCATGTAA';
-  document.getElementById('orf-min').value='30';
-  document.getElementById('orf-min-val').textContent='30';
-}
 
 // ─── TAB 5: Vector Library ────────────────────────────────────────────────────
 

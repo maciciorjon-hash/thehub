@@ -853,37 +853,240 @@ document.addEventListener('click',function(e){
   });
 })();
 
-// ── Background particle animation ─────────────────────────────────────────
+// ── Background: 8-bit Japanese village that grows over time ──────────────
 (function(){
   var canvas = document.getElementById('hub-bg-canvas');
   var ctx = canvas.getContext('2d');
-  var COLORS = ['#ff5760','#7c6fd4','#e08c30','#0079b9','#43a047','#9c6fd4','#00c896'];
-  var SIZES = [4,4,4,6,6,8,10];
-  var particles = [];
-  var N = 28;
-  function resize() { canvas.width=window.innerWidth; canvas.height=window.innerHeight; }
-  function init() {
-    resize(); particles = [];
-    for (var i=0;i<N;i++) {
-      var sz=SIZES[Math.floor(Math.random()*SIZES.length)];
-      particles.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,
-        vx:(Math.random()-0.5)*0.6,vy:(Math.random()-0.5)*0.6,sz:sz,
-        col:COLORS[Math.floor(Math.random()*COLORS.length)],alpha:0.12+Math.random()*0.18});
+
+  // Ambient sky particles (subtle)
+  var PCOLS = ['#ff5760','#7c6fd4','#e08c30','#0079b9','#43a047','#9c6fd4'];
+  var particles = [], NP = 18;
+  var P = 4; // pixel grid size
+
+  // Village: grows from 0→1 over FULL_MS milliseconds
+  var elapsed = 0, lastTs = null;
+  var FULL_MS = 5 * 60 * 1000; // 5 minutes
+
+  // Building definitions: { xf, w, bodyH, type, col, roof, unlockAt }
+  var BLD = [
+    {xf:0.04, w:76, bodyH:46, type:'shop',   col:'#DEB887', roof:'#C0392B', unlockAt:0.00},
+    {xf:0.14, w:50, bodyH:70, type:'house',  col:'#FAEBD7', roof:'#8B4513', unlockAt:0.08},
+    {xf:0.24, w:44, bodyH:114,type:'pagoda', col:'#795548', roof:'#C0392B', unlockAt:0.18},
+    {xf:0.36, w:58, bodyH:50, type:'house',  col:'#DEB887', roof:'#E74C3C', unlockAt:0.12},
+    {xf:0.47, w:34, bodyH:98, type:'tower',  col:'#6D4C41', roof:'#795548', unlockAt:0.30},
+    {xf:0.57, w:64, bodyH:54, type:'shop',   col:'#FAEBD7', roof:'#E74C3C', unlockAt:0.05},
+    {xf:0.68, w:46, bodyH:72, type:'house',  col:'#DEB887', roof:'#8B4513', unlockAt:0.22},
+    {xf:0.78, w:52, bodyH:84, type:'torii',  col:'#E74C3C', roof:'#E74C3C', unlockAt:0.38},
+    {xf:0.90, w:48, bodyH:128,type:'pagoda', col:'#5D4037', roof:'#C0392B', unlockAt:0.50},
+  ];
+
+  function snap(v) { return Math.round(v / P) * P; }
+  function pr(x,y,w,h,col,a) {
+    ctx.globalAlpha = a == null ? 1 : a;
+    ctx.fillStyle = col;
+    ctx.fillRect(snap(x), snap(y), Math.max(P, snap(w)), Math.max(P, snap(h)));
+  }
+
+  // Growth factor 0→1 for a building given overall progress g
+  function gat(unlockAt, g) {
+    if (g <= unlockAt) return 0;
+    return Math.min(1, (g - unlockAt) / Math.max(0.01, 1 - unlockAt));
+  }
+
+  function drawShop(b, curH, gY, cx) {
+    var bx = cx - b.w/2;
+    pr(bx, gY-curH, b.w, curH, b.col);
+    // overhanging canopy
+    var cH = Math.min(8, curH * 0.18);
+    pr(bx-6, gY-curH-cH, b.w+12, cH+2, b.roof);
+    // small sign strip
+    if (curH > 16) pr(bx+4, gY-curH+4, b.w-8, 6, '#A52A2A', 0.5);
+    // windows
+    if (curH > 22) {
+      ctx.globalAlpha = 0.55; ctx.fillStyle = '#FFF9C4';
+      for (var wx = bx+8; wx < bx+b.w-16; wx += 18)
+        ctx.fillRect(snap(wx), snap(gY-curH+curH*0.4), 10, 8);
+    }
+    // door
+    if (curH > 16) pr(cx-5, gY-Math.min(curH,20), 10, Math.min(curH,20), '#6D4C41', 0.65);
+  }
+
+  function drawHouse(b, curH, gY, cx) {
+    var bx = cx - b.w/2;
+    pr(bx, gY-curH, b.w, curH, b.col);
+    // stepped peaked roof
+    var rh = Math.min(18, b.w * 0.38);
+    var steps = Math.floor(rh / 2);
+    ctx.globalAlpha = 1; ctx.fillStyle = b.roof;
+    for (var s = 0; s < steps; s++) {
+      var rw = b.w - s*2;
+      if (rw <= 0) break;
+      ctx.fillRect(snap(bx+s), snap(gY-curH-(s+1)*2), snap(rw), P);
+    }
+    // windows
+    if (curH > 24) {
+      ctx.globalAlpha = 0.55; ctx.fillStyle = '#FFF9C4';
+      ctx.fillRect(snap(cx-b.w*0.28), snap(gY-curH*0.6), 10, 8);
+      ctx.fillRect(snap(cx+b.w*0.08), snap(gY-curH*0.6), 10, 8);
+    }
+    // door
+    if (curH > 16) pr(cx-5, gY-Math.min(curH,22), 10, Math.min(curH,22), '#8B4513', 0.6);
+  }
+
+  function drawPagoda(b, curH, gY, cx) {
+    var tiers = 3;
+    var tierH = b.bodyH / tiers;
+    ctx.globalAlpha = 1;
+    for (var t = 0; t < tiers; t++) {
+      var drawn = Math.min(tierH, curH - tierH*t);
+      if (drawn <= 0) break;
+      var tw = b.w * (1 - t * 0.2);
+      var tx = cx - tw/2;
+      var ty = gY - tierH*t - drawn;
+      ctx.fillStyle = b.col;
+      ctx.fillRect(snap(tx), snap(ty), snap(tw), snap(drawn));
+      // eave overhang (only when tier fully grown)
+      if (drawn >= tierH - 2) {
+        ctx.fillStyle = b.roof;
+        ctx.fillRect(snap(tx-6), snap(ty), snap(tw+12), P);
+        ctx.fillRect(snap(tx-3), snap(ty+P), snap(tw+6), P);
+      }
+    }
+    // golden spire
+    if (curH >= b.bodyH * 0.95) {
+      var spH = 16 * Math.min(1, (curH/b.bodyH - 0.95)/0.05);
+      ctx.fillStyle = '#F39C12';
+      ctx.fillRect(snap(cx-2), snap(gY-curH-spH), 4, snap(spH));
+      ctx.fillStyle = '#E74C3C';
+      ctx.fillRect(snap(cx-4), snap(gY-curH-spH), 8, 4);
     }
   }
-  function draw() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    particles.forEach(function(p){
-      p.x+=p.vx; p.y+=p.vy;
-      if(p.x<0)p.x=canvas.width; if(p.x>canvas.width)p.x=0;
-      if(p.y<0)p.y=canvas.height; if(p.y>canvas.height)p.y=0;
-      ctx.globalAlpha=p.alpha; ctx.fillStyle=p.col;
-      ctx.fillRect(Math.round(p.x/p.sz)*p.sz,Math.round(p.y/p.sz)*p.sz,p.sz,p.sz);
-    });
-    ctx.globalAlpha=1; requestAnimationFrame(draw);
+
+  function drawTower(b, curH, gY, cx) {
+    var bx = cx - b.w/2;
+    pr(bx, gY-curH, b.w, curH, b.col);
+    // stepped top
+    ctx.globalAlpha = 1; ctx.fillStyle = b.roof;
+    for (var sr = 0; sr < 3; sr++) {
+      var srw = b.w - sr*4;
+      if (srw <= 0) break;
+      ctx.fillRect(snap(bx+sr*2), snap(gY-curH-(sr+1)*4), snap(srw), 4);
+    }
+    // window grid
+    if (curH > 20) {
+      ctx.globalAlpha = 0.4; ctx.fillStyle = '#FFF9C4';
+      for (var wy = gY-curH+8; wy < gY-8; wy += 14) {
+        ctx.fillRect(snap(cx-6), snap(wy), 5, 5);
+        ctx.fillRect(snap(cx+1), snap(wy), 5, 5);
+      }
+    }
   }
-  window.addEventListener('resize',function(){resize();particles.forEach(function(p){p.x=Math.min(p.x,canvas.width);p.y=Math.min(p.y,canvas.height);});});
-  init(); draw();
+
+  function drawTorii(b, curH, gY, cx) {
+    var pw = 6, bx = cx - b.w/2;
+    ctx.globalAlpha = 1; ctx.fillStyle = b.col;
+    // Left and right pillars
+    ctx.fillRect(snap(bx+pw), snap(gY-curH), pw, snap(curH));
+    ctx.fillRect(snap(bx+b.w-pw*2), snap(gY-curH), pw, snap(curH));
+    // Top bars (only if tall enough)
+    if (curH > 14) {
+      // Upper curved bar (extends past pillars)
+      ctx.fillRect(snap(bx), snap(gY-curH), snap(b.w), 6);
+      // curved ends (2px upward nudge each side)
+      ctx.fillRect(snap(bx-2), snap(gY-curH-2), pw, 6);
+      ctx.fillRect(snap(bx+b.w-pw+2), snap(gY-curH-2), pw, 6);
+    }
+    if (curH > 22) {
+      ctx.fillRect(snap(bx+pw*0.5), snap(gY-curH+10), snap(b.w-pw), 4);
+    }
+  }
+
+  function drawScaffold(b, curH, targetH, gY, cx) {
+    if (curH >= targetH) return;
+    var bx = cx - b.w/2;
+    ctx.globalAlpha = 0.18; ctx.fillStyle = '#795548';
+    // Vertical scaffold poles
+    ctx.fillRect(snap(bx-6), snap(gY-curH), 2, snap(curH));
+    ctx.fillRect(snap(bx+b.w+4), snap(gY-curH), 2, snap(curH));
+    // Horizontal cross-beams every 16px
+    for (var hy = gY-curH; hy < gY; hy += 16)
+      ctx.fillRect(snap(bx-8), snap(hy), snap(b.w+16), 2);
+  }
+
+  function drawGround(gY) {
+    ctx.globalAlpha = 0.3; ctx.fillStyle = '#2E7D32';
+    ctx.fillRect(0, snap(gY), canvas.width, canvas.height - snap(gY));
+    ctx.globalAlpha = 0.15; ctx.fillStyle = '#1B5E20';
+    ctx.fillRect(0, snap(gY), canvas.width, P);
+    ctx.globalAlpha = 1;
+  }
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  function initParticles() {
+    particles = [];
+    for (var i = 0; i < NP; i++) {
+      var sz = P * (Math.random() < 0.5 ? 1 : 2);
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * (canvas.height - 200),
+        vx: (Math.random()-0.5)*0.45, vy:(Math.random()-0.5)*0.45,
+        sz: sz, col: PCOLS[Math.floor(Math.random()*PCOLS.length)],
+        alpha: 0.08 + Math.random()*0.12
+      });
+    }
+  }
+
+  function draw(ts) {
+    if (lastTs !== null) elapsed += ts - lastTs;
+    lastTs = ts;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    var gfrac = Math.min(1, elapsed / FULL_MS);
+    var gY = canvas.height - 16;
+
+    // Sky particles
+    particles.forEach(function(p) {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width; if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = gY - 200; if (p.y > gY - 200) p.y = 0;
+      ctx.globalAlpha = p.alpha; ctx.fillStyle = p.col;
+      ctx.fillRect(Math.round(p.x/p.sz)*p.sz, Math.round(p.y/p.sz)*p.sz, p.sz, p.sz);
+    });
+    ctx.globalAlpha = 1;
+
+    // Village
+    if (gfrac > 0) {
+      drawGround(gY);
+      BLD.forEach(function(b) {
+        var g = gat(b.unlockAt, gfrac);
+        if (g <= 0) return;
+        var curH = Math.round(b.bodyH * g);
+        if (curH < P) return;
+        var cx = b.xf * canvas.width;
+        // Scaffold while under construction
+        drawScaffold(b, curH, b.bodyH, gY, cx);
+        // Building
+        ctx.globalAlpha = 1;
+        if (b.type === 'shop')   drawShop(b, curH, gY, cx);
+        if (b.type === 'house')  drawHouse(b, curH, gY, cx);
+        if (b.type === 'pagoda') drawPagoda(b, curH, gY, cx);
+        if (b.type === 'tower')  drawTower(b, curH, gY, cx);
+        if (b.type === 'torii')  drawTorii(b, curH, gY, cx);
+      });
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', function() { resize(); initParticles(); });
+  resize();
+  initParticles();
+  requestAnimationFrame(draw);
 })();
 </script>
 </body>
