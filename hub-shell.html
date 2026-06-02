@@ -509,38 +509,46 @@ function reanimateCards() {
   });
 }
 
+function _loadApp(id) {
+  if (loaded[id]) return;
+  var frame = document.getElementById('frame-' + id);
+  if (!frame) return;
+  var b64src = APP_B64[id] || APP_B64_NEW[id];
+  if (!b64src) return;
+  var html = decodeB64App(b64src);
+  if (id === 'lm') {
+    var lmBase = window.location.href.replace(/[^\/]*$/, '');
+    html = html.replace('<head>', '<head><base href="' + lmBase + 'Labmate/">');
+  }
+  var common = '.opts-btn{display:none!important;}.opts-panel{display:none!important;}';
+  var embedStyle = id === 'lm'
+    ? common + '.header-top{display:none!important;}'
+    : id === 'echo'
+      ? common + 'header{display:none!important;}nav.outer-tabs{display:none!important;}'
+      : common + 'header{display:none!important;}';
+  html = html.replace('</head>', '<style>' + embedStyle + '</style></head>');
+  var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
+    'var logo=document.querySelector(".logo,.app-logo");' +
+    'var name=document.querySelector("h1,.app-name");' +
+    '[logo,name].forEach(function(el){if(!el)return;' +
+    'el.style.cursor="pointer";el.title="Back to The Hub";' +
+    'el.addEventListener("click",function(){' +
+    'try{if(window.parent&&window.parent.backToHub){window.parent.backToHub();return;}}catch(e){}' +
+    'window.parent.postMessage("backToHub","*");' +
+    '});' +
+    '});})<\/script>';
+  html = html.replace('</head>', backScript + '</head>');
+  frame.srcdoc = html;
+  frame.addEventListener('load', function() {
+    var t = localStorage.getItem('hub_theme') || 'light';
+    try { frame.contentDocument.documentElement.setAttribute('data-theme', t); } catch(e) {}
+  }, {once: false});
+  loaded[id] = true;
+}
+
 function openApp(id, tab, item) {
   var frame = document.getElementById('frame-' + id);
-  if (!loaded[id]) {
-    var b64src = APP_B64[id] || APP_B64_NEW[id];
-    var html = decodeB64App(b64src);
-    if (id === 'lm') {
-      var lmBase = window.location.href.replace(/[^\/]*$/, '');
-      html = html.replace('<head>', '<head><base href="' + lmBase + 'Labmate/">');
-    }
-    var common = '.opts-btn{display:none!important;}.opts-panel{display:none!important;}';
-    var embedStyle = id === 'lm'
-      ? common + '.header-top{display:none!important;}'
-      : common + 'header{display:none!important;}';
-    html = html.replace('</head>', '<style>' + embedStyle + '</style></head>');
-    var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
-      'var logo=document.querySelector(".logo,.app-logo");' +
-      'var name=document.querySelector("h1,.app-name");' +
-      '[logo,name].forEach(function(el){if(!el)return;' +
-      'el.style.cursor="pointer";el.title="Back to The Hub";' +
-      'el.addEventListener("click",function(){' +
-      'try{if(window.parent&&window.parent.backToHub){window.parent.backToHub();return;}}catch(e){}' +
-      'window.parent.postMessage("backToHub","*");' +
-      '});' +
-      '});})<\/script>';
-    html = html.replace('</head>', backScript + '</head>');
-    frame.srcdoc = html;
-    frame.addEventListener('load', function() {
-      var t = localStorage.getItem('hub_theme') || 'light';
-      try { frame.contentDocument.documentElement.setAttribute('data-theme', t); } catch(e) {}
-    }, {once: false});
-    loaded[id] = true;
-  }
+  _loadApp(id);
   if (tab) {
     var tabMsg = {type:'switchTab', tab:tab};
     if (item) tabMsg.item = item;
@@ -609,6 +617,9 @@ function initHubSub() {
 document.addEventListener('DOMContentLoaded', initHubSub);
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('hub-logo').classList.add('pulsing');
+});
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(function() { _loadApp('lm'); }, 2000);
 });
 
 // ── Easter egg ────────────────────────────────────────────────────────────────
