@@ -771,12 +771,12 @@ async function loadStructure(){
   const resultsEl=document.getElementById('struct-results');
   resultsEl.style.display='none';resultsEl.innerHTML='';
   if(_structSource==='pdb'){
-    if(/^[0-9][A-Za-z0-9]{3}$/.test(raw)){_structLoadById(raw.toUpperCase(),null,null,null);return;}
+    if(/^[A-Za-z0-9]{4}$/.test(raw)){_structLoadById(raw.toUpperCase(),null,null,null);return;}
     statusEl.textContent='Searching RCSB PDB…';
     try{
       const r=await fetch('https://search.rcsb.org/rcsbsearch/v2/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:{type:'terminal',service:'full_text',parameters:{value:raw}},return_type:'entry',request_options:{paginate:{start:0,rows:8},sort:[{sort_by:'score',direction:'desc'}]}})});
-      const data=await r.json();
-      if(!data.result_set||!data.result_set.length){statusEl.textContent='No PDB results for "'+raw+'".';return;}
+      const data=r.status===204?null:(await r.json());
+      if(!data||!data.result_set||!data.result_set.length){statusEl.textContent='No PDB results for "'+raw+'".';return;}
       const ids=data.result_set.slice(0,8).map(x=>x.identifier);
       statusEl.textContent=ids.length+' results — click to load:';
       const metas=await Promise.all(ids.map(id=>fetch('https://data.rcsb.org/rest/v1/core/entry/'+id).then(r=>r.ok?r.json():null).catch(()=>null)));

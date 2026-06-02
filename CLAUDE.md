@@ -238,20 +238,15 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-01 (Round 8+9: LabMate nav fix, Echo blank-space fix, Plate Designer toolbar+size, Helix unified Tools, village animation)
+Last session: 2026-06-02 (Round 10: animation depth rewrite, Echo outer-tabs, nav sync, ORF number input)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.15MB (7,150,353 chars). Commit 88767f6. Version v0.8.1
-Hub: per-app CSS injection — LabMate gets .header-top{display:none} only (preserves nav tabs); others get header{display:none}.
-Echo: .shell changed from display:grid to display:flex;flex-direction:column — fixes blank space from ghost grid rows when header hidden.
-Plate Designer: sel-toolbar auto-positions near plate top (getBoundingClientRect). _userDragged flag prevents auto-reposition after manual drag.
-Plate Designer: setFormat() preserves well pixel size when switching formats (saves prevWp, recalculates userScale for new format).
-Helix: Tools tab redesigned — single shared textarea #tools-seq drives all three tools simultaneously via Analyse button.
-  Results shown as visual cards: [Translation | Seq Analysis] two-column + [ORF Finder] full-width.
-  Old separate tr-input/st-input/orf-input removed. runAllTools() → _runTranslateWith/_runSeqToolsWith/_runORFWith.
-Hub background: replaced floating pixels with 8-bit Japanese village at bottom of screen.
-  9 buildings (shop/house/pagoda/tower/torii) unlock and grow over 5 minutes. Scaffold shown during construction.
-  Sky particles retained (18, subtler). Village tracked via RAF elapsed time (pauses when tab inactive).
-Helix: pET21a/pMALc2X/pDESTHalo/pCMVTag2 marked generic:true with manufacturer notes. Modal SVG 380px. Generic badge in gallery.
-Labmate: search bar removed from header. pip-tab-btn hidden; 5-click logo easter egg already existed → Pip story chapter VI covers retirement.
-All apps: postMessage window.addEventListener('message') for hub search tab switching.
+Hub file size: 7.20MB (7,200,568 chars). Commit 428136e. Version v0.8.2
+Hub animation: depth-layer system — 6 objects at 3 scales (0.26/0.52/0.85), purely horizontal
+  travel with gentle sine altitude oscillation. ctx.save/translate/scale/restore for depth rendering.
+  Removed card collisions, inter-object explosions, card-bonk CSS. Far=small/faint/slow, close=large/bold/fast.
+Hub: enterAppNav setTimeout 300ms → 0ms; breadcrumb now fades in sync with app view opacity transition.
+Hub: Echo embed injects nav.outer-tabs{display:none} — removes dead-space nav strip in hub context.
+Hub: Echo card calls openApp('echo','analysis') to land on DA panel directly (sends switchTab postMessage).
+Echo: opts-panel top 58px → 98px (clears both header+outer-tabs in standalone mode).
+Helix: ORF min-length range slider → <input type="number"> (cleaner, direct entry, same JS .value read).
 <!-- LAST_SESSION_END -->
