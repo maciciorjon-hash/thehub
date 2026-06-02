@@ -44,7 +44,7 @@ header p{font-size:11px;color:var(--text2);}
 input:checked + .theme-slider{background:var(--accent2);}
 input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;}
 .ov-badge{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;background:rgba(0,200,150,.15);color:var(--accent3);border:1px solid rgba(0,200,150,.3);border-radius:20px;padding:2px 7px;vertical-align:middle;margin-left:6px;}
-main{display:flex;width:100%;height:100%;overflow:hidden;}
+main{display:flex;flex:1;min-height:0;overflow:hidden;}
 
 /* LEFT */
 .left{width:320px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px;}
@@ -274,9 +274,9 @@ tr:hover td{background:var(--surface2);}
 .outer-tab.active{color:var(--accent);border-bottom-color:transparent;}
 .tab-indicator{position:absolute;bottom:0;height:2px;background:var(--accent);border-radius:1px 1px 0 0;z-index:1;transition:none;}
 .tab-indicator.ready{transition:left .22s ease,width .22s ease;}
-.content-area{flex:1;position:relative;overflow:hidden;}
-.app-panel{display:none;position:absolute;inset:0;}
-.app-panel.active{display:flex;flex-direction:column;animation:panelFadeIn 0.22s ease;}
+.content-area{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+.app-panel{display:none;}
+.app-panel.active{display:flex;flex:1;min-height:0;flex-direction:column;animation:panelFadeIn 0.22s ease;}
 @keyframes panelFadeIn{from{opacity:0;}to{opacity:1;}}
 
 
@@ -1786,13 +1786,13 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         }
 
         const { bot, logec50, hill, tc, r2 } = fitResult;
-        const dc50 = _sig2(Math.pow(10, logec50) * 1e9);
-        const dmax = gainMode ? +tc.toFixed(2) : Math.round(100 - bot);
+        const dc50 = +((Math.pow(10, logec50) * 1e9).toFixed(1));
+        const dmax = Math.round(gainMode ? tc : (100 - bot));
         const pdc50 = +(-logec50).toFixed(3);
 
         let absDc50 = null;
         if (absdc50Enabled && bot < 50 && tc > 50 && Math.abs(hill) > 1e-6) {
-          try { absDc50 = _sig2(Math.pow(10, logec50 + Math.log10((tc - 50) / (50 - bot)) / hill) * 1e9); } catch (e) {}
+          try { absDc50 = +((Math.pow(10, logec50 + Math.log10((tc - 50) / (50 - bot)) / hill) * 1e9).toFixed(1)); } catch (e) {}
         }
 
         const flags = [];
@@ -2367,7 +2367,7 @@ function renderBoxPlotVar() {
     ctx.strokeStyle = gridCol; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke();
     ctx.fillStyle = textCol; ctx.textAlign='right';
-    const fmt = ['DC50_nM','AbsDC50_nM'].includes(varKey) ? v.toFixed(0) : ['R2'].includes(varKey) ? v.toFixed(2) : v.toFixed(2);
+    const fmt = ['DC50_nM','AbsDC50_nM'].includes(varKey) ? v.toFixed(1) : ['R2'].includes(varKey) ? v.toFixed(2) : v.toFixed(2);
     ctx.fillText(fmt, padL-5, y+4);
   }
   // Axis border lines
