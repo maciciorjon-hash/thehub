@@ -72,9 +72,8 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 
 /* OPTIONS / SUGGESTIONS PANEL */
 #opts-btn{margin-left:8px;}
-#opts-btn,#sug-btn{margin-right:0;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;}
-#sug-btn{margin-left:8px;}
-#opts-btn:hover,#sug-btn:hover{background:var(--surface2);color:var(--text);}
+#opts-btn{margin-right:0;padding:0 14px;height:30px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;}
+#opts-btn:hover{background:var(--surface2);color:var(--text);}
 .opts-panel{position:absolute;top:58px;right:12px;width:300px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:16px;box-shadow:0 4px 24px rgba(0,0,0,.18);z-index:200;}
 .opts-panel.hidden{display:none;}
 .opts-title{font-size:13px;font-weight:700;margin-bottom:14px;color:var(--text);}
@@ -181,7 +180,7 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
   #nav-title{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   #hub-search-wrap{width:auto;flex:1;max-width:none;min-width:60px;}
   #hub-search{font-size:12px;padding:5px 10px;width:100%;}
-  #opts-btn,#sug-btn{padding:0 10px;font-size:13px;height:34px;min-width:34px;}
+  #opts-btn{padding:0 10px;font-size:13px;height:34px;min-width:34px;}
   .nav-btn-label{display:none;}
   .opts-panel{width:calc(100vw - 20px);left:10px;right:10px;top:58px;}
   .home-wrap{padding:18px 12px 60px;}
@@ -213,7 +212,6 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
     <div id="hub-search-results"></div>
   </div>
   <button id="opts-btn" onclick="toggleOpts()">&#9881;<span class="nav-btn-label"> Settings</span></button>
-  <button id="sug-btn" onclick="toggleSug()">&#9993;<span class="nav-btn-label"> Suggest</span></button>
 </div>
 <div id="opts-panel" class="opts-panel hidden">
   <div class="opts-title">Settings</div>
@@ -235,6 +233,16 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
     <button class="opts-action-btn" id="grid-edit-btn" onclick="toggleGridEdit()">Edit</button>
   </div>
   <div class="opts-divider"></div>
+  <div class="opts-divider"></div>
+  <div class="opts-title" style="font-size:13px;padding:4px 0 6px;border-bottom:none;margin-bottom:8px;">&#9993; Send a Suggestion</div>
+  <form id="suggest-form" action="https://formspree.io/f/xeokadev" method="POST">
+    <input type="text" name="name" placeholder="Your name (optional)" class="sug-input">
+    <input type="email" name="_replyto" placeholder="Your email (optional, for reply)" class="sug-input">
+    <textarea name="message" placeholder="Your suggestion…" class="sug-textarea" rows="3" required></textarea>
+    <button type="submit" class="sug-submit">Send</button>
+  </form>
+  <p id="sug-thanks" class="sug-thanks hidden">Sent! Thanks for the feedback.</p>
+  <div class="opts-divider" style="margin-top:12px;"></div>
   <div class="opts-version-row">
     <span class="opts-version">The Hub &middot; v0.9.0</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
@@ -272,16 +280,6 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
     &#9679; Echo SyntaxError fixed<br>
     &#9679; All apps share hub_theme key
   </div>
-</div>
-<div id="sug-panel" class="opts-panel hidden">
-  <div class="opts-title">Send a Suggestion</div>
-  <form id="suggest-form" action="https://formspree.io/f/xeokadev" method="POST">
-    <input type="text" name="name" placeholder="Your name (optional)" class="sug-input">
-    <input type="email" name="_replyto" placeholder="Your email (optional, for reply)" class="sug-input">
-    <textarea name="message" placeholder="Your suggestion…" class="sug-textarea" rows="4" required></textarea>
-    <button type="submit" class="sug-submit">Send</button>
-  </form>
-  <p id="sug-thanks" class="sug-thanks hidden">Sent! Thanks for the feedback.</p>
 </div>
 
 <canvas id="hub-bg-canvas" style="position:fixed;inset:0;z-index:0;pointer-events:none;"></canvas>
@@ -545,7 +543,7 @@ function _loadApp(id) {
   var embedStyle = id === 'lm'
     ? common + '.header-top{display:none!important;}'
     : id === 'echo'
-      ? common + 'header{display:none!important;}nav.outer-tabs{display:none!important;}'
+      ? common + 'header{display:none!important;}'
       : common + 'header{display:none!important;}';
   html = html.replace('</head>', '<style>' + embedStyle + '</style></head>');
   var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
@@ -952,22 +950,12 @@ function toggleChangelog() {
 }
 function toggleOpts() {
   document.getElementById('opts-panel').classList.toggle('hidden');
-  document.getElementById('sug-panel').classList.add('hidden');
-}
-function toggleSug() {
-  document.getElementById('sug-panel').classList.toggle('hidden');
-  document.getElementById('opts-panel').classList.add('hidden');
 }
 document.addEventListener('click', function(e) {
   var optsPanel = document.getElementById('opts-panel');
-  var sugPanel = document.getElementById('sug-panel');
   var optsBtn = document.getElementById('opts-btn');
-  var sugBtn = document.getElementById('sug-btn');
   if (!optsPanel.classList.contains('hidden') && !optsPanel.contains(e.target) && e.target !== optsBtn) {
     optsPanel.classList.add('hidden');
-  }
-  if (!sugPanel.classList.contains('hidden') && !sugPanel.contains(e.target) && e.target !== sugBtn) {
-    sugPanel.classList.add('hidden');
   }
 });
 document.addEventListener('DOMContentLoaded', function() {
