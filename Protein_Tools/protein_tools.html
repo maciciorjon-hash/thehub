@@ -89,19 +89,17 @@ input:focus{border-color:var(--accent);}
 .pep-table tr:last-child td{border-bottom:none;}
 .pep-table td:first-child{color:var(--text);}
 .pep-summary{font-size:12px;color:var(--text2);margin-bottom:12px;padding:8px 12px;background:var(--surface2);border-radius:7px;}
-/* AlphaFold */
-.af-grid{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;margin-top:14px;}
-.af-viewer-wrap{background:var(--surface2);border-radius:10px;overflow:hidden;height:340px;position:relative;}
-#mol-container{width:100%;height:100%;}
-.af-pae-wrap{display:flex;flex-direction:column;gap:8px;}
-.af-pae-wrap img{width:200px;height:200px;border-radius:8px;border:1px solid var(--border);}
-.plddt-legend{display:flex;flex-direction:column;gap:4px;font-size:11px;}
-.plddt-row{display:flex;align-items:center;gap:7px;}
-.plddt-dot{width:10px;height:10px;border-radius:2px;flex-shrink:0;}
-.af-status{font-size:12px;padding:8px 0;color:var(--text2);}
-.af-note{font-size:11px;color:var(--text3);margin-top:10px;line-height:1.6;}
-.af-note a{color:var(--accent);text-decoration:none;}
-.af-note a:hover{text-decoration:underline;}
+/* Structure viewer */
+.pdb-ctrl-btn{display:block;width:100%;padding:5px 8px;border:1px solid var(--border2);background:none;color:var(--text2);font-family:var(--sans);font-size:11px;font-weight:500;cursor:pointer;border-radius:6px;text-align:left;transition:background .12s,color .12s;}
+.pdb-ctrl-btn:hover{background:var(--surface3);color:var(--text);}
+.pdb-ctrl-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.lm-spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:lm-spin .8s linear infinite;}
+@keyframes lm-spin{to{transform:rotate(360deg);}}
+.struct-result-row{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px;border-radius:4px;}
+.struct-result-row:hover{background:var(--surface2);}
+.struct-result-row:last-child{border-bottom:none;}
+/* Hydro tooltip */
+#hydro-tt{position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:6px 9px;font-size:11px;color:var(--text);font-family:var(--sans);pointer-events:none;display:none;z-index:9998;box-shadow:0 2px 10px rgba(0,0,0,.18);white-space:nowrap;}
 /* Target Intel */
 .ti-search-row{display:flex;gap:8px;align-items:flex-end;}
 .ti-search-row input{flex:1;}
@@ -227,12 +225,7 @@ input:focus{border-color:var(--accent);}
   <!-- Hydrophobicity + Charge charts inline in Properties -->
   <div class="props-charts-row">
     <div class="chart-half">
-      <div class="chart-half-title">Hydrophobicity Profile <span class="pinfo" data-tip="Kyte-Doolittle sliding window hydrophobicity. Positive values (orange) = hydrophobic regions. Negative values (blue) = hydrophilic regions. Adjust window size to smooth the profile.">ⓘ</span></div>
-      <div class="range-row">
-        <label style="margin:0;white-space:nowrap;font-size:11px;">Window:</label>
-        <input type="range" id="hydro-window" min="3" max="25" step="2" value="9" oninput="onHydroSlide(this.value)">
-        <span class="range-val" id="hydro-win-val">9</span> <span style="font-size:11px;color:var(--text3);">aa</span>
-      </div>
+      <div class="chart-half-title">Hydrophobicity Profile <span class="pinfo" data-tip="Kyte-Doolittle sliding window hydrophobicity (window 9). Positive values (orange) = hydrophobic regions. Negative values (blue) = hydrophilic. Hover to inspect. Drag to zoom. Double-click to reset.">ⓘ</span></div>
       <div class="chart-wrap">
         <svg id="hydro-svg" viewBox="0 0 600 180" preserveAspectRatio="xMidYMid meet">
           <text x="300" y="90" text-anchor="middle" font-size="12" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">Load a sequence to see the hydrophobicity profile.</text>
@@ -272,36 +265,101 @@ input:focus{border-color:var(--accent);}
   </div>
 </div>
 
-<!-- STRUCTURE (AlphaFold) -->
+<!-- STRUCTURE -->
 <div class="panel" id="panel-structure">
-  <div class="card">
-    <div class="card-hdr">AlphaFold Structure Viewer</div>
-    <div class="row" style="gap:10px;align-items:flex-end;">
-      <div style="flex:1;max-width:260px;">
-        <label>UniProt Accession <span class="pinfo" data-tip="Enter a reviewed UniProt accession (e.g. P04637 for human p53). AlphaFold DB covers most reviewed human and model-organism entries.">ⓘ</span></label>
-        <input type="text" id="af-input" placeholder="e.g. P04637" style="width:100%;" onkeydown="if(event.key==='Enter')fetchAlphaFold()">
+  <!-- Search card -->
+  <div class="card" style="flex-shrink:0;">
+    <div class="card-hdr">Structure Viewer</div>
+    <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <label>Gene, protein name, UniProt ID, or PDB ID</label>
+        <input type="text" id="struct-input" placeholder="e.g. KRAS, P01116, 4OBE" style="width:100%;" onkeydown="if(event.key==='Enter')loadStructure()">
       </div>
-      <button class="btn btn-primary" onclick="fetchAlphaFold()">Load Structure</button>
+      <div style="display:flex;gap:6px;">
+        <button class="enz-btn active" id="src-btn-af" onclick="setStructSource('af',this)">AlphaFold</button>
+        <button class="enz-btn" id="src-btn-pdb" onclick="setStructSource('pdb',this)">PDB</button>
+      </div>
+      <button class="btn btn-primary" onclick="loadStructure()">Load</button>
     </div>
-    <div class="af-status" id="af-status"></div>
-    <div id="af-panels" style="display:none;">
-      <div class="af-grid">
-        <div class="af-viewer-wrap"><div id="mol-container"></div></div>
-        <div class="af-pae-wrap">
-          <div style="font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">PAE Map</div>
-          <img id="af-pae" alt="PAE" style="display:none;">
-          <div style="margin-top:12px;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">pLDDT Confidence</div>
-          <div class="plddt-legend">
-            <div class="plddt-row"><div class="plddt-dot" style="background:#003399"></div><span>Very high ≥ 90</span></div>
-            <div class="plddt-row"><div class="plddt-dot" style="background:#6699ff"></div><span>Confident 70–90</span></div>
-            <div class="plddt-row"><div class="plddt-dot" style="background:#ffcc00"></div><span>Low 50–70</span></div>
-            <div class="plddt-row"><div class="plddt-dot" style="background:#ff7700"></div><span>Very low &lt; 50</span></div>
+    <div id="struct-status" style="margin-top:10px;font-size:12px;color:var(--text2);min-height:18px;"></div>
+    <div id="struct-results" style="display:none;margin-top:10px;"></div>
+  </div>
+
+  <!-- Viewer area (hidden until loaded) -->
+  <div id="struct-viewer-card" style="display:none;flex:1;min-height:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;flex-direction:column;">
+    <div id="struct-info-bar" style="padding:10px 16px;font-size:12px;color:var(--text2);background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;"></div>
+    <div style="display:flex;flex:1;min-height:0;">
+      <div style="flex:1;min-width:0;position:relative;">
+        <div id="struct-ngl-viewport" style="width:100%;height:100%;"></div>
+        <div id="struct-ngl-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:10;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+            <div class="lm-spinner"></div>
+            <div id="struct-load-msg" style="font-size:12px;color:#fff;font-family:var(--sans);">Loading…</div>
           </div>
-          <div id="af-meta" style="margin-top:12px;font-size:11px;color:var(--text2);line-height:1.8;"></div>
+        </div>
+      </div>
+      <div style="width:180px;flex-shrink:0;background:var(--surface2);border-left:1px solid var(--border);padding:14px 12px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;">
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Representation</div>
+          <div style="display:flex;flex-direction:column;gap:4px;" id="struct-style-btns">
+            <button class="pdb-ctrl-btn active" onclick="structSetStyle('cartoon',this)">Cartoon</button>
+            <button class="pdb-ctrl-btn" onclick="structSetStyle('tube',this)">Tube</button>
+            <button class="pdb-ctrl-btn" onclick="structSetStyle('ball+stick',this)">Ball+Stick</button>
+            <button class="pdb-ctrl-btn" onclick="structSetStyle('surface',this)">Surface</button>
+            <button class="pdb-ctrl-btn" onclick="structSetStyle('spacefill',this)">Spacefill</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Colouring</div>
+          <div style="display:flex;flex-direction:column;gap:4px;" id="struct-color-btns">
+            <button class="pdb-ctrl-btn active" onclick="structSetColor('chainname',this)">By chain</button>
+            <button class="pdb-ctrl-btn" onclick="structSetColor('sstruc',this)">By SS</button>
+            <button class="pdb-ctrl-btn" onclick="structSetColor('element',this)">Element</button>
+            <button class="pdb-ctrl-btn" onclick="structSetColor('hydrophobicity',this)">Hydrophobicity</button>
+            <button class="pdb-ctrl-btn" id="bfactor-btn" onclick="structSetColor('bfactor',this)">B-factor / pLDDT</button>
+            <button class="pdb-ctrl-btn" onclick="structSetColor('uniform',this)">Uniform</button>
+          </div>
+          <div id="struct-uniform-wrap" style="display:none;margin-top:8px;align-items:center;gap:6px;">
+            <input type="color" id="struct-uniform-color" value="#9c6fd4" oninput="structSetUniformColor(this.value)" style="width:32px;height:24px;border:none;background:none;cursor:pointer;padding:0;">
+            <span style="font-size:11px;color:var(--text2);">Pick colour</span>
+          </div>
+        </div>
+        <div id="struct-opacity-wrap" style="display:none;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Opacity</div>
+          <input type="range" id="struct-opacity" min="0.1" max="1.0" step="0.05" value="0.7" oninput="structSetOpacity(+this.value)" style="width:100%;">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Background</div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <button class="pdb-ctrl-btn active" id="bg-dark" onclick="structSetBg('dark',this)">Dark</button>
+            <button class="pdb-ctrl-btn" id="bg-light" onclick="structSetBg('light',this)">Light</button>
+            <button class="pdb-ctrl-btn" id="bg-trans" onclick="structSetBg('transparent',this)">Transparent</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Export</div>
+          <button class="pdb-ctrl-btn" onclick="structExportPng()" style="width:100%;margin-bottom:4px;">Save PNG</button>
+          <button class="pdb-ctrl-btn" onclick="structDownload()" style="width:100%;">Download file</button>
+        </div>
+        <div id="struct-pae-wrap" style="display:none;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">PAE Map</div>
+          <img id="struct-pae-img" style="width:100%;border-radius:6px;border:1px solid var(--border);">
+          <div style="margin-top:8px;">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">pLDDT</div>
+            <div style="font-size:10px;color:var(--text2);display:flex;flex-direction:column;gap:3px;">
+              <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:2px;background:#003399;flex-shrink:0;"></div>≥ 90 very high</div>
+              <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:2px;background:#6699ff;flex-shrink:0;"></div>70–90 confident</div>
+              <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:2px;background:#ffcc00;flex-shrink:0;"></div>50–70 low</div>
+              <div style="display:flex;align-items:center;gap:5px;"><div style="width:10px;height:10px;border-radius:2px;background:#ff7700;flex-shrink:0;"></div>&lt; 50 very low</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
-    <div class="af-note">For novel sequences not in UniProt, use <a href="https://alphafoldserver.com" target="_blank">alphafoldserver.com</a>. AlphaFold DB covers reviewed UniProt entries.</div>
+  </div>
+
+  <div style="flex-shrink:0;margin-top:auto;font-size:11px;color:var(--text3);padding-top:8px;">
+    Data from <a href="https://alphafold.ebi.ac.uk" target="_blank" style="color:var(--accent2)">AlphaFold DB</a> (EMBL-EBI) and <a href="https://www.rcsb.org" target="_blank" style="color:var(--accent2)">RCSB PDB</a>
   </div>
 </div>
 
@@ -330,7 +388,7 @@ input:focus{border-color:var(--accent);}
         <li>Paste any amino acid sequence (1-letter code or FASTA format) into the text area.</li>
         <li>Results update instantly: MW, pI, ε280, GRAVY, instability index, and AA composition.</li>
         <li>Enter an A280 absorbance value to calculate protein concentration via Beer-Lambert.</li>
-        <li>The <strong>Hydrophobicity Profile</strong> (Kyte-Doolittle) and <strong>Charge vs pH</strong> charts update automatically. Adjust the window slider to smooth the hydrophobicity trace.</li>
+        <li>The <strong>Hydrophobicity Profile</strong> (Kyte-Doolittle, window 9) and <strong>Charge vs pH</strong> charts update automatically. Hover over the hydrophobicity chart to see residue details; drag to zoom, double-click to reset.</li>
       </ul>
     </div>
     <div class="guide-section">
@@ -342,12 +400,13 @@ input:focus{border-color:var(--accent);}
       </ul>
     </div>
     <div class="guide-section">
-      <h3>Structure tab (AlphaFold)</h3>
+      <h3>Structure tab</h3>
       <ul>
-        <li>Enter a reviewed UniProt accession (e.g. <strong>P04637</strong> for human p53).</li>
-        <li>The 3D structure is coloured by pLDDT confidence: dark blue = very high, orange/yellow = low confidence.</li>
-        <li>The PAE (predicted aligned error) map shows inter-domain confidence.</li>
-        <li>For novel sequences, use <a href="https://alphafoldserver.com" target="_blank" style="color:var(--accent)">AlphaFold Server</a>.</li>
+        <li>Enter a gene name (e.g. <strong>KRAS</strong>), protein name, UniProt accession, or 4-character PDB ID (e.g. <strong>4OBE</strong>).</li>
+        <li>Toggle between <strong>AlphaFold</strong> (predicted structures) and <strong>PDB</strong> (experimental structures). For PDB, non-ID queries show a list of results to choose from.</li>
+        <li>Use the sidebar controls to change representation (cartoon, tube, ball+stick, surface, spacefill) and colouring (by chain, secondary structure, element, hydrophobicity, B-factor/pLDDT).</li>
+        <li>Export a PNG snapshot or download the raw PDB/CIF file.</li>
+        <li>AlphaFold structures include a PAE map and pLDDT colour key in the sidebar.</li>
       </ul>
     </div>
     <div class="guide-section">
@@ -363,6 +422,7 @@ input:focus{border-color:var(--accent);}
 
 </div>
 <div id="pinfo-tip"></div>
+<div id="hydro-tt"></div>
 <script>
 // ─── Theme ────────────────────────────────────────────────────────────────
 function toggleOpts(){document.getElementById('opts-panel').classList.toggle('open');}
@@ -416,21 +476,59 @@ function calcInstability(seq){let s=0,n=0;for(let i=0;i<seq.length-1;i++){s+=DIW
 function calcComposition(seq){const c={};'ACDEFGHIKLMNPQRSTVWY'.split('').forEach(aa=>c[aa]=0);for(const aa of seq){if(c[aa]!==undefined)c[aa]++;}return c;}
 
 // ─── Hydrophobicity ────────────────────────────────────────────────────────
+let _hydroZoom=null;
+let _hydroDrag=null;
+let _hydroPts=[];
+let _hydroEventsWired=false;
+const AA3={A:'Ala',C:'Cys',D:'Asp',E:'Glu',F:'Phe',G:'Gly',H:'His',I:'Ile',K:'Lys',L:'Leu',M:'Met',N:'Asn',P:'Pro',Q:'Gln',R:'Arg',S:'Ser',T:'Thr',V:'Val',W:'Trp',Y:'Tyr'};
+
 function calcHydroWindow(seq,w){
   const pts=[];
   for(let i=0;i<=seq.length-w;i++){
     let s=0;for(let j=0;j<w;j++)s+=KD[seq[i+j]]||0;
-    pts.push({pos:i+Math.floor(w/2)+1,score:s/w});
+    const center=i+Math.floor(w/2);
+    pts.push({pos:center+1,aa:seq[center],score:s/w});
   }
   return pts;
 }
 
+function _hydroSvgX(e){
+  const svg=document.getElementById('hydro-svg');
+  const rect=svg.getBoundingClientRect();
+  const ratio=600/rect.width;
+  return(e.clientX-rect.left)*ratio;
+}
+function _hydroSvgToIdx(svgX){
+  const n=_hydroPts.length;
+  if(!n)return -1;
+  const cw=600-48-14;
+  const frac=(svgX-48)/cw;
+  const idx=Math.round(frac*(n-1));
+  return Math.max(0,Math.min(n-1,idx));
+}
+
 function renderHydroChart(){
   const svg=document.getElementById('hydro-svg');
-  if(!_lastResult){svg.innerHTML='<text x="300" y="90" text-anchor="middle" font-size="12" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">Load a sequence to see the hydrophobicity profile.</text>';return;}
-  const w=parseInt(document.getElementById('hydro-window').value)||9;
-  const pts=calcHydroWindow(_lastResult.seq,w);
-  if(!pts.length){svg.innerHTML='<text x="300" y="90" text-anchor="middle" font-size="12" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">Sequence too short for window size '+w+'.</text>';return;}
+  if(!_lastResult){
+    _hydroPts=[];
+    svg.innerHTML='<text x="300" y="90" text-anchor="middle" font-size="12" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">Load a sequence to see the hydrophobicity profile.</text>';
+    return;
+  }
+  const w=9;
+  const allPts=calcHydroWindow(_lastResult.seq,w);
+  if(!allPts.length){
+    _hydroPts=[];
+    svg.innerHTML='<text x="300" y="90" text-anchor="middle" font-size="12" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">Sequence too short for window size 9.</text>';
+    return;
+  }
+  let pts=allPts;
+  if(_hydroZoom){
+    const s=Math.max(0,_hydroZoom.iStart);
+    const e=Math.min(allPts.length,_hydroZoom.iEnd);
+    pts=allPts.slice(s,e);
+    if(!pts.length){_hydroZoom=null;pts=allPts;}
+  }
+  _hydroPts=pts;
   const VB_W=600,VB_H=180,PAD={t:14,r:14,b:28,l:48};
   const cw=VB_W-PAD.l-PAD.r,ch=VB_H-PAD.t-PAD.b;
   const yMin=-4.5,yMax=4.5;
@@ -453,25 +551,92 @@ function renderHydroChart(){
   </defs>`;
   const areaD=posD+` L${xScale(pts.length-1)},${y0} L${PAD.l},${y0} Z`;
   html+=`<path d="${areaD}" fill="#e07b3a" opacity="0.10"/>`;
-  const negAreaD=posD+` L${xScale(pts.length-1)},${y0} L${PAD.l},${y0} Z`;
-  html+=`<path d="${negAreaD}" fill="#4b9cd3" opacity="0.08"/>`;
+  html+=`<path d="${areaD}" fill="#4b9cd3" opacity="0.08"/>`;
   html+=`<path d="${posD}" fill="none" stroke="#e07b3a" stroke-width="1.8" clip-path="url(#clip-pos-${clipId})"/>`;
   html+=`<path d="${posD}" fill="none" stroke="#4b9cd3" stroke-width="1.8" clip-path="url(#clip-neg-${clipId})"/>`;
   html+=`<line x1="${PAD.l}" y1="${PAD.t+ch}" x2="${VB_W-PAD.r}" y2="${PAD.t+ch}" stroke="var(--border2)" stroke-width="1"/>`;
-  const ticks=Math.min(10,pts.length);
-  for(let t=0;t<ticks;t++){
-    const i=Math.round(t*(pts.length-1)/(ticks-1));
+  // x-axis labels showing actual sequence positions
+  const nLabels=Math.min(8,pts.length);
+  for(let t=0;t<nLabels;t++){
+    const i=Math.round(t*(pts.length-1)/(nLabels-1));
     const x=xScale(i);
     html+=`<text x="${x}" y="${VB_H-3}" text-anchor="middle" font-size="7" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">${pts[i].pos}</text>`;
   }
   html+=`<text x="${PAD.l+(VB_W-PAD.l-PAD.r)/2}" y="${VB_H}" text-anchor="middle" font-size="7" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif">Position (aa)</text>`;
   html+=`<text x="9" y="${VB_H/2}" text-anchor="middle" font-size="7" fill="var(--text3)" font-family="IBM Plex Sans,sans-serif" transform="rotate(-90,9,${VB_H/2})">Hydrophobicity</text>`;
+  // crosshair line
+  html+=`<line id="hydro-xhair" x1="0" y1="${PAD.t}" x2="0" y2="${PAD.t+ch}" stroke="var(--accent)" stroke-width="1" opacity="0" pointer-events="none"/>`;
+  // selection rect
+  html+=`<rect id="hydro-sel-rect" x="0" y="${PAD.t}" width="0" height="${ch}" fill="rgba(0,121,185,0.2)" stroke="#0079b9" stroke-width="1" opacity="0" pointer-events="none"/>`;
   svg.innerHTML=html;
-}
-
-function onHydroSlide(v){
-  document.getElementById('hydro-win-val').textContent=v;
-  renderHydroChart();
+  // Wire events once
+  if(!_hydroEventsWired){
+    _hydroEventsWired=true;
+    const svgEl=document.getElementById('hydro-svg');
+    const ttEl=document.getElementById('hydro-tt');
+    svgEl.addEventListener('mousemove',function(e){
+      const sx=_hydroSvgX(e);
+      if(sx<48||sx>586){ttEl.style.display='none';const xh=document.getElementById('hydro-xhair');if(xh)xh.setAttribute('opacity','0');return;}
+      const idx=_hydroSvgToIdx(sx);
+      if(idx<0||idx>=_hydroPts.length){ttEl.style.display='none';return;}
+      const p=_hydroPts[idx];
+      const xh=document.getElementById('hydro-xhair');
+      if(xh){
+        const VB_W=600,PAD_L=48;const cw=600-48-14;
+        const x=PAD_L+idx*(cw/(_hydroPts.length-1||1));
+        xh.setAttribute('x1',x);xh.setAttribute('x2',x);xh.setAttribute('opacity','0.7');
+      }
+      ttEl.style.display='block';
+      ttEl.textContent='pos '+p.pos+' · '+p.aa+' ('+(AA3[p.aa]||p.aa)+') · score: '+p.score.toFixed(2);
+      const vw=window.innerWidth,vh=window.innerHeight;
+      let lx=e.clientX+14,ly=e.clientY-32;
+      if(lx+180>vw)lx=e.clientX-190;
+      if(ly<0)ly=e.clientY+14;
+      ttEl.style.left=lx+'px';ttEl.style.top=ly+'px';
+      if(_hydroDrag){
+        const sx0=_hydroDrag.svgX0,sx1=sx;
+        const rx=Math.min(sx0,sx1),rw=Math.abs(sx1-sx0);
+        const selR=document.getElementById('hydro-sel-rect');
+        if(selR){selR.setAttribute('x',rx);selR.setAttribute('width',rw);selR.setAttribute('opacity','1');}
+      }
+    });
+    svgEl.addEventListener('mouseleave',function(){
+      ttEl.style.display='none';
+      const xh=document.getElementById('hydro-xhair');if(xh)xh.setAttribute('opacity','0');
+      if(!_hydroDrag){const selR=document.getElementById('hydro-sel-rect');if(selR){selR.setAttribute('width','0');selR.setAttribute('opacity','0');}}
+    });
+    svgEl.addEventListener('mousedown',function(e){
+      if(e.button!==0)return;
+      const sx=_hydroSvgX(e);
+      _hydroDrag={svgX0:sx};
+      e.preventDefault();
+    });
+    document.addEventListener('mouseup',function(e){
+      if(!_hydroDrag)return;
+      const drag=_hydroDrag;_hydroDrag=null;
+      const svgEl2=document.getElementById('hydro-svg');
+      const selR=document.getElementById('hydro-sel-rect');
+      if(selR){selR.setAttribute('width','0');selR.setAttribute('opacity','0');}
+      const sx=_hydroSvgX(e);
+      const span=Math.abs(sx-drag.svgX0);
+      if(span>5){
+        const i0=_hydroSvgToIdx(Math.min(drag.svgX0,sx));
+        const i1=_hydroSvgToIdx(Math.max(drag.svgX0,sx));
+        if(i1>i0){
+          // convert local zoomed indices back to allPts indices
+          const allPts=calcHydroWindow(_lastResult.seq,9);
+          let baseStart=0;
+          if(_hydroZoom)baseStart=Math.max(0,_hydroZoom.iStart);
+          _hydroZoom={iStart:baseStart+i0,iEnd:baseStart+i1+1};
+          renderHydroChart();
+        }
+      }
+    });
+    svgEl.addEventListener('dblclick',function(){
+      _hydroZoom=null;
+      renderHydroChart();
+    });
+  }
 }
 
 // ─── Charge vs pH ─────────────────────────────────────────────────────────
@@ -574,61 +739,269 @@ function renderCleavageTable(){
     <table class="pep-table"><thead><tr><th>Position</th><th>Length</th><th>Sequence</th><th>Mass (Da)</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-// ─── AlphaFold ────────────────────────────────────────────────────────────
-let _viewer=null,_3dmolLoaded=false;
+// ─── Structure Viewer ─────────────────────────────────────────────────────
+let _structNglStage=null,_structNglComp=null,_structNglLoaded=false;
+let _structLoadToken=0;
+let _structSource='af';
+let _structStyle='cartoon',_structColor='chainname';
+let _structBg='dark',_structOpacity=0.7;
+let _structUniformColor='#9c6fd4';
+let _structFileBuffer=null,_structFileExt='pdb';
+let _structCurrentId='',_structCurrentSource='';
 
-function load3Dmol(cb){
-  if(_3dmolLoaded){cb();return;}
+function setStructSource(src,btn){
+  _structSource=src;
+  document.getElementById('src-btn-af').classList.toggle('active',src==='af');
+  document.getElementById('src-btn-pdb').classList.toggle('active',src==='pdb');
+}
+
+function _loadNGL(cb){
+  if(_structNglLoaded){cb(null);return;}
   const s=document.createElement('script');
-  s.src='https://cdn.jsdelivr.net/npm/3dmol@2.1.0/build/3Dmol-min.js';
-  s.onload=()=>{_3dmolLoaded=true;cb();};
-  s.onerror=()=>{document.getElementById('af-status').textContent='Failed to load 3Dmol viewer library.';};
+  s.src='https://cdn.jsdelivr.net/npm/ngl@2.3.1/dist/ngl.js';
+  s.onload=()=>{_structNglLoaded=true;cb(null);};
+  s.onerror=()=>cb(new Error('NGL failed to load'));
   document.head.appendChild(s);
 }
 
-async function fetchAlphaFold(){
-  const uid=document.getElementById('af-input').value.trim().toUpperCase();
-  const statusEl=document.getElementById('af-status');
-  const panels=document.getElementById('af-panels');
-  if(!uid){statusEl.textContent='Enter a UniProt accession.';return;}
-  statusEl.textContent='Fetching AlphaFold data…';
-  panels.style.display='none';
+async function loadStructure(){
+  const raw=(document.getElementById('struct-input').value||'').trim();
+  if(!raw){document.getElementById('struct-status').textContent='Enter a gene name, UniProt ID, or PDB ID.';return;}
+  const statusEl=document.getElementById('struct-status');
+  const resultsEl=document.getElementById('struct-results');
+  resultsEl.style.display='none';resultsEl.innerHTML='';
+  if(_structSource==='pdb'){
+    if(/^[0-9][A-Za-z0-9]{3}$/.test(raw)){_structLoadById(raw.toUpperCase(),null,null,null);return;}
+    statusEl.textContent='Searching RCSB PDB…';
+    try{
+      const r=await fetch('https://search.rcsb.org/rcsbsearch/v2/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:{type:'terminal',service:'full_text',parameters:{value:raw}},return_type:'entry',request_options:{paginate:{start:0,rows:8},sort:[{sort_by:'score',direction:'desc'}]}})});
+      const data=await r.json();
+      if(!data.result_set||!data.result_set.length){statusEl.textContent='No PDB results for "'+raw+'".';return;}
+      const ids=data.result_set.slice(0,8).map(x=>x.identifier);
+      statusEl.textContent=ids.length+' results — click to load:';
+      const metas=await Promise.all(ids.map(id=>fetch('https://data.rcsb.org/rest/v1/core/entry/'+id).then(r=>r.ok?r.json():null).catch(()=>null)));
+      resultsEl.innerHTML=ids.map((id,i)=>{
+        const m=metas[i];
+        const title=(m&&m.struct&&m.struct.title)||id;
+        const method=(m&&m.exptl&&m.exptl[0]&&m.exptl[0].method)||'';
+        const res=(m&&m.refine&&m.refine[0]&&m.refine[0].ls_d_res_high)?m.refine[0].ls_d_res_high.toFixed(2)+' Å':'';
+        return'<div class="struct-result-row" onclick="_structLoadById(\''+id+'\','+JSON.stringify(title.slice(0,80))+','+JSON.stringify(method)+','+JSON.stringify(res)+')">'+
+          '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;">'+id+'</span>'+
+          '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+title.slice(0,70)+'</span>'+
+          (method?'<span style="flex-shrink:0;font-size:10px;color:var(--text3);">'+method+'</span>':'')+
+          (res?'<span style="flex-shrink:0;font-size:10px;color:var(--text3);">'+res+'</span>':'')+
+          '</div>';
+      }).join('');
+      resultsEl.style.display='block';
+    }catch(e){statusEl.textContent='Search error: '+e.message;}
+    return;
+  }
+  // AlphaFold source
+  statusEl.textContent='Resolving identifier…';
+  let acc='';
+  const isAccession=/^[A-Z][0-9][A-Z0-9]{3}[0-9](-[0-9]+)?$|^[OPQ][0-9][A-Z0-9]{3}[0-9](-[0-9]+)?$/.test(raw.toUpperCase());
+  if(isAccession){
+    acc=raw.toUpperCase().replace(/-.*/, '');
+  }else{
+    try{
+      const uFields='accession';
+      const q1='https://rest.uniprot.org/uniprotkb/search?query=gene_exact:'+encodeURIComponent(raw.toUpperCase())+'+AND+reviewed:true+AND+organism_id:9606&fields='+uFields+'&format=json&size=1';
+      let r1=await fetch(q1);
+      if(r1.ok){const d1=await r1.json();acc=d1.results&&d1.results[0]&&d1.results[0].primaryAccession;}
+      if(!acc){
+        const q2='https://rest.uniprot.org/uniprotkb/search?query=gene:'+encodeURIComponent(raw.toUpperCase())+'+AND+reviewed:true+AND+organism_id:9606&fields='+uFields+'&format=json&size=1';
+        let r2=await fetch(q2);
+        if(r2.ok){const d2=await r2.json();acc=d2.results&&d2.results[0]&&d2.results[0].primaryAccession;}
+      }
+      if(!acc){
+        const q3='https://rest.uniprot.org/uniprotkb/search?query='+encodeURIComponent(raw)+'+AND+reviewed:true+AND+organism_id:9606&fields='+uFields+'&format=json&size=1';
+        let r3=await fetch(q3);
+        if(r3.ok){const d3=await r3.json();acc=d3.results&&d3.results[0]&&d3.results[0].primaryAccession;}
+      }
+    }catch(e){}
+  }
+  if(!acc){statusEl.textContent='Could not resolve "'+raw+'" to a UniProt accession. Try entering the accession directly (e.g. P01116).';return;}
+  statusEl.textContent='Fetching AlphaFold structure for '+acc+'…';
   try{
-    const apiRes=await fetch(`https://alphafold.ebi.ac.uk/api/prediction/${uid}`);
-    if(!apiRes.ok){statusEl.textContent=`Not found: ${uid}. Check the accession (e.g. P04637 for p53).`;return;}
-    const data=await apiRes.json();
-    const entry=Array.isArray(data)?data[0]:data;
-    if(!entry||!entry.pdbUrl){statusEl.textContent='No structure data returned.';return;}
-    statusEl.textContent='Loading structure…';
-    const paeImg=document.getElementById('af-pae');
-    if(entry.paeImageUrl){paeImg.src=entry.paeImageUrl;paeImg.style.display='';}
-    const metaEl=document.getElementById('af-meta');
-    metaEl.innerHTML=`
-      <div><b>UniProt:</b> ${uid}</div>
-      <div><b>Gene:</b> ${entry.gene||'—'}</div>
-      <div><b>Organism:</b> ${entry.organismScientificName||'—'}</div>
-      <div><b>pLDDT mean:</b> ${entry.meanPlddt?entry.meanPlddt.toFixed(1):'—'}</div>
-      <div><b>Model version:</b> ${entry.latestVersion||'—'}</div>`;
-    load3Dmol(async ()=>{
-      const pdbRes=await fetch(entry.pdbUrl);
-      const pdbData=await pdbRes.text();
-      panels.style.display='';
-      statusEl.textContent='';
-      const container=document.getElementById('mol-container');
-      if(_viewer){try{_viewer.clear();}catch(e){}}
-      _viewer=$3Dmol.createViewer(container,{backgroundColor:'transparent'});
-      _viewer.addModel(pdbData,'pdb');
-      _viewer.setStyle({},{cartoon:{colorfunc:function(atom){
-        const b=atom.b;
-        if(b>=90)return'#003399';
-        if(b>=70)return'#6699ff';
-        if(b>=50)return'#ffcc00';
-        return'#ff7700';
-      }}});
-      _viewer.zoomTo();
-      _viewer.render();
-    });
+    const afRes=await fetch('https://alphafold.ebi.ac.uk/api/prediction/'+acc);
+    if(!afRes.ok){statusEl.textContent='No AlphaFold model for '+acc+'. Try PDB source or check accession.';return;}
+    const afData=await afRes.json();
+    const entry=Array.isArray(afData)?afData[0]:afData;
+    if(!entry||!entry.pdbUrl){statusEl.textContent='AlphaFold returned no structure data.';return;}
+    const paeWrap=document.getElementById('struct-pae-wrap');
+    const paeImg=document.getElementById('struct-pae-img');
+    if(entry.paeImageUrl){paeImg.src=entry.paeImageUrl;paeWrap.style.display='';}
+    else{paeWrap.style.display='none';}
+    const infoBar=document.getElementById('struct-info-bar');
+    infoBar.innerHTML='<strong>AlphaFold — '+acc+'</strong>'+
+      (entry.gene?' · '+entry.gene:'')+
+      (entry.organismScientificName?' · <em>'+entry.organismScientificName+'</em>':'')+
+      (entry.meanPlddt?' · pLDDT '+entry.meanPlddt.toFixed(1):'')+
+      ' · <a href="https://alphafold.ebi.ac.uk/entry/'+acc+'" target="_blank" style="color:var(--accent2)">AF DB ↗</a>';
+    _structCurrentSource='af';
+    _structCurrentId=acc;
+    _structLoadNGLFromUrl(entry.pdbUrl,'pdb',acc+'-AF');
   }catch(e){statusEl.textContent='Error: '+e.message;}
+}
+
+async function _structLoadById(id,title,method,res){
+  _structCurrentSource='pdb';
+  _structCurrentId=id;
+  document.getElementById('struct-results').style.display='none';
+  const infoBar=document.getElementById('struct-info-bar');
+  infoBar.innerHTML='<strong>PDB '+id+'</strong>'+
+    (title?' — '+title.slice(0,80):'')+
+    (method?' · '+method:'')+
+    (res?' · '+res:'')+
+    ' · <a href="https://www.rcsb.org/structure/'+id+'" target="_blank" style="color:var(--accent2)">RCSB ↗</a>';
+  document.getElementById('struct-pae-wrap').style.display='none';
+  _structLoadNGLFromUrl('https://files.rcsb.org/download/'+id+'.pdb','pdb',id);
+}
+
+function _structLoadNGLFromUrl(url,ext,name){
+  const myToken=++_structLoadToken;
+  const statusEl=document.getElementById('struct-status');
+  const viewerCard=document.getElementById('struct-viewer-card');
+  viewerCard.style.display='flex';
+  const loadingEl=document.getElementById('struct-ngl-loading');
+  loadingEl.style.display='flex';
+  document.getElementById('struct-load-msg').textContent='Loading NGL viewer…';
+  _loadNGL(function(err){
+    if(myToken!==_structLoadToken)return;
+    if(err){document.getElementById('struct-load-msg').textContent='⚠ '+err.message;return;}
+    const bgColors={dark:'#0d0f14',light:'#f4f5f8',transparent:'transparent'};
+    const bgColor=bgColors[_structBg]||'#0d0f14';
+    if(_structNglStage){
+      try{_structNglStage.removeAllComponents();}catch(e){}
+      try{_structNglStage.setParameters({backgroundColor:bgColor});}catch(e){}
+    }else{
+      try{
+        _structNglStage=new NGL.Stage('struct-ngl-viewport',{backgroundColor:bgColor,quality:'high',impostor:true});
+      }catch(e){document.getElementById('struct-load-msg').textContent='⚠ '+e.message;return;}
+    }
+    _structNglComp=null;
+    document.getElementById('struct-load-msg').textContent='Fetching '+name+'…';
+    fetch(url).then(r=>{
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      document.getElementById('struct-load-msg').textContent='Parsing…';
+      return r.arrayBuffer();
+    }).then(buf=>{
+      if(myToken!==_structLoadToken)return;
+      _structFileBuffer={buf,ext,name};
+      const realExt=url.endsWith('.cif')?'mmcif':ext;
+      return _structNglStage.loadFile(new Blob([buf]),{ext:realExt,defaultRepresentation:false,name});
+    }).then(comp=>{
+      if(myToken!==_structLoadToken){try{comp.dispose();}catch(e){}return;}
+      _structNglComp=comp;
+      _applyStructRep();
+      comp.autoView();
+      loadingEl.style.display='none';
+      statusEl.textContent='';
+    }).catch(e=>{
+      if(myToken!==_structLoadToken)return;
+      if(url.includes('.pdb')&&_structCurrentSource==='pdb'){
+        const cifUrl=url.replace('.pdb','.cif');
+        document.getElementById('struct-load-msg').textContent='Trying CIF…';
+        fetch(cifUrl).then(r2=>r2.arrayBuffer()).then(buf2=>{
+          if(myToken!==_structLoadToken)return;
+          _structFileBuffer={buf:buf2,ext:'cif',name};
+          return _structNglStage.loadFile(new Blob([buf2]),{ext:'mmcif',defaultRepresentation:false,name});
+        }).then(comp2=>{
+          if(!comp2)return;
+          _structNglComp=comp2;_applyStructRep();comp2.autoView();
+          loadingEl.style.display='none';statusEl.textContent='';
+        }).catch(()=>{document.getElementById('struct-load-msg').textContent='⚠ Could not load structure.';});
+      }else{
+        document.getElementById('struct-load-msg').textContent='⚠ '+e.message;
+      }
+    });
+  });
+}
+
+function _structColorScheme(){
+  if(_structColor==='uniform'){
+    return NGL.ColormakerRegistry.addSelectionScheme([[_structUniformColor,'*']],'uni_'+Date.now());
+  }
+  if(_structColor==='plddt'){
+    return NGL.ColormakerRegistry.addScheme(function(){
+      this.atomColor=function(atom){
+        const b=atom.bfactor;
+        if(b>=90)return 0x003399;
+        if(b>=70)return 0x6699ff;
+        if(b>=50)return 0xffcc00;
+        return 0xff7700;
+      };
+    },'plddt_'+Date.now());
+  }
+  const map={chainname:'chainname',sstruc:'sstruc',element:'element',hydrophobicity:'hydrophobicity',bfactor:'bfactor'};
+  return map[_structColor]||'chainname';
+}
+
+function _applyStructRep(){
+  if(!_structNglComp)return;
+  _structNglComp.removeAllRepresentations();
+  const cs=_structColorScheme();
+  const lig={sele:'hetero and not water',colorScheme:'element'};
+  const op=_structOpacity;
+  if(_structStyle==='cartoon'){
+    _structNglComp.addRepresentation('cartoon',{colorScheme:cs});
+    _structNglComp.addRepresentation('ball+stick',lig);
+  }else if(_structStyle==='tube'){
+    _structNglComp.addRepresentation('tube',{colorScheme:cs});
+    _structNglComp.addRepresentation('ball+stick',lig);
+  }else if(_structStyle==='surface'){
+    _structNglComp.addRepresentation('surface',{colorScheme:cs,opacity:op});
+    _structNglComp.addRepresentation('ball+stick',lig);
+  }else if(_structStyle==='ball+stick'){
+    _structNglComp.addRepresentation('ball+stick',{colorScheme:cs});
+  }else if(_structStyle==='spacefill'){
+    _structNglComp.addRepresentation('spacefill',{colorScheme:cs});
+  }
+  document.getElementById('struct-opacity-wrap').style.display=(_structStyle==='surface')?'':'none';
+}
+
+function structSetStyle(style,btn){
+  _structStyle=style;
+  document.querySelectorAll('#struct-style-btns .pdb-ctrl-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  _applyStructRep();
+}
+function structSetColor(color,btn){
+  _structColor=color;
+  document.querySelectorAll('#struct-color-btns .pdb-ctrl-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  document.getElementById('struct-uniform-wrap').style.display=(color==='uniform')?'flex':'none';
+  _applyStructRep();
+}
+function structSetUniformColor(hex){_structUniformColor=hex;_applyStructRep();}
+function structSetOpacity(v){_structOpacity=v;_applyStructRep();}
+function structSetBg(bg,btn){
+  _structBg=bg;
+  ['dark','light','trans'].forEach(id=>document.getElementById('bg-'+id).classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  if(_structNglStage){
+    const bgColors={dark:'#0d0f14',light:'#f4f5f8',transparent:'transparent'};
+    try{_structNglStage.setParameters({backgroundColor:bgColors[bg]||'#0d0f14'});}catch(e){}
+  }
+}
+function structExportPng(){
+  if(!_structNglStage)return;
+  _structNglStage.makeImage({factor:2,antialias:true,trim:false,transparent:_structBg==='transparent'}).then(blob=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=(_structCurrentId||'structure')+'_PT.png';
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  });
+}
+function structDownload(){
+  if(!_structFileBuffer)return;
+  const blob=new Blob([_structFileBuffer.buf]);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=_structFileBuffer.name+'.'+_structFileBuffer.ext;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 }
 
 // ─── Target Intel ─────────────────────────────────────────────────────────
