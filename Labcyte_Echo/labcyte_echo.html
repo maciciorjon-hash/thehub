@@ -323,6 +323,7 @@ tr:hover td{background:var(--surface2);}
   .stbtn,.sc-clear{font-size:10px;padding:0 8px;height:26px;}
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
 <body>
 <div class="shell">
@@ -683,8 +684,6 @@ tr:hover td{background:var(--surface2);}
     <div class="tab" data-tab="props">Properties <span class="tcnt" id="pc">0</span></div>
     <div class="tab" data-tab="results">Results <span class="tcnt" id="rc">0</span></div>
     <div class="tab" data-tab="history">History</div>
-    <div class="tab" data-tab="downloads">Downloads <span class="tcnt" id="dc">0</span></div>
-    <div class="tab" data-tab="qc">QC</div>
     <div class="tab" data-tab="guide">Guide</div>
   </div>
 
@@ -708,9 +707,6 @@ tr:hover td{background:var(--surface2);}
     </div>
   </div></div>
 
-  <div class="tabpane" id="tab-downloads"><div id="downloads-panel">
-    <div class="empty"><div class="ei">📁</div><p>CSV and PDF reports will be available here.</p></div>
-  </div></div>
 <div class="tabpane" id="tab-props"><div id="props-panel"><div class="empty"><div class="ei">🧪</div><p>Upload a SMILES CSV (Sample ID + SMILES columns) to see structures and PK properties.</p></div></div></div>
   <div class="tabpane" id="tab-plate">
     <div id="plate-panel" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
@@ -724,11 +720,6 @@ tr:hover td{background:var(--surface2);}
   </div>
   <div class="tabpane" id="tab-history">
     <div id="history-panel" style="flex:1;overflow-y:auto;padding:20px 30px;"></div>
-  </div>
-  <div class="tabpane" id="tab-qc" style="overflow:hidden;">
-    <div id="qc-panel" style="flex:1;display:flex;flex-direction:row;overflow:hidden;min-height:0;">
-      <div class="empty"><div class="ei">🔬</div><p>Run analysis first, then open QC to review and adjust individual curves.</p></div>
-    </div>
   </div>
   <div class="tabpane" id="tab-guide">
     <div id="guide-panel" style="flex:1;overflow-y:auto;padding:24px 40px;">
@@ -924,7 +915,6 @@ _allTabs.forEach(t => t.addEventListener('click', () => {
     if (id === 'curves' && scatterData.length) renderCurvesTab(scatterData);
     if (id === 'plate') renderPlateTab();
     if (id === 'history') renderHistoryTab();
-    if (id === 'qc') renderQCTab();
   });
 }));
 
@@ -1259,7 +1249,6 @@ async function runPipeline() {
           log('  Echo IDs (first 3): ' + echoIds.slice(0,3).join(' | '), 'warn');
           log('  SMILES IDs (first 3): ' + smilesIds.slice(0,3).join(' | '), 'warn');
         }
-        enrichDownloadCSV(compoundData, downloadBlobs);
         setProgress(0);
       } catch(e) {
         setProgress(0);
@@ -1274,9 +1263,8 @@ async function runPipeline() {
       .filter(k => cdLower2[k]).length;
 
     _registerProteinNames(results);
-  window._plateFitMap=null; // invalidate plate DC50 cache
+  window._plateFitMap=null;
     results.forEach(r => { r.Protein = _canon(r.Protein); });
-    renderResults(results);
   // Box plot data stored; populated on demand when user switches to box plot
   window._bpData = results;
   window._bpProteins = [...new Set(results.map(r=>r.Protein))].sort();
@@ -1296,10 +1284,10 @@ async function runPipeline() {
     renderScatter(results);
     if(window._compoundData){ mergePhysChemIntoScatter(); updateScatterPhysChemOptions(); }
     renderProperties(results, compoundData);
-    renderDownloads();
+    generateCurvePDFs(results);
+    renderResults(results);
     document.getElementById('rc').textContent = results.length;
     document.getElementById('sc').textContent = results.length;
-    document.getElementById('dc').textContent = downloadBlobs.length;
     document.getElementById('pc').textContent = nMatched || '';
     document.querySelector('[data-tab="results"]').click();
 
@@ -1922,26 +1910,30 @@ function renderResults(data) {
   ];
   if (_kiParams) cols.splice(3, 0, {k:'_Ki_nM', l:'Ki (nM)', ns:true});
   const _pdfBlobs=downloadBlobs.filter(b=>b.kind==='pdf');
-  const _csvBlob=downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Consolidated'));
-  // Build per-group PDF buttons — one per protein group
-  let _pdfBtns;
-  if (_pdfBlobs.length === 0) {
-    _pdfBtns = '<button class="stbtn" style="opacity:.45;cursor:default;" title="Run analysis to generate PDF">📄 PDF</button>';
-  } else if (_pdfBlobs.length === 1) {
-    _pdfBtns = '<button class="stbtn" onclick="downloadBlob(downloadBlobs.filter(b=>b.kind===\'pdf\')[0])" style="gap:5px;">📄 PDF</button>';
-  } else {
-    _pdfBtns = _pdfBlobs.map((b, i) => {
-      const _gname = b.name.replace(/^Results_[^_]+_/, '').replace(/\.pdf$/, '');
-      return '<button class="stbtn" onclick="downloadBlob(downloadBlobs.filter(b=>b.kind===\'pdf\')[' + i + '])" style="gap:5px;" title="' + _gname + '">📄 ' + _gname + '</button>';
-    }).join('');
+  const _rawBlob=downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
+  // Build download section
+  const _dlBtnStyle='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
+  const _dlBtnHover='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
+  let _dlSection = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel">📋 Copy TSV</button>'
+    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputCSV()">📥 Results CSV</button>';
+  if (_rawBlob) {
+    _dlSection += '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))">📊 Raw Data CSV</button>';
   }
-  let h = '<div class="meta-row">'
+  if (_pdfBlobs.length === 0) {
+    _dlSection += '<button style="'+_dlBtnStyle+';opacity:.4;cursor:default;">📄 Curve PDFs</button>';
+  } else {
+    _pdfBlobs.forEach((b,i) => {
+      const _gname = b.name.replace(/^Results_[^_]+_Curves_/,'').replace(/\.pdf$/,'');
+      _dlSection += '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="downloadBlob(downloadBlobs.filter(b=>b.kind===\'pdf\')['+i+'])" title="Curves — '+esc(_gname)+'">📄 '+esc(_gname)+'</button>';
+    });
+  }
+  _dlSection += '</div>';
+  let h = '<div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
     +'<div class="mcard"><div class="mc-lbl">Compounds</div><div class="mc-val g">'+data.length+'</div></div>'
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
-    +'<div style="flex:1;"></div>'
-    +'<button class="stbtn" onclick="copyResultsTSV()" style="gap:5px;" title="Copy all results as tab-separated for pasting into Excel">📋 Copy</button>'
-    +'<button class="stbtn" onclick="generateOutputCSV()" style="gap:5px;">📥 CSV</button>'
-    +_pdfBtns
+    +'<div style="flex:1;min-width:12px;"></div>'
+    +_dlSection
     +'</div><div class="tbl-wrap"><table><thead><tr>';
   cols.forEach(col=>{
     const isA=_sortState.col===col.k, arr=isA?(_sortState.asc?' ▲':' ▼'):'';
@@ -3922,10 +3914,10 @@ function buildSelectivityChart() {
               return lines;
             }
           },
-          backgroundColor:'var(--surface2)',
-          titleColor:'var(--text)',
-          bodyColor:'var(--text2)',
-          borderColor:'var(--border2)',
+          backgroundColor:(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue('--surface2').trim()||'#1c2030';})(),
+          titleColor:(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue('--text').trim()||'#e8eaf2';})(),
+          bodyColor:(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue('--text2').trim()||'#8b90a8';})(),
+          borderColor:(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue('--border2').trim()||'rgba(255,255,255,0.13)';})(),
           borderWidth:1,
           padding:9,
           titleFont:{size:12,weight:'bold'},
@@ -4487,6 +4479,56 @@ function renderDownloads() {
   });
   h += '</div>';
   p.innerHTML = h;
+}
+
+// ===== PDF GENERATION =====
+function generateCurvePDFs(results) {
+  if (!results || !results.length) return;
+  const jsPDFCls = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDFCls) return;
+  const proteins = [...new Set(results.map(r => r.Protein))].sort();
+  const assayId = window._lastAssayId || 'output';
+  for (const protein of proteins) {
+    const pResults = results.filter(r => r.Protein === protein);
+    const doc = new jsPDFCls({orientation:'portrait', unit:'mm', format:'a4'});
+    const pageW = 210, pageH = 297;
+    const marginX = 12, marginTop = 12;
+    const imgW = pageW - marginX * 2;
+    const imgH = Math.round(imgW * 340 / 580);
+    let first = true;
+    for (const r of pResults) {
+      if (!first) doc.addPage();
+      first = false;
+      const cvs = document.createElement('canvas');
+      cvs.style.width = '580px'; cvs.style.height = '340px';
+      const cfg = Object.assign({}, window._cvCfg || {}, {bgStyle:'white', _exportScale:2, showReps:true});
+      drawMultiCurve(cvs, [r], cfg);
+      const imgData = cvs.toDataURL('image/png');
+      const titleY = marginTop + 6;
+      doc.setFontSize(11); doc.setTextColor(30, 30, 30);
+      doc.text((r.Sample_ID || '—') + '  ·  ' + protein, marginX, titleY);
+      doc.setFontSize(8); doc.setTextColor(90, 90, 100);
+      const st = [
+        'DC50: ' + (r.DC50_nM != null ? r.DC50_nM + ' nM' : '—'),
+        'Dmax: ' + (r.Dmax_pct != null ? r.Dmax_pct + '%' : '—'),
+        'pDC50: ' + (r.pDC50 ?? '—'),
+        'Hill: ' + (r.HillSlope ?? '—'),
+        'R²: ' + (r.R2 ?? '—'),
+        'Flag: ' + (r.Flag || 'No'),
+      ].join('   ');
+      doc.text(st, marginX, titleY + 5);
+      doc.addImage(imgData, 'PNG', marginX, titleY + 10, imgW, imgH);
+      if (r.Flag_Reason) {
+        doc.setFontSize(7); doc.setTextColor(160, 80, 0);
+        doc.text('⚠ ' + r.Flag_Reason, marginX, titleY + 10 + imgH + 5);
+      }
+    }
+    const pdfName = 'Results_' + assayId + '_Curves_' + protein.replace(/[/\\?%*:|"<>]/g,'_') + '.pdf';
+    try {
+      const pdfBytes = new Uint8Array(doc.output('arraybuffer'));
+      downloadBlobs.push({ name: pdfName, bytes: pdfBytes, type: 'application/pdf', kind: 'pdf' });
+    } catch(e) { /* skip if PDF fails */ }
+  }
 }
 
 // ===== INIT =====
@@ -6797,5 +6839,13 @@ document.addEventListener('DOMContentLoaded',function(){
 
   })();
   </script>
+<script>
+// Curves canvas resize: re-render when window resizes while Curves tab is active
+window.addEventListener('resize', function() {
+  if (document.getElementById('tab-curves')?.classList.contains('active')) {
+    requestAnimationFrame(function() { if(typeof renderCvCurve==='function') renderCvCurve(); });
+  }
+});
+</script>
 </body>
 </html>
