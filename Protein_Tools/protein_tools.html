@@ -836,7 +836,7 @@ async function loadStructure(){
     infoBar.innerHTML='<strong>AlphaFold — '+acc+'</strong>'+
       (entry.gene?' · '+entry.gene:'')+
       (entry.organismScientificName?' · <em>'+entry.organismScientificName+'</em>':'')+
-      (entry.meanPlddt?' · pLDDT '+entry.meanPlddt.toFixed(1):'')+
+      ((entry.globalMetricValue||entry.meanPlddt)?' · pLDDT '+((entry.globalMetricValue||entry.meanPlddt)).toFixed(1):'')+
       ' · <a href="https://alphafold.ebi.ac.uk/entry/'+acc+'" target="_blank" style="color:var(--accent2)">AF DB ↗</a>';
     _structCurrentSource='af';
     _structCurrentId=acc;
@@ -868,7 +868,9 @@ function _structLoadNGLFromUrl(url,ext,name){
   document.getElementById('struct-load-msg').textContent='Loading NGL viewer…';
   _loadNGL(function(err){
     if(myToken!==_structLoadToken)return;
-    if(err){document.getElementById('struct-load-msg').textContent='⚠ '+err.message;return;}
+    if(err){document.getElementById('struct-load-msg').textContent='⚠ NGL failed to load: '+err.message;return;}
+    requestAnimationFrame(function(){
+    if(myToken!==_structLoadToken)return;
     const bgColors={dark:'#0d0f14',light:'#f4f5f8',transparent:'transparent'};
     const bgColor=bgColors[_structBg]||'#0d0f14';
     if(_structNglStage){
@@ -877,7 +879,7 @@ function _structLoadNGLFromUrl(url,ext,name){
     }else{
       try{
         _structNglStage=new NGL.Stage('struct-ngl-viewport',{backgroundColor:bgColor,quality:'high',impostor:true});
-      }catch(e){document.getElementById('struct-load-msg').textContent='⚠ '+e.message;return;}
+      }catch(e){document.getElementById('struct-load-msg').textContent='⚠ WebGL error: '+e.message;return;}
     }
     _structNglComp=null;
     document.getElementById('struct-load-msg').textContent='Fetching '+name+'…';
@@ -915,6 +917,7 @@ function _structLoadNGLFromUrl(url,ext,name){
         document.getElementById('struct-load-msg').textContent='⚠ '+e.message;
       }
     });
+    }); // requestAnimationFrame
   });
 }
 
