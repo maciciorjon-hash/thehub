@@ -103,8 +103,9 @@ main{display:grid;grid-template-columns:320px 1fr;flex:1;min-height:0;overflow:h
 #bat-f1{position:absolute;top:0;left:0;animation:batFlap1 0.45s step-start infinite;}
 #bat-corner-lbl{font-size:11px;font-family:var(--mono,monospace);color:inherit;text-align:center;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
 
-.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--surface);padding:0 20px;flex-shrink:0;}
-.tab{padding:13px 16px;font-size:13px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s;user-select:none;display:flex;align-items:center;gap:6px;}
+.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--surface);padding:0 20px;flex-shrink:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{padding:13px 16px;font-size:13px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s;user-select:none;display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--text2);}
 .tab.active{color:var(--text);border-bottom-color:var(--accent);}
 .tcnt{background:var(--surface3);color:var(--text2);font-family:var(--sans);font-size:10px;padding:2px 6px;border-radius:10px;}
@@ -303,7 +304,7 @@ tr:hover td{background:var(--surface2);}
 .calc-source{font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:10px;}
 @media(max-width:640px){
   header{padding:0 12px;}
-  .tabs{padding:0 6px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .tabs{padding:0 6px;}
   .tab{white-space:nowrap;flex-shrink:0;font-size:11px;padding:8px 8px;}
   .grad-wrap{padding:10px!important;}
   .guide-panel{padding:12px!important;}
@@ -665,9 +666,9 @@ tr:hover td{background:var(--surface2);}
     <div class="tab" data-tab="props">Properties <span class="tcnt" id="pc">0</span></div>
     <div class="tab" data-tab="results">Results <span class="tcnt" id="rc">0</span></div>
     <div class="tab" data-tab="history">History</div>
-    <div class="tab" data-tab="downloads" style="display:none;">Downloads <span class="tcnt" id="dc">0</span></div>
-    <div class="tab" data-tab="qc" style="display:none;">QC</div>
-    <div class="tab" data-tab="guide" style="display:none;">Guide</div>
+    <div class="tab" data-tab="downloads">Downloads <span class="tcnt" id="dc">0</span></div>
+    <div class="tab" data-tab="qc">QC</div>
+    <div class="tab" data-tab="guide">Guide</div>
   </div>
 
   <div class="tabpane active" id="tab-log"><div id="log-panel"><div style="color:var(--text3);font-size:12px;padding:8px 0;">Drop an Echo transfer file and PHERAstar reader files, then click <strong style="color:var(--text2);">Analyse</strong>.</div></div></div>
@@ -901,12 +902,21 @@ _allTabs.forEach(t => t.addEventListener('click', () => {
   _allPanes.forEach(x => x.classList.remove('active'));
   t.classList.add('active');
   document.getElementById('tab-' + id).classList.add('active');
-  if (id === 'scatter' && scatterChart) scatterChart.resize();
-  if (id === 'curves' && scatterData.length) renderCurvesTab(scatterData);
-  if (id === 'plate') renderPlateTab();
-  if (id === 'history') renderHistoryTab();
-  if (id === 'qc') renderQCTab();
+  requestAnimationFrame(() => {
+    if (id === 'scatter' && scatterChart) scatterChart.resize();
+    if (id === 'curves' && scatterData.length) renderCurvesTab(scatterData);
+    if (id === 'plate') renderPlateTab();
+    if (id === 'history') renderHistoryTab();
+    if (id === 'qc') renderQCTab();
+  });
 }));
+
+window.addEventListener('resize', () => {
+  requestAnimationFrame(() => {
+    if (document.querySelector('.tab[data-tab="scatter"].active') && scatterChart) scatterChart.resize();
+    if (document.querySelector('.tab[data-tab="curves"].active') && typeof renderCvCurve === 'function') renderCvCurve();
+  });
+});
 
 // ===== STATE =====
 let echoFile = null, readerFiles = {}, downloadBlobs = [];
