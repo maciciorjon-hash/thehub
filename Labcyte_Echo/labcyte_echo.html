@@ -545,9 +545,11 @@ tr:hover td{background:var(--surface2);}
       <label>Assay type</label>
       <select id="p-assay-type" onchange="onAssayTypeChange()" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);cursor:pointer;">
         <option value="hibit">HiBiT Degradation</option>
-        <option value="ctg">CellTiter-Glo</option>
+        <option value="ctg">CellTiter-Glo / Viability</option>
         <option value="fp">Fluorescence Polarization</option>
         <option value="trfret">TR-FRET</option>
+        <option value="displacement">Competitive Displacement</option>
+        <option value="gain">Gain-of-Function (EC50)</option>
       </select>
     </div>
     <div class="field" id="p-zero-pct-field" style="display:none;">
@@ -623,28 +625,28 @@ tr:hover td{background:var(--surface2);}
       <button class="adv-toggle" onclick="this.classList.toggle('open');document.getElementById('adv-body').classList.toggle('open')"> Advanced parameters</button>
       <div class="adv-body" id="adv-body">
         <div class="field"><label>Echo header rows to skip</label><input type="number" id="p-skip" value="8" min="0" max="50"></div>
-        <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-hook-en" checked onchange="document.getElementById('p-hook').disabled=!this.checked;document.getElementById('p-hook').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Hook effect threshold (%)<span class="pinfo" data-tip="Hook effect: HiBiT signal rises at highest concentrations (ternary complex disruption). Points where signal rises by more than this % above adjacent lower conc. are excluded from fitting and marked with ×.">i</span></span></div><input type="number" id="p-hook" value="10" min="1" max="50"></div>
+        <div class="field" id="hook-effect-field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-hook-en" checked onchange="document.getElementById('p-hook').disabled=!this.checked;document.getElementById('p-hook').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Hook effect threshold (%)<span class="pinfo" data-tip="Hook effect: HiBiT signal rises at highest concentrations (ternary complex disruption). Points where signal rises by more than this % above adjacent lower conc. are excluded from fitting and marked with ×.">i</span></span></div><input type="number" id="p-hook" value="10" min="1" max="50"></div>
         <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-r2-en" checked onchange="document.getElementById('p-r2').disabled=!this.checked;document.getElementById('p-r2').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Min R² for fit<span class="pinfo" data-tip="Goodness-of-fit threshold. Curves with R² below this value are flagged. R²=1 is perfect; typical good fits are ≥0.90. Set lower (e.g. 0.7) to accept noisier data.">i</span></span></div><input type="number" id="p-r2" value="0.8" min="0" max="1" step="0.05"></div>
         <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-sd-en" checked onchange="document.getElementById('p-sd').disabled=!this.checked;document.getElementById('p-sd').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Max replicate SD to flag<span class="pinfo" data-tip="If the standard deviation across replicates at any concentration exceeds this value (in normalised % units), the compound is flagged. Increase to accept noisy assays; decrease for stricter QC.">i</span></span></div><input type="number" id="p-sd" value="25" min="1"></div>
         <div id="hibit-ctg-params">
         <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-top-en" checked onchange="var el=document.getElementById('p-top');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Top constrain (%)<span class="pinfo" data-tip="Pins the upper plateau of the 4PL curve. 100% = full signal (DMSO level). Disable to allow the top to float freely — useful for partial agonists or assays without full saturation.">i</span></span></div><input type="number" id="p-top" value="100" min="50" max="110"><div class="hint">Upper plateau of 4PL fit. Disable to fit top freely.</div></div>
-        <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-dmax-cap-en" checked onchange="var el=document.getElementById('p-dmax-cap-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Max Dmax (%)<span class="pinfo" data-tip="Caps the maximum degradation. When enabled, the 4PL bottom asymptote is constrained so Dmax cannot exceed this value. Useful when biology dictates incomplete degradation. Max allowed: 99%.">i</span></span></div><input type="number" id="p-dmax-cap-val" value="99" min="10" max="99" step="1" style="opacity:1;"><div class="hint">Constrain Dmax to ≤ this value (%)</div></div>
-        <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-abs-dc50"></label><span class="flbl">Absolute DC50</span></div><div class="hint">Also compute absolute DC50 (signal=50% vs baseline). Valid when Dmax&gt;50%.</div></div>
+        <div class="field" id="dmax-cap-field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-dmax-cap-en" checked onchange="var el=document.getElementById('p-dmax-cap-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Max Dmax (%)<span class="pinfo" data-tip="Caps the maximum degradation. When enabled, the 4PL bottom asymptote is constrained so Dmax cannot exceed this value. Useful when biology dictates incomplete degradation. Max allowed: 99%.">i</span></span></div><input type="number" id="p-dmax-cap-val" value="99" min="10" max="99" step="1" style="opacity:1;"><div class="hint">Constrain Dmax to ≤ this value (%)</div></div>
+        <div class="field" id="abs-dc50-field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-abs-dc50"></label><span class="flbl">Absolute DC50</span></div><div class="hint">Also compute absolute DC50 (signal=50% vs baseline). Valid when Dmax&gt;50%.</div></div>
         </div>
         <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-bot" onchange="var el=document.getElementById('p-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix bottom (%)</span></div><input type="number" id="p-bot-val" value="0" min="-50" max="100" disabled style="opacity:0.35;"><div class="hint">Enable to pin 4PL bottom asymptote</div></div>
         <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-hill" onchange="var el=document.getElementById('p-hill-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix Hill slope</span></div><input type="number" id="p-hill-val" value="1" min="0.1" max="5" step="0.1" disabled style="opacity:0.35;"><div class="hint">Enable to pin Hill slope coefficient</div></div>
         <div class="field" style="margin-top:8px;">
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px;">Output CSV columns</div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px 4px;">
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="DC50_nM" checked> DC50</label>
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Dmax_pct" checked> Dmax</label>
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="pDC50" checked> pDC50</label>
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="AbsDC50_nM"> AbsDC50</label>
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="LogIC50_M" checked> LogIC50</label>
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="HillSlope" checked> Hill</label>
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="R2" checked> R²</label>
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Flag" checked> Flag</label>
-            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Flag_Reason" checked> Reason</label>
+            <label class="csv-lbl" id="csv-dc50-lbl"><input type="checkbox" class="csv-col-cb" data-col="DC50_nM" checked> <span>DC50</span></label>
+            <label class="csv-lbl" id="csv-dmax-lbl"><input type="checkbox" class="csv-col-cb" data-col="Dmax_pct" checked> <span>Dmax</span></label>
+            <label class="csv-lbl" id="csv-pdc50-lbl"><input type="checkbox" class="csv-col-cb" data-col="pDC50" checked> <span>pDC50</span></label>
+            <label class="csv-lbl" id="csv-abs-dc50-lbl"><input type="checkbox" class="csv-col-cb" data-col="AbsDC50_nM"> <span>AbsDC50</span></label>
+            <label class="csv-lbl" id="csv-log-ic50-lbl"><input type="checkbox" class="csv-col-cb" data-col="LogIC50_M" checked> <span>LogIC50</span></label>
+            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="HillSlope" checked> <span>Hill</span></label>
+            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="R2" checked> <span>R²</span></label>
+            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Flag" checked> <span>Flag</span></label>
+            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Flag_Reason" checked> <span>Reason</span></label>
           </div>
         </div>
       </div>
@@ -877,12 +879,48 @@ function toggleTheme(){var html=document.documentElement;var next=html.getAttrib
 
 function onAssayTypeChange(){
   var t=(document.getElementById('p-assay-type')||{}).value||'hibit';
+  window._lastAssayType=t;
+
+  // Hook effect: HiBiT only (ternary complex disruption)
+  var hookField=document.getElementById('hook-effect-field');
+  if(hookField)hookField.style.display=(t==='hibit')?'':'none';
+
+  // FP params card (G-factor, backgrounds): FP only
   var fpCard=document.getElementById('fp-params-card');
+  if(fpCard)fpCard.style.display=(t==='fp')?'':'none';
+
+  // 0% signal wells: competitive displacement only
   var zeroPctField=document.getElementById('p-zero-pct-field');
+  if(zeroPctField)zeroPctField.style.display=(t==='displacement')?'':'none';
+
+  // Top constrain block: hibit / ctg / gain (not fp / trfret / displacement)
   var hibCtgParams=document.getElementById('hibit-ctg-params');
-  if(fpCard)fpCard.style.display=(t==='fp'||t==='trfret')?'':'none';
-  if(zeroPctField)zeroPctField.style.display=(t==='displacement'||t==='fp'||t==='trfret')?'':'none';
-  if(hibCtgParams)hibCtgParams.style.display=(t==='hibit'||t==='ctg')?'':'none';
+  if(hibCtgParams)hibCtgParams.style.display=(t==='hibit'||t==='ctg'||t==='gain')?'':'none';
+
+  // Max Dmax + Absolute DC50: HiBiT only
+  var dmaxF=document.getElementById('dmax-cap-field');
+  var absF=document.getElementById('abs-dc50-field');
+  if(dmaxF)dmaxF.style.display=(t==='hibit')?'':'none';
+  if(absF)absF.style.display=(t==='hibit')?'':'none';
+
+  // CSV column labels and visibility
+  var dc50Lbl=document.getElementById('csv-dc50-lbl');
+  var dmaxLbl=document.getElementById('csv-dmax-lbl');
+  var pdc50Lbl=document.getElementById('csv-pdc50-lbl');
+  var absLbl=document.getElementById('csv-abs-dc50-lbl');
+  var logLbl=document.getElementById('csv-log-ic50-lbl');
+
+  var dc50Txt=t==='gain'?'EC50':t==='hibit'?'DC50':'IC50';
+  var dmaxTxt=t==='gain'?'Emax':t==='ctg'?'Span':'Dmax';
+  var pdc50Txt=t==='gain'?'pEC50':t==='hibit'?'pDC50':'pIC50';
+  var logTxt=t==='gain'?'LogEC50':t==='hibit'?'LogDC50':'LogIC50';
+  var showDmax=(t==='hibit'||t==='ctg'||t==='gain');
+
+  if(dc50Lbl){var sp=dc50Lbl.querySelector('span');if(sp)sp.textContent=dc50Txt;}
+  if(dmaxLbl){dmaxLbl.style.display=showDmax?'':'none';var sp=dmaxLbl.querySelector('span');if(sp)sp.textContent=dmaxTxt;}
+  if(pdc50Lbl){var sp=pdc50Lbl.querySelector('span');if(sp)sp.textContent=pdc50Txt;}
+  if(absLbl)absLbl.style.display=(t==='hibit')?'':'none';
+  if(logLbl){var sp=logLbl.querySelector('span');if(sp)sp.textContent=logTxt;}
 }
 function updateFpKiPreview(){
   var lcEl=document.getElementById('p-tracer-conc');
@@ -1153,9 +1191,8 @@ async function runPipeline() {
   downloadBlobs = []; scatterData = [];
   if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
   document.getElementById('scatter-panel').innerHTML = '<div class="empty"><div class="ei">⏳</div><p>Running…</p></div>';
-  document.getElementById('downloads-panel').innerHTML = '<div class="empty"><div class="ei">⏳</div><p>Generating files…</p></div>';
   document.getElementById('results-panel').innerHTML = '<div class="empty"><div class="ei">⏳</div><p>Fitting curves…</p></div>';
-  ['rc','sc','dc'].forEach(id => document.getElementById(id).textContent = '0');
+  ['rc','sc'].forEach(id => document.getElementById(id).textContent = '0');
 
   const btn = document.getElementById('run-btn');
   btn.disabled = true; btn.textContent = 'Running…';
@@ -1838,11 +1875,19 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   }
 
   // 8. Summary CSV
+  const colMap2 = _csvColMap(assayType);
+  const noGainAssay = assayType==='fp'||assayType==='trfret'||assayType==='displacement';
   const alwaysCols = ['Protein', 'Sample_ID'];
   const allSummaryCols = ['Protein', 'Sample_ID', 'DC50_nM', 'AbsDC50_nM', 'Dmax_pct', 'LogIC50_M', 'pDC50', 'HillSlope', 'R2', 'Flag', 'Flag_Reason'];
-  const outputCols = [...new Set([...alwaysCols, ...(csvCols.length ? csvCols : allSummaryCols).filter(c => allSummaryCols.includes(c))])];
+  const filtSumCols = allSummaryCols.filter(c => {
+    if (c === 'AbsDC50_nM' && assayType !== 'hibit') return false;
+    if (c === 'Dmax_pct' && noGainAssay) return false;
+    return true;
+  });
+  const outputCols = [...new Set([...alwaysCols, ...(csvCols.length ? csvCols.filter(c => filtSumCols.includes(c)) : filtSumCols)])];
+  const headerCols2 = outputCols.map(c => colMap2[c] || c);
   const sumCsvName = 'Results_' + assayId + '_Consolidated_Summary.csv';
-  const sumHeader = outputCols.join(',') + '\r\n';
+  const sumHeader = headerCols2.join(',') + '\r\n';
   const sumRows = summary.map(r => outputCols.map(c => r[c] !== undefined && r[c] !== null ? r[c] : '').join(','));
   downloadBlobs.push({ name: sumCsvName, bytes: new TextEncoder().encode(sumHeader + sumRows.join('\r\n')), type: 'text/csv', kind: 'csv' });
   log('CSV: ' + summary.length + ' rows', 'ok');
@@ -1981,11 +2026,31 @@ function copyResultsTSV() {
   }).catch(()=>alert('Clipboard write failed — use CSV export instead.'));
 }
 
+function _csvColMap(t){
+  var m={
+    hibit:{DC50_nM:'DC50_nM',AbsDC50_nM:'AbsDC50_nM',Dmax_pct:'Dmax_pct',LogIC50_M:'LogDC50_M',pDC50:'pDC50'},
+    ctg:  {DC50_nM:'IC50_nM',Dmax_pct:'Span_pct',LogIC50_M:'LogIC50_M',pDC50:'pIC50'},
+    fp:   {DC50_nM:'IC50_nM',LogIC50_M:'LogIC50_M',pDC50:'pIC50'},
+    trfret:{DC50_nM:'IC50_nM',LogIC50_M:'LogIC50_M',pDC50:'pIC50'},
+    displacement:{DC50_nM:'IC50_nM',LogIC50_M:'LogIC50_M',pDC50:'pIC50'},
+    gain: {DC50_nM:'EC50_nM',Dmax_pct:'Emax_pct',LogIC50_M:'LogEC50_M',pDC50:'pEC50'}
+  };
+  return m[t]||m.hibit;
+}
 function generateOutputCSV() {
   if (!scatterData.length) { alert('No data. Run analysis first.'); return; }
-  const cols = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
+  var t=window._lastAssayType||'hibit';
+  var colMap=_csvColMap(t);
+  var noGain=t==='fp'||t==='trfret'||t==='displacement';
+  var internalCols=['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
+  var filtCols=internalCols.filter(function(c){
+    if(c==='AbsDC50_nM'&&t!=='hibit')return false;
+    if(c==='Dmax_pct'&&noGain)return false;
+    return true;
+  });
+  var headerCols=filtCols.map(function(c){return colMap[c]||c;});
   const esc2 = v => (v==null||v==='')?'':'"'+String(v).replace(/"/g,'""')+'"';
-  const rows = [cols.join(','), ...scatterData.map(r => cols.map(c=>esc2(r[c])).join(','))];
+  const rows = [headerCols.join(','), ...scatterData.map(r => filtCols.map(c=>esc2(r[c])).join(','))];
   const blob = new Blob(['\uFEFF'+rows.join('\n')], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);

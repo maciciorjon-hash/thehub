@@ -954,7 +954,7 @@ document.addEventListener('click',function(e){
 (function(){
   var canvas = document.getElementById('hub-bg-canvas');
   var ctx = canvas.getContext('2d');
-  var P = 4;
+  var P = 2;
 
   var rs = (Date.now() ^ (Date.now() >>> 16)) & 0x7fffffff;
   function rng(){rs=(rs*1664525+1013904223)&0x7fffffff;return rs/0x7fffffff;}
@@ -965,23 +965,25 @@ document.addEventListener('click',function(e){
 
   var NAV_H=62, W=0, H=0;
   var clouds=[], specials=[], lastTs=null;
-  var MAX_SPEC=6;
+  var MAX_SPEC=8;
 
-  // Depth layers: far objects are small/faint/slow; close ones larger/bolder/faster
+  // Depth layers: far objects are tiny/faint/slow; close ones still modest/smoother
   var DEPTHS=[
-    {scale:0.26,aMin:0.07,aMax:0.15,spd:0.32},
-    {scale:0.26,aMin:0.07,aMax:0.15,spd:0.32},
-    {scale:0.52,aMin:0.18,aMax:0.32,spd:0.60},
-    {scale:0.52,aMin:0.18,aMax:0.32,spd:0.60},
-    {scale:0.85,aMin:0.38,aMax:0.56,spd:1.00},
-    {scale:0.85,aMin:0.38,aMax:0.56,spd:1.00}
+    {scale:0.11,aMin:0.04,aMax:0.09,spd:0.18},
+    {scale:0.11,aMin:0.04,aMax:0.09,spd:0.18},
+    {scale:0.19,aMin:0.07,aMax:0.15,spd:0.34},
+    {scale:0.19,aMin:0.07,aMax:0.15,spd:0.34},
+    {scale:0.30,aMin:0.12,aMax:0.22,spd:0.56},
+    {scale:0.30,aMin:0.12,aMax:0.22,spd:0.56},
+    {scale:0.44,aMin:0.20,aMax:0.36,spd:0.88},
+    {scale:0.44,aMin:0.20,aMax:0.36,spd:0.88}
   ];
 
   var CC=['#ffffff','#f8faff','#f4f6ff','#f0f4fc','#edf1fb','#e8eef8','#e0eaf4','#dce8f0'];
 
 
   function mkCloud(scatter){
-    var sz=rr(0.4,4.8),dir=rng()>0.28?1:-1;
+    var sz=rr(0.3,2.2),dir=rng()>0.28?1:-1;
     var w=snap(ri(40,96)*sz/P)*P,h=snap(ri(11,28)*sz/P)*P;
     var yStart=scatter?rr(0.06,0.88)*H:rr(0.08,0.82)*H;
     if(yStart<NAV_H+30)yStart=NAV_H+30;
@@ -995,7 +997,7 @@ document.addEventListener('click',function(e){
   }
 
   function drawCloud(c){
-    var x=snap(c.x),y=snap(c.y);
+    var x=c.x,y=c.y;
     ctx.globalAlpha=c.alpha;ctx.fillStyle=c.col;
     ctx.fillRect(x,y,c.w,c.h);
     c.b.forEach(function(b){ctx.fillRect(x+snap(c.w*b.xf),y-snap(c.h*b.yf),snap(c.w*b.wf),snap(c.h*b.hf));});
@@ -1029,7 +1031,7 @@ document.addEventListener('click',function(e){
            vx:rr(cfg.sl,cfg.sh)*dep.spd*dir,
            dScale:dep.scale,alpha:rr(dep.aMin,dep.aMax),
            c1:c[0],c2:c[1],phase:ri(0,127),
-           altPhase:rng()*Math.PI*2,altAmp:rr(6,22)*dep.scale,altSpd:rr(0.012,0.028)};
+           altPhase:rng()*Math.PI*2,altAmp:rr(8,28)*dep.scale,altSpd:rr(0.008,0.020)};
   }
 
   // ── Sprite draw functions ─────────────────────────────────────────
@@ -1235,7 +1237,7 @@ document.addEventListener('click',function(e){
     W=canvas.width=window.innerWidth;
     H=canvas.height=window.innerHeight;
     clouds=[];specials=[];
-    for(var i=0;i<ri(16,24);i++)clouds.push(mkCloud(true));
+    for(var i=0;i<ri(22,32);i++)clouds.push(mkCloud(true));
     for(var i=0;i<DEPTHS.length;i++)specials.push(mkSpecial(true,i));
   }
 
@@ -1264,7 +1266,7 @@ document.addEventListener('click',function(e){
       s.phase=(s.phase+1)&255;
       ctx.globalAlpha=s.alpha;
       ctx.save();
-      ctx.translate(snap(s.x),snap(s.y+altY));
+      ctx.translate(s.x,s.y+altY);
       ctx.scale(s.dScale,s.dScale);
       switch(s.type){
         case 'plane':    drawPlane(0,0,s.dir,s);break;
