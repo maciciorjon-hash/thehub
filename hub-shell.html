@@ -51,7 +51,7 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;}
 
 /* CARD */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 26px 22px;display:flex;flex-direction:column;gap:16px;cursor:pointer;outline:none;transition:border-color .15s,box-shadow .15s,transform .1s;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px 26px 22px;display:flex;flex-direction:column;gap:16px;cursor:pointer;outline:none;transition:border-color .15s,box-shadow .15s,transform .1s;position:relative;}
 .card:hover{border-color:var(--border2);box-shadow:0 4px 20px rgba(0,0,0,.07);transform:translateY(-2px);}
 .card:active{transform:scale(.99);}
 
@@ -170,18 +170,25 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .pt-atom:nth-child(2){animation-delay:.35s;}
 .pt-atom:nth-child(3){animation-delay:.7s;}
 
+/* Edit-grid mode */
+.grid-editing .card{cursor:grab;user-select:none;}
+.grid-editing .card:active{cursor:grabbing;}
+.grid-editing .card::after{content:'⠿';position:absolute;top:10px;right:12px;font-size:20px;color:var(--text3);opacity:.5;line-height:1;pointer-events:none;}
+.card-drag-over{border-color:var(--accent2)!important;box-shadow:0 0 0 2px rgba(0,121,185,.18)!important;transform:none!important;}
+
 @media(max-width:640px){
   #hub-nav{padding:0 10px;gap:6px;}
-  #nav-title{font-size:13px;}
-  #hub-search-wrap{width:90px;max-width:90px;}
-  #hub-search{font-size:12px;padding:5px 10px;}
-  #opts-btn,#sug-btn{padding:0 9px;font-size:11px;height:28px;}
+  #nav-title{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #hub-search-wrap{width:auto;flex:1;max-width:none;min-width:60px;}
+  #hub-search{font-size:12px;padding:5px 10px;width:100%;}
+  #opts-btn,#sug-btn{padding:0 10px;font-size:13px;height:34px;min-width:34px;}
+  .nav-btn-label{display:none;}
   .opts-panel{width:calc(100vw - 20px);left:10px;right:10px;top:58px;}
-  .home-wrap{padding:22px 14px 60px;}
+  .home-wrap{padding:18px 12px 60px;}
   .hub-title{font-size:26px;letter-spacing:-.5px;}
   .hub-sub{font-size:12px;}
-  .home-hdr{margin-bottom:24px;}
-  .grid{grid-template-columns:1fr;}
+  .home-hdr{margin-bottom:22px;}
+  .grid{grid-template-columns:1fr;gap:10px;}
   .card{padding:16px 14px 14px;gap:10px;}
   .card-logo{width:40px;height:40px;font-size:19px;}
   .card-name{font-size:14px;}
@@ -205,8 +212,8 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
     <input id="hub-search" type="text" placeholder="Search apps, tools, assays…" autocomplete="off" oninput="hubSearch(this.value)" onkeydown="hubSearchKey(event)">
     <div id="hub-search-results"></div>
   </div>
-  <button id="opts-btn" onclick="toggleOpts()">&#9881; Settings</button>
-  <button id="sug-btn" onclick="toggleSug()">&#9993; Suggest</button>
+  <button id="opts-btn" onclick="toggleOpts()">&#9881;<span class="nav-btn-label"> Settings</span></button>
+  <button id="sug-btn" onclick="toggleSug()">&#9993;<span class="nav-btn-label"> Suggest</span></button>
 </div>
 <div id="opts-panel" class="opts-panel hidden">
   <div class="opts-title">Settings</div>
@@ -223,6 +230,11 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
     <button class="opts-action-btn" onclick="resetAllData()">Clear</button>
   </div>
   <div class="opts-divider"></div>
+  <div class="opts-row">
+    <span class="opts-label">Card order</span>
+    <button class="opts-action-btn" id="grid-edit-btn" onclick="toggleGridEdit()">Edit</button>
+  </div>
+  <div class="opts-divider"></div>
   <div class="opts-version-row">
     <span class="opts-version">The Hub &middot; v0.9.0</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
@@ -231,7 +243,9 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
     <strong style="color:var(--text);font-size:12px;">v0.9.0 — 2 Jun 2026</strong><br>
     &#10022; Suggest: sends directly, no mail client; reply-to email field<br>
     &#10022; All apps: version display in header<br>
-    &#9679; LabMate: RDKit background-preloaded on hub open<br>
+    &#9679; LabMate: chem/RDKit removed, focused on lab protocols<br>
+    &#9679; Hub: card reorder via drag-and-drop, saved to device<br>
+    &#9679; Hub: mobile nav and grid improved<br>
     &#9679; Echo Curves: individual replicate points as default<br>
     &#9679; Plate Designer: toolbar button style cleanup<br>
     <br>
@@ -590,6 +604,136 @@ function backToHub() {
     view.style.opacity = '';
   }, 300);
 }
+
+// ── Card grid reorder ─────────────────────────────────────────────────────
+var _gridEditMode = false;
+var _dragCard = null;
+var _dragOver = null;
+var _touchCard = null;
+var _touchClone = null;
+var _touchOffX = 0;
+var _touchOffY = 0;
+
+function toggleGridEdit() {
+  _gridEditMode = !_gridEditMode;
+  var grid = document.querySelector('.grid');
+  var btn = document.getElementById('grid-edit-btn');
+  grid.classList.toggle('grid-editing', _gridEditMode);
+  if (btn) btn.textContent = _gridEditMode ? 'Done' : 'Edit';
+  grid.querySelectorAll('.card').forEach(function(c) {
+    c.setAttribute('draggable', _gridEditMode ? 'true' : 'false');
+  });
+  if (!_gridEditMode) {
+    var order = [];
+    grid.querySelectorAll('.card[data-app-id]').forEach(function(c) { order.push(c.dataset.appId); });
+    try { localStorage.setItem('hub_card_order', JSON.stringify(order)); } catch(e) {}
+    document.getElementById('opts-panel').classList.add('hidden');
+  }
+}
+
+function _applySavedCardOrder() {
+  try {
+    var order = JSON.parse(localStorage.getItem('hub_card_order') || 'null');
+    if (!Array.isArray(order) || !order.length) return;
+    var grid = document.querySelector('.grid');
+    if (!grid) return;
+    order.forEach(function(id) {
+      var card = grid.querySelector('.card[data-app-id="' + id + '"]');
+      if (card) grid.appendChild(card);
+    });
+  } catch(e) {}
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  _applySavedCardOrder();
+  var grid = document.querySelector('.grid');
+
+  // ── Desktop drag & drop ──
+  grid.addEventListener('dragstart', function(e) {
+    if (!_gridEditMode) { e.preventDefault(); return; }
+    _dragCard = e.target.closest('.card');
+    if (!_dragCard) return;
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(function() { if (_dragCard) _dragCard.style.opacity = '0.35'; }, 0);
+  });
+  grid.addEventListener('dragend', function() {
+    if (_dragCard) _dragCard.style.opacity = '';
+    if (_dragOver) { _dragOver.classList.remove('card-drag-over'); _dragOver = null; }
+    _dragCard = null;
+  });
+  grid.addEventListener('dragover', function(e) {
+    if (!_gridEditMode || !_dragCard) return;
+    e.preventDefault();
+    var target = e.target.closest('.card');
+    if (!target || target === _dragCard) return;
+    if (_dragOver && _dragOver !== target) _dragOver.classList.remove('card-drag-over');
+    _dragOver = target;
+    target.classList.add('card-drag-over');
+  });
+  grid.addEventListener('dragleave', function(e) {
+    var target = e.target.closest('.card');
+    if (target && target === _dragOver && !target.contains(e.relatedTarget)) {
+      target.classList.remove('card-drag-over'); _dragOver = null;
+    }
+  });
+  grid.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var target = e.target.closest('.card');
+    if (!target || target === _dragCard || !_gridEditMode) return;
+    target.classList.remove('card-drag-over'); _dragOver = null;
+    var rect = target.getBoundingClientRect();
+    if (e.clientX < rect.left + rect.width / 2) grid.insertBefore(_dragCard, target);
+    else if (target.nextSibling) grid.insertBefore(_dragCard, target.nextSibling);
+    else grid.appendChild(_dragCard);
+  });
+
+  // ── Touch drag & drop (mobile) ──
+  grid.addEventListener('touchstart', function(e) {
+    if (!_gridEditMode) return;
+    var card = e.target.closest('.card');
+    if (!card) return;
+    _touchCard = card;
+    var touch = e.touches[0];
+    var r = card.getBoundingClientRect();
+    _touchOffX = touch.clientX - r.left;
+    _touchOffY = touch.clientY - r.top;
+    _touchClone = card.cloneNode(true);
+    _touchClone.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;opacity:.88;width:'+card.offsetWidth+'px;transition:none;box-shadow:0 12px 40px rgba(0,0,0,.28);left:'+r.left+'px;top:'+r.top+'px;';
+    document.body.appendChild(_touchClone);
+    card.style.opacity = '0.25';
+  }, {passive: true});
+
+  grid.addEventListener('touchmove', function(e) {
+    if (!_touchCard || !_touchClone) return;
+    e.preventDefault();
+    var touch = e.touches[0];
+    _touchClone.style.left = (touch.clientX - _touchOffX) + 'px';
+    _touchClone.style.top  = (touch.clientY - _touchOffY) + 'px';
+    _touchClone.style.display = 'none';
+    var el = document.elementFromPoint(touch.clientX, touch.clientY);
+    _touchClone.style.display = '';
+    var target = el && el.closest('.card');
+    grid.querySelectorAll('.card').forEach(function(c) { c.classList.remove('card-drag-over'); });
+    if (target && target !== _touchCard) target.classList.add('card-drag-over');
+  }, {passive: false});
+
+  grid.addEventListener('touchend', function(e) {
+    if (!_touchCard) return;
+    if (_touchClone) { _touchClone.remove(); _touchClone = null; }
+    _touchCard.style.opacity = '';
+    grid.querySelectorAll('.card').forEach(function(c) { c.classList.remove('card-drag-over'); });
+    var touch = e.changedTouches[0];
+    var el = document.elementFromPoint(touch.clientX, touch.clientY);
+    var target = el && el.closest('.card');
+    if (target && target !== _touchCard) {
+      var rect = target.getBoundingClientRect();
+      if (touch.clientX < rect.left + rect.width / 2) grid.insertBefore(_touchCard, target);
+      else if (target.nextSibling) grid.insertBefore(_touchCard, target.nextSibling);
+      else grid.appendChild(_touchCard);
+    }
+    _touchCard = null;
+  });
+});
 
 // Rotating subtitle
 var HUB_SUBS = [
