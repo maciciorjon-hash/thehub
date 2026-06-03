@@ -111,14 +111,18 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 @media(max-width:640px){
   header{padding:0 12px;}
   .tabs{padding:0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  .tab{white-space:nowrap;flex-shrink:0;padding:8px 10px;font-size:12px;}
-  .top-bar{padding:6px 10px;gap:4px;}
-  .fmt-pill{font-size:10px;padding:3px 7px;}
+  .tab{white-space:nowrap;flex-shrink:0;padding:10px 12px;font-size:12px;min-height:40px;}
+  .top-bar{padding:8px 10px;gap:6px;flex-wrap:wrap;}
+  .btn,.pd-tb-btn,.btn-sec,.btn-primary{min-height:40px;font-size:13px;padding:8px 14px;}
+  .fmt-pill{font-size:11px;padding:6px 10px;min-height:36px;}
   .plate-scroll-area{padding:10px;}
   /* Toolbar docks to bottom on mobile */
   .sel-toolbar{left:8px!important;right:8px!important;top:auto!important;bottom:12px!important;width:auto!important;min-width:0!important;}
+  .sel-toolbar .btn,.sel-toolbar .btn-sec{min-height:40px;}
   .guide-panel{padding:12px 10px;}
   #panel-drag-handle{display:none;}
+  /* canvas: prevent page scroll during well selection drag */
+  #plate-canvas-main{touch-action:none;}
 }
 </style>
 </head>
@@ -685,6 +689,47 @@ function wireCanvasEvents(canvas) {
   }
   document.addEventListener('mouseup', onMouseUp);
   canvas._cleanupMouseUp = () => document.removeEventListener('mouseup', onMouseUp);
+
+  // ── Touch support ──────────────────────────────────────────────
+  function fakeEv(touch) { return {clientX: touch.clientX, clientY: touch.clientY, ctrlKey:false, metaKey:false, shiftKey:false}; }
+
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    const fe = fakeEv(e.touches[0]);
+    down = true; moved = false;
+    downPos = {x: fe.clientX, y: fe.clientY};
+    const zone = getCanvasZone(canvas, fe);
+    if (zone.type === 'row-label') { selectRow(zone.row); down = false; e.preventDefault(); return; }
+    if (zone.type === 'col-label') { selectColumn(zone.col); down = false; e.preventDefault(); return; }
+    if (zone.type === 'well') { downWell = zone.id; dragMode = null; }
+    else { downWell = null; dragMode = 'rb'; selection.clear(); rbStart = downPos; }
+    e.preventDefault();
+  }, {passive: false});
+
+  canvas.addEventListener('touchmove', e => {
+    if (!down || e.touches.length !== 1) return;
+    const fe = fakeEv(e.touches[0]);
+    const dx = fe.clientX - downPos.x, dy = fe.clientY - downPos.y;
+    if (!moved && dx*dx + dy*dy > 16) moved = true;
+    if (!moved) { e.preventDefault(); return; }
+    if (dragMode === null && downWell !== null) { dragMode = 'rb'; rbStart = downPos; selection.clear(); }
+    if (dragMode === 'rb' && rbStart) showRubberBand(rbStart, fe);
+    e.preventDefault();
+  }, {passive: false});
+
+  canvas.addEventListener('touchend', e => {
+    if (!down) return;
+    const fe = fakeEv(e.changedTouches[0]);
+    down = false; hideRubberBand();
+    if (dragMode === 'rb' && moved && rbStart) {
+      selectRubberBandWells(canvas, rbStart, fe, false);
+    } else if (downWell !== null && !moved) {
+      handleWellClick(downWell, {ctrlKey:false, metaKey:false, shiftKey:false});
+    }
+    downWell = null; dragMode = null; moved = false;
+    updateSelToolbar(); drawPlateCanvas(canvas); renderLegend();
+    e.preventDefault();
+  }, {passive: false});
 }
 
 function showRubberBand(start, e) {
