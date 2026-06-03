@@ -54,7 +54,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 .custom-form input[type="color"]{width:26px;height:26px;border:1px solid var(--border2);border-radius:4px;cursor:pointer;padding:1px;background:var(--surface2);}
 
 /* Selection toolbar — floating popup */
-.sel-toolbar{position:fixed;right:14px;top:140px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:14px 16px;z-index:50;min-width:230px;box-shadow:0 4px 24px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .18s ease;display:flex!important;flex-direction:column;gap:10px;}
+.sel-toolbar{position:fixed;right:auto;top:auto;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:14px 16px;z-index:50;min-width:230px;box-shadow:0 4px 24px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .18s ease;display:flex!important;flex-direction:column;gap:10px;}
 .sel-toolbar.open{opacity:1;pointer-events:auto;}
 #panel-drag-handle{display:flex;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:8px;cursor:grab;user-select:none;flex-shrink:0;}
 #panel-drag-handle:active{cursor:grabbing;}
@@ -398,6 +398,7 @@ function deleteCustomType(id) {
 
 function toggleTypesPanel() {
   document.getElementById('sel-toolbar').classList.toggle('open');
+  setTimeout(positionToolbar, 0);
 }
 
 function showCustomFormPanel() {
@@ -432,6 +433,7 @@ function setFormat(f) {
   if (tb) tb._userDragged = false;
   buildPlateArea();
   updateSelToolbar(); renderLegend();
+  setTimeout(positionToolbar, 50);
 }
 
 // ─── Canvas plate (all formats) ───────────────────────────────────────────────
@@ -818,6 +820,29 @@ function handleWellClick(wellId, e) {
 }
 
 // ─── Selection toolbar ────────────────────────────────────────────────────────
+function positionToolbar() {
+  var tb = document.getElementById('sel-toolbar');
+  if (!tb || tb._userDragged) return;
+  var wrap = document.querySelector('.plate-canvas-wrap');
+  if (!wrap) return;
+  var r = wrap.getBoundingClientRect();
+  var tbW = tb.offsetWidth || 248;
+  tb.style.top = Math.max(68, r.top) + 'px';
+  if (r.right + 8 + tbW <= window.innerWidth - 4) {
+    tb.style.left = (r.right + 8) + 'px';
+    tb.style.right = 'auto';
+  } else {
+    var leftPos = r.left - tbW - 8;
+    if (leftPos >= 4) {
+      tb.style.left = leftPos + 'px';
+      tb.style.right = 'auto';
+    } else {
+      tb.style.left = Math.max(4, r.right - tbW - 4) + 'px';
+      tb.style.right = 'auto';
+    }
+  }
+}
+
 function updateSelToolbar() {
   const selSection = document.getElementById('sel-section');
   if (!selSection) return;
@@ -831,22 +856,7 @@ function updateSelToolbar() {
   var tb = document.getElementById('sel-toolbar');
   tb.classList.add('open');
   selSection.style.display = '';
-  // Position toolbar aligned with top of plate, just to its right
-  if (!tb._userDragged) {
-    var canvasWrap = document.querySelector('.plate-canvas-wrap');
-    if (canvasWrap) {
-      var rect = canvasWrap.getBoundingClientRect();
-      var tbW = tb.offsetWidth || 244;
-      tb.style.top = Math.max(68, rect.top) + 'px';
-      if (rect.right + 12 + tbW <= window.innerWidth - 4) {
-        tb.style.left = (rect.right + 12) + 'px';
-        tb.style.right = 'auto';
-      } else {
-        tb.style.right = '14px';
-        tb.style.left = 'auto';
-      }
-    }
-  }
+  positionToolbar();
 
   const selArr = Array.from(selection);
   document.getElementById('sel-count').textContent = selection.size + ' well' + (selection.size > 1 ? 's' : '') + ' selected';
