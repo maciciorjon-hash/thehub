@@ -2758,6 +2758,7 @@ function exportFilteredCSV() {
 
 function renderScatter(data) {
   scatterData = data;
+  window._scPalMap = null; // reset per-protein palette on new data load
   window._resultsData = data; // make available to histogram, selectivity, groupStats
   const panel = document.getElementById('scatter-panel');
   if (!data.length) { panel.innerHTML='<div class="empty"><div class="ei">⚠️</div><p>No data.</p></div>'; return; }
@@ -2813,53 +2814,58 @@ function renderScatter(data) {
         <button class="sc-clear" onclick="clearSearch()" title="Clear">✕</button>
         <span class="sc-match-info" id="sc-match-info"></span>
       </div>
-      <div class="strow">
-        <label style="min-width:52px;flex:none;">X axis</label>
-        <span style="font-size:10px;color:var(--text3);">min</span>
-        <input type="number" id="sc-xmin" step="0.1" placeholder="auto"
-          oninput="debounceUpdateScatter(this)"
-          style="width:60px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-        <span style="font-size:10px;color:var(--text3);">max</span>
-        <input type="number" id="sc-xmax" step="0.1" placeholder="auto"
-          oninput="debounceUpdateScatter(this)"
-          style="width:60px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-        <button class="sc-clear" onclick="resetAxisRange('x')" title="Reset X">↺</button>
-        <label style="margin-left:6px;">Y</label>
-        <span style="font-size:10px;color:var(--text3);">min</span>
-        <input type="number" id="sc-ymin" step="1" placeholder="auto"
-          oninput="debounceUpdateScatter(this)"
-          style="width:60px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-        <span style="font-size:10px;color:var(--text3);">max</span>
-        <input type="number" id="sc-ymax" step="1" placeholder="auto"
-          oninput="debounceUpdateScatter(this)"
-          style="width:60px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-        <button class="sc-clear" onclick="resetAxisRange('y')" title="Reset Y">↺</button>
+      <div class="strow" style="padding:0;">
+        <button class="stbtn" onclick="(function(){var d=document.getElementById('sc-filters-wrap');var open=d.style.display!=='none';d.style.display=open?'none':'flex';this.classList.toggle('active',!open);}).call(this)" style="font-size:11px;">Filters ▾</button>
       </div>
-      <div class="strow">
-        <label style="min-width:52px;flex:none;">Dmax ≥</label>
-        <input type="number" id="sc-dmax-min" step="1" placeholder="0" min="0" max="100"
-          oninput="debounceUpdateScatter(this)"
-          style="width:58px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-        <span style="font-size:10px;color:var(--text3);">≤</span>
-        <input type="number" id="sc-dmax-max" step="1" placeholder="100" min="0" max="100"
-          oninput="debounceUpdateScatter(this)"
-          style="width:58px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-        <span style="font-size:10px;color:var(--text3);">% &nbsp; DC50</span>
-        <input type="number" id="sc-dc50-min" step="1" placeholder="0" min="0"
-          oninput="debounceUpdateScatter(this)"
-          style="width:68px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-        <span style="font-size:10px;color:var(--text3);">–</span>
-        <input type="number" id="sc-dc50-max" step="1" placeholder="∞" min="0"
-          oninput="debounceUpdateScatter(this)"
-          style="width:68px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-        <span style="font-size:10px;color:var(--text3);">nM</span>
-        <button class="sc-clear" onclick="clearHitFilters()" title="Reset hit filters">↺</button>
+      <div id="sc-filters-wrap" style="display:none;flex-direction:column;gap:6px;">
+        <div class="strow">
+          <label style="min-width:52px;flex:none;">X axis</label>
+          <span style="font-size:10px;color:var(--text3);">min</span>
+          <input type="number" id="sc-xmin" step="0.1" placeholder="auto"
+            oninput="debounceUpdateScatter(this)"
+            style="width:60px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
+          <span style="font-size:10px;color:var(--text3);">max</span>
+          <input type="number" id="sc-xmax" step="0.1" placeholder="auto"
+            oninput="debounceUpdateScatter(this)"
+            style="width:60px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
+          <button class="sc-clear" onclick="resetAxisRange('x')" title="Reset X">↺</button>
+          <label style="margin-left:6px;">Y</label>
+          <span style="font-size:10px;color:var(--text3);">min</span>
+          <input type="number" id="sc-ymin" step="1" placeholder="auto"
+            oninput="debounceUpdateScatter(this)"
+            style="width:60px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
+          <span style="font-size:10px;color:var(--text3);">max</span>
+          <input type="number" id="sc-ymax" step="1" placeholder="auto"
+            oninput="debounceUpdateScatter(this)"
+            style="width:60px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
+          <button class="sc-clear" onclick="resetAxisRange('y')" title="Reset Y">↺</button>
+        </div>
+        <div class="strow">
+          <label style="min-width:52px;flex:none;">Dmax ≥</label>
+          <input type="number" id="sc-dmax-min" step="1" placeholder="0" min="0" max="100"
+            oninput="debounceUpdateScatter(this)"
+            style="width:58px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
+          <span style="font-size:10px;color:var(--text3);">≤</span>
+          <input type="number" id="sc-dmax-max" step="1" placeholder="100" min="0" max="100"
+            oninput="debounceUpdateScatter(this)"
+            style="width:58px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
+          <span style="font-size:10px;color:var(--text3);">% &nbsp; DC50</span>
+          <input type="number" id="sc-dc50-min" step="1" placeholder="0" min="0"
+            oninput="debounceUpdateScatter(this)"
+            style="width:68px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
+          <span style="font-size:10px;color:var(--text3);">–</span>
+          <input type="number" id="sc-dc50-max" step="1" placeholder="∞" min="0"
+            oninput="debounceUpdateScatter(this)"
+            style="width:68px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
+          <span style="font-size:10px;color:var(--text3);">nM</span>
+          <button class="sc-clear" onclick="clearHitFilters()" title="Reset hit filters">↺</button>
+        </div>
       </div>
-      <div class="strow">
-        <label style="min-width:52px;flex:none;">Dot size</label>
-        <input id="sc-dotsize" type="range" min="1" max="18" value="3" step="1" oninput="updateDotSize(this.value)" style="width:100px;cursor:pointer;">
-        <span id="sc-dotsize-val" style="font-family:var(--sans);font-size:11px;color:var(--text2);min-width:18px;">3</span>
-        <label style="margin-left:8px;">Color by</label>
+      <div class="strow" style="flex-wrap:wrap;gap:8px 10px;">
+        <label>Dot</label>
+        <input id="sc-dotsize" type="range" min="1" max="18" value="3" step="1" oninput="updateDotSize(this.value)" style="width:80px;cursor:pointer;">
+        <span id="sc-dotsize-val" style="font-family:var(--sans);font-size:11px;color:var(--text2);min-width:16px;">3</span>
+        <label>Color</label>
         <select id="sc-colorby" onchange="buildScatterChart()" style="font-size:11px;">
           <option value="">Group</option>
           <option value="DC50_nM">DC50</option>
@@ -2868,7 +2874,7 @@ function renderScatter(data) {
           <option value="R2">R²</option>
           <option value="HillSlope">Hill</option>
         </select>
-        <label style="margin-left:6px;">Size by</label>
+        <label>Size</label>
         <select id="sc-sizeby" onchange="buildScatterChart()" style="font-size:11px;">
           <option value="">Fixed</option>
           <option value="DC50_nM">DC50</option>
@@ -2876,19 +2882,17 @@ function renderScatter(data) {
           <option value="Dmax_pct">Dmax</option>
           <option value="R2">R²</option>
         </select>
-      </div>
-      <div class="strow">
-        <label style="min-width:52px;flex:none;">X label</label>
-        <input id="sc-xlabel" type="text" placeholder="auto" style="width:90px;" oninput="debounceUpdateAxisLabel()">
-        <label>Y label</label>
-        <input id="sc-ylabel" type="text" placeholder="auto" style="width:100px;" oninput="debounceUpdateAxisLabel()">
-        <label style="margin-left:6px;">Conc.</label>
+        <label>X lbl</label>
+        <input id="sc-xlabel" type="text" placeholder="auto" style="width:80px;font-size:11px;" oninput="debounceUpdateAxisLabel()">
+        <label>Y lbl</label>
+        <input id="sc-ylabel" type="text" placeholder="auto" style="width:80px;font-size:11px;" oninput="debounceUpdateAxisLabel()">
+        <label>Conc.</label>
         <select id="sc-xunit" onchange="buildScatterChart()" style="font-size:11px;">
           <option value="M">Log[M]</option>
           <option value="uM">Log[µM]</option>
           <option value="nM">Log[nM]</option>
         </select>
-        <label style="display:flex;align-items:center;gap:4px;margin-left:8px;"><input type="checkbox" id="sc-showcurve" onchange="buildScatterChart()"> Curve on hover</label>
+        <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sc-showcurve" onchange="buildScatterChart()"> Curve↗</label>
       </div>
     </div>
     <div style="position:relative;display:flex;flex-direction:column;">
@@ -2901,7 +2905,8 @@ function renderScatter(data) {
         <button class="stbtn" onclick="clearRectSelect()">✕ Clear</button>
       </div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-shrink:0;">
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-shrink:0;flex-wrap:wrap;">
+      <button class="scatter-dl-btn" id="sc-expand-btn" onclick="toggleScatterExpand()" title="Expand/collapse chart">⊞ Expand</button>
       <button class="scatter-dl-btn" id="sc-select-btn" onclick="toggleRectSelect()" title="Draw a rectangle on the plot to select compounds. Copy their IDs with 'Copy IDs'. Press Escape to cancel.">□ Select</button>
       <button class="scatter-dl-btn" onclick="downloadScatterHiRes()">⬇ PNG 600 DPI</button>
       <button class="scatter-dl-btn" onclick="exportFilteredCSV()">⬇ CSV (filtered)</button>
@@ -3023,8 +3028,11 @@ function buildScatterChart() {
   if (sizeBy)  rows.forEach(r => { const v=parseFloat(r[sizeBy]);  if(isFinite(v)){sbMin=Math.min(sbMin,v);sbMax=Math.max(sbMax,v);} });
 
   const dotSize = parseInt(document.getElementById('sc-dotsize')?.value || '3');
+  if(!window._scPalMap)window._scPalMap={};
+  let _spi=Object.keys(window._scPalMap).length;
+  proteins.forEach(p=>{if(!window._scPalMap[p])window._scPalMap[p]=SCATTER_PALETTE[_spi++%SCATTER_PALETTE.length];});
   const datasets = proteins.map(prot => {
-    const c = pcolor(prot);
+    const fg=window._scPalMap[prot];
     const pts = rows.filter(r=>r.Protein===prot).map(r => ({
       x: (parseFloat(r[xKey])||0)+xOffset, y: r[yKey2],
       label: r.Sample_ID, flag: r.Flag,
@@ -3039,9 +3047,9 @@ function buildScatterChart() {
       _sbv: sizeBy  ? parseFloat(r[sizeBy])  : null,
     }));
     const bgColors = pts.map(p => {
-      if (searchQ) return p.matched ? 'rgba(255,210,0,0.88)' : c.fg + '28';
+      if (searchQ) return p.matched ? 'rgba(255,210,0,0.88)' : fg + '28';
       if (colorBy && isFinite(p._cbv)) return valToColor(p._cbv, cbMin, cbMax);
-      return p.flag==='Yes' ? 'rgba(240,160,0,0.75)' : c.fg + 'bb';
+      return p.flag==='Yes' ? 'rgba(240,160,0,0.75)' : fg + 'bb';
     });
     const ptRadii = pts.map(p => {
       if (sizeBy && isFinite(p._sbv) && sbMax>sbMin) {
@@ -3052,14 +3060,14 @@ function buildScatterChart() {
     return {
       label: prot,
       data: pts,
-      backgroundColor: c.fg + 'bb',
-      borderColor: colorBy ? pts.map(p => isFinite(p._cbv)?valToColor(p._cbv,cbMin,cbMax):c.fg) : c.fg,
+      backgroundColor: fg + 'bb',
+      borderColor: colorBy ? pts.map(p => isFinite(p._cbv)?valToColor(p._cbv,cbMin,cbMax):fg) : fg,
       borderWidth: 1.5,
       pointBackgroundColor: bgColors,
       pointBorderColor: pts.map(p => {
-        if (searchQ) return p.matched ? '#ffd200' : c.fg + '33';
+        if (searchQ) return p.matched ? '#ffd200' : fg + '33';
         if (colorBy && isFinite(p._cbv)) return valToColor(p._cbv, cbMin, cbMax);
-        return p.flag==='Yes' ? '#f0a000' : c.fg;
+        return p.flag==='Yes' ? '#f0a000' : fg;
       }),
       pointBorderWidth: pts.map(p => (searchQ && p.matched) ? 3 : 1.5),
       pointRadius: ptRadii,
@@ -3481,6 +3489,19 @@ function toggleScatterGroup() {
   scatterState.groupProteins = !scatterState.groupProteins;
   document.getElementById('btn-group')?.classList.toggle('active', scatterState.groupProteins);
   buildScatterChart();
+}
+function toggleScatterExpand() {
+  const wrap=document.getElementById('scatter-wrap-outer');
+  const btn=document.getElementById('sc-expand-btn');
+  if(!wrap) return;
+  const isExp=wrap._scExpanded;
+  const h=isExp?380:620;
+  wrap.style.height=h+'px';
+  const cv=document.getElementById('scatter-canvas');
+  if(cv) cv.style.height=h+'px';
+  wrap._scExpanded=!isExp;
+  if(btn) btn.textContent=isExp?'⊞ Expand':'⊟ Shrink';
+  setTimeout(()=>buildScatterChart(),50);
 }
 function toggleScatterRef() {
   scatterState.showRefLine = !scatterState.showRefLine;
@@ -4122,7 +4143,7 @@ async function downloadScatterHiRes() {
 
   const dotSize = parseInt(document.getElementById('sc-dotsize')?.value || '3');
   const datasets = proteins.map(prot => {
-    const c = pcolor(prot);
+    const fg = (window._scPalMap&&window._scPalMap[prot]) || pcolor(prot).fg;
     const pts = rows.filter(r=>r.Protein===prot).map(r => ({
       x: (parseFloat(r[xKey])||0)+xOffset, y: r[yKey],
       label: r.Sample_ID, flag: r.Flag,
@@ -4132,11 +4153,11 @@ async function downloadScatterHiRes() {
     return {
       label: prot,
       data: pts,
-      backgroundColor: c.fg + 'bb',
-      borderColor: c.fg,
+      backgroundColor: fg + 'bb',
+      borderColor: fg,
       borderWidth: 1.5*SC,
-      pointBackgroundColor: pts.map(p => searchQ ? (p.matched ? 'rgba(255,210,0,.88)' : c.fg+'28') : (p.flag==='Yes' ? 'rgba(240,160,0,.75)' : c.fg+'bb')),
-      pointBorderColor: pts.map(p => searchQ ? (p.matched ? '#ffd200' : c.fg+'33') : (p.flag==='Yes' ? '#f0a000' : c.fg)),
+      pointBackgroundColor: pts.map(p => searchQ ? (p.matched ? 'rgba(255,210,0,.88)' : fg+'28') : (p.flag==='Yes' ? 'rgba(240,160,0,.75)' : fg+'bb')),
+      pointBorderColor: pts.map(p => searchQ ? (p.matched ? '#ffd200' : fg+'33') : (p.flag==='Yes' ? '#f0a000' : fg)),
       pointBorderWidth: pts.map(p => (searchQ && p.matched) ? 3*SC : 1.5*SC),
       pointRadius: pts.map(p => (searchQ && p.matched) ? Math.min(dotSize+3,20)*SC : dotSize*SC),
       pointHoverRadius: (dotSize+5)*SC,
@@ -4609,6 +4630,11 @@ function generateCurvePDFs(results) {
 // ═══════════════════════════════════════════════════════
 
 // Palette used for multi-curve overlay
+const SCATTER_PALETTE=[
+  '#e87878','#7baed4','#72c896','#c098d4',
+  '#6ac0cc','#e094b8','#88c880','#8aaad8',
+  '#e0a87a','#70beca','#b0cc78','#a888d0'
+];
 const CV_PALETTE = [
   '#ff5760','#0079b9','#00c896','#f0a000',
   '#9b59b6','#e67e22','#16a085','#c0392b',
@@ -4986,10 +5012,11 @@ function renderCvCurve() {
     }
     _cvAttachZoom();
   };
-  let _raf=0;
-  const _tryRender=()=>{ if(wrap.clientHeight>10){_doRender();}else if(_raf++<8){requestAnimationFrame(_tryRender);} };
+  let _raf=0,_rendered=false;
+  const _doRenderOnce=()=>{if(_rendered)return;_rendered=true;_doRender();};
+  const _tryRender=()=>{ if(wrap.clientHeight>10){_doRenderOnce();}else if(_raf++<8){requestAnimationFrame(_tryRender);} };
   _tryRender();
-  setTimeout(()=>{ if(wrap.clientHeight>0) _doRender(); },350);
+  setTimeout(()=>{ if(wrap.clientHeight>0) _doRenderOnce(); },350);
 
   // Stats row
   renderCvStats(compounds);
