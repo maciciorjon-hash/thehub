@@ -1235,175 +1235,196 @@ document.addEventListener('click',function(e){
     ctx.fillRect(x+4,y+bh+14,32,16);ctx.fillRect(x+8,y+bh+12,24,P);
   }
 
-  // ── Avatar-style floating islands ─────────────────────────────────────────
-  var AV_ISLAND_DEFS=[
-    {variant:0,scale:0.52,alphaBase:0.26,spdBase:0.070,bob:true, bobAmp:15,bobSpd:0.0080},
-    {variant:1,scale:0.68,alphaBase:0.34,spdBase:0.100,bob:false,bobAmp:0, bobSpd:0},
-    {variant:0,scale:0.38,alphaBase:0.18,spdBase:0.048,bob:false,bobAmp:0, bobSpd:0},
-    {variant:2,scale:0.60,alphaBase:0.30,spdBase:0.085,bob:true, bobAmp:20,bobSpd:0.0090},
-    {variant:1,scale:0.78,alphaBase:0.40,spdBase:0.120,bob:true, bobAmp:11,bobSpd:0.0110},
-    {variant:0,scale:0.44,alphaBase:0.22,spdBase:0.058,bob:false,bobAmp:0, bobSpd:0}
-  ];
+  // ── Avatar-style floating islands — fully randomised per-island ───────────
   var AV_ROCK=[
     ['#8c7a60','#7a6850','#6a5840','#5a4830'],
     ['#7a8490','#687480','#586470','#485460'],
-    ['#8c7888','#7a6878','#6a5868','#5a4858']
+    ['#8c7888','#7a6878','#6a5868','#5a4858'],
+    ['#907050','#7a5c40','#645030','#504020'],
+    ['#6a8870','#587860','#466850','#345840']
+  ];
+  var AV_GREENS=[
+    ['#1e4a18','#2d6822','#3d8a2c','#52a838','#70c848','#90e050'],
+    ['#1a4a30','#2a7048','#3a9060','#50b878','#70d898','#90f0b8'],
+    ['#383010','#585028','#787040','#909858','#b0c070','#d0e090'],
+    ['#2a1e3a','#3a2e58','#4a4080','#6058a8','#8078c8','#a0a0e8']
   ];
   function mkAvIsland(i,scatter){
-    var def=AV_ISLAND_DEFS[i%AV_ISLAND_DEFS.length];
+    var vr=rng();
+    var variant=vr<0.50?0:vr<0.80?1:2;
+    var scale=rr(0.38,1.08);
+    var alphaBase=rr(0.16,0.44);
+    var spdBase=rr(0.020,0.056);
+    var bob=rng()>0.44;
+    var bobAmp=bob?rr(8,26):0;
+    var bobSpd=bob?rr(0.005,0.012):0;
     var dir=rng()>0.5?1:-1;
-    var baseW=def.variant===1?140:def.variant===2?310:280;
-    var approxW=baseW*def.scale;
+    var greenPal=ri(0,3);
+    var rockTone2=ri(0,4);
+    var hw=variant===1?ri(44,86):ri(62,155);
+    var rockH=ri(28,52);
+    var tapOff=ri(18,Math.min(hw-8,52));
+    var numStr=ri(2,4);
+    var striaY=[];
+    for(var _si=0;_si<numStr;_si++)striaY.push(ri(10,rockH-6));
+    striaY.sort(function(a,b){return a-b;});
+    var numR=ri(5,13);
+    var roots=[];
+    for(var _ri=0;_ri<numR;_ri++)roots.push([Math.round(rr(-(hw-6),(hw-6))),rockH+ri(2,6),ri(2,4),ri(18,52)]);
+    roots.sort(function(a,b){return a[0]-b[0];});
+    var numT=variant===1?1:ri(2,6);
+    var trees=[];
+    if(numT===1){trees.push(Math.round(rr(-hw*0.25,hw*0.25)));}
+    else{var ts=(hw*1.5)/(numT+1);for(var _ti=0;_ti<numT;_ti++)trees.push(Math.round((-hw*0.75)+ts*(_ti+1)+rr(-ts*0.25,ts*0.25)));}
+    var numBio=ri(3,8);
+    var bio=[];
+    for(var _bi=0;_bi<numBio;_bi++)bio.push([Math.round(rr(-(hw-10),(hw-10))),ri(-62,-14)]);
+    var hasWF=rng()>0.28;
+    var wfSide=rng()>0.5?1:-1;
+    var fLayers=ri(4,7);
+    var shrinkPL=rr(Math.max(8,hw*0.08),Math.max(16,hw*0.14));
+    var p={hw:hw,rockH:rockH,tapOff:tapOff,striaY:striaY,roots:roots,
+           trees:trees,bio:bio,hasWF:hasWF,wfSide:wfSide,
+           fLayers:fLayers,shrinkPL:shrinkPL,greenPal:greenPal};
+    var approxW=hw*2*scale;
+    if(variant===2){
+      var satHw=ri(28,54);
+      var satOff=hw+satHw+ri(18,55);
+      var satYOff=ri(15,32);
+      var satRoots=[];
+      for(var _sri=0;_sri<ri(3,6);_sri++)satRoots.push([Math.round(rr(-(satHw-4),(satHw-4))),Math.round(satHw*0.45)+ri(2,8),ri(2,3),ri(14,36)]);
+      p.satHw=satHw;p.satOff=satOff;p.satYOff=satYOff;p.satRoots=satRoots;
+      approxW=(satOff+satHw)*2*scale;
+    }
     var x=scatter?rr(-approxW,W+approxW):(dir>0?-approxW-80:W+approxW+80);
-    var y=rr(0.10,0.62)*H; if(y<NAV_H+50)y=NAV_H+50;
-    return{variant:def.variant,x:x,y:y,
-           vx:def.spdBase*dir*(0.8+rng()*0.4),dir:dir,
-           dScale:def.scale*(0.85+rng()*0.3),
-           alpha:def.alphaBase*(0.8+rng()*0.4),
-           bob:def.bob,bobAmp:def.bobAmp*(0.7+rng()*0.6),
-           bobSpd:def.bobSpd,bobPhase:rng()*Math.PI*2,
-           approxW:approxW,rockTone:ri(0,2)};
+    var y=rr(0.10,0.62)*H;if(y<NAV_H+50)y=NAV_H+50;
+    return{variant:variant,x:x,y:y,vx:spdBase*dir*(0.8+rng()*0.4),dir:dir,
+           dScale:scale*(0.85+rng()*0.3),alpha:alphaBase*(0.8+rng()*0.4),
+           bob:bob,bobAmp:bobAmp*(0.7+rng()*0.6),bobSpd:bobSpd,bobPhase:rng()*Math.PI*2,
+           approxW:approxW,rockTone:rockTone2,p:p};
   }
 
   function drawAvIsland(v,s){
     var R=AV_ROCK[s.rockTone||0];
-    // Variant 0 — wide floating mesa
-    if(v===0){
-      var hw=140; // half-width
-      // mist halo below
-      ctx.globalAlpha=s.alpha*0.07;ctx.fillStyle='#c0e8ff';
-      ctx.fillRect(-hw-20,56,hw*2+40,18);ctx.fillRect(-hw-10,70,hw*2+20,10);
-      ctx.globalAlpha=s.alpha;
-      // hanging roots
-      ctx.fillStyle='#4a3828';
-      var rp=[[-110,52,3,22],[-82,50,2,34],[-54,52,4,44],[-22,54,3,40],[14,52,4,38],[48,50,3,42],[78,52,2,30],[106,50,3,20]];
-      for(var ri2=0;ri2<rp.length;ri2++)ctx.fillRect(rp[ri2][0],rp[ri2][1],rp[ri2][2],rp[ri2][3]);
-      ctx.fillStyle='#3a2818';
-      ctx.fillRect(-54,96,2,14);ctx.fillRect(14,92,2,18);ctx.fillRect(48,92,2,12);
-      // rock bottom taper
+    var p=s.p;if(!p)return;
+    var G=AV_GREENS[p.greenPal||0];
+    var hw=p.hw,rockH=p.rockH,tapOff=p.tapOff;
+
+    // Mist below
+    ctx.globalAlpha=s.alpha*0.07;ctx.fillStyle='#c0e8ff';
+    ctx.fillRect(-hw-18,rockH+10,hw*2+36,16);
+    ctx.fillRect(-hw-8,rockH+22,hw*2+16,10);
+    ctx.globalAlpha=s.alpha;
+
+    // Hanging roots
+    ctx.fillStyle='#4a3828';
+    for(var _r=0;_r<p.roots.length;_r++){var rt=p.roots[_r];ctx.fillRect(rt[0],rt[1],rt[2],rt[3]);}
+    ctx.fillStyle='#3a2818';
+    for(var _r2=1;_r2<p.roots.length;_r2+=2){var rt2=p.roots[_r2];ctx.fillRect(rt2[0]+1,rt2[1]+Math.round(rt2[3]*0.55),1,Math.round(rt2[3]*0.35));}
+
+    // Rock body
+    if(v===1){
+      ctx.fillStyle=R[0];
+      ctx.fillRect(-hw,18,hw*2,rockH-4);
+      ctx.fillRect(-hw+8,10,hw*2-16,rockH+4);
+      ctx.fillRect(-hw+16,4,hw*2-32,rockH+4);
       ctx.fillStyle=R[2];
-      ctx.fillRect(-hw+36,44,hw*2-72,8);ctx.fillRect(-hw+52,50,hw*2-104,4);
-      // rock body
+      var tw1=hw*2-tapOff*2;if(tw1>0)ctx.fillRect(-hw+tapOff,rockH+4,tw1,9);
+      var tw2=hw*2-tapOff*2-20;if(tw2>0)ctx.fillRect(-hw+tapOff+10,rockH+12,tw2,6);
+      var tw3=hw*2-tapOff*2-40;if(tw3>0)ctx.fillRect(-hw+tapOff+20,rockH+17,tw3,4);
+    } else {
       ctx.fillStyle=R[0];
-      ctx.fillRect(-hw+14,8,hw*2-28,38);ctx.fillRect(-hw+6,12,hw*2-12,32);
-      ctx.fillRect(-hw,16,hw*2,26);ctx.fillRect(-hw+4,12,hw*2-8,34);
-      // striation bands
-      ctx.fillStyle=R[1];
-      ctx.fillRect(-hw+14,18,hw*2-28,4);ctx.fillRect(-hw+14,30,hw*2-28,4);
-      // rock top
-      ctx.fillStyle=R[0];
-      ctx.fillRect(-hw+18,4,hw*2-36,8);ctx.fillRect(-hw+26,0,hw*2-52,6);
-      // highlight
-      ctx.globalAlpha=s.alpha*0.28;ctx.fillStyle='#fff8e0';
-      ctx.fillRect(-hw+18,8,hw*2-36,3);
-      ctx.globalAlpha=s.alpha;
-      // forest layers
-      ctx.fillStyle='#1e4a18';ctx.fillRect(-hw+14,-14,hw*2-28,16);
-      ctx.fillStyle='#2d6822';ctx.fillRect(-hw+22,-26,hw*2-44,14);
-      ctx.fillStyle='#3d8a2c';ctx.fillRect(-hw+32,-37,hw*2-64,13);
-      ctx.fillStyle='#52a838';ctx.fillRect(-hw+44,-48,hw*2-88,13);
-      ctx.fillStyle='#70c848';ctx.fillRect(-hw+58,-58,hw*2-116,12);
-      ctx.globalAlpha=s.alpha*0.55;ctx.fillStyle='#90e050';
-      ctx.fillRect(-hw+70,-64,hw*2-140,8);
-      ctx.globalAlpha=s.alpha;
-      // tree trunks
-      ctx.fillStyle='#5a3818';
-      [-60,-20,20,60].forEach(function(tx){ctx.fillRect(tx-2,-18,4,20);});
-      // waterfall
-      ctx.globalAlpha=s.alpha*0.35;ctx.fillStyle='#88c8e8';
-      var wfX=s.dir>0?hw-26:-hw+20;
-      for(var wfi=0;wfi<5;wfi++)ctx.fillRect(wfX+(s.dir>0?1:-1)*wfi*3,10+wfi*8,3,10);
-      ctx.fillStyle='#c0eeff';ctx.fillRect(wfX,6,6,4);
-      ctx.globalAlpha=s.alpha;
-      // bioluminescence
-      ctx.globalAlpha=s.alpha*0.12;ctx.fillStyle='#40ffcc';
-      [[-80,-28],[-30,-42],[0,-52],[36,-38],[80,-30]].forEach(function(b){ctx.fillRect(b[0],b[1],3,3);});
+      ctx.fillRect(-hw,14,hw*2,rockH-10);
+      ctx.fillRect(-hw+8,8,hw*2-16,rockH);
+      ctx.fillRect(-hw+18,3,hw*2-36,rockH+2);
+      ctx.fillStyle=R[2];
+      var tw4=hw*2-tapOff*2;if(tw4>0)ctx.fillRect(-hw+tapOff,rockH+2,tw4,8);
+      var tw5=hw*2-tapOff*2-24;if(tw5>0)ctx.fillRect(-hw+tapOff+12,rockH+9,tw5,5);
+    }
+
+    // Striations
+    ctx.fillStyle=R[1];
+    for(var _si2=0;_si2<p.striaY.length;_si2++){
+      var sw=v===1?(hw*2-32):(hw*2-36);
+      if(sw>0)ctx.fillRect(v===1?(-hw+16):(-hw+18),p.striaY[_si2],sw,3);
+    }
+
+    // Highlight + edge shadows
+    ctx.globalAlpha=s.alpha*0.28;ctx.fillStyle='#fff8e0';
+    if(hw*2-36>0)ctx.fillRect(-hw+18,3,hw*2-36,3);
+    ctx.globalAlpha=s.alpha*0.16;ctx.fillStyle='#180808';
+    ctx.fillRect(-hw+18,3,5,rockH);
+    ctx.fillRect(hw-23,3,5,rockH);
+    ctx.globalAlpha=s.alpha;
+
+    // Forest layers
+    var spl=p.shrinkPL||12;
+    for(var _fi=0;_fi<p.fLayers;_fi++){
+      var fW=hw*2-28-spl*_fi;if(fW<14)break;
+      var fH=Math.max(5,13-_fi);
+      ctx.fillStyle=G[Math.min(_fi,G.length-1)];
+      ctx.fillRect(-fW/2,-(_fi*12+2)-fH,fW,fH);
+    }
+
+    // Tree trunks
+    ctx.fillStyle='#5a3818';
+    for(var _ti2=0;_ti2<p.trees.length;_ti2++){
+      ctx.fillRect(p.trees[_ti2]-2,-(p.fLayers*6+4),4,p.fLayers*6+4);
+    }
+
+    // Waterfall
+    if(p.hasWF){
+      ctx.globalAlpha=s.alpha*0.38;ctx.fillStyle='#88c8e8';
+      var wfX=p.wfSide>0?hw-22:-hw+16,wfD=p.wfSide;
+      for(var _wf=0;_wf<5;_wf++)ctx.fillRect(wfX+wfD*_wf*3,8+_wf*9,3,10);
+      ctx.globalAlpha=s.alpha*0.6;ctx.fillStyle='#c0eeff';
+      ctx.fillRect(wfX,4,6,5);
       ctx.globalAlpha=s.alpha;
     }
-    // Variant 1 — tall spire
-    else if(v===1){
-      var hw=70;
-      // mist
-      ctx.globalAlpha=s.alpha*0.07;ctx.fillStyle='#c0e8ff';
-      ctx.fillRect(-hw-16,92,hw*2+32,16);ctx.globalAlpha=s.alpha;
-      // roots
-      ctx.fillStyle='#4a3828';
-      [[-36,88,2,30],[-18,92,3,46],[0,96,2,52],[18,90,3,40],[36,86,2,28]].forEach(function(r){ctx.fillRect(r[0],r[1],r[2],r[3]);});
-      ctx.fillStyle='#3a2818';
-      ctx.fillRect(-18,138,2,18);ctx.fillRect(18,130,2,14);
-      // rock bottom taper
-      ctx.fillStyle=R[2];
-      ctx.fillRect(-hw+28,78,hw*2-56,14);ctx.fillRect(-hw+38,88,hw*2-76,8);ctx.fillRect(-hw+46,94,hw*2-92,4);
-      // rock body
-      ctx.fillStyle=R[0];
-      ctx.fillRect(-hw+12,12,hw*2-24,70);ctx.fillRect(-hw+4,20,hw*2-8,58);ctx.fillRect(-hw,30,hw*2,42);
-      // striations
-      ctx.fillStyle=R[1];
-      ctx.fillRect(-hw+12,25,hw*2-24,4);ctx.fillRect(-hw+12,45,hw*2-24,4);ctx.fillRect(-hw+12,62,hw*2-24,4);
-      // rock top
-      ctx.fillStyle=R[0];
-      ctx.fillRect(-hw+18,6,hw*2-36,8);ctx.fillRect(-hw+26,2,hw*2-52,6);
-      // highlight
-      ctx.globalAlpha=s.alpha*0.28;ctx.fillStyle='#fff8e0';
-      ctx.fillRect(-hw+14,12,hw*2-28,3);ctx.globalAlpha=s.alpha;
-      // forest
-      ctx.fillStyle='#1e4a18';ctx.fillRect(-hw+20,-12,hw*2-40,14);
-      ctx.fillStyle='#2d6822';ctx.fillRect(-hw+28,-24,hw*2-56,13);
-      ctx.fillStyle='#3d8a2c';ctx.fillRect(-hw+34,-36,hw*2-68,13);
-      ctx.fillStyle='#52a838';ctx.fillRect(-hw+38,-47,hw*2-76,12);
-      ctx.fillStyle='#70c848';ctx.fillRect(-hw+44,-57,hw*2-88,11);
-      ctx.globalAlpha=s.alpha*0.5;ctx.fillStyle='#90e050';
-      ctx.fillRect(-hw+52,-64,hw*2-104,8);ctx.globalAlpha=s.alpha;
-      // trunk
-      ctx.fillStyle='#5a3818';ctx.fillRect(-2,-16,4,18);
-      // bioluminescence
-      ctx.globalAlpha=s.alpha*0.13;ctx.fillStyle='#40ffcc';
-      [[-22,-28],[16,-38],[-6,-46]].forEach(function(b){ctx.fillRect(b[0],b[1],3,3);});
-      ctx.globalAlpha=s.alpha;
+
+    // Bioluminescence
+    ctx.globalAlpha=s.alpha*0.14;ctx.fillStyle='#40ffcc';
+    for(var _bi2=0;_bi2<p.bio.length;_bi2++){
+      var b=p.bio[_bi2];
+      ctx.fillRect(Math.max(-hw+10,Math.min(hw-10,b[0])),b[1],3,3);
     }
-    // Variant 2 — cluster (main mesa + satellite rock)
-    else{
-      var satX=s.dir>0?132:-132, satY=28;
-      // mist
+    ctx.globalAlpha=s.alpha;
+
+    // Satellite rock (variant 2)
+    if(v===2&&p.satHw){
+      var satX=s.dir>0?p.satOff:-p.satOff;
+      var satY=p.satYOff||20;
+      var shw=p.satHw;
+
       ctx.globalAlpha=s.alpha*0.06;ctx.fillStyle='#c0e8ff';
-      ctx.fillRect(-100,50,200,12);ctx.fillRect(satX-50,satY+32,100,10);
+      ctx.fillRect(satX-shw-10,satY+shw*0.7,shw*2+20,14);
       ctx.globalAlpha=s.alpha;
-      // ── satellite rock ──
+
+      ctx.fillStyle='#4a3828';
+      for(var _sr=0;_sr<p.satRoots.length;_sr++){var sr=p.satRoots[_sr];ctx.fillRect(satX+sr[0],satY+sr[1],sr[2],sr[3]);}
+
       ctx.fillStyle=R[0];
-      ctx.fillRect(satX-44,satY+6,88,22);ctx.fillRect(satX-50,satY+10,100,14);
+      ctx.fillRect(satX-shw,satY+6,shw*2,Math.round(shw*0.5));
+      ctx.fillRect(satX-shw+8,satY+2,shw*2-16,Math.round(shw*0.5)+4);
       ctx.fillStyle=R[2];
-      ctx.fillRect(satX-30,satY+28,60,8);ctx.fillRect(satX-20,satY+34,40,5);
-      ctx.fillStyle='#4a3828';
-      [[-20,6,2,22],[0,8,2,28],[20,6,2,18]].forEach(function(r){ctx.fillRect(satX+r[0],satY+r[1],r[2],r[3]);});
-      ctx.fillStyle='#2d6822';ctx.fillRect(satX-36,satY-8,72,10);
-      ctx.fillStyle='#3d8a2c';ctx.fillRect(satX-28,satY-18,56,11);
-      ctx.fillStyle='#52a838';ctx.fillRect(satX-20,satY-26,40,9);
-      // ── main island ──
-      var hw=90;
-      // roots
-      ctx.fillStyle='#4a3828';
-      [[-66,52,2,28],[-38,54,3,38],[-10,56,2,42],[18,52,3,34],[52,50,2,24]].forEach(function(r){ctx.fillRect(r[0],r[1],r[2],r[3]);});
-      ctx.fillStyle='#3a2818';ctx.fillRect(-38,92,2,16);ctx.fillRect(18,86,2,14);
-      // rock
-      ctx.fillStyle=R[0];
-      ctx.fillRect(-hw+8,8,hw*2-16,36);ctx.fillRect(-hw,14,hw*2,24);
-      ctx.fillStyle=R[1];ctx.fillRect(-hw+8,18,hw*2-16,4);ctx.fillRect(-hw+8,30,hw*2-16,4);
-      ctx.fillStyle=R[2];ctx.fillRect(-hw+20,42,hw*2-40,8);ctx.fillRect(-hw+32,48,hw*2-64,6);
-      ctx.fillStyle=R[0];ctx.fillRect(-hw+16,4,hw*2-32,6);
-      ctx.globalAlpha=s.alpha*0.28;ctx.fillStyle='#fff8e0';
-      ctx.fillRect(-hw+10,8,hw*2-20,3);ctx.globalAlpha=s.alpha;
-      // forest
-      ctx.fillStyle='#1e4a18';ctx.fillRect(-hw+12,-12,hw*2-24,14);
-      ctx.fillStyle='#2d6822';ctx.fillRect(-hw+20,-24,hw*2-40,13);
-      ctx.fillStyle='#3d8a2c';ctx.fillRect(-hw+28,-35,hw*2-56,12);
-      ctx.fillStyle='#52a838';ctx.fillRect(-hw+36,-45,hw*2-72,11);
-      ctx.fillStyle='#70c848';ctx.fillRect(-hw+46,-54,hw*2-92,10);
-      ctx.globalAlpha=s.alpha*0.5;ctx.fillStyle='#90e050';
-      ctx.fillRect(-hw+56,-61,hw*2-112,8);ctx.globalAlpha=s.alpha;
-      ctx.fillStyle='#5a3818';[-40,0,40].forEach(function(tx){ctx.fillRect(tx-2,-16,4,18);});
-      // bioluminescence
+      var stw=Math.round(shw*0.65)*2;if(stw>0)ctx.fillRect(satX-stw/2,satY+Math.round(shw*0.55),stw,8);
+      ctx.fillStyle=R[1];
+      ctx.fillRect(satX-shw+8,satY+Math.round(shw*0.22),shw*2-16,3);
+      ctx.globalAlpha=s.alpha*0.25;ctx.fillStyle='#fff8e0';
+      ctx.fillRect(satX-shw+8,satY+2,shw*2-16,3);
+      ctx.globalAlpha=s.alpha;
+
+      for(var _sfi=0;_sfi<3;_sfi++){
+        var sfW=shw*2-8-_sfi*Math.max(6,shw*0.15);
+        if(sfW>0){ctx.fillStyle=G[Math.min(_sfi,G.length-1)];ctx.fillRect(satX-sfW/2,satY-(_sfi*8+2)-6,sfW,8);}
+      }
+
+      ctx.globalAlpha=s.alpha*0.04;ctx.fillStyle='#c0e8ff';
+      var cmL=Math.min(-hw+18,satX-shw),cmR=Math.max(hw-18,satX+shw);
+      if(cmR>cmL)ctx.fillRect(cmL,satY+10,cmR-cmL,8);
       ctx.globalAlpha=s.alpha*0.12;ctx.fillStyle='#40ffcc';
-      [[-40,-26],[14,-38],[satX-16,satY-12],[satX+18,satY-16]].forEach(function(b){ctx.fillRect(b[0],b[1],3,3);});
+      ctx.fillRect(satX-Math.round(shw*0.35),satY-8,3,3);
+      ctx.fillRect(satX+Math.round(shw*0.25),satY-14,3,3);
       ctx.globalAlpha=s.alpha;
     }
   }
@@ -1561,7 +1582,7 @@ document.addEventListener('click',function(e){
     clouds=[];specials=[];avIslands=[];
     for(var i=0;i<ri(22,32);i++)clouds.push(mkCloud(true));
     for(var i=0;i<DEPTHS.length;i++)specials.push(mkSpecial(true,i));
-    for(var i=0;i<AV_ISLAND_DEFS.length;i++)avIslands.push(mkAvIsland(i,true));
+    for(var i=0;i<7;i++)avIslands.push(mkAvIsland(i,true));
   }
 
   function draw(ts){
