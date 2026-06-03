@@ -2813,9 +2813,7 @@ function renderScatter(data) {
         <input id="sc-search" type="text" placeholder="Sample ID…" oninput="updateSearch(this.value)" style="width:120px;flex:none;">
         <button class="sc-clear" onclick="clearSearch()" title="Clear">✕</button>
         <span class="sc-match-info" id="sc-match-info"></span>
-      </div>
-      <div class="strow" style="padding:0;">
-        <button class="stbtn" onclick="(function(){var d=document.getElementById('sc-filters-wrap');var open=d.style.display!=='none';d.style.display=open?'none':'flex';this.classList.toggle('active',!open);}).call(this)" style="font-size:11px;">Filters ▾</button>
+        <button class="stbtn" style="margin-left:auto;font-size:11px;" onclick="(function(){var d=document.getElementById('sc-filters-wrap');var open=d.style.display!=='none';d.style.display=open?'none':'flex';this.classList.toggle('active',!open);}).call(this)">Filters ▾</button>
       </div>
       <div id="sc-filters-wrap" style="display:none;flex-direction:column;gap:6px;">
         <div class="strow">
@@ -2882,10 +2880,6 @@ function renderScatter(data) {
           <option value="Dmax_pct">Dmax</option>
           <option value="R2">R²</option>
         </select>
-        <label>X lbl</label>
-        <input id="sc-xlabel" type="text" placeholder="auto" style="width:80px;font-size:11px;" oninput="debounceUpdateAxisLabel()">
-        <label>Y lbl</label>
-        <input id="sc-ylabel" type="text" placeholder="auto" style="width:80px;font-size:11px;" oninput="debounceUpdateAxisLabel()">
         <label>Conc.</label>
         <select id="sc-xunit" onchange="buildScatterChart()" style="font-size:11px;">
           <option value="M">Log[M]</option>
@@ -4662,26 +4656,13 @@ function _cvAttachZoom() {
   if (!wrap||!canvas||wrap._zoomBound) return;
   wrap._zoomBound = true;
 
-  // Wheel: navigate compounds in Single mode; zoom in Compare/zoomed mode
+  // Wheel: navigate compounds in Single mode; in Compare mode let scroll propagate naturally
   wrap.addEventListener('wheel', e => {
-    e.preventDefault();
     if (window._cvMode === 'single') {
-      // scroll down = next compound, scroll up = prev
+      e.preventDefault();
       cvNav(e.deltaY > 0 ? 1 : -1);
-      return;
     }
-    // Compare mode: zoom as before
-    const z = window._cvZoom;
-    if (!z) return;
-    const factor = e.deltaY > 0 ? 1.12 : 0.89;
-    if (e.shiftKey) {
-      const yMid=(z.ylo+z.yhi)/2, yHalf=(z.yhi-z.ylo)/2*factor;
-      window._cvZoom={...z, ylo:yMid-yHalf, yhi:yMid+yHalf};
-    } else {
-      const xMid=(z.xlo+z.xhi)/2, xHalf=(z.xhi-z.xlo)/2*factor;
-      window._cvZoom={...z, xlo:xMid-xHalf, xhi:xMid+xHalf};
-    }
-    renderCvCurve();
+    // Compare mode: no preventDefault — event bubbles to #curves-panel and scrolls it
   }, {passive:false});
 
   // Double-click: reset zoom
@@ -4690,9 +4671,9 @@ function _cvAttachZoom() {
     const btn=document.getElementById('cv-zoom-reset'); if(btn) btn.style.opacity='0.4';
   });
 
-  // Drag to pan
+  // Drag to pan (single mode only)
   canvas.addEventListener('mousedown', e => {
-    if (e.button!==0||!window._cvZoom) return;
+    if (e.button!==0||!window._cvZoom||window._cvMode==='compare') return;
     _cvPan={active:true,x0:e.clientX,y0:e.clientY,zSnap:{...window._cvZoom}};
     canvas.style.cursor='grabbing';
   });
@@ -4805,23 +4786,23 @@ function renderCurvesTab(data) {
     </div>
   </div>
 
-  <!-- COMPARE COMPOUND LIST (hidden in single mode) -->
-  <div id="cv-compare-wrap" style="display:none;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 14px 0;">
+  <!-- MAIN CANVAS -->
+  <div class="cv-canvas-wrap"><canvas id="cv-canvas" style="width:100%;height:100%;display:block;"></canvas></div>
+
+  <!-- STATS / LEGEND ROW -->
+  <div class="cv-stats" id="cv-stats"></div>
+
+  <!-- COMPARE COMPOUND LIST (hidden in single mode, scrolls below canvas) -->
+  <div id="cv-compare-wrap" style="display:none;border-top:1px solid var(--border);background:var(--surface);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px 4px;">
       <span id="cv-sel-count" style="font-size:10px;color:var(--text3);font-family:var(--sans);"></span>
       <div style="display:flex;gap:6px;">
         <button class="stbtn" onclick="selectAllCvCompare()">Select all</button>
         <button class="stbtn" onclick="deselectAllCvCompare()">Deselect all</button>
       </div>
     </div>
-    <div id="cv-compare-list" style="padding:6px 14px 8px;max-height:120px;overflow-y:auto;display:flex;flex-wrap:wrap;gap:6px;"></div>
+    <div id="cv-compare-list" style="padding:4px 14px 12px;display:flex;flex-wrap:wrap;gap:6px;"></div>
   </div>
-
-  <!-- MAIN CANVAS -->
-  <div class="cv-canvas-wrap"><canvas id="cv-canvas" style="width:100%;height:100%;display:block;"></canvas></div>
-
-  <!-- STATS / LEGEND ROW -->
-  <div class="cv-stats" id="cv-stats"></div>
 
   <!-- HOVER STRUCTURE POPUP -->
   <div id="cv-struct-popup" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:8px;box-shadow:0 4px 20px rgba(0,0,0,.2);z-index:20;pointer-events:none;"></div>
@@ -4848,16 +4829,22 @@ function setCvMode(mode) {
   const cmpList=document.getElementById('cv-compare-list');
   const compSel=document.getElementById('cv-compound');
   const prevBtn=document.getElementById('cv-prev'), nextBtn=document.getElementById('cv-next');
+  const _cvCanvasWrap = document.querySelector('.cv-canvas-wrap');
+  const _cvPanelEl = document.getElementById('curves-panel');
   if(mode==='single'){
     sBt?.classList.add('active'); cBt?.classList.remove('active');
     if(compSel) compSel.style.display='block';
     if(prevBtn) prevBtn.style.display=''; if(nextBtn) nextBtn.style.display='';
     if(cmpList) cmpList.style.display='none'; const _cw=document.getElementById('cv-compare-wrap'); if(_cw) _cw.style.display='none';
+    if(_cvCanvasWrap){_cvCanvasWrap.style.flex='1';_cvCanvasWrap.style.height='';}
+    if(_cvPanelEl) _cvPanelEl.style.overflowY='hidden';
   } else {
     cBt?.classList.add('active'); sBt?.classList.remove('active');
     if(compSel) compSel.style.display='none';
     if(prevBtn) prevBtn.style.display='none'; if(nextBtn) nextBtn.style.display='none';
     if(cmpList){ cmpList.style.display='flex'; const wrap=document.getElementById('cv-compare-wrap'); if(wrap) wrap.style.display='block'; buildCompareList(); }
+    if(_cvCanvasWrap){_cvCanvasWrap.style.flex='none';_cvCanvasWrap.style.height='420px';}
+    if(_cvPanelEl) _cvPanelEl.style.overflowY='auto';
   }
   renderCvCurve();
 }
