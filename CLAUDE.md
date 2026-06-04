@@ -23,7 +23,7 @@
 | `echo` | Echo Data Analysis | `E` | `#ff5760` | `Labcyte_Echo/labcyte_echo.html` |
 | `deg` | Degradation Explorer | `D` | `#7c6fd4` | `Degradation_Explorer/degradation_visualizer.html` |
 | `lm` | LabMate | `L` | `#e08c30` (amber) | `Labmate/labmate.html` |
-| `pd` | Plate Designer | `P` | `#0079b9` | `Plate_Designer/plate_designer.html` |
+| `pd` | Lab Designer | `D` | `#0079b9` | `Plate_Designer/plate_designer.html` |
 | `dna` | Helix | `H` | `#43a047` | `Helix/helix.html` |
 | `pt` | Protein Tools | `P` | `#9c6fd4` | `Protein_Tools/protein_tools.html` |
 
