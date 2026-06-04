@@ -124,6 +124,25 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 .gd-wells-tbl tr:last-child td{border-bottom:none;}
 @media(max-width:700px){.gd-layout{flex-direction:column;}.gd-ctrl{width:100%;border-right:none;border-bottom:1px solid var(--border);}}
 
+/* ── HISTORY ── */
+.hist-wrap{padding:20px 24px;overflow-y:auto;flex:1;}
+.hist-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:14px;}
+.hist-empty{text-align:center;padding:64px 20px;color:var(--text3);font-size:13px;line-height:1.7;}
+.hist-grid{display:flex;flex-direction:column;gap:7px;}
+.hist-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 14px;display:flex;align-items:center;gap:10px;transition:border-color .15s;}
+.hist-card:hover{border-color:var(--border2);}
+.hist-chip{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:2px 8px;border-radius:20px;flex-shrink:0;}
+.hist-chip-plate{background:rgba(0,121,185,.11);color:#0079b9;}
+.hist-chip-gel{background:rgba(0,168,122,.13);color:#00a87a;}
+.hist-info{flex:1;min-width:0;}
+.hist-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hist-date{font-size:11px;color:var(--text3);margin-top:2px;}
+.hist-actions{display:flex;gap:5px;flex-shrink:0;}
+.hist-load-btn{font-size:11px;padding:4px 11px;border-radius:6px;border:1px solid var(--accent);background:none;color:var(--accent);font-family:var(--sans);font-weight:600;cursor:pointer;transition:background .13s,color .13s;}
+.hist-load-btn:hover{background:var(--accent);color:#fff;}
+.hist-del-btn{font-size:13px;padding:3px 7px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text3);font-family:var(--sans);cursor:pointer;transition:all .13s;line-height:1.4;}
+.hist-del-btn:hover{border-color:var(--accent);color:var(--accent);}
+
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
@@ -167,6 +186,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 <div class="tabs">
   <button class="tab active" onclick="switchTab('designer',this)">Designer</button>
   <button class="tab" onclick="switchTab('gel',this)">Gel Designer</button>
+  <button class="tab" onclick="switchTab('history',this)">History</button>
   <button class="tab" onclick="switchTab('guide',this)">Guide</button>
   <div class="tab-indicator"></div>
 </div>
@@ -342,6 +362,13 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
   </div>
 </div><!-- end gel panel -->
 
+<div class="panel" id="panel-history">
+  <div class="hist-wrap">
+    <div class="hist-hdr">Export history</div>
+    <div id="hist-list"></div>
+  </div>
+</div>
+
 <div class="panel" id="panel-guide">
   <div class="guide-panel">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;">
@@ -410,6 +437,7 @@ function switchTab(id, btn) {
     var sel = document.getElementById('sel-toolbar');
     if (sel) sel.classList.remove('open');
   }
+  if (id === 'history') renderHistoryPanel();
 }
 
 // ─── Gel Designer ────────────────────────────────────────────────────────────
@@ -682,6 +710,26 @@ function gdDownload() {
   link.download = title + '.png';
   link.href = document.getElementById('gd-canvas').toDataURL('image/png');
   link.click();
+  ldHistAdd({
+    id: 'g'+Date.now(),
+    name: document.getElementById('gd-title').value || document.getElementById('gd-gel').value+'-well gel',
+    date: new Date().toLocaleString(),
+    type: 'gel',
+    data: {
+      gelFormat: document.getElementById('gd-gel').value,
+      title: document.getElementById('gd-title').value,
+      lpos: document.getElementById('gd-lpos').value,
+      orient: document.getElementById('gd-orient').value,
+      wsz: document.getElementById('gd-wsz').value,
+      lanepos: document.getElementById('gd-lanepos').value,
+      fsize: document.getElementById('gd-fsize').value,
+      bold: document.getElementById('gd-bold').checked,
+      italic: document.getElementById('gd-italic').checked,
+      context: document.getElementById('gd-context').value,
+      wells: JSON.parse(JSON.stringify(gdWells)),
+      brackets: JSON.parse(JSON.stringify(gdBrackets))
+    }
+  });
   gdDraw();
 }
 
@@ -1454,6 +1502,19 @@ async function exportPNG() {
     ctx.fillStyle='#5a5f7a'; ctx.font='11px "IBM Plex Sans",Arial,sans-serif'; ctx.textAlign='left';
     ctx.fillText(t.name, lx+17, ly+10); lx+=ctx.measureText(t.name).width+36;
   });
+  ldHistAdd({
+    id: 'p'+Date.now(),
+    name: currentFormat+'-well plate · '+new Date().toLocaleDateString(),
+    date: new Date().toLocaleString(),
+    type: 'plate',
+    data: {
+      format: currentFormat,
+      wellState: JSON.parse(JSON.stringify(wellState)),
+      customTypes: JSON.parse(JSON.stringify(customTypes)),
+      rowAnnotations: JSON.parse(JSON.stringify(rowAnnotations)),
+      colAnnotations: JSON.parse(JSON.stringify(colAnnotations))
+    }
+  });
   canvas.toBlob(blob => { const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='plate_layout.png'; a.click(); }, 'image/png');
 }
 
@@ -1501,6 +1562,80 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
     });
   });
 })();
+
+// ─── History ──────────────────────────────────────────────────────────────────
+var LD_HIST_KEY = 'ld_history';
+var LD_HIST_MAX = 30;
+
+function ldHistGetList() {
+  try { return JSON.parse(localStorage.getItem(LD_HIST_KEY)) || []; } catch(e) { return []; }
+}
+function ldHistSaveList(list) {
+  try { localStorage.setItem(LD_HIST_KEY, JSON.stringify(list)); } catch(e) {}
+}
+function ldHistAdd(entry) {
+  var list = ldHistGetList();
+  list.unshift(entry);
+  if (list.length > LD_HIST_MAX) list = list.slice(0, LD_HIST_MAX);
+  ldHistSaveList(list);
+  if (document.getElementById('panel-history') && document.getElementById('panel-history').classList.contains('active')) renderHistoryPanel();
+}
+function ldHistDelete(id) {
+  ldHistSaveList(ldHistGetList().filter(function(e){ return e.id !== id; }));
+  renderHistoryPanel();
+}
+function renderHistoryPanel() {
+  var list = ldHistGetList();
+  var el = document.getElementById('hist-list');
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML = '<div class="hist-empty">No exports yet.<br>Export a plate or gel to build your history.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="hist-grid">' + list.map(function(e) {
+    var chip = e.type === 'gel' ? '<div class="hist-chip hist-chip-gel">Gel</div>' : '<div class="hist-chip hist-chip-plate">Plate</div>';
+    return '<div class="hist-card">' + chip +
+      '<div class="hist-info"><div class="hist-name">' + esc(e.name) + '</div><div class="hist-date">' + esc(e.date) + '</div></div>' +
+      '<div class="hist-actions">' +
+        '<button class="hist-load-btn" onclick="ldHistLoadEntry(\'' + e.id + '\')">Load</button>' +
+        '<button class="hist-del-btn" onclick="ldHistDelete(\'' + e.id + '\')" title="Remove">&#10005;</button>' +
+      '</div></div>';
+  }).join('') + '</div>';
+}
+function ldHistLoadEntry(id) {
+  var entry = ldHistGetList().find(function(e){ return e.id === id; });
+  if (!entry) return;
+  if (entry.type === 'plate') {
+    currentFormat = entry.data.format || '96';
+    wellState = entry.data.wellState ? JSON.parse(JSON.stringify(entry.data.wellState)) : {};
+    rowAnnotations = entry.data.rowAnnotations ? JSON.parse(JSON.stringify(entry.data.rowAnnotations)) : {};
+    colAnnotations = entry.data.colAnnotations ? JSON.parse(JSON.stringify(entry.data.colAnnotations)) : {};
+    customTypes = (entry.data.customTypes || []).filter(function(ct){
+      return !WELL_TYPES.find(function(bt){ return bt.id === ct.id; });
+    });
+    selection.clear(); lastClickedWell = null;
+    _userScaledManually = false; userScale = 1.0;
+    var sl = document.getElementById('well-size-slider'); if (sl) sl.value = 1.0;
+    document.querySelectorAll('.fmt-pill').forEach(function(b){ b.classList.toggle('active', b.textContent === currentFormat+'-well'); });
+    buildPlateArea(); renderTypePalette(); renderLegend(); updateSelToolbar();
+    setTimeout(positionToolbar, 50);
+    var btn = document.querySelector('.tab[onclick*="\'designer\'"]');
+    if (btn) switchTab('designer', btn);
+  } else if (entry.type === 'gel') {
+    var d = entry.data;
+    var $v = function(id, v){ var el=document.getElementById(id); if(el) el.value=v; };
+    var $c = function(id, v){ var el=document.getElementById(id); if(el) el.checked=v; };
+    $v('gd-gel', d.gelFormat || '20'); gdInit();
+    (d.wells || []).forEach(function(w, i){ if(gdWells[i]){ gdWells[i].label=w.label; gdWells[i].type=w.type; } });
+    gdBrackets = d.brackets ? JSON.parse(JSON.stringify(d.brackets)) : [];
+    $v('gd-title', d.title||''); $v('gd-lpos', d.lpos||'inside'); $v('gd-orient', d.orient||'0');
+    $v('gd-wsz', d.wsz||'M'); $v('gd-lanepos', d.lanepos||'above'); $v('gd-fsize', d.fsize||'12');
+    $c('gd-bold', !!d.bold); $c('gd-italic', !!d.italic); $v('gd-context', d.context||'');
+    gdRenderWells(); gdRenderBrackets(); gdDraw();
+    var btn = document.querySelector('.tab[onclick*="\'gel\'"]');
+    if (btn) switchTab('gel', btn);
+  }
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 buildTopBar();
