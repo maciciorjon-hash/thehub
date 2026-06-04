@@ -4623,13 +4623,15 @@ async function generateCurvePDFs(results) {
       if (pageIdx > 0) doc.addPage();
       pageIdx++;
       for (let slot = 0; slot < 2 && i + slot < pResults.length; slot++) {
+        await new Promise(r => setTimeout(r, 0));
         const r = pResults[i + slot];
         const slotTop = marginTop + slot * slotH;
         const cvs = document.createElement('canvas');
         cvs.style.width = '580px'; cvs.style.height = '340px';
         const cfg = Object.assign({}, window._cvCfg || {}, {bgStyle:'white', _exportScale:2, showReps:true});
         drawMultiCurve(cvs, [r], cfg);
-        const imgData = cvs.toDataURL('image/png');
+        const imgData = cvs.toDataURL('image/jpeg', 0.92);
+        cvs.width = cvs.height = 0; // free pixel buffer immediately
         const titleY = slotTop + 6;
         doc.setFontSize(11); doc.setTextColor(30, 30, 30);
         doc.text((r.Sample_ID || '—') + '  ·  ' + protein, marginX, titleY);
@@ -4643,7 +4645,7 @@ async function generateCurvePDFs(results) {
           'Flag: ' + (r.Flag || 'No'),
         ].join('   ');
         doc.text(st, marginX, titleY + 5);
-        doc.addImage(imgData, 'PNG', marginX, titleY + 10, imgW, imgH);
+        doc.addImage(imgData, 'JPEG', marginX, titleY + 10, imgW, imgH);
         if (r.Flag_Reason) {
           doc.setFontSize(7); doc.setTextColor(160, 80, 0);
           doc.text('⚠ ' + r.Flag_Reason, marginX, titleY + 10 + imgH + 5);
