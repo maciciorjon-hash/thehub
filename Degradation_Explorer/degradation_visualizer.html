@@ -955,16 +955,23 @@ function loadFile(f) { loadXlsx(f); }
 function parseXLSXBuf(buf) {
   const wb = XLSX.read(buf, {type:'array'});
 
-  // Prefer sheet named with "summary" (case-insensitive), then first sheet
-  const summaryName = wb.SheetNames.find(n => /summary/i.test(n)) || wb.SheetNames[0];
+  // Prefer "summary" sheet, then "raw data" sheet, then first sheet
+  const summaryName = wb.SheetNames.find(n => /summary/i.test(n))
+    || wb.SheetNames.find(n => /raw/i.test(n))
+    || wb.SheetNames[0];
   const ws = wb.Sheets[summaryName];
   if (!ws) throw new Error('No sheet found');
   const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
 
-  // Find row where col 0 = "Compound"
-  let compoundIdx = -1;
+  // Find "Compound" in col 0 (standard) or col 1 (RAW-triplicates format)
+  let compoundIdx = -1, _rawTrip = false;
   for (let i = 0; i < rows.length; i++) {
     if (String(rows[i][0]||'').trim().toLowerCase() === 'compound') { compoundIdx = i; break; }
+  }
+  if (compoundIdx === -1) {
+    for (let i = 0; i < rows.length; i++) {
+      if (String(rows[i][1]||'').trim().toLowerCase() === 'compound') { compoundIdx = i; _rawTrip = true; break; }
+    }
   }
   if (compoundIdx === -1) throw new Error('No "Compound" column found');
 
@@ -998,6 +1005,79 @@ function parseXLSXBuf(buf) {
   }
 
   let compounds = [], detectedTargets = [], meta = {assay:'', cellLine:'', timePoint:''};
+
+  // ── RAW triplicates format (Compound at col 1, proteins at col P, reps stacked per row) ──
+  // Layout per protein group starting at col P:
+  //   P+1 = per-replicate DC50, P+2 = per-replicate Dmax  (one row per biological replicate)
+  //   P+4 = pre-computed mean DC50, P+6 = DC50 SD          (on 2nd row of compound block)
+  //   P+8 = pre-computed mean Dmax, P+10 = Dmax SD
+  if (_rawTrip) {
+    let tPos = [];
+    for (let i = compoundIdx - 1; i >= 0; i--) {
+      const rw = rows[i], named = [], seen = new Set();
+      for (let c = 2; c < rw.length; c++) {
+        const v = rw[c];
+        if (v && typeof v === 'string' && v.trim() && v !== '±' && !v.startsWith('#') && !/^dc50|^dmax|^assay/i.test(v.trim())) {
+          const n = v.trim(); if (!seen.has(n)) { named.push({name:n, col:c}); seen.add(n); }
+        }
+      }
+      if (named.length >= 1) { tPos = named; break; }
+    }
+    if (!tPos.length) throw new Error('No protein columns detected in RAW triplicates format');
+    detectedTargets = tPos.map(p => p.name);
+    const pCols = {};
+    tPos.forEach(({name, col}) => { pCols[name] = {rDC50:col+1, rDmax:col+2, mDC50:col+4, mDC50sd:col+6, mDmax:col+8, mDmaxSD:col+10}; });
+    // Group rows by compound ID (col 0, repeated for each replicate row)
+    const groups = new Map();
+    for (let i = compoundIdx + 1; i < rows.length; i++) {
+      const row = rows[i], raw = row[0];
+      if (raw === null || raw === undefined) continue;
+      if (typeof raw === 'number' && raw === 0) continue;
+      const name = String(raw).trim(); if (!name || name === '-') continue;
+      if (!groups.has(name)) groups.set(name, []); groups.get(name).push(row);
+    }
+    for (const [name, group] of groups) {
+      const targets = {};
+      detectedTargets.forEach(t => { targets[t] = {dc50:null, dc50_sd:null, dmax:null, dmax_sd:null}; });
+      Object.entries(pCols).forEach(([protein, c]) => {
+        // Individual replicate values from all rows in the compound block
+        const dv = [], mv = [];
+        for (const row of group) {
+          const d = toNum(row[c.rDC50]), m = toNum(row[c.rDmax]);
+          if (d !== null) dv.push(d); if (m !== null) mv.push(m);
+        }
+        // Try pre-computed mean/SD from 2nd row of compound block
+        const r2 = group[1];
+        let dc50 = r2 ? toNum(r2[c.mDC50]) : null, dc50_sd = r2 ? toNum(r2[c.mDC50sd]) : null;
+        let dmax = r2 ? toNum(r2[c.mDmax]) : null, dmax_sd = r2 ? toNum(r2[c.mDmaxSD]) : null;
+        // Fall back to computing from individual replicates if pre-computed is missing
+        if (dc50 === null && dv.length) {
+          dc50 = dv.reduce((a,b)=>a+b,0)/dv.length;
+          if (dv.length > 1) { const v=dv.reduce((a,x)=>a+(x-dc50)**2,0)/(dv.length-1); dc50_sd=Math.sqrt(v); }
+        }
+        if (dmax === null && mv.length) {
+          dmax = mv.reduce((a,b)=>a+b,0)/mv.length;
+          if (mv.length > 1) { const v=mv.reduce((a,x)=>a+(x-dmax)**2,0)/(mv.length-1); dmax_sd=Math.sqrt(v); }
+        }
+        targets[protein] = {dc50, dc50_sd, dmax, dmax_sd};
+      });
+      compounds.push({compound: name, targets});
+    }
+    // Extract metadata from header rows
+    for (let i = 0; i < Math.min(10, compoundIdx); i++) {
+      for (const cell of (rows[i]||[])) {
+        if (typeof cell !== 'string') continue;
+        for (const line of cell.split(/[\n;]+/)) {
+          if (/cell\s*line|cells/i.test(line)) { const m=line.match(/:\s*(.+)/); if(m) meta.cellLine=m[1].trim(); }
+          if (/incubation|time.*point/i.test(line)) { const m=line.match(/:\s*(.+)/); if(m) meta.timePoint=m[1].trim(); }
+          if (/^assay/i.test(line.trim())) { const m=line.match(/:\s*(.+)/); if(m) meta.assay=m[1].trim(); }
+        }
+      }
+    }
+    if (!meta.assay && detectedTargets.length) { const m=detectedTargets[0].match(/-([A-Za-z0-9]+)$/); if(m) meta.assay=m[1]; }
+    if (!compounds.length) throw new Error('No data rows found');
+    return {compounds, targets: detectedTargets, meta};
+  }
 
   if (proteinPositions.length >= 2) {
     // Structured format
