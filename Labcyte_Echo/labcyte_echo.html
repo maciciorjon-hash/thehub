@@ -956,6 +956,10 @@ _allTabs.forEach(t => t.addEventListener('click', () => {
     if (id === 'curves' && scatterData.length) renderCurvesTab(scatterData);
     if (id === 'plate') renderPlateTab();
     if (id === 'history') renderHistoryTab();
+    if (id === 'props' && window._propsDirty) {
+      renderProperties(_lastResultsData, window._lastCompoundData || {});
+      window._propsDirty = false;
+    }
   });
 }));
 
@@ -1208,7 +1212,7 @@ function _buildCsvBytes(header, rows) {
 // ===== PIPELINE =====
 async function runPipeline() {
   if (!echoFile || !Object.keys(readerFiles).length) return;
-  downloadBlobs = []; scatterData = [];
+  downloadBlobs = []; scatterData = []; window._resultsShowAll = false;
   if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
   document.getElementById('scatter-panel').innerHTML = '<div class="empty"><div class="ei">⏳</div><p>Running…</p></div>';
   document.getElementById('results-panel').innerHTML = '<div class="empty"><div class="ei">⏳</div><p>Fitting curves…</p></div>';
@@ -1340,7 +1344,7 @@ async function runPipeline() {
   })();
     renderScatter(results);
     if(window._compoundData){ mergePhysChemIntoScatter(); updateScatterPhysChemOptions(); }
-    renderProperties(results, compoundData);
+    window._lastCompoundData = compoundData; window._propsDirty = true; // rendered lazily on tab visit
     generateCurvePDFs(results);
     renderResults(results);
     document.getElementById('rc').textContent = results.length;
@@ -1746,6 +1750,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
 
   for (const protein of proteins) {
     log('Fitting: ' + protein + '…', 'info');
+    await new Promise(r => setTimeout(r, 0)); // yield to browser between proteins
     const pdata = merged.filter(r => r.protein === protein);
     const sampleIds = [...new Set(pdata.map(r => r.sampleId))].sort();
     let nFit = 0;
@@ -1890,6 +1895,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
 
       nDone++;
       setProgress(15 + Math.round(nDone / totalFits * 70));
+      if (nDone % 50 === 0) await new Promise(r => setTimeout(r, 0)); // yield every 50 fits
     }
     log('  ' + protein + ': ' + nFit + ' fitted', 'ok');
   }
@@ -2006,7 +2012,10 @@ function renderResults(data) {
     h+=`<th${clk}>${col.l}${arr}</th>`;
   });
   h+='</tr></thead><tbody>';
-  sorted.forEach(r=>{
+  const _PAGE = 200;
+  const _showAll = window._resultsShowAll || sorted.length <= _PAGE;
+  const _visible = _showAll ? sorted : sorted.slice(0, _PAGE);
+  _visible.forEach(r=>{
     const c=pcolor(r.Protein);
     const bs='background:'+c.bg+';color:'+c.fg+';padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;';
     let kiCell = '';
@@ -2025,6 +2034,14 @@ function renderResults(data) {
       +'</tr>';
   });
   h+='</tbody></table></div>';
+  if (!_showAll) {
+    h+='<div style="padding:10px 0;text-align:center;">'
+      +'<button onclick="window._resultsShowAll=true;renderResults(window._lastResultsData)" '
+      +'style="padding:6px 18px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);'
+      +'color:var(--text2);font-size:12px;font-family:var(--sans);cursor:pointer;transition:background .15s;" '
+      +'onmouseover="this.style.background=\'var(--surface3)\'" onmouseout="this.style.background=\'var(--surface2)\'">'
+      +'Show all '+sorted.length+' results</button></div>';
+  }
   p.innerHTML=h;
   saveToHistory(data);
 }
@@ -4586,6 +4603,10 @@ function generateCurvePDFs(results) {
   if (!results || !results.length) return;
   const jsPDFCls = window.jspdf && window.jspdf.jsPDF;
   if (!jsPDFCls) return;
+  if (results.length > 150) {
+    log('Curve PDFs skipped — ' + results.length + ' compounds exceeds the 150-compound limit. Use the Curves tab to view individual curves.', 'warn');
+    return;
+  }
   const proteins = [...new Set(results.map(r => r.Protein))].sort();
   const assayId = window._lastAssayId || 'output';
   for (const protein of proteins) {
