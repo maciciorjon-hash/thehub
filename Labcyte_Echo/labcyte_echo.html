@@ -660,6 +660,7 @@ tr:hover td{background:var(--surface2);}
   </div>
 
   <button id="test-btn" onclick="loadTestData()" style="width:100%;padding:6px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text2);font-size:11px;font-family:var(--sans);cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)'">⚗ Load test data</button>
+<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);cursor:pointer;padding:4px 0;"><input type="checkbox" id="p-gen-pdf"> Generate curve PDFs</label>
 <button class="run-btn" id="run-btn" disabled onclick="runPipeline()">Run analysis</button>
 </div>
 
@@ -1345,7 +1346,7 @@ async function runPipeline() {
     renderScatter(results);
     if(window._compoundData){ mergePhysChemIntoScatter(); updateScatterPhysChemOptions(); }
     window._lastCompoundData = compoundData; window._propsDirty = true; // rendered lazily on tab visit
-    generateCurvePDFs(results);
+    if (document.getElementById('p-gen-pdf').checked) generateCurvePDFs(results);
     renderResults(results);
     document.getElementById('rc').textContent = results.length;
     document.getElementById('sc').textContent = results.length;
@@ -4603,10 +4604,6 @@ function generateCurvePDFs(results) {
   if (!results || !results.length) return;
   const jsPDFCls = window.jspdf && window.jspdf.jsPDF;
   if (!jsPDFCls) return;
-  if (results.length > 150) {
-    log('Curve PDFs skipped — ' + results.length + ' compounds exceeds the 150-compound limit. Use the Curves tab to view individual curves.', 'warn');
-    return;
-  }
   const proteins = [...new Set(results.map(r => r.Protein))].sort();
   const assayId = window._lastAssayId || 'output';
   for (const protein of proteins) {
@@ -4616,32 +4613,37 @@ function generateCurvePDFs(results) {
     const marginX = 12, marginTop = 12;
     const imgW = pageW - marginX * 2;
     const imgH = Math.round(imgW * 340 / 580);
-    let first = true;
-    for (const r of pResults) {
-      if (!first) doc.addPage();
-      first = false;
-      const cvs = document.createElement('canvas');
-      cvs.style.width = '580px'; cvs.style.height = '340px';
-      const cfg = Object.assign({}, window._cvCfg || {}, {bgStyle:'white', _exportScale:2, showReps:true});
-      drawMultiCurve(cvs, [r], cfg);
-      const imgData = cvs.toDataURL('image/png');
-      const titleY = marginTop + 6;
-      doc.setFontSize(11); doc.setTextColor(30, 30, 30);
-      doc.text((r.Sample_ID || '—') + '  ·  ' + protein, marginX, titleY);
-      doc.setFontSize(8); doc.setTextColor(90, 90, 100);
-      const st = [
-        'DC50: ' + (r.DC50_nM != null ? r.DC50_nM + ' nM' : '—'),
-        'Dmax: ' + (r.Dmax_pct != null ? r.Dmax_pct + '%' : '—'),
-        'pDC50: ' + (r.pDC50 ?? '—'),
-        'Hill: ' + (r.HillSlope ?? '—'),
-        'R²: ' + (r.R2 ?? '—'),
-        'Flag: ' + (r.Flag || 'No'),
-      ].join('   ');
-      doc.text(st, marginX, titleY + 5);
-      doc.addImage(imgData, 'PNG', marginX, titleY + 10, imgW, imgH);
-      if (r.Flag_Reason) {
-        doc.setFontSize(7); doc.setTextColor(160, 80, 0);
-        doc.text('⚠ ' + r.Flag_Reason, marginX, titleY + 10 + imgH + 5);
+    const slotH = imgH + 26;
+    let pageIdx = 0;
+    for (let i = 0; i < pResults.length; i += 2) {
+      if (pageIdx > 0) doc.addPage();
+      pageIdx++;
+      for (let slot = 0; slot < 2 && i + slot < pResults.length; slot++) {
+        const r = pResults[i + slot];
+        const slotTop = marginTop + slot * slotH;
+        const cvs = document.createElement('canvas');
+        cvs.style.width = '580px'; cvs.style.height = '340px';
+        const cfg = Object.assign({}, window._cvCfg || {}, {bgStyle:'white', _exportScale:2, showReps:true});
+        drawMultiCurve(cvs, [r], cfg);
+        const imgData = cvs.toDataURL('image/png');
+        const titleY = slotTop + 6;
+        doc.setFontSize(11); doc.setTextColor(30, 30, 30);
+        doc.text((r.Sample_ID || '—') + '  ·  ' + protein, marginX, titleY);
+        doc.setFontSize(8); doc.setTextColor(90, 90, 100);
+        const st = [
+          'DC50: ' + (r.DC50_nM != null ? r.DC50_nM + ' nM' : '—'),
+          'Dmax: ' + (r.Dmax_pct != null ? r.Dmax_pct + '%' : '—'),
+          'pDC50: ' + (r.pDC50 ?? '—'),
+          'Hill: ' + (r.HillSlope ?? '—'),
+          'R²: ' + (r.R2 ?? '—'),
+          'Flag: ' + (r.Flag || 'No'),
+        ].join('   ');
+        doc.text(st, marginX, titleY + 5);
+        doc.addImage(imgData, 'PNG', marginX, titleY + 10, imgW, imgH);
+        if (r.Flag_Reason) {
+          doc.setFontSize(7); doc.setTextColor(160, 80, 0);
+          doc.text('⚠ ' + r.Flag_Reason, marginX, titleY + 10 + imgH + 5);
+        }
       }
     }
     const pdfName = 'Results_' + assayId + '_Curves_' + protein.replace(/[/\\?%*:|"<>]/g,'_') + '.pdf';
