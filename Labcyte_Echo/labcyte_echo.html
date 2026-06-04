@@ -1346,7 +1346,7 @@ async function runPipeline() {
     renderScatter(results);
     if(window._compoundData){ mergePhysChemIntoScatter(); updateScatterPhysChemOptions(); }
     window._lastCompoundData = compoundData; window._propsDirty = true; // rendered lazily on tab visit
-    if (document.getElementById('p-gen-pdf').checked) generateCurvePDFs(results);
+    if (document.getElementById('p-gen-pdf').checked) await generateCurvePDFs(results);
     renderResults(results);
     document.getElementById('rc').textContent = results.length;
     document.getElementById('sc').textContent = results.length;
@@ -4600,22 +4600,26 @@ function renderDownloads() {
 }
 
 // ===== PDF GENERATION =====
-function generateCurvePDFs(results) {
+async function generateCurvePDFs(results) {
   if (!results || !results.length) return;
   const jsPDFCls = window.jspdf && window.jspdf.jsPDF;
-  if (!jsPDFCls) return;
+  if (!jsPDFCls) { log('jsPDF not loaded — PDFs skipped.', 'warn'); return; }
   const proteins = [...new Set(results.map(r => r.Protein))].sort();
   const assayId = window._lastAssayId || 'output';
+  const total = results.length;
+  let done = 0;
+  log('Generating curve PDFs (' + total + ' compounds)…', 'info');
   for (const protein of proteins) {
     const pResults = results.filter(r => r.Protein === protein);
     const doc = new jsPDFCls({orientation:'portrait', unit:'mm', format:'a4'});
-    const pageW = 210, pageH = 297;
+    const pageW = 210;
     const marginX = 12, marginTop = 12;
     const imgW = pageW - marginX * 2;
     const imgH = Math.round(imgW * 340 / 580);
     const slotH = imgH + 26;
     let pageIdx = 0;
     for (let i = 0; i < pResults.length; i += 2) {
+      await new Promise(r => setTimeout(r, 0));
       if (pageIdx > 0) doc.addPage();
       pageIdx++;
       for (let slot = 0; slot < 2 && i + slot < pResults.length; slot++) {
@@ -4644,14 +4648,17 @@ function generateCurvePDFs(results) {
           doc.setFontSize(7); doc.setTextColor(160, 80, 0);
           doc.text('⚠ ' + r.Flag_Reason, marginX, titleY + 10 + imgH + 5);
         }
+        done++;
+        setProgress(Math.round(done / total * 100));
       }
     }
     const pdfName = 'Results_' + assayId + '_Curves_' + protein.replace(/[/\\?%*:|"<>]/g,'_') + '.pdf';
     try {
       const pdfBytes = new Uint8Array(doc.output('arraybuffer'));
       downloadBlobs.push({ name: pdfName, bytes: pdfBytes, type: 'application/pdf', kind: 'pdf' });
-    } catch(e) { /* skip if PDF fails */ }
+    } catch(e) { log('PDF failed for ' + protein + ': ' + (e.message || e), 'warn'); }
   }
+  log('Curve PDFs ready — ' + proteins.length + ' file(s).', 'ok');
 }
 
 // ===== INIT =====
