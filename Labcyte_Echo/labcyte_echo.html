@@ -1191,6 +1191,23 @@ function loadTestData() {
   }, 20);
 }
 
+// Builds a CSV Uint8Array in 5 000-row chunks to avoid RangeError from
+// joining millions of rows into one giant JS string.
+function _buildCsvBytes(header, rows) {
+  var enc = new TextEncoder();
+  var CHUNK = 5000;
+  var parts = [enc.encode(header)];
+  for (var i = 0; i < rows.length; i += CHUNK) {
+    var end = Math.min(i + CHUNK, rows.length);
+    parts.push(enc.encode(rows.slice(i, end).join('\r\n') + (end < rows.length ? '\r\n' : '')));
+  }
+  if (!rows.length) return parts[0];
+  var total = parts.reduce(function(n, p) { return n + p.length; }, 0);
+  var out = new Uint8Array(total), off = 0;
+  parts.forEach(function(p) { out.set(p, off); off += p.length; });
+  return out;
+}
+
 // ===== PIPELINE =====
 async function runPipeline() {
   if (!echoFile || !Object.keys(readerFiles).length) return;
@@ -1719,7 +1736,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       r.log10Conc.toFixed(4), r.measurement !== null && isFinite(r.measurement) ? r.measurement.toFixed(4) : '', concNM
     ].join(',');
   });
-  downloadBlobs.push({ name: rawCsvName, bytes: new TextEncoder().encode(rawHeader + rawRows.join('\r\n')), type: 'text/csv', kind: 'csv' });
+  downloadBlobs.push({ name: rawCsvName, bytes: _buildCsvBytes(rawHeader, rawRows), type: 'text/csv', kind: 'csv' });
   log('Raw data CSV: ' + rawRows.length + ' rows', 'ok');
 
   // 7. Fit curves
@@ -1895,7 +1912,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   const sumCsvName = 'Results_' + assayId + '_Consolidated_Summary.csv';
   const sumHeader = headerCols2.join(',') + '\r\n';
   const sumRows = summary.map(r => outputCols.map(c => r[c] !== undefined && r[c] !== null ? r[c] : '').join(','));
-  downloadBlobs.push({ name: sumCsvName, bytes: new TextEncoder().encode(sumHeader + sumRows.join('\r\n')), type: 'text/csv', kind: 'csv' });
+  downloadBlobs.push({ name: sumCsvName, bytes: _buildCsvBytes(sumHeader, sumRows), type: 'text/csv', kind: 'csv' });
   log('CSV: ' + summary.length + ' rows', 'ok');
   log('Pipeline complete.', 'ok');
 
@@ -2056,8 +2073,8 @@ function generateOutputCSV() {
   });
   var headerCols=filtCols.map(function(c){return colMap[c]||c;});
   const esc2 = v => (v==null||v==='')?'':'"'+String(v).replace(/"/g,'""')+'"';
-  const rows = [headerCols.join(','), ...scatterData.map(r => filtCols.map(c=>esc2(r[c])).join(','))];
-  const blob = new Blob(['\uFEFF'+rows.join('\n')], {type:'text/csv'});
+  const csvRows = scatterData.map(r => filtCols.map(c=>esc2(r[c])).join(','));
+  const blob = new Blob(['\uFEFF'+headerCols.join(',')+'\n', ...csvRows.map(r=>r+'\n')], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'Results_'+(window._lastAssayId||'output')+'_export.csv';
@@ -4475,7 +4492,7 @@ function enrichDownloadCSV(cdata, blobs) {
       out.push(lines[i] + ',,,,,,,,');
     }
   }
-  blobs[idx].bytes = new TextEncoder().encode(out.join('\n'));
+  blobs[idx].bytes = _buildCsvBytes(out[0] + '\n', out.slice(1));
   log('CSV enriched: ' + nMatched + '/' + (lines.length - 1) + ' rows matched with SMILES data', nMatched > 0 ? 'ok' : 'warn');
 }
 
