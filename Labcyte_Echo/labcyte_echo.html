@@ -193,7 +193,7 @@ tr:hover td{background:var(--surface2);}
 .sc-match-info{font-size:11px;color:var(--text3);padding:2px 6px;}
 
 /* PROTOCOL TAB */
-.proto-sec{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text3);margin:18px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--border);}
+.proto-sec{font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--accent2);margin:20px 0 8px;padding:5px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--accent2);}
 .proto-sec:first-child{margin-top:0;}
 .proto-row{display:grid;grid-template-columns:220px 1fr;gap:4px 14px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:start;}
 .proto-k{color:var(--text3);font-size:11px;padding-top:1px;}
@@ -1263,7 +1263,10 @@ async function runPipeline() {
   const assayType = document.getElementById('p-assay-type')?.value || 'hibit';
   const zeroPctCtrl = document.getElementById('p-zero-pct')?.value?.trim() || '';
   window._lastAssayType = assayType;
-  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: new Date().toISOString() };
+  const _now = new Date();
+  const _tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const _tsLocal = _now.toLocaleString('en-GB', { timeZone: _tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '') + ' (' + _tz + ')';
+  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: _now.toISOString(), timestampLocal: _tsLocal };
   const csvCols = [...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col);
 
   try {
@@ -1639,8 +1642,6 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   const echoData = _parseEchoCSV(echoText, skipRows);
   if (!echoData.length) throw new Error('Echo CSV parse failed: no data rows found');
   const echoBarcodeSet = new Set(echoData.map(r => r.barcode));
-  const concValues = echoData.map(r => r.conc * 1e9).filter(v => v > 0);
-  window._echoSummary = { fileName: echoFile?.name || '', transfers: echoData.length, plates: echoBarcodeSet.size, compounds: new Set(echoData.map(r => r.sampleId)).size, concMin: concValues.length ? Math.min(...concValues) : null, concMax: concValues.length ? Math.max(...concValues) : null };
   log('Echo: ' + echoData.length + ' transfers, ' + echoBarcodeSet.size + ' plates', 'ok');
 
   // 2. Parse PHERAstar XLS files
@@ -1710,6 +1711,29 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   const readerBarcodeKeys = [...new Set(readerRaw.map(r => r.barcodeKey))];
   const matchedBks = echoBarcodeKeys.filter(b => readerBarcodeKeys.includes(b));
   log('Barcode match: ' + matchedBks.length + '/' + echoBarcodeKeys.length + ' Echo barcodes found in PHERAstar files');
+
+  // Build echo summary with final vs intermediate plate separation
+  const _matchedSet = new Set(matchedBks);
+  const _finalTx = echoData.filter(r => _matchedSet.has(r.barcodeKey));
+  const _interTx  = echoData.filter(r => !_matchedSet.has(r.barcodeKey));
+  const _fConcs = _finalTx.map(r => r.conc * 1e9).filter(v => v > 0);
+  const _iConcs = _interTx.map(r => r.conc * 1e9).filter(v => v > 0);
+  const _interBks = [...new Set(_interTx.map(r => r.barcodeKey))];
+  window._echoSummary = {
+    fileName: echoFile?.name || '',
+    transfers: echoData.length,
+    plates: echoBarcodeSet.size,
+    compounds: new Set(echoData.map(r => r.sampleId)).size,
+    finalPlates: matchedBks.length,
+    finalTransfers: _finalTx.length,
+    finalConcMin: _fConcs.length ? Math.min(..._fConcs) : null,
+    finalConcMax: _fConcs.length ? Math.max(..._fConcs) : null,
+    interPlates: _interBks.length,
+    interTransfers: _interTx.length,
+    interConcMin: _iConcs.length ? Math.min(..._iConcs) : null,
+    interConcMax: _iConcs.length ? Math.max(..._iConcs) : null,
+  };
+
   if (!matchedBks.length) {
     log('  Echo barcodes: ' + echoBarcodeKeys.slice(0, 4).join(', '), 'warn');
     log('  PHERAstar barcodes: ' + readerBarcodeKeys.slice(0, 4).join(', '), 'warn');
@@ -2208,7 +2232,7 @@ function generateOutputXLSX() {
   var echo = window._echoSummary || {};
   var atLabels = { hibit:'HiBiT Degradation', ctg:'CellTiter-Glo / Viability', fp:'Fluorescence Polarization', trfret:'TR-FRET', displacement:'Competitive Displacement', gain:'Gain-of-Function (EC50)' };
   var fmtConc = function(v) { if (v == null) return ''; return v < 1 ? v.toFixed(2) + ' nM' : Math.round(v) + ' nM'; };
-  var ts = params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) : '';
+  var ts = params.timestampLocal || (params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) + ' UTC' : '');
   var protocolRows = [
     ['Parameter', 'Value'],
     ['Assay ID', params.assayId || ''],
@@ -2227,10 +2251,11 @@ function generateOutputXLSX() {
     [],
     ['ECHO TRANSFER FILE', ''],
     ['File', echo.fileName || params.echoFileName || ''],
-    ['Transfers', echo.transfers || ''],
-    ['Plates', echo.plates || ''],
+    ['Total transfers', echo.transfers || ''],
+    ['Total plates', echo.plates || ''],
     ['Unique compounds', echo.compounds || ''],
-    ['Concentration range', echo.concMin != null ? fmtConc(echo.concMin) + ' – ' + fmtConc(echo.concMax) : ''],
+    ['Assay plates', echo.finalPlates != null ? (echo.finalPlates + ' · ' + (echo.finalTransfers||0) + ' transfers' + (echo.finalConcMin != null ? ' · ' + fmtConc(echo.finalConcMin) + ' – ' + fmtConc(echo.finalConcMax) : '')) : ''],
+    ['Intermediate plates', echo.interPlates ? (echo.interPlates + ' · ' + (echo.interTransfers||0) + ' transfers' + (echo.interConcMin != null ? ' · ' + fmtConc(echo.interConcMin) + ' – ' + fmtConc(echo.interConcMax) : '')) : 'None'],
     [],
     ['PHERASTAR FILES', ''],
     ['Files', (params.readerFileNames || []).join(', ')],
@@ -2269,7 +2294,7 @@ function renderProtocol() {
   var echo = window._echoSummary || {};
   var phera = window._pheraProtocol;
   var atLabels = { hibit:'HiBiT Degradation', ctg:'CellTiter-Glo / Viability', fp:'Fluorescence Polarization', trfret:'TR-FRET', displacement:'Competitive Displacement', gain:'Gain-of-Function (EC50)' };
-  var ts = params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) + ' UTC' : '—';
+  var ts = params.timestampLocal || (params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) + ' UTC' : '—');
   var fmtConc = function(v) { if (v == null) return '—'; return v < 1 ? v.toFixed(2) + ' nM' : Math.round(v) + ' nM'; };
   var row = function(lbl, val) { return '<div class="proto-row"><span class="proto-k">' + lbl + '</span><span class="proto-v">' + val + '</span></div>'; };
   var sec = function(title) { return '<div class="proto-sec">' + title + '</div>'; };
@@ -2292,10 +2317,17 @@ function renderProtocol() {
 
   html += sec('Echo Transfer File');
   html += row('File', echo.fileName || '—');
-  html += row('Transfers', echo.transfers != null ? echo.transfers.toLocaleString() : '—');
-  html += row('Plates', echo.plates != null ? echo.plates : '—');
+  html += row('Total transfers', echo.transfers != null ? echo.transfers.toLocaleString() : '—');
+  html += row('Total plates', echo.plates != null ? echo.plates : '—');
   html += row('Unique compounds', echo.compounds != null ? echo.compounds : '—');
-  html += row('Concentration range', fmtConc(echo.concMin) + ' – ' + fmtConc(echo.concMax));
+  if (echo.finalPlates != null) {
+    var fConc = (echo.finalConcMin != null && echo.finalConcMax != null) ? fmtConc(echo.finalConcMin) + ' – ' + fmtConc(echo.finalConcMax) : '—';
+    html += row('Assay plates', '<strong>' + echo.finalPlates + '</strong> · ' + (echo.finalTransfers||0).toLocaleString() + ' transfers · ' + fConc);
+  }
+  if (echo.interPlates) {
+    var iConc = (echo.interConcMin != null && echo.interConcMax != null) ? fmtConc(echo.interConcMin) + ' – ' + fmtConc(echo.interConcMax) : '—';
+    html += row('Intermediate plates', '<span style="color:var(--text2)">' + echo.interPlates + ' · ' + (echo.interTransfers||0).toLocaleString() + ' transfers · ' + iConc + '</span>');
+  }
 
   html += sec('PHERAstar Reader Files');
   var rnames = params.readerFileNames || [];

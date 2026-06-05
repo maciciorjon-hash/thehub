@@ -238,17 +238,13 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-05 (Round 11: Echo plate overhaul, XLSX export, Protocol tab, Deg import fix)
+Last session: 2026-06-05 (Round 12: Echo Protocol polish, changelog scroll fix)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.57MB (7,566,609 chars). Commit 47389ea. Version v0.9.1
-Echo plate view: size slider (8–40px, integer), fit-to-screen grid toggle (auto-fill CSS grid),
-  grouped compound labels (centred centroid over well set, shadow, scaled font), plate name below canvas.
-  _cellDims() shared helper for drawPlateCanvas + plateMouseMove — no hardcoded dims.
-Echo export: CSV → XLSX with sheets: Results, Data Analysis Protocol, PHERAstar Protocol, Prism Copy.
-  Prism Copy: concentrations descending (highest first), compounds as adjacent Rep1/Rep2 columns,
-  one section per protein group with "Group: BRD4" header + merged compound name cells.
-Echo Protocol tab: live renderProtocol() after analysis — shows all params, Echo file stats,
-  PHERAstar protocol sheet (extracted via _extractPHERAProtocol if Protocol sheet exists in PHERAstar XLS).
-Degradation Explorer: Import Modal removed (redundant path), Load tab drop zone is sole import.
-  null guards in updateMeta() and updateStats(), meta-label/meta-desc elements added to header.
+Hub file size: 7.57MB (7,569,976 chars). Version v0.9.2
+Echo Protocol tab: timestamp now shows local time + timezone (params.timestampLocal via Intl.DateTimeFormat).
+  Echo section shows Assay plates vs Intermediate plates separately (uses finalPlates/finalTransfers/
+  finalConcMin/Max + interPlates/interTransfers/interConcMin/Max from window._echoSummary).
+  Section headers styled with accent2 colour + left border card (proto-sec CSS).
+Echo XLSX export: Data Analysis Protocol sheet uses same timestampLocal + final/intermediate breakdown.
+Hub Settings panel: opts-panel has max-height:calc(100vh - 70px) + overflow-y:auto — changelog scrollable.
 <!-- LAST_SESSION_END -->
