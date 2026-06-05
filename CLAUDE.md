@@ -238,13 +238,13 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-05 (Round 12: Echo Protocol polish, changelog scroll fix)
+Last session: 2026-06-05 (Round 13: Echo output columns, plate label fix, default plate layout)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.57MB (7,569,976 chars). Version v0.9.2
-Echo Protocol tab: timestamp now shows local time + timezone (params.timestampLocal via Intl.DateTimeFormat).
-  Echo section shows Assay plates vs Intermediate plates separately (uses finalPlates/finalTransfers/
-  finalConcMin/Max + interPlates/interTransfers/interConcMin/Max from window._echoSummary).
-  Section headers styled with accent2 colour + left border card (proto-sec CSS).
-Echo XLSX export: Data Analysis Protocol sheet uses same timestampLocal + final/intermediate breakdown.
-Hub Settings panel: opts-panel has max-height:calc(100vh - 70px) + overflow-y:auto — changelog scrollable.
+Hub file size: 7.57MB (7,572,338 chars). Version v0.9.3
+Echo output columns: absdc50Enabled reads from output column checkbox, not separate input.
+  abs-dc50-field input removed. "Output CSV columns" → "Output columns".
+  renderResults/copyResultsTSV/generateOutputCSV/generateOutputXLSX all filter by checked columns.
+  renderResults uses dynamic _cellFn map + per-assay column filtering (AbsDC50 hibit-only, Dmax hidden for FP/TRFRET/displacement).
+Echo plate labels: replaced shadowBlur=3 with pill background (roundRect + rgba) + strokeText outline.
+Echo plate view: default _plateCellW=14 (not 32), default _plateFit=true (fit-to-screen on).
 <!-- LAST_SESSION_END -->

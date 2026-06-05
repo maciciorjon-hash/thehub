@@ -644,12 +644,11 @@ tr:hover td{background:var(--surface2);}
         <div id="hibit-ctg-params">
         <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-top-en" checked onchange="var el=document.getElementById('p-top');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Top constrain (%)<span class="pinfo" data-tip="Pins the upper plateau of the 4PL curve. 100% = full signal (DMSO level). Disable to allow the top to float freely — useful for partial agonists or assays without full saturation.">i</span></span></div><input type="number" id="p-top" value="100" min="50" max="110"><div class="hint">Upper plateau of 4PL fit. Disable to fit top freely.</div></div>
         <div class="field" id="dmax-cap-field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-dmax-cap-en" checked onchange="var el=document.getElementById('p-dmax-cap-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Max Dmax (%)<span class="pinfo" data-tip="Caps the maximum degradation. When enabled, the 4PL bottom asymptote is constrained so Dmax cannot exceed this value. Useful when biology dictates incomplete degradation. Max allowed: 99%.">i</span></span></div><input type="number" id="p-dmax-cap-val" value="99" min="10" max="99" step="1" style="opacity:1;"><div class="hint">Constrain Dmax to ≤ this value (%)</div></div>
-        <div class="field" id="abs-dc50-field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-abs-dc50"></label><span class="flbl">Absolute DC50</span></div><div class="hint">Also compute absolute DC50 (signal=50% vs baseline). Valid when Dmax&gt;50%.</div></div>
         </div>
         <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-bot" onchange="var el=document.getElementById('p-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix bottom (%)</span></div><input type="number" id="p-bot-val" value="0" min="-50" max="100" disabled style="opacity:0.35;"><div class="hint">Enable to pin 4PL bottom asymptote</div></div>
         <div class="field"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-hill" onchange="var el=document.getElementById('p-hill-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix Hill slope</span></div><input type="number" id="p-hill-val" value="1" min="0.1" max="5" step="0.1" disabled style="opacity:0.35;"><div class="hint">Enable to pin Hill slope coefficient</div></div>
         <div class="field" style="margin-top:8px;">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px;">Output CSV columns</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px;">Output columns</div>
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px 4px;">
             <label class="csv-lbl" id="csv-dc50-lbl"><input type="checkbox" class="csv-col-cb" data-col="DC50_nM" checked> <span>DC50</span></label>
             <label class="csv-lbl" id="csv-dmax-lbl"><input type="checkbox" class="csv-col-cb" data-col="Dmax_pct" checked> <span>Dmax</span></label>
@@ -916,9 +915,7 @@ function onAssayTypeChange(){
 
   // Max Dmax + Absolute DC50: HiBiT only
   var dmaxF=document.getElementById('dmax-cap-field');
-  var absF=document.getElementById('abs-dc50-field');
   if(dmaxF)dmaxF.style.display=(t==='hibit')?'':'none';
-  if(absF)absF.style.display=(t==='hibit')?'':'none';
 
   // CSV column labels and visibility
   var dc50Lbl=document.getElementById('csv-dc50-lbl');
@@ -1256,7 +1253,7 @@ async function runPipeline() {
   const hillVal = parseFloat(document.getElementById('p-hill-val')?.value) || 1;
   const dmaxCapEnabled = document.getElementById('p-dmax-cap-en')?.checked || false;
   const dmaxCapVal = Math.min(99, Math.max(10, parseFloat(document.getElementById('p-dmax-cap-val')?.value) || 99));
-  const absdc50Enabled = document.getElementById('p-abs-dc50')?.checked || false;
+  const absdc50Enabled = !!document.querySelector('.csv-col-cb[data-col="AbsDC50_nM"]')?.checked;
   const skipNorm = document.getElementById('p-skip-norm')?.checked || false;
   const qcOverridesJSON = window._pendingQcOverrides || '{}';
   window._pendingQcOverrides = null;
@@ -2034,12 +2031,34 @@ function renderResults(data) {
     }
   }
 
-  const cols=[
-    {k:'Protein',l:'Group'},{k:'Sample_ID',l:'Sample ID'},{k:'DC50_nM',l:(window._bpVarLabels||{})['DC50_nM']||'DC50 (nM)'},{k:'AbsDC50_nM',l:(window._bpVarLabels||{})['AbsDC50_nM']||'Abs DC50 (nM)'},
-    {k:'Dmax_pct',l:(window._bpVarLabels||{})['Dmax_pct']||'Dmax (%)'},{k:'LogIC50_M',l:(window._bpVarLabels||{})['LogIC50_M']||'LogIC50'},{k:'pDC50',l:(window._bpVarLabels||{})['pDC50']||'pDC50'},{k:'HillSlope',l:'Hill'},
-    {k:'R2',l:'R²'},{k:'Flag',l:'Flag',ns:true},{k:'Flag_Reason',l:'Reason',ns:true},
+  const _selCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
+  const _t = document.getElementById('p-assay-type')?.value || 'hibit';
+  const _noGain = _t==='fp'||_t==='trfret'||_t==='displacement';
+  const _vl = window._bpVarLabels || {};
+  const _colLbls = {DC50_nM:_vl['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vl['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vl['Dmax_pct']||'Dmax (%)',LogIC50_M:_vl['LogIC50_M']||'LogIC50',pDC50:_vl['pDC50']||'pDC50',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
+  const _cellFn = {
+    Protein: r=>'<td><span class="pbadge" style="background:'+pcolor(r.Protein).bg+';color:'+pcolor(r.Protein).fg+';padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;">'+esc(r.Protein)+'</span></td>',
+    Sample_ID: r=>'<td>'+esc(r.Sample_ID)+'</td>',
+    DC50_nM: r=>'<td>'+r.DC50_nM+'</td>',
+    AbsDC50_nM: r=>'<td>'+(r.AbsDC50_nM!=null?r.AbsDC50_nM:'—')+'</td>',
+    Dmax_pct: r=>'<td>'+r.Dmax_pct+'</td>',
+    LogIC50_M: r=>'<td>'+r.LogIC50_M+'</td>',
+    pDC50: r=>'<td>'+(r.pDC50??'')+'</td>',
+    HillSlope: r=>'<td>'+r.HillSlope+'</td>',
+    R2: r=>'<td>'+r.R2+'</td>',
+    Flag: r=>'<td class="'+(r.Flag==='Yes'?'fy':'fn')+'">'+r.Flag+'</td>',
+    Flag_Reason: r=>'<td style="max-width:200px;white-space:normal;font-size:11px;color:var(--text3);">'+esc(r.Flag_Reason||'')+'</td>',
+  };
+  if (_kiParams) _cellFn['_Ki_nM'] = r=>{const _ic50=parseFloat(r.DC50_nM);return '<td>'+(isNaN(_ic50)?'—':(_ic50/(1+_kiParams.lcNM/_kiParams.kdNM)).toFixed(2))+'</td>';};
+  const cols = [
+    {k:'Protein',l:'Group'},{k:'Sample_ID',l:'Sample ID'},
+    ...(_kiParams?[{k:'_Ki_nM',l:'Ki (nM)',ns:true}]:[]),
+    ...['DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason']
+      .filter(k=>_selCols.has(k))
+      .filter(k=>!(k==='AbsDC50_nM'&&_t!=='hibit'))
+      .filter(k=>!(k==='Dmax_pct'&&_noGain))
+      .map(k=>({k,l:_colLbls[k]||k,ns:k==='Flag'||k==='Flag_Reason'})),
   ];
-  if (_kiParams) cols.splice(3, 0, {k:'_Ki_nM', l:'Ki (nM)', ns:true});
   const _pdfBlobs=downloadBlobs.filter(b=>b.kind==='pdf');
   const _rawBlob=downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
   // Build download section
@@ -2076,22 +2095,7 @@ function renderResults(data) {
   const _showAll = window._resultsShowAll || sorted.length <= _PAGE;
   const _visible = _showAll ? sorted : sorted.slice(0, _PAGE);
   _visible.forEach(r=>{
-    const c=pcolor(r.Protein);
-    const bs='background:'+c.bg+';color:'+c.fg+';padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;';
-    let kiCell = '';
-    if (_kiParams) {
-      const ic50 = parseFloat(r.DC50_nM);
-      kiCell = '<td style="font-family:var(--mono);font-size:12px;">'+(isNaN(ic50)?'—':(ic50/(1+_kiParams.lcNM/_kiParams.kdNM)).toFixed(2))+'</td>';
-    }
-    h+='<tr>'
-      +'<td><span class="pbadge" style="'+bs+'">'+esc(r.Protein)+'</span></td>'
-      +'<td>'+esc(r.Sample_ID)+'</td><td>'+r.DC50_nM+'</td>'
-      +(kiCell)
-      +'<td>'+(r.AbsDC50_nM!=null?r.AbsDC50_nM:'—')+'</td><td>'+r.Dmax_pct+'</td>'
-      +'<td>'+r.LogIC50_M+'</td><td>'+(r.pDC50??'')+'</td><td>'+r.HillSlope+'</td><td>'+r.R2+'</td>'
-      +'<td class="'+(r.Flag==='Yes'?'fy':'fn')+'">'+r.Flag+'</td>'
-      +'<td style="max-width:200px;white-space:normal;font-size:11px;color:var(--text3);">'+esc(r.Flag_Reason||'')+'</td>'
-      +'</tr>';
+    h+='<tr>'+cols.map(col=>(_cellFn[col.k]||((_r)=>'<td>'+(_r[col.k]??'')+'</td>'))(r)).join('')+'</tr>';
   });
   h+='</tbody></table></div>';
   if (!_showAll) {
@@ -2113,10 +2117,14 @@ function downloadBlob(blob) {
 }
 function copyResultsTSV() {
   if (!_lastResultsData.length) { alert('No results to copy.'); return; }
-  const cols = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
-  const _vl = window._bpVarLabels || {};
-  const hdr = ['Group','Sample ID',_vl['DC50_nM']||'DC50 (nM)',_vl['AbsDC50_nM']||'Abs DC50 (nM)',_vl['Dmax_pct']||'Dmax (%)',_vl['LogIC50_M']||'LogIC50',_vl['pDC50']||'pDC50','Hill','R²','Flag','Reason'];
-  const rows = [hdr.join('\t'), ..._lastResultsData.map(r=>cols.map(c=>r[c]??'').join('\t'))];
+  const _selTsv = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
+  const _tTsv = window._lastAssayType || 'hibit';
+  const _noGainTsv = _tTsv==='fp'||_tTsv==='trfret'||_tTsv==='displacement';
+  const _vlT = window._bpVarLabels || {};
+  const _allK = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
+  const _lbl = {Protein:'Group',Sample_ID:'Sample ID',DC50_nM:_vlT['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vlT['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vlT['Dmax_pct']||'Dmax (%)',LogIC50_M:_vlT['LogIC50_M']||'LogIC50',pDC50:_vlT['pDC50']||'pDC50',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
+  const cols = _allK.filter(k=>(k==='Protein'||k==='Sample_ID'||_selTsv.has(k))&&!(k==='AbsDC50_nM'&&_tTsv!=='hibit')&&!(k==='Dmax_pct'&&_noGainTsv));
+  const rows = [cols.map(k=>_lbl[k]||k).join('\t'), ..._lastResultsData.map(r=>cols.map(c=>r[c]??'').join('\t'))];
   navigator.clipboard.writeText(rows.join('\n')).then(()=>{
     const btn=document.querySelector('[onclick="copyResultsTSV()"]');
     if(btn){const t=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=t,1500);}
@@ -2140,10 +2148,12 @@ function generateOutputCSV() {
   var colMap=_csvColMap(t);
   var noGain=t==='fp'||t==='trfret'||t==='displacement';
   var internalCols=['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
+  var _selCsvCols=new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(function(el){return el.dataset.col;}));
   var filtCols=internalCols.filter(function(c){
+    if(c==='Protein'||c==='Sample_ID')return true;
     if(c==='AbsDC50_nM'&&t!=='hibit')return false;
     if(c==='Dmax_pct'&&noGain)return false;
-    return true;
+    return _selCsvCols.has(c);
   });
   var headerCols=filtCols.map(function(c){return colMap[c]||c;});
   const esc2 = v => (v==null||v==='')?'':'"'+String(v).replace(/"/g,'""')+'"';
@@ -2218,10 +2228,12 @@ function generateOutputXLSX() {
   var colMap = _csvColMap(t);
   var noGain = t === 'fp' || t === 'trfret' || t === 'displacement';
   var internalCols = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
+  var _selXlsxCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(function(el) { return el.dataset.col; }));
   var filtCols = internalCols.filter(function(c) {
+    if (c === 'Protein' || c === 'Sample_ID') return true;
     if (c === 'AbsDC50_nM' && t !== 'hibit') return false;
     if (c === 'Dmax_pct' && noGain) return false;
-    return true;
+    return _selXlsxCols.has(c);
   });
   var headerCols = filtCols.map(function(c) { return colMap[c] || c; });
   var resultsRows = [headerCols].concat(scatterData.map(function(r) {
@@ -6045,8 +6057,8 @@ function renderPlateTab() {
     {v:'conc',    l:'Concentration'},
     {v:'flag',    l:'Flag status'}
   ];
-  const _pcw = window._plateCellW || 32;
-  const _pfit = window._plateFit || false;
+  const _pcw = window._plateCellW !== undefined ? window._plateCellW : 14;
+  const _pfit = window._plateFit !== false;
   const _fitBg = _pfit ? 'var(--accent2)' : 'var(--surface3)';
   const _fitCl = _pfit ? '#fff' : 'var(--text2)';
   const _fitBd = _pfit ? 'var(--accent2)' : 'var(--border2)';
@@ -6120,7 +6132,7 @@ function renderPlateTab() {
 }
 
 function _cellDims() {
-  const cw = window._plateCellW || 32;
+  const cw = window._plateCellW !== undefined ? window._plateCellW : 14;
   const ch = Math.round(cw * (26/32));
   const padL = Math.max(14, Math.round(cw * 0.875));
   const padT = Math.max(12, Math.round(cw * 0.6875));
@@ -6353,15 +6365,22 @@ function drawPlateCanvas(bc) {
     const lblFs = Math.max(7, Math.min(Math.round(cellW * 0.45), 11));
     ctx.font = `600 ${lblFs}px 'IBM Plex Sans',sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
     Object.entries(_grpMap).forEach(([sid, g]) => {
       const lx = g.sx / g.n, ly = g.sy / g.n;
       const lbl = sid.length > 9 ? sid.slice(0, 9) : sid;
-      ctx.shadowColor = isDark ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.9)';
-      ctx.shadowBlur = 3;
-      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.78)';
+      const tw = ctx.measureText(lbl).width;
+      const ph = lblFs + 4, pw = tw + 8;
+      ctx.fillStyle = isDark ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.75)';
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(lx - pw/2, ly - ph/2, pw, ph, 3); ctx.fill(); }
+      else { ctx.fillRect(lx - pw/2, ly - ph/2, pw, ph); }
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)';
+      ctx.strokeText(lbl, lx, ly);
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.97)' : 'rgba(0,0,0,0.9)';
       ctx.fillText(lbl, lx, ly);
     });
-    ctx.shadowBlur = 0;
+    ctx.lineWidth = 1;
   }
 
   // Legend
