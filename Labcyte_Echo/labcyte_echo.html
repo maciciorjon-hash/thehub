@@ -246,7 +246,7 @@ tr:hover td{background:var(--surface2);}
 .pl-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);}
 .pl-swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
 /* CONTROL PICKER MODAL */
-#ctrl-picker-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;align-items:center;justify-content:center;}
+#ctrl-picker-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;align-items:center;justify-content:center;}
 #ctrl-picker-modal.open{display:flex;}
 .ctrl-picker-box{background:var(--surface);border-radius:12px;padding:20px;box-shadow:0 8px 40px rgba(0,0,0,.4);max-width:96vw;max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:12px;}
 .ctrl-picker-title{font-size:14px;font-weight:600;color:var(--text);}
@@ -686,7 +686,7 @@ tr:hover td{background:var(--surface2);}
       <div class="setup-pane" id="setup-pane-analysis">
         <div class="setup-2col" style="margin-bottom:16px;">
           <div class="field" style="margin-bottom:0;"><label>Echo header rows to skip</label><input type="number" id="p-skip" value="8" min="0" max="50"></div>
-          <div class="field" id="hook-effect-field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-hook-en" checked onchange="document.getElementById('p-hook').disabled=!this.checked;document.getElementById('p-hook').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Hook effect threshold (%)<span class="pinfo" data-tip="HiBiT: points where signal rises >this % above adjacent lower conc. are excluded.">i</span></span></div><input type="number" id="p-hook" value="10" min="1" max="50"></div>
+          <div class="field" id="hook-effect-field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-hook-en" checked onchange="document.getElementById('p-hook').disabled=!this.checked;document.getElementById('p-hook').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Hook effect threshold (Δ%)<span class="pinfo" data-tip="HiBiT: if signal at the highest conc. exceeds the signal at 2 steps lower by more than this many percentage points, it is flagged and excluded. E.g. threshold=10: ref=90% → hook if >100%.">i</span></span></div><input type="number" id="p-hook" value="10" min="1" max="200"></div>
         </div>
         <div class="setup-2col" style="margin-bottom:16px;">
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-r2-en" checked onchange="document.getElementById('p-r2').disabled=!this.checked;document.getElementById('p-r2').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Min R² for fit<span class="pinfo" data-tip="Goodness-of-fit threshold. Curves below this R² are flagged.">i</span></span></div><input type="number" id="p-r2" value="0.8" min="0" max="1" step="0.05"></div>
@@ -822,7 +822,7 @@ tr:hover td{background:var(--surface2);}
           <div class="guide-row"><div class="guide-key">Assay ID</div><div class="guide-val">Free-text label used to name output files: <span class="guide-tag">Results_ID_Group.pdf</span>. Use a date or experiment code. Leave blank for a generic name.</div></div>
           <div class="guide-row"><div class="guide-key">Control wells range</div><div class="guide-val">DMSO-only wells used as 100% reference. Signals are normalised per plate to the mean of these wells. Accepted formats: <b>B12-O12</b> (column range), <b>B22:O23</b> (rectangular block), <b>B12,C12</b> (comma-separated). Leave <b>blank</b> to use raw luminescence without normalisation.</div></div>
           <div class="guide-row"><div class="guide-key">Echo header rows</div><div class="guide-val">Metadata rows above the column header in the Echo CSV. <b>Default: 8</b> for standard Echo Plate Reformat output.</div></div>
-          <div class="guide-row"><div class="guide-key">Hook effect threshold (%)</div><div class="guide-val">A <b>hook effect</b> occurs when HiBiT signal rises at the highest concentrations — typically from ternary complex disruption. If the mean signal at the highest concentration exceeds the mean at the 3rd-highest by more than this threshold, that point is flagged (red ×) and excluded from fitting. <b>Default: 10%.</b></div></div>
+          <div class="guide-row"><div class="guide-key">Hook effect threshold (Δ%)</div><div class="guide-val">A <b>hook effect</b> occurs when HiBiT signal rises at the highest concentrations. If the mean signal at the highest concentration exceeds the mean at 2 steps lower by more than this many <b>percentage points</b>, that point is flagged (orange ×) and excluded from fitting. E.g. threshold=10: ref=90% → hook if &gt;100%. <b>Default: 10 Δ%.</b> Right-click the canvas in the Curves tab to re-include hook concentrations for any compound.</div></div>
           <div class="guide-row"><div class="guide-key">Min R² for fit</div><div class="guide-val">Minimum acceptable R² for a 4PL curve. Compounds below this are reported but flagged in red. <b>Default: 0.8.</b></div></div>
           <div class="guide-row"><div class="guide-key">Max replicate SD</div><div class="guide-val">Maximum SD (in % DMSO) across replicates at any concentration. Compounds exceeding this are flagged as noisy. <b>Default: 20.</b></div></div>
         </div>
@@ -872,6 +872,17 @@ tr:hover td{background:var(--surface2);}
           <div class="guide-row"><div class="guide-key">⬇ CSV (filtered)</div><div class="guide-val">Exports the currently visible (filtered) scatter data as a CSV file including all fitted parameters.</div></div>
           <div class="guide-row"><div class="guide-key">Undo / Redo filters</div><div class="guide-val">Each time you change a filter (group, axis range, search), the state is saved. Use Ctrl+Z / Ctrl+Y to step back and forward through filter history.</div></div>
           <div class="guide-row"><div class="guide-key">Curve on hover</div><div class="guide-val">When checked, hovering over a scatter point shows a mini 4PL curve preview for that compound in a floating panel.</div></div>
+        </div>
+
+        <div class="guide-section">
+          <h3>📈 Curves tab</h3>
+          <div class="guide-row"><div class="guide-key">Single / Compare modes</div><div class="guide-val">Single mode shows one compound at a time with full stats. Compare mode overlays multiple selected compounds. Scroll-wheel in single mode navigates between compounds.</div></div>
+          <div class="guide-row"><div class="guide-key">Right-click — exclude rep</div><div class="guide-val">Right-click any individual replicate point to exclude it. Excluded points appear as grey × and are excluded from the refit. Right-click a grey × to re-include it.</div></div>
+          <div class="guide-row"><div class="guide-key">Right-click — exclude conc</div><div class="guide-val">Right-click a mean point (or any rep) and choose <b>Exclude all at this concentration</b> to remove all replicates at that dose. Right-click → <b>Re-include all excluded</b> to restore everything.</div></div>
+          <div class="guide-row"><div class="guide-key">Right-click — hook effect</div><div class="guide-val">For compounds with a hook effect (orange × at highest doses), right-click anywhere on the canvas and choose <b>Re-include hook effect concentrations</b> to refit with all data.</div></div>
+          <div class="guide-row"><div class="guide-key">Flag stats (right-click)</div><div class="guide-val">When a compound is flagged, the Flag row in the stats bar shows a ▸ indicator. Right-click it to <b>Resolve flag</b> (mark as accepted).</div></div>
+          <div class="guide-row"><div class="guide-key">Fix Y axis</div><div class="guide-val">Check <b>Fix Y</b> and enter bottom/top values to lock the Y-axis range across compounds, useful for comparing curves on the same scale.</div></div>
+          <div class="guide-row"><div class="guide-key">Compare — sort</div><div class="guide-val">In Compare mode, sort the compound list by DC₅₀ ↑↓ or Dmax ↑↓ using the sort selector above the list.</div></div>
         </div>
 
         <div class="guide-section">
@@ -1901,7 +1912,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           if (!hiMeas.length || !refMeas.length) break;
           const hiMean = hiMeas.reduce((s, v) => s + v, 0) / hiMeas.length;
           const refMean = refMeas.reduce((s, v) => s + v, 0) / refMeas.length;
-          if (hiMean > refMean * (1 + hookThr / 100)) hookConcs.add(cs[i]);
+          if (hiMean > refMean + hookThr) hookConcs.add(cs[i]);
           else break;
         }
       }
@@ -5050,6 +5061,7 @@ window._cvCfg = window._cvCfg || {
   showStructure:true, showReps:true,
 };
 window._cvSelected = window._cvSelected || new Set();  // compare mode selection
+let _cvRenderGen = 0;  // generation counter to drop stale deferred renders
 
 
 // ─── Curves zoom/pan state ─────────────────────────────────────
@@ -5420,10 +5432,12 @@ function renderCvCurve() {
     if (window._cvRef && cfg._singleMode && window._cvRef.Sample_ID!==compounds[0]?.Sample_ID) {
       drawMultiCurve(canvas, [window._cvRef], {...cfg, ..._mainRange, _refMode:true, _noResize:true});
     }
+    canvas._cvCompounds=compounds;  // sync with render so ptMap and compounds always match
     _cvAttachZoom();
   };
+  const _myGen = ++_cvRenderGen;
   let _raf=0,_rendered=false;
-  const _doRenderOnce=()=>{if(_rendered)return;_rendered=true;_doRender();};
+  const _doRenderOnce=()=>{if(_rendered||_myGen!==_cvRenderGen)return;_rendered=true;_doRender();};
   const _tryRender=()=>{ if(wrap.clientHeight>10){_doRenderOnce();}else if(_raf++<8){requestAnimationFrame(_tryRender);} };
   _tryRender();
   setTimeout(()=>{ if(wrap.clientHeight>0) _doRenderOnce(); },350);
@@ -5821,21 +5835,27 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
     }
   });
 
-  // Draw excluded reps as grey X (so they are still visible but clearly excluded)
+  // Draw excluded reps as grey X — use _excludedRepXYs and _deletedPts directly (more reliable)
   compounds.forEach(r=>{
-    const excluded=(r._repsOrig||[]).filter(rep=>{
-      const inActive=(r._reps||[]).some(a=>Math.abs(a.x-rep.x)<0.002&&Math.abs(a.y-rep.y)<0.1);
-      return !inActive;
-    });
-    excluded.forEach(rep=>{
-      const cx=px(rep.x),cy=py(rep.y);
+    const drawX=(cx,cy,hitX,hitY,addToMap)=>{
       if(cx<pL-6||cx>pL+pw+6||cy<pT-6||cy>pT+ph+6) return;
-      const s=ptSz+1;
-      ctx.save();ctx.strokeStyle='rgba(150,150,150,0.7)';ctx.lineWidth=1.5;
+      const s=ptSz+2;
+      ctx.save();ctx.strokeStyle='rgba(140,140,140,0.8)';ctx.lineWidth=2;
       ctx.beginPath();ctx.moveTo(cx-s,cy-s);ctx.lineTo(cx+s,cy+s);
       ctx.moveTo(cx+s,cy-s);ctx.lineTo(cx-s,cy+s);ctx.stroke();ctx.restore();
-      if(cfg._qcPtMapOut) cfg._qcPtMapOut.push({px:cx,py:cy,x:rep.x,y:rep.y,isRep:true,isExcluded:true});
+      if(addToMap&&cfg._qcPtMapOut) cfg._qcPtMapOut.push({px:cx,py:cy,x:hitX,y:hitY,isRep:true,isExcluded:true});
+    };
+    // Per-rep exclusions from _excludedRepXYs
+    (r._excludedRepXYs||[]).forEach(excl=>{
+      drawX(px(excl.x),py(excl.y),excl.x,excl.y,true);
     });
+    // Concentration-level exclusions from _deletedPts
+    const delConcs=new Set((r._deletedPts||[]).map(x=>x.toFixed(3)));
+    if(delConcs.size){
+      (r._repsOrig||r._reps||[]).filter(rep=>rep.y!=null&&delConcs.has(rep.x.toFixed(3))).forEach(rep=>{
+        drawX(px(rep.x),py(rep.y),rep.x,rep.y,false);
+      });
+    }
   });
 
   // 100% reference line (single curve only, when relevant)
@@ -5993,9 +6013,14 @@ function cvRightClick(e) {
     d.textContent='No data point nearby';
     menu.appendChild(d);
   }
+  const _cpd2 = canvas._cvCompounds?.[0];
+  if(_cpd2?._is_hook){
+    const sepH=document.createElement('div');sepH.style.cssText='height:1px;background:var(--border);margin:4px 0;';menu.appendChild(sepH);
+    addItem('↩','Re-include hook effect concentrations',()=>cvReincludeHook());
+  }
   document.body.appendChild(menu);
   let left=e.clientX+6, top=e.clientY+4;
-  if(left+220>window.innerWidth) left=e.clientX-224;
+  if(left+240>window.innerWidth) left=e.clientX-244;
   if(top+200>window.innerHeight) top=e.clientY-204;
   menu.style.left=Math.max(4,left)+'px'; menu.style.top=Math.max(4,top)+'px';
   setTimeout(()=>document.addEventListener('click',()=>{if(_cvCtxMenu){_cvCtxMenu.remove();_cvCtxMenu=null;}},{once:true}),10);
@@ -6065,6 +6090,17 @@ function cvStatFlagMenu(e) {
   if(top+60>window.innerHeight) top=e.clientY-64;
   menu.style.left=Math.max(4,left)+'px'; menu.style.top=Math.max(4,top)+'px';
   setTimeout(()=>document.addEventListener('click',()=>{if(_cvCtxMenu){_cvCtxMenu.remove();_cvCtxMenu=null;}},{once:true}),10);
+}
+
+function cvReincludeHook() {
+  const canvas=document.getElementById('cv-canvas');
+  const r=canvas?._cvCompounds?.[0]; if(!r||!r._is_hook) return;
+  r._is_hook=false; r._hook_x=null; r._hook_concs=[];
+  if(r.Flag_Reason) r.Flag_Reason=r.Flag_Reason.split('; ').filter(f=>!f.startsWith('Hook')).join('; ');
+  if(!r.Flag_Reason&&r.Flag==='Yes') r.Flag='No';
+  const rd=window._resultsData?.find(x=>x.Sample_ID===r.Sample_ID&&x.Protein===r.Protein);
+  if(rd){rd._is_hook=false;rd._hook_x=null;rd._hook_concs=[];rd.Flag_Reason=r.Flag_Reason;rd.Flag=r.Flag;}
+  _cvApplyEditsAndRefit(r);
 }
 
 function _cvApplyEditsAndRefit(r) {
@@ -6270,7 +6306,8 @@ function renderPlateTab() {
     {v:'conc',    l:'Concentration'},
     {v:'flag',    l:'Flag status'}
   ];
-  const _pcw = window._plateCellW !== undefined ? window._plateCellW : 14;
+  const _pcw = window._plateCellW !== undefined ? window._plateCellW : 10;
+  if (window._plateFit === undefined) window._plateFit = true;
   const _pfit = window._plateFit !== false;
   const _fitBg = _pfit ? 'var(--accent2)' : 'var(--surface3)';
   const _fitCl = _pfit ? '#fff' : 'var(--text2)';
@@ -6289,7 +6326,7 @@ function renderPlateTab() {
     </label>
     <div style="display:flex;align-items:center;gap:5px;margin-left:4px;">
       <span style="font-size:11px;color:var(--text2);">Size</span>
-      <input type="range" id="plate-size" min="8" max="40" step="1" value="${_pcw}" oninput="onPlateSizeChange(this.value)" style="width:72px;accent-color:var(--accent2);cursor:pointer;">
+      <input type="range" id="plate-size" min="6" max="40" step="1" value="${_pcw}" oninput="onPlateSizeChange(this.value)" style="width:72px;accent-color:var(--accent2);cursor:pointer;">
       <span id="plate-size-val" style="font-size:11px;color:var(--text2);min-width:30px;">${_pcw} px</span>
     </div>
     <button id="plate-fit-btn" onclick="togglePlateFit()" style="padding:4px 10px;border-radius:6px;border:1px solid ${_fitBd};background:${_fitBg};color:${_fitCl};font-size:11px;font-family:var(--sans);cursor:pointer;white-space:nowrap;">⊞ Fit to screen</button>
@@ -6360,7 +6397,7 @@ function _updatePlateWrapLayout() {
   const W = padL + 24 * cw + padR;
   if (window._plateFit) {
     wrap.style.display = 'grid';
-    wrap.style.gridTemplateColumns = `repeat(auto-fill, minmax(${W + 32}px, 1fr))`;
+    wrap.style.gridTemplateColumns = 'repeat(3, 1fr)';
     wrap.style.gap = '10px';
     wrap.style.padding = '10px';
   } else {
@@ -6560,10 +6597,11 @@ function drawPlateCanvas(bc) {
       }
 
       if (showLabels && w?.s && !w.ctrl) {
-        if (!_grpMap[w.s]) _grpMap[w.s] = { sx: 0, sy: 0, n: 0 };
+        if (!_grpMap[w.s]) _grpMap[w.s] = { sx: 0, sy: 0, n: 0, cells: [] };
         _grpMap[w.s].sx += cx + rw / 2;
         _grpMap[w.s].sy += cy + rh / 2;
         _grpMap[w.s].n++;
+        _grpMap[w.s].cells.push({cx, cy, rw, rh});
       }
 
       ctx.fillStyle = fillColor;
@@ -6573,24 +6611,29 @@ function drawPlateCanvas(bc) {
     });
   });
 
-  // Grouped compound labels — one centred label per compound set
+  // Grouped compound labels — semi-transparent overlay on all wells + centred name
   if (showLabels) {
-    const lblFs = Math.max(7, Math.min(Math.round(cellW * 0.45), 11));
-    ctx.font = `600 ${lblFs}px 'IBM Plex Sans',sans-serif`;
+    // Phase 1: fill every well of each compound with semi-transparent overlay
+    Object.entries(_grpMap).forEach(([, g]) => {
+      ctx.fillStyle = isDark ? 'rgba(0,0,0,0.50)' : 'rgba(255,255,255,0.62)';
+      g.cells.forEach(c => {
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(c.cx, c.cy, c.rw, c.rh, rx);
+        else ctx.rect(c.cx, c.cy, c.rw, c.rh);
+        ctx.fill();
+      });
+    });
+    // Phase 2: draw compound name at centroid
+    const lblFs = Math.max(7, Math.min(Math.round(cellW * 0.48), 11));
+    ctx.font = `700 ${lblFs}px 'IBM Plex Sans',sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
     Object.entries(_grpMap).forEach(([sid, g]) => {
       const lx = g.sx / g.n, ly = g.sy / g.n;
-      const lbl = sid.length > 9 ? sid.slice(0, 9) : sid;
-      const tw = ctx.measureText(lbl).width;
-      const ph = lblFs + 4, pw = tw + 8;
-      ctx.fillStyle = isDark ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.75)';
-      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(lx - pw/2, ly - ph/2, pw, ph, 3); ctx.fill(); }
-      else { ctx.fillRect(lx - pw/2, ly - ph/2, pw, ph); }
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)';
+      const lbl = sid.length > 10 ? sid.slice(0, 9) + '…' : sid;
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.97)' : 'rgba(0,0,0,0.88)';
+      ctx.strokeStyle = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 2.5;
       ctx.strokeText(lbl, lx, ly);
-      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.97)' : 'rgba(0,0,0,0.9)';
       ctx.fillText(lbl, lx, ly);
     });
     ctx.lineWidth = 1;

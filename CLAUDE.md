@@ -238,12 +238,15 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-05 (Round 15: Curves grey X re-include, Resolve Flag moved, XLSX separators, Plate Designer pastels)
+Last session: 2026-06-05 (Round 16: Ctrl picker z-index, hook threshold additive, plate 3-col fit, labels overlay, grey X/re-include fix, hook re-include, Guide update, easter egg tier 5-6 + confetti)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.59MB (7,593,837 chars). Version v0.9.5
-Grey X re-include: excluded reps now pushed to cfg._qcPtMapOut with isRep:true,isExcluded:true so right-click finds them; re-include option now accessible.
-Stats clear: _cvApplyEditsAndRefit clears DC50/Dmax/pDC50/etc. to null when activePts.length<3 so stale values are not shown.
-Resolve Flag: removed from canvas right-click; added cvStatFlagMenu(e) triggered by oncontextmenu on Flag stat div in renderCvStats; Flag label shows "▸" hint when flagged.
-XLSX protocol: redesigned with section separators (─── SECTION ─────) and grouped layout; removed redundant blank rows.
-Plate Designer: WELL_TYPES colors changed to pastels (#a8d5a2, #90caf9, #ef9a9a, #ffcc80, #b0bec5, #ce93d8).
+Hub file size: 7.60MB (7,605,078 chars). Version v0.9.6
+Ctrl picker: z-index raised to 3000 (above setup modal z-index 2000).
+Hook threshold: changed from multiplicative (refMean*(1+thr/100)) to additive (refMean+thr); label updated to "Δ%"; max input raised to 200.
+Plate tab: default cell size 10, _plateFit defaults true; layout uses repeat(3,1fr) for 3 columns.
+Labels overlay: Phase 1 fills each cell of every compound with semi-transparent rect; Phase 2 draws name at centroid; _grpMap stores cells:[].
+Grey X fix: draws from r._excludedRepXYs (per-rep) and r._deletedPts (conc-level) directly; _cvRenderGen counter prevents stale deferred renders overwriting _cvPtMap.
+Hook re-include: cvReincludeHook() clears _is_hook/_hook_x/_hook_concs and refits; accessible from canvas right-click menu.
+Guide tab: added full Curves section; updated hook description.
+Easter egg: EGG_BIOS expanded from 5 to 7 tiers; EGG_ROLES already had 7; tier cap raised to 6; launchConfetti improved (burst from 3 points + ribbon/circle shapes, 240+ pieces).
 <!-- LAST_SESSION_END -->
