@@ -238,19 +238,12 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-05 (Round 14: Setup modal, scatter/selectivity overhaul, curves improvements, no-norm fix)
+Last session: 2026-06-05 (Round 15: Curves grey X re-include, Resolve Flag moved, XLSX separators, Plate Designer pastels)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.59MB (7,590,338 chars). Version v0.9.4
-Setup modal: openSetupModal/closeSetupModal/switchSetupTab wired; auto-opens on load; ⚙ Setup button in tabs bar.
-Scatter: fills panel height (flex:1), toolbar condensed 4→2 rows, expand button removed, Chart.js responsive:true.
-Subscripts: DC₅₀/IC₅₀/EC₅₀ subscript 50 in output column checkboxes, scatter options, stats, compare table.
-Scatter axis: LogIC₅₀→LogDC₅₀ for hibit (dynamic _scLogLbl in renderScatter + axLabelMap in buildScatterChart).
-Selectivity: sel-metric-x + sel-metric-y (separate X/Y), DC₅₀ axis in Molar (val/1e9 before log10), _selMetricLabel updated.
-Curves context menu: "Delete"→"Exclude", per-rep exclusion (cvExcludeRepXY/cvReincludeRepXY), grey X for excluded.
-  _cvApplyEditsAndRefit updated for _excludedRepXYs; re-derives _pts from surviving reps.
-  renderCurveCanvas() bug fixed → renderCvCurve(). _cvPtMap entries include isRep:true + y value.
-Flag display: "Yes (reason)" combined, Resolve Flag right-click → cvResolveFlag().
-Fix Y axis: cv-fix-y checkbox + cv-ymin-fixed/cv-ymax-fixed inputs in drawMultiCurve.
-Compare tab: cv-sort-by select (DC₅₀ ↑↓, Dmax ↑↓) in buildCompareList.
-No normalisation bug fix: topLo/topHi/loBotEff/hiBotEff scaled to dataMax when skipNorm=true.
+Hub file size: 7.59MB (7,593,837 chars). Version v0.9.5
+Grey X re-include: excluded reps now pushed to cfg._qcPtMapOut with isRep:true,isExcluded:true so right-click finds them; re-include option now accessible.
+Stats clear: _cvApplyEditsAndRefit clears DC50/Dmax/pDC50/etc. to null when activePts.length<3 so stale values are not shown.
+Resolve Flag: removed from canvas right-click; added cvStatFlagMenu(e) triggered by oncontextmenu on Flag stat div in renderCvStats; Flag label shows "▸" hint when flagged.
+XLSX protocol: redesigned with section separators (─── SECTION ─────) and grouped layout; removed redundant blank rows.
+Plate Designer: WELL_TYPES colors changed to pastels (#a8d5a2, #90caf9, #ef9a9a, #ffcc80, #b0bec5, #ce93d8).
 <!-- LAST_SESSION_END -->

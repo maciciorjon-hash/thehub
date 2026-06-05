@@ -2323,30 +2323,36 @@ function generateOutputXLSX() {
   var fmtConc = function(v) { if (v == null) return ''; return v < 1 ? v.toFixed(2) + ' nM' : Math.round(v) + ' nM'; };
   var ts = params.timestampLocal || (params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) + ' UTC' : '');
   var protocolRows = [
-    ['Parameter', 'Value'],
+    ['DATA ANALYSIS PROTOCOL', ''],
+    ['Generated', ts],
+    [],
+    ['─── EXPERIMENT ─────────────────────────────', ''],
     ['Assay ID', params.assayId || ''],
     ['Assay type', atLabels[params.assayType] || params.assayType || ''],
-    ['Curve fitting model', '4-Parameter Logistic (4PL)'],
+    [],
+    ['─── CURVE FITTING ───────────────────────────', ''],
+    ['Model', '4-Parameter Logistic (4PL)'],
     ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? 'DMSO mean per plate — controls: ' + params.ctrlRange : 'No control wells')],
-    ['Hook effect threshold', params.hookEnabled !== false ? (params.hookThr + '%') : 'Disabled'],
-    ['Min R²', params.r2Enabled !== false ? params.minR2 : 'Disabled'],
-    ['Max replicate SD (%)', params.sdEnabled !== false ? params.maxSd : 'Disabled'],
     ['Top constraint (%)', params.topEnabled !== false ? params.topConstrain : 'Free (unconstrained)'],
     ['Bottom (%)', params.fixBot ? ('Fixed at ' + params.botVal) : 'Free'],
     ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free'],
     ['Max Dmax (%)', params.dmaxCapEnabled ? params.dmaxCapVal : 'Unlimited'],
     ['Absolute DC50', params.absdc50Enabled ? 'Yes' : 'No'],
-    ['Analysis timestamp', ts],
     [],
-    ['ECHO TRANSFER FILE', ''],
+    ['─── QC THRESHOLDS ───────────────────────────', ''],
+    ['Hook effect threshold', params.hookEnabled !== false ? (params.hookThr + '%') : 'Disabled'],
+    ['Min R²', params.r2Enabled !== false ? params.minR2 : 'Disabled'],
+    ['Max replicate SD (%)', params.sdEnabled !== false ? params.maxSd : 'Disabled'],
+    [],
+    ['─── ECHO TRANSFER FILE ──────────────────────', ''],
     ['File', echo.fileName || params.echoFileName || ''],
     ['Total transfers', echo.transfers || ''],
     ['Total plates', echo.plates || ''],
     ['Unique compounds', echo.compounds || ''],
-    ['Assay plates', echo.finalPlates != null ? (echo.finalPlates + ' · ' + (echo.finalTransfers||0) + ' transfers' + (echo.finalConcMin != null ? ' · ' + fmtConc(echo.finalConcMin) + ' – ' + fmtConc(echo.finalConcMax) : '')) : ''],
-    ['Intermediate plates', echo.interPlates ? (echo.interPlates + ' · ' + (echo.interTransfers||0) + ' transfers' + (echo.interConcMin != null ? ' · ' + fmtConc(echo.interConcMin) + ' – ' + fmtConc(echo.interConcMax) : '')) : 'None'],
+    ['Assay plates', echo.finalPlates != null ? (echo.finalPlates + ' plates · ' + (echo.finalTransfers||0) + ' transfers' + (echo.finalConcMin != null ? ' · ' + fmtConc(echo.finalConcMin) + ' – ' + fmtConc(echo.finalConcMax) : '')) : ''],
+    ['Intermediate plates', echo.interPlates ? (echo.interPlates + ' plates · ' + (echo.interTransfers||0) + ' transfers' + (echo.interConcMin != null ? ' · ' + fmtConc(echo.interConcMin) + ' – ' + fmtConc(echo.interConcMax) : '')) : 'None'],
     [],
-    ['PHERASTAR FILES', ''],
+    ['─── PHERASTAR FILES ─────────────────────────', ''],
     ['Files', (params.readerFileNames || []).join(', ')],
   ];
 
@@ -5444,7 +5450,10 @@ function renderCvStats(compounds) {
       <div class="cv-stat"><div class="csl">pDC<sub>50</sub></div><div class="csv">${r.pDC50??'—'}</div></div>
       <div class="cv-stat"><div class="csl">Hill</div><div class="csv">${r.HillSlope??'—'}</div></div>
       <div class="cv-stat"><div class="csl">R²</div><div class="csv">${r.R2??'—'}</div></div>
-      <div class="cv-stat"><div class="csl">Flag</div><div class="csv" style="color:${fc};">${r.Flag==='Yes'?'Yes'+(r.Flag_Reason?' ('+esc(r.Flag_Reason)+')':''):'No'}</div></div>`;
+      <div class="cv-stat"${r.Flag==='Yes'?' style="cursor:context-menu;" oncontextmenu="cvStatFlagMenu(event)" title="Right-click to resolve flag"':''}>
+        <div class="csl">Flag${r.Flag==='Yes'?' ▸':''}</div>
+        <div class="csv" style="color:${fc};">${r.Flag==='Yes'?'Yes'+(r.Flag_Reason?' ('+esc(r.Flag_Reason)+')':''):'No'}</div>
+      </div>`;
   } else {
     // Compare mode: legend table
     el.innerHTML=`<table style="font-size:11px;border-collapse:collapse;width:100%;">
@@ -5825,6 +5834,7 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
       ctx.save();ctx.strokeStyle='rgba(150,150,150,0.7)';ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(cx-s,cy-s);ctx.lineTo(cx+s,cy+s);
       ctx.moveTo(cx+s,cy-s);ctx.lineTo(cx-s,cy+s);ctx.stroke();ctx.restore();
+      if(cfg._qcPtMapOut) cfg._qcPtMapOut.push({px:cx,py:cy,x:rep.x,y:rep.y,isRep:true,isExcluded:true});
     });
   });
 
@@ -5983,11 +5993,6 @@ function cvRightClick(e) {
     d.textContent='No data point nearby';
     menu.appendChild(d);
   }
-  const _cpd = canvas._cvCompounds?.[0];
-  if(_cpd?.Flag==='Yes'){
-    const sep2=document.createElement('div');sep2.style.cssText='height:1px;background:var(--border);margin:4px 0;';menu.appendChild(sep2);
-    addItem('✓','Resolve flag (mark as accepted)',()=>cvResolveFlag());
-  }
   document.body.appendChild(menu);
   let left=e.clientX+6, top=e.clientY+4;
   if(left+220>window.innerWidth) left=e.clientX-224;
@@ -6041,6 +6046,27 @@ function cvResolveFlag() {
   if(scatterData.length) renderResults(scatterData);
 }
 
+function cvStatFlagMenu(e) {
+  e.preventDefault();
+  if(_cvCtxMenu){_cvCtxMenu.remove();_cvCtxMenu=null;}
+  const menu=document.createElement('div');
+  menu.style.cssText='position:fixed;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:4px 0;min-width:200px;box-shadow:0 6px 24px rgba(0,0,0,.22);z-index:9999;font-size:12px;font-family:var(--sans);';
+  _cvCtxMenu=menu;
+  const d=document.createElement('div');
+  d.style.cssText='padding:7px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--text);';
+  d.innerHTML='<span>✓</span><span>Resolve flag (mark as accepted)</span>';
+  d.onmouseenter=()=>d.style.background='var(--surface3)';
+  d.onmouseleave=()=>d.style.background='';
+  d.onclick=()=>{if(_cvCtxMenu){_cvCtxMenu.remove();_cvCtxMenu=null;} cvResolveFlag();};
+  menu.appendChild(d);
+  document.body.appendChild(menu);
+  let left=e.clientX+6, top=e.clientY+4;
+  if(left+210>window.innerWidth) left=e.clientX-214;
+  if(top+60>window.innerHeight) top=e.clientY-64;
+  menu.style.left=Math.max(4,left)+'px'; menu.style.top=Math.max(4,top)+'px';
+  setTimeout(()=>document.addEventListener('click',()=>{if(_cvCtxMenu){_cvCtxMenu.remove();_cvCtxMenu=null;}},{once:true}),10);
+}
+
 function _cvApplyEditsAndRefit(r) {
   const del=new Set((r._deletedPts||[]).map(x=>x.toFixed(3)));
   // Per-rep exclusions: array of {x,y} pairs
@@ -6074,6 +6100,9 @@ function _cvApplyEditsAndRefit(r) {
       r.HillSlope=r._hill;
       r.R2=r._r2;
     }
+  } else {
+    r.DC50_nM=null; r.Dmax_pct=null; r.pDC50=null; r.HillSlope=null; r.R2=null;
+    r._logec50=null; r._bot=null;
   }
   // Update xmin/xmax
   if(activePts.length){
