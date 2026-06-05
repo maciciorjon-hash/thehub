@@ -238,15 +238,17 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-02 (Round 10: animation depth rewrite, Echo outer-tabs, nav sync, ORF number input)
+Last session: 2026-06-05 (Round 11: Echo plate overhaul, XLSX export, Protocol tab, Deg import fix)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.20MB (7,200,568 chars). Commit 428136e. Version v0.8.2
-Hub animation: depth-layer system — 6 objects at 3 scales (0.26/0.52/0.85), purely horizontal
-  travel with gentle sine altitude oscillation. ctx.save/translate/scale/restore for depth rendering.
-  Removed card collisions, inter-object explosions, card-bonk CSS. Far=small/faint/slow, close=large/bold/fast.
-Hub: enterAppNav setTimeout 300ms → 0ms; breadcrumb now fades in sync with app view opacity transition.
-Hub: Echo embed injects nav.outer-tabs{display:none} — removes dead-space nav strip in hub context.
-Hub: Echo card calls openApp('echo','analysis') to land on DA panel directly (sends switchTab postMessage).
-Echo: opts-panel top 58px → 98px (clears both header+outer-tabs in standalone mode).
-Helix: ORF min-length range slider → <input type="number"> (cleaner, direct entry, same JS .value read).
+Hub file size: 7.57MB (7,566,609 chars). Commit 47389ea. Version v0.9.1
+Echo plate view: size slider (8–40px, integer), fit-to-screen grid toggle (auto-fill CSS grid),
+  grouped compound labels (centred centroid over well set, shadow, scaled font), plate name below canvas.
+  _cellDims() shared helper for drawPlateCanvas + plateMouseMove — no hardcoded dims.
+Echo export: CSV → XLSX with sheets: Results, Data Analysis Protocol, PHERAstar Protocol, Prism Copy.
+  Prism Copy: concentrations descending (highest first), compounds as adjacent Rep1/Rep2 columns,
+  one section per protein group with "Group: BRD4" header + merged compound name cells.
+Echo Protocol tab: live renderProtocol() after analysis — shows all params, Echo file stats,
+  PHERAstar protocol sheet (extracted via _extractPHERAProtocol if Protocol sheet exists in PHERAstar XLS).
+Degradation Explorer: Import Modal removed (redundant path), Load tab drop zone is sole import.
+  null guards in updateMeta() and updateStats(), meta-label/meta-desc elements added to header.
 <!-- LAST_SESSION_END -->
