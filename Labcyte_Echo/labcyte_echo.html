@@ -192,6 +192,13 @@ tr:hover td{background:var(--surface2);}
 .sc-clear:hover{color:var(--accent);border-color:var(--accent);}
 .sc-match-info{font-size:11px;color:var(--text3);padding:2px 6px;}
 
+/* PROTOCOL TAB */
+.proto-sec{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--text3);margin:18px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--border);}
+.proto-sec:first-child{margin-top:0;}
+.proto-row{display:grid;grid-template-columns:220px 1fr;gap:4px 14px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:start;}
+.proto-k{color:var(--text3);font-size:11px;padding-top:1px;}
+.proto-v{color:var(--text);line-height:1.5;}
+
 /* GUIDE TAB */
 .guide-section{margin-bottom:26px;}
 .guide-section h3{font-size:11px;font-weight:600;color:var(--text);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px;letter-spacing:.8px;text-transform:uppercase;}
@@ -690,6 +697,7 @@ tr:hover td{background:var(--surface2);}
     <div class="tab" data-tab="props">Properties <span class="tcnt" id="pc">0</span></div>
     <div class="tab" data-tab="results">Results <span class="tcnt" id="rc">0</span></div>
     <div class="tab" data-tab="history">History</div>
+    <div class="tab" data-tab="protocol">Protocol</div>
     <div class="tab" data-tab="guide">Guide</div>
   </div>
 
@@ -726,6 +734,11 @@ tr:hover td{background:var(--surface2);}
   </div>
   <div class="tabpane" id="tab-history">
     <div id="history-panel" style="flex:1;overflow-y:auto;padding:20px 30px;"></div>
+  </div>
+  <div class="tabpane" id="tab-protocol">
+    <div id="protocol-panel" style="flex:1;overflow-y:auto;padding:20px 28px;">
+      <div style="color:var(--text3);font-size:12px;padding:8px 0;">Run an analysis to see the protocol summary.</div>
+    </div>
   </div>
   <div class="tabpane" id="tab-guide">
     <div id="guide-panel" style="flex:1;overflow-y:auto;padding:24px 40px;">
@@ -1250,6 +1263,7 @@ async function runPipeline() {
   const assayType = document.getElementById('p-assay-type')?.value || 'hibit';
   const zeroPctCtrl = document.getElementById('p-zero-pct')?.value?.trim() || '';
   window._lastAssayType = assayType;
+  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: new Date().toISOString() };
   const csvCols = [...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col);
 
   try {
@@ -1348,6 +1362,7 @@ async function runPipeline() {
     window._lastCompoundData = compoundData; window._propsDirty = true; // rendered lazily on tab visit
     if (document.getElementById('p-gen-pdf').checked) await generateCurvePDFs(results);
     renderResults(results);
+    renderProtocol();
     document.getElementById('rc').textContent = results.length;
     document.getElementById('sc').textContent = results.length;
     document.getElementById('pc').textContent = nMatched || '';
@@ -1518,6 +1533,19 @@ function _parsePHERAstarXLS(ab, barcode) {
   return wells;
 }
 
+function _extractPHERAProtocol(ab, fname) {
+  try {
+    const wb = XLSX.read(ab, { type: 'array', cellDates: false, raw: true });
+    const protSheet = wb.SheetNames.find(n => /protocol/i.test(n));
+    if (!protSheet) return null;
+    const ws = wb.Sheets[protSheet];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    const filtered = rows.filter(r => r.some(c => String(c).trim() !== ''));
+    if (!filtered.length) return null;
+    return { fileName: fname, sheetName: protSheet, rows: filtered };
+  } catch(e) { return null; }
+}
+
 // 4PL: f = bot + (tc - bot) / (1 + 10^(h*(x - logec50)))
 // Analytical Jacobian wrt [bot, logec50, h]
 function _4plJac3(xi, bot, logec50, h, tc) {
@@ -1611,11 +1639,14 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   const echoData = _parseEchoCSV(echoText, skipRows);
   if (!echoData.length) throw new Error('Echo CSV parse failed: no data rows found');
   const echoBarcodeSet = new Set(echoData.map(r => r.barcode));
+  const concValues = echoData.map(r => r.conc * 1e9).filter(v => v > 0);
+  window._echoSummary = { fileName: echoFile?.name || '', transfers: echoData.length, plates: echoBarcodeSet.size, compounds: new Set(echoData.map(r => r.sampleId)).size, concMin: concValues.length ? Math.min(...concValues) : null, concMax: concValues.length ? Math.max(...concValues) : null };
   log('Echo: ' + echoData.length + ' transfers, ' + echoBarcodeSet.size + ' plates', 'ok');
 
   // 2. Parse PHERAstar XLS files
   log('Parsing PHERAstar files…');
   let readerRaw = [];
+  window._pheraProtocol = null;
   for (const [fname, file] of Object.entries(readerFiles)) {
     const bytes = await toBytes(file);
     const barcode = fname.replace(/\.[^.]+$/, '');
@@ -1623,6 +1654,10 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       const wells = _parsePHERAstarXLS(bytes.buffer, barcode);
       readerRaw.push(...wells);
       log('  ' + fname + ' → ' + barcode, 'ok');
+      if (!window._pheraProtocol) {
+        const protData = _extractPHERAProtocol(bytes.buffer, fname);
+        if (protData) window._pheraProtocol = protData;
+      }
     } catch (e) {
       log('  Error ' + fname + ': ' + e.message, 'err');
     }
@@ -1988,7 +2023,7 @@ function renderResults(data) {
   const _dlBtnHover='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
   let _dlSection = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel">📋 Copy TSV</button>'
-    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputCSV()">📥 Results CSV</button>';
+    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputXLSX()">📥 Results XLSX</button>';
   if (_rawBlob) {
     _dlSection += '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))">📊 Raw Data CSV</button>';
   }
@@ -2095,6 +2130,195 @@ function generateOutputCSV() {
   a.download = 'Results_'+(window._lastAssayId||'output')+'_export.csv';
   a.click();
 }
+function _buildPrismAOA(results) {
+  var groups = {}, groupOrder = [];
+  results.forEach(function(r) {
+    if (!groups[r.Protein]) { groups[r.Protein] = []; groupOrder.push(r.Protein); }
+    groups[r.Protein].push(r);
+  });
+  var aoa = [], merges = [], rowIdx = 0;
+  groupOrder.forEach(function(protein, gi) {
+    var compounds = groups[protein];
+    if (gi > 0) { aoa.push([]); rowIdx++; }
+    // Per compound: group _reps by log10 concentration key
+    var compData = compounds.map(function(c) {
+      var byConc = {};
+      (c._reps || []).forEach(function(rep) {
+        var k = rep.x.toFixed(4);
+        if (!byConc[k]) byConc[k] = [];
+        if (rep.y !== null) byConc[k].push(rep.y);
+      });
+      var maxReps = 0;
+      Object.values(byConc).forEach(function(v) { if (v.length > maxReps) maxReps = v.length; });
+      return { id: c.Sample_ID, byConc: byConc, nReps: Math.max(1, maxReps) };
+    });
+    // All unique concentration keys, sorted ascending
+    var concKeySet = new Set();
+    compData.forEach(function(c) { Object.keys(c.byConc).forEach(function(k) { concKeySet.add(k); }); });
+    var concKeys = Array.from(concKeySet).sort(function(a, b) { return parseFloat(b) - parseFloat(a); });
+    function keyToNM(k) { return parseFloat((Math.pow(10, parseFloat(k)) * 1e9).toPrecision(4)); }
+    // Section header
+    aoa.push(['Group: ' + protein]); rowIdx++;
+    // Compound name header row (merged over rep columns)
+    var compRow = [''];
+    var col = 1;
+    compData.forEach(function(c) {
+      compRow.push(c.id);
+      for (var i = 1; i < c.nReps; i++) compRow.push('');
+      if (c.nReps > 1) merges.push({ s: { r: rowIdx, c: col }, e: { r: rowIdx, c: col + c.nReps - 1 } });
+      col += c.nReps;
+    });
+    aoa.push(compRow); rowIdx++;
+    // Replicate label row
+    var repRow = ['Concentration (nM)'];
+    compData.forEach(function(c) {
+      for (var i = 0; i < c.nReps; i++) repRow.push(c.nReps > 1 ? 'Rep ' + (i + 1) : '');
+    });
+    aoa.push(repRow); rowIdx++;
+    // Data rows
+    concKeys.forEach(function(ck) {
+      var row = [keyToNM(ck)];
+      compData.forEach(function(c) {
+        var vals = c.byConc[ck] || [];
+        for (var i = 0; i < c.nReps; i++) row.push(vals[i] !== undefined ? vals[i] : '');
+      });
+      aoa.push(row); rowIdx++;
+    });
+  });
+  return { aoa: aoa, merges: merges };
+}
+
+function generateOutputXLSX() {
+  if (!scatterData.length) { alert('No data. Run analysis first.'); return; }
+  var t = window._lastAssayType || 'hibit';
+  var colMap = _csvColMap(t);
+  var noGain = t === 'fp' || t === 'trfret' || t === 'displacement';
+  var internalCols = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
+  var filtCols = internalCols.filter(function(c) {
+    if (c === 'AbsDC50_nM' && t !== 'hibit') return false;
+    if (c === 'Dmax_pct' && noGain) return false;
+    return true;
+  });
+  var headerCols = filtCols.map(function(c) { return colMap[c] || c; });
+  var resultsRows = [headerCols].concat(scatterData.map(function(r) {
+    return filtCols.map(function(c) { var v = r[c]; return v == null ? '' : v; });
+  }));
+
+  var params = window._lastAnalysisParams || {};
+  var echo = window._echoSummary || {};
+  var atLabels = { hibit:'HiBiT Degradation', ctg:'CellTiter-Glo / Viability', fp:'Fluorescence Polarization', trfret:'TR-FRET', displacement:'Competitive Displacement', gain:'Gain-of-Function (EC50)' };
+  var fmtConc = function(v) { if (v == null) return ''; return v < 1 ? v.toFixed(2) + ' nM' : Math.round(v) + ' nM'; };
+  var ts = params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) : '';
+  var protocolRows = [
+    ['Parameter', 'Value'],
+    ['Assay ID', params.assayId || ''],
+    ['Assay type', atLabels[params.assayType] || params.assayType || ''],
+    ['Curve fitting model', '4-Parameter Logistic (4PL)'],
+    ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? 'DMSO mean per plate — controls: ' + params.ctrlRange : 'No control wells')],
+    ['Hook effect threshold', params.hookEnabled !== false ? (params.hookThr + '%') : 'Disabled'],
+    ['Min R²', params.r2Enabled !== false ? params.minR2 : 'Disabled'],
+    ['Max replicate SD (%)', params.sdEnabled !== false ? params.maxSd : 'Disabled'],
+    ['Top constraint (%)', params.topEnabled !== false ? params.topConstrain : 'Free (unconstrained)'],
+    ['Bottom (%)', params.fixBot ? ('Fixed at ' + params.botVal) : 'Free'],
+    ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free'],
+    ['Max Dmax (%)', params.dmaxCapEnabled ? params.dmaxCapVal : 'Unlimited'],
+    ['Absolute DC50', params.absdc50Enabled ? 'Yes' : 'No'],
+    ['Analysis timestamp', ts],
+    [],
+    ['ECHO TRANSFER FILE', ''],
+    ['File', echo.fileName || params.echoFileName || ''],
+    ['Transfers', echo.transfers || ''],
+    ['Plates', echo.plates || ''],
+    ['Unique compounds', echo.compounds || ''],
+    ['Concentration range', echo.concMin != null ? fmtConc(echo.concMin) + ' – ' + fmtConc(echo.concMax) : ''],
+    [],
+    ['PHERASTAR FILES', ''],
+    ['Files', (params.readerFileNames || []).join(', ')],
+  ];
+
+  var wb = XLSX.utils.book_new();
+
+  var wsResults = XLSX.utils.aoa_to_sheet(resultsRows);
+  XLSX.utils.book_append_sheet(wb, wsResults, 'Results');
+
+  var wsProtocol = XLSX.utils.aoa_to_sheet(protocolRows);
+  XLSX.utils.book_append_sheet(wb, wsProtocol, 'Data Analysis Protocol');
+
+  if (window._pheraProtocol && window._pheraProtocol.rows && window._pheraProtocol.rows.length) {
+    var wsPP = XLSX.utils.aoa_to_sheet(window._pheraProtocol.rows);
+    XLSX.utils.book_append_sheet(wb, wsPP, 'PHERAstar Protocol');
+  }
+
+  var prism = _buildPrismAOA(scatterData);
+  var wsPrism = XLSX.utils.aoa_to_sheet(prism.aoa);
+  if (prism.merges.length) wsPrism['!merges'] = prism.merges;
+  XLSX.utils.book_append_sheet(wb, wsPrism, 'Prism Copy');
+
+  var wbout = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+  var blob = new Blob([wbout], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Results_' + (window._lastAssayId || 'output') + '_export.xlsx';
+  a.click();
+}
+
+function renderProtocol() {
+  var p = document.getElementById('protocol-panel');
+  if (!p) return;
+  var params = window._lastAnalysisParams || {};
+  var echo = window._echoSummary || {};
+  var phera = window._pheraProtocol;
+  var atLabels = { hibit:'HiBiT Degradation', ctg:'CellTiter-Glo / Viability', fp:'Fluorescence Polarization', trfret:'TR-FRET', displacement:'Competitive Displacement', gain:'Gain-of-Function (EC50)' };
+  var ts = params.timestamp ? params.timestamp.replace('T',' ').slice(0,19) + ' UTC' : '—';
+  var fmtConc = function(v) { if (v == null) return '—'; return v < 1 ? v.toFixed(2) + ' nM' : Math.round(v) + ' nM'; };
+  var row = function(lbl, val) { return '<div class="proto-row"><span class="proto-k">' + lbl + '</span><span class="proto-v">' + val + '</span></div>'; };
+  var sec = function(title) { return '<div class="proto-sec">' + title + '</div>'; };
+  var on = function(enabled, val, unit) { if (enabled === false || enabled === 'false') return '<span style="color:var(--text3)">Disabled</span>'; return '<strong>' + val + '</strong>' + (unit ? ' ' + unit : ''); };
+
+  var html = sec('Data Analysis Protocol');
+  html += row('Assay ID', params.assayId || '—');
+  html += row('Assay type', atLabels[params.assayType] || params.assayType || '—');
+  html += row('Curve fitting', '4-Parameter Logistic (4PL)');
+  html += row('Normalisation', params.skipNorm ? '<span style="color:var(--text3)">None — raw signal</span>' : (params.ctrlRange ? 'DMSO mean per plate · control wells: <strong>' + params.ctrlRange + '</strong>' : '<span style="color:var(--text3)">No control wells defined</span>'));
+  html += row('Hook effect threshold', on(params.hookEnabled, params.hookThr, '%'));
+  html += row('Min R²', on(params.r2Enabled, params.minR2, ''));
+  html += row('Max replicate SD', on(params.sdEnabled, params.maxSd, '%'));
+  html += row('Top constraint', params.topEnabled !== false ? '<strong>' + params.topConstrain + '%</strong>' : '<span style="color:var(--text3)">Free (unconstrained)</span>');
+  html += row('Bottom', params.fixBot ? 'Fixed at <strong>' + params.botVal + '%</strong>' : '<span style="color:var(--text3)">Free</span>');
+  html += row('Hill slope', params.fixHill ? 'Fixed at <strong>' + params.hillVal + '</strong>' : '<span style="color:var(--text3)">Free</span>');
+  html += row('Max D<sub>max</sub>', params.dmaxCapEnabled ? '<strong>' + params.dmaxCapVal + '%</strong>' : '<span style="color:var(--text3)">Unlimited</span>');
+  html += row('Absolute DC50', params.absdc50Enabled ? 'Yes' : 'No');
+  html += row('Analysed', ts);
+
+  html += sec('Echo Transfer File');
+  html += row('File', echo.fileName || '—');
+  html += row('Transfers', echo.transfers != null ? echo.transfers.toLocaleString() : '—');
+  html += row('Plates', echo.plates != null ? echo.plates : '—');
+  html += row('Unique compounds', echo.compounds != null ? echo.compounds : '—');
+  html += row('Concentration range', fmtConc(echo.concMin) + ' – ' + fmtConc(echo.concMax));
+
+  html += sec('PHERAstar Reader Files');
+  var rnames = params.readerFileNames || [];
+  html += row('Files (' + rnames.length + ')', rnames.length ? rnames.join('<br>') : '—');
+
+  if (phera) {
+    html += '<div class="proto-sec" style="margin-top:18px;">PHERAstar Protocol Sheet <span style="font-size:10px;font-weight:400;color:var(--text3);">from ' + phera.fileName + ' · ' + phera.sheetName + '</span></div>';
+    html += '<div style="overflow-x:auto;margin-top:6px;"><table style="border-collapse:collapse;font-size:11px;font-family:var(--mono);min-width:100%;">';
+    phera.rows.forEach(function(r, ri) {
+      html += '<tr>';
+      r.forEach(function(cell) {
+        var tag = ri === 0 ? 'th' : 'td';
+        var style = ri === 0 ? 'padding:5px 10px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);border-bottom:1px solid var(--border2);white-space:nowrap;' : 'padding:4px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;';
+        html += '<' + tag + ' style="' + style + '">' + String(cell).replace(/</g,'&lt;') + '</' + tag + '>';
+      });
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  p.innerHTML = html;
+}
+
 function sortResultsBy(col){
   if(_sortState.col===col)_sortState.asc=!_sortState.asc;
   else{_sortState.col=col;_sortState.asc=true;}
@@ -5789,6 +6013,11 @@ function renderPlateTab() {
     {v:'conc',    l:'Concentration'},
     {v:'flag',    l:'Flag status'}
   ];
+  const _pcw = window._plateCellW || 32;
+  const _pfit = window._plateFit || false;
+  const _fitBg = _pfit ? 'var(--accent2)' : 'var(--surface3)';
+  const _fitCl = _pfit ? '#fff' : 'var(--text2)';
+  const _fitBd = _pfit ? 'var(--accent2)' : 'var(--border2)';
   panel.innerHTML = `<div class="plate-toolbar">
     <span style="font-size:11px;color:var(--text2);">Colour by</span>
     <select id="plate-mode" onchange="redrawAllPlates()" style="background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:4px 8px;color:var(--text);font-family:var(--sans);font-size:11px;outline:none;height:28px;">
@@ -5801,11 +6030,17 @@ function renderPlateTab() {
     <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:5px;">
       <input type="checkbox" id="plate-show-labels" onchange="redrawAllPlates()"> Labels
     </label>
+    <div style="display:flex;align-items:center;gap:5px;margin-left:4px;">
+      <span style="font-size:11px;color:var(--text2);">Size</span>
+      <input type="range" id="plate-size" min="8" max="40" step="1" value="${_pcw}" oninput="onPlateSizeChange(this.value)" style="width:72px;accent-color:var(--accent2);cursor:pointer;">
+      <span id="plate-size-val" style="font-size:11px;color:var(--text2);min-width:30px;">${_pcw} px</span>
+    </div>
+    <button id="plate-fit-btn" onclick="togglePlateFit()" style="padding:4px 10px;border-radius:6px;border:1px solid ${_fitBd};background:${_fitBg};color:${_fitCl};font-size:11px;font-family:var(--sans);cursor:pointer;white-space:nowrap;">⊞ Fit to screen</button>
   </div>
   <div class="plate-wrap" id="plate-wrap">${barcodes.map(bc=>`
     <div class="plate-block" id="pb-${bc.replace(/[^a-z0-9]/gi,'_')}">
-      <div class="plate-title">${esc(bc)}</div>
       <canvas class="plate-canvas" id="pc-${bc.replace(/[^a-z0-9]/gi,'_')}" data-bc="${esc(bc)}"></canvas>
+      <div class="plate-title" style="margin-top:6px;margin-bottom:2px;">${esc(bc)}</div>
       <div class="plate-legend" id="pl-${bc.replace(/[^a-z0-9]/gi,'_')}"></div>
     </div>`).join('')}
   </div>`;
@@ -5849,9 +6084,54 @@ function renderPlateTab() {
   const allProteins = [...new Set(Object.values(pdata).flatMap(p => Object.values(p).map(w=>w.p).filter(Boolean)))].sort();
   window._plateProteins = allProteins;
 
-  setTimeout(() => barcodes.forEach(bc => drawPlateCanvas(bc)), 0);
+  setTimeout(() => { _updatePlateWrapLayout(); barcodes.forEach(bc => drawPlateCanvas(bc)); }, 0);
 }
 
+function _cellDims() {
+  const cw = window._plateCellW || 32;
+  const ch = Math.round(cw * (26/32));
+  const padL = Math.max(14, Math.round(cw * 0.875));
+  const padT = Math.max(12, Math.round(cw * 0.6875));
+  const padR = Math.max(4,  Math.round(cw * 0.3));
+  const padB = Math.max(4,  Math.round(cw * 0.3));
+  return { cw, ch, padL, padT, padR, padB };
+}
+function _updatePlateWrapLayout() {
+  const wrap = document.getElementById('plate-wrap');
+  if (!wrap) return;
+  const { cw, padL, padR } = _cellDims();
+  const W = padL + 24 * cw + padR;
+  if (window._plateFit) {
+    wrap.style.display = 'grid';
+    wrap.style.gridTemplateColumns = `repeat(auto-fill, minmax(${W + 32}px, 1fr))`;
+    wrap.style.gap = '10px';
+    wrap.style.padding = '10px';
+  } else {
+    wrap.style.display = '';
+    wrap.style.gridTemplateColumns = '';
+    wrap.style.gap = '';
+    wrap.style.padding = '';
+  }
+}
+function onPlateSizeChange(val) {
+  window._plateCellW = parseInt(val, 10);
+  const lbl = document.getElementById('plate-size-val');
+  if (lbl) lbl.textContent = val + ' px';
+  _updatePlateWrapLayout();
+  redrawAllPlates();
+}
+function togglePlateFit() {
+  window._plateFit = !window._plateFit;
+  const btn = document.getElementById('plate-fit-btn');
+  if (btn) {
+    const on = window._plateFit;
+    btn.style.background  = on ? 'var(--accent2)' : 'var(--surface3)';
+    btn.style.color       = on ? '#fff' : 'var(--text2)';
+    btn.style.borderColor = on ? 'var(--accent2)' : 'var(--border2)';
+  }
+  _updatePlateWrapLayout();
+  redrawAllPlates();
+}
 function redrawAllPlates() {
   if (!window._plateData) return;
   Object.keys(window._plateData).sort().forEach(bc => drawPlateCanvas(bc));
@@ -5874,7 +6154,9 @@ function drawPlateCanvas(bc) {
 
   // Well grid dimensions
   const nRows = 16, nCols = 24;
-  const cellW = 32, cellH = 26, padL = 28, padT = 22, padR = 10, padB = 10;
+  const { cw: cellW, ch: cellH, padL, padT, padR, padB } = _cellDims();
+  const labelFont = Math.max(7, Math.min(9, Math.round(cellW * 0.28)));
+  const rx = Math.max(1, Math.round(cellW * 0.09));
   const W = padL + nCols*cellW + padR;
   const H = padT + nRows*cellH + padB;
   const cssW = Math.min(W, (canvas.parentElement?.clientWidth||900) - 32);
@@ -5896,12 +6178,12 @@ function drawPlateCanvas(bc) {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
   // Row labels (A–P)
-  ctx.font = `bold 9px 'IBM Plex Sans',sans-serif`;
+  ctx.font = `bold ${labelFont}px 'IBM Plex Sans',sans-serif`;
   ctx.fillStyle = textCol; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
   PLATE_ROWS.forEach((r,i) => ctx.fillText(r, padL-5, padT+i*cellH+cellH/2));
 
   // Col labels (1–24)
-  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.font = `9px 'IBM Plex Sans',sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.font = `${labelFont}px 'IBM Plex Sans',sans-serif`;
   PLATE_COLS.forEach((c,i) => ctx.fillText(c, padL+i*cellW+cellW/2, padT-2));
 
   const wells = window._plateData[bc];
@@ -5939,13 +6221,14 @@ function drawPlateCanvas(bc) {
   }
 
   // Draw wells
+  const _grpMap = {};
   PLATE_ROWS.forEach((row, ri) => {
     PLATE_COLS.forEach((col, ci) => {
       const wellId = `${row}${col < 10 ? '0'+col : col}`;
       const wellId2 = `${row}${col}`;
       const w = wells[wellId] || wells[wellId2];
       const x = padL + ci*cellW, y = padT + ri*cellH;
-      const rx = 3, rw = cellW-2, rh = cellH-2;
+      const rw = cellW-2, rh = cellH-2;
       const cx = x+1, cy = y+1;
 
       // Well background
@@ -6019,21 +6302,35 @@ function drawPlateCanvas(bc) {
         }
       }
 
+      if (showLabels && w?.s && !w.ctrl) {
+        if (!_grpMap[w.s]) _grpMap[w.s] = { sx: 0, sy: 0, n: 0 };
+        _grpMap[w.s].sx += cx + rw / 2;
+        _grpMap[w.s].sy += cy + rh / 2;
+        _grpMap[w.s].n++;
+      }
+
       ctx.fillStyle = fillColor;
       ctx.beginPath();
       ctx.roundRect(cx, cy, rw, rh, rx);
       ctx.fill();
-
-      // Label
-      if (showLabels && w?.s) {
-        ctx.fillStyle = isDark?'rgba(255,255,255,0.75)':'rgba(0,0,0,0.6)';
-        ctx.font = `7px 'IBM Plex Sans',sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        const lbl = w.s.length>5 ? w.s.slice(0,5) : w.s;
-        ctx.fillText(lbl, cx+rw/2, cy+rh/2);
-      }
     });
   });
+
+  // Grouped compound labels — one centred label per compound set
+  if (showLabels) {
+    const lblFs = Math.max(7, Math.min(Math.round(cellW * 0.45), 11));
+    ctx.font = `600 ${lblFs}px 'IBM Plex Sans',sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    Object.entries(_grpMap).forEach(([sid, g]) => {
+      const lx = g.sx / g.n, ly = g.sy / g.n;
+      const lbl = sid.length > 9 ? sid.slice(0, 9) : sid;
+      ctx.shadowColor = isDark ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.9)';
+      ctx.shadowBlur = 3;
+      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.78)';
+      ctx.fillText(lbl, lx, ly);
+    });
+    ctx.shadowBlur = 0;
+  }
 
   // Legend
   if (legendEl) {
@@ -6078,7 +6375,7 @@ function plateMouseMove(e) {
   const scaleY = canvas.height / (window.devicePixelRatio||1) / rect.height;
   const mx = (e.clientX - rect.left) * scaleX;
   const my = (e.clientY - rect.top) * scaleY;
-  const cellW=32, cellH=26, padL=28, padT=22;
+  const { cw: cellW, ch: cellH, padL, padT } = _cellDims();
   const ci = Math.floor((mx-padL)/cellW);
   const ri = Math.floor((my-padT)/cellH);
   if (ci<0||ci>=24||ri<0||ri>=16) { document.getElementById('tt').style.display='none'; return; }
