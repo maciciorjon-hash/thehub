@@ -240,7 +240,7 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 <!-- LAST_SESSION_START -->
 Last session: 2026-06-05 (Round 14: Setup modal, scatter/selectivity overhaul, curves improvements, no-norm fix)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.59MB (7,590,338 chars). Version v0.10.0
+Hub file size: 7.59MB (7,590,338 chars). Version v0.9.4
 Setup modal: openSetupModal/closeSetupModal/switchSetupTab wired; auto-opens on load; ⚙ Setup button in tabs bar.
 Scatter: fills panel height (flex:1), toolbar condensed 4→2 rows, expand button removed, Chart.js responsive:true.
 Subscripts: DC₅₀/IC₅₀/EC₅₀ subscript 50 in output column checkboxes, scatter options, stats, compare table.
