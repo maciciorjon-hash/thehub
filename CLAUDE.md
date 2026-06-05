@@ -238,13 +238,19 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-05 (Round 13: Echo output columns, plate label fix, default plate layout)
+Last session: 2026-06-05 (Round 14: Setup modal, scatter/selectivity overhaul, curves improvements, no-norm fix)
 Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.57MB (7,572,338 chars). Version v0.9.3
-Echo output columns: absdc50Enabled reads from output column checkbox, not separate input.
-  abs-dc50-field input removed. "Output CSV columns" → "Output columns".
-  renderResults/copyResultsTSV/generateOutputCSV/generateOutputXLSX all filter by checked columns.
-  renderResults uses dynamic _cellFn map + per-assay column filtering (AbsDC50 hibit-only, Dmax hidden for FP/TRFRET/displacement).
-Echo plate labels: replaced shadowBlur=3 with pill background (roundRect + rgba) + strokeText outline.
-Echo plate view: default _plateCellW=14 (not 32), default _plateFit=true (fit-to-screen on).
+Hub file size: 7.59MB (7,590,338 chars). Version v0.10.0
+Setup modal: openSetupModal/closeSetupModal/switchSetupTab wired; auto-opens on load; ⚙ Setup button in tabs bar.
+Scatter: fills panel height (flex:1), toolbar condensed 4→2 rows, expand button removed, Chart.js responsive:true.
+Subscripts: DC₅₀/IC₅₀/EC₅₀ subscript 50 in output column checkboxes, scatter options, stats, compare table.
+Scatter axis: LogIC₅₀→LogDC₅₀ for hibit (dynamic _scLogLbl in renderScatter + axLabelMap in buildScatterChart).
+Selectivity: sel-metric-x + sel-metric-y (separate X/Y), DC₅₀ axis in Molar (val/1e9 before log10), _selMetricLabel updated.
+Curves context menu: "Delete"→"Exclude", per-rep exclusion (cvExcludeRepXY/cvReincludeRepXY), grey X for excluded.
+  _cvApplyEditsAndRefit updated for _excludedRepXYs; re-derives _pts from surviving reps.
+  renderCurveCanvas() bug fixed → renderCvCurve(). _cvPtMap entries include isRep:true + y value.
+Flag display: "Yes (reason)" combined, Resolve Flag right-click → cvResolveFlag().
+Fix Y axis: cv-fix-y checkbox + cv-ymin-fixed/cv-ymax-fixed inputs in drawMultiCurve.
+Compare tab: cv-sort-by select (DC₅₀ ↑↓, Dmax ↑↓) in buildCompareList.
+No normalisation bug fix: topLo/topHi/loBotEff/hiBotEff scaled to dataMax when skipNorm=true.
 <!-- LAST_SESSION_END -->
