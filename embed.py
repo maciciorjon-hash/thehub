@@ -18,6 +18,7 @@ APPS = [
     ('pd',   'Plate_Designer/plate_designer.html'),
     ('dna',  'Helix/helix.html'),
     ('pt',   'Protein_Tools/protein_tools.html'),
+    ('spectra', 'Spectra/spectra.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()

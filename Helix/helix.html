@@ -164,6 +164,14 @@ select:focus,input:focus{border-color:var(--accent);}
   .copy-btn{min-height:36px;padding:6px 12px;font-size:12px;}
   .opts-btn{min-width:40px;min-height:40px;}
 }
+.hx-nt-preview{font-family:var(--mono);font-size:12px;line-height:1.65;word-break:break-all;background:var(--surface2);border:1px solid var(--border2);border-top:none;border-radius:0 0 6px 6px;padding:7px 10px;display:none;max-height:110px;overflow-y:auto;}
+.hx-nt-preview.visible{display:block;}
+.nt-A{color:#43a047;}.nt-T,.nt-U{color:#e53935;}.nt-G{color:#1e88e5;}.nt-C{color:#e08c30;}.nt-N{color:var(--text3);}
+.hx-comp-bar{display:none;height:5px;border-radius:3px;overflow:hidden;margin-top:5px;background:var(--surface3);}
+.hx-comp-bar.visible{display:flex;}
+.hx-comp-seg{height:100%;}
+.hx-comp-counts{display:none;font-size:11px;font-family:var(--mono);color:var(--text2);gap:10px;margin-top:4px;flex-wrap:wrap;}
+.hx-comp-counts.visible{display:flex;}
 </style>
 </head>
 <body>
@@ -197,7 +205,10 @@ select:focus,input:focus{border-color:var(--accent);}
 <div class="panel active" id="panel-tools">
   <div>
     <label>Nucleotide sequence <span style="font-weight:400;color:var(--text3);">(FASTA accepted — paste once, run all tools)</span></label>
-    <textarea id="tools-seq" rows="5" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA…"></textarea>
+    <textarea id="tools-seq" rows="5" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA…" oninput="updateNtPreview()"></textarea>
+   <div id="hx-nt-preview" class="hx-nt-preview"></div>
+   <div id="hx-comp-bar" class="hx-comp-bar"></div>
+   <div id="hx-comp-counts" class="hx-comp-counts"></div>
   </div>
   <div class="tools-opts">
     <div>
@@ -1063,6 +1074,34 @@ window.addEventListener('message',function(e){
     btn.classList.add('active');
   }
 });
+
+function updateNtPreview() {
+  const raw = document.getElementById('tools-seq').value;
+  const seq = raw.replace(/>[^\n]*\n?/g,'').replace(/\s/g,'').toUpperCase();
+  const prev = document.getElementById('hx-nt-preview');
+  const bar = document.getElementById('hx-comp-bar');
+  const cnts = document.getElementById('hx-comp-counts');
+  if (!seq) {
+    prev.classList.remove('visible'); bar.classList.remove('visible'); cnts.classList.remove('visible');
+    return;
+  }
+  const display = seq.length > 600 ? seq.slice(0,600) : seq;
+  prev.innerHTML = display.split('').map(c => {
+    const cls = {A:'nt-A',T:'nt-T',U:'nt-U',G:'nt-G',C:'nt-C'}[c]||'nt-N';
+    return '<span class="'+cls+'">'+c+'</span>';
+  }).join('') + (seq.length > 600 ? '<span style="color:var(--text3)"> …('+seq.length+' nt)</span>' : '');
+  prev.classList.add('visible');
+  const total = seq.length;
+  const cA=(seq.match(/A/g)||[]).length, cT=(seq.match(/[TU]/g)||[]).length;
+  const cG=(seq.match(/G/g)||[]).length, cC=(seq.match(/C/g)||[]).length;
+  bar.innerHTML = [{p:cA/total*100,c:'#43a047'},{p:cT/total*100,c:'#e53935'},{p:cG/total*100,c:'#1e88e5'},{p:cC/total*100,c:'#e08c30'}]
+    .map(s=>'<div class="hx-comp-seg" style="width:'+s.p.toFixed(1)+'%;background:'+s.c+'"></div>').join('');
+  bar.classList.add('visible');
+  cnts.innerHTML = [{n:'A',c:cA,col:'#43a047'},{n:'T/U',c:cT,col:'#e53935'},{n:'G',c:cG,col:'#1e88e5'},{n:'C',c:cC,col:'#e08c30'}]
+    .map(x=>'<span style="color:'+x.col+'">'+x.n+':'+x.c+'</span>').join('&nbsp;&middot;&nbsp;') +
+    '&nbsp;&middot;&nbsp;<span style="color:var(--text2)">GC:'+((cG+cC)/total*100).toFixed(1)+'%</span>';
+  cnts.classList.add('visible');
+}
 </script>
 
 <div id="vec-modal-overlay" onclick="if(event.target===this)closeVecModal()">

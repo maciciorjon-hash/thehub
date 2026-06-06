@@ -163,6 +163,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
   /* canvas: prevent page scroll during well selection drag */
   #plate-canvas-main{touch-action:none;}
 }
+@keyframes pdRipple{from{transform:scale(0);opacity:.55}to{transform:scale(3.5);opacity:0}}
+.pd-ripple{position:absolute;width:20px;height:20px;border-radius:50%;border:2px solid;pointer-events:none;animation:pdRipple .38s ease-out forwards;transform:translate(-50%,-50%);}
 </style>
 </head>
 <body>
@@ -1094,8 +1096,27 @@ const _wellTip = (() => {
   return d;
 })();
 
+let _pdRippleCont = null;
+function spawnRipple(clientX, clientY, color) {
+  if (!_pdRippleCont) return;
+  const r = _pdRippleCont.getBoundingClientRect();
+  const el = document.createElement('span');
+  el.className = 'pd-ripple';
+  el.style.left = (clientX - r.left) + 'px';
+  el.style.top = (clientY - r.top) + 'px';
+  el.style.borderColor = color || '#90caf9';
+  _pdRippleCont.appendChild(el);
+  setTimeout(() => el.remove(), 420);
+}
+
 function wireCanvasEvents(canvas) {
   let down = false, downPos = null, downWell = null, dragMode = null, moved = false, rbStart = null;
+  if (!_pdRippleCont) {
+    _pdRippleCont = document.createElement('div');
+    _pdRippleCont.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1;';
+    canvas.parentNode.style.position = 'relative';
+    canvas.parentNode.appendChild(_pdRippleCont);
+  }
 
   canvas.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
@@ -1106,6 +1127,7 @@ function wireCanvasEvents(canvas) {
     if (zone.type === 'col-label') { selectColumn(zone.col); down = false; return; }
     if (zone.type === 'well') {
       downWell = zone.id; dragMode = null;
+      const at = typeById(activeTypeId); spawnRipple(e.clientX, e.clientY, at ? at.color : '#90caf9');
     } else {
       downWell = null; dragMode = 'rb';
       if (!e.ctrlKey && !e.metaKey && !e.shiftKey) selection.clear();

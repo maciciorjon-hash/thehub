@@ -363,6 +363,7 @@ tr:hover td{background:var(--surface2);}
   /* Curve panel: full-screen overlay on mobile */
   #curve-panel.open{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;z-index:100;}
 }
+.cv-cmp-spark{border-radius:3px;flex-shrink:0;opacity:0.9;display:block;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
@@ -5302,6 +5303,25 @@ function selectAllCvCompare() {
   renderCvCurve();
 }
 
+function drawCvSparkline(cv, r, color) {
+  const W=48,H=22;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  if(r._logec50==null||r._bot==null) return;
+  const top=r._tc||100, bot=r._bot, ec=r._logec50, hill=r._hill||1;
+  const xMin=ec-2.5, xMax=ec+2.5;
+  ctx.beginPath();
+  for(let px=0;px<=W;px++){
+    const xv=xMin+(px/W)*(xMax-xMin);
+    const yv=bot+(top-bot)/(1+Math.pow(10,hill*(xv-ec)));
+    const py=H-2-Math.max(0,Math.min(1,(yv-bot)/Math.max(0.01,top-bot)))*(H-4);
+    px===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+  }
+  ctx.strokeStyle=color||'#ff5760';
+  ctx.lineWidth=1.5;
+  ctx.stroke();
+}
+
 function buildCompareList() {
   const el=document.getElementById('cv-compare-list');
   if(!el||!window._cvData) return;
@@ -5315,11 +5335,19 @@ function buildCompareList() {
   el.innerHTML = data.map((r,i)=>{
     const col = CV_PALETTE[i % CV_PALETTE.length];
     const sel = window._cvSelected.has(r.Sample_ID);
-    return `<label style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:20px;border:1.5px solid ${sel?col:'var(--border2)'};background:${sel?col+'22':'var(--surface2)'};cursor:pointer;font-size:11px;white-space:nowrap;transition:all .15s;">
+    return `<label data-idx="${i}" style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:20px;border:1.5px solid ${sel?col:'var(--border2)'};background:${sel?col+'22':'var(--surface2)'};cursor:pointer;font-size:11px;white-space:nowrap;transition:all .15s;">
       <input type="checkbox" ${sel?'checked':''} onchange="toggleCvCompare('${esc(r.Sample_ID)}',${i},this.checked)" style="display:none;">
-      <span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></span>${esc(r.Sample_ID)}
+      <span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></span>${esc(r.Sample_ID)}${r._logec50!=null&&r._bot!=null?'<canvas class="cv-cmp-spark" width="48" height="22"></canvas>':''}
     </label>`;
   }).join('');
+  requestAnimationFrame(function(){
+    el.querySelectorAll('label[data-idx]').forEach(function(lbl){
+      const idx=parseInt(lbl.dataset.idx);
+      const r=data[idx];
+      const cv=lbl.querySelector('.cv-cmp-spark');
+      if(cv&&r) drawCvSparkline(cv,r,CV_PALETTE[idx%CV_PALETTE.length]);
+    });
+  });
   const countEl=document.getElementById('cv-sel-count');
   if(countEl) countEl.textContent=window._cvSelected.size+' selected'+(window._cvSelected.size?'':' — pick compounds to overlay');
 }

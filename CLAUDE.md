@@ -238,15 +238,11 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-05 (Round 16: Ctrl picker z-index, hook threshold additive, plate 3-col fit, labels overlay, grey X/re-include fix, hook re-include, Guide update, easter egg tier 5-6 + confetti)
-Hub apps: 6 (echo, deg, lm, pd, dna→Helix, pt) [Figure Forge removed]
-Hub file size: 7.60MB (7,605,078 chars). Version v0.9.6
-Ctrl picker: z-index raised to 3000 (above setup modal z-index 2000).
-Hook threshold: changed from multiplicative (refMean*(1+thr/100)) to additive (refMean+thr); label updated to "Δ%"; max input raised to 200.
-Plate tab: default cell size 10, _plateFit defaults true; layout uses repeat(3,1fr) for 3 columns.
-Labels overlay: Phase 1 fills each cell of every compound with semi-transparent rect; Phase 2 draws name at centroid; _grpMap stores cells:[].
-Grey X fix: draws from r._excludedRepXYs (per-rep) and r._deletedPts (conc-level) directly; _cvRenderGen counter prevents stale deferred renders overwriting _cvPtMap.
-Hook re-include: cvReincludeHook() clears _is_hook/_hook_x/_hook_concs and refits; accessible from canvas right-click menu.
-Guide tab: added full Curves section; updated hook description.
-Easter egg: EGG_BIOS expanded from 5 to 7 tiers; EGG_ROLES already had 7; tier cap raised to 6; launchConfetti improved (burst from 3 points + ribbon/circle shapes, 240+ pieces).
+Last session: 2026-06-06 (Round 17: Spectra new app, 6 frontend additions, hub-shell DOMContentLoaded consolidation, embed.py updated)
+Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt, spectra) [Figure Forge removed]
+Hub file size: 7.71MB (7,709,436 chars). Version v0.9.7
+New app: Spectra — UV/Vis spectrophotometry analyser. Tabs: A280, Ratios, Std Curve, Plate Reader, Guide. Accent #26a69a (teal). Visible-light spectrum gradient hero in A280 tab. Standard curve canvas chart with R² badge. 96-well heatmap in Plate Reader.
+Frontend additions: Echo Compare sparklines (4PL curve canvas per compound pill); Degradation Explorer scatter quadrant zones (Hit/Weak/Selective/Inactive, adjustable Dmax/DC50 thresholds, Chart.js beforeDatasetsDraw plugin); LabMate command palette (Cmd/Ctrl+K, reuses SEARCH_INDEX + searchNavigate); Plate Designer well-paint ripple animation (CSS @keyframes, spawnRipple on canvas mousedown); Helix live nucleotide colouring + composition bar (oninput, .nt-A/T/G/C spans, stacked bar); Protein Tools hydropathy chart was already present.
+Hub-shell: 7 DOMContentLoaded listeners consolidated to single initHub() call. Spectra card, iframe, APP_INFO entry, APP_B64_NEW placeholder added. embed.py updated to include spectra.
+Hotfix from previous session: EGG_BIOS smart-quote corruption fixed (e59bc5d).
 <!-- LAST_SESSION_END -->

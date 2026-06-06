@@ -245,10 +245,19 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
   <p id="sug-thanks" class="sug-thanks hidden">Sent! Thanks for the feedback.</p>
   <div class="opts-divider" style="margin-top:12px;"></div>
   <div class="opts-version-row">
-    <span class="opts-version">The Hub &middot; v0.9.6</span>
+    <span class="opts-version">The Hub &middot; v0.9.7</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v0.9.7 — 6 Jun 2026</strong><br>
+    &#10022; New app: Spectra — UV/Vis spectrophotometry &amp; plate reader analysis<br>
+    &#9679; Echo: curve sparklines in Compare sidebar per compound<br>
+    &#9679; Degradation Explorer: quadrant zones on scatter (Hit/Weak/Selective/Inactive)<br>
+    &#9679; LabMate: command palette (&#8984;K / Ctrl+K) for instant tool search<br>
+    &#9679; Plate Designer: well-paint ripple animation on click<br>
+    &#9679; Helix: live nucleotide colouring + composition bar on sequence input<br>
+    &#9679; Hub: DOMContentLoaded consolidated to single initHub() call<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v0.9.6 — 5 Jun 2026</strong><br>
     &#9679; Echo: control picker modal z-index raised above setup modal<br>
     &#9679; Echo: hook threshold is now additive (Δ%, not ×%); label updated<br>
@@ -425,6 +434,20 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
         </div>
       </div>
 
+      <div class="card" tabindex="0" data-app-id="spectra"
+           onclick="openApp('spectra')"
+           onkeydown="if(event.key==='Enter')openApp('spectra')">
+        <div class="card-header-row">
+          <div class="card-logo" style="background:#26a69a;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 17 Q6 8 9 14 Q12 20 15 10 Q18 2 21 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><line x1="3" y1="19" x2="21" y2="19" stroke="white" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/><rect x="2" y="21" width="3" height="1.5" rx="0.7" fill="#c084fc" opacity="0.8"/><rect x="5.5" y="21" width="3" height="1.5" rx="0.7" fill="#4fc3f7" opacity="0.8"/><rect x="9" y="21" width="3" height="1.5" rx="0.7" fill="#81c784" opacity="0.8"/><rect x="12.5" y="21" width="3" height="1.5" rx="0.7" fill="#ffb74d" opacity="0.8"/><rect x="16" y="21" width="3" height="1.5" rx="0.7" fill="#ef5350" opacity="0.8"/></svg></div>
+          <div class="card-name">Spectra</div>
+        </div>
+        <div class="card-desc">UV/Vis spectrophotometry. A280 protein quantification, A260/A280 purity, Bradford/BCA standard curves &amp; plate reader analysis.</div>
+        <div class="card-foot">
+          <span>A280 &middot; Bradford &middot; Plate Reader</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -447,6 +470,9 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 </div>
 <div class="app-view" id="view-pt">
   <iframe id="frame-pt" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-spectra">
+  <iframe id="frame-spectra" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
 </div>
 
 <canvas id="confetti-canvas"></canvas>
@@ -508,7 +534,7 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 
 <script>
 /* embedded app sources (base64-encoded UTF-8 HTML) */
-var APP_B64_NEW = { dna: "", pd: "", pt: "" };
+var APP_B64_NEW = { dna: "", pd: "", pt: "", spectra: "PLACEHOLDER_SPECTRA" };
 var APP_B64 = {
   echo: "",
   deg: "",
@@ -527,12 +553,13 @@ function decodeB64App(b64) {
 }
 
 var APP_INFO = {
-  echo: { letter:'E', color:'#ff5760', name:'Labcyte Echo' },
-  deg:  { letter:'D', color:'#7c6fd4', name:'Degradation Explorer' },
-  lm:   { letter:'L', color:'#e08c30', name:'LabMate' },
-  pd:   { letter:'D', color:'#0079b9', name:'Lab Designer' },
-  dna:  { letter:'H', color:'#43a047', name:'Helix' },
-  pt:   { letter:'P', color:'#9c6fd4', name:'Protein Tools' }
+  echo:    { letter:'E', color:'#ff5760', name:'Labcyte Echo' },
+  deg:     { letter:'D', color:'#7c6fd4', name:'Degradation Explorer' },
+  lm:      { letter:'L', color:'#e08c30', name:'LabMate' },
+  pd:      { letter:'D', color:'#0079b9', name:'Lab Designer' },
+  dna:     { letter:'H', color:'#43a047', name:'Helix' },
+  pt:      { letter:'P', color:'#9c6fd4', name:'Protein Tools' },
+  spectra: { letter:'S', color:'#26a69a', name:'Spectra' }
 };
 
 function enterAppNav(id) {
@@ -684,7 +711,7 @@ function _applySavedCardOrder() {
   } catch(e) {}
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+function initHub() {
   _applySavedCardOrder();
   var grid = document.querySelector('.grid');
 
@@ -773,7 +800,43 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     _touchCard = null;
   });
-});
+
+  // Subtitle, logo pulse, LabMate preload
+  initHubSub();
+  document.getElementById('hub-logo').classList.add('pulsing');
+  setTimeout(function() { _loadApp('lm'); }, 2000);
+
+  // Suggestion form
+  var form = document.getElementById('suggest-form');
+  if (form) {
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      var btn = form.querySelector('.sug-submit');
+      btn.disabled = true; btn.textContent = 'Sending…';
+      fetch('https://formspree.io/f/xeokadev', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+        body: new FormData(form)
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(json) {
+        if (json.ok) {
+          form.reset();
+          var thanks = document.getElementById('sug-thanks');
+          thanks.classList.remove('hidden');
+          btn.textContent = 'Send'; btn.disabled = false;
+        } else { btn.textContent = 'Send'; btn.disabled = false; alert('Could not send — please try again.'); }
+      })
+      .catch(function() { btn.textContent = 'Send'; btn.disabled = false; alert('Network error — could not send.'); });
+    });
+  }
+
+  // Theme toggle checkbox sync
+  var chk = document.getElementById('theme-toggle-chk');
+  var t = localStorage.getItem('hub_theme') || 'light';
+  if (chk) chk.checked = (t === 'dark');
+}
+document.addEventListener('DOMContentLoaded', initHub);
 
 // Rotating subtitle
 var HUB_SUBS = [
@@ -805,13 +868,6 @@ function initHubSub() {
     }, 350);
   }, 5000);
 }
-document.addEventListener('DOMContentLoaded', initHubSub);
-document.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('hub-logo').classList.add('pulsing');
-});
-document.addEventListener('DOMContentLoaded', function() {
-  setTimeout(function() { _loadApp('lm'); }, 2000);
-});
 
 // ── Easter egg ────────────────────────────────────────────────────────────────
 var eggClicks = 0, eggTimer;
@@ -1057,31 +1113,6 @@ document.addEventListener('click', function(e) {
     optsPanel.classList.add('hidden');
   }
 });
-document.addEventListener('DOMContentLoaded', function() {
-  var form = document.getElementById('suggest-form');
-  if (form) {
-    form.addEventListener('submit', function(e) {
-      e.preventDefault();
-      var btn = form.querySelector('.sug-submit');
-      btn.disabled = true; btn.textContent = 'Sending…';
-      fetch('https://formspree.io/f/xeokadev', {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' },
-        body: new FormData(form)
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(json) {
-        if (json.ok) {
-          form.reset();
-          var thanks = document.getElementById('sug-thanks');
-          thanks.classList.remove('hidden');
-          btn.textContent = 'Send'; btn.disabled = false;
-        } else { btn.textContent = 'Send'; btn.disabled = false; alert('Could not send — please try again.'); }
-      })
-      .catch(function() { btn.textContent = 'Send'; btn.disabled = false; alert('Network error — could not send.'); });
-    });
-  }
-});
 
 // ── Hub Search ────────────────────────────────────────────────────────────
 var HUB_SEARCH_INDEX=[
@@ -1154,6 +1185,11 @@ var HUB_SEARCH_INDEX=[
   {t:'Lab Timers',id:'lm',tab:'tools',app:'LabMate',kw:'timer countdown lab protocol incubation'},
   {t:'Experiment Planner',id:'lm',tab:'tools',app:'LabMate',kw:'experiment planner schedule protocol steps'},
   {t:'PROTAC Tools',id:'lm',tab:'tools',app:'LabMate',kw:'PROTAC degrader linker E3 ligase CRBN VHL warhead'},
+  // Spectra
+  {t:'Spectra — A280 Protein Concentration',id:'spectra',tab:'a280',app:'Spectra',kw:'A280 absorbance extinction coefficient beer lambert protein concentration molar'},
+  {t:'Spectra — A260/A280 Purity',id:'spectra',tab:'ratios',app:'Spectra',kw:'A260 A280 ratio purity DNA RNA protein NanoDrop contamination'},
+  {t:'Spectra — Standard Curve',id:'spectra',tab:'stdcurve',app:'Spectra',kw:'standard curve BCA Bradford linear regression absorbance concentration unknowns'},
+  {t:'Spectra — Plate Reader',id:'spectra',tab:'platereader',app:'Spectra',kw:'plate reader 96 well absorbance heatmap CSV concentration'},
 ];
 function hubFuzzy(q,text){
   q=q.toLowerCase();text=text.toLowerCase();
@@ -1199,10 +1235,6 @@ document.addEventListener('click',function(e){
 (function() {
   var t = localStorage.getItem('hub_theme') || 'light';
   document.documentElement.setAttribute('data-theme', t);
-  document.addEventListener('DOMContentLoaded', function() {
-    var chk = document.getElementById('theme-toggle-chk');
-    if (chk) chk.checked = (t === 'dark');
-  });
 })();
 
 // ── Background: Miyazaki sky — flying objects, physics, card bonks ────────

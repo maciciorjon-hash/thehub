@@ -346,6 +346,19 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
       <label style="font-size:11px;color:var(--text3)"><input type="checkbox" id="scatter-labels" onchange="refreshChart()" style="accent-color:var(--col1)" checked> Labels</label>
       <label style="font-size:11px;color:var(--text3)"><input type="checkbox" id="scatter-errorbars" onchange="refreshChart()" style="accent-color:var(--col1)"> Error bars</label>
       <span class="count-badge" id="scatter-count">— points</span>
+      <div class="sep"></div>
+      <span style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:5px;flex-wrap:nowrap;">
+        <label style="font-size:11px;color:var(--text2);margin:0;display:flex;align-items:center;gap:4px;">
+          <input type="checkbox" id="dg-show-zones" checked style="accent-color:#00c896"> Zones
+        </label>
+        <span style="color:var(--text3)">Dmax</span>
+        <input type="number" id="dg-thr-dmax" value="50" min="0" max="100" onchange="refreshChart()"
+          style="width:44px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:2px 5px;color:var(--text);font-size:11px;font-family:inherit;outline:none;">
+        <span style="color:var(--text3)">% | DC50</span>
+        <input type="number" id="dg-thr-dc50" value="100" min="1" max="10000" onchange="refreshChart()"
+          style="width:58px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:2px 5px;color:var(--text);font-size:11px;font-family:inherit;outline:none;">
+        <span style="color:var(--text3)">nM</span>
+      </span>
     </div>
     <div class="chart-container">
       <canvas id="scatter-chart"></canvas>
@@ -652,6 +665,30 @@ function updateChart() {
       },
     },
     plugins: [
+      {id:'quadrants', beforeDatasetsDraw(chart) {
+        if (!document.getElementById('dg-show-zones')?.checked) return;
+        const xs = chart.scales.x, ys = chart.scales.y;
+        const thrDmax = +document.getElementById('dg-thr-dmax').value || 50;
+        const thrDc50 = +document.getElementById('dg-thr-dc50').value || 100;
+        const xT = xs.getPixelForValue(thrDc50);
+        const yT = ys.getPixelForValue(thrDmax);
+        const L = xs.left, R = xs.right, T = ys.top, B = ys.bottom;
+        const ctx2 = chart.ctx;
+        ctx2.save();
+        ctx2.fillStyle='rgba(0,200,150,0.08)';  ctx2.fillRect(L,T,xT-L,yT-T);   // Hit
+        ctx2.fillStyle='rgba(224,140,48,0.07)';  ctx2.fillRect(xT,T,R-xT,yT-T); // Weak
+        ctx2.fillStyle='rgba(0,121,185,0.07)';   ctx2.fillRect(L,yT,xT-L,B-yT); // Selective
+        ctx2.fillStyle='rgba(110,110,110,0.05)'; ctx2.fillRect(xT,yT,R-xT,B-yT);// Inactive
+        ctx2.strokeStyle='rgba(127,127,127,0.25)'; ctx2.lineWidth=1; ctx2.setLineDash([5,4]);
+        ctx2.beginPath(); ctx2.moveTo(xT,T); ctx2.lineTo(xT,B); ctx2.moveTo(L,yT); ctx2.lineTo(R,yT); ctx2.stroke();
+        ctx2.setLineDash([]);
+        ctx2.font='bold 9px ui-sans-serif,system-ui,sans-serif';
+        ctx2.fillStyle='rgba(0,200,150,0.65)';  ctx2.fillText('Hit',      L+5, T+13);
+        ctx2.fillStyle='rgba(224,140,48,0.65)'; ctx2.fillText('Weak',     xT+5,T+13);
+        ctx2.fillStyle='rgba(0,121,185,0.65)';  ctx2.fillText('Selective',L+5, B-6);
+        ctx2.fillStyle='rgba(110,110,110,0.55)';ctx2.fillText('Inactive', xT+5,B-6);
+        ctx2.restore();
+      }},
       {id:'errorbars', afterDatasetsDraw(chart) {
         if (!document.getElementById('scatter-errorbars')?.checked) return;
         const ctx2 = chart.ctx; const cap = 4;
