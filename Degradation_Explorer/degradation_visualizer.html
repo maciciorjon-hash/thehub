@@ -290,9 +290,21 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
         <span class="val" id="dmax-val">0%</span>
       </div>
       <div class="filter-group">
-        <label>DC50 ≤ <span class="pinfo" data-tip="Concentration for 50% degradation (nM). Filter to show only potent compounds below this value.">ⓘ</span></label>
-        <input type="range" id="dc50-max" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('dc50-val').textContent=this.value+'nM';debounceFilter(applyFilters)">
-        <span class="val" id="dc50-val">1000nM</span>
+        <label>DC50 ≤</label>
+        <input type="range" id="dc50-max" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('dc50-val').textContent=fmtDC50Display(+this.value);debounceFilter(applyFilters)">
+        <span class="val" id="dc50-val">1000 nM</span>
+      </div>
+      <div class="filter-group">
+        <select class="dg-unit-sel" onchange="setDgUnit(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+          <option value="nM" selected>nM</option>
+          <option value="uM">µM</option>
+          <option value="M">M</option>
+        </select>
+        <select class="dg-scale-sel" onchange="setDgScale(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+          <option value="log" selected>Log&#8321;&#8320;</option>
+          <option value="linear">Linear</option>
+          <option value="p">pDC50</option>
+        </select>
       </div>
       <div class="sep"></div>
       <span class="pill pill-good" id="pill-good" onclick="togglePill('good')">Dmax≥85 / DC50≤50</span>
@@ -362,12 +374,12 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
         <label>DC50 ≤</label>
         <input type="range" id="scatter-dc50" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('scatter-dc50-val').textContent=fmtDC50Display(+this.value);refreshChart()">
         <span class="val" id="scatter-dc50-val">1000nM</span>
-        <select id="dg-unit" onchange="setDgUnit(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+        <select id="dg-unit" class="dg-unit-sel" onchange="setDgUnit(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
           <option value="nM" selected>nM</option>
           <option value="uM">µM</option>
           <option value="M">M</option>
         </select>
-        <select id="dg-scale" onchange="setDgScale(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+        <select id="dg-scale" class="dg-scale-sel" onchange="setDgScale(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
           <option value="log" selected>Log&#8321;&#8320;</option>
           <option value="linear">Linear</option>
           <option value="p">pDC50</option>
@@ -546,7 +558,7 @@ function renderHeader() {
   const hRow2 = TARGETS.map((t, i) => {
     const col = getColor(i);
     const key = t + '_';
-    return `<th onclick="sortTable('${key}dc50')" id="th-${key}dc50" style="color:${col};text-align:right">DC50 (nM) <span class="sort-icon">↕</span></th>` +
+    return `<th onclick="sortTable('${key}dc50')" id="th-${key}dc50" style="color:${col};text-align:right">DC50 (${xUnitLabel()}) <span class="sort-icon">↕</span></th>` +
            `<th onclick="sortTable('${key}dmax')" id="th-${key}dmax" style="color:${col}">Dmax (%) <span class="sort-icon">↕</span></th>`;
   }).join('');
   thead.innerHTML =
@@ -613,7 +625,7 @@ function renderTable() {
     const sel = selectedCompound === c.compound ? ' selected' : '';
     const cells = TARGETS.map(t => {
       const d = c.targets[t] || {dc50:null,dc50_sd:null,dmax:null,dmax_sd:null};
-      return `<td class="val-cell">${fmtVal(d.dc50, d.dc50_sd)}</td><td class="dmax-cell">${dmaxBar(d.dmax)}</td>`;
+      return `<td class="val-cell">${fmtDC50Cell(d.dc50, d.dc50_sd)}</td><td class="dmax-cell">${dmaxBar(d.dmax)}</td>`;
     }).join('');
     return `<tr onclick="selectCompound('${c.compound.replace(/'/g,"\\'")}')" class="${sel}">
       <td class="compound-name"><span class="dot ${dotClass}"></span>${c.compound}</td>
@@ -642,19 +654,18 @@ function toggleScatterPill(q) {
 }
 
 // ─── DETAIL ───────────────────────────────────────────────────────────────────
-function selectCompound(name) {
-  if (selectedCompound === name) { closeDetail(); return; }
-  selectedCompound = name;
-  const c = RAW.find(r => r.compound === name);
-  document.getElementById('detail-name').textContent = c.compound;
+function buildDetailGrid(c) {
   document.getElementById('detail-grid').innerHTML = TARGETS.map((t, i) => {
     const d = c.targets[t] || {dc50:null};
     const col = getColor(i);
     if (d.dc50 === null) return `<div class="detail-protein"><div class="dp-header" style="color:${col};border-color:${col}">${t}</div><div style="color:var(--text3);font-size:12px;padding:8px 0">No data</div></div>`;
+    const sdStr = (d.dc50_sd && d.dc50_sd > 0 && dgScale !== 'p')
+      ? ' ± ' + (dgUnit === 'M' ? (d.dc50_sd*1e-9).toExponential(1) : dgUnit === 'uM' ? (d.dc50_sd/1000).toPrecision(2) : d.dc50_sd.toFixed(1))
+      : '';
     return `<div class="detail-protein">
       <div class="dp-header" style="color:${col};border-color:${col}">${t}</div>
-      <div class="dp-row"><div class="dp-label">DC50 (nM)</div>
-        <div class="dp-value">${d.dc50.toFixed(1)}<span class="dp-sd">${d.dc50_sd&&d.dc50_sd>0?' ± '+d.dc50_sd.toFixed(1):''}</span></div>
+      <div class="dp-row"><div class="dp-label">DC50 (${xUnitLabel()})</div>
+        <div class="dp-value">${fmtDC50Val(d.dc50)}<span class="dp-sd">${sdStr}</span></div>
       </div>
       <div class="dp-row"><div class="dp-label">Dmax (%)</div>
         <div class="dp-value">${Math.round(d.dmax||0)}<span class="dp-sd">${d.dmax_sd&&d.dmax_sd>0?' ± '+Math.round(d.dmax_sd):''}</span></div>
@@ -662,6 +673,13 @@ function selectCompound(name) {
       </div>
     </div>`;
   }).join('');
+}
+function selectCompound(name) {
+  if (selectedCompound === name) { closeDetail(); return; }
+  selectedCompound = name;
+  const c = RAW.find(r => r.compound === name);
+  document.getElementById('detail-name').textContent = c.compound;
+  buildDetailGrid(c);
   document.getElementById('detail-card').classList.add('visible');
   renderTable();
 }
@@ -701,12 +719,18 @@ function xAxisConfig(t) {
 }
 function setDgUnit(val) {
   dgUnit = val;
-  updateAxisHint(); updateSliderDC50Label();
+  syncDgSelects();
+  updateAxisHint(); updateSliderDC50Label(); updateTableDC50Label();
+  renderHeader(); renderTable(); renderPropsTable();
+  if (selectedCompound) { const c = RAW.find(r => r.compound === selectedCompound); if (c) buildDetailGrid(c); }
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; updateChart(); }
 }
 function setDgScale(val) {
   dgScale = val;
-  updateAxisHint(); updateSliderDC50Label();
+  syncDgSelects();
+  updateAxisHint(); updateSliderDC50Label(); updateTableDC50Label();
+  renderHeader(); renderTable(); renderPropsTable();
+  if (selectedCompound) { const c = RAW.find(r => r.compound === selectedCompound); if (c) buildDetailGrid(c); }
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; updateChart(); }
 }
 function updateAxisHint() {
@@ -726,6 +750,34 @@ function fmtDC50Display(nmVal) {
   if (dgUnit === 'M') return v.toExponential(1) + ' M';
   if (dgUnit === 'uM') return v.toPrecision(2) + ' µM';
   return nmVal + ' nM';
+}
+function fmtDC50Val(nmVal) {
+  if (nmVal === null || nmVal === undefined) return '—';
+  if (dgScale === 'p') return (9 - Math.log10(nmVal)).toFixed(2);
+  const factors = {nM:1, uM:1/1000, M:1/1e9};
+  const v = nmVal * factors[dgUnit];
+  if (dgUnit === 'M') return v.toExponential(1);
+  if (dgUnit === 'uM') return v.toPrecision(2);
+  return nmVal.toFixed(1);
+}
+function fmtDC50Cell(v, sd) {
+  if (v === null || v === undefined) return '<span class="no-data">—</span>';
+  const main = fmtDC50Val(v);
+  if (sd === null || sd === undefined || sd <= 0 || dgScale === 'p') return main;
+  const factors = {nM:1, uM:1/1000, M:1/1e9};
+  const sdV = sd * factors[dgUnit];
+  const sdStr = dgUnit === 'M' ? sdV.toExponential(1) : dgUnit === 'uM' ? sdV.toPrecision(2) : sd.toFixed(1);
+  return `${main} <span class="sd">± ${sdStr}</span>`;
+}
+function syncDgSelects() {
+  document.querySelectorAll('.dg-unit-sel').forEach(function(el){ el.value = dgUnit; });
+  document.querySelectorAll('.dg-scale-sel').forEach(function(el){ el.value = dgScale; });
+}
+function updateTableDC50Label() {
+  const el = document.getElementById('dc50-val');
+  if (!el) return;
+  const nmVal = +(document.getElementById('dc50-max') || {value:1000}).value;
+  el.textContent = fmtDC50Display(nmVal);
 }
 
 // ─── SCATTER ──────────────────────────────────────────────────────────────────
@@ -1118,7 +1170,7 @@ function renderPropsTable() {
       : `<td class="props-na" colspan="6">No SMILES</td>`;
     const dc50Cells = TARGETS.map(t => {
       const d = c.targets[t] || {};
-      return `<td class="props-val">${d.dc50!=null?d.dc50.toFixed(1):'—'}</td><td class="props-val">${d.dmax!=null?Math.round(d.dmax)+'%':'—'}</td>`;
+      return `<td class="props-val">${d.dc50!=null?fmtDC50Val(d.dc50):'—'}</td><td class="props-val">${d.dmax!=null?Math.round(d.dmax)+'%':'—'}</td>`;
     }).join('');
     return `<tr>${structCell}<td class="props-name">${esc(c.compound)}</td>${propCells}${dc50Cells}</tr>`;
   }).join('');
@@ -1126,7 +1178,7 @@ function renderPropsTable() {
     const col = getColor(i);
     return `<th colspan="2" class="props-tgt-hdr" style="color:${col};border-bottom-color:${col}">${esc(t)}</th>`;
   }).join('');
-  const tgtSubHeaders = TARGETS.map(() => '<th class="props-ph">DC50</th><th class="props-ph">Dmax</th>').join('');
+  const tgtSubHeaders = TARGETS.map(() => `<th class="props-ph">DC50 (${xUnitLabel()})</th><th class="props-ph">Dmax</th>`).join('');
   wrap.innerHTML = `<div class="props-table-scroll"><table class="props-tbl">
     <thead>
       <tr><th class="props-th" colspan="2"></th><th class="props-tgt-hdr" colspan="6" style="color:var(--text2)">Properties</th>${tgtHeaders}</tr>

@@ -265,6 +265,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
           <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Start conc <span class="pinfo" data-tip="Starting concentration for the dilution series (row: left→right, col: top→down).">ⓘ</span>:</label>
           <input type="number" id="dil-start" step="any" placeholder="10000" class="dil-input">
           <select id="dil-unit" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 6px;color:var(--text2);font-family:var(--sans);font-size:11px;outline:none;"><option>nM</option><option>µM</option><option>mM</option></select>
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap;"><input type="checkbox" id="dil-auto-unit" onchange="pdDilAutoUnit=this.checked" style="cursor:pointer;accent-color:var(--accent2);"> Auto unit</label>
         </div>
         <div style="display:flex;align-items:center;gap:5px;">
           <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Fold dilution:</label>
@@ -813,6 +814,7 @@ let lastClickedWell = null;
 let customTypes = [];
 var rowAnnotations = {}, colAnnotations = {};
 var pdBrackets = [];
+var pdDilAutoUnit = false;
 var userScale = 1.0;
 var _userScaledManually = false;
 
@@ -930,6 +932,15 @@ function _doSetFormat(f) {
   document.querySelectorAll('.fmt-pill').forEach(b => b.classList.toggle('active', b.textContent === f + '-well'));
   var tb = document.getElementById('sel-toolbar');
   if (tb) tb._userDragged = false;
+  if (pdBrackets.length) {
+    const fmt = FORMATS[f];
+    pdBrackets.forEach(function(b) {
+      const max = (b.side === 'left' || b.side === 'right') ? fmt.rows : fmt.cols;
+      b.from = Math.max(0, Math.min(b.from, max + 1));
+      b.to = Math.max(0, Math.min(b.to, max + 1));
+    });
+    pdRenderBrackets();
+  }
   buildPlateArea();
   updateSelToolbar(); renderLegend();
   setTimeout(positionToolbar, 50);
@@ -1036,6 +1047,18 @@ function drawPlateCanvas(canvas) {
   ctx.fillStyle = bgColor;
   ctx.fillRect(0, 0, W, H);
 
+  // Pre-scan all well labels to find the minimum font size → keeps all labels the same size
+  let _consistentFontSz = Math.min(10, wellPx / 4);
+  if (wellPx >= 16 && Object.keys(wellState).length) {
+    const _maxW = wellPx * 0.82;
+    for (const ws of Object.values(wellState)) {
+      if (ws && ws.label) {
+        const f = fitTextInWell(ctx, ws.label, _maxW, wellPx * 0.8, _consistentFontSz);
+        if (f.size < _consistentFontSz) _consistentFontSz = f.size;
+      }
+    }
+  }
+
   ctx.font = `bold ${fontSize}px "IBM Plex Mono",monospace`;
   ctx.fillStyle = textColor;
   ctx.textAlign = 'center';
@@ -1078,7 +1101,7 @@ function drawPlateCanvas(canvas) {
 
       if (ws && ws.label && wellPx >= 16) {
         const maxW = wellPx * 0.82;
-        const fit = fitTextInWell(ctx, ws.label, maxW, wellPx * 0.8, Math.min(10, wellPx / 4));
+        const fit = fitTextInWell(ctx, ws.label, maxW, wellPx * 0.8, _consistentFontSz);
         ctx.fillStyle = 'rgba(255,255,255,0.92)';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const lineH = fit.size * 1.2;
@@ -1118,7 +1141,7 @@ function drawPlateCanvas(canvas) {
         ctx.moveTo(x2, ly); ctx.lineTo(x2, ly + TICK);
         ctx.stroke();
         if (b.label) {
-          ctx.font = (lv===1?'10px ':'9px ') + BF;
+          ctx.font = (b.fontSize||10) + 'px ' + BF;
           ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
           ctx.fillText(b.label, (x1+x2)/2, ly - 2);
         }
@@ -1132,7 +1155,7 @@ function drawPlateCanvas(canvas) {
         ctx.moveTo(x2, ly); ctx.lineTo(x2, ly - TICK);
         ctx.stroke();
         if (b.label) {
-          ctx.font = (lv===1?'10px ':'9px ') + BF;
+          ctx.font = (b.fontSize||10) + 'px ' + BF;
           ctx.textAlign = 'center'; ctx.textBaseline = 'top';
           ctx.fillText(b.label, (x1+x2)/2, ly + 2);
         }
@@ -1146,7 +1169,7 @@ function drawPlateCanvas(canvas) {
         ctx.moveTo(lx, y2); ctx.lineTo(lx + TICK, y2);
         ctx.stroke();
         if (b.label) {
-          ctx.font = (lv===1?'10px ':'9px ') + BF;
+          ctx.font = (b.fontSize||10) + 'px ' + BF;
           ctx.save();
           ctx.translate(lx - 3, (y1 + y2) / 2);
           ctx.rotate(-Math.PI / 2);
@@ -1164,7 +1187,7 @@ function drawPlateCanvas(canvas) {
         ctx.moveTo(lx, y2); ctx.lineTo(lx - TICK, y2);
         ctx.stroke();
         if (b.label) {
-          ctx.font = (lv===1?'10px ':'9px ') + BF;
+          ctx.font = (b.fontSize||10) + 'px ' + BF;
           ctx.save();
           ctx.translate(lx + 3, (y1 + y2) / 2);
           ctx.rotate(Math.PI / 2);
@@ -1238,18 +1261,24 @@ function pdRenderBrackets() {
     item.innerHTML =
       '<span class="pd-brack-side">' + b.side.toUpperCase() + '</span>' +
       '<label style="font-size:10px;color:var(--text2);">From</label>' +
-      '<input type="number" value="' + b.from + '" min="1" max="' + max + '" ' +
-        'oninput="pdBrackets[' + bi + '].from=Math.min(Math.max(1,+this.value),' + max + ');sizeAndDrawCanvas();" ' +
+      '<input type="number" value="' + b.from + '" min="0" max="' + (max+1) + '" ' +
+        'oninput="pdBrackets[' + bi + '].from=Math.min(Math.max(0,+this.value),' + (max+1) + ');sizeAndDrawCanvas();" ' +
         'style="width:38px;">' +
       '<label style="font-size:10px;color:var(--text2);">To</label>' +
-      '<input type="number" value="' + b.to + '" min="1" max="' + max + '" ' +
-        'oninput="pdBrackets[' + bi + '].to=Math.min(Math.max(1,+this.value),' + max + ');sizeAndDrawCanvas();" ' +
+      '<input type="number" value="' + b.to + '" min="0" max="' + (max+1) + '" ' +
+        'oninput="pdBrackets[' + bi + '].to=Math.min(Math.max(0,+this.value),' + (max+1) + ');sizeAndDrawCanvas();" ' +
         'style="width:38px;">' +
       '<input type="text" value="' + (b.label || '') + '" placeholder="Label…" maxlength="40" ' +
         'oninput="pdBrackets[' + bi + '].label=this.value;sizeAndDrawCanvas();">' +
       '<select onchange="pdBrackets[' + bi + '].level=+this.value;sizeAndDrawCanvas();">' +
         '<option value="1"' + (b.level===1?' selected':'') + '>Lvl 1</option>' +
         '<option value="2"' + (b.level===2?' selected':'') + '>Lvl 2</option>' +
+      '</select>' +
+      '<select onchange="pdBrackets[' + bi + '].fontSize=+this.value;sizeAndDrawCanvas();">' +
+        '<option value="8"' + (b.fontSize===8?' selected':'') + '>S</option>' +
+        '<option value="10"' + (!b.fontSize||b.fontSize===10?' selected':'') + '>M</option>' +
+        '<option value="12"' + (b.fontSize===12?' selected':'') + '>L</option>' +
+        '<option value="14"' + (b.fontSize===14?' selected':'') + '>XL</option>' +
       '</select>' +
       '<button class="btn btn-sec pd-tb-btn" onclick="pdDeleteBracket(' + bi + ')" ' +
         'style="padding:2px 6px;font-size:10px;">✕</button>';
@@ -1260,7 +1289,7 @@ function pdRenderBrackets() {
 function pdAddBracket(side) {
   const fmt = FORMATS[currentFormat];
   const max = (side === 'left' || side === 'right') ? fmt.rows : fmt.cols;
-  pdBrackets.push({side: side, from: 1, to: max, label: '', level: 1});
+  pdBrackets.push({side: side, from: 1, to: max, label: '', level: 1, fontSize: 10});
   pdRenderBrackets();
   sizeAndDrawCanvas();
 }
@@ -1594,7 +1623,7 @@ function applyDilution(dir) {
   else selArr.sort((a,b) => rls.indexOf(wellRowCol(a).row) - rls.indexOf(wellRowCol(b).row));
   let conc = start;
   selArr.forEach(id => {
-    const lbl = fmtConc(conc, unit);
+    const lbl = pdDilAutoUnit ? fmtConcAuto(toNM(conc, unit)) : fmtConc(conc, unit);
     if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: lbl};
     else wellState[id].label = lbl;
     conc /= factor;
@@ -1606,6 +1635,18 @@ function fmtConc(val, unit) {
   if (val>=1000) return parseFloat((val/1000).toPrecision(3))+(unit==='nM'?'µM':unit==='µM'?'mM':'M');
   if (val<1&&val>0) return parseFloat(val.toPrecision(2))+unit;
   return parseFloat(val.toPrecision(3))+unit;
+}
+function toNM(val, unit) {
+  if (unit === 'µM') return val * 1e3;
+  if (unit === 'mM') return val * 1e6;
+  return val;
+}
+function fmtConcAuto(valInNM) {
+  if (!valInNM || valInNM <= 0) return '0';
+  if (valInNM >= 1e9) return parseFloat((valInNM/1e9).toPrecision(3)) + 'M';
+  if (valInNM >= 1e3) return parseFloat((valInNM/1e3).toPrecision(3)) + 'µM';
+  if (valInNM >= 1)   return parseFloat(valInNM.toPrecision(3)) + 'nM';
+  return parseFloat((valInNM*1e3).toPrecision(3)) + 'pM';
 }
 
 // ─── Custom types (legacy stubs kept for safety) ───────────────────────────────

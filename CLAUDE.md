@@ -238,16 +238,19 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 24: v0.9.86 — Plate Designer bracket overlays)
+Last session: 2026-06-07 (Round 25: v0.9.87 — Deg Explorer unit consistency + PD bracket/dilution polish)
 Hub apps: 8 (echo, deg, lm, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.81MB (7,812,600 chars). Version v0.9.86
+Hub file size: 7.82MB (7,819,092 chars). Version v0.9.87
+Degradation Explorer changes (degradation_visualizer.html):
+- Unit/scale selectors (nM/µM/M, Log/Linear/pDC50) now present in Table panel too
+- syncDgSelects() syncs all .dg-unit-sel / .dg-scale-sel elements across panels
+- Table column headers, cell values, detail card DC50, Properties DC50 all update to selected unit
+- buildDetailGrid(c) extracted from selectCompound() for reuse on unit/scale change
+- fmtDC50Val() / fmtDC50Cell() helpers for consistent unit-aware DC50 formatting
 Plate Designer changes (plate_designer.html):
-- Bracket overlays on all four sides: top, bottom, left, right
-- Each bracket: from/to well index, label text, nesting level (1 or 2)
-- State: pdBrackets = [{side, from, to, label, level}]
-- sizeAndDrawCanvas() computes ox/oy/rightM/botM margins from max bracket levels; stores in canvas._meta
-- drawPlateCanvas() shifts all coordinates by ox/oy; draws bracket lines, ticks, labels (rotated for left/right)
-- getCanvasZone() updated to account for ox/oy offsets so well click/hover still resolves correctly
-- Brackets ▾ button in top-bar toggles #pd-brack-bar panel with + Top/Bottom/Left/Right add buttons
-- pdRenderBrackets() renders each bracket as editable .pd-brack-item row with delete button
+- Brackets: text size selector added (S=8/M=10/L=12/XL=14px per bracket)
+- Brackets: from/to range extended to 0–max+1 for outside-plate annotations
+- Brackets: format change clamps bracket from/to to new plate bounds
+- Dilution: Auto unit checkbox — auto-picks M/µM/nM/pM for each concentration
+- Dilution: consistent font sizing — pre-scan finds min font size across all labels before drawing
 <!-- LAST_SESSION_END -->
