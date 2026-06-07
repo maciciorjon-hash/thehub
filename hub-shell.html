@@ -107,6 +107,13 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 #lab-status.ok{background:#00c896;}
 #lab-panel .opts-title{margin-bottom:6px;}
 
+/* Announcement banner */
+#hub-announce{position:fixed;top:58px;left:0;right:0;z-index:9;height:40px;display:none;align-items:center;justify-content:center;padding:0 48px;background:#e08c30;font-size:12px;font-weight:500;color:#fff;letter-spacing:0.1px;}
+#hub-announce.visible{display:flex;}
+#hub-announce-close{position:absolute;right:14px;background:none;border:none;color:rgba(255,255,255,0.75);font-size:20px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:4px;transition:color .15s,background .15s;}
+#hub-announce-close:hover{color:#fff;background:rgba(255,255,255,0.15);}
+body.hub-announcing #hub-home{margin-top:98px;}
+
 /* CONFETTI */
 #confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:9998;display:none;}
 
@@ -224,6 +231,8 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
   <button id="opts-btn" onclick="toggleOpts()">&#9881;<span class="nav-btn-label"> Settings</span></button>
   <button id="lab-btn" onclick="toggleLabPanel()"><span id="lab-status"></span>Lab</button>
 </div>
+<div id="hub-announce"><span id="hub-announce-text"></span><button id="hub-announce-close" onclick="dismissAnnounce()" title="Dismiss">&#215;</button></div>
+
 <div id="opts-panel" class="opts-panel hidden">
   <div class="opts-title">Settings</div>
   <div class="opts-row">
@@ -254,10 +263,13 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
   <p id="sug-thanks" class="sug-thanks hidden">Sent! Thanks for the feedback.</p>
   <div class="opts-divider" style="margin-top:12px;"></div>
   <div class="opts-version-row">
-    <span class="opts-version">The Hub &middot; v0.9.92</span>
+    <span class="opts-version">The Hub &middot; v0.9.93</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v0.9.93 — 7 Jun 2026</strong><br>
+    &#10022; Announcement banner — admin posts a message from the Lab panel; appears instantly on the hub home for all lab sessions; dismissible per browser session<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v0.9.92 — 7 Jun 2026</strong><br>
     &#10022; Echo: "Bottom ≥" constraint in Analysis settings — prevents 4PL bottom asymptote from going below a set value (default 0); applied in both batch analysis and curve editor<br>
     &#9679; Echo: Prism (Fraction) sheet now matches Prism Copy format exactly — replicates, merged headers, group rows; values divided by 100<br>
@@ -835,8 +847,9 @@ function initHub() {
   var t = localStorage.getItem('hub_theme') || 'light';
   if (chk) chk.checked = (t === 'dark');
 
-  // Firebase lab config
+  // Firebase
   startFbListener();
+  startAnnounceListener();
   if (isAdmin) {
     var labBtn = document.getElementById('lab-btn');
     if (labBtn) labBtn.style.display = 'inline-block';
@@ -936,8 +949,21 @@ function buildLabPanel() {
     '</div>';
   }).join('');
   panel.innerHTML = '<div class="opts-title">Lab View</div>' +
-    '<div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.55;">Toggle which apps lab members see. Changes push instantly.</div>' +
+    '<div style="font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Announcement</div>' +
+    '<textarea id="lab-announce-input" rows="2" placeholder="Message for lab members…" style="width:100%;resize:none;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:12px;padding:7px 10px;outline:none;margin-bottom:6px;"></textarea>' +
+    '<div style="display:flex;gap:6px;margin-bottom:14px;">' +
+      '<button onclick="postAnnouncement()" style="flex:1;height:28px;border:none;border-radius:6px;background:#e08c30;color:#fff;font-family:var(--sans);font-size:11px;font-weight:600;cursor:pointer;">Post</button>' +
+      '<button onclick="clearAnnouncement()" style="height:28px;padding:0 12px;border:1px solid var(--border2);border-radius:6px;background:none;color:var(--text2);font-family:var(--sans);font-size:11px;cursor:pointer;">Clear</button>' +
+    '</div>' +
+    '<div class="opts-divider" style="margin-bottom:14px;"></div>' +
+    '<div style="font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">App visibility</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.55;">Toggle which apps lab members see. Changes push instantly.</div>' +
     rows;
+  // Pre-populate textarea with current announcement if active
+  var inp = document.getElementById('lab-announce-input');
+  if (inp && window._currentAnnouncement && window._currentAnnouncement.enabled) {
+    inp.value = window._currentAnnouncement.text || '';
+  }
 }
 
 function updateLabPanelToggles() {
@@ -952,6 +978,71 @@ function onLabToggle(id, val) {
   labConfig[id] = val;
   setFbStatus(false);
   saveLabConfig().then(function() { setFbStatus(true); }).catch(function() {});
+}
+
+// ── Announcement banner ────────────────────────────────────────────────────
+var _announceEs = null;
+window._currentAnnouncement = null;
+
+function startAnnounceListener() {
+  if (_announceEs) { _announceEs.close(); _announceEs = null; }
+  try {
+    _announceEs = new EventSource(HUB_FB + '/announcement.json');
+    _announceEs.addEventListener('put', function(e) {
+      try { applyAnnouncement(JSON.parse(e.data).data); } catch(err) {}
+    });
+    _announceEs.addEventListener('patch', function(e) {
+      try {
+        var d = JSON.parse(e.data).data;
+        var cur = window._currentAnnouncement || {};
+        applyAnnouncement(Object.assign({}, cur, d));
+      } catch(err) {}
+    });
+  } catch(err) {}
+}
+
+function applyAnnouncement(data) {
+  window._currentAnnouncement = data;
+  var bar = document.getElementById('hub-announce');
+  var txt = document.getElementById('hub-announce-text');
+  if (!bar || !txt) return;
+  if (!data || !data.enabled || !data.text) {
+    bar.classList.remove('visible');
+    document.body.classList.remove('hub-announcing');
+    return;
+  }
+  if (sessionStorage.getItem('hub_announce_dismissed') === data.text) return;
+  txt.textContent = data.text;
+  bar.classList.add('visible');
+  document.body.classList.add('hub-announcing');
+}
+
+function dismissAnnounce() {
+  var txt = document.getElementById('hub-announce-text');
+  if (txt) sessionStorage.setItem('hub_announce_dismissed', txt.textContent);
+  var bar = document.getElementById('hub-announce');
+  if (bar) bar.classList.remove('visible');
+  document.body.classList.remove('hub-announcing');
+}
+
+function saveAnnouncement(text, enabled) {
+  return fetch(HUB_FB + '/announcement.json?auth=' + HUB_FB_SECRET, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: text, enabled: enabled})
+  });
+}
+
+function postAnnouncement() {
+  var inp = document.getElementById('lab-announce-input');
+  if (!inp || !inp.value.trim()) return;
+  saveAnnouncement(inp.value.trim(), true);
+}
+
+function clearAnnouncement() {
+  var inp = document.getElementById('lab-announce-input');
+  if (inp) inp.value = '';
+  saveAnnouncement('', false);
 }
 
 // Rotating subtitle
