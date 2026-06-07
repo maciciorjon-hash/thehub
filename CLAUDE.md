@@ -238,11 +238,15 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-06 (Round 17: Spectra new app, 6 frontend additions, hub-shell DOMContentLoaded consolidation, embed.py updated)
-Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt, spectra) [Figure Forge removed]
-Hub file size: 7.71MB (7,709,436 chars). Version v0.9.7
-New app: Spectra — UV/Vis spectrophotometry analyser. Tabs: A280, Ratios, Std Curve, Plate Reader, Guide. Accent #26a69a (teal). Visible-light spectrum gradient hero in A280 tab. Standard curve canvas chart with R² badge. 96-well heatmap in Plate Reader.
-Frontend additions: Echo Compare sparklines (4PL curve canvas per compound pill); Degradation Explorer scatter quadrant zones (Hit/Weak/Selective/Inactive, adjustable Dmax/DC50 thresholds, Chart.js beforeDatasetsDraw plugin); LabMate command palette (Cmd/Ctrl+K, reuses SEARCH_INDEX + searchNavigate); Plate Designer well-paint ripple animation (CSS @keyframes, spawnRipple on canvas mousedown); Helix live nucleotide colouring + composition bar (oninput, .nt-A/T/G/C spans, stacked bar); Protein Tools hydropathy chart was already present.
-Hub-shell: 7 DOMContentLoaded listeners consolidated to single initHub() call. Spectra card, iframe, APP_INFO entry, APP_B64_NEW placeholder added. embed.py updated to include spectra.
-Hotfix from previous session: EGG_BIOS smart-quote corruption fixed (e59bc5d).
+Last session: 2026-06-07 (Round 18: Degradation Explorer 7-fix overhaul)
+Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt, spectra) [unchanged]
+Hub file size: 7.73MB (7,725,680 chars). Version v0.9.8
+Degradation Explorer changes (all in degradation_visualizer.html):
+- DC50 always toFixed(1); Dmax always Math.round() — in fmtVal(), detail card, scatter tooltip
+- Zones toggle: added onchange="refreshChart()" (was missing — toggling did nothing)
+- Scatter sliders: debounceChart(updateChart) → refreshChart() on both dmax/dc50 sliders
+- Error bars: cap 4→7px, lineWidth 1.5→2, globalAlpha 0.75→0.9 (split beginPath/stroke per direction already existed)
+- Stats banner moved from .stats-row in header to .tabs-right in tabs bar (right of tabs, border-left separator)
+- Custom hover tooltip: native Chart.js tooltip disabled, customTooltip() function renders .dg-tt div with compound, target, DC50±SD, Dmax±SD, and SMILES structure SVG if loaded
+- Properties tab (5th tab): SMILES CSV/XLSX upload, lazy RDKit CDN loading, per-molecule properties (MW, logP, HBA, HBD, TPSA, RotBonds), compound table joining SMILES with assay data. TAB_NAMES updated to include 'props'.
 <!-- LAST_SESSION_END -->
