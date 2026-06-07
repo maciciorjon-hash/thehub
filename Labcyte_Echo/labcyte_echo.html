@@ -703,6 +703,9 @@ tr:hover td{background:var(--surface2);}
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-bot" onchange="var el=document.getElementById('p-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix bottom (%)</span></div><input type="number" id="p-bot-val" value="0" min="-50" max="100" disabled style="opacity:0.35;"><div class="hint">Pin 4PL bottom asymptote</div></div>
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-hill" onchange="var el=document.getElementById('p-hill-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix Hill slope</span></div><input type="number" id="p-hill-val" value="1" min="0.1" max="5" step="0.1" disabled style="opacity:0.35;"><div class="hint">Pin Hill slope coefficient</div></div>
         </div>
+        <div class="setup-2col">
+          <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-min-bot-en" checked onchange="var el=document.getElementById('p-min-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Bottom ≥ (%)<span class="pinfo" data-tip="Constrains the 4PL bottom asymptote to be ≥ this value. Set to 0 for normalized data — prevents the curve from fitting a negative baseline plateau.">i</span></span></div><input type="number" id="p-min-bot-val" value="0" min="-100" max="50" step="1"><div class="hint">Lower bound on bottom asymptote</div></div>
+        </div>
       </div>
 
       <!-- TAB 4: OUTPUT -->
@@ -1338,6 +1341,8 @@ async function runPipeline() {
   const botVal = parseFloat(document.getElementById('p-bot-val')?.value) || 0;
   const fixHill = document.getElementById('p-fix-hill')?.checked || false;
   const hillVal = parseFloat(document.getElementById('p-hill-val')?.value) || 1;
+  const minBotEnabled = document.getElementById('p-min-bot-en')?.checked !== false;
+  const minBotVal = parseFloat(document.getElementById('p-min-bot-val')?.value) ?? 0;
   const dmaxCapEnabled = document.getElementById('p-dmax-cap-en')?.checked || false;
   const dmaxCapVal = Math.min(99, Math.max(10, parseFloat(document.getElementById('p-dmax-cap-val')?.value) || 99));
   const absdc50Enabled = !!document.querySelector('.csv-col-cb[data-col="AbsDC50_nM"]')?.checked;
@@ -1350,7 +1355,7 @@ async function runPipeline() {
   const _now = new Date();
   const _tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const _tsLocal = _now.toLocaleString('en-GB', { timeZone: _tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '') + ' (' + _tz + ')';
-  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: _now.toISOString(), timestampLocal: _tsLocal };
+  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, minBotEnabled, minBotVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: _now.toISOString(), timestampLocal: _tsLocal };
   const csvCols = [...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col);
 
   try {
@@ -1379,7 +1384,7 @@ async function runPipeline() {
       }
     } catch(e) { log('Pre-flight check skipped: ' + e.message, 'warn'); }
 
-    const results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON);
+    const results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal);
 
     setProgress(100);
     log('Done. ' + results.length + ' compounds, ' + downloadBlobs.length + ' files.', 'ok');
@@ -1726,7 +1731,9 @@ function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
   return best;
 }
 
-async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON) {
+async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal) {
+  minBotEnabled = minBotEnabled !== false;
+  minBotVal = isNaN(minBotVal) ? 0 : minBotVal;
   let qcOverrides = {};
   try { qcOverrides = JSON.parse(qcOverridesJSON || '{}'); } catch (e) {}
 
@@ -1965,7 +1972,8 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
 
         const _dataMax = skipNorm ? Math.max(yMax2, 1) : 100;
         const _dataMin = skipNorm ? Math.min(yMin2, 0) : 0;
-        const loBotEff = _fixBot2 ? _botVal2 - 0.01 : (skipNorm ? _dataMin - Math.abs(_dataMin) * 0.3 : (dmaxCapEnabled ? 100 - dmaxCapVal : -20));
+        let loBotEff = _fixBot2 ? _botVal2 - 0.01 : (skipNorm ? _dataMin - Math.abs(_dataMin) * 0.3 : (dmaxCapEnabled ? 100 - dmaxCapVal : -20));
+        if (!_fixBot2 && minBotEnabled) loBotEff = Math.max(loBotEff, minBotVal);
         const hiBotEff = _fixBot2 ? _botVal2 + 0.01 : (skipNorm ? _dataMax * 0.7 : 100);
         const loHillEff = _fixHill2 ? _hillVal2 - 0.001 : 0.1;
         const hiHillEff = _fixHill2 ? _hillVal2 + 0.001 : 5.0;
@@ -2268,38 +2276,56 @@ function generateOutputCSV() {
   a.download = 'Results_'+(window._lastAssayId||'output')+'_export.csv';
   a.click();
 }
-// Prism-ready means-only table: one column per compound, values 0–1, groups separated by blank row.
-// First row of each section = "Conc (nM)" + compound names → paste directly into Prism XY table.
 function _buildPrismFractionAOA(results) {
   var groups = {}, groupOrder = [];
   results.forEach(function(r) {
     if (!groups[r.Protein]) { groups[r.Protein] = []; groupOrder.push(r.Protein); }
     groups[r.Protein].push(r);
   });
-  var aoa = [];
+  var aoa = [], merges = [], rowIdx = 0;
   groupOrder.forEach(function(protein, gi) {
-    if (gi > 0) aoa.push([]);
     var compounds = groups[protein];
+    if (gi > 0) { aoa.push([]); rowIdx++; }
     var compData = compounds.map(function(c) {
-      var means = {};
-      (c._pts || []).forEach(function(pt) { means[pt.x.toFixed(4)] = pt.y; });
-      return { id: c.Sample_ID, means: means };
+      var byConc = {};
+      (c._reps || []).forEach(function(rep) {
+        var k = rep.x.toFixed(4);
+        if (!byConc[k]) byConc[k] = [];
+        if (rep.y !== null) byConc[k].push(rep.y);
+      });
+      var maxReps = 0;
+      Object.values(byConc).forEach(function(v) { if (v.length > maxReps) maxReps = v.length; });
+      return { id: c.Sample_ID, byConc: byConc, nReps: Math.max(1, maxReps) };
     });
     var concKeySet = new Set();
-    compData.forEach(function(c) { Object.keys(c.means).forEach(function(k) { concKeySet.add(k); }); });
+    compData.forEach(function(c) { Object.keys(c.byConc).forEach(function(k) { concKeySet.add(k); }); });
     var concKeys = Array.from(concKeySet).sort(function(a, b) { return parseFloat(b) - parseFloat(a); });
     function keyToNM(k) { return parseFloat((Math.pow(10, parseFloat(k)) * 1e9).toPrecision(4)); }
-    aoa.push(['Conc (nM)'].concat(compData.map(function(c) { return c.id; })));
+    aoa.push(['Group: ' + protein]); rowIdx++;
+    var compRow = [''];
+    var col = 1;
+    compData.forEach(function(c) {
+      compRow.push(c.id);
+      for (var i = 1; i < c.nReps; i++) compRow.push('');
+      if (c.nReps > 1) merges.push({ s: { r: rowIdx, c: col }, e: { r: rowIdx, c: col + c.nReps - 1 } });
+      col += c.nReps;
+    });
+    aoa.push(compRow); rowIdx++;
+    var repRow = ['Concentration (nM)'];
+    compData.forEach(function(c) {
+      for (var i = 0; i < c.nReps; i++) repRow.push(c.nReps > 1 ? 'Rep ' + (i + 1) : '');
+    });
+    aoa.push(repRow); rowIdx++;
     concKeys.forEach(function(ck) {
       var row = [keyToNM(ck)];
       compData.forEach(function(c) {
-        var m = c.means[ck];
-        row.push(m !== undefined ? parseFloat((m / 100).toFixed(4)) : '');
+        var vals = c.byConc[ck] || [];
+        for (var i = 0; i < c.nReps; i++) row.push(vals[i] !== undefined ? parseFloat((vals[i] / 100).toFixed(6)) : '');
       });
-      aoa.push(row);
+      aoa.push(row); rowIdx++;
     });
   });
-  return aoa;
+  return { aoa: aoa, merges: merges };
 }
 
 function _buildPrismAOA(results) {
@@ -2395,7 +2421,7 @@ function generateOutputXLSX() {
     ['Model', '4-Parameter Logistic (4PL)'],
     ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? 'DMSO mean per plate — controls: ' + params.ctrlRange : 'No control wells')],
     ['Top constraint (%)', params.topEnabled !== false ? params.topConstrain : 'Free (unconstrained)'],
-    ['Bottom (%)', params.fixBot ? ('Fixed at ' + params.botVal) : 'Free'],
+    ['Bottom (%)', params.fixBot ? ('Fixed at ' + params.botVal) : ('Free' + (params.minBotEnabled !== false ? ' (≥ ' + (params.minBotVal ?? 0) + '%)' : ''))],
     ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free'],
     ['Max Dmax (%)', params.dmaxCapEnabled ? params.dmaxCapVal : 'Unlimited'],
     ['Absolute DC50', params.absdc50Enabled ? 'Yes' : 'No'],
@@ -2436,7 +2462,8 @@ function generateOutputXLSX() {
   XLSX.utils.book_append_sheet(wb, wsPrism, 'Prism Copy');
 
   var prismFrac = _buildPrismFractionAOA(scatterData);
-  var wsPrismFrac = XLSX.utils.aoa_to_sheet(prismFrac);
+  var wsPrismFrac = XLSX.utils.aoa_to_sheet(prismFrac.aoa);
+  if (prismFrac.merges.length) wsPrismFrac['!merges'] = prismFrac.merges;
   XLSX.utils.book_append_sheet(wb, wsPrismFrac, 'Prism (Fraction)');
 
   var wbout = XLSX.write(wb, { bookType:'xlsx', type:'array' });
@@ -2469,7 +2496,7 @@ function renderProtocol() {
   html += row('Min R²', on(params.r2Enabled, params.minR2, ''));
   html += row('Max replicate SD', on(params.sdEnabled, params.maxSd, '%'));
   html += row('Top constraint', params.topEnabled !== false ? '<strong>' + params.topConstrain + '%</strong>' : '<span style="color:var(--text3)">Free (unconstrained)</span>');
-  html += row('Bottom', params.fixBot ? 'Fixed at <strong>' + params.botVal + '%</strong>' : '<span style="color:var(--text3)">Free</span>');
+  html += row('Bottom', params.fixBot ? 'Fixed at <strong>' + params.botVal + '%</strong>' : ('<span style="color:var(--text3)">Free</span>' + (params.minBotEnabled !== false ? ' <span style="color:var(--text2)">(≥ ' + (params.minBotVal ?? 0) + '%)</span>' : '')));
   html += row('Hill slope', params.fixHill ? 'Fixed at <strong>' + params.hillVal + '</strong>' : '<span style="color:var(--text3)">Free</span>');
   html += row('Max D<sub>max</sub>', params.dmaxCapEnabled ? '<strong>' + params.dmaxCapVal + '%</strong>' : '<span style="color:var(--text3)">Unlimited</span>');
   html += row('Absolute DC50', params.absdc50Enabled ? 'Yes' : 'No');
@@ -6011,7 +6038,9 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
   const b0=botFixed?(botVal??0):(yMn*0.9);
   const t0=topFixed?topVal:(yMx*1.05);
   const h0=hillFixed?(hillVal??1):1;
-  const loBot=botFixed?b0-0.01:-20, hiBot=botFixed?b0+0.01:100;
+  const _minBotEn = !botFixed && document.getElementById('p-min-bot-en')?.checked !== false;
+  const _minBotV = _minBotEn ? (parseFloat(document.getElementById('p-min-bot-val')?.value) ?? 0) : -20;
+  const loBot=botFixed?b0-0.01:Math.max(-20,_minBotEn?_minBotV:-20), hiBot=botFixed?b0+0.01:100;
   const loHill=hillFixed?h0-0.001:0.1, hiHill=hillFixed?h0+0.001:5.0;
   const loEC=xMn-2, hiEC=xMx+2;
   let bot, logec50, hill, top;
