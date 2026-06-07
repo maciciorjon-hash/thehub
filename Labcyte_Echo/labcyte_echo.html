@@ -1711,6 +1711,21 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0 };
 }
 
+// Multi-start LM: tries 5 evenly-spaced logEC50 seeds (param index 1) and returns the best fit.
+// Prevents local-minima traps caused by a single initial guess.
+function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
+  const loEC = loBound[1], hiEC = hiBound[1];
+  const seeds = [0.1, 0.3, 0.5, 0.7, 0.9].map(f => loEC + (hiEC - loEC) * f);
+  let best = null;
+  for (const ec of seeds) {
+    const p = [...pBase];
+    p[1] = Math.max(loEC, Math.min(hiEC, ec));
+    const r = _lmFit(xArr, yArr, p, loBound, hiBound, valFn, jacFn, maxIter);
+    if (!best || r.r2 > best.r2) best = r;
+  }
+  return best;
+}
+
 async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON) {
   let qcOverrides = {};
   try { qcOverrides = JSON.parse(qcOverridesJSON || '{}'); } catch (e) {}
@@ -1965,9 +1980,9 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
             Math.max(loHillEff, Math.min(hiHillEff, 1)),
             Math.max(topLo, Math.min(topHi, yMax2))
           ];
-          const { params, r2 } = _lmFit(xArr, yArr, pInit,
+          const { params, r2 } = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff, topLo], [hiBotEff, xMax + 1, hiHillEff, topHi],
-            _4plVal4, _4plJac4, 500);
+            _4plVal4, _4plJac4, 200);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2 };
         } else {
           const pInit = [
@@ -1975,10 +1990,10 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
             Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
             Math.max(loHillEff, Math.min(hiHillEff, 1))
           ];
-          const { params, r2 } = _lmFit(xArr, yArr, pInit,
+          const { params, r2 } = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff], [hiBotEff, xMax + 1, hiHillEff],
             (xi, b, l, h) => _4plVal3(xi, b, l, h, _tc),
-            (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 500);
+            (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 200);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: _tc, r2 };
         }
 
@@ -5954,32 +5969,35 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
   if(!pts||pts.length<3) return null;
   const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
   const yMn=Math.min(...ys), yMx=Math.max(...ys);
+  const xMn=Math.min(...xs), xMx=Math.max(...xs);
   const b0=botFixed?(botVal??0):(yMn*0.9);
   const t0=topFixed?topVal:(yMx*1.05);
   const h0=hillFixed?(hillVal??1):1;
-  const ec0=xs[Math.floor(xs.length/2)];
-  // params = [logec50, hill, bot, top]  (top/bot/hill may be fixed)
-  const model=(params,x)=>{
-    const logec50=params[0];
-    const h=hillFixed?h0:params[1];
-    const bot=botFixed?b0:params[2];
-    const top=topFixed?t0:params[3];
-    return bot+(top-bot)/(1+Math.pow(10,h*(x-logec50)));
-  };
-  const sse=params=>xs.reduce((s,x,i)=>s+(ys[i]-model(params,x))**2,0);
-  let p0=[ec0,h0,b0,t0];
-  const result=nmSimplex(sse,p0);
-  const [logec50,hFit,bFit,tFit]=result;
-  const bot=botFixed?b0:bFit, top=topFixed?t0:tFit, hill=hillFixed?h0:hFit;
-  const ymean=ys.reduce((a,b)=>a+b,0)/ys.length;
-  const ssTot=ys.reduce((s,y)=>s+(y-ymean)**2,0);
-  const ssRes=sse(result);
-  const r2=Math.max(0,1-ssRes/Math.max(ssTot,1e-10));
-  const dmax=Math.round(100-bot);
-  const dc50_nM=Math.round(Math.pow(10,logec50+9)*10)/10;
-  const logIC50_M=Math.round(logec50*10000)/10000;
-  const pDC50=Math.round(-logec50*100)/100;
-  return {logec50,hill,bot,top,r2,dmax,dc50_nM,logIC50_M,pDC50};
+  const loBot=botFixed?b0-0.01:-20, hiBot=botFixed?b0+0.01:100;
+  const loHill=hillFixed?h0-0.001:0.1, hiHill=hillFixed?h0+0.001:5.0;
+  const loEC=xMn-2, hiEC=xMx+2;
+  let bot, logec50, hill, top;
+  if (topFixed && !botFixed && !hillFixed) {
+    const tc=topVal;
+    const pBase=[Math.max(loBot,Math.min(hiBot,b0)), (xMn+xMx)/2, h0];
+    const {params}=_fitBest(xs, ys, pBase, [loBot,loEC,loHill], [hiBot,hiEC,hiHill],
+      (xi,b,l,h)=>_4plVal3(xi,b,l,h,tc), (xi,b,l,h)=>_4plJac3(xi,b,l,h,tc), 300);
+    [bot,logec50,hill]=params; top=tc;
+  } else {
+    const loTop=topFixed?t0-0.01:50, hiTop=topFixed?t0+0.01:200;
+    const pBase=[Math.max(loBot,Math.min(hiBot,b0)), (xMn+xMx)/2, h0, Math.max(loTop,Math.min(hiTop,t0))];
+    const {params}=_fitBest(xs, ys, pBase, [loBot,loEC,loHill,loTop], [hiBot,hiEC,hiHill,hiTop],
+      _4plVal4, _4plJac4, 300);
+    [bot,logec50,hill,top]=params;
+  }
+  const ymean=ys.reduce((a,v)=>a+v,0)/ys.length;
+  const ssTot=ys.reduce((s,v)=>s+(v-ymean)**2,0);
+  const ssRes=xs.reduce((s,x,i)=>s+(ys[i]-(topFixed&&!botFixed&&!hillFixed?_4plVal3(x,bot,logec50,hill,top):_4plVal4(x,bot,logec50,hill,top)))**2,0);
+  const r2=ssTot>0?Math.max(0,1-ssRes/ssTot):0;
+  return {logec50, hill, bot, top, r2, dmax:Math.round(100-bot),
+          dc50_nM:Math.round(Math.pow(10,logec50+9)*10)/10,
+          logIC50_M:Math.round(logec50*10000)/10000,
+          pDC50:Math.round(-logec50*100)/100};
 }
 
 function cvRightClick(e) {
