@@ -238,11 +238,14 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 20: v0.9.82 — axis unit dropdown, pill fix, zone link)
+Last session: 2026-06-07 (Round 21: v0.9.83 — LabMate mobile grid redesign)
 Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt, spectra) [unchanged]
-Hub file size: 7.73MB (7,731,313 chars). Version v0.9.82
-Degradation Explorer changes (all in degradation_visualizer.html):
-- X-axis unit dropdown: nM/µM/M/log₁₀/pDC50 selector next to DC50 slider; axis type switches logarithmic↔linear; pDC50 uses reverse:true; axis hint and slider label update with unit
-- Potent/Moderate/Weak scatter pills: replaced compound-level quality(c) with per-point pointQuality(dc50_nM, dmax); only the actual scatter point's values are tested against thresholds
-- Hit zone linked to Potent threshold: removed separate dg-thr-dmax/dg-thr-dc50 inputs; quadrant plugin reads qThreshDmax/qThreshDC50 directly and converts DC50 to display unit
+Hub file size: 7.73MB (7,733,425 chars). Version v0.9.83
+LabMate changes (labmate.html):
+- Mobile grid: replaced all emoji icon spans with CSS lm-icon-* div boxes (11 main + 7 sub-group icons)
+- Sub-menu grid: reference/tools sub-groups render CSS icon divs via iconClass in _navGroups children
+- Fixed Calculators button (was calling mobShowSubGroup('calculate') → now mobGoTo('quickcalc'))
+- Fixed PROTAC button (was calling mobShowSubGroup('protac') → now mobGoTo('protactools'))
+- Back button: onclick mobGoHome→mobBack; label updates dynamically (← Reference/← Tools/← LabMate)
+- Sub-home back button text: "← Back" → "← LabMate"
 <!-- LAST_SESSION_END -->
