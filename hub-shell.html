@@ -99,6 +99,14 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .opts-action-btn:hover{background:var(--surface2);}
 .opts-link-btn{background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0;text-decoration:underline;}
 
+/* Lab admin button */
+#lab-btn{padding:0 14px;height:32px;border:1px solid var(--border2);border-radius:20px;background:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;display:none;}
+#lab-btn:hover{background:var(--surface2);color:var(--text);}
+#lab-btn.active{background:var(--surface3);color:var(--text);}
+#lab-status{width:7px;height:7px;border-radius:50%;background:var(--text3);display:inline-block;margin-right:5px;vertical-align:middle;transition:background .3s;}
+#lab-status.ok{background:#00c896;}
+#lab-panel .opts-title{margin-bottom:6px;}
+
 /* CONFETTI */
 #confetti-canvas{position:fixed;inset:0;pointer-events:none;z-index:9998;display:none;}
 
@@ -214,6 +222,7 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
     <div id="hub-search-results"></div>
   </div>
   <button id="opts-btn" onclick="toggleOpts()">&#9881;<span class="nav-btn-label"> Settings</span></button>
+  <button id="lab-btn" onclick="toggleLabPanel()"><span id="lab-status"></span>Lab</button>
 </div>
 <div id="opts-panel" class="opts-panel hidden">
   <div class="opts-title">Settings</div>
@@ -245,10 +254,13 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
   <p id="sug-thanks" class="sug-thanks hidden">Sent! Thanks for the feedback.</p>
   <div class="opts-divider" style="margin-top:12px;"></div>
   <div class="opts-version-row">
-    <span class="opts-version">The Hub &middot; v0.9.88</span>
+    <span class="opts-version">The Hub &middot; v0.9.89</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v0.9.89 — 7 Jun 2026</strong><br>
+    &#10022; Firebase real-time Lab View — admin link controls which apps lab members see; changes push instantly to all open sessions<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v0.9.88 — 7 Jun 2026</strong><br>
     &#10022; LDI: default Y axis is now % Protein Remaining; Curves tab moved after Results<br>
     &#9679; Degradation Explorer: scatter hover tooltip now shows DC50 in selected unit/scale; unit/scale selectors synced across all panels<br>
@@ -296,6 +308,8 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
     &#10022; Echo Data Analysis rebuilt; shared theme across all apps
   </div>
 </div>
+
+<div id="lab-panel" class="opts-panel hidden"></div>
 
 <canvas id="hub-bg-canvas"></canvas>
 <div id="hub-home">
@@ -810,8 +824,125 @@ function initHub() {
   var chk = document.getElementById('theme-toggle-chk');
   var t = localStorage.getItem('hub_theme') || 'light';
   if (chk) chk.checked = (t === 'dark');
+
+  // Firebase lab config
+  startFbListener();
+  if (isAdmin) {
+    var labBtn = document.getElementById('lab-btn');
+    if (labBtn) labBtn.style.display = '';
+    buildLabPanel();
+  }
 }
 document.addEventListener('DOMContentLoaded', initHub);
+
+// ── Firebase Lab Config ────────────────────────────────────────────────────
+var HUB_FB = 'https://thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app';
+var HUB_FB_SECRET = 'dwzlbXM8BGZKdClw0cUR7rbEHacQ0FnDMjOFy3Ty';
+var HUB_ADMIN_PASS = 'ciullilab';
+var isAdmin = (new URLSearchParams(window.location.search).get('admin') === HUB_ADMIN_PASS);
+
+var ALL_APP_IDS = ['echo','lm','deg','pd','dna','pt','spectra','ldi'];
+var labConfig = {};
+ALL_APP_IDS.forEach(function(id) { labConfig[id] = true; });
+
+var _fbEs = null;
+var _labPanelOpen = false;
+
+function applyLabConfig() {
+  if (isAdmin) return;
+  ALL_APP_IDS.forEach(function(id) {
+    var card = document.querySelector('.card[data-app-id="' + id + '"]');
+    if (card) card.style.display = (labConfig[id] === false) ? 'none' : '';
+  });
+}
+
+function saveLabConfig() {
+  return fetch(HUB_FB + '/labconfig.json?auth=' + HUB_FB_SECRET, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(labConfig)
+  });
+}
+
+function startFbListener() {
+  if (_fbEs) { _fbEs.close(); _fbEs = null; }
+  try {
+    _fbEs = new EventSource(HUB_FB + '/labconfig.json');
+    _fbEs.addEventListener('put', function(e) {
+      try {
+        var msg = JSON.parse(e.data);
+        if (msg.data && typeof msg.data === 'object') {
+          labConfig = msg.data;
+        } else if (msg.data === null && isAdmin) {
+          saveLabConfig();
+        }
+      } catch(err) {}
+      applyLabConfig();
+      setFbStatus(true);
+      updateLabPanelToggles();
+    });
+    _fbEs.addEventListener('patch', function(e) {
+      try {
+        var msg = JSON.parse(e.data);
+        if (msg.data && typeof msg.data === 'object') {
+          Object.keys(msg.data).forEach(function(k) { labConfig[k] = msg.data[k]; });
+        }
+      } catch(err) {}
+      applyLabConfig();
+      updateLabPanelToggles();
+    });
+    _fbEs.onerror = function() { setFbStatus(false); };
+  } catch(err) {}
+}
+
+function setFbStatus(ok) {
+  var dot = document.getElementById('lab-status');
+  if (dot) dot.classList.toggle('ok', ok);
+}
+
+function toggleLabPanel() {
+  _labPanelOpen = !_labPanelOpen;
+  var panel = document.getElementById('lab-panel');
+  var btn = document.getElementById('lab-btn');
+  if (panel) panel.classList.toggle('hidden', !_labPanelOpen);
+  if (btn) btn.classList.toggle('active', _labPanelOpen);
+  if (_labPanelOpen) document.getElementById('opts-panel').classList.add('hidden');
+}
+
+function buildLabPanel() {
+  var panel = document.getElementById('lab-panel');
+  if (!panel) return;
+  var rows = ALL_APP_IDS.map(function(id) {
+    var info = APP_INFO[id] || {name: id, color: '#888'};
+    return '<div class="opts-row" style="margin-bottom:10px;">' +
+      '<span class="opts-label" style="display:flex;align-items:center;gap:7px;">' +
+        '<span style="width:9px;height:9px;border-radius:50%;background:' + info.color + ';flex-shrink:0;display:inline-block;"></span>' +
+        info.name +
+      '</span>' +
+      '<label class="theme-switch">' +
+        '<input type="checkbox" class="lab-toggle" data-id="' + id + '" ' + (labConfig[id] !== false ? 'checked' : '') + ' onchange="onLabToggle(\'' + id + '\',this.checked)">' +
+        '<span class="theme-slider"></span>' +
+      '</label>' +
+    '</div>';
+  }).join('');
+  panel.innerHTML = '<div class="opts-title">Lab View</div>' +
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.55;">Toggle which apps lab members see. Changes push instantly.</div>' +
+    rows;
+}
+
+function updateLabPanelToggles() {
+  if (!isAdmin) return;
+  ALL_APP_IDS.forEach(function(id) {
+    var el = document.querySelector('.lab-toggle[data-id="' + id + '"]');
+    if (el) el.checked = labConfig[id] !== false;
+  });
+}
+
+function onLabToggle(id, val) {
+  labConfig[id] = val;
+  setFbStatus(false);
+  saveLabConfig().then(function() { setFbStatus(true); }).catch(function() {});
+}
 
 // Rotating subtitle
 var HUB_SUBS = [
@@ -1086,6 +1217,13 @@ document.addEventListener('click', function(e) {
   var optsBtn = document.getElementById('opts-btn');
   if (!optsPanel.classList.contains('hidden') && !optsPanel.contains(e.target) && !optsBtn.contains(e.target)) {
     optsPanel.classList.add('hidden');
+  }
+  var labPanel = document.getElementById('lab-panel');
+  var labBtn = document.getElementById('lab-btn');
+  if (labPanel && labBtn && !labPanel.classList.contains('hidden') && !labPanel.contains(e.target) && !labBtn.contains(e.target)) {
+    labPanel.classList.add('hidden');
+    labBtn.classList.remove('active');
+    _labPanelOpen = false;
   }
 });
 

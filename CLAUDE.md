@@ -238,9 +238,18 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 25: v0.9.87 — Deg Explorer unit consistency + PD bracket/dilution polish)
+Last session: 2026-06-07 (Round 26: v0.9.89 — Firebase real-time Lab View)
 Hub apps: 8 (echo, deg, lm, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.82MB (7,819,092 chars). Version v0.9.87
+Hub file size: 7.83MB (7,826,854 chars). Version v0.9.89
+hub-shell.html changes (v0.9.89):
+- Firebase Realtime Database real-time Lab View
+- isAdmin = URLSearchParams admin === HUB_ADMIN_PASS ('ciullilab')
+- startFbListener(): EventSource SSE on /labconfig.json — live push to all sessions
+- applyLabConfig(): hides/shows cards in lab mode (non-admin); admin always sees all
+- saveLabConfig(): PUT /labconfig.json?auth=SECRET — write protected
+- Lab panel (admin only): toggle switches per app, green dot = connected
+- Click-outside closes lab panel
+- Firebase DB: thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app
 Degradation Explorer changes (degradation_visualizer.html):
 - Unit/scale selectors (nM/µM/M, Log/Linear/pDC50) now present in Table panel too
 - syncDgSelects() syncs all .dg-unit-sel / .dg-scale-sel elements across panels
