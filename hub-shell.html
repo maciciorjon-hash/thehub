@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>The Hub</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <style>
 :root {
   --bg:#f4f5f8; --surface:#ffffff; --surface2:#f0f1f5; --surface3:#e4e6ee;
@@ -263,10 +265,13 @@ body.hub-announcing #hub-home{margin-top:98px;}
   <p id="sug-thanks" class="sug-thanks hidden">Sent! Thanks for the feedback.</p>
   <div class="opts-divider" style="margin-top:12px;"></div>
   <div class="opts-version-row">
-    <span class="opts-version">The Hub &middot; v0.9.93</span>
+    <span class="opts-version">The Hub &middot; v0.9.94</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v0.9.94 — 7 Jun 2026</strong><br>
+    &#10022; Google Authentication — Admin login via Google (maciciorjon@gmail.com) in Settings panel; replaces URL param; session persists across reloads<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v0.9.93 — 7 Jun 2026</strong><br>
     &#10022; Announcement banner — admin posts a message from the Lab panel; appears instantly on the hub home for all lab sessions; dismissible per browser session<br>
     <br>
@@ -329,6 +334,8 @@ body.hub-announcing #hub-home{margin-top:98px;}
     <strong style="color:var(--text);font-size:12px;">v0.7 — May 2026</strong><br>
     &#10022; Echo Data Analysis rebuilt; shared theme across all apps
   </div>
+  <div class="opts-divider" style="margin-top:12px;"></div>
+  <div id="admin-auth-section"></div>
 </div>
 
 <div id="lab-panel" class="opts-panel hidden"></div>
@@ -847,22 +854,32 @@ function initHub() {
   var t = localStorage.getItem('hub_theme') || 'light';
   if (chk) chk.checked = (t === 'dark');
 
-  // Firebase
+  // Firebase — all users get lab config + announcements; admin UI set by onAuthStateChanged
   startFbListener();
   startAnnounceListener();
-  if (isAdmin) {
-    var labBtn = document.getElementById('lab-btn');
-    if (labBtn) labBtn.style.display = 'inline-block';
-    buildLabPanel();
-  }
 }
 document.addEventListener('DOMContentLoaded', initHub);
 
 // ── Firebase Lab Config ────────────────────────────────────────────────────
 var HUB_FB = 'https://thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app';
 var HUB_FB_SECRET = 'dwzlbXM8BGZKdClw0cUR7rbEHacQ0FnDMjOFy3Ty';
-var HUB_ADMIN_PASS = 'ciullilab';
-var isAdmin = (new URLSearchParams(window.location.search).get('admin') === HUB_ADMIN_PASS);
+var HUB_ADMIN_EMAIL = 'maciciorjon@gmail.com';
+var isAdmin = false;
+
+firebase.initializeApp({
+  apiKey: 'AIzaSyBpw9UbXnCciIi7VBapBeBJOq9U7RSS4g8',
+  authDomain: 'thehub-f80ae.firebaseapp.com',
+  projectId: 'thehub-f80ae',
+  storageBucket: 'thehub-f80ae.firebasestorage.app',
+  messagingSenderId: '30483085120',
+  appId: '1:30483085120:web:1de8be497e632f12a22ca5',
+  databaseURL: 'https://thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app'
+});
+
+firebase.auth().onAuthStateChanged(function(user) {
+  isAdmin = !!(user && user.email === HUB_ADMIN_EMAIL);
+  onAdminStateChanged();
+});
 
 var ALL_APP_IDS = ['echo','lm','deg','pd','dna','pt','spectra','ldi'];
 var labConfig = {};
@@ -978,6 +995,62 @@ function onLabToggle(id, val) {
   labConfig[id] = val;
   setFbStatus(false);
   saveLabConfig().then(function() { setFbStatus(true); }).catch(function() {});
+}
+
+// ── Google Auth ───────────────────────────────────────────────────────────
+function onAdminStateChanged() {
+  var labBtn = document.getElementById('lab-btn');
+  if (isAdmin) {
+    if (labBtn) labBtn.style.display = 'inline-block';
+    buildLabPanel();
+  } else {
+    if (labBtn) labBtn.style.display = 'none';
+    var panel = document.getElementById('lab-panel');
+    if (panel) panel.classList.add('hidden');
+    if (labBtn) labBtn.classList.remove('active');
+    _labPanelOpen = false;
+  }
+  updateAdminAuthUI();
+}
+
+function adminSignIn() {
+  var provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ login_hint: HUB_ADMIN_EMAIL });
+  firebase.auth().signInWithPopup(provider).then(function(result) {
+    if (result.user.email !== HUB_ADMIN_EMAIL) {
+      firebase.auth().signOut();
+      alert('Not authorised. Sign in with ' + HUB_ADMIN_EMAIL);
+    }
+  }).catch(function(err) {
+    if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+      alert('Sign-in failed: ' + err.message);
+    }
+  });
+}
+
+function adminSignOut() {
+  firebase.auth().signOut();
+}
+
+function updateAdminAuthUI() {
+  var section = document.getElementById('admin-auth-section');
+  if (!section) return;
+  if (isAdmin) {
+    section.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">' +
+        '<span style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:5px;">' +
+          '<span style="width:7px;height:7px;border-radius:50%;background:var(--accent2);flex-shrink:0;display:inline-block;"></span>' +
+          'Signed in as admin' +
+        '</span>' +
+        '<button onclick="adminSignOut()" style="background:none;border:none;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline;padding:0;">Sign out</button>' +
+      '</div>';
+  } else {
+    section.innerHTML =
+      '<button onclick="adminSignIn()" style="width:100%;height:32px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s;" onmouseover="this.style.background=\'var(--surface3)\'" onmouseout="this.style.background=\'var(--surface2)\'">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>' +
+        'Admin login' +
+      '</button>';
+  }
 }
 
 // ── Announcement banner ────────────────────────────────────────────────────
