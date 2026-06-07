@@ -238,9 +238,17 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 26: v0.9.89 — Firebase real-time Lab View)
+Last session: 2026-06-07 (Round 27: v0.9.91 — Echo Prism Fraction + 4PL robustness + Plate Designer popup + Firebase Lab View)
 Hub apps: 8 (echo, deg, lm, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.83MB (7,826,854 chars). Version v0.9.89
+Hub file size: 7.83MB (7,831,747 chars). Version v0.9.91
+Echo changes (labcyte_echo.html, v0.9.90–v0.9.91):
+- 4PL fitting robustness: _fitBest() multi-start LM (5 seeds) replaces single-start in runAnalysisJS and fit4PL_JS
+- Nelder-Mead simplex dropped from curve editor; fit4PL_JS now uses _fitBest with LM + analytical Jacobians
+- Results XLSX: new "Prism (Fraction)" sheet — means only, 0–1 scale, one column per compound, direct Prism paste
+- _buildPrismFractionAOA(): groups separated by blank rows, compound names as column headers
+Plate Designer changes (plate_designer.html, v0.9.89):
+- updateSelToolbar() hides types palette (drag handle, type list, add-custom btn) when row/column selected (showDil=true)
+- Reduces popup size to just dilution section when selecting whole row/column
 hub-shell.html changes (v0.9.89):
 - Firebase Realtime Database real-time Lab View
 - isAdmin = URLSearchParams admin === HUB_ADMIN_PASS ('ciullilab')
@@ -248,18 +256,6 @@ hub-shell.html changes (v0.9.89):
 - applyLabConfig(): hides/shows cards in lab mode (non-admin); admin always sees all
 - saveLabConfig(): PUT /labconfig.json?auth=SECRET — write protected
 - Lab panel (admin only): toggle switches per app, green dot = connected
-- Click-outside closes lab panel
+- labBtn.style.display = 'inline-block' (not '' — CSS rule requires explicit override)
 - Firebase DB: thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app
-Degradation Explorer changes (degradation_visualizer.html):
-- Unit/scale selectors (nM/µM/M, Log/Linear/pDC50) now present in Table panel too
-- syncDgSelects() syncs all .dg-unit-sel / .dg-scale-sel elements across panels
-- Table column headers, cell values, detail card DC50, Properties DC50 all update to selected unit
-- buildDetailGrid(c) extracted from selectCompound() for reuse on unit/scale change
-- fmtDC50Val() / fmtDC50Cell() helpers for consistent unit-aware DC50 formatting
-Plate Designer changes (plate_designer.html):
-- Brackets: text size selector added (S=8/M=10/L=12/XL=14px per bracket)
-- Brackets: from/to range extended to 0–max+1 for outside-plate annotations
-- Brackets: format change clamps bracket from/to to new plate bounds
-- Dilution: Auto unit checkbox — auto-picks M/µM/nM/pM for each concentration
-- Dilution: consistent font sizing — pre-scan finds min font size across all labels before drawing
 <!-- LAST_SESSION_END -->
