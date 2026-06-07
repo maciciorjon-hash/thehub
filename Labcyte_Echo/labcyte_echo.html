@@ -2268,6 +2268,40 @@ function generateOutputCSV() {
   a.download = 'Results_'+(window._lastAssayId||'output')+'_export.csv';
   a.click();
 }
+// Prism-ready means-only table: one column per compound, values 0–1, groups separated by blank row.
+// First row of each section = "Conc (nM)" + compound names → paste directly into Prism XY table.
+function _buildPrismFractionAOA(results) {
+  var groups = {}, groupOrder = [];
+  results.forEach(function(r) {
+    if (!groups[r.Protein]) { groups[r.Protein] = []; groupOrder.push(r.Protein); }
+    groups[r.Protein].push(r);
+  });
+  var aoa = [];
+  groupOrder.forEach(function(protein, gi) {
+    if (gi > 0) aoa.push([]);
+    var compounds = groups[protein];
+    var compData = compounds.map(function(c) {
+      var means = {};
+      (c._pts || []).forEach(function(pt) { means[pt.x.toFixed(4)] = pt.y; });
+      return { id: c.Sample_ID, means: means };
+    });
+    var concKeySet = new Set();
+    compData.forEach(function(c) { Object.keys(c.means).forEach(function(k) { concKeySet.add(k); }); });
+    var concKeys = Array.from(concKeySet).sort(function(a, b) { return parseFloat(b) - parseFloat(a); });
+    function keyToNM(k) { return parseFloat((Math.pow(10, parseFloat(k)) * 1e9).toPrecision(4)); }
+    aoa.push(['Conc (nM)'].concat(compData.map(function(c) { return c.id; })));
+    concKeys.forEach(function(ck) {
+      var row = [keyToNM(ck)];
+      compData.forEach(function(c) {
+        var m = c.means[ck];
+        row.push(m !== undefined ? parseFloat((m / 100).toFixed(4)) : '');
+      });
+      aoa.push(row);
+    });
+  });
+  return aoa;
+}
+
 function _buildPrismAOA(results) {
   var groups = {}, groupOrder = [];
   results.forEach(function(r) {
@@ -2400,6 +2434,10 @@ function generateOutputXLSX() {
   var wsPrism = XLSX.utils.aoa_to_sheet(prism.aoa);
   if (prism.merges.length) wsPrism['!merges'] = prism.merges;
   XLSX.utils.book_append_sheet(wb, wsPrism, 'Prism Copy');
+
+  var prismFrac = _buildPrismFractionAOA(scatterData);
+  var wsPrismFrac = XLSX.utils.aoa_to_sheet(prismFrac);
+  XLSX.utils.book_append_sheet(wb, wsPrismFrac, 'Prism (Fraction)');
 
   var wbout = XLSX.write(wb, { bookType:'xlsx', type:'array' });
   var blob = new Blob([wbout], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
