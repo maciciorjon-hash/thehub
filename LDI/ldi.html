@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LDI — Ligase Dependency Index</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('hub_theme') || 'light';
+    if (t === 'dark') document.documentElement.setAttribute('data-theme','dark');
+    document.addEventListener('DOMContentLoaded', function() {
+      var chk = document.getElementById('theme-chk');
+      if (chk) chk.checked = (t === 'dark');
+    });
+  } catch(e) {}
+})();
+</script>
+<style>
+:root {
+  --bg:#f4f5f8; --surface:#fff; --surface2:#f0f1f5; --surface3:#e4e6ee;
+  --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.13);
+  --text:#1a1d2e; --text2:#5a5f7a; --text3:#9ca0b8;
+  --accent:#e91e63; --accent-dim:rgba(233,30,99,0.1);
+  --crbn:#ef4444; --crbn-dim:rgba(239,68,68,0.13);
+  --vhl:#2563eb; --vhl-dim:rgba(37,99,235,0.13);
+  --dual:#059669; --dual-dim:rgba(5,150,105,0.13);
+  --sans:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+  --r:8px; --rlg:12px;
+}
+[data-theme="dark"] {
+  --bg:#0d0f14; --surface:#13161e; --surface2:#1c2030; --surface3:#252a3a;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2; --text2:#8b90a8; --text3:#4e5368;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased;}
+
+header{
+  height:58px;display:flex;align-items:center;gap:14px;padding:0 28px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  box-shadow:0 1px 0 var(--border),0 2px 8px rgba(0,0,0,0.04);
+  flex-shrink:0;position:sticky;top:0;z-index:100;
+}
+.app-logo{
+  width:32px;height:32px;border-radius:7px;background:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-weight:700;font-size:11px;color:#fff;flex-shrink:0;letter-spacing:-0.5px;
+}
+header h1{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+header p{font-size:11px;color:var(--text2);}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.theme-switch{position:relative;display:inline-block;width:36px;height:20px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;inset:0;background:var(--surface3);border-radius:20px;cursor:pointer;transition:background .2s;}
+.theme-slider::before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;}
+input:checked+.theme-slider{background:var(--accent);}
+input:checked+.theme-slider::before{transform:translateX(16px);}
+
+.tabs-bar{
+  display:flex;align-items:center;border-bottom:1px solid var(--border);
+  background:var(--surface);padding:0 24px;flex-shrink:0;overflow-x:auto;
+  scrollbar-width:none;position:relative;
+}
+.tabs-bar::-webkit-scrollbar{display:none;}
+.tab-btn{
+  padding:12px 16px;font-size:13px;color:var(--text3);cursor:pointer;
+  border-bottom:2px solid transparent;white-space:nowrap;flex-shrink:0;
+  font-family:var(--sans);background:none;border-top:none;border-left:none;border-right:none;
+  transition:color .15s;
+}
+.tab-btn:hover{color:var(--text2);}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
+.tab-indicator{position:absolute;bottom:0;height:2px;background:var(--accent);border-radius:1px 1px 0 0;transition:left .2s ease,width .2s ease;}
+
+#app-body{flex:1;overflow-y:auto;}
+.tab-pane{display:none;padding:20px 24px 32px;}
+.tab-pane.active{display:block;}
+
+.sec-lbl{font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);padding:16px 18px;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:11px;color:var(--text2);margin-bottom:5px;}
+
+input[type="text"],input[type="number"],select{
+  background:var(--surface2);border:1px solid var(--border2);border-radius:6px;
+  padding:6px 10px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;
+  transition:border-color .15s;
+}
+input:focus,select:focus{border-color:var(--accent);}
+
+/* AUC params strip */
+.params-strip{
+  display:flex;gap:14px;flex-wrap:wrap;align-items:center;
+  padding:12px 16px;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--rlg);margin-bottom:16px;
+}
+.param-group{display:flex;flex-direction:column;gap:4px;}
+.param-group label{font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:var(--text3);}
+.param-group input[type="number"]{width:90px;}
+
+/* Table */
+.tbl-wrap{overflow-x:auto;margin-bottom:10px;}
+.cmp-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+.cmp-tbl th{
+  padding:7px 10px;font-size:10px;font-weight:700;letter-spacing:0.4px;
+  text-transform:uppercase;border-bottom:2px solid var(--border2);
+  text-align:left;white-space:nowrap;color:var(--text3);
+}
+.cmp-tbl th.crbn-hdr{color:var(--crbn);border-bottom-color:var(--crbn);}
+.cmp-tbl th.vhl-hdr{color:var(--vhl);border-bottom-color:var(--vhl);}
+.cmp-tbl td{padding:3px 5px;border-bottom:1px solid var(--border);}
+.cmp-tbl td:first-child{padding-left:8px;}
+.cmp-tbl input[type="text"],.cmp-tbl input[type="number"]{
+  width:100%;background:transparent;border:1px solid transparent;border-radius:4px;
+  padding:4px 7px;font-size:12px;color:var(--text);
+}
+.cmp-tbl input:focus{background:var(--surface2);border-color:var(--accent);}
+.del-btn{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 6px;border-radius:4px;transition:color .15s;}
+.del-btn:hover{color:var(--crbn);}
+.tbl-actions{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+
+/* Buttons */
+.btn{
+  display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:7px;
+  border:1px solid var(--border2);background:var(--surface2);color:var(--text2);
+  font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);
+  transition:background .15s,color .15s;white-space:nowrap;
+}
+.btn:hover{background:var(--surface3);color:var(--text);}
+.btn-primary{background:var(--accent);color:#fff;border-color:transparent;font-weight:700;font-size:13px;padding:9px 22px;}
+.btn-primary:hover{opacity:.9;background:var(--accent);color:#fff;}
+
+/* Badges */
+.badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;line-height:1.5;}
+.badge-crbn{background:var(--crbn-dim);color:var(--crbn);}
+.badge-vhl {background:var(--vhl-dim); color:var(--vhl);}
+.badge-dual{background:var(--dual-dim);color:var(--dual);}
+.badge-na  {background:var(--surface3);color:var(--text3);}
+
+/* Results table */
+.res-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+.res-tbl th{padding:8px 12px;text-align:left;font-size:10px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;color:var(--text3);border-bottom:2px solid var(--border2);white-space:nowrap;}
+.res-tbl td{padding:8px 12px;border-bottom:1px solid var(--border);}
+.res-tbl tr:last-child td{border-bottom:none;}
+.res-tbl tr:hover td{background:var(--surface2);}
+.mono{font-family:var(--mono);font-size:12.5px;}
+
+/* LDI mini bar */
+.ldi-bar-track{width:90px;height:10px;border-radius:5px;overflow:visible;position:relative;background:linear-gradient(90deg,var(--vhl-dim) 0%,var(--dual-dim) 50%,var(--crbn-dim) 100%);border:1px solid var(--border2);}
+.ldi-bar-needle{position:absolute;top:-3px;width:3px;height:16px;border-radius:2px;background:var(--text);transform:translateX(-50%);}
+
+/* Curves pane */
+.compound-sel-row{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.compound-sel-row select{font-size:13px;padding:7px 12px;min-width:180px;}
+.chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);padding:16px;position:relative;}
+.ldi-badge-overlay{
+  position:absolute;top:14px;right:14px;
+  background:var(--surface2);border:1px solid var(--border2);
+  border-radius:10px;padding:5px 12px;font-size:12px;
+}
+.curve-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--text2);}
+.legend-item{display:flex;align-items:center;gap:5px;}
+.legend-swatch{width:18px;height:3px;border-radius:2px;}
+.legend-area {width:18px;height:10px;border-radius:3px;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:14px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;}
+.stat-label{font-size:10px;color:var(--text3);margin-bottom:3px;}
+.stat-val{font-family:var(--mono);font-size:16px;font-weight:700;}
+
+/* Results pane */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);padding:16px;}
+.chart-card canvas{max-height:280px;}
+.chart-title{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;}
+
+.empty-state{text-align:center;padding:60px 24px;color:var(--text3);font-size:13px;}
+.empty-state p{margin-top:8px;font-size:12px;}
+
+.thresh-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);}
+.thresh-row label{font-size:11px;color:var(--text2);}
+
+/* Hint bar */
+.fmt-hint{font-size:11px;color:var(--text3);font-family:var(--mono);padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);line-height:1.7;margin-top:12px;}
+
+@media(max-width:640px){
+  header{padding:0 14px;}
+  .tab-btn{padding:10px 12px;font-size:12px;}
+  .tab-pane{padding:12px 12px 24px;}
+  .params-strip{gap:10px;}
+  .param-group input[type="number"]{width:72px;}
+  .charts-row{grid-template-columns:1fr;}
+  .ldi-bar-track{width:60px;}
+}
+</style>
+</head>
+<body>
+<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+
+<header>
+  <div class="app-logo">LD</div>
+  <div>
+    <h1>LDI</h1>
+    <p>Ligase Dependency Index · AUC method</p>
+  </div>
+  <div class="hdr-right">
+    <button class="btn" onclick="ldiShowHelp()" style="font-size:11px;padding:5px 10px;">?  Help</button>
+    <label class="theme-switch" title="Toggle dark mode">
+      <input type="checkbox" id="theme-chk" onchange="toggleTheme()">
+      <span class="theme-slider"></span>
+    </label>
+  </div>
+</header>
+
+<div class="tabs-bar" id="tabs-bar">
+  <button class="tab-btn active" id="tab-data-btn" onclick="showTab('data')">Data</button>
+  <button class="tab-btn" id="tab-curves-btn" onclick="showTab('curves')">Curves</button>
+  <button class="tab-btn" id="tab-results-btn" onclick="showTab('results')">Results</button>
+  <div class="tab-indicator" id="tab-indicator"></div>
+</div>
+
+<div id="app-body">
+
+  <!-- ── DATA TAB ── -->
+  <div class="tab-pane active" id="pane-data">
+
+    <div class="params-strip">
+      <div class="param-group">
+        <label>C<sub>min</sub> (nM)</label>
+        <input type="number" id="cmin" value="0.1" min="0.001" step="any" oninput="onParamChange()">
+      </div>
+      <div class="param-group">
+        <label>C<sub>max</sub> (nM)</label>
+        <input type="number" id="cmax" value="10000" min="1" step="any" oninput="onParamChange()">
+      </div>
+      <div class="param-group">
+        <label>Hill slope &nbsp;<span id="hill-val" style="font-family:var(--mono);color:var(--text)">2.0</span></label>
+        <input type="range" id="hill-slider" min="0.5" max="4" step="0.1" value="2"
+               style="width:110px;accent-color:var(--accent);margin-top:4px;"
+               oninput="document.getElementById('hill-val').textContent=(+this.value).toFixed(1);onParamChange()">
+      </div>
+      <div style="margin-left:auto;font-size:11px;color:var(--text3);max-width:220px;line-height:1.6">
+        AUC integrated over [C<sub>min</sub>, C<sub>max</sub>] using 4PL Hill model.<br>
+        LDI = (AUC<sub>VHL KO</sub> − AUC<sub>CRBN KO</sub>) / (AUC<sub>VHL KO</sub> + AUC<sub>CRBN KO</sub>)
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+      <div class="sec-lbl" style="margin:0">Compounds</div>
+      <div style="flex:1"></div>
+      <label class="btn" for="csv-file-in" style="cursor:pointer">Load CSV</label>
+      <input type="file" id="csv-file-in" accept=".csv,.txt" style="display:none" onchange="ldiLoadCSV(this)">
+      <button class="btn" onclick="ldiLoadExample()">Example</button>
+      <button class="btn" onclick="ldiDownloadTemplate()">Template</button>
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="cmp-tbl" id="cmp-tbl">
+        <thead>
+          <tr>
+            <th style="width:150px">Compound</th>
+            <th class="crbn-hdr">CRBN KO&nbsp;DC<sub>50</sub>&nbsp;(nM)</th>
+            <th class="crbn-hdr">CRBN KO&nbsp;D<sub>max</sub>&nbsp;(%)</th>
+            <th class="vhl-hdr">VHL KO&nbsp;DC<sub>50</sub>&nbsp;(nM)</th>
+            <th class="vhl-hdr">VHL KO&nbsp;D<sub>max</sub>&nbsp;(%)</th>
+            <th style="width:28px"></th>
+          </tr>
+        </thead>
+        <tbody id="cmp-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="tbl-actions">
+      <button class="btn" onclick="addRow()">+ Row</button>
+      <button class="btn" onclick="clearAll()" style="color:var(--text3)">Clear</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-primary" onclick="runCalc()">Calculate →</button>
+    </div>
+
+    <div class="fmt-hint">
+      CSV: <b>Compound, CRBN_KO_DC50, CRBN_KO_Dmax, VHL_KO_DC50, VHL_KO_Dmax</b> &nbsp;·&nbsp; DC<sub>50</sub> in nM · D<sub>max</sub> in %
+    </div>
+  </div>
+
+  <!-- ── CURVES TAB ── -->
+  <div class="tab-pane" id="pane-curves">
+    <div id="curves-empty" class="empty-state">
+      <div style="font-size:28px;opacity:.3">⌛</div>
+      <p>Run a calculation first to see dose-response curves.</p>
+    </div>
+    <div id="curves-content" style="display:none">
+      <div class="compound-sel-row">
+        <label style="font-size:12px;color:var(--text2);">Compound:</label>
+        <select id="compound-sel" onchange="drawCurveChart()" style="min-width:180px"></select>
+        <div style="flex:1"></div>
+        <button class="btn" onclick="exportCurvePNG()" style="font-size:11px">Export PNG</button>
+      </div>
+      <div class="chart-wrap">
+        <div class="ldi-badge-overlay" id="curve-badge">LDI —</div>
+        <canvas id="curve-canvas" height="380"></canvas>
+      </div>
+      <div class="curve-legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div> CRBN KO curve</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#2563eb"></div> VHL KO curve</div>
+        <div class="legend-item"><div class="legend-area" style="background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.3)"></div> CRBN KO AUC</div>
+        <div class="legend-item"><div class="legend-area" style="background:rgba(37,99,235,0.2);border:1px solid rgba(37,99,235,0.3)"></div> VHL KO AUC</div>
+        <div class="legend-item" style="color:var(--text3)"><div class="legend-swatch" style="background:rgba(150,150,150,0.5);width:14px;border-top:1px dashed rgba(150,150,150,0.6)"></div> AUC range</div>
+      </div>
+      <div class="stat-grid" id="stat-grid"></div>
+    </div>
+  </div>
+
+  <!-- ── RESULTS TAB ── -->
+  <div class="tab-pane" id="pane-results">
+    <div id="results-empty" class="empty-state">
+      <div style="font-size:28px;opacity:.3">📊</div>
+      <p>Run a calculation to see ranked results.</p>
+    </div>
+    <div id="results-content" style="display:none">
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        <div class="sec-lbl" style="margin:0">Summary</div>
+        <div style="flex:1"></div>
+        <button class="btn" onclick="exportCSV()" style="font-size:11px">Export CSV</button>
+        <button class="btn" onclick="exportBarPNG()" style="font-size:11px">Chart PNG</button>
+      </div>
+
+      <div style="overflow-x:auto;margin-bottom:18px;">
+        <table class="res-tbl" id="res-tbl">
+          <thead>
+            <tr>
+              <th>Compound</th>
+              <th>CRBN KO AUC</th>
+              <th>VHL KO AUC</th>
+              <th>LDI (AUC)</th>
+              <th>LDI (DC<sub>50</sub>)</th>
+              <th>Classification</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody id="res-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-title">LDI Score — ranked (AUC method)</div>
+          <canvas id="bar-canvas"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">AUC comparison per compound</div>
+          <canvas id="auc-canvas"></canvas>
+        </div>
+      </div>
+
+      <div class="charts-row" style="margin-top:16px;">
+        <div class="chart-card">
+          <div class="chart-title">DC<sub>50</sub>: CRBN KO vs VHL KO (log₁₀ scale)</div>
+          <canvas id="scatter-canvas"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">AUC LDI vs DC<sub>50</sub> LDI comparison</div>
+          <canvas id="compare-canvas"></canvas>
+        </div>
+      </div>
+
+      <div class="thresh-row">
+        <span style="font-size:11px;font-weight:600;color:var(--text2)">Classification:</span>
+        <span class="badge badge-crbn">CRBN-dep.</span>
+        <span class="badge badge-dual">Dual / mixed</span>
+        <span class="badge badge-vhl">VHL-dep.</span>
+        <span style="color:var(--text3);font-size:11px">threshold: ±</span>
+        <span id="thresh-disp" style="font-family:var(--mono);font-size:12px;color:var(--text)">0.30</span>
+        <input type="range" id="thresh-slider" min="0.05" max="0.95" step="0.05" value="0.3"
+               style="width:100px;accent-color:var(--accent)"
+               oninput="setThreshold(+this.value)">
+      </div>
+    </div>
+  </div>
+
+</div><!-- end app-body -->
+</div>
+
+<!-- HELP MODAL -->
+<div id="help-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:var(--surface);border-radius:var(--rlg);padding:24px 28px;max-width:540px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div style="font-size:15px;font-weight:700;color:var(--text)">LDI — Ligase Dependency Index</div>
+      <button onclick="document.getElementById('help-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">✕</button>
+    </div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.75;">
+      <strong style="color:var(--text)">AUC-based LDI (primary method)</strong><br>
+      For each KO condition, a 4-parameter logistic curve is generated using the entered DC<sub>50</sub> and D<sub>max</sub>.
+      The area under that curve is integrated numerically in log<sub>10</sub> concentration space over [C<sub>min</sub>, C<sub>max</sub>].
+      <br><br>
+      <div style="background:var(--surface2);border-radius:var(--r);padding:10px 14px;font-family:var(--mono);font-size:12px;">
+        LDI<sub>AUC</sub> = (AUC<sub>VHL&nbsp;KO</sub> − AUC<sub>CRBN&nbsp;KO</sub>) / (AUC<sub>VHL&nbsp;KO</sub> + AUC<sub>CRBN&nbsp;KO</sub>)
+      </div>
+      <br>
+      This captures <em>both</em> potency (DC<sub>50</sub>) and maximal degradation (D<sub>max</sub>) in a single metric.
+      <br><br>
+      <strong style="color:var(--text)">Interpretation</strong><br>
+      <span style="color:var(--crbn)">+1.0 = fully CRBN-dependent</span> (CRBN KO abolishes activity)<br>
+      <span style="color:var(--dual)"> 0.0 = dual / non-selective</span> (neither KO matters)<br>
+      <span style="color:var(--vhl)">−1.0 = fully VHL-dependent</span> (VHL KO abolishes activity)
+      <br><br>
+      <strong style="color:var(--text)">Traditional DC<sub>50</sub> LDI</strong><br>
+      Also shown for comparison: uses only DC<sub>50</sub> values and ignores D<sub>max</sub>.<br>
+      LDI<sub>DC50</sub> = (DC<sub>50</sub><sup>CRBN KO</sup> − DC<sub>50</sub><sup>VHL KO</sup>) / (DC<sub>50</sub><sup>CRBN KO</sup> + DC<sub>50</sub><sup>VHL KO</sup>)
+      <br><br>
+      <strong style="color:var(--text)">Hill slope</strong><br>
+      The Hill coefficient controls the steepness of the sigmoidal curve.
+      Typical value for PROTACs: 1–2. Higher values produce sharper transitions.
+      Changing the Hill slope affects AUC (and therefore LDI) but not DC<sub>50</sub>-based LDI.
+    </div>
+  </div>
+</div>
+
+<script>
+// ── THEME ──
+function toggleTheme() {
+  var dark = document.getElementById('theme-chk').checked;
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  try { localStorage.setItem('hub_theme', dark ? 'dark' : 'light'); } catch(e) {}
+  if (_results.length) scheduleRebuildCharts();
+}
+function ldiShowHelp() {
+  document.getElementById('help-modal').style.display = 'flex';
+}
+
+// ── TABS ──
+function showTab(id) {
+  ['data','curves','results'].forEach(function(t) {
+    document.getElementById('pane-'+t).classList.toggle('active', t===id);
+    document.getElementById('tab-'+t+'-btn').classList.toggle('active', t===id);
+  });
+  var btn = document.getElementById('tab-'+id+'-btn');
+  var ind = document.getElementById('tab-indicator');
+  if (ind && btn) { ind.style.left = btn.offsetLeft+'px'; ind.style.width = btn.offsetWidth+'px'; }
+}
+
+// ── STATE ──
+var _rows = [];
+var _results = [];
+var _threshold = 0.3;
+var _charts = {};
+
+// ── MATH ──
+function y4PL(conc, dc50, dmax, n) {
+  if (!dc50 || dc50 <= 0 || conc <= 0) return 0;
+  var cn = Math.pow(conc, n), kn = Math.pow(dc50, n);
+  return dmax * cn / (kn + cn);
+}
+
+function calcAUC(dc50, dmax, hill, cmin, cmax) {
+  if (!dc50 || dc50 <= 0 || !dmax || dmax <= 0) return 0;
+  var steps = 500, t0 = Math.log10(cmin), t1 = Math.log10(cmax), dt = (t1-t0)/steps;
+  var sum = 0;
+  for (var i = 0; i <= steps; i++) {
+    var w = (i===0||i===steps) ? 0.5 : 1;
+    sum += w * y4PL(Math.pow(10, t0 + i*dt), dc50, dmax, hill);
+  }
+  return sum * dt;
+}
+
+function calcLDI_AUC(aucC, aucV) { var d=aucV+aucC; return d===0?NaN:(aucV-aucC)/d; }
+function calcLDI_DC50(dc50C, dc50V) { if(!dc50C||!dc50V)return NaN; return (dc50C-dc50V)/(dc50C+dc50V); }
+
+function classify(ldi) {
+  if (isNaN(ldi)||ldi===null) return 'N/A';
+  if (ldi > _threshold) return 'CRBN';
+  if (ldi < -_threshold) return 'VHL';
+  return 'Dual';
+}
+function ldiColor(ldi) {
+  if (isNaN(ldi)||ldi===null) return 'var(--text3)';
+  if (ldi > _threshold) return 'var(--crbn)';
+  if (ldi < -_threshold) return 'var(--vhl)';
+  return 'var(--dual)';
+}
+var _BADGE = {CRBN:'badge-crbn',VHL:'badge-vhl',Dual:'badge-dual','N/A':'badge-na'};
+
+// ── ROW MANAGEMENT ──
+function addRow(data) {
+  var id = _rows.length + Date.now();
+  _rows.push({ id:id, data:data||{} });
+  renderTable();
+}
+function deleteRow(id) {
+  _rows = _rows.filter(function(r){ return r.id!==id; });
+  renderTable();
+  if (_results.length) scheduleRebuildCharts();
+}
+function clearAll() { _rows=[]; renderTable(); clearResults(); }
+
+function renderTable() {
+  var tbody = document.getElementById('cmp-tbody');
+  tbody.innerHTML = _rows.map(function(r, i) {
+    var d = r.data;
+    return '<tr>' +
+      '<td><input type="text" value="'+esc(d.name||'')+'" placeholder="Compound '+(i+1)+'" oninput="upd('+r.id+',\'name\',this.value)"></td>'+
+      '<td><input type="number" value="'+esc(d.crbn_dc50||'')+'" placeholder="e.g. 50" min="0" step="any" oninput="upd('+r.id+',\'crbn_dc50\',this.value)"></td>'+
+      '<td><input type="number" value="'+esc(d.crbn_dmax||'')+'" placeholder="e.g. 85" min="0" max="100" step="any" oninput="upd('+r.id+',\'crbn_dmax\',this.value)"></td>'+
+      '<td><input type="number" value="'+esc(d.vhl_dc50||'')+'" placeholder="e.g. 50" min="0" step="any" oninput="upd('+r.id+',\'vhl_dc50\',this.value)"></td>'+
+      '<td><input type="number" value="'+esc(d.vhl_dmax||'')+'" placeholder="e.g. 85" min="0" max="100" step="any" oninput="upd('+r.id+',\'vhl_dmax\',this.value)"></td>'+
+      '<td><button class="del-btn" onclick="deleteRow('+r.id+')">×</button></td>'+
+      '</tr>';
+  }).join('');
+}
+function upd(id, key, val) {
+  var r = _rows.find(function(r){ return r.id===id; });
+  if (r) r.data[key] = val;
+}
+function esc(s) { return String(s).replace(/"/g,'&quot;'); }
+
+// ── CALCULATE ──
+function runCalc() {
+  var cmin  = parseFloat(document.getElementById('cmin').value)  || 0.1;
+  var cmax  = parseFloat(document.getElementById('cmax').value)  || 10000;
+  var hill  = parseFloat(document.getElementById('hill-slider').value) || 2;
+  if (cmin >= cmax) { alert('C_min must be less than C_max.'); return; }
+
+  _results = [];
+  _rows.forEach(function(r, i) {
+    var d = r.data;
+    var name   = (d.name||'').trim() || ('Compound '+(i+1));
+    var crbnDC = parseFloat(d.crbn_dc50), crbnDm = parseFloat(d.crbn_dmax);
+    var vhlDC  = parseFloat(d.vhl_dc50),  vhlDm  = parseFloat(d.vhl_dmax);
+    if (isNaN(crbnDC)||isNaN(crbnDm)||isNaN(vhlDC)||isNaN(vhlDm)) return;
+
+    var aucC = calcAUC(crbnDC, crbnDm, hill, cmin, cmax);
+    var aucV = calcAUC(vhlDC,  vhlDm,  hill, cmin, cmax);
+    _results.push({
+      name:name,
+      crbn_dc50:crbnDC, crbn_dmax:crbnDm,
+      vhl_dc50:vhlDC,   vhl_dmax:vhlDm,
+      auc_crbn:aucC, auc_vhl:aucV,
+      ldi_auc:  calcLDI_AUC(aucC, aucV),
+      ldi_dc50: calcLDI_DC50(crbnDC, vhlDC),
+      hill:hill, cmin:cmin, cmax:cmax
+    });
+  });
+
+  if (!_results.length) { alert('Enter DC50 and Dmax values for at least one compound.'); return; }
+
+  document.getElementById('results-empty').style.display   = 'none';
+  document.getElementById('results-content').style.display = '';
+  document.getElementById('curves-empty').style.display    = 'none';
+  document.getElementById('curves-content').style.display  = '';
+
+  updateCurveSelector();
+  renderResultsTable();
+  drawBarChart();
+  drawAUCChart();
+  drawScatterChart();
+  drawCompareChart();
+  drawCurveChart();
+  showTab('results');
+}
+
+function clearResults() {
+  _results = [];
+  document.getElementById('results-empty').style.display   = '';
+  document.getElementById('results-content').style.display = 'none';
+  document.getElementById('curves-empty').style.display    = '';
+  document.getElementById('curves-content').style.display  = 'none';
+}
+
+// ── THRESHOLD ──
+function setThreshold(v) {
+  _threshold = v;
+  document.getElementById('thresh-disp').textContent = v.toFixed(2);
+  if (_results.length) { renderResultsTable(); drawBarChart(); if (_curveResult()) drawCurveChart(); }
+}
+
+// ── RESULTS TABLE ──
+function renderResultsTable() {
+  var tbody = document.getElementById('res-tbody');
+  tbody.innerHTML = _results.map(function(r) {
+    var cls = classify(r.ldi_auc);
+    var ldiStr  = isNaN(r.ldi_auc)  ? '—' : r.ldi_auc.toFixed(3);
+    var dcStr   = isNaN(r.ldi_dc50) ? '—' : r.ldi_dc50.toFixed(3);
+    var pos = isNaN(r.ldi_auc) ? 50 : Math.round((r.ldi_auc+1)/2*100);
+    return '<tr>'+
+      '<td style="font-weight:500">'+esc(r.name)+'</td>'+
+      '<td class="mono">'+r.auc_crbn.toFixed(2)+'</td>'+
+      '<td class="mono">'+r.auc_vhl.toFixed(2)+'</td>'+
+      '<td><span class="mono" style="color:'+ldiColor(r.ldi_auc)+'">'+ldiStr+'</span></td>'+
+      '<td><span class="mono" style="color:'+ldiColor(r.ldi_dc50)+'">'+dcStr+'</span></td>'+
+      '<td><span class="badge '+_BADGE[cls]+'">'+cls+'</span></td>'+
+      '<td><div class="ldi-bar-track"><div class="ldi-bar-needle" style="left:'+pos+'%"></div></div></td>'+
+      '</tr>';
+  }).join('');
+}
+
+// ── THEME COLORS ──
+function tc() {
+  var dark = document.documentElement.getAttribute('data-theme')==='dark';
+  return {
+    text:  dark?'#8b90a8':'#5a5f7a',
+    text2: dark?'#4e5368':'#9ca0b8',
+    grid:  dark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.05)',
+  };
+}
+
+function destroyChart(id) { if (_charts[id]) { _charts[id].destroy(); delete _charts[id]; } }
+
+// ── CURVE CHART ──
+function updateCurveSelector() {
+  var sel = document.getElementById('compound-sel');
+  var cur = sel.value;
+  sel.innerHTML = _results.map(function(r){ return '<option value="'+esc(r.name)+'">'+esc(r.name)+'</option>'; }).join('');
+  if (cur && _results.some(function(r){ return r.name===cur; })) sel.value = cur;
+}
+
+function _curveResult() {
+  return _results.find(function(x){ return x.name===document.getElementById('compound-sel').value; }) || _results[0];
+}
+
+function drawCurveChart() {
+  if (!_results.length) return;
+  var r = _curveResult();
+  if (!r) return;
+  var t = tc(), hill=r.hill, cmin=r.cmin, cmax=r.cmax;
+  var STEPS = 250;
+  var tMin = Math.log10(cmin)-0.8, tMax = Math.log10(cmax)+0.8, dt=(tMax-tMin)/STEPS;
+  var pts = [];
+  for (var i=0; i<=STEPS; i++) {
+    var lx = tMin + i*dt, cx = Math.pow(10, lx);
+    pts.push({ lx:lx, crbn:y4PL(cx,r.crbn_dc50,r.crbn_dmax,hill), vhl:y4PL(cx,r.vhl_dc50,r.vhl_dmax,hill) });
+  }
+  var lcmin = Math.log10(cmin), lcmax = Math.log10(cmax);
+  var aucPts = pts.filter(function(p){ return p.lx >= lcmin-1e-9 && p.lx <= lcmax+1e-9; });
+
+  // Badge
+  var ldi = r.ldi_auc, cls = classify(ldi);
+  document.getElementById('curve-badge').innerHTML =
+    'LDI: <strong style="color:'+ldiColor(ldi)+'">'+( isNaN(ldi)?'—':ldi.toFixed(3) )+'</strong>' +
+    ' <span class="badge '+_BADGE[cls]+'" style="font-size:10px">'+cls+'</span>';
+
+  // Stat cards
+  document.getElementById('stat-grid').innerHTML = [
+    {label:'CRBN KO AUC', val:r.auc_crbn.toFixed(2), color:'var(--crbn)'},
+    {label:'VHL KO AUC',  val:r.auc_vhl.toFixed(2),  color:'var(--vhl)'},
+    {label:'LDI (AUC)',   val:isNaN(ldi)?'—':ldi.toFixed(3), color:ldiColor(ldi)},
+    {label:'LDI (DC₅₀)', val:isNaN(r.ldi_dc50)?'—':r.ldi_dc50.toFixed(3), color:ldiColor(r.ldi_dc50)},
+    {label:'CRBN KO DC₅₀', val:r.crbn_dc50+' nM', color:'var(--text)'},
+    {label:'VHL KO DC₅₀',  val:r.vhl_dc50+' nM',  color:'var(--text)'},
+  ].map(function(s){
+    return '<div class="stat-card"><div class="stat-label">'+s.label+'</div>'+
+      '<div class="stat-val" style="color:'+s.color+'">'+s.val+'</div></div>';
+  }).join('');
+
+  destroyChart('curve');
+  var ctx = document.getElementById('curve-canvas').getContext('2d');
+  _charts['curve'] = new Chart(ctx, {
+    type:'scatter',
+    data:{datasets:[
+      // AUC fill areas (behind curves)
+      {data:aucPts.map(function(p){return{x:p.lx,y:p.crbn};}),borderColor:'transparent',
+       backgroundColor:'rgba(239,68,68,0.18)',pointRadius:0,fill:'origin',showLine:true,tension:0.3,order:3},
+      {data:aucPts.map(function(p){return{x:p.lx,y:p.vhl};}),borderColor:'transparent',
+       backgroundColor:'rgba(37,99,235,0.18)',pointRadius:0,fill:'origin',showLine:true,tension:0.3,order:3},
+      // AUC range vertical markers (2-point vertical lines)
+      {data:[{x:lcmin,y:0},{x:lcmin,y:Math.max(r.crbn_dmax,r.vhl_dmax)+5}],
+       type:'line',borderColor:'rgba(120,120,120,0.35)',borderDash:[5,4],borderWidth:1,pointRadius:0,fill:false,order:2},
+      {data:[{x:lcmax,y:0},{x:lcmax,y:Math.max(r.crbn_dmax,r.vhl_dmax)+5}],
+       type:'line',borderColor:'rgba(120,120,120,0.35)',borderDash:[5,4],borderWidth:1,pointRadius:0,fill:false,order:2},
+      // Curve lines (on top)
+      {label:'CRBN KO',data:pts.map(function(p){return{x:p.lx,y:p.crbn};}),
+       borderColor:'#ef4444',backgroundColor:'transparent',borderWidth:2.5,pointRadius:0,fill:false,showLine:true,tension:0.3,order:1},
+      {label:'VHL KO',data:pts.map(function(p){return{x:p.lx,y:p.vhl};}),
+       borderColor:'#2563eb',backgroundColor:'transparent',borderWidth:2.5,pointRadius:0,fill:false,showLine:true,tension:0.3,order:1},
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:true,animation:{duration:200},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          mode:'index',intersect:false,
+          filter:function(item){return item.datasetIndex>=4;},
+          callbacks:{
+            title:function(items){
+              var lx=items[0].parsed.x, c=Math.pow(10,lx);
+              return c<1?c.toFixed(3)+' nM':c<1000?c.toFixed(1)+' nM':(c/1000).toFixed(2)+' µM';
+            },
+            label:function(item){return item.dataset.label+': '+item.parsed.y.toFixed(1)+'%';}
+          }
+        }
+      },
+      scales:{
+        x:{type:'linear',title:{display:true,text:'log₁₀[Concentration, nM]',color:t.text,font:{size:11,family:'IBM Plex Sans'}},
+           ticks:{color:t.text,font:{size:10,family:'IBM Plex Mono'},callback:function(v){
+             if(v===Math.round(v)) return v.toFixed(0); return '';
+           }},grid:{color:t.grid}},
+        y:{min:0,max:100,
+           title:{display:true,text:'Degradation (%)',color:t.text,font:{size:11,family:'IBM Plex Sans'}},
+           ticks:{color:t.text,font:{size:10},callback:function(v){return v+'%';}},
+           grid:{color:t.grid}}
+      }
+    }
+  });
+}
+
+// ── BAR CHART ──
+function drawBarChart() {
+  if (!_results.length) return;
+  var t = tc();
+  var sorted = _results.slice().sort(function(a,b){ return b.ldi_auc-a.ldi_auc; });
+  destroyChart('bar');
+  _charts['bar'] = new Chart(document.getElementById('bar-canvas').getContext('2d'), {
+    type:'bar',
+    data:{
+      labels:sorted.map(function(r){return r.name;}),
+      datasets:[{
+        data:sorted.map(function(r){return isNaN(r.ldi_auc)?null:+r.ldi_auc.toFixed(3);}),
+        backgroundColor:sorted.map(function(r){
+          var cls=classify(r.ldi_auc);
+          return cls==='CRBN'?'rgba(239,68,68,0.85)':cls==='VHL'?'rgba(37,99,235,0.85)':'rgba(5,150,105,0.85)';
+        }),
+        borderRadius:4,barPercentage:0.7
+      }]
+    },
+    options:{
+      responsive:true,indexAxis:'y',animation:{duration:250},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:function(i){return ' LDI: '+(i.parsed.x!=null?i.parsed.x.toFixed(3):'N/A');}}}},
+      scales:{
+        x:{min:-1,max:1,
+           ticks:{color:t.text,font:{size:10,family:'IBM Plex Mono'},stepSize:0.5},
+           grid:{color:t.grid},
+           title:{display:true,text:'LDI',color:t.text,font:{size:11}}},
+        y:{ticks:{color:t.text,font:{size:11}},grid:{display:false}}
+      }
+    }
+  });
+}
+
+// ── AUC COMPARISON CHART ──
+function drawAUCChart() {
+  if (!_results.length) return;
+  var t = tc();
+  var names = _results.map(function(r){return r.name;});
+  destroyChart('auc');
+  _charts['auc'] = new Chart(document.getElementById('auc-canvas').getContext('2d'), {
+    type:'bar',
+    data:{
+      labels:names,
+      datasets:[
+        {label:'CRBN KO',data:_results.map(function(r){return +r.auc_crbn.toFixed(2);}),
+         backgroundColor:'rgba(239,68,68,0.75)',borderRadius:3,barPercentage:0.45},
+        {label:'VHL KO',data:_results.map(function(r){return +r.auc_vhl.toFixed(2);}),
+         backgroundColor:'rgba(37,99,235,0.75)',borderRadius:3,barPercentage:0.45}
+      ]
+    },
+    options:{
+      responsive:true,animation:{duration:250},
+      plugins:{
+        legend:{labels:{color:t.text,font:{size:11},boxWidth:12,padding:14}},
+        tooltip:{callbacks:{label:function(i){return ' '+i.dataset.label+' AUC: '+i.parsed.y.toFixed(2);}}}
+      },
+      scales:{
+        x:{ticks:{color:t.text,font:{size:11}},grid:{display:false}},
+        y:{title:{display:true,text:'AUC (% · log c)',color:t.text,font:{size:11}},
+           ticks:{color:t.text,font:{size:10}},grid:{color:t.grid}}
+      }
+    }
+  });
+}
+
+// ── DC50 SCATTER ──
+function drawScatterChart() {
+  if (!_results.length) return;
+  var t = tc();
+  var pts = _results.map(function(r){
+    return {x:Math.log10(r.crbn_dc50), y:Math.log10(r.vhl_dc50), name:r.name, cls:classify(r.ldi_auc)};
+  });
+  var minV = Math.min.apply(null,pts.map(function(p){return Math.min(p.x,p.y);}))-0.5;
+  var maxV = Math.max.apply(null,pts.map(function(p){return Math.max(p.x,p.y);}))+0.5;
+
+  destroyChart('scatter');
+  _charts['scatter'] = new Chart(document.getElementById('scatter-canvas').getContext('2d'), {
+    type:'scatter',
+    data:{datasets:[
+      {data:pts.map(function(p){return{x:p.x,y:p.y,name:p.name,cls:p.cls};}),
+       backgroundColor:pts.map(function(p){return p.cls==='CRBN'?'rgba(239,68,68,0.85)':p.cls==='VHL'?'rgba(37,99,235,0.85)':'rgba(5,150,105,0.85)';}),
+       borderColor:'#fff',borderWidth:1.5,pointRadius:7,pointHoverRadius:9},
+      {data:[{x:minV,y:minV},{x:maxV,y:maxV}],type:'line',
+       borderColor:'rgba(150,150,150,0.3)',borderWidth:1,borderDash:[5,4],pointRadius:0,fill:false}
+    ]},
+    options:{
+      responsive:true,animation:{duration:200},
+      plugins:{legend:{display:false},tooltip:{callbacks:{
+        label:function(i){
+          var d=i.raw;
+          if(!d.name) return '';
+          return d.name+' | CRBN: '+i.parsed.x.toFixed(2)+', VHL: '+i.parsed.y.toFixed(2);
+        }
+      }}},
+      scales:{
+        x:{min:minV,max:maxV,title:{display:true,text:'log₁₀[CRBN KO DC₅₀, nM]',color:t.text,font:{size:10}},
+           ticks:{color:t.text,font:{size:10,family:'IBM Plex Mono'},callback:function(v){return v.toFixed(1);}},
+           grid:{color:t.grid}},
+        y:{min:minV,max:maxV,title:{display:true,text:'log₁₀[VHL KO DC₅₀, nM]',color:t.text,font:{size:10}},
+           ticks:{color:t.text,font:{size:10,family:'IBM Plex Mono'},callback:function(v){return v.toFixed(1);}},
+           grid:{color:t.grid}}
+      }
+    }
+  });
+}
+
+// ── AUC vs DC50 LDI COMPARISON ──
+function drawCompareChart() {
+  if (!_results.length) return;
+  var t = tc();
+  var valid = _results.filter(function(r){return !isNaN(r.ldi_auc)&&!isNaN(r.ldi_dc50);});
+  if (!valid.length) return;
+  var pts = valid.map(function(r){
+    return {x:r.ldi_dc50, y:r.ldi_auc, name:r.name, cls:classify(r.ldi_auc)};
+  });
+  destroyChart('compare');
+  _charts['compare'] = new Chart(document.getElementById('compare-canvas').getContext('2d'), {
+    type:'scatter',
+    data:{datasets:[
+      {data:pts.map(function(p){return{x:p.x,y:p.y,name:p.name,cls:p.cls};}),
+       backgroundColor:pts.map(function(p){return p.cls==='CRBN'?'rgba(239,68,68,0.85)':p.cls==='VHL'?'rgba(37,99,235,0.85)':'rgba(5,150,105,0.85)';}),
+       borderColor:'#fff',borderWidth:1.5,pointRadius:7,pointHoverRadius:9},
+      {data:[{x:-1,y:-1},{x:1,y:1}],type:'line',
+       borderColor:'rgba(150,150,150,0.25)',borderWidth:1,borderDash:[5,4],pointRadius:0,fill:false}
+    ]},
+    options:{
+      responsive:true,animation:{duration:200},
+      plugins:{legend:{display:false},tooltip:{callbacks:{
+        label:function(i){
+          var d=i.raw; if(!d.name) return '';
+          return d.name+' | DC50: '+i.parsed.x.toFixed(3)+', AUC: '+i.parsed.y.toFixed(3);
+        }
+      }}},
+      scales:{
+        x:{min:-1,max:1,title:{display:true,text:'LDI (DC₅₀ method)',color:t.text,font:{size:10}},
+           ticks:{color:t.text,font:{size:10,family:'IBM Plex Mono'},callback:function(v){return v.toFixed(1);}},
+           grid:{color:t.grid}},
+        y:{min:-1,max:1,title:{display:true,text:'LDI (AUC method)',color:t.text,font:{size:10}},
+           ticks:{color:t.text,font:{size:10,family:'IBM Plex Mono'},callback:function(v){return v.toFixed(1);}},
+           grid:{color:t.grid}}
+      }
+    }
+  });
+}
+
+// ── PARAM CHANGE ──
+var _rebuildTimer = null;
+function onParamChange() {
+  if (_rebuildTimer) clearTimeout(_rebuildTimer);
+  _rebuildTimer = setTimeout(function(){ if(_results.length) runCalc(); }, 600);
+}
+
+function scheduleRebuildCharts() {
+  setTimeout(function(){
+    if (_results.length) {
+      renderResultsTable();
+      drawBarChart(); drawAUCChart(); drawScatterChart(); drawCompareChart(); drawCurveChart();
+    }
+  }, 50);
+}
+
+// ── CSV I/O ──
+function ldiLoadCSV(input) {
+  var file = input.files[0]; if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var lines = e.target.result.split(/\r?\n/).filter(function(l){return l.trim();});
+    var start = isNaN(parseFloat(lines[0].split(',')[1])) ? 1 : 0;
+    _rows = [];
+    lines.slice(start).forEach(function(line) {
+      var c = line.split(',');
+      if (c.length < 5) return;
+      addRow({name:c[0].trim(),crbn_dc50:c[1].trim(),crbn_dmax:c[2].trim(),vhl_dc50:c[3].trim(),vhl_dmax:c[4].trim()});
+    });
+    renderTable();
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function ldiLoadExample() {
+  var ex = [
+    {name:'ARV-110',   crbn_dc50:'8',    crbn_dmax:'12', vhl_dc50:'1.2',  vhl_dmax:'85'},
+    {name:'dBET6',     crbn_dc50:'32',   crbn_dmax:'8',  vhl_dc50:'0.9',  vhl_dmax:'88'},
+    {name:'MZ1',       crbn_dc50:'1200', crbn_dmax:'22', vhl_dc50:'30',   vhl_dmax:'92'},
+    {name:'SIMb',      crbn_dc50:'180',  crbn_dmax:'78', vhl_dc50:'190',  vhl_dmax:'75'},
+    {name:'AT1',       crbn_dc50:'0.5',  crbn_dmax:'90', vhl_dc50:'680',  vhl_dmax:'45'},
+  ];
+  _rows = [];
+  ex.forEach(function(d){ addRow(d); });
+  renderTable();
+}
+
+function ldiDownloadTemplate() {
+  var csv = 'Compound,CRBN_KO_DC50_nM,CRBN_KO_Dmax_pct,VHL_KO_DC50_nM,VHL_KO_Dmax_pct\nCompound A,50,85,50,85\n';
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='ldi_template.csv'; a.click();
+}
+
+function exportCSV() {
+  if (!_results.length) return;
+  var rows=['Compound,CRBN_KO_DC50,CRBN_KO_Dmax,VHL_KO_DC50,VHL_KO_Dmax,AUC_CRBN,AUC_VHL,LDI_AUC,LDI_DC50,Classification'];
+  _results.forEach(function(r){
+    rows.push([r.name,r.crbn_dc50,r.crbn_dmax,r.vhl_dc50,r.vhl_dmax,
+              r.auc_crbn.toFixed(3),r.auc_vhl.toFixed(3),
+              isNaN(r.ldi_auc)?'':r.ldi_auc.toFixed(4),
+              isNaN(r.ldi_dc50)?'':r.ldi_dc50.toFixed(4),
+              classify(r.ldi_auc)].join(','));
+  });
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.join('\n'));
+  a.download='ldi_results.csv'; a.click();
+}
+
+function exportBarPNG() { _pngExport('bar-canvas','ldi_bar.png'); }
+function exportCurvePNG() { _pngExport('curve-canvas','ldi_curve.png'); }
+function _pngExport(id,name) {
+  var c=document.getElementById(id); if(!c) return;
+  var a=document.createElement('a'); a.href=c.toDataURL('image/png'); a.download=name; a.click();
+}
+
+// ── INIT ──
+(function(){
+  addRow(); addRow(); addRow();
+  setTimeout(function(){
+    var btn=document.getElementById('tab-data-btn'),ind=document.getElementById('tab-indicator');
+    if(btn&&ind){ind.style.left=btn.offsetLeft+'px';ind.style.width=btn.offsetWidth+'px';}
+  },50);
+})();
+</script>
+</body>
+</html>

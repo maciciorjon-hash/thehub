@@ -238,14 +238,21 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 21: v0.9.83 — LabMate mobile grid redesign)
-Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt, spectra) [unchanged]
-Hub file size: 7.73MB (7,733,425 chars). Version v0.9.83
+Last session: 2026-06-07 (Round 22: v0.9.84 — LDI app + LabMate tab fixes)
+Hub apps: 8 (echo, deg, lm, pd, dna→Helix, pt, spectra, ldi) [+ldi]
+Hub file size: 7.79MB (7,792,002 chars). Version v0.9.84
+New app: LDI (LDI/ldi.html)
+- Ligase Dependency Index: AUC-based CRBN/VHL-KO scoring using 4PL Hill model
+- Three tabs: Data | Curves | Results
+- AUC params: Cmin/Cmax concentration range + Hill slope slider (0.5–4)
+- Results: ranked table + 4 Chart.js charts (LDI bar, AUC grouped bar, DC50 scatter, AUC vs DC50 scatter)
+- Curves: per-compound dose-response with AUC fill areas + vertical range markers
+- LDI sign: positive = CRBN-dependent, negative = VHL-dependent
+- CSV import/export, PNG chart export, help modal, dark/light theme
 LabMate changes (labmate.html):
-- Mobile grid: replaced all emoji icon spans with CSS lm-icon-* div boxes (11 main + 7 sub-group icons)
-- Sub-menu grid: reference/tools sub-groups render CSS icon divs via iconClass in _navGroups children
-- Fixed Calculators button (was calling mobShowSubGroup('calculate') → now mobGoTo('quickcalc'))
-- Fixed PROTAC button (was calling mobShowSubGroup('protac') → now mobGoTo('protactools'))
-- Back button: onclick mobGoHome→mobBack; label updates dynamically (← Reference/← Tools/← LabMate)
-- Sub-home back button text: "← Back" → "← LabMate"
+- Added Genomics nav tab (data-nav="genomics"), removed Tools nav tab
+- Mobile grid: replaced Tools item with Genomics item (lm-icon-genomics)
+- Added Buffers as 4th child in Reference _navGroups (lm-icon-ref-buf)
+- _navGroupMeta simplified (removed tools key)
+- Added chemEditClose() function (was undefined, called from chem-edit-modal close button)
 <!-- LAST_SESSION_END -->

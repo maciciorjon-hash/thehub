@@ -19,6 +19,7 @@ APPS = [
     ('dna',  'Helix/helix.html'),
     ('pt',   'Protein_Tools/protein_tools.html'),
     ('spectra', 'Spectra/spectra.html'),
+    ('ldi',     'LDI/ldi.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()
