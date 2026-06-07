@@ -82,6 +82,12 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 .dil-fields label{font-size:11px;color:var(--text3);white-space:nowrap;}
 .dil-fields input{background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;width:78px;}
 .dil-input{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 7px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;min-width:0;}
+.pd-brack-item{display:flex;align-items:center;gap:4px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;font-size:11px;}
+.pd-brack-item input[type="number"]{width:40px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:2px 4px;font-size:11px;font-family:var(--mono);color:var(--text);outline:none;text-align:center;}
+.pd-brack-item input[type="text"]{background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:2px 6px;font-size:11px;font-family:var(--sans);color:var(--text);outline:none;width:80px;}
+.pd-brack-item select{background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:2px 4px;font-size:11px;font-family:var(--sans);color:var(--text2);outline:none;cursor:pointer;}
+.pd-brack-item input:focus,.pd-brack-item select:focus{border-color:var(--accent);}
+.pd-brack-side{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:2px 5px;border-radius:4px;background:var(--surface3);color:var(--text2);white-space:nowrap;flex-shrink:0;}
 .dil-fields input:focus{border-color:var(--accent);}
 .dil-fields select{background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:4px 6px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;}
 
@@ -200,12 +206,27 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
   <div id="fmt-pills" style="display:flex;gap:4px;"></div>
   <div class="tb-sep"></div>
   <button class="btn btn-sec pd-tb-btn" id="btn-types-panel" onclick="toggleTypesPanel()">Types &#9660;</button>
+  <button class="btn btn-sec pd-tb-btn" id="btn-brackets" onclick="pdToggleBracketsBar()">Brackets &#9660;</button>
   <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
     <button class="btn btn-sec pd-tb-btn" onclick="clearPlate()">Clear plate</button>
     <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;"><input type="checkbox" id="export-transparent" style="cursor:pointer;"> Transparent</label>
     <button class="btn btn-primary pd-tb-btn" onclick="exportPNG()" style="padding:5px 12px;">&#8595; Export PNG <span class="pinfo" data-tip="Exports at 600 DPI. Text auto-fits inside wells.">ⓘ</span></button>
     <span style="font-size:11px;color:var(--text2);margin-left:4px;">Size</span>
     <input type="range" id="well-size-slider" min="0.5" max="2.0" step="0.1" value="1.0" style="width:76px;" oninput="setUserScale(parseFloat(this.value))">
+  </div>
+</div>
+
+<!-- Brackets bar -->
+<div id="pd-brack-bar" style="display:none;padding:6px 16px 8px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);white-space:nowrap;">Brackets</span>
+    <div id="pd-brack-list" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;align-items:flex-start;"></div>
+    <div style="display:flex;gap:4px;flex-shrink:0;">
+      <button class="btn btn-sec pd-tb-btn" onclick="pdAddBracket('top')">+ Top</button>
+      <button class="btn btn-sec pd-tb-btn" onclick="pdAddBracket('bottom')">+ Bottom</button>
+      <button class="btn btn-sec pd-tb-btn" onclick="pdAddBracket('left')">+ Left</button>
+      <button class="btn btn-sec pd-tb-btn" onclick="pdAddBracket('right')">+ Right</button>
+    </div>
   </div>
 </div>
 
@@ -791,6 +812,7 @@ let selection = new Set();
 let lastClickedWell = null;
 let customTypes = [];
 var rowAnnotations = {}, colAnnotations = {};
+var pdBrackets = [];
 var userScale = 1.0;
 var _userScaledManually = false;
 
@@ -969,20 +991,32 @@ function sizeAndDrawCanvas() {
   const fmt = FORMATS[currentFormat];
   const wellPx = calcWellPx();
   fmt.wellPx = wellPx;
-  const canvasW = LABEL_W + fmt.cols * (wellPx + fmt.gap) - fmt.gap;
-  const canvasH = LABEL_H + fmt.rows * (wellPx + fmt.gap) - fmt.gap;
+  const {rows, cols, gap} = {rows: fmt.rows, cols: fmt.cols, gap: fmt.gap};
+
+  const PB_W = 20, PB_H = 22;
+  const leftLv  = pdBrackets.filter(b=>b.side==='left').reduce((m,b)=>Math.max(m,b.level),0);
+  const rightLv = pdBrackets.filter(b=>b.side==='right').reduce((m,b)=>Math.max(m,b.level),0);
+  const topLv   = pdBrackets.filter(b=>b.side==='top').reduce((m,b)=>Math.max(m,b.level),0);
+  const botLv   = pdBrackets.filter(b=>b.side==='bottom').reduce((m,b)=>Math.max(m,b.level),0);
+  const ox = leftLv * PB_W, rightM = rightLv * PB_W;
+  const oy = topLv  * PB_H, botM   = botLv   * PB_H;
+
+  const canvasW = ox + LABEL_W + cols * (wellPx + gap) - gap + rightM;
+  const canvasH = oy + LABEL_H + rows * (wellPx + gap) - gap + botM;
   const dpr = Math.max(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.round(canvasW * dpr);
+  canvas.width  = Math.round(canvasW * dpr);
   canvas.height = Math.round(canvasH * dpr);
-  canvas.style.width = canvasW + 'px';
+  canvas.style.width  = canvasW + 'px';
   canvas.style.height = canvasH + 'px';
-  canvas._meta = {labelW: LABEL_W, labelH: LABEL_H, wellPx, gap: fmt.gap, rows: fmt.rows, cols: fmt.cols, dpr};
+  canvas._meta = {labelW: LABEL_W, labelH: LABEL_H, wellPx, gap, rows, cols, dpr, ox, oy, rightM, botM};
   drawPlateCanvas(canvas);
 }
 
 function drawPlateCanvas(canvas) {
   if (!canvas || !canvas._meta) return;
   const {labelW, labelH, wellPx, gap, rows, cols, dpr} = canvas._meta;
+  const ox = canvas._meta.ox || 0, oy = canvas._meta.oy || 0;
+  const rightM = canvas._meta.rightM || 0, botM = canvas._meta.botM || 0;
   const rowLetters = ROWS_ALL.slice(0, rows);
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const textColor = isDark ? '#4e5368' : '#9ca0b8';
@@ -1007,11 +1041,11 @@ function drawPlateCanvas(canvas) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (let c = 0; c < cols; c++) {
-    ctx.fillText(c + 1, labelW + c * (wellPx + gap) + wellPx / 2, labelH / 2);
+    ctx.fillText(c + 1, ox + labelW + c * (wellPx + gap) + wellPx / 2, oy + labelH / 2);
   }
   ctx.textAlign = 'right';
   for (let r = 0; r < rows; r++) {
-    ctx.fillText(rowLetters[r], labelW - 3, labelH + r * (wellPx + gap) + wellPx / 2);
+    ctx.fillText(rowLetters[r], ox + labelW - 3, oy + labelH + r * (wellPx + gap) + wellPx / 2);
   }
 
   for (let r = 0; r < rows; r++) {
@@ -1020,8 +1054,8 @@ function drawPlateCanvas(canvas) {
       const ws = wellState[wid];
       const t = ws ? typeById(ws.typeId) : null;
       const sel = selection.has(wid);
-      const wx = labelW + c * (wellPx + gap);
-      const wy = labelH + r * (wellPx + gap);
+      const wx = ox + labelW + c * (wellPx + gap);
+      const wy = oy + labelH + r * (wellPx + gap);
 
       ctx.save();
       ctx.fillStyle = t ? t.color : emptyFill;
@@ -1056,25 +1090,114 @@ function drawPlateCanvas(canvas) {
       ctx.restore();
     }
   }
+
+  // ── Draw plate brackets ──
+  if (pdBrackets.length) {
+    const TICK = 5, PB_W = 20, PB_H = 22;
+    const wellsEndX = ox + labelW + cols * (wellPx + gap) - gap;
+    const wellsEndY = oy + labelH + rows * (wellPx + gap) - gap;
+    const isDk = document.documentElement.getAttribute('data-theme') === 'dark';
+    const BF = '"IBM Plex Sans",sans-serif';
+    pdBrackets.forEach(function(b) {
+      const f = Math.min(b.from, b.to) - 1;
+      const t = Math.max(b.from, b.to) - 1;
+      const lv = b.level || 1;
+      const lc = lv === 1 ? (isDk ? '#8b90a8' : '#333') : (isDk ? '#4e5368' : '#888');
+      const fc2 = lv === 1 ? (isDk ? '#e8eaf2' : '#111') : (isDk ? '#8b90a8' : '#555');
+      ctx.save();
+      ctx.strokeStyle = lc; ctx.fillStyle = fc2;
+      ctx.lineWidth = lv === 1 ? 1.2 : 0.8;
+      ctx.lineCap = ctx.lineJoin = 'round';
+      if (b.side === 'top') {
+        const x1 = ox + labelW + f * (wellPx + gap);
+        const x2 = ox + labelW + t * (wellPx + gap) + wellPx;
+        const ly = oy - (lv - 1) * PB_H - 8;
+        ctx.beginPath();
+        ctx.moveTo(x1, ly); ctx.lineTo(x2, ly);
+        ctx.moveTo(x1, ly); ctx.lineTo(x1, ly + TICK);
+        ctx.moveTo(x2, ly); ctx.lineTo(x2, ly + TICK);
+        ctx.stroke();
+        if (b.label) {
+          ctx.font = (lv===1?'10px ':'9px ') + BF;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          ctx.fillText(b.label, (x1+x2)/2, ly - 2);
+        }
+      } else if (b.side === 'bottom') {
+        const x1 = ox + labelW + f * (wellPx + gap);
+        const x2 = ox + labelW + t * (wellPx + gap) + wellPx;
+        const ly = wellsEndY + (lv - 1) * PB_H + 8;
+        ctx.beginPath();
+        ctx.moveTo(x1, ly); ctx.lineTo(x2, ly);
+        ctx.moveTo(x1, ly); ctx.lineTo(x1, ly - TICK);
+        ctx.moveTo(x2, ly); ctx.lineTo(x2, ly - TICK);
+        ctx.stroke();
+        if (b.label) {
+          ctx.font = (lv===1?'10px ':'9px ') + BF;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+          ctx.fillText(b.label, (x1+x2)/2, ly + 2);
+        }
+      } else if (b.side === 'left') {
+        const y1 = oy + labelH + f * (wellPx + gap);
+        const y2 = oy + labelH + t * (wellPx + gap) + wellPx;
+        const lx = ox - (lv - 1) * PB_W - 8;
+        ctx.beginPath();
+        ctx.moveTo(lx, y1); ctx.lineTo(lx, y2);
+        ctx.moveTo(lx, y1); ctx.lineTo(lx + TICK, y1);
+        ctx.moveTo(lx, y2); ctx.lineTo(lx + TICK, y2);
+        ctx.stroke();
+        if (b.label) {
+          ctx.font = (lv===1?'10px ':'9px ') + BF;
+          ctx.save();
+          ctx.translate(lx - 3, (y1 + y2) / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          ctx.fillText(b.label, 0, 0);
+          ctx.restore();
+        }
+      } else if (b.side === 'right') {
+        const y1 = oy + labelH + f * (wellPx + gap);
+        const y2 = oy + labelH + t * (wellPx + gap) + wellPx;
+        const lx = wellsEndX + (lv - 1) * PB_W + 8;
+        ctx.beginPath();
+        ctx.moveTo(lx, y1); ctx.lineTo(lx, y2);
+        ctx.moveTo(lx, y1); ctx.lineTo(lx - TICK, y1);
+        ctx.moveTo(lx, y2); ctx.lineTo(lx - TICK, y2);
+        ctx.stroke();
+        if (b.label) {
+          ctx.font = (lv===1?'10px ':'9px ') + BF;
+          ctx.save();
+          ctx.translate(lx + 3, (y1 + y2) / 2);
+          ctx.rotate(Math.PI / 2);
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          ctx.fillText(b.label, 0, 0);
+          ctx.restore();
+        }
+      }
+      ctx.restore();
+    });
+  }
 }
 
 function getCanvasZone(canvas, e) {
   if (!canvas._meta) return {type:'none'};
   const {labelW, labelH, wellPx, gap, rows, cols} = canvas._meta;
+  const ox = canvas._meta.ox || 0;
+  const oy = canvas._meta.oy || 0;
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const rx = mx - ox, ry = my - oy;
 
-  if (my < labelH && mx >= labelW) {
-    const col = Math.floor((mx - labelW) / (wellPx + gap));
+  if (ry < labelH && rx >= labelW) {
+    const col = Math.floor((rx - labelW) / (wellPx + gap));
     if (col >= 0 && col < cols) return {type:'col-label', col: col + 1};
   }
-  if (mx < labelW && my >= labelH) {
-    const row = Math.floor((my - labelH) / (wellPx + gap));
+  if (rx < labelW && ry >= labelH) {
+    const row = Math.floor((ry - labelH) / (wellPx + gap));
     if (row >= 0 && row < rows) return {type:'row-label', row: ROWS_ALL[row]};
   }
-  if (mx < labelW || my < labelH) return {type:'none'};
+  if (rx < labelW || ry < labelH) return {type:'none'};
 
-  const fx = mx - labelW, fy = my - labelH;
+  const fx = rx - labelW, fy = ry - labelH;
   const col = Math.floor(fx / (wellPx + gap));
   const row = Math.floor(fy / (wellPx + gap));
   if (col < 0 || col >= cols || row < 0 || row >= rows) return {type:'none'};
@@ -1087,6 +1210,65 @@ function getCanvasZone(canvas, e) {
   }
 
   return {type:'well', row, col, id: ROWS_ALL[row] + (col + 1)};
+}
+
+// ─── Plate bracket management ────────────────────────────────────────────────
+function pdToggleBracketsBar() {
+  const bar = document.getElementById('pd-brack-bar');
+  const btn = document.getElementById('btn-brackets');
+  if (!bar) return;
+  const open = bar.style.display !== 'none';
+  bar.style.display = open ? 'none' : 'flex';
+  btn.innerHTML = 'Brackets ' + (open ? '&#9660;' : '&#9650;');
+}
+
+function pdRenderBrackets() {
+  const list = document.getElementById('pd-brack-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!pdBrackets.length) {
+    list.innerHTML = '<span style="font-size:11px;color:var(--text3);padding:4px 0;">No brackets yet.</span>';
+    return;
+  }
+  pdBrackets.forEach(function(b, bi) {
+    const fmt = FORMATS[currentFormat];
+    const max = (b.side === 'left' || b.side === 'right') ? fmt.rows : fmt.cols;
+    const item = document.createElement('div');
+    item.className = 'pd-brack-item';
+    item.innerHTML =
+      '<span class="pd-brack-side">' + b.side.toUpperCase() + '</span>' +
+      '<label style="font-size:10px;color:var(--text2);">From</label>' +
+      '<input type="number" value="' + b.from + '" min="1" max="' + max + '" ' +
+        'oninput="pdBrackets[' + bi + '].from=Math.min(Math.max(1,+this.value),' + max + ');sizeAndDrawCanvas();" ' +
+        'style="width:38px;">' +
+      '<label style="font-size:10px;color:var(--text2);">To</label>' +
+      '<input type="number" value="' + b.to + '" min="1" max="' + max + '" ' +
+        'oninput="pdBrackets[' + bi + '].to=Math.min(Math.max(1,+this.value),' + max + ');sizeAndDrawCanvas();" ' +
+        'style="width:38px;">' +
+      '<input type="text" value="' + (b.label || '') + '" placeholder="Label…" maxlength="40" ' +
+        'oninput="pdBrackets[' + bi + '].label=this.value;sizeAndDrawCanvas();">' +
+      '<select onchange="pdBrackets[' + bi + '].level=+this.value;sizeAndDrawCanvas();">' +
+        '<option value="1"' + (b.level===1?' selected':'') + '>Lvl 1</option>' +
+        '<option value="2"' + (b.level===2?' selected':'') + '>Lvl 2</option>' +
+      '</select>' +
+      '<button class="btn btn-sec pd-tb-btn" onclick="pdDeleteBracket(' + bi + ')" ' +
+        'style="padding:2px 6px;font-size:10px;">✕</button>';
+    list.appendChild(item);
+  });
+}
+
+function pdAddBracket(side) {
+  const fmt = FORMATS[currentFormat];
+  const max = (side === 'left' || side === 'right') ? fmt.rows : fmt.cols;
+  pdBrackets.push({side: side, from: 1, to: max, label: '', level: 1});
+  pdRenderBrackets();
+  sizeAndDrawCanvas();
+}
+
+function pdDeleteBracket(bi) {
+  pdBrackets.splice(bi, 1);
+  pdRenderBrackets();
+  sizeAndDrawCanvas();
 }
 
 const _wellTip = (() => {

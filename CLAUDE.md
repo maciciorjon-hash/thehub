@@ -238,18 +238,16 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 23: v0.9.85 — LDI polish + Degradation Explorer unit/scale redesign)
+Last session: 2026-06-07 (Round 24: v0.9.86 — Plate Designer bracket overlays)
 Hub apps: 8 (echo, deg, lm, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.80MB (7,799,579 chars). Version v0.9.85
-LDI changes (LDI/ldi.html):
-- Curves chart: responsive height (calc(100vh - 340px)), maintainAspectRatio:false
-- .pinfo hover tooltips on all major labels (DC50, Dmax, Cmin, Cmax, Hill, LDI)
-- Input unit selector: nM/µM/M — all DC50/Cmin/Cmax inputs converted to nM internally
-- Y axis toggle: % Degradation | % Protein Remaining — flips Dmax input interpretation + curve Y display
-Degradation Explorer changes (degradation_visualizer.html):
-- Unit/scale redesign: replaced single 5-option dropdown with two selects
-  - Unit: nM | µM | M (base concentration unit)
-  - Scale: Log₁₀ | Linear | pDC50 (axis scale type)
-- State: dgUnit + dgScale (replaces dgXUnit)
-- All axes, slider label, zone thresholds, axis-hint update coherently via setDgUnit()/setDgScale()
+Hub file size: 7.81MB (7,812,600 chars). Version v0.9.86
+Plate Designer changes (plate_designer.html):
+- Bracket overlays on all four sides: top, bottom, left, right
+- Each bracket: from/to well index, label text, nesting level (1 or 2)
+- State: pdBrackets = [{side, from, to, label, level}]
+- sizeAndDrawCanvas() computes ox/oy/rightM/botM margins from max bracket levels; stores in canvas._meta
+- drawPlateCanvas() shifts all coordinates by ox/oy; draws bracket lines, ticks, labels (rotated for left/right)
+- getCanvasZone() updated to account for ox/oy offsets so well click/hover still resolves correctly
+- Brackets ▾ button in top-bar toggles #pd-brack-bar panel with + Top/Bottom/Left/Right add buttons
+- pdRenderBrackets() renders each bracket as editable .pd-brack-item row with delete button
 <!-- LAST_SESSION_END -->
