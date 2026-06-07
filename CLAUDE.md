@@ -238,15 +238,11 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 19: v0.9.81 — header cleanup, dark mode, guide updates)
+Last session: 2026-06-07 (Round 20: v0.9.82 — axis unit dropdown, pill fix, zone link)
 Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt, spectra) [unchanged]
-Hub file size: 7.73MB (7,728,653 chars). Version v0.9.81
+Hub file size: 7.73MB (7,731,313 chars). Version v0.9.82
 Degradation Explorer changes (all in degradation_visualizer.html):
-- DC50 always toFixed(1); Dmax always Math.round() — in fmtVal(), detail card, scatter tooltip
-- Zones toggle: added onchange="refreshChart()" (was missing — toggling did nothing)
-- Scatter sliders: debounceChart(updateChart) → refreshChart() on both dmax/dc50 sliders
-- Error bars: cap 4→7px, lineWidth 1.5→2, globalAlpha 0.75→0.9 (split beginPath/stroke per direction already existed)
-- Stats banner moved from .stats-row in header to .tabs-right in tabs bar (right of tabs, border-left separator)
-- Custom hover tooltip: native Chart.js tooltip disabled, customTooltip() function renders .dg-tt div with compound, target, DC50±SD, Dmax±SD, and SMILES structure SVG if loaded
-- Properties tab (5th tab): SMILES CSV/XLSX upload, lazy RDKit CDN loading, per-molecule properties (MW, logP, HBA, HBD, TPSA, RotBonds), compound table joining SMILES with assay data. TAB_NAMES updated to include 'props'.
+- X-axis unit dropdown: nM/µM/M/log₁₀/pDC50 selector next to DC50 slider; axis type switches logarithmic↔linear; pDC50 uses reverse:true; axis hint and slider label update with unit
+- Potent/Moderate/Weak scatter pills: replaced compound-level quality(c) with per-point pointQuality(dc50_nM, dmax); only the actual scatter point's values are tested against thresholds
+- Hit zone linked to Potent threshold: removed separate dg-thr-dmax/dg-thr-dc50 inputs; quadrant plugin reads qThreshDmax/qThreshDC50 directly and converts DC50 to display unit
 <!-- LAST_SESSION_END -->

@@ -360,8 +360,15 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
       </div>
       <div class="filter-group">
         <label>DC50 ≤</label>
-        <input type="range" id="scatter-dc50" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('scatter-dc50-val').textContent=this.value+'nM';refreshChart()">
+        <input type="range" id="scatter-dc50" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('scatter-dc50-val').textContent=fmtDC50Display(+this.value);refreshChart()">
         <span class="val" id="scatter-dc50-val">1000nM</span>
+        <select id="dg-x-unit" onchange="setXUnit(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+          <option value="nM" selected>nM</option>
+          <option value="uM">µM</option>
+          <option value="M">M</option>
+          <option value="log">log₁₀</option>
+          <option value="p">pDC50</option>
+        </select>
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0;">
         <span class="export-label">PNG</span>
@@ -379,23 +386,14 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
       <label style="font-size:11px;color:var(--text3)"><input type="checkbox" id="scatter-errorbars" onchange="refreshChart()" style="accent-color:var(--col1)"> Error bars</label>
       <span class="count-badge" id="scatter-count">— points</span>
       <div class="sep"></div>
-      <span style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:5px;flex-wrap:nowrap;">
-        <label style="font-size:11px;color:var(--text2);margin:0;display:flex;align-items:center;gap:4px;">
-          <input type="checkbox" id="dg-show-zones" checked onchange="refreshChart()" style="accent-color:#00c896"> Zones
-        </label>
-        <span style="color:var(--text3)">Dmax</span>
-        <input type="number" id="dg-thr-dmax" value="50" min="0" max="100" onchange="refreshChart()"
-          style="width:44px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:2px 5px;color:var(--text);font-size:11px;font-family:inherit;outline:none;">
-        <span style="color:var(--text3)">% | DC50</span>
-        <input type="number" id="dg-thr-dc50" value="100" min="1" max="10000" onchange="refreshChart()"
-          style="width:58px;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:2px 5px;color:var(--text);font-size:11px;font-family:inherit;outline:none;">
-        <span style="color:var(--text3)">nM</span>
-      </span>
+      <label style="font-size:11px;color:var(--text2);margin:0;display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="dg-show-zones" checked onchange="refreshChart()" style="accent-color:#00c896"> Zones
+      </label>
     </div>
     <div class="chart-container" onmouseleave="document.getElementById('dg-tt').style.display='none'">
       <canvas id="scatter-chart"></canvas>
     </div>
-    <div class="axis-hint">X: DC50 (nM, log scale) · Y: Dmax (%) · Hover for details</div>
+    <div class="axis-hint" id="axis-hint">X: DC50 (nM, log scale) · Y: Dmax (%) · Hover for details</div>
   </div>
 
   <!-- PROPERTIES PANEL -->
@@ -482,6 +480,11 @@ function quality(c) {
   if (bDmax >= 60 || b50 <= 100) return 'mid';
   return 'poor';
 }
+function pointQuality(dc50_nM, dmax) {
+  if (dmax >= qThreshDmax && dc50_nM <= qThreshDC50) return 'good';
+  if (dmax >= 60 || dc50_nM <= 100) return 'mid';
+  return 'poor';
+}
 function fmtVal(v, sd) {
   if (v === null || v === undefined) return '<span class="no-data">—</span>';
   const sdStr = (sd !== null && sd !== undefined && sd > 0) ? ` <span class="sd">± ${sd.toFixed(1)}</span>` : '';
@@ -514,6 +517,7 @@ function setQThresh() {
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let sortKey = 'compound', sortDir = 1;
 let activePills = new Set(), scatterActivePills = new Set();
+let dgXUnit = 'nM';
 let selectedCompound = null, chartInstance = null;
 let activeTargets = new Set(TARGETS);
 
@@ -664,6 +668,69 @@ function closeDetail() {
   renderTable();
 }
 
+// ─── X-AXIS UNIT ──────────────────────────────────────────────────────────────
+function convertXfromNM(nm) {
+  if (!nm || nm <= 0) return null;
+  switch(dgXUnit) {
+    case 'nM':  return nm;
+    case 'uM':  return nm / 1000;
+    case 'M':   return nm / 1e9;
+    case 'log': return Math.log10(nm);
+    case 'p':   return 9 - Math.log10(nm);
+  }
+}
+function xUnitLabel() {
+  return {nM:'nM', uM:'µM', M:'M', log:'log₁₀(DC50/nM)', p:'pDC50'}[dgXUnit];
+}
+function xAxisConfig(t) {
+  const sf = 'ui-sans-serif, system-ui, sans-serif';
+  const isLogScale = ['nM','uM','M'].includes(dgXUnit);
+  return {
+    type: isLogScale ? 'logarithmic' : 'linear',
+    reverse: dgXUnit === 'p',
+    title: {display:true, text:'DC50 (' + xUnitLabel() + ')', color:t.axis, font:{size:11,family:sf}},
+    ticks: {
+      color:t.axis, font:{size:10,family:sf},
+      callback: function(v) {
+        switch(dgXUnit) {
+          case 'nM':  return v + ' nM';
+          case 'uM':  return v + ' µM';
+          case 'M':   return v.toExponential(0) + ' M';
+          case 'log': return v.toFixed(1);
+          case 'p':   return v.toFixed(1);
+        }
+      }
+    },
+    grid: {color:t.grid}
+  };
+}
+function setXUnit(val) {
+  dgXUnit = val;
+  updateAxisHint();
+  updateSliderDC50Label();
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; updateChart(); }
+}
+function updateAxisHint() {
+  const el = document.getElementById('axis-hint');
+  if (el) {
+    const scaleType = ['nM','uM','M'].includes(dgXUnit) ? 'log scale' : 'linear scale';
+    el.textContent = 'X: DC50 (' + xUnitLabel() + ', ' + scaleType + ') · Y: Dmax (%) · Hover for details';
+  }
+}
+function updateSliderDC50Label() {
+  const nmVal = +document.getElementById('scatter-dc50').value;
+  document.getElementById('scatter-dc50-val').textContent = fmtDC50Display(nmVal);
+}
+function fmtDC50Display(nmVal) {
+  switch(dgXUnit) {
+    case 'nM':  return nmVal + ' nM';
+    case 'uM':  return (nmVal/1000).toPrecision(2) + ' µM';
+    case 'M':   return (nmVal/1e9).toExponential(1) + ' M';
+    case 'log': return 'log ' + Math.log10(nmVal).toFixed(1);
+    case 'p':   return 'p' + (9 - Math.log10(nmVal)).toFixed(1);
+  }
+}
+
 // ─── SCATTER ──────────────────────────────────────────────────────────────────
 function buildChartData() {
   const t = tv();
@@ -677,11 +744,11 @@ function buildChartData() {
     const points = [];
     RAW.forEach(c => {
       if (!c.compound.toLowerCase().includes(search)) return;
-      if (scatterActivePills.size > 0 && !scatterActivePills.has(quality(c))) return;
       const d = c.targets[tgt];
       if (!d || d.dc50 === null || d.dmax === null) return;
+      if (scatterActivePills.size > 0 && !scatterActivePills.has(pointQuality(d.dc50, d.dmax))) return;
       if (d.dc50 > dc50Max || d.dmax < dmaxMin) return;
-      points.push({x: d.dc50, y: d.dmax, dc50_sd: d.dc50_sd, dmax_sd: d.dmax_sd, label: c.compound});
+      points.push({x: convertXfromNM(d.dc50), y: d.dmax, dc50_raw: d.dc50, dc50_sd: d.dc50_sd, dmax_sd: d.dmax_sd, label: c.compound});
     });
     totalPts += points.length;
     datasets.push({label:tgt, data:points, backgroundColor:color+'bb', borderColor:color, borderWidth:1, pointRadius:5, pointHoverRadius:7});
@@ -697,7 +764,7 @@ function customTooltip({ chart, tooltip }) {
   const r = pt.raw;
   const dsLabel = chart.data.datasets[pt.datasetIndex].label;
   let html = `<div class="dg-tt-title">${esc(r.label)}<span class="dg-tt-prot">${esc(dsLabel)}</span></div>`;
-  html += `<div class="dg-tt-row">DC50 <b>${r.x.toFixed(1)}</b>${r.dc50_sd > 0 ? ' ± ' + r.dc50_sd.toFixed(1) : ''} nM</div>`;
+  html += `<div class="dg-tt-row">DC50 <b>${(r.dc50_raw||r.x).toFixed(1)}</b>${r.dc50_sd > 0 ? ' ± ' + r.dc50_sd.toFixed(1) : ''} nM</div>`;
   html += `<div class="dg-tt-row">Dmax <b>${Math.round(r.y)}</b>${r.dmax_sd > 0 ? ' ± ' + Math.round(r.dmax_sd) : ''}%</div>`;
   const comp = _smilesData[r.label];
   if (comp && comp.svg) html += `<div class="dg-tt-struct">${comp.svg}</div>`;
@@ -720,7 +787,7 @@ function updateChart() {
     options: {
       animation: false, responsive: true, maintainAspectRatio: false,
       scales: {
-        x: {type:'logarithmic', title:{display:true,text:'DC50 (nM)',color:t.axis,font:{size:11,family:sf}}, ticks:{color:t.axis,font:{size:10,family:sf}}, grid:{color:t.grid}},
+        x: xAxisConfig(t),
         y: {min:0, max:105, title:{display:true,text:'Dmax (%)',color:t.axis,font:{size:11,family:sf}}, ticks:{color:t.axis,font:{size:10,family:sf},callback:v=>v+'%'}, grid:{color:t.grid}},
       },
       plugins: {
@@ -732,9 +799,9 @@ function updateChart() {
       {id:'quadrants', beforeDatasetsDraw(chart) {
         if (!document.getElementById('dg-show-zones')?.checked) return;
         const xs = chart.scales.x, ys = chart.scales.y;
-        const thrDmax = +document.getElementById('dg-thr-dmax').value || 50;
-        const thrDc50 = +document.getElementById('dg-thr-dc50').value || 100;
-        const xT = xs.getPixelForValue(thrDc50);
+        const thrDmax = qThreshDmax;
+        const thrDc50_disp = convertXfromNM(qThreshDC50);
+        const xT = xs.getPixelForValue(thrDc50_disp);
         const yT = ys.getPixelForValue(thrDmax);
         const L = xs.left, R = xs.right, T = ys.top, B = ys.bottom;
         const ctx2 = chart.ctx;
