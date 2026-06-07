@@ -1004,13 +1004,21 @@ function sizeAndDrawCanvas() {
   fmt.wellPx = wellPx;
   const {rows, cols, gap} = {rows: fmt.rows, cols: fmt.cols, gap: fmt.gap};
 
-  const PB_W = 20, PB_H = 22;
+  const TICK = 5;
   const leftLv  = pdBrackets.filter(b=>b.side==='left').reduce((m,b)=>Math.max(m,b.level),0);
   const rightLv = pdBrackets.filter(b=>b.side==='right').reduce((m,b)=>Math.max(m,b.level),0);
   const topLv   = pdBrackets.filter(b=>b.side==='top').reduce((m,b)=>Math.max(m,b.level),0);
   const botLv   = pdBrackets.filter(b=>b.side==='bottom').reduce((m,b)=>Math.max(m,b.level),0);
-  const ox = leftLv * PB_W, rightM = rightLv * PB_W;
-  const oy = topLv  * PB_H, botM   = botLv   * PB_H;
+  const maxTopFS = pdBrackets.filter(b=>b.side==='top').reduce((m,b)=>Math.max(m,b.fontSize||10),10);
+  const maxBotFS = pdBrackets.filter(b=>b.side==='bottom').reduce((m,b)=>Math.max(m,b.fontSize||10),10);
+  const maxLftFS = pdBrackets.filter(b=>b.side==='left').reduce((m,b)=>Math.max(m,b.fontSize||10),10);
+  const maxRgtFS = pdBrackets.filter(b=>b.side==='right').reduce((m,b)=>Math.max(m,b.fontSize||10),10);
+  const PB_H_top = Math.max(22, maxTopFS + TICK + 9);
+  const PB_H_bot = Math.max(22, maxBotFS + TICK + 9);
+  const PB_W_lft = Math.max(20, maxLftFS + 10);
+  const PB_W_rgt = Math.max(20, maxRgtFS + 10);
+  const ox = leftLv * PB_W_lft, rightM = rightLv * PB_W_rgt;
+  const oy = topLv  * PB_H_top, botM   = botLv   * PB_H_bot;
 
   const canvasW = ox + LABEL_W + cols * (wellPx + gap) - gap + rightM;
   const canvasH = oy + LABEL_H + rows * (wellPx + gap) - gap + botM;
@@ -1019,7 +1027,8 @@ function sizeAndDrawCanvas() {
   canvas.height = Math.round(canvasH * dpr);
   canvas.style.width  = canvasW + 'px';
   canvas.style.height = canvasH + 'px';
-  canvas._meta = {labelW: LABEL_W, labelH: LABEL_H, wellPx, gap, rows, cols, dpr, ox, oy, rightM, botM};
+  const PB_W = Math.max(PB_W_lft, PB_W_rgt), PB_H = Math.max(PB_H_top, PB_H_bot);
+  canvas._meta = {labelW: LABEL_W, labelH: LABEL_H, wellPx, gap, rows, cols, dpr, ox, oy, rightM, botM, PB_W, PB_H};
   drawPlateCanvas(canvas);
 }
 
@@ -1116,7 +1125,8 @@ function drawPlateCanvas(canvas) {
 
   // ── Draw plate brackets ──
   if (pdBrackets.length) {
-    const TICK = 5, PB_W = 20, PB_H = 22;
+    const TICK = 5;
+    const PB_W = canvas._meta.PB_W || 20, PB_H = canvas._meta.PB_H || 22;
     const wellsEndX = ox + labelW + cols * (wellPx + gap) - gap;
     const wellsEndY = oy + labelH + rows * (wellPx + gap) - gap;
     const isDk = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -1538,19 +1548,17 @@ function positionToolbar() {
   if (!wrap) return;
   var r = wrap.getBoundingClientRect();
   var tbW = tb.offsetWidth || 248;
-  tb.style.top = Math.max(68, r.top) + 'px';
+  var tbH = tb.offsetHeight || 300;
+  var topPos = Math.max(68, r.top);
+  topPos = Math.min(topPos, Math.max(68, window.innerHeight - tbH - 8));
+  tb.style.top = topPos + 'px';
   if (r.right + 8 + tbW <= window.innerWidth - 4) {
     tb.style.left = (r.right + 8) + 'px';
     tb.style.right = 'auto';
   } else {
     var leftPos = r.left - tbW - 8;
-    if (leftPos >= 4) {
-      tb.style.left = leftPos + 'px';
-      tb.style.right = 'auto';
-    } else {
-      tb.style.left = Math.max(4, r.right - tbW - 4) + 'px';
-      tb.style.right = 'auto';
-    }
+    tb.style.left = Math.max(4, leftPos >= 4 ? leftPos : r.right - tbW - 4) + 'px';
+    tb.style.right = 'auto';
   }
 }
 
@@ -1567,7 +1575,6 @@ function updateSelToolbar() {
   var tb = document.getElementById('sel-toolbar');
   tb.classList.add('open');
   selSection.style.display = '';
-  positionToolbar();
 
   const selArr = Array.from(selection);
   document.getElementById('sel-count').textContent = selection.size + ' well' + (selection.size > 1 ? 's' : '') + ' selected';
@@ -1589,6 +1596,9 @@ function updateSelToolbar() {
     if (sameRow) { btn.textContent = 'Apply →'; btn.onclick = () => applyDilution('row'); }
     else { btn.textContent = 'Apply ↓'; btn.onclick = () => applyDilution('col'); }
   }
+  // Position after all content is shown so offsetHeight is accurate
+  positionToolbar();
+  setTimeout(positionToolbar, 0);
 }
 
 function assignSelectionType(typeId) {
