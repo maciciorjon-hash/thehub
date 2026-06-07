@@ -238,9 +238,9 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 18: Degradation Explorer 7-fix overhaul)
+Last session: 2026-06-07 (Round 19: v0.9.81 — header cleanup, dark mode, guide updates)
 Hub apps: 7 (echo, deg, lm, pd, dna→Helix, pt, spectra) [unchanged]
-Hub file size: 7.73MB (7,725,680 chars). Version v0.9.8
+Hub file size: 7.73MB (7,728,653 chars). Version v0.9.81
 Degradation Explorer changes (all in degradation_visualizer.html):
 - DC50 always toFixed(1); Dmax always Math.round() — in fmtVal(), detail card, scatter tooltip
 - Zones toggle: added onchange="refreshChart()" (was missing — toggling did nothing)

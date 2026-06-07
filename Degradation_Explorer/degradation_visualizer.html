@@ -69,7 +69,7 @@ body {
 .btn-theme:hover { background: var(--surface2); color: var(--text); }
 .opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
 .opts-btn:hover{background:var(--surface2);color:var(--text);}
-.opts-panel{display:none;position:fixed;top:58px;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 0 10px;padding:14px 18px;z-index:200;min-width:170px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
+.opts-panel{display:none;position:absolute;top:100%;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 0 10px;padding:14px 18px;z-index:200;min-width:170px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
 .opts-panel.open{display:block;}
 .opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
 .opts-label{font-size:13px;color:var(--text2);}
@@ -82,7 +82,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 
 /* ── TABS ── */
 .tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 0 0 28px; }
-.tabs-right { margin-left:auto; display:flex; align-items:center; gap:14px; padding:0 14px; border-left:1px solid var(--border); }
+.tabs-right { position:relative; margin-left:auto; display:flex; align-items:center; gap:14px; padding:0 14px; border-left:1px solid var(--border); }
 .tab-stat { display:flex; flex-direction:column; align-items:center; line-height:1.2; }
 .tab-stat span:first-child { font-weight:700; font-size:13px; color:var(--text); font-family:var(--mono); }
 .ts-lbl { font-size:10px; color:var(--text3); }
@@ -253,27 +253,6 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
 </head>
 <body>
 
-<!-- HEADER -->
-<div class="header">
-  <div class="app-logo" style="background:var(--col1);">D</div>
-  <div class="header-info">
-    <h1 id="meta-label">Degradation Explorer</h1>
-    <p id="meta-desc">Import an Excel file to load data</p>
-  </div>
-  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
-    <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
-<div class="opts-panel" id="opts-panel">
-  <div class="opts-row">
-    <span class="opts-label">Dark mode</span>
-    <label class="theme-switch">
-      <input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()">
-      <span class="theme-slider"></span>
-    </label>
-  </div>
-</div>
-  </div>
-</div>
-
 <!-- TABS -->
 <div class="tabs">
   <div class="tab active" onclick="switchTab('load')">Load Data</div>
@@ -286,6 +265,16 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
     <div class="tab-stat"><span id="stat-active">—</span><span class="ts-lbl">w/ Data</span></div>
     <div class="tab-stat" style="color:var(--good)"><span id="stat-good">—</span><span class="ts-lbl">Excellent ✦</span></div>
     <button class="tab-tpl-btn" onclick="downloadTemplate()">⬇ Template</button>
+    <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
+    <div class="opts-panel" id="opts-panel">
+      <div class="opts-row">
+        <span class="opts-label">Dark mode</span>
+        <label class="theme-switch">
+          <input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()">
+          <span class="theme-slider"></span>
+        </label>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -431,15 +420,19 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
   <div class="panel" id="panel-guide">
     <div class="guide-card">
       <h3>Load Data</h3>
-      <p>Drag and drop an Excel (.xlsx) file onto the drop zone, or click to browse. The app automatically detects target columns and assay metadata. Use <strong>Replace all</strong> to start fresh or <strong>Merge / append</strong> to combine datasets.</p>
+      <p>Drag and drop an Excel (.xlsx) file onto the drop zone, or click to browse. The app auto-detects target protein columns and assay metadata (cell line, time point, assay type). Set quality thresholds (Dmax ≥ and DC50 ≤) to define what counts as "Excellent".</p>
     </div>
     <div class="guide-card">
       <h3>Table</h3>
-      <p>Displays all loaded compounds with their DC50 and Dmax values per target. Use the search box and sliders to filter. Export the table as PNG (white/black/transparent background) or as CSV for downstream analysis.</p>
+      <p>All loaded compounds with DC50 (nM, 1 dp) and Dmax (%, integer) per target. Search by name, filter with sliders, or apply quality pills. Click any row to expand a detail card. Export as PNG (white / black / transparent) or CSV.</p>
     </div>
     <div class="guide-card">
       <h3>DC50 vs Dmax</h3>
-      <p>Scatter plot of degradation potency (DC50, X axis, log scale) vs maximum degradation (Dmax, Y axis). Points are coloured by target. Use the quality pills to highlight compounds meeting "Good" (Dmax ≥ 85%, DC50 ≤ 50 nM), "Moderate", or "Weak" criteria. Toggle labels and error bars as needed. Export PNG for presentations.</p>
+      <p>Scatter plot with DC50 on the log X axis and Dmax on the Y axis. Points coloured by target. Use quality pills, sliders, and the search box to focus on subsets. Toggle <strong>Zones</strong> to overlay Hit / Weak / Selective / Inactive quadrants with adjustable thresholds. Toggle <strong>Error bars</strong> to show SD. Hover a point for a detailed tooltip (shows structure if SMILES are loaded). Export PNG.</p>
+    </div>
+    <div class="guide-card">
+      <h3>Properties</h3>
+      <p>Upload a SMILES file (CSV or Excel with <em>Compound</em> and <em>SMILES</em> columns) to compute molecular properties. RDKit runs in-browser — no data leaves your machine. The table shows 2D structure, MW, logP, HBA, HBD, TPSA, and RotBonds alongside the assay DC50 / Dmax from the loaded dataset. Structures also appear in scatter hover tooltips.</p>
     </div>
   </div>
 
