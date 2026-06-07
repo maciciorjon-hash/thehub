@@ -156,7 +156,7 @@ input:focus,select:focus{border-color:var(--accent);}
 /* Curves pane */
 .compound-sel-row{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
 .compound-sel-row select{font-size:13px;padding:7px 12px;min-width:180px;}
-.chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);padding:16px;position:relative;}
+.chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);padding:16px;position:relative;height:calc(100vh - 340px);min-height:260px;}
 .ldi-badge-overlay{
   position:absolute;top:14px;right:14px;
   background:var(--surface2);border:1px solid var(--border2);
@@ -186,6 +186,10 @@ input:focus,select:focus{border-color:var(--accent);}
 /* Hint bar */
 .fmt-hint{font-size:11px;color:var(--text3);font-family:var(--mono);padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);line-height:1.7;margin-top:12px;}
 
+.pinfo{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--text3);font-size:9px;cursor:help;flex-shrink:0;margin-left:4px;vertical-align:middle;transition:border-color .15s,color .15s;}
+.pinfo:hover{border-color:var(--accent);color:var(--accent);}
+@keyframes pinfoFadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+#pinfo-tip{position:fixed;z-index:99999;min-width:180px;max-width:280px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;font-size:11px;color:var(--text);line-height:1.55;box-shadow:0 6px 24px rgba(0,0,0,.25);pointer-events:none;animation:pinfoFadeIn .15s ease;white-space:normal;display:none;}
 @media(max-width:640px){
   header{padding:0 14px;}
   .tab-btn{padding:10px 12px;font-size:12px;}
@@ -229,18 +233,33 @@ input:focus,select:focus{border-color:var(--accent);}
 
     <div class="params-strip">
       <div class="param-group">
-        <label>C<sub>min</sub> (nM)</label>
+        <label>C<sub>min</sub> (<span class="ldi-crange-unit">nM</span>) <span class="pinfo" data-tip="Lower bound of AUC integration range. Use the lowest tested concentration.">ⓘ</span></label>
         <input type="number" id="cmin" value="0.1" min="0.001" step="any" oninput="onParamChange()">
       </div>
       <div class="param-group">
-        <label>C<sub>max</sub> (nM)</label>
+        <label>C<sub>max</sub> (<span class="ldi-crange-unit">nM</span>) <span class="pinfo" data-tip="Upper bound of AUC integration range. Use the highest tested concentration.">ⓘ</span></label>
         <input type="number" id="cmax" value="10000" min="1" step="any" oninput="onParamChange()">
       </div>
       <div class="param-group">
-        <label>Hill slope &nbsp;<span id="hill-val" style="font-family:var(--mono);color:var(--text)">2.0</span></label>
+        <label>Hill slope <span class="pinfo" data-tip="Hill coefficient (cooperativity). Most PROTACs ≈ 1–2; values &gt; 2 indicate steep sigmoidal curves.">ⓘ</span> &nbsp;<span id="hill-val" style="font-family:var(--mono);color:var(--text)">2.0</span></label>
         <input type="range" id="hill-slider" min="0.5" max="4" step="0.1" value="2"
                style="width:110px;accent-color:var(--accent);margin-top:4px;"
                oninput="document.getElementById('hill-val').textContent=(+this.value).toFixed(1);onParamChange()">
+      </div>
+      <div class="param-group">
+        <label>Input unit</label>
+        <select onchange="ldiSetUnit(this.value)" style="font-size:11px;padding:3px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+          <option value="nM" selected>nM</option>
+          <option value="uM">µM</option>
+          <option value="M">M</option>
+        </select>
+      </div>
+      <div class="param-group">
+        <label>Y axis</label>
+        <select onchange="ldiSetYMode(this.value)" style="font-size:11px;padding:3px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+          <option value="deg" selected>% Degradation</option>
+          <option value="prot">% Protein</option>
+        </select>
       </div>
       <div style="margin-left:auto;font-size:11px;color:var(--text3);max-width:220px;line-height:1.6">
         AUC integrated over [C<sub>min</sub>, C<sub>max</sub>] using 4PL Hill model.<br>
@@ -262,10 +281,10 @@ input:focus,select:focus{border-color:var(--accent);}
         <thead>
           <tr>
             <th style="width:150px">Compound</th>
-            <th class="crbn-hdr">CRBN KO&nbsp;DC<sub>50</sub>&nbsp;(nM)</th>
-            <th class="crbn-hdr">CRBN KO&nbsp;D<sub>max</sub>&nbsp;(%)</th>
-            <th class="vhl-hdr">VHL KO&nbsp;DC<sub>50</sub>&nbsp;(nM)</th>
-            <th class="vhl-hdr">VHL KO&nbsp;D<sub>max</sub>&nbsp;(%)</th>
+            <th class="crbn-hdr">CRBN KO&nbsp;DC<sub>50</sub>&nbsp;(<span class="ldi-dc50-unit">nM</span>) <span class="pinfo" data-tip="Half-maximal degradation concentration in CRBN KO cells.">ⓘ</span></th>
+            <th class="crbn-hdr">CRBN KO&nbsp;<span class="ldi-dmax-hdr">D<sub>max</sub>&nbsp;(%)</span> <span class="pinfo" data-tip="Maximum effect at saturating concentrations. Switch Y axis to enter % protein remaining instead.">ⓘ</span></th>
+            <th class="vhl-hdr">VHL KO&nbsp;DC<sub>50</sub>&nbsp;(<span class="ldi-dc50-unit">nM</span>) <span class="pinfo" data-tip="Half-maximal degradation concentration in VHL KO cells.">ⓘ</span></th>
+            <th class="vhl-hdr">VHL KO&nbsp;<span class="ldi-dmax-hdr">D<sub>max</sub>&nbsp;(%)</span></th>
             <th style="width:28px"></th>
           </tr>
         </thead>
@@ -281,7 +300,7 @@ input:focus,select:focus{border-color:var(--accent);}
     </div>
 
     <div class="fmt-hint">
-      CSV: <b>Compound, CRBN_KO_DC50, CRBN_KO_Dmax, VHL_KO_DC50, VHL_KO_Dmax</b> &nbsp;·&nbsp; DC<sub>50</sub> in nM · D<sub>max</sub> in %
+      CSV: <b>Compound, CRBN_KO_DC50, CRBN_KO_Dmax, VHL_KO_DC50, VHL_KO_Dmax</b> &nbsp;·&nbsp; DC<sub>50</sub> in selected unit · D<sub>max</sub> in % (degradation or protein remaining per Y axis setting)
     </div>
   </div>
 
@@ -300,7 +319,7 @@ input:focus,select:focus{border-color:var(--accent);}
       </div>
       <div class="chart-wrap">
         <div class="ldi-badge-overlay" id="curve-badge">LDI —</div>
-        <canvas id="curve-canvas" height="380"></canvas>
+        <canvas id="curve-canvas"></canvas>
       </div>
       <div class="curve-legend">
         <div class="legend-item"><div class="legend-swatch" style="background:#ef4444"></div> CRBN KO curve</div>
@@ -335,7 +354,7 @@ input:focus,select:focus{border-color:var(--accent);}
               <th>Compound</th>
               <th>CRBN KO AUC</th>
               <th>VHL KO AUC</th>
-              <th>LDI (AUC)</th>
+              <th>LDI (AUC) <span class="pinfo" data-tip="Ligase Dependency Index: +1 = fully CRBN-dependent, −1 = fully VHL-dependent. ±0.3 threshold by default.">ⓘ</span></th>
               <th>LDI (DC<sub>50</sub>)</th>
               <th>Classification</th>
               <th>Score</th>
@@ -385,7 +404,7 @@ input:focus,select:focus{border-color:var(--accent);}
 </div>
 
 <!-- HELP MODAL -->
-<div id="help-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;padding:16px;">
+<div id="help-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;padding:16px;">
   <div style="background:var(--surface);border-radius:var(--rlg);padding:24px 28px;max-width:540px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
       <div style="font-size:15px;font-weight:700;color:var(--text)">LDI — Ligase Dependency Index</div>
@@ -419,6 +438,8 @@ input:focus,select:focus{border-color:var(--accent);}
   </div>
 </div>
 
+<div id="pinfo-tip"></div>
+
 <script>
 // ── THEME ──
 function toggleTheme() {
@@ -447,6 +468,32 @@ var _rows = [];
 var _results = [];
 var _threshold = 0.3;
 var _charts = {};
+var ldiUnit = 'nM'; // 'nM' | 'uM' | 'M'
+var ldiYMode = 'deg'; // 'deg' = % degradation input | 'prot' = % protein remaining input
+
+// ── UNIT / YMODE HELPERS ──
+function ldiToNM(v) {
+  var n = parseFloat(v);
+  if (isNaN(n) || n <= 0) return null;
+  if (ldiUnit === 'uM') return n * 1000;
+  if (ldiUnit === 'M')  return n * 1e9;
+  return n;
+}
+function ldiSetUnit(val) {
+  ldiUnit = val;
+  var u = val === 'uM' ? 'µM' : val;
+  document.querySelectorAll('.ldi-dc50-unit').forEach(function(el) { el.textContent = u; });
+  document.querySelectorAll('.ldi-crange-unit').forEach(function(el) { el.textContent = u; });
+}
+function ldiSetYMode(val) {
+  ldiYMode = val;
+  document.querySelectorAll('.ldi-dmax-hdr').forEach(function(el) {
+    el.innerHTML = val === 'prot' ? '% Protein' : 'D<sub>max</sub>&nbsp;(%)';
+  });
+  if (_results.length) drawCurveChart();
+}
+function ldiDisplayY(dmaxDeg) { return ldiYMode === 'prot' ? 100 - dmaxDeg : dmaxDeg; }
+function ldiYLabel() { return ldiYMode === 'prot' ? '% Protein Remaining' : 'Degradation (%)'; }
 
 // ── MATH ──
 function y4PL(conc, dc50, dmax, n) {
@@ -518,18 +565,21 @@ function esc(s) { return String(s).replace(/"/g,'&quot;'); }
 
 // ── CALCULATE ──
 function runCalc() {
-  var cmin  = parseFloat(document.getElementById('cmin').value)  || 0.1;
-  var cmax  = parseFloat(document.getElementById('cmax').value)  || 10000;
+  var cmin  = ldiToNM(document.getElementById('cmin').value)  || 0.1;
+  var cmax  = ldiToNM(document.getElementById('cmax').value)  || 10000;
   var hill  = parseFloat(document.getElementById('hill-slider').value) || 2;
-  if (cmin >= cmax) { alert('C_min must be less than C_max.'); return; }
+  if (!cmin || !cmax || cmin >= cmax) { alert('C_min must be less than C_max.'); return; }
 
   _results = [];
   _rows.forEach(function(r, i) {
     var d = r.data;
     var name   = (d.name||'').trim() || ('Compound '+(i+1));
-    var crbnDC = parseFloat(d.crbn_dc50), crbnDm = parseFloat(d.crbn_dmax);
-    var vhlDC  = parseFloat(d.vhl_dc50),  vhlDm  = parseFloat(d.vhl_dmax);
-    if (isNaN(crbnDC)||isNaN(crbnDm)||isNaN(vhlDC)||isNaN(vhlDm)) return;
+    var crbnDC = ldiToNM(d.crbn_dc50);
+    var vhlDC  = ldiToNM(d.vhl_dc50);
+    var crbnDm = parseFloat(d.crbn_dmax);
+    var vhlDm  = parseFloat(d.vhl_dmax);
+    if (ldiYMode === 'prot') { crbnDm = 100 - crbnDm; vhlDm = 100 - vhlDm; }
+    if (!crbnDC||!vhlDC||isNaN(crbnDm)||isNaN(vhlDm)) return;
 
     var aucC = calcAUC(crbnDC, crbnDm, hill, cmin, cmax);
     var aucV = calcAUC(vhlDC,  vhlDm,  hill, cmin, cmax);
@@ -630,7 +680,7 @@ function drawCurveChart() {
   var pts = [];
   for (var i=0; i<=STEPS; i++) {
     var lx = tMin + i*dt, cx = Math.pow(10, lx);
-    pts.push({ lx:lx, crbn:y4PL(cx,r.crbn_dc50,r.crbn_dmax,hill), vhl:y4PL(cx,r.vhl_dc50,r.vhl_dmax,hill) });
+    pts.push({ lx:lx, crbn:ldiDisplayY(y4PL(cx,r.crbn_dc50,r.crbn_dmax,hill)), vhl:ldiDisplayY(y4PL(cx,r.vhl_dc50,r.vhl_dmax,hill)) });
   }
   var lcmin = Math.log10(cmin), lcmax = Math.log10(cmax);
   var aucPts = pts.filter(function(p){ return p.lx >= lcmin-1e-9 && p.lx <= lcmax+1e-9; });
@@ -676,7 +726,7 @@ function drawCurveChart() {
        borderColor:'#2563eb',backgroundColor:'transparent',borderWidth:2.5,pointRadius:0,fill:false,showLine:true,tension:0.3,order:1},
     ]},
     options:{
-      responsive:true,maintainAspectRatio:true,animation:{duration:200},
+      responsive:true,maintainAspectRatio:false,animation:{duration:200},
       plugins:{
         legend:{display:false},
         tooltip:{
@@ -697,7 +747,7 @@ function drawCurveChart() {
              if(v===Math.round(v)) return v.toFixed(0); return '';
            }},grid:{color:t.grid}},
         y:{min:0,max:100,
-           title:{display:true,text:'Degradation (%)',color:t.text,font:{size:11,family:'IBM Plex Sans'}},
+           title:{display:true,text:ldiYLabel(),color:t.text,font:{size:11,family:'IBM Plex Sans'}},
            ticks:{color:t.text,font:{size:10},callback:function(v){return v+'%';}},
            grid:{color:t.grid}}
       }
@@ -926,6 +976,32 @@ function _pngExport(id,name) {
   var c=document.getElementById(id); if(!c) return;
   var a=document.createElement('a'); a.href=c.toDataURL('image/png'); a.download=name; a.click();
 }
+
+// ── PINFO TOOLTIPS ──
+var _pinfoTimer;
+document.addEventListener('mouseover', function(e) {
+  var el = e.target.closest('.pinfo'); if (!el) return;
+  var tip = document.getElementById('pinfo-tip'); if (!tip) return;
+  clearTimeout(_pinfoTimer);
+  tip.textContent = el.dataset.tip || '';
+  tip.style.display = 'block';
+  var r = el.getBoundingClientRect(), tw = 280, th = 100;
+  var left = r.right + 10, top = r.top - 4;
+  if (left + tw > window.innerWidth - 12) left = r.left - tw - 10;
+  if (top + th > window.innerHeight - 12) top = window.innerHeight - th - 12;
+  tip.style.left = Math.max(8, left) + 'px';
+  tip.style.top  = Math.max(8, top)  + 'px';
+  tip.style.animation = 'none'; tip.offsetHeight; tip.style.animation = '';
+});
+document.addEventListener('mouseout', function(e) {
+  if (!e.target.closest('.pinfo')) return;
+  var tip = document.getElementById('pinfo-tip');
+  if (tip) _pinfoTimer = setTimeout(function(){ tip.style.display = 'none'; }, 80);
+});
+
+window.addEventListener('resize', function() {
+  if (_charts['curve']) _charts['curve'].resize();
+});
 
 // ── INIT ──
 (function(){

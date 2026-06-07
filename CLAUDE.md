@@ -238,21 +238,18 @@ Run the Python embed script to add `myapp` to `APP_B64`.
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 22: v0.9.84 — LDI app + LabMate tab fixes)
-Hub apps: 8 (echo, deg, lm, pd, dna→Helix, pt, spectra, ldi) [+ldi]
-Hub file size: 7.79MB (7,792,002 chars). Version v0.9.84
-New app: LDI (LDI/ldi.html)
-- Ligase Dependency Index: AUC-based CRBN/VHL-KO scoring using 4PL Hill model
-- Three tabs: Data | Curves | Results
-- AUC params: Cmin/Cmax concentration range + Hill slope slider (0.5–4)
-- Results: ranked table + 4 Chart.js charts (LDI bar, AUC grouped bar, DC50 scatter, AUC vs DC50 scatter)
-- Curves: per-compound dose-response with AUC fill areas + vertical range markers
-- LDI sign: positive = CRBN-dependent, negative = VHL-dependent
-- CSV import/export, PNG chart export, help modal, dark/light theme
-LabMate changes (labmate.html):
-- Added Genomics nav tab (data-nav="genomics"), removed Tools nav tab
-- Mobile grid: replaced Tools item with Genomics item (lm-icon-genomics)
-- Added Buffers as 4th child in Reference _navGroups (lm-icon-ref-buf)
-- _navGroupMeta simplified (removed tools key)
-- Added chemEditClose() function (was undefined, called from chem-edit-modal close button)
+Last session: 2026-06-07 (Round 23: v0.9.85 — LDI polish + Degradation Explorer unit/scale redesign)
+Hub apps: 8 (echo, deg, lm, pd, dna→Helix, pt, spectra, ldi) [unchanged]
+Hub file size: 7.80MB (7,799,579 chars). Version v0.9.85
+LDI changes (LDI/ldi.html):
+- Curves chart: responsive height (calc(100vh - 340px)), maintainAspectRatio:false
+- .pinfo hover tooltips on all major labels (DC50, Dmax, Cmin, Cmax, Hill, LDI)
+- Input unit selector: nM/µM/M — all DC50/Cmin/Cmax inputs converted to nM internally
+- Y axis toggle: % Degradation | % Protein Remaining — flips Dmax input interpretation + curve Y display
+Degradation Explorer changes (degradation_visualizer.html):
+- Unit/scale redesign: replaced single 5-option dropdown with two selects
+  - Unit: nM | µM | M (base concentration unit)
+  - Scale: Log₁₀ | Linear | pDC50 (axis scale type)
+- State: dgUnit + dgScale (replaces dgXUnit)
+- All axes, slider label, zone thresholds, axis-hint update coherently via setDgUnit()/setDgScale()
 <!-- LAST_SESSION_END -->

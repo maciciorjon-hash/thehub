@@ -362,11 +362,14 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
         <label>DC50 ≤</label>
         <input type="range" id="scatter-dc50" min="10" max="1000" value="1000" step="10" oninput="document.getElementById('scatter-dc50-val').textContent=fmtDC50Display(+this.value);refreshChart()">
         <span class="val" id="scatter-dc50-val">1000nM</span>
-        <select id="dg-x-unit" onchange="setXUnit(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+        <select id="dg-unit" onchange="setDgUnit(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
           <option value="nM" selected>nM</option>
           <option value="uM">µM</option>
           <option value="M">M</option>
-          <option value="log">log₁₀</option>
+        </select>
+        <select id="dg-scale" onchange="setDgScale(this.value)" style="font-size:11px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;">
+          <option value="log" selected>Log&#8321;&#8320;</option>
+          <option value="linear">Linear</option>
           <option value="p">pDC50</option>
         </select>
       </div>
@@ -517,7 +520,7 @@ function setQThresh() {
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let sortKey = 'compound', sortDir = 1;
 let activePills = new Set(), scatterActivePills = new Set();
-let dgXUnit = 'nM';
+let dgUnit = 'nM', dgScale = 'log';
 let selectedCompound = null, chartInstance = null;
 let activeTargets = new Set(TARGETS);
 
@@ -671,64 +674,58 @@ function closeDetail() {
 // ─── X-AXIS UNIT ──────────────────────────────────────────────────────────────
 function convertXfromNM(nm) {
   if (!nm || nm <= 0) return null;
-  switch(dgXUnit) {
-    case 'nM':  return nm;
-    case 'uM':  return nm / 1000;
-    case 'M':   return nm / 1e9;
-    case 'log': return Math.log10(nm);
-    case 'p':   return 9 - Math.log10(nm);
-  }
+  if (dgScale === 'p') return 9 - Math.log10(nm); // pDC50 always from M
+  const factors = {nM:1, uM:1/1000, M:1/1e9};
+  return nm * factors[dgUnit]; // Chart.js handles log/linear via axis type
 }
 function xUnitLabel() {
-  return {nM:'nM', uM:'µM', M:'M', log:'log₁₀(DC50/nM)', p:'pDC50'}[dgXUnit];
+  if (dgScale === 'p') return 'pDC50';
+  return dgUnit === 'uM' ? 'µM' : dgUnit;
 }
 function xAxisConfig(t) {
   const sf = 'ui-sans-serif, system-ui, sans-serif';
-  const isLogScale = ['nM','uM','M'].includes(dgXUnit);
   return {
-    type: isLogScale ? 'logarithmic' : 'linear',
-    reverse: dgXUnit === 'p',
+    type: dgScale === 'log' ? 'logarithmic' : 'linear',
+    reverse: dgScale === 'p',
     title: {display:true, text:'DC50 (' + xUnitLabel() + ')', color:t.axis, font:{size:11,family:sf}},
     ticks: {
       color:t.axis, font:{size:10,family:sf},
       callback: function(v) {
-        switch(dgXUnit) {
-          case 'nM':  return v + ' nM';
-          case 'uM':  return v + ' µM';
-          case 'M':   return v.toExponential(0) + ' M';
-          case 'log': return v.toFixed(1);
-          case 'p':   return v.toFixed(1);
-        }
+        if (dgScale === 'p') return v.toFixed(1);
+        if (dgUnit === 'M') return v.toExponential(1) + ' M';
+        return v + ' ' + xUnitLabel();
       }
     },
     grid: {color:t.grid}
   };
 }
-function setXUnit(val) {
-  dgXUnit = val;
-  updateAxisHint();
-  updateSliderDC50Label();
+function setDgUnit(val) {
+  dgUnit = val;
+  updateAxisHint(); updateSliderDC50Label();
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; updateChart(); }
+}
+function setDgScale(val) {
+  dgScale = val;
+  updateAxisHint(); updateSliderDC50Label();
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; updateChart(); }
 }
 function updateAxisHint() {
   const el = document.getElementById('axis-hint');
-  if (el) {
-    const scaleType = ['nM','uM','M'].includes(dgXUnit) ? 'log scale' : 'linear scale';
-    el.textContent = 'X: DC50 (' + xUnitLabel() + ', ' + scaleType + ') · Y: Dmax (%) · Hover for details';
-  }
+  if (!el) return;
+  const scaleLabel = {log:'log scale', linear:'linear', p:'linear (reversed)'}[dgScale];
+  el.textContent = 'X: DC50 (' + xUnitLabel() + ', ' + scaleLabel + ') · Y: Dmax (%) · Hover for details';
 }
 function updateSliderDC50Label() {
   const nmVal = +document.getElementById('scatter-dc50').value;
   document.getElementById('scatter-dc50-val').textContent = fmtDC50Display(nmVal);
 }
 function fmtDC50Display(nmVal) {
-  switch(dgXUnit) {
-    case 'nM':  return nmVal + ' nM';
-    case 'uM':  return (nmVal/1000).toPrecision(2) + ' µM';
-    case 'M':   return (nmVal/1e9).toExponential(1) + ' M';
-    case 'log': return 'log ' + Math.log10(nmVal).toFixed(1);
-    case 'p':   return 'p' + (9 - Math.log10(nmVal)).toFixed(1);
-  }
+  if (dgScale === 'p') return 'p' + (9 - Math.log10(nmVal)).toFixed(2);
+  const factors = {nM:1, uM:1/1000, M:1/1e9};
+  const v = nmVal * factors[dgUnit];
+  if (dgUnit === 'M') return v.toExponential(1) + ' M';
+  if (dgUnit === 'uM') return v.toPrecision(2) + ' µM';
+  return nmVal + ' nM';
 }
 
 // ─── SCATTER ──────────────────────────────────────────────────────────────────
