@@ -6,7 +6,7 @@
 
 ## Project overview
 
-**The Hub** is the primary product (`The Hub.html`). It is a **self-contained** single-file launcher: all three app HTMLs are base64-encoded and embedded directly inside it. Opening `The Hub.html` alone gives access to every tool, no other files required.
+**The Hub** is the primary product (`The Hub.html`). It is a **self-contained** single-file launcher: all app HTMLs are base64-encoded and embedded directly inside it. Opening `The Hub.html` alone gives access to every tool, no other files required.
 
 **Individual standalone files** also exist in their subfolders and are kept in sync — they serve as standalone versions of each app.
 
@@ -20,18 +20,20 @@
 
 | ID | Name | Logo | Accent | Standalone file |
 |----|------|------|--------|-----------------|
-| `echo` | Echo Data Analysis | `E` | `#ff5760` | `Labcyte_Echo/labcyte_echo.html` |
-| `deg` | Degradation Explorer | `D` | `#7c6fd4` | `Degradation_Explorer/degradation_visualizer.html` |
-| `lm` | LabMate | `L` | `#e08c30` (amber) | `Labmate/labmate.html` |
-| `pd` | Lab Designer | `D` | `#0079b9` | `Plate_Designer/plate_designer.html` |
-| `dna` | Helix | `H` | `#43a047` | `Helix/helix.html` |
-| `pt` | Protein Tools | `P` | `#9c6fd4` | `Protein_Tools/protein_tools.html` |
+| `echo` | Echo Data Analysis | SVG bar chart | `#ff5760` | `Labcyte_Echo/labcyte_echo.html` |
+| `lm` | LabMate | SVG flask | `#e08c30` (amber) | `Labmate/labmate.html` |
+| `deg` | Degradation Explorer | SVG curve | `#7c6fd4` | `Degradation_Explorer/degradation_visualizer.html` |
+| `pd` | Lab Designer | SVG wells | `#0079b9` | `Plate_Designer/plate_designer.html` |
+| `dna` | Helix | SVG helix | `#43a047` | `Helix/helix.html` |
+| `pt` | Protein Tools | SVG chain | `#9c6fd4` | `Protein_Tools/protein_tools.html` |
+| `spectra` | Spectra | SVG waveform | `#26a69a` | `Spectra/spectra.html` |
+| `ldi` | LDI | `LD` text | `#e91e63` | `LDI/ldi.html` |
 
 ---
 
 ## Architecture & workflow
 
-**The Hub is self-contained.** Each app's HTML is base64-encoded and stored inside `APP_B64` in The Hub's `<script>` block. When you open an app, it is decoded with `decodeB64App()` and rendered in an `iframe.srcdoc`. This means:
+**The Hub is self-contained.** Each app's HTML is base64-encoded and stored inside `APP_B64` / `APP_B64_NEW` in The Hub's `<script>` block. When you open an app, it is decoded with `decodeB64App()` and rendered in an `iframe.srcdoc`. This means:
 
 - **The Hub alone** = complete product (no folder structure needed).
 - **Individual app files** = standalone versions, kept manually in sync.
@@ -39,32 +41,38 @@
 
 ```
 The_Hub/
-├── The Hub.html                              ← self-contained, ~7.2MB
+├── The Hub.html                              ← self-contained, ~7.79MB
+├── hub-shell.html                            ← source-of-truth shell (~28KB)
+├── embed.py                                  ← build script
 ├── Labcyte_Echo/
-│   └── labcyte_echo.html                    ← standalone app
+│   └── labcyte_echo.html
 ├── Degradation_Explorer/
-│   └── degradation_visualizer.html          ← standalone app
+│   └── degradation_visualizer.html
 ├── Labmate/
-│   ├── labmate.html                         ← standalone app
-│   └── RDKit_minimal.js / .wasm             ← used when Labmate folder is present
+│   ├── labmate.html
+│   └── RDKit_minimal.js / .wasm             ← used when folder is present
 ├── Plate_Designer/
-│   └── plate_designer.html                  ← standalone app
+│   └── plate_designer.html
 ├── Helix/
-│   └── helix.html                           ← standalone app
-└── Protein_Tools/
-    └── protein_tools.html                   ← standalone app
+│   └── helix.html
+├── Protein_Tools/
+│   └── protein_tools.html
+├── Spectra/
+│   └── spectra.html
+└── LDI/
+    └── ldi.html
 ```
 
 ### Regenerating the self-contained Hub after app changes
 
-**`embed.py`** replaces the old inline Python snippet. Run from `The_Hub/`:
+**`embed.py`** reads from `hub-shell.html` and fills in each app's base64. Run from `The_Hub/`:
 
 ```bash
-python embed.py                      # → The Hub.html  (local/offline use)
-python embed.py dist/index.html     # → dist/index.html  (CI/Pages build)
+python3 embed.py                      # → The Hub.html  (local/offline use)
+python3 embed.py dist/index.html     # → dist/index.html  (CI/Pages build)
 ```
 
-`embed.py` reads from `hub-shell.html` (the lightweight ~28KB source-of-truth) and fills in each app's base64. The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix bug.
+The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix bug.
 
 ### GitHub Actions auto-deploy
 
@@ -72,60 +80,69 @@ python embed.py dist/index.html     # → dist/index.html  (CI/Pages build)
 **Pages URL:** `https://maciciorjon-hash.github.io/thehub/`
 
 On every push to `main`:
-1. GitHub Actions runs `python embed.py dist/index.html`
+1. GitHub Actions runs `python3 embed.py dist/index.html`
 2. Deploys `dist/` to GitHub Pages
 3. Hub is live at the Pages URL within ~2 min
-
-**To enable Pages** (one-time setup): repo Settings → Pages → Source: **GitHub Actions**
 
 **Local dev workflow:**
 ```bash
 # 1. Edit any standalone app file
-# 2. Run embed.py for local use
-python embed.py
-# 3. Open The Hub.html for local testing (The Hub.html is gitignored)
-# 4. Push app file changes to GitHub → Pages auto-rebuilds
-git add "Echo Data Analysis/Echo_Data_Analysis.html"
-git commit -m "Fix: echo FP params"
+# 2. Rebuild locally
+python3 embed.py
+# 3. Open The Hub.html to test
+# 4. Push → Pages auto-rebuilds
+git add Labcyte_Echo/labcyte_echo.html hub-shell.html CLAUDE.md
+git commit -m "Fix: description"
 git push
 ```
 
 **Files tracked in git:** `hub-shell.html`, `embed.py`, `.gitignore`, `.github/`, all standalone app HTMLs, `CLAUDE.md`  
-**Files NOT tracked:** `The Hub.html` (18MB generated file), `dist/`, `Labmate/RDKit_minimal.*`
+**Files NOT tracked:** `The Hub.html` (generated), `dist/`, `Labmate/RDKit_minimal.*`
 
 ### Hub shell structure
 
 ```
-The Hub.html
-├── <script>APP_B64{echo,deg,lm}</script>        — base64-encoded app HTML (3 original apps)
-├── <script>APP_B64_NEW{dna,ff,pd,pt}</script>   — base64-encoded app HTML (4 new apps)
-├── #hub-nav       — nav bar: H logo + "The Hub" + theme toggle (#theme-btn)
-├── #hub-home      — 42px title + rotating subtitle + 7-card grid
-├── .app-view × 7  — position:fixed overlays (z-index:10), always in DOM at opacity:0
-├── var APP_INFO   — map: id → {letter, color, name} for all 7 apps
+hub-shell.html / The Hub.html
+├── <script>APP_B64{echo,deg,lm}</script>         — base64-encoded app HTML
+├── <script>APP_B64_NEW{dna,pd,pt,spectra,ldi}</script> — base64-encoded app HTML
+├── #hub-nav       — nav bar: H logo + "The Hub" + theme toggle + lab/settings btns
+├── #hub-announce  — fixed banner below nav (Firebase-driven, admin posts, all sessions see it)
+├── #hub-home      — 42px title + rotating subtitle + 8-card grid
+├── .app-view × 8  — position:fixed overlays (z-index:10), always in DOM at opacity:0
+├── var APP_INFO   — map: id → {letter, color, name} for all 8 apps
 ├── decodeB64App() — UTF-8 base64 decoder
-├── enterAppNav()  — hides #theme-btn, sets hub-logo title to 'Back to The Hub'
-├── exitAppNav()   — restores #theme-btn, clears hub-logo title
-├── openApp()      — fades in app view; calls enterAppNav(); uses APP_B64[id] || APP_B64_NEW[id]
-├── backToHub()    — fades out app view; calls exitAppNav()
+├── openApp()      — fades in app view
+├── backToHub()    — fades out app view
 ├── HUB_SUBS[]     — rotating subtitles (5s interval, crossfade)
-└── easter egg     — 5-click on H logo (when on hub home), tier bios escalate with each open
+├── Firebase auth  — Google sign-in; isAdmin = user.email === 'maciciorjon@gmail.com'
+├── Firebase SSE   — /labconfig.json (lab card visibility) + /announcement.json (banner)
+├── applyLabConfig() — hides/shows cards for non-admin; admin always sees all
+├── Lab panel      — admin only: per-app toggles + announcement input + preview lab view
+└── easter egg     — 5-click on H logo (when on hub home)
 ```
 
-**Navigation from apps back to Hub:** Apps do NOT have an injected back button. The Hub's H logo in the nav bar (always visible above the app iframe) acts as back button when `currentApp` is set — clicking it calls `backToHub()`.
+**Navigation:** The Hub's H logo (`#hub-logo`) acts as back button when inside an app — no button injected into app iframes.
 
 ### Animation design
 
-App views are `position:fixed; inset:0; z-index:10`. Opening an app:
-1. Overlay fades from `opacity:0` to `opacity:1` (150ms ease) — hub home is visible underneath during fade
-2. After 200ms, hub chrome is hidden (it's behind the app anyway)
-3. `scheduleInject` polls every 50ms until the app header element is in DOM, then injects `← Hub` button
+App views are `position:fixed; inset:0; z-index:10`. Opening: overlay fades in (150ms), hub chrome hidden after 200ms. Going back: hub chrome restored immediately, overlay fades out. No blank frames.
 
-Going back:
-1. Hub chrome restored immediately (it's behind the fading app view)
-2. Overlay fades from `opacity:1` to `opacity:0` — seamless reveal of hub home
+---
 
-No blank/black frames between hub and app.
+## Firebase integration
+
+**Project:** `thehub-f80ae` (europe-west1)  
+**DB:** `thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app`  
+**Auth domain:** `thehub-f80ae.firebaseapp.com`  
+**API key:** `AIzaSyBpw9UbXnCciIi7VBapBeBJOq9U7RSS4g8`
+
+**Admin auth:** Google sign-in via Firebase Auth compat SDK. Admin = `maciciorjon@gmail.com`. Sign in from Settings panel (gear icon). Session persists across reloads.
+
+**Lab config SSE** (`/labconfig.json`): controls which app cards are visible to non-admin users. Admin writes via PUT with `?auth=SECRET`. All sessions receive updates in real time via `EventSource`.
+
+**Announcement banner** (`/announcement.json`): admin posts a message from the Lab panel; appears as a fixed 40px banner below the nav for all active sessions. Dismissible per browser session (tracked via `sessionStorage`). Posting an empty string clears the banner.
+
+**Authorized domains** (Firebase console → Auth → Settings): must include `maciciorjon-hash.github.io` for Google sign-in to work on Pages.
 
 ---
 
@@ -140,9 +157,6 @@ All apps share a consistent header:
 | Subtitle | `font-size:11px; color:var(--text2)` |
 | Header height | 58px |
 | Header layout | `display:flex; align-items:center; gap:14px; padding:0 28px` |
-| Back button | Injected as first child of header by Hub's `injectBackBtn()` |
-
-**Back navigation:** The Hub logo (`#hub-logo`) acts as a back button when inside an app — no back button is injected into app headers. Apps do not need any `window.parent.backToHub()` calls; the Hub handles navigation entirely from the Hub nav layer above the iframe.
 
 ---
 
@@ -180,27 +194,22 @@ All hub chrome uses Echo Data Analysis's exact CSS variables and IBM Plex fonts:
 
 ### 1. Build the app HTML file (standalone)
 
-Create `MyApp/myapp.html`. It should use IBM Plex Sans/Mono, the Echo palette CSS vars, and a 58px header with:
-- `.app-logo` box (32×32, accent background, bold letter)
-- App name (`h1` 15px/600) + subtitle (`p` 11px)
+Create `MyApp/myapp.html`. Use IBM Plex Sans/Mono, Echo palette CSS vars, 58px header.
 
-### 2. Add app card to `#hub-home`
+### 2. Add app card to `#hub-home` in `hub-shell.html`
 
 ```html
-<div class="card" tabindex="0" onclick="openApp('myapp')" onkeydown="if(event.key==='Enter')openApp('myapp')">
-  <div class="card-logo" style="background:#COLOR;">X</div>
-  <div>
+<div class="card" tabindex="0" data-app-id="myapp" onclick="openApp('myapp')" onkeydown="if(event.key==='Enter')openApp('myapp')">
+  <div class="card-header-row">
+    <div class="card-logo" style="background:#COLOR;">X</div>
     <div class="card-name">My App Name</div>
-    <div class="card-desc">Short description.</div>
   </div>
-  <div class="card-foot">
-    <span>Tag1 · Tag2</span>
-    <span class="card-arrow">&#8594;</span>
-  </div>
+  <div class="card-desc">Short description.</div>
+  <div class="card-foot"><span>Tag1 · Tag2</span><span class="card-arrow">&#8594;</span></div>
 </div>
 ```
 
-### 3. Add app-view iframe
+### 3. Add app-view iframe in `hub-shell.html`
 
 ```html
 <div class="app-view" id="view-myapp">
@@ -217,45 +226,52 @@ var APP_B64_NEW = { ..., myapp: "PLACEHOLDER_MYAPP" };
 
 ### 5. Base64-encode and embed
 
-Run the Python embed script to add `myapp` to `APP_B64`.
+```bash
+python3 embed.py
+```
 
 ---
 
 ## Technical notes
 
-**Self-contained embedding:** Apps are stored as UTF-8 base64 strings in `APP_B64`. Decoding at runtime: `decodeB64App(b64)` uses `atob()` + `TextDecoder`. No `</script>` escaping needed — base64 contains only safe characters.
+**Self-contained embedding:** Apps stored as UTF-8 base64 in `APP_B64` / `APP_B64_NEW`. Decoded at runtime via `decodeB64App()` using `atob()` + `TextDecoder`.
 
-**LabMate RDKit paths:** At runtime, Hub injects `<base href="{hubLocation}Labmate/">` into LabMate's `<head>` so `./RDKit_minimal.js` resolves correctly if the Labmate folder exists next to The Hub. If not, LabMate falls back to CDN automatically.
+**LabMate RDKit paths:** Hub injects `<base href="{hubLocation}Labmate/">` into LabMate's `<head>` so `./RDKit_minimal.js` resolves correctly if the Labmate folder is present. Falls back to CDN otherwise.
 
-**Same-origin srcdoc:** `srcdoc` iframes with `allow-same-origin` sandbox are same-origin as the Hub. `localStorage` works, and `window.parent.backToHub()` in the injected back button works.
+**Same-origin srcdoc:** `srcdoc` iframes with `allow-same-origin` are same-origin as the Hub. `localStorage` and `window.parent` calls work.
 
-**Sandbox:** All iframes use `sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"`.
+**LabMate active sections (v0.9.96):** Favourites · Calculators · Mol Biology · Cell Biology · CRISPR · Proteomics · Biophysics · Struct Bio · Genomics. PROTAC Tools and Reference removed.
 
-**Degradation Explorer tab order:** Load Data is the default/first tab (changed from Table).
+**Plate Designer mobile:** `.sel-toolbar` anchored to `top:58px` on mobile with `max-height:calc(100vh - 80px); overflow-y:auto` so it never covers the plate canvas.
+
+**Favicon:** SVG data URI in `hub-shell.html` `<head>` — dark rounded square with white "H", matches nav logo.
+
+**`labBtn.style.display`:** Must be set to `'inline-block'` (not `''`) — a CSS rule hides it by default and `''` doesn't override it.
 
 ---
 
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-07 (Round 27: v0.9.91 — Echo Prism Fraction + 4PL robustness + Plate Designer popup + Firebase Lab View)
-Hub apps: 8 (echo, deg, lm, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.83MB (7,831,747 chars). Version v0.9.91
-Echo changes (labcyte_echo.html, v0.9.90–v0.9.91):
-- 4PL fitting robustness: _fitBest() multi-start LM (5 seeds) replaces single-start in runAnalysisJS and fit4PL_JS
-- Nelder-Mead simplex dropped from curve editor; fit4PL_JS now uses _fitBest with LM + analytical Jacobians
-- Results XLSX: new "Prism (Fraction)" sheet — means only, 0–1 scale, one column per compound, direct Prism paste
-- _buildPrismFractionAOA(): groups separated by blank rows, compound names as column headers
-Plate Designer changes (plate_designer.html, v0.9.89):
-- updateSelToolbar() hides types palette (drag handle, type list, add-custom btn) when row/column selected (showDil=true)
-- Reduces popup size to just dilution section when selecting whole row/column
-hub-shell.html changes (v0.9.89):
-- Firebase Realtime Database real-time Lab View
-- isAdmin = URLSearchParams admin === HUB_ADMIN_PASS ('ciullilab')
-- startFbListener(): EventSource SSE on /labconfig.json — live push to all sessions
-- applyLabConfig(): hides/shows cards in lab mode (non-admin); admin always sees all
-- saveLabConfig(): PUT /labconfig.json?auth=SECRET — write protected
-- Lab panel (admin only): toggle switches per app, green dot = connected
-- labBtn.style.display = 'inline-block' (not '' — CSS rule requires explicit override)
-- Firebase DB: thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app
+Last session: 2026-06-08 (Round 28: v0.9.92–v0.9.96 — Echo Bottom≥ constraint + Prism Fraction replicates + Firebase announcement + Google Auth + LabMate/Plate Designer mobile fixes)
+Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
+Hub file size: 7.79MB (7,785,331 chars). Version v0.9.96
+Echo changes (labcyte_echo.html, v0.9.92):
+- Bottom ≥ constraint: checkbox + number input in Analysis settings; loBotEff clamped in runAnalysisJS and fit4PL_JS
+- Prism (Fraction) XLSX sheet: now matches Prism Copy exactly — individual replicates, merged headers, group rows, values ÷ 100
+hub-shell.html changes (v0.9.92–v0.9.96):
+- v0.9.93: Announcement banner — admin posts from Lab panel; fixed 40px banner below nav; real-time via Firebase SSE (/announcement.json); dismissible per session (sessionStorage)
+- v0.9.94: Google Authentication — Firebase Auth compat SDK; signInWithPopup(GoogleAuthProvider); isAdmin = email === 'maciciorjon@gmail.com'; replaces URL-param ?admin=ciullilab
+- v0.9.94: Admin always sees all app cards (applyLabConfig() no longer early-exits for admin; called from onAdminStateChanged() to re-run after auth resolves)
+- v0.9.94: Preview lab view toggle in Lab panel — lets admin see what lab members see
+- v0.9.95: Admin login button moved to top of Settings panel (just above version string)
+- v0.9.96: Hub favicon — SVG data URI matching H logo
+- v0.9.96: Card descriptions updated (Echo mentions Curve Editor; LabMate lists sections)
+Labmate changes (labmate.html, v0.9.96):
+- Mobile drawer: mob-btn-calculate → switchNav('quickcalc'); mob-btn-protac → switchNav('protactools') (both were calling non-existent subgroups)
+- Desktop nav: added Proteomics, Biophysics, Struct Bio, Genomics buttons (were missing from desktop)
+- Removed PROTAC Tools completely (sec-protactools, desktop/mobile nav, mobile grid)
+- Removed Reference group completely (sec-reference, sec-reftables, sec-kits, sec-buffers + _navGroups.reference)
+Plate Designer changes (plate_designer.html, v0.9.96):
+- Mobile .sel-toolbar: top:58px (was bottom:12px) + max-height:calc(100vh - 80px) + overflow-y:auto — popup no longer covers the plate on small screens
 <!-- LAST_SESSION_END -->
