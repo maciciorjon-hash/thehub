@@ -253,25 +253,19 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-08 (Round 29: v0.9.96 — Echo Curves exclude-point fixes + assay type simplification + normalisation UI)
+Last session: 2026-06-08 (Round 30: v0.9.96 patch — Echo exclude-point rendering + LabMate biophysics/nav fixes)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.78MB (7,783,051 chars). Version v0.9.96
-Echo changes (labcyte_echo.html, v0.9.92):
-- Bottom ≥ constraint: checkbox + number input in Analysis settings; loBotEff clamped in runAnalysisJS and fit4PL_JS
-- Prism (Fraction) XLSX sheet: now matches Prism Copy exactly — individual replicates, merged headers, group rows, values ÷ 100
-hub-shell.html changes (v0.9.92–v0.9.96):
-- v0.9.93: Announcement banner — admin posts from Lab panel; fixed 40px banner below nav; real-time via Firebase SSE (/announcement.json); dismissible per session (sessionStorage)
-- v0.9.94: Google Authentication — Firebase Auth compat SDK; signInWithPopup(GoogleAuthProvider); isAdmin = email === 'maciciorjon@gmail.com'; replaces URL-param ?admin=ciullilab
-- v0.9.94: Admin always sees all app cards (applyLabConfig() no longer early-exits for admin; called from onAdminStateChanged() to re-run after auth resolves)
-- v0.9.94: Preview lab view toggle in Lab panel — lets admin see what lab members see
-- v0.9.95: Admin login button moved to top of Settings panel (just above version string)
-- v0.9.96: Hub favicon — SVG data URI matching H logo
-- v0.9.96: Card descriptions updated (Echo mentions Curve Editor; LabMate lists sections)
-Labmate changes (labmate.html, v0.9.96):
-- Mobile drawer: mob-btn-calculate → switchNav('quickcalc'); mob-btn-protac → switchNav('protactools') (both were calling non-existent subgroups)
-- Desktop nav: added Proteomics, Biophysics, Struct Bio, Genomics buttons (were missing from desktop)
-- Removed PROTAC Tools completely (sec-protactools, desktop/mobile nav, mobile grid)
-- Removed Reference group completely (sec-reference, sec-reftables, sec-kits, sec-buffers + _navGroups.reference)
-Plate Designer changes (plate_designer.html, v0.9.96):
-- Mobile .sel-toolbar: top:58px (was bottom:12px) + max-height:calc(100vh - 80px) + overflow-y:auto — popup no longer covers the plate on small screens
+Hub file size: 7.78MB (7,782,379 chars). Version v0.9.96
+Echo changes (labcyte_echo.html):
+- Y-axis first-render: setCvMode deferred by RAF; _tryRender threshold raised to 100px; 120ms fallback
+- Grey X markers: _exclY in drawMultiCurve includes excluded rep/conc Y values in axis range
+- Stats/results update after exclusion: _cvApplyEditsAndRefit calls renderCvStats([r]) directly; renderResults called on 'results' tab switch; auto-zoom in _doRender also includes excluded-Y for consistency
+LabMate changes (labmate.html):
+- proto-trfret back button: was showProtoHome('cheminfo')/← Lookup → now showAssayHome()/← Biophysics
+- sidebarItems assays: IDs changed from proto-trfret/fp/spr → trfret/fp/spr to match showAssayTab regex extraction
+- Sidebar Case B onclick: assays section now calls showAssayTab(subtab) instead of showProto (fixes empty biophysics sidebar)
+- showProtoHome('assays'): delegates to showAssayHome() so assay-panel-* elements are correctly hidden on re-entry
+- FAVORITABLES: removed proto-pdbview + proto-targetlookup (dead 'protein' tab — phantom cards in Favourites)
+- Search index: removed proto-pdbview (section:'protein'), 3 reftables entries, 2 protactools entries
+- Mobile drawer: added Genomics button
 <!-- LAST_SESSION_END -->
