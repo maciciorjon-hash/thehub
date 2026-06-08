@@ -1015,6 +1015,7 @@ _allTabs.forEach(t => t.addEventListener('click', () => {
   requestAnimationFrame(function(){
     if (id === 'scatter' && scatterChart) scatterChart.resize();
     if (id === 'curves' && scatterData.length) renderCurvesTab(scatterData);
+    if (id === 'results' && scatterData.length) renderResults(scatterData);
     if (id === 'plate') renderPlateTab();
     if (id === 'history') renderHistoryTab();
     if (id === 'props' && window._propsDirty) {
@@ -5302,9 +5303,12 @@ function renderCurvesTab(data) {
   `;
 
   populateCvCompounds(data,'all');
-  setCvMode('single');
-  // Sync 🔬 button state with current cfg
-  const _sb=document.getElementById('cv-struct-btn'); if(_sb) _sb.classList.toggle('active',!!(window._cvCfg?.showStructure));
+  // One extra frame so the browser computes layout of the newly-injected HTML
+  // before renderCvCurve tries to measure wrap dimensions.
+  requestAnimationFrame(() => {
+    setCvMode('single');
+    const _sb=document.getElementById('cv-struct-btn'); if(_sb) _sb.classList.toggle('active',!!(window._cvCfg?.showStructure));
+  });
 }
 
 function _cvInputStyle() {
@@ -5479,8 +5483,9 @@ function renderCvCurve() {
         const allM=compounds.flatMap(r=>(r._pts||[]).map(p=>p.y));
         const allS=compounds.flatMap(r=>(r._pts||[]).map(p=>p.sd||0));
         const allT=compounds.map(r=>r._tc||100),allB=compounds.map(r=>r._bot||0);
-        const yd0=Math.min(...allM.map((y,i)=>y-allS[i]),...allB,-5);
-        const yd1=Math.max(...allM.map((y,i)=>y+allS[i]),...allT,10);
+        const _azExclY=compounds.flatMap(r=>{const ys=(r._excludedRepXYs||[]).map(e=>e.y);const del=new Set((r._deletedPts||[]).map(x=>x.toFixed(3)));(r._repsOrig||[]).filter(p=>del.has(p.x.toFixed(3))&&p.y!=null).forEach(p=>ys.push(p.y));return ys;});
+        const yd0=Math.min(...allM.map((y,i)=>y-allS[i]),...allB,..._azExclY,-5);
+        const yd1=Math.max(...allM.map((y,i)=>y+allS[i]),...allT,..._azExclY,10);
         const yp2=(yd1-yd0)*0.08;
         window._cvZoom={xlo:xd0-xp,xhi:xd1+xp,ylo:yd0-yp2,yhi:yd1+yp2,_auto:true};
       }
@@ -5528,9 +5533,9 @@ function renderCvCurve() {
   const _myGen = ++_cvRenderGen;
   let _raf=0,_rendered=false;
   const _doRenderOnce=()=>{if(_rendered||_myGen!==_cvRenderGen)return;_rendered=true;_doRender();};
-  const _tryRender=()=>{ if(wrap.clientHeight>10){_doRenderOnce();}else if(_raf++<8){requestAnimationFrame(_tryRender);} };
+  const _tryRender=()=>{ if(wrap.clientHeight>100){_doRenderOnce();}else if(_raf++<16){requestAnimationFrame(_tryRender);} };
   _tryRender();
-  setTimeout(()=>{ if(wrap.clientHeight>0) _doRenderOnce(); },350);
+  setTimeout(()=>{ if(wrap.clientHeight>0) _doRenderOnce(); },120);
 
   // Stats row
   renderCvStats(compounds);
@@ -5745,8 +5750,15 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   const allSD=compounds.flatMap(r=>(r._pts||[]).map(p=>p.sd||0));
   const allTops=compounds.map(r=>r._tc||100);
   const allBots=compounds.map(r=>r._bot||0);
-  const yDataMin=Math.min(...allMeans.map((y,i)=>y-allSD[i]),...allBots,-5);
-  const yDataMax=Math.max(...allMeans.map((y,i)=>y+allSD[i]),...allTops,10);
+  // Include excluded-point Y values so grey X markers stay within axis bounds
+  const _exclY=compounds.flatMap(r=>{
+    const ys=(r._excludedRepXYs||[]).map(e=>e.y);
+    const del=new Set((r._deletedPts||[]).map(x=>x.toFixed(3)));
+    (r._repsOrig||[]).filter(p=>del.has(p.x.toFixed(3))&&p.y!=null).forEach(p=>ys.push(p.y));
+    return ys;
+  });
+  const yDataMin=Math.min(...allMeans.map((y,i)=>y-allSD[i]),...allBots,..._exclY,-5);
+  const yDataMax=Math.max(...allMeans.map((y,i)=>y+allSD[i]),...allTops,..._exclY,10);
   const ypad=(yDataMax-yDataMin)*0.08;
   let ylo=yDataMin-ypad, yhi=yDataMax+ypad;
   // Fix Y axis override (user-set range persists across compounds)
@@ -6239,12 +6251,10 @@ function _cvApplyEditsAndRefit(r) {
     r.DC50_nM=null; r.Dmax_pct=null; r.pDC50=null; r.HillSlope=null; r.R2=null;
     r._logec50=null; r._bot=null;
   }
-  // Keep original _xmin/_xmax so excluded points remain within the visible axis range
-  // Re-render curve and update results table
-  const _cvCanvas = document.getElementById('cv-canvas');
-  renderCvCurve(_cvCanvas?._cvCompounds||[]);
-  renderCvStats(_cvCanvas?._cvCompounds||[]);
-  // Quietly update results panel if visible
+  // Re-render curve (reads updated r from dropdown) then force stats/results update
+  renderCvCurve();
+  // Pass r directly to guarantee stats always reflect the updated fit
+  renderCvStats([r]);
   if(scatterData.length) renderResults(scatterData);
 }
 

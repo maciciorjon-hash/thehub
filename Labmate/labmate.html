@@ -4493,7 +4493,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 
   <!-- TR-FRET -->
   <div class="proto-entry" id="proto-trfret">
-    <button class="proto-back-btn" onclick="showProtoHome('cheminfo')">← Lookup</button>
+    <button class="proto-back-btn" onclick="showAssayHome()">← Biophysics</button>
     <div class="proto-header" onclick="toggleProto('proto-trfret')">
       <span class="proto-title">TR-FRET — Ternary Complex Formation Assay</span>
       <span class="proto-date">—</span>
@@ -5217,9 +5217,9 @@ const sidebarItems = {
     {id:'proto-transfection',label:'Transfection'},
   ],
   assays: [
-    {id:'proto-trfret',     label:'TR-FRET',               subtab:'trfret', group:'Biophysics'},
-    {id:'proto-fp',         label:'FP',                    subtab:'fp'},
-    {id:'proto-spr',        label:'SPR (Biacore)',         subtab:'spr'},
+    {id:'trfret',           label:'TR-FRET',               subtab:'trfret', group:'Biophysics'},
+    {id:'fp',               label:'FP',                    subtab:'fp'},
+    {id:'spr',              label:'SPR (Biacore)',         subtab:'spr'},
   ],
   proteomics: [
     {id:'proto-strap',   label:'S-Trap Prep'},
@@ -5682,6 +5682,7 @@ function _clearBannerFilter(sectionId) {
 }
 
 function showProtoHome(sec) {
+  if (sec === 'assays') { showAssayHome(); return; }
   var secEl = document.getElementById('sec-' + sec);
   if (!secEl) return;
   var home = document.getElementById(sec + '-home');
@@ -7353,8 +7354,6 @@ const FAVORITABLES = {
   'proto-trfret':     { label: 'TR-FRET (Ternary Complex)',     tab: 'assays',    tabLabel: '🔬 Assays' },
   'proto-fp':         { label: 'Fluorescence Polarization',     tab: 'assays',    tabLabel: '🔬 Assays' },
   'proto-spr':        { label: 'SPR (Biacore)',                 tab: 'assays',    tabLabel: '🔬 Assays' },
-  'proto-targetlookup': { label: 'Target Lookup',              tab: 'protein', tabLabel: '🎯 Target Lookup' },
-  'proto-pdbview':    { label: 'Protein Structure Viewer',       tab: 'protein',   tabLabel: '🧬 Protein Viewer' },
   'proto-pdb':        { label: 'Find PDB Structures',           tab: 'structbio', tabLabel: '🔷 Structural Biology' },
   'proto-alphafold':  { label: 'AlphaFold Prediction',          tab: 'structbio', tabLabel: '🔷 Structural Biology' },
   'proto-pymol':      { label: 'PyMOL — Basics',                tab: 'structbio', tabLabel: '🔷 Structural Biology' },
@@ -8009,7 +8008,10 @@ function renderSidebar(id) {
             var _ip = _sbSplitLabel(_item.label);
             _ibtn.innerHTML = '<span class="sb-icon">' + _ip.icon + '</span><span class="sb-text">' + (_ip.icon ? ' ' : '') + _ip.text + '</span>';
             _ibtn.title = _item.label;
-            _ibtn.onclick = (function(sec, eid){ return function() { showProto(sec, eid); }; })(id, _item.id);
+            _ibtn.onclick = (function(sec, eid, itm){ return function() {
+              if (sec === 'assays' && itm.subtab && typeof showAssayTab === 'function') showAssayTab(itm.subtab);
+              else showProto(sec, eid);
+            }; })(id, _item.id, _item);
             sb.appendChild(_ibtn);
             _hasPhContent = true;
           }
@@ -9522,7 +9524,6 @@ const SEARCH_INDEX = [
   {id:'proto-diann',      label:'DIA-NN',                           section:'proteomics',  icon:'⚗️', keywords:['diann','dia','data-independent acquisition','mass spec','ms','proteomics']},
   {id:'proto-perseus',    label:'Perseus Analysis',                 section:'proteomics',  icon:'⚗️', keywords:['perseus','analysis','statistics','quantification','proteomics','maxquant']},
   // Struct Bio
-  {id:'proto-pdbview',    label:'Protein Structure Viewer',          section:'protein',     icon:'🧬', keywords:['pdb viewer','3d','protein viewer','rcsb','structure','rotate','interactive','visualise','visualize']},
   {id:'proto-pdb',        label:'Find PDB Structures',              section:'structbio',   icon:'🔷', keywords:['pdb','protein data bank','structure','crystal','x-ray','cryo-em','rcsb']},
   {id:'proto-alphafold',  label:'AlphaFold Prediction',             section:'structbio',   icon:'🔷', keywords:['alphafold','structure prediction','protein folding','ai','deepmind','af2']},
   {id:'proto-pymol',      label:'PyMOL Basics',                     section:'structbio',   icon:'🔷', keywords:['pymol','visualisation','visualization','molecular graphics','3d','pymole']},
@@ -9532,13 +9533,6 @@ const SEARCH_INDEX = [
   // Genomics
   {id:'proto-miseq',      label:'MiSeq Amplicon',                   section:'genomics',    icon:'🧪', keywords:['miseq','amplicon','sequencing','ngs','illumina','next generation']},
   {id:'proto-geneseq',    label:'Retrieve & Annotate Genes',        section:'genomics',    icon:'🧪', keywords:['gene','annotation','ensembl','ncbi','sequence','retrieve']},
-  // Reference Tables
-  {id:'ref-sdspace',      label:'SDS-PAGE Acrylamide Guide',        section:'reftables',   subtab:'sdspage', icon:'📋', keywords:['sds-page','acrylamide','gel','resolving','percentage','mw','range']},
-  {id:'ref-fluorochromes',label:'Fluorochromes (Ex/Em)',            section:'reftables',   subtab:'fluoro',  icon:'📋', keywords:['fluorochrome','fluorophore','dye','excitation','emission','dapi','gfp','alexa','cy3','cy5']},
-  {id:'ref-aminoacids',   label:'Standard Amino Acids',             section:'reftables',   subtab:'aa',      icon:'📋', keywords:['amino acid','aa','pka','molecular weight','mw','codon','protein']},
-  // PROTAC Tools
-  {id:'ldi-calc',         label:'Ligase Dependency Index',          section:'protactools', subtab:'ldi',  icon:'🎯', keywords:['ldi','ligase dependency','protac','e3 ligase','degrader','index','vhl','crbn']},
-  {id:'dmax-calc',        label:'Dmax Normalizer',                  section:'protactools', subtab:'dmax', icon:'🎯', keywords:['dmax','normalizer','degradation','dose response','normalization','bottom','plateau']},
 ];
 
 var SEARCH_INDEX_MAP = {};
@@ -11519,6 +11513,7 @@ document.addEventListener('keydown', function(e) {
   <button class="mob-nav-btn" id="mob-btn-proteomics"  onclick="switchNav('proteomics',this,true)">Proteomics</button>
   <button class="mob-nav-btn" id="mob-btn-assays"      onclick="switchNav('assays',this,true)">Biophysics</button>
   <button class="mob-nav-btn" id="mob-btn-structbio"   onclick="switchNav('structbio',this,true)">Struct Bio</button>
+  <button class="mob-nav-btn" id="mob-btn-genomics"    onclick="switchNav('genomics',this,true)">Genomics</button>
 </div>
 
 <!-- Footer -->
