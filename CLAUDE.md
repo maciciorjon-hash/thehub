@@ -253,9 +253,9 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-08 (Round 28: v0.9.92–v0.9.96 — Echo Bottom≥ constraint + Prism Fraction replicates + Firebase announcement + Google Auth + LabMate/Plate Designer mobile fixes)
+Last session: 2026-06-08 (Round 29: v0.9.96 — Echo Curves exclude-point fixes + assay type simplification + normalisation UI)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.79MB (7,785,331 chars). Version v0.9.96
+Hub file size: 7.78MB (7,783,051 chars). Version v0.9.96
 Echo changes (labcyte_echo.html, v0.9.92):
 - Bottom ≥ constraint: checkbox + number input in Analysis settings; loBotEff clamped in runAnalysisJS and fit4PL_JS
 - Prism (Fraction) XLSX sheet: now matches Prism Copy exactly — individual replicates, merged headers, group rows, values ÷ 100
