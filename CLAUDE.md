@@ -253,19 +253,15 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-08 (Round 30: v0.9.96 patch — Echo exclude-point rendering + LabMate biophysics/nav fixes)
+Last session: 2026-06-08 (Round 31: Echo 6-feature enhancement — gain equation, IC50 labels, 0% grid picker, re-run tab, survey tab, multi-assay)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.78MB (7,782,379 chars). Version v0.9.96
+Hub file size: 7.82MB (7,817,523 chars). Version v0.9.97
 Echo changes (labcyte_echo.html):
-- Y-axis first-render: setCvMode deferred by RAF; _tryRender threshold raised to 100px; 120ms fallback
-- Grey X markers: _exclY in drawMultiCurve includes excluded rep/conc Y values in axis range
-- Stats/results update after exclusion: _cvApplyEditsAndRefit calls renderCvStats([r]) directly; renderResults called on 'results' tab switch; auto-zoom in _doRender also includes excluded-Y for consistency
-LabMate changes (labmate.html):
-- proto-trfret back button: was showProtoHome('cheminfo')/← Lookup → now showAssayHome()/← Biophysics
-- sidebarItems assays: IDs changed from proto-trfret/fp/spr → trfret/fp/spr to match showAssayTab regex extraction
-- Sidebar Case B onclick: assays section now calls showAssayTab(subtab) instead of showProto (fixes empty biophysics sidebar)
-- showProtoHome('assays'): delegates to showAssayHome() so assay-panel-* elements are correctly hidden on re-entry
-- FAVORITABLES: removed proto-pdbview + proto-targetlookup (dead 'protein' tab — phantom cards in Favourites)
-- Search index: removed proto-pdbview (section:'protein'), 3 reftables entries, 2 protactools entries
-- Mobile drawer: added Genomics button
+- Gain-of-signal: added _4plVal4_gain/_4plJac4_gain (stimulation form: h*(logec50-xi)); runAnalysisJS uses gain functions when gainMode; fpl in drawMultiCurve checks r._gainMode; reference curve also fixed; Y-axis label → 'FRET Ratio (subtracted)'; _gainMode/_assayType stored on each compound
+- onAssayTypeChange: for gain mode, % labels removed from Analysis tab (Max replicate SD, Top constrain, Fix bottom, Bottom ≥); done via childNodes[0].textContent update with IDs lbl-max-sd/lbl-top-constrain/lbl-fix-bottom/lbl-bot-ge
+- renderCvStats: uses _assayType (per-compound or _lastAnalysisParams) to show IC50/EC50/DC50, pIC50/pEC50/pDC50, Emax/Dmax labels; compare-mode table headers updated too
+- 0% wells grid picker: #zero-picker-modal duplicated from ctrl picker (pink accent); openZeroPicker/closeZeroPicker/applyZeroPicker/drawZeroGrid/updateZeroPreview functions; mouse IIFE for zero-grid-canvas; grid button added next to p-zero-pct input; CSS rule updated to include zero-picker-modal
+- Re-run tab: ↺ Re-run tab in tab bar; click handler returns early calling openSetupModal() (already shows 'Modify parameters and re-run' when scatterData exists); no tab pane needed
+- Source Plate tab: new 'Source Plate' tab; parseSurveyCSV parses Source Well + Volume columns; renderSurveyPlate draws 16×24 canvas with green/amber/red/empty colour coding by volume fraction; hover tooltip via #tt; called on tab switch and on file load
+- Multi-assay: checkbox 'Multiple assay types' in Assay tab; addAssayType/removeAssayType/updateMatPanel/collectMultiAssayConfigs functions; per-type panels with assay selector, prefix input, ctrl wells, optional 0% wells; runPipeline multi-mode: filters readerFiles by prefix, loops over types calling runAnalysisJS, merges results; Results table shows 'Assay' column when multiAssay=true; _assayType stored per compound for correct curve labels
 <!-- LAST_SESSION_END -->

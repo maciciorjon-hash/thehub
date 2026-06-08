@@ -246,8 +246,8 @@ tr:hover td{background:var(--surface2);}
 .pl-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);}
 .pl-swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
 /* CONTROL PICKER MODAL */
-#ctrl-picker-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;align-items:center;justify-content:center;}
-#ctrl-picker-modal.open{display:flex;}
+#ctrl-picker-modal,#zero-picker-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;align-items:center;justify-content:center;}
+#ctrl-picker-modal.open,#zero-picker-modal.open{display:flex;}
 .ctrl-picker-box{background:var(--surface);border-radius:12px;padding:20px;box-shadow:0 8px 40px rgba(0,0,0,.4);max-width:96vw;max-height:90vh;overflow:auto;display:flex;flex-direction:column;gap:12px;}
 .ctrl-picker-title{font-size:14px;font-weight:600;color:var(--text);}
 .ctrl-picker-hint{font-size:11px;color:var(--text3);}
@@ -630,7 +630,10 @@ tr:hover td{background:var(--surface2);}
         <!-- Displacement 0% wells -->
         <div class="field" id="p-zero-pct-field" style="display:none;">
           <label>0% signal wells range <span class="pinfo" data-tip="Wells used as the 0% signal reference. Formats: B22:O23 (block), B12-O12 (row range).">ⓘ</span></label>
-          <input type="text" id="p-zero-pct" value="" placeholder="e.g. B24:O24">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="p-zero-pct" value="" placeholder="e.g. B24:O24" style="flex:1;">
+            <button onclick="openZeroPicker()" style="padding:7px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text2);font-size:11px;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:all .2s;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)'">⊞ Grid</button>
+          </div>
           <div class="hint">Displacement: wells where signal is competed off (0% reference).</div>
         </div>
 
@@ -650,6 +653,21 @@ tr:hover td{background:var(--surface2);}
           <div style="background:var(--surface3);border-radius:6px;padding:7px 10px;font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:6px;">Ki = IC₅₀ / (1 + [L] / Kd) &nbsp;·&nbsp; Cheng-Prusoff equation</div>
           <div id="fp-ki-result" style="font-size:11px;font-family:var(--mono);color:var(--accent3);display:none;"></div>
         </div>
+
+        <!-- MULTI-ASSAY -->
+        <div class="setup-group" style="margin-top:12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);cursor:pointer;">
+              <input type="checkbox" id="multi-assay-chk" onchange="toggleMultiAssay()">
+              <span style="font-weight:600;">Multiple assay types</span>
+            </label>
+            <span style="font-size:11px;color:var(--text3);">Analyse HiBiT, displacement &amp; gain together</span>
+          </div>
+          <div id="multi-assay-panels" style="display:none;">
+            <div id="mat-type-list"></div>
+            <button onclick="addAssayType()" style="padding:6px 14px;border-radius:6px;border:1px dashed var(--border2);background:var(--surface2);color:var(--accent2);font-size:11px;cursor:pointer;font-family:var(--sans);margin-top:6px;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)'">+ Add assay type</button>
+          </div>
+        </div>
       </div>
 
       <!-- TAB 3: ANALYSIS -->
@@ -660,20 +678,20 @@ tr:hover td{background:var(--surface2);}
         </div>
         <div class="setup-2col" style="margin-bottom:16px;">
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-r2-en" checked onchange="document.getElementById('p-r2').disabled=!this.checked;document.getElementById('p-r2').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Min R² for fit<span class="pinfo" data-tip="Goodness-of-fit threshold. Curves below this R² are flagged.">i</span></span></div><input type="number" id="p-r2" value="0.8" min="0" max="1" step="0.05"></div>
-          <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-sd-en" checked onchange="document.getElementById('p-sd').disabled=!this.checked;document.getElementById('p-sd').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Max replicate SD (%)<span class="pinfo" data-tip="SD across replicates at any conc. exceeding this value flags the compound.">i</span></span></div><input type="number" id="p-sd" value="25" min="1"></div>
+          <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-sd-en" checked onchange="document.getElementById('p-sd').disabled=!this.checked;document.getElementById('p-sd').style.opacity=this.checked?'1':'0.35';"></label><span id="lbl-max-sd" class="flbl">Max replicate SD (%)<span class="pinfo" data-tip="SD across replicates at any conc. exceeding this value flags the compound.">i</span></span></div><input type="number" id="p-sd" value="25" min="1"></div>
         </div>
         <div id="hibit-ctg-params">
           <div class="setup-2col" style="margin-bottom:16px;">
-            <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-top-en" checked onchange="var el=document.getElementById('p-top');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Top constrain (%)<span class="pinfo" data-tip="Pins upper plateau of 4PL. 100% = DMSO level. Disable to fit freely.">i</span></span></div><input type="number" id="p-top" value="100" min="50" max="110"></div>
+            <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-top-en" checked onchange="var el=document.getElementById('p-top');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span id="lbl-top-constrain" class="flbl">Top constrain (%)<span class="pinfo" data-tip="Pins upper plateau of 4PL. 100% = DMSO level. Disable to fit freely.">i</span></span></div><input type="number" id="p-top" value="100" min="50" max="110"></div>
             <div class="field" id="dmax-cap-field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-dmax-cap-en" checked onchange="var el=document.getElementById('p-dmax-cap-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Max Dmax (%)<span class="pinfo" data-tip="Caps maximum degradation — constrains 4PL bottom so Dmax ≤ this value.">i</span></span></div><input type="number" id="p-dmax-cap-val" value="99" min="10" max="99" step="1"></div>
           </div>
         </div>
         <div class="setup-2col">
-          <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-bot" onchange="var el=document.getElementById('p-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix bottom (%)</span></div><input type="number" id="p-bot-val" value="0" min="-50" max="100" disabled style="opacity:0.35;"><div class="hint">Pin 4PL bottom asymptote</div></div>
+          <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-bot" onchange="var el=document.getElementById('p-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span id="lbl-fix-bottom" class="flbl">Fix bottom (%)</span></div><input type="number" id="p-bot-val" value="0" min="-50" max="100" disabled style="opacity:0.35;"><div class="hint">Pin 4PL bottom asymptote</div></div>
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-hill" onchange="var el=document.getElementById('p-hill-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix Hill slope</span></div><input type="number" id="p-hill-val" value="1" min="0.1" max="5" step="0.1" disabled style="opacity:0.35;"><div class="hint">Pin Hill slope coefficient</div></div>
         </div>
         <div class="setup-2col">
-          <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-min-bot-en" checked onchange="var el=document.getElementById('p-min-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Bottom ≥ (%)<span class="pinfo" data-tip="Constrains the 4PL bottom asymptote to be ≥ this value. Set to 0 for normalized data — prevents the curve from fitting a negative baseline plateau.">i</span></span></div><input type="number" id="p-min-bot-val" value="0" min="-100" max="50" step="1"><div class="hint">Lower bound on bottom asymptote</div></div>
+          <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-min-bot-en" checked onchange="var el=document.getElementById('p-min-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span id="lbl-bot-ge" class="flbl">Bottom ≥ (%)<span class="pinfo" data-tip="Constrains the 4PL bottom asymptote to be ≥ this value. Set to 0 for normalized data — prevents the curve from fitting a negative baseline plateau.">i</span></span></div><input type="number" id="p-min-bot-val" value="0" min="-100" max="50" step="1"><div class="hint">Lower bound on bottom asymptote</div></div>
         </div>
       </div>
 
@@ -724,9 +742,27 @@ tr:hover td{background:var(--surface2);}
     </div>
   </div>
 </div>
+
+<!-- 0% WELLS PICKER MODAL -->
+<div id="zero-picker-modal">
+  <div class="ctrl-picker-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div class="ctrl-picker-title">Select 0% signal wells</div>
+      <button onclick="closeZeroPicker()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);padding:0 4px;">✕</button>
+    </div>
+    <div class="ctrl-picker-hint">Click individual wells or click + drag to select a rectangle. Click again to deselect.</div>
+    <canvas id="zero-grid-canvas"></canvas>
+    <div id="zero-picker-preview" style="font-size:12px;color:var(--text2);font-family:var(--sans);min-height:20px;"></div>
+    <div class="ctrl-picker-actions">
+      <button onclick="closeZeroPicker()" style="padding:7px 16px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;cursor:pointer;font-family:var(--sans);">Cancel</button>
+      <button onclick="applyZeroPicker()" style="padding:7px 16px;border-radius:6px;border:none;background:var(--accent2);color:#fff;font-size:12px;cursor:pointer;font-family:var(--sans);">Apply</button>
+    </div>
+  </div>
+</div>
 <div class="right">
   <div class="pbar-wrap"><div class="pbar" id="pbar"></div></div>
   <div class="tabs">
+    <div class="tab" data-tab="rerun">↺ Re-run</div>
     <div class="tab active" data-tab="log">Console</div>
     <div class="tab" data-tab="scatter">Plots <span class="tcnt" id="sc">0</span></div>
     <div class="tab" data-tab="curves">Curves</div>
@@ -735,6 +771,7 @@ tr:hover td{background:var(--surface2);}
     <div class="tab" data-tab="results">Results <span class="tcnt" id="rc">0</span></div>
     <div class="tab" data-tab="history">History</div>
     <div class="tab" data-tab="protocol">Protocol</div>
+    <div class="tab" data-tab="survey">Source Plate</div>
     <div class="tab" data-tab="guide">Guide</div>
     <button class="setup-reopen-btn" onclick="openSetupModal()" title="Open setup dialog">⚙ Setup</button>
   </div>
@@ -881,6 +918,22 @@ tr:hover td{background:var(--surface2);}
       </div>
     </div>
   </div>
+  <div class="tabpane" id="tab-survey">
+    <div id="survey-panel" style="flex:1;overflow-y:auto;padding:16px 24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:600;color:var(--text);">Source Plate Survey</div>
+        <span style="font-size:11px;color:var(--text3);">Upload Echo survey data to visualise remaining volumes</span>
+      </div>
+      <div class="dropzone" id="survey-drop" style="margin-bottom:16px;max-width:520px;">
+        <input type="file" id="survey-input" accept=".csv,.txt" onchange="loadSurveyFile(this.files[0])">
+        <span class="dz-icon" id="survey-icon">🗺</span>
+        <div class="dz-title">Drop Echo survey CSV or click</div>
+        <div class="dz-sub">Echo survey file with well volumes (nL)</div>
+        <div class="dz-fname" id="survey-fname" style="display:none;"></div>
+      </div>
+      <div id="survey-plate-container"></div>
+    </div>
+  </div>
 </div>
 </main>
 </div><!-- end panel-analysis -->
@@ -985,6 +1038,17 @@ function onAssayTypeChange(){
   if(pdc50Lbl){var sp=pdc50Lbl.querySelector('span');if(sp)sp.textContent=pdc50Txt;}
   if(absLbl)absLbl.style.display=(t==='hibit')?'':'none';
   if(logLbl){var sp=logLbl.querySelector('span');if(sp)sp.textContent=logTxt;}
+
+  // Remove % unit labels from analysis tab for gain-of-signal (values aren't percentages)
+  var isGain=(t==='gain');
+  var lblSD=document.getElementById('lbl-max-sd');
+  var lblTop=document.getElementById('lbl-top-constrain');
+  var lblBot=document.getElementById('lbl-fix-bottom');
+  var lblBotGe=document.getElementById('lbl-bot-ge');
+  if(lblSD){var sn=lblSD.querySelector('.pinfo');lblSD.childNodes[0].textContent=isGain?'Max replicate SD':'Max replicate SD (%)';}
+  if(lblTop){lblTop.childNodes[0].textContent=isGain?'Top constrain':'Top constrain (%)';}
+  if(lblBot)lblBot.textContent=isGain?'Fix bottom':'Fix bottom (%)';
+  if(lblBotGe){var sn2=lblBotGe.querySelector('.pinfo');lblBotGe.childNodes[0].textContent=isGain?'Bottom ≥':'Bottom ≥ (%)';}
 }
 function updateFpKiPreview(){
   var lcEl=document.getElementById('p-tracer-conc');
@@ -1008,6 +1072,7 @@ const _allTabs = document.querySelectorAll('.tab');
 const _allPanes = document.querySelectorAll('.tabpane');
 _allTabs.forEach(t => t.addEventListener('click', () => {
   const id = t.dataset.tab;
+  if (id === 'rerun') { openSetupModal(); return; }
   _allTabs.forEach(x => x.classList.remove('active'));
   _allPanes.forEach(x => x.classList.remove('active'));
   t.classList.add('active');
@@ -1018,6 +1083,7 @@ _allTabs.forEach(t => t.addEventListener('click', () => {
     if (id === 'results' && scatterData.length) renderResults(scatterData);
     if (id === 'plate') renderPlateTab();
     if (id === 'history') renderHistoryTab();
+    if (id === 'survey') renderSurveyTab();
     if (id === 'props' && window._propsDirty) {
       renderProperties(_lastResultsData, window._lastCompoundData || {});
       window._propsDirty = false;
@@ -1354,7 +1420,35 @@ async function runPipeline() {
       }
     } catch(e) { log('Pre-flight check skipped: ' + e.message, 'warn'); }
 
-    const results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal);
+    let results;
+    if (document.getElementById('multi-assay-chk')?.checked) {
+      // ── Multi-assay mode: run once per assay type, merge results ──
+      const matConfigs = collectMultiAssayConfigs();
+      if (!matConfigs.length) throw new Error('No assay types configured in multi-assay mode.');
+      const mergedResults = [];
+      downloadBlobs = [];
+      for (let mi = 0; mi < matConfigs.length; mi++) {
+        const mc = matConfigs[mi];
+        log('─'.repeat(32));
+        log(`Multi-assay [${mi+1}/${matConfigs.length}]: ${mc.type} (prefix: "${mc.prefix||'all'}")`, 'head');
+        // Filter reader files by prefix
+        const matReaderFiles = mc.prefix
+          ? Object.fromEntries(Object.entries(readerFiles).filter(([n])=>n.toLowerCase().startsWith(mc.prefix.toLowerCase())))
+          : {...readerFiles};
+        if (!Object.keys(matReaderFiles).length) { log(`  No reader files matched prefix "${mc.prefix}" — skipping`, 'warn'); continue; }
+        const origReaderFiles = readerFiles;
+        readerFiles = matReaderFiles;
+        try {
+          const typeResults = await runAnalysisJS(assayId+'_'+mc.type, mc.ctrl||ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, mc.type, mc.zero||'', dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal);
+          mergedResults.push(...typeResults);
+        } finally { readerFiles = origReaderFiles; }
+      }
+      results = mergedResults;
+      window._lastAssayType = 'hibit'; // use hibit as fallback for label display in mixed mode
+      window._lastAnalysisParams = {...window._lastAnalysisParams, assayType:'hibit', multiAssay:true};
+    } else {
+      results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal);
+    }
 
     setProgress(100);
     log('Done. ' + results.length + ' compounds, ' + downloadBlobs.length + ' files.', 'ok');
@@ -1626,6 +1720,15 @@ function _4plJac4(xi, bot, logec50, h, top) {
 }
 function _4plVal4(xi, bot, logec50, h, top) {
   return bot + (top - bot) / (1 + Math.pow(10, h * (xi - logec50)));
+}
+// Gain-of-signal stimulation form: Y = bot + (top-bot)/(1+10^(h*(logec50-xi)))
+// Positive h gives increasing sigmoid (low→high signal as concentration increases)
+function _4plJac4_gain(xi, bot, logec50, h, top) {
+  const ln10=Math.LN10, E=Math.pow(10,h*(logec50-xi)), denom=(1+E)*(1+E);
+  return [E/(1+E), -(top-bot)*h*ln10*E/denom, (top-bot)*(xi-logec50)*ln10*E/denom, 1/(1+E)];
+}
+function _4plVal4_gain(xi, bot, logec50, h, top) {
+  return bot + (top - bot) / (1 + Math.pow(10, h * (logec50 - xi)));
 }
 
 function _solveLin(A, b) {
@@ -1958,7 +2061,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           ];
           const { params, r2 } = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff, topLo], [hiBotEff, xMax + 1, hiHillEff, topHi],
-            _4plVal4, _4plJac4, 200);
+            gainMode ? _4plVal4_gain : _4plVal4, gainMode ? _4plJac4_gain : _4plJac4, 200);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2 };
         } else {
           const pInit = [
@@ -2025,7 +2128,8 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           _xmax: +Math.max(...sdata.map(r => r.log10Conc)).toFixed(3),
           _pts: ptsList, _reps: repsList,
           _hook_x: isHook ? hookConcsArr[0] : null,
-          _hook_concs: hookConcsArr, _is_hook: isHook
+          _hook_concs: hookConcsArr, _is_hook: isHook,
+          _gainMode: gainMode, _assayType: assayType
         });
         nFit++;
       } catch (e) { log('  Fit failed ' + sid + ': ' + e.message, 'warn'); }
@@ -2129,7 +2233,12 @@ function renderResults(data) {
     Flag_Reason: r=>'<td style="max-width:200px;white-space:normal;font-size:11px;color:var(--text3);">'+esc(r.Flag_Reason||'')+'</td>',
   };
   if (_kiParams) _cellFn['_Ki_nM'] = r=>{const _ic50=parseFloat(r.DC50_nM);return '<td>'+(isNaN(_ic50)?'—':(_ic50/(1+_kiParams.lcNM/_kiParams.kdNM)).toFixed(2))+'</td>';};
+  const _isMultiAssay = window._lastAnalysisParams?.multiAssay;
+  if (_isMultiAssay) {
+    _cellFn['_assayType'] = r=>`<td><span style="font-size:10px;padding:2px 7px;border-radius:20px;background:var(--surface3);color:var(--text2);white-space:nowrap;">${esc(r._assayType||'')}</span></td>`;
+  }
   const cols = [
+    ...(_isMultiAssay?[{k:'_assayType',l:'Assay',ns:true}]:[]),
     {k:'Protein',l:'Group'},{k:'Sample_ID',l:'Sample ID'},
     ...(_kiParams?[{k:'_Ki_nM',l:'Ki (nM)',ns:true}]:[]),
     ...['DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason']
@@ -5549,14 +5658,25 @@ function renderCvStats(compounds) {
   const el=document.getElementById('cv-stats');
   if(!el) return;
   if(!compounds.length){el.innerHTML='<span style="font-size:11px;color:var(--text3);">No compound selected</span>';return;}
+  // Assay-type-aware labels (reads from compound or last analysis params)
+  const _at=(compounds[0]?._assayType)||window._lastAnalysisParams?.assayType||(window._lastAssayType||'hibit');
+  const _isGain=_at==='gain', _isDisp=_at==='displacement';
+  const dc50Lbl=_isDisp?'IC<sub>50</sub>':_isGain?'EC<sub>50</sub>':'DC<sub>50</sub>';
+  const absDc50Lbl=_isDisp?'Abs IC<sub>50</sub>':_isGain?'Abs EC<sub>50</sub>':'Abs DC<sub>50</sub>';
+  const pdc50Lbl=_isDisp?'pIC<sub>50</sub>':_isGain?'pEC<sub>50</sub>':'pDC<sub>50</sub>';
+  const dmaxLbl=_isGain?'Emax':'Dmax';
+  const dmaxUnit=_isGain?'':'%';
+  const dc50ColHdr=_isDisp?'IC₅₀ (nM)':_isGain?'EC₅₀ (nM)':'DC₅₀ (nM)';
+  const pdc50ColHdr=_isDisp?'pIC₅₀':_isGain?'pEC₅₀':'pDC₅₀';
+  const dmaxColHdr=_isGain?'Emax':'Dmax (%)';
   if(compounds.length===1) {
     const r=compounds[0];
     const fc=r.Flag==='Yes'?'var(--warn)':'var(--accent3)';
     el.innerHTML=`
-      <div class="cv-stat"><div class="csl">DC<sub>50</sub></div><div class="csv">${r.DC50_nM!=null?r.DC50_nM+' nM':'—'}</div></div>
-      <div class="cv-stat"><div class="csl">Abs DC<sub>50</sub></div><div class="csv">${r.AbsDC50_nM!=null?r.AbsDC50_nM+' nM':'—'}</div></div>
-      <div class="cv-stat"><div class="csl">Dmax</div><div class="csv">${r.Dmax_pct!=null?r.Dmax_pct+'%':'—'}</div></div>
-      <div class="cv-stat"><div class="csl">pDC<sub>50</sub></div><div class="csv">${r.pDC50??'—'}</div></div>
+      <div class="cv-stat"><div class="csl">${dc50Lbl}</div><div class="csv">${r.DC50_nM!=null?r.DC50_nM+' nM':'—'}</div></div>
+      <div class="cv-stat"><div class="csl">${absDc50Lbl}</div><div class="csv">${r.AbsDC50_nM!=null?r.AbsDC50_nM+' nM':'—'}</div></div>
+      <div class="cv-stat"><div class="csl">${dmaxLbl}</div><div class="csv">${r.Dmax_pct!=null?r.Dmax_pct+(dmaxUnit?'%':''):'—'}</div></div>
+      <div class="cv-stat"><div class="csl">${pdc50Lbl}</div><div class="csv">${r.pDC50??'—'}</div></div>
       <div class="cv-stat"><div class="csl">Hill</div><div class="csv">${r.HillSlope??'—'}</div></div>
       <div class="cv-stat"><div class="csl">R²</div><div class="csv">${r.R2??'—'}</div></div>
       <div class="cv-stat"${r.Flag==='Yes'?' style="cursor:context-menu;" oncontextmenu="cvStatFlagMenu(event)" title="Right-click to resolve flag"':''}>
@@ -5566,7 +5686,7 @@ function renderCvStats(compounds) {
   } else {
     // Compare mode: legend table
     el.innerHTML=`<table style="font-size:11px;border-collapse:collapse;width:100%;">
-      <thead><tr style="color:var(--text3);">${['','Compound','Group','DC₅₀ (nM)','Abs DC₅₀ (nM)','Dmax (%)','pDC₅₀','Hill','R²','Flag'].map(h=>`<th style="padding:3px 8px;text-align:left;font-weight:500;">${h}</th>`).join('')}</tr></thead>
+      <thead><tr style="color:var(--text3);">${['','Compound','Group',dc50ColHdr,'Abs '+dc50ColHdr,dmaxColHdr,pdc50ColHdr,'Hill','R²','Flag'].map(h=>`<th style="padding:3px 8px;text-align:left;font-weight:500;">${h}</th>`).join('')}</tr></thead>
       <tbody>${compounds.map((r,i)=>{
         const col=CV_PALETTE[i%CV_PALETTE.length];
         const fc=r.Flag==='Yes'?'var(--warn)':'var(--accent3)';
@@ -5575,9 +5695,8 @@ function renderCvStats(compounds) {
           <td style="padding:3px 8px;font-weight:500;color:var(--text);">${esc(r.Sample_ID)}</td>
           <td style="padding:3px 8px;color:var(--text2);">${esc(r.Protein)}</td>
           <td style="padding:3px 8px;">${r.DC50_nM??'—'}</td>
-
           <td style="padding:3px 8px;">${r.AbsDC50_nM!=null?r.AbsDC50_nM+' nM':'—'}</td>
-          <td style="padding:3px 8px;">${r.Dmax_pct!=null?r.Dmax_pct+'%':'—'}</td>
+          <td style="padding:3px 8px;">${r.Dmax_pct!=null?r.Dmax_pct+(dmaxUnit?'%':''):'—'}</td>
           <td style="padding:3px 8px;">${r.pDC50??'—'}</td>
           <td style="padding:3px 8px;">${r.HillSlope??'—'}</td>
           <td style="padding:3px 8px;">${r.R2??'—'}</td>
@@ -5775,7 +5894,9 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
 
   const px=x=>pL+pw*(x-xlo)/(xhi-xlo);
   const py=y=>pT+ph*(1-(y-ylo)/(yhi-ylo));
-  const fpl=(r,x)=>r._bot+((r._tc??100)-r._bot)/(1+Math.pow(10,r._hill*(x-r._logec50)));
+  const fpl=(r,x)=>r._gainMode
+    ? r._bot+((r._tc??100)-r._bot)/(1+Math.pow(10,r._hill*(r._logec50-x)))
+    : r._bot+((r._tc??100)-r._bot)/(1+Math.pow(10,r._hill*(x-r._logec50)));
 
   // Grid
   if(cfg.showGrid!==false){
@@ -5820,7 +5941,8 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   ctx.save();ctx.translate(14,pT+ph/2);ctx.rotate(-Math.PI/2);
   ctx.fillStyle=textCol;ctx.font=`${fSz+0.5}px 'IBM Plex Sans',sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(window._lastAnalysisParams?.skipNorm?'Signal (raw)':'Signal (% DMSO)',0,0);ctx.restore();
+  const _cvAt=window._lastAnalysisParams?.assayType||window._lastAssayType||'';
+  ctx.fillText(_cvAt==='gain'?'FRET Ratio (subtracted)':window._lastAnalysisParams?.skipNorm?'Signal (raw)':'Signal (% DMSO)',0,0);ctx.restore();
   ctx.fillStyle=textCol;ctx.font=`${fSz+0.5}px 'IBM Plex Sans',sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='top';
   ctx.fillText('log₁₀[concentration, M]',pL+pw/2,pT+ph+28);
@@ -5836,7 +5958,9 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
       ctx.beginPath();
       for(let i=0;i<=150;i++){
         const xv=xlo+(xhi-xlo)*i/150;
-        const yv=py(r._bot+((r._tc??100)-r._bot)/(1+Math.pow(10,r._hill*(xv-r._logec50))));
+        const yv=py(r._gainMode
+          ? r._bot+((r._tc??100)-r._bot)/(1+Math.pow(10,r._hill*(r._logec50-xv)))
+          : r._bot+((r._tc??100)-r._bot)/(1+Math.pow(10,r._hill*(xv-r._logec50))));
         i===0?ctx.moveTo(px(xv),yv):ctx.lineTo(px(xv),yv);
       }
       ctx.stroke();
@@ -7047,6 +7171,258 @@ function updateCtrlPreview() {
     drawCtrlGrid();
   });
 })();
+
+// ═══════════════════════════════════════════════════════════════
+// 0% WELLS PICKER (mirrors ctrl picker for displacement 0% wells)
+// ═══════════════════════════════════════════════════════════════
+let _zeroPickerSel = new Set();
+
+function openZeroPicker() {
+  _zeroPickerSel = new Set();
+  const existing = document.getElementById('p-zero-pct')?.value?.trim();
+  if (existing) { try { parseCtrlWellsJS(existing).forEach(w=>_zeroPickerSel.add(w)); } catch(e){} }
+  document.getElementById('zero-picker-modal')?.classList.add('open');
+  drawZeroGrid();
+}
+function closeZeroPicker() { document.getElementById('zero-picker-modal')?.classList.remove('open'); }
+function applyZeroPicker() {
+  const wells=[..._zeroPickerSel].sort((a,b)=>{const ar=a[0],ac=parseInt(a.slice(1)),br=b[0],bc=parseInt(b.slice(1));return ac!==bc?ac-bc:ar.localeCompare(br);});
+  if(!wells.length){document.getElementById('p-zero-pct').value='';closeZeroPicker();return;}
+  const cols=[...new Set(wells.map(w=>parseInt(w.slice(1))))];
+  const rows=[...new Set(wells.map(w=>w[0]))].sort();
+  if(cols.length===1){const col=cols[0];const selRows=rows.filter(r=>_zeroPickerSel.has(`${r}${col<10?'0'+col:col}`)||_zeroPickerSel.has(`${r}${col}`));if(selRows.length===rows.length&&selRows.length>1){document.getElementById('p-zero-pct').value=`${selRows[0]}${col}-${selRows[selRows.length-1]}${col}`;closeZeroPicker();return;}}
+  if(cols.length<=4&&rows.length<=16){const minCol=Math.min(...cols),maxCol=Math.max(...cols),minRow=rows[0],maxRow=rows[rows.length-1];let isRect=true;for(let c=minCol;c<=maxCol;c++){for(const r of rows){const wid=`${r}${c<10?'0'+c:c}`;if(!_zeroPickerSel.has(wid)&&!_zeroPickerSel.has(`${r}${c}`)){isRect=false;break;}}}if(isRect&&(maxCol>minCol||rows.length>1)){document.getElementById('p-zero-pct').value=`${minRow}${minCol}:${maxRow}${maxCol}`;closeZeroPicker();return;}}
+  document.getElementById('p-zero-pct').value=wells.map(w=>{const n=parseInt(w.slice(1));return `${w[0]}${n}`;}).join(',');
+  closeZeroPicker();
+}
+function drawZeroGrid(dragFrom, dragTo) {
+  const canvas=document.getElementById('zero-grid-canvas');
+  if(!canvas) return;
+  const dpr=window.devicePixelRatio||1, isDark=document.documentElement.getAttribute('data-theme')!=='light';
+  const cellW=28,cellH=22,padL=26,padT=20,padR=8,padB=8;
+  const W=padL+24*cellW+padR, H=padT+16*cellH+padB;
+  const maxW=Math.min(W,window.innerWidth*0.88), sc=maxW/W;
+  const cssW=Math.round(W*sc), cssH=Math.round(H*sc);
+  canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
+  canvas.width=Math.round(cssW*dpr); canvas.height=Math.round(cssH*dpr);
+  const ctx=canvas.getContext('2d'); ctx.scale(dpr*sc,dpr*sc);
+  const bg=isDark?'#13161e':'#f8f9fc', textCol=isDark?'#8b90a8':'#5a5f7a';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+  'ABCDEFGHIJKLMNOP'.split('').forEach((r,ri)=>{
+    ctx.fillStyle=textCol;ctx.font=`bold 9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='right';ctx.textBaseline='middle';
+    ctx.fillText(r,padL-4,padT+ri*cellH+cellH/2);
+    Array.from({length:24},(_,ci)=>{
+      const col=ci+1,wid=`${r}${col<10?'0'+col:col}`;
+      const sel=_zeroPickerSel.has(wid)||_zeroPickerSel.has(`${r}${col}`);
+      const x=padL+ci*cellW+1,y=padT+ri*cellH+1,rw=cellW-2,rh=cellH-2;
+      ctx.fillStyle=sel?(isDark?'rgba(233,30,99,0.7)':'rgba(233,30,99,0.6)'):(isDark?'#1c2030':'#eef0f6');
+      ctx.beginPath();ctx.roundRect(x,y,rw,rh,2);ctx.fill();
+      if(sel){ctx.fillStyle=isDark?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.95)';ctx.font=`7px 'IBM Plex Sans',sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('✓',x+rw/2,y+rh/2);}
+    });
+  });
+  Array.from({length:24},(_,ci)=>{ctx.fillStyle=textCol;ctx.font=`9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(ci+1,padL+ci*cellW+cellW/2,padT-3);});
+  if(dragFrom&&dragTo){const minR=Math.min(dragFrom.ri,dragTo.ri),maxR=Math.max(dragFrom.ri,dragTo.ri),minC=Math.min(dragFrom.ci,dragTo.ci),maxC=Math.max(dragFrom.ci,dragTo.ci);const ox=padL+minC*cellW+1,oy=padT+minR*cellH+1,ow=(maxC-minC+1)*cellW-2,oh=(maxR-minR+1)*cellH-2;ctx.save();ctx.fillStyle=isDark?'rgba(233,30,99,0.2)':'rgba(233,30,99,0.15)';ctx.strokeStyle=isDark?'rgba(233,30,99,0.7)':'rgba(233,30,99,0.6)';ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect(ox,oy,ow,oh,3);ctx.fill();ctx.stroke();ctx.restore();}
+  updateZeroPreview();
+  canvas._zeroMeta={padL,padT,cellW,cellH,sc};
+}
+function updateZeroPreview(){const el=document.getElementById('zero-picker-preview');if(!el)return;const n=_zeroPickerSel.size;el.textContent=n?`${n} well${n>1?'s':''} selected`:'No wells selected';}
+
+(function(){
+  let _dStart=null,_dEnd=null,_dragging=false,_lastCell=null;
+  function getCell(canvas,e){const rect=canvas.getBoundingClientRect();const meta=canvas._zeroMeta||{padL:26,padT:20,cellW:28,cellH:22,sc:1};const mx=(e.clientX-rect.left)/meta.sc,my=(e.clientY-rect.top)/meta.sc;const ci=Math.floor((mx-meta.padL)/meta.cellW),ri=Math.floor((my-meta.padT)/meta.cellH);if(ci<0||ci>=24||ri<0||ri>=16)return null;return{ri,ci};}
+  function wid(ri,ci){const row='ABCDEFGHIJKLMNOP'[ri],col=ci+1;return `${row}${col<10?'0'+col:col}`;}
+  function rectCells(r1,c1,r2,c2){const cells=[],minR=Math.min(r1,r2),maxR=Math.max(r1,r2),minC=Math.min(c1,c2),maxC=Math.max(c1,c2);for(let r=minR;r<=maxR;r++)for(let c=minC;c<=maxC;c++)cells.push({ri:r,ci:c});return cells;}
+  function isOpen(){return document.getElementById('zero-picker-modal')?.classList.contains('open');}
+  document.addEventListener('mousedown',e=>{const canvas=document.getElementById('zero-grid-canvas');if(!canvas||!isOpen())return;const rect=canvas.getBoundingClientRect();if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom)return;const cell=getCell(canvas,e);if(!cell)return;e.preventDefault();_dStart=cell;_dEnd=cell;_dragging=false;});
+  document.addEventListener('mousemove',e=>{const canvas=document.getElementById('zero-grid-canvas');if(!canvas||!_dStart||!isOpen())return;const cell=getCell(canvas,e);if(!cell)return;if(cell.ri!==_dStart.ri||cell.ci!==_dStart.ci)_dragging=true;_dEnd=cell;if(_dragging)drawZeroGrid(_dStart,_dEnd);});
+  document.addEventListener('mouseup',e=>{const canvas=document.getElementById('zero-grid-canvas');if(!canvas||!_dStart)return;if(_dragging&&_dEnd){const firstWid=wid(_dStart.ri,_dStart.ci);const adding=!_zeroPickerSel.has(firstWid);rectCells(_dStart.ri,_dStart.ci,_dEnd.ri,_dEnd.ci).forEach(({ri,ci})=>{const w=wid(ri,ci);if(adding)_zeroPickerSel.add(w);else _zeroPickerSel.delete(w);});_lastCell=_dEnd;}else{const cell=getCell(canvas,e)||_dStart;const w=wid(cell.ri,cell.ci);if(e.shiftKey&&_lastCell){rectCells(_lastCell.ri,_lastCell.ci,cell.ri,cell.ci).forEach(({ri,ci})=>_zeroPickerSel.add(wid(ri,ci)));_lastCell=cell;}else{if(_zeroPickerSel.has(w))_zeroPickerSel.delete(w);else _zeroPickerSel.add(w);_lastCell=cell;}}_dStart=null;_dEnd=null;_dragging=false;drawZeroGrid();});
+})();
+
+// ═══════════════════════════════════════════════════════════════
+// ECHO SURVEY TAB
+// ═══════════════════════════════════════════════════════════════
+let _surveyData = null;
+
+document.getElementById('survey-drop').addEventListener('dragover', e=>{e.preventDefault();e.currentTarget.classList.add('drag');});
+document.getElementById('survey-drop').addEventListener('dragleave', e=>{e.currentTarget.classList.remove('drag');});
+document.getElementById('survey-drop').addEventListener('drop', e=>{e.preventDefault();e.currentTarget.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)loadSurveyFile(f);});
+
+function loadSurveyFile(file) {
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    _surveyData=parseSurveyCSV(ev.target.result);
+    document.getElementById('survey-icon').textContent='✓';
+    document.getElementById('survey-fname').textContent=file.name;
+    document.getElementById('survey-fname').style.display='block';
+    renderSurveyPlate(_surveyData);
+  };
+  reader.readAsText(file);
+}
+
+function parseSurveyCSV(text) {
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length) return {};
+  const header=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+  const wellIdx=header.findIndex(h=>/source.?well|^well$/i.test(h));
+  const volIdx=header.findIndex(h=>/volume|vol/i.test(h));
+  if(wellIdx<0||volIdx<0) return {};
+  const data={};
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    if(!cols[wellIdx]) continue;
+    let w=cols[wellIdx].trim().toUpperCase();
+    // Normalise well format: A1→A01
+    const wm=w.match(/^([A-P])(\d+)$/);
+    if(wm) w=`${wm[1]}${parseInt(wm[2])<10?'0':''}${parseInt(wm[2])}`;
+    const vol=parseFloat(cols[volIdx]);
+    if(!isNaN(vol)) data[w]=vol;
+  }
+  return data;
+}
+
+function renderSurveyTab() {
+  if(_surveyData) renderSurveyPlate(_surveyData);
+}
+
+function renderSurveyPlate(data) {
+  const container=document.getElementById('survey-plate-container');
+  if(!container) return;
+  if(!data||!Object.keys(data).length){container.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px;">No well data found in file. Expected columns: Source Well, Current Volume.</div>';return;}
+  const vols=Object.values(data).filter(v=>isFinite(v)&&v>=0);
+  const maxVol=vols.length?Math.max(...vols):1;
+  const isDark=document.documentElement.getAttribute('data-theme')!=='light';
+  const cellW=28,cellH=22,padL=28,padT=22,padR=10,padB=10;
+  const W=padL+24*cellW+padR, H=padT+16*cellH+padB+40;
+  const dpr=window.devicePixelRatio||1;
+  const maxW=Math.min(W,container.offsetWidth||900);
+  const sc=maxW/W;
+  const cssW=Math.round(W*sc), cssH=Math.round(H*sc);
+  let canvas=container.querySelector('canvas');
+  if(!canvas){canvas=document.createElement('canvas');container.innerHTML='';container.appendChild(canvas);}
+  canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
+  canvas.width=Math.round(cssW*dpr); canvas.height=Math.round(cssH*dpr);
+  const ctx=canvas.getContext('2d'); ctx.scale(dpr*sc,dpr*sc);
+  const bg=isDark?'#13161e':'#f8f9fc', textCol=isDark?'#8b90a8':'#5a5f7a';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+  function volColor(v){
+    if(v===undefined||v===null||isNaN(v)||v<0) return isDark?'#252a3a':'#dde0ea';
+    if(v===0) return isDark?'#1c2030':'#e8eaf2';
+    const pct=Math.min(v/maxVol,1);
+    if(pct<0.2) return isDark?'rgba(233,30,99,0.7)':'rgba(233,30,99,0.65)';
+    if(pct<0.5) return isDark?'rgba(230,156,48,0.75)':'rgba(230,156,48,0.7)';
+    return isDark?'rgba(67,160,71,0.75)':'rgba(67,160,71,0.7)';
+  }
+  'ABCDEFGHIJKLMNOP'.split('').forEach((r,ri)=>{
+    ctx.fillStyle=textCol;ctx.font=`bold 9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='right';ctx.textBaseline='middle';
+    ctx.fillText(r,padL-4,padT+ri*cellH+cellH/2);
+    Array.from({length:24},(_,ci)=>{
+      const col=ci+1,wid=`${r}${col<10?'0'+col:col}`;
+      const vol=data[wid];
+      const x=padL+ci*cellW+1,y=padT+ri*cellH+1,rw=cellW-2,rh=cellH-2;
+      ctx.fillStyle=volColor(vol);
+      ctx.beginPath();ctx.roundRect(x,y,rw,rh,2);ctx.fill();
+    });
+  });
+  Array.from({length:24},(_,ci)=>{ctx.fillStyle=textCol;ctx.font=`9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(ci+1,padL+ci*cellW+cellW/2,padT-3);});
+  // Legend
+  const ly=padT+16*cellH+12;
+  const items=[{col:isDark?'rgba(67,160,71,0.75)':'rgba(67,160,71,0.7)',lbl:'High (≥50%)'},{col:isDark?'rgba(230,156,48,0.75)':'rgba(230,156,48,0.7)',lbl:'Low (20–50%)'},{col:isDark?'rgba(233,30,99,0.7)':'rgba(233,30,99,0.65)',lbl:'Very low (<20%)'},{col:isDark?'#1c2030':'#e8eaf2',lbl:'Empty (0 nL)'}];
+  let lx=padL;
+  items.forEach(({col,lbl})=>{ctx.fillStyle=col;ctx.beginPath();ctx.roundRect(lx,ly,14,10,2);ctx.fill();ctx.fillStyle=textCol;ctx.font=`9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(lbl,lx+17,ly+5);lx+=lbl.length*5.5+26;});
+  // Hover tooltip
+  canvas._surveyData=data; canvas._surveyMeta={padL,padT,cellW,cellH,sc,maxVol};
+  canvas.onmousemove=_surveyHover; canvas.onmouseleave=()=>{const t=document.getElementById('tt');if(t){t.style.display='none';}};
+}
+
+function _surveyHover(e){
+  const canvas=e.currentTarget,meta=canvas._surveyMeta,data=canvas._surveyData;
+  if(!meta||!data) return;
+  const rect=canvas.getBoundingClientRect();
+  const mx=(e.clientX-rect.left)/meta.sc, my=(e.clientY-rect.top)/meta.sc;
+  const ci=Math.floor((mx-meta.padL)/meta.cellW), ri=Math.floor((my-meta.padT)/meta.cellH);
+  const tt=document.getElementById('tt');
+  if(!tt) return;
+  if(ci<0||ci>=24||ri<0||ri>=16){tt.style.display='none';return;}
+  const row='ABCDEFGHIJKLMNOP'[ri], col=ci+1, wid=`${row}${col<10?'0'+col:col}`;
+  const vol=data[wid];
+  tt.textContent=`${wid}: ${vol!=null&&!isNaN(vol)?vol.toFixed(1)+' nL':'—'}`;
+  tt.style.display='block'; tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-8)+'px';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MULTI-ASSAY TYPES
+// ═══════════════════════════════════════════════════════════════
+let _matCounter = 0;
+
+function toggleMultiAssay() {
+  const chk=document.getElementById('multi-assay-chk');
+  const panel=document.getElementById('multi-assay-panels');
+  if(!chk||!panel) return;
+  panel.style.display=chk.checked?'':'none';
+  if(chk.checked && document.getElementById('mat-type-list').children.length===0) {
+    addAssayType(); addAssayType();
+  }
+}
+
+function addAssayType() {
+  const list=document.getElementById('mat-type-list');
+  if(!list) return;
+  const idx=_matCounter++;
+  const div=document.createElement('div');
+  div.id=`mat-panel-${idx}`;
+  div.style.cssText='border:1px solid var(--border2);border-radius:8px;padding:12px;margin-bottom:10px;background:var(--surface2);';
+  div.innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <select id="mat-type-${idx}" onchange="updateMatPanel(${idx})" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);">
+        <option value="hibit">HiBiT Degradation</option>
+        <option value="displacement">Displacement Assay</option>
+        <option value="gain">Gain-of-Signal Assay</option>
+        <option value="ctg">CellTiter-Glo / Viability</option>
+      </select>
+      <input type="text" id="mat-prefix-${idx}" placeholder="Pherastar prefix (e.g. HIBIT)" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);">
+      <button onclick="removeAssayType(${idx})" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border2);background:var(--surface3);color:var(--text3);font-size:12px;cursor:pointer;">✕</button>
+    </div>
+    <div class="setup-2col" style="gap:8px;">
+      <div><label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">Control (Vehicle) wells</label>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="mat-ctrl-${idx}" placeholder="e.g. B22:O23" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);">
+        </div>
+      </div>
+      <div id="mat-zero-wrap-${idx}" style="display:none;">
+        <label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">0% signal wells</label>
+        <input type="text" id="mat-zero-${idx}" placeholder="e.g. B24:O24" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);box-sizing:border-box;">
+      </div>
+    </div>`;
+  list.appendChild(div);
+}
+
+function updateMatPanel(idx) {
+  const t=(document.getElementById(`mat-type-${idx}`)||{}).value||'hibit';
+  const zw=document.getElementById(`mat-zero-wrap-${idx}`);
+  if(zw) zw.style.display=(t==='displacement')?'':'none';
+}
+
+function removeAssayType(idx) {
+  const el=document.getElementById(`mat-panel-${idx}`);
+  if(el) el.remove();
+}
+
+function collectMultiAssayConfigs() {
+  const list=document.getElementById('mat-type-list');
+  if(!list) return [];
+  const configs=[];
+  list.querySelectorAll('[id^="mat-panel-"]').forEach(panel=>{
+    const idx=panel.id.replace('mat-panel-','');
+    const type=(document.getElementById(`mat-type-${idx}`)||{}).value||'hibit';
+    const prefix=(document.getElementById(`mat-prefix-${idx}`)||{}).value?.trim()||'';
+    const ctrl=(document.getElementById(`mat-ctrl-${idx}`)||{}).value?.trim()||'';
+    const zero=(document.getElementById(`mat-zero-${idx}`)||{}).value?.trim()||'';
+    configs.push({type,prefix,ctrl,zero,idx});
+  });
+  return configs;
+}
+
 (function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});onAssayTypeChange();})();
 window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='switchTab'||!e.data.tab)return;
