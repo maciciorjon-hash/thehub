@@ -113,8 +113,6 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 /* Setup Modal */
 .setup-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
 .setup-overlay.hidden{display:none;}
-.setup-overlay.inline-mode{position:static;background:none;backdrop-filter:none;z-index:auto;display:flex;flex-direction:column;align-items:stretch;flex:1;min-height:0;}
-.setup-overlay.inline-mode .setup-card{width:100%;max-width:none;max-height:none;border-radius:0;box-shadow:none;flex:1;}
 .setup-card{background:var(--surface);border-radius:16px;width:680px;max-width:calc(100vw - 20px);max-height:calc(100vh - 28px);display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.35);overflow:hidden;}
 .setup-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:22px 26px 0;gap:12px;flex-shrink:0;}
 .setup-htitle{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-0.2px;}
@@ -764,7 +762,6 @@ tr:hover td{background:var(--surface2);}
 <div class="right">
   <div class="pbar-wrap"><div class="pbar" id="pbar"></div></div>
   <div class="tabs">
-    <div class="tab" data-tab="rerun">↺ Re-run</div>
     <div class="tab active" data-tab="log">Console</div>
     <div class="tab" data-tab="scatter">Plots <span class="tcnt" id="sc">0</span></div>
     <div class="tab" data-tab="curves">Curves</div>
@@ -1074,38 +1071,9 @@ const _allTabs = document.querySelectorAll('.tab');
 const _allPanes = document.querySelectorAll('.tabpane');
 _allTabs.forEach(t => t.addEventListener('click', () => {
   const id = t.dataset.tab;
-  // If modal is currently inline (Re-run tab was active), restore it to its original parent
-  const _modal = document.getElementById('setup-modal');
-  if (_modal?.classList.contains('inline-mode')) {
-    const _mainEl = document.querySelector('#panel-analysis main');
-    const _rightEl = document.querySelector('.right');
-    if (_mainEl && _rightEl) _mainEl.insertBefore(_modal, _rightEl);
-    _modal.classList.remove('inline-mode');
-    _modal.classList.add('hidden');
-  }
   _allTabs.forEach(x => x.classList.remove('active'));
   _allPanes.forEach(x => x.classList.remove('active'));
   t.classList.add('active');
-  if (id === 'rerun') {
-    const pane = document.getElementById('tab-rerun');
-    if (pane) {
-      pane.classList.add('active');
-      pane.innerHTML = '';
-      if (_modal) {
-        pane.appendChild(_modal);
-        _modal.classList.remove('hidden');
-        _modal.classList.add('inline-mode');
-        const ran = scatterData?.length > 0;
-        const sub = document.getElementById('setup-hsub');
-        if (sub) sub.textContent = ran ? 'Modify parameters and re-run' : 'Configure your experiment';
-        const hclose = document.getElementById('setup-hclose');
-        const cancel = document.getElementById('setup-cancel');
-        if (hclose) hclose.style.display = ran ? '' : 'none';
-        if (cancel) cancel.style.display = ran ? '' : 'none';
-      }
-    }
-    return;
-  }
   document.getElementById('tab-' + id).classList.add('active');
   requestAnimationFrame(function(){
     if (id === 'scatter' && scatterChart) scatterChart.resize();
@@ -8108,13 +8076,7 @@ function openSetupModal() {
 }
 function closeSetupModal() {
   const modal = document.getElementById('setup-modal');
-  if (!modal) return;
-  if (modal.classList.contains('inline-mode')) {
-    // In Re-run tab: navigate away (Console tab) rather than just hiding
-    document.querySelector('.tab[data-tab="log"]')?.click();
-    return;
-  }
-  modal.classList.add('hidden');
+  if (modal) modal.classList.add('hidden');
 }
 function switchSetupTab(name) {
   document.querySelectorAll('.setup-stab').forEach(t =>
