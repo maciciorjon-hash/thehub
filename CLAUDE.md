@@ -253,15 +253,13 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-09 (Round 32: Echo multi-assay overhaul + Hub Glootie easter egg)
+Last session: 2026-06-09 (Round 33: Echo multi-assay UX overhaul — multi-file, per-assay analysis params, CI, dynamic scatter)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.85MB (7,846,818 chars). Version v0.9.97
+Hub file size: 7.85MB (7,849,690 chars). Version v0.9.98
 Echo changes (labcyte_echo.html):
-- Multi-assay per-type Echo file: _matEchoFiles dict; each mat-panel gets drop zone (mat-echo-zone-{idx}/mat-echo-input-{idx}); echoFile swapped per-type in runPipeline; falls back to main file if not set
-- Multi-assay per-type analysis params: collapsible <details> in each mat-panel with hookThr, r2, sd, topConstrain, dmaxCap, fixBot, fixHill, minBot, skipNorm; collectMultiAssayConfigs reads all; runPipeline passes mc.* to runAnalysisJS
-- Plate tab fix: allPlateData={} accumulates Object.assign across all types; window._plateData=allPlateData after loop — all assay plates visible
-- Results pivot table: renderMultiAssayResults() — one row per compound, columns grouped by assay type; row 1 header spans with colored assay name (HiBiT/#e08c30, Displacement/#0079b9, Gain-of-Signal/#26a69a, CTG/#9c6fd4); row 2 per-column names with assay-specific labels (DC50/IC50/EC50, pDC50/pIC50/pEC50, LogDC50/LogIC50/LogEC50, Dmax/Emax)
-- Cross-assay scatter: 'Cross-assay' button in Plots tab toolbar (shown when multiAssay); cross-section with X/Y selectors ('AssayType — Param'); buildCrossAssayChart() pivots scatterData; Chart.js scatter; downloadCrossAssayPNG()
-Hub changes (hub-shell.html):
-- Glootie easter egg: 10-click on H logo (separate glootieClicks counter, 3s reset); #glootie-overlay with dark green modal, alien emoji, 'Do you wanna develop an app?'; Yes button shows 'DO NOT DEVELOP THE APP' response; No thanks closes
+- Multiple echo files in Files tab: echoFiles[] array; multi-file input; renderEchoList() shows loaded files with remove buttons; mergeEchoCsvs() concatenates CSVs by header detection at runPipeline time
+- Per-assay analysis params moved to Analysis tab: syncMatAnalysisParams() renders #mat-analysis-container (hidden in single-assay mode); each assay gets hookThr/r2/sd/topConstrain/dmaxCap/fixBot/fixHill/minBot/skipNorm; labels adapt (gain: no %, displacement: 'Max inhibition (%)')
+- Ctrl well grid picker in mat-panels: ⊞ Grid button beside each mat-ctrl input; openMatCtrlPicker(idx) sets _matCtrlPickerTarget; applyCtrlPicker() routes output to mat-ctrl or p-ctrl based on target
+- 95% CI output: _matInv() Gauss-Jordan inversion + _tQ95() t-table added; _lmFit() returns {params,r2,se,df}; runAnalysisJS computes CI_DC50_lower/upper, CI_Hill_lower/upper, CI_Bot_lower/upper, CI_Top_lower/upper; Output tab checkboxes: Top, Bottom, CI_DC50 (default on), CI_all (default off)
+- Dynamic scatter axes: _buildAxisOptions() generates X/Y selects from actual results columns; in multi-assay mode adds 'assaytype::param' cross-assay options; _buildMultiAssayPivot() creates one-row-per-compound pivot for cross-assay plotting; cross-assay separate button/section removed
 <!-- LAST_SESSION_END -->

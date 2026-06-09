@@ -567,14 +567,14 @@ tr:hover td{background:var(--surface2);}
       <div class="setup-pane active" id="setup-pane-files">
         <div class="setup-2col" style="margin-bottom:16px;">
           <div>
-            <div class="setup-section-lbl">Echo transfer file <span style="color:var(--accent);font-size:9px;">required</span></div>
+            <div class="setup-section-lbl">Echo transfer file(s) <span style="color:var(--accent);font-size:9px;">required</span></div>
             <div class="dropzone" id="echo-zone">
-              <input type="file" id="echo-input" accept=".csv">
+              <input type="file" id="echo-input" accept=".csv" multiple>
               <span class="dz-icon" id="echo-icon">📄</span>
-              <div class="dz-title">Drop CSV or click</div>
-              <div class="dz-sub">Echo liquid handler output (.csv)</div>
-              <div class="dz-fname" id="echo-name" style="display:none;"></div>
+              <div class="dz-title">Drop CSV(s) or click</div>
+              <div class="dz-sub">Echo liquid handler output · multiple files supported</div>
             </div>
+            <div class="rlist" id="echo-list" style="margin-top:4px;"></div>
           </div>
           <div>
             <div class="setup-section-lbl">PHERAstar reader files <span style="color:var(--accent);font-size:9px;">required</span></div>
@@ -672,6 +672,7 @@ tr:hover td{background:var(--surface2);}
 
       <!-- TAB 3: ANALYSIS -->
       <div class="setup-pane" id="setup-pane-analysis">
+        <div id="single-analysis-params">
         <div class="setup-2col" style="margin-bottom:16px;">
           <div class="field" style="margin-bottom:0;"><label>Echo header rows to skip</label><input type="number" id="p-skip" value="8" min="0" max="50"></div>
           <div class="field" id="hook-effect-field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-hook-en" checked onchange="document.getElementById('p-hook').disabled=!this.checked;document.getElementById('p-hook').style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Hook effect threshold (Δ%)<span class="pinfo" data-tip="HiBiT: if signal at the highest conc. exceeds the signal at 2 steps lower by more than this many percentage points, it is flagged and excluded. E.g. threshold=10: ref=90% → hook if >100%.">i</span></span></div><input type="number" id="p-hook" value="10" min="1" max="200"></div>
@@ -693,6 +694,8 @@ tr:hover td{background:var(--surface2);}
         <div class="setup-2col">
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-min-bot-en" checked onchange="var el=document.getElementById('p-min-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span id="lbl-bot-ge" class="flbl">Bottom ≥ (%)<span class="pinfo" data-tip="Constrains the 4PL bottom asymptote to be ≥ this value. Set to 0 for normalized data — prevents the curve from fitting a negative baseline plateau.">i</span></span></div><input type="number" id="p-min-bot-val" value="0" min="-100" max="50" step="1"><div class="hint">Lower bound on bottom asymptote</div></div>
         </div>
+        </div><!-- end single-analysis-params -->
+        <div id="mat-analysis-container" style="display:none;"></div>
       </div>
 
       <!-- TAB 4: OUTPUT -->
@@ -709,6 +712,10 @@ tr:hover td{background:var(--surface2);}
             <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="R2" checked> <span>R²</span></label>
             <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Flag" checked> <span>Flag</span></label>
             <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Flag_Reason" checked> <span>Reason</span></label>
+            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Top_val"> <span>Top</span></label>
+            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Bot_val"> <span>Bottom</span></label>
+            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="CI_DC50" checked> <span>DC<sub>50</sub> 95% CI</span></label>
+            <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="CI_all"> <span>All param 95% CI</span></label>
           </div>
         </div>
         <div class="setup-group">
@@ -1090,7 +1097,7 @@ _allTabs.forEach(t => t.addEventListener('click', () => {
 }));
 
 // ===== STATE =====
-let echoFile = null, readerFiles = {}, downloadBlobs = [];
+let echoFile = null, echoFiles = [], readerFiles = {}, downloadBlobs = [];
 let scatterChart = null, scatterData = [];
 let _lastResultsData = [];
 let _sortState = {col: null, asc: true};
@@ -1185,12 +1192,11 @@ function setupDrop(zoneId, inputId, onFiles) {
 }
 setupDrop('echo-zone','echo-input', files => {
   if (!files.length) return;
-  echoFile = files[0];
+  Array.from(files).forEach(f => { if (!echoFiles.find(e=>e.name===f.name)) echoFiles.push(f); });
   document.getElementById('echo-zone').classList.add('filled');
   document.getElementById('echo-icon').textContent = '✅';
-  const n = document.getElementById('echo-name');
-  n.textContent = echoFile.name; n.style.display = 'block';
-  log('Echo file: ' + echoFile.name + ' (' + (echoFile.size/1024).toFixed(1) + ' KB)', 'ok');
+  renderEchoList();
+  log('Echo file(s): ' + echoFiles.map(f=>f.name).join(', '), 'ok');
   checkReady();
 });
 setupDrop('reader-zone','reader-input', files => {
@@ -1209,13 +1215,33 @@ function renderReaderList() {
   });
 }
 function rmReader(n) { delete readerFiles[n]; renderReaderList(); checkReady(); }
+function renderEchoList() {
+  const list = document.getElementById('echo-list');
+  if (!list) return;
+  list.innerHTML = '';
+  echoFiles.forEach(f => {
+    const d = document.createElement('div');
+    d.className = 'ritem';
+    d.innerHTML = '<div class="rdot" style="background:var(--accent);"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + f.name + '</span><button class="rrm" onclick="rmEchoFile(\'' + f.name.replace(/'/g,"\\'") + '\')">×</button>';
+    list.appendChild(d);
+  });
+}
+function rmEchoFile(name) {
+  echoFiles = echoFiles.filter(f => f.name !== name);
+  if (!echoFiles.length) {
+    document.getElementById('echo-zone').classList.remove('filled');
+    document.getElementById('echo-icon').textContent = '📄';
+  }
+  renderEchoList();
+  checkReady();
+}
 function checkReady() {
-  const ok = echoFile && Object.keys(readerFiles).length > 0;
+  const ok = (echoFile || echoFiles.length) && Object.keys(readerFiles).length > 0;
   document.getElementById('run-btn').disabled = !ok;
   const st = document.getElementById('setup-fstatus');
   if (st) {
-    if (!echoFile && !Object.keys(readerFiles).length) st.textContent = 'Echo CSV and PHERAstar files required';
-    else if (!echoFile) st.textContent = 'Echo transfer CSV required';
+    if (!echoFile && !echoFiles.length && !Object.keys(readerFiles).length) st.textContent = 'Echo CSV and PHERAstar files required';
+    else if (!echoFile && !echoFiles.length) st.textContent = 'Echo transfer CSV required';
     else if (!Object.keys(readerFiles).length) st.textContent = 'PHERAstar data file required';
     else st.textContent = 'Ready to run analysis';
   }
@@ -1344,10 +1370,28 @@ function _buildCsvBytes(header, rows) {
 }
 
 // ===== PIPELINE =====
+async function mergeEchoCsvs(files) {
+  if (!files.length) return null;
+  if (files.length === 1) return files[0];
+  const texts = await Promise.all(files.map(f => f.text()));
+  let headerLine = null;
+  const rows = [];
+  for (const text of texts) {
+    const lines = text.split('\n');
+    let hIdx = lines.findIndex(l => /destination.?plate.?barcode/i.test(l) || /destination.?well/i.test(l));
+    if (hIdx < 0) hIdx = 0;
+    if (!headerLine) headerLine = lines[hIdx];
+    rows.push(...lines.slice(hIdx + 1).filter(l => l.trim()));
+  }
+  return new Blob([[headerLine, ...rows].join('\n')], {type:'text/plain'});
+}
+
 async function runPipeline() {
-  if (!echoFile || !Object.keys(readerFiles).length) return;
+  if ((!echoFile && !echoFiles.length) || !Object.keys(readerFiles).length) return;
   closeSetupModal();
   downloadBlobs = []; scatterData = []; window._resultsShowAll = false;
+  // Merge echo files if multiple
+  if (echoFiles.length) echoFile = await mergeEchoCsvs(echoFiles);
   if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
   document.getElementById('scatter-panel').innerHTML = '<div class="empty"><div class="ei">⏳</div><p>Running…</p></div>';
   document.getElementById('results-panel').innerHTML = '<div class="empty"><div class="ei">⏳</div><p>Fitting curves…</p></div>';
@@ -1436,9 +1480,7 @@ async function runPipeline() {
           : {...readerFiles};
         if (!Object.keys(matReaderFiles).length) { log(`  No reader files matched prefix "${mc.prefix}" — skipping`, 'warn'); continue; }
         const origReaderFiles = readerFiles;
-        const origEchoFile = echoFile;
         readerFiles = matReaderFiles;
-        if (mc.echoFile) echoFile = mc.echoFile;
         try {
           const typeResults = await runAnalysisJS(
             assayId+'_'+mc.type, mc.ctrl||ctrlRange, skipRows,
@@ -1453,7 +1495,6 @@ async function runPipeline() {
           Object.assign(allPlateData, window._plateData || {});
         } finally {
           readerFiles = origReaderFiles;
-          echoFile = origEchoFile;
         }
       }
       window._plateData = allPlateData;
@@ -1766,6 +1807,31 @@ function _solveLin(A, b) {
   return x;
 }
 
+function _matInv(A) {
+  const n=A.length;
+  const M=A.map((row,i)=>[...row,...Array.from({length:n},(_,j)=>i===j?1:0)]);
+  for(let col=0;col<n;col++){
+    let maxRow=col;
+    for(let r=col+1;r<n;r++) if(Math.abs(M[r][col])>Math.abs(M[maxRow][col])) maxRow=r;
+    [M[col],M[maxRow]]=[M[maxRow],M[col]];
+    if(Math.abs(M[col][col])<1e-14) return null;
+    const piv=M[col][col];
+    for(let j=0;j<2*n;j++) M[col][j]/=piv;
+    for(let r=0;r<n;r++){
+      if(r===col) continue;
+      const f=M[r][col];
+      for(let j=0;j<2*n;j++) M[r][j]-=f*M[col][j];
+    }
+  }
+  return M.map(row=>row.slice(n));
+}
+function _tQ95(df){
+  if(df<=1)return 12.71;if(df<=2)return 4.30;if(df<=3)return 3.18;
+  if(df<=4)return 2.78;if(df<=5)return 2.57;if(df<=7)return 2.36;
+  if(df<=10)return 2.23;if(df<=15)return 2.13;if(df<=20)return 2.09;
+  if(df<=30)return 2.04;return 1.96;
+}
+
 function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   const n = xArr.length, np = pInit.length;
   const cl = (v, i) => Math.max(loBound[i], Math.min(hiBound[i], v));
@@ -1798,7 +1864,13 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   const yMean = yArr.reduce((s, v) => s + v, 0) / n;
   let ssTot = 0, ssRes = 0;
   for (let i = 0; i < n; i++) { ssTot += (yArr[i] - yMean) ** 2; ssRes += (yArr[i] - valFn(xArr[i], ...p)) ** 2; }
-  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0 };
+  const df = Math.max(1, n - np);
+  const sigma2 = ssRes / df;
+  const finalJtJ = Array.from({length:np},()=>new Array(np).fill(0));
+  for(let i=0;i<n;i++){const jac=jacFn(xArr[i],...p);for(let a=0;a<np;a++) for(let b=0;b<np;b++) finalJtJ[a][b]+=jac[a]*jac[b];}
+  const inv=_matInv(finalJtJ);
+  const se=inv?inv.map((row,i)=>Math.sqrt(Math.max(0,row[i]*sigma2))):null;
+  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df };
 }
 
 // Multi-start LM: tries 5 evenly-spaced logEC50 seeds (param index 1) and returns the best fit.
@@ -2095,6 +2167,17 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         const dmax = Math.round(gainMode ? tc : (100 - bot));
         const pdc50 = +(-logec50).toFixed(3);
 
+        const _seArr = fitResult.se || null;
+        const _t95 = _seArr ? _tQ95(fitResult.df || 10) : 0;
+        const CI_DC50_lower = _seArr ? +((Math.pow(10, logec50 - _t95*_seArr[1])*1e9).toFixed(1)) : null;
+        const CI_DC50_upper = _seArr ? +((Math.pow(10, logec50 + _t95*_seArr[1])*1e9).toFixed(1)) : null;
+        const CI_Hill_lower = _seArr ? +(hill - _t95*_seArr[2]).toFixed(3) : null;
+        const CI_Hill_upper = _seArr ? +(hill + _t95*_seArr[2]).toFixed(3) : null;
+        const CI_Bot_lower  = _seArr ? +(bot  - _t95*_seArr[0]).toFixed(2) : null;
+        const CI_Bot_upper  = _seArr ? +(bot  + _t95*_seArr[0]).toFixed(2) : null;
+        const CI_Top_lower  = (_seArr && _seArr[3]!=null) ? +(tc - _t95*_seArr[3]).toFixed(2) : null;
+        const CI_Top_upper  = (_seArr && _seArr[3]!=null) ? +(tc + _t95*_seArr[3]).toFixed(2) : null;
+
         let absDc50 = null;
         if (absdc50Enabled && bot < 50 && tc > 50 && Math.abs(hill) > 1e-6) {
           try { absDc50 = +((Math.pow(10, logec50 + Math.log10((tc - 50) / (50 - bot)) / hill) * 1e9).toFixed(1)); } catch (e) {}
@@ -2136,6 +2219,9 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           LogIC50_M: +logec50.toFixed(3), pDC50: pdc50,
           HillSlope: +hill.toFixed(2), R2: +r2.toFixed(3),
           Flag: flags.length ? 'Yes' : 'No', Flag_Reason: flags.join('; '),
+          Top_val: +tc.toFixed(2), Bot_val: +bot.toFixed(2),
+          CI_DC50_lower, CI_DC50_upper, CI_Hill_lower, CI_Hill_upper,
+          CI_Top_lower, CI_Top_upper, CI_Bot_lower, CI_Bot_upper,
           _bot: +bot.toFixed(3), _logec50: +logec50.toFixed(4),
           _hill: +hill.toFixed(3), _tc: tc,
           _xmin: +Math.min(...sdata.map(r => r.log10Conc)).toFixed(3),
@@ -2231,6 +2317,10 @@ function renderResults(data) {
   }
 
   const _selCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
+  const _selCI = _selCols.has('CI_DC50');
+  const _selCIall = _selCols.has('CI_all');
+  const _selTop = _selCols.has('Top_val');
+  const _selBot = _selCols.has('Bot_val');
   const _noGain = _t==='displacement';
   const _vl = window._bpVarLabels || {};
   const _colLbls = {DC50_nM:_vl['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vl['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vl['Dmax_pct']||'Dmax (%)',LogIC50_M:_vl['LogIC50_M']||'LogIC50',pDC50:_vl['pDC50']||'pDC50',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
@@ -2246,6 +2336,10 @@ function renderResults(data) {
     R2: r=>'<td>'+r.R2+'</td>',
     Flag: r=>'<td class="'+(r.Flag==='Yes'?'fy':'fn')+'">'+r.Flag+'</td>',
     Flag_Reason: r=>'<td style="max-width:200px;white-space:normal;font-size:11px;color:var(--text3);">'+esc(r.Flag_Reason||'')+'</td>',
+    CI_DC50: r=>`<td style="font-size:10.5px;color:var(--text2);white-space:nowrap;">${r.CI_DC50_lower!=null?r.CI_DC50_lower+'–'+r.CI_DC50_upper:'—'}</td>`,
+    CI_all:  r=>`<td style="font-size:10px;color:var(--text3);white-space:nowrap;">${r.CI_Hill_lower!=null?r.CI_Hill_lower+'–'+r.CI_Hill_upper:'—'}</td>`,
+    Top_val: r=>`<td>${r.Top_val!=null?r.Top_val:'—'}</td>`,
+    Bot_val: r=>`<td>${r.Bot_val!=null?r.Bot_val:'—'}</td>`,
   };
   if (_kiParams) _cellFn['_Ki_nM'] = r=>{const _ic50=parseFloat(r.DC50_nM);return '<td>'+(isNaN(_ic50)?'—':(_ic50/(1+_kiParams.lcNM/_kiParams.kdNM)).toFixed(2))+'</td>';};
   const _isMultiAssay = window._lastAnalysisParams?.multiAssay;
@@ -2261,6 +2355,10 @@ function renderResults(data) {
       .filter(k=>!(k==='AbsDC50_nM'&&_t!=='hibit'))
       .filter(k=>!(k==='Dmax_pct'&&_noGain))
       .map(k=>({k,l:_colLbls[k]||k,ns:k==='Flag'||k==='Flag_Reason'})),
+    ...(_selCI   ? [{k:'CI_DC50',  l:'DC50 95% CI', ns:true}] : []),
+    ...(_selTop  ? [{k:'Top_val',  l:'Top',         ns:true}] : []),
+    ...(_selBot  ? [{k:'Bot_val',  l:'Bottom',      ns:true}] : []),
+    ...(_selCIall? [{k:'CI_all',   l:'Hill 95% CI', ns:true}] : []),
   ];
   const _pdfBlobs=downloadBlobs.filter(b=>b.kind==='pdf');
   const _rawBlob=downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
@@ -2327,8 +2425,8 @@ function renderMultiAssayResults(data) {
 
   const orderedTypes = [...new Set(data.map(r=>r._assayType).filter(Boolean))];
   const _selCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
-  const activeKeys = ['DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag']
-    .filter(k=>k==='DC50_nM'||k==='Flag'||_selCols.has(k));
+  const activeKeys = ['DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag',...(_selCols.has('CI_DC50')?['CI_DC50']:[])]
+    .filter(k=>k==='DC50_nM'||k==='Flag'||k==='CI_DC50'||_selCols.has(k));
 
   // Pivot: one entry per Sample_ID
   const pivot = new Map();
@@ -2357,7 +2455,7 @@ function renderMultiAssayResults(data) {
   for (const at of orderedTypes) {
     const m = _assayMeta[at]||{name:at,color:'#8b90a8',dmax:'Dmax (%)'};
     const n = activeKeys.filter(k=>!(k==='Dmax_pct'&&!m.dmax)).length;
-    h += `<th colspan="${n}" style="background:${m.color}22;color:${m.color};border-bottom:2px solid ${m.color};text-align:center;font-size:11px;font-weight:700;letter-spacing:.3px;">${esc(m.name)}</th>`;
+    h += `<th colspan="${n}" style="background:${m.color}22;color:${m.color};border-bottom:2px solid ${m.color};text-align:center;font-size:11px;font-weight:700;letter-spacing:.3px;white-space:nowrap;">${esc(m.name)}</th>`;
   }
   h += '</tr>';
 
@@ -2365,7 +2463,7 @@ function renderMultiAssayResults(data) {
   h += '<tr>';
   for (const at of orderedTypes) {
     const m = _assayMeta[at]||{name:at,color:'#8b90a8',dc50:'DC50 (nM)',logdc50:'LogDC50',pdc50:'pDC50',dmax:'Dmax (%)'};
-    const lbl = {DC50_nM:m.dc50,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag'};
+    const lbl = {DC50_nM:m.dc50,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag',CI_DC50:'DC50 95% CI'};
     for (const k of activeKeys) {
       if (k==='Dmax_pct'&&!m.dmax) continue;
       h += `<th style="font-size:11px;background:${m.color}0d;">${lbl[k]||k}</th>`;
@@ -2385,6 +2483,7 @@ function renderMultiAssayResults(data) {
         if (k==='Dmax_pct'&&!m.dmax) continue;
         if (!r) { h+=`<td style="color:var(--text3);">—</td>`; continue; }
         if (k==='Flag') h+=`<td class="${r.Flag==='Yes'?'fy':'fn'}">${r.Flag||'—'}</td>`;
+        else if (k==='CI_DC50') h+=`<td style="font-size:10.5px;color:var(--text2);white-space:nowrap;">${r.CI_DC50_lower!=null?r.CI_DC50_lower+'–'+r.CI_DC50_upper:'—'}</td>`;
         else h+=`<td>${r[k]!=null?r[k]:'—'}</td>`;
       }
     }
@@ -3433,36 +3532,58 @@ function renderScatter(data) {
   const _scLogLbl = _assayT==='hibit' ? 'LogDC₅₀' : _assayT==='gain' ? 'LogEC₅₀' : 'LogIC₅₀';
   const _isMultiAssay = !!(window._lastAnalysisParams?.multiAssay);
 
+  const _buildAxisOptions = (data, _isMultiAssay) => {
+    const _assayMeta = {
+      hibit:       {name:'HiBiT',         color:'#e08c30', dc50:'DC50 (nM)',  logdc50:'LogDC50', pdc50:'pDC50', dmax:'Dmax (%)'},
+      displacement:{name:'Displacement',  color:'#0079b9', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:null},
+      gain:        {name:'Gain-of-Signal',color:'#26a69a', dc50:'EC50 (nM)',  logdc50:'LogEC50', pdc50:'pEC50', dmax:'Emax (%)'},
+      ctg:         {name:'CTG/Viability', color:'#9c6fd4', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:'Span (%)'},
+    };
+    if (_isMultiAssay) {
+      const types = [...new Set(data.map(r=>r._assayType).filter(Boolean))];
+      const opts = [];
+      for (const at of types) {
+        const m = _assayMeta[at] || {name:at, color:'#8b90a8', dc50:'DC50 (nM)', logdc50:'LogDC50', pdc50:'pDC50', dmax:'Dmax (%)'};
+        opts.push({value:`${at}::DC50_nM`, label:`${m.name} — ${m.dc50}`});
+        if (m.dmax) opts.push({value:`${at}::Dmax_pct`, label:`${m.name} — ${m.dmax}`});
+        opts.push({value:`${at}::LogIC50_M`, label:`${m.name} — ${m.logdc50}`});
+        opts.push({value:`${at}::pDC50`, label:`${m.name} — ${m.pdc50}`});
+        opts.push({value:`${at}::HillSlope`, label:`${m.name} — Hill`});
+        opts.push({value:`${at}::R2`, label:`${m.name} — R²`});
+        opts.push({value:`${at}::CI_DC50_lower`, label:`${m.name} — ${m.dc50} CI lower`});
+        opts.push({value:`${at}::CI_DC50_upper`, label:`${m.name} — ${m.dc50} CI upper`});
+      }
+      return opts;
+    }
+    const logLbl = _assayT==='hibit'?'LogDC₅₀':_assayT==='gain'?'LogEC₅₀':'LogIC₅₀';
+    return [
+      {value:'LogIC50_M',label:logLbl+' (M)'},{value:'DC50_nM',label:'DC₅₀ (nM)'},
+      {value:'AbsDC50_nM',label:'Abs DC₅₀ (nM)'},{value:'pDC50',label:'pDC₅₀'},
+      {value:'HillSlope',label:'Hill slope'},{value:'R2',label:'R²'},
+      {value:'Dmax_pct',label:'Dmax (%)'},{value:'CI_DC50_lower',label:'DC₅₀ CI lower'},
+      {value:'CI_DC50_upper',label:'DC₅₀ CI upper'},{value:'Top_val',label:'Top'},
+      {value:'Bot_val',label:'Bottom'}
+    ];
+  };
+  window._scatterAxisOpts = _buildAxisOptions(data, _isMultiAssay);
+
   panel.innerHTML = `
     <div class="strow" style="margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:8px;">
       <span style="font-size:11px;color:var(--text3);font-weight:500;letter-spacing:.5px;margin-right:8px;">PLOT TYPE</span>
       <button class="stbtn active" id="ptype-scatter" onclick="switchPlotType('scatter')">Scatter</button>
       <button class="stbtn" id="ptype-box" onclick="switchPlotType('box')">Box plot</button>
       <button class="stbtn" id="ptype-sel" onclick="switchPlotType('selectivity')">Selectivity</button>
-      ${_isMultiAssay ? '<button class="stbtn" id="ptype-cross" onclick="switchPlotType(\'cross\')">Cross-assay</button>' : ''}
     </div>
     <div id="sc-section" style="flex:1;display:flex;flex-direction:column;min-height:0;"><div id="sc-colorby-legend" style="padding:2px 12px;min-height:0;"></div>
     <div class="scatter-toolbar">
       <div class="strow" style="flex-wrap:wrap;gap:6px 10px;">
         <label>X</label>
         <select id="sc-x" onchange="updateScatter()">
-          <option value="LogIC50_M">${_scLogLbl} (M)</option>
-          <option value="DC50_nM">DC₅₀ (nM)</option>
-          <option value="AbsDC50_nM">Abs DC₅₀ (nM)</option>
-          <option value="pDC50">pDC₅₀</option>
-          <option value="HillSlope">Hill slope</option>
-          <option value="R2">R²</option>
-          <option value="Dmax_pct">Dmax (%)</option>
+          ${window._scatterAxisOpts.map((o,i)=>`<option value="${o.value}"${i===0?' selected':''}>${o.label}</option>`).join('')}
         </select>
         <label>Y</label>
         <select id="sc-y" onchange="updateScatter()">
-          <option value="Dmax_pct">Dmax (%)</option>
-          <option value="DC50_nM">DC₅₀ (nM)</option>
-          <option value="AbsDC50_nM">Abs DC₅₀ (nM)</option>
-          <option value="LogIC50_M">${_scLogLbl} (M)</option>
-          <option value="pDC50">pDC₅₀</option>
-          <option value="HillSlope">Hill slope</option>
-          <option value="R2">R²</option>
+          ${window._scatterAxisOpts.map((o,i)=>`<option value="${o.value}"${i===1?' selected':''}>${o.label}</option>`).join('')}
         </select>
         <label>Group</label>
         <select id="sc-prot" onchange="updateScatter()">
@@ -3635,29 +3756,28 @@ function renderScatter(data) {
         <span id="sel-info" style="font-size:11px;color:var(--text3);font-family:var(--sans);"></span>
       </div>
     </div>
-    ${_isMultiAssay ? `<div id="cross-section" style="display:none;flex:1;display:none;flex-direction:column;gap:10px;padding:6px 0;">
-      <div class="scatter-toolbar">
-        <div class="strow" style="flex-wrap:wrap;gap:6px 10px;">
-          <label>X axis</label>
-          <select id="cross-x" onchange="buildCrossAssayChart()" style="flex:1;min-width:160px;"></select>
-          <label>Y axis</label>
-          <select id="cross-y" onchange="buildCrossAssayChart()" style="flex:1;min-width:160px;"></select>
-          <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="cross-flags" onchange="buildCrossAssayChart()"> Flagged</label>
-          <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="cross-names" onchange="buildCrossAssayChart()"> Names</label>
-        </div>
-      </div>
-      <div class="scatter-wrap" style="position:relative;flex:1;"><canvas id="cross-canvas" style="width:100%;height:100%;"></canvas></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
-        <button class="scatter-dl-btn" onclick="downloadCrossAssayPNG()">⬇ PNG 600 DPI</button>
-        <span id="cross-info" style="font-size:11px;color:var(--text3);font-family:var(--sans);"></span>
-      </div>
-    </div>` : ''}
     <div id="bp-section" style="display:none;padding:4px 0;">
       <div class="empty"><div class="ei">📦</div><p>Run analysis first to generate box plots.<br><small style="color:var(--text3);">Then use Y dropdown to select the metric to display.</small></p></div>
     </div>
   `;
   switchPlotType('scatter');
   buildScatterChart();
+}
+
+function _buildMultiAssayPivot(data) {
+  const pivot = new Map();
+  for (const r of data) {
+    if (!pivot.has(r.Sample_ID)) pivot.set(r.Sample_ID, {Sample_ID:r.Sample_ID, Protein:r.Protein});
+    const at = r._assayType || 'hibit';
+    for (const [k,v] of Object.entries(r)) {
+      if (!k.startsWith('_') && k!=='Sample_ID'&&k!=='Protein'&&k!=='Flag'&&k!=='Flag_Reason') {
+        pivot.get(r.Sample_ID)[`${at}::${k}`] = v;
+      }
+    }
+    // Also store flag info per assay type
+    pivot.get(r.Sample_ID)[`${at}::Flag`] = r.Flag;
+  }
+  return [...pivot.values()];
 }
 
 function buildScatterChart() {
@@ -3667,8 +3787,15 @@ function buildScatterChart() {
   if (typeof Chart === 'undefined') { ctx.closest?.('.scatter-wrap')?.insertAdjacentHTML?.('afterbegin','<div style="padding:20px;color:var(--text3);font-size:12px;">Chart.js failed to load — refresh to retry.</div>'); return; }
   if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
 
-  const xKey = document.getElementById('sc-x')?.value || 'LogIC50_M';
-  const yKey2 = document.getElementById('sc-y')?.value || 'Dmax_pct';
+  const xKeyRaw = document.getElementById('sc-x')?.value || 'LogIC50_M';
+  const yKeyRaw = document.getElementById('sc-y')?.value || 'Dmax_pct';
+  const _isMultiAssayMode = !!(window._lastAnalysisParams?.multiAssay);
+  const _xHasAssay = xKeyRaw.includes('::');
+  const _yHasAssay = yKeyRaw.includes('::');
+  // For cross-assay plots (both axes use assay::param), pivot the data
+  const _usePivot = _isMultiAssayMode && (_xHasAssay || _yHasAssay);
+  const xKey = _usePivot ? xKeyRaw : (xKeyRaw.includes('::') ? xKeyRaw.split('::')[1] : xKeyRaw);
+  const yKey2 = _usePivot ? yKeyRaw : (yKeyRaw.includes('::') ? yKeyRaw.split('::')[1] : yKeyRaw);
   const protFilter = document.getElementById('sc-prot')?.value || 'all';
   const showFlags = document.getElementById('sc-flags')?.checked || false;
   const _xminEl = document.getElementById('sc-xmin');
@@ -3689,9 +3816,9 @@ function buildScatterChart() {
   const xLabelOverride = document.getElementById('sc-xlabel')?.value.trim() || '';
   const yLabelOverride = document.getElementById('sc-ylabel')?.value.trim() || '';
 
-  let rows = scatterData;
+  let rows = _usePivot ? _buildMultiAssayPivot(scatterData) : scatterData;
   if (!showFlags) rows = rows.filter(r => r.Flag !== 'Yes');
-  rows = _applyHitFilters(rows);
+  if (!_usePivot) rows = _applyHitFilters(rows);
   if (protFilter !== 'all') rows = rows.filter(r => r.Protein === protFilter);
 
   const proteins = [...new Set(rows.map(r=>r.Protein))].sort();
@@ -3717,7 +3844,10 @@ function buildScatterChart() {
   proteins.forEach(p=>{if(!window._scPalMap[p])window._scPalMap[p]=SCATTER_PALETTE[_spi++%SCATTER_PALETTE.length];});
   const datasets = proteins.map(prot => {
     const fg=window._scPalMap[prot];
-    const pts = rows.filter(r=>r.Protein===prot).map(r => ({
+    const pts = rows.filter(r=>r.Protein===prot).filter(r=>{
+      const _xv=parseFloat(r[xKey]), _yv=parseFloat(r[yKey2]);
+      return _usePivot ? (isFinite(_xv)&&isFinite(_yv)) : true;
+    }).map(r => ({
       x: (parseFloat(r[xKey])||0)+xOffset, y: r[yKey2],
       label: r.Sample_ID, flag: r.Flag,
       dc50: r.DC50_nM, dmax: r.Dmax_pct, r2: r.R2, protein: prot,
@@ -4185,16 +4315,13 @@ function switchPlotType(type) {
   const sc    = document.getElementById('sc-section');
   const bp    = document.getElementById('bp-section');
   const sel   = document.getElementById('sc-sel-section');
-  const cross = document.getElementById('cross-section');
   const btnSc    = document.getElementById('ptype-scatter');
   const btnBp    = document.getElementById('ptype-box');
   const btnSel   = document.getElementById('ptype-sel');
-  const btnCross = document.getElementById('ptype-cross');
   if (!sc || !bp) return;
   sc.style.display='none'; bp.style.display='none';
-  if(sel)   sel.style.display='none';
-  if(cross) cross.style.display='none';
-  [btnSc,btnBp,btnSel,btnCross].forEach(b=>b?.classList.remove('active'));
+  if(sel) sel.style.display='none';
+  [btnSc,btnBp,btnSel].forEach(b=>b?.classList.remove('active'));
   if (type === 'scatter') {
     sc.style.display = '';
     btnSc?.classList.add('active');
@@ -4202,10 +4329,6 @@ function switchPlotType(type) {
     if(sel){ sel.style.display=''; }
     btnSel?.classList.add('active');
     _initSelectivity();
-  } else if (type === 'cross') {
-    if(cross){ cross.style.display='flex'; cross.style.flexDirection='column'; }
-    btnCross?.classList.add('active');
-    buildCrossAssayChart();
   } else {
     bp.style.display = '';
     btnBp?.classList.add('active');
@@ -4214,133 +4337,6 @@ function switchPlotType(type) {
   }
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  CROSS-ASSAY SCATTER
-// ═══════════════════════════════════════════════════════════════════════════
-let _crossChart = null;
-
-function _crossAssayOptions() {
-  const _meta = {
-    hibit:       {name:'HiBiT',         color:'#e08c30', params:['DC50_nM','pDC50','LogIC50_M','Dmax_pct','HillSlope','R2']},
-    displacement:{name:'Displacement',  color:'#0079b9', params:['DC50_nM','pDC50','LogIC50_M','HillSlope','R2']},
-    gain:        {name:'Gain-of-Signal',color:'#26a69a', params:['DC50_nM','pDC50','LogIC50_M','Dmax_pct','HillSlope','R2']},
-    ctg:         {name:'CTG/Viability', color:'#9c6fd4', params:['DC50_nM','pDC50','LogIC50_M','Dmax_pct','HillSlope','R2']},
-  };
-  const _paramLbl = (at,k)=>{
-    const m=_meta[at]||{};
-    const n=m.name||at;
-    const map={
-      hibit:       {DC50_nM:'DC50 (nM)',pDC50:'pDC50',LogIC50_M:'LogDC50',Dmax_pct:'Dmax (%)',HillSlope:'Hill',R2:'R²'},
-      displacement:{DC50_nM:'IC50 (nM)',pDC50:'pIC50',LogIC50_M:'LogIC50',HillSlope:'Hill',R2:'R²'},
-      gain:        {DC50_nM:'EC50 (nM)',pDC50:'pEC50',LogIC50_M:'LogEC50',Dmax_pct:'Emax (%)',HillSlope:'Hill',R2:'R²'},
-      ctg:         {DC50_nM:'IC50 (nM)',pDC50:'pIC50',LogIC50_M:'LogIC50',Dmax_pct:'Span (%)',HillSlope:'Hill',R2:'R²'},
-    };
-    return n+' — '+(map[at]?.[k]||k);
-  };
-  const types = [...new Set((scatterData||[]).map(r=>r._assayType).filter(Boolean))];
-  const opts = [];
-  for (const at of types) {
-    const params = (_meta[at]||{params:['DC50_nM','pDC50','HillSlope','R2']}).params;
-    for (const k of params) {
-      opts.push({value:`${at}::${k}`, label:_paramLbl(at,k), color:(_meta[at]||{}).color});
-    }
-  }
-  return opts;
-}
-
-function buildCrossAssayChart() {
-  const xSel = document.getElementById('cross-x');
-  const ySel = document.getElementById('cross-y');
-  const canvas = document.getElementById('cross-canvas');
-  if (!xSel || !ySel || !canvas) return;
-
-  const opts = _crossAssayOptions();
-  if (!opts.length) {
-    document.getElementById('cross-info').textContent = 'No multi-assay data available.';
-    return;
-  }
-
-  // Populate selectors if not yet done
-  if (!xSel.options.length) {
-    opts.forEach(o => {
-      [xSel,ySel].forEach(s=>{
-        const opt=document.createElement('option');
-        opt.value=o.value; opt.textContent=o.label;
-        s.appendChild(opt);
-      });
-    });
-    if (opts.length > 1) ySel.selectedIndex = 1;
-  }
-
-  const [xAt,xKey] = (xSel.value||opts[0].value).split('::');
-  const [yAt,yKey] = (ySel.value||opts[Math.min(1,opts.length-1)].value).split('::');
-  const showFlags = document.getElementById('cross-flags')?.checked !== false;
-  const showNames = document.getElementById('cross-names')?.checked || false;
-
-  // Pivot
-  const pivot = new Map();
-  for (const r of (scatterData||[])) {
-    if (!pivot.has(r.Sample_ID)) pivot.set(r.Sample_ID, {Protein:r.Protein});
-    pivot.get(r.Sample_ID)[r._assayType] = r;
-  }
-
-  const xLabel = xSel.options[xSel.selectedIndex]?.text || xKey;
-  const yLabel = ySel.options[ySel.selectedIndex]?.text || yKey;
-  const pts = [];
-  for (const [sid, entry] of pivot) {
-    const rx = entry[xAt], ry = entry[yAt];
-    if (!rx || !ry) continue;
-    if (!showFlags && (rx.Flag==='Yes' || ry.Flag==='Yes')) continue;
-    const x = parseFloat(rx[xKey]), y = parseFloat(ry[yKey]);
-    if (!isFinite(x) || !isFinite(y)) continue;
-    pts.push({x, y, _sid:sid, _prot:entry.Protein, _flagged:(rx.Flag==='Yes'||ry.Flag==='Yes')});
-  }
-
-  document.getElementById('cross-info').textContent = pts.length + ' compounds';
-
-  if (_crossChart) { _crossChart.destroy(); _crossChart = null; }
-  if (typeof Chart === 'undefined') return;
-
-  const isDark = document.documentElement.getAttribute('data-theme')==='dark';
-  const gridCol = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  const textCol = isDark ? '#8b90a8' : '#5a5f7a';
-
-  _crossChart = new Chart(canvas, {
-    type:'scatter',
-    data:{datasets:[{
-      data: pts.map(p=>({x:p.x, y:p.y, _sid:p._sid, _prot:p._prot, _flagged:p._flagged})),
-      backgroundColor: ctx => {
-        const pt = pts[ctx.dataIndex]; if (!pt) return '#8b90a8';
-        return pt._flagged ? 'rgba(255,87,96,0.75)' : 'rgba(0,121,185,0.75)';
-      },
-      pointRadius: 5, pointHoverRadius: 7
-    }]},
-    options:{
-      responsive:true, maintainAspectRatio:false, animation:{duration:200},
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>{
-          const d=ctx.raw;
-          return `${d._sid}: (${d.x.toFixed(3)}, ${d.y.toFixed(3)})`;
-        }}},
-        ...(showNames ? {datalabels:{display:true, formatter:(v,ctx)=>pts[ctx.dataIndex]?._sid||'', color:textCol, font:{size:9}, offset:4, anchor:'end', align:'end'}} : {})
-      },
-      scales:{
-        x:{title:{display:true, text:xLabel, color:textCol, font:{size:11}}, grid:{color:gridCol}, ticks:{color:textCol}},
-        y:{title:{display:true, text:yLabel, color:textCol, font:{size:11}}, grid:{color:gridCol}, ticks:{color:textCol}}
-      }
-    }
-  });
-}
-
-function downloadCrossAssayPNG() {
-  const canvas = document.getElementById('cross-canvas');
-  if (!canvas) return;
-  const a = document.createElement('a');
-  a.href = canvas.toDataURL('image/png');
-  a.download = 'Cross_Assay_Scatter.png'; a.click();
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  SELECTIVITY SCATTER
@@ -7214,13 +7210,24 @@ function closeCtrlPicker() {
   document.getElementById('ctrl-picker-modal')?.classList.remove('open');
 }
 
+function openMatCtrlPicker(idx) {
+  _matCtrlPickerTarget = idx;
+  _ctrlPickerSel = new Set();
+  const existing = document.getElementById(`mat-ctrl-${idx}`)?.value?.trim();
+  if (existing) { try { parseCtrlWellsJS(existing).forEach(w=>_ctrlPickerSel.add(w)); } catch(e){} }
+  document.getElementById('ctrl-picker-modal')?.classList.add('open');
+  drawCtrlGrid();
+}
+
 function applyCtrlPicker() {
+  const _ctrlTarget = _matCtrlPickerTarget !== null ? `mat-ctrl-${_matCtrlPickerTarget}` : 'p-ctrl';
+  _matCtrlPickerTarget = null;
   const wells = [..._ctrlPickerSel].sort((a,b) => {
     const ar=a[0], ac=parseInt(a.slice(1));
     const br=b[0], bc=parseInt(b.slice(1));
     return ac!==bc ? ac-bc : ar.localeCompare(br);
   });
-  if (!wells.length) { document.getElementById('p-ctrl').value=''; closeCtrlPicker(); return; }
+  if (!wells.length) { document.getElementById(_ctrlTarget).value=''; closeCtrlPicker(); return; }
   // Try to express as column range (e.g. B12-O12)
   const cols = [...new Set(wells.map(w=>parseInt(w.slice(1))))];
   const rows = [...new Set(wells.map(w=>w[0]))].sort();
@@ -7228,7 +7235,7 @@ function applyCtrlPicker() {
     const col = cols[0];
     const selRows = rows.filter(r => _ctrlPickerSel.has(`${r}${col<10?'0'+col:col}`)||_ctrlPickerSel.has(`${r}${col}`));
     if (selRows.length===rows.length && selRows.length>1) {
-      document.getElementById('p-ctrl').value = `${selRows[0]}${col}-${selRows[selRows.length-1]}${col}`;
+      document.getElementById(_ctrlTarget).value = `${selRows[0]}${col}-${selRows[selRows.length-1]}${col}`;
       closeCtrlPicker(); return;
     }
   }
@@ -7245,12 +7252,12 @@ function applyCtrlPicker() {
       }
     }
     if (isRect && (maxCol>minCol||rows.length>1)) {
-      document.getElementById('p-ctrl').value = `${minRow}${minCol}:${maxRow}${maxCol}`;
+      document.getElementById(_ctrlTarget).value = `${minRow}${minCol}:${maxRow}${maxCol}`;
       closeCtrlPicker(); return;
     }
   }
   // Fallback: comma-separated
-  document.getElementById('p-ctrl').value = wells.map(w=>{
+  document.getElementById(_ctrlTarget).value = wells.map(w=>{
     const n=parseInt(w.slice(1)); return `${w[0]}${n}`;
   }).join(',');
   closeCtrlPicker();
@@ -7610,7 +7617,8 @@ function _surveyHover(e){
 // ═══════════════════════════════════════════════════════════════
 // MULTI-ASSAY TYPES
 // ═══════════════════════════════════════════════════════════════
-let _matCounter = 0, _matEchoFiles = {};
+let _matCounter = 0;
+let _matCtrlPickerTarget = null;
 
 function toggleMultiAssay() {
   const chk=document.getElementById('multi-assay-chk');
@@ -7620,6 +7628,7 @@ function toggleMultiAssay() {
   if(chk.checked && document.getElementById('mat-type-list').children.length===0) {
     addAssayType(); addAssayType();
   }
+  syncMatAnalysisParams();
 }
 
 function addAssayType() {
@@ -7643,97 +7652,74 @@ function addAssayType() {
     </div>
     <div class="setup-2col" style="gap:8px;margin-bottom:8px;">
       <div><label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">Control (Vehicle) wells</label>
-        <input type="text" id="mat-ctrl-${idx}" placeholder="e.g. B22:O23" style="${_fs}">
+        <div style="display:flex;gap:6px;align-items:center;"><input type="text" id="mat-ctrl-${idx}" placeholder="e.g. B22:O23" style="${_fs}flex:1;"><button onclick="openMatCtrlPicker(${idx})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text2);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)'">⊞ Grid</button></div>
       </div>
       <div id="mat-zero-wrap-${idx}" style="display:none;">
         <label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">0% signal wells</label>
         <input type="text" id="mat-zero-${idx}" placeholder="e.g. B24:O24" style="${_fs}">
       </div>
-    </div>
-    <div style="margin-bottom:8px;">
-      <label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">Echo transfer CSV <span style="font-size:10px;color:var(--text3);">(optional — uses main file if not set)</span></label>
-      <div id="mat-echo-zone-${idx}" style="border:1px dashed var(--border2);border-radius:6px;padding:6px 10px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11px;color:var(--text3);transition:border-color .2s;"
-        onclick="document.getElementById('mat-echo-input-${idx}').click()"
-        ondragover="event.preventDefault();this.style.borderColor='var(--accent2)'"
-        ondragleave="this.style.borderColor=''"
-        ondrop="event.preventDefault();this.style.borderColor='';var f=event.dataTransfer.files[0];if(f){_matEchoFiles[${idx}]=f;document.getElementById('mat-echo-name-${idx}').textContent=f.name;document.getElementById('mat-echo-name-${idx}').style.color='var(--accent3)';}">
-        <span>📄</span>
-        <span id="mat-echo-name-${idx}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">Drop or click to browse</span>
-        <input type="file" id="mat-echo-input-${idx}" accept=".csv,.txt" style="display:none" onchange="if(this.files.length){_matEchoFiles[${idx}]=this.files[0];document.getElementById('mat-echo-name-${idx}').textContent=this.files[0].name;document.getElementById('mat-echo-name-${idx}').style.color='var(--accent3)';}">
-      </div>
-    </div>
-    <details>
-      <summary style="font-size:11px;color:var(--text2);cursor:pointer;user-select:none;padding:3px 0;list-style:none;display:flex;align-items:center;gap:5px;">
-        <span style="font-size:9px;color:var(--text3);">▶</span> Analysis parameters
-      </summary>
-      <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;">
-        <div>
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
-            <input type="checkbox" id="mat-hook-en-${idx}" checked onchange="var el=document.getElementById('mat-hook-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Hook threshold (%)
-          </label>
-          <input type="number" id="mat-hook-${idx}" value="10" min="1" max="200" style="${_fs}">
-        </div>
-        <div>
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
-            <input type="checkbox" id="mat-r2-en-${idx}" checked onchange="var el=document.getElementById('mat-r2-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Min R²
-          </label>
-          <input type="number" id="mat-r2-${idx}" value="0.8" min="0" max="1" step="0.05" style="${_fs}">
-        </div>
-        <div>
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
-            <input type="checkbox" id="mat-sd-en-${idx}" checked onchange="var el=document.getElementById('mat-sd-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Max SD (%)
-          </label>
-          <input type="number" id="mat-sd-${idx}" value="25" min="1" style="${_fs}">
-        </div>
-        <div id="mat-top-field-${idx}">
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
-            <input type="checkbox" id="mat-top-en-${idx}" checked onchange="var el=document.getElementById('mat-top-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Top constrain (%)
-          </label>
-          <input type="number" id="mat-top-${idx}" value="100" min="50" max="110" style="${_fs}">
-        </div>
-        <div id="mat-dmax-field-${idx}">
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
-            <input type="checkbox" id="mat-dmax-en-${idx}" checked onchange="var el=document.getElementById('mat-dmax-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Max Dmax (%)
-          </label>
-          <input type="number" id="mat-dmax-${idx}" value="99" min="10" max="99" step="1" style="${_fs}">
-        </div>
-        <div>
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
-            <input type="checkbox" id="mat-fbot-en-${idx}" onchange="var el=document.getElementById('mat-fbot-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Fix bottom (%)
-          </label>
-          <input type="number" id="mat-fbot-${idx}" value="0" min="-50" max="100" disabled style="${_fs}opacity:0.35;">
-        </div>
-        <div>
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
-            <input type="checkbox" id="mat-fhill-en-${idx}" onchange="var el=document.getElementById('mat-fhill-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Fix Hill slope
-          </label>
-          <input type="number" id="mat-fhill-${idx}" value="1" min="0.1" max="5" step="0.1" disabled style="${_fs}opacity:0.35;">
-        </div>
-        <div>
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
-            <input type="checkbox" id="mat-minbot-en-${idx}" checked onchange="var el=document.getElementById('mat-minbot-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Bottom ≥ (%)
-          </label>
-          <input type="number" id="mat-minbot-${idx}" value="0" min="-100" max="50" step="1" style="${_fs}">
-        </div>
-        <div style="display:flex;align-items:center;padding-top:14px;">
-          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;cursor:pointer;">
-            <input type="checkbox" id="mat-skipnorm-${idx}"> Skip normalisation
-          </label>
-        </div>
-      </div>
-    </details>`;
+    </div>`;
   list.appendChild(div);
+  syncMatAnalysisParams();
 }
 
 function updateMatPanel(idx) {
   const t=(document.getElementById(`mat-type-${idx}`)||{}).value||'hibit';
   const zw=document.getElementById(`mat-zero-wrap-${idx}`);
   if(zw) zw.style.display=(t==='displacement')?'':'none';
+  syncMatAnalysisParams();
 }
 
 function removeAssayType(idx) {
   const el=document.getElementById(`mat-panel-${idx}`);
   if(el) el.remove();
+  syncMatAnalysisParams();
+}
+
+function syncMatAnalysisParams() {
+  const container = document.getElementById('mat-analysis-container');
+  const single = document.getElementById('single-analysis-params');
+  const isMulti = document.getElementById('multi-assay-chk')?.checked;
+  if (!container || !single) return;
+  single.style.display = isMulti ? 'none' : '';
+  container.style.display = isMulti ? '' : 'none';
+  if (!isMulti) return;
+
+  const _assayLabels = {
+    hibit:       {sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:'Max Dmax (%)',  bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
+    displacement:{sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:'Max inhibition (%)',bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
+    gain:        {sd:'Max replicate SD',    top:'Top constrain',    dmax:null,              bot:'Fix bottom',    minbot:'Bottom ≥'},
+    ctg:         {sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:'Max Dmax (%)',  bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
+  };
+  const _assayColors = {hibit:'#e08c30',displacement:'#0079b9',gain:'#26a69a',ctg:'#9c6fd4'};
+  const _assayNames = {hibit:'HiBiT',displacement:'Displacement',gain:'Gain-of-Signal',ctg:'CTG/Viability'};
+
+  const list = document.getElementById('mat-type-list');
+  const panels = list ? [...list.querySelectorAll('[id^="mat-panel-"]')] : [];
+  const _fs = 'width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:11px;font-family:var(--mono);box-sizing:border-box;outline:none;';
+
+  container.innerHTML = panels.map(panel => {
+    const idx = parseInt(panel.id.replace('mat-panel-',''));
+    const type = document.getElementById(`mat-type-${idx}`)?.value || 'hibit';
+    const lbl = _assayLabels[type] || _assayLabels.hibit;
+    const color = _assayColors[type] || '#8b90a8';
+    const name = _assayNames[type] || type;
+    const gain = type === 'gain';
+    return `<div style="border:1px solid ${color}33;border-left:3px solid ${color};border-radius:8px;padding:12px;margin-bottom:10px;background:var(--surface2);">
+      <div style="font-size:11px;font-weight:700;color:${color};margin-bottom:10px;letter-spacing:.3px;">${name}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-hook-en-${idx}" checked onchange="var el=document.getElementById('mat-hook-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Hook threshold${gain?'':' (%)'}ⓘ</span></div><input type="number" id="mat-hook-${idx}" value="10" min="1" max="200" style="${_fs}"></div>
+        <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-r2-en-${idx}" checked onchange="var el=document.getElementById('mat-r2-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Min R²</span></div><input type="number" id="mat-r2-${idx}" value="0.8" min="0" max="1" step="0.05" style="${_fs}"></div>
+        <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-sd-en-${idx}" checked onchange="var el=document.getElementById('mat-sd-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.sd}</span></div><input type="number" id="mat-sd-${idx}" value="25" min="1" style="${_fs}"></div>
+        ${type!=='displacement'?`<div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-top-en-${idx}" checked onchange="var el=document.getElementById('mat-top-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.top}</span></div><input type="number" id="mat-top-${idx}" value="100" min="50" max="110" style="${_fs}"></div>`:''}
+        ${lbl.dmax?`<div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-dmax-en-${idx}" checked onchange="var el=document.getElementById('mat-dmax-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.dmax}</span></div><input type="number" id="mat-dmax-${idx}" value="99" min="10" max="99" step="1" style="${_fs}"></div>`:''}
+        <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-fbot-en-${idx}" onchange="var el=document.getElementById('mat-fbot-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.bot}</span></div><input type="number" id="mat-fbot-${idx}" value="0" min="-50" max="100" disabled style="${_fs}opacity:0.35;"></div>
+        <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-fhill-en-${idx}" onchange="var el=document.getElementById('mat-fhill-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix Hill slope</span></div><input type="number" id="mat-fhill-${idx}" value="1" min="0.1" max="5" step="0.1" disabled style="${_fs}opacity:0.35;"></div>
+        <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-minbot-en-${idx}" checked onchange="var el=document.getElementById('mat-minbot-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.minbot}</span></div><input type="number" id="mat-minbot-${idx}" value="0" min="-100" max="50" step="1" style="${_fs}"></div>
+        <div class="field" style="margin-bottom:0;display:flex;align-items:center;padding-top:14px;"><label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="mat-skipnorm-${idx}"> Skip normalisation</label></div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function collectMultiAssayConfigs() {
@@ -7742,9 +7728,8 @@ function collectMultiAssayConfigs() {
   const configs=[];
   list.querySelectorAll('[id^="mat-panel-"]').forEach(panel=>{
     const idx=parseInt(panel.id.replace('mat-panel-',''));
-    const g=k=>document.getElementById(`mat-${k}-${idx}`);
-    const gv=k=>{const el=g(k);return el?el.value:null;};
-    const gc=k=>{const el=g(k);return el?el.checked:false;};
+    const gv=k=>{const el=document.getElementById(`mat-${k}-${idx}`);return el?el.value:null;};
+    const gc=k=>{const el=document.getElementById(`mat-${k}-${idx}`);return el?el.checked:false;};
     const gn=(k,def)=>{const v=parseFloat(gv(k));return isNaN(v)?def:v;};
     const type=gv('type')||'hibit';
     configs.push({
@@ -7753,11 +7738,10 @@ function collectMultiAssayConfigs() {
       ctrl:(gv('ctrl')||'').trim(),
       zero:(gv('zero')||'').trim(),
       idx,
-      echoFile: _matEchoFiles[idx]||null,
       hookEnabled:gc('hook-en'), hookThr:gn('hook',10),
       r2Enabled:gc('r2-en'),    minR2:gn('r2',0.8),
       sdEnabled:gc('sd-en'),    maxSd:gn('sd',25),
-      topEnabled:gc('top-en'),  topConstrain:gn('top',100),
+      topEnabled:gc('top-en')!==false, topConstrain:gn('top',100),
       dmaxCapEnabled:gc('dmax-en'), dmaxCapVal:Math.min(99,Math.max(10,gn('dmax',99))),
       fixBot:gc('fbot-en'), botVal:gn('fbot',0),
       fixHill:gc('fhill-en'), hillVal:gn('fhill',1),
