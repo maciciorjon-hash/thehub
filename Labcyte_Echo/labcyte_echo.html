@@ -7261,20 +7261,25 @@ function loadSurveyFile(file) {
 function parseSurveyCSV(text) {
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
   if(!lines.length) return {};
-  const header=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
-  const wellIdx=header.findIndex(h=>/source.?well|^well$/i.test(h));
-  const volIdx=header.findIndex(h=>/volume|vol/i.test(h));
-  if(wellIdx<0||volIdx<0) return {};
+  // Scan for the actual column header row (Echo survey files have metadata before [DETAILS])
+  let headerIdx=-1, wellIdx=-1, volIdx=-1, statusIdx=-1;
+  for(let i=0;i<lines.length;i++){
+    const cols=lines[i].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+    const wi=cols.findIndex(h=>/source.?well|^well$/i.test(h));
+    const vi=cols.findIndex(h=>/survey.?fluid.?volume|fluid.?volume|current.?volume/i.test(h));
+    const vi2=vi<0?cols.findIndex(h=>/\bvolume\b/i.test(h)&&!/height/i.test(h)):vi;
+    if(wi>=0&&vi2>=0){headerIdx=i;wellIdx=wi;volIdx=vi2;statusIdx=cols.findIndex(h=>/survey.?status|status/i.test(h));break;}
+  }
+  if(headerIdx<0) return {};
   const data={};
-  for(let i=1;i<lines.length;i++){
+  for(let i=headerIdx+1;i<lines.length;i++){
     const cols=lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
     if(!cols[wellIdx]) continue;
     let w=cols[wellIdx].trim().toUpperCase();
-    // Normalise well format: A1→A01
     const wm=w.match(/^([A-P])(\d+)$/);
     if(wm) w=`${wm[1]}${parseInt(wm[2])<10?'0':''}${parseInt(wm[2])}`;
     const vol=parseFloat(cols[volIdx]);
-    if(!isNaN(vol)) data[w]=vol;
+    if(!isNaN(vol)) data[w]={vol,status:statusIdx>=0?cols[statusIdx]:''};
   }
   return data;
 }
@@ -7286,8 +7291,8 @@ function renderSurveyTab() {
 function renderSurveyPlate(data) {
   const container=document.getElementById('survey-plate-container');
   if(!container) return;
-  if(!data||!Object.keys(data).length){container.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px;">No well data found in file. Expected columns: Source Well, Current Volume.</div>';return;}
-  const vols=Object.values(data).filter(v=>isFinite(v)&&v>=0);
+  if(!data||!Object.keys(data).length){container.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px;">No well data found in file. Expected columns: Source Well, Survey Fluid Volume.</div>';return;}
+  const vols=Object.values(data).map(d=>d&&typeof d==='object'?d.vol:d).filter(v=>isFinite(v)&&v>=0);
   const maxVol=vols.length?Math.max(...vols):1;
   const isDark=document.documentElement.getAttribute('data-theme')!=='light';
   const cellW=28,cellH=22,padL=28,padT=22,padR=10,padB=10;
@@ -7316,7 +7321,7 @@ function renderSurveyPlate(data) {
     ctx.fillText(r,padL-4,padT+ri*cellH+cellH/2);
     Array.from({length:24},(_,ci)=>{
       const col=ci+1,wid=`${r}${col<10?'0'+col:col}`;
-      const vol=data[wid];
+      const entry=data[wid]; const vol=entry&&typeof entry==='object'?entry.vol:entry;
       const x=padL+ci*cellW+1,y=padT+ri*cellH+1,rw=cellW-2,rh=cellH-2;
       ctx.fillStyle=volColor(vol);
       ctx.beginPath();ctx.roundRect(x,y,rw,rh,2);ctx.fill();
@@ -7343,8 +7348,9 @@ function _surveyHover(e){
   if(!tt) return;
   if(ci<0||ci>=24||ri<0||ri>=16){tt.style.display='none';return;}
   const row='ABCDEFGHIJKLMNOP'[ri], col=ci+1, wid=`${row}${col<10?'0'+col:col}`;
-  const vol=data[wid];
-  tt.textContent=`${wid}: ${vol!=null&&!isNaN(vol)?vol.toFixed(1)+' nL':'—'}`;
+  const entry=data[wid]; const vol=entry&&typeof entry==='object'?entry.vol:entry;
+  const status=entry&&typeof entry==='object'&&entry.status?` · ${entry.status}`:'';
+  tt.textContent=`${wid}: ${vol!=null&&!isNaN(vol)?vol.toFixed(1)+' nL':'—'}${status}`;
   tt.style.display='block'; tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-8)+'px';
 }
 
