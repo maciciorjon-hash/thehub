@@ -1424,6 +1424,7 @@ async function runPipeline() {
       const matConfigs = collectMultiAssayConfigs();
       if (!matConfigs.length) throw new Error('No assay types configured in multi-assay mode.');
       const mergedResults = [];
+      const allPlateData = {};
       downloadBlobs = [];
       for (let mi = 0; mi < matConfigs.length; mi++) {
         const mc = matConfigs[mi];
@@ -1435,15 +1436,30 @@ async function runPipeline() {
           : {...readerFiles};
         if (!Object.keys(matReaderFiles).length) { log(`  No reader files matched prefix "${mc.prefix}" — skipping`, 'warn'); continue; }
         const origReaderFiles = readerFiles;
+        const origEchoFile = echoFile;
         readerFiles = matReaderFiles;
+        if (mc.echoFile) echoFile = mc.echoFile;
         try {
-          const typeResults = await runAnalysisJS(assayId+'_'+mc.type, mc.ctrl||ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, mc.type, mc.zero||'', dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal);
+          const typeResults = await runAnalysisJS(
+            assayId+'_'+mc.type, mc.ctrl||ctrlRange, skipRows,
+            mc.hookThr, mc.hookEnabled, mc.minR2, mc.r2Enabled,
+            mc.maxSd, mc.sdEnabled, mc.topConstrain, mc.topEnabled,
+            mc.fixBot, mc.botVal, mc.fixHill, mc.hillVal,
+            absdc50Enabled, mc.skipNorm, csvCols, mc.type, mc.zero||'',
+            mc.dmaxCapEnabled, mc.dmaxCapVal, qcOverridesJSON,
+            mc.minBotEnabled, mc.minBotVal
+          );
           mergedResults.push(...typeResults);
-        } finally { readerFiles = origReaderFiles; }
+          Object.assign(allPlateData, window._plateData || {});
+        } finally {
+          readerFiles = origReaderFiles;
+          echoFile = origEchoFile;
+        }
       }
+      window._plateData = allPlateData;
       results = mergedResults;
-      window._lastAssayType = 'hibit'; // use hibit as fallback for label display in mixed mode
-      window._lastAnalysisParams = {...window._lastAnalysisParams, assayType:'hibit', multiAssay:true};
+      window._lastAssayType = 'multi';
+      window._lastAnalysisParams = {...window._lastAnalysisParams, assayType:'multi', multiAssay:true, matConfigs};
     } else {
       results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal);
     }
@@ -2186,6 +2202,7 @@ document.addEventListener('keydown', e => {
 // ===== RENDER RESULTS =====
 function renderResults(data) {
   _lastResultsData = data;
+  if (window._lastAnalysisParams?.multiAssay && data.length) { renderMultiAssayResults(data); return; }
   const p = document.getElementById('results-panel');
   if (!data.length) { p.innerHTML='<div class="empty"><div class="ei">⚠️</div><p>No curves fitted. Check console.</p></div>'; return; }
   let sorted = [...data];
@@ -2295,6 +2312,90 @@ function renderResults(data) {
   p.innerHTML=h;
   saveToHistory(data);
 }
+
+function renderMultiAssayResults(data) {
+  _lastResultsData = data;
+  const p = document.getElementById('results-panel');
+  if (!data.length) { p.innerHTML='<div class="empty"><div class="ei">⚠️</div><p>No results.</p></div>'; return; }
+
+  const _assayMeta = {
+    hibit:       {name:'HiBiT',         color:'#e08c30', dc50:'DC50 (nM)',  logdc50:'LogDC50', pdc50:'pDC50', dmax:'Dmax (%)'},
+    displacement:{name:'Displacement',  color:'#0079b9', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:null},
+    gain:        {name:'Gain-of-Signal',color:'#26a69a', dc50:'EC50 (nM)',  logdc50:'LogEC50', pdc50:'pEC50', dmax:'Emax (%)'},
+    ctg:         {name:'CTG/Viability', color:'#9c6fd4', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:'Span (%)'},
+  };
+
+  const orderedTypes = [...new Set(data.map(r=>r._assayType).filter(Boolean))];
+  const _selCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
+  const activeKeys = ['DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag']
+    .filter(k=>k==='DC50_nM'||k==='Flag'||_selCols.has(k));
+
+  // Pivot: one entry per Sample_ID
+  const pivot = new Map();
+  const proteinOf = new Map();
+  for (const r of data) {
+    if (!pivot.has(r.Sample_ID)) pivot.set(r.Sample_ID, {});
+    pivot.get(r.Sample_ID)[r._assayType] = r;
+    if (r.Protein) proteinOf.set(r.Sample_ID, r.Protein);
+  }
+
+  const flagged = data.filter(r=>r.Flag==='Yes').length;
+  const _dlS='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
+  const _dlH='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
+  let h = '<div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
+    +'<div class="mcard"><div class="mc-lbl">Compounds</div><div class="mc-val g">'+pivot.size+'</div></div>'
+    +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
+    +'<div style="flex:1;min-width:12px;"></div>'
+    +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+    +'<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel">📋 Copy TSV</button>'
+    +'<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()">📥 Results XLSX</button>'
+    +'</div></div>'
+    +'<div class="tbl-wrap"><table><thead>';
+
+  // Header row 1: assay type spanning cells
+  h += '<tr><th rowspan="2" style="white-space:nowrap;">Group</th><th rowspan="2" style="white-space:nowrap;">Sample ID</th>';
+  for (const at of orderedTypes) {
+    const m = _assayMeta[at]||{name:at,color:'#8b90a8',dmax:'Dmax (%)'};
+    const n = activeKeys.filter(k=>!(k==='Dmax_pct'&&!m.dmax)).length;
+    h += `<th colspan="${n}" style="background:${m.color}22;color:${m.color};border-bottom:2px solid ${m.color};text-align:center;font-size:11px;font-weight:700;letter-spacing:.3px;">${esc(m.name)}</th>`;
+  }
+  h += '</tr>';
+
+  // Header row 2: individual column names
+  h += '<tr>';
+  for (const at of orderedTypes) {
+    const m = _assayMeta[at]||{name:at,color:'#8b90a8',dc50:'DC50 (nM)',logdc50:'LogDC50',pdc50:'pDC50',dmax:'Dmax (%)'};
+    const lbl = {DC50_nM:m.dc50,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag'};
+    for (const k of activeKeys) {
+      if (k==='Dmax_pct'&&!m.dmax) continue;
+      h += `<th style="font-size:11px;background:${m.color}0d;">${lbl[k]||k}</th>`;
+    }
+  }
+  h += '</tr></thead><tbody>';
+
+  for (const [sampleId, byType] of pivot) {
+    const protein = proteinOf.get(sampleId)||'';
+    h += '<tr>';
+    h += `<td><span class="pbadge" style="background:${pcolor(protein).bg};color:${pcolor(protein).fg};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;">${esc(protein)}</span></td>`;
+    h += `<td>${esc(sampleId)}</td>`;
+    for (const at of orderedTypes) {
+      const m = _assayMeta[at]||{color:'#8b90a8',dmax:'Dmax (%)'};
+      const r = byType[at];
+      for (const k of activeKeys) {
+        if (k==='Dmax_pct'&&!m.dmax) continue;
+        if (!r) { h+=`<td style="color:var(--text3);">—</td>`; continue; }
+        if (k==='Flag') h+=`<td class="${r.Flag==='Yes'?'fy':'fn'}">${r.Flag||'—'}</td>`;
+        else h+=`<td>${r[k]!=null?r[k]:'—'}</td>`;
+      }
+    }
+    h += '</tr>';
+  }
+
+  h += '</tbody></table></div>';
+  p.innerHTML = h;
+  saveToHistory(data);
+}
+
 function downloadBlob(blob) {
   if (!blob) { alert('No file available. Run analysis with Auto-generate enabled.'); return; }
   const a = document.createElement('a');
@@ -3330,6 +3431,7 @@ function renderScatter(data) {
   const proteins = [...new Set(data.map(r=>r.Protein))].sort();
   const _assayT = document.getElementById('p-assay-type')?.value || 'hibit';
   const _scLogLbl = _assayT==='hibit' ? 'LogDC₅₀' : _assayT==='gain' ? 'LogEC₅₀' : 'LogIC₅₀';
+  const _isMultiAssay = !!(window._lastAnalysisParams?.multiAssay);
 
   panel.innerHTML = `
     <div class="strow" style="margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:8px;">
@@ -3337,6 +3439,7 @@ function renderScatter(data) {
       <button class="stbtn active" id="ptype-scatter" onclick="switchPlotType('scatter')">Scatter</button>
       <button class="stbtn" id="ptype-box" onclick="switchPlotType('box')">Box plot</button>
       <button class="stbtn" id="ptype-sel" onclick="switchPlotType('selectivity')">Selectivity</button>
+      ${_isMultiAssay ? '<button class="stbtn" id="ptype-cross" onclick="switchPlotType(\'cross\')">Cross-assay</button>' : ''}
     </div>
     <div id="sc-section" style="flex:1;display:flex;flex-direction:column;min-height:0;"><div id="sc-colorby-legend" style="padding:2px 12px;min-height:0;"></div>
     <div class="scatter-toolbar">
@@ -3532,6 +3635,23 @@ function renderScatter(data) {
         <span id="sel-info" style="font-size:11px;color:var(--text3);font-family:var(--sans);"></span>
       </div>
     </div>
+    ${_isMultiAssay ? `<div id="cross-section" style="display:none;flex:1;display:none;flex-direction:column;gap:10px;padding:6px 0;">
+      <div class="scatter-toolbar">
+        <div class="strow" style="flex-wrap:wrap;gap:6px 10px;">
+          <label>X axis</label>
+          <select id="cross-x" onchange="buildCrossAssayChart()" style="flex:1;min-width:160px;"></select>
+          <label>Y axis</label>
+          <select id="cross-y" onchange="buildCrossAssayChart()" style="flex:1;min-width:160px;"></select>
+          <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="cross-flags" onchange="buildCrossAssayChart()"> Flagged</label>
+          <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="cross-names" onchange="buildCrossAssayChart()"> Names</label>
+        </div>
+      </div>
+      <div class="scatter-wrap" style="position:relative;flex:1;"><canvas id="cross-canvas" style="width:100%;height:100%;"></canvas></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+        <button class="scatter-dl-btn" onclick="downloadCrossAssayPNG()">⬇ PNG 600 DPI</button>
+        <span id="cross-info" style="font-size:11px;color:var(--text3);font-family:var(--sans);"></span>
+      </div>
+    </div>` : ''}
     <div id="bp-section" style="display:none;padding:4px 0;">
       <div class="empty"><div class="ei">📦</div><p>Run analysis first to generate box plots.<br><small style="color:var(--text3);">Then use Y dropdown to select the metric to display.</small></p></div>
     </div>
@@ -4062,17 +4182,19 @@ function toggleScatterRef() {
   buildScatterChart();
 }
 function switchPlotType(type) {
-  const sc  = document.getElementById('sc-section');
-  const bp  = document.getElementById('bp-section');
-  const sel = document.getElementById('sc-sel-section');
-  const btnSc  = document.getElementById('ptype-scatter');
-  const btnBp  = document.getElementById('ptype-box');
-  const btnSel = document.getElementById('ptype-sel');
+  const sc    = document.getElementById('sc-section');
+  const bp    = document.getElementById('bp-section');
+  const sel   = document.getElementById('sc-sel-section');
+  const cross = document.getElementById('cross-section');
+  const btnSc    = document.getElementById('ptype-scatter');
+  const btnBp    = document.getElementById('ptype-box');
+  const btnSel   = document.getElementById('ptype-sel');
+  const btnCross = document.getElementById('ptype-cross');
   if (!sc || !bp) return;
-  // hide all first
   sc.style.display='none'; bp.style.display='none';
-  if(sel) sel.style.display='none';
-  btnSc?.classList.remove('active'); btnBp?.classList.remove('active'); btnSel?.classList.remove('active');
+  if(sel)   sel.style.display='none';
+  if(cross) cross.style.display='none';
+  [btnSc,btnBp,btnSel,btnCross].forEach(b=>b?.classList.remove('active'));
   if (type === 'scatter') {
     sc.style.display = '';
     btnSc?.classList.add('active');
@@ -4080,6 +4202,10 @@ function switchPlotType(type) {
     if(sel){ sel.style.display=''; }
     btnSel?.classList.add('active');
     _initSelectivity();
+  } else if (type === 'cross') {
+    if(cross){ cross.style.display='flex'; cross.style.flexDirection='column'; }
+    btnCross?.classList.add('active');
+    buildCrossAssayChart();
   } else {
     bp.style.display = '';
     btnBp?.classList.add('active');
@@ -4088,6 +4214,133 @@ function switchPlotType(type) {
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CROSS-ASSAY SCATTER
+// ═══════════════════════════════════════════════════════════════════════════
+let _crossChart = null;
+
+function _crossAssayOptions() {
+  const _meta = {
+    hibit:       {name:'HiBiT',         color:'#e08c30', params:['DC50_nM','pDC50','LogIC50_M','Dmax_pct','HillSlope','R2']},
+    displacement:{name:'Displacement',  color:'#0079b9', params:['DC50_nM','pDC50','LogIC50_M','HillSlope','R2']},
+    gain:        {name:'Gain-of-Signal',color:'#26a69a', params:['DC50_nM','pDC50','LogIC50_M','Dmax_pct','HillSlope','R2']},
+    ctg:         {name:'CTG/Viability', color:'#9c6fd4', params:['DC50_nM','pDC50','LogIC50_M','Dmax_pct','HillSlope','R2']},
+  };
+  const _paramLbl = (at,k)=>{
+    const m=_meta[at]||{};
+    const n=m.name||at;
+    const map={
+      hibit:       {DC50_nM:'DC50 (nM)',pDC50:'pDC50',LogIC50_M:'LogDC50',Dmax_pct:'Dmax (%)',HillSlope:'Hill',R2:'R²'},
+      displacement:{DC50_nM:'IC50 (nM)',pDC50:'pIC50',LogIC50_M:'LogIC50',HillSlope:'Hill',R2:'R²'},
+      gain:        {DC50_nM:'EC50 (nM)',pDC50:'pEC50',LogIC50_M:'LogEC50',Dmax_pct:'Emax (%)',HillSlope:'Hill',R2:'R²'},
+      ctg:         {DC50_nM:'IC50 (nM)',pDC50:'pIC50',LogIC50_M:'LogIC50',Dmax_pct:'Span (%)',HillSlope:'Hill',R2:'R²'},
+    };
+    return n+' — '+(map[at]?.[k]||k);
+  };
+  const types = [...new Set((scatterData||[]).map(r=>r._assayType).filter(Boolean))];
+  const opts = [];
+  for (const at of types) {
+    const params = (_meta[at]||{params:['DC50_nM','pDC50','HillSlope','R2']}).params;
+    for (const k of params) {
+      opts.push({value:`${at}::${k}`, label:_paramLbl(at,k), color:(_meta[at]||{}).color});
+    }
+  }
+  return opts;
+}
+
+function buildCrossAssayChart() {
+  const xSel = document.getElementById('cross-x');
+  const ySel = document.getElementById('cross-y');
+  const canvas = document.getElementById('cross-canvas');
+  if (!xSel || !ySel || !canvas) return;
+
+  const opts = _crossAssayOptions();
+  if (!opts.length) {
+    document.getElementById('cross-info').textContent = 'No multi-assay data available.';
+    return;
+  }
+
+  // Populate selectors if not yet done
+  if (!xSel.options.length) {
+    opts.forEach(o => {
+      [xSel,ySel].forEach(s=>{
+        const opt=document.createElement('option');
+        opt.value=o.value; opt.textContent=o.label;
+        s.appendChild(opt);
+      });
+    });
+    if (opts.length > 1) ySel.selectedIndex = 1;
+  }
+
+  const [xAt,xKey] = (xSel.value||opts[0].value).split('::');
+  const [yAt,yKey] = (ySel.value||opts[Math.min(1,opts.length-1)].value).split('::');
+  const showFlags = document.getElementById('cross-flags')?.checked !== false;
+  const showNames = document.getElementById('cross-names')?.checked || false;
+
+  // Pivot
+  const pivot = new Map();
+  for (const r of (scatterData||[])) {
+    if (!pivot.has(r.Sample_ID)) pivot.set(r.Sample_ID, {Protein:r.Protein});
+    pivot.get(r.Sample_ID)[r._assayType] = r;
+  }
+
+  const xLabel = xSel.options[xSel.selectedIndex]?.text || xKey;
+  const yLabel = ySel.options[ySel.selectedIndex]?.text || yKey;
+  const pts = [];
+  for (const [sid, entry] of pivot) {
+    const rx = entry[xAt], ry = entry[yAt];
+    if (!rx || !ry) continue;
+    if (!showFlags && (rx.Flag==='Yes' || ry.Flag==='Yes')) continue;
+    const x = parseFloat(rx[xKey]), y = parseFloat(ry[yKey]);
+    if (!isFinite(x) || !isFinite(y)) continue;
+    pts.push({x, y, _sid:sid, _prot:entry.Protein, _flagged:(rx.Flag==='Yes'||ry.Flag==='Yes')});
+  }
+
+  document.getElementById('cross-info').textContent = pts.length + ' compounds';
+
+  if (_crossChart) { _crossChart.destroy(); _crossChart = null; }
+  if (typeof Chart === 'undefined') return;
+
+  const isDark = document.documentElement.getAttribute('data-theme')==='dark';
+  const gridCol = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const textCol = isDark ? '#8b90a8' : '#5a5f7a';
+
+  _crossChart = new Chart(canvas, {
+    type:'scatter',
+    data:{datasets:[{
+      data: pts.map(p=>({x:p.x, y:p.y, _sid:p._sid, _prot:p._prot, _flagged:p._flagged})),
+      backgroundColor: ctx => {
+        const pt = pts[ctx.dataIndex]; if (!pt) return '#8b90a8';
+        return pt._flagged ? 'rgba(255,87,96,0.75)' : 'rgba(0,121,185,0.75)';
+      },
+      pointRadius: 5, pointHoverRadius: 7
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:{duration:200},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>{
+          const d=ctx.raw;
+          return `${d._sid}: (${d.x.toFixed(3)}, ${d.y.toFixed(3)})`;
+        }}},
+        ...(showNames ? {datalabels:{display:true, formatter:(v,ctx)=>pts[ctx.dataIndex]?._sid||'', color:textCol, font:{size:9}, offset:4, anchor:'end', align:'end'}} : {})
+      },
+      scales:{
+        x:{title:{display:true, text:xLabel, color:textCol, font:{size:11}}, grid:{color:gridCol}, ticks:{color:textCol}},
+        y:{title:{display:true, text:yLabel, color:textCol, font:{size:11}}, grid:{color:gridCol}, ticks:{color:textCol}}
+      }
+    }
+  });
+}
+
+function downloadCrossAssayPNG() {
+  const canvas = document.getElementById('cross-canvas');
+  if (!canvas) return;
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'Cross_Assay_Scatter.png'; a.click();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  SELECTIVITY SCATTER
@@ -7357,7 +7610,7 @@ function _surveyHover(e){
 // ═══════════════════════════════════════════════════════════════
 // MULTI-ASSAY TYPES
 // ═══════════════════════════════════════════════════════════════
-let _matCounter = 0;
+let _matCounter = 0, _matEchoFiles = {};
 
 function toggleMultiAssay() {
   const chk=document.getElementById('multi-assay-chk');
@@ -7376,6 +7629,7 @@ function addAssayType() {
   const div=document.createElement('div');
   div.id=`mat-panel-${idx}`;
   div.style.cssText='border:1px solid var(--border2);border-radius:8px;padding:12px;margin-bottom:10px;background:var(--surface2);';
+  const _fs='width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:11px;font-family:var(--mono);box-sizing:border-box;outline:none;';
   div.innerHTML=`
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
       <select id="mat-type-${idx}" onchange="updateMatPanel(${idx})" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);">
@@ -7384,20 +7638,90 @@ function addAssayType() {
         <option value="gain">Gain-of-Signal Assay</option>
         <option value="ctg">CellTiter-Glo / Viability</option>
       </select>
-      <input type="text" id="mat-prefix-${idx}" placeholder="Pherastar prefix (e.g. HIBIT)" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);">
+      <input type="text" id="mat-prefix-${idx}" placeholder="Reader file prefix (e.g. HIBIT)" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);">
       <button onclick="removeAssayType(${idx})" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border2);background:var(--surface3);color:var(--text3);font-size:12px;cursor:pointer;">✕</button>
     </div>
-    <div class="setup-2col" style="gap:8px;">
+    <div class="setup-2col" style="gap:8px;margin-bottom:8px;">
       <div><label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">Control (Vehicle) wells</label>
-        <div style="display:flex;gap:6px;">
-          <input type="text" id="mat-ctrl-${idx}" placeholder="e.g. B22:O23" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);">
-        </div>
+        <input type="text" id="mat-ctrl-${idx}" placeholder="e.g. B22:O23" style="${_fs}">
       </div>
       <div id="mat-zero-wrap-${idx}" style="display:none;">
         <label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">0% signal wells</label>
-        <input type="text" id="mat-zero-${idx}" placeholder="e.g. B24:O24" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);box-sizing:border-box;">
+        <input type="text" id="mat-zero-${idx}" placeholder="e.g. B24:O24" style="${_fs}">
       </div>
-    </div>`;
+    </div>
+    <div style="margin-bottom:8px;">
+      <label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">Echo transfer CSV <span style="font-size:10px;color:var(--text3);">(optional — uses main file if not set)</span></label>
+      <div id="mat-echo-zone-${idx}" style="border:1px dashed var(--border2);border-radius:6px;padding:6px 10px;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11px;color:var(--text3);transition:border-color .2s;"
+        onclick="document.getElementById('mat-echo-input-${idx}').click()"
+        ondragover="event.preventDefault();this.style.borderColor='var(--accent2)'"
+        ondragleave="this.style.borderColor=''"
+        ondrop="event.preventDefault();this.style.borderColor='';var f=event.dataTransfer.files[0];if(f){_matEchoFiles[${idx}]=f;document.getElementById('mat-echo-name-${idx}').textContent=f.name;document.getElementById('mat-echo-name-${idx}').style.color='var(--accent3)';}">
+        <span>📄</span>
+        <span id="mat-echo-name-${idx}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">Drop or click to browse</span>
+        <input type="file" id="mat-echo-input-${idx}" accept=".csv,.txt" style="display:none" onchange="if(this.files.length){_matEchoFiles[${idx}]=this.files[0];document.getElementById('mat-echo-name-${idx}').textContent=this.files[0].name;document.getElementById('mat-echo-name-${idx}').style.color='var(--accent3)';}">
+      </div>
+    </div>
+    <details>
+      <summary style="font-size:11px;color:var(--text2);cursor:pointer;user-select:none;padding:3px 0;list-style:none;display:flex;align-items:center;gap:5px;">
+        <span style="font-size:9px;color:var(--text3);">▶</span> Analysis parameters
+      </summary>
+      <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;">
+        <div>
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
+            <input type="checkbox" id="mat-hook-en-${idx}" checked onchange="var el=document.getElementById('mat-hook-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Hook threshold (%)
+          </label>
+          <input type="number" id="mat-hook-${idx}" value="10" min="1" max="200" style="${_fs}">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
+            <input type="checkbox" id="mat-r2-en-${idx}" checked onchange="var el=document.getElementById('mat-r2-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Min R²
+          </label>
+          <input type="number" id="mat-r2-${idx}" value="0.8" min="0" max="1" step="0.05" style="${_fs}">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
+            <input type="checkbox" id="mat-sd-en-${idx}" checked onchange="var el=document.getElementById('mat-sd-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Max SD (%)
+          </label>
+          <input type="number" id="mat-sd-${idx}" value="25" min="1" style="${_fs}">
+        </div>
+        <div id="mat-top-field-${idx}">
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
+            <input type="checkbox" id="mat-top-en-${idx}" checked onchange="var el=document.getElementById('mat-top-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Top constrain (%)
+          </label>
+          <input type="number" id="mat-top-${idx}" value="100" min="50" max="110" style="${_fs}">
+        </div>
+        <div id="mat-dmax-field-${idx}">
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
+            <input type="checkbox" id="mat-dmax-en-${idx}" checked onchange="var el=document.getElementById('mat-dmax-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Max Dmax (%)
+          </label>
+          <input type="number" id="mat-dmax-${idx}" value="99" min="10" max="99" step="1" style="${_fs}">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
+            <input type="checkbox" id="mat-fbot-en-${idx}" onchange="var el=document.getElementById('mat-fbot-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Fix bottom (%)
+          </label>
+          <input type="number" id="mat-fbot-${idx}" value="0" min="-50" max="100" disabled style="${_fs}opacity:0.35;">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
+            <input type="checkbox" id="mat-fhill-en-${idx}" onchange="var el=document.getElementById('mat-fhill-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Fix Hill slope
+          </label>
+          <input type="number" id="mat-fhill-${idx}" value="1" min="0.1" max="5" step="0.1" disabled style="${_fs}opacity:0.35;">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;margin-bottom:2px;cursor:pointer;">
+            <input type="checkbox" id="mat-minbot-en-${idx}" checked onchange="var el=document.getElementById('mat-minbot-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"> Bottom ≥ (%)
+          </label>
+          <input type="number" id="mat-minbot-${idx}" value="0" min="-100" max="50" step="1" style="${_fs}">
+        </div>
+        <div style="display:flex;align-items:center;padding-top:14px;">
+          <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="mat-skipnorm-${idx}"> Skip normalisation
+          </label>
+        </div>
+      </div>
+    </details>`;
   list.appendChild(div);
 }
 
@@ -7417,12 +7741,29 @@ function collectMultiAssayConfigs() {
   if(!list) return [];
   const configs=[];
   list.querySelectorAll('[id^="mat-panel-"]').forEach(panel=>{
-    const idx=panel.id.replace('mat-panel-','');
-    const type=(document.getElementById(`mat-type-${idx}`)||{}).value||'hibit';
-    const prefix=(document.getElementById(`mat-prefix-${idx}`)||{}).value?.trim()||'';
-    const ctrl=(document.getElementById(`mat-ctrl-${idx}`)||{}).value?.trim()||'';
-    const zero=(document.getElementById(`mat-zero-${idx}`)||{}).value?.trim()||'';
-    configs.push({type,prefix,ctrl,zero,idx});
+    const idx=parseInt(panel.id.replace('mat-panel-',''));
+    const g=k=>document.getElementById(`mat-${k}-${idx}`);
+    const gv=k=>{const el=g(k);return el?el.value:null;};
+    const gc=k=>{const el=g(k);return el?el.checked:false;};
+    const gn=(k,def)=>{const v=parseFloat(gv(k));return isNaN(v)?def:v;};
+    const type=gv('type')||'hibit';
+    configs.push({
+      type,
+      prefix:(gv('prefix')||'').trim(),
+      ctrl:(gv('ctrl')||'').trim(),
+      zero:(gv('zero')||'').trim(),
+      idx,
+      echoFile: _matEchoFiles[idx]||null,
+      hookEnabled:gc('hook-en'), hookThr:gn('hook',10),
+      r2Enabled:gc('r2-en'),    minR2:gn('r2',0.8),
+      sdEnabled:gc('sd-en'),    maxSd:gn('sd',25),
+      topEnabled:gc('top-en'),  topConstrain:gn('top',100),
+      dmaxCapEnabled:gc('dmax-en'), dmaxCapVal:Math.min(99,Math.max(10,gn('dmax',99))),
+      fixBot:gc('fbot-en'), botVal:gn('fbot',0),
+      fixHill:gc('fhill-en'), hillVal:gn('fhill',1),
+      minBotEnabled:gc('minbot-en'), minBotVal:gn('minbot',0),
+      skipNorm:gc('skipnorm')
+    });
   });
   return configs;
 }

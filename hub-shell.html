@@ -123,6 +123,11 @@ body.hub-announcing #hub-home{margin-top:98px;}
 /* EASTER EGG */
 #egg-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:24px;}
 #egg-overlay.open{display:flex;}
+/* GLOOTIE */
+#glootie-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:none;align-items:center;justify-content:center;padding:24px;}
+#glootie-overlay.open{display:flex;}
+#glootie-modal{background:#0d1a0d;border:2px solid #3d8b37;border-radius:20px;max-width:420px;width:100%;padding:32px 28px;text-align:center;box-shadow:0 0 60px rgba(61,139,55,.4),0 32px 80px rgba(0,0,0,.6);position:relative;}
+#glootie-modal .g-close{position:absolute;top:14px;right:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#8b90a8;border-radius:50%;width:26px;height:26px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
 #egg-modal{background:var(--surface);border:1px solid var(--border2);border-radius:20px;width:100%;max-width:540px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.3);}
 #egg-top{background:#0d0f14;padding:22px 24px 18px;position:relative;}
 #egg-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--accent);margin-bottom:7px;}
@@ -267,11 +272,11 @@ body.hub-announcing #hub-home{margin-top:98px;}
   <div class="opts-divider" style="margin-top:12px;"></div>
   <div id="admin-auth-section" style="padding:6px 0 2px;"></div>
   <div class="opts-version-row" style="margin-top:8px;">
-    <span class="opts-version">The Hub &middot; v0.9.96</span>
+    <span class="opts-version">The Hub &middot; v0.9.97</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
-    <strong style="color:var(--text);font-size:12px;">v0.9.96 — 8 Jun 2026</strong><br>
+    <strong style="color:var(--text);font-size:12px;">v0.9.97 — 9 Jun 2026</strong><br>
     &#9679; LabMate: fixed Calculators &amp; PROTAC mobile drawer buttons (were broken); added PROTAC Tools to desktop nav bar<br>
     &#9679; Lab Designer: mobile toolbar now anchors to top (not bottom) with scrollable overflow, so it never covers the plate<br>
     &#9679; Hub cards: Echo description mentions Curve Editor; LabMate description lists all main sections<br>
@@ -555,6 +560,21 @@ body.hub-announcing #hub-home{margin-top:98px;}
       </div>
 
     </div>
+  </div>
+</div>
+
+<div id="glootie-overlay" onclick="if(event.target===this)closeGlootie()">
+  <div id="glootie-modal">
+    <button class="g-close" onclick="closeGlootie()">&#x2715;</button>
+    <div style="font-size:72px;line-height:1;margin-bottom:8px;">👽</div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:3px;color:#5cb85c;margin-bottom:10px;">// GLOOTIE.EXE</div>
+    <div style="font-size:22px;font-weight:700;color:#e8eaf2;letter-spacing:-0.5px;margin-bottom:6px;">Do you wanna develop an app?</div>
+    <div style="font-size:12px;color:#5cb85c;margin-bottom:24px;font-family:'IBM Plex Mono',monospace;">— Glootie, Rick and Morty S4E3</div>
+    <div style="display:flex;gap:12px;justify-content:center;" id="glootie-btns">
+      <button onclick="glootieYes()" style="padding:10px 28px;border-radius:10px;border:none;background:#3d8b37;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:background .15s;" onmouseover="this.style.background='#4da847'" onmouseout="this.style.background='#3d8b37'">Yes!</button>
+      <button onclick="closeGlootie()" style="padding:10px 28px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#8b90a8;font-size:14px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;transition:all .15s;" onmouseover="this.style.color='#e8eaf2'" onmouseout="this.style.color='#8b90a8'">No thanks</button>
+    </div>
+    <div id="glootie-response" style="display:none;margin-top:20px;"></div>
   </div>
 </div>
 
@@ -1173,6 +1193,7 @@ function initHubSub() {
 // ── Easter egg ────────────────────────────────────────────────────────────────
 var eggClicks = 0, eggTimer;
 var eggOpenCount = 0;
+var glootieClicks = 0, glootieTimer;
 
 var EGG_ROLES = {
   jon: [
@@ -1274,7 +1295,7 @@ window.addEventListener('message', function(e) {
 document.getElementById('hub-logo').addEventListener('click', function() {
   // When inside an app, H logo = back to hub home
   if (currentApp) { backToHub(); return; }
-  // On hub home: 5-click easter egg
+  // 5-click easter egg
   clearTimeout(eggTimer);
   eggClicks++;
   if (eggClicks >= 5) {
@@ -1286,10 +1307,42 @@ document.getElementById('hub-logo').addEventListener('click', function() {
   } else {
     eggTimer = setTimeout(function(){ eggClicks = 0; }, 1500);
   }
+  // 10-click Glootie easter egg
+  clearTimeout(glootieTimer);
+  glootieClicks++;
+  if (glootieClicks >= 10) {
+    glootieClicks = 0;
+    showGlootie();
+  } else {
+    glootieTimer = setTimeout(function(){ glootieClicks = 0; }, 3000);
+  }
 });
 
 function closeEgg() {
   document.getElementById('egg-overlay').classList.remove('open');
+}
+
+function showGlootie() {
+  var r = document.getElementById('glootie-response');
+  var btns = document.getElementById('glootie-btns');
+  if (r) { r.style.display='none'; r.innerHTML=''; }
+  if (btns) btns.style.display='flex';
+  document.getElementById('glootie-overlay').classList.add('open');
+}
+function closeGlootie() {
+  document.getElementById('glootie-overlay').classList.remove('open');
+}
+function glootieYes() {
+  var btns = document.getElementById('glootie-btns');
+  var r = document.getElementById('glootie-response');
+  if (btns) btns.style.display='none';
+  if (r) {
+    r.style.display='block';
+    r.innerHTML='<div style="font-size:40px;margin-bottom:10px;">🚫</div>'
+      +'<div style="font-family:\'IBM Plex Mono\',monospace;font-size:16px;font-weight:700;color:#ff5760;letter-spacing:1px;">DO NOT DEVELOP THE APP</div>'
+      +'<div style="font-size:11px;color:#5a5f7a;margin-top:8px;font-family:\'IBM Plex Sans\',sans-serif;">I told you not to develop the app.</div>'
+      +'<button onclick="closeGlootie()" style="margin-top:16px;padding:8px 24px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#8b90a8;font-size:13px;cursor:pointer;font-family:\'IBM Plex Sans\',sans-serif;">Close</button>';
+  }
 }
 
 function launchConfetti() {

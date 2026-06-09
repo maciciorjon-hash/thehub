@@ -253,15 +253,15 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-08 (Round 31: Echo 6-feature enhancement — gain equation, IC50 labels, 0% grid picker, re-run tab, survey tab, multi-assay)
+Last session: 2026-06-09 (Round 32: Echo multi-assay overhaul + Hub Glootie easter egg)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.82MB (7,817,523 chars). Version v0.9.97
+Hub file size: 7.85MB (7,846,818 chars). Version v0.9.97
 Echo changes (labcyte_echo.html):
-- Gain-of-signal: added _4plVal4_gain/_4plJac4_gain (stimulation form: h*(logec50-xi)); runAnalysisJS uses gain functions when gainMode; fpl in drawMultiCurve checks r._gainMode; reference curve also fixed; Y-axis label → 'FRET Ratio (subtracted)'; _gainMode/_assayType stored on each compound
-- onAssayTypeChange: for gain mode, % labels removed from Analysis tab (Max replicate SD, Top constrain, Fix bottom, Bottom ≥); done via childNodes[0].textContent update with IDs lbl-max-sd/lbl-top-constrain/lbl-fix-bottom/lbl-bot-ge
-- renderCvStats: uses _assayType (per-compound or _lastAnalysisParams) to show IC50/EC50/DC50, pIC50/pEC50/pDC50, Emax/Dmax labels; compare-mode table headers updated too
-- 0% wells grid picker: #zero-picker-modal duplicated from ctrl picker (pink accent); openZeroPicker/closeZeroPicker/applyZeroPicker/drawZeroGrid/updateZeroPreview functions; mouse IIFE for zero-grid-canvas; grid button added next to p-zero-pct input; CSS rule updated to include zero-picker-modal
-- Re-run tab: ↺ Re-run tab in tab bar; click handler returns early calling openSetupModal() (already shows 'Modify parameters and re-run' when scatterData exists); no tab pane needed
-- Source Plate tab: new 'Source Plate' tab; parseSurveyCSV parses Source Well + Volume columns; renderSurveyPlate draws 16×24 canvas with green/amber/red/empty colour coding by volume fraction; hover tooltip via #tt; called on tab switch and on file load
-- Multi-assay: checkbox 'Multiple assay types' in Assay tab; addAssayType/removeAssayType/updateMatPanel/collectMultiAssayConfigs functions; per-type panels with assay selector, prefix input, ctrl wells, optional 0% wells; runPipeline multi-mode: filters readerFiles by prefix, loops over types calling runAnalysisJS, merges results; Results table shows 'Assay' column when multiAssay=true; _assayType stored per compound for correct curve labels
+- Multi-assay per-type Echo file: _matEchoFiles dict; each mat-panel gets drop zone (mat-echo-zone-{idx}/mat-echo-input-{idx}); echoFile swapped per-type in runPipeline; falls back to main file if not set
+- Multi-assay per-type analysis params: collapsible <details> in each mat-panel with hookThr, r2, sd, topConstrain, dmaxCap, fixBot, fixHill, minBot, skipNorm; collectMultiAssayConfigs reads all; runPipeline passes mc.* to runAnalysisJS
+- Plate tab fix: allPlateData={} accumulates Object.assign across all types; window._plateData=allPlateData after loop — all assay plates visible
+- Results pivot table: renderMultiAssayResults() — one row per compound, columns grouped by assay type; row 1 header spans with colored assay name (HiBiT/#e08c30, Displacement/#0079b9, Gain-of-Signal/#26a69a, CTG/#9c6fd4); row 2 per-column names with assay-specific labels (DC50/IC50/EC50, pDC50/pIC50/pEC50, LogDC50/LogIC50/LogEC50, Dmax/Emax)
+- Cross-assay scatter: 'Cross-assay' button in Plots tab toolbar (shown when multiAssay); cross-section with X/Y selectors ('AssayType — Param'); buildCrossAssayChart() pivots scatterData; Chart.js scatter; downloadCrossAssayPNG()
+Hub changes (hub-shell.html):
+- Glootie easter egg: 10-click on H logo (separate glootieClicks counter, 3s reset); #glootie-overlay with dark green modal, alien emoji, 'Do you wanna develop an app?'; Yes button shows 'DO NOT DEVELOP THE APP' response; No thanks closes
 <!-- LAST_SESSION_END -->
