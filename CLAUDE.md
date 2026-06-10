@@ -253,16 +253,14 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-10 (Round 34: Echo scatter fixes, param cleanup, UI polish)
+Last session: 2026-06-10 (Round 35: scatter axis labels, tooltip rewrite, dual-curve click, column hide, CI label)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.85MB (7,853,720 chars). Version v0.9.99
+Hub file size: 7.86MB (7,860,078 chars). Version v1.0.0
 Echo changes (labcyte_echo.html):
-- Setup button sticky: .setup-reopen-btn gets position:sticky;right:0;z-index:1 so it stays visible when tab bar overflows
-- Scatter tooltip fix: customTooltip() falls back to window._resultsData lookup when r.dc50/dmax are null (pivot mode strips those keys)
-- Scatter curve panel fix: openCurvePanel() falls back to _resultsData for _xmin/_pts/_bot/_logec50/_hill/_tc when pt._xmin==null (pivot mode)
-- Removed Max DMAX (%) param from HiBiT (and CTG): dmax-cap-field HTML removed; dmax:null in syncMatAnalysisParams _assayLabels; protocol rows removed
-- Hook threshold hidden for Displacement and Gain: onAssayTypeChange hides hook-effect-field; syncMatAnalysisParams wraps row in (type==='hibit'||type==='ctg') conditional
-- Displacement Top constrain: hibit-ctg-params now shown for displacement (single-assay); top constrain rendered for all types in multi-assay; displacement dmax set to null (removes Max inhibition %)
-- CI values in results table formatted with _sigFmt(v,sf=3) — 3 significant figures
-- Results table horizontal scroll via document wheel→.tbl-wrap.scrollLeft handler
+- Scatter axis labels: buildScatterChart() and debounceUpdateAxisLabel() use _optLbl helper that looks up window._scatterAxisOpts by value — labels now exactly match dropdown text (multi-assay "HiBiT — DC50 (nM)" etc.)
+- Tooltip rewrite: customTooltip() no longer shows Group line; shows actual X and Y values (r.x, r.y via _sigFmt) labelled with _scatterAxisOpts lookup for current dropdown keys
+- Dual-curve click: openCurvePanel() reads sc-x/sc-y DOM values; if both axes have '::' and different assay types, looks up both rows from window._resultsData by Sample_ID+_assayType; passes both to drawMultiCurve(); stats panel shows per-assay labels
+- Column hide: right-click on <th data-col-key> in results-panel shows floating context menu ('Hide column' / 'Show all columns'); window._hiddenResultsCols Set filters cols array; DOMContentLoaded injects menu and global contextmenu handler
+- Always-visible scrollbar: .tbl-wrap changed to overflow-x:scroll with webkit scrollbar styling (6px, var(--border2) thumb)
+- CI label: renderResults uses assay-specific label ('IC50 95% CI' for displacement/ctg, 'EC50 95% CI' for gain, 'DC50 95% CI' for hibit); renderMultiAssayResults does same per assay type
 <!-- LAST_SESSION_END -->

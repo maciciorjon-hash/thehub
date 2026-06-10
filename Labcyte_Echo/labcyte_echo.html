@@ -161,7 +161,7 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .mc-lbl{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
 .mc-val{font-family:var(--sans);font-size:20px;font-weight:500;}
 .mc-val.g{color:var(--accent3);}
-.tbl-wrap{overflow-x:auto;}
+.tbl-wrap{overflow-x:scroll;}.tbl-wrap::-webkit-scrollbar{height:6px;}.tbl-wrap::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.tbl-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
 thead tr{border-bottom:1px solid var(--border2);}
 th{padding:8px 12px;text-align:left;font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--text3);white-space:nowrap;}
@@ -2351,11 +2351,11 @@ function renderResults(data) {
       .filter(k=>!(k==='AbsDC50_nM'&&_t!=='hibit'))
       .filter(k=>!(k==='Dmax_pct'&&_noGain))
       .map(k=>({k,l:_colLbls[k]||k,ns:k==='Flag'||k==='Flag_Reason'})),
-    ...(_selCI   ? [{k:'CI_DC50',  l:'DC50 95% CI', ns:true}] : []),
+    ...(_selCI   ? [{k:'CI_DC50',  l:(_t==='displacement'||_t==='ctg')?'IC50 95% CI':(_t==='gain')?'EC50 95% CI':'DC50 95% CI', ns:true}] : []),
     ...(_selTop  ? [{k:'Top_val',  l:'Top',         ns:true}] : []),
     ...(_selBot  ? [{k:'Bot_val',  l:'Bottom',      ns:true}] : []),
     ...(_selCIall? [{k:'CI_all',   l:'Hill 95% CI', ns:true}] : []),
-  ];
+  ].filter(col => !(window._hiddenResultsCols?.has(col.k)));
   const _pdfBlobs=downloadBlobs.filter(b=>b.kind==='pdf');
   const _rawBlob=downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
   // Build download section
@@ -2385,7 +2385,7 @@ function renderResults(data) {
   cols.forEach(col=>{
     const isA=_sortState.col===col.k, arr=isA?(_sortState.asc?' ▲':' ▼'):'';
     const clk=col.ns?'':` onclick="sortResultsBy('${col.k}')" style="cursor:pointer;user-select:none;"`;
-    h+=`<th${clk}>${col.l}${arr}</th>`;
+    h+=`<th${clk} data-col-key="${col.k}">${col.l}${arr}</th>`;
   });
   h+='</tr></thead><tbody>';
   const _PAGE = 200;
@@ -2459,7 +2459,8 @@ function renderMultiAssayResults(data) {
   h += '<tr>';
   for (const at of orderedTypes) {
     const m = _assayMeta[at]||{name:at,color:'#8b90a8',dc50:'DC50 (nM)',logdc50:'LogDC50',pdc50:'pDC50',dmax:'Dmax (%)'};
-    const lbl = {DC50_nM:m.dc50,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag',CI_DC50:'DC50 95% CI'};
+    const _ciLblM = (at==='displacement'||at==='ctg')?'IC50 95% CI':(at==='gain')?'EC50 95% CI':'DC50 95% CI';
+    const lbl = {DC50_nM:m.dc50,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag',CI_DC50:_ciLblM};
     for (const k of activeKeys) {
       if (k==='Dmax_pct'&&!m.dmax) continue;
       h += `<th style="font-size:11px;background:${m.color}0d;">${lbl[k]||k}</th>`;
@@ -3888,9 +3889,11 @@ function buildScatterChart() {
   const _at2=document.getElementById('p-assay-type')?.value||'hibit';
   const _ll2=_at2==='hibit'?'LogDC₅₀':_at2==='gain'?'LogEC₅₀':'LogIC₅₀';
   const axLabelMap = {'LogIC50_M':_ll2+' (M)','DC50_nM':'DC₅₀ (nM)','AbsDC50_nM':'Abs DC₅₀ (nM)','Dmax_pct':'Dmax (%)','pDC50':'pDC₅₀','HillSlope':'Hill slope','R2':'R²'};
-  const xUnitLabel = xOffset!==0 ? axLabelMap[xKey]?.replace('(M)',xUnit==='uM'?'(µM)':'(nM)') : (axLabelMap[xKey]||xKey);
+  const _optLbl = k => (window._scatterAxisOpts||[]).find(o=>o.value===k)?.label;
+  const _baseXLbl = _optLbl(xKeyRaw) || axLabelMap[xKey] || xKey;
+  const xUnitLabel = xOffset!==0 ? _baseXLbl.replace('(M)',xUnit==='uM'?'(µM)':'(nM)') : _baseXLbl;
   const xAxisLabel = xLabelOverride || xUnitLabel || xKey;
-  const yAxisLabel = yLabelOverride || axLabelMap[yKey2] || yKey2;
+  const yAxisLabel = yLabelOverride || _optLbl(yKeyRaw) || axLabelMap[yKey2] || yKey2;
 
   scatterChart = new Chart(ctx, {
     type: 'scatter',
@@ -4078,12 +4081,16 @@ function customTooltip({ chart, tooltip }) {
   }
   inner += '<b style="color:var(--text);font-family:var(--sans);font-size:12px;">' + esc(r.label) + '</b>';
   inner += '<div style="margin-top:4px;font-size:11px;line-height:1.65;">';
-  inner += '<span style="color:var(--text3);">Group</span> ' + esc(r.protein) + '<br>';
-  const _origR = (r.dc50==null||r.dmax==null) ? (window._resultsData||[]).find(x=>x.Sample_ID===r.label)||{} : {};
-  const _ttDC = r.dc50 ?? _origR.DC50_nM;
-  const _ttDmax = r.dmax ?? _origR.Dmax_pct;
-  const _ttR2 = r.r2 ?? _origR.R2;
-  inner += '<span style="color:var(--text3);">DC50</span> ' + (_ttDC ?? '—') + ' nM &nbsp;<span style="color:var(--text3);">Dmax</span> ' + (_ttDmax ?? '—') + '% &nbsp;<span style="color:var(--text3);">R²</span> ' + (_ttR2 ?? '—');
+  const _ttXKeyRaw = document.getElementById('sc-x')?.value || 'LogIC50_M';
+  const _ttYKeyRaw = document.getElementById('sc-y')?.value || 'Dmax_pct';
+  const _ttOptLbl = k => (window._scatterAxisOpts||[]).find(o=>o.value===k)?.label || k;
+  const _ttXLbl = _ttOptLbl(_ttXKeyRaw);
+  const _ttYLbl = _ttOptLbl(_ttYKeyRaw);
+  const _ttXVal = (r.x != null && isFinite(r.x)) ? _sigFmt(r.x) : '—';
+  const _ttYNum = parseFloat(r.y);
+  const _ttYVal = isFinite(_ttYNum) ? _sigFmt(_ttYNum) : (r.y ?? '—');
+  inner += '<span style="color:var(--text3);">' + esc(_ttXLbl) + '</span> ' + _ttXVal + '<br>';
+  inner += '<span style="color:var(--text3);">' + esc(_ttYLbl) + '</span> ' + _ttYVal;
   if (cd && cd.MW) inner += '<br><span style="color:var(--text3);font-size:10px;">MW ' + cd.MW + ' · logP ' + cd.logP + ' · HBA ' + cd.HBA + ' · HBD ' + cd.HBD + '</span>';
   if (r.flag==='Yes') inner += '<br><span style="color:var(--warn);font-size:10px;">⚠ flagged</span>';
   inner += '</div>';
@@ -4153,6 +4160,7 @@ function debounceUpdateAxisLabel() {
     const xUnit = document.getElementById('sc-xunit')?.value || 'M';
     const xOffset = (xKey==='LogIC50_M')?(xUnit==='uM'?6:xUnit==='nM'?9:0):0;
     const axLabelMap=Object.assign({'LogIC50_M':'LogIC50 (M)','DC50_nM':'DC50 (nM)','AbsDC50_nM':'Abs DC50 (nM)','Dmax_pct':'Dmax (%)','HillSlope':'Hill slope','R2':'R²'},(window._scAxLabelExt||{}));
+    const _optLbl2 = k => (window._scatterAxisOpts||[]).find(o=>o.value===k)?.label;
   // Colour-by legend
   const legEl=document.getElementById('sc-colorby-legend');
   if(legEl){
@@ -4177,9 +4185,10 @@ function debounceUpdateAxisLabel() {
       } else { legEl.innerHTML=''; }
     } else { legEl.innerHTML=''; }
   }
-    const xUnitLabel = xOffset!==0?axLabelMap[xKey]?.replace('(M)',xUnit==='uM'?'(µM)':'(nM)'):(axLabelMap[xKey]||xKey);
+    const _baseXLbl2 = _optLbl2(xKey) || axLabelMap[xKey] || xKey;
+    const xUnitLabel = xOffset!==0?_baseXLbl2.replace('(M)',xUnit==='uM'?'(µM)':'(nM)'):_baseXLbl2;
     scatterChart.options.scales.x.title.text = xl || xUnitLabel || xKey;
-    scatterChart.options.scales.y.title.text = yl || axLabelMap[yKey2] || yKey2;
+    scatterChart.options.scales.y.title.text = yl || _optLbl2(yKey2) || axLabelMap[yKey2] || yKey2;
     scatterChart.update('none');
   }, 300);
 }
@@ -6654,34 +6663,63 @@ function openCurvePanel(pt) {
   if (!panel) return;
   panel.classList.add('open');
   if (nameEl) nameEl.textContent=(pt.label||'—')+(pt.protein?' · '+pt.protein:'');
-  if (statsEl) {
-    const fc=pt.flag==='Yes'?'var(--warn)':'var(--accent3)';
-    statsEl.innerHTML=
-      `DC50: <b>${pt.DC50_nM!=null?pt.DC50_nM+' nM':'—'}</b>${pt.AbsDC50_nM!=null?' (Abs: '+pt.AbsDC50_nM+' nM)':''} &nbsp; Dmax: <b>${pt.Dmax_pct!=null?pt.Dmax_pct+'%':'—'}</b><br>`+
-      `pDC50: <b>${pt.pDC50??'—'}</b> &nbsp; Hill: <b>${pt.HillSlope??'—'}</b> &nbsp; R²: <b>${pt.R2??'—'}</b><br>`+
-      `Flag: <b style="color:${fc};">${pt.flag||'No'}</b>`;
+
+  const _allData2 = window._resultsData || [];
+  const _cpXKey = document.getElementById('sc-x')?.value || '';
+  const _cpYKey = document.getElementById('sc-y')?.value || '';
+  const _cpXAssay = _cpXKey.includes('::') ? _cpXKey.split('::')[0] : null;
+  const _cpYAssay = _cpYKey.includes('::') ? _cpYKey.split('::')[0] : null;
+  const _cpAssayMeta = {hibit:{dc50:'DC50',dmax:'Dmax (%)',color:'#e08c30'},displacement:{dc50:'IC50',dmax:null,color:'#0079b9'},gain:{dc50:'EC50',dmax:'Emax (%)',color:'#26a69a'},ctg:{dc50:'IC50',dmax:'Span (%)',color:'#9c6fd4'}};
+
+  let curveRows = [];
+  if (_cpXAssay && _cpYAssay && _cpXAssay !== _cpYAssay) {
+    const rowX = _allData2.find(x=>x.Sample_ID===pt.label&&x._assayType===_cpXAssay);
+    const rowY = _allData2.find(x=>x.Sample_ID===pt.label&&x._assayType===_cpYAssay);
+    curveRows = [rowX, rowY].filter(Boolean);
+  } else if (_cpXAssay || _cpYAssay) {
+    const assay = _cpXAssay || _cpYAssay;
+    const row = _allData2.find(x=>x.Sample_ID===pt.label&&x._assayType===assay);
+    if (row) curveRows = [row];
   }
+  if (!curveRows.length) {
+    const _origPt = (pt._xmin==null) ? (_allData2.find(x=>x.Sample_ID===pt.label)||{}) : {};
+    curveRows = [{
+      Sample_ID:pt.label, Protein:pt.protein,
+      DC50_nM:pt.DC50_nM??_origPt.DC50_nM, AbsDC50_nM:pt.AbsDC50_nM??_origPt.AbsDC50_nM,
+      Dmax_pct:pt.Dmax_pct??_origPt.Dmax_pct, pDC50:pt.pDC50??_origPt.pDC50,
+      HillSlope:pt.HillSlope??_origPt.HillSlope, R2:pt.R2??_origPt.R2, Flag:pt.flag,
+      _bot:pt._bot??_origPt._bot, _logec50:pt._logec50??_origPt._logec50,
+      _hill:pt._hill??_origPt._hill, _tc:pt._tc??_origPt._tc,
+      _xmin:pt._xmin??_origPt._xmin, _xmax:pt._xmax??_origPt._xmax,
+      _pts:pt._pts??_origPt._pts??[], _reps:pt._reps??_origPt._reps??[],
+      _hook_x:pt._hook_x??_origPt._hook_x
+    }];
+  }
+
+  if (statsEl) {
+    let sHtml = '';
+    for (const row of curveRows) {
+      const _at = row._assayType;
+      const _am = _cpAssayMeta[_at] || {dc50:'DC50',dmax:'Dmax (%)'};
+      const fc = row.Flag==='Yes'?'var(--warn)':'var(--accent3)';
+      if (curveRows.length > 1 && _at) sHtml += `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:${_am.color||'var(--text3)'};margin-bottom:2px;">${_at}</div>`;
+      sHtml += `${_am.dc50}: <b>${row.DC50_nM!=null?row.DC50_nM+' nM':'—'}</b>`;
+      if (row.AbsDC50_nM!=null) sHtml += ` (Abs: ${row.AbsDC50_nM} nM)`;
+      if (_am.dmax) sHtml += ` &nbsp; ${_am.dmax}: <b>${row.Dmax_pct!=null?row.Dmax_pct+'%':'—'}</b>`;
+      sHtml += `<br>Hill: <b>${row.HillSlope??'—'}</b> &nbsp; R²: <b>${row.R2??'—'}</b> &nbsp; Flag: <b style="color:${fc};">${row.Flag||'No'}</b>`;
+      if (curveRows.length > 1) sHtml += '<hr style="border:none;border-top:1px solid var(--border);margin:4px 0;">';
+    }
+    statsEl.innerHTML = sHtml;
+  }
+
   if (canvas) {
     const _cpDraw=()=>{
       const par=canvas.parentElement;
       const w=par?.clientWidth||460;
       const h=Math.max(200,(par?.clientHeight||400)-(statsEl?.offsetHeight||90)-24);
       canvas.style.width=w+'px'; canvas.style.height=h+'px';
-      const _cpProtColor = pcolor(pt.protein||'').fg;
-      const _cpCfg=Object.assign({},window._cvCfg||{},{showReps:true, palette:[_cpProtColor]});
-      const _allData2 = window._resultsData || [];
-      const _origPt = (pt._xmin==null) ? (_allData2.find(x=>x.Sample_ID===pt.label)||{}) : {};
-      drawMultiCurve(canvas, [{
-        Sample_ID:pt.label, Protein:pt.protein,
-        DC50_nM:pt.DC50_nM??_origPt.DC50_nM, AbsDC50_nM:pt.AbsDC50_nM??_origPt.AbsDC50_nM,
-        Dmax_pct:pt.Dmax_pct??_origPt.Dmax_pct, pDC50:pt.pDC50??_origPt.pDC50,
-        HillSlope:pt.HillSlope??_origPt.HillSlope, R2:pt.R2??_origPt.R2, Flag:pt.flag,
-        _bot:pt._bot??_origPt._bot, _logec50:pt._logec50??_origPt._logec50,
-        _hill:pt._hill??_origPt._hill, _tc:pt._tc??_origPt._tc,
-        _xmin:pt._xmin??_origPt._xmin, _xmax:pt._xmax??_origPt._xmax,
-        _pts:pt._pts??_origPt._pts??[], _reps:pt._reps??_origPt._reps??[],
-        _hook_x:pt._hook_x??_origPt._hook_x
-      }], _cpCfg);
+      const _cpCfg=Object.assign({},window._cvCfg||{},{showReps:true});
+      drawMultiCurve(canvas, curveRows, _cpCfg);
     };
     _cpDraw();
     setTimeout(_cpDraw, 60);
@@ -7823,7 +7861,36 @@ function switchPanel(id, btn) {
 document.addEventListener('DOMContentLoaded',function(){
   var a=document.querySelector('.outer-tab.active');
   if(a)updateTabIndicator(a);
+
+  window._hiddenResultsCols = new Set();
+  const _colMenu = document.createElement('div');
+  _colMenu.id = 'col-ctx-menu';
+  _colMenu.style.cssText = 'position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border2);border-radius:7px;box-shadow:0 4px 18px rgba(0,0,0,.22);padding:4px 0;font-family:var(--sans);font-size:12px;display:none;min-width:165px;';
+  document.body.appendChild(_colMenu);
+  document.addEventListener('contextmenu', function(e) {
+    const th = e.target.closest('#results-panel th[data-col-key]');
+    if (!th) { _colMenu.style.display='none'; return; }
+    e.preventDefault();
+    const k = th.dataset.colKey;
+    _colMenu.innerHTML =
+      `<div onclick="_hideResultsCol('${k}')" style="padding:7px 15px;cursor:pointer;color:var(--text);" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">Hide column</div>`+
+      `<div onclick="_unhideAllResultsCols()" style="padding:7px 15px;cursor:pointer;color:var(--text);" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">Show all columns</div>`;
+    _colMenu.style.display = 'block';
+    _colMenu.style.left = Math.min(e.clientX, window.innerWidth-180)+'px';
+    _colMenu.style.top  = Math.min(e.clientY, window.innerHeight-80)+'px';
+  });
+  document.addEventListener('click', function() { _colMenu.style.display='none'; });
 });
+function _hideResultsCol(k) {
+  (window._hiddenResultsCols = window._hiddenResultsCols||new Set()).add(k);
+  document.getElementById('col-ctx-menu').style.display='none';
+  if (_lastResultsData?.length) renderResults(_lastResultsData);
+}
+function _unhideAllResultsCols() {
+  window._hiddenResultsCols = new Set();
+  document.getElementById('col-ctx-menu').style.display='none';
+  if (_lastResultsData?.length) renderResults(_lastResultsData);
+}
 </script>
 
 <script>
