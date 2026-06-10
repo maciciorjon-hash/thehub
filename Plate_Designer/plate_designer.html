@@ -312,14 +312,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
           <select class="gd-select" id="gd-lpos" onchange="gdDraw()">
             <option value="inside">Inside well</option>
             <option value="below">Below well</option>
-            <option value="above">Above well</option>
+            <option value="above" selected>Above well</option>
           </select>
         </div>
         <div class="gd-field">
           <label>Orientation</label>
           <select class="gd-select" id="gd-orient" onchange="gdDraw()">
             <option value="0">Horizontal</option>
-            <option value="-90">Vertical</option>
+            <option value="-90" selected>Vertical</option>
             <option value="-45">Angled −45°</option>
           </select>
         </div>
@@ -328,29 +328,33 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
         <div class="gd-field" style="flex:0 0 74px">
           <label>Well size</label>
           <select class="gd-select" id="gd-wsz" onchange="gdDraw()">
-            <option value="S">S — flat</option>
-            <option value="M" selected>M — square</option>
+            <option value="S" selected>S</option>
+            <option value="M">M</option>
           </select>
         </div>
         <div class="gd-field">
           <label>Lane numbers</label>
           <select class="gd-select" id="gd-lanepos" onchange="gdDraw()">
             <option value="above">Above wells</option>
-            <option value="inside">Inside wells</option>
+            <option value="inside" selected>Inside wells</option>
             <option value="none">Hide</option>
           </select>
         </div>
       </div>
 
       <div class="gd-sect-lbl">Typography</div>
-      <div class="gd-row" style="align-items:center;">
-        <div class="gd-field" style="flex:0 0 70px">
-          <label>Font px</label>
-          <input type="number" class="gd-input" id="gd-fsize" value="12" min="6" max="22" oninput="gdDraw()">
+      <div style="display:grid;grid-template-columns:44px 1fr;gap:4px 8px;align-items:center;font-size:11px;color:var(--text2);margin-bottom:8px;">
+        <span style="color:var(--text3);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Title</span>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="number" class="gd-input" id="gd-title-fsize" value="12" min="6" max="24" style="width:46px;" oninput="gdDraw()">
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="checkbox" id="gd-title-bold" onchange="gdDraw()"> Bold</label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="checkbox" id="gd-title-italic" checked onchange="gdDraw()"> Italic</label>
         </div>
-        <div style="display:flex;gap:10px;align-items:center;font-size:12px;color:var(--text2);padding-bottom:2px;">
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="gd-bold" onchange="gdDraw()"> Bold</label>
-          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="gd-italic" onchange="gdDraw()"> Italic</label>
+        <span style="color:var(--text3);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;">Labels</span>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="number" class="gd-input" id="gd-fsize" value="12" min="6" max="22" style="width:46px;" oninput="gdDraw()">
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="checkbox" id="gd-bold" onchange="gdDraw()"> Bold</label>
+          <label style="display:flex;align-items:center;gap:3px;cursor:pointer;"><input type="checkbox" id="gd-italic" onchange="gdDraw()"> Italic</label>
         </div>
       </div>
       <div class="gd-row">
@@ -562,13 +566,16 @@ function gdDraw() {
   var transparent = !!(document.getElementById('gd-transparent') || {}).checked;
   var ctxLabel = (document.getElementById('gd-context') || {}).value || '';
   var title    = (document.getElementById('gd-title') || {}).value || '';
-  var lpos     = (document.getElementById('gd-lpos') || {}).value || 'inside';
-  var orient   = +((document.getElementById('gd-orient') || {}).value || 0);
-  var wszKey   = (document.getElementById('gd-wsz') || {}).value || 'M';
+  var lpos     = (document.getElementById('gd-lpos') || {}).value || 'above';
+  var orient   = +((document.getElementById('gd-orient') || {}).value || -90);
+  var wszKey   = (document.getElementById('gd-wsz') || {}).value || 'S';
   var fsize    = Math.max(6, Math.min(22, +((document.getElementById('gd-fsize') || {}).value || 12)));
   var bold     = !!(document.getElementById('gd-bold') || {}).checked;
   var italic   = !!(document.getElementById('gd-italic') || {}).checked;
   var fontStr  = (italic ? 'italic ' : '') + (bold ? 'bold ' : '') + fsize + 'px ' + GD.FONT;
+  var titleFsize  = Math.max(6, Math.min(24, +((document.getElementById('gd-title-fsize') || {}).value || 12)));
+  var titleBold   = !!(document.getElementById('gd-title-bold') || {}).checked;
+  var titleItalic = !!(document.getElementById('gd-title-italic') || {}).checked;
 
   var W = wszKey === 'S' ? 36 : 34;
   var H = wszKey === 'S' ? 16 : W;
@@ -579,12 +586,14 @@ function gdDraw() {
     else {
       var maxLabelLen = 1;
       gdWells.forEach(function(w){ if (w.label && w.type !== 'empty') maxLabelLen = Math.max(maxLabelLen, w.label.length); });
-      EXT_H = GAP_EXT + Math.min(Math.max(maxLabelLen * fsize * 0.62, 30), 130);
+      var labelPxLen = maxLabelLen * fsize * 0.62;
+      var angRad = Math.abs(orient) * Math.PI / 180;
+      EXT_H = GAP_EXT + Math.min(Math.max(labelPxLen * Math.sin(angRad) + fsize * Math.cos(angRad), 30), 130);
     }
   }
   var ABOVE_H = lpos === 'above' ? EXT_H : 0;
   var BELOW_H = lpos === 'below' ? EXT_H : 0;
-  var TITLE_H = title ? 20 : 0;
+  var TITLE_H = title ? titleFsize + 8 : 0;
   var lanePos0 = (document.getElementById('gd-lanepos') || {}).value || 'above';
   var NUM_H = lanePos0 === 'above' ? 14 : 4;
   var numLevels = gdBrackets.length > 0 ? Math.max.apply(null, gdBrackets.map(function(b){ return b.level; })) : 0;
@@ -619,7 +628,7 @@ function gdDraw() {
   if (title) {
     ctx.save();
     ctx.fillStyle = '#111';
-    ctx.font = (bold ? 'bold ' : '') + 'italic 12px ' + GD.FONT;
+    ctx.font = (titleItalic ? 'italic ' : '') + (titleBold ? 'bold ' : '') + titleFsize + 'px ' + GD.FONT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     ctx.fillText(title, totalW / 2, yTitle + 2);
     ctx.restore();
@@ -703,7 +712,7 @@ function gdDraw() {
       while (ctx.measureText(lbl).width > maxFitW && drwSize > 6) { drwSize -= 0.5; ctx.font = (italic?'italic ':'')+(bold?'bold ':'')+drwSize+'px '+GD.FONT; }
       ctx.fillStyle = '#222'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.translate(wCX, wy + H / 2);
-      if (orient !== 0) ctx.rotate(-Math.PI / 2);
+      if (orient !== 0) ctx.rotate(orient * Math.PI / 180);
       ctx.fillText(lbl, 0, 0);
       ctx.restore();
     } else {
@@ -716,9 +725,17 @@ function gdDraw() {
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
         ctx.fillText(lbl, wCX, lpos === 'below' ? yBelow + GAP + fsize : yWell - GAP);
       } else {
+        var rotRad = orient * Math.PI / 180;
         ctx.textBaseline = 'middle';
-        if (lpos === 'below') { ctx.translate(wCX, yBelow + GAP); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'right'; }
-        else { ctx.translate(wCX, yWell - GAP); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'left'; }
+        if (lpos === 'below') {
+          ctx.translate(wCX, yBelow + GAP);
+          ctx.rotate(rotRad);
+          ctx.textAlign = orient === -90 ? 'right' : 'left';
+        } else {
+          ctx.translate(wCX, yWell - GAP);
+          ctx.rotate(rotRad);
+          ctx.textAlign = 'left';
+        }
         ctx.fillText(lbl, 0, 0);
       }
       ctx.restore();
@@ -750,6 +767,9 @@ function gdDownload() {
       fsize: document.getElementById('gd-fsize').value,
       bold: document.getElementById('gd-bold').checked,
       italic: document.getElementById('gd-italic').checked,
+      titleFsize: document.getElementById('gd-title-fsize').value,
+      titleBold: document.getElementById('gd-title-bold').checked,
+      titleItalic: document.getElementById('gd-title-italic').checked,
       context: document.getElementById('gd-context').value,
       wells: JSON.parse(JSON.stringify(gdWells)),
       brackets: JSON.parse(JSON.stringify(gdBrackets))
@@ -1892,8 +1912,9 @@ function ldHistLoadEntry(id) {
     (d.wells || []).forEach(function(w, i){ if(gdWells[i]){ gdWells[i].label=w.label; gdWells[i].type=w.type; } });
     gdBrackets = d.brackets ? JSON.parse(JSON.stringify(d.brackets)) : [];
     $v('gd-title', d.title||''); $v('gd-lpos', d.lpos||'inside'); $v('gd-orient', d.orient||'0');
-    $v('gd-wsz', d.wsz||'M'); $v('gd-lanepos', d.lanepos||'above'); $v('gd-fsize', d.fsize||'12');
+    $v('gd-wsz', d.wsz||'S'); $v('gd-lanepos', d.lanepos||'inside'); $v('gd-fsize', d.fsize||'12');
     $c('gd-bold', !!d.bold); $c('gd-italic', !!d.italic); $v('gd-context', d.context||'');
+    $v('gd-title-fsize', d.titleFsize||'12'); $c('gd-title-bold', !!d.titleBold); $c('gd-title-italic', d.titleItalic!==undefined ? !!d.titleItalic : true);
     gdRenderWells(); gdRenderBrackets(); gdDraw();
     var btn = document.querySelector('.tab[onclick*="\'gel\'"]');
     if (btn) switchTab('gel', btn);
