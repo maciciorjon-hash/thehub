@@ -253,13 +253,16 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-09 (Round 33: Echo multi-assay UX overhaul — multi-file, per-assay analysis params, CI, dynamic scatter)
+Last session: 2026-06-10 (Round 34: Echo scatter fixes, param cleanup, UI polish)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.85MB (7,849,690 chars). Version v0.9.98
+Hub file size: 7.85MB (7,853,720 chars). Version v0.9.99
 Echo changes (labcyte_echo.html):
-- Multiple echo files in Files tab: echoFiles[] array; multi-file input; renderEchoList() shows loaded files with remove buttons; mergeEchoCsvs() concatenates CSVs by header detection at runPipeline time
-- Per-assay analysis params moved to Analysis tab: syncMatAnalysisParams() renders #mat-analysis-container (hidden in single-assay mode); each assay gets hookThr/r2/sd/topConstrain/dmaxCap/fixBot/fixHill/minBot/skipNorm; labels adapt (gain: no %, displacement: 'Max inhibition (%)')
-- Ctrl well grid picker in mat-panels: ⊞ Grid button beside each mat-ctrl input; openMatCtrlPicker(idx) sets _matCtrlPickerTarget; applyCtrlPicker() routes output to mat-ctrl or p-ctrl based on target
-- 95% CI output: _matInv() Gauss-Jordan inversion + _tQ95() t-table added; _lmFit() returns {params,r2,se,df}; runAnalysisJS computes CI_DC50_lower/upper, CI_Hill_lower/upper, CI_Bot_lower/upper, CI_Top_lower/upper; Output tab checkboxes: Top, Bottom, CI_DC50 (default on), CI_all (default off)
-- Dynamic scatter axes: _buildAxisOptions() generates X/Y selects from actual results columns; in multi-assay mode adds 'assaytype::param' cross-assay options; _buildMultiAssayPivot() creates one-row-per-compound pivot for cross-assay plotting; cross-assay separate button/section removed
+- Setup button sticky: .setup-reopen-btn gets position:sticky;right:0;z-index:1 so it stays visible when tab bar overflows
+- Scatter tooltip fix: customTooltip() falls back to window._resultsData lookup when r.dc50/dmax are null (pivot mode strips those keys)
+- Scatter curve panel fix: openCurvePanel() falls back to _resultsData for _xmin/_pts/_bot/_logec50/_hill/_tc when pt._xmin==null (pivot mode)
+- Removed Max DMAX (%) param from HiBiT (and CTG): dmax-cap-field HTML removed; dmax:null in syncMatAnalysisParams _assayLabels; protocol rows removed
+- Hook threshold hidden for Displacement and Gain: onAssayTypeChange hides hook-effect-field; syncMatAnalysisParams wraps row in (type==='hibit'||type==='ctg') conditional
+- Displacement Top constrain: hibit-ctg-params now shown for displacement (single-assay); top constrain rendered for all types in multi-assay; displacement dmax set to null (removes Max inhibition %)
+- CI values in results table formatted with _sigFmt(v,sf=3) — 3 significant figures
+- Results table horizontal scroll via document wheel→.tbl-wrap.scrollLeft handler
 <!-- LAST_SESSION_END -->
