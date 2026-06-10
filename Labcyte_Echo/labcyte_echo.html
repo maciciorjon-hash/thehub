@@ -1312,11 +1312,10 @@ function loadTestData() {
     try {
       // Echo file
       const echoF = _b64toFile(_TEST_ECHO_B64, 'E5XX-1409_Transfer_1777972507.csv', 'text/csv');
-      echoFile = echoF;
+      echoFiles = [echoF];
       document.getElementById('echo-zone').classList.add('filled');
       document.getElementById('echo-icon').textContent = '✅';
-      const en = document.getElementById('echo-name');
-      en.textContent = echoF.name; en.style.display = 'block';
+      renderEchoList();
       log('Echo file: ' + echoF.name + ' (' + (echoF.size/1024).toFixed(1) + ' KB)', 'ok');
 
       // Reader files
@@ -2145,21 +2144,21 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
             Math.max(loHillEff, Math.min(hiHillEff, 1)),
             Math.max(topLo, Math.min(topHi, yMax2))
           ];
-          const { params, r2 } = _fitBest(xArr, yArr, pInit,
+          const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff, topLo], [hiBotEff, xMax + 1, hiHillEff, topHi],
             gainMode ? _4plVal4_gain : _4plVal4, gainMode ? _4plJac4_gain : _4plJac4, 200);
-          fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2 };
+          fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2, se, df };
         } else {
           const pInit = [
             Math.max(loBotEff, Math.min(hiBotEff, yMin2)),
             Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
             Math.max(loHillEff, Math.min(hiHillEff, 1))
           ];
-          const { params, r2 } = _fitBest(xArr, yArr, pInit,
+          const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff], [hiBotEff, xMax + 1, hiHillEff],
             (xi, b, l, h) => _4plVal3(xi, b, l, h, _tc),
             (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 200);
-          fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: _tc, r2 };
+          fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: _tc, r2, se, df };
         }
 
         const { bot, logec50, hill, tc, r2 } = fitResult;
