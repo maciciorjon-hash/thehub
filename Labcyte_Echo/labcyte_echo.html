@@ -3553,13 +3553,15 @@ function renderScatter(data) {
       return opts;
     }
     const logLbl = _assayT==='hibit'?'LogDC₅₀':_assayT==='gain'?'LogEC₅₀':'LogIC₅₀';
+    const concLbl = _assayT==='hibit'?'DC₅₀':_assayT==='gain'?'EC₅₀':'IC₅₀';
+    const pLbl = _assayT==='hibit'?'pDC₅₀':_assayT==='gain'?'pEC₅₀':'pIC₅₀';
+    const dmaxLbl = _assayT==='gain'?'Emax (%)':'Dmax (%)';
     return [
-      {value:'LogIC50_M',label:logLbl+' (M)'},{value:'DC50_nM',label:'DC₅₀ (nM)'},
-      {value:'AbsDC50_nM',label:'Abs DC₅₀ (nM)'},{value:'pDC50',label:'pDC₅₀'},
-      {value:'HillSlope',label:'Hill slope'},{value:'R2',label:'R²'},
-      {value:'Dmax_pct',label:'Dmax (%)'},{value:'CI_DC50_lower',label:'DC₅₀ CI lower'},
-      {value:'CI_DC50_upper',label:'DC₅₀ CI upper'},{value:'Top_val',label:'Top'},
-      {value:'Bot_val',label:'Bottom'}
+      {value:'LogIC50_M',label:logLbl},{value:'Dmax_pct',label:dmaxLbl},
+      {value:'DC50_nM',label:concLbl},{value:'AbsDC50_nM',label:'Abs '+concLbl},
+      {value:'pDC50',label:pLbl},{value:'HillSlope',label:'Hill slope'},{value:'R2',label:'R²'},
+      {value:'CI_DC50_lower',label:'CI lower'},{value:'CI_DC50_upper',label:'CI upper'},
+      {value:'Top_val',label:'Top'},{value:'Bot_val',label:'Bottom'}
     ];
   };
   window._scatterAxisOpts = _buildAxisOptions(data, _isMultiAssay);
@@ -3574,13 +3576,19 @@ function renderScatter(data) {
     <div id="sc-section" style="flex:1;display:flex;flex-direction:column;min-height:0;"><div id="sc-colorby-legend" style="padding:2px 12px;min-height:0;"></div>
     <div class="scatter-toolbar">
       <div class="strow" style="flex-wrap:wrap;gap:6px 10px;">
+        <label>Unit</label>
+        <select id="sc-xunit" onchange="buildScatterChart()" style="font-size:11px;">
+          <option value="M">M</option>
+          <option value="uM">µM</option>
+          <option value="nM">nM</option>
+        </select>
         <label>X</label>
         <select id="sc-x" onchange="updateScatter()">
           ${window._scatterAxisOpts.map((o,i)=>`<option value="${o.value}"${i===0?' selected':''}>${o.label}</option>`).join('')}
         </select>
         <label>Y</label>
         <select id="sc-y" onchange="updateScatter()">
-          ${window._scatterAxisOpts.map((o,i)=>`<option value="${o.value}"${i===1?' selected':''}>${o.label}</option>`).join('')}
+          ${window._scatterAxisOpts.map(o=>`<option value="${o.value}"${o.value==='Dmax_pct'?' selected':''}>${o.label}</option>`).join('')}
         </select>
         <label>Group</label>
         <select id="sc-prot" onchange="updateScatter()">
@@ -3619,12 +3627,6 @@ function renderScatter(data) {
           <option value="AbsDC50_nM">Abs DC₅₀</option>
           <option value="Dmax_pct">Dmax</option>
           <option value="R2">R²</option>
-        </select>
-        <label>Conc.</label>
-        <select id="sc-xunit" onchange="buildScatterChart()" style="font-size:11px;">
-          <option value="M">Log[M]</option>
-          <option value="uM">Log[µM]</option>
-          <option value="nM">Log[nM]</option>
         </select>
         <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="sc-showcurve" onchange="buildScatterChart()"> Curve↗</label>
         <button class="stbtn" style="margin-left:auto;font-size:11px;" onclick="(function(){var d=document.getElementById('sc-filters-wrap');var open=d.style.display!=='none';d.style.display=open?'none':'flex';this.classList.toggle('active',!open);}).call(this)">Filters ▾</button>
@@ -3805,8 +3807,12 @@ function buildScatterChart() {
   const yMaxV = _zoomBounds ? _zoomBounds.yMax : (_ymaxEl?.value ? parseFloat(_ymaxEl.value) : NaN);
   const titleText = document.getElementById('sc-title')?.value || '';
   const searchQ = (document.getElementById('sc-search')?.value || '').toLowerCase().trim();
-  const xUnit = document.getElementById('sc-xunit')?.value || 'M';
-  const xOffset = (xKey==='LogIC50_M') ? (xUnit==='uM'?6 : xUnit==='nM'?9 : 0) : 0;
+  const unit = document.getElementById('sc-xunit')?.value || 'M';
+  const xOffset = (xKey==='LogIC50_M') ? (unit==='uM'?6 : unit==='nM'?9 : 0) : 0;
+  const yOffset2 = (yKey2==='LogIC50_M') ? (unit==='uM'?6 : unit==='nM'?9 : 0) : 0;
+  const _concScale = unit==='nM'?1 : unit==='uM'?0.001 : 1e-6;
+  const xConcScale = (xKey==='DC50_nM'||xKey==='AbsDC50_nM') ? _concScale : 1;
+  const yConcScale = (yKey2==='DC50_nM'||yKey2==='AbsDC50_nM') ? _concScale : 1;
   const colorBy = document.getElementById('sc-colorby')?.value || '';
   const sizeBy = document.getElementById('sc-sizeby')?.value || '';
   const showCurve = document.getElementById('sc-showcurve')?.checked || false;
@@ -3845,7 +3851,8 @@ function buildScatterChart() {
       const _xv=parseFloat(r[xKey]), _yv=parseFloat(r[yKey2]);
       return _usePivot ? (isFinite(_xv)&&isFinite(_yv)) : true;
     }).map(r => ({
-      x: (parseFloat(r[xKey])||0)+xOffset, y: r[yKey2],
+      x: ((parseFloat(r[xKey])||0)+xOffset)*xConcScale,
+      y: (()=>{const _ry=parseFloat(r[yKey2]);return isFinite(_ry)?(_ry+yOffset2)*yConcScale:r[yKey2];})(),
       label: r.Sample_ID, flag: r.Flag,
       dc50: r.DC50_nM, dmax: r.Dmax_pct, r2: r.R2, protein: prot,
       _bot: r._bot, _logec50: r._logec50, _hill: r._hill, _tc: r._tc,
@@ -3886,14 +3893,16 @@ function buildScatterChart() {
     };
   });
 
-  const _at2=document.getElementById('p-assay-type')?.value||'hibit';
-  const _ll2=_at2==='hibit'?'LogDC₅₀':_at2==='gain'?'LogEC₅₀':'LogIC₅₀';
-  const axLabelMap = {'LogIC50_M':_ll2+' (M)','DC50_nM':'DC₅₀ (nM)','AbsDC50_nM':'Abs DC₅₀ (nM)','Dmax_pct':'Dmax (%)','pDC50':'pDC₅₀','HillSlope':'Hill slope','R2':'R²'};
+  const _unitStr = unit==='uM'?'µM':unit==='nM'?'nM':'M';
   const _optLbl = k => (window._scatterAxisOpts||[]).find(o=>o.value===k)?.label;
-  const _baseXLbl = _optLbl(xKeyRaw) || axLabelMap[xKey] || xKey;
-  const xUnitLabel = xOffset!==0 ? _baseXLbl.replace('(M)',xUnit==='uM'?'(µM)':'(nM)') : _baseXLbl;
-  const xAxisLabel = xLabelOverride || xUnitLabel || xKey;
-  const yAxisLabel = yLabelOverride || _optLbl(yKeyRaw) || axLabelMap[yKey2] || yKey2;
+  function _axLblFull(rawKey, fieldKey) {
+    if (rawKey.includes('::')) return _optLbl(rawKey) || rawKey;
+    const base = _optLbl(rawKey) || rawKey;
+    if (fieldKey==='LogIC50_M'||fieldKey==='DC50_nM'||fieldKey==='AbsDC50_nM') return base+' ('+_unitStr+')';
+    return base;
+  }
+  const xAxisLabel = xLabelOverride || _axLblFull(xKeyRaw, xKey);
+  const yAxisLabel = yLabelOverride || _axLblFull(yKeyRaw, yKey2);
 
   scatterChart = new Chart(ctx, {
     type: 'scatter',
@@ -4083,9 +4092,12 @@ function customTooltip({ chart, tooltip }) {
   inner += '<div style="margin-top:4px;font-size:11px;line-height:1.65;">';
   const _ttXKeyRaw = document.getElementById('sc-x')?.value || 'LogIC50_M';
   const _ttYKeyRaw = document.getElementById('sc-y')?.value || 'Dmax_pct';
+  const _ttUnit = document.getElementById('sc-xunit')?.value || 'M';
+  const _ttUStr = _ttUnit==='uM'?'µM':_ttUnit==='nM'?'nM':'M';
   const _ttOptLbl = k => (window._scatterAxisOpts||[]).find(o=>o.value===k)?.label || k;
-  const _ttXLbl = _ttOptLbl(_ttXKeyRaw);
-  const _ttYLbl = _ttOptLbl(_ttYKeyRaw);
+  function _ttLblU(k) { const b=_ttOptLbl(k); return (k==='LogIC50_M'||k==='DC50_nM'||k==='AbsDC50_nM')&&!k.includes('::')?b+' ('+_ttUStr+')':b; }
+  const _ttXLbl = _ttLblU(_ttXKeyRaw);
+  const _ttYLbl = _ttLblU(_ttYKeyRaw);
   const _ttXVal = (r.x != null && isFinite(r.x)) ? _sigFmt(r.x) : '—';
   const _ttYNum = parseFloat(r.y);
   const _ttYVal = isFinite(_ttYNum) ? _sigFmt(_ttYNum) : (r.y ?? '—');
@@ -4159,8 +4171,16 @@ function debounceUpdateAxisLabel() {
     const yKey2 = document.getElementById('sc-y')?.value || 'Dmax_pct';
     const xUnit = document.getElementById('sc-xunit')?.value || 'M';
     const xOffset = (xKey==='LogIC50_M')?(xUnit==='uM'?6:xUnit==='nM'?9:0):0;
+    const _unit2 = document.getElementById('sc-xunit')?.value||'M';
+    const _unitStr2 = _unit2==='uM'?'µM':_unit2==='nM'?'nM':'M';
     const axLabelMap=Object.assign({'LogIC50_M':'LogIC50 (M)','DC50_nM':'DC50 (nM)','AbsDC50_nM':'Abs DC50 (nM)','Dmax_pct':'Dmax (%)','HillSlope':'Hill slope','R2':'R²'},(window._scAxLabelExt||{}));
     const _optLbl2 = k => (window._scatterAxisOpts||[]).find(o=>o.value===k)?.label;
+    function _dlbl2(key) {
+      if (key.includes('::')) return _optLbl2(key)||key;
+      const base = _optLbl2(key)||axLabelMap[key]||key;
+      if (key==='LogIC50_M'||key==='DC50_nM'||key==='AbsDC50_nM') return base.replace(/\s*\([^)]+\)$/,'')+' ('+_unitStr2+')';
+      return base;
+    }
   // Colour-by legend
   const legEl=document.getElementById('sc-colorby-legend');
   if(legEl){
@@ -4185,10 +4205,8 @@ function debounceUpdateAxisLabel() {
       } else { legEl.innerHTML=''; }
     } else { legEl.innerHTML=''; }
   }
-    const _baseXLbl2 = _optLbl2(xKey) || axLabelMap[xKey] || xKey;
-    const xUnitLabel = xOffset!==0?_baseXLbl2.replace('(M)',xUnit==='uM'?'(µM)':'(nM)'):_baseXLbl2;
-    scatterChart.options.scales.x.title.text = xl || xUnitLabel || xKey;
-    scatterChart.options.scales.y.title.text = yl || _optLbl2(yKey2) || axLabelMap[yKey2] || yKey2;
+    scatterChart.options.scales.x.title.text = xl || _dlbl2(xKey);
+    scatterChart.options.scales.y.title.text = yl || _dlbl2(yKey2);
     scatterChart.update('none');
   }, 300);
 }
@@ -4946,8 +4964,15 @@ async function downloadScatterHiRes() {
   const assayId = document.getElementById('p-assay')?.value || 'HB';
   const xUnit = document.getElementById('sc-xunit')?.value || 'M';
   const xOffset = (xKey==='LogIC50_M') ? (xUnit==='uM'?6 : xUnit==='nM'?9 : 0) : 0;
+  const yOffset2DL = (yKey==='LogIC50_M') ? (xUnit==='uM'?6 : xUnit==='nM'?9 : 0) : 0;
+  const _csclDL = xUnit==='nM'?1:xUnit==='uM'?0.001:1e-6;
+  const xCScaleDL = (xKey==='DC50_nM'||xKey==='AbsDC50_nM')?_csclDL:1;
+  const yCScaleDL = (yKey==='DC50_nM'||yKey==='AbsDC50_nM')?_csclDL:1;
   const xLabelOverride = document.getElementById('sc-xlabel')?.value.trim() || '';
   const yLabelOverride = document.getElementById('sc-ylabel')?.value.trim() || '';
+  const _unitStrDL = xUnit==='uM'?'µM':xUnit==='nM'?'nM':'M';
+  const _optsDL = window._scatterAxisOpts||[];
+  function _dlblDL(k) { const b=_optsDL.find(o=>o.value===k)?.label||k; return (k==='LogIC50_M'||k==='DC50_nM'||k==='AbsDC50_nM')&&!k.includes('::')?b+' ('+_unitStrDL+')':b; }
 
   let rows = scatterData;
   if (protFilter !== 'all') rows = rows.filter(r => r.Protein === protFilter);
@@ -4961,10 +4986,8 @@ async function downloadScatterHiRes() {
   offCanvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
   document.body.appendChild(offCanvas);
 
-  const axLabelMap2 = {'LogIC50_M':'LogIC50 (M)','DC50_nM':'DC50 (nM)','AbsDC50_nM':'Abs DC50 (nM)','Dmax_pct':'Dmax (%)','pDC50':'pDC50','HillSlope':'Hill slope','R2':'R²'};
-  const xUnitLabel2 = xOffset!==0 ? axLabelMap2[xKey]?.replace('(M)',xUnit==='uM'?'(µM)':'(nM)') : (axLabelMap2[xKey]||xKey);
-  const xAxisLabelDL = xLabelOverride || xUnitLabel2 || xKey;
-  const yAxisLabelDL = yLabelOverride || axLabelMap2[yKey] || yKey;
+  const xAxisLabelDL = xLabelOverride || _dlblDL(xKey);
+  const yAxisLabelDL = yLabelOverride || _dlblDL(yKey);
   const textColor = '#4a4f68';
   const gridColor = 'rgba(0,0,0,0.08)';
 
@@ -4972,7 +4995,8 @@ async function downloadScatterHiRes() {
   const datasets = proteins.map(prot => {
     const fg = (window._scPalMap&&window._scPalMap[prot]) || pcolor(prot).fg;
     const pts = rows.filter(r=>r.Protein===prot).map(r => ({
-      x: (parseFloat(r[xKey])||0)+xOffset, y: r[yKey],
+      x: ((parseFloat(r[xKey])||0)+xOffset)*xCScaleDL,
+      y: (()=>{const _ry=parseFloat(r[yKey]);return isFinite(_ry)?(_ry+yOffset2DL)*yCScaleDL:r[yKey];})(),
       label: r.Sample_ID, flag: r.Flag,
       dc50: r.DC50_nM, dmax: r.Dmax_pct, r2: r.R2, protein: prot,
       matched: searchQ ? r.Sample_ID.toLowerCase().includes(searchQ) : false,
