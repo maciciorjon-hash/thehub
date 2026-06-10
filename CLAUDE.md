@@ -253,13 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-10 (Round 37: survey µL+after-assay+plate-type, scatter bigger, selectivity layout, no dot animation, curves Y-axis glitch)
+Last session: 2026-06-10 (Round 38: full code audit of all 8 Hub apps for broken buttons/functions)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.87MB (7,868,328 chars). Version v1.0.2
-Echo changes (labcyte_echo.html):
-- Scrollbar fix: #results-panel overflow changed to overflow-y:auto;overflow-x:hidden; .tbl-wrap gets width:100%;min-width:0; so it is constrained within panel and can scroll
-- Column hide in multi-assay: renderMultiAssayResults <th> elements now have data-col-key; activeKeys filtered by _hiddenResultsCols; _hideResultsCol/_unhideAllResultsCols call renderMultiAssayResults when multiAssay mode is active
-- Unit labels: _lm pdc values now include "(M)" (pDC50 (M), pIC50 (M), pEC50 (M)); _colLbls, _assayMeta, _lbl fallbacks, yLabels all updated to include "(M)" for LogIC50 and pDC50 variants
-- Stacked curves: #cp-canvas replaced with #cp-curves-wrap container; openCurvePanel() creates two stacked canvases when isDual=true, each with assay-type colour label; single canvas when one row
-- PHERAstar A1 input: <input id="p-a1-loc"> added to Assay tab (single-assay); mat-a1-${idx} added to addAssayType() multi-assay panels; _parsePHERAstarXLS(ab, barcode, a1CellRef) parses Excel cell ref letter+number → 0-based row/col, skips auto-detection when provided; a1Loc added as 26th param to runAnalysisJS; passed through both single and multi-assay call sites
+Hub file size: 7.87MB (7,874,766 chars). Version v1.0.4
+Audit results — broken items fixed:
+- LDI (ldi.html): init IIFE called updateLdiYHeaders() which was not defined anywhere; replaced with ldiSetYMode(ldiYMode) which does the same thing (syncs .ldi-dmax-hdr elements to initial yMode). Without this fix the app threw a ReferenceError on every page load.
+- Lab Designer (plate_designer.html): --accent2 CSS variable used in theme toggle slider (input:checked + .theme-slider) and checkbox accent-color, but never defined in :root or [data-theme="dark"]. Added --accent2:#0079b9 to both.
+Apps verified clean (no broken handlers): Echo, LabMate, Degradation Explorer, Helix, Protein Tools, Spectra
 <!-- LAST_SESSION_END -->
