@@ -172,11 +172,11 @@ tr:hover td{background:var(--surface2);}
 .pbadge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;letter-spacing:.3px;}
 
 /* SCATTER TAB */
-#scatter-panel{flex:1;overflow:hidden;padding:18px 20px;display:flex;flex-direction:column;gap:14px;}
+#scatter-panel{flex:1;overflow:hidden;padding:8px 14px 10px;display:flex;flex-direction:column;gap:6px;}
 .scatter-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
 .scatter-controls select,.scatter-controls input{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;}
 .scatter-controls label{font-size:12px;color:var(--text2);}
-.scatter-wrap{flex:1;min-height:280px;position:relative;overflow:hidden;}
+.scatter-wrap{flex:1;min-height:200px;position:relative;overflow:hidden;}
 #scatter-canvas{width:100% !important;height:100% !important;display:block;}
 .scatter-dl-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:30px;border-radius:6px;background:var(--surface3);border:1px solid var(--border2);color:var(--text2);font-size:12px;font-family:var(--sans);cursor:pointer;transition:background .2s,color .2s;}
 .scatter-dl-btn:hover{background:var(--accent2);color:#fff;border-color:transparent;}
@@ -205,7 +205,7 @@ tr:hover td{background:var(--surface2);}
 ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
 
 /* SCATTER TOOLBAR */
-.scatter-toolbar{display:flex;flex-direction:column;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;flex-shrink:0;}
+.scatter-toolbar{display:flex;flex-direction:column;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px;flex-shrink:0;}
 .strow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}.strow>label:first-child,.strow>span.rl{min-width:52px;flex:none;font-size:11px;color:var(--text2);}
 .strow label{font-size:11px;color:var(--text2);white-space:nowrap;user-select:none;}
 .strow select,.strow input[type="text"],.strow input[type="number"]{background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:11px;outline:none;transition:border-color .2s;}
@@ -1922,6 +1922,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   // 1. Parse Echo CSV
   log('Parsing Echo CSV…');
   const echoText = new TextDecoder().decode(await toBytes(echoFile));
+  window._lastEchoText = echoText; // cached for survey transfer map
   const echoData = _parseEchoCSV(echoText, skipRows);
   if (!echoData.length) throw new Error('Echo CSV parse failed: no data rows found');
   const echoBarcodeSet = new Set(echoData.map(r => r.barcode));
@@ -3717,34 +3718,14 @@ function renderScatter(data) {
       <button class="scatter-dl-btn" onclick="exportFilteredCSV()">⬇ CSV (filtered)</button>
     </div>
     </div>
-    <div id="sc-sel-section" style="display:none;">
+    <div id="sc-sel-section" style="display:none;flex:1;flex-direction:column;min-height:0;">
       <div class="scatter-toolbar">
         <div class="strow">
-          <label style="min-width:70px;flex:none;">Protein X</label>
-          <select id="sel-prot-x" onchange="buildSelectivityChart()" style="flex:1;min-width:120px;"></select>
-        </div>
-        <div class="strow">
-          <label style="min-width:70px;flex:none;">Protein Y</label>
-          <select id="sel-prot-y" onchange="buildSelectivityChart()" style="flex:1;min-width:120px;"></select>
-        </div>
-        <div class="strow">
-          <label style="min-width:55px;flex:none;">X metric</label>
-          <select id="sel-metric-x" onchange="buildSelectivityChart()">
-            <option value="pDC50">pDC₅₀</option>
-            <option value="DC50_nM">log DC₅₀ (M)</option>
-            <option value="Dmax_pct">Dmax (%)</option>
-            <option value="HillSlope">Hill slope</option>
-            <option value="R2">R²</option>
-          </select>
-          <label style="margin-left:12px;min-width:55px;flex:none;">Y metric</label>
-          <select id="sel-metric-y" onchange="buildSelectivityChart()">
-            <option value="pDC50">pDC₅₀</option>
-            <option value="DC50_nM">log DC₅₀ (M)</option>
-            <option value="Dmax_pct">Dmax (%)</option>
-            <option value="HillSlope">Hill slope</option>
-            <option value="R2">R²</option>
-          </select>
-          <label style="margin-left:12px;display:flex;align-items:center;gap:5px;">
+          <label style="min-width:52px;flex:none;">Protein X</label>
+          <select id="sel-prot-x" onchange="buildSelectivityChart()" style="flex:1;min-width:100px;"></select>
+          <label style="min-width:52px;flex:none;margin-left:12px;">Protein Y</label>
+          <select id="sel-prot-y" onchange="buildSelectivityChart()" style="flex:1;min-width:100px;"></select>
+          <label style="margin-left:10px;display:flex;align-items:center;gap:5px;">
             <input type="checkbox" id="sel-only-shared" checked onchange="buildSelectivityChart()"> Only shared
           </label>
           <label style="margin-left:8px;display:flex;align-items:center;gap:5px;">
@@ -3752,7 +3733,23 @@ function renderScatter(data) {
           </label>
         </div>
         <div class="strow">
-          <label style="min-width:70px;flex:none;">Title</label>
+          <label style="min-width:52px;flex:none;">X metric</label>
+          <select id="sel-metric-x" onchange="buildSelectivityChart()">
+            <option value="pDC50">pDC₅₀</option>
+            <option value="DC50_nM">log DC₅₀ (M)</option>
+            <option value="Dmax_pct">Dmax (%)</option>
+            <option value="HillSlope">Hill slope</option>
+            <option value="R2">R²</option>
+          </select>
+          <label style="margin-left:12px;min-width:52px;flex:none;">Y metric</label>
+          <select id="sel-metric-y" onchange="buildSelectivityChart()">
+            <option value="pDC50">pDC₅₀</option>
+            <option value="DC50_nM">log DC₅₀ (M)</option>
+            <option value="Dmax_pct">Dmax (%)</option>
+            <option value="HillSlope">Hill slope</option>
+            <option value="R2">R²</option>
+          </select>
+          <label style="margin-left:12px;min-width:36px;flex:none;">Title</label>
           <input id="sel-title" type="text" placeholder="Selectivity plot…" style="flex:1;" oninput="updateSelTitle(this.value)">
           <label style="margin-left:8px;display:flex;align-items:center;gap:5px;">
             <input type="checkbox" id="sel-show-names" onchange="buildSelectivityChart()"> Names
@@ -3762,8 +3759,8 @@ function renderScatter(data) {
           </label>
         </div>
         <div class="strow">
-          <label style="min-width:70px;flex:none;">Dot size</label>
-          <input id="sel-dotsize" type="range" min="1" max="18" value="4" step="1" oninput="document.getElementById('sel-dotsize-val').textContent=this.value;buildSelectivityChart()" style="width:100px;cursor:pointer;">
+          <label style="min-width:52px;flex:none;">Dot size</label>
+          <input id="sel-dotsize" type="range" min="1" max="18" value="4" step="1" oninput="const _sv=+this.value;document.getElementById('sel-dotsize-val').textContent=_sv;if(window.selChart){window.selChart.data.datasets[0].pointRadius=_sv;window.selChart.data.datasets[0].pointHoverRadius=_sv+3;window.selChart.update('none');}else buildSelectivityChart();" style="width:100px;cursor:pointer;">
           <span id="sel-dotsize-val" style="font-family:var(--sans);font-size:11px;color:var(--text2);min-width:18px;">4</span>
           <label style="margin-left:10px;">Band threshold</label>
           <select id="sel-band-thr" onchange="buildSelectivityChart()" style="font-size:11px;">
@@ -3773,9 +3770,9 @@ function renderScatter(data) {
           </select>
         </div>
       </div>
-      <div class="scatter-wrap" id="sel-wrap" style="position:relative;"><canvas id="sel-canvas"></canvas></div>
-      <div id="sel-legend" style="padding:4px 12px;font-size:10.5px;font-family:var(--sans);color:var(--text2);display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:4px;"></div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-shrink:0;">
+      <div class="scatter-wrap" id="sel-wrap" style="position:relative;flex:1;min-height:0;"><canvas id="sel-canvas"></canvas></div>
+      <div id="sel-legend" style="padding:4px 12px;font-size:10.5px;font-family:var(--sans);color:var(--text2);display:flex;gap:14px;flex-wrap:wrap;align-items:center;flex-shrink:0;"></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-shrink:0;">
         <button class="scatter-dl-btn" onclick="downloadSelHiRes()">⬇ PNG 600 DPI</button>
         <span id="sel-info" style="font-size:11px;color:var(--text3);font-family:var(--sans);"></span>
       </div>
@@ -4379,7 +4376,7 @@ function switchPlotType(type) {
     sc.style.display = '';
     btnSc?.classList.add('active');
   } else if (type === 'selectivity') {
-    if(sel){ sel.style.display=''; }
+    if(sel){ sel.style.display='flex'; }
     btnSel?.classList.add('active');
     _initSelectivity();
   } else {
@@ -4632,7 +4629,7 @@ function qcRerun() {
   },150);
 }
 
-let selChart = null;
+var selChart = null;
 
 function _initSelectivity() {
   if (!window._resultsData || !window._resultsData.length) return;
@@ -4841,7 +4838,7 @@ function buildSelectivityChart() {
     },
     options: {
       responsive:true, maintainAspectRatio:false,
-      animation:{duration:120},
+      animation:{duration:0},
       scales:{
         x:{
           title:{display:true,text:`${esc(protX)} — ${axLabelX}`,font:{size:11}},
@@ -5750,6 +5747,9 @@ function setCvMode(mode) {
     if(cmpList) cmpList.style.display='none'; const _cw=document.getElementById('cv-compare-wrap'); if(_cw) _cw.style.display='none';
     if(_cvCanvasWrap){_cvCanvasWrap.style.flex='1';_cvCanvasWrap.style.height='';}
     if(_cvPanelEl) _cvPanelEl.style.overflowY='hidden';
+    // Allow one layout frame so the browser computes flex height before drawing
+    requestAnimationFrame(()=>renderCvCurve());
+    return;
   } else {
     cBt?.classList.add('active'); sBt?.classList.remove('active');
     if(compSel) compSel.style.display='none';
@@ -5757,8 +5757,8 @@ function setCvMode(mode) {
     if(cmpList){ cmpList.style.display='flex'; const wrap=document.getElementById('cv-compare-wrap'); if(wrap) wrap.style.display='block'; buildCompareList(); }
     if(_cvCanvasWrap){_cvCanvasWrap.style.flex='none';_cvCanvasWrap.style.height='420px';}
     if(_cvPanelEl) _cvPanelEl.style.overflowY='auto';
+    renderCvCurve();
   }
-  renderCvCurve();
 }
 
 function toggleCvPoints() {
@@ -7644,9 +7644,17 @@ function loadSurveyFile(file) {
   reader.readAsText(file);
 }
 
+
 function parseSurveyCSV(text) {
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
-  if(!lines.length) return {};
+  if(!lines.length) return {wells:{},plateType:'',plateName:''};
+  // Extract plate type and plate name from preamble metadata lines
+  let plateType='', plateName='';
+  for(let i=0;i<lines.length;i++){
+    const cols=lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    if(/source.?plate.?type|plate.?type/i.test(cols[0])) plateType=cols[1]||'';
+    if(/source.?plate.?name|plate.?name|source.?plate\b/i.test(cols[0])&&cols[1]) plateName=cols[1]||'';
+  }
   // Scan for the actual column header row (Echo survey files have metadata before [DETAILS])
   let headerIdx=-1, wellIdx=-1, volIdx=-1, statusIdx=-1;
   for(let i=0;i<lines.length;i++){
@@ -7656,8 +7664,8 @@ function parseSurveyCSV(text) {
     const vi2=vi<0?cols.findIndex(h=>/\bvolume\b/i.test(h)&&!/height/i.test(h)):vi;
     if(wi>=0&&vi2>=0){headerIdx=i;wellIdx=wi;volIdx=vi2;statusIdx=cols.findIndex(h=>/survey.?status|status/i.test(h));break;}
   }
-  if(headerIdx<0) return {};
-  const data={};
+  if(headerIdx<0) return {wells:{},plateType,plateName};
+  const wells={};
   for(let i=headerIdx+1;i<lines.length;i++){
     const cols=lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
     if(!cols[wellIdx]) continue;
@@ -7665,68 +7673,135 @@ function parseSurveyCSV(text) {
     const wm=w.match(/^([A-P])(\d+)$/);
     if(wm) w=`${wm[1]}${parseInt(wm[2])<10?'0':''}${parseInt(wm[2])}`;
     const vol=parseFloat(cols[volIdx]);
-    if(!isNaN(vol)) data[w]={vol,status:statusIdx>=0?cols[statusIdx]:''};
+    if(!isNaN(vol)) wells[w]={vol,status:statusIdx>=0?cols[statusIdx]:''};
   }
-  return data;
+  return {wells,plateType,plateName};
+}
+
+function _buildTransferMap() {
+  // Build sourceWell → totalTransferredNL from cached Echo picklist text
+  const map={};
+  if(!window._lastEchoText) return map;
+  const allLines=window._lastEchoText.split(/\r?\n/);
+  let headerIdx=-1, swIdx=-1, tvIdx=-1;
+  for(let i=0;i<Math.min(60,allLines.length);i++){
+    const h=allLines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    const sw=h.findIndex(c=>/source.?well/i.test(c));
+    const tv=h.findIndex(c=>/transfer.?volume/i.test(c));
+    if(sw>=0&&tv>=0){headerIdx=i;swIdx=sw;tvIdx=tv;break;}
+  }
+  if(headerIdx<0) return map;
+  for(let i=headerIdx+1;i<allLines.length;i++){
+    const cols=allLines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    if(!cols[swIdx]) continue;
+    let w=cols[swIdx].trim().toUpperCase();
+    const wm=w.match(/^([A-P])(\d+)$/);
+    if(wm) w=`${wm[1]}${parseInt(wm[2])<10?'0':''}${parseInt(wm[2])}`;
+    const vol=parseFloat(cols[tvIdx]);
+    if(!isNaN(vol)&&vol>0) map[w]=(map[w]||0)+vol;
+  }
+  return map;
 }
 
 function renderSurveyTab() {
   if(_surveyData) renderSurveyPlate(_surveyData);
 }
 
-function renderSurveyPlate(data) {
+function renderSurveyPlate(surveyResult) {
   const container=document.getElementById('survey-plate-container');
   if(!container) return;
+  // Support both old (plain object) and new ({wells, plateType, plateName}) shape
+  const data = surveyResult && surveyResult.wells ? surveyResult.wells : (surveyResult||{});
+  const plateType = (surveyResult && surveyResult.plateType)||'';
+  const plateName = (surveyResult && surveyResult.plateName)||'';
   if(!data||!Object.keys(data).length){container.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px;">No well data found in file. Expected columns: Source Well, Survey Fluid Volume.</div>';return;}
-  const vols=Object.values(data).map(d=>d&&typeof d==='object'?d.vol:d).filter(v=>isFinite(v)&&v>=0);
-  const maxVol=vols.length?Math.max(...vols):1;
-  const isDark=document.documentElement.getAttribute('data-theme')!=='light';
-  const cellW=28,cellH=22,padL=28,padT=22,padR=10,padB=10;
-  const W=padL+24*cellW+padR, H=padT+16*cellH+padB+40;
+
+  // Determine minimum working volume from plate type
+  const isLDV = /ldv|low.?dead|low.?vol/i.test(plateType);
+  const isPP = /pp|polyprop/i.test(plateType)||!isLDV;
+  const minWorkVol = isLDV ? 2.5 : 20; // µL
+
+  // Build transfer map (nL) from loaded Echo picklist
+  const transferMap = _buildTransferMap();
+  const hasTransfers = Object.keys(transferMap).length > 0;
+
+  // Convert to µL and compute after-assay volumes
+  const wells = {}; // well → {beforeUL, transferredUL, afterUL, status}
+  for(const [w, entry] of Object.entries(data)){
+    const volNL = entry && typeof entry==='object' ? entry.vol : entry;
+    const beforeUL = isFinite(volNL) ? volNL/1000 : 0;
+    const transferredUL = (transferMap[w]||0)/1000;
+    const afterUL = Math.max(0, beforeUL - transferredUL);
+    wells[w] = {beforeUL, transferredUL, afterUL, status: entry?.status||''};
+  }
+
+  const afterVols = Object.values(wells).map(d=>d.afterUL).filter(v=>isFinite(v)&&v>=0);
+  const maxAfter = afterVols.length ? Math.max(...afterVols) : 1;
+
+  const isDark = document.documentElement.getAttribute('data-theme')!=='light';
+  const cellW=28, cellH=22, padL=28, padT=22, padR=10, padB=10;
+  const W=padL+24*cellW+padR, H=padT+16*cellH+padB+46;
   const dpr=window.devicePixelRatio||1;
   const maxW=Math.min(W,container.offsetWidth||900);
   const sc=maxW/W;
   const cssW=Math.round(W*sc), cssH=Math.round(H*sc);
+
+  // Header info band
+  let hdr=container.querySelector('.survey-hdr');
+  if(!hdr){hdr=document.createElement('div');hdr.className='survey-hdr';container.innerHTML='';container.appendChild(hdr);}
+  const ptypeStr = plateType ? `<b>${plateType}</b>` : '384PP';
+  const threshStr = `Min working volume: <b>${minWorkVol} µL</b>`;
+  const transferStr = hasTransfers ? `Echo transfers loaded — showing volume <b>after</b> this assay` : `<span style="color:var(--text3);">Run analysis first to see remaining volume after transfers</span>`;
+  hdr.style.cssText='font-size:12px;color:var(--text2);padding:0 0 10px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-family:var(--sans);';
+  hdr.innerHTML=`<span>Plate type: ${ptypeStr}</span><span>${threshStr}</span><span>${transferStr}</span>`;
+
   let canvas=container.querySelector('canvas');
-  if(!canvas){canvas=document.createElement('canvas');container.innerHTML='';container.appendChild(canvas);}
+  if(!canvas){canvas=document.createElement('canvas');container.appendChild(canvas);}
   canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
   canvas.width=Math.round(cssW*dpr); canvas.height=Math.round(cssH*dpr);
   const ctx=canvas.getContext('2d'); ctx.scale(dpr*sc,dpr*sc);
   const bg=isDark?'#13161e':'#f8f9fc', textCol=isDark?'#8b90a8':'#5a5f7a';
   ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-  function volColor(v){
-    if(v===undefined||v===null||isNaN(v)||v<0) return isDark?'#252a3a':'#dde0ea';
-    if(v===0) return isDark?'#1c2030':'#e8eaf2';
-    const pct=Math.min(v/maxVol,1);
-    if(pct<0.2) return isDark?'rgba(233,30,99,0.7)':'rgba(233,30,99,0.65)';
-    if(pct<0.5) return isDark?'rgba(230,156,48,0.75)':'rgba(230,156,48,0.7)';
-    return isDark?'rgba(67,160,71,0.75)':'rgba(67,160,71,0.7)';
+
+  function volColor(afterUL){
+    if(afterUL===undefined||afterUL===null||isNaN(afterUL)) return isDark?'#252a3a':'#dde0ea';
+    if(afterUL<=0) return isDark?'#1c2030':'#e8eaf2';
+    if(afterUL<minWorkVol) return isDark?'rgba(233,30,99,0.75)':'rgba(233,30,99,0.70)';
+    if(afterUL<minWorkVol*2) return isDark?'rgba(230,156,48,0.80)':'rgba(230,156,48,0.75)';
+    return isDark?'rgba(67,160,71,0.80)':'rgba(67,160,71,0.75)';
   }
+
   'ABCDEFGHIJKLMNOP'.split('').forEach((r,ri)=>{
     ctx.fillStyle=textCol;ctx.font=`bold 9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='right';ctx.textBaseline='middle';
     ctx.fillText(r,padL-4,padT+ri*cellH+cellH/2);
     Array.from({length:24},(_,ci)=>{
-      const col=ci+1,wid=`${r}${col<10?'0'+col:col}`;
-      const entry=data[wid]; const vol=entry&&typeof entry==='object'?entry.vol:entry;
-      const x=padL+ci*cellW+1,y=padT+ri*cellH+1,rw=cellW-2,rh=cellH-2;
-      ctx.fillStyle=volColor(vol);
+      const col=ci+1, wid=`${r}${col<10?'0'+col:col}`;
+      const w=wells[wid];
+      const x=padL+ci*cellW+1, y=padT+ri*cellH+1, rw=cellW-2, rh=cellH-2;
+      ctx.fillStyle=volColor(w?.afterUL);
       ctx.beginPath();ctx.roundRect(x,y,rw,rh,2);ctx.fill();
     });
   });
   Array.from({length:24},(_,ci)=>{ctx.fillStyle=textCol;ctx.font=`9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(ci+1,padL+ci*cellW+cellW/2,padT-3);});
+
   // Legend
-  const ly=padT+16*cellH+12;
-  const items=[{col:isDark?'rgba(67,160,71,0.75)':'rgba(67,160,71,0.7)',lbl:'High (≥50%)'},{col:isDark?'rgba(230,156,48,0.75)':'rgba(230,156,48,0.7)',lbl:'Low (20–50%)'},{col:isDark?'rgba(233,30,99,0.7)':'rgba(233,30,99,0.65)',lbl:'Very low (<20%)'},{col:isDark?'#1c2030':'#e8eaf2',lbl:'Empty (0 nL)'}];
+  const ly=padT+16*cellH+14;
+  const items=[
+    {col:isDark?'rgba(67,160,71,0.80)':'rgba(67,160,71,0.75)',lbl:`≥${minWorkVol*2} µL`},
+    {col:isDark?'rgba(230,156,48,0.80)':'rgba(230,156,48,0.75)',lbl:`${minWorkVol}–${minWorkVol*2} µL`},
+    {col:isDark?'rgba(233,30,99,0.75)':'rgba(233,30,99,0.70)',lbl:`<${minWorkVol} µL (below min)`},
+    {col:isDark?'#1c2030':'#e8eaf2',lbl:'Empty / 0 µL'}
+  ];
   let lx=padL;
   items.forEach(({col,lbl})=>{ctx.fillStyle=col;ctx.beginPath();ctx.roundRect(lx,ly,14,10,2);ctx.fill();ctx.fillStyle=textCol;ctx.font=`9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(lbl,lx+17,ly+5);lx+=lbl.length*5.5+26;});
-  // Hover tooltip
-  canvas._surveyData=data; canvas._surveyMeta={padL,padT,cellW,cellH,sc,maxVol};
-  canvas.onmousemove=_surveyHover; canvas.onmouseleave=()=>{const t=document.getElementById('tt');if(t){t.style.display='none';}};
+
+  canvas._surveyWells=wells; canvas._surveyMeta={padL,padT,cellW,cellH,sc,minWorkVol,hasTransfers};
+  canvas.onmousemove=_surveyHover; canvas.onmouseleave=()=>{const t=document.getElementById('tt');if(t)t.style.display='none';};
 }
 
 function _surveyHover(e){
-  const canvas=e.currentTarget,meta=canvas._surveyMeta,data=canvas._surveyData;
-  if(!meta||!data) return;
+  const canvas=e.currentTarget, meta=canvas._surveyMeta, wells=canvas._surveyWells;
+  if(!meta||!wells) return;
   const rect=canvas.getBoundingClientRect();
   const mx=(e.clientX-rect.left)/meta.sc, my=(e.clientY-rect.top)/meta.sc;
   const ci=Math.floor((mx-meta.padL)/meta.cellW), ri=Math.floor((my-meta.padT)/meta.cellH);
@@ -7734,10 +7809,15 @@ function _surveyHover(e){
   if(!tt) return;
   if(ci<0||ci>=24||ri<0||ri>=16){tt.style.display='none';return;}
   const row='ABCDEFGHIJKLMNOP'[ri], col=ci+1, wid=`${row}${col<10?'0'+col:col}`;
-  const entry=data[wid]; const vol=entry&&typeof entry==='object'?entry.vol:entry;
-  const status=entry&&typeof entry==='object'&&entry.status?` · ${entry.status}`:'';
-  tt.textContent=`${wid}: ${vol!=null&&!isNaN(vol)?vol.toFixed(1)+' nL':'—'}${status}`;
-  tt.style.display='block'; tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-8)+'px';
+  const w=wells[wid];
+  if(!w){tt.textContent=`${wid}: —`;tt.style.display='block';tt.style.left=(e.clientX+12)+'px';tt.style.top=(e.clientY-8)+'px';return;}
+  const fmt=v=>v!=null&&isFinite(v)?v.toFixed(2)+' µL':'—';
+  let tip=`${wid}: ${fmt(w.afterUL)} remaining`;
+  if(meta.hasTransfers&&w.transferredUL>0) tip+=` (was ${fmt(w.beforeUL)}, transferred ${fmt(w.transferredUL)})`;
+  else if(!meta.hasTransfers) tip+=` (current)`;
+  if(w.afterUL<meta.minWorkVol&&w.afterUL>0) tip+=' ⚠ below min';
+  if(w.status) tip+=` · ${w.status}`;
+  tt.textContent=tip; tt.style.display='block'; tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-8)+'px';
 }
 
 // ═══════════════════════════════════════════════════════════════

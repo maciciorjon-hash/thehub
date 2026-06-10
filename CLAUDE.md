@@ -253,7 +253,7 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-10 (Round 36: scrollbar fix, unit labels, stacked curves, PHERAstar A1 input)
+Last session: 2026-06-10 (Round 37: survey µL+after-assay+plate-type, scatter bigger, selectivity layout, no dot animation, curves Y-axis glitch)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
 Hub file size: 7.87MB (7,868,328 chars). Version v1.0.2
 Echo changes (labcyte_echo.html):
