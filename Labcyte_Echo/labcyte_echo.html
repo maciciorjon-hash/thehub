@@ -108,7 +108,7 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .tab{padding:13px 16px;font-size:13px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s;user-select:none;display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--text2);}
 .tab.active{color:var(--text);border-bottom-color:var(--accent);}
-.setup-reopen-btn{margin-left:auto;flex-shrink:0;padding:5px 13px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:background .15s,color .15s,border-color .15s;}
+.setup-reopen-btn{margin-left:auto;flex-shrink:0;padding:5px 13px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);position:sticky;right:0;z-index:1;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:background .15s,color .15s,border-color .15s;}
 .setup-reopen-btn:hover{background:var(--accent2);color:#fff;border-color:var(--accent2);}
 /* Setup Modal */
 .setup-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
@@ -684,7 +684,6 @@ tr:hover td{background:var(--surface2);}
         <div id="hibit-ctg-params">
           <div class="setup-2col" style="margin-bottom:16px;">
             <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-top-en" checked onchange="var el=document.getElementById('p-top');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span id="lbl-top-constrain" class="flbl">Top constrain (%)<span class="pinfo" data-tip="Pins upper plateau of 4PL. 100% = DMSO level. Disable to fit freely.">i</span></span></div><input type="number" id="p-top" value="100" min="50" max="110"></div>
-            <div class="field" id="dmax-cap-field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-dmax-cap-en" checked onchange="var el=document.getElementById('p-dmax-cap-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Max Dmax (%)<span class="pinfo" data-tip="Caps maximum degradation — constrains 4PL bottom so Dmax ≤ this value.">i</span></span></div><input type="number" id="p-dmax-cap-val" value="99" min="10" max="99" step="1"></div>
           </div>
         </div>
         <div class="setup-2col">
@@ -1006,9 +1005,9 @@ function onAssayTypeChange(){
   var t=(document.getElementById('p-assay-type')||{}).value||'hibit';
   window._lastAssayType=t;
 
-  // Hook effect: HiBiT only (ternary complex disruption)
-  var hookField=document.getElementById('hook-effect-field');
-  if(hookField)hookField.style.display=(t==='hibit')?'':'none';
+  // Hook effect: HiBiT and CTG only (not displacement / gain)
+  var hookF=document.getElementById('hook-effect-field');
+  if(hookF)hookF.style.display=(t==='displacement'||t==='gain')?'none':'';
 
   // Binding / Ki params card: displacement only
   var fpCard=document.getElementById('fp-params-card');
@@ -1018,13 +1017,10 @@ function onAssayTypeChange(){
   var zeroPctField=document.getElementById('p-zero-pct-field');
   if(zeroPctField)zeroPctField.style.display=(t==='displacement')?'':'none';
 
-  // Top constrain block: hibit / ctg / gain (not displacement)
+  // Top constrain block: hibit / ctg / gain / displacement
   var hibCtgParams=document.getElementById('hibit-ctg-params');
-  if(hibCtgParams)hibCtgParams.style.display=(t==='hibit'||t==='ctg'||t==='gain')?'':'none';
+  if(hibCtgParams)hibCtgParams.style.display=(t==='hibit'||t==='ctg'||t==='gain'||t==='displacement')?'':'none';
 
-  // Max Dmax + Absolute DC50: HiBiT only
-  var dmaxF=document.getElementById('dmax-cap-field');
-  if(dmaxF)dmaxF.style.display=(t==='hibit')?'':'none';
 
   // CSV column labels and visibility
   var dc50Lbl=document.getElementById('csv-dc50-lbl');
@@ -2336,7 +2332,7 @@ function renderResults(data) {
     R2: r=>'<td>'+r.R2+'</td>',
     Flag: r=>'<td class="'+(r.Flag==='Yes'?'fy':'fn')+'">'+r.Flag+'</td>',
     Flag_Reason: r=>'<td style="max-width:200px;white-space:normal;font-size:11px;color:var(--text3);">'+esc(r.Flag_Reason||'')+'</td>',
-    CI_DC50: r=>`<td style="font-size:10.5px;color:var(--text2);white-space:nowrap;">${r.CI_DC50_lower!=null?r.CI_DC50_lower+'–'+r.CI_DC50_upper:'—'}</td>`,
+    CI_DC50: r=>`<td style="font-size:10.5px;color:var(--text2);white-space:nowrap;">${r.CI_DC50_lower!=null?_sigFmt(r.CI_DC50_lower)+'–'+_sigFmt(r.CI_DC50_upper):'—'}</td>`,
     CI_all:  r=>`<td style="font-size:10px;color:var(--text3);white-space:nowrap;">${r.CI_Hill_lower!=null?r.CI_Hill_lower+'–'+r.CI_Hill_upper:'—'}</td>`,
     Top_val: r=>`<td>${r.Top_val!=null?r.Top_val:'—'}</td>`,
     Bot_val: r=>`<td>${r.Bot_val!=null?r.Bot_val:'—'}</td>`,
@@ -2483,7 +2479,7 @@ function renderMultiAssayResults(data) {
         if (k==='Dmax_pct'&&!m.dmax) continue;
         if (!r) { h+=`<td style="color:var(--text3);">—</td>`; continue; }
         if (k==='Flag') h+=`<td class="${r.Flag==='Yes'?'fy':'fn'}">${r.Flag||'—'}</td>`;
-        else if (k==='CI_DC50') h+=`<td style="font-size:10.5px;color:var(--text2);white-space:nowrap;">${r.CI_DC50_lower!=null?r.CI_DC50_lower+'–'+r.CI_DC50_upper:'—'}</td>`;
+        else if (k==='CI_DC50') h+=`<td style="font-size:10.5px;color:var(--text2);white-space:nowrap;">${r.CI_DC50_lower!=null?_sigFmt(r.CI_DC50_lower)+'–'+_sigFmt(r.CI_DC50_upper):'—'}</td>`;
         else h+=`<td>${r[k]!=null?r[k]:'—'}</td>`;
       }
     }
@@ -2702,7 +2698,7 @@ function generateOutputXLSX() {
     ['Top constraint (%)', params.topEnabled !== false ? params.topConstrain : 'Free (unconstrained)'],
     ['Bottom (%)', params.fixBot ? ('Fixed at ' + params.botVal) : ('Free' + (params.minBotEnabled !== false ? ' (≥ ' + (params.minBotVal ?? 0) + '%)' : ''))],
     ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free'],
-    ['Max Dmax (%)', params.dmaxCapEnabled ? params.dmaxCapVal : 'Unlimited'],
+
     ['Absolute DC50', params.absdc50Enabled ? 'Yes' : 'No'],
     [],
     ['─── QC THRESHOLDS ───────────────────────────', ''],
@@ -2788,7 +2784,7 @@ function renderProtocol() {
   html += row('Top constraint', params.topEnabled !== false ? '<strong>' + params.topConstrain + '%</strong>' : '<span style="color:var(--text3)">Free (unconstrained)</span>');
   html += row('Bottom', params.fixBot ? 'Fixed at <strong>' + params.botVal + '%</strong>' : ('<span style="color:var(--text3)">Free</span>' + (params.minBotEnabled !== false ? ' <span style="color:var(--text2)">(≥ ' + (params.minBotVal ?? 0) + '%)</span>' : '')));
   html += row('Hill slope', params.fixHill ? 'Fixed at <strong>' + params.hillVal + '</strong>' : '<span style="color:var(--text3)">Free</span>');
-  html += row('Max D<sub>max</sub>', params.dmaxCapEnabled ? '<strong>' + params.dmaxCapVal + '%</strong>' : '<span style="color:var(--text3)">Unlimited</span>');
+
   html += row('Absolute DC50', params.absdc50Enabled ? 'Yes' : 'No');
   html += row('Analysed', ts);
 
@@ -4083,7 +4079,11 @@ function customTooltip({ chart, tooltip }) {
   inner += '<b style="color:var(--text);font-family:var(--sans);font-size:12px;">' + esc(r.label) + '</b>';
   inner += '<div style="margin-top:4px;font-size:11px;line-height:1.65;">';
   inner += '<span style="color:var(--text3);">Group</span> ' + esc(r.protein) + '<br>';
-  inner += '<span style="color:var(--text3);">DC50</span> ' + r.dc50 + ' nM &nbsp;<span style="color:var(--text3);">Dmax</span> ' + r.dmax + '% &nbsp;<span style="color:var(--text3);">R²</span> ' + r.r2;
+  const _origR = (r.dc50==null||r.dmax==null) ? (window._resultsData||[]).find(x=>x.Sample_ID===r.label)||{} : {};
+  const _ttDC = r.dc50 ?? _origR.DC50_nM;
+  const _ttDmax = r.dmax ?? _origR.Dmax_pct;
+  const _ttR2 = r.r2 ?? _origR.R2;
+  inner += '<span style="color:var(--text3);">DC50</span> ' + (_ttDC ?? '—') + ' nM &nbsp;<span style="color:var(--text3);">Dmax</span> ' + (_ttDmax ?? '—') + '% &nbsp;<span style="color:var(--text3);">R²</span> ' + (_ttR2 ?? '—');
   if (cd && cd.MW) inner += '<br><span style="color:var(--text3);font-size:10px;">MW ' + cd.MW + ' · logP ' + cd.logP + ' · HBA ' + cd.HBA + ' · HBD ' + cd.HBD + '</span>';
   if (r.flag==='Yes') inner += '<br><span style="color:var(--warn);font-size:10px;">⚠ flagged</span>';
   inner += '</div>';
@@ -4098,6 +4098,7 @@ function customTooltip({ chart, tooltip }) {
   el.style.left = Math.max(4, x) + 'px';
   el.style.top = Math.max(4, Math.min(y, window.innerHeight - ttH - 4)) + 'px';
 }
+function _sigFmt(v,sf=3){if(v==null||!isFinite(+v))return v??'—';const n=+v;if(n===0)return'0';const d=Math.floor(Math.log10(Math.abs(n)))+1;const dp=Math.max(0,sf-d);return n.toFixed(dp);}
 // Range slider helpers
 let _axisRangeInit = false;
 function initAxisSliders(rows, xKey, yKey2, xOffset) {
@@ -6668,12 +6669,18 @@ function openCurvePanel(pt) {
       canvas.style.width=w+'px'; canvas.style.height=h+'px';
       const _cpProtColor = pcolor(pt.protein||'').fg;
       const _cpCfg=Object.assign({},window._cvCfg||{},{showReps:true, palette:[_cpProtColor]});
+      const _allData2 = window._resultsData || [];
+      const _origPt = (pt._xmin==null) ? (_allData2.find(x=>x.Sample_ID===pt.label)||{}) : {};
       drawMultiCurve(canvas, [{
         Sample_ID:pt.label, Protein:pt.protein,
-        DC50_nM:pt.DC50_nM, AbsDC50_nM:pt.AbsDC50_nM, Dmax_pct:pt.Dmax_pct, pDC50:pt.pDC50,
-        HillSlope:pt.HillSlope, R2:pt.R2, Flag:pt.flag,
-        _bot:pt._bot, _logec50:pt._logec50, _hill:pt._hill, _tc:pt._tc,
-        _xmin:pt._xmin, _xmax:pt._xmax, _pts:pt._pts||[], _reps:pt._reps||[], _hook_x:pt._hook_x
+        DC50_nM:pt.DC50_nM??_origPt.DC50_nM, AbsDC50_nM:pt.AbsDC50_nM??_origPt.AbsDC50_nM,
+        Dmax_pct:pt.Dmax_pct??_origPt.Dmax_pct, pDC50:pt.pDC50??_origPt.pDC50,
+        HillSlope:pt.HillSlope??_origPt.HillSlope, R2:pt.R2??_origPt.R2, Flag:pt.flag,
+        _bot:pt._bot??_origPt._bot, _logec50:pt._logec50??_origPt._logec50,
+        _hill:pt._hill??_origPt._hill, _tc:pt._tc??_origPt._tc,
+        _xmin:pt._xmin??_origPt._xmin, _xmax:pt._xmax??_origPt._xmax,
+        _pts:pt._pts??_origPt._pts??[], _reps:pt._reps??_origPt._reps??[],
+        _hook_x:pt._hook_x??_origPt._hook_x
       }], _cpCfg);
     };
     _cpDraw();
@@ -7686,10 +7693,10 @@ function syncMatAnalysisParams() {
   if (!isMulti) return;
 
   const _assayLabels = {
-    hibit:       {sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:'Max Dmax (%)',  bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
-    displacement:{sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:'Max inhibition (%)',bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
+    hibit:       {sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:null,            bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
+    displacement:{sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:null,               bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
     gain:        {sd:'Max replicate SD',    top:'Top constrain',    dmax:null,              bot:'Fix bottom',    minbot:'Bottom ≥'},
-    ctg:         {sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:'Max Dmax (%)',  bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
+    ctg:         {sd:'Max replicate SD (%)',top:'Top constrain (%)',dmax:null,            bot:'Fix bottom (%)',minbot:'Bottom ≥ (%)'},
   };
   const _assayColors = {hibit:'#e08c30',displacement:'#0079b9',gain:'#26a69a',ctg:'#9c6fd4'};
   const _assayNames = {hibit:'HiBiT',displacement:'Displacement',gain:'Gain-of-Signal',ctg:'CTG/Viability'};
@@ -7708,10 +7715,10 @@ function syncMatAnalysisParams() {
     return `<div style="border:1px solid ${color}33;border-left:3px solid ${color};border-radius:8px;padding:12px;margin-bottom:10px;background:var(--surface2);">
       <div style="font-size:11px;font-weight:700;color:${color};margin-bottom:10px;letter-spacing:.3px;">${name}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-hook-en-${idx}" checked onchange="var el=document.getElementById('mat-hook-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Hook threshold${gain?'':' (%)'}ⓘ</span></div><input type="number" id="mat-hook-${idx}" value="10" min="1" max="200" style="${_fs}"></div>
+        ${(type==='hibit'||type==='ctg')?`<div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-hook-en-${idx}" checked onchange="var el=document.getElementById('mat-hook-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Hook threshold (%)ⓘ</span></div><input type="number" id="mat-hook-${idx}" value="10" min="1" max="200" style="${_fs}"></div>`:''}
         <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-r2-en-${idx}" checked onchange="var el=document.getElementById('mat-r2-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Min R²</span></div><input type="number" id="mat-r2-${idx}" value="0.8" min="0" max="1" step="0.05" style="${_fs}"></div>
         <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-sd-en-${idx}" checked onchange="var el=document.getElementById('mat-sd-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.sd}</span></div><input type="number" id="mat-sd-${idx}" value="25" min="1" style="${_fs}"></div>
-        ${type!=='displacement'?`<div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-top-en-${idx}" checked onchange="var el=document.getElementById('mat-top-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.top}</span></div><input type="number" id="mat-top-${idx}" value="100" min="50" max="110" style="${_fs}"></div>`:''}
+        <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-top-en-${idx}" checked onchange="var el=document.getElementById('mat-top-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.top}</span></div><input type="number" id="mat-top-${idx}" value="100" min="50" max="110" style="${_fs}"></div>
         ${lbl.dmax?`<div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-dmax-en-${idx}" checked onchange="var el=document.getElementById('mat-dmax-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.dmax}</span></div><input type="number" id="mat-dmax-${idx}" value="99" min="10" max="99" step="1" style="${_fs}"></div>`:''}
         <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-fbot-en-${idx}" onchange="var el=document.getElementById('mat-fbot-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.bot}</span></div><input type="number" id="mat-fbot-${idx}" value="0" min="-50" max="100" disabled style="${_fs}opacity:0.35;"></div>
         <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-fhill-en-${idx}" onchange="var el=document.getElementById('mat-fhill-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix Hill slope</span></div><input type="number" id="mat-fhill-${idx}" value="1" min="0.1" max="5" step="0.1" disabled style="${_fs}opacity:0.35;"></div>
@@ -7752,6 +7759,10 @@ function collectMultiAssayConfigs() {
   return configs;
 }
 
+document.addEventListener('wheel',function(e){
+  const tw=e.target.closest('.tbl-wrap');
+  if(tw&&tw.scrollWidth>tw.clientWidth+2){tw.scrollLeft+=e.deltaY*0.8;e.preventDefault();}
+},{passive:false});
 (function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});onAssayTypeChange();})();
 window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='switchTab'||!e.data.tab)return;
