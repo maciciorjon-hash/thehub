@@ -155,13 +155,13 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .lm.warn{color:var(--warn);}
 
 /* RESULTS */
-#results-panel{flex:1;overflow:auto;padding:18px 20px;}
+#results-panel{flex:1;overflow-y:auto;overflow-x:hidden;padding:18px 20px;}
 .meta-row{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
 .mcard{background:var(--surface2);border-radius:var(--r);padding:11px 16px;min-width:110px;}
 .mc-lbl{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
 .mc-val{font-family:var(--sans);font-size:20px;font-weight:500;}
 .mc-val.g{color:var(--accent3);}
-.tbl-wrap{overflow-x:scroll;}.tbl-wrap::-webkit-scrollbar{height:6px;}.tbl-wrap::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.tbl-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.tbl-wrap{width:100%;min-width:0;overflow-x:scroll;}.tbl-wrap::-webkit-scrollbar{height:6px;}.tbl-wrap::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.tbl-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
 thead tr{border-bottom:1px solid var(--border2);}
 th{padding:8px 12px;text-align:left;font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--text3);white-space:nowrap;}
@@ -615,6 +615,14 @@ tr:hover td{background:var(--surface2);}
           </div>
         </div>
 
+        <div class="field" style="margin-bottom:12px;">
+          <label>PHERAstar data location <span class="pinfo" data-tip="Optional: enter the Excel cell (e.g. B3) that corresponds to plate well A01. Use this when your Excel file has multiple tables and auto-detection picks the wrong one. Leave blank for auto-detection.">ⓘ</span></label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="p-a1-loc" placeholder="e.g. B3  (optional)" style="width:130px;padding:6px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);outline:none;">
+            <span style="font-size:11px;color:var(--text3);">Cell in Excel = plate well A01. Leave blank for auto-detect.</span>
+          </div>
+        </div>
+
         <div class="setup-group">
           <div class="setup-section-lbl">Normalisation</div>
           <div class="field"><label>Control (Vehicle) wells range</label>
@@ -795,9 +803,9 @@ tr:hover td{background:var(--surface2);}
       <span class="cp-title" id="cp-compound-name">—</span>
       <button class="cp-close" onclick="closeCurvePanel()">✕</button>
     </div>
-    <div style="flex:1;padding:10px;display:flex;flex-direction:column;gap:8px;overflow:hidden;">
-      <canvas id="cp-canvas" style="width:100%;flex:1;display:block;"></canvas>
-      <div id="cp-stats" style="font-size:11px;color:var(--text2);line-height:1.8;padding:0 2px;"></div>
+    <div style="flex:1;padding:10px;display:flex;flex-direction:column;gap:8px;overflow:hidden;min-height:0;">
+      <div id="cp-curves-wrap" style="flex:1;display:flex;flex-direction:column;gap:6px;overflow:hidden;min-height:0;"></div>
+      <div id="cp-stats" style="font-size:11px;color:var(--text2);line-height:1.8;padding:0 2px;flex-shrink:0;"></div>
     </div>
   </div></div>
 
@@ -1484,7 +1492,7 @@ async function runPipeline() {
             mc.fixBot, mc.botVal, mc.fixHill, mc.hillVal,
             absdc50Enabled, mc.skipNorm, csvCols, mc.type, mc.zero||'',
             mc.dmaxCapEnabled, mc.dmaxCapVal, qcOverridesJSON,
-            mc.minBotEnabled, mc.minBotVal
+            mc.minBotEnabled, mc.minBotVal, mc.a1Loc||''
           );
           mergedResults.push(...typeResults);
           Object.assign(allPlateData, window._plateData || {});
@@ -1497,7 +1505,7 @@ async function runPipeline() {
       window._lastAssayType = 'multi';
       window._lastAnalysisParams = {...window._lastAnalysisParams, assayType:'multi', multiAssay:true, matConfigs};
     } else {
-      results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal);
+      results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, (document.getElementById('p-a1-loc')?.value||'').trim());
     }
 
     setProgress(100);
@@ -1553,10 +1561,10 @@ async function runPipeline() {
   (function(){
     const _t = window._lastAssayType || 'hibit';
     const _lm = {
-      hibit:        {dc:'DC50 (nM)', adc:'Abs DC50 (nM)', dm:'Dmax (%)',  lic:'LogDC50 (M)', pdc:'pDC50'},
-      ctg:          {dc:'IC50 (nM)',  adc:'Abs IC50 (nM)',  dm:'Span (%)', lic:'LogIC50 (M)', pdc:'pIC50'},
-      displacement: {dc:'IC50 (nM)',  adc:'Abs IC50 (nM)',  dm:'Span (%)', lic:'LogIC50 (M)', pdc:'pIC50'},
-      gain:         {dc:'EC50 (nM)',  adc:'Abs EC50 (nM)',  dm:'Emax',     lic:'LogEC50 (M)', pdc:'pEC50'},
+      hibit:        {dc:'DC50 (nM)', adc:'Abs DC50 (nM)', dm:'Dmax (%)',  lic:'LogDC50 (M)', pdc:'pDC50 (M)'},
+      ctg:          {dc:'IC50 (nM)',  adc:'Abs IC50 (nM)',  dm:'Span (%)', lic:'LogIC50 (M)', pdc:'pIC50 (M)'},
+      displacement: {dc:'IC50 (nM)',  adc:'Abs IC50 (nM)',  dm:'Span (%)', lic:'LogIC50 (M)', pdc:'pIC50 (M)'},
+      gain:         {dc:'EC50 (nM)',  adc:'Abs EC50 (nM)',  dm:'Emax',     lic:'LogEC50 (M)', pdc:'pEC50 (M)'},
     };
     const _l = _lm[_t] || _lm.hibit;
     window._bpVarLabels = {'DC50_nM':_l.dc,'AbsDC50_nM':_l.adc,'Dmax_pct':_l.dm,'LogIC50_M':_l.lic,'pDC50':_l.pdc,'HillSlope':'Hill slope','R2':'R²'};
@@ -1679,7 +1687,7 @@ function _parseEchoCSV(text, skipRows) {
   return data;
 }
 
-function _parsePHERAstarXLS(ab, barcode) {
+function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
   const wb = XLSX.read(ab, { type: 'array', cellDates: false, raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
@@ -1687,29 +1695,45 @@ function _parsePHERAstarXLS(ab, barcode) {
   const nrows = raw.length;
   const ncols = raw[0] ? raw[0].length : 0;
 
-  let headerCol = -1, dataRow = -1;
-  search: for (let ci = 0; ci < Math.min(8, ncols); ci++) {
-    for (let ri = 0; ri < nrows - 7; ri++) {
-      if (String(raw[ri][ci] || '').trim().toUpperCase() === 'A') {
-        let ok = true;
-        for (let k = 0; k < 8; k++) {
-          if (String(raw[ri + k][ci] || '').trim().toUpperCase() !== ROW_LABELS[k]) { ok = false; break; }
-        }
-        if (ok) { headerCol = ci; dataRow = ri; break search; }
-      }
+  let headerCol = -1, dataRow = -1, dataCol = -1;
+
+  // If user specified the Excel cell containing A01 data, use it directly
+  if (a1CellRef && a1CellRef.trim()) {
+    const m = a1CellRef.trim().toUpperCase().match(/^([A-Z]+)(\d+)$/);
+    if (m) {
+      let col = 0;
+      for (let i = 0; i < m[1].length; i++) col = col * 26 + (m[1].charCodeAt(i) - 64);
+      dataCol = col - 1; // 0-based
+      dataRow = parseInt(m[2], 10) - 1; // 0-based
+      headerCol = dataCol - 1; // row labels are in the column to the left
+      log('  ' + barcode + ': using A1 cell ref "' + a1CellRef.trim() + '" → row ' + (dataRow+1) + ', col ' + (dataCol+1));
     }
   }
 
-  let dataCol = -1;
-  if (headerCol >= 0 && dataRow > 0) {
-    for (let ri = Math.max(0, dataRow - 6); ri < dataRow && dataCol < 0; ri++) {
-      for (let ci2 = 0; ci2 < ncols - 3; ci2++) {
-        if (+raw[ri][ci2] === 1 && +raw[ri][ci2 + 1] === 2 && +raw[ri][ci2 + 2] === 3) {
-          dataCol = ci2; break;
+  if (headerCol < 0) {
+    // Auto-detect: find A-H row label sequence
+    search: for (let ci = 0; ci < Math.min(8, ncols); ci++) {
+      for (let ri = 0; ri < nrows - 7; ri++) {
+        if (String(raw[ri][ci] || '').trim().toUpperCase() === 'A') {
+          let ok = true;
+          for (let k = 0; k < 8; k++) {
+            if (String(raw[ri + k][ci] || '').trim().toUpperCase() !== ROW_LABELS[k]) { ok = false; break; }
+          }
+          if (ok) { headerCol = ci; dataRow = ri; break search; }
         }
       }
     }
-    if (dataCol < 0) dataCol = headerCol + 1;
+
+    if (headerCol >= 0 && dataRow > 0) {
+      for (let ri = Math.max(0, dataRow - 6); ri < dataRow && dataCol < 0; ri++) {
+        for (let ci2 = 0; ci2 < ncols - 3; ci2++) {
+          if (+raw[ri][ci2] === 1 && +raw[ri][ci2 + 1] === 2 && +raw[ri][ci2 + 2] === 3) {
+            dataCol = ci2; break;
+          }
+        }
+      }
+      if (dataCol < 0) dataCol = headerCol + 1;
+    }
   }
 
   const wells = [];
@@ -1884,7 +1908,7 @@ function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
   return best;
 }
 
-async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal) {
+async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, a1Loc) {
   minBotEnabled = minBotEnabled !== false;
   minBotVal = isNaN(minBotVal) ? 0 : minBotVal;
   let qcOverrides = {};
@@ -1911,7 +1935,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     const bytes = await toBytes(file);
     const barcode = fname.replace(/\.[^.]+$/, '');
     try {
-      const wells = _parsePHERAstarXLS(bytes.buffer, barcode);
+      const wells = _parsePHERAstarXLS(bytes.buffer, barcode, a1Loc||'');
       readerRaw.push(...wells);
       log('  ' + fname + ' → ' + barcode, 'ok');
       if (!window._pheraProtocol) {
@@ -2319,7 +2343,7 @@ function renderResults(data) {
   const _selBot = _selCols.has('Bot_val');
   const _noGain = _t==='displacement';
   const _vl = window._bpVarLabels || {};
-  const _colLbls = {DC50_nM:_vl['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vl['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vl['Dmax_pct']||'Dmax (%)',LogIC50_M:_vl['LogIC50_M']||'LogIC50',pDC50:_vl['pDC50']||'pDC50',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
+  const _colLbls = {DC50_nM:_vl['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vl['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vl['Dmax_pct']||'Dmax (%)',LogIC50_M:_vl['LogIC50_M']||'LogIC50 (M)',pDC50:_vl['pDC50']||'pDC50 (M)',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
   const _cellFn = {
     Protein: r=>'<td><span class="pbadge" style="background:'+pcolor(r.Protein).bg+';color:'+pcolor(r.Protein).fg+';padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;">'+esc(r.Protein)+'</span></td>',
     Sample_ID: r=>'<td>'+esc(r.Sample_ID)+'</td>',
@@ -2413,16 +2437,17 @@ function renderMultiAssayResults(data) {
   if (!data.length) { p.innerHTML='<div class="empty"><div class="ei">⚠️</div><p>No results.</p></div>'; return; }
 
   const _assayMeta = {
-    hibit:       {name:'HiBiT',         color:'#e08c30', dc50:'DC50 (nM)',  logdc50:'LogDC50', pdc50:'pDC50', dmax:'Dmax (%)'},
-    displacement:{name:'Displacement',  color:'#0079b9', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:null},
-    gain:        {name:'Gain-of-Signal',color:'#26a69a', dc50:'EC50 (nM)',  logdc50:'LogEC50', pdc50:'pEC50', dmax:'Emax (%)'},
-    ctg:         {name:'CTG/Viability', color:'#9c6fd4', dc50:'IC50 (nM)',  logdc50:'LogIC50', pdc50:'pIC50', dmax:'Span (%)'},
+    hibit:       {name:'HiBiT',         color:'#e08c30', dc50:'DC50 (nM)',  logdc50:'LogDC50 (M)', pdc50:'pDC50 (M)', dmax:'Dmax (%)'},
+    displacement:{name:'Displacement',  color:'#0079b9', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:null},
+    gain:        {name:'Gain-of-Signal',color:'#26a69a', dc50:'EC50 (nM)',  logdc50:'LogEC50 (M)', pdc50:'pEC50 (M)', dmax:'Emax (%)'},
+    ctg:         {name:'CTG/Viability', color:'#9c6fd4', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)'},
   };
 
   const orderedTypes = [...new Set(data.map(r=>r._assayType).filter(Boolean))];
   const _selCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
   const activeKeys = ['DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag',...(_selCols.has('CI_DC50')?['CI_DC50']:[])]
-    .filter(k=>k==='DC50_nM'||k==='Flag'||k==='CI_DC50'||_selCols.has(k));
+    .filter(k=>k==='DC50_nM'||k==='Flag'||k==='CI_DC50'||_selCols.has(k))
+    .filter(k=>!(window._hiddenResultsCols?.has(k)));
 
   // Pivot: one entry per Sample_ID
   const pivot = new Map();
@@ -2458,12 +2483,12 @@ function renderMultiAssayResults(data) {
   // Header row 2: individual column names
   h += '<tr>';
   for (const at of orderedTypes) {
-    const m = _assayMeta[at]||{name:at,color:'#8b90a8',dc50:'DC50 (nM)',logdc50:'LogDC50',pdc50:'pDC50',dmax:'Dmax (%)'};
+    const m = _assayMeta[at]||{name:at,color:'#8b90a8',dc50:'DC50 (nM)',logdc50:'LogDC50 (M)',pdc50:'pDC50 (M)',dmax:'Dmax (%)'};
     const _ciLblM = (at==='displacement'||at==='ctg')?'IC50 95% CI':(at==='gain')?'EC50 95% CI':'DC50 95% CI';
     const lbl = {DC50_nM:m.dc50,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag',CI_DC50:_ciLblM};
     for (const k of activeKeys) {
       if (k==='Dmax_pct'&&!m.dmax) continue;
-      h += `<th style="font-size:11px;background:${m.color}0d;">${lbl[k]||k}</th>`;
+      h += `<th data-col-key="${k}" style="font-size:11px;background:${m.color}0d;">${lbl[k]||k}</th>`;
     }
   }
   h += '</tr></thead><tbody>';
@@ -2505,7 +2530,7 @@ function copyResultsTSV() {
   const _noGainTsv = _tTsv==='displacement';
   const _vlT = window._bpVarLabels || {};
   const _allK = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
-  const _lbl = {Protein:'Group',Sample_ID:'Sample ID',DC50_nM:_vlT['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vlT['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vlT['Dmax_pct']||'Dmax (%)',LogIC50_M:_vlT['LogIC50_M']||'LogIC50',pDC50:_vlT['pDC50']||'pDC50',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
+  const _lbl = {Protein:'Group',Sample_ID:'Sample ID',DC50_nM:_vlT['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vlT['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vlT['Dmax_pct']||'Dmax (%)',LogIC50_M:_vlT['LogIC50_M']||'LogIC50 (M)',pDC50:_vlT['pDC50']||'pDC50 (M)',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
   const cols = _allK.filter(k=>(k==='Protein'||k==='Sample_ID'||_selTsv.has(k))&&!(k==='AbsDC50_nM'&&_tTsv!=='hibit')&&!(k==='Dmax_pct'&&_noGainTsv));
   const rows = [cols.map(k=>_lbl[k]||k).join('\t'), ..._lastResultsData.map(r=>cols.map(c=>r[c]??'').join('\t'))];
   navigator.clipboard.writeText(rows.join('\n')).then(()=>{
@@ -3043,7 +3068,7 @@ function renderBoxPlot(data) {
   }
   const yVars = ['DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2'];
   const _vl2 = window._bpVarLabels || {};
-  const yLabels = {'DC50_nM':_vl2['DC50_nM']||'DC50 (nM)','AbsDC50_nM':_vl2['AbsDC50_nM']||'Abs DC50 (nM)','Dmax_pct':_vl2['Dmax_pct']||'Dmax (%)','LogIC50_M':_vl2['LogIC50_M']||'LogIC50 (M)','pDC50':_vl2['pDC50']||'pDC50','HillSlope':'Hill slope','R2':'R²'};
+  const yLabels = {'DC50_nM':_vl2['DC50_nM']||'DC50 (nM)','AbsDC50_nM':_vl2['AbsDC50_nM']||'Abs DC50 (nM)','Dmax_pct':_vl2['Dmax_pct']||'Dmax (%)','LogIC50_M':_vl2['LogIC50_M']||'LogIC50 (M)','pDC50':_vl2['pDC50']||'pDC50 (M)','HillSlope':'Hill slope','R2':'R²'};
   const groups = [...new Set(data.map(r=>r.Protein))].sort();
 
   // X is always Group — no other meaningful grouping at this level
@@ -6683,7 +6708,7 @@ function openCurvePanel(pt) {
   const panel=document.getElementById('curve-panel');
   const nameEl=document.getElementById('cp-compound-name');
   const statsEl=document.getElementById('cp-stats');
-  const canvas=document.getElementById('cp-canvas');
+  const wrap=document.getElementById('cp-curves-wrap');
   if (!panel) return;
   panel.classList.add('open');
   if (nameEl) nameEl.textContent=(pt.label||'—')+(pt.protein?' · '+pt.protein:'');
@@ -6693,13 +6718,15 @@ function openCurvePanel(pt) {
   const _cpYKey = document.getElementById('sc-y')?.value || '';
   const _cpXAssay = _cpXKey.includes('::') ? _cpXKey.split('::')[0] : null;
   const _cpYAssay = _cpYKey.includes('::') ? _cpYKey.split('::')[0] : null;
-  const _cpAssayMeta = {hibit:{dc50:'DC50',dmax:'Dmax (%)',color:'#e08c30'},displacement:{dc50:'IC50',dmax:null,color:'#0079b9'},gain:{dc50:'EC50',dmax:'Emax (%)',color:'#26a69a'},ctg:{dc50:'IC50',dmax:'Span (%)',color:'#9c6fd4'}};
+  const _cpAssayMeta = {hibit:{dc50:'DC50',dmax:'Dmax (%)',color:'#e08c30',yLabel:'Signal (% DMSO)'},displacement:{dc50:'IC50',dmax:null,color:'#0079b9',yLabel:'Signal (% DMSO)'},gain:{dc50:'EC50',dmax:'Emax (%)',color:'#26a69a',yLabel:'FRET Ratio'},ctg:{dc50:'IC50',dmax:'Span (%)',color:'#9c6fd4',yLabel:'Viability (%)'}};
 
   let curveRows = [];
+  let isDual = false;
   if (_cpXAssay && _cpYAssay && _cpXAssay !== _cpYAssay) {
     const rowX = _allData2.find(x=>x.Sample_ID===pt.label&&x._assayType===_cpXAssay);
     const rowY = _allData2.find(x=>x.Sample_ID===pt.label&&x._assayType===_cpYAssay);
     curveRows = [rowX, rowY].filter(Boolean);
+    isDual = curveRows.length === 2;
   } else if (_cpXAssay || _cpYAssay) {
     const assay = _cpXAssay || _cpYAssay;
     const row = _allData2.find(x=>x.Sample_ID===pt.label&&x._assayType===assay);
@@ -6736,17 +6763,47 @@ function openCurvePanel(pt) {
     statsEl.innerHTML = sHtml;
   }
 
-  if (canvas) {
-    const _cpDraw=()=>{
-      const par=canvas.parentElement;
-      const w=par?.clientWidth||460;
-      const h=Math.max(200,(par?.clientHeight||400)-(statsEl?.offsetHeight||90)-24);
-      canvas.style.width=w+'px'; canvas.style.height=h+'px';
-      const _cpCfg=Object.assign({},window._cvCfg||{},{showReps:true});
-      drawMultiCurve(canvas, curveRows, _cpCfg);
-    };
-    _cpDraw();
-    setTimeout(_cpDraw, 60);
+  if (wrap) {
+    wrap.innerHTML = '';
+    const _cpCfg = Object.assign({}, window._cvCfg||{}, {showReps:true});
+    if (isDual) {
+      // Two stacked graphs: one per assay type
+      curveRows.forEach(row => {
+        const _at = row._assayType;
+        const _am = _cpAssayMeta[_at] || {color:'var(--text3)', yLabel:''};
+        const block = document.createElement('div');
+        block.style.cssText = 'flex:1;display:flex;flex-direction:column;min-height:0;';
+        const lbl = document.createElement('div');
+        lbl.style.cssText = `font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:${_am.color};margin-bottom:3px;flex-shrink:0;`;
+        lbl.textContent = _at;
+        const cvs = document.createElement('canvas');
+        cvs.style.cssText = 'width:100%;flex:1;display:block;';
+        block.appendChild(lbl);
+        block.appendChild(cvs);
+        wrap.appendChild(block);
+        const rowCfg = Object.assign({}, _cpCfg);
+        const _draw = () => {
+          const w = wrap.clientWidth || 460;
+          const h = Math.max(120, block.clientHeight - lbl.offsetHeight - 4);
+          cvs.style.width = w + 'px'; cvs.style.height = h + 'px';
+          drawMultiCurve(cvs, [row], rowCfg);
+        };
+        _draw(); setTimeout(_draw, 60);
+      });
+    } else {
+      // Single graph
+      const cvs = document.createElement('canvas');
+      cvs.style.cssText = 'width:100%;flex:1;display:block;';
+      wrap.appendChild(cvs);
+      const _draw = () => {
+        const par = wrap;
+        const w = par.clientWidth || 460;
+        const h = Math.max(200, (par.clientHeight||400) - (statsEl?.offsetHeight||90) - 24);
+        cvs.style.width = w + 'px'; cvs.style.height = h + 'px';
+        drawMultiCurve(cvs, curveRows, _cpCfg);
+      };
+      _draw(); setTimeout(_draw, 60);
+    }
   }
 }
 function closeCurvePanel() {
@@ -7727,6 +7784,11 @@ function addAssayType() {
         <label style="font-size:11px;color:var(--text2);margin-bottom:3px;display:block;">0% signal wells</label>
         <input type="text" id="mat-zero-${idx}" placeholder="e.g. B24:O24" style="${_fs}">
       </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+      <label style="font-size:11px;color:var(--text2);white-space:nowrap;flex-shrink:0;">PHERAstar A1 cell</label>
+      <input type="text" id="mat-a1-${idx}" placeholder="e.g. B3 (optional)" style="width:120px;padding:4px 7px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:11px;font-family:var(--mono);outline:none;">
+      <span style="font-size:10px;color:var(--text3);">Excel cell = A01. Leave blank for auto-detect.</span>
     </div>`;
   list.appendChild(div);
   syncMatAnalysisParams();
@@ -7806,6 +7868,7 @@ function collectMultiAssayConfigs() {
       prefix:(gv('prefix')||'').trim(),
       ctrl:(gv('ctrl')||'').trim(),
       zero:(gv('zero')||'').trim(),
+      a1Loc:(gv('a1')||'').trim(),
       idx,
       hookEnabled:gc('hook-en'), hookThr:gn('hook',10),
       r2Enabled:gc('r2-en'),    minR2:gn('r2',0.8),
@@ -7908,12 +7971,18 @@ document.addEventListener('DOMContentLoaded',function(){
 function _hideResultsCol(k) {
   (window._hiddenResultsCols = window._hiddenResultsCols||new Set()).add(k);
   document.getElementById('col-ctx-menu').style.display='none';
-  if (_lastResultsData?.length) renderResults(_lastResultsData);
+  if (_lastResultsData?.length) {
+    if (window._lastAnalysisParams?.multiAssay) renderMultiAssayResults(_lastResultsData);
+    else renderResults(_lastResultsData);
+  }
 }
 function _unhideAllResultsCols() {
   window._hiddenResultsCols = new Set();
   document.getElementById('col-ctx-menu').style.display='none';
-  if (_lastResultsData?.length) renderResults(_lastResultsData);
+  if (_lastResultsData?.length) {
+    if (window._lastAnalysisParams?.multiAssay) renderMultiAssayResults(_lastResultsData);
+    else renderResults(_lastResultsData);
+  }
 }
 </script>
 

@@ -253,14 +253,13 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-10 (Round 35: scatter axis labels, tooltip rewrite, dual-curve click, column hide, CI label)
+Last session: 2026-06-10 (Round 36: scrollbar fix, unit labels, stacked curves, PHERAstar A1 input)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.86MB (7,860,078 chars). Version v1.0.0
+Hub file size: 7.87MB (7,868,328 chars). Version v1.0.2
 Echo changes (labcyte_echo.html):
-- Scatter axis labels: buildScatterChart() and debounceUpdateAxisLabel() use _optLbl helper that looks up window._scatterAxisOpts by value — labels now exactly match dropdown text (multi-assay "HiBiT — DC50 (nM)" etc.)
-- Tooltip rewrite: customTooltip() no longer shows Group line; shows actual X and Y values (r.x, r.y via _sigFmt) labelled with _scatterAxisOpts lookup for current dropdown keys
-- Dual-curve click: openCurvePanel() reads sc-x/sc-y DOM values; if both axes have '::' and different assay types, looks up both rows from window._resultsData by Sample_ID+_assayType; passes both to drawMultiCurve(); stats panel shows per-assay labels
-- Column hide: right-click on <th data-col-key> in results-panel shows floating context menu ('Hide column' / 'Show all columns'); window._hiddenResultsCols Set filters cols array; DOMContentLoaded injects menu and global contextmenu handler
-- Always-visible scrollbar: .tbl-wrap changed to overflow-x:scroll with webkit scrollbar styling (6px, var(--border2) thumb)
-- CI label: renderResults uses assay-specific label ('IC50 95% CI' for displacement/ctg, 'EC50 95% CI' for gain, 'DC50 95% CI' for hibit); renderMultiAssayResults does same per assay type
+- Scrollbar fix: #results-panel overflow changed to overflow-y:auto;overflow-x:hidden; .tbl-wrap gets width:100%;min-width:0; so it is constrained within panel and can scroll
+- Column hide in multi-assay: renderMultiAssayResults <th> elements now have data-col-key; activeKeys filtered by _hiddenResultsCols; _hideResultsCol/_unhideAllResultsCols call renderMultiAssayResults when multiAssay mode is active
+- Unit labels: _lm pdc values now include "(M)" (pDC50 (M), pIC50 (M), pEC50 (M)); _colLbls, _assayMeta, _lbl fallbacks, yLabels all updated to include "(M)" for LogIC50 and pDC50 variants
+- Stacked curves: #cp-canvas replaced with #cp-curves-wrap container; openCurvePanel() creates two stacked canvases when isDual=true, each with assay-type colour label; single canvas when one row
+- PHERAstar A1 input: <input id="p-a1-loc"> added to Assay tab (single-assay); mat-a1-${idx} added to addAssayType() multi-assay panels; _parsePHERAstarXLS(ab, barcode, a1CellRef) parses Excel cell ref letter+number → 0-based row/col, skips auto-detection when provided; a1Loc added as 26th param to runAnalysisJS; passed through both single and multi-assay call sites
 <!-- LAST_SESSION_END -->
