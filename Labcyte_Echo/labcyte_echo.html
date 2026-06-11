@@ -164,7 +164,7 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .tbl-wrap{width:100%;min-width:0;overflow-x:auto;}.tbl-wrap::-webkit-scrollbar{height:6px;}.tbl-wrap::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.tbl-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 .tbl-frozen{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--border2);}
 th.tbl-frozen{z-index:3;}
-table{width:100%;border-collapse:collapse;font-size:12px;}
+table{min-width:100%;border-collapse:collapse;font-size:12px;}
 thead tr{border-bottom:1px solid var(--border2);}
 th{padding:8px 12px;text-align:left;font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--text3);white-space:nowrap;}
 td{padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--sans);font-size:12px;color:var(--text2);white-space:nowrap;}
@@ -1693,6 +1693,9 @@ function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
   const wb = XLSX.read(ab, { type: 'array', cellDates: false, raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const _sheetRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  const _sheetR0 = _sheetRange.s.r; // 0-based Excel row where sheet used-range starts
+  const _sheetC0 = _sheetRange.s.c; // 0-based Excel col where sheet used-range starts
   const ROW_LABELS = 'ABCDEFGHIJKLMNOP'.split('');
   const nrows = raw.length;
   const ncols = raw[0] ? raw[0].length : 0;
@@ -1706,10 +1709,11 @@ function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
     if (m) {
       let col = 0;
       for (let i = 0; i < m[1].length; i++) col = col * 26 + (m[1].charCodeAt(i) - 64);
-      dataCol = col - 1; // 0-based: B=1, C=2, ...
-      dataRow = parseInt(m[2], 10) - 1; // 0-based
+      // Subtract sheet start offsets so indices align with raw[] array from sheet_to_json
+      dataCol = (col - 1) - _sheetC0;
+      dataRow = (parseInt(m[2], 10) - 1) - _sheetR0;
       _manualRef = true;
-      log('  ' + barcode + ': using A1 cell ref "' + a1CellRef.trim() + '" → data starts row ' + (dataRow+1) + ' col ' + (dataCol+1) + ', table ' + a1CellRef.trim().toUpperCase() + ':' + String.fromCharCode(65+dataCol+23) + (dataRow+16));
+      log('  ' + barcode + ': using A1 cell ref "' + a1CellRef.trim() + '" → raw[' + dataRow + '][' + dataCol + '] (sheet offset r=' + _sheetR0 + ' c=' + _sheetC0 + ')');
     }
   }
 

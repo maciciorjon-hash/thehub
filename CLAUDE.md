@@ -253,13 +253,10 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 39: Echo results scroll+frozen col, PHERAstar A1 fix, Properties multi-assay affinity, pKa removed)
+Last session: 2026-06-11 (Round 41: Echo scroll fix, PHERAstar A1 cell ref offset fix)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.88MB (7,879,426 chars). Version v1.0.5
+Hub file size: 7.88MB (7,882,006 chars). Version v1.0.7
 Echo changes (labcyte_echo.html):
-- Frozen Sample ID column: .tbl-frozen CSS (position:sticky;left:0;z-index:2); applied to Sample ID <th>/<td> in both renderResults and renderMultiAssayResults
-- Scroll arrows: ◀/▶ buttons above tbl-wrap in both renderers, call scrollBy on #results-panel .tbl-wrap
-- PHERAstar A1 fix: replaced headerCol<0 guard with _manualRef boolean; auto-detect is NEVER run when valid a1CellRef is provided (even column A = dataCol 0 now works)
-- Properties tab pKa(N) removed: removed pKaBasicN from propCols array in renderProperties
-- Properties tab multi-assay affinity: _isMultiProp detects multi-assay mode; _orderedPropTypes from results._assayType; _affinityCols shows DC50/IC50/EC50 per assay type with [type] label suffix; single-assay shows correct label based on assay type
+- Scroll fix: changed table{width:100%} to table{min-width:100%} — width:100% was compressing table to fit container so scrollWidth==clientWidth and scrollBy had nothing to scroll; min-width:100% allows expansion beyond container
+- PHERAstar A1 offset fix: added XLSX.utils.decode_range(ws['!ref']) to get _sheetR0/_sheetC0 (sheet used-range start); dataRow and dataCol now subtract these offsets so raw[] array indexing is correct when sheet doesn't start at A1 (e.g. A3:AH93 → _sheetR0=2; "B54" → raw[51][1] not raw[53][1])
 <!-- LAST_SESSION_END -->
