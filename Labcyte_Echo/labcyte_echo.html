@@ -7837,24 +7837,24 @@ function loadSurveyFile(file) {
 function parseSurveyCSV(text) {
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
   if(!lines.length) return {wells:{},plateType:'',plateName:''};
-  // Extract plate type and plate name from preamble metadata lines
-  let plateType='', plateName='';
+  // Find the column header row (Echo survey files have metadata lines + [DETAILS] before it).
+  let headerIdx=-1, hdr=null;
   for(let i=0;i<lines.length;i++){
     const cols=lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
-    if(/source.?plate.?type|plate.?type/i.test(cols[0])) plateType=cols[1]||'';
-    if(/source.?plate.?name|plate.?name|source.?plate\b/i.test(cols[0])&&cols[1]) plateName=cols[1]||'';
-  }
-  // Scan for the actual column header row (Echo survey files have metadata before [DETAILS])
-  let headerIdx=-1, wellIdx=-1, volIdx=-1, statusIdx=-1;
-  for(let i=0;i<lines.length;i++){
-    const cols=lines[i].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
-    const wi=cols.findIndex(h=>/source.?well|^well$/i.test(h));
+    const wi=cols.findIndex(h=>/^source.?well$|^well$/i.test(h));
     const vi=cols.findIndex(h=>/survey.?fluid.?volume|fluid.?volume|current.?volume/i.test(h));
-    const vi2=vi<0?cols.findIndex(h=>/\bvolume\b/i.test(h)&&!/height/i.test(h)):vi;
-    if(wi>=0&&vi2>=0){headerIdx=i;wellIdx=wi;volIdx=vi2;statusIdx=cols.findIndex(h=>/survey.?status|status/i.test(h));break;}
+    if(wi>=0&&vi>=0){ headerIdx=i; hdr=cols; break; }
   }
-  if(headerIdx<0) return {wells:{},plateType,plateName};
+  if(headerIdx<0) return {wells:{},plateType:'',plateName:''};
+  const find = re => hdr.findIndex(c => re.test(c));
+  const wellIdx          = find(/^source.?well$|^well$/i);
+  const volIdx           = find(/survey.?fluid.?volume|fluid.?volume|current.?volume/i);
+  const statusIdx        = find(/survey.?status|^status$/i);
+  const plateTypeIdx     = find(/source.?plate.?type|^plate.?type$/i);
+  const barcodeIdx       = find(/source.?plate.?barcode|^plate.?barcode$/i);
+  const plateNameHdrIdx  = find(/source.?plate.?name|^plate.?name$/i);
   const wells={};
+  let plateType='', plateName='';
   for(let i=headerIdx+1;i<lines.length;i++){
     const cols=lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
     if(!cols[wellIdx]) continue;
@@ -7863,6 +7863,11 @@ function parseSurveyCSV(text) {
     if(wm) w=`${wm[1]}${parseInt(wm[2])<10?'0':''}${parseInt(wm[2])}`;
     const vol=parseFloat(cols[volIdx]);
     if(!isNaN(vol)) wells[w]={vol,status:statusIdx>=0?cols[statusIdx]:''};
+    if(!plateType && plateTypeIdx>=0 && cols[plateTypeIdx]) plateType=cols[plateTypeIdx];
+    if(!plateName){
+      if(barcodeIdx>=0 && cols[barcodeIdx]) plateName=cols[barcodeIdx];
+      else if(plateNameHdrIdx>=0 && cols[plateNameHdrIdx]) plateName=cols[plateNameHdrIdx];
+    }
   }
   return {wells,plateType,plateName};
 }
@@ -7914,11 +7919,12 @@ function renderSurveyPlate(surveyResult) {
   const transferMap = _buildTransferMap();
   const hasTransfers = Object.keys(transferMap).length > 0;
 
-  // Convert to µL and compute after-assay volumes
+  // Compute after-assay volumes.
+  // Echo survey reports Survey Fluid Volume in µL; the picklist Transfer Volume is in nL.
   const wells = {}; // well → {beforeUL, transferredUL, afterUL, status}
   for(const [w, entry] of Object.entries(data)){
-    const volNL = entry && typeof entry==='object' ? entry.vol : entry;
-    const beforeUL = isFinite(volNL) ? volNL/1000 : 0;
+    const volUL = entry && typeof entry==='object' ? entry.vol : entry;
+    const beforeUL = isFinite(volUL) ? volUL : 0;
     const transferredUL = (transferMap[w]||0)/1000;
     const afterUL = Math.max(0, beforeUL - transferredUL);
     wells[w] = {beforeUL, transferredUL, afterUL, status: entry?.status||''};

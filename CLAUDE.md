@@ -253,7 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 48: Echo Protocol tab linked to XLSX audit block)
+Last session: 2026-06-11 (Round 49: Source Plate survey reader bug fix)
+Hub apps: 8. Version v1.0.15.
+Echo: parseSurveyCSV / renderSurveyPlate (labcyte_echo.html:7837, 7904) — Survey Fluid Volume was being interpreted as nL and divided by 1000 (it's actually µL per Echo spec), so every well rendered red as "below min working volume". Picklist Transfer Volume IS in nL — that path unchanged. parseSurveyCSV also rewritten to use named column-header indices (plate type / barcode / plate name) instead of regex-on-col[0], which previously failed to pick up `384PP_DMSO2` from the data rows since the type sits in column index 2, not 0. plateName now prefers the barcode column (e.g. "RP-001") over the redundant "Source Plate[1]".
+
+Previous session: 2026-06-11 (Round 48: Protocol tab linked to XLSX audit block)
 Hub apps: 8. Version v1.0.14.
 Echo: renderProtocol() at labcyte_echo.html:2899 — added "Fitting Model" + "Fit Bounds (this run)" sections mirroring the XLSX Data Analysis Protocol sheet exactly. Two views now linked: anything in the XLSX FITTING MODEL/FIT BOUNDS sections also appears in the in-app Protocol tab.
 
