@@ -253,10 +253,13 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 42/43: Echo scroll/table redesign; PHERAstar A1 offset fix)
+Last session: 2026-06-11 (Round 44: full cross-app verification audit)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.88MB (7,882,430 chars). Version v1.0.8
-Echo changes (labcyte_echo.html):
-- Scroll fix (proper): #results-panel is now display:flex;flex-direction:column; top .results-meta div holds cards+download buttons+scroll-nav (flex-shrink:0); .results-tbl-scroll div (flex:1;overflow:auto) holds .tbl-wrap → <table>. ◀ ▶ buttons target .results-tbl-scroll. table{width:max-content;min-width:100%} ensures it always expands to natural column width.
-- PHERAstar A1 offset fix: XLSX.utils.decode_range(ws['!ref']) gives _sheetR0/_sheetC0; subtract from manual cell ref indices. "B54" in A3:AH93 sheet → raw[51][1] (correct row A, col B=A01).
+Hub file size: 7.88MB (7,883,349 chars). Version v1.0.10
+Verification: JS syntax check passed on all 9 source HTMLs (node --check). Rebuild via embed.py succeeded with all 8 base64 replacements, zero PLACEHOLDER residue. hub-shell wiring confirmed: 8 cards / 8 APP_INFO / 8 APP_B64+APP_B64_NEW / 8 view + frame iframes / 8 openApp calls — all consistent.
+Bugs found and fixed:
+- Spectra: missing `window.addEventListener('message', ...)` — Hub search index entries targeting tabs (A280/Ratios/Std Curve/Plate Reader) could not switch tabs after openApp. Added listener that calls switchTab(e.data.tab).
+- Spectra search index mismatch: hub-shell.html had `tab:'platereader'` but actual Spectra tab id is `plate`. Fixed.
+- LDI: missing message listener (no current hub entries target its tabs but added for consistency, calls showTab(e.data.tab)).
+False positives ruled out: dark theme CSS does NOT need duplicated --accent/--sans/--mono — :root defines them, [data-theme="dark"] only overrides what changes (cascading works correctly).
 <!-- LAST_SESSION_END -->
