@@ -161,7 +161,9 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .mc-lbl{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
 .mc-val{font-family:var(--sans);font-size:20px;font-weight:500;}
 .mc-val.g{color:var(--accent3);}
-.tbl-wrap{width:100%;min-width:0;overflow-x:scroll;}.tbl-wrap::-webkit-scrollbar{height:6px;}.tbl-wrap::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.tbl-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.tbl-wrap{width:100%;min-width:0;overflow-x:auto;}.tbl-wrap::-webkit-scrollbar{height:6px;}.tbl-wrap::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.tbl-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.tbl-frozen{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--border2);}
+th.tbl-frozen{z-index:3;}
 table{width:100%;border-collapse:collapse;font-size:12px;}
 thead tr{border-bottom:1px solid var(--border2);}
 th{padding:8px 12px;text-align:left;font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--text3);white-space:nowrap;}
@@ -1695,7 +1697,8 @@ function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
   const nrows = raw.length;
   const ncols = raw[0] ? raw[0].length : 0;
 
-  let headerCol = -1, dataRow = -1, dataCol = -1;
+  let dataRow = -1, dataCol = -1;
+  let _manualRef = false;
 
   // If user specified the Excel cell containing A01 data, use it directly
   if (a1CellRef && a1CellRef.trim()) {
@@ -1703,15 +1706,16 @@ function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
     if (m) {
       let col = 0;
       for (let i = 0; i < m[1].length; i++) col = col * 26 + (m[1].charCodeAt(i) - 64);
-      dataCol = col - 1; // 0-based
+      dataCol = col - 1; // 0-based: B=1, C=2, ...
       dataRow = parseInt(m[2], 10) - 1; // 0-based
-      headerCol = dataCol - 1; // row labels are in the column to the left
-      log('  ' + barcode + ': using A1 cell ref "' + a1CellRef.trim() + '" → row ' + (dataRow+1) + ', col ' + (dataCol+1));
+      _manualRef = true;
+      log('  ' + barcode + ': using A1 cell ref "' + a1CellRef.trim() + '" → data starts row ' + (dataRow+1) + ' col ' + (dataCol+1) + ', table ' + a1CellRef.trim().toUpperCase() + ':' + String.fromCharCode(65+dataCol+23) + (dataRow+16));
     }
   }
 
-  if (headerCol < 0) {
-    // Auto-detect: find A-H row label sequence
+  if (!_manualRef) {
+    // Auto-detect: find A-H row label sequence in first 8 columns
+    let headerCol = -1;
     search: for (let ci = 0; ci < Math.min(8, ncols); ci++) {
       for (let ri = 0; ri < nrows - 7; ri++) {
         if (String(raw[ri][ci] || '').trim().toUpperCase() === 'A') {
@@ -1723,7 +1727,6 @@ function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
         }
       }
     }
-
     if (headerCol >= 0 && dataRow > 0) {
       for (let ri = Math.max(0, dataRow - 6); ri < dataRow && dataCol < 0; ri++) {
         for (let ci2 = 0; ci2 < ncols - 3; ci2++) {
@@ -1737,7 +1740,7 @@ function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
   }
 
   const wells = [];
-  if (headerCol >= 0 && dataRow >= 0 && dataCol >= 0) {
+  if (dataRow >= 0 && dataCol >= 0) {
     for (let ri = 0; ri < 16; ri++) {
       for (let ci = 0; ci < 24; ci++) {
         const well = ROW_LABELS[ri] + String(ci + 1).padStart(2, '0');
@@ -2347,7 +2350,7 @@ function renderResults(data) {
   const _colLbls = {DC50_nM:_vl['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vl['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vl['Dmax_pct']||'Dmax (%)',LogIC50_M:_vl['LogIC50_M']||'LogIC50 (M)',pDC50:_vl['pDC50']||'pDC50 (M)',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
   const _cellFn = {
     Protein: r=>'<td><span class="pbadge" style="background:'+pcolor(r.Protein).bg+';color:'+pcolor(r.Protein).fg+';padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;">'+esc(r.Protein)+'</span></td>',
-    Sample_ID: r=>'<td>'+esc(r.Sample_ID)+'</td>',
+    Sample_ID: r=>'<td class="tbl-frozen">'+esc(r.Sample_ID)+'</td>',
     DC50_nM: r=>'<td>'+r.DC50_nM+'</td>',
     AbsDC50_nM: r=>'<td>'+(r.AbsDC50_nM!=null?r.AbsDC50_nM:'—')+'</td>',
     Dmax_pct: r=>'<td>'+r.Dmax_pct+'</td>',
@@ -2406,11 +2409,18 @@ function renderResults(data) {
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
     +'<div style="flex:1;min-width:12px;"></div>'
     +_dlSection
-    +'</div><div class="tbl-wrap"><table><thead><tr>';
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:5px;margin:4px 0 2px;flex-shrink:0;">'
+    +'<button onclick="var w=document.querySelector(\'#results-panel .tbl-wrap\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
+    +'<span style="font-size:11px;color:var(--text3);">Scroll columns</span>'
+    +'<button onclick="var w=document.querySelector(\'#results-panel .tbl-wrap\');if(w)w.scrollBy({left:180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll right">&#9654;</button>'
+    +'</div>'
+    +'<div class="tbl-wrap"><table><thead><tr>';
   cols.forEach(col=>{
     const isA=_sortState.col===col.k, arr=isA?(_sortState.asc?' ▲':' ▼'):'';
     const clk=col.ns?'':` onclick="sortResultsBy('${col.k}')" style="cursor:pointer;user-select:none;"`;
-    h+=`<th${clk} data-col-key="${col.k}">${col.l}${arr}</th>`;
+    const frz=col.k==='Sample_ID'?' class="tbl-frozen"':'';
+    h+=`<th${frz}${clk} data-col-key="${col.k}">${col.l}${arr}</th>`;
   });
   h+='</tr></thead><tbody>';
   const _PAGE = 200;
@@ -2470,10 +2480,15 @@ function renderMultiAssayResults(data) {
     +'<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel">📋 Copy TSV</button>'
     +'<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()">📥 Results XLSX</button>'
     +'</div></div>'
+    +'<div style="display:flex;align-items:center;gap:5px;margin:4px 0 2px;flex-shrink:0;">'
+    +'<button onclick="var w=document.querySelector(\'#results-panel .tbl-wrap\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
+    +'<span style="font-size:11px;color:var(--text3);">Scroll columns</span>'
+    +'<button onclick="var w=document.querySelector(\'#results-panel .tbl-wrap\');if(w)w.scrollBy({left:180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll right">&#9654;</button>'
+    +'</div>'
     +'<div class="tbl-wrap"><table><thead>';
 
   // Header row 1: assay type spanning cells
-  h += '<tr><th rowspan="2" style="white-space:nowrap;">Group</th><th rowspan="2" style="white-space:nowrap;">Sample ID</th>';
+  h += '<tr><th rowspan="2" style="white-space:nowrap;">Group</th><th rowspan="2" class="tbl-frozen" style="white-space:nowrap;">Sample ID</th>';
   for (const at of orderedTypes) {
     const m = _assayMeta[at]||{name:at,color:'#8b90a8',dmax:'Dmax (%)'};
     const n = activeKeys.filter(k=>!(k==='Dmax_pct'&&!m.dmax)).length;
@@ -2498,7 +2513,7 @@ function renderMultiAssayResults(data) {
     const protein = proteinOf.get(sampleId)||'';
     h += '<tr>';
     h += `<td><span class="pbadge" style="background:${pcolor(protein).bg};color:${pcolor(protein).fg};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;">${esc(protein)}</span></td>`;
-    h += `<td>${esc(sampleId)}</td>`;
+    h += `<td class="tbl-frozen">${esc(sampleId)}</td>`;
     for (const at of orderedTypes) {
       const m = _assayMeta[at]||{color:'#8b90a8',dmax:'Dmax (%)'};
       const r = byType[at];
@@ -5390,22 +5405,48 @@ function renderProperties(results, cdata) {
     return;
   }
 
-  const propCols = ['MW','logP','HBA','HBD','TPSA','RotBonds','ArRings','pKaBasicN'];
-  const propLabels = {'MW':'MW','logP':'logP','HBA':'HBA','HBD':'HBD','TPSA':'TPSA','RotBonds':'RotBonds','ArRings':'ArRings','pKaBasicN':'pKa(N)'};
+  const propCols = ['MW','logP','HBA','HBD','TPSA','RotBonds','ArRings'];
+  const propLabels = {'MW':'MW','logP':'logP','HBA':'HBA','HBD':'HBD','TPSA':'TPSA','RotBonds':'RotBonds','ArRings':'ArRings'};
   const ro5Check = { MW: v=>v>=500, logP: v=>v>=5, HBA: v=>v>10, HBD: v=>v>5 };
+
+  // Build per-assay-type affinity info
+  const _isMultiProp = !!(window._lastAnalysisParams?.multiAssay);
+  const _affinityMeta = {
+    hibit:       {label:'DC50 (nM)', key:'DC50_nM'},
+    ctg:         {label:'IC50 (nM)', key:'DC50_nM'},
+    displacement:{label:'IC50 (nM)', key:'DC50_nM'},
+    gain:        {label:'EC50 (nM)', key:'DC50_nM'},
+  };
+  const _singleAssayType = window._lastAnalysisParams?.assayType || window._lastAssayType || 'hibit';
+  const _orderedPropTypes = _isMultiProp
+    ? [...new Set(results.map(r=>r._assayType).filter(Boolean))]
+    : [_singleAssayType];
+
+  // Build sampleId → {assayType → result} map for multi-assay
+  const _propResMap = {};
+  results.forEach(r => {
+    const k = (r.Sample_ID||'').toLowerCase();
+    if (!_propResMap[k]) _propResMap[k] = {};
+    _propResMap[k][r._assayType || _singleAssayType] = r;
+  });
+
+  const _affinityCols = _orderedPropTypes.map(at => ({at, ...(_affinityMeta[at]||{label:'DC50 (nM)',key:'DC50_nM'})}));
+
   let h = '<div style="margin-bottom:10px;font-size:12px;color:var(--text3);">'
     + matched.length + ' compound' + (matched.length>1?'s':'') + ' matched</div>'
     + '<div style="overflow-x:auto;"><table class="props-table"><thead><tr>'
     + '<th>Structure</th><th>Sample ID</th><th>SMILES</th>'
     + propCols.map(p=>'<th>'+(propLabels[p]||p)+'</th>').join('')
-    + '<th>DC50 (nM)</th><th>Dmax (%)</th><th>Ro5</th></tr></thead><tbody>';
+    + _affinityCols.map(c=>'<th>'+c.label+(_isMultiProp&&_orderedPropTypes.length>1?' <span style="font-size:9px;opacity:.6;">['+esc(c.at)+']</span>':'')+'</th>').join('')
+    + '<th>Ro5</th></tr></thead><tbody>';
 
-  matched.forEach(({ sid, cd, res }) => {
+  matched.forEach(({ sid, cd }) => {
     const viols = Object.entries(ro5Check).filter(([p,fn])=>cd[p]!=null&&fn(cd[p])).map(([p])=>p);
-    // Resize SVG to fit table cell
     let svg = (cd.svg||'')
       .replace(/width=["']\d+["']/g, 'width="150"')
       .replace(/height=["']\d+["']/g, 'height="110"');
+    const sidKey = sid.toLowerCase();
+    const resForSid = _propResMap[sidKey] || {};
     h += '<tr>';
     h += '<td class="struct-cell"><div style="background:#fff;border-radius:4px;padding:2px;display:inline-block;">'
       + (svg||'<span style="color:var(--text3);font-size:10px;padding:4px;">N/A</span>') + '</div></td>';
@@ -5416,8 +5457,11 @@ function renderProperties(results, cdata) {
       const fail = ro5Check[p] && v!=null && ro5Check[p](v);
       h += '<td class="'+(fail?'prop-fail':'')+'">'+(v!=null?v:'—')+'</td>';
     });
-    h += '<td>'+(res.DC50_nM!=null?res.DC50_nM:'—')+'</td>';
-    h += '<td>'+(res.Dmax_pct!=null?res.Dmax_pct:'—')+'</td>';
+    _affinityCols.forEach(c => {
+      const r = resForSid[c.at];
+      const v = r ? r[c.key] : null;
+      h += '<td>'+(v!=null?v:'—')+'</td>';
+    });
     h += '<td>'+(viols.length===0
       ?'<span class="prop-ok">✓ Pass</span>'
       :'<span class="prop-fail">'+viols.length+' fail</span>')+'</td></tr>';

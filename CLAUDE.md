@@ -253,11 +253,13 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-10 (Round 38: full code audit of all 8 Hub apps for broken buttons/functions)
+Last session: 2026-06-11 (Round 39: Echo results scroll+frozen col, PHERAstar A1 fix, Properties multi-assay affinity, pKa removed)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.87MB (7,874,766 chars). Version v1.0.4
-Audit results — broken items fixed:
-- LDI (ldi.html): init IIFE called updateLdiYHeaders() which was not defined anywhere; replaced with ldiSetYMode(ldiYMode) which does the same thing (syncs .ldi-dmax-hdr elements to initial yMode). Without this fix the app threw a ReferenceError on every page load.
-- Lab Designer (plate_designer.html): --accent2 CSS variable used in theme toggle slider (input:checked + .theme-slider) and checkbox accent-color, but never defined in :root or [data-theme="dark"]. Added --accent2:#0079b9 to both.
-Apps verified clean (no broken handlers): Echo, LabMate, Degradation Explorer, Helix, Protein Tools, Spectra
+Hub file size: 7.88MB (7,879,426 chars). Version v1.0.5
+Echo changes (labcyte_echo.html):
+- Frozen Sample ID column: .tbl-frozen CSS (position:sticky;left:0;z-index:2); applied to Sample ID <th>/<td> in both renderResults and renderMultiAssayResults
+- Scroll arrows: ◀/▶ buttons above tbl-wrap in both renderers, call scrollBy on #results-panel .tbl-wrap
+- PHERAstar A1 fix: replaced headerCol<0 guard with _manualRef boolean; auto-detect is NEVER run when valid a1CellRef is provided (even column A = dataCol 0 now works)
+- Properties tab pKa(N) removed: removed pKaBasicN from propCols array in renderProperties
+- Properties tab multi-assay affinity: _isMultiProp detects multi-assay mode; _orderedPropTypes from results._assayType; _affinityCols shows DC50/IC50/EC50 per assay type with [type] label suffix; single-assay shows correct label based on assay type
 <!-- LAST_SESSION_END -->
