@@ -253,8 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 55: Echo 4PL — "Free" truly unbounded)
-Hub apps: 8. Version v1.0.21.
+Last session: 2026-06-11 (Round 56: Changelog reorganised into 0.1-increment bundles)
+Hub apps: 8. Version v1.0.22.
+hub-shell.html changelog restructured per user request: post-v1.0 entries grouped into 0.1-increment bundles (v1.0 → v1.1 = v1.0.0–v1.0.9; v1.1 → v1.2 = v1.0.10–v1.0.21). Only the current version (v1.0.22) stays as an exact detailed entry. Rolling rule going forward: when a new patch lands, fold the previous "exact" entry into the most recent bundle, OR start a new bundle (v1.2 → v1.3) when patch number crosses the next decade boundary.
+
+Previous session: 2026-06-11 (Round 55: Echo 4PL — "Free" truly unbounded; v1.0.21)
 Echo: removed hidden safety bounds on "Free" parameters in the 4PL fitter. Previously when the user picked "Free" Echo silently used Top [50,200], Bottom [-20,100], Hill [0.1,5.0], LogEC50 [x_min-1, x_max+1]. Now Free = ±Infinity in LM bounds (truly unconstrained, matches Prism). Applied at runAnalysisJS lines ~2168 and fit4PL_JS (interactive curve editor) lines ~6695. User-supplied constraints still honoured: Fixed-at-X stays tight, Dmax cap and Bottom-≥-floor become explicit lower bounds. _fitBest gains a fallback: when logEC50 LM bounds are ±Infinity, the 5-seed multi-start range falls back to xMin-1/xMax+1 derived from xArr (so seeds stay data-anchored even with unbounded LM). _lmFit's clamp function already handles ±Infinity correctly (Math.max/min). Audit blocks (Protocol tab + XLSX Data Analysis Protocol sheet) updated: "Free, unbounded" replaces "Free, bounded [X, Y]"; Bottom row dynamically reports actual lower bound when Dmax cap or minBot floor is active, with reason in parentheses.
 
 Previous session: 2026-06-11 (Round 54: λ factor matched to Prism; multi-start restored)
