@@ -253,7 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 49: Source Plate survey reader bug fix)
+Last session: 2026-06-11 (Round 50: Echo 4PL fitter convergence matched to Prism)
+Hub apps: 8. Version v1.0.16.
+Echo: _lmFit at labcyte_echo.html:1858 — convergence rewritten to mirror GraphPad Prism's "log(inhibitor) vs response — Variable slope" defaults. New criterion: relative SSR change |ΔSSR|/SSR < 1e-6 (medium) then auto-tighten to < 1e-9 (strict) once medium is met; first time strict is met, break. Old criterion (max(|Δp|) < 1e-8) removed. All four _fitBest callers (lines 2174, 2185 in runAnalysisJS for free-top / fixed-top; 6662, 6668 in interactive curve editor) bumped maxIter from 200/300 to 1000 to match Prism's cap. Audit blocks in renderProtocol() and protocolRows AoA in generateOutputXLSX updated to the new wording. Other Prism-matching settings (least-squares regression, unweighted SSR, each replicate as individual point) were already in place — only convergence needed changing.
+
+Previous session: 2026-06-11 (Round 49: Source Plate survey reader bug fix)
 Hub apps: 8. Version v1.0.15.
 Echo: parseSurveyCSV / renderSurveyPlate (labcyte_echo.html:7837, 7904) — Survey Fluid Volume was being interpreted as nL and divided by 1000 (it's actually µL per Echo spec), so every well rendered red as "below min working volume". Picklist Transfer Volume IS in nL — that path unchanged. parseSurveyCSV also rewritten to use named column-header indices (plate type / barcode / plate name) instead of regex-on-col[0], which previously failed to pick up `384PP_DMSO2` from the data rows since the type sits in column index 2, not 0. plateName now prefers the barcode column (e.g. "RP-001") over the redundant "Source Plate[1]".
 

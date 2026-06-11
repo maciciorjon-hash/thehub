@@ -1861,6 +1861,11 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   let p = pInit.map(cl);
   const ssq = (pp) => { let s = 0; for (let i = 0; i < n; i++) { const r = yArr[i] - valFn(xArr[i], ...pp); s += r * r; } return s; };
   let lam = 0.001, bestP = [...p], bestSS = ssq(p);
+  // Prism-style convergence: relative SSR change ladder.
+  // Start at medium tolerance (1e-6); once met, auto-tighten to strict (1e-9). Stop after strict is met.
+  let prevSS = bestSS;
+  let convTol = 1e-6;
+  let strictPhase = false;
 
   for (let iter = 0; iter < maxIter; iter++) {
     const JtJ = Array.from({ length: np }, () => new Array(np).fill(0));
@@ -1879,9 +1884,18 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
     const pNew = p.map((v, i) => cl(v + delta[i], i));
     const newSS = ssq(pNew);
     if (newSS < bestSS) { bestSS = newSS; bestP = [...pNew]; }
-    if (newSS < ssq(p)) { p = pNew; lam = Math.max(lam / 3, 1e-10); }
-    else lam = Math.min(lam * 3, 1e7);
-    if (Math.max(...delta.map(Math.abs)) < 1e-8) break;
+    if (newSS < ssq(p)) {
+      p = pNew;
+      lam = Math.max(lam / 3, 1e-10);
+      const relChange = prevSS > 1e-12 ? Math.abs(prevSS - newSS) / prevSS : 0;
+      prevSS = newSS;
+      if (relChange < convTol) {
+        if (!strictPhase) { strictPhase = true; convTol = 1e-9; }
+        else break;
+      }
+    } else {
+      lam = Math.min(lam * 3, 1e7);
+    }
   }
   p = bestP;
   const yMean = yArr.reduce((s, v) => s + v, 0) / n;
@@ -2171,7 +2185,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           ];
           const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff, topLo], [hiBotEff, xMax + 1, hiHillEff, topHi],
-            gainMode ? _4plVal4_gain : _4plVal4, gainMode ? _4plJac4_gain : _4plJac4, 200);
+            gainMode ? _4plVal4_gain : _4plVal4, gainMode ? _4plJac4_gain : _4plJac4, 1000);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2, se, df };
         } else {
           const pInit = [
@@ -2182,7 +2196,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff], [hiBotEff, xMax + 1, hiHillEff],
             (xi, b, l, h) => _4plVal3(xi, b, l, h, _tc),
-            (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 200);
+            (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 1000);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: _tc, r2, se, df };
         }
 
@@ -2827,10 +2841,10 @@ function generateOutputXLSX() {
     ['Reported DC50 / IC50 / EC50', '10^LogEC50 × 1e9  (nM)'],
     ['AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom < 50 and Top > 50)' : 'Not requested'],
     ['Equivalent Prism form', 'Y = Bottom + (Top − Bottom) / (1 + 10^((LogIC50 − X) × HillSlope))   (equivalent under Hill sign flip)'],
-    ['Algorithm', 'Levenberg–Marquardt, multi-start (5 logEC50 seeds), best R² wins'],
-    ['Loss function', 'Unweighted sum-of-squared residuals'],
-    ['Replicate treatment', 'Individual replicates fitted (no pre-averaging)'],
-    ['Convergence', 'max(|Δp|) < 1e-8 OR 200 iterations'],
+    ['Fitting method', 'Least-squares regression (Levenberg–Marquardt, multi-start 5 logEC50 seeds, best R² wins)'],
+    ['Loss function', 'Unweighted sum-of-squared residuals — minimised distance between points and curve, independent of Y value'],
+    ['Replicate treatment', 'Each replicate Y value as an individual point (no pre-averaging)'],
+    ['Convergence', 'Relative SSR change < 1e-6 (medium); auto-tightens to < 1e-9 (strict) once medium met; max 1000 iterations'],
     [],
     ['─── FIT BOUNDS (this run) ──────────────────', ''],
     ['Top', params.topEnabled !== false ? ('Fixed at ' + params.topConstrain) : 'Free, bounded [50, 200]'],
@@ -2933,10 +2947,10 @@ function renderProtocol() {
   html += row('Reported DC50 / IC50 / EC50', '<code style="font-family:var(--mono);font-size:11px;">10<sup>LogEC50</sup> × 10<sup>9</sup>  (nM)</code>');
   html += row('AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom &lt; 50 and Top &gt; 50)' : '<span style="color:var(--text3)">Not requested</span>');
   html += row('Equivalent Prism form', '<code style="font-family:var(--mono);font-size:11px;">Y = Bottom + (Top − Bottom) / (1 + 10<sup>(LogIC50 − X) × HillSlope</sup>)</code> <span style="color:var(--text3)">(equivalent under Hill sign flip)</span>');
-  html += row('Algorithm', 'Levenberg–Marquardt, multi-start <strong>(5 logEC50 seeds)</strong>, best R² wins');
-  html += row('Loss function', 'Unweighted sum-of-squared residuals');
-  html += row('Replicate treatment', 'Individual replicates fitted <span style="color:var(--text3)">(no pre-averaging)</span>');
-  html += row('Convergence', '<code style="font-family:var(--mono);font-size:11px;">max(|Δp|) &lt; 1e-8</code> OR 200 iterations');
+  html += row('Fitting method', 'Least-squares regression <span style="color:var(--text3)">(Levenberg–Marquardt, multi-start <strong>5 logEC50 seeds</strong>, best R² wins)</span>');
+  html += row('Loss function', 'Unweighted sum-of-squared residuals <span style="color:var(--text3)">— minimised distance between points and curve, independent of Y value</span>');
+  html += row('Replicate treatment', 'Each replicate Y value as an individual point <span style="color:var(--text3)">(no pre-averaging)</span>');
+  html += row('Convergence', '<code style="font-family:var(--mono);font-size:11px;">|ΔSSR|/SSR &lt; 1e-6</code> (medium); auto-tightens to <code style="font-family:var(--mono);font-size:11px;">&lt; 1e-9</code> (strict) once medium met; max <strong>1000</strong> iterations');
 
   html += sec('Fit Bounds (this run)');
   html += row('Top', params.topEnabled !== false ? ('Fixed at <strong>' + params.topConstrain + '</strong>') : 'Free, bounded <strong>[50, 200]</strong>');
@@ -6659,13 +6673,13 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
     const tc=topVal;
     const pBase=[Math.max(loBot,Math.min(hiBot,b0)), (xMn+xMx)/2, h0];
     const {params}=_fitBest(xs, ys, pBase, [loBot,loEC,loHill], [hiBot,hiEC,hiHill],
-      (xi,b,l,h)=>_4plVal3(xi,b,l,h,tc), (xi,b,l,h)=>_4plJac3(xi,b,l,h,tc), 300);
+      (xi,b,l,h)=>_4plVal3(xi,b,l,h,tc), (xi,b,l,h)=>_4plJac3(xi,b,l,h,tc), 1000);
     [bot,logec50,hill]=params; top=tc;
   } else {
     const loTop=topFixed?t0-0.01:50, hiTop=topFixed?t0+0.01:200;
     const pBase=[Math.max(loBot,Math.min(hiBot,b0)), (xMn+xMx)/2, h0, Math.max(loTop,Math.min(hiTop,t0))];
     const {params}=_fitBest(xs, ys, pBase, [loBot,loEC,loHill,loTop], [hiBot,hiEC,hiHill,hiTop],
-      _4plVal4, _4plJac4, 300);
+      _4plVal4, _4plJac4, 1000);
     [bot,logec50,hill,top]=params;
   }
   const ymean=ys.reduce((a,v)=>a+v,0)/ys.length;
