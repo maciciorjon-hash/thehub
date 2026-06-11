@@ -253,7 +253,7 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 42: Echo scroll — proper results-meta/results-tbl-scroll split; PHERAstar A1 offset fix)
+Last session: 2026-06-11 (Round 42/43: Echo scroll/table redesign; PHERAstar A1 offset fix)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
 Hub file size: 7.88MB (7,882,430 chars). Version v1.0.8
 Echo changes (labcyte_echo.html):
