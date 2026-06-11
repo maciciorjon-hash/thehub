@@ -253,10 +253,16 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 46: changelog condensed)
-Hub apps: 8. Version v1.0.12. hub-shell.html changelog rewritten: v1.0.7+ kept in full detail; older v0.7–v1.0.6 grouped into 5 themed summary blocks (was 34 entries → now 10). Body content only — visual layout / toggleChangelog() unchanged.
+Last session: 2026-06-11 (Round 47: Echo Ryan-round-2 — 5 fixes)
+Hub apps: 8. Version v1.0.13.
+Echo changes (labcyte_echo.html):
+- Task 2: Removed `{showReps:true}` override at line 6911 in scatter→curve preview's `_cpCfg` so the Curves Style Mode toggle (Mean±SD vs Individual reps) now propagates to the dual-curve preview opened from clicking a scatter dot.
+- Task 1: Gain-of-Signal labels — stripped '%' from `Emax (%)` → `Emax` at sites 2458, 2756, 3670, 3692, 6864 (and 2581 CSV header `Emax_pct` → `Emax`). Curves Y-axis at 6394 for gain now reads "Signal (a.u.)" (was "FRET Ratio (subtracted)"). Scatter→curve preview meta `_cpAssayMeta.gain.yLabel` also updated to "Signal (a.u.)".
+- Task 4: Removed Setup→Output "Generate dose-response curve PDFs" checkbox (line 733) and the auto-call at line 1578. Added `generateAndDownloadCurvePDFs()` wrapper before `generateCurvePDFs`. Replaced the per-PDF button iteration in both `renderResults` (single-assay) and `renderMultiAssayResults` with a single `📄 Generate curve PDFs` button (`id="cv-pdf-gen-btn"`) that shows `⏳ Generating…` during run, auto-downloads on success. Dropped `{showReps:true}` override in `generateCurvePDFs` cfg merge at line 5615 so PDFs honour the Mode toggle.
+- Task 5: Scatter Colour and Size dropdowns (lines 3727-3743) now generate options from `window._scatterAxisOpts` instead of hardcoded single-assay column names — so in multi-assay mode `hibit::DC50_nM` etc. show up and `r[colorBy]` resolves on pivoted rows. Kept the `Group`/`Fixed` first option for "no gradient".
+- Task 3: Extended `protocolRows` in `generateOutputXLSX` with new "─── FITTING MODEL ───" and "─── FIT BOUNDS (this run) ───" sections — equation per assay type, Prism-equivalent form, algorithm/loss/replicate handling/convergence, and the actual bounds in force for the run (Top/Bottom/Hill/LogEC50). Investigation only — NO fitter changes this round (user decided audit-only). EDA-013 gap (app 7.2 vs Prism 7.417) traced to subtle LM implementation differences (replicate layout, bestP tracking, convergence/lambda strategy) — not Top constraint (user uses Top=100 in Prism too) and not logEC50 clamp (potent compound stays inside the clamp).
 
-Previous session: 2026-06-11 (Round 45: Echo feedback round — 5 bugs from Ryan)
+Previous session: 2026-06-11 (Round 46: changelog condensed; Round 45: Echo Ryan-round-1)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
 Version v1.0.11
 Echo changes (labcyte_echo.html):
