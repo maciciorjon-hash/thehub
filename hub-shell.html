@@ -279,10 +279,13 @@ body.hub-announcing #hub-home{margin-top:98px;}
   <div class="opts-divider" style="margin-top:12px;"></div>
   <div id="admin-auth-section" style="padding:6px 0 2px;"></div>
   <div class="opts-version-row" style="margin-top:8px;">
-    <span class="opts-version">The Hub &middot; v1.0.17</span>
+    <span class="opts-version">The Hub &middot; v1.0.18</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v1.0.18 — 11 Jun 2026</strong><br>
+    &#9679; Easter egg trigger fixed &mdash; keystroke buffer was bailing whenever any input had focus, so typing in the search bar (the natural place) never accumulated. Also added a hidden search-index hit as a second entry-point<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v1.0.17 — 11 Jun 2026</strong><br>
     &#9679; New easter egg added &mdash; for Jon &amp; Ryan to find. (No spoilers in the changelog.)<br>
     <br>
@@ -1440,13 +1443,19 @@ function closeRyanEgg() {
   var target = 'alessio';
   document.addEventListener('keydown', function(e){
     if (currentApp) return;
-    var t = e.target;
-    if (t && /^(input|textarea|select)$/i.test(t.tagName)) return;
-    if (t && t.isContentEditable) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     var k = (e.key || '').toLowerCase();
     if (k.length !== 1 || !/[a-z]/.test(k)) { buf = ''; return; }
     buf = (buf + k).slice(-target.length);
-    if (buf === target) { showRyanEgg(); buf = ''; }
+    if (buf === target) {
+      buf = '';
+      // Clear hub-search if that was where it was typed, hide its dropdown.
+      var inp = document.getElementById('hub-search');
+      if (inp) inp.value = '';
+      var box = document.getElementById('hub-search-results');
+      if (box) box.style.display = 'none';
+      showRyanEgg();
+    }
   });
 })();
 
@@ -1679,6 +1688,7 @@ var HUB_SEARCH_INDEX=[
   {t:'Spectra — A260/A280 Purity',id:'spectra',tab:'ratios',app:'Spectra',kw:'A260 A280 ratio purity DNA RNA protein NanoDrop contamination'},
   {t:'Spectra — Standard Curve',id:'spectra',tab:'stdcurve',app:'Spectra',kw:'standard curve BCA Bradford linear regression absorbance concentration unknowns'},
   {t:'Spectra — Plate Reader',id:'spectra',tab:'plate',app:'Spectra',kw:'plate reader 96 well absorbance heatmap CSV concentration'},
+  {t:'🥚 Behind the Scenes',id:'__egg__',app:'easter egg',kw:'alessio ryan easter egg credits cartoon behind the scenes'},
 ];
 function hubFuzzy(q,text){
   q=q.toLowerCase();text=text.toLowerCase();
@@ -1713,6 +1723,7 @@ function hubSearchGo(i){
   box.style.display='none';
   document.getElementById('hub-search').value='';
   if(!r)return;
+  if(r.item.id==='__egg__'){ showRyanEgg(); return; }
   openApp(r.item.id,r.item.tab,r.item.item);
 }
 document.addEventListener('click',function(e){

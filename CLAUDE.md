@@ -253,7 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 51: Ryan/Alessio cartoon easter egg)
+Last session: 2026-06-11 (Round 52: Egg trigger fix)
+Hub apps: 8. Version v1.0.18.
+Hub: setupRyanEgg keystroke listener was bailing whenever any input had focus, so typing "alessio" in the search bar (the obvious place) never accumulated. Removed the input/textarea/select bail; now relies on currentApp check (iframe focus already blocks document keydowns anyway) and skips keys with modifier keys held. Also added a hidden search-index entry {id:'__egg__'} for "alessio / ryan / easter egg / cartoon / behind the scenes" — hubSearchGo intercepts that id and calls showRyanEgg() instead of openApp(). Two entry-points now: type "alessio" anywhere (search bar OK) or search for it.
+
+Previous session: 2026-06-11 (Round 51: Ryan/Alessio cartoon easter egg added)
 Hub apps: 8. Version v1.0.17.
 Hub: added third easter egg in hub-shell.html. Trigger: typing "alessio" anywhere on the hub home (no input focused, no app open). Opens #ryan-egg-overlay containing an inline SVG cartoon of Jon, Claude, Ryan with speech bubbles and a milestone ticker covering the major fixes from v0.7 → v1.0.16. CSS for #ryan-egg-overlay added next to glootie CSS. JS setup function setupRyanEgg() listens via document keydown, ignores when typing in form fields, buffers last 7 chars and matches "alessio". Coexists with the existing 5-click (egg-overlay) and 10-click (glootie) eggs on #hub-logo.
 
