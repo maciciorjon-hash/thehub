@@ -253,7 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 50: Echo 4PL fitter convergence matched to Prism)
+Last session: 2026-06-11 (Round 51: Ryan/Alessio cartoon easter egg)
+Hub apps: 8. Version v1.0.17.
+Hub: added third easter egg in hub-shell.html. Trigger: typing "alessio" anywhere on the hub home (no input focused, no app open). Opens #ryan-egg-overlay containing an inline SVG cartoon of Jon, Claude, Ryan with speech bubbles and a milestone ticker covering the major fixes from v0.7 → v1.0.16. CSS for #ryan-egg-overlay added next to glootie CSS. JS setup function setupRyanEgg() listens via document keydown, ignores when typing in form fields, buffers last 7 chars and matches "alessio". Coexists with the existing 5-click (egg-overlay) and 10-click (glootie) eggs on #hub-logo.
+
+Previous session: 2026-06-11 (Round 50: Echo 4PL fitter convergence matched to Prism)
 Hub apps: 8. Version v1.0.16.
 Echo: _lmFit at labcyte_echo.html:1858 — convergence rewritten to mirror GraphPad Prism's "log(inhibitor) vs response — Variable slope" defaults. New criterion: relative SSR change |ΔSSR|/SSR < 1e-6 (medium) then auto-tighten to < 1e-9 (strict) once medium is met; first time strict is met, break. Old criterion (max(|Δp|) < 1e-8) removed. All four _fitBest callers (lines 2174, 2185 in runAnalysisJS for free-top / fixed-top; 6662, 6668 in interactive curve editor) bumped maxIter from 200/300 to 1000 to match Prism's cap. Audit blocks in renderProtocol() and protocolRows AoA in generateOutputXLSX updated to the new wording. Other Prism-matching settings (least-squares regression, unweighted SSR, each replicate as individual point) were already in place — only convergence needed changing.
 
