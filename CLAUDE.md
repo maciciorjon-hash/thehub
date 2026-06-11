@@ -253,7 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 47: Echo Ryan-round-2 — 5 fixes)
+Last session: 2026-06-11 (Round 48: Echo Protocol tab linked to XLSX audit block)
+Hub apps: 8. Version v1.0.14.
+Echo: renderProtocol() at labcyte_echo.html:2899 — added "Fitting Model" + "Fit Bounds (this run)" sections mirroring the XLSX Data Analysis Protocol sheet exactly. Two views now linked: anything in the XLSX FITTING MODEL/FIT BOUNDS sections also appears in the in-app Protocol tab.
+
+Previous session: 2026-06-11 (Round 47: Echo Ryan-round-2 — 5 fixes)
 Hub apps: 8. Version v1.0.13.
 Echo changes (labcyte_echo.html):
 - Task 2: Removed `{showReps:true}` override at line 6911 in scatter→curve preview's `_cpCfg` so the Curves Style Mode toggle (Mean±SD vs Individual reps) now propagates to the dual-curve preview opened from clicking a scatter dot.

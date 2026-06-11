@@ -2924,6 +2924,37 @@ function renderProtocol() {
   html += row('Absolute DC50', params.absdc50Enabled ? 'Yes' : 'No');
   html += row('Analysed', ts);
 
+  html += sec('Fitting Model');
+  var _modelEq = params.assayType === 'gain'
+    ? 'Y = Bottom + (Top − Bottom) / (1 + 10<sup>Hill × (LogEC50 − X)</sup>)   <span style="color:var(--text3)">[gain: signal increases with X]</span>'
+    : 'Y = Bottom + (Top − Bottom) / (1 + 10<sup>Hill × (X − LogEC50)</sup>)';
+  html += row('Model (this assay)', '<code style="font-family:var(--mono);font-size:11px;">' + _modelEq + '</code>');
+  html += row('X variable', '<code style="font-family:var(--mono);font-size:11px;">log10(concentration in molar)</code>');
+  html += row('Reported DC50 / IC50 / EC50', '<code style="font-family:var(--mono);font-size:11px;">10<sup>LogEC50</sup> × 10<sup>9</sup>  (nM)</code>');
+  html += row('AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom &lt; 50 and Top &gt; 50)' : '<span style="color:var(--text3)">Not requested</span>');
+  html += row('Equivalent Prism form', '<code style="font-family:var(--mono);font-size:11px;">Y = Bottom + (Top − Bottom) / (1 + 10<sup>(LogIC50 − X) × HillSlope</sup>)</code> <span style="color:var(--text3)">(equivalent under Hill sign flip)</span>');
+  html += row('Algorithm', 'Levenberg–Marquardt, multi-start <strong>(5 logEC50 seeds)</strong>, best R² wins');
+  html += row('Loss function', 'Unweighted sum-of-squared residuals');
+  html += row('Replicate treatment', 'Individual replicates fitted <span style="color:var(--text3)">(no pre-averaging)</span>');
+  html += row('Convergence', '<code style="font-family:var(--mono);font-size:11px;">max(|Δp|) &lt; 1e-8</code> OR 200 iterations');
+
+  html += sec('Fit Bounds (this run)');
+  html += row('Top', params.topEnabled !== false ? ('Fixed at <strong>' + params.topConstrain + '</strong>') : 'Free, bounded <strong>[50, 200]</strong>');
+  var _botBnd;
+  if (params.fixBot) {
+    _botBnd = 'Fixed at <strong>' + params.botVal + '</strong>';
+  } else {
+    _botBnd = params.dmaxCapEnabled
+      ? 'Bounded <strong>[' + (100 - (params.dmaxCapVal ?? 0)) + ', 100]</strong>'
+      : 'Bounded <strong>[−20, 100]</strong>';
+    if (params.minBotEnabled !== false) {
+      _botBnd += ' <span style="color:var(--text2)">· Floor: Bottom ≥ ' + (params.minBotVal ?? 0) + '</span>';
+    }
+  }
+  html += row('Bottom', _botBnd);
+  html += row('Hill slope', params.fixHill ? ('Fixed at <strong>' + params.hillVal + '</strong>') : 'Free, bounded <strong>[0.1, 5.0]</strong>');
+  html += row('LogEC50', 'Free, bounded <strong>[x_min − 1, x_max + 1]</strong> <span style="color:var(--text3)">(data range ± 1 log unit)</span>');
+
   html += sec('Echo Transfer File');
   html += row('File', echo.fileName || '—');
   html += row('Total transfers', echo.transfers != null ? echo.transfers.toLocaleString() : '—');
