@@ -253,8 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 52: Egg trigger fix)
-Hub apps: 8. Version v1.0.18.
+Last session: 2026-06-11 (Round 53: Echo 4PL fitter — Prism deterministic init)
+Hub apps: 8. Version v1.0.19.
+Echo: _fitBest in labcyte_echo.html (around line 1900) rewritten — dropped the 5-seed multi-start logEC50 loop, now runs LM exactly once. New helper _xAtYMid(xArr, yArr) computes Prism's deterministic logEC50 seed: YMID = (min Y + max Y) / 2, then walks sorted-by-X data, finds the first consecutive pair that brackets YMID, linearly interpolates X at the crossing. Fallback to midpoint of X range when Y is flat or no bracket found. Top / Bottom / Hill initial values were already aligned with Prism (Top=YMAX, Bottom=YMIN at line 2168/2178; Hill=1.0 — Echo's parameterisation always keeps Hill positive with the assay direction baked into the model formula choice, so Prism's ±1 sign convention doesn't apply here). Audit blocks in renderProtocol() and protocolRows AoA in generateOutputXLSX updated: "single deterministic seed" replaces multi-start wording, new "Initial values (Prism heuristic)" row added.
+
+Previous session: 2026-06-11 (Round 52: Egg trigger fix; v1.0.18)
 Hub: setupRyanEgg keystroke listener was bailing whenever any input had focus, so typing "alessio" in the search bar (the obvious place) never accumulated. Removed the input/textarea/select bail; now relies on currentApp check (iframe focus already blocks document keydowns anyway) and skips keys with modifier keys held. Also added a hidden search-index entry {id:'__egg__'} for "alessio / ryan / easter egg / cartoon / behind the scenes" — hubSearchGo intercepts that id and calls showRyanEgg() instead of openApp(). Two entry-points now: type "alessio" anywhere (search bar OK) or search for it.
 
 Previous session: 2026-06-11 (Round 51: Ryan/Alessio cartoon easter egg added)
