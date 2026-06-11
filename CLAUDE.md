@@ -253,7 +253,10 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 45: Echo feedback round — 5 bugs from Alessio email)
+Last session: 2026-06-11 (Round 46: changelog condensed)
+Hub apps: 8. Version v1.0.12. hub-shell.html changelog rewritten: v1.0.7+ kept in full detail; older v0.7–v1.0.6 grouped into 5 themed summary blocks (was 34 entries → now 10). Body content only — visual layout / toggleChangelog() unchanged.
+
+Previous session: 2026-06-11 (Round 45: Echo feedback round — 5 bugs from Ryan)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
 Version v1.0.11
 Echo changes (labcyte_echo.html):
