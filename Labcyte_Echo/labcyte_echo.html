@@ -1912,13 +1912,24 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
 
 // Multi-start LM: tries 5 evenly-spaced logEC50 seeds (param index 1) and returns the best fit.
 // Prevents local-minima traps caused by a single initial guess.
+// When logEC50 bounds are ±Infinity (LM unconstrained), the seed range falls back to
+// the observed X range ± 1 log unit so the 5 seeds remain data-anchored.
 function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
-  const loEC = loBound[1], hiEC = hiBound[1];
+  let loEC = loBound[1], hiEC = hiBound[1];
+  if (!isFinite(loEC) || !isFinite(hiEC)) {
+    let xMn = Infinity, xMx = -Infinity;
+    for (let i = 0; i < xArr.length; i++) {
+      if (xArr[i] < xMn) xMn = xArr[i];
+      if (xArr[i] > xMx) xMx = xArr[i];
+    }
+    if (!isFinite(loEC)) loEC = xMn - 1;
+    if (!isFinite(hiEC)) hiEC = xMx + 1;
+  }
   const seeds = [0.1, 0.3, 0.5, 0.7, 0.9].map(f => loEC + (hiEC - loEC) * f);
   let best = null;
   for (const ec of seeds) {
     const p = [...pBase];
-    p[1] = Math.max(loEC, Math.min(hiEC, ec));
+    p[1] = ec;
     const r = _lmFit(xArr, yArr, p, loBound, hiBound, valFn, jacFn, maxIter);
     if (!best || r.r2 > best.r2) best = r;
   }
@@ -2165,36 +2176,47 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         const _fixHill2 = qc.fixHill !== undefined ? true : fixHill;
         const _hillVal2 = qc.fixHill !== undefined ? parseFloat(qc.fixHill) : hillVal;
 
-        const _dataMax = skipNorm ? Math.max(yMax2, 1) : 100;
-        const _dataMin = skipNorm ? Math.min(yMin2, 0) : 0;
-        let loBotEff = _fixBot2 ? _botVal2 - 0.01 : (skipNorm ? _dataMin - Math.abs(_dataMin) * 0.3 : (dmaxCapEnabled ? 100 - dmaxCapVal : -20));
-        if (!_fixBot2 && minBotEnabled) loBotEff = Math.max(loBotEff, minBotVal);
-        const hiBotEff = _fixBot2 ? _botVal2 + 0.01 : (skipNorm ? _dataMax * 0.7 : 100);
-        const loHillEff = _fixHill2 ? _hillVal2 - 0.001 : 0.1;
-        const hiHillEff = _fixHill2 ? _hillVal2 + 0.001 : 5.0;
+        // Bounds: ±Infinity when the user picked "Free" (truly unconstrained, matches Prism).
+        // User-supplied constraints (Fixed-at-X, Bottom-≥-floor, Dmax cap) are honoured tight.
+        let loBotEff, hiBotEff;
+        if (_fixBot2) {
+          loBotEff = _botVal2 - 0.01; hiBotEff = _botVal2 + 0.01;
+        } else {
+          loBotEff = -Infinity; hiBotEff = Infinity;
+          if (dmaxCapEnabled) loBotEff = Math.max(loBotEff, 100 - dmaxCapVal);
+          if (minBotEnabled) loBotEff = Math.max(loBotEff, minBotVal);
+        }
+        const loHillEff = _fixHill2 ? _hillVal2 - 0.001 : -Infinity;
+        const hiHillEff = _fixHill2 ? _hillVal2 + 0.001 : Infinity;
 
         let fitResult;
         if (_effFreeTop) {
-          const topLo = gainMode ? 0.1 : (skipNorm ? _dataMax * 0.3 : 50);
-          const topHi = gainMode ? Math.max(yMax2 * 5, 1) : (skipNorm ? _dataMax * 3.0 : 200);
+          // Top free → unbounded.
+          const topLo = -Infinity, topHi = Infinity;
+          const _safe = (v, lo, hi) => isFinite(lo) || isFinite(hi)
+            ? Math.max(isFinite(lo) ? lo : v, Math.min(isFinite(hi) ? hi : v, v))
+            : v;
           const pInit = [
-            Math.max(loBotEff, Math.min(hiBotEff, yMin2)),
-            Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
-            Math.max(loHillEff, Math.min(hiHillEff, 1)),
-            Math.max(topLo, Math.min(topHi, yMax2))
+            _safe(yMin2, loBotEff, hiBotEff),
+            (xMin + xMax) / 2,
+            _safe(1, loHillEff, hiHillEff),
+            _safe(yMax2, topLo, topHi)
           ];
           const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
-            [loBotEff, xMin - 1, loHillEff, topLo], [hiBotEff, xMax + 1, hiHillEff, topHi],
+            [loBotEff, -Infinity, loHillEff, topLo], [hiBotEff, Infinity, hiHillEff, topHi],
             gainMode ? _4plVal4_gain : _4plVal4, gainMode ? _4plJac4_gain : _4plJac4, 1000);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2, se, df };
         } else {
+          const _safe = (v, lo, hi) => isFinite(lo) || isFinite(hi)
+            ? Math.max(isFinite(lo) ? lo : v, Math.min(isFinite(hi) ? hi : v, v))
+            : v;
           const pInit = [
-            Math.max(loBotEff, Math.min(hiBotEff, yMin2)),
-            Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
-            Math.max(loHillEff, Math.min(hiHillEff, 1))
+            _safe(yMin2, loBotEff, hiBotEff),
+            (xMin + xMax) / 2,
+            _safe(1, loHillEff, hiHillEff)
           ];
           const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
-            [loBotEff, xMin - 1, loHillEff], [hiBotEff, xMax + 1, hiHillEff],
+            [loBotEff, -Infinity, loHillEff], [hiBotEff, Infinity, hiHillEff],
             (xi, b, l, h) => _4plVal3(xi, b, l, h, _tc),
             (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 1000);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: _tc, r2, se, df };
@@ -2849,13 +2871,16 @@ function generateOutputXLSX() {
     ['Initial values per seed', 'Top = max Y · Bottom = min Y · LogEC50 seed varied across 5 evenly-spaced values in bounds · Hill = 1.0 (Echo parameterisation, direction encoded in model formula per assay)'],
     [],
     ['─── FIT BOUNDS (this run) ──────────────────', ''],
-    ['Top', params.topEnabled !== false ? ('Fixed at ' + params.topConstrain) : 'Free, bounded [50, 200]'],
-    ['Bottom', params.fixBot
-      ? ('Fixed at ' + params.botVal)
-      : ((params.dmaxCapEnabled ? 'Bounded [' + (100 - (params.dmaxCapVal ?? 0)) + ', 100]' : 'Bounded [−20, 100]')
-         + (params.minBotEnabled !== false ? '  ·  Floor: Bottom ≥ ' + (params.minBotVal ?? 0) : ''))],
-    ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free, bounded [0.1, 5.0]'],
-    ['LogEC50', 'Free, bounded [x_min − 1, x_max + 1]   (data range ± 1 log unit)'],
+    ['Top', params.topEnabled !== false ? ('Fixed at ' + params.topConstrain) : 'Free, unbounded'],
+    ['Bottom', (function(){
+      if (params.fixBot) return 'Fixed at ' + params.botVal;
+      var lo = -Infinity, why = [];
+      if (params.dmaxCapEnabled) { var v = 100 - (params.dmaxCapVal ?? 0); if (v > lo) { lo = v; why.push('Dmax cap'); } }
+      if (params.minBotEnabled !== false) { var v2 = params.minBotVal ?? 0; if (v2 > lo) { lo = v2; why.push('Bottom ≥ floor'); } }
+      return isFinite(lo) ? ('Free, lower bound ' + lo + (why.length ? ' (' + why.join(' ∧ ') + ')' : '')) : 'Free, unbounded';
+    })()],
+    ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free, unbounded'],
+    ['LogEC50', 'Free, unbounded (multi-start seeds drawn from x_min − 1 to x_max + 1)'],
     [],
     ['─── ECHO TRANSFER FILE ──────────────────────', ''],
     ['File', echo.fileName || params.echoFileName || ''],
@@ -2957,21 +2982,21 @@ function renderProtocol() {
   html += row('Initial values per seed', 'Top = <strong>max Y</strong> · Bottom = <strong>min Y</strong> · LogEC50 = 5 evenly-spaced values across its bounds · Hill = <strong>1.0</strong> <span style="color:var(--text3)">(Echo parameterisation; direction encoded in model formula per assay)</span>');
 
   html += sec('Fit Bounds (this run)');
-  html += row('Top', params.topEnabled !== false ? ('Fixed at <strong>' + params.topConstrain + '</strong>') : 'Free, bounded <strong>[50, 200]</strong>');
+  html += row('Top', params.topEnabled !== false ? ('Fixed at <strong>' + params.topConstrain + '</strong>') : 'Free, unbounded');
   var _botBnd;
   if (params.fixBot) {
     _botBnd = 'Fixed at <strong>' + params.botVal + '</strong>';
   } else {
-    _botBnd = params.dmaxCapEnabled
-      ? 'Bounded <strong>[' + (100 - (params.dmaxCapVal ?? 0)) + ', 100]</strong>'
-      : 'Bounded <strong>[−20, 100]</strong>';
-    if (params.minBotEnabled !== false) {
-      _botBnd += ' <span style="color:var(--text2)">· Floor: Bottom ≥ ' + (params.minBotVal ?? 0) + '</span>';
-    }
+    var _lo = -Infinity, _why = [];
+    if (params.dmaxCapEnabled) { var _v = 100 - (params.dmaxCapVal ?? 0); if (_v > _lo) { _lo = _v; _why.push('Dmax cap'); } }
+    if (params.minBotEnabled !== false) { var _v2 = params.minBotVal ?? 0; if (_v2 > _lo) { _lo = _v2; _why.push('Bottom ≥ floor'); } }
+    _botBnd = isFinite(_lo)
+      ? 'Free, lower bound <strong>' + _lo + '</strong>' + (_why.length ? ' <span style="color:var(--text3)">(' + _why.join(' ∧ ') + ')</span>' : '')
+      : 'Free, unbounded';
   }
   html += row('Bottom', _botBnd);
-  html += row('Hill slope', params.fixHill ? ('Fixed at <strong>' + params.hillVal + '</strong>') : 'Free, bounded <strong>[0.1, 5.0]</strong>');
-  html += row('LogEC50', 'Free, bounded <strong>[x_min − 1, x_max + 1]</strong> <span style="color:var(--text3)">(data range ± 1 log unit)</span>');
+  html += row('Hill slope', params.fixHill ? ('Fixed at <strong>' + params.hillVal + '</strong>') : 'Free, unbounded');
+  html += row('LogEC50', 'Free, unbounded <span style="color:var(--text3)">(multi-start seeds drawn from <strong>x_min − 1</strong> to <strong>x_max + 1</strong>)</span>');
 
   html += sec('Echo Transfer File');
   html += row('File', echo.fileName || '—');
@@ -6668,10 +6693,10 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
   const t0=topFixed?topVal:(yMx*1.05);
   const h0=hillFixed?(hillVal??1):1;
   const _minBotEn = !botFixed && document.getElementById('p-min-bot-en')?.checked !== false;
-  const _minBotV = _minBotEn ? (parseFloat(document.getElementById('p-min-bot-val')?.value) ?? 0) : -20;
-  const loBot=botFixed?b0-0.01:Math.max(-20,_minBotEn?_minBotV:-20), hiBot=botFixed?b0+0.01:100;
-  const loHill=hillFixed?h0-0.001:0.1, hiHill=hillFixed?h0+0.001:5.0;
-  const loEC=xMn-2, hiEC=xMx+2;
+  const _minBotV = _minBotEn ? (parseFloat(document.getElementById('p-min-bot-val')?.value) ?? 0) : -Infinity;
+  const loBot=botFixed?b0-0.01:(_minBotEn?_minBotV:-Infinity), hiBot=botFixed?b0+0.01:Infinity;
+  const loHill=hillFixed?h0-0.001:-Infinity, hiHill=hillFixed?h0+0.001:Infinity;
+  const loEC=-Infinity, hiEC=Infinity;
   let bot, logec50, hill, top;
   if (topFixed && !botFixed && !hillFixed) {
     const tc=topVal;
@@ -6680,7 +6705,7 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
       (xi,b,l,h)=>_4plVal3(xi,b,l,h,tc), (xi,b,l,h)=>_4plJac3(xi,b,l,h,tc), 1000);
     [bot,logec50,hill]=params; top=tc;
   } else {
-    const loTop=topFixed?t0-0.01:50, hiTop=topFixed?t0+0.01:200;
+    const loTop=topFixed?t0-0.01:-Infinity, hiTop=topFixed?t0+0.01:Infinity;
     const pBase=[Math.max(loBot,Math.min(hiBot,b0)), (xMn+xMx)/2, h0, Math.max(loTop,Math.min(hiTop,t0))];
     const {params}=_fitBest(xs, ys, pBase, [loBot,loEC,loHill,loTop], [hiBot,hiEC,hiHill,hiTop],
       _4plVal4, _4plJac4, 1000);

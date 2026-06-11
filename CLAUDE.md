@@ -253,8 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 54: Revert deterministic seed + Prism λ factor)
-Hub apps: 8. Version v1.0.20.
+Last session: 2026-06-11 (Round 55: Echo 4PL — "Free" truly unbounded)
+Hub apps: 8. Version v1.0.21.
+Echo: removed hidden safety bounds on "Free" parameters in the 4PL fitter. Previously when the user picked "Free" Echo silently used Top [50,200], Bottom [-20,100], Hill [0.1,5.0], LogEC50 [x_min-1, x_max+1]. Now Free = ±Infinity in LM bounds (truly unconstrained, matches Prism). Applied at runAnalysisJS lines ~2168 and fit4PL_JS (interactive curve editor) lines ~6695. User-supplied constraints still honoured: Fixed-at-X stays tight, Dmax cap and Bottom-≥-floor become explicit lower bounds. _fitBest gains a fallback: when logEC50 LM bounds are ±Infinity, the 5-seed multi-start range falls back to xMin-1/xMax+1 derived from xArr (so seeds stay data-anchored even with unbounded LM). _lmFit's clamp function already handles ±Infinity correctly (Math.max/min). Audit blocks (Protocol tab + XLSX Data Analysis Protocol sheet) updated: "Free, unbounded" replaces "Free, bounded [X, Y]"; Bottom row dynamically reports actual lower bound when Dmax cap or minBot floor is active, with reason in parentheses.
+
+Previous session: 2026-06-11 (Round 54: λ factor matched to Prism; multi-start restored)
 Echo: reverted v1.0.19. _fitBest restored to 5-seed multi-start, best R² wins (Ryan reported deterministic init made the Prism gap WORSE, not better — multi-start was actually closer). _xAtYMid helper removed. ADDITIONALLY: LM damping factor changed in _lmFit from /3 ×3 to /10 ×10 to match Prism's reported schedule. λ init (0.001) unchanged. Audit blocks (Protocol tab + XLSX) updated: restored "multi-start 5 seeds" wording, added new "LM damping (λ)" row spelling out init=0.001, /10 on success, ×10 on failure.
 
 Previous session: 2026-06-11 (Round 53: Echo 4PL fitter — Prism deterministic init; reverted in Round 54)
