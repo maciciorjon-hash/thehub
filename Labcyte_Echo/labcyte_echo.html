@@ -1886,7 +1886,7 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
     if (newSS < bestSS) { bestSS = newSS; bestP = [...pNew]; }
     if (newSS < ssq(p)) {
       p = pNew;
-      lam = Math.max(lam / 3, 1e-10);
+      lam = Math.max(lam / 10, 1e-10);
       const relChange = prevSS > 1e-12 ? Math.abs(prevSS - newSS) / prevSS : 0;
       prevSS = newSS;
       if (relChange < convTol) {
@@ -1894,7 +1894,7 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
         else break;
       }
     } else {
-      lam = Math.min(lam * 3, 1e7);
+      lam = Math.min(lam * 10, 1e7);
     }
   }
   p = bestP;
@@ -1910,42 +1910,19 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df };
 }
 
-// Prism-style "X at YMID" deterministic seed for logEC50.
-// 1. Compute YMID = (min Y + max Y) / 2.
-// 2. Walk sorted-by-X data; find the first consecutive pair that brackets YMID.
-// 3. Linearly interpolate X at that crossing.
-// 4. Fallback to midpoint of X range when Y is flat or no bracket found.
-function _xAtYMid(xArr, yArr) {
-  if (!xArr || !xArr.length) return 0;
-  let yMin = Infinity, yMax = -Infinity;
-  for (let i = 0; i < yArr.length; i++) { if (yArr[i] < yMin) yMin = yArr[i]; if (yArr[i] > yMax) yMax = yArr[i]; }
-  if (!(yMax > yMin + 1e-12)) {
-    let xMn = Infinity, xMx = -Infinity;
-    for (let i = 0; i < xArr.length; i++) { if (xArr[i] < xMn) xMn = xArr[i]; if (xArr[i] > xMx) xMx = xArr[i]; }
-    return (xMn + xMx) / 2;
-  }
-  const yMid = (yMin + yMax) / 2;
-  const pts = xArr.map((x, i) => ({ x, y: yArr[i] })).sort((a, b) => a.x - b.x);
-  for (let i = 0; i < pts.length - 1; i++) {
-    const a = pts[i], b = pts[i + 1];
-    const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y);
-    if (yMid >= lo && yMid <= hi) {
-      const dy = b.y - a.y;
-      if (Math.abs(dy) < 1e-12) return a.x;
-      return a.x + (yMid - a.y) * (b.x - a.x) / dy;
-    }
-  }
-  return (pts[0].x + pts[pts.length - 1].x) / 2;
-}
-
-// Single-shot LM with Prism-style deterministic seed.
-// Caller's pBase carries the deterministic Top / Bottom / Hill init (YMAX / YMIN / 1.0).
-// We override pBase[1] (logEC50) with X-at-YMID, clamp to bounds, then run LM exactly once.
+// Multi-start LM: tries 5 evenly-spaced logEC50 seeds (param index 1) and returns the best fit.
+// Prevents local-minima traps caused by a single initial guess.
 function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
-  const p = [...pBase];
   const loEC = loBound[1], hiEC = hiBound[1];
-  p[1] = Math.max(loEC, Math.min(hiEC, _xAtYMid(xArr, yArr)));
-  return _lmFit(xArr, yArr, p, loBound, hiBound, valFn, jacFn, maxIter);
+  const seeds = [0.1, 0.3, 0.5, 0.7, 0.9].map(f => loEC + (hiEC - loEC) * f);
+  let best = null;
+  for (const ec of seeds) {
+    const p = [...pBase];
+    p[1] = Math.max(loEC, Math.min(hiEC, ec));
+    const r = _lmFit(xArr, yArr, p, loBound, hiBound, valFn, jacFn, maxIter);
+    if (!best || r.r2 > best.r2) best = r;
+  }
+  return best;
 }
 
 async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, a1Loc) {
@@ -2864,11 +2841,12 @@ function generateOutputXLSX() {
     ['Reported DC50 / IC50 / EC50', '10^LogEC50 × 1e9  (nM)'],
     ['AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom < 50 and Top > 50)' : 'Not requested'],
     ['Equivalent Prism form', 'Y = Bottom + (Top − Bottom) / (1 + 10^((LogIC50 − X) × HillSlope))   (equivalent under Hill sign flip)'],
-    ['Fitting method', 'Least-squares regression (Levenberg–Marquardt, single deterministic seed)'],
+    ['Fitting method', 'Least-squares regression (Levenberg–Marquardt, multi-start 5 logEC50 seeds, best R² wins)'],
     ['Loss function', 'Unweighted sum-of-squared residuals — minimised distance between points and curve, independent of Y value'],
     ['Replicate treatment', 'Each replicate Y value as an individual point (no pre-averaging)'],
     ['Convergence', 'Relative SSR change < 1e-6 (medium); auto-tightens to < 1e-9 (strict) once medium met; max 1000 iterations'],
-    ['Initial values (Prism heuristic)', 'Top = max Y · Bottom = min Y · LogEC50 = X at YMID (linear-interpolated bracket of YMID = (Ymin+Ymax)/2) · Hill = 1.0 in Echo parameterisation (direction baked into model formula per assay)'],
+    ['LM damping (lambda)', 'Init = 0.001; ÷10 after successful iteration, ×10 after unsuccessful (matches Prism)'],
+    ['Initial values per seed', 'Top = max Y · Bottom = min Y · LogEC50 seed varied across 5 evenly-spaced values in bounds · Hill = 1.0 (Echo parameterisation, direction encoded in model formula per assay)'],
     [],
     ['─── FIT BOUNDS (this run) ──────────────────', ''],
     ['Top', params.topEnabled !== false ? ('Fixed at ' + params.topConstrain) : 'Free, bounded [50, 200]'],
@@ -2971,11 +2949,12 @@ function renderProtocol() {
   html += row('Reported DC50 / IC50 / EC50', '<code style="font-family:var(--mono);font-size:11px;">10<sup>LogEC50</sup> × 10<sup>9</sup>  (nM)</code>');
   html += row('AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom &lt; 50 and Top &gt; 50)' : '<span style="color:var(--text3)">Not requested</span>');
   html += row('Equivalent Prism form', '<code style="font-family:var(--mono);font-size:11px;">Y = Bottom + (Top − Bottom) / (1 + 10<sup>(LogIC50 − X) × HillSlope</sup>)</code> <span style="color:var(--text3)">(equivalent under Hill sign flip)</span>');
-  html += row('Fitting method', 'Least-squares regression <span style="color:var(--text3)">(Levenberg–Marquardt, single deterministic seed)</span>');
+  html += row('Fitting method', 'Least-squares regression <span style="color:var(--text3)">(Levenberg–Marquardt, multi-start <strong>5 logEC50 seeds</strong>, best R² wins)</span>');
   html += row('Loss function', 'Unweighted sum-of-squared residuals <span style="color:var(--text3)">— minimised distance between points and curve, independent of Y value</span>');
   html += row('Replicate treatment', 'Each replicate Y value as an individual point <span style="color:var(--text3)">(no pre-averaging)</span>');
   html += row('Convergence', '<code style="font-family:var(--mono);font-size:11px;">|ΔSSR|/SSR &lt; 1e-6</code> (medium); auto-tightens to <code style="font-family:var(--mono);font-size:11px;">&lt; 1e-9</code> (strict) once medium met; max <strong>1000</strong> iterations');
-  html += row('Initial values <span style="color:var(--text3);font-weight:400;">(Prism heuristic)</span>', 'Top = <strong>max Y</strong> · Bottom = <strong>min Y</strong> · LogEC50 = <strong>X at YMID</strong> <span style="color:var(--text3)">(linear interp. bracketing YMID = (Y<sub>min</sub>+Y<sub>max</sub>)/2)</span> · Hill = <strong>1.0</strong> <span style="color:var(--text3)">(Echo parameterisation; direction encoded in model formula per assay)</span>');
+  html += row('LM damping (&lambda;)', 'Init <strong>0.001</strong> · &divide;10 after successful iteration · &times;10 after unsuccessful <span style="color:var(--text3)">(matches Prism)</span>');
+  html += row('Initial values per seed', 'Top = <strong>max Y</strong> · Bottom = <strong>min Y</strong> · LogEC50 = 5 evenly-spaced values across its bounds · Hill = <strong>1.0</strong> <span style="color:var(--text3)">(Echo parameterisation; direction encoded in model formula per assay)</span>');
 
   html += sec('Fit Bounds (this run)');
   html += row('Top', params.topEnabled !== false ? ('Fixed at <strong>' + params.topConstrain + '</strong>') : 'Free, bounded <strong>[50, 200]</strong>');

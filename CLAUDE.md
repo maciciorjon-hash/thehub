@@ -253,8 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 53: Echo 4PL fitter — Prism deterministic init)
-Hub apps: 8. Version v1.0.19.
+Last session: 2026-06-11 (Round 54: Revert deterministic seed + Prism λ factor)
+Hub apps: 8. Version v1.0.20.
+Echo: reverted v1.0.19. _fitBest restored to 5-seed multi-start, best R² wins (Ryan reported deterministic init made the Prism gap WORSE, not better — multi-start was actually closer). _xAtYMid helper removed. ADDITIONALLY: LM damping factor changed in _lmFit from /3 ×3 to /10 ×10 to match Prism's reported schedule. λ init (0.001) unchanged. Audit blocks (Protocol tab + XLSX) updated: restored "multi-start 5 seeds" wording, added new "LM damping (λ)" row spelling out init=0.001, /10 on success, ×10 on failure.
+
+Previous session: 2026-06-11 (Round 53: Echo 4PL fitter — Prism deterministic init; reverted in Round 54)
 Echo: _fitBest in labcyte_echo.html (around line 1900) rewritten — dropped the 5-seed multi-start logEC50 loop, now runs LM exactly once. New helper _xAtYMid(xArr, yArr) computes Prism's deterministic logEC50 seed: YMID = (min Y + max Y) / 2, then walks sorted-by-X data, finds the first consecutive pair that brackets YMID, linearly interpolates X at the crossing. Fallback to midpoint of X range when Y is flat or no bracket found. Top / Bottom / Hill initial values were already aligned with Prism (Top=YMAX, Bottom=YMIN at line 2168/2178; Hill=1.0 — Echo's parameterisation always keeps Hill positive with the assay direction baked into the model formula choice, so Prism's ±1 sign convention doesn't apply here). Audit blocks in renderProtocol() and protocolRows AoA in generateOutputXLSX updated: "single deterministic seed" replaces multi-start wording, new "Initial values (Prism heuristic)" row added.
 
 Previous session: 2026-06-11 (Round 52: Egg trigger fix; v1.0.18)
