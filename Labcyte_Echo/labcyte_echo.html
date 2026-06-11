@@ -2569,7 +2569,7 @@ function generateOutputCSV() {
   var t=window._lastAssayType||'hibit';
   var colMap=_csvColMap(t);
   var noGain=t==='displacement';
-  var internalCols=['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
+  var internalCols=['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason','Top_val','Bot_val'];
   var _selCsvCols=new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(function(el){return el.dataset.col;}));
   var filtCols=internalCols.filter(function(c){
     if(c==='Protein'||c==='Sample_ID')return true;
@@ -2577,7 +2577,11 @@ function generateOutputCSV() {
     if(c==='Dmax_pct'&&noGain)return false;
     return _selCsvCols.has(c);
   });
-  var headerCols=filtCols.map(function(c){return colMap[c]||c;});
+  var _ciLblCsv=t==='displacement'||t==='ctg'?'IC50':t==='gain'?'EC50':'DC50';
+  if(_selCsvCols.has('CI_DC50')) filtCols.push('CI_DC50_lower','CI_DC50_upper');
+  if(_selCsvCols.has('CI_all'))  filtCols.push('CI_Hill_lower','CI_Hill_upper');
+  var _csvExtraNames={Top_val:'Top',Bot_val:'Bottom',CI_DC50_lower:_ciLblCsv+'_CI_lower',CI_DC50_upper:_ciLblCsv+'_CI_upper',CI_Hill_lower:'Hill_CI_lower',CI_Hill_upper:'Hill_CI_upper'};
+  var headerCols=filtCols.map(function(c){return _csvExtraNames[c]||colMap[c]||c;});
   const esc2 = v => (v==null||v==='')?'':'"'+String(v).replace(/"/g,'""')+'"';
   const csvRows = scatterData.map(r => filtCols.map(c=>esc2(r[c])).join(','));
   const blob = new Blob(['\uFEFF'+headerCols.join(',')+'\n', ...csvRows.map(r=>r+'\n')], {type:'text/csv'});
@@ -2701,7 +2705,7 @@ function generateOutputXLSX() {
   var t = window._lastAssayType || 'hibit';
   var colMap = _csvColMap(t);
   var noGain = t === 'displacement';
-  var internalCols = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
+  var internalCols = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason','Top_val','Bot_val'];
   var _selXlsxCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(function(el) { return el.dataset.col; }));
   var filtCols = internalCols.filter(function(c) {
     if (c === 'Protein' || c === 'Sample_ID') return true;
@@ -2709,7 +2713,11 @@ function generateOutputXLSX() {
     if (c === 'Dmax_pct' && noGain) return false;
     return _selXlsxCols.has(c);
   });
-  var headerCols = filtCols.map(function(c) { return colMap[c] || c; });
+  var _ciLbl = t==='displacement'||t==='ctg' ? 'IC50' : t==='gain' ? 'EC50' : 'DC50';
+  if (_selXlsxCols.has('CI_DC50')) filtCols.push('CI_DC50_lower', 'CI_DC50_upper');
+  if (_selXlsxCols.has('CI_all'))  filtCols.push('CI_Hill_lower', 'CI_Hill_upper');
+  var _xlsxNames = {Top_val:'Top', Bot_val:'Bottom', CI_DC50_lower:_ciLbl+'_CI_lower', CI_DC50_upper:_ciLbl+'_CI_upper', CI_Hill_lower:'Hill_CI_lower', CI_Hill_upper:'Hill_CI_upper'};
+  var headerCols = filtCols.map(function(c) { return _xlsxNames[c] || colMap[c] || c; });
   var _hasExclusions = scatterData.some(function(r){return (r._excludedRepXYs||[]).length>0||(r._deletedPts||[]).length>0;});
   if(_hasExclusions) headerCols = headerCols.concat(['Notes']);
   var resultsRows = [headerCols].concat(scatterData.map(function(r) {
