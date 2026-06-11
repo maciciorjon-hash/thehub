@@ -253,10 +253,10 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 41: Echo scroll fix, PHERAstar A1 cell ref offset fix)
+Last session: 2026-06-11 (Round 42: Echo scroll — proper results-meta/results-tbl-scroll split; PHERAstar A1 offset fix)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.88MB (7,882,006 chars). Version v1.0.7
+Hub file size: 7.88MB (7,882,430 chars). Version v1.0.8
 Echo changes (labcyte_echo.html):
-- Scroll fix: changed table{width:100%} to table{min-width:100%} — width:100% was compressing table to fit container so scrollWidth==clientWidth and scrollBy had nothing to scroll; min-width:100% allows expansion beyond container
-- PHERAstar A1 offset fix: added XLSX.utils.decode_range(ws['!ref']) to get _sheetR0/_sheetC0 (sheet used-range start); dataRow and dataCol now subtract these offsets so raw[] array indexing is correct when sheet doesn't start at A1 (e.g. A3:AH93 → _sheetR0=2; "B54" → raw[51][1] not raw[53][1])
+- Scroll fix (proper): #results-panel is now display:flex;flex-direction:column; top .results-meta div holds cards+download buttons+scroll-nav (flex-shrink:0); .results-tbl-scroll div (flex:1;overflow:auto) holds .tbl-wrap → <table>. ◀ ▶ buttons target .results-tbl-scroll. table{width:max-content;min-width:100%} ensures it always expands to natural column width.
+- PHERAstar A1 offset fix: XLSX.utils.decode_range(ws['!ref']) gives _sheetR0/_sheetC0; subtract from manual cell ref indices. "B54" in A3:AH93 sheet → raw[51][1] (correct row A, col B=A01).
 <!-- LAST_SESSION_END -->

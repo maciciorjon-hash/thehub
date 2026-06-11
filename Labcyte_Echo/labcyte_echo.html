@@ -155,16 +155,17 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .lm.warn{color:var(--warn);}
 
 /* RESULTS */
-#results-panel{flex:1;overflow-y:auto;overflow-x:hidden;padding:18px 20px;}
-.meta-row{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+#results-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;}
+.results-meta{flex-shrink:0;padding:18px 20px 4px;}
+.meta-row{display:flex;gap:12px;flex-wrap:wrap;}
 .mcard{background:var(--surface2);border-radius:var(--r);padding:11px 16px;min-width:110px;}
 .mc-lbl{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:3px;}
 .mc-val{font-family:var(--sans);font-size:20px;font-weight:500;}
 .mc-val.g{color:var(--accent3);}
-.tbl-wrap{width:100%;min-width:0;overflow-x:auto;}.tbl-wrap::-webkit-scrollbar{height:6px;}.tbl-wrap::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.tbl-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.results-tbl-scroll{flex:1;overflow:auto;min-height:0;padding:0 20px 18px;}.results-tbl-scroll::-webkit-scrollbar{height:6px;width:6px;}.results-tbl-scroll::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.results-tbl-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 .tbl-frozen{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--border2);}
 th.tbl-frozen{z-index:3;}
-table{min-width:100%;border-collapse:collapse;font-size:12px;}
+table{width:max-content;min-width:100%;border-collapse:collapse;font-size:12px;}
 thead tr{border-bottom:1px solid var(--border2);}
 th{padding:8px 12px;text-align:left;font-size:10px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:var(--text3);white-space:nowrap;}
 td{padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--sans);font-size:12px;color:var(--text2);white-space:nowrap;}
@@ -2408,18 +2409,18 @@ function renderResults(data) {
     });
   }
   _dlSection += '</div>';
-  let h = '<div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
+  let h = '<div class="results-meta"><div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
     +'<div class="mcard"><div class="mc-lbl">Compounds</div><div class="mc-val g">'+data.length+'</div></div>'
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
     +'<div style="flex:1;min-width:12px;"></div>'
     +_dlSection
     +'</div>'
-    +'<div style="display:flex;align-items:center;gap:5px;margin:4px 0 2px;flex-shrink:0;">'
-    +'<button onclick="var w=document.querySelector(\'#results-panel .tbl-wrap\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
+    +'<div style="display:flex;align-items:center;gap:5px;margin:6px 0 4px;flex-shrink:0;">'
+    +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
     +'<span style="font-size:11px;color:var(--text3);">Scroll columns</span>'
-    +'<button onclick="var w=document.querySelector(\'#results-panel .tbl-wrap\');if(w)w.scrollBy({left:180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll right">&#9654;</button>'
-    +'</div>'
-    +'<div class="tbl-wrap"><table><thead><tr>';
+    +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll right">&#9654;</button>'
+    +'</div></div>'
+    +'<div class="results-tbl-scroll"><div class="tbl-wrap"><table><thead><tr>';
   cols.forEach(col=>{
     const isA=_sortState.col===col.k, arr=isA?(_sortState.asc?' ▲':' ▼'):'';
     const clk=col.ns?'':` onclick="sortResultsBy('${col.k}')" style="cursor:pointer;user-select:none;"`;
@@ -2442,6 +2443,7 @@ function renderResults(data) {
       +'onmouseover="this.style.background=\'var(--surface3)\'" onmouseout="this.style.background=\'var(--surface2)\'">'
       +'Show all '+sorted.length+' results</button></div>';
   }
+  h+='</div>';
   p.innerHTML=h;
   saveToHistory(data);
 }
@@ -2476,7 +2478,7 @@ function renderMultiAssayResults(data) {
   const flagged = data.filter(r=>r.Flag==='Yes').length;
   const _dlS='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
   const _dlH='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
-  let h = '<div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
+  let h = '<div class="results-meta"><div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
     +'<div class="mcard"><div class="mc-lbl">Compounds</div><div class="mc-val g">'+pivot.size+'</div></div>'
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
     +'<div style="flex:1;min-width:12px;"></div>'
@@ -2484,12 +2486,12 @@ function renderMultiAssayResults(data) {
     +'<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel">📋 Copy TSV</button>'
     +'<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()">📥 Results XLSX</button>'
     +'</div></div>'
-    +'<div style="display:flex;align-items:center;gap:5px;margin:4px 0 2px;flex-shrink:0;">'
-    +'<button onclick="var w=document.querySelector(\'#results-panel .tbl-wrap\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
+    +'<div style="display:flex;align-items:center;gap:5px;margin:6px 0 4px;flex-shrink:0;">'
+    +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
     +'<span style="font-size:11px;color:var(--text3);">Scroll columns</span>'
-    +'<button onclick="var w=document.querySelector(\'#results-panel .tbl-wrap\');if(w)w.scrollBy({left:180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll right">&#9654;</button>'
-    +'</div>'
-    +'<div class="tbl-wrap"><table><thead>';
+    +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll right">&#9654;</button>'
+    +'</div></div>'
+    +'<div class="results-tbl-scroll"><div class="tbl-wrap"><table><thead>';
 
   // Header row 1: assay type spanning cells
   h += '<tr><th rowspan="2" style="white-space:nowrap;">Group</th><th rowspan="2" class="tbl-frozen" style="white-space:nowrap;">Sample ID</th>';
@@ -2532,7 +2534,7 @@ function renderMultiAssayResults(data) {
     h += '</tr>';
   }
 
-  h += '</tbody></table></div>';
+  h += '</tbody></table></div></div>';
   p.innerHTML = h;
   saveToHistory(data);
 }
