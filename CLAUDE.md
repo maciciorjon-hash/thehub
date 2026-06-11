@@ -253,13 +253,14 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 44: full cross-app verification audit)
+Last session: 2026-06-11 (Round 45: Echo feedback round — 5 bugs from Alessio email)
 Hub apps: 8 (echo, lm, deg, pd, dna→Helix, pt, spectra, ldi) [unchanged]
-Hub file size: 7.88MB (7,883,349 chars). Version v1.0.10
-Verification: JS syntax check passed on all 9 source HTMLs (node --check). Rebuild via embed.py succeeded with all 8 base64 replacements, zero PLACEHOLDER residue. hub-shell wiring confirmed: 8 cards / 8 APP_INFO / 8 APP_B64+APP_B64_NEW / 8 view + frame iframes / 8 openApp calls — all consistent.
-Bugs found and fixed:
-- Spectra: missing `window.addEventListener('message', ...)` — Hub search index entries targeting tabs (A280/Ratios/Std Curve/Plate Reader) could not switch tabs after openApp. Added listener that calls switchTab(e.data.tab).
-- Spectra search index mismatch: hub-shell.html had `tab:'platereader'` but actual Spectra tab id is `plate`. Fixed.
-- LDI: missing message listener (no current hub entries target its tabs but added for consistency, calls showTab(e.data.tab)).
-False positives ruled out: dark theme CSS does NOT need duplicated --accent/--sans/--mono — :root defines them, [data-theme="dark"] only overrides what changes (cascading works correctly).
+Version v1.0.11
+Echo changes (labcyte_echo.html):
+- Control-well picker `applyCtrlPicker` (line ~7405): removed `cols.length<=4 && rows.length<=16` gate so wide rectangles (e.g. N2:O23, 22×2) are emitted as range syntax, not comma list.
+- Control-well parser `_parseCtrlRange` (line ~1612): comma branch now pipes through `_stdWell` so wells like "N2" are zero-padded to "N02", matching the rest of the pipeline. Previously cols 1–9 silently dropped from analysis (e.g. N2:O23 input → only N10:O23 reached plates tab).
+- Results XLSX `generateOutputXLSX` (line ~2708): multi-assay mode now builds a pivoted AoA — Sample ID rowspan=2 + per-assay column groups (assay name spans cols in header row 1, column names in header row 2). Single-assay path unchanged. Applies `!merges` for the assay-name spans.
+- Results buttons (Copy TSV / Results XLSX / Raw CSV / Curve PDFs): moved out of `.meta-row` into their own centered flex-wrap row so they never get clipped off the right edge. Same treatment applied to multi-assay renderer; bonus, multi-assay results now show Raw CSV and Curve PDFs (previously only single-assay showed them).
+- Properties tab structures cut: v1.0.9's global `table{table-layout:fixed;width:100%}` rule was hitting `.props-table` and squeezing the Structure column. Rule now scoped to `.results-tbl-scroll table`. `.props-table` falls back to its own `auto` layout so the 150×110 SVG gets full content width.
+- Curves Mean±SD/Individual toggle moved from toolbar button (`#cv-pts-btn`) into the Style panel (`#cv-custom-panel`) as a Mode select. Standalone button removed; `toggleCvPoints` kept as no-op for safety.
 <!-- LAST_SESSION_END -->

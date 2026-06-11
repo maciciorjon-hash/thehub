@@ -165,7 +165,7 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .results-tbl-scroll{flex:1;overflow:auto;min-height:0;padding:0 20px 18px;}.results-tbl-scroll::-webkit-scrollbar{height:6px;width:6px;}.results-tbl-scroll::-webkit-scrollbar-track{background:var(--surface2);border-radius:3px;}.results-tbl-scroll::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 .tbl-frozen{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--border2);}
 th.tbl-frozen{z-index:3;width:110px;}
-table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;}
+.results-tbl-scroll table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;}
 thead tr{border-bottom:1px solid var(--border2);}
 th{padding:5px 7px;text-align:left;font-size:10px;font-weight:500;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 td{padding:5px 7px;border-bottom:1px solid var(--border);font-family:var(--sans);font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1639,7 +1639,7 @@ function _parseCtrlRange(s) {
       return out;
     }
   }
-  return s.split(',').map(w => w.trim()).filter(Boolean);
+  return s.split(',').map(w => w.trim()).filter(Boolean).map(_stdWell);
 }
 
 function _stdWell(w) {
@@ -2394,7 +2394,7 @@ function renderResults(data) {
   // Build download section
   const _dlBtnStyle='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
   const _dlBtnHover='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
-  let _dlSection = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+  let _dlSection = '<div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:6px 0 4px;">'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel">📋 Copy TSV</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputXLSX()">📥 Results XLSX</button>';
   if (_rawBlob) {
@@ -2412,9 +2412,8 @@ function renderResults(data) {
   let h = '<div class="results-meta"><div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
     +'<div class="mcard"><div class="mc-lbl">Compounds</div><div class="mc-val g">'+data.length+'</div></div>'
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
-    +'<div style="flex:1;min-width:12px;"></div>'
-    +_dlSection
     +'</div>'
+    +_dlSection
     +'<div style="display:flex;align-items:center;gap:5px;margin:6px 0 4px;flex-shrink:0;">'
     +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
     +'<span style="font-size:11px;color:var(--text3);">Scroll columns</span>'
@@ -2478,14 +2477,28 @@ function renderMultiAssayResults(data) {
   const flagged = data.filter(r=>r.Flag==='Yes').length;
   const _dlS='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
   const _dlH='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
+  // Build download buttons (centered row beneath meta cards)
+  const _pdfBlobsM = downloadBlobs.filter(b=>b.kind==='pdf');
+  const _rawBlobM = downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
+  let _dlSectionM = '<div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:6px 0 4px;">'
+    + '<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel">📋 Copy TSV</button>'
+    + '<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()">📥 Results XLSX</button>';
+  if (_rawBlobM) _dlSectionM += '<button style="'+_dlS+'" '+_dlH+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))">📊 Raw Data CSV</button>';
+  if (_pdfBlobsM.length === 0) {
+    _dlSectionM += '<button style="'+_dlS+';opacity:.4;cursor:default;">📄 Curve PDFs</button>';
+  } else {
+    _pdfBlobsM.forEach((b,i) => {
+      const _gname = b.name.replace(/^Results_[^_]+_Curves_/,'').replace(/\.pdf$/,'');
+      _dlSectionM += '<button style="'+_dlS+'" '+_dlH+' onclick="downloadBlob(downloadBlobs.filter(b=>b.kind===\'pdf\')['+i+'])" title="Curves — '+esc(_gname)+'">📄 '+esc(_gname)+'</button>';
+    });
+  }
+  _dlSectionM += '</div>';
+
   let h = '<div class="results-meta"><div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
     +'<div class="mcard"><div class="mc-lbl">Compounds</div><div class="mc-val g">'+pivot.size+'</div></div>'
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
-    +'<div style="flex:1;min-width:12px;"></div>'
-    +'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
-    +'<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel">📋 Copy TSV</button>'
-    +'<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()">📥 Results XLSX</button>'
-    +'</div></div>'
+    +'</div>'
+    +_dlSectionM
     +'<div style="display:flex;align-items:center;gap:5px;margin:6px 0 4px;flex-shrink:0;">'
     +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
     +'<span style="font-size:11px;color:var(--text3);">Scroll columns</span>'
@@ -2733,6 +2746,72 @@ function generateOutputXLSX() {
     }
     return row;
   }));
+  var resultsMerges = [];
+
+  // Multi-assay: pivot to match in-app table (Sample ID + per-assay column blocks).
+  if (window._lastAnalysisParams && window._lastAnalysisParams.multiAssay) {
+    var _amX = {
+      hibit:       {name:'HiBiT',          dc50:'DC50 (nM)', logdc50:'LogDC50 (M)', pdc50:'pDC50 (M)', dmax:'Dmax (%)'},
+      displacement:{name:'Displacement',   dc50:'IC50 (nM)', logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:null},
+      gain:        {name:'Gain-of-Signal', dc50:'EC50 (nM)', logdc50:'LogEC50 (M)', pdc50:'pEC50 (M)', dmax:'Emax (%)'},
+      ctg:         {name:'CTG/Viability',  dc50:'IC50 (nM)', logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)'},
+    };
+    var _ciOnX  = _selXlsxCols.has('CI_DC50');
+    var _activeKeysX = ['DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag']
+      .filter(function(k){ return k==='DC50_nM'||k==='Flag'||_selXlsxCols.has(k); })
+      .filter(function(k){ return !(window._hiddenResultsCols && window._hiddenResultsCols.has(k)); });
+    if (_ciOnX) _activeKeysX.push('CI_DC50_lower','CI_DC50_upper');
+
+    var _orderedTypesX = [];
+    var _seenTypes = {};
+    scatterData.forEach(function(r){ if (r._assayType && !_seenTypes[r._assayType]) { _seenTypes[r._assayType]=true; _orderedTypesX.push(r._assayType); } });
+
+    var _pivotX = {}; var _ids = [];
+    scatterData.forEach(function(r){
+      if (!_pivotX[r.Sample_ID]) { _pivotX[r.Sample_ID] = {}; _ids.push(r.Sample_ID); }
+      _pivotX[r.Sample_ID][r._assayType] = r;
+    });
+
+    var _keysFor = function(at){
+      var m = _amX[at] || {dmax:'Dmax (%)'};
+      return _activeKeysX.filter(function(k){ return !(k==='Dmax_pct' && !m.dmax); });
+    };
+    var _lblFor = function(at){
+      var m = _amX[at] || {dc50:'DC50 (nM)',logdc50:'LogDC50 (M)',pdc50:'pDC50 (M)',dmax:'Dmax (%)'};
+      var _ciL = (at==='displacement'||at==='ctg')?'IC50':(at==='gain')?'EC50':'DC50';
+      return {DC50_nM:m.dc50, Dmax_pct:m.dmax, LogIC50_M:m.logdc50, pDC50:m.pdc50, HillSlope:'Hill', R2:'R²', Flag:'Flag', CI_DC50_lower:_ciL+' 95% CI lower', CI_DC50_upper:_ciL+' 95% CI upper'};
+    };
+
+    var _hdr1 = ['Sample ID'];
+    var _hdr2 = [''];
+    var _colCursor = 1;
+    var _mergesX = [{s:{r:0,c:0},e:{r:1,c:0}}]; // Sample ID spans both header rows
+    _orderedTypesX.forEach(function(at){
+      var m = _amX[at] || {name:at};
+      var ks = _keysFor(at);
+      var lbl = _lblFor(at);
+      _hdr1.push(m.name);
+      for (var i=1;i<ks.length;i++) _hdr1.push('');
+      if (ks.length>1) _mergesX.push({s:{r:0,c:_colCursor},e:{r:0,c:_colCursor+ks.length-1}});
+      ks.forEach(function(k){ _hdr2.push(lbl[k]||k); });
+      _colCursor += ks.length;
+    });
+
+    var _dataRows = _ids.map(function(sid){
+      var row = [sid];
+      _orderedTypesX.forEach(function(at){
+        var r = _pivotX[sid][at];
+        _keysFor(at).forEach(function(k){
+          if (!r) { row.push(''); return; }
+          var v = r[k]; row.push(v==null?'':v);
+        });
+      });
+      return row;
+    });
+
+    resultsRows = [_hdr1, _hdr2].concat(_dataRows);
+    resultsMerges = _mergesX;
+  }
 
   var params = window._lastAnalysisParams || {};
   var echo = window._echoSummary || {};
@@ -2787,6 +2866,7 @@ function generateOutputXLSX() {
   var wb = XLSX.utils.book_new();
 
   var wsResults = XLSX.utils.aoa_to_sheet(resultsRows);
+  if (resultsMerges.length) wsResults['!merges'] = resultsMerges;
   XLSX.utils.book_append_sheet(wb, wsResults, 'Results');
 
   var wsProtocol = XLSX.utils.aoa_to_sheet(protocolRows);
@@ -5687,7 +5767,6 @@ function renderCurvesTab(data) {
     <button class="stbtn" onclick="cvNav(-1)" id="cv-prev">◀</button>
     <button class="stbtn" onclick="cvNav(+1)" id="cv-next">▶</button>
     <button class="stbtn" id="cv-cust-btn" onclick="toggleCvCustom()" style="margin-left:4px;">⚙ Style</button>
-    <button class="stbtn" id="cv-pts-btn" onclick="toggleCvPoints()" style="margin-left:4px;" title="Switch between mean±SD and individual replicate points">◦ Individual</button>
     <button class="stbtn" id="cv-struct-btn" onclick="toggleCvStructure()" style="" title="Show molecular structure on hover">🔬</button>
     <button class="stbtn" id="cv-ref-btn" onclick="cvPinRef()" title="Pin current compound as reference (shown as gray dashed in Single mode)">📌 Ref</button>
     <button class="stbtn" id="cv-zoom-reset" onclick="cvResetZoom()" style="opacity:0.4;" title="Reset zoom (double-click canvas)">⊙ Zoom</button>
@@ -5702,6 +5781,13 @@ function renderCurvesTab(data) {
   <!-- CUSTOMISATION PANEL (collapsed by default) -->
   <div id="cv-custom-panel" style="display:none;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;">
     <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;">
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px;">Mode</div>
+        <select onchange="window._cvCfg.showReps=(this.value==='reps');renderCvCurve()" style="${_cvInputStyle()}" title="Switch between mean±SD and individual replicate points">
+          <option value="mean" ${!window._cvCfg.showReps?'selected':''}>Mean ± SD</option>
+          <option value="reps" ${window._cvCfg.showReps?'selected':''}>Individual reps</option>
+        </select>
+      </div>
       <div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px;">Line</div>
         <select onchange="window._cvCfg.lineStyle=this.value;renderCvCurve()" style="${_cvInputStyle()}">
@@ -7422,19 +7508,21 @@ function applyCtrlPicker() {
       closeCtrlPicker(); return;
     }
   }
-  // Try rectangular range (B22:O23 style)
-  if (cols.length<=4 && rows.length<=16) {
+  // Try rectangular range (B22:O23 style) — for any rectangle, narrow or wide.
+  {
     const minCol=Math.min(...cols), maxCol=Math.max(...cols);
     const minRow=rows[0], maxRow=rows[rows.length-1];
-    // Check if all wells in the rectangle are selected
+    const ROWS_ALPHA='ABCDEFGHIJKLMNOP';
+    const rIdx = c => ROWS_ALPHA.indexOf(c);
+    const minRIdx=rIdx(minRow), maxRIdx=rIdx(maxRow);
     let isRect=true;
-    for (let c=minCol;c<=maxCol;c++) {
-      for (const r of rows) {
-        const wid=`${r}${c<10?'0'+c:c}`;
-        if (!_ctrlPickerSel.has(wid)&&!_ctrlPickerSel.has(`${r}${c}`)) { isRect=false; break; }
+    for (let c=minCol;c<=maxCol && isRect;c++) {
+      for (let ri=minRIdx;ri<=maxRIdx;ri++) {
+        const r=ROWS_ALPHA[ri];
+        if (!_ctrlPickerSel.has(`${r}${c<10?'0'+c:c}`) && !_ctrlPickerSel.has(`${r}${c}`)) { isRect=false; break; }
       }
     }
-    if (isRect && (maxCol>minCol||rows.length>1)) {
+    if (isRect && (maxCol>minCol||maxRIdx>minRIdx)) {
       document.getElementById(_ctrlTarget).value = `${minRow}${minCol}:${maxRow}${maxCol}`;
       closeCtrlPicker(); return;
     }
