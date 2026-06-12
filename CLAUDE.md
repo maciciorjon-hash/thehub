@@ -253,8 +253,14 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 62: Echo 4PL fitter — Gemini's 4 suggestions all shipped)
-Hub apps: 8. Version v1.0.28.
+Last session: 2026-06-12 (Round 63: max iter 1000 + square Curves PNG export)
+Hub apps: 8. Version v1.0.29.
+Echo (labcyte_echo.html):
+- 4PL maxIter raised 200 → 1000 at both _fitBest call sites in runAnalysisJS (lines ~2233, ~2244) and both call sites in fit4PL_JS interactive editor (lines ~6823, ~6829). Audit blocks updated.
+- Curves canvas display reverted to v1.0.26 sizing (responsive flex:1 wrap, canvas width:100%/height:100%) — user said the on-screen display was fine; the square change in v1.0.27 was unwanted.
+- cvDownloadPNG (line ~6447): now builds the export canvas so the PLOT AREA (X-axis length === Y-axis length) is square. Uses drawMultiCurve's hardcoded padding constants (PAD_L=62, PAD_R=28, PAD_T=32, PAD_B=52) plus a target pw of max(cssW-90, cssH-84, 320) to give expCssW = pwTarget + PAD_L + PAD_R, expCssH = pwTarget + PAD_T + PAD_B. The canvas itself is slightly asymmetric (because the padding around the axes isn't square) but the data plot area is true square.
+
+Previous session: 2026-06-12 (Round 62: all 4 Gemini fitter suggestions; v1.0.28)
 Echo 4PL fitter (_lmFit + _fitBest + runAnalysisJS pInit):
 - Multi-start (`_fitBest` around line 1932): seeds expanded from 5 evenly-spaced to 6 = 5 evenly + 1 X-at-YMID (linear-interpolated X where data crosses (Ymin+Ymax)/2). `_xAtYMid` helper reintroduced (was added in v1.0.19, removed in v1.0.20). Catches the "all 5 seeds in flat region" failure mode.
 - Fletcher / Madsen-Nielsen adaptive λ in `_lmFit`: on accepted step, λ ×= max(1/3, 1 − (2ρ−1)³) where ρ = (curSS − newSS) / (½·δᵀ(λ·δ + Jᵀr)). On reject, λ ×= 2. Replaces the fixed ÷3 / ×3.
