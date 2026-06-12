@@ -253,8 +253,18 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 65: Echo Curves PNG export — poster-grade scaling)
-Hub apps: 9. Version v1.0.31.
+Last session: 2026-06-12 (Round 66: Iceberg mobile audit + fixes)
+Hub apps: 9. Version v1.0.32.
+Iceberg (Cryostorage/cryostorage.html) mobile polish:
+- Two media-query blocks added at end of <style>: @media (max-width:720px) and @media (max-width:420px), plus @media (hover:none) for touch.
+- 720px breakpoint: header padding/font tightened, subtitle ellipsised; tabs padding/height reduced; tab-pane padding 24→14; toolbar tb-search drops to its own row (order:99, flex-basis:100%); view-tabs margin-left:0; stats-row 2-col; rack/box padding tightened; box grid minmax 130; detail-overlay padding 0 + card full-viewport (height:100vh, border-radius:0) so modal feels native; modal-overlay same treatment; vial-form collapses to 1-col with .span2 fields normalised; icon-btn bumped 26→34 for thumb tap targets; well-grid-wrap gets overflow-x:auto + -webkit-overflow-scrolling:touch so wide grids scroll; .well gets touch-action:manipulation to suppress 300ms double-tap zoom.
+- 420px breakpoint: tab counters hidden, stats and box grid drop to 2-col strict, header subtitle hidden.
+- Touch (hover:none): suppress .well/.box-card hover transform so taps don't feel "stuck".
+- renderBoxDetail (line ~789) reads window.innerWidth and picks grid-template cell minmax/maxmin per breakpoint: <480 = 32-44 / 22px row label; <720 = 30-46 / 22px; else = 28-44 / 24px. Wider grid + scroll wrap means a 12-col box always has reachable cells on a 360px phone.
+- renderBoxDetail also gates the hover tooltip on window.matchMedia('(hover:hover)').matches; on pure-touch devices the mouseenter/leave/move listeners are not attached. The tap still opens the edit modal which surfaces the same fields, so no info is hidden — just the floating tooltip.
+- Resize listener (180ms debounce) re-flows the well grid on orientation change so portrait→landscape recovers cleanly.
+
+Previous session: 2026-06-12 (Round 65: PNG export scaling; v1.0.31)
 Echo (labcyte_echo.html):
 - cvDownloadPNG (line ~6447) now passes 5 export-only multipliers into drawMultiCurve: _exportPointMul=4, _exportLineMul=4, _exportFontMul=5, _exportLegendMul=4, _exportBoldTitle=true.
 - drawMultiCurve at line ~6507 picks them up as _pMul/_lMul/_fMul/_legMul/_titleW (defaults 1 / '500' so on-screen renders unchanged):
