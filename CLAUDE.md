@@ -253,8 +253,20 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 64: New app Iceberg — cryostorage inventory)
-Hub apps: 9. Version v1.0.30.
+Last session: 2026-06-12 (Round 65: Echo Curves PNG export — poster-grade scaling)
+Hub apps: 9. Version v1.0.31.
+Echo (labcyte_echo.html):
+- cvDownloadPNG (line ~6447) now passes 5 export-only multipliers into drawMultiCurve: _exportPointMul=4, _exportLineMul=4, _exportFontMul=5, _exportLegendMul=4, _exportBoldTitle=true.
+- drawMultiCurve at line ~6507 picks them up as _pMul/_lMul/_fMul/_legMul/_titleW (defaults 1 / '500' so on-screen renders unchanged):
+  * Axis tick labels font * _fMul; tick mark stub length * _lMul; tick stroke width * _lMul (lines ~6585, ~6593).
+  * Axis border lineWidth (1.5) * _lMul (line ~6602).
+  * Axis titles ("Signal (% DMSO)" / "log10[concentration, M]") font * _fMul; X-title vertical offset * _fMul to keep clearance (lines ~6606-6613).
+  * Curve fit lineWidth (2 or 2.5) * _lMul (line ~6657).
+  * ptSz = (cfg.pointSize||5) * _pMul (line ~6638) — propagates to all point-shape draws.
+  * Chart title weight = _titleW (bold for export) and font * _fMul (line ~6768).
+  * Legend: swatch width * _legMul, font * _legMul, text/offset gaps * _legMul (lines ~6774-6782).
+
+Previous session: 2026-06-12 (Round 64: New app Iceberg; v1.0.30)
 New app: Iceberg (id: cryo, accent #00acc1).
 - File: Cryostorage/cryostorage.html (~1800 lines, self-contained, SheetJS via CDN for XLSX).
 - Two tabs: −80°C and Liquid N₂, each with rack → box → vial hierarchy.

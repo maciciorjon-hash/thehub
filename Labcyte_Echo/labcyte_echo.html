@@ -6458,7 +6458,15 @@ function cvDownloadPNG() {
   const off=document.createElement('canvas');
   off.style.width=expCssW+'px'; off.style.height=expCssH+'px';
   const comps=canvas._cvCompounds||[];
-  drawMultiCurve(off, comps, {...(window._cvCfg||{}), bgStyle:'white', _exportScale:3});
+  drawMultiCurve(off, comps, {
+    ...(window._cvCfg||{}),
+    bgStyle:'white', _exportScale:3,
+    _exportPointMul:4,      // point size 4× for export
+    _exportLineMul:4,       // curve + axis line widths 4× for export
+    _exportFontMul:5,       // axis labels + axis titles 5× for export
+    _exportLegendMul:4,     // legend 4× for export
+    _exportBoldTitle:true   // chart title bolded for export
+  });
   const a=document.createElement('a');
   const names=comps.map(r=>r.Sample_ID).join('_').replace(/[^a-z0-9_]/gi,'_').slice(0,40);
   a.download=`curve_${names||'export'}.png`;
@@ -6505,6 +6513,13 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   else{bgCol='#ffffff';textCol='#5a5f7a';gridCol='rgba(0,0,0,0.07)';axisCol='rgba(0,0,0,0.15)';}
 
   const fSz=cfg.fontSize||11;
+  // Export-only multipliers (no-op when not exporting). The PNG download applies these
+  // so labels/axes/curves remain legible at poster size; on-screen render stays unchanged.
+  const _pMul=cfg._exportPointMul||1;
+  const _lMul=cfg._exportLineMul||1;
+  const _fMul=cfg._exportFontMul||1;
+  const _legMul=cfg._exportLegendMul||1;
+  const _titleW=cfg._exportBoldTitle?'700':'500';
   const pL=62,pR=28,pT=32,pB=52;
   const pw=W-pL-pR,ph=H-pT-pB;
 
@@ -6576,35 +6591,35 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   }
 
   // Axis ticks + labels
-  ctx.fillStyle=textCol; ctx.font=`${fSz*0.95}px 'IBM Plex Sans',sans-serif`;
+  ctx.fillStyle=textCol; ctx.font=`${fSz*0.95*_fMul}px 'IBM Plex Sans',sans-serif`;
   niceTicks(ylo,yhi,6).forEach(yv=>{
     const yp=py(yv); if(yp<pT-2||yp>pT+ph+2) return;
     ctx.textAlign='right';ctx.textBaseline='middle';
-    ctx.fillText(Number.isInteger(yv)?yv:yv.toFixed(1),pL-8,yp);
-    ctx.beginPath();ctx.strokeStyle=axisCol;ctx.lineWidth=1;
-    ctx.moveTo(pL-4,yp);ctx.lineTo(pL,yp);ctx.stroke();
+    ctx.fillText(Number.isInteger(yv)?yv:yv.toFixed(1),pL-8*_lMul,yp);
+    ctx.beginPath();ctx.strokeStyle=axisCol;ctx.lineWidth=1*_lMul;
+    ctx.moveTo(pL-4*_lMul,yp);ctx.lineTo(pL,yp);ctx.stroke();
   });
   niceTicks(xlo,xhi,7).forEach(xv=>{
     const xp=px(xv); if(xp<pL-2||xp>pL+pw+2) return;
     ctx.textAlign='center';ctx.textBaseline='top';
-    ctx.fillText(xv.toFixed(1),xp,pT+ph+6);
-    ctx.beginPath();ctx.strokeStyle=axisCol;ctx.lineWidth=1;
-    ctx.moveTo(xp,pT+ph);ctx.lineTo(xp,pT+ph+4);ctx.stroke();
+    ctx.fillText(xv.toFixed(1),xp,pT+ph+6*_lMul);
+    ctx.beginPath();ctx.strokeStyle=axisCol;ctx.lineWidth=1*_lMul;
+    ctx.moveTo(xp,pT+ph);ctx.lineTo(xp,pT+ph+4*_lMul);ctx.stroke();
   });
 
   // Axis border
-  ctx.beginPath();ctx.strokeStyle=axisCol;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.strokeStyle=axisCol;ctx.lineWidth=1.5*_lMul;
   ctx.moveTo(pL,pT);ctx.lineTo(pL,pT+ph);ctx.lineTo(pL+pw,pT+ph);ctx.stroke();
 
   // Axis titles
   ctx.save();ctx.translate(14,pT+ph/2);ctx.rotate(-Math.PI/2);
-  ctx.fillStyle=textCol;ctx.font=`${fSz+0.5}px 'IBM Plex Sans',sans-serif`;
+  ctx.fillStyle=textCol;ctx.font=`${(fSz+0.5)*_fMul}px 'IBM Plex Sans',sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='middle';
   const _cvAt=window._lastAnalysisParams?.assayType||window._lastAssayType||'';
   ctx.fillText(_cvAt==='gain'?'Signal (a.u.)':window._lastAnalysisParams?.skipNorm?'Signal (raw)':'Signal (% DMSO)',0,0);ctx.restore();
-  ctx.fillStyle=textCol;ctx.font=`${fSz+0.5}px 'IBM Plex Sans',sans-serif`;
+  ctx.fillStyle=textCol;ctx.font=`${(fSz+0.5)*_fMul}px 'IBM Plex Sans',sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='top';
-  ctx.fillText('log₁₀[concentration, M]',pL+pw/2,pT+ph+28);
+  ctx.fillText('log₁₀[concentration, M]',pL+pw/2,pT+ph+28*_fMul);
 
   // Draw each compound
   // Draw each compound
@@ -6629,7 +6644,7 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
     }
     const col=(cfg.palette&&cfg.palette[ci])||CV_PALETTE[ci%CV_PALETTE.length];
     const lStyle=CV_LINE_STYLES[cfg.lineStyle||'solid']||[];
-    const ptSz=cfg.pointSize||5;
+    const ptSz=(cfg.pointSize||5)*_pMul;
     const hook_concs=r._hook_concs||[]; // multi-hook
 
     // ── SD rendering ──
@@ -6648,7 +6663,7 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
     ctx.save();
     ctx.beginPath();
     if(lStyle.length) ctx.setLineDash(lStyle);
-    ctx.strokeStyle=col;ctx.lineWidth=compounds.length>1?2:2.5;ctx.lineJoin='round';
+    ctx.strokeStyle=col;ctx.lineWidth=(compounds.length>1?2:2.5)*_lMul;ctx.lineJoin='round';
     for(let i=0;i<=150;i++){
       const x=xlo+(xhi-xlo)*i/150;
       const yv=py(fpl(r,x));
@@ -6759,21 +6774,21 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   const title=compounds.length===1
     ? `${compounds[0].Sample_ID}  ·  ${compounds[0].Protein}`
     : `${compounds.length} compounds`;
-  ctx.fillStyle=textCol;ctx.font=`500 ${fSz+1}px 'IBM Plex Sans',sans-serif`;
+  ctx.fillStyle=textCol;ctx.font=`${_titleW} ${(fSz+1)*_fMul}px 'IBM Plex Sans',sans-serif`;
   ctx.textAlign='left';ctx.textBaseline='top';
   ctx.fillText(title,pL,7);
 
   // Compare legend
   if(compounds.length>1){
-    let lx=pL, ly=pT+ph+38;
+    let lx=pL, ly=pT+ph+38*_fMul;
     compounds.forEach((r,ci)=>{
       const col=CV_PALETTE[ci%CV_PALETTE.length];
-      ctx.fillStyle=col;ctx.fillRect(lx,ly,16,3);
-      ctx.fillStyle=textCol;ctx.font=`${fSz*0.9}px 'IBM Plex Sans',sans-serif`;
+      ctx.fillStyle=col;ctx.fillRect(lx,ly,16*_legMul,3*_legMul);
+      ctx.fillStyle=textCol;ctx.font=`${fSz*0.9*_legMul}px 'IBM Plex Sans',sans-serif`;
       ctx.textAlign='left';ctx.textBaseline='middle';
       const lbl=r.Sample_ID.length>16?r.Sample_ID.slice(0,15)+'…':r.Sample_ID;
-      ctx.fillText(lbl,lx+20,ly+1.5);
-      lx+=Math.min(160, ctx.measureText(lbl).width+30);
+      ctx.fillText(lbl,lx+20*_legMul,ly+1.5*_legMul);
+      lx+=Math.min(160*_legMul, ctx.measureText(lbl).width+30*_legMul);
       if(lx>pL+pw-80){lx=pL;ly+=14;}
     });
   }
