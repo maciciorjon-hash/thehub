@@ -253,8 +253,20 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 66: Iceberg mobile audit + fixes)
-Hub apps: 9. Version v1.0.32.
+Last session: 2026-06-12 (Round 67: Cross-app mobile polish — all 8 remaining apps)
+Hub apps: 9. Version v1.0.33.
+Mobile media queries appended to each app's CSS (only ADDED rules; existing untouched; per-app selectors confirmed via grep before emitting):
+- Labcyte_Echo/labcyte_echo.html @ line 385: header chrome tighten, .outer-tabs horizontal scroll, .setup-overlay/card → full-screen on mobile, .setup-2col → 1-col, .scatter-toolbar/.cv-toolbar/.plate-toolbar wrap, .stbtn min-height 32px, .mcard 2-up then full-width, .props-table tighter padding, .field input 36px min-height. (hover:none) kills hover transforms on .stbtn/.outer-tab/.mcard.
+- Labmate/labmate.html @ line ~1781: .header-top padding, .section padding cap, .calc-box/.proto-home-card padding tighten, inputs/textareas 38px min-height, .qn-area/.search-wrap full width, .mem-row wrap, .btn/.sb-btn 38px touch + tap-highlight-color none, .mob-nav-btn bumped to 48px min-height (was unset).
+- Plate_Designer/plate_designer.html @ line 175: header/tabs scrollable, .top-bar wraps, .fmt-pill/.type-btn touch sizing, .plate-scroll-area/.plate-canvas-wrap responsive, .gd-layout 1-col on mobile, .gd-ctrl/.gd-preview stack, .sel-toolbar adapts, .hist-wrap stack, .guide-panel sized, .btn 36px.
+- LDI/ldi.html @ line 209: header tighten, .tabs-bar scroll, .tab-btn 38px, .card padding tighten, .params-strip wraps, .charts-row 1-col, .stat-grid 2-col, .thresh-row wraps, generic input/select 36px. (Note: file was post-modified by linter; mobile block intact.)
+- Helix/helix.html @ line 176: header/tabs scrollable, .row 1-col, .tools-grid/.vec-grid 1-col, .vec-card padding, .vec-map-wrap responsive, #vec-modal full-screen, .stat-table tighter, .seq-disp tighter, .range-wrap full width, .opts-panel right:8px;left:8px on mobile, .btn/.copy-btn 36px.
+- Degradation_Explorer/degradation_visualizer.html @ line 261: header tighten, .tab scroll, .chart-container responsive, .scatter-controls wrap, .props-table-scroll horizontal scroll with min-width 560px on .props-tbl, .detail-grid 1-col, .btn/.btn-theme/.pt-btn 36px, .load-panel responsive.
+- Spectra/spectra.html @ line 253: header tighten, .tabs scroll, .tab-indicator tracks, .card padding, .row 1-col, .res-grid 1-col, .res-item padding, .plate-upload-zone responsive, .plate-wrap/.plate-table-wrap responsive scroll, .curve-canvas-wrap responsive, .heatmap-legend wraps, .ratio-result-row wraps, .std-table tighter, .field 36px.
+- Protein_Tools/protein_tools.html @ line 155: header/.app-name/.app-sub tighten, .tab-indicator, .card padding, .res-grid 1-col, .conc-row wraps, .chart-wrap responsive, .ti-search-row/.ti-cols/.ti-col stack, #struct-viewer-card min-height:340px (NOT 100vh — header overlap), #struct-ngl-viewport min-height:280px, .pep-table tighter, .opts-panel right:8px;left:8px.
+All 10 source HTMLs pass node --check after edits. embed.py rebuild succeeded: 9/9 base64 replacements, 0 placeholders.
+
+Previous session: 2026-06-12 (Round 66: Iceberg mobile; v1.0.32)
 Iceberg (Cryostorage/cryostorage.html) mobile polish:
 - Two media-query blocks added at end of <style>: @media (max-width:720px) and @media (max-width:420px), plus @media (hover:none) for touch.
 - 720px breakpoint: header padding/font tightened, subtitle ellipsised; tabs padding/height reduced; tab-pane padding 24→14; toolbar tb-search drops to its own row (order:99, flex-basis:100%); view-tabs margin-left:0; stats-row 2-col; rack/box padding tightened; box grid minmax 130; detail-overlay padding 0 + card full-viewport (height:100vh, border-radius:0) so modal feels native; modal-overlay same treatment; vial-form collapses to 1-col with .span2 fields normalised; icon-btn bumped 26→34 for thumb tap targets; well-grid-wrap gets overflow-x:auto + -webkit-overflow-scrolling:touch so wide grids scroll; .well gets touch-action:manipulation to suppress 300ms double-tap zoom.
