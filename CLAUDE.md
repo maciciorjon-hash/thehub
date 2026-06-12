@@ -253,8 +253,14 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 60: Echo 4PL revert + 5 Ryan UX fixes)
-Hub apps: 8. Version v1.0.26.
+Last session: 2026-06-12 (Round 61: Echo Flagged scope, Plate Flag per-assay, Curves square)
+Hub apps: 8. Version v1.0.27.
+Echo (labcyte_echo.html):
+- Flagged checkbox in multi-assay (line ~3993): now scoped to ONLY the assays currently shown on the scatter's X/Y axes. Extract assay prefix from xKeyRaw/yKeyRaw; filter on `<assay>::Flag === 'Yes'` for those specific assays. A compound flagged in a different (not-plotted) assay no longer hides.
+- Plate "Colour by Flag status" (drawPlateCanvas, line ~7407): _plateFlagMap rebuilt as {sampleId: {assayType: flag}} instead of flat {sampleId: flag} (which lost data when scatterData iteration overwrote across assays — every plate ended up showing the last-iterated assay's flag). Each plate now resolves its own assay type via window._lastAnalysisParams.matConfigs (matching by prefix), then looks up the correct flag. Single-assay falls back to '_' key. Plate legend at line ~7564 gained a 'flag' mode case (Flagged red, Passed green, Control teal, No fit grey).
+- Curves canvas (line 286 + line ~5987): wrap now centers contents; #cv-canvas uses aspect-ratio:1/1 with max-width/max-height:100% so the canvas renders as a square (previously stretched to fill the wrap's full 16:9-ish rectangle, making curves look shallow).
+
+Previous session: 2026-06-12 (Round 60: 4PL revert + 5 fixes; v1.0.26)
 Echo (labcyte_echo.html):
 - 4PL fitter rolled back to v0.9.96 behaviour: _lmFit uses max(|Δp|) < 1e-8 convergence + 200 iters; λ factor /3 ×3; runAnalysisJS bounds restored to safety guardrails (Bottom [-20,100], Hill [0.1,5.0], LogEC50 [xMin-1,xMax+1], Top [50,200] when free); fit4PL_JS interactive editor mirrors. User reported the Prism-matching push (v1.0.16/20/21) made the curves look worse. Audit blocks in Protocol tab + XLSX restored to v0.9.96 wording.
 - Curve PDF picker: generateAndDownloadCurvePDFs at line ~5649 now opens a modal listing distinct (assay, protein) groups with checkboxes. Single-group runs skip the modal. generateCurvePDFs groups by (_assayType, Protein) in multi-assay mode (was Protein only), so each PDF covers ONE curve type. Filenames include assay (Results_<assay>_<assayType>_<protein>.pdf). Page title also includes assay type.

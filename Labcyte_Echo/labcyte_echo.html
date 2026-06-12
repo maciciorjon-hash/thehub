@@ -283,7 +283,8 @@ tr:hover td{background:var(--surface2);}
 .cv-stats{display:flex;gap:18px;padding:10px 20px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;flex-wrap:wrap;}
 .cv-stat .csl{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:1px;}
 .cv-stat .csv{font-size:15px;font-weight:500;color:var(--text);}
-.cv-canvas-wrap{flex:1;min-height:0;overflow:hidden;position:relative;}
+.cv-canvas-wrap{flex:1;min-height:0;overflow:hidden;position:relative;display:flex;align-items:center;justify-content:center;}
+#cv-canvas{aspect-ratio:1/1;max-width:100%;max-height:100%;width:auto;height:auto;}
 /* CURVE SIDE PANEL */
 #curve-panel{position:absolute;top:0;right:0;width:clamp(360px,45%,620px);height:100%;background:var(--surface);border-left:1px solid var(--border);display:none;flex-direction:column;z-index:10;box-shadow:-4px 0 20px rgba(0,0,0,.22);}
 #curve-panel.open{display:flex;}
@@ -4008,7 +4009,15 @@ function buildScatterChart() {
   let rows = _usePivot ? _buildMultiAssayPivot(scatterData) : scatterData;
   if (!showFlags) {
     if (_usePivot) {
-      rows = rows.filter(r => !Object.keys(r).some(k => k.endsWith('::Flag') && r[k] === 'Yes'));
+      // Only filter on the Flag columns of the assays currently plotted on X/Y.
+      // A compound flagged in a different assay shouldn't disappear from this view.
+      const _flagKeys = [];
+      if (xKeyRaw.includes('::')) _flagKeys.push(xKeyRaw.split('::')[0] + '::Flag');
+      if (yKeyRaw.includes('::')) {
+        const _yk = yKeyRaw.split('::')[0] + '::Flag';
+        if (!_flagKeys.includes(_yk)) _flagKeys.push(_yk);
+      }
+      if (_flagKeys.length) rows = rows.filter(r => !_flagKeys.some(k => r[k] === 'Yes'));
     } else {
       rows = rows.filter(r => r.Flag !== 'Yes');
     }
@@ -5976,7 +5985,7 @@ function renderCurvesTab(data) {
   </div>
 
   <!-- MAIN CANVAS -->
-  <div class="cv-canvas-wrap"><canvas id="cv-canvas" style="width:100%;height:100%;display:block;"></canvas></div>
+  <div class="cv-canvas-wrap"><canvas id="cv-canvas" style="display:block;"></canvas></div>
 
   <!-- STATS / LEGEND ROW -->
   <div class="cv-stats" id="cv-stats"></div>
@@ -7472,22 +7481,38 @@ function drawPlateCanvas(bc) {
       } else if (mode==='conc') {
         fillColor = concColor(w.c);
       } else { // flag — compound-level Flag status from 4PL fit results
+        // Build {Sample_ID: {assayType: flag}} so each plate uses ITS assay's flag,
+        // not the last-iterated assay (which previously made most plates look red).
         if (!window._plateFlagMap && Array.isArray(scatterData)) {
           window._plateFlagMap = {};
-          scatterData.forEach(r => { if (r.Sample_ID) window._plateFlagMap[r.Sample_ID] = r.Flag; });
+          scatterData.forEach(r => {
+            if (!r.Sample_ID) return;
+            if (!window._plateFlagMap[r.Sample_ID]) window._plateFlagMap[r.Sample_ID] = {};
+            window._plateFlagMap[r.Sample_ID][r._assayType || '_'] = r.Flag;
+          });
         }
-        const fmap = window._plateFlagMap || {};
+        // Resolve which assay this plate barcode belongs to (multi-assay) via matConfigs prefixes.
+        const _bcAssay = (function(){
+          const cfgs = window._lastAnalysisParams?.matConfigs;
+          if (!cfgs) return '_';
+          const _bcLow = String(bc||'').toLowerCase();
+          for (const mc of cfgs) {
+            if (!mc.prefix) continue;
+            if (_bcLow.startsWith(String(mc.prefix).toLowerCase())) return mc.type;
+          }
+          for (const mc of cfgs) { if (!mc.prefix) return mc.type; }
+          return '_';
+        })();
+        const _flags = window._plateFlagMap?.[w.s];
+        const flag = _flags ? (_flags[_bcAssay] ?? _flags['_']) : undefined;
         if (!w.s) {
           fillColor = isDark?'#2a2f42':'#dde0ec';
+        } else if (flag === 'Yes') {
+          fillColor = isDark?'rgba(255,87,96,0.75)':'rgba(255,80,90,0.70)';
+        } else if (flag === 'No') {
+          fillColor = isDark?'rgba(0,200,150,0.30)':'rgba(0,190,140,0.40)';
         } else {
-          const flag = fmap[w.s];
-          if (flag === 'Yes') {
-            fillColor = isDark?'rgba(255,87,96,0.75)':'rgba(255,80,90,0.70)';
-          } else if (flag) {
-            fillColor = isDark?'rgba(0,200,150,0.30)':'rgba(0,190,140,0.40)';
-          } else {
-            fillColor = isDark?'#2a2f42':'#dde0ec';
-          }
+          fillColor = isDark?'#2a2f42':'#dde0ec';
         }
       }
 
@@ -7562,6 +7587,11 @@ function drawPlateCanvas(bc) {
       legendEl.innerHTML = '<div class="pl-item"><div class="pl-swatch" style="background:rgb(80,220,60);"></div> Low DC50 (potent)</div><div class="pl-item"><div class="pl-swatch" style="background:rgb(255,60,60);"></div> High DC50</div><div class="pl-item"><div class="pl-swatch" style="background:#2a2f42;"></div> No fit</div>';
     } else if (mode==='dmax') {
       legendEl.innerHTML = '<div class="pl-item"><div class="pl-swatch" style="background:hsl(240,70%,42%);"></div> Low Dmax</div><div class="pl-item"><div class="pl-swatch" style="background:hsl(40,70%,42%);"></div> High Dmax</div><div class="pl-item"><div class="pl-swatch" style="background:#2a2f42;"></div> No fit</div>';
+    } else if (mode==='flag') {
+      legendEl.innerHTML = '<div class="pl-item"><div class="pl-swatch" style="background:rgba(255,80,90,0.70);border:1px solid rgba(255,80,90,0.8);"></div> Flagged (QC fail)</div>'
+        + '<div class="pl-item"><div class="pl-swatch" style="background:rgba(0,190,140,0.40);border:1px solid var(--accent3);"></div> Passed</div>'
+        + '<div class="pl-item"><div class="pl-swatch" style="background:rgba(0,200,150,.4);border:1px solid var(--accent3);"></div> Control wells</div>'
+        + '<div class="pl-item"><div class="pl-swatch" style="background:#2a2f42;"></div> No fit / empty</div>';
     } else {
       legendEl.innerHTML = '<div class="pl-item"><div class="pl-swatch" style="background:rgba(0,200,150,.4);border:1px solid var(--accent3);"></div> Control wells</div>';
     }
