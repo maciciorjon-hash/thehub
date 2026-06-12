@@ -253,8 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-11 (Round 56: Changelog reorganised into 0.1-increment bundles)
-Hub apps: 8. Version v1.0.22.
+Last session: 2026-06-12 (Round 57: Echo Setup modal no longer blocks Overview/Gradient)
+Hub apps: 8. Version v1.0.23.
+Echo: openSetupModal (labcyte_echo.html:8885) no longer gates the close buttons on scatterData.length>0 — close (×) and Close buttons always visible, so the modal can be dismissed on first load. switchPanel (line 8256) now auto-hides the setup modal when switching to any panel other than 'analysis' (so Overview and Gradient Planner are immediately usable without the modal blocking them). The modal still auto-opens once on initial load (line 8907) and via the ⚙ Setup re-open button, which is the intended Data Analysis flow.
+
+Previous session: 2026-06-11 (Round 56: Changelog reorganised; v1.0.22)
 hub-shell.html changelog restructured per user request: post-v1.0 entries grouped into 0.1-increment bundles (v1.0 → v1.1 = v1.0.0–v1.0.9; v1.1 → v1.2 = v1.0.10–v1.0.21). Only the current version (v1.0.22) stays as an exact detailed entry. Rolling rule going forward: when a new patch lands, fold the previous "exact" entry into the most recent bundle, OR start a new bundle (v1.2 → v1.3) when patch number crosses the next decade boundary.
 
 Previous session: 2026-06-11 (Round 55: Echo 4PL — "Free" truly unbounded; v1.0.21)
