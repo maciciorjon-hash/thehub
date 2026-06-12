@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Iceberg — Cryostorage inventory</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzAwYWNjMSIvPjx0ZXh0IHg9IjE2IiB5PSIyMyIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSIyMCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkM8L3RleHQ+PC9zdmc+">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
+  --text:#1a1d2e;--text2:#5a5f7a;--text3:#9ca0b8;
+  --accent:#00acc1;--accent2:#0079b9;--accent3:#43a047;--warn:#f0a000;--danger:#e53935;
+  --accent-dim:rgba(0,172,193,0.10);
+  --sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.04);
+  --shadow-sm:0 2px 8px rgba(0,0,0,.06);
+  --shadow-md:0 6px 24px rgba(0,0,0,.09);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.14);
+  --shadow-xl:0 32px 80px rgba(0,0,0,.22);
+  --modal-backdrop:rgba(0,0,0,.45);
+}
+[data-theme="dark"]{
+  --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;
+  --accent-dim:rgba(0,172,193,0.18);
+  --shadow-xs:0 1px 4px rgba(0,0,0,.30);
+  --shadow-sm:0 2px 8px rgba(0,0,0,.40);
+  --shadow-md:0 6px 24px rgba(0,0,0,.50);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.55);
+  --shadow-xl:0 32px 80px rgba(0,0,0,.65);
+  --modal-backdrop:rgba(0,0,0,.65);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow:hidden;display:flex;flex-direction:column;}
+input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
+
+/* HEADER */
+header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;gap:14px;background:var(--surface);height:58px;flex-shrink:0;}
+.logo{width:32px;height:32px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;box-shadow:var(--shadow-xs);}
+.logo svg{width:18px;height:18px;}
+header h1{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+header p{font-size:11px;color:var(--text2);}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-panel{display:none;position:fixed;top:70px;right:18px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:14px 18px;z-index:200;min-width:200px;box-shadow:var(--shadow-md);}
+.opts-panel.open{display:block;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.opts-label{font-size:13px;color:var(--text2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:22px;transition:.2s;border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
+input:checked + .theme-slider{background:var(--accent);border-color:var(--accent);}
+input:checked + .theme-slider:before{transform:translateX(18px);background:var(--surface);}
+
+/* TABS */
+.tabs{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;flex-shrink:0;position:relative;}
+.tab{padding:0 18px;height:42px;border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:color .18s;display:flex;align-items:center;gap:8px;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab .ti{font-size:13px;}
+.tab .tcount{font-size:10px;color:var(--text3);font-family:var(--mono);background:var(--surface2);padding:1px 7px;border-radius:10px;}
+.tab.active .tcount{color:var(--accent);background:var(--accent-dim);}
+
+/* MAIN */
+main{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
+.tab-pane{display:none;flex:1;overflow-y:auto;padding:24px 28px;}
+.tab-pane.active{display:flex;flex-direction:column;animation:fadeIn .25s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px;flex-shrink:0;}
+.tb-search{flex:1;min-width:200px;max-width:380px;position:relative;}
+.tb-search input{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:7px 14px 7px 36px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;transition:border-color .15s;}
+.tb-search input:focus{border-color:var(--accent);}
+.tb-search::before{content:'⚲';position:absolute;left:13px;top:50%;transform:translateY(-50%) rotate(-45deg);color:var(--text3);font-size:14px;}
+.tb-btn{padding:7px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .15s,border-color .15s;white-space:nowrap;}
+.tb-btn:hover{background:var(--surface2);border-color:var(--accent);}
+.tb-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+.tb-btn.primary:hover{filter:brightness(1.08);}
+.tb-btn.danger{color:var(--danger);}
+.tb-btn.danger:hover{background:var(--danger);color:#fff;border-color:var(--danger);}
+.view-tabs{display:flex;background:var(--surface);border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-left:auto;}
+.view-tab{padding:7px 14px;background:none;border:none;color:var(--text2);font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s;}
+.view-tab:hover{background:var(--surface2);color:var(--text);}
+.view-tab.active{background:var(--accent);color:#fff;}
+
+/* STATS */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px;flex-shrink:0;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;transition:border-color .15s,transform .15s;}
+.stat-card:hover{border-color:var(--border2);}
+.stat-lbl{font-size:10px;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:3px;}
+.stat-val{font-size:20px;font-weight:600;color:var(--text);font-family:var(--sans);}
+.stat-sub{font-size:10px;color:var(--text2);margin-top:1px;}
+
+/* RACKS / BOXES (grid view) */
+.racks-wrap{display:flex;flex-direction:column;gap:18px;}
+.rack{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;animation:slideIn .3s ease both;}
+@keyframes slideIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+.rack-hdr{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.rack-name{font-size:14px;font-weight:600;color:var(--text);flex:1;}
+.rack-name[contenteditable="true"]{outline:1px dashed var(--accent);padding:2px 6px;border-radius:4px;}
+.rack-meta{font-size:11px;color:var(--text3);font-family:var(--mono);}
+.rack-actions{display:flex;gap:6px;}
+.icon-btn{background:none;border:1px solid transparent;color:var(--text3);width:26px;height:26px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:12px;transition:background .15s,color .15s,border-color .15s;}
+.icon-btn:hover{background:var(--surface2);color:var(--text);border-color:var(--border);}
+.icon-btn.danger:hover{color:var(--danger);border-color:var(--danger);}
+.boxes-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+.box-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:border-color .18s,transform .12s,box-shadow .18s,background .18s;position:relative;overflow:hidden;}
+.box-card:hover{border-color:var(--accent);background:var(--surface);transform:translateY(-1px);box-shadow:var(--shadow-sm);}
+.box-card:active{transform:scale(.99);}
+.box-card.empty{opacity:.65;}
+.box-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:6px;}
+.box-fill{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;margin-bottom:6px;}
+.box-fill-bar{height:100%;background:var(--accent);transition:width .4s ease,background-color .2s;border-radius:3px;}
+.box-meta{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--text3);font-family:var(--mono);}
+.box-preview{display:grid;gap:1px;margin-top:8px;border-radius:4px;overflow:hidden;background:var(--surface3);padding:2px;}
+.box-preview .pw{width:100%;aspect-ratio:1;border-radius:1px;background:var(--surface3);}
+.box-preview .pw.filled{background:var(--accent);opacity:.7;}
+
+/* BOX DETAIL VIEW */
+.detail-overlay{position:fixed;inset:0;background:var(--modal-backdrop);z-index:200;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(3px);animation:fadeIn .2s;}
+.detail-overlay.open{display:flex;}
+.detail-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:880px;max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:var(--shadow-xl);overflow:hidden;animation:popIn .25s cubic-bezier(.16,.84,.44,1);}
+@keyframes popIn{from{opacity:0;transform:scale(.96);}to{opacity:1;transform:none;}}
+.detail-hdr{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;flex-shrink:0;}
+.detail-title{font-size:15px;font-weight:600;flex:1;display:flex;align-items:center;gap:10px;}
+.detail-name{cursor:text;}
+.detail-name[contenteditable="true"]{outline:1px dashed var(--accent);padding:2px 6px;border-radius:4px;}
+.detail-sub{font-size:11px;color:var(--text3);font-family:var(--mono);}
+.detail-close{background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:4px 8px;}
+.detail-close:hover{color:var(--text);}
+.detail-body{flex:1;overflow-y:auto;padding:20px 24px;}
+.detail-toolbar{padding:0 24px 14px;display:flex;gap:8px;flex-wrap:wrap;}
+
+/* WELL GRID */
+.well-grid-wrap{display:flex;justify-content:center;padding:6px;}
+.well-grid{display:grid;gap:6px;}
+.well-corner{font-size:9px;color:var(--text3);font-family:var(--mono);}
+.well-rowlbl,.well-collbl{font-size:10px;color:var(--text2);font-family:var(--mono);font-weight:600;display:flex;align-items:center;justify-content:center;}
+.well{aspect-ratio:1;border-radius:50%;border:1.5px solid var(--border2);background:var(--surface2);cursor:pointer;transition:transform .12s,box-shadow .15s,border-color .15s;position:relative;}
+.well.filled{border-color:var(--text3);}
+.well:hover{transform:scale(1.18);box-shadow:0 0 0 2px var(--accent-dim);border-color:var(--accent);z-index:5;}
+.well.selected{box-shadow:0 0 0 2px var(--accent);border-color:var(--accent);}
+
+/* TOOLTIP */
+.tt-card{position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--text);max-width:280px;box-shadow:var(--shadow-md);z-index:300;pointer-events:none;opacity:0;transition:opacity .12s;}
+.tt-card.show{opacity:1;}
+.tt-row{display:flex;align-items:baseline;gap:8px;font-size:11px;color:var(--text2);margin:2px 0;}
+.tt-key{color:var(--text3);min-width:60px;font-size:10px;letter-spacing:.5px;text-transform:uppercase;}
+.tt-val{color:var(--text);font-weight:500;}
+.tt-line{height:1px;background:var(--border);margin:6px 0;}
+.tt-cell{font-size:14px;font-weight:600;margin-bottom:4px;}
+
+/* VIAL FORM */
+.vial-form{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;}
+.vial-form.full{grid-template-columns:1fr;}
+.field{display:flex;flex-direction:column;gap:4px;}
+.field.span2{grid-column:span 2;}
+.field label{font-size:10.5px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;font-weight:500;}
+.field input,.field select,.field textarea{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;transition:border-color .15s,background .15s;}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);background:var(--surface);}
+.field textarea{min-height:60px;font-family:var(--sans);resize:vertical;}
+.field input[type="date"]{font-family:var(--mono);}
+.field .hint{font-size:10px;color:var(--text3);margin-top:1px;}
+
+/* TABLE VIEW */
+.table-wrap{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:auto;min-height:0;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead{background:var(--surface2);position:sticky;top:0;z-index:2;}
+thead th{padding:8px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s;}
+thead th:hover{color:var(--text);}
+thead th.sorted{color:var(--accent);}
+tbody td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text);}
+tbody tr{transition:background .12s;cursor:pointer;}
+tbody tr:hover{background:var(--surface2);}
+.cell-pos{font-family:var(--mono);font-size:11.5px;color:var(--text2);}
+.cell-cl{display:inline-flex;align-items:center;gap:6px;font-weight:500;}
+.cell-cl .sw{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:1px solid var(--border);}
+.cell-passage{font-family:var(--mono);font-size:11.5px;color:var(--text2);}
+.cell-date{font-family:var(--mono);font-size:11px;color:var(--text2);}
+.cell-actions{text-align:right;white-space:nowrap;}
+.cell-actions button{background:none;border:1px solid transparent;color:var(--text3);padding:3px 8px;font-size:11px;border-radius:5px;cursor:pointer;transition:background .12s,color .12s,border-color .12s;}
+.cell-actions button:hover{background:var(--surface3);color:var(--text);border-color:var(--border);}
+.cell-actions button.danger:hover{color:var(--danger);border-color:var(--danger);}
+
+/* EMPTY STATES */
+.empty-state{padding:60px 20px;text-align:center;color:var(--text3);animation:fadeIn .4s;}
+.empty-state .ei{font-size:38px;margin-bottom:14px;display:block;}
+.empty-state h3{font-size:14px;font-weight:600;color:var(--text2);margin-bottom:6px;}
+.empty-state p{font-size:12px;line-height:1.6;max-width:380px;margin:0 auto 16px;}
+
+/* MODALS */
+.modal-overlay{position:fixed;inset:0;background:var(--modal-backdrop);z-index:400;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(3px);animation:fadeIn .2s;}
+.modal-overlay.open{display:flex;}
+.modal-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:560px;max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:var(--shadow-xl);overflow:hidden;animation:popIn .25s cubic-bezier(.16,.84,.44,1);}
+.modal-hdr{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;}
+.modal-title{font-size:14px;font-weight:600;flex:1;}
+.modal-body{padding:18px 22px;overflow-y:auto;}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;}
+.tb-btn.lg{padding:8px 18px;font-size:13px;}
+
+/* LEGEND */
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.legend-item{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);}
+.legend-sw{width:10px;height:10px;border-radius:50%;border:1px solid var(--border);}
+
+/* TOAST */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--surface);padding:9px 18px;border-radius:20px;font-size:12px;font-family:var(--sans);box-shadow:var(--shadow-md);z-index:500;opacity:0;transition:opacity .2s,transform .25s;pointer-events:none;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+::-webkit-scrollbar-thumb:hover{background:var(--border2);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19M12 2l-2 3M12 2l2 3M12 22l-2-3M12 22l2-3M2 12l3-2M2 12l3 2M22 12l-3-2M22 12l-3 2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div>
+    <h1>Iceberg</h1>
+    <p id="hdr-sub">Cryostorage inventory &mdash; you only see the boxes, the data goes deeper</p>
+  </div>
+  <div class="hdr-right">
+    <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
+  </div>
+</header>
+<div class="opts-panel" id="opts-panel">
+  <div class="opts-row">
+    <span class="opts-label">Theme</span>
+    <label class="theme-switch">
+      <input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()">
+      <span class="theme-slider"></span>
+    </label>
+  </div>
+  <div class="opts-row" style="margin-top:10px;">
+    <button class="tb-btn" style="width:100%;justify-content:center;" onclick="exportAllXLSX()">Export all (.xlsx)</button>
+  </div>
+  <div class="opts-row" style="margin-top:8px;">
+    <button class="tb-btn" style="width:100%;justify-content:center;" onclick="importXLSXBtn()">Import (.xlsx / .csv)</button>
+  </div>
+  <div class="opts-row" style="margin-top:8px;">
+    <button class="tb-btn danger" style="width:100%;justify-content:center;" onclick="clearAllData()">Clear all data&hellip;</button>
+  </div>
+  <input type="file" id="import-file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importXLSX(this.files[0])">
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="minus80" onclick="switchTab('minus80')">
+    <span class="ti">&#10052;</span><span>&minus;80&deg;C</span><span class="tcount" id="tc-minus80">0</span>
+  </button>
+  <button class="tab" data-tab="n2" onclick="switchTab('n2')">
+    <span class="ti">&#127777;</span><span>Liquid N&#8322;</span><span class="tcount" id="tc-n2">0</span>
+  </button>
+</div>
+
+<main>
+  <div class="tab-pane active" id="pane-minus80" data-store="minus80"></div>
+  <div class="tab-pane" id="pane-n2" data-store="n2"></div>
+</main>
+
+<!-- BOX DETAIL OVERLAY -->
+<div class="detail-overlay" id="detail-overlay" onclick="if(event.target===this)closeBoxDetail()">
+  <div class="detail-card">
+    <div class="detail-hdr">
+      <div class="detail-title">
+        <span style="font-size:18px;">&#128190;</span>
+        <span class="detail-name" id="detail-box-name" contenteditable="false">Box</span>
+        <span class="detail-sub" id="detail-box-meta"></span>
+      </div>
+      <button class="icon-btn" onclick="renameBoxStart()" title="Rename">&#9998;</button>
+      <button class="icon-btn danger" onclick="deleteBoxFromDetail()" title="Delete box">&#128465;</button>
+      <button class="detail-close" onclick="closeBoxDetail()">&times;</button>
+    </div>
+    <div class="detail-toolbar">
+      <button class="tb-btn primary" onclick="openAddVial()">+ Add vial</button>
+      <button class="tb-btn" onclick="openBulkAdd()">Bulk add (paste)</button>
+      <span style="flex:1;"></span>
+      <span class="detail-sub" id="detail-box-fill"></span>
+    </div>
+    <div class="detail-body" id="detail-body"></div>
+  </div>
+</div>
+
+<!-- ADD/EDIT VIAL MODAL -->
+<div class="modal-overlay" id="vial-modal" onclick="if(event.target===this)closeVialModal()">
+  <div class="modal-card">
+    <div class="modal-hdr">
+      <div class="modal-title" id="vial-modal-title">Add vial</div>
+      <button class="detail-close" onclick="closeVialModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="vial-form" class="vial-form" onsubmit="event.preventDefault();saveVial();">
+        <div class="field">
+          <label>Position</label>
+          <input type="text" id="vf-pos" placeholder="A1" required pattern="[A-H][0-9]{1,2}" style="text-transform:uppercase;font-family:var(--mono);">
+          <span class="hint">Row letter + column number (e.g. A1, B12)</span>
+        </div>
+        <div class="field">
+          <label>Cell line *</label>
+          <input type="text" id="vf-cl" list="cl-suggestions" placeholder="HeLa, U2OS, HEK293T&hellip;" required>
+          <datalist id="cl-suggestions"></datalist>
+        </div>
+        <div class="field">
+          <label>Passage number</label>
+          <input type="text" id="vf-passage" placeholder="P12">
+        </div>
+        <div class="field">
+          <label>Freeze date</label>
+          <input type="date" id="vf-date">
+        </div>
+        <div class="field span2">
+          <label>Freezing media</label>
+          <input type="text" id="vf-fmedia" placeholder="e.g. DMEM + 10% FBS + 10% DMSO">
+        </div>
+        <div class="field span2">
+          <label>Culture media / conditions</label>
+          <input type="text" id="vf-culture" placeholder="e.g. DMEM + 10% FBS + 1% P/S, 37&deg;C 5% CO&#8322;">
+        </div>
+        <div class="field">
+          <label>Frozen by</label>
+          <input type="text" id="vf-by" placeholder="initials">
+        </div>
+        <div class="field">
+          <label>Vials at this position</label>
+          <input type="number" id="vf-count" value="1" min="1">
+        </div>
+        <div class="field span2">
+          <label>Notes</label>
+          <textarea id="vf-notes" placeholder="Anything else&hellip;"></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button class="tb-btn lg danger" id="vf-delete-btn" style="margin-right:auto;display:none;" onclick="deleteVial()">Delete</button>
+      <button class="tb-btn lg" onclick="closeVialModal()">Cancel</button>
+      <button class="tb-btn lg primary" onclick="saveVial()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK ADD MODAL -->
+<div class="modal-overlay" id="bulk-modal" onclick="if(event.target===this)closeBulkAdd()">
+  <div class="modal-card">
+    <div class="modal-hdr">
+      <div class="modal-title">Bulk add vials</div>
+      <button class="detail-close" onclick="closeBulkAdd()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:10px;">
+        One vial per line. Tab- or comma-separated. Columns:
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Position</code>
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Cell line</code>
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Passage</code>
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Freeze date</code>
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Freezing media</code>
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Culture</code>
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Frozen by</code>
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Vials</code>
+        <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 6px;border-radius:3px;">Notes</code>
+        — first line can be the header (auto-detected).
+      </p>
+      <textarea id="bulk-text" placeholder="A1&#9;HeLa&#9;P12&#9;2026-01-15&#9;DMEM+10%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;2&#9;
+A2&#9;HeLa&#9;P12&#9;2026-01-15&#9;DMEM+10%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;2&#9;
+B1&#9;U2OS&#9;P8&#9;2026-02-03&#9;DMEM+15%FBS+10%DMSO&#9;DMEM+10%FBS&#9;JM&#9;1&#9;" style="width:100%;min-height:200px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.6;outline:none;resize:vertical;"></textarea>
+      <div id="bulk-preview" style="margin-top:10px;font-size:11px;color:var(--text3);font-family:var(--mono);"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tb-btn lg" onclick="closeBulkAdd()">Cancel</button>
+      <button class="tb-btn lg primary" onclick="bulkAddCommit()">Add vials</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD RACK MODAL -->
+<div class="modal-overlay" id="rack-modal" onclick="if(event.target===this)closeRackModal()">
+  <div class="modal-card" style="max-width:420px;">
+    <div class="modal-hdr">
+      <div class="modal-title" id="rack-modal-title">Add rack</div>
+      <button class="detail-close" onclick="closeRackModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="vial-form full">
+        <div class="field">
+          <label>Rack name</label>
+          <input type="text" id="rf-name" placeholder="Shelf 1 / Tower A / Drawer 2" autocomplete="off">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="tb-btn lg" onclick="closeRackModal()">Cancel</button>
+      <button class="tb-btn lg primary" onclick="saveRack()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD BOX MODAL -->
+<div class="modal-overlay" id="box-modal" onclick="if(event.target===this)closeBoxModal()">
+  <div class="modal-card" style="max-width:460px;">
+    <div class="modal-hdr">
+      <div class="modal-title">Add box</div>
+      <button class="detail-close" onclick="closeBoxModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="vial-form">
+        <div class="field span2">
+          <label>Box name</label>
+          <input type="text" id="bf-name" placeholder="Box-001" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Rows</label>
+          <input type="number" id="bf-rows" value="8" min="1" max="16">
+        </div>
+        <div class="field">
+          <label>Columns</label>
+          <input type="number" id="bf-cols" value="12" min="1" max="24">
+          <span class="hint">8 &times; 12 = 96-well standard</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="tb-btn lg" onclick="closeBoxModal()">Cancel</button>
+      <button class="tb-btn lg primary" onclick="saveBox()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="tt-card" id="tt-card"></div>
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+//  CRYOSTORAGE — frozen cell line inventory
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Theme: shared with Hub via hub_theme key.
+(function(){
+  try {
+    var t = localStorage.getItem('hub_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', t);
+    var chk = document.getElementById('theme-toggle-chk');
+    if (chk) chk.checked = (t === 'dark');
+  } catch(e) {}
+  // Click-outside dismisses the opts panel.
+  document.addEventListener('click', function(e){
+    var p = document.getElementById('opts-panel');
+    if (p && p.classList.contains('open') && !p.contains(e.target) && e.target.id !== 'opts-btn') p.classList.remove('open');
+  });
+})();
+function toggleTheme(){
+  var html = document.documentElement;
+  var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  try { localStorage.setItem('hub_theme', next); } catch(e) {}
+}
+function toggleOpts(){ document.getElementById('opts-panel').classList.toggle('open'); }
+
+// ─── STATE ────────────────────────────────────────────────────────────────
+var STORAGE_KEY = 'cryo_state_v1';
+var state = {
+  v: 1,
+  storages: {
+    minus80: { label: '−80°C', racks: [] },
+    n2:      { label: 'Liquid N₂', racks: [] }
+  },
+  cellLineColors: {}, // 'HeLa' -> '#hex'
+  view: 'grid', // 'grid' | 'table'
+  search: ''
+};
+var currentTab = 'minus80';
+var currentBoxDetail = null; // {storage, rackId, boxId}
+var editingVialPos = null;   // string position when editing
+
+function saveState(){
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+function loadState(){
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      var s = JSON.parse(raw);
+      if (s && s.storages) { state = Object.assign(state, s); state.view = state.view || 'grid'; }
+    }
+  } catch(e) {}
+}
+function uid(){ return 'id-' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
+
+// ─── COLOR (cell-line hashing) ────────────────────────────────────────────
+var _hueCache = {};
+function cellLineColor(name){
+  if (!name) return 'var(--text3)';
+  if (state.cellLineColors[name]) return state.cellLineColors[name];
+  if (_hueCache[name]) return _hueCache[name];
+  var h = 0;
+  for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var col = 'hsl(' + h + ', ' + (isDark ? '55%, 58%' : '55%, 52%') + ')';
+  _hueCache[name] = col;
+  return col;
+}
+function clearColorCache(){ _hueCache = {}; }
+
+// ─── TAB SWITCHING ────────────────────────────────────────────────────────
+function switchTab(tab){
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab === tab); });
+  document.querySelectorAll('.tab-pane').forEach(function(p){ p.classList.toggle('active', p.dataset.store === tab); });
+  document.getElementById('hdr-sub').textContent = state.storages[tab].label + ' inventory';
+  renderTab(tab);
+}
+// External postMessage hook (Hub deep-links)
+window.addEventListener('message', function(e){
+  if (!e.data || e.data.type !== 'switchTab' || !e.data.tab) return;
+  try { switchTab(e.data.tab); } catch(_){}
+});
+
+// ─── RENDER TAB ───────────────────────────────────────────────────────────
+function renderTab(tab){
+  var pane = document.querySelector('.tab-pane[data-store="' + tab + '"]');
+  if (!pane) return;
+  var s = state.storages[tab];
+  var stats = computeStats(tab);
+  var html = '';
+
+  // Toolbar
+  html += '<div class="toolbar">'
+        + '<button class="tb-btn primary" onclick="openAddRack()">+ Rack</button>'
+        + (s.racks.length ? '<button class="tb-btn" onclick="openAddBox()">+ Box</button>' : '')
+        + '<div class="tb-search"><input id="search-' + tab + '" type="text" placeholder="Search cell line, position, notes…" oninput="onSearch(this.value)" value="' + esc(state.search) + '"></div>'
+        + '<div class="view-tabs">'
+        +   '<button class="view-tab ' + (state.view === 'grid' ? 'active' : '') + '" onclick="setView(\'grid\')">Boxes</button>'
+        +   '<button class="view-tab ' + (state.view === 'table' ? 'active' : '') + '" onclick="setView(\'table\')">Table</button>'
+        + '</div>'
+        + '</div>';
+
+  // Stats
+  html += '<div class="stats-row">'
+        + '<div class="stat-card"><div class="stat-lbl">Vials</div><div class="stat-val">' + stats.totalVials + '</div><div class="stat-sub">across ' + stats.boxesUsed + ' / ' + stats.boxes + ' boxes</div></div>'
+        + '<div class="stat-card"><div class="stat-lbl">Cell lines</div><div class="stat-val">' + stats.uniqueCellLines + '</div><div class="stat-sub">' + (stats.topCellLine ? esc(stats.topCellLine) + ' most stored' : '—') + '</div></div>'
+        + '<div class="stat-card"><div class="stat-lbl">Capacity</div><div class="stat-val">' + (stats.capacity ? Math.round(stats.totalVials / stats.capacity * 100) : 0) + '%</div><div class="stat-sub">' + stats.totalVials + ' / ' + stats.capacity + ' wells</div></div>'
+        + '<div class="stat-card"><div class="stat-lbl">Oldest vial</div><div class="stat-val" style="font-size:14px;">' + (stats.oldest ? esc(stats.oldest) : '—') + '</div><div class="stat-sub">' + (stats.oldestAge != null ? stats.oldestAge + ' months ago' : '') + '</div></div>'
+        + '</div>';
+
+  if (!s.racks.length) {
+    html += '<div class="empty-state">'
+          + '<span class="ei">&#10052;</span>'
+          + '<h3>No racks yet</h3>'
+          + '<p>Start by adding a rack (shelf, tower, drawer). Then add boxes and start logging vials. Everything is saved locally in this browser.</p>'
+          + '<button class="tb-btn primary lg" onclick="openAddRack()">+ Add your first rack</button>'
+          + '</div>';
+  } else if (state.view === 'table') {
+    html += renderTableView(tab);
+  } else {
+    html += '<div class="racks-wrap">' + s.racks.map(function(r){ return renderRack(tab, r); }).join('') + '</div>';
+  }
+
+  pane.innerHTML = html;
+  // Refresh datalist on each render
+  refreshCellLineSuggestions();
+  updateTabCounts();
+}
+
+function renderRack(tab, rack){
+  var totalCap = rack.boxes.reduce(function(s, b){ return s + b.rows * b.cols; }, 0);
+  var totalFill = rack.boxes.reduce(function(s, b){ return s + Object.keys(b.vials || {}).length; }, 0);
+  var html = '<div class="rack" data-rack-id="' + rack.id + '">'
+    + '<div class="rack-hdr">'
+    +   '<span class="rack-name" onclick="renameRack(\'' + rack.id + '\')" title="Click to rename">' + esc(rack.name) + '</span>'
+    +   '<span class="rack-meta">' + rack.boxes.length + ' box' + (rack.boxes.length === 1 ? '' : 'es') + ' · ' + totalFill + '/' + totalCap + ' vials</span>'
+    +   '<div class="rack-actions">'
+    +     '<button class="icon-btn" onclick="openAddBox(\'' + rack.id + '\')" title="Add box">+</button>'
+    +     '<button class="icon-btn danger" onclick="deleteRack(\'' + rack.id + '\')" title="Delete rack">&#128465;</button>'
+    +   '</div>'
+    + '</div>';
+  if (rack.boxes.length) {
+    html += '<div class="boxes-grid">' + rack.boxes.map(function(b){ return renderBoxCard(tab, rack.id, b); }).join('') + '</div>';
+  } else {
+    html += '<div style="font-size:12px;color:var(--text3);text-align:center;padding:20px 10px;">No boxes yet — <button class="tb-btn" style="display:inline-flex;" onclick="openAddBox(\'' + rack.id + '\')">+ add one</button></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderBoxCard(tab, rackId, box){
+  var cap = box.rows * box.cols;
+  var vials = box.vials || {};
+  var nFilled = Object.keys(vials).length;
+  var pct = cap ? Math.round(nFilled / cap * 100) : 0;
+  // Tiny preview grid (max 96)
+  var maxPreview = 96;
+  var previewCols = Math.min(box.cols, 12);
+  var previewRows = Math.min(box.rows, 8);
+  var preview = '<div class="box-preview" style="grid-template-columns:repeat(' + previewCols + ',1fr);">';
+  // Dominant cell-line for stripe colour
+  var dominant = computeDominantCellLine(box);
+  var stripeCol = dominant ? cellLineColor(dominant) : 'var(--accent)';
+  for (var r = 0; r < previewRows; r++) {
+    for (var c = 0; c < previewCols; c++) {
+      var pos = String.fromCharCode(65 + r) + (c + 1);
+      var v = vials[pos];
+      var bg = v ? cellLineColor(v.cellLine) : 'var(--surface)';
+      preview += '<div class="pw' + (v ? ' filled' : '') + '" style="background:' + (v ? bg : '') + ';"></div>';
+    }
+  }
+  preview += '</div>';
+  return '<div class="box-card' + (nFilled === 0 ? ' empty' : '') + '" onclick="openBoxDetail(\'' + tab + '\',\'' + rackId + '\',\'' + box.id + '\')">'
+    + '<div class="box-name"><span>' + esc(box.name) + '</span><span class="rack-meta">' + nFilled + '/' + cap + '</span></div>'
+    + '<div class="box-fill"><div class="box-fill-bar" style="width:' + pct + '%;background:' + stripeCol + ';"></div></div>'
+    + preview
+    + '</div>';
+}
+
+function computeDominantCellLine(box){
+  var counts = {};
+  var maxCl = null, maxN = 0;
+  Object.values(box.vials || {}).forEach(function(v){
+    if (!v.cellLine) return;
+    counts[v.cellLine] = (counts[v.cellLine] || 0) + 1;
+    if (counts[v.cellLine] > maxN) { maxN = counts[v.cellLine]; maxCl = v.cellLine; }
+  });
+  return maxCl;
+}
+
+function computeStats(tab){
+  var s = state.storages[tab];
+  var totalVials = 0, capacity = 0, boxes = 0, boxesUsed = 0;
+  var cellLines = {};
+  var oldestDate = null, oldestVial = null;
+  s.racks.forEach(function(r){
+    r.boxes.forEach(function(b){
+      boxes++;
+      capacity += b.rows * b.cols;
+      var n = Object.keys(b.vials || {}).length;
+      if (n > 0) boxesUsed++;
+      totalVials += n;
+      Object.values(b.vials || {}).forEach(function(v){
+        if (v.cellLine) cellLines[v.cellLine] = (cellLines[v.cellLine] || 0) + 1;
+        if (v.freezeDate) {
+          var d = new Date(v.freezeDate);
+          if (!isNaN(d) && (!oldestDate || d < oldestDate)) { oldestDate = d; oldestVial = v.cellLine || ''; }
+        }
+      });
+    });
+  });
+  var topCl = null, topN = 0;
+  Object.keys(cellLines).forEach(function(k){ if (cellLines[k] > topN) { topN = cellLines[k]; topCl = k; } });
+  var oldestStr = oldestDate ? oldestDate.toISOString().slice(0,10) : null;
+  var oldestAge = oldestDate ? Math.round((Date.now() - oldestDate.getTime()) / (30.44 * 24 * 3600 * 1000)) : null;
+  return {
+    totalVials: totalVials,
+    capacity: capacity,
+    boxes: boxes,
+    boxesUsed: boxesUsed,
+    uniqueCellLines: Object.keys(cellLines).length,
+    topCellLine: topCl,
+    oldest: oldestStr,
+    oldestAge: oldestAge
+  };
+}
+
+// ─── TABLE VIEW ────────────────────────────────────────────────────────────
+var tableSort = { col: 'pos', asc: true };
+function setView(v){ state.view = v; saveState(); renderTab(currentTab); }
+function renderTableView(tab){
+  var s = state.storages[tab];
+  var rows = [];
+  s.racks.forEach(function(r){
+    r.boxes.forEach(function(b){
+      Object.keys(b.vials || {}).forEach(function(pos){
+        var v = b.vials[pos];
+        rows.push({
+          rack: r.name, box: b.name, pos: pos,
+          cellLine: v.cellLine || '', passage: v.passage || '',
+          freezeDate: v.freezeDate || '', freezeMedia: v.freezeMedia || '',
+          culture: v.cultureMedia || '', by: v.frozenBy || '',
+          count: v.vialCount || 1, notes: v.notes || '',
+          _box: b, _rackId: r.id, _boxId: b.id
+        });
+      });
+    });
+  });
+  var q = (state.search || '').toLowerCase().trim();
+  if (q) {
+    rows = rows.filter(function(r){
+      return [r.cellLine, r.pos, r.box, r.rack, r.notes, r.freezeMedia, r.culture, r.by].some(function(x){ return String(x).toLowerCase().includes(q); });
+    });
+  }
+  var col = tableSort.col, asc = tableSort.asc;
+  rows.sort(function(a, b){
+    var x = a[col] || '', y = b[col] || '';
+    if (typeof x === 'number' && typeof y === 'number') return asc ? x - y : y - x;
+    return asc ? String(x).localeCompare(String(y)) : String(y).localeCompare(String(x));
+  });
+  if (!rows.length) {
+    return '<div class="empty-state">'
+      + '<span class="ei">&#128203;</span>'
+      + '<h3>' + (q ? 'No matches' : 'No vials yet') + '</h3>'
+      + '<p>' + (q ? 'Try another search term, or clear the search.' : 'Add vials to a box and they\'ll show up here.') + '</p>'
+      + '</div>';
+  }
+  function hdr(key, label){
+    var arr = tableSort.col === key ? (tableSort.asc ? ' ▲' : ' ▼') : '';
+    var cls = tableSort.col === key ? 'sorted' : '';
+    return '<th class="' + cls + '" onclick="sortTable(\'' + key + '\')">' + label + arr + '</th>';
+  }
+  var html = '<div class="table-wrap"><table><thead><tr>'
+    + hdr('rack', 'Rack')
+    + hdr('box', 'Box')
+    + hdr('pos', 'Pos')
+    + hdr('cellLine', 'Cell line')
+    + hdr('passage', 'Passage')
+    + hdr('freezeDate', 'Frozen')
+    + hdr('freezeMedia', 'Freeze media')
+    + hdr('culture', 'Culture')
+    + hdr('by', 'By')
+    + hdr('count', 'Vials')
+    + '<th></th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var col = cellLineColor(r.cellLine);
+    html += '<tr onclick="editVialFromTable(\'' + r._rackId + '\',\'' + r._boxId + '\',\'' + r.pos + '\')">'
+      + '<td>' + esc(r.rack) + '</td>'
+      + '<td>' + esc(r.box) + '</td>'
+      + '<td class="cell-pos">' + esc(r.pos) + '</td>'
+      + '<td class="cell-cl"><span class="sw" style="background:' + col + ';"></span>' + esc(r.cellLine) + '</td>'
+      + '<td class="cell-passage">' + esc(r.passage) + '</td>'
+      + '<td class="cell-date">' + esc(r.freezeDate) + '</td>'
+      + '<td>' + esc(r.freezeMedia) + '</td>'
+      + '<td>' + esc(r.culture) + '</td>'
+      + '<td>' + esc(r.by) + '</td>'
+      + '<td class="cell-passage">' + esc(r.count) + '</td>'
+      + '<td class="cell-actions"><button onclick="event.stopPropagation();editVialFromTable(\'' + r._rackId + '\',\'' + r._boxId + '\',\'' + r.pos + '\')">Edit</button></td>'
+      + '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+function sortTable(col){
+  if (tableSort.col === col) tableSort.asc = !tableSort.asc;
+  else { tableSort.col = col; tableSort.asc = true; }
+  renderTab(currentTab);
+}
+function editVialFromTable(rackId, boxId, pos){
+  openBoxDetail(currentTab, rackId, boxId);
+  setTimeout(function(){ openEditVial(pos); }, 250);
+}
+
+// ─── BOX DETAIL ────────────────────────────────────────────────────────────
+function openBoxDetail(tab, rackId, boxId){
+  currentBoxDetail = { storage: tab, rackId: rackId, boxId: boxId };
+  renderBoxDetail();
+  document.getElementById('detail-overlay').classList.add('open');
+}
+function closeBoxDetail(){
+  document.getElementById('detail-overlay').classList.remove('open');
+  currentBoxDetail = null;
+  renderTab(currentTab);
+}
+function getCurrentBox(){
+  if (!currentBoxDetail) return null;
+  var s = state.storages[currentBoxDetail.storage];
+  var rack = s.racks.find(function(r){ return r.id === currentBoxDetail.rackId; });
+  if (!rack) return null;
+  return rack.boxes.find(function(b){ return b.id === currentBoxDetail.boxId; });
+}
+function renderBoxDetail(){
+  var box = getCurrentBox();
+  if (!box) { closeBoxDetail(); return; }
+  document.getElementById('detail-box-name').textContent = box.name;
+  document.getElementById('detail-box-meta').textContent = box.rows + ' × ' + box.cols;
+  var nFilled = Object.keys(box.vials || {}).length;
+  var cap = box.rows * box.cols;
+  document.getElementById('detail-box-fill').textContent = nFilled + ' / ' + cap + ' filled (' + (cap ? Math.round(nFilled / cap * 100) : 0) + '%)';
+
+  // Grid: top row with column numbers, then rows with letter + wells
+  var rows = box.rows, cols = box.cols;
+  var gridHtml = '<div class="well-grid-wrap"><div class="well-grid" style="grid-template-columns:24px repeat(' + cols + ', minmax(28px, 44px));">';
+  // Header
+  gridHtml += '<div class="well-corner"></div>';
+  for (var c = 1; c <= cols; c++) gridHtml += '<div class="well-collbl">' + c + '</div>';
+  for (var r = 0; r < rows; r++) {
+    var rLetter = String.fromCharCode(65 + r);
+    gridHtml += '<div class="well-rowlbl">' + rLetter + '</div>';
+    for (var c = 1; c <= cols; c++) {
+      var pos = rLetter + c;
+      var v = (box.vials || {})[pos];
+      var bg = v ? cellLineColor(v.cellLine) : 'var(--surface2)';
+      gridHtml += '<div class="well' + (v ? ' filled' : '') + '" data-pos="' + pos + '" style="background:' + bg + ';"></div>';
+    }
+  }
+  gridHtml += '</div></div>';
+
+  // Cell-line legend (top 8)
+  var counts = {};
+  Object.values(box.vials || {}).forEach(function(v){ if (v.cellLine) counts[v.cellLine] = (counts[v.cellLine] || 0) + 1; });
+  var lines = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; }).slice(0, 12);
+  var legend = lines.length
+    ? '<div class="legend">' + lines.map(function(cl){
+        return '<span class="legend-item"><span class="legend-sw" style="background:' + cellLineColor(cl) + ';"></span>' + esc(cl) + ' <span style="color:var(--text3);font-family:var(--mono);">×' + counts[cl] + '</span></span>';
+      }).join('') + '</div>'
+    : '';
+
+  document.getElementById('detail-body').innerHTML = gridHtml + legend;
+
+  // Hover + click handlers on wells
+  document.querySelectorAll('#detail-body .well').forEach(function(el){
+    el.addEventListener('mouseenter', wellHoverEnter);
+    el.addEventListener('mouseleave', wellHoverLeave);
+    el.addEventListener('mousemove', wellHoverMove);
+    el.addEventListener('click', function(){ wellClick(el.dataset.pos); });
+  });
+}
+function wellHoverEnter(e){
+  var pos = e.currentTarget.dataset.pos;
+  var box = getCurrentBox();
+  if (!box) return;
+  var v = (box.vials || {})[pos];
+  var tt = document.getElementById('tt-card');
+  if (!v) {
+    tt.innerHTML = '<div class="tt-cell">' + pos + '</div><div style="color:var(--text3);font-size:11px;">Empty — click to add</div>';
+  } else {
+    var rows = '';
+    rows += '<div class="tt-row"><span class="tt-key">Passage</span><span class="tt-val">' + esc(v.passage || '—') + '</span></div>';
+    rows += '<div class="tt-row"><span class="tt-key">Frozen</span><span class="tt-val">' + esc(v.freezeDate || '—') + '</span></div>';
+    if (v.freezeMedia) rows += '<div class="tt-row"><span class="tt-key">Media</span><span class="tt-val">' + esc(v.freezeMedia) + '</span></div>';
+    if (v.cultureMedia) rows += '<div class="tt-row"><span class="tt-key">Culture</span><span class="tt-val">' + esc(v.cultureMedia) + '</span></div>';
+    if (v.frozenBy) rows += '<div class="tt-row"><span class="tt-key">By</span><span class="tt-val">' + esc(v.frozenBy) + '</span></div>';
+    if (v.vialCount && v.vialCount > 1) rows += '<div class="tt-row"><span class="tt-key">Count</span><span class="tt-val">' + v.vialCount + ' vials</span></div>';
+    if (v.notes) rows += '<div class="tt-line"></div><div style="font-size:11px;color:var(--text2);line-height:1.5;">' + esc(v.notes) + '</div>';
+    tt.innerHTML = '<div class="tt-cell" style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:' + cellLineColor(v.cellLine) + ';display:inline-block;"></span>' + esc(v.cellLine) + ' <span class="tt-key" style="margin-left:auto;">' + pos + '</span></div>' + rows;
+  }
+  tt.classList.add('show');
+}
+function wellHoverMove(e){
+  var tt = document.getElementById('tt-card');
+  var x = e.clientX + 14;
+  var y = e.clientY + 14;
+  var ttRect = tt.getBoundingClientRect();
+  if (x + ttRect.width > window.innerWidth - 8) x = e.clientX - ttRect.width - 14;
+  if (y + ttRect.height > window.innerHeight - 8) y = e.clientY - ttRect.height - 14;
+  tt.style.left = x + 'px';
+  tt.style.top  = y + 'px';
+}
+function wellHoverLeave(){
+  document.getElementById('tt-card').classList.remove('show');
+}
+function wellClick(pos){
+  var box = getCurrentBox();
+  if (!box) return;
+  var v = (box.vials || {})[pos];
+  if (v) openEditVial(pos);
+  else { document.getElementById('vf-pos').value = pos; openAddVial(); }
+}
+
+// ─── VIAL ADD / EDIT ───────────────────────────────────────────────────────
+function openAddVial(){
+  editingVialPos = null;
+  document.getElementById('vial-modal-title').textContent = 'Add vial';
+  document.getElementById('vf-delete-btn').style.display = 'none';
+  document.getElementById('vf-cl').value = '';
+  document.getElementById('vf-passage').value = '';
+  document.getElementById('vf-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('vf-fmedia').value = '';
+  document.getElementById('vf-culture').value = '';
+  document.getElementById('vf-by').value = '';
+  document.getElementById('vf-count').value = 1;
+  document.getElementById('vf-notes').value = '';
+  refreshCellLineSuggestions();
+  document.getElementById('vial-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('vf-pos').focus(); }, 50);
+}
+function openEditVial(pos){
+  var box = getCurrentBox(); if (!box) return;
+  var v = (box.vials || {})[pos]; if (!v) return openAddVial();
+  editingVialPos = pos;
+  document.getElementById('vial-modal-title').textContent = 'Edit vial — ' + pos;
+  document.getElementById('vf-delete-btn').style.display = 'inline-flex';
+  document.getElementById('vf-pos').value = pos;
+  document.getElementById('vf-cl').value = v.cellLine || '';
+  document.getElementById('vf-passage').value = v.passage || '';
+  document.getElementById('vf-date').value = v.freezeDate || '';
+  document.getElementById('vf-fmedia').value = v.freezeMedia || '';
+  document.getElementById('vf-culture').value = v.cultureMedia || '';
+  document.getElementById('vf-by').value = v.frozenBy || '';
+  document.getElementById('vf-count').value = v.vialCount || 1;
+  document.getElementById('vf-notes').value = v.notes || '';
+  refreshCellLineSuggestions();
+  document.getElementById('vial-modal').classList.add('open');
+}
+function closeVialModal(){
+  document.getElementById('vial-modal').classList.remove('open');
+  editingVialPos = null;
+}
+function normalisePos(p){
+  // 'A1' / 'a01' → 'A1'
+  var m = String(p).trim().toUpperCase().match(/^([A-Z])0?(\d{1,2})$/);
+  if (!m) return null;
+  return m[1] + parseInt(m[2], 10);
+}
+function saveVial(){
+  var box = getCurrentBox(); if (!box) return;
+  var pos = normalisePos(document.getElementById('vf-pos').value);
+  if (!pos) { toast('Position must be like A1, B12 etc.'); return; }
+  var rowIdx = pos.charCodeAt(0) - 65;
+  var colIdx = parseInt(pos.slice(1), 10);
+  if (rowIdx < 0 || rowIdx >= box.rows) { toast('Row out of range — this box has ' + box.rows + ' rows (A–' + String.fromCharCode(64 + box.rows) + ')'); return; }
+  if (colIdx < 1 || colIdx > box.cols) { toast('Column out of range — this box has ' + box.cols + ' columns'); return; }
+  var cellLine = document.getElementById('vf-cl').value.trim();
+  if (!cellLine) { toast('Cell line is required'); return; }
+
+  // If editing and position changed, delete the old key first
+  if (editingVialPos && editingVialPos !== pos) {
+    delete box.vials[editingVialPos];
+  }
+  if (!box.vials) box.vials = {};
+  box.vials[pos] = {
+    cellLine: cellLine,
+    passage: document.getElementById('vf-passage').value.trim(),
+    freezeDate: document.getElementById('vf-date').value || '',
+    freezeMedia: document.getElementById('vf-fmedia').value.trim(),
+    cultureMedia: document.getElementById('vf-culture').value.trim(),
+    frozenBy: document.getElementById('vf-by').value.trim(),
+    vialCount: parseInt(document.getElementById('vf-count').value, 10) || 1,
+    notes: document.getElementById('vf-notes').value.trim()
+  };
+  saveState();
+  closeVialModal();
+  renderBoxDetail();
+  toast(editingVialPos ? 'Vial updated' : 'Vial added at ' + pos);
+}
+function deleteVial(){
+  var box = getCurrentBox(); if (!box || !editingVialPos) return;
+  delete box.vials[editingVialPos];
+  saveState();
+  closeVialModal();
+  renderBoxDetail();
+  toast('Vial removed');
+}
+
+// ─── BULK ADD ───────────────────────────────────────────────────────────────
+function openBulkAdd(){
+  document.getElementById('bulk-text').value = '';
+  document.getElementById('bulk-preview').textContent = '';
+  document.getElementById('bulk-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('bulk-text').focus(); }, 60);
+}
+function closeBulkAdd(){ document.getElementById('bulk-modal').classList.remove('open'); }
+document.addEventListener('input', function(e){
+  if (e.target && e.target.id === 'bulk-text') {
+    var parsed = parseBulkText(e.target.value);
+    var pre = document.getElementById('bulk-preview');
+    pre.textContent = parsed.length ? (parsed.length + ' valid row' + (parsed.length === 1 ? '' : 's') + ' detected') : 'No valid rows yet';
+  }
+});
+function parseBulkText(text){
+  var lines = text.split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+  if (!lines.length) return [];
+  // Detect header
+  var firstCells = lines[0].split(/\t|,/).map(function(c){ return c.trim().toLowerCase(); });
+  var hasHeader = firstCells.some(function(c){ return ['position', 'pos', 'cell line', 'cellline'].includes(c); });
+  var start = hasHeader ? 1 : 0;
+  var out = [];
+  for (var i = start; i < lines.length; i++) {
+    var cols = lines[i].split(/\t|,/).map(function(c){ return c.trim(); });
+    if (cols.length < 2) continue;
+    var pos = normalisePos(cols[0]);
+    if (!pos || !cols[1]) continue;
+    out.push({
+      pos: pos,
+      cellLine: cols[1],
+      passage: cols[2] || '',
+      freezeDate: cols[3] || '',
+      freezeMedia: cols[4] || '',
+      cultureMedia: cols[5] || '',
+      frozenBy: cols[6] || '',
+      vialCount: parseInt(cols[7], 10) || 1,
+      notes: cols[8] || ''
+    });
+  }
+  return out;
+}
+function bulkAddCommit(){
+  var box = getCurrentBox(); if (!box) { toast('No box open'); return; }
+  var parsed = parseBulkText(document.getElementById('bulk-text').value);
+  if (!parsed.length) { toast('No valid rows'); return; }
+  if (!box.vials) box.vials = {};
+  var added = 0, skipped = 0;
+  parsed.forEach(function(v){
+    var rowIdx = v.pos.charCodeAt(0) - 65;
+    var colIdx = parseInt(v.pos.slice(1), 10);
+    if (rowIdx < 0 || rowIdx >= box.rows || colIdx < 1 || colIdx > box.cols) { skipped++; return; }
+    box.vials[v.pos] = {
+      cellLine: v.cellLine, passage: v.passage, freezeDate: v.freezeDate,
+      freezeMedia: v.freezeMedia, cultureMedia: v.cultureMedia,
+      frozenBy: v.frozenBy, vialCount: v.vialCount, notes: v.notes
+    };
+    added++;
+  });
+  saveState();
+  closeBulkAdd();
+  renderBoxDetail();
+  toast('Added ' + added + ' vial' + (added === 1 ? '' : 's') + (skipped ? ' · ' + skipped + ' out of range' : ''));
+}
+
+// ─── RACK / BOX CRUD ───────────────────────────────────────────────────────
+var editingRackId = null;
+function openAddRack(){
+  editingRackId = null;
+  document.getElementById('rack-modal-title').textContent = 'Add rack';
+  document.getElementById('rf-name').value = '';
+  document.getElementById('rack-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('rf-name').focus(); }, 60);
+}
+function closeRackModal(){ document.getElementById('rack-modal').classList.remove('open'); }
+function saveRack(){
+  var name = document.getElementById('rf-name').value.trim();
+  if (!name) { toast('Rack name required'); return; }
+  if (editingRackId) {
+    var r = state.storages[currentTab].racks.find(function(x){ return x.id === editingRackId; });
+    if (r) r.name = name;
+  } else {
+    state.storages[currentTab].racks.push({ id: uid(), name: name, boxes: [] });
+  }
+  saveState();
+  closeRackModal();
+  renderTab(currentTab);
+}
+function renameRack(rackId){
+  var r = state.storages[currentTab].racks.find(function(x){ return x.id === rackId; });
+  if (!r) return;
+  editingRackId = rackId;
+  document.getElementById('rack-modal-title').textContent = 'Rename rack';
+  document.getElementById('rf-name').value = r.name;
+  document.getElementById('rack-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('rf-name').focus(); document.getElementById('rf-name').select(); }, 60);
+}
+function deleteRack(rackId){
+  var r = state.storages[currentTab].racks.find(function(x){ return x.id === rackId; });
+  if (!r) return;
+  var nVials = r.boxes.reduce(function(s, b){ return s + Object.keys(b.vials || {}).length; }, 0);
+  if (nVials && !confirm('Delete "' + r.name + '" and all ' + nVials + ' vials in it?')) return;
+  if (!nVials && r.boxes.length && !confirm('Delete rack "' + r.name + '" and its ' + r.boxes.length + ' empty boxes?')) return;
+  state.storages[currentTab].racks = state.storages[currentTab].racks.filter(function(x){ return x.id !== rackId; });
+  saveState();
+  renderTab(currentTab);
+  toast('Rack deleted');
+}
+
+var editingBoxRackId = null;
+function openAddBox(rackId){
+  // If no rackId given and only one rack exists, pick it. Otherwise ask.
+  var racks = state.storages[currentTab].racks;
+  if (!racks.length) { toast('Add a rack first'); return; }
+  if (!rackId) {
+    if (racks.length === 1) rackId = racks[0].id;
+    else {
+      // pick the last rack as default; user can move boxes later
+      rackId = racks[racks.length - 1].id;
+    }
+  }
+  editingBoxRackId = rackId;
+  // Default name: next sequential
+  var rack = racks.find(function(r){ return r.id === rackId; });
+  var defaultName = 'Box ' + (rack.boxes.length + 1).toString().padStart(2, '0');
+  document.getElementById('bf-name').value = defaultName;
+  document.getElementById('bf-rows').value = 8;
+  document.getElementById('bf-cols').value = 12;
+  document.getElementById('box-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('bf-name').focus(); document.getElementById('bf-name').select(); }, 60);
+}
+function closeBoxModal(){ document.getElementById('box-modal').classList.remove('open'); }
+function saveBox(){
+  var name = document.getElementById('bf-name').value.trim();
+  var rows = parseInt(document.getElementById('bf-rows').value, 10) || 8;
+  var cols = parseInt(document.getElementById('bf-cols').value, 10) || 12;
+  if (!name) { toast('Box name required'); return; }
+  var rack = state.storages[currentTab].racks.find(function(r){ return r.id === editingBoxRackId; });
+  if (!rack) { toast('Rack not found'); return; }
+  rack.boxes.push({ id: uid(), name: name, rows: rows, cols: cols, vials: {} });
+  saveState();
+  closeBoxModal();
+  renderTab(currentTab);
+  toast('Box "' + name + '" added');
+}
+function deleteBoxFromDetail(){
+  if (!currentBoxDetail) return;
+  var box = getCurrentBox(); if (!box) return;
+  var n = Object.keys(box.vials || {}).length;
+  if (n && !confirm('Delete box "' + box.name + '" and all ' + n + ' vials in it?')) return;
+  var rack = state.storages[currentBoxDetail.storage].racks.find(function(r){ return r.id === currentBoxDetail.rackId; });
+  rack.boxes = rack.boxes.filter(function(b){ return b.id !== currentBoxDetail.boxId; });
+  saveState();
+  closeBoxDetail();
+  toast('Box deleted');
+}
+function renameBoxStart(){
+  var el = document.getElementById('detail-box-name');
+  el.setAttribute('contenteditable', 'true');
+  el.focus();
+  document.execCommand('selectAll', false, null);
+  function commit(){
+    el.removeAttribute('contenteditable');
+    el.removeEventListener('blur', commit);
+    el.removeEventListener('keydown', kd);
+    var newName = el.textContent.trim();
+    if (newName && currentBoxDetail) {
+      var box = getCurrentBox(); if (box) { box.name = newName; saveState(); renderBoxDetail(); }
+    }
+  }
+  function kd(e){
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { var b = getCurrentBox(); if (b) el.textContent = b.name; commit(); }
+  }
+  el.addEventListener('blur', commit);
+  el.addEventListener('keydown', kd);
+}
+
+// ─── EXPORT / IMPORT ───────────────────────────────────────────────────────
+function exportAllXLSX(){
+  if (typeof XLSX === 'undefined') { toast('XLSX library not loaded'); return; }
+  var wb = XLSX.utils.book_new();
+  ['minus80', 'n2'].forEach(function(tab){
+    var rows = [['Rack', 'Box', 'Position', 'Cell line', 'Passage', 'Freeze date', 'Freezing media', 'Culture media / conditions', 'Frozen by', 'Vials', 'Notes']];
+    state.storages[tab].racks.forEach(function(r){
+      r.boxes.forEach(function(b){
+        Object.keys(b.vials || {}).sort(function(a, b){
+          var ar = a.charCodeAt(0), ac = parseInt(a.slice(1));
+          var br = b.charCodeAt(0), bc = parseInt(b.slice(1));
+          return ar !== br ? ar - br : ac - bc;
+        }).forEach(function(pos){
+          var v = b.vials[pos];
+          rows.push([r.name, b.name, pos, v.cellLine, v.passage, v.freezeDate, v.freezeMedia, v.cultureMedia, v.frozenBy, v.vialCount || 1, v.notes]);
+        });
+      });
+    });
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, state.storages[tab].label.replace(/[°₂\/\\?*:|"<>]/g, '_'));
+  });
+  XLSX.writeFile(wb, 'cryostorage_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+  toast('Exported');
+}
+function importXLSXBtn(){ document.getElementById('import-file').click(); }
+function importXLSX(file){
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { toast('XLSX library not loaded'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array' });
+      var added = 0;
+      wb.SheetNames.forEach(function(sheetName){
+        var ws = wb.Sheets[sheetName];
+        var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        if (aoa.length < 2) return;
+        var hdr = aoa[0].map(function(h){ return String(h).toLowerCase().trim(); });
+        var idx = {
+          rack:        hdr.findIndex(function(h){ return /rack/.test(h); }),
+          box:         hdr.findIndex(function(h){ return /box/.test(h); }),
+          pos:         hdr.findIndex(function(h){ return /pos/.test(h); }),
+          cellLine:    hdr.findIndex(function(h){ return /cell.?line/.test(h); }),
+          passage:     hdr.findIndex(function(h){ return /pass/.test(h); }),
+          freezeDate:  hdr.findIndex(function(h){ return /freeze.?date|date/.test(h); }),
+          freezeMedia: hdr.findIndex(function(h){ return /freez.*med|cryo/.test(h); }),
+          culture:     hdr.findIndex(function(h){ return /culture/.test(h); }),
+          by:          hdr.findIndex(function(h){ return /by$|frozen by/.test(h); }),
+          count:       hdr.findIndex(function(h){ return /^vials$|count/.test(h); }),
+          notes:       hdr.findIndex(function(h){ return /note/.test(h); })
+        };
+        if (idx.pos < 0 || idx.cellLine < 0) return;
+        // Guess which storage tab this sheet belongs to
+        var sname = sheetName.toLowerCase();
+        var tab = /n2|nitrogen|liquid/.test(sname) ? 'n2' : 'minus80';
+        var storage = state.storages[tab];
+        aoa.slice(1).forEach(function(row){
+          var pos = normalisePos(row[idx.pos]); if (!pos) return;
+          var cellLine = String(row[idx.cellLine] || '').trim(); if (!cellLine) return;
+          var rackName = idx.rack >= 0 ? (String(row[idx.rack] || '').trim() || 'Imported') : 'Imported';
+          var boxName = idx.box >= 0 ? (String(row[idx.box] || '').trim() || 'Box') : 'Box';
+          var rack = storage.racks.find(function(r){ return r.name === rackName; });
+          if (!rack) { rack = { id: uid(), name: rackName, boxes: [] }; storage.racks.push(rack); }
+          var box = rack.boxes.find(function(b){ return b.name === boxName; });
+          if (!box) { box = { id: uid(), name: boxName, rows: 8, cols: 12, vials: {} }; rack.boxes.push(box); }
+          box.vials[pos] = {
+            cellLine: cellLine,
+            passage: idx.passage >= 0 ? String(row[idx.passage] || '') : '',
+            freezeDate: idx.freezeDate >= 0 ? String(row[idx.freezeDate] || '') : '',
+            freezeMedia: idx.freezeMedia >= 0 ? String(row[idx.freezeMedia] || '') : '',
+            cultureMedia: idx.culture >= 0 ? String(row[idx.culture] || '') : '',
+            frozenBy: idx.by >= 0 ? String(row[idx.by] || '') : '',
+            vialCount: idx.count >= 0 ? (parseInt(row[idx.count], 10) || 1) : 1,
+            notes: idx.notes >= 0 ? String(row[idx.notes] || '') : ''
+          };
+          added++;
+        });
+      });
+      saveState();
+      renderTab(currentTab);
+      toast('Imported ' + added + ' vial' + (added === 1 ? '' : 's'));
+    } catch (err) {
+      toast('Import failed: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  document.getElementById('import-file').value = '';
+}
+function clearAllData(){
+  if (!confirm('Delete ALL cryostorage data on this device? This cannot be undone.')) return;
+  if (!confirm('Are you sure? Both -80°C and N₂ data will be wiped.')) return;
+  state = {
+    v: 1,
+    storages: { minus80: { label: '−80°C', racks: [] }, n2: { label: 'Liquid N₂', racks: [] } },
+    cellLineColors: {},
+    view: 'grid',
+    search: ''
+  };
+  saveState();
+  document.getElementById('opts-panel').classList.remove('open');
+  renderTab(currentTab);
+  toast('All data cleared');
+}
+
+// ─── SEARCH ────────────────────────────────────────────────────────────────
+function onSearch(v){ state.search = v; renderTab(currentTab); }
+
+// ─── UTILS ─────────────────────────────────────────────────────────────────
+function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function toast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._toastT);
+  window._toastT = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+function refreshCellLineSuggestions(){
+  var dl = document.getElementById('cl-suggestions');
+  if (!dl) return;
+  var lines = {};
+  ['minus80', 'n2'].forEach(function(tab){
+    state.storages[tab].racks.forEach(function(r){
+      r.boxes.forEach(function(b){
+        Object.values(b.vials || {}).forEach(function(v){
+          if (v.cellLine) lines[v.cellLine] = (lines[v.cellLine] || 0) + 1;
+        });
+      });
+    });
+  });
+  var sorted = Object.keys(lines).sort(function(a, b){ return lines[b] - lines[a]; });
+  dl.innerHTML = sorted.map(function(cl){ return '<option value="' + esc(cl) + '">'; }).join('');
+}
+function updateTabCounts(){
+  ['minus80', 'n2'].forEach(function(tab){
+    var n = 0;
+    state.storages[tab].racks.forEach(function(r){
+      r.boxes.forEach(function(b){ n += Object.keys(b.vials || {}).length; });
+    });
+    var el = document.getElementById('tc-' + tab);
+    if (el) el.textContent = n;
+  });
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    if (document.getElementById('vial-modal').classList.contains('open')) closeVialModal();
+    else if (document.getElementById('bulk-modal').classList.contains('open')) closeBulkAdd();
+    else if (document.getElementById('rack-modal').classList.contains('open')) closeRackModal();
+    else if (document.getElementById('box-modal').classList.contains('open')) closeBoxModal();
+    else if (document.getElementById('detail-overlay').classList.contains('open')) closeBoxDetail();
+  }
+});
+
+// ─── INIT ──────────────────────────────────────────────────────────────────
+loadState();
+switchTab('minus80');
+</script>
+</body>
+</html>

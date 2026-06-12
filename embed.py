@@ -20,6 +20,7 @@ APPS = [
     ('pt',   'Protein_Tools/protein_tools.html'),
     ('spectra', 'Spectra/spectra.html'),
     ('ldi',     'LDI/ldi.html'),
+    ('cryo',    'Cryostorage/cryostorage.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()

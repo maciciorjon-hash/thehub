@@ -253,8 +253,24 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 63: max iter 1000 + square Curves PNG export)
-Hub apps: 8. Version v1.0.29.
+Last session: 2026-06-12 (Round 64: New app Iceberg — cryostorage inventory)
+Hub apps: 9. Version v1.0.30.
+New app: Iceberg (id: cryo, accent #00acc1).
+- File: Cryostorage/cryostorage.html (~1800 lines, self-contained, SheetJS via CDN for XLSX).
+- Two tabs: −80°C and Liquid N₂, each with rack → box → vial hierarchy.
+- Boxes are configurable (rows×cols, default 8×12 = 96-well). Box card shows fill bar coloured by dominant cell line + 96-cell preview grid.
+- Click box → modal with full well grid. Hover well → floating tooltip (cell line, passage, freeze date, freeze media, culture conditions, frozen by, vial count, notes). Click empty well → add vial. Click filled well → edit.
+- Vial fields: position, cellLine, passage, freezeDate, freezeMedia, cultureMedia, frozenBy, vialCount, notes. Cell-line autocomplete from prior entries.
+- Table view: Excel-style, sortable on every column, live search filter (cell line / position / box / rack / notes / media / by).
+- Stats row per tab: total vials, cell lines tracked, capacity %, oldest vial.
+- Bulk add: paste tab/comma-separated rows, header auto-detected.
+- XLSX export (both tabs as separate sheets) + XLSX/CSV import (auto-detects column headers, creates racks/boxes by name if missing).
+- Cell-line colouring: deterministic hash → HSL for consistent palette across views.
+- Theme via hub_theme localStorage, postMessage switchTab listener for Hub deep-links.
+- LocalStorage persistence under key 'cryo_state_v1'.
+Hub integration: embed.py APPS list gained `('cryo', 'Cryostorage/cryostorage.html')`; hub-shell APP_INFO + APP_B64_NEW gained `cryo`; card + view + iframe added; 3 HUB_SEARCH_INDEX entries (main, −80, N₂). Hub apps count goes from 8 → 9.
+
+Previous session: 2026-06-12 (Round 63: max iter 1000 + square PNG; v1.0.29)
 Echo (labcyte_echo.html):
 - 4PL maxIter raised 200 → 1000 at both _fitBest call sites in runAnalysisJS (lines ~2233, ~2244) and both call sites in fit4PL_JS interactive editor (lines ~6823, ~6829). Audit blocks updated.
 - Curves canvas display reverted to v1.0.26 sizing (responsive flex:1 wrap, canvas width:100%/height:100%) — user said the on-screen display was fine; the square change in v1.0.27 was unwanted.
