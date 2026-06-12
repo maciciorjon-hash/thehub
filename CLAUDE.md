@@ -253,8 +253,16 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 61: Echo Flagged scope, Plate Flag per-assay, Curves square)
-Hub apps: 8. Version v1.0.27.
+Last session: 2026-06-12 (Round 62: Echo 4PL fitter — Gemini's 4 suggestions all shipped)
+Hub apps: 8. Version v1.0.28.
+Echo 4PL fitter (_lmFit + _fitBest + runAnalysisJS pInit):
+- Multi-start (`_fitBest` around line 1932): seeds expanded from 5 evenly-spaced to 6 = 5 evenly + 1 X-at-YMID (linear-interpolated X where data crosses (Ymin+Ymax)/2). `_xAtYMid` helper reintroduced (was added in v1.0.19, removed in v1.0.20). Catches the "all 5 seeds in flat region" failure mode.
+- Fletcher / Madsen-Nielsen adaptive λ in `_lmFit`: on accepted step, λ ×= max(1/3, 1 − (2ρ−1)³) where ρ = (curSS − newSS) / (½·δᵀ(λ·δ + Jᵀr)). On reject, λ ×= 2. Replaces the fixed ÷3 / ×3.
+- Gradient-norm convergence as primary: at top of each iter, break if max(|Jᵀr|) < 1e-8 × (1 + |bestSS|). Catches the flat-valley case where |Δp| can shrink below 1e-8 while gradient is still meaningful (Gemini's #4 - the most likely real cause of the visual mismatch). |Δp| backup tightened to 1e-10.
+- Robust pInit Top/Bottom: median of top-3 / bottom-3 Y values (`_yMinRobust`/`_yMaxRobust` computed at line 2160), replacing raw `yMin2`/`yMax2` in the 4-param and 3-param pInit. Single noisy extreme no longer biases the starting curve.
+- Audit blocks (Protocol tab + XLSX Data Analysis Protocol) updated to spell out all four mechanics.
+
+Previous session: 2026-06-12 (Round 61: Flagged scope + Plate Flag per-assay + Curves square; v1.0.27)
 Echo (labcyte_echo.html):
 - Flagged checkbox in multi-assay (line ~3993): now scoped to ONLY the assays currently shown on the scatter's X/Y axes. Extract assay prefix from xKeyRaw/yKeyRaw; filter on `<assay>::Flag === 'Yes'` for those specific assays. A compound flagged in a different (not-plotted) assay no longer hides.
 - Plate "Colour by Flag status" (drawPlateCanvas, line ~7407): _plateFlagMap rebuilt as {sampleId: {assayType: flag}} instead of flat {sampleId: flag} (which lost data when scatterData iteration overwrote across assays — every plate ended up showing the last-iterated assay's flag). Each plate now resolves its own assay type via window._lastAnalysisParams.matConfigs (matching by prefix), then looks up the correct flag. Single-assay falls back to '_' key. Plate legend at line ~7564 gained a 'flag' mode case (Flagged red, Passed green, Control teal, No fit grey).

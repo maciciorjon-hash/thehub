@@ -1890,15 +1890,32 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
         for (let b = 0; b < np; b++) JtJ[a][b] += jac[a] * jac[b];
       }
     }
+    // Gradient-norm convergence: ||Jᵀr||∞ scaled by 1+|SSR|. Catches the case where
+    // |Δp| has fallen below 1e-8 in a flat valley while the gradient is still meaningful.
+    const _gradNorm = Math.max(...Jtr.map(Math.abs));
+    if (_gradNorm < 1e-8 * (1 + Math.abs(bestSS))) break;
     const A = JtJ.map((row, i) => row.map((v, j) => i === j ? v * (1 + lam) : v));
     const delta = _solveLin(A, Jtr);
     if (!delta) { lam = Math.min(lam * 10, 1e8); continue; }
     const pNew = p.map((v, i) => cl(v + delta[i], i));
     const newSS = ssq(pNew);
+    const curSS = ssq(p);
     if (newSS < bestSS) { bestSS = newSS; bestP = [...pNew]; }
-    if (newSS < ssq(p)) { p = pNew; lam = Math.max(lam / 3, 1e-10); }
-    else lam = Math.min(lam * 3, 1e7);
-    if (Math.max(...delta.map(Math.abs)) < 1e-8) break;
+    if (newSS < curSS) {
+      // Fletcher / Madsen-Nielsen adaptive damping: scale lam by gain ratio rho.
+      // rho ≈ 1 → step matches predicted, big shrink. rho < 0.25 → poor step, grow lam.
+      let _pred = 0;
+      for (let a = 0; a < np; a++) _pred += delta[a] * (lam * delta[a] + Jtr[a]);
+      _pred *= 0.5;
+      const _actual = curSS - newSS;
+      const rho = _pred > 1e-12 ? _actual / _pred : 1;
+      const _factor = Math.max(1/3, 1 - Math.pow(2 * rho - 1, 3));
+      p = pNew;
+      lam = Math.max(lam * _factor, 1e-10);
+    } else {
+      lam = Math.min(lam * 2, 1e7);
+    }
+    if (Math.max(...delta.map(Math.abs)) < 1e-10) break;
   }
   p = bestP;
   const yMean = yArr.reduce((s, v) => s + v, 0) / n;
@@ -1913,11 +1930,31 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df };
 }
 
-// Multi-start LM: tries 5 evenly-spaced logEC50 seeds (param index 1) and returns the best fit.
-// Prevents local-minima traps caused by a single initial guess.
+// Multi-start LM: tries 5 evenly-spaced logEC50 seeds plus a 6th "X at YMID" seed
+// targeting the empirical inflection point. Returns the best R² fit.
+function _xAtYMid(xArr, yArr) {
+  if (!xArr || !xArr.length) return 0;
+  let yMin = Infinity, yMax = -Infinity;
+  for (let i = 0; i < yArr.length; i++) { if (yArr[i] < yMin) yMin = yArr[i]; if (yArr[i] > yMax) yMax = yArr[i]; }
+  if (!(yMax > yMin + 1e-12)) return (Math.min(...xArr) + Math.max(...xArr)) / 2;
+  const yMid = (yMin + yMax) / 2;
+  const pts = xArr.map((x, i) => ({ x, y: yArr[i] })).sort((a, b) => a.x - b.x);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y);
+    if (yMid >= lo && yMid <= hi) {
+      const dy = b.y - a.y;
+      if (Math.abs(dy) < 1e-12) return a.x;
+      return a.x + (yMid - a.y) * (b.x - a.x) / dy;
+    }
+  }
+  return (pts[0].x + pts[pts.length - 1].x) / 2;
+}
 function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
   const loEC = loBound[1], hiEC = hiBound[1];
-  const seeds = [0.1, 0.3, 0.5, 0.7, 0.9].map(f => loEC + (hiEC - loEC) * f);
+  const evenSeeds = [0.1, 0.3, 0.5, 0.7, 0.9].map(f => loEC + (hiEC - loEC) * f);
+  const inflSeed = Math.max(loEC, Math.min(hiEC, _xAtYMid(xArr, yArr)));
+  const seeds = [...evenSeeds, inflSeed];
   let best = null;
   for (const ec of seeds) {
     const p = [...pBase];
@@ -2158,6 +2195,11 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
 
         const xMin = Math.min(...xArr), xMax = Math.max(...xArr);
         const yMin2 = Math.min(...yArr), yMax2 = Math.max(...yArr);
+        // Robust extrema for initial-value guess (median of bottom/top 3) — less sensitive
+        // to a single noisy point than raw min/max while still being a sensible starting curve.
+        const _sortedY = [...yArr].sort((a,b) => a - b);
+        const _yMinRobust = _sortedY.length >= 3 ? _sortedY[1] : yMin2;
+        const _yMaxRobust = _sortedY.length >= 3 ? _sortedY[_sortedY.length - 2] : yMax2;
 
         // Per-compound QC overrides for parameters
         let _tc = qc.fixTop !== undefined ? parseFloat(qc.fixTop) : topConstrain;
@@ -2181,10 +2223,10 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           const topLo = gainMode ? 0.1 : (skipNorm ? _dataMax * 0.3 : 50);
           const topHi = gainMode ? Math.max(yMax2 * 5, 1) : (skipNorm ? _dataMax * 3.0 : 200);
           const pInit = [
-            Math.max(loBotEff, Math.min(hiBotEff, yMin2)),
+            Math.max(loBotEff, Math.min(hiBotEff, _yMinRobust)),
             Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
             Math.max(loHillEff, Math.min(hiHillEff, 1)),
-            Math.max(topLo, Math.min(topHi, yMax2))
+            Math.max(topLo, Math.min(topHi, _yMaxRobust))
           ];
           const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
             [loBotEff, xMin - 1, loHillEff, topLo], [hiBotEff, xMax + 1, hiHillEff, topHi],
@@ -2192,7 +2234,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2, se, df };
         } else {
           const pInit = [
-            Math.max(loBotEff, Math.min(hiBotEff, yMin2)),
+            Math.max(loBotEff, Math.min(hiBotEff, _yMinRobust)),
             Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
             Math.max(loHillEff, Math.min(hiHillEff, 1))
           ];
@@ -2844,10 +2886,12 @@ function generateOutputXLSX() {
     ['Reported DC50 / IC50 / EC50', '10^LogEC50 × 1e9  (nM)'],
     ['AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom < 50 and Top > 50)' : 'Not requested'],
     ['Equivalent Prism form', 'Y = Bottom + (Top − Bottom) / (1 + 10^((LogIC50 − X) × HillSlope))   (equivalent under Hill sign flip)'],
-    ['Fitting method', 'Levenberg–Marquardt, multi-start (5 logEC50 seeds), best R² wins'],
+    ['Fitting method', 'Levenberg–Marquardt with Fletcher adaptive damping; multi-start (5 evenly-spaced logEC50 seeds + 1 X-at-YMID inflection seed), best R² wins'],
     ['Loss function', 'Unweighted sum-of-squared residuals'],
     ['Replicate treatment', 'Each replicate Y value as an individual point (no pre-averaging)'],
-    ['Convergence', 'max(|Δp|) < 1e-8 OR 200 iterations'],
+    ['Initial Top / Bottom', 'Median of top-3 / bottom-3 Y values (robust to single-point outliers)'],
+    ['λ damping', 'Init 0.001. On accept: lam ×= max(1/3, 1 − (2ρ − 1)³) where ρ = actual/predicted SSR reduction. On reject: lam ×= 2.'],
+    ['Convergence', 'Gradient norm ||Jᵀr||∞ < 1e-8 × (1 + |SSR|), OR max(|Δp|) < 1e-10, OR 200 iterations'],
     [],
     ['─── FIT BOUNDS (this run) ──────────────────', ''],
     ['Top', params.topEnabled !== false ? ('Fixed at ' + params.topConstrain) : 'Free, bounded [50, 200]'],
@@ -2950,10 +2994,12 @@ function renderProtocol() {
   html += row('Reported DC50 / IC50 / EC50', '<code style="font-family:var(--mono);font-size:11px;">10<sup>LogEC50</sup> × 10<sup>9</sup>  (nM)</code>');
   html += row('AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom &lt; 50 and Top &gt; 50)' : '<span style="color:var(--text3)">Not requested</span>');
   html += row('Equivalent Prism form', '<code style="font-family:var(--mono);font-size:11px;">Y = Bottom + (Top − Bottom) / (1 + 10<sup>(LogIC50 − X) × HillSlope</sup>)</code> <span style="color:var(--text3)">(equivalent under Hill sign flip)</span>');
-  html += row('Fitting method', 'Levenberg–Marquardt, multi-start <strong>(5 logEC50 seeds)</strong>, best R² wins');
+  html += row('Fitting method', 'Levenberg–Marquardt with <strong>Fletcher adaptive damping</strong>; multi-start <strong>(5 evenly-spaced + 1 X-at-YMID inflection)</strong> logEC50 seeds, best R² wins');
   html += row('Loss function', 'Unweighted sum-of-squared residuals');
   html += row('Replicate treatment', 'Each replicate Y value as an individual point <span style="color:var(--text3)">(no pre-averaging)</span>');
-  html += row('Convergence', '<code style="font-family:var(--mono);font-size:11px;">max(|Δp|) &lt; 1e-8</code> OR 200 iterations');
+  html += row('Initial Top / Bottom', 'Median of <strong>top-3 / bottom-3 Y values</strong> <span style="color:var(--text3)">(robust to a single noisy extreme)</span>');
+  html += row('&lambda; damping', 'Init <strong>0.001</strong>. Accept: &lambda; &times;= max(1/3, 1&minus;(2&rho;&minus;1)<sup>3</sup>) where &rho; = actual / predicted SSR reduction. Reject: &lambda; &times;= 2.');
+  html += row('Convergence', '<code style="font-family:var(--mono);font-size:11px;">||J<sup>T</sup>r||<sub>&infin;</sub> &lt; 1e-8 &middot; (1+|SSR|)</code> OR <code style="font-family:var(--mono);font-size:11px;">max(|&Delta;p|) &lt; 1e-10</code> OR 200 iterations');
 
   html += sec('Fit Bounds (this run)');
   html += row('Top', params.topEnabled !== false ? ('Fixed at <strong>' + params.topConstrain + '</strong>') : 'Free, bounded <strong>[50, 200]</strong>');
