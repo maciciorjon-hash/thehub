@@ -253,8 +253,22 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 67: Cross-app mobile polish — all 8 remaining apps)
-Hub apps: 9. Version v1.0.33.
+Last session: 2026-06-12 (Round 68: Mobile horizontal panning fix — overflow:hidden trap)
+Hub apps: 9. Version v1.0.34.
+Pattern across all apps: top-level layout containers (main, .content, .panel, .tabpane, #app-body, sometimes html/body) had overflow:hidden as the desktop "scroll-inside-inner-divs" pattern. On mobile, this trapped wide content (Echo results tables, scatter charts, plate canvases, sequence displays) inside their parent — user couldn't pan sideways.
+Fix per app, added inside the existing @media (max-width:720px) block:
+- Echo: main + .tabpane + .tabpane.active + .results-tbl-scroll all overflow:auto.
+- LabMate: .content overflow-x:auto !important, .main overflow:auto.
+- Plate Designer: html/body + .panel + .plate-scroll-area + .plate-canvas-wrap overflow:auto.
+- Helix: html/body + .content + .panel overflow:auto.
+- Protein Tools: html/body + .content overflow:auto.
+- Spectra: html/body + .content + .plate-wrap + .plate-table-wrap overflow:auto.
+- LDI: html/body + #app-body overflow:auto.
+- Degradation Explorer: html/body overflow:auto.
+- Iceberg: main + .tab-pane + .table-wrap overflow:auto.
+All include -webkit-overflow-scrolling:touch for iOS momentum scroll. Desktop behaviour unchanged (rules only fire at ≤720px).
+
+Previous session: 2026-06-12 (Round 67: cross-app mobile polish; v1.0.33)
 Mobile media queries appended to each app's CSS (only ADDED rules; existing untouched; per-app selectors confirmed via grep before emitting):
 - Labcyte_Echo/labcyte_echo.html @ line 385: header chrome tighten, .outer-tabs horizontal scroll, .setup-overlay/card → full-screen on mobile, .setup-2col → 1-col, .scatter-toolbar/.cv-toolbar/.plate-toolbar wrap, .stbtn min-height 32px, .mcard 2-up then full-width, .props-table tighter padding, .field input 36px min-height. (hover:none) kills hover transforms on .stbtn/.outer-tab/.mcard.
 - Labmate/labmate.html @ line ~1781: .header-top padding, .section padding cap, .calc-box/.proto-home-card padding tighten, inputs/textareas 38px min-height, .qn-area/.search-wrap full width, .mem-row wrap, .btn/.sb-btn 38px touch + tap-highlight-color none, .mob-nav-btn bumped to 48px min-height (was unset).
