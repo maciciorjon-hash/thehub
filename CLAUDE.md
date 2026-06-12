@@ -253,8 +253,20 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 57: Echo Setup modal no longer blocks Overview/Gradient)
-Hub apps: 8. Version v1.0.23.
+Last session: 2026-06-12 (Round 58: Cross-app visual polish pass)
+Hub apps: 8. Version v1.0.24.
+Cross-app visual polish (all 9 files touched):
+- Shadow design tokens: every app now has --shadow-xs/sm/md/lg/xl in :root + dark-theme overrides (light variants use rgba(0,0,0,.04..22), dark variants use .30..65). Replaced bare rgba(0,0,0,.X) box-shadows in nav/cards/dropdowns/modals in hub-shell.html + Echo + LabMate header; remaining sweep can happen incrementally.
+- Theme-slider thumb: replaced hardcoded #fff with var(--surface) in hub-shell, Echo, Helix, Protein Tools, Spectra, Degradation Explorer. LDI didn't have a theme slider (uses different toggle pattern).
+- Global ::placeholder rule added to all 8 apps (was missing or inconsistent in Helix/Protein Tools/Spectra/Degradation/LDI/Plate Designer + reinforced in Echo/LabMate). Now placeholders consistently read var(--text3).
+- Hub home cards: hover state now adds background:var(--surface2) tint alongside the existing border+shadow+transform lift.
+- Echo: --accent2-soft var introduced for dropzone hover; --modal-backdrop var for setup overlay (was rgba(0,0,0,.55) flat); setup-card gained border:1px solid var(--border2) + var(--shadow-xl).
+- LabMate: --error + --error-soft vars (theme-aware red); .chem-error uses them; toast (gib-toast) uses var(--text)/var(--surface)/var(--shadow-md) instead of hardcoded #222/#fff.
+- Plate Designer (gel designer): well fills + strokes are now isDark-aware (was hardcoded #e0e0e0 mw, #d6ecd6 dmso, #fff sample, invisible on dark theme — real bug). gd-preview-wrap dark bg uses var(--surface2) instead of hardcoded #2a2a2a.
+- Degradation Explorer: test-data button moved from inline onmouseover/onmouseout to .btn-load-test CSS class with :hover rule.
+- Protein Tools: #struct-info-toggle inline onmouseover removed, replaced with CSS :hover.
+
+Previous session: 2026-06-12 (Round 57: Echo Setup modal stops blocking Overview/Gradient; v1.0.23)
 Echo: openSetupModal (labcyte_echo.html:8885) no longer gates the close buttons on scatterData.length>0 — close (×) and Close buttons always visible, so the modal can be dismissed on first load. switchPanel (line 8256) now auto-hides the setup modal when switching to any panel other than 'analysis' (so Overview and Gradient Planner are immediately usable without the modal blocking them). The modal still auto-opens once on initial load (line 8907) and via the ⚙ Setup re-open button, which is the intended Data Analysis flow.
 
 Previous session: 2026-06-11 (Round 56: Changelog reorganised; v1.0.22)
