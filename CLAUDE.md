@@ -253,8 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 58: Cross-app visual polish pass)
-Hub apps: 8. Version v1.0.24.
+Last session: 2026-06-12 (Round 59: LabMate dead "Compound Lookup" feature removed)
+Hub apps: 8. Version v1.0.25.
+LabMate: removed orphan "cheminfo / Compound Lookup" feature. Was entirely dead code — scaffolded CSS classes (.chem-search-row, .chem-results-grid, .chem-struct-wrap, .chem-view-toggle, .chem-props-table, .chem-ro5-row/chip/pass/fail/na, .chem-iupac, .chem-pubchem-link, .chem-prop-section, .chem-hint), JS functions (chemCopySmiles, _chemblXref, chemEditClose), Marvin JS edit modal (#chem-edit-modal with iframe), but NO HTML section ever instantiated them and NO call site invoked the functions. Cleaned all references: sidebar label maps at lines ~8030 & ~10963; sub-tab _navToSection routing array; quick-notes tips entry; _NEVER_COLLAPSE list. Kept .chem-loading class because it's genuinely shared with UniProt + drug-data lookups elsewhere in the file.
+
+Previous session: 2026-06-12 (Round 58: Cross-app visual polish pass; v1.0.24)
 Cross-app visual polish (all 9 files touched):
 - Shadow design tokens: every app now has --shadow-xs/sm/md/lg/xl in :root + dark-theme overrides (light variants use rgba(0,0,0,.04..22), dark variants use .30..65). Replaced bare rgba(0,0,0,.X) box-shadows in nav/cards/dropdowns/modals in hub-shell.html + Echo + LabMate header; remaining sweep can happen incrementally.
 - Theme-slider thumb: replaced hardcoded #fff with var(--surface) in hub-shell, Echo, Helix, Protein Tools, Spectra, Degradation Explorer. LDI didn't have a theme slider (uses different toggle pattern).
