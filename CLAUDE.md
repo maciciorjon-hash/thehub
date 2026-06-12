@@ -253,8 +253,17 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 59: LabMate dead "Compound Lookup" feature removed)
-Hub apps: 8. Version v1.0.25.
+Last session: 2026-06-12 (Round 60: Echo 4PL revert + 5 Ryan UX fixes)
+Hub apps: 8. Version v1.0.26.
+Echo (labcyte_echo.html):
+- 4PL fitter rolled back to v0.9.96 behaviour: _lmFit uses max(|Δp|) < 1e-8 convergence + 200 iters; λ factor /3 ×3; runAnalysisJS bounds restored to safety guardrails (Bottom [-20,100], Hill [0.1,5.0], LogEC50 [xMin-1,xMax+1], Top [50,200] when free); fit4PL_JS interactive editor mirrors. User reported the Prism-matching push (v1.0.16/20/21) made the curves look worse. Audit blocks in Protocol tab + XLSX restored to v0.9.96 wording.
+- Curve PDF picker: generateAndDownloadCurvePDFs at line ~5649 now opens a modal listing distinct (assay, protein) groups with checkboxes. Single-group runs skip the modal. generateCurvePDFs groups by (_assayType, Protein) in multi-assay mode (was Protein only), so each PDF covers ONE curve type. Filenames include assay (Results_<assay>_<assayType>_<protein>.pdf). Page title also includes assay type.
+- Plots default in multi-assay: renderScatter at line ~3748 now computes _defXKey / _defYKey BEFORE rendering. In multi-assay mode with ≥2 assays: X = firstAssay::LogIC50_M, Y = secondAssay::LogIC50_M. Templated into the X/Y select options as the `selected` attribute.
+- Plots Flagged checkbox in multi-assay: line ~3993 was reading r.Flag (undefined on pivoted rows). Now checks Object.keys(r).some(k => k.endsWith('::Flag') && r[k] === 'Yes') in pivot mode.
+- Plate tab "Colour by Flag status" (drawPlateCanvas, line ~7407): replaced the per-well SD outlier check (which used a green that looked identical to the control-well green) with a compound-level Flag lookup. window._plateFlagMap built lazily from scatterData; reset to null at line 1571 alongside _plateFitMap. Red = Flag==='Yes'; muted green = passed; neutral = no result.
+- Curves Compare: added #cv-compare-search input above #cv-compare-list. buildCompareList reads the value and filters by Sample_ID.toLowerCase().includes(searchQ).
+
+Previous session: 2026-06-12 (Round 59: LabMate cheminfo removed; v1.0.25)
 LabMate: removed orphan "cheminfo / Compound Lookup" feature. Was entirely dead code — scaffolded CSS classes (.chem-search-row, .chem-results-grid, .chem-struct-wrap, .chem-view-toggle, .chem-props-table, .chem-ro5-row/chip/pass/fail/na, .chem-iupac, .chem-pubchem-link, .chem-prop-section, .chem-hint), JS functions (chemCopySmiles, _chemblXref, chemEditClose), Marvin JS edit modal (#chem-edit-modal with iframe), but NO HTML section ever instantiated them and NO call site invoked the functions. Cleaned all references: sidebar label maps at lines ~8030 & ~10963; sub-tab _navToSection routing array; quick-notes tips entry; _NEVER_COLLAPSE list. Kept .chem-loading class because it's genuinely shared with UniProt + drug-data lookups elsewhere in the file.
 
 Previous session: 2026-06-12 (Round 58: Cross-app visual polish pass; v1.0.24)

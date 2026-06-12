@@ -1568,6 +1568,7 @@ async function runPipeline() {
 
     _registerProteinNames(results);
   window._plateFitMap=null;
+  window._plateFlagMap=null;
     results.forEach(r => { r.Protein = _canon(r.Protein); });
   // Box plot data stored; populated on demand when user switches to box plot
   window._bpData = results;
@@ -1876,11 +1877,6 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   let p = pInit.map(cl);
   const ssq = (pp) => { let s = 0; for (let i = 0; i < n; i++) { const r = yArr[i] - valFn(xArr[i], ...pp); s += r * r; } return s; };
   let lam = 0.001, bestP = [...p], bestSS = ssq(p);
-  // Prism-style convergence: relative SSR change ladder.
-  // Start at medium tolerance (1e-6); once met, auto-tighten to strict (1e-9). Stop after strict is met.
-  let prevSS = bestSS;
-  let convTol = 1e-6;
-  let strictPhase = false;
 
   for (let iter = 0; iter < maxIter; iter++) {
     const JtJ = Array.from({ length: np }, () => new Array(np).fill(0));
@@ -1899,18 +1895,9 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
     const pNew = p.map((v, i) => cl(v + delta[i], i));
     const newSS = ssq(pNew);
     if (newSS < bestSS) { bestSS = newSS; bestP = [...pNew]; }
-    if (newSS < ssq(p)) {
-      p = pNew;
-      lam = Math.max(lam / 10, 1e-10);
-      const relChange = prevSS > 1e-12 ? Math.abs(prevSS - newSS) / prevSS : 0;
-      prevSS = newSS;
-      if (relChange < convTol) {
-        if (!strictPhase) { strictPhase = true; convTol = 1e-9; }
-        else break;
-      }
-    } else {
-      lam = Math.min(lam * 10, 1e7);
-    }
+    if (newSS < ssq(p)) { p = pNew; lam = Math.max(lam / 3, 1e-10); }
+    else lam = Math.min(lam * 3, 1e7);
+    if (Math.max(...delta.map(Math.abs)) < 1e-8) break;
   }
   p = bestP;
   const yMean = yArr.reduce((s, v) => s + v, 0) / n;
@@ -1927,24 +1914,13 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
 
 // Multi-start LM: tries 5 evenly-spaced logEC50 seeds (param index 1) and returns the best fit.
 // Prevents local-minima traps caused by a single initial guess.
-// When logEC50 bounds are ±Infinity (LM unconstrained), the seed range falls back to
-// the observed X range ± 1 log unit so the 5 seeds remain data-anchored.
 function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
-  let loEC = loBound[1], hiEC = hiBound[1];
-  if (!isFinite(loEC) || !isFinite(hiEC)) {
-    let xMn = Infinity, xMx = -Infinity;
-    for (let i = 0; i < xArr.length; i++) {
-      if (xArr[i] < xMn) xMn = xArr[i];
-      if (xArr[i] > xMx) xMx = xArr[i];
-    }
-    if (!isFinite(loEC)) loEC = xMn - 1;
-    if (!isFinite(hiEC)) hiEC = xMx + 1;
-  }
+  const loEC = loBound[1], hiEC = hiBound[1];
   const seeds = [0.1, 0.3, 0.5, 0.7, 0.9].map(f => loEC + (hiEC - loEC) * f);
   let best = null;
   for (const ec of seeds) {
     const p = [...pBase];
-    p[1] = ec;
+    p[1] = Math.max(loEC, Math.min(hiEC, ec));
     const r = _lmFit(xArr, yArr, p, loBound, hiBound, valFn, jacFn, maxIter);
     if (!best || r.r2 > best.r2) best = r;
   }
@@ -2191,49 +2167,38 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         const _fixHill2 = qc.fixHill !== undefined ? true : fixHill;
         const _hillVal2 = qc.fixHill !== undefined ? parseFloat(qc.fixHill) : hillVal;
 
-        // Bounds: ±Infinity when the user picked "Free" (truly unconstrained, matches Prism).
-        // User-supplied constraints (Fixed-at-X, Bottom-≥-floor, Dmax cap) are honoured tight.
-        let loBotEff, hiBotEff;
-        if (_fixBot2) {
-          loBotEff = _botVal2 - 0.01; hiBotEff = _botVal2 + 0.01;
-        } else {
-          loBotEff = -Infinity; hiBotEff = Infinity;
-          if (dmaxCapEnabled) loBotEff = Math.max(loBotEff, 100 - dmaxCapVal);
-          if (minBotEnabled) loBotEff = Math.max(loBotEff, minBotVal);
-        }
-        const loHillEff = _fixHill2 ? _hillVal2 - 0.001 : -Infinity;
-        const hiHillEff = _fixHill2 ? _hillVal2 + 0.001 : Infinity;
+        const _dataMax = skipNorm ? Math.max(yMax2, 1) : 100;
+        const _dataMin = skipNorm ? Math.min(yMin2, 0) : 0;
+        let loBotEff = _fixBot2 ? _botVal2 - 0.01 : (skipNorm ? _dataMin - Math.abs(_dataMin) * 0.3 : (dmaxCapEnabled ? 100 - dmaxCapVal : -20));
+        if (!_fixBot2 && minBotEnabled) loBotEff = Math.max(loBotEff, minBotVal);
+        const hiBotEff = _fixBot2 ? _botVal2 + 0.01 : (skipNorm ? _dataMax * 0.7 : 100);
+        const loHillEff = _fixHill2 ? _hillVal2 - 0.001 : 0.1;
+        const hiHillEff = _fixHill2 ? _hillVal2 + 0.001 : 5.0;
 
         let fitResult;
         if (_effFreeTop) {
-          // Top free → unbounded.
-          const topLo = -Infinity, topHi = Infinity;
-          const _safe = (v, lo, hi) => isFinite(lo) || isFinite(hi)
-            ? Math.max(isFinite(lo) ? lo : v, Math.min(isFinite(hi) ? hi : v, v))
-            : v;
+          const topLo = gainMode ? 0.1 : (skipNorm ? _dataMax * 0.3 : 50);
+          const topHi = gainMode ? Math.max(yMax2 * 5, 1) : (skipNorm ? _dataMax * 3.0 : 200);
           const pInit = [
-            _safe(yMin2, loBotEff, hiBotEff),
-            (xMin + xMax) / 2,
-            _safe(1, loHillEff, hiHillEff),
-            _safe(yMax2, topLo, topHi)
+            Math.max(loBotEff, Math.min(hiBotEff, yMin2)),
+            Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
+            Math.max(loHillEff, Math.min(hiHillEff, 1)),
+            Math.max(topLo, Math.min(topHi, yMax2))
           ];
           const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
-            [loBotEff, -Infinity, loHillEff, topLo], [hiBotEff, Infinity, hiHillEff, topHi],
-            gainMode ? _4plVal4_gain : _4plVal4, gainMode ? _4plJac4_gain : _4plJac4, 1000);
+            [loBotEff, xMin - 1, loHillEff, topLo], [hiBotEff, xMax + 1, hiHillEff, topHi],
+            gainMode ? _4plVal4_gain : _4plVal4, gainMode ? _4plJac4_gain : _4plJac4, 200);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: params[3], r2, se, df };
         } else {
-          const _safe = (v, lo, hi) => isFinite(lo) || isFinite(hi)
-            ? Math.max(isFinite(lo) ? lo : v, Math.min(isFinite(hi) ? hi : v, v))
-            : v;
           const pInit = [
-            _safe(yMin2, loBotEff, hiBotEff),
-            (xMin + xMax) / 2,
-            _safe(1, loHillEff, hiHillEff)
+            Math.max(loBotEff, Math.min(hiBotEff, yMin2)),
+            Math.max(xMin - 1, Math.min(xMax + 1, (xMin + xMax) / 2)),
+            Math.max(loHillEff, Math.min(hiHillEff, 1))
           ];
           const { params, r2, se, df } = _fitBest(xArr, yArr, pInit,
-            [loBotEff, -Infinity, loHillEff], [hiBotEff, Infinity, hiHillEff],
+            [loBotEff, xMin - 1, loHillEff], [hiBotEff, xMax + 1, hiHillEff],
             (xi, b, l, h) => _4plVal3(xi, b, l, h, _tc),
-            (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 1000);
+            (xi, b, l, h) => _4plJac3(xi, b, l, h, _tc), 200);
           fitResult = { bot: params[0], logec50: params[1], hill: params[2], tc: _tc, r2, se, df };
         }
 
@@ -2878,24 +2843,19 @@ function generateOutputXLSX() {
     ['Reported DC50 / IC50 / EC50', '10^LogEC50 × 1e9  (nM)'],
     ['AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom < 50 and Top > 50)' : 'Not requested'],
     ['Equivalent Prism form', 'Y = Bottom + (Top − Bottom) / (1 + 10^((LogIC50 − X) × HillSlope))   (equivalent under Hill sign flip)'],
-    ['Fitting method', 'Least-squares regression (Levenberg–Marquardt, multi-start 5 logEC50 seeds, best R² wins)'],
-    ['Loss function', 'Unweighted sum-of-squared residuals — minimised distance between points and curve, independent of Y value'],
+    ['Fitting method', 'Levenberg–Marquardt, multi-start (5 logEC50 seeds), best R² wins'],
+    ['Loss function', 'Unweighted sum-of-squared residuals'],
     ['Replicate treatment', 'Each replicate Y value as an individual point (no pre-averaging)'],
-    ['Convergence', 'Relative SSR change < 1e-6 (medium); auto-tightens to < 1e-9 (strict) once medium met; max 1000 iterations'],
-    ['LM damping (lambda)', 'Init = 0.001; ÷10 after successful iteration, ×10 after unsuccessful (matches Prism)'],
-    ['Initial values per seed', 'Top = max Y · Bottom = min Y · LogEC50 seed varied across 5 evenly-spaced values in bounds · Hill = 1.0 (Echo parameterisation, direction encoded in model formula per assay)'],
+    ['Convergence', 'max(|Δp|) < 1e-8 OR 200 iterations'],
     [],
     ['─── FIT BOUNDS (this run) ──────────────────', ''],
-    ['Top', params.topEnabled !== false ? ('Fixed at ' + params.topConstrain) : 'Free, unbounded'],
-    ['Bottom', (function(){
-      if (params.fixBot) return 'Fixed at ' + params.botVal;
-      var lo = -Infinity, why = [];
-      if (params.dmaxCapEnabled) { var v = 100 - (params.dmaxCapVal ?? 0); if (v > lo) { lo = v; why.push('Dmax cap'); } }
-      if (params.minBotEnabled !== false) { var v2 = params.minBotVal ?? 0; if (v2 > lo) { lo = v2; why.push('Bottom ≥ floor'); } }
-      return isFinite(lo) ? ('Free, lower bound ' + lo + (why.length ? ' (' + why.join(' ∧ ') + ')' : '')) : 'Free, unbounded';
-    })()],
-    ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free, unbounded'],
-    ['LogEC50', 'Free, unbounded (multi-start seeds drawn from x_min − 1 to x_max + 1)'],
+    ['Top', params.topEnabled !== false ? ('Fixed at ' + params.topConstrain) : 'Free, bounded [50, 200]'],
+    ['Bottom', params.fixBot
+      ? ('Fixed at ' + params.botVal)
+      : ((params.dmaxCapEnabled ? 'Bounded [' + (100 - (params.dmaxCapVal ?? 0)) + ', 100]' : 'Bounded [−20, 100]')
+         + (params.minBotEnabled !== false ? '  ·  Floor: Bottom ≥ ' + (params.minBotVal ?? 0) : ''))],
+    ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free, bounded [0.1, 5.0]'],
+    ['LogEC50', 'Free, bounded [x_min − 1, x_max + 1] (data range ± 1 log unit)'],
     [],
     ['─── ECHO TRANSFER FILE ──────────────────────', ''],
     ['File', echo.fileName || params.echoFileName || ''],
@@ -2989,29 +2949,27 @@ function renderProtocol() {
   html += row('Reported DC50 / IC50 / EC50', '<code style="font-family:var(--mono);font-size:11px;">10<sup>LogEC50</sup> × 10<sup>9</sup>  (nM)</code>');
   html += row('AbsDC50', params.absdc50Enabled ? 'Analytical re-solve of f(x)=50 (when Bottom &lt; 50 and Top &gt; 50)' : '<span style="color:var(--text3)">Not requested</span>');
   html += row('Equivalent Prism form', '<code style="font-family:var(--mono);font-size:11px;">Y = Bottom + (Top − Bottom) / (1 + 10<sup>(LogIC50 − X) × HillSlope</sup>)</code> <span style="color:var(--text3)">(equivalent under Hill sign flip)</span>');
-  html += row('Fitting method', 'Least-squares regression <span style="color:var(--text3)">(Levenberg–Marquardt, multi-start <strong>5 logEC50 seeds</strong>, best R² wins)</span>');
-  html += row('Loss function', 'Unweighted sum-of-squared residuals <span style="color:var(--text3)">— minimised distance between points and curve, independent of Y value</span>');
+  html += row('Fitting method', 'Levenberg–Marquardt, multi-start <strong>(5 logEC50 seeds)</strong>, best R² wins');
+  html += row('Loss function', 'Unweighted sum-of-squared residuals');
   html += row('Replicate treatment', 'Each replicate Y value as an individual point <span style="color:var(--text3)">(no pre-averaging)</span>');
-  html += row('Convergence', '<code style="font-family:var(--mono);font-size:11px;">|ΔSSR|/SSR &lt; 1e-6</code> (medium); auto-tightens to <code style="font-family:var(--mono);font-size:11px;">&lt; 1e-9</code> (strict) once medium met; max <strong>1000</strong> iterations');
-  html += row('LM damping (&lambda;)', 'Init <strong>0.001</strong> · &divide;10 after successful iteration · &times;10 after unsuccessful <span style="color:var(--text3)">(matches Prism)</span>');
-  html += row('Initial values per seed', 'Top = <strong>max Y</strong> · Bottom = <strong>min Y</strong> · LogEC50 = 5 evenly-spaced values across its bounds · Hill = <strong>1.0</strong> <span style="color:var(--text3)">(Echo parameterisation; direction encoded in model formula per assay)</span>');
+  html += row('Convergence', '<code style="font-family:var(--mono);font-size:11px;">max(|Δp|) &lt; 1e-8</code> OR 200 iterations');
 
   html += sec('Fit Bounds (this run)');
-  html += row('Top', params.topEnabled !== false ? ('Fixed at <strong>' + params.topConstrain + '</strong>') : 'Free, unbounded');
+  html += row('Top', params.topEnabled !== false ? ('Fixed at <strong>' + params.topConstrain + '</strong>') : 'Free, bounded <strong>[50, 200]</strong>');
   var _botBnd;
   if (params.fixBot) {
     _botBnd = 'Fixed at <strong>' + params.botVal + '</strong>';
   } else {
-    var _lo = -Infinity, _why = [];
-    if (params.dmaxCapEnabled) { var _v = 100 - (params.dmaxCapVal ?? 0); if (_v > _lo) { _lo = _v; _why.push('Dmax cap'); } }
-    if (params.minBotEnabled !== false) { var _v2 = params.minBotVal ?? 0; if (_v2 > _lo) { _lo = _v2; _why.push('Bottom ≥ floor'); } }
-    _botBnd = isFinite(_lo)
-      ? 'Free, lower bound <strong>' + _lo + '</strong>' + (_why.length ? ' <span style="color:var(--text3)">(' + _why.join(' ∧ ') + ')</span>' : '')
-      : 'Free, unbounded';
+    _botBnd = params.dmaxCapEnabled
+      ? 'Bounded <strong>[' + (100 - (params.dmaxCapVal ?? 0)) + ', 100]</strong>'
+      : 'Bounded <strong>[−20, 100]</strong>';
+    if (params.minBotEnabled !== false) {
+      _botBnd += ' <span style="color:var(--text2)">· Floor: Bottom ≥ ' + (params.minBotVal ?? 0) + '</span>';
+    }
   }
   html += row('Bottom', _botBnd);
-  html += row('Hill slope', params.fixHill ? ('Fixed at <strong>' + params.hillVal + '</strong>') : 'Free, unbounded');
-  html += row('LogEC50', 'Free, unbounded <span style="color:var(--text3)">(multi-start seeds drawn from <strong>x_min − 1</strong> to <strong>x_max + 1</strong>)</span>');
+  html += row('Hill slope', params.fixHill ? ('Fixed at <strong>' + params.hillVal + '</strong>') : 'Free, bounded <strong>[0.1, 5.0]</strong>');
+  html += row('LogEC50', 'Free, bounded <strong>[x_min − 1, x_max + 1]</strong> <span style="color:var(--text3)">(data range ± 1 log unit)</span>');
 
   html += sec('Echo Transfer File');
   html += row('File', echo.fileName || '—');
@@ -3789,6 +3747,21 @@ function renderScatter(data) {
     ];
   };
   window._scatterAxisOpts = _buildAxisOptions(data, _isMultiAssay);
+  // Default X/Y. Multi-assay: pick LogIC50 of the first two distinct assay types
+  // so users immediately see an assay-vs-assay comparison in Log. Single-assay: keep
+  // the existing X=first-option, Y=Dmax_pct convention.
+  let _defXKey = window._scatterAxisOpts[0]?.value || '';
+  let _defYKey = 'Dmax_pct';
+  if (_isMultiAssay) {
+    const _assayTypes = [...new Set(data.map(r => r._assayType).filter(Boolean))];
+    if (_assayTypes.length >= 2) {
+      _defXKey = `${_assayTypes[0]}::LogIC50_M`;
+      _defYKey = `${_assayTypes[1]}::LogIC50_M`;
+    } else if (_assayTypes.length === 1) {
+      _defXKey = `${_assayTypes[0]}::LogIC50_M`;
+      _defYKey = `${_assayTypes[0]}::Dmax_pct`;
+    }
+  }
 
   panel.innerHTML = `
     <div class="strow" style="margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:8px;">
@@ -3808,11 +3781,11 @@ function renderScatter(data) {
         </select>
         <label>X</label>
         <select id="sc-x" onchange="updateScatter()">
-          ${window._scatterAxisOpts.map((o,i)=>`<option value="${o.value}"${i===0?' selected':''}>${o.label}</option>`).join('')}
+          ${window._scatterAxisOpts.map(o=>`<option value="${o.value}"${o.value===_defXKey?' selected':''}>${o.label}</option>`).join('')}
         </select>
         <label>Y</label>
         <select id="sc-y" onchange="updateScatter()">
-          ${window._scatterAxisOpts.map(o=>`<option value="${o.value}"${o.value==='Dmax_pct'?' selected':''}>${o.label}</option>`).join('')}
+          ${window._scatterAxisOpts.map(o=>`<option value="${o.value}"${o.value===_defYKey?' selected':''}>${o.label}</option>`).join('')}
         </select>
         <label>Group</label>
         <select id="sc-prot" onchange="updateScatter()">
@@ -4033,7 +4006,13 @@ function buildScatterChart() {
   const yLabelOverride = document.getElementById('sc-ylabel')?.value.trim() || '';
 
   let rows = _usePivot ? _buildMultiAssayPivot(scatterData) : scatterData;
-  if (!showFlags) rows = rows.filter(r => r.Flag !== 'Yes');
+  if (!showFlags) {
+    if (_usePivot) {
+      rows = rows.filter(r => !Object.keys(r).some(k => k.endsWith('::Flag') && r[k] === 'Yes'));
+    } else {
+      rows = rows.filter(r => r.Flag !== 'Yes');
+    }
+  }
   if (!_usePivot) rows = _applyHitFilters(rows);
   if (protFilter !== 'all') rows = rows.filter(r => r.Protein === protFilter);
 
@@ -5669,6 +5648,66 @@ function renderDownloads() {
 // ===== PDF GENERATION =====
 async function generateAndDownloadCurvePDFs() {
   if (!_lastResultsData || !_lastResultsData.length) { alert('No results yet. Run analysis first.'); return; }
+  // Build distinct (assay, protein) groups so the user can pick which to export.
+  const _isMulti = !!(window._lastAnalysisParams?.multiAssay);
+  const _grps = [];
+  const _seen = new Set();
+  _lastResultsData.forEach(r => {
+    const at = _isMulti ? (r._assayType || '') : '';
+    const prot = r.Protein || '';
+    const key = at + '||' + prot;
+    if (!_seen.has(key)) { _seen.add(key); _grps.push({at, prot, key, n:1}); }
+    else { _grps.find(g => g.key === key).n++; }
+  });
+  _grps.sort((a,b) => a.at.localeCompare(b.at) || a.prot.localeCompare(b.prot));
+  // Single group → skip picker, go straight to export.
+  if (_grps.length <= 1) return _pdfExportFiltered(_lastResultsData);
+  // Show modal picker
+  return new Promise(resolve => {
+    const modal = document.createElement('div');
+    modal.id = 'pdf-picker-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--modal-backdrop,rgba(0,0,0,.5));display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);';
+    modal.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:20px 22px;max-width:480px;width:100%;box-shadow:var(--shadow-xl,0 16px 48px rgba(0,0,0,.3));font-family:var(--sans);">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:var(--text);">Generate curve PDFs</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Pick which ${_isMulti?'assay/group':'group'} PDFs to export. One PDF per checked entry.</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <button onclick="document.querySelectorAll('#pdf-picker-modal input[type=checkbox]').forEach(c=>c.checked=true)" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;">All</button>
+          <button onclick="document.querySelectorAll('#pdf-picker-modal input[type=checkbox]').forEach(c=>c.checked=false)" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;">None</button>
+          <span style="font-size:11px;color:var(--text3);margin-left:auto;">${_grps.length} group${_grps.length===1?'':'s'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;max-height:320px;overflow-y:auto;padding-right:4px;margin-bottom:14px;">
+          ${_grps.map((g,i) => `
+            <label style="display:flex;align-items:center;gap:9px;padding:7px 11px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;background:var(--surface2);">
+              <input type="checkbox" data-idx="${i}" checked style="cursor:pointer;">
+              <span style="flex:1;color:var(--text);">
+                ${g.at ? `<span style="font-family:var(--mono);color:var(--accent2);font-size:10px;padding:1px 6px;border-radius:10px;background:var(--accent2-soft,rgba(0,121,185,.10));margin-right:6px;">${esc(g.at)}</span>` : ''}<strong>${esc(g.prot)}</strong>
+                <span style="color:var(--text3);font-size:10.5px;font-family:var(--mono);margin-left:6px;">${g.n} compound${g.n===1?'':'s'}</span>
+              </span>
+            </label>
+          `).join('')}
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button id="pdf-pick-cancel" style="padding:7px 14px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px;font-family:var(--sans);">Cancel</button>
+          <button id="pdf-pick-go" style="padding:7px 16px;border-radius:7px;border:none;background:var(--accent2);color:#fff;cursor:pointer;font-size:12px;font-weight:600;font-family:var(--sans);">Generate selected</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('#pdf-pick-cancel').onclick = () => { modal.remove(); resolve(); };
+    modal.querySelector('#pdf-pick-go').onclick = async () => {
+      const picked = [...modal.querySelectorAll('input[type=checkbox]:checked')].map(cb => _grps[+cb.dataset.idx]);
+      modal.remove();
+      if (!picked.length) { resolve(); return; }
+      const pickedKeys = new Set(picked.map(g => g.key));
+      const _grpKey = r => (_isMulti ? (r._assayType || '') : '') + '||' + (r.Protein || '');
+      const filtered = _lastResultsData.filter(r => pickedKeys.has(_grpKey(r)));
+      await _pdfExportFiltered(filtered);
+      resolve();
+    };
+  });
+}
+async function _pdfExportFiltered(results) {
   for (let i = downloadBlobs.length - 1; i >= 0; i--) {
     if (downloadBlobs[i].kind === 'pdf') downloadBlobs.splice(i, 1);
   }
@@ -5676,7 +5715,7 @@ async function generateAndDownloadCurvePDFs() {
   const orig = btn ? btn.innerHTML : '';
   if (btn) { btn.innerHTML = '⏳ Generating…'; btn.disabled = true; }
   try {
-    await generateCurvePDFs(_lastResultsData);
+    await generateCurvePDFs(results);
     downloadBlobs.filter(b => b.kind === 'pdf').forEach(b => downloadBlob(b));
   } catch (e) {
     log('Curve PDF generation failed: ' + (e && e.message ? e.message : e), 'warn');
@@ -5690,13 +5729,18 @@ async function generateCurvePDFs(results) {
   if (!results || !results.length) return;
   const jsPDFCls = window.jspdf && window.jspdf.jsPDF;
   if (!jsPDFCls) { log('jsPDF not loaded — PDFs skipped.', 'warn'); return; }
-  const proteins = [...new Set(results.map(r => r.Protein))].sort();
+  // Multi-assay: split into one PDF per (assay, protein) so each export covers a single curve type.
+  const _isMulti = !!(window._lastAnalysisParams?.multiAssay);
+  const _grpKey = r => _isMulti ? (r._assayType || '_') + '||' + (r.Protein || '') : (r.Protein || '');
+  const groupKeys = [...new Set(results.map(_grpKey))].sort();
   const assayId = window._lastAssayId || 'output';
   const total = results.length;
   let done = 0;
   log('Generating curve PDFs (' + total + ' compounds)…', 'info');
-  for (const protein of proteins) {
-    const pResults = results.filter(r => r.Protein === protein);
+  for (const _gk of groupKeys) {
+    const _at = _isMulti ? _gk.split('||')[0] : '';
+    const protein = _isMulti ? _gk.split('||')[1] : _gk;
+    const pResults = results.filter(r => _grpKey(r) === _gk);
     const doc = new jsPDFCls({orientation:'portrait', unit:'mm', format:'a4'});
     const pageW = 210;
     const marginX = 12, marginTop = 12;
@@ -5720,7 +5764,7 @@ async function generateCurvePDFs(results) {
         cvs.width = cvs.height = 0; // free pixel buffer immediately
         const titleY = slotTop + 6;
         doc.setFontSize(11); doc.setTextColor(30, 30, 30);
-        doc.text((r.Sample_ID || '—') + '  ·  ' + protein, marginX, titleY);
+        doc.text((r.Sample_ID || '—') + '  ·  ' + protein + (_at ? '  ·  ' + _at : ''), marginX, titleY);
         doc.setFontSize(8); doc.setTextColor(90, 90, 100);
         const st = [
           'DC50: ' + (r.DC50_nM != null ? r.DC50_nM + ' nM' : '—'),
@@ -5740,13 +5784,14 @@ async function generateCurvePDFs(results) {
         setProgress(Math.round(done / total * 100));
       }
     }
-    const pdfName = 'Results_' + assayId + '_Curves_' + protein.replace(/[/\\?%*:|"<>]/g,'_') + '.pdf';
+    const _safeName = (_at ? _at + '_' : '') + protein.replace(/[/\\?%*:|"<>]/g,'_');
+    const pdfName = 'Results_' + assayId + '_Curves_' + _safeName + '.pdf';
     try {
       const pdfBytes = new Uint8Array(doc.output('arraybuffer'));
       downloadBlobs.push({ name: pdfName, bytes: pdfBytes, type: 'application/pdf', kind: 'pdf' });
-    } catch(e) { log('PDF failed for ' + protein + ': ' + (e.message || e), 'warn'); }
+    } catch(e) { log('PDF failed for ' + _safeName + ': ' + (e.message || e), 'warn'); }
   }
-  log('Curve PDFs ready — ' + proteins.length + ' file(s).', 'ok');
+  log('Curve PDFs ready — ' + groupKeys.length + ' file(s).', 'ok');
 }
 
 // ===== INIT =====
@@ -5941,6 +5986,7 @@ function renderCurvesTab(data) {
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px 4px;flex-wrap:wrap;gap:6px;">
       <span id="cv-sel-count" style="font-size:10px;color:var(--text3);font-family:var(--sans);"></span>
       <div style="display:flex;gap:6px;align-items:center;">
+        <input id="cv-compare-search" type="text" placeholder="Search Sample ID…" oninput="buildCompareList()" style="font-size:11px;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:3px 9px;color:var(--text);font-family:var(--sans);outline:none;width:140px;">
         <select id="cv-sort-by" onchange="buildCompareList()" style="font-size:11px;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:3px 7px;color:var(--text);font-family:var(--sans);outline:none;">
           <option value="">Default order</option>
           <option value="DC50_asc">DC₅₀ ↑ (low→high)</option>
@@ -6053,6 +6099,8 @@ function buildCompareList() {
   if(!el||!window._cvData) return;
   const prot=document.getElementById('cv-prot')?.value||'all';
   let data=prot==='all'?[...window._cvData]:[...window._cvData.filter(r=>r.Protein===prot)];
+  const searchQ=(document.getElementById('cv-compare-search')?.value||'').toLowerCase().trim();
+  if(searchQ) data=data.filter(r=>String(r.Sample_ID||'').toLowerCase().includes(searchQ));
   const sortBy=document.getElementById('cv-sort-by')?.value||'';
   if(sortBy==='DC50_asc') data.sort((a,b)=>(a.DC50_nM??Infinity)-(b.DC50_nM??Infinity));
   else if(sortBy==='DC50_desc') data.sort((a,b)=>(b.DC50_nM??0)-(a.DC50_nM??0));
@@ -6708,22 +6756,22 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
   const t0=topFixed?topVal:(yMx*1.05);
   const h0=hillFixed?(hillVal??1):1;
   const _minBotEn = !botFixed && document.getElementById('p-min-bot-en')?.checked !== false;
-  const _minBotV = _minBotEn ? (parseFloat(document.getElementById('p-min-bot-val')?.value) ?? 0) : -Infinity;
-  const loBot=botFixed?b0-0.01:(_minBotEn?_minBotV:-Infinity), hiBot=botFixed?b0+0.01:Infinity;
-  const loHill=hillFixed?h0-0.001:-Infinity, hiHill=hillFixed?h0+0.001:Infinity;
-  const loEC=-Infinity, hiEC=Infinity;
+  const _minBotV = _minBotEn ? (parseFloat(document.getElementById('p-min-bot-val')?.value) ?? 0) : -20;
+  const loBot=botFixed?b0-0.01:Math.max(-20,_minBotEn?_minBotV:-20), hiBot=botFixed?b0+0.01:100;
+  const loHill=hillFixed?h0-0.001:0.1, hiHill=hillFixed?h0+0.001:5.0;
+  const loEC=xMn-2, hiEC=xMx+2;
   let bot, logec50, hill, top;
   if (topFixed && !botFixed && !hillFixed) {
     const tc=topVal;
     const pBase=[Math.max(loBot,Math.min(hiBot,b0)), (xMn+xMx)/2, h0];
     const {params}=_fitBest(xs, ys, pBase, [loBot,loEC,loHill], [hiBot,hiEC,hiHill],
-      (xi,b,l,h)=>_4plVal3(xi,b,l,h,tc), (xi,b,l,h)=>_4plJac3(xi,b,l,h,tc), 1000);
+      (xi,b,l,h)=>_4plVal3(xi,b,l,h,tc), (xi,b,l,h)=>_4plJac3(xi,b,l,h,tc), 300);
     [bot,logec50,hill]=params; top=tc;
   } else {
-    const loTop=topFixed?t0-0.01:-Infinity, hiTop=topFixed?t0+0.01:Infinity;
+    const loTop=topFixed?t0-0.01:50, hiTop=topFixed?t0+0.01:200;
     const pBase=[Math.max(loBot,Math.min(hiBot,b0)), (xMn+xMx)/2, h0, Math.max(loTop,Math.min(hiTop,t0))];
     const {params}=_fitBest(xs, ys, pBase, [loBot,loEC,loHill,loTop], [hiBot,hiEC,hiHill,hiTop],
-      _4plVal4, _4plJac4, 1000);
+      _4plVal4, _4plJac4, 300);
     [bot,logec50,hill,top]=params;
   }
   const ymean=ys.reduce((a,v)=>a+v,0)/ys.length;
@@ -7423,22 +7471,22 @@ function drawPlateCanvas(bc) {
         fillColor = proteinColor(w.p||null);
       } else if (mode==='conc') {
         fillColor = concColor(w.c);
-      } else { // flag — per-well SD outlier (only wells deviating >2 SD within compound+conc group)
-        if (!w.s || (!w.ctrl && !w.p)) { fillColor=isDark?'#2a2f42':'#dde0ec'; }
-        else if (w.ctrl) { fillColor=isDark?'rgba(0,200,150,.25)':'rgba(0,200,150,.35)'; }
-        else if (w.m == null) { fillColor=isDark?'#2a2f42':'#dde0ec'; }
-        else {
-          // Find all replicates of same compound+conc on this plate
-          const grpVals = Object.values(wells).filter(v=>v&&v.s===w.s&&v.p===w.p&&Math.abs((v.c||0)-(w.c||0))<0.001&&v.m!=null).map(v=>v.m);
-          if (grpVals.length < 2) {
-            fillColor=isDark?'rgba(180,180,200,0.25)':'rgba(180,180,200,0.35)'; // single rep — neutral
+      } else { // flag — compound-level Flag status from 4PL fit results
+        if (!window._plateFlagMap && Array.isArray(scatterData)) {
+          window._plateFlagMap = {};
+          scatterData.forEach(r => { if (r.Sample_ID) window._plateFlagMap[r.Sample_ID] = r.Flag; });
+        }
+        const fmap = window._plateFlagMap || {};
+        if (!w.s) {
+          fillColor = isDark?'#2a2f42':'#dde0ec';
+        } else {
+          const flag = fmap[w.s];
+          if (flag === 'Yes') {
+            fillColor = isDark?'rgba(255,87,96,0.75)':'rgba(255,80,90,0.70)';
+          } else if (flag) {
+            fillColor = isDark?'rgba(0,200,150,0.30)':'rgba(0,190,140,0.40)';
           } else {
-            const gMean = grpVals.reduce((a,b)=>a+b,0)/grpVals.length;
-            const gSD = Math.sqrt(grpVals.reduce((a,b)=>a+(b-gMean)**2,0)/grpVals.length);
-            const isOutlier = gSD > 1e-9 && Math.abs(w.m - gMean) > 2 * gSD;
-            fillColor = isOutlier
-              ? (isDark?'rgba(255,87,96,0.7)':'rgba(255,80,90,0.65)')
-              : (isDark?'rgba(0,200,150,0.35)':'rgba(0,190,140,0.4)');
+            fillColor = isDark?'#2a2f42':'#dde0ec';
           }
         }
       }
