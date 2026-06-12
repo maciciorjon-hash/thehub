@@ -572,6 +572,35 @@ function cellLineColor(name){
 }
 function clearColorCache(){ _hueCache = {}; }
 
+// ─── HARDWARE BACK BUTTON ──────────────────────────────────────────────────
+// Generic nav stack: every modal/detail open pushes a closer; hardware back
+// pops + runs the closer. UI close buttons call popNavLevel() which also
+// rolls back history. Net effect: phone back always walks up one layer.
+var _navStack = [];
+var _popInProgress = false;
+function pushNavLevel(closer){
+  _navStack.push(closer);
+  try { history.pushState({iceNav: _navStack.length}, ''); } catch(e){}
+}
+function popNavLevel(){
+  if (!_navStack.length) return false;
+  if (_popInProgress) return false;
+  // Trigger history.back() which fires popstate → which runs the closer.
+  _popInProgress = true;
+  try { history.back(); } catch(e){ _runTopCloser(); _popInProgress = false; }
+  return true;
+}
+function _runTopCloser(){
+  var fn = _navStack.pop();
+  if (fn) { try { fn(); } catch(_){} }
+}
+window.addEventListener('popstate', function(){
+  if (_navStack.length) {
+    _runTopCloser();
+    _popInProgress = false;
+  }
+});
+
 // ─── TAB SWITCHING ────────────────────────────────────────────────────────
 function switchTab(tab){
   currentTab = tab;
@@ -821,11 +850,15 @@ function openBoxDetail(tab, rackId, boxId){
   currentBoxDetail = { storage: tab, rackId: rackId, boxId: boxId };
   renderBoxDetail();
   document.getElementById('detail-overlay').classList.add('open');
+  pushNavLevel(function(){ _closeBoxDetailUI(); });
 }
-function closeBoxDetail(){
+function _closeBoxDetailUI(){
   document.getElementById('detail-overlay').classList.remove('open');
   currentBoxDetail = null;
   renderTab(currentTab);
+}
+function closeBoxDetail(){
+  if (!popNavLevel()) _closeBoxDetailUI();
 }
 function getCurrentBox(){
   if (!currentBoxDetail) return null;
@@ -949,6 +982,7 @@ function openAddVial(){
   document.getElementById('vf-notes').value = '';
   refreshCellLineSuggestions();
   document.getElementById('vial-modal').classList.add('open');
+  pushNavLevel(function(){ document.getElementById('vial-modal').classList.remove('open'); editingVialPos=null; });
   setTimeout(function(){ document.getElementById('vf-pos').focus(); }, 50);
 }
 function openEditVial(pos){
@@ -968,10 +1002,10 @@ function openEditVial(pos){
   document.getElementById('vf-notes').value = v.notes || '';
   refreshCellLineSuggestions();
   document.getElementById('vial-modal').classList.add('open');
+  pushNavLevel(function(){ document.getElementById('vial-modal').classList.remove('open'); editingVialPos=null; });
 }
 function closeVialModal(){
-  document.getElementById('vial-modal').classList.remove('open');
-  editingVialPos = null;
+  if (!popNavLevel()) { document.getElementById('vial-modal').classList.remove('open'); editingVialPos = null; }
 }
 function normalisePos(p){
   // 'A1' / 'a01' → 'A1'
@@ -1024,9 +1058,10 @@ function openBulkAdd(){
   document.getElementById('bulk-text').value = '';
   document.getElementById('bulk-preview').textContent = '';
   document.getElementById('bulk-modal').classList.add('open');
+  pushNavLevel(function(){ document.getElementById('bulk-modal').classList.remove('open'); });
   setTimeout(function(){ document.getElementById('bulk-text').focus(); }, 60);
 }
-function closeBulkAdd(){ document.getElementById('bulk-modal').classList.remove('open'); }
+function closeBulkAdd(){ if (!popNavLevel()) document.getElementById('bulk-modal').classList.remove('open'); }
 document.addEventListener('input', function(e){
   if (e.target && e.target.id === 'bulk-text') {
     var parsed = parseBulkText(e.target.value);
@@ -1091,9 +1126,10 @@ function openAddRack(){
   document.getElementById('rack-modal-title').textContent = 'Add rack';
   document.getElementById('rf-name').value = '';
   document.getElementById('rack-modal').classList.add('open');
+  pushNavLevel(function(){ document.getElementById('rack-modal').classList.remove('open'); });
   setTimeout(function(){ document.getElementById('rf-name').focus(); }, 60);
 }
-function closeRackModal(){ document.getElementById('rack-modal').classList.remove('open'); }
+function closeRackModal(){ if (!popNavLevel()) document.getElementById('rack-modal').classList.remove('open'); }
 function saveRack(){
   var name = document.getElementById('rf-name').value.trim();
   if (!name) { toast('Rack name required'); return; }
@@ -1148,9 +1184,10 @@ function openAddBox(rackId){
   document.getElementById('bf-rows').value = 8;
   document.getElementById('bf-cols').value = 12;
   document.getElementById('box-modal').classList.add('open');
+  pushNavLevel(function(){ document.getElementById('box-modal').classList.remove('open'); });
   setTimeout(function(){ document.getElementById('bf-name').focus(); document.getElementById('bf-name').select(); }, 60);
 }
-function closeBoxModal(){ document.getElementById('box-modal').classList.remove('open'); }
+function closeBoxModal(){ if (!popNavLevel()) document.getElementById('box-modal').classList.remove('open'); }
 function saveBox(){
   var name = document.getElementById('bf-name').value.trim();
   var rows = parseInt(document.getElementById('bf-rows').value, 10) || 8;

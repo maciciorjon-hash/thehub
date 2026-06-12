@@ -253,8 +253,26 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 68: Mobile horizontal panning fix — overflow:hidden trap)
-Hub apps: 9. Version v1.0.34.
+Last session: 2026-06-12 (Round 69: Hardware-back wiring + LabMate mobile nav + easter egg upgrade)
+Hub apps: 9. Version v1.0.35.
+Hardware back integration (phone back button walks up one nav level instead of leaving browser):
+- hub-shell.html openApp pushes {_hubApp: id} state; popstate listener detects currentApp and calls backToHub. backToHub itself calls history.back() unless invoked from popstate (guard via _backPopping flag).
+- Cryostorage/cryostorage.html: added _navStack + pushNavLevel(closeFn) + popNavLevel() + popstate listener. Wired into openBoxDetail (closes box detail), openAddVial (closes vial form modal), openEditVial (same), openBulkAdd, openAddRack, openAddBox. UI close buttons (closeBoxDetail etc.) call popNavLevel which triggers history.back; popstate runs the closer.
+- Labcyte_Echo/labcyte_echo.html openSetupModal at ~9103: added _initial flag. The on-page-load auto-open call now passes (true) so it doesn't push state (Hub already pushed one for opening Echo). Manual reopens via ⚙ Setup do push state. popstate listener closes the modal if open. closeSetupModal calls history.back unless _setupModalPopping.
+LabMate mobile nav rework (agent-built):
+- New mobile-only header: orange .mob-back-btn (44px tap target, animated chevron) + breadcrumb #mob-breadcrumb showing "Section › Sub-section" with fade animation. Visible only at ≤700px and only when not at the mobile nav home.
+- LM_SECTION_LABELS map labels each top-level nav. _lmCurrentLeafLabel() derives the sub-label by inspecting open .proto-entry / qc-panel / assay-panel.
+- _lmNavStack + pushNavLevel + popNavLevel + popstate listener (mobile-only via _lmIsMobile() check). Wraps switchNav, switchNavGroup, mobGoTo, mobShowSubGroup, mobGoHome, showProto, showProtoHome (raw exposed as showProtoHomeRaw), _navToSection, showQcTool/showQcHome, showAssayTab/showAssayHome, showProtacTab/showProtacHome, showRefTool/showRefHome. Top-level changes RESET the stack; deeper navigation PUSHES a level whose closer returns to that section's home.
+- _lmMobNavBack() (back button click) calls popNavLevel; falls back to original mobBack for the drawer/grid path. Quick Notes / command palette / drawer untouched - they don't touch _lmNavStack so phone-back doesn't close them spuriously.
+Alessio easter egg upgrade in hub-shell.html:
+- CSS animations: Claude eye blink + antenna pulse via @keyframes; reggStagger class for stagger-fade of milestone checkmarks; reggPop modal entrance with cubic-bezier spring; reggConf confetti drop animation.
+- New interactive elements: regg-jon/regg-claude/regg-ryan groups all become clickable (regg-clickable class with hover lift). Click triggers reggBubble() with a random phrase from JON_PHRASES / CLAUDE_PHRASES / RYAN_PHRASES. Ryan also rotates his alias on click.
+- Auto-rotation timers (cleared on close): Ryan's alias every 3.2s through RYAN_ALIASES (12 entries including "anyone", "Jon", "Hi Claude"); stats ticker every 4.4s through STATS_LINES (7 entries with Hub trivia).
+- Hidden inside-egg: tap the antenna red dot (#regg-antenna) 7 times → reggConfetti() drops 60 multi-coloured particles. Counter shows progress in tooltip.
+- Subtitle now reads v1.0.34 (auto-updates in changelog); milestone ticker rewritten to cover all the wins through v1.0.34 including Iceberg, mobile audit, Fletcher λ, square PNG.
+All 9 source HTMLs pass node --check after edits. embed.py rebuild succeeds 9/9.
+
+Previous session: 2026-06-12 (Round 68: horizontal panning fix; v1.0.34)
 Pattern across all apps: top-level layout containers (main, .content, .panel, .tabpane, #app-body, sometimes html/body) had overflow:hidden as the desktop "scroll-inside-inner-divs" pattern. On mobile, this trapped wide content (Echo results tables, scatter charts, plate canvases, sequence displays) inside their parent — user couldn't pan sideways.
 Fix per app, added inside the existing @media (max-width:720px) block:
 - Echo: main + .tabpane + .tabpane.active + .results-tbl-scroll all overflow:auto.

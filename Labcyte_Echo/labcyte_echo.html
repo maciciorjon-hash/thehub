@@ -9100,7 +9100,8 @@ window.addEventListener('resize', function() {
 });
 
 // ── Setup Modal ───────────────────────────────────────────────────────────
-function openSetupModal() {
+var _setupModalPopping = false;
+function openSetupModal(_initial) {
   const modal = document.getElementById('setup-modal');
   if (!modal) return;
   modal.classList.remove('hidden');
@@ -9113,18 +9114,33 @@ function openSetupModal() {
   if (cancel) cancel.style.display = '';
   const sub = document.getElementById('setup-hsub');
   if (sub) sub.textContent = ran ? 'Modify parameters and re-run' : 'Configure your experiment';
+  // Hardware-back integration: only push a history entry when the user opened
+  // the modal manually (via ⚙ Setup). The auto-open on first load is the
+  // intended initial state, so we skip pushState there to keep one phone-back
+  // press returning to the Hub.
+  if (!_initial) { try { history.pushState({_echoSetup: true}, ''); } catch(e){} }
 }
 function closeSetupModal() {
   const modal = document.getElementById('setup-modal');
   if (modal) modal.classList.add('hidden');
+  // If the user clicked the X/Close button, roll back the history entry too.
+  if (!_setupModalPopping) { try { history.back(); } catch(e){} }
 }
+window.addEventListener('popstate', function(){
+  const m = document.getElementById('setup-modal');
+  if (m && !m.classList.contains('hidden')) {
+    _setupModalPopping = true;
+    closeSetupModal();
+    _setupModalPopping = false;
+  }
+});
 function switchSetupTab(name) {
   document.querySelectorAll('.setup-stab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.setup-pane').forEach(p =>
     p.classList.toggle('active', p.id === 'setup-pane-' + name));
 }
-openSetupModal();
+openSetupModal(true);
 </script>
 </body>
 </html>

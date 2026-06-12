@@ -1175,17 +1175,35 @@ body.mode-calc .proto-entry.has-calc .proto-header { cursor: default; }
 .mob-home-btn { display: none !important; }
 .mob-back-btn {
   display: none; flex-shrink: 0;
-  align-items: center; gap: 4px;
-  background: var(--surface); border: 1.5px solid var(--border2); border-radius: 8px;
-  color: var(--text); font-family: var(--sans); font-size: 12px; font-weight: 600;
-  padding: 0 14px; cursor: pointer; margin-right: 8px; white-space: nowrap;
-  -webkit-tap-highlight-color: transparent; min-height: 36px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  align-items: center; gap: 6px;
+  background: var(--accent); border: 1.5px solid var(--accent); border-radius: 10px;
+  color: #fff; font-family: var(--sans); font-size: 13px; font-weight: 700;
+  padding: 0 14px; cursor: pointer; margin-right: 10px; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent; min-height: 40px;
+  box-shadow: 0 2px 6px rgba(204,119,34,0.28);
+  letter-spacing: 0.2px;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
 }
+.mob-back-btn:active { transform: translateX(-2px) scale(0.97); box-shadow: 0 1px 3px rgba(204,119,34,0.35); }
+.mob-back-btn .mob-back-chev { display: inline-block; font-size: 16px; line-height: 1; transition: transform 0.18s cubic-bezier(0.34,1.56,0.64,1); }
+.mob-back-btn:active .mob-back-chev { transform: translateX(-3px); }
+.mob-breadcrumb {
+  display: none; flex: 1 1 auto; min-width: 0;
+  font-family: var(--sans); font-size: 12px; font-weight: 600;
+  color: var(--text2); letter-spacing: 0.1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  align-items: center; gap: 4px;
+  animation: lmCrumbFade 0.24s ease;
+}
+.mob-breadcrumb .mob-crumb-current { color: var(--text); font-weight: 700; }
+.mob-breadcrumb .mob-crumb-sep { color: var(--text3); margin: 0 2px; font-weight: 500; opacity: 0.7; }
+@keyframes lmCrumbFade { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
 @media (max-width: 700px) {
   body:not(.mob-at-home) .mob-back-btn { display: inline-flex; }
+  body:not(.mob-at-home) .mob-breadcrumb { display: inline-flex; }
   .lm-hdr-name, .lm-hdr-sub { display: none; }
-  .mob-back-btn { min-height: 40px; padding: 0 16px; }
+  body:not(.mob-at-home) .logo { display: none; }
+  .mob-back-btn { min-height: 44px; padding: 0 18px; font-size: 14px; border-radius: 12px; }
   .subtab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .subtab-btn { padding: 8px 12px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
   input[type="range"] { height: 40px; cursor: pointer; }
@@ -1817,7 +1835,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 <header>
   <div class="header-top">
     <div class="ht-left">
-      <button class="mob-back-btn" onclick="mobBack()"><span id="mob-back-label">← LabMate</span></button>
+      <button class="mob-back-btn" onclick="_lmMobNavBack()" aria-label="Go back"><span class="mob-back-chev" aria-hidden="true">&#8249;</span><span id="mob-back-label">Back</span></button>
+      <span class="mob-breadcrumb" id="mob-breadcrumb" aria-live="polite"></span>
       <div class="logo" id="logo-el" onclick="_pipSecretClick()" title="LabMate">L</div>
       <div>
         <div class="lm-hdr-name">LabMate</div>
@@ -11145,6 +11164,303 @@ document.addEventListener('keydown', function(e) {
     e.preventDefault();
     document.getElementById('lm-palette').classList.contains('open') ? closePalette() : openPalette();
   }
+});
+
+// ── MOBILE NAV: prominent back button + breadcrumb + hardware-back integration ──
+// Section ID → friendly label (used in breadcrumb)
+var LM_SECTION_LABELS = {
+  favourites:'Favourites', quickcalc:'Calculators', molbio:'Mol Biology',
+  cellbio:'Cell Biology', crispr:'CRISPR', proteomics:'Proteomics',
+  assays:'Biophysics', structbio:'Struct Bio', genomics:'Genomics',
+  celllines:'Cell Lines', tools:'Tools', timer:'Timer', planner:'Planner',
+  reftables:'Reference', protactools:'PROTAC', 'pip-story':'Pip'
+};
+// Returns a human-readable label for the current nav level / sub-state.
+function _lmCurrentLeafLabel() {
+  // Protocol open? Use its title
+  var openEntry = document.querySelector('#sec-' + currentNav + ' .proto-entry.proto-gated.open');
+  if (openEntry) {
+    var t = openEntry.querySelector('.proto-title');
+    if (t && t.textContent) return t.textContent.trim();
+  }
+  // Quick-calc panel?
+  if (currentNav === 'quickcalc' && _qcTool) {
+    var qcPanel = document.getElementById('qc-panel-' + _qcTool);
+    if (qcPanel) {
+      var qct = qcPanel.querySelector('h2, .calc-title, .card-title');
+      if (qct && qct.textContent) return qct.textContent.trim().split('\n')[0];
+    }
+    return _qcTool;
+  }
+  // Assay sub-tab?
+  if (currentNav === 'assays' && _assayTab) {
+    var ap = document.getElementById('assay-panel-' + _assayTab);
+    if (ap && ap.style.display !== 'none') {
+      var at = ap.querySelector('h2, .calc-title, .card-title');
+      if (at && at.textContent) return at.textContent.trim().split('\n')[0];
+    }
+  }
+  return '';
+}
+function updateMobBreadcrumb() {
+  var el = document.getElementById('mob-breadcrumb');
+  if (!el) return;
+  if (_mobAtHome) { el.innerHTML = ''; return; }
+  var top = LM_SECTION_LABELS[currentNav] || 'LabMate';
+  var leaf = _lmCurrentLeafLabel();
+  // Truncate long leaf labels
+  if (leaf && leaf.length > 38) leaf = leaf.slice(0, 36) + '…';
+  if (leaf && leaf !== top) {
+    el.innerHTML = '<span class="mob-crumb-top">' + top + '</span>' +
+                   '<span class="mob-crumb-sep">›</span>' +
+                   '<span class="mob-crumb-current">' + leaf + '</span>';
+  } else {
+    el.innerHTML = '<span class="mob-crumb-current">' + top + '</span>';
+  }
+  // Force fade animation re-trigger
+  el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+}
+
+// Nav stack: each entry is { close: fn } where fn walks UI back ONE level.
+var _lmNavStack = [];
+var _lmPopstateInternal = false;
+function pushNavLevel(closeFn) {
+  if (typeof closeFn !== 'function') return;
+  _lmNavStack.push({ close: closeFn });
+  try { history.pushState({ lmNav: _lmNavStack.length }, ''); } catch(e){}
+}
+function popNavLevel(fromPopstate) {
+  if (!_lmNavStack.length) return false;
+  var entry = _lmNavStack.pop();
+  try { entry.close(); } catch(_) {}
+  if (!fromPopstate) {
+    _lmPopstateInternal = true;
+    try { history.back(); } catch(e){}
+    // Reset the guard on the next tick — popstate fires async
+    setTimeout(function(){ _lmPopstateInternal = false; }, 60);
+  }
+  updateMobBreadcrumb();
+  return true;
+}
+window.addEventListener('popstate', function(e) {
+  // If we have nav state to consume, do it; otherwise let the browser navigate away.
+  if (_lmNavStack.length) {
+    if (_lmPopstateInternal) { _lmPopstateInternal = false; return; }
+    var entry = _lmNavStack.pop();
+    try { entry.close(); } catch(_) {}
+    updateMobBreadcrumb();
+  }
+});
+
+// Called by the on-screen back button. Walks one level up.
+function _lmMobNavBack() {
+  if (_lmNavStack.length) { popNavLevel(false); return; }
+  // No deeper state — fall back to original mobBack (returns to mobile home)
+  if (typeof mobBack === 'function') mobBack();
+}
+
+// Only push history entries on actual mobile so we don't pollute desktop browser history.
+function _lmIsMobile() { return window.innerWidth <= 700; }
+
+// ── Wrap existing nav fns to maintain stack + breadcrumb ───────────────────
+(function wrapNav(){
+  // switchNav: top-level section change — RESETS the stack.
+  if (typeof switchNav === 'function') {
+    var _origSwitchNav = switchNav;
+    window.switchNav = function(id, btn, fromMobile) {
+      _lmNavStack = [];
+      var r = _origSwitchNav.apply(this, arguments);
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  if (typeof switchNavGroup === 'function') {
+    var _origSwitchGroup = switchNavGroup;
+    window.switchNavGroup = function(id, btn) {
+      _lmNavStack = [];
+      var r = _origSwitchGroup.apply(this, arguments);
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // mobGoTo: entering a section from the mobile home grid — resets the stack
+  if (typeof mobGoTo === 'function') {
+    var _origMobGoTo = mobGoTo;
+    window.mobGoTo = function(sectionId, subTabId) {
+      _lmNavStack = [];
+      var r = _origMobGoTo.apply(this, arguments);
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // mobShowSubGroup: showing the mobile sub-list (e.g. tools → timer/planner)
+  if (typeof mobShowSubGroup === 'function') {
+    var _origSub = mobShowSubGroup;
+    window.mobShowSubGroup = function(groupId) {
+      var r = _origSub.apply(this, arguments);
+      // Stack-aware so phone-back returns to mob-home
+      if (_lmIsMobile()) {
+        pushNavLevel(function(){
+          if (typeof mobGoHome === 'function') mobGoHome();
+        });
+      }
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // mobGoHome / mobBack: leaving deeper state — clear stack
+  if (typeof mobGoHome === 'function') {
+    var _origGoHome = mobGoHome;
+    window.mobGoHome = function() {
+      _lmNavStack = [];
+      var r = _origGoHome.apply(this, arguments);
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // showProto: open a specific protocol entry — pushes a level
+  if (typeof showProto === 'function') {
+    var _origShowProto = showProto;
+    window.showProto = function(sec, pid) {
+      var r = _origShowProto.apply(this, arguments);
+      if (_lmIsMobile()) {
+        pushNavLevel(function(){
+          if (typeof showProtoHomeRaw === 'function') showProtoHomeRaw(sec);
+          else if (typeof showProtoHome === 'function') showProtoHome(sec);
+        });
+      }
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // showProtoHome: returning to a protocol section's card grid — drains protocol entries off stack
+  if (typeof showProtoHome === 'function') {
+    var _origProtoHome = showProtoHome;
+    // expose raw for popNavLevel callbacks
+    window.showProtoHomeRaw = _origProtoHome;
+    window.showProtoHome = function(sec) {
+      var r = _origProtoHome.apply(this, arguments);
+      // Drop any pushed protocol-entry levels
+      _lmNavStack = [];
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // _navToSection: cross-section navigation — resets stack
+  if (typeof _navToSection === 'function') {
+    var _origNTS = _navToSection;
+    window._navToSection = function(id) {
+      _lmNavStack = [];
+      var r = _origNTS.apply(this, arguments);
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // showQcTool / showQcHome
+  if (typeof showQcTool === 'function') {
+    var _origQc = showQcTool;
+    window.showQcTool = function(tool) {
+      var r = _origQc.apply(this, arguments);
+      if (_lmIsMobile()) {
+        pushNavLevel(function(){
+          if (typeof showQcHome === 'function') showQcHome();
+          _qcTool = null;
+        });
+      }
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  if (typeof showQcHome === 'function') {
+    var _origQcHome = showQcHome;
+    window.showQcHome = function() {
+      var r = _origQcHome.apply(this, arguments);
+      _lmNavStack = [];
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // showAssayTab / showAssayHome
+  if (typeof showAssayTab === 'function') {
+    var _origAt = showAssayTab;
+    window.showAssayTab = function(tab) {
+      var r = _origAt.apply(this, arguments);
+      if (_lmIsMobile()) {
+        pushNavLevel(function(){
+          if (typeof showAssayHome === 'function') showAssayHome();
+        });
+      }
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  if (typeof showAssayHome === 'function') {
+    var _origAh = showAssayHome;
+    window.showAssayHome = function() {
+      var r = _origAh.apply(this, arguments);
+      _lmNavStack = [];
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // showProtacTab / showProtacHome
+  if (typeof showProtacTab === 'function') {
+    var _origPt = showProtacTab;
+    window.showProtacTab = function(tab) {
+      var r = _origPt.apply(this, arguments);
+      if (_lmIsMobile()) {
+        pushNavLevel(function(){
+          if (typeof showProtacHome === 'function') showProtacHome();
+        });
+      }
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  if (typeof showProtacHome === 'function') {
+    var _origPh = showProtacHome;
+    window.showProtacHome = function() {
+      var r = _origPh.apply(this, arguments);
+      _lmNavStack = [];
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  // showRefTool / showRefHome
+  if (typeof showRefTool === 'function') {
+    var _origRt = showRefTool;
+    window.showRefTool = function(tool) {
+      var r = _origRt.apply(this, arguments);
+      if (_lmIsMobile()) {
+        pushNavLevel(function(){
+          if (typeof showRefHome === 'function') showRefHome();
+        });
+      }
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+  if (typeof showRefHome === 'function') {
+    var _origRh = showRefHome;
+    window.showRefHome = function() {
+      var r = _origRh.apply(this, arguments);
+      _lmNavStack = [];
+      updateMobBreadcrumb();
+      return r;
+    };
+  }
+})();
+
+// Initial breadcrumb sync once the DOM is settled.
+document.addEventListener('DOMContentLoaded', function(){
+  setTimeout(updateMobBreadcrumb, 50);
+});
+window.addEventListener('resize', function(){
+  // Recompute mob-at-home boundary on rotation/resize.
+  if (!_lmIsMobile()) {
+    // Desktop: hide breadcrumb (CSS handles it via @media)
+  }
+  updateMobBreadcrumb();
 });
 
 </script>
