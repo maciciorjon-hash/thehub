@@ -253,8 +253,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-13 (Round 70: Easter egg rebuilt as a proper 4-panel comic)
-Hub apps: 9. Version v1.0.36.
+Last session: 2026-06-13 (Round 71: Cleanup of orphan SVG visible at bottom of hub home)
+Hub apps: 9. Version v1.0.37.
+hub-shell.html: previous round's egg rewrite left 130 lines of stale SVG content (old <defs>, gradients, JON/CLAUDE/RYAN character groups, speech bubbles, milestone text, stats ticker, regg-bubble div) dangling between the new comic modal's closing </div></div> and the next <script> block — rendering as visible debris on the hub home. Deleted lines 1110–1239. Also removed the empty <svg id="regg-secret-dot-source"> placeholder that was left from the rewrite scaffolding. node --check passes. grep for the removed IDs (regg-stat / regg-bubble-name / regg-ryan-alias) returns 0.
+
+Previous session: 2026-06-13 (Round 70: 4-panel comic rewrite; v1.0.36)
 hub-shell.html: previous easter egg was buggy (CSS transform:translate on SVG <g>s doesn't work with hover; speech-bubble positioning was off; interactivity inconsistent). Wholesale rewrite as a multi-panel comic.
 - CSS: .regg-panel uses opacity + translateX(40px) transitions between panels (NOT SVG hover transforms). Animations confined to small targeted elements via transform-box:fill-box (.regg-eye blink, .regg-pulse-dot fade, .regg-float subtle Y-bob).
 - HTML: 4 self-contained <div class="regg-panel"> entries, each holding its own <svg> with the panel's scene. Title bar with panel counter; dot navigation row; prev/next nav buttons; footer with hint.
