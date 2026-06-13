@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cuppa — CeTPD Hot Drinks ledger</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+PHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNyIgZmlsbD0iIzhkNmU2MyIvPjx0ZXh0IHg9IjE2IiB5PSIyMyIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSIxOCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkM8L3RleHQ+PC9zdmc+">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+:root{
+  --bg:#f7f3ee;--surface:#ffffff;--surface2:#f0eae3;--surface3:#e0d8cd;
+  --border:rgba(70,40,20,0.08);--border2:rgba(70,40,20,0.16);
+  --text:#2a1d12;--text2:#6d5648;--text3:#a89685;
+  --accent:#8d6e63;--accent2:#bf8b6b;--accent3:#43a047;--warn:#f0a000;--danger:#c44545;
+  --accent-dim:rgba(141,110,99,0.12);
+  --sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow-xs:0 1px 4px rgba(60,30,10,.06);
+  --shadow-sm:0 2px 8px rgba(60,30,10,.08);
+  --shadow-md:0 6px 24px rgba(60,30,10,.10);
+  --shadow-lg:0 16px 48px rgba(60,30,10,.14);
+  --shadow-xl:0 32px 80px rgba(60,30,10,.22);
+  --modal-backdrop:rgba(20,10,4,.55);
+}
+[data-theme="dark"]{
+  --bg:#1a1410;--surface:#221a14;--surface2:#2a2018;--surface3:#36281f;
+  --border:rgba(255,220,180,0.08);--border2:rgba(255,220,180,0.14);
+  --text:#f0e6d6;--text2:#b7a594;--text3:#8a7765;
+  --accent:#c9a98f;--accent2:#d9b58a;
+  --accent-dim:rgba(201,169,143,0.16);
+  --shadow-xs:0 1px 4px rgba(0,0,0,.30);
+  --shadow-sm:0 2px 8px rgba(0,0,0,.40);
+  --shadow-md:0 6px 24px rgba(0,0,0,.50);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.55);
+  --shadow-xl:0 32px 80px rgba(0,0,0,.65);
+  --modal-backdrop:rgba(0,0,0,.70);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow:hidden;display:flex;flex-direction:column;}
+input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
+
+/* HEADER */
+header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;gap:14px;background:var(--surface);height:58px;flex-shrink:0;}
+.logo{width:32px;height:32px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;box-shadow:var(--shadow-xs);font-size:18px;}
+header h1{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+header p{font-size:11px;color:var(--text2);}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.role-badge{font-family:var(--mono);font-size:10px;padding:4px 9px;border-radius:12px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);}
+.role-badge.admin{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-panel{display:none;position:fixed;top:70px;right:18px;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:14px 16px;z-index:200;min-width:240px;box-shadow:var(--shadow-md);}
+.opts-panel.open{display:block;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px;}
+.opts-row:last-child{margin-bottom:0;}
+.opts-label{font-size:12.5px;color:var(--text2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:22px;transition:.2s;border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
+input:checked + .theme-slider{background:var(--accent);border-color:var(--accent);}
+input:checked + .theme-slider:before{transform:translateX(18px);background:var(--surface);}
+
+/* MAIN */
+main{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;}
+.wrap{padding:22px 28px 32px;max-width:1280px;margin:0 auto;}
+
+/* MONTH NAV */
+.year-bar{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.year-nav{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border2);border-radius:24px;padding:4px;}
+.year-btn{background:none;border:none;color:var(--text2);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:background .15s;}
+.year-btn:hover{background:var(--surface2);color:var(--text);}
+.year-label{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text);padding:0 6px;min-width:60px;text-align:center;}
+.month-pills{display:flex;gap:5px;flex-wrap:wrap;}
+.month-pill{padding:6px 12px;border-radius:18px;font-size:11px;font-weight:500;background:var(--surface);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-family:var(--mono);letter-spacing:.5px;text-transform:uppercase;transition:all .15s;}
+.month-pill:hover{border-color:var(--accent);color:var(--text);}
+.month-pill.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.month-pill.future{opacity:.5;}
+.spacer{flex:1;}
+.tb-btn{padding:7px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .15s,border-color .15s;white-space:nowrap;}
+.tb-btn:hover{background:var(--surface2);border-color:var(--accent);}
+.tb-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+.tb-btn.primary:hover{filter:brightness(1.08);}
+.tb-btn.danger{color:var(--danger);}
+.tb-btn.danger:hover{background:var(--danger);color:#fff;border-color:var(--danger);}
+
+/* STATS */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:22px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;transition:border-color .15s,transform .15s;}
+.stat-lbl{font-size:10px;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:5px;font-weight:600;}
+.stat-val{font-size:22px;font-weight:700;color:var(--text);font-family:var(--sans);line-height:1.1;}
+.stat-val.warn{color:var(--warn);}
+.stat-val.good{color:var(--accent3);}
+.stat-sub{font-size:11px;color:var(--text2);margin-top:3px;}
+.stat-card.feature{background:linear-gradient(135deg,var(--accent) 0,var(--accent2) 100%);color:#fff;border-color:transparent;}
+.stat-card.feature .stat-lbl,.stat-card.feature .stat-sub{color:rgba(255,255,255,.85);}
+.stat-card.feature .stat-val{color:#fff;}
+
+/* MAIN LAYOUT */
+.layout{display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start;}
+@media (max-width:920px){.layout{grid-template-columns:1fr;}}
+
+/* TABLE */
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.table-hdr{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.table-title{font-size:13px;font-weight:600;color:var(--text);}
+.table-search{flex:1;min-width:140px;max-width:240px;position:relative;}
+.table-search input{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:18px;padding:6px 12px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;}
+.table-search input:focus{border-color:var(--accent);}
+.tbl-scroll{overflow:auto;max-height:calc(100vh - 360px);min-height:300px;}
+table{width:100%;border-collapse:collapse;font-size:12.5px;}
+thead{background:var(--surface2);position:sticky;top:0;z-index:2;}
+thead th{padding:8px 10px;text-align:center;font-size:10.5px;font-weight:700;color:var(--text3);letter-spacing:.6px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;}
+thead th.name-col{text-align:left;padding-left:18px;}
+thead th.active-month{background:var(--accent-dim);color:var(--accent);}
+tbody td{padding:0;border-bottom:1px solid var(--border);text-align:center;}
+tbody tr{transition:background .12s;}
+tbody tr:hover{background:var(--surface2);}
+tbody tr.row-inactive{opacity:.5;}
+tbody td.name-cell{text-align:left;padding:8px 14px 8px 18px;display:flex;align-items:center;gap:8px;}
+.drink-icon{font-size:16px;}
+.cell-name{font-weight:500;color:var(--text);}
+.cell-name-sub{font-size:10px;color:var(--text3);font-family:var(--mono);}
+.cell-paid{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-size:13px;cursor:default;margin:6px auto;transition:background .15s,transform .15s;}
+.cell-paid.paid{background:var(--accent3);color:#fff;}
+.cell-paid.unpaid{background:transparent;border:1.5px dashed var(--border2);color:var(--text3);}
+.cell-paid.na{background:var(--surface3);color:var(--text3);font-size:10px;}
+body.admin .cell-paid{cursor:pointer;}
+body.admin .cell-paid:hover{transform:scale(1.1);}
+body.admin .cell-paid.unpaid:hover{border-color:var(--accent3);background:rgba(67,160,71,.15);}
+body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
+.cell-actions{text-align:right;padding-right:10px;}
+.cell-action-btn{background:none;border:1px solid transparent;color:var(--text3);padding:3px 8px;font-size:11px;border-radius:5px;cursor:pointer;transition:all .12s;}
+.cell-action-btn:hover{background:var(--surface3);color:var(--text);border-color:var(--border);}
+
+/* WALL OF SHAME */
+.wos-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;position:sticky;top:0;}
+.wos-hdr{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#c44545,#a03030);color:#fff;}
+.wos-hdr .ic{font-size:18px;}
+.wos-title{font-size:13px;font-weight:700;}
+.wos-month{font-size:11px;opacity:.85;font-family:var(--mono);margin-left:auto;}
+.wos-body{padding:14px 18px 8px;max-height:calc(100vh - 410px);overflow-y:auto;min-height:200px;}
+.wos-list{display:flex;flex-direction:column;gap:6px;}
+.wos-empty{padding:30px 10px;text-align:center;color:var(--text3);font-size:12px;font-style:italic;}
+.wos-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);}
+.wos-row .ic{font-size:14px;}
+.wos-row .nm{flex:1;}
+.wos-row .amt{font-family:var(--mono);font-size:11px;color:var(--text3);}
+.wos-foot{padding:12px 18px 14px;border-top:1px solid var(--border);background:var(--surface2);}
+.wos-foot .total{font-size:11px;color:var(--text2);margin-bottom:8px;display:flex;justify-content:space-between;}
+.wos-foot .total b{color:var(--text);}
+.wos-copy{width:100%;padding:9px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);transition:filter .15s;}
+.wos-copy:hover{filter:brightness(1.08);}
+.wos-copy.copied{background:var(--accent3);}
+
+/* MEMBER EDIT MODAL */
+.modal-overlay{position:fixed;inset:0;background:var(--modal-backdrop);z-index:400;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(3px);}
+.modal-overlay.open{display:flex;animation:mFade .2s ease;}
+@keyframes mFade{from{opacity:0;}to{opacity:1;}}
+.modal-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:520px;max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:var(--shadow-xl);overflow:hidden;animation:mPop .25s cubic-bezier(.16,.84,.44,1);}
+@keyframes mPop{from{opacity:0;transform:scale(.95);}to{opacity:1;transform:none;}}
+.modal-hdr{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;}
+.modal-title{font-size:14px;font-weight:600;flex:1;}
+.modal-close{background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:4px 8px;}
+.modal-close:hover{color:var(--text);}
+.modal-body{padding:18px 22px;overflow-y:auto;}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.field label{font-size:10.5px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;font-weight:500;}
+.field input,.field select{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:8px 11px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;transition:border-color .15s,background .15s;}
+.field input:focus,.field select:focus{border-color:var(--accent);background:var(--surface);}
+.field .hint{font-size:10.5px;color:var(--text3);}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+/* FUN STATS GRID */
+.fun-stats{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;}
+.fun-stats h2{font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.fun-stats h2 .ic{font-size:18px;}
+.fun-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+.fun-item{padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);display:flex;flex-direction:column;gap:4px;}
+.fun-item-lbl{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;}
+.fun-item-val{font-size:14px;font-weight:600;color:var(--text);line-height:1.3;}
+.fun-item-sub{font-size:10.5px;color:var(--text2);}
+
+/* TOAST */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--surface);padding:10px 18px;border-radius:20px;font-size:12.5px;font-family:var(--sans);box-shadow:var(--shadow-md);z-index:500;opacity:0;transition:opacity .2s,transform .25s;pointer-events:none;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+
+/* AUTH banner */
+.auth-banner{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;margin-bottom:14px;font-size:12px;color:var(--text);}
+.auth-banner .ic{font-size:16px;}
+.auth-banner .spacer{flex:1;}
+
+/* MOBILE */
+@media (max-width:720px){
+  header{padding:0 12px;gap:10px;}
+  header h1{font-size:14px;}
+  header p{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+  .role-badge{display:none;}
+  .wrap{padding:14px 12px 24px;}
+  .stats-row{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .stat-card{padding:11px 13px;}
+  .stat-val{font-size:17px;}
+  .layout{grid-template-columns:1fr;}
+  .wos-card{position:static;}
+  .wos-body{max-height:none;}
+  .tbl-scroll{max-height:none;}
+  .table-search{max-width:none;}
+  thead th{padding:6px 6px;font-size:9.5px;}
+  thead th.name-col{padding-left:12px;}
+  tbody td.name-cell{padding:7px 8px 7px 12px;}
+  .cell-paid{width:24px;height:24px;font-size:11px;}
+  .month-pills{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
+  .month-pill{flex-shrink:0;}
+  .fun-grid{grid-template-columns:1fr 1fr;}
+}
+@media (max-width:420px){
+  header p{display:none;}
+  .stats-row{grid-template-columns:1fr 1fr;}
+  .fun-grid{grid-template-columns:1fr;}
+}
+@media (hover:none){
+  .tb-btn:hover,.stat-card:hover,.month-pill:hover{transform:none;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">&#9749;</div>
+  <div>
+    <h1>Cuppa</h1>
+    <p id="hdr-sub">CeTPD Hot Drinks ledger &middot; <span id="hdr-status">loading…</span></p>
+  </div>
+  <div class="hdr-right">
+    <span class="role-badge" id="role-badge">viewer</span>
+    <button class="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
+  </div>
+</header>
+<div class="opts-panel" id="opts-panel">
+  <div class="opts-row"><span class="opts-label">Theme</span>
+    <label class="theme-switch"><input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()"><span class="theme-slider"></span></label>
+  </div>
+  <div class="opts-row" id="opts-auth-row"><span class="opts-label">Sign in as admin</span>
+    <button class="tb-btn" id="auth-btn" onclick="onAuthBtn()">Sign in</button>
+  </div>
+  <div class="opts-row" id="opts-admin-row" style="display:none;"><span class="opts-label">Manage</span>
+    <button class="tb-btn" onclick="openSettings()">Settings</button>
+  </div>
+  <div class="opts-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:6px;">
+    <span class="opts-label" style="font-size:10.5px;color:var(--text3);">Cuppa &middot; data lives in Firebase &middot; viewer-mode by default</span>
+  </div>
+</div>
+
+<main>
+  <div class="wrap">
+    <div id="auth-banner-host"></div>
+
+    <div class="year-bar">
+      <div class="year-nav">
+        <button class="year-btn" onclick="changeYear(-1)" title="Previous year">&#10094;</button>
+        <span class="year-label" id="year-label">2026</span>
+        <button class="year-btn" onclick="changeYear(1)" title="Next year">&#10095;</button>
+      </div>
+      <div class="month-pills" id="month-pills"></div>
+      <div class="spacer"></div>
+      <button class="tb-btn" id="add-member-btn" style="display:none;" onclick="openAddMember()">+ Add member</button>
+    </div>
+
+    <div class="stats-row" id="stats-row"></div>
+
+    <div class="layout">
+      <div class="table-card">
+        <div class="table-hdr">
+          <span class="table-title" id="table-title">Members</span>
+          <div class="table-search"><input type="text" id="search-input" placeholder="Search name…" oninput="onSearchInput(this.value)"></div>
+        </div>
+        <div class="tbl-scroll" id="tbl-scroll"></div>
+      </div>
+
+      <div class="wos-card">
+        <div class="wos-hdr"><span class="ic">&#128293;</span><span class="wos-title">Wall of Shame</span><span class="wos-month" id="wos-month-lbl"></span></div>
+        <div class="wos-body" id="wos-body"></div>
+        <div class="wos-foot">
+          <div class="total"><span>Outstanding</span><b id="wos-total">£0</b></div>
+          <button class="wos-copy" onclick="copyWallOfShame()">📋 Copy Slack message</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="fun-stats">
+      <h2><span class="ic">📊</span> Fun stats <span style="font-size:10.5px;color:var(--text3);font-weight:400;margin-left:auto;">numbers we made up but mostly</span></h2>
+      <div class="fun-grid" id="fun-grid"></div>
+    </div>
+  </div>
+</main>
+
+<!-- MEMBER MODAL -->
+<div class="modal-overlay" id="member-modal" onclick="if(event.target===this)closeMemberModal()">
+  <div class="modal-card">
+    <div class="modal-hdr"><div class="modal-title" id="member-modal-title">Add member</div><button class="modal-close" onclick="closeMemberModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Name *</label><input type="text" id="mf-name" placeholder="Adam Pinto"></div>
+      <div class="field-row">
+        <div class="field"><label>Drink</label>
+          <select id="mf-drink">
+            <option value="coffee">☕ Coffee</option>
+            <option value="tea">🫖 Tea</option>
+            <option value="matcha">🍵 Matcha</option>
+            <option value="hotchoc">🍫 Hot chocolate</option>
+            <option value="none">— Not applicable</option>
+          </select>
+        </div>
+        <div class="field"><label>Active from</label><input type="month" id="mf-start"><span class="hint">First month they owe</span></div>
+      </div>
+      <div class="field"><label>Notes</label><input type="text" id="mf-notes" placeholder="optional"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tb-btn danger" id="mf-delete" style="margin-right:auto;display:none;" onclick="deleteMember()">Delete</button>
+      <button class="tb-btn" onclick="closeMemberModal()">Cancel</button>
+      <button class="tb-btn primary" onclick="saveMember()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settings-modal" onclick="if(event.target===this)closeSettings()">
+  <div class="modal-card">
+    <div class="modal-hdr"><div class="modal-title">Settings</div><button class="modal-close" onclick="closeSettings()">&times;</button></div>
+    <div class="modal-body">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:10px;">Prices (per month)</div>
+      <div class="field-row">
+        <div class="field"><label>☕ Coffee (£)</label><input type="number" id="sf-coffee" step="0.5" min="0"></div>
+        <div class="field"><label>🫖 Tea (£)</label><input type="number" id="sf-tea" step="0.5" min="0"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>🍵 Matcha (£)</label><input type="number" id="sf-matcha" step="0.5" min="0"></div>
+        <div class="field"><label>🍫 Hot chocolate (£)</label><input type="number" id="sf-hotchoc" step="0.5" min="0"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin:14px 0 10px;">Bank info (shown on Wall of Shame)</div>
+      <div class="field-row">
+        <div class="field"><label>Sort code</label><input type="text" id="sf-sort" placeholder="04-00-03"></div>
+        <div class="field"><label>Account</label><input type="text" id="sf-acc" placeholder="58067389"></div>
+      </div>
+      <div class="field"><label>Account holder</label><input type="text" id="sf-holder" placeholder="J. Macicior"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="tb-btn" onclick="closeSettings()">Cancel</button>
+      <button class="tb-btn primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// CUPPA — CeTPD Hot Drinks ledger
+// ═══════════════════════════════════════════════════════════════════════════
+// Storage: Firebase Realtime DB (shared across all viewers).
+// Roles: viewer (read-only, default) / admin (sign in with Jon's Google).
+
+// ─── Firebase init ─────────────────────────────────────────────────────────
+var FB_CFG = {
+  apiKey: 'AIzaSyBpw9UbXnCciIi7VBapBeBJOq9U7RSS4g8',
+  authDomain: 'thehub-f80ae.firebaseapp.com',
+  databaseURL: 'https://thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app',
+  projectId: 'thehub-f80ae'
+};
+var FB_REST = 'https://thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app';
+var FB_SECRET = 'dwzlbXM8BGZKdClw0cUR7rbEHacQ0FnDMjOFy3Ty';
+var ADMIN_EMAIL = 'maciciorjon@gmail.com';
+try { firebase.initializeApp(FB_CFG); } catch(e){}
+
+// ─── Theme ─────────────────────────────────────────────────────────────────
+(function(){
+  try {
+    var t = localStorage.getItem('hub_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', t);
+    var chk = document.getElementById('theme-toggle-chk');
+    if (chk) chk.checked = (t === 'dark');
+  } catch(e) {}
+  document.addEventListener('click', function(e){
+    var p = document.getElementById('opts-panel');
+    if (p && p.classList.contains('open') && !p.contains(e.target) && !/opts-btn|cogwheel/i.test(e.target.outerHTML || '')) {
+      if (!e.target.closest('.opts-btn')) p.classList.remove('open');
+    }
+  });
+})();
+function toggleTheme(){
+  var html = document.documentElement;
+  var next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  try { localStorage.setItem('hub_theme', next); } catch(e){}
+}
+function toggleOpts(){ document.getElementById('opts-panel').classList.toggle('open'); }
+
+// ─── State ─────────────────────────────────────────────────────────────────
+var SEED_MEMBERS = [
+  'Adam Pinto','Aina Urbina','Alejandro Correa','Alessandra Salerno','Alessio Ciulli',
+  'Alex Hallatt','Alexandra Teslenko','Atana','Chloe Jackson','Claudine Greenwood',
+  'Daniel McDougal','Dylan Lynch','Elisha McCrory','Giorgia Kidd','Giulia Bonasegale',
+  'Hannah Mortlock','Ivan Rodriguez','Jack Robertson','Jon Macicior','Lizzy Hogg',
+  'Mark Bekala','Mark Dorward','Michael Krummhaar','Mokhitli Morake','Nur Kocaturk',
+  'Peter Cossar','Petr','Roberta Ibba','Ruben Prieto','Ryan Casement',
+  'Stefan Djukic','Suzanne O\'Connor','Will Farnaby','Yuting Zhi','Zher Yin'
+];
+var SEED_PAYMENTS_2026 = {
+  // pre-populated from the CeTPD Hot Drinks 2026.xlsx as of 2026-05-18
+  'Adam Pinto':         { April:true, May:true },
+  'Aina Urbina':        { April:true, May:true },
+  'Alejandro Correa':   { April:true, May:true },
+  'Alessandra Salerno': { April:true, May:true, June:true, July:true },
+  'Alessio Ciulli':     { April:true, May:true, June:true },
+  'Alex Hallatt':       { April:true, May:true },
+  'Alexandra Teslenko': { May:true },
+  'Atana':              { May:true },
+  'Chloe Jackson':      { April:true, May:true },
+  'Claudine Greenwood': { April:true, May:true },
+  'Daniel McDougal':    { April:true, May:true },
+  'Dylan Lynch':        { April:true, May:true, June:true },
+  'Elisha McCrory':     { April:true, May:true },
+  'Giorgia Kidd':       { April:true, May:true },
+  'Giulia Bonasegale':  { April:true, May:true },
+  'Hannah Mortlock':    { April:true, May:true },
+  'Ivan Rodriguez':     { April:true, May:true, June:true, July:true, August:true },
+  'Jack Robertson':     { April:true, May:true, June:true },
+  'Jon Macicior':       { April:true, May:true },
+  'Lizzy Hogg':         { April:true, May:true, June:true },
+  'Mark Bekala':        { April:true, May:true },
+  'Mark Dorward':       { April:true, May:true, June:true },
+  'Michael Krummhaar':  { April:true, May:true },
+  'Mokhitli Morake':    { April:true, May:true, June:true },
+  'Peter Cossar':       { April:true, May:true, June:true, July:true, August:true },
+  'Petr':               { April:true, May:true, June:true },
+  'Roberta Ibba':       { April:true, May:true },
+  'Ruben Prieto':       { April:true, May:true, June:true, July:true, August:true },
+  'Ryan Casement':      { April:true, May:true },
+  'Stefan Djukic':      { April:true, May:true, June:true, July:true },
+  'Suzanne O\'Connor':  { April:true, May:true },
+  'Will Farnaby':       { April:true, May:true },
+  'Yuting Zhi':         { April:true, May:true },
+  'Zher Yin':           { May:true }
+};
+
+var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var DRINK_ICONS = { coffee:'☕', tea:'🫖', matcha:'🍵', hotchoc:'🍫', none:'—' };
+var DRINK_LABELS = { coffee:'Coffee', tea:'Tea', matcha:'Matcha', hotchoc:'Hot chocolate', none:'N/A' };
+
+var state = null;
+var currentYear = (new Date()).getFullYear();
+var currentMonth = MONTHS[(new Date()).getMonth()];
+var search = '';
+var isAdmin = false;
+var editingMemberId = null;
+var _fbReady = false;
+var _firstSnap = true;
+
+function makeMember(name, drink){
+  return { id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink||'coffee', startMonth:null, notes:'' };
+}
+function defaultState(){
+  var members = SEED_MEMBERS.map(function(n){ return makeMember(n,'coffee'); });
+  // Seed 2026 payments
+  var payments = { 2026: {} };
+  members.forEach(function(m){
+    var key = m.name.replace(/\s+/g,' ').trim();
+    var paid = SEED_PAYMENTS_2026[key] || {};
+    payments[2026][m.id] = {};
+    Object.keys(paid).forEach(function(month){ payments[2026][m.id][month] = true; });
+  });
+  return {
+    v:1, members:members, payments:payments,
+    prices:{ coffee:7.5, tea:5, matcha:7.5, hotchoc:7.5 },
+    bank:{ sort:'04-00-03', acc:'58067389', holder:'J. Macicior' },
+    updatedAt:new Date().toISOString(), updatedBy:''
+  };
+}
+function ensureState(s){
+  if (!s) return defaultState();
+  if (!s.members || !s.members.length) return defaultState();
+  s.payments = s.payments || {};
+  s.payments[currentYear] = s.payments[currentYear] || {};
+  s.prices = s.prices || { coffee:7.5, tea:5, matcha:7.5, hotchoc:7.5 };
+  s.bank = s.bank || { sort:'04-00-03', acc:'58067389', holder:'J. Macicior' };
+  return s;
+}
+
+// ─── Firebase sync ──────────────────────────────────────────────────────────
+var _es = null;
+function startSync(){
+  if (_es) try { _es.close(); } catch(e){}
+  _es = new EventSource(FB_REST + '/cuppa.json');
+  _es.addEventListener('put', onFbEvent);
+  _es.addEventListener('patch', onFbEvent);
+  _es.onerror = function(){ /* silently retry */ };
+}
+function onFbEvent(e){
+  try {
+    var d = JSON.parse(e.data);
+    if (d.path === '/') {
+      if (d.data == null) {
+        // No data yet — seed from defaults, then push to Firebase if admin
+        state = defaultState();
+        if (isAdmin) saveToFirebase('init seed');
+      } else {
+        state = ensureState(d.data);
+      }
+    } else if (state) {
+      // Path-targeted update: re-fetch the whole tree for simplicity
+      refetchAll();
+    }
+    _fbReady = true;
+    setStatus('synced');
+    render();
+  } catch(err) {}
+}
+function refetchAll(){
+  fetch(FB_REST + '/cuppa.json').then(function(r){return r.json();}).then(function(d){
+    state = d ? ensureState(d) : defaultState();
+    render();
+  }).catch(function(){});
+}
+function saveToFirebase(reason){
+  if (!isAdmin) return Promise.reject('not admin');
+  state.updatedAt = new Date().toISOString();
+  return fetch(FB_REST + '/cuppa.json?auth=' + FB_SECRET, {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(state)
+  }).then(function(r){ if(!r.ok) throw new Error('Firebase write failed'); setStatus('saved'); return r; });
+}
+
+function setStatus(s){ var el=document.getElementById('hdr-status'); if(el) el.textContent = s; }
+
+// ─── Auth ──────────────────────────────────────────────────────────────────
+function onAuthBtn(){
+  var u = firebase.auth().currentUser;
+  if (u) { firebase.auth().signOut(); return; }
+  var prov = new firebase.auth.GoogleAuthProvider();
+  firebase.auth().signInWithPopup(prov).catch(function(err){
+    toast('Sign-in failed: ' + (err.message || err));
+  });
+}
+firebase.auth().onAuthStateChanged(function(user){
+  isAdmin = !!(user && user.email && user.email.toLowerCase() === ADMIN_EMAIL);
+  document.body.classList.toggle('admin', isAdmin);
+  var btn = document.getElementById('auth-btn');
+  var badge = document.getElementById('role-badge');
+  var addBtn = document.getElementById('add-member-btn');
+  var adminRow = document.getElementById('opts-admin-row');
+  if (isAdmin) {
+    if (btn) btn.textContent = 'Sign out';
+    if (badge) { badge.textContent = '✦ admin'; badge.classList.add('admin'); }
+    if (addBtn) addBtn.style.display = '';
+    if (adminRow) adminRow.style.display = 'flex';
+    renderAuthBanner('Signed in as ' + user.email + ' — edit mode enabled', false);
+  } else {
+    if (btn) btn.textContent = user ? 'Wrong account — sign out' : 'Sign in';
+    if (badge) { badge.textContent = 'viewer'; badge.classList.remove('admin'); }
+    if (addBtn) addBtn.style.display = 'none';
+    if (adminRow) adminRow.style.display = 'none';
+    if (user) renderAuthBanner('Signed in as ' + user.email + ' — viewer only (admin = Jon)', true);
+    else document.getElementById('auth-banner-host').innerHTML = '';
+  }
+  render();
+});
+function renderAuthBanner(msg, warn){
+  var host = document.getElementById('auth-banner-host');
+  host.innerHTML = '<div class="auth-banner"' + (warn ? ' style="background:rgba(244,160,0,.15);border-color:var(--warn);"' : '') + '>'
+    + '<span class="ic">' + (warn ? '👀' : '✦') + '</span>'
+    + '<span>' + esc(msg) + '</span>'
+    + '<span class="spacer"></span>'
+    + '<button class="tb-btn" onclick="firebase.auth().signOut()" style="padding:5px 10px;font-size:11px;">Sign out</button>'
+    + '</div>';
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────
+function render(){
+  if (!state) return;
+  renderMonthPills();
+  renderStats();
+  renderTable();
+  renderWallOfShame();
+  renderFunStats();
+  document.getElementById('year-label').textContent = currentYear;
+}
+function renderMonthPills(){
+  var nowYear = (new Date()).getFullYear();
+  var nowMonth = (new Date()).getMonth();
+  var html = MONTHS.map(function(m, i){
+    var isActive = m === currentMonth;
+    var isFuture = currentYear > nowYear || (currentYear === nowYear && i > nowMonth);
+    return '<button class="month-pill' + (isActive ? ' active' : '') + (isFuture ? ' future' : '') + '" onclick="setMonth(\'' + m + '\')">' + MONTHS_ABBR[i] + '</button>';
+  }).join('');
+  document.getElementById('month-pills').innerHTML = html;
+}
+function changeYear(d){ currentYear += d; render(); }
+function setMonth(m){ currentMonth = m; render(); }
+
+function getYearPayments(){
+  if (!state) return {};
+  return (state.payments && state.payments[currentYear]) || {};
+}
+function memberPaid(memberId, month){
+  var yp = getYearPayments();
+  return !!(yp[memberId] && yp[memberId][month]);
+}
+function memberPriceMonthly(member){
+  if (member.drink === 'none') return 0;
+  return (state.prices && state.prices[member.drink]) || 7.5;
+}
+
+function renderStats(){
+  var yp = getYearPayments();
+  var activeMembers = state.members.filter(function(m){ return m.drink !== 'none'; });
+  var nUnpaidThisMonth = 0, totalThisMonth = 0, expectedThisMonth = 0;
+  activeMembers.forEach(function(m){
+    var price = memberPriceMonthly(m);
+    expectedThisMonth += price;
+    if (memberPaid(m.id, currentMonth)) totalThisMonth += price;
+    else nUnpaidThisMonth++;
+  });
+  var pct = expectedThisMonth ? Math.round(totalThisMonth / expectedThisMonth * 100) : 0;
+  // Year totals
+  var collectedYear = 0, expectedYear = 0;
+  Object.keys(yp).forEach(function(mid){
+    var m = state.members.find(function(x){ return x.id === mid; });
+    if (!m || m.drink === 'none') return;
+    var price = memberPriceMonthly(m);
+    Object.keys(yp[mid]).forEach(function(mn){ if (yp[mid][mn]) collectedYear += price; });
+  });
+  var nowYear = (new Date()).getFullYear();
+  var nowMonth = (new Date()).getMonth();
+  var monthsElapsed = currentYear < nowYear ? 12 : (currentYear > nowYear ? 0 : nowMonth + 1);
+  expectedYear = activeMembers.length * monthsElapsed * (state.prices.coffee || 7.5);
+
+  document.getElementById('stats-row').innerHTML =
+    '<div class="stat-card feature">'
+    +   '<div class="stat-lbl">' + currentMonth + ' ' + currentYear + ' — collected</div>'
+    +   '<div class="stat-val">£' + totalThisMonth.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">of £' + expectedThisMonth.toFixed(2) + ' expected · ' + pct + '%</div>'
+    + '</div>'
+    + '<div class="stat-card">'
+    +   '<div class="stat-lbl">Unpaid this month</div>'
+    +   '<div class="stat-val ' + (nUnpaidThisMonth > 5 ? 'warn' : '') + '">' + nUnpaidThisMonth + '</div>'
+    +   '<div class="stat-sub">people on the wall</div>'
+    + '</div>'
+    + '<div class="stat-card">'
+    +   '<div class="stat-lbl">' + currentYear + ' year-to-date</div>'
+    +   '<div class="stat-val">£' + collectedYear.toFixed(2) + '</div>'
+    +   '<div class="stat-sub">collected from ' + activeMembers.length + ' drinkers</div>'
+    + '</div>'
+    + '<div class="stat-card">'
+    +   '<div class="stat-lbl">Active members</div>'
+    +   '<div class="stat-val">' + activeMembers.length + '</div>'
+    +   '<div class="stat-sub">' + state.members.length + ' total · ' + (state.members.length - activeMembers.length) + ' N/A</div>'
+    + '</div>';
+}
+
+function renderTable(){
+  var nowYear = (new Date()).getFullYear();
+  var nowMonth = (new Date()).getMonth();
+  var visibleMonths = MONTHS.slice(0, currentYear < nowYear ? 12 : (currentYear > nowYear ? 0 : nowMonth + 1));
+  if (!visibleMonths.length) visibleMonths = MONTHS.slice(0, 12);
+  var q = (search || '').toLowerCase().trim();
+  var members = [...state.members].sort(function(a,b){ return a.name.localeCompare(b.name); });
+  if (q) members = members.filter(function(m){ return m.name.toLowerCase().includes(q); });
+
+  document.getElementById('table-title').textContent = members.length + ' member' + (members.length === 1 ? '' : 's');
+
+  var html = '<table><thead><tr>'
+    + '<th class="name-col">Name</th>';
+  visibleMonths.forEach(function(mn){
+    var isActive = mn === currentMonth;
+    html += '<th class="' + (isActive ? 'active-month' : '') + '">' + MONTHS_ABBR[MONTHS.indexOf(mn)] + '</th>';
+  });
+  if (isAdmin) html += '<th></th>';
+  html += '</tr></thead><tbody>';
+
+  members.forEach(function(m){
+    html += '<tr class="' + (m.drink === 'none' ? 'row-inactive' : '') + '">'
+      + '<td class="name-cell">'
+      +   '<span class="drink-icon" title="' + DRINK_LABELS[m.drink] + '">' + DRINK_ICONS[m.drink] + '</span>'
+      +   '<span><span class="cell-name">' + esc(m.name) + '</span>'
+      +     (m.notes ? '<br><span class="cell-name-sub">' + esc(m.notes) + '</span>' : '')
+      +   '</span>'
+      + '</td>';
+    visibleMonths.forEach(function(mn){
+      var paid = memberPaid(m.id, mn);
+      var isActive = mn === currentMonth;
+      var cls = paid ? 'paid' : 'unpaid';
+      var content = paid ? '✓' : (m.drink === 'none' ? '—' : '');
+      if (m.drink === 'none') { cls = 'na'; content = 'N/A'; }
+      html += '<td' + (isActive ? ' style="background:var(--accent-dim);"' : '') + '>'
+        + '<button class="cell-paid ' + cls + '" onclick="togglePaid(\'' + m.id + '\',\'' + mn + '\')" title="' + m.name + ' / ' + mn + '">' + content + '</button>'
+        + '</td>';
+    });
+    if (isAdmin) html += '<td class="cell-actions"><button class="cell-action-btn" onclick="editMember(\'' + m.id + '\')">Edit</button></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('tbl-scroll').innerHTML = html;
+}
+
+function renderWallOfShame(){
+  document.getElementById('wos-month-lbl').textContent = MONTHS_ABBR[MONTHS.indexOf(currentMonth)] + ' ' + currentYear;
+  var unpaid = state.members.filter(function(m){
+    return m.drink !== 'none' && !memberPaid(m.id, currentMonth);
+  }).sort(function(a,b){ return a.name.localeCompare(b.name); });
+  var total = unpaid.reduce(function(s, m){ return s + memberPriceMonthly(m); }, 0);
+  document.getElementById('wos-total').textContent = '£' + total.toFixed(2);
+  var body = document.getElementById('wos-body');
+  if (!unpaid.length) {
+    body.innerHTML = '<div class="wos-empty">🎉 Everyone paid this month. Miracles do happen.</div>';
+  } else {
+    body.innerHTML = '<div class="wos-list">' + unpaid.map(function(m){
+      return '<div class="wos-row">'
+        + '<span class="ic">' + DRINK_ICONS[m.drink] + '</span>'
+        + '<span class="nm">' + esc(m.name) + '</span>'
+        + '<span class="amt">£' + memberPriceMonthly(m).toFixed(2) + '</span>'
+      + '</div>';
+    }).join('') + '</div>';
+  }
+}
+
+function renderFunStats(){
+  var members = state.members;
+  var yp = getYearPayments();
+  // Drink popularity
+  var drinkCount = { coffee:0, tea:0, matcha:0, hotchoc:0, none:0 };
+  members.forEach(function(m){ drinkCount[m.drink] = (drinkCount[m.drink]||0) + 1; });
+  var topDrink = 'coffee', topN = 0;
+  Object.keys(drinkCount).forEach(function(k){ if (k !== 'none' && drinkCount[k] > topN) { topN = drinkCount[k]; topDrink = k; }});
+
+  // Most consistent payer (most paid months this year)
+  var paidCounts = {};
+  members.forEach(function(m){
+    if (m.drink === 'none') return;
+    var n = yp[m.id] ? Object.keys(yp[m.id]).filter(function(k){ return yp[m.id][k]; }).length : 0;
+    paidCounts[m.id] = n;
+  });
+  var topPayer = members.filter(function(m){return m.drink!=='none';})
+    .sort(function(a,b){ return (paidCounts[b.id]||0) - (paidCounts[a.id]||0); })[0];
+  var topPayerN = topPayer ? paidCounts[topPayer.id] : 0;
+
+  // Repeat offenders — bottom in paid counts (among active)
+  var sortedByPaid = members.filter(function(m){return m.drink!=='none';})
+    .sort(function(a,b){ return (paidCounts[a.id]||0) - (paidCounts[b.id]||0); });
+  var biggestDebtor = sortedByPaid[0];
+  var biggestDebtorMonths = biggestDebtor ? Object.keys(yp[biggestDebtor.id] || {}).length : 0;
+
+  // Estimated cups consumed (assuming ~25 cups/month per coffee drinker, fewer for others)
+  var totalCups = 0;
+  members.forEach(function(m){
+    var nMonths = yp[m.id] ? Object.keys(yp[m.id]).filter(function(k){return yp[m.id][k];}).length : 0;
+    var cupsPerMonth = m.drink === 'coffee' ? 25 : m.drink === 'tea' ? 30 : m.drink === 'matcha' ? 15 : m.drink === 'hotchoc' ? 10 : 0;
+    totalCups += cupsPerMonth * nMonths;
+  });
+
+  // Caffeine champions — all-paid this year so far
+  var nowYear = (new Date()).getFullYear();
+  var nowMonth = (new Date()).getMonth();
+  var monthsExpected = currentYear < nowYear ? 12 : (currentYear > nowYear ? 0 : nowMonth + 1);
+  var champions = members.filter(function(m){
+    if (m.drink === 'none') return false;
+    return (paidCounts[m.id] || 0) >= monthsExpected;
+  });
+
+  var totalCollected = 0;
+  Object.keys(yp).forEach(function(mid){
+    var m = members.find(function(x){return x.id === mid;});
+    if (!m || m.drink === 'none') return;
+    Object.keys(yp[mid]).forEach(function(mn){ if (yp[mid][mn]) totalCollected += memberPriceMonthly(m); });
+  });
+
+  var html = '';
+  html += funItem('Drink of choice', DRINK_ICONS[topDrink] + ' ' + DRINK_LABELS[topDrink], topN + ' people prefer it &middot; ☕ ' + drinkCount.coffee + ' · 🫖 ' + drinkCount.tea + ' · 🍵 ' + drinkCount.matcha + (drinkCount.hotchoc ? ' · 🍫 ' + drinkCount.hotchoc : ''));
+  if (topPayer) html += funItem('Caffeine champion', '🏆 ' + esc(topPayer.name), topPayerN + ' / ' + monthsExpected + ' months paid');
+  html += funItem('Cups consumed in ' + currentYear, '~' + totalCups.toLocaleString(), 'estimated from drink type × months paid');
+  html += funItem('£ raised in ' + currentYear, '£' + totalCollected.toFixed(2), 'enough for ' + Math.round(totalCollected / 2.8) + ' fancy lattes at Costa');
+  if (biggestDebtor && biggestDebtorMonths < monthsExpected) {
+    var missed = monthsExpected - biggestDebtorMonths;
+    html += funItem('Top offender', '😬 ' + esc(biggestDebtor.name), missed + ' month' + (missed === 1 ? '' : 's') + ' missing in ' + currentYear);
+  }
+  html += funItem('Squad size', members.length + ' members', drinkCount.none + ' on the N/A list · the rest are paying');
+  if (champions.length) html += funItem('Hall of fame', champions.length + ' perfect record' + (champions.length === 1 ? '' : 's'), champions.slice(0,3).map(function(m){return esc(m.name);}).join(', ') + (champions.length>3 ? ' + ' + (champions.length-3) + ' more' : ''));
+
+  // Random fun fact rotation
+  var FACTS = [
+    'A coffee bean is technically a seed. So when you buy coffee you\'re really buying tree babies.',
+    'The world drinks ~2 billion cups of coffee a day. The CeTPD does its part.',
+    'Matcha contains L-theanine — supposedly relaxing, despite the caffeine.',
+    'Tea was once more expensive than gold, weight for weight.',
+    'A study found 70% of meetings would be improved by being held over coffee. The other 30% would just be cancelled.',
+    'The phrase "spilling the tea" comes from drag culture, not actual tea.',
+    'A flat white is 60ml espresso + 100ml steamed milk. No, really.'
+  ];
+  html += funItem('Did you know?', '☕', FACTS[Math.floor(Math.random()*FACTS.length)]);
+  document.getElementById('fun-grid').innerHTML = html;
+}
+function funItem(lbl, val, sub){
+  return '<div class="fun-item">'
+    + '<div class="fun-item-lbl">' + lbl + '</div>'
+    + '<div class="fun-item-val">' + val + '</div>'
+    + (sub ? '<div class="fun-item-sub">' + sub + '</div>' : '')
+  + '</div>';
+}
+
+// ─── ACTIONS ───────────────────────────────────────────────────────────────
+function togglePaid(memberId, month){
+  if (!isAdmin) { toast('Sign in as admin to edit'); return; }
+  if (!state.payments[currentYear]) state.payments[currentYear] = {};
+  if (!state.payments[currentYear][memberId]) state.payments[currentYear][memberId] = {};
+  var now = state.payments[currentYear][memberId][month];
+  if (now) delete state.payments[currentYear][memberId][month];
+  else state.payments[currentYear][memberId][month] = true;
+  render();
+  saveToFirebase('toggle ' + memberId + ' ' + month);
+}
+
+function openAddMember(){
+  editingMemberId = null;
+  document.getElementById('member-modal-title').textContent = 'Add member';
+  document.getElementById('mf-delete').style.display = 'none';
+  document.getElementById('mf-name').value = '';
+  document.getElementById('mf-drink').value = 'coffee';
+  document.getElementById('mf-start').value = '';
+  document.getElementById('mf-notes').value = '';
+  document.getElementById('member-modal').classList.add('open');
+  setTimeout(function(){ document.getElementById('mf-name').focus(); }, 60);
+}
+function editMember(id){
+  var m = state.members.find(function(x){ return x.id === id; });
+  if (!m) return;
+  editingMemberId = id;
+  document.getElementById('member-modal-title').textContent = 'Edit member';
+  document.getElementById('mf-delete').style.display = '';
+  document.getElementById('mf-name').value = m.name;
+  document.getElementById('mf-drink').value = m.drink || 'coffee';
+  document.getElementById('mf-start').value = m.startMonth || '';
+  document.getElementById('mf-notes').value = m.notes || '';
+  document.getElementById('member-modal').classList.add('open');
+}
+function closeMemberModal(){ document.getElementById('member-modal').classList.remove('open'); editingMemberId = null; }
+function saveMember(){
+  if (!isAdmin) return;
+  var name = document.getElementById('mf-name').value.trim();
+  if (!name) { toast('Name required'); return; }
+  var drink = document.getElementById('mf-drink').value;
+  var startMonth = document.getElementById('mf-start').value;
+  var notes = document.getElementById('mf-notes').value.trim();
+  if (editingMemberId) {
+    var m = state.members.find(function(x){ return x.id === editingMemberId; });
+    if (m) { m.name = name; m.drink = drink; m.startMonth = startMonth; m.notes = notes; }
+  } else {
+    state.members.push({ id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink, startMonth:startMonth, notes:notes });
+  }
+  closeMemberModal();
+  render();
+  saveToFirebase('member edit');
+  toast(editingMemberId ? 'Updated' : 'Added');
+}
+function deleteMember(){
+  if (!isAdmin || !editingMemberId) return;
+  var m = state.members.find(function(x){ return x.id === editingMemberId; });
+  if (!m) return;
+  if (!confirm('Delete "' + m.name + '" and all their payment history?')) return;
+  state.members = state.members.filter(function(x){ return x.id !== editingMemberId; });
+  Object.keys(state.payments).forEach(function(y){ if (state.payments[y]) delete state.payments[y][editingMemberId]; });
+  closeMemberModal();
+  render();
+  saveToFirebase('member delete');
+  toast('Removed');
+}
+
+function openSettings(){
+  document.getElementById('sf-coffee').value = state.prices.coffee || 7.5;
+  document.getElementById('sf-tea').value = state.prices.tea || 5;
+  document.getElementById('sf-matcha').value = state.prices.matcha || 7.5;
+  document.getElementById('sf-hotchoc').value = state.prices.hotchoc || 7.5;
+  document.getElementById('sf-sort').value = state.bank.sort || '';
+  document.getElementById('sf-acc').value = state.bank.acc || '';
+  document.getElementById('sf-holder').value = state.bank.holder || '';
+  document.getElementById('settings-modal').classList.add('open');
+}
+function closeSettings(){ document.getElementById('settings-modal').classList.remove('open'); }
+function saveSettings(){
+  if (!isAdmin) return;
+  state.prices.coffee = parseFloat(document.getElementById('sf-coffee').value) || 7.5;
+  state.prices.tea = parseFloat(document.getElementById('sf-tea').value) || 5;
+  state.prices.matcha = parseFloat(document.getElementById('sf-matcha').value) || 7.5;
+  state.prices.hotchoc = parseFloat(document.getElementById('sf-hotchoc').value) || 7.5;
+  state.bank.sort = document.getElementById('sf-sort').value.trim();
+  state.bank.acc = document.getElementById('sf-acc').value.trim();
+  state.bank.holder = document.getElementById('sf-holder').value.trim();
+  closeSettings();
+  render();
+  saveToFirebase('settings');
+  toast('Settings saved');
+}
+
+function copyWallOfShame(){
+  var unpaid = state.members.filter(function(m){
+    return m.drink !== 'none' && !memberPaid(m.id, currentMonth);
+  }).sort(function(a,b){ return a.name.localeCompare(b.name); });
+  var total = unpaid.reduce(function(s, m){ return s + memberPriceMonthly(m); }, 0);
+  var monthLabel = currentMonth + ' ' + currentYear;
+  var msg = '*🚨 CeTPD Hot Drinks — Wall of Shame · ' + monthLabel + ' 🚨*\n\n';
+  if (!unpaid.length) {
+    msg += 'Nobody on the wall this month. *We have peaked.* :tada:\n';
+  } else {
+    msg += 'A gentle reminder for the following beautiful humans:\n\n';
+    unpaid.forEach(function(m){
+      msg += '• ' + m.name + '  _(' + DRINK_LABELS[m.drink].toLowerCase() + ' £' + memberPriceMonthly(m).toFixed(2) + ')_\n';
+    });
+    msg += '\n*Total outstanding:* £' + total.toFixed(2) + '\n';
+    if (state.bank.sort || state.bank.acc) {
+      msg += '\n_Bank:_ sort `' + (state.bank.sort||'—') + '`  acc `' + (state.bank.acc||'—') + '`' + (state.bank.holder ? '  (' + state.bank.holder + ')' : '') + '\n';
+    }
+  }
+  msg += '\n_Brewed with love by the CeTPD Hot Drinks app._';
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(msg).then(function(){
+      var btn = document.querySelector('.wos-copy');
+      if (btn) { btn.classList.add('copied'); btn.textContent = '✓ Copied!'; setTimeout(function(){ btn.classList.remove('copied'); btn.textContent = '📋 Copy Slack message'; }, 1800); }
+      toast('Slack message copied');
+    }).catch(function(){ fallbackCopy(msg); });
+  } else fallbackCopy(msg);
+}
+function fallbackCopy(text){
+  var ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('Copied'); } catch(e){ toast('Copy failed'); }
+  ta.remove();
+}
+
+// ─── Search ────────────────────────────────────────────────────────────────
+function onSearchInput(v){ search = v; renderTable(); }
+
+// ─── Postmessage / tabs (Hub deep-link) ────────────────────────────────────
+window.addEventListener('message', function(e){
+  if (!e.data || e.data.type !== 'switchTab' || !e.data.tab) return;
+  // Currently no sub-tabs; this is a hook for future
+});
+
+// ─── Utils ─────────────────────────────────────────────────────────────────
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function toast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(window._toastT);
+  window._toastT = setTimeout(function(){ t.classList.remove('show'); }, 2400);
+}
+
+// Esc closes modals
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape') {
+    if (document.getElementById('member-modal').classList.contains('open')) closeMemberModal();
+    else if (document.getElementById('settings-modal').classList.contains('open')) closeSettings();
+  }
+});
+
+// ─── INIT ──────────────────────────────────────────────────────────────────
+state = defaultState();
+render();
+startSync();
+setStatus('connecting…');
+</script>
+</body>
+</html>
