@@ -253,8 +253,19 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-12 (Round 69: Hardware-back wiring + LabMate mobile nav + easter egg upgrade)
-Hub apps: 9. Version v1.0.35.
+Last session: 2026-06-13 (Round 70: Easter egg rebuilt as a proper 4-panel comic)
+Hub apps: 9. Version v1.0.36.
+hub-shell.html: previous easter egg was buggy (CSS transform:translate on SVG <g>s doesn't work with hover; speech-bubble positioning was off; interactivity inconsistent). Wholesale rewrite as a multi-panel comic.
+- CSS: .regg-panel uses opacity + translateX(40px) transitions between panels (NOT SVG hover transforms). Animations confined to small targeted elements via transform-box:fill-box (.regg-eye blink, .regg-pulse-dot fade, .regg-float subtle Y-bob).
+- HTML: 4 self-contained <div class="regg-panel"> entries, each holding its own <svg> with the panel's scene. Title bar with panel counter; dot navigation row; prev/next nav buttons; footer with hint.
+- Panel 1 — Origin story: lab setting (window with stars, reagent shelf, lab bench, 96-well plate, laptop with terminal showing blinking cursor). Jon character with lab coat + Dundee Lab badge, glasses, curly hair, blinking eyes. Speech bubble asking Claude for help. Caption.
+- Panel 2 — Enter Ryan: full email window mock-up with traffic-light buttons, "Hi Alessio," in red, the actual feedback body. Jon's thought bubble: "...wait. Who is Alessio? my name is Jon." Claude terminal saying "it me. they mean me."
+- Panel 3 — Bug parade: 10 fix tickets (5 columns × 2) each with severity tag (CRITICAL/MAJOR/UX/FEATURE/MOBILE), description, and a green ✓ stamp. Big rotated "RESOLVED" stamp. Caption "every email was a new bug. every bug got squashed. — push."
+- Panel 4 — Hub today: aurora-gradient bg, 9 app icons in a grid with their accent colours and letter monograms. Iceberg highlighted with floating animation + cyan outline + "✦ Iceberg" label. Final caption "…and the saga continues."
+- JS: REGG_PANEL_COUNT, _reggPanel index, reggGoTo(idx) toggles .curr/.prev/.next classes on panels (CSS handles slide+fade), updates dot active state, prev/next button [disabled] state, panel counter. reggNav(±1) wrapper. Keyboard ←/→ arrow handlers attached on open, removed on close. Touch swipe (>50px) on .regg-panel-wrap navigates. closeRyanEgg removes the keydown listener and resets state. Hidden confetti: click the red traffic-light dot in title bar 7× within 2.5s → reggConfetti() drops 80 multi-coloured particles.
+- All hub-shell.html JS passes node --check after the rewrite.
+
+Previous session: 2026-06-12 (Round 69: hardware-back + LabMate mobile + first egg upgrade; v1.0.35)
 Hardware back integration (phone back button walks up one nav level instead of leaving browser):
 - hub-shell.html openApp pushes {_hubApp: id} state; popstate listener detects currentApp and calls backToHub. backToHub itself calls history.back() unless invoked from popstate (guard via _backPopping flag).
 - Cryostorage/cryostorage.html: added _navStack + pushNavLevel(closeFn) + popNavLevel() + popstate listener. Wired into openBoxDetail (closes box detail), openAddVial (closes vial form modal), openEditVial (same), openBulkAdd, openAddRack, openAddBox. UI close buttons (closeBoxDetail etc.) call popNavLevel which triggers history.back; popstate runs the closer.
