@@ -39,7 +39,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow:hidden;display:flex;flex-direction:column;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;overflow:hidden;display:flex;flex-direction:column;}
 input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
 
 /* HEADER */
@@ -64,6 +64,14 @@ header p{font-size:11px;color:var(--text2);}
 input:checked + .theme-slider{background:var(--accent);border-color:var(--accent);}
 input:checked + .theme-slider:before{transform:translateX(18px);background:var(--surface);}
 
+/* TABS */
+.tab-bar{display:flex;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;padding:0 28px;}
+.tab-btn{padding:12px 18px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:color .15s,border-color .15s;margin-bottom:-1px;white-space:nowrap;}
+.tab-btn:hover{color:var(--text);}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-pane{display:none;}
+.tab-pane.active{display:block;}
+
 /* MAIN */
 main{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;}
 .wrap{padding:22px 28px 32px;max-width:1280px;margin:0 auto;}
@@ -86,10 +94,11 @@ main{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;}
 .tb-btn.primary:hover{filter:brightness(1.08);}
 .tb-btn.danger{color:var(--danger);}
 .tb-btn.danger:hover{background:var(--danger);color:#fff;border-color:var(--danger);}
+.tb-btn:disabled{opacity:.5;cursor:not-allowed;}
 
 /* STATS */
 .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:22px;}
-.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;transition:border-color .15s,transform .15s;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 18px;}
 .stat-lbl{font-size:10px;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:5px;font-weight:600;}
 .stat-val{font-size:22px;font-weight:700;color:var(--text);font-family:var(--sans);line-height:1.1;}
 .stat-val.warn{color:var(--warn);}
@@ -98,6 +107,8 @@ main{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;}
 .stat-card.feature{background:linear-gradient(135deg,var(--accent) 0,var(--accent2) 100%);color:#fff;border-color:transparent;}
 .stat-card.feature .stat-lbl,.stat-card.feature .stat-sub{color:rgba(255,255,255,.85);}
 .stat-card.feature .stat-val{color:#fff;}
+.stat-card.monzo-card{border-color:rgba(2,136,209,.25);background:linear-gradient(135deg,rgba(2,136,209,.07),rgba(2,136,209,.12));}
+.stat-card.monzo-card .stat-lbl{color:#0277bd;}
 
 /* MAIN LAYOUT */
 .layout{display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start;}
@@ -124,14 +135,18 @@ tbody td.name-cell{text-align:left;padding:8px 14px 8px 18px;display:flex;align-
 .drink-icon{font-size:16px;}
 .cell-name{font-weight:500;color:var(--text);}
 .cell-name-sub{font-size:10px;color:var(--text3);font-family:var(--mono);}
-.cell-paid{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-size:13px;cursor:default;margin:6px auto;transition:background .15s,transform .15s;}
+.cell-paid{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-size:13px;cursor:default;margin:6px auto;transition:background .15s,transform .15s;}
 .cell-paid.paid{background:var(--accent3);color:#fff;}
+.cell-paid.auto-paid{background:#0288d1;color:#fff;}
 .cell-paid.unpaid{background:transparent;border:1.5px dashed var(--border2);color:var(--text3);}
 .cell-paid.na{background:var(--surface3);color:var(--text3);font-size:10px;}
+.cell-paid .src-dot{position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-radius:50%;border:1.5px solid var(--surface);}
+.src-dot.dot-manual{background:var(--accent3);}
+.src-dot.dot-auto{background:#0288d1;}
 body.admin .cell-paid{cursor:pointer;}
 body.admin .cell-paid:hover{transform:scale(1.1);}
 body.admin .cell-paid.unpaid:hover{border-color:var(--accent3);background:rgba(67,160,71,.15);}
-body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
+body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:brightness(1.1);}
 .cell-actions{text-align:right;padding-right:10px;}
 .cell-action-btn{background:none;border:1px solid transparent;color:var(--text3);padding:3px 8px;font-size:11px;border-radius:5px;cursor:pointer;transition:all .12s;}
 .cell-action-btn:hover{background:var(--surface3);color:var(--text);border-color:var(--border);}
@@ -156,7 +171,63 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
 .wos-copy:hover{filter:brightness(1.08);}
 .wos-copy.copied{background:var(--accent3);}
 
-/* MEMBER EDIT MODAL */
+/* SUGGESTED PAYMENTS */
+.suggest-card{background:var(--surface);border:1px solid rgba(2,136,209,.4);border-radius:12px;overflow:hidden;margin-bottom:20px;}
+.suggest-hdr{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;background:rgba(2,136,209,.07);}
+.suggest-title{font-size:12px;font-weight:600;color:#0277bd;flex:1;}
+.suggest-body{padding:10px 14px;display:flex;flex-direction:column;gap:8px;}
+.suggest-row{display:flex;align-items:center;gap:10px;font-size:12.5px;}
+.suggest-info{flex:1;min-width:0;}
+.suggest-nm{font-weight:600;color:var(--text);}
+.suggest-meta{font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.suggest-confirm{padding:4px 10px;border-radius:6px;border:1px solid var(--accent3);background:transparent;color:var(--accent3);font-size:11px;cursor:pointer;transition:all .15s;white-space:nowrap;}
+.suggest-confirm:hover{background:var(--accent3);color:#fff;}
+.suggest-dismiss{padding:4px 7px;border-radius:6px;border:none;background:none;color:var(--text3);font-size:15px;line-height:1;cursor:pointer;}
+.suggest-dismiss:hover{color:var(--text);}
+.monzo-refresh{padding:3px 8px;border-radius:6px;border:1px solid var(--border2);background:none;color:var(--text3);font-size:11px;cursor:pointer;}
+.monzo-refresh:hover{background:var(--surface2);color:var(--text);}
+
+/* FUN STATS GRID */
+.fun-stats{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;}
+.fun-stats h2{font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.fun-stats h2 .ic{font-size:18px;}
+.fun-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+.fun-item{padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);display:flex;flex-direction:column;gap:4px;}
+.fun-item-lbl{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;}
+.fun-item-val{font-size:14px;font-weight:600;color:var(--text);line-height:1.3;}
+.fun-item-sub{font-size:10.5px;color:var(--text2);}
+
+/* MEMBERS TAB */
+.tab-panel{padding:22px 28px 32px;max-width:1280px;margin:0 auto;}
+.members-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.members-count{font-size:12px;color:var(--text2);}
+.members-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;}
+.mc{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:10px;transition:border-color .15s;}
+.mc:hover{border-color:var(--border2);}
+.mc-icon{font-size:20px;flex-shrink:0;text-align:center;width:28px;}
+.mc-info{flex:1;min-width:0;}
+.mc-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mc-sub{font-size:10.5px;color:var(--text2);margin-top:2px;}
+.mc-edit{background:none;border:1px solid var(--border2);color:var(--text3);padding:4px 10px;font-size:11px;border-radius:6px;cursor:pointer;transition:all .12s;flex-shrink:0;}
+.mc-edit:hover{background:var(--surface3);color:var(--text);}
+
+/* EXPENSES TAB */
+.exp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px;}
+.exp-table-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.exp-table-hdr{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.exp-tbl-scroll{overflow:auto;max-height:calc(100vh - 360px);}
+.exp-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+.exp-tbl thead{background:var(--surface2);position:sticky;top:0;}
+.exp-tbl thead th{padding:8px 14px;text-align:left;font-size:10.5px;font-weight:700;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);}
+.exp-tbl tbody td{padding:8px 14px;border-bottom:1px solid var(--border);color:var(--text);}
+.exp-tbl tbody tr:hover{background:var(--surface2);}
+.cat-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:600;background:var(--surface2);color:var(--text2);}
+.no-monzo{padding:48px 20px;text-align:center;color:var(--text3);font-size:12.5px;line-height:1.8;}
+.no-monzo .big{font-size:32px;margin-bottom:8px;}
+.exp-amount{font-family:var(--mono);font-weight:600;color:var(--danger);}
+.exp-amount.incoming{color:var(--accent3);}
+
+/* MODAL */
 .modal-overlay{position:fixed;inset:0;background:var(--modal-backdrop);z-index:400;display:none;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(3px);}
 .modal-overlay.open{display:flex;animation:mFade .2s ease;}
 @keyframes mFade{from{opacity:0;}to{opacity:1;}}
@@ -170,33 +241,23 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
 .modal-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;}
 .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
 .field label{font-size:10.5px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;font-weight:500;}
-.field input,.field select{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:8px 11px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;transition:border-color .15s,background .15s;}
+.field input,.field select{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:8px 11px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;transition:border-color .15s;}
 .field input:focus,.field select:focus{border-color:var(--accent);background:var(--surface);}
 .field .hint{font-size:10.5px;color:var(--text3);}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.section-sep{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin:14px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
 
-/* FUN STATS GRID */
-.fun-stats{margin-top:24px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;}
-.fun-stats h2{font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
-.fun-stats h2 .ic{font-size:18px;}
-.fun-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
-.fun-item{padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);display:flex;flex-direction:column;gap:4px;}
-.fun-item-lbl{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;}
-.fun-item-val{font-size:14px;font-weight:600;color:var(--text);line-height:1.3;}
-.fun-item-sub{font-size:10.5px;color:var(--text2);}
+/* AUTH BANNER */
+.auth-banner{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;margin-bottom:14px;font-size:12px;color:var(--text);}
+.auth-banner .ic{font-size:16px;}
+.auth-banner .spacer{flex:1;}
 
 /* TOAST */
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--surface);padding:10px 18px;border-radius:20px;font-size:12.5px;font-family:var(--sans);box-shadow:var(--shadow-md);z-index:500;opacity:0;transition:opacity .2s,transform .25s;pointer-events:none;}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
-
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
-
-/* AUTH banner */
-.auth-banner{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:10px;margin-bottom:14px;font-size:12px;color:var(--text);}
-.auth-banner .ic{font-size:16px;}
-.auth-banner .spacer{flex:1;}
 
 /* MOBILE */
 @media (max-width:720px){
@@ -204,14 +265,16 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
   header h1{font-size:14px;}
   header p{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
   .role-badge{display:none;}
-  .wrap{padding:14px 12px 24px;}
-  .stats-row{grid-template-columns:repeat(2,1fr);gap:8px;}
+  .tab-bar{padding:0 10px;}
+  .tab-btn{padding:10px 12px;font-size:12px;}
+  .wrap,.tab-panel{padding:14px 12px 24px;}
+  .stats-row,.exp-stats{grid-template-columns:repeat(2,1fr);gap:8px;}
   .stat-card{padding:11px 13px;}
   .stat-val{font-size:17px;}
   .layout{grid-template-columns:1fr;}
   .wos-card{position:static;}
   .wos-body{max-height:none;}
-  .tbl-scroll{max-height:none;}
+  .tbl-scroll,.exp-tbl-scroll{max-height:none;}
   .table-search{max-width:none;}
   thead th{padding:6px 6px;font-size:9.5px;}
   thead th.name-col{padding-left:12px;}
@@ -220,11 +283,12 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
   .month-pills{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
   .month-pill{flex-shrink:0;}
   .fun-grid{grid-template-columns:1fr 1fr;}
+  .members-grid{grid-template-columns:1fr 1fr;}
 }
 @media (max-width:420px){
   header p{display:none;}
-  .stats-row{grid-template-columns:1fr 1fr;}
-  .fun-grid{grid-template-columns:1fr;}
+  .stats-row,.exp-stats{grid-template-columns:1fr 1fr;}
+  .fun-grid,.members-grid{grid-template-columns:1fr;}
 }
 @media (hover:none){
   .tb-btn:hover,.stat-card:hover,.month-pill:hover{transform:none;}
@@ -237,13 +301,14 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
   <div class="logo">&#9749;</div>
   <div>
     <h1>Cuppa</h1>
-    <p id="hdr-sub">CeTPD Hot Drinks ledger &middot; <span id="hdr-status">loading…</span></p>
+    <p id="hdr-sub">CeTPD Hot Drinks &middot; <span id="hdr-status">loading…</span></p>
   </div>
   <div class="hdr-right">
     <span class="role-badge" id="role-badge">viewer</span>
     <button class="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
   </div>
 </header>
+
 <div class="opts-panel" id="opts-panel">
   <div class="opts-row"><span class="opts-label">Theme</span>
     <label class="theme-switch"><input type="checkbox" id="theme-toggle-chk" onchange="toggleTheme()"><span class="theme-slider"></span></label>
@@ -255,19 +320,29 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
     <button class="tb-btn" onclick="openSettings()">Settings</button>
   </div>
   <div class="opts-row" style="border-top:1px solid var(--border);padding-top:10px;margin-top:6px;">
-    <span class="opts-label" style="font-size:10.5px;color:var(--text3);">Cuppa &middot; data lives in Firebase &middot; viewer-mode by default</span>
+    <span class="opts-label" style="font-size:10.5px;color:var(--text3);">Cuppa · Firebase · viewer by default</span>
   </div>
 </div>
 
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('ledger')" id="tab-ledger">Ledger</button>
+  <button class="tab-btn" onclick="switchTab('members')" id="tab-members">Members</button>
+  <button class="tab-btn" onclick="switchTab('expenses')" id="tab-expenses">Expenses</button>
+</div>
+
 <main>
+
+  <!-- LEDGER TAB -->
+  <div id="pane-ledger" class="tab-pane active">
   <div class="wrap">
     <div id="auth-banner-host"></div>
+    <div id="suggest-host"></div>
 
     <div class="year-bar">
       <div class="year-nav">
-        <button class="year-btn" onclick="changeYear(-1)" title="Previous year">&#10094;</button>
+        <button class="year-btn" onclick="changeYear(-1)">&#10094;</button>
         <span class="year-label" id="year-label">2026</span>
-        <button class="year-btn" onclick="changeYear(1)" title="Next year">&#10095;</button>
+        <button class="year-btn" onclick="changeYear(1)">&#10095;</button>
       </div>
       <div class="month-pills" id="month-pills"></div>
       <div class="spacer"></div>
@@ -300,6 +375,34 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
       <div class="fun-grid" id="fun-grid"></div>
     </div>
   </div>
+  </div><!-- /pane-ledger -->
+
+  <!-- MEMBERS TAB -->
+  <div id="pane-members" class="tab-pane">
+    <div class="tab-panel">
+      <div class="members-toolbar">
+        <span class="members-count" id="members-count"></span>
+        <div class="spacer"></div>
+        <button class="tb-btn primary" id="add-member-btn2" style="display:none;" onclick="openAddMember()">+ Add member</button>
+      </div>
+      <div class="members-grid" id="members-grid"></div>
+    </div>
+  </div><!-- /pane-members -->
+
+  <!-- EXPENSES TAB -->
+  <div id="pane-expenses" class="tab-pane">
+    <div class="tab-panel">
+      <div class="exp-stats" id="exp-stats"></div>
+      <div class="exp-table-card">
+        <div class="exp-table-hdr">
+          <span style="font-size:13px;font-weight:600;color:var(--text);flex:1;" id="exp-table-title">Transactions</span>
+          <button class="monzo-refresh" id="exp-refresh-btn" style="display:none;" onclick="loadMonzoData()">↻ Refresh from Monzo</button>
+        </div>
+        <div class="exp-tbl-scroll" id="exp-tbl-scroll"></div>
+      </div>
+    </div>
+  </div><!-- /pane-expenses -->
+
 </main>
 
 <!-- MEMBER MODAL -->
@@ -315,6 +418,7 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
             <option value="tea">🫖 Tea</option>
             <option value="matcha">🍵 Matcha</option>
             <option value="hotchoc">🍫 Hot chocolate</option>
+            <option value="milk">🥛 Milk</option>
             <option value="none">— Not applicable</option>
           </select>
         </div>
@@ -335,21 +439,26 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
   <div class="modal-card">
     <div class="modal-hdr"><div class="modal-title">Settings</div><button class="modal-close" onclick="closeSettings()">&times;</button></div>
     <div class="modal-body">
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:10px;">Prices (per month)</div>
+      <div class="section-sep">Prices (£ per month)</div>
       <div class="field-row">
-        <div class="field"><label>☕ Coffee (£)</label><input type="number" id="sf-coffee" step="0.5" min="0"></div>
-        <div class="field"><label>🫖 Tea (£)</label><input type="number" id="sf-tea" step="0.5" min="0"></div>
+        <div class="field"><label>☕ Coffee / matcha / all hot drinks</label><input type="number" id="sf-coffee" step="0.5" min="0"></div>
+        <div class="field"><label>🫖 Tea</label><input type="number" id="sf-tea" step="0.5" min="0"></div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>🍵 Matcha (£)</label><input type="number" id="sf-matcha" step="0.5" min="0"></div>
-        <div class="field"><label>🍫 Hot chocolate (£)</label><input type="number" id="sf-hotchoc" step="0.5" min="0"></div>
-      </div>
-      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin:14px 0 10px;">Bank info (shown on Wall of Shame)</div>
+      <div class="section-sep">Bank info (shown on Wall of Shame)</div>
       <div class="field-row">
         <div class="field"><label>Sort code</label><input type="text" id="sf-sort" placeholder="04-00-03"></div>
         <div class="field"><label>Account</label><input type="text" id="sf-acc" placeholder="58067389"></div>
       </div>
       <div class="field"><label>Account holder</label><input type="text" id="sf-holder" placeholder="J. Macicior"></div>
+      <div class="section-sep">Monzo integration <span style="font-size:10px;font-weight:400;color:var(--text3);">token stored on this device only</span></div>
+      <div class="field">
+        <label>Personal access token <a href="https://developers.monzo.com/" target="_blank" style="color:var(--accent);text-decoration:none;font-size:10px;margin-left:4px;">Get token ↗</a></label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="password" id="sf-monzo-token" placeholder="eyJhbGciOiJ…" style="flex:1;">
+          <button class="tb-btn" onclick="connectMonzo()" id="monzo-connect-btn" style="flex-shrink:0;">Connect</button>
+        </div>
+        <span class="hint" id="monzo-status-hint">Paste a token and click Connect to link your Monzo account</span>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="tb-btn" onclick="closeSettings()">Cancel</button>
@@ -363,11 +472,9 @@ body.admin .cell-paid.paid:hover{filter:brightness(1.1);}
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
 // CUPPA — CeTPD Hot Drinks ledger
+// Storage: Firebase Realtime DB /cuppa.json (shared). Monzo token: localStorage.
 // ═══════════════════════════════════════════════════════════════════════════
-// Storage: Firebase Realtime DB (shared across all viewers).
-// Roles: viewer (read-only, default) / admin (sign in with Jon's Google).
 
-// ─── Firebase init ─────────────────────────────────────────────────────────
 var FB_CFG = {
   apiKey: 'AIzaSyBpw9UbXnCciIi7VBapBeBJOq9U7RSS4g8',
   authDomain: 'thehub-f80ae.firebaseapp.com',
@@ -386,12 +493,11 @@ try { firebase.initializeApp(FB_CFG); } catch(e){}
     document.documentElement.setAttribute('data-theme', t);
     var chk = document.getElementById('theme-toggle-chk');
     if (chk) chk.checked = (t === 'dark');
-  } catch(e) {}
+  } catch(e){}
   document.addEventListener('click', function(e){
     var p = document.getElementById('opts-panel');
-    if (p && p.classList.contains('open') && !p.contains(e.target) && !/opts-btn|cogwheel/i.test(e.target.outerHTML || '')) {
-      if (!e.target.closest('.opts-btn')) p.classList.remove('open');
-    }
+    if (p && p.classList.contains('open') && !p.contains(e.target) && !e.target.closest('.opts-btn'))
+      p.classList.remove('open');
   });
 })();
 function toggleTheme(){
@@ -402,7 +508,7 @@ function toggleTheme(){
 }
 function toggleOpts(){ document.getElementById('opts-panel').classList.toggle('open'); }
 
-// ─── State ─────────────────────────────────────────────────────────────────
+// ─── Constants ─────────────────────────────────────────────────────────────
 var SEED_MEMBERS = [
   'Adam Pinto','Aina Urbina','Alejandro Correa','Alessandra Salerno','Alessio Ciulli',
   'Alex Hallatt','Alexandra Teslenko','Atana','Chloe Jackson','Claudine Greenwood',
@@ -413,7 +519,6 @@ var SEED_MEMBERS = [
   'Stefan Djukic','Suzanne O\'Connor','Will Farnaby','Yuting Zhi','Zher Yin'
 ];
 var SEED_PAYMENTS_2026 = {
-  // pre-populated from the CeTPD Hot Drinks 2026.xlsx as of 2026-05-18
   'Adam Pinto':         { April:true, May:true },
   'Aina Urbina':        { April:true, May:true },
   'Alejandro Correa':   { April:true, May:true },
@@ -452,79 +557,104 @@ var SEED_PAYMENTS_2026 = {
 
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var MONTHS_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-var DRINK_ICONS = { coffee:'☕', tea:'🫖', matcha:'🍵', hotchoc:'🍫', none:'—' };
-var DRINK_LABELS = { coffee:'Coffee', tea:'Tea', matcha:'Matcha', hotchoc:'Hot chocolate', none:'N/A' };
+var DRINK_ICONS  = { coffee:'☕', tea:'🫖', matcha:'🍵', hotchoc:'🍫', milk:'🥛', none:'—' };
+var DRINK_LABELS = { coffee:'Coffee', tea:'Tea', matcha:'Matcha', hotchoc:'Hot choc', milk:'Milk', none:'N/A' };
 
+var EXPENSE_CATS = {
+  'Amazon':     { icon:'📦', color:'#ff9800' },
+  'Coffee':     { icon:'☕', color:'#8d6e63' },
+  'Milk':       { icon:'🥛', color:'#42a5f5' },
+  'Supermarket':{ icon:'🛒', color:'#66bb6a' },
+  'Other':      { icon:'💳', color:'#9e9e9e' }
+};
+
+// ─── State ─────────────────────────────────────────────────────────────────
 var state = null;
 var currentYear = (new Date()).getFullYear();
 var currentMonth = MONTHS[(new Date()).getMonth()];
+var currentTab = 'ledger';
 var search = '';
 var isAdmin = false;
 var editingMemberId = null;
 var _fbReady = false;
 var _firstSnap = true;
+var _monzoToken = null;
+var _monzoSuggestions = [];
 
 function makeMember(name, drink){
   return { id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink||'coffee', startMonth:null, notes:'' };
 }
 function defaultState(){
   var members = SEED_MEMBERS.map(function(n){ return makeMember(n,'coffee'); });
-  // Seed 2026 payments
-  var payments = { 2026: {} };
+  var payments = { 2026:{} };
   members.forEach(function(m){
-    var key = m.name.replace(/\s+/g,' ').trim();
-    var paid = SEED_PAYMENTS_2026[key] || {};
+    var paid = SEED_PAYMENTS_2026[m.name.replace(/\s+/g,' ').trim()] || {};
     payments[2026][m.id] = {};
-    Object.keys(paid).forEach(function(month){ payments[2026][m.id][month] = true; });
+    Object.keys(paid).forEach(function(mn){ payments[2026][m.id][mn] = true; });
   });
   return {
     v:1, members:members, payments:payments,
-    prices:{ coffee:7.5, tea:5, matcha:7.5, hotchoc:7.5 },
+    prices:{ coffee:7.5, tea:5 },
     bank:{ sort:'04-00-03', acc:'58067389', holder:'J. Macicior' },
+    monzo:{},
     updatedAt:new Date().toISOString(), updatedBy:''
   };
 }
 function ensureState(s){
-  if (!s) return defaultState();
-  if (!s.members || !s.members.length) return defaultState();
+  if (!s || !s.members || !s.members.length) return defaultState();
   s.payments = s.payments || {};
   s.payments[currentYear] = s.payments[currentYear] || {};
-  s.prices = s.prices || { coffee:7.5, tea:5, matcha:7.5, hotchoc:7.5 };
+  s.prices = s.prices || { coffee:7.5, tea:5 };
+  if (!s.prices.coffee) s.prices.coffee = 7.5;
+  if (!s.prices.tea)    s.prices.tea    = 5;
   s.bank = s.bank || { sort:'04-00-03', acc:'58067389', holder:'J. Macicior' };
+  s.monzo = s.monzo || {};
   return s;
 }
 
-// ─── Firebase sync ──────────────────────────────────────────────────────────
+// ─── Firebase ──────────────────────────────────────────────────────────────
 var _es = null;
 function startSync(){
   if (_es) try { _es.close(); } catch(e){}
   _es = new EventSource(FB_REST + '/cuppa.json');
   _es.addEventListener('put', onFbEvent);
   _es.addEventListener('patch', onFbEvent);
-  _es.onerror = function(){ /* silently retry */ };
+  _es.onerror = function(){};
 }
 function onFbEvent(e){
   try {
     var d = JSON.parse(e.data);
     if (d.path === '/') {
       if (d.data == null) {
-        // No data yet — seed from defaults, then push to Firebase if admin
         state = defaultState();
+        _firstSnap = false;
         if (isAdmin) saveToFirebase('init seed');
       } else {
         state = ensureState(d.data);
+        if (_firstSnap) {
+          _firstSnap = false;
+          // Default to last month with any payment data
+          var _yp = (state.payments && state.payments[currentYear]) || {};
+          var _nowMi = (new Date()).getMonth();
+          for (var _i = _nowMi; _i >= 0; _i--) {
+            var _mn = MONTHS[_i];
+            if (state.members.some(function(m){ return _yp[m.id] && _yp[m.id][_mn]; })) {
+              currentMonth = _mn; break;
+            }
+          }
+          if (isAdmin && _monzoToken) loadMonzoData();
+        }
       }
     } else if (state) {
-      // Path-targeted update: re-fetch the whole tree for simplicity
-      refetchAll();
+      refetchAll(); return;
     }
     _fbReady = true;
     setStatus('synced');
     render();
-  } catch(err) {}
+  } catch(err){}
 }
 function refetchAll(){
-  fetch(FB_REST + '/cuppa.json').then(function(r){return r.json();}).then(function(d){
+  fetch(FB_REST + '/cuppa.json').then(function(r){ return r.json(); }).then(function(d){
     state = d ? ensureState(d) : defaultState();
     render();
   }).catch(function(){});
@@ -535,19 +665,16 @@ function saveToFirebase(reason){
   return fetch(FB_REST + '/cuppa.json?auth=' + FB_SECRET, {
     method:'PUT', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(state)
-  }).then(function(r){ if(!r.ok) throw new Error('Firebase write failed'); setStatus('saved'); return r; });
+  }).then(function(r){ if (!r.ok) throw new Error('write failed'); setStatus('saved'); return r; });
 }
-
-function setStatus(s){ var el=document.getElementById('hdr-status'); if(el) el.textContent = s; }
+function setStatus(s){ var el = document.getElementById('hdr-status'); if (el) el.textContent = s; }
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 function onAuthBtn(){
   var u = firebase.auth().currentUser;
   if (u) { firebase.auth().signOut(); return; }
   var prov = new firebase.auth.GoogleAuthProvider();
-  firebase.auth().signInWithPopup(prov).catch(function(err){
-    toast('Sign-in failed: ' + (err.message || err));
-  });
+  firebase.auth().signInWithPopup(prov).catch(function(err){ toast('Sign-in failed: ' + (err.message||err)); });
 }
 firebase.auth().onAuthStateChanged(function(user){
   isAdmin = !!(user && user.email && user.email.toLowerCase() === ADMIN_EMAIL);
@@ -555,18 +682,26 @@ firebase.auth().onAuthStateChanged(function(user){
   var btn = document.getElementById('auth-btn');
   var badge = document.getElementById('role-badge');
   var addBtn = document.getElementById('add-member-btn');
+  var addBtn2 = document.getElementById('add-member-btn2');
   var adminRow = document.getElementById('opts-admin-row');
+  var expRefresh = document.getElementById('exp-refresh-btn');
   if (isAdmin) {
     if (btn) btn.textContent = 'Sign out';
     if (badge) { badge.textContent = '✦ admin'; badge.classList.add('admin'); }
     if (addBtn) addBtn.style.display = '';
+    if (addBtn2) addBtn2.style.display = '';
     if (adminRow) adminRow.style.display = 'flex';
+    if (expRefresh) expRefresh.style.display = '';
     renderAuthBanner('Signed in as ' + user.email + ' — edit mode enabled', false);
+    loadMonzoToken();
+    if (_monzoToken && _fbReady) loadMonzoData();
   } else {
     if (btn) btn.textContent = user ? 'Wrong account — sign out' : 'Sign in';
     if (badge) { badge.textContent = 'viewer'; badge.classList.remove('admin'); }
     if (addBtn) addBtn.style.display = 'none';
+    if (addBtn2) addBtn2.style.display = 'none';
     if (adminRow) adminRow.style.display = 'none';
+    if (expRefresh) expRefresh.style.display = 'none';
     if (user) renderAuthBanner('Signed in as ' + user.email + ' — viewer only (admin = Jon)', true);
     else document.getElementById('auth-banner-host').innerHTML = '';
   }
@@ -582,6 +717,19 @@ function renderAuthBanner(msg, warn){
     + '</div>';
 }
 
+// ─── Tabs ──────────────────────────────────────────────────────────────────
+function switchTab(tab){
+  currentTab = tab;
+  ['ledger','members','expenses'].forEach(function(t){
+    var pane = document.getElementById('pane-'+t);
+    var btn  = document.getElementById('tab-'+t);
+    if (pane) pane.classList.toggle('active', t === tab);
+    if (btn)  btn.classList.toggle('active', t === tab);
+  });
+  if (tab === 'members')  renderMembers();
+  if (tab === 'expenses') renderExpenses();
+}
+
 // ─── Render ────────────────────────────────────────────────────────────────
 function render(){
   if (!state) return;
@@ -590,15 +738,17 @@ function render(){
   renderTable();
   renderWallOfShame();
   renderFunStats();
+  renderSuggestedPayments();
   document.getElementById('year-label').textContent = currentYear;
+  if (currentTab === 'members')  renderMembers();
+  if (currentTab === 'expenses') renderExpenses();
 }
 function renderMonthPills(){
-  var nowYear = (new Date()).getFullYear();
-  var nowMonth = (new Date()).getMonth();
+  var nowYear = (new Date()).getFullYear(), nowMonth = (new Date()).getMonth();
   var html = MONTHS.map(function(m, i){
     var isActive = m === currentMonth;
     var isFuture = currentYear > nowYear || (currentYear === nowYear && i > nowMonth);
-    return '<button class="month-pill' + (isActive ? ' active' : '') + (isFuture ? ' future' : '') + '" onclick="setMonth(\'' + m + '\')">' + MONTHS_ABBR[i] + '</button>';
+    return '<button class="month-pill'+(isActive?' active':'')+(isFuture?' future':'')+'" onclick="setMonth(\''+m+'\')">' + MONTHS_ABBR[i] + '</button>';
   }).join('');
   document.getElementById('month-pills').innerHTML = html;
 }
@@ -610,220 +760,479 @@ function getYearPayments(){
   return (state.payments && state.payments[currentYear]) || {};
 }
 function memberPaid(memberId, month){
-  var yp = getYearPayments();
-  return !!(yp[memberId] && yp[memberId][month]);
+  var v = (getYearPayments()[memberId] || {})[month];
+  return !!v;
+}
+function paymentSource(memberId, month){
+  var v = (getYearPayments()[memberId] || {})[month];
+  if (!v) return null;
+  return v === 'auto' ? 'auto' : 'manual';
 }
 function memberPriceMonthly(member){
   if (member.drink === 'none') return 0;
-  return (state.prices && state.prices[member.drink]) || 7.5;
+  // Two tiers: tea = £5, everything else (coffee/matcha/hotchoc/milk/etc) = coffee price
+  if (member.drink === 'tea') return (state.prices && state.prices.tea) || 5;
+  return (state.prices && state.prices.coffee) || 7.5;
 }
 
+// ─── Stats ─────────────────────────────────────────────────────────────────
 function renderStats(){
   var yp = getYearPayments();
-  var activeMembers = state.members.filter(function(m){ return m.drink !== 'none'; });
-  var nUnpaidThisMonth = 0, totalThisMonth = 0, expectedThisMonth = 0;
-  activeMembers.forEach(function(m){
-    var price = memberPriceMonthly(m);
-    expectedThisMonth += price;
-    if (memberPaid(m.id, currentMonth)) totalThisMonth += price;
-    else nUnpaidThisMonth++;
+  var active = state.members.filter(function(m){ return m.drink !== 'none'; });
+  var collected = 0, expected = 0, nUnpaid = 0;
+  active.forEach(function(m){
+    var p = memberPriceMonthly(m);
+    expected += p;
+    if (memberPaid(m.id, currentMonth)) collected += p;
+    else nUnpaid++;
   });
-  var pct = expectedThisMonth ? Math.round(totalThisMonth / expectedThisMonth * 100) : 0;
-  // Year totals
-  var collectedYear = 0, expectedYear = 0;
+  var pct = expected ? Math.round(collected / expected * 100) : 0;
+  var collectedYear = 0;
   Object.keys(yp).forEach(function(mid){
     var m = state.members.find(function(x){ return x.id === mid; });
     if (!m || m.drink === 'none') return;
-    var price = memberPriceMonthly(m);
-    Object.keys(yp[mid]).forEach(function(mn){ if (yp[mid][mn]) collectedYear += price; });
+    Object.keys(yp[mid]).forEach(function(mn){ if (yp[mid][mn]) collectedYear += memberPriceMonthly(m); });
   });
-  var nowYear = (new Date()).getFullYear();
-  var nowMonth = (new Date()).getMonth();
-  var monthsElapsed = currentYear < nowYear ? 12 : (currentYear > nowYear ? 0 : nowMonth + 1);
-  expectedYear = activeMembers.length * monthsElapsed * (state.prices.coffee || 7.5);
+
+  var monzoCard = '';
+  if (state.monzo && state.monzo.balance != null) {
+    var bal = (state.monzo.balance / 100).toFixed(2);
+    var balAt = state.monzo.balanceAt ? new Date(state.monzo.balanceAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' ' + new Date(state.monzo.balanceAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '';
+    monzoCard = '<div class="stat-card monzo-card">'
+      + '<div class="stat-lbl">🏦 Monzo pot</div>'
+      + '<div class="stat-val">£' + bal + '</div>'
+      + '<div class="stat-sub">' + (balAt ? 'at ' + balAt : 'cached') + (isAdmin ? ' · <a href="#" onclick="loadMonzoData();return false;" style="color:var(--accent);text-decoration:none;">refresh</a>' : '') + '</div>'
+      + '</div>';
+  }
 
   document.getElementById('stats-row').innerHTML =
     '<div class="stat-card feature">'
-    +   '<div class="stat-lbl">' + currentMonth + ' ' + currentYear + ' — collected</div>'
-    +   '<div class="stat-val">£' + totalThisMonth.toFixed(2) + '</div>'
-    +   '<div class="stat-sub">of £' + expectedThisMonth.toFixed(2) + ' expected · ' + pct + '%</div>'
+    +   '<div class="stat-lbl">'+currentMonth+' '+currentYear+' — collected</div>'
+    +   '<div class="stat-val">£'+collected.toFixed(2)+'</div>'
+    +   '<div class="stat-sub">of £'+expected.toFixed(2)+' expected · '+pct+'%</div>'
     + '</div>'
     + '<div class="stat-card">'
     +   '<div class="stat-lbl">Unpaid this month</div>'
-    +   '<div class="stat-val ' + (nUnpaidThisMonth > 5 ? 'warn' : '') + '">' + nUnpaidThisMonth + '</div>'
+    +   '<div class="stat-val'+(nUnpaid > 5 ? ' warn' : '')+'">'+nUnpaid+'</div>'
     +   '<div class="stat-sub">people on the wall</div>'
     + '</div>'
     + '<div class="stat-card">'
-    +   '<div class="stat-lbl">' + currentYear + ' year-to-date</div>'
-    +   '<div class="stat-val">£' + collectedYear.toFixed(2) + '</div>'
-    +   '<div class="stat-sub">collected from ' + activeMembers.length + ' drinkers</div>'
+    +   '<div class="stat-lbl">'+currentYear+' year-to-date</div>'
+    +   '<div class="stat-val">£'+collectedYear.toFixed(2)+'</div>'
+    +   '<div class="stat-sub">collected from '+active.length+' drinkers</div>'
     + '</div>'
     + '<div class="stat-card">'
     +   '<div class="stat-lbl">Active members</div>'
-    +   '<div class="stat-val">' + activeMembers.length + '</div>'
-    +   '<div class="stat-sub">' + state.members.length + ' total · ' + (state.members.length - activeMembers.length) + ' N/A</div>'
-    + '</div>';
+    +   '<div class="stat-val">'+active.length+'</div>'
+    +   '<div class="stat-sub">'+state.members.length+' total · '+(state.members.length - active.length)+' N/A</div>'
+    + '</div>'
+    + monzoCard;
 }
 
+// ─── Table ─────────────────────────────────────────────────────────────────
 function renderTable(){
-  var nowYear = (new Date()).getFullYear();
-  var nowMonth = (new Date()).getMonth();
-  var visibleMonths = MONTHS.slice(0, currentYear < nowYear ? 12 : (currentYear > nowYear ? 0 : nowMonth + 1));
-  if (!visibleMonths.length) visibleMonths = MONTHS.slice(0, 12);
+  var nowYear = (new Date()).getFullYear(), nowMonth = (new Date()).getMonth();
+  var maxIdx = currentYear < nowYear ? 11 : (currentYear > nowYear ? -1 : nowMonth);
+  if (maxIdx < 0) {
+    document.getElementById('tbl-scroll').innerHTML = '<p style="padding:20px;color:var(--text3);text-align:center;font-size:12px;">No data for '+currentYear+' yet.</p>';
+    return;
+  }
+  // Find first month with any payment data → start the table there
+  var yp = getYearPayments();
+  var firstIdx = 0;
+  for (var fi = 0; fi <= maxIdx; fi++) {
+    var fmn = MONTHS[fi];
+    if (state.members.some(function(m){ return yp[m.id] && yp[m.id][fmn]; })) { firstIdx = fi; break; }
+  }
+  var visibleMonths = MONTHS.slice(firstIdx, maxIdx + 1);
+  if (!visibleMonths.length) visibleMonths = [MONTHS[maxIdx]];
+
   var q = (search || '').toLowerCase().trim();
   var members = [...state.members].sort(function(a,b){ return a.name.localeCompare(b.name); });
   if (q) members = members.filter(function(m){ return m.name.toLowerCase().includes(q); });
 
   document.getElementById('table-title').textContent = members.length + ' member' + (members.length === 1 ? '' : 's');
 
-  var html = '<table><thead><tr>'
-    + '<th class="name-col">Name</th>';
+  var html = '<table><thead><tr><th class="name-col">Name</th>';
   visibleMonths.forEach(function(mn){
-    var isActive = mn === currentMonth;
-    html += '<th class="' + (isActive ? 'active-month' : '') + '">' + MONTHS_ABBR[MONTHS.indexOf(mn)] + '</th>';
+    var isAct = mn === currentMonth;
+    html += '<th class="'+(isAct?'active-month':'')+'">' + MONTHS_ABBR[MONTHS.indexOf(mn)] + '</th>';
   });
   if (isAdmin) html += '<th></th>';
   html += '</tr></thead><tbody>';
 
   members.forEach(function(m){
-    html += '<tr class="' + (m.drink === 'none' ? 'row-inactive' : '') + '">'
-      + '<td class="name-cell">'
-      +   '<span class="drink-icon" title="' + DRINK_LABELS[m.drink] + '">' + DRINK_ICONS[m.drink] + '</span>'
-      +   '<span><span class="cell-name">' + esc(m.name) + '</span>'
-      +     (m.notes ? '<br><span class="cell-name-sub">' + esc(m.notes) + '</span>' : '')
-      +   '</span>'
-      + '</td>';
+    html += '<tr class="'+(m.drink==='none'?'row-inactive':'')+'"><td class="name-cell">'
+      + '<span class="drink-icon" title="'+DRINK_LABELS[m.drink||'coffee']+'">'+DRINK_ICONS[m.drink||'coffee']+'</span>'
+      + '<span><span class="cell-name">'+esc(m.name)+'</span>'
+      + (m.notes ? '<br><span class="cell-name-sub">'+esc(m.notes)+'</span>' : '')
+      + '</span></td>';
     visibleMonths.forEach(function(mn){
       var paid = memberPaid(m.id, mn);
-      var isActive = mn === currentMonth;
-      var cls = paid ? 'paid' : 'unpaid';
-      var content = paid ? '✓' : (m.drink === 'none' ? '—' : '');
-      if (m.drink === 'none') { cls = 'na'; content = 'N/A'; }
-      html += '<td' + (isActive ? ' style="background:var(--accent-dim);"' : '') + '>'
-        + '<button class="cell-paid ' + cls + '" onclick="togglePaid(\'' + m.id + '\',\'' + mn + '\')" title="' + m.name + ' / ' + mn + '">' + content + '</button>'
-        + '</td>';
+      var src = paymentSource(m.id, mn);
+      var isAct = mn === currentMonth;
+      var cls = 'unpaid';
+      if (paid) cls = src === 'auto' ? 'paid auto-paid' : 'paid';
+      if (m.drink === 'none') cls = 'na';
+      var content = paid ? '✓' : (m.drink === 'none' ? 'N/A' : '');
+      var dot = paid ? '<span class="src-dot dot-'+(src||'manual')+'" title="'+(src==='auto'?'Auto-detected from Monzo':'Manually marked')+'"></span>' : '';
+      var tip = paid ? (src==='auto'?'Monzo auto-detected':'Manually marked') : (m.name+' / '+mn);
+      html += '<td'+(isAct?' style="background:var(--accent-dim);"':'')+'>'+
+        '<button class="cell-paid '+cls+'" onclick="togglePaid(\''+m.id+'\',\''+mn+'\')" title="'+esc(tip)+'">'+content+dot+'</button></td>';
     });
-    if (isAdmin) html += '<td class="cell-actions"><button class="cell-action-btn" onclick="editMember(\'' + m.id + '\')">Edit</button></td>';
+    if (isAdmin) html += '<td class="cell-actions"><button class="cell-action-btn" onclick="editMember(\''+m.id+'\')">Edit</button></td>';
     html += '</tr>';
   });
   html += '</tbody></table>';
   document.getElementById('tbl-scroll').innerHTML = html;
 }
 
+// ─── Wall of Shame ─────────────────────────────────────────────────────────
 function renderWallOfShame(){
   document.getElementById('wos-month-lbl').textContent = MONTHS_ABBR[MONTHS.indexOf(currentMonth)] + ' ' + currentYear;
-  var unpaid = state.members.filter(function(m){
-    return m.drink !== 'none' && !memberPaid(m.id, currentMonth);
-  }).sort(function(a,b){ return a.name.localeCompare(b.name); });
-  var total = unpaid.reduce(function(s, m){ return s + memberPriceMonthly(m); }, 0);
+  var unpaid = state.members.filter(function(m){ return m.drink !== 'none' && !memberPaid(m.id, currentMonth); })
+    .sort(function(a,b){ return a.name.localeCompare(b.name); });
+  var total = unpaid.reduce(function(s,m){ return s + memberPriceMonthly(m); }, 0);
   document.getElementById('wos-total').textContent = '£' + total.toFixed(2);
   var body = document.getElementById('wos-body');
   if (!unpaid.length) {
     body.innerHTML = '<div class="wos-empty">🎉 Everyone paid this month. Miracles do happen.</div>';
   } else {
     body.innerHTML = '<div class="wos-list">' + unpaid.map(function(m){
-      return '<div class="wos-row">'
-        + '<span class="ic">' + DRINK_ICONS[m.drink] + '</span>'
-        + '<span class="nm">' + esc(m.name) + '</span>'
-        + '<span class="amt">£' + memberPriceMonthly(m).toFixed(2) + '</span>'
-      + '</div>';
+      return '<div class="wos-row"><span class="ic">'+DRINK_ICONS[m.drink]+'</span><span class="nm">'+esc(m.name)+'</span><span class="amt">£'+memberPriceMonthly(m).toFixed(2)+'</span></div>';
     }).join('') + '</div>';
   }
 }
 
+// ─── Fun Stats ─────────────────────────────────────────────────────────────
 function renderFunStats(){
   var members = state.members;
   var yp = getYearPayments();
-  // Drink popularity
-  var drinkCount = { coffee:0, tea:0, matcha:0, hotchoc:0, none:0 };
+  var drinkCount = { coffee:0, tea:0, matcha:0, hotchoc:0, milk:0, none:0 };
   members.forEach(function(m){ drinkCount[m.drink] = (drinkCount[m.drink]||0) + 1; });
   var topDrink = 'coffee', topN = 0;
-  Object.keys(drinkCount).forEach(function(k){ if (k !== 'none' && drinkCount[k] > topN) { topN = drinkCount[k]; topDrink = k; }});
+  Object.keys(drinkCount).forEach(function(k){ if (k !== 'none' && drinkCount[k] > topN){ topN = drinkCount[k]; topDrink = k; }});
 
-  // Most consistent payer (most paid months this year)
   var paidCounts = {};
   members.forEach(function(m){
     if (m.drink === 'none') return;
-    var n = yp[m.id] ? Object.keys(yp[m.id]).filter(function(k){ return yp[m.id][k]; }).length : 0;
-    paidCounts[m.id] = n;
+    paidCounts[m.id] = yp[m.id] ? Object.keys(yp[m.id]).filter(function(k){ return yp[m.id][k]; }).length : 0;
   });
-  var topPayer = members.filter(function(m){return m.drink!=='none';})
-    .sort(function(a,b){ return (paidCounts[b.id]||0) - (paidCounts[a.id]||0); })[0];
-  var topPayerN = topPayer ? paidCounts[topPayer.id] : 0;
+  var actives = members.filter(function(m){ return m.drink !== 'none'; });
+  var topPayer = actives.slice().sort(function(a,b){ return (paidCounts[b.id]||0)-(paidCounts[a.id]||0); })[0];
+  var bottomPayer = actives.slice().sort(function(a,b){ return (paidCounts[a.id]||0)-(paidCounts[b.id]||0); })[0];
 
-  // Repeat offenders — bottom in paid counts (among active)
-  var sortedByPaid = members.filter(function(m){return m.drink!=='none';})
-    .sort(function(a,b){ return (paidCounts[a.id]||0) - (paidCounts[b.id]||0); });
-  var biggestDebtor = sortedByPaid[0];
-  var biggestDebtorMonths = biggestDebtor ? Object.keys(yp[biggestDebtor.id] || {}).length : 0;
-
-  // Estimated cups consumed (assuming ~25 cups/month per coffee drinker, fewer for others)
   var totalCups = 0;
   members.forEach(function(m){
-    var nMonths = yp[m.id] ? Object.keys(yp[m.id]).filter(function(k){return yp[m.id][k];}).length : 0;
-    var cupsPerMonth = m.drink === 'coffee' ? 25 : m.drink === 'tea' ? 30 : m.drink === 'matcha' ? 15 : m.drink === 'hotchoc' ? 10 : 0;
-    totalCups += cupsPerMonth * nMonths;
+    var nM = paidCounts[m.id] || 0;
+    var cpp = m.drink==='coffee'?25 : m.drink==='tea'?30 : m.drink==='matcha'?15 : m.drink==='hotchoc'?10 : m.drink==='milk'?20 : 0;
+    totalCups += cpp * nM;
   });
 
-  // Caffeine champions — all-paid this year so far
-  var nowYear = (new Date()).getFullYear();
-  var nowMonth = (new Date()).getMonth();
+  var nowYear = (new Date()).getFullYear(), nowMonth = (new Date()).getMonth();
   var monthsExpected = currentYear < nowYear ? 12 : (currentYear > nowYear ? 0 : nowMonth + 1);
-  var champions = members.filter(function(m){
-    if (m.drink === 'none') return false;
-    return (paidCounts[m.id] || 0) >= monthsExpected;
-  });
+  var champions = actives.filter(function(m){ return (paidCounts[m.id]||0) >= monthsExpected && monthsExpected > 0; });
 
   var totalCollected = 0;
   Object.keys(yp).forEach(function(mid){
-    var m = members.find(function(x){return x.id === mid;});
+    var m = members.find(function(x){ return x.id === mid; });
     if (!m || m.drink === 'none') return;
     Object.keys(yp[mid]).forEach(function(mn){ if (yp[mid][mn]) totalCollected += memberPriceMonthly(m); });
   });
 
+  var dSub = '☕ '+drinkCount.coffee+' · 🫖 '+drinkCount.tea+' · 🍵 '+drinkCount.matcha
+    +(drinkCount.hotchoc?' · 🍫 '+drinkCount.hotchoc:'')+(drinkCount.milk?' · 🥛 '+drinkCount.milk:'');
   var html = '';
-  html += funItem('Drink of choice', DRINK_ICONS[topDrink] + ' ' + DRINK_LABELS[topDrink], topN + ' people prefer it &middot; ☕ ' + drinkCount.coffee + ' · 🫖 ' + drinkCount.tea + ' · 🍵 ' + drinkCount.matcha + (drinkCount.hotchoc ? ' · 🍫 ' + drinkCount.hotchoc : ''));
-  if (topPayer) html += funItem('Caffeine champion', '🏆 ' + esc(topPayer.name), topPayerN + ' / ' + monthsExpected + ' months paid');
-  html += funItem('Cups consumed in ' + currentYear, '~' + totalCups.toLocaleString(), 'estimated from drink type × months paid');
-  html += funItem('£ raised in ' + currentYear, '£' + totalCollected.toFixed(2), 'enough for ' + Math.round(totalCollected / 2.8) + ' fancy lattes at Costa');
-  if (biggestDebtor && biggestDebtorMonths < monthsExpected) {
-    var missed = monthsExpected - biggestDebtorMonths;
-    html += funItem('Top offender', '😬 ' + esc(biggestDebtor.name), missed + ' month' + (missed === 1 ? '' : 's') + ' missing in ' + currentYear);
+  html += funItem('Drink of choice', DRINK_ICONS[topDrink]+' '+DRINK_LABELS[topDrink], topN+' people prefer it · '+dSub);
+  if (topPayer) html += funItem('Caffeine champion','🏆 '+esc(topPayer.name),(paidCounts[topPayer.id]||0)+' / '+monthsExpected+' months paid');
+  html += funItem('Cups consumed in '+currentYear,'~'+totalCups.toLocaleString(),'estimated from drink type × months paid');
+  html += funItem('£ raised in '+currentYear,'£'+totalCollected.toFixed(2),'enough for ~'+Math.round(totalCollected/2.8)+' fancy lattes at Costa');
+  if (bottomPayer && (paidCounts[bottomPayer.id]||0) < monthsExpected && monthsExpected > 0){
+    var missed = monthsExpected - (paidCounts[bottomPayer.id]||0);
+    html += funItem('Top offender','😬 '+esc(bottomPayer.name),missed+' month'+(missed===1?'':'s')+' missing in '+currentYear);
   }
-  html += funItem('Squad size', members.length + ' members', drinkCount.none + ' on the N/A list · the rest are paying');
-  if (champions.length) html += funItem('Hall of fame', champions.length + ' perfect record' + (champions.length === 1 ? '' : 's'), champions.slice(0,3).map(function(m){return esc(m.name);}).join(', ') + (champions.length>3 ? ' + ' + (champions.length-3) + ' more' : ''));
+  html += funItem('Squad size',members.length+' members',drinkCount.none+' on the N/A list · the rest are paying');
+  if (champions.length) html += funItem('Hall of fame',champions.length+' perfect record'+(champions.length===1?'':'s'),champions.slice(0,3).map(function(m){return esc(m.name);}).join(', ')+(champions.length>3?' + '+(champions.length-3)+' more':''));
 
-  // Random fun fact rotation
   var FACTS = [
     'A coffee bean is technically a seed. So when you buy coffee you\'re really buying tree babies.',
     'The world drinks ~2 billion cups of coffee a day. The CeTPD does its part.',
     'Matcha contains L-theanine — supposedly relaxing, despite the caffeine.',
     'Tea was once more expensive than gold, weight for weight.',
-    'A study found 70% of meetings would be improved by being held over coffee. The other 30% would just be cancelled.',
+    '70% of meetings would be improved by being held over coffee.',
     'The phrase "spilling the tea" comes from drag culture, not actual tea.',
     'A flat white is 60ml espresso + 100ml steamed milk. No, really.'
   ];
-  html += funItem('Did you know?', '☕', FACTS[Math.floor(Math.random()*FACTS.length)]);
+  html += funItem('Did you know?','☕',FACTS[Math.floor(Math.random()*FACTS.length)]);
   document.getElementById('fun-grid').innerHTML = html;
 }
 function funItem(lbl, val, sub){
-  return '<div class="fun-item">'
-    + '<div class="fun-item-lbl">' + lbl + '</div>'
-    + '<div class="fun-item-val">' + val + '</div>'
-    + (sub ? '<div class="fun-item-sub">' + sub + '</div>' : '')
-  + '</div>';
+  return '<div class="fun-item"><div class="fun-item-lbl">'+lbl+'</div><div class="fun-item-val">'+val+'</div>'+(sub?'<div class="fun-item-sub">'+sub+'</div>':'')+'</div>';
 }
 
-// ─── ACTIONS ───────────────────────────────────────────────────────────────
+// ─── Members Tab ───────────────────────────────────────────────────────────
+function renderMembers(){
+  if (!state) return;
+  var addBtn2 = document.getElementById('add-member-btn2');
+  if (addBtn2) addBtn2.style.display = isAdmin ? '' : 'none';
+  var members = [...state.members].sort(function(a,b){ return a.name.localeCompare(b.name); });
+  var paying = members.filter(function(m){ return m.drink !== 'none'; });
+  var cnt = document.getElementById('members-count');
+  if (cnt) cnt.textContent = members.length + ' members · ' + paying.length + ' paying';
+  var grid = document.getElementById('members-grid');
+  if (!grid) return;
+  grid.innerHTML = members.map(function(m){
+    var price = memberPriceMonthly(m);
+    return '<div class="mc">'
+      + '<span class="mc-icon">'+DRINK_ICONS[m.drink||'coffee']+'</span>'
+      + '<div class="mc-info">'
+      +   '<div class="mc-name">'+esc(m.name)+'</div>'
+      +   '<div class="mc-sub">'+DRINK_LABELS[m.drink||'coffee']+(m.drink!=='none'?' · £'+price.toFixed(2)+'/mo':'')+(m.notes?' · '+esc(m.notes):'')+'</div>'
+      + '</div>'
+      + (isAdmin ? '<button class="mc-edit" onclick="editMember(\''+m.id+'\')">Edit</button>' : '')
+      + '</div>';
+  }).join('');
+}
+
+// ─── Expenses Tab ──────────────────────────────────────────────────────────
+function categorizeExpense(txn){
+  var d = ((txn.description||'')+' '+(txn.notes||'')).toLowerCase();
+  var merch = ((txn.merchant && txn.merchant.name)||'').toLowerCase();
+  if (merch.includes('amazon') || d.includes('amazon')) return 'Amazon';
+  if (merch.includes('milk') || d.includes('milk') || merch.includes('dairy') || d.includes('dairy')) return 'Milk';
+  if (merch.includes('coffee') || d.includes('roast') || d.includes('caffe')) return 'Coffee';
+  var supers = ['tesco','sainsbury','asda','morrisons','co-op','lidl','aldi','waitrose','marks & spencer','m&s'];
+  if (supers.some(function(s){ return merch.includes(s)||d.includes(s); })) return 'Supermarket';
+  return 'Other';
+}
+function renderExpenses(){
+  if (!state) return;
+  var expRefresh = document.getElementById('exp-refresh-btn');
+  if (expRefresh) expRefresh.style.display = isAdmin ? '' : 'none';
+
+  var expenses = (state.monzo && state.monzo.expenses) || [];
+  // Filter to selected month+year
+  var monthIdx = MONTHS.indexOf(currentMonth);
+  var monthStr = currentYear + '-' + String(monthIdx + 1).padStart(2, '0');
+  var monthExpenses = expenses.filter(function(e){ return e.date && e.date.startsWith(monthStr); });
+  var monthAll = expenses.filter(function(e){ return e.date && e.date.startsWith(String(currentYear)); });
+
+  // Stats
+  var spent = monthExpenses.reduce(function(s,e){ return s + Math.abs(e.amount); }, 0) / 100;
+  var spentYear = monthAll.filter(function(e){ return e.amount < 0; }).reduce(function(s,e){ return s + Math.abs(e.amount); }, 0) / 100;
+  var catTotals = {};
+  monthExpenses.filter(function(e){ return e.amount < 0; }).forEach(function(e){
+    catTotals[e.category] = (catTotals[e.category]||0) + Math.abs(e.amount) / 100;
+  });
+  var topCat = Object.keys(catTotals).sort(function(a,b){ return catTotals[b]-catTotals[a]; })[0];
+
+  var expStats = document.getElementById('exp-stats');
+  if (expStats) expStats.innerHTML = '<div class="stat-card feature">'
+    + '<div class="stat-lbl">'+currentMonth+' '+currentYear+' — spent</div>'
+    + '<div class="stat-val">£'+spent.toFixed(2)+'</div>'
+    + '<div class="stat-sub">'+monthExpenses.filter(function(e){return e.amount<0;}).length+' transactions</div>'
+    + '</div>'
+    + '<div class="stat-card">'
+    + '<div class="stat-lbl">Year-to-date</div>'
+    + '<div class="stat-val">£'+spentYear.toFixed(2)+'</div>'
+    + '<div class="stat-sub">spent in '+currentYear+'</div>'
+    + '</div>'
+    + (topCat ? '<div class="stat-card"><div class="stat-lbl">Top category</div><div class="stat-val">'+EXPENSE_CATS[topCat].icon+' '+topCat+'</div><div class="stat-sub">£'+catTotals[topCat].toFixed(2)+' this month</div></div>' : '');
+
+  var titleEl = document.getElementById('exp-table-title');
+  if (titleEl) titleEl.textContent = 'Transactions · '+currentMonth+' '+currentYear;
+
+  var scroll = document.getElementById('exp-tbl-scroll');
+  if (!scroll) return;
+
+  if (!state.monzo || !state.monzo.accountId) {
+    scroll.innerHTML = '<div class="no-monzo"><div class="big">🏦</div>'
+      + (isAdmin
+        ? 'Connect your Monzo account in <b>Settings</b> (⚙ top right) to see transactions here.<br>'
+          + 'Expenses and incoming payments will sync automatically.'
+        : 'No Monzo data yet. Jon needs to connect the account.')
+      + '</div>';
+    return;
+  }
+
+  // Show all expenses for the month (both incoming and outgoing for full picture)
+  var all = monthExpenses.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+  if (!all.length) {
+    scroll.innerHTML = '<div class="no-monzo"><div class="big">📭</div>No transactions for '+currentMonth+' '+currentYear+'.<br>'+(isAdmin?'<a href="#" onclick="loadMonzoData();return false;" style="color:var(--accent);">Refresh from Monzo ↗</a>':'')+'</div>';
+    return;
+  }
+
+  var rows = all.map(function(e){
+    var amt = e.amount / 100;
+    var isInc = e.amount > 0;
+    var cat = EXPENSE_CATS[e.category] || EXPENSE_CATS['Other'];
+    return '<tr>'
+      + '<td>'+esc(e.date)+'</td>'
+      + '<td>'+esc(e.desc.slice(0,50))+'</td>'
+      + '<td><span class="cat-badge" style="background:'+cat.color+'22;color:'+cat.color+';">'+cat.icon+' '+esc(e.category)+'</span></td>'
+      + '<td class="exp-amount'+(isInc?' incoming':'')+'">'+( isInc ? '+' : '−' )+'£'+Math.abs(amt).toFixed(2)+'</td>'
+      + '</tr>';
+  }).join('');
+
+  scroll.innerHTML = '<table class="exp-tbl"><thead><tr>'
+    + '<th>Date</th><th>Description</th><th>Category</th><th>Amount</th>'
+    + '</tr></thead><tbody>'+rows+'</tbody></table>';
+}
+
+// ─── Monzo ─────────────────────────────────────────────────────────────────
+function loadMonzoToken(){
+  try { _monzoToken = localStorage.getItem('cuppa_monzo_token') || null; } catch(e){}
+}
+
+async function connectMonzo(){
+  var tok = (document.getElementById('sf-monzo-token').value || '').trim();
+  if (!tok){ toast('Enter a Monzo access token first'); return; }
+  var hint = document.getElementById('monzo-status-hint');
+  var btn = document.getElementById('monzo-connect-btn');
+  if (hint) hint.textContent = 'Connecting…';
+  if (btn) btn.disabled = true;
+  try {
+    var r = await fetch('https://api.monzo.com/accounts', { headers:{ Authorization:'Bearer '+tok }});
+    if (!r.ok) throw new Error('HTTP '+r.status+' — token may have expired');
+    var d = await r.json();
+    var accs = (d.accounts||[]).filter(function(a){ return !a.closed; });
+    if (!accs.length) throw new Error('No open accounts found on this token');
+    var acc = accs[0];
+    try { localStorage.setItem('cuppa_monzo_token', tok); } catch(e){}
+    _monzoToken = tok;
+    if (!state.monzo) state.monzo = {};
+    state.monzo.accountId = acc.id;
+    state.monzo.accountName = acc.description || acc.id;
+    await saveToFirebase('monzo connect');
+    if (hint) hint.textContent = '✓ Connected: ' + (acc.description || acc.id);
+    toast('Monzo connected');
+    loadMonzoData();
+  } catch(err){
+    if (hint) hint.textContent = '✗ ' + (err.message || 'Connection failed');
+    toast('Monzo error: ' + (err.message || 'unknown'));
+  }
+  if (btn) btn.disabled = false;
+}
+
+async function loadMonzoData(){
+  if (!isAdmin || !_monzoToken) return;
+  if (!state || !state.monzo || !state.monzo.accountId) return;
+  setStatus('syncing Monzo…');
+  try {
+    // Balance
+    var br = await fetch('https://api.monzo.com/balance?account_id='+state.monzo.accountId,
+      { headers:{ Authorization:'Bearer '+_monzoToken }});
+    if (br.status === 401){ setMonzoExpired(); return; }
+    if (br.ok){
+      var bd = await br.json();
+      var bal = bd.balance != null ? bd.balance : bd.total_balance;
+      if (bal != null){ state.monzo.balance = bal; state.monzo.balanceAt = new Date().toISOString(); }
+    }
+    // Transactions — from start of year
+    var since = new Date(currentYear, 0, 1).toISOString();
+    var tr = await fetch('https://api.monzo.com/transactions?account_id='+state.monzo.accountId
+      +'&since='+encodeURIComponent(since)+'&expand[]=merchant',
+      { headers:{ Authorization:'Bearer '+_monzoToken }});
+    if (tr.ok){
+      var td = await tr.json();
+      var txns = td.transactions || [];
+      processMonzoTransactions(txns.filter(function(t){ return t.amount > 0 && !t.merchant; }));
+      // Store all transactions as expenses (both in and out)
+      state.monzo.expenses = txns.map(function(t){
+        return {
+          id: t.id,
+          date: (t.created||'').slice(0,10),
+          desc: t.description || (t.merchant && t.merchant.name) || 'Unknown',
+          amount: t.amount,
+          category: t.amount < 0 ? categorizeExpense(t) : 'Incoming'
+        };
+      });
+      state.monzo.expensesAt = new Date().toISOString();
+    }
+    await saveToFirebase('monzo sync');
+    setStatus('synced');
+    render();
+  } catch(e){ setStatus('sync error'); }
+}
+
+function setMonzoExpired(){
+  toast('Monzo token expired — re-enter in Settings');
+  _monzoToken = null;
+  try { localStorage.removeItem('cuppa_monzo_token'); } catch(e){}
+  setStatus('Monzo expired');
+}
+
+function processMonzoTransactions(incoming){
+  _monzoSuggestions = [];
+  incoming.forEach(function(t){
+    var desc = ((t.description||'')+' '+(t.notes||'')).toLowerCase();
+    var best = null, bestScore = 0;
+    state.members.forEach(function(m){
+      if (m.drink === 'none' || memberPaid(m.id, currentMonth)) return;
+      // Only match if transaction is within the selected month
+      var txDate = (t.created||'').slice(0,7);
+      var selMonth = currentYear+'-'+String(MONTHS.indexOf(currentMonth)+1).padStart(2,'0');
+      if (txDate !== selMonth) return;
+      var nLower = m.name.toLowerCase();
+      var parts = nLower.split(' ');
+      var score = 0;
+      if (desc.includes(nLower)) score = 3;
+      else if (parts.length > 1 && parts.every(function(p){ return desc.includes(p); })) score = 2;
+      else if (parts.some(function(p){ return p.length > 3 && desc.includes(p); })) score = 1;
+      if (score > bestScore){ bestScore = score; best = m; }
+    });
+    if (best && bestScore > 0) _monzoSuggestions.push({ txn:t, member:best });
+  });
+}
+
+function renderSuggestedPayments(){
+  var host = document.getElementById('suggest-host');
+  if (!host) return;
+  if (!isAdmin || !_monzoSuggestions.length){ host.innerHTML = ''; return; }
+  var html = '<div class="suggest-card">'
+    + '<div class="suggest-hdr">'
+    + '<span>🏦</span>'
+    + '<span class="suggest-title">Monzo — suggested payments · '+currentMonth+'</span>'
+    + '<button class="monzo-refresh" onclick="loadMonzoData()">↻ Refresh</button>'
+    + '</div><div class="suggest-body">';
+  _monzoSuggestions.forEach(function(s,i){
+    var date = s.txn.created ? new Date(s.txn.created).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '';
+    var inAmt = (s.txn.amount/100).toFixed(2);
+    html += '<div class="suggest-row">'
+      + '<span style="font-size:18px;">'+DRINK_ICONS[s.member.drink]+'</span>'
+      + '<div class="suggest-info">'
+      + '<div class="suggest-nm">'+esc(s.member.name)+'</div>'
+      + '<div class="suggest-meta">"'+esc((s.txn.description||'').slice(0,55))+'" · £'+inAmt+' in'+(date?' · '+date:'')+'</div>'
+      + '</div>'
+      + '<button class="suggest-confirm" onclick="confirmSuggestion('+i+')">✓ Mark paid</button>'
+      + '<button class="suggest-dismiss" onclick="dismissSuggestion('+i+')" title="Dismiss">×</button>'
+      + '</div>';
+  });
+  html += '</div></div>';
+  host.innerHTML = html;
+}
+function confirmSuggestion(i){
+  var s = _monzoSuggestions[i]; if (!s || !isAdmin) return;
+  if (!state.payments[currentYear]) state.payments[currentYear] = {};
+  if (!state.payments[currentYear][s.member.id]) state.payments[currentYear][s.member.id] = {};
+  state.payments[currentYear][s.member.id][currentMonth] = 'auto';
+  _monzoSuggestions.splice(i,1);
+  render();
+  saveToFirebase('monzo confirm '+s.member.id);
+  toast(s.member.name + ' marked paid (Monzo)');
+}
+function dismissSuggestion(i){ _monzoSuggestions.splice(i,1); renderSuggestedPayments(); }
+
+// ─── Actions ───────────────────────────────────────────────────────────────
 function togglePaid(memberId, month){
-  if (!isAdmin) { toast('Sign in as admin to edit'); return; }
+  if (!isAdmin){ toast('Sign in as admin to edit'); return; }
   if (!state.payments[currentYear]) state.payments[currentYear] = {};
   if (!state.payments[currentYear][memberId]) state.payments[currentYear][memberId] = {};
   var now = state.payments[currentYear][memberId][month];
   if (now) delete state.payments[currentYear][memberId][month];
-  else state.payments[currentYear][memberId][month] = true;
+  else state.payments[currentYear][memberId][month] = 'manual';
   render();
-  saveToFirebase('toggle ' + memberId + ' ' + month);
+  saveToFirebase('toggle '+memberId+' '+month);
 }
 
 function openAddMember(){
@@ -838,8 +1247,7 @@ function openAddMember(){
   setTimeout(function(){ document.getElementById('mf-name').focus(); }, 60);
 }
 function editMember(id){
-  var m = state.members.find(function(x){ return x.id === id; });
-  if (!m) return;
+  var m = state.members.find(function(x){ return x.id === id; }); if (!m) return;
   editingMemberId = id;
   document.getElementById('member-modal-title').textContent = 'Edit member';
   document.getElementById('mf-delete').style.display = '';
@@ -853,124 +1261,111 @@ function closeMemberModal(){ document.getElementById('member-modal').classList.r
 function saveMember(){
   if (!isAdmin) return;
   var name = document.getElementById('mf-name').value.trim();
-  if (!name) { toast('Name required'); return; }
+  if (!name){ toast('Name required'); return; }
   var drink = document.getElementById('mf-drink').value;
   var startMonth = document.getElementById('mf-start').value;
   var notes = document.getElementById('mf-notes').value.trim();
-  if (editingMemberId) {
+  if (editingMemberId){
     var m = state.members.find(function(x){ return x.id === editingMemberId; });
-    if (m) { m.name = name; m.drink = drink; m.startMonth = startMonth; m.notes = notes; }
+    if (m){ m.name = name; m.drink = drink; m.startMonth = startMonth; m.notes = notes; }
   } else {
     state.members.push({ id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink, startMonth:startMonth, notes:notes });
   }
-  closeMemberModal();
-  render();
-  saveToFirebase('member edit');
-  toast(editingMemberId ? 'Updated' : 'Added');
+  closeMemberModal(); render(); saveToFirebase('member'); toast(editingMemberId ? 'Updated' : 'Added');
 }
 function deleteMember(){
   if (!isAdmin || !editingMemberId) return;
-  var m = state.members.find(function(x){ return x.id === editingMemberId; });
-  if (!m) return;
-  if (!confirm('Delete "' + m.name + '" and all their payment history?')) return;
+  var m = state.members.find(function(x){ return x.id === editingMemberId; }); if (!m) return;
+  if (!confirm('Delete "'+m.name+'" and all their payment history?')) return;
   state.members = state.members.filter(function(x){ return x.id !== editingMemberId; });
   Object.keys(state.payments).forEach(function(y){ if (state.payments[y]) delete state.payments[y][editingMemberId]; });
-  closeMemberModal();
-  render();
-  saveToFirebase('member delete');
-  toast('Removed');
+  closeMemberModal(); render(); saveToFirebase('member delete'); toast('Removed');
 }
 
+// ─── Settings ──────────────────────────────────────────────────────────────
 function openSettings(){
-  document.getElementById('sf-coffee').value = state.prices.coffee || 7.5;
-  document.getElementById('sf-tea').value = state.prices.tea || 5;
-  document.getElementById('sf-matcha').value = state.prices.matcha || 7.5;
-  document.getElementById('sf-hotchoc').value = state.prices.hotchoc || 7.5;
-  document.getElementById('sf-sort').value = state.bank.sort || '';
-  document.getElementById('sf-acc').value = state.bank.acc || '';
+  document.getElementById('sf-coffee').value = (state.prices && state.prices.coffee) != null ? state.prices.coffee : 7.5;
+  document.getElementById('sf-tea').value    = (state.prices && state.prices.tea)    != null ? state.prices.tea    : 5;
+  document.getElementById('sf-sort').value   = state.bank.sort || '';
+  document.getElementById('sf-acc').value    = state.bank.acc  || '';
   document.getElementById('sf-holder').value = state.bank.holder || '';
+  // Monzo status
+  var hint = document.getElementById('monzo-status-hint');
+  var tokenInput = document.getElementById('sf-monzo-token');
+  if (state.monzo && state.monzo.accountName){
+    if (hint) hint.textContent = '✓ Connected: ' + state.monzo.accountName + (state.monzo.balanceAt ? ' · balance cached' : '');
+    if (tokenInput) tokenInput.placeholder = '••••• (token stored)';
+  } else if (_monzoToken) {
+    if (hint) hint.textContent = 'Token saved locally · click Connect to verify';
+  } else {
+    if (hint) hint.textContent = 'Paste a token from developers.monzo.com and click Connect';
+  }
   document.getElementById('settings-modal').classList.add('open');
 }
 function closeSettings(){ document.getElementById('settings-modal').classList.remove('open'); }
 function saveSettings(){
   if (!isAdmin) return;
   state.prices.coffee = parseFloat(document.getElementById('sf-coffee').value) || 7.5;
-  state.prices.tea = parseFloat(document.getElementById('sf-tea').value) || 5;
-  state.prices.matcha = parseFloat(document.getElementById('sf-matcha').value) || 7.5;
-  state.prices.hotchoc = parseFloat(document.getElementById('sf-hotchoc').value) || 7.5;
-  state.bank.sort = document.getElementById('sf-sort').value.trim();
-  state.bank.acc = document.getElementById('sf-acc').value.trim();
+  state.prices.tea    = parseFloat(document.getElementById('sf-tea').value)    || 5;
+  state.bank.sort   = document.getElementById('sf-sort').value.trim();
+  state.bank.acc    = document.getElementById('sf-acc').value.trim();
   state.bank.holder = document.getElementById('sf-holder').value.trim();
-  closeSettings();
-  render();
-  saveToFirebase('settings');
-  toast('Settings saved');
+  closeSettings(); render(); saveToFirebase('settings'); toast('Settings saved');
 }
 
+// ─── Wall of Shame copy ────────────────────────────────────────────────────
 function copyWallOfShame(){
-  var unpaid = state.members.filter(function(m){
-    return m.drink !== 'none' && !memberPaid(m.id, currentMonth);
-  }).sort(function(a,b){ return a.name.localeCompare(b.name); });
-  var total = unpaid.reduce(function(s, m){ return s + memberPriceMonthly(m); }, 0);
-  var monthLabel = currentMonth + ' ' + currentYear;
-  var msg = '*🚨 CeTPD Hot Drinks — Wall of Shame · ' + monthLabel + ' 🚨*\n\n';
-  if (!unpaid.length) {
+  var unpaid = state.members.filter(function(m){ return m.drink !== 'none' && !memberPaid(m.id, currentMonth); })
+    .sort(function(a,b){ return a.name.localeCompare(b.name); });
+  var total = unpaid.reduce(function(s,m){ return s + memberPriceMonthly(m); }, 0);
+  var msg = '*🚨 CeTPD Hot Drinks — Wall of Shame · '+currentMonth+' '+currentYear+' 🚨*\n\n';
+  if (!unpaid.length){
     msg += 'Nobody on the wall this month. *We have peaked.* :tada:\n';
   } else {
     msg += 'A gentle reminder for the following beautiful humans:\n\n';
-    unpaid.forEach(function(m){
-      msg += '• ' + m.name + '  _(' + DRINK_LABELS[m.drink].toLowerCase() + ' £' + memberPriceMonthly(m).toFixed(2) + ')_\n';
-    });
-    msg += '\n*Total outstanding:* £' + total.toFixed(2) + '\n';
-    if (state.bank.sort || state.bank.acc) {
-      msg += '\n_Bank:_ sort `' + (state.bank.sort||'—') + '`  acc `' + (state.bank.acc||'—') + '`' + (state.bank.holder ? '  (' + state.bank.holder + ')' : '') + '\n';
-    }
+    unpaid.forEach(function(m){ msg += '• '+m.name+'  _('+DRINK_LABELS[m.drink].toLowerCase()+' £'+memberPriceMonthly(m).toFixed(2)+')_\n'; });
+    msg += '\n*Total outstanding:* £'+total.toFixed(2)+'\n';
+    if (state.bank.sort || state.bank.acc)
+      msg += '\n_Bank:_ sort `'+(state.bank.sort||'—')+'`  acc `'+(state.bank.acc||'—')+'`'+(state.bank.holder?' ('+state.bank.holder+')':'')+'\n';
   }
   msg += '\n_Brewed with love by the CeTPD Hot Drinks app._';
-
-  if (navigator.clipboard && navigator.clipboard.writeText) {
+  if (navigator.clipboard && navigator.clipboard.writeText){
     navigator.clipboard.writeText(msg).then(function(){
       var btn = document.querySelector('.wos-copy');
-      if (btn) { btn.classList.add('copied'); btn.textContent = '✓ Copied!'; setTimeout(function(){ btn.classList.remove('copied'); btn.textContent = '📋 Copy Slack message'; }, 1800); }
+      if (btn){ btn.classList.add('copied'); btn.textContent='✓ Copied!'; setTimeout(function(){ btn.classList.remove('copied'); btn.textContent='📋 Copy Slack message'; },1800); }
       toast('Slack message copied');
     }).catch(function(){ fallbackCopy(msg); });
   } else fallbackCopy(msg);
 }
 function fallbackCopy(text){
   var ta = document.createElement('textarea');
-  ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;';
+  ta.value = text; ta.style.cssText='position:fixed;opacity:0;';
   document.body.appendChild(ta); ta.select();
   try { document.execCommand('copy'); toast('Copied'); } catch(e){ toast('Copy failed'); }
   ta.remove();
 }
 
-// ─── Search ────────────────────────────────────────────────────────────────
-function onSearchInput(v){ search = v; renderTable(); }
-
-// ─── Postmessage / tabs (Hub deep-link) ────────────────────────────────────
-window.addEventListener('message', function(e){
-  if (!e.data || e.data.type !== 'switchTab' || !e.data.tab) return;
-  // Currently no sub-tabs; this is a hook for future
-});
-
 // ─── Utils ─────────────────────────────────────────────────────────────────
-function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function onSearchInput(v){ search = v; renderTable(); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function toast(msg){
   var t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(window._toastT);
   window._toastT = setTimeout(function(){ t.classList.remove('show'); }, 2400);
 }
-
-// Esc closes modals
 document.addEventListener('keydown', function(e){
-  if (e.key === 'Escape') {
+  if (e.key === 'Escape'){
     if (document.getElementById('member-modal').classList.contains('open')) closeMemberModal();
     else if (document.getElementById('settings-modal').classList.contains('open')) closeSettings();
   }
 });
+window.addEventListener('message', function(e){
+  if (!e.data || e.data.type !== 'switchTab' || !e.data.tab) return;
+});
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
+loadMonzoToken();
 state = defaultState();
 render();
 startSync();
