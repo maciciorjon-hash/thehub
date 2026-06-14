@@ -139,6 +139,7 @@ tbody td.name-cell{text-align:left;padding:8px 14px 8px 18px;display:flex;align-
 .drink-icon{font-size:16px;}
 .cell-name{font-weight:500;color:var(--text);}
 .cell-name-sub{font-size:10px;color:var(--text3);font-family:var(--mono);}
+.cell-price{font-size:10px;color:var(--text3);font-family:var(--mono);margin-left:5px;}
 .cell-paid{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-size:13px;cursor:default;margin:6px auto;transition:background .15s,transform .15s;}
 .cell-paid.paid{background:var(--accent3);color:#fff;}
 .cell-paid.auto-paid{background:#0288d1;color:#fff;}
@@ -534,12 +535,12 @@ function toggleOpts(){ document.getElementById('opts-panel').classList.toggle('o
 // ─── Constants ─────────────────────────────────────────────────────────────
 var SEED_MEMBERS = [
   'Adam Pinto','Aina Urbina','Alejandro Correa','Alessandra Salerno','Alessio Ciulli',
-  'Alex Hallatt','Alexandra Teslenko','Atana','Chloe Jackson','Claudine Greenwood',
+  'Alex Hallatt','Alexandra Teslenko','Aitana','Chloe Jackson','Claudine Greenwood',
   'Daniel McDougal','Dylan Lynch','Elisha McCrory','Giorgia Kidd','Giulia Bonasegale',
   'Hannah Mortlock','Ivan Rodriguez','Jack Robertson','Jon Macicior','Lizzy Hogg',
   'Mark Bekala','Mark Dorward','Michael Krummhaar','Mokhitli Morake','Nur Kocaturk',
   'Peter Cossar','Petr','Roberta Ibba','Ruben Prieto','Ryan Casement',
-  'Stefan Djukic','Suzanne O\'Connor','Will Farnaby','Yuting Zhi','Zher Yin'
+  'Stefan Djukic','Suzanne O\'Connor','Will Farnaby','Yuting Zhi','Zher Yin','Lisa'
 ];
 var SEED_MEMBER_DRINKS = {
   'Suzanne O\'Connor': 'tea',
@@ -555,7 +556,7 @@ var SEED_PAYMENTS_2026 = {
   'Alessio Ciulli':     { April:true, May:true, June:true },
   'Alex Hallatt':       { April:true, May:true },
   'Alexandra Teslenko': { May:true, June:true },
-  'Atana':              { May:true },
+  'Aitana':             { May:true, June:true },
   'Chloe Jackson':      { April:true, May:true },
   'Claudine Greenwood': { April:true, May:true },
   'Daniel McDougal':    { April:true, May:true, June:true },
@@ -581,7 +582,8 @@ var SEED_PAYMENTS_2026 = {
   'Suzanne O\'Connor':  { April:true, May:true, June:true },
   'Will Farnaby':       { April:true, May:true },
   'Yuting Zhi':         { April:true, May:true, June:true },
-  'Zher Yin':           { May:true }
+  'Zher Yin':           { May:true, June:true },
+  'Lisa':               { May:true }
 };
 
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -673,6 +675,7 @@ function onFbEvent(e){
           }
           if (isAdmin && _monzoToken) loadMonzoData();
           if (isAdmin) setTimeout(applyStatePatchV1, 500);
+          if (isAdmin) setTimeout(applyStatePatchV2, 1500);
         }
       }
     } else if (state) {
@@ -751,6 +754,63 @@ function applyStatePatchV1(){
   state.patchVersion = 1;
   saveToFirebase('state-patch-v1');
   toast('June statement applied — 3 payments need your review in Expenses tab');
+}
+function applyStatePatchV2(){
+  if (!isAdmin || !state) return;
+  if ((state.patchVersion || 0) >= 2) return;
+
+  // Rename Atana → Aitana, set accountName, mark June
+  var atana = state.members.find(function(x){ return x.name==='Atana'||x.name==='Aitana'; });
+  if (atana) {
+    atana.name = 'Aitana';
+    atana.accountName = 'Aitana Basté';
+    if (!state.payments[2026]) state.payments[2026] = {};
+    if (!state.payments[2026][atana.id]) state.payments[2026][atana.id] = {};
+    if (!state.payments[2026][atana.id].June) state.payments[2026][atana.id].June = 'auto';
+  }
+  if (state.monzo && state.monzo.expenses) {
+    var ae = state.monzo.expenses.find(function(x){ return x.txid==='tx_0000B6sFYcow02xgzMPo9M'; });
+    if (ae) delete ae.flagDoubt;
+  }
+
+  // Add Lisa (Yelizaveta Prokhorova) — mark May paid
+  var lisa = state.members.find(function(x){ return x.name==='Lisa'; });
+  if (!lisa) {
+    lisa = { id:'m-'+Math.random().toString(36).slice(2,9), name:'Lisa', drink:'coffee', startMonth:null, notes:'', accountName:'Yelizaveta Prokhorova' };
+    state.members.push(lisa);
+  } else {
+    if (!lisa.accountName) lisa.accountName = 'Yelizaveta Prokhorova';
+  }
+  if (!state.payments[2026]) state.payments[2026] = {};
+  if (!state.payments[2026][lisa.id]) state.payments[2026][lisa.id] = {};
+  if (!state.payments[2026][lisa.id].May) state.payments[2026][lisa.id].May = 'auto';
+  if (state.monzo && state.monzo.expenses) {
+    var le = state.monzo.expenses.find(function(x){ return x.txid==='tx_0000B6mncWzTqfG5bdylnt'; });
+    if (le) { le.name = 'Lisa (Yelizaveta Prokhorova)'; le.desc = 'Coffee'; delete le.flagDoubt; }
+  }
+
+  // Zher Yin accountName = Tan Yin, mark June
+  var zher = state.members.find(function(x){ return x.name==='Zher Yin'; });
+  if (zher) {
+    zher.accountName = 'Tan Yin';
+    if (!state.payments[2026][zher.id]) state.payments[2026][zher.id] = {};
+    if (!state.payments[2026][zher.id].June) state.payments[2026][zher.id].June = 'auto';
+    if (state.monzo && state.monzo.expenses) {
+      var ze = state.monzo.expenses.find(function(x){ return x.txid==='tx_0000B77KhHL8eCvk7inozT'; });
+      if (ze) delete ze.flagDoubt;
+    }
+  }
+
+  // Remove Sainsbury's from expenses (only Amazon + Kerr's Dairy stay)
+  if (state.monzo && state.monzo.expenses) {
+    state.monzo.expenses = state.monzo.expenses.filter(function(e){
+      return e.txid !== 'tx_0000B6r7U5Itg92S6fR2bB';
+    });
+  }
+
+  state.patchVersion = 2;
+  saveToFirebase('state-patch-v2');
+  toast('✓ Aitana, Lisa, Zher Yin confirmed — all flags cleared');
 }
 function saveToFirebase(reason){
   if (!isAdmin) return Promise.reject('not admin');
@@ -1006,6 +1066,7 @@ function renderTable(){
     html += '<tr class="'+(m.drink==='none'?'row-inactive':'')+'"><td class="name-cell">'
       + '<span class="drink-icon" title="'+DRINK_LABELS[m.drink||'coffee']+'">'+DRINK_ICONS[m.drink||'coffee']+'</span>'
       + '<span><span class="cell-name">'+esc(m.name)+'</span>'
+      + (m.drink !== 'none' ? '<span class="cell-price">£'+memberPriceMonthly(m).toFixed(2)+'/mo</span>' : '')
       + (m.notes ? '<br><span class="cell-name-sub">'+esc(m.notes)+'</span>' : '')
       + '</span></td>';
     visibleMonths.forEach(function(mn){
