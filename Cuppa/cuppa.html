@@ -1213,6 +1213,39 @@ function renderExpenses(){
 }
 
 // ─── Monzo ─────────────────────────────────────────────────────────────────
+function autoApplyMonzoPayments(txns){
+  if (!isAdmin || !state) return;
+  // Only incoming bank transfers (positive amount, no merchant = peer transfer)
+  var incoming = txns.filter(function(t){ return t.amount > 0; });
+  incoming.forEach(function(t){
+    var member = findMemberForTxn(t.description || '');
+    if (!member) return;
+    var price = memberPriceMonthly(member);
+    if (price <= 0) return;
+    var amtGBP = t.amount / 100;
+    // Require at least 65% of a single month's price to avoid noise
+    if (amtGBP < price * 0.65) return;
+    var nMonths = Math.round(amtGBP / price);
+    if (nMonths < 1) return;
+    // Start from the transaction's own month
+    var created = t.created || '';
+    var txYear  = parseInt(created.slice(0,4)) || currentYear;
+    var txMoIdx = parseInt(created.slice(5,7)) - 1;
+    if (isNaN(txMoIdx) || txMoIdx < 0 || txMoIdx > 11) txMoIdx = MONTHS.indexOf(currentMonth);
+    if (!state.payments[txYear]) state.payments[txYear] = {};
+    if (!state.payments[txYear][member.id]) state.payments[txYear][member.id] = {};
+    var yp = state.payments[txYear][member.id];
+    var marked = 0;
+    // Fill N consecutive unpaid months forward from tx month
+    for (var i = txMoIdx; i < 12 && marked < nMonths; i++){
+      if (!yp[MONTHS[i]]){ yp[MONTHS[i]] = 'auto'; marked++; }
+    }
+    // If still short (months ran out), fill backward
+    for (var j = txMoIdx - 1; j >= 0 && marked < nMonths; j--){
+      if (!yp[MONTHS[j]]){ yp[MONTHS[j]] = 'auto'; marked++; }
+    }
+  });
+}
 function loadMonzoToken(){
   try { _monzoToken = localStorage.getItem('cuppa_monzo_token') || null; } catch(e){}
 }
@@ -1269,6 +1302,8 @@ async function loadMonzoData(){
     if (tr.ok){
       var td = await tr.json();
       var txns = td.transactions || [];
+      // Auto-apply incoming payments to ledger before storing
+      autoApplyMonzoPayments(txns);
       // Store all transactions as expenses (both in and out)
       state.monzo.expenses = txns.map(function(t){
         return {
