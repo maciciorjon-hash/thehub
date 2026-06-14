@@ -90,13 +90,6 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .opts-title{font-size:13px;font-weight:700;margin-bottom:14px;color:var(--text);}
 .opts-section{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
 .opts-subtitle{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;}
-.sug-input,.sug-textarea{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;margin-bottom:6px;display:block;}
-.sug-textarea{resize:vertical;}
-.sug-input:focus,.sug-textarea:focus{border-color:var(--accent);}
-.sug-submit{width:100%;margin-top:4px;padding:7px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;}
-.sug-submit:hover{opacity:.88;}
-.sug-thanks{font-size:12px;color:var(--accent3);margin-top:8px;text-align:center;}
-.sug-thanks.hidden{display:none;}
 .opts-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .opts-label{font-size:12px;color:var(--text2);}
 .theme-switch{position:relative;display:inline-block;width:40px;height:22px;flex-shrink:0;}
@@ -315,23 +308,18 @@ body.hub-announcing #hub-home{margin-top:98px;}
     <button class="opts-action-btn" id="grid-edit-btn" onclick="toggleGridEdit()">Edit</button>
   </div>
   <div class="opts-divider"></div>
-  <div class="opts-title" style="font-size:13px;padding:4px 0 6px;border-bottom:none;margin-bottom:8px;">&#9993; Send a Suggestion</div>
-  <form id="suggest-form" action="https://formspree.io/f/xeokadev" method="POST">
-    <input type="text" name="name" placeholder="Your name (optional)" class="sug-input">
-    <input type="email" name="_replyto" placeholder="Your email (optional, for reply)" class="sug-input">
-    <textarea name="message" placeholder="Your suggestion…" class="sug-textarea" rows="3" required></textarea>
-    <button type="submit" class="sug-submit">Send</button>
-  </form>
-  <p id="sug-thanks" class="sug-thanks hidden">Sent! Thanks for the feedback.</p>
-  <div class="opts-divider" style="margin-top:12px;"></div>
   <div id="admin-auth-section" style="padding:6px 0 2px;"></div>
   <div class="opts-version-row" style="margin-top:8px;">
-    <span class="opts-version">The Hub &middot; v1.0.41</span>
+    <span class="opts-version">The Hub &middot; v1.0.42</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v1.0.42 — 14 Jun 2026</strong><br>
+    &#9679; <b>Hub</b>: removed the "Send a Suggestion" Formspree form from the ⚙ Settings panel<br>
+    &#9679; <b>Cuppa v4</b>: Tabs + month/year nav combined into one scrollable strip (no more redundant double toolbar). Add Member button removed from Ledger tab (Members tab has it). Monzo connection card moved from Settings modal directly into the Expenses tab (always visible for admin, no sign-in guessing). ⚙ Settings button now always visible in header (prompts sign-in if not admin). Expenses tab: incoming Monzo transfers show matched member name + months calculation (÷ price tier); ✓ Mark button marks N consecutive months paid from current month<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v1.0.41 — 14 Jun 2026</strong><br>
-    &#9679; <b>Cuppa v3</b>: Welcome card at top of Ledger tab &mdash; floating coffee-bean animation, menu with prices, bank transfer details (sort/acc/holder from Settings), and a Monzo QR code for @jonmaciciormichelena. Removed the Monzo payment-suggestions panel entirely. Drink options simplified to Coffee / Matcha / Tea / N/A (hot choc and milk removed from picker, still priced at coffee tier for legacy entries). Header now shows persistent Sign in / Sign out and ⚙ Settings buttons using <code>cuppa-hdr-btn</code> class (survives the Hub's iframe CSS injection that hides <code>.opts-btn</code>)<br>
+    &#9679; <b>Cuppa v3</b>: welcome card with floating beans + QR code; suggestions panel removed; drink picker simplified to Coffee/Matcha/Tea/N/A; cuppa-hdr-btn header buttons survive Hub iframe CSS injection<br>
     <br>
     <strong style="color:var(--text);font-size:12px;">v1.0.40 — 13 Jun 2026</strong><br>
     &#9679; <b>Cuppa v2</b>: 3-tab layout (Ledger / Members / Expenses). Monzo integration, payment source badges (auto blue / manual green), Expenses tab, Members tab, two-price-tier model (Coffee/matcha £7.5, Tea £5), default month = last active month<br>
@@ -1431,29 +1419,7 @@ function initHub() {
   document.getElementById('hub-logo').classList.add('pulsing');
   setTimeout(function() { _loadApp('lm'); }, 2000);
 
-  // Suggestion form
-  var form = document.getElementById('suggest-form');
-  if (form) {
-    form.addEventListener('submit', function(e) {
-      e.preventDefault();
-      var btn = form.querySelector('.sug-submit');
-      btn.disabled = true; btn.textContent = 'Sending…';
-      fetch('https://formspree.io/f/xeokadev', {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' },
-        body: new FormData(form)
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(json) {
-        if (json.ok) {
-          form.reset();
-          var thanks = document.getElementById('sug-thanks');
-          thanks.classList.remove('hidden');
-          btn.textContent = 'Send'; btn.disabled = false;
-        } else { btn.textContent = 'Send'; btn.disabled = false; alert('Could not send — please try again.'); }
-      })
-      .catch(function() { btn.textContent = 'Send'; btn.disabled = false; alert('Network error — could not send.'); });
-    });
+  {
   }
 
   // Theme toggle checkbox sync

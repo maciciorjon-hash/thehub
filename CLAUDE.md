@@ -253,7 +253,7 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-14 (Round 73: Cuppa v3 — welcome card, remove suggestions, UX polish; v1.0.41)
+Last session: 2026-06-14 (Round 74: Cuppa v4 — combined nav, Monzo connect in Expenses, multi-month; v1.0.42)
 Hub apps: 10. Version v1.0.41.
 Cuppa/cuppa.html changes:
 - Welcome card added at top of Ledger tab: floating coffee-bean animation (☕🫘 × 7, CSS @keyframes floatBean), gradient background, menu card (reads prices from state.prices), bank transfer details (sort/acc/holder from state.bank), Monzo QR code image (api.qrserver.com → https://monzo.me/jonmaciciormichelena) + "@jonmaciciormichelena" label. renderWelcome() called from render().
