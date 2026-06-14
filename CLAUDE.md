@@ -253,24 +253,14 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-13 (Round 72: New app Cuppa — CeTPD Hot Drinks ledger)
-Hub apps: 10. Version v1.0.39.
-New app at Cuppa/cuppa.html (~1000 lines, self-contained, uses Firebase compat SDK via CDN: firebase-app + firebase-auth + firebase-database 10.12.2).
-- Built around the user's CeTPD Hot Drinks 2026.xlsx. Pre-seeded SEED_MEMBERS (35 names extracted from the spreadsheet) and SEED_PAYMENTS_2026 (per-name April–August paid state as of 2026-05-18).
-- Storage: Firebase Realtime DB at /cuppa.json under project thehub-f80ae (same as labconfig / announcement). SSE-driven sync — any session pushes, all sessions see it.
-- Auth: Google sign-in via firebase.auth(). Admin = `maciciorjon@gmail.com` (matches Hub ADMIN_EMAIL). Non-admin signed-in users see a viewer banner. body.admin class gates the click-to-toggle cell behaviour and the +Add member / Edit buttons.
-- UI: header (logo ☕ + Cuppa title + role badge + cog), year ◀ 2026 ▶ + scrollable month-pill row, 4 stat-cards (collected this month / unpaid this month / year-to-date / active members), 2-column layout = main payments table (members × months, ✓ for paid, click in admin mode to toggle) + sticky Wall of Shame side-panel.
-- Wall of Shame: lists unpaid members for the selected month with their drink-cost; outstanding total at the bottom; one-click "📋 Copy Slack message" produces a Slack-formatted message (header, bullet list with drink type and cost, totals, sort code / account / holder, signature).
-- Fun stats panel: drink popularity breakdown (☕🫖🍵🍫), caffeine champion (most paid months YTD), cups consumed (estimated by drink type × paid months), £ raised, top offender (most missed months), squad size, hall of fame (perfect record), and a randomly rotating "Did you know?" trivia line.
-- Settings modal: edit per-drink prices and bank info (sort, acc, holder).
-- Mobile: 720px breakpoint stacks side-panel below table, 1-col stats grid at 420px, month-pills become horizontally-scrollable.
-- Theme via hub_theme localStorage. Default light theme uses coffee palette (#8d6e63 accent, beige bg).
-Hub integration:
-- embed.py APPS list gained ('cuppa', 'Cuppa/cuppa.html').
-- hub-shell.html APP_INFO + APP_B64_NEW gained cuppa entry; card with #8d6e63 accent and ☕ logo; view + frame iframe.
-- ALL_APP_IDS gained 'cuppa' so the Lab admin Control panel can hide/show it.
-- HUB_SEARCH_INDEX entry for "coffee tea matcha cetpd hot drinks payment wall of shame slack ledger pot ciulli".
-- App count: 9 → 10.
+Last session: 2026-06-14 (Round 73: Cuppa v3 — welcome card, remove suggestions, UX polish; v1.0.41)
+Hub apps: 10. Version v1.0.41.
+Cuppa/cuppa.html changes:
+- Welcome card added at top of Ledger tab: floating coffee-bean animation (☕🫘 × 7, CSS @keyframes floatBean), gradient background, menu card (reads prices from state.prices), bank transfer details (sort/acc/holder from state.bank), Monzo QR code image (api.qrserver.com → https://monzo.me/jonmaciciormichelena) + "@jonmaciciormichelena" label. renderWelcome() called from render().
+- Monzo payment-suggestions panel removed entirely: deleted var _monzoSuggestions, processMonzoTransactions(), renderSuggestedPayments(), confirmSuggestion(), dismissSuggestion(); removed renderSuggestedPayments() call from render(); removed processMonzoTransactions() call from loadMonzoData(); removed suggest-host div; removed .suggest-* CSS.
+- Drink picker simplified: member modal select now shows Coffee / Matcha / Tea / N/A only (hot choc and milk removed from options; legacy records with those values still render via DRINK_ICONS/DRINK_LABELS fallback).
+- Header auth/settings buttons: added two .cuppa-hdr-btn buttons (id=hdr-auth-btn, id=hdr-settings-btn) to header .hdr-right. These bypass the Hub's iframe CSS injection (which hides .opts-btn/.opts-panel), making Sign in and ⚙ Settings always visible when embedded. onAuthStateChanged updated to manage both sets of buttons.
+- hub-shell.html: bumped to v1.0.41, new changelog entry added, previous v1.0.40 entry condensed.
 
 Previous session: 2026-06-13 (Round 71: orphan SVG cleanup; v1.0.37)
 hub-shell.html: previous round's egg rewrite left 130 lines of stale SVG content (old <defs>, gradients, JON/CLAUDE/RYAN character groups, speech bubbles, milestone text, stats ticker, regg-bubble div) dangling between the new comic modal's closing </div></div> and the next <script> block — rendering as visible debris on the hub home. Deleted lines 1110–1239. Also removed the empty <svg id="regg-secret-dot-source"> placeholder that was left from the rewrite scaffolding. node --check passes. grep for the removed IDs (regg-stat / regg-bubble-name / regg-ryan-alias) returns 0.
