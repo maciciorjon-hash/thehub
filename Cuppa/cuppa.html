@@ -685,9 +685,6 @@ tbody tr:hover td{background:var(--accent-dim);}
   transition:opacity .5s cubic-bezier(.4,0,.2,1),transform .5s cubic-bezier(.4,0,.2,1);
 }
 .stats-chart-box.anim-in{opacity:1;transform:none;}
-/* Fun stats title fade */
-.fun-stats h2{opacity:0;transform:translateY(8px);transition:opacity .4s,transform .4s;}
-.fun-stats h2.anim-in{opacity:1;transform:none;}
 /* Member card spring */
 .mc{transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease,border-color .15s;}
 .mc:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(184,96,48,.14);border-color:var(--border2);}
@@ -2513,67 +2510,80 @@ window.addEventListener('message', function(e){
 function _countUp(el, dur){
   var txt = el.textContent.trim();
   var m = txt.match(/^([^\d]*)([\d.]+)(.*)$/);
-  if(!m) return;
+  if(!m||!parseFloat(m[2])) return;
   var pre=m[1], num=parseFloat(m[2]), suf=m[3];
   var dec=(m[2].indexOf('.')>=0)?m[2].split('.')[1].length:0;
   var t0=performance.now();
-  (function step(ts){
+  requestAnimationFrame(function step(ts){
     var p=Math.min((ts-t0)/dur,1);
     var ease=1-Math.pow(1-p,3);
     el.textContent=pre+(num*ease).toFixed(dec)+suf;
     if(p<1)requestAnimationFrame(step);
-  })(performance.now());
+  });
 }
 
 var _ledgerAnimDone=false;
-var _beanParallaxDone=false;
 function initLedgerAnimations(){
-  // Count-up stat numbers every render
+  // Count-up on every render (numbers may have changed)
+  var delay=_ledgerAnimDone?0:420;
   setTimeout(function(){
-    ['#stat-month .stat-val','#stat-overview .stat-mini-val'].forEach(function(sel){
-      document.querySelectorAll(sel).forEach(function(el){ _countUp(el,900); });
+    document.querySelectorAll('#stat-month .stat-val,#stat-overview .stat-mini-val').forEach(function(el){
+      _countUp(el,850);
     });
-  }, _ledgerAnimDone ? 0 : 350);
+  },delay);
 
   if(_ledgerAnimDone) return;
   _ledgerAnimDone=true;
 
-  // Stagger slide-up for top/mid sections
+  // --- Stagger slide-up ---
+  // Set ALL targets to hidden first, force ONE reflow, then reveal in sequence
   var targets=[
-    document.querySelector('#welcome-host'),
+    document.getElementById('welcome-host'),
     document.querySelector('.stat-stack'),
     document.querySelector('.table-card'),
     document.querySelector('.wos-card')
   ];
+  targets.forEach(function(el){
+    if(!el) return;
+    el.style.opacity='0';
+    el.style.transform='translateY(22px)';
+    el.style.transition='none';
+  });
+  // Force the browser to register the hidden state
+  if(targets[0]) void targets[0].offsetHeight;
+  // Reveal each with stagger
   targets.forEach(function(el,i){
     if(!el) return;
-    el.style.cssText+=';opacity:0;transform:translateY(20px);transition:none;';
     setTimeout(function(){
-      el.style.transition='opacity .58s cubic-bezier(.4,0,.2,1),transform .58s cubic-bezier(.4,0,.2,1)';
-      el.style.opacity='';
-      el.style.transform='';
-      setTimeout(function(){ el.style.transition=''; },750);
-    }, 50+i*110);
+      el.style.transition='opacity .6s cubic-bezier(.4,0,.2,1),transform .6s cubic-bezier(.4,0,.2,1)';
+      el.style.opacity='1';
+      el.style.transform='translateY(0)';
+      // Remove inline styles after transition so CSS hover still works
+      setTimeout(function(){
+        el.style.opacity='';
+        el.style.transform='';
+        el.style.transition='';
+      },700);
+    },60+i*130);
   });
 
-  // Bean parallax on welcome card (once)
-  if(!_beanParallaxDone){
-    _beanParallaxDone=true;
-    setTimeout(function(){
-      var wc=document.querySelector('.welcome-card');
+  // --- Bean parallax ---
+  // Attach to the static #welcome-host container so re-renders don't break it
+  var wh=document.getElementById('welcome-host');
+  if(wh){
+    wh.addEventListener('mousemove',function(e){
+      var wc=wh.querySelector('.welcome-card');
       if(!wc) return;
-      wc.addEventListener('mousemove',function(e){
-        var r=wc.getBoundingClientRect();
-        var x=(e.clientX-r.left)/r.width-0.5;
-        var y=(e.clientY-r.top)/r.height-0.5;
-        var b=wc.querySelector('.welcome-beans');
-        if(b) b.style.transform='translate('+x*12+'px,'+y*8+'px)';
-      });
-      wc.addEventListener('mouseleave',function(){
-        var b=wc.querySelector('.welcome-beans');
-        if(b) b.style.transform='';
-      });
-    },600);
+      var r=wc.getBoundingClientRect();
+      var x=(e.clientX-r.left)/r.width-0.5;
+      var y=(e.clientY-r.top)/r.height-0.5;
+      var b=wc.querySelector('.welcome-beans');
+      if(b) b.style.transform='translate('+x*14+'px,'+y*9+'px)';
+    });
+    wh.addEventListener('mouseleave',function(){
+      var b=wh.querySelector('.welcome-beans');
+      if(b) b.style.transform='';
+    });
   }
 }
 
@@ -2584,13 +2594,19 @@ function setupFunStatsIO(){
     entries.forEach(function(e){
       if(!e.isIntersecting) return;
       var el=e.target;
-      var i=parseInt(el.dataset.ioIdx||0);
-      setTimeout(function(){ el.classList.add('anim-in'); }, i*55);
+      var i=parseInt(el.dataset.ioIdx||'0');
+      setTimeout(function(){ el.classList.add('anim-in'); },i*60);
       _funStatsIO.unobserve(el);
     });
-  },{threshold:0.12,rootMargin:'0px 0px -30px 0px'});
-  var items=document.querySelectorAll('.fun-stats h2,.fun-item,.stats-chart-box');
-  items.forEach(function(el,i){ el.dataset.ioIdx=i; _funStatsIO.observe(el); });
+  },{threshold:0.08,rootMargin:'0px 0px -20px 0px'});
+  var items=document.querySelectorAll('.fun-item,.stats-chart-box');
+  items.forEach(function(el,i){ el.dataset.ioIdx=String(i); _funStatsIO.observe(el); });
+  // Fallback: reveal everything after 2.5s in case IO never fires
+  setTimeout(function(){
+    document.querySelectorAll('.fun-item,.stats-chart-box').forEach(function(el){
+      el.classList.add('anim-in');
+    });
+  },2500);
 }
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
