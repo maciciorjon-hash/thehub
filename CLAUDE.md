@@ -253,7 +253,7 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-14 (Round 75: Cuppa v5 — paginated Monzo fetch + Re-apply all; v1.0.44)
+Last session: 2026-06-14 (Round 76: Cuppa v6 — last-sync display + CSV import; v1.0.45)
 Hub apps: 10. Version v1.0.44.
 Cuppa/cuppa.html changes:
 - Paginated Monzo fetch: loadMonzoData() now loops up to 20 pages of 100 transactions each (max 2000 total), using the `since` parameter incremented by 1ms from the last transaction's created timestamp. Previously a single request capped at 100, silently missing earlier months for labs with >100 annual transactions.
