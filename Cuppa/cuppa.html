@@ -78,15 +78,6 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .tab-pane{display:none;}
 .tab-pane.active{display:block;}
 .nav-sep{width:1px;background:var(--border2);margin:10px 4px;flex-shrink:0;}
-.month-nav-inline{display:flex;align-items:center;gap:5px;padding:0 8px;}
-.year-btn{background:none;border:none;color:var(--text2);width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .15s;flex-shrink:0;}
-.year-btn:hover{background:var(--surface2);color:var(--text);}
-.year-label{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text);padding:0 2px;min-width:52px;text-align:center;}
-.month-pills{display:flex;gap:4px;flex-wrap:nowrap;}
-.month-pill{padding:5px 10px;border-radius:16px;font-size:10.5px;font-weight:500;background:var(--surface);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-family:var(--mono);letter-spacing:.4px;text-transform:uppercase;transition:all .15s;white-space:nowrap;flex-shrink:0;}
-.month-pill:hover{border-color:var(--accent);color:var(--text);}
-.month-pill.active{background:var(--accent);color:#fff;border-color:var(--accent);}
-.month-pill.future{opacity:.5;}
 .spacer{flex:1;}
 
 /* MAIN */
@@ -290,7 +281,6 @@ body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:b
   thead th.name-col{padding-left:12px;}
   tbody td.name-cell{padding:7px 8px 7px 12px;}
   .cell-paid{width:24px;height:24px;font-size:11px;}
-  .month-nav-inline{padding:0 6px;gap:4px;}
   .fun-grid{grid-template-columns:1fr 1fr;}
   .members-grid{grid-template-columns:1fr 1fr;}
   .welcome-card{padding:18px 16px;}
@@ -304,7 +294,7 @@ body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:b
   .fun-grid,.members-grid{grid-template-columns:1fr;}
 }
 @media (hover:none){
-  .tb-btn:hover,.stat-card:hover,.month-pill:hover{transform:none;}
+  .tb-btn:hover,.stat-card:hover{transform:none;}
 }
 </style>
 </head>
@@ -343,14 +333,6 @@ body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:b
   <button class="tab-btn active" onclick="switchTab('ledger')" id="tab-ledger">Ledger</button>
   <button class="tab-btn" onclick="switchTab('members')" id="tab-members">Members</button>
   <button class="tab-btn" onclick="switchTab('expenses')" id="tab-expenses">Expenses</button>
-  <div class="nav-sep"></div>
-  <div class="month-nav-inline" id="month-nav-inline">
-    <button class="year-btn" onclick="changeYear(-1)">&#10094;</button>
-    <span class="year-label" id="year-label">2026</span>
-    <button class="year-btn" onclick="changeYear(1)">&#10095;</button>
-    <div class="nav-sep" style="margin:8px 2px;"></div>
-    <div class="month-pills" id="month-pills"></div>
-  </div>
 </div>
 
 <main>
@@ -880,8 +862,6 @@ function switchTab(tab){
     if (pane) pane.classList.toggle('active', t === tab);
     if (btn)  btn.classList.toggle('active', t === tab);
   });
-  var mni = document.getElementById('month-nav-inline');
-  if (mni) mni.style.display = tab === 'ledger' ? 'flex' : 'none';
   if (tab === 'members')  renderMembers();
   if (tab === 'expenses') renderExpenses();
 }
@@ -890,7 +870,6 @@ function switchTab(tab){
 function render(){
   if (!state) return;
   renderWelcome();
-  renderMonthPills();
   renderStats();
   renderTable();
   renderWallOfShame();
@@ -898,19 +877,6 @@ function render(){
   if (currentTab === 'members')  renderMembers();
   if (currentTab === 'expenses') renderExpenses();
 }
-function renderMonthPills(){
-  var nowYear = (new Date()).getFullYear(), nowMonth = (new Date()).getMonth();
-  var html = MONTHS.map(function(m, i){
-    var isActive = m === currentMonth;
-    var isFuture = currentYear > nowYear || (currentYear === nowYear && i > nowMonth);
-    return '<button class="month-pill'+(isActive?' active':'')+(isFuture?' future':'')+'" onclick="setMonth(\''+m+'\')">' + MONTHS_ABBR[i] + '</button>';
-  }).join('');
-  document.getElementById('month-pills').innerHTML = html;
-  var yl = document.getElementById('year-label');
-  if (yl) yl.textContent = currentYear;
-}
-function changeYear(d){ currentYear += d; render(); }
-function setMonth(m){ currentMonth = m; render(); }
 
 function getYearPayments(){
   if (!state) return {};
@@ -1033,20 +999,21 @@ function renderStats(){
 // ─── Table ─────────────────────────────────────────────────────────────────
 function renderTable(){
   var nowYear = (new Date()).getFullYear(), nowMonth = (new Date()).getMonth();
-  var maxIdx = currentYear < nowYear ? 11 : (currentYear > nowYear ? -1 : nowMonth);
-  if (maxIdx < 0) {
+  if (currentYear > nowYear) {
     document.getElementById('tbl-scroll').innerHTML = '<p style="padding:20px;color:var(--text3);text-align:center;font-size:12px;">No data for '+currentYear+' yet.</p>';
     return;
   }
+  // Always show through December so prepaid months are visible
+  var maxIdx = 11;
   // Find first month with any payment data → start the table there
   var yp = getYearPayments();
   var firstIdx = 0;
-  for (var fi = 0; fi <= maxIdx; fi++) {
+  for (var fi = 0; fi <= (currentYear < nowYear ? 11 : nowMonth); fi++) {
     var fmn = MONTHS[fi];
     if (state.members.some(function(m){ return yp[m.id] && yp[m.id][fmn]; })) { firstIdx = fi; break; }
   }
   var visibleMonths = MONTHS.slice(firstIdx, maxIdx + 1);
-  if (!visibleMonths.length) visibleMonths = [MONTHS[maxIdx]];
+  if (!visibleMonths.length) visibleMonths = [MONTHS[0]];
 
   var q = (search || '').toLowerCase().trim();
   var members = [...state.members].sort(function(a,b){ return a.name.localeCompare(b.name); });
@@ -1054,10 +1021,12 @@ function renderTable(){
 
   document.getElementById('table-title').textContent = members.length + ' member' + (members.length === 1 ? '' : 's');
 
-  var html = '<table><thead><tr><th class="name-col">Name</th>';
+  var html = '<table style="min-width:max-content;"><thead><tr><th class="name-col">Name</th>';
   visibleMonths.forEach(function(mn){
+    var mIdx = MONTHS.indexOf(mn);
     var isAct = mn === currentMonth;
-    html += '<th class="'+(isAct?'active-month':'')+'">' + MONTHS_ABBR[MONTHS.indexOf(mn)] + '</th>';
+    var isFuture = currentYear === nowYear && mIdx > nowMonth;
+    html += '<th class="'+(isAct?'active-month':'')+'" style="'+(isFuture?'opacity:.45;':'')+'">'+MONTHS_ABBR[mIdx]+'</th>';
   });
   if (isAdmin) html += '<th></th>';
   html += '</tr></thead><tbody>';
@@ -1070,6 +1039,8 @@ function renderTable(){
       + (m.notes ? '<br><span class="cell-name-sub">'+esc(m.notes)+'</span>' : '')
       + '</span></td>';
     visibleMonths.forEach(function(mn){
+      var mIdx = MONTHS.indexOf(mn);
+      var isFuture = currentYear === nowYear && mIdx > nowMonth;
       var paid = memberPaid(m.id, mn);
       var src = paymentSource(m.id, mn);
       var isAct = mn === currentMonth;
@@ -1079,7 +1050,8 @@ function renderTable(){
       var content = paid ? '✓' : (m.drink === 'none' ? 'N/A' : '');
       var dot = paid ? '<span class="src-dot dot-'+(src||'manual')+'" title="'+(src==='auto'?'Auto-detected from Monzo':'Manually marked')+'"></span>' : '';
       var tip = paid ? (src==='auto'?'Monzo auto-detected':'Manually marked') : (m.name+' / '+mn);
-      html += '<td'+(isAct?' style="background:var(--accent-dim);"':'')+'>'+
+      var cellStyle = isAct ? 'background:var(--accent-dim);' : (isFuture && !paid ? 'opacity:.35;' : '');
+      html += '<td'+(cellStyle?' style="'+cellStyle+'"':'')+'>'+
         '<button class="cell-paid '+cls+'" onclick="togglePaid(\''+m.id+'\',\''+mn+'\')" title="'+esc(tip)+'">'+content+dot+'</button></td>';
     });
     if (isAdmin) html += '<td class="cell-actions"><button class="cell-action-btn" onclick="editMember(\''+m.id+'\')">Edit</button></td>';
