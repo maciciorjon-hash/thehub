@@ -389,8 +389,13 @@ header p{font-size:11px;color:var(--text3);}
 .stat-card.monzo-card{border-color:rgba(2,136,209,.25);background:linear-gradient(135deg,rgba(2,136,209,.06),rgba(2,136,209,.11));}
 .stat-card.monzo-card .stat-lbl{color:#0277bd;}
 
-/* ── MAIN LAYOUT ────────────────────────────────────── */
-.layout{display:grid;grid-template-columns:1fr 340px;gap:24px;align-items:start;}
+/* ── TOP ROW: compact welcome + wall of shame ───────── */
+.top-row{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start;margin-bottom:22px;}
+.wc-compact{position:relative;z-index:1;display:flex;flex-direction:column;gap:11px;}
+.wc-compact .welcome-title{font-size:18px;margin-bottom:0;}
+.wc-pay{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.12);border-radius:10px;padding:10px 13px;}
+.wc-qr{width:62px;height:62px;border-radius:8px;background:#fff;padding:4px;flex-shrink:0;}
+.wc-pay-info{flex:1;min-width:0;}
 
 /* ── TABLE CARD ─────────────────────────────────────── */
 .table-card{
@@ -546,10 +551,10 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
 
 /* ── RESPONSIVE ─────────────────────────────────────── */
 @media(max-width:1080px){
-  .layout{grid-template-columns:1fr 300px;}
+  .top-row{grid-template-columns:1fr 300px;}
 }
 @media(max-width:920px){
-  .layout{grid-template-columns:1fr;}
+  .top-row{grid-template-columns:1fr;}
   .wos-card{position:static;}
   .wos-body{max-height:none;}
 }
@@ -662,16 +667,8 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
   <div class="wrap">
     <div id="auth-banner-host"></div>
 
-    <div class="stats-row" id="stats-row"></div>
-
-    <div class="layout">
-      <div class="table-card">
-        <div class="table-hdr">
-          <span class="table-title" id="table-title">Members</span>
-          <div class="table-search"><input type="text" id="search-input" placeholder="Search name…" oninput="onSearchInput(this.value)"></div>
-        </div>
-        <div class="tbl-scroll" id="tbl-scroll"></div>
-      </div>
+    <div class="top-row">
+      <div id="welcome-host"></div>
 
       <div class="wos-card">
         <div class="wos-hdr"><span class="ic">&#128293;</span><span class="wos-title">Wall of Shame</span><span class="wos-month" id="wos-month-lbl"></span></div>
@@ -681,6 +678,16 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
           <button class="wos-copy" onclick="copyWallOfShame()">📋 Copy Slack message</button>
         </div>
       </div>
+    </div>
+
+    <div class="stats-row" id="stats-row"></div>
+
+    <div class="table-card">
+      <div class="table-hdr">
+        <span class="table-title" id="table-title">Members</span>
+        <div class="table-search"><input type="text" id="search-input" placeholder="Search name…" oninput="onSearchInput(this.value)"></div>
+      </div>
+      <div class="tbl-scroll" id="tbl-scroll"></div>
     </div>
   </div>
   </div><!-- /pane-ledger -->
@@ -704,7 +711,6 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
   <!-- EXPENSES TAB -->
   <div id="pane-expenses" class="tab-pane">
     <div class="tab-panel">
-      <div id="welcome-host"></div>
       <!-- Monzo connect card (shown when not connected, admin only) -->
       <div id="monzo-connect-card" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px 28px;margin-bottom:18px;">
         <div style="font-size:22px;margin-bottom:8px;">🏦</div>
@@ -1185,7 +1191,7 @@ function switchTab(tab){
     if (mob)  mob.classList.toggle('active', t === tab);
   });
   if (tab === 'members')  { renderMembers(); renderFunStats(); }
-  if (tab === 'expenses') { renderExpenses(); renderWelcome(); }
+  if (tab === 'expenses') renderExpenses();
 }
 
 // ─── Render ────────────────────────────────────────────────────────────────
@@ -1238,27 +1244,24 @@ function renderWelcome(){
   }).join('');
   host.innerHTML = '<div class="welcome-card">'
     + '<div class="welcome-beans">'+beans+'</div>'
-    + '<div class="welcome-content">'
-    +   '<div class="welcome-main">'
-    +     '<div class="welcome-title">Welcome to the CeTPD Coffee Shop! ☕</div>'
-    +     '<div class="welcome-sub">The CeTPD hot drinks pot — one flat monthly fee covers your drink all month long. '
-    +       'Check your status, see who\'s paid, and transfer to Jon below.</div>'
-    +     '<div class="welcome-menu">'
-    +       '<div class="welcome-menu-title">Menu</div>'
-    +       '<div class="welcome-menu-row"><span>☕ Coffee &nbsp;&amp;&nbsp; 🍵 Matcha</span><span class="welcome-menu-price">£'+coffeePrice.toFixed(2)+'/mo</span></div>'
-    +       '<div class="welcome-menu-row"><span>🫖 Tea</span><span class="welcome-menu-price">£'+teaPrice.toFixed(2)+'/mo</span></div>'
-    +       '<div class="welcome-menu-row" style="font-size:12px;opacity:.72;">🥛 Milk · 🍫 Hot choc · Decaf &mdash; included</div>'
-    +     '</div>'
-    +     '<div class="welcome-payment">'
-    +       '<div class="welcome-payment-label">Pay to</div>'
-    +       '<b>'+esc(holder)+'</b><br>'
-    +       'Sort code&nbsp; <code style="background:rgba(255,255,255,.22);padding:1px 6px;border-radius:4px;font-family:var(--mono);">'+esc(sort)+'</code><br>'
-    +       'Account&nbsp;&nbsp;&nbsp; <code style="background:rgba(255,255,255,.22);padding:1px 6px;border-radius:4px;font-family:var(--mono);">'+esc(acc)+'</code>'
-    +     '</div>'
+    + '<div class="wc-compact">'
+    +   '<div class="welcome-title">CeTPD Coffee Shop ☕</div>'
+    +   '<div class="welcome-menu" style="width:auto;margin-bottom:0;">'
+    +     '<div class="welcome-menu-title">Monthly rates</div>'
+    +     '<div class="welcome-menu-row"><span>☕ Coffee &nbsp;&middot;&nbsp; 🍵 Matcha</span><span class="welcome-menu-price">£'+coffeePrice.toFixed(2)+'</span></div>'
+    +     '<div class="welcome-menu-row"><span>🫖 Tea</span><span class="welcome-menu-price">£'+teaPrice.toFixed(2)+'</span></div>'
+    +     '<div class="welcome-menu-row" style="font-size:12px;opacity:.68;">🥛 Milk &middot; 🍫 Hot choc &middot; Decaf &mdash; included</div>'
     +   '</div>'
-    +   '<div class="welcome-qr">'
-    +     '<img src="https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=https://monzo.me/jonmaciciormichelena" alt="Monzo QR" loading="lazy">'
-    +     '<div class="welcome-qr-label">@jonmaciciormichelena<br>on Monzo</div>'
+    +   '<div class="wc-pay">'
+    +     '<img src="https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=https://monzo.me/jonmaciciormichelena" alt="Monzo QR" loading="lazy" class="wc-qr">'
+    +     '<div class="wc-pay-info">'
+    +       '<div style="font-size:9px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;opacity:.7;margin-bottom:5px;">Pay to</div>'
+    +       '<div style="font-size:13px;font-weight:700;margin-bottom:4px;">'+esc(holder)+'</div>'
+    +       '<div style="font-size:11px;opacity:.82;line-height:1.8;">'
+    +         'Sort&nbsp;<code style="background:rgba(255,255,255,.22);padding:1px 5px;border-radius:4px;font-family:var(--mono);">'+esc(sort)+'</code><br>'
+    +         'Acc&nbsp;&nbsp;<code style="background:rgba(255,255,255,.22);padding:1px 5px;border-radius:4px;font-family:var(--mono);">'+esc(acc)+'</code>'
+    +       '</div>'
+    +     '</div>'
     +   '</div>'
     + '</div>'
     + '</div>';
