@@ -635,6 +635,69 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
 }
 /* ── SCROLLBAR ──────────────────────────────────────── */
 ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+
+/* ── ANIMATIONS ─────────────────────────────────────── */
+/* Feature card shimmer (fires once on load) */
+@keyframes _cuppaShimmer{
+  from{transform:translateX(-100%) skewX(-12deg);}
+  to  {transform:translateX(260%) skewX(-12deg);}
+}
+@keyframes _cuppaBlink{
+  0%,100%{opacity:.19;}50%{opacity:.28;}
+}
+/* Feature card: overflow clip for shimmer + decorative orb */
+.stat-card.feature{position:relative;overflow:hidden;}
+.stat-card.feature::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.18) 50%,transparent 100%);
+  transform:translateX(-100%) skewX(-12deg);
+  animation:_cuppaShimmer 1.8s cubic-bezier(.4,0,.6,1) .7s both;
+}
+.stat-card.feature::after{
+  content:'';position:absolute;top:-40px;right:-30px;
+  width:130px;height:130px;border-radius:50%;
+  background:rgba(255,255,255,.07);pointer-events:none;
+}
+/* Spring hover on cards */
+.stat-card{transition:transform .24s cubic-bezier(.34,1.56,.64,1),box-shadow .22s ease;}
+.stat-card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(184,96,48,.18);}
+/* Bean float pulse */
+.bean{animation:floatBean linear infinite,_cuppaBlink 4s ease-in-out infinite;}
+/* Bean layer parallax transition */
+.welcome-beans{transition:transform .7s cubic-bezier(.25,.46,.45,.94);will-change:transform;}
+/* WoS row hover slide */
+.wos-row{
+  border-radius:8px;padding:5px 8px;margin:0 -8px;cursor:default;
+  transition:background .15s,transform .18s cubic-bezier(.4,0,.2,1);
+}
+.wos-row:hover{background:var(--surface3);transform:translateX(4px);}
+/* Table row hover */
+tbody tr{transition:background .12s;}
+tbody tr:hover td{background:var(--accent-dim);}
+/* Fun stats scroll-reveal start state */
+.fun-item{
+  opacity:0;transform:translateY(12px);
+  transition:opacity .45s cubic-bezier(.4,0,.2,1),transform .45s cubic-bezier(.4,0,.2,1);
+}
+.fun-item.anim-in{opacity:1;transform:none;}
+.stats-chart-box{
+  opacity:0;transform:translateY(12px);
+  transition:opacity .5s cubic-bezier(.4,0,.2,1),transform .5s cubic-bezier(.4,0,.2,1);
+}
+.stats-chart-box.anim-in{opacity:1;transform:none;}
+/* Fun stats title fade */
+.fun-stats h2{opacity:0;transform:translateY(8px);transition:opacity .4s,transform .4s;}
+.fun-stats h2.anim-in{opacity:1;transform:none;}
+/* Member card spring */
+.mc{transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease,border-color .15s;}
+.mc:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(184,96,48,.14);border-color:var(--border2);}
+/* Welcome card glow pulse (once) */
+@keyframes _wcGlow{
+  0%{box-shadow:0 4px 24px rgba(184,96,48,.25);}
+  60%{box-shadow:0 12px 48px rgba(184,96,48,.45);}
+  100%{box-shadow:0 4px 24px rgba(184,96,48,.25);}
+}
+.welcome-card{animation:_wcGlow 2.2s ease-in-out .5s both;}
 </style>
 </head>
 <body>
@@ -1226,6 +1289,7 @@ function render(){
   renderFunStats();
   if (currentTab === 'members')  renderMembers();
   if (currentTab === 'expenses') renderExpenses();
+  if (currentTab === 'ledger') initLedgerAnimations();
 }
 
 function getYearPayments(){
@@ -1595,6 +1659,7 @@ function renderFunStats(){
     _drawDrinkPie(drinkCount);
     _drawMonthlyBar(monthlyCollected, nowMI);
   }, 60);
+  setupFunStatsIO();
 }
 
 function statCounter(icon, val, lbl){
@@ -2443,6 +2508,90 @@ document.addEventListener('keydown', function(e){
 window.addEventListener('message', function(e){
   if (!e.data || e.data.type !== 'switchTab' || !e.data.tab) return;
 });
+
+// ─── Animation system ──────────────────────────────────────────────────────
+function _countUp(el, dur){
+  var txt = el.textContent.trim();
+  var m = txt.match(/^([^\d]*)([\d.]+)(.*)$/);
+  if(!m) return;
+  var pre=m[1], num=parseFloat(m[2]), suf=m[3];
+  var dec=(m[2].indexOf('.')>=0)?m[2].split('.')[1].length:0;
+  var t0=performance.now();
+  (function step(ts){
+    var p=Math.min((ts-t0)/dur,1);
+    var ease=1-Math.pow(1-p,3);
+    el.textContent=pre+(num*ease).toFixed(dec)+suf;
+    if(p<1)requestAnimationFrame(step);
+  })(performance.now());
+}
+
+var _ledgerAnimDone=false;
+var _beanParallaxDone=false;
+function initLedgerAnimations(){
+  // Count-up stat numbers every render
+  setTimeout(function(){
+    ['#stat-month .stat-val','#stat-overview .stat-mini-val'].forEach(function(sel){
+      document.querySelectorAll(sel).forEach(function(el){ _countUp(el,900); });
+    });
+  }, _ledgerAnimDone ? 0 : 350);
+
+  if(_ledgerAnimDone) return;
+  _ledgerAnimDone=true;
+
+  // Stagger slide-up for top/mid sections
+  var targets=[
+    document.querySelector('#welcome-host'),
+    document.querySelector('.stat-stack'),
+    document.querySelector('.table-card'),
+    document.querySelector('.wos-card')
+  ];
+  targets.forEach(function(el,i){
+    if(!el) return;
+    el.style.cssText+=';opacity:0;transform:translateY(20px);transition:none;';
+    setTimeout(function(){
+      el.style.transition='opacity .58s cubic-bezier(.4,0,.2,1),transform .58s cubic-bezier(.4,0,.2,1)';
+      el.style.opacity='';
+      el.style.transform='';
+      setTimeout(function(){ el.style.transition=''; },750);
+    }, 50+i*110);
+  });
+
+  // Bean parallax on welcome card (once)
+  if(!_beanParallaxDone){
+    _beanParallaxDone=true;
+    setTimeout(function(){
+      var wc=document.querySelector('.welcome-card');
+      if(!wc) return;
+      wc.addEventListener('mousemove',function(e){
+        var r=wc.getBoundingClientRect();
+        var x=(e.clientX-r.left)/r.width-0.5;
+        var y=(e.clientY-r.top)/r.height-0.5;
+        var b=wc.querySelector('.welcome-beans');
+        if(b) b.style.transform='translate('+x*12+'px,'+y*8+'px)';
+      });
+      wc.addEventListener('mouseleave',function(){
+        var b=wc.querySelector('.welcome-beans');
+        if(b) b.style.transform='';
+      });
+    },600);
+  }
+}
+
+var _funStatsIO=null;
+function setupFunStatsIO(){
+  if(_funStatsIO) _funStatsIO.disconnect();
+  _funStatsIO=new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(!e.isIntersecting) return;
+      var el=e.target;
+      var i=parseInt(el.dataset.ioIdx||0);
+      setTimeout(function(){ el.classList.add('anim-in'); }, i*55);
+      _funStatsIO.unobserve(el);
+    });
+  },{threshold:0.12,rootMargin:'0px 0px -30px 0px'});
+  var items=document.querySelectorAll('.fun-stats h2,.fun-item,.stats-chart-box');
+  items.forEach(function(el,i){ el.dataset.ioIdx=i; _funStatsIO.observe(el); });
+}
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
 loadMonzoToken();
