@@ -198,6 +198,17 @@ body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:b
 .fun-item-lbl{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.5px;text-transform:uppercase;}
 .fun-item-val{font-size:14px;font-weight:600;color:var(--text);line-height:1.3;}
 .fun-item-sub{font-size:10.5px;color:var(--text2);}
+.stats-charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0;}
+.stats-chart-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;}
+.stats-chart-title{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;}
+.stats-legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);line-height:1.6;}
+.stats-legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.stats-counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+.stats-counter-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;}
+.stats-counter-icon{font-size:18px;margin-bottom:4px;}
+.stats-counter-num{font-size:22px;font-weight:700;color:var(--text);letter-spacing:-0.5px;line-height:1.1;}
+.stats-counter-lbl{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:3px;}
+.stats-assumptions{font-size:10.5px;color:var(--text3);border-top:1px solid var(--border);margin-top:14px;padding-top:12px;line-height:1.8;}
 
 /* MEMBERS TAB */
 .tab-panel{padding:22px 28px 32px;max-width:1280px;margin:0 auto;}
@@ -366,7 +377,7 @@ body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:b
 
     <div class="fun-stats">
       <h2><span class="ic">📊</span> Fun stats <span style="font-size:10.5px;color:var(--text3);font-weight:400;margin-left:auto;">numbers we made up but mostly</span></h2>
-      <div class="fun-grid" id="fun-grid"></div>
+      <div id="fun-grid"></div>
     </div>
   </div>
   </div><!-- /pane-ledger -->
@@ -593,6 +604,7 @@ var editingMemberId = null;
 var _fbReady = false;
 var _firstSnap = true;
 var _monzoToken = null;
+var _showArchived = false;
 
 function makeMember(name, drink){
   return { id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink||'coffee', startMonth:null, notes:'', accountName:'' };
@@ -996,6 +1008,16 @@ function renderStats(){
     + monzoCard;
 }
 
+function isMonthComplete(mn){
+  if (!state) return false;
+  var yp = getYearPayments();
+  return state.members.every(function(m){
+    if (m.drink === 'none') return true;
+    return !!(yp[m.id] && yp[m.id][mn]);
+  });
+}
+function toggleArchived(){ _showArchived = !_showArchived; renderTable(); }
+
 // ─── Table ─────────────────────────────────────────────────────────────────
 function renderTable(){
   var nowYear = (new Date()).getFullYear(), nowMonth = (new Date()).getMonth();
@@ -1012,14 +1034,28 @@ function renderTable(){
     var fmn = MONTHS[fi];
     if (state.members.some(function(m){ return yp[m.id] && yp[m.id][fmn]; })) { firstIdx = fi; break; }
   }
-  var visibleMonths = MONTHS.slice(firstIdx, maxIdx + 1);
-  if (!visibleMonths.length) visibleMonths = [MONTHS[0]];
+  var allMonths = MONTHS.slice(firstIdx, maxIdx + 1);
+  if (!allMonths.length) allMonths = [MONTHS[0]];
+  var archivedMonths = allMonths.filter(function(mn){
+    var mIdx = MONTHS.indexOf(mn);
+    var isPastOrCurrent = (currentYear < nowYear) || (currentYear === nowYear && mIdx <= nowMonth);
+    return isPastOrCurrent && isMonthComplete(mn);
+  });
+  var visibleMonths = _showArchived ? allMonths : allMonths.filter(function(mn){ return archivedMonths.indexOf(mn) === -1; });
+  if (!visibleMonths.length && archivedMonths.length) visibleMonths = archivedMonths.slice(-1);
+  if (!visibleMonths.length) visibleMonths = [MONTHS[nowMonth]];
 
   var q = (search || '').toLowerCase().trim();
   var members = [...state.members].sort(function(a,b){ return a.name.localeCompare(b.name); });
   if (q) members = members.filter(function(m){ return m.name.toLowerCase().includes(q); });
 
-  document.getElementById('table-title').textContent = members.length + ' member' + (members.length === 1 ? '' : 's');
+  var archTgl = '';
+  if (!_showArchived && archivedMonths.length > 0) {
+    archTgl = ' <span style="color:var(--accent);cursor:pointer;font-size:10.5px;font-weight:400;" onclick="toggleArchived()">✓ '+archivedMonths.length+' done · show</span>';
+  } else if (_showArchived && archivedMonths.length > 0) {
+    archTgl = ' <span style="color:var(--text2);cursor:pointer;font-size:10.5px;font-weight:400;" onclick="toggleArchived()">· hide done</span>';
+  }
+  document.getElementById('table-title').innerHTML = members.length + ' member' + (members.length === 1 ? '' : 's') + archTgl;
 
   var html = '<table style="min-width:max-content;"><thead><tr><th class="name-col">Name</th>';
   visibleMonths.forEach(function(mn){
@@ -1079,68 +1115,245 @@ function renderWallOfShame(){
 }
 
 // ─── Fun Stats ─────────────────────────────────────────────────────────────
+var PIE_COLORS = { coffee:'#8d6e63', tea:'#26a69a', matcha:'#43a047', hotchoc:'#795548', milk:'#42a5f5' };
+var CUPS_PM    = { coffee:25, tea:30, matcha:20, hotchoc:15, milk:20 };
+var BEANS_G    = { coffee:36 }; // 2 shots × 18g each
+var TEA_BAG_G  = 2;
+var ML_CUP     = { coffee:250, tea:250, matcha:200, hotchoc:200, milk:200 };
+var MILK_ML    = { coffee:100, tea:30, matcha:0, hotchoc:150, milk:200 };
+var CAFF_MG    = { coffee:80, tea:40, matcha:70, hotchoc:12, milk:0 };
+
 function renderFunStats(){
+  if (!state) return;
   var members = state.members;
   var yp = getYearPayments();
+  var nowYear = (new Date()).getFullYear(), nowMI = (new Date()).getMonth();
+  var monthsExpected = currentYear < nowYear ? 12 : (currentYear > nowYear ? 0 : nowMI + 1);
+
   var drinkCount = { coffee:0, tea:0, matcha:0, hotchoc:0, milk:0, none:0 };
-  members.forEach(function(m){ drinkCount[m.drink] = (drinkCount[m.drink]||0) + 1; });
-  var topDrink = 'coffee', topN = 0;
-  Object.keys(drinkCount).forEach(function(k){ if (k !== 'none' && drinkCount[k] > topN){ topN = drinkCount[k]; topDrink = k; }});
+  members.forEach(function(m){ drinkCount[m.drink||'coffee'] = (drinkCount[m.drink||'coffee']||0) + 1; });
 
   var paidCounts = {};
   members.forEach(function(m){
     if (m.drink === 'none') return;
-    paidCounts[m.id] = yp[m.id] ? Object.keys(yp[m.id]).filter(function(k){ return yp[m.id][k]; }).length : 0;
+    paidCounts[m.id] = yp[m.id] ? MONTHS.filter(function(mn){ return !!(yp[m.id][mn]); }).length : 0;
   });
   var actives = members.filter(function(m){ return m.drink !== 'none'; });
-  var topPayer = actives.slice().sort(function(a,b){ return (paidCounts[b.id]||0)-(paidCounts[a.id]||0); })[0];
+  var topPayer    = actives.slice().sort(function(a,b){ return (paidCounts[b.id]||0)-(paidCounts[a.id]||0); })[0];
   var bottomPayer = actives.slice().sort(function(a,b){ return (paidCounts[a.id]||0)-(paidCounts[b.id]||0); })[0];
-
-  var totalCups = 0;
-  members.forEach(function(m){
-    var nM = paidCounts[m.id] || 0;
-    var cpp = m.drink==='coffee'?25 : m.drink==='tea'?30 : m.drink==='matcha'?15 : m.drink==='hotchoc'?10 : m.drink==='milk'?20 : 0;
-    totalCups += cpp * nM;
-  });
-
-  var nowYear = (new Date()).getFullYear(), nowMonth = (new Date()).getMonth();
-  var monthsExpected = currentYear < nowYear ? 12 : (currentYear > nowYear ? 0 : nowMonth + 1);
-  var champions = actives.filter(function(m){ return (paidCounts[m.id]||0) >= monthsExpected && monthsExpected > 0; });
+  var champions   = actives.filter(function(m){ return (paidCounts[m.id]||0) >= monthsExpected && monthsExpected > 0; });
 
   var totalCollected = 0;
+  var monthlyCollected = {};
+  MONTHS.forEach(function(mn){ monthlyCollected[mn] = 0; });
   Object.keys(yp).forEach(function(mid){
     var m = members.find(function(x){ return x.id === mid; });
     if (!m || m.drink === 'none') return;
-    Object.keys(yp[mid]).forEach(function(mn){ if (yp[mid][mn]) totalCollected += memberPriceMonthly(m); });
+    var price = memberPriceMonthly(m);
+    MONTHS.forEach(function(mn){
+      if (yp[mid] && yp[mid][mn]){ totalCollected += price; monthlyCollected[mn] += price; }
+    });
   });
 
-  var dSub = '☕ '+drinkCount.coffee+' · 🍵 '+drinkCount.matcha+' · 🫖 '+drinkCount.tea;
+  var totalCups = 0, totalBeans = 0, totalTeaBags = 0, totalMilkL = 0, totalCaffG = 0, totalLitres = 0;
+  actives.forEach(function(m){
+    var nM = paidCounts[m.id] || 0;
+    var d = m.drink || 'coffee';
+    var cpp = CUPS_PM[d] || 0;
+    totalCups     += cpp * nM;
+    totalBeans    += (d === 'coffee' ? (BEANS_G.coffee||36) : 0) * cpp * nM;
+    totalTeaBags  += (d === 'tea' ? 1 : 0) * cpp * nM;
+    totalMilkL    += (MILK_ML[d]||0) * cpp * nM / 1000;
+    totalCaffG    += (CAFF_MG[d]||0) * cpp * nM / 1000;
+    totalLitres   += (ML_CUP[d]||250) * cpp * nM / 1000;
+  });
+
+  var totalBeansKg = totalBeans / 1000;
+
   var html = '';
-  html += funItem('Drink of choice', DRINK_ICONS[topDrink]+' '+DRINK_LABELS[topDrink], topN+' people prefer it · '+dSub);
-  if (topPayer) html += funItem('Caffeine champion','🏆 '+esc(topPayer.name),(paidCounts[topPayer.id]||0)+' / '+monthsExpected+' months paid');
-  html += funItem('Cups consumed in '+currentYear,'~'+totalCups.toLocaleString(),'estimated from drink type × months paid');
-  html += funItem('£ raised in '+currentYear,'£'+totalCollected.toFixed(2),'enough for ~'+Math.round(totalCollected/2.8)+' fancy lattes at Costa');
+
+  // Animated counters
+  html += '<div class="stats-counters">';
+  html += statCounter('☕', '~'+Math.round(totalCups).toLocaleString(), 'Cups consumed');
+  html += statCounter('🫘', totalBeansKg.toFixed(2)+' kg', 'Coffee beans ground');
+  html += statCounter('🍵', totalTeaBags.toLocaleString(), 'Tea bags steeped');
+  html += statCounter('🥛', totalMilkL.toFixed(1)+' L', 'Milk consumed');
+  html += statCounter('⚡', totalCaffG.toFixed(1)+' g', 'Total caffeine');
+  html += statCounter('💧', Math.round(totalLitres)+' L', 'Liquid ingested');
+  html += '</div>';
+
+  // Charts row
+  html += '<div class="stats-charts-row">';
+
+  // Pie chart
+  html += '<div class="stats-chart-box">';
+  html += '<div class="stats-chart-title">Drink distribution</div>';
+  html += '<div style="display:flex;align-items:center;gap:14px;">';
+  html += '<canvas id="cuppa-pie" width="110" height="110" style="flex-shrink:0;"></canvas>';
+  html += '<div style="display:flex;flex-direction:column;">';
+  ['coffee','tea','matcha','hotchoc','milk'].forEach(function(d){
+    if (!drinkCount[d]) return;
+    html += '<div class="stats-legend-item"><span class="stats-legend-dot" style="background:'+PIE_COLORS[d]+';"></span>'
+      + DRINK_LABELS[d]+' &nbsp;<span style="color:var(--text3);">'+drinkCount[d]+'</span></div>';
+  });
+  if (drinkCount.none) html += '<div class="stats-legend-item"><span class="stats-legend-dot" style="background:var(--border2);"></span>N/A &nbsp;<span style="color:var(--text3);">'+drinkCount.none+'</span></div>';
+  html += '</div></div></div>';
+
+  // Monthly bar chart
+  html += '<div class="stats-chart-box">';
+  html += '<div class="stats-chart-title">Monthly revenue — '+currentYear+'</div>';
+  html += '<canvas id="cuppa-bar" width="310" height="110" style="width:100%;"></canvas>';
+  html += '</div>';
+
+  html += '</div>'; // end charts-row
+
+  // Key facts grid
+  html += '<div class="fun-grid">';
+  html += funItem('£ raised in '+currentYear, '£'+totalCollected.toFixed(2), 'enough for ~'+Math.round(totalCollected/2.8)+' fancy lattes at Costa');
+  if (topPayer) html += funItem('Caffeine champion', '🏆 '+esc(topPayer.name), (paidCounts[topPayer.id]||0)+'/'+monthsExpected+' months · never misses a beat');
   if (bottomPayer && (paidCounts[bottomPayer.id]||0) < monthsExpected && monthsExpected > 0){
     var missed = monthsExpected - (paidCounts[bottomPayer.id]||0);
-    html += funItem('Top offender','😬 '+esc(bottomPayer.name),missed+' month'+(missed===1?'':'s')+' missing in '+currentYear);
+    html += funItem('Top offender', '😬 '+esc(bottomPayer.name), missed+' month'+(missed===1?'':'s')+' MIA — you know who you are');
   }
-  html += funItem('Squad size',members.length+' members',drinkCount.none+' on the N/A list · the rest are paying');
-  if (champions.length) html += funItem('Hall of fame',champions.length+' perfect record'+(champions.length===1?'':'s'),champions.slice(0,3).map(function(m){return esc(m.name);}).join(', ')+(champions.length>3?' + '+(champions.length-3)+' more':''));
-
+  if (champions.length) html += funItem('Hall of fame 🎖', champions.length+' perfect record'+(champions.length===1?'':'s'), champions.slice(0,3).map(function(m){return esc(m.name);}).join(', ')+(champions.length>3?' + '+(champions.length-3)+' more':''));
+  html += funItem('Squad', members.length+' members', actives.length+' paying · '+drinkCount.none+' on the couch');
+  var extrapolatedBeans = totalBeansKg * (12 / Math.max(monthsExpected,1));
+  html += funItem('Yearly bean forecast', '~'+extrapolatedBeans.toFixed(1)+' kg', 'at current consumption rate — enough to fill '+Math.round(extrapolatedBeans/0.25)+' standard bags');
   var FACTS = [
-    'A coffee bean is technically a seed. So when you buy coffee you\'re really buying tree babies.',
-    'The world drinks ~2 billion cups of coffee a day. The CeTPD does its part.',
-    'Matcha contains L-theanine — supposedly relaxing, despite the caffeine.',
+    'A coffee bean is technically a seed. So we are buying tree babies.',
+    'The world drinks ~2 billion cups of coffee a day. CeTPD does its part.',
+    'Matcha has L-theanine which is supposedly relaxing. Seems fine.',
     'Tea was once more expensive than gold, weight for weight.',
-    '70% of meetings would be improved by being held over coffee.',
-    'The phrase "spilling the tea" comes from drag culture, not actual tea.',
-    'A flat white is 60ml espresso + 100ml steamed milk. No, really.'
+    '70% of meetings would be improved if held over coffee.',
+    '"Spilling the tea" comes from drag culture, not actual tea.',
+    'A flat white is 60ml espresso + 100ml steamed milk. No, really.',
+    'Coffee is the second most traded commodity on Earth after oil.',
+    'Finland has the highest coffee consumption per capita. CeTPD is honorary Finnish.',
+    'Espresso machines are just expensive hot water guns. Very good ones.',
+    'The average coffee has 95mg caffeine. An IV drip is frowned upon but faster.',
+    'Green tea has been drunk for 5,000 years. It\'s basically medication at this point.',
+    ''+Math.round(totalCups/Math.max(actives.length,1))+' cups per person this year so far. Science requires fuel.',
+    'If you stacked all '+ Math.round(totalCups)+' cups it would be ~'+Math.round(totalCups*0.09)+'m tall. Taller than a house.',
   ];
-  html += funItem('Did you know?','☕',FACTS[Math.floor(Math.random()*FACTS.length)]);
+  html += funItem('Did you know?', '☕', FACTS[Math.floor(Math.random()*FACTS.length)]);
+  html += '</div>';
+
+  html += '<div class="stats-assumptions">🔬 <b>Assumptions (wildly scientific):</b> '
+    + 'Coffee = 25 cups/person/month · double shot (36g beans) · 250ml · 100ml milk · 80mg caffeine. '
+    + 'Tea = 30 cups/month · 1 bag (2g) · 250ml · 30ml milk · 40mg caffeine. '
+    + 'Matcha = 20 cups/month · 200ml · 70mg caffeine. '
+    + 'Hot choc = 15 cups/month · 200ml · 12mg caffeine. '
+    + 'Values directionally correct, empirically questionable.</div>';
+
   document.getElementById('fun-grid').innerHTML = html;
+
+  setTimeout(function(){
+    _drawDrinkPie(drinkCount);
+    _drawMonthlyBar(monthlyCollected, nowMI);
+  }, 60);
+}
+
+function statCounter(icon, val, lbl){
+  return '<div class="stats-counter-box">'
+    + '<div class="stats-counter-icon">'+icon+'</div>'
+    + '<div class="stats-counter-num">'+val+'</div>'
+    + '<div class="stats-counter-lbl">'+lbl+'</div>'
+    + '</div>';
 }
 function funItem(lbl, val, sub){
-  return '<div class="fun-item"><div class="fun-item-lbl">'+lbl+'</div><div class="fun-item-val">'+val+'</div>'+(sub?'<div class="fun-item-sub">'+sub+'</div>':'')+'</div>';
+  return '<div class="fun-item"><div class="fun-item-lbl">'+lbl+'</div>'+(val?'<div class="fun-item-val">'+val+'</div>':'')+(sub?'<div class="fun-item-sub">'+sub+'</div>':'')+'</div>';
+}
+function _drawDrinkPie(drinkCount){
+  var canvas = document.getElementById('cuppa-pie');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var data = [], cols = [];
+  ['coffee','tea','matcha','hotchoc','milk','none'].forEach(function(d){
+    if (!drinkCount[d]) return;
+    data.push(drinkCount[d]);
+    cols.push(PIE_COLORS[d] || 'rgba(255,255,255,0.15)');
+  });
+  var total = data.reduce(function(a,b){return a+b;},0);
+  if (!total) return;
+  var cx = canvas.width/2, cy = canvas.height/2, r = Math.min(cx,cy) - 6;
+  var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  var bgCol  = isDark ? '#1c2030' : '#f0f1f5';
+  var t0 = Date.now(), dur = 900;
+  function frame(){
+    var p = Math.min((Date.now()-t0)/dur, 1);
+    var ease = 1 - Math.pow(1-p, 3);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    var ang = -Math.PI/2;
+    data.forEach(function(v,i){
+      var sl = (v/total)*Math.PI*2*ease;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,ang,ang+sl);
+      ctx.fillStyle = cols[i]; ctx.fill();
+      ang += sl;
+    });
+    ctx.beginPath(); ctx.arc(cx,cy,r*0.44,0,Math.PI*2);
+    ctx.fillStyle = bgCol; ctx.fill();
+    if (p === 1){
+      ctx.fillStyle = isDark ? '#e8eaf2' : '#1a1d2e';
+      ctx.font = 'bold 15px IBM Plex Sans,sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(total, cx, cy-7);
+      ctx.font = '9px IBM Plex Sans,sans-serif';
+      ctx.fillStyle = isDark ? '#8b90a8' : '#5a5f7a';
+      ctx.fillText('members', cx, cy+8);
+    }
+    if (p < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+function _drawMonthlyBar(monthlyCollected, nowMI){
+  var canvas = document.getElementById('cuppa-bar');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var months = currentYear < (new Date()).getFullYear() ? MONTHS : MONTHS.slice(0, nowMI + 1);
+  if (!months.length) return;
+  var values = months.map(function(mn){ return monthlyCollected[mn]||0; });
+  var maxVal = Math.max.apply(null, values) || 1;
+  var isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  var W = canvas.width, H = canvas.height;
+  var PL=36, PR=8, PT=12, PB=24;
+  var plotW = W-PL-PR, plotH = H-PT-PB;
+  var barW = (plotW/months.length)*0.55, gap = plotW/months.length;
+  var textCol  = isDark ? '#8b90a8' : '#5a5f7a';
+  var gridCol  = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+  var t0 = Date.now(), dur = 850;
+  function frame(){
+    var p = Math.min((Date.now()-t0)/dur, 1);
+    var ease = 1 - Math.pow(1-p, 3);
+    ctx.clearRect(0,0,W,H);
+    [0.25,0.5,0.75,1].forEach(function(f){
+      var y = PT+plotH*(1-f);
+      ctx.strokeStyle = gridCol; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(PL,y); ctx.lineTo(W-PR,y); ctx.stroke();
+    });
+    ctx.fillStyle = textCol; ctx.font='9px IBM Plex Sans,sans-serif'; ctx.textAlign='right';
+    ctx.fillText('£'+Math.round(maxVal), PL-3, PT+4);
+    ctx.fillText('£0', PL-3, PT+plotH+4);
+    values.forEach(function(v,i){
+      var bh = (v/maxVal)*plotH*ease;
+      var x = PL+gap*i+(gap-barW)/2, y = PT+plotH-bh;
+      var grad = ctx.createLinearGradient(x,y,x,PT+plotH);
+      grad.addColorStop(0,'#8d6e63'); grad.addColorStop(1,'rgba(141,110,99,0.25)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x,y,barW,Math.max(bh,1),[2,2,0,0]);
+      else ctx.rect(x,y,barW,Math.max(bh,1));
+      ctx.fill();
+      ctx.fillStyle = textCol; ctx.font='8px IBM Plex Sans,sans-serif'; ctx.textAlign='center';
+      ctx.fillText(MONTHS_ABBR[MONTHS.indexOf(months[i])], x+barW/2, H-PB+11);
+      if (p===1 && v>0){
+        ctx.fillStyle = isDark?'#e8eaf2':'#1a1d2e';
+        ctx.font='bold 8px IBM Plex Sans,sans-serif';
+        ctx.fillText('£'+Math.round(v), x+barW/2, y-3);
+      }
+    });
+    if (p<1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 }
 
 // ─── Members Tab ───────────────────────────────────────────────────────────
