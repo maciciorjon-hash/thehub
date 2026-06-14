@@ -423,6 +423,7 @@ body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:b
       <div class="exp-table-card">
         <div class="exp-table-hdr">
           <span style="font-size:13px;font-weight:600;color:var(--text);flex:1;" id="exp-table-title">Transactions</span>
+          <button class="monzo-refresh" id="exp-reapply-btn" style="display:none;" onclick="reApplyStoredMonzo()" title="Re-process cached Monzo history and mark payments in ledger">↻ Re-apply all</button>
           <button class="monzo-refresh" id="exp-refresh-btn" style="display:none;" onclick="loadMonzoData()">↻ Refresh from Monzo</button>
         </div>
         <div class="exp-tbl-scroll" id="exp-tbl-scroll"></div>
@@ -1213,6 +1214,38 @@ function renderExpenses(){
 }
 
 // ─── Monzo ─────────────────────────────────────────────────────────────────
+function reApplyStoredMonzo(){
+  if (!isAdmin || !state) return;
+  var stored = (state.monzo && state.monzo.expenses) || [];
+  if (!stored.length){ toast('No Monzo data cached yet — Refresh first'); return; }
+  var applied = 0;
+  stored.filter(function(e){ return e.amount > 0; }).forEach(function(e){
+    var member = findMemberForTxn(e.desc);
+    if (!member) return;
+    var price = memberPriceMonthly(member);
+    if (price <= 0) return;
+    var amtGBP = e.amount / 100;
+    if (amtGBP < price * 0.65) return;
+    var nMonths = Math.round(amtGBP / price);
+    if (nMonths < 1) return;
+    var txYear  = parseInt((e.date||'').slice(0,4)) || currentYear;
+    var txMoIdx = parseInt((e.date||'').slice(5,7)) - 1;
+    if (isNaN(txMoIdx) || txMoIdx < 0 || txMoIdx > 11) return;
+    if (!state.payments[txYear]) state.payments[txYear] = {};
+    if (!state.payments[txYear][member.id]) state.payments[txYear][member.id] = {};
+    var yp = state.payments[txYear][member.id];
+    var marked = 0;
+    for (var i = txMoIdx; i < 12 && marked < nMonths; i++){
+      if (!yp[MONTHS[i]]){ yp[MONTHS[i]] = 'auto'; marked++; applied++; }
+    }
+    for (var j = txMoIdx - 1; j >= 0 && marked < nMonths; j--){
+      if (!yp[MONTHS[j]]){ yp[MONTHS[j]] = 'auto'; marked++; applied++; }
+    }
+  });
+  render();
+  saveToFirebase('monzo re-apply');
+  toast(applied ? applied + ' month slot' + (applied===1?'':'s') + ' marked paid from history' : 'Nothing new to apply — all already marked');
+}
 function autoApplyMonzoPayments(txns){
   if (!isAdmin || !state) return;
   // Only incoming bank transfers (positive amount, no merchant = peer transfer)
@@ -1294,14 +1327,22 @@ async function loadMonzoData(){
       var bal = bd.balance != null ? bd.balance : bd.total_balance;
       if (bal != null){ state.monzo.balance = bal; state.monzo.balanceAt = new Date().toISOString(); }
     }
-    // Transactions — from start of year
-    var since = new Date(currentYear, 0, 1).toISOString();
-    var tr = await fetch('https://api.monzo.com/transactions?account_id='+state.monzo.accountId
-      +'&since='+encodeURIComponent(since)+'&expand[]=merchant',
-      { headers:{ Authorization:'Bearer '+_monzoToken }});
-    if (tr.ok){
+    // Transactions — full year with pagination (Monzo returns max 100 per page)
+    var allTxns = [];
+    var pgSince = new Date(currentYear, 0, 1).toISOString();
+    for (var _page = 0; _page < 20; _page++) {
+      var tr = await fetch('https://api.monzo.com/transactions?account_id='+state.monzo.accountId
+        +'&since='+encodeURIComponent(pgSince)+'&limit=100&expand[]=merchant',
+        { headers:{ Authorization:'Bearer '+_monzoToken }});
+      if (!tr.ok) break;
       var td = await tr.json();
-      var txns = td.transactions || [];
+      var page = td.transactions || [];
+      allTxns = allTxns.concat(page);
+      if (page.length < 100) break; // last page
+      pgSince = new Date(new Date(page[page.length-1].created).getTime()+1).toISOString();
+    }
+    if (allTxns.length > 0 || allTxns.length === 0) {
+      var txns = allTxns;
       // Auto-apply incoming payments to ledger before storing
       autoApplyMonzoPayments(txns);
       // Store all transactions as expenses (both in and out)

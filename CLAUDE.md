@@ -253,14 +253,14 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-14 (Round 74: Cuppa v4 — combined nav, Monzo connect in Expenses, multi-month; v1.0.42)
-Hub apps: 10. Version v1.0.41.
+Last session: 2026-06-14 (Round 75: Cuppa v5 — paginated Monzo fetch + Re-apply all; v1.0.44)
+Hub apps: 10. Version v1.0.44.
 Cuppa/cuppa.html changes:
-- Welcome card added at top of Ledger tab: floating coffee-bean animation (☕🫘 × 7, CSS @keyframes floatBean), gradient background, menu card (reads prices from state.prices), bank transfer details (sort/acc/holder from state.bank), Monzo QR code image (api.qrserver.com → https://monzo.me/jonmaciciormichelena) + "@jonmaciciormichelena" label. renderWelcome() called from render().
-- Monzo payment-suggestions panel removed entirely: deleted var _monzoSuggestions, processMonzoTransactions(), renderSuggestedPayments(), confirmSuggestion(), dismissSuggestion(); removed renderSuggestedPayments() call from render(); removed processMonzoTransactions() call from loadMonzoData(); removed suggest-host div; removed .suggest-* CSS.
-- Drink picker simplified: member modal select now shows Coffee / Matcha / Tea / N/A only (hot choc and milk removed from options; legacy records with those values still render via DRINK_ICONS/DRINK_LABELS fallback).
-- Header auth/settings buttons: added two .cuppa-hdr-btn buttons (id=hdr-auth-btn, id=hdr-settings-btn) to header .hdr-right. These bypass the Hub's iframe CSS injection (which hides .opts-btn/.opts-panel), making Sign in and ⚙ Settings always visible when embedded. onAuthStateChanged updated to manage both sets of buttons.
-- hub-shell.html: bumped to v1.0.41, new changelog entry added, previous v1.0.40 entry condensed.
+- Paginated Monzo fetch: loadMonzoData() now loops up to 20 pages of 100 transactions each (max 2000 total), using the `since` parameter incremented by 1ms from the last transaction's created timestamp. Previously a single request capped at 100, silently missing earlier months for labs with >100 annual transactions.
+- autoApplyMonzoPayments(txns): called inside loadMonzoData() after all pages collected. Filters incoming (amount>0), matches description to member via findMemberForTxn(), divides amount by price tier to get nMonths, marks consecutive unpaid months starting from the transaction's own calendar month as paymentSource:'auto'.
+- reApplyStoredMonzo(): works on state.monzo.expenses (cached Monzo data) without needing a fresh token. Processes each stored expense the same way as autoApplyMonzoPayments but reads e.date (YYYY-MM-DD) instead of t.created. Calls render() + saveToFirebase('monzo re-apply') + toast with count.
+- "↻ Re-apply all" button (id=exp-reapply-btn) added to Expenses table header next to the existing Refresh button. Shown when state.monzo.expenses has entries. Allows recovering months that pre-dated the auto-apply feature without requiring a fresh Monzo token.
+- hub-shell.html: bumped to v1.0.44, new changelog entry added.
 
 Previous session: 2026-06-13 (Round 71: orphan SVG cleanup; v1.0.37)
 hub-shell.html: previous round's egg rewrite left 130 lines of stale SVG content (old <defs>, gradients, JON/CLAUDE/RYAN character groups, speech bubbles, milestone text, stats ticker, regg-bubble div) dangling between the new comic modal's closing </div></div> and the next <script> block — rendering as visible debris on the hub home. Deleted lines 1110–1239. Also removed the empty <svg id="regg-secret-dot-source"> placeholder that was left from the rewrite scaffolding. node --check passes. grep for the removed IDs (regg-stat / regg-bubble-name / regg-ryan-alias) returns 0.
