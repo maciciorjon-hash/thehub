@@ -455,6 +455,7 @@ body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:b
         </div>
         <div class="field"><label>Active from</label><input type="month" id="mf-start"><span class="hint">First month they owe</span></div>
       </div>
+      <div class="field"><label>Bank account name</label><input type="text" id="mf-account" placeholder="e.g. M KRUMMHAAR or Aitana Basté"><span class="hint">Used to match bank transfers — leave blank if same as name</span></div>
       <div class="field"><label>Notes</label><input type="text" id="mf-notes" placeholder="optional"></div>
     </div>
     <div class="modal-foot">
@@ -540,30 +541,36 @@ var SEED_MEMBERS = [
   'Peter Cossar','Petr','Roberta Ibba','Ruben Prieto','Ryan Casement',
   'Stefan Djukic','Suzanne O\'Connor','Will Farnaby','Yuting Zhi','Zher Yin'
 ];
+var SEED_MEMBER_DRINKS = {
+  'Suzanne O\'Connor': 'tea',
+  'Hannah Mortlock':   'tea',
+  'Yuting Zhi':        'tea',
+  'Giorgia Kidd':      'tea'
+};
 var SEED_PAYMENTS_2026 = {
-  'Adam Pinto':         { April:true, May:true },
-  'Aina Urbina':        { April:true, May:true },
-  'Alejandro Correa':   { April:true, May:true },
+  'Adam Pinto':         { April:true, May:true, June:true },
+  'Aina Urbina':        { April:true, May:true, June:true },
+  'Alejandro Correa':   { April:true, May:true, June:true },
   'Alessandra Salerno': { April:true, May:true, June:true, July:true },
   'Alessio Ciulli':     { April:true, May:true, June:true },
   'Alex Hallatt':       { April:true, May:true },
-  'Alexandra Teslenko': { May:true },
+  'Alexandra Teslenko': { May:true, June:true },
   'Atana':              { May:true },
   'Chloe Jackson':      { April:true, May:true },
   'Claudine Greenwood': { April:true, May:true },
-  'Daniel McDougal':    { April:true, May:true },
+  'Daniel McDougal':    { April:true, May:true, June:true },
   'Dylan Lynch':        { April:true, May:true, June:true },
-  'Elisha McCrory':     { April:true, May:true },
-  'Giorgia Kidd':       { April:true, May:true },
-  'Giulia Bonasegale':  { April:true, May:true },
-  'Hannah Mortlock':    { April:true, May:true },
+  'Elisha McCrory':     { April:true, May:true, June:true },
+  'Giorgia Kidd':       { April:true, May:true, June:true },
+  'Giulia Bonasegale':  { April:true, May:true, June:true },
+  'Hannah Mortlock':    { April:true, May:true, June:true },
   'Ivan Rodriguez':     { April:true, May:true, June:true, July:true, August:true },
   'Jack Robertson':     { April:true, May:true, June:true },
   'Jon Macicior':       { April:true, May:true },
   'Lizzy Hogg':         { April:true, May:true, June:true },
   'Mark Bekala':        { April:true, May:true },
   'Mark Dorward':       { April:true, May:true, June:true },
-  'Michael Krummhaar':  { April:true, May:true },
+  'Michael Krummhaar':  { April:true, May:true, June:true },
   'Mokhitli Morake':    { April:true, May:true, June:true },
   'Peter Cossar':       { April:true, May:true, June:true, July:true, August:true },
   'Petr':               { April:true, May:true, June:true },
@@ -571,9 +578,9 @@ var SEED_PAYMENTS_2026 = {
   'Ruben Prieto':       { April:true, May:true, June:true, July:true, August:true },
   'Ryan Casement':      { April:true, May:true },
   'Stefan Djukic':      { April:true, May:true, June:true, July:true },
-  'Suzanne O\'Connor':  { April:true, May:true },
+  'Suzanne O\'Connor':  { April:true, May:true, June:true },
   'Will Farnaby':       { April:true, May:true },
-  'Yuting Zhi':         { April:true, May:true },
+  'Yuting Zhi':         { April:true, May:true, June:true },
   'Zher Yin':           { May:true }
 };
 
@@ -604,10 +611,10 @@ var _firstSnap = true;
 var _monzoToken = null;
 
 function makeMember(name, drink){
-  return { id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink||'coffee', startMonth:null, notes:'' };
+  return { id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink||'coffee', startMonth:null, notes:'', accountName:'' };
 }
 function defaultState(){
-  var members = SEED_MEMBERS.map(function(n){ return makeMember(n,'coffee'); });
+  var members = SEED_MEMBERS.map(function(n){ return makeMember(n, SEED_MEMBER_DRINKS[n]||'coffee'); });
   var payments = { 2026:{} };
   members.forEach(function(m){
     var paid = SEED_PAYMENTS_2026[m.name.replace(/\s+/g,' ').trim()] || {};
@@ -665,6 +672,7 @@ function onFbEvent(e){
             }
           }
           if (isAdmin && _monzoToken) loadMonzoData();
+          if (isAdmin) setTimeout(applyStatePatchV1, 500);
         }
       }
     } else if (state) {
@@ -680,6 +688,69 @@ function refetchAll(){
     state = d ? ensureState(d) : defaultState();
     render();
   }).catch(function(){});
+}
+function applyStatePatchV1(){
+  if (!isAdmin || !state) return;
+  if ((state.patchVersion || 0) >= 1) return;
+
+  // June payments confirmed from Monzo statement 19 May–14 Jun 2026
+  var junePay = [
+    'Adam Pinto','Aina Urbina','Alejandro Correa','Alexandra Teslenko',
+    'Daniel McDougal','Elisha McCrory','Giorgia Kidd','Giulia Bonasegale',
+    'Hannah Mortlock','Michael Krummhaar',"Suzanne O'Connor",'Yuting Zhi'
+  ];
+  if (!state.payments[2026]) state.payments[2026] = {};
+  junePay.forEach(function(nm){
+    var m = state.members.find(function(x){ return x.name === nm; });
+    if (!m) return;
+    if (!state.payments[2026][m.id]) state.payments[2026][m.id] = {};
+    if (!state.payments[2026][m.id].June) state.payments[2026][m.id].June = 'auto';
+  });
+
+  // Update drink types confirmed by payment amounts (tea = £5)
+  ['Suzanne O\'Connor','Hannah Mortlock','Yuting Zhi','Giorgia Kidd'].forEach(function(nm){
+    var m = state.members.find(function(x){ return x.name === nm; });
+    if (m && m.drink !== 'tea') m.drink = 'tea';
+  });
+
+  // Load all transactions from the May–Jun 2026 statement
+  if (!state.monzo) state.monzo = {};
+  if (!state.monzo.expenses) state.monzo.expenses = [];
+  var existIds = {};
+  state.monzo.expenses.forEach(function(e){ if (e.txid) existIds[e.txid] = true; });
+  var stmt = [
+    // ── Outgoing ──
+    {txid:'tx_0000B6eMHr3Tnml5qv0A4K',date:'2026-05-25',desc:'Amazon — AMZNMktplace',name:'Amazon',amount:-5798,category:'Amazon'},
+    {txid:'tx_0000B6ffxT4rQwHC4FwJda',date:'2026-05-25',desc:'Google Play',name:'Google Play',amount:-3299,category:'Other'},
+    {txid:'tx_0000B6r7U5Itg92S6fR2bB',date:'2026-05-31',desc:"Sainsbury's Edinburgh",name:"Sainsbury's",amount:-550,category:'Supermarket'},
+    {txid:'tx_0000B6tCrNkGAVr6TQGkeR',date:'2026-06-01',desc:'Amazon — AMZNMktplace',name:'Amazon',amount:-997,category:'Amazon'},
+    {txid:'tx_0000B6wXZdXHOy9FKZ9A0n',date:'2026-06-03',desc:"Kerr's Dairy (milk DD)",name:"Kerr's Dairy",amount:-7000,category:'Milk'},
+    {txid:'tx_0000B77houxk1mQnLWQDzt',date:'2026-06-08',desc:'Amazon — AMZNMktplace',name:'Amazon',amount:-4898,category:'Amazon'},
+    {txid:'tx_0000B77xyGdqORxUAGuT6Q',date:'2026-06-08',desc:'Amazon — AMAZON.UK',name:'Amazon',amount:-1149,category:'Amazon'},
+    // ── Incoming confirmed ──
+    {txid:'tx_0000B6s7IigjcIJg4izmrK',date:'2026-06-01',desc:'MICHAEL-COFFEE',name:'M KRUMMHAAR',amount:750,category:'Incoming'},
+    {txid:'tx_0000B6sArafphrAVVIgQvX',date:'2026-06-01',desc:'Tea',name:"Suzanne O'Connor",amount:500,category:'Incoming'},
+    {txid:'tx_0000B6sHiwrMY7Kl6870yo',date:'2026-06-01',desc:'COFFEE',name:'Pinto Adam',amount:750,category:'Incoming'},
+    {txid:'tx_0000B6sI2IAzWFIX02J7o2',date:'2026-06-01',desc:'CAFE ALEX',name:'CORREA SAEZ A',amount:750,category:'Incoming'},
+    {txid:'tx_0000B6sKLz9GAqU7gZ12UI',date:'2026-06-01',desc:'Giorgia Kidd',name:'Giorgia Kidd',amount:500,category:'Incoming'},
+    {txid:'tx_0000B6sM4GuvZSCzXlQLd0',date:'2026-06-01',desc:'ELISHA COFFEE',name:'MCCRORY EH',amount:750,category:'Incoming'},
+    {txid:'tx_0000B6u7zYPo4lV5pMuZpS',date:'2026-06-01',desc:'TEA',name:'H MORTLOCK',amount:500,category:'Incoming'},
+    {txid:'tx_0000B6u7znzSAWe1maJUZf',date:'2026-06-01',desc:'COFFEE',name:'G BONASEGALE',amount:750,category:'Incoming'},
+    {txid:'tx_0000B6wzKnsDTuy2fvDPCl',date:'2026-06-03',desc:'Daniel coffee',name:'Daniel McDougal',amount:750,category:'Incoming'},
+    {txid:'tx_0000B6yv1oeeLGEfwi6m2s',date:'2026-06-04',desc:'Aina Coffee',name:'Aina Urbina Teixidor',amount:750,category:'Incoming'},
+    {txid:'tx_0000B708eXSDifyfALJA0Z',date:'2026-06-04',desc:'Jun- regular tea',name:'Yuting Zhi',amount:500,category:'Incoming'},
+    {txid:'tx_0000B7139yDjqcIP6D3OUd',date:'2026-06-05',desc:'Coffee',name:'Alexandra Teslenko',amount:750,category:'Incoming'},
+    // ── Doubtful — review in Expenses tab ──
+    {txid:'tx_0000B6mncWzTqfG5bdylnt',date:'2026-05-29',desc:'Coffee',name:'Yelizaveta Prokhorova',amount:750,category:'Incoming',flagDoubt:'Not in member list — is this a new member? (paid £7.50, May 29)'},
+    {txid:'tx_0000B6sFYcow02xgzMPo9M',date:'2026-06-01',desc:'Coffee',name:'Aitana Baste',amount:750,category:'Incoming',flagDoubt:'Account name "Aitana Basté" — is this member "Atana"? Add bank account name to confirm'},
+    {txid:'tx_0000B77KhHL8eCvk7inozT',date:'2026-06-08',desc:'June coffee',name:'Tan Yin',amount:750,category:'Incoming',flagDoubt:'Account name "Tan Yin" — is this member "Zher Yin"? Add bank account name to confirm'},
+  ];
+  stmt.forEach(function(e){ if (!existIds[e.txid]){ state.monzo.expenses.push(e); existIds[e.txid]=true; } });
+  if (!state.monzo.expensesAt || state.monzo.expensesAt < '2026-06-14') state.monzo.expensesAt = '2026-06-14T12:00:00.000Z';
+
+  state.patchVersion = 1;
+  saveToFirebase('state-patch-v1');
+  toast('June statement applied — 3 payments need your review in Expenses tab');
 }
 function saveToFirebase(reason){
   if (!isAdmin) return Promise.reject('not admin');
@@ -1064,18 +1135,25 @@ function renderMembers(){
 }
 
 // ─── Expenses Tab ──────────────────────────────────────────────────────────
-function findMemberForTxn(desc){
+function findMemberForTxn(desc, bankName){
   if (!state) return null;
   var dl = (desc || '').toLowerCase();
+  var bl = (bankName || '').toLowerCase();
   var best = null, bestScore = 0;
   state.members.forEach(function(m){
     if (m.drink === 'none') return;
     var nl = m.name.toLowerCase();
     var parts = nl.split(' ');
+    var acl = (m.accountName || '').toLowerCase();
     var score = 0;
-    if (dl.includes(nl)) score = 3;
-    else if (parts.length > 1 && parts.every(function(p){ return dl.includes(p); })) score = 2;
-    else if (parts.some(function(p){ return p.length > 3 && dl.includes(p); })) score = 1;
+    // Full name match
+    if (dl.includes(nl) || bl.includes(nl)) { score = 3; }
+    // Stored accountName exact match
+    else if (acl && (dl.includes(acl) || bl.includes(acl) || acl.includes(bl) && bl.length > 4)) { score = 3; }
+    // All name parts match across combined text
+    else if (parts.length > 1 && parts.every(function(p){ return dl.includes(p) || bl.includes(p); })) { score = 2; }
+    // Any name part >=3 chars matches
+    else if (parts.some(function(p){ return p.length >= 3 && (dl.includes(p) || bl.includes(p)); })) { score = 1; }
     if (score > bestScore){ bestScore = score; best = m; }
   });
   return bestScore > 0 ? best : null;
@@ -1218,9 +1296,10 @@ function renderExpenses(){
     } else {
       monthsCell = '<td></td>';
     }
+    var _doubt = e.flagDoubt ? ' <span style="color:#f59e0b;cursor:help;" title="'+esc(e.flagDoubt)+'">⚠️</span>' : '';
     return '<tr>'
       + '<td>'+esc(e.date)+'</td>'
-      + '<td>'+esc(e.desc.slice(0,45))+'</td>'
+      + '<td>'+esc(e.desc.slice(0,45))+_doubt+'</td>'
       + '<td><span class="cat-badge" style="background:'+cat.color+'22;color:'+cat.color+';">'+cat.icon+' '+esc(e.category)+'</span></td>'
       + '<td class="exp-amount'+(isInc?' incoming':'')+'">'+( isInc ? '+' : '−' )+'£'+Math.abs(amt).toFixed(2)+'</td>'
       + monthsCell
@@ -1285,7 +1364,7 @@ function importMonzoCSV(text){
     var name=(c[4]||'').trim();
     var monzoCat=(c[6]||'').trim();
     var cat=_categorizeCsvRow(desc||name,name,monzoCat,amt);
-    existing.push({txid:txid,date:dateStr,desc:desc||name,amount:amt,category:cat});
+    existing.push({txid:txid,date:dateStr,desc:desc||name,name:name,amount:amt,category:cat});
     if(txid) existingIds[txid]=true;
     added++;
     if(!lastDate||dateStr>lastDate) lastDate=dateStr;
@@ -1293,7 +1372,7 @@ function importMonzoCSV(text){
   if(lastDate) state.monzo.expensesAt=lastDate+'T12:00:00.000Z';
   // Auto-apply all incoming payments (including newly imported ones)
   var toApply=existing.filter(function(e){return e.amount>0;}).map(function(e){
-    return {amount:e.amount,description:e.desc,created:e.date+'T00:00:00Z'};
+    return {amount:e.amount,description:e.desc,bankName:e.name||'',created:e.date+'T00:00:00Z'};
   });
   autoApplyMonzoPayments(toApply);
   render();
@@ -1308,7 +1387,7 @@ function reApplyStoredMonzo(){
   if (!stored.length){ toast('No Monzo data cached yet — Refresh first'); return; }
   var applied = 0;
   stored.filter(function(e){ return e.amount > 0; }).forEach(function(e){
-    var member = findMemberForTxn(e.desc);
+    var member = findMemberForTxn(e.desc, e.name || '');
     if (!member) return;
     var price = memberPriceMonthly(member);
     if (price <= 0) return;
@@ -1339,7 +1418,7 @@ function autoApplyMonzoPayments(txns){
   // Only incoming bank transfers (positive amount, no merchant = peer transfer)
   var incoming = txns.filter(function(t){ return t.amount > 0; });
   incoming.forEach(function(t){
-    var member = findMemberForTxn(t.description || '');
+    var member = findMemberForTxn(t.description || '', t.bankName || '');
     if (!member) return;
     var price = memberPriceMonthly(member);
     if (price <= 0) return;
@@ -1479,6 +1558,7 @@ function openAddMember(){
   document.getElementById('mf-drink').value = 'coffee';
   document.getElementById('mf-start').value = '';
   document.getElementById('mf-notes').value = '';
+  document.getElementById('mf-account').value = '';
   document.getElementById('member-modal').classList.add('open');
   setTimeout(function(){ document.getElementById('mf-name').focus(); }, 60);
 }
@@ -1491,6 +1571,7 @@ function editMember(id){
   document.getElementById('mf-drink').value = m.drink || 'coffee';
   document.getElementById('mf-start').value = m.startMonth || '';
   document.getElementById('mf-notes').value = m.notes || '';
+  document.getElementById('mf-account').value = m.accountName || '';
   document.getElementById('member-modal').classList.add('open');
 }
 function closeMemberModal(){ document.getElementById('member-modal').classList.remove('open'); editingMemberId = null; }
@@ -1501,11 +1582,12 @@ function saveMember(){
   var drink = document.getElementById('mf-drink').value;
   var startMonth = document.getElementById('mf-start').value;
   var notes = document.getElementById('mf-notes').value.trim();
+  var accountName = document.getElementById('mf-account').value.trim();
   if (editingMemberId){
     var m = state.members.find(function(x){ return x.id === editingMemberId; });
-    if (m){ m.name = name; m.drink = drink; m.startMonth = startMonth; m.notes = notes; }
+    if (m){ m.name = name; m.drink = drink; m.startMonth = startMonth; m.notes = notes; m.accountName = accountName; }
   } else {
-    state.members.push({ id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink, startMonth:startMonth, notes:notes });
+    state.members.push({ id:'m-'+Math.random().toString(36).slice(2,9), name:name, drink:drink, startMonth:startMonth, notes:notes, accountName:accountName||'' });
   }
   closeMemberModal(); render(); saveToFirebase('member'); toast(editingMemberId ? 'Updated' : 'Added');
 }
