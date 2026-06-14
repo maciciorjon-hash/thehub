@@ -389,13 +389,23 @@ header p{font-size:11px;color:var(--text3);}
 .stat-card.monzo-card{border-color:rgba(2,136,209,.25);background:linear-gradient(135deg,rgba(2,136,209,.06),rgba(2,136,209,.11));}
 .stat-card.monzo-card .stat-lbl{color:#0277bd;}
 
-/* ── TOP ROW: compact welcome + wall of shame ───────── */
-.top-row{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start;margin-bottom:22px;}
+/* ── TOP ROW: 3 columns ─────────────────────────────── */
+.top-row{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:start;margin-bottom:20px;}
 .wc-compact{position:relative;z-index:1;display:flex;flex-direction:column;gap:11px;}
 .wc-compact .welcome-title{font-size:18px;margin-bottom:0;}
 .wc-pay{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.12);border-radius:10px;padding:10px 13px;}
 .wc-qr{width:62px;height:62px;border-radius:8px;background:#fff;padding:4px;flex-shrink:0;}
 .wc-pay-info{flex:1;min-width:0;}
+/* ── MID ROW: table + WoS ───────────────────────────── */
+.mid-row{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start;margin-bottom:20px;}
+/* stat progress bar (inside feature stat card) */
+.stat-progress{height:4px;background:rgba(255,255,255,.22);border-radius:2px;margin:12px 0 6px;overflow:hidden;}
+.stat-progress-fill{height:100%;background:rgba(255,255,255,.75);border-radius:2px;transition:width .5s cubic-bezier(.4,0,.2,1);}
+.stat-divider{height:1px;background:var(--border);margin:13px 0;}
+/* overview card stacks two mini-stats */
+.stat-mini-lbl{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:3px;}
+.stat-mini-val{font-family:var(--display);font-size:26px;font-weight:700;letter-spacing:-1.5px;color:var(--text);line-height:1;}
+.stat-mini-sub{font-size:11px;color:var(--text3);margin-top:3px;}
 
 /* ── TABLE CARD ─────────────────────────────────────── */
 .table-card{
@@ -551,12 +561,17 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
 
 /* ── RESPONSIVE ─────────────────────────────────────── */
 @media(max-width:1080px){
-  .top-row{grid-template-columns:1fr 300px;}
+  .top-row{grid-template-columns:1fr 1fr;}
+  .mid-row{grid-template-columns:1fr 280px;}
 }
 @media(max-width:920px){
-  .top-row{grid-template-columns:1fr;}
+  .top-row{grid-template-columns:1fr 1fr;}
+  .mid-row{grid-template-columns:1fr;}
   .wos-card{position:static;}
-  .wos-body{max-height:none;}
+  .wos-body{max-height:300px;}
+}
+@media(max-width:640px){
+  .top-row{grid-template-columns:1fr;}
 }
 @media(max-width:768px){
   /* Show bottom nav, hide desktop strip */
@@ -667,11 +682,25 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
   <div class="wrap">
     <div id="auth-banner-host"></div>
 
+    <!-- 3-column top row -->
     <div class="top-row">
       <div id="welcome-host"></div>
+      <div id="stat-month"></div>
+      <div id="stat-overview"></div>
+    </div>
+
+    <!-- 2-column mid row: payment table + WoS -->
+    <div class="mid-row">
+      <div class="table-card">
+        <div class="table-hdr">
+          <span class="table-title" id="table-title">Members</span>
+          <div class="table-search"><input type="text" id="search-input" placeholder="Search name…" oninput="onSearchInput(this.value)"></div>
+        </div>
+        <div class="tbl-scroll" id="tbl-scroll"></div>
+      </div>
 
       <div class="wos-card">
-        <div class="wos-hdr"><span class="ic">&#128293;</span><span class="wos-title">Wall of Shame</span><span class="wos-month" id="wos-month-lbl"></span></div>
+        <div class="wos-hdr"><span class="ic">&#128293;</span><span class="wos-title">Unpaid</span><span class="wos-month" id="wos-month-lbl"></span></div>
         <div class="wos-body" id="wos-body"></div>
         <div class="wos-foot">
           <div class="total"><span>Outstanding</span><b id="wos-total">£0</b></div>
@@ -680,14 +709,10 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
       </div>
     </div>
 
-    <div class="stats-row" id="stats-row"></div>
-
-    <div class="table-card">
-      <div class="table-hdr">
-        <span class="table-title" id="table-title">Members</span>
-        <div class="table-search"><input type="text" id="search-input" placeholder="Search name…" oninput="onSearchInput(this.value)"></div>
-      </div>
-      <div class="tbl-scroll" id="tbl-scroll"></div>
+    <!-- Fun stats -->
+    <div class="fun-stats">
+      <h2><span class="ic">📊</span> Fun stats <span style="font-size:10.5px;color:var(--text3);font-weight:400;margin-left:auto;">numbers we mostly made up</span></h2>
+      <div id="fun-grid"></div>
     </div>
   </div>
   </div><!-- /pane-ledger -->
@@ -701,10 +726,6 @@ body.admin .cell-paid.paid:hover,body.admin .cell-paid.auto-paid:hover{filter:br
         <button class="tb-btn primary" id="add-member-btn2" style="display:none;" onclick="openAddMember()">+ Add member</button>
       </div>
       <div class="members-grid" id="members-grid"></div>
-      <div class="fun-stats" style="margin-top:28px;">
-        <h2><span class="ic">📊</span> Fun stats <span style="font-size:10.5px;color:var(--text3);font-weight:400;margin-left:auto;">numbers we made up but mostly</span></h2>
-        <div id="fun-grid"></div>
-      </div>
     </div>
   </div><!-- /pane-members -->
 
@@ -1190,7 +1211,7 @@ function switchTab(tab){
     if (btn)  btn.classList.toggle('active', t === tab);
     if (mob)  mob.classList.toggle('active', t === tab);
   });
-  if (tab === 'members')  { renderMembers(); renderFunStats(); }
+  if (tab === 'members')  renderMembers();
   if (tab === 'expenses') renderExpenses();
 }
 
@@ -1297,28 +1318,35 @@ function renderStats(){
       + '</div>';
   }
 
-  document.getElementById('stats-row').innerHTML =
-    '<div class="stat-card feature">'
-    +   '<div class="stat-lbl">'+currentMonth+' '+currentYear+' — collected</div>'
+  var smEl = document.getElementById('stat-month');
+  if (smEl) smEl.innerHTML =
+    '<div class="stat-card feature" style="height:100%;box-sizing:border-box;">'
+    +   '<div class="stat-lbl">'+currentMonth+' '+currentYear+'</div>'
     +   '<div class="stat-val">£'+collected.toFixed(2)+'</div>'
-    +   '<div class="stat-sub">of £'+expected.toFixed(2)+' expected · '+pct+'%</div>'
-    + '</div>'
-    + '<div class="stat-card">'
-    +   '<div class="stat-lbl">Unpaid this month</div>'
-    +   '<div class="stat-val'+(nUnpaid > 5 ? ' warn' : '')+'">'+nUnpaid+'</div>'
-    +   '<div class="stat-sub">people on the wall</div>'
-    + '</div>'
-    + '<div class="stat-card">'
-    +   '<div class="stat-lbl">'+currentYear+' year-to-date</div>'
-    +   '<div class="stat-val">£'+collectedYear.toFixed(2)+'</div>'
-    +   '<div class="stat-sub">collected from '+active.length+' drinkers</div>'
-    + '</div>'
-    + '<div class="stat-card">'
-    +   '<div class="stat-lbl">Active members</div>'
-    +   '<div class="stat-val">'+active.length+'</div>'
-    +   '<div class="stat-sub">'+state.members.length+' total · '+(state.members.length - active.length)+' N/A</div>'
-    + '</div>'
-    + monzoCard;
+    +   '<div class="stat-progress"><div class="stat-progress-fill" style="width:'+pct+'%"></div></div>'
+    +   '<div class="stat-sub">£'+expected.toFixed(2)+' expected &middot; '+pct+'% in</div>'
+    +   '<div class="stat-divider" style="background:rgba(255,255,255,.18);"></div>'
+    +   '<div class="stat-mini-lbl" style="color:rgba(255,255,255,.7);">Year to date</div>'
+    +   '<div style="font-size:15px;font-weight:700;color:#fff;letter-spacing:-.3px;">£'+collectedYear.toFixed(2)+'</div>'
+    + '</div>';
+
+  var soEl = document.getElementById('stat-overview');
+  if (soEl) {
+    var ovHtml = '<div class="stat-card" style="height:100%;box-sizing:border-box;">';
+    if (state.monzo && state.monzo.balance != null) {
+      var bal = (state.monzo.balance / 100).toFixed(2);
+      var balAt = state.monzo.balanceAt ? new Date(state.monzo.balanceAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+' '+new Date(state.monzo.balanceAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '';
+      ovHtml += '<div class="stat-mini-lbl">🏦 Monzo pot</div>'
+        + '<div class="stat-mini-val">£'+bal+'</div>'
+        + '<div class="stat-mini-sub">'+(balAt?'at '+balAt:'cached')+(isAdmin?' &middot; <a href="#" onclick="loadMonzoData();return false;" style="color:var(--accent);text-decoration:none;">refresh</a>':'')+'</div>'
+        + '<div class="stat-divider"></div>';
+    }
+    ovHtml += '<div class="stat-mini-lbl">Active members</div>'
+      + '<div class="stat-mini-val">'+active.length+'</div>'
+      + '<div class="stat-mini-sub">'+state.members.length+' total &middot; '+(state.members.length-active.length)+' N/A</div>'
+      + '</div>';
+    soEl.innerHTML = ovHtml;
+  }
 }
 
 function isMonthComplete(mn){
