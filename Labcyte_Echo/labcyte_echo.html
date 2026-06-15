@@ -1735,7 +1735,17 @@ function _parseEchoCSV(text, skipRows) {
   const wi = hdrs.findIndex(h => /destination.well/i.test(h));
   const ci = hdrs.findIndex(h => /destination.concentration/i.test(h));
 
+  // Diagnostic: report which columns were (not) found
+  if (si < 0) log('  ⚠ Echo CSV: "Sample ID" column not found — expected a column matching /sample.?id/', 'warn');
+  if (bi < 0) log('  ⚠ Echo CSV: "Destination Plate Barcode" column not found', 'warn');
+  if (wi < 0) log('  ⚠ Echo CSV: "Destination Well" column not found', 'warn');
+  if (ci < 0) log('  ⚠ Echo CSV: "Destination Concentration" column not found — all rows will be skipped', 'warn');
+  if (si >= 0 && bi >= 0 && wi >= 0 && ci >= 0) {
+    log('  Columns: SampleID@' + si + ', Barcode@' + bi + ', Well@' + wi + ', Conc@' + ci, 'info');
+  }
+
   const data = [];
+  let _skipNoSid=0, _skipNoBc=0, _skipNoWell=0, _skipNoConc=0;
   for (let i = headerIdx + 1; i < allLines.length; i++) {
     const line = allLines[i].trim(); if (!line) continue;
     const cols = parseRow(line);
@@ -1743,8 +1753,19 @@ function _parseEchoCSV(text, skipRows) {
     const barcode  = bi >= 0 ? cols[bi] : '';
     const well     = _stdWell(wi >= 0 ? cols[wi] : '');
     const conc     = parseFloat(ci >= 0 ? cols[ci] : '');
-    if (!sampleId || !barcode || !well || isNaN(conc) || conc <= 0) continue;
+    if (!sampleId) { _skipNoSid++; continue; }
+    if (!barcode)  { _skipNoBc++;  continue; }
+    if (!well)     { _skipNoWell++; continue; }
+    if (isNaN(conc) || conc <= 0) { _skipNoConc++; continue; }
     data.push({ sampleId, barcode, barcodeKey: barcode.toLowerCase(), well, conc, log10Conc: Math.log10(conc) });
+  }
+  if (!data.length) {
+    if (_skipNoSid)  log('  ⚠ ' + _skipNoSid + ' rows skipped: empty Sample ID (col ' + si + ')', 'warn');
+    if (_skipNoBc)   log('  ⚠ ' + _skipNoBc + ' rows skipped: empty Destination Barcode (col ' + bi + ')', 'warn');
+    if (_skipNoWell) log('  ⚠ ' + _skipNoWell + ' rows skipped: empty/invalid Destination Well (col ' + wi + ')', 'warn');
+    if (_skipNoConc) log('  ⚠ ' + _skipNoConc + ' rows skipped: missing or zero Destination Concentration (col ' + ci + ')', 'warn');
+    if (_skipNoSid + _skipNoBc + _skipNoWell + _skipNoConc === 0)
+      log('  ⚠ Header row detected at line ' + headerIdx + ' but no data rows followed. Check "Echo header rows to skip" setting.', 'warn');
   }
   return data;
 }
