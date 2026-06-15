@@ -253,7 +253,18 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-14 (Round 78: Cuppa v8 — month nav removed, full-year scroll in Members; v1.0.48)
+Last session: 2026-06-15 (Round 79: Hub unlock system + Echo PNG fix; v1.0.65)
+Hub apps: 10. Version v1.0.65.
+hub-shell.html changes (v1.0.61–v1.0.64):
+- v1.0.61: Auth glitch fix — #hub-home starts at opacity:0, fades in after onAuthStateChanged fires + 80ms grace period (setTimeout _showHub 80); 1.5s fallback ensures hub always appears. _hubShown flag prevents double-firing.
+- v1.0.62: Gel Designer (Plate_Designer/plate_designer.html) — multi-row copy/paste in lane label editor (Shift/Ctrl+click multi-select, Copy/Paste toolbar + Ctrl+C/V); canvas click-to-edit with floating Word-style popup (gdp- prefix); hit zones stored in _gdHitZones after gdDraw(); text cursor on hover.
+- v1.0.63: Cuppa + Iceberg modal style unification — all popup/modal dialogs restyled to match gel popup visual language (surface2 header, uppercase 11px label, two-layer shadow, spring entrance animation).
+- v1.0.64: Hub app unlock/discovery system — APP_UNLOCK_WORDS maps each of 10 app IDs to a secret code; _unlockedApps Set persisted in localStorage key 'hub_unlocked'; non-admin sees blank hub until codes are typed; applyLabConfig() gates on both labConfig and _unlockedApps; _updateUnlockUI() shows/hides input and section label; admin bypasses entirely; Lab panel shows "Unlock codes" reference section; hub-home section-lbl starts display:none to prevent flash; input styled as bordered box with hint text.
+Labcyte_Echo/labcyte_echo.html changes (v1.0.65):
+- PNG export axis clipping fixed: new _cvComputePads(fSz, fMul, lMul, legMul) helper computes pL/pR/pT/pB dynamically so all labels and titles fit regardless of export multipliers. pL accounts for rotated Y-title half-height + tick label width; pB accounts for X-axis title (28×fMul) and legend (38×fMul). Y-axis title re-centered at yTitleX (dynamic) instead of hardcoded 14.
+- Export quality: _exportScale 3→4 (DPR-independent; removed DPR multiplication from export path for consistent pixel count across screens), _fMul 5→2.5, _lMul 4→2.5, _legMul 4→2.5. At 2.5× font on 4× canvas: ~13pt text at 600 DPI, correct publication proportions.
+
+Previous session: 2026-06-14 (Round 78: Cuppa v8 — month nav removed, full-year scroll in Members; v1.0.48)
 Hub apps: 10. Version v1.0.44.
 Cuppa/cuppa.html changes:
 - Paginated Monzo fetch: loadMonzoData() now loops up to 20 pages of 100 transactions each (max 2000 total), using the `since` parameter incremented by 1ms from the last transaction's created timestamp. Previously a single request capped at 100, silently missing earlier months for labs with >100 annual transactions.
