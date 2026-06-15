@@ -6496,13 +6496,40 @@ function toggleCvStructure() {
     if (p) p.style.display = 'none';
   }
 }
+// Compute padding that accommodates scaled fonts/lines at any export multiplier.
+// Both cvDownloadPNG and drawMultiCurve must use the same values so the canvas is
+// sized correctly before draw, and the draw fills it without clipping.
+function _cvComputePads(fSz, fMul, lMul, legMul) {
+  legMul = legMul || 1;
+  const tickFontH  = fSz * 0.95 * fMul;
+  const titleFontH = (fSz + 0.5) * fMul;
+  const legFontH   = fSz * 0.9 * legMul;
+  const tickLen    = 4 * lMul;
+  const tickGap    = 6 * lMul;
+  // pL: Y-title (rotated) half-height + gap + tick-label width + tick marks + gap
+  const yTitleHalfH = titleFontH * 0.55;
+  const yTitleX     = Math.ceil(yTitleHalfH + 6);
+  const yTickW      = tickFontH * 2.0;   // ~4-5 char labels e.g. "−100"
+  const pL = Math.max(62, Math.ceil(yTitleX + yTitleHalfH + 6 + yTickW + tickLen + tickGap));
+  const pR = Math.max(28, 16);
+  // pT: space above plot for chart title
+  const pT = Math.max(32, Math.ceil(titleFontH * 0.7 + 12));
+  // pB: must fit x-tick labels, x-axis title (28×fMul below axis), and legend (38×fMul)
+  const pB = Math.max(52, Math.ceil(Math.max(
+    tickLen + tickGap + tickFontH + 6,
+    28 * fMul + titleFontH + 4,
+    38 * fMul + 1.5 * legMul + legFontH * 0.5 + 8
+  )));
+  return {pL, pR, pT, pB, yTitleX};
+}
+
 function cvDownloadPNG() {
   const canvas=document.getElementById('cv-canvas');
   if(!canvas) return;
-  // Build a square plot area in the export (X-axis length === Y-axis length). The on-screen
-  // canvas can stay any aspect; we re-size the export canvas so plotW === plotH after the
-  // axis padding (pL/pR/pT/pB) kept in sync with drawMultiCurve below.
-  const PAD_L=62, PAD_R=28, PAD_T=32, PAD_B=52;
+  // 600-DPI-class export: scale=4 (DPR-independent), fonts 2.5× on-screen size so they
+  // read correctly at print size. Padding computed dynamically to avoid any clipping.
+  const _fMulExp=2.5, _lMulExp=2.5, _legMulExp=2.5;
+  const {pL:PAD_L, pR:PAD_R, pT:PAD_T, pB:PAD_B} = _cvComputePads(11, _fMulExp, _lMulExp, _legMulExp);
   const cssW0=(parseInt(canvas.style.width)||canvas.offsetWidth||700);
   const cssH0=(parseInt(canvas.style.height)||canvas.offsetHeight||350);
   const pwTarget = Math.max(cssW0 - PAD_L - PAD_R, cssH0 - PAD_T - PAD_B, 320);
@@ -6513,12 +6540,12 @@ function cvDownloadPNG() {
   const comps=canvas._cvCompounds||[];
   drawMultiCurve(off, comps, {
     ...(window._cvCfg||{}),
-    bgStyle:'white', _exportScale:3,
-    _exportPointMul:4,      // point size 4× for export
-    _exportLineMul:4,       // curve + axis line widths 4× for export
-    _exportFontMul:5,       // axis labels + axis titles 5× for export
-    _exportLegendMul:4,     // legend 4× for export
-    _exportBoldTitle:true   // chart title bolded for export
+    bgStyle:'white', _exportScale:4,
+    _exportPointMul:_lMulExp,
+    _exportLineMul:_lMulExp,
+    _exportFontMul:_fMulExp,
+    _exportLegendMul:_legMulExp,
+    _exportBoldTitle:true
   });
   const a=document.createElement('a');
   const names=comps.map(r=>r.Sample_ID).join('_').replace(/[^a-z0-9_]/gi,'_').slice(0,40);
@@ -6547,14 +6574,16 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   const cssW=parseInt(canvas.style.width)||canvas.offsetWidth||700;
   const cssH=parseInt(canvas.style.height)||canvas.offsetHeight||350;
   const exportScale=cfg._exportScale||1;
-  const totalScale=exportScale>1?exportScale*dpr:dpr;
   const _noResize = cfg._noResize || false;
   if (!_noResize) {
-    canvas.width=Math.round(cssW*totalScale);
-    canvas.height=Math.round(cssH*totalScale);
+    // Export: use exportScale directly (DPR-independent) for a consistent pixel count
+    // regardless of display. On-screen: use DPR for HiDPI sharpness.
+    const sc = exportScale > 1 ? exportScale : dpr;
+    canvas.width=Math.round(cssW*sc);
+    canvas.height=Math.round(cssH*sc);
   }
   const ctx=canvas.getContext('2d');
-  if (!_noResize) ctx.scale(exportScale>1?totalScale:dpr, exportScale>1?totalScale:dpr);
+  if (!_noResize) ctx.scale(exportScale > 1 ? exportScale : dpr, exportScale > 1 ? exportScale : dpr);
   const W=cssW, H=cssH;
 
   // Theme
@@ -6573,7 +6602,7 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   const _fMul=cfg._exportFontMul||1;
   const _legMul=cfg._exportLegendMul||1;
   const _titleW=cfg._exportBoldTitle?'700':'500';
-  const pL=62,pR=28,pT=32,pB=52;
+  const {pL,pR,pT,pB,yTitleX}=_cvComputePads(fSz,_fMul,_lMul,_legMul);
   const pw=W-pL-pR,ph=H-pT-pB;
 
   if (!_noResize) { ctx.fillStyle=bgCol; ctx.fillRect(0,0,W,H); }
@@ -6665,7 +6694,7 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   ctx.moveTo(pL,pT);ctx.lineTo(pL,pT+ph);ctx.lineTo(pL+pw,pT+ph);ctx.stroke();
 
   // Axis titles
-  ctx.save();ctx.translate(14,pT+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.save();ctx.translate(yTitleX,pT+ph/2);ctx.rotate(-Math.PI/2);
   ctx.fillStyle=textCol;ctx.font=`${(fSz+0.5)*_fMul}px 'IBM Plex Sans',sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='middle';
   const _cvAt=window._lastAnalysisParams?.assayType||window._lastAssayType||'';
