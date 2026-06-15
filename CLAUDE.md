@@ -253,7 +253,14 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-15 (Round 81: Full Echo app audit — 61 findings fixed; v1.0.67)
+Last session: 2026-06-15 (Round 82: Echo syntax crash fix + CSV diagnostic logging; v1.0.68)
+Hub apps: 10. Version v1.0.68.
+Labcyte_Echo/labcyte_echo.html changes (v1.0.68):
+- Fixed fatal JS SyntaxError introduced by audit rawqc block removal: stray } after if(legendEl) closed drawPlateCanvas early; subsequent } was global-scope syntax error preventing entire script from loading.
+- Also restored correct if(legendEl) wrapping for plate legend mode branches.
+- Added diagnostic logging in _parseEchoCSV when no data rows found: reports which columns (SampleID/Barcode/Well/Conc) were located and how many rows were skipped for each reason.
+
+Previous session: 2026-06-15 (Round 81: Full Echo app audit — 61 findings fixed; v1.0.67)
 Hub apps: 10. Version v1.0.67.
 Labcyte_Echo/labcyte_echo.html changes (v1.0.67):
 - CRITICAL: Fixed 4PL Jacobian sign bug in _4plJac3 and _4plJac4 (∂f/∂h was positive — Hill-slope gradient was negated, LM optimizer fought itself on every iteration). _4plJac4_gain was already correct.
