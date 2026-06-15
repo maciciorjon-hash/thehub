@@ -8655,18 +8655,18 @@ function _unhideAllResultsCols() {
     renderStocks(); _egSetCustom(); _egTrigger();
   };
 
-  // ── Suggest intermediates ────────────────────────────────────────────────
+  // ── Suggest intermediates (coordinate-descent optimisation) ─────────────
   window._egSuggest=function(){
-    var vol =parseFloat(document.getElementById('eg-vol').value)||0;
-    var dmso=parseFloat(document.getElementById('eg-dmso').value)||0;
-    var topV=parseFloat(document.getElementById('eg-top-val').value)||0;
-    var topU=parseFloat(document.getElementById('eg-top-unit').value)||1e-9;
-    var pts =parseInt(document.getElementById('eg-pts').value)||0;
-    var df  =parseFloat(document.getElementById('eg-df').value)||0;
+    var vol    =parseFloat(document.getElementById('eg-vol').value)||0;
+    var dmso   =parseFloat(document.getElementById('eg-dmso').value)||0;
+    var topV   =parseFloat(document.getElementById('eg-top-val').value)||0;
+    var topU   =parseFloat(document.getElementById('eg-top-unit').value)||1e-9;
+    var pts    =parseInt(document.getElementById('eg-pts').value)||0;
+    var df     =parseFloat(document.getElementById('eg-df').value)||0;
     var interVolEl=document.getElementById('eg-inter-vol');
-    var interVol=(interVolEl?parseFloat(interVolEl.value)||30:30); // µL
-    var cSrc=toM(_egS[0].val,_egS[0].unit);
-    var n=_egS.length-1; // number of inters
+    var interVol=(interVolEl?parseFloat(interVolEl.value)||30:30);
+    var cSrc   =toM(_egS[0].val,_egS[0].unit);
+    var n      =_egS.length-1;
 
     var wb=document.getElementById('eg-warn-box');
     function showErr(msg){
@@ -8674,33 +8674,33 @@ function _unhideAllResultsCols() {
         'border-radius:6px;padding:8px 12px;font-size:12px;color:var(--text1);margin-bottom:8px">'+
         '⛔ '+msg+'</div>';
     }
+    function fmtCstock(c){
+      if(c>=1e-3) return +((c*1e3).toPrecision(3))+' mM';
+      if(c>=1e-6) return +((c*1e6).toPrecision(3))+' µM';
+      return +((c*1e9).toPrecision(3))+' nM';
+    }
 
-    // ── Basic param check ──────────────────────────────────────────────
     if(!vol||!dmso||!cSrc||!topV||pts<2||df<=1){
       showErr('Set all assay parameters and Source concentration first.');return;
     }
     if(n===0){showErr('Add at least one intermediate first (+ button).');return;}
 
-    var maxT=vol*1000*dmso/100; // max nL per assay well
-
-    // ── Fundamental DMSO feasibility ──────────────────────────────────
+    var maxT=vol*1000*dmso/100;
     if(maxT<DROP){
-      showErr('DMSO budget too low: max transfer is <strong>'+fmtVol(maxT)+' nL</strong> but Echo minimum is 2.5 nL. '+
-        'Increase assay volume or DMSO %.');return;
+      showErr('DMSO budget too low: max transfer is <strong>'+fmtVol(maxT)+
+        ' nL</strong> but Echo minimum is 2.5 nL. Increase assay volume or DMSO %.');return;
     }
 
-    // ── Build plan concentrations ──────────────────────────────────────
     var topM=topV*topU;
     var planM=[];
     for(var p=0;p<pts;p++) planM.push(topM/Math.pow(df,p));
     var cMin=planM[planM.length-1];
 
-    // ── Find first concentration Source cannot feasibly cover ──────────
+    // ── Find first point Source cannot cover ──────────────────────────
     var cFirst=null;
     for(var p=0;p<planM.length;p++){
-      var vI=(vol*planM[p]*1000)/cSrc;
-      var vA=Math.round(vI/DROP)*DROP;
-      if(vA<DROP||vA>maxT){cFirst=planM[p];break;}
+      var _vI=vol*planM[p]*1000/cSrc, _vA=Math.round(_vI/DROP)*DROP;
+      if(_vA<DROP||_vA>maxT){cFirst=planM[p];break;}
     }
     if(!cFirst){
       if(wb) wb.innerHTML='<div style="background:rgba(99,102,241,.08);border:1px solid var(--accent);'+
@@ -8709,32 +8709,20 @@ function _unhideAllResultsCols() {
       return;
     }
 
-    // ── Assay-derived anchors ──────────────────────────────────────────
-    // Inter 1: needs to reach cFirst with maxT nL  → cInterTop = cFirst × vol×1000 / maxT
-    // Inter n: needs to reach cMin  with DROP  nL  → cInterBot = cMin  × vol×1000 / DROP
-    var cInterTop=cFirst*vol*1000/maxT;
-    var cInterBot=cMin*vol*1000/DROP;
+    // Feasibility anchors
+    var cInterTop=cFirst*vol*1000/maxT;  // min C₁ so first infeasible-from-source point fits in ≤ maxT nL
+    var cInterBot=cMin*vol*1000/DROP;    // min Cₙ so lowest point gets ≥ 1 drop
 
-    // ── Check Source can provide cInterTop via Echo into inter plate ───
-    // v_prep = cInterTop × interVol×1000 / cSrc must be ≥ DROP
-    var vPrepSrc=cInterTop*interVol*1000/cSrc; // nL of Source into inter plate
     if(cInterTop>cSrc){
-      var needed=(cFirst*1e9).toPrecision(3);
-      showErr('Inter 1 would need to be <strong>'+fmtCstock(cInterTop)+'</strong>, which exceeds Source concentration. '+
-        'Use a more concentrated Source stock, or lower the top concentration / increase DMSO %.');return;
-    }
-    if(vPrepSrc<DROP){
-      // Can't prepare inter 1 by Echo — would need < 2.5 nL of Source into inter plate
-      // → need an even more dilute inter plate preparation — but user can just manually dilute
-      // Show warning but still suggest (they may use manual dilution)
+      showErr('Inter 1 would need to be <strong>'+fmtCstock(cInterTop)+'</strong>, which exceeds Source. '+
+        'Use a more concentrated Source, or lower top concentration / increase DMSO %.');return;
     }
 
-    // ── Auto-add intermediates if needed for full coverage ─────────────
+    // ── Auto-add intermediates if chain dilution is insufficient ──────
+    var maxDilPerStep=interVol*1000/DROP;
     var nMin=1;
-    if(cInterTop>DROP&&cInterBot>0&&maxT>DROP){
-      nMin=Math.ceil(1+Math.log(cInterTop/cInterBot)/Math.log(maxT/DROP));
-    }
-    nMin=Math.max(nMin,1);
+    if(cInterTop>0&&cInterBot>0&&maxDilPerStep>1)
+      nMin=Math.max(1,Math.ceil(1+Math.log(cInterTop/cInterBot)/Math.log(maxDilPerStep)));
     var autoAdded=0;
     if(n<nMin){
       autoAdded=nMin-n;
@@ -8742,125 +8730,102 @@ function _unhideAllResultsCols() {
       n=_egS.length-1;
     }
 
-    // ── Inter plate dilution chain feasibility ─────────────────────────
-    // Max dilution achievable per Echo step into inter plate:
-    var maxDilPerStep=interVol*1000/DROP; // = 12000 for 30µL / 2.5nL
-
-    // Total dilution needed from cInterTop down to cInterBot through n-1 inter-to-inter steps
-    // (step 0 = Source→Inter1 already handled; steps 1..n-1 = Inter k-1 → Inter k)
-    var totalDilNeeded=(n>1)?(cInterTop/cInterBot):1;
-    var maxDilChain=Math.pow(maxDilPerStep,n-1); // inter-to-inter steps only
-    if(n>1&&totalDilNeeded>maxDilChain){
-      var achievable=Math.pow(maxDilPerStep,n-1);
-      showErr('Cannot dilute '+fmtCstock(cInterTop)+' down to '+fmtCstock(cInterBot)+
-        ' in '+(n-1)+' inter→inter Echo step(s). Max dilution per step: '+maxDilPerStep.toLocaleString('en-GB')+
-        'x ('+interVol+' µL plate ÷ 2.5 nL drop). '+
-        'Add more intermediates or use larger intermediate plates.');return;
-    }
-
-    // ── If cInterTop < cInterBot (shouldn't happen normally) ──────────
-    if(cInterTop<cInterBot) cInterTop=cInterBot;
-
-    // ── Helpers ───────────────────────────────────────────────────────
-    function roundUp(c){
-      if(!c||!isFinite(c)||c<=0) return 0;
-      var mag=Math.pow(10,Math.floor(Math.log10(c)));
-      return Math.ceil(c/mag)*mag;   // always round UP to 1-sig-fig nice number
-    }
-    function roundDown(c){
-      if(!c||!isFinite(c)||c<=0) return 0;
-      var mag=Math.pow(10,Math.floor(Math.log10(c)));
-      return Math.floor(c/mag)*mag;  // always round DOWN
-    }
-    function roundNice(c){
-      if(!c||!isFinite(c)||c<=0) return 0;
-      var mag=Math.pow(10,Math.floor(Math.log10(c)));
-      return Math.round(c/mag)*mag;
-    }
-    function fmtCstock(c){
-      if(c>=1e-3) return +((c*1e3).toPrecision(3))+'mM';
-      if(c>=1e-6) return +((c*1e6).toPrecision(3))+' µM';
-      return +((c*1e9).toPrecision(3))+' nM';
-    }
-    // assignStock: roundMode = 'up' | 'down' | 'near'; returns the rounded concentration
-    function assignStock(k, cK, roundMode){
-      var nice = roundMode==='up' ? roundUp(cK) : roundMode==='down' ? roundDown(cK) : roundNice(cK);
-      if(!nice) return cK;
-      if(nice>=1e-3){_egS[k].val=+(nice*1e3).toPrecision(2);_egS[k].unit='1e-3';}
-      else if(nice>=1e-6){_egS[k].val=+(nice*1e6).toPrecision(2);_egS[k].unit='1e-6';}
-      else{_egS[k].val=+(nice*1e9).toPrecision(2);_egS[k].unit='1e-9';}
-      return nice;
-    }
-
-    // ── Compute and assign inter concentrations ────────────────────────
-    // Inter 1 rounds UP  → highest plan point always reachable with ≤ maxT nL
-    // Inter n rounds DOWN → lowest  plan point always reachable with ≥ DROP nL
-    var warnings=[];
-    var prevC=cSrc;
-    for(var k=1;k<=n;k++){
-      var t=(n===1)?0:(k-1)/(n-1);
-      // Log-interpolation between assay anchors
-      var cK_assay=(n===1)?cInterTop:cInterTop*Math.pow(cInterBot/cInterTop,t);
-
-      // Enforce inter plate prep constraint: inter must be achievable by Echo from prev stock
-      var cK_prep_min=DROP*prevC/(interVol*1000); // min inter = 1 drop of prev into interVol
-      var cK=Math.max(cK_assay, cK_prep_min);
-
-      // Must not exceed previous stock
-      if(cK>prevC){
-        warnings.push('Inter '+k+': can\'t be more concentrated than previous stock ('+fmtCstock(prevC)+')');
-        cK=prevC*0.5;
+    // ── Monotone simulation ───────────────────────────────────────────
+    // Always uses highest-concentration feasible stock (no jumps).
+    // Penalises infeasibility heavily; then minimises Σ(relErr²);
+    // tiny DMSO tie-break favours smaller transfers (higher stock conc).
+    var DMSO_W=1/(vol*1000*planM.length*1e4);
+    function simulate(interConcs){
+      var stocks=[cSrc].concat(interConcs);
+      var sqErr=0,totalVol=0,infeas=0,si=0;
+      for(var p=0;p<planM.length;p++){
+        var P=planM[p],ok=false;
+        while(si<stocks.length){
+          var C=stocks[si],vI=vol*P*1000/C,vA=Math.round(vI/DROP)*DROP;
+          if(vA>=DROP&&vA<=maxT){
+            sqErr+=Math.pow((vA*C/(vol*1000)-P)/P,2);
+            totalVol+=vA; ok=true; break;
+          } else if(vI<DROP*0.5){
+            si++; // stock too concentrated → advance to next (more dilute)
+          } else {
+            infeas++; ok=true; break; // stock too dilute → all remaining are worse → infeasible
+          }
+        }
+        if(!ok) infeas++;
       }
-
-      // If we had to raise above assay target, note it
-      if(cK>cK_assay*1.5){
-        warnings.push('Inter '+k+' raised to '+fmtCstock(roundNice(cK))+
-          ' — Echo min drop (2.5 nL) into '+interVol+' µL inter plate limits dilution to '+
-          fmtCstock(cK_prep_min)+' minimum');
-      }
-
-      // k=1: roundUp guarantees cFirst is reachable (transfer < maxT)
-      // k=n: roundDown guarantees cMin is reachable (transfer > DROP)
-      // middle: roundNice
-      var rMode=(k===1)?'up':(k===n)?'down':'near';
-      var assigned=assignStock(k, cK, rMode);
-      prevC=assigned||cK;
+      return {sqErr:sqErr,totalVol:totalVol,infeas:infeas};
+    }
+    function score(interConcs){
+      var r=simulate(interConcs);
+      return r.infeas*1e9+r.sqErr+DMSO_W*r.totalVol;
     }
 
+    // ── Initial guess: log-interpolation between anchors ──────────────
+    var current=[];
+    for(var k=0;k<n;k++){
+      var t=n===1?0:k/(n-1);
+      current.push(cInterTop*Math.pow(cInterBot/cInterTop,t));
+    }
+    for(var k=1;k<n;k++) if(current[k]>=current[k-1]) current[k]=current[k-1]*0.5;
+
+    // ── Coordinate descent (500 log-spaced samples × 6 iterations) ────
+    var S=500,ITERS=6;
+    for(var iter=0;iter<ITERS;iter++){
+      for(var k=0;k<n;k++){
+        var prevC=k===0?cSrc:current[k-1];
+        var nextC=k===n-1?0:current[k+1];
+        var Ck_max=prevC*(1-1e-9);
+        var Ck_min=Math.max(
+          prevC*DROP/(interVol*1000),   // achievable from previous stock by Echo
+          nextC>0?nextC*(1+1e-9):0,     // must stay above next intermediate
+          k===0?cInterTop:0,            // inter 1 must cover first infeasible point
+          k===n-1?cInterBot:0           // last inter must cover lowest point
+        );
+        if(Ck_min>=Ck_max) continue;
+        var bestCk=current[k],bestScore=score(current);
+        for(var s=0;s<S;s++){
+          var Ck=Ck_min*Math.pow(Ck_max/Ck_min,s/(S-1));
+          var trial=current.slice(); trial[k]=Ck;
+          var sc=score(trial);
+          if(sc<bestScore){bestScore=sc;bestCk=Ck;}
+        }
+        current[k]=bestCk;
+      }
+    }
+
+    // ── Write optimised concentrations to stocks ──────────────────────
+    for(var k=0;k<n;k++){
+      var c=current[k],kk=k+1;
+      if(c>=1e-3){_egS[kk].val=parseFloat((c*1e3).toPrecision(3));_egS[kk].unit='1e-3';}
+      else if(c>=1e-6){_egS[kk].val=parseFloat((c*1e6).toPrecision(3));_egS[kk].unit='1e-6';}
+      else{_egS[kk].val=parseFloat((c*1e9).toPrecision(3));_egS[kk].unit='1e-9';}
+    }
     window._egS=_egS;
     renderStocks(); _egSetCustom(); _egTrigger();
 
-    // ── Post-assignment coverage simulation ───────────────────────────
-    var feasible=0;
-    for(var p=0;p<planM.length;p++){
-      var bestDelta=Infinity, feasPt=false;
-      for(var si=0;si<_egS.length;si++){
-        var csM=toM(_egS[si].val,_egS[si].unit);
-        if(!csM) continue;
-        var vIdeal2=(vol*planM[p]*1000)/csM;
-        var vAdj2=Math.round(vIdeal2/DROP)*DROP;
-        if(vAdj2<DROP||vAdj2>maxT) continue;
-        var delta2=Math.abs(vAdj2*csM/(vol*1000)-planM[p])/planM[p];
-        if(delta2<bestDelta){bestDelta=delta2;feasPt=true;}
-      }
-      if(feasPt) feasible++;
-    }
-
     // ── Info banner ───────────────────────────────────────────────────
-    var autoHtml=autoAdded>0?'<br><span style="color:#22c55e">✦ Added <strong>'+autoAdded+'</strong> intermediate'+(autoAdded===1?'':'s')+' automatically for full coverage.</span>':'';
-    var info='<strong>Suggested:</strong> '+_egS.slice(1).map(function(s){
+    var finalSim=simulate(current);
+    var rmsErr=Math.sqrt(finalSim.sqErr/planM.length);
+    var feasible=planM.filter(function(P){
+      var stocks=[cSrc].concat(current);
+      for(var si2=0;si2<stocks.length;si2++){
+        var vA=Math.round(vol*P*1000/stocks[si2]/DROP)*DROP;
+        if(vA>=DROP&&vA<=maxT) return true;
+      }
+      return false;
+    }).length;
+    var autoHtml=autoAdded>0?'<br><span style="color:#22c55e">✦ Added <strong>'+autoAdded+
+      '</strong> intermediate'+(autoAdded===1?'':'s')+' automatically.</span>':'';
+    var info='<strong>Optimised:</strong> '+_egS.slice(1).map(function(s){
       return s.label+' = '+s.val+' '+(s.unit==='1e-3'?'mM':s.unit==='1e-6'?'µM':'nM');
-    }).join(' &rsaquo; ');
-    var warnHtml=warnings.length?'<br><span style="color:#f59e0b">⚠ '+warnings.join('; ')+'</span>':'';
-    var coverageHtml='';
-    if(feasible>=pts){
-      coverageHtml='<br><span style="color:#22c55e">✓ All '+pts+'/'+pts+' concentration points covered.</span>';
-    } else {
-      coverageHtml='<br><span style="color:#f59e0b">⚠ '+feasible+'/'+pts+' points feasible — check DMSO % or assay volume.</span>';
-    }
+    }).join(' › ');
+    var coverageHtml=feasible>=pts
+      ?'<br><span style="color:#22c55e">✓ '+pts+'/'+pts+' points covered · RMS Δ '+
+        (rmsErr*100).toFixed(2)+'%</span>'
+      :'<br><span style="color:#f59e0b">⚠ '+feasible+'/'+pts+' points feasible — add more intermediates or increase DMSO %.</span>';
     if(wb) wb.innerHTML='<div style="background:rgba(99,102,241,.08);border:1px solid var(--accent);'+
       'border-radius:6px;padding:8px 12px;font-size:12px;color:var(--text2);margin-bottom:8px">'+
-      info+autoHtml+warnHtml+coverageHtml+'</div>';
+      info+autoHtml+coverageHtml+'</div>';
   };
 
   // ── Main calculation (live) ───────────────────────────────────────────────
@@ -8897,31 +8862,34 @@ function _unhideAllResultsCols() {
       return;
     }
 
-    // Build stock list (all stocks, for best-match selection)
+    // Build stock list sorted highest→lowest concentration for monotone assignment
     var sorted=_egS.map(function(s,i){
       return {i:i,label:s.label,cM:toM(s.val,s.unit)};
-    }).filter(function(s){return s.cM>0;});
+    }).filter(function(s){return s.cM>0;})
+      .sort(function(a,b){return b.cM-a.cM;});
 
-    // Build rows — pick stock with MINIMUM relative error |C_final − C_plan| / C_plan
-    // Always round to nearest 2.5 nL drop; never exceed maxT (DMSO limit)
-    var rows=[],infeas=0;
+    // Build rows — monotone stock assignment: always use the highest-concentration
+    // feasible stock (minimises DMSO); advance to next stock only when current is
+    // too concentrated (rounds to 0 drops). Never jump backwards.
+    var rows=[],infeas=0,_si=0;
     for(var p=0;p<pts;p++){
-      var planM=topM/Math.pow(df,p);
-      var chosen=null, bestErr=Infinity;
-      sorted.forEach(function(s){
-        var cS=s.cM;
-        var vI=(vol*planM*1000)/cS;          // ideal nL
-        var vA=Math.round(vI/DROP)*DROP;     // nearest 2.5 nL drop
-        if(vA<DROP||vA>maxT) return;         // must be ≥1 drop AND ≤ DMSO limit
-        var cFinal=vA*cS/(vol*1000);         // achievable concentration (M)
-        var err=Math.abs(cFinal-planM)/planM; // relative error
-        if(err<bestErr){
-          bestErr=err;
-          chosen={origIdx:s.i,label:s.label,cM:cS,vIdeal:vI,vAdj:vA,relErr:err};
+      var planMp=topM/Math.pow(df,p);
+      var chosen=null;
+      while(_si<sorted.length){
+        var s=sorted[_si],cS=s.cM;
+        var vI=(vol*planMp*1000)/cS,vA=Math.round(vI/DROP)*DROP;
+        if(vA>=DROP&&vA<=maxT){
+          chosen={origIdx:s.i,label:s.label,cM:cS,vIdeal:vI,vAdj:vA,
+                  relErr:Math.abs(vA*cS/(vol*1000)-planMp)/planMp};
+          break;
+        } else if(vI<DROP*0.5){
+          _si++; // stock too concentrated (rounds to 0) → switch to next, more dilute
+        } else {
+          break; // stock too dilute (v > maxT) → all remaining stocks worse → infeasible
         }
-      });
+      }
       if(!chosen) infeas++;
-      rows.push({pt:p+1,planNM:planM*1e9,planM:planM,chosen:chosen});
+      rows.push({pt:p+1,planNM:planMp*1e9,planM:planMp,chosen:chosen});
     }
 
     // Summary bar
