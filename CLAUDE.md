@@ -253,7 +253,12 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-15 (Round 79: Hub unlock system + Echo PNG fix; v1.0.65)
+Last session: 2026-06-15 (Round 80: Echo assay-specific parameter labels; v1.0.66)
+Hub apps: 10. Version v1.0.66.
+Labcyte_Echo/labcyte_echo.html changes (v1.0.66):
+- Assay-specific parameter labels throughout all plots: CTG shows "Span (%)", Gain shows "Emax", Displacement hides Dmax entirely (no such metric). Fixed: scatter X/Y axis dropdown (dmaxLbl ternary + spread exclusion for displacement), scatter default Y key (DC50_nM for displacement), scatter filter label ("Span ≥" / "Dmax ≥" / hidden for displacement), selectivity metric dropdowns (_selDmaxOpt), box plot yVars (AbsDC50 hibit-only, Dmax_pct excluded for displacement), chart axLabelMap fallback (reads _bpVarLabels), _selMetricLabel (reads _bpVarLabels), curves Compare sort options (_cvDmaxLbl), renderCvStats dmaxLbl/dmaxColHdr (_isCTG branch), PDF stat line (_pdfDmaxLbl), plate legend ("Low/High Span" etc.).
+
+Previous session: 2026-06-15 (Round 79: Hub unlock system + Echo PNG fix; v1.0.65)
 Hub apps: 10. Version v1.0.65.
 hub-shell.html changes (v1.0.61–v1.0.64):
 - v1.0.61: Auth glitch fix — #hub-home starts at opacity:0, fades in after onAuthStateChanged fires + 80ms grace period (setTimeout _showHub 80); 1.5s fallback ensures hub always appears. _hubShown flag prevents double-firing.
