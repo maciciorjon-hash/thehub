@@ -332,7 +332,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
     <strong style="color:var(--text);font-size:12px;">v1.0.80 &mdash; 15 Jun 2026</strong><br>
-    &#9679; <b>Hub background</b>: Replaced Miyazaki sky with acoustic ripple animation — each ripple uses one of the 10 app accent colors, radiating outward like sound waves on liquid<br>
+    &#9679; <b>Hub background</b>: New marble ripple animation — rings expand then linger for 20–30 s before slowly fading; 22 rings pre-seeded at startup; low opacity so overlapping rings build a marble texture; 10 app accent colors<br>
     <br>
     <strong style="color:var(--text);font-size:12px;">v1.0.79 &mdash; 15 Jun 2026</strong><br>
     &#9679; <b>Echo Gradient Planner</b>: Content now centered on screen (max-width 1300px, auto margins); stocks card given more space (flex-basis 360px)<br>
@@ -2433,107 +2433,107 @@ document.addEventListener('click',function(e){
   document.documentElement.setAttribute('data-theme', t);
 })();
 
-// ── Background: Acoustic ripples — one color per Hub app ─────────────────
+// ── Background: Marble ripples — rings expand then linger ────────────────
 (function(){
   var canvas = document.getElementById('hub-bg-canvas');
-  var ctx = canvas.getContext('2d');
+  var ctx    = canvas.getContext('2d');
   var W = 0, H = 0, NAV_H = 62;
 
-  // One accent color per Hub app
-  var COLORS = [
-    '#ff5760', // Echo Data Analysis
-    '#e08c30', // LabMate
-    '#7c6fd4', // Degradation Explorer
-    '#0079b9', // Lab Designer
-    '#43a047', // Helix
-    '#9c6fd4', // Protein Tools
-    '#26a69a', // Spectra
-    '#e91e63', // LDI
-    '#00acc1', // Iceberg
-    '#8d6e63'  // Cuppa
-  ];
-
-  var ripples = [];
-  var elapsed = 0;
-  var nextSpawn = 400;
+  var HEX = ['#ff5760','#e08c30','#7c6fd4','#0079b9','#43a047',
+             '#9c6fd4','#26a69a','#e91e63','#00acc1','#8d6e63'];
 
   var rs = (Date.now() ^ (Date.now() >>> 16)) & 0x7fffffff;
   function rng(){rs=(rs*1664525+1013904223)&0x7fffffff;return rs/0x7fffffff;}
-  function rr(lo,hi){return lo+rng()*(hi-lo);}
-  function ri(lo,hi){return Math.floor(lo+rng()*(hi-lo+1));}
+  function rr(a,b){return a+rng()*(b-a);}
+  function ri(a,b){return Math.floor(a+rng()*(b-a+1));}
+
+  var ripples  = [];
+  var lastSpawn = 0, nextSpawn = 500;
+
+  // Ripple lifecycle fractions (of total life):
+  //   0 – EXPAND_F  : expand to full radius (ease-out cubic)
+  //   EXPAND_F – HOLD : hold at full radius
+  //   HOLD – 1.0    : fade out
+  var EXPAND_F = 0.10;
+  var HOLD_F   = 0.68;
 
   function spawn(){
     ripples.push({
-      x:    rr(W*0.06, W*0.94),
-      y:    rr(NAV_H+60, H*0.90),
-      col:  COLORS[ri(0, COLORS.length-1)],
-      maxR: rr(160, 380),
-      rings: 3,
-      gap:  rr(0.07, 0.11),
-      spd:  rr(0.00050, 0.00090),
-      p:    0
+      x:       rr(W * 0.04, W * 0.96),
+      y:       rr(NAV_H + 30, H * 0.94),
+      col:     HEX[ri(0, HEX.length - 1)],
+      maxR:    rr(110, 370),
+      rings:   ri(2, 4),
+      ringGap: rr(16, 38),   // px between concentric rings
+      born:    performance.now(),
+      life:    rr(22000, 34000),
+      maxA:    rr(0.07, 0.14)  // low opacity — many rings overlap → marble
     });
   }
 
   function init(){
-    W = window.innerWidth;
-    H = window.innerHeight;
-    canvas.width  = W;
-    canvas.height = H;
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
   }
 
-  var lastTs = 0;
   function draw(ts){
-    var dt = lastTs ? Math.min(ts - lastTs, 64) : 16;
-    lastTs = ts;
-
     ctx.clearRect(0, 0, W, H);
+    var dark   = document.documentElement.getAttribute('data-theme') === 'dark';
+    var aScale = dark ? 1.0 : 0.60;
 
-    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-    var baseA = dark ? 0.40 : 0.22;
-
-    elapsed += dt;
-    if(elapsed >= nextSpawn){
+    // Spawn one ripple when interval has elapsed
+    if(ts - lastSpawn >= nextSpawn){
       spawn();
-      elapsed = 0;
-      nextSpawn = rr(900, 2200);
+      lastSpawn = ts;
+      nextSpawn = rr(380, 820);
     }
 
     ripples = ripples.filter(function(r){
-      r.p = Math.min(r.p + r.spd * dt, 1);
-      var alive = false;
+      var p = (performance.now() - r.born) / r.life;
+      if(p >= 1) return false;
 
+      // Radius: fast ease-out expansion in first EXPAND_F, then hold
+      var radP  = Math.min(1, p / EXPAND_F);
+      var eased = 1 - Math.pow(1 - radP, 3);   // cubic ease-out
+
+      // Alpha: rise → hold → fall
+      var alpha;
+      if(p < EXPAND_F){
+        alpha = r.maxA * (p / EXPAND_F);
+      } else if(p < EXPAND_F + HOLD_F){
+        alpha = r.maxA;
+      } else {
+        var fadeP = (p - EXPAND_F - HOLD_F) / (1 - EXPAND_F - HOLD_F);
+        alpha = r.maxA * (1 - fadeP);
+      }
+      alpha *= aScale;
+
+      // Draw concentric rings from outer inward
       for(var i = 0; i < r.rings; i++){
-        var p = r.p - i * r.gap;
-        if(p <= 0){ alive = true; continue; }
-        if(p >= 1) continue;
-        alive = true;
-
-        var radius = p * r.maxR;
-        var alpha  = Math.sin(p * Math.PI) * baseA * Math.pow(0.68, i);
-        var lw     = Math.max(0.4, (1 - p) * 2.0 + 0.4);
-
+        var radius = eased * r.maxR - i * r.ringGap;
+        if(radius <= 0) continue;
         ctx.beginPath();
         ctx.arc(r.x, r.y, radius, 0, 6.2832);
         ctx.strokeStyle = r.col;
-        ctx.globalAlpha = alpha;
-        ctx.lineWidth   = lw;
+        ctx.globalAlpha = alpha * Math.pow(0.72, i);
+        ctx.lineWidth   = Math.max(0.4, 1.4 - i * 0.3);
         ctx.stroke();
       }
 
-      ctx.globalAlpha = 1;
-      return alive;
+      return true;
     });
 
+    ctx.globalAlpha = 1;
     requestAnimationFrame(draw);
   }
 
   window.addEventListener('resize', init);
   init();
-  // Seed a few ripples so the canvas isn't empty on load
-  for(var _i=0;_i<5;_i++){
+
+  // Pre-seed so canvas isn't empty on load — scatter born times across the full lifetime range
+  for(var _i = 0; _i < 22; _i++){
     spawn();
-    ripples[ripples.length-1].p = rr(0.05, 0.60);
+    ripples[_i].born -= rr(1000, 30000);
   }
   requestAnimationFrame(draw);
 })();
