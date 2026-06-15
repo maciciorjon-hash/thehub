@@ -327,10 +327,13 @@ body.hub-announcing #hub-home{margin-top:98px;}
   <div class="opts-divider"></div>
   <div id="admin-auth-section" style="padding:6px 0 2px;"></div>
   <div class="opts-version-row" style="margin-top:8px;">
-    <span class="opts-version">The Hub &middot; v1.0.79</span>
+    <span class="opts-version">The Hub &middot; v1.0.80</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v1.0.80 &mdash; 15 Jun 2026</strong><br>
+    &#9679; <b>Hub background</b>: Replaced Miyazaki sky with acoustic ripple animation — each ripple uses one of the 10 app accent colors, radiating outward like sound waves on liquid<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v1.0.79 &mdash; 15 Jun 2026</strong><br>
     &#9679; <b>Echo Gradient Planner</b>: Content now centered on screen (max-width 1300px, auto margins); stocks card given more space (flex-basis 360px)<br>
     <br>
@@ -2430,352 +2433,109 @@ document.addEventListener('click',function(e){
   document.documentElement.setAttribute('data-theme', t);
 })();
 
-// ── Background: Miyazaki sky — flying objects, physics, card bonks ────────
+// ── Background: Acoustic ripples — one color per Hub app ─────────────────
 (function(){
   var canvas = document.getElementById('hub-bg-canvas');
   var ctx = canvas.getContext('2d');
-  var P = 2;
+  var W = 0, H = 0, NAV_H = 62;
+
+  // One accent color per Hub app
+  var COLORS = [
+    '#ff5760', // Echo Data Analysis
+    '#e08c30', // LabMate
+    '#7c6fd4', // Degradation Explorer
+    '#0079b9', // Lab Designer
+    '#43a047', // Helix
+    '#9c6fd4', // Protein Tools
+    '#26a69a', // Spectra
+    '#e91e63', // LDI
+    '#00acc1', // Iceberg
+    '#8d6e63'  // Cuppa
+  ];
+
+  var ripples = [];
+  var elapsed = 0;
+  var nextSpawn = 400;
 
   var rs = (Date.now() ^ (Date.now() >>> 16)) & 0x7fffffff;
   function rng(){rs=(rs*1664525+1013904223)&0x7fffffff;return rs/0x7fffffff;}
   function rr(lo,hi){return lo+rng()*(hi-lo);}
-  function ri(lo,hi){return Math.floor(rr(lo,hi+0.9999));}
-  function rp(arr){return arr[Math.floor(rng()*arr.length)];}
-  function snap(v){return Math.round(v/P)*P;}
+  function ri(lo,hi){return Math.floor(lo+rng()*(hi-lo+1));}
 
-  var NAV_H=62, W=0, H=0;
-  var clouds=[], specials=[], lastTs=null;
-  var MAX_SPEC=8;
-
-  // Depth layers: far objects are tiny/faint/slow; close ones still modest/smoother
-  var DEPTHS=[
-    {scale:0.11,aMin:0.04,aMax:0.09,spd:0.18},
-    {scale:0.11,aMin:0.04,aMax:0.09,spd:0.18},
-    {scale:0.19,aMin:0.07,aMax:0.15,spd:0.34},
-    {scale:0.19,aMin:0.07,aMax:0.15,spd:0.34},
-    {scale:0.30,aMin:0.12,aMax:0.22,spd:0.56},
-    {scale:0.30,aMin:0.12,aMax:0.22,spd:0.56},
-    {scale:0.44,aMin:0.20,aMax:0.36,spd:0.88},
-    {scale:0.44,aMin:0.20,aMax:0.36,spd:0.88}
-  ];
-
-  // Particle palettes: [dark-mode color, light-mode color] pairs
-  var PCOLS=[
-    ['rgba(255,255,255,1)','rgba(90,100,160,1)'],
-    ['rgba(200,220,255,1)','rgba(70,100,210,1)'],
-    ['rgba(255,220,180,1)','rgba(200,120,40,1)'],
-    ['rgba(180,210,255,1)','rgba(50,100,200,1)'],
-    ['rgba(220,200,255,1)','rgba(130,80,200,1)'],
-    ['rgba(255,240,200,1)','rgba(180,130,30,1)'],
-    ['rgba(200,240,220,1)','rgba(40,140,90,1)']
-  ];
-  function mkCloud(scatter){
-    var dir=rng()>0.5?1:-1;
-    var r=rng()>0.18?rr(1.5,5.5):rr(5.5,13); // 82% small, 18% larger
-    var spd=rr(0.010,0.050);
-    var y=scatter?rr(0.05,0.92)*H:rr(0.05,0.92)*H;
-    if(y<NAV_H+10)y=NAV_H+10;
-    var x=scatter?rr(-20,W+20):(dir>0?-r*2:W+r*2);
-    var pi=ri(0,PCOLS.length-1);
-    var osc=rng()>0.48,oscAmp=rr(3,16),oscSpd=rr(0.003,0.009),oscPh=rng()*Math.PI*2;
-    return{x:x,y:y,r:r,spd:spd,dir:dir,
-           darkAlpha:rr(0.05,0.20),lightAlpha:rr(0.08,0.26),
-           darkCol:PCOLS[pi][0],lightCol:PCOLS[pi][1],
-           osc:osc,oscAmp:oscAmp,oscSpd:oscSpd,oscPh:oscPh};
-  }
-  function drawCloud(c){
-    var dark=document.documentElement.getAttribute('data-theme')==='dark';
-    var a=dark?c.darkAlpha:c.lightAlpha;
-    var col=dark?c.darkCol:c.lightCol;
-    ctx.globalAlpha=a;
-    ctx.beginPath();ctx.arc(c.x,c.y,c.r,0,6.2832);
-    ctx.fillStyle=col;ctx.fill();
-    var gr=c.r*2.6;
-    var g=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,gr);
-    g.addColorStop(0,dark?'rgba(255,255,255,0.09)':'rgba(60,80,160,0.10)');
-    g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.beginPath();ctx.arc(c.x,c.y,gr,0,6.2832);
-    ctx.fillStyle=g;ctx.fill();
-    ctx.globalAlpha=1;
-  }
-
-  var STYPES=['plane','plane','zeppelin','balloon','ufo','pirate','pirate','castle','whale','dragon','dragon','carpet'];
-  var SC=[['#d4e4f4','#9ab0c8'],['#f4ead4','#c8a878'],['#d4f4ea','#78c8a0'],
-          ['#f4d4ea','#c878a8'],['#ead4f4','#9878c8'],['#f4f0d4','#c8b878']];
-  var YCFG={
-    plane:{yl:.04,yh:.26,sl:1.2,sh:2.6},
-    zeppelin:{yl:.08,yh:.48,sl:.20,sh:.52},
-    balloon:{yl:.12,yh:.60,sl:.14,sh:.34},
-
-    ufo:{yl:.04,yh:.38,sl:.52,sh:1.2},
-    pirate:{yl:.22,yh:.65,sl:.16,sh:.38},
-    castle:{yl:.15,yh:.60,sl:.07,sh:.20},
-    whale:{yl:.18,yh:.63,sl:.22,sh:.50},
-    dragon:{yl:.04,yh:.42,sl:.52,sh:1.1},
-    carpet:{yl:.28,yh:.70,sl:.20,sh:.48}
-  };
-
-  function mkSpecial(scatter,depthIdx){
-    var dep=DEPTHS[depthIdx];
-    var t=rp(STYPES),dir=rng()>0.5?1:-1;
-    var cfg=YCFG[t];
-    var y=rr(cfg.yl,cfg.yh)*H;if(y<NAV_H+32)y=NAV_H+32;
-    var x=scatter?rr(-120,W+120):(dir>0?-240:W+240);
-    var c=SC[ri(0,SC.length-1)];
-    return{type:t,dir:dir,x:x,y:y,
-           vx:rr(cfg.sl,cfg.sh)*dep.spd*dir,
-           dScale:dep.scale,alpha:rr(dep.aMin,dep.aMax),
-           c1:c[0],c2:c[1],phase:ri(0,127),
-           altPhase:rng()*Math.PI*2,altAmp:rr(8,28)*dep.scale,altSpd:rr(0.008,0.020)};
-  }
-
-  // ── Sprite draw functions ─────────────────────────────────────────
-  function drawPlane(x,y,d,s){
-    var L=d>0?x-40:x;
-    ctx.fillStyle=s.c1;
-    ctx.fillRect(L,y+2,40,6);ctx.fillRect(d>0?L+36:L-8,y+3,10,4);
-    ctx.fillStyle=s.c2;
-    ctx.fillRect(L+10,y-8,18,P);ctx.fillRect(L+10,y+8,14,P);
-    ctx.fillRect(d>0?L:L+32,y-P*2,8,P*2);
-    ctx.fillStyle=s.c1;ctx.fillRect(L+16,y+8,10,P);
-    ctx.globalAlpha=s.alpha*0.24;ctx.fillStyle='#eef6ff';
-    for(var i=1;i<=7;i++)ctx.fillRect(snap(-d*(i*13+4)),y+4,P,P);
-  }
-
-  function drawZeppelin(x,y,d,s){
-    var bw=108,bh=30,L=d>0?x-bw:x;
-    ctx.fillStyle=s.c1;
-    ctx.fillRect(L,y+8,bw,bh-16);ctx.fillRect(L+4,y+4,bw-8,bh-8);ctx.fillRect(L+10,y,bw-20,bh);
-    ctx.fillStyle=s.c2;ctx.fillRect(L+30,y+bh,48,11);
-    ctx.globalAlpha=s.alpha*0.35;ctx.fillStyle='#555';
-    ctx.fillRect(L+34,y+bh-P,P,P);ctx.fillRect(L+70,y+bh-P,P,P);
-    ctx.globalAlpha=s.alpha;ctx.fillStyle=s.c2;
-    ctx.fillRect(d>0?L+bw-10:L+2,y-10,8,12);
-    var ph=(s.phase>>2)&3,px=d>0?L-8:L+bw;
-    if(ph===0||ph===2){ctx.fillRect(px,y+5,P*2,14);}else{ctx.fillRect(px-P,y+10,16,P*2);}
-    ctx.globalAlpha=s.alpha*0.26;ctx.fillStyle='#fff';ctx.fillRect(L+12,y+2,bw-24,P);
-  }
-
-  function drawBalloon(x,y,d,s){
-    var bw=40,bh=42;
-    ctx.fillStyle=s.c1;
-    ctx.fillRect(x+4,y,bw-8,bh);ctx.fillRect(x,y+4,bw,bh-8);ctx.fillRect(x+2,y+2,bw-4,bh-4);
-    ctx.fillStyle=s.c2;
-    for(var si=0;si<5;si++)ctx.fillRect(x+4+si*8,y,P,bh);
-    ctx.globalAlpha=s.alpha*0.45;ctx.fillStyle='#444';
-    ctx.fillRect(x+8,y+bh,P,14);ctx.fillRect(x+18,y+bh,P,12);ctx.fillRect(x+28,y+bh,P,14);
-    ctx.globalAlpha=s.alpha;ctx.fillStyle=s.c2;
-    ctx.fillRect(x+4,y+bh+14,32,16);ctx.fillRect(x+8,y+bh+12,24,P);
-  }
-
-  function drawUFO(x,y,d,s){
-    var uw=52,L=d>0?x-uw:x;
-    ctx.fillStyle=s.c1;
-    ctx.fillRect(L+14,y,24,9);ctx.fillRect(L+18,y-P,16,P);
-    ctx.fillRect(L+4,y+9,44,8);ctx.fillRect(L,y+11,uw,4);
-    ctx.globalAlpha=s.alpha*(0.28+0.22*((s.phase&15)/15));
-    ctx.fillStyle=(s.phase&8)?'#00ff88':'#44aaff';ctx.fillRect(L+12,y+17,28,P);
-    ctx.globalAlpha=s.alpha;
-    var lc=['#ff5760','#00c896','#0079b9','#e08c30'];
-    for(var li=0;li<4;li++){
-      ctx.fillStyle=((s.phase+li*4)&15)<8?lc[li]:s.c1;ctx.fillRect(L+8+li*10,y+13,P,P);
-    }
-  }
-
-  function drawPirate(x,y,d,s){
-    var sw=80,L=d>0?x-sw:x;
-    ctx.fillStyle='#7a4e28';
-    ctx.fillRect(L+6,y+16,sw-12,22);ctx.fillRect(L+2,y+20,sw-4,14);ctx.fillRect(L+18,y+34,sw-36,10);
-    ctx.fillStyle='#9a6035';ctx.fillRect(L+8,y+14,sw-16,6);
-    ctx.fillStyle=s.c1;ctx.fillRect(L+4,y+12,sw-8,6);
-    ctx.globalAlpha=s.alpha*0.35;ctx.fillStyle='#553311';
-    for(var pi=0;pi<5;pi++)ctx.fillRect(L+8+pi*14,y+12,P,6);
-    ctx.globalAlpha=s.alpha;
-    var m1=d>0?L+20:L+sw-24,m2=d>0?L+52:L+sw-56;
-    ctx.fillStyle='#8b6340';ctx.fillRect(m1,y-34,P,50);ctx.fillRect(m2,y-16,P,30);
-    ctx.fillStyle=s.c1;ctx.globalAlpha=s.alpha*0.86;
-    ctx.fillRect(m1+P,y-26,22,40);ctx.fillRect(m1+P,y-30,16,6);
-    ctx.fillRect(m2+P,y-10,16,24);
-    ctx.globalAlpha=s.alpha;
-    ctx.fillStyle='#111';ctx.fillRect(d>0?m1-10:m1+P,y-34,12,9);
-    ctx.fillStyle='#eee';
-    var fx=d>0?m1-10:m1+P;
-    ctx.fillRect(fx+3,y-32,2,2);ctx.fillRect(fx+7,y-32,2,2);
-    ctx.fillRect(fx+4,y-30,4,2);ctx.fillRect(fx+5,y-28,2,2);
-    ctx.fillStyle='#333';ctx.fillRect(d>0?L+sw-2:L-8,y+18,10,P);
-    ctx.globalAlpha=s.alpha*0.22;ctx.fillStyle='#88ccee';
-    for(var wi=0;wi<6;wi++)ctx.fillRect(snap(-d*(wi*10+46)),y+38,8,P);
-  }
-
-  function drawCastle(x,y,d,s){
-    var cw=72,L=d>0?x-cw:x;
-    ctx.fillStyle='#7a6858';
-    ctx.fillRect(L+8,y+28,cw-16,22);ctx.fillRect(L+2,y+32,cw-4,15);ctx.fillRect(L+16,y+46,cw-32,8);
-    ctx.fillStyle='#9c8878';ctx.fillRect(L+6,y+26,cw-12,6);
-    ctx.fillStyle='#5a4832';ctx.globalAlpha=s.alpha*0.55;
-    for(var ri2=0;ri2<6;ri2++)ctx.fillRect(L+10+ri2*9,y+50,P,8+ri2%3*P);
-    ctx.globalAlpha=s.alpha;
-    ctx.fillStyle='#8e8090';
-    var tc=snap(d>0?L+cw*0.28:L+cw*0.48);
-    ctx.fillRect(tc,y-24,22,54);
-    ctx.fillStyle='#7e7080';
-    var sc2=d>0?L+cw-16:L;
-    ctx.fillRect(sc2,y-6,16,36);
-    ctx.fillStyle='#a090a8';
-    for(var bi=0;bi<4;bi++)ctx.fillRect(tc+bi*6,y-30,4,8);
-    for(var bi=0;bi<3;bi++)ctx.fillRect(sc2+bi*5,y-12,3,6);
-    ctx.fillStyle='#f0d860';ctx.globalAlpha=s.alpha*(0.5+0.5*((s.phase&15)/15));
-    ctx.fillRect(tc+7,y-14,4,6);ctx.fillRect(tc+7,y+4,4,6);
-    ctx.globalAlpha=s.alpha*(0.4+0.4*((~s.phase&15)/15));ctx.fillRect(sc2+5,y-2,3,5);
-    ctx.globalAlpha=s.alpha;
-    ctx.fillStyle='#c0b0d0';ctx.fillRect(tc+8,y-34,6,P);ctx.fillRect(tc+9,y-38,4,4);ctx.fillRect(tc+10,y-42,2,4);
-  }
-
-  function drawWhale(x,y,d,s){
-    var ww=88,L=d>0?x-ww:x;
-    ctx.fillStyle=s.c1;
-    ctx.fillRect(L+10,y+4,ww-20,26);ctx.fillRect(L+4,y+8,ww-8,18);
-    ctx.fillRect(L,y+10,ww,14);ctx.fillRect(L+6,y+6,ww-12,22);
-    ctx.fillStyle='#f0f4f8';ctx.globalAlpha=s.alpha*0.40;ctx.fillRect(L+18,y+18,ww-44,10);
-    ctx.globalAlpha=s.alpha;ctx.fillStyle=s.c1;
-    var hx=d>0?L:L+ww-22;
-    ctx.fillRect(hx,y+10,22,14);ctx.fillRect(hx+(d>0?0:-P),y+8,20,18);
-    ctx.fillStyle=s.c2;
-    var tx=d>0?L+ww-12:L;
-    ctx.fillRect(tx+(d>0?4:0),y+8,10,8);ctx.fillRect(tx,y+18,14,6);ctx.fillRect(tx+(d>0?2:2),y+12,10,8);
-    ctx.fillStyle='#1a1a2e';ctx.fillRect(d>0?hx+6:hx+12,y+12,P,P);
-    ctx.fillStyle='#fff';ctx.fillRect(d>0?hx+7:hx+13,y+11,2,2);
-    ctx.globalAlpha=s.alpha*0.32*(0.5+0.5*Math.sin(s.phase*0.15));
-    ctx.fillStyle='#b0d8f0';
-    var bhx=d>0?hx+8:hx+4;
-    ctx.fillRect(bhx,y-12,P*2,14);ctx.fillRect(bhx-P,y-16,P*4,P);ctx.fillRect(bhx-P*2,y-20,P*6,P);
-    ctx.globalAlpha=s.alpha;ctx.fillStyle=s.c2;
-    var finx=snap(d>0?L+ww*0.44:L+ww*0.38);
-    ctx.fillRect(finx,y-2,P*2,12);ctx.fillRect(finx-P,y+2,P*4,10);
-    ctx.fillStyle='#888';ctx.globalAlpha=s.alpha*0.28;
-    ctx.fillRect(snap(L+ww*0.40),y+24,P,P);ctx.fillRect(snap(L+ww*0.55),y+26,P,P);
-  }
-
-  function drawDragon(x,y,d,s){
-    var dw=90,L=d>0?x-dw:x;
-    ctx.fillStyle='#c84820';
-    ctx.fillRect(L+8,y+12,dw-16,16);ctx.fillRect(L+4,y+14,dw-8,12);ctx.fillRect(L,y+16,dw,8);
-    ctx.fillStyle='#e05830';ctx.fillRect(L+12,y+18,dw-24,8);
-    ctx.fillStyle='#f07040';
-    for(var si=0;si<5;si++)ctx.fillRect(L+16+si*13,y+12,9,6);
-    ctx.fillStyle='#c84820';
-    var hx=d>0?L:L+dw-28;
-    ctx.fillRect(hx,y+10,28,18);ctx.fillRect(d>0?hx-P*2:hx+28,y+12,P*3,12);
-    ctx.fillStyle='#7a2010';ctx.fillRect(d>0?hx+4:hx+20,y+14,P,P);
-    ctx.fillStyle='#f0c840';ctx.fillRect(d>0?hx+14:hx+8,y+4,P,10);ctx.fillRect(d>0?hx+12:hx+6,y+4,P*2,P);
-    ctx.fillStyle='#f0d020';ctx.globalAlpha=s.alpha*(0.7+0.3*((s.phase&15)/15));
-    ctx.fillRect(d>0?hx+6:hx+18,y+12,P*2,P*2);
-    ctx.fillStyle='#111';ctx.globalAlpha=s.alpha;ctx.fillRect(d>0?hx+7:hx+19,y+13,P,P);
-    ctx.globalAlpha=s.alpha*0.80;ctx.fillStyle='#a03018';
-    ctx.fillRect(L+28,y-24,30,38);ctx.fillRect(L+20,y-14,18,30);ctx.fillRect(L+58,y-12,16,26);
-    ctx.fillStyle='#c84820';ctx.fillRect(L+32,y-20,22,32);ctx.fillRect(L+36,y-24,14,P*2);
-    ctx.globalAlpha=s.alpha*0.26;ctx.fillStyle='#fff';
-    ctx.fillRect(L+34,y-16,P,26);ctx.fillRect(L+42,y-12,P,20);ctx.fillRect(L+50,y-8,P,14);
-    ctx.globalAlpha=s.alpha;
-    if(s.phase>110&&s.phase<135){
-      var fp=(s.phase-110)/24;
-      ctx.globalAlpha=s.alpha*fp;
-      var fx=d>0?hx-P*3:hx+28+P;
-      var fcols=['#fff080','#ff8030','#ff5020','#ff2000'];
-      for(var fi=0;fi<5;fi++){
-        ctx.fillStyle=fcols[Math.min(fi,3)];
-        ctx.fillRect(fx+(d>0?-fi*9:fi*9),y+12+fi*P,Math.max(4,14-fi*2),Math.max(2,P*3-fi*P));
-      }
-    }
-  }
-
-  function drawCarpet(x,y,d,s){
-    var cw=60,L=d>0?x-cw:x;
-    var wave=snap(Math.sin(s.phase*0.08)*P);
-    ctx.fillStyle=s.c1;ctx.fillRect(L,y+wave,cw,14);
-    ctx.fillStyle=s.c2;
-    ctx.fillRect(L,y+wave,cw,P);ctx.fillRect(L,y+wave+14-P,cw,P);
-    ctx.fillRect(L,y+wave,P,14);ctx.fillRect(L+cw-P,y+wave,P,14);
-    ctx.fillStyle=s.c2;
-    for(var pi=0;pi<3;pi++){
-      var cx2=L+12+pi*16;
-      ctx.fillRect(cx2+3,y+wave+2,4,2);ctx.fillRect(cx2+1,y+wave+4,8,4);ctx.fillRect(cx2+3,y+wave+8,4,2);
-    }
-    ctx.fillStyle=s.c1;
-    for(var pi=0;pi<3;pi++)ctx.fillRect(L+15+pi*16,y+wave+5,2,2);
-    ctx.fillStyle=s.c2;
-    for(var ti=0;ti<6;ti++){
-      ctx.fillRect(L+P+ti*10,y+wave+14,P,6+(ti%2)*P);
-      ctx.fillRect(L+P+ti*10,y+wave-4-(ti%2)*P,P,4+(ti%2)*P);
-    }
-    var px=snap(d>0?L+cw*0.58:L+cw*0.28);
-    ctx.fillStyle='#d4a080';ctx.fillRect(px,y+wave-18,8,8);
-    ctx.fillStyle='#5050b8';ctx.fillRect(px-P,y+wave-10,12,10);
-    ctx.fillStyle='#702000';ctx.fillRect(px+P,y+wave-22,6,6);ctx.fillRect(px,y+wave-18,8,P);
-  }
-
-  // ── Main loop ─────────────────────────────────────────────────────
-  function init(){
-    W=canvas.width=window.innerWidth;
-    H=canvas.height=window.innerHeight;
-    clouds=[];specials=[];
-    for(var i=0;i<ri(60,80);i++)clouds.push(mkCloud(true));
-    for(var i=0;i<DEPTHS.length;i++)specials.push(mkSpecial(true,i));
-  }
-
-  function draw(ts){
-    var dt=lastTs!==null?Math.min(ts-lastTs,64):16;
-    lastTs=ts;
-    ctx.clearRect(0,0,W,H);
-
-    clouds.forEach(function(c){
-      c.x+=c.spd*c.dir*(dt/16);
-      if(c.osc){c.oscPh+=c.oscSpd*(dt/16);c.y+=Math.sin(c.oscPh)*c.oscAmp*0.012*(dt/16);}
-      var edge=c.r+4;
-      if(c.dir>0&&c.x>W+edge)c.x=-edge;
-      if(c.dir<0&&c.x<-edge)c.x=W+edge;
-      if(c.y<NAV_H+4)c.y=NAV_H+4;
-      if(c.y>H-4)c.y=H-4;
-      drawCloud(c);
+  function spawn(){
+    ripples.push({
+      x:    rr(W*0.06, W*0.94),
+      y:    rr(NAV_H+60, H*0.90),
+      col:  COLORS[ri(0, COLORS.length-1)],
+      maxR: rr(160, 380),
+      rings: 3,
+      gap:  rr(0.07, 0.11),
+      spd:  rr(0.00050, 0.00090),
+      p:    0
     });
+  }
 
+  function init(){
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width  = W;
+    canvas.height = H;
+  }
 
+  var lastTs = 0;
+  function draw(ts){
+    var dt = lastTs ? Math.min(ts - lastTs, 64) : 16;
+    lastTs = ts;
 
-    // Sort far→close so closer objects appear on top
-    var sorted=specials.slice().sort(function(a,b){return a.dScale-b.dScale;});
-    for(var i=0;i<sorted.length;i++){
-      var s=sorted[i];
-      s.x+=s.vx*(dt/16);
-      s.altPhase+=s.altSpd*(dt/16);
-      var altY=Math.sin(s.altPhase)*s.altAmp;
-      if((s.dir>0&&s.x>W+260)||(s.dir<0&&s.x<-260)){
-        var idx=specials.indexOf(s);specials[idx]=mkSpecial(false,idx);continue;
-      }
-      s.phase=(s.phase+1)&255;
-      ctx.globalAlpha=s.alpha;
-      ctx.save();
-      ctx.translate(s.x,s.y+altY);
-      ctx.scale(s.dScale,s.dScale);
-      switch(s.type){
-        case 'plane':    drawPlane(0,0,s.dir,s);break;
-        case 'zeppelin': drawZeppelin(0,0,s.dir,s);break;
-        case 'balloon':  drawBalloon(0,0,s.dir,s);break;
-        case 'ufo':      drawUFO(0,0,s.dir,s);break;
-        case 'pirate':   drawPirate(0,0,s.dir,s);break;
-        case 'castle':   drawCastle(0,0,s.dir,s);break;
-        case 'whale':    drawWhale(0,0,s.dir,s);break;
-        case 'dragon':   drawDragon(0,0,s.dir,s);break;
-        case 'carpet':   drawCarpet(0,0,s.dir,s);break;
-      }
-      ctx.restore();
-      ctx.globalAlpha=1;
+    ctx.clearRect(0, 0, W, H);
+
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var baseA = dark ? 0.40 : 0.22;
+
+    elapsed += dt;
+    if(elapsed >= nextSpawn){
+      spawn();
+      elapsed = 0;
+      nextSpawn = rr(900, 2200);
     }
+
+    ripples = ripples.filter(function(r){
+      r.p = Math.min(r.p + r.spd * dt, 1);
+      var alive = false;
+
+      for(var i = 0; i < r.rings; i++){
+        var p = r.p - i * r.gap;
+        if(p <= 0){ alive = true; continue; }
+        if(p >= 1) continue;
+        alive = true;
+
+        var radius = p * r.maxR;
+        var alpha  = Math.sin(p * Math.PI) * baseA * Math.pow(0.68, i);
+        var lw     = Math.max(0.4, (1 - p) * 2.0 + 0.4);
+
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, radius, 0, 6.2832);
+        ctx.strokeStyle = r.col;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth   = lw;
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = 1;
+      return alive;
+    });
 
     requestAnimationFrame(draw);
   }
 
-  window.addEventListener('resize',init);
-  init();requestAnimationFrame(draw);
+  window.addEventListener('resize', init);
+  init();
+  // Seed a few ripples so the canvas isn't empty on load
+  for(var _i=0;_i<5;_i++){
+    spawn();
+    ripples[ripples.length-1].p = rr(0.05, 0.60);
+  }
+  requestAnimationFrame(draw);
 })();
 </script>
 </body>
