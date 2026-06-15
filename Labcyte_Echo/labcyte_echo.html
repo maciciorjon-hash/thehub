@@ -4250,7 +4250,6 @@ function buildScatterChart() {
       animation: false,
       onHover: (event, elements) => {
         _hoveredScatterEl = elements.length ? elements[0] : null;
-        if (showCurve) scatterChart?.draw();
       },
       onClick: (event, elements) => {
         if (!elements.length) { closeCurvePanel(); return; }
@@ -4286,7 +4285,7 @@ function buildScatterChart() {
         refLine100: { enabled: scatterState.showRefLine },
         compoundLabels: { enabled: scatterState.showNames, textColor, labelBg },
         proteinHulls: { enabled: scatterState.groupProteins },
-        curvePlot: { enabled: showCurve },
+        curvePlot: { enabled: false },
       },
       scales: {
         x: {
@@ -4312,7 +4311,10 @@ function buildScatterChart() {
   if (_cv) {
     const _wrap = _cv.parentElement;
     const _w = _wrap ? _wrap.clientWidth : 800;
-    const _h = 380;
+    const _rect = _wrap?.getBoundingClientRect();
+    const _h = (_rect && _rect.top > 0 && _rect.top < window.innerHeight - 80)
+      ? Math.max(280, window.innerHeight - _rect.top - 58)
+      : 380;
     _cv.style.width = _w + 'px';
     _cv.style.height = _h + 'px';
     if (scatterChart) { scatterChart.resize(_w, _h); }
@@ -4440,6 +4442,15 @@ function customTooltip({ chart, tooltip }) {
   const _ttYNum = parseFloat(r.y);
   const _ttYVal = isFinite(_ttYNum) ? _sigFmt(_ttYNum) : (r.y ?? '—');
   inner += '<span style="color:var(--text3);">' + esc(_ttXLbl) + '</span> ' + _ttXVal + '<br>';
+  const _xKeyBase2 = _ttXKeyRaw.includes('::') ? _ttXKeyRaw.split('::')[1] : _ttXKeyRaw;
+  if (['LogIC50_M','DC50_nM','AbsDC50_nM','pDC50'].includes(_xKeyBase2)) {
+    let _nmV = isFinite(r.DC50_nM) ? r.DC50_nM : (isFinite(r.AbsDC50_nM) ? r.AbsDC50_nM : null);
+    if (!isFinite(_nmV) && r._logec50 != null) _nmV = Math.pow(10, r._logec50 + 9);
+    if (_nmV != null && isFinite(_nmV)) {
+      const _potLbl = ((window._bpVarLabels||{})['DC50_nM']||'IC50').replace(/\s*\([^)]*\)/,'');
+      inner += '<span style="color:var(--text3);">' + esc(_potLbl) + ' (nM)</span> ' + _sigFmt(_nmV, 4) + '<br>';
+    }
+  }
   inner += '<span style="color:var(--text3);">' + esc(_ttYLbl) + '</span> ' + _ttYVal;
   if (cd && cd.MW) inner += '<br><span style="color:var(--text3);font-size:10px;">MW ' + cd.MW + ' · logP ' + cd.logP + ' · HBA ' + cd.HBA + ' · HBD ' + cd.HBD + '</span>';
   if (r.flag==='Yes') inner += '<br><span style="color:var(--warn);font-size:10px;">⚠ flagged</span>';
@@ -9094,8 +9105,19 @@ function _unhideAllResultsCols() {
   })();
   </script>
 <script>
-// Curves canvas resize: re-render when window resizes while Curves tab is active
+// Canvas resize: re-render when window resizes while Scatter or Curves tab is active
 window.addEventListener('resize', function() {
+  if (document.getElementById('tab-scatter')?.classList.contains('active') && scatterChart) {
+    requestAnimationFrame(function() {
+      const _cv2 = document.getElementById('scatter-canvas');
+      const _wrap2 = _cv2?.parentElement;
+      if (!_cv2 || !_wrap2) return;
+      const _rect2 = _wrap2.getBoundingClientRect();
+      const _h2 = Math.max(280, window.innerHeight - _rect2.top - 58);
+      _cv2.style.height = _h2 + 'px';
+      scatterChart.resize(_wrap2.clientWidth, _h2);
+    });
+  }
   if (document.getElementById('tab-curves')?.classList.contains('active')) {
     requestAnimationFrame(function() { if(typeof renderCvCurve==='function') renderCvCurve(); });
   }
