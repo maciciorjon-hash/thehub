@@ -592,11 +592,11 @@ tr:hover td{background:var(--surface2);}
           <thead>
             <tr style="background:var(--surface2)">
               <th style="padding:6px 8px;text-align:center;border-bottom:2px solid var(--border)">#</th>
-              <th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap">Plan (nM)</th>
               <th style="padding:6px 8px;text-align:center;border-bottom:2px solid var(--border)">Stock</th>
               <th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap">Ideal (nL)</th>
               <th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap">Transfer (nL)</th>
-              <th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap">Final (nM)</th>
+              <th id="eg-th-final" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap">Final (nM)</th>
+              <th id="eg-th-plan" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap">Plan (nM)</th>
               <th style="padding:6px 8px;text-align:center;border-bottom:2px solid var(--border)"></th>
             </tr>
           </thead>
@@ -8892,9 +8892,15 @@ function _unhideAllResultsCols() {
       rows.push({pt:p+1,planNM:planMp*1e9,planM:planMp,chosen:chosen});
     }
 
-    // Summary bar
+    // Summary bar — resolve selected unit for display
     var topUnitEl=document.getElementById('eg-top-unit');
-    var topUnitLbl=topUnitEl?topUnitEl.options[topUnitEl.selectedIndex].text:'';
+    var topUnitStr=topUnitEl?topUnitEl.options[topUnitEl.selectedIndex].text:'nM';
+    var topUnitMult=1/(topU||1e-9); // M → display unit
+    window._egTopUnitMult=topUnitMult; window._egTopUnitStr=topUnitStr;
+    // Update column headers to reflect selected unit
+    var _thF=document.getElementById('eg-th-final'); if(_thF) _thF.textContent='Final ('+topUnitStr+')';
+    var _thP=document.getElementById('eg-th-plan');  if(_thP) _thP.textContent='Plan ('+topUnitStr+')';
+    var topUnitLbl=topUnitStr;
     var presetEl=document.getElementById('eg-preset');
     var presetName=(presetEl&&presetEl.value)?presetEl.options[presetEl.selectedIndex].text.split(' (')[0]:'Custom';
     sb.innerHTML='<strong>'+presetName+'</strong> &nbsp;·&nbsp; '+
@@ -8914,7 +8920,6 @@ function _unhideAllResultsCols() {
         '⚠ <strong>'+infeas+' point(s) infeasible</strong> — no stock gives a volume between '+
         fmtVol(DROP)+' and '+fmtVol(maxT)+' nL. Try ✦ Suggest intermediates.</div>';
     } else if(wb&&!infeas){
-      // Clear only infeasibility warning (keep suggest info if present)
       if(wb.innerHTML.indexOf('infeasible')>-1) wb.innerHTML='';
     }
 
@@ -8923,7 +8928,7 @@ function _unhideAllResultsCols() {
 
     // Render table body (preserving manual nL overrides where stock hasn't changed)
     var tbody=document.getElementById('eg-tbody'); if(!tbody) return;
-    var oldInputs={}; // pt → {stockIdx, nL}
+    var oldInputs={};
     tbody.querySelectorAll('tr').forEach(function(tr){
       var pt=parseInt(tr.dataset.pt||0);
       var sel=tr.querySelector('select');
@@ -8934,11 +8939,13 @@ function _unhideAllResultsCols() {
     rows.forEach(function(row){
       var c=row.chosen;
       var old=oldInputs[row.pt];
-      // Use old nL if same stock was selected and it was manually set
       var useOld=old&&c&&old.stockIdx===c.origIdx&&Math.abs(old.cs-c.cM)<c.cM*1e-9&&old.nL!==c.vAdj;
       var vA=c?c.vAdj:0, cS=c?c.cM:0;
       if(useOld&&old.nL>0){vA=old.nL;}
-      var finalNM=(vA&&cS)?(vA*cS/(vol*1000))*1e9:null;
+      // Convert to display unit (plan and final both use topUnitMult)
+      var planDisp=row.planM*topUnitMult;
+      var finalDisp=(vA&&cS)?(vA*cS/(vol*1000))*topUnitMult:null;
+      var finalNM=(vA&&cS)?(vA*cS/(vol*1000))*1e9:null; // keep nM for status check
       var ok=c&&vA>=DROP&&vA<=maxT;
       var statusHtml=!c?'<span style="color:#ef4444" title="No feasible stock">✗</span>'
                     :ok?'<span style="color:#22c55e">✓</span>'
@@ -8949,9 +8956,9 @@ function _unhideAllResultsCols() {
       var tr=document.createElement('tr');
       tr.dataset.pt=row.pt;
       tr.style.borderBottom='1px solid var(--border)';
+      // Column order: #, Stock, Ideal (nL), Transfer (nL), Final, Plan, Status
       tr.innerHTML=
         '<td style="padding:5px 8px;text-align:center;color:var(--text3);font-size:12px">'+row.pt+'</td>'+
-        '<td style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums">'+fmtTbl(row.planNM)+'</td>'+
         '<td style="padding:5px 8px;text-align:center">'+
           '<select style="padding:2px 5px;border:1px solid var(--border);border-radius:4px;'+
             'background:var(--surface);color:var(--text1);font-size:12px" '+
@@ -8965,7 +8972,8 @@ function _unhideAllResultsCols() {
             'style="width:68px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;'+
             'background:var(--surface);color:var(--text);font-size:13px;text-align:right;'+
             'font-variant-numeric:tabular-nums"></td>'+
-        '<td id="eg-f'+row.pt+'" style="padding:5px 8px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums">'+fmtTbl(finalNM)+'</td>'+
+        '<td id="eg-f'+row.pt+'" style="padding:5px 8px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums">'+fmtTbl(finalDisp)+'</td>'+
+        '<td style="padding:5px 8px;text-align:right;color:var(--text3);font-variant-numeric:tabular-nums">'+fmtTbl(planDisp)+'</td>'+
         '<td id="eg-st'+row.pt+'" style="padding:5px 8px;text-align:center">'+statusHtml+'</td>';
       tbody.appendChild(tr);
     });
@@ -8984,7 +8992,7 @@ function _unhideAllResultsCols() {
     var tr=sel.closest('tr'); if(!tr) return;
     var inp=tr.querySelector('input[type=number]');
     if(inp){inp.value=vA;inp.dataset.cs=s.cM;}
-    tr.querySelectorAll('td')[3].textContent=fmtVol(vI);
+    tr.querySelectorAll('td')[2].textContent=fmtVol(vI); // Ideal is now col index 2
     _egRowVolCalc(pt,vA,s.cM,vol,maxT);
   };
 
@@ -9000,10 +9008,12 @@ function _unhideAllResultsCols() {
 
   function _egRowVolCalc(pt,vA,cS,vol,maxT){
     var finalNM=(vA&&cS)?(vA*cS/(vol*1000))*1e9:null;
+    var unitMult=window._egTopUnitMult||1e9;
+    var finalDisp=(vA&&cS)?(vA*cS/(vol*1000))*unitMult:null;
     var fe=document.getElementById('eg-f'+pt);
     var se=document.getElementById('eg-st'+pt);
     var row=(window._egRows||[]).find(function(r){return r.pt===pt;});
-    if(fe) fe.textContent=fmtTbl(finalNM);
+    if(fe) fe.textContent=fmtTbl(finalDisp);
     if(se){
       var ok=vA>=DROP&&vA<=maxT;
       var exact=row&&finalNM!==null&&Math.abs(finalNM-row.planNM)/row.planNM<0.002;
@@ -9030,8 +9040,9 @@ function _unhideAllResultsCols() {
       'Stocks: '+stockStr,
       ''
     ];
-    // TSV header
-    lines.push(['#','Plan (nM)','Stock','Ideal (nL)','Transfer (nL)','Final (nM)','Status'].join('\t'));
+    // TSV header — column order matches table: #, Stock, Ideal, Transfer, Final, Plan, Status
+    var _uStr=window._egTopUnitStr||'nM';
+    lines.push(['#','Stock','Ideal (nL)','Transfer (nL)','Final ('+_uStr+')','Plan ('+_uStr+')','Status'].join('\t'));
     // TSV data rows — strip locale commas from numbers for clean paste into Excel
     document.querySelectorAll('#eg-tbody tr').forEach(function(tr){
       var tds=tr.querySelectorAll('td');
@@ -9041,12 +9052,13 @@ function _unhideAllResultsCols() {
       var stTxt=stEl?stEl.textContent.trim():'';
       // Map HTML glyphs to readable text
       stTxt=stTxt==='✓'?'exact':stTxt==='~'?'approx':stTxt==='✗'?'infeasible':'';
+      // td[0]=#, td[1]=Stock(select), td[2]=Ideal, td[3]=Transfer(input), td[4]=Final, td[5]=Plan, td[6]=Status
       lines.push([
         tds[0]?tds[0].textContent.trim():'',
-        tds[1]?tds[1].textContent.trim().replace(/,/g,''):'',
         sel?sel.options[sel.selectedIndex].text:'',
-        tds[3]?tds[3].textContent.trim():'',
+        tds[2]?tds[2].textContent.trim():'',
         inp?inp.value:'',
+        tds[4]?tds[4].textContent.trim().replace(/,/g,''):'',
         tds[5]?tds[5].textContent.trim().replace(/,/g,''):'',
         stTxt
       ].join('\t'));
