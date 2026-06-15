@@ -3322,7 +3322,8 @@ function renderBoxPlot(data) {
     panel.innerHTML = '<div class="empty"><div class="ei">⚠️</div><p>No data.</p></div>';
     return;
   }
-  const yVars = ['DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2'];
+  const _bpAssayT = window._lastAssayType || window._lastAnalysisParams?.assayType || 'hibit';
+  const yVars = ['DC50_nM',...(_bpAssayT==='hibit'?['AbsDC50_nM']:[]),...(_bpAssayT!=='displacement'?['Dmax_pct']:[]),'LogIC50_M','pDC50','HillSlope','R2'];
   const _vl2 = window._bpVarLabels || {};
   const yLabels = {'DC50_nM':_vl2['DC50_nM']||'DC50 (nM)','AbsDC50_nM':_vl2['AbsDC50_nM']||'Abs DC50 (nM)','Dmax_pct':_vl2['Dmax_pct']||'Dmax (%)','LogIC50_M':_vl2['LogIC50_M']||'LogIC50 (M)','pDC50':_vl2['pDC50']||'pDC50 (M)','HillSlope':'Hill slope','R2':'R²'};
   const groups = [...new Set(data.map(r=>r.Protein))].sort();
@@ -3836,9 +3837,10 @@ function renderScatter(data) {
     const logLbl = _assayT==='hibit'?'LogDC₅₀':_assayT==='gain'?'LogEC₅₀':'LogIC₅₀';
     const concLbl = _assayT==='hibit'?'DC₅₀':_assayT==='gain'?'EC₅₀':'IC₅₀';
     const pLbl = _assayT==='hibit'?'pDC₅₀':_assayT==='gain'?'pEC₅₀':'pIC₅₀';
-    const dmaxLbl = _assayT==='gain'?'Emax':'Dmax (%)';
+    const dmaxLbl = _assayT==='gain'?'Emax':_assayT==='ctg'?'Span (%)':'Dmax (%)';
     return [
-      {value:'LogIC50_M',label:logLbl},{value:'Dmax_pct',label:dmaxLbl},
+      {value:'LogIC50_M',label:logLbl},
+      ...(_assayT!=='displacement'?[{value:'Dmax_pct',label:dmaxLbl}]:[]),
       {value:'DC50_nM',label:concLbl},{value:'AbsDC50_nM',label:'Abs '+concLbl},
       {value:'pDC50',label:pLbl},{value:'HillSlope',label:'Hill slope'},{value:'R2',label:'R²'},
       {value:'CI_DC50_lower',label:'CI lower'},{value:'CI_DC50_upper',label:'CI upper'},
@@ -3850,7 +3852,7 @@ function renderScatter(data) {
   // so users immediately see an assay-vs-assay comparison in Log. Single-assay: keep
   // the existing X=first-option, Y=Dmax_pct convention.
   let _defXKey = window._scatterAxisOpts[0]?.value || '';
-  let _defYKey = 'Dmax_pct';
+  let _defYKey = _assayT==='displacement'?'DC50_nM':'Dmax_pct';
   if (_isMultiAssay) {
     const _assayTypes = [...new Set(data.map(r => r._assayType).filter(Boolean))];
     if (_assayTypes.length >= 2) {
@@ -3861,6 +3863,9 @@ function renderScatter(data) {
       _defYKey = `${_assayTypes[0]}::Dmax_pct`;
     }
   }
+
+  const _scDmaxLbl = _assayT==='gain'?'Emax':_assayT==='ctg'?'Span':'Dmax';
+  const _selDmaxOpt = _assayT!=='displacement' ? `<option value="Dmax_pct">${_scDmaxLbl} (%)</option>` : '';
 
   panel.innerHTML = `
     <div class="strow" style="margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:8px;">
@@ -3944,7 +3949,7 @@ function renderScatter(data) {
           <button class="sc-clear" onclick="resetAxisRange('y')" title="Reset Y">↺</button>
         </div>
         <div class="strow">
-          <label style="min-width:52px;flex:none;">Dmax ≥</label>
+          ${_assayT!=='displacement'?`<label style="min-width:52px;flex:none;">${_scDmaxLbl} ≥</label>
           <input type="number" id="sc-dmax-min" step="1" placeholder="0" min="0" max="100"
             oninput="debounceUpdateScatter(this)"
             style="width:58px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
@@ -3952,7 +3957,8 @@ function renderScatter(data) {
           <input type="number" id="sc-dmax-max" step="1" placeholder="100" min="0" max="100"
             oninput="debounceUpdateScatter(this)"
             style="width:58px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
-          <span style="font-size:10px;color:var(--text3);">% &nbsp; DC₅₀</span>
+          <span style="font-size:10px;color:var(--text3);">%</span>`:''}
+          <label style="font-size:10px;color:var(--text3);margin-left:${_assayT!=='displacement'?'4':'0'}px;">DC₅₀</label>
           <input type="number" id="sc-dc50-min" step="1" placeholder="0" min="0"
             oninput="debounceUpdateScatter(this)"
             style="width:68px;padding:3px 5px;font-size:11px;font-family:var(--sans);background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);">
@@ -4000,7 +4006,7 @@ function renderScatter(data) {
           <select id="sel-metric-x" onchange="buildSelectivityChart()">
             <option value="pDC50">pDC₅₀</option>
             <option value="DC50_nM">log DC₅₀ (M)</option>
-            <option value="Dmax_pct">Dmax (%)</option>
+            ${_selDmaxOpt}
             <option value="HillSlope">Hill slope</option>
             <option value="R2">R²</option>
           </select>
@@ -4008,7 +4014,7 @@ function renderScatter(data) {
           <select id="sel-metric-y" onchange="buildSelectivityChart()">
             <option value="pDC50">pDC₅₀</option>
             <option value="DC50_nM">log DC₅₀ (M)</option>
-            <option value="Dmax_pct">Dmax (%)</option>
+            ${_selDmaxOpt}
             <option value="HillSlope">Hill slope</option>
             <option value="R2">R²</option>
           </select>
@@ -4472,7 +4478,7 @@ function debounceUpdateAxisLabel() {
     const xOffset = (xKey==='LogIC50_M')?(xUnit==='uM'?6:xUnit==='nM'?9:0):0;
     const _unit2 = document.getElementById('sc-xunit')?.value||'M';
     const _unitStr2 = _unit2==='uM'?'µM':_unit2==='nM'?'nM':'M';
-    const axLabelMap=Object.assign({'LogIC50_M':'LogIC50 (M)','DC50_nM':'DC50 (nM)','AbsDC50_nM':'Abs DC50 (nM)','Dmax_pct':'Dmax (%)','HillSlope':'Hill slope','R2':'R²'},(window._scAxLabelExt||{}));
+    const axLabelMap=Object.assign({'LogIC50_M':'LogIC50 (M)','DC50_nM':'DC50 (nM)','AbsDC50_nM':'Abs DC50 (nM)','Dmax_pct':(window._bpVarLabels||{})['Dmax_pct']||'Dmax (%)','HillSlope':'Hill slope','R2':'R²'},(window._scAxLabelExt||{}));
     const _optLbl2 = k => (window._scatterAxisOpts||[]).find(o=>o.value===k)?.label;
     function _dlbl2(key) {
       if (key.includes('::')) return _optLbl2(key)||key;
@@ -4929,7 +4935,7 @@ function _selMetricIsLog(metric) {
 }
 
 function _selMetricLabel(metric) {
-  const map = {pDC50:'pDC₅₀',DC50_nM:'log DC₅₀ (M)',Dmax_pct:'Dmax (%)',
+  const map = {pDC50:'pDC₅₀',DC50_nM:'log DC₅₀ (M)',Dmax_pct:(window._bpVarLabels||{})['Dmax_pct']||'Dmax (%)',
     HillSlope:'Hill slope',R2:'R²',LogIC50_M:'LogIC₅₀ (M)'};
   return map[metric]||metric;
 }
@@ -5873,9 +5879,11 @@ async function generateCurvePDFs(results) {
         doc.setFontSize(11); doc.setTextColor(30, 30, 30);
         doc.text((r.Sample_ID || '—') + '  ·  ' + protein + (_at ? '  ·  ' + _at : ''), marginX, titleY);
         doc.setFontSize(8); doc.setTextColor(90, 90, 100);
+        const _pdfAt2 = _at || window._lastAssayType || 'hibit';
+        const _pdfDmaxLbl = _pdfAt2==='gain'?'Emax':_pdfAt2==='ctg'?'Span':'Dmax';
         const st = [
           'DC50: ' + (r.DC50_nM != null ? r.DC50_nM + ' nM' : '—'),
-          'Dmax: ' + (r.Dmax_pct != null ? r.Dmax_pct + '%' : '—'),
+          _pdfDmaxLbl + ': ' + (r.Dmax_pct != null ? r.Dmax_pct + '%' : '—'),
           'pDC50: ' + (r.pDC50 ?? '—'),
           'Hill: ' + (r.HillSlope ?? '—'),
           'R²: ' + (r.R2 ?? '—'),
@@ -6003,6 +6011,8 @@ function renderCurvesTab(data) {
   if (!data||!data.length) {
     panel.innerHTML='<div class="empty"><div class="ei">📈</div><p>Run analysis to view interactive dose-response curves.</p></div>'; return;
   }
+  const _cvAssayT = window._lastAssayType || window._lastAnalysisParams?.assayType || 'hibit';
+  const _cvDmaxLbl = _cvAssayT==='gain'?'Emax':_cvAssayT==='ctg'?'Span':'Dmax';
   window._cvData = data;
   const proteins = [...new Set(data.map(r=>r.Protein))].sort();
 
@@ -6098,8 +6108,8 @@ function renderCurvesTab(data) {
           <option value="">Default order</option>
           <option value="DC50_asc">DC₅₀ ↑ (low→high)</option>
           <option value="DC50_desc">DC₅₀ ↓ (high→low)</option>
-          <option value="Dmax_desc">Dmax ↓</option>
-          <option value="Dmax_asc">Dmax ↑</option>
+          <option value="Dmax_desc">${_cvDmaxLbl} ↓</option>
+          <option value="Dmax_asc">${_cvDmaxLbl} ↑</option>
         </select>
         <button class="stbtn" onclick="selectAllCvCompare()">Select all</button>
         <button class="stbtn" onclick="deselectAllCvCompare()">Deselect all</button>
@@ -6366,15 +6376,15 @@ function renderCvStats(compounds) {
   if(!compounds.length){el.innerHTML='<span style="font-size:11px;color:var(--text3);">No compound selected</span>';return;}
   // Assay-type-aware labels (reads from compound or last analysis params)
   const _at=(compounds[0]?._assayType)||window._lastAnalysisParams?.assayType||(window._lastAssayType||'hibit');
-  const _isGain=_at==='gain', _isDisp=_at==='displacement';
+  const _isGain=_at==='gain', _isDisp=_at==='displacement', _isCTG=_at==='ctg';
   const dc50Lbl=_isDisp?'IC<sub>50</sub>':_isGain?'EC<sub>50</sub>':'DC<sub>50</sub>';
   const absDc50Lbl=_isDisp?'Abs IC<sub>50</sub>':_isGain?'Abs EC<sub>50</sub>':'Abs DC<sub>50</sub>';
   const pdc50Lbl=_isDisp?'pIC<sub>50</sub>':_isGain?'pEC<sub>50</sub>':'pDC<sub>50</sub>';
-  const dmaxLbl=_isGain?'Emax':'Dmax';
+  const dmaxLbl=_isGain?'Emax':_isCTG?'Span':'Dmax';
   const dmaxUnit=_isGain?'':'%';
   const dc50ColHdr=_isDisp?'IC₅₀ (nM)':_isGain?'EC₅₀ (nM)':'DC₅₀ (nM)';
   const pdc50ColHdr=_isDisp?'pIC₅₀':_isGain?'pEC₅₀':'pDC₅₀';
-  const dmaxColHdr=_isGain?'Emax':'Dmax (%)';
+  const dmaxColHdr=_isGain?'Emax':_isCTG?'Span (%)':'Dmax (%)';
   if(compounds.length===1) {
     const r=compounds[0];
     const fc=r.Flag==='Yes'?'var(--warn)':'var(--accent3)';
@@ -7734,7 +7744,8 @@ function drawPlateCanvas(bc) {
     } else if (mode==='dc50') {
       legendEl.innerHTML = '<div class="pl-item"><div class="pl-swatch" style="background:rgb(80,220,60);"></div> Low DC50 (potent)</div><div class="pl-item"><div class="pl-swatch" style="background:rgb(255,60,60);"></div> High DC50</div><div class="pl-item"><div class="pl-swatch" style="background:#2a2f42;"></div> No fit</div>';
     } else if (mode==='dmax') {
-      legendEl.innerHTML = '<div class="pl-item"><div class="pl-swatch" style="background:hsl(240,70%,42%);"></div> Low Dmax</div><div class="pl-item"><div class="pl-swatch" style="background:hsl(40,70%,42%);"></div> High Dmax</div><div class="pl-item"><div class="pl-swatch" style="background:#2a2f42;"></div> No fit</div>';
+      const _plateDmaxLbl = (function(){const t=window._lastAssayType||window._lastAnalysisParams?.assayType||'hibit';return t==='gain'?'Emax':t==='ctg'?'Span':'Dmax';})();
+      legendEl.innerHTML = '<div class="pl-item"><div class="pl-swatch" style="background:hsl(240,70%,42%);"></div> Low '+_plateDmaxLbl+'</div><div class="pl-item"><div class="pl-swatch" style="background:hsl(40,70%,42%);"></div> High '+_plateDmaxLbl+'</div><div class="pl-item"><div class="pl-swatch" style="background:#2a2f42;"></div> No fit</div>';
     } else if (mode==='flag') {
       legendEl.innerHTML = '<div class="pl-item"><div class="pl-swatch" style="background:rgba(255,80,90,0.70);border:1px solid rgba(255,80,90,0.8);"></div> Flagged (QC fail)</div>'
         + '<div class="pl-item"><div class="pl-swatch" style="background:rgba(0,190,140,0.40);border:1px solid var(--accent3);"></div> Passed</div>'
