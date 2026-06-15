@@ -457,13 +457,13 @@ tr:hover td{background:var(--surface2);}
   </div>
 </header>
 <nav class="outer-tabs">
-  <button class="outer-tab" onclick="switchPanel('overview',this)">Overview</button>
+  <button class="outer-tab active" onclick="switchPanel('overview',this)">Overview</button>
   <button class="outer-tab" onclick="switchPanel('gradient',this)">Gradient Planner</button>
-  <button class="outer-tab active" onclick="switchPanel('analysis',this)">Data Analysis</button>
+  <button class="outer-tab" onclick="switchPanel('analysis',this)">Data Analysis</button>
   <div class="tab-indicator"></div>
 </nav>
 <div class="content-area">
-<div id="panel-overview" class="app-panel">
+<div id="panel-overview" class="app-panel active">
 <div class="ov-wrap">
   <div class="ov-title">Labcyte Echo 550</div>
   <div class="ov-sub">Acoustic liquid handler · 2.5 nL resolution · No tips, no contact · DMSO and aqueous liquid classes</div>
@@ -612,7 +612,7 @@ tr:hover td{background:var(--surface2);}
   </div>
 
 </div></div>
-<div id="panel-analysis" class="app-panel active">
+<div id="panel-analysis" class="app-panel">
 <main>
 <div class="left" style="display:none"></div>
 
@@ -801,6 +801,7 @@ tr:hover td{background:var(--surface2);}
     </div><!-- end setup-sbody -->
     <div class="setup-foot">
       <div class="setup-fstatus" id="setup-fstatus">Echo CSV and PHERAstar files required</div>
+      <button class="setup-cancel-btn" onclick="clearSetup()" title="Remove all files and reset settings to defaults">✕ Clear</button>
       <button id="setup-cancel" class="setup-cancel-btn" onclick="closeSetupModal()" style="display:none">Close</button>
       <button id="run-btn" class="setup-run-btn" disabled onclick="runPipeline()">▶ Run Analysis</button>
     </div>
@@ -8479,8 +8480,7 @@ function updateTabIndicator(btn){
   requestAnimationFrame(function(){ind.classList.add('ready');});
 }
 function switchPanel(id, btn) {
-  // Setup modal is only relevant to the Data Analysis panel; leaving Analysis
-  // for Overview / Gradient Planner closes it so it doesn't block those tabs.
+  // Hide setup modal when leaving Data Analysis
   if (id !== 'analysis') {
     var sm = document.getElementById('setup-modal');
     if (sm && !sm.classList.contains('hidden')) sm.classList.add('hidden');
@@ -8493,6 +8493,8 @@ function switchPanel(id, btn) {
   panel.querySelectorAll('.ov-wrap, .grad-wrap, .left').forEach(function(el){el.scrollTop=0;});
   btn.classList.add('active');
   updateTabIndicator(btn);
+  // Auto-open setup when entering Data Analysis
+  if (id === 'analysis') openSetupModal();
 }
 document.addEventListener('DOMContentLoaded',function(){
   var a=document.querySelector('.outer-tab.active');
@@ -9105,6 +9107,39 @@ window.addEventListener('resize', function() {
 
 // ── Setup Modal ───────────────────────────────────────────────────────────
 var _setupModalPopping = false;
+function clearSetup() {
+  // Reset file state
+  echoFile = null; echoFiles = []; readerFiles = {}; smilesFile = null;
+  // Reset file zone UI
+  var ez = document.getElementById('echo-zone'); if(ez) ez.classList.remove('filled');
+  var ei = document.getElementById('echo-icon'); if(ei) ei.textContent = '📄';
+  var el = document.getElementById('echo-list'); if(el) el.innerHTML = '';
+  var ri = document.getElementById('reader-input'); if(ri) ri.value = '';
+  var rl = document.getElementById('rlist'); if(rl) rl.innerHTML = '';
+  var si = document.getElementById('smiles-zone'); if(si) si.classList.remove('filled');
+  var sic = document.getElementById('smiles-icon'); if(sic) sic.textContent = '🧪';
+  var sn = document.getElementById('smiles-name'); if(sn){sn.textContent='';sn.style.display='none';}
+  // Reset file inputs so same file can be re-selected
+  ['echo-input','reader-input','smiles-input'].forEach(function(id){
+    var inp=document.getElementById(id); if(inp) inp.value='';
+  });
+  // Reset assay settings to defaults
+  var at = document.getElementById('p-assay-type'); if(at) at.value='hibit';
+  var pa = document.getElementById('p-assay'); if(pa) pa.value='';
+  var al = document.getElementById('p-a1-loc'); if(al) al.value='';
+  var pc = document.getElementById('p-ctrl'); if(pc){pc.value='B22:O23';pc.disabled=false;pc.style.opacity='1';}
+  var sn2 = document.getElementById('p-skip-norm'); if(sn2) sn2.checked=false;
+  var zp = document.getElementById('p-zero-pct'); if(zp) zp.value='';
+  // Reset analysis defaults
+  var topEn = document.getElementById('p-top-en'); if(topEn) topEn.checked=true;
+  var top = document.getElementById('p-top'); if(top){top.value='100';top.disabled=false;top.style.opacity='1';}
+  var fh = document.getElementById('p-fix-hill'); if(fh) fh.checked=false;
+  var hv = document.getElementById('p-hill-val'); if(hv){hv.value='1';hv.disabled=true;hv.style.opacity='0.35';}
+  // Update assay-type-dependent UI and ready state
+  onAssayTypeChange();
+  switchSetupTab('files');
+  checkReady();
+}
 function openSetupModal(_initial) {
   const modal = document.getElementById('setup-modal');
   if (!modal) return;
@@ -9144,7 +9179,6 @@ function switchSetupTab(name) {
   document.querySelectorAll('.setup-pane').forEach(p =>
     p.classList.toggle('active', p.id === 'setup-pane-' + name));
 }
-openSetupModal(true);
 </script>
 </body>
 </html>
