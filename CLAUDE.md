@@ -253,7 +253,28 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-15 (Round 80: Echo assay-specific parameter labels; v1.0.66)
+Last session: 2026-06-15 (Round 81: Full Echo app audit — 61 findings fixed; v1.0.67)
+Hub apps: 10. Version v1.0.67.
+Labcyte_Echo/labcyte_echo.html changes (v1.0.67):
+- CRITICAL: Fixed 4PL Jacobian sign bug in _4plJac3 and _4plJac4 (∂f/∂h was positive — Hill-slope gradient was negated, LM optimizer fought itself on every iteration). _4plJac4_gain was already correct.
+- Fixed stale closure in debounceUpdateAxisLabel: colorBy, cbMin, cbMax, valToColor all lived inside buildScatterChart scope; moved valToColor to top level, exposed cbMin/cbMax as window._cbMin/_cbMax, reads colorBy fresh from DOM.
+- Fixed rect-select O(n²) indexOf + backgroundColor→pointBackgroundColor highlight bug.
+- Fixed histogram last-bin edge (inclusive ≤ instead of <); median for even-N compound arrays.
+- O(n) plate-viz and protein/sample lookup Maps replacing O(n²) array filters.
+- Fixed SD flag loop (fitSdata not sdata), QC fixTop check, setProgress throttle (10-batch).
+- Fixed pivot Flag_Reason propagation; DC50 unit scaling in pivot scatter mode (xKey/yKey2 base name extraction).
+- Fixed SVG curve background (transparent not white); curvePlot enabled flag; cvCanvasHover pads.
+- Fixed downloadScatterHiRes dark-mode theme; downloadSelHiRes now exports canvas directly.
+- Fixed selectivity empty-state guard; box plot ticks (_sigFmt + correct spine colour).
+- Fixed compound label dark-mode contrast; _cvComputePads pR minimum; legend row wrap threshold.
+- Fixed roundRect browser-support guard (main well drawing); applyZeroPicker threshold 4→24.
+- Fixed plate legend no-fit colour in dc50/dmax/flag modes (#2a2f42 dark / #dde0ec light).
+- Added multi-assay _bpVarLabels entry (dc/adc/dm/lic/pdc); multi dmax cap UI labels.
+- Removed dead code: _sig2, nmSimplex, toggleCvPoints, maxAfter, rawqc legend block (unreachable), else-if-false branch, refLine100Plugin unused scale var, _midVal helper, dead sn/sn2 vars.
+- CSS: .grad-wrap .field scoped to prevent global form override; .pbar.spin display:none removed; var(--text1)→var(--text) in 3 inline styles; modal backdrop uses var(--modal-backdrop).
+- Optimized concColor: precompute _cMin/_cMin outside per-call path.
+
+Previous session: 2026-06-15 (Round 80: Echo assay-specific parameter labels; v1.0.66)
 Hub apps: 10. Version v1.0.66.
 Labcyte_Echo/labcyte_echo.html changes (v1.0.66):
 - Assay-specific parameter labels throughout all plots: CTG shows "Span (%)", Gain shows "Emax", Displacement hides Dmax entirely (no such metric). Fixed: scatter X/Y axis dropdown (dmaxLbl ternary + spread exclusion for displacement), scatter default Y key (DC50_nM for displacement), scatter filter label ("Span ≥" / "Dmax ≥" / hidden for displacement), selectivity metric dropdowns (_selDmaxOpt), box plot yVars (AbsDC50 hibit-only, Dmax_pct excluded for displacement), chart axLabelMap fallback (reads _bpVarLabels), _selMetricLabel (reads _bpVarLabels), curves Compare sort options (_cvDmaxLbl), renderCvStats dmaxLbl/dmaxColHdr (_isCTG branch), PDF stat line (_pdfDmaxLbl), plate legend ("Low/High Span" etc.).
