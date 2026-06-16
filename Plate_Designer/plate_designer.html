@@ -348,6 +348,21 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
         </div>
       </div>
     </div>
+    <div id="grad-sep" style="display:none;height:1px;background:var(--border);margin:4px 0;"></div>
+    <div class="dil-wrap" id="grad-wrap" style="display:none;">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Block tools</div>
+      <div style="display:flex;flex-direction:column;gap:5px;width:100%;">
+        <div style="display:flex;gap:5px;">
+          <button class="btn btn-sec" id="grad-row-btn" onclick="applyGradient('row')" style="flex:1;font-size:11px;padding:4px 6px;display:none;" title="Darker → lighter, left to right. Replicate rows in the same column share a shade.">Gradient &#8594;</button>
+          <button class="btn btn-sec" id="grad-col-btn" onclick="applyGradient('col')" style="flex:1;font-size:11px;padding:4px 6px;display:none;" title="Darker → lighter, top to bottom. Replicate columns in the same row share a shade.">Gradient &#8595;</button>
+          <button class="btn btn-sec" onclick="clearGradient()" style="font-size:11px;padding:4px 8px;" title="Remove gradient shading from selection">Reset</button>
+        </div>
+        <div style="display:flex;gap:5px;">
+          <button class="btn btn-primary" onclick="applyMergedLabel()" style="flex:1;font-size:11px;padding:4px 6px;" title="Use the Label field above as one label spanning the whole selection">Merge label</button>
+          <button class="btn btn-sec" onclick="ungroupSelection()" style="font-size:11px;padding:4px 8px;" title="Split a merged label back into individual wells">Split</button>
+        </div>
+      </div>
+    </div>
     <button class="btn btn-sec" onclick="selectAll()" style="font-size:11px;padding:5px;width:100%;margin-top:6px;">Select All</button>
   </div>
 </div>
@@ -1158,12 +1173,12 @@ const FORMATS = {
 };
 const ROWS_ALL = 'ABCDEFGHIJKLMNOP'.split('');
 const WELL_TYPES = [
-  {id:'cells',   name:'Cells',        color:'#a8d5a2'},
+  {id:'cells',   name:'Cells',        color:'#f4a8a8'},
   {id:'treat',   name:'Treatment',    color:'#90caf9'},
   {id:'posctrl', name:'Pos. Control', color:'#ef9a9a'},
   {id:'negctrl', name:'Neg. Control', color:'#ffcc80'},
   {id:'blank',   name:'Blank/Media',  color:'#b0bec5'},
-  {id:'dmso',    name:'DMSO',         color:'#ce93d8'},
+  {id:'dmso',    name:'DMSO',         color:'#aedfa9'},
 ];
 const MAX_WP = {'6':160,'12':120,'24':88,'48':64,'96':52,'384':20};
 const LABEL_W = 24, LABEL_H = 20;
@@ -1359,13 +1374,10 @@ function buildPlateArea() {
   wireCanvasEvents(canvas);
 }
 
-function sizeAndDrawCanvas() {
-  const canvas = document.getElementById('plate-canvas-main');
-  if (!canvas) return;
+function computePlateMeta(wellPxOverride) {
   const fmt = FORMATS[currentFormat];
-  const wellPx = calcWellPx();
-  fmt.wellPx = wellPx;
-  const {rows, cols, gap} = {rows: fmt.rows, cols: fmt.cols, gap: fmt.gap};
+  const wellPx = wellPxOverride != null ? wellPxOverride : calcWellPx();
+  const rows = fmt.rows, cols = fmt.cols, gap = fmt.gap;
 
   const TICK = 5;
   const leftLv  = pdBrackets.filter(b=>b.side==='left').reduce((m,b)=>Math.max(m,b.level),0);
@@ -1385,18 +1397,28 @@ function sizeAndDrawCanvas() {
 
   const canvasW = ox + LABEL_W + cols * (wellPx + gap) - gap + rightM;
   const canvasH = oy + LABEL_H + rows * (wellPx + gap) - gap + botM;
-  const dpr = Math.max(window.devicePixelRatio || 1, 2);
-  canvas.width  = Math.round(canvasW * dpr);
-  canvas.height = Math.round(canvasH * dpr);
-  canvas.style.width  = canvasW + 'px';
-  canvas.style.height = canvasH + 'px';
   const PB_W = Math.max(PB_W_lft, PB_W_rgt), PB_H = Math.max(PB_H_top, PB_H_bot);
-  canvas._meta = {labelW: LABEL_W, labelH: LABEL_H, wellPx, gap, rows, cols, dpr, ox, oy, rightM, botM, PB_W, PB_H};
+  return {labelW: LABEL_W, labelH: LABEL_H, wellPx, gap, rows, cols, ox, oy, rightM, botM, PB_W, PB_H, canvasW, canvasH};
+}
+
+function sizeAndDrawCanvas() {
+  const canvas = document.getElementById('plate-canvas-main');
+  if (!canvas) return;
+  const wellPx = calcWellPx();
+  FORMATS[currentFormat].wellPx = wellPx;
+  const meta = computePlateMeta(wellPx);
+  const dpr = Math.max(window.devicePixelRatio || 1, 2);
+  canvas.width  = Math.round(meta.canvasW * dpr);
+  canvas.height = Math.round(meta.canvasH * dpr);
+  canvas.style.width  = meta.canvasW + 'px';
+  canvas.style.height = meta.canvasH + 'px';
+  canvas._meta = Object.assign({}, meta, {dpr});
   drawPlateCanvas(canvas);
 }
 
-function drawPlateCanvas(canvas) {
+function drawPlateCanvas(canvas, opts) {
   if (!canvas || !canvas._meta) return;
+  opts = opts || {};
   const {labelW, labelH, wellPx, gap, rows, cols, dpr} = canvas._meta;
   const ox = canvas._meta.ox || 0, oy = canvas._meta.oy || 0;
   const rightM = canvas._meta.rightM || 0, botM = canvas._meta.botM || 0;
@@ -1416,15 +1438,19 @@ function drawPlateCanvas(canvas) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const W = parseInt(canvas.style.width);
   const H = parseInt(canvas.style.height);
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, W, H);
+  if (!opts.transparentBg) {
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(0, 0, W, H);
+  }
 
-  // Pre-scan all well labels to find the minimum font size → keeps all labels the same size
+  // Pre-scan all well labels to find the minimum font size → keeps all labels the same size.
+  // Grouped (merged-label) wells are excluded since their label is rendered once, much larger,
+  // across the whole group's bounding box — including them here would shrink every other label.
   let _consistentFontSz = Math.min(10, wellPx / 4);
   if (wellPx >= 16 && Object.keys(wellState).length) {
     const _maxW = wellPx * 0.82;
     for (const ws of Object.values(wellState)) {
-      if (ws && ws.label) {
+      if (ws && ws.label && !ws.groupId) {
         const f = fitTextInWell(ctx, ws.label, _maxW, wellPx * 0.8, _consistentFontSz);
         if (f.size < _consistentFontSz) _consistentFontSz = f.size;
       }
@@ -1453,7 +1479,7 @@ function drawPlateCanvas(canvas) {
       const wy = oy + labelH + r * (wellPx + gap);
 
       ctx.save();
-      ctx.fillStyle = t ? t.color : emptyFill;
+      ctx.fillStyle = (ws && ws.color) ? ws.color : (t ? t.color : emptyFill);
 
       if (is384) {
         ctx.beginPath(); ctx.roundRect(wx, wy, wellPx, wellPx, 2); ctx.fill();
@@ -1471,7 +1497,7 @@ function drawPlateCanvas(canvas) {
         }
       }
 
-      if (ws && ws.label && wellPx >= 16) {
+      if (ws && ws.label && wellPx >= 16 && !ws.groupId) {
         const maxW = wellPx * 0.82;
         const fit = fitTextInWell(ctx, ws.label, maxW, wellPx * 0.8, _consistentFontSz);
         ctx.fillStyle = 'rgba(255,255,255,0.92)';
@@ -1485,6 +1511,37 @@ function drawPlateCanvas(canvas) {
       ctx.restore();
     }
   }
+
+  // ── Draw merged group labels, spanning each group's bounding box ──
+  const _groupBoxes = {};
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const wid = rowLetters[r] + (c + 1);
+      const ws = wellState[wid];
+      if (ws && ws.groupId) {
+        const g = _groupBoxes[ws.groupId] || (_groupBoxes[ws.groupId] = {r1:r, r2:r, c1:c, c2:c, label: ws.label || ''});
+        g.r1 = Math.min(g.r1, r); g.r2 = Math.max(g.r2, r);
+        g.c1 = Math.min(g.c1, c); g.c2 = Math.max(g.c2, c);
+      }
+    }
+  }
+  Object.values(_groupBoxes).forEach(g => {
+    if (!g.label) return;
+    const bx = ox + labelW + g.c1 * (wellPx + gap);
+    const by = oy + labelH + g.r1 * (wellPx + gap);
+    const bw = (g.c2 - g.c1 + 1) * (wellPx + gap) - gap;
+    const bh = (g.r2 - g.r1 + 1) * (wellPx + gap) - gap;
+    const fit = fitTextInWell(ctx, g.label, bw * 0.88, bh * 0.8, Math.min(20, bh / 3));
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const lineH = fit.size * 1.2;
+    const totalH = fit.lines.length * lineH;
+    fit.lines.forEach((line, li) => {
+      ctx.fillText(line, bx + bw/2, by + bh/2 - totalH/2 + li * lineH + fit.size * 0.5);
+    });
+    ctx.restore();
+  });
 
   // ── Draw plate brackets ──
   if (pdBrackets.length) {
@@ -1726,7 +1783,11 @@ function wireCanvasEvents(canvas) {
       _wellTip.style.left = Math.min(e.clientX + 12, window.innerWidth - 200) + 'px';
       _wellTip.style.top = (e.clientY + 14) + 'px';
     } else { _wellTip.style.display = 'none'; }
+  });
 
+  // Drag tracking lives on document, not canvas, so a selection in progress
+  // keeps extending even if the cursor momentarily leaves the plate bounds.
+  function onDocMouseMove(e) {
     if (!down) return;
     const dx = e.clientX - downPos.x, dy = e.clientY - downPos.y;
     if (!moved && dx*dx + dy*dy > 9) moved = true;
@@ -1744,12 +1805,11 @@ function wireCanvasEvents(canvas) {
         showRubberBand(rbStart, e);
       }
     }
-  });
+  }
+  document.addEventListener('mousemove', onDocMouseMove);
 
   canvas.addEventListener('mouseleave', () => {
     _wellTip.style.display = 'none';
-    if (down && dragMode === 'rb') hideRubberBand();
-    down = false; downWell = null; dragMode = null; moved = false;
   });
 
   canvas.addEventListener('contextmenu', e => {
@@ -1774,7 +1834,10 @@ function wireCanvasEvents(canvas) {
     updateSelToolbar(); drawPlateCanvas(canvas); renderLegend();
   }
   document.addEventListener('mouseup', onMouseUp);
-  canvas._cleanupMouseUp = () => document.removeEventListener('mouseup', onMouseUp);
+  canvas._cleanupMouseUp = () => {
+    document.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('mousemove', onDocMouseMove);
+  };
 
   // ── Touch support ──────────────────────────────────────────────
   function fakeEv(touch) { return {clientX: touch.clientX, clientY: touch.clientY, ctrlKey:false, metaKey:false, shiftKey:false}; }
@@ -1967,10 +2030,13 @@ function updateSelToolbar() {
     else { btn.textContent = 'Apply ↓'; btn.onclick = () => applyDilution('col'); }
   }
 
-  // Hide types palette when dilution section is shown — keeps popup compact for row/col selection
-  if (_ph) _ph.style.display = showDil ? 'none' : '';
-  if (_tw) _tw.style.display = showDil ? 'none' : '';
-  if (_ab) _ab.style.display = showDil ? 'none' : '';
+  const canRow = new Set(prs.map(p => p.col)).size >= 2;
+  const canCol = new Set(prs.map(p => p.row)).size >= 2;
+  const showGrad = prs.length >= 2 && (canRow || canCol);
+  document.getElementById('grad-sep').style.display = showGrad ? '' : 'none';
+  document.getElementById('grad-wrap').style.display = showGrad ? '' : 'none';
+  document.getElementById('grad-row-btn').style.display = canRow ? '' : 'none';
+  document.getElementById('grad-col-btn').style.display = canCol ? '' : 'none';
 
   // Position after all content is shown so offsetHeight is accurate
   positionToolbar();
@@ -2032,6 +2098,102 @@ function fmtConcAuto(valInNM) {
   return parseFloat((valInNM*1e3).toPrecision(3)) + 'pM';
 }
 
+// ─── Dose gradient (darker → lighter pastel shading, no numbers needed) ───────
+function _hexToHsl(hex) {
+  hex = hex.replace('#', '');
+  const r = parseInt(hex.substr(0,2),16)/255, g = parseInt(hex.substr(2,2),16)/255, b = parseInt(hex.substr(4,2),16)/255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h, s, l = (max+min)/2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+    switch (max) {
+      case r: h = (g-b)/d + (g<b?6:0); break;
+      case g: h = (b-r)/d + 2; break;
+      default: h = (r-g)/d + 4;
+    }
+    h /= 6;
+  }
+  return {h: h*360, s: s*100, l: l*100};
+}
+function _hslToHex(h, s, l) {
+  h/=360; s/=100; l/=100;
+  let r, g, b;
+  if (s === 0) { r = g = b = l; }
+  else {
+    const hue2rgb = (p,q,t) => { if(t<0)t+=1; if(t>1)t-=1; if(t<1/6)return p+(q-p)*6*t; if(t<1/2)return q; if(t<2/3)return p+(q-p)*(2/3-t)*6; return p; };
+    const q = l < 0.5 ? l*(1+s) : l+s-l*s;
+    const p = 2*l-q;
+    r = hue2rgb(p,q,h+1/3); g = hue2rgb(p,q,h); b = hue2rgb(p,q,h-1/3);
+  }
+  const toHex = v => Math.round(v*255).toString(16).padStart(2,'0');
+  return '#'+toHex(r)+toHex(g)+toHex(b);
+}
+// t=0 → darkest step (highest "dose"), t=1 → lightest step. Stays within a pastel band
+// around the base type color's own lightness, rather than running to true black/white.
+function shadeColor(baseHex, t) {
+  const {h, s, l} = _hexToHsl(baseHex);
+  const lo = Math.max(30, l - 20), hi = Math.min(94, l + 28);
+  return _hslToHex(h, s, lo + t * (hi - lo));
+}
+
+function applyGradient(dir) {
+  const selArr = Array.from(selection).filter(id => wellRowCol(id));
+  if (selArr.length < 2) return;
+  const baseType = typeById(activeTypeId);
+  const baseColor = baseType ? baseType.color : '#90caf9';
+  const rls = ROWS_ALL.slice(0, FORMATS[currentFormat].rows);
+  if (dir === 'row') {
+    const cols_ = [...new Set(selArr.map(id => wellRowCol(id).col))].sort((a,b) => a-b);
+    cols_.forEach((c, i) => {
+      const shade = shadeColor(baseColor, cols_.length > 1 ? i/(cols_.length-1) : 0);
+      selArr.filter(id => wellRowCol(id).col === c).forEach(id => {
+        if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: ''};
+        wellState[id].typeId = activeTypeId;
+        wellState[id].color = shade;
+      });
+    });
+  } else {
+    const rows_ = [...new Set(selArr.map(id => wellRowCol(id).row))].sort((a,b) => rls.indexOf(a)-rls.indexOf(b));
+    rows_.forEach((r, i) => {
+      const shade = shadeColor(baseColor, rows_.length > 1 ? i/(rows_.length-1) : 0);
+      selArr.filter(id => wellRowCol(id).row === r).forEach(id => {
+        if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: ''};
+        wellState[id].typeId = activeTypeId;
+        wellState[id].color = shade;
+      });
+    });
+  }
+  drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
+}
+
+function clearGradient() {
+  selection.forEach(id => { if (wellState[id]) delete wellState[id].color; });
+  drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
+}
+
+// ─── Merged multi-well label (one label spanning a whole selection block) ─────
+function applyMergedLabel() {
+  const lblInput = document.getElementById('sp-lbl-input');
+  const val = ((lblInput && lblInput.value) || '').trim();
+  const selArr = Array.from(selection).filter(id => wellRowCol(id));
+  if (selArr.length < 2) { alert('Select 2 or more wells first.'); return; }
+  if (!val) { alert('Enter a label first.'); return; }
+  const gid = 'g' + Date.now();
+  selArr.forEach(id => {
+    if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: val};
+    else wellState[id].label = val;
+    wellState[id].groupId = gid;
+  });
+  drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
+}
+
+function ungroupSelection() {
+  selection.forEach(id => { if (wellState[id]) delete wellState[id].groupId; });
+  drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
+}
+
 // ─── Custom types (legacy stubs kept for safety) ───────────────────────────────
 
 // ─── Legend ───────────────────────────────────────────────────────────────────
@@ -2060,74 +2222,58 @@ function fitTextInWell(ctx, text, maxW, maxH, startSize) {
   return {lines: [line1, line2], size};
 }
 
-// ─── PNG export (600 DPI) ─────────────────────────────────────────────────────
+// ─── PNG export ────────────────────────────────────────────────────────────────
+// Reuses drawPlateCanvas() — the exact function that renders the live view — so the
+// exported plate is pixel-proportional to what's on screen (same brackets, theme
+// colors, gradients and merged labels), with just a title/legend band added around it.
 async function exportPNG() {
   await document.fonts.ready;
-  const fmt = FORMATS[currentFormat];
-  const rows = ROWS_ALL.slice(0, fmt.rows);
-  const scale = 600 / 96;
-  const WELL_SCREEN = {'6':160,'12':110,'24':75,'48':52,'96':36,'384':20}[currentFormat];
-  const GAP=4, MGBT=20, MGLR=50, ROWLW=76, COLLH=52, LEGH=44;
-  const plateW = fmt.cols*(WELL_SCREEN+GAP)-GAP, plateH = fmt.rows*(WELL_SCREEN+GAP)-GAP;
-  const cW = MGLR+ROWLW+plateW+MGLR, cH = MGBT+30+COLLH+plateH+MGBT+LEGH;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(cW * scale); canvas.height = Math.round(cH * scale);
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  ctx.scale(scale, scale);
+  const WELL_EXPORT = {'6':160,'12':110,'24':75,'48':52,'96':36,'384':20}[currentFormat];
+  const meta = computePlateMeta(WELL_EXPORT);
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const transparent = document.getElementById('export-transparent')?.checked;
-  if (!transparent) { ctx.fillStyle='#f4f5f8'; ctx.fillRect(0,0,cW,cH); }
-  ctx.fillStyle='#1a1d2e'; ctx.textAlign='left';
-  ctx.font='bold 13px "IBM Plex Sans",Arial,sans-serif';
-  ctx.fillText(currentFormat+'-well plate layout  ·  '+new Date().toLocaleDateString(), MGLR, MGBT+18);
-  const ox=MGLR+ROWLW, oy=MGBT+30+COLLH;
-  for (let c=1;c<=fmt.cols;c++) {
-    const cx=ox+(c-1)*(WELL_SCREEN+GAP)+WELL_SCREEN/2;
-    ctx.fillStyle='#5a5f7a'; ctx.textAlign='center';
-    ctx.font='bold '+Math.max(9,Math.min(13,WELL_SCREEN/3))+'px "IBM Plex Mono",monospace';
-    ctx.fillText(c, cx, oy-30);
-    const ann=colAnnotations[String(c)]||'';
-    if (ann) { ctx.fillStyle='#9ca0b8'; ctx.font='9px "IBM Plex Sans",Arial,sans-serif'; ctx.fillText(ann.length>12?ann.slice(0,12)+'…':ann, cx, oy-14); }
+  const titleColor = isDark ? '#e8eaf2' : '#1a1d2e';
+  const legendTextColor = isDark ? '#8b90a8' : '#5a5f7a';
+
+  const usedIds = new Set(Object.values(wellState).map(ws => ws.typeId));
+  const usedTypes = allTypes().filter(t => usedIds.has(t.id));
+
+  const PAD = 16, TITLE_H = 26, LEGEND_H = usedTypes.length ? 40 : 0;
+  const cW = meta.canvasW + PAD*2;
+  const cH = PAD + TITLE_H + meta.canvasH + LEGEND_H + PAD;
+  const dpr = 600 / 96;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(cW * dpr);
+  canvas.height = Math.round(cH * dpr);
+  canvas.style.width  = cW + 'px';
+  canvas.style.height = cH + 'px';
+  canvas._meta = Object.assign({}, meta, {ox: meta.ox + PAD, oy: meta.oy + PAD + TITLE_H, dpr});
+
+  const savedSelection = selection;
+  selection = new Set();
+  drawPlateCanvas(canvas, {transparentBg: transparent});
+  selection = savedSelection;
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = titleColor;
+  ctx.font = 'bold 13px "IBM Plex Sans",Arial,sans-serif';
+  ctx.fillText(currentFormat + '-well plate layout  ·  ' + new Date().toLocaleDateString(), PAD, PAD + TITLE_H - 8);
+
+  if (usedTypes.length) {
+    const plateBottomY = meta.oy + PAD + TITLE_H + meta.labelH + meta.rows*(meta.wellPx+meta.gap) - meta.gap + meta.botM;
+    let lx = PAD;
+    const ly = plateBottomY + 18;
+    usedTypes.forEach(t => {
+      ctx.fillStyle = t.color; ctx.fillRect(lx, ly, 13, 13);
+      ctx.fillStyle = legendTextColor; ctx.font = '11px "IBM Plex Sans",Arial,sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(t.name, lx + 17, ly + 10);
+      lx += ctx.measureText(t.name).width + 36;
+    });
   }
-  for (let ri=0;ri<fmt.rows;ri++) {
-    const rl=rows[ri], cy=oy+ri*(WELL_SCREEN+GAP)+WELL_SCREEN/2;
-    ctx.fillStyle='#5a5f7a'; ctx.textAlign='right';
-    ctx.font='bold '+Math.max(9,Math.min(13,WELL_SCREEN/3))+'px "IBM Plex Mono",monospace';
-    ctx.fillText(rl, ox-10, cy+4);
-    const ann=rowAnnotations[rl]||'';
-    if (ann) { ctx.fillStyle='#9ca0b8'; ctx.font='9px "IBM Plex Sans",Arial,sans-serif'; ctx.textAlign='right'; ctx.fillText(ann.length>12?ann.slice(0,12)+'…':ann, ox-26, cy+4); }
-  }
-  for (let ri=0;ri<fmt.rows;ri++) {
-    for (let c=1;c<=fmt.cols;c++) {
-      const id=rows[ri]+c, wx=ox+(c-1)*(WELL_SCREEN+GAP), wy=oy+ri*(WELL_SCREEN+GAP);
-      const ws=wellState[id], t=ws?typeById(ws.typeId):null;
-      ctx.save();
-      ctx.fillStyle = t ? t.color : '#e4e6ee';
-      if (currentFormat==='384') {
-        ctx.beginPath(); ctx.roundRect(wx,wy,WELL_SCREEN,WELL_SCREEN,2); ctx.fill();
-        if (!t) { ctx.strokeStyle='#c4c8d0'; ctx.lineWidth=0.5; ctx.stroke(); }
-      } else {
-        ctx.beginPath(); ctx.arc(wx+WELL_SCREEN/2,wy+WELL_SCREEN/2,WELL_SCREEN/2,0,2*Math.PI); ctx.fill();
-        if (!t) { ctx.strokeStyle='#c4c8d0'; ctx.lineWidth=0.7; ctx.stroke(); }
-      }
-      if (ws && ws.label && WELL_SCREEN >= 22) {
-        const fit = fitTextInWell(ctx, ws.label, WELL_SCREEN*0.82, WELL_SCREEN*0.8, Math.min(18, WELL_SCREEN/3));
-        ctx.fillStyle='rgba(255,255,255,0.95)';
-        ctx.font=`bold ${fit.size}px "IBM Plex Mono",monospace`; ctx.textAlign='center';
-        const lineH=fit.size*1.2, totalH=fit.lines.length*lineH;
-        fit.lines.forEach((line, li) => { ctx.fillText(line, wx+WELL_SCREEN/2, wy+WELL_SCREEN/2-totalH/2+li*lineH+fit.size*0.8); });
-      }
-      ctx.restore();
-    }
-  }
-  const usedIds=new Set(Object.values(wellState).map(ws=>ws.typeId));
-  const usedTypes=allTypes().filter(t=>usedIds.has(t.id));
-  const ly=oy+plateH+18; let lx=ox;
-  usedTypes.forEach(t => {
-    ctx.fillStyle=t.color; ctx.fillRect(lx,ly,13,13);
-    ctx.fillStyle='#5a5f7a'; ctx.font='11px "IBM Plex Sans",Arial,sans-serif'; ctx.textAlign='left';
-    ctx.fillText(t.name, lx+17, ly+10); lx+=ctx.measureText(t.name).width+36;
-  });
+
   ldHistAdd({
     id: 'p'+Date.now(),
     name: currentFormat+'-well plate · '+new Date().toLocaleDateString(),
