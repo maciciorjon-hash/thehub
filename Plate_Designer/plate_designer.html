@@ -1480,6 +1480,9 @@ function drawPlateCanvas(canvas, opts) {
 
       ctx.save();
       ctx.fillStyle = (ws && ws.color) ? ws.color : (t ? t.color : emptyFill);
+      // Merged-label wells are washed out (lower alpha) so the bridging scrim + label
+      // drawn afterward reads clearly over them instead of fighting busy per-well color.
+      if (ws && ws.groupId) ctx.globalAlpha = 0.45;
 
       if (is384) {
         ctx.beginPath(); ctx.roundRect(wx, wy, wellPx, wellPx, 2); ctx.fill();
@@ -1531,7 +1534,15 @@ function drawPlateCanvas(canvas, opts) {
     const by = oy + labelH + g.r1 * (wellPx + gap);
     const bw = (g.c2 - g.c1 + 1) * (wellPx + gap) - gap;
     const bh = (g.r2 - g.r1 + 1) * (wellPx + gap) - gap;
-    const fit = fitTextInWell(ctx, g.label, bw * 0.88, bh * 0.8, Math.min(20, bh / 3));
+    // Bridging scrim: one rounded rect spanning the whole group, covering the gaps between
+    // individual wells so the group reads as one merged block instead of separate wells,
+    // and giving the label consistent contrast regardless of the wells' own colors underneath.
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, Math.min(10, wellPx * 0.2));
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.restore();
+    const fit = fitTextInWell(ctx, g.label, bw * 0.88, bh * 0.8, Math.min(20, bh / 3), '"IBM Plex Sans",sans-serif');
     ctx.save();
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -2138,6 +2149,9 @@ function shadeColor(baseHex, t) {
   return _hslToHex(h, s, lo + t * (hi - lo));
 }
 
+// Each gradient button toggles direction on every click (row: L↔R, col: T↔B) instead of
+// needing 4 separate buttons — _gradRowRev/_gradColRev track which way the next click applies.
+let _gradRowRev = false, _gradColRev = false;
 function applyGradient(dir) {
   const selArr = Array.from(selection).filter(id => wellRowCol(id));
   if (selArr.length < 2) return;
@@ -2146,6 +2160,7 @@ function applyGradient(dir) {
   const rls = ROWS_ALL.slice(0, FORMATS[currentFormat].rows);
   if (dir === 'row') {
     const cols_ = [...new Set(selArr.map(id => wellRowCol(id).col))].sort((a,b) => a-b);
+    if (_gradRowRev) cols_.reverse();
     cols_.forEach((c, i) => {
       const shade = shadeColor(baseColor, cols_.length > 1 ? i/(cols_.length-1) : 0);
       selArr.filter(id => wellRowCol(id).col === c).forEach(id => {
@@ -2154,8 +2169,15 @@ function applyGradient(dir) {
         wellState[id].color = shade;
       });
     });
+    _gradRowRev = !_gradRowRev;
+    const btn = document.getElementById('grad-row-btn');
+    if (btn) {
+      btn.innerHTML = _gradRowRev ? 'Gradient &#8592;' : 'Gradient &#8594;';
+      btn.title = _gradRowRev ? 'Darker → lighter, right to left.' : 'Darker → lighter, left to right.';
+    }
   } else {
     const rows_ = [...new Set(selArr.map(id => wellRowCol(id).row))].sort((a,b) => rls.indexOf(a)-rls.indexOf(b));
+    if (_gradColRev) rows_.reverse();
     rows_.forEach((r, i) => {
       const shade = shadeColor(baseColor, rows_.length > 1 ? i/(rows_.length-1) : 0);
       selArr.filter(id => wellRowCol(id).row === r).forEach(id => {
@@ -2164,6 +2186,12 @@ function applyGradient(dir) {
         wellState[id].color = shade;
       });
     });
+    _gradColRev = !_gradColRev;
+    const btn = document.getElementById('grad-col-btn');
+    if (btn) {
+      btn.innerHTML = _gradColRev ? 'Gradient &#8593;' : 'Gradient &#8595;';
+      btn.title = _gradColRev ? 'Darker → lighter, bottom to top.' : 'Darker → lighter, top to bottom.';
+    }
   }
   drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
 }
@@ -2205,19 +2233,20 @@ function renderLegend() {
 }
 
 // ─── Fit text in well ─────────────────────────────────────────────────────────
-function fitTextInWell(ctx, text, maxW, maxH, startSize) {
+function fitTextInWell(ctx, text, maxW, maxH, startSize, fontFamily) {
+  const ff = fontFamily || '"IBM Plex Mono",monospace';
   let size = startSize;
-  ctx.font = `bold ${size}px "IBM Plex Mono",monospace`;
+  ctx.font = `bold ${size}px ${ff}`;
   if (ctx.measureText(text).width <= maxW) return {lines:[text], size};
   const words = text.split(/[\s_/]+/);
   if (words.length === 1) {
-    while (size > 5 && ctx.measureText(text).width > maxW) { size -= 0.5; ctx.font = `bold ${size}px "IBM Plex Mono",monospace`; }
+    while (size > 5 && ctx.measureText(text).width > maxW) { size -= 0.5; ctx.font = `bold ${size}px ${ff}`; }
     return {lines:[text], size};
   }
   const mid = Math.ceil(words.length / 2);
   const line1 = words.slice(0, mid).join(' '), line2 = words.slice(mid).join(' ');
   while (size > 5 && (ctx.measureText(line1).width > maxW || ctx.measureText(line2).width > maxW)) {
-    size -= 0.5; ctx.font = `bold ${size}px "IBM Plex Mono",monospace`;
+    size -= 0.5; ctx.font = `bold ${size}px ${ff}`;
   }
   return {lines: [line1, line2], size};
 }
