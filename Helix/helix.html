@@ -138,7 +138,6 @@ select:focus,input:focus{border-color:var(--accent);}
 .tools-opts{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
 .tools-opts>div{display:flex;flex-direction:column;gap:4px;}
 .tools-opts>div>label{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:0;}
-.tools-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start;}
 .result-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;}
 .result-card-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:2px;}
 #tools-results{display:none;flex-direction:column;gap:10px;}
@@ -173,7 +172,6 @@ select:focus,input:focus{border-color:var(--accent);}
   .panel{padding:12px 10px;}
   .tools-opts{flex-direction:column;gap:8px;}
   .tools-opts>div{width:100%;}
-  .tools-grid{grid-template-columns:1fr;}
   .row{flex-direction:column;}
   .col{min-width:0;width:100%;}
   .vec-grid{grid-template-columns:1fr;}
@@ -208,7 +206,6 @@ select:focus,input:focus{border-color:var(--accent);}
   .col { min-width: 0; width: 100%; }
   .tools-opts { flex-direction: column; align-items: stretch; gap: 8px; }
   .tools-opts > div { width: 100%; }
-  .tools-grid { grid-template-columns: 1fr; gap: 10px; }
   .result-card { padding: 12px; }
   .res-lbl { min-width: 120px; font-size: 11px; }
   .res-val { font-size: 12px; }
@@ -250,7 +247,7 @@ select:focus,input:focus{border-color:var(--accent);}
   <div class="logo">H</div>
   <div>
     <div class="app-name">Helix</div>
-    <div class="app-sub">Translate · complement · Tm · ORF finder · vector library <span style="opacity:.45;font-size:10px;">· v1.2 · Jun 2026</span></div>
+    <div class="app-sub">Translate · reverse translate · ORF finder · compare · vector library <span style="opacity:.45;font-size:10px;">· v1.3 · Jun 2026</span></div>
   </div>
   <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
 <div class="opts-panel" id="opts-panel">
@@ -264,7 +261,8 @@ select:focus,input:focus{border-color:var(--accent);}
 </div>
 </header>
 <div class="tabs">
-  <button class="tab active" onclick="switchTab('tools',this)">Tools</button>
+  <button class="tab active" onclick="switchTab('genetic',this)">Genetic Code</button>
+  <button class="tab" onclick="switchTab('seqtools',this)">Sequence Tools</button>
   <button class="tab" onclick="switchTab('compare',this)">Compare</button>
   <button class="tab" onclick="switchTab('vectors',this)">Vector Library</button>
   <button class="tab" onclick="switchTab('guide',this)">Guide</button>
@@ -272,78 +270,38 @@ select:focus,input:focus{border-color:var(--accent);}
 </div>
 <div class="content">
 
-<!-- TOOLS (unified: Translate + Sequence Analysis + ORF Finder) -->
-<div class="panel active" id="panel-tools">
-  <div>
-    <label>Nucleotide sequence <span style="font-weight:400;color:var(--text3);">(FASTA accepted — paste once, run all tools)</span></label>
-    <textarea id="tools-seq" rows="5" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA…" oninput="updateNtPreview()"></textarea>
-   <div id="hx-nt-preview" class="hx-nt-preview"></div>
-   <div id="hx-comp-bar" class="hx-comp-bar"></div>
-   <div id="hx-comp-counts" class="hx-comp-counts"></div>
-  </div>
-  <div class="tools-opts">
-    <div>
-      <label>Reading frame <span class="pinfo" data-tip="Translation frame. −1/−2/−3 = reverse complement strand.">ⓘ</span></label>
-      <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1 ↩</option><option value="-2">-2 ↩</option><option value="-3">-3 ↩</option></select>
-    </div>
-    <div>
-      <label>Codon table</label>
-      <select id="tr-table"><option value="1">Standard</option><option value="2">Vertebrate Mito</option></select>
-    </div>
-    <div style="flex:1;min-width:140px;">
-      <label>Min. ORF length (aa)</label>
-      <input type="number" id="orf-min" min="10" max="300" value="50" style="width:80px;margin-top:4px;">
-    </div>
-    <div style="display:flex;gap:8px;padding-bottom:2px;">
-      <button class="btn btn-primary" onclick="runAllTools()">Analyse</button>
-      <button class="btn btn-sec" onclick="loadTrExample()">Example</button>
-      <button class="btn btn-sec" onclick="clearTools()">Clear</button>
-    </div>
-  </div>
-
-  <!-- Results (shown after Analyse) -->
-  <div id="tools-results">
-    <div class="tools-grid">
-      <!-- Translation card -->
-      <div class="result-card">
-        <div class="result-card-hdr">Translation</div>
-        <div id="tr-result" class="hidden">
-          <div style="color:var(--text3);font-size:11px;margin-bottom:6px;">Protein sequence</div>
-          <div class="mono-out" id="tr-protein" style="max-height:120px;overflow-y:auto;"></div>
-          <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap;">
-            <span class="pill" id="tr-len-pill"></span>
-            <span class="pill" id="tr-mw-pill"></span>
-            <span class="pill" id="tr-stop-pill"></span>
-          </div>
-          <button class="btn btn-sec" onclick="copyText(document.getElementById('tr-protein').textContent)" style="margin-top:8px;font-size:12px;">Copy sequence</button>
-        </div>
-        <div id="tr-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
+<!-- GENETIC CODE (Translate + Reverse Translation + Codon Table reference) -->
+<div class="panel active" id="panel-genetic">
+  <div class="result-card">
+    <div class="result-card-hdr">Translation (Nucleotide &#8594; Protein)</div>
+    <label>Nucleotide sequence <span style="font-weight:400;color:var(--text3);">(FASTA accepted)</span></label>
+    <textarea id="tr-seq" rows="4" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA…"></textarea>
+    <div class="tools-opts" style="margin-top:8px;">
+      <div>
+        <label>Reading frame <span class="pinfo" data-tip="Translation frame. −1/−2/−3 = reverse complement strand.">ⓘ</span></label>
+        <select id="tr-frame"><option value="+1">+1</option><option value="+2">+2</option><option value="+3">+3</option><option value="-1">-1 ↩</option><option value="-2">-2 ↩</option><option value="-3">-3 ↩</option></select>
       </div>
-      <!-- Sequence Analysis card -->
-      <div class="result-card">
-        <div class="result-card-hdr">Sequence Analysis</div>
-        <div id="st-type-pill"></div>
-        <div id="st-results" class="hidden">
-          <div id="st-rows"></div>
-        </div>
-        <div id="st-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
+      <div>
+        <label>Codon table</label>
+        <select id="tr-table"><option value="1">Standard</option><option value="2">Vertebrate Mito</option></select>
+      </div>
+      <div style="display:flex;flex-direction:row;gap:8px;padding-bottom:2px;">
+        <button class="btn btn-primary" onclick="runTranslate()">Translate</button>
+        <button class="btn btn-sec" onclick="loadTrExample()">Example</button>
+        <button class="btn btn-sec" onclick="clearTranslate()">Clear</button>
       </div>
     </div>
-    <!-- ORF Finder card -->
-    <div class="result-card">
-      <div class="result-card-hdr">ORF Finder</div>
-      <div id="orf-result" class="hidden">
-        <div style="overflow-x:auto;margin-bottom:12px;">
-          <table class="stat-table" id="orf-table">
-            <thead><tr><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th><th>First 10 AA</th></tr></thead>
-            <tbody id="orf-tbody"></tbody>
-          </table>
-        </div>
-        <div class="card-hdr">Sequence map</div>
-        <div class="seq-disp" id="orf-seq-disp"></div>
+    <div id="tr-result" class="hidden" style="margin-top:10px;">
+      <div style="color:var(--text3);font-size:11px;margin-bottom:6px;">Protein sequence</div>
+      <div class="mono-out" id="tr-protein" style="max-height:120px;overflow-y:auto;"></div>
+      <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap;">
+        <span class="pill" id="tr-len-pill"></span>
+        <span class="pill" id="tr-mw-pill"></span>
+        <span class="pill" id="tr-stop-pill"></span>
       </div>
-      <div id="orf-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
+      <button class="btn btn-sec" onclick="copyText(document.getElementById('tr-protein').textContent)" style="margin-top:8px;font-size:12px;">Copy sequence</button>
     </div>
+    <div id="tr-empty" style="color:var(--text3);font-size:12px;margin-top:8px;">No valid sequence.</div>
   </div>
 
   <!-- Reverse Translation (Protein -> Nucleotide) -->
@@ -372,7 +330,7 @@ select:focus,input:focus{border-color:var(--accent);}
   <div class="result-card" style="margin-top:14px;">
     <div class="result-card-hdr" style="display:flex;align-items:center;justify-content:space-between;border-bottom:none;margin-bottom:8px;">
       <span>Genetic Code (Codon Table)</span>
-      <button class="btn btn-sec" id="ct-base-toggle" onclick="toggleCodonBase()" style="font-size:11px;padding:4px 10px;">RNA (U)</button>
+      <button class="btn btn-sec" id="ct-base-toggle" onclick="toggleCodonBase()" style="font-size:11px;padding:4px 10px;">DNA (T)</button>
     </div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Click any codon to see amino acid details and highlight every synonymous codon for it.</div>
     <div class="codon-table-wrap">
@@ -382,6 +340,56 @@ select:focus,input:focus{border-color:var(--accent);}
       </div>
     </div>
     <div class="codon-legend" id="codon-legend"></div>
+  </div>
+</div>
+
+<!-- SEQUENCE TOOLS (Sequence Analysis + ORF Finder, shared nucleotide input) -->
+<div class="panel" id="panel-seqtools">
+  <div>
+    <label>Nucleotide sequence <span style="font-weight:400;color:var(--text3);">(FASTA accepted — paste once, run both tools)</span></label>
+    <textarea id="tools-seq" rows="5" placeholder=">My CDS&#10;ATGAAACCCGGGTTTTAA…" oninput="updateNtPreview()"></textarea>
+   <div id="hx-nt-preview" class="hx-nt-preview"></div>
+   <div id="hx-comp-bar" class="hx-comp-bar"></div>
+   <div id="hx-comp-counts" class="hx-comp-counts"></div>
+  </div>
+  <div class="tools-opts">
+    <div>
+      <label>Min. ORF length (aa)</label>
+      <input type="number" id="orf-min" min="10" max="300" value="50" style="width:80px;margin-top:4px;">
+    </div>
+    <div style="display:flex;flex-direction:row;gap:8px;padding-bottom:2px;">
+      <button class="btn btn-primary" onclick="runSeqTools()">Analyse</button>
+      <button class="btn btn-sec" onclick="loadSeqExample()">Example</button>
+      <button class="btn btn-sec" onclick="clearSeqTools()">Clear</button>
+    </div>
+  </div>
+
+  <!-- Results (shown after Analyse) -->
+  <div id="tools-results">
+    <!-- Sequence Analysis card -->
+    <div class="result-card">
+      <div class="result-card-hdr">Sequence Analysis</div>
+      <div id="st-type-pill"></div>
+      <div id="st-results" class="hidden">
+        <div id="st-rows"></div>
+      </div>
+      <div id="st-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
+    </div>
+    <!-- ORF Finder card -->
+    <div class="result-card">
+      <div class="result-card-hdr">ORF Finder</div>
+      <div id="orf-result" class="hidden">
+        <div style="overflow-x:auto;margin-bottom:12px;">
+          <table class="stat-table" id="orf-table">
+            <thead><tr><th>Frame</th><th>Start</th><th>End</th><th>Length (aa)</th><th>First 10 AA</th></tr></thead>
+            <tbody id="orf-tbody"></tbody>
+          </table>
+        </div>
+        <div class="card-hdr">Sequence map</div>
+        <div class="seq-disp" id="orf-seq-disp"></div>
+      </div>
+      <div id="orf-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
+    </div>
   </div>
 </div>
 
@@ -426,16 +434,16 @@ select:focus,input:focus{border-color:var(--accent);}
 <!-- GUIDE -->
 <div class="panel" id="panel-guide">
   <div class="guide-card">
-    <h3>Tools tab</h3>
-    <p>Paste a nucleotide sequence and click <strong>Analyse</strong>. Helix runs three analyses simultaneously: <strong>Translation</strong> (choose reading frame and codon table), <strong>Sequence Analysis</strong> (length, GC%, Tm, reverse complement, MW), and <strong>ORF Finder</strong> (all six frames, colour-coded sequence map). As you type, nucleotides are colour-coded live (A/T/G/C) and a composition bar shows the ATGC breakdown with GC%.</p>
+    <h3>Genetic Code tab</h3>
+    <p>Everything that converts between nucleotide and amino acid via the genetic code, in one place. <strong>Translation</strong> turns a nucleotide sequence into protein (choose reading frame and codon table). <strong>Reverse Translation</strong> goes the other way — paste a protein sequence to get back a deterministic DNA sequence (most common human codon per residue; not a real codon-optimization algorithm). The <strong>Genetic Code (Codon Table)</strong> below both is a pure reference — click any codon to see its amino acid, chemical class, and every synonymous codon highlighted, and toggle between DNA (T) and RNA (U) display.</p>
+  </div>
+  <div class="guide-card">
+    <h3>Sequence Tools tab</h3>
+    <p>Paste a nucleotide sequence and click <strong>Analyse</strong> to run <strong>Sequence Analysis</strong> (length, GC%, Tm, complement, reverse complement, MW) and <strong>ORF Finder</strong> (all six reading frames, colour-coded sequence map) together. As you type, nucleotides are colour-coded live (A/T/G/C) and a composition bar shows the ATGC breakdown with GC%.</p>
   </div>
   <div class="guide-card">
     <h3>Compare</h3>
     <p>Align two nucleotide sequences (FASTA accepted) to calculate percent identity, gaps, and mismatches. The alignment is displayed with colour-coded mismatches.</p>
-  </div>
-  <div class="guide-card">
-    <h3>ORF Finder</h3>
-    <p>Scans all six reading frames for open reading frames above the minimum length threshold. Results show frame, start/end positions, and the first 10 amino acids.</p>
   </div>
   <div class="guide-card">
     <h3>Vector Library</h3>
@@ -589,7 +597,7 @@ const AA_INFO={
   '*':{name:'Stop codon',code3:'Stop',cls:'stop'}
 };
 const AA_CLASS_LABEL={nonpolar:'Nonpolar / hydrophobic',polar:'Polar, uncharged',acidic:'Acidic (−)',basic:'Basic (+)',stop:'Stop'};
-let _ctBase='U';
+let _ctBase='T';
 function _ctDisp(b){return (b==='U'&&_ctBase==='T')?'T':b;}
 function toggleCodonBase(){
   _ctBase=_ctBase==='U'?'T':'U';
@@ -638,19 +646,33 @@ function renderCodonLegend(){
     .map(([cls,label])=>`<span class="codon-legend-item aa-${cls}">${label}</span>`).join('');
 }
 
-// ─── UNIFIED TOOLS ────────────────────────────────────────────────────────────
-function runAllTools(){
+// ─── Translation ──────────────────────────────────────────────────────────────
+function runTranslate(){
+  const raw=document.getElementById('tr-seq').value.trim();
+  if(!raw){alert('Paste a nucleotide sequence first.');return;}
+  const seq=parseFASTA(raw);
+  if(!seq){alert('No sequence found.');return;}
+  _runTranslateWith(seq);
+}
+
+function clearTranslate(){
+  document.getElementById('tr-seq').value='';
+  document.getElementById('tr-result').style.display='none';
+  document.getElementById('tr-empty').style.display='';
+}
+
+// ─── Sequence Tools (Sequence Analysis + ORF Finder) ─────────────────────────
+function runSeqTools(){
   const raw=document.getElementById('tools-seq').value.trim();
   if(!raw){alert('Paste a nucleotide sequence first.');return;}
   const seq=parseFASTA(raw);
   if(!seq){alert('No sequence found.');return;}
   document.getElementById('tools-results').classList.add('visible');
-  _runTranslateWith(seq);
   _runSeqToolsWith(seq);
   _runORFWith(seq);
 }
 
-function clearTools(){
+function clearSeqTools(){
   document.getElementById('tools-seq').value='';
   document.getElementById('tools-results').classList.remove('visible');
 }
@@ -737,13 +759,18 @@ function _runORFWith(seq){
   document.getElementById('orf-empty').style.display='none';
 }
 
+const EGFP_CDS='>EGFP CDS\nATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTTCATCTGCACCACCGGCAAGCTGCCCGTGCCCTGGCCCACCCTCGTGACCACCCTGACCTACGGCGTGCAGTGCTTCAGCCGCTACCCCGACCACATGAAGCAGCACGACTTCTTCAAGTCCGCCATGCCCGAAGGCTACGTCCAGGAGCGCACCATCTTCTTCAAGGACGACGGCACCTACAAGACCCGCGCCGAGGTGAAGTTCGAGGGCGACACCCTGGTGAACCGCATCGAGCTGAAGGGCATCGACTTCAAGGAGGACGGCAACATCCTGGGGCACAAGCTGGAGTACAACTACATCAGCCACAACACAGAGCAACAGGAGGGCAATATGGATGGCATCCATGGCATGGATGAACTGTACAAATAA';
 function loadTrExample(){
-  document.getElementById('tools-seq').value='>EGFP CDS\nATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCCGGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTTCATCTGCACCACCGGCAAGCTGCCCGTGCCCTGGCCCACCCTCGTGACCACCCTGACCTACGGCGTGCAGTGCTTCAGCCGCTACCCCGACCACATGAAGCAGCACGACTTCTTCAAGTCCGCCATGCCCGAAGGCTACGTCCAGGAGCGCACCATCTTCTTCAAGGACGACGGCACCTACAAGACCCGCGCCGAGGTGAAGTTCGAGGGCGACACCCTGGTGAACCGCATCGAGCTGAAGGGCATCGACTTCAAGGAGGACGGCAACATCCTGGGGCACAAGCTGGAGTACAACTACATCAGCCACAACACAGAGCAACAGGAGGGCAATATGGATGGCATCCATGGCATGGATGAACTGTACAAATAA';
+  document.getElementById('tr-seq').value=EGFP_CDS;
   document.getElementById('tr-frame').value='+1';
   document.getElementById('tr-table').value='1';
 }
+function loadSeqExample(){
+  document.getElementById('tools-seq').value=EGFP_CDS;
+  updateNtPreview();
+}
 
-// ─── TAB 2: Sequence Tools ────────────────────────────────────────────────────
+// ─── Sequence Analysis (Tm, MW) ───────────────────────────────────────────────
 // Breslauer 1986 nearest-neighbor ΔH (kcal/mol) and ΔS (cal/mol·K) for DNA
 const NN={AA:[-7.9,-22.2],TT:[-7.9,-22.2],AT:[-7.2,-20.4],TA:[-7.2,-21.3],CA:[-8.5,-22.7],TG:[-8.5,-22.7],GT:[-8.4,-22.4],AC:[-8.4,-22.4],CT:[-7.8,-21.0],AG:[-7.8,-21.0],GA:[-8.2,-22.2],TC:[-8.2,-22.2],CG:[-10.6,-27.2],GC:[-9.8,-24.4],GG:[-8.0,-19.9],CC:[-8.0,-19.9]};
 function tmNN(seq){
@@ -762,7 +789,7 @@ function nucMW(seq,type){
 }
 
 
-// ─── TAB 3: Compare ───────────────────────────────────────────────────────────
+// ─── Compare ──────────────────────────────────────────────────────────────────
 function needlemanWunsch(a,b,match,mismatch,gap){
   const n=a.length,m=b.length;
   const S=(x,y)=>x===y?match:mismatch;
@@ -836,7 +863,7 @@ function runCompare(){
   document.getElementById('cmp-result').style.display='block';
 }
 
-// ─── TAB 4: ORF Finder ────────────────────────────────────────────────────────
+// ─── ORF Finder ───────────────────────────────────────────────────────────────
 const ORF_PALETTE=['#43a047','#0079b9','#f06292','#ff9800','#9c6fd4','#26a69a','#ef5350','#ffb74d'];
 let _orfs=[], _selectedOrfIdx=-1;
 
@@ -885,7 +912,7 @@ function highlightORF(idx){
 }
 
 
-// ─── TAB 5: Vector Library ────────────────────────────────────────────────────
+// ─── Vector Library ───────────────────────────────────────────────────────────
 
 const TYPE_COLORS={
   promoter:'#f5a623',res:'#e74c3c',ori:'#3498db',tag:'#9b59b6',
@@ -1278,7 +1305,8 @@ document.addEventListener('keydown', function(e) {
 window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='switchTab'||!e.data.tab)return;
   var id=e.data.tab;
-  if(id==='translate'||id==='orf') id='tools';
+  if(id==='tools'||id==='translate') id='genetic';
+  if(id==='orf') id='seqtools';
   var btn=document.querySelector('.tab[onclick*="\''+id+'\'"]');
   if(btn&&document.getElementById('panel-'+id)){
     document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('active');});
