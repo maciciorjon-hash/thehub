@@ -143,6 +143,29 @@ select:focus,input:focus{border-color:var(--accent);}
 .result-card-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);padding-bottom:7px;border-bottom:1px solid var(--border);margin-bottom:2px;}
 #tools-results{display:none;flex-direction:column;gap:10px;}
 #tools-results.visible{display:flex;}
+.codon-table-wrap{display:flex;gap:14px;align-items:flex-start;}
+.codon-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;flex:1;min-width:0;}
+.codon-block{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:3px;}
+.codon-block-lbl{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text3);text-align:center;letter-spacing:1px;margin-bottom:2px;}
+.codon-cell{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 6px;border-radius:5px;cursor:pointer;transition:transform .1s,box-shadow .1s;font-family:var(--mono);}
+.codon-cell:hover{transform:translateY(-1px);box-shadow:var(--shadow-xs);}
+.codon-cell.sel{outline:2px solid var(--accent);outline-offset:1px;}
+.codon-cell.syn{box-shadow:inset 0 0 0 2px var(--accent2);}
+.codon-cell-codon{font-size:11px;font-weight:700;}
+.codon-cell-aa{font-size:10px;font-weight:700;opacity:.85;}
+.codon-detail{flex-shrink:0;width:200px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;position:sticky;top:0;}
+.codon-detail-codon{font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:2px;color:var(--text);margin-bottom:4px;}
+.codon-detail-name{font-size:13px;font-weight:700;padding:3px 8px;border-radius:6px;display:inline-block;margin-bottom:10px;}
+.codon-detail-row{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--text2);padding:5px 0;border-top:1px solid var(--border);}
+.codon-detail-row:first-of-type{border-top:none;}
+.codon-detail-row b{color:var(--text);font-family:var(--mono);}
+.codon-legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.codon-legend-item{font-size:10px;font-weight:600;padding:3px 9px;border-radius:20px;}
+.aa-nonpolar{background:rgba(255,179,71,.20);color:#c97a07;}
+.aa-polar{background:rgba(38,166,154,.20);color:#1c7a6d;}
+.aa-acidic{background:rgba(239,83,80,.20);color:#c8453f;}
+.aa-basic{background:rgba(66,133,244,.20);color:#2f5fc4;}
+.aa-stop{background:rgba(158,158,158,.22);color:#6b6b6b;}
 @media(max-width:640px){
   header{padding:0 12px;}
   .tabs{padding:0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -205,6 +228,9 @@ select:focus,input:focus{border-color:var(--accent);}
   .btn { min-height: 36px; padding: 7px 12px; font-size: 13px; }
   .copy-btn { min-height: 32px; padding: 5px 10px; font-size: 11px; }
   .guide-card { padding: 14px 14px; }
+  .codon-table-wrap { flex-direction: column; }
+  .codon-detail { width: 100%; position: static; }
+  .codon-grid { grid-template-columns: repeat(2, 1fr); }
   /* Allow horizontal panning when content exceeds viewport */
   html, body { overflow: auto; -webkit-overflow-scrolling: touch; }
   .content { overflow: auto; -webkit-overflow-scrolling: touch; }
@@ -319,6 +345,44 @@ select:focus,input:focus{border-color:var(--accent);}
       <div id="orf-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
     </div>
   </div>
+
+  <!-- Reverse Translation (Protein -> Nucleotide) -->
+  <div class="result-card" style="margin-top:14px;">
+    <div class="result-card-hdr">Reverse Translation (Protein &#8594; Nucleotide)</div>
+    <label>Amino acid sequence <span style="font-weight:400;color:var(--text3);">(single-letter codes, FASTA accepted)</span></label>
+    <textarea id="rt-seq" rows="3" placeholder=">My protein&#10;MAKPGFE…"></textarea>
+    <div class="row" style="gap:8px;margin-top:2px;">
+      <button class="btn btn-primary" onclick="runReverseTranslate()">Reverse Translate</button>
+      <button class="btn btn-sec" onclick="loadRtExample()">Example</button>
+      <button class="btn btn-sec" onclick="clearReverseTranslate()">Clear</button>
+    </div>
+    <div id="rt-result" class="hidden" style="margin-top:8px;">
+      <div style="color:var(--text3);font-size:11px;margin-bottom:6px;">Nucleotide sequence (DNA, most common human codon per residue)</div>
+      <div class="mono-out" id="rt-nt" style="max-height:120px;overflow-y:auto;"></div>
+      <div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap;">
+        <span class="pill" id="rt-len-pill"></span>
+        <span class="pill" id="rt-x-pill"></span>
+      </div>
+      <button class="btn btn-sec" onclick="copyText(document.getElementById('rt-nt').textContent)" style="margin-top:8px;font-size:12px;">Copy sequence</button>
+    </div>
+    <div id="rt-empty" style="color:var(--text3);font-size:12px;">No valid sequence.</div>
+  </div>
+
+  <!-- Genetic Code / Codon Table -->
+  <div class="result-card" style="margin-top:14px;">
+    <div class="result-card-hdr" style="display:flex;align-items:center;justify-content:space-between;border-bottom:none;margin-bottom:8px;">
+      <span>Genetic Code (Codon Table)</span>
+      <button class="btn btn-sec" id="ct-base-toggle" onclick="toggleCodonBase()" style="font-size:11px;padding:4px 10px;">RNA (U)</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Click any codon to see amino acid details and highlight every synonymous codon for it.</div>
+    <div class="codon-table-wrap">
+      <div class="codon-grid" id="codon-grid"></div>
+      <div class="codon-detail" id="codon-detail">
+        <div style="color:var(--text3);font-size:12px;">Click a codon to see its details here.</div>
+      </div>
+    </div>
+    <div class="codon-legend" id="codon-legend"></div>
+  </div>
 </div>
 
 <!-- COMPARE -->
@@ -406,6 +470,8 @@ function switchTab(id,btn){
 document.addEventListener('DOMContentLoaded',function(){
   var a=document.querySelector('.tab.active');
   if(a)updateTabIndicator(a);
+  renderCodonTable();
+  renderCodonLegend();
 });
 
 // ─── FASTA parser ─────────────────────────────────────────────────────────────
@@ -469,6 +535,108 @@ function translate(seq,frame,tableId){
 // ─── Protein MW (from AA_AVG table) ──────────────────────────────────────────
 const AA_AVG={A:71.0788,R:156.1875,N:114.1038,D:115.0886,C:103.1388,E:129.1155,Q:128.1307,G:57.0519,H:137.1411,I:113.1594,L:113.1594,K:128.1741,M:131.1926,F:147.1766,P:97.1167,S:87.0782,T:101.1051,W:186.2132,Y:163.1760,V:99.1326};
 function proteinMW(seq){let mw=18.02;for(const aa of seq)if(AA_AVG[aa])mw+=AA_AVG[aa];return mw;}
+
+// ─── Reverse Translation (Protein → Nucleotide) ──────────────────────────────
+// One representative codon per residue (most common human codon usage) — not
+// codon-optimization for expression, just a single deterministic DNA sequence.
+const AA_TO_CODON_HUMAN={
+  A:'GCC',R:'CGC',N:'AAC',D:'GAC',C:'TGC',E:'GAG',Q:'CAG',G:'GGC',
+  H:'CAC',I:'ATC',L:'CTG',K:'AAG',M:'ATG',F:'TTC',P:'CCC',S:'AGC',
+  T:'ACC',W:'TGG',Y:'TAC',V:'GTG','*':'TAA'
+};
+function reverseTranslate(aaSeq){
+  let nt='',unknown=0;
+  for(const aa of aaSeq){
+    const codon=AA_TO_CODON_HUMAN[aa];
+    if(codon) nt+=codon; else { nt+='NNN'; unknown++; }
+  }
+  return {nt,unknown};
+}
+function runReverseTranslate(){
+  const raw=document.getElementById('rt-seq').value.trim();
+  if(!raw){alert('Paste a protein sequence first.');return;}
+  const seq=parseFASTA(raw);
+  if(!seq){alert('No sequence found.');return;}
+  const {nt,unknown}=reverseTranslate(seq);
+  document.getElementById('rt-nt').textContent=nt;
+  document.getElementById('rt-len-pill').textContent=`${nt.length} nt (${seq.length} aa)`;
+  document.getElementById('rt-x-pill').textContent=unknown?`${unknown} unrecognised residue${unknown!==1?'s':''} → NNN`:'All residues recognised';
+  document.getElementById('rt-result').style.display='block';
+  document.getElementById('rt-empty').style.display='none';
+}
+function clearReverseTranslate(){
+  document.getElementById('rt-seq').value='';
+  document.getElementById('rt-result').style.display='none';
+  document.getElementById('rt-empty').style.display='';
+}
+function loadRtExample(){
+  document.getElementById('rt-seq').value='>Example peptide\nMAKPGFEWST*';
+  runReverseTranslate();
+}
+
+// ─── Genetic Code / Codon Table (interactive) ────────────────────────────────
+const AA_INFO={
+  A:{name:'Alanine',code3:'Ala',cls:'nonpolar'},R:{name:'Arginine',code3:'Arg',cls:'basic'},
+  N:{name:'Asparagine',code3:'Asn',cls:'polar'},D:{name:'Aspartate',code3:'Asp',cls:'acidic'},
+  C:{name:'Cysteine',code3:'Cys',cls:'polar'},E:{name:'Glutamate',code3:'Glu',cls:'acidic'},
+  Q:{name:'Glutamine',code3:'Gln',cls:'polar'},G:{name:'Glycine',code3:'Gly',cls:'nonpolar'},
+  H:{name:'Histidine',code3:'His',cls:'basic'},I:{name:'Isoleucine',code3:'Ile',cls:'nonpolar'},
+  L:{name:'Leucine',code3:'Leu',cls:'nonpolar'},K:{name:'Lysine',code3:'Lys',cls:'basic'},
+  M:{name:'Methionine',code3:'Met',cls:'nonpolar'},F:{name:'Phenylalanine',code3:'Phe',cls:'nonpolar'},
+  P:{name:'Proline',code3:'Pro',cls:'nonpolar'},S:{name:'Serine',code3:'Ser',cls:'polar'},
+  T:{name:'Threonine',code3:'Thr',cls:'polar'},W:{name:'Tryptophan',code3:'Trp',cls:'nonpolar'},
+  Y:{name:'Tyrosine',code3:'Tyr',cls:'polar'},V:{name:'Valine',code3:'Val',cls:'nonpolar'},
+  '*':{name:'Stop codon',code3:'Stop',cls:'stop'}
+};
+const AA_CLASS_LABEL={nonpolar:'Nonpolar / hydrophobic',polar:'Polar, uncharged',acidic:'Acidic (−)',basic:'Basic (+)',stop:'Stop'};
+let _ctBase='U';
+function _ctDisp(b){return (b==='U'&&_ctBase==='T')?'T':b;}
+function toggleCodonBase(){
+  _ctBase=_ctBase==='U'?'T':'U';
+  document.getElementById('ct-base-toggle').textContent=_ctBase==='U'?'RNA (U)':'DNA (T)';
+  renderCodonTable();
+}
+function renderCodonTable(){
+  const bases=['U','C','A','G'];
+  let html='';
+  bases.forEach(b1=>{
+    bases.forEach(b2=>{
+      html+=`<div class="codon-block"><div class="codon-block-lbl">${_ctDisp(b1)}${_ctDisp(b2)}_</div>`;
+      bases.forEach(b3=>{
+        const codon=b1+b2+b3;
+        const aa=CODON_TABLE_1[codon]||'X';
+        const info=AA_INFO[aa]||{cls:'stop'};
+        const shown=_ctDisp(b1)+_ctDisp(b2)+_ctDisp(b3);
+        html+=`<div class="codon-cell aa-${info.cls}" data-codon="${codon}" data-aa="${aa}" onclick="selectCodon('${codon}')"><span class="codon-cell-codon">${shown}</span><span class="codon-cell-aa">${aa}</span></div>`;
+      });
+      html+='</div>';
+    });
+  });
+  document.getElementById('codon-grid').innerHTML=html;
+}
+function selectCodon(codon){
+  const aa=CODON_TABLE_1[codon]||'X';
+  document.querySelectorAll('.codon-cell').forEach(el=>{
+    el.classList.toggle('sel',el.dataset.codon===codon);
+    el.classList.toggle('syn',el.dataset.codon!==codon&&el.dataset.aa===aa);
+  });
+  const info=AA_INFO[aa]||{name:'Unknown',code3:'Xaa',cls:'stop'};
+  const synCount=Object.values(CODON_TABLE_1).filter(v=>v===aa).length;
+  const shown=_ctDisp(codon[0])+_ctDisp(codon[1])+_ctDisp(codon[2]);
+  const dnaCodon=codon.replace(/U/g,'T');
+  document.getElementById('codon-detail').innerHTML=`
+    <div class="codon-detail-codon">${shown}</div>
+    <div class="codon-detail-name aa-${info.cls}">${info.name} (${info.code3} / ${aa})</div>
+    <div class="codon-detail-row"><span>RNA codon</span><b>${codon}</b></div>
+    <div class="codon-detail-row"><span>DNA codon</span><b>${dnaCodon}</b></div>
+    <div class="codon-detail-row"><span>Class</span><b>${AA_CLASS_LABEL[info.cls]}</b></div>
+    <div class="codon-detail-row"><span>Synonymous codons</span><b>${synCount}</b></div>
+  `;
+}
+function renderCodonLegend(){
+  document.getElementById('codon-legend').innerHTML=Object.entries(AA_CLASS_LABEL)
+    .map(([cls,label])=>`<span class="codon-legend-item aa-${cls}">${label}</span>`).join('');
+}
 
 // ─── UNIFIED TOOLS ────────────────────────────────────────────────────────────
 function runAllTools(){
