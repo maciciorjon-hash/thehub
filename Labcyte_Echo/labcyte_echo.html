@@ -2661,17 +2661,29 @@ function renderMultiAssayResults(data) {
   const p = document.getElementById('results-panel');
   if (!data.length) { p.innerHTML='<div class="empty"><div class="ei">⚠️</div><p>No results.</p></div>'; return; }
 
+  // Ki calculation parameters (Displacement assay — Cheng-Prusoff), from that type's multi-assay config
+  const _matCfgFp = (window._lastAnalysisParams?.matConfigs||[]).find(c=>c.type==='displacement' && c.tracerConc && c.tracerKd);
+  let _kiParamsM = null;
+  if (_matCfgFp) {
+    const toNM = u => u === 'µM' ? 1000 : 1;
+    const lc = parseFloat(_matCfgFp.tracerConc);
+    const kd = parseFloat(_matCfgFp.tracerKd);
+    if (!isNaN(lc) && !isNaN(kd) && kd > 0) {
+      _kiParamsM = { lcNM: lc * toNM(_matCfgFp.tracerUnit), kdNM: kd * toNM(_matCfgFp.kdUnit) };
+    }
+  }
+
   const _assayMeta = {
-    hibit:       {name:'HiBiT',         color:'#e08c30', dc50:'DC50 (nM)',  logdc50:'LogDC50 (M)', pdc50:'pDC50 (M)', dmax:'Dmax (%)'},
-    displacement:{name:'Displacement',  color:'#0079b9', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:null},
-    gain:        {name:'Gain-of-Signal',color:'#26a69a', dc50:'EC50 (nM)',  logdc50:'LogEC50 (M)', pdc50:'pEC50 (M)', dmax:'Emax'},
-    ctg:         {name:'CTG/Viability', color:'#9c6fd4', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)'},
+    hibit:       {name:'HiBiT',         color:'#e08c30', dc50:'DC50 (nM)',  logdc50:'LogDC50 (M)', pdc50:'pDC50 (M)', dmax:'Dmax (%)', ki:null},
+    displacement:{name:'Displacement',  color:'#0079b9', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:null,        ki:_kiParamsM?'Ki (nM)':null},
+    gain:        {name:'Gain-of-Signal',color:'#26a69a', dc50:'EC50 (nM)',  logdc50:'LogEC50 (M)', pdc50:'pEC50 (M)', dmax:'Emax',      ki:null},
+    ctg:         {name:'CTG/Viability', color:'#9c6fd4', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)',  ki:null},
   };
 
   const orderedTypes = [...new Set(data.map(r=>r._assayType).filter(Boolean))];
   const _selCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
-  const activeKeys = ['DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag',...(_selCols.has('CI_DC50')?['CI_DC50']:[])]
-    .filter(k=>k==='DC50_nM'||k==='Flag'||k==='CI_DC50'||_selCols.has(k))
+  const activeKeys = ['DC50_nM','Ki_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag',...(_selCols.has('CI_DC50')?['CI_DC50']:[])]
+    .filter(k=>k==='DC50_nM'||k==='Ki_nM'||k==='Flag'||k==='CI_DC50'||_selCols.has(k))
     .filter(k=>!(window._hiddenResultsCols?.has(k)));
 
   // Pivot: one entry per Sample_ID
@@ -2707,8 +2719,8 @@ function renderMultiAssayResults(data) {
   // Header row 1: assay type spanning cells
   h += '<tr><th rowspan="2" class="tbl-frozen">Sample ID</th>';
   for (const at of orderedTypes) {
-    const m = _assayMeta[at]||{name:at,color:'#8b90a8',dmax:'Dmax (%)'};
-    const n = activeKeys.filter(k=>!(k==='Dmax_pct'&&!m.dmax)).length;
+    const m = _assayMeta[at]||{name:at,color:'#8b90a8',dmax:'Dmax (%)',ki:null};
+    const n = activeKeys.filter(k=>!(k==='Dmax_pct'&&!m.dmax)&&!(k==='Ki_nM'&&!m.ki)).length;
     h += `<th colspan="${n}" style="background:${m.color}22;color:${m.color};border-bottom:2px solid ${m.color};text-align:center;font-size:11px;font-weight:700;letter-spacing:.3px;white-space:nowrap;">${esc(m.name)}</th>`;
   }
   h += '</tr>';
@@ -2716,11 +2728,12 @@ function renderMultiAssayResults(data) {
   // Header row 2: individual column names
   h += '<tr>';
   for (const at of orderedTypes) {
-    const m = _assayMeta[at]||{name:at,color:'#8b90a8',dc50:'DC50 (nM)',logdc50:'LogDC50 (M)',pdc50:'pDC50 (M)',dmax:'Dmax (%)'};
+    const m = _assayMeta[at]||{name:at,color:'#8b90a8',dc50:'DC50 (nM)',logdc50:'LogDC50 (M)',pdc50:'pDC50 (M)',dmax:'Dmax (%)',ki:null};
     const _ciLblM = (at==='displacement'||at==='ctg')?'IC50 95% CI':(at==='gain')?'EC50 95% CI':'DC50 95% CI';
-    const lbl = {DC50_nM:m.dc50,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag',CI_DC50:_ciLblM};
+    const lbl = {DC50_nM:m.dc50,Ki_nM:m.ki,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag',CI_DC50:_ciLblM};
     for (const k of activeKeys) {
       if (k==='Dmax_pct'&&!m.dmax) continue;
+      if (k==='Ki_nM'&&!m.ki) continue;
       h += `<th data-col-key="${k}" style="font-size:11px;background:${m.color}0d;">${lbl[k]||k}</th>`;
     }
   }
@@ -2731,13 +2744,15 @@ function renderMultiAssayResults(data) {
     h += '<tr>';
     h += `<td class="tbl-frozen">${esc(sampleId)}</td>`;
     for (const at of orderedTypes) {
-      const m = _assayMeta[at]||{color:'#8b90a8',dmax:'Dmax (%)'};
+      const m = _assayMeta[at]||{color:'#8b90a8',dmax:'Dmax (%)',ki:null};
       const r = byType[at];
       for (const k of activeKeys) {
         if (k==='Dmax_pct'&&!m.dmax) continue;
+        if (k==='Ki_nM'&&!m.ki) continue;
         if (!r) { h+=`<td style="color:var(--text3);">—</td>`; continue; }
         if (k==='Flag') h+=`<td class="${r.Flag==='Yes'?'fy':'fn'}">${r.Flag||'—'}</td>`;
         else if (k==='CI_DC50') h+=`<td>${r.CI_DC50_lower!=null?_sigFmt(r.CI_DC50_lower)+'–'+_sigFmt(r.CI_DC50_upper):'—'}</td>`;
+        else if (k==='Ki_nM') { const _ic50=parseFloat(r.DC50_nM); h+=`<td>${(isNaN(_ic50)||!_kiParamsM)?'—':(_ic50/(1+_kiParamsM.lcNM/_kiParamsM.kdNM)).toFixed(2)}</td>`; }
         else h+=`<td>${r[k]!=null?r[k]:'—'}</td>`;
       }
     }
@@ -8426,6 +8441,20 @@ function addAssayType() {
       <label style="font-size:11px;color:var(--text2);white-space:nowrap;flex-shrink:0;">PHERAstar A1 cell</label>
       <input type="text" id="mat-a1-${idx}" placeholder="e.g. B3 (optional)" style="width:120px;padding:4px 7px;border-radius:6px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:11px;font-family:var(--mono);outline:none;">
       <span style="font-size:10px;color:var(--text3);">Excel cell = A01. Leave blank for auto-detect.</span>
+    </div>
+    <div id="mat-fp-card-${idx}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border2);">
+      <div style="font-size:10px;font-weight:600;color:var(--text2);margin-bottom:6px;">Binding Parameters <span style="font-weight:400;color:var(--text3);">(optional — enables Ki calculation)</span></div>
+      <div class="setup-2col" style="gap:8px;margin-bottom:6px;">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:4px;align-items:end;">
+          <div><label style="font-size:10px;color:var(--text2);margin-bottom:2px;display:block;">Tracer [L]</label><input type="number" id="mat-tracer-conc-${idx}" placeholder="e.g. 5" step="any" oninput="updateMatKiPreview(${idx})" style="${_fs}"></div>
+          <select id="mat-tracer-unit-${idx}" oninput="updateMatKiPreview(${idx})" style="background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:5px 6px;color:var(--text2);font-family:var(--sans);font-size:10px;outline:none;"><option>nM</option><option>µM</option></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:4px;align-items:end;">
+          <div><label style="font-size:10px;color:var(--text2);margin-bottom:2px;display:block;">Tracer Kd</label><input type="number" id="mat-tracer-kd-${idx}" placeholder="e.g. 50" step="any" oninput="updateMatKiPreview(${idx})" style="${_fs}"></div>
+          <select id="mat-kd-unit-${idx}" oninput="updateMatKiPreview(${idx})" style="background:var(--surface3);border:1px solid var(--border2);border-radius:6px;padding:5px 6px;color:var(--text2);font-family:var(--sans);font-size:10px;outline:none;"><option>nM</option><option>µM</option></select>
+        </div>
+      </div>
+      <div id="mat-ki-result-${idx}" style="font-size:10px;font-family:var(--mono);color:var(--accent3);display:none;"></div>
     </div>`;
   list.appendChild(div);
   syncMatAnalysisParams();
@@ -8435,7 +8464,25 @@ function updateMatPanel(idx) {
   const t=(document.getElementById(`mat-type-${idx}`)||{}).value||'hibit';
   const zw=document.getElementById(`mat-zero-wrap-${idx}`);
   if(zw) zw.style.display=(t==='displacement')?'':'none';
+  const fpc=document.getElementById(`mat-fp-card-${idx}`);
+  if(fpc) fpc.style.display=(t==='displacement')?'':'none';
   syncMatAnalysisParams();
+}
+function updateMatKiPreview(idx){
+  const lcEl=document.getElementById(`mat-tracer-conc-${idx}`);
+  const kdEl=document.getElementById(`mat-tracer-kd-${idx}`);
+  const resEl=document.getElementById(`mat-ki-result-${idx}`);
+  if(!lcEl||!kdEl||!resEl)return;
+  const lcVal=parseFloat(lcEl.value)||0;
+  const lcUnitStr=(document.getElementById(`mat-tracer-unit-${idx}`)||{}).value||'nM';
+  const kdVal=parseFloat(kdEl.value)||0;
+  const kdUnitStr=(document.getElementById(`mat-kd-unit-${idx}`)||{}).value||'nM';
+  if(!lcVal||!kdVal){resEl.style.display='none';return;}
+  const toNM=(v,u)=>u==='µM'?v*1000:v;
+  const lcNM=toNM(lcVal,lcUnitStr);
+  const kdNM=toNM(kdVal,kdUnitStr);
+  resEl.style.display='';
+  resEl.textContent='Ki = IC₅₀ ÷ (1 + '+lcNM.toPrecision(3)+' nM / '+kdNM.toPrecision(3)+' nM)';
 }
 
 function removeAssayType(idx) {
@@ -8515,7 +8562,9 @@ function collectMultiAssayConfigs() {
       fixBot:gc('fbot-en'), botVal:gn('fbot',0),
       fixHill:gc('fhill-en'), hillVal:gn('fhill',1),
       minBotEnabled:gc('minbot-en'), minBotVal:gn('minbot',0),
-      skipNorm:gc('skipnorm')
+      skipNorm:gc('skipnorm'),
+      tracerConc:gv('tracer-conc'), tracerUnit:gv('tracer-unit')||'nM',
+      tracerKd:gv('tracer-kd'), kdUnit:gv('kd-unit')||'nM'
     });
   });
   return configs;
