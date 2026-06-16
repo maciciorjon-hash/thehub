@@ -1557,6 +1557,7 @@ async function runPipeline() {
   log('─'.repeat(48), 'head');
   log('Pipeline started', 'head');
 
+  try {
   const assayId = document.getElementById('p-assay').value.trim() || 'HB_ANALYSIS';
   window._lastAssayId = assayId;
   const ctrlRange = document.getElementById('p-ctrl').value.trim();
@@ -1590,7 +1591,6 @@ async function runPipeline() {
   window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, minBotEnabled, minBotVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: _now.toISOString(), timestampLocal: _tsLocal };
   const csvCols = [...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col);
 
-  try {
     // Pre-flight: check barcodes in Echo CSV match reader filenames
     try {
       const echoText = new TextDecoder().decode(await toBytes(echoFile));
@@ -1735,9 +1735,10 @@ async function runPipeline() {
   } catch(e) {
     log('Pipeline error: ' + (e.message||String(e)), 'err');
     console.error(e);
+  } finally {
+    setProgress(0);
+    btn.disabled = false; btn.textContent = 'Run analysis';
   }
-  setProgress(0);
-  btn.disabled = false; btn.textContent = 'Run analysis';
 }
 
 function toBytes(file) {
@@ -2612,7 +2613,7 @@ function renderResults(data) {
   // Build download section
   const _dlBtnStyle='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
   const _dlBtnHover='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
-  let _dlSection = '<div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:6px 0 4px;">'
+  let _dlSection = '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel">📋 Copy TSV</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputXLSX()">📥 Results XLSX</button>';
   if (_rawBlob) {
@@ -2620,7 +2621,8 @@ function renderResults(data) {
   }
   _dlSection += '<button id="cv-pdf-gen-btn" style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateAndDownloadCurvePDFs()" title="Generate curve PDFs using current Curves Style settings">📄 Generate curve PDFs</button>';
   _dlSection += '</div>';
-  let h = '<div class="results-meta"><div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
+  let h = '<div class="results-meta"><div class="meta-row" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">'
+    +'<div style="display:flex;gap:12px;flex-wrap:wrap;">'
     +'<div class="mcard"><div class="mc-lbl">Compounds</div><div class="mc-val g">'+data.length+'</div></div>'
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
     +'</div>'
@@ -2686,14 +2688,15 @@ function renderMultiAssayResults(data) {
   const _dlH='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
   // Build download buttons (centered row beneath meta cards)
   const _rawBlobM = downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
-  let _dlSectionM = '<div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:6px 0 4px;">'
+  let _dlSectionM = '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">'
     + '<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel">📋 Copy TSV</button>'
     + '<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()">📥 Results XLSX</button>';
   if (_rawBlobM) _dlSectionM += '<button style="'+_dlS+'" '+_dlH+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))">📊 Raw Data CSV</button>';
   _dlSectionM += '<button id="cv-pdf-gen-btn" style="'+_dlS+'" '+_dlH+' onclick="generateAndDownloadCurvePDFs()" title="Generate curve PDFs using current Curves Style settings">📄 Generate curve PDFs</button>';
   _dlSectionM += '</div>';
 
-  let h = '<div class="results-meta"><div class="meta-row" style="flex-wrap:wrap;row-gap:8px;">'
+  let h = '<div class="results-meta"><div class="meta-row" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">'
+    +'<div style="display:flex;gap:12px;flex-wrap:wrap;">'
     +'<div class="mcard"><div class="mc-lbl">Compounds</div><div class="mc-val g">'+pivot.size+'</div></div>'
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
     +'</div>'
@@ -4398,10 +4401,7 @@ function buildScatterChart() {
   if (_cv) {
     const _wrap = _cv.parentElement;
     const _w = _wrap ? _wrap.clientWidth : 800;
-    const _rect = _wrap?.getBoundingClientRect();
-    const _h = (_rect && _rect.top > 0 && _rect.top < window.innerHeight - 80)
-      ? Math.max(280, window.innerHeight - _rect.top - 58)
-      : 380;
+    const _h = _wrap ? _wrap.clientHeight : 380;
     _cv.style.width = _w + 'px';
     _cv.style.height = _h + 'px';
     if (scatterChart) { scatterChart.resize(_w, _h); }
@@ -6076,6 +6076,13 @@ function _cvAttachZoom() {
   if (!wrap||!canvas||wrap._zoomBound) return;
   wrap._zoomBound = true;
 
+  // Re-draw whenever the wrap's actual size settles (font load, scrollbar, tab-fade
+  // animation can all shift it after the initial deferred render) — fixes the
+  // first-open Y-axis-clipped bug without relying on a manual click to "reset" it.
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => renderCvCurve()).observe(wrap);
+  }
+
   // Wheel: navigate compounds in Single mode; in Compare mode let scroll propagate naturally
   wrap.addEventListener('wheel', e => {
     if (window._cvMode === 'single') {
@@ -6828,7 +6835,7 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
   ctx.fillStyle=textCol;ctx.font=`${(fSz+0.5)*_fMul}px 'IBM Plex Sans',sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='middle';
   const _cvAt=window._lastAnalysisParams?.assayType||window._lastAssayType||'';
-  ctx.fillText(_cvAt==='gain'?'Signal (a.u.)':window._lastAnalysisParams?.skipNorm?'Signal (raw)':'Signal (% DMSO)',0,0);ctx.restore();
+  ctx.fillText(_cvAt==='gain'?'Signal (a.u.)':window._lastAnalysisParams?.skipNorm?'Signal (raw)':(_cvAt==='hibit'?'Dmax (%)':'Signal (% DMSO)'),0,0);ctx.restore();
   ctx.fillStyle=textCol;ctx.font=`${(fSz+0.5)*_fMul}px 'IBM Plex Sans',sans-serif`;
   ctx.textAlign='center';ctx.textBaseline='top';
   ctx.fillText('log₁₀[concentration, M]',pL+pw/2,pT+ph+28*_fMul);
@@ -7273,7 +7280,7 @@ function openCurvePanel(pt) {
   const _cpYKey = document.getElementById('sc-y')?.value || '';
   const _cpXAssay = _cpXKey.includes('::') ? _cpXKey.split('::')[0] : null;
   const _cpYAssay = _cpYKey.includes('::') ? _cpYKey.split('::')[0] : null;
-  const _cpAssayMeta = {hibit:{dc50:'DC50',dmax:'Dmax (%)',color:'#e08c30',yLabel:'Signal (% DMSO)'},displacement:{dc50:'IC50',dmax:null,color:'#0079b9',yLabel:'Signal (% DMSO)'},gain:{dc50:'EC50',dmax:'Emax',color:'#26a69a',yLabel:'Signal (a.u.)'},ctg:{dc50:'IC50',dmax:'Span (%)',color:'#9c6fd4',yLabel:'Viability (%)'}};
+  const _cpAssayMeta = {hibit:{dc50:'DC50',dmax:'Dmax (%)',color:'#e08c30',yLabel:'Dmax (%)'},displacement:{dc50:'IC50',dmax:null,color:'#0079b9',yLabel:'Signal (% DMSO)'},gain:{dc50:'EC50',dmax:'Emax',color:'#26a69a',yLabel:'Signal (a.u.)'},ctg:{dc50:'IC50',dmax:'Span (%)',color:'#9c6fd4',yLabel:'Viability (%)'}};
 
   let curveRows = [];
   let isDual = false;
