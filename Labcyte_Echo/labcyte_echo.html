@@ -2625,11 +2625,7 @@ function renderResults(data) {
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
     +'</div>'
     +_dlSection
-    +'<div style="display:flex;align-items:center;gap:5px;margin:6px 0 4px;flex-shrink:0;">'
-    +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
-    +'<span style="font-size:11px;color:var(--text3);">Scroll columns</span>'
-    +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll right">&#9654;</button>'
-    +'</div></div>'
+    +'</div>'
     +'<div class="results-tbl-scroll"><div class="tbl-wrap"><table><thead><tr>';
   cols.forEach(col=>{
     const isA=_sortState.col===col.k, arr=isA?(_sortState.asc?' ▲':' ▼'):'';
@@ -2702,11 +2698,7 @@ function renderMultiAssayResults(data) {
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
     +'</div>'
     +_dlSectionM
-    +'<div style="display:flex;align-items:center;gap:5px;margin:6px 0 4px;flex-shrink:0;">'
-    +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:-180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll left">&#9664;</button>'
-    +'<span style="font-size:11px;color:var(--text3);">Scroll columns</span>'
-    +'<button onclick="var w=document.querySelector(\'#results-panel .results-tbl-scroll\');if(w)w.scrollBy({left:180,behavior:\'smooth\'})" style="width:24px;height:24px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;" title="Scroll right">&#9654;</button>'
-    +'</div></div>'
+    +'</div>'
     +'<div class="results-tbl-scroll"><div class="tbl-wrap"><table><thead>';
 
   // Header row 1: assay type spanning cells
@@ -2921,6 +2913,17 @@ function _buildPrismAOA(results) {
   return { aoa: aoa, merges: merges };
 }
 
+// Excel rejects/repairs xlsx files containing NaN/Infinity numeric cells or
+// XML-illegal control characters (both can sneak in from a failed curve fit
+// or stray bytes in an instrument export) — strip them before writing.
+function _xlsxSafeCell(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : '';
+  if (typeof v === 'string') return v.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  return v;
+}
+function _sanitizeAoa(aoa) {
+  return aoa.map(function(row) { return row.map(_xlsxSafeCell); });
+}
 function generateOutputXLSX() {
   if (!scatterData.length) { alert('No data. Run analysis first.'); return; }
   var t = window._lastAssayType || 'hibit';
@@ -3092,25 +3095,25 @@ function generateOutputXLSX() {
 
   var wb = XLSX.utils.book_new();
 
-  var wsResults = XLSX.utils.aoa_to_sheet(resultsRows);
+  var wsResults = XLSX.utils.aoa_to_sheet(_sanitizeAoa(resultsRows));
   if (resultsMerges.length) wsResults['!merges'] = resultsMerges;
   XLSX.utils.book_append_sheet(wb, wsResults, 'Results');
 
-  var wsProtocol = XLSX.utils.aoa_to_sheet(protocolRows);
+  var wsProtocol = XLSX.utils.aoa_to_sheet(_sanitizeAoa(protocolRows));
   XLSX.utils.book_append_sheet(wb, wsProtocol, 'Data Analysis Protocol');
 
   if (window._pheraProtocol && window._pheraProtocol.rows && window._pheraProtocol.rows.length) {
-    var wsPP = XLSX.utils.aoa_to_sheet(window._pheraProtocol.rows);
+    var wsPP = XLSX.utils.aoa_to_sheet(_sanitizeAoa(window._pheraProtocol.rows));
     XLSX.utils.book_append_sheet(wb, wsPP, 'PHERAstar Protocol');
   }
 
   var prism = _buildPrismAOA(scatterData);
-  var wsPrism = XLSX.utils.aoa_to_sheet(prism.aoa);
+  var wsPrism = XLSX.utils.aoa_to_sheet(_sanitizeAoa(prism.aoa));
   if (prism.merges.length) wsPrism['!merges'] = prism.merges;
   XLSX.utils.book_append_sheet(wb, wsPrism, 'Prism Copy');
 
   var prismFrac = _buildPrismFractionAOA(scatterData);
-  var wsPrismFrac = XLSX.utils.aoa_to_sheet(prismFrac.aoa);
+  var wsPrismFrac = XLSX.utils.aoa_to_sheet(_sanitizeAoa(prismFrac.aoa));
   if (prismFrac.merges.length) wsPrismFrac['!merges'] = prismFrac.merges;
   XLSX.utils.book_append_sheet(wb, wsPrismFrac, 'Prism (Fraction)');
 
@@ -9213,6 +9216,9 @@ function clearSetup() {
   var pc = document.getElementById('p-ctrl'); if(pc){pc.value='B22:O23';pc.disabled=false;pc.style.opacity='1';}
   var sn2 = document.getElementById('p-skip-norm'); if(sn2) sn2.checked=false;
   var zp = document.getElementById('p-zero-pct'); if(zp) zp.value='';
+  // Reset test-data button so it can be loaded again after a clear
+  var tb = document.getElementById('test-btn');
+  if (tb) { tb.textContent = '⚗ Load test data'; tb.disabled = false; tb.style.background=''; tb.style.color=''; tb.style.borderColor=''; }
   // Reset analysis defaults
   var topEn = document.getElementById('p-top-en'); if(topEn) topEn.checked=true;
   var top = document.getElementById('p-top'); if(top){top.value='100';top.disabled=false;top.style.opacity='1';}
