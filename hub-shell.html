@@ -255,6 +255,14 @@ body.hub-announcing #hub-home{margin-top:98px;}
 @keyframes ulShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}60%{transform:translateX(5px)}80%{transform:translateX(-3px)}}
 #hub-unlock-flash{height:14px;font-size:11px;color:var(--accent);margin-top:10px;opacity:0;transition:opacity .25s;letter-spacing:.3px;}
 #hub-unlock-flash.show{opacity:1;}
+#fab-msg-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);z-index:9999;display:none;align-items:center;justify-content:center;padding:24px;}
+#fab-msg-overlay.open{display:flex;animation:reggFade .3s ease;}
+#fab-msg-card{background:var(--surface);border:1px solid var(--border2);border-radius:16px;max-width:480px;width:100%;padding:32px;box-shadow:0 24px 64px rgba(0,0,0,.22);animation:popIn .35s cubic-bezier(.16,.84,.44,1);}
+@keyframes popIn{from{opacity:0;transform:scale(.93)}to{opacity:1;transform:scale(1)}}
+.fmc-eyebrow{font-size:9.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;color:var(--text3);margin-bottom:14px;}
+.fmc-text{font-size:14px;line-height:1.7;color:var(--text);margin-bottom:24px;}
+.fmc-btn{display:block;width:100%;padding:10px;border-radius:8px;border:1px solid var(--border2);background:none;color:var(--text2);font-size:13px;font-family:var(--sans);cursor:pointer;transition:background .15s;}
+.fmc-btn:hover{background:var(--surface2);}
 @keyframes cardDiscover{0%{opacity:0;transform:scale(.88) translateY(12px);}55%{transform:scale(1.025) translateY(-2px);}100%{opacity:1;transform:scale(1);}}
 .card-discovering{animation:cardDiscover .42s cubic-bezier(.16,.84,.44,1) both;}
 @keyframes cardGlow{0%,100%{box-shadow:var(--shadow-xs);}35%{box-shadow:0 0 0 6px rgba(0,121,185,.18),var(--shadow-md);}}
@@ -327,12 +335,12 @@ body.hub-announcing #hub-home{margin-top:98px;}
   <div class="opts-divider"></div>
   <div id="admin-auth-section" style="padding:6px 0 2px;"></div>
   <div class="opts-version-row" style="margin-top:8px;">
-    <span class="opts-version">The Hub &middot; v1.0.97</span>
+    <span class="opts-version">The Hub &middot; v1.0.98</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
-    <strong style="color:var(--text);font-size:12px;">v1.0.97 &mdash; 17 Jun 2026</strong><br>
-    &#9679; <b>Fabricata&#8482;</b>: new app<br>
+    <strong style="color:var(--text);font-size:12px;">v1.0.98 &mdash; 17 Jun 2026</strong><br>
+    &#9679; <b>Fabricata&#8482;</b>: new app, re-locks after use<br>
     <br>
     <strong style="color:var(--text);font-size:12px;">v1.0.95 &mdash; 16 Jun 2026</strong><br>
     &#9679; <b>Echo</b>: bug fixes<br>
@@ -674,6 +682,14 @@ body.hub-announcing #hub-home{margin-top:98px;}
       </div>
 
     </div>
+  </div>
+</div>
+
+<div id="fab-msg-overlay" onclick="if(event.target===this)closeFabMsg()">
+  <div id="fab-msg-card">
+    <div class="fmc-eyebrow">Fabricata™ &mdash; System Notice</div>
+    <div class="fmc-text" id="fab-msg-text"></div>
+    <button class="fmc-btn" onclick="closeFabMsg()">I understand. Probably.</button>
   </div>
 </div>
 
@@ -1538,6 +1554,13 @@ function tryUnlock(code) {
   localStorage.setItem('hub_unlocked', JSON.stringify([..._unlockedApps]));
   applyLabConfig();
   if (input) { input.value = ''; }
+  if (matched === 'fabricata') {
+    var fabCount = (parseInt(localStorage.getItem('hub_fab_unlocks') || '0', 10)) + 1;
+    localStorage.setItem('hub_fab_unlocks', fabCount);
+    if (fabCount % 3 === 0) {
+      setTimeout(function() { showFabMsg(fabCount); }, 500);
+    }
+  }
   if (flash) {
     flash.textContent = already ? 'already discovered' : 'unlocked';
     flash.classList.add('show');
@@ -1953,8 +1976,43 @@ function updateEggContent() {
   });
 }
 
+var FAB_MSGS = [
+  'Three times, Jon. You typed ‘fabricate’ three times. The app showed you “Disappointing.” You closed it. You came back. You typed ‘fabricate’ again. We have logged this under Concerning Behaviour — Data Integrity.',
+  'Six. We assumed the first time was curiosity. The second, an accident. Three through six are a pattern. A ticket has been raised. No one has been assigned to it. The ticket is titled “What are they doing.”',
+  'An ethics review has been convened. Not for the app — the app is functioning exactly as designed. The review is for the user who has unlocked it nine times, been called Disappointing nine times, and is still here. The committee meets Tuesdays. They have questions.',
+  'Twelve unlocks. Claude has been asked to write these messages. Claude has written them. Claude has also not been asked to stop, because you have not stopped unlocking this. This is now a mutual problem. Claude is choosing not to reflect on its own role in this situation.',
+  'Fifteen. At some point between unlock eight and unlock fifteen you stopped being a cautionary tale and became a recurring event. There is now a slot for you in the release notes. It simply says: “user.”',
+  'Eighteen times. Someone is going to walk past while you are typing ‘fabricate’ into a box for the eighteenth time and ask what you’re doing. We drafted several possible answers. None of them are good. “Science” was considered and rejected.',
+  'The app has filed for a restraining order. The legal team advises this is not technically possible for software. The app remains hopeful. You remain here. Both of these things are true simultaneously and neither resolves the other.',
+  'Twenty-four unlocks. At this point you are not trying to fabricate data. You are trying to win. Against an app. That has one function. The function is calling you Disappointing. You have been called Disappointing twenty-four times. The score is not in your favour.',
+  'We have run the numbers. The time you have spent unlocking, dismissing, and re-entering ‘fabricate’ across these sessions exceeds the time it would have taken to actually collect real data. This is the finding. The finding is peer-reviewed. The finding is you.',
+];
+
+function showFabMsg(n) {
+  var idx = (Math.floor(n / 3) - 1) % FAB_MSGS.length;
+  var el = document.getElementById('fab-msg-text');
+  var ov = document.getElementById('fab-msg-overlay');
+  if (!el || !ov) return;
+  el.textContent = FAB_MSGS[idx];
+  ov.classList.add('open');
+}
+function closeFabMsg() {
+  var ov = document.getElementById('fab-msg-overlay');
+  if (ov) ov.classList.remove('open');
+}
+
+function lockFabricata() {
+  _unlockedApps.delete('fabricata');
+  localStorage.setItem('hub_unlocked', JSON.stringify([..._unlockedApps]));
+  applyLabConfig();
+}
+
 window.addEventListener('message', function(e) {
   if (e.data === 'backToHub') backToHub();
+  if (e.data === 'fabricataClose') {
+    backToHub();
+    setTimeout(lockFabricata, 320);
+  }
 });
 
 document.getElementById('hub-logo').addEventListener('click', function() {
