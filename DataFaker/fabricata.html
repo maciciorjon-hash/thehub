@@ -247,12 +247,24 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 
 <!-- Disappointment screen -->
 <div id="disappoint">
-  <div class="dis-word">oh</div>
-  <div class="dis-main">Disappointing.</div>
+  <div class="dis-word" id="dis-word">oh</div>
+  <div class="dis-main" id="dis-main">Disappointing.</div>
   <div class="dis-count" id="dis-count">Closing in 5…</div>
 </div>
 
 <script>
+var DIS_VARIANTS = [
+  { word: 'oh',           main: 'Disappointing.' },
+  { word: 'again.',       main: 'Still disappointing.' },
+  { word: 'of course.',   main: 'Disappointing.' },
+  { word: 'we knew.',     main: 'Deeply disappointing.' },
+  { word: 'sigh.',        main: 'Predictable.' },
+  { word: 'honestly.',    main: 'Exhausting.' },
+  { word: 'every time.',  main: 'Every single time.' },
+  { word: 'you know,',    main: 'This says something.' },
+  { word: 'fine.',        main: 'Just. Fine.' },
+];
+
 function goBack(relock) {
   var msg = relock ? 'fabricataClose' : 'backToHub';
   try { if (window.parent && window.parent.backToHub && !relock) { window.parent.backToHub(); return; } } catch(e) {}
@@ -263,25 +275,41 @@ function onNo() {
   goBack(false);
 }
 
-function onYes() {
-  document.getElementById('confirm-overlay').style.display = 'none';
+function startDisappointment() {
+  var count = parseInt(localStorage.getItem('hub_fab_unlocks') || '1', 10);
+  var v = DIS_VARIANTS[Math.min(count - 1, DIS_VARIANTS.length - 1)];
+  document.getElementById('dis-word').textContent = v.word;
+  document.getElementById('dis-main').textContent = v.main;
   var dis = document.getElementById('disappoint');
   dis.classList.add('show');
   var n = 5;
   var el = document.getElementById('dis-count');
-  el.textContent = 'Closing in ' + n + '…';
+  el.textContent = 'Closing in ' + n + '...';
   var t = setInterval(function() {
     n--;
     if (n <= 0) {
       clearInterval(t);
-      el.textContent = 'Closing…';
+      el.textContent = 'Closing...';
       dis.classList.add('fading');
       setTimeout(function() { goBack(true); }, 500);
     } else {
-      el.textContent = 'Closing in ' + n + '…';
+      el.textContent = 'Closing in ' + n + '...';
     }
   }, 1000);
 }
+
+function onYes() {
+  document.getElementById('confirm-overlay').style.display = 'none';
+  startDisappointment();
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var count = parseInt(localStorage.getItem('hub_fab_unlocks') || '1', 10);
+  if (count > 1) {
+    document.getElementById('confirm-overlay').style.display = 'none';
+    startDisappointment();
+  }
+});
 </script>
 </body>
 </html>
