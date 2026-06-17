@@ -2628,6 +2628,7 @@ function renderResults(data) {
     +'</div>'
     +_dlSection
     +'</div>'
+    +'</div>'
     +'<div class="results-tbl-scroll"><div class="tbl-wrap"><table><thead><tr>';
   cols.forEach(col=>{
     const isA=_sortState.col===col.k, arr=isA?(_sortState.asc?' ▲':' ▼'):'';
@@ -2713,6 +2714,7 @@ function renderMultiAssayResults(data) {
     +'<div class="mcard"><div class="mc-lbl">Flagged</div><div class="mc-val" style="color:'+(flagged>0?'var(--warn)':'var(--accent3)')+'">'+flagged+'</div></div>'
     +'</div>'
     +_dlSectionM
+    +'</div>'
     +'</div>'
     +'<div class="results-tbl-scroll"><div class="tbl-wrap"><table><thead>';
 
@@ -5977,6 +5979,7 @@ async function _pdfExportFiltered(results) {
     alert('PDF generation failed. See console.');
   } finally {
     if (btn) { btn.innerHTML = orig || '📄 Generate curve PDFs'; btn.disabled = false; }
+    setProgress(0);
   }
 }
 
@@ -6184,11 +6187,11 @@ function renderCurvesTab(data) {
     <button class="stbtn" id="cv-ref-btn" onclick="cvPinRef()" title="Pin current compound as reference (shown as gray dashed in Single mode)">📌 Ref</button>
     <button class="stbtn" id="cv-zoom-reset" onclick="cvResetZoom()" style="opacity:0.4;" title="Reset zoom (double-click canvas)">⊙ Zoom</button>
     <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap;margin-left:8px;">
-      <input type="checkbox" id="cv-fix-y" onchange="renderCvCurve(document.getElementById('cv-canvas')?._cvCompounds||[])"> Fix Y
+      <input type="checkbox" id="cv-fix-y" onchange="_onCvFixYChange(this)"> Fix Y
     </label>
     <input type="number" id="cv-ymin-fixed" placeholder="Bottom" title="Fixed Y minimum" oninput="if(document.getElementById('cv-fix-y')?.checked)renderCvCurve(document.getElementById('cv-canvas')?._cvCompounds||[])" style="width:60px;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;color:var(--text);font-family:var(--sans);font-size:11px;outline:none;">
     <input type="number" id="cv-ymax-fixed" placeholder="Top" title="Fixed Y maximum" oninput="if(document.getElementById('cv-fix-y')?.checked)renderCvCurve(document.getElementById('cv-canvas')?._cvCompounds||[])" style="width:60px;background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:3px 6px;color:var(--text);font-family:var(--sans);font-size:11px;outline:none;">
-    <button class="stbtn" onclick="cvDownloadPNG()" style="margin-left:auto;">PNG</button>
+    <button class="stbtn" id="cv-dl-btn" onclick="cvShowDownloadPicker()" style="margin-left:auto;">⬇ Download</button>
   </div>
 
   <!-- CUSTOMISATION PANEL (collapsed by default) -->
@@ -6675,6 +6678,84 @@ function _cvComputePads(fSz, fMul, lMul, legMul) {
   return {pL, pR, pT, pB, yTitleX};
 }
 
+function _onCvFixYChange(cb) {
+  if (cb.checked) {
+    const minEl = document.getElementById('cv-ymin-fixed');
+    const maxEl = document.getElementById('cv-ymax-fixed');
+    if (minEl && !minEl.value && maxEl && !maxEl.value) {
+      const canvas = document.getElementById('cv-canvas');
+      const comps = canvas?._cvCompounds || [];
+      if (comps.length) {
+        const allM = comps.flatMap(r => (r._pts || []).map(p => p.y));
+        const allS = comps.flatMap(r => (r._pts || []).map(p => p.sd || 0));
+        const allT = comps.map(r => r._tc || 100);
+        const allB = comps.map(r => r._bot || 0);
+        const yd0 = Math.min(...allM.map((y, i) => y - allS[i]), ...allB, -5);
+        const yd1 = Math.max(...allM.map((y, i) => y + allS[i]), ...allT, 10);
+        const yp = (yd1 - yd0) * 0.08;
+        minEl.value = Math.round((yd0 - yp) * 10) / 10;
+        maxEl.value = Math.round((yd1 + yp) * 10) / 10;
+      }
+    }
+  }
+  renderCvCurve(document.getElementById('cv-canvas')?._cvCompounds || []);
+}
+
+function cvDownloadPDF() {
+  const canvas = document.getElementById('cv-canvas');
+  if (!canvas) return;
+  const jsPDFCls = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDFCls) { alert('PDF library not loaded yet — try again in a moment.'); return; }
+  const _fMulExp = 2.5, _lMulExp = 2.5, _legMulExp = 2.5;
+  const { pL: PAD_L, pR: PAD_R, pT: PAD_T, pB: PAD_B } = _cvComputePads(11, _fMulExp, _lMulExp, _legMulExp);
+  const cssW0 = parseInt(canvas.style.width) || canvas.offsetWidth || 700;
+  const cssH0 = parseInt(canvas.style.height) || canvas.offsetHeight || 350;
+  const pwTarget = Math.max(cssW0 - PAD_L - PAD_R, cssH0 - PAD_T - PAD_B, 320);
+  const expCssW = pwTarget + PAD_L + PAD_R;
+  const expCssH = pwTarget + PAD_T + PAD_B;
+  const off = document.createElement('canvas');
+  off.style.width = expCssW + 'px'; off.style.height = expCssH + 'px';
+  const comps = canvas._cvCompounds || [];
+  drawMultiCurve(off, comps, {
+    ...(window._cvCfg || {}),
+    bgStyle: 'white', _exportScale: 4,
+    _exportPointMul: _lMulExp, _exportLineMul: _lMulExp,
+    _exportFontMul: _fMulExp, _exportLegendMul: _legMulExp,
+    _exportBoldTitle: true
+  });
+  const sc = off._exportScale || 4;
+  const W = (expCssW * sc) | 0, H = (expCssH * sc) | 0;
+  const imgW = 180, imgH = Math.round(H / W * imgW);
+  const doc = new jsPDFCls({ orientation: imgH > imgW ? 'portrait' : 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const x = (pageW - imgW) / 2, y = (pageH - imgH) / 2;
+  doc.addImage(off.toDataURL('image/png'), 'PNG', x, y, imgW, imgH);
+  const names = comps.map(r => r.Sample_ID).join('_').replace(/[^a-z0-9_]/gi, '_').slice(0, 40);
+  doc.save(`curve_${names || 'export'}.pdf`);
+}
+
+function cvShowDownloadPicker() {
+  const existing = document.getElementById('cv-dl-picker');
+  if (existing) { existing.remove(); return; }
+  const btn = document.getElementById('cv-dl-btn');
+  if (!btn) return;
+  const picker = document.createElement('div');
+  picker.id = 'cv-dl-picker';
+  picker.style.cssText = 'position:absolute;z-index:9999;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:5px;display:flex;flex-direction:column;gap:2px;min-width:110px;font-family:var(--sans);';
+  const _pStyle = 'padding:6px 12px;border-radius:5px;border:none;background:none;color:var(--text2);font-size:12px;cursor:pointer;text-align:left;width:100%;';
+  picker.innerHTML = '<button style="' + _pStyle + '" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'none\'" onclick="document.getElementById(\'cv-dl-picker\')?.remove();cvDownloadPNG()">PNG (hi-res)</button>'
+    + '<button style="' + _pStyle + '" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'none\'" onclick="document.getElementById(\'cv-dl-picker\')?.remove();cvDownloadPDF()">PDF</button>';
+  const r = btn.getBoundingClientRect();
+  picker.style.top = (r.bottom + window.scrollY + 4) + 'px';
+  picker.style.right = (document.documentElement.clientWidth - r.right) + 'px';
+  picker.style.position = 'fixed';
+  picker.style.top = (r.bottom + 4) + 'px';
+  document.body.appendChild(picker);
+  const _close = e => { if (!picker.contains(e.target) && e.target !== btn) { picker.remove(); document.removeEventListener('click', _close, true); } };
+  setTimeout(() => document.addEventListener('click', _close, true), 0);
+}
+
 function cvDownloadPNG() {
   const canvas=document.getElementById('cv-canvas');
   if(!canvas) return;
@@ -6795,6 +6876,7 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
     const _yt=parseFloat(document.getElementById('cv-ymax-fixed')?.value);
     if(!isNaN(_yb)) ylo=_yb;
     if(!isNaN(_yt)) yhi=_yt;
+    if(ylo>yhi){const _t=ylo;ylo=yhi;yhi=_t;}
   }
   // Zoom override
   if(cfg.xlo!=null)xlo=cfg.xlo; if(cfg.xhi!=null)xhi=cfg.xhi;
