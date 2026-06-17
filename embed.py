@@ -21,7 +21,8 @@ APPS = [
     ('spectra', 'Spectra/spectra.html'),
     ('ldi',     'LDI/ldi.html'),
     ('cryo',    'Cryostorage/cryostorage.html'),
-    ('cuppa',   'Cuppa/cuppa.html'),
+    ('cuppa',      'Cuppa/cuppa.html'),
+    ('fabricata',  'DataFaker/fabricata.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()

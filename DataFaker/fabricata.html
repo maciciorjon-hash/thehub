@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fabricata™</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#f7f5f2;--surface:#fff;--border:#e8e4df;--text:#1a1612;--text2:#6b6056;--text3:#a09488;
+  --accent:#c07a8e;--accent-dim:rgba(192,122,142,.1);
+  --mono:'JetBrains Mono','Fira Mono',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+[data-theme=dark]{
+  --bg:#1a1614;--surface:#231f1d;--border:#302a27;--text:#f0ebe6;--text2:#a09080;--text3:#6b5e55;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);}
+body{display:flex;flex-direction:column;overflow:hidden;}
+
+/* ── Top bar ── */
+.fab-header{
+  height:52px;display:flex;align-items:center;gap:12px;
+  padding:0 24px;border-bottom:1px solid var(--border);
+  background:var(--surface);flex-shrink:0;
+}
+.fab-logo{
+  width:28px;height:28px;border-radius:7px;
+  background:linear-gradient(135deg,var(--accent),#d99ab0);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;color:#fff;letter-spacing:-.5px;
+}
+.fab-title{font-size:14px;font-weight:700;letter-spacing:-.3px;}
+.fab-badge{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+  background:var(--accent-dim);color:var(--accent);padding:3px 8px;border-radius:10px;}
+
+/* ── Main layout ── */
+.fab-body{flex:1;display:grid;grid-template-columns:260px 1fr;overflow:hidden;}
+.fab-sidebar{
+  border-right:1px solid var(--border);padding:20px 16px;
+  background:var(--surface);overflow-y:auto;display:flex;flex-direction:column;gap:18px;
+}
+.fab-panel{padding:22px 28px;overflow-y:auto;display:flex;flex-direction:column;gap:18px;}
+.sb-section{display:flex;flex-direction:column;gap:8px;}
+.sb-label{font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+.sb-select,.sb-input{
+  width:100%;padding:7px 10px;border-radius:7px;border:1px solid var(--border);
+  background:var(--bg);color:var(--text);font-family:var(--sans);font-size:12.5px;
+  outline:none;cursor:pointer;
+}
+.sb-select:focus,.sb-input:focus{border-color:var(--accent);}
+.sb-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.sb-row span{font-size:12px;color:var(--text2);}
+.sb-range{width:100%;accent-color:var(--accent);}
+.sb-check-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text2);}
+.sb-check-row input{accent-color:var(--accent);}
+
+.panel-title{font-size:16px;font-weight:700;letter-spacing:-.3px;}
+.panel-sub{font-size:12px;color:var(--text3);margin-top:-12px;}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.stat-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;display:flex;flex-direction:column;gap:4px;
+}
+.stat-val{font-size:22px;font-weight:700;letter-spacing:-1px;color:var(--accent);}
+.stat-lbl{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;}
+.preview-box{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  overflow:hidden;
+}
+.preview-head{
+  padding:10px 16px;border-bottom:1px solid var(--border);
+  font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.4px;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.preview-table{width:100%;border-collapse:collapse;font-size:12px;}
+.preview-table th{padding:8px 12px;text-align:left;font-size:10.5px;font-weight:600;
+  color:var(--text3);text-transform:uppercase;letter-spacing:.5px;background:var(--bg);}
+.preview-table td{padding:8px 12px;border-top:1px solid var(--border);color:var(--text2);font-family:var(--mono);}
+.preview-table tr:hover td{background:var(--accent-dim);}
+
+.btn-row{display:flex;gap:10px;}
+.btn-primary{
+  padding:9px 22px;border-radius:8px;border:none;cursor:pointer;
+  background:var(--accent);color:#fff;font-size:13px;font-weight:600;
+  font-family:var(--sans);transition:filter .15s;
+}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-ghost{
+  padding:9px 18px;border-radius:8px;border:1px solid var(--border);cursor:pointer;
+  background:none;color:var(--text2);font-size:13px;font-family:var(--sans);
+  transition:background .15s,color .15s;
+}
+.btn-ghost:hover{background:var(--surface);color:var(--text);}
+
+/* ── Confirm modal ── */
+#confirm-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);
+  z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;
+}
+#confirm-modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  max-width:440px;width:100%;padding:32px;box-shadow:0 24px 64px rgba(0,0,0,.18);
+  animation:popIn .3s cubic-bezier(.16,.84,.44,1);
+}
+@keyframes popIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+.cm-icon{font-size:36px;margin-bottom:12px;}
+.cm-title{font-size:17px;font-weight:700;letter-spacing:-.3px;margin-bottom:8px;}
+.cm-body{font-size:13.5px;color:var(--text2);line-height:1.6;margin-bottom:24px;}
+.cm-body b{color:var(--text);font-weight:600;}
+.cm-btns{display:flex;gap:10px;justify-content:flex-end;}
+.cm-no{
+  padding:9px 20px;border-radius:8px;border:1px solid var(--border);cursor:pointer;
+  background:none;color:var(--text2);font-size:13px;font-family:var(--sans);
+  transition:background .15s;
+}
+.cm-no:hover{background:var(--bg);}
+.cm-yes{
+  padding:9px 20px;border-radius:8px;border:none;cursor:pointer;
+  background:#c0392b;color:#fff;font-size:13px;font-weight:600;font-family:var(--sans);
+  transition:filter .15s;
+}
+.cm-yes:hover{filter:brightness(1.1);}
+
+/* ── Disappoint screen ── */
+#disappoint{
+  position:fixed;inset:0;background:var(--bg);z-index:2000;
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+}
+#disappoint.show{display:flex;animation:fadeIn .4s ease;}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.dis-word{font-size:clamp(36px,8vw,72px);font-weight:800;letter-spacing:-2px;color:var(--text);opacity:.15;}
+.dis-main{font-size:clamp(52px,12vw,108px);font-weight:900;letter-spacing:-4px;color:var(--text);line-height:1;}
+.dis-count{font-size:15px;color:var(--text3);font-family:var(--mono);letter-spacing:.5px;}
+
+@media(max-width:700px){
+  .fab-body{grid-template-columns:1fr;}
+  .fab-sidebar{display:none;}
+  .stat-row{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- Fake app shell (behind the modal) -->
+<header class="fab-header">
+  <div class="fab-logo">F</div>
+  <div class="fab-title">Fabricata™</div>
+  <div class="fab-badge">Beta</div>
+</header>
+<div class="fab-body">
+  <aside class="fab-sidebar">
+    <div class="sb-section">
+      <div class="sb-label">Dataset type</div>
+      <select class="sb-select">
+        <option>Clinical trial — Phase III</option>
+        <option>Protein expression</option>
+        <option>Dose–response curve</option>
+        <option>Gene expression (RNAseq)</option>
+        <option>Patient outcome data</option>
+      </select>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Sample size</div>
+      <div class="sb-row"><span>n = <span id="n-val">128</span></span></div>
+      <input type="range" class="sb-range" min="8" max="1024" value="128" oninput="document.getElementById('n-val').textContent=this.value">
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Effect size</div>
+      <div class="sb-row"><span>Cohen's d = <span id="d-val">0.80</span></span></div>
+      <input type="range" class="sb-range" min="10" max="200" value="80" oninput="document.getElementById('d-val').textContent=(this.value/100).toFixed(2)">
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Statistical significance</div>
+      <select class="sb-select">
+        <option>p &lt; 0.001 ✦✦✦</option>
+        <option>p &lt; 0.01 ✦✦</option>
+        <option>p &lt; 0.05 ✦</option>
+        <option>Whatever gets it published</option>
+      </select>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Integrity settings</div>
+      <label class="sb-check-row"><input type="checkbox" checked> Remove outliers retroactively</label>
+      <label class="sb-check-row"><input type="checkbox" checked> Massage error bars</label>
+      <label class="sb-check-row"><input type="checkbox"> Include a control group</label>
+      <label class="sb-check-row"><input type="checkbox"> Mention limitations</label>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Output format</div>
+      <select class="sb-select">
+        <option>Nature (high impact, don't worry)</option>
+        <option>Science</option>
+        <option>Cell</option>
+        <option>My PI's personal blog</option>
+      </select>
+    </div>
+  </aside>
+  <main class="fab-panel">
+    <div class="panel-title">Dataset Preview</div>
+    <div class="panel-sub">128 synthetic records · Auto-tuned for significance</div>
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-val">p=0.0003</div><div class="stat-lbl">Significance</div></div>
+      <div class="stat-card"><div class="stat-val">94.7%</div><div class="stat-lbl">Success rate</div></div>
+      <div class="stat-card"><div class="stat-val">0 of 0</div><div class="stat-lbl">Replication attempts</div></div>
+      <div class="stat-card"><div class="stat-val">∞</div><div class="stat-lbl">Years to discover</div></div>
+    </div>
+    <div class="preview-box">
+      <div class="preview-head"><span>fabricata_dataset_FINAL_USE_THIS.csv</span><span style="color:var(--accent)">128 rows</span></div>
+      <table class="preview-table">
+        <thead><tr><th>Sample ID</th><th>Treatment</th><th>Response (%)</th><th>p-value</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>FAB-001</td><td>Drug A</td><td>87.3</td><td>0.0001</td><td>Very good result</td></tr>
+          <tr><td>FAB-002</td><td>Drug A</td><td>91.1</td><td>0.0002</td><td>Even better</td></tr>
+          <tr><td>FAB-003</td><td>Control</td><td>12.4</td><td>—</td><td>As expected (removed)</td></tr>
+          <tr><td>FAB-004</td><td>Drug A</td><td>88.9</td><td>0.0003</td><td>Consistent</td></tr>
+          <tr><td>FAB-005</td><td>Drug A</td><td>76.2</td><td>0.048</td><td>Just made it 🎉</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary">Generate Dataset</button>
+      <button class="btn-ghost">Export to CSV</button>
+      <button class="btn-ghost">Submit to Journal</button>
+    </div>
+  </main>
+</div>
+
+<!-- Ethics modal -->
+<div id="confirm-overlay">
+  <div id="confirm-modal">
+    <div class="cm-icon">⚠️</div>
+    <div class="cm-title">Are you sure you want to do this?</div>
+    <div class="cm-body">
+      Fabricating research data is <b>highly unethical behaviour</b>. It undermines the integrity of science, wastes public funding, and can cause real-world harm.<br><br>
+      It can also get you <b>fired, retracted, and publicly humiliated</b> — sometimes all three simultaneously.<br><br>
+      Please confirm you understand the gravity of what you are about to do.
+    </div>
+    <div class="cm-btns">
+      <button class="cm-no" onclick="onNo()">No, I changed my mind</button>
+      <button class="cm-yes" onclick="onYes()">Yes, I want to do it anyway</button>
+    </div>
+  </div>
+</div>
+
+<!-- Disappointment screen -->
+<div id="disappoint">
+  <div class="dis-word">oh</div>
+  <div class="dis-main">Disappointing.</div>
+  <div class="dis-count" id="dis-count">Closing in 5…</div>
+</div>
+
+<script>
+function goBack() {
+  try { if (window.parent && window.parent.backToHub) { window.parent.backToHub(); return; } } catch(e) {}
+  window.parent.postMessage('backToHub', '*');
+}
+
+function onNo() {
+  goBack();
+}
+
+function onYes() {
+  document.getElementById('confirm-overlay').style.display = 'none';
+  var dis = document.getElementById('disappoint');
+  dis.classList.add('show');
+  var n = 5;
+  var el = document.getElementById('dis-count');
+  el.textContent = 'Closing in ' + n + '…';
+  var t = setInterval(function() {
+    n--;
+    if (n <= 0) {
+      clearInterval(t);
+      el.textContent = 'Closing…';
+      goBack();
+    } else {
+      el.textContent = 'Closing in ' + n + '…';
+    }
+  }, 1000);
+}
+</script>
+</body>
+</html>
