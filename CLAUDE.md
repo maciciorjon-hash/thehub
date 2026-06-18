@@ -253,7 +253,17 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-15 (Round 82: Echo syntax crash fix + CSV diagnostic logging; v1.0.68)
+Last session: 2026-06-18 (Round 83: Iceberg real data + template + visual polish; v1.1.2)
+Hub apps: 11. Version v1.1.2.
+Cryostorage/cryostorage.html changes (v1.1.2):
+- Seeded Jon's real freezer/cryo-tank inventory (33 vials: 18 in -80 Box 1, 3 in -80 Box 2, 12 in N2 CeTPD Box 12), derived from "Freezer and Cryo Boxes Jon.xlsx". 'X' cells in the source meant "vial taken" -> dropped, not stored as occupied-unlabeled. Trailing "P##*" -> passage extracted, '*' folded into a note ("Passage counted after de-frosting — original freeze passage unknown.").
+- Seeding is admin-gated: maybeSeedRealData() only populates state when there's no existing local data AND window.parent.isAdmin === true (Hub's existing admin flag, true only for maciciorjon@gmail.com) — other Hub users keep today's blank default.
+- New "Download template (.xlsx)" button (Options panel) generates a 3-tab workbook: flat "Table format" (matches existing import/export columns), "Grid - lettered" (blank 9x9 mirroring the -80 box layout), "Grid - numbered" (blank 10x10 mirroring the N2 box layout) — both grid tabs use vertically-merged cells for the "boxy" look, plus a tip line noting entries must go on the merged cell's top row.
+- importXLSX() extended with a grid-sheet fallback (_detectGridSheet/_parseGridCellText) for when a sheet isn't flat-table shaped: detects row-letter (A1, B12...) or sequential-number label rows, reads the row immediately below as content (works regardless of merge, since non-anchor merged cells already read as empty). Numbered labels convert to row-letter+column via the row's own wrap-width. Lets a hand-filled template round-trip straight back through the existing Import button.
+- Visual polish ("frosted/icy", Direction A from brainstorming): .stat-card, .box-card, .empty-state get a subtle cool gradient (var(--surface) -> var(--accent-dim)) plus a soft radial accent glow on box cards; .box-preview .pw corners softened slightly. No new CSS vars — dark theme adapts automatically since --accent-dim is already theme-tuned.
+hub-shell.html: version bump v1.1.1 -> v1.1.2, changelog entry added.
+
+Previous session: 2026-06-15 (Round 82: Echo syntax crash fix + CSV diagnostic logging; v1.0.68)
 Hub apps: 10. Version v1.0.68.
 Labcyte_Echo/labcyte_echo.html changes (v1.0.68):
 - Fixed fatal JS SyntaxError introduced by audit rawqc block removal: stray } after if(legendEl) closed drawPlateCanvas early; subsequent } was global-scope syntax error preventing entire script from loading.
