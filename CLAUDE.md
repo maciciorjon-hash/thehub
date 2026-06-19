@@ -253,7 +253,15 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-18 (Round 83: Iceberg real data + template + visual polish; v1.1.2)
+Last session: 2026-06-19 (Round 84: Echo Plots tab layout fix; v1.1.3)
+Hub apps: 11. Version v1.1.3.
+Labcyte_Echo/labcyte_echo.html changes (v1.1.3):
+- Root cause: an extra stray `</div>` at the end of the Gradient Planner panel markup (was `</div></div>` closing both panel-gradient AND .content-area; should have closed only panel-gradient) prematurely closed `.content-area` before `#panel-analysis` opened. That made panel-analysis a sibling of .content-area instead of a child, so the `.shell` CSS grid computed 4 rows instead of 3 — the orphaned `.content-area` row kept its old Overview-panel height (~409px) as dead blank space, squeezing the scatter chart canvas down to ~200px tall. That's what looked like "dots not in proper places" / "axis scale not correct" — Chart.js's data mapping and auto-scaling were actually fine, just rendered into a tiny, badly-proportioned canvas.
+- Fix: removed the stray extra `</div>` (line ~697) so `.content-area` now correctly wraps all three app-panels (overview/gradient/analysis) and closes once, after panel-analysis, at its original intended closing tag. Chart canvas now renders at full height (~600px+) responsive to viewport.
+- Verified via Playwright: Overview and Gradient Planner panels unaffected (no regression); Plots tab now fills its panel correctly; confirmed the 39-of-63 plotted points is intentional (Flag==='Yes' rows, 24 of them, are excluded from the scatter by design), not a data bug.
+hub-shell.html: version bump v1.1.2 -> v1.1.3, changelog entry added.
+
+Previous session: 2026-06-18 (Round 83: Iceberg real data + template + visual polish; v1.1.2)
 Hub apps: 11. Version v1.1.2.
 Cryostorage/cryostorage.html changes (v1.1.2):
 - Seeded Jon's real freezer/cryo-tank inventory (33 vials: 18 in -80 Box 1, 3 in -80 Box 2, 12 in N2 CeTPD Box 12), derived from "Freezer and Cryo Boxes Jon.xlsx". 'X' cells in the source meant "vial taken" -> dropped, not stored as occupied-unlabeled. Trailing "P##*" -> passage extracted, '*' folded into a note ("Passage counted after de-frosting — original freeze passage unknown.").
