@@ -5618,6 +5618,45 @@ function showAssayHome() {
 }
 
 var _qcTool = null;
+// ── Unified tool-grid renderer: ≤900px tiles vs >900px cards, shared by 8 sections ──
+function renderToolGrid(containerId, tools, desktopClasses) {
+  var container = document.getElementById(containerId);
+  if (!container || !tools) return;
+  container.innerHTML = '';
+  if (_lmIsMobile()) {
+    container.className = 'lm-tile-grid';
+    tools.forEach(function(t) {
+      var tile = document.createElement('button');
+      tile.className = 'lm-tile';
+      tile.setAttribute('aria-label', 'Open ' + t.title);
+      tile.innerHTML =
+        '<div class="lm-tile-icon ' + desktopClasses.tileColorClass + '"><span class="lm-tile-badge">' + t.badge + '</span></div>' +
+        '<span class="lm-tile-title">' + t.title + '</span>';
+      tile.onclick = t.open;
+      container.appendChild(tile);
+    });
+  } else {
+    container.className = desktopClasses.gridClass;
+    tools.forEach(function(t) {
+      var card = document.createElement('button');
+      card.className = desktopClasses.cardClass;
+      card.setAttribute('aria-label', 'Open ' + t.title);
+      var html = '<div class="' + desktopClasses.titleClass + '">' + t.title + '</div>';
+      if (t.desc) html += '<div class="' + desktopClasses.subClass + '">' + t.desc + '</div>';
+      if (t.formula && desktopClasses.formulaClass) html += '<div class="' + desktopClasses.formulaClass + '">' + t.formula + '</div>';
+      card.innerHTML = html;
+      card.onclick = t.open;
+      container.appendChild(card);
+    });
+  }
+}
+
+// Each migrated section adds its own renderToolGrid(...) call inside this function
+// (one line per section, added by that section's migration task).
+function _lmRenderAllToolGrids() {
+}
+_lmRenderAllToolGrids();
+
 function showQcTool(tool) {
   _qcTool = tool;
   var home = document.getElementById('qc-home');
@@ -10924,6 +10963,7 @@ window.addEventListener('resize', function(){
     // Desktop: hide breadcrumb (CSS handles it via @media)
   }
   updateMobBreadcrumb();
+  _lmRenderAllToolGrids();
 });
 
 </script>
