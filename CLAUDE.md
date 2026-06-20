@@ -253,7 +253,20 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-19 (Round 84: Echo Plots tab layout fix; v1.1.3)
+Last session: 2026-06-20 (Round 85: LabMate mobile/tablet tile navigation unification; v1.1.4)
+Hub apps: 11. Version v1.1.4.
+Labmate/labmate.html changes (v1.1.4):
+- Replaced 8 separately-implemented "grid of cards -> detail view" navigations (Calculators, Mol Biology, CRISPR, Cell Biology, Proteomics, Genomics, Struct Bio, Biophysics) with one shared, data-driven renderToolGrid() — icon-badge tiles (2 columns) at <=900px, unchanged icon+title+description cards at >900px desktop.
+- Widened the mobile/tablet breakpoint from 700px to 900px throughout (8 media query blocks + _lmIsMobile()), so tablets get the new pattern, not just phones.
+- Fixed a real, demonstrable instance of the "sections feel inconsistent" complaint: most detail-view back buttons said generic "<- Protocols" instead of their actual section name (Mol Biology, Cell Biology, Proteomics, Genomics, Struct Bio all affected; Cell Biology was even inconsistent with itself, 7 of 8 wrong).
+- Fixed a live bug: opening any Quick Calc tool threw 3 console errors because _memRenderQcChips() called memRenderChips(), a function that was never actually written (recent-values "chips" feature was scaffolded but never finished) -- removed the dead call instead of building the unfinished feature speculatively.
+- Cell Biology's migration preserved 10 embedded cross-link cards to Cell Lines reference entries (showProto cards and _openCellLine cards coexist in one data-driven grid).
+- Cell Lines itself was NOT migrated to the hide-grid/navigate pattern -- investigation showed its tap-to-reveal-below-grid interaction (no back button, grid stays visible) is a legitimate, different, and arguably better UX for a 10-item reference/comparison grid; only got a visual-only icon-badge touch-up.
+- Removed an orphaned "Tools" section (sec-tools) that had no entry point in any nav -- unreachable in the live app.
+- Removed the dead mobile sub-navigation scaffold (#mob-subhome, mobShowSubGroup(), switchNavChild(), _navGroupMeta) -- a parallel mobile-grouping system that was scaffolded but never wired up (_navGroups stayed permanently empty). _navGroups/_sectionToGroup/switchNavGroup() themselves were left in place -- tracing every call site showed they're entangled inside renderSidebar(), too large/central to safely remove alongside this redesign; deferred to a later code-optimization pass.
+hub-shell.html: version bump -> v1.1.4, changelog entry added.
+
+Previous session: 2026-06-19 (Round 84: Echo Plots tab layout fix; v1.1.3)
 Hub apps: 11. Version v1.1.3.
 Labcyte_Echo/labcyte_echo.html changes (v1.1.3):
 - Root cause: an extra stray `</div>` at the end of the Gradient Planner panel markup (was `</div></div>` closing both panel-gradient AND .content-area; should have closed only panel-gradient) prematurely closed `.content-area` before `#panel-analysis` opened. That made panel-analysis a sibling of .content-area instead of a child, so the `.shell` CSS grid computed 4 rows instead of 3 — the orphaned `.content-area` row kept its old Overview-panel height (~409px) as dead blank space, squeezing the scatter chart canvas down to ~200px tall. That's what looked like "dots not in proper places" / "axis scale not correct" — Chart.js's data mapping and auto-scaling were actually fine, just rendered into a tiny, badly-proportioned canvas.
