@@ -27,7 +27,10 @@
 | `dna` | Helix | SVG helix | `#43a047` | `Helix/helix.html` |
 | `pt` | Protein Tools | SVG chain | `#9c6fd4` | `Protein_Tools/protein_tools.html` |
 | `spectra` | Spectra | SVG waveform | `#26a69a` | `Spectra/spectra.html` |
-| `ldi` | LDI | `LD` text | `#e91e63` | `LDI/ldi.html` |
+| `ldi` | LDI | SVG balance/scale | `#e91e63` | `LDI/ldi.html` |
+| `cryo` | Iceberg | SVG snowflake | `#00acc1` | `Cryostorage/cryostorage.html` |
+| `cuppa` | Cuppa | SVG coffee cup | `#8d6e63` | `Cuppa/cuppa.html` |
+| `fabricata` | Fabricata™ | SVG bar chart + star | `#c07a8e` | `DataFaker/fabricata.html` |
 
 ---
 
