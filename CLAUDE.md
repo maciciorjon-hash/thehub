@@ -256,7 +256,16 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-21 (Round 88: Suite-wide mobile touch-target audit + Hub logo consistency; v1.1.7)
+Last session: 2026-06-21 (Round 89: Suite-wide icon redesign — Phase B2; v1.1.8)
+Hub apps: 11. Version v1.1.8.
+Phase B2 of the suite-wide audit (see Round 88 for Phases A/B1). Added line-pictogram icons (icon + text, icon inherits the tab's existing active/inactive color via stroke="currentColor" -- no new bordered-box treatment on the tabs themselves, confirmed with the user this should NOT look like LabMate's mobile-grid tiles) to:
+- LDI (Data/Results/Curves), Echo (Files/Assay/Analysis/Output, setup modal), Lab Designer (Plate Designer/Gel Designer/History/Guide), Degradation Explorer (Load Data/Table/DC50 vs Dmax/Properties/Guide), Helix (Genetic Code/Sequence Tools/Compare/Vector Library/Guide), Protein Tools (Properties/Cleavage/Structure/Target Intel/Guide), Spectra (A280/Ratios/Std Curve/Plate Reader/Guide) -- 31 tab icons total, several glyphs intentionally reused across apps for the same concept (table/grid, bar chart, dose-response curve, well-grid, open-book "Guide").
+- Iceberg's 2 tab symbols (-80C, Liquid N2) upgraded from Unicode to SVG, matching the cross-suite convention. Its large illustrative empty-state icons (.ei class, separate from the .ti tab icons) were explicitly left untouched -- out of scope.
+- Cuppa's 6 expense-category badges (Amazon/Coffee/Milk/Supermarket/Incoming/Other) upgraded from emoji to SVG, following Cuppa's OWN existing .dk-* drink-badge convention (22x22 box, 13px svg) rather than the cross-suite tab style, since they're not a tab bar -- per explicit user choice during mockup review. Flat solid color + a thin border per user feedback (gradient was tried first in mockups and rejected).
+All 39 icon-level changes went through Visual Companion mockup review (5 batches) before implementation; full two-stage subagent review (spec-compliance + code-quality) per task.
+hub-shell.html: version bump -> v1.1.8, changelog entry added.
+
+Previous session: 2026-06-21 (Round 88: Suite-wide mobile touch-target audit + Hub logo consistency; v1.1.7)
 Hub apps: 11. Version v1.1.7.
 Phase A (mobile touch-target fixes) + Phase B1 (Hub home-card logo fixes) of a larger suite-wide audit (plan: mobile/desktop optimization + LabMate-style icon treatment across all apps + the Hub shell). Phase B2 (tab-navigation icon redesign, ~39 icons across 9 apps) and Phase C (desktop density backlog) are scoped but not yet started -- B2 needs a visual-companion mockup review first, C needs its own brainstorming pass.
 Mobile touch-target fixes (v1.1.7), one file each:
