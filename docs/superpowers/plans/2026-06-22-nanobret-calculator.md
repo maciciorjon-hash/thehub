@@ -1216,6 +1216,13 @@ const { chromium } = require('playwright');
   await page.goto('file://$(pwd)/NanoBRET/nanobret.html');
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
+  page.on('dialog', d => d.accept());
+
+  // Switch to the Endpoint/QC tab first — panel-qc is display:none until its
+  // tab is active, so the +Ligand/+Background buttons inside it are not
+  // clickable from the default 'plate' tab (Playwright times out waiting
+  // for visibility otherwise).
+  await page.click('button[data-tab=\"qc\"]');
 
   await page.evaluate(() => {
     state.donor = [
@@ -1594,6 +1601,13 @@ const { chromium } = require('playwright');
   await page.goto('file://$(pwd)/NanoBRET/nanobret.html');
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
+  page.on('dialog', d => d.accept());
+
+  // Switch to the Dose-Response tab first — panel-dose is display:none until
+  // its tab is active, so its buttons are not clickable from the default
+  // 'plate' tab (same class of bug as Task 5's verification script: Playwright
+  // times out waiting for visibility otherwise).
+  await page.click('button[data-tab=\"dose\"]');
 
   await page.evaluate(() => {
     var concs = [1,3,10,30,100,300,1000,3000];
