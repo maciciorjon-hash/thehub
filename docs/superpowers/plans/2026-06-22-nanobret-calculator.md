@@ -1139,7 +1139,7 @@ function computeConditionStats(cond){
 }
 
 function escapeAttr(s){
-  return (s || '').replace(/"/g, '&quot;');
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function renderConditions(){
@@ -1159,7 +1159,7 @@ function renderConditions(){
       if(cond.role === 'ligand'){
         html += '<div class="field"><label>Background</label><select onchange="updateConditionField(\'' + cond.id + '\',\'bgId\',this.value)"><option value="">— none —</option>';
         state.conditions.filter(function(c){ return c.role === 'background'; }).forEach(function(bg){
-          html += '<option value="' + bg.id + '"' + (cond.bgId === bg.id ? ' selected' : '') + '>' + bg.name + '</option>';
+          html += '<option value="' + bg.id + '"' + (cond.bgId === bg.id ? ' selected' : '') + '>' + escapeAttr(bg.name) + '</option>';
         });
         html += '</select></div>';
       }
@@ -1185,16 +1185,16 @@ function renderQCResults(){
     var sA = computeConditionStats(cond);
     var sB = computeConditionStats(bg);
     if(sA.mean === null || sB.mean === null){
-      html += '<div class="card" style="margin-bottom:10px;"><div class="card-hdr">' + cond.name + ' vs ' + bg.name + '</div><p style="font-size:12px;color:var(--text2);">Load plate data and well ranges to compute.</p></div>';
+      html += '<div class="card" style="margin-bottom:10px;"><div class="card-hdr">' + escapeAttr(cond.name) + ' vs ' + escapeAttr(bg.name) + '</div><p style="font-size:12px;color:var(--text2);">Load plate data and well ranges to compute.</p></div>';
       return;
     }
     var corrected = correctedMBU(sA.mean, sB.mean);
     var zp = zPrimeFactor(sA.sd, sB.sd, sA.mean, sB.mean);
     var badgeClass = zp === null ? 'badge-neutral' : (zp >= 0.5 ? 'badge-good' : (zp >= 0 ? 'badge-mid' : 'badge-poor'));
     html += '<div class="card" style="margin-bottom:10px;">';
-    html += '<div class="card-hdr">' + cond.name + ' vs ' + bg.name + '</div><div class="row">';
-    html += '<div><div style="font-size:11px;color:var(--text3);">Mean mBU (' + cond.name + ')</div><div style="font-family:var(--mono);font-size:16px;">' + sA.mean.toFixed(1) + ' ± ' + sA.sd.toFixed(1) + '</div></div>';
-    html += '<div><div style="font-size:11px;color:var(--text3);">Mean mBU (' + bg.name + ')</div><div style="font-family:var(--mono);font-size:16px;">' + sB.mean.toFixed(1) + ' ± ' + sB.sd.toFixed(1) + '</div></div>';
+    html += '<div class="card-hdr">' + escapeAttr(cond.name) + ' vs ' + escapeAttr(bg.name) + '</div><div class="row">';
+    html += '<div><div style="font-size:11px;color:var(--text3);">Mean mBU (' + escapeAttr(cond.name) + ')</div><div style="font-family:var(--mono);font-size:16px;">' + sA.mean.toFixed(1) + ' ± ' + sA.sd.toFixed(1) + '</div></div>';
+    html += '<div><div style="font-size:11px;color:var(--text3);">Mean mBU (' + escapeAttr(bg.name) + ')</div><div style="font-family:var(--mono);font-size:16px;">' + sB.mean.toFixed(1) + ' ± ' + sB.sd.toFixed(1) + '</div></div>';
     html += '<div><div style="font-size:11px;color:var(--text3);">Corrected mBU</div><div style="font-family:var(--mono);font-size:16px;">' + corrected.toFixed(1) + '</div></div>';
     html += '<div><span class="badge ' + badgeClass + '">Z′ = ' + (zp === null ? 'n/a' : zp.toFixed(3)) + '</span></div>';
     html += '</div></div>';
