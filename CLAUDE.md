@@ -99,7 +99,7 @@ git commit -m "Fix: description"
 git push
 ```
 
-**Files tracked in git:** `hub-shell.html`, `embed.py`, `.gitignore`, `.github/`, all standalone app HTMLs, `CLAUDE.md`  
+**Files tracked in git:** `hub-shell.html`, `embed.py`, `.gitignore`, `.github/`, all standalone app HTMLs, `CLAUDE.md`, `database.rules.json`/`firebase.json`/`.firebaserc` (Firebase RTDB security rules, deployable via `firebase deploy --only database` if the CLI is installed — see Firebase integration section)  
 **Files NOT tracked:** `The Hub.html` (generated), `dist/`, `Labmate/RDKit_minimal.*`
 
 ### Hub shell structure
@@ -141,11 +141,13 @@ App views are `position:fixed; inset:0; z-index:10`. Opening: overlay fades in (
 
 **Admin auth:** Google sign-in via Firebase Auth compat SDK. Admin = `maciciorjon@gmail.com`. Sign in from Settings panel (gear icon). Session persists across reloads.
 
-**Lab config SSE** (`/labconfig.json`): controls which app cards are visible to non-admin users. Admin writes via PUT with `?auth=SECRET`. All sessions receive updates in real time via `EventSource`.
+**Lab config SSE** (`/labconfig.json`): controls which app cards are visible to non-admin users. Admin writes via `firebase.database().ref('/labconfig').set(...)` (Firebase JS SDK, authenticated by the signed-in admin's real ID token). All sessions receive updates in real time via `EventSource`.
 
-**Announcement banner** (`/announcement.json`): admin posts a message from the Lab panel; appears as a fixed 40px banner below the nav for all active sessions. Dismissible per browser session (tracked via `sessionStorage`). Posting an empty string clears the banner.
+**Announcement banner** (`/announcement.json`): admin posts a message from the Lab panel via `firebase.database().ref('/announcement').set(...)`; appears as a fixed 40px banner below the nav for all active sessions. Dismissible per browser session (tracked via `sessionStorage`). Posting an empty string clears the banner.
 
 **Authorized domains** (Firebase console → Auth → Settings): must include `maciciorjon-hash.github.io` for Google sign-in to work on Pages.
+
+**Security (fixed 2026-06-22, see Round 92 session log):** writes used to go through a hardcoded legacy RTDB "database secret" embedded directly in client JS — a platform-level admin-bypass key with no expiry, no rules enforcement, and (since it was server-bundled into a public GitHub Pages page) effectively public. Replaced with real Firebase Auth SDK writes (`firebase.database().ref(path).set(...)`) tied to the signed-in admin's actual identity; rules are tracked in `database.rules.json`/`firebase.json`/`.firebaserc` at repo root (paste into Firebase console → Realtime Database → Rules, or `firebase deploy --only database` if the CLI is installed). **Known unresolved limitation:** the leaked legacy secret itself cannot be revoked or rotated — Firebase removed all console UI for managing legacy RTDB secrets years ago, with no replacement, for every project. It remains permanently valid and permanently bypasses rules on this specific database instance (`thehub-f80ae-default-rtdb`) regardless of what rules say. Jon explicitly accepted this residual risk rather than migrating to a new database instance — don't re-flag this as a fresh finding without checking this note first.
 
 ---
 
@@ -256,7 +258,16 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-22 (Round 91: Phase C Tier 2 -- desktop layout-rework fixes; v1.2.0)
+Last session: 2026-06-22 (Round 92: Firebase RTDB security fix -- leaked legacy database secret removed; v1.2.1)
+Hub apps: 11. Version v1.2.1.
+Jon received a Firebase email warning that thehub-f80ae-default-rtdb had insecure rules ("any user can read your entire database"). Investigation found two separate issues, not one:
+- No database.rules.json had ever existed -- rules were left at Firebase's wide-open default.
+- A legacy RTDB "database secret" (a platform-level admin-bypass key, not governed by rules at all) was hardcoded directly in client-side JS in both hub-shell.html (HUB_FB_SECRET) and Cuppa/cuppa.html (FB_SECRET), used as a `?auth=` query param for writes to /labconfig, /announcement, /cuppa. Since this is a public GitHub Pages site, that secret was effectively public -- visible to anyone who opened dev tools, and bypassing any rules regardless of what they said.
+Fixed: both hardcoded secret variables removed; saveLabConfig()/saveAnnouncement() (hub-shell.html) and saveToFirebase() (Cuppa) converted from secret-based fetch(...+'?auth='+SECRET,{method:'PUT'}) to the Firebase JS SDK (firebase.database().ref(path).set(data)), which automatically attaches the signed-in admin's real Firebase Auth ID token instead. Added firebase-database-compat.js script tag to hub-shell.html (Cuppa already had it). Reads deliberately left untouched/public for both -- Cuppa's welcome card publicly displays the lab's real bank sort code/account number/holder name to every visitor BY DESIGN (members have no login, this isn't a leak, it's how they know where to pay), and /labconfig + /announcement need to stay readable without sign-in for the app to function.
+Added database.rules.json + firebase.json + .firebaserc at repo root so the actual rules (scoped per-path: public read + admin-email-gated write on labconfig/announcement/cuppa, deny-all elsewhere) are version-controlled and deployable via `firebase deploy --only database`, instead of living only in a chat message Jon would paste manually into the console.
+Found but explicitly NOT fixed, by Jon's own choice: the leaked legacy secret itself cannot be revoked or rotated through any console UI -- Firebase removed legacy-secret management entirely, years ago, for every project, with no replacement. It remains permanently valid and permanently bypasses rules on this specific database instance regardless of what the rules say -- the only way to fully close it is migrating live data to a brand-new RTDB instance (or Firestore) and never pointing app code at the old one again. Jon was offered that migration and explicitly chose "leave it as-is for now" -- residual risk accepted: only someone who already extracted the secret string from git history or an old cached page copy could still exploit it; it's no longer visible anywhere in the current live page source. Full history in memory file project_the_hub_firebase_security.md -- don't re-flag the unrevocable-secret limitation as a fresh finding in a future session without checking that note first.
+
+Previous session: 2026-06-22 (Round 91: Phase C Tier 2 -- desktop layout-rework fixes; v1.2.0)
 Hub apps: 11. Version v1.2.0.
 Phase C Tier 2 of the suite-wide audit (see Round 88-90 for Phases A/B1/B2 and Tier 1). The original 7-item, 5-app backlog (Echo, Degradation Explorer, Protein Tools, Spectra, Lab Designer) was directly investigated against the live apps before building anything -- 5 of the 7 items turned out to be false positives once tested against real content (not just read from the original audit's wording):
 - Spectra's heatmap legend already has a working gradient swatch (.legend-bar) -- the "text-only" framing was wrong.
