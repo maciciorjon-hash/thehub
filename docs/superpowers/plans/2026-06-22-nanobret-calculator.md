@@ -54,7 +54,7 @@ assert.ok(Math.abs(sdOf(noligand) - 7.905694150420948) < 1e-9);
 var cmbu = correctedMBU(meanOf(ligand), meanOf(noligand));
 assert.strictEqual(cmbu, 705);
 var zprime = zPrimeFactor(sdOf(ligand), sdOf(noligand), meanOf(ligand), meanOf(noligand));
-assert.ok(Math.abs(zprime - 0.9187814163914782) < 1e-9);
+assert.ok(Math.abs(zprime - 0.91878283388119197) < 1e-9);
 
 assert.deepStrictEqual(parseWellRange('A1-A3'), ['A01', 'A02', 'A03']);
 assert.deepStrictEqual(parseWellRange('B1,B2,B3'), ['B01', 'B02', 'B03']);
@@ -134,7 +134,7 @@ function computeConditionMBUs(donorGrid, acceptorGrid, wellIds) {
   return wellIds.map(function(w){
     var d = getWellValue(donorGrid, w);
     var a = getWellValue(acceptorGrid, w);
-    if (d === null || a === null || d === 0) return null;
+    if (d === null || a === null || d === 0 || a === 0) return null;
     return mBU(rawRatio(d, a));
   }).filter(function(v){ return v !== null; });
 }
@@ -154,6 +154,14 @@ function parseWellRange(s) {
   var wells = [];
   var ROWS = 'ABCDEFGHIJKLMNOP';
   var colRange = s.match(/^([A-P])(\d+)-([A-P])(\d+)$/i);
+  if (colRange && colRange[1].toUpperCase() === colRange[3].toUpperCase()) {
+    var row = colRange[1].toUpperCase();
+    var cc1 = parseInt(colRange[2], 10), cc2 = parseInt(colRange[4], 10);
+    for (var j = Math.min(cc1, cc2); j <= Math.max(cc1, cc2); j++) {
+      wells.push(row + (j < 10 ? '0' + j : j));
+    }
+    return wells;
+  }
   if (colRange && colRange[2] === colRange[4]) {
     var col = parseInt(colRange[2], 10);
     var r1 = ROWS.indexOf(colRange[1].toUpperCase());
@@ -651,7 +659,7 @@ function computeConditionMBUs(donorGrid, acceptorGrid, wellIds) {
   return wellIds.map(function(w){
     var d = getWellValue(donorGrid, w);
     var a = getWellValue(acceptorGrid, w);
-    if (d === null || a === null || d === 0) return null;
+    if (d === null || a === null || d === 0 || a === 0) return null;
     return mBU(rawRatio(d, a));
   }).filter(function(v){ return v !== null; });
 }
@@ -671,6 +679,14 @@ function parseWellRange(s) {
   var wells = [];
   var ROWS = 'ABCDEFGHIJKLMNOP';
   var colRange = s.match(/^([A-P])(\d+)-([A-P])(\d+)$/i);
+  if (colRange && colRange[1].toUpperCase() === colRange[3].toUpperCase()) {
+    var row = colRange[1].toUpperCase();
+    var cc1 = parseInt(colRange[2], 10), cc2 = parseInt(colRange[4], 10);
+    for (var j = Math.min(cc1, cc2); j <= Math.max(cc1, cc2); j++) {
+      wells.push(row + (j < 10 ? '0' + j : j));
+    }
+    return wells;
+  }
   if (colRange && colRange[2] === colRange[4]) {
     var col = parseInt(colRange[2], 10);
     var r1 = ROWS.indexOf(colRange[1].toUpperCase());
