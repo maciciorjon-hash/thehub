@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NanoBRET Calculator</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+:root{
+  --bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
+  --text:#1a1d2e;--text2:#5a5f7a;--text3:#9ca0b8;
+  --accent:#5e72c4;--accent-dim:rgba(94,114,196,0.12);
+  --good:#2d9462;--mid:#b58830;--poor:#b84545;
+  --sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.04);--shadow-sm:0 2px 8px rgba(0,0,0,.06);
+  --shadow-md:0 6px 24px rgba(0,0,0,.09);--shadow-lg:0 16px 48px rgba(0,0,0,.14);
+  --shadow-xl:0 32px 80px rgba(0,0,0,.22);--modal-backdrop:rgba(0,0,0,.45);
+}
+[data-theme="dark"]{
+  --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;
+  --accent:#5e72c4;--accent-dim:rgba(94,114,196,0.15);
+  --good:#6ddca8;--mid:#f8cc6d;--poor:#f89090;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.30);--shadow-sm:0 2px 8px rgba(0,0,0,.40);
+  --shadow-md:0 6px 24px rgba(0,0,0,.50);--shadow-lg:0 16px 48px rgba(0,0,0,.55);
+  --shadow-xl:0 32px 80px rgba(0,0,0,.65);--modal-backdrop:rgba(0,0,0,.65);
+}
+input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
+
+html,body{height:100%;overflow:hidden;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+
+/* HEADER */
+header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;
+  align-items:center;gap:14px;background:var(--surface);height:58px;flex-shrink:0;}
+.logo{width:32px;height:32px;border-radius:7px;background:#5e72c4;display:flex;
+  align-items:center;justify-content:center;font-family:var(--mono);font-size:20px;
+  font-weight:700;color:#fff;flex-shrink:0;}
+.app-name{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+.app-sub{font-size:11px;color:var(--text2);}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);
+  width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;
+  display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-panel{display:none;position:fixed;top:58px;right:0;background:var(--surface);
+  border:1px solid var(--border2);border-radius:0 0 0 10px;padding:14px 18px;
+  z-index:200;min-width:170px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
+.opts-panel.open{display:block;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.opts-label{font-size:13px;color:var(--text2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);
+  border-radius:22px;transition:.2s;border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;
+  top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
+input:checked + .theme-slider{background:var(--accent);}
+input:checked + .theme-slider:before{transform:translateX(18px);background:var(--surface);}
+
+/* TABS */
+.tabs{display:flex;gap:2px;padding:0 28px;background:var(--surface);
+  border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto;position:relative;}
+.tab{padding:10px 16px;border:none;background:none;color:var(--text2);
+  font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s;
+  white-space:nowrap;display:inline-flex;align-items:center;gap:6px;}
+.tab svg{width:15px;height:15px;flex-shrink:0;}
+.tab.active{color:var(--accent);border-bottom-color:transparent;}
+.tab:hover:not(.active){color:var(--text);}
+.tab-indicator{position:absolute;bottom:0;height:2px;background:var(--accent);
+  border-radius:1px 1px 0 0;z-index:1;transition:none;}
+.tab-indicator.ready{transition:left .22s ease,width .22s ease;}
+
+.content{flex:1;overflow-y:auto;padding:24px 28px;}
+.panel{display:none;}
+.panel.active{display:block;}
+
+/* SHARED CONTROLS */
+.btn{padding:7px 16px;border-radius:7px;border:none;font-family:var(--sans);
+  font-size:13px;font-weight:600;cursor:pointer;transition:opacity .15s,background .15s;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{opacity:.88;}
+.btn-sec{background:var(--surface3);color:var(--text);border:1px solid var(--border2);}
+.btn-sec:hover{background:var(--surface2);}
+.btn-sm{padding:5px 12px;font-size:12px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
+.card-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text3);margin-bottom:14px;}
+.row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
+.field{display:flex;flex-direction:column;gap:4px;}
+.field label{font-size:11px;color:var(--text3);}
+.field input,.field select{min-width:120px;padding:7px 10px;border-radius:7px;
+  border:1px solid var(--border2);background:var(--surface);color:var(--text);
+  font-family:var(--sans);font-size:13px;outline:none;}
+.field input:focus,.field select:focus{border-color:var(--accent);}
+
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+  border-radius:20px;font-size:12px;font-weight:600;}
+.badge-good{background:rgba(45,148,98,.15);color:var(--good);}
+.badge-mid{background:rgba(181,136,48,.15);color:var(--mid);}
+.badge-poor{background:rgba(184,69,69,.15);color:var(--poor);}
+.badge-neutral{background:var(--surface2);color:var(--text2);}
+
+/* GUIDE (matches suite-wide icon-per-section convention, v1.2.2) */
+.guide-section{margin-bottom:24px;}
+.guide-section h3{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:10px;
+  border-bottom:1px solid var(--border);padding-bottom:6px;display:flex;align-items:center;gap:7px;}
+.guide-section h3 svg{flex-shrink:0;width:15px;height:15px;}
+.guide-section h4{font-size:12px;font-weight:700;color:var(--text);margin:12px 0 5px;}
+.guide-section p,.guide-section li{font-size:12px;color:var(--text2);line-height:1.65;}
+.guide-section ul,.guide-section ol{padding-left:18px;margin-top:4px;}
+.guide-section li{margin-bottom:3px;}
+
+@media(max-width:720px){
+  header{padding:0 16px;}
+  .tabs{padding:0 16px;}
+  .content{padding:16px;}
+  input[type],select,textarea{min-height:36px;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">N</div>
+  <div>
+    <div class="app-name">NanoBRET Calculator</div>
+    <div class="app-sub">BRET ratio &middot; mBU &middot; Z&prime;/Z &middot; dose-response</div>
+  </div>
+  <div class="header-right">
+    <button class="opts-btn" id="opts-btn" title="Settings">&#9881;</button>
+  </div>
+</header>
+
+<div class="opts-panel" id="opts-panel">
+  <div class="opts-row">
+    <span class="opts-label">Dark mode</span>
+    <label class="theme-switch">
+      <input type="checkbox" id="theme-chk">
+      <span class="theme-slider"></span>
+    </label>
+  </div>
+</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-tab="plate" onclick="switchTab('plate')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>Plate Data</button>
+  <button class="tab" data-tab="qc" onclick="switchTab('qc')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a8 8 0 1116 0"/><path d="M12 14l3.5-4.5"/><circle cx="12" cy="14" r="1.3" fill="currentColor" stroke="none"/></svg>Endpoint / QC</button>
+  <button class="tab" data-tab="dose" onclick="switchTab('dose')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none"/></svg>Dose-Response</button>
+  <button class="tab" data-tab="guide" onclick="switchTab('guide')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 016.5 2H20v17H6.5A2.5 2.5 0 014 16.5v-12z"/><path d="M4 16.5A2.5 2.5 0 016.5 19H20"/></svg>Guide</button>
+  <div class="tab-indicator" id="tab-indicator"></div>
+</div>
+
+<div class="content">
+
+<div class="panel active" id="panel-plate"></div>
+<div class="panel" id="panel-qc"></div>
+<div class="panel" id="panel-dose"></div>
+<div class="panel" id="panel-guide"></div>
+
+</div>
+
+<script>
+/* ---- shared state ---- */
+var state = {
+  plateFormat: '96',
+  donor: null,
+  acceptor: null,
+  conditions: [],
+  doseRows: [],
+  baselineWells: ''
+};
+
+/* ---- calculation engine (verified in Task 1) ---- */
+function wellToRowCol(wellId) {
+  var m = wellId.trim().match(/^([A-P])(\d{1,2})$/i);
+  if (!m) return null;
+  return { row: m[1].toUpperCase(), col: parseInt(m[2], 10) };
+}
+
+function getWellValue(grid, wellId) {
+  var rc = wellToRowCol(wellId);
+  if (!rc) return null;
+  var rowObj = grid.filter(function(r){ return r.label === rc.row; })[0];
+  if (!rowObj) return null;
+  var v = rowObj.vals[rc.col - 1];
+  return (typeof v === 'number' && !isNaN(v)) ? v : null;
+}
+
+function getValuesForWells(grid, wellIds) {
+  return wellIds.map(function(w){ return getWellValue(grid, w); })
+    .filter(function(v){ return v !== null; });
+}
+
+function rawRatio(donorVal, acceptorVal) {
+  return acceptorVal / donorVal;
+}
+
+function mBU(ratio) {
+  return ratio * 1000;
+}
+
+function meanOf(arr) {
+  return arr.reduce(function(s, v){ return s + v; }, 0) / arr.length;
+}
+
+function sdOf(arr) {
+  if (arr.length < 2) return 0;
+  var m = meanOf(arr);
+  var variance = arr.reduce(function(s, v){ return s + (v - m) * (v - m); }, 0) / (arr.length - 1);
+  return Math.sqrt(variance);
+}
+
+function computeConditionMBUs(donorGrid, acceptorGrid, wellIds) {
+  return wellIds.map(function(w){
+    var d = getWellValue(donorGrid, w);
+    var a = getWellValue(acceptorGrid, w);
+    if (d === null || a === null || d === 0 || a === 0) return null;
+    return mBU(rawRatio(d, a));
+  }).filter(function(v){ return v !== null; });
+}
+
+function correctedMBU(meanLigand, meanNoLigand) {
+  return meanLigand - meanNoLigand;
+}
+
+function zPrimeFactor(sdA, sdB, meanA, meanB) {
+  var denom = Math.abs(meanA - meanB);
+  if (denom === 0) return null;
+  return 1 - (3 * sdA + 3 * sdB) / denom;
+}
+
+function parseWellRange(s) {
+  s = (s || '').trim();
+  var wells = [];
+  var ROWS = 'ABCDEFGHIJKLMNOP';
+  var colRange = s.match(/^([A-P])(\d+)-([A-P])(\d+)$/i);
+  if (colRange && colRange[1].toUpperCase() === colRange[3].toUpperCase()) {
+    var row = colRange[1].toUpperCase();
+    var cc1 = parseInt(colRange[2], 10), cc2 = parseInt(colRange[4], 10);
+    for (var j = Math.min(cc1, cc2); j <= Math.max(cc1, cc2); j++) {
+      wells.push(row + (j < 10 ? '0' + j : j));
+    }
+    return wells;
+  }
+  if (colRange && colRange[2] === colRange[4]) {
+    var col = parseInt(colRange[2], 10);
+    var r1 = ROWS.indexOf(colRange[1].toUpperCase());
+    var r2 = ROWS.indexOf(colRange[3].toUpperCase());
+    for (var i = Math.min(r1, r2); i <= Math.max(r1, r2); i++) {
+      wells.push(ROWS[i] + (col < 10 ? '0' + col : col));
+    }
+    return wells;
+  }
+  var rect = s.match(/^([A-P])(\d+):([A-P])(\d+)$/i);
+  if (rect) {
+    var c1 = parseInt(rect[2], 10), c2 = parseInt(rect[4], 10);
+    var rr1 = ROWS.indexOf(rect[1].toUpperCase()), rr2 = ROWS.indexOf(rect[3].toUpperCase());
+    for (var r = Math.min(rr1, rr2); r <= Math.max(rr1, rr2); r++) {
+      for (var c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
+        wells.push(ROWS[r] + (c < 10 ? '0' + c : c));
+      }
+    }
+    return wells;
+  }
+  s.split(',').forEach(function(w){
+    var m = w.trim().match(/^([A-P])(\d+)$/i);
+    if (m) {
+      var n = parseInt(m[2], 10);
+      wells.push(m[1].toUpperCase() + (n < 10 ? '0' + n : n));
+    }
+  });
+  return wells;
+}
+
+function parsePlateCSV(text, format) {
+  var dims = format === '384' ? { rows: 16, cols: 24 } : { rows: 8, cols: 12 };
+  var lines = text.trim().split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+  if (lines.length < dims.rows) return null;
+  var dataLines = lines;
+  var firstCells = lines[0].split(/[\t,;]+/);
+  var firstIsHeader = isNaN(parseFloat(firstCells[0])) ||
+    firstCells[0].trim().toLowerCase() === '1' ||
+    !!firstCells[0].trim().match(/^[a-z]/i);
+  if (firstIsHeader) dataLines = lines.slice(1);
+  var rowLabels = 'ABCDEFGHIJKLMNOP';
+  var rows = [];
+  for (var i = 0; i < Math.min(dims.rows, dataLines.length); i++) {
+    var cells = dataLines[i].split(/[\t,;]+/);
+    var start = cells[0].trim().match(/^[A-P]$/i) ? 1 : 0;
+    var vals = [];
+    for (var j = start; j < Math.min(start + dims.cols, cells.length); j++) {
+      var v = parseFloat(cells[j]);
+      vals.push(isNaN(v) ? 0 : v);
+    }
+    while (vals.length < dims.cols) vals.push(0);
+    rows.push({ label: rowLabels[i], vals: vals.slice(0, dims.cols) });
+  }
+  if (rows.length < dims.rows) return null;
+  return rows;
+}
+
+/* ---- THEME ---- */
+(function(){
+  var saved = localStorage.getItem('hub_theme');
+  if(saved === 'dark'){
+    document.documentElement.setAttribute('data-theme','dark');
+    document.getElementById('theme-chk').checked = true;
+  }
+})();
+
+document.getElementById('theme-chk').addEventListener('change', function(){
+  var t = this.checked ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('hub_theme', t);
+  if(activeTab === 'dose' && typeof drawDoseChart === 'function') drawDoseChart();
+});
+
+document.getElementById('opts-btn').addEventListener('click', function(e){
+  e.stopPropagation();
+  document.getElementById('opts-panel').classList.toggle('open');
+});
+document.addEventListener('click', function(){
+  document.getElementById('opts-panel').classList.remove('open');
+});
+
+/* ---- TABS ---- */
+var activeTab = 'plate';
+var tabIndicator = document.getElementById('tab-indicator');
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(function(t){
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  document.querySelectorAll('.panel').forEach(function(p){
+    p.classList.toggle('active', p.id === 'panel-' + name);
+  });
+  activeTab = name;
+  updateIndicator();
+  if(name === 'dose' && typeof drawDoseChart === 'function' && state.doseRows.length) { setTimeout(drawDoseChart, 50); }
+}
+
+function updateIndicator(){
+  var activeEl = document.querySelector('.tab.active');
+  if(!activeEl) return;
+  tabIndicator.style.left = activeEl.offsetLeft + 'px';
+  tabIndicator.style.width = activeEl.offsetWidth + 'px';
+  tabIndicator.classList.add('ready');
+}
+window.addEventListener('load', updateIndicator);
+window.addEventListener('resize', updateIndicator);
+</script>
+</body>
+</html>
