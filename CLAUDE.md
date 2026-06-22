@@ -258,7 +258,24 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-06-22 (Round 92: Firebase RTDB security fix -- leaked legacy database secret removed; v1.2.1)
+Last session: 2026-06-22 (Round 93: Phase C Tier 3 -- new visual components; v1.2.2)
+Hub apps: 11. Version v1.2.2.
+Final tier of Phase C (see Round 88-92 for Phases A/B1/B2 and Tiers 1-2). The original 6-item, 4-app backlog was checked against the live code before designing anything -- several items didn't hold up as originally framed:
+- Lab Designer's .gd-preview-wrap hardcoded background turned out to already be fixed (Round 58) -- dropped.
+- Lab Designer's .hist-card already had a color+text pill distinguishing Plate/Gel entries, not fully undifferentiated as the backlog implied -- an icon-in-pill upgrade was mocked up via Visual Companion and explicitly rejected; left as-is.
+- Protein Tools' "Function/Mechanism/Disease" framing for .ti-card didn't match the real card -- actual sections are Identity, Drugs & mechanisms, Top disease associations, Structures (PDB), Network, Links (6, not 3) -- redesigned around the real content.
+- Cuppa's "stat-card vs welcome-card" framing wasn't a clean two-category split -- the Welcome card AND the first stat card both already had the bold gradient treatment, the second stat card was plain. A 2-bold-vs-1-plain imbalance, not a category mismatch.
+One item not in the original backlog was folded in after investigation: every app's Guide tab content (not just Lab Designer's and Degradation Explorer's, as originally flagged) has the same flat heading-plus-paragraph pattern with no icon -- Echo was the one partial exception, using raw emoji baked into the heading text rather than the SVG convention the rest of the suite settled on during Phase B2.
+Final shipped scope -- 3 fixes across 7 files:
+- Guide-tab content icons added across Lab Designer, Degradation Explorer, Helix, Spectra, Protein Tools (4 each) and Echo (11, replacing emoji). Icon style: inline, inherits the heading's text color via stroke=currentColor -- matches Phase B2's tab-icon convention, not the Hub home-card's bordered-box convention (reviewed and chosen via Visual Companion). The vast majority of icons are reused verbatim from each app's own existing tab-bar glyphs (since most Guide headings are literally named after that app's own tabs); only Lab Designer's 4 workflow-step headings and a handful of Echo's results-area headings needed new glyphs, since B2 never touched Echo's results tabs, only its setup-modal tabs.
+- Protein_Tools/protein_tools.html: Target Intel's 6 sections grouped into 2 left-border-accent clusters -- Identity standalone (purple, var(--accent)), everything else combined (blue, var(--accent2)). A 3-cluster version was mocked up first and rejected in favor of this simpler 2-cluster split.
+- Cuppa/cuppa.html: removed the bold gradient ("feature" class) from the "June 2026" stat card so only the Welcome card carries it; the two stat cards now read as a matched plain pair instead of one randomly outweighing the other. Required also fixing the progress-bar/divider/year-to-date sub-elements, which had inline white-on-gradient styling that would otherwise have gone invisible (white-on-white) once the gradient was removed.
+Reviewed via Visual Companion across 4 mockup rounds (icon style, history-card chip, Target Intel grouping x2 iterations, Cuppa weight rebalance) plus direct technical investigation for the scope-correction items.
+Mid-session note: implementation was briefly interrupted by a session-limit reset partway through the first parallel batch of 6 tasks; recovered by verifying which file edits had already landed correctly (via git diff/git status) before committing those directly, and completing the remaining unfinished edits (Echo's heading replacements, Cuppa's full task) manually rather than re-dispatching fresh agents against find-strings that may have already been partially changed.
+Full design rationale in docs/superpowers/specs/2026-06-22-phase-c-tier3-visual-design.md, plan in docs/superpowers/plans/2026-06-22-phase-c-tier3-visual.md.
+This closes out Phase C and the larger suite-wide audit plan (Phases A/B1/B2/C, started Round 88).
+
+Previous session: 2026-06-22 (Round 92: Firebase RTDB security fix -- leaked legacy database secret removed; v1.2.1)
 Hub apps: 11. Version v1.2.1.
 Jon received a Firebase email warning that thehub-f80ae-default-rtdb had insecure rules ("any user can read your entire database"). Investigation found two separate issues, not one:
 - No database.rules.json had ever existed -- rules were left at Firebase's wide-open default.
