@@ -223,7 +223,15 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
     </div>
   </div>
 </div>
-<div class="panel" id="panel-qc"></div>
+<div class="panel" id="panel-qc">
+  <div class="row" style="margin-bottom:16px;">
+    <button class="btn btn-primary btn-sm" onclick="addCondition('ligand')">+ Ligand/Treated condition</button>
+    <button class="btn btn-sec btn-sm" onclick="addCondition('background')">+ No-Ligand/Untreated condition</button>
+  </div>
+  <div id="qc-conditions-wrap" style="margin-bottom:20px;"></div>
+  <div class="card-hdr">Results</div>
+  <div id="qc-results-wrap"></div>
+</div>
 <div class="panel" id="panel-dose"></div>
 <div class="panel" id="panel-guide"></div>
 
@@ -534,6 +542,105 @@ function saveWellEditor(){
 }
 
 renderCombinedTable();
+
+function addCondition(role){
+  var id = 'c' + Date.now() + Math.floor(Math.random() * 1000);
+  var n = state.conditions.filter(function(c){ return c.role === role; }).length + 1;
+  var cond = {
+    id: id,
+    name: role === 'ligand' ? 'Condition ' + n : 'Background ' + n,
+    role: role,
+    wells: '',
+    bgId: null
+  };
+  state.conditions.push(cond);
+  renderConditions();
+}
+
+function removeCondition(id){
+  state.conditions = state.conditions.filter(function(c){ return c.id !== id; });
+  state.conditions.forEach(function(c){ if(c.bgId === id) c.bgId = null; });
+  renderConditions();
+}
+
+function updateConditionField(id, field, value){
+  var cond = state.conditions.filter(function(c){ return c.id === id; })[0];
+  if(!cond) return;
+  cond[field] = value;
+  renderConditions();
+}
+
+function computeConditionStats(cond){
+  var wellIds = parseWellRange(cond.wells);
+  var mbus = (state.donor && state.acceptor) ? computeConditionMBUs(state.donor, state.acceptor, wellIds) : [];
+  return { mean: mbus.length ? meanOf(mbus) : null, sd: mbus.length > 1 ? sdOf(mbus) : 0, n: mbus.length };
+}
+
+function escapeAttr(s){
+  return (s || '').replace(/"/g, '&quot;');
+}
+
+function renderConditions(){
+  var wrap = document.getElementById('qc-conditions-wrap');
+  if(!state.conditions.length){
+    wrap.innerHTML = '<p style="font-size:12px;color:var(--text2);">Add a +Ligand/Treated condition and a No-Ligand/Untreated background condition to begin.</p>';
+  } else {
+    var html = '';
+    state.conditions.forEach(function(cond){
+      html += '<div class="card" style="margin-bottom:10px;"><div class="row">';
+      html += '<div class="field"><label>Name</label><input type="text" value="' + escapeAttr(cond.name) + '" onchange="updateConditionField(\'' + cond.id + '\',\'name\',this.value)"></div>';
+      html += '<div class="field"><label>Role</label><select onchange="updateConditionField(\'' + cond.id + '\',\'role\',this.value)">';
+      html += '<option value="ligand"' + (cond.role === 'ligand' ? ' selected' : '') + '>+Ligand / Treated</option>';
+      html += '<option value="background"' + (cond.role === 'background' ? ' selected' : '') + '>No-Ligand / Untreated</option>';
+      html += '</select></div>';
+      html += '<div class="field"><label>Wells</label><input type="text" placeholder="A1-A3" value="' + escapeAttr(cond.wells) + '" onchange="updateConditionField(\'' + cond.id + '\',\'wells\',this.value)"></div>';
+      if(cond.role === 'ligand'){
+        html += '<div class="field"><label>Background</label><select onchange="updateConditionField(\'' + cond.id + '\',\'bgId\',this.value)"><option value="">— none —</option>';
+        state.conditions.filter(function(c){ return c.role === 'background'; }).forEach(function(bg){
+          html += '<option value="' + bg.id + '"' + (cond.bgId === bg.id ? ' selected' : '') + '>' + bg.name + '</option>';
+        });
+        html += '</select></div>';
+      }
+      html += '<button class="btn btn-sec btn-sm" onclick="removeCondition(\'' + cond.id + '\')">Remove</button>';
+      html += '</div></div>';
+    });
+    wrap.innerHTML = html;
+  }
+  renderQCResults();
+}
+
+function renderQCResults(){
+  var resWrap = document.getElementById('qc-results-wrap');
+  var ligands = state.conditions.filter(function(c){ return c.role === 'ligand' && c.bgId; });
+  if(!ligands.length){
+    resWrap.innerHTML = '<p style="font-size:12px;color:var(--text2);">No paired +Ligand/Background conditions yet.</p>';
+    return;
+  }
+  var html = '';
+  ligands.forEach(function(cond){
+    var bg = state.conditions.filter(function(c){ return c.id === cond.bgId; })[0];
+    if(!bg) return;
+    var sA = computeConditionStats(cond);
+    var sB = computeConditionStats(bg);
+    if(sA.mean === null || sB.mean === null){
+      html += '<div class="card" style="margin-bottom:10px;"><div class="card-hdr">' + cond.name + ' vs ' + bg.name + '</div><p style="font-size:12px;color:var(--text2);">Load plate data and well ranges to compute.</p></div>';
+      return;
+    }
+    var corrected = correctedMBU(sA.mean, sB.mean);
+    var zp = zPrimeFactor(sA.sd, sB.sd, sA.mean, sB.mean);
+    var badgeClass = zp === null ? 'badge-neutral' : (zp >= 0.5 ? 'badge-good' : (zp >= 0 ? 'badge-mid' : 'badge-poor'));
+    html += '<div class="card" style="margin-bottom:10px;">';
+    html += '<div class="card-hdr">' + cond.name + ' vs ' + bg.name + '</div><div class="row">';
+    html += '<div><div style="font-size:11px;color:var(--text3);">Mean mBU (' + cond.name + ')</div><div style="font-family:var(--mono);font-size:16px;">' + sA.mean.toFixed(1) + ' ± ' + sA.sd.toFixed(1) + '</div></div>';
+    html += '<div><div style="font-size:11px;color:var(--text3);">Mean mBU (' + bg.name + ')</div><div style="font-family:var(--mono);font-size:16px;">' + sB.mean.toFixed(1) + ' ± ' + sB.sd.toFixed(1) + '</div></div>';
+    html += '<div><div style="font-size:11px;color:var(--text3);">Corrected mBU</div><div style="font-family:var(--mono);font-size:16px;">' + corrected.toFixed(1) + '</div></div>';
+    html += '<div><span class="badge ' + badgeClass + '">Z′ = ' + (zp === null ? 'n/a' : zp.toFixed(3)) + '</span></div>';
+    html += '</div></div>';
+  });
+  resWrap.innerHTML = html;
+}
+
+renderConditions();
 </script>
 </body>
 </html>
