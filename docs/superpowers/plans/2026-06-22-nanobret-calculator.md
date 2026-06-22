@@ -979,7 +979,7 @@ function renderCombinedTable(){
       var wellId = rowLabel + (c2 < 10 ? '0' + c2 : c2);
       var d = state.donor ? getWellValue(state.donor, wellId) : null;
       var a = state.acceptor ? getWellValue(state.acceptor, wellId) : null;
-      var label = (d !== null && a !== null && d !== 0) ? rawRatio(d, a).toFixed(3) : '–';
+      var label = (d !== null && a !== null && d !== 0 && a !== 0) ? rawRatio(d, a).toFixed(3) : '–';
       html += '<td onclick="openWellEditor(\'' + wellId + '\')">' + label + '</td>';
     }
     html += '</tr>';
@@ -1047,6 +1047,7 @@ const { chromium } = require('playwright');
   await page.goto('file://$(pwd)/NanoBRET/nanobret.html');
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
+  page.on('dialog', d => d.accept());
 
   // Inject synthetic donor/acceptor grids directly (bypasses real file upload, exercises the same render path)
   await page.evaluate(() => {
