@@ -1766,6 +1766,23 @@ to:
 };
 ```
 
+- [ ] **Step 4.5: Add `nanobret` to the app-unlock-word gating system**
+
+`hub-shell.html` has an `ALL_APP_IDS` array and an `APP_UNLOCK_WORDS` map (added after this plan was first drafted) that every other app participates in — cards stay hidden until their unlock word is typed or an admin is signed in. Skipping this step leaves the new card permanently visible to every visitor, unlike all 11 other apps. Find:
+
+```javascript
+var ALL_APP_IDS = ['echo','lm','deg','pd','dna','pt','spectra','ldi','cryo','cuppa','fabricata'];
+```
+change to:
+```javascript
+var ALL_APP_IDS = ['echo','lm','deg','pd','dna','pt','spectra','ldi','cryo','cuppa','fabricata','nanobret'];
+```
+
+Find the `APP_UNLOCK_WORDS` object's closing entries (the line with `fabricata` and the closing `};`) and add a `nanobret` entry following the suite's one-word-per-app convention:
+```javascript
+  nanobret:   'nanoluc'
+```
+
 - [ ] **Step 5: Register the app in `embed.py`**
 
 Change the `APPS` list:
@@ -1810,10 +1827,12 @@ python3 embed.py
 
 Expected: a line `nanobret: 1 replacement(s)` among the output, and the final `Output: ... (X chars)` line with no errors. If `nanobret: 0 replacement(s)` prints instead, the `APP_B64_NEW` placeholder string added in Step 3 doesn't match what `embed.py`'s regex expects — double check the key name `nanobret` is spelled identically in both files.
 
+`"The Hub.html"` is listed in `.gitignore` ("Generated — do not commit") — do not `git add` it; only `hub-shell.html` and `embed.py` are source-controlled.
+
 - [ ] **Step 7: Commit**
 
 ```bash
-git add hub-shell.html embed.py "The Hub.html"
+git add hub-shell.html embed.py
 git commit -m "Wire NanoBRET Calculator into the Hub shell"
 ```
 
@@ -1872,7 +1891,7 @@ to:
 
 ```bash
 python3 embed.py
-git add hub-shell.html CLAUDE.md "The Hub.html"
+git add hub-shell.html CLAUDE.md
 git commit -m "Bump to v1.2.3: NanoBRET Calculator changelog entry + app table"
 ```
 
