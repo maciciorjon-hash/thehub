@@ -99,6 +99,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
   border:1px solid var(--border2);background:var(--surface);color:var(--text);
   font-family:var(--sans);font-size:13px;outline:none;}
 .field input:focus,.field select:focus{border-color:var(--accent);}
+.field input:disabled,.field select:disabled{opacity:.6;cursor:not-allowed;}
 
 .badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
   border-radius:20px;font-size:12px;font-weight:600;}
@@ -791,6 +792,7 @@ function setPlateFormat(fmt){
   state.acceptor = null;
   state.plateMap = { background: [], dmso: [], compoundGroups: [], tracerGroups: [] };
   PM_GROUP_SEQ = 0;
+  seedQcFromPlateMap();
   renderPlateMapGrid();
   renderDoseGroupList();
   document.getElementById('fmt-96').classList.toggle('active', fmt === '96');
@@ -832,6 +834,7 @@ function loadChannelFile(file, channel){
     state[channel] = parsed;
     state.plateMap = { background: [], dmso: [], compoundGroups: [], tracerGroups: [] };
     PM_GROUP_SEQ = 0;
+    seedQcFromPlateMap();
     document.getElementById(channel + '-status').textContent = file.name;
     renderCombinedTable();
     renderPlateMapGrid();
@@ -909,6 +912,36 @@ function removeCondition(id){
   renderConditions();
 }
 
+function seedQcFromPlateMap() {
+  var pm = state.plateMap;
+  var bgCond = state.conditions.filter(function(c){ return c.id === 'auto-bg'; })[0];
+  var dmsoCond = state.conditions.filter(function(c){ return c.id === 'auto-dmso'; })[0];
+
+  if (pm.background.length) {
+    if (!bgCond) {
+      bgCond = { id: 'auto-bg', name: 'Background (Plate Map)', role: 'background', wells: '', bgId: null, auto: true };
+      state.conditions.unshift(bgCond);
+    }
+    bgCond.wells = pm.background.join(',');
+  } else if (bgCond) {
+    state.conditions = state.conditions.filter(function(c){ return c.id !== 'auto-bg'; });
+    bgCond = null;
+  }
+
+  if (pm.dmso.length) {
+    if (!dmsoCond) {
+      dmsoCond = { id: 'auto-dmso', name: 'DMSO (Plate Map)', role: 'ligand', wells: '', bgId: null, auto: true };
+      state.conditions.unshift(dmsoCond);
+    }
+    dmsoCond.wells = pm.dmso.join(',');
+    dmsoCond.bgId = bgCond ? bgCond.id : null;
+  } else if (dmsoCond) {
+    state.conditions = state.conditions.filter(function(c){ return c.id !== 'auto-dmso'; });
+  }
+
+  renderConditions();
+}
+
 function updateConditionField(id, field, value){
   var cond = state.conditions.filter(function(c){ return c.id === id; })[0];
   if(!cond) return;
@@ -935,11 +968,11 @@ function renderConditions(){
     state.conditions.forEach(function(cond){
       html += '<div class="card" style="margin-bottom:10px;"><div class="row">';
       html += '<div class="field"><label>Name</label><input type="text" value="' + escapeAttr(cond.name) + '" onchange="updateConditionField(\'' + cond.id + '\',\'name\',this.value)"></div>';
-      html += '<div class="field"><label>Role</label><select onchange="updateConditionField(\'' + cond.id + '\',\'role\',this.value)">';
+      html += '<div class="field"><label>Role</label><select onchange="updateConditionField(\'' + cond.id + '\',\'role\',this.value)"' + (cond.auto ? ' disabled' : '') + '>';
       html += '<option value="ligand"' + (cond.role === 'ligand' ? ' selected' : '') + '>+Ligand / Treated</option>';
       html += '<option value="background"' + (cond.role === 'background' ? ' selected' : '') + '>No-Ligand / Untreated</option>';
       html += '</select></div>';
-      html += '<div class="field"><label>Wells</label><input type="text" placeholder="A1-A3" value="' + escapeAttr(cond.wells) + '" onchange="updateConditionField(\'' + cond.id + '\',\'wells\',this.value)"></div>';
+      html += '<div class="field"><label>Wells' + (cond.auto ? ' (from Plate Map)' : '') + '</label><input type="text" placeholder="A1-A3" value="' + escapeAttr(cond.wells) + '" onchange="updateConditionField(\'' + cond.id + '\',\'wells\',this.value)"' + (cond.auto ? ' disabled' : '') + '></div>';
       if(cond.role === 'ligand'){
         html += '<div class="field"><label>Background</label><select onchange="updateConditionField(\'' + cond.id + '\',\'bgId\',this.value)"><option value="">— none —</option>';
         state.conditions.filter(function(c){ return c.role === 'background'; }).forEach(function(bg){
@@ -947,7 +980,7 @@ function renderConditions(){
         });
         html += '</select></div>';
       }
-      html += '<button class="btn btn-sec btn-sm" onclick="removeCondition(\'' + cond.id + '\')">Remove</button>';
+      if (!cond.auto) html += '<button class="btn btn-sec btn-sm" onclick="removeCondition(\'' + cond.id + '\')">Remove</button>';
       html += '</div></div>';
     });
     wrap.innerHTML = html;
@@ -1177,6 +1210,7 @@ function setAssayMode(mode) {
   renderTabVisibility();
   state.plateMap = { background: [], dmso: [], compoundGroups: [], tracerGroups: [] };
   PM_GROUP_SEQ = 0;
+  seedQcFromPlateMap();
   renderPlateMapPane();
 }
 
@@ -1238,6 +1272,7 @@ function pmWellDown(wellId) {
     pmRemoveWellFromAllRoles(wellId);
     state.plateMap[PM_ACTIVE_ROLE].push(wellId);
     renderPlateMapGrid();
+    seedQcFromPlateMap();
   } else {
     renderPlateMapGrid();
   }
@@ -1252,6 +1287,7 @@ function pmWellOver(wellId) {
     }
     if (PM_DRAG_WELLS.indexOf(wellId) === -1) PM_DRAG_WELLS.push(wellId);
     renderPlateMapGrid();
+    seedQcFromPlateMap();
   } else {
     if (PM_DRAG_WELLS.indexOf(wellId) === -1) {
       PM_DRAG_WELLS.push(wellId);
@@ -1279,6 +1315,7 @@ function pmWellUp() {
   PM_DRAG_WELLS = [];
   renderPlateMapGrid();
   renderDoseGroupList();
+  seedQcFromPlateMap();
   var newInput = document.getElementById('chip-conc-' + PM_GROUP_SEQ);
   if (newInput) newInput.focus();
 }
@@ -1477,6 +1514,7 @@ function handlePheraFile(file) {
       state.plateFormat = parsed.plateFormat;
       state.plateMap = { background: [], dmso: [], compoundGroups: [], tracerGroups: [] };
       PM_GROUP_SEQ = 0;
+      seedQcFromPlateMap();
       document.getElementById('fmt-96').classList.toggle('active', parsed.plateFormat === '96');
       document.getElementById('fmt-384').classList.toggle('active', parsed.plateFormat === '384');
 
