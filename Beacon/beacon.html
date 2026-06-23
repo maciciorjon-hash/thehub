@@ -161,6 +161,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .dz-title{font-size:12px;color:var(--text2);}
 .dz-sub{font-size:11px;color:var(--text3);margin-top:3px;line-height:1.4;}
 .dz-fname{font-size:11px;font-weight:500;color:var(--good);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.phera-meta-card{background:var(--surface2);border-radius:8px;padding:12px 14px;margin-top:14px;}
+.phera-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:8px;}
+.phera-meta-row{display:flex;justify-content:space-between;font-size:12px;gap:8px;}
+.phera-meta-k{color:var(--text3);}
+.phera-meta-v{color:var(--text);font-weight:500;text-align:right;}
+.setup-fallback-toggle{font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline;margin:14px 0 10px;display:inline-block;}
+.setup-fallback{display:none;border-top:1px solid var(--border);padding-top:14px;margin-top:4px;}
+.setup-fallback.open{display:block;}
 
 @media(max-width:720px){
   header{padding:0 16px;}
@@ -224,7 +232,61 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <div class="setup-stab" data-tab="platemap" onclick="switchSetupTab('platemap')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>Plate Map</div>
     </div>
     <div class="setup-sbody">
-      <div class="setup-pane active" id="setup-pane-files"></div>
+      <div class="setup-pane active" id="setup-pane-files">
+        <div class="setup-group">
+          <div class="setup-section-lbl">PHERAstar export</div>
+          <div class="dropzone" id="phera-drop" onclick="document.getElementById('phera-file').click()">
+            <span class="dz-icon">&#128193;</span>
+            <span class="dz-title">Click to upload or drag &amp; drop the PHERAstar .xlsx export</span>
+            <span class="dz-sub">Reads the Table End point sheet (donor/acceptor channels) and the Protocol Information sheet (assay metadata).</span>
+            <span class="dz-fname" id="phera-fname"></span>
+            <input type="file" id="phera-file" accept=".xlsx">
+          </div>
+          <div id="phera-meta-wrap"></div>
+        </div>
+
+        <div class="setup-group">
+          <span class="setup-fallback-toggle" id="fallback-toggle" onclick="toggleFilesFallback()">Or import donor/acceptor CSVs separately</span>
+          <div class="setup-fallback" id="setup-fallback">
+            <div class="setup-section-lbl">Plate format (manual entry only)</div>
+            <div class="row" style="margin-bottom:14px;">
+              <button class="btn btn-sec btn-sm fmt-btn active" id="fmt-96" onclick="setPlateFormat('96')">96-well</button>
+              <button class="btn btn-sec btn-sm fmt-btn" id="fmt-384" onclick="setPlateFormat('384')">384-well</button>
+            </div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:220px;">
+                <div class="setup-section-lbl">Donor (460nm)</div>
+                <div class="dropzone" id="donor-drop"
+                  onclick="document.getElementById('donor-file').click()"
+                  ondragover="event.preventDefault();this.classList.add('drag')"
+                  ondragleave="this.classList.remove('drag')"
+                  ondrop="handleChannelDrop(event,'donor')">
+                  <span class="dz-icon">&#128193;</span>
+                  <span class="dz-title" id="donor-status">Click to upload or drag &amp; drop donor CSV</span>
+                  <input type="file" id="donor-file" accept=".csv,.txt" onchange="handleChannelFile(event,'donor')">
+                </div>
+              </div>
+              <div style="flex:1;min-width:220px;">
+                <div class="setup-section-lbl">Acceptor (618nm)</div>
+                <div class="dropzone" id="acceptor-drop"
+                  onclick="document.getElementById('acceptor-file').click()"
+                  ondragover="event.preventDefault();this.classList.add('drag')"
+                  ondragleave="this.classList.remove('drag')"
+                  ondrop="handleChannelDrop(event,'acceptor')">
+                  <span class="dz-icon">&#128193;</span>
+                  <span class="dz-title" id="acceptor-status">Click to upload or drag &amp; drop acceptor CSV</span>
+                  <input type="file" id="acceptor-file" accept=".csv,.txt" onchange="handleChannelFile(event,'acceptor')">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="setup-group">
+          <div class="setup-section-lbl">Combined preview — raw ratio (acceptor / donor) per well</div>
+          <div id="combined-table-wrap"><p style="font-size:12px;color:var(--text2);">Load plate data above to see the combined preview.</p></div>
+        </div>
+      </div>
       <div class="setup-pane" id="setup-pane-assay"></div>
       <div class="setup-pane" id="setup-pane-platemap"></div>
     </div>
@@ -245,8 +307,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 
 <div class="tabs" id="tabs">
-  <button class="tab active" data-tab="plate" onclick="switchTab('plate')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>Plate Data</button>
-  <button class="tab" data-tab="qc" onclick="switchTab('qc')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a8 8 0 1116 0"/><path d="M12 14l3.5-4.5"/><circle cx="12" cy="14" r="1.3" fill="currentColor" stroke="none"/></svg>Endpoint / QC</button>
+  <button class="tab active" data-tab="qc" onclick="switchTab('qc')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a8 8 0 1116 0"/><path d="M12 14l3.5-4.5"/><circle cx="12" cy="14" r="1.3" fill="currentColor" stroke="none"/></svg>Endpoint / QC</button>
   <button class="tab" data-tab="dose" onclick="switchTab('dose')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none"/></svg>Dose-Response</button>
   <button class="tab" data-tab="guide" onclick="switchTab('guide')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 016.5 2H20v17H6.5A2.5 2.5 0 014 16.5v-12z"/><path d="M4 16.5A2.5 2.5 0 016.5 19H20"/></svg>Guide</button>
   <div class="tab-indicator" id="tab-indicator"></div>
@@ -254,60 +315,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 <div class="content">
 
-<div class="panel active" id="panel-plate">
-  <div class="card" style="margin-bottom:16px;">
-    <div class="card-hdr">Plate format</div>
-    <div class="row">
-      <button class="btn btn-sec btn-sm fmt-btn active" id="fmt-96" onclick="setPlateFormat('96')">96-well</button>
-      <button class="btn btn-sec btn-sm fmt-btn" id="fmt-384" onclick="setPlateFormat('384')">384-well</button>
-    </div>
-  </div>
-
-  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
-    <div class="card" style="flex:1;min-width:260px;">
-      <div class="card-hdr">Donor (460nm)</div>
-      <div class="plate-upload-zone" id="donor-drop"
-        onclick="document.getElementById('donor-file').click()"
-        ondragover="event.preventDefault();this.classList.add('drag-over')"
-        ondragleave="this.classList.remove('drag-over')"
-        ondrop="handleChannelDrop(event,'donor')">
-        <p id="donor-status">Click to upload or drag &amp; drop donor CSV</p>
-      </div>
-      <input type="file" id="donor-file" accept=".csv,.txt" style="display:none" onchange="handleChannelFile(event,'donor')">
-    </div>
-    <div class="card" style="flex:1;min-width:260px;">
-      <div class="card-hdr">Acceptor (618nm)</div>
-      <div class="plate-upload-zone" id="acceptor-drop"
-        onclick="document.getElementById('acceptor-file').click()"
-        ondragover="event.preventDefault();this.classList.add('drag-over')"
-        ondragleave="this.classList.remove('drag-over')"
-        ondrop="handleChannelDrop(event,'acceptor')">
-        <p id="acceptor-status">Click to upload or drag &amp; drop acceptor CSV</p>
-      </div>
-      <input type="file" id="acceptor-file" accept=".csv,.txt" style="display:none" onchange="handleChannelFile(event,'acceptor')">
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-hdr">Combined preview — raw ratio (acceptor / donor) per well</div>
-    <div id="combined-table-wrap"><p style="font-size:12px;color:var(--text2);">Load or enter donor and acceptor values to see the combined plate preview.</p></div>
-  </div>
-
-  <div id="well-editor-backdrop" style="display:none;position:fixed;inset:0;background:var(--modal-backdrop);z-index:300;" onclick="closeWellEditor()">
-    <div class="card" style="max-width:280px;margin:120px auto;" onclick="event.stopPropagation()">
-      <div class="card-hdr" id="well-editor-title">Edit well</div>
-      <div class="row" style="flex-direction:column;align-items:stretch;">
-        <div class="field"><label>Donor (460nm)</label><input type="number" id="well-editor-donor" step="any"></div>
-        <div class="field"><label>Acceptor (618nm)</label><input type="number" id="well-editor-acceptor" step="any"></div>
-      </div>
-      <div class="row" style="margin-top:12px;justify-content:flex-end;">
-        <button class="btn btn-sec btn-sm" onclick="closeWellEditor()">Cancel</button>
-        <button class="btn btn-primary btn-sm" onclick="saveWellEditor()">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-<div class="panel" id="panel-qc">
+<div class="panel active" id="panel-qc">
   <div class="row" style="margin-bottom:16px;">
     <button class="btn btn-primary btn-sm" onclick="addCondition('ligand')">+ Ligand/Treated condition</button>
     <button class="btn btn-sec btn-sm" onclick="addCondition('background')">+ No-Ligand/Untreated condition</button>
@@ -386,7 +394,8 @@ var state = {
   doseRows: [],
   baselineWells: '',
   assayMode: null,
-  plateMap: { background: [], dmso: [], compoundGroups: [], tracerGroups: [] }
+  plateMap: { background: [], dmso: [], compoundGroups: [], tracerGroups: [] },
+  pheraMeta: null
 };
 
 /* ---- calculation engine (verified in Task 1) ---- */
@@ -675,7 +684,7 @@ document.addEventListener('click', function(){
 });
 
 /* ---- TABS ---- */
-var activeTab = 'plate';
+var activeTab = 'qc';
 var tabIndicator = document.getElementById('tab-indicator');
 
 function switchTab(name){
@@ -701,8 +710,6 @@ window.addEventListener('load', updateIndicator);
 window.addEventListener('resize', updateIndicator);
 
 /* ---- PLATE DATA TAB ---- */
-var wellEditorTarget = null;
-
 function setPlateFormat(fmt){
   if((state.donor || state.acceptor) && !confirm('Switching plate format clears loaded donor/acceptor data. Continue?')) return;
   state.plateFormat = fmt;
@@ -770,27 +777,12 @@ function renderCombinedTable(){
       var d = state.donor ? getWellValue(state.donor, wellId) : null;
       var a = state.acceptor ? getWellValue(state.acceptor, wellId) : null;
       var label = (d !== null && a !== null && d !== 0 && a !== 0) ? rawRatio(d, a).toFixed(3) : '–';
-      html += '<td onclick="openWellEditor(\'' + wellId + '\')">' + label + '</td>';
+      html += '<td>' + label + '</td>';
     }
     html += '</tr>';
   }
   html += '</tbody></table></div>';
   wrap.innerHTML = html;
-}
-
-function openWellEditor(wellId){
-  wellEditorTarget = wellId;
-  var d = state.donor ? getWellValue(state.donor, wellId) : null;
-  var a = state.acceptor ? getWellValue(state.acceptor, wellId) : null;
-  document.getElementById('well-editor-title').textContent = 'Edit well ' + wellId;
-  document.getElementById('well-editor-donor').value = d !== null ? d : '';
-  document.getElementById('well-editor-acceptor').value = a !== null ? a : '';
-  document.getElementById('well-editor-backdrop').style.display = 'block';
-}
-
-function closeWellEditor(){
-  document.getElementById('well-editor-backdrop').style.display = 'none';
-  wellEditorTarget = null;
 }
 
 function setWellValue(grid, wellId, value){
@@ -811,16 +803,6 @@ function ensureGrid(channel){
   }
   state[channel] = grid;
   return grid;
-}
-
-function saveWellEditor(){
-  if(!wellEditorTarget) return;
-  var dVal = parseFloat(document.getElementById('well-editor-donor').value);
-  var aVal = parseFloat(document.getElementById('well-editor-acceptor').value);
-  if(!isNaN(dVal)) setWellValue(ensureGrid('donor'), wellEditorTarget, dVal);
-  if(!isNaN(aVal)) setWellValue(ensureGrid('acceptor'), wellEditorTarget, aVal);
-  closeWellEditor();
-  renderCombinedTable();
 }
 
 renderCombinedTable();
@@ -1101,6 +1083,156 @@ function switchSetupTab(name){
     p.classList.toggle('active', p.id === 'setup-pane-' + name);
   });
 }
+
+function extractPheraProtocolFields(rows) {
+  var fields = {};
+  rows.forEach(function(row) {
+    var a = (row[0] === null || row[0] === undefined) ? '' : row[0].toString().trim();
+    var bRaw = row[1];
+    var hasB = !(bRaw === null || bRaw === undefined || bRaw === '');
+    if (!a) return;
+    if (hasB) {
+      var label = a.replace(/:\s*$/, '').trim();
+      fields[label] = bRaw;
+    } else {
+      var m = a.match(/^([^:]+):\s*(.+)$/);
+      if (m) fields[m[1].trim()] = m[2].trim();
+    }
+  });
+  return fields;
+}
+
+function parsePheraTableEndpoint(rows) {
+  var headerIdx = -1;
+  for (var i = 0; i < rows.length; i++) {
+    if ((rows[i][0] || '').toString().trim() === 'Well') { headerIdx = i; break; }
+  }
+  if (headerIdx === -1) return null;
+  var header = rows[headerIdx];
+  var donorCol = -1, acceptorCol = -1;
+  for (var c = 2; c < header.length; c++) {
+    var h = (header[c] || '').toString();
+    if (!h.trim()) continue;
+    if (/LP/i.test(h)) acceptorCol = c;
+    else donorCol = c;
+  }
+  if (donorCol === -1 || acceptorCol === -1) return null;
+
+  var wellRows = [];
+  for (var r = headerIdx + 1; r < rows.length; r++) {
+    var well = (rows[r][0] || '').toString().trim();
+    if (!/^[A-P]\d{1,2}$/i.test(well)) continue;
+    wellRows.push({
+      well: well.toUpperCase(),
+      donor: parseFloat(rows[r][donorCol]),
+      acceptor: parseFloat(rows[r][acceptorCol])
+    });
+  }
+  if (!wellRows.length) return null;
+
+  var ROWS = 'ABCDEFGHIJKLMNOP';
+  var maxRowIdx = 0, maxCol = 0;
+  wellRows.forEach(function(w) {
+    var rc = wellToRowCol(w.well);
+    if (!rc) return;
+    maxRowIdx = Math.max(maxRowIdx, ROWS.indexOf(rc.row));
+    maxCol = Math.max(maxCol, rc.col);
+  });
+  var format = (maxRowIdx >= 8 || maxCol > 12) ? '384' : '96';
+  var dims = format === '384' ? { rows: 16, cols: 24 } : { rows: 8, cols: 12 };
+
+  var donorGrid = [], acceptorGrid = [];
+  for (var ri = 0; ri < dims.rows; ri++) {
+    donorGrid.push({ label: ROWS[ri], vals: new Array(dims.cols).fill(0) });
+    acceptorGrid.push({ label: ROWS[ri], vals: new Array(dims.cols).fill(0) });
+  }
+  wellRows.forEach(function(w) {
+    var rc = wellToRowCol(w.well);
+    if (!rc) return;
+    var rowIdx = ROWS.indexOf(rc.row);
+    if (rowIdx < 0 || rowIdx >= dims.rows || rc.col < 1 || rc.col > dims.cols) return;
+    if (!isNaN(w.donor)) donorGrid[rowIdx].vals[rc.col - 1] = w.donor;
+    if (!isNaN(w.acceptor)) acceptorGrid[rowIdx].vals[rc.col - 1] = w.acceptor;
+  });
+
+  return { donor: donorGrid, acceptor: acceptorGrid, plateFormat: format };
+}
+
+var PHERA_META_FIELDS = ['Test Name', 'Test ID', 'Date', 'Time', 'ID1', 'ID2', 'ID3',
+  'Microplate name', 'Optic module', 'Emission A', 'Emission B', 'Gain A', 'Gain B'];
+
+function renderPheraMeta() {
+  var wrap = document.getElementById('phera-meta-wrap');
+  if (!state.pheraMeta) { wrap.innerHTML = ''; return; }
+  var rowsHtml = PHERA_META_FIELDS
+    .filter(function(k){ return state.pheraMeta[k] !== undefined; })
+    .map(function(k){
+      return '<div class="phera-meta-row"><span class="phera-meta-k">' + escapeAttr(k) +
+        '</span><span class="phera-meta-v">' + escapeAttr(String(state.pheraMeta[k])) + '</span></div>';
+    }).join('');
+  wrap.innerHTML = '<div class="phera-meta-card"><div class="setup-section-lbl">Assay metadata</div><div class="phera-meta-grid">' + rowsHtml + '</div></div>';
+}
+
+function toggleFilesFallback() {
+  document.getElementById('setup-fallback').classList.toggle('open');
+}
+
+function handlePheraFile(file) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, { type: 'array', cellDates: false, raw: true });
+      var protSheetName = wb.SheetNames.find(function(n){ return /protocol/i.test(n); });
+      var tableSheetName = wb.SheetNames.find(function(n){ return /table.*end.?point/i.test(n); });
+      if (!tableSheetName) { alert('Could not find a "Table End point" sheet in this file.'); return; }
+
+      var tableRows = XLSX.utils.sheet_to_json(wb.Sheets[tableSheetName], { header: 1, defval: '' });
+      var parsed = parsePheraTableEndpoint(tableRows);
+      if (!parsed) { alert('Could not parse donor/acceptor channels from the Table End point sheet.'); return; }
+
+      state.donor = parsed.donor;
+      state.acceptor = parsed.acceptor;
+      state.plateFormat = parsed.plateFormat;
+      document.getElementById('fmt-96').classList.toggle('active', parsed.plateFormat === '96');
+      document.getElementById('fmt-384').classList.toggle('active', parsed.plateFormat === '384');
+
+      if (protSheetName) {
+        var protRows = XLSX.utils.sheet_to_json(wb.Sheets[protSheetName], { header: 1, defval: '' })
+          .filter(function(r){ return r.some(function(c){ return String(c).trim() !== ''; }); });
+        state.pheraMeta = extractPheraProtocolFields(protRows);
+        state.pheraProtocolRows = protRows;
+      } else {
+        state.pheraMeta = null;
+        state.pheraProtocolRows = null;
+      }
+
+      document.getElementById('phera-fname').textContent = file.name;
+      document.getElementById('phera-drop').classList.add('filled');
+      renderPheraMeta();
+      renderCombinedTable();
+    } catch (err) {
+      alert('Could not read this file as a PHERAstar .xlsx export: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function setupDrop(zoneId, inputId, onFiles) {
+  var zone = document.getElementById(zoneId);
+  var input = document.getElementById(inputId);
+  zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('drag'); });
+  zone.addEventListener('dragleave', function(){ zone.classList.remove('drag'); });
+  zone.addEventListener('drop', function(e){
+    e.preventDefault();
+    zone.classList.remove('drag');
+    if (e.dataTransfer.files.length) onFiles(e.dataTransfer.files);
+  });
+  input.addEventListener('change', function(e){
+    if (e.target.files.length) onFiles(e.target.files);
+  });
+}
+
+setupDrop('phera-drop', 'phera-file', function(files){ handlePheraFile(files[0]); });
 
 openSetupModal();
 </script>
