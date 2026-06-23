@@ -164,6 +164,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .setup-fallback-toggle{font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline;margin:14px 0 10px;display:inline-block;}
 .setup-fallback{display:none;border-top:1px solid var(--border);padding-top:14px;margin-top:4px;}
 .setup-fallback.open{display:block;}
+.assay-mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.assay-mode-card{border:1.5px solid var(--border2);border-radius:10px;padding:16px;cursor:pointer;transition:border-color .15s,background .15s;}
+.assay-mode-card:hover{border-color:var(--accent);}
+.assay-mode-card.active{border-color:var(--accent);background:var(--accent-dim);}
+.assay-mode-icon{width:28px;height:28px;color:var(--accent);margin-bottom:8px;}
+.assay-mode-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;}
+.assay-mode-desc{font-size:11px;color:var(--text2);line-height:1.5;}
+@media(max-width:560px){.assay-mode-grid{grid-template-columns:1fr;}}
 
 @media(max-width:720px){
   header{padding:0 16px;}
@@ -282,7 +290,23 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           <div id="combined-table-wrap"><p style="font-size:12px;color:var(--text2);">Load plate data above to see the combined preview.</p></div>
         </div>
       </div>
-      <div class="setup-pane" id="setup-pane-assay"></div>
+      <div class="setup-pane" id="setup-pane-assay">
+        <div class="setup-group">
+          <div class="setup-section-lbl">Assay mode</div>
+          <div class="assay-mode-grid">
+            <div class="assay-mode-card" id="mode-card-gain" onclick="setAssayMode('gain')">
+              <svg class="assay-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="12" r="4"/><circle cx="17" cy="12" r="4"/><path d="M11 12h2"/></svg>
+              <div class="assay-mode-title">Gain-of-Signal</div>
+              <div class="assay-mode-desc">Two proteins of interest — one NanoLuc-donor, one HaloTag-acceptor. Signal <b>rises</b> as they interact. Compound dose series typically tests disruptors (signal goes down from a high baseline) or stabilizers (signal goes up).</div>
+            </div>
+            <div class="assay-mode-card" id="mode-card-displacement" onclick="setAssayMode('displacement')">
+              <svg class="assay-mode-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="12" r="3"/><path d="M10 12h1M13 12h1M16 12h1" stroke-dasharray="1.5 2"/></svg>
+              <div class="assay-mode-title">Tracer Displacement</div>
+              <div class="assay-mode-desc">One NanoLuc-donor protein + a small-molecule HaloTag-acceptor tracer. A test compound <b>displaces</b> the tracer — signal falls as potency increases. Needs a tracer titration to pick a working concentration.</div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="setup-pane" id="setup-pane-platemap"></div>
     </div>
     <div class="setup-footer">
@@ -1078,6 +1102,23 @@ function switchSetupTab(name){
     p.classList.toggle('active', p.id === 'setup-pane-' + name);
   });
 }
+
+function setAssayMode(mode) {
+  state.assayMode = mode;
+  document.getElementById('mode-card-gain').classList.toggle('active', mode === 'gain');
+  document.getElementById('mode-card-displacement').classList.toggle('active', mode === 'displacement');
+  document.getElementById('setup-hsub').textContent = state.donor
+    ? 'Loaded · ' + (mode === 'gain' ? 'Gain-of-Signal' : 'Tracer Displacement')
+    : 'Load a PHERAstar file to begin';
+  renderTabVisibility();
+}
+
+function renderTabVisibility() {
+  var tracerTab = document.querySelector('.tab[data-tab="tracer"]');
+  if (tracerTab) tracerTab.style.display = (state.assayMode === 'displacement') ? '' : 'none';
+}
+
+renderTabVisibility();
 
 function extractPheraProtocolFields(rows) {
   var fields = {};
