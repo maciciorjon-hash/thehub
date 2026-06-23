@@ -173,6 +173,32 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .assay-mode-desc{font-size:11px;color:var(--text2);line-height:1.5;}
 @media(max-width:560px){.assay-mode-grid{grid-template-columns:1fr;}}
 
+/* PLATE MAP */
+.pm-layout{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;}
+.pm-grid-col{flex:1 1 320px;min-width:280px;overflow-x:auto;}
+.pm-role-col{flex:0 0 150px;min-width:130px;}
+.pm-dose-col{flex:1 1 220px;min-width:200px;}
+.pm-grid{border-collapse:collapse;font-size:10px;font-family:var(--mono);}
+.pm-grid th{padding:3px 4px;text-align:center;font-size:9px;font-weight:700;color:var(--text3);background:var(--surface2);}
+.pm-grid td{width:24px;height:22px;text-align:center;border:1px solid var(--border);cursor:pointer;user-select:none;transition:background .08s,box-shadow .08s;background:var(--surface);}
+.pm-grid td:hover{box-shadow:inset 0 0 0 1.5px var(--accent);}
+.pm-grid td.pm-pending{box-shadow:inset 0 0 0 2px var(--accent);background:var(--accent-dim);outline:1.5px dashed var(--accent);outline-offset:-1px;}
+.pm-role-list{display:flex;flex-direction:column;gap:6px;}
+.pm-role{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;border:1.5px solid var(--border2);cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);transition:border-color .15s,background .15s,color .15s;}
+.pm-role:hover{border-color:var(--accent);color:var(--text);}
+.pm-role.active{border-color:var(--accent);background:var(--accent-dim);color:var(--text);}
+.pm-role-swatch{width:13px;height:13px;border-radius:4px;flex-shrink:0;border:1px solid var(--border2);}
+.pm-doselist-empty{font-size:11px;color:var(--text3);padding:10px 0;}
+.dose-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--surface2);margin-bottom:8px;}
+.dose-chip-swatch{width:14px;height:14px;border-radius:4px;flex-shrink:0;border:1px solid var(--border2);}
+.dose-chip-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.dose-chip-label{font-size:11px;font-weight:600;color:var(--text);}
+.dose-chip-wells{font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dose-chip input{width:72px;padding:5px 7px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:12px;outline:none;}
+.dose-chip input:focus{border-color:var(--accent);}
+.dose-chip-remove{background:none;border:none;color:var(--text3);font-size:15px;line-height:1;cursor:pointer;padding:2px 4px;border-radius:5px;transition:color .15s,background .15s;}
+.dose-chip-remove:hover{color:var(--poor);background:rgba(184,69,69,.1);}
+
 @media(max-width:720px){
   header{padding:0 16px;}
   .tabs{padding:0 16px;}
@@ -307,7 +333,36 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           </div>
         </div>
       </div>
-      <div class="setup-pane" id="setup-pane-platemap"></div>
+      <div class="setup-pane" id="setup-pane-platemap">
+        <div class="setup-group">
+          <div class="setup-section-lbl">Well roles — click, or click and drag to paint multiple wells</div>
+          <div class="pm-layout">
+            <div class="pm-grid-col">
+              <div id="platemap-grid-wrap"></div>
+            </div>
+            <div class="pm-role-col">
+              <div class="pm-role-list" id="pm-role-list">
+                <div class="pm-role active" data-role="background" onclick="pmSetActiveRole('background')">
+                  <span class="pm-role-swatch" style="background:#cfd3e6;"></span>Background
+                </div>
+                <div class="pm-role" data-role="dmso" onclick="pmSetActiveRole('dmso')">
+                  <span class="pm-role-swatch" style="background:#bcdfd0;"></span>DMSO
+                </div>
+                <div class="pm-role" data-role="compound" onclick="pmSetActiveRole('compound')">
+                  <span class="pm-role-swatch" style="background:#f3c98b;"></span>Compound
+                </div>
+                <div class="pm-role" id="pm-role-tracer" data-role="tracer" onclick="pmSetActiveRole('tracer')">
+                  <span class="pm-role-swatch" style="background:#e3b8e0;"></span>Tracer
+                </div>
+              </div>
+            </div>
+            <div class="pm-dose-col">
+              <div class="setup-section-lbl">Dose-series groups</div>
+              <div id="pm-doselist"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="setup-footer">
       <button class="btn btn-sec btn-sm" onclick="closeSetupModal()">Close</button>
@@ -734,6 +789,9 @@ function setPlateFormat(fmt){
   state.plateFormat = fmt;
   state.donor = null;
   state.acceptor = null;
+  state.plateMap = { background: [], dmso: [], compoundGroups: [], tracerGroups: [] };
+  renderPlateMapGrid();
+  renderDoseGroupList();
   document.getElementById('fmt-96').classList.toggle('active', fmt === '96');
   document.getElementById('fmt-384').classList.toggle('active', fmt === '384');
   document.getElementById('donor-status').textContent = 'Click to upload or drag & drop donor CSV';
@@ -771,8 +829,10 @@ function loadChannelFile(file, channel){
       return;
     }
     state[channel] = parsed;
+    state.plateMap = { background: [], dmso: [], compoundGroups: [], tracerGroups: [] };
     document.getElementById(channel + '-status').textContent = file.name;
     renderCombinedTable();
+    if (document.getElementById('platemap-grid-wrap')) { renderPlateMapGrid(); renderDoseGroupList(); }
   };
   reader.readAsText(file);
 }
@@ -1101,6 +1161,7 @@ function switchSetupTab(name){
   document.querySelectorAll('.setup-pane').forEach(function(p){
     p.classList.toggle('active', p.id === 'setup-pane-' + name);
   });
+  if (name === 'platemap') renderPlateMapPane();
 }
 
 function setAssayMode(mode) {
@@ -1111,6 +1172,7 @@ function setAssayMode(mode) {
     ? 'Loaded · ' + (mode === 'gain' ? 'Gain-of-Signal' : 'Tracer Displacement')
     : 'Load a PHERAstar file to begin';
   renderTabVisibility();
+  renderPlateMapPane();
 }
 
 function renderTabVisibility() {
@@ -1119,6 +1181,186 @@ function renderTabVisibility() {
 }
 
 renderTabVisibility();
+
+/* ---- PLATE MAP (Setup > Plate Map sub-tab: drag-paint well-role painter) ---- */
+var PM_ACTIVE_ROLE = 'background';
+var PM_DRAGGING = false;
+var PM_DRAG_WELLS = [];
+var PM_GROUP_SEQ = 0;
+var PM_COMPOUND_COLORS = ['#f3c98b', '#f3a8a0', '#f6df9b', '#e8b88a', '#f0c4d4', '#f5b87c', '#eacb7c', '#f0a98f'];
+var PM_TRACER_COLORS = ['#e3b8e0', '#b9c6ef', '#a9d8e6', '#c8b6ec', '#9fd6cf', '#b3c4f0', '#d3aee0', '#9ccbe8'];
+
+function pmWellRole(wellId) {
+  if (state.plateMap.background.indexOf(wellId) !== -1) return { role: 'background' };
+  if (state.plateMap.dmso.indexOf(wellId) !== -1) return { role: 'dmso' };
+  for (var i = 0; i < state.plateMap.compoundGroups.length; i++) {
+    var cg = state.plateMap.compoundGroups[i];
+    if (cg.wells.indexOf(wellId) !== -1) return { role: 'compound', group: cg };
+  }
+  for (var j = 0; j < state.plateMap.tracerGroups.length; j++) {
+    var tg = state.plateMap.tracerGroups[j];
+    if (tg.wells.indexOf(wellId) !== -1) return { role: 'tracer', group: tg };
+  }
+  return null;
+}
+
+function pmRemoveWellFromAllRoles(wellId) {
+  ['background', 'dmso'].forEach(function(key){
+    var idx = state.plateMap[key].indexOf(wellId);
+    if (idx !== -1) state.plateMap[key].splice(idx, 1);
+  });
+  ['compoundGroups', 'tracerGroups'].forEach(function(key){
+    state.plateMap[key] = state.plateMap[key].filter(function(g){
+      var idx = g.wells.indexOf(wellId);
+      if (idx !== -1) g.wells.splice(idx, 1);
+      return g.wells.length > 0;
+    });
+  });
+}
+
+function pmSetActiveRole(role) {
+  PM_ACTIVE_ROLE = role;
+  document.querySelectorAll('#pm-role-list .pm-role').forEach(function(el){
+    el.classList.toggle('active', el.dataset.role === role);
+  });
+}
+
+function pmWellDown(wellId) {
+  PM_DRAGGING = true;
+  PM_DRAG_WELLS = [wellId];
+  if (PM_ACTIVE_ROLE === 'background' || PM_ACTIVE_ROLE === 'dmso') {
+    pmRemoveWellFromAllRoles(wellId);
+    state.plateMap[PM_ACTIVE_ROLE].push(wellId);
+    renderPlateMapGrid();
+  } else {
+    renderPlateMapGrid();
+  }
+}
+
+function pmWellOver(wellId) {
+  if (!PM_DRAGGING) return;
+  if (PM_ACTIVE_ROLE === 'background' || PM_ACTIVE_ROLE === 'dmso') {
+    if (state.plateMap[PM_ACTIVE_ROLE].indexOf(wellId) === -1) {
+      pmRemoveWellFromAllRoles(wellId);
+      state.plateMap[PM_ACTIVE_ROLE].push(wellId);
+    }
+    if (PM_DRAG_WELLS.indexOf(wellId) === -1) PM_DRAG_WELLS.push(wellId);
+    renderPlateMapGrid();
+  } else {
+    if (PM_DRAG_WELLS.indexOf(wellId) === -1) {
+      PM_DRAG_WELLS.push(wellId);
+      renderPlateMapGrid();
+    }
+  }
+}
+
+function pmWellUp() {
+  if (!PM_DRAGGING) return;
+  if (PM_ACTIVE_ROLE === 'background' || PM_ACTIVE_ROLE === 'dmso') {
+    PM_DRAGGING = false;
+    PM_DRAG_WELLS = [];
+    return;
+  }
+  if (PM_DRAG_WELLS.length > 0) {
+    PM_DRAG_WELLS.forEach(function(w){ pmRemoveWellFromAllRoles(w); });
+    var colors = PM_ACTIVE_ROLE === 'compound' ? PM_COMPOUND_COLORS : PM_TRACER_COLORS;
+    var arrKey = PM_ACTIVE_ROLE === 'compound' ? 'compoundGroups' : 'tracerGroups';
+    var color = colors[state.plateMap[arrKey].length % colors.length];
+    var newGroup = { id: ++PM_GROUP_SEQ, wells: PM_DRAG_WELLS.slice(), conc: null, color: color };
+    state.plateMap[arrKey].push(newGroup);
+  }
+  PM_DRAGGING = false;
+  PM_DRAG_WELLS = [];
+  renderPlateMapGrid();
+  renderDoseGroupList();
+  var newInput = document.getElementById('chip-conc-' + PM_GROUP_SEQ);
+  if (newInput) newInput.focus();
+}
+
+document.addEventListener('mouseup', pmWellUp);
+
+var PM_ROLE_COLORS = { background: '#cfd3e6', dmso: '#bcdfd0' };
+
+function renderPlateMapGrid() {
+  var wrap = document.getElementById('platemap-grid-wrap');
+  if (!wrap) return;
+  var dims = state.plateFormat === '384' ? { rows: 16, cols: 24 } : { rows: 8, cols: 12 };
+  var ROWS = 'ABCDEFGHIJKLMNOP';
+  var html = '<table class="pm-grid"><thead><tr><th></th>';
+  for (var c = 1; c <= dims.cols; c++) html += '<th>' + c + '</th>';
+  html += '</tr></thead><tbody>';
+  for (var r = 0; r < dims.rows; r++) {
+    var rowLabel = ROWS[r];
+    html += '<tr><th>' + rowLabel + '</th>';
+    for (var c2 = 1; c2 <= dims.cols; c2++) {
+      var wellId = rowLabel + (c2 < 10 ? '0' + c2 : c2);
+      var info = pmWellRole(wellId);
+      var bg = '';
+      if (info) {
+        bg = info.group ? info.group.color : PM_ROLE_COLORS[info.role];
+      }
+      var pending = PM_DRAGGING && PM_DRAG_WELLS.indexOf(wellId) !== -1;
+      var style = bg ? ' style="background:' + bg + ';"' : '';
+      html += '<td class="' + (pending ? 'pm-pending' : '') + '"' + style +
+        ' onmousedown="pmWellDown(\'' + wellId + '\')" onmouseover="pmWellOver(\'' + wellId + '\')"></td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function pmChipHtml(group, labelText, color, kind) {
+  var wellsText = group.wells.join(', ');
+  return '' +
+    '<div class="dose-chip">' +
+      '<span class="dose-chip-swatch" style="background:' + color + ';"></span>' +
+      '<div class="dose-chip-main">' +
+        '<span class="dose-chip-label">' + escapeAttr(labelText) + '</span>' +
+        '<span class="dose-chip-wells">' + escapeAttr(group.wells.length + ' well' + (group.wells.length === 1 ? '' : 's') + ' · ' + wellsText) + '</span>' +
+      '</div>' +
+      '<input type="number" id="chip-conc-' + group.id + '" value="' + (group.conc === null || group.conc === undefined ? '' : group.conc) + '" placeholder="conc" oninput="pmSetGroupConc(\'' + kind + '\', ' + group.id + ', this.value)">' +
+      '<button class="dose-chip-remove" onclick="pmRemoveGroup(\'' + kind + '\', ' + group.id + ')">&#10005;</button>' +
+    '</div>';
+}
+
+function renderDoseGroupList() {
+  var wrap = document.getElementById('pm-doselist');
+  if (!wrap) return;
+  var html = '';
+  state.plateMap.compoundGroups.forEach(function(g, i){
+    html += pmChipHtml(g, 'Compound group ' + (i + 1), g.color, 'compound');
+  });
+  if (state.assayMode === 'displacement') {
+    state.plateMap.tracerGroups.forEach(function(g, i){
+      html += pmChipHtml(g, 'Tracer group ' + (i + 1), g.color, 'tracer');
+    });
+  }
+  if (!html) html = '<div class="pm-doselist-empty">Drag across wells with the Compound (or Tracer) role active to create a dose-series group.</div>';
+  wrap.innerHTML = html;
+}
+
+function pmSetGroupConc(kind, groupId, value) {
+  var arr = kind === 'compound' ? state.plateMap.compoundGroups : state.plateMap.tracerGroups;
+  var group = arr.filter(function(g){ return g.id === groupId; })[0];
+  if (!group) return;
+  var n = parseFloat(value);
+  group.conc = isNaN(n) ? null : n;
+}
+
+function pmRemoveGroup(kind, groupId) {
+  var key = kind === 'compound' ? 'compoundGroups' : 'tracerGroups';
+  state.plateMap[key] = state.plateMap[key].filter(function(g){ return g.id !== groupId; });
+  renderPlateMapGrid();
+  renderDoseGroupList();
+}
+
+function renderPlateMapPane() {
+  var tracerRow = document.getElementById('pm-role-tracer');
+  if (tracerRow) tracerRow.style.display = (state.assayMode === 'displacement') ? '' : 'none';
+  renderPlateMapGrid();
+  renderDoseGroupList();
+}
 
 function extractPheraProtocolFields(rows) {
   var fields = {};
@@ -1229,6 +1471,7 @@ function handlePheraFile(file) {
       state.donor = parsed.donor;
       state.acceptor = parsed.acceptor;
       state.plateFormat = parsed.plateFormat;
+      state.plateMap = { background: [], dmso: [], compoundGroups: [], tracerGroups: [] };
       document.getElementById('fmt-96').classList.toggle('active', parsed.plateFormat === '96');
       document.getElementById('fmt-384').classList.toggle('active', parsed.plateFormat === '384');
 
@@ -1246,6 +1489,8 @@ function handlePheraFile(file) {
       document.getElementById('phera-drop').classList.add('filled');
       renderPheraMeta();
       renderCombinedTable();
+      renderPlateMapGrid();
+      renderDoseGroupList();
     } catch (err) {
       alert('Could not read this file as a PHERAstar .xlsx export: ' + err.message);
     }
