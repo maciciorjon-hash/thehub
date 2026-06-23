@@ -31,7 +31,7 @@
 | `cryo` | Iceberg | SVG snowflake | `#00acc1` | `Cryostorage/cryostorage.html` |
 | `cuppa` | Cuppa | SVG coffee cup | `#8d6e63` | `Cuppa/cuppa.html` |
 | `fabricata` | Fabricata™ | SVG bar chart + star | `#c07a8e` | `DataFaker/fabricata.html` |
-| `nanobret` | NanoBRET Calculator | SVG donor/acceptor BRET glyph | `#5e72c4` | `NanoBRET/nanobret.html` |
+| `beacon` | Beacon | SVG donor/acceptor BRET glyph | `#5e72c4` | `Beacon/beacon.html` |
 
 ---
 
