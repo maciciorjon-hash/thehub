@@ -23,6 +23,7 @@ APPS = [
     ('cryo',    'Cryostorage/cryostorage.html'),
     ('cuppa',      'Cuppa/cuppa.html'),
     ('fabricata',  'DataFaker/fabricata.html'),
+    ('nanobret',   'NanoBRET/nanobret.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()
