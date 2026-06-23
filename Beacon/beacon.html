@@ -384,6 +384,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 <div class="tabs" id="tabs">
   <button class="tab active" data-tab="qc" onclick="switchTab('qc')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a8 8 0 1116 0"/><path d="M12 14l3.5-4.5"/><circle cx="12" cy="14" r="1.3" fill="currentColor" stroke="none"/></svg>Endpoint / QC</button>
   <button class="tab" data-tab="dose" onclick="switchTab('dose')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none"/></svg>Dose-Response</button>
+  <button class="tab" data-tab="tracer" onclick="switchTab('tracer')" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c4 5 6 8.5 6 11.5a6 6 0 11-12 0C6 10.5 8 7 12 2z"/></svg>Tracer Titration</button>
   <button class="tab" data-tab="guide" onclick="switchTab('guide')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 016.5 2H20v17H6.5A2.5 2.5 0 014 16.5v-12z"/><path d="M4 16.5A2.5 2.5 0 016.5 19H20"/></svg>Guide</button>
   <div class="tab-indicator" id="tab-indicator"></div>
 </div>
@@ -411,6 +412,20 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="card-hdr">Fit results</div>
     <div id="dose-results-wrap" style="margin-bottom:14px;"></div>
     <canvas id="dose-canvas" width="600" height="320" style="max-width:100%;border-radius:8px;"></canvas>
+  </div>
+</div>
+<div class="panel" id="panel-tracer">
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-hdr">Tracer dose series (from Plate Map)</div>
+    <div id="tracer-summary-wrap" style="margin-bottom:10px;"></div>
+    <div class="row">
+      <button class="btn btn-primary btn-sm" onclick="computeTracerTitration()">Compute fit</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-hdr">Binding curve</div>
+    <div id="tracer-results-wrap" style="margin-bottom:14px;"></div>
+    <canvas id="tracer-canvas" width="600" height="320" style="max-width:100%;border-radius:8px;"></canvas>
   </div>
 </div>
 <div class="panel" id="panel-guide">
@@ -620,6 +635,38 @@ function _4plJac4_gain(xi, bot, logec50, h, top) {
   return [E / (1 + E), -(top - bot) * h * ln10 * E / denom, (top - bot) * (xi - logec50) * ln10 * E / denom, 1 / (1 + E)];
 }
 
+// One-site binding/saturation model for tracer titration: a 2-parameter hyperbola
+// (plateau, not a sigmoid), reusing the same generic _lmFit solver as the 4PL fits.
+function _oneSiteVal(xi, bmax, kd) {
+  return bmax * xi / (kd + xi);
+}
+
+function _oneSiteJac(xi, bmax, kd) {
+  var denom = kd + xi;
+  return [xi / denom, -bmax * xi / (denom * denom)];
+}
+
+function _fitOneSiteBinding(concArr, signalArr) {
+  var cMin = Math.min.apply(null, concArr), cMax = Math.max.apply(null, concArr);
+  var sMax = Math.max.apply(null, signalArr);
+  var loBound = [0, cMin / 100];
+  var hiBound = [sMax * 3 + 10, cMax * 100];
+  var kdSeeds = [cMin, Math.sqrt(cMin * cMax), (cMin + cMax) / 2, cMax];
+  var best = null;
+  kdSeeds.forEach(function(kdSeed) {
+    var pInit = [sMax, kdSeed];
+    var r = _lmFit(concArr, signalArr, pInit, loBound, hiBound, _oneSiteVal, _oneSiteJac, 1000);
+    if (!best || r.r2 > best.r2) best = r;
+  });
+  return best;
+}
+
+// Suggested working tracer concentration: the concentration at which the one-site model
+// predicts TRACER_WORKING_FRACTION of Bmax, solved from signal = Bmax*c/(Kd+c) at
+// signal = f*Bmax  =>  c = Kd*f/(1-f). At f=0.8 this is exactly 4*Kd. Overridable default,
+// not an enforced value -- no specific lab convention was given for this app.
+var TRACER_WORKING_FRACTION = 0.8;
+
 function _solveLin(A, b) {
   const n = b.length;
   const M = A.map((r, i) => [...r, b[i]]);
@@ -754,6 +801,7 @@ document.getElementById('theme-chk').addEventListener('change', function(){
   document.documentElement.setAttribute('data-theme', t);
   localStorage.setItem('hub_theme', t);
   if(activeTab === 'dose' && typeof drawDoseChart === 'function') drawDoseChart();
+  if(activeTab === 'tracer' && typeof drawTracerChart === 'function') drawTracerChart();
 });
 
 document.getElementById('opts-btn').addEventListener('click', function(e){
@@ -801,6 +849,7 @@ function setPlateFormat(fmt){
   // re-derive auto QC pair after plate map reset
   seedQcFromPlateMap();
   if (typeof renderDoseSummary === 'function') renderDoseSummary();
+  if (typeof renderTracerSummary === 'function') renderTracerSummary();
   renderPlateMapGrid();
   renderDoseGroupList();
   document.getElementById('fmt-96').classList.toggle('active', fmt === '96');
@@ -845,6 +894,7 @@ function loadChannelFile(file, channel){
     // re-derive auto QC pair after plate map reset
     seedQcFromPlateMap();
     if (typeof renderDoseSummary === 'function') renderDoseSummary();
+    if (typeof renderTracerSummary === 'function') renderTracerSummary();
     document.getElementById(channel + '-status').textContent = file.name;
     renderCombinedTable();
     renderPlateMapGrid();
@@ -1196,6 +1246,133 @@ function drawDoseChart(){
 
 renderDoseSummary();
 
+var lastTracerFitResult = null;
+
+function renderTracerSummary() {
+  var wrap = document.getElementById('tracer-summary-wrap');
+  if (!wrap) return;
+  var groups = state.plateMap.tracerGroups;
+  if (!groups.length) {
+    wrap.innerHTML = '<p style="font-size:12px;color:var(--text2);">Paint Tracer dose groups in Setup &rarr; Plate Map first.</p>';
+    return;
+  }
+  var html = '<ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text2);">';
+  groups.forEach(function(g, i) {
+    html += '<li>T' + (i + 1) + ': ' +
+      (g.conc !== null ? g.conc + ' nM' : '<span style="color:var(--poor);">no concentration set</span>') +
+      ' &middot; ' + g.wells.length + ' well(s)</li>';
+  });
+  html += '</ul>';
+  wrap.innerHTML = html;
+}
+
+function computeTracerTitration() {
+  if (!state.donor || !state.acceptor) {
+    alert('Load donor and acceptor plate data first (Setup → Files).');
+    return;
+  }
+  var groups = state.plateMap.tracerGroups;
+  if (groups.length < 4) {
+    alert('Need at least 4 Tracer dose groups with concentrations to fit a binding curve.');
+    return;
+  }
+  var pairs = [];
+  groups.forEach(function(g) {
+    if (g.conc === null || g.conc <= 0) return;
+    var mbus = computeConditionMBUs(state.donor, state.acceptor, g.wells);
+    if (!mbus.length) return;
+    pairs.push({ conc: g.conc, signal: meanOf(mbus) });
+  });
+  if (pairs.length < 4) {
+    alert('Need at least 4 valid Tracer dose groups with concentrations and data to fit a binding curve.');
+    return;
+  }
+  pairs.sort(function(a, b){ return a.conc - b.conc; });
+  var concArr = pairs.map(function(p){ return p.conc; });
+  var signalArr = pairs.map(function(p){ return p.signal; });
+
+  var fit = _fitOneSiteBinding(concArr, signalArr);
+  var workingConc = fit.params[1] * TRACER_WORKING_FRACTION / (1 - TRACER_WORKING_FRACTION);
+
+  lastTracerFitResult = { pairs: pairs, fit: fit, workingConc: workingConc };
+  renderTracerResults();
+  drawTracerChart();
+}
+
+function renderTracerResults() {
+  var wrap = document.getElementById('tracer-results-wrap');
+  if (!lastTracerFitResult) { wrap.innerHTML = ''; return; }
+  var fit = lastTracerFitResult.fit;
+  var badgeClass = fit.r2 >= 0.9 ? 'badge-good' : (fit.r2 >= 0.7 ? 'badge-mid' : 'badge-poor');
+  wrap.innerHTML =
+    '<div class="row">' +
+    '<div><div style="font-size:11px;color:var(--text3);">Bmax</div><div style="font-family:var(--mono);font-size:18px;">' + fit.params[0].toPrecision(4) + '</div></div>' +
+    '<div><div style="font-size:11px;color:var(--text3);">Kd</div><div style="font-family:var(--mono);font-size:18px;">' + fit.params[1].toPrecision(4) + '</div></div>' +
+    '<div><span class="badge ' + badgeClass + '">R² = ' + fit.r2.toFixed(3) + '</span></div>' +
+    '</div>' +
+    '<div style="margin-top:10px;">' +
+    '<label style="font-size:11px;color:var(--text3);">Suggested working tracer concentration (' + (TRACER_WORKING_FRACTION * 100) + '% of Bmax)</label>' +
+    '<input type="number" step="any" id="tracer-working-conc" value="' + lastTracerFitResult.workingConc.toPrecision(4) + '" style="display:block;margin-top:4px;">' +
+    '</div>';
+}
+
+function drawTracerChart() {
+  if (!lastTracerFitResult) return;
+  var canvas = document.getElementById('tracer-canvas');
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  var pad = 40;
+  var pairs = lastTracerFitResult.pairs;
+  var xs = pairs.map(function(p){ return p.conc; });
+  var ys = pairs.map(function(p){ return p.signal; });
+  var xMin = 0, xMax = Math.max.apply(null, xs);
+  var yMin = 0, yMax = Math.max.apply(null, ys);
+  var yPad = (yMax - yMin) * 0.15 || 10;
+  yMax += yPad;
+
+  function toPx(x, y) {
+    return [
+      pad + (x - xMin) / (xMax - xMin) * (w - 2 * pad),
+      h - pad - (y - yMin) / (yMax - yMin) * (h - 2 * pad)
+    ];
+  }
+
+  var textColor = getComputedStyle(document.documentElement).getPropertyValue('--text2').trim();
+  var accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+
+  ctx.strokeStyle = textColor;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, h - pad);
+  ctx.lineTo(w - pad, h - pad);
+  ctx.moveTo(pad, pad);
+  ctx.lineTo(pad, h - pad);
+  ctx.stroke();
+
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  var fit = lastTracerFitResult.fit;
+  for (var i = 0; i <= 100; i++) {
+    var xi = xMin + (xMax - xMin) * i / 100;
+    var yi = _oneSiteVal(xi, fit.params[0], fit.params[1]);
+    var px = toPx(xi, yi);
+    if (i === 0) ctx.moveTo(px[0], px[1]); else ctx.lineTo(px[0], px[1]);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = accentColor;
+  pairs.forEach(function(p) {
+    var px = toPx(p.conc, p.signal);
+    ctx.beginPath();
+    ctx.arc(px[0], px[1], 4, 0, 2 * Math.PI);
+    ctx.fill();
+  });
+}
+
+renderTracerSummary();
+
 function openSetupModal(){
   var modal = document.getElementById('setup-modal');
   if (modal) modal.classList.remove('hidden');
@@ -1231,6 +1408,7 @@ function setAssayMode(mode) {
   // re-derive auto QC pair after plate map reset
   seedQcFromPlateMap();
   if (typeof renderDoseSummary === 'function') renderDoseSummary();
+  if (typeof renderTracerSummary === 'function') renderTracerSummary();
   renderPlateMapPane();
 }
 
@@ -1295,6 +1473,7 @@ function pmWellDown(wellId) {
     // keep auto Background/DMSO QC pair in sync as wells are painted
     seedQcFromPlateMap();
     renderDoseSummary();
+    renderTracerSummary();
   } else {
     renderPlateMapGrid();
   }
@@ -1312,6 +1491,7 @@ function pmWellOver(wellId) {
     // keep auto Background/DMSO QC pair in sync as wells are painted
     seedQcFromPlateMap();
     renderDoseSummary();
+    renderTracerSummary();
   } else {
     if (PM_DRAG_WELLS.indexOf(wellId) === -1) {
       PM_DRAG_WELLS.push(wellId);
@@ -1342,6 +1522,7 @@ function pmWellUp() {
   // also keep Background/DMSO QC pair in sync for single-click (no-drag) painting, and after compound/tracer drags steal wells from background/dmso
   seedQcFromPlateMap();
   renderDoseSummary();
+  renderTracerSummary();
   var newInput = document.getElementById('chip-conc-' + PM_GROUP_SEQ);
   if (newInput) newInput.focus();
 }
@@ -1543,6 +1724,7 @@ function handlePheraFile(file) {
       // re-derive auto QC pair after plate map reset
       seedQcFromPlateMap();
       if (typeof renderDoseSummary === 'function') renderDoseSummary();
+      if (typeof renderTracerSummary === 'function') renderTracerSummary();
       document.getElementById('fmt-96').classList.toggle('active', parsed.plateFormat === '96');
       document.getElementById('fmt-384').classList.toggle('active', parsed.plateFormat === '384');
 
