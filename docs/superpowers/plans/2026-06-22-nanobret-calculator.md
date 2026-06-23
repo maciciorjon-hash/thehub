@@ -1936,7 +1936,7 @@ const { chromium } = require('playwright');
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('file://$(pwd)/NanoBRET/nanobret.html');
   await page.click('#opts-btn');
-  await page.click('#theme-chk');
+  await page.click('.theme-slider'); // #theme-chk itself is visually hidden (opacity:0); click its visible sibling
   for (const tab of ['plate', 'qc', 'dose', 'guide']) {
     await page.click('button[data-tab=\"' + tab + '\"]');
     await page.screenshot({ path: '/tmp/nanobret-' + tab + '-dark-desktop.png' });
@@ -1983,6 +1983,9 @@ const { chromium } = require('playwright');
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('file://$(pwd)/The Hub.html');
+  // nanobret's card is gated behind the unlock-word system (added after this plan was first
+  // drafted) -- unlock it directly rather than typing its word, then re-render the home grid.
+  await page.evaluate(() => { _unlockedApps.add('nanobret'); applyLabConfig(); });
   await page.click('[data-app-id=\"nanobret\"]');
   await page.waitForTimeout(500);
   const frameVisible = await page.isVisible('#frame-nanobret');
