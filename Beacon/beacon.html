@@ -401,14 +401,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 <div class="panel" id="panel-dose">
   <div class="card" style="margin-bottom:16px;">
-    <div class="card-hdr">Shared no-ligand baseline</div>
-    <div class="field"><label>Wells</label><input type="text" placeholder="H1-H3" oninput="updateBaselineWells(this.value)"></div>
-  </div>
-  <div class="card" style="margin-bottom:16px;">
-    <div class="card-hdr">Dose series</div>
-    <div id="dose-rows-wrap" style="margin-bottom:10px;"></div>
+    <div class="card-hdr">Dose series (from Plate Map)</div>
+    <div id="dose-summary-wrap" style="margin-bottom:10px;"></div>
     <div class="row">
-      <button class="btn btn-sec btn-sm" onclick="addDoseRow()">+ Dose point</button>
       <button class="btn btn-primary btn-sm" onclick="computeDoseResponse()">Compute fit</button>
     </div>
   </div>
@@ -466,8 +461,6 @@ var state = {
   donor: null,
   acceptor: null,
   conditions: [],
-  doseRows: [],
-  baselineWells: '',
   assayMode: null,
   plateMap: { background: [], dmso: [], compoundGroups: [], tracerGroups: [] },
   pheraMeta: null
@@ -612,6 +605,19 @@ function _4plJac4(xi, bot, logec50, h, top) {
   const E = Math.pow(10, h * (xi - logec50));
   const denom = (1 + E) * (1 + E);
   return [E / (1 + E), (top - bot) * h * ln10 * E / denom, -(top - bot) * (xi - logec50) * ln10 * E / denom, 1 / (1 + E)];
+}
+
+// Gain-of-signal form: same 4 params, but the exponent's sign is flipped so the
+// sigmoid rises with concentration instead of falling (verified in Task 4).
+function _4plVal4_gain(xi, bot, logec50, h, top) {
+  return bot + (top - bot) / (1 + Math.pow(10, h * (logec50 - xi)));
+}
+
+function _4plJac4_gain(xi, bot, logec50, h, top) {
+  const ln10 = Math.LN10;
+  const E = Math.pow(10, h * (logec50 - xi));
+  const denom = (1 + E) * (1 + E);
+  return [E / (1 + E), -(top - bot) * h * ln10 * E / denom, (top - bot) * (xi - logec50) * ln10 * E / denom, 1 / (1 + E)];
 }
 
 function _solveLin(A, b) {
@@ -771,7 +777,7 @@ function switchTab(name){
   });
   activeTab = name;
   updateIndicator();
-  if(name === 'dose' && typeof drawDoseChart === 'function' && state.doseRows.length) { setTimeout(drawDoseChart, 50); }
+  if(name === 'dose' && typeof drawDoseChart === 'function' && lastFitResult) { setTimeout(drawDoseChart, 50); }
 }
 
 function updateIndicator(){
@@ -794,6 +800,7 @@ function setPlateFormat(fmt){
   PM_GROUP_SEQ = 0;
   // re-derive auto QC pair after plate map reset
   seedQcFromPlateMap();
+  if (typeof renderDoseSummary === 'function') renderDoseSummary();
   renderPlateMapGrid();
   renderDoseGroupList();
   document.getElementById('fmt-96').classList.toggle('active', fmt === '96');
@@ -837,6 +844,7 @@ function loadChannelFile(file, channel){
     PM_GROUP_SEQ = 0;
     // re-derive auto QC pair after plate map reset
     seedQcFromPlateMap();
+    if (typeof renderDoseSummary === 'function') renderDoseSummary();
     document.getElementById(channel + '-status').textContent = file.name;
     renderCombinedTable();
     renderPlateMapGrid();
@@ -1023,47 +1031,6 @@ function renderQCResults(){
 
 renderConditions();
 
-function addDoseRow(){
-  var id = 'd' + Date.now() + Math.floor(Math.random() * 1000);
-  state.doseRows.push({ id: id, conc: '', wells: '' });
-  renderDoseRows();
-}
-
-function removeDoseRow(id){
-  state.doseRows = state.doseRows.filter(function(r){ return r.id !== id; });
-  renderDoseRows();
-}
-
-function updateDoseField(id, field, value){
-  var row = state.doseRows.filter(function(r){ return r.id === id; })[0];
-  if(!row) return;
-  row[field] = value;
-  renderDoseRows();
-}
-
-function updateBaselineWells(value){
-  state.baselineWells = value;
-}
-
-function renderDoseRows(){
-  var wrap = document.getElementById('dose-rows-wrap');
-  if(!state.doseRows.length){
-    wrap.innerHTML = '<p style="font-size:12px;color:var(--text2);">Add dose points (concentration + wells) to begin.</p>';
-    return;
-  }
-  var html = '<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr>' +
-    '<th style="text-align:left;padding:4px 8px;font-size:11px;color:var(--text3);">Concentration</th>' +
-    '<th style="text-align:left;padding:4px 8px;font-size:11px;color:var(--text3);">Wells</th><th></th></tr></thead><tbody>';
-  state.doseRows.forEach(function(row){
-    html += '<tr>' +
-      '<td style="padding:4px 8px;"><input type="number" step="any" value="' + escapeAttr(row.conc) + '" onchange="updateDoseField(\'' + row.id + '\',\'conc\',this.value)" style="width:100%;"></td>' +
-      '<td style="padding:4px 8px;"><input type="text" placeholder="A1-A3" value="' + escapeAttr(row.wells) + '" onchange="updateDoseField(\'' + row.id + '\',\'wells\',this.value)" style="width:100%;"></td>' +
-      '<td style="padding:4px 8px;"><button class="btn btn-sec btn-sm" onclick="removeDoseRow(\'' + row.id + '\')">×</button></td></tr>';
-  });
-  html += '</tbody></table>';
-  wrap.innerHTML = html;
-}
-
 var lastFitResult = null;
 
 function computeDoseResponse(){
@@ -1071,31 +1038,45 @@ function computeDoseResponse(){
     alert('Load donor and acceptor plate data first (Setup → Files).');
     return;
   }
-  var baselineWellIds = parseWellRange(state.baselineWells);
-  var baselineMBUs = computeConditionMBUs(state.donor, state.acceptor, baselineWellIds);
+  var pm = state.plateMap;
+  if(!pm.background.length){
+    alert('Paint Background wells in Setup → Plate Map first.');
+    return;
+  }
+
+  var baselineMBUs = computeConditionMBUs(state.donor, state.acceptor, pm.background);
   if(!baselineMBUs.length){
-    alert('Enter a valid shared baseline well range.');
+    alert('No valid donor/acceptor data for the painted Background wells.');
     return;
   }
   var baselineMean = meanOf(baselineMBUs);
 
   var points = [];
-  state.doseRows.forEach(function(row){
-    var conc = parseFloat(row.conc);
-    if(isNaN(conc) || conc <= 0) return;
-    var wellIds = parseWellRange(row.wells);
-    var mbus = computeConditionMBUs(state.donor, state.acceptor, wellIds);
+  pm.compoundGroups.forEach(function(g){
+    if(g.conc === null || g.conc <= 0) return;
+    var mbus = computeConditionMBUs(state.donor, state.acceptor, g.wells);
     if(!mbus.length) return;
     var corrected = correctedMBU(meanOf(mbus), baselineMean);
-    points.push({ conc: conc, logConc: Math.log10(conc), corrected: corrected });
+    points.push({ conc: g.conc, logConc: Math.log10(g.conc), corrected: corrected });
   });
 
   if(points.length < 4){
-    alert('Need at least 4 valid dose points with data to fit a curve.');
+    alert('Need at least 4 Compound dose groups with a concentration set and valid data to fit a curve.');
     return;
   }
-
   points.sort(function(a, b){ return a.conc - b.conc; });
+
+  // DMSO is the dose series' vehicle-only point. It has no defined log10(concentration),
+  // so it's plotted one log10 unit left of the lowest real dose for visual reference and
+  // excluded from the fit arrays below -- an artificial stand-in x value would bias the fit.
+  var dmsoPoint = null;
+  if(pm.dmso.length){
+    var dmsoMBUs = computeConditionMBUs(state.donor, state.acceptor, pm.dmso);
+    if(dmsoMBUs.length){
+      dmsoPoint = { logConc: points[0].logConc - 1, corrected: correctedMBU(meanOf(dmsoMBUs), baselineMean) };
+    }
+  }
+
   var xArr = points.map(function(p){ return p.logConc; });
   var yArr = points.map(function(p){ return p.corrected; });
   var yMin = Math.min.apply(null, yArr), yMax = Math.max.apply(null, yArr);
@@ -1104,10 +1085,34 @@ function computeDoseResponse(){
   var hiBound = [yMax, xMaxArr + 2, 5, yMax + Math.abs(yMax) * 2 + 10];
   var pBase = [yMin, (xMinArr + xMaxArr) / 2, 1, yMax];
 
-  var fit = _fitBest(xArr, yArr, pBase, loBound, hiBound, _4plVal4, _4plJac4, 1000);
-  lastFitResult = { points: points, fit: fit };
+  var valFn = state.assayMode === 'gain' ? _4plVal4_gain : _4plVal4;
+  var jacFn = state.assayMode === 'gain' ? _4plJac4_gain : _4plJac4;
+
+  var fit = _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, 1000);
+  lastFitResult = { points: points, dmsoPoint: dmsoPoint, fit: fit };
   renderDoseResults();
   drawDoseChart();
+}
+
+function renderDoseSummary(){
+  var wrap = document.getElementById('dose-summary-wrap');
+  if(!wrap) return;
+  var pm = state.plateMap;
+  var html = '';
+  if(!pm.compoundGroups.length){
+    html += '<p style="font-size:12px;color:var(--text2);">Paint Compound dose groups in Setup &rarr; Plate Map first.</p>';
+  } else {
+    html += '<ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text2);">';
+    pm.compoundGroups.forEach(function(g, i){
+      html += '<li>Group ' + (i + 1) + ': ' +
+        (g.conc !== null ? g.conc + ' nM' : '<span style="color:var(--poor);">no concentration set</span>') +
+        ' &middot; ' + g.wells.length + ' well(s)</li>';
+    });
+    html += '</ul>';
+  }
+  html += '<p style="font-size:11px;color:var(--text3);margin-top:8px;">Baseline: ' + pm.background.length +
+    ' Background well(s) &middot; DMSO: ' + pm.dmso.length + ' well(s)</p>';
+  wrap.innerHTML = html;
 }
 
 function renderDoseResults(){
@@ -1131,8 +1136,10 @@ function drawDoseChart(){
   ctx.clearRect(0, 0, w, h);
   var pad = 40;
   var points = lastFitResult.points;
-  var xs = points.map(function(p){ return p.logConc; });
-  var ys = points.map(function(p){ return p.corrected; });
+  var dmsoPoint = lastFitResult.dmsoPoint;
+  var allPoints = dmsoPoint ? points.concat([dmsoPoint]) : points;
+  var xs = allPoints.map(function(p){ return p.logConc; });
+  var ys = allPoints.map(function(p){ return p.corrected; });
   var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
   var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
   var yPad = (yMax - yMin) * 0.15 || 10;
@@ -1161,9 +1168,10 @@ function drawDoseChart(){
   ctx.lineWidth = 2;
   ctx.beginPath();
   var fit = lastFitResult.fit;
+  var valFn = state.assayMode === 'gain' ? _4plVal4_gain : _4plVal4;
   for(var i = 0; i <= 100; i++){
     var xi = xMin + (xMax - xMin) * i / 100;
-    var yi = _4plVal4(xi, fit.params[0], fit.params[1], fit.params[2], fit.params[3]);
+    var yi = valFn(xi, fit.params[0], fit.params[1], fit.params[2], fit.params[3]);
     var px = toPx(xi, yi);
     if(i === 0) ctx.moveTo(px[0], px[1]); else ctx.lineTo(px[0], px[1]);
   }
@@ -1176,9 +1184,17 @@ function drawDoseChart(){
     ctx.arc(px[0], px[1], 4, 0, 2 * Math.PI);
     ctx.fill();
   });
+
+  if(dmsoPoint){
+    ctx.fillStyle = textColor;
+    var pxD = toPx(dmsoPoint.logConc, dmsoPoint.corrected);
+    ctx.beginPath();
+    ctx.arc(pxD[0], pxD[1], 4, 0, 2 * Math.PI);
+    ctx.fill();
+  }
 }
 
-renderDoseRows();
+renderDoseSummary();
 
 function openSetupModal(){
   var modal = document.getElementById('setup-modal');
@@ -1214,6 +1230,7 @@ function setAssayMode(mode) {
   PM_GROUP_SEQ = 0;
   // re-derive auto QC pair after plate map reset
   seedQcFromPlateMap();
+  if (typeof renderDoseSummary === 'function') renderDoseSummary();
   renderPlateMapPane();
 }
 
@@ -1277,6 +1294,7 @@ function pmWellDown(wellId) {
     renderPlateMapGrid();
     // keep auto Background/DMSO QC pair in sync as wells are painted
     seedQcFromPlateMap();
+    renderDoseSummary();
   } else {
     renderPlateMapGrid();
   }
@@ -1293,6 +1311,7 @@ function pmWellOver(wellId) {
     renderPlateMapGrid();
     // keep auto Background/DMSO QC pair in sync as wells are painted
     seedQcFromPlateMap();
+    renderDoseSummary();
   } else {
     if (PM_DRAG_WELLS.indexOf(wellId) === -1) {
       PM_DRAG_WELLS.push(wellId);
@@ -1322,6 +1341,7 @@ function pmWellUp() {
   renderDoseGroupList();
   // also keep Background/DMSO QC pair in sync for single-click (no-drag) painting, and after compound/tracer drags steal wells from background/dmso
   seedQcFromPlateMap();
+  renderDoseSummary();
   var newInput = document.getElementById('chip-conc-' + PM_GROUP_SEQ);
   if (newInput) newInput.focus();
 }
@@ -1522,6 +1542,7 @@ function handlePheraFile(file) {
       PM_GROUP_SEQ = 0;
       // re-derive auto QC pair after plate map reset
       seedQcFromPlateMap();
+      if (typeof renderDoseSummary === 'function') renderDoseSummary();
       document.getElementById('fmt-96').classList.toggle('active', parsed.plateFormat === '96');
       document.getElementById('fmt-384').classList.toggle('active', parsed.plateFormat === '384');
 
