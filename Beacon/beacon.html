@@ -297,6 +297,20 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         </div>
 
         <div class="setup-group">
+          <div class="setup-section-lbl">Try it with test data</div>
+          <div class="assay-mode-grid">
+            <div class="assay-mode-card" onclick="loadTestData('gain')">
+              <div class="assay-mode-title">⚗ Gain-of-Signal</div>
+              <div class="assay-mode-desc">Synthetic 96-well plate — Background/DMSO + 5 Compound dose groups, clean rising curve.</div>
+            </div>
+            <div class="assay-mode-card" onclick="loadTestData('displacement')">
+              <div class="assay-mode-title">⚗ Tracer Displacement</div>
+              <div class="assay-mode-desc">Synthetic 96-well plate — Background/DMSO + Compound (falling curve) + Tracer (binding curve) groups.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="setup-group">
           <span class="setup-fallback-toggle" id="fallback-toggle" onclick="toggleFilesFallback()">Or import donor/acceptor CSVs separately</span>
           <div class="setup-fallback" id="setup-fallback">
             <div class="setup-section-lbl">Plate format (manual entry only)</div>
@@ -2305,6 +2319,107 @@ function setupDrop(zoneId, inputId, onFiles) {
 }
 
 setupDrop('phera-drop', 'phera-file', function(files){ handlePheraFile(files[0]); });
+
+function _buildTestPheraWorkbook(mode) {
+  var ROWS = 'ABCDEFGH';
+  var rows = [['Well', 'Type', '665 (LUM)', '620 (LUM) LP']];
+  var donor = 5000;
+  function pushWell(wellId, mbu) {
+    rows.push([wellId, 'Sample', donor, mbu * donor / 1000]);
+  }
+  var baseline = 500;
+  for (var r = 0; r < 8; r++) {
+    pushWell(ROWS[r] + '01', baseline);
+    pushWell(ROWS[r] + '02', baseline);
+  }
+  var concs = [1, 10, 100, 1000, 10000];
+  concs.forEach(function(c, i) {
+    var xi = Math.log10(c);
+    var corrected = mode === 'gain'
+      ? _4plVal4_gain(xi, 0, 2, 1, 500)
+      : (-400 + 400 / (1 + Math.pow(10, xi - 2)));
+    var mbuTarget = baseline + corrected;
+    var col = 3 + i;
+    for (var r2 = 0; r2 < 8; r2++) pushWell(ROWS[r2] + (col < 10 ? '0' + col : col), mbuTarget);
+  });
+  if (mode === 'displacement') {
+    var tConcs = [3, 10, 30, 100];
+    tConcs.forEach(function(c, i) {
+      var signal = _oneSiteVal(c, 400, 20);
+      var col = 8 + i;
+      for (var r3 = 0; r3 < 8; r3++) pushWell(ROWS[r3] + (col < 10 ? '0' + col : col), signal);
+    });
+  }
+  var protRows = [
+    ['Test Name', mode === 'gain' ? 'Beacon Test - Gain-of-Signal' : 'Beacon Test - Tracer Displacement'],
+    ['Test ID', 'TEST-001'],
+    ['Date', new Date().toISOString().slice(0, 10)],
+    ['Time', '10:00:00'],
+    ['Microplate name', '96 well plate'],
+    ['Optic module', 'BRET']
+  ];
+  var ws1 = XLSX.utils.aoa_to_sheet(rows);
+  var ws2 = XLSX.utils.aoa_to_sheet(protRows);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'Table End point');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Protocol Information');
+  return { wb: wb, filename: mode === 'gain' ? 'Beacon_test_gain.xlsx' : 'Beacon_test_displacement.xlsx' };
+}
+
+function loadTestData(mode) {
+  var built = _buildTestPheraWorkbook(mode);
+  var wb = built.wb;
+  var tableRows = XLSX.utils.sheet_to_json(wb.Sheets['Table End point'], { header: 1, defval: '' });
+  var parsed = parsePheraTableEndpoint(tableRows);
+  state.donor = parsed.donor;
+  state.acceptor = parsed.acceptor;
+  state.plateFormat = parsed.plateFormat;
+  var protRows = XLSX.utils.sheet_to_json(wb.Sheets['Protocol Information'], { header: 1, defval: '' })
+    .filter(function(r){ return r.some(function(c){ return String(c).trim() !== ''; }); });
+  state.pheraMeta = extractPheraProtocolFields(protRows);
+  state.pheraProtocolRows = protRows;
+  document.getElementById('fmt-96').classList.toggle('active', parsed.plateFormat === '96');
+  document.getElementById('fmt-384').classList.toggle('active', parsed.plateFormat === '384');
+  document.getElementById('phera-fname').textContent = built.filename;
+  document.getElementById('phera-drop').classList.add('filled');
+  renderPheraMeta();
+  renderCombinedTable();
+
+  state.liteMode = null;
+  ['qc', 'dose', 'report'].forEach(function(name){
+    var t = document.querySelector('.tab[data-tab="' + name + '"]');
+    if (t) t.style.display = '';
+  });
+  renderLiteModeChoice();
+
+  setAssayMode(mode); // resets state.plateMap + PM_GROUP_SEQ; re-rendered below once populated
+
+  var pm = state.plateMap;
+  pm.background = pmColumnWells(1);
+  pm.dmso = pmColumnWells(2);
+  var concs = [1, 10, 100, 1000, 10000];
+  concs.forEach(function(c, i){
+    var wells = pmColumnWells(3 + i);
+    var color = PM_COMPOUND_COLORS[i % PM_COMPOUND_COLORS.length];
+    pm.compoundGroups.push({ id: ++PM_GROUP_SEQ, wells: wells, conc: c, color: color });
+  });
+  if (mode === 'displacement') {
+    var tConcs = [3, 10, 30, 100];
+    tConcs.forEach(function(c, i){
+      var wells = pmColumnWells(8 + i);
+      var color = PM_TRACER_COLORS[i % PM_TRACER_COLORS.length];
+      pm.tracerGroups.push({ id: ++PM_GROUP_SEQ, wells: wells, conc: c, color: color });
+    });
+  }
+  seedQcFromPlateMap();
+  renderPlateMapGrid();
+  renderDoseGroupList();
+  renderDoseSummary();
+  renderTracerSummary();
+  renderSetupTabGate();
+  closeSetupModal();
+  switchTab('qc');
+}
 
 openSetupModal();
 </script>
