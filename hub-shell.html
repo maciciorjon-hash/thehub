@@ -1268,6 +1268,19 @@ function exitAppNav() {
 }
 
 
+function _realHeadCloseIndex(html) {
+  var masked = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, function(m) {
+    return new Array(m.length + 1).join(' ');
+  });
+  return masked.indexOf('</head>');
+}
+
+function _insertBeforeRealHeadClose(html, insertion) {
+  var idx = _realHeadCloseIndex(html);
+  if (idx === -1) return html;
+  return html.slice(0, idx) + insertion + html.slice(idx);
+}
+
 function _loadApp(id) {
   if (loaded[id]) return;
   var frame = document.getElementById('frame-' + id);
@@ -1287,7 +1300,7 @@ function _loadApp(id) {
       : id === 'cuppa'
         ? common + 'header .logo,header h1,header p{display:none!important;}'
         : common + 'header{display:none!important;}';
-  html = html.replace('</head>', '<style>' + embedStyle + '</style></head>');
+  html = _insertBeforeRealHeadClose(html, '<style>' + embedStyle + '</style>');
   var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
     'var logo=document.querySelector(".logo,.app-logo");' +
     'var name=document.querySelector("h1,.app-name");' +
@@ -1298,7 +1311,7 @@ function _loadApp(id) {
     'window.parent.postMessage("backToHub","*");' +
     '});' +
     '});})<\/script>';
-  html = html.replace('</head>', backScript + '</head>');
+  html = _insertBeforeRealHeadClose(html, backScript);
   frame.srcdoc = html;
   frame.addEventListener('load', function() {
     var t = localStorage.getItem('hub_theme') || 'light';
