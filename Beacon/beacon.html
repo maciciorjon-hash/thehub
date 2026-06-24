@@ -118,6 +118,13 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .guide-section ul,.guide-section ol{padding-left:18px;margin-top:4px;}
 .guide-section li{margin-bottom:3px;}
 
+/* REPORT (mirrors Echo's renderProtocol convention) */
+.proto-sec{font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--accent);margin:20px 0 8px;padding:5px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--accent);}
+.proto-sec:first-child{margin-top:0;}
+.proto-row{display:grid;grid-template-columns:200px 1fr;gap:4px 14px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:start;}
+.proto-k{color:var(--text3);font-size:11px;padding-top:1px;}
+.proto-v{color:var(--text);line-height:1.5;}
+
 .fmt-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
 .combined-table{border-collapse:collapse;font-size:11px;font-family:var(--mono);width:100%;}
 .combined-table th{padding:4px 6px;text-align:center;font-size:10px;font-weight:700;color:var(--text3);background:var(--surface2);}
@@ -385,6 +392,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <button class="tab active" data-tab="qc" onclick="switchTab('qc')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a8 8 0 1116 0"/><path d="M12 14l3.5-4.5"/><circle cx="12" cy="14" r="1.3" fill="currentColor" stroke="none"/></svg>Endpoint / QC</button>
   <button class="tab" data-tab="dose" onclick="switchTab('dose')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none"/></svg>Dose-Response</button>
   <button class="tab" data-tab="tracer" onclick="switchTab('tracer')" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c4 5 6 8.5 6 11.5a6 6 0 11-12 0C6 10.5 8 7 12 2z"/></svg>Tracer Titration</button>
+  <button class="tab" data-tab="report" onclick="switchTab('report')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6a1 1 0 011 1v1H8V4a1 1 0 011-1z"/><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 12h6M9 16h6"/></svg>Report</button>
   <button class="tab" data-tab="guide" onclick="switchTab('guide')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 016.5 2H20v17H6.5A2.5 2.5 0 014 16.5v-12z"/><path d="M4 16.5A2.5 2.5 0 016.5 19H20"/></svg>Guide</button>
   <div class="tab-indicator" id="tab-indicator"></div>
 </div>
@@ -427,6 +435,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div id="tracer-results-wrap" style="margin-bottom:14px;"></div>
     <canvas id="tracer-canvas" width="600" height="320" style="max-width:100%;border-radius:8px;"></canvas>
   </div>
+</div>
+<div class="panel" id="panel-report">
+  <div id="report-panel"></div>
 </div>
 <div class="panel" id="panel-guide">
   <div style="font-size:17px;font-weight:600;color:var(--text);margin-bottom:3px;">Beacon — User Guide</div>
@@ -826,6 +837,8 @@ function switchTab(name){
   activeTab = name;
   updateIndicator();
   if(name === 'dose' && typeof drawDoseChart === 'function' && lastFitResult) { setTimeout(drawDoseChart, 50); }
+  if(name === 'tracer' && typeof drawTracerChart === 'function' && lastTracerFitResult) { setTimeout(drawTracerChart, 50); }
+  if(name === 'report' && typeof renderReport === 'function') renderReport();
 }
 
 function updateIndicator(){
@@ -1369,6 +1382,102 @@ function drawTracerChart() {
     ctx.arc(px[0], px[1], 4, 0, 2 * Math.PI);
     ctx.fill();
   });
+}
+
+function renderReport() {
+  var p = document.getElementById('report-panel');
+  if (!p) return;
+  var row = function(lbl, val) { return '<div class="proto-row"><span class="proto-k">' + lbl + '</span><span class="proto-v">' + val + '</span></div>'; };
+  var sec = function(title) { return '<div class="proto-sec">' + title + '</div>'; };
+
+  var html = sec('Assay');
+  html += row('Assay mode', state.assayMode === 'gain' ? 'Gain-of-Signal' :
+    (state.assayMode === 'displacement' ? 'Tracer Displacement' : '<span style="color:var(--text3)">Not set</span>'));
+  html += row('Plate format', state.plateFormat === '384' ? '384-well (16&times;24)' : '96-well (8&times;12)');
+  if (state.pheraMeta) {
+    ['Test Name','Test ID','Date','Time','ID1','ID2','ID3','Microplate name','Optic module','Emission A','Emission B','Gain A','Gain B'].forEach(function(k){
+      if (state.pheraMeta[k] !== undefined) html += row(k, escapeAttr(String(state.pheraMeta[k])));
+    });
+  } else {
+    html += row('Source', '<span style="color:var(--text3)">Manual donor/acceptor CSV import</span>');
+  }
+
+  html += sec('Plate Map Summary');
+  html += row('Background', state.plateMap.background.length + ' well(s)');
+  html += row('DMSO', state.plateMap.dmso.length + ' well(s)');
+  html += row('Compound groups', state.plateMap.compoundGroups.length
+    ? state.plateMap.compoundGroups.map(function(g, i){ return 'Group ' + (i + 1) + ': ' + (g.conc !== null ? g.conc + ' nM' : '&mdash;') + ' (' + g.wells.length + ' wells)'; }).join('<br>')
+    : '&mdash;');
+  if (state.assayMode === 'displacement') {
+    html += row('Tracer groups', state.plateMap.tracerGroups.length
+      ? state.plateMap.tracerGroups.map(function(g, i){ return 'T' + (i + 1) + ': ' + (g.conc !== null ? g.conc + ' nM' : '&mdash;') + ' (' + g.wells.length + ' wells)'; }).join('<br>')
+      : '&mdash;');
+  }
+
+  html += sec('Formulas');
+  html += row('Raw ratio', '<code style="font-family:var(--mono);font-size:11px;">acceptor / donor</code>');
+  html += row('mBU', '<code style="font-family:var(--mono);font-size:11px;">raw ratio &times; 1000</code>');
+  html += row('Corrected mBU', '<code style="font-family:var(--mono);font-size:11px;">Mean(+) &minus; Mean(&minus;)</code>');
+  html += row('Z&prime; / Z factor', '<code style="font-family:var(--mono);font-size:11px;">1 &minus; [3&times;SD(+) + 3&times;SD(&minus;)] / |Mean(+) &minus; Mean(&minus;)|</code>');
+  html += row('Dose-response model', state.assayMode === 'gain'
+    ? '<code style="font-family:var(--mono);font-size:11px;">Y = Bottom + (Top&minus;Bottom) / (1 + 10^(Hill&times;(LogEC50&minus;X)))</code> <span style="color:var(--text3)">[gain: signal increases with X]</span>'
+    : '<code style="font-family:var(--mono);font-size:11px;">Y = Bottom + (Top&minus;Bottom) / (1 + 10^(Hill&times;(X&minus;LogEC50)))</code>');
+  html += row('Fitting method', 'Levenberg&ndash;Marquardt, multi-start, best R&sup2; wins, up to 1000 iterations');
+  if (state.assayMode === 'displacement') {
+    html += row('Tracer titration model', '<code style="font-family:var(--mono);font-size:11px;">signal = Bmax &times; [tracer] / (Kd + [tracer])</code> <span style="color:var(--text3)">(one-site binding, not a 4PL)</span>');
+    html += row('Working concentration suggestion', (TRACER_WORKING_FRACTION * 100) + '% of Bmax &rArr; c = Kd &times; f / (1&minus;f), overridable');
+  }
+
+  html += sec('Results');
+  var qcPairs = state.conditions.filter(function(c){ return c.role === 'ligand' && c.bgId; });
+  if (qcPairs.length) {
+    qcPairs.forEach(function(cond) {
+      var bg = state.conditions.filter(function(c){ return c.id === cond.bgId; })[0];
+      if (!bg) return;
+      var sA = computeConditionStats(cond), sB = computeConditionStats(bg);
+      if (sA.mean === null || sB.mean === null) return;
+      var corrected = correctedMBU(sA.mean, sB.mean);
+      var zp = zPrimeFactor(sA.sd, sB.sd, sA.mean, sB.mean);
+      html += row(escapeAttr(cond.name) + ' vs ' + escapeAttr(bg.name),
+        'Corrected mBU ' + corrected.toFixed(1) + ' &middot; Z&prime; = ' + (zp === null ? 'n/a' : zp.toFixed(3)));
+    });
+  } else {
+    html += row('Endpoint/QC', '<span style="color:var(--text3)">Not yet computed</span>');
+  }
+  if (lastFitResult) {
+    html += row('Dose-Response', 'IC50/EC50 = ' + Math.pow(10, lastFitResult.fit.params[1]).toPrecision(4) + ' &middot; R&sup2; = ' + lastFitResult.fit.r2.toFixed(3));
+  } else {
+    html += row('Dose-Response', '<span style="color:var(--text3)">Not yet computed</span>');
+  }
+  if (state.assayMode === 'displacement') {
+    if (lastTracerFitResult) {
+      html += row('Tracer Titration', 'Bmax = ' + lastTracerFitResult.fit.params[0].toPrecision(4) +
+        ' &middot; Kd = ' + lastTracerFitResult.fit.params[1].toPrecision(4) +
+        ' &middot; R&sup2; = ' + lastTracerFitResult.fit.r2.toFixed(3) +
+        ' &middot; Suggested working conc = ' + lastTracerFitResult.workingConc.toPrecision(4));
+    } else {
+      html += row('Tracer Titration', '<span style="color:var(--text3)">Not yet computed</span>');
+    }
+  }
+
+  if (state.pheraProtocolRows) {
+    html += '<div class="proto-sec" style="margin-top:18px;">PHERAstar Protocol Sheet</div>';
+    html += '<div style="overflow-x:auto;margin-top:6px;"><table style="border-collapse:collapse;font-size:11px;font-family:var(--mono);min-width:100%;">';
+    state.pheraProtocolRows.forEach(function(r, ri) {
+      html += '<tr>';
+      r.forEach(function(cell) {
+        var tag = ri === 0 ? 'th' : 'td';
+        var style = ri === 0
+          ? 'padding:5px 10px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);border-bottom:1px solid var(--border2);white-space:nowrap;'
+          : 'padding:4px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap;';
+        html += '<' + tag + ' style="' + style + '">' + escapeAttr(String(cell)) + '</' + tag + '>';
+      });
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  p.innerHTML = html;
 }
 
 renderTracerSummary();
