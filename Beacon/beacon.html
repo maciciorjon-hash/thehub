@@ -437,6 +437,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   </div>
 </div>
 <div class="panel" id="panel-report">
+  <div class="row" style="margin-bottom:14px;">
+    <button class="btn btn-primary btn-sm" onclick="generateOutputXLSX()">Download Excel report</button>
+  </div>
   <div id="report-panel"></div>
 </div>
 <div class="panel" id="panel-guide">
@@ -1478,6 +1481,164 @@ function renderReport() {
   }
 
   p.innerHTML = html;
+}
+
+// Excel rejects/repairs xlsx files containing NaN/Infinity numeric cells or
+// XML-illegal control characters -- strip them before writing.
+function _xlsxSafeCell(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : '';
+  if (typeof v === 'string') return v.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  return v;
+}
+function _sanitizeAoa(aoa) {
+  return aoa.map(function(row) { return row.map(_xlsxSafeCell); });
+}
+
+function _buildResultsAoa() {
+  var rows = [];
+  rows.push(['ENDPOINT / QC']);
+  rows.push(['Condition', 'Mean mBU (+)', 'Mean mBU (-)', 'Corrected mBU', "Z' factor"]);
+  var qcPairs = state.conditions.filter(function(c){ return c.role === 'ligand' && c.bgId; });
+  qcPairs.forEach(function(cond) {
+    var bg = state.conditions.filter(function(c){ return c.id === cond.bgId; })[0];
+    if (!bg) return;
+    var sA = computeConditionStats(cond), sB = computeConditionStats(bg);
+    if (sA.mean === null || sB.mean === null) return;
+    var corrected = correctedMBU(sA.mean, sB.mean);
+    var zp = zPrimeFactor(sA.sd, sB.sd, sA.mean, sB.mean);
+    rows.push([cond.name + ' vs ' + bg.name, sA.mean, sB.mean, corrected, zp === null ? '' : zp]);
+  });
+  rows.push([]);
+  rows.push(['DOSE-RESPONSE']);
+  if (lastFitResult) {
+    var fit = lastFitResult.fit;
+    rows.push(['IC50/EC50 (nM)', Math.pow(10, fit.params[1])]);
+    rows.push(['Bottom', fit.params[0]]);
+    rows.push(['Hill slope', fit.params[2]]);
+    rows.push(['Top', fit.params[3]]);
+    rows.push(['R2', fit.r2]);
+  } else {
+    rows.push(['Not yet computed']);
+  }
+  if (state.assayMode === 'displacement') {
+    rows.push([]);
+    rows.push(['TRACER TITRATION']);
+    if (lastTracerFitResult) {
+      var tfit = lastTracerFitResult.fit;
+      rows.push(['Bmax', tfit.params[0]]);
+      rows.push(['Kd (nM)', tfit.params[1]]);
+      rows.push(['R2', tfit.r2]);
+      rows.push(['Suggested working concentration (nM)', lastTracerFitResult.workingConc]);
+    } else {
+      rows.push(['Not yet computed']);
+    }
+  }
+  return rows;
+}
+
+function _buildPlateMapAoa() {
+  var pm = state.plateMap;
+  var rows = [['Well', 'Role', 'Group', 'Concentration (nM)']];
+  pm.background.forEach(function(w){ rows.push([w, 'Background', '', '']); });
+  pm.dmso.forEach(function(w){ rows.push([w, 'DMSO', '', '']); });
+  pm.compoundGroups.forEach(function(g, i) {
+    g.wells.forEach(function(w){ rows.push([w, 'Compound', 'Group ' + (i + 1), g.conc !== null ? g.conc : '']); });
+  });
+  pm.tracerGroups.forEach(function(g, i) {
+    g.wells.forEach(function(w){ rows.push([w, 'Tracer', 'T' + (i + 1), g.conc !== null ? g.conc : '']); });
+  });
+  return rows;
+}
+
+function _buildAssayProtocolAoa() {
+  var rows = [
+    ['BEACON ASSAY PROTOCOL'],
+    ['Generated', new Date().toLocaleString()],
+    [],
+    ['--- ASSAY ---'],
+    ['Assay mode', state.assayMode === 'gain' ? 'Gain-of-Signal' : (state.assayMode === 'displacement' ? 'Tracer Displacement' : '')],
+    ['Plate format', state.plateFormat === '384' ? '384-well (16x24)' : '96-well (8x12)']
+  ];
+  if (state.pheraMeta) {
+    rows.push([]);
+    rows.push(['--- PHERASTAR METADATA ---']);
+    PHERA_META_FIELDS.forEach(function(k){
+      if (state.pheraMeta[k] !== undefined) rows.push([k, state.pheraMeta[k]]);
+    });
+  }
+  rows.push([]);
+  rows.push(['--- FORMULAS ---']);
+  rows.push(['Raw ratio', 'acceptor / donor']);
+  rows.push(['mBU', 'raw ratio x 1000']);
+  rows.push(['Corrected mBU', 'Mean(+) - Mean(-)']);
+  rows.push(["Z'/Z factor", '1 - [3xSD(+) + 3xSD(-)] / |Mean(+) - Mean(-)|']);
+  rows.push([]);
+  rows.push(['--- DOSE-RESPONSE FITTING ---']);
+  rows.push(['Model', state.assayMode === 'gain'
+    ? 'Y = Bottom + (Top-Bottom) / (1 + 10^(Hill*(LogEC50-X)))  [gain: increasing]'
+    : 'Y = Bottom + (Top-Bottom) / (1 + 10^(Hill*(X-LogEC50)))']);
+  rows.push(['X variable', 'log10(concentration in nM)']);
+  rows.push(['Fitting method', 'Levenberg-Marquardt, multi-start, best R2 wins, up to 1000 iterations']);
+  rows.push(['DMSO point', 'Plotted as vehicle-only reference one log10 unit left of the lowest real dose; excluded from the fit']);
+  if (state.assayMode === 'displacement') {
+    rows.push([]);
+    rows.push(['--- TRACER TITRATION ---']);
+    rows.push(['Model', 'signal = Bmax * [tracer] / (Kd + [tracer])  (one-site binding)']);
+    rows.push(['Working concentration suggestion', (TRACER_WORKING_FRACTION * 100) + '% of Bmax => c = Kd * f / (1-f), overridable']);
+  }
+  return rows;
+}
+
+function _buildPrismAoa() {
+  var rows = [];
+  if (lastFitResult) {
+    rows.push(['DOSE-RESPONSE (paste X/Y into Prism)']);
+    rows.push(['Log10[Compound] (nM)', 'Corrected mBU']);
+    lastFitResult.points.forEach(function(p){ rows.push([p.logConc, p.corrected]); });
+    if (lastFitResult.dmsoPoint) {
+      rows.push([]);
+      rows.push(['DMSO reference (not included in fit)']);
+      rows.push(['Log10[Compound] (nM)', 'Corrected mBU']);
+      rows.push([lastFitResult.dmsoPoint.logConc, lastFitResult.dmsoPoint.corrected]);
+    }
+  }
+  if (state.assayMode === 'displacement' && lastTracerFitResult) {
+    rows.push([]);
+    rows.push(['TRACER TITRATION (paste X/Y into Prism)']);
+    rows.push(['[Tracer] (nM)', 'Raw mBU signal']);
+    lastTracerFitResult.pairs.forEach(function(p){ rows.push([p.conc, p.signal]); });
+  }
+  if (!rows.length) rows.push(['Compute Dose-Response and/or Tracer Titration first.']);
+  return rows;
+}
+
+function generateOutputXLSX() {
+  if (!state.donor || !state.acceptor) { alert('Load plate data first (Setup → Files).'); return; }
+  var wb = XLSX.utils.book_new();
+
+  var wsResults = XLSX.utils.aoa_to_sheet(_sanitizeAoa(_buildResultsAoa()));
+  XLSX.utils.book_append_sheet(wb, wsResults, 'Results');
+
+  var wsPlateMap = XLSX.utils.aoa_to_sheet(_sanitizeAoa(_buildPlateMapAoa()));
+  XLSX.utils.book_append_sheet(wb, wsPlateMap, 'Plate Map');
+
+  var wsAssayProtocol = XLSX.utils.aoa_to_sheet(_sanitizeAoa(_buildAssayProtocolAoa()));
+  XLSX.utils.book_append_sheet(wb, wsAssayProtocol, 'Assay Protocol');
+
+  if (state.pheraProtocolRows && state.pheraProtocolRows.length) {
+    var wsPP = XLSX.utils.aoa_to_sheet(_sanitizeAoa(state.pheraProtocolRows));
+    XLSX.utils.book_append_sheet(wb, wsPP, 'PHERAstar Protocol');
+  }
+
+  var wsPrism = XLSX.utils.aoa_to_sheet(_sanitizeAoa(_buildPrismAoa()));
+  XLSX.utils.book_append_sheet(wb, wsPrism, 'Prism Copy');
+
+  var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  var blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Beacon_export.xlsx';
+  a.click();
 }
 
 renderTracerSummary();
