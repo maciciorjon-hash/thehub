@@ -337,6 +337,20 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
           <div class="setup-section-lbl">Combined preview — raw ratio (acceptor / donor) per well</div>
           <div id="combined-table-wrap"><p style="font-size:12px;color:var(--text2);">Load plate data above to see the combined preview.</p></div>
         </div>
+
+        <div class="setup-group" id="litemode-choice-group" style="display:none;">
+          <div class="setup-section-lbl">How do you want to use this data?</div>
+          <div class="assay-mode-grid">
+            <div class="assay-mode-card" id="litemode-card-full" onclick="setLiteMode(false)">
+              <div class="assay-mode-title">Full workflow</div>
+              <div class="assay-mode-desc">Assay mode, Plate Map, QC, Dose-Response, and (when applicable) Tracer Titration — the guided pipeline.</div>
+            </div>
+            <div class="assay-mode-card" id="litemode-card-lite" onclick="setLiteMode(true)">
+              <div class="assay-mode-title">Just show ratios</div>
+              <div class="assay-mode-desc">Skip straight to the raw donor/acceptor ratio table and export it — no Plate Map or fitting.</div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="setup-pane" id="setup-pane-assay">
         <div class="setup-group">
@@ -456,6 +470,14 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <canvas id="tracer-canvas" width="600" height="320" style="max-width:100%;border-radius:8px;"></canvas>
   </div>
 </div>
+<div class="panel" id="panel-lite">
+  <div class="row" style="margin-bottom:14px;">
+    <button class="btn btn-primary btn-sm" onclick="exportLiteRatiosXLSX()">Download Excel (ratios)</button>
+    <button class="btn btn-sec btn-sm" onclick="openSetupModal();switchSetupTab('files');">Load a different file</button>
+  </div>
+  <div class="card-hdr">Raw ratio (acceptor / donor) per well</div>
+  <div id="lite-table-wrap"></div>
+</div>
 <div class="panel" id="panel-report">
   <div class="row" style="margin-bottom:14px;">
     <button class="btn btn-primary btn-sm" onclick="generateOutputXLSX()">Download Excel report</button>
@@ -537,6 +559,7 @@ var state = {
   acceptor: null,
   conditions: [],
   assayMode: null,
+  liteMode: null,
   plateMap: { background: [], dmso: [], compoundGroups: [], tracerGroups: [] },
   pheraMeta: null
 };
@@ -962,16 +985,21 @@ function loadChannelFile(file, channel){
     renderCombinedTable();
     renderPlateMapGrid();
     renderDoseGroupList();
+    state.liteMode = null;
+    ['qc', 'dose', 'report'].forEach(function(name){
+      var t = document.querySelector('.tab[data-tab="' + name + '"]');
+      if (t) t.style.display = '';
+    });
+    renderTabVisibility();
+    renderLiteModeChoice();
     renderSetupTabGate();
   };
   reader.readAsText(file);
 }
 
-function renderCombinedTable(){
-  var wrap = document.getElementById('combined-table-wrap');
+function _buildCombinedTableHtml(){
   if(!state.donor && !state.acceptor){
-    wrap.innerHTML = '<p style="font-size:12px;color:var(--text2);">Load or enter donor and acceptor values to see the combined plate preview.</p>';
-    return;
+    return '<p style="font-size:12px;color:var(--text2);">Load or enter donor and acceptor values to see the combined plate preview.</p>';
   }
   var dims = state.plateFormat === '384' ? { rows: 16, cols: 24 } : { rows: 8, cols: 12 };
   var ROWS = 'ABCDEFGHIJKLMNOP';
@@ -991,7 +1019,69 @@ function renderCombinedTable(){
     html += '</tr>';
   }
   html += '</tbody></table></div>';
-  wrap.innerHTML = html;
+  return html;
+}
+
+function renderCombinedTable(){
+  document.getElementById('combined-table-wrap').innerHTML = _buildCombinedTableHtml();
+}
+
+function renderLiteRatioTable(){
+  var wrap = document.getElementById('lite-table-wrap');
+  if (wrap) wrap.innerHTML = _buildCombinedTableHtml();
+}
+
+function renderLiteModeChoice(){
+  var group = document.getElementById('litemode-choice-group');
+  if (!group) return;
+  group.style.display = (state.donor && state.acceptor && state.liteMode === null) ? '' : 'none';
+}
+
+function setLiteMode(isLite){
+  state.liteMode = isLite;
+  var fullCard = document.getElementById('litemode-card-full');
+  var liteCard = document.getElementById('litemode-card-lite');
+  if (fullCard) fullCard.classList.toggle('active', !isLite);
+  if (liteCard) liteCard.classList.toggle('active', isLite);
+  renderLiteModeChoice();
+  ['qc', 'dose', 'report'].forEach(function(name){
+    var t = document.querySelector('.tab[data-tab="' + name + '"]');
+    if (t) t.style.display = isLite ? 'none' : '';
+  });
+  var tracerTab = document.querySelector('.tab[data-tab="tracer"]');
+  if (tracerTab) tracerTab.style.display = (isLite || state.assayMode !== 'displacement') ? 'none' : '';
+  if (isLite) {
+    closeSetupModal();
+    renderLiteRatioTable();
+    switchTab('lite');
+  } else {
+    switchTab('qc');
+  }
+}
+
+function exportLiteRatiosXLSX(){
+  if (!state.donor || !state.acceptor) { alert('Load plate data first (Setup → Files).'); return; }
+  var dims = state.plateFormat === '384' ? { rows: 16, cols: 24 } : { rows: 8, cols: 12 };
+  var ROWS = 'ABCDEFGHIJKLMNOP';
+  var rows = [['Well', 'Donor', 'Acceptor', 'Raw ratio (acceptor/donor)']];
+  for (var r = 0; r < dims.rows; r++){
+    for (var c = 1; c <= dims.cols; c++){
+      var wellId = ROWS[r] + (c < 10 ? '0' + c : c);
+      var d = getWellValue(state.donor, wellId);
+      var a = getWellValue(state.acceptor, wellId);
+      var ratio = (d !== null && a !== null && d !== 0 && a !== 0) ? rawRatio(d, a) : '';
+      rows.push([wellId, d === null ? '' : d, a === null ? '' : a, ratio]);
+    }
+  }
+  var ws = XLSX.utils.aoa_to_sheet(_sanitizeAoa(rows));
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ratios');
+  var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  var blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Beacon_ratios.xlsx';
+  a.click();
 }
 
 function setWellValue(grid, wellId, value){
@@ -2184,6 +2274,13 @@ function handlePheraFile(file) {
       renderCombinedTable();
       renderPlateMapGrid();
       renderDoseGroupList();
+      state.liteMode = null;
+      ['qc', 'dose', 'report'].forEach(function(name){
+        var t = document.querySelector('.tab[data-tab="' + name + '"]');
+        if (t) t.style.display = '';
+      });
+      renderTabVisibility();
+      renderLiteModeChoice();
       renderSetupTabGate();
     } catch (err) {
       alert('Could not read this file as a PHERAstar .xlsx export: ' + err.message);
