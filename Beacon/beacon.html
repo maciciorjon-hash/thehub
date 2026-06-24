@@ -92,6 +92,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;}
 .card-hdr{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
   color:var(--text3);margin-bottom:14px;}
+.qc-manual-summary{font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;padding:6px 0;list-style:none;}
+.qc-manual-summary::-webkit-details-marker{display:none;}
 .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;}
 .field{display:flex;flex-direction:column;gap:4px;}
 .field label{font-size:11px;color:var(--text3);}
@@ -414,12 +416,16 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 <div class="content">
 
 <div class="panel active" id="panel-qc">
-  <div class="row" style="margin-bottom:16px;">
-    <button class="btn btn-primary btn-sm" onclick="addCondition('ligand')">+ Ligand/Treated condition</button>
-    <button class="btn btn-sec btn-sm" onclick="addCondition('background')">+ No-Ligand/Untreated condition</button>
-  </div>
-  <div id="qc-conditions-wrap" style="margin-bottom:20px;"></div>
-  <div class="card-hdr">Results</div>
+  <div id="qc-auto-wrap" style="margin-bottom:16px;"></div>
+  <details id="qc-manual-details">
+    <summary class="qc-manual-summary">+ Add custom condition (advanced)</summary>
+    <div class="row" style="margin:12px 0 16px;">
+      <button class="btn btn-primary btn-sm" onclick="addCondition('ligand')">+ Ligand/Treated condition</button>
+      <button class="btn btn-sec btn-sm" onclick="addCondition('background')">+ No-Ligand/Untreated condition</button>
+    </div>
+    <div id="qc-manual-wrap"></div>
+  </details>
+  <div class="card-hdr" style="margin-top:20px;">Results</div>
   <div id="qc-results-wrap"></div>
 </div>
 <div class="panel" id="panel-dose">
@@ -1077,32 +1083,50 @@ function escapeAttr(s){
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-function renderConditions(){
-  var wrap = document.getElementById('qc-conditions-wrap');
-  if(!state.conditions.length){
-    wrap.innerHTML = '<p style="font-size:12px;color:var(--text2);">Add a +Ligand/Treated condition and a No-Ligand/Untreated background condition to begin.</p>';
-  } else {
-    var html = '';
-    state.conditions.forEach(function(cond){
-      html += '<div class="card" style="margin-bottom:10px;"><div class="row">';
-      html += '<div class="field"><label>Name</label><input type="text" value="' + escapeAttr(cond.name) + '" onchange="updateConditionField(\'' + cond.id + '\',\'name\',this.value)"></div>';
-      html += '<div class="field"><label>Role</label><select onchange="updateConditionField(\'' + cond.id + '\',\'role\',this.value)"' + (cond.auto ? ' disabled' : '') + '>';
-      html += '<option value="ligand"' + (cond.role === 'ligand' ? ' selected' : '') + '>+Ligand / Treated</option>';
-      html += '<option value="background"' + (cond.role === 'background' ? ' selected' : '') + '>No-Ligand / Untreated</option>';
-      html += '</select></div>';
-      html += '<div class="field"><label>Wells' + (cond.auto ? ' (from Plate Map)' : '') + '</label><input type="text" placeholder="A1-A3" value="' + escapeAttr(cond.wells) + '" onchange="updateConditionField(\'' + cond.id + '\',\'wells\',this.value)"' + (cond.auto ? ' disabled' : '') + '></div>';
-      if(cond.role === 'ligand'){
-        html += '<div class="field"><label>Background</label><select onchange="updateConditionField(\'' + cond.id + '\',\'bgId\',this.value)"><option value="">— none —</option>';
-        state.conditions.filter(function(c){ return c.role === 'background'; }).forEach(function(bg){
-          html += '<option value="' + bg.id + '"' + (cond.bgId === bg.id ? ' selected' : '') + '>' + escapeAttr(bg.name) + '</option>';
-        });
-        html += '</select></div>';
-      }
-      if (!cond.auto) html += '<button class="btn btn-sec btn-sm" onclick="removeCondition(\'' + cond.id + '\')">Remove</button>';
-      html += '</div></div>';
+function renderConditionCard(cond){
+  var html = '<div class="card" style="margin-bottom:10px;"><div class="row">';
+  html += '<div class="field"><label>Name</label><input type="text" value="' + escapeAttr(cond.name) + '" onchange="updateConditionField(\'' + cond.id + '\',\'name\',this.value)"></div>';
+  html += '<div class="field"><label>Role</label><select onchange="updateConditionField(\'' + cond.id + '\',\'role\',this.value)"' + (cond.auto ? ' disabled' : '') + '>';
+  html += '<option value="ligand"' + (cond.role === 'ligand' ? ' selected' : '') + '>+Ligand / Treated</option>';
+  html += '<option value="background"' + (cond.role === 'background' ? ' selected' : '') + '>No-Ligand / Untreated</option>';
+  html += '</select></div>';
+  html += '<div class="field"><label>Wells' + (cond.auto ? ' (from Plate Map)' : '') + '</label><input type="text" placeholder="A1-A3" value="' + escapeAttr(cond.wells) + '" onchange="updateConditionField(\'' + cond.id + '\',\'wells\',this.value)"' + (cond.auto ? ' disabled' : '') + '></div>';
+  if(cond.role === 'ligand'){
+    html += '<div class="field"><label>Background</label><select onchange="updateConditionField(\'' + cond.id + '\',\'bgId\',this.value)"><option value="">— none —</option>';
+    state.conditions.filter(function(c){ return c.role === 'background'; }).forEach(function(bg){
+      html += '<option value="' + bg.id + '"' + (cond.bgId === bg.id ? ' selected' : '') + '>' + escapeAttr(bg.name) + '</option>';
     });
-    wrap.innerHTML = html;
+    html += '</select></div>';
   }
+  if (!cond.auto) html += '<button class="btn btn-sec btn-sm" onclick="removeCondition(\'' + cond.id + '\')">Remove</button>';
+  html += '</div></div>';
+  return html;
+}
+
+function renderConditions(){
+  var autoWrap = document.getElementById('qc-auto-wrap');
+  var manualWrap = document.getElementById('qc-manual-wrap');
+  var manualDetails = document.getElementById('qc-manual-details');
+  var autoConds = state.conditions.filter(function(c){ return c.auto; });
+  var manualConds = state.conditions.filter(function(c){ return !c.auto; });
+
+  if(!autoConds.length){
+    autoWrap.innerHTML = '';
+  } else {
+    var ah = '<div class="setup-section-lbl">From Plate Map</div>';
+    autoConds.forEach(function(cond){ ah += renderConditionCard(cond); });
+    autoWrap.innerHTML = ah;
+  }
+
+  if(!manualConds.length){
+    manualWrap.innerHTML = '<p style="font-size:12px;color:var(--text2);">Add a +Ligand/Treated condition and a No-Ligand/Untreated background condition to begin.</p>';
+  } else {
+    var mh = '';
+    manualConds.forEach(function(cond){ mh += renderConditionCard(cond); });
+    manualWrap.innerHTML = mh;
+  }
+  if(manualDetails) manualDetails.open = !autoConds.length;
+
   renderQCResults();
 }
 
