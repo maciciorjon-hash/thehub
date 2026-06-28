@@ -542,14 +542,16 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   <div class="guide-section">
     <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none"/></svg>Dose-Response fitting</h3>
-    <p>The dose series comes straight from <b>Setup &rarr; Plate Map</b>: painted <b>Background</b> wells become the shared baseline subtracted from every dose point's mean mBU, and each <b>Compound</b> group (with its concentration chip filled in) becomes one dose point. A painted <b>DMSO</b> group is plotted as a vehicle-only reference point but excluded from the fit itself. Once at least 4 Compound groups have a concentration set, click <b>Compute fit</b> to run a 4-parameter logistic fit (automatically rising or falling depending on the chosen assay mode) and extract IC50/EC50, plotted against log-concentration.</p>
+    <p>The dose series comes straight from <b>Setup &rarr; Plate Map</b>: painted <b>Background</b> wells become the shared baseline subtracted from every dose point's mean mBU, and each <b>Compound</b> group (with its concentration chip filled in) becomes one dose point. Error bars (SD across replicate wells in each group) are drawn on the chart. A painted <b>DMSO</b> group is plotted as a vehicle-only reference point but excluded from the fit itself. Once at least 4 Compound groups have a concentration set, click <b>Compute fit</b> to run a 4-parameter logistic fit (automatically rising or falling depending on the chosen assay mode) and extract IC50/EC50, plotted against log-concentration.</p>
+    <p>In <b>Tracer Displacement</b> mode, the Ki is automatically calculated once the Tracer Titration tab has been run (which provides the tracer Kd). Ki = IC50 / (1 + [T]/Kd) via the Cheng–Prusoff equation — this is the assay-condition-independent binding constant. You can update the tracer concentration on the Tracer Titration tab to see how the Ki estimate changes.</p>
     <p>R² below ~0.7 (red badge) means the fit is unreliable — check for missing wells, a Background group that doesn't match the dose-series plate, or too few Compound groups spanning the inflection.</p>
   </div>
 
   <div class="guide-section">
     <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c4 5 6 8.5 6 11.5a6 6 0 11-12 0C6 10.5 8 7 12 2z"/></svg>Tracer Titration</h3>
-    <p>Only shown in <b>Tracer Displacement</b> mode. Uses the Tracer dose series painted in Plate Map to fit a one-site binding/saturation curve (signal = Bmax &times; [tracer] / (Kd + [tracer])) rather than a sigmoidal 4PL. Click <b>Compute fit</b> to run it.</p>
-    <p>The fit suggests a working tracer concentration at ~80% of Bmax (the concentration that gives near-maximal signal while leaving headroom for displacement) — this value is editable, so you can override it if you have a reason to run at a different point on the curve.</p>
+    <p>Only shown in <b>Tracer Displacement</b> mode. Uses the Tracer dose series painted in Plate Map to fit a one-site binding/saturation curve (signal = Bmax &times; [tracer] / (Kd + [tracer])) rather than a sigmoidal 4PL. Click <b>Compute fit</b> to run it and extract Kd of the tracer.</p>
+    <p>The fit suggests a working tracer concentration at the tracer Kd (50% of Bmax). Using tracer ≤ Kd is the standard recommendation (EUbOPEN NanoBRET protocol) because it minimises the IC50 shift from the Cheng–Prusoff correction: at [T] = Kd, the measured IC50 is exactly 2×Ki — a well-tolerated 2-fold difference. Using much higher concentrations (e.g. 4×Kd at 80% Bmax) inflates IC50 by 5×, making compounds look 5× weaker than their true Ki. The working concentration field is editable, so you can override it — adjusting it also updates the Ki in the Dose-Response tab in real time.</p>
+    <p>A dashed vertical line marks Kd on the binding curve chart for quick visual reference.</p>
   </div>
 
   <div class="guide-section">
@@ -760,9 +762,10 @@ function _fitOneSiteBinding(concArr, signalArr) {
 
 // Suggested working tracer concentration: the concentration at which the one-site model
 // predicts TRACER_WORKING_FRACTION of Bmax, solved from signal = Bmax*c/(Kd+c) at
-// signal = f*Bmax  =>  c = Kd*f/(1-f). At f=0.8 this is exactly 4*Kd. Overridable default,
-// not an enforced value -- no specific lab convention was given for this app.
-var TRACER_WORKING_FRACTION = 0.8;
+// signal = f*Bmax  =>  c = Kd*f/(1-f). At f=0.5 this is exactly 1*Kd.
+// EUbOPEN/Promega protocols recommend tracer ≤ Kd so that IC50 shift is ≤ 2-fold
+// (Cheng-Prusoff: Ki = IC50 / (1 + [T]/Kd); at [T]=Kd, IC50 = 2*Ki).
+var TRACER_WORKING_FRACTION = 0.5;
 
 function _solveLin(A, b) {
   const n = b.length;
@@ -1293,7 +1296,8 @@ function computeDoseResponse(){
     var mbus = computeConditionMBUs(state.donor, state.acceptor, g.wells);
     if(!mbus.length) return;
     var corrected = correctedMBU(meanOf(mbus), baselineMean);
-    points.push({ conc: g.conc, logConc: Math.log10(g.conc), corrected: corrected });
+    var sd = mbus.length > 1 ? sdOf(mbus) : 0;
+    points.push({ conc: g.conc, logConc: Math.log10(g.conc), corrected: corrected, sd: sd });
   });
 
   if(points.length < 4){
@@ -1357,76 +1361,140 @@ function renderDoseResults(){
   var fit = lastFitResult.fit;
   var ec50 = Math.pow(10, fit.params[1]);
   var badgeClass = fit.r2 >= 0.9 ? 'badge-good' : (fit.r2 >= 0.7 ? 'badge-mid' : 'badge-poor');
-  wrap.innerHTML =
-    '<div class="row">' +
-    '<div><div style="font-size:11px;color:var(--text3);">IC50 / EC50</div><div style="font-family:var(--mono);font-size:18px;">' + ec50.toPrecision(4) + '</div></div>' +
+  var html = '<div class="row">' +
+    '<div><div style="font-size:11px;color:var(--text3);">IC50 / EC50 (nM)</div><div style="font-family:var(--mono);font-size:18px;">' + ec50.toPrecision(4) + '</div></div>' +
+    '<div><div style="font-size:11px;color:var(--text3);">Hill slope</div><div style="font-family:var(--mono);font-size:18px;">' + fit.params[2].toFixed(2) + '</div></div>' +
     '<div><span class="badge ' + badgeClass + '">R² = ' + fit.r2.toFixed(3) + '</span></div>' +
     '</div>';
+  if (state.assayMode === 'displacement' && lastTracerFitResult) {
+    var kd = lastTracerFitResult.fit.params[1];
+    var tracerInput = document.getElementById('tracer-working-conc');
+    var tracerConc = tracerInput ? parseFloat(tracerInput.value) : lastTracerFitResult.workingConc;
+    if (!isNaN(tracerConc) && tracerConc > 0 && kd > 0) {
+      var ki = ec50 / (1 + tracerConc / kd);
+      html += '<div style="margin-top:10px;padding:10px 12px;background:var(--accent-dim);border-radius:8px;">' +
+        '<div style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Cheng&ndash;Prusoff Ki</div>' +
+        '<div class="row">' +
+        '<div><div style="font-size:11px;color:var(--text3);">Ki (nM)</div><div style="font-family:var(--mono);font-size:18px;">' + ki.toPrecision(4) + '</div></div>' +
+        '<div style="font-size:11px;color:var(--text2);align-self:center;">= IC50 / (1 + [T] / Kd)<br>[T] = ' + tracerConc.toPrecision(3) + ' nM · Kd = ' + kd.toPrecision(3) + ' nM</div>' +
+        '</div></div>';
+    }
+  }
+  wrap.innerHTML = html;
 }
 
 function drawDoseChart(){
   if(!lastFitResult) return;
   var canvas = document.getElementById('dose-canvas');
   var ctx = canvas.getContext('2d');
-  var w = canvas.width, h = canvas.height;
+  var dpr = window.devicePixelRatio || 1;
+  var cssW = canvas.offsetWidth || 600, cssH = canvas.offsetHeight || 320;
+  canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+  ctx.scale(dpr, dpr);
+  var w = cssW, h = cssH;
   ctx.clearRect(0, 0, w, h);
-  var pad = 40;
+  var padL = 62, padR = 20, padT = 18, padB = 50;
+
   var points = lastFitResult.points;
   var dmsoPoint = lastFitResult.dmsoPoint;
   var allPoints = dmsoPoint ? points.concat([dmsoPoint]) : points;
   var xs = allPoints.map(function(p){ return p.logConc; });
   var ys = allPoints.map(function(p){ return p.corrected; });
+  var allYs = ys.slice();
+  points.forEach(function(p){ if(p.sd){ allYs.push(p.corrected + p.sd); allYs.push(p.corrected - p.sd); } });
   var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
-  var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
-  var yPad = (yMax - yMin) * 0.15 || 10;
+  var yMin = Math.min.apply(null, allYs), yMax = Math.max.apply(null, allYs);
+  var yPad = (yMax - yMin) * 0.18 || 10;
   yMin -= yPad; yMax += yPad;
 
   function toPx(x, y){
     return [
-      pad + (x - xMin) / (xMax - xMin) * (w - 2 * pad),
-      h - pad - (y - yMin) / (yMax - yMin) * (h - 2 * pad)
+      padL + (x - xMin) / (xMax - xMin) * (w - padL - padR),
+      h - padB - (y - yMin) / (yMax - yMin) * (h - padT - padB)
     ];
   }
 
   var textColor = getComputedStyle(document.documentElement).getPropertyValue('--text2').trim();
+  var text3Color = getComputedStyle(document.documentElement).getPropertyValue('--text3').trim();
   var accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
+  // axes
   ctx.strokeStyle = textColor;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(pad, h - pad);
-  ctx.lineTo(w - pad, h - pad);
-  ctx.moveTo(pad, pad);
-  ctx.lineTo(pad, h - pad);
+  ctx.moveTo(padL, h - padB);
+  ctx.lineTo(w - padR, h - padB);
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, h - padB);
   ctx.stroke();
 
+  // tick marks + labels
+  ctx.fillStyle = text3Color;
+  ctx.font = '10px IBM Plex Sans, sans-serif';
+  ctx.textAlign = 'center';
+  var xTicks = 5;
+  for(var ti = 0; ti <= xTicks; ti++){
+    var tx = xMin + (xMax - xMin) * ti / xTicks;
+    var tpx = toPx(tx, yMin);
+    ctx.beginPath(); ctx.moveTo(tpx[0], h - padB); ctx.lineTo(tpx[0], h - padB + 4); ctx.stroke();
+    ctx.fillText(tx.toFixed(1), tpx[0], h - padB + 14);
+  }
+  ctx.textAlign = 'right';
+  var yTicks = 4;
+  for(var ti2 = 0; ti2 <= yTicks; ti2++){
+    var ty = yMin + (yMax - yMin) * ti2 / yTicks;
+    var tpy = toPx(xMin, ty);
+    ctx.beginPath(); ctx.moveTo(padL, tpy[1]); ctx.lineTo(padL - 4, tpy[1]); ctx.stroke();
+    ctx.fillText(ty.toFixed(0), padL - 7, tpy[1] + 3);
+  }
+
+  // axis labels
+  ctx.fillStyle = textColor;
+  ctx.font = '11px IBM Plex Sans, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('log₁₀[Compound] (nM)', padL + (w - padL - padR) / 2, h - 4);
+  ctx.save();
+  ctx.translate(12, padT + (h - padT - padB) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Corrected mBU', 0, 0);
+  ctx.restore();
+
+  // fit curve
   ctx.strokeStyle = accentColor;
   ctx.lineWidth = 2;
   ctx.beginPath();
   var fit = lastFitResult.fit;
   var valFn = state.assayMode === 'gain' ? _4plVal4_gain : _4plVal4;
-  for(var i = 0; i <= 100; i++){
-    var xi = xMin + (xMax - xMin) * i / 100;
+  for(var i = 0; i <= 200; i++){
+    var xi = xMin + (xMax - xMin) * i / 200;
     var yi = valFn(xi, fit.params[0], fit.params[1], fit.params[2], fit.params[3]);
     var px = toPx(xi, yi);
     if(i === 0) ctx.moveTo(px[0], px[1]); else ctx.lineTo(px[0], px[1]);
   }
   ctx.stroke();
 
-  ctx.fillStyle = accentColor;
+  // error bars + data points
   points.forEach(function(p){
     var px = toPx(p.logConc, p.corrected);
-    ctx.beginPath();
-    ctx.arc(px[0], px[1], 4, 0, 2 * Math.PI);
-    ctx.fill();
+    if(p.sd > 0){
+      var pxTop = toPx(p.logConc, p.corrected + p.sd);
+      var pxBot = toPx(p.logConc, p.corrected - p.sd);
+      ctx.strokeStyle = accentColor; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(px[0], pxTop[1]); ctx.lineTo(px[0], pxBot[1]); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px[0]-4, pxTop[1]); ctx.lineTo(px[0]+4, pxTop[1]); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px[0]-4, pxBot[1]); ctx.lineTo(px[0]+4, pxBot[1]); ctx.stroke();
+    }
+    ctx.fillStyle = accentColor;
+    ctx.lineWidth = 2; ctx.strokeStyle = accentColor;
+    ctx.beginPath(); ctx.arc(px[0], px[1], 4, 0, 2 * Math.PI); ctx.fill();
   });
 
   if(dmsoPoint){
-    ctx.fillStyle = textColor;
     var pxD = toPx(dmsoPoint.logConc, dmsoPoint.corrected);
-    ctx.beginPath();
-    ctx.arc(pxD[0], pxD[1], 4, 0, 2 * Math.PI);
-    ctx.fill();
+    ctx.fillStyle = text3Color;
+    ctx.beginPath(); ctx.arc(pxD[0], pxD[1], 4, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = text3Color; ctx.font = '10px IBM Plex Sans, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('DMSO', pxD[0] + 6, pxD[1] + 4);
   }
 }
 
@@ -1492,13 +1560,13 @@ function renderTracerResults() {
   var badgeClass = fit.r2 >= 0.9 ? 'badge-good' : (fit.r2 >= 0.7 ? 'badge-mid' : 'badge-poor');
   wrap.innerHTML =
     '<div class="row">' +
-    '<div><div style="font-size:11px;color:var(--text3);">Bmax</div><div style="font-family:var(--mono);font-size:18px;">' + fit.params[0].toPrecision(4) + '</div></div>' +
-    '<div><div style="font-size:11px;color:var(--text3);">Kd</div><div style="font-family:var(--mono);font-size:18px;">' + fit.params[1].toPrecision(4) + '</div></div>' +
+    '<div><div style="font-size:11px;color:var(--text3);">Bmax (mBU)</div><div style="font-family:var(--mono);font-size:18px;">' + fit.params[0].toPrecision(4) + '</div></div>' +
+    '<div><div style="font-size:11px;color:var(--text3);">Kd (nM)</div><div style="font-family:var(--mono);font-size:18px;">' + fit.params[1].toPrecision(4) + '</div></div>' +
     '<div><span class="badge ' + badgeClass + '">R² = ' + fit.r2.toFixed(3) + '</span></div>' +
     '</div>' +
     '<div style="margin-top:10px;">' +
-    '<label style="font-size:11px;color:var(--text3);">Suggested working tracer concentration (' + (TRACER_WORKING_FRACTION * 100) + '% of Bmax)</label>' +
-    '<input type="number" step="any" id="tracer-working-conc" value="' + lastTracerFitResult.workingConc.toPrecision(4) + '" style="display:block;margin-top:4px;">' +
+    '<label style="font-size:11px;color:var(--text3);">Working tracer concentration (nM) — Kd = 50% of Bmax gives IC50 ≤ 2&times;Ki (Cheng&ndash;Prusoff). Raise if signal is too low, lower for better competition window.</label>' +
+    '<input type="number" step="any" id="tracer-working-conc" value="' + lastTracerFitResult.workingConc.toPrecision(4) + '" style="display:block;margin-top:4px;" oninput="renderDoseResults()">' +
     '</div>';
 }
 
@@ -1506,48 +1574,100 @@ function drawTracerChart() {
   if (!lastTracerFitResult) return;
   var canvas = document.getElementById('tracer-canvas');
   var ctx = canvas.getContext('2d');
-  var w = canvas.width, h = canvas.height;
+  var dpr = window.devicePixelRatio || 1;
+  var cssW = canvas.offsetWidth || 600, cssH = canvas.offsetHeight || 320;
+  canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+  ctx.scale(dpr, dpr);
+  var w = cssW, h = cssH;
   ctx.clearRect(0, 0, w, h);
-  var pad = 40;
+  var padL = 62, padR = 20, padT = 18, padB = 50;
+
   var pairs = lastTracerFitResult.pairs;
   var xs = pairs.map(function(p){ return p.conc; });
   var ys = pairs.map(function(p){ return p.signal; });
   var xMin = 0, xMax = Math.max.apply(null, xs);
   var yMin = 0, yMax = Math.max.apply(null, ys);
-  var yPad = (yMax - yMin) * 0.15 || 10;
+  var yPad = (yMax - yMin) * 0.18 || 10;
   yMax += yPad;
 
   function toPx(x, y) {
     return [
-      pad + (x - xMin) / (xMax - xMin) * (w - 2 * pad),
-      h - pad - (y - yMin) / (yMax - yMin) * (h - 2 * pad)
+      padL + (x - xMin) / (xMax - xMin) * (w - padL - padR),
+      h - padB - (y - yMin) / (yMax - yMin) * (h - padT - padB)
     ];
   }
 
   var textColor = getComputedStyle(document.documentElement).getPropertyValue('--text2').trim();
+  var text3Color = getComputedStyle(document.documentElement).getPropertyValue('--text3').trim();
   var accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
+  // axes
   ctx.strokeStyle = textColor;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(pad, h - pad);
-  ctx.lineTo(w - pad, h - pad);
-  ctx.moveTo(pad, pad);
-  ctx.lineTo(pad, h - pad);
+  ctx.moveTo(padL, h - padB);
+  ctx.lineTo(w - padR, h - padB);
+  ctx.moveTo(padL, padT);
+  ctx.lineTo(padL, h - padB);
   ctx.stroke();
 
+  // tick marks + labels
+  ctx.fillStyle = text3Color;
+  ctx.font = '10px IBM Plex Sans, sans-serif';
+  ctx.textAlign = 'center';
+  var xTicks = 5;
+  for(var ti = 0; ti <= xTicks; ti++){
+    var tx = xMin + (xMax - xMin) * ti / xTicks;
+    var tpx = toPx(tx, yMin);
+    ctx.beginPath(); ctx.moveTo(tpx[0], h - padB); ctx.lineTo(tpx[0], h - padB + 4); ctx.stroke();
+    ctx.fillText(tx.toFixed(0), tpx[0], h - padB + 14);
+  }
+  ctx.textAlign = 'right';
+  var yTicks = 4;
+  for(var ti2 = 0; ti2 <= yTicks; ti2++){
+    var ty = yMin + (yMax - yMin) * ti2 / yTicks;
+    var tpy = toPx(xMin, ty);
+    ctx.beginPath(); ctx.moveTo(padL, tpy[1]); ctx.lineTo(padL - 4, tpy[1]); ctx.stroke();
+    ctx.fillText(ty.toFixed(0), padL - 7, tpy[1] + 3);
+  }
+
+  // axis labels
+  ctx.fillStyle = textColor;
+  ctx.font = '11px IBM Plex Sans, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('[Tracer] (nM)', padL + (w - padL - padR) / 2, h - 4);
+  ctx.save();
+  ctx.translate(12, padT + (h - padT - padB) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('mBU', 0, 0);
+  ctx.restore();
+
+  // fit curve
   ctx.strokeStyle = accentColor;
   ctx.lineWidth = 2;
   ctx.beginPath();
   var fit = lastTracerFitResult.fit;
-  for (var i = 0; i <= 100; i++) {
-    var xi = xMin + (xMax - xMin) * i / 100;
+  for (var i = 0; i <= 200; i++) {
+    var xi = xMin + (xMax - xMin) * i / 200;
     var yi = _oneSiteVal(xi, fit.params[0], fit.params[1]);
     var px = toPx(xi, yi);
     if (i === 0) ctx.moveTo(px[0], px[1]); else ctx.lineTo(px[0], px[1]);
   }
   ctx.stroke();
 
+  // Kd annotation line
+  var kd = fit.params[1];
+  if (kd > xMin && kd < xMax) {
+    var kdPx = toPx(kd, _oneSiteVal(kd, fit.params[0], kd));
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = text3Color; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(kdPx[0], padT); ctx.lineTo(kdPx[0], h - padB); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = text3Color; ctx.font = '10px IBM Plex Sans, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Kd', kdPx[0] + 3, padT + 11);
+  }
+
+  // data points
   ctx.fillStyle = accentColor;
   pairs.forEach(function(p) {
     var px = toPx(p.conc, p.signal);
@@ -1598,7 +1718,8 @@ function renderReport() {
   html += row('Fitting method', 'Levenberg&ndash;Marquardt, multi-start, best R&sup2; wins, up to 1000 iterations');
   if (state.assayMode === 'displacement') {
     html += row('Tracer titration model', '<code style="font-family:var(--mono);font-size:11px;">signal = Bmax &times; [tracer] / (Kd + [tracer])</code> <span style="color:var(--text3)">(one-site binding, not a 4PL)</span>');
-    html += row('Working concentration suggestion', (TRACER_WORKING_FRACTION * 100) + '% of Bmax &rArr; c = Kd &times; f / (1&minus;f), overridable');
+    html += row('Working concentration suggestion', (TRACER_WORKING_FRACTION * 100) + '% of Bmax &rArr; c = Kd &times; f / (1&minus;f) = 1&times;Kd (overridable). At [T] = Kd, IC50 = 2&times;Ki.');
+    html += row('Ki (Cheng&ndash;Prusoff)', '<code style="font-family:var(--mono);font-size:11px;">Ki = IC50 / (1 + [T] / Kd)</code>');
   }
 
   html += sec('Results');
@@ -1618,16 +1739,26 @@ function renderReport() {
     html += row('Endpoint/QC', '<span style="color:var(--text3)">Not yet computed</span>');
   }
   if (lastFitResult) {
-    html += row('Dose-Response', 'IC50/EC50 = ' + Math.pow(10, lastFitResult.fit.params[1]).toPrecision(4) + ' &middot; R&sup2; = ' + lastFitResult.fit.r2.toFixed(3));
+    var ic50 = Math.pow(10, lastFitResult.fit.params[1]);
+    html += row('Dose-Response', 'IC50/EC50 = ' + ic50.toPrecision(4) + ' nM &middot; Hill = ' + lastFitResult.fit.params[2].toFixed(2) + ' &middot; R&sup2; = ' + lastFitResult.fit.r2.toFixed(3));
+    if (state.assayMode === 'displacement' && lastTracerFitResult) {
+      var rKd = lastTracerFitResult.fit.params[1];
+      var rTracerInput = document.getElementById('tracer-working-conc');
+      var rTracer = rTracerInput ? parseFloat(rTracerInput.value) : lastTracerFitResult.workingConc;
+      if (!isNaN(rTracer) && rTracer > 0 && rKd > 0) {
+        var rKi = ic50 / (1 + rTracer / rKd);
+        html += row('Ki (Cheng&ndash;Prusoff)', rKi.toPrecision(4) + ' nM <span style="color:var(--text3)">[T] = ' + rTracer.toPrecision(3) + ' nM, Kd = ' + rKd.toPrecision(3) + ' nM</span>');
+      }
+    }
   } else {
     html += row('Dose-Response', '<span style="color:var(--text3)">Not yet computed</span>');
   }
   if (state.assayMode === 'displacement') {
     if (lastTracerFitResult) {
       html += row('Tracer Titration', 'Bmax = ' + lastTracerFitResult.fit.params[0].toPrecision(4) +
-        ' &middot; Kd = ' + lastTracerFitResult.fit.params[1].toPrecision(4) +
-        ' &middot; R&sup2; = ' + lastTracerFitResult.fit.r2.toFixed(3) +
-        ' &middot; Suggested working conc = ' + lastTracerFitResult.workingConc.toPrecision(4));
+        ' mBU &middot; Kd = ' + lastTracerFitResult.fit.params[1].toPrecision(4) +
+        ' nM &middot; R&sup2; = ' + lastTracerFitResult.fit.r2.toFixed(3) +
+        ' &middot; Suggested working conc = ' + lastTracerFitResult.workingConc.toPrecision(4) + ' nM');
     } else {
       html += row('Tracer Titration', '<span style="color:var(--text3)">Not yet computed</span>');
     }
@@ -1697,12 +1828,30 @@ function _buildResultsAoa() {
     rows.push(['TRACER TITRATION']);
     if (lastTracerFitResult) {
       var tfit = lastTracerFitResult.fit;
-      rows.push(['Bmax', tfit.params[0]]);
+      rows.push(['Bmax (mBU)', tfit.params[0]]);
       rows.push(['Kd (nM)', tfit.params[1]]);
       rows.push(['R2', tfit.r2]);
       rows.push(['Suggested working concentration (nM)', lastTracerFitResult.workingConc]);
     } else {
       rows.push(['Not yet computed']);
+    }
+    rows.push([]);
+    rows.push(['KI (CHENG-PRUSOFF)']);
+    if (lastFitResult && lastTracerFitResult) {
+      var kiKd = lastTracerFitResult.fit.params[1];
+      var kiInput = document.getElementById('tracer-working-conc');
+      var kiTracer = kiInput ? parseFloat(kiInput.value) : lastTracerFitResult.workingConc;
+      if (!isNaN(kiTracer) && kiTracer > 0 && kiKd > 0) {
+        var kiVal = Math.pow(10, lastFitResult.fit.params[1]) / (1 + kiTracer / kiKd);
+        rows.push(['Ki (nM)', kiVal]);
+        rows.push(['Tracer concentration used (nM)', kiTracer]);
+        rows.push(['Kd,tracer (nM)', kiKd]);
+        rows.push(['Formula', 'Ki = IC50 / (1 + [T]/Kd)']);
+      } else {
+        rows.push(['Ki', 'Set a tracer concentration in the Tracer Titration tab first']);
+      }
+    } else {
+      rows.push(['Ki', 'Compute both Dose-Response and Tracer Titration first']);
     }
   }
   return rows;
@@ -1759,7 +1908,12 @@ function _buildAssayProtocolAoa() {
     rows.push([]);
     rows.push(['--- TRACER TITRATION ---']);
     rows.push(['Model', 'signal = Bmax * [tracer] / (Kd + [tracer])  (one-site binding)']);
-    rows.push(['Working concentration suggestion', (TRACER_WORKING_FRACTION * 100) + '% of Bmax => c = Kd * f / (1-f), overridable']);
+    rows.push(['Working concentration suggestion', (TRACER_WORKING_FRACTION * 100) + '% of Bmax = 1*Kd => c = Kd*f/(1-f), overridable']);
+    rows.push(['Rationale', 'At [T]=Kd, IC50 = 2*Ki (Cheng-Prusoff). EUbOPEN protocol recommends [T] <= Kd.']);
+    rows.push([]);
+    rows.push(['--- KI (CHENG-PRUSOFF) ---']);
+    rows.push(['Formula', 'Ki = IC50 / (1 + [T] / Kd,tracer)']);
+    rows.push(['Reference', 'Cheng Y, Prusoff WH (1973) Biochem Pharmacol 22:3099-3108']);
   }
   return rows;
 }
@@ -1768,8 +1922,8 @@ function _buildPrismAoa() {
   var rows = [];
   if (lastFitResult) {
     rows.push(['DOSE-RESPONSE (paste X/Y into Prism)']);
-    rows.push(['Log10[Compound] (nM)', 'Corrected mBU']);
-    lastFitResult.points.forEach(function(p){ rows.push([p.logConc, p.corrected]); });
+    rows.push(['Log10[Compound] (nM)', 'Corrected mBU', 'SD']);
+    lastFitResult.points.forEach(function(p){ rows.push([p.logConc, p.corrected, p.sd || '']); });
     if (lastFitResult.dmsoPoint) {
       rows.push([]);
       rows.push(['DMSO reference (not included in fit)']);
