@@ -105,6 +105,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 
 .plate-canvas-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;display:inline-block;}
 #plate-canvas-main{display:block;cursor:crosshair;}
+#plate-canvas-main:focus{outline:none;}
 #rubber-band{position:fixed;border:1.5px dashed var(--accent);background:rgba(0,121,185,.06);pointer-events:none;display:none;z-index:1000;}
 
 .guide-panel{flex:1;overflow:auto;padding:24px 28px;}
@@ -508,7 +509,19 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
           <li><strong>Click</strong> a well to select it. <strong>Ctrl+click</strong> to toggle individual wells. <strong>Shift+click</strong> to extend selection as a rectangular range.</li>
           <li><strong>Click &amp; drag</strong> anywhere on the plate to rubber-band select a region.</li>
           <li>Click <strong>row letters</strong> or <strong>column numbers</strong> on the canvas edges to select entire rows or columns.</li>
-          <li>Use <strong>Select All</strong> in the selection toolbar to select all wells.</li>
+          <li>Use <strong>Select All</strong> in the selection toolbar, or <strong>Ctrl+A</strong>, to select all wells.</li>
+        </ul>
+      </div>
+      <div class="guide-section">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M4 14h2M8 14h2M12 14h2M16 14h4"/></svg>Keyboard shortcuts</h3>
+        <ul>
+          <li><strong>Arrow keys</strong> — move the active well one step; the white inner ring marks it.</li>
+          <li><strong>Shift+Arrow</strong> — extend the selection rectangle (like Excel).</li>
+          <li><strong>Delete / Backspace</strong> — clear the type from all selected wells.</li>
+          <li><strong>Enter</strong> — move active well down; <strong>Shift+Enter</strong> moves up.</li>
+          <li><strong>Tab</strong> — move active well right; <strong>Shift+Tab</strong> moves left.</li>
+          <li><strong>Ctrl+A</strong> — select all wells.</li>
+          <li><strong>Escape</strong> — deselect all wells.</li>
         </ul>
       </div>
       <div class="guide-section">
@@ -1193,6 +1206,8 @@ let activeTypeId = 'treat';
 let wellState = {};
 let selection = new Set();
 let lastClickedWell = null;
+let activeWell = null;
+let selectionAnchor = null;
 let customTypes = [];
 var rowAnnotations = {}, colAnnotations = {};
 var pdBrackets = [];
@@ -1205,6 +1220,38 @@ function typeById(id) { return allTypes().find(t => t.id === id); }
 function wellRowCol(id) {
   const m = id.match(/^([A-P])(\d+)$/);
   return m ? {row: m[1], col: parseInt(m[2])} : null;
+}
+function wellIndices(id) {
+  const rc = wellRowCol(id);
+  if (!rc) return null;
+  return {ri: ROWS_ALL.indexOf(rc.row), ci: rc.col - 1};
+}
+function moveActiveWell(dri, dci, shiftKey) {
+  const fmt = FORMATS[currentFormat];
+  if (!activeWell) {
+    activeWell = selection.size ? Array.from(selection)[0] : (ROWS_ALL[0] + '1');
+    selectionAnchor = activeWell;
+  }
+  const idx = wellIndices(activeWell);
+  if (!idx) return;
+  const newRi = Math.max(0, Math.min(fmt.rows - 1, idx.ri + dri));
+  const newCi = Math.max(0, Math.min(fmt.cols - 1, idx.ci + dci));
+  const newId = ROWS_ALL[newRi] + (newCi + 1);
+  activeWell = newId;
+  if (shiftKey) {
+    const anc = wellIndices(selectionAnchor) || idx;
+    selection.clear();
+    const r1 = Math.min(anc.ri, newRi), r2 = Math.max(anc.ri, newRi);
+    const c1 = Math.min(anc.ci, newCi), c2 = Math.max(anc.ci, newCi);
+    for (let ri = r1; ri <= r2; ri++)
+      for (let ci = c1; ci <= c2; ci++)
+        selection.add(ROWS_ALL[ri] + (ci + 1));
+  } else {
+    selectionAnchor = newId; lastClickedWell = newId;
+    selection.clear(); selection.add(newId);
+  }
+  const canvas = document.getElementById('plate-canvas-main');
+  drawPlateCanvas(canvas); updateSelToolbar();
 }
 
 // ─── Top bar ──────────────────────────────────────────────────────────────────
@@ -1306,7 +1353,7 @@ function confirmFmtChange() { var f = _pendingFormat; hideFmtModal(); if (f) _do
 
 function _doSetFormat(f) {
   currentFormat = f;
-  wellState = {}; selection.clear(); lastClickedWell = null;
+  wellState = {}; selection.clear(); lastClickedWell = null; activeWell = null; selectionAnchor = null;
   _userScaledManually = false;
   userScale = 1.0;
   var sl = document.getElementById('well-size-slider');
@@ -1501,6 +1548,17 @@ function drawPlateCanvas(canvas, opts) {
         if (sel) {
           ctx.strokeStyle = accentColor; ctx.lineWidth = 2.5;
           ctx.beginPath(); ctx.arc(wx + wellPx/2, wy + wellPx/2, wellPx/2 - 1.5, 0, 2*Math.PI); ctx.stroke();
+        }
+      }
+
+      if (wid === activeWell) {
+        ctx.globalAlpha = 1.0;
+        if (is384) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.88)'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.roundRect(wx + 3, wy + 3, Math.max(2, wellPx - 6), Math.max(2, wellPx - 6), 1); ctx.stroke();
+        } else {
+          ctx.strokeStyle = 'rgba(255,255,255,0.88)'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(wx + wellPx/2, wy + wellPx/2, Math.max(2, wellPx/2 - 4.5), 0, 2*Math.PI); ctx.stroke();
         }
       }
 
@@ -1763,6 +1821,8 @@ function spawnRipple(clientX, clientY, color) {
 }
 
 function wireCanvasEvents(canvas) {
+  canvas.tabIndex = 0;
+  canvas.style.outline = 'none';
   let down = false, downPos = null, downWell = null, dragMode = null, moved = false, rbStart = null;
   if (!_pdRippleCont) {
     _pdRippleCont = document.createElement('div');
@@ -1773,6 +1833,7 @@ function wireCanvasEvents(canvas) {
 
   canvas.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
+    canvas.focus();
     down = true; moved = false;
     downPos = {x: e.clientX, y: e.clientY};
     const zone = getCanvasZone(canvas, e);
@@ -1894,6 +1955,48 @@ function wireCanvasEvents(canvas) {
     updateSelToolbar(); drawPlateCanvas(canvas); renderLegend();
     e.preventDefault();
   }, {passive: false});
+
+  canvas.addEventListener('keydown', e => {
+    const panel = document.getElementById('panel-designer');
+    if (!panel || !panel.classList.contains('active')) return;
+    const fmt = FORMATS[currentFormat];
+
+    if (e.key === 'Escape') {
+      selection.clear(); activeWell = null; selectionAnchor = null; lastClickedWell = null;
+      drawPlateCanvas(canvas); updateSelToolbar(); renderLegend();
+      e.preventDefault(); return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+      selectAll();
+      activeWell = ROWS_ALL[0] + '1'; selectionAnchor = activeWell;
+      drawPlateCanvas(canvas);
+      e.preventDefault(); return;
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (selection.size) { clearSelectionType(); e.preventDefault(); }
+      return;
+    }
+    const arrowMap = {ArrowUp:[-1,0], ArrowDown:[1,0], ArrowLeft:[0,-1], ArrowRight:[0,1]};
+    if (arrowMap[e.key]) {
+      const [dri, dci] = arrowMap[e.key];
+      if (!activeWell && !selection.size) {
+        activeWell = ROWS_ALL[0] + '1'; selectionAnchor = activeWell;
+        selection.add(activeWell); lastClickedWell = activeWell;
+        drawPlateCanvas(canvas); updateSelToolbar();
+      } else {
+        moveActiveWell(dri, dci, e.shiftKey);
+      }
+      e.preventDefault(); return;
+    }
+    if (e.key === 'Enter') {
+      moveActiveWell(e.shiftKey ? -1 : 1, 0, false);
+      e.preventDefault(); return;
+    }
+    if (e.key === 'Tab') {
+      moveActiveWell(0, e.shiftKey ? -1 : 1, false);
+      e.preventDefault(); return;
+    }
+  });
 }
 
 function showRubberBand(start, e) {
@@ -1933,25 +2036,26 @@ function selectAll() {
   const fmt = FORMATS[currentFormat];
   selection.clear();
   ROWS_ALL.slice(0, fmt.rows).forEach(r => { for(let c=1;c<=fmt.cols;c++) selection.add(r+c); });
+  activeWell = ROWS_ALL[0] + '1'; selectionAnchor = activeWell; lastClickedWell = activeWell;
   drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
 }
 
 function selectRow(letter) {
   selection.clear();
   for (let c = 1; c <= FORMATS[currentFormat].cols; c++) selection.add(letter + c);
-  lastClickedWell = letter + '1';
+  lastClickedWell = letter + '1'; activeWell = letter + '1'; selectionAnchor = letter + '1';
   drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
 }
 
 function selectColumn(col) {
   selection.clear();
   ROWS_ALL.slice(0, FORMATS[currentFormat].rows).forEach(r => selection.add(r + col));
-  lastClickedWell = ROWS_ALL[0] + col;
+  lastClickedWell = ROWS_ALL[0] + col; activeWell = ROWS_ALL[0] + col; selectionAnchor = ROWS_ALL[0] + col;
   drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
 }
 
 function clearSelection() {
-  selection.clear();
+  selection.clear(); activeWell = null; selectionAnchor = null; lastClickedWell = null;
   drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
 }
 
@@ -1964,7 +2068,7 @@ function clearPlate() {
 function handleWellClick(wellId, e) {
   if (e.ctrlKey || e.metaKey) {
     if (selection.has(wellId)) selection.delete(wellId);
-    else { selection.add(wellId); lastClickedWell = wellId; }
+    else { selection.add(wellId); lastClickedWell = wellId; activeWell = wellId; selectionAnchor = wellId; }
   } else if (e.shiftKey && lastClickedWell) {
     const rc1 = wellRowCol(lastClickedWell), rc2 = wellRowCol(wellId);
     if (rc1 && rc2) {
@@ -1973,10 +2077,15 @@ function handleWellClick(wellId, e) {
       const r2 = Math.max(rls.indexOf(rc1.row), rls.indexOf(rc2.row));
       const c1 = Math.min(rc1.col, rc2.col), c2 = Math.max(rc1.col, rc2.col);
       for (let ri=r1; ri<=r2; ri++) for (let ci=c1; ci<=c2; ci++) selection.add(rls[ri]+ci);
+      activeWell = wellId;
     }
   } else {
-    if (selection.has(wellId)) { selection.delete(wellId); if (!selection.size) lastClickedWell = null; }
-    else { selection.clear(); selection.add(wellId); lastClickedWell = wellId; }
+    if (selection.has(wellId) && selection.size === 1) {
+      selection.delete(wellId); lastClickedWell = null; activeWell = null; selectionAnchor = null;
+    } else {
+      selection.clear(); selection.add(wellId);
+      lastClickedWell = wellId; activeWell = wellId; selectionAnchor = wellId;
+    }
   }
   drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
 }
