@@ -107,6 +107,10 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 #plate-canvas-main{display:block;cursor:crosshair;}
 #plate-canvas-main:focus{outline:none;}
 #rubber-band{position:fixed;border:1.5px dashed var(--accent);background:rgba(0,121,185,.06);pointer-events:none;display:none;z-index:1000;}
+#well-inline-edit{position:fixed;display:none;z-index:2000;border:2px solid var(--accent);border-radius:6px;background:var(--surface);color:var(--text);font-family:var(--sans);font-weight:600;text-align:center;outline:none;padding:2px 5px;box-shadow:0 4px 18px rgba(0,0,0,.22);min-width:44px;}
+.pd-shape-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);background:var(--surface2);cursor:pointer;padding:0;transition:background .13s,border-color .13s;}
+.pd-shape-btn:hover{background:var(--surface3);}
+.pd-shape-btn.active{border-color:var(--accent);background:rgba(0,121,185,.12);}
 
 .guide-panel{flex:1;overflow:auto;padding:24px 28px;}
 .guide-section{margin-bottom:20px;}
@@ -290,6 +294,10 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
     <button class="btn btn-sec pd-tb-btn" onclick="clearPlate()">Clear plate</button>
     <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;"><input type="checkbox" id="export-transparent" style="cursor:pointer;"> Transparent</label>
     <button class="btn btn-primary pd-tb-btn" onclick="exportPNG()" style="padding:5px 12px;">&#8595; Export PNG <span class="pinfo" data-tip="Exports at 600 DPI. Text auto-fits inside wells.">ⓘ</span></button>
+    <button id="btn-well-shape" class="pd-shape-btn" onclick="toggleWellShape()" title="Toggle circle / square wells">
+      <svg id="shape-icon-circle" viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="9" r="6.5"/></svg>
+      <svg id="shape-icon-square" viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" style="display:none;"><rect x="2.5" y="2.5" width="13" height="13" rx="3"/></svg>
+    </button>
     <span style="font-size:11px;color:var(--text2);margin-left:4px;">Size</span>
     <input type="range" id="well-size-slider" min="0.5" max="2.0" step="0.1" value="1.0" style="width:76px;height:28px;" oninput="setUserScale(parseFloat(this.value))">
   </div>
@@ -517,11 +525,10 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
         <ul>
           <li><strong>Arrow keys</strong> — move the active well one step; the white inner ring marks it.</li>
           <li><strong>Shift+Arrow</strong> — extend the selection rectangle (like Excel).</li>
+          <li><strong>Type any character</strong> — opens an inline editor on the active well; <strong>F2</strong> or <strong>Enter</strong> opens it preserving existing text; re-clicking an already-selected well also opens it.</li>
           <li><strong>Delete / Backspace</strong> — clear the type from all selected wells.</li>
-          <li><strong>Enter</strong> — move active well down; <strong>Shift+Enter</strong> moves up.</li>
-          <li><strong>Tab</strong> — move active well right; <strong>Shift+Tab</strong> moves left.</li>
-          <li><strong>Ctrl+A</strong> — select all wells.</li>
-          <li><strong>Escape</strong> — deselect all wells.</li>
+          <li><strong>Enter / Tab</strong> in the label editor — commit and advance down / right.</li>
+          <li><strong>Ctrl+A</strong> — select all wells. <strong>Escape</strong> — deselect all.</li>
         </ul>
       </div>
       <div class="guide-section">
@@ -552,6 +559,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 </div>
 
 <div id="rubber-band"></div>
+<input id="well-inline-edit" type="text" maxlength="40" autocomplete="off" spellcheck="false">
 <div id="pinfo-tip"></div>
 
 <script>
@@ -1208,6 +1216,8 @@ let selection = new Set();
 let lastClickedWell = null;
 let activeWell = null;
 let selectionAnchor = null;
+let wellShape = 'circle';
+let _inlineEditing = false, _inlineWell = null;
 let customTypes = [];
 var rowAnnotations = {}, colAnnotations = {};
 var pdBrackets = [];
@@ -1252,6 +1262,71 @@ function moveActiveWell(dri, dci, shiftKey) {
   }
   const canvas = document.getElementById('plate-canvas-main');
   drawPlateCanvas(canvas); updateSelToolbar();
+}
+
+// ─── Well shape toggle ────────────────────────────────────────────────────────
+function toggleWellShape() {
+  wellShape = wellShape === 'circle' ? 'square' : 'circle';
+  try { localStorage.setItem('pd_wellShape', wellShape); } catch(e) {}
+  var btn = document.getElementById('btn-well-shape');
+  if (btn) btn.classList.toggle('active', wellShape === 'square');
+  document.getElementById('shape-icon-circle').style.display = wellShape === 'square' ? 'none' : '';
+  document.getElementById('shape-icon-square').style.display = wellShape === 'square' ? '' : 'none';
+  drawPlateCanvas(document.getElementById('plate-canvas-main'));
+}
+
+// ─── Inline well label editor ─────────────────────────────────────────────────
+function openInlineEdit(wellId, initChar) {
+  if (!wellId) return;
+  const canvas = document.getElementById('plate-canvas-main');
+  if (!canvas || !canvas._meta) return;
+  const {labelW, labelH, wellPx, gap, ox, oy} = canvas._meta;
+  const idx = wellIndices(wellId);
+  if (!idx) return;
+  const rect = canvas.getBoundingClientRect();
+  const wellLeft = rect.left + ox + labelW + idx.ci * (wellPx + gap);
+  const wellTop  = rect.top  + oy + labelH + idx.ri * (wellPx + gap);
+  const inputW = Math.max(56, Math.min(wellPx, 180));
+  const inputH = Math.max(22, Math.min(wellPx * 0.55, 32));
+  const input = document.getElementById('well-inline-edit');
+  input.style.width  = inputW + 'px';
+  input.style.height = inputH + 'px';
+  input.style.fontSize = Math.max(10, Math.min(14, wellPx * 0.3)) + 'px';
+  input.style.left = (wellLeft + wellPx / 2 - inputW / 2) + 'px';
+  input.style.top  = (wellTop  + wellPx / 2 - inputH / 2) + 'px';
+  input.value = initChar !== undefined ? initChar : (wellState[wellId] ? wellState[wellId].label || '' : '');
+  input.style.display = 'block';
+  _inlineEditing = true; _inlineWell = wellId;
+  setTimeout(() => {
+    input.focus();
+    if (initChar !== undefined) { input.selectionStart = input.selectionEnd = 1; }
+    else { input.select(); }
+  }, 0);
+}
+function commitInlineEdit(moveDir) {
+  if (!_inlineEditing) return;
+  const input = document.getElementById('well-inline-edit');
+  const val = input.value;
+  if (_inlineWell) {
+    if (!wellState[_inlineWell]) wellState[_inlineWell] = {typeId: activeTypeId, label: ''};
+    wellState[_inlineWell].label = val;
+  }
+  input.style.display = 'none';
+  _inlineEditing = false; _inlineWell = null;
+  const canvas = document.getElementById('plate-canvas-main');
+  drawPlateCanvas(canvas); renderLegend(); updateSelToolbar();
+  canvas.focus();
+  if      (moveDir === 'down')  moveActiveWell(1,  0, false);
+  else if (moveDir === 'up')    moveActiveWell(-1, 0, false);
+  else if (moveDir === 'right') moveActiveWell(0,  1, false);
+  else if (moveDir === 'left')  moveActiveWell(0, -1, false);
+}
+function cancelInlineEdit() {
+  if (!_inlineEditing) return;
+  document.getElementById('well-inline-edit').style.display = 'none';
+  _inlineEditing = false; _inlineWell = null;
+  const canvas = document.getElementById('plate-canvas-main');
+  if (canvas) canvas.focus();
 }
 
 // ─── Top bar ──────────────────────────────────────────────────────────────────
@@ -1497,12 +1572,13 @@ function drawPlateCanvas(canvas, opts) {
   // Pre-scan all well labels to find the minimum font size → keeps all labels the same size.
   // Grouped (merged-label) wells are excluded since their label is rendered once, much larger,
   // across the whole group's bounding box — including them here would shrink every other label.
+  const _wellFont = '"IBM Plex Sans",sans-serif';
   let _consistentFontSz = Math.min(10, wellPx / 4);
   if (wellPx >= 16 && Object.keys(wellState).length) {
     const _maxW = wellPx * 0.82;
     for (const ws of Object.values(wellState)) {
       if (ws && ws.label && !ws.groupId) {
-        const f = fitTextInWell(ctx, ws.label, _maxW, wellPx * 0.8, _consistentFontSz);
+        const f = fitTextInWell(ctx, ws.label, _maxW, wellPx * 0.8, _consistentFontSz, _wellFont);
         if (f.size < _consistentFontSz) _consistentFontSz = f.size;
       }
     }
@@ -1535,12 +1611,15 @@ function drawPlateCanvas(canvas, opts) {
       // drawn afterward reads clearly over them instead of fighting busy per-well color.
       if (ws && ws.groupId) ctx.globalAlpha = 0.45;
 
-      if (is384) {
-        ctx.beginPath(); ctx.roundRect(wx, wy, wellPx, wellPx, 2); ctx.fill();
-        if (!t) { ctx.strokeStyle = emptyStroke; ctx.lineWidth = 0.5; ctx.stroke(); }
+      const useSquare = is384 || wellShape === 'square';
+      const sqR = is384 ? 2 : Math.max(2, wellPx * 0.18); // rounded corner radius for square mode
+      if (useSquare) {
+        ctx.beginPath(); ctx.roundRect(wx, wy, wellPx, wellPx, sqR); ctx.fill();
+        if (!t) { ctx.strokeStyle = emptyStroke; ctx.lineWidth = is384 ? 0.5 : 0.7; ctx.stroke(); }
         if (sel) {
-          ctx.strokeStyle = accentColor; ctx.lineWidth = 1.5;
-          ctx.beginPath(); ctx.roundRect(wx + 0.75, wy + 0.75, wellPx - 1.5, wellPx - 1.5, 2); ctx.stroke();
+          ctx.strokeStyle = accentColor; ctx.lineWidth = is384 ? 1.5 : 2.5;
+          const si = is384 ? 0.75 : 1.25;
+          ctx.beginPath(); ctx.roundRect(wx + si, wy + si, wellPx - si*2, wellPx - si*2, sqR); ctx.stroke();
         }
       } else {
         ctx.beginPath(); ctx.arc(wx + wellPx/2, wy + wellPx/2, wellPx/2, 0, 2*Math.PI); ctx.fill();
@@ -1553,18 +1632,18 @@ function drawPlateCanvas(canvas, opts) {
 
       if (wid === activeWell) {
         ctx.globalAlpha = 1.0;
-        if (is384) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.88)'; ctx.lineWidth = 1.5;
-          ctx.beginPath(); ctx.roundRect(wx + 3, wy + 3, Math.max(2, wellPx - 6), Math.max(2, wellPx - 6), 1); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.88)'; ctx.lineWidth = 2;
+        if (useSquare) {
+          const r2 = Math.max(1, sqR - 1);
+          ctx.beginPath(); ctx.roundRect(wx + 3, wy + 3, Math.max(2, wellPx - 6), Math.max(2, wellPx - 6), r2); ctx.stroke();
         } else {
-          ctx.strokeStyle = 'rgba(255,255,255,0.88)'; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.arc(wx + wellPx/2, wy + wellPx/2, Math.max(2, wellPx/2 - 4.5), 0, 2*Math.PI); ctx.stroke();
         }
       }
 
       if (ws && ws.label && wellPx >= 16 && !ws.groupId) {
         const maxW = wellPx * 0.82;
-        const fit = fitTextInWell(ctx, ws.label, maxW, wellPx * 0.8, _consistentFontSz);
+        const fit = fitTextInWell(ctx, ws.label, maxW, wellPx * 0.8, _consistentFontSz, _wellFont);
         ctx.fillStyle = 'rgba(255,255,255,0.92)';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         const lineH = fit.size * 1.2;
@@ -1728,7 +1807,7 @@ function getCanvasZone(canvas, e) {
   const row = Math.floor(fy / (wellPx + gap));
   if (col < 0 || col >= cols || row < 0 || row >= rows) return {type:'none'};
 
-  if (currentFormat !== '384') {
+  if (currentFormat !== '384' && wellShape !== 'square') {
     const cx = col * (wellPx + gap) + wellPx / 2;
     const cy = row * (wellPx + gap) + wellPx / 2;
     const dx = fx - cx, dy = fy - cy;
@@ -1959,7 +2038,6 @@ function wireCanvasEvents(canvas) {
   canvas.addEventListener('keydown', e => {
     const panel = document.getElementById('panel-designer');
     if (!panel || !panel.classList.contains('active')) return;
-    const fmt = FORMATS[currentFormat];
 
     if (e.key === 'Escape') {
       selection.clear(); activeWell = null; selectionAnchor = null; lastClickedWell = null;
@@ -1976,6 +2054,10 @@ function wireCanvasEvents(canvas) {
       if (selection.size) { clearSelectionType(); e.preventDefault(); }
       return;
     }
+    if (e.key === 'F2' && activeWell) {
+      openInlineEdit(activeWell);
+      e.preventDefault(); return;
+    }
     const arrowMap = {ArrowUp:[-1,0], ArrowDown:[1,0], ArrowLeft:[0,-1], ArrowRight:[0,1]};
     if (arrowMap[e.key]) {
       const [dri, dci] = arrowMap[e.key];
@@ -1989,11 +2071,17 @@ function wireCanvasEvents(canvas) {
       e.preventDefault(); return;
     }
     if (e.key === 'Enter') {
-      moveActiveWell(e.shiftKey ? -1 : 1, 0, false);
+      if (activeWell && selection.size === 1) { openInlineEdit(activeWell); }
+      else { moveActiveWell(e.shiftKey ? -1 : 1, 0, false); }
       e.preventDefault(); return;
     }
     if (e.key === 'Tab') {
       moveActiveWell(0, e.shiftKey ? -1 : 1, false);
+      e.preventDefault(); return;
+    }
+    // Any printable character starts inline editing (replaces label, like Excel)
+    if (activeWell && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      openInlineEdit(activeWell, e.key);
       e.preventDefault(); return;
     }
   });
@@ -2016,17 +2104,23 @@ function selectRubberBandWells(canvas, start, e, addToSel) {
   const x2 = (Math.max(start.x, e.clientX) - rect.left) / sc;
   const y2 = (Math.max(start.y, e.clientY) - rect.top) / sc;
   if (!addToSel) selection.clear();
+  const ox = canvas._meta.ox || 0, oy = canvas._meta.oy || 0;
   const r = wellPx / 2;
   const rls = ROWS_ALL.slice(0, rows);
+  const useSquare = currentFormat === '384' || wellShape === 'square';
   for (let ri = 0; ri < rows; ri++) {
     for (let ci = 0; ci < cols; ci++) {
-      const cx = labelW + ci * (wellPx + gap) + wellPx / 2;
-      const cy = labelH + ri * (wellPx + gap) + wellPx / 2;
-      // Circle-rect intersection: nearest point on rect to circle center
-      const nearX = Math.max(x1, Math.min(x2, cx));
-      const nearY = Math.max(y1, Math.min(y2, cy));
-      if (Math.sqrt((cx - nearX) ** 2 + (cy - nearY) ** 2) < r)
-        selection.add(rls[ri] + (ci + 1));
+      const wx = ox + labelW + ci * (wellPx + gap), wy = oy + labelH + ri * (wellPx + gap);
+      if (useSquare) {
+        if (x2 >= wx && x1 <= wx + wellPx && y2 >= wy && y1 <= wy + wellPx)
+          selection.add(rls[ri] + (ci + 1));
+      } else {
+        const cx = wx + wellPx / 2, cy = wy + wellPx / 2;
+        const nearX = Math.max(x1, Math.min(x2, cx));
+        const nearY = Math.max(y1, Math.min(y2, cy));
+        if (Math.sqrt((cx - nearX) ** 2 + (cy - nearY) ** 2) < r)
+          selection.add(rls[ri] + (ci + 1));
+      }
     }
   }
 }
@@ -2080,12 +2174,12 @@ function handleWellClick(wellId, e) {
       activeWell = wellId;
     }
   } else {
-    if (selection.has(wellId) && selection.size === 1) {
-      selection.delete(wellId); lastClickedWell = null; activeWell = null; selectionAnchor = null;
-    } else {
-      selection.clear(); selection.add(wellId);
-      lastClickedWell = wellId; activeWell = wellId; selectionAnchor = wellId;
+    if (wellId === activeWell && selection.size === 1) {
+      openInlineEdit(wellId);
+      return;
     }
+    selection.clear(); selection.add(wellId);
+    lastClickedWell = wellId; activeWell = wellId; selectionAnchor = wellId;
   }
   drawPlateCanvas(document.getElementById('plate-canvas-main')); updateSelToolbar();
 }
@@ -2553,8 +2647,42 @@ function ldHistLoadEntry(id) {
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+// Load saved well shape preference
+try { wellShape = localStorage.getItem('pd_wellShape') || 'circle'; } catch(e) {}
+
+// Wire inline editor events
+(function() {
+  var input = document.getElementById('well-inline-edit');
+  if (!input) return;
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter')     { commitInlineEdit(e.shiftKey ? 'up'   : 'down');  e.preventDefault(); }
+    else if (e.key === 'Tab')  { commitInlineEdit(e.shiftKey ? 'left' : 'right'); e.preventDefault(); }
+    else if (e.key === 'Escape') { cancelInlineEdit(); e.preventDefault(); }
+  });
+  input.addEventListener('blur', function() {
+    setTimeout(function() {
+      if (_inlineEditing && document.activeElement !== input) commitInlineEdit(null);
+    }, 80);
+  });
+  // Click outside commits
+  document.addEventListener('mousedown', function(e) {
+    if (_inlineEditing && e.target !== input) commitInlineEdit(null);
+  }, true);
+})();
+
 buildTopBar();
 buildPlateArea();
+// Apply saved shape preference to button after DOM is ready
+setTimeout(function() {
+  if (wellShape === 'square') {
+    var btn = document.getElementById('btn-well-shape');
+    if (btn) btn.classList.add('active');
+    var ci = document.getElementById('shape-icon-circle');
+    var si = document.getElementById('shape-icon-square');
+    if (ci) ci.style.display = 'none';
+    if (si) si.style.display = '';
+  }
+}, 0);
 // Defer auto-fit so layout is complete and clientWidth/Height are valid
 setTimeout(function() { if (!_userScaledManually) autoFitScale(); }, 0);
 let _resizeTimer = null;
