@@ -1534,7 +1534,7 @@ var BEANS_G    = { coffee:36 }; // 2 shots × 18g each
 var TEA_BAG_G  = 2;
 var ML_CUP     = { coffee:250, tea:250, matcha:200, hotchoc:200, milk:200 };
 var MILK_ML    = { coffee:100, tea:30, matcha:0, hotchoc:150, milk:200 };
-var CAFF_MG    = { coffee:80, tea:40, matcha:70, hotchoc:12, milk:0 };
+var CAFF_MG    = { coffee:120, tea:40, matcha:70, hotchoc:12, milk:0 };
 
 function renderFunStats(){
   if (!state) return;
@@ -1655,7 +1655,7 @@ function renderFunStats(){
   html += '</div>';
 
   html += '<div class="stats-assumptions"><b>Assumptions:</b> '
-    + 'Coffee = 25 cups/person/month · double shot (36g beans) · 250ml · 100ml milk · 80mg caffeine. '
+    + 'Coffee = 25 cups/person/month · double shot (36g beans) · 250ml · 100ml milk · 120mg caffeine. '
     + 'Tea = 30 cups/month · 1 bag (2g) · 250ml · 30ml milk · 40mg caffeine. '
     + 'Matcha = 20 cups/month · 200ml · 70mg caffeine. '
     + 'Hot choc = 15 cups/month · 200ml · 12mg caffeine. '
@@ -2070,7 +2070,7 @@ function renderExpenses(){
   var monthAll = expenses.filter(function(e){ return e.date && e.date.startsWith(String(currentYear)); });
 
   // Stats
-  var spent = monthExpenses.reduce(function(s,e){ return s + Math.abs(e.amount); }, 0) / 100;
+  var spent = monthExpenses.filter(function(e){ return e.amount < 0; }).reduce(function(s,e){ return s + Math.abs(e.amount); }, 0) / 100;
   var spentYear = monthAll.filter(function(e){ return e.amount < 0; }).reduce(function(s,e){ return s + Math.abs(e.amount); }, 0) / 100;
   var catTotals = {};
   monthExpenses.filter(function(e){ return e.amount < 0; }).forEach(function(e){
@@ -2188,6 +2188,7 @@ function importMonzoCSV(text){
   if(lines.length<2){ toast('CSV appears empty'); return; }
   if(!state.monzo) state.monzo={};
   if(!state.monzo.expenses) state.monzo.expenses=[];
+  if(!state.monzo.accountId) state.monzo.accountId='csv-import';
   var existing=state.monzo.expenses;
   var existingIds={};
   existing.forEach(function(e){ if(e.txid) existingIds[e.txid]=true; });
@@ -2358,9 +2359,10 @@ async function loadMonzoData(){
       // Store all transactions as expenses (both in and out)
       state.monzo.expenses = txns.map(function(t){
         return {
-          id: t.id,
+          txid: t.id,
           date: (t.created||'').slice(0,10),
           desc: t.description || (t.merchant && t.merchant.name) || 'Unknown',
+          name: (t.merchant && t.merchant.name) || '',
           amount: t.amount,
           category: t.amount < 0 ? categorizeExpense(t) : 'Incoming'
         };

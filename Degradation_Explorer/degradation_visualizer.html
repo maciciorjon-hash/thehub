@@ -88,7 +88,7 @@ body {
 .theme-switch input{opacity:0;width:0;height:0;}
 .theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:22px;transition:.2s;border:1px solid var(--border2);}
 .theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
-input:checked + .theme-slider{background:var(--accent2);}
+input:checked + .theme-slider{background:var(--col1);}
 input:checked + .theme-slider:before{transform:translateX(18px);background:var(--surface);}
 
 /* ── TABS ── */
@@ -526,10 +526,9 @@ function hasAnyData(c) {
 function quality(c) {
   const vals = TARGETS.map(t => c.targets[t] || {dc50:null,dmax:null}).filter(v => v.dc50 !== null);
   if (!vals.length) return 'none';
-  const b50 = Math.min(...vals.map(v => v.dc50));
-  const bDmax = Math.max(...vals.map(v => v.dmax || 0));
-  if (bDmax >= qThreshDmax && b50 <= qThreshDC50) return 'good';
-  if (bDmax >= 60 || b50 <= 100) return 'mid';
+  // Evaluate per-target so DC50 and Dmax are from the same measurement
+  if (vals.some(v => (v.dmax || 0) >= qThreshDmax && v.dc50 <= qThreshDC50)) return 'good';
+  if (vals.some(v => (v.dmax || 0) >= 60 || v.dc50 <= 100)) return 'mid';
   return 'poor';
 }
 function pointQuality(dc50_nM, dmax) {
@@ -613,6 +612,20 @@ function renderProteinToggles() {
   }).join('');
 }
 
+function updateDC50SliderMax() {
+  const allDC50 = RAW.flatMap(c => TARGETS.map(t => c.targets[t]?.dc50).filter(v => v !== null && v !== undefined));
+  if (!allDC50.length) return;
+  const maxDC50 = Math.ceil(Math.max(...allDC50) / 100) * 100;
+  ['dc50-max', 'scatter-dc50'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.max = maxDC50; el.value = maxDC50; }
+  });
+  const v = document.getElementById('dc50-val');
+  if (v) v.textContent = fmtDC50Display(maxDC50);
+  const sv = document.getElementById('scatter-dc50-val');
+  if (sv) sv.textContent = fmtDC50Display(maxDC50);
+}
+
 // ─── TABLE ────────────────────────────────────────────────────────────────────
 function getFiltered() {
   const search = document.getElementById('search').value.toLowerCase();
@@ -624,7 +637,8 @@ function getFiltered() {
     if (hideNoData && !hasAnyData(c)) return false;
     const q = quality(c);
     if (activePills.size > 0 && !activePills.has(q)) return false;
-    if (dmaxMin > 0 || dc50Max < 1000) {
+    const dc50SliderMax = +(document.getElementById('dc50-max').max || 1000);
+    if (dmaxMin > 0 || dc50Max < dc50SliderMax) {
       const passes = TARGETS.some(t => {
         const d = c.targets[t];
         return d && d.dc50 !== null && d.dc50 <= dc50Max && (d.dmax === null || d.dmax >= dmaxMin);
@@ -901,8 +915,8 @@ function updateChart() {
         ctx2.setLineDash([]);
         ctx2.font='bold 9px ui-sans-serif,system-ui,sans-serif';
         ctx2.fillStyle='rgba(0,200,150,0.65)';  ctx2.fillText('Hit',      L+5, T+13);
-        ctx2.fillStyle='rgba(224,140,48,0.65)'; ctx2.fillText('Weak',     xT+5,T+13);
-        ctx2.fillStyle='rgba(0,121,185,0.65)';  ctx2.fillText('Selective',L+5, B-6);
+        ctx2.fillStyle='rgba(224,140,48,0.65)'; ctx2.fillText('Active/Impotent', xT+5,T+13);
+        ctx2.fillStyle='rgba(0,121,185,0.65)';  ctx2.fillText('Partial',  L+5, B-6);
         ctx2.fillStyle='rgba(110,110,110,0.55)';ctx2.fillText('Inactive', xT+5,B-6);
         ctx2.restore();
       }},
@@ -923,9 +937,12 @@ function updateChart() {
               ctx2.moveTo(cx-cap,yB); ctx2.lineTo(cx+cap,yB);
               ctx2.stroke();
             }
-            if (d.dc50_sd && d.dc50_sd > 0) {
-              const xR = chart.scales.x.getPixelForValue(d.x + d.dc50_sd);
-              const xL = chart.scales.x.getPixelForValue(Math.max(0.01, d.x - d.dc50_sd));
+            if (d.dc50_sd && d.dc50_sd > 0 && dgScale !== 'p') {
+              // Convert SD bounds from raw nM to display units to avoid unit mismatch
+              const rawHi = d.dc50_raw + d.dc50_sd;
+              const rawLo = Math.max(0.01, d.dc50_raw - d.dc50_sd);
+              const xR = chart.scales.x.getPixelForValue(convertXfromNM(rawHi));
+              const xL = chart.scales.x.getPixelForValue(convertXfromNM(rawLo));
               ctx2.beginPath();
               ctx2.moveTo(xL,cy); ctx2.lineTo(xR,cy);
               ctx2.moveTo(xL,cy-cap); ctx2.lineTo(xL,cy+cap);
@@ -1259,7 +1276,7 @@ function loadImmediate(f) {
       if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
       selectedCompound = null;
       document.getElementById('detail-card').classList.remove('visible');
-      updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+      updateDC50SliderMax(); updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
       const metaStr = [meta.assay, meta.timePoint, meta.cellLine].filter(Boolean).join(' · ');
       preview.className = 'load-preview visible ok';
       preview.innerHTML = `✓ <strong>${compounds.length} compounds</strong> · ${ts.length} targets: ${ts.join(', ')}${metaStr ? ' · ' + metaStr : ''}`;
@@ -1539,7 +1556,7 @@ function loadTestData() {
     {compound:'DMSO',   targets:{'BRD4':{dc50:null,dc50_sd:null,dmax:null,dmax_sd:null},'BRD2':{dc50:null,dc50_sd:null,dmax:null,dmax_sd:null}}},
   ];
   RAW = compounds; TARGETS = ['BRD4','BRD2']; META = {assay:'HiBiT',cellLine:'HEK293T',timePoint:'6h'};
-  updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+  updateDC50SliderMax(); updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
   setTimeout(() => switchTab('table'), 100);
 }
 
@@ -1555,7 +1572,7 @@ async function tryAutoLoad() {
       const {compounds, targets: detectedTargets, meta} = parseXLSXBuf(new Uint8Array(await resp.arrayBuffer()));
       if (!compounds.length) continue;
       RAW = compounds; TARGETS = detectedTargets; META = meta;
-      updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+      updateDC50SliderMax(); updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
       return;
     } catch(e) { continue; }
   }
