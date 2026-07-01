@@ -375,6 +375,8 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
               <input id="qc-bot-val" type="number" step="1" value="0"></div>
             <div class="field"><label><input type="checkbox" id="qc-hill-en"> Fix Hill slope</label>
               <input id="qc-hill-val" type="number" step="0.1" value="1"></div>
+            <div class="field"><label><input type="checkbox" id="qc-bot-floor-en" checked> Bottom always more than</label>
+              <input id="qc-bot-floor-val" type="number" step="1" value="0"></div>
           </div>
         </div>
 
@@ -1212,6 +1214,7 @@ function runLuminaAnalysis(){
   var topEnabled = document.getElementById('qc-top-en').checked, topVal = parseFloat(document.getElementById('qc-top-val').value);
   var fixBot = document.getElementById('qc-bot-en').checked, botVal = parseFloat(document.getElementById('qc-bot-val').value);
   var fixHill = document.getElementById('qc-hill-en').checked, hillVal = parseFloat(document.getElementById('qc-hill-val').value);
+  var botFloorEnabled = document.getElementById('qc-bot-floor-en').checked, botFloorVal = parseFloat(document.getElementById('qc-bot-floor-val').value);
 
   // 1. Build row array from wellData
   var rows = [];
@@ -1289,8 +1292,9 @@ function runLuminaAnalysis(){
     var xMin = Math.min.apply(null, xArr), xMax = Math.max.apply(null, xArr);
     var yMin = Math.min.apply(null, yArr), yMax = Math.max.apply(null, yArr);
 
-    var pInit = [effFixBot ? effBotVal : yMin, (xMin+xMax)/2, gainMode?1:1, effFreeTop ? yMax : (topEnabled?topVal:yMax)];
-    var loBound = [effFixBot ? effBotVal : -Infinity, xMin-1, fixHill ? hillVal : 0.05, effFreeTop ? -Infinity : (topEnabled?topVal:-Infinity)];
+    var effBotFloor = (!effFixBot && botFloorEnabled) ? botFloorVal : -Infinity;
+    var pInit = [effFixBot ? effBotVal : Math.max(effBotFloor, yMin), (xMin+xMax)/2, gainMode?1:1, effFreeTop ? yMax : (topEnabled?topVal:yMax)];
+    var loBound = [effFixBot ? effBotVal : effBotFloor, xMin-1, fixHill ? hillVal : 0.05, effFreeTop ? -Infinity : (topEnabled?topVal:-Infinity)];
     var hiBound = [effFixBot ? effBotVal : Infinity, xMax+1, fixHill ? hillVal : 10, effFreeTop ? Infinity : (topEnabled?topVal:Infinity)];
 
     var fit;
@@ -1453,6 +1457,13 @@ function drawCurve(sid){
   datasets.push({ type:'scatter', label: isRaw?'Raw signal':'Data', data: dataPts, backgroundColor:'#5e87c5', borderColor: c.isDark?'#0d0f14':'#fff', borderWidth:1, pointRadius:4, pointHoverRadius:6, order:0 });
   var dataDatasetIdx = datasets.length - 1;
 
+  // Y axis is pinned to a 0-120 baseline (matches the typical 0-100% signal
+  // range with headroom) — bottom always 0, top only stretched past 120
+  // when the data/fit genuinely exceeds it (e.g. gain-of-signal assays).
+  var allY = yData.slice();
+  if (!isRaw) curvePts.forEach(function(p){ allY.push(p.y); });
+  var yAxisMax = Math.max(120, Math.max.apply(null, allY) * 1.05);
+
   if (curveChart) { curveChart.destroy(); curveChart = null; }
   curveChart = new Chart(canvas, {
     type: 'scatter',
@@ -1461,7 +1472,7 @@ function drawCurve(sid){
       responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
       scales: {
         x: { title: { display:true, text:'Log10[Concentration] (M)', color:c.text }, grid:{ color:c.grid }, ticks:{ color:c.text } },
-        y: { title: { display:true, text: isRaw ? 'Raw signal' : curveL.yAxis, color:c.text }, grid:{ color:c.grid }, ticks:{ color:c.text } }
+        y: { min: 0, max: yAxisMax, title: { display:true, text: isRaw ? 'Raw signal' : curveL.yAxis, color:c.text }, grid:{ color:c.grid }, ticks:{ color:c.text } }
       },
       plugins: {
         legend: { display: false },
@@ -1672,6 +1683,7 @@ function exportXLSX(){
     ['Min R²', document.getElementById('qc-r2-en').checked ? document.getElementById('qc-r2').value : 'disabled'],
     ['Max replicate SD', document.getElementById('qc-sd-en').checked ? document.getElementById('qc-sd').value : 'disabled'],
     ['Hook detection', document.getElementById('qc-hook-en').checked ? ('threshold '+document.getElementById('qc-hook').value) : 'disabled'],
+    ['Bottom floor', document.getElementById('qc-bot-floor-en').checked ? ('Bottom ≥ '+document.getElementById('qc-bot-floor-val').value) : 'disabled'],
     ['Fit model', '4-parameter logistic (Levenberg-Marquardt, 6-seed multi-start)'],
     ['Generated', new Date().toISOString()]
   ];
