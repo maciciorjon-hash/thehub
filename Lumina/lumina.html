@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lumina — Dose-Response Curve Fitting</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
@@ -120,6 +121,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)
 /* ── Canvas panels ───────────────────────────────── */
 canvas{max-width:100%;}
 .chart-wrap{position:relative;width:100%;height:420px;}
+.curve-stats{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-family:var(--mono);font-size:12px;}
+.curve-stats .cs-item{color:var(--text2);}
+.curve-stats .cs-item b{color:var(--text);font-weight:700;}
 #plate-canvas{width:100%;height:auto;}
 
 /* ── Results table ───────────────────────────────── */
@@ -319,8 +323,8 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
                   <option value="gain">Gain of signal</option>
                 </select>
               </div>
-              <button class="btn small" id="paint-ctrl-btn" onclick="togglePaintMode('ctrl')">⊞ Mark control wells (0)</button>
-              <button class="btn small" id="paint-zero-btn" onclick="togglePaintMode('zero')" style="display:none;">⊞ Mark 0% wells (0)</button>
+              <button class="btn" id="paint-ctrl-btn" onclick="togglePaintMode('ctrl')">⊞ Mark control wells (0)</button>
+              <button class="btn" id="paint-zero-btn" onclick="togglePaintMode('zero')" style="display:none;">⊞ Mark 0% wells (0)</button>
             </div>
             <div class="setup-hsub" style="margin-top:10px;">Clicking "Mark" closes this dialog so you can click wells directly on the plate grid — click the floating button that appears to come back here.</div>
           </div>
@@ -379,13 +383,15 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
           <div class="setup-group">
             <div class="setup-section-lbl">Output columns</div>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px 6px;">
-              <label class="csv-lbl"><input type="checkbox" id="col-top" checked onchange="renderResultsTable()"> <span>Top</span></label>
-              <label class="csv-lbl"><input type="checkbox" id="col-bottom" checked onchange="renderResultsTable()"> <span>Bottom</span></label>
-              <label class="csv-lbl"><input type="checkbox" id="col-hill" checked onchange="renderResultsTable()"> <span>Hill slope</span></label>
               <label class="csv-lbl"><input type="checkbox" id="col-dmax" checked onchange="renderResultsTable()"> <span>Dmax / Span / Emax</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-logec50" checked onchange="renderResultsTable()"> <span>LogEC50</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-pec50" checked onchange="renderResultsTable()"> <span>pEC50</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-hill" checked onchange="renderResultsTable()"> <span>Hill slope</span></label>
               <label class="csv-lbl"><input type="checkbox" id="col-r2" checked onchange="renderResultsTable()"> <span>R²</span></label>
-              <label class="csv-lbl"><input type="checkbox" id="col-maxsd" checked onchange="renderResultsTable()"> <span>Max replicate SD</span></label>
-              <label class="csv-lbl"><input type="checkbox" id="col-flags" checked onchange="renderResultsTable()"> <span>Flags</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-flag" checked onchange="renderResultsTable()"> <span>Flag</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-flagreason" checked onchange="renderResultsTable()"> <span>Reason</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-top" onchange="renderResultsTable()"> <span>Top</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-bottom" onchange="renderResultsTable()"> <span>Bottom</span></label>
             </div>
             <div class="setup-hsub" style="margin-top:10px;">Sample ID and the primary potency metric (DC50/IC50/EC50, depending on assay type) are always included. These toggles apply to the results table, Excel export, raw CSV, and TSV copy.</div>
           </div>
@@ -412,7 +418,8 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
     <div class="viz-pane active" id="viz-scatter">
       <div class="card">
         <h3 id="scatter-title">Fitted parameters — LogEC50 vs Hill slope</h3>
-        <div class="chart-wrap"><canvas id="scatter-canvas"></canvas></div>
+        <div id="scatter-empty" class="empty-state">Run an analysis to see fitted parameters here.</div>
+        <div class="chart-wrap" id="scatter-wrap"><canvas id="scatter-canvas"></canvas></div>
       </div>
     </div>
 
@@ -431,6 +438,7 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
             </div>
           </div>
           <div class="chart-wrap"><canvas id="curve-canvas"></canvas></div>
+          <div class="curve-stats" id="curve-stats"></div>
         </div>
       </div>
     </div>
@@ -1300,7 +1308,7 @@ function runLuminaAnalysis(){
     summary.push({
       sampleId: sid, n: sdata.length, top: top, bottom: bottom, hill: hill,
       logEC50: logEC50, ec50M: ec50M, r2: fit.r2, maxSD: maxSdAtConc,
-      flagR2: flagR2, flagSD: flagSD, isHook: isHook, flagged: flagged,
+      flagR2: flagR2, flagSD: flagSD, isHook: isHook, hookCount: hookConcs.size, flagged: flagged,
       xArr: sdata.map(function(r){ return r.log10Conc; }), yArr: sdata.map(function(r){ return r.measurement; }),
       yArrRaw: sdata.map(function(r){ return r.measurementRaw; })
     });
@@ -1328,52 +1336,62 @@ function runLuminaAnalysis(){
 }
 
 // ══════════════════════════════════════════════════════════════
-// Plots tab — logEC50 vs Hill scatter (canvas)
+// Plots tab — logEC50 vs Hill scatter, built on Chart.js (matching
+// Echo's own scatter-plot charting library/conventions instead of
+// hand-rolled canvas drawing).
 // ══════════════════════════════════════════════════════════════
+var scatterChart = null;
+function _themeColors(){
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return {
+    isDark: isDark,
+    text: isDark ? '#8b90a8' : '#5a5f7a',
+    grid: isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)',
+    surface2: isDark ? '#1c2030' : '#f0f1f5',
+    border2: isDark ? 'rgba(255,255,255,0.13)' : 'rgba(0,0,0,0.13)'
+  };
+}
 function drawScatter(){
   var canvas = document.getElementById('scatter-canvas');
-  var wrap = canvas.parentElement;
-  var w = wrap.clientWidth, h = wrap.clientHeight;
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width = w*dpr; canvas.height = h*dpr;
-  canvas.style.width = w+'px'; canvas.style.height = h+'px';
-  var ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
-  ctx.clearRect(0,0,w,h);
-  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  var textColor = isDark ? '#8b90a8' : '#5a5f7a';
-  var gridColor = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)';
-
-  if (!state.fitResults.length) {
-    ctx.fillStyle = textColor; ctx.font = '13px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('Run an analysis to see fitted parameters here.', w/2, h/2);
-    return;
-  }
-  var padL=55, padR=20, padT=20, padB=45;
-  var pw = w-padL-padR, ph = h-padT-padB;
-  var xs = state.fitResults.map(function(r){ return r.logEC50; });
-  var ys = state.fitResults.map(function(r){ return r.hill; });
-  var xMin = Math.min.apply(null,xs)-0.5, xMax = Math.max.apply(null,xs)+0.5;
-  var yMin = 0, yMax = Math.max.apply(null,ys)*1.2 + 0.5;
-  function px(x){ return padL + (x-xMin)/(xMax-xMin)*pw; }
-  function py(y){ return padT + ph - (y-yMin)/(yMax-yMin)*ph; }
-
-  ctx.strokeStyle = gridColor; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+ph); ctx.lineTo(padL+pw,padT+ph); ctx.stroke();
+  var c = _themeColors();
   var scatterL = assayFitLabels(state.assayType);
   document.getElementById('scatter-title').textContent = 'Fitted parameters — Log'+scatterL.ec50Name+' vs Hill slope';
-  ctx.fillStyle = textColor; ctx.font='11px sans-serif'; ctx.textAlign='center';
-  ctx.fillText('Log'+scatterL.ec50Name+' (M)', padL+pw/2, h-8);
-  ctx.save(); ctx.translate(14, padT+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText('Hill slope', 0,0); ctx.restore();
+  if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
+  document.getElementById('scatter-empty').style.display = state.fitResults.length ? 'none' : 'block';
+  document.getElementById('scatter-wrap').style.display = state.fitResults.length ? 'block' : 'none';
+  if (!state.fitResults.length) return;
 
-  state.fitResults.forEach(function(r){
-    ctx.beginPath();
-    ctx.fillStyle = r.flagged ? '#e0393e' : '#ffbf7b';
-    ctx.arc(px(r.logEC50), py(r.hill), 5, 0, Math.PI*2);
-    ctx.fill();
-    ctx.strokeStyle = isDark ? '#0d0f14' : '#fff'; ctx.lineWidth=1.2; ctx.stroke();
+  var points = state.fitResults.map(function(r){ return { x: r.logEC50, y: r.hill, label: r.sampleId, flagged: r.flagged }; });
+  scatterChart = new Chart(canvas, {
+    type: 'scatter',
+    data: { datasets: [{
+      label: 'Samples',
+      data: points,
+      pointBackgroundColor: points.map(function(p){ return p.flagged ? '#e0393e' : '#ffbf7b'; }),
+      pointBorderColor: c.isDark ? '#0d0f14' : '#fff',
+      pointBorderWidth: 1.2,
+      pointRadius: 5,
+      pointHoverRadius: 7
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
+      scales: {
+        x: { title: { display:true, text:'Log'+scatterL.ec50Name+' (M)', color:c.text }, grid:{ color:c.grid }, ticks:{ color:c.text } },
+        y: { title: { display:true, text:'Hill slope', color:c.text }, grid:{ color:c.grid }, ticks:{ color:c.text } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: c.surface2, titleColor: c.isDark?'#e8eaf2':'#1a1d2e', bodyColor: c.text, borderColor: c.border2, borderWidth: 1, padding: 9,
+          callbacks: {
+            title: function(items){ return items[0].raw.label; },
+            label: function(item){ return ['Log'+scatterL.ec50Name+': '+item.raw.x.toFixed(3), 'Hill: '+item.raw.y.toFixed(2)]; }
+          }
+        }
+      }
+    }
   });
 }
-window.addEventListener('resize', function(){ if(document.getElementById('viz-scatter').classList.contains('active')) drawScatter(); });
 
 // ══════════════════════════════════════════════════════════════
 // Curves tab
@@ -1391,65 +1409,64 @@ function selectSample(sid){
   document.getElementById('curve-title').textContent = 'Dose-response curve — ' + sid;
   drawCurve(sid);
 }
+var curveChart = null;
 function drawCurve(sid){
   var r = state.fitResults.find(function(x){ return x.sampleId===sid; });
   if (!r) return;
   var canvas = document.getElementById('curve-canvas');
-  var wrap = canvas.parentElement;
-  var w = wrap.clientWidth, h = wrap.clientHeight;
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width = w*dpr; canvas.height = h*dpr;
-  canvas.style.width = w+'px'; canvas.style.height = h+'px';
-  var ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
-  ctx.clearRect(0,0,w,h);
-  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  var textColor = isDark ? '#8b90a8' : '#5a5f7a';
-  var gridColor = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)';
-
+  var c = _themeColors();
   var curveL = assayFitLabels(state.assayType);
   var isRaw = state.curveView === 'raw';
   var yData = isRaw ? r.yArrRaw : r.yArr;
 
-  var padL=55, padR=20, padT=20, padB=45;
-  var pw = w-padL-padR, ph = h-padT-padB;
-  var xMin = Math.min.apply(null, r.xArr)-0.5, xMax = Math.max.apply(null, r.xArr)+0.5;
-  var yMin = Math.min.apply(null, yData.concat(isRaw?[]:[r.bottom]))*1.1, yMax = Math.max.apply(null, yData.concat(isRaw?[]:[r.top]))*1.1;
-  function px(x){ return padL + (x-xMin)/(xMax-xMin)*pw; }
-  function py(y){ return padT + ph - (y-yMin)/(yMax-yMin)*ph; }
-
-  ctx.strokeStyle = gridColor; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+ph); ctx.lineTo(padL+pw,padT+ph); ctx.stroke();
-  ctx.fillStyle = textColor; ctx.font='11px sans-serif'; ctx.textAlign='center';
-  ctx.fillText('Log10[Concentration] (M)', padL+pw/2, h-8);
-  ctx.save(); ctx.translate(14, padT+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText(isRaw ? 'Raw signal' : curveL.yAxis, 0,0); ctx.restore();
-
-  // fitted curve — always fit on normalized data; only drawn in the
-  // normalized view since it isn't meaningful on the raw signal scale.
+  var datasets = [];
   if (!isRaw) {
     var valFn = state.assayType === 'gain' ? _4plVal4_gain : _4plVal4;
-    ctx.beginPath();
-    for (var i=0; i<=100; i++) {
-      var x = xMin + (xMax-xMin)*i/100;
-      var y = valFn(x, r.bottom, r.logEC50, r.hill, r.top);
-      var cx = px(x), cy = py(y);
-      if (i===0) ctx.moveTo(cx,cy); else ctx.lineTo(cx,cy);
+    var xMin = Math.min.apply(null, r.xArr) - 0.3, xMax = Math.max.apply(null, r.xArr) + 0.3;
+    var curvePts = [];
+    for (var i = 0; i <= 100; i++) {
+      var x = xMin + (xMax - xMin) * i / 100;
+      curvePts.push({ x: x, y: valFn(x, r.bottom, r.logEC50, r.hill, r.top) });
     }
-    ctx.strokeStyle = '#ffbf7b'; ctx.lineWidth=2.2; ctx.stroke();
+    datasets.push({ type:'line', label:'4PL fit', data: curvePts, borderColor:'#ffbf7b', backgroundColor:'transparent', borderWidth:2.2, pointRadius:0, tension:0, fill:false, order:1 });
   }
+  var dataPts = r.xArr.map(function(x,i){ return { x:x, y:yData[i] }; });
+  datasets.push({ type:'scatter', label: isRaw?'Raw signal':'Data', data: dataPts, backgroundColor:'#5e87c5', borderColor: c.isDark?'#0d0f14':'#fff', borderWidth:1, pointRadius:4, pointHoverRadius:6, order:0 });
+  var dataDatasetIdx = datasets.length - 1;
 
-  // data points
-  r.xArr.forEach(function(x,i){
-    ctx.beginPath(); ctx.fillStyle = '#5e87c5';
-    ctx.arc(px(x), py(yData[i]), 4, 0, Math.PI*2); ctx.fill();
+  if (curveChart) { curveChart.destroy(); curveChart = null; }
+  curveChart = new Chart(canvas, {
+    type: 'scatter',
+    data: { datasets: datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
+      scales: {
+        x: { title: { display:true, text:'Log10[Concentration] (M)', color:c.text }, grid:{ color:c.grid }, ticks:{ color:c.text } },
+        y: { title: { display:true, text: isRaw ? 'Raw signal' : curveL.yAxis, color:c.text }, grid:{ color:c.grid }, ticks:{ color:c.text } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          filter: function(item){ return item.datasetIndex === dataDatasetIdx; },
+          backgroundColor: c.surface2, titleColor: c.isDark?'#e8eaf2':'#1a1d2e', bodyColor: c.text, borderColor: c.border2, borderWidth: 1, padding: 9,
+          callbacks: {
+            title: function(){ return sid; },
+            label: function(item){ return ['Log10[Conc]: '+item.raw.x.toFixed(3), (isRaw?'Raw: ':'Signal: ')+item.raw.y.toFixed(2)]; }
+          }
+        }
+      }
+    }
   });
 
-  // stats box
-  ctx.fillStyle = textColor; ctx.font='12px monospace'; ctx.textAlign='left';
-  var lines = [curveL.ec50Name+': '+fmtConc(r.ec50M), 'Hill: '+r.hill.toFixed(2), 'Top: '+r.top.toFixed(1), 'Bottom: '+r.bottom.toFixed(1), 'R²: '+r.r2.toFixed(3), 'n: '+r.n];
-  if (isRaw) lines.unshift('Fit performed on normalized data');
-  lines.forEach(function(l,i){ ctx.fillText(l, padL+pw-Math.max(130, ctx.measureText(l).width+4), padT+16+i*15); });
+  var statsEl = document.getElementById('curve-stats');
+  var items = [
+    [curveL.ec50Name, fmtConc(r.ec50M)], ['Hill', r.hill.toFixed(2)],
+    ['Top', r.top.toFixed(1)], ['Bottom', r.bottom.toFixed(1)],
+    ['R²', r.r2.toFixed(3)], ['n', r.n]
+  ];
+  if (isRaw) statsEl.innerHTML = '<span class="cs-item">Fit performed on normalized data</span>' + items.map(function(it){ return '<span class="cs-item">'+it[0]+': <b>'+it[1]+'</b></span>'; }).join('');
+  else statsEl.innerHTML = items.map(function(it){ return '<span class="cs-item">'+it[0]+': <b>'+it[1]+'</b></span>'; }).join('');
 }
-window.addEventListener('resize', function(){ if(document.getElementById('viz-curves').classList.contains('active') && state.selectedSample) drawCurve(state.selectedSample); });
 function setCurveView(mode){
   state.curveView = mode;
   document.querySelectorAll('#curve-view-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && mode==='norm') || (i===1 && mode==='raw')); });
@@ -1518,31 +1535,32 @@ window.addEventListener('resize', function(){ if(document.getElementById('viz-pl
 // checkboxes) — one source of truth for the results table, Excel
 // export, and TSV copy, mirroring Echo's csv-col-cb pattern.
 // ══════════════════════════════════════════════════════════════
+function _flagReason(r){
+  var f = [];
+  if (r.flagR2) f.push('R2=' + r.r2.toFixed(2));
+  if (r.flagSD) f.push('SD=' + r.maxSD.toFixed(1));
+  if (r.isHook) f.push('Hookx' + r.hookCount);
+  return f.join('; ');
+}
 function getResultColumns(){
   var L = assayFitLabels(state.assayType);
   function on(id){ var el = document.getElementById(id); return el ? el.checked : true; }
   var cols = [
     { th:'Sample', xh:'Sample_ID', get:function(r){ return r.sampleId; }, fmt:function(r){ return '<b>'+esc(r.sampleId)+'</b>'; } },
-    { th:'n', xh:'n', get:function(r){ return r.n; }, fmt:function(r){ return r.n; } }
+    { th:L.ec50Name+' (nM)', xh:L.ec50Col, get:function(r){ return +(r.ec50M*1e9).toFixed(1); }, fmt:function(r){ return (r.ec50M*1e9).toFixed(1); } }
   ];
+  if (L.hasDmax && on('col-dmax')) {
+    var dName = state.assayType==='gain' ? 'Emax' : L.dmaxName;
+    cols.push({ th:dName+' (%)', xh:dName+'_pct', get:function(r){ return Math.round(state.assayType==='gain' ? r.top : (100-r.bottom)); }, fmt:function(r){ return Math.round(state.assayType==='gain' ? r.top : (100-r.bottom)); } });
+  }
+  if (on('col-logec50')) cols.push({ th:'Log'+L.ec50Name+' (M)', xh:L.logCol, get:function(r){ return +r.logEC50.toFixed(3); }, fmt:function(r){ return r.logEC50.toFixed(3); } });
+  if (on('col-pec50')) cols.push({ th:'p'+L.ec50Name, xh:L.pCol, get:function(r){ return +(-r.logEC50).toFixed(3); }, fmt:function(r){ return (-r.logEC50).toFixed(3); } });
+  if (on('col-hill')) cols.push({ th:'Hill', xh:'HillSlope', get:function(r){ return +r.hill.toFixed(2); }, fmt:function(r){ return r.hill.toFixed(2); } });
+  if (on('col-r2')) cols.push({ th:'R²', xh:'R2', get:function(r){ return +r.r2.toFixed(3); }, fmt:function(r){ return r.r2.toFixed(3); }, cls:function(r){ return r.flagR2 ? 'flag-bad' : 'flag-ok'; } });
+  if (on('col-flag')) cols.push({ th:'Flag', xh:'Flag', get:function(r){ return r.flagged ? 'Yes' : 'No'; }, fmt:function(r){ return r.flagged ? '<span class="pill flag-bad">Yes</span>' : '<span class="pill flag-ok">No</span>'; } });
+  if (on('col-flagreason')) cols.push({ th:'Reason', xh:'Flag_Reason', get:function(r){ return _flagReason(r); }, fmt:function(r){ return '<span style="font-size:11px;color:var(--text3);">'+esc(_flagReason(r))+'</span>'; } });
   if (on('col-top')) cols.push({ th:'Top', xh:'Top', get:function(r){ return +r.top.toFixed(2); }, fmt:function(r){ return r.top.toFixed(1); } });
   if (on('col-bottom')) cols.push({ th:'Bottom', xh:'Bottom', get:function(r){ return +r.bottom.toFixed(2); }, fmt:function(r){ return r.bottom.toFixed(1); } });
-  if (on('col-hill')) cols.push({ th:'Hill', xh:'Hill_Slope', get:function(r){ return +r.hill.toFixed(3); }, fmt:function(r){ return r.hill.toFixed(2); } });
-  cols.push({ th:L.ec50Name, xh:L.ec50Col, get:function(r){ return +(r.ec50M*1e9).toFixed(3); }, fmt:function(r){ return fmtConc(r.ec50M); } });
-  if (L.hasDmax && on('col-dmax')) {
-    var dTh = state.assayType==='gain' ? 'Emax' : L.dmaxName+' (%)';
-    var dXh = state.assayType==='gain' ? 'Emax' : L.dmaxName+'_pct';
-    cols.push({ th:dTh, xh:dXh, get:function(r){ return +(state.assayType==='gain' ? r.top : (100-r.bottom)).toFixed(2); }, fmt:function(r){ return (state.assayType==='gain' ? r.top : (100-r.bottom)).toFixed(1); } });
-  }
-  if (on('col-r2')) cols.push({ th:'R²', xh:'R2', get:function(r){ return +r.r2.toFixed(4); }, fmt:function(r){ return r.r2.toFixed(3); }, cls:function(r){ return r.flagR2 ? 'flag-bad' : 'flag-ok'; } });
-  if (on('col-maxsd')) cols.push({ th:'Max SD', xh:'Max_Replicate_SD', get:function(r){ return +r.maxSD.toFixed(2); }, fmt:function(r){ return r.maxSD.toFixed(1); }, cls:function(r){ return r.flagSD ? 'flag-bad' : ''; } });
-  if (on('col-flags')) cols.push({ th:'Flags', xh:'Flags', get:function(r){
-      var f = []; if (r.flagR2) f.push('LowR2'); if (r.flagSD) f.push('HighSD'); if (r.isHook) f.push('Hook');
-      return f.join(';') || 'OK';
-    }, fmt:function(r){
-      var f = []; if (r.flagR2) f.push('Low R²'); if (r.flagSD) f.push('High SD'); if (r.isHook) f.push('Hook');
-      return f.length ? '<span class="pill flag-bad">'+f.join(', ')+'</span>' : '<span class="pill flag-ok">OK</span>';
-    } });
   return cols;
 }
 function renderResultsTable(){
@@ -1588,11 +1606,11 @@ function _buildLuminaPrismAOA(asFraction){
   var compRow = [''];
   compData.forEach(function(c){ compRow.push(c.id); for (var i=1;i<c.nReps;i++) compRow.push(''); });
   aoa.push(compRow);
-  var repRow = ['Concentration (M)'];
+  var repRow = ['Concentration (nM)'];
   compData.forEach(function(c){ for (var i=0;i<c.nReps;i++) repRow.push(c.nReps>1 ? 'Rep '+(i+1) : ''); });
   aoa.push(repRow);
   concKeys.forEach(function(ck){
-    var row = [parseFloat((Math.pow(10, parseFloat(ck))).toPrecision(6))];
+    var row = [parseFloat((Math.pow(10, parseFloat(ck)) * 1e9).toPrecision(6))];
     compData.forEach(function(c){
       var vals = c.byConc[ck] || [];
       for (var i=0;i<c.nReps;i++) row.push(vals[i] !== undefined ? (asFraction ? +(vals[i]/100).toFixed(6) : vals[i]) : '');
@@ -1639,7 +1657,7 @@ function exportXLSX(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawAoA), 'Raw Data');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildLuminaPrismAOA(false)), 'Prism Copy');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildLuminaPrismAOA(true)), 'Prism (Fraction)');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(protoAoA), 'Protocol');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(protoAoA), 'Data Analysis Protocol');
   XLSX.writeFile(wb, 'Lumina_Results_' + new Date().toISOString().slice(0,10) + '.xlsx');
 }
 function exportRawCSV(){
