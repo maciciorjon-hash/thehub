@@ -138,7 +138,8 @@ tr:hover td{background:var(--surface2);}
 .empty-state svg{width:44px;height:44px;stroke:var(--text3);margin-bottom:10px;}
 
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 18px;border-radius:8px;font-size:12.5px;box-shadow:var(--shadow-lg);z-index:200;opacity:0;pointer-events:none;transition:opacity .2s;}
-.toast.show{opacity:1;}
+.toast.show{opacity:1;pointer-events:auto;}
+.toast .toast-undo{margin-left:12px;color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;}
 
 .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:600;background:var(--surface3);color:var(--text2);}
 
@@ -526,10 +527,50 @@ window.addEventListener('message', function(e){
   if (e.data && e.data.theme) { document.documentElement.setAttribute('data-theme', e.data.theme); }
 });
 
+var _toastTimer = null;
 function toast(msg){
   var t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
-  setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+// Same toast, but with a clickable "Undo" action — used for destructive
+// actions (clear grid, remove compound, switch plate format) instead of a
+// blocking confirm() popup: the action happens immediately and silently,
+// and can be reverted for a few seconds afterward.
+function toastUndo(msg, undoFn){
+  var t = document.getElementById('toast');
+  t.innerHTML = esc(msg) + ' <span class="toast-undo" id="toast-undo-btn">Undo</span>';
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  document.getElementById('toast-undo-btn').onclick = function(){
+    clearTimeout(_toastTimer);
+    t.classList.remove('show');
+    undoFn();
+  };
+  _toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 6000);
+}
+// Snapshot/restore for undo — captures everything a destructive Layout-tab
+// action can touch (well data, controls, compounds, plate format).
+function _snapshotState(){
+  return {
+    format: state.format, rows: state.rows, cols: state.cols,
+    wellData: JSON.parse(JSON.stringify(state.wellData)),
+    ctrlWells: new Set(state.ctrlWells),
+    zeroCtrlWells: new Set(state.zeroCtrlWells),
+    compounds: JSON.parse(JSON.stringify(state.compounds))
+  };
+}
+function _restoreSnapshot(snap){
+  state.format = snap.format; state.rows = snap.rows; state.cols = snap.cols;
+  state.wellData = snap.wellData;
+  state.ctrlWells = snap.ctrlWells;
+  state.zeroCtrlWells = snap.zeroCtrlWells;
+  state.compounds = snap.compounds;
+  document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && state.format===96) || (i===1 && state.format===384)); });
+  updatePaintButtonLabels();
+  renderCompoundList();
+  renderGrid();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -740,12 +781,17 @@ function cancelEditCompound(){
 function removeCompound(id){
   var c = state.compounds.find(function(x){ return x.id === id; });
   if (!c) return;
+  var snap = _snapshotState();
   c.wells.forEach(function(pos){ if (state.wellData[pos]) { delete state.wellData[pos].sampleId; delete state.wellData[pos].conc; } });
   state.compounds = state.compounds.filter(function(x){ return x.id !== id; });
-  toast('"' + c.name + '" removed.');
   renderGrid();
   renderCompoundList();
   updateSetupSummary();
+  toastUndo('"' + c.name + '" removed.', function(){
+    _restoreSnapshot(snap);
+    updateSetupSummary();
+    toast('"' + c.name + '" restored.');
+  });
 }
 function renderCompoundList(){
   var wrap = document.getElementById('compound-list');
@@ -765,7 +811,8 @@ function renderCompoundList(){
 // ══════════════════════════════════════════════════════════════
 function setPlateFormat(fmt){
   if (fmt === state.format) return;
-  if (Object.keys(state.wellData).length && !confirm('Switching plate format clears the current grid data. Continue?')) return;
+  var hadData = Object.keys(state.wellData).length > 0;
+  var snap = hadData ? _snapshotState() : null;
   state.format = fmt;
   state.rows = fmt === 96 ? 8 : 16;
   state.cols = fmt === 96 ? 12 : 24;
@@ -778,6 +825,12 @@ function setPlateFormat(fmt){
   renderCompoundList();
   document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && fmt===96) || (i===1 && fmt===384)); });
   renderGrid();
+  if (hadData) {
+    toastUndo('Switched to ' + fmt + '-well — previous plate data cleared.', function(){
+      _restoreSnapshot(snap);
+      toast('Plate format and data restored.');
+    });
+  }
 }
 
 function wellPos(r, c){ return String.fromCharCode(65 + r) + (c + 1); }
@@ -907,7 +960,8 @@ function resetAnalysisOutputs(){
 }
 
 function clearGrid(){
-  if (!confirm('Clear all data in the plate grid (compounds, concentrations, signal, and control-well marks)?')) return;
+  if (!Object.keys(state.wellData).length && !state.compounds.length && !state.ctrlWells.size && !state.zeroCtrlWells.size) { toast('Grid is already empty.'); return; }
+  var snap = _snapshotState();
   state.wellData = {};
   state.ctrlWells = new Set();
   state.zeroCtrlWells = new Set();
@@ -917,6 +971,10 @@ function clearGrid(){
   updatePaintButtonLabels();
   renderCompoundList();
   renderGrid();
+  toastUndo('Grid cleared.', function(){
+    _restoreSnapshot(snap);
+    toast('Grid restored.');
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
