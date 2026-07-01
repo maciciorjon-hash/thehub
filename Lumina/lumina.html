@@ -563,6 +563,25 @@ function onAssayTypeChange(){
   document.getElementById('paint-zero-btn').style.display = (t === 'displacement') ? 'inline-block' : 'none';
   if (t !== 'displacement' && state.paintMode === 'zero') togglePaintMode('zero');
   updateSetupSummary();
+  updateFitConstraintAvailability(t);
+}
+// Grays out fit-constraint controls that the fitter silently ignores for the
+// current assay type, instead of leaving them interactive with no effect:
+// Gain-of-signal always fixes Bottom=0 internally, and hook-effect detection
+// is disabled for Gain/Displacement (see runLuminaAnalysis's disableHook).
+function updateFitConstraintAvailability(assayType){
+  var gainMode = assayType === 'gain';
+  ['qc-bot-en','qc-bot-val','qc-bot-floor-en','qc-bot-floor-val'].forEach(function(id){
+    var el = document.getElementById(id);
+    el.disabled = gainMode;
+    el.closest('.field').style.opacity = gainMode ? 0.45 : 1;
+  });
+  var hookDisabled = gainMode || assayType === 'displacement';
+  ['qc-hook-en','qc-hook'].forEach(function(id){
+    var el = document.getElementById(id);
+    el.disabled = hookDisabled;
+    el.closest('.field').style.opacity = hookDisabled ? 0.45 : 1;
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -754,6 +773,7 @@ function setPlateFormat(fmt){
   state.ctrlWells = new Set();
   state.zeroCtrlWells = new Set();
   state.compounds = [];
+  resetAnalysisOutputs();
   updatePaintButtonLabels();
   renderCompoundList();
   document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && fmt===96) || (i===1 && fmt===384)); });
@@ -797,25 +817,6 @@ function fmtConc(conc){
   var units = [['M',1],['mM',1e-3],['µM',1e-6],['nM',1e-9],['pM',1e-12]];
   for (var i=0;i<units.length;i++){ if (conc >= units[i][1]) return (conc/units[i][1]).toFixed(2).replace(/\.00$/,'') + units[i][0]; }
   return conc.toExponential(1) + 'M';
-}
-
-// ── Well-range parser (still used internally by the PHERAstar/GloMax well-ID math) ──
-function parseWellRange(str){
-  var set = new Set();
-  if (!str) return set;
-  str.split(',').forEach(function(part){
-    part = part.trim();
-    if (!part) return;
-    var m = part.match(/^([A-Za-z]+)(\d+)(?::([A-Za-z]+)(\d+))?$/);
-    if (!m) return;
-    var r1 = m[1].toUpperCase().charCodeAt(0) - 65, c1 = parseInt(m[2],10) - 1;
-    var r2 = m[3] ? m[3].toUpperCase().charCodeAt(0) - 65 : r1;
-    var c2 = m[4] ? parseInt(m[4],10) - 1 : c1;
-    for (var r = Math.min(r1,r2); r <= Math.max(r1,r2); r++)
-      for (var c = Math.min(c1,c2); c <= Math.max(c1,c2); c++)
-        set.add(wellPos(r, c));
-  });
-  return set;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -886,6 +887,25 @@ document.addEventListener('click', function(e){
   if (popup.style.display === 'block' && !popup.contains(e.target) && !e.target.closest('.well')) closeWellPopup();
 });
 
+// Clears any previous analysis output (Results table, Scatter/Curves charts,
+// Plate heatmap) whenever the underlying grid data changes — otherwise a
+// Clear Grid or plate-format switch left stale results/charts on screen
+// referencing wells/samples that no longer exist.
+function resetAnalysisOutputs(){
+  state.fitResults = [];
+  state.rawRows = [];
+  state.plateViz = {};
+  state.selectedSample = null;
+  if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
+  if (curveChart) { curveChart.destroy(); curveChart = null; }
+  var statsEl = document.getElementById('curve-stats'); if (statsEl) statsEl.innerHTML = '';
+  var titleEl = document.getElementById('curve-title'); if (titleEl) titleEl.textContent = 'Dose-response curve';
+  var scatterEmpty = document.getElementById('scatter-empty'); if (scatterEmpty) scatterEmpty.style.display = 'block';
+  var scatterWrap = document.getElementById('scatter-wrap'); if (scatterWrap) scatterWrap.style.display = 'none';
+  renderResultsTable();
+  renderCurveSampleList();
+}
+
 function clearGrid(){
   if (!confirm('Clear all data in the plate grid (compounds, concentrations, signal, and control-well marks)?')) return;
   state.wellData = {};
@@ -893,6 +913,7 @@ function clearGrid(){
   state.zeroCtrlWells = new Set();
   state.compounds = [];
   state.editingCompoundId = null;
+  resetAnalysisOutputs();
   updatePaintButtonLabels();
   renderCompoundList();
   renderGrid();
@@ -1204,17 +1225,24 @@ function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
 // ══════════════════════════════════════════════════════════════
 // Lumina orchestrator — single-plate analog of Echo's runAnalysisJS
 // ══════════════════════════════════════════════════════════════
+function _numFieldOr(id, fallback){
+  var v = parseFloat(document.getElementById(id).value);
+  return isNaN(v) ? fallback : v;
+}
 function runLuminaAnalysis(){
   var assayType = document.getElementById('assay-type').value;
   var ctrlWells = state.ctrlWells;
   var zeroPctWells = state.zeroCtrlWells;
-  var minR2 = parseFloat(document.getElementById('qc-r2').value), r2Enabled = document.getElementById('qc-r2-en').checked;
-  var maxSd = parseFloat(document.getElementById('qc-sd').value), sdEnabled = document.getElementById('qc-sd-en').checked;
-  var hookThr = parseFloat(document.getElementById('qc-hook').value), hookEnabled = document.getElementById('qc-hook-en').checked;
-  var topEnabled = document.getElementById('qc-top-en').checked, topVal = parseFloat(document.getElementById('qc-top-val').value);
-  var fixBot = document.getElementById('qc-bot-en').checked, botVal = parseFloat(document.getElementById('qc-bot-val').value);
-  var fixHill = document.getElementById('qc-hill-en').checked, hillVal = parseFloat(document.getElementById('qc-hill-val').value);
-  var botFloorEnabled = document.getElementById('qc-bot-floor-en').checked, botFloorVal = parseFloat(document.getElementById('qc-bot-floor-val').value);
+  // Blank/invalid QC fields fall back to sane defaults instead of poisoning
+  // the fit with NaN bounds (e.g. an emptied "Bottom floor" field would
+  // otherwise turn every bound/init value NaN and silently break every fit).
+  var minR2 = _numFieldOr('qc-r2', 0.9), r2Enabled = document.getElementById('qc-r2-en').checked;
+  var maxSd = _numFieldOr('qc-sd', 20), sdEnabled = document.getElementById('qc-sd-en').checked;
+  var hookThr = _numFieldOr('qc-hook', 15), hookEnabled = document.getElementById('qc-hook-en').checked;
+  var topEnabled = document.getElementById('qc-top-en').checked, topVal = _numFieldOr('qc-top-val', 100);
+  var fixBot = document.getElementById('qc-bot-en').checked, botVal = _numFieldOr('qc-bot-val', 0);
+  var fixHill = document.getElementById('qc-hill-en').checked, hillVal = _numFieldOr('qc-hill-val', 1);
+  var botFloorEnabled = document.getElementById('qc-bot-floor-en').checked, botFloorVal = _numFieldOr('qc-bot-floor-val', 0);
 
   // 1. Build row array from wellData
   var rows = [];
@@ -1711,6 +1739,7 @@ function exportRawCSV(){
 renderGrid();
 renderCompoundList();
 updateSetupSummary();
+updateFitConstraintAvailability(document.getElementById('assay-type').value);
 openSetupModal();
 </script>
 </body>
