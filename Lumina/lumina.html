@@ -390,6 +390,7 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
               <label class="csv-lbl"><input type="checkbox" id="col-r2" checked onchange="renderResultsTable()"> <span>R²</span></label>
               <label class="csv-lbl"><input type="checkbox" id="col-flag" checked onchange="renderResultsTable()"> <span>Flag</span></label>
               <label class="csv-lbl"><input type="checkbox" id="col-flagreason" checked onchange="renderResultsTable()"> <span>Reason</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-ci" checked onchange="renderResultsTable()"> <span>95% CI</span></label>
               <label class="csv-lbl"><input type="checkbox" id="col-top" onchange="renderResultsTable()"> <span>Top</span></label>
               <label class="csv-lbl"><input type="checkbox" id="col-bottom" onchange="renderResultsTable()"> <span>Bottom</span></label>
             </div>
@@ -1153,7 +1154,18 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
   var ssTot=0, ssRes=0;
   for (var i4=0;i4<n;i4++) { ssTot += Math.pow(yArr[i4]-yMean,2); ssRes += Math.pow(yArr[i4]-valFn(xArr[i4],p[0],p[1],p[2],p[3]),2); }
   var df = Math.max(1, n-np);
-  return { params:p, r2: ssTot>0 ? 1-ssRes/ssTot : 0, df:df };
+  var sigma2 = ssRes/df;
+  var finalJtJ = Array.from({length:np}, function(){ return new Array(np).fill(0); });
+  for (var i5=0;i5<n;i5++){ var jac2=jacFn(xArr[i5],p[0],p[1],p[2],p[3]); for (var a2=0;a2<np;a2++) for (var b2=0;b2<np;b2++) finalJtJ[a2][b2]+=jac2[a2]*jac2[b2]; }
+  var inv = _matInv(finalJtJ);
+  var se = inv ? inv.map(function(row,i6){ return Math.sqrt(Math.max(0, row[i6]*sigma2)); }) : null;
+  return { params:p, r2: ssTot>0 ? 1-ssRes/ssTot : 0, df:df, se:se };
+}
+function _tQ95(df){
+  if (df<=1) return 12.71; if (df<=2) return 4.30; if (df<=3) return 3.18;
+  if (df<=4) return 2.78; if (df<=5) return 2.57; if (df<=7) return 2.36;
+  if (df<=10) return 2.23; if (df<=15) return 2.13; if (df<=20) return 2.09;
+  if (df<=30) return 2.04; return 1.96;
 }
 function _xAtYMid(xArr, yArr) {
   if (!xArr || !xArr.length) return 0;
@@ -1290,6 +1302,12 @@ function runLuminaAnalysis(){
     var bottom = params[0], logEC50 = params[1], hill = params[2], top = params[3];
     var ec50M = Math.pow(10, logEC50);
 
+    // 95% CI on EC50 (delta method via the fit's parameter covariance),
+    // mirrors Echo's _tQ95/se-based CI_DC50_lower/upper computation.
+    var t95 = fit.se ? _tQ95(fit.df) : 0;
+    var ciEc50LowerNM = fit.se ? (Math.pow(10, logEC50 - t95*fit.se[1]) * 1e9) : null;
+    var ciEc50UpperNM = fit.se ? (Math.pow(10, logEC50 + t95*fit.se[1]) * 1e9) : null;
+
     // Replicate SD at each concentration (for QC)
     var byConc = {};
     sdata.forEach(function(r){ (byConc[r.log10Conc] = byConc[r.log10Conc]||[]).push(r.measurement); });
@@ -1308,6 +1326,7 @@ function runLuminaAnalysis(){
     summary.push({
       sampleId: sid, n: sdata.length, top: top, bottom: bottom, hill: hill,
       logEC50: logEC50, ec50M: ec50M, r2: fit.r2, maxSD: maxSdAtConc,
+      ciEc50LowerNM: ciEc50LowerNM, ciEc50UpperNM: ciEc50UpperNM,
       flagR2: flagR2, flagSD: flagSD, isHook: isHook, hookCount: hookConcs.size, flagged: flagged,
       xArr: sdata.map(function(r){ return r.log10Conc; }), yArr: sdata.map(function(r){ return r.measurement; }),
       yArrRaw: sdata.map(function(r){ return r.measurementRaw; })
@@ -1559,6 +1578,10 @@ function getResultColumns(){
   if (on('col-r2')) cols.push({ th:'R²', xh:'R2', get:function(r){ return +r.r2.toFixed(3); }, fmt:function(r){ return r.r2.toFixed(3); }, cls:function(r){ return r.flagR2 ? 'flag-bad' : 'flag-ok'; } });
   if (on('col-flag')) cols.push({ th:'Flag', xh:'Flag', get:function(r){ return r.flagged ? 'Yes' : 'No'; }, fmt:function(r){ return r.flagged ? '<span class="pill flag-bad">Yes</span>' : '<span class="pill flag-ok">No</span>'; } });
   if (on('col-flagreason')) cols.push({ th:'Reason', xh:'Flag_Reason', get:function(r){ return _flagReason(r); }, fmt:function(r){ return '<span style="font-size:11px;color:var(--text3);">'+esc(_flagReason(r))+'</span>'; } });
+  if (on('col-ci')) {
+    cols.push({ th:L.ec50Name+' CI lower', xh:L.ec50Name+'_CI_lower', get:function(r){ return r.ciEc50LowerNM!=null ? +r.ciEc50LowerNM.toFixed(1) : ''; }, fmt:function(r){ return r.ciEc50LowerNM!=null ? r.ciEc50LowerNM.toFixed(1) : '—'; } });
+    cols.push({ th:L.ec50Name+' CI upper', xh:L.ec50Name+'_CI_upper', get:function(r){ return r.ciEc50UpperNM!=null ? +r.ciEc50UpperNM.toFixed(1) : ''; }, fmt:function(r){ return r.ciEc50UpperNM!=null ? r.ciEc50UpperNM.toFixed(1) : '—'; } });
+  }
   if (on('col-top')) cols.push({ th:'Top', xh:'Top', get:function(r){ return +r.top.toFixed(2); }, fmt:function(r){ return r.top.toFixed(1); } });
   if (on('col-bottom')) cols.push({ th:'Bottom', xh:'Bottom', get:function(r){ return +r.bottom.toFixed(2); }, fmt:function(r){ return r.bottom.toFixed(1); } });
   return cols;
