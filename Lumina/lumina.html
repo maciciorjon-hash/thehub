@@ -93,6 +93,10 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)
 }
 .well:hover{border-color:var(--accent2);transform:scale(1.06);z-index:2;position:relative;}
 .well.has-ctrl{border-color:var(--accent3);border-width:2px;}
+.well.has-zero{border-color:var(--accent2);border-width:2px;border-style:dashed;}
+.well.paint-mode{cursor:crosshair;}
+.well.paint-mode:hover{outline:2px solid var(--accent);outline-offset:1px;}
+.btn.small.accent{background:var(--accent);border-color:var(--accent);color:#1a1a1a;}
 .well .w-samp{font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34px;}
 .well .w-val{color:var(--text2);}
 @media(hover:none){.well:hover{transform:none;}}
@@ -191,14 +195,36 @@ tr:hover td{background:var(--surface2);}
           </select>
         </div>
         <div class="field">
-          <label>Control wells (e.g. H1:H12)</label>
-          <input id="ctrl-range" type="text" placeholder="H1:H12">
+          <label>Control wells</label>
+          <button class="btn small" id="paint-ctrl-btn" onclick="togglePaintMode('ctrl')">⊞ Mark control wells (0)</button>
         </div>
         <div class="field" id="zeropct-field" style="display:none;">
           <label>0% control wells</label>
-          <input id="zeropct-range" type="text" placeholder="G1:G12">
+          <button class="btn small" id="paint-zero-btn" onclick="togglePaintMode('zero')">⊞ Mark 0% wells (0)</button>
         </div>
       </div>
+      <div class="row" id="paint-hint" style="display:none;margin-top:10px;">
+        <span class="pill" style="background:var(--accent);color:#1a1a1a;">Click wells on the grid below to toggle selection — click the button again to stop.</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Reader file (signal)</h3>
+      <div class="row">
+        <div class="field">
+          <label>Reader format</label>
+          <select id="reader-format">
+            <option value="pherastar">PHERAstar (.xlsx/.xls)</option>
+            <option value="glomax">GloMax (.xlsx/.xls)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>File</label>
+          <input id="reader-file" type="file" accept=".xlsx,.xls">
+        </div>
+        <div class="field"><button class="btn primary" onclick="loadReaderFile()">Load signal from file</button></div>
+      </div>
+      <div id="reader-status" style="margin-top:10px;font-size:12.5px;color:var(--text2);">No reader file loaded yet — the Signal view below will stay empty until you load one. You can still click a well in Signal view to enter/correct a value by hand.</div>
     </div>
 
     <div class="card">
@@ -305,6 +331,9 @@ var state = {
   format: 96,           // 96 or 384
   rows: 8, cols: 12,
   wellData: {},         // pos -> {sampleId, conc(M), measurement}
+  ctrlWells: new Set(),     // pos set, marked via grid click (paint mode)
+  zeroCtrlWells: new Set(), // pos set, for displacement assay 0% control
+  paintMode: null,          // null | 'ctrl' | 'zero'
   activeSubtab: 'conc',
   fitResults: [],        // per-sample fit output
   plateViz: {},          // well -> {m, raw, ctrl, s, c}
@@ -353,6 +382,29 @@ function switchSubtab(id){
 function onAssayTypeChange(){
   var t = document.getElementById('assay-type').value;
   document.getElementById('zeropct-field').style.display = (t === 'displacement') ? 'flex' : 'none';
+  if (t !== 'displacement' && state.paintMode === 'zero') togglePaintMode('zero');
+}
+
+// ══════════════════════════════════════════════════════════════
+// Grid-based control-well picker (adapted from Echo's ⊞ Grid picker —
+// click wells directly on the plate instead of typing a range string)
+// ══════════════════════════════════════════════════════════════
+function togglePaintMode(mode){
+  state.paintMode = (state.paintMode === mode) ? null : mode;
+  document.getElementById('paint-ctrl-btn').classList.toggle('accent', state.paintMode === 'ctrl');
+  document.getElementById('paint-zero-btn').classList.toggle('accent', state.paintMode === 'zero');
+  document.getElementById('paint-hint').style.display = state.paintMode ? 'flex' : 'none';
+  renderGrid();
+}
+function updatePaintButtonLabels(){
+  document.getElementById('paint-ctrl-btn').textContent = '⊞ Mark control wells (' + state.ctrlWells.size + ')';
+  document.getElementById('paint-zero-btn').textContent = '⊞ Mark 0% wells (' + state.zeroCtrlWells.size + ')';
+}
+function toggleWellPaint(pos){
+  var set = state.paintMode === 'ctrl' ? state.ctrlWells : state.zeroCtrlWells;
+  if (set.has(pos)) set.delete(pos); else set.add(pos);
+  updatePaintButtonLabels();
+  renderGrid();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -365,6 +417,9 @@ function setPlateFormat(fmt){
   state.rows = fmt === 96 ? 8 : 16;
   state.cols = fmt === 96 ? 12 : 24;
   state.wellData = {};
+  state.ctrlWells = new Set();
+  state.zeroCtrlWells = new Set();
+  updatePaintButtonLabels();
   document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && fmt===96) || (i===1 && fmt===384)); });
   renderGrid();
 }
@@ -383,14 +438,17 @@ function renderGrid(){
     for (var c2 = 0; c2 < cols; c2++) {
       var pos = wellPos(r, c2);
       var d = state.wellData[pos] || {};
-      var isCtrl = isInCtrlRange(pos);
+      var isCtrl = state.ctrlWells.has(pos);
+      var isZero = state.zeroCtrlWells.has(pos);
       var cellHtml = '';
       if (state.activeSubtab === 'conc') {
         if (d.sampleId) cellHtml = '<div class="w-samp">'+esc(d.sampleId)+'</div><div class="w-val">'+fmtConc(d.conc)+'</div>';
       } else {
         if (d.measurement !== undefined && d.measurement !== null && d.measurement !== '') cellHtml = '<div class="w-val" style="font-size:11px;font-weight:600;">'+d.measurement+'</div>';
       }
-      html += '<div class="well'+(isCtrl?' has-ctrl':'')+'" data-pos="'+pos+'" style="width:'+cellPx+'px;height:'+cellPx+'px;" onclick="openWellPopup(event,\''+pos+'\')">'+cellHtml+'</div>';
+      var wellClass = 'well' + (isCtrl?' has-ctrl':'') + (isZero?' has-zero':'') + (state.paintMode?' paint-mode':'');
+      var clickFn = state.paintMode ? 'toggleWellPaint(\''+pos+'\')' : 'openWellPopup(event,\''+pos+'\')';
+      html += '<div class="'+wellClass+'" data-pos="'+pos+'" style="width:'+cellPx+'px;height:'+cellPx+'px;" onclick="'+clickFn+'">'+cellHtml+'</div>';
     }
   }
   grid.innerHTML = html;
@@ -405,12 +463,7 @@ function fmtConc(conc){
   return conc.toExponential(1) + 'M';
 }
 
-function isInCtrlRange(pos){
-  var ctrl = parseWellRange(document.getElementById('ctrl-range').value);
-  return ctrl.has(pos);
-}
-
-// ── Well-range parser: supports "A1:A12", "A1:H1" (rectangle), comma lists ──
+// ── Well-range parser (still used internally by the PHERAstar/GloMax well-ID math) ──
 function parseWellRange(str){
   var set = new Set();
   if (!str) return set;
@@ -498,8 +551,11 @@ document.addEventListener('click', function(e){
 });
 
 function clearGrid(){
-  if (!confirm('Clear all data in the plate grid?')) return;
+  if (!confirm('Clear all data in the plate grid (samples, concentrations, signal, and control-well marks)?')) return;
   state.wellData = {};
+  state.ctrlWells = new Set();
+  state.zeroCtrlWells = new Set();
+  updatePaintButtonLabels();
   renderGrid();
 }
 
@@ -528,6 +584,104 @@ function applySerialDilution(){
   }
   renderGrid();
   toast('Serial dilution applied: ' + n + ' points, ' + fac + 'x factor.');
+}
+
+// ══════════════════════════════════════════════════════════════
+// Reader-file import (signal) — replaces manual Signal entry.
+// PHERAstar parser ported from Labcyte_Echo/labcyte_echo.html's
+// _parsePHERAstarXLS: auto-detects the lettered-row (A,B,C…) / numbered-
+// column (1,2,3…) plate grid embedded in the reader's raw XLSX export,
+// with a fixed-offset fallback when auto-detection fails.
+// ══════════════════════════════════════════════════════════════
+function parsePHERAstarSheet(raw, rows, cols){
+  var ROW_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWX'.split('');
+  var headerCol = -1, dataRow = -1;
+  // Find a vertical run of row letters (A,B,C...) in the first 8 columns
+  outer:
+  for (var c = 0; c < Math.min(8, (raw[0]||[]).length || 8); c++) {
+    for (var r = 0; r < raw.length - rows + 1; r++) {
+      var ok = true;
+      for (var i = 0; i < rows; i++) {
+        var cell = (raw[r+i] || [])[c];
+        if (String(cell).trim().toUpperCase() !== ROW_LABELS[i]) { ok = false; break; }
+      }
+      if (ok) { headerCol = c; dataRow = r; break outer; }
+    }
+  }
+  var dataCol = -1;
+  if (headerCol >= 0) {
+    for (var rr = Math.max(0, dataRow-6); rr < dataRow; rr++) {
+      var row = raw[rr] || [];
+      for (var cc = headerCol; cc < headerCol + 10 && cc < row.length; cc++) {
+        if (String(row[cc]).trim() === '1' && String(row[cc+1]||'').trim() === '2') { dataCol = cc; break; }
+      }
+      if (dataCol >= 0) break;
+    }
+    if (dataCol < 0) dataCol = headerCol + 1;
+  }
+  var wells = {};
+  if (dataRow >= 0 && dataCol >= 0) {
+    for (var ri = 0; ri < rows; ri++) {
+      for (var ci = 0; ci < cols; ci++) {
+        var well = ROW_LABELS[ri] + (ci+1);
+        var v = (raw[dataRow+ri] || [])[dataCol+ci];
+        var m = parseFloat(v);
+        wells[well] = isNaN(m) ? null : m;
+      }
+    }
+  } else {
+    // Fixed-offset fallback matching Echo's default PHERAstar export layout
+    for (var r2 = 0; r2 < rows; r2++) {
+      for (var c2 = 0; c2 < cols; c2++) {
+        var well2 = ROW_LABELS[r2] + (c2+1);
+        var v2 = (raw[15+r2] || [])[1+c2];
+        var m2 = parseFloat(v2);
+        wells[well2] = isNaN(m2) ? null : m2;
+      }
+    }
+  }
+  return wells;
+}
+function parseGloMaxSheet(raw, rows, cols){
+  // Placeholder: GloMax's raw export layout has not been supplied yet.
+  // Once a real example file is available this should mirror
+  // parsePHERAstarSheet's auto-detection (or GloMax's own layout if different).
+  return null;
+}
+async function loadReaderFile(){
+  var fileInput = document.getElementById('reader-file');
+  var format = document.getElementById('reader-format').value;
+  var statusEl = document.getElementById('reader-status');
+  if (!fileInput.files || !fileInput.files[0]) { toast('Choose a reader file first.'); return; }
+  if (format === 'glomax') {
+    statusEl.textContent = 'GloMax parsing isn\'t implemented yet — send an example export and this will be wired up the same way PHERAstar is.';
+    statusEl.style.color = 'var(--error)';
+    toast('GloMax parser not implemented yet.');
+    return;
+  }
+  if (!window.XLSX) { toast('SheetJS failed to load.'); return; }
+  try {
+    var buf = await fileInput.files[0].arrayBuffer();
+    var wb = XLSX.read(buf, { type: 'array', cellDates: false, raw: true });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    var wells = parsePHERAstarSheet(raw, state.rows, state.cols);
+    var matched = 0, total = 0;
+    Object.keys(wells).forEach(function(well){
+      total++;
+      if (wells[well] === null) return;
+      state.wellData[well] = Object.assign({}, state.wellData[well], { measurement: wells[well] });
+      matched++;
+    });
+    renderGrid();
+    statusEl.style.color = 'var(--text2)';
+    statusEl.textContent = 'Loaded ' + matched + ' of ' + total + ' wells from "' + fileInput.files[0].name + '" (PHERAstar format).';
+    toast('Reader file loaded: ' + matched + ' wells.');
+  } catch(e) {
+    statusEl.style.color = 'var(--error)';
+    statusEl.textContent = 'Failed to parse file: ' + e.message;
+    toast('Failed to parse reader file.');
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -664,8 +818,8 @@ function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
 // ══════════════════════════════════════════════════════════════
 function runLuminaAnalysis(){
   var assayType = document.getElementById('assay-type').value;
-  var ctrlWells = parseWellRange(document.getElementById('ctrl-range').value);
-  var zeroPctWells = parseWellRange(document.getElementById('zeropct-range').value);
+  var ctrlWells = state.ctrlWells;
+  var zeroPctWells = state.zeroCtrlWells;
   var minR2 = parseFloat(document.getElementById('qc-r2').value), r2Enabled = document.getElementById('qc-r2-en').checked;
   var maxSd = parseFloat(document.getElementById('qc-sd').value), sdEnabled = document.getElementById('qc-sd-en').checked;
   var hookThr = parseFloat(document.getElementById('qc-hook').value), hookEnabled = document.getElementById('qc-hook-en').checked;
