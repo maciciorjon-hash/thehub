@@ -1028,17 +1028,26 @@ function loadLuminaTestData(){
   document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', i===0); });
   document.getElementById('assay-type').value = 'hibit';
   onAssayTypeChange();
-  addCompoundProgrammatic('Compound A', 10, 1e-6, 3, 8, 'row', 'A1', 2, { bot: 3, top: 98, ec50: 2e-7, hill: 1.1 });
-  addCompoundProgrammatic('Compound B', 30, 1e-6, 4, 8, 'row', 'C1', 2, { bot: 5, top: 95, ec50: 5e-6, hill: 0.9 });
-  ['H1','H2','H3','H4'].forEach(function(p){
-    state.wellData[p] = Object.assign({}, state.wellData[p], { measurement: Math.round((100 + (Math.random()-0.5)*6)*10)/10 });
-    state.ctrlWells.add(p);
+  // 4 compounds, one per row (A–D), left-to-right (row-direction) 3x serial
+  // dilution from 1000 nM, 10 dilution points across columns 1–10 + column 11
+  // as the row's DMSO/vehicle control (11 concentrations total: 10 dosed + 0).
+  var curves = [
+    { name:'Compound A', ec50: 5e-8,  hill: 1.1, top: 98, bot: 2 },
+    { name:'Compound B', ec50: 2e-7,  hill: 0.9, top: 95, bot: 5 },
+    { name:'Compound C', ec50: 8e-7,  hill: 1.2, top: 90, bot: 8 },
+    { name:'Compound D', ec50: 3e-6,  hill: 1.0, top: 96, bot: 3 }
+  ];
+  ['A','B','C','D'].forEach(function(row, i){
+    addCompoundProgrammatic(curves[i].name, 1000, 1e-9, 3, 10, 'row', row+'1', 1, curves[i]);
+    var ctrlPos = row + '11';
+    state.wellData[ctrlPos] = Object.assign({}, state.wellData[ctrlPos], { measurement: Math.round((100 + (Math.random()-0.5)*6)*10)/10 });
+    state.ctrlWells.add(ctrlPos);
   });
   updatePaintButtonLabels();
   renderCompoundList();
   renderGrid();
   switchSetupTab('layout');
-  toast('Test plate loaded: 2 compounds, 4 control wells, synthetic signal.');
+  toast('Test plate loaded: 4 compounds (10-pt 3x dilution, 1000nM top) + column 11 DMSO controls.');
 }
 
 // ══════════════════════════════════════════════════════════════
