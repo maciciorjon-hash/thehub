@@ -449,11 +449,9 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
     <div class="card">
       <h3>Results</h3>
       <div class="row" style="margin-bottom:14px;">
-        <button class="btn primary" onclick="exportXLSX()">Export Excel (.xlsx)</button>
+        <button class="btn" onclick="copyResultsTSV()" title="Copy as TSV for Excel">📋 Copy TSV</button>
+        <button class="btn primary" onclick="exportXLSX()">📥 Results XLSX</button>
         <button class="btn" onclick="exportRawCSV()">Export raw CSV</button>
-        <button class="btn" onclick="copyResultsTSV()">Copy results (TSV)</button>
-        <button class="btn" onclick="copyPrism(false)">Copy Prism (%)</button>
-        <button class="btn" onclick="copyPrism(true)">Copy Prism (fraction)</button>
       </div>
       <div id="results-table-wrap"><div class="empty-state">Run an analysis from the Input tab to see results here.</div></div>
     </div>
@@ -1028,26 +1026,28 @@ function loadLuminaTestData(){
   document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', i===0); });
   document.getElementById('assay-type').value = 'hibit';
   onAssayTypeChange();
-  // 4 compounds, one per row (A–D), left-to-right (row-direction) 3x serial
-  // dilution from 1000 nM, 10 dilution points across columns 1–10 + column 11
-  // as the row's DMSO/vehicle control (11 concentrations total: 10 dosed + 0).
+  // 4 compounds in technical duplicate (2 rows each -> all 8 rows used),
+  // left-to-right (row-direction) 3x serial dilution from 1000 nM across
+  // 11 points (columns 1-11), with column 12 as the DMSO/vehicle control.
   var curves = [
-    { name:'Compound A', ec50: 5e-8,  hill: 1.1, top: 98, bot: 2 },
-    { name:'Compound B', ec50: 2e-7,  hill: 0.9, top: 95, bot: 5 },
-    { name:'Compound C', ec50: 8e-7,  hill: 1.2, top: 90, bot: 8 },
-    { name:'Compound D', ec50: 3e-6,  hill: 1.0, top: 96, bot: 3 }
+    { name:'Compound A', ec50: 5e-8,  hill: 1.1, top: 98, bot: 2, startRow:'A' },
+    { name:'Compound B', ec50: 2e-7,  hill: 0.9, top: 95, bot: 5, startRow:'C' },
+    { name:'Compound C', ec50: 8e-7,  hill: 1.2, top: 90, bot: 8, startRow:'E' },
+    { name:'Compound D', ec50: 3e-6,  hill: 1.0, top: 96, bot: 3, startRow:'G' }
   ];
-  ['A','B','C','D'].forEach(function(row, i){
-    addCompoundProgrammatic(curves[i].name, 1000, 1e-9, 3, 10, 'row', row+'1', 1, curves[i]);
-    var ctrlPos = row + '11';
-    state.wellData[ctrlPos] = Object.assign({}, state.wellData[ctrlPos], { measurement: Math.round((100 + (Math.random()-0.5)*6)*10)/10 });
-    state.ctrlWells.add(ctrlPos);
+  curves.forEach(function(c){
+    addCompoundProgrammatic(c.name, 1000, 1e-9, 3, 11, 'row', c.startRow+'1', 2, c);
+    [c.startRow, String.fromCharCode(c.startRow.charCodeAt(0)+1)].forEach(function(row){
+      var ctrlPos = row + '12';
+      state.wellData[ctrlPos] = Object.assign({}, state.wellData[ctrlPos], { measurement: Math.round((100 + (Math.random()-0.5)*6)*10)/10 });
+      state.ctrlWells.add(ctrlPos);
+    });
   });
   updatePaintButtonLabels();
   renderCompoundList();
   renderGrid();
   switchSetupTab('layout');
-  toast('Test plate loaded: 4 compounds (10-pt 3x dilution, 1000nM top) + column 11 DMSO controls.');
+  toast('Test plate loaded: 4 compounds in technical duplicate (11-pt 3x dilution, 1000nM top) + column 12 DMSO controls.');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1601,14 +1601,6 @@ function _buildLuminaPrismAOA(asFraction){
   });
   return aoa;
 }
-function copyPrism(asFraction){
-  if (!state.rawRows || !state.rawRows.length) { toast('Run an analysis first.'); return; }
-  var aoa = _buildLuminaPrismAOA(asFraction);
-  var tsv = aoa.map(function(r){ return r.join('\t'); }).join('\n');
-  navigator.clipboard.writeText(tsv).then(function(){
-    toast('Copied Prism-format table (' + (asFraction ? 'fraction' : '%') + ') — paste directly into GraphPad Prism.');
-  }).catch(function(){ toast('Clipboard write failed — use Excel export instead.'); });
-}
 function copyResultsTSV(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
   var cols = getResultColumns();
@@ -1645,8 +1637,8 @@ function exportXLSX(){
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resultsAoA), 'Results');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawAoA), 'Raw Data');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildLuminaPrismAOA(false)), 'Prism (%)');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildLuminaPrismAOA(true)), 'Prism (fraction)');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildLuminaPrismAOA(false)), 'Prism Copy');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_buildLuminaPrismAOA(true)), 'Prism (Fraction)');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(protoAoA), 'Protocol');
   XLSX.writeFile(wb, 'Lumina_Results_' + new Date().toISOString().slice(0,10) + '.xlsx');
 }
