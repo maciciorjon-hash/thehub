@@ -127,6 +127,32 @@ tr:hover td{background:var(--surface2);}
 .toast.show{opacity:1;}
 
 .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:600;background:var(--surface3);color:var(--text2);}
+
+/* ── Setup modal (structure/CSS copied from Echo's #setup-modal) ────── */
+.setup-reopen-btn{font-family:var(--sans);font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);cursor:pointer;min-height:36px;}
+.setup-reopen-btn:hover{background:var(--surface3);}
+.setup-overlay{position:fixed;inset:0;z-index:2000;background:var(--modal-backdrop,rgba(0,0,0,.45));display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
+.setup-overlay.hidden{display:none;}
+.setup-card{background:var(--surface);border:1px solid var(--border2);border-radius:16px;width:680px;max-width:calc(100vw - 20px);max-height:calc(100vh - 28px);display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden;}
+.setup-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:22px 26px 0;gap:12px;flex-shrink:0;}
+.setup-htitle{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-0.2px;}
+.setup-hsub{font-size:12px;color:var(--text3);margin-top:3px;}
+.setup-hclose{background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--text3);padding:2px 4px;border-radius:6px;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center;}
+.setup-hclose:hover{background:var(--surface2);}
+.setup-stabs{display:flex;gap:0;padding:14px 26px 0;border-bottom:1px solid var(--border);flex-shrink:0;}
+.setup-stab{padding:8px 16px;font-size:12px;font-weight:600;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;}
+.setup-stab:hover{color:var(--text2);}
+.setup-stab.active{color:var(--accent2);border-bottom-color:var(--accent2);}
+.setup-pane{display:none;}
+.setup-pane.active{display:block;}
+.setup-sbody{flex:1;overflow-y:auto;padding:22px 26px;}
+.setup-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 26px;border-top:1px solid var(--border);flex-shrink:0;}
+#paint-return-badge{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:2500;}
+.compound-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;font-size:12.5px;background:var(--surface2);}
+.compound-row .cr-name{font-weight:700;min-width:110px;}
+.compound-row .cr-detail{color:var(--text2);flex:1;}
+.compound-row .cr-actions{display:flex;gap:6px;}
 .samp-list{display:flex;flex-wrap:wrap;gap:6px;max-height:340px;overflow:auto;padding:2px;}
 .samp-chip{padding:6px 11px;border-radius:7px;font-size:12px;font-weight:600;background:var(--surface2);border:1px solid var(--border2);cursor:pointer;}
 .samp-chip.active{background:var(--accent2);color:#fff;border-color:var(--accent2);}
@@ -176,90 +202,14 @@ tr:hover td{background:var(--surface2);}
   <div class="tabpane active" id="pane-input">
 
     <div class="card">
-      <h3>Plate setup</h3>
-      <div class="row">
-        <div class="field">
-          <label>Plate format</label>
-          <div class="seg" id="format-seg">
-            <button class="active" onclick="setPlateFormat(96)">96-well</button>
-            <button onclick="setPlateFormat(384)">384-well</button>
-          </div>
+      <div class="row" style="align-items:center;justify-content:space-between;">
+        <div class="row" style="gap:18px;align-items:center;">
+          <button class="setup-reopen-btn" onclick="openSetupModal()">⚙ Setup</button>
+          <span id="setup-summary" class="pill">96-well · HiBiT · 0 compounds · 0 ctrl wells</span>
         </div>
-        <div class="field">
-          <label>Assay type</label>
-          <select id="assay-type" onchange="onAssayTypeChange()">
-            <option value="hibit">HiBiT</option>
-            <option value="ctg">CTG (viability)</option>
-            <option value="displacement">Displacement</option>
-            <option value="gain">Gain of signal</option>
-          </select>
+        <div id="paint-return-badge" style="display:none;">
+          <button class="btn accent small" onclick="exitPaintModeReturnToSetup()">◀ Done marking — back to Setup</button>
         </div>
-        <div class="field">
-          <label>Control wells</label>
-          <button class="btn small" id="paint-ctrl-btn" onclick="togglePaintMode('ctrl')">⊞ Mark control wells (0)</button>
-        </div>
-        <div class="field" id="zeropct-field" style="display:none;">
-          <label>0% control wells</label>
-          <button class="btn small" id="paint-zero-btn" onclick="togglePaintMode('zero')">⊞ Mark 0% wells (0)</button>
-        </div>
-      </div>
-      <div class="row" id="paint-hint" style="display:none;margin-top:10px;">
-        <span class="pill" style="background:var(--accent);color:#1a1a1a;">Click wells on the grid below to toggle selection — click the button again to stop.</span>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Reader file (signal)</h3>
-      <div class="row">
-        <div class="field">
-          <label>Reader format</label>
-          <select id="reader-format">
-            <option value="pherastar">PHERAstar (.xlsx/.xls)</option>
-            <option value="glomax">GloMax (.xlsx/.xls)</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>File</label>
-          <input id="reader-file" type="file" accept=".xlsx,.xls">
-        </div>
-        <div class="field"><button class="btn primary" onclick="loadReaderFile()">Load signal from file</button></div>
-      </div>
-      <div id="reader-status" style="margin-top:10px;font-size:12.5px;color:var(--text2);">No reader file loaded yet — the Signal view below will stay empty until you load one. You can still click a well in Signal view to enter/correct a value by hand.</div>
-    </div>
-
-    <div class="card">
-      <h3>QC &amp; fit constraints</h3>
-      <div class="row">
-        <div class="field"><label><input type="checkbox" id="qc-r2-en" checked style="min-height:auto;width:auto;"> Min R²</label>
-          <input id="qc-r2" type="number" step="0.01" value="0.90"></div>
-        <div class="field"><label><input type="checkbox" id="qc-sd-en" checked style="min-height:auto;width:auto;"> Max replicate SD</label>
-          <input id="qc-sd" type="number" step="1" value="20"></div>
-        <div class="field"><label><input type="checkbox" id="qc-hook-en" style="min-height:auto;width:auto;"> Hook detection thr.</label>
-          <input id="qc-hook" type="number" step="1" value="15"></div>
-        <div class="field"><label><input type="checkbox" id="qc-top-en" style="min-height:auto;width:auto;"> Fix Top</label>
-          <input id="qc-top-val" type="number" step="1" value="100"></div>
-        <div class="field"><label><input type="checkbox" id="qc-bot-en" style="min-height:auto;width:auto;"> Fix Bottom</label>
-          <input id="qc-bot-val" type="number" step="1" value="0"></div>
-        <div class="field"><label><input type="checkbox" id="qc-hill-en" style="min-height:auto;width:auto;"> Fix Hill slope</label>
-          <input id="qc-hill-val" type="number" step="0.1" value="1"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Serial dilution auto-fill</h3>
-      <div class="row">
-        <div class="field"><label>Sample ID</label><input id="sd-name" type="text" placeholder="Compound A"></div>
-        <div class="field"><label>Top concentration</label><input id="sd-top" type="number" step="any" value="10"></div>
-        <div class="field"><label>Unit</label>
-          <select id="sd-unit"><option value="1e-3">mM</option><option value="1e-6" selected>µM</option><option value="1e-9">nM</option><option value="1e-12">pM</option><option value="1">M</option></select>
-        </div>
-        <div class="field"><label>Dilution factor</label><input id="sd-fac" type="number" step="any" value="3"></div>
-        <div class="field"><label># points</label><input id="sd-n" type="number" step="1" value="8"></div>
-        <div class="field"><label>Direction</label>
-          <select id="sd-dir"><option value="row">Row →</option><option value="col">Column ↓</option></select>
-        </div>
-        <div class="field"><label>Start well</label><input id="sd-start" type="text" placeholder="A1" value="A1"></div>
-        <div class="field"><button class="btn accent" onclick="applySerialDilution()">Apply to grid</button></div>
       </div>
     </div>
 
@@ -276,6 +226,130 @@ tr:hover td{background:var(--surface2);}
       </div>
     </div>
 
+  </div>
+
+  <!-- ══════════════════ SETUP MODAL (structure copied from Echo's #setup-modal) ══ -->
+  <div id="setup-modal" class="setup-overlay hidden">
+    <div class="setup-card">
+      <div class="setup-hdr">
+        <div>
+          <div class="setup-htitle">Lumina Setup</div>
+          <div class="setup-hsub" id="setup-hsub">Configure your plate, controls, reader, and fit settings</div>
+        </div>
+        <button id="setup-hclose" class="setup-hclose" onclick="closeSetupModal()">✕</button>
+      </div>
+      <div class="setup-stabs">
+        <div class="setup-stab active" data-tab="layout" onclick="switchSetupTab('layout')">Layout</div>
+        <div class="setup-stab" data-tab="controls" onclick="switchSetupTab('controls')">Controls</div>
+        <div class="setup-stab" data-tab="reader" onclick="switchSetupTab('reader')">Reader</div>
+        <div class="setup-stab" data-tab="analysis" onclick="switchSetupTab('analysis')">Analysis</div>
+      </div>
+      <div class="setup-sbody">
+
+        <!-- Layout tab: plate format + compound/dilution manager with replicates -->
+        <div class="setup-pane active" id="setup-pane-layout">
+          <div class="field" style="margin-bottom:16px;">
+            <label>Plate format</label>
+            <div class="seg" id="format-seg">
+              <button class="active" onclick="setPlateFormat(96)">96-well</button>
+              <button onclick="setPlateFormat(384)">384-well</button>
+            </div>
+          </div>
+
+          <h3 style="margin-top:0;">Add compound (serial dilution)</h3>
+          <div class="row">
+            <div class="field"><label>Sample ID</label><input id="sd-name" type="text" placeholder="Compound A"></div>
+            <div class="field"><label>Top concentration</label><input id="sd-top" type="number" step="any" value="10"></div>
+            <div class="field"><label>Unit</label>
+              <select id="sd-unit"><option value="1e-3">mM</option><option value="1e-6" selected>µM</option><option value="1e-9">nM</option><option value="1e-12">pM</option><option value="1">M</option></select>
+            </div>
+            <div class="field"><label>Dilution factor</label><input id="sd-fac" type="number" step="any" value="3"></div>
+            <div class="field"><label># points</label><input id="sd-n" type="number" step="1" value="8"></div>
+            <div class="field"><label>Direction</label>
+              <select id="sd-dir"><option value="row">Row →</option><option value="col">Column ↓</option></select>
+            </div>
+            <div class="field"><label>Start well</label><input id="sd-start" type="text" placeholder="A1" value="A1"></div>
+            <div class="field"><label>Replicates</label><input id="sd-reps" type="number" step="1" min="1" value="1"></div>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn accent" id="sd-submit-btn" onclick="submitCompoundForm()">+ Add compound to grid</button>
+            <button class="btn" id="sd-cancel-edit-btn" style="display:none;" onclick="cancelEditCompound()">Cancel edit</button>
+          </div>
+
+          <h3>Compounds on this plate</h3>
+          <div id="compound-list"><div class="empty-state" style="padding:20px;">No compounds added yet.</div></div>
+        </div>
+
+        <!-- Controls tab: assay type + grid-based control-well marking -->
+        <div class="setup-pane" id="setup-pane-controls">
+          <div class="row">
+            <div class="field">
+              <label>Assay type</label>
+              <select id="assay-type" onchange="onAssayTypeChange()">
+                <option value="hibit">HiBiT</option>
+                <option value="ctg">CTG (viability)</option>
+                <option value="displacement">Displacement</option>
+                <option value="gain">Gain of signal</option>
+              </select>
+            </div>
+          </div>
+          <div class="row" style="margin-top:14px;">
+            <div class="field">
+              <label>Control wells</label>
+              <button class="btn small" id="paint-ctrl-btn" onclick="togglePaintMode('ctrl')">⊞ Mark control wells (0)</button>
+            </div>
+            <div class="field" id="zeropct-field" style="display:none;">
+              <label>0% control wells</label>
+              <button class="btn small" id="paint-zero-btn" onclick="togglePaintMode('zero')">⊞ Mark 0% wells (0)</button>
+            </div>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <span class="pill">Clicking "Mark" closes this dialog so you can click wells directly on the plate grid. Click the floating button that appears to come back here.</span>
+          </div>
+        </div>
+
+        <!-- Reader tab -->
+        <div class="setup-pane" id="setup-pane-reader">
+          <div class="row">
+            <div class="field">
+              <label>Reader format</label>
+              <select id="reader-format">
+                <option value="pherastar">PHERAstar (.xlsx/.xls)</option>
+                <option value="glomax">GloMax (.xlsx/.xls)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>File</label>
+              <input id="reader-file" type="file" accept=".xlsx,.xls">
+            </div>
+            <div class="field"><button class="btn primary" onclick="loadReaderFile()">Load signal from file</button></div>
+          </div>
+          <div id="reader-status" style="margin-top:10px;font-size:12.5px;color:var(--text2);">No reader file loaded yet — the Signal view will stay empty until you load one. You can still click a well in Signal view to enter/correct a value by hand.</div>
+        </div>
+
+        <!-- Analysis tab: QC & fit constraints -->
+        <div class="setup-pane" id="setup-pane-analysis">
+          <div class="row">
+            <div class="field"><label><input type="checkbox" id="qc-r2-en" checked style="min-height:auto;width:auto;"> Min R²</label>
+              <input id="qc-r2" type="number" step="0.01" value="0.90"></div>
+            <div class="field"><label><input type="checkbox" id="qc-sd-en" checked style="min-height:auto;width:auto;"> Max replicate SD</label>
+              <input id="qc-sd" type="number" step="1" value="20"></div>
+            <div class="field"><label><input type="checkbox" id="qc-hook-en" style="min-height:auto;width:auto;"> Hook detection thr.</label>
+              <input id="qc-hook" type="number" step="1" value="15"></div>
+            <div class="field"><label><input type="checkbox" id="qc-top-en" style="min-height:auto;width:auto;"> Fix Top</label>
+              <input id="qc-top-val" type="number" step="1" value="100"></div>
+            <div class="field"><label><input type="checkbox" id="qc-bot-en" style="min-height:auto;width:auto;"> Fix Bottom</label>
+              <input id="qc-bot-val" type="number" step="1" value="0"></div>
+            <div class="field"><label><input type="checkbox" id="qc-hill-en" style="min-height:auto;width:auto;"> Fix Hill slope</label>
+              <input id="qc-hill-val" type="number" step="0.1" value="1"></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="setup-foot">
+        <button class="btn primary" onclick="closeSetupModal()">Done</button>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════ PLOTS TAB ══════════════════ -->
@@ -331,6 +405,8 @@ var state = {
   format: 96,           // 96 or 384
   rows: 8, cols: 12,
   wellData: {},         // pos -> {sampleId, conc(M), measurement}
+  compounds: [],            // [{id,name,top,unitMul,factor,n,dir,start,replicates,wells:[pos,...]}]
+  editingCompoundId: null,
   ctrlWells: new Set(),     // pos set, marked via grid click (paint mode)
   zeroCtrlWells: new Set(), // pos set, for displacement assay 0% control
   paintMode: null,          // null | 'ctrl' | 'zero'
@@ -383,28 +459,173 @@ function onAssayTypeChange(){
   var t = document.getElementById('assay-type').value;
   document.getElementById('zeropct-field').style.display = (t === 'displacement') ? 'flex' : 'none';
   if (t !== 'displacement' && state.paintMode === 'zero') togglePaintMode('zero');
+  updateSetupSummary();
+}
+
+// ══════════════════════════════════════════════════════════════
+// Setup modal (structure/behavior copied from Echo's #setup-modal:
+// .setup-overlay/.setup-card/.setup-stabs soft-hide-on-need pattern)
+// ══════════════════════════════════════════════════════════════
+function openSetupModal(){
+  document.getElementById('setup-modal').classList.remove('hidden');
+}
+function closeSetupModal(){
+  document.getElementById('setup-modal').classList.add('hidden');
+}
+function switchSetupTab(name){
+  document.querySelectorAll('.setup-stab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===name); });
+  document.querySelectorAll('.setup-pane').forEach(function(p){ p.classList.toggle('active', p.id==='setup-pane-'+name); });
+}
+function updateSetupSummary(){
+  var assayLabels = {hibit:'HiBiT', ctg:'CTG', displacement:'Displacement', gain:'Gain of signal'};
+  var assayType = document.getElementById('assay-type').value;
+  document.getElementById('setup-summary').textContent =
+    state.format + '-well · ' + assayLabels[assayType] + ' · ' + state.compounds.length + ' compound' + (state.compounds.length===1?'':'s') +
+    ' · ' + state.ctrlWells.size + ' ctrl wells';
 }
 
 // ══════════════════════════════════════════════════════════════
 // Grid-based control-well picker (adapted from Echo's ⊞ Grid picker —
-// click wells directly on the plate instead of typing a range string)
+// click wells directly on the plate instead of typing a range string).
+// Entering paint mode soft-hides the Setup modal (mirrors Echo's
+// switchPanel auto-hide) so the underlying plate grid is clickable;
+// a floating badge lets the user jump straight back into Setup.
 // ══════════════════════════════════════════════════════════════
 function togglePaintMode(mode){
   state.paintMode = (state.paintMode === mode) ? null : mode;
   document.getElementById('paint-ctrl-btn').classList.toggle('accent', state.paintMode === 'ctrl');
   document.getElementById('paint-zero-btn').classList.toggle('accent', state.paintMode === 'zero');
-  document.getElementById('paint-hint').style.display = state.paintMode ? 'flex' : 'none';
+  var badge = document.getElementById('paint-return-badge');
+  if (state.paintMode) {
+    closeSetupModal();
+    badge.style.display = 'block';
+  } else {
+    badge.style.display = 'none';
+  }
   renderGrid();
+}
+function exitPaintModeReturnToSetup(){
+  state.paintMode = null;
+  document.getElementById('paint-ctrl-btn').classList.remove('accent');
+  document.getElementById('paint-zero-btn').classList.remove('accent');
+  document.getElementById('paint-return-badge').style.display = 'none';
+  renderGrid();
+  openSetupModal();
+  switchSetupTab('controls');
 }
 function updatePaintButtonLabels(){
   document.getElementById('paint-ctrl-btn').textContent = '⊞ Mark control wells (' + state.ctrlWells.size + ')';
   document.getElementById('paint-zero-btn').textContent = '⊞ Mark 0% wells (' + state.zeroCtrlWells.size + ')';
+  updateSetupSummary();
 }
 function toggleWellPaint(pos){
   var set = state.paintMode === 'ctrl' ? state.ctrlWells : state.zeroCtrlWells;
   if (set.has(pos)) set.delete(pos); else set.add(pos);
   updatePaintButtonLabels();
   renderGrid();
+}
+
+// ══════════════════════════════════════════════════════════════
+// Compound / dilution-series manager (Layout tab) — supports adding
+// multiple compounds to the same plate, each with its own replicate
+// count auto-stacked into adjacent rows (row direction) or columns
+// (column direction), and editing/removing entries from a list.
+// ══════════════════════════════════════════════════════════════
+function computeCompoundWells(top, unitMul, fac, n, dir, startPos, replicates){
+  var m = startPos.match(/^([A-Za-z]+)(\d+)$/);
+  if (!m) return null;
+  var r0 = m[1].toUpperCase().charCodeAt(0) - 65, c0 = parseInt(m[2],10) - 1;
+  var topM = top * unitMul;
+  var series = []; // [{pos, conc}]
+  for (var rep = 0; rep < replicates; rep++) {
+    for (var i = 0; i < n; i++) {
+      var r = dir === 'col' ? r0 + i : r0 + rep;
+      var c = dir === 'row' ? c0 + i : c0 + rep;
+      if (r >= state.rows || c >= state.cols) continue;
+      series.push({ pos: wellPos(r,c), conc: topM / Math.pow(fac, i) });
+    }
+  }
+  return series;
+}
+function submitCompoundForm(){
+  var name = document.getElementById('sd-name').value.trim();
+  var top = parseFloat(document.getElementById('sd-top').value);
+  var unitMul = parseFloat(document.getElementById('sd-unit').value);
+  var fac = parseFloat(document.getElementById('sd-fac').value);
+  var n = parseInt(document.getElementById('sd-n').value, 10);
+  var dir = document.getElementById('sd-dir').value;
+  var start = document.getElementById('sd-start').value.trim().toUpperCase();
+  var reps = Math.max(1, parseInt(document.getElementById('sd-reps').value, 10) || 1);
+  if (!name || !top || !fac || !n) { toast('Fill in a name and valid dilution parameters.'); return; }
+  var series = computeCompoundWells(top, unitMul, fac, n, dir, start, reps);
+  if (!series || !series.length) { toast('Start well is invalid or the series runs off the plate.'); return; }
+
+  // If editing, clear the old entry's wells first
+  if (state.editingCompoundId !== null) {
+    var old = state.compounds.find(function(c){ return c.id === state.editingCompoundId; });
+    if (old) old.wells.forEach(function(pos){ if (state.wellData[pos]) { delete state.wellData[pos].sampleId; delete state.wellData[pos].conc; } });
+    state.compounds = state.compounds.filter(function(c){ return c.id !== state.editingCompoundId; });
+  }
+
+  series.forEach(function(pt){
+    state.wellData[pt.pos] = Object.assign({}, state.wellData[pt.pos], { sampleId: name, conc: pt.conc });
+  });
+  state.compounds.push({
+    id: (state.editingCompoundId !== null ? state.editingCompoundId : Date.now()),
+    name: name, top: top, unitMul: unitMul, fac: fac, n: n, dir: dir, start: start, replicates: reps,
+    wells: series.map(function(pt){ return pt.pos; })
+  });
+  state.editingCompoundId = null;
+  document.getElementById('sd-submit-btn').textContent = '+ Add compound to grid';
+  document.getElementById('sd-cancel-edit-btn').style.display = 'none';
+  document.getElementById('sd-name').value = '';
+  renderGrid();
+  renderCompoundList();
+  updateSetupSummary();
+  toast('"' + name + '" added: ' + n + ' points × ' + reps + ' replicate' + (reps===1?'':'s') + '.');
+}
+function editCompound(id){
+  var c = state.compounds.find(function(x){ return x.id === id; });
+  if (!c) return;
+  state.editingCompoundId = id;
+  document.getElementById('sd-name').value = c.name;
+  document.getElementById('sd-top').value = c.top;
+  document.getElementById('sd-unit').value = c.unitMul;
+  document.getElementById('sd-fac').value = c.fac;
+  document.getElementById('sd-n').value = c.n;
+  document.getElementById('sd-dir').value = c.dir;
+  document.getElementById('sd-start').value = c.start;
+  document.getElementById('sd-reps').value = c.replicates;
+  document.getElementById('sd-submit-btn').textContent = 'Save changes';
+  document.getElementById('sd-cancel-edit-btn').style.display = 'inline-block';
+}
+function cancelEditCompound(){
+  state.editingCompoundId = null;
+  document.getElementById('sd-submit-btn').textContent = '+ Add compound to grid';
+  document.getElementById('sd-cancel-edit-btn').style.display = 'none';
+  document.getElementById('sd-name').value = '';
+}
+function removeCompound(id){
+  var c = state.compounds.find(function(x){ return x.id === id; });
+  if (!c) return;
+  if (!confirm('Remove "' + c.name + '" and clear its wells?')) return;
+  c.wells.forEach(function(pos){ if (state.wellData[pos]) { delete state.wellData[pos].sampleId; delete state.wellData[pos].conc; } });
+  state.compounds = state.compounds.filter(function(x){ return x.id !== id; });
+  renderGrid();
+  renderCompoundList();
+  updateSetupSummary();
+}
+function renderCompoundList(){
+  var wrap = document.getElementById('compound-list');
+  if (!state.compounds.length) { wrap.innerHTML = '<div class="empty-state" style="padding:20px;">No compounds added yet.</div>'; return; }
+  wrap.innerHTML = state.compounds.map(function(c){
+    var unitLbl = {1e-3:'mM',1e-6:'µM',1e-9:'nM',1e-12:'pM',1:'M'}[c.unitMul] || '';
+    return '<div class="compound-row">' +
+      '<div class="cr-name">' + esc(c.name) + '</div>' +
+      '<div class="cr-detail">' + c.top + unitLbl + ' top · ' + c.fac + 'x · ' + c.n + ' pts · ' + c.replicates + ' rep' + (c.replicates===1?'':'s') + ' · from ' + c.start + ' (' + (c.dir==='row'?'row →':'col ↓') + ')</div>' +
+      '<div class="cr-actions"><button class="btn small" onclick="editCompound(' + c.id + ')">Edit</button><button class="btn small" onclick="removeCompound(' + c.id + ')">Remove</button></div>' +
+      '</div>';
+  }).join('');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -419,7 +640,9 @@ function setPlateFormat(fmt){
   state.wellData = {};
   state.ctrlWells = new Set();
   state.zeroCtrlWells = new Set();
+  state.compounds = [];
   updatePaintButtonLabels();
+  renderCompoundList();
   document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && fmt===96) || (i===1 && fmt===384)); });
   renderGrid();
 }
@@ -551,39 +774,15 @@ document.addEventListener('click', function(e){
 });
 
 function clearGrid(){
-  if (!confirm('Clear all data in the plate grid (samples, concentrations, signal, and control-well marks)?')) return;
+  if (!confirm('Clear all data in the plate grid (compounds, concentrations, signal, and control-well marks)?')) return;
   state.wellData = {};
   state.ctrlWells = new Set();
   state.zeroCtrlWells = new Set();
+  state.compounds = [];
+  state.editingCompoundId = null;
   updatePaintButtonLabels();
+  renderCompoundList();
   renderGrid();
-}
-
-// ══════════════════════════════════════════════════════════════
-// Serial dilution auto-fill
-// ══════════════════════════════════════════════════════════════
-function applySerialDilution(){
-  var name = document.getElementById('sd-name').value.trim() || 'Sample';
-  var top = parseFloat(document.getElementById('sd-top').value);
-  var unitMul = parseFloat(document.getElementById('sd-unit').value);
-  var fac = parseFloat(document.getElementById('sd-fac').value);
-  var n = parseInt(document.getElementById('sd-n').value, 10);
-  var dir = document.getElementById('sd-dir').value;
-  var startStr = document.getElementById('sd-start').value.trim().toUpperCase();
-  var m = startStr.match(/^([A-Z]+)(\d+)$/);
-  if (!m || !top || !fac || !n) { toast('Fill in valid dilution parameters.'); return; }
-  var r0 = m[1].charCodeAt(0) - 65, c0 = parseInt(m[2],10) - 1;
-  var topM = top * unitMul;
-  for (var i = 0; i < n; i++) {
-    var r = dir === 'col' ? r0 + i : r0;
-    var c = dir === 'row' ? c0 + i : c0;
-    if (r >= state.rows || c >= state.cols) break;
-    var pos = wellPos(r, c);
-    var conc = topM / Math.pow(fac, i);
-    state.wellData[pos] = Object.assign({}, state.wellData[pos], { sampleId: name, conc: conc });
-  }
-  renderGrid();
-  toast('Serial dilution applied: ' + n + ' points, ' + fac + 'x factor.');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1189,6 +1388,8 @@ function exportRawCSV(){
 // Init
 // ══════════════════════════════════════════════════════════════
 renderGrid();
+renderCompoundList();
+updateSetupSummary();
 </script>
 </body>
 </html>
