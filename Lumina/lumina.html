@@ -166,6 +166,8 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
 .cpd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 14px;}
 .cpd-grid .field{min-width:0;}
 .qc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;}
+.csv-lbl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap;}
+.csv-lbl input{min-height:auto;width:auto;}
 .qc-grid .field label{display:flex;align-items:center;gap:6px;text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px;}
 .qc-grid .field label input[type="checkbox"]{min-height:auto;width:auto;}
 .compound-row{display:flex;align-items:center;gap:10px;padding:10px 13px;border:1px solid var(--border);border-radius:8px;margin-bottom:7px;font-size:12.5px;background:var(--surface2);transition:border-color .15s;}
@@ -268,8 +270,8 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
       <div class="setup-stabs">
         <div class="setup-stab active" data-tab="files" onclick="switchSetupTab('files')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>Files</div>
         <div class="setup-stab" data-tab="layout" onclick="switchSetupTab('layout')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Layout</div>
-        <div class="setup-stab" data-tab="assay" onclick="switchSetupTab('assay')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v5l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3"/></svg>Assay</div>
         <div class="setup-stab" data-tab="analysis" onclick="switchSetupTab('analysis')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19V10M12 19V5M19 19v-7"/></svg>Analysis</div>
+        <div class="setup-stab" data-tab="output" onclick="switchSetupTab('output')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>Output</div>
       </div>
       <div class="setup-sbody">
 
@@ -295,7 +297,7 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
           <div id="reader-status" style="font-size:12.5px;color:var(--text2);">No reader file loaded yet — the Signal view will stay empty until you load one. You can still click a well in Signal view to enter/correct a value by hand.</div>
         </div>
 
-        <!-- Layout tab: plate format + compound/dilution manager with replicates -->
+        <!-- Layout tab: plate format, assay type, control wells, and the compound/dilution manager -->
         <div class="setup-pane" id="setup-pane-layout">
           <div class="setup-group">
             <div class="setup-section-lbl">Plate format</div>
@@ -303,6 +305,24 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
               <button class="active" onclick="setPlateFormat(96)">96-well</button>
               <button onclick="setPlateFormat(384)">384-well</button>
             </div>
+          </div>
+
+          <div class="setup-group">
+            <div class="setup-section-lbl">Assay type &amp; control wells</div>
+            <div class="row" style="align-items:flex-end;">
+              <div class="field" style="max-width:220px;">
+                <label>Assay type</label>
+                <select id="assay-type" onchange="onAssayTypeChange()">
+                  <option value="hibit">HiBiT</option>
+                  <option value="ctg">CTG (viability)</option>
+                  <option value="displacement">Displacement</option>
+                  <option value="gain">Gain of signal</option>
+                </select>
+              </div>
+              <button class="btn small" id="paint-ctrl-btn" onclick="togglePaintMode('ctrl')">⊞ Mark control wells (0)</button>
+              <button class="btn small" id="paint-zero-btn" onclick="togglePaintMode('zero')" style="display:none;">⊞ Mark 0% wells (0)</button>
+            </div>
+            <div class="setup-hsub" style="margin-top:10px;">Clicking "Mark" closes this dialog so you can click wells directly on the plate grid — click the floating button that appears to come back here.</div>
           </div>
 
           <div class="setup-group">
@@ -335,27 +355,6 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
           <button class="test-btn" onclick="loadLuminaTestData()">⚗ Load test plate example</button>
         </div>
 
-        <!-- Assay tab: assay type + grid-based control-well marking -->
-        <div class="setup-pane" id="setup-pane-assay">
-          <div class="setup-group">
-            <div class="setup-section-lbl">Assay type</div>
-            <select id="assay-type" onchange="onAssayTypeChange()" style="max-width:280px;">
-              <option value="hibit">HiBiT</option>
-              <option value="ctg">CTG (viability)</option>
-              <option value="displacement">Displacement</option>
-              <option value="gain">Gain of signal</option>
-            </select>
-          </div>
-          <div class="setup-group">
-            <div class="setup-section-lbl">Control wells</div>
-            <div class="row" style="gap:10px;">
-              <button class="btn small" id="paint-ctrl-btn" onclick="togglePaintMode('ctrl')">⊞ Mark control wells (0)</button>
-              <button class="btn small" id="paint-zero-btn" onclick="togglePaintMode('zero')" style="display:none;">⊞ Mark 0% wells (0)</button>
-            </div>
-            <div class="setup-hsub" style="margin-top:10px;">Clicking "Mark" closes this dialog so you can click wells directly on the plate grid — click the floating button that appears to come back here.</div>
-          </div>
-        </div>
-
         <!-- Analysis tab: QC & fit constraints -->
         <div class="setup-pane" id="setup-pane-analysis">
           <div class="setup-section-lbl">QC &amp; fit constraints</div>
@@ -372,6 +371,23 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
               <input id="qc-bot-val" type="number" step="1" value="0"></div>
             <div class="field"><label><input type="checkbox" id="qc-hill-en"> Fix Hill slope</label>
               <input id="qc-hill-val" type="number" step="0.1" value="1"></div>
+          </div>
+        </div>
+
+        <!-- Output tab: which columns appear in the results table / Excel / CSV / TSV copy -->
+        <div class="setup-pane" id="setup-pane-output">
+          <div class="setup-group">
+            <div class="setup-section-lbl">Output columns</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px 6px;">
+              <label class="csv-lbl"><input type="checkbox" id="col-top" checked onchange="renderResultsTable()"> <span>Top</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-bottom" checked onchange="renderResultsTable()"> <span>Bottom</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-hill" checked onchange="renderResultsTable()"> <span>Hill slope</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-dmax" checked onchange="renderResultsTable()"> <span>Dmax / Span / Emax</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-r2" checked onchange="renderResultsTable()"> <span>R²</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-maxsd" checked onchange="renderResultsTable()"> <span>Max replicate SD</span></label>
+              <label class="csv-lbl"><input type="checkbox" id="col-flags" checked onchange="renderResultsTable()"> <span>Flags</span></label>
+            </div>
+            <div class="setup-hsub" style="margin-top:10px;">Sample ID and the primary potency metric (DC50/IC50/EC50, depending on assay type) are always included. These toggles apply to the results table, Excel export, raw CSV, and TSV copy.</div>
           </div>
         </div>
 
@@ -589,7 +605,7 @@ function exitPaintModeReturnToSetup(){
   document.getElementById('paint-return-badge').style.display = 'none';
   renderGrid();
   openSetupModal();
-  switchSetupTab('assay');
+  switchSetupTab('layout');
 }
 function updatePaintButtonLabels(){
   document.getElementById('paint-ctrl-btn').textContent = '⊞ Mark control wells (' + state.ctrlWells.size + ')';
@@ -1488,19 +1504,48 @@ window.addEventListener('resize', function(){ if(document.getElementById('viz-pl
 // ══════════════════════════════════════════════════════════════
 // Results table
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// Shared output-column definitions (driven by the Output tab's
+// checkboxes) — one source of truth for the results table, Excel
+// export, and TSV copy, mirroring Echo's csv-col-cb pattern.
+// ══════════════════════════════════════════════════════════════
+function getResultColumns(){
+  var L = assayFitLabels(state.assayType);
+  function on(id){ var el = document.getElementById(id); return el ? el.checked : true; }
+  var cols = [
+    { th:'Sample', xh:'Sample_ID', get:function(r){ return r.sampleId; }, fmt:function(r){ return '<b>'+esc(r.sampleId)+'</b>'; } },
+    { th:'n', xh:'n', get:function(r){ return r.n; }, fmt:function(r){ return r.n; } }
+  ];
+  if (on('col-top')) cols.push({ th:'Top', xh:'Top', get:function(r){ return +r.top.toFixed(2); }, fmt:function(r){ return r.top.toFixed(1); } });
+  if (on('col-bottom')) cols.push({ th:'Bottom', xh:'Bottom', get:function(r){ return +r.bottom.toFixed(2); }, fmt:function(r){ return r.bottom.toFixed(1); } });
+  if (on('col-hill')) cols.push({ th:'Hill', xh:'Hill_Slope', get:function(r){ return +r.hill.toFixed(3); }, fmt:function(r){ return r.hill.toFixed(2); } });
+  cols.push({ th:L.ec50Name, xh:L.ec50Col, get:function(r){ return +(r.ec50M*1e9).toFixed(3); }, fmt:function(r){ return fmtConc(r.ec50M); } });
+  if (L.hasDmax && on('col-dmax')) {
+    var dTh = state.assayType==='gain' ? 'Emax' : L.dmaxName+' (%)';
+    var dXh = state.assayType==='gain' ? 'Emax' : L.dmaxName+'_pct';
+    cols.push({ th:dTh, xh:dXh, get:function(r){ return +(state.assayType==='gain' ? r.top : (100-r.bottom)).toFixed(2); }, fmt:function(r){ return (state.assayType==='gain' ? r.top : (100-r.bottom)).toFixed(1); } });
+  }
+  if (on('col-r2')) cols.push({ th:'R²', xh:'R2', get:function(r){ return +r.r2.toFixed(4); }, fmt:function(r){ return r.r2.toFixed(3); }, cls:function(r){ return r.flagR2 ? 'flag-bad' : 'flag-ok'; } });
+  if (on('col-maxsd')) cols.push({ th:'Max SD', xh:'Max_Replicate_SD', get:function(r){ return +r.maxSD.toFixed(2); }, fmt:function(r){ return r.maxSD.toFixed(1); }, cls:function(r){ return r.flagSD ? 'flag-bad' : ''; } });
+  if (on('col-flags')) cols.push({ th:'Flags', xh:'Flags', get:function(r){
+      var f = []; if (r.flagR2) f.push('LowR2'); if (r.flagSD) f.push('HighSD'); if (r.isHook) f.push('Hook');
+      return f.join(';') || 'OK';
+    }, fmt:function(r){
+      var f = []; if (r.flagR2) f.push('Low R²'); if (r.flagSD) f.push('High SD'); if (r.isHook) f.push('Hook');
+      return f.length ? '<span class="pill flag-bad">'+f.join(', ')+'</span>' : '<span class="pill flag-ok">OK</span>';
+    } });
+  return cols;
+}
 function renderResultsTable(){
   var wrap = document.getElementById('results-table-wrap');
   if (!state.fitResults.length) { wrap.innerHTML = '<div class="empty-state">Run an analysis from the Input tab to see results here.</div>'; return; }
-  var L = assayFitLabels(state.assayType);
-  var dmaxLbl = L.hasDmax ? (state.assayType==='gain' ? 'Emax' : L.dmaxName+' (%)') : null;
-  var html = '<table><thead><tr><th>Sample</th><th>n</th><th>Top</th><th>Bottom</th><th>Hill</th><th>'+L.ec50Name+'</th>'+(dmaxLbl?'<th>'+dmaxLbl+'</th>':'')+'<th>R²</th><th>Max SD</th><th>Flags</th></tr></thead><tbody>';
+  var cols = getResultColumns();
+  var html = '<table><thead><tr>' + cols.map(function(c){ return '<th>'+c.th+'</th>'; }).join('') + '</tr></thead><tbody>';
   state.fitResults.forEach(function(r){
-    var flags = [];
-    if (r.flagR2) flags.push('Low R²');
-    if (r.flagSD) flags.push('High SD');
-    if (r.isHook) flags.push('Hook');
-    var dmaxCell = dmaxLbl ? '<td>'+(state.assayType==='gain' ? r.top : (100-r.bottom)).toFixed(1)+'</td>' : '';
-    html += '<tr><td><b>'+esc(r.sampleId)+'</b></td><td>'+r.n+'</td><td>'+r.top.toFixed(1)+'</td><td>'+r.bottom.toFixed(1)+'</td><td>'+r.hill.toFixed(2)+'</td><td>'+fmtConc(r.ec50M)+'</td>'+dmaxCell+'<td class="'+(r.flagR2?'flag-bad':'flag-ok')+'">'+r.r2.toFixed(3)+'</td><td class="'+(r.flagSD?'flag-bad':'')+'">'+r.maxSD.toFixed(1)+'</td><td>'+(flags.length?'<span class="pill flag-bad">'+flags.join(', ')+'</span>':'<span class="pill flag-ok">OK</span>')+'</td></tr>';
+    html += '<tr>' + cols.map(function(c){
+      var cls = c.cls ? c.cls(r) : '';
+      return '<td'+(cls ? ' class="'+cls+'"' : '')+'>'+c.fmt(r)+'</td>';
+    }).join('') + '</tr>';
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
@@ -1557,21 +1602,9 @@ function copyPrism(asFraction){
 }
 function copyResultsTSV(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
-  var L = assayFitLabels(state.assayType);
-  var cols = ['Sample','n', L.ec50Name+'_nM'];
-  if (L.hasDmax) cols.push(state.assayType==='gain' ? 'Emax' : L.dmaxName+'_pct');
-  cols.push('Log'+L.ec50Name+'_M', 'p'+L.ec50Name, 'Hill','R2','MaxSD','Flags');
-  var rows = [cols.join('\t')];
-  state.fitResults.forEach(function(r){
-    var flags = [];
-    if (r.flagR2) flags.push('LowR2');
-    if (r.flagSD) flags.push('HighSD');
-    if (r.isHook) flags.push('Hook');
-    var row = [r.sampleId, r.n, (r.ec50M*1e9).toFixed(2)];
-    if (L.hasDmax) row.push((state.assayType==='gain' ? r.top : (100-r.bottom)).toFixed(1));
-    row.push(r.logEC50.toFixed(3), (-r.logEC50).toFixed(3), r.hill.toFixed(2), r.r2.toFixed(3), r.maxSD.toFixed(1), flags.join(';')||'OK');
-    rows.push(row.join('\t'));
-  });
+  var cols = getResultColumns();
+  var rows = [cols.map(function(c){ return c.xh; }).join('\t')];
+  state.fitResults.forEach(function(r){ rows.push(cols.map(function(c){ return c.get(r); }).join('\t')); });
   navigator.clipboard.writeText(rows.join('\n')).then(function(){ toast('Results copied (TSV).'); }).catch(function(){ toast('Clipboard write failed.'); });
 }
 
@@ -1583,17 +1616,9 @@ function copyResultsTSV(){
 function exportXLSX(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
   if (!window.XLSX) { toast('SheetJS failed to load — try CSV export instead.'); return; }
-  var L = assayFitLabels(state.assayType);
-  var header = ['Sample_ID','n', L.ec50Col];
-  if (L.hasDmax) header.push(state.assayType==='gain' ? 'Emax' : L.dmaxName+'_pct');
-  header.push(L.logCol, L.pCol, 'Hill_Slope','R2','Max_Replicate_SD','Flag_R2','Flag_SD','Flag_Hook');
-  var resultsAoA = [header];
-  state.fitResults.forEach(function(r){
-    var row = [r.sampleId, r.n, +(r.ec50M*1e9).toFixed(3)];
-    if (L.hasDmax) row.push(+(state.assayType==='gain' ? r.top : (100-r.bottom)).toFixed(2));
-    row.push(+r.logEC50.toFixed(4), +(-r.logEC50).toFixed(4), +r.hill.toFixed(3), +r.r2.toFixed(4), +r.maxSD.toFixed(2), r.flagR2?'Yes':'No', r.flagSD?'Yes':'No', r.isHook?'Yes':'No');
-    resultsAoA.push(row);
-  });
+  var cols = getResultColumns();
+  var resultsAoA = [cols.map(function(c){ return c.xh; })];
+  state.fitResults.forEach(function(r){ resultsAoA.push(cols.map(function(c){ return c.get(r); })); });
   var rawAoA = [['Sample_ID','Well','Log10_Conc','Concentration_M','Measurement','Is_Control']];
   (state.rawRows||[]).forEach(function(r){
     rawAoA.push([r.sampleId, r.well, +r.log10Conc.toFixed(4), r.conc, r.measurement, r.isCtrl?'Yes':'No']);
