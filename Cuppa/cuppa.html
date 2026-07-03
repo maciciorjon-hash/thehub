@@ -1350,6 +1350,13 @@ function paymentSource(memberId, month){
   if (!v) return null;
   return v === 'auto' ? 'auto' : 'manual';
 }
+// When a payment was marked paid (set by togglePaid) — lets everyone see
+// how current the ledger is, same idea as the Monzo balance timestamp.
+function paymentMarkedAt(memberId, month){
+  if (!state.paymentsMeta || !state.paymentsMeta[currentYear]) return null;
+  var v = (state.paymentsMeta[currentYear][memberId] || {})[month];
+  return v || null;
+}
 function memberPriceMonthly(member){
   if (member.drink === 'none') return 0;
   // Two tiers: tea = £5, everything else (coffee/matcha/hotchoc/milk/etc) = coffee price
@@ -1526,7 +1533,9 @@ function renderTable(){
       if (paid) cls = src === 'auto' ? 'paid auto-paid' : 'paid';
       if (m.drink === 'none') cls = 'na';
       var content = paid ? '✓' : (m.drink === 'none' ? 'N/A' : '');
-      var tip = paid ? (src==='auto'?'Monzo auto-detected':'Manually marked') : (m.name+' / '+mn);
+      var markedAt = paid ? paymentMarkedAt(m.id, mn) : null;
+      var markedAtStr = markedAt ? (new Date(markedAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' ' + new Date(markedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'})) : '';
+      var tip = paid ? ((src==='auto'?'Monzo auto-detected':'Marked manually') + (markedAtStr?' — '+markedAtStr:'')) : (m.name+' / '+mn);
       var cellStyle = isAct ? 'background:var(--accent-dim);' : (isFuture && !paid ? 'opacity:.35;' : '');
       html += '<td'+(cellStyle?' style="'+cellStyle+'"':'')+'>'+
         '<button class="cell-paid '+cls+'" onclick="togglePaid(\''+m.id+'\',\''+mn+'\')" title="'+esc(tip)+'">'+content+'</button></td>';
@@ -2373,9 +2382,17 @@ function togglePaid(memberId, month){
   if (!isAdmin){ toast('Sign in as admin to edit'); return; }
   if (!state.payments[currentYear]) state.payments[currentYear] = {};
   if (!state.payments[currentYear][memberId]) state.payments[currentYear][memberId] = {};
+  if (!state.paymentsMeta) state.paymentsMeta = {};
+  if (!state.paymentsMeta[currentYear]) state.paymentsMeta[currentYear] = {};
+  if (!state.paymentsMeta[currentYear][memberId]) state.paymentsMeta[currentYear][memberId] = {};
   var now = state.payments[currentYear][memberId][month];
-  if (now) delete state.payments[currentYear][memberId][month];
-  else state.payments[currentYear][memberId][month] = 'manual';
+  if (now) {
+    delete state.payments[currentYear][memberId][month];
+    delete state.paymentsMeta[currentYear][memberId][month];
+  } else {
+    state.payments[currentYear][memberId][month] = 'manual';
+    state.paymentsMeta[currentYear][memberId][month] = new Date().toISOString();
+  }
   render();
   saveToFirebase('toggle '+memberId+' '+month);
 }
