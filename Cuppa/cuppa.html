@@ -832,7 +832,7 @@ tbody tr:hover td{background:var(--accent-dim);}
           </div>
           <input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="handleCsvImport(event)">
           <button class="monzo-refresh" id="exp-csv-btn" style="display:none;" onclick="document.getElementById('csv-import-input').click()" title="Import a Monzo CSV bank statement">📂 Import CSV</button>
-          <button class="monzo-refresh" id="exp-reapply-btn" style="display:none;" onclick="reApplyStoredMonzo()" title="Re-process cached Monzo history and mark payments in ledger">↻ Re-apply all</button>
+          <button class="monzo-refresh" id="exp-balance-btn" style="display:none;" onclick="openBalanceModal()" title="Set the pot balance by hand">✏️ Set balance</button>
           <button class="monzo-refresh" id="exp-refresh-btn" style="display:none;" onclick="loadMonzoData()">↻ Refresh from Monzo</button>
         </div>
         <div class="exp-tbl-scroll" id="exp-tbl-scroll"></div>
@@ -890,6 +890,21 @@ tbody tr:hover td{background:var(--accent-dim);}
     <div class="modal-foot">
       <button class="tb-btn" onclick="closeSettings()">Cancel</button>
       <button class="tb-btn primary" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- MANUAL BALANCE MODAL -->
+<div class="modal-overlay" id="balance-modal" onclick="if(event.target===this)closeBalanceModal()">
+  <div class="modal-card" style="max-width:360px;">
+    <div class="modal-hdr"><div class="modal-title">Set Monzo pot balance</div><button class="modal-close" onclick="closeBalanceModal()">&times;</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Current balance (£)</label><input type="number" id="bf-balance" step="0.01" min="0" placeholder="0.00"></div>
+      <div style="font-size:11.5px;color:var(--text2);">Use this when Monzo sync isn't available. Everyone will see this figure plus the date/time you set it, so they know how current it is.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="tb-btn" onclick="closeBalanceModal()">Cancel</button>
+      <button class="tb-btn primary" onclick="saveManualBalance()">Save</button>
     </div>
   </div>
 </div>
@@ -1294,6 +1309,21 @@ function switchTab(tab){
   if (tab === 'expenses') renderExpenses();
 }
 
+// Builds the "at {time} {date}" subtext for the Monzo pot balance, labeled
+// by how it got there (manual entry vs. live Monzo sync) so everyone can
+// tell how current the figure is — plus admin-only refresh/set-manually links.
+function _balanceSubHtml(){
+  var m = state.monzo || {};
+  var when = m.balanceAt ? new Date(m.balanceAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' ' + new Date(m.balanceAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '';
+  var label = !when ? 'cached' : (m.balanceSource === 'manual' ? 'set manually ' + when : 'synced ' + when);
+  var actions = '';
+  if (isAdmin) {
+    actions += ' &middot; <a href="#" onclick="openBalanceModal();return false;" style="color:var(--accent);text-decoration:none;">set manually</a>';
+    actions += ' &middot; <a href="#" onclick="loadMonzoData();return false;" style="color:var(--accent);text-decoration:none;">refresh</a>';
+  }
+  return label + actions;
+}
+
 // ─── Render ────────────────────────────────────────────────────────────────
 function render(){
   if (!state) return;
@@ -1383,11 +1413,10 @@ function renderStats(){
   var monzoCard = '';
   if (state.monzo && state.monzo.balance != null) {
     var bal = (state.monzo.balance / 100).toFixed(2);
-    var balAt = state.monzo.balanceAt ? new Date(state.monzo.balanceAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' ' + new Date(state.monzo.balanceAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '';
     monzoCard = '<div class="stat-card monzo-card">'
       + '<div class="stat-lbl">Monzo pot</div>'
       + '<div class="stat-val">£' + bal + '</div>'
-      + '<div class="stat-sub">' + (balAt ? 'at ' + balAt : 'cached') + (isAdmin ? ' · <a href="#" onclick="loadMonzoData();return false;" style="color:var(--accent);text-decoration:none;">refresh</a>' : '') + '</div>'
+      + '<div class="stat-sub">' + _balanceSubHtml() + '</div>'
       + '</div>';
   }
 
@@ -1408,10 +1437,9 @@ function renderStats(){
     var ovHtml = '<div class="stat-card" style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;">';
     if (state.monzo && state.monzo.balance != null) {
       var bal = (state.monzo.balance / 100).toFixed(2);
-      var balAt = state.monzo.balanceAt ? new Date(state.monzo.balanceAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+' '+new Date(state.monzo.balanceAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) : '';
       ovHtml += '<div class="stat-mini-lbl">Monzo pot</div>'
         + '<div class="stat-mini-val">£'+bal+'</div>'
-        + '<div class="stat-mini-sub">'+(balAt?'at '+balAt:'cached')+(isAdmin?' &middot; <a href="#" onclick="loadMonzoData();return false;" style="color:var(--accent);text-decoration:none;">refresh</a>':'')+'</div>'
+        + '<div class="stat-mini-sub">'+_balanceSubHtml()+'</div>'
         + '<div class="stat-divider"></div>';
     }
     ovHtml += '<div class="stat-mini-lbl">Active members</div>'
@@ -2037,6 +2065,8 @@ function renderExpenses(){
   if (expRefresh) expRefresh.style.display = isAdmin ? '' : 'none';
   var expCsvBtn = document.getElementById('exp-csv-btn');
   if (expCsvBtn) expCsvBtn.style.display = isAdmin ? '' : 'none';
+  var expBalanceBtn = document.getElementById('exp-balance-btn');
+  if (expBalanceBtn) expBalanceBtn.style.display = isAdmin ? '' : 'none';
 
   // Last sync timestamp
   var syncEl = document.getElementById('exp-last-sync');
@@ -2214,81 +2244,13 @@ function importMonzoCSV(text){
     if(!lastDate||dateStr>lastDate) lastDate=dateStr;
   });
   if(lastDate) state.monzo.expensesAt=lastDate+'T12:00:00.000Z';
-  // Auto-apply all incoming payments (including newly imported ones)
-  var toApply=existing.filter(function(e){return e.amount>0;}).map(function(e){
-    return {amount:e.amount,description:e.desc,bankName:e.name||'',created:e.date+'T00:00:00Z'};
-  });
-  autoApplyMonzoPayments(toApply);
+  // Payments are no longer auto-marked from imported transactions — mark
+  // each member's paid months by hand from the Payments tab instead.
   render();
   saveToFirebase('csv-import');
   toast(added?'Imported '+added+' transactions':'No new transactions — already up to date');
   var fi=document.getElementById('csv-import-input');
   if(fi) fi.value='';
-}
-function reApplyStoredMonzo(){
-  if (!isAdmin || !state) return;
-  var stored = (state.monzo && state.monzo.expenses) || [];
-  if (!stored.length){ toast('No Monzo data cached yet — Refresh first'); return; }
-  var applied = 0;
-  stored.filter(function(e){ return e.amount > 0; }).forEach(function(e){
-    var member = findMemberForTxn(e.desc, e.name || '');
-    if (!member) return;
-    var price = memberPriceMonthly(member);
-    if (price <= 0) return;
-    var amtGBP = e.amount / 100;
-    if (amtGBP < price * 0.65) return;
-    var nMonths = Math.round(amtGBP / price);
-    if (nMonths < 1) return;
-    var txYear  = parseInt((e.date||'').slice(0,4)) || currentYear;
-    var txMoIdx = parseInt((e.date||'').slice(5,7)) - 1;
-    if (isNaN(txMoIdx) || txMoIdx < 0 || txMoIdx > 11) return;
-    if (!state.payments[txYear]) state.payments[txYear] = {};
-    if (!state.payments[txYear][member.id]) state.payments[txYear][member.id] = {};
-    var yp = state.payments[txYear][member.id];
-    var marked = 0;
-    for (var i = txMoIdx; i < 12 && marked < nMonths; i++){
-      if (!yp[MONTHS[i]]){ yp[MONTHS[i]] = 'auto'; marked++; applied++; }
-    }
-    for (var j = txMoIdx - 1; j >= 0 && marked < nMonths; j--){
-      if (!yp[MONTHS[j]]){ yp[MONTHS[j]] = 'auto'; marked++; applied++; }
-    }
-  });
-  render();
-  saveToFirebase('monzo re-apply');
-  toast(applied ? applied + ' month slot' + (applied===1?'':'s') + ' marked paid from history' : 'Nothing new to apply — all already marked');
-}
-function autoApplyMonzoPayments(txns){
-  if (!isAdmin || !state) return;
-  // Only incoming bank transfers (positive amount, no merchant = peer transfer)
-  var incoming = txns.filter(function(t){ return t.amount > 0; });
-  incoming.forEach(function(t){
-    var member = findMemberForTxn(t.description || '', t.bankName || '');
-    if (!member) return;
-    var price = memberPriceMonthly(member);
-    if (price <= 0) return;
-    var amtGBP = t.amount / 100;
-    // Require at least 65% of a single month's price to avoid noise
-    if (amtGBP < price * 0.65) return;
-    var nMonths = Math.round(amtGBP / price);
-    if (nMonths < 1) return;
-    // Start from the transaction's own month
-    var created = t.created || '';
-    var txYear  = parseInt(created.slice(0,4)) || currentYear;
-    var txMoIdx = parseInt(created.slice(5,7)) - 1;
-    if (isNaN(txMoIdx) || txMoIdx < 0 || txMoIdx > 11) txMoIdx = MONTHS.indexOf(currentMonth);
-    if (!state.payments[txYear]) state.payments[txYear] = {};
-    if (!state.payments[txYear][member.id]) state.payments[txYear][member.id] = {};
-    var yp = state.payments[txYear][member.id];
-    var marked = 0;
-    // Fill N consecutive unpaid months forward from tx month
-    for (var i = txMoIdx; i < 12 && marked < nMonths; i++){
-      if (!yp[MONTHS[i]]){ yp[MONTHS[i]] = 'auto'; marked++; }
-    }
-    // If still short (months ran out), fill backward
-    for (var j = txMoIdx - 1; j >= 0 && marked < nMonths; j--){
-      if (!yp[MONTHS[j]]){ yp[MONTHS[j]] = 'auto'; marked++; }
-    }
-  });
 }
 function loadMonzoToken(){
   try { _monzoToken = localStorage.getItem('cuppa_monzo_token') || null; } catch(e){}
@@ -2336,7 +2298,7 @@ async function loadMonzoData(){
     if (br.ok){
       var bd = await br.json();
       var bal = bd.balance != null ? bd.balance : bd.total_balance;
-      if (bal != null){ state.monzo.balance = bal; state.monzo.balanceAt = new Date().toISOString(); }
+      if (bal != null){ state.monzo.balance = bal; state.monzo.balanceAt = new Date().toISOString(); state.monzo.balanceSource = 'monzo'; }
     }
     // Transactions — full year with pagination (Monzo returns max 100 per page)
     var allTxns = [];
@@ -2354,9 +2316,8 @@ async function loadMonzoData(){
     }
     if (allTxns.length > 0 || allTxns.length === 0) {
       var txns = allTxns;
-      // Auto-apply incoming payments to ledger before storing
-      autoApplyMonzoPayments(txns);
-      // Store all transactions as expenses (both in and out)
+      // Store all transactions as expenses (both in and out) — payments are
+      // no longer auto-marked from these; mark paid months by hand instead.
       state.monzo.expenses = txns.map(function(t){
         return {
           txid: t.id,
@@ -2380,6 +2341,30 @@ function setMonzoExpired(){
   _monzoToken = null;
   try { localStorage.removeItem('cuppa_monzo_token'); } catch(e){}
   setStatus('Monzo expired');
+}
+
+// ─── Manual balance entry (fallback for when Monzo sync isn't working) ──────
+function openBalanceModal(){
+  if (!isAdmin) return;
+  var current = (state.monzo && state.monzo.balance != null) ? (state.monzo.balance/100).toFixed(2) : '';
+  document.getElementById('bf-balance').value = current;
+  document.getElementById('balance-modal').classList.add('open');
+}
+function closeBalanceModal(){
+  document.getElementById('balance-modal').classList.remove('open');
+}
+function saveManualBalance(){
+  if (!isAdmin) return;
+  var v = parseFloat(document.getElementById('bf-balance').value);
+  if (isNaN(v) || v < 0){ toast('Enter a valid amount'); return; }
+  if (!state.monzo) state.monzo = {};
+  state.monzo.balance = Math.round(v * 100);
+  state.monzo.balanceAt = new Date().toISOString();
+  state.monzo.balanceSource = 'manual';
+  render();
+  saveToFirebase('manual balance');
+  closeBalanceModal();
+  toast('Balance updated');
 }
 
 
@@ -2513,6 +2498,7 @@ document.addEventListener('keydown', function(e){
   if (e.key === 'Escape'){
     if (document.getElementById('member-modal').classList.contains('open')) closeMemberModal();
     else if (document.getElementById('settings-modal').classList.contains('open')) closeSettings();
+    else if (document.getElementById('balance-modal').classList.contains('open')) closeBalanceModal();
   }
 });
 window.addEventListener('message', function(e){
