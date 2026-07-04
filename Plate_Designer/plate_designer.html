@@ -165,8 +165,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 .gd-field label{font-size:10.5px;color:var(--text2);}
 .gd-select,.gd-input{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;width:100%;box-sizing:border-box;}
 .gd-select:focus,.gd-input:focus{border-color:var(--accent);}
-.gd-preview-wrap{background:#e8e8e8;border:1px solid var(--border);border-radius:8px;padding:10px;overflow:auto;margin-bottom:12px;min-height:60px;}
-[data-theme="dark"] .gd-preview-wrap{background:var(--surface2);}
+.gd-preview-wrap{background:
+  linear-gradient(0deg,rgba(0,0,0,0.015),rgba(0,0,0,0.015)),
+  repeating-conic-gradient(#f3f4f7 0% 25%, #fafbfc 0% 50%) 0 0 / 22px 22px;
+  border:1px solid var(--border2);border-radius:10px;padding:22px;overflow:auto;margin-bottom:14px;
+  min-height:80px;display:flex;justify-content:center;align-items:flex-start;box-shadow:inset 0 1px 3px rgba(0,0,0,0.05);}
+[data-theme="dark"] .gd-preview-wrap{background:
+  linear-gradient(0deg,rgba(0,0,0,0.06),rgba(0,0,0,0.06)),
+  repeating-conic-gradient(#c9ccd4 0% 25%, #d6d9e0 0% 50%) 0 0 / 22px 22px;}
 .gd-wells-tbl{border-collapse:collapse;width:100%;font-size:11px;background:var(--surface);border-radius:6px;overflow:hidden;}
 .gd-wells-tbl th{padding:3px 5px;font-size:10px;font-weight:600;color:var(--text3);background:var(--surface2);border-bottom:1px solid var(--border);text-align:left;}
 .gd-wells-tbl td{padding:1px 3px;border-bottom:1px solid var(--border);}
@@ -293,7 +299,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
   <div class="logo">D</div>
   <div>
     <div class="app-name">Lab Designer</div>
-    <div class="app-sub">Plate &amp; gel design tools · Layout builder · PNG export <span style="opacity:.45;font-size:10px;">· v1.2 · Jun 2026</span></div>
+    <div class="app-sub">Plate &amp; gel design tools · Layout builder · PNG export <span style="opacity:.45;font-size:10px;">· v1.3 · Jul 2026</span></div>
   </div>
   <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options">&#9881;</button>
 <div class="opts-panel" id="opts-panel">
@@ -659,9 +665,21 @@ var gdBrackets = [];
 var _gdInited  = false;
 
 var GD = {
-  GAP: 4, PAD_L: 10, PAD_R: 16, PAD_TOP: 8,
-  BRACK_H: 22, FONT: 'Arial, sans-serif'
+  GAP: 5, PAD_L: 12, PAD_R: 18, PAD_TOP: 10,
+  BRACK_H: 22, FONT: "'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif"
 };
+
+// Rounded-rectangle path helper (uniform radius).
+function gdRoundRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x,     y + h, r);
+  ctx.arcTo(x,     y + h, x,     y,     r);
+  ctx.arcTo(x,     y,     x + w, y,     r);
+  ctx.closePath();
+}
 
 function gdInit() {
   var n = +document.getElementById('gd-gel').value || 20;
@@ -763,7 +781,7 @@ function gdDraw() {
   var titleItalic = !!(document.getElementById('gd-title-italic') || {}).checked;
 
   var W = wszKey === 'S' ? 22 : 34;
-  var H = wszKey === 'S' ? 18 : W;
+  var H = wszKey === 'S' ? 24 : 34;
 
   var isExt = lpos !== 'inside', isRotated = orient !== 0, EXT_H = 0, GAP_EXT = 6;
   if (isExt) {
@@ -860,7 +878,7 @@ function gdDraw() {
   var lanePos = (document.getElementById('gd-lanepos') || {}).value || 'above';
   if (lanePos !== 'none') {
     ctx.save();
-    ctx.fillStyle = '#aaa'; ctx.font = '9px ' + GD.FONT;
+    ctx.fillStyle = '#8a93a3'; ctx.font = '600 9px ' + GD.FONT;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (var i = 0; i < n; i++) {
       if (lanePos === 'above') ctx.fillText(String(i + 1), wellsX0 + i * (W + GD.GAP) + W / 2, yNums + NUM_H / 2);
@@ -868,30 +886,65 @@ function gdDraw() {
     ctx.restore();
   }
 
-  var _gdDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  var _wellMw    = _gdDark ? '#3a3f52' : '#e0e0e0';
-  var _wellDmso  = _gdDark ? '#2f4a3a' : '#d6ecd6';
-  var _wellSamp  = _gdDark ? '#252a3a' : '#ffffff';
-  var _wellStroke= _gdDark ? '#8a8f9c' : '#555';
-  var _wellEmptyStroke = _gdDark ? 'rgba(255,255,255,0.18)' : '#ccc';
+  // The gel diagram is an export artifact, so it always renders on a light
+  // "figure" palette regardless of the app's light/dark UI theme.
+  var _wellStroke  = 'rgba(28,38,56,0.34)';
+  var _dmsoStroke  = 'rgba(38,120,72,0.52)';
+  var _emptyStroke = 'rgba(28,38,56,0.30)';
+  var _depthLine   = 'rgba(28,38,56,0.16)';
+
+  // ── Gel-cassette slab behind the comb (the recognisable "gel" frame) ──
+  var slabX = wellsX0 - 8, slabY = yWell - 7;
+  var slabW = n * (W + GD.GAP) - GD.GAP + 16, slabH = H + 14;
+  ctx.save();
+  if (!transparent) { ctx.shadowColor = 'rgba(20,28,45,0.12)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2; }
+  var slabGrad = ctx.createLinearGradient(0, slabY, 0, slabY + slabH);
+  slabGrad.addColorStop(0, '#f7f9fc'); slabGrad.addColorStop(1, '#e8edf3');
+  ctx.fillStyle = slabGrad;
+  gdRoundRect(ctx, slabX, slabY, slabW, slabH, 8);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(28,38,56,0.16)';
+  ctx.stroke();
+  ctx.restore();
+
   for (var i = 0; i < n; i++) {
-    var w = gdWells[i], wx = wellsX0 + i * (W + GD.GAP), wy = yWell, r = wszKey === 'S' ? 2 : 3;
-    ctx.save();
-    ctx.fillStyle   = w.type === 'mw' ? _wellMw : w.type === 'dmso' ? _wellDmso : w.type === 'empty' ? 'rgba(0,0,0,0)' : _wellSamp;
-    ctx.strokeStyle = w.type === 'empty' ? _wellEmptyStroke : _wellStroke;
-    ctx.lineWidth   = w.type === 'empty' ? 0.7 : 0.9;
-    if (w.type === 'empty') ctx.setLineDash([3, 2]);
-    ctx.beginPath();
-    ctx.moveTo(wx + r, wy);
-    ctx.lineTo(wx + W - r, wy);    ctx.arcTo(wx + W, wy,     wx + W, wy + r,     r);
-    ctx.lineTo(wx + W, wy + H - r); ctx.arcTo(wx + W, wy + H, wx + W - r, wy + H, r);
-    ctx.lineTo(wx + r, wy + H);    ctx.arcTo(wx, wy + H,     wx, wy + H - r,     r);
-    ctx.lineTo(wx, wy + r);        ctx.arcTo(wx, wy,         wx + r, wy,          r);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.restore();
-    if (lanePos === 'inside' && w.type !== 'empty') {
+    var w = gdWells[i], wx = wellsX0 + i * (W + GD.GAP), wy = yWell, r = wszKey === 'S' ? 3 : 4;
+    if (w.type === 'empty') {
       ctx.save();
-      ctx.fillStyle = '#aaa'; ctx.font = '9px ' + GD.FONT;
+      ctx.strokeStyle = _emptyStroke; ctx.lineWidth = 1; ctx.setLineDash([3, 2.5]);
+      gdRoundRect(ctx, wx, wy, W, H, r); ctx.stroke();
+      ctx.restore();
+    } else {
+      var _g0, _g1, _stroke;
+      if (w.type === 'mw')        { _g0 = '#eef1f6'; _g1 = '#dde3ec'; _stroke = _wellStroke; }
+      else if (w.type === 'dmso') { _g0 = '#e6f4e8'; _g1 = '#d0e9d4'; _stroke = _dmsoStroke; }
+      else                        { _g0 = '#ffffff'; _g1 = '#eaeff6'; _stroke = _wellStroke; }
+      ctx.save();
+      var wg = ctx.createLinearGradient(0, wy, 0, wy + H);
+      wg.addColorStop(0, _g0); wg.addColorStop(1, _g1);
+      ctx.fillStyle = wg;
+      gdRoundRect(ctx, wx, wy, W, H, r); ctx.fill();
+      // Top-inner depth line — reads as an open loading slot.
+      ctx.save(); gdRoundRect(ctx, wx, wy, W, H, r); ctx.clip();
+      ctx.strokeStyle = _depthLine; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(wx + 1.5, wy + 1.3); ctx.lineTo(wx + W - 1.5, wy + 1.3); ctx.stroke();
+      ctx.restore();
+      ctx.strokeStyle = _stroke; ctx.lineWidth = 1; gdRoundRect(ctx, wx, wy, W, H, r); ctx.stroke();
+      // MW lane → draw ladder rungs (only when its label sits outside the well).
+      if (w.type === 'mw' && lpos !== 'inside') {
+        ctx.strokeStyle = 'rgba(28,38,56,0.32)'; ctx.lineWidth = 1;
+        var tickN = Math.max(3, Math.min(6, Math.round(H / 5))), tickW = W * 0.5, tickX = wx + W / 2;
+        for (var tk = 0; tk < tickN; tk++) {
+          var ty = wy + H * (tk + 1) / (tickN + 1);
+          ctx.beginPath(); ctx.moveTo(tickX - tickW / 2, ty); ctx.lineTo(tickX + tickW / 2, ty); ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+    if (lanePos === 'inside' && w.type !== 'empty' && w.type !== 'mw') {
+      ctx.save();
+      ctx.fillStyle = '#9aa3b2'; ctx.font = '600 9px ' + GD.FONT;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(String(i + 1), wx + W / 2, wy + H / 2);
       ctx.restore();
