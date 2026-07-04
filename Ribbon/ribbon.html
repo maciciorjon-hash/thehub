@@ -176,14 +176,7 @@ select:focus{outline:none;border-color:var(--accent);}
     </div>
     <div class="field" id="surfaceOpacityField" style="display:none;">
       <label class="field-label">Surface opacity</label>
-      <input type="range" id="surfaceOpacity" min="0.2" max="1" step="0.05" value="1" style="width:100%;accent-color:var(--accent);">
-    </div>
-    <div class="field" id="surfaceSimplifyField" style="display:none;">
-      <label class="field-label">Simplify</label>
-      <input type="range" id="surfaceSimplify" min="0" max="3" step="1" value="0" style="width:100%;accent-color:var(--accent);">
-      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text3);margin-top:3px;">
-        <span>Detailed</span><span>Simplified</span>
-      </div>
+      <input type="range" id="surfaceOpacity" min="0.2" max="1" step="0.01" value="1" style="width:100%;accent-color:var(--accent);">
     </div>
 
     <div class="divider"></div>
@@ -273,9 +266,8 @@ select:focus{outline:none;border-color:var(--accent);}
 
 <script>
 var UNIFORM_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#c5c5c5','#2d9462'];
-var SURFACE_TYPES=['VDW','SES','MS','SAS'];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfId=null;
-var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'none',shade:'flat',bg:'transparent',surfaceOpacity:1,simplify:0};
+var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'none',shade:'flat',bg:'transparent',surfaceOpacity:1};
 
 function $(id){return document.getElementById(id);}
 
@@ -480,12 +472,11 @@ function surfaceStyleOpts(){
 
 function updatePanelVisibility(){
   $('surfaceOpacityField').style.display=(state.style==='surface')?'block':'none';
-  $('surfaceSimplifyField').style.display=(state.style==='surface')?'block':'none';
   $('uniformColorField').style.display=(state.color==='uniform')?'block':'none';
 }
 
-// Full rebuild: needed when the structure style, the loaded model, or the
-// surface simplification level changes (anything that changes the mesh itself).
+// Full rebuild: needed when the structure style or the loaded model changes
+// (anything that changes the mesh itself).
 function buildGeometry(){
   if(!currentModel||!viewer)return;
   updatePanelVisibility();
@@ -500,8 +491,7 @@ function buildGeometry(){
     var s={radius:0.18};Object.assign(s,colorSpecFor());
     viewer.setStyle({},{stick:s});
   } else if(state.style==='surface'){
-    var surfType=$3Dmol.SurfaceType[SURFACE_TYPES[state.simplify]];
-    viewer.addSurface(surfType,surfaceStyleOpts()).then(function(id){
+    viewer.addSurface($3Dmol.SurfaceType.SES,surfaceStyleOpts()).then(function(id){
       currentSurfId=id;
     });
   }
@@ -590,13 +580,6 @@ document.addEventListener('DOMContentLoaded',function(){
   $('surfaceOpacity').addEventListener('input',function(e){
     state.surfaceOpacity=parseFloat(e.target.value);
     updateColorOrOpacity();
-  });
-
-  // Simplify changes the surface mesh itself (different algorithm), so it
-  // recomputes on release rather than on every drag tick to stay smooth.
-  $('surfaceSimplify').addEventListener('change',function(e){
-    state.simplify=parseInt(e.target.value,10);
-    buildGeometry();
   });
 
   $('resetViewBtn').addEventListener('click',function(){
