@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Ribbon</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+:root{
+  --bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
+  --text:#1a1d2e;--text2:#5a5f7a;--text3:#9ca0b8;
+  --accent:#e36c69;--accent-dim:rgba(227,108,105,0.12);
+  --good:#2d9462;--mid:#b58830;--poor:#b84545;
+  --sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.04);--shadow-sm:0 2px 8px rgba(0,0,0,.06);
+  --shadow-md:0 6px 24px rgba(0,0,0,.09);--shadow-lg:0 16px 48px rgba(0,0,0,.14);
+}
+[data-theme="dark"]{
+  --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;
+  --accent:#e36c69;--accent-dim:rgba(227,108,105,0.15);
+  --good:#6ddca8;--mid:#f8cc6d;--poor:#f89090;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.30);--shadow-sm:0 2px 8px rgba(0,0,0,.40);
+  --shadow-md:0 6px 24px rgba(0,0,0,.50);--shadow-lg:0 16px 48px rgba(0,0,0,.55);
+}
+input::placeholder{color:var(--text3);opacity:1;}
+html,body{height:100%;overflow:hidden;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+
+header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;
+  align-items:center;gap:14px;background:var(--surface);height:58px;flex-shrink:0;}
+.logo{width:32px;height:32px;border-radius:7px;background:var(--accent);display:flex;
+  align-items:center;justify-content:center;color:#fff;flex-shrink:0;}
+.logo svg{width:19px;height:19px;}
+.app-name{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+.app-sub{font-size:11px;color:var(--text2);}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);
+  width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;
+  display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+
+.body{flex:1;display:flex;overflow:hidden;min-height:0;}
+
+.sidebar{width:290px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);
+  overflow-y:auto;padding:18px 18px 40px;}
+.field{margin-bottom:18px;}
+.field-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--text2);margin-bottom:7px;display:block;}
+.row{display:flex;gap:8px;}
+input[type=text]{flex:1;background:var(--surface2);border:1px solid var(--border2);
+  border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:13px;color:var(--text);}
+input[type=text]:focus{outline:none;border-color:var(--accent);}
+button.btn{background:var(--accent);color:#fff;border:none;border-radius:6px;
+  padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);
+  transition:opacity .15s;white-space:nowrap;}
+button.btn:hover{opacity:.88;}
+button.btn:disabled{opacity:.45;cursor:default;}
+button.btn.secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border2);}
+button.btn.full{width:100%;}
+.example-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.example-chip{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:5px;
+  background:var(--surface2);border:1px solid var(--border);color:var(--text2);cursor:pointer;}
+.example-chip:hover{color:var(--text);border-color:var(--border2);}
+
+select{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;
+  padding:8px 10px;font-family:var(--sans);font-size:13px;color:var(--text);cursor:pointer;}
+select:focus{outline:none;border-color:var(--accent);}
+
+.seg{display:flex;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;
+  overflow:hidden;}
+.seg button{flex:1;background:none;border:none;padding:7px 6px;font-size:12px;font-family:var(--sans);
+  color:var(--text2);cursor:pointer;border-right:1px solid var(--border2);transition:background .15s,color .15s;}
+.seg button:last-child{border-right:none;}
+.seg button.active{background:var(--accent);color:#fff;font-weight:600;}
+.seg button:hover:not(.active){background:var(--surface3);}
+
+.color-swatches{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.swatch{width:22px;height:22px;border-radius:5px;cursor:pointer;border:2px solid transparent;}
+.swatch.active{border-color:var(--text);}
+
+.divider{height:1px;background:var(--border);margin:18px 0;}
+.section-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:12px;
+  display:flex;align-items:center;gap:6px;}
+.section-title svg{width:14px;height:14px;color:var(--accent);}
+
+.checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;}
+.checkbox-row input{width:14px;height:14px;accent-color:var(--accent);cursor:pointer;}
+
+.viewer-area{flex:1;position:relative;display:flex;flex-direction:column;min-width:0;}
+.viewer-toolbar{position:absolute;top:14px;right:14px;z-index:5;display:flex;gap:8px;}
+.tb-btn{background:var(--surface);border:1px solid var(--border2);color:var(--text2);
+  width:32px;height:32px;border-radius:7px;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;box-shadow:var(--shadow-xs);transition:color .15s,background .15s;}
+.tb-btn:hover{color:var(--text);background:var(--surface2);}
+.tb-btn svg{width:16px;height:16px;}
+#viewport{flex:1;position:relative;}
+.viewer-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:10px;color:var(--text3);pointer-events:none;}
+.viewer-empty svg{width:52px;height:52px;opacity:.3;}
+.viewer-empty div{font-size:13px;}
+.status-bar{position:absolute;bottom:14px;left:14px;z-index:5;font-family:var(--mono);
+  font-size:11px;color:var(--text2);background:var(--surface);padding:5px 10px;border-radius:6px;
+  border:1px solid var(--border2);box-shadow:var(--shadow-xs);display:none;}
+.status-bar.show{display:block;}
+.spinner{width:26px;height:26px;border:3px solid var(--border2);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(10px);
+  background:var(--text);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:12.5px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:999;box-shadow:var(--shadow-md);}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.err-text{font-size:12px;color:var(--poor);margin-top:6px;display:none;}
+.err-text.show{display:block;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4c4 0 4 4 8 4s4-4 8-4"/><path d="M4 10c4 0 4 4 8 4s4-4 8-4"/><path d="M4 16c4 0 4 4 8 4s4-4 8-4"/></svg></div>
+  <div>
+    <div class="app-name">Ribbon</div>
+    <div class="app-sub">Protein structure renderer</div>
+  </div>
+  <div class="header-right">
+    <button class="opts-btn" id="themeBtn" title="Toggle theme">&#9788;</button>
+  </div>
+</header>
+
+<div class="body">
+  <div class="sidebar">
+    <div class="field">
+      <label class="field-label">PDB code</label>
+      <div class="row">
+        <input type="text" id="pdbInput" placeholder="e.g. 1CRN" maxlength="4" autocomplete="off">
+        <button class="btn" id="fetchBtn">Load</button>
+      </div>
+      <div class="example-row">
+        <span class="example-chip" data-pdb="1CRN">1CRN</span>
+        <span class="example-chip" data-pdb="4HHB">4HHB</span>
+        <span class="example-chip" data-pdb="1LYZ">1LYZ</span>
+        <span class="example-chip" data-pdb="6VXX">6VXX</span>
+      </div>
+      <div class="err-text" id="errText"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+      Structure style
+    </div>
+    <div class="field">
+      <div class="seg" id="styleSeg">
+        <button data-v="cartoon" class="active">Cartoon</button>
+        <button data-v="surface">Surface</button>
+        <button data-v="stick">Stick</button>
+        <button data-v="sphere">Sphere</button>
+      </div>
+    </div>
+    <div class="field" id="surfaceOpacityField" style="display:none;">
+      <label class="field-label">Surface opacity</label>
+      <input type="range" id="surfaceOpacity" min="0.2" max="1" step="0.05" value="1" style="width:100%;accent-color:var(--accent);">
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2a10 10 0 1 0 10 10c0-1.1-.9-2-2-2h-2a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1a2 2 0 0 0 2-2c0-2.76-4.03-4-9-4z"/></svg>
+      Color style
+    </div>
+    <div class="field">
+      <div class="seg" id="colorSeg">
+        <button data-v="uniform" class="active">Uniform</button>
+        <button data-v="chain">Chain</button>
+        <button data-v="spectrum">Spectrum</button>
+        <button data-v="ss">Secondary</button>
+      </div>
+    </div>
+    <div class="field" id="uniformColorField">
+      <label class="field-label">Uniform color</label>
+      <div class="color-swatches" id="uniformSwatches"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
+      Border style
+    </div>
+    <div class="field">
+      <div class="seg" id="borderSeg">
+        <button data-v="none" class="active">None</button>
+        <button data-v="thin">Thin</button>
+        <button data-v="thick">Thick</button>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
+      Shading
+    </div>
+    <div class="field">
+      <div class="seg" id="shadeSeg">
+        <button data-v="flat" class="active">Flat</button>
+        <button data-v="toon">Toon</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+      Background
+    </div>
+    <div class="field">
+      <div class="seg" id="bgSeg">
+        <button data-v="transparent" class="active">Transparent</button>
+        <button data-v="white">White</button>
+        <button data-v="dark">Dark</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <label class="checkbox-row" style="margin-bottom:10px;">
+      <input type="checkbox" id="spinToggle"> Auto-spin
+    </label>
+
+    <button class="btn secondary full" id="exportBtn" style="margin-top:6px;">Export PNG (hi-res)</button>
+  </div>
+
+  <div class="viewer-area">
+    <div class="viewer-toolbar">
+      <button class="tb-btn" id="resetViewBtn" title="Reset view">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg>
+      </button>
+    </div>
+    <div id="viewport">
+      <div class="viewer-empty" id="emptyState">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4c4 0 4 4 8 4s4-4 8-4"/><path d="M4 10c4 0 4 4 8 4s4-4 8-4"/><path d="M4 16c4 0 4 4 8 4s4-4 8-4"/></svg>
+        <div>Enter a PDB code to load a structure</div>
+      </div>
+    </div>
+    <div class="status-bar" id="statusBar"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var UNIFORM_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#c5c5c5','#2d9462'];
+var viewer=null, currentModel=null, currentPdbId='';
+var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'none',shade:'flat',bg:'transparent',surfaceOpacity:1};
+
+function $(id){return document.getElementById(id);}
+
+function initViewer(){
+  viewer=$3Dmol.createViewer($('viewport'),{backgroundColor:'white',antialias:true});
+  applyBackground();
+}
+
+function buildSwatches(){
+  var wrap=$('uniformSwatches');
+  UNIFORM_COLORS.forEach(function(c){
+    var sw=document.createElement('div');
+    sw.className='swatch'+(c===state.uniformColor?' active':'');
+    sw.style.background=c;
+    sw.dataset.c=c;
+    sw.addEventListener('click',function(){
+      state.uniformColor=c;
+      document.querySelectorAll('.swatch').forEach(function(s){s.classList.remove('active');});
+      sw.classList.add('active');
+      applyStyle();
+    });
+    wrap.appendChild(sw);
+  });
+}
+
+function segHandler(segId,stateKey,onchange){
+  var seg=$(segId);
+  seg.querySelectorAll('button').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      seg.querySelectorAll('button').forEach(function(b){b.classList.remove('active');});
+      btn.classList.add('active');
+      state[stateKey]=btn.dataset.v;
+      if(onchange)onchange();
+      applyStyle();
+    });
+  });
+}
+
+function showToast(msg){
+  var t=$('toast');
+  t.textContent=msg;
+  t.classList.add('show');
+  setTimeout(function(){t.classList.remove('show');},2200);
+}
+
+function setError(msg){
+  var e=$('errText');
+  if(!msg){e.classList.remove('show');e.textContent='';return;}
+  e.textContent=msg;
+  e.classList.add('show');
+}
+
+function setLoading(on){
+  var bar=$('statusBar');
+  if(on){
+    bar.innerHTML='<div class="spinner" style="display:inline-block;vertical-align:middle;width:12px;height:12px;border-width:2px;margin-right:6px;"></div>Loading '+currentPdbId+'&hellip;';
+    bar.classList.add('show');
+  } else if(currentModel){
+    bar.textContent=currentPdbId;
+    bar.classList.add('show');
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+function fetchPdb(id){
+  id=(id||'').trim().toUpperCase();
+  if(!/^[A-Z0-9]{4}$/.test(id)){setError('Enter a valid 4-character PDB code.');return;}
+  setError('');
+  currentPdbId=id;
+  setLoading(true);
+  $('fetchBtn').disabled=true;
+  fetch('https://files.rcsb.org/download/'+id+'.pdb')
+    .then(function(r){
+      if(!r.ok)throw new Error('not found');
+      return r.text();
+    })
+    .then(function(text){
+      viewer.clear();
+      currentModel=viewer.addModel(text,'pdb');
+      $('emptyState').style.display='none';
+      applyStyle();
+      viewer.zoomTo();
+      viewer.render();
+      setLoading(false);
+      $('fetchBtn').disabled=false;
+      showToast('Loaded '+id);
+    })
+    .catch(function(){
+      setError('Could not find PDB entry "'+id+'". Check the code and try again.');
+      setLoading(false);
+      $('fetchBtn').disabled=false;
+    });
+}
+
+function colorSpecFor(sel){
+  if(state.color==='chain')return {colorscheme:'chainHetatm'};
+  if(state.color==='spectrum')return {color:'spectrum'};
+  if(state.color==='ss')return {colorscheme:'ssPyMOL'};
+  return {color:state.uniformColor};
+}
+
+function applyStyle(){
+  if(!currentModel||!viewer)return;
+
+  $('surfaceOpacityField').style.display=(state.style==='surface')?'block':'none';
+  $('uniformColorField').style.display=(state.color==='uniform')?'block':'none';
+
+  viewer.setStyle({});
+  viewer.removeAllSurfaces();
+
+  var cs=colorSpecFor();
+  var styleObj={};
+
+  if(state.style==='cartoon'){
+    var c={};
+    Object.assign(c,cs);
+    if(state.shade==='toon'){c.thickness=0.5;c.arrows=true;}
+    styleObj.cartoon=c;
+    viewer.setStyle({},styleObj);
+  } else if(state.style==='stick'){
+    var s={radius:0.18};Object.assign(s,cs);
+    styleObj.stick=s;
+    viewer.setStyle({},styleObj);
+  } else if(state.style==='sphere'){
+    var sp={scale:0.35};Object.assign(sp,cs);
+    styleObj.sphere=sp;
+    viewer.setStyle({},styleObj);
+  } else if(state.style==='surface'){
+    styleObj.cartoon={color:'white'};
+    viewer.setStyle({},{cartoon:{hidden:true}});
+    var surfColor=state.color==='uniform'?state.uniformColor:undefined;
+    var surfOpts={opacity:state.surfaceOpacity};
+    if(state.color==='chain'){surfOpts.colorscheme='chainHetatm';}
+    else if(state.color==='spectrum'){surfOpts.color='spectrum';}
+    else if(state.color==='ss'){surfOpts.colorscheme='ssPyMOL';}
+    else {surfOpts.color=surfColor;}
+    viewer.addSurface($3Dmol.SurfaceType.VDW,surfOpts);
+  }
+
+  if(state.border==='none'){
+    viewer.setViewStyle({});
+  } else {
+    viewer.setViewStyle({style:'outline',color:'black',width:state.border==='thick'?0.15:0.06});
+  }
+
+  viewer.render();
+}
+
+function applyBackground(){
+  if(!viewer)return;
+  if(state.bg==='transparent'){
+    viewer.setBackgroundColor('white',0);
+  } else if(state.bg==='white'){
+    viewer.setBackgroundColor('white',1);
+  } else {
+    viewer.setBackgroundColor('#13161e',1);
+  }
+  viewer.render();
+}
+
+function exportPng(){
+  if(!currentModel){showToast('Load a structure first.');return;}
+  var canvas=$('viewport').querySelector('canvas');
+  if(!canvas){showToast('Nothing to export.');return;}
+  var scale=3;
+  var off=document.createElement('canvas');
+  off.width=canvas.width*scale;
+  off.height=canvas.height*scale;
+  var ctx=off.getContext('2d');
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(canvas,0,0,off.width,off.height);
+  var link=document.createElement('a');
+  link.download=(currentPdbId||'structure')+'_ribbon.png';
+  link.href=off.toDataURL('image/png');
+  link.click();
+  showToast('Exported PNG');
+}
+
+document.addEventListener('DOMContentLoaded',function(){
+  initViewer();
+  buildSwatches();
+  segHandler('styleSeg','style');
+  segHandler('colorSeg','color');
+  segHandler('borderSeg','border');
+  segHandler('shadeSeg','shade');
+  segHandler('bgSeg','bg',applyBackground);
+
+  $('fetchBtn').addEventListener('click',function(){fetchPdb($('pdbInput').value);});
+  $('pdbInput').addEventListener('keydown',function(e){if(e.key==='Enter')fetchPdb($('pdbInput').value);});
+  document.querySelectorAll('.example-chip').forEach(function(chip){
+    chip.addEventListener('click',function(){
+      $('pdbInput').value=chip.dataset.pdb;
+      fetchPdb(chip.dataset.pdb);
+    });
+  });
+
+  $('surfaceOpacity').addEventListener('input',function(e){
+    state.surfaceOpacity=parseFloat(e.target.value);
+    applyStyle();
+  });
+
+  $('resetViewBtn').addEventListener('click',function(){
+    if(viewer&&currentModel){viewer.zoomTo();viewer.render();}
+  });
+
+  $('exportBtn').addEventListener('click',exportPng);
+
+  $('themeBtn').addEventListener('click',function(){
+    var html=document.documentElement;
+    var isDark=html.getAttribute('data-theme')==='dark';
+    html.setAttribute('data-theme',isDark?'light':'dark');
+  });
+
+  var spinning=false;
+  $('spinToggle').addEventListener('change',function(e){
+    spinning=e.target.checked;
+    if(viewer)viewer.spin(spinning?'y':false);
+  });
+
+  window.addEventListener('resize',function(){
+    if(viewer){viewer.resize();viewer.render();}
+  });
+});
+</script>
+</body>
+</html>
