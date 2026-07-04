@@ -63,6 +63,13 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .hub-sub.fading{opacity:0;}
 .section-lbl{font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:18px;}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;}
+/* ── App packages (grouped sections on the home grid) ── */
+.pkg-lbl{display:flex;align-items:center;gap:10px;margin-top:36px;margin-bottom:16px;}
+#hub-packages > .pkg-lbl:first-child{margin-top:4px;}
+.pkg-lbl .pkg-name{font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--text2);white-space:nowrap;}
+.pkg-lbl .pkg-rule{flex:1;height:1px;background:var(--border);}
+.pkg-lbl .pkg-count{font-size:10px;font-weight:600;color:var(--text3);font-family:var(--mono);}
+.pkg-lbl.pkg-empty,.grid.pkg-empty{display:none;}
 
 /* CARD */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px;cursor:pointer;outline:none;transition:border-color .18s,box-shadow .18s,transform .12s,background-color .18s;position:relative;box-shadow:var(--shadow-xs);}
@@ -509,8 +516,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
       <div class="unlock-hint">each app has a secret code word</div>
       <div id="hub-unlock-flash"></div>
     </div>
-    <div class="section-lbl" id="hub-home-section-lbl" style="display:none;">Available Apps</div>
-    <div class="grid">
+    <div class="grid" id="app-grid">
 
       <div class="card" tabindex="0" data-app-id="echo"
            onclick="openApp('echo')"
@@ -708,6 +714,20 @@ body.hub-announcing #hub-home{margin-top:98px;}
         </div>
       </div>
 
+      <div class="card" tabindex="0" data-app-id="arc"
+           onclick="openApp('arc')"
+           onkeydown="if(event.key==='Enter')openApp('arc')">
+        <div class="card-header-row">
+          <div class="card-logo" style="background:#816baf;"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17 Q12 3 21 17"/><circle cx="3" cy="17" r="1.6" fill="white" stroke="none"/><circle cx="12" cy="8.2" r="1.6" fill="white" stroke="none"/><circle cx="21" cy="17" r="1.6" fill="white" stroke="none"/></svg></div>
+          <div class="card-name">Arc</div>
+        </div>
+        <div class="card-desc">Drag-and-drop storyboard editor &mdash; structure a talk's narrative arc as ordered cards, then export to Markdown to generate the deck.</div>
+        <div class="card-foot">
+          <span>Storyboard &middot; Outline &middot; Markdown</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -754,6 +774,9 @@ body.hub-announcing #hub-home{margin-top:98px;}
 </div>
 <div class="app-view" id="view-ribbon">
   <iframe id="frame-ribbon" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-arc">
+  <iframe id="frame-arc" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
 </div>
 
 <canvas id="confetti-canvas"></canvas>
@@ -1269,7 +1292,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
 
 <script>
 /* embedded app sources (base64-encoded UTF-8 HTML) */
-var APP_B64_NEW = { dna: "", pd: "", pt: "", spectra: "PLACEHOLDER_SPECTRA", ldi: "PLACEHOLDER_LDI", cryo: "PLACEHOLDER_CRYO", cuppa: "PLACEHOLDER_CUPPA", fabricata: "PLACEHOLDER_FABRICATA", beacon: "PLACEHOLDER_BEACON", lumina: "PLACEHOLDER_LUMINA", ribbon: "PLACEHOLDER_RIBBON" };
+var APP_B64_NEW = { dna: "", pd: "", pt: "", spectra: "PLACEHOLDER_SPECTRA", ldi: "PLACEHOLDER_LDI", cryo: "PLACEHOLDER_CRYO", cuppa: "PLACEHOLDER_CUPPA", fabricata: "PLACEHOLDER_FABRICATA", beacon: "PLACEHOLDER_BEACON", lumina: "PLACEHOLDER_LUMINA", ribbon: "PLACEHOLDER_RIBBON", arc: "PLACEHOLDER_ARC" };
 var APP_B64 = {
   echo: "",
   deg: "",
@@ -1301,7 +1324,8 @@ var APP_INFO = {
   fabricata:  { letter:'F', color:'#c07a8e', name:'Fabricata™' },
   beacon:     { letter:'B', color:'#5e72c4', name:'Beacon' },
   lumina:     { letter:'Lu', color:'#f5c518', name:'Lumina' },
-  ribbon:     { letter:'R', color:'#e36c69', name:'Ribbon' }
+  ribbon:     { letter:'R', color:'#e36c69', name:'Ribbon' },
+  arc:        { letter:'A', color:'#816baf', name:'Arc' }
 };
 
 function enterAppNav(id) {
@@ -1457,41 +1481,119 @@ var _touchClone = null;
 var _touchOffX = 0;
 var _touchOffY = 0;
 
+function _allGrids() {
+  return Array.prototype.slice.call(document.querySelectorAll('#hub-packages .grid'));
+}
+
+// Reorganise the flat source grid into labelled package sections. Runs once.
+function _buildPackages() {
+  var src = document.getElementById('app-grid');
+  if (!src || document.getElementById('hub-packages')) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'hub-packages';
+
+  var placed = {};
+  PACKAGES.forEach(function(pkg) {
+    var lbl = document.createElement('div');
+    lbl.className = 'section-lbl pkg-lbl';
+    lbl.dataset.pkg = pkg.name;
+    lbl.innerHTML = '<span class="pkg-name">' + pkg.name + '</span><span class="pkg-rule"></span><span class="pkg-count"></span>';
+    var grid = document.createElement('div');
+    grid.className = 'grid';
+    grid.dataset.pkg = pkg.name;
+    pkg.ids.forEach(function(id) {
+      var card = src.querySelector('.card[data-app-id="' + id + '"]');
+      if (card) { grid.appendChild(card); placed[id] = true; }
+    });
+    wrap.appendChild(lbl);
+    wrap.appendChild(grid);
+  });
+
+  // Catch any card not assigned to a package.
+  var leftovers = src.querySelectorAll('.card[data-app-id]');
+  if (leftovers.length) {
+    var lbl2 = document.createElement('div');
+    lbl2.className = 'section-lbl pkg-lbl';
+    lbl2.dataset.pkg = 'More';
+    lbl2.innerHTML = '<span class="pkg-name">More</span><span class="pkg-rule"></span><span class="pkg-count"></span>';
+    var grid2 = document.createElement('div');
+    grid2.className = 'grid';
+    grid2.dataset.pkg = 'More';
+    leftovers.forEach(function(card) { if (!placed[card.dataset.appId]) grid2.appendChild(card); });
+    if (grid2.children.length) { wrap.appendChild(lbl2); wrap.appendChild(grid2); }
+  }
+
+  src.parentNode.replaceChild(wrap, src);
+}
+
+// Hide a package header whenever every card in its section is hidden.
+function _updateSectionVisibility() {
+  var wrap = document.getElementById('hub-packages');
+  if (!wrap) return;
+  _allGrids().forEach(function(grid) {
+    var visible = Array.prototype.filter.call(grid.querySelectorAll('.card'), function(c) {
+      return c.style.display !== 'none';
+    });
+    var lbl = wrap.querySelector('.pkg-lbl[data-pkg="' + grid.dataset.pkg + '"]');
+    var empty = visible.length === 0;
+    grid.classList.toggle('pkg-empty', empty);
+    if (lbl) {
+      lbl.classList.toggle('pkg-empty', empty);
+      var cnt = lbl.querySelector('.pkg-count');
+      if (cnt) cnt.textContent = visible.length ? visible.length : '';
+    }
+  });
+}
+
 function toggleGridEdit() {
   _gridEditMode = !_gridEditMode;
-  var grid = document.querySelector('.grid');
   var btn = document.getElementById('grid-edit-btn');
-  grid.classList.toggle('grid-editing', _gridEditMode);
   if (btn) btn.textContent = _gridEditMode ? 'Done' : 'Edit';
-  grid.querySelectorAll('.card').forEach(function(c) {
-    c.setAttribute('draggable', _gridEditMode ? 'true' : 'false');
+  _allGrids().forEach(function(grid) {
+    grid.classList.toggle('grid-editing', _gridEditMode);
+    grid.querySelectorAll('.card').forEach(function(c) {
+      c.setAttribute('draggable', _gridEditMode ? 'true' : 'false');
+    });
   });
   if (!_gridEditMode) {
-    var order = [];
-    grid.querySelectorAll('.card[data-app-id]').forEach(function(c) { order.push(c.dataset.appId); });
-    try { localStorage.setItem('hub_card_order', JSON.stringify(order)); } catch(e) {}
+    _saveCardOrder();
     document.getElementById('opts-panel').classList.add('hidden');
   }
 }
 
+// Card order is persisted per package so re-ordering within a section never
+// collapses the section grouping.
+function _saveCardOrder() {
+  var map = {};
+  _allGrids().forEach(function(grid) {
+    var ids = [];
+    grid.querySelectorAll('.card[data-app-id]').forEach(function(c) { ids.push(c.dataset.appId); });
+    map[grid.dataset.pkg] = ids;
+  });
+  try { localStorage.setItem('hub_card_order_v2', JSON.stringify(map)); } catch(e) {}
+}
+
 function _applySavedCardOrder() {
   try {
-    var order = JSON.parse(localStorage.getItem('hub_card_order') || 'null');
-    if (!Array.isArray(order) || !order.length) return;
-    var grid = document.querySelector('.grid');
-    if (!grid) return;
-    order.forEach(function(id) {
-      var card = grid.querySelector('.card[data-app-id="' + id + '"]');
-      if (card) grid.appendChild(card);
+    var map = JSON.parse(localStorage.getItem('hub_card_order_v2') || 'null');
+    if (!map) return;
+    _allGrids().forEach(function(grid) {
+      var ids = map[grid.dataset.pkg];
+      if (!Array.isArray(ids)) return;
+      ids.forEach(function(id) {
+        var card = grid.querySelector('.card[data-app-id="' + id + '"]');
+        if (card) grid.appendChild(card);
+      });
     });
   } catch(e) {}
 }
 
 function initHub() {
+  _buildPackages();
   _applySavedCardOrder();
-  var grid = document.querySelector('.grid');
 
-  // ── Desktop drag & drop ──
+  _allGrids().forEach(function(grid) {
+  // ── Desktop drag & drop (scoped within a package) ──
   grid.addEventListener('dragstart', function(e) {
     if (!_gridEditMode) { e.preventDefault(); return; }
     _dragCard = e.target.closest('.card');
@@ -1505,7 +1607,7 @@ function initHub() {
     _dragCard = null;
   });
   grid.addEventListener('dragover', function(e) {
-    if (!_gridEditMode || !_dragCard) return;
+    if (!_gridEditMode || !_dragCard || _dragCard.parentNode !== grid) return;
     e.preventDefault();
     var target = e.target.closest('.card');
     if (!target || target === _dragCard) return;
@@ -1522,7 +1624,7 @@ function initHub() {
   grid.addEventListener('drop', function(e) {
     e.preventDefault();
     var target = e.target.closest('.card');
-    if (!target || target === _dragCard || !_gridEditMode) return;
+    if (!target || target === _dragCard || !_gridEditMode || !_dragCard || _dragCard.parentNode !== grid) return;
     target.classList.remove('card-drag-over'); _dragOver = null;
     var rect = target.getBoundingClientRect();
     if (e.clientX < rect.left + rect.width / 2) grid.insertBefore(_dragCard, target);
@@ -1557,7 +1659,7 @@ function initHub() {
     _touchClone.style.display = '';
     var target = el && el.closest('.card');
     grid.querySelectorAll('.card').forEach(function(c) { c.classList.remove('card-drag-over'); });
-    if (target && target !== _touchCard) target.classList.add('card-drag-over');
+    if (target && target !== _touchCard && target.parentNode === grid) target.classList.add('card-drag-over');
   }, {passive: false});
 
   grid.addEventListener('touchend', function(e) {
@@ -1568,13 +1670,14 @@ function initHub() {
     var touch = e.changedTouches[0];
     var el = document.elementFromPoint(touch.clientX, touch.clientY);
     var target = el && el.closest('.card');
-    if (target && target !== _touchCard) {
+    if (target && target !== _touchCard && target.parentNode === grid && _touchCard.parentNode === grid) {
       var rect = target.getBoundingClientRect();
       if (touch.clientX < rect.left + rect.width / 2) grid.insertBefore(_touchCard, target);
       else if (target.nextSibling) grid.insertBefore(_touchCard, target.nextSibling);
       else grid.appendChild(_touchCard);
     }
     _touchCard = null;
+  });
   });
 
   // Subtitle, logo pulse, LabMate preload
@@ -1641,6 +1744,16 @@ var APP_UNLOCK_WORDS = {
   beacon:     'glow',
   lumina:     'illuminate'
 };
+
+// Home grid is grouped into packages. Any app id not listed here falls into
+// a trailing "More" section so nothing ever silently disappears.
+var PACKAGES = [
+  { name: 'Data Analysis',          ids: ['echo','lumina','beacon','spectra','deg','ldi'] },
+  { name: 'Design & Presentation',  ids: ['arc','ribbon','pd'] },
+  { name: 'Molecular Biology',      ids: ['dna','pt','lm'] },
+  { name: 'Lab Operations',         ids: ['cryo','cuppa'] },
+  { name: 'Just for Fun',           ids: ['fabricata'] }
+];
 var _unlockedApps = new Set(JSON.parse(localStorage.getItem('hub_unlocked') || '[]'));
 var labConfig = {};
 ALL_APP_IDS.forEach(function(id) { labConfig[id] = true; });
@@ -1657,6 +1770,7 @@ function applyLabConfig() {
     var lockHide = !isAdmin && !_unlockedApps.has(id);
     card.style.display = (labHide || lockHide) ? 'none' : '';
   });
+  _updateSectionVisibility();
   _updateUnlockUI();
 }
 

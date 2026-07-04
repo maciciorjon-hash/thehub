@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Arc</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+:root{
+  --bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
+  --text:#1a1d2e;--text2:#5a5f7a;--text3:#9ca0b8;
+  --accent:#816baf;--accent-dim:rgba(129,107,175,0.12);
+  --good:#2d9462;--mid:#b58830;--poor:#b84545;
+  --sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.04);--shadow-sm:0 2px 8px rgba(0,0,0,.06);
+  --shadow-md:0 6px 24px rgba(0,0,0,.09);--shadow-lg:0 16px 48px rgba(0,0,0,.14);
+}
+[data-theme="dark"]{
+  --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;
+  --accent:#a58bd6;--accent-dim:rgba(165,139,214,0.16);
+  --good:#6ddca8;--mid:#f8cc6d;--poor:#f89090;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.30);--shadow-sm:0 2px 8px rgba(0,0,0,.40);
+  --shadow-md:0 6px 24px rgba(0,0,0,.50);--shadow-lg:0 16px 48px rgba(0,0,0,.55);
+}
+input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
+html,body{height:100%;overflow:hidden;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+
+header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;
+  align-items:center;gap:14px;background:var(--surface);height:58px;flex-shrink:0;}
+.logo{width:32px;height:32px;border-radius:7px;background:var(--accent);display:flex;
+  align-items:center;justify-content:center;color:#fff;flex-shrink:0;}
+.logo svg{width:19px;height:19px;}
+.app-name{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+.app-sub{font-size:11px;color:var(--text2);}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);
+  width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;
+  display:flex;align-items:center;justify-content:center;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-btn svg{width:15px;height:15px;}
+
+.body{flex:1;display:flex;overflow:hidden;min-height:0;}
+
+/* ---- Sidebar: list of storyboards ---- */
+.sidebar{width:250px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);
+  overflow-y:auto;padding:16px 14px 40px;display:flex;flex-direction:column;}
+.side-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.side-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);}
+.new-btn{background:var(--accent);color:#fff;border:none;border-radius:6px;width:26px;height:26px;
+  cursor:pointer;font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;
+  transition:opacity .15s;}
+.new-btn:hover{opacity:.88;}
+.sb-list{display:flex;flex-direction:column;gap:3px;}
+.sb-item{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:7px;cursor:pointer;
+  color:var(--text2);transition:background .12s,color .12s;position:relative;}
+.sb-item:hover{background:var(--surface2);color:var(--text);}
+.sb-item.active{background:var(--accent-dim);color:var(--text);}
+.sb-item.active .sb-name{font-weight:600;}
+.sb-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;opacity:.5;}
+.sb-item.active .sb-dot{opacity:1;}
+.sb-name{flex:1;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sb-count{font-size:11px;color:var(--text3);font-family:var(--mono);}
+.sb-del{opacity:0;background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;
+  display:flex;transition:opacity .12s,color .12s;}
+.sb-item:hover .sb-del{opacity:1;}
+.sb-del:hover{color:var(--poor);}
+.sb-del svg{width:13px;height:13px;}
+.side-empty{font-size:12px;color:var(--text3);text-align:center;padding:20px 8px;line-height:1.6;}
+
+/* ---- Main area ---- */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;}
+.toolbar{display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid var(--border);
+  background:var(--surface);flex-shrink:0;}
+.sb-title-input{font-size:18px;font-weight:700;letter-spacing:-0.3px;color:var(--text);border:none;
+  background:none;font-family:var(--sans);padding:4px 6px;border-radius:6px;min-width:120px;max-width:340px;
+  flex:1;}
+.sb-title-input:focus{outline:none;background:var(--surface2);}
+.tool-spacer{flex:1;}
+.view-seg{display:flex;background:var(--surface2);border:1px solid var(--border2);border-radius:7px;overflow:hidden;}
+.view-seg button{background:none;border:none;padding:7px 12px;font-size:12.5px;font-family:var(--sans);
+  color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px;transition:background .15s,color .15s;}
+.view-seg button:first-child{border-right:1px solid var(--border2);}
+.view-seg button.active{background:var(--accent);color:#fff;font-weight:600;}
+.view-seg button:hover:not(.active){background:var(--surface3);}
+.view-seg button svg{width:14px;height:14px;}
+.btn{background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:7px;
+  padding:8px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--sans);
+  display:flex;align-items:center;gap:6px;transition:background .15s,border-color .15s;white-space:nowrap;}
+.btn:hover{background:var(--surface3);}
+.btn svg{width:14px;height:14px;}
+.btn.primary{background:var(--accent);color:#fff;border-color:transparent;}
+.btn.primary:hover{opacity:.9;background:var(--accent);}
+
+.canvas{flex:1;overflow-y:auto;padding:24px;}
+.canvas-inner{max-width:1080px;margin:0 auto;}
+
+/* ---- Grid (post-it) view ---- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 13px 13px;
+  box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:8px;position:relative;
+  transition:box-shadow .15s,border-color .15s,transform .12s,opacity .12s;}
+.card:hover{box-shadow:var(--shadow-md);}
+.card.dragging{opacity:.4;}
+.card.drag-over{border-color:var(--accent);border-style:dashed;}
+.card-top{display:flex;align-items:center;gap:7px;}
+.card-num{font-family:var(--mono);font-size:11px;font-weight:500;color:#fff;background:var(--accent);
+  min-width:22px;height:22px;padding:0 6px;border-radius:11px;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;}
+.drag-handle{cursor:grab;color:var(--text3);display:flex;padding:2px;margin-left:auto;}
+.drag-handle:hover{color:var(--text2);}
+.drag-handle svg{width:15px;height:15px;}
+.drag-handle:active{cursor:grabbing;}
+.card-title{border:none;background:none;font-family:var(--sans);font-size:14px;font-weight:600;
+  color:var(--text);width:100%;padding:2px 0;letter-spacing:-0.1px;}
+.card-title:focus{outline:none;}
+.card-notes{border:none;background:none;font-family:var(--sans);font-size:12.5px;line-height:1.55;
+  color:var(--text2);width:100%;resize:none;padding:0;min-height:20px;overflow:hidden;}
+.card-notes:focus{outline:none;}
+.card-foot{display:flex;align-items:center;gap:3px;margin-top:2px;padding-top:8px;
+  border-top:1px solid var(--border);}
+.mini-btn{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:5px;
+  display:flex;transition:color .12s,background .12s;}
+.mini-btn:hover{color:var(--text);background:var(--surface2);}
+.mini-btn:disabled{opacity:.3;cursor:default;}
+.mini-btn:disabled:hover{background:none;color:var(--text3);}
+.mini-btn svg{width:15px;height:15px;}
+.mini-btn.del{margin-left:auto;}
+.mini-btn.del:hover{color:var(--poor);}
+
+/* Add-card tile */
+.add-tile{border:2px dashed var(--border2);border-radius:12px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;color:var(--text3);cursor:pointer;min-height:120px;
+  transition:border-color .15s,color .15s,background .15s;font-size:13px;font-weight:500;}
+.add-tile:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
+.add-tile svg{width:22px;height:22px;}
+
+/* ---- Sequence view ---- */
+.seq{display:flex;flex-direction:column;gap:0;max-width:720px;margin:0 auto;}
+.seq-card{display:flex;gap:16px;padding:18px 0;position:relative;}
+.seq-rail{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
+.seq-num{font-family:var(--mono);font-size:12px;font-weight:600;color:#fff;background:var(--accent);
+  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.seq-line{width:2px;flex:1;background:var(--border2);margin-top:6px;min-height:12px;}
+.seq-card:last-child .seq-line{display:none;}
+.seq-body{flex:1;padding-bottom:4px;min-width:0;}
+.seq-title{font-size:16px;font-weight:700;color:var(--text);letter-spacing:-0.2px;margin-bottom:5px;
+  word-wrap:break-word;}
+.seq-title.empty{color:var(--text3);font-weight:500;font-style:italic;}
+.seq-notes{font-size:13.5px;line-height:1.6;color:var(--text2);white-space:pre-wrap;word-wrap:break-word;}
+
+/* ---- Empty state ---- */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;gap:14px;color:var(--text3);text-align:center;padding:40px;}
+.empty-state svg{width:56px;height:56px;opacity:.28;}
+.empty-state .es-title{font-size:16px;font-weight:600;color:var(--text2);}
+.empty-state .es-sub{font-size:13px;max-width:340px;line-height:1.6;}
+.empty-state .btn{margin-top:6px;}
+
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(10px);
+  background:var(--text);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:12.5px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:999;box-shadow:var(--shadow-md);}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* Modal for export */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;
+  justify-content:center;z-index:200;padding:24px;}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:14px;width:100%;
+  max-width:560px;max-height:82vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden;}
+.modal-head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border);}
+.modal-head .app-name{font-size:14px;}
+.modal-close{margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;display:flex;}
+.modal-close:hover{color:var(--text);}
+.modal-close svg{width:18px;height:18px;}
+.modal-body{padding:16px 20px;overflow-y:auto;}
+.md-out{width:100%;min-height:280px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;
+  padding:12px 14px;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--text);resize:vertical;}
+.md-out:focus{outline:none;border-color:var(--accent);}
+.modal-foot{display:flex;gap:8px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--border);}
+
+@media(max-width:720px){
+  .sidebar{width:200px;}
+  .toolbar{flex-wrap:wrap;gap:8px;padding:12px 16px;}
+  .sb-title-input{max-width:none;font-size:16px;}
+  .canvas{padding:16px;}
+  .grid{grid-template-columns:1fr 1fr;gap:12px;}
+}
+@media(max-width:520px){
+  .grid{grid-template-columns:1fr;}
+  .btn span{display:none;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 17 Q12 3 21 17"/>
+      <circle cx="3" cy="17" r="1.6" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="8.2" r="1.6" fill="currentColor" stroke="none"/>
+      <circle cx="21" cy="17" r="1.6" fill="currentColor" stroke="none"/>
+    </svg>
+  </div>
+  <div>
+    <div class="app-name">Arc</div>
+    <div class="app-sub">Storyboard your presentation before you build it</div>
+  </div>
+  <div class="header-right">
+    <button class="opts-btn" id="themeBtn" title="Toggle theme">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="body">
+  <!-- Sidebar: list of storyboards -->
+  <div class="sidebar">
+    <div class="side-head">
+      <span class="side-title">Storyboards</span>
+      <button class="new-btn" id="newSbBtn" title="New storyboard">+</button>
+    </div>
+    <div class="sb-list" id="sbList"></div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="toolbar" id="toolbar" style="display:none;">
+      <input class="sb-title-input" id="sbTitle" placeholder="Untitled storyboard" spellcheck="false">
+      <div class="tool-spacer"></div>
+      <div class="view-seg" id="viewSeg">
+        <button data-view="grid" class="active" title="Grid view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Grid
+        </button>
+        <button data-view="seq" title="Sequence view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.2" fill="currentColor" stroke="none"/></svg>
+          Sequence
+        </button>
+      </div>
+      <button class="btn" id="copyBtn" title="Copy as plain text">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span>Copy</span>
+      </button>
+      <button class="btn primary" id="exportBtn" title="Export as Markdown">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>Markdown</span>
+      </button>
+    </div>
+
+    <div class="canvas" id="canvas"></div>
+  </div>
+</div>
+
+<!-- Export modal -->
+<div class="modal-overlay" id="mdModal">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="logo" style="width:26px;height:26px;border-radius:6px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;"><path d="M3 17 Q12 3 21 17"/></svg></div>
+      <div class="app-name">Export Markdown</div>
+      <button class="modal-close" id="mdClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="modal-body">
+      <textarea class="md-out" id="mdOut" spellcheck="false" readonly></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="mdDownload">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download .md
+      </button>
+      <button class="btn primary" id="mdCopy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copy Markdown
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var $=function(id){return document.getElementById(id);};
+var STORE_KEY='arc_data_v1';
+var data={boards:[],activeId:null,view:'grid'};
+
+/* ---------- persistence ---------- */
+function load(){
+  try{
+    var raw=localStorage.getItem(STORE_KEY);
+    if(raw){var p=JSON.parse(raw);if(p&&Array.isArray(p.boards)){data=p;if(!data.view)data.view='grid';}}
+  }catch(e){}
+}
+function save(){
+  try{localStorage.setItem(STORE_KEY,JSON.stringify(data));}catch(e){}
+}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+
+function activeBoard(){
+  if(!data.activeId)return null;
+  return data.boards.find(function(b){return b.id===data.activeId;})||null;
+}
+
+/* ---------- board CRUD ---------- */
+function newBoard(){
+  var b={id:uid(),name:'',cards:[{id:uid(),title:'',notes:''}]};
+  data.boards.push(b);
+  data.activeId=b.id;
+  save();renderSidebar();renderMain();
+  $('sbTitle').focus();
+}
+function deleteBoard(id){
+  var idx=data.boards.findIndex(function(b){return b.id===id;});
+  if(idx<0)return;
+  data.boards.splice(idx,1);
+  if(data.activeId===id){
+    data.activeId=data.boards.length?data.boards[Math.max(0,idx-1)].id:null;
+  }
+  save();renderSidebar();renderMain();
+}
+function selectBoard(id){
+  data.activeId=id;save();renderSidebar();renderMain();
+}
+
+/* ---------- card CRUD ---------- */
+function addCard(){
+  var b=activeBoard();if(!b)return;
+  b.cards.push({id:uid(),title:'',notes:''});
+  save();renderMain();
+  // focus the new card title
+  var titles=document.querySelectorAll('.card-title');
+  if(titles.length)titles[titles.length-1].focus();
+}
+function deleteCard(cid){
+  var b=activeBoard();if(!b)return;
+  b.cards=b.cards.filter(function(c){return c.id!==cid;});
+  save();renderMain();
+}
+function moveCard(cid,dir){
+  var b=activeBoard();if(!b)return;
+  var i=b.cards.findIndex(function(c){return c.id===cid;});
+  var j=i+dir;
+  if(i<0||j<0||j>=b.cards.length)return;
+  var tmp=b.cards[i];b.cards[i]=b.cards[j];b.cards[j]=tmp;
+  save();renderMain();
+}
+function reorderCard(fromId,toId){
+  var b=activeBoard();if(!b)return;
+  if(fromId===toId)return;
+  var from=b.cards.findIndex(function(c){return c.id===fromId;});
+  var to=b.cards.findIndex(function(c){return c.id===toId;});
+  if(from<0||to<0)return;
+  var moved=b.cards.splice(from,1)[0];
+  b.cards.splice(to,0,moved);
+  save();renderMain();
+}
+
+/* ---------- rendering ---------- */
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function renderSidebar(){
+  var list=$('sbList');
+  if(!data.boards.length){
+    list.innerHTML='<div class="side-empty">No storyboards yet.<br>Click + to start one.</div>';
+    return;
+  }
+  list.innerHTML='';
+  data.boards.forEach(function(b){
+    var item=document.createElement('div');
+    item.className='sb-item'+(b.id===data.activeId?' active':'');
+    var nm=b.name.trim()||'Untitled storyboard';
+    item.innerHTML='<span class="sb-dot"></span>'+
+      '<span class="sb-name">'+esc(nm)+'</span>'+
+      '<span class="sb-count">'+b.cards.length+'</span>'+
+      '<button class="sb-del" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>';
+    item.addEventListener('click',function(e){
+      if(e.target.closest('.sb-del'))return;
+      selectBoard(b.id);
+    });
+    item.querySelector('.sb-del').addEventListener('click',function(e){
+      e.stopPropagation();
+      deleteBoard(b.id);
+    });
+    list.appendChild(item);
+  });
+}
+
+function autosize(ta){
+  ta.style.height='auto';
+  ta.style.height=(ta.scrollHeight)+'px';
+}
+
+function renderMain(){
+  var b=activeBoard();
+  var canvas=$('canvas');
+  if(!b){
+    $('toolbar').style.display='none';
+    canvas.innerHTML='<div class="empty-state">'+
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17 Q12 3 21 17"/><circle cx="3" cy="17" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="8.2" r="1.4" fill="currentColor" stroke="none"/><circle cx="21" cy="17" r="1.4" fill="currentColor" stroke="none"/></svg>'+
+      '<div class="es-title">Structure before you slide</div>'+
+      '<div class="es-sub">Build the narrative arc of your talk as ordered cards — one idea per card. When the arc makes sense, export it to Markdown and hand it to Claude to generate the deck.</div>'+
+      '<button class="btn primary" onclick="newBoard()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New storyboard</button>'+
+      '</div>';
+    return;
+  }
+  $('toolbar').style.display='flex';
+  $('sbTitle').value=b.name;
+  // sync view seg
+  document.querySelectorAll('#viewSeg button').forEach(function(btn){
+    btn.classList.toggle('active',btn.dataset.view===data.view);
+  });
+  if(data.view==='seq')renderSeq(b,canvas);
+  else renderGrid(b,canvas);
+}
+
+function renderGrid(b,canvas){
+  var inner=document.createElement('div');inner.className='canvas-inner';
+  var grid=document.createElement('div');grid.className='grid';
+
+  b.cards.forEach(function(c,idx){
+    var card=document.createElement('div');
+    card.className='card';card.dataset.id=c.id;card.draggable=false;
+    card.innerHTML=
+      '<div class="card-top">'+
+        '<span class="card-num">'+(idx+1)+'</span>'+
+        '<span class="drag-handle" title="Drag to reorder" draggable="true"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>'+
+      '</div>'+
+      '<input class="card-title" placeholder="Title / idea" spellcheck="false">'+
+      '<textarea class="card-notes" placeholder="Notes (optional)" rows="1"></textarea>'+
+      '<div class="card-foot">'+
+        '<button class="mini-btn up" title="Move up"'+(idx===0?' disabled':'')+'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>'+
+        '<button class="mini-btn down" title="Move down"'+(idx===b.cards.length-1?' disabled':'')+'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></button>'+
+        '<button class="mini-btn del" title="Delete card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'+
+      '</div>';
+
+    var titleEl=card.querySelector('.card-title');
+    var notesEl=card.querySelector('.card-notes');
+    titleEl.value=c.title;
+    notesEl.value=c.notes;
+    titleEl.addEventListener('input',function(){c.title=titleEl.value;save();syncCount();});
+    notesEl.addEventListener('input',function(){c.notes=notesEl.value;autosize(notesEl);save();});
+    titleEl.addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();notesEl.focus();}
+    });
+    setTimeout(function(){autosize(notesEl);},0);
+
+    card.querySelector('.up').addEventListener('click',function(){moveCard(c.id,-1);});
+    card.querySelector('.down').addEventListener('click',function(){moveCard(c.id,1);});
+    card.querySelector('.del').addEventListener('click',function(){deleteCard(c.id);});
+
+    // drag & drop (via handle)
+    var handle=card.querySelector('.drag-handle');
+    handle.addEventListener('dragstart',function(e){
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',c.id);
+    });
+    handle.addEventListener('dragend',function(){
+      card.classList.remove('dragging');
+      document.querySelectorAll('.card.drag-over').forEach(function(el){el.classList.remove('drag-over');});
+    });
+    card.addEventListener('dragover',function(e){
+      e.preventDefault();e.dataTransfer.dropEffect='move';
+      card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave',function(){card.classList.remove('drag-over');});
+    card.addEventListener('drop',function(e){
+      e.preventDefault();card.classList.remove('drag-over');
+      var fromId=e.dataTransfer.getData('text/plain');
+      reorderCard(fromId,c.id);
+    });
+
+    grid.appendChild(card);
+  });
+
+  // add tile
+  var add=document.createElement('div');
+  add.className='add-tile';
+  add.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add card';
+  add.addEventListener('click',addCard);
+  grid.appendChild(add);
+
+  inner.appendChild(grid);
+  canvas.innerHTML='';canvas.appendChild(inner);
+}
+
+function syncCount(){
+  // update the count badge + name in sidebar without full re-render (keeps focus)
+  var b=activeBoard();if(!b)return;
+  renderSidebarLight(b);
+}
+function renderSidebarLight(b){
+  var items=document.querySelectorAll('.sb-item');
+  var idx=data.boards.findIndex(function(x){return x.id===b.id;});
+  if(idx<0||!items[idx])return;
+  var nameEl=items[idx].querySelector('.sb-name');
+  var countEl=items[idx].querySelector('.sb-count');
+  if(nameEl)nameEl.textContent=b.name.trim()||'Untitled storyboard';
+  if(countEl)countEl.textContent=b.cards.length;
+}
+
+function renderSeq(b,canvas){
+  var inner=document.createElement('div');inner.className='canvas-inner';
+  var seq=document.createElement('div');seq.className='seq';
+  if(!b.cards.length){
+    seq.innerHTML='<div class="side-empty">No cards yet.</div>';
+  }
+  b.cards.forEach(function(c,idx){
+    var el=document.createElement('div');el.className='seq-card';
+    var title=c.title.trim();
+    el.innerHTML=
+      '<div class="seq-rail"><span class="seq-num">'+(idx+1)+'</span><span class="seq-line"></span></div>'+
+      '<div class="seq-body">'+
+        '<div class="seq-title'+(title?'':' empty')+'">'+(title?esc(title):'Untitled card')+'</div>'+
+        (c.notes.trim()?'<div class="seq-notes">'+esc(c.notes)+'</div>':'')+
+      '</div>';
+    seq.appendChild(el);
+  });
+  inner.appendChild(seq);
+  canvas.innerHTML='';canvas.appendChild(inner);
+}
+
+/* ---------- export ---------- */
+function toMarkdown(b){
+  var lines=[];
+  lines.push('# '+(b.name.trim()||'Untitled storyboard'));
+  lines.push('');
+  b.cards.forEach(function(c,i){
+    lines.push('## '+(i+1)+'. '+(c.title.trim()||'Untitled'));
+    if(c.notes.trim()){
+      lines.push('');
+      lines.push(c.notes.trim());
+    }
+    lines.push('');
+  });
+  return lines.join('\n').replace(/\n{3,}/g,'\n\n').trim()+'\n';
+}
+function toPlainText(b){
+  var lines=[];
+  lines.push((b.name.trim()||'Untitled storyboard').toUpperCase());
+  lines.push('');
+  b.cards.forEach(function(c,i){
+    lines.push((i+1)+'. '+(c.title.trim()||'Untitled'));
+    if(c.notes.trim()){
+      c.notes.trim().split('\n').forEach(function(ln){lines.push('   '+ln);});
+    }
+    lines.push('');
+  });
+  return lines.join('\n').trim()+'\n';
+}
+
+function copyText(txt,msg){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){toast(msg);},function(){fallbackCopy(txt,msg);});
+  }else{fallbackCopy(txt,msg);}
+}
+function fallbackCopy(txt,msg){
+  var ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');toast(msg);}catch(e){toast('Copy failed');}
+  document.body.removeChild(ta);
+}
+
+var toastTimer=null;
+function toast(msg){
+  var t=$('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove('show');},1900);
+}
+
+/* ---------- events ---------- */
+$('newSbBtn').addEventListener('click',newBoard);
+
+$('sbTitle').addEventListener('input',function(){
+  var b=activeBoard();if(!b)return;
+  b.name=$('sbTitle').value;save();renderSidebarLight(b);
+});
+
+$('viewSeg').addEventListener('click',function(e){
+  var btn=e.target.closest('button');if(!btn)return;
+  data.view=btn.dataset.view;save();renderMain();
+});
+
+$('copyBtn').addEventListener('click',function(){
+  var b=activeBoard();if(!b)return;
+  copyText(toPlainText(b),'Copied as plain text');
+});
+
+$('exportBtn').addEventListener('click',function(){
+  var b=activeBoard();if(!b)return;
+  $('mdOut').value=toMarkdown(b);
+  $('mdModal').classList.add('show');
+});
+$('mdClose').addEventListener('click',function(){$('mdModal').classList.remove('show');});
+$('mdModal').addEventListener('click',function(e){if(e.target===$('mdModal'))$('mdModal').classList.remove('show');});
+$('mdCopy').addEventListener('click',function(){copyText($('mdOut').value,'Markdown copied');});
+$('mdDownload').addEventListener('click',function(){
+  var b=activeBoard();if(!b)return;
+  var name=(b.name.trim()||'storyboard').replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'').toLowerCase()||'storyboard';
+  var blob=new Blob([$('mdOut').value],{type:'text/markdown'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name+'.md';a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+  toast('Downloaded '+name+'.md');
+});
+
+$('themeBtn').addEventListener('click',function(){
+  var html=document.documentElement;
+  var isDark=html.getAttribute('data-theme')==='dark';
+  html.setAttribute('data-theme',isDark?'light':'dark');
+  try{localStorage.setItem('arc_theme',isDark?'light':'dark');}catch(e){}
+});
+
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&$('mdModal').classList.contains('show'))$('mdModal').classList.remove('show');
+});
+
+/* ---------- init ---------- */
+(function init(){
+  try{var th=localStorage.getItem('arc_theme');if(th)document.documentElement.setAttribute('data-theme',th);}catch(e){}
+  load();
+  if(!data.activeId&&data.boards.length)data.activeId=data.boards[0].id;
+  renderSidebar();renderMain();
+})();
+</script>
+</body>
+</html>

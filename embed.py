@@ -26,6 +26,7 @@ APPS = [
     ('beacon',     'Beacon/beacon.html'),
     ('lumina',     'Lumina/lumina.html'),
     ('ribbon',     'Ribbon/ribbon.html'),
+    ('arc',        'Arc/arc.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()

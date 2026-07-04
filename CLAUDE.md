@@ -34,6 +34,9 @@
 | `beacon` | Beacon | SVG donor/acceptor BRET glyph | `#5e72c4` | `Beacon/beacon.html` |
 | `lumina` | Lumina | SVG light bulb | `#f5c518` (warm gold) | `Lumina/lumina.html` |
 | `ribbon` | Ribbon | SVG ribbon waves | `#e36c69` (salmon) | `Ribbon/ribbon.html` |
+| `arc` | Arc | SVG narrative arc + nodes | `#816baf` (purple) | `Arc/arc.html` |
+
+**Home grid packages:** the home cards are grouped into labelled sections by `PACKAGES` in `hub-shell.html` (Data Analysis · Design & Presentation · Molecular Biology · Lab Operations · Just for Fun). `_buildPackages()` reorganizes the flat `#app-grid` into per-package `.grid` blocks at load; drag-reorder is scoped within a package and persisted per-package in `localStorage` (`hub_card_order_v2`). Empty sections auto-hide via `_updateSectionVisibility()`. Any app id not in `PACKAGES` falls into a trailing "More" section.
 
 ---
 
