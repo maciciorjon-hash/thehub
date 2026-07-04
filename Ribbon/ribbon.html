@@ -176,7 +176,10 @@ select:focus{outline:none;border-color:var(--accent);}
     </div>
     <div class="field" id="surfaceOpacityField" style="display:none;">
       <label class="field-label">Surface opacity</label>
-      <input type="range" id="surfaceOpacity" min="0.2" max="1" step="0.01" value="1" style="width:100%;accent-color:var(--accent);">
+      <input type="range" id="surfaceOpacity" min="0.15" max="1" step="0.01" value="0.55" style="width:100%;accent-color:var(--accent);">
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text3);margin-top:3px;">
+        <span>Cartoon shows through</span><span>Solid surface</span>
+      </div>
     </div>
 
     <div class="divider"></div>
@@ -206,8 +209,8 @@ select:focus{outline:none;border-color:var(--accent);}
     </div>
     <div class="field">
       <div class="seg" id="borderSeg">
-        <button data-v="none" class="active">None</button>
-        <button data-v="thin">Thin</button>
+        <button data-v="none">None</button>
+        <button data-v="thin" class="active">Thin</button>
         <button data-v="thick">Thick</button>
       </div>
     </div>
@@ -267,7 +270,7 @@ select:focus{outline:none;border-color:var(--accent);}
 <script>
 var UNIFORM_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#c5c5c5','#2d9462'];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfId=null;
-var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'none',shade:'flat',bg:'transparent',surfaceOpacity:1};
+var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',shade:'flat',bg:'transparent',surfaceOpacity:0.55};
 
 function $(id){return document.getElementById(id);}
 
@@ -491,6 +494,11 @@ function buildGeometry(){
     var s={radius:0.18};Object.assign(s,colorSpecFor());
     viewer.setStyle({},{stick:s});
   } else if(state.style==='surface'){
+    // Illustrative surface = an opaque cartoon inside + a translucent molecular
+    // surface on top. Low opacity shows the cartoon through it; high opacity
+    // reads as a solid surface with the fold faintly visible. Matches the
+    // classic PyMOL/Goodsell publication look.
+    viewer.setStyle({},{cartoon:colorSpecFor()});
     viewer.addSurface($3Dmol.SurfaceType.SES,surfaceStyleOpts()).then(function(id){
       currentSurfId=id;
     });
@@ -499,28 +507,21 @@ function buildGeometry(){
   viewer.render();
 }
 
-// Fast path: color and opacity changes update the existing mesh's material
-// in place instead of recomputing surface/cartoon geometry from scratch.
+// Color changes must recolor both the cartoon and the surface layer, so a
+// full rebuild is simplest here. (Opacity uses the fast in-place path below.)
 function updateColorOrOpacity(){
   if(!currentModel||!viewer)return;
   updatePanelVisibility();
-  if(state.style==='surface'){
-    if(currentSurfId!=null){
-      viewer.setSurfaceMaterialStyle(currentSurfId,surfaceStyleOpts());
-      viewer.render();
-    } else {
-      buildGeometry();
-    }
-  } else {
-    buildGeometry();
-  }
+  buildGeometry();
 }
 
 // Border/shading only touch the outline overlay, never the mesh — always instant.
 function applyBorder(){
   if(!viewer)return;
   var width=state.border==='thick'?0.15:(state.border==='thin'?0.06:0);
-  if(state.shade==='toon')width=Math.max(width,0.09);
+  // Toon = cel-shaded look: force a bold black contour (3Dmol has no dynamic
+  // shadow maps, so the outline is what carries the illustrative depth).
+  if(state.shade==='toon')width=Math.max(width,0.14);
   if(width<=0){
     viewer.setViewStyle({});
   } else {
@@ -579,7 +580,12 @@ document.addEventListener('DOMContentLoaded',function(){
 
   $('surfaceOpacity').addEventListener('input',function(e){
     state.surfaceOpacity=parseFloat(e.target.value);
-    updateColorOrOpacity();
+    // Fast path: patch just the surface material so dragging stays smooth and
+    // the cartoon underneath is left untouched.
+    if(state.style==='surface'&&currentSurfId!=null){
+      viewer.setSurfaceMaterialStyle(currentSurfId,surfaceStyleOpts());
+      viewer.render();
+    }
   });
 
   $('resetViewBtn').addEventListener('click',function(){
