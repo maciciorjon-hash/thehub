@@ -118,6 +118,16 @@ select:focus{outline:none;border-color:var(--accent);}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 .err-text{font-size:12px;color:var(--poor);margin-top:6px;display:none;}
 .err-text.show{display:block;}
+
+.search-results{margin-top:10px;display:flex;flex-direction:column;gap:4px;}
+.search-result{display:flex;flex-direction:column;gap:1px;text-align:left;background:var(--surface2);
+  border:1px solid var(--border2);border-radius:6px;padding:7px 9px;cursor:pointer;transition:background .15s;}
+.search-result:hover{background:var(--surface3);}
+.search-result .sr-id{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);}
+.search-result .sr-title{font-size:11.5px;color:var(--text2);line-height:1.3;
+  overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.search-status{font-size:12px;color:var(--text2);margin-top:8px;display:none;}
+.search-status.show{display:block;}
 </style>
 </head>
 <body>
@@ -136,10 +146,10 @@ select:focus{outline:none;border-color:var(--accent);}
 <div class="body">
   <div class="sidebar">
     <div class="field">
-      <label class="field-label">PDB code</label>
+      <label class="field-label">PDB code or protein name</label>
       <div class="row">
-        <input type="text" id="pdbInput" placeholder="e.g. 1CRN" maxlength="4" autocomplete="off">
-        <button class="btn" id="fetchBtn">Load</button>
+        <input type="text" id="pdbInput" placeholder="e.g. 1CRN or hemoglobin" autocomplete="off">
+        <button class="btn" id="fetchBtn">Go</button>
       </div>
       <div class="example-row">
         <span class="example-chip" data-pdb="1CRN">1CRN</span>
@@ -148,6 +158,7 @@ select:focus{outline:none;border-color:var(--accent);}
         <span class="example-chip" data-pdb="6VXX">6VXX</span>
       </div>
       <div class="err-text" id="errText"></div>
+      <div class="search-results" id="searchResults"></div>
     </div>
 
     <div class="divider"></div>
@@ -245,7 +256,7 @@ select:focus{outline:none;border-color:var(--accent);}
     <div id="viewport">
       <div class="viewer-empty" id="emptyState">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4c4 0 4 4 8 4s4-4 8-4"/><path d="M4 10c4 0 4 4 8 4s4-4 8-4"/><path d="M4 16c4 0 4 4 8 4s4-4 8-4"/></svg>
-        <div>Enter a PDB code to load a structure</div>
+        <div>Enter a PDB code or protein name to load a structure</div>
       </div>
     </div>
     <div class="status-bar" id="statusBar"></div>
@@ -323,10 +334,19 @@ function setLoading(on){
   }
 }
 
+function isPdbId(s){
+  return /^[1-9][A-Za-z0-9]{3}$/.test(s.trim());
+}
+
+function clearResults(){
+  $('searchResults').innerHTML='';
+}
+
 function fetchPdb(id){
   id=(id||'').trim().toUpperCase();
-  if(!/^[A-Z0-9]{4}$/.test(id)){setError('Enter a valid 4-character PDB code.');return;}
+  if(!isPdbId(id)){setError('Enter a valid PDB code (e.g. 1CRN).');return;}
   setError('');
+  clearResults();
   currentPdbId=id;
   setLoading(true);
   $('fetchBtn').disabled=true;
@@ -351,6 +371,90 @@ function fetchPdb(id){
       setLoading(false);
       $('fetchBtn').disabled=false;
     });
+}
+
+function searchByName(query){
+  query=(query||'').trim();
+  if(!query){return;}
+  setError('');
+  clearResults();
+  $('fetchBtn').disabled=true;
+  var resultsEl=$('searchResults');
+  resultsEl.innerHTML='<div class="search-status show">Searching&hellip;</div>';
+
+  var body={
+    query:{type:'terminal',service:'full_text',parameters:{value:query}},
+    return_type:'entry',
+    request_options:{paginate:{start:0,rows:8}}
+  };
+
+  fetch('https://search.rcsb.org/rcsbsearch/v2/query',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  })
+    .then(function(r){
+      if(!r.ok)throw new Error('search failed');
+      return r.json();
+    })
+    .then(function(data){
+      var ids=(data.result_set||[]).map(function(r){return r.identifier;});
+      if(!ids.length){
+        resultsEl.innerHTML='';
+        setError('No structures found for "'+query+'".');
+        $('fetchBtn').disabled=false;
+        return;
+      }
+      return Promise.all(ids.map(function(id){
+        return fetch('https://data.rcsb.org/rest/v1/core/entry/'+id)
+          .then(function(r){return r.ok?r.json():null;})
+          .then(function(d){
+            var title=(d&&d.struct&&d.struct.title)?d.struct.title:'';
+            return {id:id,title:title};
+          })
+          .catch(function(){return {id:id,title:''};});
+      })).then(function(entries){
+        renderSearchResults(entries);
+        $('fetchBtn').disabled=false;
+      });
+    })
+    .catch(function(){
+      resultsEl.innerHTML='';
+      setError('Search failed. Check your connection and try again.');
+      $('fetchBtn').disabled=false;
+    });
+}
+
+function renderSearchResults(entries){
+  var resultsEl=$('searchResults');
+  resultsEl.innerHTML='';
+  entries.forEach(function(entry){
+    var row=document.createElement('div');
+    row.className='search-result';
+    row.innerHTML='<div class="sr-id">'+entry.id+'</div><div class="sr-title">'+
+      (entry.title?escapeHtml(entry.title):'&nbsp;')+'</div>';
+    row.addEventListener('click',function(){
+      $('pdbInput').value=entry.id;
+      fetchPdb(entry.id);
+    });
+    resultsEl.appendChild(row);
+  });
+}
+
+function escapeHtml(s){
+  var d=document.createElement('div');
+  d.textContent=s;
+  return d.innerHTML;
+}
+
+function handleSubmit(){
+  var q=$('pdbInput').value.trim();
+  if(!q)return;
+  if(isPdbId(q)){
+    fetchPdb(q);
+  } else {
+    searchByName(q);
+  }
 }
 
 function colorSpecFor(sel){
@@ -446,8 +550,8 @@ document.addEventListener('DOMContentLoaded',function(){
   segHandler('shadeSeg','shade');
   segHandler('bgSeg','bg',applyBackground);
 
-  $('fetchBtn').addEventListener('click',function(){fetchPdb($('pdbInput').value);});
-  $('pdbInput').addEventListener('keydown',function(e){if(e.key==='Enter')fetchPdb($('pdbInput').value);});
+  $('fetchBtn').addEventListener('click',handleSubmit);
+  $('pdbInput').addEventListener('keydown',function(e){if(e.key==='Enter')handleSubmit();});
   document.querySelectorAll('.example-chip').forEach(function(chip){
     chip.addEventListener('click',function(){
       $('pdbInput').value=chip.dataset.pdb;
