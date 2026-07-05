@@ -162,6 +162,17 @@ select:focus{outline:none;border-color:var(--accent);}
 .cp-btn-done{background:var(--accent);color:#fff;}
 .cp-btn-done:hover{opacity:.88;}
 
+/* Draggable chain label callouts (HTML overlay above the 3D canvas) */
+#label-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6;overflow:visible;}
+#label-layer{position:absolute;inset:0;pointer-events:none;z-index:7;overflow:hidden;}
+.chain-tag{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;cursor:grab;
+  font-family:var(--sans);font-size:13px;font-weight:600;line-height:1;white-space:nowrap;
+  padding:5px 10px;border-radius:7px;border:1.5px solid rgba(0,0,0,0.35);
+  box-shadow:0 2px 9px rgba(0,0,0,0.24);user-select:none;-webkit-user-select:none;touch-action:none;
+  transition:box-shadow .12s;max-width:200px;overflow:hidden;text-overflow:ellipsis;}
+.chain-tag:hover{box-shadow:0 3px 13px rgba(0,0,0,0.3);}
+.chain-tag.dragging{cursor:grabbing;box-shadow:0 7px 20px rgba(0,0,0,0.36);}
+
 /* Mobile sheet backdrop + controls FAB */
 #mobile-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.42);z-index:40;display:none;opacity:0;transition:opacity .22s;}
 #mobile-backdrop.show{display:block;opacity:1;}
@@ -333,6 +344,8 @@ select:focus{outline:none;border-color:var(--accent);}
         <div>Enter a PDB code or protein name to load a structure</div>
       </div>
       <div class="chain-hint" id="chainHint">Tip: tap a chain to colour &amp; label it</div>
+      <svg id="label-lines"></svg>
+      <div id="label-layer"></div>
     </div>
     <div class="status-bar" id="statusBar"></div>
   </div>
@@ -372,8 +385,9 @@ var CHAIN_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#
 var WATER_RESN=['HOH','WAT','DOD','H2O','TIP','SOL'];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfId=null;
 var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',shade:'flat',bg:'transparent',surfaceOpacity:0.55,
-  chainColors:{},chainLabels:{}};
-var chainList=[], selectedChain=null, chainLabelObjs={}, lastPointer={x:0,y:0}, _atomClicked=false;
+  chainColors:{},chainLabels:{},labelOffsets:{}};
+var chainList=[], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
+var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false;
 
 function $(id){return document.getElementById(id);}
 
@@ -461,14 +475,15 @@ function fetchPdb(id){
     })
     .then(function(text){
       viewer.clear();
-      viewer.removeAllLabels();
       currentSurfId=null;
-      chainLabelObjs={};
-      state.chainColors={}; state.chainLabels={};
+      Object.keys(labelEls).forEach(removeLabelEl);
+      state.chainColors={}; state.chainLabels={}; state.labelOffsets={};
+      chainAnchorCache={};
       selectedChain=null;
       closeChainPopup();
       currentModel=viewer.addModel(text,'pdb');
       computeChains();
+      startLabelLoop();
       $('emptyState').style.display='none';
       buildGeometry();
       applyBorder();
@@ -608,7 +623,8 @@ function applyChainedStyle(type){
     if(!isDim && !hasCol)return;
     var spec = hasCol ? {color:state.chainColors[ch]} : colorSpecFor();
     if(isDim)spec=Object.assign({},spec,{opacity:0.28});
-    viewer.addStyle({chain:ch},styleOfType(type,spec));
+    // setStyle (not addStyle) so the per-chain colour cleanly *replaces* the base.
+    viewer.setStyle({chain:ch},styleOfType(type,spec));
   });
 }
 
@@ -647,7 +663,7 @@ function buildGeometry(){
 
   applyLigands();
   setupChainClicks();
-  applyChainLabels();
+  renderLabelTags();
   viewer.render();
 }
 
@@ -713,26 +729,98 @@ function chainCentroid(ch){
   atoms.forEach(function(a){x+=a.x;y+=a.y;z+=a.z;});
   return {x:x/atoms.length,y:y/atoms.length,z:z/atoms.length};
 }
+function getAnchor(ch){
+  if(chainAnchorCache[ch])return chainAnchorCache[ch];
+  var p=chainCentroid(ch);
+  if(p)chainAnchorCache[ch]=p;
+  return p;
+}
+function labelColor(ch){ return state.chainColors[ch]||'#5e87c5'; }
 
-// 3Dmol labels are billboarded but world-anchored, so the tag stays on the
-// chain and travels with it as the structure rotates/zooms.
-function applyChainLabels(){
-  if(!viewer)return;
-  Object.keys(chainLabelObjs).forEach(function(ch){ try{viewer.removeLabel(chainLabelObjs[ch]);}catch(e){} });
-  chainLabelObjs={};
+// ── Label tags: HTML callouts drawn over the canvas. Each tag is anchored to
+// its chain's centroid (re-projected every frame so it tracks rotation/zoom),
+// is draggable, and is joined to the anchor by a connector line of the same
+// colour. ──
+function renderLabelTags(){
+  var layer=$('label-layer');
+  if(!layer)return;
+  Object.keys(labelEls).forEach(function(ch){
+    if(!state.chainLabels[ch]||!state.chainLabels[ch].trim())removeLabelEl(ch);
+  });
   Object.keys(state.chainLabels).forEach(function(ch){
     var text=(state.chainLabels[ch]||'').trim();
     if(!text)return;
-    var pos=chainCentroid(ch);
-    if(!pos)return;
-    var bg=state.chainColors[ch]||'#2b2f3a';
-    var fc=_lum(bg)>0.62?'#1a1d2e':'#ffffff';
-    chainLabelObjs[ch]=viewer.addLabel(text,{
-      position:pos, fontSize:15, fontColor:fc, backgroundColor:bg, backgroundOpacity:0.92,
-      borderColor:'black', borderThickness:1, inFront:true, alignment:'center'
-    });
+    var col=labelColor(ch), fc=_lum(col)>0.62?'#1a1d2e':'#ffffff';
+    var e=labelEls[ch]||(labelEls[ch]=makeLabelEl(ch));
+    e.div.textContent=text;
+    e.div.style.background=col;
+    e.div.style.color=fc;
+    e.line.setAttribute('stroke',col);
+    e.dot.setAttribute('fill',col);
+    if(!state.labelOffsets[ch])state.labelOffsets[ch]={dx:0,dy:-70};
   });
-  viewer.render();
+  updateLabelPositions();
+}
+function makeLabelEl(ch){
+  var svg=$('label-lines'), layer=$('label-layer');
+  var line=document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('stroke-width','2'); line.setAttribute('stroke-linecap','round');
+  var dot=document.createElementNS('http://www.w3.org/2000/svg','circle');
+  dot.setAttribute('r','3.2');
+  svg.appendChild(line); svg.appendChild(dot);
+  var div=document.createElement('div');
+  div.className='chain-tag';
+  attachLabelDrag(div,ch);
+  layer.appendChild(div);
+  return {div:div,line:line,dot:dot};
+}
+function removeLabelEl(ch){
+  var e=labelEls[ch]; if(!e)return;
+  e.div.remove(); e.line.remove(); e.dot.remove();
+  delete labelEls[ch];
+}
+function updateLabelPositions(){
+  if(!viewer||!currentModel)return;
+  var keys=Object.keys(labelEls);
+  if(!keys.length)return;
+  var vp=$('viewport').getBoundingClientRect();
+  keys.forEach(function(ch){
+    var e=labelEls[ch], anchor=getAnchor(ch);
+    if(!anchor)return;
+    var p;
+    try{ p=viewer.modelToScreen(anchor); }catch(_){ return; }
+    if(!p)return;
+    var ax=p.x-vp.left, ay=p.y-vp.top;
+    var off=state.labelOffsets[ch]||{dx:0,dy:-70};
+    var lx=ax+off.dx, ly=ay+off.dy;
+    e.div.style.left=lx+'px'; e.div.style.top=ly+'px';
+    e.line.setAttribute('x1',ax); e.line.setAttribute('y1',ay);
+    e.line.setAttribute('x2',lx); e.line.setAttribute('y2',ly);
+    e.dot.setAttribute('cx',ax); e.dot.setAttribute('cy',ay);
+  });
+}
+function startLabelLoop(){
+  if(_labelLoopRunning)return;
+  _labelLoopRunning=true;
+  (function loop(){ updateLabelPositions(); requestAnimationFrame(loop); })();
+}
+function attachLabelDrag(div,ch){
+  var startX,startY,startOff;
+  div.addEventListener('pointerdown',function(e){
+    e.preventDefault(); e.stopPropagation();
+    div.classList.add('dragging');
+    try{div.setPointerCapture(e.pointerId);}catch(_){}
+    startX=e.clientX; startY=e.clientY;
+    startOff=Object.assign({dx:0,dy:-70},state.labelOffsets[ch]);
+  });
+  div.addEventListener('pointermove',function(e){
+    if(!div.classList.contains('dragging'))return;
+    state.labelOffsets[ch]={dx:startOff.dx+(e.clientX-startX),dy:startOff.dy+(e.clientY-startY)};
+    updateLabelPositions();
+  });
+  function end(e){ div.classList.remove('dragging'); try{div.releasePointerCapture(e.pointerId);}catch(_){} }
+  div.addEventListener('pointerup',end);
+  div.addEventListener('pointercancel',end);
 }
 
 function setupChainClicks(){
@@ -809,10 +897,13 @@ function resetChain(){
   if(selectedChain===null)return;
   delete state.chainColors[selectedChain];
   delete state.chainLabels[selectedChain];
+  delete state.labelOffsets[selectedChain];
+  removeLabelEl(selectedChain);
   $('cp-label-input').value='';
   $('cp-dot').style.background='#c5c5c5';
   buildChainSwatches(selectedChain);
   buildGeometry();
+  renderLabelTags();
 }
 
 // ─── Mobile controls sheet ───────────────────────────────────────────────────
@@ -847,6 +938,7 @@ function exportPng(){
 
 document.addEventListener('DOMContentLoaded',function(){
   initViewer();
+  startLabelLoop();
   buildSwatches();
   segHandler('styleSeg','style',buildGeometry);
   segHandler('colorSeg','color',updateColorOrOpacity);
@@ -896,7 +988,7 @@ document.addEventListener('DOMContentLoaded',function(){
     if(selectedChain===null)return;
     var v=e.target.value;
     if(v.trim())state.chainLabels[selectedChain]=v; else delete state.chainLabels[selectedChain];
-    applyChainLabels();
+    renderLabelTags();
   });
 
   // Track the pointer over the viewport so the popup opens next to the tap, and
