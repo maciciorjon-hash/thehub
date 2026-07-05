@@ -81,6 +81,26 @@ select:focus{outline:none;border-color:var(--accent);}
 .seg button.active{background:var(--accent);color:#fff;font-weight:600;}
 .seg button:hover:not(.active){background:var(--surface3);}
 
+.ls-grid{display:grid;grid-template-columns:auto 1fr auto 68px;gap:8px;align-items:center;margin-bottom:9px;}
+.ls-lbl{font-size:11px;color:var(--text2);}
+.ls-ctrl{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;
+  font-family:var(--sans);font-size:12px;color:var(--text);outline:none;width:100%;}
+.ls-ctrl:focus{border-color:var(--accent);}
+.ls-btnrow{display:flex;gap:6px;align-items:center;}
+.ls-tgl{width:30px;height:30px;flex-shrink:0;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);
+  color:var(--text2);cursor:pointer;font-size:14px;font-family:var(--sans);}
+.ls-tgl.active{background:var(--accent);color:#fff;border-color:transparent;}
+.ls-color{width:34px;height:30px;flex-shrink:0;border:1px solid var(--border2);border-radius:6px;background:none;cursor:pointer;padding:2px;}
+.design-list{display:flex;flex-direction:column;gap:5px;}
+.design-item{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);
+  border-radius:7px;padding:7px 10px;}
+.design-item .di-name{flex:1;font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.design-item .di-sub{font-size:10px;color:var(--text3);font-family:var(--mono);}
+.design-item button{background:none;border:none;cursor:pointer;color:var(--text3);padding:2px;display:flex;}
+.design-item button:hover{color:var(--text);}
+.design-item .di-del:hover{color:var(--poor);}
+.design-item button svg{width:14px;height:14px;}
+.design-empty{font-size:11.5px;color:var(--text3);padding:2px 0;}
 .hsl-row{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:11px;color:var(--text2);}
 .hsl-row>span:first-child{width:34px;flex-shrink:0;}
 .hsl-row input[type=range]{flex:1;accent-color:var(--accent);min-width:0;}
@@ -357,6 +377,58 @@ select:focus{outline:none;border-color:var(--accent);}
       <input type="checkbox" id="lineToggle" checked> Label connector lines
     </label>
 
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+      Label style
+    </div>
+    <div class="ls-grid">
+      <label class="ls-lbl">Font</label>
+      <select id="lsFont" class="ls-ctrl">
+        <option value="sans">Sans</option>
+        <option value="serif">Serif</option>
+        <option value="mono">Mono</option>
+      </select>
+      <label class="ls-lbl">Size</label>
+      <input type="number" id="lsSize" class="ls-ctrl" min="8" max="40" value="13">
+    </div>
+    <div class="ls-btnrow">
+      <button class="ls-tgl" id="lsBold" title="Bold" style="font-weight:700;">B</button>
+      <button class="ls-tgl" id="lsItalic" title="Italic" style="font-style:italic;">I</button>
+      <div class="seg" id="lsShapeSeg" style="flex:1;">
+        <button data-v="rounded" class="active">Rounded</button>
+        <button data-v="square">Square</button>
+      </div>
+    </div>
+    <label class="checkbox-row" style="margin:10px 0 8px;">
+      <input type="checkbox" id="lsBg" checked> Background box
+    </label>
+    <div class="ls-btnrow" id="lsBgOpts">
+      <div class="seg" id="lsBgModeSeg" style="flex:1;">
+        <button data-v="chain" class="active">Match chain</button>
+        <button data-v="custom">Custom</button>
+      </div>
+      <input type="color" id="lsBgColor" value="#333333" class="ls-color">
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="section-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+      Designs
+    </div>
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="designName" placeholder="Design name" autocomplete="off" style="font-family:var(--sans);">
+      <button class="btn" id="saveDesignBtn">Save</button>
+    </div>
+    <div id="designList" class="design-list"></div>
+
+    <div class="divider"></div>
+
+    <label class="checkbox-row" style="margin-bottom:10px;">
+      <input type="checkbox" id="exportLabels" checked> Include labels in export
+    </label>
     <button class="btn secondary full" id="exportBtn" style="margin-top:6px;">Export PNG (hi-res)</button>
   </div>
 
@@ -414,9 +486,11 @@ var CHAIN_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#
 var WATER_RESN=['HOH','WAT','DOD','H2O','TIP','SOL'];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfs=[];
 var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',shade:'flat',bg:'transparent',surfaceOpacity:0.55,
-  chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,smartOpacity:true,hsl:{h:0,s:100,l:100}};
+  chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,smartOpacity:true,hsl:{h:0,s:100,l:100},
+  exportLabels:true,
+  labelStyle:{font:'sans',size:13,bold:false,italic:false,bg:true,bgMode:'chain',bgColor:'#333333',shape:'rounded'}};
 var chainList=[], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
-var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={};
+var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null;
 
 function $(id){return document.getElementById(id);}
 
@@ -513,6 +587,7 @@ function fetchPdb(id){
       currentModel=viewer.addModel(text,'pdb');
       computeChains();
       startLabelLoop();
+      applyPendingDesign();
       $('emptyState').style.display='none';
       buildGeometry();
       applyBorder();
@@ -889,16 +964,42 @@ function renderLabelTags(){
   Object.keys(state.chainLabels).forEach(function(ch){
     var text=(state.chainLabels[ch]||'').trim();
     if(!text)return;
-    var col=labelColor(ch), fc=_lum(col)>0.62?'#1a1d2e':'#ffffff';
+    var col=labelColor(ch);
     var e=labelEls[ch]||(labelEls[ch]=makeLabelEl(ch));
     e.div.textContent=text;
-    e.div.style.background=col;
-    e.div.style.color=fc;
+    applyTagStyle(e.div,ch);
     e.line.setAttribute('stroke',col);
     e.dot.setAttribute('fill',col);
     if(!state.labelOffsets[ch])state.labelOffsets[ch]={dx:0,dy:-70};
   });
   updateLabelPositions();
+}
+function _labelFontFamily(){
+  var f=state.labelStyle.font;
+  return f==='serif'?'Georgia, "Times New Roman", serif':f==='mono'?"'IBM Plex Mono', monospace":"'IBM Plex Sans', sans-serif";
+}
+// Apply the global label formatting to one tag element.
+function applyTagStyle(div,ch){
+  var ls=state.labelStyle, chainCol=labelColor(ch);
+  div.style.fontFamily=_labelFontFamily();
+  div.style.fontSize=ls.size+'px';
+  div.style.fontWeight=ls.bold?'700':'600';
+  div.style.fontStyle=ls.italic?'italic':'normal';
+  div.style.borderRadius=(ls.shape==='square'?'3px':'8px');
+  if(ls.bg){
+    var bg=ls.bgMode==='custom'?ls.bgColor:chainCol;
+    div.style.background=bg;
+    div.style.color=_lum(bg)>0.62?'#1a1d2e':'#ffffff';
+    div.style.border='1.5px solid rgba(0,0,0,0.35)';
+    div.style.padding='5px 10px';
+    div.style.textShadow='none';
+  } else {
+    div.style.background='none';
+    div.style.color=chainCol;
+    div.style.border='none';
+    div.style.padding='2px 3px';
+    div.style.textShadow='0 0 3px #fff,0 0 3px #fff,0 0 2px #fff';
+  }
 }
 function makeLabelEl(ch){
   var svg=$('label-lines'), layer=$('label-layer');
@@ -1132,6 +1233,55 @@ function closeControls(){
   document.body.classList.remove('controls-open');
 }
 
+function _roundRectPath(ctx,x,y,w,h,r){
+  ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+// Re-draw the HTML label callouts onto the export canvas (they live in the DOM,
+// not the WebGL canvas, so they'd otherwise be missing from the PNG).
+function drawLabelsToCtx(ctx,factor,rect){
+  var ls=state.labelStyle;
+  var items=[];
+  Object.keys(labelEls).forEach(function(ch){
+    var text=(state.chainLabels[ch]||'').trim(); if(!text)return;
+    var anchor=getAnchor(ch); if(!anchor)return;
+    var p; try{p=viewer.modelToScreen(anchor);}catch(e){return;}
+    var ax=(p.x-rect.left)*factor, ay=(p.y-rect.top)*factor;
+    var off=state.labelOffsets[ch]||{dx:0,dy:-70};
+    var lx=ax+off.dx*factor, ly=ay+off.dy*factor;
+    ctx.font=(ls.italic?'italic ':'')+(ls.bold?'700 ':'600 ')+(ls.size*factor)+'px '+_labelFontFamily();
+    var tw=ctx.measureText(text).width;
+    var padX=(ls.bg?10:3)*factor, padY=(ls.bg?6:2)*factor;
+    var bw=tw+padX*2, bh=ls.size*factor+padY*2;
+    items.push({ch:ch,text:text,col:labelColor(ch),ax:ax,ay:ay,lx:lx,ly:ly,bw:bw,bh:bh});
+  });
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  if(state.showLines){
+    items.forEach(function(it){
+      var hw=it.bw/2+3*factor, hh=it.bh/2+3*factor, edge=_clipToBox(it.lx,it.ly,hw,hh,it.ax,it.ay);
+      ctx.strokeStyle=it.col; ctx.lineWidth=2*factor; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(it.ax,it.ay); ctx.lineTo(edge.x,edge.y); ctx.stroke();
+      ctx.beginPath(); ctx.arc(it.ax,it.ay,6*factor,0,7); ctx.fillStyle=it.col; ctx.fill();
+      ctx.lineWidth=1.5*factor; ctx.strokeStyle='#fff'; ctx.stroke();
+    });
+  }
+  items.forEach(function(it){
+    ctx.font=(ls.italic?'italic ':'')+(ls.bold?'700 ':'600 ')+(ls.size*factor)+'px '+_labelFontFamily();
+    if(ls.bg){
+      var bg=ls.bgMode==='custom'?ls.bgColor:it.col;
+      _roundRectPath(ctx,it.lx-it.bw/2,it.ly-it.bh/2,it.bw,it.bh,(ls.shape==='square'?3:8)*factor);
+      ctx.fillStyle=bg; ctx.fill();
+      ctx.lineWidth=1.5*factor; ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.stroke();
+      ctx.fillStyle=_lum(bg)>0.62?'#1a1d2e':'#ffffff';
+      ctx.fillText(it.text,it.lx,it.ly);
+    } else {
+      ctx.lineWidth=3.2*factor; ctx.strokeStyle='rgba(255,255,255,0.92)';
+      ctx.strokeText(it.text,it.lx,it.ly);
+      ctx.fillStyle=it.col; ctx.fillText(it.text,it.lx,it.ly);
+    }
+  });
+}
 function exportPng(){
   if(!currentModel){showToast('Load a structure first.');return;}
   var canvas=$('viewport').querySelector('canvas');
@@ -1143,11 +1293,92 @@ function exportPng(){
   var ctx=off.getContext('2d');
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(canvas,0,0,off.width,off.height);
+  if(state.exportLabels){
+    var rect=canvas.getBoundingClientRect();
+    drawLabelsToCtx(ctx, off.width/rect.width, rect);
+  }
   var link=document.createElement('a');
   link.download=(currentPdbId||'structure')+'_ribbon.png';
   link.href=off.toDataURL('image/png');
   link.click();
   showToast('Exported PNG');
+}
+
+// ─── Saved designs (localStorage) ────────────────────────────────────────────
+function getDesigns(){ try{return JSON.parse(localStorage.getItem('ribbon_designs')||'{}');}catch(e){return {};} }
+function putDesigns(d){ try{localStorage.setItem('ribbon_designs',JSON.stringify(d));}catch(e){} }
+function _clone(o){ return JSON.parse(JSON.stringify(o)); }
+function collectDesign(){
+  return { pdbId:currentPdbId, ts:Date.now(), state:{
+    style:state.style,color:state.color,uniformColor:state.uniformColor,border:state.border,shade:state.shade,bg:state.bg,
+    surfaceOpacity:state.surfaceOpacity,smartOpacity:state.smartOpacity,showLines:state.showLines,exportLabels:state.exportLabels,
+    hsl:_clone(state.hsl),labelStyle:_clone(state.labelStyle),
+    chainColors:_clone(state.chainColors),chainLabels:_clone(state.chainLabels),
+    labelOffsets:_clone(state.labelOffsets),labelAnchors:_clone(state.labelAnchors)
+  }};
+}
+function saveDesign(){
+  if(!currentModel){showToast('Load a structure first.');return;}
+  var name=($('designName').value||'').trim()||(currentPdbId+' design');
+  var all=getDesigns(); all[name]=collectDesign(); putDesigns(all);
+  $('designName').value=''; renderDesignList(); showToast('Saved "'+name+'"');
+}
+function deleteDesign(name){ var all=getDesigns(); delete all[name]; putDesigns(all); renderDesignList(); }
+function loadDesign(name){
+  var d=getDesigns()[name]; if(!d)return;
+  _pendingDesign=d.state;
+  $('pdbInput').value=d.pdbId;
+  fetchPdb(d.pdbId);
+  showToast('Loaded "'+name+'"');
+}
+function applyPendingDesign(){
+  if(!_pendingDesign)return;
+  var ps=_pendingDesign; _pendingDesign=null;
+  ['style','color','uniformColor','border','shade','bg','surfaceOpacity','smartOpacity','showLines','exportLabels'].forEach(function(k){ if(ps[k]!=null)state[k]=ps[k]; });
+  if(ps.hsl)state.hsl=_clone(ps.hsl);
+  if(ps.labelStyle)state.labelStyle=Object.assign(state.labelStyle,ps.labelStyle);
+  state.chainColors=ps.chainColors?_clone(ps.chainColors):{};
+  state.chainLabels=ps.chainLabels?_clone(ps.chainLabels):{};
+  state.labelOffsets=ps.labelOffsets?_clone(ps.labelOffsets):{};
+  state.labelAnchors=ps.labelAnchors?_clone(ps.labelAnchors):{};
+  syncControlsToState();
+}
+function renderDesignList(){
+  var el=$('designList'); if(!el)return;
+  var all=getDesigns(), names=Object.keys(all).sort(function(a,b){return (all[b].ts||0)-(all[a].ts||0);});
+  if(!names.length){ el.innerHTML='<div class="design-empty">No saved designs yet.</div>'; return; }
+  el.innerHTML='';
+  names.forEach(function(name){
+    var d=all[name];
+    var row=document.createElement('div'); row.className='design-item';
+    row.innerHTML='<span class="di-name" title="Load">'+escapeHtml(name)+'</span><span class="di-sub">'+(d.pdbId||'')+'</span>'
+      +'<button class="di-load" title="Load"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></button>'
+      +'<button class="di-del" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>';
+    row.querySelector('.di-name').addEventListener('click',function(){loadDesign(name);});
+    row.querySelector('.di-load').addEventListener('click',function(){loadDesign(name);});
+    row.querySelector('.di-del').addEventListener('click',function(){deleteDesign(name);});
+    el.appendChild(row);
+  });
+}
+
+// Push current state values into the sidebar controls (after loading a design).
+function _segSet(id,val){ document.querySelectorAll('#'+id+' button').forEach(function(b){ b.classList.toggle('active',b.dataset.v===val); }); }
+function syncControlsToState(){
+  _segSet('styleSeg',state.style); _segSet('colorSeg',state.color); _segSet('borderSeg',state.border);
+  _segSet('shadeSeg',state.shade); _segSet('bgSeg',state.bg);
+  $('surfaceOpacity').value=state.surfaceOpacity;
+  $('smartOpacity').checked=state.smartOpacity;
+  $('lineToggle').checked=state.showLines;
+  $('exportLabels').checked=state.exportLabels;
+  $('hslH').value=state.hsl.h; $('hslS').value=state.hsl.s; $('hslL').value=state.hsl.l;
+  $('hslHv').textContent=state.hsl.h+'°'; $('hslSv').textContent=state.hsl.s+'%'; $('hslLv').textContent=state.hsl.l+'%';
+  var ls=state.labelStyle;
+  $('lsFont').value=ls.font; $('lsSize').value=ls.size;
+  $('lsBold').classList.toggle('active',ls.bold); $('lsItalic').classList.toggle('active',ls.italic);
+  _segSet('lsShapeSeg',ls.shape); $('lsBg').checked=ls.bg; _segSet('lsBgModeSeg',ls.bgMode); $('lsBgColor').value=ls.bgColor;
+  $('lsBgOpts').style.display=ls.bg?'':'none';
+  updatePanelVisibility();
+  var us=$('uniformSwatches'); if(us)us.querySelectorAll('.swatch').forEach(function(s){s.classList.toggle('active',s.dataset.c===state.uniformColor);});
 }
 
 document.addEventListener('DOMContentLoaded',function(){
@@ -1186,6 +1417,23 @@ document.addEventListener('DOMContentLoaded',function(){
     e.target.value=v;
     if(v.length===6)setChainColor(selectedChain,'#'+v);
   });
+
+  // Label style controls (global formatting).
+  function lsChanged(){ renderLabelTags(); }
+  $('lsFont').addEventListener('change',function(e){ state.labelStyle.font=e.target.value; lsChanged(); });
+  $('lsSize').addEventListener('input',function(e){ state.labelStyle.size=Math.max(8,Math.min(40,parseInt(e.target.value,10)||13)); lsChanged(); });
+  $('lsBold').addEventListener('click',function(){ state.labelStyle.bold=!state.labelStyle.bold; this.classList.toggle('active',state.labelStyle.bold); lsChanged(); });
+  $('lsItalic').addEventListener('click',function(){ state.labelStyle.italic=!state.labelStyle.italic; this.classList.toggle('active',state.labelStyle.italic); lsChanged(); });
+  segHandler('lsShapeSeg','_lsShape',function(){ state.labelStyle.shape=state._lsShape; lsChanged(); });
+  $('lsBg').addEventListener('change',function(e){ state.labelStyle.bg=e.target.checked; $('lsBgOpts').style.display=e.target.checked?'':'none'; lsChanged(); });
+  segHandler('lsBgModeSeg','_lsBgMode',function(){ state.labelStyle.bgMode=state._lsBgMode; lsChanged(); });
+  $('lsBgColor').addEventListener('input',function(e){ state.labelStyle.bgColor=e.target.value; if(state.labelStyle.bgMode==='custom')lsChanged(); });
+
+  // Designs + export options.
+  $('saveDesignBtn').addEventListener('click',saveDesign);
+  $('designName').addEventListener('keydown',function(e){ if(e.key==='Enter')saveDesign(); });
+  $('exportLabels').addEventListener('change',function(e){ state.exportLabels=e.target.checked; });
+  renderDesignList();
 
   $('fetchBtn').addEventListener('click',handleSubmit);
   $('pdbInput').addEventListener('keydown',function(e){if(e.key==='Enter')handleSubmit();});
