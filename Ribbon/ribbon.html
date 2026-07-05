@@ -328,6 +328,9 @@ select:focus{outline:none;border-color:var(--accent);}
     <label class="checkbox-row" style="margin-bottom:10px;">
       <input type="checkbox" id="spinToggle"> Auto-spin
     </label>
+    <label class="checkbox-row" style="margin-bottom:10px;">
+      <input type="checkbox" id="lineToggle" checked> Label connector lines
+    </label>
 
     <button class="btn secondary full" id="exportBtn" style="margin-top:6px;">Export PNG (hi-res)</button>
   </div>
@@ -385,7 +388,7 @@ var CHAIN_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#
 var WATER_RESN=['HOH','WAT','DOD','H2O','TIP','SOL'];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfId=null;
 var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',shade:'flat',bg:'transparent',surfaceOpacity:0.55,
-  chainColors:{},chainLabels:{},labelOffsets:{}};
+  chainColors:{},chainLabels:{},labelOffsets:{},showLines:true};
 var chainList=[], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
 var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false;
 
@@ -779,11 +782,20 @@ function removeLabelEl(ch){
   e.div.remove(); e.line.remove(); e.dot.remove();
   delete labelEls[ch];
 }
+// Point where the segment from the label centre toward the anchor crosses the
+// label's border box — so the line stops at the tag edge instead of the text.
+function _clipToBox(cx,cy,hw,hh,tx,ty){
+  var dx=tx-cx, dy=ty-cy;
+  if(dx===0&&dy===0)return {x:cx,y:cy};
+  var s=Math.min(dx!==0?hw/Math.abs(dx):Infinity, dy!==0?hh/Math.abs(dy):Infinity);
+  return {x:cx+dx*s, y:cy+dy*s};
+}
 function updateLabelPositions(){
   if(!viewer||!currentModel)return;
   var keys=Object.keys(labelEls);
   if(!keys.length)return;
   var vp=$('viewport').getBoundingClientRect();
+  var show=state.showLines;
   keys.forEach(function(ch){
     var e=labelEls[ch], anchor=getAnchor(ch);
     if(!anchor)return;
@@ -794,9 +806,16 @@ function updateLabelPositions(){
     var off=state.labelOffsets[ch]||{dx:0,dy:-70};
     var lx=ax+off.dx, ly=ay+off.dy;
     e.div.style.left=lx+'px'; e.div.style.top=ly+'px';
-    e.line.setAttribute('x1',ax); e.line.setAttribute('y1',ay);
-    e.line.setAttribute('x2',lx); e.line.setAttribute('y2',ly);
-    e.dot.setAttribute('cx',ax); e.dot.setAttribute('cy',ay);
+    var vis=show?'':'none';
+    e.line.style.display=vis; e.dot.style.display=vis;
+    if(show){
+      // Stop the line at the tag's edge (not under the text), leaving a hair gap.
+      var hw=(e.div.offsetWidth||60)/2+3, hh=(e.div.offsetHeight||24)/2+3;
+      var edge=_clipToBox(lx,ly,hw,hh,ax,ay);
+      e.line.setAttribute('x1',ax); e.line.setAttribute('y1',ay);
+      e.line.setAttribute('x2',edge.x); e.line.setAttribute('y2',edge.y);
+      e.dot.setAttribute('cx',ax); e.dot.setAttribute('cy',ay);
+    }
   });
 }
 function startLabelLoop(){
@@ -981,6 +1000,11 @@ document.addEventListener('DOMContentLoaded',function(){
   $('spinToggle').addEventListener('change',function(e){
     spinning=e.target.checked;
     if(viewer)viewer.spin(spinning?'y':false);
+  });
+
+  $('lineToggle').addEventListener('change',function(e){
+    state.showLines=e.target.checked;
+    updateLabelPositions();
   });
 
   // Live label-tag editing from the chain popup.
