@@ -123,6 +123,7 @@ select:focus{outline:none;border-color:var(--accent);}
   width:32px;height:32px;border-radius:7px;cursor:pointer;display:flex;align-items:center;
   justify-content:center;box-shadow:var(--shadow-xs);transition:color .15s,background .15s;}
 .tb-btn:hover{color:var(--text);background:var(--surface2);}
+.tb-btn.tb-active{background:var(--accent);color:#fff;border-color:transparent;}
 .tb-btn svg{width:16px;height:16px;}
 #viewport{flex:1;position:relative;}
 .viewer-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
@@ -191,6 +192,22 @@ select:focus{outline:none;border-color:var(--accent);}
 .cp-btn-reset:hover{background:var(--surface2);color:var(--text);}
 .cp-btn-done{background:var(--accent);color:#fff;}
 .cp-btn-done:hover{opacity:.88;}
+
+/* Export modal */
+.ov-modal{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;
+  background:rgba(0,0,0,0.45);padding:20px;}
+.ov-modal.open{display:flex;animation:cpPop .14s ease;}
+.ov-card{background:var(--surface);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:340px;
+  box-shadow:var(--shadow-lg);overflow:hidden;font-family:var(--sans);}
+.ov-hdr{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;background:var(--surface2);
+  border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:var(--text);}
+.ov-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:19px;line-height:1;padding:0 2px;}
+.ov-close:hover{color:var(--text);}
+.ov-body{padding:15px 16px 6px;}
+.ov-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:7px;}
+.ov-lbl.ov-mt{margin-top:14px;}
+.ov-dim{font-size:11px;color:var(--text2);margin-top:8px;font-family:var(--mono);}
+.ov-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px 15px;border-top:1px solid var(--border);}
 
 /* Draggable chain label callouts (HTML overlay above the 3D canvas) */
 #label-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6;overflow:visible;}
@@ -293,10 +310,6 @@ select:focus{outline:none;border-color:var(--accent);}
       <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text3);margin-top:3px;">
         <span>Cartoon shows through</span><span>Solid surface</span>
       </div>
-      <label class="checkbox-row" style="margin-top:11px;">
-        <input type="checkbox" id="smartOpacity" checked> Smart opacity
-      </label>
-      <div style="font-size:10.5px;color:var(--text3);margin-top:3px;">Fades the near side of the surface so the cartoon stays crisp underneath.</div>
     </div>
 
     <div class="divider"></div>
@@ -324,7 +337,7 @@ select:focus{outline:none;border-color:var(--accent);}
         <button id="hslReset" style="background:none;border:none;color:var(--text3);font-size:10px;cursor:pointer;font-family:var(--sans);text-transform:none;letter-spacing:0;">Reset</button>
       </label>
       <div class="hsl-row"><span>Hue</span><input type="range" id="hslH" min="-180" max="180" step="1" value="0"><span class="hsl-val" id="hslHv">0°</span></div>
-      <div class="hsl-row"><span>Sat</span><input type="range" id="hslS" min="0" max="200" step="1" value="100"><span class="hsl-val" id="hslSv">100%</span></div>
+      <div class="hsl-row"><span>Sat</span><input type="range" id="hslS" min="0" max="100" step="1" value="100"><span class="hsl-val" id="hslSv">100%</span></div>
       <div class="hsl-row"><span>Light</span><input type="range" id="hslL" min="50" max="170" step="1" value="100"><span class="hsl-val" id="hslLv">100%</span></div>
       <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">Tune all colours at once — e.g. raise Light &amp; lower Sat for a pastel, paper-style look.</div>
     </div>
@@ -340,17 +353,6 @@ select:focus{outline:none;border-color:var(--accent);}
         <button data-v="none">None</button>
         <button data-v="thin" class="active">Thin</button>
         <button data-v="thick">Thick</button>
-      </div>
-    </div>
-
-    <div class="section-title">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
-      Shading
-    </div>
-    <div class="field">
-      <div class="seg" id="shadeSeg">
-        <button data-v="flat" class="active">Flat</button>
-        <button data-v="toon">Toon</button>
       </div>
     </div>
 
@@ -370,9 +372,6 @@ select:focus{outline:none;border-color:var(--accent);}
 
     <div class="divider"></div>
 
-    <label class="checkbox-row" style="margin-bottom:10px;">
-      <input type="checkbox" id="spinToggle"> Auto-spin
-    </label>
     <label class="checkbox-row" style="margin-bottom:10px;">
       <input type="checkbox" id="lineToggle" checked> Label connector lines
     </label>
@@ -426,16 +425,20 @@ select:focus{outline:none;border-color:var(--accent);}
 
     <div class="divider"></div>
 
-    <label class="checkbox-row" style="margin-bottom:10px;">
-      <input type="checkbox" id="exportLabels" checked> Include labels in export
-    </label>
-    <button class="btn secondary full" id="exportBtn" style="margin-top:6px;">Export PNG (hi-res)</button>
+    <button class="btn secondary full" id="exportBtn" style="margin-top:6px;">Export image&hellip;</button>
+    <input type="checkbox" id="exportLabels" checked style="display:none;">
   </div>
 
   <div class="viewer-area">
     <div class="viewer-toolbar">
+      <button class="tb-btn" id="spinBtn" title="Auto-rotate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9"/><polyline points="21 3 21 9 15 9"/></svg>
+      </button>
       <button class="tb-btn" id="resetViewBtn" title="Reset view">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 16v-4h4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 3 3 3 3 8"/><polyline points="16 3 21 3 21 8"/><polyline points="8 21 3 21 3 16"/><polyline points="16 21 21 21 21 16"/></svg>
+      </button>
+      <button class="tb-btn" id="exportBtn2" title="Export image">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
     </div>
     <div id="viewport">
@@ -478,6 +481,27 @@ select:focus{outline:none;border-color:var(--accent);}
   </div>
 </div>
 
+<!-- Export modal -->
+<div id="export-modal" class="ov-modal" onclick="if(event.target===this)closeExport()">
+  <div class="ov-card">
+    <div class="ov-hdr"><span>Export image</span><button class="ov-close" onclick="closeExport()">&times;</button></div>
+    <div class="ov-body">
+      <div class="ov-lbl">Background</div>
+      <div class="seg" id="exBg"><button data-v="transparent" class="active">Transparent</button><button data-v="white">White</button><button data-v="dark">Dark</button></div>
+      <div class="ov-lbl ov-mt">Format</div>
+      <div class="seg" id="exFmt"><button data-v="png" class="active">PNG</button><button data-v="jpeg">JPEG</button></div>
+      <div class="ov-lbl ov-mt">Resolution</div>
+      <div class="seg" id="exRes"><button data-v="300">300&nbsp;dpi</button><button data-v="600" class="active">600&nbsp;dpi</button><button data-v="1200">1200&nbsp;dpi</button></div>
+      <div class="ov-dim" id="exDim"></div>
+      <label class="checkbox-row" style="margin-top:13px;"><input type="checkbox" id="exLabels" checked> Include labels</label>
+    </div>
+    <div class="ov-foot">
+      <button class="cp-btn cp-btn-reset" onclick="closeExport()">Cancel</button>
+      <button class="cp-btn cp-btn-done" id="exGo">Download</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -485,12 +509,12 @@ var UNIFORM_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983',
 var CHAIN_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#2d9462','#c5c5c5','#1a1d2e','#ffffff'];
 var WATER_RESN=['HOH','WAT','DOD','H2O','TIP','SOL'];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfs=[];
-var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',shade:'flat',bg:'transparent',surfaceOpacity:0.55,
-  chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,smartOpacity:true,hsl:{h:0,s:100,l:100},
+var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',bg:'transparent',surfaceOpacity:0.55,
+  chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,hsl:{h:0,s:100,l:100},
   exportLabels:true,
   labelStyle:{font:'sans',size:13,bold:false,italic:false,bg:true,bgMode:'chain',bgColor:'#333333',shape:'rounded'}};
 var chainList=[], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
-var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null;
+var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _defaultView=null;
 
 function $(id){return document.getElementById(id);}
 
@@ -593,6 +617,7 @@ function fetchPdb(id){
       applyBorder();
       viewer.zoomTo();
       viewer.render();
+      try{_defaultView=viewer.getView();}catch(e){_defaultView=null;}
       setLoading(false);
       $('fetchBtn').disabled=false;
       showToast('Loaded '+id);
@@ -781,53 +806,20 @@ function addSurfaces(){
   var scheme=colorSchemeSpec();
   if(scheme && !Object.keys(state.chainColors).length){
     var o={opacity:state.surfaceOpacity}; Object.assign(o,scheme);
-    viewer.addSurface($3Dmol.SurfaceType.SES,o,{hetflag:false}).then(function(id){currentSurfs.push({id:id,ch:null});applySmartSurface(id);});
+    viewer.addSurface($3Dmol.SurfaceType.SES,o,{hetflag:false}).then(function(id){currentSurfs.push({id:id,ch:null});});
   } else {
     chainList.forEach(function(ch){
       viewer.addSurface($3Dmol.SurfaceType.SES,{opacity:state.surfaceOpacity,color:chainSolidColor(ch)},{chain:ch,hetflag:false})
-        .then(function(id){currentSurfs.push({id:id,ch:ch});applySmartSurface(id);});
+        .then(function(id){currentSurfs.push({id:id,ch:ch});});
     });
   }
 }
-
-// "Smart opacity": render each surface mesh twice (sharing geometry) — a more
-// opaque BACK face and a very transparent FRONT face — so the near side barely
-// veils the cartoon while the far side/silhouette give the surface its body.
-function _sideConst(name){ return ($3Dmol&&$3Dmol[name]!=null)?$3Dmol[name]:(name==='FrontSide'?0:name==='BackSide'?1:2); }
-function surfOpacities(){ var b=state.surfaceOpacity; return {back:b, front:Math.max(0.04,b*0.34)}; }
-// NOTE: viewer.surfaces[id] is a Surface (Array subclass) whose slice/map/filter
-// throw via a broken species constructor — only index access + push are safe.
-function applySmartSurface(id){
-  try{
-    var arr=viewer.surfaces&&viewer.surfaces[id];
-    if(!arr)return;
-    var orig=[]; for(var k=0;k<arr.length;k++)orig.push(arr[k]);
-    for(var j=0;j<orig.length;j++){
-      var s=orig[j];
-      if(!s.mat||s._smartFront)continue;
-      arr.push({geo:s.geo,mat:s.mat.clone(),done:true,finished:true,symmetries:s.symmetries,_smartFront:true});
-    }
-    updateSurfaceOpacity();
-  }catch(e){}
-}
 function updateSurfaceOpacity(){
-  var ops=surfOpacities(), BACK=_sideConst('BackSide'), FRONT=_sideConst('FrontSide'), DOUBLE=_sideConst('DoubleSide');
-  for(var c=0;c<currentSurfs.length;c++){
-    var arr=viewer.surfaces&&viewer.surfaces[currentSurfs[c].id];
-    if(!arr)continue;
-    for(var i=0;i<arr.length;i++){
-      var s=arr[i]; if(!s.mat)continue;
-      if(state.smartOpacity){
-        if(s._smartFront){ s.mat.side=FRONT; s.mat.opacity=ops.front; }
-        else { s.mat.side=BACK; s.mat.opacity=ops.back; }
-      } else {
-        if(s._smartFront){ s.mat.opacity=0; }
-        else { s.mat.side=DOUBLE; s.mat.opacity=state.surfaceOpacity; }
-      }
-      s.mat.transparent=s.mat.opacity<1;
-      s.mat.needsUpdate=true;
-    }
-  }
+  currentSurfs.forEach(function(s){
+    var st={opacity:state.surfaceOpacity};
+    if(s.ch!=null)st.color=chainSolidColor(s.ch);
+    try{viewer.setSurfaceMaterialStyle(s.id,st);}catch(_){}
+  });
   viewer.render();
 }
 
@@ -853,10 +845,10 @@ function recolorStructure(){
   applyChainedStyle(state.style==='stick'?'stick':'cartoon');
   if(state.style==='surface'){
     currentSurfs.forEach(function(s){
-      if(s.ch==null)return;
-      try{viewer.setSurfaceMaterialStyle(s.id,{color:chainSolidColor(s.ch)});}catch(e){}
+      var st={opacity:state.surfaceOpacity};
+      if(s.ch!=null)st.color=chainSolidColor(s.ch);
+      try{viewer.setSurfaceMaterialStyle(s.id,st);}catch(e){}
     });
-    updateSurfaceOpacity(); // setSurfaceMaterialStyle resets side/opacity — restore smart pass
   }
   applyLigands();
   setupChainClicks();
@@ -875,9 +867,6 @@ function updateColorOrOpacity(){
 function applyBorder(){
   if(!viewer)return;
   var width=state.border==='thick'?0.15:(state.border==='thin'?0.06:0);
-  // Toon = cel-shaded look: force a bold black contour (3Dmol has no dynamic
-  // shadow maps, so the outline is what carries the illustrative depth).
-  if(state.shade==='toon')width=Math.max(width,0.14);
   if(width<=0){
     viewer.setViewStyle({});
   } else {
@@ -1282,26 +1271,58 @@ function drawLabelsToCtx(ctx,factor,rect){
     }
   });
 }
-function exportPng(){
+// ─── Export modal ────────────────────────────────────────────────────────────
+var _exOpts={bg:'transparent',fmt:'png',res:'600'};
+function _resScale(r){ return r==='300'?1.5:r==='1200'?6:3; }
+function _exportDims(){
+  var canvas=$('viewport').querySelector('canvas'); if(!canvas)return null;
+  var scale=_resScale(_exOpts.res);
+  var w=Math.round(canvas.width*scale), h=Math.round(canvas.height*scale);
+  var maxEdge=8000, m=Math.max(w,h);
+  if(m>maxEdge){ var k=maxEdge/m; w=Math.round(w*k); h=Math.round(h*k); scale*=k; }
+  return {w:w,h:h,scale:scale,canvas:canvas};
+}
+function updateExDim(){
+  var d=_exportDims(); if(!d)return;
+  var note=(_exOpts.fmt==='jpeg'&&_exOpts.bg==='transparent')?'  ·  JPEG has no transparency (uses white)':'';
+  $('exDim').textContent=d.w+' × '+d.h+' px'+note;
+}
+function openExport(){
   if(!currentModel){showToast('Load a structure first.');return;}
-  var canvas=$('viewport').querySelector('canvas');
-  if(!canvas){showToast('Nothing to export.');return;}
-  var scale=3;
+  $('exLabels').checked=state.exportLabels;
+  updateExDim();
+  $('export-modal').classList.add('open');
+}
+function closeExport(){ $('export-modal').classList.remove('open'); }
+function _applyBgKey(key){
+  if(key==='transparent')viewer.setBackgroundColor('white',0);
+  else if(key==='white')viewer.setBackgroundColor('white',1);
+  else viewer.setBackgroundColor('#13161e',1);
+  viewer.render();
+}
+function doExport(){
+  var d=_exportDims(); if(!d){showToast('Nothing to export.');return;}
+  var canvas=d.canvas;
+  state.exportLabels=$('exLabels').checked;
+  var prevBg=state.bg;
+  _applyBgKey(_exOpts.bg);               // render at the chosen background
   var off=document.createElement('canvas');
-  off.width=canvas.width*scale;
-  off.height=canvas.height*scale;
-  var ctx=off.getContext('2d');
-  ctx.imageSmoothingEnabled=true;
+  off.width=d.w; off.height=d.h;
+  var ctx=off.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+  if(_exOpts.fmt==='jpeg' && _exOpts.bg==='transparent'){ ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,off.width,off.height); }
   ctx.drawImage(canvas,0,0,off.width,off.height);
   if(state.exportLabels){
     var rect=canvas.getBoundingClientRect();
     drawLabelsToCtx(ctx, off.width/rect.width, rect);
   }
+  _applyBgKey(prevBg);                    // restore the live background
+  var mime=_exOpts.fmt==='jpeg'?'image/jpeg':'image/png';
   var link=document.createElement('a');
-  link.download=(currentPdbId||'structure')+'_ribbon.png';
-  link.href=off.toDataURL('image/png');
+  link.download=(currentPdbId||'structure')+'_ribbon.'+(_exOpts.fmt==='jpeg'?'jpg':'png');
+  link.href=off.toDataURL(mime, _exOpts.fmt==='jpeg'?0.95:undefined);
   link.click();
-  showToast('Exported PNG');
+  closeExport();
+  showToast('Exported '+d.w+'×'+d.h);
 }
 
 // ─── Saved designs (localStorage) ────────────────────────────────────────────
@@ -1310,8 +1331,8 @@ function putDesigns(d){ try{localStorage.setItem('ribbon_designs',JSON.stringify
 function _clone(o){ return JSON.parse(JSON.stringify(o)); }
 function collectDesign(){
   return { pdbId:currentPdbId, ts:Date.now(), state:{
-    style:state.style,color:state.color,uniformColor:state.uniformColor,border:state.border,shade:state.shade,bg:state.bg,
-    surfaceOpacity:state.surfaceOpacity,smartOpacity:state.smartOpacity,showLines:state.showLines,exportLabels:state.exportLabels,
+    style:state.style,color:state.color,uniformColor:state.uniformColor,border:state.border,bg:state.bg,
+    surfaceOpacity:state.surfaceOpacity,showLines:state.showLines,exportLabels:state.exportLabels,
     hsl:_clone(state.hsl),labelStyle:_clone(state.labelStyle),
     chainColors:_clone(state.chainColors),chainLabels:_clone(state.chainLabels),
     labelOffsets:_clone(state.labelOffsets),labelAnchors:_clone(state.labelAnchors)
@@ -1334,7 +1355,7 @@ function loadDesign(name){
 function applyPendingDesign(){
   if(!_pendingDesign)return;
   var ps=_pendingDesign; _pendingDesign=null;
-  ['style','color','uniformColor','border','shade','bg','surfaceOpacity','smartOpacity','showLines','exportLabels'].forEach(function(k){ if(ps[k]!=null)state[k]=ps[k]; });
+  ['style','color','uniformColor','border','bg','surfaceOpacity','showLines','exportLabels'].forEach(function(k){ if(ps[k]!=null)state[k]=ps[k]; });
   if(ps.hsl)state.hsl=_clone(ps.hsl);
   if(ps.labelStyle)state.labelStyle=Object.assign(state.labelStyle,ps.labelStyle);
   state.chainColors=ps.chainColors?_clone(ps.chainColors):{};
@@ -1365,9 +1386,8 @@ function renderDesignList(){
 function _segSet(id,val){ document.querySelectorAll('#'+id+' button').forEach(function(b){ b.classList.toggle('active',b.dataset.v===val); }); }
 function syncControlsToState(){
   _segSet('styleSeg',state.style); _segSet('colorSeg',state.color); _segSet('borderSeg',state.border);
-  _segSet('shadeSeg',state.shade); _segSet('bgSeg',state.bg);
+  _segSet('bgSeg',state.bg);
   $('surfaceOpacity').value=state.surfaceOpacity;
-  $('smartOpacity').checked=state.smartOpacity;
   $('lineToggle').checked=state.showLines;
   $('exportLabels').checked=state.exportLabels;
   $('hslH').value=state.hsl.h; $('hslS').value=state.hsl.s; $('hslL').value=state.hsl.l;
@@ -1392,7 +1412,6 @@ document.addEventListener('DOMContentLoaded',function(){
   segHandler('styleSeg','style',buildGeometry);
   segHandler('colorSeg','color',updateColorOrOpacity);
   segHandler('borderSeg','border',applyBorder);
-  segHandler('shadeSeg','shade',applyBorder);
   segHandler('bgSeg','bg',applyBackground);
 
   // Global HSL palette tuning.
@@ -1435,6 +1454,18 @@ document.addEventListener('DOMContentLoaded',function(){
   $('exportLabels').addEventListener('change',function(e){ state.exportLabels=e.target.checked; });
   renderDesignList();
 
+  // Export modal option segments.
+  function exSeg(id,key){
+    document.querySelectorAll('#'+id+' button').forEach(function(b){
+      b.addEventListener('click',function(){
+        document.querySelectorAll('#'+id+' button').forEach(function(x){x.classList.remove('active');});
+        b.classList.add('active'); _exOpts[key]=b.dataset.v; updateExDim();
+      });
+    });
+  }
+  exSeg('exBg','bg'); exSeg('exFmt','fmt'); exSeg('exRes','res');
+  $('exGo').addEventListener('click',doExport);
+
   $('fetchBtn').addEventListener('click',handleSubmit);
   $('pdbInput').addEventListener('keydown',function(e){if(e.key==='Enter')handleSubmit();});
   document.querySelectorAll('.example-chip').forEach(function(chip){
@@ -1450,16 +1481,16 @@ document.addEventListener('DOMContentLoaded',function(){
     if(state.style==='surface'&&currentSurfs.length)updateSurfaceOpacity();
   });
 
-  $('smartOpacity').addEventListener('change',function(e){
-    state.smartOpacity=e.target.checked;
-    if(state.style==='surface'&&currentSurfs.length)updateSurfaceOpacity();
-  });
 
+  // Reset view = restore the exact orientation+zoom captured when the model loaded.
   $('resetViewBtn').addEventListener('click',function(){
-    if(viewer&&currentModel){viewer.zoomTo();viewer.render();}
+    if(!viewer||!currentModel)return;
+    if(_defaultView){ viewer.setView(_defaultView); } else { viewer.zoomTo(); }
+    viewer.render();
   });
 
-  $('exportBtn').addEventListener('click',exportPng);
+  $('exportBtn').addEventListener('click',openExport);
+  $('exportBtn2').addEventListener('click',openExport);
 
   $('themeBtn').addEventListener('click',function(){
     var html=document.documentElement;
@@ -1468,8 +1499,9 @@ document.addEventListener('DOMContentLoaded',function(){
   });
 
   var spinning=false;
-  $('spinToggle').addEventListener('change',function(e){
-    spinning=e.target.checked;
+  $('spinBtn').addEventListener('click',function(){
+    spinning=!spinning;
+    this.classList.toggle('tb-active',spinning);
     if(viewer)viewer.spin(spinning?'y':false);
   });
 
