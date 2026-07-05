@@ -273,6 +273,10 @@ select:focus{outline:none;border-color:var(--accent);}
       <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text3);margin-top:3px;">
         <span>Cartoon shows through</span><span>Solid surface</span>
       </div>
+      <label class="checkbox-row" style="margin-top:11px;">
+        <input type="checkbox" id="smartOpacity" checked> Smart opacity
+      </label>
+      <div style="font-size:10.5px;color:var(--text3);margin-top:3px;">Fades the near side of the surface so the cartoon stays crisp underneath.</div>
     </div>
 
     <div class="divider"></div>
@@ -410,7 +414,7 @@ var CHAIN_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#
 var WATER_RESN=['HOH','WAT','DOD','H2O','TIP','SOL'];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfs=[];
 var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',shade:'flat',bg:'transparent',surfaceOpacity:0.55,
-  chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,hsl:{h:0,s:100,l:100}};
+  chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,smartOpacity:true,hsl:{h:0,s:100,l:100}};
 var chainList=[], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
 var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={};
 
@@ -640,6 +644,13 @@ function adjustColor(hex){
   var c=_hexToHSL(hex);
   return _hslToHex(c.h+state.hsl.h, c.s*state.hsl.s/100, c.l*state.hsl.l/100);
 }
+// Vivid, highly-saturated default palette so lowering Sat / raising Light reads
+// as a smooth pastel shift. Near-greys/white/black are left untouched.
+function _saturateHex(hex){
+  var c=_hexToHSL(hex);
+  if(c.s<8)return hex;
+  return _hslToHex(c.h, Math.min(100,c.s*1.5+12), c.l);
+}
 function colorSchemeSpec(){
   if(state.color==='spectrum')return {color:'spectrum'};
   if(state.color==='ss')return {colorscheme:'ssPyMOL'};
@@ -695,13 +706,54 @@ function addSurfaces(){
   var scheme=colorSchemeSpec();
   if(scheme && !Object.keys(state.chainColors).length){
     var o={opacity:state.surfaceOpacity}; Object.assign(o,scheme);
-    viewer.addSurface($3Dmol.SurfaceType.SES,o,{hetflag:false}).then(function(id){currentSurfs.push({id:id,ch:null});});
+    viewer.addSurface($3Dmol.SurfaceType.SES,o,{hetflag:false}).then(function(id){currentSurfs.push({id:id,ch:null});applySmartSurface(id);});
   } else {
     chainList.forEach(function(ch){
       viewer.addSurface($3Dmol.SurfaceType.SES,{opacity:state.surfaceOpacity,color:chainSolidColor(ch)},{chain:ch,hetflag:false})
-        .then(function(id){currentSurfs.push({id:id,ch:ch});});
+        .then(function(id){currentSurfs.push({id:id,ch:ch});applySmartSurface(id);});
     });
   }
+}
+
+// "Smart opacity": render each surface mesh twice (sharing geometry) — a more
+// opaque BACK face and a very transparent FRONT face — so the near side barely
+// veils the cartoon while the far side/silhouette give the surface its body.
+function _sideConst(name){ return ($3Dmol&&$3Dmol[name]!=null)?$3Dmol[name]:(name==='FrontSide'?0:name==='BackSide'?1:2); }
+function surfOpacities(){ var b=state.surfaceOpacity; return {back:b, front:Math.max(0.04,b*0.34)}; }
+// NOTE: viewer.surfaces[id] is a Surface (Array subclass) whose slice/map/filter
+// throw via a broken species constructor — only index access + push are safe.
+function applySmartSurface(id){
+  try{
+    var arr=viewer.surfaces&&viewer.surfaces[id];
+    if(!arr)return;
+    var orig=[]; for(var k=0;k<arr.length;k++)orig.push(arr[k]);
+    for(var j=0;j<orig.length;j++){
+      var s=orig[j];
+      if(!s.mat||s._smartFront)continue;
+      arr.push({geo:s.geo,mat:s.mat.clone(),done:true,finished:true,symmetries:s.symmetries,_smartFront:true});
+    }
+    updateSurfaceOpacity();
+  }catch(e){}
+}
+function updateSurfaceOpacity(){
+  var ops=surfOpacities(), BACK=_sideConst('BackSide'), FRONT=_sideConst('FrontSide'), DOUBLE=_sideConst('DoubleSide');
+  for(var c=0;c<currentSurfs.length;c++){
+    var arr=viewer.surfaces&&viewer.surfaces[currentSurfs[c].id];
+    if(!arr)continue;
+    for(var i=0;i<arr.length;i++){
+      var s=arr[i]; if(!s.mat)continue;
+      if(state.smartOpacity){
+        if(s._smartFront){ s.mat.side=FRONT; s.mat.opacity=ops.front; }
+        else { s.mat.side=BACK; s.mat.opacity=ops.back; }
+      } else {
+        if(s._smartFront){ s.mat.opacity=0; }
+        else { s.mat.side=DOUBLE; s.mat.opacity=state.surfaceOpacity; }
+      }
+      s.mat.transparent=s.mat.opacity<1;
+      s.mat.needsUpdate=true;
+    }
+  }
+  viewer.render();
 }
 
 // Full rebuild: structure style / model / surface geometry changes.
@@ -727,8 +779,9 @@ function recolorStructure(){
   if(state.style==='surface'){
     currentSurfs.forEach(function(s){
       if(s.ch==null)return;
-      try{viewer.setSurfaceMaterialStyle(s.id,{opacity:state.surfaceOpacity,color:chainSolidColor(s.ch)});}catch(e){}
+      try{viewer.setSurfaceMaterialStyle(s.id,{color:chainSolidColor(s.ch)});}catch(e){}
     });
+    updateSurfaceOpacity(); // setSurfaceMaterialStyle resets side/opacity — restore smart pass
   }
   applyLigands();
   setupChainClicks();
@@ -1098,6 +1151,10 @@ function exportPng(){
 }
 
 document.addEventListener('DOMContentLoaded',function(){
+  // Boost the default palette to vivid saturation (pastel is then a slider away).
+  UNIFORM_COLORS=UNIFORM_COLORS.map(_saturateHex);
+  CHAIN_COLORS=CHAIN_COLORS.map(_saturateHex);
+  state.uniformColor=UNIFORM_COLORS[0];
   initViewer();
   startLabelLoop();
   buildSwatches();
@@ -1141,15 +1198,13 @@ document.addEventListener('DOMContentLoaded',function(){
 
   $('surfaceOpacity').addEventListener('input',function(e){
     state.surfaceOpacity=parseFloat(e.target.value);
-    // Fast path: patch every surface's opacity in place so dragging stays smooth.
-    if(state.style==='surface'&&currentSurfs.length){
-      currentSurfs.forEach(function(s){
-        var st={opacity:state.surfaceOpacity};
-        if(s.ch!=null)st.color=chainSolidColor(s.ch);
-        try{viewer.setSurfaceMaterialStyle(s.id,st);}catch(_){}
-      });
-      viewer.render();
-    }
+    // Fast path: patch the material opacities in place so dragging stays smooth.
+    if(state.style==='surface'&&currentSurfs.length)updateSurfaceOpacity();
+  });
+
+  $('smartOpacity').addEventListener('change',function(e){
+    state.smartOpacity=e.target.checked;
+    if(state.style==='surface'&&currentSurfs.length)updateSurfaceOpacity();
   });
 
   $('resetViewBtn').addEventListener('click',function(){
