@@ -118,8 +118,8 @@ select:focus{outline:none;border-color:var(--accent);}
 .checkbox-row input{width:14px;height:14px;accent-color:var(--accent);cursor:pointer;}
 
 .viewer-area{flex:1;position:relative;display:flex;flex-direction:column;min-width:0;}
-.top-bar{display:flex;align-items:center;gap:16px;padding:8px 14px;border-bottom:1px solid var(--border);
-  background:var(--surface);flex-shrink:0;overflow-x:auto;min-height:50px;}
+.top-bar{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;padding:8px 14px;border-bottom:1px solid var(--border);
+  background:var(--surface);flex-shrink:0;min-height:50px;}
 .tb-group{display:flex;align-items:center;gap:7px;flex-shrink:0;}
 .tb-cap{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);}
 .tb-seg{flex-shrink:0;width:auto;}
@@ -133,7 +133,6 @@ select:focus{outline:none;border-color:var(--accent);}
 .tb-collapse svg{transition:transform .2s;}
 .body.panel-collapsed .sidebar{display:none;}
 .body.panel-collapsed #collapseBtn svg{transform:scaleX(-1);}
-.viewer-toolbar{position:absolute;top:14px;right:14px;z-index:5;display:flex;gap:8px;}
 .tb-btn{background:var(--surface);border:1px solid var(--border2);color:var(--text2);
   width:32px;height:32px;border-radius:7px;cursor:pointer;display:flex;align-items:center;
   justify-content:center;box-shadow:var(--shadow-xs);transition:color .15s,background .15s;}
@@ -329,7 +328,7 @@ select:focus{outline:none;border-color:var(--accent);}
       </label>
       <div class="hsl-row"><span>Hue</span><input type="range" id="hslH" min="-180" max="180" step="1" value="0"><span class="hsl-val" id="hslHv">0°</span></div>
       <div class="hsl-row"><span>Sat</span><input type="range" id="hslS" min="0" max="100" step="1" value="100"><span class="hsl-val" id="hslSv">100%</span></div>
-      <div class="hsl-row"><span>Light</span><input type="range" id="hslL" min="50" max="170" step="1" value="100"><span class="hsl-val" id="hslLv">100%</span></div>
+      <div class="hsl-row"><span>Light</span><input type="range" id="hslL" min="50" max="150" step="1" value="100"><span class="hsl-val" id="hslLv">100%</span></div>
       <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">Tune all colours at once — e.g. raise Light &amp; lower Sat for a pastel, paper-style look.</div>
     </div>
 
@@ -385,7 +384,6 @@ select:focus{outline:none;border-color:var(--accent);}
       <button class="btn" id="saveDesignBtn">Save</button>
     </div>
     <div id="designList" class="design-list"></div>
-    <input type="checkbox" id="exportLabels" checked style="display:none;">
   </div>
 
   <div class="viewer-area">
@@ -511,7 +509,7 @@ var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',
   exportLabels:true,
   labelStyle:{font:'sans',size:13,bold:false,italic:false,bg:true,bgMode:'chain',bgColor:'#333333',shape:'rounded'}};
 var chainList=[], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
-var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _defaultView=null;
+var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _defaultView=null, _reqSeq=0;
 
 function $(id){return document.getElementById(id);}
 
@@ -543,8 +541,8 @@ function segHandler(segId,stateKey,onchange){
     btn.addEventListener('click',function(){
       seg.querySelectorAll('button').forEach(function(b){b.classList.remove('active');});
       btn.classList.add('active');
-      state[stateKey]=btn.dataset.v;
-      onchange();
+      if(stateKey)state[stateKey]=btn.dataset.v;
+      onchange(btn.dataset.v);
     });
   });
 }
@@ -592,43 +590,51 @@ function fetchPdb(id){
   currentPdbId=id;
   setLoading(true);
   $('fetchBtn').disabled=true;
-  fetch('https://files.rcsb.org/download/'+id+'.pdb')
-    .then(function(r){
-      if(!r.ok)throw new Error('not found');
-      return r.text();
-    })
-    .then(function(text){
-      viewer.clear();
-      currentSurfs=[];
-      Object.keys(labelEls).forEach(removeLabelEl);
-      state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
-      chainAnchorCache={};
-      selectedChain=null;
-      closeChainPopup();
-      currentModel=viewer.addModel(text,'pdb');
-      computeChains();
-      startLabelLoop();
-      applyPendingDesign();
-      $('emptyState').style.display='none';
-      buildGeometry();
-      applyBorder();
-      viewer.zoomTo();
-      viewer.render();
-      try{_defaultView=viewer.getView();}catch(e){_defaultView=null;}
-      setLoading(false);
-      $('fetchBtn').disabled=false;
-      showToast('Loaded '+id);
-      var hint=$('chainHint');
-      if(chainList.length>1){
-        hint.classList.add('show');
-        setTimeout(function(){hint.classList.remove('show');},4200);
-      }
-    })
-    .catch(function(){
+  var myReq=++_reqSeq;                       // token: only the newest fetch may render
+  var base='https://files.rcsb.org/download/'+id;
+  function attempt(url,fmt,onFail){
+    fetch(url)
+      .then(function(r){ if(!r.ok)throw new Error('not found'); return r.text(); })
+      .then(function(text){ if(myReq===_reqSeq)renderStructure(text,fmt,id); })
+      .catch(onFail);
+  }
+  attempt(base+'.pdb','pdb',function(){
+    if(myReq!==_reqSeq)return;
+    // Large or newer entries have no legacy .pdb file — fall back to mmCIF.
+    attempt(base+'.cif','cif',function(){
+      if(myReq!==_reqSeq)return;
       setError('Could not find PDB entry "'+id+'". Check the code and try again.');
       setLoading(false);
       $('fetchBtn').disabled=false;
     });
+  });
+}
+function renderStructure(text,fmt,id){
+  viewer.clear();
+  currentSurfs=[];
+  Object.keys(labelEls).forEach(removeLabelEl);
+  state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
+  chainAnchorCache={};
+  selectedChain=null;
+  closeChainPopup();
+  currentModel=viewer.addModel(text,fmt);
+  computeChains();
+  applyPendingDesign();
+  $('emptyState').style.display='none';
+  buildGeometry();
+  applyBorder();
+  viewer.zoomTo();
+  viewer.render();
+  try{_defaultView=viewer.getView();}catch(e){_defaultView=null;}
+  setLoading(false);
+  $('fetchBtn').disabled=false;
+  showToast('Loaded '+id);
+  try{localStorage.setItem('ribbon_last',id);}catch(e){}
+  var hint=$('chainHint');
+  if(chainList.length>1){
+    hint.classList.add('show');
+    setTimeout(function(){hint.classList.remove('show');},4200);
+  }
 }
 
 function searchByName(query){
@@ -780,7 +786,7 @@ function applyChainedStyle(type){
   var scheme=colorSchemeSpec();
   viewer.setStyle({},styleOfType(type, scheme||{color:adjustColor(state.uniformColor)}));
   chainList.forEach(function(ch){
-    var isDim=selectedChain && ch!==selectedChain && chainList.length>1;
+    var isDim=selectedChain!==null && ch!==selectedChain && chainList.length>1;
     var solid=!scheme || !!state.chainColors[ch];
     if(!solid && !isDim)return;
     var spec = solid ? {color:chainSolidColor(ch)} : scheme;
@@ -811,14 +817,25 @@ function addSurfaces(){
     });
   }
 }
-function updateSurfaceOpacity(){
+// Re-apply per-surface opacity + colour (and selection dimming) without recomputing meshes.
+function applySurfaceMaterials(){
   currentSurfs.forEach(function(s){
-    var st={opacity:state.surfaceOpacity};
+    var dim = s.ch!=null && selectedChain!==null && s.ch!==selectedChain && chainList.length>1;
+    var st={opacity: dim ? Math.min(state.surfaceOpacity,0.12) : state.surfaceOpacity};
     if(s.ch!=null)st.color=chainSolidColor(s.ch);
     try{viewer.setSurfaceMaterialStyle(s.id,st);}catch(_){}
   });
-  viewer.render();
 }
+// True only when the live surface set no longer matches the topology we'd build now
+// (unified scheme-surface ↔ per-chain surfaces), so a pure recolour must rebuild once.
+function _surfaceTopologyStale(){
+  if(!currentSurfs.length)return false;
+  var scheme=colorSchemeSpec();
+  var wantUnified=!!(scheme && !Object.keys(state.chainColors).length);
+  var haveUnified=currentSurfs.length===1 && currentSurfs[0].ch===null;
+  return wantUnified!==haveUnified;
+}
+function updateSurfaceOpacity(){ applySurfaceMaterials(); viewer.render(); }
 
 // Full rebuild: structure style / model / surface geometry changes.
 function buildGeometry(){
@@ -841,11 +858,8 @@ function recolorStructure(){
   if(!currentModel||!viewer)return;
   applyChainedStyle(state.style==='stick'?'stick':'cartoon');
   if(state.style==='surface'){
-    currentSurfs.forEach(function(s){
-      var st={opacity:state.surfaceOpacity};
-      if(s.ch!=null)st.color=chainSolidColor(s.ch);
-      try{viewer.setSurfaceMaterialStyle(s.id,st);}catch(e){}
-    });
+    if(_surfaceTopologyStale()){ viewer.removeAllSurfaces(); addSurfaces(); }
+    else applySurfaceMaterials();
   }
   applyLigands();
   setupChainClicks();
@@ -872,27 +886,31 @@ function applyBorder(){
   viewer.render();
 }
 
-function applyBackground(){
-  if(!viewer)return;
-  if(state.bg==='transparent'){
-    viewer.setBackgroundColor('white',0);
-  } else if(state.bg==='white'){
-    viewer.setBackgroundColor('white',1);
-  } else {
-    viewer.setBackgroundColor('#13161e',1);
-  }
-  viewer.render();
+// Map a background key → viewer background (shared by the live view and export).
+function _setViewerBg(key){
+  if(key==='transparent')viewer.setBackgroundColor('white',0);
+  else if(key==='white')viewer.setBackgroundColor('white',1);
+  else viewer.setBackgroundColor('#13161e',1);
 }
+function applyBackground(){ if(!viewer)return; _setViewerBg(state.bg); viewer.render(); }
 
 // ─── Chain selection, colouring & 3D label tags ──────────────────────────────
 function computeChains(){
   chainList=[];
   if(!currentModel)return;
   var seen={};
-  currentModel.selectedAtoms({}).forEach(function(a){
+  // Seed from polymer atoms only, so water/ligand-only chains don't consume a
+  // by-chain colour slot or show up as clickable chains.
+  currentModel.selectedAtoms({hetflag:false}).forEach(function(a){
     var c=a.chain||'';
     if(!seen[c]){seen[c]=1;chainList.push(c);}
   });
+  if(!chainList.length){
+    currentModel.selectedAtoms({}).forEach(function(a){
+      var c=a.chain||'';
+      if(!seen[c]){seen[c]=1;chainList.push(c);}
+    });
+  }
 }
 
 function _lum(hex){
@@ -956,9 +974,13 @@ function renderLabelTags(){
     applyTagStyle(e.div,ch);
     e.line.setAttribute('stroke',col);
     e.dot.setAttribute('fill',col);
-    if(!state.labelOffsets[ch])state.labelOffsets[ch]={dx:0,dy:-70};
+    if(!state.labelOffsets[ch]){
+      var k=Object.keys(state.labelOffsets).length;   // stagger so new tags don't stack
+      state.labelOffsets[ch]={dx:k*26,dy:-70-k*8};
+    }
   });
   updateLabelPositions();
+  startLabelLoop();
 }
 function _labelFontFamily(){
   var f=state.labelStyle.font;
@@ -1082,10 +1104,17 @@ function updateLabelPositions(){
     }
   });
 }
+// Runs only while tags exist; idles out when the last one is removed and restarts
+// (via renderLabelTags) when a new tag appears — no perpetual rAF wake-ups.
 function startLabelLoop(){
   if(_labelLoopRunning)return;
+  if(!Object.keys(labelEls).length)return;
   _labelLoopRunning=true;
-  (function loop(){ updateLabelPositions(); requestAnimationFrame(loop); })();
+  (function loop(){
+    updateLabelPositions();
+    if(!Object.keys(labelEls).length){ _labelLoopRunning=false; return; }
+    requestAnimationFrame(loop);
+  })();
 }
 function attachLabelDrag(div,ch){
   var startX,startY,startOff;
@@ -1118,8 +1147,7 @@ function setupChainClicks(){
 
 function selectChain(ch){
   selectedChain=ch;
-  buildGeometry();
-  applyBorder();
+  recolorStructure();     // dimming is a recolour, not geometry — no surface recompute
   openChainPopup(ch);
 }
 
@@ -1189,8 +1217,7 @@ function closeChainPopup(){
   $('chain-popup').classList.remove('open');
   if(selectedChain!==null){
     selectedChain=null;
-    buildGeometry();
-    applyBorder();
+    recolorStructure();
   }
 }
 
@@ -1291,12 +1318,6 @@ function openExport(){
   $('export-modal').classList.add('open');
 }
 function closeExport(){ $('export-modal').classList.remove('open'); }
-function _applyBgKey(key){
-  if(key==='transparent')viewer.setBackgroundColor('white',0);
-  else if(key==='white')viewer.setBackgroundColor('white',1);
-  else viewer.setBackgroundColor('#13161e',1);
-  viewer.render();
-}
 function _download(off){
   var mime=_exOpts.fmt==='jpeg'?'image/jpeg':'image/png';
   var link=document.createElement('a');
@@ -1344,7 +1365,7 @@ function doExport(){
   var restore=function(){
     vp.style.flex=''; vp.style.width=''; vp.style.height='';
     try{viewer.resize();}catch(e){}
-    _applyBgKey(prevBg);
+    _setViewerBg(prevBg);
     try{viewer.render();}catch(e){}
   };
   try{
@@ -1353,7 +1374,7 @@ function doExport(){
     // never painted (no visible flash).
     vp.style.flex='none'; vp.style.width=(cssW*d.scale)+'px'; vp.style.height=(cssH*d.scale)+'px';
     viewer.resize();
-    _applyBgKey(_exOpts.bg);
+    _setViewerBg(_exOpts.bg);
     viewer.render();
     var hi=vp.querySelector('canvas');
     off.width=hi.width; off.height=hi.height;
@@ -1446,7 +1467,6 @@ function syncControlsToState(){
   $('topColor').value=state.color; $('topBorder').value=state.border; $('topBg').value=state.bg;
   $('surfaceOpacity').value=state.surfaceOpacity;
   $('lineToggle').checked=state.showLines;
-  $('exportLabels').checked=state.exportLabels;
   $('hslH').value=state.hsl.h; $('hslS').value=state.hsl.s; $('hslL').value=state.hsl.l;
   $('hslHv').textContent=state.hsl.h+'°'; $('hslSv').textContent=state.hsl.s+'%'; $('hslLv').textContent=state.hsl.l+'%';
   var ls=state.labelStyle;
@@ -1500,15 +1520,14 @@ document.addEventListener('DOMContentLoaded',function(){
   $('lsSize').addEventListener('input',function(e){ state.labelStyle.size=Math.max(8,Math.min(40,parseInt(e.target.value,10)||13)); lsChanged(); });
   $('lsBold').addEventListener('click',function(){ state.labelStyle.bold=!state.labelStyle.bold; this.classList.toggle('active',state.labelStyle.bold); lsChanged(); });
   $('lsItalic').addEventListener('click',function(){ state.labelStyle.italic=!state.labelStyle.italic; this.classList.toggle('active',state.labelStyle.italic); lsChanged(); });
-  segHandler('lsShapeSeg','_lsShape',function(){ state.labelStyle.shape=state._lsShape; lsChanged(); });
+  segHandler('lsShapeSeg',null,function(v){ state.labelStyle.shape=v; lsChanged(); });
   $('lsBg').addEventListener('change',function(e){ state.labelStyle.bg=e.target.checked; $('lsBgOpts').style.display=e.target.checked?'':'none'; lsChanged(); });
-  segHandler('lsBgModeSeg','_lsBgMode',function(){ state.labelStyle.bgMode=state._lsBgMode; lsChanged(); });
+  segHandler('lsBgModeSeg',null,function(v){ state.labelStyle.bgMode=v; lsChanged(); });
   $('lsBgColor').addEventListener('input',function(e){ state.labelStyle.bgColor=e.target.value; if(state.labelStyle.bgMode==='custom')lsChanged(); });
 
   // Designs + export options.
   $('saveDesignBtn').addEventListener('click',saveDesign);
   $('designName').addEventListener('keydown',function(e){ if(e.key==='Enter')saveDesign(); });
-  $('exportLabels').addEventListener('change',function(e){ state.exportLabels=e.target.checked; });
   renderDesignList();
 
   // Export modal option segments.
@@ -1555,10 +1574,19 @@ document.addEventListener('DOMContentLoaded',function(){
     setTimeout(function(){ if(viewer){viewer.resize();viewer.render();} },60);
   });
 
+  function _syncThemeBtn(){
+    var dark=document.documentElement.getAttribute('data-theme')==='dark';
+    $('themeBtn').innerHTML=dark?'&#9790;':'&#9788;';   // moon in dark, sun in light
+    $('themeBtn').title=dark?'Switch to light':'Switch to dark';
+  }
+  try{ var _t=localStorage.getItem('ribbon_theme'); if(_t)document.documentElement.setAttribute('data-theme',_t); }catch(e){}
+  _syncThemeBtn();
   $('themeBtn').addEventListener('click',function(){
     var html=document.documentElement;
-    var isDark=html.getAttribute('data-theme')==='dark';
-    html.setAttribute('data-theme',isDark?'light':'dark');
+    var next=html.getAttribute('data-theme')==='dark'?'light':'dark';
+    html.setAttribute('data-theme',next);
+    try{localStorage.setItem('ribbon_theme',next);}catch(e){}
+    _syncThemeBtn();
   });
 
   var spinning=false;
@@ -1609,6 +1637,9 @@ document.addEventListener('DOMContentLoaded',function(){
   window.addEventListener('resize',function(){
     if(viewer){viewer.resize();viewer.render();}
   });
+
+  // Restore the last structure viewed, so a reload doesn't drop to the empty state.
+  try{ var _last=localStorage.getItem('ribbon_last'); if(_last && isPdbId(_last)){ $('pdbInput').value=_last; fetchPdb(_last); } }catch(e){}
 });
 </script>
 </body>
