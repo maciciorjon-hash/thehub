@@ -1288,29 +1288,54 @@ function _applyBgKey(key){
   else viewer.setBackgroundColor('#13161e',1);
   viewer.render();
 }
-function doExport(){
-  var d=_exportDims(); if(!d){showToast('Nothing to export.');return;}
-  var canvas=d.canvas;
-  state.exportLabels=$('exLabels').checked;
-  var prevBg=state.bg;
-  _applyBgKey(_exOpts.bg);               // render at the chosen background
-  var off=document.createElement('canvas');
-  off.width=d.w; off.height=d.h;
-  var ctx=off.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
-  if(_exOpts.fmt==='jpeg' && _exOpts.bg==='transparent'){ ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,off.width,off.height); }
-  ctx.drawImage(canvas,0,0,off.width,off.height);
-  if(state.exportLabels){
-    var rect=canvas.getBoundingClientRect();
-    drawLabelsToCtx(ctx, off.width/rect.width, rect);
-  }
-  _applyBgKey(prevBg);                    // restore the live background
+function _download(off){
   var mime=_exOpts.fmt==='jpeg'?'image/jpeg':'image/png';
   var link=document.createElement('a');
   link.download=(currentPdbId||'structure')+'_ribbon.'+(_exOpts.fmt==='jpeg'?'jpg':'png');
   link.href=off.toDataURL(mime, _exOpts.fmt==='jpeg'?0.95:undefined);
   link.click();
+}
+function doExport(){
+  var d=_exportDims(); if(!d){showToast('Nothing to export.');return;}
+  var canvas=d.canvas, vp=$('viewport');
+  state.exportLabels=$('exLabels').checked;
+  var prevBg=state.bg;
+  var cssW=canvas.clientWidth, cssH=canvas.clientHeight;
+  var off=document.createElement('canvas'), ctx;
+  var restore=function(){
+    vp.style.flex=''; vp.style.width=''; vp.style.height='';
+    try{viewer.resize();}catch(e){}
+    _applyBgKey(prevBg);
+    try{viewer.render();}catch(e){}
+  };
+  try{
+    // TRUE high-resolution render: temporarily enlarge the viewport and re-render
+    // the scene at full pixel density. All synchronous, so the enlarged state is
+    // never painted (no visible flash).
+    vp.style.flex='none'; vp.style.width=(cssW*d.scale)+'px'; vp.style.height=(cssH*d.scale)+'px';
+    viewer.resize();
+    _applyBgKey(_exOpts.bg);
+    viewer.render();
+    var hi=vp.querySelector('canvas');
+    off.width=hi.width; off.height=hi.height;
+    ctx=off.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+    if(_exOpts.fmt==='jpeg' && _exOpts.bg==='transparent'){ ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,off.width,off.height); }
+    ctx.drawImage(hi,0,0);
+    if(state.exportLabels){ var rect=hi.getBoundingClientRect(); drawLabelsToCtx(ctx, off.width/rect.width, rect); }
+    restore();
+  }catch(e){
+    restore();
+    // Fallback: upscale the current canvas.
+    off.width=d.w; off.height=d.h;
+    ctx=off.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+    if(_exOpts.bg==='white'||(_exOpts.fmt==='jpeg'&&_exOpts.bg==='transparent')){ ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,off.width,off.height); }
+    else if(_exOpts.bg==='dark'){ ctx.fillStyle='#13161e'; ctx.fillRect(0,0,off.width,off.height); }
+    ctx.drawImage(canvas,0,0,off.width,off.height);
+    if(state.exportLabels){ var r2=canvas.getBoundingClientRect(); drawLabelsToCtx(ctx, off.width/r2.width, r2); }
+  }
+  _download(off);
   closeExport();
-  showToast('Exported '+d.w+'×'+d.h);
+  showToast('Exported '+off.width+'×'+off.height);
 }
 
 // ─── Saved designs (localStorage) ────────────────────────────────────────────
