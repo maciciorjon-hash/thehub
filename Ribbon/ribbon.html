@@ -263,7 +263,12 @@ select:focus{outline:none;border-color:var(--accent);}
   .seg button{padding:11px 6px;font-size:13px;}
   .swatch{width:30px;height:30px;}
   .tb-btn{width:40px;height:40px;}
-  .viewer-toolbar{top:10px;right:10px;}
+  /* Top bar wraps to as many rows as needed so nothing scrolls off-screen. */
+  .top-bar{flex-wrap:wrap;gap:9px 12px;padding:8px 12px;overflow:visible;min-height:0;}
+  .top-bar .tb-spacer{display:none;}
+  .tb-cap{font-size:9px;}
+  .tb-seg button{padding:9px 12px;}
+  .tb-range{width:120px;}
   #chain-popup{width:auto;left:12px!important;right:12px!important;bottom:12px!important;top:auto!important;border-radius:16px;}
   #chain-popup .cp-body{padding:14px 15px 16px;}
   .cp-sw,.cp-sw-custom{width:30px;height:30px;}
@@ -375,10 +380,6 @@ select:focus{outline:none;border-color:var(--accent);}
       <button class="btn" id="saveDesignBtn">Save</button>
     </div>
     <div id="designList" class="design-list"></div>
-
-    <div class="divider"></div>
-
-    <button class="btn secondary full" id="exportBtn" style="margin-top:6px;">Export image&hellip;</button>
     <input type="checkbox" id="exportLabels" checked style="display:none;">
   </div>
 
@@ -1273,7 +1274,7 @@ function _exportDims(){
 function updateExDim(){
   var d=_exportDims(); if(!d)return;
   var note=(_exOpts.fmt==='jpeg'&&_exOpts.bg==='transparent')?'  ·  JPEG has no transparency (uses white)':'';
-  $('exDim').textContent=d.w+' × '+d.h+' px'+note;
+  $('exDim').textContent='up to '+d.w+' × '+d.h+' px  ·  cropped to the protein'+note;
 }
 function openExport(){
   if(!currentModel){showToast('Load a structure first.');return;}
@@ -1294,6 +1295,36 @@ function _download(off){
   link.download=(currentPdbId||'structure')+'_ribbon.'+(_exOpts.fmt==='jpeg'?'jpg':'png');
   link.href=off.toDataURL(mime, _exOpts.fmt==='jpeg'?0.95:undefined);
   link.click();
+}
+// Crop the export to the drawn content (protein + labels) so there's no big
+// empty canvas around it. Scans a downscaled copy for speed.
+function _cropToContent(off,bgKey){
+  try{
+    var sw=Math.min(off.width,700), ratio=off.width/sw, sh=Math.max(1,Math.round(off.height/ratio));
+    var sc=document.createElement('canvas'); sc.width=sw; sc.height=sh;
+    var sctx=sc.getContext('2d');
+    if(bgKey==='white'){ sctx.fillStyle='#ffffff'; sctx.fillRect(0,0,sw,sh); }
+    else if(bgKey==='dark'){ sctx.fillStyle='#13161e'; sctx.fillRect(0,0,sw,sh); }
+    sctx.drawImage(off,0,0,sw,sh);
+    var data=sctx.getImageData(0,0,sw,sh).data;
+    var transparent=(bgKey==='transparent');
+    var bgR=bgKey==='dark'?0x13:0xff, bgG=bgKey==='dark'?0x16:0xff, bgB=bgKey==='dark'?0x1e:0xff;
+    var minx=sw,miny=sh,maxx=-1,maxy=-1;
+    for(var y=0;y<sh;y++){ for(var x=0;x<sw;x++){ var i=(y*sw+x)*4; var on;
+      if(transparent){ on=data[i+3]>16; }
+      else { on=(Math.abs(data[i]-bgR)+Math.abs(data[i+1]-bgG)+Math.abs(data[i+2]-bgB))>24; }
+      if(on){ if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y; } } }
+    if(maxx<0)return off;
+    var m=Math.round(Math.max(sw,sh)*0.02)+2;
+    minx=Math.max(0,minx-m); miny=Math.max(0,miny-m); maxx=Math.min(sw-1,maxx+m); maxy=Math.min(sh-1,maxy+m);
+    var cx=Math.floor(minx*ratio), cy=Math.floor(miny*ratio);
+    var cw=Math.min(Math.ceil((maxx-minx+1)*ratio), off.width-cx);
+    var ch=Math.min(Math.ceil((maxy-miny+1)*ratio), off.height-cy);
+    if(cw<=0||ch<=0)return off;
+    var out=document.createElement('canvas'); out.width=cw; out.height=ch;
+    out.getContext('2d').drawImage(off,cx,cy,cw,ch,0,0,cw,ch);
+    return out;
+  }catch(e){ return off; }
 }
 function doExport(){
   var d=_exportDims(); if(!d){showToast('Nothing to export.');return;}
@@ -1333,6 +1364,8 @@ function doExport(){
     ctx.drawImage(canvas,0,0,off.width,off.height);
     if(state.exportLabels){ var r2=canvas.getBoundingClientRect(); drawLabelsToCtx(ctx, off.width/r2.width, r2); }
   }
+  var cropBg=(_exOpts.fmt==='jpeg'&&_exOpts.bg==='transparent')?'white':_exOpts.bg;
+  off=_cropToContent(off,cropBg);
   _download(off);
   closeExport();
   showToast('Exported '+off.width+'×'+off.height);
@@ -1502,7 +1535,6 @@ document.addEventListener('DOMContentLoaded',function(){
     viewer.render();
   });
 
-  $('exportBtn').addEventListener('click',openExport);
   $('exportBtn2').addEventListener('click',openExport);
 
   $('themeBtn').addEventListener('click',function(){
