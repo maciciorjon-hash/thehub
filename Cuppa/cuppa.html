@@ -823,6 +823,25 @@ header h1{font-family:var(--display);font-weight:600;font-size:18px;letter-spaci
 @media(prefers-reduced-motion:reduce){
   .stats-counter-box,.fun-item,.stats-chart-box{transition:none!important;transform:none!important;opacity:1!important;}
 }
+
+/* ── "No snitching" popup — shown when a non-admin taps Name & Shame ── */
+#snitch-pop{
+  position:fixed;inset:0;z-index:600;display:none;
+  align-items:center;justify-content:center;padding:24px;
+  background:var(--modal-backdrop);backdrop-filter:blur(3px);
+  opacity:0;transition:opacity .2s ease;
+}
+#snitch-pop.show{display:flex;opacity:1;}
+.snitch-card{
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:18px;box-shadow:var(--shadow-lg);
+  padding:26px 32px 20px;max-width:340px;width:100%;text-align:center;cursor:pointer;
+  animation:snitchPop .3s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes snitchPop{from{opacity:0;transform:scale(.9) translateY(10px);}to{opacity:1;transform:none;}}
+.snitch-emoji{font-size:34px;margin-bottom:10px;}
+.snitch-msg{font-family:var(--display);font-style:italic;font-size:18px;font-weight:500;color:var(--text);line-height:1.35;}
+.snitch-hint{font-family:var(--mono);font-size:9px;letter-spacing:1.1px;text-transform:uppercase;color:var(--text3);margin-top:14px;}
 </style>
 </head>
 <body>
@@ -2190,7 +2209,40 @@ function saveSettings(){
 }
 
 // ─── Wall of Shame copy ────────────────────────────────────────────────────
+// Naming & shaming is the admin's (Jon's) privilege only. If a viewer clicks
+// the button, don't copy anything — pop up a rotating, playful "no snitching"
+// message instead so nobody can fire off the Slack call-out but Jon.
+var _SNITCH_MSGS = [
+  "We don't snitch here. ☕",
+  "Nice try — only the boss wields the shame hammer.",
+  "That button's a little above your pay grade. ☕",
+  "Snitches get… no biscuits. Leave it to an admin.",
+  "Whoa there, deputy. Leave the shaming to Jon.",
+  "Access denied: naming & shaming is admin-only.",
+  "Put the megaphone down — this one's Jon's job.",
+  "You didn't see a button. There is no button. ☕",
+  "Nope. The wall stays the boss's business.",
+  "Easy, tiger. No naming, no shaming — not today."
+];
+var _snitchIdx = -1;
+function _snitchBlock(){
+  var pop = document.getElementById('snitch-pop');
+  if(!pop){
+    pop = document.createElement('div');
+    pop.id = 'snitch-pop';
+    pop.innerHTML = '<div class="snitch-card"><div class="snitch-emoji">☕</div><div class="snitch-msg"></div><div class="snitch-hint">tap to dismiss</div></div>';
+    document.body.appendChild(pop);
+    pop.addEventListener('click', function(){ pop.classList.remove('show'); });
+  }
+  var i; do { i = Math.floor(Math.random()*_SNITCH_MSGS.length); } while(_SNITCH_MSGS.length>1 && i===_snitchIdx);
+  _snitchIdx = i;
+  pop.querySelector('.snitch-msg').textContent = _SNITCH_MSGS[i];
+  pop.classList.add('show');
+  clearTimeout(pop._t);
+  pop._t = setTimeout(function(){ pop.classList.remove('show'); }, 3200);
+}
 function copyWallOfShame(){
+  if (!isAdmin){ _snitchBlock(); return; }
   var unpaid = state.members.filter(function(m){ return m.drink !== 'none' && !memberPaid(m.id, currentMonth); })
     .sort(function(a,b){ return a.name.localeCompare(b.name); });
   var total = unpaid.reduce(function(s,m){ return s + memberPriceMonthly(m); }, 0);
