@@ -52,7 +52,6 @@ header p{font-size:11px;color:var(--text2);}
 /* Lives in .hdr-right (not header p) on purpose — when Cuppa is opened
    from The Hub, the Hub hides header .logo/h1/p to avoid a duplicate
    app title, which used to take this "last updated" text down with it. */
-.lastupd-badge{font-size:11px;font-weight:700;color:var(--accent);white-space:nowrap;}
 .role-badge{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:12px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);}
 .role-badge.admin{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);}
 /* cuppa-hdr-btn: always visible even when Hub hides .opts-btn/.opts-panel */
@@ -309,7 +308,6 @@ body.admin .cell-paid.paid:hover,.body.admin .cell-paid.auto-paid:hover{filter:b
 }
 @media (max-width:420px){
   header p{display:none;}
-  .lastupd-badge{display:none;}
   .stats-row,.exp-stats{grid-template-columns:1fr 1fr;}
   .fun-grid,.members-grid{grid-template-columns:1fr;}
 }
@@ -716,6 +714,49 @@ tbody tr:hover td{background:var(--accent-dim);}
 .dk-cat-other{background:#5c7a8a;}
 /* stat counter icon */
 .s-ic{width:16px;height:16px;display:block;color:var(--accent);opacity:.75;flex-shrink:0;}
+
+/* ── LAST-UPDATED BAR — prominent, always visible ───── */
+.lastupd-bar{
+  display:flex;align-items:center;gap:13px;
+  padding:11px clamp(16px,3vw,36px);
+  background:var(--accent-dim);
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.lu-clock{
+  flex-shrink:0;width:34px;height:34px;border-radius:50%;
+  background:var(--surface);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--shadow-xs);
+}
+.lu-clock svg{width:19px;height:19px;display:block;stroke:currentColor;}
+.lu-text{display:flex;flex-direction:column;line-height:1.15;min-width:0;}
+.lu-label{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:1.3px;text-transform:uppercase;color:var(--accent);}
+.lu-value{font-family:var(--display);font-size:16px;font-weight:600;color:var(--text);letter-spacing:-.2px;font-variant-numeric:tabular-nums;margin-top:2px;}
+@media(max-width:768px){
+  .lastupd-bar{padding:9px 16px;gap:11px;}
+  .lu-clock{width:30px;height:30px;}
+  .lu-clock svg{width:17px;height:17px;}
+  .lu-value{font-size:14.5px;}
+}
+
+/* ── EDITORIAL TYPOGRAPHY — Fraunces display pass ────
+   The redesign loaded Fraunces + set --display but never wired it into
+   the UI (titles/numbers stayed on IBM Plex Sans). This applies the
+   serif display face to the true headline / hero-number surfaces for an
+   editorial feel; body text, tables and labels stay on the sans. */
+header h1{font-family:var(--display);font-weight:600;font-size:18px;letter-spacing:-.2px;}
+.welcome-title{font-family:var(--display);font-weight:600;letter-spacing:-.3px;}
+.wc-compact .welcome-title{font-size:19px;}
+.stat-val,.stat-mini-val,.stats-counter-num{
+  font-family:var(--display);font-weight:600;letter-spacing:-.3px;
+  font-variant-numeric:tabular-nums;
+}
+.table-title,.wos-title{font-family:var(--display);font-weight:600;font-size:15.5px;letter-spacing:-.1px;}
+.fun-stats h2{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:-.2px;}
+.wos-foot .total b{font-family:var(--display);font-weight:600;font-variant-numeric:tabular-nums;}
+.no-monzo .big{font-family:var(--display);}
+.wos-empty{font-family:var(--display);font-style:italic;font-size:14px;}
 </style>
 </head>
 <body>
@@ -727,13 +768,20 @@ tbody tr:hover td{background:var(--accent-dim);}
     <p id="hdr-sub">CeTPD Hot Drinks</p>
   </div>
   <div class="hdr-right">
-    <span class="lastupd-badge" id="hdr-status" title="Updates whenever a member/payment/settings change is saved">loading…</span>
     <span class="role-badge" id="role-badge">viewer</span>
     <button class="cuppa-hdr-btn" id="hdr-auth-btn" onclick="onAuthBtn()">Sign in</button>
     <button class="cuppa-hdr-btn" id="hdr-settings-btn" onclick="openSettings()">⚙ Settings</button>
     <button class="opts-btn" onclick="toggleOpts()" title="More">&#9881;</button>
   </div>
 </header>
+
+<!-- Prominent, always-visible "last updated" bar. Sits below the header so it
+     survives even when The Hub hides header .logo/h1/p in embedded mode.
+     Populated by renderLastUpdated() from state.updatedAt. -->
+<div class="lastupd-bar" id="lastupd-bar" title="Updates whenever a member, payment or setting is saved">
+  <span class="lu-clock" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
+  <div class="lu-text"><span class="lu-label">Last updated</span><span class="lu-value" id="lastupd-value">loading…</span></div>
+</div>
 
 <div class="opts-panel" id="opts-panel">
   <div class="opts-row"><span class="opts-label">Theme</span>
@@ -1202,11 +1250,11 @@ function setStatus(s){ renderLastUpdated(); }
 // saveToFirebase above) — surfaced prominently in the header so anyone
 // looking at the app (admin or not) can see exactly how current it is.
 function renderLastUpdated(){
-  var el = document.getElementById('hdr-status');
+  var el = document.getElementById('lastupd-value');
   if (!el) return;
   if (!state || !state.updatedAt) { el.textContent = 'no changes yet'; return; }
   var d = new Date(state.updatedAt);
-  el.textContent = 'Last updated ' + d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' · ' + d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  el.textContent = d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}) + ' · ' + d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 }
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
