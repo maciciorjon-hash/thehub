@@ -730,11 +730,21 @@ tbody tr:hover td{background:var(--accent-dim);}
   box-shadow:var(--shadow-xs);
 }
 .lu-clock svg{width:19px;height:19px;display:block;stroke:currentColor;}
-.lu-text{display:flex;flex-direction:column;line-height:1.15;min-width:0;}
+.lu-text{display:flex;flex-direction:column;line-height:1.15;min-width:0;flex-shrink:0;}
 .lu-label{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:1.3px;text-transform:uppercase;color:var(--accent);}
 .lu-value{font-family:var(--display);font-size:16px;font-weight:600;color:var(--text);letter-spacing:-.2px;font-variant-numeric:tabular-nums;margin-top:2px;}
+/* rotating coffee banter — centre of the bar, crossfades (see startBanter) */
+.lu-banter{
+  flex:1;min-width:0;text-align:center;padding:0 14px;
+  font-family:var(--display);font-style:italic;font-size:14px;
+  color:var(--accent);opacity:.9;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:opacity .55s ease;
+}
+.lastupd-bar .hdr-right{flex-shrink:0;}
+@media(max-width:1040px){ .lu-banter{display:none;} }
 @media(max-width:768px){
-  .lastupd-bar{padding:9px 16px;gap:11px;}
+  .lastupd-bar{padding:8px 14px;gap:11px;}
   .lu-clock{width:30px;height:30px;}
   .lu-clock svg{width:17px;height:17px;}
   .lu-value{font-size:14.5px;}
@@ -757,6 +767,62 @@ header h1{font-family:var(--display);font-weight:600;font-size:18px;letter-spaci
 .wos-foot .total b{font-family:var(--display);font-weight:600;font-variant-numeric:tabular-nums;}
 .no-monzo .big{font-family:var(--display);}
 .wos-empty{font-family:var(--display);font-style:italic;font-size:14px;}
+
+/* ── STATS / CHARTS "MAGIC" — richer cards + micro-motion ────
+   The counters + key-facts read a bit flat; give them icon chips,
+   soft gradients, hover lift, and scroll-in reveal (count-up wired
+   in setupFunStatsIO). Kept restrained so it doesn't feel gimmicky. */
+.fun-stats{
+  background:
+    radial-gradient(120% 140% at 100% 0%, var(--accent-dim), transparent 55%),
+    var(--surface);
+}
+.fun-stats h2 .ic{
+  width:30px;height:30px;border-radius:9px;display:inline-flex;
+  align-items:center;justify-content:center;
+  background:var(--accent-dim);color:var(--accent);font-size:15px;
+}
+/* animated counter tiles */
+.stats-counter-box{
+  position:relative;overflow:hidden;
+  background:linear-gradient(160deg,var(--surface) 0%,var(--surface2) 100%);
+  transition:transform .24s cubic-bezier(.34,1.56,.64,1),box-shadow .22s ease,border-color .2s ease;
+  opacity:0;transform:translateY(14px);
+}
+.stats-counter-box.anim-in{opacity:1;transform:none;}
+.stats-counter-box::after{
+  content:'';position:absolute;top:-30px;right:-24px;width:78px;height:78px;
+  border-radius:50%;background:var(--accent-dim);opacity:.6;pointer-events:none;
+}
+@media(hover:hover){
+  .stats-counter-box:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(184,96,48,.16);border-color:var(--accent);}
+}
+.stats-counter-icon{
+  position:relative;z-index:1;width:34px;height:34px;border-radius:10px;
+  background:var(--surface);border:1px solid var(--border);
+  display:inline-flex;align-items:center;justify-content:center;
+  box-shadow:var(--shadow-xs);
+}
+.stats-counter-icon .s-ic{width:18px;height:18px;opacity:1;}
+.stats-counter-num{position:relative;z-index:1;font-size:25px;}
+.stats-counter-lbl{position:relative;z-index:1;}
+/* key-fact tiles: lift + accent edge on hover */
+@media(hover:hover){
+  .fun-item{transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease,border-color .18s,background .2s;}
+  .fun-item:hover{transform:translateY(-3px);box-shadow:0 10px 26px rgba(184,96,48,.13);border-color:var(--accent);background:var(--surface);}
+  .fun-item:hover .fun-item-val{color:var(--accent);}
+}
+.fun-item-val{transition:color .2s ease;}
+/* chart cards: title gets an accent tick, whole card lifts on hover */
+.stats-chart-title{display:flex;align-items:center;gap:7px;}
+.stats-chart-title::before{content:'';width:7px;height:7px;border-radius:2px;background:var(--accent);flex-shrink:0;}
+@media(hover:hover){
+  .stats-chart-box{transition:box-shadow .22s ease,transform .22s ease,border-color .2s ease,opacity .5s cubic-bezier(.4,0,.2,1);}
+  .stats-chart-box:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(184,96,48,.12);border-color:var(--border2);}
+}
+@media(prefers-reduced-motion:reduce){
+  .stats-counter-box,.fun-item,.stats-chart-box{transition:none!important;transform:none!important;opacity:1!important;}
+}
 </style>
 </head>
 <body>
@@ -767,20 +833,22 @@ header h1{font-family:var(--display);font-weight:600;font-size:18px;letter-spaci
     <h1>Cuppa</h1>
     <p id="hdr-sub">CeTPD Hot Drinks</p>
   </div>
+</header>
+
+<!-- One consolidated bar: "last updated" (left) · rotating banter (centre) ·
+     Cuppa's own controls (right). Lives OUTSIDE <header> on purpose so it stays
+     visible even when The Hub hides the whole header in embedded mode — that's
+     why the sign-in / Settings controls were moved here out of the header. -->
+<div class="lastupd-bar" id="lastupd-bar" title="Updates whenever a member, payment or setting is saved">
+  <span class="lu-clock" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
+  <div class="lu-text"><span class="lu-label">Last updated</span><span class="lu-value" id="lastupd-value">loading…</span></div>
+  <div class="lu-banter" id="lu-banter" aria-hidden="true"></div>
   <div class="hdr-right">
     <span class="role-badge" id="role-badge">viewer</span>
     <button class="cuppa-hdr-btn" id="hdr-auth-btn" onclick="onAuthBtn()">Sign in</button>
     <button class="cuppa-hdr-btn" id="hdr-settings-btn" onclick="openSettings()">⚙ Settings</button>
     <button class="opts-btn" onclick="toggleOpts()" title="More">&#9881;</button>
   </div>
-</header>
-
-<!-- Prominent, always-visible "last updated" bar. Sits below the header so it
-     survives even when The Hub hides header .logo/h1/p in embedded mode.
-     Populated by renderLastUpdated() from state.updatedAt. -->
-<div class="lastupd-bar" id="lastupd-bar" title="Updates whenever a member, payment or setting is saved">
-  <span class="lu-clock" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
-  <div class="lu-text"><span class="lu-label">Last updated</span><span class="lu-value" id="lastupd-value">loading…</span></div>
 </div>
 
 <div class="opts-panel" id="opts-panel">
@@ -2175,15 +2243,22 @@ window.addEventListener('message', function(e){
 // ─── Animation system ──────────────────────────────────────────────────────
 function _countUp(el, dur){
   var txt = el.textContent.trim();
-  var m = txt.match(/^([^\d]*)([\d.]+)(.*)$/);
-  if(!m||!parseFloat(m[2])) return;
-  var pre=m[1], num=parseFloat(m[2]), suf=m[3];
-  var dec=(m[2].indexOf('.')>=0)?m[2].split('.')[1].length:0;
+  // prefix · number (may carry thousands separators) · suffix
+  var m = txt.match(/^([^\d-]*)(-?[\d,]*\.?\d+)(.*)$/);
+  if(!m) return;
+  var pre=m[1], raw=m[2], suf=m[3];
+  var hasSep = raw.indexOf(',')>=0;
+  var numStr = raw.replace(/,/g,'');
+  var num = parseFloat(numStr);
+  if(!isFinite(num) || !num) return;
+  var dec=(numStr.indexOf('.')>=0)?numStr.split('.')[1].length:0;
   var t0=performance.now();
   requestAnimationFrame(function step(ts){
     var p=Math.min((ts-t0)/dur,1);
     var ease=1-Math.pow(1-p,3);
-    el.textContent=pre+(num*ease).toFixed(dec)+suf;
+    var s = dec>0 ? (num*ease).toFixed(dec) : String(Math.round(num*ease));
+    if(hasSep){ var parts=s.split('.'); parts[0]=parseInt(parts[0],10).toLocaleString(); s=parts.join('.'); }
+    el.textContent=pre+s+suf;
     if(p<1)requestAnimationFrame(step);
   });
 }
@@ -2255,6 +2330,11 @@ function initLedgerAnimations(){
 }
 
 var _funStatsIO=null;
+function _revealFunEl(el){
+  el.classList.add('anim-in');
+  var num=el.querySelector('.stats-counter-num');
+  if(num && !num.dataset.counted){ num.dataset.counted='1'; _countUp(num,1100); }
+}
 function setupFunStatsIO(){
   if(_funStatsIO) _funStatsIO.disconnect();
   _funStatsIO=new IntersectionObserver(function(entries){
@@ -2262,18 +2342,51 @@ function setupFunStatsIO(){
       if(!e.isIntersecting) return;
       var el=e.target;
       var i=parseInt(el.dataset.ioIdx||'0');
-      setTimeout(function(){ el.classList.add('anim-in'); },i*60);
+      setTimeout(function(){ _revealFunEl(el); },i*55);
       _funStatsIO.unobserve(el);
     });
   },{threshold:0.08,rootMargin:'0px 0px -20px 0px'});
-  var items=document.querySelectorAll('.fun-item,.stats-chart-box');
+  var items=document.querySelectorAll('.stats-counter-box,.fun-item,.stats-chart-box');
   items.forEach(function(el,i){ el.dataset.ioIdx=String(i); _funStatsIO.observe(el); });
   // Fallback: reveal everything after 2.5s in case IO never fires
   setTimeout(function(){
-    document.querySelectorAll('.fun-item,.stats-chart-box').forEach(function(el){
-      el.classList.add('anim-in');
-    });
+    document.querySelectorAll('.stats-counter-box,.fun-item,.stats-chart-box').forEach(_revealFunEl);
   },2500);
+}
+
+// ── Rotating coffee banter in the top bar ───────────────────────────────────
+// Positive / motivational only — deliberately NO callouts of specific people
+// or who hasn't paid, so nobody feels singled out.
+var LU_BANTER = [
+  'Fuelling great science, one cup at a time.',
+  'Stay caffeinated, stay brilliant.',
+  'Big discoveries start with a good brew.',
+  'Powered by caffeine and curiosity.',
+  'Keep calm and put the kettle on.',
+  'Hydrate. Caffeinate. Innovate.',
+  'Thanks for keeping the pot full — you legends.',
+  'Another cup, another breakthrough.',
+  'Good coffee, great colleagues.',
+  'May your pipettes be steady and your mug full.',
+  'The best ideas are brewed, not forced.',
+  'Runs on coffee, tea, and good teamwork.'
+];
+var _banterTimer=null;
+function startBanter(){
+  var el=document.getElementById('lu-banter');
+  if(!el || _banterTimer) return;
+  var order=LU_BANTER.slice().sort(function(){ return Math.random()-0.5; });
+  var i=0;
+  el.textContent=order[0];
+  el.style.opacity='0.9';
+  _banterTimer=setInterval(function(){
+    el.style.opacity='0';
+    setTimeout(function(){
+      i=(i+1)%order.length;
+      el.textContent=order[i];
+      el.style.opacity='0.9';
+    },560);
+  },6500);
 }
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
@@ -2281,6 +2394,7 @@ state = defaultState();
 render();
 startSync();
 setStatus('connecting…');
+startBanter();
 </script>
 <div class="mobile-bottom-nav" id="mobile-bottom-nav">
   <div class="mob-nav-row">
