@@ -83,7 +83,11 @@ python3 embed.py                      # → The Hub.html  (local/offline use)
 python3 embed.py dist/index.html     # → dist/index.html  (CI/Pages build)
 ```
 
-The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix bug.
+The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix bug. `embed.py` fails loudly (exit 1) if a source file is missing or a key doesn't match exactly one placeholder.
+
+### Shared curve-fit engine (Echo is canonical)
+
+There is no module system, so the 4PL Levenberg-Marquardt fitter (`_lmFit`, `_solveLin`, `_matInv`, `_fitBest`, `_4plVal4`/`_gain`, `_4plJac4`/`_gain`, `_xAtYMid`, `_tQ95`) is **duplicated** in **Echo** (canonical), **Beacon**, and **Lumina**. These copies have **drifted** (the solver `_lmFit` differs in all three as of 2026-07-13), though all currently fit correctly. **`check_shared.py`** is a read-only drift monitor — run `python3 check_shared.py` after editing any fit function; fix Echo first, then mirror into Beacon/Lumina until it reports all-MATCH. Reconciling the existing drift onto Echo can shift Beacon/Lumina numerical outputs, so do it deliberately with before/after numerical verification, not casually. (It is intentionally NOT wired into `embed.py`'s build gate.)
 
 ### GitHub Actions auto-deploy
 
