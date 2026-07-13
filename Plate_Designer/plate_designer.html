@@ -328,6 +328,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
   <div class="tb-sep"></div>
   <button class="btn btn-sec pd-tb-btn" id="btn-types-panel" onclick="toggleTypesPanel()">Types &#9660;</button>
   <button class="btn btn-sec pd-tb-btn" id="btn-brackets" onclick="pdToggleBracketsBar()">Brackets &#9660;</button>
+  <button class="btn btn-sec pd-tb-btn" id="btn-pd-values" onclick="pdOpenValues()" title="Import plate-reader values and colour wells as a heatmap">&#9638; Values</button>
+  <span id="pd-heat-legend" style="display:none;align-items:center;gap:6px;margin-left:6px;"></span>
   <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
     <button class="btn btn-sec pd-tb-btn" onclick="clearPlate()">Clear plate</button>
     <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;"><input type="checkbox" id="export-transparent" style="cursor:pointer;"> Transparent</label>
@@ -1747,6 +1749,82 @@ function setFormat(f) {
   _doSetFormat(f);
 }
 
+// ─── Plate-reader value overlay (heatmap) ─────────────────────────────────────
+// Import a grid of plate-reader values and colour each well by value, overlaid on
+// the layout (labels stay). Keyed by well id ("A1".."P24") to match the draw loop.
+var pdVals = {};          // wellId -> number
+var pdHeatOn = false;
+var pdValRange = null;    // {min, max}
+
+function pdOpenValues(){
+  var ta = document.getElementById('pd-values-text');
+  if(ta && !ta.value.trim()) ta.value = pdValsToGrid();
+  document.getElementById('pd-heat-chk').checked = pdHeatOn || !pdValRange;
+  document.getElementById('pd-values-modal').style.display = 'flex';
+}
+function pdCloseValues(){ document.getElementById('pd-values-modal').style.display = 'none'; }
+
+function pdValsToGrid(){
+  if(!Object.keys(pdVals).length) return '';
+  var fmt = FORMATS[currentFormat], rows=fmt.rows, cols=fmt.cols, rl=ROWS_ALL.slice(0,rows), out=[];
+  for(var r=0;r<rows;r++){ var line=[]; for(var c=0;c<cols;c++){ var v=pdVals[rl[r]+(c+1)]; line.push(v==null?'':v); } out.push(line.join('\t')); }
+  return out.join('\n');
+}
+
+function pdParseValues(text){
+  var fmt = FORMATS[currentFormat], cols=fmt.cols, rl=ROWS_ALL.slice(0,fmt.rows);
+  var lines = text.trim().split(/\r?\n/).filter(function(l){ return l.trim()!==''; });
+  var grid = lines.map(function(l){ return l.split(/[\t,;]+/).map(function(s){ return s.trim(); }); });
+  function looksLikeColHeader(cells){
+    var off = (/^[A-P]$/i.test(cells[0]||'') || (cells[0]||'')==='') ? 1 : 0;
+    for(var c=0;c<cols;c++){ if(parseInt(cells[off+c],10) !== c+1) return false; }
+    return true;
+  }
+  if(grid.length && (looksLikeColHeader(grid[0]) || (isNaN(parseFloat(grid[0][0])) && !/^[A-P]$/i.test((grid[0][0]||''))))) grid = grid.slice(1);
+  var vals = {}, count = 0;
+  grid.forEach(function(cells, ri){
+    var start = /^[A-P]$/i.test((cells[0]||'')) ? 1 : 0;
+    var letter = start===1 ? cells[0].toUpperCase() : rl[ri];
+    if(!letter || rl.indexOf(letter) < 0) return;
+    for(var c=0;c<cols;c++){ var raw=cells[start+c], v=parseFloat(raw); if(raw!=null && raw!=='' && !isNaN(v)){ vals[letter+(c+1)]=v; count++; } }
+  });
+  return count ? vals : null;
+}
+
+function pdApplyValues(){
+  var parsed = pdParseValues(document.getElementById('pd-values-text').value);
+  if(!parsed){ alert('Couldn’t read any numbers. Paste a grid of plate-reader values (rows × columns) — optional A–H row labels and a 1…n header row are handled automatically.'); return; }
+  pdVals = parsed;
+  var vs = Object.keys(pdVals).map(function(k){ return pdVals[k]; });
+  pdValRange = { min: Math.min.apply(null, vs), max: Math.max.apply(null, vs) };
+  pdHeatOn = document.getElementById('pd-heat-chk').checked;
+  pdCloseValues(); pdRenderLegend(); sizeAndDrawCanvas();
+}
+function pdClearValues(){
+  pdVals = {}; pdValRange = null; pdHeatOn = false;
+  var ta = document.getElementById('pd-values-text'); if(ta) ta.value = '';
+  pdCloseValues(); pdRenderLegend(); sizeAndDrawCanvas();
+}
+
+function pdHeatColor(v){
+  if(!pdValRange || pdValRange.max <= pdValRange.min) return '#9ec7c9';
+  var t = Math.max(0, Math.min(1, (v - pdValRange.min) / (pdValRange.max - pdValRange.min)));
+  var stops = [[255,247,236],[254,178,76],[178,24,43]]; // cream -> amber -> deep red
+  var seg = t < 0.5 ? 0 : 1, lt = t < 0.5 ? t/0.5 : (t-0.5)/0.5, a = stops[seg], b = stops[seg+1];
+  return 'rgb(' + a.map(function(av,i){ return Math.round(av + (b[i]-av)*lt); }).join(',') + ')';
+}
+
+function pdRenderLegend(){
+  var el = document.getElementById('pd-heat-legend');
+  if(!el) return;
+  if(!pdHeatOn || !pdValRange){ el.style.display='none'; return; }
+  el.style.display='inline-flex';
+  var grad = 'linear-gradient(90deg,rgb(255,247,236),rgb(254,178,76),rgb(178,24,43))';
+  el.innerHTML = '<span style="font-size:10px;color:var(--text3);">'+(+pdValRange.min.toPrecision(4))+'</span>'
+    + '<span style="width:110px;height:11px;border-radius:6px;background:'+grad+';border:1px solid var(--border2);"></span>'
+    + '<span style="font-size:10px;color:var(--text3);">'+(+pdValRange.max.toPrecision(4))+'</span>';
+}
+
 // ─── Canvas plate (all formats) ───────────────────────────────────────────────
 function calcWellPx() {
   const area = document.getElementById('plate-scroll-area');
@@ -1897,7 +1975,8 @@ function drawPlateCanvas(canvas, opts) {
       const wy = oy + labelH + r * (wellPx + gap);
 
       ctx.save();
-      ctx.fillStyle = (ws && ws.color) ? ws.color : (t ? t.color : emptyFill);
+      ctx.fillStyle = (pdHeatOn && (wid in pdVals)) ? pdHeatColor(pdVals[wid])
+                    : (ws && ws.color) ? ws.color : (t ? t.color : emptyFill);
       // Merged-label wells are washed out (lower alpha) so the bridging scrim + label
       // drawn afterward reads clearly over them instead of fighting busy per-well color.
       if (ws && ws.groupId) ctx.globalAlpha = 0.45;
@@ -2997,6 +3076,22 @@ window.addEventListener('message',function(e){
   if(btn&&document.getElementById('panel-'+id))switchTab(id,btn);
 });
 </script>
+
+<!-- Plate-reader values → heatmap modal -->
+<div id="pd-values-modal" style="display:none;position:fixed;inset:0;background:var(--modal-backdrop);z-index:9999;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)pdCloseValues()">
+  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:20px 22px;width:min(540px,94vw);box-shadow:var(--shadow-lg);">
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px;">Plate values &rarr; heatmap</div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px;">Paste a grid of plate-reader values (rows &times; columns, tab/comma/space separated) matching the current format. Optional A&ndash;H row labels and a 1&hellip;n header row are detected automatically. Each well is coloured by its value; well labels stay visible.</div>
+    <textarea id="pd-values-text" spellcheck="false" placeholder="0.12  0.34  0.55  …&#10;0.09  0.28  0.61  …&#10;…" style="width:100%;height:150px;font-family:var(--mono);font-size:12px;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px;color:var(--text);resize:vertical;box-sizing:border-box;"></textarea>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:var(--text2);cursor:pointer;user-select:none;"><input type="checkbox" id="pd-heat-chk" checked style="cursor:pointer;"> Show as heatmap</label>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;">
+      <button class="btn btn-sec" onclick="pdClearValues()">Clear values</button>
+      <span style="margin-left:auto;"></span>
+      <button class="btn btn-sec" onclick="pdCloseValues()">Cancel</button>
+      <button class="btn btn-primary" onclick="pdApplyValues()">Apply</button>
+    </div>
+  </div>
+</div>
 
 <!-- Format-change confirmation modal -->
 <div id="fmt-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;" onclick="hideFmtModal()">
