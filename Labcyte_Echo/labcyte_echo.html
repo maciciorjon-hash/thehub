@@ -710,6 +710,14 @@ tr:hover td{background:var(--surface2);}
           <input type="number" id="eg-bf-perCompound" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:70px">
         </div>
         <div class="field">
+          <label># Sets / copies <span class="pinfo" data-tip="How many full copies of the compound set are being run — e.g. 2 if every compound is plated in duplicate as a separate set (doubles both intermediate-plate wells used and destination wells needing backfill).">ⓘ</span></label>
+          <input type="number" id="eg-bf-nsets" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:60px">
+        </div>
+        <div class="field">
+          <label>Technical replicates <span class="pinfo" data-tip="Replicate destination wells per compound per condition (e.g. n=2 or n=3). These reuse the same intermediate well, so they add destination wells needing backfill but don't use extra intermediate-plate wells.">ⓘ</span></label>
+          <input type="number" id="eg-bf-nreps" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:60px">
+        </div>
+        <div class="field">
           <label>Plate type</label>
           <select id="eg-bf-plateType" onchange="_egBfPlateType();_egBfTrigger()" style="width:110px;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px">
             <option value="pp">PP (384/1536)</option>
@@ -9272,27 +9280,32 @@ function _unhideAllResultsCols() {
     }
     var nComp=parseInt(document.getElementById('eg-bf-ncompounds').value)||0;
     var perComp=parseInt(document.getElementById('eg-bf-perCompound').value)||0;
+    var nSets=parseInt(document.getElementById('eg-bf-nsets').value)||0;
+    var nReps=parseInt(document.getElementById('eg-bf-nreps').value)||0;
     var interVol=parseFloat(document.getElementById('eg-inter-vol').value)||0;
     var deadVol=parseFloat(document.getElementById('eg-bf-dead').value)||0;
 
-    if(!nComp||!perComp||!interVol){
-      out.innerHTML='<span style="color:var(--text3)">Enter compound count, wells per compound and an intermediate plate volume.</span>';
+    if(!nComp||!perComp||!nSets||!nReps||!interVol){
+      out.innerHTML='<span style="color:var(--text3)">Enter compound count, wells per compound, sets, replicates and an intermediate plate volume.</span>';
       return;
     }
 
     // Backfill needed per destination well = DMSO budget not already used by compound transfer.
-    // Sum across all dose points (one destination well each) to get per-compound total,
-    // then scale by the number of compounds sharing the same dilution series.
+    // Sum across all dose points to get the total per single compound run once, then scale by
+    // sets (extra copies of the whole compound set) and technical replicates (extra destination
+    // wells drawing off the same intermediate well, so they add backfill demand but no extra
+    // intermediate-plate wells).
     var backfillPerCompoundNL=0;
     rows.forEach(function(row){
       var vA=row.chosen?row.chosen.vAdj:0;
       backfillPerCompoundNL += Math.max(0, maxT - vA);
     });
-    var totalBackfillNL=backfillPerCompoundNL*nComp;
+    var totalBackfillNL=backfillPerCompoundNL*nComp*nSets*nReps;
     var totalBackfillUL=totalBackfillNL/1000;
 
     var usablePerWell=interVol-deadVol;
-    var wellsUsedByCompounds=nComp*perComp;
+    // Sets need their own intermediate dilution series; replicates reuse the same intermediate well.
+    var wellsUsedByCompounds=nComp*perComp*nSets;
 
     if(usablePerWell<=0){
       out.innerHTML='<div style="color:#ef4444">⛔ <strong>'+interVol+' µL/well</strong> is at or below the '+deadVol+
@@ -9305,7 +9318,8 @@ function _unhideAllResultsCols() {
     out.innerHTML=
       '<div>Total DMSO backfill needed for the assay: <strong>'+fmtVol(totalBackfillNL)+' nL</strong> ('+totalBackfillUL.toFixed(2)+' µL)</div>'+
       '<div>Usable volume per backfill well: <strong>'+usablePerWell.toFixed(1)+' µL</strong> ('+interVol+' µL loaded &minus; '+deadVol+' µL dead volume)</div>'+
-      '<div>Wells already spoken for by compounds: <strong>'+wellsUsedByCompounds+'</strong> ('+nComp+' × '+perComp+')</div>'+
+      '<div>Wells already spoken for by compounds: <strong>'+wellsUsedByCompounds+'</strong> ('+nComp+' × '+perComp+' × '+nSets+' set'+(nSets===1?'':'s')+')</div>'+
+      '<div>Destination wells needing backfill: <strong>'+(nComp*rows.length*nSets*nReps)+'</strong> ('+nComp+' compounds × '+rows.length+' points × '+nSets+' set'+(nSets===1?'':'s')+' × '+nReps+' replicate'+(nReps===1?'':'s')+')</div>'+
       '<div style="margin-top:4px;padding:6px 10px;background:var(--surface);border:1px solid var(--accent);border-radius:6px">'+
         '✦ Reserve at least <strong>'+minWells+' free well'+(minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
       '</div>';
