@@ -478,7 +478,7 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
     </div>
     <div class="guide-card">
       <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16"/><circle cx="7" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="11" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.2" fill="currentColor" stroke="none"/></svg>DC50 vs Dmax</h3>
-      <p>Scatter plot with DC50 on the log X axis and Dmax on the Y axis. Points coloured by target. Use quality pills, sliders, and the search box to focus on subsets. Toggle <strong>Zones</strong> to overlay Hit / Weak / Selective / Inactive quadrants with adjustable thresholds. Toggle <strong>Error bars</strong> to show SD. Hover a point for a detailed tooltip (shows structure if SMILES are loaded). Export PNG.</p>
+      <p>Scatter plot with DC50 on the log X axis and Dmax on the Y axis. Points coloured by target. Use quality pills, sliders, and the search box to focus on subsets. Toggle <strong>Zones</strong> to overlay Hit / Active-Impotent / Partial / Inactive quadrants with adjustable thresholds. Toggle <strong>Error bars</strong> to show SD. Hover a point for a detailed tooltip (shows structure if SMILES are loaded). Export PNG.</p>
     </div>
     <div class="guide-card">
       <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="8" r="2.4"/><circle cx="17" cy="8" r="2"/><circle cx="12" cy="16" r="2.6"/><path d="M9 9.5l1 4M15 9.3l-1 4.5"/></svg>Properties</h3>
@@ -984,14 +984,23 @@ function toggleTarget(tgt) {
 }
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
+// Make a value safe for a CSV cell: neutralise formula/command injection
+// (leading = + - @ tab/CR — Excel would otherwise execute it) and quote when
+// the value contains a comma, quote or newline.
+function csvSafe(v){
+  let s = (v == null ? '' : String(v));
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
 function exportCSV() {
   const data = sortData(getFiltered());
   if (!data.length) { alert('No data to export.'); return; }
   const cols = ['Compound', 'Quality', ...TARGETS.flatMap(t => [`${t} DC50 (nM)`, `${t} DC50 SD`, `${t} Dmax (%)`, `${t} Dmax SD`])];
-  const rows = [cols.join(',')];
+  const rows = [cols.map(csvSafe).join(',')];
   data.forEach(c => {
     const q = quality(c);
-    const cells = [JSON.stringify(c.compound), q];
+    const cells = [csvSafe(c.compound), csvSafe(q)];
     TARGETS.forEach(t => {
       const d = c.targets[t] || {dc50:null,dc50_sd:null,dmax:null,dmax_sd:null};
       cells.push(d.dc50 ?? '', d.dc50_sd ?? '', d.dmax ?? '', d.dmax_sd ?? '');
