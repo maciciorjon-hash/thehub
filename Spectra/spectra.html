@@ -584,7 +584,7 @@ canvas{display:block;border-radius:8px;}
     <!-- Right: canvas chart -->
     <div class="card curve-canvas-wrap" style="display:flex;flex-direction:column;gap:8px;">
       <div class="card-hdr">Standard Curve</div>
-      <canvas id="sc-canvas" width="400" height="300" style="width:100%;border-radius:6px;
+      <canvas id="sc-canvas" width="400" height="300" style="width:100%;height:300px;border-radius:6px;
         background:var(--surface2);"></canvas>
       <div class="r2-badge" id="sc-r2-badge" style="display:none;">
         <div class="r2-dot" id="sc-r2-dot"></div>
@@ -646,7 +646,7 @@ canvas{display:block;border-radius:8px;}
     <div class="plate-wrap">
       <div>
         <canvas id="plate-canvas" width="600" height="320"
-          style="border-radius:10px;cursor:crosshair;max-width:100%;"></canvas>
+          style="width:600px;height:320px;max-width:100%;border-radius:10px;cursor:crosshair;"></canvas>
         <div class="heatmap-legend">
           <span id="legend-min">0</span>
           <div class="legend-bar" id="legend-bar"></div>
@@ -684,7 +684,7 @@ canvas{display:block;border-radius:8px;}
       </table>
 
       <h4>When to provide molecular weight</h4>
-      <p>Providing the MW (Da) enables conversion from μM to mg/mL: <strong>mg/mL = μM × MW / 1,000,000 × 1000</strong>. This is useful for comparing to other assays or for preparing dilutions by mass.</p>
+      <p>Providing the MW (Da) enables conversion from μM to mg/mL: <strong>mg/mL = μM × MW / 1,000,000</strong>. This is useful for comparing to other assays or for preparing dilutions by mass.</p>
 
       <div class="tip-box">
         <p><strong>Tip:</strong> Always measure the blank (buffer only) before your sample. Subtract any buffer absorbance if measuring at a wavelength where your buffer absorbs. At 280 nm, most standard buffers (PBS, Tris, HEPES) have negligible absorbance.</p>
@@ -775,7 +775,8 @@ B,0.118,0.291,0.438,...
 
 /* ─── THEME ─── */
 (function(){
-  var saved = localStorage.getItem('hub_theme');
+  var saved = null;
+  try { saved = localStorage.getItem('hub_theme'); } catch(e){}
   if(saved === 'dark'){
     document.documentElement.setAttribute('data-theme','dark');
     document.getElementById('theme-chk').checked = true;
@@ -785,7 +786,7 @@ B,0.118,0.291,0.438,...
 document.getElementById('theme-chk').addEventListener('change', function(){
   var t = this.checked ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', t);
-  localStorage.setItem('hub_theme', t);
+  try { localStorage.setItem('hub_theme', t); } catch(e){}
   if(activeTab === 'stdcurve') drawCurve();
   if(activeTab === 'plate' && plateData) drawHeatmap();
 });
@@ -887,7 +888,7 @@ function calcA280(){
   var mgEl   = document.getElementById('ri-mgml');
   var mgValEl = document.getElementById('r-mgml');
   if(hasMW){
-    var cmgml = cuM * mw / 1e6 * 1000; // (μM * Da) / 10^6 * 10^3 = mg/mL
+    var cmgml = cuM * mw / 1e6; // (μM × Da) / 10^6 = g/L = mg/mL
     mgValEl.textContent = fmtVal(cmgml, 4);
     mgEl.style.display = '';
   } else {
@@ -904,7 +905,7 @@ function calcA280(){
     dilUmValEl.textContent = fmtVal(cuM * dil, 4);
     dilUmEl.style.display = '';
     if(hasMW){
-      var cmgml2 = cuM * dil * mw / 1e6 * 1000;
+      var cmgml2 = cuM * dil * mw / 1e6;
       dilMgValEl.textContent = fmtVal(cmgml2, 4);
       dilMgEl.style.display = '';
     } else {
@@ -1363,11 +1364,13 @@ function parsePlateCSV(text){
   var rows = [];
   var dataLines = lines;
 
-  // Check if first line looks like a header (non-numeric first cell or column numbers)
+  // Check if first line looks like a column-header row. A row whose first cell is
+  // an A–H plate row label is DATA (labeled plate with no numeric header row), not
+  // a header — treating it as a header used to silently drop row A.
   var firstCells = lines[0].split(/[\t,;]+/);
-  var firstIsHeader = isNaN(parseFloat(firstCells[0])) ||
-    firstCells[0].trim().toLowerCase() === '1' ||
-    firstCells[0].trim().match(/^[a-z]/i);
+  var f0 = firstCells[0].trim();
+  var isRowLabel = /^[A-H]$/i.test(f0);
+  var firstIsHeader = !isRowLabel && (isNaN(parseFloat(f0)) || f0 === '1');
   if(firstIsHeader) dataLines = lines.slice(1);
 
   // Try to extract 8 rows of 12 numeric values
@@ -1440,7 +1443,7 @@ function buildPlateTable(){
     html += '<tr><th>' + row.label + '</th>';
     row.vals.forEach(function(v){
       var t = maxV > minV ? (v - minV) / (maxV - minV) : 0;
-      var bg = interpolateColor([240,250,249],[38,166,154], t);
+      var bg = interpolateColor([240,250,249],[81,195,206], t);
       var fg = t > 0.55 ? '#fff' : '#1a1d2e';
       html += '<td style="background:rgb(' + bg.join(',') + ');color:' + fg + '">' +
         v.toFixed(3) + '</td>';
@@ -1504,7 +1507,7 @@ function drawHeatmap(){
   data.forEach(function(row, ri){
     row.vals.forEach(function(v, ci){
       var t = maxV > minV ? (v - minV) / (maxV - minV) : 0;
-      var rgb = interpolateColor([240,250,249],[38,166,154], t);
+      var rgb = interpolateColor([240,250,249],[81,195,206], t);
       var x = padL + ci*cellW;
       var y = padT + ri*cellH;
       var gap = 1.5;

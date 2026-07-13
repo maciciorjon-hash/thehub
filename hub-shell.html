@@ -343,10 +343,13 @@ body.hub-announcing #hub-home{margin-top:98px;}
   <div class="opts-divider"></div>
   <div id="admin-auth-section" style="padding:6px 0 2px;"></div>
   <div class="opts-version-row" style="margin-top:8px;">
-    <span class="opts-version">The Hub &middot; v1.3.7</span>
+    <span class="opts-version">The Hub &middot; v1.3.8</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v1.3.8 &mdash; 13 Jul 2026</strong><br>
+    &#9679; <b>Suite-wide audit — correctness pass.</b> Fixed a 1000&times; error in the A280&rarr;mg/mL conversion in <b>Protein Tools</b> and <b>Spectra</b> (the &micro;M values were always right; only mg/mL was overstated). <b>Spectra</b>: high-DPI charts no longer grow on each redraw, and a labelled-plate CSV that starts with row &ldquo;A&rdquo; no longer drops the first row. Toughened text handling in <b>Helix / Lumina / LDI / Degradation Explorer / Lab Designer</b> so names with apostrophes or symbols no longer break buttons. <b>Iceberg</b> now loads the seed inventory reliably even when opened before sign-in finishes. <b>The Hub</b>: Ribbon &amp; Arc are now part of the app roster, unlock, and search; removed dead search links to old LabMate sections and fixed the Timers/Planner links.<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v1.3.7 &mdash; 12 Jul 2026</strong><br>
     &#9679; <b>Cuppa</b>: the Wall-of-Shame &ldquo;Name &amp; shame on Slack&rdquo; button is now admin-only &mdash; if anyone who isn&rsquo;t the admin taps it, nothing is copied; instead a playful pop-up appears with a rotating &ldquo;we don&rsquo;t snitch here&rdquo;-style message, so only Jon can fire off the call-out<br>
     <br>
@@ -1735,7 +1738,7 @@ firebase.auth().onAuthStateChanged(function(user) {
   onAdminStateChanged();
 });
 
-var ALL_APP_IDS = ['echo','lm','deg','pd','dna','pt','spectra','ldi','cryo','cuppa','fabricata','beacon','lumina'];
+var ALL_APP_IDS = ['echo','lm','deg','pd','dna','pt','spectra','ldi','cryo','cuppa','fabricata','beacon','lumina','ribbon','arc'];
 var APP_UNLOCK_WORDS = {
   echo:    'acoustic',
   lm:      'labmate',
@@ -1749,7 +1752,9 @@ var APP_UNLOCK_WORDS = {
   cuppa:      'coffee',
   fabricata:  'fabricate',
   beacon:     'glow',
-  lumina:     'illuminate'
+  lumina:     'illuminate',
+  ribbon:     'cartoon',
+  arc:        'storyboard'
 };
 
 // Home grid is grouped into packages. Any app id not listed here falls into
@@ -2644,15 +2649,12 @@ var HUB_SEARCH_INDEX=[
   {t:'TR-FRET Assay',id:'lm',tab:'assays',item:'proto-trfret',app:'LabMate',kw:'TR-FRET time resolved FRET binding fluorescence'},
   {t:'Fluorescence Polarization Assay',id:'lm',tab:'assays',item:'proto-fp',app:'LabMate',kw:'FP fluorescence polarization anisotropy binding'},
   {t:'SPR Assay',id:'lm',tab:'assays',item:'proto-spr',app:'LabMate',kw:'SPR surface plasmon resonance Biacore kinetics'},
-  // LabMate — reference
-  {t:'SDS-PAGE Reference',id:'lm',tab:'reference',app:'LabMate',kw:'SDS PAGE gel electrophoresis acrylamide'},
-  {t:'Fluorochrome Reference',id:'lm',tab:'reference',app:'LabMate',kw:'fluorochrome dye excitation emission spectra'},
-  {t:'Amino Acid Reference',id:'lm',tab:'reference',app:'LabMate',kw:'amino acid properties pKa hydrophobicity one letter'},
-  {t:'Gel Markers Reference',id:'lm',tab:'reference',app:'LabMate',kw:'gel marker ladder molecular weight bands'},
-  // LabMate — tools
-  {t:'Lab Timers',id:'lm',tab:'tools',app:'LabMate',kw:'timer countdown lab protocol incubation'},
-  {t:'Experiment Planner',id:'lm',tab:'tools',app:'LabMate',kw:'experiment planner schedule protocol steps'},
-  {t:'PROTAC Tools',id:'lm',tab:'tools',app:'LabMate',kw:'PROTAC degrader linker E3 ligase CRBN VHL warhead'},
+  // LabMate — standalone sections (Reference and PROTAC Tools were removed from
+  // LabMate; their old search entries pointed at nonexistent tabs. Timers/Planner
+  // live in sec-timer/sec-planner which have no top-nav button — the message
+  // handler now falls back to _navToSection for those.)
+  {t:'Lab Timers',id:'lm',tab:'timer',app:'LabMate',kw:'timer countdown lab protocol incubation'},
+  {t:'Experiment Planner',id:'lm',tab:'planner',app:'LabMate',kw:'experiment planner schedule protocol steps viability timeline plate map'},
   // Spectra
   {t:'Spectra — A280 Protein Concentration',id:'spectra',tab:'a280',app:'Spectra',kw:'A280 absorbance extinction coefficient beer lambert protein concentration molar'},
   {t:'Spectra — A260/A280 Purity',id:'spectra',tab:'ratios',app:'Spectra',kw:'A260 A280 ratio purity DNA RNA protein NanoDrop contamination'},
@@ -2664,6 +2666,8 @@ var HUB_SEARCH_INDEX=[
   {t:'Iceberg — −80°C inventory',id:'cryo',tab:'minus80',app:'Iceberg',kw:'-80 minus 80 freezer cell line vial'},
   {t:'Iceberg — Liquid N₂ inventory',id:'cryo',tab:'n2',app:'Iceberg',kw:'liquid nitrogen n2 cryo dewar vapor phase cell line vial'},
   {t:'Cuppa — CeTPD Hot Drinks ledger',id:'cuppa',app:'Cuppa',kw:'coffee tea matcha cetpd hot drinks payment wall of shame slack ledger pot ciulli'},
+  {t:'Ribbon — Protein structure viewer',id:'ribbon',app:'Ribbon',kw:'ribbon protein 3d structure pdb mmcif cartoon 3dmol chain surface render publication figure'},
+  {t:'Arc — Presentation storyboard',id:'arc',app:'Arc',kw:'arc storyboard narrative slides deck presentation outline markdown cards boards claude'},
 ];
 function hubFuzzy(q,text){
   q=q.toLowerCase();text=text.toLowerCase();

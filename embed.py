@@ -30,11 +30,27 @@ APPS = [
 ]
 
 src = open(SHELL, encoding='utf-8').read()
+errors = []
 for key, rel in APPS:
     path = os.path.join(BASE, rel)
-    b64 = base64.b64encode(open(path, 'rb').read()).decode('ascii')
+    try:
+        data = open(path, 'rb').read()
+    except FileNotFoundError:
+        print(f'  {key}: MISSING SOURCE — {rel}')
+        errors.append(f'{key}: source file not found ({rel})')
+        continue
+    b64 = base64.b64encode(data).decode('ascii')
     src, n = re.subn(r'(?<=' + key + r': ")[^"]*', b64, src)
     print(f'  {key}: {n} replacement(s)')
+    # Exactly one placeholder must be filled. n==0 (typo'd/renamed key) or n>1
+    # (duplicated entry) would ship a blank/broken app silently — fail loudly.
+    if n != 1:
+        errors.append(f'{key}: expected 1 placeholder replacement, got {n}')
+
+if errors:
+    sys.stderr.write('\nembed.py FAILED — the bundle was NOT written:\n  - '
+                     + '\n  - '.join(errors) + '\n')
+    sys.exit(1)
 
 out_abs = os.path.abspath(OUT)
 out_dir = os.path.dirname(out_abs)

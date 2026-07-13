@@ -863,7 +863,11 @@ function renderGrid(){
   grid.innerHTML = html;
 }
 
-function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+// Escape a value for embedding inside a single-quoted JS string in an inline
+// on* attribute (e.g. onclick="fn('...')"). HTML-escaping the quote is NOT
+// enough there — the parser decodes it back — so backslash-escape for JS.
+function escJs(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtConc(conc){
   if (conc === undefined || conc === null || isNaN(conc)) return '';
   if (conc <= 0) return '0';
@@ -1508,7 +1512,7 @@ function drawScatter(){
 function renderCurveSampleList(){
   var wrap = document.getElementById('curve-samp-list');
   wrap.innerHTML = state.fitResults.map(function(r){
-    return '<div class="samp-chip'+(r.flagged?' flagged':'')+'" onclick="selectSample(\''+esc(r.sampleId)+'\')">'+esc(r.sampleId)+'</div>';
+    return '<div class="samp-chip'+(r.flagged?' flagged':'')+'" onclick="selectSample(\''+escJs(r.sampleId)+'\')">'+esc(r.sampleId)+'</div>';
   }).join('');
   if (state.fitResults.length) selectSample(state.fitResults[0].sampleId);
 }

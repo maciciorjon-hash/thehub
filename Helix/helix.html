@@ -494,7 +494,11 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 
 // ─── FASTA parser ─────────────────────────────────────────────────────────────
-function parseFASTA(raw){return raw.split('\n').filter(l=>!l.trim().startsWith('>')).join('').replace(/\s/g,'').toUpperCase();}
+// Strip everything except A–Z after removing FASTA headers: kills whitespace,
+// digits, punctuation AND any HTML/quote chars, so nothing dangerous reaches the
+// ORF map innerHTML or the copy-button onclick. Unknown bases are already handled
+// downstream (complement uses c[b]||b, unknown codons → N).
+function parseFASTA(raw){return raw.split('\n').filter(l=>!l.trim().startsWith('>')).join('').toUpperCase().replace(/[^A-Z]/g,'');}
 
 function detectSeqType(seq){
   const hasT=seq.includes('T'), hasU=seq.includes('U');
@@ -1274,7 +1278,7 @@ function _fallbackCopy(txt){
   try{document.execCommand('copy');}catch(e){}
   document.body.removeChild(ta);
 }
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 // ─── Vector modal ─────────────────────────────────────────────────────────────
 function openVecModal(id) {

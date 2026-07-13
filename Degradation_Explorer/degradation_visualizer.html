@@ -519,7 +519,9 @@ function tv() {
 }
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// For values embedded inside a single-quoted JS string in an inline on* handler.
+function escJs(s) { return String(s == null ? '' : s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function hasAnyData(c) {
   return TARGETS.some(t => (c.targets[t] || {}).dc50 !== null);
 }
@@ -589,7 +591,7 @@ function renderHeader() {
     TARGETS.map(() => '<col style="width:82px"><col style="width:82px">').join('');
   const hRow1 = TARGETS.map((t, i) => {
     const col = getColor(i);
-    return `<th colspan="2" class="protein-header" style="color:${col};border-color:${col};background:color-mix(in srgb,${col} 6%,transparent)">${t}</th>`;
+    return `<th colspan="2" class="protein-header" style="color:${col};border-color:${col};background:color-mix(in srgb,${col} 6%,transparent)">${esc(t)}</th>`;
   }).join('');
   const hRow2 = TARGETS.map((t, i) => {
     const col = getColor(i);
@@ -678,8 +680,8 @@ function renderTable() {
       const d = c.targets[t] || {dc50:null,dc50_sd:null,dmax:null,dmax_sd:null};
       return `<td class="val-cell">${fmtDC50Cell(d.dc50, d.dc50_sd)}</td><td class="dmax-cell">${dmaxBar(d.dmax)}</td>`;
     }).join('');
-    return `<tr onclick="selectCompound('${c.compound.replace(/'/g,"\\'")}')" class="${sel}">
-      <td class="compound-name"><span class="dot ${dotClass}"></span>${c.compound}</td>
+    return `<tr onclick="selectCompound('${escJs(c.compound)}')" class="${sel}">
+      <td class="compound-name"><span class="dot ${dotClass}"></span>${esc(c.compound)}</td>
       ${cells}
     </tr>`;
   }).join('');
@@ -709,12 +711,12 @@ function buildDetailGrid(c) {
   document.getElementById('detail-grid').innerHTML = TARGETS.map((t, i) => {
     const d = c.targets[t] || {dc50:null};
     const col = getColor(i);
-    if (d.dc50 === null) return `<div class="detail-protein"><div class="dp-header" style="color:${col};border-color:${col}">${t}</div><div style="color:var(--text3);font-size:12px;padding:8px 0">No data</div></div>`;
+    if (d.dc50 === null) return `<div class="detail-protein"><div class="dp-header" style="color:${col};border-color:${col}">${esc(t)}</div><div style="color:var(--text3);font-size:12px;padding:8px 0">No data</div></div>`;
     const sdStr = (d.dc50_sd && d.dc50_sd > 0 && dgScale !== 'p')
       ? ' ± ' + (dgUnit === 'M' ? (d.dc50_sd*1e-9).toExponential(1) : dgUnit === 'uM' ? (d.dc50_sd/1000).toPrecision(2) : d.dc50_sd.toFixed(1))
       : '';
     return `<div class="detail-protein">
-      <div class="dp-header" style="color:${col};border-color:${col}">${t}</div>
+      <div class="dp-header" style="color:${col};border-color:${col}">${esc(t)}</div>
       <div class="dp-row"><div class="dp-label">DC50 (${xUnitLabel()})</div>
         <div class="dp-value">${fmtDC50Val(d.dc50)}<span class="dp-sd">${sdStr}</span></div>
       </div>

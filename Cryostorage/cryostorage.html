@@ -650,11 +650,23 @@ function _hasAnyVials(st){
 }
 function maybeSeedRealData(){
   try {
-    if (_hasAnyVials(state)) return; // user already has local data — never overwrite
-    if (!(window.parent && window.parent.isAdmin === true)) return; // not Jon — stay blank
+    if (_hasAnyVials(state)) return false; // user already has local data — never overwrite
+    if (!(window.parent && window.parent.isAdmin === true)) return false; // not Jon — stay blank
     state.storages = JSON.parse(JSON.stringify(SEED_DATA));
     saveState();
-  } catch (e) {}
+    return true;
+  } catch (e) { return false; }
+}
+// The Hub sets window.parent.isAdmin asynchronously (after Firebase auth resolves),
+// which can land AFTER this iframe inits. Reading it synchronously once left Jon
+// with a blank inventory when he opened Iceberg before auth settled. Retry for a
+// few seconds and re-render the current tab if the seed lands late.
+function seedWhenAdminReady(tries){
+  if (maybeSeedRealData()){ renderTab(currentTab); return; }
+  if (_hasAnyVials(state)) return; // user has their own data — never seed
+  if (tries > 0 && !(window.parent && window.parent.isAdmin === true)){
+    setTimeout(function(){ seedWhenAdminReady(tries - 1); }, 700);
+  }
 }
 function uid(){ return 'id-' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
 
@@ -1649,7 +1661,7 @@ document.addEventListener('keydown', function(e){
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
 loadState();
-maybeSeedRealData();
+seedWhenAdminReady(6);
 switchTab('minus80');
 </script>
 </body>
