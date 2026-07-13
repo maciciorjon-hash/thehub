@@ -432,6 +432,9 @@ select:focus{outline:none;border-color:var(--accent);}
       <button class="tb-btn" id="resetViewBtn" title="Reset view">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 3 3 3 3 8"/><polyline points="16 3 21 3 21 8"/><polyline points="8 21 3 21 3 16"/><polyline points="16 21 21 21 21 16"/></svg>
       </button>
+      <button class="tb-btn" id="resTagBtn" title="Tag residues: click atoms to label them (click again to remove)" onclick="toggleResLabelMode()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+      </button>
       <button class="tb-btn" id="exportBtn2" title="Export image">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
@@ -506,10 +509,11 @@ var WATER_RESN=['HOH','WAT','DOD','H2O','TIP','SOL'];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfs=[];
 var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',bg:'transparent',surfaceOpacity:0.55,
   chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,hsl:{h:0,s:100,l:100},
-  exportLabels:true,
+  exportLabels:true,residueLabels:[],
   labelStyle:{font:'sans',size:13,bold:false,italic:false,bg:true,bgMode:'chain',bgColor:'#333333',shape:'rounded'}};
 var chainList=[], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
 var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _defaultView=null, _reqSeq=0;
+var _resLabelMode=false, _resLabelObjs=[];   // per-residue label mode + 3Dmol label handles
 
 function $(id){return document.getElementById(id);}
 
@@ -614,6 +618,7 @@ function renderStructure(text,fmt,id){
   currentSurfs=[];
   Object.keys(labelEls).forEach(removeLabelEl);
   state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
+  state.residueLabels=[]; _resLabelObjs=[];   // viewer.clear() above already dropped the 3Dmol labels
   chainAnchorCache={};
   selectedChain=null;
   closeChainPopup();
@@ -625,6 +630,7 @@ function renderStructure(text,fmt,id){
   applyBorder();
   viewer.zoomTo();
   viewer.render();
+  renderResidueLabels();   // restore any residue labels carried in by a loaded design
   try{_defaultView=viewer.getView();}catch(e){_defaultView=null;}
   setLoading(false);
   $('fetchBtn').disabled=false;
@@ -1141,8 +1147,48 @@ function setupChainClicks(){
     if(!atom)return;
     if(WATER_RESN.indexOf(atom.resn)>=0)return;
     _atomClicked=true;
+    if(_resLabelMode){ addResidueLabel(atom); return; }
     selectChain(atom.chain||'');
   });
+}
+
+// ── Per-residue labels ─────────────────────────────────────────────────────
+// Tag mode: clicking an atom drops a 3Dmol label at that residue (3Dmol tracks
+// it in 3D as the view rotates). Clicking the same residue again removes it.
+function toggleResLabelMode(){
+  _resLabelMode=!_resLabelMode;
+  var btn=document.getElementById('resTagBtn');
+  if(btn){ btn.style.background=_resLabelMode?'var(--accent)':''; btn.style.color=_resLabelMode?'#fff':''; }
+  var hint=document.getElementById('chainHint');
+  if(hint){
+    if(_resLabelMode){ hint.textContent='Tag mode: click residues to label them (click again to remove)'; hint.classList.add('show'); }
+    else { hint.classList.remove('show'); }
+  }
+}
+function addResidueLabel(atom){
+  if(!Array.isArray(state.residueLabels)) state.residueLabels=[];
+  var chain=atom.chain||'', resi=atom.resi;
+  var i=state.residueLabels.findIndex(function(r){ return r.chain===chain && r.resi===resi; });
+  if(i>=0){ state.residueLabels.splice(i,1); }
+  else {
+    var nm=(atom.resn||'').trim();
+    state.residueLabels.push({chain:chain, resi:resi, resn:nm, text:(nm?nm+' ':'')+resi+(chain?' /'+chain:'')});
+  }
+  renderResidueLabels();
+}
+function renderResidueLabels(){
+  _resLabelObjs.forEach(function(l){ try{ viewer.removeLabel(l); }catch(_){} });
+  _resLabelObjs=[];
+  if(!currentModel || !Array.isArray(state.residueLabels)) return;
+  state.residueLabels.forEach(function(rl){
+    var atoms=currentModel.selectedAtoms({chain:rl.chain, resi:rl.resi, atom:'CA'});
+    if(!atoms.length) atoms=currentModel.selectedAtoms({chain:rl.chain, resi:rl.resi});
+    if(!atoms.length) return;
+    var a=atoms[0];
+    var lbl=viewer.addLabel(rl.text, {position:{x:a.x,y:a.y,z:a.z}, backgroundColor:'#13161e', backgroundOpacity:0.72, fontColor:'#ffffff', fontSize:12, borderThickness:0, inFront:true});
+    _resLabelObjs.push(lbl);
+  });
+  viewer.render();
 }
 
 function selectChain(ch){
@@ -1440,6 +1486,7 @@ function applyPendingDesign(){
   state.chainLabels=ps.chainLabels?_clone(ps.chainLabels):{};
   state.labelOffsets=ps.labelOffsets?_clone(ps.labelOffsets):{};
   state.labelAnchors=ps.labelAnchors?_clone(ps.labelAnchors):{};
+  state.residueLabels=Array.isArray(ps.residueLabels)?_clone(ps.residueLabels):[];
   syncControlsToState();
 }
 function renderDesignList(){
