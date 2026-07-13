@@ -612,6 +612,7 @@ tr:hover td{background:var(--surface2);}
             <option value="fp">FP</option>
             <option value="trf">TR-FRET</option>
             <option value="alpha">AlphaScreen</option>
+            <option value="d2b">D2B</option>
           </select>
         </div>
         <div class="gp-divider"></div>
@@ -625,18 +626,18 @@ tr:hover td{background:var(--surface2);}
         </div>
         <div class="field">
           <label># Points</label>
-          <input type="number" id="eg-pts" value="10" min="2" max="40" step="1" oninput="_egTrigger()">
+          <input type="number" id="eg-pts" value="10" min="2" max="40" step="1" oninput="window._egExplicitPlanM=null;_egTrigger()">
         </div>
         <div class="field">
           <label>Dilution factor</label>
-          <input type="number" id="eg-df" value="3" min="2" step="1" oninput="_egTrigger()">
+          <input type="number" id="eg-df" value="3" min="2" step="1" oninput="window._egExplicitPlanM=null;_egTrigger()">
         </div>
         <div class="gp-divider"></div>
         <div class="field">
           <label>Top concentration</label>
           <div style="display:flex;gap:4px">
-            <input type="number" id="eg-top-val" value="1000" min="0" step="1" oninput="_egTrigger()" style="width:88px">
-            <select id="eg-top-unit" onchange="_egTrigger()" style="width:58px;padding:6px 4px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px;transition:border-color .15s">
+            <input type="number" id="eg-top-val" value="1000" min="0" step="1" oninput="window._egExplicitPlanM=null;_egTrigger()" style="width:88px">
+            <select id="eg-top-unit" onchange="window._egExplicitPlanM=null;_egTrigger()" style="width:58px;padding:6px 4px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px;transition:border-color .15s">
               <option value="1e-3">mM</option>
               <option value="1e-6">µM</option>
               <option value="1e-9" selected>nM</option>
@@ -8832,7 +8833,14 @@ function _unhideAllResultsCols() {
     trf:   {vol:20,dmso:1,  topVal:10,  topUnit:'1e-6',pts:10,df:3,
             stocks:[{label:'Source',val:10,unit:'1e-3'},{label:'Inter 1',val:20,unit:'1e-6'}]},
     alpha: {vol:25,dmso:1,  topVal:30,  topUnit:'1e-6',pts:10,df:3,
-            stocks:[{label:'Source',val:10,unit:'1e-3'},{label:'Inter 1',val:30,unit:'1e-6'}]}
+            stocks:[{label:'Source',val:10,unit:'1e-3'},{label:'Inter 1',val:30,unit:'1e-6'}]},
+    // Custom mixed-fold ladder (not a single constant dilution factor — the fold
+    // between points varies: 4x/5x from Source, then 4x/2x/2x/5x from Inter 1).
+    // explicitM pins the exact target concentration (M) at each point so the
+    // 2.5 nL-quantised table reproduces the requested nL volumes exactly.
+    d2b:   {vol:20,dmso:0.25,topVal:1000,topUnit:'1e-9',pts:7,df:2,
+            stocks:[{label:'Source',val:400,unit:'1e-6'},{label:'Inter 1',val:6,unit:'1e-6'}],
+            explicitM:[1e-6,2.5e-7,5e-8,1.5e-8,7.5e-9,3.75e-9,7.5e-10]}
   };
 
   function toM(val,unit){ return (parseFloat(val)||0)*parseFloat(unit); }
@@ -8907,6 +8915,9 @@ function _unhideAllResultsCols() {
     window._egS=p.stocks.map(function(s){return Object.assign({},s);});
     _egS=window._egS;
     _egN=_egS.length-1;
+    // Explicit per-point concentration ladder (M), for presets whose fold isn't
+    // a single constant factor — bypasses the topVal/df geometric formula.
+    window._egExplicitPlanM = p.explicitM ? p.explicitM.slice() : null;
     renderStocks();
     _egUpdate();
   };
@@ -9143,9 +9154,10 @@ function _unhideAllResultsCols() {
     // Build rows — monotone stock assignment: always use the highest-concentration
     // feasible stock (minimises DMSO); advance to next stock only when current is
     // too concentrated (rounds to 0 drops). Never jump backwards.
+    var explicitPlan=(window._egExplicitPlanM&&window._egExplicitPlanM.length===pts)?window._egExplicitPlanM:null;
     var rows=[],infeas=0,_si=0;
     for(var p=0;p<pts;p++){
-      var planMp=topM/Math.pow(df,p);
+      var planMp=explicitPlan?explicitPlan[p]:(topM/Math.pow(df,p));
       var chosen=null;
       while(_si<sorted.length){
         var s=sorted[_si],cS=s.cM;
