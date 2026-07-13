@@ -553,6 +553,13 @@ canvas{display:block;border-radius:8px;}
         <option value="mM">mM</option>
       </select>
     </div>
+    <div class="field" style="flex-direction:row;align-items:center;gap:8px;">
+      <label style="margin:0;white-space:nowrap;">Fit:</label>
+      <select id="sc-fit" onchange="drawCurve()" title="Linear for A280; Quadratic for the curved BCA / Bradford range">
+        <option value="linear">Linear</option>
+        <option value="quadratic">Quadratic</option>
+      </select>
+    </div>
     <div style="margin-left:auto;display:flex;gap:8px;">
       <button class="btn btn-sec btn-sm" onclick="scAddRow()">+ Add row</button>
       <button class="btn btn-sec btn-sm" onclick="scClear()">Clear</button>
@@ -1027,7 +1034,7 @@ function calcRatios(){
 
 /* ─── STANDARD CURVE ─── */
 var scRows = [];
-var scLinear = null; // {m, b, r2}
+var scFit = null; // linear: {type:'linear',m,b,r2}  ·  quadratic: {type:'quadratic',a,b,c,r2}
 
 function scInit(){
   // Load some example points
@@ -1125,7 +1132,59 @@ function linearRegression(pts){
     ssRes += (p.y - yHat)*(p.y - yHat);
   });
   var r2 = ssTot > 0 ? 1 - ssRes/ssTot : 1;
-  return {m:m, b:b, r2:r2};
+  return {type:'linear', m:m, b:b, r2:r2};
+}
+
+// Least-squares 2nd-order polynomial fit y = a·x² + b·x + c (needs ≥3 points).
+// BCA/Bradford standard curves are genuinely nonlinear, so a straight line
+// biases every interpolated concentration; quadratic captures the curvature.
+function _solve3(M, v){
+  function det(m){
+    return m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1])
+         - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0])
+         + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+  }
+  var D = det(M);
+  if(Math.abs(D) < 1e-30) return null;
+  var out = [];
+  for(var col=0; col<3; col++){
+    var Mi = M.map(function(row){ return row.slice(); });
+    for(var r=0;r<3;r++) Mi[r][col] = v[r];
+    out.push(det(Mi)/D);
+  }
+  return out;
+}
+function quadraticRegression(pts){
+  var n = pts.length;
+  if(n < 3) return null;
+  var Sx=0,Sx2=0,Sx3=0,Sx4=0,Sy=0,Sxy=0,Sx2y=0;
+  pts.forEach(function(p){ var x=p.x,y=p.y,x2=x*x; Sx+=x;Sx2+=x2;Sx3+=x2*x;Sx4+=x2*x2;Sy+=y;Sxy+=x*y;Sx2y+=x2*y; });
+  var sol = _solve3([[Sx4,Sx3,Sx2],[Sx3,Sx2,Sx],[Sx2,Sx,n]], [Sx2y,Sxy,Sy]);
+  if(!sol) return null;
+  var a=sol[0], b=sol[1], c=sol[2];
+  var yMean=Sy/n, ssTot=0, ssRes=0;
+  pts.forEach(function(p){ var yh=a*p.x*p.x+b*p.x+c; ssTot+=(p.y-yMean)*(p.y-yMean); ssRes+=(p.y-yh)*(p.y-yh); });
+  return {type:'quadratic', a:a, b:b, c:c, r2: ssTot>0 ? 1-ssRes/ssTot : 1};
+}
+// y at a given x (draw the curve / show predicted absorbance)
+function scPredictY(fit, x){
+  if(!fit) return NaN;
+  return fit.type==='quadratic' ? fit.a*x*x + fit.b*x + fit.c : fit.m*x + fit.b;
+}
+// x (concentration) from a measured y (absorbance) — inverts the fit.
+function scInvertX(fit, y){
+  if(!fit) return NaN;
+  if(fit.type!=='quadratic') return fit.m!==0 ? (y - fit.b)/fit.m : NaN;
+  var a=fit.a, b=fit.b, c=fit.c;
+  if(Math.abs(a) < 1e-12) return b!==0 ? (y - c)/b : NaN; // degenerate → linear
+  var disc = b*b - 4*a*(c - y);
+  if(disc < 0) return NaN;                                 // outside the curve's range
+  var sq = Math.sqrt(disc), r1 = (-b+sq)/(2*a), r2 = (-b-sq)/(2*a);
+  // pick the root in/nearest the standards' concentration range (the physical branch)
+  var xs = scRows.map(function(r){ return r.c; });
+  var lo = Math.min.apply(null, xs), hi = Math.max.apply(null, xs);
+  function score(r){ return (r>=lo && r<=hi) ? 0 : Math.min(Math.abs(r-lo), Math.abs(r-hi)); }
+  return score(r1) <= score(r2) ? r1 : r2;
 }
 
 function getCSSVar(name){
@@ -1160,7 +1219,7 @@ function drawCurve(){
     ctx.fillText('Add at least 2 standards to see the curve', W/2, H/2);
     document.getElementById('sc-r2-badge').style.display = 'none';
     document.getElementById('sc-equation').textContent = '';
-    scLinear = null;
+    scFit = null;
     return;
   }
 
@@ -1222,22 +1281,27 @@ function drawCurve(){
   ctx.fillText('Absorbance', 0, 0);
   ctx.restore();
 
-  // Regression
-  var reg = linearRegression(pts);
-  scLinear = reg;
+  // Regression — linear or quadratic per the Fit selector (quadratic needs ≥3
+  // standards; falls back to linear if there are too few).
+  var fitTypeEl = document.getElementById('sc-fit');
+  var fitType = fitTypeEl ? fitTypeEl.value : 'linear';
+  var reg = fitType === 'quadratic' ? (quadraticRegression(pts) || linearRegression(pts))
+                                     : linearRegression(pts);
+  scFit = reg;
 
   if(reg){
-    // Fit line
-    var lx0 = x0, lx1 = x1;
-    var ly0 = reg.m * lx0 + reg.b;
-    var ly1 = reg.m * lx1 + reg.b;
-    var p0 = toCanvas(lx0, ly0), p1 = toCanvas(lx1, ly1);
-    ctx.beginPath();
-    ctx.moveTo(p0.cx, p0.cy);
-    ctx.lineTo(p1.cx, p1.cy);
+    // Sample the fit across the x-range and stroke it (straight for linear,
+    // curved for quadratic — same code path for both).
     ctx.strokeStyle = accent;
     ctx.lineWidth = 2;
     ctx.setLineDash([]);
+    ctx.beginPath();
+    var steps = 90;
+    for(var s=0; s<=steps; s++){
+      var xv = x0 + (x1 - x0) * s / steps;
+      var cpt = toCanvas(xv, scPredictY(reg, xv));
+      if(s === 0) ctx.moveTo(cpt.cx, cpt.cy); else ctx.lineTo(cpt.cx, cpt.cy);
+    }
     ctx.stroke();
   }
 
@@ -1265,8 +1329,13 @@ function drawCurve(){
     var dotColor = r2 >= 0.99 ? '#2d9462' : r2 >= 0.95 ? '#b58830' : '#b84545';
     r2Dot.style.background = dotColor;
     r2Text.textContent = 'R² = ' + r2.toFixed(5);
-    var sign = reg.b >= 0 ? '+' : '-';
-    eqEl.textContent = 'y = ' + reg.m.toExponential(3) + 'x ' + sign + ' ' + Math.abs(reg.b).toExponential(3);
+    if(reg.type === 'quadratic'){
+      var sb = reg.b >= 0 ? '+' : '-', scn = reg.c >= 0 ? '+' : '-';
+      eqEl.textContent = 'y = ' + reg.a.toExponential(3) + 'x² ' + sb + ' ' + Math.abs(reg.b).toExponential(3) + 'x ' + scn + ' ' + Math.abs(reg.c).toExponential(3);
+    } else {
+      var sign = reg.b >= 0 ? '+' : '-';
+      eqEl.textContent = 'y = ' + reg.m.toExponential(3) + 'x ' + sign + ' ' + Math.abs(reg.b).toExponential(3);
+    }
     calcUnknowns();
   } else {
     r2Badge.style.display = 'none';
@@ -1283,7 +1352,7 @@ function calcUnknowns(){
   var exportBtn = document.getElementById('sc-export-btn');
   unknownResults = [];
 
-  if(!raw || !scLinear){
+  if(!raw || !scFit){
     container.textContent = !raw ? 'Enter standards and absorbance values above.' :
       'Need at least 2 standards to calculate.';
     exportBtn.style.display = 'none';
@@ -1301,7 +1370,7 @@ function calcUnknowns(){
       html += '<tr><td>' + (idx+1) + '</td><td>' + line + '</td><td>—</td><td style="color:var(--poor)">Invalid</td></tr>';
       return;
     }
-    var c = (a - scLinear.b) / scLinear.m;
+    var c = scInvertX(scFit, a);
     var xMin = Math.min.apply(null, scRows.map(function(r){return r.c;}));
     var xMax = Math.max.apply(null, scRows.map(function(r){return r.c;}));
     var note = (c < xMin || c > xMax) ? '<span style="color:var(--mid)">⚠ extrapolated</span>' : '';
@@ -1398,8 +1467,8 @@ function showPlateResults(){
 
   // Show "Use Std Curve" button only if a curve exists
   var btn = document.getElementById('plate-use-curve-btn');
-  btn.style.display = scLinear ? '' : 'none';
-  if(!scLinear) useCurve = false;
+  btn.style.display = scFit ? '' : 'none';
+  if(!scFit) useCurve = false;
 
   buildPlateTable();
   drawHeatmap();
@@ -1417,10 +1486,10 @@ function toggleUseCurve(){
 
 function getPlateValues(){
   if(!plateData) return null;
-  if(useCurve && scLinear){
+  if(useCurve && scFit){
     return plateData.map(function(row){
       return {label:row.label, vals: row.vals.map(function(a){
-        return (a - scLinear.b) / scLinear.m;
+        return scInvertX(scFit, a);
       })};
     });
   }
