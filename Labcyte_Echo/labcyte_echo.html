@@ -720,7 +720,7 @@ tr:hover td{background:var(--surface2);}
         </div>
         <div class="field">
           <label>Plate type</label>
-          <select id="eg-bf-plateType" onchange="_egBfPlateType();_egBfTrigger()" style="width:110px;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px">
+          <select id="eg-bf-plateType" onchange="_egBfPlateType();_egBfTrigger()" style="width:150px">
             <option value="pp">PP (384/1536)</option>
             <option value="ldv">LDV</option>
           </select>
@@ -9297,70 +9297,42 @@ function _unhideAllResultsCols() {
     var deadEl=document.getElementById('eg-bf-dead');
     if(deadEl) deadEl.value = t==='ldv' ? 2.5 : 20;
   };
-  function _egBfCalc(){
-    var out=document.getElementById('eg-bf-out');
-    if(!out) return;
+
+  // Pure computation, no DOM writes — shared by the live renderer (_egBfCalc)
+  // and the copy-summary builder (_egCopy) so the two can never drift apart.
+  function _egBfCompute(){
     var interVol=parseFloat(document.getElementById('eg-inter-vol').value)||0;
     var nComp=parseInt(document.getElementById('eg-bf-ncompounds').value)||0;
     var perComp=parseInt(document.getElementById('eg-bf-perCompound').value)||0;
     var nSets=parseInt(document.getElementById('eg-bf-nsets').value)||0;
     var nReps=parseInt(document.getElementById('eg-bf-nreps').value)||0;
     var deadVol=parseFloat(document.getElementById('eg-bf-dead').value)||0;
-    var html='';
-
-    if(interVol>0){
-      html+='<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Pre-fill <strong>every</strong> well you plan to use on the intermediate plate — the ones becoming an intermediate concentration <em>and</em> the ones held back for backfill — with the same <strong>'+interVol+' µL</strong> of neat DMSO before the Echo run.</div>';
-    }
+    var r={interVol:interVol,nComp:nComp,perComp:perComp,nSets:nSets,nReps:nReps,deadVol:deadVol,
+           prepRows:null,prepOk:true,backfill:{status:'no-gradient'}};
 
     // ── Part 1: intermediate plate prep (source → inter1 → inter2 → …) ──
     var cSrc0=toM(_egS[0].val,_egS[0].unit);
-    var prepRows=[], prepOk=true;
     if(interVol>0 && _egS.length>1 && cSrc0>0){
       var parentC=cSrc0, parentLabel=_egS[0].label||'Source';
       var Vpre_nL=interVol*1000;
+      var prepRows=[];
       for(var i=1;i<_egS.length;i++){
         var s=_egS[i], Ctarget=toM(s.val,s.unit);
         var ok=Ctarget>0 && parentC>Ctarget;
         var idealNL = ok ? (Ctarget*Vpre_nL/(parentC-Ctarget)) : 0;
         var adjNL=Math.round(idealNL/DROP)*DROP;
         if(adjNL<DROP) ok=false;
-        if(!ok) prepOk=false;
+        if(!ok) r.prepOk=false;
         prepRows.push({label:s.label,parent:parentLabel,adjNL:adjNL,ok:ok});
         parentC=Ctarget; parentLabel=s.label;
       }
-      html+='<div style="font-weight:600;color:var(--text1);margin-bottom:4px">1. Intermediate concentrations (transfer added on top of the pre-fill)</div>';
-      html+='<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">'+
-        '<tr style="color:var(--text3)"><th style="text-align:left;padding:2px 6px;font-weight:500">Well</th>'+
-        '<th style="text-align:left;padding:2px 6px;font-weight:500">From</th>'+
-        '<th style="text-align:right;padding:2px 6px;font-weight:500">Echo transfer (nL)</th></tr>';
-      prepRows.forEach(function(r){
-        html+='<tr'+(r.ok?'':' style="color:#ef4444"')+'>'+
-          '<td style="padding:2px 6px">'+r.label+'</td>'+
-          '<td style="padding:2px 6px">'+r.parent+'</td>'+
-          '<td style="padding:2px 6px;text-align:right">'+(r.ok?fmtVol(r.adjNL):'infeasible ⚠')+'</td>'+
-        '</tr>';
-      });
-      html+='</table>';
-      if(!prepOk){
-        html+='<div style="color:#ef4444;font-size:11px;margin-bottom:10px">⚠ One or more steps are infeasible — either the target isn\'t below its parent concentration, or the resulting transfer would be under Echo\'s 2.5 nL minimum drop. Increase the intermediate volume, add another intermediate step, or adjust the target concentration.</div>';
-      }
-    } else {
-      html+='<div style="color:var(--text3);margin-bottom:10px">Add at least one intermediate stock (with a Source concentration set) to see the prep transfer volumes.</div>';
+      r.prepRows=prepRows;
     }
 
     // ── Part 2: destination-plate backfill ──
     var rows=window._egRows, maxT=window._egMaxT;
-    html+='<div style="font-weight:600;color:var(--text1);margin-bottom:4px">2. Destination plate backfill</div>';
-    if(!rows||!rows.length||!maxT){
-      html+='<span style="color:var(--text3)">Set up a valid dose-response gradient above to compute this.</span>';
-      out.innerHTML=html;
-      return;
-    }
-    if(!nComp||!perComp||!nSets||!nReps||!interVol){
-      html+='<span style="color:var(--text3)">Enter compound count, wells per compound, sets, replicates and an intermediate plate volume.</span>';
-      out.innerHTML=html;
-      return;
-    }
+    if(!rows||!rows.length||!maxT){ return r; }
+    if(!nComp||!perComp||!nSets||!nReps||!interVol){ r.backfill={status:'missing-inputs'}; return r; }
 
     // Backfill needed per destination well = DMSO budget not already used by compound transfer.
     // Sum across all dose points to get the total per single compound run once, then scale by
@@ -9374,32 +9346,80 @@ function _unhideAllResultsCols() {
     });
     var totalBackfillNL=backfillPerCompoundNL*nComp*nSets*nReps;
     var totalBackfillUL=totalBackfillNL/1000;
-
     var usablePerWell=interVol-deadVol;
     // Sets and replicates are both just extra dispenses from the SAME intermediate well —
     // neither needs its own prep. Only destination-well count (and so backfill volume) scales
     // with sets/replicates; intermediate-plate wells used only scale with compounds.
     var wellsUsedByCompounds=nComp*perComp;
 
-    if(usablePerWell<=0){
-      html+='<div style="color:#ef4444">⛔ <strong>'+interVol+' µL/well</strong> is at or below the '+deadVol+
-        ' µL Echo dead volume — this plate can\'t supply any backfill. Increase the pre-fill volume or switch to an LDV plate.</div>';
-      out.innerHTML=html;
-      return;
-    }
+    if(usablePerWell<=0){ r.backfill={status:'no-usable-volume'}; return r; }
 
     var minWells=Math.ceil(totalBackfillUL/usablePerWell);
-    var totalWells=wellsUsedByCompounds+minWells;
+    r.backfill={
+      status:'ok', nPoints:rows.length, backfillPerCompoundNL:backfillPerCompoundNL,
+      totalBackfillNL:totalBackfillNL, totalBackfillUL:totalBackfillUL, usablePerWell:usablePerWell,
+      wellsUsedByCompounds:wellsUsedByCompounds,
+      destWellsNeedingBackfill:nComp*rows.length*nSets*nReps,
+      minWells:minWells, totalWells:wellsUsedByCompounds+minWells
+    };
+    return r;
+  }
 
-    html+=
-      '<div>Total DMSO backfill needed for the assay: <strong>'+fmtVol(totalBackfillNL)+' nL</strong> ('+totalBackfillUL.toFixed(2)+' µL)</div>'+
-      '<div>Usable volume per backfill well: <strong>'+usablePerWell.toFixed(1)+' µL</strong> ('+interVol+' µL pre-filled &minus; '+deadVol+' µL dead volume)</div>'+
-      '<div>Wells already spoken for by compounds: <strong>'+wellsUsedByCompounds+'</strong> ('+nComp+' × '+perComp+' — sets and replicates redraw from these same wells)</div>'+
-      '<div>Destination wells needing backfill: <strong>'+(nComp*rows.length*nSets*nReps)+'</strong> ('+nComp+' compounds × '+rows.length+' points × '+nSets+' set'+(nSets===1?'':'s')+' × '+nReps+' replicate'+(nReps===1?'':'s')+')</div>'+
-      '<div style="margin-top:4px;padding:6px 10px;background:var(--surface);border:1px solid var(--accent);border-radius:6px">'+
-        '✦ Reserve at least <strong>'+minWells+' free well'+(minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
-      '</div>'+
-      '<div style="margin-top:6px">Total wells to pre-fill with '+interVol+' µL DMSO before the run (intermediates + backfill): <strong>'+totalWells+'</strong> ('+wellsUsedByCompounds+' + '+minWells+')</div>';
+  function _egBfCalc(){
+    var out=document.getElementById('eg-bf-out');
+    if(!out) return;
+    var bf=_egBfCompute();
+    var html='';
+
+    if(bf.interVol>0){
+      html+='<div style="font-size:11px;color:var(--text3);margin-bottom:12px">Pre-fill <strong>every</strong> well you plan to use on the intermediate plate — the ones becoming an intermediate concentration <em>and</em> the ones held back for backfill — with the same <strong>'+bf.interVol+' µL</strong> of neat DMSO before the Echo run.</div>';
+    }
+
+    // ── Part 1 render ──
+    html+='<div style="font-weight:600;color:var(--text1);margin-bottom:6px">1. Intermediate concentrations <span style="font-weight:400;color:var(--text3)">(transfer added on top of the pre-fill)</span></div>';
+    if(bf.prepRows){
+      html+='<table style="width:100%;max-width:460px;border-collapse:collapse;font-size:12.5px;margin-bottom:6px">'+
+        '<tr><th style="text-align:left;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0">Well</th>'+
+        '<th style="text-align:left;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0">From</th>'+
+        '<th style="text-align:right;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;white-space:nowrap">Echo transfer (nL)</th></tr>';
+      bf.prepRows.forEach(function(r){
+        html+='<tr style="border-bottom:1px solid var(--border)'+(r.ok?'':';color:#ef4444')+'">'+
+          '<td style="padding:5px 8px">'+r.label+'</td>'+
+          '<td style="padding:5px 8px">'+r.parent+'</td>'+
+          '<td style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums">'+(r.ok?fmtVol(r.adjNL):'infeasible ⚠')+'</td>'+
+        '</tr>';
+      });
+      html+='</table>';
+      if(!bf.prepOk){
+        html+='<div style="color:#ef4444;font-size:11px;margin-bottom:12px">⚠ One or more steps are infeasible — either the target isn\'t below its parent concentration, or the resulting transfer would be under Echo\'s 2.5 nL minimum drop. Increase the intermediate volume, add another intermediate step, or adjust the target concentration.</div>';
+      }
+    } else {
+      html+='<div style="color:var(--text3);font-size:12.5px;margin-bottom:12px">Add at least one intermediate stock (with a Source concentration set) to see the prep transfer volumes.</div>';
+    }
+
+    // ── Part 2 render ──
+    html+='<div style="font-weight:600;color:var(--text1);margin-bottom:6px">2. Destination plate backfill</div>';
+    var b=bf.backfill;
+    if(b.status==='no-gradient'){
+      html+='<div style="color:var(--text3);font-size:12.5px">Set up a valid dose-response gradient above to compute this.</div>';
+    } else if(b.status==='missing-inputs'){
+      html+='<div style="color:var(--text3);font-size:12.5px">Enter compound count, wells per compound, sets, replicates and an intermediate plate volume.</div>';
+    } else if(b.status==='no-usable-volume'){
+      html+='<div style="color:#ef4444;font-size:12.5px">⛔ <strong>'+bf.interVol+' µL/well</strong> is at or below the '+bf.deadVol+
+        ' µL Echo dead volume — this plate can\'t supply any backfill. Increase the pre-fill volume or switch to an LDV plate.</div>';
+    } else {
+      html+=
+        '<div style="font-size:12.5px;line-height:1.8">'+
+        '<div>Total DMSO backfill needed for the assay: <strong>'+fmtVol(b.totalBackfillNL)+' nL</strong> ('+b.totalBackfillUL.toFixed(2)+' µL)</div>'+
+        '<div>Usable volume per backfill well: <strong>'+b.usablePerWell.toFixed(1)+' µL</strong> ('+bf.interVol+' µL pre-filled &minus; '+bf.deadVol+' µL dead volume)</div>'+
+        '<div>Wells already spoken for by compounds: <strong>'+b.wellsUsedByCompounds+'</strong> ('+bf.nComp+' × '+bf.perComp+' — sets and replicates redraw from these same wells)</div>'+
+        '<div>Destination wells needing backfill: <strong>'+b.destWellsNeedingBackfill+'</strong> ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' replicate'+(bf.nReps===1?'':'s')+')</div>'+
+        '</div>'+
+        '<div style="margin-top:8px;padding:8px 12px;background:rgba(0,200,150,0.08);border:1px solid var(--accent3);border-radius:6px;font-size:12.5px">'+
+          '✦ Reserve at least <strong>'+b.minWells+' free well'+(b.minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
+        '</div>'+
+        '<div style="margin-top:8px;font-size:12.5px">Total wells to pre-fill with '+bf.interVol+' µL DMSO before the run (intermediates + backfill): <strong>'+b.totalWells+'</strong> ('+b.wellsUsedByCompounds+' + '+b.minWells+')</div>';
+    }
     out.innerHTML=html;
   }
 
@@ -9465,7 +9485,11 @@ function _unhideAllResultsCols() {
     // TSV header — column order matches table: #, Stock, Ideal, Transfer, Final, Plan, Status
     var _uStr=window._egTopUnitStr||'nM';
     lines.push(['#','Stock','Ideal (nL)','Transfer (nL)','Final ('+_uStr+')','Plan ('+_uStr+')','Status'].join('\t'));
-    // TSV data rows — strip locale commas from numbers for clean paste into Excel
+    // TSV data rows — strip locale commas from numbers for clean paste into Excel. Every field
+    // falls back to '—' rather than '' — a genuinely empty cell (two tabs back to back) gets
+    // silently collapsed by some paste targets (Notion, Slack, plain textareas), which shifts
+    // every following column left by one. A placeholder character keeps the column count honest
+    // everywhere, not just in spreadsheet apps that happen to preserve empty cells.
     document.querySelectorAll('#eg-tbody tr').forEach(function(tr){
       var tds=tr.querySelectorAll('td');
       var sel=tr.querySelector('select');
@@ -9473,18 +9497,44 @@ function _unhideAllResultsCols() {
       var stEl=tds[6]?tds[6].querySelector('span'):null;
       var stTxt=stEl?stEl.textContent.trim():'';
       // Map HTML glyphs to readable text
-      stTxt=stTxt==='✓'?'exact':stTxt==='~'?'approx':stTxt==='✗'?'infeasible':'';
+      stTxt=stTxt==='✓'?'exact':stTxt==='~'?'approx':stTxt==='✗'?'infeasible':'—';
       // td[0]=#, td[1]=Stock(select), td[2]=Ideal, td[3]=Transfer(input), td[4]=Final, td[5]=Plan, td[6]=Status
       lines.push([
-        tds[0]?tds[0].textContent.trim():'',
-        sel?sel.options[sel.selectedIndex].text:'',
-        tds[2]?tds[2].textContent.trim():'',
-        inp?inp.value:'',
-        tds[4]?tds[4].textContent.trim().replace(/,/g,''):'',
-        tds[5]?tds[5].textContent.trim().replace(/,/g,''):'',
+        tds[0]?tds[0].textContent.trim():'—',
+        sel?sel.options[sel.selectedIndex].text:'—',
+        tds[2]?tds[2].textContent.trim():'—',
+        (inp&&inp.value)?inp.value:'—',
+        tds[4]?tds[4].textContent.trim().replace(/,/g,''):'—',
+        tds[5]?tds[5].textContent.trim().replace(/,/g,''):'—',
         stTxt
       ].join('\t'));
     });
+
+    // ── Intermediate plate: prep & backfill ──
+    var bf=_egBfCompute();
+    lines.push('');
+    lines.push('Intermediate plate: prep & backfill');
+    if(bf.interVol>0){
+      lines.push('Pre-fill every well (intermediates + backfill) with '+bf.interVol+' µL neat DMSO before the run.');
+    }
+    if(bf.prepRows){
+      lines.push('');
+      lines.push(['Well','From','Echo transfer (nL)'].join('\t'));
+      bf.prepRows.forEach(function(r){
+        lines.push([r.label, r.parent, r.ok?fmtVol(r.adjNL):'infeasible'].join('\t'));
+      });
+    }
+    var b=bf.backfill;
+    if(b.status==='ok'){
+      lines.push('');
+      lines.push('Total DMSO backfill needed for the assay: '+fmtVol(b.totalBackfillNL)+' nL ('+b.totalBackfillUL.toFixed(2)+' µL)');
+      lines.push('Usable volume per backfill well: '+b.usablePerWell.toFixed(1)+' µL ('+bf.interVol+' µL pre-filled - '+bf.deadVol+' µL dead volume)');
+      lines.push('Wells already spoken for by compounds: '+b.wellsUsedByCompounds+' ('+bf.nComp+' × '+bf.perComp+')');
+      lines.push('Destination wells needing backfill: '+b.destWellsNeedingBackfill+' ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' sets × '+bf.nReps+' replicates)');
+      lines.push('Reserve at least '+b.minWells+' free well'+(b.minWells===1?'':'s')+' on the intermediate plate, pre-filled with neat DMSO, for backfill.');
+      lines.push('Total wells to pre-fill with '+bf.interVol+' µL DMSO before the run (intermediates + backfill): '+b.totalWells+' ('+b.wellsUsedByCompounds+' + '+b.minWells+')');
+    }
+
     var txt=lines.join('\n');
     if(navigator.clipboard&&navigator.clipboard.writeText){
       navigator.clipboard.writeText(txt).then(function(){_egFlash();});
