@@ -266,6 +266,7 @@ select:focus,input:focus{border-color:var(--accent);}
   <button class="tab active" onclick="switchTab('genetic',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M7 2c0 4 10 4 10 8s-10 4-10 8M17 2c0 4-10 4-10 8s10 4 10 8"/></svg>Genetic Code</button>
   <button class="tab" onclick="switchTab('seqtools',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h4M9 6h12M3 12h10M15 12h6M3 18h7M12 18h9"/></svg>Sequence Tools</button>
   <button class="tab" onclick="switchTab('compare',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8h16M4 16h16"/><path d="M9 8v8M14 8v8"/><path d="M19 6l2 2-2 2M5 14l-2 2 2 2"/></svg>Compare</button>
+  <button class="tab" onclick="switchTab('primers',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><path d="M20 4L8.5 15.5M20 20L14 14M8.5 8.5L11 11"/></svg>Primers &amp; RE</button>
   <button class="tab" onclick="switchTab('vectors',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M16 6.5a8 8 0 010 11"/><circle cx="12" cy="4" r="1.1" fill="currentColor" stroke="none"/></svg>Vector Library</button>
   <button class="tab" onclick="switchTab('guide',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 016.5 2H20v17H6.5A2.5 2.5 0 014 16.5v-12z"/><path d="M4 16.5A2.5 2.5 0 016.5 19H20"/></svg>Guide</button>
   <div class="tab-indicator"></div>
@@ -396,6 +397,22 @@ select:focus,input:focus{border-color:var(--accent);}
 </div>
 
 <!-- COMPARE -->
+<div class="panel" id="panel-primers">
+  <div class="result-card">
+    <div class="result-card-hdr">Primer Tm</div>
+    <label>Primer sequence <span style="font-weight:400;color:var(--text3);">(one oligo, 5′→3′)</span></label>
+    <textarea id="pr-seq" rows="2" placeholder="ATGCGTACGGATCCTTAAGG…" oninput="calcPrimer()"></textarea>
+    <div id="pr-result" style="margin-top:8px;"></div>
+  </div>
+  <div class="result-card" style="margin-top:14px;">
+    <div class="result-card-hdr">Restriction sites</div>
+    <label>DNA sequence <span style="font-weight:400;color:var(--text3);">(FASTA accepted · 20 common enzymes)</span></label>
+    <textarea id="re-seq" rows="4" placeholder=">plasmid&#10;…GAATTC…GGATCC…AAGCTT…" oninput="findRE()"></textarea>
+    <label style="display:flex;align-items:center;gap:5px;font-weight:400;font-size:12px;color:var(--text2);cursor:pointer;margin-top:6px;"><input type="checkbox" id="re-single" onchange="findRE()"> Unique cutters only</label>
+    <div id="re-result" style="margin-top:8px;"></div>
+  </div>
+</div>
+
 <div class="panel" id="panel-compare">
   <div class="row" style="gap:16px;">
     <div class="col">
@@ -800,6 +817,67 @@ function tmNN(seq){
   return tm;
 }
 function tmWallace(seq){const dna=seq.replace(/U/g,'T');const gc=(dna.match(/[GC]/g)||[]).length,at=(dna.match(/[AT]/g)||[]).length;return 4*gc+2*at;}
+
+// ── Primers & Restriction sites tab ─────────────────────────────────────────
+// 20 common palindromic 6–8 cutters (site == its own reverse-complement, so a
+// single forward-strand scan finds every cut).
+var RE_ENZYMES=[
+  {name:'EcoRI',site:'GAATTC'},{name:'BamHI',site:'GGATCC'},{name:'HindIII',site:'AAGCTT'},
+  {name:'NotI',site:'GCGGCCGC'},{name:'XhoI',site:'CTCGAG'},{name:'SalI',site:'GTCGAC'},
+  {name:'NcoI',site:'CCATGG'},{name:'NdeI',site:'CATATG'},{name:'XbaI',site:'TCTAGA'},
+  {name:'PstI',site:'CTGCAG'},{name:'SmaI',site:'CCCGGG'},{name:'KpnI',site:'GGTACC'},
+  {name:'SacI',site:'GAGCTC'},{name:'SpeI',site:'ACTAGT'},{name:'EcoRV',site:'GATATC'},
+  {name:'BglII',site:'AGATCT'},{name:'ClaI',site:'ATCGAT'},{name:'MluI',site:'ACGCGT'},
+  {name:'NheI',site:'GCTAGC'},{name:'ApaI',site:'GGGCCC'}
+];
+function calcPrimer(){
+  var seq=parseFASTA(document.getElementById('pr-seq').value).replace(/U/g,'T');
+  var out=document.getElementById('pr-result');
+  if(seq.length<6){ out.innerHTML='<div style="color:var(--text3);font-size:12px;">Enter a primer (≥6 nt).</div>'; return; }
+  var len=seq.length, gc=(seq.match(/[GC]/g)||[]).length, gcPct=100*gc/len;
+  var tm=tmNN(seq), clamp=((seq.slice(-5).match(/[GC]/g))||[]).length;
+  var rows=[['Length',len+' nt'],['GC content',gcPct.toFixed(1)+'%'],
+    ['Tm (nearest-neighbor)',isNaN(tm)?'—':tm.toFixed(1)+' °C'],
+    ['Tm (Wallace)',tmWallace(seq)+' °C'],['3′ GC clamp',clamp+' / 5']];
+  var flags=[];
+  if(len<18||len>30) flags.push('Length '+len+' nt — ideal 18–30');
+  if(gcPct<40||gcPct>60) flags.push('GC '+gcPct.toFixed(0)+'% — ideal 40–60%');
+  if(clamp===0) flags.push('No G/C in the last 5 bases (weak 3′ clamp)');
+  if(clamp>=4) flags.push('GC-rich 3′ end ('+clamp+'/5) — mispriming risk');
+  if(/([ACGT])\1{4,}/.test(seq)) flags.push('Single-base run ≥5');
+  var html=rows.map(function(r){ return '<div class="result-row"><span class="res-lbl">'+r[0]+'</span><span class="res-val">'+r[1]+'</span></div>'; }).join('');
+  html+= flags.length
+    ? '<div style="margin-top:8px;font-size:12px;color:#d08770;">⚠ '+flags.map(esc).join('<br>⚠ ')+'</div>'
+    : '<div style="margin-top:8px;font-size:12px;color:#43a047;">✓ Looks good.</div>';
+  out.innerHTML=html;
+}
+function findRE(){
+  var seq=parseFASTA(document.getElementById('re-seq').value).replace(/U/g,'T');
+  var out=document.getElementById('re-result');
+  if(seq.length<6){ out.innerHTML='<div style="color:var(--text3);font-size:12px;">Enter a DNA sequence.</div>'; return; }
+  var singleOnly=document.getElementById('re-single').checked;
+  var rows=RE_ENZYMES.map(function(e){
+    var pos=[], i=seq.indexOf(e.site);
+    while(i>=0){ pos.push(i+1); i=seq.indexOf(e.site,i+1); }
+    return {name:e.name, site:e.site, n:pos.length, pos:pos};
+  }).sort(function(a,b){ return a.n-b.n; });
+  var body=singleOnly ? rows.filter(function(r){ return r.n===1; }) : rows;
+  var cutters=rows.filter(function(r){ return r.n===1; }).length;
+  var html='<div style="font-size:12px;color:var(--text2);margin-bottom:6px;">'+seq.length+' bp · <b style="color:#43a047;">'+cutters+'</b> unique cutter'+(cutters===1?'':'s')+'</div>';
+  html+='<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr>'
+    +['Enzyme','Site','n','Positions'].map(function(h){ return '<th style="text-align:'+(h==='n'?'right':'left')+';padding:4px 6px;color:var(--text3);font-weight:600;">'+h+'</th>'; }).join('')
+    +'</tr></thead><tbody>';
+  body.forEach(function(r){
+    var col=r.n===1?'#43a047':(r.n===0?'var(--text3)':'var(--text)');
+    html+='<tr style="border-top:1px solid var(--border);"><td style="padding:4px 6px;font-weight:600;color:'+col+';">'+r.name+'</td>'
+      +'<td style="padding:4px 6px;font-family:var(--mono);color:var(--text2);">'+r.site+'</td>'
+      +'<td style="padding:4px 6px;text-align:right;font-family:var(--mono);">'+r.n+'</td>'
+      +'<td style="padding:4px 6px;font-family:var(--mono);color:var(--text3);">'+(r.pos.length?r.pos.slice(0,8).join(', ')+(r.pos.length>8?' …':''):'—')+'</td></tr>';
+  });
+  html+='</tbody></table>';
+  if(!body.length) html+='<div style="color:var(--text3);font-size:12px;">No unique cutters.</div>';
+  out.innerHTML=html;
+}
 function nucMW(seq,type){
   if(type==='rna'){const r={A:329.2,U:306.2,G:345.2,C:305.2};let mw=18.02;for(const b of seq)if(r[b])mw+=r[b];return mw;}
   const d={A:313.21,T:304.19,G:329.21,C:289.18};let mw=-61.96;for(const b of seq.replace(/U/g,'T'))if(d[b])mw+=d[b];return mw;
