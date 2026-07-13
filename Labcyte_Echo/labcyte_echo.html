@@ -711,7 +711,7 @@ tr:hover td{background:var(--surface2);}
           <input type="number" id="eg-bf-perCompound" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:70px">
         </div>
         <div class="field">
-          <label># Sets / copies <span class="pinfo" data-tip="How many full copies of the compound set are being run — e.g. 2 if every compound is plated in duplicate as a separate set (doubles both intermediate-plate wells used and destination wells needing backfill).">ⓘ</span></label>
+          <label># Sets / copies <span class="pinfo" data-tip="How many full copies of the compound set are being run — e.g. 2 if every compound is plated in duplicate as a separate set. Both sets dispense from the same intermediate wells (no extra prep), but they double the destination wells needing backfill.">ⓘ</span></label>
           <input type="number" id="eg-bf-nsets" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:60px">
         </div>
         <div class="field">
@@ -9376,8 +9376,10 @@ function _unhideAllResultsCols() {
     var totalBackfillUL=totalBackfillNL/1000;
 
     var usablePerWell=interVol-deadVol;
-    // Sets need their own intermediate dilution series; replicates reuse the same intermediate well.
-    var wellsUsedByCompounds=nComp*perComp*nSets;
+    // Sets and replicates are both just extra dispenses from the SAME intermediate well —
+    // neither needs its own prep. Only destination-well count (and so backfill volume) scales
+    // with sets/replicates; intermediate-plate wells used only scale with compounds.
+    var wellsUsedByCompounds=nComp*perComp;
 
     if(usablePerWell<=0){
       html+='<div style="color:#ef4444">⛔ <strong>'+interVol+' µL/well</strong> is at or below the '+deadVol+
@@ -9392,7 +9394,7 @@ function _unhideAllResultsCols() {
     html+=
       '<div>Total DMSO backfill needed for the assay: <strong>'+fmtVol(totalBackfillNL)+' nL</strong> ('+totalBackfillUL.toFixed(2)+' µL)</div>'+
       '<div>Usable volume per backfill well: <strong>'+usablePerWell.toFixed(1)+' µL</strong> ('+interVol+' µL pre-filled &minus; '+deadVol+' µL dead volume)</div>'+
-      '<div>Wells already spoken for by compounds: <strong>'+wellsUsedByCompounds+'</strong> ('+nComp+' × '+perComp+' × '+nSets+' set'+(nSets===1?'':'s')+')</div>'+
+      '<div>Wells already spoken for by compounds: <strong>'+wellsUsedByCompounds+'</strong> ('+nComp+' × '+perComp+' — sets and replicates redraw from these same wells)</div>'+
       '<div>Destination wells needing backfill: <strong>'+(nComp*rows.length*nSets*nReps)+'</strong> ('+nComp+' compounds × '+rows.length+' points × '+nSets+' set'+(nSets===1?'':'s')+' × '+nReps+' replicate'+(nReps===1?'':'s')+')</div>'+
       '<div style="margin-top:4px;padding:6px 10px;background:var(--surface);border:1px solid var(--accent);border-radius:6px">'+
         '✦ Reserve at least <strong>'+minWells+' free well'+(minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
