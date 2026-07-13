@@ -694,6 +694,36 @@ tr:hover td{background:var(--surface2);}
       </div>
     </div>
 
+    <!-- INTERMEDIATE PLATE BACKFILL CALCULATOR -->
+    <div id="eg-bf-card" style="margin-top:16px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:600;color:var(--text2)">Intermediate plate backfill calculator</span>
+        <span class="pinfo" data-tip="Unused wells on the intermediate dilution plate can be filled with neat DMSO and used as the backfill source, so you don't need a separate backfill plate on deck. This works out how much DMSO you need and the minimum number of wells to hold it.">ⓘ</span>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+        <div class="field">
+          <label># Compounds tested</label>
+          <input type="number" id="eg-bf-ncompounds" value="10" min="1" step="1" oninput="_egBfTrigger()" style="width:90px">
+        </div>
+        <div class="field">
+          <label>Intermediate wells used per compound <span class="pinfo" data-tip="How many intermediate-plate wells each compound occupies — i.e. the number of intermediate concentrations in its dilution chain (the Inter 1, Inter 2… stocks above).">ⓘ</span></label>
+          <input type="number" id="eg-bf-perCompound" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:70px">
+        </div>
+        <div class="field">
+          <label>Plate type</label>
+          <select id="eg-bf-plateType" onchange="_egBfPlateType();_egBfTrigger()" style="width:110px;padding:6px 8px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px">
+            <option value="pp">PP (384/1536)</option>
+            <option value="ldv">LDV</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Echo dead volume (µL) <span class="pinfo" data-tip="Minimum residual volume Echo needs left in a source well to keep dispensing reliably. Standard PP plates need ≥20 µL; low-dead-volume (LDV) plates can go down to ~2.5 µL.">ⓘ</span></label>
+          <input type="number" id="eg-bf-dead" value="20" min="0" step="0.5" oninput="_egBfTrigger()" style="width:70px">
+        </div>
+      </div>
+      <div id="eg-bf-out" style="font-size:12px;color:var(--text2);line-height:1.7"></div>
+    </div>
+
   </div></div>
 
 </div>
@@ -9213,6 +9243,72 @@ function _unhideAllResultsCols() {
     });
     tbl.style.display='';
     cr.style.display='flex';
+    _egBfCalc();
+  }
+
+  // ── Intermediate plate backfill calculator ──────────────────────────────
+  // Unused intermediate-plate wells (X per-compound intermediate concentrations
+  // eat into the plate) can double as the DMSO backfill source instead of a
+  // dedicated backfill plate. Works out total backfill volume needed for the
+  // whole assay and the minimum number of wells to hold it, respecting Echo's
+  // minimum dispensable residual (dead volume) per source well.
+  var _egBfTimer=null;
+  window._egBfTrigger=function(){
+    if(_egBfTimer) clearTimeout(_egBfTimer);
+    _egBfTimer=setTimeout(_egBfCalc,220);
+  };
+  window._egBfPlateType=function(){
+    var t=document.getElementById('eg-bf-plateType').value;
+    var deadEl=document.getElementById('eg-bf-dead');
+    if(deadEl) deadEl.value = t==='ldv' ? 2.5 : 20;
+  };
+  function _egBfCalc(){
+    var out=document.getElementById('eg-bf-out');
+    if(!out) return;
+    var rows=window._egRows, maxT=window._egMaxT;
+    if(!rows||!rows.length||!maxT){
+      out.innerHTML='<span style="color:var(--text3)">Set up a valid dose-response gradient above first.</span>';
+      return;
+    }
+    var nComp=parseInt(document.getElementById('eg-bf-ncompounds').value)||0;
+    var perComp=parseInt(document.getElementById('eg-bf-perCompound').value)||0;
+    var interVol=parseFloat(document.getElementById('eg-inter-vol').value)||0;
+    var deadVol=parseFloat(document.getElementById('eg-bf-dead').value)||0;
+
+    if(!nComp||!perComp||!interVol){
+      out.innerHTML='<span style="color:var(--text3)">Enter compound count, wells per compound and an intermediate plate volume.</span>';
+      return;
+    }
+
+    // Backfill needed per destination well = DMSO budget not already used by compound transfer.
+    // Sum across all dose points (one destination well each) to get per-compound total,
+    // then scale by the number of compounds sharing the same dilution series.
+    var backfillPerCompoundNL=0;
+    rows.forEach(function(row){
+      var vA=row.chosen?row.chosen.vAdj:0;
+      backfillPerCompoundNL += Math.max(0, maxT - vA);
+    });
+    var totalBackfillNL=backfillPerCompoundNL*nComp;
+    var totalBackfillUL=totalBackfillNL/1000;
+
+    var usablePerWell=interVol-deadVol;
+    var wellsUsedByCompounds=nComp*perComp;
+
+    if(usablePerWell<=0){
+      out.innerHTML='<div style="color:#ef4444">⛔ <strong>'+interVol+' µL/well</strong> is at or below the '+deadVol+
+        ' µL Echo dead volume — this plate can\'t supply any backfill. Increase the intermediate well volume or switch to an LDV plate.</div>';
+      return;
+    }
+
+    var minWells=Math.ceil(totalBackfillUL/usablePerWell);
+
+    out.innerHTML=
+      '<div>Total DMSO backfill needed for the assay: <strong>'+fmtVol(totalBackfillNL)+' nL</strong> ('+totalBackfillUL.toFixed(2)+' µL)</div>'+
+      '<div>Usable volume per backfill well: <strong>'+usablePerWell.toFixed(1)+' µL</strong> ('+interVol+' µL loaded &minus; '+deadVol+' µL dead volume)</div>'+
+      '<div>Wells already spoken for by compounds: <strong>'+wellsUsedByCompounds+'</strong> ('+nComp+' × '+perComp+')</div>'+
+      '<div style="margin-top:4px;padding:6px 10px;background:var(--surface);border:1px solid var(--accent);border-radius:6px">'+
+        '✦ Reserve at least <strong>'+minWells+' free well'+(minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
+      '</div>';
   }
 
   // ── Row callbacks ──────────────────────────────────────────────────────
