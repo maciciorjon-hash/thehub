@@ -9466,6 +9466,24 @@ function _unhideAllResultsCols() {
   }
 
   // ── Copy ──────────────────────────────────────────────────────────────
+  // Builds a bordered HTML <table> so rich-paste targets (OneNote, Word, Google
+  // Docs, Notion) render an actual aligned grid instead of relying on the
+  // destination app's tab-stop width — raw tabs only line up in monospace,
+  // grid-aware apps (spreadsheets); everywhere else, a word one character
+  // longer than its neighbour throws every following tab-stop off.
+  function _egHtmlTable(headers,aligns,rows){
+    var h='<table style="border-collapse:collapse;font-family:sans-serif;font-size:12px;margin:4px 0 10px">';
+    h+='<tr>'+headers.map(function(t,i){
+      return '<th style="text-align:'+(aligns[i]||'left')+';padding:4px 10px;border:1px solid #ccc;background:#f2f2f2;font-weight:600;white-space:nowrap">'+esc(t)+'</th>';
+    }).join('')+'</tr>';
+    rows.forEach(function(row){
+      h+='<tr>'+row.map(function(v,i){
+        return '<td style="text-align:'+(aligns[i]||'left')+';padding:4px 10px;border:1px solid #ccc;white-space:nowrap">'+esc(v)+'</td>';
+      }).join('')+'</tr>';
+    });
+    return h+'</table>';
+  }
+
   window._egCopy=function(){
     var vol=window._egVol||0,maxT=window._egMaxT||0;
     var presetEl=document.getElementById('eg-preset');
@@ -9474,17 +9492,24 @@ function _unhideAllResultsCols() {
     var stockStr=_egS.map(function(s){
       return s.label+': '+s.val+' '+(s.unit==='1e-3'?'mM':s.unit==='1e-6'?'µM':'nM');
     }).join(' > ');
-    // Metadata lines (no tabs → land in col A cleanly when pasting into Excel/Notion)
-    var lines=[
+    var metaLines=[
       'Echo Gradient — '+name,
       'Assay: '+vol+' µL | DMSO ≤ '+(dmsoEl?dmsoEl.value:'')+
         '% | Max transfer: '+maxT+' nL | Drop: 2.5 nL',
-      'Stocks: '+stockStr,
-      ''
+      'Stocks: '+stockStr
     ];
+    // Metadata lines (no tabs → land in col A cleanly when pasting into Excel/Notion)
+    var lines=metaLines.slice();
+    lines.push('');
+    var html='<div style="font-family:sans-serif;font-size:13px;color:#111">'+
+      metaLines.map(function(l){return '<p style="margin:0 0 3px">'+esc(l)+'</p>';}).join('');
+
     // TSV header — column order matches table: #, Stock, Ideal, Transfer, Final, Plan, Status
     var _uStr=window._egTopUnitStr||'nM';
-    lines.push(['#','Stock','Ideal (nL)','Transfer (nL)','Final ('+_uStr+')','Plan ('+_uStr+')','Status'].join('\t'));
+    var mainHeaders=['#','Stock','Ideal (nL)','Transfer (nL)','Final ('+_uStr+')','Plan ('+_uStr+')','Status'];
+    var mainAligns=['center','center','right','right','right','right','center'];
+    lines.push(mainHeaders.join('\t'));
+    var mainRows=[];
     // TSV data rows — strip locale commas from numbers for clean paste into Excel. Every field
     // falls back to '—' rather than '' — a genuinely empty cell (two tabs back to back) gets
     // silently collapsed by some paste targets (Notion, Slack, plain textareas), which shifts
@@ -9499,7 +9524,7 @@ function _unhideAllResultsCols() {
       // Map HTML glyphs to readable text
       stTxt=stTxt==='✓'?'exact':stTxt==='~'?'approx':stTxt==='✗'?'infeasible':'—';
       // td[0]=#, td[1]=Stock(select), td[2]=Ideal, td[3]=Transfer(input), td[4]=Final, td[5]=Plan, td[6]=Status
-      lines.push([
+      var row=[
         tds[0]?tds[0].textContent.trim():'—',
         sel?sel.options[sel.selectedIndex].text:'—',
         tds[2]?tds[2].textContent.trim():'—',
@@ -9507,41 +9532,71 @@ function _unhideAllResultsCols() {
         tds[4]?tds[4].textContent.trim().replace(/,/g,''):'—',
         tds[5]?tds[5].textContent.trim().replace(/,/g,''):'—',
         stTxt
-      ].join('\t'));
+      ];
+      mainRows.push(row);
+      lines.push(row.join('\t'));
     });
+    html+=_egHtmlTable(mainHeaders,mainAligns,mainRows);
 
     // ── Intermediate plate: prep & backfill ──
     var bf=_egBfCompute();
     lines.push('');
     lines.push('Intermediate plate: prep & backfill');
+    html+='<p style="font-weight:700;margin:0 0 4px">Intermediate plate: prep &amp; backfill</p>';
     if(bf.interVol>0){
-      lines.push('Pre-fill every well (intermediates + backfill) with '+bf.interVol+' µL neat DMSO before the run.');
+      var prefillLine='Pre-fill every well (intermediates + backfill) with '+bf.interVol+' µL neat DMSO before the run.';
+      lines.push(prefillLine);
+      html+='<p style="margin:0 0 8px">'+esc(prefillLine)+'</p>';
     }
     if(bf.prepRows){
       lines.push('');
       lines.push(['Well','From','Echo transfer (nL)'].join('\t'));
-      bf.prepRows.forEach(function(r){
-        lines.push([r.label, r.parent, r.ok?fmtVol(r.adjNL):'infeasible'].join('\t'));
+      var prepRowsOut=bf.prepRows.map(function(r){
+        return [r.label, r.parent, r.ok?fmtVol(r.adjNL):'infeasible'];
       });
+      prepRowsOut.forEach(function(row){ lines.push(row.join('\t')); });
+      html+=_egHtmlTable(['Well','From','Echo transfer (nL)'],['left','left','right'],prepRowsOut);
     }
     var b=bf.backfill;
     if(b.status==='ok'){
+      var bfLines=[
+        'Total DMSO backfill needed for the assay: '+fmtVol(b.totalBackfillNL)+' nL ('+b.totalBackfillUL.toFixed(2)+' µL)',
+        'Usable volume per backfill well: '+b.usablePerWell.toFixed(1)+' µL ('+bf.interVol+' µL pre-filled - '+bf.deadVol+' µL dead volume)',
+        'Wells already spoken for by compounds: '+b.wellsUsedByCompounds+' ('+bf.nComp+' × '+bf.perComp+')',
+        'Destination wells needing backfill: '+b.destWellsNeedingBackfill+' ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' sets × '+bf.nReps+' replicates)',
+        'Reserve at least '+b.minWells+' free well'+(b.minWells===1?'':'s')+' on the intermediate plate, pre-filled with neat DMSO, for backfill.',
+        'Total wells to pre-fill with '+bf.interVol+' µL DMSO before the run (intermediates + backfill): '+b.totalWells+' ('+b.wellsUsedByCompounds+' + '+b.minWells+')'
+      ];
       lines.push('');
-      lines.push('Total DMSO backfill needed for the assay: '+fmtVol(b.totalBackfillNL)+' nL ('+b.totalBackfillUL.toFixed(2)+' µL)');
-      lines.push('Usable volume per backfill well: '+b.usablePerWell.toFixed(1)+' µL ('+bf.interVol+' µL pre-filled - '+bf.deadVol+' µL dead volume)');
-      lines.push('Wells already spoken for by compounds: '+b.wellsUsedByCompounds+' ('+bf.nComp+' × '+bf.perComp+')');
-      lines.push('Destination wells needing backfill: '+b.destWellsNeedingBackfill+' ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' sets × '+bf.nReps+' replicates)');
-      lines.push('Reserve at least '+b.minWells+' free well'+(b.minWells===1?'':'s')+' on the intermediate plate, pre-filled with neat DMSO, for backfill.');
-      lines.push('Total wells to pre-fill with '+bf.interVol+' µL DMSO before the run (intermediates + backfill): '+b.totalWells+' ('+b.wellsUsedByCompounds+' + '+b.minWells+')');
+      bfLines.forEach(function(l){ lines.push(l); });
+      html+=bfLines.map(function(l,i){return '<p style="margin:0 0 3px'+(i===4?';font-weight:700':'')+'">'+esc(l)+'</p>';}).join('');
     }
+    html+='</div>';
 
     var txt=lines.join('\n');
-    if(navigator.clipboard&&navigator.clipboard.writeText){
-      navigator.clipboard.writeText(txt).then(function(){_egFlash();});
+
+    function plainFallback(){
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(txt).then(function(){_egFlash();});
+      } else {
+        var ta=document.createElement('textarea');ta.value=txt;
+        document.body.appendChild(ta);ta.select();document.execCommand('copy');
+        document.body.removeChild(ta);_egFlash();
+      }
+    }
+    // Write both formats: text/plain (tab-separated) is what Excel/Sheets read as
+    // real columns; text/html (an actual <table>) is what rich-paste targets
+    // (OneNote, Word, Docs, Notion) read as an aligned grid. Genuinely
+    // plain-text-only destinations (Notepad, plain TextEdit) fall back to the
+    // text/plain part automatically — there's no table concept to give them.
+    if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
+      var item=new ClipboardItem({
+        'text/plain': new Blob([txt],{type:'text/plain'}),
+        'text/html': new Blob([html],{type:'text/html'})
+      });
+      navigator.clipboard.write([item]).then(function(){_egFlash();}).catch(plainFallback);
     } else {
-      var ta=document.createElement('textarea');ta.value=txt;
-      document.body.appendChild(ta);ta.select();document.execCommand('copy');
-      document.body.removeChild(ta);_egFlash();
+      plainFallback();
     }
   };
   function _egFlash(){
