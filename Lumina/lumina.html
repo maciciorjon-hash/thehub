@@ -1149,136 +1149,150 @@ function loadLuminaTestData(){
 // (generic Levenberg-Marquardt math, no Echo-specific coupling)
 // ══════════════════════════════════════════════════════════════
 function _4plJac4(xi, bot, logec50, h, top) {
-  var ln10 = Math.LN10, E = Math.pow(10, h * (xi - logec50)), denom = (1+E)*(1+E);
-  return [E/(1+E), (top-bot)*h*ln10*E/denom, -(top-bot)*(xi-logec50)*ln10*E/denom, 1/(1+E)];
+  const ln10 = Math.LN10;
+  const E = Math.pow(10, h * (xi - logec50));
+  const denom = (1 + E) * (1 + E);
+  return [E / (1 + E), (top - bot) * h * ln10 * E / denom, -(top - bot) * (xi - logec50) * ln10 * E / denom, 1 / (1 + E)];
 }
 function _4plVal4(xi, bot, logec50, h, top) {
-  return bot + (top-bot) / (1 + Math.pow(10, h*(xi-logec50)));
+  return bot + (top - bot) / (1 + Math.pow(10, h * (xi - logec50)));
 }
 function _4plJac4_gain(xi, bot, logec50, h, top) {
-  var ln10=Math.LN10, E=Math.pow(10,h*(logec50-xi)), denom=(1+E)*(1+E);
+  const ln10=Math.LN10, E=Math.pow(10,h*(logec50-xi)), denom=(1+E)*(1+E);
   return [E/(1+E), -(top-bot)*h*ln10*E/denom, (top-bot)*(xi-logec50)*ln10*E/denom, 1/(1+E)];
 }
 function _4plVal4_gain(xi, bot, logec50, h, top) {
-  return bot + (top-bot) / (1 + Math.pow(10, h*(logec50-xi)));
+  return bot + (top - bot) / (1 + Math.pow(10, h * (logec50 - xi)));
 }
 function _solveLin(A, b) {
-  var n = b.length;
-  var M = A.map(function(r,i){ return r.concat([b[i]]); });
-  for (var col=0; col<n; col++) {
-    var mx = col;
-    for (var r2=col+1; r2<n; r2++) if (Math.abs(M[r2][col]) > Math.abs(M[mx][col])) mx = r2;
-    var tmp = M[col]; M[col] = M[mx]; M[mx] = tmp;
+  const n = b.length;
+  const M = A.map((r, i) => [...r, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let mx = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[mx][col])) mx = r;
+    [M[col], M[mx]] = [M[mx], M[col]];
     if (Math.abs(M[col][col]) < 1e-14) return null;
-    for (var r3=col+1; r3<n; r3++) {
-      var f = M[r3][col] / M[col][col];
-      for (var k=col; k<=n; k++) M[r3][k] -= f * M[col][k];
+    for (let r = col + 1; r < n; r++) {
+      const f = M[r][col] / M[col][col];
+      for (let k = col; k <= n; k++) M[r][k] -= f * M[col][k];
     }
   }
-  var x = new Array(n).fill(0);
-  for (var i=n-1; i>=0; i--) {
+  const x = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
     x[i] = M[i][n] / M[i][i];
-    for (var k2=i-1; k2>=0; k2--) M[k2][n] -= M[k2][i] * x[i];
+    for (let k = i - 1; k >= 0; k--) M[k][n] -= M[k][i] * x[i];
   }
   return x;
 }
 function _matInv(A) {
-  var n=A.length;
-  var M=A.map(function(row,i){ return row.concat(Array.from({length:n},function(_,j){ return i===j?1:0; })); });
-  for (var col=0; col<n; col++) {
-    var maxRow=col;
-    for (var r=col+1; r<n; r++) if (Math.abs(M[r][col])>Math.abs(M[maxRow][col])) maxRow=r;
-    var tmp=M[col]; M[col]=M[maxRow]; M[maxRow]=tmp;
-    if (Math.abs(M[col][col])<1e-14) return null;
-    var piv=M[col][col];
-    for (var j=0;j<2*n;j++) M[col][j]/=piv;
-    for (var r2=0;r2<n;r2++) {
-      if (r2===col) continue;
-      var f=M[r2][col];
-      for (var j2=0;j2<2*n;j2++) M[r2][j2]-=f*M[col][j2];
+  const n=A.length;
+  const M=A.map((row,i)=>[...row,...Array.from({length:n},(_,j)=>i===j?1:0)]);
+  for(let col=0;col<n;col++){
+    let maxRow=col;
+    for(let r=col+1;r<n;r++) if(Math.abs(M[r][col])>Math.abs(M[maxRow][col])) maxRow=r;
+    [M[col],M[maxRow]]=[M[maxRow],M[col]];
+    if(Math.abs(M[col][col])<1e-14) return null;
+    const piv=M[col][col];
+    for(let j=0;j<2*n;j++) M[col][j]/=piv;
+    for(let r=0;r<n;r++){
+      if(r===col) continue;
+      const f=M[r][col];
+      for(let j=0;j<2*n;j++) M[r][j]-=f*M[col][j];
     }
   }
-  return M.map(function(row){ return row.slice(n); });
+  return M.map(row=>row.slice(n));
 }
 function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
-  var n = xArr.length, np = pInit.length;
-  var cl = function(v,i){ return Math.max(loBound[i], Math.min(hiBound[i], v)); };
-  var p = pInit.map(cl);
-  var ssq = function(pp){ var s=0; for (var i=0;i<n;i++){ var r=yArr[i]-valFn(xArr[i], pp[0],pp[1],pp[2],pp[3]); s+=r*r; } return s; };
-  var lam = 0.001, bestP = p.slice(), bestSS = ssq(p);
-  for (var iter=0; iter<maxIter; iter++) {
-    var JtJ = Array.from({length:np}, function(){ return new Array(np).fill(0); });
-    var Jtr = new Array(np).fill(0);
-    for (var i=0;i<n;i++) {
-      var res = yArr[i] - valFn(xArr[i], p[0],p[1],p[2],p[3]);
-      var jac = jacFn(xArr[i], p[0],p[1],p[2],p[3]);
-      for (var a=0;a<np;a++) { Jtr[a] += jac[a]*res; for (var b=0;b<np;b++) JtJ[a][b] += jac[a]*jac[b]; }
+  const n = xArr.length, np = pInit.length;
+  const cl = (v, i) => Math.max(loBound[i], Math.min(hiBound[i], v));
+  let p = pInit.map(cl);
+  const ssq = (pp) => { let s = 0; for (let i = 0; i < n; i++) { const r = yArr[i] - valFn(xArr[i], ...pp); s += r * r; } return s; };
+  let lam = 0.001, bestP = [...p], bestSS = ssq(p);
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    const JtJ = Array.from({ length: np }, () => new Array(np).fill(0));
+    const Jtr = new Array(np).fill(0);
+    for (let i = 0; i < n; i++) {
+      const res = yArr[i] - valFn(xArr[i], ...p);
+      const jac = jacFn(xArr[i], ...p);
+      for (let a = 0; a < np; a++) {
+        Jtr[a] += jac[a] * res;
+        for (let b = 0; b < np; b++) JtJ[a][b] += jac[a] * jac[b];
+      }
     }
-    var gradNorm = Math.max.apply(null, Jtr.map(Math.abs));
-    if (gradNorm < 1e-8 * (1 + Math.abs(bestSS))) break;
-    var A = JtJ.map(function(row,i2){ return row.map(function(v,j2){ return i2===j2 ? v*(1+lam) : v; }); });
-    var delta = _solveLin(A, Jtr);
-    if (!delta) { lam = Math.min(lam*10, 1e8); continue; }
-    var pNew = p.map(function(v,i3){ return cl(v + delta[i3], i3); });
-    var newSS = ssq(pNew), curSS = ssq(p);
-    if (newSS < bestSS) { bestSS = newSS; bestP = pNew.slice(); }
+    // Gradient-norm convergence: ||Jᵀr||∞ scaled by 1+|SSR|. Catches the case where
+    // |Δp| has fallen below 1e-8 in a flat valley while the gradient is still meaningful.
+    const _gradNorm = Math.max(...Jtr.map(Math.abs));
+    if (_gradNorm < 1e-8 * (1 + Math.abs(bestSS))) break;
+    const A = JtJ.map((row, i) => row.map((v, j) => i === j ? v * (1 + lam) : v));
+    const delta = _solveLin(A, Jtr);
+    if (!delta) { lam = Math.min(lam * 10, 1e8); continue; }
+    const pNew = p.map((v, i) => cl(v + delta[i], i));
+    const newSS = ssq(pNew);
+    const curSS = ssq(p);
+    if (newSS < bestSS) { bestSS = newSS; bestP = [...pNew]; }
     if (newSS < curSS) {
-      var pred = 0;
-      for (var a2=0;a2<np;a2++) pred += delta[a2] * (lam*delta[a2] + Jtr[a2]);
-      pred *= 0.5;
-      var actual = curSS - newSS;
-      var rho = pred > 1e-12 ? actual/pred : 1;
-      var factor = Math.max(1/3, 1 - Math.pow(2*rho-1, 3));
+      // Fletcher / Madsen-Nielsen adaptive damping: scale lam by gain ratio rho.
+      // rho ≈ 1 → step matches predicted, big shrink. rho < 0.25 → poor step, grow lam.
+      let _pred = 0;
+      for (let a = 0; a < np; a++) _pred += delta[a] * (lam * delta[a] + Jtr[a]);
+      _pred *= 0.5;
+      const _actual = curSS - newSS;
+      const rho = _pred > 1e-12 ? _actual / _pred : 1;
+      const _factor = Math.max(1/3, 1 - Math.pow(2 * rho - 1, 3));
       p = pNew;
-      lam = Math.max(lam*factor, 1e-10);
-    } else { lam = Math.min(lam*2, 1e7); }
-    if (Math.max.apply(null, delta.map(Math.abs)) < 1e-10) break;
+      lam = Math.max(lam * _factor, 1e-10);
+    } else {
+      lam = Math.min(lam * 2, 1e7);
+    }
+    if (Math.max(...delta.map(Math.abs)) < 1e-10) break;
   }
   p = bestP;
-  var yMean = yArr.reduce(function(s,v){ return s+v; },0) / n;
-  var ssTot=0, ssRes=0;
-  for (var i4=0;i4<n;i4++) { ssTot += Math.pow(yArr[i4]-yMean,2); ssRes += Math.pow(yArr[i4]-valFn(xArr[i4],p[0],p[1],p[2],p[3]),2); }
-  var df = Math.max(1, n-np);
-  var sigma2 = ssRes/df;
-  var finalJtJ = Array.from({length:np}, function(){ return new Array(np).fill(0); });
-  for (var i5=0;i5<n;i5++){ var jac2=jacFn(xArr[i5],p[0],p[1],p[2],p[3]); for (var a2=0;a2<np;a2++) for (var b2=0;b2<np;b2++) finalJtJ[a2][b2]+=jac2[a2]*jac2[b2]; }
-  var inv = _matInv(finalJtJ);
-  var se = inv ? inv.map(function(row,i6){ return Math.sqrt(Math.max(0, row[i6]*sigma2)); }) : null;
-  return { params:p, r2: ssTot>0 ? 1-ssRes/ssTot : 0, df:df, se:se };
+  const yMean = yArr.reduce((s, v) => s + v, 0) / n;
+  let ssTot = 0, ssRes = 0;
+  for (let i = 0; i < n; i++) { ssTot += (yArr[i] - yMean) ** 2; ssRes += (yArr[i] - valFn(xArr[i], ...p)) ** 2; }
+  const df = Math.max(1, n - np);
+  const sigma2 = ssRes / df;
+  const finalJtJ = Array.from({length:np},()=>new Array(np).fill(0));
+  for(let i=0;i<n;i++){const jac=jacFn(xArr[i],...p);for(let a=0;a<np;a++) for(let b=0;b<np;b++) finalJtJ[a][b]+=jac[a]*jac[b];}
+  const inv=_matInv(finalJtJ);
+  const se=inv?inv.map((row,i)=>Math.sqrt(Math.max(0,row[i]*sigma2))):null;
+  return { params: p, r2: ssTot > 0 ? 1 - ssRes / ssTot : 0, se, df };
 }
 function _tQ95(df){
-  if (df<=1) return 12.71; if (df<=2) return 4.30; if (df<=3) return 3.18;
-  if (df<=4) return 2.78; if (df<=5) return 2.57; if (df<=7) return 2.36;
-  if (df<=10) return 2.23; if (df<=15) return 2.13; if (df<=20) return 2.09;
-  if (df<=30) return 2.04; return 1.96;
+  if(df<=1)return 12.71;if(df<=2)return 4.30;if(df<=3)return 3.18;
+  if(df<=4)return 2.78;if(df<=5)return 2.57;if(df<=7)return 2.36;
+  if(df<=10)return 2.23;if(df<=15)return 2.13;if(df<=20)return 2.09;
+  if(df<=30)return 2.04;return 1.96;
 }
 function _xAtYMid(xArr, yArr) {
   if (!xArr || !xArr.length) return 0;
-  var yMin=Infinity, yMax=-Infinity;
-  for (var i=0;i<yArr.length;i++){ if(yArr[i]<yMin) yMin=yArr[i]; if(yArr[i]>yMax) yMax=yArr[i]; }
-  if (!(yMax > yMin + 1e-12)) return (Math.min.apply(null,xArr)+Math.max.apply(null,xArr))/2;
-  var yMid = (yMin+yMax)/2;
-  var pts = xArr.map(function(x,i){ return {x:x,y:yArr[i]}; }).sort(function(a,b){ return a.x-b.x; });
-  for (var i2=0;i2<pts.length-1;i2++) {
-    var a=pts[i2], b=pts[i2+1];
-    var lo=Math.min(a.y,b.y), hi=Math.max(a.y,b.y);
-    if (yMid>=lo && yMid<=hi) {
-      var dy=b.y-a.y;
-      if (Math.abs(dy)<1e-12) return a.x;
-      return a.x + (yMid-a.y)*(b.x-a.x)/dy;
+  let yMin = Infinity, yMax = -Infinity;
+  for (let i = 0; i < yArr.length; i++) { if (yArr[i] < yMin) yMin = yArr[i]; if (yArr[i] > yMax) yMax = yArr[i]; }
+  if (!(yMax > yMin + 1e-12)) return (Math.min(...xArr) + Math.max(...xArr)) / 2;
+  const yMid = (yMin + yMax) / 2;
+  const pts = xArr.map((x, i) => ({ x, y: yArr[i] })).sort((a, b) => a.x - b.x);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y);
+    if (yMid >= lo && yMid <= hi) {
+      const dy = b.y - a.y;
+      if (Math.abs(dy) < 1e-12) return a.x;
+      return a.x + (yMid - a.y) * (b.x - a.x) / dy;
     }
   }
-  return (pts[0].x + pts[pts.length-1].x)/2;
+  return (pts[0].x + pts[pts.length - 1].x) / 2;
 }
 function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
-  var loEC=loBound[1], hiEC=hiBound[1];
-  var evenSeeds=[0.1,0.3,0.5,0.7,0.9].map(function(f){ return loEC+(hiEC-loEC)*f; });
-  var inflSeed = Math.max(loEC, Math.min(hiEC, _xAtYMid(xArr,yArr)));
-  var seeds = evenSeeds.concat([inflSeed]);
-  var best = null;
-  for (var i=0;i<seeds.length;i++) {
-    var p = pBase.slice(); p[1] = Math.max(loEC, Math.min(hiEC, seeds[i]));
-    var r = _lmFit(xArr, yArr, p, loBound, hiBound, valFn, jacFn, maxIter);
+  const loEC = loBound[1], hiEC = hiBound[1];
+  const evenSeeds = [0.1, 0.3, 0.5, 0.7, 0.9].map(f => loEC + (hiEC - loEC) * f);
+  const inflSeed = Math.max(loEC, Math.min(hiEC, _xAtYMid(xArr, yArr)));
+  const seeds = [...evenSeeds, inflSeed];
+  let best = null;
+  for (const ec of seeds) {
+    const p = [...pBase];
+    p[1] = Math.max(loEC, Math.min(hiEC, ec));
+    const r = _lmFit(xArr, yArr, p, loBound, hiBound, valFn, jacFn, maxIter);
     if (!best || r.r2 > best.r2) best = r;
   }
   return best;

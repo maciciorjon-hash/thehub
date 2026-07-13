@@ -728,10 +728,8 @@ function _4plVal4_gain(xi, bot, logec50, h, top) {
 }
 
 function _4plJac4_gain(xi, bot, logec50, h, top) {
-  const ln10 = Math.LN10;
-  const E = Math.pow(10, h * (logec50 - xi));
-  const denom = (1 + E) * (1 + E);
-  return [E / (1 + E), -(top - bot) * h * ln10 * E / denom, (top - bot) * (xi - logec50) * ln10 * E / denom, 1 / (1 + E)];
+  const ln10=Math.LN10, E=Math.pow(10,h*(logec50-xi)), denom=(1+E)*(1+E);
+  return [E/(1+E), -(top-bot)*h*ln10*E/denom, (top-bot)*(xi-logec50)*ln10*E/denom, 1/(1+E)];
 }
 
 // One-site binding/saturation model for tracer titration: a 2-parameter hyperbola
@@ -808,14 +806,22 @@ function _matInv(A) {
 }
 
 function _xAtYMid(xArr, yArr) {
-  var minY = Math.min.apply(null, yArr), maxY = Math.max.apply(null, yArr);
-  var mid = (minY + maxY) / 2;
-  var best = xArr[0], bestDist = Infinity;
-  for (var i = 0; i < yArr.length; i++) {
-    var d = Math.abs(yArr[i] - mid);
-    if (d < bestDist) { bestDist = d; best = xArr[i]; }
+  if (!xArr || !xArr.length) return 0;
+  let yMin = Infinity, yMax = -Infinity;
+  for (let i = 0; i < yArr.length; i++) { if (yArr[i] < yMin) yMin = yArr[i]; if (yArr[i] > yMax) yMax = yArr[i]; }
+  if (!(yMax > yMin + 1e-12)) return (Math.min(...xArr) + Math.max(...xArr)) / 2;
+  const yMid = (yMin + yMax) / 2;
+  const pts = xArr.map((x, i) => ({ x, y: yArr[i] })).sort((a, b) => a.x - b.x);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const lo = Math.min(a.y, b.y), hi = Math.max(a.y, b.y);
+    if (yMid >= lo && yMid <= hi) {
+      const dy = b.y - a.y;
+      if (Math.abs(dy) < 1e-12) return a.x;
+      return a.x + (yMid - a.y) * (b.x - a.x) / dy;
+    }
   }
-  return best;
+  return (pts[0].x + pts[pts.length - 1].x) / 2;
 }
 
 function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
@@ -836,6 +842,8 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
         for (let b = 0; b < np; b++) JtJ[a][b] += jac[a] * jac[b];
       }
     }
+    // Gradient-norm convergence: ||Jᵀr||∞ scaled by 1+|SSR|. Catches the case where
+    // |Δp| has fallen below 1e-8 in a flat valley while the gradient is still meaningful.
     const _gradNorm = Math.max(...Jtr.map(Math.abs));
     if (_gradNorm < 1e-8 * (1 + Math.abs(bestSS))) break;
     const A = JtJ.map((row, i) => row.map((v, j) => i === j ? v * (1 + lam) : v));
@@ -846,6 +854,8 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
     const curSS = ssq(p);
     if (newSS < bestSS) { bestSS = newSS; bestP = [...pNew]; }
     if (newSS < curSS) {
+      // Fletcher / Madsen-Nielsen adaptive damping: scale lam by gain ratio rho.
+      // rho ≈ 1 → step matches predicted, big shrink. rho < 0.25 → poor step, grow lam.
       let _pred = 0;
       for (let a = 0; a < np; a++) _pred += delta[a] * (lam * delta[a] + Jtr[a]);
       _pred *= 0.5;
