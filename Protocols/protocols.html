@@ -195,6 +195,32 @@ td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px sol
 
 .pinfo{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--text3);font-size:9px;cursor:help;flex-shrink:0;margin-left:4px;vertical-align:middle;}
 
+/* ── STICKY NOTES ── */
+.notes-fab{position:fixed;bottom:24px;right:24px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;box-shadow:0 4px 14px rgba(0,0,0,.28);cursor:pointer;font-size:26px;line-height:1;display:flex;align-items:center;justify-content:center;z-index:500;transition:transform .15s,box-shadow .15s;}
+.notes-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(0,0,0,.32);}
+.notes-fab.hidden{display:none;}
+#sticky-layer{position:fixed;inset:0;pointer-events:none;z-index:400;}
+.sticky-note{position:absolute;pointer-events:auto;min-width:140px;min-height:110px;border-radius:3px 3px 9px 9px;box-shadow:0 8px 22px rgba(0,0,0,.28),0 2px 5px rgba(0,0,0,.18);display:flex;flex-direction:column;transform:rotate(var(--tilt,0deg));transition:box-shadow .15s,transform .1s;}
+.sticky-note:hover{box-shadow:0 12px 30px rgba(0,0,0,.32),0 2px 5px rgba(0,0,0,.18);}
+.sticky-note.dragging{transition:none;box-shadow:0 16px 36px rgba(0,0,0,.38);z-index:10;}
+.sticky-note-head{display:flex;align-items:center;justify-content:space-between;padding:6px 7px;cursor:grab;user-select:none;flex-shrink:0;}
+.sticky-note-head:active{cursor:grabbing;}
+.sticky-note-colors{display:flex;gap:4px;}
+.sticky-note-color-dot{width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(0,0,0,.18);cursor:pointer;padding:0;}
+.sticky-note-color-dot.active{border-color:rgba(0,0,0,.55);box-shadow:0 0 0 1px rgba(0,0,0,.2);}
+.sticky-note-del{background:none;border:none;font-size:15px;cursor:pointer;color:rgba(0,0,0,.4);line-height:1;padding:2px 5px;border-radius:4px;}
+.sticky-note-del:hover{color:rgba(0,0,0,.85);background:rgba(0,0,0,.08);}
+.sticky-note-body{flex:1;border:none;background:transparent;resize:both;overflow:auto;padding:2px 10px 10px;font-family:var(--sans);font-size:13px;line-height:1.5;color:#2b2b2b;outline:none;min-height:80px;}
+.sticky-note-body::placeholder{color:rgba(0,0,0,.38);}
+
+.step-note-btn{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;margin-left:6px;border-radius:4px;border:none;background:none;cursor:pointer;color:var(--text3);opacity:.45;transition:opacity .15s,color .15s,background .15s;vertical-align:middle;flex-shrink:0;}
+.step-note-btn:hover{opacity:1;background:var(--surface3);}
+.step-note-btn.has-note{opacity:1;color:var(--accent);}
+.step-note-btn svg{width:13px;height:13px;}
+.step-note-box{display:none;margin:6px 0 2px;padding:8px 12px;background:var(--accent-dim);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;}
+.step-note-box.open{display:block;}
+.step-note-box textarea{width:100%;border:none;background:transparent;resize:vertical;font-family:var(--sans);font-size:12.5px;color:var(--text);outline:none;min-height:44px;}
+
 @media (max-width:720px){
   .grid-2{grid-template-columns:1fr;}
   header{padding:0 16px;}
@@ -214,6 +240,8 @@ td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px sol
   .delivery-bar{flex-wrap:wrap;}
   .delivery-bar select{max-width:none;width:100%;}
   .proto-table{display:block;overflow-x:auto;}
+  .sticky-note{max-width:calc(100vw - 32px);}
+  .notes-fab{bottom:16px;right:16px;width:46px;height:46px;font-size:22px;}
 }
 
 /* ── PRINT / "SAVE AS PDF" ──
@@ -2575,6 +2603,8 @@ td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px sol
 </div>
 </div>
 <div id="print-root"></div>
+<div id="sticky-layer"></div>
+<button class="notes-fab hidden" id="notes-fab" onclick="addStickyNote()" title="Add a sticky note">+</button>
 
 <script>
 // ── ESC / SAFETY (matches Echo/Dora convention) ──
@@ -2711,11 +2741,13 @@ function openProtocol(id) {
   window.scrollTo(0,0);
   // Lazily render the Output tab's export panel the first time a protocol is opened.
   refreshExportPanel(id);
+  openNotesForProtocol(id);
 }
 function closeProtocol() {
   _openProtocolId = null;
   document.querySelectorAll('.detail-wrap').forEach(function(d) { d.classList.remove('active'); });
   document.getElementById('home-view').style.display = '';
+  closeNotesForProtocol();
 }
 function showDTab(pid, tab) {
   var wrap = document.getElementById('detail-' + pid);
@@ -2727,6 +2759,223 @@ function showDTab(pid, tab) {
     p.classList.toggle('active', p.dataset.tab === tab);
   });
   if (tab === 'output') refreshExportPanel(pid);
+}
+
+// ── STICKY NOTES ──
+// Two flavours, both persisted per-protocol in localStorage (no backend in this app):
+// (1) free-floating draggable notes, shown across all tabs of the open protocol;
+// (2) notes pinned to a specific Protocol-tab step, toggled via a small pin icon.
+var NOTE_COLORS = ['#fff3b0','#ffd6e8','#d0e8ff','#d3f5d3','#ffe1c2','#e5d4ff'];
+var _notesOpenPid = null;
+var _noteDrag = null; // {id, startX, startY, origX, origY}
+
+function _notesKey(pid) { return 'proto_notes_' + pid; }
+function getProtoNotes(pid) {
+  try { var d = JSON.parse(localStorage.getItem(_notesKey(pid))); return d || { floating: [], steps: {} }; }
+  catch(e) { return { floating: [], steps: {} }; }
+}
+function saveProtoNotes(pid, data) {
+  try { localStorage.setItem(_notesKey(pid), JSON.stringify(data)); } catch(e) {}
+}
+function debounce(fn, wait) {
+  var t;
+  return function() { var args = arguments, ctx = this; clearTimeout(t); t = setTimeout(function(){ fn.apply(ctx, args); }, wait); };
+}
+function _pointOf(e) { return e.touches && e.touches[0] ? e.touches[0] : e; }
+
+function openNotesForProtocol(pid) {
+  _notesOpenPid = pid;
+  document.getElementById('notes-fab').classList.remove('hidden');
+  renderStickyNotes();
+  assignStepNoteKeys(pid);
+  renderStepNotes(pid);
+}
+function closeNotesForProtocol() {
+  _notesOpenPid = null;
+  document.getElementById('notes-fab').classList.add('hidden');
+  document.getElementById('sticky-layer').innerHTML = '';
+}
+
+// ── Floating notes ──
+function renderStickyNotes() {
+  var layer = document.getElementById('sticky-layer');
+  layer.innerHTML = '';
+  if (!_notesOpenPid) return;
+  var data = getProtoNotes(_notesOpenPid);
+  data.floating.forEach(function(note) { layer.appendChild(buildStickyNoteEl(note)); });
+}
+function buildStickyNoteEl(note) {
+  var el = document.createElement('div');
+  el.className = 'sticky-note';
+  el.style.left = note.x + 'px';
+  el.style.top = note.y + 'px';
+  el.style.width = (note.w || 200) + 'px';
+  el.style.height = (note.h || 170) + 'px';
+  el.style.background = note.color;
+  el.style.setProperty('--tilt', (note.tilt || 0) + 'deg');
+  el.dataset.id = note.id;
+
+  var head = document.createElement('div');
+  head.className = 'sticky-note-head';
+  var colors = document.createElement('div');
+  colors.className = 'sticky-note-colors';
+  NOTE_COLORS.forEach(function(c) {
+    var dot = document.createElement('button');
+    dot.className = 'sticky-note-color-dot' + (c === note.color ? ' active' : '');
+    dot.style.background = c;
+    dot.title = 'Change colour';
+    dot.onclick = function(e) { e.stopPropagation(); setStickyNoteColor(note.id, c); };
+    colors.appendChild(dot);
+  });
+  var del = document.createElement('button');
+  del.className = 'sticky-note-del'; del.innerHTML = '&times;'; del.title = 'Delete note';
+  del.onclick = function(e) { e.stopPropagation(); deleteStickyNote(note.id); };
+  head.appendChild(colors); head.appendChild(del);
+  head.addEventListener('mousedown', function(e) { if (e.target === head) startStickyDrag(e, note.id); });
+  head.addEventListener('touchstart', function(e) { if (e.target === head) startStickyDrag(e, note.id); }, { passive: true });
+
+  var body = document.createElement('textarea');
+  body.className = 'sticky-note-body';
+  body.placeholder = 'Write a note…';
+  body.value = note.text || '';
+  var saveText = debounce(function() { updateStickyNoteText(note.id, body.value); }, 300);
+  body.addEventListener('input', saveText);
+  body.addEventListener('mouseup', debounce(function() { saveStickyNoteSize(note.id, el.offsetWidth, el.offsetHeight); }, 300));
+
+  el.appendChild(head); el.appendChild(body);
+  return el;
+}
+// Reads the CURRENT (possibly not-yet-debounce-saved) textarea value out of
+// every rendered note before any operation that calls renderStickyNotes() —
+// otherwise a quick click (e.g. a colour swatch) right after typing can race
+// the debounced save and the rebuild would show stale/empty text.
+function _flushLiveNoteText() {
+  var data = getProtoNotes(_notesOpenPid);
+  document.querySelectorAll('.sticky-note').forEach(function(el) {
+    var id = el.dataset.id, ta = el.querySelector('.sticky-note-body');
+    var n = data.floating.filter(function(n){ return n.id === id; })[0];
+    if (n && ta) n.text = ta.value;
+  });
+  return data;
+}
+function addStickyNote() {
+  if (!_notesOpenPid) return;
+  var data = _flushLiveNoteText();
+  var id = 'n' + Date.now();
+  var offset = (data.floating.length % 5) * 26;
+  data.floating.push({ id: id, x: 110 + offset, y: 100 + offset, w: 200, h: 170, color: NOTE_COLORS[data.floating.length % NOTE_COLORS.length], text: '', tilt: (Math.random()*6-3).toFixed(1) });
+  saveProtoNotes(_notesOpenPid, data);
+  renderStickyNotes();
+}
+function deleteStickyNote(id) {
+  var data = _flushLiveNoteText();
+  data.floating = data.floating.filter(function(n){ return n.id !== id; });
+  saveProtoNotes(_notesOpenPid, data);
+  renderStickyNotes();
+}
+function updateStickyNoteText(id, text) {
+  var data = getProtoNotes(_notesOpenPid);
+  var n = data.floating.filter(function(n){ return n.id === id; })[0];
+  if (n) { n.text = text; saveProtoNotes(_notesOpenPid, data); }
+}
+function saveStickyNoteSize(id, w, h) {
+  if (!w || !h) return; // element was likely detached mid-debounce; don't persist a bogus 0x0 size
+  var data = getProtoNotes(_notesOpenPid);
+  var n = data.floating.filter(function(n){ return n.id === id; })[0];
+  if (n) { n.w = w; n.h = h; saveProtoNotes(_notesOpenPid, data); }
+}
+function setStickyNoteColor(id, color) {
+  var data = _flushLiveNoteText();
+  var n = data.floating.filter(function(n){ return n.id === id; })[0];
+  if (n) { n.color = color; saveProtoNotes(_notesOpenPid, data); renderStickyNotes(); }
+}
+function startStickyDrag(e, id) {
+  var pt = _pointOf(e);
+  var data = getProtoNotes(_notesOpenPid);
+  var note = data.floating.filter(function(n){ return n.id === id; })[0];
+  if (!note) return;
+  _noteDrag = { id: id, startX: pt.clientX, startY: pt.clientY, origX: note.x, origY: note.y };
+  var el = document.querySelector('.sticky-note[data-id="' + id + '"]');
+  if (el) el.classList.add('dragging');
+  document.addEventListener('mousemove', onStickyDragMove);
+  document.addEventListener('mouseup', onStickyDragEnd);
+  document.addEventListener('touchmove', onStickyDragMove, { passive: false });
+  document.addEventListener('touchend', onStickyDragEnd);
+}
+function onStickyDragMove(e) {
+  if (!_noteDrag) return;
+  if (e.type === 'touchmove') e.preventDefault();
+  var pt = _pointOf(e);
+  var dx = pt.clientX - _noteDrag.startX, dy = pt.clientY - _noteDrag.startY;
+  var el = document.querySelector('.sticky-note[data-id="' + _noteDrag.id + '"]');
+  if (el) { el.style.left = (_noteDrag.origX + dx) + 'px'; el.style.top = (_noteDrag.origY + dy) + 'px'; }
+}
+function onStickyDragEnd(e) {
+  if (!_noteDrag) return;
+  var pt = _pointOf(e.changedTouches ? { touches: e.changedTouches } : e);
+  var dx = pt.clientX - _noteDrag.startX, dy = pt.clientY - _noteDrag.startY;
+  var data = getProtoNotes(_notesOpenPid);
+  var note = data.floating.filter(function(n){ return n.id === _noteDrag.id; })[0];
+  if (note) { note.x = Math.max(0, _noteDrag.origX + dx); note.y = Math.max(0, _noteDrag.origY + dy); saveProtoNotes(_notesOpenPid, data); }
+  var el = document.querySelector('.sticky-note[data-id="' + _noteDrag.id + '"]');
+  if (el) el.classList.remove('dragging');
+  _noteDrag = null;
+  document.removeEventListener('mousemove', onStickyDragMove);
+  document.removeEventListener('mouseup', onStickyDragEnd);
+  document.removeEventListener('touchmove', onStickyDragMove);
+  document.removeEventListener('touchend', onStickyDragEnd);
+}
+
+// ── Step-anchored notes (Protocol tab only) ──
+function assignStepNoteKeys(pid) {
+  var wrap = document.getElementById('detail-' + pid);
+  if (!wrap) return;
+  var pane = wrap.querySelector('.dpane[data-tab="protocol"]');
+  if (!pane || pane.dataset.stepsTagged) return;
+  var items = pane.querySelectorAll('.proto-list li');
+  items.forEach(function(li, i) {
+    var key = pid + '-s' + i;
+    li.dataset.noteKey = key;
+    var btn = document.createElement('button');
+    btn.className = 'step-note-btn';
+    btn.title = 'Add a note to this step';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+    btn.onclick = function(e) { e.stopPropagation(); toggleStepNote(key); };
+    li.appendChild(btn);
+    var box = document.createElement('div');
+    box.className = 'step-note-box';
+    box.dataset.noteKey = key;
+    var ta = document.createElement('textarea');
+    ta.placeholder = 'Note for this step…';
+    ta.addEventListener('input', debounce(function() { saveStepNote(pid, key, ta.value); }, 300));
+    box.appendChild(ta);
+    li.appendChild(box);
+  });
+  pane.dataset.stepsTagged = '1';
+}
+function renderStepNotes(pid) {
+  var wrap = document.getElementById('detail-' + pid);
+  if (!wrap) return;
+  var data = getProtoNotes(pid);
+  wrap.querySelectorAll('.step-note-btn').forEach(function(btn) {
+    var li = btn.closest('li');
+    var key = li.dataset.noteKey;
+    var text = data.steps[key] || '';
+    btn.classList.toggle('has-note', !!text);
+    var ta = li.querySelector('.step-note-box textarea');
+    if (ta) ta.value = text;
+  });
+}
+function toggleStepNote(key) {
+  var box = document.querySelector('.step-note-box[data-note-key="' + key + '"]');
+  if (box) { box.classList.toggle('open'); var ta = box.querySelector('textarea'); if (box.classList.contains('open') && ta) ta.focus(); }
+}
+function saveStepNote(pid, key, text) {
+  var data = getProtoNotes(pid);
+  if (text) data.steps[key] = text; else delete data.steps[key];
+  saveProtoNotes(pid, data);
+  var btn = document.querySelector('li[data-note-key="' + key + '"] .step-note-btn');
+  if (btn) btn.classList.toggle('has-note', !!text);
 }
 
 // ── DELIVERY-METHOD BRANCHING (CRISPR Knockout / Knock-in dropdown cards) ──
