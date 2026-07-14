@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protocols</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('hub_theme') || 'light';
+    if (t === 'dark') document.documentElement.setAttribute('data-theme','dark');
+    document.addEventListener('DOMContentLoaded', function() {
+      var chk = document.getElementById('theme-chk');
+      if (chk) chk.checked = (t === 'dark');
+    });
+  } catch(e) {}
+})();
+</script>
+<style>
+:root {
+  --bg:#f4f5f8; --surface:#fff; --surface2:#f0f1f5; --surface3:#e4e6ee;
+  --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.13);
+  --text:#1a1d2e; --text2:#5a5f7a; --text3:#9ca0b8;
+  --accent:#a56983; --accent-dim:rgba(165,105,131,0.12);
+  --accent2:#5e87c5; --accent2-dim:rgba(94,135,197,0.12);
+  --warn:#d9822b; --warn-dim:rgba(217,130,43,0.1);
+  --good:#5da162; --good-dim:rgba(93,161,98,0.1);
+  --sans:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+  --r:8px; --rlg:12px;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.04); --shadow-sm:0 2px 8px rgba(0,0,0,.06);
+  --shadow-md:0 6px 24px rgba(0,0,0,.09); --shadow-lg:0 16px 48px rgba(0,0,0,.14);
+  --modal-backdrop:rgba(0,0,0,.45);
+}
+[data-theme="dark"] {
+  --bg:#0d0f14; --surface:#13161e; --surface2:#1c2030; --surface3:#252a3a;
+  --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2; --text2:#8b90a8; --text3:#4e5368;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.30); --shadow-sm:0 2px 8px rgba(0,0,0,.40);
+  --shadow-md:0 6px 24px rgba(0,0,0,.50); --shadow-lg:0 16px 48px rgba(0,0,0,.55);
+  --modal-backdrop:rgba(0,0,0,.65);
+}
+input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased;}
+
+header{
+  height:58px;display:flex;align-items:center;gap:14px;padding:0 28px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  box-shadow:0 1px 0 var(--border),0 2px 8px rgba(0,0,0,0.04);
+  flex-shrink:0;position:sticky;top:0;z-index:100;
+}
+.app-logo{
+  width:32px;height:32px;border-radius:7px;background:var(--accent);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.app-logo svg{width:18px;height:18px;stroke:#fff;}
+header h1{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+header p{font-size:11px;color:var(--text2);}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.theme-switch{position:relative;display:inline-block;width:36px;height:20px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;inset:0;background:var(--surface3);border-radius:20px;cursor:pointer;transition:background .2s;}
+.theme-slider::before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;}
+input:checked+.theme-slider{background:var(--accent);}
+input:checked+.theme-slider::before{transform:translateX(16px);}
+
+#app-body{flex:1;overflow-y:auto;}
+
+/* ── HOME: search + filters + card grid ── */
+.home-wrap{max-width:1040px;margin:0 auto;padding:24px 24px 40px;}
+.home-toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:18px;}
+.search-box{position:relative;flex:1;min-width:220px;max-width:360px;}
+.search-box input{
+  width:100%;background:var(--surface);border:1.5px solid var(--border2);border-radius:20px;
+  padding:8px 14px 8px 34px;font-family:var(--sans);font-size:13px;color:var(--text);outline:none;
+  transition:border-color .15s;
+}
+.search-box input:focus{border-color:var(--accent);}
+.search-box svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:var(--text3);pointer-events:none;}
+.filter-pills{display:flex;gap:7px;flex-wrap:wrap;}
+.filter-pill{
+  padding:6px 13px;border-radius:20px;border:1.5px solid var(--border2);background:var(--surface);
+  color:var(--text2);font-size:12px;font-weight:500;font-family:var(--sans);cursor:pointer;
+  transition:all .15s;white-space:nowrap;
+}
+.filter-pill:hover{border-color:var(--accent);color:var(--accent);}
+.filter-pill.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+.proto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px;}
+.proto-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);
+  padding:16px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s;
+  display:flex;flex-direction:column;gap:8px;
+}
+.proto-card:hover{border-color:var(--accent);box-shadow:var(--shadow-sm);transform:translateY(-1px);}
+.proto-card-icon{width:34px;height:34px;border-radius:8px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center;}
+.proto-card-icon svg{width:18px;height:18px;stroke:var(--accent);}
+.proto-card-name{font-size:13.5px;font-weight:600;color:var(--text);letter-spacing:-0.1px;}
+.proto-card-desc{font-size:11.5px;color:var(--text2);line-height:1.5;flex:1;}
+.proto-card-foot{display:flex;gap:6px;flex-wrap:wrap;}
+.tag{font-size:9.5px;padding:2px 8px;border-radius:10px;font-family:var(--mono);font-weight:500;letter-spacing:0.2px;}
+.tag-calc{background:var(--good-dim);color:var(--good);}
+.tag-ref{background:var(--surface3);color:var(--text3);}
+.tag-cat{background:var(--accent2-dim);color:var(--accent2);}
+.empty-hint{text-align:center;padding:60px 24px;color:var(--text3);font-size:13px;}
+
+/* ── DETAIL VIEW ── */
+.detail-wrap{max-width:900px;margin:0 auto;padding:20px 24px 48px;display:none;}
+.detail-wrap.active{display:block;}
+.back-btn{
+  background:none;border:none;color:var(--text2);font-size:12.5px;cursor:pointer;
+  padding:6px 0;margin-bottom:12px;font-family:var(--sans);display:inline-flex;align-items:center;gap:5px;
+  transition:color .15s;
+}
+.back-btn:hover{color:var(--accent);}
+.detail-header{margin-bottom:16px;}
+.detail-header h2{font-size:20px;font-weight:700;letter-spacing:-0.3px;margin-bottom:8px;}
+.detail-badges{display:flex;gap:6px;}
+
+.dtabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:18px;position:relative;}
+.dtab-btn{
+  padding:10px 16px;font-size:12.5px;color:var(--text3);cursor:pointer;
+  border-bottom:2px solid transparent;font-family:var(--sans);background:none;border-top:none;border-left:none;border-right:none;
+  transition:color .15s;font-weight:500;
+}
+.dtab-btn:hover{color:var(--text2);}
+.dtab-btn.active{color:var(--text);border-bottom-color:var(--accent);font-weight:600;}
+.dpane{display:none;}
+.dpane.active{display:block;}
+
+/* ── PORTED PROTOCOL/CALC MARKUP (from LabMate, restyled to Protocols' own palette) ── */
+.proto-section{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);margin:16px 0 8px;font-family:var(--mono);}
+.proto-section:first-child{margin-top:0;}
+.proto-list{padding-left:18px;display:flex;flex-direction:column;gap:5px;}
+.proto-list li{font-size:13px;line-height:1.6;color:var(--text);}
+.proto-note{background:var(--surface2);border-left:3px solid var(--accent);padding:9px 13px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.7;color:var(--text2);margin:8px 0;}
+.proto-note.warn{border-left-color:var(--warn);}
+.proto-note.tip{border-left-color:var(--accent2);background:var(--accent2-dim);}
+.tip-header{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
+.tip-badge{font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--accent2);color:#fff;font-family:var(--mono);letter-spacing:0.3px;}
+.proto-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0;}
+.proto-table th{background:var(--surface2);text-align:left;padding:6px 10px;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);font-family:var(--sans);border-bottom:1px solid var(--border);}
+.proto-table td{padding:6px 10px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px;}
+
+.calc-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:18px;margin-top:16px;}
+.calc-box:first-child{margin-top:0;}
+.calc-box-title{font-size:11px;font-family:var(--mono);font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent);margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+.calc-source{font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:10px;}
+.calc-source a{color:var(--accent);text-decoration:none;}
+.calc-source a:hover{text-decoration:underline;}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.field{display:flex;flex-direction:column;gap:5px;}
+.field label{font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:0.6px;font-weight:500;}
+input[type="text"],input[type="number"],select{
+  background:var(--surface);border:1.5px solid var(--border2);border-radius:8px;color:var(--text);
+  padding:7px 10px;font-family:var(--sans);font-size:12.5px;transition:border-color .15s;outline:none;width:100%;
+}
+input:focus,select:focus{border-color:var(--accent);}
+select option{background:var(--surface);}
+
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;}
+.btn:hover{background:var(--surface3);color:var(--text);}
+.btn-primary{background:var(--accent);color:#fff;border-color:transparent;font-weight:600;}
+.btn-primary:hover{opacity:.88;background:var(--accent);color:#fff;}
+.btn-sm{padding:5px 11px;font-size:11px;}
+
+.result-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-top:12px;}
+.result-big{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--accent2);}
+.result-unit{font-size:12px;color:var(--text2);margin-top:3px;}
+.result-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);}
+.result-row:last-child{border-bottom:none;}
+.result-label{font-size:12px;color:var(--text2);font-family:var(--mono);}
+.result-val{font-family:var(--mono);font-size:12px;color:var(--text);font-weight:600;}
+.badge{font-size:10px;padding:2px 7px;border-radius:20px;font-family:var(--mono);font-weight:500;border:1px solid;}
+.badge-formula{color:var(--accent);border-color:var(--accent);background:var(--accent-dim);}
+
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{text-align:left;font-size:10px;font-family:var(--sans);color:var(--text2);letter-spacing:0.5px;padding:8px 10px;border-bottom:1px solid var(--border);font-weight:600;}
+td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px solid var(--border);}
+
+/* ── OUTPUT TAB / EXPORT PANEL ── */
+.output-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.no-calc-note{color:var(--text3);font-size:12.5px;padding:10px 0;}
+
+.pinfo{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--text3);font-size:9px;cursor:help;flex-shrink:0;margin-left:4px;vertical-align:middle;}
+
+@media (max-width:720px){
+  .grid-2{grid-template-columns:1fr;}
+  header{padding:0 16px;}
+  .home-wrap,.detail-wrap{padding-left:16px;padding-right:16px;}
+}
+</style>
+</head>
+<body>
+<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
+
+<header>
+  <div class="app-logo"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3h6v2H9z"/><path d="M8 11l2 2 4-4"/><path d="M8 16h6"/></svg></div>
+  <div>
+    <h1>Protocols</h1>
+    <p>Assay &amp; experiment library &middot; protocol, calculate, export</p>
+  </div>
+  <div class="hdr-right">
+    <label class="theme-switch" title="Toggle dark mode">
+      <input type="checkbox" id="theme-chk" onchange="toggleTheme()">
+      <span class="theme-slider"></span>
+    </label>
+  </div>
+</header>
+
+<div id="app-body">
+
+  <!-- ── HOME ── -->
+  <div class="home-wrap" id="home-view">
+    <div class="home-toolbar">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="proto-search" placeholder="Search protocols…" oninput="renderProtoGrid()">
+      </div>
+      <div class="filter-pills" id="filter-pills"></div>
+    </div>
+    <div class="proto-grid" id="proto-grid"></div>
+    <div class="empty-hint" id="empty-hint" style="display:none">No protocols match your search.</div>
+  </div>
+
+  <!-- ── DETAIL: Simple Dilution ── -->
+  <div class="detail-wrap" id="detail-dilution" data-pid="dilution">
+    <button class="back-btn" onclick="closeProtocol()">&larr; All protocols</button>
+    <div class="detail-header">
+      <h2>Simple Dilution (C1V1)</h2>
+      <div class="detail-badges"><span class="tag tag-calc">Calculator</span><span class="tag tag-cat">Calculators</span></div>
+    </div>
+    <div class="dtabs">
+      <button class="dtab-btn active" onclick="showDTab('dilution','protocol')">Protocol</button>
+      <button class="dtab-btn" onclick="showDTab('dilution','calc')">Calculate</button>
+      <button class="dtab-btn" onclick="showDTab('dilution','output')">Output</button>
+    </div>
+
+    <div class="dpane active" data-tab="protocol">
+      <div class="proto-note">Dilutes a stock solution to a target concentration in a target volume, using the standard <span class="badge badge-formula">C&#8321;V&#8321; = C&#8322;V&#8322;</span> relationship. Use this any time you need to prepare a working solution from a concentrated stock — compound dosing plates, antibody dilutions, buffer working stocks.</div>
+      <div class="proto-section">When to use it</div>
+      <ul class="proto-list">
+        <li>Preparing a single working dilution from one stock (for a dilution <em>series</em>, use Serial Dilution instead — not yet migrated to this app).</li>
+        <li>Stock concentration (C&#8321;) must always be greater than the target concentration (C&#8322;).</li>
+      </ul>
+    </div>
+
+    <div class="dpane" data-tab="calc">
+      <div class="calc-box">
+        <div class="calc-box-title">Dilution calculator</div>
+        <div class="grid-2">
+          <div class="field"><label>Stock conc. (C&#8321;)</label>
+            <div style="display:flex;gap:6px"><input type="number" id="dil-c1" placeholder="10" style="flex:1" min="0"><select id="dil-c1u" style="width:78px"><option>M</option><option>mM</option><option value="µM" selected>µM</option><option>nM</option></select></div>
+          </div>
+          <div class="field"><label>Target conc. (C&#8322;)</label>
+            <div style="display:flex;gap:6px"><input type="number" id="dil-c2" placeholder="1" style="flex:1" min="0"><select id="dil-c2u" style="width:78px"><option>M</option><option>mM</option><option value="µM" selected>µM</option><option>nM</option></select></div>
+          </div>
+          <div class="field"><label>Final volume (V&#8322;)</label>
+            <div style="display:flex;gap:6px"><input type="number" id="dil-v2" placeholder="100" style="flex:1" min="0"><select id="dil-v2u" style="width:78px"><option>L</option><option>mL</option><option selected>uL</option></select></div>
+          </div>
+        </div>
+        <div style="margin-top:10px"><button class="btn btn-primary btn-sm" onclick="calcDilution()">Calculate</button></div>
+        <div id="dil-res" class="result-box">
+          <span style="color:var(--text3);font-family:var(--mono);font-size:11px">— enter values above</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="dpane" data-tab="output">
+      <div class="output-toolbar">
+        <button class="btn btn-sm" onclick="exportProtocolPDF('dilution')">&#8595; PDF</button>
+        <button class="btn btn-sm" onclick="exportProtocolCSV('dilution')">&#8595; CSV (Excel)</button>
+      </div>
+      <div id="export-dilution"></div>
+    </div>
+  </div>
+
+  <!-- ── DETAIL: Gibson Assembly ── -->
+  <div class="detail-wrap" id="detail-gibson" data-pid="gibson">
+    <button class="back-btn" onclick="closeProtocol()">&larr; All protocols</button>
+    <div class="detail-header">
+      <h2>Gibson Assembly (NEB HiFi E5510)</h2>
+      <div class="detail-badges"><span class="tag tag-calc">Calculator</span><span class="tag tag-cat">Mol Biology</span></div>
+    </div>
+    <div class="dtabs">
+      <button class="dtab-btn active" onclick="showDTab('gibson','protocol')">Protocol</button>
+      <button class="dtab-btn" onclick="showDTab('gibson','calc')">Calculate</button>
+      <button class="dtab-btn" onclick="showDTab('gibson','output')">Output</button>
+    </div>
+
+    <div class="dpane active" data-tab="protocol">
+      <div class="proto-note"><a href="https://www.neb.com/tools-and-resources/usage-guidelines/gibson-assembly-protocol-e5510" target="_blank" rel="noopener" style="color:var(--accent)">NEB Gibson Assembly Protocol (E5510)</a></div>
+
+      <div class="proto-section">Overview — the 3-step workflow</div>
+      <div class="proto-note"><strong>Gibson Assembly joins linearised DNA fragments</strong> that share overlapping sequences at their ends. The HiFi Master Mix contains an exonuclease (chews back 5&prime; ends to expose overlaps), a polymerase (fills gaps), and a ligase (seals nicks). The workflow is: <strong>(1)</strong> PCR-amplify vector and insert with primers that introduce the overlapping sequences &rarr; <strong>(2)</strong> DpnI digest to remove template plasmid &rarr; <strong>(3)</strong> assemble the purified fragments.</div>
+
+      <div class="proto-section">1 — Design overlapping primers (before PCR)</div>
+      <ol class="proto-list">
+        <li>Overlaps of <strong>15&ndash;30 bp</strong> are optimal for NEBHiFi. Design your primers so the 3&prime; end anneals to your template (binding region, Tm ~60&deg;C) and the 5&prime; overhang carries the overlap sequence matching the adjacent fragment.</li>
+        <li>Check that overlap regions do not form strong secondary structure and avoid overlaps that fall on repetitive sequence.</li>
+        <li>The vector is typically amplified by inverse PCR (back-to-back primers) to linearise it and add overhangs. The insert is amplified from its template with forward/reverse primers carrying the vector-matching overhangs.</li>
+      </ol>
+      <div class="proto-note warn">Overlaps longer than 80 bp can reduce Gibson efficiency. Keep them 20&ndash;30 bp unless you have a specific reason for longer arms.</div>
+
+      <div class="proto-section">2 — PCR &rarr; DpnI &rarr; cleanup (one continuous workflow)</div>
+      <ol class="proto-list">
+        <li>Amplify vector backbone and insert separately using a high-fidelity polymerase (see calculator).</li>
+        <li><strong>Without purifying</strong>, add DpnI directly to the PCR tube — it's active in Q5 Master Mix buffer, no buffer exchange needed. Incubate 37&deg;C &times; 60 min.</li>
+        <li>Purify with a PCR cleanup column. Elute in 15&ndash;20 uL. Measure by NanoDrop — needed for the assembly calculator.</li>
+        <li><strong>Optional gel check:</strong> run 2&ndash;3 uL on a 1% gel to confirm band size and absence of non-specific products.</li>
+      </ol>
+
+      <div class="proto-section">3 — Gibson assembly reaction</div>
+      <ol class="proto-list">
+        <li>Set up on ice. Add DNA fragments and water first; add NEBHiFi 2&times; Master Mix last.</li>
+        <li>pmols = (ng &times; 1000) / (bp &times; 650) &mdash; aim for 0.06 pmol vector, 2&times; molar excess of each insert.</li>
+        <li>Incubate at 50&deg;C: <strong>15 min</strong> (2&ndash;3 fragments) or <strong>60 min</strong> (4&ndash;6 fragments).</li>
+        <li>Store on ice or at &minus;20&deg;C. Transform 2 uL into competent cells.</li>
+      </ol>
+      <div class="proto-note tip">
+        <div class="tip-header"><span class="tip-badge">Tip</span></div>
+        If you get very few colonies but positive controls work, the most common causes are: (1) incomplete DpnI digestion letting template through, (2) re-circularisation of uncut vector — confirm linearisation by gel before assembly, (3) poor overlap design. White/blue screening isn't applicable here; always verify by colony PCR and Sanger sequencing.
+      </div>
+    </div>
+
+    <div class="dpane" data-tab="calc">
+      <div class="calc-box">
+        <div class="calc-box-title">Step 1 &mdash; Pre-Gibson PCR (linearise vector &amp; insert with overhangs)</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <div class="field" style="margin:0;flex:0 0 auto;width:220px">
+            <label>Polymerase</label>
+            <select id="pcr-pol" onchange="calcPreGibson()">
+              <option value="q5" selected>Q5 Hot Start (NEB)</option>
+              <option value="phusion">Phusion HF (NEB/Thermo)</option>
+              <option value="kapa">KAPA HiFi</option>
+              <option value="superfi">SuperFi II (Thermo)</option>
+            </select>
+          </div>
+        </div>
+        <div id="pcr-calc-source" class="calc-source"></div>
+        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="pcr-tab-vec" onclick="showPCRtab('vec')" style="background:var(--accent);color:#fff">Vector PCR</button>
+          <button class="btn btn-sm" id="pcr-tab-ins" onclick="showPCRtab('ins')">Insert PCR</button>
+        </div>
+        <div id="pcr-panel-vec">
+          <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px">Vector (template plasmid &rarr; linearised backbone)</div>
+          <div class="grid-2" style="gap:10px;margin-bottom:10px">
+            <div class="field"><label>Template plasmid name</label><input type="text" id="pcr-vec-name" placeholder="e.g. ACS057" oninput="calcPreGibson()"></div>
+            <div class="field"><label>Template conc. (ng/uL)</label><input type="number" id="pcr-vec-conc" placeholder="100" oninput="calcPreGibson()" min="0"></div>
+            <div class="field"><label>Expected product size (bp)</label><input type="number" id="pcr-vec-prod" placeholder="4600" oninput="calcPreGibson()" min="0"></div>
+            <div class="field"><label>Fwd primer name</label><input type="text" id="pcr-vec-fw" placeholder="VEC.FW" oninput="calcPreGibson()"></div>
+            <div class="field"><label>Fwd primer Tm (&deg;C)</label><input type="number" id="pcr-vec-fwtm" placeholder="59" oninput="calcPreGibson()" min="0"></div>
+            <div class="field"><label>Rev primer name</label><input type="text" id="pcr-vec-rv" placeholder="VEC.RV" oninput="calcPreGibson()"></div>
+            <div class="field"><label>Rev primer Tm (&deg;C)</label><input type="number" id="pcr-vec-rvtm" placeholder="61" oninput="calcPreGibson()" min="0"></div>
+          </div>
+          <div id="pcr-vec-result"></div>
+        </div>
+        <div id="pcr-panel-ins" style="display:none">
+          <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px">Insert (template &rarr; PCR fragment with overhangs)</div>
+          <div class="grid-2" style="gap:10px;margin-bottom:10px">
+            <div class="field"><label>Template name</label><input type="text" id="pcr-ins-name" placeholder="e.g. JMM05" oninput="calcPreGibson()"></div>
+            <div class="field"><label>Template conc. (ng/uL)</label><input type="number" id="pcr-ins-conc" placeholder="100" oninput="calcPreGibson()" min="0"></div>
+            <div class="field"><label>Expected product size (bp)</label><input type="number" id="pcr-ins-prod" placeholder="800" oninput="calcPreGibson()" min="0"></div>
+            <div class="field"><label>Fwd primer name</label><input type="text" id="pcr-ins-fw" placeholder="INS.FW" oninput="calcPreGibson()"></div>
+            <div class="field"><label>Fwd primer Tm (&deg;C)</label><input type="number" id="pcr-ins-fwtm" placeholder="60" oninput="calcPreGibson()" min="0"></div>
+            <div class="field"><label>Rev primer name</label><input type="text" id="pcr-ins-rv" placeholder="INS.RV" oninput="calcPreGibson()"></div>
+            <div class="field"><label>Rev primer Tm (&deg;C)</label><input type="number" id="pcr-ins-rvtm" placeholder="61" oninput="calcPreGibson()" min="0"></div>
+          </div>
+          <div id="pcr-ins-result"></div>
+        </div>
+      </div>
+
+      <div class="calc-box">
+        <div class="calc-box-title">Step 2 &mdash; DpnI digestion (remove template plasmid)</div>
+        <div class="calc-source">Q5 PCR amplifies both your product AND the original template plasmid. DpnI cuts methylated DNA (the bacterial template), leaving only your unmethylated PCR product.</div>
+        <table class="proto-table" style="margin-top:8px">
+          <tr><th>Component</th><th>Volume</th></tr>
+          <tr><td>PCR product (from 50 uL rxn)</td><td>50 uL</td></tr>
+          <tr><td>DpnI (NEB)</td><td>1 uL</td></tr>
+          <tr><td>10&times; rCutSmart Buffer</td><td>5.5 uL</td></tr>
+        </table>
+        <div class="proto-note" style="margin-top:8px">37&deg;C &times; 60 min, then proceed directly to PCR cleanup and NanoDrop — use that value in the assembly calculator below.</div>
+      </div>
+
+      <div class="calc-box">
+        <div class="calc-box-title">Step 3 &mdash; Gibson assembly calculator</div>
+        <div class="calc-source">NEBHiFi 2&times; Master Mix, 0.06 pmol vector target, 2:1 insert:vector molar ratio.</div>
+        <div class="grid-2" style="margin-bottom:10px">
+          <div>
+            <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Vector (post-PCR + DpnI + cleanup)</div>
+            <div class="grid-2" style="gap:8px">
+              <div class="field"><label>Size (bp)</label><input type="number" id="gb-vsz" value="4000" oninput="calcGibson()" min="0"></div>
+              <div class="field"><label>Conc. (ng/uL)</label><input type="number" id="gb-vc" value="50" oninput="calcGibson()" min="0"></div>
+            </div>
+          </div>
+          <div>
+            <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Settings</div>
+            <div style="max-width:150px">
+              <div class="field"><label>Rxn vol (uL)</label><input type="number" id="gb-vol" value="10" oninput="calcGibson()" min="0"></div>
+            </div>
+          </div>
+        </div>
+        <div id="gb-frags"></div>
+        <button class="btn btn-sm" onclick="addGibFrag()" style="margin-top:6px">+ Add insert fragment</button>
+        <div id="gb-result" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div class="dpane" data-tab="output">
+      <div class="output-toolbar">
+        <button class="btn btn-sm" onclick="exportProtocolPDF('gibson')">&#8595; PDF</button>
+      </div>
+      <div id="export-gibson"></div>
+    </div>
+  </div>
+
+  <!-- ── DETAIL: Western Blot (reference-only, no Calculate tab) ── -->
+  <div class="detail-wrap" id="detail-westernblot" data-pid="westernblot">
+    <button class="back-btn" onclick="closeProtocol()">&larr; All protocols</button>
+    <div class="detail-header">
+      <h2>Western Blot</h2>
+      <div class="detail-badges"><span class="tag tag-ref">Reference</span><span class="tag tag-cat">Cell Biology</span></div>
+    </div>
+    <div class="dtabs">
+      <button class="dtab-btn active" onclick="showDTab('westernblot','protocol')">Protocol</button>
+      <button class="dtab-btn" onclick="showDTab('westernblot','output')">Output</button>
+    </div>
+
+    <div class="dpane active" data-tab="protocol">
+      <div class="proto-note"><strong>What is this?</strong> Western blotting (immunoblotting) detects specific proteins in a cell lysate by separating them by molecular weight (SDS-PAGE), transferring to a membrane, and probing with a primary antibody followed by an HRP-conjugated secondary. The result is a band at the expected molecular weight, indicating protein expression level, size, and post-translational modification state.</div>
+
+      <div class="proto-section">Cell lysis</div>
+      <ol class="proto-list">
+        <li><em>Optional:</em> pre-cool centrifuge at 4&deg;C.</li>
+        <li>Prepare lysis buffer on ice: RIPA (~50&ndash;100 uL/6-well; ~50 uL/12-well) + 1&times; PI (100&times; stock) + benzonase (1000&times;).</li>
+        <li>Wash on ice: aspirate medium &rarr; cold PBS &rarr; aspirate PBS.</li>
+        <li>Add lysis buffer, distribute carefully; incubate 10 min in fridge (redistribute once).</li>
+        <li>Scratch down lysate (tilted plate); transfer to Eppendorf.</li>
+        <li><em>Optional:</em> centrifuge 4&deg;C, 13,500 &times; g, 15 min; transfer supernatant.</li>
+        <li>Keep on ice for BCA or freeze at &minus;80&deg;C.</li>
+      </ol>
+
+      <div class="proto-section">BCA protein quantification</div>
+      <ol class="proto-list">
+        <li>BSA standards: 2, 1, 0.5, 0.25, 0.125 mg/mL in ddH&#8322;O &mdash; 25 uL per well, in duplicate.</li>
+        <li>Dilute lysates 1:6 (10 uL + 50 uL ddH&#8322;O) or 1:10 for concentrated samples.</li>
+        <li>Load 25 uL standard + sample in duplicate; add 200 uL BCA reagent (50:1 A:B); mix 600 rpm &times; 1 min; 37&deg;C &times; 30 min.</li>
+        <li>Remove bubbles with a needle; read at 562 nm; confirm R&sup2; &ge; 0.99.</li>
+        <li>Use the <strong>BCA &amp; Sample Prep</strong> calculator (not yet migrated to this app) to convert BCA concentrations into loading volumes.</li>
+      </ol>
+
+      <div class="proto-section">SDS-PAGE</div>
+      <ol class="proto-list">
+        <li>Running buffer: 1&times; MOPS from 20&times; stock (1 L).</li>
+        <li>NuPAGE 4&ndash;12% bis-tris pre-cast gel: remove white strip; remove comb after assembling; fill with running buffer; wells facing inwards.</li>
+        <li>Load ladder (2.5 uL); run 180 V &times; 1h 15 min (20-well gel).</li>
+      </ol>
+
+      <div class="proto-section">Transfer &amp; blotting</div>
+      <div class="proto-note">Transfer buffer: 10% 10&times; Transfer Buffer + 10% EtOH + 80% ddH&#8322;O (reusable)<br>TBS-T: 100 mL 10&times; TBS + 900 mL ddH&#8322;O + 1 mL Tween 20<br>5% Milk-TBS-T: 2.5 g dried milk in 50 mL TBS-T<br>Sandwich: BLACK &rarr; Sponge &rarr; Filter paper &times;3 &rarr; Gel &rarr; Membrane &rarr; Filter paper &times;3 &rarr; Sponge &rarr; CLEAR</div>
+      <ol class="proto-list">
+        <li>Cut nitrocellulose membrane + Whatman filter paper to 7&times;9 cm; pre-wet sponges and filter paper.</li>
+        <li>Assemble sandwich (black to black); run 90 V &times; 90 min in ice-cold tank.</li>
+        <li>Ponceau &times; 1 min rocking; rinse with tap water; confirm even loading.</li>
+        <li>Wash TBS-T &times; 5 min; block 5% milk TBS-T &times; 1 h RT; rinse TBS-T &times; 5 s.</li>
+        <li>Primary antibody in 5% milk TBS-T overnight at 4&deg;C; keep antibody for reuse (freeze).</li>
+      </ol>
+
+      <div class="proto-section">Next day</div>
+      <ol class="proto-list">
+        <li>Wash 2&times; TBS-T &times; 5&ndash;10 min.</li>
+        <li>Secondary: &alpha;-Ms/Rb (1:4000) + &alpha;-tubulin hFAB rhodamine (1:4000) in TBS-T; 1 h RT on rocker.</li>
+        <li>Wash 3&ndash;5&times; TBS-T &times; 5&ndash;10 min; image.</li>
+      </ol>
+      <div class="proto-note tip">
+        <div class="tip-header"><span class="tip-badge">Tip</span></div>
+        For better signal-to-noise with phospho-antibodies, use BSA instead of milk for blocking and antibody incubation — milk contains casein (a phosphoprotein) which can interfere with phospho-specific antibodies.
+      </div>
+    </div>
+
+    <div class="dpane" data-tab="output">
+      <div class="output-toolbar">
+        <button class="btn btn-sm" onclick="exportProtocolPDF('westernblot')">&#8595; PDF</button>
+        <button class="btn btn-sm" onclick="copyProtocolText('westernblot')">&#8942; Copy as text</button>
+      </div>
+      <div id="export-westernblot"></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ── ESC / SAFETY (matches Echo/Dora convention) ──
+function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function csvSafe(v){
+  let s = (v == null ? '' : String(v));
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+// ── THEME ──
+function toggleTheme() {
+  var dark = document.getElementById('theme-chk').checked;
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  try { localStorage.setItem('hub_theme', dark ? 'dark' : 'light'); } catch(e) {}
+}
+
+// ── TOAST ──
+function showToast(msg) {
+  var existing = document.getElementById('pt-toast');
+  if (existing) existing.remove();
+  var t = document.createElement('div');
+  t.id = 'pt-toast';
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--surface);padding:7px 18px;border-radius:20px;font-size:12px;z-index:9999;pointer-events:none;box-shadow:var(--shadow-md);';
+  document.body.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 1800);
+}
+
+// ── PROTOCOL REGISTRY (metadata for the home grid; detail markup lives inline above) ──
+var CATEGORIES = [
+  {id:'all',        name:'All'},
+  {id:'calc',       name:'Calculators'},
+  {id:'molbio',     name:'Mol Biology'},
+  {id:'cellbio',    name:'Cell Biology'}
+];
+var PROTOCOLS = [
+  {
+    id:'dilution', category:'calc', name:'Simple Dilution (C1V1)',
+    desc:'Stock/target concentration + volume → volume of stock needed.',
+    hasCalc:true,
+    icon:'<path d="M9 3v8.5L4 20h16L15 11.5V3"/><line x1="9" y1="3" x2="15" y2="3"/>'
+  },
+  {
+    id:'gibson', category:'molbio', name:'Gibson Assembly',
+    desc:'NEB HiFi (E5510) cloning — PCR, DpnI, and assembly pipetting calculators.',
+    hasCalc:true,
+    icon:'<circle cx="7" cy="8" r="2.4"/><circle cx="17" cy="8" r="2"/><circle cx="12" cy="16" r="2.6"/><path d="M9 9.5l1 4M15 9.3l-1 4.5"/>'
+  },
+  {
+    id:'westernblot', category:'cellbio', name:'Western Blot',
+    desc:'Lysis → BCA → SDS-PAGE → transfer → antibody probing protocol.',
+    hasCalc:false,
+    icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/>'
+  }
+];
+
+var _activeFilter = 'all';
+var _openProtocolId = null;
+
+function renderFilterPills() {
+  var wrap = document.getElementById('filter-pills');
+  wrap.innerHTML = CATEGORIES.map(function(c) {
+    return '<button class="filter-pill' + (c.id===_activeFilter?' active':'') + '" onclick="setFilter(\'' + c.id + '\')">' + esc(c.name) + '</button>';
+  }).join('');
+}
+function setFilter(id) { _activeFilter = id; renderFilterPills(); renderProtoGrid(); }
+
+function renderProtoGrid() {
+  var q = (document.getElementById('proto-search').value || '').toLowerCase().trim();
+  var grid = document.getElementById('proto-grid');
+  var filtered = PROTOCOLS.filter(function(p) {
+    var matchCat = _activeFilter === 'all' || p.category === _activeFilter;
+    var matchQ = !q || p.name.toLowerCase().indexOf(q) > -1 || p.desc.toLowerCase().indexOf(q) > -1;
+    return matchCat && matchQ;
+  });
+  document.getElementById('empty-hint').style.display = filtered.length ? 'none' : '';
+  grid.innerHTML = filtered.map(function(p) {
+    var catName = (CATEGORIES.find(function(c){return c.id===p.category;})||{}).name || p.category;
+    return '<div class="proto-card" onclick="openProtocol(\'' + p.id + '\')">' +
+      '<div class="proto-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p.icon + '</svg></div>' +
+      '<div class="proto-card-name">' + esc(p.name) + '</div>' +
+      '<div class="proto-card-desc">' + esc(p.desc) + '</div>' +
+      '<div class="proto-card-foot"><span class="tag ' + (p.hasCalc?'tag-calc':'tag-ref') + '">' + (p.hasCalc?'Calculator':'Reference') + '</span><span class="tag tag-cat">' + esc(catName) + '</span></div>' +
+      '</div>';
+  }).join('');
+}
+
+function openProtocol(id) {
+  _openProtocolId = id;
+  document.getElementById('home-view').style.display = 'none';
+  document.querySelectorAll('.detail-wrap').forEach(function(d) {
+    d.classList.toggle('active', d.dataset.pid === id);
+  });
+  window.scrollTo(0,0);
+  // Lazily render the Output tab's export panel the first time a protocol is opened.
+  refreshExportPanel(id);
+}
+function closeProtocol() {
+  _openProtocolId = null;
+  document.querySelectorAll('.detail-wrap').forEach(function(d) { d.classList.remove('active'); });
+  document.getElementById('home-view').style.display = '';
+}
+function showDTab(pid, tab) {
+  var wrap = document.getElementById('detail-' + pid);
+  if (!wrap) return;
+  wrap.querySelectorAll('.dtab-btn').forEach(function(b, i) {
+    b.classList.toggle('active', b.getAttribute('onclick').indexOf("'" + tab + "'") > -1);
+  });
+  wrap.querySelectorAll('.dpane').forEach(function(p) {
+    p.classList.toggle('active', p.dataset.tab === tab);
+  });
+  if (tab === 'output') refreshExportPanel(pid);
+}
+
+// ── GENERIC OUTPUT / EXPORT SYSTEM ──
+// Two flavours: calculators with a hand-built step[] array (Dilution, Gibson) get the
+// full copy/expand export panel; reference-only protocols (Western Blot) fall back to
+// "copy the Protocol tab's own text" since there's no structured calc result to export.
+var _exportSteps = {};   // pid -> [{label, bullets:[...]}]
+var _lastCalcTable = {}; // pid -> {headers:[...], rows:[[...]]} — feeds CSV export
+
+function stepToText(s) { return s.label + '\n' + s.bullets.map(function(b){ return '- ' + b; }).join('\n'); }
+
+function renderExportPanel(pid, steps) {
+  var el = document.getElementById('export-' + pid);
+  if (!el) return;
+  _exportSteps[pid] = steps;
+  if (!steps || !steps.length) { el.innerHTML = '<div class="no-calc-note">Fill in the Calculate tab to generate exportable steps.</div>'; return; }
+  var html = '';
+  steps.forEach(function(s, i) {
+    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">';
+    html +=   '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 13px;background:var(--surface2)">';
+    html +=     '<span style="font-size:12.5px;font-weight:600">' + esc(s.label) + '</span>';
+    html +=     '<button class="btn btn-sm" onclick="copyExportStep(\'' + pid + '\',' + i + ')">Copy</button>';
+    html +=   '</div>';
+    html +=   '<ul style="margin:0;padding:10px 16px;list-style:none;font-size:12px;line-height:1.9;color:var(--text2)">';
+    s.bullets.forEach(function(b, j) {
+      html += '<li style="display:flex;gap:6px"><span style="color:var(--text3);font-size:10.5px;min-width:16px;font-family:var(--mono)">' + (j+1) + '.</span><span>' + b + '</span></li>';
+    });
+    html +=   '</ul>';
+    html += '</div>';
+  });
+  html += '<div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="btn btn-sm" onclick="copyExportAll(\'' + pid + '\')">Copy all steps</button></div>';
+  el.innerHTML = html;
+}
+function copyExportStep(pid, i) {
+  var steps = _exportSteps[pid];
+  if (!steps || !steps[i]) { showToast('Nothing to copy yet'); return; }
+  clipboardWrite(stepToText(steps[i]));
+}
+function copyExportAll(pid) {
+  var steps = _exportSteps[pid];
+  if (!steps || !steps.length) { showToast('Nothing to copy yet'); return; }
+  clipboardWrite(steps.map(stepToText).join('\n\n'));
+}
+function clipboardWrite(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function(){ showToast('Copied!'); }).catch(function(){ fallbackCopy(text); });
+  } else { fallbackCopy(text); }
+}
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); showToast('Copied!'); }
+  catch(e) { showToast('Copy failed — select text manually'); }
+  document.body.removeChild(ta);
+}
+function copyProtocolText(pid) {
+  var pane = document.querySelector('#detail-' + pid + ' .dpane[data-tab="protocol"]');
+  if (!pane) return;
+  clipboardWrite(pane.innerText.trim());
+}
+
+// Re-derives whichever pid's Output tab is showing. Dilution/Gibson refresh from their
+// own generateXSteps(); Western Blot (no calculator) shows a "copy the protocol" fallback.
+function refreshExportPanel(pid) {
+  if (pid === 'dilution') renderExportPanel('dilution', generateDilutionSteps());
+  else if (pid === 'gibson') renderExportPanel('gibson', generateGibsonSteps());
+  else if (pid === 'westernblot') {
+    var el = document.getElementById('export-westernblot');
+    if (el) el.innerHTML = '<div class="no-calc-note">This protocol has no calculator — use "Copy as text" above, or Download PDF, to export the steps shown in the Protocol tab.</div>';
+  }
+}
+
+// ── GENERIC PDF EXPORT (jsPDF, matches Echo's convention) ──
+function exportProtocolPDF(pid) {
+  var jsPDFCls = window.jspdf && window.jspdf.jsPDF;
+  if (!jsPDFCls) { showToast('PDF library still loading — try again in a moment'); return; }
+  var wrap = document.getElementById('detail-' + pid);
+  var title = wrap.querySelector('.detail-header h2').textContent;
+  var doc = new jsPDFCls({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  var y = 20, marginX = 18, maxW = 174;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+  doc.text(title, marginX, y); y += 10;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(120);
+  doc.text('Exported from dHUB Protocols · ' + new Date().toLocaleDateString(), marginX, y); y += 8;
+  doc.setTextColor(20);
+
+  var steps = _exportSteps[pid];
+  doc.setFontSize(10.5);
+  if (steps && steps.length) {
+    steps.forEach(function(s) {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.setFont('helvetica', 'bold'); doc.text(s.label, marginX, y); y += 6;
+      doc.setFont('helvetica', 'normal');
+      s.bullets.forEach(function(b) {
+        var lines = doc.splitTextToSize('• ' + b.replace(/<[^>]+>/g,''), maxW);
+        lines.forEach(function(line) {
+          if (y > 280) { doc.addPage(); y = 20; }
+          doc.text(line, marginX, y); y += 5.5;
+        });
+      });
+      y += 3;
+    });
+  } else {
+    // Reference-only protocol: fall back to the Protocol tab's plain text, paragraph-wrapped.
+    var pane = wrap.querySelector('.dpane[data-tab="protocol"]');
+    var text = pane.innerText.trim();
+    text.split('\n').forEach(function(line) {
+      if (!line.trim()) { y += 3; return; }
+      var lines = doc.splitTextToSize(line, maxW);
+      lines.forEach(function(l) {
+        if (y > 280) { doc.addPage(); y = 20; }
+        doc.text(l, marginX, y); y += 5.5;
+      });
+    });
+  }
+  doc.save(pid + '_protocol.pdf');
+}
+
+// ── GENERIC CSV EXPORT (Excel-openable, no SheetJS dependency needed for this scale) ──
+function exportProtocolCSV(pid) {
+  var t = _lastCalcTable[pid];
+  if (!t || !t.rows.length) { showToast('Run the calculator first'); return; }
+  var lines = [t.headers.map(csvSafe).join(',')];
+  t.rows.forEach(function(r) { lines.push(r.map(csvSafe).join(',')); });
+  var blob = new Blob([lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = pid + '_results.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PROTOCOL: Simple Dilution (C1V1) — ported from LabMate's qc-panel-dilution
+// ══════════════════════════════════════════════════════════════════════════
+const toM  = {M:1, mM:1e-3, 'µM':1e-6, nM:1e-9};
+const toLit = {L:1, mL:1e-3, uL:1e-6};
+const fromLit = {L:1, mL:1e3, uL:1e6};
+function fmt(n, d=3) { if (!isFinite(n)||isNaN(n)) return '—'; d = Math.max(1, Math.round(d)); return parseFloat(n.toPrecision(d)).toString(); }
+
+var _dilLast = null;
+function calcDilution() {
+  const c1raw = +document.getElementById('dil-c1').value;
+  const c2raw = +document.getElementById('dil-c2').value;
+  const v2raw = +document.getElementById('dil-v2').value;
+  const c1 = c1raw * toM[document.getElementById('dil-c1u').value];
+  const c2 = c2raw * toM[document.getElementById('dil-c2u').value];
+  const v2L = v2raw * toLit[document.getElementById('dil-v2u').value];
+  const resEl = document.getElementById('dil-res');
+  if (!c1raw || !c2raw || !v2raw) { resEl.innerHTML = '<span style="color:var(--text3);font-family:var(--mono);font-size:11px">— enter values above</span>'; return; }
+  if (c1 <= 0) { resEl.innerHTML = '<span style="color:var(--warn);font-size:12px">⚠ Stock concentration must be greater than zero</span>'; return; }
+  if (c2 >= c1) { resEl.innerHTML = '<span style="color:var(--warn);font-size:12px">⚠ Target concentration must be less than stock concentration</span>'; return; }
+  const v1L = (c2 * v2L) / c1;
+  const unit = document.getElementById('dil-v2u').value;
+  const v1 = v1L * fromLit[unit], dil = (v2L - v1L) * fromLit[unit];
+  _dilLast = { v1: fmt(v1), dil: fmt(dil), unit: unit, factor: fmt(c1/c2,2), c2nM: fmt(c2/1e-9,4) };
+  resEl.innerHTML =
+    '<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;width:100%">' +
+      '<div><div class="result-big">' + _dilLast.v1 + ' <span style="font-size:12px">' + unit + '</span></div><div class="result-unit">stock to add</div></div>' +
+      '<div><div class="result-big" style="color:var(--accent)">' + _dilLast.dil + ' <span style="font-size:12px">' + unit + '</span></div><div class="result-unit">diluent to add</div></div>' +
+      '<div><div class="result-big" style="color:var(--text2)">' + _dilLast.factor + '×</div><div class="result-unit">dilution factor</div></div>' +
+    '</div>';
+  _lastCalcTable['dilution'] = { headers:['Component','Volume ('+unit+')'], rows:[['Stock', _dilLast.v1],['Diluent', _dilLast.dil],['Final volume', v2raw]] };
+  refreshExportPanel('dilution');
+}
+function generateDilutionSteps() {
+  if (!_dilLast) return [];
+  return [{ label:'Dilution', bullets:[
+    'Stock to add: ' + _dilLast.v1 + ' ' + _dilLast.unit,
+    'Diluent to add: ' + _dilLast.dil + ' ' + _dilLast.unit,
+    'Dilution factor: ' + _dilLast.factor + '×',
+    'Final concentration: ' + _dilLast.c2nM + ' nM'
+  ]}];
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PROTOCOL: Gibson Assembly — ported from LabMate's proto-gibson
+// ══════════════════════════════════════════════════════════════════════════
+var PCR_POL = {
+  q5:      { name: 'Q5 Hot Start 2× Master Mix', taOffset: +2, extRate: 25, note: 'Ta = lower Tm + 2°C, 25 s/kb', link: 'https://www.neb.com/tools-and-resources/usage-guidelines/pcr-with-q5-hot-start-high-fidelity-dna-polymerase' },
+  phusion: { name: 'Phusion HF 2× Master Mix',   taOffset: +3, extRate: 30, note: 'Ta = lower Tm + 3°C, 30 s/kb', link: 'https://www.neb.com/tools-and-resources/usage-guidelines/phusion-high-fidelity-pcr-master-mix' },
+  kapa:    { name: 'KAPA HiFi HotStart ReadyMix 2×', taOffset: +3, extRate: 20, note: 'Ta = lower Tm + 3°C, 20 s/kb', link: 'https://sequencing.roche.com/en/products-solutions/by-category/library-preparation/library-amplification/kapa-hifi-dna-polymerase.html' },
+  superfi: { name: 'Platinum SuperFi II 2× MM',  taOffset: -5, extRate: 30, note: 'Ta = lower Tm − 5°C, 30 s/kb', link: 'https://www.thermofisher.com/order/catalog/product/12361010' }
+};
+var gibFrags = [{sz:500, c:30}];
+
+function showPCRtab(tab) {
+  document.getElementById('pcr-panel-vec').style.display = tab==='vec' ? 'block' : 'none';
+  document.getElementById('pcr-panel-ins').style.display = tab==='ins' ? 'block' : 'none';
+  var btnVec = document.getElementById('pcr-tab-vec'), btnIns = document.getElementById('pcr-tab-ins');
+  btnVec.style.background = tab==='vec' ? 'var(--accent)' : 'var(--surface2)';
+  btnVec.style.color = tab==='vec' ? '#fff' : 'var(--text2)';
+  btnIns.style.background = tab==='ins' ? 'var(--accent)' : 'var(--surface2)';
+  btnIns.style.color = tab==='ins' ? '#fff' : 'var(--text2)';
+}
+function calcPreGibson() {
+  var polKey = (document.getElementById('pcr-pol')||{}).value || 'q5';
+  var pol = PCR_POL[polKey] || PCR_POL.q5;
+  var srcEl = document.getElementById('pcr-calc-source');
+  if (srcEl) srcEl.innerHTML = 'Based on: <a href="'+pol.link+'" target="_blank" rel="noopener">'+esc(pol.name)+'</a> protocol — 50 µL reaction, ≤10 ng template, 0.5 µM primers · ' + esc(pol.note);
+  ['vec','ins'].forEach(function(type) {
+    var name = (document.getElementById('pcr-'+type+'-name')||{}).value || '';
+    var conc = +((document.getElementById('pcr-'+type+'-conc')||{}).value) || 0;
+    var prod = +((document.getElementById('pcr-'+type+'-prod')||{}).value) || 0;
+    var fw = (document.getElementById('pcr-'+type+'-fw')||{}).value || 'Fwd';
+    var fwtm = +((document.getElementById('pcr-'+type+'-fwtm')||{}).value) || 0;
+    var rv = (document.getElementById('pcr-'+type+'-rv')||{}).value || 'Rev';
+    var rvtm = +((document.getElementById('pcr-'+type+'-rvtm')||{}).value) || 0;
+    var el = document.getElementById('pcr-'+type+'-result');
+    if (!el) return;
+    var templateVol = conc ? Math.min(10/conc, 5) : 1;
+    var volDisp = conc ? fmt(templateVol,3) : '1';
+    var waterDisp = conc ? fmt(Math.max(0,19-templateVol),3) : '~19';
+    var anneal = '—', tmWarn = '';
+    if (fwtm && rvtm) {
+      var diff = Math.abs(fwtm - rvtm);
+      anneal = (Math.min(fwtm,rvtm) + pol.taOffset) + '°C';
+      if (diff > 10) tmWarn = '<div class="proto-note warn" style="margin-top:6px">Tm difference '+diff+'°C (&gt;10°C) — too large, redesign the outlier primer.</div>';
+      else if (diff > 5) tmWarn = '<div class="proto-note warn" style="margin-top:6px">Tm difference '+diff+'°C (&gt;5°C) — consider a Tm calculator for a more accurate Ta.</div>';
+    } else if (fwtm || rvtm) { anneal = ((fwtm||rvtm) + pol.taOffset) + '°C'; }
+    var ext = '—';
+    if (prod) { var secs = Math.ceil((prod/1000)*pol.extRate); ext = secs>=60 ? Math.floor(secs/60)+'m'+(secs%60?' '+Math.ceil(secs%60)+'s':'') : secs+'s'; }
+    el.innerHTML =
+      '<table class="proto-table" style="margin-bottom:8px"><tr><th>Component</th><th>Volume</th><th>Notes</th></tr>' +
+      '<tr><td>Nuclease-free H₂O</td><td style="color:var(--accent2)">'+waterDisp+' uL</td><td></td></tr>' +
+      '<tr><td>'+esc(pol.name)+'</td><td style="color:var(--accent2)">25 uL</td><td></td></tr>' +
+      '<tr><td>'+esc(fw)+' (10 µM)</td><td style="color:var(--accent2)">2.5 uL</td><td>0.5 µM final</td></tr>' +
+      '<tr><td>'+esc(rv)+' (10 µM)</td><td style="color:var(--accent2)">2.5 uL</td><td>0.5 µM final</td></tr>' +
+      '<tr><td>'+esc(name||'Template DNA')+(conc?' ('+conc+' ng/uL)':'')+'</td><td style="color:var(--accent)">'+volDisp+' uL</td><td>≤10 ng</td></tr>' +
+      '<tr style="font-weight:600"><td>Total</td><td>50 uL</td><td></td></tr></table>' +
+      '<div class="proto-note" style="margin:0"><strong>Cycling:</strong> 98°C 30s → [98°C 10s → <strong>'+anneal+'</strong> 30s → 72°C <strong>'+ext+'</strong>] ×30 → 72°C 2min → 4°C</div>' +
+      tmWarn;
+  });
+  renderGibsonExport();
+}
+function renderGibFrags() {
+  document.getElementById('gb-frags').innerHTML = gibFrags.map(function(f,i) {
+    return '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">' +
+      '<div class="field" style="flex:1"><label>Insert ' + (i+1) + ' size (bp)</label><input type="number" value="'+f.sz+'" oninput="gibFrags['+i+'].sz=+this.value;calcGibson()" min="0"></div>' +
+      '<div class="field" style="flex:1"><label>Insert ' + (i+1) + ' conc. (ng/uL)</label><input type="number" value="'+f.c+'" oninput="gibFrags['+i+'].c=+this.value;calcGibson()" min="0"></div>' +
+      '<button onclick="gibFrags.splice('+i+',1);renderGibFrags();calcGibson()" style="background:none;border:none;color:var(--warn);cursor:pointer;font-size:18px;margin-top:14px">×</button>' +
+    '</div>';
+  }).join('');
+  calcGibson();
+}
+function addGibFrag(){ gibFrags.push({sz:500,c:30}); renderGibFrags(); }
+function calcGibson(){
+  const vsz=+document.getElementById('gb-vsz').value, vc=+document.getElementById('gb-vc').value;
+  const rvol=+document.getElementById('gb-vol').value;
+  const tVecPmol=0.06, tFragPmol=tVecPmol*2;
+  const vecNg=tVecPmol*0.66*vsz, vecVol=vecNg/vc;
+  let rows='<table><thead><tr><th>Component</th><th>Target (pmol)</th><th>ng/uL</th><th>Volume (uL)</th></tr></thead><tbody>';
+  rows+='<tr><td>Vector (linearized)</td><td>'+fmt(tVecPmol,2)+'</td><td>'+vc+'</td><td style="color:var(--accent)">'+fmt(vecVol,3)+'</td></tr>';
+  let usedVol=vecVol;
+  var csvRows = [['Vector (linearized)', vc, fmt(vecVol,3)]];
+  gibFrags.forEach((f,i)=>{
+    const ng=tFragPmol*0.66*f.sz, vol=ng/f.c; usedVol+=vol;
+    rows+='<tr><td>Insert '+(i+1)+' ('+f.sz+' bp)</td><td>'+fmt(tFragPmol,2)+'</td><td>'+f.c+'</td><td style="color:var(--accent2)">'+fmt(vol,3)+'</td></tr>';
+    csvRows.push(['Insert '+(i+1)+' ('+f.sz+' bp)', f.c, fmt(vol,3)]);
+  });
+  const water=Math.max(0,(rvol/2)-usedVol);
+  rows+='<tr><td>Nuclease-free H₂O</td><td>—</td><td>—</td><td>'+fmt(water,3)+'</td></tr>';
+  rows+='<tr style="font-weight:600"><td>NEBHiFi 2× Master Mix</td><td>—</td><td>—</td><td style="color:var(--accent);font-weight:600">'+(rvol/2)+'</td></tr>';
+  rows+='<tr style="font-weight:600"><td>Total</td><td>—</td><td>—</td><td>'+rvol+' uL</td></tr>';
+  csvRows.push(['Nuclease-free H2O','',fmt(water,3)]);
+  csvRows.push(['NEBHiFi 2x Master Mix','',(rvol/2)]);
+  document.getElementById('gb-result').innerHTML=rows+'</tbody></table>'+
+    '<div class="proto-note" style="margin-top:10px">Incubate at 50°C × '+(gibFrags.length+1<=3?'15':'60')+' min · Transform 2 uL into competent cells</div>';
+  _lastCalcTable['gibson'] = { headers:['Component','ng/uL','Volume (uL)'], rows: csvRows };
+  renderGibsonExport();
+}
+function gdv(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function gdn(id) { return +gdv(id) || 0; }
+function generateGibsonSteps() {
+  var steps = [];
+  var polKey = (document.getElementById('pcr-pol')||{}).value || 'q5';
+  var pol = PCR_POL[polKey] || PCR_POL.q5;
+  var vName = gdv('pcr-vec-name') || 'Vector template', vConc = gdn('pcr-vec-conc'), vProd = gdn('pcr-vec-prod');
+  var vFw = gdv('pcr-vec-fw') || 'Fwd primer', vFwtm = gdn('pcr-vec-fwtm'), vRv = gdv('pcr-vec-rv') || 'Rev primer', vRvtm = gdn('pcr-vec-rvtm');
+  var vTplVol = vConc ? fmt(Math.min(10/vConc,5),2) : '1';
+  var vWater = vConc ? fmt(Math.max(0,19-Math.min(10/vConc,5)),2) : '~19';
+  var vAnneal = (vFwtm&&vRvtm) ? (Math.min(vFwtm,vRvtm)+pol.taOffset)+'°C' : '—';
+  var vExt = vProd ? (function(){ var s=Math.ceil((vProd/1000)*pol.extRate); return s>=60?Math.floor(s/60)+'m'+(s%60?' '+Math.ceil(s%60)+'s':''):s+'s'; })() : '—';
+  var vBullets = ['H₂O: '+vWater+' uL', pol.name+': 25 uL', vFw+' (10 µM): 2.5 uL', vRv+' (10 µM): 2.5 uL', vName+': '+vTplVol+' uL'+(vConc?' (≤10 ng)':''), 'Total: 50 uL', 'Cycling: 98°C 30s → [98°C 10s → '+vAnneal+' 30s → 72°C '+vExt+'] ×30 → 72°C 2min → 4°C'];
+  if (vProd) vBullets.push('Expected product: ~'+vProd+' bp');
+  steps.push({ label:'Step 1a — Vector PCR (50 uL)', bullets:vBullets });
+
+  var iName = gdv('pcr-ins-name') || 'Insert template', iConc = gdn('pcr-ins-conc'), iProd = gdn('pcr-ins-prod');
+  var iFw = gdv('pcr-ins-fw') || 'Fwd primer', iFwtm = gdn('pcr-ins-fwtm'), iRv = gdv('pcr-ins-rv') || 'Rev primer', iRvtm = gdn('pcr-ins-rvtm');
+  var iTplVol = iConc ? fmt(Math.min(10/iConc,5),2) : '1';
+  var iWater = iConc ? fmt(Math.max(0,19-Math.min(10/iConc,5)),2) : '~19';
+  var iAnneal = (iFwtm&&iRvtm) ? (Math.min(iFwtm,iRvtm)+pol.taOffset)+'°C' : '—';
+  var iExt = iProd ? (function(){ var s=Math.ceil((iProd/1000)*pol.extRate); return s>=60?Math.floor(s/60)+'m'+(s%60?' '+Math.ceil(s%60)+'s':''):s+'s'; })() : '—';
+  var iBullets = ['H₂O: '+iWater+' uL', pol.name+': 25 uL', iFw+' (10 µM): 2.5 uL', iRv+' (10 µM): 2.5 uL', iName+': '+iTplVol+' uL'+(iConc?' (≤10 ng)':''), 'Total: 50 uL', 'Cycling: 98°C 30s → [98°C 10s → '+iAnneal+' 30s → 72°C '+iExt+'] ×30 → 72°C 2min → 4°C'];
+  if (iProd) iBullets.push('Expected product: ~'+iProd+' bp');
+  steps.push({ label:'Step 1b — Insert PCR (50 uL)', bullets:iBullets });
+
+  steps.push({ label:'Step 2 — DpnI digestion + cleanup', bullets:[
+    'Add directly to each PCR tube (no purification needed first)', 'DpnI (NEB): 1 uL', '10× rCutSmart: 5.5 uL', '37°C × 60 min',
+    'PCR cleanup column → NanoDrop (note concentrations for Step 3)'
+  ]});
+
+  var vsz = gdn('gb-vsz'), vc = gdn('gb-vc'), rvol = gdn('gb-vol') || 10;
+  var tVecPmol = 0.06, tFragPmol = 0.12;
+  var vecNg = tVecPmol*0.66*vsz, vecVol = vc ? fmt(vecNg/vc,3) : '—', usedVol = vc ? vecNg/vc : 0;
+  gibFrags.forEach(function(f){ if(f.c) usedVol += (tFragPmol*0.66*f.sz)/f.c; });
+  var water = fmt(Math.max(0,(rvol/2)-usedVol),3);
+  var incTime = (gibFrags.length+1<=3) ? '15' : '60';
+  var asmBullets = ['Set up on ice — add DNA and H₂O first, Master Mix last', 'NEBHiFi 2× Master Mix: '+(rvol/2)+' uL', 'Vector ('+vsz+' bp, '+vc+' ng/uL): '+vecVol+' uL ['+fmt(tVecPmol,2)+' pmol]'];
+  gibFrags.forEach(function(f,i){ var ng=tFragPmol*0.66*f.sz, vol=f.c?fmt(ng/f.c,3):'—'; asmBullets.push('Insert '+(i+1)+' ('+f.sz+' bp, '+f.c+' ng/uL): '+vol+' uL ['+fmt(tFragPmol,2)+' pmol]'); });
+  asmBullets.push('H₂O: '+water+' uL'); asmBullets.push('Total: '+rvol+' uL');
+  asmBullets.push('50°C × '+incTime+' min → store on ice or −20°C'); asmBullets.push('Transform 2 uL into competent cells');
+  steps.push({ label:'Step 3 — Gibson Assembly ('+rvol+' uL)', bullets:asmBullets });
+  return steps;
+}
+function renderGibsonExport() { renderExportPanel('gibson', generateGibsonSteps()); }
+
+// ── INIT ──
+document.addEventListener('DOMContentLoaded', function() {
+  renderFilterPills();
+  renderProtoGrid();
+  renderGibFrags();
+  calcPreGibson();
+});
+
+// Cross-app deep link, matches the convention used across dHUB apps.
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'switchTab' && e.data.item) {
+    openProtocol(e.data.item);
+  }
+});
+</script>
+</body>
+</html>
