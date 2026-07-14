@@ -225,15 +225,25 @@ td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px sol
 .modern-note .sticky-note-body{color:var(--text);resize:none;min-height:100px;}
 .modern-note .sticky-note-body::placeholder{color:var(--text3);}
 
-/* Step-anchored notes: hidden by default, revealed by the "Pin notes to steps" menu toggle */
-.step-note-btn{display:none;align-items:center;justify-content:center;width:19px;height:19px;margin-left:6px;border-radius:4px;border:none;background:none;cursor:pointer;color:var(--text3);opacity:.45;transition:opacity .15s,color .15s,background .15s;vertical-align:middle;flex-shrink:0;}
+/* Step-anchored notes: whole feature hidden unless "Pin notes to steps" is on; once on, the
+   edit affordance itself only reveals on hover over that specific step (kept declutered —
+   steps that already have a note stay visibly marked so they're not hidden on re-visit). */
+.step-note-btn{display:none;align-items:center;justify-content:center;width:19px;height:19px;margin-left:6px;border-radius:4px;border:none;background:none;cursor:pointer;color:var(--text3);opacity:0;transition:opacity .15s,color .15s,background .15s;vertical-align:middle;flex-shrink:0;}
 body.step-notes-on .step-note-btn{display:inline-flex;}
-.step-note-btn:hover{opacity:1;background:var(--surface3);}
-.step-note-btn.has-note{opacity:1;color:var(--accent);}
+body.step-notes-on li:hover>.step-note-btn,
+.step-note-btn:hover,
+.step-note-btn.has-note{opacity:1;}
+.step-note-btn:hover{background:var(--surface3);}
+.step-note-btn.has-note{color:var(--accent);}
 .step-note-btn svg{width:13px;height:13px;}
 .step-note-box{display:none;margin:6px 0 2px;padding:8px 12px;background:var(--accent-dim);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;}
 .step-note-box.open{display:block;}
 .step-note-box textarea{width:100%;border:none;background:transparent;resize:vertical;font-family:var(--sans);font-size:12.5px;color:var(--text);outline:none;min-height:44px;}
+/* In exported/printed output, a note-with-content prints inline right where the step is —
+   no edit affordance, since export is read-only. */
+.export-note-inline{margin:6px 0;padding:7px 11px;background:var(--accent-dim);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;font-size:12px;color:var(--text2);}
+.export-notes-section{margin-top:14px;padding-top:12px;border-top:1px dashed var(--border);}
+.export-notes-heading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text3);margin-bottom:8px;}
 
 /* FAB menu */
 .notes-menu{position:fixed;bottom:88px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:6px;display:none;flex-direction:column;gap:2px;z-index:501;min-width:200px;}
@@ -297,6 +307,7 @@ body.step-notes-on .step-note-btn{display:inline-flex;}
   #print-root .print-step ul{margin:0;padding-left:18px;}
   #print-root .print-step li{font-size:12px;line-height:1.7;color:#333;}
   #print-root .print-no-calc{font-size:11.5px;color:#888;font-style:italic;}
+  #print-root .print-note-inline{margin:4px 0;padding:6px 10px;background:#f6f1f3;border-left:3px solid #a56983;border-radius:0 6px 6px 0;font-size:11.5px;color:#333;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   #print-root .delivery-bar{display:none!important;}
 }
 </style>
@@ -3139,27 +3150,83 @@ function saveStepNote(pid, key, text) {
   if (btn) btn.classList.toggle('has-note', !!text);
   _refreshOutputIfActive(pid);
 }
-// Builds the notes-as-export-bullets block consumed by the Output tab, the
-// PDF export, and "Copy as text" — one shared source so all three exports
-// stay in sync automatically as notes are added/edited/removed.
-function buildNotesExportBullets(pid) {
+// Shared notes-export machinery consumed by the Output tab, the PDF export, and
+// "Copy as text" — one source so all three stay in sync as notes change, and so a
+// note always renders inline at its own step instead of collected at the end.
+function protocolHasAnyNotes(pid) {
+  var wrap = document.getElementById('detail-' + pid);
+  var pane = wrap && wrap.querySelector('.dpane[data-tab="protocol"]');
+  if (pane) {
+    var hasStepText = Array.prototype.some.call(pane.querySelectorAll('.step-note-box textarea'), function(ta) { return ta.value.trim(); });
+    if (hasStepText) return true;
+  }
+  return buildFloatingNotesBullets(pid).length > 0;
+}
+// Reads floating-note text straight from the live DOM (when this protocol's notes
+// panel is open) rather than localStorage, so an in-progress edit — still sitting
+// in its 300ms debounce — isn't dropped from an export triggered mid-type.
+function buildFloatingNotesBullets(pid) {
   var data = getProtoNotes(pid);
-  var bullets = [];
-  data.floating.forEach(function(n) { if (n.text && n.text.trim()) bullets.push(n.text.trim()); });
-  Object.keys(data.steps).forEach(function(key) {
-    var text = data.steps[key];
-    if (!text || !text.trim()) return;
-    var li = document.querySelector('li[data-note-key="' + key + '"]');
-    var label = key;
-    if (li) {
-      var clone = li.cloneNode(true);
-      clone.querySelectorAll('.step-note-btn,.step-note-box').forEach(function(x){ x.remove(); });
-      label = clone.textContent.replace(/\s+/g,' ').trim();
-      if (label.length > 70) label = label.slice(0,70) + '…';
-    }
-    bullets.push('Re: "' + label + '" — ' + text.trim());
+  var live = {};
+  if (pid === _notesOpenPid) {
+    document.querySelectorAll('.sticky-note').forEach(function(el) {
+      var ta = el.querySelector('.sticky-note-body');
+      if (ta) live[el.dataset.id] = ta.value;
+    });
+  }
+  return data.floating
+    .map(function(n) { return (live[n.id] !== undefined ? live[n.id] : (n.text || '')).trim(); })
+    .filter(function(t) { return t; });
+}
+// Clones the Protocol tab, strips the edit-only note icons, and turns any
+// non-empty step note into a static read-only callout right where the step
+// already lives — the one place that produces "notes inline" HTML.
+function buildCleanProtocolClone(pid, noteClass) {
+  var wrap = document.getElementById('detail-' + pid);
+  var pane = wrap && wrap.querySelector('.dpane[data-tab="protocol"]');
+  if (!pane) return null;
+  var liveBoxes = pane.querySelectorAll('.step-note-box');
+  var clone = pane.cloneNode(true);
+  clone.querySelectorAll('.step-note-btn').forEach(function(b) { b.remove(); });
+  clone.querySelectorAll('.step-note-box').forEach(function(box, i) {
+    var liveTa = liveBoxes[i] && liveBoxes[i].querySelector('textarea');
+    var text = liveTa ? liveTa.value.trim() : '';
+    if (!text) { box.remove(); return; }
+    var note = document.createElement('div');
+    note.className = noteClass || 'print-note-inline';
+    note.textContent = text;
+    box.replaceWith(note);
   });
-  return bullets;
+  return clone;
+}
+// innerText only reflects rendered layout, which a detached clone doesn't have —
+// mount it off-screen just long enough to read it back, same trick used for copy.
+// Forces display:block since the clone inherits ".dpane{display:none}" whenever
+// the Protocol tab isn't the one currently open (e.g. copying from the Output tab).
+function _elementInnerText(el) {
+  if (!el) return '';
+  el.style.cssText = 'position:fixed;left:-9999px;top:0;display:block;visibility:visible;';
+  document.body.appendChild(el);
+  var text = el.innerText;
+  document.body.removeChild(el);
+  return text;
+}
+// Read-only "your notes" mirror appended under a protocol's calculated-value
+// cards in the Output tab: the actual protocol steps with notes inlined and no
+// edit icons, so notes show exactly where they were written, not lumped at the end.
+function buildExportNotesHTML(pid) {
+  if (!protocolHasAnyNotes(pid)) return '';
+  var clone = buildCleanProtocolClone(pid, 'export-note-inline');
+  var html = '<div class="export-notes-section"><div class="export-notes-heading">Protocol steps &middot; your notes</div>';
+  if (clone) html += clone.innerHTML;
+  var floating = buildFloatingNotesBullets(pid);
+  if (floating.length) {
+    html += '<div class="export-notes-heading" style="margin-top:14px">General notes</div>' +
+      '<ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.9;color:var(--text2)">' +
+      floating.map(function(t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>';
+  }
+  html += '</div>';
+  return html;
 }
 
 // ── DELIVERY-METHOD BRANCHING (CRISPR Knockout / Knock-in dropdown cards) ──
@@ -3186,29 +3253,33 @@ var _lastCalcTable = {}; // pid -> {headers:[...], rows:[[...]]} — feeds CSV e
 
 function stepToText(s) { return s.label + '\n' + s.bullets.map(function(b){ return '- ' + b; }).join('\n'); }
 
-function renderExportPanel(pid, steps) {
+function renderExportPanel(pid, steps, hasCalc) {
+  if (hasCalc === undefined) hasCalc = true; // every direct caller besides refreshExportPanel is a calculator protocol
   var el = document.getElementById('export-' + pid);
   if (!el) return;
   _exportSteps[pid] = steps;
-  if (!steps || !steps.length) { el.innerHTML = '<div class="no-calc-note">Fill in the Calculate tab to generate exportable steps.</div>'; return; }
   var html = '';
-  steps.forEach(function(s, i) {
-    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">';
-    html +=   '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 13px;background:var(--surface2)">';
-    html +=     '<span style="font-size:12.5px;font-weight:600">' + esc(s.label) + '</span>';
-    html +=     '<button class="btn btn-sm" onclick="copyExportStep(\'' + pid + '\',' + i + ')">Copy</button>';
-    html +=   '</div>';
-    html +=   '<ul style="margin:0;padding:10px 16px;list-style:none;font-size:12px;line-height:1.9;color:var(--text2)">';
-    s.bullets.forEach(function(b, j) {
-      // Notes are free-typed user text (not the calculator's own trusted HTML bullets) — escape
-      // them so a stray "<" or "&" can't break the layout or be interpreted as markup.
-      var display = s.isNotes ? esc(b) : b;
-      html += '<li style="display:flex;gap:6px"><span style="color:var(--text3);font-size:10.5px;min-width:16px;font-family:var(--mono)">' + (j+1) + '.</span><span>' + display + '</span></li>';
+  if (!steps || !steps.length) {
+    html = hasCalc
+      ? '<div class="no-calc-note">Fill in the Calculate tab to generate exportable steps.</div>'
+      : '<div class="no-calc-note">This protocol has no calculator — use "Copy as text" above, or Print / Save as PDF, to export the steps shown in the Protocol tab.</div>';
+  } else {
+    steps.forEach(function(s, i) {
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">';
+      html +=   '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 13px;background:var(--surface2)">';
+      html +=     '<span style="font-size:12.5px;font-weight:600">' + esc(s.label) + '</span>';
+      html +=     '<button class="btn btn-sm" onclick="copyExportStep(\'' + pid + '\',' + i + ')">Copy</button>';
+      html +=   '</div>';
+      html +=   '<ul style="margin:0;padding:10px 16px;list-style:none;font-size:12px;line-height:1.9;color:var(--text2)">';
+      s.bullets.forEach(function(b, j) {
+        html += '<li style="display:flex;gap:6px"><span style="color:var(--text3);font-size:10.5px;min-width:16px;font-family:var(--mono)">' + (j+1) + '.</span><span>' + b + '</span></li>';
+      });
+      html +=   '</ul>';
+      html += '</div>';
     });
-    html +=   '</ul>';
-    html += '</div>';
-  });
-  html += '<div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="btn btn-sm" onclick="copyExportAll(\'' + pid + '\')">Copy all steps</button></div>';
+    html += '<div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="btn btn-sm" onclick="copyExportAll(\'' + pid + '\')">Copy all steps</button></div>';
+  }
+  html += buildExportNotesHTML(pid);
   el.innerHTML = html;
 }
 function copyExportStep(pid, i) {
@@ -3236,29 +3307,22 @@ function fallbackCopy(text) {
   document.body.removeChild(ta);
 }
 function copyProtocolText(pid) {
-  var pane = document.querySelector('#detail-' + pid + ' .dpane[data-tab="protocol"]');
-  if (!pane) return;
-  var text = pane.innerText.trim();
-  var noteBullets = buildNotesExportBullets(pid);
-  if (noteBullets.length) text += '\n\nMy notes:\n' + noteBullets.map(function(b){ return '- ' + b; }).join('\n');
+  var clone = buildCleanProtocolClone(pid);
+  if (!clone) return;
+  var text = _elementInnerText(clone).trim();
+  var floating = buildFloatingNotesBullets(pid);
+  if (floating.length) text += '\n\nGeneral notes:\n' + floating.map(function(b){ return '- ' + b; }).join('\n');
   clipboardWrite(text);
 }
 
 // Re-derives whichever pid's Output tab is showing. Dilution/Gibson refresh from their
 // own generateXSteps(); Western Blot (no calculator) shows a "copy the protocol" fallback.
-// Any sticky/step notes on the protocol are appended as one extra "My notes" step so they
-// show up in the Output tab, "Copy all steps", the CSV, and the PDF export automatically.
+// renderExportPanel appends any step/floating notes itself (see buildExportNotesHTML),
+// inline at their own step rather than collected into one block.
 function refreshExportPanel(pid) {
   var p = PROTOCOLS.filter(function(x){ return x.id === pid; })[0];
   var steps = p && p.genSteps ? p.genSteps() : null;
-  var noteBullets = buildNotesExportBullets(pid);
-  if (noteBullets.length) steps = (steps || []).concat([{ label: 'My notes', bullets: noteBullets, isNotes: true }]);
-  if (steps && steps.length) {
-    renderExportPanel(pid, steps);
-  } else {
-    var el = document.getElementById('export-' + pid);
-    if (el) el.innerHTML = '<div class="no-calc-note">This protocol has no calculator — use "Copy as text" above, or Print / Save as PDF, to export the steps shown in the Protocol tab.</div>';
-  }
+  renderExportPanel(pid, steps, !!(p && p.hasCalc));
 }
 
 // ── GENERIC PDF EXPORT (jsPDF, matches Echo's convention) ──
@@ -3272,10 +3336,9 @@ var METHOD_LABELS = { px458: 'PX458 plasmid delivery', rnp: 'RNP electroporation
 function exportProtocolPDF(pid) {
   var wrap = document.getElementById('detail-' + pid);
   var title = wrap.querySelector('.detail-header h2').textContent;
-  var protocolHTML = wrap.querySelector('.dpane[data-tab="protocol"]').innerHTML;
-  var allSteps = _exportSteps[pid] || [];
-  var calcSteps = allSteps.filter(function(s){ return !s.isNotes; });
-  var notesSteps = allSteps.filter(function(s){ return s.isNotes; });
+  var clone = buildCleanProtocolClone(pid, 'print-note-inline');
+  var protocolHTML = clone ? clone.innerHTML : '';
+  var calcSteps = _exportSteps[pid] || [];
   var calcHTML = '';
   if (calcSteps.length) {
     calcHTML += '<div class="print-calc-heading">Calculated values (from your inputs)</div>';
@@ -3286,11 +3349,12 @@ function exportProtocolPDF(pid) {
   } else if (wrap.querySelector('.dtab-btn[onclick*="\',\'calc\'"]')) {
     calcHTML = '<div class="print-calc-heading">Calculated values</div><div class="print-no-calc">Run the calculator in the Calculate tab before exporting to include your computed values here.</div>';
   }
+  var floating = buildFloatingNotesBullets(pid);
   var notesHTML = '';
-  notesSteps.forEach(function(s) {
-    notesHTML += '<div class="print-calc-heading">' + esc(s.label) + '</div><div class="print-step"><ul>' +
-      s.bullets.map(function(b){ return '<li>' + esc(b) + '</li>'; }).join('') + '</ul></div>';
-  });
+  if (floating.length) {
+    notesHTML = '<div class="print-calc-heading">General notes</div><div class="print-step"><ul>' +
+      floating.map(function(t){ return '<li>' + esc(t) + '</li>'; }).join('') + '</ul></div>';
+  }
   var methodNote = _methodState[pid] ? ' &middot; ' + esc(METHOD_LABELS[_methodState[pid]] || _methodState[pid]) : '';
   document.getElementById('print-root').innerHTML =
     '<div class="print-title">' + esc(title) + '</div>' +
