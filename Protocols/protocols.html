@@ -213,13 +213,37 @@ td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px sol
 .sticky-note-body{flex:1;border:none;background:transparent;resize:both;overflow:auto;padding:2px 10px 10px;font-family:var(--sans);font-size:13px;line-height:1.5;color:#2b2b2b;outline:none;min-height:80px;}
 .sticky-note-body::placeholder{color:rgba(0,0,0,.38);}
 
-.step-note-btn{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;margin-left:6px;border-radius:4px;border:none;background:none;cursor:pointer;color:var(--text3);opacity:.45;transition:opacity .15s,color .15s,background .15s;vertical-align:middle;flex-shrink:0;}
+/* Modern note — sober/professional variant, snaps into a left/right column stack */
+.modern-note{background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-sm,0 3px 14px rgba(0,0,0,.14));width:230px;transform:none;}
+.modern-note:hover{box-shadow:0 6px 20px rgba(0,0,0,.18);}
+.modern-note.dragging{position:fixed!important;box-shadow:0 14px 32px rgba(0,0,0,.3);}
+.modern-note .sticky-note-head{border-bottom:1px solid var(--border);}
+.modern-note-drag{display:flex;color:var(--text3);}
+.modern-note-drag svg{width:15px;height:15px;}
+.modern-note .sticky-note-del{color:var(--text3);}
+.modern-note .sticky-note-del:hover{color:var(--text);background:var(--surface3);}
+.modern-note .sticky-note-body{color:var(--text);resize:none;min-height:100px;}
+.modern-note .sticky-note-body::placeholder{color:var(--text3);}
+
+/* Step-anchored notes: hidden by default, revealed by the "Pin notes to steps" menu toggle */
+.step-note-btn{display:none;align-items:center;justify-content:center;width:19px;height:19px;margin-left:6px;border-radius:4px;border:none;background:none;cursor:pointer;color:var(--text3);opacity:.45;transition:opacity .15s,color .15s,background .15s;vertical-align:middle;flex-shrink:0;}
+body.step-notes-on .step-note-btn{display:inline-flex;}
 .step-note-btn:hover{opacity:1;background:var(--surface3);}
 .step-note-btn.has-note{opacity:1;color:var(--accent);}
 .step-note-btn svg{width:13px;height:13px;}
 .step-note-box{display:none;margin:6px 0 2px;padding:8px 12px;background:var(--accent-dim);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;}
 .step-note-box.open{display:block;}
 .step-note-box textarea{width:100%;border:none;background:transparent;resize:vertical;font-family:var(--sans);font-size:12.5px;color:var(--text);outline:none;min-height:44px;}
+
+/* FAB menu */
+.notes-menu{position:fixed;bottom:88px;right:24px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:6px;display:none;flex-direction:column;gap:2px;z-index:501;min-width:200px;}
+.notes-menu.open{display:flex;}
+.notes-menu-item{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;border:none;background:none;color:var(--text);font-size:13px;font-family:var(--sans);cursor:pointer;text-align:left;width:100%;}
+.notes-menu-item:hover{background:var(--surface2);}
+.notes-menu-item svg{width:16px;height:16px;flex-shrink:0;color:var(--text2);}
+.notes-menu-item.active{color:var(--accent);}
+.notes-menu-item.active svg{color:var(--accent);}
+.notes-menu-swatch{width:14px;height:14px;border-radius:4px;flex-shrink:0;}
 
 @media (max-width:720px){
   .grid-2{grid-template-columns:1fr;}
@@ -281,7 +305,7 @@ td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px sol
 <div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">
 
 <header>
-  <div class="app-logo"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3h6v2H9z"/><path d="M8 11l2 2 4-4"/><path d="M8 16h6"/></svg></div>
+  <div class="app-logo"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2c-1.6-1.1-4.2-1.6-6.8-1.1v12.4c2.6-.5 5.2 0 6.8 1.1c1.6-1.1 4.2-1.6 6.8-1.1V5.1c-2.6-.5-5.2 0-6.8 1.1Z"/><path d="M12 6.2v12.4"/></svg></div>
   <div>
     <h1>Protocols</h1>
     <p>Assay &amp; experiment library &middot; protocol, calculate, export</p>
@@ -2604,7 +2628,21 @@ td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px sol
 </div>
 <div id="print-root"></div>
 <div id="sticky-layer"></div>
-<button class="notes-fab hidden" id="notes-fab" onclick="addStickyNote()" title="Add a sticky note">+</button>
+<div class="notes-menu" id="notes-menu">
+  <button class="notes-menu-item" id="notes-menu-pin" onclick="toggleStepNotesPref()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+    Pin notes to steps
+  </button>
+  <button class="notes-menu-item" onclick="addNoteFromMenu('classic')">
+    <span class="notes-menu-swatch" style="background:#fff3b0;border:1px solid rgba(0,0,0,.15);"></span>
+    Classic sticky note
+  </button>
+  <button class="notes-menu-item" onclick="addNoteFromMenu('modern')">
+    <span class="notes-menu-swatch" style="background:var(--surface2);border:1px solid var(--border2);"></span>
+    Modern note
+  </button>
+</div>
+<button class="notes-fab hidden" id="notes-fab" onclick="toggleNotesMenu()" title="Notes">+</button>
 
 <script>
 // ── ESC / SAFETY (matches Echo/Dora convention) ──
@@ -2762,12 +2800,14 @@ function showDTab(pid, tab) {
 }
 
 // ── STICKY NOTES ──
-// Two flavours, both persisted per-protocol in localStorage (no backend in this app):
-// (1) free-floating draggable notes, shown across all tabs of the open protocol;
-// (2) notes pinned to a specific Protocol-tab step, toggled via a small pin icon.
+// Three flavours, all persisted per-protocol in localStorage (no backend in this app):
+// (1) "classic" free-floating pastel notes, freely draggable anywhere;
+// (2) "modern" notes — sober, app-themed, snap into a left/right column stack on drop;
+// (3) notes pinned to a specific Protocol-tab step, off by default, toggled via the FAB menu.
 var NOTE_COLORS = ['#fff3b0','#ffd6e8','#d0e8ff','#d3f5d3','#ffe1c2','#e5d4ff'];
+var MODERN_TOP = 90, MODERN_H = 170, MODERN_GAP = 14;
 var _notesOpenPid = null;
-var _noteDrag = null; // {id, startX, startY, origX, origY}
+var _noteDrag = null; // {id, style, startX, startY, origX, origY}
 
 function _notesKey(pid) { return 'proto_notes_' + pid; }
 function getProtoNotes(pid) {
@@ -2777,6 +2817,11 @@ function getProtoNotes(pid) {
 function saveProtoNotes(pid, data) {
   try { localStorage.setItem(_notesKey(pid), JSON.stringify(data)); } catch(e) {}
 }
+function getNotesPrefs() {
+  try { return JSON.parse(localStorage.getItem('proto_notes_prefs')) || { stepNotesOn: false }; }
+  catch(e) { return { stepNotesOn: false }; }
+}
+function saveNotesPrefs(p) { try { localStorage.setItem('proto_notes_prefs', JSON.stringify(p)); } catch(e) {} }
 function debounce(fn, wait) {
   var t;
   return function() { var args = arguments, ctx = this; clearTimeout(t); t = setTimeout(function(){ fn.apply(ctx, args); }, wait); };
@@ -2786,6 +2831,7 @@ function _pointOf(e) { return e.touches && e.touches[0] ? e.touches[0] : e; }
 function openNotesForProtocol(pid) {
   _notesOpenPid = pid;
   document.getElementById('notes-fab').classList.remove('hidden');
+  applyStepNotesPref();
   renderStickyNotes();
   assignStepNoteKeys(pid);
   renderStepNotes(pid);
@@ -2794,17 +2840,50 @@ function closeNotesForProtocol() {
   _notesOpenPid = null;
   document.getElementById('notes-fab').classList.add('hidden');
   document.getElementById('sticky-layer').innerHTML = '';
+  closeNotesMenu();
 }
 
-// ── Floating notes ──
+// ── FAB menu ──
+function toggleNotesMenu() {
+  var menu = document.getElementById('notes-menu');
+  var open = menu.classList.toggle('open');
+  if (open) updateNotesMenuState();
+}
+function closeNotesMenu() { document.getElementById('notes-menu').classList.remove('open'); }
+function updateNotesMenuState() {
+  var item = document.getElementById('notes-menu-pin');
+  if (item) item.classList.toggle('active', getNotesPrefs().stepNotesOn);
+}
+function toggleStepNotesPref() {
+  var prefs = getNotesPrefs();
+  prefs.stepNotesOn = !prefs.stepNotesOn;
+  saveNotesPrefs(prefs);
+  applyStepNotesPref();
+  closeNotesMenu();
+}
+function applyStepNotesPref() {
+  document.body.classList.toggle('step-notes-on', getNotesPrefs().stepNotesOn);
+}
+function addNoteFromMenu(style) {
+  addStickyNote(style);
+  closeNotesMenu();
+}
+document.addEventListener('mousedown', function(e) {
+  var menu = document.getElementById('notes-menu'), fab = document.getElementById('notes-fab');
+  if (menu && menu.classList.contains('open') && !menu.contains(e.target) && e.target !== fab) closeNotesMenu();
+});
+
+// ── Floating notes (classic + modern) ──
 function renderStickyNotes() {
   var layer = document.getElementById('sticky-layer');
   layer.innerHTML = '';
   if (!_notesOpenPid) return;
   var data = getProtoNotes(_notesOpenPid);
-  data.floating.forEach(function(note) { layer.appendChild(buildStickyNoteEl(note)); });
+  data.floating.forEach(function(note) {
+    layer.appendChild(note.style === 'modern' ? buildModernNoteEl(note, data) : buildClassicNoteEl(note));
+  });
 }
-function buildStickyNoteEl(note) {
+function buildClassicNoteEl(note) {
   var el = document.createElement('div');
   el.className = 'sticky-note';
   el.style.left = note.x + 'px';
@@ -2845,6 +2924,40 @@ function buildStickyNoteEl(note) {
   el.appendChild(head); el.appendChild(body);
   return el;
 }
+function buildModernNoteEl(note, data) {
+  var el = document.createElement('div');
+  el.className = 'sticky-note modern-note';
+  el.dataset.id = note.id;
+  var side = note.side || 'left';
+  var siblings = data.floating.filter(function(n){ return n.style === 'modern' && n.side === side; })
+    .sort(function(a,b){ return a.order - b.order; });
+  var idx = siblings.findIndex(function(n){ return n.id === note.id; });
+  el.style[side] = '16px';
+  el.style.top = (MODERN_TOP + Math.max(0,idx) * (MODERN_H + MODERN_GAP)) + 'px';
+  el.style.height = MODERN_H + 'px';
+
+  var head = document.createElement('div');
+  head.className = 'sticky-note-head';
+  var handle = document.createElement('span');
+  handle.className = 'modern-note-drag';
+  handle.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="7" r="1.3"/><circle cx="15" cy="7" r="1.3"/><circle cx="9" cy="12" r="1.3"/><circle cx="15" cy="12" r="1.3"/><circle cx="9" cy="17" r="1.3"/><circle cx="15" cy="17" r="1.3"/></svg>';
+  var del = document.createElement('button');
+  del.className = 'sticky-note-del'; del.innerHTML = '&times;'; del.title = 'Delete note';
+  del.onclick = function(e) { e.stopPropagation(); deleteStickyNote(note.id); };
+  head.appendChild(handle); head.appendChild(del);
+  var dragStart = function(e) { if (e.target === head || e.target === handle || handle.contains(e.target)) startStickyDrag(e, note.id); };
+  head.addEventListener('mousedown', dragStart);
+  head.addEventListener('touchstart', dragStart, { passive: true });
+
+  var body = document.createElement('textarea');
+  body.className = 'sticky-note-body';
+  body.placeholder = 'Write a note…';
+  body.value = note.text || '';
+  body.addEventListener('input', debounce(function() { updateStickyNoteText(note.id, body.value); }, 300));
+
+  el.appendChild(head); el.appendChild(body);
+  return el;
+}
 // Reads the CURRENT (possibly not-yet-debounce-saved) textarea value out of
 // every rendered note before any operation that calls renderStickyNotes() —
 // otherwise a quick click (e.g. a colour swatch) right after typing can race
@@ -2858,25 +2971,48 @@ function _flushLiveNoteText() {
   });
   return data;
 }
-function addStickyNote() {
+function addStickyNote(style) {
   if (!_notesOpenPid) return;
   var data = _flushLiveNoteText();
   var id = 'n' + Date.now();
-  var offset = (data.floating.length % 5) * 26;
-  data.floating.push({ id: id, x: 110 + offset, y: 100 + offset, w: 200, h: 170, color: NOTE_COLORS[data.floating.length % NOTE_COLORS.length], text: '', tilt: (Math.random()*6-3).toFixed(1) });
+  if (style === 'modern') {
+    var leftN = data.floating.filter(function(n){ return n.style === 'modern' && n.side === 'left'; }).length;
+    var rightN = data.floating.filter(function(n){ return n.style === 'modern' && n.side === 'right'; }).length;
+    var side = leftN <= rightN ? 'left' : 'right';
+    data.floating.push({ id: id, style: 'modern', side: side, order: side === 'left' ? leftN : rightN, text: '' });
+  } else {
+    var classicN = data.floating.filter(function(n){ return n.style !== 'modern'; }).length;
+    var offset = (classicN % 5) * 26;
+    data.floating.push({ id: id, style: 'classic', x: 110 + offset, y: 100 + offset, w: 200, h: 170, color: NOTE_COLORS[classicN % NOTE_COLORS.length], text: '', tilt: (Math.random()*6-3).toFixed(1) });
+  }
   saveProtoNotes(_notesOpenPid, data);
   renderStickyNotes();
 }
 function deleteStickyNote(id) {
   var data = _flushLiveNoteText();
+  var deleted = data.floating.filter(function(n){ return n.id === id; })[0];
   data.floating = data.floating.filter(function(n){ return n.id !== id; });
+  if (deleted && deleted.style === 'modern') _reorderModernSide(data, deleted.side);
   saveProtoNotes(_notesOpenPid, data);
   renderStickyNotes();
+  _refreshOutputIfActive(_notesOpenPid);
+}
+function _reorderModernSide(data, side) {
+  data.floating.filter(function(n){ return n.style === 'modern' && n.side === side; })
+    .sort(function(a,b){ return a.order - b.order; })
+    .forEach(function(n,i){ n.order = i; });
 }
 function updateStickyNoteText(id, text) {
   var data = getProtoNotes(_notesOpenPid);
   var n = data.floating.filter(function(n){ return n.id === id; })[0];
-  if (n) { n.text = text; saveProtoNotes(_notesOpenPid, data); }
+  if (n) { n.text = text; saveProtoNotes(_notesOpenPid, data); _refreshOutputIfActive(_notesOpenPid); }
+}
+// Floating notes stay visible across every tab of the open protocol, and step notes are only
+// ever edited from the Protocol tab — either way, if the Output tab happens to be the active
+// one right now, its "My notes" block needs to catch up once the debounced save lands.
+function _refreshOutputIfActive(pid) {
+  var wrap = document.getElementById('detail-' + pid);
+  if (wrap && wrap.querySelector('.dpane[data-tab="output"].active')) refreshExportPanel(pid);
 }
 function saveStickyNoteSize(id, w, h) {
   if (!w || !h) return; // element was likely detached mid-debounce; don't persist a bogus 0x0 size
@@ -2894,9 +3030,14 @@ function startStickyDrag(e, id) {
   var data = getProtoNotes(_notesOpenPid);
   var note = data.floating.filter(function(n){ return n.id === id; })[0];
   if (!note) return;
-  _noteDrag = { id: id, startX: pt.clientX, startY: pt.clientY, origX: note.x, origY: note.y };
   var el = document.querySelector('.sticky-note[data-id="' + id + '"]');
-  if (el) el.classList.add('dragging');
+  var rect = el ? el.getBoundingClientRect() : { left: 0, top: 0 };
+  _noteDrag = { id: id, style: note.style, startX: pt.clientX, startY: pt.clientY,
+    origX: note.style === 'modern' ? rect.left : note.x, origY: note.style === 'modern' ? rect.top : note.y };
+  if (el) {
+    el.classList.add('dragging');
+    if (note.style === 'modern') { el.style.left = rect.left + 'px'; el.style.right = 'auto'; el.style.top = rect.top + 'px'; }
+  }
   document.addEventListener('mousemove', onStickyDragMove);
   document.addEventListener('mouseup', onStickyDragEnd);
   document.addEventListener('touchmove', onStickyDragMove, { passive: false });
@@ -2916,17 +3057,37 @@ function onStickyDragEnd(e) {
   var dx = pt.clientX - _noteDrag.startX, dy = pt.clientY - _noteDrag.startY;
   var data = getProtoNotes(_notesOpenPid);
   var note = data.floating.filter(function(n){ return n.id === _noteDrag.id; })[0];
-  if (note) { note.x = Math.max(0, _noteDrag.origX + dx); note.y = Math.max(0, _noteDrag.origY + dy); saveProtoNotes(_notesOpenPid, data); }
-  var el = document.querySelector('.sticky-note[data-id="' + _noteDrag.id + '"]');
-  if (el) el.classList.remove('dragging');
+  if (note) {
+    if (_noteDrag.style === 'modern') {
+      var finalX = _noteDrag.origX + dx, finalY = _noteDrag.origY + dy;
+      var oldSide = note.side;
+      var side = (finalX + 115) < window.innerWidth / 2 ? 'left' : 'right';
+      var siblings = data.floating.filter(function(n){ return n.style === 'modern' && n.side === side && n.id !== note.id; })
+        .sort(function(a,b){ return a.order - b.order; });
+      var slot = siblings.length;
+      for (var i = 0; i < siblings.length; i++) {
+        var slotMid = MODERN_TOP + i * (MODERN_H + MODERN_GAP) + MODERN_H / 2;
+        if (finalY < slotMid) { slot = i; break; }
+      }
+      siblings.splice(slot, 0, note);
+      note.side = side;
+      siblings.forEach(function(n,i){ n.order = i; });
+      if (oldSide !== side) _reorderModernSide(data, oldSide);
+    } else {
+      note.x = Math.max(0, _noteDrag.origX + dx);
+      note.y = Math.max(0, _noteDrag.origY + dy);
+    }
+    saveProtoNotes(_notesOpenPid, data);
+  }
   _noteDrag = null;
   document.removeEventListener('mousemove', onStickyDragMove);
   document.removeEventListener('mouseup', onStickyDragEnd);
   document.removeEventListener('touchmove', onStickyDragMove);
   document.removeEventListener('touchend', onStickyDragEnd);
+  renderStickyNotes(); // re-render so classic notes drop the dragging state and modern notes snap into their grid slot
 }
 
-// ── Step-anchored notes (Protocol tab only) ──
+// ── Step-anchored notes (Protocol tab only, off by default — see the FAB menu) ──
 function assignStepNoteKeys(pid) {
   var wrap = document.getElementById('detail-' + pid);
   if (!wrap) return;
@@ -2976,6 +3137,29 @@ function saveStepNote(pid, key, text) {
   saveProtoNotes(pid, data);
   var btn = document.querySelector('li[data-note-key="' + key + '"] .step-note-btn');
   if (btn) btn.classList.toggle('has-note', !!text);
+  _refreshOutputIfActive(pid);
+}
+// Builds the notes-as-export-bullets block consumed by the Output tab, the
+// PDF export, and "Copy as text" — one shared source so all three exports
+// stay in sync automatically as notes are added/edited/removed.
+function buildNotesExportBullets(pid) {
+  var data = getProtoNotes(pid);
+  var bullets = [];
+  data.floating.forEach(function(n) { if (n.text && n.text.trim()) bullets.push(n.text.trim()); });
+  Object.keys(data.steps).forEach(function(key) {
+    var text = data.steps[key];
+    if (!text || !text.trim()) return;
+    var li = document.querySelector('li[data-note-key="' + key + '"]');
+    var label = key;
+    if (li) {
+      var clone = li.cloneNode(true);
+      clone.querySelectorAll('.step-note-btn,.step-note-box').forEach(function(x){ x.remove(); });
+      label = clone.textContent.replace(/\s+/g,' ').trim();
+      if (label.length > 70) label = label.slice(0,70) + '…';
+    }
+    bullets.push('Re: "' + label + '" — ' + text.trim());
+  });
+  return bullets;
 }
 
 // ── DELIVERY-METHOD BRANCHING (CRISPR Knockout / Knock-in dropdown cards) ──
@@ -3016,7 +3200,10 @@ function renderExportPanel(pid, steps) {
     html +=   '</div>';
     html +=   '<ul style="margin:0;padding:10px 16px;list-style:none;font-size:12px;line-height:1.9;color:var(--text2)">';
     s.bullets.forEach(function(b, j) {
-      html += '<li style="display:flex;gap:6px"><span style="color:var(--text3);font-size:10.5px;min-width:16px;font-family:var(--mono)">' + (j+1) + '.</span><span>' + b + '</span></li>';
+      // Notes are free-typed user text (not the calculator's own trusted HTML bullets) — escape
+      // them so a stray "<" or "&" can't break the layout or be interpreted as markup.
+      var display = s.isNotes ? esc(b) : b;
+      html += '<li style="display:flex;gap:6px"><span style="color:var(--text3);font-size:10.5px;min-width:16px;font-family:var(--mono)">' + (j+1) + '.</span><span>' + display + '</span></li>';
     });
     html +=   '</ul>';
     html += '</div>';
@@ -3051,15 +3238,22 @@ function fallbackCopy(text) {
 function copyProtocolText(pid) {
   var pane = document.querySelector('#detail-' + pid + ' .dpane[data-tab="protocol"]');
   if (!pane) return;
-  clipboardWrite(pane.innerText.trim());
+  var text = pane.innerText.trim();
+  var noteBullets = buildNotesExportBullets(pid);
+  if (noteBullets.length) text += '\n\nMy notes:\n' + noteBullets.map(function(b){ return '- ' + b; }).join('\n');
+  clipboardWrite(text);
 }
 
 // Re-derives whichever pid's Output tab is showing. Dilution/Gibson refresh from their
 // own generateXSteps(); Western Blot (no calculator) shows a "copy the protocol" fallback.
+// Any sticky/step notes on the protocol are appended as one extra "My notes" step so they
+// show up in the Output tab, "Copy all steps", the CSV, and the PDF export automatically.
 function refreshExportPanel(pid) {
   var p = PROTOCOLS.filter(function(x){ return x.id === pid; })[0];
   var steps = p && p.genSteps ? p.genSteps() : null;
-  if (steps) {
+  var noteBullets = buildNotesExportBullets(pid);
+  if (noteBullets.length) steps = (steps || []).concat([{ label: 'My notes', bullets: noteBullets, isNotes: true }]);
+  if (steps && steps.length) {
     renderExportPanel(pid, steps);
   } else {
     var el = document.getElementById('export-' + pid);
@@ -3079,22 +3273,29 @@ function exportProtocolPDF(pid) {
   var wrap = document.getElementById('detail-' + pid);
   var title = wrap.querySelector('.detail-header h2').textContent;
   var protocolHTML = wrap.querySelector('.dpane[data-tab="protocol"]').innerHTML;
-  var steps = _exportSteps[pid];
+  var allSteps = _exportSteps[pid] || [];
+  var calcSteps = allSteps.filter(function(s){ return !s.isNotes; });
+  var notesSteps = allSteps.filter(function(s){ return s.isNotes; });
   var calcHTML = '';
-  if (steps && steps.length) {
+  if (calcSteps.length) {
     calcHTML += '<div class="print-calc-heading">Calculated values (from your inputs)</div>';
-    steps.forEach(function(s) {
+    calcSteps.forEach(function(s) {
       calcHTML += '<div class="print-step"><div class="print-step-label">' + esc(s.label) + '</div><ul>' +
         s.bullets.map(function(b){ return '<li>' + b + '</li>'; }).join('') + '</ul></div>';
     });
   } else if (wrap.querySelector('.dtab-btn[onclick*="\',\'calc\'"]')) {
     calcHTML = '<div class="print-calc-heading">Calculated values</div><div class="print-no-calc">Run the calculator in the Calculate tab before exporting to include your computed values here.</div>';
   }
+  var notesHTML = '';
+  notesSteps.forEach(function(s) {
+    notesHTML += '<div class="print-calc-heading">' + esc(s.label) + '</div><div class="print-step"><ul>' +
+      s.bullets.map(function(b){ return '<li>' + esc(b) + '</li>'; }).join('') + '</ul></div>';
+  });
   var methodNote = _methodState[pid] ? ' &middot; ' + esc(METHOD_LABELS[_methodState[pid]] || _methodState[pid]) : '';
   document.getElementById('print-root').innerHTML =
     '<div class="print-title">' + esc(title) + '</div>' +
     '<div class="print-meta">dHUB Protocols &middot; exported ' + new Date().toLocaleDateString() + methodNote + '</div>' +
-    protocolHTML + calcHTML;
+    protocolHTML + calcHTML + notesHTML;
   document.body.classList.add('printing');
   window.print();
 }
