@@ -1,4 +1,4 @@
-# The Hub
+# dHUB
 
 > Auto-updated section at bottom. Static content below is maintained manually.
 
@@ -6,11 +6,11 @@
 
 ## Project overview
 
-**The Hub** is the primary product (`The Hub.html`). It is a **self-contained** single-file launcher: all app HTMLs are base64-encoded and embedded directly inside it. Opening `The Hub.html` alone gives access to every tool, no other files required.
+**dHUB** is the primary product (`dHUB.html`). It is a **self-contained** single-file launcher: all app HTMLs are base64-encoded and embedded directly inside it. Opening `dHUB.html` alone gives access to every tool, no other files required.
 
 **Individual standalone files** also exist in their subfolders and are kept in sync — they serve as standalone versions of each app.
 
-**Location:** `Desktop › The_Hub › The Hub.html`  
+**Location:** `Desktop › The_Hub › dHUB.html`  
 **Author:** Jon Macicior — postdoc, Ciulli Lab, University of Dundee  
 **Stack:** Vanilla HTML/CSS/JS only. No build step, no server. Open in browser directly.
 
@@ -42,15 +42,15 @@
 
 ## Architecture & workflow
 
-**The Hub is self-contained.** Each app's HTML is base64-encoded and stored inside `APP_B64` / `APP_B64_NEW` in The Hub's `<script>` block. When you open an app, it is decoded with `decodeB64App()` and rendered in an `iframe.srcdoc`. This means:
+**dHUB is self-contained.** Each app's HTML is base64-encoded and stored inside `APP_B64` / `APP_B64_NEW` in dHUB's `<script>` block. When you open an app, it is decoded with `decodeB64App()` and rendered in an `iframe.srcdoc`. This means:
 
-- **The Hub alone** = complete product (no folder structure needed).
+- **dHUB alone** = complete product (no folder structure needed).
 - **Individual app files** = standalone versions, kept manually in sync.
-- When you change an individual app file, you must **re-run the Python embed script** to regenerate The Hub.
+- When you change an individual app file, you must **re-run the Python embed script** to regenerate dHUB.
 
 ```
 The_Hub/
-├── The Hub.html                              ← self-contained, ~7.79MB
+├── dHUB.html                                 ← self-contained, ~9.4MB
 ├── hub-shell.html                            ← source-of-truth shell (~28KB)
 ├── embed.py                                  ← build script
 ├── Labcyte_Echo/
@@ -74,12 +74,12 @@ The_Hub/
     └── lumina.html
 ```
 
-### Regenerating the self-contained Hub after app changes
+### Regenerating the self-contained dHUB after app changes
 
 **`embed.py`** reads from `hub-shell.html` and fills in each app's base64. Run from `The_Hub/`:
 
 ```bash
-python3 embed.py                      # → The Hub.html  (local/offline use)
+python3 embed.py                      # → dHUB.html  (local/offline use)
 python3 embed.py dist/index.html     # → dist/index.html  (CI/Pages build)
 ```
 
@@ -101,14 +101,14 @@ Workflow: **edit the fit math in Echo only**, then `python3 sync_fit_engine.py` 
 On every push to `main`:
 1. GitHub Actions runs `python3 embed.py dist/index.html`
 2. Deploys `dist/` to GitHub Pages
-3. Hub is live at the Pages URL within ~2 min
+3. dHUB is live at the Pages URL within ~2 min
 
 **Local dev workflow:**
 ```bash
 # 1. Edit any standalone app file
 # 2. Rebuild locally
 python3 embed.py
-# 3. Open The Hub.html to test
+# 3. Open dHUB.html to test
 # 4. Push → Pages auto-rebuilds
 git add Labcyte_Echo/labcyte_echo.html hub-shell.html CLAUDE.md
 git commit -m "Fix: description"
@@ -116,15 +116,15 @@ git push
 ```
 
 **Files tracked in git:** `hub-shell.html`, `embed.py`, `.gitignore`, `.github/`, all standalone app HTMLs, `CLAUDE.md`, `database.rules.json`/`firebase.json`/`.firebaserc` (Firebase RTDB security rules, deployable via `firebase deploy --only database` if the CLI is installed — see Firebase integration section)  
-**Files NOT tracked:** `The Hub.html` (generated), `dist/`, `Labmate/RDKit_minimal.*`
+**Files NOT tracked:** `dHUB.html` (generated), `dist/`, `Labmate/RDKit_minimal.*`
 
-### Hub shell structure
+### dHUB shell structure
 
 ```
-hub-shell.html / The Hub.html
+hub-shell.html / dHUB.html
 ├── <script>APP_B64{echo,deg,lm}</script>         — base64-encoded app HTML
 ├── <script>APP_B64_NEW{dna,pd,pt,spectra,ldi}</script> — base64-encoded app HTML
-├── #hub-nav       — nav bar: H logo + "The Hub" + theme toggle + lab/settings btns
+├── #hub-nav       — nav bar: d logo + "dHUB" + theme toggle + lab/settings btns
 ├── #hub-announce  — fixed banner below nav (Firebase-driven, admin posts, all sessions see it)
 ├── #hub-home      — 42px title + rotating subtitle + 8-card grid
 ├── .app-view × 8  — position:fixed overlays (z-index:10), always in DOM at opacity:0
@@ -137,10 +137,10 @@ hub-shell.html / The Hub.html
 ├── Firebase SSE   — /labconfig.json (lab card visibility) + /announcement.json (banner)
 ├── applyLabConfig() — hides/shows cards for non-admin; admin always sees all
 ├── Lab panel      — admin only: per-app toggles + announcement input + preview lab view
-└── easter egg     — 5-click on H logo (when on hub home)
+└── easter egg     — 5-click on d logo (when on hub home)
 ```
 
-**Navigation:** The Hub's H logo (`#hub-logo`) acts as back button when inside an app — no button injected into app iframes.
+**Navigation:** dHUB's d logo (`#hub-logo`) acts as back button when inside an app — no button injected into app iframes.
 
 ### Animation design
 
@@ -181,7 +181,7 @@ All apps share a consistent header:
 
 ---
 
-## Hub home design
+## dHUB home design
 
 - Title: **42px, font-weight:700, letter-spacing:-1.2px**
 - Rotating subtitle: `font-size:14px`, `color:var(--text2)`, crossfade every 5s
@@ -259,13 +259,13 @@ python3 embed.py
 
 **LabMate RDKit (removed):** LabMate no longer uses RDKit — `labmate.html` has zero references to it (the chemistry that needed it went with the removed PROTAC Tools section). The `Labmate/RDKit_minimal.js`/`.wasm` files on disk are orphaned (and gitignored, so not in the repo or the built Hub). The old `<base href>` injection note no longer applies; safe to delete the local assets.
 
-**Same-origin srcdoc:** `srcdoc` iframes with `allow-same-origin` are same-origin as the Hub. `localStorage` and `window.parent` calls work.
+**Same-origin srcdoc:** `srcdoc` iframes with `allow-same-origin` are same-origin as dHUB. `localStorage` and `window.parent` calls work.
 
 **LabMate active sections (v0.9.96):** Favourites · Calculators · Mol Biology · Cell Biology · CRISPR · Proteomics · Biophysics · Struct Bio · Genomics. PROTAC Tools and Reference removed.
 
 **Plate Designer mobile:** `.sel-toolbar` anchored to `top:58px` on mobile with `max-height:calc(100vh - 80px); overflow-y:auto` so it never covers the plate canvas.
 
-**Favicon:** SVG data URI in `hub-shell.html` `<head>` — dark rounded square with white "H", matches nav logo.
+**Favicon:** SVG data URI in `hub-shell.html` `<head>` — dark rounded square with white "d", matches nav logo.
 
 **`labBtn.style.display`:** Must be set to `'inline-block'` (not `''`) — a CSS rule hides it by default and `''` doesn't override it.
 
@@ -274,9 +274,11 @@ python3 embed.py
 ## Session log
 <!-- AUTO-UPDATED by .claude/stop-hook.sh — do not edit this section manually -->
 <!-- LAST_SESSION_START -->
-Last session: 2026-07-14 (Echo backfill calculator — DMSO-only vehicle wells; v1.3.7)
-Hub apps: 15. Version v1.3.7.
+Last session: 2026-07-14 (Echo backfill vehicle wells + changelog cleanup + rebrand to dHUB; v1.3.7)
+Hub apps: 15. Version v1.3.7. (All of this day's work is one version bump / one changelog entry — see the versioning rule.)
 **Echo Gradient Planner backfill calculator now accounts for DMSO-only (vehicle) wells.** Jon pointed out the existing intermediate-plate backfill calculator (`_egBfCompute`, `Labcyte_Echo/labcyte_echo.html`) only summed the DMSO shortfall of compound-dosed wells (`maxT - vAdj` per dose point) — it missed that real runs also include wells filled with **only DMSO** (no compound) at the same max-transfer volume as the highest-dose well, used to homogenize final DMSO% across the whole destination plate (vehicle/homogenization controls). Since those wells get zero compound transfer, their *entire* volume comes from backfill DMSO, not just a shortfall — a bigger contribution than any compound well's partial top-up. Added a new **"DMSO-only (vehicle) wells"** input (per set, default 0 for exact backward compatibility) next to the existing compound/sets/replicates fields; `vehicleBackfillNL = nVehicle*nSets*maxT` is now added to `totalBackfillNL` alongside the pre-existing `compoundBackfillNL`, and vehicle wells are added to `destWellsNeedingBackfill`. Both the live calculator output and the Copy-summary text now break out the compound-vs-vehicle contribution when vehicle wells > 0. Verified via Playwright against the standalone file: with the default gradient loaded, 4 vehicle wells/set at maxT=40 nL added exactly 160 nL (4×40) on top of the existing 775 nL compound backfill for a 935 nL total; leaving the field at its default 0 reproduces the prior numbers exactly (775 nL, 20 dest wells needing backfill) — confirmed no regression for existing users who don't use vehicle wells.
+**Changelog cleanup.** The in-app "What's new" panel had drifted back into detailed paragraph-style bullets (v1.1.1–v1.3.7, 25 entries). Jon: "shorten the log entries A LOT... if we have added new stuff write (added new features), if there are bug fixes just write bug fixes." Rewrote that whole range to the terse `<b>App</b>: new features` / `<b>App</b>: bug fixes` / `<b>App</b>: visual updates` style already used for v1.0.95 and older (no mechanism/rationale in-app — that still lives here and in git history). Also caught and merged several same-calendar-day version bumps that had never been day-grouped (29 Jun had 4 separate entries, 24 Jun had 4, 22 Jun had 4, 21 Jun had 3, 20 Jun had 3) into one entry each. Explicitly asked and confirmed: this terseness rule applies to the in-app changelog only, **not** to this Session log, which keeps its detailed style on purpose.
+**Rebrand: The Hub → dHUB.** Jon is thinking bigger-picture — positioning this suite as a centralized TPD (targeted protein degradation) ops platform, potentially sellable to other labs, with the Data Analysis pack (Echo/Beacon/Lumina/Degradation Explorer/LDI) as the flagship. First step: rename "The Hub" to "dHUB" (pronounced the same, "d" now standing for Degradation) everywhere user-facing. Changed: page `<title>`, favicon (H→d), nav logo box + `#nav-title`, home hero `.hub-title`, `.opts-version` label, changelog `<b>Hub</b>` mentions, "Back to Hub" tooltips, the Ryan-easter-egg comic's `regg-title`, plus code comments in Cuppa/Iceberg that explained embed behavior in terms of "The Hub." Renamed the build output `The Hub.html` → `dHUB.html` (updated `embed.py`'s default `OUT`, `.gitignore`, `CLAUDE.md`) and the GitHub Actions workflow display names — **none of this touches the actual build target for Pages** (`dist/index.html`), so the live deploy path is unaffected. Deliberately left alone: (1) the GitHub repo name (`maciciorjon-hash/thehub`) and Pages URL (`.../thehub/`) — renaming that breaks the live/shared URL and is an external, harder-to-reverse call Jon hasn't made yet; (2) the local folder name `Desktop/The_Hub` — same reasoning, lower stakes but still worth a deliberate decision rather than a silent mid-session rename; (3) the Firebase project id `thehub-f80ae` — renaming a Firebase project isn't a text edit, it's standing up a new project and migrating data, wildly out of scope for a cosmetic rebrand; (4) historical/narrative content that names the old brand as a period-accurate detail — the Ryan-egg comic's "THE HUB — v1.0.35" screenshot text (explicitly version-pinned to an old release) and LabMate's Pip's Story "Chapter VI · The Hub Era" (narrates the app's actual history chronologically) both keep the old name on purpose, same logic as not retconning a real company's old product name out of its own history page. All of `<b>App</b>: category` changelog bullets that mention "Hub" as one of the affected apps were updated to "dHUB" for the current-and-future entries; the legacy pre-v1.0.95 bundle blocks were left alone (pre-existing, deliberately untouched convention, see the changelog-format memory note). Verified via Playwright screenshot against the rebuilt `dHUB.html`: title/nav/home-title/logo-letter/version-string all read "dHUB" correctly.
 
 Previous session: 2026-07-13 (Suite-wide audit — Wave 1 correctness + shared fit-engine reconciliation; v1.3.6)
 Hub apps: 15. Version v1.3.6. (All of this day's work is one version bump / one changelog entry — see the versioning rule.)

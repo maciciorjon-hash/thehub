@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Bundle all apps into The Hub.
+"""Bundle all apps into dHUB.
 
 Usage:
-  python embed.py                      ->  ./The Hub.html   (local dev)
+  python embed.py                      ->  ./dHUB.html      (local dev)
   python embed.py dist/index.html     ->  dist/index.html   (CI / GitHub Pages)
 """
 import base64, re, os, sys
 
 BASE  = os.path.dirname(os.path.abspath(__file__))
 SHELL = os.path.join(BASE, 'hub-shell.html')
-OUT   = sys.argv[1] if len(sys.argv) > 1 else os.path.join(BASE, 'The Hub.html')
+OUT   = sys.argv[1] if len(sys.argv) > 1 else os.path.join(BASE, 'dHUB.html')
 
 APPS = [
     ('echo', 'Labcyte_Echo/labcyte_echo.html'),
