@@ -719,6 +719,10 @@ tr:hover td{background:var(--surface2);}
           <input type="number" id="eg-bf-nreps" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:60px">
         </div>
         <div class="field">
+          <label>DMSO-only (vehicle) wells <span class="pinfo" data-tip="Wells per set filled with only DMSO — no compound — at the same total volume as the highest-dose well, so every destination well ends up at the same final DMSO% (homogenization / vehicle controls). Each one needs the FULL max-transfer volume as backfill (it gets zero compound transfer), so this adds to the total DMSO backfill needed.">ⓘ</span></label>
+          <input type="number" id="eg-bf-nvehicle" value="0" min="0" step="1" oninput="_egBfTrigger()" style="width:70px">
+        </div>
+        <div class="field">
           <label>Plate type</label>
           <select id="eg-bf-plateType" onchange="_egBfPlateType();_egBfTrigger()" style="width:150px">
             <option value="pp">PP (384/1536)</option>
@@ -9306,8 +9310,9 @@ function _unhideAllResultsCols() {
     var perComp=parseInt(document.getElementById('eg-bf-perCompound').value)||0;
     var nSets=parseInt(document.getElementById('eg-bf-nsets').value)||0;
     var nReps=parseInt(document.getElementById('eg-bf-nreps').value)||0;
+    var nVehicle=parseInt(document.getElementById('eg-bf-nvehicle').value)||0;
     var deadVol=parseFloat(document.getElementById('eg-bf-dead').value)||0;
-    var r={interVol:interVol,nComp:nComp,perComp:perComp,nSets:nSets,nReps:nReps,deadVol:deadVol,
+    var r={interVol:interVol,nComp:nComp,perComp:perComp,nSets:nSets,nReps:nReps,nVehicle:nVehicle,deadVol:deadVol,
            prepRows:null,prepOk:true,backfill:{status:'no-gradient'}};
 
     // ── Part 1: intermediate plate prep (source → inter1 → inter2 → …) ──
@@ -9344,7 +9349,12 @@ function _unhideAllResultsCols() {
       var vA=row.chosen?row.chosen.vAdj:0;
       backfillPerCompoundNL += Math.max(0, maxT - vA);
     });
-    var totalBackfillNL=backfillPerCompoundNL*nComp*nSets*nReps;
+    var compoundBackfillNL=backfillPerCompoundNL*nComp*nSets*nReps;
+    // DMSO-only (vehicle) wells get zero compound transfer, so the ENTIRE max-transfer volume
+    // for that well comes from backfill DMSO — one per vehicle well per set.
+    var vehicleWells=nVehicle*nSets;
+    var vehicleBackfillNL=vehicleWells*maxT;
+    var totalBackfillNL=compoundBackfillNL+vehicleBackfillNL;
     var totalBackfillUL=totalBackfillNL/1000;
     var usablePerWell=interVol-deadVol;
     // Sets and replicates are both just extra dispenses from the SAME intermediate well —
@@ -9357,9 +9367,10 @@ function _unhideAllResultsCols() {
     var minWells=Math.ceil(totalBackfillUL/usablePerWell);
     r.backfill={
       status:'ok', nPoints:rows.length, backfillPerCompoundNL:backfillPerCompoundNL,
+      compoundBackfillNL:compoundBackfillNL, vehicleWells:vehicleWells, vehicleBackfillNL:vehicleBackfillNL,
       totalBackfillNL:totalBackfillNL, totalBackfillUL:totalBackfillUL, usablePerWell:usablePerWell,
       wellsUsedByCompounds:wellsUsedByCompounds,
-      destWellsNeedingBackfill:nComp*rows.length*nSets*nReps,
+      destWellsNeedingBackfill:nComp*rows.length*nSets*nReps+vehicleWells,
       minWells:minWells, totalWells:wellsUsedByCompounds+minWells
     };
     return r;
@@ -9411,9 +9422,13 @@ function _unhideAllResultsCols() {
       html+=
         '<div style="font-size:12.5px;line-height:1.8">'+
         '<div>Total DMSO backfill needed for the assay: <strong>'+fmtVol(b.totalBackfillNL)+' nL</strong> ('+b.totalBackfillUL.toFixed(2)+' µL)</div>'+
+        (b.vehicleWells>0?(
+        '<div style="padding-left:14px;color:var(--text3)">— from compound wells: '+fmtVol(b.compoundBackfillNL)+' nL</div>'+
+        '<div style="padding-left:14px;color:var(--text3)">— from '+b.vehicleWells+' DMSO-only (vehicle) well'+(b.vehicleWells===1?'':'s')+' at the full max-transfer volume: '+fmtVol(b.vehicleBackfillNL)+' nL</div>'
+        ):'')+
         '<div>Usable volume per backfill well: <strong>'+b.usablePerWell.toFixed(1)+' µL</strong> ('+bf.interVol+' µL pre-filled &minus; '+bf.deadVol+' µL dead volume)</div>'+
         '<div>Wells already spoken for by compounds: <strong>'+b.wellsUsedByCompounds+'</strong> ('+bf.nComp+' × '+bf.perComp+' — sets and replicates redraw from these same wells)</div>'+
-        '<div>Destination wells needing backfill: <strong>'+b.destWellsNeedingBackfill+'</strong> ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' replicate'+(bf.nReps===1?'':'s')+')</div>'+
+        '<div>Destination wells needing backfill: <strong>'+b.destWellsNeedingBackfill+'</strong> ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' replicate'+(bf.nReps===1?'':'s')+(b.vehicleWells>0?' + '+b.vehicleWells+' vehicle':'')+')</div>'+
         '</div>'+
         '<div style="margin-top:8px;padding:8px 12px;background:rgba(0,200,150,0.08);border:1px solid var(--accent3);border-radius:6px;font-size:12.5px">'+
           '✦ Reserve at least <strong>'+b.minWells+' free well'+(b.minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
@@ -9560,16 +9575,22 @@ function _unhideAllResultsCols() {
     var b=bf.backfill;
     if(b.status==='ok'){
       var bfLines=[
-        'Total DMSO backfill needed for the assay: '+fmtVol(b.totalBackfillNL)+' nL ('+b.totalBackfillUL.toFixed(2)+' µL)',
+        'Total DMSO backfill needed for the assay: '+fmtVol(b.totalBackfillNL)+' nL ('+b.totalBackfillUL.toFixed(2)+' µL)'
+      ];
+      if(b.vehicleWells>0){
+        bfLines.push('  - from compound wells: '+fmtVol(b.compoundBackfillNL)+' nL');
+        bfLines.push('  - from '+b.vehicleWells+' DMSO-only (vehicle) well'+(b.vehicleWells===1?'':'s')+' at the full max-transfer volume: '+fmtVol(b.vehicleBackfillNL)+' nL');
+      }
+      bfLines.push(
         'Usable volume per backfill well: '+b.usablePerWell.toFixed(1)+' µL ('+bf.interVol+' µL pre-filled - '+bf.deadVol+' µL dead volume)',
         'Wells already spoken for by compounds: '+b.wellsUsedByCompounds+' ('+bf.nComp+' × '+bf.perComp+')',
-        'Destination wells needing backfill: '+b.destWellsNeedingBackfill+' ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' sets × '+bf.nReps+' replicates)',
+        'Destination wells needing backfill: '+b.destWellsNeedingBackfill+' ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' sets × '+bf.nReps+' replicates'+(b.vehicleWells>0?' + '+b.vehicleWells+' vehicle':'')+')',
         'Reserve at least '+b.minWells+' free well'+(b.minWells===1?'':'s')+' on the intermediate plate, pre-filled with neat DMSO, for backfill.',
         'Total wells to pre-fill with '+bf.interVol+' µL DMSO before the run (intermediates + backfill): '+b.totalWells+' ('+b.wellsUsedByCompounds+' + '+b.minWells+')'
-      ];
+      );
       lines.push('');
       bfLines.forEach(function(l){ lines.push(l); });
-      html+=bfLines.map(function(l,i){return '<p style="margin:0 0 3px'+(i===4?';font-weight:700':'')+'">'+esc(l)+'</p>';}).join('');
+      html+=bfLines.map(function(l){return '<p style="margin:0 0 3px'+(l.indexOf('Reserve at least')===0?';font-weight:700':'')+'">'+esc(l)+'</p>';}).join('');
     }
     html+='</div>';
 
