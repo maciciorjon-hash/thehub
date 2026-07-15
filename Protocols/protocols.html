@@ -192,6 +192,8 @@ td{padding:8px 10px;font-family:var(--mono);font-size:12px;border-bottom:1px sol
 /* ── OUTPUT TAB / EXPORT PANEL ── */
 .output-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
 .no-calc-note{color:var(--text3);font-size:12.5px;padding:10px 0;}
+.export-calc-toggle{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);cursor:pointer;user-select:none;margin-bottom:10px;}
+.export-calc-toggle input{width:auto;margin:0;accent-color:var(--accent);cursor:pointer;}
 
 .pinfo{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--text3);font-size:9px;cursor:help;flex-shrink:0;margin-left:4px;vertical-align:middle;}
 
@@ -3250,8 +3252,17 @@ function setMethodBranch(pid, method) {
 // "copy the Protocol tab's own text" since there's no structured calc result to export.
 var _exportSteps = {};   // pid -> [{label, bullets:[...]}]
 var _lastCalcTable = {}; // pid -> {headers:[...], rows:[[...]]} — feeds CSV export
+var _includeCalcs = {};  // pid -> bool, default true — "Include calculated values" toggle (Output tab + PDF)
 
 function stepToText(s) { return s.label + '\n' + s.bullets.map(function(b){ return '- ' + b; }).join('\n'); }
+
+// Lets someone export just the plain protocol (no calculator values) when they haven't
+// actually filled in their own numbers — otherwise the PDF/Output would show whatever
+// placeholder defaults the calculator was seeded with, which reads as real data but isn't.
+function toggleIncludeCalcs(pid, checked) {
+  _includeCalcs[pid] = checked;
+  refreshExportPanel(pid);
+}
 
 function renderExportPanel(pid, steps, hasCalc) {
   if (hasCalc === undefined) hasCalc = true; // every direct caller besides refreshExportPanel is a calculator protocol
@@ -3259,25 +3270,32 @@ function renderExportPanel(pid, steps, hasCalc) {
   if (!el) return;
   _exportSteps[pid] = steps;
   var html = '';
-  if (!steps || !steps.length) {
-    html = hasCalc
-      ? '<div class="no-calc-note">Fill in the Calculate tab to generate exportable steps.</div>'
-      : '<div class="no-calc-note">This protocol has no calculator — use "Copy as text" above, or Print / Save as PDF, to export the steps shown in the Protocol tab.</div>';
-  } else {
-    steps.forEach(function(s, i) {
-      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">';
-      html +=   '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 13px;background:var(--surface2)">';
-      html +=     '<span style="font-size:12.5px;font-weight:600">' + esc(s.label) + '</span>';
-      html +=     '<button class="btn btn-sm" onclick="copyExportStep(\'' + pid + '\',' + i + ')">Copy</button>';
-      html +=   '</div>';
-      html +=   '<ul style="margin:0;padding:10px 16px;list-style:none;font-size:12px;line-height:1.9;color:var(--text2)">';
-      s.bullets.forEach(function(b, j) {
-        html += '<li style="display:flex;gap:6px"><span style="color:var(--text3);font-size:10.5px;min-width:16px;font-family:var(--mono)">' + (j+1) + '.</span><span>' + b + '</span></li>';
+  if (hasCalc) {
+    var include = _includeCalcs[pid] !== false;
+    html += '<label class="export-calc-toggle"><input type="checkbox" ' + (include ? 'checked' : '') +
+      ' onchange="toggleIncludeCalcs(\'' + pid + '\',this.checked)"> Include calculated values in Output / PDF</label>';
+    if (!include) {
+      html += '<div class="no-calc-note">Calculated values hidden — Output and PDF will show the plain protocol steps only.</div>';
+    } else if (!steps || !steps.length) {
+      html += '<div class="no-calc-note">Fill in the Calculate tab to generate exportable steps.</div>';
+    } else {
+      steps.forEach(function(s, i) {
+        html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden">';
+        html +=   '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 13px;background:var(--surface2)">';
+        html +=     '<span style="font-size:12.5px;font-weight:600">' + esc(s.label) + '</span>';
+        html +=     '<button class="btn btn-sm" onclick="copyExportStep(\'' + pid + '\',' + i + ')">Copy</button>';
+        html +=   '</div>';
+        html +=   '<ul style="margin:0;padding:10px 16px;list-style:none;font-size:12px;line-height:1.9;color:var(--text2)">';
+        s.bullets.forEach(function(b, j) {
+          html += '<li style="display:flex;gap:6px"><span style="color:var(--text3);font-size:10.5px;min-width:16px;font-family:var(--mono)">' + (j+1) + '.</span><span>' + b + '</span></li>';
+        });
+        html +=   '</ul>';
+        html += '</div>';
       });
-      html +=   '</ul>';
-      html += '</div>';
-    });
-    html += '<div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="btn btn-sm" onclick="copyExportAll(\'' + pid + '\')">Copy all steps</button></div>';
+      html += '<div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="btn btn-sm" onclick="copyExportAll(\'' + pid + '\')">Copy all steps</button></div>';
+    }
+  } else {
+    html += '<div class="no-calc-note">This protocol has no calculator — use "Copy as text" above, or Print / Save as PDF, to export the steps shown in the Protocol tab.</div>';
   }
   html += buildExportNotesHTML(pid);
   el.innerHTML = html;
@@ -3338,7 +3356,8 @@ function exportProtocolPDF(pid) {
   var title = wrap.querySelector('.detail-header h2').textContent;
   var clone = buildCleanProtocolClone(pid, 'print-note-inline');
   var protocolHTML = clone ? clone.innerHTML : '';
-  var calcSteps = _exportSteps[pid] || [];
+  var includeCalcs = _includeCalcs[pid] !== false;
+  var calcSteps = includeCalcs ? (_exportSteps[pid] || []) : [];
   var calcHTML = '';
   if (calcSteps.length) {
     calcHTML += '<div class="print-calc-heading">Calculated values (from your inputs)</div>';
@@ -3346,7 +3365,7 @@ function exportProtocolPDF(pid) {
       calcHTML += '<div class="print-step"><div class="print-step-label">' + esc(s.label) + '</div><ul>' +
         s.bullets.map(function(b){ return '<li>' + b + '</li>'; }).join('') + '</ul></div>';
     });
-  } else if (wrap.querySelector('.dtab-btn[onclick*="\',\'calc\'"]')) {
+  } else if (includeCalcs && wrap.querySelector('.dtab-btn[onclick*="\',\'calc\'"]')) {
     calcHTML = '<div class="print-calc-heading">Calculated values</div><div class="print-no-calc">Run the calculator in the Calculate tab before exporting to include your computed values here.</div>';
   }
   var floating = buildFloatingNotesBullets(pid);
