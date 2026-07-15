@@ -119,12 +119,13 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 #bat-f1{position:absolute;top:0;left:0;animation:batFlap1 0.45s step-start infinite;}
 #bat-corner-lbl{font-size:11px;font-family:var(--mono,monospace);color:inherit;text-align:center;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}
 
-.tabs{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);padding:0 20px;flex-shrink:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
-.tabs::-webkit-scrollbar{display:none;}
+.tabs{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);padding:0 20px;flex-shrink:0;overflow:visible;}
+.tabs-scroll{display:flex;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1;min-width:0;}
+.tabs-scroll::-webkit-scrollbar{display:none;}
 .tab{padding:13px 16px;font-size:13px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s;user-select:none;display:flex;align-items:center;gap:6px;white-space:nowrap;flex-shrink:0;}
 .tab:hover{color:var(--text2);}
 .tab.active{color:var(--text);border-bottom-color:var(--accent);}
-.setup-reopen-btn{margin-left:auto;flex-shrink:0;padding:5px 13px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);position:sticky;right:0;z-index:1;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:background .15s,color .15s,border-color .15s;}
+.setup-reopen-btn{margin-left:12px;flex-shrink:0;padding:5px 13px;border-radius:7px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:background .15s,color .15s,border-color .15s;}
 .setup-reopen-btn:hover{background:var(--accent2);color:#fff;border-color:var(--accent2);}
 /* Setup Modal */
 .setup-overlay{position:fixed;inset:0;z-index:2000;background:var(--modal-backdrop);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
@@ -377,7 +378,7 @@ tr:hover td{background:var(--surface2);}
   header{padding:0 12px;}
   .outer-tabs{padding:0 6px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .outer-tab{white-space:nowrap;flex-shrink:0;padding:0 10px;font-size:12px;}
-  .tabs{padding:0 6px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .tabs{padding:0 6px;}
   .tab{white-space:nowrap;flex-shrink:0;font-size:11px;padding:8px 8px;}
   .da-scroll,.grad-wrap,.da-left,.da-main{padding:10px!important;}
   .da-layout{flex-direction:column!important;}
@@ -973,16 +974,18 @@ tr:hover td{background:var(--surface2);}
 <div class="right">
   <div class="pbar-wrap"><div class="pbar" id="pbar"></div></div>
   <div class="tabs">
-    <div class="tab active" data-tab="log">Console</div>
-    <div class="tab" data-tab="scatter">Plots <span class="tcnt" id="sc">0</span></div>
-    <div class="tab" data-tab="curves">Curves</div>
-    <div class="tab" data-tab="plate">Plate</div>
-    <div class="tab" data-tab="props">Properties <span class="tcnt" id="pc">0</span></div>
-    <div class="tab" data-tab="results">Results <span class="tcnt" id="rc">0</span></div>
-    <div class="tab" data-tab="history">History</div>
-    <div class="tab" data-tab="protocol">Protocol</div>
-    <div class="tab" data-tab="survey">Source Plate</div>
-    <div class="tab" data-tab="guide">Guide</div>
+    <div class="tabs-scroll">
+      <div class="tab active" data-tab="log">Console</div>
+      <div class="tab" data-tab="scatter">Plots <span class="tcnt" id="sc">0</span></div>
+      <div class="tab" data-tab="curves">Curves</div>
+      <div class="tab" data-tab="plate">Plate</div>
+      <div class="tab" data-tab="props">Properties <span class="tcnt" id="pc">0</span></div>
+      <div class="tab" data-tab="results">Results <span class="tcnt" id="rc">0</span></div>
+      <div class="tab" data-tab="history">History</div>
+      <div class="tab" data-tab="protocol">Protocol</div>
+      <div class="tab" data-tab="survey">Source Plate</div>
+      <div class="tab" data-tab="guide">Guide</div>
+    </div>
     <button class="setup-reopen-btn" onclick="openSetupModal()" title="Open setup dialog">⚙ Setup</button>
   </div>
 
@@ -3642,6 +3645,9 @@ function renderBoxPlotVar() {
   const pad=(yhi-ylo)*0.12 || 1;
   ylo = Number.isFinite(yMinV) ? yMinV : ylo-pad;
   yhi = Number.isFinite(yMaxV) ? yMaxV : yhi+pad;
+  // Concentrations can't be negative — clamp only the auto-computed default, never an
+  // explicit user Y-min override, so the padding above 0 doesn't dip into impossible values.
+  if (!Number.isFinite(yMinV) && ['DC50_nM','AbsDC50_nM'].includes(varKey)) ylo = Math.max(0, ylo);
 
   function toY(v) { return padT + plotH*(1-(v-ylo)/(yhi-ylo)); }
   function toX(i) { return padL + plotW*(i+0.5)/stats.length; }
@@ -6425,7 +6431,7 @@ function buildCompareList() {
     const _sidJs = String(r.Sample_ID||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `<label data-idx="${i}" data-sid="${esc(r.Sample_ID)}" style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:20px;border:1.5px solid ${sel?col:'var(--border2)'};background:${sel?col+'22':'var(--surface2)'};cursor:pointer;font-size:11px;white-space:nowrap;transition:all .15s;">
       <input type="checkbox" ${sel?'checked':''} onchange="toggleCvCompare('${_sidJs}',${i},this.checked)" style="display:none;">
-      <span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></span>${esc(r.Sample_ID)}${r._logec50!=null&&r._bot!=null?'<canvas class="cv-cmp-spark" width="48" height="22"></canvas>':''}
+      <span style="width:8px;height:8px;border-radius:50%;background:${col};flex-shrink:0;"></span>${esc(r.Sample_ID)}<span style="opacity:.55;font-size:9.5px;margin-left:1px;">${esc(r.Protein)}</span>${r._logec50!=null&&r._bot!=null?'<canvas class="cv-cmp-spark" width="48" height="22"></canvas>':''}
     </label>`;
   }).join('');
   requestAnimationFrame(function(){
@@ -7154,7 +7160,8 @@ function drawMultiCurve(canvas, compounds, cfg={}) {
       ctx.fillStyle=col;ctx.fillRect(lx,ly,16*_legMul,3*_legMul);
       ctx.fillStyle=textCol;ctx.font=`${fSz*0.9*_legMul}px 'IBM Plex Sans',sans-serif`;
       ctx.textAlign='left';ctx.textBaseline='middle';
-      const lbl=r.Sample_ID.length>16?r.Sample_ID.slice(0,15)+'…':r.Sample_ID;
+      const _fullLbl=r.Sample_ID+' ('+r.Protein+')';
+      const lbl=_fullLbl.length>22?_fullLbl.slice(0,21)+'…':_fullLbl;
       ctx.fillText(lbl,lx+20*_legMul,ly+1.5*_legMul);
       lx+=Math.min(160*_legMul, ctx.measureText(lbl).width+30*_legMul);
       if(lx>pL+pw-80*_legMul){lx=pL;ly+=Math.round(14*_legMul);}
@@ -7886,7 +7893,11 @@ function drawPlateCanvas(bc) {
           return '_';
         })();
         const _flags = window._plateFlagMap?.[w.s];
-        const flag = _flags ? (_flags[_bcAssay] ?? _flags['_']) : undefined;
+        // Single-assay runs have no matConfigs, so _bcAssay resolves to the literal '_' —
+        // but the map is keyed by the real assay type (e.g. "hibit"), never '_'. Falling
+        // back to the sole value present covers that case without affecting the
+        // multi-assay path, where _bcAssay already resolves to the correct real key.
+        const flag = _flags ? (_flags[_bcAssay] ?? _flags['_'] ?? Object.values(_flags)[0]) : undefined;
         if (!w.s) {
           fillColor = isDark?'#2a2f42':'#dde0ec';
         } else if (flag === 'Yes') {
