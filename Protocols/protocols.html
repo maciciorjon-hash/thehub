@@ -371,12 +371,12 @@ body.step-notes-on li:hover>.step-note-btn,
       </ol>
       <div class="proto-note warn">Overlaps longer than 80 bp can reduce Gibson efficiency. Keep them 20&ndash;30 bp unless you have a specific reason for longer arms.</div>
 
-      <div class="proto-section">2 — PCR &rarr; DpnI &rarr; cleanup (one continuous workflow)</div>
+      <div class="proto-section">2 — PCR &rarr; DpnI &rarr; gel purification (one continuous workflow)</div>
       <ol class="proto-list">
         <li>Amplify vector backbone and insert separately using a high-fidelity polymerase (see calculator).</li>
         <li><strong>Without purifying</strong>, add DpnI directly to the PCR tube — it's active in Q5 Master Mix buffer, no buffer exchange needed. Incubate 37&deg;C &times; 60 min.</li>
-        <li>Purify with a PCR cleanup column. Elute in 15&ndash;20 uL. Measure by NanoDrop — needed for the assembly calculator.</li>
-        <li><strong>Optional gel check:</strong> run 2&ndash;3 uL on a 1% gel to confirm band size and absence of non-specific products.</li>
+        <li>Add 6&times; DNA loading dye to the <strong>entire</strong> DpnI reaction and run the whole thing on a 1% agarose gel.</li>
+        <li>Excise the band and purify with the <strong>NucleoSpin Gel &amp; PCR Clean-up</strong> kit (gel extraction mode). Measure by NanoDrop — needed for the assembly calculator.</li>
       </ol>
 
       <div class="proto-section">3 — Gibson assembly reaction</div>
@@ -440,7 +440,7 @@ body.step-notes-on li:hover>.step-note-btn,
       </div>
 
       <div class="calc-box">
-        <div class="calc-box-title">Step 2 &mdash; DpnI digestion (remove template plasmid)</div>
+        <div class="calc-box-title">Step 2 &mdash; DpnI digestion + gel purification (remove template plasmid)</div>
         <div class="calc-source">Q5 PCR amplifies both your product AND the original template plasmid. DpnI cuts methylated DNA (the bacterial template), leaving only your unmethylated PCR product.</div>
         <table class="proto-table" style="margin-top:8px">
           <tr><th>Component</th><th>Volume</th></tr>
@@ -448,7 +448,7 @@ body.step-notes-on li:hover>.step-note-btn,
           <tr><td>DpnI (NEB)</td><td>1 uL</td></tr>
           <tr><td>10&times; rCutSmart Buffer</td><td>5.5 uL</td></tr>
         </table>
-        <div class="proto-note" style="margin-top:8px">37&deg;C &times; 60 min, then proceed directly to PCR cleanup and NanoDrop — use that value in the assembly calculator below.</div>
+        <div class="proto-note" style="margin-top:8px">37&deg;C &times; 60 min, then add 6&times; loading dye to the whole reaction, run on a 1% agarose gel, excise the band, and purify with the NucleoSpin Gel &amp; PCR Clean-up kit — use the NanoDrop value in the assembly calculator below.</div>
       </div>
 
       <div class="calc-box">
@@ -456,7 +456,7 @@ body.step-notes-on li:hover>.step-note-btn,
         <div class="calc-source">NEBHiFi 2&times; Master Mix, 0.06 pmol vector target, 2:1 insert:vector molar ratio.</div>
         <div class="grid-2" style="margin-bottom:10px">
           <div>
-            <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Vector (post-PCR + DpnI + cleanup)</div>
+            <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Vector (post-PCR + DpnI + gel purification)</div>
             <div class="grid-2" style="gap:8px">
               <div class="field"><label>Size (bp)</label><input type="number" id="gb-vsz" value="4000" oninput="calcGibson()" min="0"></div>
               <div class="field"><label>Conc. (ng/uL)</label><input type="number" id="gb-vc" value="50" oninput="calcGibson()" min="0"></div>
@@ -3491,21 +3491,30 @@ function generateGibsonSteps() {
   var vExt = vProd ? (function(){ var s=Math.ceil((vProd/1000)*pol.extRate); return s>=60?Math.floor(s/60)+'m'+(s%60?' '+Math.ceil(s%60)+'s':''):s+'s'; })() : '—';
   var vBullets = ['H₂O: '+vWater+' uL', pol.name+': 25 uL', vFw+' (10 µM): 2.5 uL', vRv+' (10 µM): 2.5 uL', vName+': '+vTplVol+' uL'+(vConc?' (≤10 ng)':''), 'Total: 50 uL', 'Cycling: 98°C 30s → [98°C 10s → '+vAnneal+' 30s → 72°C '+vExt+'] ×30 → 72°C 2min → 4°C'];
   if (vProd) vBullets.push('Expected product: ~'+vProd+' bp');
-  steps.push({ label:'Step 1a — Vector PCR (50 uL)', bullets:vBullets });
 
-  var iName = gdv('pcr-ins-name') || 'Insert template', iConc = gdn('pcr-ins-conc'), iProd = gdn('pcr-ins-prod');
-  var iFw = gdv('pcr-ins-fw') || 'Fwd primer', iFwtm = gdn('pcr-ins-fwtm'), iRv = gdv('pcr-ins-rv') || 'Rev primer', iRvtm = gdn('pcr-ins-rvtm');
-  var iTplVol = iConc ? fmt(Math.min(10/iConc,5),2) : '1';
-  var iWater = iConc ? fmt(Math.max(0,19-Math.min(10/iConc,5)),2) : '~19';
-  var iAnneal = (iFwtm&&iRvtm) ? (Math.min(iFwtm,iRvtm)+pol.taOffset)+'°C' : '—';
-  var iExt = iProd ? (function(){ var s=Math.ceil((iProd/1000)*pol.extRate); return s>=60?Math.floor(s/60)+'m'+(s%60?' '+Math.ceil(s%60)+'s':''):s+'s'; })() : '—';
-  var iBullets = ['H₂O: '+iWater+' uL', pol.name+': 25 uL', iFw+' (10 µM): 2.5 uL', iRv+' (10 µM): 2.5 uL', iName+': '+iTplVol+' uL'+(iConc?' (≤10 ng)':''), 'Total: 50 uL', 'Cycling: 98°C 30s → [98°C 10s → '+iAnneal+' 30s → 72°C '+iExt+'] ×30 → 72°C 2min → 4°C'];
-  if (iProd) iBullets.push('Expected product: ~'+iProd+' bp');
-  steps.push({ label:'Step 1b — Insert PCR (50 uL)', bullets:iBullets });
+  // Insert PCR is optional — some inserts arrive already linearised with overhangs (an
+  // ordered gene fragment, or PCR'd in an earlier session), so this step only appears in
+  // the summary once the user has actually entered insert PCR data; otherwise it's assumed
+  // the insert is ready to go straight into the assembly step.
+  var iNameRaw = gdv('pcr-ins-name'), iConc = gdn('pcr-ins-conc'), iProd = gdn('pcr-ins-prod');
+  var iFwRaw = gdv('pcr-ins-fw'), iFwtm = gdn('pcr-ins-fwtm'), iRvRaw = gdv('pcr-ins-rv'), iRvtm = gdn('pcr-ins-rvtm');
+  var hasInsertPCR = !!(iNameRaw || iConc || iProd || iFwRaw || iRvRaw || iFwtm || iRvtm);
+  steps.push({ label:(hasInsertPCR?'Step 1a — Vector PCR (50 uL)':'Step 1 — Vector PCR (50 uL)'), bullets:vBullets });
 
-  steps.push({ label:'Step 2 — DpnI digestion + cleanup', bullets:[
+  if (hasInsertPCR) {
+    var iName = iNameRaw || 'Insert template', iFw = iFwRaw || 'Fwd primer', iRv = iRvRaw || 'Rev primer';
+    var iTplVol = iConc ? fmt(Math.min(10/iConc,5),2) : '1';
+    var iWater = iConc ? fmt(Math.max(0,19-Math.min(10/iConc,5)),2) : '~19';
+    var iAnneal = (iFwtm&&iRvtm) ? (Math.min(iFwtm,iRvtm)+pol.taOffset)+'°C' : '—';
+    var iExt = iProd ? (function(){ var s=Math.ceil((iProd/1000)*pol.extRate); return s>=60?Math.floor(s/60)+'m'+(s%60?' '+Math.ceil(s%60)+'s':''):s+'s'; })() : '—';
+    var iBullets = ['H₂O: '+iWater+' uL', pol.name+': 25 uL', iFw+' (10 µM): 2.5 uL', iRv+' (10 µM): 2.5 uL', iName+': '+iTplVol+' uL'+(iConc?' (≤10 ng)':''), 'Total: 50 uL', 'Cycling: 98°C 30s → [98°C 10s → '+iAnneal+' 30s → 72°C '+iExt+'] ×30 → 72°C 2min → 4°C'];
+    if (iProd) iBullets.push('Expected product: ~'+iProd+' bp');
+    steps.push({ label:'Step 1b — Insert PCR (50 uL)', bullets:iBullets });
+  }
+
+  steps.push({ label:'Step 2 — DpnI digestion + gel purification', bullets:[
     'Add directly to each PCR tube (no purification needed first)', 'DpnI (NEB): 1 uL', '10× rCutSmart: 5.5 uL', '37°C × 60 min',
-    'PCR cleanup column → NanoDrop (note concentrations for Step 3)'
+    'Add 6× loading dye to the whole reaction → run on 1% agarose gel → excise band → NucleoSpin gel extraction → NanoDrop (note concentrations for Step 3)'
   ]});
 
   var vsz = gdn('gb-vsz'), vc = gdn('gb-vc'), rvol = gdn('gb-vol') || 10;
