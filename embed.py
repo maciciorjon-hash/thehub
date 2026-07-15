@@ -27,7 +27,7 @@ APPS = [
     ('lumina',     'Lumina/lumina.html'),
     ('ribbon',     'Ribbon/ribbon.html'),
     ('arc',        'Arc/arc.html'),
-    ('protocols',  'Protocols/protocols.html'),
+    ('protocols',  'Archive/archive.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()
