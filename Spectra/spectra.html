@@ -211,7 +211,7 @@ canvas{display:block;border-radius:8px;}
 .guide-table td:first-child{font-family:var(--mono);color:var(--text);}
 .guide-code{background:var(--surface2);border:1px solid var(--border);border-radius:6px;
   padding:10px 12px;font-family:var(--mono);font-size:12px;color:var(--text);
-  margin-top:6px;white-space:pre;}
+  margin-top:6px;white-space:pre;overflow-x:auto;}
 .tip-box{background:var(--accent-dim);border-left:3px solid var(--accent);border-radius:0 6px 6px 0;
   padding:10px 14px;margin-top:10px;}
 .tip-box p{font-size:12px;color:var(--text2);}
@@ -339,8 +339,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       </p>
     </div>
     <input type="file" id="xlsx-file" accept=".xlsx,.xls" style="display:none">
-    <div style="text-align:center;margin-top:10px;">
+    <div style="text-align:center;margin-top:10px;display:flex;gap:8px;justify-content:center;">
       <button class="btn btn-sec btn-sm" onclick="toggleCsvFallback()">Import CSV instead</button>
+      <button class="btn btn-sec btn-sm" onclick="loadTestData()">⚗ Load test data</button>
     </div>
     <div id="csv-fallback" style="display:none;margin-top:12px;">
       <div class="plate-upload-zone" id="csv-drop" onclick="document.getElementById('csv-file').click()">
@@ -502,6 +503,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <p>Drop the PHERAstar <strong>.xlsx</strong> export from a BCA run — the app looks for a plate sheet named something like "Microplate End point" or "Table End point" and reads a single absorbance channel (562 nm for BCA) into a 96-well grid.</p>
       <p style="margin-top:6px;">No PHERAstar file? Use <strong>"Import CSV instead"</strong>: 8 rows (A–H) × 12 columns of absorbance values, with an optional header row and optional row-letter column.</p>
       <p style="margin-top:6px;">Importing a new plate resets any standards or samples you've already painted — finish one plate's analysis (or export it) before loading the next.</p>
+      <p style="margin-top:6px;"><strong>⚗ Load test data</strong> fills in a synthetic demo plate (standards, samples, and one deliberately bad replicate read) so you can explore the app without a real file.</p>
     </div>
 
     <div class="guide-section">
@@ -590,6 +592,7 @@ function switchTab(name){
   });
   activeTab = name;
   updateIndicator();
+  if(name === 'import' && state.plate) { setTimeout(drawHeatmap, 50); }
   if(name === 'standards') { setTimeout(renderStandardsTab, 50); }
   if(name === 'samples') { renderSamplesTab(); }
   if(name === 'normalize') { renderNormalizeTab(); }
@@ -673,6 +676,79 @@ function setupDrop(zoneId, inputId, onFiles){
 function toggleCsvFallback(){
   var el = document.getElementById('csv-fallback');
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// Deterministic small pseudo-random jitter so reloading the demo plate is reproducible.
+function _testJitter(seed){
+  return (((seed * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.012;
+}
+// A realistic nonlinear BCA response (BSA vs. 562 nm absorbance) — the curvature
+// matches the shape of a real plate read, so the demo genuinely benefits from the
+// Quadratic fit option rather than being trivially linear.
+function _testBcaAbs(conc){
+  return 0.28*conc*conc + 0.78*conc + 0.26;
+}
+
+function loadTestData(){
+  var ROWS = 'ABCDEFGH';
+  var grid = [];
+  for(var ri=0; ri<8; ri++) grid.push({ label: ROWS[ri], vals: new Array(12).fill(0.04) });
+
+  var stdConcs = [2, 1, 0.5, 0.25, 0.125, 0];
+  stdConcs.forEach(function(c, ri){
+    var base = _testBcaAbs(c);
+    grid[ri].vals[0] = +(base + _testJitter(ri*2)).toFixed(4);
+    grid[ri].vals[1] = +(base + _testJitter(ri*2+1)).toFixed(4);
+  });
+  // Simulate a real bad replicate read (like a detector overflow / pipetting miss) on
+  // the top standard — visible once painted, and the QC-exclude gesture is what fixes it.
+  grid[0].vals[0] = 3.85;
+
+  var sampleTrueConcs = [1.6,0.9,2.6,2.1,2.5,2.2,2.7,2.5, 1.8,1.6,1.9,1.4,2.0,1.9,1.6,1.6, 2.1,2.4,1.6,2.6,2.7,2.2,2.3,1.7];
+  var idx = 0;
+  [3,5,7].forEach(function(startCol){
+    ROWS.split('').forEach(function(r){
+      var ri2 = ROWS.indexOf(r);
+      var c = sampleTrueConcs[idx];
+      var base = _testBcaAbs(c);
+      grid[ri2].vals[startCol-1] = +(base + _testJitter(idx*3+1)).toFixed(4);
+      grid[ri2].vals[startCol]   = +(base + _testJitter(idx*3+2)).toFixed(4);
+      idx++;
+    });
+  });
+
+  state.plate = grid;
+  state.plateMeta = {
+    'Test Name': 'BCA Test Plate', 'Test ID': 'TEST-001',
+    'Date': new Date().toISOString().slice(0,10), 'Time': '10:00:00',
+    'Microplate name': 'GREINER 96 F-BOTTOM'
+  };
+  resetPlateState();
+
+  var std = state.plateMap.standardGroups;
+  stdConcs.forEach(function(c, ri){
+    var wells = [ROWS[ri]+'01', ROWS[ri]+'02'];
+    std.push({ id: ++PM_GROUP_SEQ, wells: wells, conc: c, excluded: [], color: BCA_STD_COLORS[ri % BCA_STD_COLORS.length] });
+  });
+
+  var smp = state.plateMap.sampleGroups;
+  var dilPreset = {3:2, 9:5, 15:10}; // demo a couple of confirmed dilution factors; rest stay unset
+  idx = 0;
+  [3,5,7].forEach(function(startCol){
+    ROWS.split('').forEach(function(r){
+      var wells = [r+(startCol<10?'0'+startCol:startCol), r+((startCol+1)<10?'0'+(startCol+1):(startCol+1))];
+      smp.push({
+        id: ++PM_GROUP_SEQ, wells: wells, name: 'Sample ' + (idx+1),
+        dilutionFactor: dilPreset[idx] || null, excluded: [],
+        color: BCA_SAMPLE_COLORS[idx % BCA_SAMPLE_COLORS.length]
+      });
+      idx++;
+    });
+  });
+
+  document.getElementById('import-filename').textContent = 'BCA_test_plate.xlsx (demo data)';
+  showImportResults();
+  switchTab('standards');
 }
 
 function extractPlateMetaFields(rows){
