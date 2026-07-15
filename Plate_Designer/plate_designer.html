@@ -807,11 +807,14 @@ function gdDraw() {
   if (isExt) {
     if (!isRotated) { EXT_H = fsize + GAP_EXT + 4; }
     else {
-      var maxLabelLen = 1;
-      gdWells.forEach(function(w){ if (w.label && w.type !== 'empty') maxLabelLen = Math.max(maxLabelLen, w.label.length); });
-      var labelPxLen = maxLabelLen * fsize * 0.62;
+      // Measure real rendered width (not a per-character estimate) — rotated labels have
+      // no shrink-to-fit, so an underestimate here means text visibly overflows into the well.
+      var _measCtx = canvas.getContext('2d');
+      _measCtx.font = fontStr;
+      var maxLabelPx = 8;
+      gdWells.forEach(function(w){ if (w.label && w.type !== 'empty') maxLabelPx = Math.max(maxLabelPx, _measCtx.measureText(w.label).width); });
       var angRad = Math.abs(orient) * Math.PI / 180;
-      EXT_H = GAP_EXT + Math.min(Math.max(labelPxLen * Math.sin(angRad) + fsize * Math.cos(angRad), 34), 130);
+      EXT_H = GAP_EXT + Math.min(Math.max(maxLabelPx * Math.sin(angRad) + fsize * Math.cos(angRad), 34), 400);
     }
   }
   var ABOVE_H = lpos === 'above' ? EXT_H : 0;
@@ -1000,7 +1003,7 @@ function gdDraw() {
         if (lpos === 'below') {
           ctx.translate(wCX, yBelow + GAP);
           ctx.rotate(rotRad);
-          ctx.textAlign = orient === -90 ? 'right' : 'left';
+          ctx.textAlign = 'right';
         } else {
           ctx.translate(wCX, yWell - GAP);
           ctx.rotate(rotRad);
