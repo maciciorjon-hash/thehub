@@ -137,6 +137,10 @@ textarea:focus{border-color:var(--accent);}
 .pm-grid td.pm-pending{box-shadow:inset 0 0 0 2px var(--accent);outline:1.5px dashed var(--accent);outline-offset:-1px;}
 .pm-grid td.pm-locked{cursor:not-allowed;opacity:.45;}
 .pm-role-count{font-size:11px;color:var(--text3);margin-top:8px;}
+.pg-grid td.pg-cell{padding:0;cursor:text;}
+.pg-grid input{width:100%;height:22px;border:none;background:transparent;text-align:center;
+  font-family:var(--mono);font-size:9px;color:var(--text);outline:none;box-sizing:border-box;}
+.pg-grid input:focus{background:var(--accent-dim);box-shadow:inset 0 0 0 1.5px var(--accent);}
 .dose-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:var(--surface2);margin-bottom:8px;}
 .dose-chip-swatch{width:14px;height:14px;border-radius:4px;flex-shrink:0;border:1px solid var(--border2);}
 .dose-chip-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
@@ -256,6 +260,7 @@ canvas{display:block;border-radius:8px;}
   .heatmap-legend{flex-wrap:wrap;}
   .std-table th,.std-table td{padding:4px 4px;font-size:11px;}
   .pm-grid td{width:20px;height:19px;}
+  .pg-grid input{height:19px;}
   /* Allow horizontal panning for wide content (plate heatmap, std curve, well grid) */
   html,body{overflow:auto;-webkit-overflow-scrolling:touch;}
   .content{overflow:auto;-webkit-overflow-scrolling:touch;}
@@ -339,9 +344,21 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       </p>
     </div>
     <input type="file" id="xlsx-file" accept=".xlsx,.xls" style="display:none">
-    <div style="text-align:center;margin-top:10px;display:flex;gap:8px;justify-content:center;">
+    <div style="text-align:center;margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button class="btn btn-sec btn-sm" onclick="togglePasteGrid()">Paste from Excel</button>
       <button class="btn btn-sec btn-sm" onclick="toggleCsvFallback()">Import CSV instead</button>
       <button class="btn btn-sec btn-sm" onclick="loadTestData()">⚗ Load test data</button>
+    </div>
+    <div id="paste-fallback" style="display:none;margin-top:12px;">
+      <p style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;text-align:center;">
+        Works with any plate reader: open its export in Excel, copy an 8×12 range of absorbance values (no headers),
+        click cell <strong>A1</strong> below, then paste (Ctrl/Cmd+V). You can also type values in by hand.
+      </p>
+      <div class="pm-grid-wrap" id="paste-grid-wrap"></div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
+        <button class="btn btn-sm" onclick="commitPasteGrid()">Use this data</button>
+        <button class="btn btn-sec btn-sm" onclick="clearPasteGrid()">Clear</button>
+      </div>
     </div>
     <div id="csv-fallback" style="display:none;margin-top:12px;">
       <div class="plate-upload-zone" id="csv-drop" onclick="document.getElementById('csv-file').click()">
@@ -501,7 +518,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="guide-section">
       <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>Import — Plate Reads</h3>
       <p>Drop the PHERAstar <strong>.xlsx</strong> export from a BCA run — the app looks for a plate sheet named something like "Microplate End point" or "Table End point" and reads a single absorbance channel (562 nm for BCA) into a 96-well grid.</p>
-      <p style="margin-top:6px;">No PHERAstar file? Use <strong>"Import CSV instead"</strong>: 8 rows (A–H) × 12 columns of absorbance values, with an optional header row and optional row-letter column.</p>
+      <p style="margin-top:6px;">Reading on a different instrument (or no file at all)? Use <strong>"Paste from Excel"</strong>: an empty 8×12 grid you click into and paste values straight from a spreadsheet — works with any plate reader, since you can open its own export in Excel first and copy from there. <strong>"Import CSV instead"</strong> covers the same shape as a file upload: 8 rows (A–H) × 12 columns of absorbance values, with an optional header row and optional row-letter column.</p>
       <p style="margin-top:6px;">Importing a new plate resets any standards or samples you've already painted — finish one plate's analysis (or export it) before loading the next.</p>
       <p style="margin-top:6px;"><strong>⚗ Load test data</strong> fills in a synthetic demo plate (standards, samples, and one deliberately bad replicate read) so you can explore the app without a real file.</p>
     </div>
@@ -676,6 +693,89 @@ function setupDrop(zoneId, inputId, onFiles){
 function toggleCsvFallback(){
   var el = document.getElementById('csv-fallback');
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function togglePasteGrid(){
+  var el = document.getElementById('paste-fallback');
+  var show = el.style.display === 'none';
+  el.style.display = show ? 'block' : 'none';
+  if(show && !document.getElementById('paste-grid-wrap').childElementCount) renderPasteGrid();
+}
+
+function renderPasteGrid(){
+  var wrap = document.getElementById('paste-grid-wrap');
+  var ROWS = 'ABCDEFGH';
+  var html = '<table class="pm-grid pg-grid"><thead><tr><th></th>';
+  for(var c=1; c<=12; c++) html += '<th>' + c + '</th>';
+  html += '</tr></thead><tbody>';
+  for(var r=0; r<8; r++){
+    html += '<tr><th class="pm-row-hdr">' + ROWS[r] + '</th>';
+    for(var c2=0; c2<12; c2++){
+      html += '<td class="pg-cell"><input type="text" inputmode="decimal" autocomplete="off" ' +
+        'data-r="' + r + '" data-c="' + c2 + '" ' +
+        'onpaste="handlePasteGridPaste(event,this)" onkeydown="handlePasteGridKeydown(event,this)"></td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function pasteGridCell(r, c){
+  return document.querySelector('#paste-grid-wrap input[data-r="' + r + '"][data-c="' + c + '"]');
+}
+
+// Fills starting at whichever cell received the paste, Excel-style — a block copied from
+// Excel is tab-separated columns / newline-separated rows, so no reformatting is needed.
+function handlePasteGridPaste(e, cell){
+  e.preventDefault();
+  var text = (e.clipboardData || window.clipboardData).getData('text');
+  if(!text) return;
+  var startR = parseInt(cell.getAttribute('data-r'), 10);
+  var startC = parseInt(cell.getAttribute('data-c'), 10);
+  var lines = text.replace(/\r/g, '').split('\n');
+  if(lines.length && lines[lines.length - 1] === '') lines.pop();
+  lines.forEach(function(line, ri){
+    line.split('\t').forEach(function(val, ci){
+      var r = startR + ri, c = startC + ci;
+      if(r > 7 || c > 11) return;
+      var input = pasteGridCell(r, c);
+      if(input) input.value = val.trim();
+    });
+  });
+}
+
+function handlePasteGridKeydown(e, cell){
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  var r = parseInt(cell.getAttribute('data-r'), 10);
+  var c = parseInt(cell.getAttribute('data-c'), 10);
+  var next = pasteGridCell(r + 1, c);
+  if(next) next.focus();
+}
+
+function commitPasteGrid(){
+  var ROWS = 'ABCDEFGH';
+  var grid = [];
+  for(var r=0; r<8; r++){
+    var vals = [];
+    for(var c=0; c<12; c++){
+      var input = pasteGridCell(r, c);
+      var v = input ? parseFloat(input.value) : NaN;
+      vals.push(isNaN(v) ? 0 : v);
+    }
+    grid.push({ label: ROWS[r], vals: vals });
+  }
+  state.plate = grid;
+  state.plateMeta = null;
+  resetPlateState();
+  document.getElementById('import-filename').textContent = 'Pasted from Excel';
+  showImportResults();
+}
+
+function clearPasteGrid(){
+  var inputs = document.querySelectorAll('#paste-grid-wrap input');
+  for(var i=0; i<inputs.length; i++) inputs[i].value = '';
 }
 
 // Deterministic small pseudo-random jitter so reloading the demo plate is reproducible.
