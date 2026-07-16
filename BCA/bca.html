@@ -126,8 +126,9 @@ textarea:focus{border-color:var(--accent);}
 
 /* PLATE MAP PAINTER (Standards / Samples well-grid) */
 .pm-grid-wrap{overflow-x:auto;}
-.pm-grid{border-collapse:collapse;font-size:9px;font-family:var(--mono);}
-.pm-grid th{padding:3px 4px;text-align:center;font-size:9px;font-weight:700;color:var(--text3);background:var(--surface2);}
+.pm-grid{border-collapse:collapse;font-size:9px;font-family:var(--mono);table-layout:fixed;}
+.pm-grid th{padding:3px 4px;text-align:center;font-size:9px;font-weight:700;color:var(--text3);background:var(--surface2);width:24px;}
+.pm-grid th:first-child{width:22px;}
 .pm-grid th.pm-col-hdr,.pm-grid th.pm-row-hdr{cursor:pointer;transition:color .15s,background .15s;}
 .pm-grid th.pm-col-hdr:hover,.pm-grid th.pm-row-hdr:hover{color:var(--accent);background:var(--accent-dim);}
 .pm-grid td{width:24px;height:22px;text-align:center;border:1px solid var(--border);cursor:pointer;
@@ -142,6 +143,7 @@ textarea:focus{border-color:var(--accent);}
    against actual rendered scrollWidth, not guessed (IBM Plex Mono at 11px needs ~53px
    to show 5 digits without clipping). */
 .pg-grid td.pg-cell{padding:0;cursor:text;width:60px;}
+table.pg-grid th{width:60px;}
 .pg-grid input{width:100%;height:26px;border:none;background:transparent;text-align:center;
   font-family:var(--mono);font-size:11px;color:var(--text);outline:none;box-sizing:border-box;}
 .pg-grid input:focus{background:var(--accent-dim);box-shadow:inset 0 0 0 1.5px var(--accent);}
@@ -167,7 +169,17 @@ textarea:focus{border-color:var(--accent);}
 .two-col{display:grid;grid-template-columns:minmax(280px,380px) 1fr;gap:16px;
   align-items:start;max-width:900px;}
 @media(max-width:720px){.two-col{grid-template-columns:1fr;max-width:none;}}
+.three-col{display:grid;grid-template-columns:minmax(300px,360px) minmax(250px,320px) 1fr;
+  gap:16px;align-items:start;}
+@media(max-width:900px){.three-col{grid-template-columns:minmax(300px,360px) 1fr;}}
+@media(max-width:720px){.three-col{grid-template-columns:1fr;}}
 .section-divider{border-top:1px solid var(--border);margin:4px 0;}
+.subtabs{display:flex;gap:4px;border-bottom:1px solid var(--border);}
+.subtab{padding:8px 14px;border:none;background:none;color:var(--text2);font-family:var(--sans);
+  font-size:12.5px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;
+  margin-bottom:-1px;transition:color .15s,border-color .15s;}
+.subtab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.subtab:hover:not(.active){color:var(--text);}
 .std-table{width:100%;border-collapse:collapse;font-size:13px;}
 .std-table th{text-align:left;padding:6px 8px;font-size:11px;font-weight:700;
   letter-spacing:.3px;text-transform:uppercase;color:var(--text3);
@@ -230,6 +242,7 @@ canvas{display:block;border-radius:8px;}
   .tab{padding:10px 10px;font-size:12px;}
   .panel{padding:12px 10px;}
   .two-col{grid-template-columns:1fr;}
+  .three-col{grid-template-columns:1fr;}
 }
 @media (max-width:720px){
   header{gap:10px;}
@@ -252,6 +265,7 @@ canvas{display:block;border-radius:8px;}
   .heatmap-legend{flex-wrap:wrap;}
   .std-table th,.std-table td{padding:4px 4px;font-size:11px;}
   .pm-grid td{width:20px;height:19px;}
+  .pm-grid th{width:20px;}
   .pg-grid input{height:19px;}
   /* Allow horizontal panning for wide content (plate heatmap, std curve, well grid) */
   html,body{overflow:auto;-webkit-overflow-scrolling:touch;}
@@ -346,7 +360,7 @@ canvas{display:block;border-radius:8px;}
     <div class="empty-hint" id="standards-empty-msg">Import a plate above first.</div>
   </div>
   <div id="standards-body" style="display:none;flex-direction:column;gap:16px;">
-    <div class="two-col">
+    <div class="three-col">
       <div class="card">
         <div class="card-hdr">BSA standards — paint wells</div>
         <p style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
@@ -361,95 +375,93 @@ canvas{display:block;border-radius:8px;}
         <div class="card-hdr">Standard points</div>
         <div id="standards-list"></div>
       </div>
-    </div>
-
-    <div class="card curve-canvas-wrap" style="display:flex;flex-direction:column;gap:8px;">
-      <div class="card-hdr">Standard curve</div>
-      <div class="row" style="gap:10px;flex-shrink:0;">
-        <div class="field" style="flex-direction:row;align-items:center;gap:8px;">
-          <label style="margin:0;white-space:nowrap;">Fit:</label>
-          <select id="sc-fit" onchange="renderStandardsCurve()" title="Linear or quadratic — BCA is genuinely nonlinear across a wide range">
-            <option value="linear">Linear</option>
-            <option value="quadratic">Quadratic</option>
-          </select>
+      <div class="card curve-canvas-wrap" style="display:flex;flex-direction:column;gap:8px;">
+        <div class="card-hdr">Standard curve</div>
+        <div class="row" style="gap:10px;flex-shrink:0;">
+          <div class="field" style="flex-direction:row;align-items:center;gap:8px;">
+            <label style="margin:0;white-space:nowrap;">Fit:</label>
+            <select id="sc-fit" onchange="renderStandardsCurve()" title="Linear or quadratic — BCA is genuinely nonlinear across a wide range">
+              <option value="linear">Linear</option>
+              <option value="quadratic">Quadratic</option>
+            </select>
+          </div>
         </div>
+        <canvas id="sc-canvas" width="400" height="300" style="width:100%;height:300px;border-radius:6px;
+          background:var(--surface2);"></canvas>
+        <div class="r2-badge" id="sc-r2-badge" style="display:none;">
+          <div class="r2-dot" id="sc-r2-dot"></div>
+          <span id="sc-r2-text"></span>
+        </div>
+        <div id="sc-equation" style="font-size:11px;font-family:var(--mono);color:var(--text3);"></div>
       </div>
-      <canvas id="sc-canvas" width="400" height="300" style="width:100%;height:300px;border-radius:6px;
-        background:var(--surface2);"></canvas>
-      <div class="r2-badge" id="sc-r2-badge" style="display:none;">
-        <div class="r2-dot" id="sc-r2-dot"></div>
-        <span id="sc-r2-text"></span>
-      </div>
-      <div id="sc-equation" style="font-size:11px;font-family:var(--mono);color:var(--text3);"></div>
     </div>
   </div>
 
   <div class="section-divider"></div>
 
-  <!-- Samples -->
-  <div id="samples-empty" class="card" style="display:none;">
-    <div class="empty-hint" id="samples-empty-msg">Fit a standard curve above first.</div>
+  <!-- Sample prep (Samples + Normalize, unified) -->
+  <div id="prep-empty" class="card" style="display:none;">
+    <div class="empty-hint" id="prep-empty-msg">Fit a standard curve above first.</div>
   </div>
-  <div id="samples-section" style="display:none;flex-direction:column;gap:16px;">
-    <div class="two-col">
-      <div class="card">
-        <div class="card-hdr">Samples — paint wells</div>
-        <p style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
-          Drag across a technical-duplicate pair of wells to create one sample. Name it and, if it was diluted
-          before loading onto the BCA plate, enter that dilution factor to get its true concentration.
+  <div id="prep-body" style="display:none;flex-direction:column;gap:14px;">
+    <div class="card-hdr" style="margin-bottom:-6px;">Sample prep</div>
+    <div class="subtabs">
+      <button class="subtab active" data-prep-tab="setup" onclick="switchPrepTab('setup')">Setup</button>
+      <button class="subtab" data-prep-tab="results" onclick="switchPrepTab('results')">Results</button>
+    </div>
+
+    <div id="prep-panel-setup" style="display:flex;flex-direction:column;gap:16px;">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-hdr">Samples — paint wells</div>
+          <p style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
+            Drag across a technical-duplicate pair of wells to create one sample. Name it — dilution defaults to
+            the value below for every sample, override it per sample only if one was prepared differently.
+          </p>
+          <div class="pm-grid-wrap" id="samples-grid-wrap"></div>
+          <div class="pm-role-count" id="samples-count"></div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;">
+          <div class="row" style="align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px;">
+            <div class="card-hdr" style="margin:0;">Samples</div>
+            <div class="field" style="flex-direction:row;align-items:center;gap:6px;">
+              <label style="margin:0;white-space:nowrap;font-size:11px;" title="Applied to every sample unless overridden individually below — dilutions are usually the same across a plate">Default dilution ×</label>
+              <input type="number" id="master-dilution" min="0" step="any" value="10" style="width:64px;" oninput="renderSamplesTable()">
+            </div>
+          </div>
+          <div id="samples-list"></div>
+        </div>
+      </div>
+
+      <div class="card" style="max-width:420px;">
+        <div class="card-hdr">Target</div>
+        <div class="row">
+          <div class="field">
+            <label>Target concentration (µg/µL)</label>
+            <input type="number" id="norm-target-conc" min="0" step="any" value="1" oninput="renderSamplesTable()">
+          </div>
+          <div class="field">
+            <label>Target volume (µL)</label>
+            <input type="number" id="norm-target-vol" min="0" step="any" value="20" oninput="renderSamplesTable()">
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.5;">
+          Every sample is diluted with water to this concentration and volume, using its final (dilution-corrected)
+          concentration — see the Results tab. A sample already more dilute than the target can't be concentrated
+          further; it's flagged there instead of showing a negative water volume.
         </p>
-        <div class="pm-grid-wrap" id="samples-grid-wrap"></div>
-        <div class="pm-role-count" id="samples-count"></div>
-      </div>
-      <div class="card" style="display:flex;flex-direction:column;">
-        <div class="card-hdr">Samples</div>
-        <div id="samples-list"></div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-hdr">Results</div>
-      <div style="overflow-x:auto;">
-        <table class="std-table" id="samples-table"></table>
-      </div>
-      <div style="margin-top:10px;">
-        <button class="btn btn-sec btn-sm" onclick="exportSamplesCSV()">Export CSV</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="section-divider"></div>
-
-  <!-- Normalize -->
-  <div id="normalize-empty" class="card" style="display:none;">
-    <div class="empty-hint">Add at least one sample above first.</div>
-  </div>
-  <div id="normalize-body" style="display:none;flex-direction:column;gap:16px;">
-    <div class="card" style="max-width:420px;">
-      <div class="card-hdr">Target</div>
-      <div class="row">
-        <div class="field">
-          <label>Target concentration (µg/µL)</label>
-          <input type="number" id="norm-target-conc" min="0" step="any" value="1" oninput="renderNormalizeTab()">
+    <div id="prep-panel-results" style="display:none;flex-direction:column;gap:16px;">
+      <div class="card">
+        <div class="card-hdr">Results</div>
+        <div style="overflow-x:auto;">
+          <table class="std-table" id="samples-table"></table>
         </div>
-        <div class="field">
-          <label>Target volume (µL)</label>
-          <input type="number" id="norm-target-vol" min="0" step="any" value="20" oninput="renderNormalizeTab()">
+        <div style="margin-top:10px;">
+          <button class="btn btn-sec btn-sm" onclick="exportSamplesCSV()">Export CSV</button>
         </div>
-      </div>
-      <p style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.5;">
-        Every sample is diluted with water to this concentration and volume, using its final (dilution-corrected)
-        concentration from the Samples section above. A sample already more dilute than the target can't be
-        concentrated further — it's flagged instead of silently shown a negative water volume.
-      </p>
-    </div>
-    <div class="card">
-      <div class="card-hdr">Dilution to target</div>
-      <div style="overflow-x:auto;">
-        <table class="std-table" id="normalize-table"></table>
-      </div>
-      <div style="margin-top:10px;">
-        <button class="btn btn-sec btn-sm" onclick="exportNormalizeCSV()">Export CSV</button>
       </div>
     </div>
   </div>
@@ -488,20 +500,17 @@ canvas{display:block;border-radius:8px;}
     </div>
 
     <div class="guide-section">
-      <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>Samples — Concentration &amp; Dilution</h3>
-      <p>Paint each sample's duplicate-well pair the same way as standards. Each sample gets a name (editable) and a <strong>dilution factor</strong> — how much you diluted the lysate before loading it onto the BCA plate.</p>
+      <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>Sample prep — Concentration, Dilution &amp; Normalize</h3>
+      <p>The <strong>Setup</strong> tab paints samples and sets targets; the <strong>Results</strong> tab shows one combined table computed from them. Paint each sample's duplicate-well pair the same way as standards, then name it (editable).</p>
       <div class="guide-code">Assay-well concentration = standard curve⁻¹(mean absorbance)
 Final concentration      = assay-well concentration × dilution factor</div>
-      <p style="margin-top:8px;">A dilution factor left blank is treated as 1× but shown as <strong>"1× (unset)"</strong> rather than a plain "1" — so an unconfirmed default never looks identical to a value you actually checked.</p>
+      <p style="margin-top:8px;">Dilutions are usually the same for every sample on a plate, so one <strong>Default dilution</strong> field (10× out of the box) applies to all of them — override an individual sample's own dilution field only when it was actually prepared differently. A sample using the default is shown as e.g. <strong>"10× (default)"</strong> rather than a plain "10×", so it's always clear which samples were explicitly checked.</p>
       <p style="margin-top:6px;"><strong>Extrapolated</strong> flags a result outside the standards' concentration range — treat it with caution, or dilute the sample and re-run. <strong>Only 1 well</strong> means one replicate was excluded as a QC call, so the "average" is really a single read.</p>
-    </div>
-
-    <div class="guide-section">
-      <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c3 4 6 7.5 6 11a6 6 0 01-12 0c0-3.5 3-7 6-11z"/></svg>Normalize — Dilute to Target</h3>
-      <p>Set one target concentration and volume, applied to every sample:</p>
+      <h4>Normalize — dilute to target</h4>
+      <p>Set one target concentration and volume in Setup, applied to every sample:</p>
       <div class="guide-code">Protein (µL) = target concentration × target volume ÷ final concentration
 Water (µL)   = target volume − protein (µL)</div>
-      <p style="margin-top:8px;">A sample that's already more dilute than the target concentration can't be concentrated by adding water — it's flagged <strong>"Too dilute"</strong> with the maximum concentration actually achievable (the sample used neat), rather than showing a negative water volume.</p>
+      <p style="margin-top:8px;">A sample that's already more dilute than the target concentration can't be concentrated by adding water — it's flagged <strong>"too dilute"</strong> in the Results table, rather than showing a negative water volume.</p>
     </div>
   </div>
 </div>
@@ -557,7 +566,6 @@ function switchTab(name){
       if(state.plate) drawHeatmap();
       renderStandardsTab();
       renderSamplesTab();
-      renderNormalizeTab();
     }, 50);
   }
 }
@@ -1363,9 +1371,9 @@ function drawStandardsCurve(pts){
 
 /* ─── SAMPLES TAB ─── */
 function renderSamplesTab(){
-  var empty = document.getElementById('samples-empty');
-  var body = document.getElementById('samples-section');
-  var msg = document.getElementById('samples-empty-msg');
+  var empty = document.getElementById('prep-empty');
+  var body = document.getElementById('prep-body');
+  var msg = document.getElementById('prep-empty-msg');
   if(!state.plate){ empty.style.display = 'none'; body.style.display = 'none'; return; }
   if(!bcaFit){ msg.textContent = 'Fit a standard curve above first.'; empty.style.display = 'block'; body.style.display = 'none'; return; }
   empty.style.display = 'none'; body.style.display = 'flex';
@@ -1374,21 +1382,40 @@ function renderSamplesTab(){
   renderSamplesTable();
 }
 
+function switchPrepTab(name){
+  document.querySelectorAll('#prep-body .subtab').forEach(function(t){
+    t.classList.toggle('active', t.dataset.prepTab === name);
+  });
+  var setupPanel = document.getElementById('prep-panel-setup');
+  var resultsPanel = document.getElementById('prep-panel-results');
+  if(setupPanel) setupPanel.style.display = name === 'setup' ? 'flex' : 'none';
+  if(resultsPanel) resultsPanel.style.display = name === 'results' ? 'flex' : 'none';
+}
+
 // Single source of truth for a sample's final concentration — both the Samples
 // table and the Normalize table read this, so a QC-exclude or dilution-factor
 // edit can't leave the two tabs disagreeing with each other.
+// Dilutions are usually identical for every sample on a plate, so a single default
+// (editable, defaults to 10x) applies unless a sample's own dilution field is set.
+function getMasterDilution(){
+  var el = document.getElementById('master-dilution');
+  var v = el ? parseFloat(el.value) : NaN;
+  return (isNaN(v) || v <= 0) ? 1 : v;
+}
+
 function computeSampleResults(){
   var xs = state.plateMap.standardGroups.map(function(g){ return g.conc; })
     .filter(function(v){ return v!==null && v!==undefined && !isNaN(v); });
   var xMin = xs.length ? Math.min.apply(null, xs) : NaN;
   var xMax = xs.length ? Math.max.apply(null, xs) : NaN;
+  var masterDil = getMasterDilution();
   return state.plateMap.sampleGroups.map(function(g){
     var nValid = g.wells.filter(function(w){ return g.excluded.indexOf(w) === -1; }).length;
     var avgAbs = groupAvgAbs(g);
     var assayConc = bcaFit ? scInvertX(bcaFit, avgAbs) : NaN;
     var extrapolated = !isNaN(assayConc) && xs.length > 0 && (assayConc < xMin || assayConc > xMax);
     var missingDilutionFactor = (g.dilutionFactor === null || g.dilutionFactor === undefined);
-    var dil = missingDilutionFactor ? 1 : g.dilutionFactor;
+    var dil = missingDilutionFactor ? masterDil : g.dilutionFactor;
     var finalConc = isNaN(assayConc) ? NaN : assayConc * dil;
     return {
       group: g, avgAbs: avgAbs, assayConc: assayConc, finalConc: finalConc,
@@ -1401,52 +1428,70 @@ function computeSampleResults(){
 function renderSamplesTable(){
   updateRoleCount('sample');
   var results = computeSampleResults();
+  var targetConc = parseFloat(document.getElementById('norm-target-conc').value);
+  var targetVol = parseFloat(document.getElementById('norm-target-vol').value);
+  var validTargets = targetConc > 0 && targetVol > 0;
   var tbl = document.getElementById('samples-table');
   var html = '<thead><tr><th>#</th><th>Name</th><th>Wells</th><th>Avg Abs</th>' +
-    '<th>Assay conc (ug/uL)</th><th>Dilution</th><th>Final conc (ug/uL)</th><th>Flags</th></tr></thead><tbody>';
+    '<th>Assay conc (ug/uL)</th><th>Dilution</th><th>Final conc (ug/uL)</th>' +
+    '<th>Protein (uL)</th><th>Water (uL)</th><th>Flags</th></tr></thead><tbody>';
   if(!results.length){
-    html += '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:14px;">No samples painted yet.</td></tr>';
+    html += '<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:14px;">No samples painted yet.</td></tr>';
   }
   results.forEach(function(r, i){
+    var norm = validTargets ? calcNormalizeRow(r.finalConc, targetConc, targetVol) : null;
     var flags = [];
     if(r.invalid) flags.push('<span style="color:var(--poor)">no valid concentration</span>');
     if(r.lowReplicates && !r.invalid) flags.push('<span style="color:var(--mid)">only 1 well</span>');
     if(r.extrapolated) flags.push('<span style="color:var(--mid)">extrapolated</span>');
+    if(norm && norm.status === 'infeasible') flags.push('<span style="color:var(--poor)">too dilute</span>');
     html += '<tr><td>' + (i+1) + '</td>' +
       '<td>' + escapeAttr(r.group.name) + '</td>' +
       '<td style="font-family:var(--mono);font-size:11px;">' + escapeAttr(r.group.wells.join(', ') + (r.group.excluded.length ? ' (' + r.group.excluded.length + ' excl.)' : '')) + '</td>' +
       '<td style="font-family:var(--mono);">' + (isNaN(r.avgAbs) ? '—' : r.avgAbs.toFixed(3)) + '</td>' +
       '<td style="font-family:var(--mono);">' + (isNaN(r.assayConc) ? '—' : r.assayConc.toFixed(3)) + '</td>' +
       '<td style="font-family:var(--mono);">' + (r.missingDilutionFactor
-        ? '1× <span style="color:var(--mid);font-size:10px;">(unset)</span>'
+        ? r.dilutionFactor + '× <span style="color:var(--mid);font-size:10px;">(default)</span>'
         : r.dilutionFactor + '×') + '</td>' +
       '<td style="font-family:var(--mono);color:var(--accent);font-weight:600;">' + (isNaN(r.finalConc) ? '—' : r.finalConc.toFixed(3)) + '</td>' +
+      '<td style="font-family:var(--mono);">' + (norm && norm.status === 'ok' ? norm.proteinVol.toFixed(2) : '—') + '</td>' +
+      '<td style="font-family:var(--mono);">' + (norm && norm.status === 'ok' ? norm.waterVol.toFixed(2) : '—') + '</td>' +
       '<td style="font-size:11px;">' + flags.join('<br>') + '</td></tr>';
   });
   html += '</tbody>';
   tbl.innerHTML = html;
-  renderNormalizeTab();
 }
 
 function exportSamplesCSV(){
   var results = computeSampleResults();
-  var csv = 'Name,Wells,Avg Abs,Assay conc (ug/uL),Dilution factor,Dilution factor set,Final conc (ug/uL),Extrapolated\n';
+  var targetConc = parseFloat(document.getElementById('norm-target-conc').value);
+  var targetVol = parseFloat(document.getElementById('norm-target-vol').value);
+  var validTargets = targetConc > 0 && targetVol > 0;
+  var csv = 'Name,Wells,Avg Abs,Assay conc (ug/uL),Dilution factor,Dilution source,Final conc (ug/uL),Protein (uL),Water (uL),Note\n';
   results.forEach(function(r){
+    var norm = validTargets ? calcNormalizeRow(r.finalConc, targetConc, targetVol) : null;
+    var note = [];
+    if(r.extrapolated) note.push('extrapolated');
+    if(r.lowReplicates && !r.invalid) note.push('only 1 well');
+    if(norm && norm.status === 'infeasible') note.push('too dilute');
+    if(r.invalid) note.push('no valid concentration');
     csv += [
       escapeCsv(r.group.name),
       escapeCsv(r.group.wells.join(' ')),
       isNaN(r.avgAbs) ? '' : r.avgAbs.toFixed(4),
       isNaN(r.assayConc) ? '' : r.assayConc.toFixed(4),
       r.dilutionFactor,
-      r.missingDilutionFactor ? 'no' : 'yes',
+      r.missingDilutionFactor ? 'default' : 'set',
       isNaN(r.finalConc) ? '' : r.finalConc.toFixed(4),
-      r.extrapolated ? 'yes' : 'no'
+      norm && norm.status === 'ok' ? norm.proteinVol.toFixed(3) : '',
+      norm && norm.status === 'ok' ? norm.waterVol.toFixed(3) : '',
+      note.join('; ')
     ].join(',') + '\n';
   });
-  downloadCSV(csv, 'bca_samples.csv');
+  downloadCSV(csv, 'bca_results.csv');
 }
 
-/* ─── NORMALIZE TAB ─── */
+/* ─── NORMALIZE (target dilution — folded into the unified Results table) ─── */
 function calcNormalizeRow(finalConc, targetConc, targetVol){
   if(isNaN(finalConc) || finalConc <= 0){
     return { status:'invalid', proteinVol:NaN, waterVol:NaN, note:'<span style="color:var(--poor)">No valid concentration</span>' };
@@ -1458,55 +1503,6 @@ function calcNormalizeRow(finalConc, targetConc, targetVol){
   var proteinVol = (targetConc * targetVol) / finalConc;
   var waterVol = Math.max(0, targetVol - proteinVol);
   return { status:'ok', proteinVol:proteinVol, waterVol:waterVol, note:'' };
-}
-
-function renderNormalizeTab(){
-  var empty = document.getElementById('normalize-empty');
-  var body = document.getElementById('normalize-body');
-  if(!state.plateMap.sampleGroups.length){ empty.style.display = 'block'; body.style.display = 'none'; return; }
-  empty.style.display = 'none'; body.style.display = 'flex';
-
-  var targetConc = parseFloat(document.getElementById('norm-target-conc').value);
-  var targetVol = parseFloat(document.getElementById('norm-target-vol').value);
-  var validTargets = targetConc > 0 && targetVol > 0;
-  var results = computeSampleResults();
-  var tbl = document.getElementById('normalize-table');
-  var html = '<thead><tr><th>Name</th><th>Final conc (ug/uL)</th><th>Protein (uL)</th><th>Water (uL)</th><th>Note</th></tr></thead><tbody>';
-  if(!validTargets){
-    html += '<tr><td colspan="5" style="color:var(--mid);text-align:center;padding:14px;">Enter a target concentration and volume above (both &gt; 0).</td></tr>';
-  } else if(!results.length){
-    html += '<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:14px;">No samples painted yet.</td></tr>';
-  } else {
-    results.forEach(function(r){
-      var row = calcNormalizeRow(r.finalConc, targetConc, targetVol);
-      html += '<tr><td>' + escapeAttr(r.group.name) + '</td>' +
-        '<td style="font-family:var(--mono);">' + (isNaN(r.finalConc) ? '—' : r.finalConc.toFixed(3)) + '</td>' +
-        '<td style="font-family:var(--mono);">' + (row.status==='ok' ? row.proteinVol.toFixed(2) : '—') + '</td>' +
-        '<td style="font-family:var(--mono);">' + (row.status==='ok' ? row.waterVol.toFixed(2) : '—') + '</td>' +
-        '<td style="font-size:11px;">' + row.note + '</td></tr>';
-    });
-  }
-  html += '</tbody>';
-  tbl.innerHTML = html;
-}
-
-function exportNormalizeCSV(){
-  var targetConc = parseFloat(document.getElementById('norm-target-conc').value);
-  var targetVol = parseFloat(document.getElementById('norm-target-vol').value);
-  var results = computeSampleResults();
-  var csv = 'Name,Final conc (ug/uL),Protein (uL),Water (uL),Note\n';
-  results.forEach(function(r){
-    var row = calcNormalizeRow(r.finalConc, targetConc, targetVol);
-    var note = row.status==='infeasible' ? 'too dilute' : row.status==='invalid' ? 'no valid concentration' : '';
-    csv += [
-      escapeCsv(r.group.name),
-      isNaN(r.finalConc) ? '' : r.finalConc.toFixed(4),
-      row.status==='ok' ? row.proteinVol.toFixed(3) : '',
-      row.status==='ok' ? row.waterVol.toFixed(3) : '',
-      note
-    ].join(',') + '\n';
-  });
-  downloadCSV(csv, 'bca_normalize.csv');
 }
 
 /* ─── UTILITIES ─── */
