@@ -29,6 +29,7 @@ APPS = [
     ('arc',        'Arc/arc.html'),
     ('protocols',  'Archive/archive.html'),
     ('cellarchive', 'Cell_Archive/cell_archive.html'),
+    ('bench',       'Bench/bench.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()
