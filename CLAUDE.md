@@ -20,21 +20,22 @@
 
 | ID | Name | Logo | Accent | Standalone file |
 |----|------|------|--------|-----------------|
-| `echo` | Echo (formerly Labcyte Echo / Echo Data Analysis) | SVG bar chart | `#ff5760` | `Labcyte_Echo/labcyte_echo.html` |
+| `echo` | Echo (formerly Labcyte Echo / Echo Data Analysis) | SVG bar chart | `#ff5760` | `Echo/echo.html` |
 | `lm` | LabMate | SVG flask | `#e08c30` (amber) | `Labmate/labmate.html` |
-| `deg` | Dora (formerly Degradation Explorer) | SVG curve | `#7c6fd4` | `Degradation_Explorer/degradation_visualizer.html` |
-| `pd` | Blueprint (formerly Lab Designer) | SVG wells | `#0079b9` | `Plate_Designer/plate_designer.html` |
+| `deg` | Dora (formerly Degradation Explorer) | SVG curve | `#7c6fd4` | `Dora/dora.html` |
+| `pd` | Blueprint (formerly Lab Designer) | SVG wells | `#0079b9` | `Blueprint/blueprint.html` |
 | `dna` | Helix | SVG helix | `#43a047` | `Helix/helix.html` |
 | `pt` | Protein Tools | SVG chain | `#9c6fd4` | `Protein_Tools/protein_tools.html` |
-| `spectra` | BCA (formerly Spectra) | SVG standard curve | `#26a69a` | `Spectra/spectra.html` |
+| `spectra` | BCA (formerly Spectra) | SVG standard curve | `#26a69a` | `BCA/bca.html` |
 | `ldi` | LDI | SVG balance/scale | `#e91e63` | `LDI/ldi.html` |
-| `cryo` | Iceberg | SVG snowflake | `#00acc1` | `Cryostorage/cryostorage.html` |
+| `cryo` | Iceberg | SVG snowflake | `#00acc1` | `Iceberg/iceberg.html` |
 | `cuppa` | Cuppa | SVG coffee cup | `#8d6e63` | `Cuppa/cuppa.html` |
-| `fabricata` | Fabricata™ | SVG bar chart + star | `#c07a8e` | `DataFaker/fabricata.html` |
+| `fabricata` | Fabricata™ | SVG bar chart + star | `#c07a8e` | `Fabricata/fabricata.html` |
 | `beacon` | Beacon | SVG donor/acceptor BRET glyph | `#5e72c4` | `Beacon/beacon.html` |
 | `lumina` | Lumina | SVG light bulb | `#f5c518` (warm gold) | `Lumina/lumina.html` |
 | `ribbon` | Ribbon | SVG ribbon waves | `#e36c69` (salmon) | `Ribbon/ribbon.html` |
-| `arc` | Arc | SVG narrative arc + nodes | `#816baf` (purple) | `Arc/arc.html` |
+| `arc` | Arc (hidden from the home grid, not deleted) | SVG narrative arc + nodes | `#816baf` (purple) | `Arc/arc.html` |
+| `protocols` | Archive (formerly Protocols) | SVG open book | `#a56983` (dusty pink) | `Archive/archive.html` |
 
 **Home grid packages:** the home cards are grouped into labelled sections by `PACKAGES` in `hub-shell.html` (Data Analysis · Design & Presentation · Molecular Biology · Lab Operations · Just for Fun). `_buildPackages()` reorganizes the flat `#app-grid` into per-package `.grid` blocks at load; drag-reorder is scoped within a package and persisted per-package in `localStorage` (`hub_card_order_v2`). Empty sections auto-hide via `_updateSectionVisibility()`. Any app id not in `PACKAGES` falls into a trailing "More" section.
 
@@ -50,28 +51,42 @@
 
 ```
 The_Hub/
-├── dHUB.html                                 ← self-contained, ~9.4MB
-├── hub-shell.html                            ← source-of-truth shell (~28KB)
+├── dHUB.html                                 ← self-contained, ~11.6MB
+├── hub-shell.html                            ← source-of-truth shell
 ├── embed.py                                  ← build script
-├── Labcyte_Echo/
-│   └── labcyte_echo.html
-├── Degradation_Explorer/
-│   └── degradation_visualizer.html
+├── Echo/
+│   └── echo.html
+├── Dora/
+│   └── dora.html
 ├── Labmate/
 │   ├── labmate.html
 │   └── RDKit_minimal.js / .wasm             ← ORPHANED (no longer referenced by labmate.html)
-├── Plate_Designer/
-│   └── plate_designer.html
+├── Blueprint/
+│   └── blueprint.html
 ├── Helix/
 │   └── helix.html
 ├── Protein_Tools/
 │   └── protein_tools.html
-├── Spectra/
-│   └── spectra.html
+├── BCA/
+│   └── bca.html
 ├── LDI/
 │   └── ldi.html
-└── Lumina/
-    └── lumina.html
+├── Iceberg/
+│   └── iceberg.html
+├── Cuppa/
+│   └── cuppa.html
+├── Fabricata/
+│   └── fabricata.html
+├── Beacon/
+│   └── beacon.html
+├── Lumina/
+│   └── lumina.html
+├── Ribbon/
+│   └── ribbon.html
+├── Arc/
+│   └── arc.html                              ← hidden from the home grid, still built
+└── Archive/
+    └── archive.html
 ```
 
 ### Regenerating the self-contained dHUB after app changes
@@ -110,7 +125,7 @@ On every push to `main`:
 python3 embed.py
 # 3. Open dHUB.html to test
 # 4. Push → Pages auto-rebuilds
-git add Labcyte_Echo/labcyte_echo.html hub-shell.html CLAUDE.md
+git add Echo/echo.html hub-shell.html CLAUDE.md
 git commit -m "Fix: description"
 git push
 ```

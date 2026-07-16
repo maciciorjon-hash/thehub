@@ -12,17 +12,17 @@ SHELL = os.path.join(BASE, 'hub-shell.html')
 OUT   = sys.argv[1] if len(sys.argv) > 1 else os.path.join(BASE, 'dHUB.html')
 
 APPS = [
-    ('echo', 'Labcyte_Echo/labcyte_echo.html'),
-    ('deg',  'Degradation_Explorer/degradation_visualizer.html'),
+    ('echo', 'Echo/echo.html'),
+    ('deg',  'Dora/dora.html'),
     ('lm',   'Labmate/labmate.html'),
-    ('pd',   'Plate_Designer/plate_designer.html'),
+    ('pd',   'Blueprint/blueprint.html'),
     ('dna',  'Helix/helix.html'),
     ('pt',   'Protein_Tools/protein_tools.html'),
-    ('spectra', 'Spectra/spectra.html'),
+    ('spectra', 'BCA/bca.html'),
     ('ldi',     'LDI/ldi.html'),
-    ('cryo',    'Cryostorage/cryostorage.html'),
+    ('cryo',    'Iceberg/iceberg.html'),
     ('cuppa',      'Cuppa/cuppa.html'),
-    ('fabricata',  'DataFaker/fabricata.html'),
+    ('fabricata',  'Fabricata/fabricata.html'),
     ('beacon',     'Beacon/beacon.html'),
     ('lumina',     'Lumina/lumina.html'),
     ('ribbon',     'Ribbon/ribbon.html'),
