@@ -21,7 +21,7 @@
 | ID | Name | Logo | Accent | Standalone file |
 |----|------|------|--------|-----------------|
 | `echo` | Echo (formerly Labcyte Echo / Echo Data Analysis) | SVG bar chart | `#ff5760` | `Echo/echo.html` |
-| `lm` | LabMate | SVG flask | `#e08c30` (amber) | `Labmate/labmate.html` |
+| `lm` | LabMate (hidden from the home grid, not deleted) | SVG flask | `#e08c30` (amber) | `Labmate/labmate.html` |
 | `deg` | Dora (formerly Degradation Explorer) | SVG curve | `#7c6fd4` | `Dora/dora.html` |
 | `pd` | Blueprint (formerly Lab Designer) | SVG wells | `#0079b9` | `Blueprint/blueprint.html` |
 | `dna` | Helix | SVG helix | `#43a047` | `Helix/helix.html` |
@@ -36,6 +36,7 @@
 | `ribbon` | Ribbon | SVG ribbon waves | `#e36c69` (salmon) | `Ribbon/ribbon.html` |
 | `arc` | Arc (hidden from the home grid, not deleted) | SVG narrative arc + nodes | `#816baf` (purple) | `Arc/arc.html` |
 | `protocols` | Archive (formerly Protocols) | SVG open book | `#a56983` (dusty pink) | `Archive/archive.html` |
+| `cellarchive` | Cell Archive | SVG cell/nucleus | `#d17a4a` (terracotta) | `Cell_Archive/cell_archive.html` |
 
 **Home grid packages:** the home cards are grouped into labelled sections by `PACKAGES` in `hub-shell.html` (Data Analysis · Design & Presentation · Molecular Biology · Lab Operations · Just for Fun). `_buildPackages()` reorganizes the flat `#app-grid` into per-package `.grid` blocks at load; drag-reorder is scoped within a package and persisted per-package in `localStorage` (`hub_card_order_v2`). Empty sections auto-hide via `_updateSectionVisibility()`. Any app id not in `PACKAGES` falls into a trailing "More" section.
 
@@ -85,8 +86,10 @@ The_Hub/
 │   └── ribbon.html
 ├── Arc/
 │   └── arc.html                              ← hidden from the home grid, still built
-└── Archive/
-    └── archive.html
+├── Archive/
+│   └── archive.html
+└── Cell_Archive/
+    └── cell_archive.html
 ```
 
 ### Regenerating the self-contained dHUB after app changes

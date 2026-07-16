@@ -28,6 +28,7 @@ APPS = [
     ('ribbon',     'Ribbon/ribbon.html'),
     ('arc',        'Arc/arc.html'),
     ('protocols',  'Archive/archive.html'),
+    ('cellarchive', 'Cell_Archive/cell_archive.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()
