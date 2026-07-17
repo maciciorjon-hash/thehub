@@ -455,7 +455,7 @@ body.step-notes-on li:hover>.step-note-btn,
 
       <div class="calc-box">
         <div class="calc-box-title">Step 3 &mdash; Gibson assembly calculator</div>
-        <div class="calc-source">NEBHiFi 2&times; Master Mix, 0.06 pmol vector target, 2:1 insert:vector molar ratio.</div>
+        <div class="calc-source">NEBHiFi 2&times; Master Mix. NEB recommends <strong>0.03&ndash;0.2 pmol total DNA</strong> for 2&ndash;3 fragments at a <strong>2:1 insert:vector</strong> molar ratio; a typical working amount is <strong>~35 ng vector</strong>. The insert amount is derived from your vector amount and the molar ratio &mdash; set both below.</div>
         <div class="grid-2" style="margin-bottom:10px">
           <div>
             <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Vector (post-PCR + DpnI + gel purification)</div>
@@ -466,7 +466,9 @@ body.step-notes-on li:hover>.step-note-btn,
           </div>
           <div>
             <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Settings</div>
-            <div style="max-width:150px">
+            <div style="display:flex;flex-direction:column;gap:8px;max-width:220px">
+              <div class="field"><label>Insert : vector molar ratio</label><select id="gb-ratio" onchange="calcGibson()"><option value="1">1 : 1</option><option value="2" selected>2 : 1</option><option value="3">3 : 1</option><option value="5">5 : 1 (small / ssDNA insert)</option></select></div>
+              <div class="field"><label>Vector amount (ng)</label><input type="number" id="gb-vng" value="35" oninput="calcGibson()" min="0"></div>
               <div class="field"><label>Rxn vol (uL)</label><input type="number" id="gb-vol" value="10" oninput="calcGibson()" min="0"></div>
             </div>
           </div>
@@ -3471,29 +3473,38 @@ function renderGibFrags() {
   calcGibson();
 }
 function addGibFrag(){ gibFrags.push({sz:500,c:30}); renderGibFrags(); }
+// ng of dsDNA = pmol × bp × 0.65 (≈650 g/mol per bp). Insert amount is derived
+// from the vector amount via the chosen insert:vector molar ratio.
+var GIB_NG_PER_PMOL_BP = 0.65;
 function calcGibson(){
   const vsz=+document.getElementById('gb-vsz').value, vc=+document.getElementById('gb-vc').value;
   const rvol=+document.getElementById('gb-vol').value;
-  const tVecPmol=0.06, tFragPmol=tVecPmol*2;
-  const vecNg=tVecPmol*0.66*vsz, vecVol=vecNg/vc;
-  let rows='<table><thead><tr><th>Component</th><th>Target (pmol)</th><th>ng/uL</th><th>Volume (uL)</th></tr></thead><tbody>';
-  rows+='<tr><td>Vector (linearized)</td><td>'+fmt(tVecPmol,2)+'</td><td>'+vc+'</td><td style="color:var(--accent)">'+fmt(vecVol,3)+'</td></tr>';
+  const ratio=+((document.getElementById('gb-ratio')||{}).value)||2;
+  const vecNg=+((document.getElementById('gb-vng')||{}).value)||0;
+  const tVecPmol = vsz ? vecNg/(GIB_NG_PER_PMOL_BP*vsz) : 0;
+  const tFragPmol = tVecPmol*ratio;
+  const vecVol = vc ? vecNg/vc : 0;
+  let rows='<table><thead><tr><th>Component</th><th>Target (pmol)</th><th>Amount (ng)</th><th>ng/uL</th><th>Volume (uL)</th></tr></thead><tbody>';
+  rows+='<tr><td>Vector (linearized)</td><td>'+fmt(tVecPmol,2)+'</td><td>'+fmt(vecNg,3)+'</td><td>'+vc+'</td><td style="color:var(--accent)">'+fmt(vecVol,3)+'</td></tr>';
   let usedVol=vecVol;
-  var csvRows = [['Vector (linearized)', vc, fmt(vecVol,3)]];
+  var csvRows = [['Vector (linearized)', fmt(vecNg,3), vc, fmt(vecVol,3)]];
   gibFrags.forEach((f,i)=>{
-    const ng=tFragPmol*0.66*f.sz, vol=ng/f.c; usedVol+=vol;
-    rows+='<tr><td>Insert '+(i+1)+' ('+f.sz+' bp)</td><td>'+fmt(tFragPmol,2)+'</td><td>'+f.c+'</td><td style="color:var(--accent2)">'+fmt(vol,3)+'</td></tr>';
-    csvRows.push(['Insert '+(i+1)+' ('+f.sz+' bp)', f.c, fmt(vol,3)]);
+    const ng=tFragPmol*GIB_NG_PER_PMOL_BP*f.sz, vol=f.c?ng/f.c:0; usedVol+=vol;
+    rows+='<tr><td>Insert '+(i+1)+' ('+f.sz+' bp)</td><td>'+fmt(tFragPmol,2)+'</td><td>'+fmt(ng,3)+'</td><td>'+f.c+'</td><td style="color:var(--accent2)">'+fmt(vol,3)+'</td></tr>';
+    csvRows.push(['Insert '+(i+1)+' ('+f.sz+' bp)', fmt(ng,3), f.c, fmt(vol,3)]);
   });
-  const water=Math.max(0,(rvol/2)-usedVol);
-  rows+='<tr><td>Nuclease-free H₂O</td><td>—</td><td>—</td><td>'+fmt(water,3)+'</td></tr>';
-  rows+='<tr style="font-weight:600"><td>NEBHiFi 2× Master Mix</td><td>—</td><td>—</td><td style="color:var(--accent);font-weight:600">'+(rvol/2)+'</td></tr>';
-  rows+='<tr style="font-weight:600"><td>Total</td><td>—</td><td>—</td><td>'+rvol+' uL</td></tr>';
-  csvRows.push(['Nuclease-free H2O','',fmt(water,3)]);
-  csvRows.push(['NEBHiFi 2x Master Mix','',(rvol/2)]);
-  document.getElementById('gb-result').innerHTML=rows+'</tbody></table>'+
-    '<div class="proto-note" style="margin-top:10px">Incubate at 50°C × '+(gibFrags.length+1<=3?'15':'60')+' min · Transform 2 uL into competent cells</div>';
-  _lastCalcTable['gibson'] = { headers:['Component','ng/uL','Volume (uL)'], rows: csvRows };
+  const mmVol=rvol/2, water=Math.max(0,mmVol-usedVol);
+  rows+='<tr><td>Nuclease-free H₂O</td><td>—</td><td>—</td><td>—</td><td>'+fmt(water,3)+'</td></tr>';
+  rows+='<tr style="font-weight:600"><td>NEBHiFi 2× Master Mix</td><td>—</td><td>—</td><td>—</td><td style="color:var(--accent);font-weight:600">'+fmt(mmVol,3)+'</td></tr>';
+  rows+='<tr style="font-weight:600"><td>Total</td><td>—</td><td>—</td><td>—</td><td>'+rvol+' uL</td></tr>';
+  csvRows.push(['Nuclease-free H2O','','',fmt(water,3)]);
+  csvRows.push(['NEBHiFi 2x Master Mix','','',fmt(mmVol,3)]);
+  var totalPmol=tVecPmol+tFragPmol*gibFrags.length;
+  var note='<div class="proto-note" style="margin-top:10px">Ratio '+ratio+':1 insert:vector · total DNA '+fmt(totalPmol,2)+' pmol · incubate 50°C × '+(gibFrags.length+1<=3?'15':'60')+' min · transform 2 uL into competent cells</div>';
+  if(usedVol>mmVol) note+='<div class="proto-note warn" style="margin-top:8px">DNA volume ('+fmt(usedVol,3)+' uL) exceeds half the reaction ('+fmt(mmVol,3)+' uL) &mdash; raise the reaction volume or use more concentrated DNA.</div>';
+  else if(totalPmol>0.25) note+='<div class="proto-note warn" style="margin-top:8px">Total '+fmt(totalPmol,2)+' pmol is above NEB\'s 0.03&ndash;0.2 pmol window for 2&ndash;3 fragments &mdash; consider less vector.</div>';
+  document.getElementById('gb-result').innerHTML=rows+'</tbody></table>'+note;
+  _lastCalcTable['gibson'] = { headers:['Component','Amount (ng)','ng/uL','Volume (uL)'], rows: csvRows };
   renderGibsonExport();
 }
 function gdv(id) { var e = document.getElementById(id); return e ? e.value : ''; }
@@ -3537,13 +3548,15 @@ function generateGibsonSteps() {
   ]});
 
   var vsz = gdn('gb-vsz'), vc = gdn('gb-vc'), rvol = gdn('gb-vol') || 10;
-  var tVecPmol = 0.06, tFragPmol = 0.12;
-  var vecNg = tVecPmol*0.66*vsz, vecVol = vc ? fmt(vecNg/vc,3) : '—', usedVol = vc ? vecNg/vc : 0;
-  gibFrags.forEach(function(f){ if(f.c) usedVol += (tFragPmol*0.66*f.sz)/f.c; });
-  var water = fmt(Math.max(0,(rvol/2)-usedVol),3);
+  var ratio = +((document.getElementById('gb-ratio')||{}).value) || 2;
+  var vecNg = gdn('gb-vng') || 35;
+  var tVecPmol = vsz ? vecNg/(0.65*vsz) : 0, tFragPmol = tVecPmol*ratio;
+  var vecVol = vc ? fmt(vecNg/vc,3) : '—', usedVol = vc ? vecNg/vc : 0;
+  gibFrags.forEach(function(f){ if(f.c) usedVol += (tFragPmol*0.65*f.sz)/f.c; });
+  var mmVol = rvol/2, water = fmt(Math.max(0,mmVol-usedVol),3);
   var incTime = (gibFrags.length+1<=3) ? '15' : '60';
-  var asmBullets = ['Set up on ice — add DNA and H₂O first, Master Mix last', 'NEBHiFi 2× Master Mix: '+(rvol/2)+' uL', 'Vector ('+vsz+' bp, '+vc+' ng/uL): '+vecVol+' uL ['+fmt(tVecPmol,2)+' pmol]'];
-  gibFrags.forEach(function(f,i){ var ng=tFragPmol*0.66*f.sz, vol=f.c?fmt(ng/f.c,3):'—'; asmBullets.push('Insert '+(i+1)+' ('+f.sz+' bp, '+f.c+' ng/uL): '+vol+' uL ['+fmt(tFragPmol,2)+' pmol]'); });
+  var asmBullets = ['Set up on ice — add DNA and H₂O first, Master Mix last', 'Insert:vector ratio '+ratio+':1 · vector target '+fmt(vecNg,3)+' ng ('+fmt(tVecPmol,2)+' pmol)', 'NEBHiFi 2× Master Mix: '+fmt(mmVol,3)+' uL', 'Vector ('+vsz+' bp, '+vc+' ng/uL): '+vecVol+' uL — '+fmt(vecNg,3)+' ng ['+fmt(tVecPmol,2)+' pmol]'];
+  gibFrags.forEach(function(f,i){ var ng=tFragPmol*0.65*f.sz, vol=f.c?fmt(ng/f.c,3):'—'; asmBullets.push('Insert '+(i+1)+' ('+f.sz+' bp, '+f.c+' ng/uL): '+vol+' uL — '+fmt(ng,3)+' ng ['+fmt(tFragPmol,2)+' pmol]'); });
   asmBullets.push('H₂O: '+water+' uL'); asmBullets.push('Total: '+rvol+' uL');
   asmBullets.push('50°C × '+incTime+' min → store on ice or −20°C'); asmBullets.push('Transform 2 uL into competent cells');
   steps.push({ label:'Step 3 — Gibson Assembly ('+rvol+' uL)', bullets:asmBullets });
