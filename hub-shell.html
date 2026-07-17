@@ -550,8 +550,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
     <strong style="color:var(--text);font-size:12px;">v1.3.8 &mdash; 16 Jul 2026</strong><br>
-    &#9679; Home reorganised into <b>suites</b> &mdash; Data Analysis, Design, Molecular Biology, Lab Operations &amp; Fun. Unlock a whole suite with one code, then open its apps<br>
-    &#9679; New personal <b>workspace</b> (just for the admin): customizable widgets &mdash; a live time-of-day sky with local weather, tasks, live incubator &amp; shortcuts &mdash; plus <b>Bench</b>, a lab notebook with a cell-culture tracker (passage, splits, mycoplasma &amp; passage-limit alerts)<br>
+    &#9679; New personal <b>workspace</b> (admin only): apps organised into suites (Data Analysis, Archive, Design, Tools, Bench) with a customizable widget dashboard &mdash; a live time-of-day sky with local weather, tasks, live incubator &amp; shortcuts &mdash; plus <b>Bench</b>, a lab notebook with a cell-culture tracker (passage, splits, mycoplasma &amp; passage-limit alerts)<br>
     &#9679; <b>BCA</b>: new features, bug fixes, visual updates<br>
     &#9679; New app: <b>Cell Archive</b> &mdash; culture conditions &amp; handling notes for 10 common lab cell lines<br>
     &#9679; Retired: <b>LabMate</b><br>
@@ -1932,9 +1931,10 @@ firebase.auth().onAuthStateChanged(function(user) {
 });
 
 var ALL_APP_IDS = ['echo','cellarchive','deg','pd','dna','pt','spectra','ldi','cryo','cuppa','fabricata','beacon','lumina','ribbon','protocols'];
+// Per-app discovery codes for visitors (public apps only; Cell Archive & Bench
+// are admin-only, and Fabricata is a hidden easter egg — see FABRICATA_WORD).
 var APP_UNLOCK_WORDS = {
   echo:    'acoustic',
-  cellarchive: 'culture',
   deg:     'degrade',
   pd:      'wellplate',
   dna:     'helix',
@@ -1943,7 +1943,6 @@ var APP_UNLOCK_WORDS = {
   ldi:     'luminescence',
   cryo:    'nitrogen',
   cuppa:      'coffee',
-  fabricata:  'fabricate',
   beacon:     'glow',
   lumina:     'illuminate',
   ribbon:     'cartoon',
@@ -2501,69 +2500,84 @@ function dashCompleteTask(id){ JournalStore.updateTask(id, { done:true, complete
 // ══════════════════════════════════════════════════════════════════════════
 var SUITE_ICONS = {
   data:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6" rx="1" fill="currentColor" stroke="none"/><rect x="12" y="8" width="3" height="10" rx="1" fill="currentColor" stroke="none"/><rect x="17" y="5" width="3" height="13" rx="1" fill="currentColor" stroke="none"/></svg>',
+  archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2c-1.7-1.1-4.3-1.6-7-1.1v12.6c2.7-.5 5.3 0 7 1.1c1.7-1.1 4.3-1.6 7-1.1V5.1c-2.7-.5-5.3 0-7 1.1z"/><path d="M12 6.2V19"/></svg>',
   design:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7.5-7.5a2.8 2.8 0 0 0-4-4L8 15"/><path d="M8 15l-3 5 5-3"/><path d="M14.5 6.5l3 3"/></svg>',
-  molbio:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M7 3c0 5 10 7 10 12 0 3-2 6-5 6"/><path d="M17 3c0 5-10 7-10 12 0 3 2 6 5 6"/><path d="M8 6h8M8.5 18h7M9.5 10h5M9.5 14h5"/></svg>',
-  labops:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v6l-4.4 7.9A2 2 0 0 0 6.3 20h11.4a2 2 0 0 0 1.7-3.1L15 9V3"/><path d="M8 3h8"/><path d="M7.5 14h9"/></svg>',
-  fun:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 15a4 4 0 0 0 7 0"/><path d="M9 10h.01M15 10h.01"/></svg>',
-  personal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V9l8-5 8 5v11"/><rect x="9" y="13" width="6" height="7" rx="1" fill="currentColor" stroke="none"/></svg>'
+  tools:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L4 17l3 3 5.5-5.5a4 4 0 0 0 5.2-5.2l-2.6 2.6-2.3-.4-.4-2.3z"/></svg>',
+  bench:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V9l8-5 8 5v11"/><rect x="9" y="13" width="6" height="7" rx="1" fill="currentColor" stroke="none"/></svg>'
 };
+// Admin's private grouping — how JON sees the hub. Visitors don't see suites;
+// they get individual app cards unlocked one at a time (see _renderVisitorGrid).
 var SUITES = [
-  { id:'data',     name:'Data Analysis',     color:'#5e87c5', word:'analyze',   tag:'Curve fitting, dose–response, plate quant & degradation metrics', apps:['echo','lumina','beacon','spectra','deg','ldi'] },
-  { id:'design',   name:'Design',            color:'#e36c69', word:'blueprint', tag:'Protein structures, plate layouts & gel diagrams',              apps:['ribbon','pd'] },
-  { id:'molbio',   name:'Molecular Biology', color:'#5aa17f', word:'benchwork', tag:'DNA/RNA & protein tools, cell-line reference, protocol library', apps:['dna','pt','cellarchive','protocols'] },
-  { id:'labops',   name:'Lab Operations',    color:'#c99a3a', word:'inventory', tag:'Cryostorage inventory and the lab coffee ledger',               apps:['cryo','cuppa'] },
-  { id:'fun',      name:'Just for Fun',      color:'#c07a8e', word:'fabricate', tag:'Odds and ends',                                                 apps:['fabricata'] },
-  { id:'personal', name:'Bench',             color:'#4f9d8f', adminOnly:true,   tag:'Your private notebook — tasks & the live incubator tracker',    apps:['bench'] }
+  { id:'data',    name:'Data Analysis', color:'#5e87c5', tag:'Curve fitting, dose–response, plate quant & degradation metrics', apps:['echo','lumina','beacon','spectra','deg','ldi'] },
+  { id:'archive', name:'Archive',       color:'#a56983', tag:'Your protocol library — steps, calculators & PDF export',        apps:['protocols'] },
+  { id:'design',  name:'Design',        color:'#e36c69', tag:'Protein structures, plate layouts & gel diagrams',               apps:['ribbon','pd'] },
+  { id:'tools',   name:'Tools',         color:'#9c6fd4', tag:'Sequence & protein utilities',                                   apps:['dna','pt'] },
+  { id:'bench',   name:'Bench',         color:'#4f9d8f', adminOnly:true, tag:'Your private workspace — notebook, incubator, cell lines, cryo & coffee', apps:['bench','cellarchive','cryo','cuppa'] }
 ];
-var _unlockedSuites = new Set(JSON.parse(localStorage.getItem('hub_unlocked_suites') || '[]'));
+// Apps only Jon can reach (never shown to visitors, no public unlock code).
+var ADMIN_ONLY_APPS = { cellarchive:1, bench:1 };
+// Apps visitors can discover individually (the per-app unlock codes below).
+var PUBLIC_APPS = ['echo','lumina','beacon','spectra','deg','ldi','protocols','ribbon','pd','dna','pt','cryo','cuppa'];
+var FABRICATA_WORD = 'fabricate'; // hidden easter egg — opens Fabricata directly
 function _suiteById(id){ for (var i=0;i<SUITES.length;i++) if (SUITES[i].id===id) return SUITES[i]; return null; }
-function _suiteOfApp(appId){ for (var i=0;i<SUITES.length;i++) if (SUITES[i].apps.indexOf(appId)>=0) return SUITES[i]; return null; }
-function _suiteUnlocked(s){ return isAdmin || _unlockedSuites.has(s.id); }
 function _suiteVisibleApps(s){ return s.apps.filter(function(id){ return isAdmin || labConfig[id] !== false; }); }
-function _isAppAccessible(appId){ if (isAdmin) return true; var s=_suiteOfApp(appId); return !!(s && !s.adminOnly && _unlockedSuites.has(s.id) && labConfig[appId] !== false); }
+function _isAppAccessible(appId){ if (isAdmin) return true; if (ADMIN_ONLY_APPS[appId]) return false; return _unlockedApps.has(appId) && labConfig[appId] !== false; }
 
-function renderSuites(){
-  var host = document.getElementById('hub-suites');
-  if (!host) return;
-  host.innerHTML = SUITES.filter(function(s){ return !s.adminOnly || isAdmin; }).map(function(s){
-    var unlocked = _suiteUnlocked(s);
-    var apps = _suiteVisibleApps(s);
-    if (unlocked) {
-      return '<div class="suite-card" data-suite="'+s.id+'" style="--suite-c:'+s.color+'" tabindex="0" onclick="openSuite(\''+s.id+'\')" onkeydown="if(event.key===\'Enter\')openSuite(\''+s.id+'\')">'
-        +'<span class="suite-accent"></span>'
-        +'<div class="suite-ico">'+(SUITE_ICONS[s.id]||'')+'</div>'
-        +'<div class="suite-name">'+_dashEsc(s.name)+'</div>'
-        +'<div class="suite-tag">'+_dashEsc(s.tag)+'</div>'
-        +'<div class="suite-foot"><span>'+apps.length+' app'+(apps.length!==1?'s':'')+'</span><span class="suite-open">Open <span class="sar">&#8594;</span></span></div>'
-      +'</div>';
-    }
-    return '<div class="suite-card locked" data-suite="'+s.id+'" style="--suite-c:'+s.color+'">'
+// Home dispatcher: admin → suite cards (grouping); visitor → individual apps.
+function renderSuites(){ if (isAdmin) _renderSuiteCards(); else _renderVisitorGrid(); }
+
+function _renderSuiteCards(){
+  var host=document.getElementById('hub-suites'); if(!host) return;
+  host.style.display='';
+  host.innerHTML = SUITES.map(function(s){
+    var apps=_suiteVisibleApps(s);
+    return '<div class="suite-card" data-suite="'+s.id+'" style="--suite-c:'+s.color+'" tabindex="0" onclick="openSuite(\''+s.id+'\')" onkeydown="if(event.key===\'Enter\')openSuite(\''+s.id+'\')">'
       +'<span class="suite-accent"></span>'
-      +'<div class="suite-lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>'
       +'<div class="suite-ico">'+(SUITE_ICONS[s.id]||'')+'</div>'
       +'<div class="suite-name">'+_dashEsc(s.name)+'</div>'
       +'<div class="suite-tag">'+_dashEsc(s.tag)+'</div>'
-      +'<div class="suite-unlock"><input type="text" placeholder="enter suite code" autocomplete="off" spellcheck="false" maxlength="24" oninput="onSuiteCodeInput(event,\''+s.id+'\')" onkeydown="if(event.key===\'Enter\')tryUnlockSuite(\''+s.id+'\',this.value)"><button onclick="tryUnlockSuite(\''+s.id+'\',this.previousElementSibling.value)">Unlock</button></div>'
+      +'<div class="suite-foot"><span>'+apps.length+' app'+(apps.length!==1?'s':'')+'</span><span class="suite-open">Open <span class="sar">&#8594;</span></span></div>'
     +'</div>';
   }).join('');
 }
-function onSuiteCodeInput(ev, id){ var s=_suiteById(id); if(!s) return; if ((ev.target.value||'').trim().toLowerCase() === s.word) tryUnlockSuite(id, ev.target.value); }
-function tryUnlockSuite(id, val){
-  var s=_suiteById(id); if(!s) return;
-  if ((val||'').trim().toLowerCase() !== s.word){
-    var inp=document.querySelector('.suite-card[data-suite="'+id+'"] input');
-    if(inp){ inp.classList.add('shake'); setTimeout(function(){ inp.classList.remove('shake'); },340); }
-    return;
+
+function _renderVisitorGrid(){
+  var host=document.getElementById('hub-suites'); if(!host) return;
+  host.style.display='block';
+  var unlocked=PUBLIC_APPS.filter(function(id){ return _unlockedApps.has(id) && labConfig[id]!==false; });
+  var lockedRemain=PUBLIC_APPS.some(function(id){ return !_unlockedApps.has(id) && labConfig[id]!==false; });
+  var cards=unlocked.map(function(id){ var src=document.querySelector('#app-grid .card[data-app-id="'+id+'"]'); if(!src) return ''; var c=src.cloneNode(true); c.style.display=''; return c.outerHTML; }).join('');
+  var discover = lockedRemain
+    ? '<div id="hub-unlock" class="visible"><div class="unlock-label">discover</div><input id="hub-unlock-input" type="text" placeholder="enter code" autocomplete="off" spellcheck="false" maxlength="30" oninput="onDiscoverInput(this)" onkeydown="if(event.key===\'Enter\'){tryUnlock(this.value);this.value=\'\';}"><div class="unlock-hint">each app has a secret code word</div></div>'
+    : '';
+  host.innerHTML = discover + (unlocked.length ? '<div class="grid">'+cards+'</div>' : (lockedRemain?'':'<div class="dash-empty" style="padding:48px;">Nothing here yet.</div>'));
+}
+
+function onDiscoverInput(inp){
+  var v=(inp.value||'').trim().toLowerCase();
+  if(v.length<3) return;
+  if(tryUnlock(v)){ inp.value=''; return; }
+  if(v.length>=4){
+    var possible = v===FABRICATA_WORD || Object.keys(APP_UNLOCK_WORDS).some(function(id){ return APP_UNLOCK_WORDS[id].indexOf(v)===0; });
+    if(!possible){ inp.classList.add('ul-shake'); setTimeout(function(){ inp.classList.remove('ul-shake'); inp.value=''; },320); }
   }
-  _unlockedSuites.add(id);
-  try { localStorage.setItem('hub_unlocked_suites', JSON.stringify(Array.from(_unlockedSuites))); } catch(e){}
+}
+function tryUnlock(code){
+  code=(code||'').trim().toLowerCase(); if(!code) return false;
+  if(code===FABRICATA_WORD){ openApp('fabricata'); return true; }
+  var matched=null;
+  Object.keys(APP_UNLOCK_WORDS).forEach(function(id){ if(APP_UNLOCK_WORDS[id]===code && PUBLIC_APPS.indexOf(id)>=0) matched=id; });
+  if(!matched) return false;
+  if(!_unlockedApps.has(matched)){ _unlockedApps.add(matched); try{ localStorage.setItem('hub_unlocked', JSON.stringify(Array.from(_unlockedApps))); }catch(e){} }
   renderSuites();
-  var c=document.querySelector('.suite-card[data-suite="'+id+'"]'); if(c) c.classList.add('just-unlocked');
+  var card=document.querySelector('#hub-suites .card[data-app-id="'+matched+'"]');
+  if(card){ card.classList.add('card-discovering'); setTimeout(function(){ card.classList.add('card-glow'); },80); setTimeout(function(){ card.classList.remove('card-discovering','card-glow'); },1400); }
+  return true;
 }
 
 var _openSuiteId = null;
 function openSuite(id){
-  var s=_suiteById(id); if(!s || !_suiteUnlocked(s)) return;
+  var s=_suiteById(id); if(!s || !isAdmin) return;
   _openSuiteId = id;
   var detail=document.getElementById('hub-suite-detail');
   detail.innerHTML =
@@ -2854,7 +2868,7 @@ function _applyDashAdmin(){
   if(isAdmin){
     if(benchCard) benchCard.style.display='';
     JournalStore.attach();
-    if(!_dashSubscribed){ _dashSubscribed=true; JournalStore.subscribe(function(){ if(!_wgDragEl && isAdmin){ renderWidgets(); renderSuites(); } }); }
+    if(!_dashSubscribed){ _dashSubscribed=true; JournalStore.subscribe(function(){ if(!_wgDragEl && isAdmin && !_openSuiteId) renderWidgets(); }); }
     if(host){ host.classList.add('visible'); if(!_openSuiteId) host.style.display=''; }
     initWeather(false);
     if(!_wxTimer) _wxTimer=setInterval(function(){ initWeather(true); }, 15*60000);
