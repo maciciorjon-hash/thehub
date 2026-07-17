@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Labbook</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#f4f5f8;--surface:#ffffff;--surface2:#f0f1f5;--surface3:#e4e6ee;
+  --border:rgba(0,0,0,0.07);--border2:rgba(0,0,0,0.13);
+  --text:#1a1d2e;--text2:#5a5f7a;--text3:#9ca0b8;
+  --accent:#4f9d8f;--accent-dim:rgba(79,157,143,0.13);
+  --warn:#c47818;--danger:#c04040;--good:#2d9462;
+  --sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.04);--shadow-sm:0 2px 8px rgba(0,0,0,.06);
+  --shadow-md:0 6px 24px rgba(0,0,0,.09);--shadow-lg:0 16px 48px rgba(0,0,0,.14);
+}
+[data-theme="dark"]{
+  --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;
+  --accent:#5cb3a3;--accent-dim:rgba(92,179,163,0.16);
+  --warn:#f0b060;--danger:#f08a84;--good:#6ddca8;
+  --shadow-xs:0 1px 4px rgba(0,0,0,.30);--shadow-sm:0 2px 8px rgba(0,0,0,.40);
+  --shadow-md:0 6px 24px rgba(0,0,0,.50);--shadow-lg:0 16px 48px rgba(0,0,0,.55);
+}
+input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
+html,body{height:100%;overflow:hidden;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+
+header{border-bottom:1px solid var(--border);padding:0 22px;display:flex;align-items:center;gap:13px;background:var(--surface);min-height:56px;flex-shrink:0;}
+.logo{width:32px;height:32px;border-radius:7px;background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.logo svg{width:19px;height:19px;}
+.app-name{font-size:15px;font-weight:600;letter-spacing:-0.2px;}
+.app-sub{font-size:11px;color:var(--text2);}
+@media(max-width:560px){.app-sub{display:none;}}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.hdr-btn{background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:6px 12px;font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;display:inline-flex;align-items:center;gap:6px;}
+.hdr-btn:hover{background:var(--surface2);color:var(--text);}
+.hdr-btn svg{width:14px;height:14px;}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:background .3s;}
+.sync-dot.ok{background:var(--good);}
+
+.body{flex:1;display:flex;min-height:0;}
+/* Pane 1: sections */
+.pane-sec{width:210px;flex-shrink:0;border-right:1px solid var(--border);background:var(--surface);overflow-y:auto;padding:12px 10px;}
+.pane-lbl{font-size:9.5px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--text3);margin:10px 8px 6px;}
+.sec-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer;font-size:13px;color:var(--text2);transition:background .12s;position:relative;}
+.sec-item:hover{background:var(--surface2);color:var(--text);}
+.sec-item.active{background:var(--accent-dim);color:var(--accent);font-weight:600;}
+.sec-item .dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;background:var(--accent);}
+.sec-item .del{margin-left:auto;opacity:0;color:var(--text3);font-size:15px;line-height:1;padding:2px;}
+.sec-item:hover .del{opacity:1;}
+.sec-item .del:hover{color:var(--danger);}
+.add-row{display:flex;gap:6px;margin:8px 8px 4px;}
+.add-row input{flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;font-family:var(--sans);font-size:12px;color:var(--text);outline:none;}
+.add-row input:focus{border-color:var(--accent);}
+.add-row button{background:var(--accent);border:none;color:#fff;border-radius:8px;width:30px;font-size:15px;cursor:pointer;flex-shrink:0;}
+
+/* Pane 2: pages list */
+.pane-pages{width:280px;flex-shrink:0;border-right:1px solid var(--border);background:var(--surface);overflow-y:auto;display:flex;flex-direction:column;}
+.pages-hd{padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:2;}
+.pages-hd .t{font-size:13px;font-weight:700;}
+.pages-new{background:var(--accent);border:none;color:#fff;border-radius:8px;padding:6px 12px;font-family:var(--sans);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.page-item{padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;}
+.page-item:hover{background:var(--surface2);}
+.page-item.active{background:var(--accent-dim);}
+.page-code{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:500;}
+.page-title{font-size:13px;font-weight:600;margin-top:3px;color:var(--text);line-height:1.35;}
+.page-meta{font-size:10.5px;color:var(--text3);margin-top:4px;font-family:var(--mono);display:flex;gap:8px;align-items:center;}
+.pg-status{padding:1px 7px;border-radius:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:8.5px;}
+.pg-status.planned{background:var(--surface3);color:var(--text2);}
+.pg-status.ongoing{background:rgba(94,135,197,.16);color:#5075b5;}
+.pg-status.done{background:rgba(45,148,98,.15);color:var(--good);}
+.pages-empty{padding:36px 20px;text-align:center;color:var(--text3);font-size:12.5px;line-height:1.6;}
+
+/* Pane 3: editor */
+.pane-ed{flex:1;overflow-y:auto;min-width:0;background:var(--bg);}
+.ed-wrap{max-width:820px;margin:0 auto;padding:24px 30px 80px;}
+.ed-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text3);text-align:center;padding:40px;}
+.ed-empty svg{width:44px;height:44px;opacity:.5;margin-bottom:14px;}
+.ed-empty .t{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px;}
+
+/* Experiment header card */
+.exh{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:18px;box-shadow:var(--shadow-xs);}
+.exh-code{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent);background:none;border:none;outline:none;width:100%;padding:0;letter-spacing:.5px;}
+.exh-title{font-size:22px;font-weight:700;letter-spacing:-.4px;color:var(--text);border:none;background:none;outline:none;width:100%;padding:4px 0 2px;font-family:var(--sans);}
+.exh-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px 16px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.exh-fld{display:flex;flex-direction:column;gap:4px;}
+.exh-fld label{font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);}
+.exh-fld input,.exh-fld select{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:6px 9px;font-family:var(--sans);font-size:12.5px;color:var(--text);outline:none;}
+.exh-fld input:focus,.exh-fld select:focus{border-color:var(--accent);}
+
+/* Toolbar */
+.tbar{position:sticky;top:0;z-index:5;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:6px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:3px;box-shadow:var(--shadow-xs);}
+.tb{width:30px;height:30px;border:none;background:none;border-radius:7px;color:var(--text2);cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;font-family:var(--sans);}
+.tb:hover{background:var(--surface2);color:var(--text);}
+.tb b,.tb i,.tb u{pointer-events:none;}
+.tb svg{width:15px;height:15px;pointer-events:none;}
+.tb-sep{width:1px;background:var(--border);margin:3px 3px;}
+.tb-wide{width:auto;padding:0 9px;font-size:12px;gap:5px;}
+
+/* Day blocks */
+.blk{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;box-shadow:var(--shadow-xs);overflow:hidden;}
+.blk-hd{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);}
+.blk-date{font-family:var(--mono);font-size:12px;color:var(--text);background:none;border:1px solid var(--border2);border-radius:6px;padding:3px 8px;outline:none;}
+.blk-date:focus{border-color:var(--accent);}
+.blk-title{font-size:12.5px;font-weight:600;color:var(--text2);border:none;background:none;outline:none;flex:1;font-family:var(--sans);}
+.blk-del{margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:3px 6px;border-radius:6px;}
+.blk-del:hover{color:var(--danger);background:var(--surface3);}
+.blk-body{padding:12px 16px;font-size:13.5px;line-height:1.7;color:var(--text);outline:none;min-height:40px;}
+.blk-body:focus{background:var(--surface);}
+.blk-body p{margin:0 0 6px;}
+.blk-body ul,.blk-body ol{margin:0 0 6px 22px;}
+.blk-body li{margin:2px 0;}
+.blk-body h3{font-size:15px;font-weight:700;margin:8px 0 5px;}
+.blk-body a.lb-link{color:var(--accent);font-weight:600;cursor:pointer;text-decoration:none;border-bottom:1px dashed var(--accent);}
+.blk-body .lb-todo{display:flex;align-items:flex-start;gap:8px;margin:3px 0;}
+.blk-body .lb-box{width:15px;height:15px;border:1.6px solid var(--border2);border-radius:4px;flex-shrink:0;margin-top:2px;cursor:pointer;}
+.blk-body .lb-todo.done .lb-box{background:var(--accent);border-color:var(--accent);}
+.blk-body .lb-todo.done{opacity:.6;text-decoration:line-through;}
+.add-blk{width:100%;border:1.5px dashed var(--border2);background:none;color:var(--text3);border-radius:11px;padding:11px;font-family:var(--sans);font-size:12.5px;cursor:pointer;transition:color .15s,border-color .15s;}
+.add-blk:hover{color:var(--accent);border-color:var(--accent);}
+
+/* Notebook page */
+.nb-body{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-xs);font-size:13.5px;line-height:1.7;outline:none;min-height:300px;}
+.nb-body:focus{border-color:var(--border2);}
+
+/* Modal */
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;display:none;align-items:center;justify-content:center;padding:20px;}
+.modal-back.open{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:440px;padding:22px;box-shadow:var(--shadow-lg);}
+.modal-t{font-size:15px;font-weight:700;margin-bottom:16px;}
+.mrow{display:flex;flex-direction:column;gap:5px;margin-bottom:13px;}
+.mrow label{font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--text3);}
+.mrow input,.mrow select{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:9px 11px;font-family:var(--sans);font-size:13px;color:var(--text);outline:none;}
+.mrow input:focus,.mrow select:focus{border-color:var(--accent);}
+.mcode{font-family:var(--mono);font-size:13px;color:var(--accent);background:var(--accent-dim);border-radius:8px;padding:8px 11px;letter-spacing:.5px;}
+.modal-act{display:flex;gap:9px;margin-top:18px;}
+.btn{background:var(--accent);border:none;color:#fff;border-radius:9px;padding:9px 18px;font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;}
+.btn:hover{filter:brightness(1.06);}
+.btn.ghost{background:none;border:1px solid var(--border2);color:var(--text2);font-weight:500;}
+.btn.ghost:hover{background:var(--surface2);color:var(--text);}
+.grow{flex:1;}
+
+#linkmenu{position:fixed;z-index:200;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow-md);padding:5px;max-height:300px;overflow:auto;width:220px;display:none;}
+#linkmenu.open{display:block;}
+.lm-item{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;font-size:12.5px;color:var(--text2);}
+.lm-item:hover{background:var(--surface2);color:var(--text);}
+.lm-item .sw{width:20px;height:20px;border-radius:5px;flex-shrink:0;}
+
+@media print{
+  body>*{display:none!important;}
+  #print-root{display:block!important;position:static;}
+}
+#print-root{display:none;padding:26px 32px;color:#111;background:#fff;font-family:var(--sans);}
+#print-root .pr-code{font-family:var(--mono);font-size:13px;color:#4f9d8f;letter-spacing:.5px;}
+#print-root .pr-title{font-size:22px;font-weight:700;margin:4px 0 10px;}
+#print-root .pr-meta{font-size:12px;color:#555;margin-bottom:4px;}
+#print-root .pr-block{margin-top:16px;page-break-inside:avoid;}
+#print-root .pr-bdate{font-family:var(--mono);font-size:12px;color:#777;border-bottom:1px solid #ddd;padding-bottom:3px;margin-bottom:6px;}
+#print-root .pr-btitle{font-weight:700;font-size:13px;margin-bottom:4px;}
+#print-root ul,#print-root ol{margin:0 0 6px 20px;}
+#print-root .lb-todo{list-style:none;}
+#print-root .lb-box{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:2px;margin-right:6px;vertical-align:middle;}
+#print-root .lb-todo.done .lb-box{background:#4f9d8f;border-color:#4f9d8f;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 4.5A2.5 2.5 0 017.5 2H19v16H7.5A2.5 2.5 0 005 20.5v-16z" stroke="white" stroke-width="1.7" stroke-linejoin="round"/><path d="M5 20.5A2.5 2.5 0 017.5 18H19v4H7.5A2.5 2.5 0 015 19.5" stroke="white" stroke-width="1.7"/><path d="M9 7h7M9 10.5h7" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+  <div>
+    <div class="app-name">Labbook</div>
+    <div class="app-sub">Your electronic lab notebook</div>
+  </div>
+  <div class="hdr-right">
+    <span class="sync-dot" id="sync-dot" title="Sync status"></span>
+    <button class="hdr-btn" id="export-btn" onclick="exportPDF()" style="display:none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>Export PDF</button>
+  </div>
+</header>
+
+<div class="body">
+  <div class="pane-sec" id="pane-sec"></div>
+  <div class="pane-pages" id="pane-pages"></div>
+  <div class="pane-ed" id="pane-ed"></div>
+</div>
+
+<!-- New experiment modal -->
+<div class="modal-back" id="new-modal">
+  <div class="modal">
+    <div class="modal-t">New experiment</div>
+    <div class="mrow"><label>Type</label><select id="nm-type" onchange="nmUpdateCode()"></select></div>
+    <div class="mrow"><label>POI / prefix (optional)</label><input id="nm-poi" placeholder="e.g. SM" autocomplete="off" oninput="nmUpdateCode()"></div>
+    <div class="mrow"><label>Date</label><input id="nm-date" type="date" oninput="nmUpdateCode()"></div>
+    <div class="mrow"><label>Title / plan</label><input id="nm-title" placeholder="Short description" autocomplete="off"></div>
+    <div class="mrow"><label>Code (auto — editable)</label><input id="nm-code" class="mcode" autocomplete="off" spellcheck="false"></div>
+    <div class="modal-act"><button class="btn ghost" onclick="closeNew()">Cancel</button><span class="grow"></span><button class="btn" onclick="createExperiment()">Create</button></div>
+  </div>
+</div>
+
+<div id="linkmenu"></div>
+<div id="print-root"></div>
+
+<script>
+// ── Theme ──────────────────────────────────────────────────────────────────
+(function(){ var t='light'; try{ t=localStorage.getItem('hub_theme')||'light'; }catch(e){} document.documentElement.setAttribute('data-theme',t); })();
+window.addEventListener('message', function(e){
+  if(e.data==='setTheme:dark') document.documentElement.setAttribute('data-theme','dark');
+  if(e.data==='setTheme:light') document.documentElement.setAttribute('data-theme','light');
+});
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function el(id){ return document.getElementById(id); }
+function uid(){ return 'lb'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function dateCompact(s){ return s? s.replace(/-/g,'') : ''; }
+function fmtDate(s){ if(!s) return ''; var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+
+// ── Experiment types + templates (from Jon's OneNote) ───────────────────────
+var EXP_TYPES=[
+  {id:'WB',name:'Western blot'},
+  {id:'HB',name:'HiBiT'},
+  {id:'CTG',name:'Cell viability (CTG)'},
+  {id:'NB',name:'NanoBRET'},
+  {id:'KD',name:'Kinetic degradation'},
+  {id:'D2B',name:'Direct-to-Biology'},
+  {id:'PR',name:'Proteomics'},
+  {id:'CLONE',name:'Cloning / plasmid'},
+  {id:'EXP',name:'Custom / blank'}
+];
+function TEMPLATE(type){
+  var T={
+    WB:{title:'Western blot',blocks:[
+      {title:'Sample prep',html:'<p><b>Lysis &amp; sample prep</b></p><ul><li>Lyse in RIPA + protease/phosphatase inhibitors</li><li>BCA quantification (see BCA app)</li><li>Normalize, add 4× LDS + reducing agent, denature 95 °C × 5 min</li></ul>'},
+      {title:'Run + transfer',html:'<p><b>Gel</b>: MOPS, 165 V, 100 min</p><p><b>Transfer</b>: wet transfer, 90 V, 90 min</p><p><b>Blocking</b>: 1 h, RT</p>'},
+      {title:'Antibodies + imaging',html:'<p><b>Primary</b>: 4 °C, overnight</p><ul><li>A-HT Ms (1:1000)</li><li>A-NL Ms (1:1000)</li><li>A-HA Rat (1:1000)</li></ul><p><b>Secondary</b>: 1 h RT · <b>Image</b></p>'},
+      {title:'Results',html:'<p><b>Results</b></p><p></p>'}
+    ]},
+    HB:{title:'HiBiT: seed → overnight → compound addition → lytic read',blocks:[
+      {title:'Seeding',html:'<p><b>Seeding</b></p><ul><li>Seed <b>N</b> × 384-well plate / cell line</li><li>30 µL/well · 0.10 M/mL · 3000 cells/well</li><li>Media: 30 × 384 × N × 1.3 = … µL</li></ul><p>Picklist: …_Picklist.csv</p><p>Incubate overnight.</p>'},
+      {title:'Compound addition + HiBiT Lytic',html:'<p><b>Compound addition (Echo)</b></p><p><b>HiBiT Lytic — prepare Nano-Glo® reagent</b></p><ul><li>Lytic Buffer: 15 × 384 × plates × 1.1 = … µL</li><li>LgBiT (1:100): … µL · Substrate (1:50): … µL</li><li>Mix gently — do not vortex</li></ul><p><b>Add reagent</b>: 15 µL/well (1:2 reagent:cell) · shake 300 rpm × 1 min · RT 10 min</p><p><b>Read</b>: PHERAstar · integration 0.2 s/well</p>'},
+      {title:'Results',html:'<p><b>Results</b></p><p></p>'}
+    ]},
+    CTG:{title:'Cell viability (CellTiter-Glo)',blocks:[
+      {title:'Plan',html:'<p><b>Plan</b>: viability in 96-well plates to evaluate …</p><ul><li>Serial dilution: 1000 nM top, DF = 3, 11 points + DMSO</li></ul><p>Plate map:</p>'},
+      {title:'Seeding',html:'<p><b>Seed cells</b>: 90 µL/well · 30 000 cells/well (0.3 M/mL)</p><p>N plates · compounds per plate: …</p><p>Incubate for the appropriate time.</p>'},
+      {title:'CTG readout',html:'<p><b>CTG — 72 h readout</b></p><ul><li>Reagent: 50 × wells × plates × 1.1 = … µL</li><li>Add 50 µL/well · equilibrate 10–20 min · read luminescence</li></ul>'},
+      {title:'Data analysis',html:'<p><b>Data analysis</b></p><p></p>'}
+    ]},
+    NB:{title:'NanoBRET biosensor',blocks:[
+      {title:'Seed',html:'<p><b>Seed HEK293</b>: 6-well plate, 0.8 M cells/well (3 transfected + 1 untransfected)</p>'},
+      {title:'Transfection',html:'<p><b>Transfection (per 6-well)</b></p><ol><li>0.02 µg plasmid + 2 µg carrier DNA into 100 µL OptiMEM</li><li>Add 6 µL FuGENE HD, mix gently (no vortex)</li><li>Incubate 10 min RT, add dropwise to cells</li><li>Incubate ~20 h at 37 °C, 5% CO₂</li></ol>'},
+      {title:'Harvest + plate',html:'<p><b>Harvest</b>: trypsinize, resuspend in phenol-red-free OptiMEM + 4% FBS, count, adjust to 2.2×10⁵ cells/mL</p><p>Ligand wells: HT 618 at 1 µL/mL · 90 µL/well. Plate map:</p>'},
+      {title:'Treat + read',html:'<p><b>Proteasome inhibitor</b>: MG132 10 µM final, incubate 1 h</p><p><b>Test compounds</b>: 10× serial dilutions (1 µM, DF=3), 11 µL/well, incubate 3 h</p><p><b>NanoBRET substrate</b>: 100× dilution, 25 µL/well, shake, read</p>'}
+    ]},
+    KD:{title:'Kinetic degradation',blocks:[
+      {title:'Seeding',html:'<p><b>Seed cells</b> (HiBiT reporter line) · 384-well · overnight</p>'},
+      {title:'Compound + kinetic read',html:'<p><b>Add degrader dilution series</b> (Echo)</p><p><b>Add HiBiT Lytic / Endurazine live reagent</b></p><p><b>Kinetic read</b> on PHERAstar: t = 0, 1, 2, 4, 6, 8, 24 h</p>'},
+      {title:'Analysis',html:'<p><b>Analysis</b>: kinetic Dmax / degradation rate</p><p></p>'}
+    ]},
+    D2B:{title:'Direct-to-Biology: reaction → compound addition → seed → read',blocks:[
+      {title:'Reaction setup',html:'<p><b>Reaction set up</b>: Cherry Pick + Plate Reformat · react overnight</p>'},
+      {title:'Compound addition (Echo)',html:'<p><b>Picklist</b>: …</p><p><b>Echo gradient — D2B</b>: 20 µL assay · DMSO ≤ 0.25% · max transfer 50 nL · drop 2.5 nL</p><p>Pre-fill intermediate + backfill wells with 40 µL neat DMSO before the run.</p>'},
+      {title:'Seeding',html:'<p><b>Seed</b> N × 384-well/cell line · 20 µL/well · 0.15 M/mL · 3000 cells/well</p><p>Incubate ~20 h.</p>'},
+      {title:'HiBiT Lytic + read',html:'<p><b>HiBiT Lytic</b>: 10 µL/well (1:2 reagent:cell) · shake 300 rpm 1 min · RT 10 min</p><p><b>Read</b>: PHERAstar · 0.2 s/well</p>'}
+    ]},
+    PR:{title:'Proteomics sample prep',blocks:[
+      {title:'Lysis + quant',html:'<p><b>Lyse</b> · <b>BCA</b> quantification · normalize</p>'},
+      {title:'Digestion (S-Trap)',html:'<p><b>S-Trap digestion</b>: reduce, alkylate, trap, trypsin digest, elute</p>'},
+      {title:'LC-MS + analysis',html:'<p><b>Desalt</b> · submit for LC-MS (DIA)</p><p><b>Analysis</b>: DIA-NN → Perseus</p>'}
+    ]},
+    CLONE:{title:'Cloning / plasmid',blocks:[
+      {title:'Design',html:'<p><b>Description</b>: …</p><p><b>Method</b>: Restriction + HiFi Assembly</p><p><b>Vector</b>: … · <b>Insert</b>: … (IDT)</p>'},
+      {title:'Linearization + assembly + transformation',html:'<p><b>Vector linearization</b>: digest with BbsI 37 °C 30 min · confirm on 1% gel · excise + NucleoSpin · NanoDrop</p><p><b>HiFi assembly</b> (20 µL, NEB E2621): H₂O + linearised vector + ssOligo (200:1) + NEBuilder 2× · 50 °C × 60 min</p><p><b>Transformation</b> (NEB Stable): heat shock 42 °C 30 s · recover 1 h · plate LB+amp · overnight 37 °C</p>'},
+      {title:'Colony pick',html:'<p><b>Colony selection</b>: 3 colonies/plate → 5 mL LB + amp · overnight 37 °C</p>'},
+      {title:'Miniprep + sequencing',html:'<p><b>Miniprep</b> · <b>Sanger sequencing</b> (most promising)</p><p><b>Plasmidsaurus</b> full-plasmid sequencing · result:</p>'}
+    ]},
+    EXP:{title:'',blocks:[{title:'',html:'<p></p>'}]}
+  };
+  return T[type]||T.EXP;
+}
+
+// ── Store (localStorage primary + Firebase sync via parent) ─────────────────
+var LB={ data:null };
+function lbBlank(){ return {projects:[],experiments:{},notebook:{},updated:Date.now()}; }
+try{ LB.data=JSON.parse(localStorage.getItem('hub_labbook')||'null'); }catch(e){}
+if(!LB.data||typeof LB.data!=='object') LB.data=lbBlank();
+LB.data.projects=LB.data.projects||[]; LB.data.experiments=LB.data.experiments||{}; LB.data.notebook=LB.data.notebook||{};
+
+var _lbFbRef=null;
+function lbFb(){ if(_lbFbRef!==null) return _lbFbRef; try{ if(window.parent && window.parent.firebase){ _lbFbRef=window.parent.firebase.database().ref('journal/labbook'); } else _lbFbRef=undefined; }catch(e){ _lbFbRef=undefined; } return _lbFbRef; }
+var _syncT=null,_adopting=false;
+function setSync(ok){ var d=el('sync-dot'); if(d) d.classList.toggle('ok',ok); }
+function save(){
+  LB.data.updated=Date.now();
+  try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data)); }catch(e){}
+  if(_adopting) return;
+  setSync(false);
+  clearTimeout(_syncT);
+  _syncT=setTimeout(function(){ var r=lbFb(); if(r){ try{ r.set(LB.data).then(function(){setSync(true);}).catch(function(){}); }catch(e){} } }, 1200);
+}
+function lbInitSync(){
+  var r=lbFb(); if(!r) return;
+  try{ r.once('value').then(function(s){
+    var v=s.val();
+    if(v && typeof v==='object' && (v.updated||0) > (LB.data.updated||0)){
+      _adopting=true; LB.data={projects:v.projects||[],experiments:v.experiments||{},notebook:v.notebook||{},updated:v.updated||Date.now()};
+      try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
+      _adopting=false; renderAll();
+    }
+    setSync(true);
+  }).catch(function(){}); }catch(e){}
+}
+
+// ── Selection state ─────────────────────────────────────────────────────────
+var SEL={ section:null, page:null };   // section: 'notebook' | projectId ; page: expId | dateKey
+
+// ── Render: pane 1 (sections) ───────────────────────────────────────────────
+function renderSections(){
+  var host=el('pane-sec');
+  var projects=LB.data.projects.map(function(p){
+    return '<div class="sec-item'+(SEL.section===p.id?' active':'')+'" onclick="selectSection(\''+p.id+'\')"><span class="dot"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(p.name)+'</span><span class="del" title="Delete project" onclick="event.stopPropagation();delProject(\''+p.id+'\')">&times;</span></div>';
+  }).join('');
+  host.innerHTML =
+    '<div class="pane-lbl">Journal</div>'
+    +'<div class="sec-item'+(SEL.section==='notebook'?' active':'')+'" onclick="selectSection(\'notebook\')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v18M12 8h5M12 12h5"/></svg><span>Notebook</span></div>'
+    +'<div class="pane-lbl">Projects</div>'
+    + projects
+    +'<div class="add-row"><input id="new-proj" placeholder="New project…" autocomplete="off" onkeydown="if(event.key===\'Enter\')addProject()"><button onclick="addProject()">+</button></div>';
+}
+function addProject(){ var i=el('new-proj'); var n=(i.value||'').trim(); if(!n) return; var p={id:uid(),name:n,created:Date.now()}; LB.data.projects.push(p); save(); SEL.section=p.id; SEL.page=null; renderAll(); }
+function delProject(id){
+  var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===id;});
+  if(exps.length && !confirm('Delete this project and its '+exps.length+' experiment(s)?')) return;
+  exps.forEach(function(k){ delete LB.data.experiments[k]; });
+  LB.data.projects=LB.data.projects.filter(function(p){return p.id!==id;});
+  if(SEL.section===id){ SEL.section=null; SEL.page=null; }
+  save(); renderAll();
+}
+function selectSection(id){ SEL.section=id; SEL.page=null; renderAll(); }
+
+// ── Render: pane 2 (pages) ──────────────────────────────────────────────────
+function renderPages(){
+  var host=el('pane-pages');
+  if(SEL.section==='notebook'){
+    var days=Object.keys(LB.data.notebook).sort().reverse();
+    var items=days.map(function(k){ var pg=LB.data.notebook[k];
+      var preview=(pg.html||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
+      return '<div class="page-item'+(SEL.page===k?' active':'')+'" onclick="selectPage(\''+k+'\')"><div class="page-title">'+esc(fmtDate(k))+'</div><div class="page-meta">'+esc(preview||'empty')+'</div></div>'; }).join('');
+    host.innerHTML='<div class="pages-hd"><span class="t">Notebook</span><button class="pages-new" onclick="newNotebookDay()">+ Day</button></div>'
+      + (days.length?items:'<div class="pages-empty">No entries yet.<br>Start today\'s log with <b>+ Day</b>.</div>');
+    return;
+  }
+  var proj=LB.data.projects.filter(function(p){return p.id===SEL.section;})[0];
+  if(!proj){ host.innerHTML='<div class="pages-empty">Pick a project, or create one.</div>'; return; }
+  var exps=Object.keys(LB.data.experiments).map(function(k){return LB.data.experiments[k];})
+    .filter(function(e){return e.projectId===SEL.section;})
+    .sort(function(a,b){return (b.startDate||'').localeCompare(a.startDate||'')|| (b.created||0)-(a.created||0);});
+  var items=exps.map(function(e){
+    return '<div class="page-item'+(SEL.page===e.id?' active':'')+'" onclick="selectPage(\''+e.id+'\')">'
+      +'<div class="page-code">'+esc(e.code||'')+'</div>'
+      +'<div class="page-title">'+esc(e.title||'Untitled')+'</div>'
+      +'<div class="page-meta"><span class="pg-status '+(e.status||'planned')+'">'+esc(e.status||'planned')+'</span><span>'+esc(fmtDate(e.startDate||''))+'</span></div>'
+    +'</div>'; }).join('');
+  host.innerHTML='<div class="pages-hd"><span class="t">'+esc(proj.name)+'</span><button class="pages-new" onclick="openNew()">+ Experiment</button></div>'
+    + (exps.length?items:'<div class="pages-empty">No experiments yet.<br>Create one with <b>+ Experiment</b>.</div>');
+}
+function selectPage(id){ SEL.page=id; renderAll(); }
+
+// ── New experiment modal ────────────────────────────────────────────────────
+function openNew(){
+  el('nm-type').innerHTML=EXP_TYPES.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+' ('+t.id+')</option>';}).join('');
+  el('nm-poi').value=''; el('nm-date').value=todayStr(); el('nm-title').value='';
+  nmUpdateCode();
+  el('new-modal').classList.add('open');
+}
+function closeNew(){ el('new-modal').classList.remove('open'); }
+function nmUpdateCode(){
+  var type=el('nm-type').value, poi=(el('nm-poi').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,''), d=dateCompact(el('nm-date').value);
+  var code = (poi && type==='D2B') ? (poi+'_'+type+'_'+d) : (type+d+(poi?('_'+poi):''));
+  el('nm-code').value=code;
+}
+function createExperiment(){
+  var type=el('nm-type').value, tpl=TEMPLATE(type);
+  var startDate=el('nm-date').value||todayStr();
+  var title=(el('nm-title').value||'').trim()||tpl.title||'Untitled experiment';
+  var e={ id:uid(), projectId:SEL.section, code:(el('nm-code').value||'').trim(), type:type, poi:(el('nm-poi').value||'').trim(),
+    title:title, status:'planned', startDate:startDate, plasmids:'', cellLines:'',
+    blocks:tpl.blocks.map(function(b,i){ return {id:uid(), date:i===0?startDate:'', title:b.title, html:b.html}; }),
+    created:Date.now(), updated:Date.now() };
+  LB.data.experiments[e.id]=e; save();
+  closeNew(); SEL.page=e.id; renderAll();
+}
+
+function newNotebookDay(){
+  var k=todayStr();
+  if(!LB.data.notebook[k]) LB.data.notebook[k]={date:k,html:'<h3>Cell check</h3><div class="lb-todo"><span class="lb-box" contenteditable="false"></span>…</div><p></p>'};
+  save(); SEL.page=k; renderAll();
+}
+
+// ── Render: pane 3 (editor) ─────────────────────────────────────────────────
+var _saveT=null;
+function queueSave(){ clearTimeout(_saveT); _saveT=setTimeout(save,600); }
+
+function renderEditor(){
+  var host=el('pane-ed'); el('export-btn').style.display='none';
+  if(SEL.section==='notebook' && SEL.page && LB.data.notebook[SEL.page]){ return renderNotebookEditor(host); }
+  var e=SEL.page?LB.data.experiments[SEL.page]:null;
+  if(!e){ host.innerHTML='<div class="ed-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><div class="t">Nothing open</div><div>Pick an experiment or notebook day, or create a new one.</div></div>'; return; }
+  el('export-btn').style.display='';
+  var fields=
+    '<div class="exh-fields">'
+      +'<div class="exh-fld"><label>Type</label><select onchange="setField(\'type\',this.value)">'+EXP_TYPES.map(function(t){return '<option value="'+t.id+'"'+(t.id===e.type?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')+'</select></div>'
+      +'<div class="exh-fld"><label>Status</label><select onchange="setField(\'status\',this.value)">'+['planned','ongoing','done'].map(function(s){return '<option value="'+s+'"'+(s===e.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>'
+      +'<div class="exh-fld"><label>Start date</label><input type="date" value="'+esc(e.startDate||'')+'" onchange="setField(\'startDate\',this.value)"></div>'
+      +'<div class="exh-fld"><label>POI / target</label><input value="'+esc(e.poi||'')+'" placeholder="e.g. SMARCA2" onchange="setField(\'poi\',this.value)"></div>'
+      +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" onchange="setField(\'plasmids\',this.value)"></div>'
+      +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" onchange="setField(\'cellLines\',this.value)"></div>'
+    +'</div>';
+  var header='<div class="exh"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false"><input class="exh-title" value="'+esc(e.title||'')+'" placeholder="Experiment title" onchange="setField(\'title\',this.value)">'+fields+'</div>';
+  var blocks=e.blocks.map(function(b){
+    return '<div class="blk" data-blk="'+b.id+'">'
+      +'<div class="blk-hd"><input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+      +'<div class="blk-body" contenteditable="true" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'
+    +'</div>';
+  }).join('');
+  host.innerHTML='<div class="ed-wrap">'+toolbarHtml()+header+blocks+'<button class="add-blk" onclick="addBlock()">+ Add dated block</button></div>';
+}
+
+function renderNotebookEditor(host){
+  var pg=LB.data.notebook[SEL.page];
+  el('export-btn').style.display='';
+  host.innerHTML='<div class="ed-wrap">'+toolbarHtml()
+    +'<div class="exh"><div class="exh-title" style="cursor:default;">'+esc(fmtDate(SEL.page))+'</div><div class="exh-code">Daily notebook</div></div>'
+    +'<div class="nb-body" contenteditable="true" oninput="setNotebook(this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div>'
+    +'</div>';
+}
+
+function toolbarHtml(){
+  return '<div class="tbar">'
+    +'<button class="tb" title="Bold" onmousedown="fmt(event,\'bold\')"><b>B</b></button>'
+    +'<button class="tb" title="Italic" onmousedown="fmt(event,\'italic\')"><i>I</i></button>'
+    +'<button class="tb" title="Underline" onmousedown="fmt(event,\'underline\')"><u>U</u></button>'
+    +'<button class="tb" title="Strikethrough" onmousedown="fmt(event,\'strikeThrough\')"><s>S</s></button>'
+    +'<span class="tb-sep"></span>'
+    +'<button class="tb" title="Heading" onmousedown="fmtBlock(event,\'H3\')">H</button>'
+    +'<button class="tb" title="Bullet list" onmousedown="fmt(event,\'insertUnorderedList\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.3" fill="currentColor"/><circle cx="3.5" cy="12" r="1.3" fill="currentColor"/><circle cx="3.5" cy="18" r="1.3" fill="currentColor"/></svg></button>'
+    +'<button class="tb" title="Numbered list" onmousedown="fmt(event,\'insertOrderedList\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 6h11M10 12h11M10 18h11M4 6h1v4M4 16h2M4 16v-1h1.5"/></svg></button>'
+    +'<button class="tb" title="Checklist item" onmousedown="insertTodo(event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="6" height="6" rx="1"/><path d="M4.5 8l1 1 2-2M13 7h8M3 17h6M13 17h8"/></svg></button>'
+    +'<span class="tb-sep"></span>'
+    +'<button class="tb" title="Highlight" onmousedown="fmt(event,\'hiliteColor\',\'#fff3a0\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20h16"/><path d="M8 16l-2 2 3 1 1-2z" fill="currentColor"/><path d="M9 15l7-7 3 3-7 7z"/></svg></button>'
+    +'<button class="tb" title="Subscript" onmousedown="fmt(event,\'subscript\')">x<sub>2</sub></button>'
+    +'<button class="tb" title="Superscript" onmousedown="fmt(event,\'superscript\')">x<sup>2</sup></button>'
+    +'<span class="tb-sep"></span>'
+    +'<button class="tb tb-wide" title="Link to a dHUB app" onmousedown="openLinkMenu(event)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7 0l-2 2a5 5 0 007 7l1-1"/></svg>Link</button>'
+    +'<button class="tb" title="Clear formatting" onmousedown="fmt(event,\'removeFormat\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 4h14M9 4l-3 16M14 11l6 6M20 11l-6 6"/></svg></button>'
+  +'</div>';
+}
+
+// ── Formatting ──────────────────────────────────────────────────────────────
+var _activeEd=null;
+function fmt(ev,cmd,val){ ev.preventDefault(); if(_activeEd) _activeEd.focus(); try{ document.execCommand(cmd,false,val||null); }catch(e){} if(_activeEd) _activeEd.dispatchEvent(new Event('input')); }
+function fmtBlock(ev,tag){ ev.preventDefault(); if(_activeEd) _activeEd.focus(); try{ document.execCommand('formatBlock',false,tag); }catch(e){} if(_activeEd) _activeEd.dispatchEvent(new Event('input')); }
+function insertTodo(ev){ ev.preventDefault(); if(!_activeEd) return; _activeEd.focus();
+  var html='<div class="lb-todo"><span class="lb-box" contenteditable="false"></span>&nbsp;</div>';
+  try{ document.execCommand('insertHTML',false,html); }catch(e){}
+  _activeEd.dispatchEvent(new Event('input'));
+}
+// toggle checkbox on click (delegated)
+document.addEventListener('click',function(e){
+  if(e.target.classList && e.target.classList.contains('lb-box')){
+    var td=e.target.closest('.lb-todo'); if(td){ td.classList.toggle('done'); var ed=e.target.closest('.blk-body,.nb-body'); if(ed) ed.dispatchEvent(new Event('input')); }
+  }
+  // dHUB links inside editor / print
+  var a=e.target.closest && e.target.closest('a.lb-link');
+  if(a && a.dataset.app){ e.preventDefault(); try{ if(window.parent && window.parent.openApp) window.parent.openApp(a.dataset.app); }catch(err){} }
+  // close link menu
+  var lm=el('linkmenu'); if(lm && lm.classList.contains('open') && !lm.contains(e.target) && !(e.target.closest && e.target.closest('.tb-wide'))) lm.classList.remove('open');
+});
+
+// ── Field / block setters ───────────────────────────────────────────────────
+function _curExp(){ return SEL.page?LB.data.experiments[SEL.page]:null; }
+function setField(f,v){ var e=_curExp(); if(!e) return; e[f]=v; e.updated=Date.now(); save();
+  if(f==='status'||f==='title'||f==='code'||f==='startDate') renderPages(); }
+function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=e.blocks.filter(function(x){return x.id===id;})[0]; if(!b) return; b[f]=v; e.updated=Date.now(); if(f==='html') queueSave(); else save(); }
+function addBlock(){ var e=_curExp(); if(!e) return; e.blocks.push({id:uid(),date:'',title:'',html:'<p></p>'}); save(); renderEditor(); }
+function delBlock(id){ var e=_curExp(); if(!e) return; e.blocks=e.blocks.filter(function(b){return b.id!==id;}); save(); renderEditor(); }
+function setNotebook(html){ var pg=LB.data.notebook[SEL.page]; if(!pg) return; pg.html=html; queueSave(); }
+
+// ── dHUB link menu ──────────────────────────────────────────────────────────
+var HUB_APPS=[
+  {id:'echo',name:'Echo',c:'#ff5760'},{id:'lumina',name:'Lumina',c:'#f5c518'},{id:'beacon',name:'Beacon',c:'#5e72c4'},
+  {id:'spectra',name:'BCA',c:'#26a69a'},{id:'deg',name:'Dora',c:'#7c6fd4'},{id:'ldi',name:'LDI',c:'#e91e63'},
+  {id:'protocols',name:'Archive',c:'#a56983'},{id:'ribbon',name:'Ribbon',c:'#e36c69'},{id:'pd',name:'Blueprint',c:'#0079b9'},
+  {id:'dna',name:'Helix',c:'#43a047'},{id:'pt',name:'Protein Tools',c:'#9c6fd4'},{id:'cellarchive',name:'Cell Archive',c:'#d17a4a'},
+  {id:'cryo',name:'Iceberg',c:'#00acc1'},{id:'cuppa',name:'Cuppa',c:'#8d6e63'},{id:'bench',name:'Bench',c:'#4f9d8f'}
+];
+var _linkSaved=null;
+function openLinkMenu(ev){
+  ev.preventDefault();
+  var lm=el('linkmenu');
+  if(lm.classList.contains('open')){ lm.classList.remove('open'); return; }
+  // save current selection
+  var sel=window.getSelection(); _linkSaved=(sel && sel.rangeCount)?sel.getRangeAt(0).cloneRange():null;
+  lm.innerHTML=HUB_APPS.map(function(a){ return '<div class="lm-item" onmousedown="insertLink(event,\''+a.id+'\',\''+a.name+'\')"><span class="sw" style="background:'+a.c+'"></span>'+esc(a.name)+'</div>'; }).join('');
+  var r=ev.currentTarget.getBoundingClientRect();
+  lm.style.left=Math.min(r.left,window.innerWidth-236)+'px'; lm.style.top=(r.bottom+4)+'px';
+  lm.classList.add('open');
+}
+function insertLink(ev,id,name){
+  ev.preventDefault();
+  el('linkmenu').classList.remove('open');
+  if(!_activeEd) return;
+  _activeEd.focus();
+  if(_linkSaved){ var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(_linkSaved); }
+  var html='<a class="lb-link" data-app="'+id+'" contenteditable="false">'+esc(name)+' &#8599;</a>&nbsp;';
+  try{ document.execCommand('insertHTML',false,html); }catch(e){}
+  _activeEd.dispatchEvent(new Event('input'));
+}
+
+// ── PDF export (print-based, unified) ───────────────────────────────────────
+function exportPDF(){
+  var root=el('print-root');
+  if(SEL.section==='notebook' && LB.data.notebook[SEL.page]){
+    var pg=LB.data.notebook[SEL.page];
+    root.innerHTML='<div class="pr-code">Daily notebook</div><div class="pr-title">'+esc(fmtDate(SEL.page))+'</div>'+(pg.html||'');
+  } else {
+    var e=_curExp(); if(!e) return;
+    var meta=[];
+    if(e.startDate) meta.push('Start: '+fmtDate(e.startDate));
+    if(e.status) meta.push('Status: '+e.status);
+    if(e.poi) meta.push('POI: '+e.poi);
+    if(e.plasmids) meta.push('Plasmids: '+e.plasmids);
+    if(e.cellLines) meta.push('Cell lines: '+e.cellLines);
+    var blocks=e.blocks.map(function(b){
+      return '<div class="pr-block">'+(b.date||b.title?('<div class="pr-bdate">'+esc(fmtDate(b.date||''))+(b.title?('  ·  '+esc(b.title)):'')+'</div>'):'')+(b.html||'')+'</div>';
+    }).join('');
+    root.innerHTML='<div class="pr-code">'+esc(e.code||'')+'</div><div class="pr-title">'+esc(e.title||'')+'</div>'
+      +'<div class="pr-meta">'+esc(meta.join('   ·   '))+'</div>'+blocks;
+  }
+  setTimeout(function(){ try{ window.print(); }catch(e){} }, 60);
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+function renderAll(){ renderSections(); renderPages(); renderEditor(); }
+renderAll();
+lbInitSync();
+window.addEventListener('message', function(e){ if(e.data && e.data.type==='switchTab'){ /* reserved for deep-links */ } });
+</script>
+</body>
+</html>

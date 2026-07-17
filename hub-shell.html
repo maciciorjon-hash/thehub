@@ -550,7 +550,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
     <strong style="color:var(--text);font-size:12px;">v1.3.8 &mdash; 16 Jul 2026</strong><br>
-    &#9679; New personal <b>workspace</b> (admin only): apps organised into suites (Data Analysis, Archive, Design, Tools, Bench) with a customizable widget dashboard &mdash; a live time-of-day sky with local weather, tasks, live incubator &amp; shortcuts &mdash; plus <b>Bench</b>, a lab notebook with a cell-culture tracker (passage, splits, mycoplasma &amp; passage-limit alerts)<br>
+    &#9679; New personal <b>workspace</b> (admin only): apps organised into suites (Data Analysis, Archive, Design, Tools, Bench) with a customizable widget dashboard &mdash; a live time-of-day sky with local weather, tasks, live incubator &amp; shortcuts. Plus <b>Bench</b> (cell-culture tracker) and <b>Labbook</b> &mdash; an electronic lab notebook with dated experiments from unified templates, a daily journal by project, and one-click PDF export<br>
     &#9679; <b>BCA</b>: new features, bug fixes, visual updates<br>
     &#9679; New app: <b>Cell Archive</b> &mdash; culture conditions &amp; handling notes for 10 common lab cell lines<br>
     &#9679; Retired: <b>LabMate</b><br>
@@ -695,6 +695,20 @@ body.hub-announcing #hub-home{margin-top:98px;}
     <div id="hub-suites"></div>
     <div id="hub-suite-detail"></div>
     <div class="grid" id="app-grid" style="display:none;">
+
+      <div class="card dash-admin-card" tabindex="0" data-app-id="labbook" style="display:none;"
+           onclick="openApp('labbook')"
+           onkeydown="if(event.key==='Enter')openApp('labbook')">
+        <div class="card-header-row">
+          <div class="card-logo" style="background:#4f9d8f;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 4.5A2.5 2.5 0 017.5 2H19v16H7.5A2.5 2.5 0 005 20.5v-16z" stroke="white" stroke-width="1.7" stroke-linejoin="round"/><path d="M5 20.5A2.5 2.5 0 017.5 18H19v4H7.5A2.5 2.5 0 015 19.5" stroke="white" stroke-width="1.7"/><path d="M9 7h7M9 10.5h7" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="card-name">Labbook</div>
+        </div>
+        <div class="card-desc">Your electronic lab notebook &mdash; dated experiments from unified templates, daily journal by project, and one-click PDF export.</div>
+        <div class="card-foot">
+          <span>Experiments &middot; Notebook &middot; PDF</span>
+          <span class="card-arrow">&#8594;</span>
+        </div>
+      </div>
 
       <div class="card dash-admin-card" tabindex="0" data-app-id="bench" style="display:none;"
            onclick="openApp('bench')"
@@ -927,6 +941,9 @@ body.hub-announcing #hub-home{margin-top:98px;}
 <!-- APP VIEWS -->
 <div class="app-view" id="view-bench">
   <iframe id="frame-bench" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
+</div>
+<div class="app-view" id="view-labbook">
+  <iframe id="frame-labbook" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
 </div>
 <div class="app-view" id="view-echo">
   <iframe id="frame-echo" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
@@ -1493,7 +1510,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
 
 <script>
 /* embedded app sources (base64-encoded UTF-8 HTML) */
-var APP_B64_NEW = { dna: "", pd: "", pt: "", spectra: "PLACEHOLDER_SPECTRA", ldi: "PLACEHOLDER_LDI", cryo: "PLACEHOLDER_CRYO", cuppa: "PLACEHOLDER_CUPPA", fabricata: "PLACEHOLDER_FABRICATA", beacon: "PLACEHOLDER_BEACON", lumina: "PLACEHOLDER_LUMINA", ribbon: "PLACEHOLDER_RIBBON", arc: "PLACEHOLDER_ARC", protocols: "PLACEHOLDER_PROTOCOLS", cellarchive: "PLACEHOLDER_CELLARCHIVE", bench: "PLACEHOLDER_BENCH" };
+var APP_B64_NEW = { dna: "", pd: "", pt: "", spectra: "PLACEHOLDER_SPECTRA", ldi: "PLACEHOLDER_LDI", cryo: "PLACEHOLDER_CRYO", cuppa: "PLACEHOLDER_CUPPA", fabricata: "PLACEHOLDER_FABRICATA", beacon: "PLACEHOLDER_BEACON", lumina: "PLACEHOLDER_LUMINA", ribbon: "PLACEHOLDER_RIBBON", arc: "PLACEHOLDER_ARC", protocols: "PLACEHOLDER_PROTOCOLS", cellarchive: "PLACEHOLDER_CELLARCHIVE", bench: "PLACEHOLDER_BENCH", labbook: "PLACEHOLDER_LABBOOK" };
 var APP_B64 = {
   echo: "",
   deg: "",
@@ -1529,7 +1546,8 @@ var APP_INFO = {
   ribbon:     { letter:'R', color:'#e36c69', name:'Ribbon' },
   arc:        { letter:'A', color:'#816baf', name:'Arc' },
   protocols:  { letter:'Ar', color:'#a56983', name:'Archive' },
-  bench:      { letter:'Bn', color:'#4f9d8f', name:'Bench' }
+  bench:      { letter:'Bn', color:'#4f9d8f', name:'Bench' },
+  labbook:    { letter:'Lb', color:'#4f9d8f', name:'Labbook' }
 };
 
 function enterAppNav(id) {
@@ -1598,7 +1616,9 @@ function _loadApp(id) {
       ? common + 'header{display:none!important;}'
       : id === 'beacon'
         ? common + 'header .logo,header .logo+div{display:none!important;}'
-        : common + 'header{display:none!important;}';
+        : id === 'labbook'
+          ? common + 'header .logo,header .logo+div{display:none!important;}header{min-height:46px!important;}'
+          : common + 'header{display:none!important;}';
   html = _insertBeforeRealHeadClose(html, '<style>' + embedStyle + '</style>');
   var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
     'var logo=document.querySelector(".logo,.app-logo");' +
@@ -2512,7 +2532,7 @@ var SUITES = [
   { id:'archive', name:'Archive',       color:'#a56983', tag:'Your protocol library — steps, calculators & PDF export',        apps:['protocols'] },
   { id:'design',  name:'Design',        color:'#e36c69', tag:'Protein structures, plate layouts & gel diagrams',               apps:['ribbon','pd'] },
   { id:'tools',   name:'Tools',         color:'#9c6fd4', tag:'Sequence & protein utilities',                                   apps:['dna','pt'] },
-  { id:'bench',   name:'Bench',         color:'#4f9d8f', adminOnly:true, tag:'Your private workspace — notebook, incubator, cell lines, cryo & coffee', apps:['bench','cellarchive','cryo','cuppa'] }
+  { id:'bench',   name:'Bench',         color:'#4f9d8f', adminOnly:true, tag:'Your private workspace — labbook, incubator, cell lines, cryo & coffee', apps:['labbook','bench','cellarchive','cryo','cuppa'] }
 ];
 // Apps only Jon can reach (never shown to visitors, no public unlock code).
 var ADMIN_ONLY_APPS = { cellarchive:1, bench:1 };
