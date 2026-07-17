@@ -455,7 +455,7 @@ body.step-notes-on li:hover>.step-note-btn,
 
       <div class="calc-box">
         <div class="calc-box-title">Step 3 &mdash; Gibson assembly calculator</div>
-        <div class="calc-source">NEBHiFi 2&times; Master Mix. NEB recommends <strong>0.03&ndash;0.2 pmol total DNA</strong> for 2&ndash;3 fragments at a <strong>2:1 insert:vector</strong> molar ratio; a typical working amount is <strong>~35 ng vector</strong>. The insert amount is derived from your vector amount and the molar ratio &mdash; set both below.</div>
+        <div class="calc-source">NEBHiFi 2&times; Master Mix. Standard is a <strong>10 µL reaction with ~35 ng vector</strong> at a <strong>2:1 insert:vector</strong> molar ratio; the DNA amounts <strong>scale with the reaction volume</strong>, and the insert is derived from the vector amount and ratio. (NEB: 0.03&ndash;0.2 pmol total DNA for 2&ndash;3 fragments.)</div>
         <div class="grid-2" style="margin-bottom:10px">
           <div>
             <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Vector (post-PCR + DpnI + gel purification)</div>
@@ -466,10 +466,10 @@ body.step-notes-on li:hover>.step-note-btn,
           </div>
           <div>
             <div class="calc-source" style="font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Settings</div>
-            <div style="display:flex;flex-direction:column;gap:8px;max-width:220px">
+            <div style="display:flex;flex-direction:column;gap:8px;max-width:230px">
               <div class="field"><label>Insert : vector molar ratio</label><select id="gb-ratio" onchange="calcGibson()"><option value="1">1 : 1</option><option value="2" selected>2 : 1</option><option value="3">3 : 1</option><option value="5">5 : 1 (small / ssDNA insert)</option></select></div>
-              <div class="field"><label>Vector amount (ng)</label><input type="number" id="gb-vng" value="35" oninput="calcGibson()" min="0"></div>
-              <div class="field"><label>Rxn vol (uL)</label><input type="number" id="gb-vol" value="10" oninput="calcGibson()" min="0"></div>
+              <div class="field"><label>Reaction volume (uL)</label><input type="number" id="gb-vol" value="10" oninput="gibScaleVector()" min="0" step="1"></div>
+              <div class="field"><label>Vector amount (ng)</label><input type="number" id="gb-vng" value="35" oninput="calcGibson()" min="0"><div class="calc-source" style="margin-top:4px">35 ng at the 10 µL standard &mdash; scales with the reaction volume (17.5 ng at 5 µL). Editable if you want a custom amount.</div></div>
             </div>
           </div>
         </div>
@@ -3476,6 +3476,17 @@ function addGibFrag(){ gibFrags.push({sz:500,c:30}); renderGibFrags(); }
 // ng of dsDNA = pmol × bp × 0.65 (≈650 g/mol per bp). Insert amount is derived
 // from the vector amount via the chosen insert:vector molar ratio.
 var GIB_NG_PER_PMOL_BP = 0.65;
+// The lab standard is 35 ng vector in a 10 µL reaction; DNA amounts scale with
+// the reaction volume (e.g. 17.5 ng at 5 µL). Re-derives the vector ng when the
+// reaction volume changes, then recomputes. Manual edits to the ng field stick
+// until the volume is changed again.
+var GIB_STD_VEC_NG = 35, GIB_STD_VOL = 10;
+function gibScaleVector(){
+  var vol = +((document.getElementById('gb-vol')||{}).value) || GIB_STD_VOL;
+  var vng = document.getElementById('gb-vng');
+  if (vng) vng.value = parseFloat((GIB_STD_VEC_NG * vol / GIB_STD_VOL).toFixed(2));
+  calcGibson();
+}
 function calcGibson(){
   const vsz=+document.getElementById('gb-vsz').value, vc=+document.getElementById('gb-vc').value;
   const rvol=+document.getElementById('gb-vol').value;
