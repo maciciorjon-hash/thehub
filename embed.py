@@ -31,6 +31,7 @@ APPS = [
     ('cellarchive', 'Cell_Archive/cell_archive.html'),
     ('bench',       'Bench/bench.html'),
     ('labbook',     'Labbook/labbook.html'),
+    ('plasmids',    'Plasmids/plasmids.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()
