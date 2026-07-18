@@ -4669,7 +4669,22 @@ document.addEventListener('DOMContentLoaded', function() {
   calcFP();
   calcSPR();
   // Publish the protocol index to the parent so other dHUB apps (e.g. Labbook) can search/link protocols.
-  try{ if(window.parent && window.parent!==window){ window.parent.ARCHIVE_INDEX = PROTOCOLS.map(function(p){ return {id:p.id,name:p.name,category:p.category}; }); } }catch(e){}
+  try{ if(window.parent && window.parent!==window){
+    window.parent.ARCHIVE_INDEX = PROTOCOLS.map(function(p){ return {id:p.id,name:p.name,category:p.category}; });
+    // Structured protocol steps (sections + step lists) so Labbook can pull a real protocol into a day-block.
+    window.parent.ARCHIVE_STEPS = function(pid){
+      try{
+        var wrap=document.getElementById('detail-'+pid); if(!wrap) return null;
+        var pane=wrap.querySelector('.dpane[data-tab="protocol"]'); if(!pane) return null;
+        var out=[]; var nodes=pane.querySelectorAll('.proto-section, ol.proto-list, ul.proto-list');
+        Array.prototype.forEach.call(nodes,function(node){
+          if(node.classList.contains('proto-section')){ out.push({type:'section', text:(node.textContent||'').trim()}); }
+          else { var items=Array.prototype.map.call(node.children,function(li){ return (li.innerHTML||'').trim(); }).filter(Boolean); if(items.length) out.push({type:'list', ordered:node.tagName==='OL', items:items}); }
+        });
+        return out;
+      }catch(e){ return null; }
+    };
+  } }catch(e){}
 });
 
 // Cross-app deep link, matches the convention used across dHUB apps.
