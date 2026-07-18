@@ -550,7 +550,9 @@ body.hub-announcing #hub-home{margin-top:98px;}
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
     <strong style="color:var(--text);font-size:12px;">v1.3.9 &mdash; 18 Jul 2026</strong><br>
-    &#9679; <b>Labbook</b>: major upgrade &mdash; project &rarr; experiment-type folder &rarr; experiment hierarchy, a Word-like editor (full formatting, <b>@</b> mentions, <b>#</b> tags, <b>/</b> commands), resizable &amp; dockable side panels, multi-day experiment presets, a daily notebook that auto-aggregates each day's experiment work (edit either place), a unified polished PDF export, plus offline support &amp; automatic daily backups<br>
+    &#9679; <b>Labbook</b>: major upgrade &mdash; project &rarr; experiment-type folder &rarr; experiment hierarchy with auto type-grouping, a Word-like editor (fonts, sizes, colours, <b>@</b> mentions, <b>#</b> tags, <b>/</b> commands), resizable &amp; dockable panels, an <b>antibody database</b> (traceable across experiments), meetings/notes, multi-day presets, a daily notebook that auto-aggregates each day's experiment work, unified PDF export, offline support &amp; automatic daily backups<br>
+    &#9679; <b>Archive</b>: new <b>Reverse Transfection (FuGENE)</b> protocol with a plate-format master-mix calculator &mdash; and Archive protocols now link seamlessly into Labbook<br>
+    &#9679; New: <b>&#8984;/Ctrl&#8202;+&#8202;K quick search</b> to jump to any app, tool or assay<br>
     <br>
     <strong style="color:var(--text);font-size:12px;">v1.3.8 &mdash; 16 Jul 2026</strong><br>
     &#9679; New personal <b>workspace</b> (admin only): apps organised into suites (Data Analysis, Archive, Design, Tools, Bench) with a customizable widget dashboard &mdash; a live time-of-day sky with local weather, tasks, live incubator &amp; shortcuts. Plus <b>Bench</b> (cell-culture tracker), <b>Labbook</b> (electronic lab notebook &mdash; dated experiments from unified templates, daily journal, one-click PDF export) and <b>Plasmids</b> (plasmid database with SnapGene maps)<br>
@@ -1637,9 +1639,11 @@ function _loadApp(id) {
       ? common + 'header{display:none!important;}'
       : id === 'beacon'
         ? common + 'header .logo,header .logo+div{display:none!important;}'
-        : (id === 'labbook' || id === 'plasmids')
-          ? common + 'header .logo,header .logo+div{display:none!important;}header{min-height:46px!important;}'
-          : common + 'header{display:none!important;}';
+        : id === 'labbook'
+          ? common + 'header{display:none!important;}'
+          : id === 'plasmids'
+            ? common + 'header .logo,header .logo+div{display:none!important;}header{min-height:46px!important;}'
+            : common + 'header{display:none!important;}';
   html = _insertBeforeRealHeadClose(html, '<style>' + embedStyle + '</style>');
   var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
     'var logo=document.querySelector(".logo,.app-logo");' +
@@ -1663,7 +1667,7 @@ function _loadApp(id) {
 function openApp(id, tab, item) {
   var frame = document.getElementById('frame-' + id);
   _loadApp(id);
-  if (tab) {
+  if (tab || item) {
     var tabMsg = {type:'switchTab', tab:tab};
     if (item) tabMsg.item = item;
     frame.addEventListener('load', function onTabLoad() {
@@ -1926,6 +1930,8 @@ function initHub() {
   initHubSub();
   document.getElementById('hub-logo').classList.add('pulsing');
   setTimeout(function() { _loadApp('lm'); }, 2000);
+  // Preload Archive so its protocol index (window.ARCHIVE_INDEX) is available to Labbook's @/protocol insert.
+  setTimeout(function() { try { _loadApp('protocols'); } catch(e) {} }, 2600);
 
   {
   }
@@ -3523,6 +3529,36 @@ document.addEventListener('click',function(e){
   var inp=document.getElementById('hub-search');
   if(box&&inp&&!box.contains(e.target)&&e.target!==inp)box.style.display='none';
 });
+// ── Cmd/Ctrl+K spotlight (dHUB apps/tools) ──
+(function(){
+  var back=document.createElement('div');
+  back.id='hub-spot-back';
+  back.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:flex-start;justify-content:center;padding-top:14vh;';
+  back.innerHTML='<div style="width:100%;max-width:560px;background:var(--surface);border:1px solid var(--border2);border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.4);overflow:hidden"><input id="hub-spot-in" type="text" placeholder="Search apps, tools, assays…" autocomplete="off" style="width:100%;border:none;background:none;padding:16px 18px;font-size:16px;color:var(--text);outline:none;border-bottom:1px solid var(--border);font-family:var(--sans)"><div id="hub-spot-res" style="max-height:56vh;overflow-y:auto;padding:6px"></div></div>';
+  function mount(){ if(!back.parentNode) document.body.appendChild(back); }
+  if(document.body) mount(); else document.addEventListener('DOMContentLoaded',mount);
+  var SELi=0, RES=[];
+  function isOpen(){ return back.style.display==='flex'; }
+  function open(){ mount(); back.style.display='flex'; var i=document.getElementById('hub-spot-in'); i.value=''; render(''); setTimeout(function(){i.focus();},20); }
+  function close(){ back.style.display='none'; }
+  function render(q){ var box=document.getElementById('hub-spot-res'); if(!box) return;
+    var items = !q?[] : HUB_SEARCH_INDEX.filter(function(it){ return it.id==='__egg__'||_isAppAccessible(it.id); }).map(function(it){ return {s:Math.max(hubFuzzy(q,it.t),hubFuzzy(q,it.kw)*0.8),it:it}; }).filter(function(r){return r.s>0.12;}).sort(function(a,b){return b.s-a.s;}).slice(0,10).map(function(r){return r.it;});
+    RES=items; SELi=0;
+    box.innerHTML = items.length? items.map(function(it,i){ return '<div class="hspot-i" data-i="'+i+'" onmousedown="event.preventDefault();window.__hubSpotPick('+i+')" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;'+(i===0?'background:var(--surface2)':'')+'"><span style="flex:1;font-size:13px;font-weight:600;color:var(--text)">'+it.t+'</span><span style="font-size:11px;color:var(--text3)">'+it.app+'</span></div>'; }).join('') : '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">'+(q?'No matches':'Type to search dHUB…')+'</div>';
+  }
+  function hi(){ var ns=document.querySelectorAll('#hub-spot-res .hspot-i'); ns.forEach(function(n,i){ n.style.background=(i===SELi)?'var(--surface2)':''; if(i===SELi)n.scrollIntoView({block:'nearest'}); }); }
+  window.__hubSpotPick=function(i){ var it=RES[i]; close(); if(!it)return; if(it.id==='__egg__'){ if(typeof showRyanEgg==='function') showRyanEgg(); return; } openApp(it.id,it.tab,it.item); };
+  document.addEventListener('input',function(e){ if(e.target&&e.target.id==='hub-spot-in') render(e.target.value); });
+  document.addEventListener('keydown',function(e){
+    if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); if(isOpen())close(); else open(); return; }
+    if(!isOpen()) return;
+    if(e.key==='Escape')close();
+    else if(e.key==='ArrowDown'){e.preventDefault();SELi=Math.min(RES.length-1,SELi+1);hi();}
+    else if(e.key==='ArrowUp'){e.preventDefault();SELi=Math.max(0,SELi-1);hi();}
+    else if(e.key==='Enter'){e.preventDefault();window.__hubSpotPick(SELi);}
+  });
+  back.addEventListener('click',function(e){ if(e.target===back) close(); });
+})();
 
 (function() {
   var t = localStorage.getItem('hub_theme') || 'light';
