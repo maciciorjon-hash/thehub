@@ -545,10 +545,13 @@ body.hub-announcing #hub-home{margin-top:98px;}
   <div class="opts-divider"></div>
   <div id="admin-auth-section" style="padding:6px 0 2px;"></div>
   <div class="opts-version-row" style="margin-top:8px;">
-    <span class="opts-version">dHUB &middot; v1.3.8</span>
+    <span class="opts-version">dHUB &middot; v1.3.9</span>
     <button class="opts-link-btn" onclick="toggleChangelog()">What's new</button>
   </div>
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
+    <strong style="color:var(--text);font-size:12px;">v1.3.9 &mdash; 18 Jul 2026</strong><br>
+    &#9679; <b>Labbook</b>: major upgrade &mdash; project &rarr; experiment-type folder &rarr; experiment hierarchy, a Word-like editor (full formatting, <b>@</b> mentions, <b>#</b> tags, <b>/</b> commands), resizable &amp; dockable side panels, multi-day experiment presets, a daily notebook that auto-aggregates each day's experiment work (edit either place), a unified polished PDF export, plus offline support &amp; automatic daily backups<br>
+    <br>
     <strong style="color:var(--text);font-size:12px;">v1.3.8 &mdash; 16 Jul 2026</strong><br>
     &#9679; New personal <b>workspace</b> (admin only): apps organised into suites (Data Analysis, Archive, Design, Tools, Bench) with a customizable widget dashboard &mdash; a live time-of-day sky with local weather, tasks, live incubator &amp; shortcuts. Plus <b>Bench</b> (cell-culture tracker), <b>Labbook</b> (electronic lab notebook &mdash; dated experiments from unified templates, daily journal, one-click PDF export) and <b>Plasmids</b> (plasmid database with SnapGene maps)<br>
     &#9679; <b>BCA</b>: new features, bug fixes, visual updates<br>
@@ -1967,6 +1970,27 @@ firebase.auth().onAuthStateChanged(function(user) {
   isAdmin = !!(user && user.email === HUB_ADMIN_EMAIL);
   onAdminStateChanged();
 });
+
+// ── Labbook backup bridge ──────────────────────────────────────────────────
+// The Labbook app runs in a sandboxed iframe where the File System Access
+// picker is blocked. It calls window.parent.lbBackup.* so the picker/write run
+// in this top-level document (which is allowed). The chosen directory handle is
+// remembered in this origin's IndexedDB. Labbook falls back to a download if
+// this bridge is unavailable or the browser lacks the API.
+window.lbBackup = (function () {
+  var _dir = null;
+  function idb() { return new Promise(function (res, rej) { var r = indexedDB.open('lb_backup', 1); r.onupgradeneeded = function () { r.result.createObjectStore('h'); }; r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); }; }); }
+  function idbGet() { return idb().then(function (db) { return new Promise(function (res) { var t = db.transaction('h', 'readonly').objectStore('h').get('dir'); t.onsuccess = function () { res(t.result || null); }; t.onerror = function () { res(null); }; }); }); }
+  function idbSet(v) { return idb().then(function (db) { return new Promise(function (res) { var t = db.transaction('h', 'readwrite').objectStore('h').put(v, 'dir'); t.onsuccess = function () { res(); }; t.onerror = function () { res(); }; }); }); }
+  function verify(h) { if (!h || !h.queryPermission) return Promise.resolve(false); return h.queryPermission({ mode: 'readwrite' }).then(function (p) { if (p === 'granted') return true; return h.requestPermission({ mode: 'readwrite' }).then(function (p2) { return p2 === 'granted'; }); }); }
+  function ensureDir() { if (_dir) return Promise.resolve(_dir); return idbGet().then(function (h) { _dir = h; return h; }); }
+  return {
+    supported: function () { return typeof window.showDirectoryPicker === 'function'; },
+    pickDir: function () { if (typeof window.showDirectoryPicker !== 'function') return Promise.reject(new Error('unsupported')); return window.showDirectoryPicker({ mode: 'readwrite' }).then(function (h) { _dir = h; return idbSet(h).then(function () { return h.name; }); }); },
+    dirName: function () { return ensureDir().then(function (h) { return h ? h.name : null; }); },
+    writeFile: function (name, text) { return ensureDir().then(function (h) { if (!h) return Promise.reject(new Error('nodir')); return verify(h).then(function (ok) { if (!ok) return Promise.reject(new Error('denied')); return h.getFileHandle(name, { create: true }).then(function (fh) { return fh.createWritable().then(function (w) { return w.write(text).then(function () { return w.close(); }); }); }); }); }); }
+  };
+})();
 
 var ALL_APP_IDS = ['echo','cellarchive','deg','pd','dna','pt','spectra','ldi','cryo','cuppa','fabricata','beacon','lumina','ribbon','protocols'];
 // Per-app discovery codes for visitors (public apps only; Cell Archive & Bench
