@@ -19,6 +19,9 @@
   --sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
   --shadow-xs:0 1px 4px rgba(0,0,0,.04);--shadow-sm:0 2px 8px rgba(0,0,0,.06);
   --shadow-md:0 6px 24px rgba(0,0,0,.09);
+  --glass:rgba(255,255,255,0.64);--glass-brd:rgba(255,255,255,0.7);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.7);--glass-shadow:0 10px 30px -12px rgba(32,44,84,.24);
+  --r3:16px;--ease:cubic-bezier(.2,.8,.3,1);
 }
 [data-theme="dark"]{
   --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
@@ -31,11 +34,17 @@
   --urgent:#f08a84;--urgent-bg:rgba(216,84,77,.18);
   --shadow-xs:0 1px 4px rgba(0,0,0,.30);--shadow-sm:0 2px 8px rgba(0,0,0,.40);
   --shadow-md:0 6px 24px rgba(0,0,0,.50);
+  --glass:rgba(28,32,46,0.6);--glass-brd:rgba(255,255,255,0.1);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.07);--glass-shadow:0 12px 36px -12px rgba(0,0,0,.6);
 }
 input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
 html,body{height:100%;overflow:hidden;}
 body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);
-  font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;}
+  font-family:var(--sans);font-size:14px;-webkit-font-smoothing:antialiased;position:relative;}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background:radial-gradient(48% 42% at 4% 4%,var(--accent-dim),transparent 70%),radial-gradient(46% 42% at 96% 98%,var(--accent-dim),transparent 72%);}
+[data-theme="dark"] body::before{opacity:.7;}
+body>*{position:relative;z-index:1;}
 
 header{border-bottom:1px solid var(--border);padding:0 28px;display:flex;
   align-items:center;gap:14px;background:var(--surface);min-height:58px;flex-shrink:0;}
@@ -114,8 +123,11 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 
 /* Incubator */
 .inc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;}
-.cell-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;
-  padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow-xs);}
+.cell-card{background:var(--glass);-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);border:1px solid var(--glass-brd);border-radius:var(--r3);
+  padding:16px 18px;margin-bottom:12px;box-shadow:var(--glass-shadow),var(--glass-hi);transition:box-shadow .25s var(--ease),border-color .25s,transform .18s var(--ease);}
+.cell-card:hover{transform:translateY(-2px);}
+@keyframes ccFlash{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent2) 55%,transparent);}100%{box-shadow:0 0 0 8px transparent;}}
+.cell-card.cc-flash{border-color:var(--accent2);animation:ccFlash 1.6s ease-out;}
 .cc-head{display:flex;align-items:flex-start;gap:12px;}
 .cc-name{font-size:15px;font-weight:700;letter-spacing:-.2px;}
 .cc-type{font-size:9.5px;font-family:var(--mono);color:var(--text3);letter-spacing:.5px;
@@ -300,59 +312,24 @@ var _toastT=null;
 function showToast(msg){ var t=el('toast'); if(!t) return; t.textContent=msg; t.classList.add('show'); clearTimeout(_toastT); _toastT=setTimeout(function(){t.classList.remove('show');},2600); }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
-var _tab='tasks';
+var _tab='incubator';
 function switchTab(name){
   _tab=name;
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===name); });
   document.querySelectorAll('.pane').forEach(function(p){ p.classList.toggle('active', p.id==='tab-'+name); });
 }
-window.addEventListener('message', function(e){ if(e.data && e.data.type==='switchTab' && e.data.tab) switchTab(e.data.tab); });
-
-// ── Tasks ──────────────────────────────────────────────────────────────────
-var _taskFilter='open';
-var _editTask=null;
-function setTaskFilter(f){ _taskFilter=f; document.querySelectorAll('.fpill').forEach(function(p){p.classList.toggle('active',p.dataset.f===f);}); renderTasks(); }
-function addTask(){
-  var text=val('nt-text').trim(); if(!text) return;
-  STORE.addTask({ text:text, priority:val('nt-priority')||'pending', done:false, created:Date.now(), due:fromDateInput(val('nt-due')) });
-  el('nt-text').value=''; el('nt-due').value=''; el('nt-text').focus();
-}
-function toggleTask(id){ var t=STORE.get().tasks[id]; if(!t) return; STORE.updateTask(id,{done:!t.done, completed:!t.done?Date.now():null}); }
-function cyclePriority(id){ var t=STORE.get().tasks[id]; if(!t) return; STORE.updateTask(id,{priority:t.priority==='urgent'?'pending':'urgent'}); }
-function deleteTask(id){ STORE.deleteTask(id); }
-function startEditTask(id){ _editTask=id; renderTasks(); var i=el('edit-task-input'); if(i){i.focus();i.select();} }
-function saveEditTask(id){ var i=el('edit-task-input'); if(!i) return; var v=i.value.trim(); if(v) STORE.updateTask(id,{text:v}); _editTask=null; renderTasks(); }
-function renderTasks(){
-  var tasks=STORE.get().tasks, ids=Object.keys(tasks);
-  var list=ids.filter(function(id){ var t=tasks[id]; return _taskFilter==='all'?true:(_taskFilter==='done'?t.done:!t.done); });
-  var prank={urgent:0,pending:1};
-  list.sort(function(a,b){
-    var ta=tasks[a],tb=tasks[b];
-    if(ta.done!==tb.done) return ta.done?1:-1;
-    var pa=prank[ta.priority]!=null?prank[ta.priority]:1, pb=prank[tb.priority]!=null?prank[tb.priority]:1;
-    if(pa!==pb) return pa-pb;
-    return (tb.created||0)-(ta.created||0);
-  });
-  var host=el('task-list');
-  if(!list.length){
-    host.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'
-      +'<div class="empty-title">'+(_taskFilter==='done'?'No completed tasks yet':'Nothing on your plate')+'</div>'
-      +'<div class="empty-sub">'+(_taskFilter==='done'?'Finished tasks will appear here.':'Add a task above to get started.')+'</div></div>';
-    return;
-  }
-  host.innerHTML=list.map(function(id){
-    var t=tasks[id];
-    var due=''; if(t.due){ var over=!t.done && t.due < Date.now()-86400000; due='<span class="task-due'+(over?' over':'')+'">'+esc(fmtDate(t.due))+'</span>'; }
-    var textCell = _editTask===id
-      ? '<input id="edit-task-input" class="inp" style="flex:1;" value="'+esc(t.text)+'" onkeydown="if(event.key===\'Enter\')saveEditTask(\''+id+'\');if(event.key===\'Escape\'){_editTask=null;renderTasks();}" onblur="saveEditTask(\''+id+'\')">'
-      : '<span class="task-txt" title="Click to edit" onclick="startEditTask(\''+id+'\')">'+esc(t.text)+'</span>';
-    return '<div class="task'+(t.done?' done':'')+'">'
-      +'<div class="check'+(t.done?' on':'')+'" onclick="toggleTask(\''+id+'\')">'+(t.done?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>':'')+'</div>'
-      +textCell+due
-      +'<span class="pbadge '+(t.priority==='urgent'?'urgent':'pending')+'" title="Click to change priority" onclick="cyclePriority(\''+id+'\')">'+(t.priority==='urgent'?'Urgent':'Pending')+'</span>'
-      +'<button class="icon-btn" title="Delete" onclick="deleteTask(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg></button>'
-      +'</div>';
-  }).join('');
+window.addEventListener('message', function(e){ if(e.data && e.data.type==='switchTab'){ if(e.data.tab) switchTab(e.data.tab); if(e.data.item) focusCulture(String(e.data.item)); } });
+// Deep-link from a Labbook cell-line chip: scroll to + highlight the matching culture.
+function focusCulture(line){
+  var want=String(line||'').trim().toLowerCase(); if(!want) return;
+  var attempt=0;
+  (function go(){ attempt++;
+    var cards=document.querySelectorAll('.cell-card[data-line]');
+    var hit=null;
+    Array.prototype.forEach.call(cards,function(c){ var dl=c.getAttribute('data-line')||''; if(!hit && (dl===want || dl.indexOf(want)>=0 || want.indexOf(dl)>=0 && dl)) hit=c; });
+    if(hit){ hit.scrollIntoView({behavior:'smooth',block:'center'}); hit.classList.remove('cc-flash'); void hit.offsetWidth; hit.classList.add('cc-flash'); setTimeout(function(){ hit.classList.remove('cc-flash'); },1800); return; }
+    if(attempt<8) setTimeout(go,150); // wait for a late Firebase adopt to render the card
+  })();
 }
 
 // ── Incubator ──────────────────────────────────────────────────────────────
@@ -501,7 +478,7 @@ function renderIncubator(){
       hist+='</div>';
     }
 
-    return '<div class="cell-card">'
+    return '<div class="cell-card" data-line="'+esc(String(c.line||'').toLowerCase())+'">'
       +'<div class="cc-head"><div><span class="cc-name">'+esc(c.line||'Culture')+'</span>'+(c.type?'<span class="cc-type">'+esc(c.type)+'</span>':'')+'</div>'
         +'<div class="cc-passage"><div class="cc-p-num">P'+(c.passage!=null?c.passage:'?')+'</div><div class="cc-p-lbl">Passage</div></div></div>'
       +'<div class="cc-alerts">'+alertsHtml+'</div>'
