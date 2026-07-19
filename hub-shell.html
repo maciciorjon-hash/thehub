@@ -635,6 +635,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
     &#9679; <b>dHUB</b>: a new soft-depth &ldquo;glass&rdquo; look across the home, cards &amp; menus, with a colour <b>Accent</b> picker in Settings and resizable home widgets (<b>Small / Medium / Large</b>) plus new <b>Clock</b> and <b>Quick note</b> tiles<br>
     &#9679; <b>Labbook</b>: glass redesign, smoother panel resize/drag, faster image handling, cross-device image sync (via Storage) &amp; tidier attachment cleanup, and a more reliable Archive protocol-steps insert<br>
     &#9679; <b>Incubator</b>: glass redesign; a cell-line link from Labbook now jumps straight to that culture<br>
+    &#9679; <b>Sync</b>: your <b>theme</b>, <b>Iceberg</b> freezer inventory, <b>Ribbon</b> saved designs and <b>Archive</b> sticky notes now follow your account across devices (like tasks, cultures &amp; Labbook already did)<br>
     <br>
     <strong style="color:var(--text);font-size:12px;">v1.3.10 &mdash; 19 Jul 2026</strong><br>
     &#9679; <b>Incubator</b> is now its own app (the old <b>Bench</b> is gone) &mdash; a focused cell-culture tracker. Your <b>tasks</b> now live as a full mini-app right on the home dashboard (add, edit, prioritise, complete &amp; review done)<br>
@@ -2517,10 +2518,10 @@ function computeCellAlerts(cell, now){
 // Single shared store over Firebase RTDB /journal + localStorage cache.
 var JournalStore = (function(){
   var CACHE_KEY = 'hub_journal_cache';
-  var _data = { tasks:{}, incubator:{}, layout:null, shortcuts:null, accent:null };
+  var _data = { tasks:{}, incubator:{}, layout:null, shortcuts:null, accent:null, note:null, theme:null };
   var _subs = [];
   var _ref = null, _ready = false;
-  try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && typeof c === 'object') _data = { tasks:c.tasks||{}, incubator:c.incubator||{}, layout:c.layout||null, shortcuts:c.shortcuts||null, accent:c.accent||null, note:c.note||null }; } catch(e){}
+  try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && typeof c === 'object') _data = { tasks:c.tasks||{}, incubator:c.incubator||{}, layout:c.layout||null, shortcuts:c.shortcuts||null, accent:c.accent||null, note:c.note||null, theme:c.theme||null }; } catch(e){}
   function _cache(){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(_data)); } catch(e){} }
   function _emit(){ _subs.slice().forEach(function(f){ try { f(_data); } catch(e){} }); }
   function _pushId(){ try { return firebase.database().ref('journal').push().key; } catch(e){ return 'loc-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); } }
@@ -2531,7 +2532,7 @@ var JournalStore = (function(){
       _ref = firebase.database().ref('journal');
       _ref.on('value', function(snap){
         var v = snap.val() || {};
-        _data = { tasks:v.tasks || {}, incubator:v.incubator || {}, layout:v.layout || null, shortcuts:v.shortcuts || null, accent:v.accent || null, note:v.note || null };
+        _data = { tasks:v.tasks || {}, incubator:v.incubator || {}, layout:v.layout || null, shortcuts:v.shortcuts || null, accent:v.accent || null, note:v.note || null, theme:v.theme || null };
         _ready = true; _cache(); _emit();
       }, function(){ /* denied until private /journal rules are deployed — keep cache */ });
     } catch(e){}
@@ -2551,7 +2552,8 @@ var JournalStore = (function(){
     setLayout:    function(arr){ _data.layout = arr; _cache(); _emit(); return _write('layout', arr); },
     setShortcuts: function(arr){ _data.shortcuts = arr; _cache(); _emit(); return _write('shortcuts', arr); },
     setAccent:    function(v){ _data.accent = v; _cache(); _emit(); return _write('accent', v); },
-    setNote:      function(s){ _data.note = s; _cache(); return _write('note', s); }
+    setNote:      function(s){ _data.note = s; _cache(); return _write('note', s); },
+    setTheme:     function(t){ _data.theme = t; _cache(); return _write('theme', t); }
   };
 })();
 
@@ -2980,7 +2982,7 @@ function _applyDashAdmin(){
   if(isAdmin){
     if(benchCard) benchCard.style.display='';
     JournalStore.attach();
-    if(!_dashSubscribed){ _dashSubscribed=true; JournalStore.subscribe(function(){ var ra=JournalStore.get().accent; if(ra&&ra.a1&&(!_accent||_accent.a1!==ra.a1)){ _accent=ra; _applyAccentVars(ra); renderAccentGrid(); } if(!_wgDragEl && isAdmin && !_openSuiteId) renderWidgets(); }); }
+    if(!_dashSubscribed){ _dashSubscribed=true; JournalStore.subscribe(function(){ var d=JournalStore.get(); var ra=d.accent; if(ra&&ra.a1&&(!_accent||_accent.a1!==ra.a1)){ _accent=ra; _applyAccentVars(ra); renderAccentGrid(); } if(d.theme) _applyThemeValue(d.theme); if(!_wgDragEl && isAdmin && !_openSuiteId) renderWidgets(); }); }
     if(host){ host.classList.add('visible'); if(!_openSuiteId) host.style.display=''; }
     initWeather(false);
     if(!_wxTimer) _wxTimer=setInterval(function(){ initWeather(true); }, 15*60000);
@@ -3438,6 +3440,17 @@ function toggleTheme() {
   document.querySelectorAll('iframe').forEach(function(fr) {
     try { fr.contentDocument.documentElement.setAttribute('data-theme', next); } catch(e) {}
   });
+  try { if (isAdmin && JournalStore.setTheme) JournalStore.setTheme(next); } catch(e) {}
+}
+// Apply a theme value (from cross-device sync) without re-persisting it as a new choice.
+function _applyThemeValue(next){
+  if(!next) return;
+  var html=document.documentElement;
+  if(html.getAttribute('data-theme')===next) return;
+  html.setAttribute('data-theme', next);
+  try{ localStorage.setItem('hub_theme', next); }catch(e){}
+  var chk=document.getElementById('theme-toggle-chk'); if(chk) chk.checked=(next==='dark');
+  document.querySelectorAll('iframe').forEach(function(fr){ try{ fr.contentDocument.documentElement.setAttribute('data-theme', next); }catch(e){} });
 }
 
 // ── Accent personalization ──────────────────────────────────────────────────

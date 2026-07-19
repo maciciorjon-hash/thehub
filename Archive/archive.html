@@ -2878,12 +2878,29 @@ function getProtoNotes(pid) {
 }
 function saveProtoNotes(pid, data) {
   try { localStorage.setItem(_notesKey(pid), JSON.stringify(data)); } catch(e) {}
+  anSyncPush();
 }
 function getNotesPrefs() {
   try { return JSON.parse(localStorage.getItem('proto_notes_prefs')) || { stepNotesOn: false }; }
   catch(e) { return { stepNotesOn: false }; }
 }
-function saveNotesPrefs(p) { try { localStorage.setItem('proto_notes_prefs', JSON.stringify(p)); } catch(e) {} }
+function saveNotesPrefs(p) { try { localStorage.setItem('proto_notes_prefs', JSON.stringify(p)); } catch(e) {} anSyncPush(); }
+// ── Cross-device sync of sticky notes (Firebase /journal/archiveNotes, admin-only) ──
+var _anAdopting=false,_anT=null,_anUpdated=0;
+function anFb(){ try{ if(window.parent && window.parent.firebase) return window.parent.firebase.database().ref('journal/archiveNotes'); }catch(e){} return null; }
+function _collectAllNotes(){ var notes={}; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && k.indexOf('proto_notes_')===0 && k!=='proto_notes_prefs'){ try{ notes[k.slice(12)]=JSON.parse(localStorage.getItem(k)); }catch(e){} } } var prefs={}; try{ prefs=JSON.parse(localStorage.getItem('proto_notes_prefs'))||{}; }catch(e){} return {notes:notes,prefs:prefs}; }
+function anSyncPush(){ if(_anAdopting) return; var r=anFb(); if(!r) return; _anUpdated=Date.now(); var ts=_anUpdated; clearTimeout(_anT); _anT=setTimeout(function(){ var agg=_collectAllNotes(); try{ r.set({notes:agg.notes,prefs:agg.prefs,updated:ts}).catch(function(){}); }catch(e){} }, 1000); }
+function anInitSync(){ var r=anFb(); if(!r) return;
+  try{ r.once('value').then(function(s){ var v=s.val();
+    if(v && (v.notes||v.prefs) && (v.updated||0) > _anUpdated){ _anAdopting=true;
+      try{ if(v.notes) Object.keys(v.notes).forEach(function(pid){ localStorage.setItem('proto_notes_'+pid, JSON.stringify(v.notes[pid])); }); }catch(e){}
+      try{ if(v.prefs) localStorage.setItem('proto_notes_prefs', JSON.stringify(v.prefs)); }catch(e){}
+      _anUpdated=v.updated||0; _anAdopting=false;
+      try{ applyStepNotesPref(); }catch(e){}
+      try{ if(_notesOpenPid){ assignStepNoteKeys(_notesOpenPid); renderStepNotes(_notesOpenPid); renderStickyNotes(); } }catch(e){}
+    } else if(!v){ var loc=_collectAllNotes(); if(Object.keys(loc.notes).length || (loc.prefs && Object.keys(loc.prefs).length)) anSyncPush(); }
+  }).catch(function(){}); }catch(e){}
+}
 function debounce(fn, wait) {
   var t;
   return function() { var args = arguments, ctx = this; clearTimeout(t); t = setTimeout(function(){ fn.apply(ctx, args); }, wait); };
@@ -4647,6 +4664,7 @@ function generateMiSeqSteps() {
 document.addEventListener('DOMContentLoaded', function() {
   renderFilterPills();
   renderProtoGrid();
+  setTimeout(anInitSync, 400); // reconcile sticky notes with the cloud once the parent Firebase is up
   renderGibFrags();
   calcPreGibson();
   calcDigest();

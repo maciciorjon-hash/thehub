@@ -557,8 +557,28 @@ var currentTab = 'minus80';
 var currentBoxDetail = null; // {storage, rackId, boxId}
 var editingVialPos = null;   // string position when editing
 
+// ── Cross-device sync (Firebase /journal/iceberg, admin-only; degrades to local) ──
+var _cryoAdopting=false,_cryoT=null;
+function cryoFb(){ try{ if(window.parent && window.parent.firebase) return window.parent.firebase.database().ref('journal/iceberg'); }catch(e){} return null; }
 function saveState(){
+  state.updated = Date.now();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+  if(_cryoAdopting) return;
+  var r=cryoFb(); if(!r) return;
+  clearTimeout(_cryoT); _cryoT=setTimeout(function(){ try{ r.set(state).catch(function(){}); }catch(e){} }, 1000);
+}
+// Adopt remote inventory if it is newer than local, then run cb(adopted).
+function cryoInitSync(cb){
+  var r=cryoFb(); if(!r){ cb&&cb(false); return; }
+  var settled=false; function fin(a){ if(settled) return; settled=true; cb&&cb(a); }
+  try{ r.once('value').then(function(s){ var v=s.val();
+    if(v && v.storages && (v.updated||0) > (state.updated||0)){
+      _cryoAdopting=true; state=Object.assign(state, v); state.view=state.view||'grid'; _cryoAdopting=false;
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+      fin(true);
+    } else fin(false);
+  }).catch(function(){ fin(false); }); }catch(e){ fin(false); }
+  setTimeout(function(){ fin(false); }, 2500); // don't hang if Firebase is denied/offline
 }
 function loadState(){
   try {
@@ -1662,8 +1682,11 @@ document.addEventListener('keydown', function(e){
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
 loadState();
-seedWhenAdminReady(6);
-switchTab('minus80');
+switchTab('minus80');           // paint immediately from local cache
+cryoInitSync(function(adopted){  // then reconcile with the cloud (admin, cross-device)
+  if(adopted) renderTab(currentTab);
+  else seedWhenAdminReady(6);    // only seed the skeleton if the cloud had nothing newer
+});
 </script>
 </body>
 </html>

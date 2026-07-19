@@ -1452,7 +1452,17 @@ function doExport(){
 
 // ─── Saved designs (localStorage) ────────────────────────────────────────────
 function getDesigns(){ try{return JSON.parse(localStorage.getItem('ribbon_designs')||'{}');}catch(e){return {};} }
-function putDesigns(d){ try{localStorage.setItem('ribbon_designs',JSON.stringify(d));}catch(e){} }
+function putDesigns(d){ try{localStorage.setItem('ribbon_designs',JSON.stringify(d));}catch(e){} rbnSyncPush(d); }
+// ── Cross-device sync (Firebase /journal/ribbon, admin-only; degrades to local) ──
+var _rbnAdopting=false,_rbnT=null,_rbnUpdated=0;
+function rbnFb(){ try{ if(window.parent && window.parent.firebase) return window.parent.firebase.database().ref('journal/ribbon'); }catch(e){} return null; }
+function rbnSyncPush(d){ if(_rbnAdopting) return; var r=rbnFb(); if(!r) return; _rbnUpdated=Date.now(); var ts=_rbnUpdated; clearTimeout(_rbnT); _rbnT=setTimeout(function(){ try{ r.set({designs:d,updated:ts}).catch(function(){}); }catch(e){} }, 1000); }
+function rbnInitSync(){ var r=rbnFb(); if(!r) return;
+  try{ r.once('value').then(function(s){ var v=s.val();
+    if(v && v.designs && (v.updated||0) > _rbnUpdated){ _rbnAdopting=true; try{ localStorage.setItem('ribbon_designs', JSON.stringify(v.designs)); }catch(e){} _rbnUpdated=v.updated||0; _rbnAdopting=false; try{ renderDesignList(); }catch(e){} }
+    else if(!v || !v.designs){ var loc=getDesigns(); if(Object.keys(loc).length) rbnSyncPush(loc); } // seed cloud from an existing local-only library
+  }).catch(function(){}); }catch(e){}
+}
 function _clone(o){ return JSON.parse(JSON.stringify(o)); }
 function collectDesign(){
   return { pdbId:currentPdbId, ts:Date.now(), state:{
@@ -1577,6 +1587,7 @@ document.addEventListener('DOMContentLoaded',function(){
   $('saveDesignBtn').addEventListener('click',saveDesign);
   $('designName').addEventListener('keydown',function(e){ if(e.key==='Enter')saveDesign(); });
   renderDesignList();
+  setTimeout(rbnInitSync, 400); // reconcile saved designs with the cloud once the parent Firebase is up
 
   // Export modal option segments.
   function exSeg(id,key){
