@@ -146,7 +146,15 @@ header{border-bottom:1px solid var(--border);padding:0 22px;display:flex;align-i
 window.addEventListener('message', function(e){
   if(e.data==='setTheme:dark') document.documentElement.setAttribute('data-theme','dark');
   if(e.data==='setTheme:light') document.documentElement.setAttribute('data-theme','light');
+  if(e.data && e.data.type==='switchTab' && e.data.item){ _openByCode(e.data.item); }
 });
+// Deep-link from other dHUB apps (e.g. Labbook): open the plasmid matching a pJM code
+function _openByCode(code, _retry){ code=String(code||'').trim(); if(!code) return;
+  var hit=Object.keys(DATA.plasmids).filter(function(k){ return (DATA.plasmids[k].code||'').toLowerCase()===code.toLowerCase(); })[0];
+  if(hit){ selectP(hit); return; }
+  var s=el('search'); if(s){ s.value=code; renderList(); }
+  if(!_retry){ setTimeout(function(){ _openByCode(code,1); }, 900); } // retry after Firebase adopt
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function el(id){ return document.getElementById(id); }
 function uid(){ return 'pl'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }

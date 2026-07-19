@@ -187,6 +187,12 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .exh-fld label{font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);}
 .exh-fld input,.exh-fld select{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:6px 9px;font-family:var(--sans);font-size:12.5px;color:var(--text);outline:none;}
 .exh-fld input:focus,.exh-fld select:focus{border-color:var(--accent);}
+.exh-chips{display:flex;flex-wrap:wrap;gap:5px;}
+.exh-chips:empty{display:none;}
+.exh-chip{font-size:11px;font-weight:600;background:var(--surface3);color:var(--text2);border-radius:6px;padding:2px 8px;cursor:pointer;white-space:nowrap;}
+.exh-chip[data-kind="plasmid"]{color:#6d7bd0;background:rgba(109,123,208,.14);}
+.exh-chip[data-kind="cell"]{color:#4f9d8f;background:rgba(79,157,143,.14);}
+.exh-chip:hover{filter:brightness(1.08);}
 
 .blk{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;box-shadow:var(--shadow-xs);overflow:hidden;}
 .blk-hd{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--surface2);border-bottom:1px solid var(--border);}
@@ -214,6 +220,7 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .rt sup{vertical-align:super;font-size:.75em;line-height:0;}
 .rt a.lb-link{color:var(--accent);font-weight:600;cursor:pointer;text-decoration:none;border-bottom:1px dashed var(--accent);}
 .rt a.lb-link.proto{color:#a56983;border-bottom-color:#a56983;}
+.rt a.lb-link.plasmid{color:#6d7bd0;border-bottom-color:#6d7bd0;}
 .rt a.lb-url{color:var(--accent2);text-decoration:underline;cursor:pointer;}
 .rt img.lb-att{max-width:100%;height:auto;border-radius:8px;margin:6px 0;display:block;box-shadow:var(--shadow-xs);border:1px solid var(--border);}
 .rt img.lb-att.att-missing{min-width:120px;min-height:70px;border:1px dashed var(--border2);background:var(--surface2);}
@@ -801,8 +808,8 @@ function renderExpEditor(host,e){
     +'<div class="exh-fld"><label>Type</label><select onchange="setField(\'type\',this.value)">'+EXP_TYPES.map(function(t){return '<option value="'+t.id+'"'+(t.id===e.type?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')+'</select></div>'
     +'<div class="exh-fld"><label>Status</label><select onchange="setField(\'status\',this.value)">'+['planned','ongoing','done'].map(function(s){return '<option value="'+s+'"'+(s===e.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>'
     +'<div class="exh-fld"><label>Start date</label><input type="date" value="'+esc(e.startDate||'')+'" onchange="setField(\'startDate\',this.value)"></div>'
-    +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" onchange="setField(\'plasmids\',this.value)"></div>'
-    +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" onchange="setField(\'cellLines\',this.value)"></div></div>';
+    +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div></div>'
+    +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" oninput="updChips(\'cellLines\',this.value)" onchange="setField(\'cellLines\',this.value)"><div class="exh-chips" id="chips-cell">'+_chipInner(e.cellLines,'cell')+'</div></div></div>';
   var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+'</div>';
   var canvas='<div class="rt exp-canvas" contenteditable="true" data-ctx="expfree:'+e.id+'" data-ph="Write freely here — like a blank OneNote page…" oninput="setField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div>';
   var blocks=e.blocks.map(function(b){ var dl=(b.dayOffset!=null)?('<span class="blk-day">Day '+b.dayOffset+'</span>'):'';
@@ -852,6 +859,12 @@ function renderSeminarEditor(host,pg){ el('export-btn').style.display='';
   hydrateAtt(host); renderDockPanels(); }
 function openExp(id){ var e=LB.data.experiments[id]; if(!e) return; selectNode('expsec',e.projectId,e.sectionId); SEL.page=id; renderAll(); }
 function openBlk(expId,blkId){ openExp(expId); setTimeout(function(){ scrollBlk(blkId); },90); }
+// Plasmids / cell-line chips → open the linked app
+function _chipInner(val,kind){ var toks=(val||'').split(/[,;]+/).map(function(t){return t.trim();}).filter(Boolean); return toks.map(function(t){ return '<span class="exh-chip" data-kind="'+kind+'" data-val="'+esc(t)+'" title="Open '+(kind==='plasmid'?'in Plasmids':'in Incubator')+'">'+esc(t)+' &#8599;</span>'; }).join(''); }
+function updChips(field,val){ var host=el(field==='plasmids'?'chips-plasmids':'chips-cell'); if(host) host.innerHTML=_chipInner(val, field==='plasmids'?'plasmid':'cell'); }
+function openPlasmidLink(code){ try{ if(window.parent && window.parent.openApp) window.parent.openApp('plasmids', undefined, code); }catch(e){} }
+function openIncubatorLink(line){ try{ if(window.parent && window.parent.openApp) window.parent.openApp('bench','incubator', line); }catch(e){} }
+document.addEventListener('click',function(e){ var c=e.target.closest && e.target.closest('.exh-chip'); if(!c) return; if(c.dataset.kind==='plasmid') openPlasmidLink(c.dataset.val); else openIncubatorLink(c.dataset.val); });
 
 // ── Antibody DB ──
 function abUsedCodes(ab){ return (ab.usedIn||[]).map(function(eid){ var e=LB.data.experiments[eid]; return e?(e.code||e.title):null; }).filter(Boolean); }
@@ -1165,7 +1178,8 @@ function acScan(){ if(!_activeEd) return; var t=caretToken(); if(!t){ if(AC.open
     Object.keys(LB.data.pages).forEach(function(k){ var p=LB.data.pages[k]; if(!p.title) return; if(!q||p.title.toLowerCase().indexOf(q)>=0) items.push({t:'page',id:p.id,label:p.title,sub:'page',ic:'P',c:'#5e72c4'}); });
     Object.keys(LB.data.antibodies).forEach(function(k){ var a=LB.data.antibodies[k]; if(!a.name) return; if(!q||a.name.toLowerCase().indexOf(q)>=0) items.push({t:'ab',id:a.id,label:'α-'+a.name,sub:a.catalog||'antibody',ic:'α',c:'#c47818'}); });
     archiveIndex().forEach(function(p){ if(!q||p.name.toLowerCase().indexOf(q)>=0) items.push({t:'proto',id:p.id,label:p.name,sub:'protocol',ic:'A',c:'#a56983'}); });
-    items=items.slice(0,14);
+    try{ var pd=JSON.parse(localStorage.getItem('hub_plasmids')||'null'); if(pd&&pd.plasmids){ Object.keys(pd.plasmids).forEach(function(k){ var pl=pd.plasmids[k]; if(!pl.code&&!pl.name) return; var lbl=((pl.code||'')+' '+(pl.name||'')).toLowerCase(); if(!q||lbl.indexOf(q)>=0) items.push({t:'plasmid',id:pl.code||pl.id,label:pl.code||pl.name,sub:pl.name||'plasmid',ic:'p',c:'#6d7bd0'}); }); } }catch(e){}
+    items=items.slice(0,16);
   } else if(t.trigger==='#'){
     LB.data.tags.filter(function(tg){return !q||tg.toLowerCase().indexOf(q)>=0;}).slice(0,10).forEach(function(tg){ items.push({t:'tag',id:tg,label:'#'+tg,sub:'tag',ic:'#',c:'#5e72c4'}); });
     if(t.query) items.unshift({t:'newtag',id:t.query,label:'Create #'+t.query,sub:'new',ic:'+',c:'#4f9d8f'});
@@ -1183,6 +1197,7 @@ function acPick(i){ var it=AC.items[i]; if(!it) return; acDeleteToken();
   else if(it.t==='page'){ insertHtmlAtCaret('<a class="lb-link" data-page="'+it.id+'" contenteditable="false">'+esc(it.label)+' &#8599;</a>&nbsp;'); }
   else if(it.t==='ab'){ abRecordUse(it.id); save(); insertHtmlAtCaret('<span class="lb-ab" data-ab="'+it.id+'" contenteditable="false">'+esc(it.label)+'</span>&nbsp;'); }
   else if(it.t==='proto'){ insertHtmlAtCaret('<a class="lb-link proto" data-app="protocols" data-pid="'+esc(it.id)+'" contenteditable="false">'+esc(it.label)+' &#8599;</a>&nbsp;'); }
+  else if(it.t==='plasmid'){ insertHtmlAtCaret('<a class="lb-link plasmid" data-app="plasmids" data-pid="'+esc(String(it.id))+'" contenteditable="false">'+esc(it.label)+' &#8599;</a>&nbsp;'); }
   else if(it.t==='tag'||it.t==='newtag'){ var name=it.id; if(LB.data.tags.indexOf(name)<0){ LB.data.tags.push(name); save(); } insertHtmlAtCaret('<span class="lb-tag" data-tag="'+esc(name)+'" contenteditable="false">#'+esc(name)+'</span>&nbsp;'); renderDockPanels(); }
   else if(it.t==='slash'){ window[it.id](); }
   acClose();
