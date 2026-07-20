@@ -1928,10 +1928,10 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
   font-family:var(--sans);font-size:16px;font-weight:500;color:#111;outline:none;white-space:nowrap;min-width:60px;padding-left:2px;}
 .panel-prot:empty::before{content:'Protein';color:#bbb;}
 
-.lane-row{grid-column:2;display:flex;margin-top:12px;align-items:flex-start;}
-.lane-cell{flex:1 1 0;min-width:0;text-align:center;color:#111;outline:none;padding:2px 1px;overflow:hidden;}
+.lane-row{grid-column:2;display:flex;margin-top:12px;align-items:flex-end;}
+.lane-cell{position:relative;flex:1 1 0;min-width:0;text-align:center;color:#111;outline:none;padding:2px 1px;overflow:hidden;}
 .lane-cell:empty::before{content:'·';color:#ccc;}
-#figure.lanes-vert .lane-cell{writing-mode:vertical-rl;transform:rotate(180deg);margin:0 auto;align-self:flex-start;white-space:nowrap;text-overflow:ellipsis;}
+#figure.lanes-vert .lane-cell{writing-mode:vertical-rl;transform:rotate(180deg);margin:0 auto;align-self:flex-end;white-space:nowrap;text-overflow:ellipsis;}
 #figure.lanes-ang .lane-cell{transform:rotate(-40deg);transform-origin:center left;white-space:nowrap;text-overflow:ellipsis;}
 
 /* crop modal */
@@ -2019,6 +2019,7 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
     <input type="number" id="tb-lanelabelzone" min="24" max="300" step="5" value="90" title="Lane label zone height (px) — make room for long labels" style="width:52px;" onchange="setLaneLabelZoneH(this.value)">
   </div>
   <button class="btn sm" onclick="resetLaneWidths()" title="Reset all lanes to equal width">Reset lane widths</button>
+  <button class="btn sm" onclick="resetLaneLabelPos()" title="Reset label positions (Alt+drag a label to move it: horizontal = just that label, vertical = all together)">Reset label position</button>
   <button class="btn sm" onclick="addGroup()">+ Group bracket</button>
   <div class="tb-sep"></div>
   <label class="tb-field">Figure width <input type="number" id="tb-figw" min="300" max="1400" step="20" value="760" onchange="setFigWidth(this.value)"></label>
@@ -2143,7 +2144,7 @@ var STORE_KEY='blot_figure';
 function defaultFig(){
   return {
     laneCount:12, laneOrient:'vert', laneLabelPos:'top', figW:760, gap:10,
-    laneLabelSize:16, laneLabelZoneH:90,
+    laneLabelSize:16, laneLabelZoneH:90, laneLabelOffsetX:null, laneLabelOffsetY:0,
     lanes:new Array(12).fill(''),
     laneWeights:null,
     border:{on:true,px:1.6},
@@ -2176,6 +2177,8 @@ function migrateFig(fig){
   if(fig.laneOrient==null) fig.laneOrient='vert';
   if(fig.laneLabelSize==null) fig.laneLabelSize=16;
   if(fig.laneLabelZoneH==null) fig.laneLabelZoneH=90;
+  if(fig.laneLabelOffsetX===undefined) fig.laneLabelOffsetX=null;
+  if(fig.laneLabelOffsetY==null) fig.laneLabelOffsetY=0;
   return fig;
 }
 function load(){ try{var s=JSON.parse(localStorage.getItem(STORE_KEY));if(s&&s.panels){FIG=migrateFig(s);return;}}catch(e){} FIG=defaultFig(); }
@@ -2214,6 +2217,28 @@ document.addEventListener('mousemove',function(e){
   render();
 });
 document.addEventListener('mouseup',function(){ if(_laneDrag){ _laneDrag=null; save(); } });
+
+/* ── Lane label position (Alt+drag: horizontal = just this label, vertical = all labels
+   together via one shared offset) — plain click still edits the text as normal. ── */
+function laneLabelOffsetXArr(f){ if(Array.isArray(f.laneLabelOffsetX)&&f.laneLabelOffsetX.length===f.laneCount) return f.laneLabelOffsetX; return new Array(f.laneCount).fill(0); }
+function resetLaneLabelPos(){ FIG.laneLabelOffsetX=null; FIG.laneLabelOffsetY=0; save(); render(); toast('Label position reset'); }
+var _laneLblDrag=null;
+function startLaneLabelDrag(e,i){
+  if(!e.altKey) return; // no modifier → let the normal contenteditable click/selection happen
+  e.preventDefault();
+  var arr=laneLabelOffsetXArr(FIG);
+  _laneLblDrag={i:i, startX:e.clientX, startY:e.clientY, startOffX:arr[i]||0, startOffY:FIG.laneLabelOffsetY||0};
+}
+document.addEventListener('mousemove',function(e){
+  if(!_laneLblDrag) return;
+  var d=_laneLblDrag;
+  var arr=laneLabelOffsetXArr(FIG).slice();
+  arr[d.i]=d.startOffX+(e.clientX-d.startX);
+  FIG.laneLabelOffsetX=arr;
+  FIG.laneLabelOffsetY=d.startOffY+(e.clientY-d.startY);
+  render();
+});
+document.addEventListener('mouseup',function(){ if(_laneLblDrag){ _laneLblDrag=null; save(); } });
 
 /* ── Render assembled figure ── */
 var DRAG_SVG='<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
@@ -2277,11 +2302,11 @@ function render(){
   var laneW=laneWeightsArr(f), laneTotal=laneW.reduce(function(a,b){return a+b;},0)||1;
   var dividerHtml='';
   for(var di=0;di<f.laneCount-1;di++){ dividerHtml+='<div class="lane-divider" style="left:'+edges[di+1]+'%;" data-i="'+di+'" onmousedown="startLaneDrag(event,'+di+')" title="Drag to resize these two lanes"></div>'; }
-  var laneZoneH=f.laneLabelZoneH||90, laneFsz=f.laneLabelSize||16;
-  html+='<div class="lane-row" id="lane-row" style="grid-row:'+rowLanes+';height:'+laneZoneH+'px;">'
+  var laneZoneH=f.laneLabelZoneH||90, laneFsz=f.laneLabelSize||16, laneOffX=laneLabelOffsetXArr(f), laneOffY=f.laneLabelOffsetY||0;
+  html+='<div class="lane-row" id="lane-row" style="grid-row:'+rowLanes+';height:'+laneZoneH+'px;top:'+laneOffY+'px;">'
     +f.lanes.slice(0,f.laneCount).map(function(l,i){
       var wpct=(laneW[i]/laneTotal*100);
-      return '<div class="lane-cell" style="flex:none;width:'+wpct+'%;font-size:'+laneFsz+'px;max-height:'+laneZoneH+'px;" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setLane('+i+',this.innerHTML)">'+(l||'')+'</div>';
+      return '<div class="lane-cell" style="flex:none;width:'+wpct+'%;font-size:'+laneFsz+'px;max-height:'+laneZoneH+'px;left:'+(laneOffX[i]||0)+'px;" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setLane('+i+',this.innerHTML)" onmousedown="startLaneLabelDrag(event,'+i+')" title="Hold Alt and drag to reposition (horizontal = this label, vertical = all labels) · click to edit text">'+(l||'')+'</div>';
     }).join('')
     +dividerHtml
   +'</div>';
@@ -2571,9 +2596,10 @@ function loadImg(src){ return new Promise(function(res,rej){ var i=new Image(); 
 
 function drawLaneLabels(ctx,f,edges,blotX,BLOT,anchorY,N){
   ctx.font=(f.laneLabelSize||16)+'px "IBM Plex Sans",sans-serif'; ctx.fillStyle='#111';
+  var offX=laneLabelOffsetXArr(f), offY=f.laneLabelOffsetY||0;
   for(var i=0;i<N;i++){
-    var lx=blotX+BLOT*(edges[i]+edges[i+1])/2/100, txt=_stripHtml(f.lanes[i]||''); if(!txt) continue;
-    ctx.save(); ctx.translate(lx, anchorY);
+    var lx=blotX+BLOT*(edges[i]+edges[i+1])/2/100+(offX[i]||0), txt=_stripHtml(f.lanes[i]||''); if(!txt) continue;
+    ctx.save(); ctx.translate(lx, anchorY+offY);
     if(f.laneOrient==='horiz'){ ctx.textAlign='center'; ctx.fillText(txt,0,8); }
     else if(f.laneOrient==='ang'){ ctx.rotate(-40*Math.PI/180); ctx.textAlign='right'; ctx.fillText(txt,0,4); }
     else { ctx.rotate(-Math.PI/2); ctx.textAlign='left'; ctx.fillText(txt,0,4); }
