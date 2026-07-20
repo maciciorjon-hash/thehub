@@ -32,6 +32,7 @@ APPS = [
     ('bench',       'Bench/bench.html'),
     ('labbook',     'Labbook/labbook.html'),
     ('plasmids',    'Plasmids/plasmids.html'),
+    ('blot',        'WesternBlot/westernblot.html'),
 ]
 
 src = open(SHELL, encoding='utf-8').read()
