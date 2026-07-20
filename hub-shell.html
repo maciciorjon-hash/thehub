@@ -627,6 +627,18 @@ body.hub-announcing #hub-home{margin-top:98px;}
     <div class="opts-subtitle">Accent</div>
     <div class="accent-grid" id="accent-grid"></div>
   </div>
+  <div class="opts-section">
+    <div class="opts-subtitle">Backup &amp; data</div>
+    <div class="opts-row">
+      <span class="opts-label">Back up all my data now</span>
+      <button class="opts-action-btn" onclick="backupJournal(true)">Export</button>
+    </div>
+    <div class="opts-row">
+      <span class="opts-label">Auto-backup folder</span>
+      <button class="opts-action-btn" onclick="chooseBackupFolder()">Choose…</button>
+    </div>
+    <div style="font-size:10.5px;color:var(--text3);line-height:1.5;margin:-4px 0 2px;">A dated backup of everything (tasks, cultures, Labbook, plasmids) runs automatically once a day into your folder. Pick a folder once so it can save without asking.</div>
+  </div>
   <div class="opts-divider"></div>
   <div class="opts-row">
     <span class="opts-label">Reset app data</span>
@@ -644,6 +656,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
     &#9679; <b>Incubator</b>: cultures now show as <b>flasks or plates</b> (toggle) with the medium coloured by health &mdash; green when happy, red-yellow when a split is due<br>
     &#9679; <b>Plasmids</b>: the <b>pJM code is clearly editable</b>; drag a <b>SnapGene .dna</b> or <b>GenBank .gb</b> file onto a plasmid to attach it (GenBank draws a live circular map); a new <b>Used in</b> list links to the experiments that use it<br>
     &#9679; <b>Labbook</b>: a proper <b>OneNote-style tabbed ribbon</b> (Inicio / Insertar / Vista) with bigger icons &amp; instant tooltips; <b>right-click any note to rename or delete</b>; everything now in a modern sans font; and <b>@</b> can insert a protocol&rsquo;s real steps, not just a link<br>
+    &#9679; <b>Your data is safer</b>: an empty cloud can no longer overwrite your local tasks/cultures (it now seeds the cloud instead), and a dated <b>backup of everything</b> runs automatically once a day &mdash; export it any time from Settings<br>
     <br>
     <strong style="color:var(--text);font-size:12px;">v1.3.11 &mdash; 19 Jul 2026</strong><br>
     &#9679; <b>dHUB</b>: a new soft-depth &ldquo;glass&rdquo; look across the home, cards &amp; menus, with a colour <b>Accent</b> picker in Settings and resizable home widgets (<b>Small / Medium / Large</b>) plus new <b>Clock</b> and <b>Quick note</b> tiles<br>
@@ -2540,13 +2553,22 @@ var JournalStore = (function(){
   function _emit(){ _subs.slice().forEach(function(f){ try { f(_data); } catch(e){} }); }
   function _pushId(){ try { return firebase.database().ref('journal').push().key; } catch(e){ return 'loc-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); } }
   function _write(path, val){ try { return firebase.database().ref('journal/' + path).set(val).catch(function(){}); } catch(e){ return Promise.resolve(); } }
+  function _seedKey(k){ try { firebase.database().ref('journal/' + k).set(_data[k]).catch(function(){}); } catch(e){} }
   function attach(){
     if (_ref) return;
     try {
       _ref = firebase.database().ref('journal');
       _ref.on('value', function(snap){
         var v = snap.val() || {};
-        _data = { tasks:v.tasks || {}, incubator:v.incubator || {}, layout:v.layout || null, shortcuts:v.shortcuts || null, accent:v.accent || null, note:v.note || null, theme:v.theme || null };
+        // Per-key reconcile. CRITICAL: a cloud key that is empty/missing must NEVER wipe good local
+        // data — that is what erased the incubator when the /journal rules were first deployed
+        // (writes had been denied, so data lived only in localStorage, then an empty cloud clobbered it).
+        // If local has a key the cloud lacks, keep local AND seed the cloud from it.
+        var out = {};
+        function coll(k){ var rv=v[k], lv=_data[k]; var rEmpty=!(rv&&Object.keys(rv).length), lHas=!!(lv&&Object.keys(lv).length); if(rEmpty&&lHas){ out[k]=lv; _seedKey(k); } else out[k]=rv||{}; }
+        function scalar(k){ var rv=v[k], lv=_data[k]; if((rv==null)&&(lv!=null)){ out[k]=lv; _seedKey(k); } else out[k]=(rv!=null?rv:null); }
+        coll('tasks'); coll('incubator'); scalar('layout'); scalar('shortcuts'); scalar('accent'); scalar('note'); scalar('theme');
+        _data = out;
         _ready = true; _cache(); _emit();
       }, function(){ /* denied until private /journal rules are deployed — keep cache */ });
     } catch(e){}
@@ -2570,6 +2592,29 @@ var JournalStore = (function(){
     setTheme:     function(t){ _data.theme = t; _cache(); return _write('theme', t); }
   };
 })();
+
+// ── Daily backup of the WHOLE /journal (tasks, cultures, Labbook, plasmids, iceberg, …) ──
+// Mirrors Labbook's backup: dated JSON to the folder you picked (reuses window.lbBackup),
+// else a download on a manual export. Auto runs once per day; never auto-downloads.
+function _dhubDownload(name, text){ try { var b=new Blob([text],{type:'application/json'}); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },1500); } catch(e){} }
+function backupJournal(manual){
+  try {
+    var today = new Date().toISOString().slice(0,10);
+    if (!manual && localStorage.getItem('hub_journal_last_backup') === today) return;
+    firebase.database().ref('journal').once('value').then(function(s){
+      var data = s.val();
+      if (!data) { if (manual) alert('Nothing to back up yet.'); return; }
+      var text = JSON.stringify({ app:'dHUB', exported:new Date().toISOString(), journal:data }, null, 2);
+      var name = 'dhub-backup-' + today + '.json';
+      function done(){ try { localStorage.setItem('hub_journal_last_backup', today); } catch(e){} }
+      if (window.lbBackup && window.lbBackup.writeFile) {
+        window.lbBackup.writeFile(name, text).then(function(){ done(); if (manual) alert('Backup saved to your backup folder:\n' + name); })
+          .catch(function(){ _dhubDownload(name, text); done(); });
+      } else if (manual) { _dhubDownload(name, text); done(); }
+    }).catch(function(){ if (manual) alert('Could not read your data to back up right now.'); });
+  } catch(e){}
+}
+function chooseBackupFolder(){ if (window.lbBackup && window.lbBackup.pickDir) { window.lbBackup.pickDir().then(function(n){ alert('Backups will be saved to: ' + n + '\nA daily backup runs automatically, and Labbook uses the same folder.'); backupJournal(true); }).catch(function(){ alert('Could not set a folder. A manual export will download instead.'); }); } else { alert('Folder backups are not supported in this browser — use Export to download instead.'); } }
 
 // (removed dead command-center band: renderDash/#hub-dash/dashAddTask — superseded by the #hub-widgets dashboard)
 
@@ -3011,6 +3056,7 @@ function _applyDashAdmin(){
     if(host){ host.classList.add('visible'); if(!_openSuiteId) host.style.display=''; }
     initWeather(false);
     if(!_wxTimer) _wxTimer=setInterval(function(){ initWeather(true); }, 15*60000);
+    setTimeout(function(){ backupJournal(false); }, 5000); // daily safety backup of all your data
     renderWidgets();
   } else {
     if(benchCard) benchCard.style.display='none';
