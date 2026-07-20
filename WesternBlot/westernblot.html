@@ -1930,6 +1930,7 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
 
 .lane-row{grid-column:2;display:flex;margin-top:12px;align-items:flex-end;}
 .lane-cell{position:relative;flex:1 1 0;min-width:0;text-align:center;color:#111;outline:none;padding:2px 1px;overflow:hidden;}
+.lane-cell.repositioning{cursor:move;background:var(--accent-dim);border-radius:4px;}
 .lane-cell:empty::before{content:'·';color:#ccc;}
 #figure.lanes-vert .lane-cell{writing-mode:vertical-rl;transform:rotate(180deg);margin:0 auto;align-self:flex-end;white-space:nowrap;text-overflow:ellipsis;}
 #figure.lanes-ang .lane-cell{transform:rotate(-40deg);transform-origin:center left;white-space:nowrap;text-overflow:ellipsis;}
@@ -2019,7 +2020,8 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
     <input type="number" id="tb-lanelabelzone" min="24" max="300" step="5" value="90" title="Lane label zone height (px) — make room for long labels" style="width:52px;" onchange="setLaneLabelZoneH(this.value)">
   </div>
   <button class="btn sm" onclick="resetLaneWidths()" title="Reset all lanes to equal width">Reset lane widths</button>
-  <button class="btn sm" onclick="resetLaneLabelPos()" title="Reset label positions (Alt+drag a label to move it: horizontal = just that label, vertical = all together)">Reset label position</button>
+  <button class="btn sm" id="tb-movelabels" onclick="toggleLaneRepositionMode()" title="Turn on, then drag any lane label: sideways moves just that label, up/down moves them all together. Turn off to go back to editing label text.">Move labels</button>
+  <button class="btn sm" onclick="resetLaneLabelPos()" title="Reset label positions to default">Reset label position</button>
   <button class="btn sm" onclick="addGroup()">+ Group bracket</button>
   <div class="tb-sep"></div>
   <label class="tb-field">Figure width <input type="number" id="tb-figw" min="300" max="1400" step="20" value="760" onchange="setFigWidth(this.value)"></label>
@@ -2218,13 +2220,19 @@ document.addEventListener('mousemove',function(e){
 });
 document.addEventListener('mouseup',function(){ if(_laneDrag){ _laneDrag=null; save(); } });
 
-/* ── Lane label position (Alt+drag: horizontal = just this label, vertical = all labels
-   together via one shared offset) — plain click still edits the text as normal. ── */
+/* ── Lane label position: drag horizontal = just this label, vertical = all labels
+   together via one shared offset. Plain click still edits the text as normal.
+   A toolbar toggle ("Move labels" mode) is the primary, keyboard-free way to do this
+   (works identically on Mac/Windows); Alt/Option+drag is a power-user shortcut on top
+   of it — Mac's Option key does map to event.altKey in every browser, but a keyboard
+   modifier is easy to fumble across platforms, so the toggle is the reliable path. ── */
+var _laneRepositionMode=false;
+function toggleLaneRepositionMode(){ _laneRepositionMode=!_laneRepositionMode; render(); }
 function laneLabelOffsetXArr(f){ if(Array.isArray(f.laneLabelOffsetX)&&f.laneLabelOffsetX.length===f.laneCount) return f.laneLabelOffsetX; return new Array(f.laneCount).fill(0); }
 function resetLaneLabelPos(){ FIG.laneLabelOffsetX=null; FIG.laneLabelOffsetY=0; save(); render(); toast('Label position reset'); }
 var _laneLblDrag=null;
 function startLaneLabelDrag(e,i){
-  if(!e.altKey) return; // no modifier → let the normal contenteditable click/selection happen
+  if(!_laneRepositionMode && !e.altKey) return; // neither the toggle nor the modifier is active → let normal text click/selection happen
   e.preventDefault();
   var arr=laneLabelOffsetXArr(FIG);
   _laneLblDrag={i:i, startX:e.clientX, startY:e.clientY, startOffX:arr[i]||0, startOffY:FIG.laneLabelOffsetY||0};
@@ -2246,6 +2254,7 @@ function render(){
   var f=FIG, fig=el('figure');
   fig.style.setProperty('--blot-w', f.figW+'px');
   fig.className = 'lanes-'+f.laneOrient;
+  var mlBtn=el('tb-movelabels'); if(mlBtn) mlBtn.className = _laneRepositionMode ? 'btn sm primary' : 'btn sm';
   var N=f.panels.length;
   var rowGroups, rowLanes, rowPanelStart;
   if(f.laneLabelPos==='bottom'){ rowPanelStart=1; rowGroups=1+N; rowLanes=2+N; }
@@ -2306,7 +2315,8 @@ function render(){
   html+='<div class="lane-row" id="lane-row" style="grid-row:'+rowLanes+';height:'+laneZoneH+'px;top:'+laneOffY+'px;">'
     +f.lanes.slice(0,f.laneCount).map(function(l,i){
       var wpct=(laneW[i]/laneTotal*100);
-      return '<div class="lane-cell" style="flex:none;width:'+wpct+'%;font-size:'+laneFsz+'px;max-height:'+laneZoneH+'px;left:'+(laneOffX[i]||0)+'px;" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setLane('+i+',this.innerHTML)" onmousedown="startLaneLabelDrag(event,'+i+')" title="Hold Alt and drag to reposition (horizontal = this label, vertical = all labels) · click to edit text">'+(l||'')+'</div>';
+      var lblTitle=_laneRepositionMode ? 'Drag: sideways = this label, up/down = all labels together' : 'Click to edit · turn on "Move labels" (or hold Alt/Option) to drag it instead';
+      return '<div class="lane-cell'+(_laneRepositionMode?' repositioning':'')+'" style="flex:none;width:'+wpct+'%;font-size:'+laneFsz+'px;max-height:'+laneZoneH+'px;left:'+(laneOffX[i]||0)+'px;" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setLane('+i+',this.innerHTML)" onmousedown="startLaneLabelDrag(event,'+i+')" title="'+lblTitle+'">'+(l||'')+'</div>';
     }).join('')
     +dividerHtml
   +'</div>';
