@@ -198,7 +198,7 @@ tr:hover td{background:var(--surface2);}
 .scatter-controls select,.scatter-controls input{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;}
 .scatter-controls label{font-size:12px;color:var(--text2);}
 .scatter-wrap{flex:1;min-height:200px;position:relative;overflow:hidden;}
-#scatter-canvas{width:100% !important;height:100% !important;display:block;}
+#scatter-canvas,#sel-canvas{width:100% !important;height:100% !important;display:block;}
 .scatter-dl-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:30px;border-radius:6px;background:var(--surface3);border:1px solid var(--border2);color:var(--text2);font-size:12px;font-family:var(--sans);cursor:pointer;transition:background .2s,color .2s;}
 .scatter-dl-btn:hover{background:var(--accent2);color:#fff;border-color:transparent;}
 .tooltip-box{position:fixed;z-index:9999;pointer-events:none;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;max-width:220px;min-width:180px;box-shadow:0 6px 24px rgba(0,0,0,.18);transition:opacity .1s;}
@@ -4230,6 +4230,18 @@ function renderScatter(data) {
             <option value="2">100× (2 log units)</option>
             <option value="0.5">~3× (0.5 log units)</option>
           </select>
+          <span id="sel-lin-thr-wrap" style="display:none;margin-left:10px;align-items:center;gap:5px;">
+            <label>Δ Dmax band</label>
+            <input id="sel-lin-thr" type="number" min="1" step="5" value="20" onchange="buildSelectivityChart()" style="width:56px;font-size:11px;"><span style="font-size:11px;color:var(--text3);">%</span>
+          </span>
+        </div>
+        <div class="strow">
+          <label style="min-width:52px;flex:none;">Axis limits</label>
+          <input id="sel-xmin" type="number" step="any" placeholder="X min (auto)" onchange="buildSelectivityChart()" style="width:96px;font-size:11px;">
+          <input id="sel-xmax" type="number" step="any" placeholder="X max (auto)" onchange="buildSelectivityChart()" style="width:96px;font-size:11px;">
+          <input id="sel-ymin" type="number" step="any" placeholder="Y min (auto)" onchange="buildSelectivityChart()" style="width:96px;font-size:11px;margin-left:6px;">
+          <input id="sel-ymax" type="number" step="any" placeholder="Y max (auto)" onchange="buildSelectivityChart()" style="width:96px;font-size:11px;">
+          <button class="scatter-dl-btn" style="height:28px;margin-left:8px;" onclick="['sel-xmin','sel-xmax','sel-ymin','sel-ymax'].forEach(function(i){document.getElementById(i).value='';});buildSelectivityChart();">Reset axes</button>
         </div>
       </div>
       <div class="scatter-wrap" id="sel-wrap" style="position:relative;flex:1;min-height:0;"><canvas id="sel-canvas"></canvas></div>
@@ -5194,6 +5206,21 @@ function buildSelectivityChart() {
   const isLogY = _selMetricIsLog(metricY);
   const sameMetric = metricX === metricY;
   const isLog = sameMetric && isLogX;
+  const isDmax = sameMetric && metricX === 'Dmax_pct';
+  // Selectivity can be judged on a log axis (DC50/pDC50 → fold) OR a linear axis
+  // (Dmax %, where a difference in %-max is the determining factor).
+  const bandMode = isLog ? 'log' : (isDmax ? 'linear' : 'none');
+  const linThr = Math.abs(parseFloat(document.getElementById('sel-lin-thr')?.value || '20')) || 20;
+  const bandOffset = bandMode === 'linear' ? linThr : bandThr;   // in the axis's own units
+  const bandOn = bandMode !== 'none' && showBands;
+  // Show the Δ-Dmax band control only when a Dmax axis is active.
+  const _ltWrap = document.getElementById('sel-lin-thr-wrap');
+  if (_ltWrap) _ltWrap.style.display = isDmax ? 'inline-flex' : 'none';
+  const _btSel = document.getElementById('sel-band-thr');
+  if (_btSel) _btSel.style.display = isDmax ? 'none' : '';
+  // Read per-axis manual limits (blank = auto).
+  const _num = id => { const v = parseFloat(document.getElementById(id)?.value); return isFinite(v) ? v : null; };
+  const uXMin=_num('sel-xmin'), uXMax=_num('sel-xmax'), uYMin=_num('sel-ymin'), uYMax=_num('sel-ymax');
 
   // Build lookup: Sample_ID -> {xVal, yVal, flag}
   const dataX = {}, dataY = {};
@@ -5221,42 +5248,48 @@ function buildSelectivityChart() {
     const isFlagged = rx.flag==='Yes' || ry.flag==='Yes';
     if (!showFlagged && isFlagged) continue;
     const x = rx.val, y = ry.val;
-    let fold = null, dir = 'neutral';
-    if (isLog) {
-      const diff = y - x;
+    let fold = null, delta = null, dir = 'neutral';
+    const diff = y - x;
+    if (bandMode === 'log') {
       fold = Math.pow(10, Math.abs(diff));
       if (diff > bandThr) dir = 'y';
       else if (diff < -bandThr) dir = 'x';
+    } else if (bandMode === 'linear') {
+      delta = Math.abs(diff);
+      if (diff > linThr) dir = 'y';
+      else if (diff < -linThr) dir = 'x';
     }
-    points.push({x, y, label: id, fold, dir, flagged: isFlagged});
+    points.push({x, y, label: id, fold, delta, dir, flagged: isFlagged});
   }
 
   if (info) info.textContent = `${points.length} shared compound${points.length!==1?'s':''}`;
 
   // color by selectivity direction
   const colors = points.map(p => {
-    if (p.flagged) return 'rgba(240,160,0,.85)'; // amber = flagged
-    if (!isLog || !showBands) return 'rgba(100,150,255,.82)'; // flat blue
-    if (p.dir === 'y') return 'rgba(52,200,110,.88)';  // green = selective Y
-    if (p.dir === 'x') return 'rgba(250,100,80,.88)';  // red = selective X
-    return 'rgba(160,160,180,.80)'; // gray = near diagonal
+    if (p.flagged) return 'rgba(245,191,123,.9)'; // soft amber = flagged
+    if (!bandOn) return 'rgba(129,155,235,.82)'; // pastel blue
+    if (p.dir === 'y') return 'rgba(129,199,132,.9)';  // pastel green = selective Y
+    if (p.dir === 'x') return 'rgba(240,138,120,.9)';  // pastel coral = selective X
+    return 'rgba(176,180,196,.82)'; // gray = near diagonal
   });
   const borders = points.map(p => {
-    if (p.flagged) return '#f0a000';
-    if (!isLog || !showBands) return 'rgba(80,120,220,1)';
-    if (p.dir === 'y') return '#20c060';
-    if (p.dir === 'x') return '#e04030';
-    return '#888';
+    if (p.flagged) return '#e0a04a';
+    if (!bandOn) return 'rgba(94,114,196,1)';
+    if (p.dir === 'y') return '#5aa860';
+    if (p.dir === 'x') return '#d96a54';
+    return '#9195a8';
   });
 
   // Legend
-  if (legend && isLog && showBands) {
-    const thr = bandThr >= 1 ? `${Math.round(Math.pow(10,bandThr))}×` : `${Math.pow(10,bandThr).toFixed(1)}×`;
+  if (legend && bandOn) {
+    const thr = bandMode === 'linear'
+      ? `Δ${linThr}%`
+      : (bandThr >= 1 ? `${Math.round(Math.pow(10,bandThr))}×` : `${Math.pow(10,bandThr).toFixed(1)}×`);
     legend.innerHTML = [
-      ['rgba(52,200,110,.85)','<b>'+esc(protY)+'</b>-selective (>'+thr+')'],
-      ['rgba(250,100,80,.85)','<b>'+esc(protX)+'</b>-selective (>'+thr+')'],
-      ['rgba(160,160,180,.80)','Near-equal (<'+thr+')'],
-      ['rgba(240,160,0,.85)','Flagged'],
+      ['rgba(129,199,132,.9)','<b>'+esc(protY)+'</b>-selective (>'+thr+')'],
+      ['rgba(240,138,120,.9)','<b>'+esc(protX)+'</b>-selective (>'+thr+')'],
+      ['rgba(176,180,196,.82)','Near-equal (<'+thr+')'],
+      ['rgba(245,191,123,.9)','Flagged'],
     ].map(([c,t])=>`<span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0;"></span><span>${t}</span></span>`).join('');
   } else if (legend) legend.innerHTML = '';
 
@@ -5277,6 +5310,9 @@ function buildSelectivityChart() {
   const _selStep = _niceAxisStep((maxVal + pad) - (minVal - pad));
   const axMin = Math.floor((minVal - pad) / _selStep) * _selStep;
   const axMax = Math.ceil((maxVal + pad) / _selStep) * _selStep;
+  // Per-axis final bounds — manual override wins, else the shared auto bound.
+  const xMin = uXMin!=null?uXMin:axMin, xMax = uXMax!=null?uXMax:axMax;
+  const yMin = uYMin!=null?uYMin:axMin, yMax = uYMax!=null?uYMax:axMax;
 
   // diagonal + band plugin
   const selPlugin = {
@@ -5285,37 +5321,36 @@ function buildSelectivityChart() {
       const {ctx, chartArea:{left,right,top,bottom}, scales:{x,y}} = chart;
       const toXpx = v => x.getPixelForValue(v);
       const toYpx = v => y.getPixelForValue(v);
+      const lo = x.min, hi = x.max;   // sweep the visible x-domain
       ctx.save();
-      // colored background bands (only if isLog and showBands)
-      if (isLog && showBands) {
-        // Y-selective region (above diagonal by >bandThr)
+      // colored selectivity bands (log fold OR linear Δ, when bands are on)
+      if (bandOn) {
+        // Y-selective region (above the diagonal by >bandOffset)
+        ctx.fillStyle='rgba(129,199,132,.09)';
         ctx.beginPath();
-        const xs = [axMin, axMax];
-        ctx.fillStyle='rgba(52,200,110,.07)';
-        ctx.beginPath();
-        ctx.moveTo(toXpx(axMin), toYpx(axMin+bandThr));
-        ctx.lineTo(toXpx(axMax), toYpx(axMax+bandThr));
-        ctx.lineTo(toXpx(axMax), top);
+        ctx.moveTo(toXpx(lo), toYpx(lo+bandOffset));
+        ctx.lineTo(toXpx(hi), toYpx(hi+bandOffset));
+        ctx.lineTo(toXpx(hi), top);
         ctx.lineTo(left, top);
         ctx.closePath(); ctx.fill();
-        // X-selective region
-        ctx.fillStyle='rgba(250,100,80,.07)';
+        // X-selective region (below the diagonal by >bandOffset)
+        ctx.fillStyle='rgba(240,138,120,.09)';
         ctx.beginPath();
-        ctx.moveTo(toXpx(axMin), toYpx(axMin-bandThr));
-        ctx.lineTo(toXpx(axMax), toYpx(axMax-bandThr));
-        ctx.lineTo(toXpx(axMax), bottom);
+        ctx.moveTo(toXpx(lo), toYpx(lo-bandOffset));
+        ctx.lineTo(toXpx(hi), toYpx(hi-bandOffset));
+        ctx.lineTo(toXpx(hi), bottom);
         ctx.lineTo(left, bottom);
         ctx.closePath(); ctx.fill();
         // band lines
         ctx.setLineDash([5,4]); ctx.lineWidth=1;
-        ctx.strokeStyle='rgba(52,200,110,.50)';
-        ctx.beginPath(); ctx.moveTo(toXpx(axMin),toYpx(axMin+bandThr)); ctx.lineTo(toXpx(axMax),toYpx(axMax+bandThr)); ctx.stroke();
-        ctx.strokeStyle='rgba(250,100,80,.50)';
-        ctx.beginPath(); ctx.moveTo(toXpx(axMin),toYpx(axMin-bandThr)); ctx.lineTo(toXpx(axMax),toYpx(axMax-bandThr)); ctx.stroke();
+        ctx.strokeStyle='rgba(90,168,96,.55)';
+        ctx.beginPath(); ctx.moveTo(toXpx(lo),toYpx(lo+bandOffset)); ctx.lineTo(toXpx(hi),toYpx(hi+bandOffset)); ctx.stroke();
+        ctx.strokeStyle='rgba(217,106,84,.55)';
+        ctx.beginPath(); ctx.moveTo(toXpx(lo),toYpx(lo-bandOffset)); ctx.lineTo(toXpx(hi),toYpx(hi-bandOffset)); ctx.stroke();
       }
       // diagonal y=x
       ctx.setLineDash([6,4]); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(150,150,170,.70)';
-      ctx.beginPath(); ctx.moveTo(toXpx(axMin),toYpx(axMin)); ctx.lineTo(toXpx(axMax),toYpx(axMax)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(toXpx(lo),toYpx(lo)); ctx.lineTo(toXpx(hi),toYpx(hi)); ctx.stroke();
       ctx.setLineDash([]);
       ctx.restore();
     },
@@ -5351,13 +5386,13 @@ function buildSelectivityChart() {
       scales:{
         x:{
           title:{display:true,text:`${esc(protX)} — ${axLabelX}`,font:{size:11}},
-          min:axMin, max:axMax,
+          min:xMin, max:xMax,
           grid:{color:'var(--border)'},
           ticks:{color:'var(--text2)',font:{size:10}}
         },
         y:{
           title:{display:true,text:`${esc(protY)} — ${axLabelY}`,font:{size:11}},
-          min:axMin, max:axMax,
+          min:yMin, max:yMax,
           grid:{color:'var(--border)'},
           ticks:{color:'var(--text2)',font:{size:10}}
         }
@@ -5374,9 +5409,12 @@ function buildSelectivityChart() {
                 `${esc(protX)}: ${p.x.toFixed(3)}`,
                 `${esc(protY)}: ${p.y.toFixed(3)}`,
               ];
-              if (isLog && p.fold != null) {
+              if (bandMode==='log' && p.fold != null) {
                 const dir = p.dir==='y'?esc(protY):p.dir==='x'?esc(protX):'similar';
                 lines.push(`Fold selectivity: ${p.fold.toFixed(1)}× (${dir})`);
+              } else if (bandMode==='linear' && p.delta != null) {
+                const dir = p.dir==='y'?esc(protY):p.dir==='x'?esc(protX):'similar';
+                lines.push(`Δ Dmax: ${p.delta.toFixed(1)}% (${dir})`);
               }
               if (p.flagged) lines.push('⚠ Flagged');
               return lines;

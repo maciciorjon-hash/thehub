@@ -142,6 +142,18 @@ header{border-bottom:1px solid var(--border);padding:0 22px;display:flex;align-i
 .status-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 11px;border-radius:20px;}
 .pill-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
 .pill{font-size:11px;background:var(--accent-dim);color:var(--accent);padding:3px 9px;border-radius:20px;font-weight:500;}
+/* Classic formatting ribbon (shared "OneNote"-style bar) for the Notes editor */
+.pl-rb{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:4px 6px;background:var(--surface2);border:1px solid var(--border2);border-bottom:none;border-radius:8px 8px 0 0;}
+.pl-rb .tb{min-width:26px;height:24px;padding:0 6px;border:none;background:none;color:var(--text2);border-radius:5px;cursor:pointer;font-size:13px;font-family:var(--sans);display:inline-flex;align-items:center;justify-content:center;}
+.pl-rb .tb:hover{background:var(--surface3);color:var(--text);}
+.pl-rb .tb b,.pl-rb .tb i,.pl-rb .tb u{font-size:13px;}
+.pl-rb select.tb-sel{height:24px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:11px;font-family:var(--sans);padding:0 4px;cursor:pointer;}
+.pl-rb .tb-sep{width:1px;height:16px;background:var(--border2);margin:0 4px;}
+.pl-rb input[type=color]{width:22px;height:22px;border:none;background:none;padding:0;cursor:pointer;}
+.pl-rt{min-height:82px;max-height:240px;overflow:auto;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 8px 8px;
+  padding:9px 11px;font-family:var(--sans);font-size:13px;color:var(--text);line-height:1.55;outline:none;}
+.pl-rt:focus{border-color:var(--accent);}
+.pl-rt:empty:before{content:attr(data-ph);color:var(--text3);}
 </style>
 </head>
 <body>
@@ -242,6 +254,30 @@ function delPlasmid(id){
 }
 function _cur(){ return SEL?DATA.plasmids[SEL]:null; }
 function setF(f,v){ var p=_cur(); if(!p) return; p[f]=v; p.updated=Date.now(); save(); if(f==='code'||f==='name'||f==='status'||f==='insert') renderList(); }
+
+// ── Shared classic formatting ribbon (contenteditable + execCommand) ──
+var _plActiveEd=null;
+function _plNotesHtml(v){ v=String(v==null?'':v); return /<[a-z/][^>]*>/i.test(v) ? v : esc(v).replace(/\n/g,'<br>'); }
+function _plStrip(v){ var d=document.createElement('div'); d.innerHTML=String(v==null?'':v); return (d.textContent||d.innerText||'').replace(/\s+/g,' ').trim(); }
+function plRibbon(){
+  var sizes=[10,12,14,16,18,20,24].map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('');
+  return '<div class="pl-rb" onmousedown="event.preventDefault()">'
+    +'<button type="button" class="tb" title="Bold" onclick="plFmt(\'bold\')"><b>B</b></button>'
+    +'<button type="button" class="tb" title="Italic" onclick="plFmt(\'italic\')"><i>I</i></button>'
+    +'<button type="button" class="tb" title="Underline" onclick="plFmt(\'underline\')"><u>U</u></button>'
+    +'<span class="tb-sep"></span>'
+    +'<select class="tb-sel" title="Font size" onchange="plFmtSize(this.value);this.selectedIndex=0"><option value="">Size</option>'+sizes+'</select>'
+    +'<input type="color" title="Text colour" value="#6d7bd0" oninput="plFmtColor(this.value)">'
+    +'<span class="tb-sep"></span>'
+    +'<button type="button" class="tb" title="Bullet list" onclick="plFmt(\'insertUnorderedList\')">&#8226;</button>'
+    +'<button type="button" class="tb" title="Numbered list" onclick="plFmt(\'insertOrderedList\')">1.</button>'
+    +'<button type="button" class="tb" title="Clear formatting" onclick="plFmt(\'removeFormat\')">⨯</button>'
+  +'</div>';
+}
+function _plEd(){ var e=_plActiveEd; if(!e){ e=document.querySelector('.pl-rt'); } return e; }
+function plFmt(cmd){ var e=_plEd(); if(!e) return; e.focus(); try{ document.execCommand(cmd,false,null); }catch(x){} setF('notes',e.innerHTML); }
+function plFmtSize(px){ var e=_plEd(); if(!e||!px) return; e.focus(); try{ document.execCommand('styleWithCSS',false,true); var sel=window.getSelection(); if(sel&&sel.rangeCount&&!sel.isCollapsed){ document.execCommand('fontSize',false,'7'); e.querySelectorAll('font[size="7"]').forEach(function(f){ var s=document.createElement('span'); s.style.fontSize=px+'px'; s.innerHTML=f.innerHTML; f.parentNode.replaceChild(s,f); }); } }catch(x){} setF('notes',e.innerHTML); }
+function plFmtColor(c){ var e=_plEd(); if(!e) return; e.focus(); try{ document.execCommand('styleWithCSS',false,true); document.execCommand('foreColor',false,c); }catch(x){} setF('notes',e.innerHTML); }
 
 // ── Render list ─────────────────────────────────────────────────────────────
 function renderList(){
@@ -365,7 +401,9 @@ function renderEditor(){
         +'<div class="fld"><label>Status</label><select onchange="setF(\'status\',this.value)">'+statusOpts+'</select></div>'
         +'<div class="fld"><label>Source</label><input value="'+esc(p.source||'')+'" placeholder="Cloned in-house / gift / Addgene" onchange="setF(\'source\',this.value)"></div>'
         +'<div class="fld full"><label>Sequencing</label><input value="'+esc(p.seq||'')+'" placeholder="Sanger + Plasmidsaurus OK; 1 N deletion in…" onchange="setF(\'seq\',this.value)"></div>'
-        +'<div class="fld full"><label>Notes</label><textarea onchange="setF(\'notes\',this.value)" placeholder="Anything worth remembering…">'+esc(p.notes||'')+'</textarea></div>'
+        +'<div class="fld full"><label>Notes</label>'+plRibbon()
+          +'<div class="pl-rt" contenteditable="true" data-ph="Anything worth remembering…" '
+          +'onfocus="_plActiveEd=this" oninput="setF(\'notes\',this.innerHTML)">'+_plNotesHtml(p.notes)+'</div></div>'
       +'</div>'
       +_usedInHtml(p)
       +'<button class="del-btn" onclick="delPlasmid(\''+p.id+'\')">Delete plasmid</button>'
@@ -420,7 +458,7 @@ function exportCSV(){
   var rows=[cols.join(',')];
   Object.keys(DATA.plasmids).map(function(k){return DATA.plasmids[k];})
     .sort(function(a,b){ return (a.code||'').localeCompare(b.code||'', undefined, {numeric:true}); })
-    .forEach(function(p){ rows.push(cols.map(function(c){ var v=(p[c]==null?'':String(p[c])).replace(/"/g,'""'); return /[",\n]/.test(v)?('"'+v+'"'):v; }).join(',')); });
+    .forEach(function(p){ rows.push(cols.map(function(c){ var raw=(c==='notes')?_plStrip(p[c]):(p[c]==null?'':String(p[c])); var v=raw.replace(/"/g,'""'); return /[",\n]/.test(v)?('"'+v+'"'):v; }).join(',')); });
   var blob=new Blob([rows.join('\n')],{type:'text/csv'});
   var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='plasmids.csv'; a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); },1000);

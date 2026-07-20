@@ -223,6 +223,25 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 .guide-note{font-size:11.5px;color:var(--text3);line-height:1.6;margin-top:24px;padding:14px 16px;
   background:var(--surface2);border-radius:10px;}
 .guide-note b{color:var(--text2);}
+/* Cell-line picker modal */
+.cf-pick-back{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;align-items:flex-start;justify-content:center;padding:48px 16px;overflow:auto;}
+.cf-pick-back.open{display:flex;}
+.cf-pick-modal{background:var(--surface);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:460px;box-shadow:var(--shadow-md);overflow:hidden;}
+.cf-pick-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:16px 18px 12px;border-bottom:1px solid var(--border);}
+.cf-pick-title{font-size:15px;font-weight:700;}
+.cf-pick-desc{font-size:11.5px;color:var(--text2);margin-top:2px;}
+.cf-pick-x{background:none;border:none;color:var(--text3);font-size:22px;line-height:1;cursor:pointer;padding:0 4px;}
+.cf-pick-x:hover{color:var(--text);}
+.cf-pick-list{max-height:52vh;overflow:auto;padding:8px;}
+.cf-pick-row{display:flex;align-items:baseline;gap:8px;width:100%;text-align:left;background:none;border:none;border-radius:8px;
+  padding:9px 12px;cursor:pointer;font-family:var(--sans);color:var(--text);}
+.cf-pick-row:hover{background:var(--surface2);}
+.cf-pick-name{font-size:14px;font-weight:600;}
+.cf-pick-sub{font-size:11px;color:var(--text3);}
+.cf-pick-rules{margin-left:auto;font-size:11px;color:var(--accent);font-family:var(--mono);flex-shrink:0;}
+.cf-pick-new{display:block;width:100%;text-align:center;background:var(--surface2);border:none;border-top:1px solid var(--border);
+  padding:12px;font-size:12.5px;font-weight:600;color:var(--accent);cursor:pointer;font-family:var(--sans);}
+.cf-pick-new:hover{background:var(--surface3);}
 </style>
 </head>
 <body>
@@ -260,6 +279,17 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 </div>
 
 <datalist id="cell-ref-list"></datalist>
+
+<div class="cf-pick-back" id="cf-pick-back">
+  <div class="cf-pick-modal">
+    <div class="cf-pick-hd">
+      <div><div class="cf-pick-title">Choose a cell line</div><div class="cf-pick-desc">From the Cell Archive. Splitting rules are applied automatically.</div></div>
+      <button class="cf-pick-x" type="button" onclick="closeCellPicker()">&times;</button>
+    </div>
+    <div class="cf-pick-list" id="cf-pick-list"></div>
+    <button class="cf-pick-new" type="button" onclick="openCellArchiveApp()">+ New line — add it in the Cell Archive first</button>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -349,6 +379,49 @@ function refLookup(name){
   var k=Object.keys(CELL_REF).filter(function(key){return key.toLowerCase()===lc;})[0];
   return k?CELL_REF[k]:null;
 }
+// Cell lines come from the shared Cell Archive (built-ins + user-added). Falls back to
+// the CELL_REF table when standalone (no parent shell).
+function benchArchive(){
+  try{ if(window.parent && window.parent.getCellArchive) return window.parent.getCellArchive()||[]; }catch(e){}
+  if(window.parent && window.parent.CELL_ARCHIVE_BUILTIN) { try{ return window.parent.CELL_ARCHIVE_BUILTIN; }catch(e){} }
+  return Object.keys(CELL_REF).map(function(k){ var r=CELL_REF[k]; return {name:k,ratio:r.ratio,intervalDays:r.intervalDays,doublingH:r.doublingH,passageLimit:r.passageLimit,media:r.media,type:r.type}; });
+}
+function archLookup(name){
+  if(!name) return null;
+  var lc=String(name).trim().toLowerCase();
+  var hit=benchArchive().filter(function(L){ return String(L.name||'').toLowerCase()===lc; })[0];
+  return hit || refLookup(name);
+}
+var _cfArch=null;   // rules of the currently-chosen base line
+function cfArchPrefill(name){
+  var ref=archLookup(name); _cfArch=ref||null; var hint=el('cf-hint'); if(!hint) return;
+  if(!ref){ hint.textContent=''; return; }
+  function fillIf(id,v){ var e=el(id); if(e && !e.value && v!=null && v!=='') e.value=v; }
+  fillIf('cf-interval', ref.intervalDays); fillIf('cf-limit', ref.passageLimit); fillIf('cf-media', ref.media);
+  hint.textContent='Rules from '+(ref.name||name)+': '+(ref.ratio||'?')+(ref.doublingH?(' · doubling ~'+ref.doublingH+'h'):'')+(ref.passageLimit?(' · limit P'+ref.passageLimit):'')+(ref.type?(' · '+ref.type):'');
+}
+// ── Cell-line picker (choose a base line already in the system) ──
+function openCellPicker(){
+  var back=el('cf-pick-back'); if(!back) return;
+  var list=el('cf-pick-list');
+  var lines=benchArchive().slice().sort(function(a,b){ return String(a.name||'').localeCompare(String(b.name||'')); });
+  list.innerHTML=lines.map(function(L){
+    var sub=[L.tissue,L.catalog].filter(Boolean).join(' · ');
+    return '<button type="button" class="cf-pick-row" onclick="pickArchLine(\''+esc(String(L.name||'').replace(/'/g,"\\'"))+'\')">'
+      +'<span class="cf-pick-name">'+esc(L.name||'')+'</span>'
+      +(sub?'<span class="cf-pick-sub">'+esc(sub)+'</span>':'')
+      +(L.ratio?'<span class="cf-pick-rules">'+esc(L.ratio)+(L.intervalDays?(' · '+L.intervalDays+'d'):'')+'</span>':'')
+    +'</button>';
+  }).join('') || '<div style="padding:14px;color:var(--text2);font-size:13px;">No cell lines yet. Add one in the Cell Archive.</div>';
+  back.classList.add('open');
+}
+function closeCellPicker(){ var b=el('cf-pick-back'); if(b) b.classList.remove('open'); }
+function pickArchLine(name){
+  var inp=el('cf-baseline'); if(inp){ inp.value=name; }
+  cfArchPrefill(name); closeCellPicker();
+  var suf=el('cf-suffix'); if(suf) suf.focus();
+}
+function openCellArchiveApp(){ closeCellPicker(); try{ if(window.parent && window.parent.openApp) window.parent.openApp('cellarchive'); else showToast('Open the Cell Archive app to add a new line'); }catch(e){ showToast('Open the Cell Archive app to add a new line'); } }
 var _toastT=null;
 function showToast(msg){ var t=el('toast'); if(!t) return; t.textContent=msg; t.classList.add('show'); clearTimeout(_toastT); _toastT=setTimeout(function(){t.classList.remove('show');},2600); }
 
@@ -384,7 +457,8 @@ function setIncView(v){ if(v!==_incView){ _incView=v; try{ localStorage.setItem(
 function toggleCell(id){ _openCell = _openCell===id ? null : id; _splitForm=null; _confirmRemove=null; renderIncubator(); }
 // Vessel visuals — the medium is phenol-red: healthy culture = RED, and it turns YELLOWER
 // (more acidic) the more urgent a split is. All native SVG/CSS.
-function _vslStops(st){ return st==='warn' ? ['#f4e04a','#f2c63c'] : (st==='soft' ? ['#efab4e','#ea8446'] : ['#e0685f','#cf474e']); }
+// ok = healthy media → deep phenol red; soft = "soon to split" → orange; warn = split due/overdue → acidic yellow.
+function _vslStops(st){ return st==='warn' ? ['#f4d94a','#eec43a'] : (st==='soft' ? ['#f0a24e','#e8843e'] : ['#d6524d','#b52f37']); }
 // Standing T-flask (matches a real tissue-culture flask: slanted shoulder + blue screw cap).
 var FLASK_BODY='M20 44 Q20 40 24 40 L48 40 L74 30 L74 92 Q74 96 70 96 L24 96 Q20 96 20 92 Z';
 function flaskSvg(id,st){ var s=_vslStops(st), g='vg_'+id, cp='cvg_'+id;
@@ -399,13 +473,22 @@ function flaskSvg(id,st){ var s=_vslStops(st), g='vg_'+id, cp='cvg_'+id;
     +'<ellipse class="vsl-sheen" cx="33" cy="55" rx="6" ry="18"/>'
     +'</svg>';
 }
-function plateSvg(id,st){ var s=_vslStops(st), g='vp_'+id;
+// Top-down culture dish with real depth: an outer wall ring (bevel-shaded), the medium
+// pool, an inner-wall shadow for thickness, a meniscus ring and a lighting sheen.
+function plateSvg(id,st){ var s=_vslStops(st), g='vp_'+id, w='vpw_'+id, d='vpd_'+id;
   return '<svg class="vsl-svg" viewBox="0 0 96 104" aria-hidden="true">'
-    +'<defs><radialGradient id="'+g+'" cx="0.42" cy="0.4" r="0.62"><stop offset="0" stop-color="'+s[0]+'"/><stop offset="1" stop-color="'+s[1]+'"/></radialGradient></defs>'
-    +'<circle class="vsl-glass" cx="48" cy="52" r="38"/>'
-    +'<circle cx="48" cy="52" r="32" fill="url(#'+g+')"/>'
-    +'<ellipse class="vsl-sheen" cx="39" cy="42" rx="15" ry="9"/>'
-    +'<circle class="vsl-rim" cx="48" cy="52" r="38"/>'
+    +'<defs>'
+      +'<radialGradient id="'+g+'" cx="0.4" cy="0.36" r="0.72"><stop offset="0" stop-color="'+s[0]+'"/><stop offset="1" stop-color="'+s[1]+'"/></radialGradient>'
+      +'<linearGradient id="'+w+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="rgba(255,255,255,.34)"/><stop offset=".5" stop-color="rgba(255,255,255,.12)"/><stop offset="1" stop-color="rgba(40,52,84,.16)"/></linearGradient>'
+      +'<radialGradient id="'+d+'" cx="0.5" cy="0.5" r="0.5"><stop offset="0.62" stop-color="rgba(0,0,0,0)"/><stop offset="1" stop-color="rgba(30,20,24,.22)"/></radialGradient>'
+    +'</defs>'
+    +'<circle cx="48" cy="54" r="41" fill="url(#'+w+')"/>'                 // dish wall / thickness
+    +'<circle class="vsl-glass" cx="48" cy="54" r="41" fill="none"/>'        // outer rim edge
+    +'<circle cx="48" cy="54" r="34" fill="url(#'+g+')"/>'                   // medium pool
+    +'<circle cx="48" cy="54" r="34" fill="url(#'+d+')"/>'                   // inner-wall shadow (depth)
+    +'<circle class="vsl-line" cx="48" cy="54" r="33" fill="none"/>'         // meniscus ring
+    +'<circle class="vsl-rim" cx="48" cy="54" r="34" fill="none"/>'          // inner wall edge
+    +'<ellipse class="vsl-sheen" cx="37" cy="43" rx="13" ry="6.5" transform="rotate(-32 37 43)"/>'
     +'</svg>';
 }
 
@@ -421,12 +504,16 @@ function cfPrefill(name){
   hint.textContent='Reference: '+ref.ratio+' · doubling ~'+ref.doublingH+'h · limit P'+ref.passageLimit+' · '+ref.type;
 }
 function saveCellForm(){
-  var line=val('cf-line').trim();
-  if(!line){ el('cf-line').focus(); showToast('Give the cell line a name'); return; }
-  var ref=refLookup(line);
+  var base=val('cf-baseline').trim();
+  if(!base){ el('cf-baseline').focus(); showToast('Choose or type a base cell line'); return; }
+  var suffix=val('cf-suffix').trim();
+  var line = suffix ? (base+' '+suffix) : base;      // display name (still governed by base rules)
+  var ref=_cfArch || archLookup(base);
   var seeded=fromDateInput(val('cf-seeded')) || Date.now();
   var cell={
     line:line,
+    baseLine:base,
+    titleSuffix:suffix,
     passage:numOr('cf-passage',0),
     vessel:val('cf-vessel').trim(),
     media:val('cf-media').trim(),
@@ -476,10 +563,18 @@ function cellFormHtml(){
   var editing = _cellForm && _cellForm!=='new';
   var c = editing ? (STORE.get().incubator[_cellForm]||{}) : {};
   var seededDefault = editing ? toDateInput(c.seeded) : toDateInput(Date.now());
+  var base = c.baseLine || c.line || '';
+  var suffix = c.titleSuffix!=null ? c.titleSuffix : '';
+  _cfArch = editing ? archLookup(base) : null;
   return '<div class="form-card">'
     +'<div class="form-title">'+(editing?'Edit culture':'New culture')+'</div>'
     +'<div class="form-grid">'
-      +'<div class="fld full"><label>Cell line</label><input id="cf-line" class="inp" list="cell-ref-list" placeholder="e.g. HEK293T" value="'+esc(c.line||'')+'" oninput="cfPrefill(this.value)"></div>'
+      +'<div class="fld full"><label>Base cell line <span style="color:var(--text3);font-weight:400;">— from the Cell Archive (drives splitting rules)</span></label>'
+        +'<div style="display:flex;gap:8px;">'
+          +'<input id="cf-baseline" class="inp" list="cell-ref-list" placeholder="e.g. HEK293" value="'+esc(base)+'" oninput="cfArchPrefill(this.value)" style="flex:1;">'
+          +'<button type="button" class="btn ghost sm" style="flex-shrink:0;" onclick="openCellPicker()">Browse…</button>'
+        +'</div></div>'
+      +'<div class="fld full"><label>Title / modification <span style="color:var(--text3);font-weight:400;">— optional (e.g. BRD4-HiBiT)</span></label><input id="cf-suffix" class="inp" placeholder="BRD4-HiBiT" value="'+esc(suffix)+'"></div>'
       +'<div class="fld"><label>Passage #</label><input id="cf-passage" class="inp" type="number" min="0" placeholder="0" value="'+(c.passage!=null?c.passage:'')+'"></div>'
       +'<div class="fld"><label>Vessel</label><input id="cf-vessel" class="inp" placeholder="T75" value="'+esc(c.vessel||'')+'"></div>'
       +'<div class="fld"><label>Split every (days)</label><input id="cf-interval" class="inp" type="number" min="1" placeholder="3" value="'+(c.intervalDays!=null?c.intervalDays:'')+'"></div>'
@@ -497,7 +592,7 @@ function cellFormHtml(){
 function renderIncubator(){
   var addBtn=el('add-cell-btn'); if(addBtn) addBtn.style.display = _cellForm ? 'none' : '';
   el('cell-form-area').innerHTML = _cellForm ? cellFormHtml() : '';
-  if(_cellForm){ var h=el('cf-line'); /* prefill hint if editing a known line */ if(h && h.value) cfPrefill(h.value); }
+  if(_cellForm){ var h=el('cf-baseline'); /* show rules hint if editing a known line */ if(h && h.value){ var _hint=el('cf-hint'); var _r=archLookup(h.value); if(_hint&&_r) _hint.textContent='Rules from '+(_r.name||h.value)+': '+(_r.ratio||'?')+(_r.doublingH?(' · doubling ~'+_r.doublingH+'h'):'')+(_r.passageLimit?(' · limit P'+_r.passageLimit):'')+(_r.type?(' · '+_r.type):''); } }
 
   var cells=STORE.get().incubator, ids=Object.keys(cells), now=Date.now();
   var rows=ids.map(function(id){ return {id:id,cell:cells[id],alerts:computeCellAlerts(cells[id],now)}; });
@@ -581,7 +676,7 @@ function renderIncubator(){
 // ── Boot ───────────────────────────────────────────────────────────────────
 (function(){
   var dl=el('cell-ref-list');
-  if(dl) dl.innerHTML=Object.keys(CELL_REF).map(function(k){return '<option value="'+esc(k)+'">';}).join('');
+  if(dl) dl.innerHTML=benchArchive().map(function(L){return '<option value="'+esc(L.name||'')+'">';}).join('');
 })();
 STORE.subscribe(function(){ renderIncubator(); });
 </script>

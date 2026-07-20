@@ -653,7 +653,13 @@ body.hub-announcing #hub-home{margin-top:98px;}
   <div id="opts-changelog" style="display:none;margin-top:10px;font-size:11px;color:var(--text2);line-height:1.6;max-width:220px;">
     <strong style="color:var(--text);font-size:12px;">v1.3.12 &mdash; 20 Jul 2026</strong><br>
     &#9679; <b>Home</b>: iPhone-style widget grid &mdash; tiles pack with no empty gaps, sizes glide when you resize, and the edit controls no longer cover the widget text; proper 2-column layout on phones<br>
-    &#9679; <b>Incubator</b>: cultures now show as <b>flasks or plates</b> (toggle) with the medium coloured by health &mdash; green when happy, red-yellow when a split is due<br>
+    &#9679; <b>Incubator</b>: cultures show as <b>flasks or plates</b> (toggle) with the medium coloured like real phenol-red &mdash; <b>deep red when healthy</b>, orange when a split is coming, yellow when it&rsquo;s due; nicer 3D dish rendering<br>
+    &#9679; <b>Incubator &times; Cell Archive</b>: add a culture by <b>picking a base line from the Cell Archive</b> (splitting rules apply automatically) plus a free-text <b>modification</b> (e.g. HEK293 &rarr; &ldquo;HEK293 BRD4-HiBiT&rdquo;); add your own lines in the Archive with an <b>ATCC/supplier link</b><br>
+    &#9679; <b>Echo &mdash; selectivity plot</b>: now fills the whole panel, has <b>editable axis limits</b>, and <b>Dmax</b> can drive selectivity too (with its own band), not just DC&#8325;&#8320;<br>
+    &#9679; <b>Blueprint</b>: <b>drag plate brackets</b> to snap them to wells, a new <b>label-size</b> control, and a fresher pastel colour palette with seeding-oriented presets<br>
+    &#9679; <b>Gel designer</b>: <b>paste a whole column of labels straight from Excel</b> to fill lanes in one go<br>
+    &#9679; <b>Plasmids</b>: the Notes field gained a <b>classic formatting bar</b> (bold / italic / size / colour / lists)<br>
+    &#9679; <b>Labbook</b>: fully in <b>English</b> now<br>
     &#9679; <b>Plasmids</b>: the <b>pJM code is clearly editable</b>; drag a <b>SnapGene .dna</b> or <b>GenBank .gb</b> file onto a plasmid to attach it (GenBank draws a live circular map); a new <b>Used in</b> list links to the experiments that use it<br>
     &#9679; <b>Labbook</b>: a proper <b>OneNote-style tabbed ribbon</b> (Inicio / Insertar / Vista) with bigger icons &amp; instant tooltips; <b>right-click any note to rename or delete</b>; everything now in a modern sans font; and <b>@</b> can insert a protocol&rsquo;s real steps, not just a link<br>
     &#9679; <b>Your data is safer</b>: an empty cloud can no longer overwrite your local tasks/cultures (it now seeds the cloud instead), and a dated <b>backup of everything</b> runs automatically once a day &mdash; export it any time from Settings<br>
@@ -2520,6 +2526,29 @@ var CELL_REF = {
   'Expi293':  { ratio:'to 0.5M/mL', intervalDays:3, doublingH:24, passageLimit:40, media:'Expi293 medium',      type:'Suspension' }
 };
 
+// Structured cell-line archive — the single machine-readable source shared by the
+// Cell Archive app (reference cards) and the Incubator's "add cell line" picker.
+// Each entry carries the splitting/passage rules so picking a line drives the culture.
+var CELL_ARCHIVE_BUILTIN = [
+  { id:'hek293',   name:'HEK293',     tissue:'Kidney (embryonic)', catalog:'CRL-1573', url:'https://www.atcc.org/products/crl-1573', morphology:'Epithelial-like, adherent (loosely attached)', media:'EMEM (ATCC 30-2003) + 10% FBS',                 doublingH:30, ratio:'1:6', intervalDays:3, passageLimit:35, type:'Adherent'   },
+  { id:'a549',     name:'A549',       tissue:'Lung',               catalog:'CCL-185',  url:'https://www.atcc.org/products/ccl-185',  morphology:'Epithelial, adherent',                        media:'F-12K (ATCC 30-2004) + 10% FBS',                doublingH:22, ratio:'1:6', intervalDays:3, passageLimit:30, type:'Adherent'   },
+  { id:'hct116',   name:'HCT116',     tissue:'Colon',              catalog:'CCL-247',  url:'https://www.atcc.org/products/ccl-247',  morphology:'Epithelial, adherent',                        media:"McCoy's 5a Modified (ATCC 30-2007) + 10% FBS",  doublingH:20, ratio:'1:6', intervalDays:3, passageLimit:30, type:'Adherent'   },
+  { id:'22rv1',    name:'22Rv1',      tissue:'Prostate',           catalog:'CRL-2505', url:'https://www.atcc.org/products/crl-2505', morphology:'Epithelial, adherent',                        media:'RPMI-1640 (ATCC 30-2001) + 10% FBS',            doublingH:38, ratio:'1:4', intervalDays:3, passageLimit:30, type:'Adherent'   },
+  { id:'lncap',    name:'LNCaP',      tissue:'Prostate',           catalog:'CRL-1740', url:'https://www.atcc.org/products/crl-1740', morphology:'Epithelial, loosely adherent',                media:'RPMI-1640 (ATCC 30-2001) + 10% FBS',            doublingH:40, ratio:'1:4', intervalDays:5, passageLimit:30, type:'Adherent'   },
+  { id:'mcf7',     name:'MCF7',       tissue:'Breast',             catalog:'HTB-22',   url:'https://www.atcc.org/products/htb-22',   morphology:'Epithelial, adherent — forms domes',          media:'EMEM (ATCC 30-2003) + 10% FBS + 0.01 mg/mL insulin', doublingH:35, ratio:'1:4', intervalDays:3, passageLimit:30, type:'Adherent'   },
+  { id:'miapaca2', name:'MIA PaCa-2', tissue:'Pancreas',           catalog:'CRL-1420', url:'https://www.atcc.org/products/crl-1420', morphology:'Epithelial, adherent (+ floating population)', media:'DMEM (ATCC 30-2002) + 10% FBS + 2.5% horse serum', doublingH:40, ratio:'1:6', intervalDays:3, passageLimit:30, type:'Adherent'   },
+  { id:'vcap',     name:'VCaP',       tissue:'Prostate',           catalog:'CRL-2876', url:'https://www.atcc.org/products/crl-2876', morphology:'Epithelial, adherent (tight clusters)',       media:'DMEM (ATCC 30-2002) + 10% FBS',                 doublingH:48, ratio:'1:2', intervalDays:10, passageLimit:25, type:'Adherent'  },
+  { id:'hap1',     name:'HAP-1',      tissue:'CML / near-haploid', catalog:'C631',     url:'https://www.horizondiscovery.com/cell-lines/c631', morphology:'Fibroblast-like, adherent',       media:'IMDM + 10% FBS',                                doublingH:24, ratio:'1:6', intervalDays:2, passageLimit:20, type:'Adherent'   },
+  { id:'sudhl5',   name:'SU-DHL-5',   tissue:'Lymphoma (DLBCL)',   catalog:'CRL-2958', url:'https://www.atcc.org/products/crl-2958', morphology:'Lymphoblast, suspension',                     media:'RPMI-1640 (ATCC 30-2001) + 10% heat-inact. FBS', doublingH:40, ratio:'1:3', intervalDays:3, passageLimit:25, type:'Suspension' }
+];
+// Combined list = built-ins + user-added lines (from JournalStore, cross-device).
+function getCellArchive(){
+  var user = JournalStore.get().cellArchive;
+  return CELL_ARCHIVE_BUILTIN.concat(Array.isArray(user) ? user : []);
+}
+window.getCellArchive = getCellArchive;
+window.CELL_ARCHIVE_BUILTIN = CELL_ARCHIVE_BUILTIN;
+
 // Given a culture, return prioritized alerts (warn first). This is the
 // "hub gives me alerts to check cell line" logic.
 function computeCellAlerts(cell, now){
@@ -2545,10 +2574,10 @@ function computeCellAlerts(cell, now){
 // Single shared store over Firebase RTDB /journal + localStorage cache.
 var JournalStore = (function(){
   var CACHE_KEY = 'hub_journal_cache';
-  var _data = { tasks:{}, incubator:{}, layout:null, shortcuts:null, accent:null, note:null, theme:null };
+  var _data = { tasks:{}, incubator:{}, layout:null, shortcuts:null, accent:null, note:null, theme:null, cellArchive:null };
   var _subs = [];
   var _ref = null, _ready = false;
-  try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && typeof c === 'object') _data = { tasks:c.tasks||{}, incubator:c.incubator||{}, layout:c.layout||null, shortcuts:c.shortcuts||null, accent:c.accent||null, note:c.note||null, theme:c.theme||null }; } catch(e){}
+  try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && typeof c === 'object') _data = { tasks:c.tasks||{}, incubator:c.incubator||{}, layout:c.layout||null, shortcuts:c.shortcuts||null, accent:c.accent||null, note:c.note||null, theme:c.theme||null, cellArchive:c.cellArchive||null }; } catch(e){}
   function _cache(){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(_data)); } catch(e){} }
   function _emit(){ _subs.slice().forEach(function(f){ try { f(_data); } catch(e){} }); }
   function _pushId(){ try { return firebase.database().ref('journal').push().key; } catch(e){ return 'loc-' + Date.now() + '-' + Math.random().toString(36).slice(2,8); } }
@@ -2567,7 +2596,7 @@ var JournalStore = (function(){
         var out = {};
         function coll(k){ var rv=v[k], lv=_data[k]; var rEmpty=!(rv&&Object.keys(rv).length), lHas=!!(lv&&Object.keys(lv).length); if(rEmpty&&lHas){ out[k]=lv; _seedKey(k); } else out[k]=rv||{}; }
         function scalar(k){ var rv=v[k], lv=_data[k]; if((rv==null)&&(lv!=null)){ out[k]=lv; _seedKey(k); } else out[k]=(rv!=null?rv:null); }
-        coll('tasks'); coll('incubator'); scalar('layout'); scalar('shortcuts'); scalar('accent'); scalar('note'); scalar('theme');
+        coll('tasks'); coll('incubator'); scalar('layout'); scalar('shortcuts'); scalar('accent'); scalar('note'); scalar('theme'); scalar('cellArchive');
         _data = out;
         _ready = true; _cache(); _emit();
       }, function(){ /* denied until private /journal rules are deployed — keep cache */ });
@@ -2589,7 +2618,8 @@ var JournalStore = (function(){
     setShortcuts: function(arr){ _data.shortcuts = arr; _cache(); _emit(); return _write('shortcuts', arr); },
     setAccent:    function(v){ _data.accent = v; _cache(); _emit(); return _write('accent', v); },
     setNote:      function(s){ _data.note = s; _cache(); return _write('note', s); },
-    setTheme:     function(t){ _data.theme = t; _cache(); return _write('theme', t); }
+    setTheme:     function(t){ _data.theme = t; _cache(); return _write('theme', t); },
+    setCellArchive: function(arr){ _data.cellArchive = arr; _cache(); _emit(); return _write('cellArchive', arr); }
   };
 })();
 

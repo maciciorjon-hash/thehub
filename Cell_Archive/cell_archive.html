@@ -127,6 +127,25 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
   .cell-tile-name{font-size:13px;}
   .guide-table th{white-space:normal;}
 }
+.cell-add-tile{border-style:dashed;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.cell-add-tile:hover{border-color:var(--accent);background:var(--accent-dim);}
+/* Add / edit modal */
+.ca-modal-back{display:none;position:fixed;inset:0;background:var(--modal-backdrop);z-index:300;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;}
+.ca-modal-back.open{display:flex;}
+.ca-modal{background:var(--surface);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:520px;box-shadow:var(--shadow-xl);padding:22px 24px;}
+.ca-modal h3{font-size:16px;font-weight:700;margin-bottom:4px;}
+.ca-modal .ca-sub{font-size:12px;color:var(--text2);margin-bottom:16px;}
+.ca-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;}
+.ca-field{display:flex;flex-direction:column;gap:4px;}
+.ca-field.full{grid-column:1/-1;}
+.ca-field label{font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:var(--text3);}
+.ca-field input,.ca-field select,.ca-field textarea{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;
+  padding:8px 10px;font-family:var(--sans);font-size:13px;color:var(--text);width:100%;}
+.ca-field input:focus,.ca-field select:focus,.ca-field textarea:focus{outline:none;border-color:var(--accent);}
+.ca-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+.ca-btn{border:1px solid var(--border2);background:var(--surface2);color:var(--text);border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+.ca-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.ca-btn:hover{filter:brightness(1.05);}
 </style>
 </head>
 <body>
@@ -483,6 +502,31 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 
 </div><!-- /content -->
 
+<div class="ca-modal-back" id="ca-modal-back">
+  <div class="ca-modal">
+    <h3>Add a cell line</h3>
+    <div class="ca-sub">Add your own line with the same handling fields. Link the ATCC / Horizon / supplier page so the source is one click away. It becomes selectable in the Incubator's "add cell line" picker.</div>
+    <div class="ca-grid">
+      <div class="ca-field"><label>Name *</label><input id="ca-f-name" placeholder="e.g. HEK293 BRD4-HiBiT"></div>
+      <div class="ca-field"><label>Tissue / origin</label><input id="ca-f-tissue" placeholder="e.g. Kidney"></div>
+      <div class="ca-field"><label>Catalog #</label><input id="ca-f-catalog" placeholder="e.g. CRL-1573"></div>
+      <div class="ca-field"><label>Catalog / ATCC URL</label><input id="ca-f-url" placeholder="https://www.atcc.org/products/..."></div>
+      <div class="ca-field full"><label>Morphology</label><input id="ca-f-morphology" placeholder="e.g. Epithelial, adherent"></div>
+      <div class="ca-field full"><label>Complete medium</label><input id="ca-f-media" placeholder="e.g. DMEM + 10% FBS"></div>
+      <div class="ca-field"><label>Doubling time (h)</label><input id="ca-f-doublingH" type="number" placeholder="24"></div>
+      <div class="ca-field"><label>Split ratio</label><input id="ca-f-ratio" placeholder="1:6"></div>
+      <div class="ca-field"><label>Split every (days)</label><input id="ca-f-intervalDays" type="number" placeholder="3"></div>
+      <div class="ca-field"><label>Passage limit</label><input id="ca-f-passageLimit" type="number" placeholder="30"></div>
+      <div class="ca-field"><label>Type</label><select id="ca-f-type"><option>Adherent</option><option>Suspension</option></select></div>
+      <div class="ca-field full"><label>Tip (optional)</label><textarea id="ca-f-tip" rows="2" placeholder="Handling notes worth knowing"></textarea></div>
+    </div>
+    <div class="ca-actions">
+      <button class="ca-btn" onclick="closeAddLine()">Cancel</button>
+      <button class="ca-btn primary" onclick="saveAddLine()">Add line</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -559,6 +603,84 @@ window.addEventListener('message', function(e){
   if(e.data === 'setTheme:dark'){ document.documentElement.setAttribute('data-theme','dark'); }
   if(e.data === 'setTheme:light'){ document.documentElement.setAttribute('data-theme','light'); }
 });
+
+/* ─── USER-ADDED CELL LINES (manual add, ATCC link, cross-device via parent store) ─── */
+function _ecEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function _caStore(){ try{ return window.parent && window.parent.JournalStore; }catch(e){ return null; } }
+function getUserLines(){
+  var s=_caStore();
+  if(s){ try{ var a=s.get().cellArchive; if(Array.isArray(a)) return a; }catch(e){} }
+  try{ var l=JSON.parse(localStorage.getItem('hub_cell_archive_user')||'[]'); return Array.isArray(l)?l:[]; }catch(e){ return []; }
+}
+function saveUserLines(arr){
+  var s=_caStore();
+  if(s && s.setCellArchive){ try{ s.setCellArchive(arr); }catch(e){} }
+  try{ localStorage.setItem('hub_cell_archive_user', JSON.stringify(arr)); }catch(e){}
+}
+function _lineCardHtml(L){
+  var rows=[
+    ['Organism / tissue', L.tissue],
+    ['Morphology', L.morphology],
+    ['Complete medium', L.media],
+    ['Doubling time', L.doublingH?('~'+L.doublingH+' h'):''],
+    ['Subculture', (L.ratio?('split '+L.ratio):'')+(L.intervalDays?((L.ratio?' · ':'')+'every ~'+L.intervalDays+' d'):'')],
+    ['Passage limit', L.passageLimit?('P'+L.passageLimit):''],
+    ['Type', L.type]
+  ].filter(function(r){return r[1];});
+  var link = L.url ? '<p style="margin-top:10px;"><a href="'+_ecEsc(L.url)+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;font-weight:600;">Catalog / ATCC page &#8599;</a></p>' : '';
+  return '<div class="cell-card" data-user="1" id="cell-full-u_'+_ecEsc(L.id)+'" style="display:none">'
+    +'<div class="card">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">'
+        +'<div><div style="font-size:20px;font-weight:700;">'+_ecEsc(L.name)+'</div>'
+          +(L.catalog?'<div style="font-family:var(--mono);font-size:12px;color:var(--text3);">'+_ecEsc(L.catalog)+'</div>':'')
+          +'<div style="font-size:11px;color:var(--text3);margin-top:2px;">Added by you</div></div>'
+        +'<button class="cell-close-btn" style="margin:0" onclick="deleteUserLine(\''+_ecEsc(L.id)+'\')">Delete</button>'
+      +'</div>'
+      +'<table class="guide-table" style="margin-top:12px;">'+rows.map(function(r){return '<tr><th>'+r[0]+'</th><td>'+_ecEsc(r[1])+'</td></tr>';}).join('')+'</table>'
+      +(L.tip?'<div class="tip-box" style="margin-top:12px;font-size:12px;color:var(--text2);"><strong>Tip.</strong> '+_ecEsc(L.tip)+'</div>':'')
+      +link
+    +'</div></div>';
+}
+function renderUserCells(){
+  var grid=document.getElementById('cell-grid');
+  var panel=document.getElementById('cell-detail-panel');
+  if(!grid||!panel) return;
+  Array.prototype.slice.call(grid.querySelectorAll('.cell-tile[data-user],.cell-add-tile')).forEach(function(n){n.remove();});
+  Array.prototype.slice.call(panel.querySelectorAll('.cell-card[data-user]')).forEach(function(n){n.remove();});
+  getUserLines().forEach(function(L){
+    var b=document.createElement('button');
+    b.className='cell-tile'; b.setAttribute('data-user','1'); b.setAttribute('data-cell','u_'+L.id);
+    b.onclick=function(){ showCellLine('u_'+L.id,b); };
+    b.innerHTML='<div class="cell-tile-tissue">'+_ecEsc(L.tissue||'&nbsp;')+'</div><div class="cell-tile-name">'+_ecEsc(L.name)+'</div><div class="cell-tile-sub">'+_ecEsc(L.catalog||'user')+'</div>';
+    grid.appendChild(b);
+    var tmp=document.createElement('div'); tmp.innerHTML=_lineCardHtml(L); panel.appendChild(tmp.firstChild);
+  });
+  var add=document.createElement('button'); add.className='cell-tile cell-add-tile'; add.setAttribute('type','button'); add.onclick=openAddLine;
+  add.innerHTML='<div style="font-size:24px;color:var(--accent);line-height:1;">+</div><div class="cell-tile-name" style="font-size:12px;margin-top:6px;">Add cell line</div>';
+  grid.appendChild(add);
+}
+function deleteUserLine(id){
+  var lines=getUserLines().filter(function(L){ return L.id!==id; });
+  saveUserLines(lines); hideCellLine(); renderUserCells();
+}
+function openAddLine(){ document.getElementById('ca-modal-back').classList.add('open'); var n=document.getElementById('ca-f-name'); if(n){ n.value=''; n.focus(); } ['tissue','catalog','url','morphology','media','doublingH','ratio','intervalDays','passageLimit','tip'].forEach(function(k){ var el=document.getElementById('ca-f-'+k); if(el) el.value=''; }); }
+function closeAddLine(){ document.getElementById('ca-modal-back').classList.remove('open'); }
+function saveAddLine(){
+  var g=function(k){ var el=document.getElementById('ca-f-'+k); return el?el.value.trim():''; };
+  var name=g('name'); if(!name){ document.getElementById('ca-f-name').focus(); return; }
+  var num=function(k){ var v=parseFloat(g(k)); return isFinite(v)?v:''; };
+  var L={ id: name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+Math.random().toString(36).slice(2,6),
+    name:name, tissue:g('tissue'), catalog:g('catalog'), url:g('url'), morphology:g('morphology'), media:g('media'),
+    doublingH:num('doublingH'), ratio:g('ratio'), intervalDays:num('intervalDays'), passageLimit:num('passageLimit'),
+    type:document.getElementById('ca-f-type').value, tip:g('tip') };
+  var lines=getUserLines(); lines.push(L); saveUserLines(lines);
+  closeAddLine(); renderUserCells(); showCellLine('u_'+L.id, null);
+}
+(function(){
+  renderUserCells();
+  var s=_caStore();
+  if(s && s.subscribe){ try{ s.subscribe(function(){ renderUserCells(); }); }catch(e){} }
+})();
 </script>
 </body>
 </html>

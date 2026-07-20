@@ -359,6 +359,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
     </button>
     <span style="font-size:11px;color:var(--text2);margin-left:4px;">Size</span>
     <input type="range" id="well-size-slider" min="0.5" max="2.0" step="0.1" value="1.0" style="width:76px;height:28px;" oninput="setUserScale(parseFloat(this.value))">
+    <span style="font-size:11px;color:var(--text2);margin-left:4px;" title="Well-label text size">Label</span>
+    <input type="range" id="label-size-slider" min="0.6" max="2.2" step="0.1" value="1.0" style="width:64px;height:28px;" title="Well-label text size" oninput="setLabelScale(parseFloat(this.value))">
   </div>
 </div>
 
@@ -374,6 +376,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
       <button class="btn btn-sec pd-tb-btn" onclick="pdAddBracket('right')">+ Right</button>
     </div>
   </div>
+  <div style="font-size:10.5px;color:var(--text3);margin-top:5px;">Tip: drag a bracket's ends (or its middle) on the plate to snap it to wells.</div>
 </div>
 
 <div class="sel-toolbar" id="sel-toolbar">
@@ -534,6 +537,14 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
         <span class="gd-sel-count" id="gd-sel-count"></span>
       </div>
       <div id="gd-wells" style="margin-bottom:10px;"></div>
+
+      <div class="gd-sect-lbl">Fill from Excel <span class="gd-sect-hint">(paste a column of labels)</span></div>
+      <textarea id="gd-bulk" class="gd-input" rows="3" placeholder="Paste one label per line, straight from an Excel column. Optionally use  Type⇥Label  (Type = sample / mw / dmso / empty)." style="width:100%;resize:vertical;font-family:var(--mono);font-size:11px;margin-bottom:6px;"></textarea>
+      <div class="gd-row" style="align-items:flex-end;gap:8px;">
+        <div class="gd-field" style="flex:0 0 92px"><label>Start at lane</label><input type="number" class="gd-input" id="gd-bulk-start" value="2" min="1"></div>
+        <button class="btn btn-sec pd-tb-btn" onclick="gdBulkFill()" style="flex:1;">Fill lanes ↧</button>
+        <button class="btn btn-sec pd-tb-btn" onclick="gdClearLabels()" title="Clear every lane label">Clear</button>
+      </div>
 
       <div class="gd-sect-lbl">Brackets</div>
       <div id="gd-brackets" style="margin-bottom:6px;"></div>
@@ -712,6 +723,33 @@ function gdInit() {
   gdRenderWells();
   gdRenderBrackets();
   gdDraw();
+}
+
+// Excel-style bulk fill: paste a column of labels (one per line) and drop them into
+// lanes top-to-bottom. Optional "type<TAB>label" per line sets the lane type too.
+function gdBulkFill() {
+  var ta = document.getElementById('gd-bulk'); if (!ta) return;
+  var raw = (ta.value || '').replace(/\r/g, '');
+  if (!raw.trim()) return;
+  var lines = raw.split('\n');
+  var startInp = document.getElementById('gd-bulk-start');
+  var j = Math.max(0, (parseInt(startInp && startInp.value, 10) || 1) - 1);
+  for (var i = 0; i < lines.length && j < gdWells.length; i++, j++) {
+    var ln = lines[i];
+    if (ln.trim() === '') { continue; }   // blank line = skip this lane, keep it empty-labelled
+    var parts = ln.split('\t');
+    if (parts.length >= 2 && /^(sample|mw|dmso|empty)$/i.test(parts[0].trim())) {
+      gdWells[j].type = parts[0].trim().toLowerCase();
+      gdWells[j].label = parts.slice(1).join(' ').trim();
+    } else {
+      gdWells[j].label = ln.trim();
+    }
+  }
+  gdRenderWells(); gdDraw();
+}
+function gdClearLabels() {
+  for (var i = 0; i < gdWells.length; i++) { if (gdWells[i].type !== 'mw') gdWells[i].label = ''; }
+  gdRenderWells(); gdDraw();
 }
 
 function gdRenderWells() {
@@ -1336,21 +1374,22 @@ const FORMATS = {
   '384': {rows:16, cols:24, wellPx:16,  gap:2},
 };
 const ROWS_ALL = 'ABCDEFGHIJKLMNOP'.split('');
+// Seed-map oriented presets (what you're plating) — soft pastel tones. All fully
+// renamable / recolourable / removable; add your own with "+ New type".
 const WELL_TYPES = [
-  {id:'sample',  name:'Sample',       color:'#5e87c5'},
-  {id:'treat',   name:'Treatment',    color:'#51c3ce'},
-  {id:'cells',   name:'Cells',        color:'#e36c69'},
-  {id:'posctrl', name:'Pos. Control', color:'#816baf'},
-  {id:'negctrl', name:'Neg. Control', color:'#ffbf7b'},
-  {id:'blank',   name:'Blank/Media',  color:'#c5c5c5'},
-  {id:'dmso',    name:'DMSO',         color:'#a56983'},
+  {id:'cells',   name:'Cells',        color:'#9fc3e8'},
+  {id:'compound',name:'Compound',     color:'#8fd3d8'},
+  {id:'dose',    name:'Dose series',  color:'#b9a9e0'},
+  {id:'vehicle', name:'Vehicle/DMSO', color:'#f4b98f'},
+  {id:'control', name:'Control',      color:'#f2a3a1'},
+  {id:'blank',   name:'Blank/Media',  color:'#d2d5dd'},
 ];
 const MAX_WP = {'6':160,'12':120,'24':88,'48':64,'96':52,'384':20};
 const LABEL_W = 24, LABEL_H = 20;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let currentFormat = '96';
-let activeTypeId = 'treat';
+let activeTypeId = 'compound';
 let wellState = {};
 let selection = new Set();
 let lastClickedWell = null;
@@ -1366,6 +1405,8 @@ var pdBrackets = [];
 var pdDilAutoUnit = false;
 var userScale = 1.0;
 var _userScaledManually = false;
+var pdLabelScale = 1.0;   // user multiplier for well-label / header text size
+function setLabelScale(v){ pdLabelScale = v||1; try{ localStorage.setItem('pd_labelScale', String(pdLabelScale)); }catch(e){} const c=document.getElementById('plate-canvas-main'); if(c) drawPlateCanvas(c); }
 
 function allTypes() { return [...WELL_TYPES, ...customTypes]; }
 function typeById(id) { return allTypes().find(t => t.id === id); }
@@ -1407,7 +1448,7 @@ function moveActiveWell(dri, dci, shiftKey) {
 }
 
 // ─── Nature palette ───────────────────────────────────────────────────────────
-const NATURE_COLORS = ['#e36c69','#51c3ce','#5e87c5','#c5c5c5','#ffbf7b','#816baf','#a56983'];
+const NATURE_COLORS = ['#f2a3a1','#8fd3d8','#9fc3e8','#b9a9e0','#f4b98f','#a9dcae','#f4d68a','#e6a9c9','#d2d5dd','#a6b3c9'];
 
 // ─── Color picker ─────────────────────────────────────────────────────────────
 function _hex2rgb(h){h=h.replace('#','');if(h.length===3)h=h.split('').map(c=>c+c).join('');const n=parseInt(h,16);return{r:(n>>16)&0xff,g:(n>>8)&0xff,b:n&0xff};}
@@ -1946,7 +1987,7 @@ function drawPlateCanvas(canvas, opts) {
   const bgColor = isDark ? '#0d0f14' : '#f4f5f8';
   const accentColor = '#5e87c5';
   const is384 = currentFormat === '384';
-  const fontSize = Math.max(7, Math.min(10, wellPx * 0.55));
+  const fontSize = Math.max(7, Math.min(10, wellPx * 0.55)) * pdLabelScale;
 
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = true;
@@ -1963,8 +2004,10 @@ function drawPlateCanvas(canvas, opts) {
   // Grouped (merged-label) wells are excluded since their label is rendered once, much larger,
   // across the whole group's bounding box — including them here would shrink every other label.
   const _wellFont = '"IBM Plex Sans",sans-serif';
-  let _consistentFontSz = Math.min(10, wellPx / 4);
-  if (wellPx >= 16 && Object.keys(wellState).length) {
+  let _consistentFontSz = Math.min(10, wellPx / 4) * pdLabelScale;
+  // Auto shrink-to-fit only when the user hasn't scaled labels UP — if they explicitly
+  // enlarged the label size, honour it even if it slightly overflows the well.
+  if (pdLabelScale <= 1 && wellPx >= 16 && Object.keys(wellState).length) {
     const _maxW = wellPx * 0.82;
     for (const ws of Object.values(wellState)) {
       if (ws && ws.label && !ws.groupId) {
@@ -2174,6 +2217,64 @@ function drawPlateCanvas(canvas, opts) {
   }
 }
 
+// ── Bracket drag-and-snap ──────────────────────────────────────────────────
+var _pdBrackDrag = null;   // {i, end:'from'|'to'|'move', span}
+// Endpoint pixel positions for a bracket, matching the draw geometry exactly.
+function _pdBracketEnds(canvas, b) {
+  const m = canvas._meta; if (!m) return null;
+  const ox = m.ox||0, oy = m.oy||0, {labelW,labelH,wellPx,gap,rows,cols} = m;
+  const PB_W = m.PB_W||20, PB_H = m.PB_H||22, lv = b.level||1;
+  const f = Math.min(b.from,b.to)-1, t = Math.max(b.from,b.to)-1;
+  const wellsEndX = ox + labelW + cols*(wellPx+gap) - gap;
+  const wellsEndY = oy + labelH + rows*(wellPx+gap) - gap;
+  if (b.side==='top' || b.side==='bottom') {
+    const x1 = ox+labelW + f*(wellPx+gap);
+    const x2 = ox+labelW + t*(wellPx+gap) + wellPx;
+    const ly = b.side==='top' ? (oy - (lv-1)*PB_H - 8) : (wellsEndY + (lv-1)*PB_H + 8);
+    return {a:{x:x1,y:ly}, b:{x:x2,y:ly}, horiz:true};
+  } else {
+    const y1 = oy+labelH + f*(wellPx+gap);
+    const y2 = oy+labelH + t*(wellPx+gap) + wellPx;
+    const lx = b.side==='left' ? (ox - (lv-1)*PB_W - 8) : (wellsEndX + (lv-1)*PB_W + 8);
+    return {a:{x:lx,y:y1}, b:{x:lx,y:y2}, horiz:false};
+  }
+}
+function pdBracketHitTest(canvas, clientX, clientY) {
+  if (!canvas._meta || !pdBrackets.length) return null;
+  const rect = canvas.getBoundingClientRect();
+  const mx = clientX-rect.left, my = clientY-rect.top, R = 9;
+  for (let i = pdBrackets.length-1; i >= 0; i--) {
+    const ends = _pdBracketEnds(canvas, pdBrackets[i]); if (!ends) continue;
+    if (Math.hypot(mx-ends.a.x, my-ends.a.y) <= R) return {i, end:'from'};
+    if (Math.hypot(mx-ends.b.x, my-ends.b.y) <= R) return {i, end:'to'};
+    // near the line body → move whole bracket
+    if (ends.horiz && Math.abs(my-ends.a.y) <= R && mx > Math.min(ends.a.x,ends.b.x) && mx < Math.max(ends.a.x,ends.b.x)) return {i, end:'move'};
+    if (!ends.horiz && Math.abs(mx-ends.a.x) <= R && my > Math.min(ends.a.y,ends.b.y) && my < Math.max(ends.a.y,ends.b.y)) return {i, end:'move'};
+  }
+  return null;
+}
+function _pdColAt(canvas, mx) { const m=canvas._meta, ox=m.ox||0; return Math.max(0, Math.min(m.cols-1, Math.floor((mx-(ox+m.labelW))/(m.wellPx+m.gap)))); }
+function _pdRowAt(canvas, my) { const m=canvas._meta, oy=m.oy||0; return Math.max(0, Math.min(m.rows-1, Math.floor((my-(oy+m.labelH))/(m.wellPx+m.gap)))); }
+function pdBracketDragTo(canvas, e) {
+  if (!_pdBrackDrag) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+  const b = pdBrackets[_pdBrackDrag.i]; if (!b) return;
+  const horiz = (b.side==='top'||b.side==='bottom');
+  const maxN = horiz ? canvas._meta.cols : canvas._meta.rows;
+  const idx = (horiz ? _pdColAt(canvas,mx) : _pdRowAt(canvas,my)) + 1;   // 1-based well index
+  if (_pdBrackDrag.end === 'from') b.from = idx;
+  else if (_pdBrackDrag.end === 'to') b.to = idx;
+  else { // move: keep span, shift both
+    const span = _pdBrackDrag.span;
+    let nf = idx, nt = idx + span;
+    if (nt > maxN) { nt = maxN; nf = maxN - span; }
+    if (nf < 1) { nf = 1; nt = 1 + span; }
+    b.from = nf; b.to = nt;
+  }
+  drawPlateCanvas(canvas);
+}
+
 function getCanvasZone(canvas, e) {
   if (!canvas._meta) return {type:'none'};
   const {labelW, labelH, wellPx, gap, rows, cols} = canvas._meta;
@@ -2306,6 +2407,8 @@ function wireCanvasEvents(canvas) {
     canvas.focus();
     down = true; moved = false;
     downPos = {x: e.clientX, y: e.clientY};
+    const _bh = pdBracketHitTest(canvas, e.clientX, e.clientY);
+    if (_bh) { const _b = pdBrackets[_bh.i]; _pdBrackDrag = {i:_bh.i, end:_bh.end, span: Math.abs(_b.to-_b.from)}; dragMode = 'bracket'; e.preventDefault(); return; }
     const zone = getCanvasZone(canvas, e);
     if (zone.type === 'row-label') { selectRow(zone.row); down = false; return; }
     if (zone.type === 'col-label') { selectColumn(zone.col); down = false; return; }
@@ -2321,6 +2424,8 @@ function wireCanvasEvents(canvas) {
   });
 
   canvas.addEventListener('mousemove', e => {
+    if (!down && pdBracketHitTest(canvas, e.clientX, e.clientY)) { canvas.style.cursor = 'grab'; _wellTip.style.display='none'; return; }
+    if (canvas.style.cursor === 'grab') canvas.style.cursor = '';
     const zone = getCanvasZone(canvas, e);
     if (zone.type === 'well') {
       const ws = wellState[zone.id], t = ws ? typeById(ws.typeId) : null;
@@ -2334,6 +2439,7 @@ function wireCanvasEvents(canvas) {
   // Drag tracking lives on document, not canvas, so a selection in progress
   // keeps extending even if the cursor momentarily leaves the plate bounds.
   function onDocMouseMove(e) {
+    if (dragMode === 'bracket' && _pdBrackDrag) { moved = true; pdBracketDragTo(canvas, e); return; }
     if (!down) return;
     const dx = e.clientX - downPos.x, dy = e.clientY - downPos.y;
     if (!moved && dx*dx + dy*dy > 64) moved = true;
@@ -2369,6 +2475,7 @@ function wireCanvasEvents(canvas) {
   });
 
   function onMouseUp(e) {
+    if (dragMode === 'bracket') { _pdBrackDrag = null; dragMode = null; down = false; moved = false; pdRenderBrackets(); drawPlateCanvas(canvas); return; }
     if (!down) return;
     down = false; hideRubberBand();
     if (dragMode === 'rb' && moved && rbStart) {
@@ -3040,6 +3147,7 @@ function ldHistLoadEntry(id) {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 // Load saved well shape preference
 try { wellShape = localStorage.getItem('pd_wellShape') || 'circle'; } catch(e) {}
+try { var _ls=parseFloat(localStorage.getItem('pd_labelScale')); if(isFinite(_ls)&&_ls>0){ pdLabelScale=_ls; var _lss=document.getElementById('label-size-slider'); if(_lss) _lss.value=String(_ls); } } catch(e) {}
 
 // Close color picker on outside click
 document.addEventListener('mousedown', function(e) {
