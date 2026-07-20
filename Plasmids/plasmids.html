@@ -102,6 +102,37 @@ header{border-bottom:1px solid var(--border);padding:0 22px;display:flex;align-i
 .map-actions button{flex:1;background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:7px;font-family:var(--sans);font-size:11.5px;cursor:pointer;}
 .map-actions button:hover{background:var(--surface2);color:var(--text);}
 .map-hint{font-size:10.5px;color:var(--text3);margin-top:9px;line-height:1.5;}
+/* editable code affordance */
+.pl-code-row{display:flex;align-items:center;gap:7px;border:1px solid transparent;border-radius:8px;padding:2px 6px;margin:-2px -6px 2px;transition:border-color .15s,background .15s;}
+.pl-code-row:hover,.pl-code-row:focus-within{border-color:var(--border2);background:var(--surface2);}
+.pl-code-pen{width:14px;height:14px;color:var(--text3);flex-shrink:0;opacity:0;transition:opacity .15s;}
+.pl-code-row:hover .pl-code-pen,.pl-code-row:focus-within .pl-code-pen{opacity:.75;}
+/* GenBank circular map + drop states */
+.map-drop.drag{border-color:var(--accent);background:var(--accent-dim);}
+.map-drop.has-map{border-style:solid;padding:8px;cursor:default;background:var(--surface2);}
+.pm-svg{width:100%;height:auto;display:block;}
+.pm-ring{stroke:var(--border2);stroke-width:1;}
+.pm-title{fill:var(--text);font-family:var(--sans);font-size:13px;font-weight:700;}
+.pm-len{fill:var(--text3);font-family:var(--sans);font-size:9.5px;}
+.pm-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:10px;}
+.pm-leg{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text2);}
+.pm-leg i{width:10px;height:10px;border-radius:3px;display:inline-block;flex-shrink:0;}
+/* attached-file chip */
+.map-file{display:flex;align-items:center;gap:8px;margin-top:10px;padding:7px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;}
+.mf-ico{font-family:var(--sans);font-size:9px;font-weight:800;letter-spacing:.5px;color:#fff;background:var(--accent);border-radius:5px;padding:3px 5px;flex-shrink:0;}
+.mf-name{flex:1;min-width:0;font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mf-dl,.mf-rm{background:none;border:none;color:var(--text3);cursor:pointer;padding:3px;border-radius:6px;flex-shrink:0;line-height:1;}
+.mf-dl svg{width:15px;height:15px;display:block;}
+.mf-rm{font-size:16px;}
+.mf-dl:hover{color:var(--accent);background:var(--surface3);}
+.mf-rm:hover{color:var(--danger);background:var(--surface3);}
+/* used-in chips */
+.pl-used{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
+.pl-used-lbl{font-size:9.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;}
+.pl-used-chips{display:flex;flex-wrap:wrap;gap:7px;}
+.pl-used-chip{font-family:var(--sans);font-size:12px;font-weight:600;background:var(--accent-dim);color:var(--accent);border:none;border-radius:7px;padding:5px 10px;cursor:pointer;transition:filter .15s;}
+.pl-used-chip:hover{filter:brightness(1.08);}
+.pl-used-empty{font-size:11.5px;color:var(--text3);line-height:1.5;}
 
 /* lightbox */
 .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:200;display:none;align-items:center;justify-content:center;padding:30px;cursor:zoom-out;}
@@ -170,7 +201,7 @@ function setSync(ok){ var d=el('sync-dot'); if(d) d.classList.toggle('ok',ok); }
 function saveLocal(){
   try{ localStorage.setItem('hub_plasmids', JSON.stringify(DATA)); }
   catch(e){ // quota: drop images from the local cache, keep metadata (images stay in Firebase)
-    try{ var lite={plasmids:{},updated:DATA.updated}; Object.keys(DATA.plasmids).forEach(function(k){ var p=Object.assign({},DATA.plasmids[k]); delete p.mapImage; lite.plasmids[k]=p; }); localStorage.setItem('hub_plasmids', JSON.stringify(lite)); }catch(e2){}
+    try{ var lite={plasmids:{},updated:DATA.updated}; Object.keys(DATA.plasmids).forEach(function(k){ var p=Object.assign({},DATA.plasmids[k]); delete p.mapImage; delete p.mapFile; lite.plasmids[k]=p; }); localStorage.setItem('hub_plasmids', JSON.stringify(lite)); }catch(e2){}
   }
 }
 function save(){
@@ -228,6 +259,94 @@ function renderList(){
 }
 function selectP(id){ SEL=id; renderAll(); }
 
+// ── Map files: drag-drop SnapGene (.dna) / GenBank (.gb) / image ─────────────
+function handleMapDrop(file){
+  var p=_cur(); if(!p||!file) return;
+  var name=file.name||'', ext=(name.split('.').pop()||'').toLowerCase();
+  if(file.type && file.type.indexOf('image')===0){ compressImage(file,function(uri){ p.mapImage=uri; p.mapName=name; p.updated=Date.now(); save(); renderAll(); }); return; }
+  if(ext==='gb'||ext==='gbk'||ext==='genbank'||ext==='ape'||ext==='txt'){
+    var rt=new FileReader(); rt.onload=function(){ var gb=parseGenBank(String(rt.result||''));
+      var rd=new FileReader(); rd.onload=function(){ p.mapFile=String(rd.result||''); p.mapFileName=name; p.mapFileKind='genbank'; p.mapGb=gb||null; p.updated=Date.now(); save(); renderAll(); };
+      rd.readAsDataURL(file); };
+    rt.readAsText(file); return;
+  }
+  if(ext==='dna'){ var rd=new FileReader(); rd.onload=function(){ p.mapFile=String(rd.result||''); p.mapFileName=name; p.mapFileKind='snapgene'; p.mapGb=null; p.updated=Date.now(); save(); renderAll(); }; rd.readAsDataURL(file); return; }
+  // unknown → try as text/genbank
+  var rd2=new FileReader(); rd2.onload=function(){ var gb=parseGenBank(String(rd2.result||'')); if(gb){ p.mapFile=''; p.mapFileName=name; p.mapFileKind='genbank'; p.mapGb=gb; p.updated=Date.now(); save(); renderAll(); } }; rd2.readAsText(file);
+}
+function downloadMapFile(){ var p=_cur(); if(!p||!p.mapFile) return; var a=document.createElement('a'); a.href=p.mapFile; a.download=p.mapFileName||'plasmid-file'; document.body.appendChild(a); a.click(); a.remove(); }
+function removeMapFile(){ var p=_cur(); if(!p) return; delete p.mapFile; delete p.mapFileName; delete p.mapFileKind; delete p.mapGb; p.updated=Date.now(); save(); renderAll(); }
+
+// Minimal GenBank parser → {name,length,circular,features:[{type,start,end,strand,label}]}
+function parseGenBank(text){
+  if(!text || text.indexOf('LOCUS')<0) return null;
+  var lines=text.split(/\r?\n/), out={name:'',length:0,circular:false,features:[]};
+  var lm=(lines[0]||'').match(/^LOCUS\s+(\S+)\s+(\d+)\s*bp/i);
+  if(lm){ out.name=lm[1]; out.length=parseInt(lm[2],10)||0; }
+  if(/\bcircular\b/i.test(lines[0]||'')) out.circular=true;
+  var inFeat=false, cur=null;
+  function push(){ if(cur && cur.start && cur.end) out.features.push(cur); cur=null; }
+  for(var i=0;i<lines.length;i++){ var ln=lines[i];
+    if(/^FEATURES/.test(ln)){ inFeat=true; continue; }
+    if(!inFeat) continue;
+    if(/^ORIGIN|^\/\/|^[A-Z]/.test(ln)){ push(); break; }
+    var fk=ln.match(/^ {5}(\S+)\s+(.+)$/);
+    if(fk){ push(); var loc=fk[2], strand=/complement/.test(loc)?-1:1, nums=loc.match(/<?(\d+)\.\.>?(\d+)/), s=0,e=0;
+      if(nums){ s=parseInt(nums[1],10); e=parseInt(nums[2],10); } else { var one=loc.match(/(\d+)/); if(one){ s=parseInt(one[1],10); e=s; } }
+      cur={type:fk[1],start:s,end:e,strand:strand,label:''};
+    } else if(cur){ var q=ln.match(/^\s+\/(?:label|gene|product|note)=?"?([^"]+)"?/); if(q && !cur.label) cur.label=q[1].replace(/"+$/,'').slice(0,28); }
+  }
+  push();
+  if(!out.length){ out.features.forEach(function(f){ if(f.end>out.length) out.length=f.end; }); }
+  return out.length ? out : null;
+}
+var FCOL={CDS:'#5e87c5',gene:'#4f9d8f',promoter:'#e0906a',terminator:'#c98fc0',rep_origin:'#f0b060',oriT:'#f0b060',misc_feature:'#8ba7e0',primer_bind:'#a6d98f','5\'UTR':'#c5b0e0','3\'UTR':'#c5b0e0',polyA_signal:'#d9a0b0',protein_bind:'#7fd0c0'};
+function _fcol(t){ return FCOL[t]||'#9aa0b8'; }
+function _polar(cx,cy,r,deg){ var a=(deg-90)*Math.PI/180; return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; }
+function _arcPath(cx,cy,r1,r2,a0,a1){ var large=((a1-a0)%360)>180?1:0; var p1=_polar(cx,cy,r2,a0),p2=_polar(cx,cy,r2,a1),p3=_polar(cx,cy,r1,a1),p4=_polar(cx,cy,r1,a0);
+  return 'M'+p1[0].toFixed(1)+' '+p1[1].toFixed(1)+' A'+r2+' '+r2+' 0 '+large+' 1 '+p2[0].toFixed(1)+' '+p2[1].toFixed(1)+' L'+p3[0].toFixed(1)+' '+p3[1].toFixed(1)+' A'+r1+' '+r1+' 0 '+large+' 0 '+p4[0].toFixed(1)+' '+p4[1].toFixed(1)+' Z'; }
+function plasmidMapSvg(gb,title){
+  var cx=120,cy=120,L=gb.length||1;
+  var segs=gb.features.filter(function(f){return f.type!=='source';}).slice(0,80).map(function(f){
+    var a0=(f.start/L)*360, a1=(f.end/L)*360; if(a1<=a0) a1=a0+0.8;
+    var out=f.strand<0, r1=out?72:76, r2=out?86:90;
+    return '<path d="'+_arcPath(cx,cy,r1,r2,a0,a1)+'" fill="'+_fcol(f.type)+'" opacity=".92"><title>'+esc((f.label||f.type)+' · '+f.start+'..'+f.end+(f.strand<0?' (–)':' (+)'))+'</title></path>';
+  }).join('');
+  var ring='<circle cx="120" cy="120" r="81" fill="none" class="pm-ring"/>';
+  var center='<text x="120" y="115" text-anchor="middle" class="pm-title">'+esc(String(title||'').slice(0,18))+'</text><text x="120" y="133" text-anchor="middle" class="pm-len">'+L+' bp'+(gb.circular?' · circular':'')+'</text>';
+  return '<svg class="pm-svg" viewBox="0 0 240 240">'+ring+segs+center+'</svg>';
+}
+function _mapLegend(gb){
+  var seen={}, order=[];
+  gb.features.forEach(function(f){ if(f.type!=='source' && !seen[f.type]){ seen[f.type]=1; order.push(f.type); } });
+  if(!order.length) return '';
+  return '<div class="pm-legend">'+order.slice(0,8).map(function(t){ return '<span class="pm-leg"><i style="background:'+_fcol(t)+'"></i>'+esc(t)+'</span>'; }).join('')+'</div>';
+}
+
+// ── "Used in" — experiments in Labbook that reference this plasmid ───────────
+function plasmidUsedIn(code){
+  code=String(code||'').trim(); if(!code) return [];
+  var lb=null; try{ lb=JSON.parse(localStorage.getItem('hub_labbook')||'null'); }catch(e){}
+  if(!lb || !lb.experiments) return [];
+  var lc=code.toLowerCase(), out=[], rePid=new RegExp('data-pid="'+code.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'"','i');
+  Object.keys(lb.experiments).forEach(function(k){ var e=lb.experiments[k]; if(!e) return;
+    var hit=false;
+    if(e.plasmids && String(e.plasmids).toLowerCase().indexOf(lc)>=0) hit=true;
+    if(!hit && e.html && rePid.test(e.html)) hit=true;
+    if(!hit && e.blocks){ for(var i=0;i<e.blocks.length;i++){ if(e.blocks[i].html && rePid.test(e.blocks[i].html)){ hit=true; break; } } }
+    if(hit) out.push({id:k, code:e.code||'', title:e.title||''});
+  });
+  return out;
+}
+function _usedInHtml(p){
+  var used=plasmidUsedIn(p.code);
+  var body = used.length
+    ? '<div class="pl-used-chips">'+used.map(function(u){ return '<button class="pl-used-chip" onclick="openLabbookExp(\''+u.id+'\')" title="Open in Labbook">'+esc(u.code||u.title||'experiment')+'</button>'; }).join('')+'</div>'
+    : '<div class="pl-used-empty">Not referenced in any experiment yet. Mention it in Labbook with <b>@'+esc(p.code||'pJM…')+'</b>.</div>';
+  return '<div class="pl-used"><div class="pl-used-lbl">Used in</div>'+body+'</div>';
+}
+function openLabbookExp(id){ try{ if(window.parent && window.parent.openApp) window.parent.openApp('labbook', undefined, id); }catch(e){} }
+
 // ── Render editor ───────────────────────────────────────────────────────────
 function renderEditor(){
   var host=el('editor'); var p=_cur();
@@ -235,7 +354,7 @@ function renderEditor(){
   var statusOpts=STATUSES.map(function(s){return '<option value="'+s[0]+'"'+(s[0]===p.status?' selected':'')+'>'+s[1]+'</option>';}).join('');
   var info=
     '<div class="card">'
-      +'<input class="pl-code-in" value="'+esc(p.code||'')+'" spellcheck="false" onchange="setF(\'code\',this.value)">'
+      +'<div class="pl-code-row"><input class="pl-code-in" value="'+esc(p.code||'')+'" spellcheck="false" title="Click to rename the plasmid code" onchange="setF(\'code\',this.value)"><svg class="pl-code-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>'
       +'<input class="pl-name-in" value="'+esc(p.name||'')+'" placeholder="Plasmid name / description" onchange="setF(\'name\',this.value)">'
       +'<div class="fields">'
         +'<div class="fld"><label>Backbone / vector</label><input value="'+esc(p.backbone||'')+'" placeholder="pRK5, PX458…" onchange="setF(\'backbone\',this.value)"></div>'
@@ -248,15 +367,22 @@ function renderEditor(){
         +'<div class="fld full"><label>Sequencing</label><input value="'+esc(p.seq||'')+'" placeholder="Sanger + Plasmidsaurus OK; 1 N deletion in…" onchange="setF(\'seq\',this.value)"></div>'
         +'<div class="fld full"><label>Notes</label><textarea onchange="setF(\'notes\',this.value)" placeholder="Anything worth remembering…">'+esc(p.notes||'')+'</textarea></div>'
       +'</div>'
+      +_usedInHtml(p)
       +'<button class="del-btn" onclick="delPlasmid(\''+p.id+'\')">Delete plasmid</button>'
     +'</div>';
+  var mapInner, mapCls='', mapClick='pickMap()';
+  if(p.mapGb && p.mapGb.features){ mapInner=plasmidMapSvg(p.mapGb, p.name||p.code); mapCls=' has-map'; mapClick=''; }
+  else if(p.mapImage){ mapInner='<img src="'+esc(p.mapImage)+'" alt="map">'; mapCls=' has-img'; mapClick='openLightbox()'; }
+  else { mapInner='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.5"/></svg><div>Drop a SnapGene <b>.dna</b>, GenBank <b>.gb</b> or image — or click to upload an image</div>'; }
+  var fileChip = p.mapFile ? '<div class="map-file"><span class="mf-ico">'+(p.mapFileKind==='genbank'?'GB':'DNA')+'</span><span class="mf-name" title="'+esc(p.mapFileName||'')+'">'+esc(p.mapFileName||'attached file')+'</span><button class="mf-dl" title="Download" onclick="downloadMapFile()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg></button><button class="mf-rm" title="Remove file" onclick="removeMapFile()">×</button></div>' : '';
+  var legend = (p.mapGb && p.mapGb.features) ? _mapLegend(p.mapGb) : '';
   var map=
     '<div class="map-card"><div class="map-hd">Plasmid map</div>'
-      +'<div class="map-drop'+(p.mapImage?' has-img':'')+'" onclick="'+(p.mapImage?'openLightbox()':'pickMap()')+'">'
-        +(p.mapImage?('<img src="'+esc(p.mapImage)+'" alt="map">'):'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="8.5" cy="8.5" r="1.5"/></svg><div>Click to upload a SnapGene map</div>')
-      +'</div>'
-      +'<div class="map-actions"><button onclick="pickMap()">'+(p.mapImage?'Replace':'Upload')+'</button>'+(p.mapImage?'<button onclick="removeMap()">Remove</button>':'')+'</div>'
-      +'<div class="map-hint">Export your map from SnapGene as PNG/SVG and drop it here. Stored in your notebook DB (compressed).</div>'
+      +'<div class="map-drop'+mapCls+'"'+(mapClick?(' onclick="'+mapClick+'"'):'')+'>'+mapInner+'</div>'
+      +legend
+      +fileChip
+      +'<div class="map-actions"><button onclick="pickMap()">'+(p.mapImage?'Replace image':'Upload image')+'</button>'+(p.mapImage?'<button onclick="removeMap()">Remove image</button>':'')+'</div>'
+      +'<div class="map-hint">Drag a SnapGene <b>.dna</b> or GenBank <b>.gb/.gbk</b> file here to attach it (GenBank draws a live map). SnapGene <b>.dna</b> is stored &amp; downloadable. Or drop/upload a PNG/SVG image.</div>'
     +'</div>';
   host.innerHTML='<div class="ed-wrap"><div class="ed-cols"><div>'+info+'</div><div>'+map+'</div></div></div>';
 }
@@ -301,6 +427,10 @@ function exportCSV(){
 }
 
 function renderAll(){ renderList(); renderEditor(); }
+// Delegated drag-drop onto the map area (attach once; the editor re-renders on every change)
+document.addEventListener('dragover', function(e){ var d=e.target.closest&&e.target.closest('.map-drop'); if(d){ e.preventDefault(); d.classList.add('drag'); } });
+document.addEventListener('dragleave', function(e){ var d=e.target.closest&&e.target.closest('.map-drop'); if(d) d.classList.remove('drag'); });
+document.addEventListener('drop', function(e){ var d=e.target.closest&&e.target.closest('.map-drop'); if(!d) return; e.preventDefault(); d.classList.remove('drag'); var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) handleMapDrop(f); });
 renderAll();
 initSync();
 </script>
