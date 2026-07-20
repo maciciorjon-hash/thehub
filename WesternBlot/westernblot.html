@@ -1955,6 +1955,34 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
 .hist-del{background:none;border:none;color:var(--text3);font-size:17px;line-height:1;cursor:pointer;padding:4px 9px;border-radius:6px;flex-shrink:0;}
 .hist-del:hover{color:#d9534f;background:var(--surface2);}
 .hist-empty{padding:40px 20px;text-align:center;color:var(--text3);font-size:13px;line-height:1.6;}
+.preset-add{display:flex;gap:8px;padding:8px;border-bottom:1px solid var(--border);margin-bottom:6px;}
+.preset-add input{flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;font-family:var(--sans);font-size:12.5px;color:var(--text);}
+
+/* ribbon (classic formatting bar, shared pattern with Labbook/Plasmids) */
+#ribbon-bar{gap:5px;}
+.brb-swatch{width:18px;height:18px;border-radius:5px;border:1px solid var(--border2);cursor:pointer;flex-shrink:0;}
+.brb-swatch:hover{transform:scale(1.12);}
+#ribbon-bar select{background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:5px 7px;font-family:var(--sans);font-size:12px;color:var(--text);}
+
+/* lane width drag dividers */
+.lane-row{position:relative;}
+.lane-divider{position:absolute;top:-4px;bottom:-4px;width:9px;margin-left:-4.5px;cursor:col-resize;z-index:5;}
+.lane-divider::after{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--border2);transform:translateX(-50%);opacity:0;transition:opacity .12s;}
+.lane-divider:hover::after,.lane-divider.active::after{opacity:1;background:var(--accent);width:2px;}
+
+/* panel box resize handle */
+.panel-resize-handle{position:absolute;left:0;right:0;bottom:-5px;height:10px;cursor:ns-resize;z-index:6;}
+.panel-resize-handle::after{content:'';position:absolute;left:50%;bottom:3px;width:28px;height:3px;margin-left:-14px;border-radius:2px;background:rgba(20,24,32,.35);opacity:0;transition:opacity .12s;}
+.panel-blot:hover .panel-resize-handle::after{opacity:1;}
+.blot-img{cursor:move;}
+
+/* print / PDF export */
+#print-root{display:none;}
+@media print{
+  body.printing > *:not(#print-root){display:none!important;}
+  body.printing #print-root{display:block!important;}
+  .panel-tools,.panel-resize-handle,.lane-divider,.grp-h,.grp-del{display:none!important;}
+}
 
 .menu{position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:9px;box-shadow:var(--shadow-md);padding:5px;z-index:250;display:none;min-width:150px;}
 .menu.open{display:block;}
@@ -1985,11 +2013,23 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
       <option value="ang">Angled</option>
       <option value="horiz">Horizontal</option>
     </select>
+    <select id="tb-labelpos" onchange="setLaneLabelPos(this.value)" title="Where the lane labels + group bracket sit">
+      <option value="top" selected>Top</option>
+      <option value="bottom">Bottom</option>
+    </select>
   </div>
+  <button class="btn sm" onclick="resetLaneWidths()" title="Reset all lanes to equal width">Reset lane widths</button>
   <button class="btn sm" onclick="addGroup()">+ Group bracket</button>
   <div class="tb-sep"></div>
   <label class="tb-field">Figure width <input type="number" id="tb-figw" min="300" max="1400" step="20" value="760" onchange="setFigWidth(this.value)"></label>
   <label class="tb-field" title="Default spacing between panels (each panel can override this)">Default gap <input type="number" id="tb-gap" min="0" max="80" value="10" onchange="setGap(this.value)"></label>
+  <label class="tb-field" title="Border around each blot panel">Border <input type="checkbox" id="tb-border-on" checked onchange="setBorderOn(this.checked)"> <input type="number" id="tb-border-px" min="0" max="8" step="0.2" value="1.6" style="width:44px;" onchange="setBorderPx(this.value)"></label>
+  <div class="tb-sep"></div>
+  <div class="tb-field" title="Nudge every panel's crop window up/down together">Align all
+    <button class="btn ghost sm" onclick="nudgeAllVertical(-1)" title="Nudge all panels up">&#8593;</button>
+    <button class="btn ghost sm" onclick="nudgeAllVertical(1)" title="Nudge all panels down">&#8595;</button>
+    <button class="btn ghost sm" onclick="autoAlignAllPanels()" title="Trim blank margins so every blot spans the full panel width">Auto-align</button>
+  </div>
   <div class="tb-sep"></div>
   <div style="position:relative;">
     <button class="btn sm" id="exp-btn" onclick="toggleExportMenu(event)">&#8595; Export</button>
@@ -1997,13 +2037,31 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
       <button onclick="doExport('png')">PNG (high-res)</button>
       <button onclick="doExport('jpeg')">JPEG (high-res)</button>
       <button onclick="doExport('tiff')">TIFF (high-res)</button>
+      <button onclick="printExport()">PDF (print dialog, editable in Illustrator)</button>
     </div>
   </div>
   <div class="hdr-right">
+    <button class="btn ghost sm" onclick="openPresetsModal()" title="Save/load blank templates (proteins + ladder, no images)">Presets</button>
     <button class="btn ghost sm" onclick="openHistoryModal()" title="Browse saved figures">History</button>
     <button class="btn ghost sm" onclick="saveHistory()" title="Save this figure">Save</button>
     <button class="btn ghost sm" onclick="resetFigure()">Reset</button>
   </div>
+</div>
+
+<div class="toolbar" id="ribbon-bar">
+  <span class="tb-field" style="color:var(--text3);">Text</span>
+  <button class="btn ghost sm" onmousedown="event.preventDefault();blotFmt('bold')" title="Bold"><b>B</b></button>
+  <button class="btn ghost sm" onmousedown="event.preventDefault();blotFmt('italic')" title="Italic"><i>I</i></button>
+  <button class="btn ghost sm" onmousedown="event.preventDefault();blotFmt('underline')" title="Underline"><u>U</u></button>
+  <div class="tb-sep"></div>
+  <select onmousedown="event.preventDefault()" onchange="blotFmtSize(this.value);this.selectedIndex=0" title="Font size">
+    <option value="">Size</option>
+    <option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option>
+    <option value="15">15</option><option value="16">16</option><option value="18">18</option><option value="20">20</option><option value="24">24</option>
+  </select>
+  <div class="tb-sep"></div>
+  <span id="brb-swatches"></span>
+  <span class="tb-field" style="color:var(--text3);margin-left:auto;">Click any label to edit it</span>
 </div>
 
 <div class="stage" id="stage">
@@ -2049,6 +2107,22 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
   </div>
 </div>
 
+<!-- presets modal -->
+<div class="modal-back" id="preset-back">
+  <div class="modal">
+    <div class="modal-hd">
+      <div><h3>Presets</h3><div class="sub">Blank templates — protein names, kDa markers, lanes &amp; layout, no images</div></div>
+      <button class="iconbtn" onclick="closePresetsModal()">&times;</button>
+    </div>
+    <div class="hist-list" id="preset-list"></div>
+    <div class="modal-ft">
+      <span class="hint">Presets are saved locally in this browser</span>
+      <button class="btn ghost" onclick="closePresetsModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="print-root"></div>
 <input type="file" id="file-input" accept="image/*,.tif,.tiff" style="display:none;">
 <div id="toast"></div>
 
@@ -2069,16 +2143,75 @@ var FIG=null;
 var STORE_KEY='blot_figure';
 function defaultFig(){
   return {
-    laneCount:12, laneOrient:'vert', figW:760, gap:10,
-    lanes:['DMSO','DMSO','10000','2500','650','156','39','9.8','2.4','0.6','0.15','0.04'],
-    panels:[ newPanel('BRD4','190'), newPanel('Tubulin','50') ],
-    groups:[ {from:2,to:11,label:'[RP409] (nM)'} ]
+    laneCount:12, laneOrient:'vert', laneLabelPos:'top', figW:760, gap:10,
+    lanes:new Array(12).fill(''),
+    laneWeights:null,
+    border:{on:true,px:1.6},
+    panels:[ newPanel('',''), newPanel('','') ],
+    groups:[]
   };
 }
 var _pid=1;
-function newPanel(prot,kda){ return {id:'p'+(_pid++)+'_'+Math.random().toString(36).slice(2,6), src:null, crop:null, cropped:null, prot:prot||'', kda:kda||'', gapAfter:null}; }
-function load(){ try{var s=JSON.parse(localStorage.getItem(STORE_KEY));if(s&&s.panels){FIG=s;return;}}catch(e){} FIG=defaultFig(); }
+function newPanel(prot,kda){ return {id:'p'+(_pid++)+'_'+Math.random().toString(36).slice(2,6), src:null, crop:null, cropped:null, prot:prot||'', kda:kda||'', gapAfter:null, customHeightRatio:null, scaleWithBox:true}; }
+function migrateFig(fig){
+  if(!fig) return defaultFig();
+  if(fig.laneLabelPos==null) fig.laneLabelPos='top';
+  if(!fig.border) fig.border={on:true,px:1.6};
+  if(fig.border.on==null) fig.border.on=true;
+  if(fig.border.px==null) fig.border.px=1.6;
+  if(fig.laneWeights===undefined) fig.laneWeights=null;
+  if(!Array.isArray(fig.panels)) fig.panels=[];
+  fig.panels.forEach(function(p){
+    if(p.gapAfter===undefined) p.gapAfter=null;
+    if(p.customHeightRatio===undefined) p.customHeightRatio=null;
+    if(p.scaleWithBox===undefined) p.scaleWithBox=true;
+    if(p.kda==null) p.kda='';
+    if(p.prot==null) p.prot='';
+  });
+  if(!Array.isArray(fig.groups)) fig.groups=[];
+  if(!Array.isArray(fig.lanes)) fig.lanes=[];
+  if(fig.gap==null) fig.gap=10;
+  if(fig.figW==null) fig.figW=760;
+  if(fig.laneCount==null) fig.laneCount=fig.lanes.length||12;
+  if(fig.laneOrient==null) fig.laneOrient='vert';
+  return fig;
+}
+function load(){ try{var s=JSON.parse(localStorage.getItem(STORE_KEY));if(s&&s.panels){FIG=migrateFig(s);return;}}catch(e){} FIG=defaultFig(); }
 function save(){ try{localStorage.setItem(STORE_KEY,JSON.stringify(FIG));}catch(e){/* image data may exceed quota */} }
+function _stripHtml(s){ var d=document.createElement('div'); d.innerHTML=String(s==null?'':s); return (d.textContent||d.innerText||'').trim(); }
+
+/* ── Lane widths (uniform by default, individually draggable) ── */
+function laneWeightsArr(f){ if(Array.isArray(f.laneWeights)&&f.laneWeights.length===f.laneCount) return f.laneWeights; return new Array(f.laneCount).fill(1); }
+function laneEdgesPct(f){ // returns laneCount+1 percentages: edges[0]=0 .. edges[laneCount]=100
+  var w=laneWeightsArr(f), total=w.reduce(function(a,b){return a+b;},0)||1;
+  var edges=[0], cum=0;
+  w.forEach(function(x){ cum+=x; edges.push(cum/total*100); });
+  return edges;
+}
+function resetLaneWidths(){ FIG.laneWeights=null; save(); render(); toast('Lane widths reset to equal'); }
+var _laneDrag=null;
+function startLaneDrag(e,i){
+  e.preventDefault(); e.stopPropagation();
+  var row=el('lane-row'); if(!row) return;
+  var rect=row.getBoundingClientRect();
+  var w=laneWeightsArr(FIG);
+  _laneDrag={i:i, startX:e.clientX, w0:w[i], w1:w[i+1], rectW:rect.width};
+}
+document.addEventListener('mousemove',function(e){
+  if(!_laneDrag) return;
+  var d=_laneDrag;
+  var dxPct=(e.clientX-d.startX)/d.rectW;
+  var totalNow=laneWeightsArr(FIG).reduce(function(a,b){return a+b;},0);
+  var dW=dxPct*totalNow;
+  var sum=d.w0+d.w1;
+  var nw0=Math.max(0.15, d.w0+dW), nw1=Math.max(0.15, d.w1-dW);
+  if(nw0+nw1>sum+0.001){ if(dW>0) nw1=Math.max(0.15,sum-nw0); else nw0=Math.max(0.15,sum-nw1); }
+  var lw=laneWeightsArr(FIG).slice();
+  lw[d.i]=nw0; lw[d.i+1]=nw1;
+  FIG.laneWeights=lw;
+  render();
+});
+document.addEventListener('mouseup',function(){ if(_laneDrag){ _laneDrag=null; save(); } });
 
 /* ── Render assembled figure ── */
 var DRAG_SVG='<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
@@ -2086,27 +2219,40 @@ function render(){
   var f=FIG, fig=el('figure');
   fig.style.setProperty('--blot-w', f.figW+'px');
   fig.className = 'lanes-'+f.laneOrient;
+  var N=f.panels.length;
+  var rowGroups, rowLanes, rowPanelStart;
+  if(f.laneLabelPos==='bottom'){ rowPanelStart=1; rowGroups=1+N; rowLanes=2+N; }
+  else { rowGroups=1; rowLanes=2; rowPanelStart=3; }
+  var edges=laneEdgesPct(f);
   var html='';
   // groups band
-  html+='<div class="groups-band'+(f.groups.length?' has':'')+'" id="groups-band">'+f.groups.map(function(g,gi){
-    var L=(g.from-1)/f.laneCount*100, R=(g.to)/f.laneCount*100;
+  html+='<div class="groups-band'+(f.groups.length?' has':'')+'" id="groups-band" style="grid-row:'+rowGroups+';">'+f.groups.map(function(g,gi){
+    var L=edges[g.from-1], R=edges[g.to];
     return '<div class="grp" data-gi="'+gi+'" style="left:'+L+'%;right:'+(100-R)+'%;">'
       +'<div class="grp-line"></div>'
-      +'<div class="grp-lbl" contenteditable="true" oninput="setGroupLabel('+gi+',this.textContent)">'+esc(g.label)+'</div>'
+      +'<div class="grp-lbl" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setGroupLabel('+gi+',this.innerHTML)">'+g.label+'</div>'
       +'<div class="grp-h l" data-gi="'+gi+'" data-end="from"></div><div class="grp-h r" data-gi="'+gi+'" data-end="to"></div>'
       +'<button class="grp-del" onclick="delGroup('+gi+')" title="Remove">&times;</button>'
     +'</div>';
   }).join('')+'</div>';
   // panels
   f.panels.forEach(function(p,pi){
-    var g=(p.gapAfter!=null?p.gapAfter:f.gap), mb='margin-bottom:'+g+'px;';
+    var gpx=(p.gapAfter!=null?p.gapAfter:f.gap), row=rowPanelStart+pi;
+    var mb='margin-bottom:'+gpx+'px;grid-row:'+row+';';
     html+='<div class="panel-kda-wrap" style="display:contents">';
-    html+='<div class="panel-kda" style="'+mb+'" contenteditable="true" oninput="setPanel('+pi+',\'kda\',this.innerText)">'+esc(p.kda)+'</div>';
+    html+='<div class="panel-kda" style="'+mb+'" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setPanel('+pi+',\'kda\',this.innerHTML)">'+p.kda+'</div>';
     if(p.cropped){
-      html+='<div class="panel-blot" data-pi="'+pi+'" style="'+mb+'"><img class="blot-img" src="'+p.cropped+'" alt="blot">'
+      var boxH = p.customHeightRatio!=null ? Math.round(p.customHeightRatio*f.figW) : null;
+      var borderCss = f.border.on ? (f.border.px+'px solid #111') : 'none';
+      var imgStyle = 'border:'+borderCss+';'+(boxH!=null ? ('height:'+boxH+'px;width:100%;object-fit:'+(p.scaleWithBox?'fill':'contain')+';') : 'width:100%;height:auto;');
+      html+='<div class="panel-blot" data-pi="'+pi+'" style="'+mb+'">'
+        +'<img class="blot-img" src="'+p.cropped+'" alt="blot" style="'+imgStyle+'" onmousedown="startImageDrag(event,'+pi+')">'
+        +'<div class="panel-resize-handle" title="Drag to resize this panel\'s box &middot; double-click to reset to auto" onmousedown="startPanelResize(event,'+pi+')" ondblclick="clearPanelHeight('+pi+')"></div>'
         +'<div class="panel-tools">'
           +'<button class="panel-tool panel-drag-handle" draggable="true" title="Drag to reorder panels" ondragstart="panelDragStart(event,'+pi+')">'+DRAG_SVG+'</button>'
           +'<input type="number" class="panel-gap-input" min="0" max="80" value="'+(p.gapAfter!=null?p.gapAfter:'')+'" placeholder="'+f.gap+'" title="Spacing after this panel in px (blank = default, '+f.gap+'px)" onclick="event.stopPropagation()" onchange="setPanelGap('+pi+',this.value)">'
+          +'<button class="panel-tool" title="'+(p.scaleWithBox!==false?'Image stretches with the box — click to keep it at its own scale instead':'Image keeps its own scale — click to stretch it with the box (membrane resizes)')+'" onclick="togglePanelScale('+pi+')">'+(p.scaleWithBox!==false?'&#8622;':'&#9633;')+'</button>'
+          +'<button class="panel-tool" title="Auto-align — trim blank margins so the blot fills the panel width" onclick="autoAlignPanel('+pi+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h4M17 12h4M9 5l-4 7 4 7M15 5l4 7-4 7"/></svg></button>'
           +'<button class="panel-tool" title="Re-crop" onclick="openCrop('+pi+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2v14a2 2 0 002 2h14M2 6h14a2 2 0 012 2v14"/></svg></button>'
           +'<button class="panel-tool" title="Replace image" onclick="pickFile('+pi+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>'
           +'<button class="panel-tool" title="Move up" onclick="movePanel('+pi+',-1)">&#8593;</button>'
@@ -2118,13 +2264,20 @@ function render(){
         +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15l5-5 4 4 3-3 4 4"/><circle cx="8.5" cy="9.5" r="1.5"/></svg>'
         +'<div>Drop a blot image (TIFF / PNG / JPEG)<br>or click to browse</div></div>';
     }
-    html+='<div class="panel-prot" style="'+mb+'" contenteditable="true" oninput="setPanel('+pi+',\'prot\',this.innerText)">'+esc(p.prot)+'</div>';
+    html+='<div class="panel-prot" style="'+mb+'" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setPanel('+pi+',\'prot\',this.innerHTML)">'+p.prot+'</div>';
     html+='</div>';
   });
-  // lane labels
-  html+='<div class="lane-row" id="lane-row">'+f.lanes.slice(0,f.laneCount).map(function(l,i){
-    return '<div class="lane-cell" contenteditable="true" oninput="setLane('+i+',this.innerText)">'+esc(l||'')+'</div>';
-  }).join('')+'</div>';
+  // lane labels + width dividers
+  var laneW=laneWeightsArr(f), laneTotal=laneW.reduce(function(a,b){return a+b;},0)||1;
+  var dividerHtml='';
+  for(var di=0;di<f.laneCount-1;di++){ dividerHtml+='<div class="lane-divider" style="left:'+edges[di+1]+'%;" data-i="'+di+'" onmousedown="startLaneDrag(event,'+di+')" title="Drag to resize these two lanes"></div>'; }
+  html+='<div class="lane-row" id="lane-row" style="grid-row:'+rowLanes+';">'
+    +f.lanes.slice(0,f.laneCount).map(function(l,i){
+      var wpct=(laneW[i]/laneTotal*100);
+      return '<div class="lane-cell" style="flex:none;width:'+wpct+'%;" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setLane('+i+',this.innerHTML)">'+(l||'')+'</div>';
+    }).join('')
+    +dividerHtml
+  +'</div>';
   fig.innerHTML=html;
   wireGroupDrag();
 }
@@ -2135,8 +2288,11 @@ function setLane(i,v){ FIG.lanes[i]=v; save(); }
 function setGroupLabel(gi,v){ FIG.groups[gi].label=v; save(); }
 function setLaneCount(n){ n=Math.max(1,Math.min(30,parseInt(n)||1)); FIG.laneCount=n; while(FIG.lanes.length<n)FIG.lanes.push(''); FIG.groups.forEach(function(g){g.from=Math.min(g.from,n);g.to=Math.min(g.to,n);}); el('tb-lanes').value=n; save(); render(); }
 function setLaneOrient(v){ FIG.laneOrient=v; save(); render(); }
+function setLaneLabelPos(v){ FIG.laneLabelPos=(v==='bottom'?'bottom':'top'); save(); render(); }
 function setFigWidth(v){ FIG.figW=Math.max(300,Math.min(1400,parseInt(v)||760)); save(); render(); }
-function setGap(v){ FIG.gap=Math.max(0,Math.min(40,parseInt(v)||0)); save(); render(); }
+function setGap(v){ FIG.gap=Math.max(0,Math.min(80,parseInt(v)||0)); save(); render(); }
+function setBorderOn(on){ FIG.border.on=!!on; save(); render(); }
+function setBorderPx(v){ FIG.border.px=Math.max(0,Math.min(8,parseFloat(v)||0)); save(); render(); }
 function addPanel(){ FIG.panels.push(newPanel('','')); save(); render(); }
 function removePanel(pi){ if(FIG.panels.length<=1){toast('Keep at least one panel');return;} FIG.panels.splice(pi,1); save(); render(); }
 function movePanel(pi,dir){ var j=pi+dir; if(j<0||j>=FIG.panels.length)return; var t=FIG.panels[pi];FIG.panels[pi]=FIG.panels[j];FIG.panels[j]=t; save(); render(); }
@@ -2146,6 +2302,106 @@ function reorderPanel(from,to){ if(from==null||to==null||from===to)return; if(fr
 function addGroup(){ FIG.groups.push({from:1,to:FIG.laneCount,label:'group'}); save(); render(); }
 function delGroup(gi){ FIG.groups.splice(gi,1); save(); render(); }
 function resetFigure(){ if(!confirm('Clear the whole figure and start over?'))return; FIG=defaultFig(); _pid=1; save(); render(); toast('Figure reset'); }
+function togglePanelScale(pi){ FIG.panels[pi].scaleWithBox=FIG.panels[pi].scaleWithBox===false?true:false; save(); render(); }
+function clearPanelHeight(pi){ FIG.panels[pi].customHeightRatio=null; save(); render(); toast('Height reset to auto'); }
+
+/* ── Panel box resize (drag) ── */
+function startPanelResize(e,pi){
+  e.preventDefault(); e.stopPropagation();
+  var p=FIG.panels[pi];
+  var host=e.target.closest('.panel-blot'); if(!host) return;
+  var imgEl=host.querySelector('.blot-img');
+  var startY=e.clientY, startH=imgEl.getBoundingClientRect().height;
+  function move(ev){ var newH=Math.max(24,startH+(ev.clientY-startY)); imgEl.style.height=newH+'px'; imgEl.style.objectFit=(p.scaleWithBox!==false)?'fill':'contain'; }
+  function up(ev){ document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); var newH=Math.max(24,startH+(ev.clientY-startY)); p.customHeightRatio=newH/FIG.figW; save(); render(); }
+  document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+}
+
+/* ── Per-panel fine alignment: drag the image within its frame ── */
+var _imgDrag=null;
+function startImageDrag(e,pi){
+  var p=FIG.panels[pi]; if(!p.src||!p.crop) return;
+  e.preventDefault();
+  var imgEl=e.currentTarget;
+  var dispRect=imgEl.getBoundingClientRect();
+  var scaleFactor=p.crop.w/dispRect.width;
+  var srcImg=new Image();
+  srcImg.onload=function(){ _imgDrag={pi:pi,startX:e.clientX,startY:e.clientY,startCrop:Object.assign({},p.crop),srcImg:srcImg,scaleFactor:scaleFactor,imgEl:imgEl}; };
+  srcImg.src=p.src;
+}
+document.addEventListener('mousemove',function(e){
+  if(!_imgDrag) return;
+  var d=_imgDrag, p=FIG.panels[d.pi]; if(!p) return;
+  var dx=(e.clientX-d.startX)*d.scaleFactor, dy=(e.clientY-d.startY)*d.scaleFactor;
+  var nx=Math.max(0,Math.min(d.srcImg.naturalWidth-d.startCrop.w, d.startCrop.x-dx));
+  var ny=Math.max(0,Math.min(d.srcImg.naturalHeight-d.startCrop.h, d.startCrop.y-dy));
+  p.crop.x=nx; p.crop.y=ny;
+  var out=document.createElement('canvas'); out.width=Math.round(d.startCrop.w); out.height=Math.round(d.startCrop.h);
+  out.getContext('2d').drawImage(d.srcImg, nx,ny,d.startCrop.w,d.startCrop.h, 0,0, out.width,out.height);
+  var durl=out.toDataURL('image/png');
+  p.cropped=durl; d.imgEl.src=durl;
+});
+document.addEventListener('mouseup',function(){ if(_imgDrag){ save(); _imgDrag=null; } });
+
+function regenAllCrops(){
+  var proms=FIG.panels.map(function(p){
+    if(!p.src||!p.crop) return Promise.resolve();
+    return new Promise(function(res){ var im=new Image(); im.onload=function(){ var out=document.createElement('canvas'); out.width=Math.round(p.crop.w); out.height=Math.round(p.crop.h); out.getContext('2d').drawImage(im,p.crop.x,p.crop.y,p.crop.w,p.crop.h,0,0,out.width,out.height); p.cropped=out.toDataURL('image/png'); res(); }; im.onerror=function(){res();}; im.src=p.src; });
+  });
+  return Promise.all(proms).then(function(){ save(); render(); });
+}
+function nudgeAllVertical(dir){
+  var any=false;
+  FIG.panels.forEach(function(p){ if(p.src&&p.crop){ var step=Math.max(1,Math.round(p.crop.h*0.02)); p.crop.y=Math.max(0,p.crop.y+dir*step); any=true; } });
+  if(!any){ toast('No cropped panels to nudge'); return; }
+  regenAllCrops();
+}
+
+/* ── Auto-align: trim blank margins so the blot content fills the panel width ── */
+function autoAlignPanel(pi){
+  var p=FIG.panels[pi]; if(!p.cropped||!p.src||!p.crop){ toast('Crop this panel first'); return; }
+  var im=new Image();
+  im.onload=function(){
+    var c=document.createElement('canvas'); c.width=im.naturalWidth; c.height=im.naturalHeight;
+    var ctx=c.getContext('2d'); ctx.drawImage(im,0,0);
+    var data;
+    try{ data=ctx.getImageData(0,0,c.width,c.height).data; }catch(e){ toast('Could not analyze this image'); return; }
+    var w=c.width,h=c.height, step=Math.max(1,Math.floor(h/80));
+    var colDark=new Float64Array(w);
+    for(var x=0;x<w;x++){
+      var sum=0,n=0;
+      for(var y=0;y<h;y+=step){ var idx=(y*w+x)*4; sum+=(255-(0.299*data[idx]+0.587*data[idx+1]+0.114*data[idx+2])); n++; }
+      colDark[x]=n?sum/n:0;
+    }
+    var maxD=0; for(var x2=0;x2<w;x2++) if(colDark[x2]>maxD) maxD=colDark[x2];
+    if(maxD<3){ toast('No clear bands found to align'); return; }
+    var thr=maxD*0.08;
+    var left=0,right=w-1;
+    while(left<w-1 && colDark[left]<thr) left++;
+    while(right>0 && colDark[right]<thr) right--;
+    if(right<=left){ toast('No clear bands found to align'); return; }
+    var padPx=Math.round(w*0.015);
+    left=Math.max(0,left-padPx); right=Math.min(w-1,right+padPx);
+    var scaleX=p.crop.w/w;
+    var newX=p.crop.x+left*scaleX, newW=(right-left)*scaleX;
+    if(newW<8){ toast('Detected region too small — skipped'); return; }
+    p.crop={x:newX,y:p.crop.y,w:newW,h:p.crop.h};
+    var srcImg=new Image();
+    srcImg.onload=function(){
+      var out=document.createElement('canvas'); out.width=Math.round(p.crop.w); out.height=Math.round(p.crop.h);
+      out.getContext('2d').drawImage(srcImg, p.crop.x,p.crop.y,p.crop.w,p.crop.h, 0,0, out.width,out.height);
+      p.cropped=out.toDataURL('image/png');
+      save(); render(); toast('Aligned'+(_stripHtml(p.prot)?' '+_stripHtml(p.prot):''));
+    };
+    srcImg.src=p.src;
+  };
+  im.src=p.cropped;
+}
+function autoAlignAllPanels(){
+  var any=false;
+  FIG.panels.forEach(function(p,pi){ if(p.cropped){ any=true; autoAlignPanel(pi); } });
+  if(!any) toast('Crop at least one panel first');
+}
 
 /* ── Group bracket drag-snap ── */
 function wireGroupDrag(){
@@ -2274,61 +2530,103 @@ function confirmCrop(){
   save(); render(); closeCrop();
 }
 
+/* ── Classic formatting ribbon (shared pattern with Labbook/Plasmids) ── */
+var _blotActiveEd=null;
+var BRB_COLORS=['#111111','#c04040','#5e72c4','#2d9462','#c47818','#7c6fd4'];
+function blotColorSwatches(){ return BRB_COLORS.map(function(c){return '<button class="brb-swatch" style="background:'+c+'" onmousedown="event.preventDefault();blotFmtColor(\''+c+'\')" title="'+c+'"></button>';}).join(''); }
+function blotFmt(cmd){ if(!_blotActiveEd) return; _blotActiveEd.focus(); try{ document.execCommand(cmd,false,null); }catch(e){} _blotActiveEd.dispatchEvent(new Event('input')); }
+function blotFmtSize(px){ if(!_blotActiveEd||!px) return; _blotActiveEd.focus(); try{ document.execCommand('styleWithCSS',false,true); var sel=window.getSelection(); if(sel&&sel.rangeCount&&!sel.isCollapsed){ document.execCommand('fontSize',false,'7'); _blotActiveEd.querySelectorAll('font[size="7"]').forEach(function(f){ var s=document.createElement('span'); s.style.fontSize=px+'px'; s.innerHTML=f.innerHTML; f.parentNode.replaceChild(s,f); }); } }catch(e){} _blotActiveEd.dispatchEvent(new Event('input')); }
+function blotFmtColor(c){ if(!_blotActiveEd) return; _blotActiveEd.focus(); try{ document.execCommand('styleWithCSS',false,true); document.execCommand('foreColor',false,c); }catch(e){} _blotActiveEd.dispatchEvent(new Event('input')); }
+
 /* ── Export ── */
 function toggleExportMenu(e){ e.stopPropagation(); el('exp-menu').classList.toggle('open'); }
 document.addEventListener('click',function(){ el('exp-menu').classList.remove('open'); });
 function loadImg(src){ return new Promise(function(res,rej){ var i=new Image(); i.onload=function(){res(i);}; i.onerror=rej; i.src=src; }); }
 
+function drawLaneLabels(ctx,f,edges,blotX,BLOT,anchorY,N){
+  ctx.font='13px "IBM Plex Sans",sans-serif'; ctx.fillStyle='#111';
+  for(var i=0;i<N;i++){
+    var lx=blotX+BLOT*(edges[i]+edges[i+1])/2/100, txt=_stripHtml(f.lanes[i]||''); if(!txt) continue;
+    ctx.save(); ctx.translate(lx, anchorY);
+    if(f.laneOrient==='horiz'){ ctx.textAlign='center'; ctx.fillText(txt,0,8); }
+    else if(f.laneOrient==='ang'){ ctx.rotate(-40*Math.PI/180); ctx.textAlign='right'; ctx.fillText(txt,0,4); }
+    else { ctx.rotate(-Math.PI/2); ctx.textAlign='left'; ctx.fillText(txt,0,4); }
+    ctx.restore();
+  }
+}
+function drawGroupBrackets(ctx,f,edges,blotX,BLOT,gy0){
+  f.groups.forEach(function(g){
+    var L=blotX+BLOT*edges[g.from-1]/100, R=blotX+BLOT*edges[g.to]/100, gy=gy0+22;
+    ctx.lineWidth=1.6; ctx.strokeStyle='#111'; ctx.beginPath(); ctx.moveTo(L,gy); ctx.lineTo(R,gy); ctx.moveTo(L,gy);ctx.lineTo(L,gy+6); ctx.moveTo(R,gy);ctx.lineTo(R,gy+6); ctx.stroke();
+    ctx.font='13px "IBM Plex Sans",sans-serif'; ctx.textAlign='center'; ctx.fillStyle='#111'; ctx.fillText(_stripHtml(g.label), (L+R)/2, gy-8);
+  });
+}
+
 async function renderFigureCanvas(scale){
   await (document.fonts&&document.fonts.ready);
   var f=FIG, N=f.laneCount;
+  var edges=laneEdgesPct(f);
   var KDA=54, GAPX=10, GROUPH=f.groups.length?38:0, LANEH = f.laneOrient==='horiz'?26:70, PAD=18;
   var BLOT=f.figW;
   // measure protein column width
   var meas=document.createElement('canvas').getContext('2d');
   meas.font='500 16px "IBM Plex Sans",sans-serif';
-  var PROT=60; f.panels.forEach(function(p){ (p.prot||'').split('\n').forEach(function(ln){ PROT=Math.max(PROT, meas.measureText(ln).width+10); }); });
-  // load cropped panel images + compute heights + per-panel gaps
+  var PROT=60; f.panels.forEach(function(p){ _stripHtml(p.prot).split('\n').forEach(function(ln){ PROT=Math.max(PROT, meas.measureText(ln).width+10); }); });
+  // load cropped panel images + compute heights (respecting a manual box-height override) + per-panel gaps
   var imgs=[], heights=[], gaps=[];
-  for(var i=0;i<f.panels.length;i++){ var p=f.panels[i]; gaps.push(p.gapAfter!=null?p.gapAfter:f.gap); if(p.cropped){ var im=await loadImg(p.cropped); imgs.push(im); heights.push(BLOT*(im.naturalHeight/im.naturalWidth)); } else { imgs.push(null); heights.push(60); } }
-  var totalH = PAD + GROUPH + heights.reduce(function(a,b,i){return a+b+gaps[i];},0) - (gaps[gaps.length-1]||0) + 6 + LANEH + PAD;
+  for(var i=0;i<f.panels.length;i++){
+    var p=f.panels[i];
+    gaps.push(p.gapAfter!=null?p.gapAfter:f.gap);
+    if(p.cropped){
+      var im=await loadImg(p.cropped); imgs.push(im);
+      var hh = p.customHeightRatio!=null ? p.customHeightRatio*BLOT : BLOT*(im.naturalHeight/im.naturalWidth);
+      heights.push(hh);
+    } else { imgs.push(null); heights.push(60); }
+  }
+  var LBL = 6+LANEH;
+  var HDR = f.laneLabelPos==='top' ? (GROUPH+LBL) : 0;
+  var FTR = f.laneLabelPos==='bottom' ? (4+GROUPH+LBL) : 0;
+  var totalH = PAD + HDR + heights.reduce(function(a,b,i){return a+b+gaps[i];},0) - (gaps[gaps.length-1]||0) + FTR + PAD;
   var totalW = PAD + KDA + GAPX + BLOT + GAPX + PROT + PAD;
   var cv=document.createElement('canvas'); cv.width=Math.round(totalW*scale); cv.height=Math.round(totalH*scale);
   var ctx=cv.getContext('2d'); ctx.setTransform(scale,0,0,scale,0,0);
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,totalW,totalH);
   ctx.fillStyle='#111'; ctx.strokeStyle='#111'; ctx.textBaseline='middle';
-  var x0=PAD, blotX=PAD+KDA+GAPX, y=PAD+GROUPH;
-  // groups
-  f.groups.forEach(function(g){
-    var L=blotX+BLOT*(g.from-1)/N, R=blotX+BLOT*(g.to)/N, gy=PAD+22;
-    ctx.lineWidth=1.6; ctx.beginPath(); ctx.moveTo(L,gy); ctx.lineTo(R,gy); ctx.moveTo(L,gy);ctx.lineTo(L,gy+6); ctx.moveTo(R,gy);ctx.lineTo(R,gy+6); ctx.stroke();
-    ctx.font='13px "IBM Plex Sans",sans-serif'; ctx.textAlign='center'; ctx.fillText(g.label||'', (L+R)/2, gy-8);
-  });
+  var x0=PAD, blotX=PAD+KDA+GAPX, y=PAD;
+  if(f.laneLabelPos==='top'){
+    drawGroupBrackets(ctx,f,edges,blotX,BLOT,y);
+    y+=GROUPH;
+    drawLaneLabels(ctx,f,edges,blotX,BLOT, y+LANEH, N);
+    y+=LANEH+6;
+  }
   // panels
   for(var pi=0;pi<f.panels.length;pi++){
     var p=f.panels[pi], hh=heights[pi], midY=y+hh/2;
     // kDa (right aligned)
-    ctx.font='15px "IBM Plex Sans",sans-serif'; ctx.textAlign='right';
-    var kl=(p.kda||'').split('\n'), lh=19, ky=midY-(kl.length-1)*lh/2;
+    ctx.font='15px "IBM Plex Sans",sans-serif'; ctx.textAlign='right'; ctx.fillStyle='#111';
+    var kl=_stripHtml(p.kda).split('\n'), lh=19, ky=midY-(kl.length-1)*lh/2;
     kl.forEach(function(ln,i){ ctx.fillText(ln, x0+KDA-4, ky+i*lh); });
     // blot + border
-    if(imgs[pi]){ ctx.drawImage(imgs[pi], blotX, y, BLOT, hh); ctx.lineWidth=1.6; ctx.strokeRect(blotX+0.8, y+0.8, BLOT-1.6, hh-1.6); }
-    else { ctx.strokeStyle='#ccc'; ctx.lineWidth=1; ctx.strokeRect(blotX,y,BLOT,hh); ctx.strokeStyle='#111'; }
+    if(imgs[pi]){
+      if(p.scaleWithBox!==false){ ctx.drawImage(imgs[pi], blotX, y, BLOT, hh); }
+      else {
+        var im=imgs[pi], scl=Math.min(BLOT/im.naturalWidth, hh/im.naturalHeight);
+        var dw=im.naturalWidth*scl, dh=im.naturalHeight*scl, dx=blotX+(BLOT-dw)/2, dy=y+(hh-dh)/2;
+        ctx.drawImage(im, dx,dy,dw,dh);
+      }
+      if(f.border.on){ ctx.lineWidth=f.border.px; ctx.strokeStyle='#111'; ctx.strokeRect(blotX+f.border.px/2, y+f.border.px/2, BLOT-f.border.px, hh-f.border.px); }
+    } else { ctx.strokeStyle='#ccc'; ctx.lineWidth=1; ctx.strokeRect(blotX,y,BLOT,hh); ctx.strokeStyle='#111'; }
     // protein (left aligned)
     ctx.font='500 16px "IBM Plex Sans",sans-serif'; ctx.textAlign='left';
-    var pl=(p.prot||'').split('\n'), py=midY-(pl.length-1)*10;
+    var pl=_stripHtml(p.prot).split('\n'), py=midY-(pl.length-1)*10;
     pl.forEach(function(ln,i){ ctx.fillText(ln, blotX+BLOT+GAPX, py+i*20); });
     y+=hh+gaps[pi];
   }
-  y+=4;
-  // lane labels
-  ctx.font='13px "IBM Plex Sans",sans-serif';
-  for(var i=0;i<N;i++){ var lx=blotX+BLOT*(i+0.5)/N, txt=(f.lanes[i]||''); if(!txt)continue;
-    ctx.save(); ctx.translate(lx, y+6);
-    if(f.laneOrient==='horiz'){ ctx.textAlign='center'; ctx.fillText(txt,0,8); }
-    else if(f.laneOrient==='ang'){ ctx.rotate(-40*Math.PI/180); ctx.textAlign='right'; ctx.fillText(txt,0,4); }
-    else { ctx.rotate(-Math.PI/2); ctx.textAlign='left'; ctx.fillText(txt,0,4); }
-    ctx.restore();
+  if(f.laneLabelPos==='bottom'){
+    y+=4;
+    drawGroupBrackets(ctx,f,edges,blotX,BLOT,y);
+    y+=GROUPH;
+    drawLaneLabels(ctx,f,edges,blotX,BLOT, y+6, N);
   }
   return cv;
 }
@@ -2353,6 +2651,21 @@ async function doExport(fmt){
 }
 function downloadBlob(blob,name){ var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000); }
 
+/* ── PDF export (print-based — real DOM/text, not a rasterized embed, so it stays
+   editable in Illustrator; same established pattern used elsewhere in this suite) ── */
+function printExport(){
+  el('exp-menu').classList.remove('open');
+  var root=el('print-root'); if(!root) return;
+  var clone=el('figure').cloneNode(true);
+  Array.prototype.forEach.call(clone.querySelectorAll('.panel-tools,.panel-resize-handle,.lane-divider,.grp-h,.grp-del'),function(n){ n.remove(); });
+  root.innerHTML='';
+  var wrap=document.createElement('div'); wrap.className='fig-shell'; wrap.style.boxShadow='none'; wrap.style.padding='0';
+  wrap.appendChild(clone);
+  root.appendChild(wrap);
+  document.body.classList.add('printing');
+  setTimeout(function(){ window.print(); setTimeout(function(){ document.body.classList.remove('printing'); },300); },60);
+}
+
 /* ── History (save/browse/load/delete past figures) ── */
 var HIST_KEY='blot_history';
 function getHistoryList(){ try{ var l=JSON.parse(localStorage.getItem(HIST_KEY)||'[]'); return Array.isArray(l)?l:[]; }catch(e){ return []; } }
@@ -2372,7 +2685,7 @@ function renderHistoryList(){
   if(!list.length){ host.innerHTML='<div class="hist-empty">No saved figures yet.<br>Click <b>Save</b> to keep a copy of the current figure here.</div>'; return; }
   host.innerHTML=list.map(function(entry,i){
     var fig=entry.fig||{}, panels=fig.panels||[];
-    var prots=panels.map(function(p){return p.prot;}).filter(Boolean).join(', ');
+    var prots=panels.map(function(p){return _stripHtml(p.prot);}).filter(Boolean).join(', ');
     var title=prots || (panels.length? panels.length+' panel'+(panels.length===1?'':'s') : 'Untitled figure');
     var thumbSrc=panels.map(function(p){return p.cropped;}).filter(Boolean)[0];
     var d=new Date(entry.ts);
@@ -2385,9 +2698,7 @@ function renderHistoryList(){
 }
 function loadHistoryEntry(i){
   var list=getHistoryList(), entry=list[i]; if(!entry||!entry.fig)return;
-  FIG=JSON.parse(JSON.stringify(entry.fig));
-  (FIG.panels||[]).forEach(function(p){ if(p.gapAfter===undefined) p.gapAfter=null; });
-  if(FIG.gap==null) FIG.gap=10;
+  FIG=migrateFig(JSON.parse(JSON.stringify(entry.fig)));
   save(); render(); closeHistoryModal(); toast('Figure loaded');
 }
 function deleteHistoryEntry(i){
@@ -2396,8 +2707,44 @@ function deleteHistoryEntry(i){
   renderHistoryList();
 }
 
+/* ── Presets (blank templates: protein names / kDa / lanes / layout, no images) ── */
+var PRESET_KEY='blot_presets';
+function getPresets(){ try{ var l=JSON.parse(localStorage.getItem(PRESET_KEY)||'[]'); return Array.isArray(l)?l:[]; }catch(e){ return []; } }
+function savePresetsList(list){ try{ localStorage.setItem(PRESET_KEY,JSON.stringify(list)); }catch(e){ toast('Could not save preset (storage full)'); } }
+function openPresetsModal(){ renderPresetsList(); el('preset-back').classList.add('open'); }
+function closePresetsModal(){ el('preset-back').classList.remove('open'); }
+function renderPresetsList(){
+  var list=getPresets(), host=el('preset-list');
+  var addRow='<div class="preset-add"><input type="text" id="preset-name-input" placeholder="Preset name (e.g. BRD4 degrader panel)" onkeydown="if(event.key===\'Enter\')saveCurrentAsPreset()"><button class="btn primary sm" onclick="saveCurrentAsPreset()">Save current as preset</button></div>';
+  if(!list.length){ host.innerHTML=addRow+'<div class="hist-empty">No presets yet. Set up your protein names, kDa markers and lanes the way you like, then save it above — images stay blank so it\'s ready for a new experiment.</div>'; return; }
+  host.innerHTML=addRow+list.map(function(pr,i){
+    var prots=(pr.fig.panels||[]).map(function(p){return _stripHtml(p.prot);}).filter(Boolean).join(', ');
+    return '<div class="hist-row" onclick="loadPreset('+i+')">'
+      +'<div class="hist-thumb">&#9782;</div>'
+      +'<div class="hist-info"><div class="hist-title">'+esc(pr.name)+'</div><div class="hist-sub">'+esc(prots||((pr.fig.panels||[]).length+' panels'))+'</div></div>'
+      +'<button class="hist-del" onclick="event.stopPropagation();deletePreset('+i+')" title="Delete">&times;</button>'
+    +'</div>';
+  }).join('');
+}
+function saveCurrentAsPreset(){
+  var inp=el('preset-name-input'), name=(inp&&inp.value||'').trim();
+  if(!name){ toast('Give the preset a name'); if(inp) inp.focus(); return; }
+  var clean=JSON.parse(JSON.stringify(FIG));
+  clean.panels.forEach(function(p){ p.src=null; p.crop=null; p.cropped=null; });
+  var list=getPresets(); list.unshift({id:'pr'+Date.now(), name:name, fig:clean}); list=list.slice(0,20);
+  savePresetsList(list);
+  toast('Preset saved'); renderPresetsList();
+}
+function loadPreset(i){
+  var list=getPresets(), pr=list[i]; if(!pr) return;
+  FIG=migrateFig(JSON.parse(JSON.stringify(pr.fig)));
+  save(); render(); closePresetsModal(); toast('Preset loaded');
+}
+function deletePreset(i){ var list=getPresets(); list.splice(i,1); savePresetsList(list); renderPresetsList(); }
+
 /* ── Boot ── */
 load(); render();
+var _swEl=el('brb-swatches'); if(_swEl) _swEl.innerHTML=blotColorSwatches();
 </script>
 </body>
 </html>
