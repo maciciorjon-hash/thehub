@@ -2004,6 +2004,39 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--text);color:var(--bg);font-size:12.5px;font-weight:500;padding:10px 18px;border-radius:22px;box-shadow:var(--shadow-md);opacity:0;transition:transform .3s,opacity .3s;z-index:400;pointer-events:none;}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
 .empty-hint{color:var(--text3);font-size:13px;text-align:center;padding:40px 20px;line-height:1.7;}
+
+/* dropdown menus: never wrap/clip their labels; keep on-screen */
+.menu button{white-space:nowrap;}
+#exp-menu{right:0;}
+
+/* +/- steppers around numeric toolbar fields */
+.tb-step{display:inline-flex;align-items:center;vertical-align:middle;}
+.tb-step button{width:20px;height:26px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:15px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;font-family:var(--sans);}
+.tb-step button:hover{background:var(--surface3);color:var(--text);}
+.tb-step button.minus{border-radius:7px 0 0 7px;border-right:none;}
+.tb-step button.plus{border-radius:0 7px 7px 0;border-left:none;}
+.tb-step input[type=number]{border-radius:0!important;}
+
+/* sample-conditions matrix (aligned to the lanes) */
+.cond-band{grid-column:1/-1;display:grid;grid-template-columns:var(--kda-w,54px) var(--blot-w,760px);column-gap:10px;row-gap:5px;align-items:center;margin:4px 0 10px;}
+.cond-lblcell{position:relative;display:flex;align-items:center;justify-content:flex-end;padding-right:3px;}
+.cond-lblcell .lbl-in{font-family:var(--sans);font-size:14px;color:#111;text-align:right;white-space:nowrap;outline:none;min-width:10px;cursor:text;}
+.cond-lblcell .lbl-in:empty::before{content:'condition';color:#bbb;}
+.cond-del{position:absolute;left:-17px;top:50%;transform:translateY(-50%);width:15px;height:15px;border-radius:50%;border:none;background:#d9534f;color:#fff;font-size:11px;line-height:1;cursor:pointer;opacity:0;}
+.cond-lblcell:hover .cond-del{opacity:1;}
+.cond-lanes{display:flex;align-items:center;}
+.cond-cell{flex:none;display:flex;align-items:center;justify-content:center;height:24px;cursor:pointer;border-radius:5px;}
+.cond-cell:hover{background:rgba(91,107,122,.10);}
+.cond-mark{display:block;}
+.cond-pm{font-family:var(--sans);font-size:17px;font-weight:600;color:#111;line-height:1;}
+
+/* corner drag handle for live, animated panel reordering */
+.panel-corner-drag{position:absolute;top:6px;left:6px;width:24px;height:24px;border-radius:7px;background:rgba(18,20,28,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);color:#fff;display:flex;align-items:center;justify-content:center;cursor:grab;opacity:0;transition:opacity .12s;z-index:7;}
+.panel-blot:hover .panel-corner-drag{opacity:.9;}
+.panel-corner-drag:hover{opacity:1;background:rgba(18,20,28,.78);}
+.panel-corner-drag:active{cursor:grabbing;}
+.panel-corner-drag svg{width:15px;height:15px;}
+.panel-blot.dragging{z-index:20;opacity:.94;box-shadow:var(--shadow-lg);border-radius:4px;}
 </style>
 </head>
 <body>
@@ -2020,16 +2053,16 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
   <button class="btn primary sm" onclick="addPanel()">+ Add panel</button>
   <div class="tb-group">
     <span class="tb-group-lbl">Figure</span>
-    <label class="tb-field" title="Number of lanes">Lanes <input type="number" id="tb-lanes" min="1" max="30" value="12" onchange="setLaneCount(this.value)"></label>
-    <label class="tb-field" title="Overall figure (blot) width in px">Width <input type="number" id="tb-figw" min="300" max="1400" step="20" value="760" onchange="setFigWidth(this.value)"></label>
-    <label class="tb-field" title="Default vertical spacing between panels">Gap <input type="number" id="tb-gap" min="0" max="80" value="10" onchange="setGap(this.value)"></label>
+    <label class="tb-field" title="Number of lanes">Lanes <span class="tb-step"><button type="button" class="minus" onclick="nudge('tb-lanes',-1,setLaneCount)">&minus;</button><input type="number" id="tb-lanes" min="1" max="30" value="12" onchange="setLaneCount(this.value)"><button type="button" class="plus" onclick="nudge('tb-lanes',1,setLaneCount)">+</button></span></label>
+    <label class="tb-field" title="Overall figure (blot) width in px">Width <span class="tb-step"><button type="button" class="minus" onclick="nudge('tb-figw',-1,setFigWidth)">&minus;</button><input type="number" id="tb-figw" min="300" max="1400" step="20" value="760" onchange="setFigWidth(this.value)"><button type="button" class="plus" onclick="nudge('tb-figw',1,setFigWidth)">+</button></span></label>
+    <label class="tb-field" title="Default vertical spacing between panels">Gap <span class="tb-step"><button type="button" class="minus" onclick="nudge('tb-gap',-1,setGap)">&minus;</button><input type="number" id="tb-gap" min="0" max="80" value="10" onchange="setGap(this.value)"><button type="button" class="plus" onclick="nudge('tb-gap',1,setGap)">+</button></span></label>
     <label class="tb-field" title="Draw a thin border around each blot panel"><input type="checkbox" id="tb-border-on" checked onchange="setBorderOn(this.checked)"> Border <input type="number" id="tb-border-px" min="0" max="8" step="0.2" value="1.6" title="Border thickness (px)" onchange="setBorderPx(this.value)"></label>
   </div>
   <div class="tb-group">
     <span class="tb-group-lbl">Lane labels</span>
     <label class="tb-field" title="Text direction of the lane labels"><select id="tb-laneorient" onchange="setLaneOrient(this.value)"><option value="vert" selected>Vertical</option><option value="ang">Angled</option><option value="horiz">Horizontal</option></select></label>
     <label class="tb-field" title="Put the lane labels + group brackets above or below the panels"><select id="tb-labelpos" onchange="setLaneLabelPos(this.value)"><option value="top" selected>Top</option><option value="bottom">Bottom</option></select></label>
-    <label class="tb-field" title="Lane label text size (px)">Size <input type="number" id="tb-lanelabelsize" min="2" max="72" value="16" onchange="setLaneLabelSize(this.value)"></label>
+    <label class="tb-field" title="Lane label text size (px)">Size <span class="tb-step"><button type="button" class="minus" onclick="nudge('tb-lanelabelsize',-1,setLaneLabelSize)">&minus;</button><input type="number" id="tb-lanelabelsize" min="2" max="72" value="16" onchange="setLaneLabelSize(this.value)"><button type="button" class="plus" onclick="nudge('tb-lanelabelsize',1,setLaneLabelSize)">+</button></span></label>
     <button class="btn sm" id="tb-movelabels" onclick="toggleLaneRepositionMode()" title="Turn on, then drag any label to reposition it (lane: sideways = one label, up/down = all; kDa/protein: up/down per panel). Turn off to edit label text again.">Move</button>
     <div class="tb-field" style="position:relative;"><button class="btn ghost sm" onclick="toggleResetMenu(event)" title="Reset lane widths / label positions">Reset &#9662;</button>
       <div class="menu" id="reset-menu">
@@ -2039,6 +2072,12 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
     </div>
   </div>
   <button class="btn sm" onclick="addGroup()" title="Add a group bracket over the lanes">+ Group bracket</button>
+  <div class="tb-group">
+    <span class="tb-group-lbl">Conditions</span>
+    <button class="btn sm" onclick="addCondRow()" title="Add a sample-condition row — a +/- matrix over the lanes (e.g. compound, ligand, substrate). Click a cell to toggle it on/off.">+ Condition</button>
+    <label class="tb-field" title="How each on/off condition cell is drawn"><select id="tb-condstyle" onchange="setCondStyle(this.value)"><option value="circle">&#9679;/&#9675; Circle</option><option value="plusminus">+ / &minus;</option><option value="dot">&bull; Dot size</option></select></label>
+    <label class="tb-field" title="Place the condition matrix above or below the blot panels"><select id="tb-condpos" onchange="setCondPos(this.value)"><option value="top">Above blot</option><option value="bottom">Below blot</option></select></label>
+  </div>
   <div class="tb-group">
     <span class="tb-group-lbl">Text</span>
     <button class="btn ghost sm tb-fmt" onmousedown="event.preventDefault();blotFmt('bold')" title="Bold"><b>B</b></button>
@@ -2159,7 +2198,8 @@ function defaultFig(){
     laneWeights:null,
     border:{on:true,px:1.6},
     panels:[ newPanel('',''), newPanel('','') ],
-    groups:[]
+    groups:[],
+    condRows:[], condStyle:'circle', condPos:'top'
   };
 }
 var _pid=1;
@@ -2191,6 +2231,10 @@ function migrateFig(fig){
   if(fig.laneLabelZoneH==null) fig.laneLabelZoneH=90;
   if(fig.laneLabelOffsetX===undefined) fig.laneLabelOffsetX=null;
   if(fig.laneLabelOffsetY==null) fig.laneLabelOffsetY=0;
+  if(!Array.isArray(fig.condRows)) fig.condRows=[];
+  fig.condRows.forEach(function(cr){ if(!Array.isArray(cr.on)) cr.on=[]; if(cr.label==null) cr.label=''; });
+  if(fig.condStyle==null) fig.condStyle='circle';
+  if(fig.condPos==null) fig.condPos='top';
   return fig;
 }
 function load(){ try{var s=JSON.parse(localStorage.getItem(STORE_KEY));if(s&&s.panels){FIG=migrateFig(s);return;}}catch(e){} FIG=defaultFig(); }
@@ -2329,6 +2373,46 @@ document.addEventListener('mouseup',function(){
   _panelReorder=null;
 });
 
+/* ── Live, animated panel drag (corner handle): the dragged box follows the cursor,
+   siblings glide to open a gap, and it snaps into the nearest slot on release. ── */
+var _liveDrag=null;
+function _panelCells(pi){ return document.querySelectorAll('[data-pi="'+pi+'"]'); }
+function startPanelLiveDrag(e,pi){
+  e.preventDefault(); e.stopPropagation();
+  var N=FIG.panels.length; if(N<2) return;
+  var cells=[], rects=[];
+  for(var i=0;i<N;i++){ cells.push(_panelCells(i)); var host=_panelElByPi(i); rects.push(host?host.getBoundingClientRect():null); }
+  var dh=(rects[pi]?rects[pi].height:40)+(FIG.gap||0);
+  _liveDrag={pi:pi, startY:e.clientY, cells:cells, rects:rects, N:N, dh:dh, target:pi, moved:false};
+  document.body.style.cursor='grabbing';
+  _panelCells(pi).forEach(function(n){ n.classList.add('dragging'); });
+}
+document.addEventListener('mousemove',function(e){
+  if(!_liveDrag) return;
+  var d=_liveDrag; e.preventDefault();
+  d.moved=true;
+  var dy=e.clientY-d.startY, cursorY=e.clientY;
+  d.cells[d.pi].forEach(function(n){ n.style.transition='none'; n.style.transform='translateY('+dy+'px)'; });
+  var above=0;
+  for(var i=0;i<d.N;i++){ if(i===d.pi) continue; var r=d.rects[i]; if(r && cursorY>(r.top+r.bottom)/2) above++; }
+  d.target=above;
+  for(var i2=0;i2<d.N;i2++){ if(i2===d.pi) continue;
+    var r2=d.rects[i2]; var isAbove=r2 && cursorY>(r2.top+r2.bottom)/2;
+    var shift=0;
+    if(i2<d.pi && !isAbove) shift=d.dh;
+    else if(i2>d.pi && isAbove) shift=-d.dh;
+    d.cells[i2].forEach(function(n){ n.style.transition='transform .16s ease'; n.style.transform=shift?('translateY('+shift+'px)'):''; });
+  }
+});
+document.addEventListener('mouseup',function(){
+  if(!_liveDrag) return;
+  var d=_liveDrag; document.body.style.cursor='';
+  for(var i=0;i<d.N;i++){ d.cells[i].forEach(function(n){ n.style.transition=''; n.style.transform=''; n.classList.remove('dragging'); }); }
+  var from=d.pi, to=d.target;
+  _liveDrag=null;
+  if(d.moved && to!=null && to!==from) reorderPanel(from,to);
+});
+
 /* ── Menus (export + reset dropdowns) ── */
 function closeMenus(){ ['exp-menu','reset-menu','more-menu'].forEach(function(id){ var m=el(id); if(m) m.classList.remove('open'); }); }
 function toggleResetMenu(e){ e.stopPropagation(); var m=el('reset-menu'); var wasOpen=m.classList.contains('open'); closeMenus(); if(!wasOpen) m.classList.add('open'); }
@@ -2342,11 +2426,23 @@ function render(){
   fig.style.setProperty('--blot-w', f.figW+'px');
   fig.className = 'lanes-'+f.laneOrient + (_laneRepositionMode?' reposition-mode':'');
   var mlBtn=el('tb-movelabels'); if(mlBtn) mlBtn.className = _laneRepositionMode ? 'btn sm primary' : 'btn sm';
+  var _cs=el('tb-condstyle'); if(_cs) _cs.value=f.condStyle;
+  var _cp=el('tb-condpos'); if(_cp) _cp.value=f.condPos;
   var repo=_laneRepositionMode;
   var N=f.panels.length;
-  var rowGroups, rowLanes, rowPanelStart;
-  if(f.laneLabelPos==='bottom'){ rowPanelStart=1; rowGroups=1+N; rowLanes=2+N; }
-  else { rowGroups=1; rowLanes=2; rowPanelStart=3; }
+  var hasCond=f.condRows.length>0;
+  var rowGroups, rowLanes, rowPanelStart, rowCond=null, R=1;
+  if(f.laneLabelPos==='bottom'){
+    if(hasCond && f.condPos==='top') rowCond=R++;
+    rowPanelStart=R; R+=N;
+    if(hasCond && f.condPos==='bottom') rowCond=R++;
+    rowGroups=R++; rowLanes=R++;
+  } else {
+    rowGroups=R++; rowLanes=R++;
+    if(hasCond && f.condPos==='top') rowCond=R++;
+    rowPanelStart=R; R+=N;
+    if(hasCond && f.condPos==='bottom') rowCond=R++;
+  }
   var edges=laneEdgesPct(f);
   var html='';
   // groups band
@@ -2374,8 +2470,8 @@ function render(){
       html+='<div class="panel-blot" data-pi="'+pi+'" style="'+mb+'">'
         +'<img class="blot-img" src="'+p.cropped+'" alt="blot" style="'+imgStyle+'" onmousedown="startImageDrag(event,'+pi+')">'
         +'<div class="panel-resize-handle" title="Drag to resize this panel\'s box (hold Shift to stretch the membrane too) &middot; double-click to reset" onmousedown="startPanelResize(event,'+pi+')" ondblclick="clearPanelHeight('+pi+')"></div>'
+        +'<div class="panel-corner-drag" title="Drag to move this panel — it follows your cursor and snaps into place" onmousedown="startPanelLiveDrag(event,'+pi+')">'+DRAG_SVG+'</div>'
         +'<div class="panel-tools">'
-          +'<button class="panel-tool panel-drag-handle" draggable="true" title="Drag to reorder panels" ondragstart="panelDragStart(event,'+pi+')">'+DRAG_SVG+'</button>'
           +'<span class="panel-gap-wrap" title="Vertical spacing after this panel (px). Blank = default ('+f.gap+'px)."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8h16M4 16h16"/></svg><input type="number" class="panel-gap-input" min="0" max="80" value="'+(p.gapAfter!=null?p.gapAfter:'')+'" placeholder="'+f.gap+'" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()" onchange="setPanelGap('+pi+',this.value)"></span>'
           +'<span class="panel-tool-sep"></span>'
           +'<button class="panel-tool'+(p.scaleWithBox!==false?' on':'')+'" title="'+(p.scaleWithBox!==false?'Membrane stretches to fill the box — click to keep its own scale instead':'Membrane keeps its own scale — click to stretch it with the box')+'" onclick="togglePanelScale('+pi+')">'+(p.scaleWithBox!==false
@@ -2413,15 +2509,56 @@ function render(){
     }).join('')
     +dividerHtml
   +'</div>';
+  if(rowCond!=null) html+=condBandHtml(rowCond);
   fig.innerHTML=html;
   wireGroupDrag();
+}
+
+/* ── Numeric stepper (+/- buttons around toolbar fields) ── */
+function nudge(id,dir,fn){
+  var inp=el(id); if(!inp) return;
+  var step=parseFloat(inp.step)||1;
+  var mn=inp.min!==''?parseFloat(inp.min):-Infinity, mx=inp.max!==''?parseFloat(inp.max):Infinity;
+  var v=(parseFloat(inp.value)||0)+dir*step;
+  v=Math.max(mn,Math.min(mx,v));
+  v=Math.round(v*1000)/1000;
+  inp.value=v; if(fn) fn(v);
+}
+
+/* ── Sample-conditions matrix ── */
+function addCondRow(){ FIG.condRows.push({label:'',on:new Array(FIG.laneCount).fill(false)}); save(); render(); }
+function delCondRow(ri){ if(FIG.condRows[ri]){ FIG.condRows.splice(ri,1); save(); render(); } }
+function setCondLabel(ri,v){ if(FIG.condRows[ri]){ FIG.condRows[ri].label=v; save(); } }
+function toggleCond(ri,i){ var cr=FIG.condRows[ri]; if(!cr) return; if(!Array.isArray(cr.on)) cr.on=[]; cr.on[i]=!cr.on[i]; save(); render(); }
+function setCondStyle(v){ FIG.condStyle=(v==='plusminus'||v==='dot')?v:'circle'; save(); render(); }
+function setCondPos(v){ FIG.condPos=(v==='bottom'?'bottom':'top'); save(); render(); }
+function condMarkerHtml(on){
+  var s=FIG.condStyle;
+  if(s==='plusminus') return '<span class="cond-pm">'+(on?'+':'−')+'</span>';
+  if(s==='dot') return '<svg class="cond-mark" width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="'+(on?7:3)+'" fill="#111"/></svg>';
+  return '<svg class="cond-mark" width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="'+(on?'#111':'none')+'" stroke="#111" stroke-width="2"/></svg>';
+}
+function condBandHtml(rowNum){
+  var f=FIG; if(!f.condRows.length) return '';
+  var laneW=laneWeightsArr(f), total=laneW.reduce(function(a,b){return a+b;},0)||1;
+  var rows=f.condRows.map(function(cr,ri){
+    var cells='';
+    for(var i=0;i<f.laneCount;i++){
+      var on=!!(cr.on&&cr.on[i]);
+      cells+='<div class="cond-cell '+(on?'on':'off')+'" style="width:'+(laneW[i]/total*100)+'%;" onclick="toggleCond('+ri+','+i+')" title="Click to toggle">'+condMarkerHtml(on)+'</div>';
+    }
+    return '<div class="cond-lblcell"><button class="cond-del" onclick="delCondRow('+ri+')" title="Remove condition">&times;</button>'
+      +'<div class="lbl-in" contenteditable="true" onfocus="_blotActiveEd=this" oninput="setCondLabel('+ri+',this.innerHTML)">'+(cr.label||'')+'</div></div>'
+      +'<div class="cond-lanes">'+cells+'</div>';
+  }).join('');
+  return '<div class="cond-band" style="grid-row:'+rowNum+';">'+rows+'</div>';
 }
 
 /* ── Editing ── */
 function setPanel(pi,field,v){ FIG.panels[pi][field]=v; save(); }
 function setLane(i,v){ FIG.lanes[i]=v; save(); }
 function setGroupLabel(gi,v){ FIG.groups[gi].label=v; save(); }
-function setLaneCount(n){ n=Math.max(1,Math.min(30,parseInt(n)||1)); FIG.laneCount=n; while(FIG.lanes.length<n)FIG.lanes.push(''); FIG.groups.forEach(function(g){g.from=Math.min(g.from,n);g.to=Math.min(g.to,n);}); el('tb-lanes').value=n; save(); render(); }
+function setLaneCount(n){ n=Math.max(1,Math.min(30,parseInt(n)||1)); FIG.laneCount=n; while(FIG.lanes.length<n)FIG.lanes.push(''); FIG.groups.forEach(function(g){g.from=Math.min(g.from,n);g.to=Math.min(g.to,n);}); FIG.condRows.forEach(function(cr){ if(!Array.isArray(cr.on))cr.on=[]; while(cr.on.length<n)cr.on.push(false); }); el('tb-lanes').value=n; save(); render(); }
 function setLaneOrient(v){ FIG.laneOrient=v; save(); render(); }
 function setLaneLabelPos(v){ FIG.laneLabelPos=(v==='bottom'?'bottom':'top'); save(); render(); }
 function setLaneLabelSize(v){ FIG.laneLabelSize=Math.max(2,Math.min(72,parseInt(v)||16)); save(); render(); }
@@ -2620,11 +2757,30 @@ function confirmCrop(){
 
 /* ── Classic formatting ribbon (shared pattern with Labbook/Plasmids) ── */
 var _blotActiveEd=null;
+var _blotSavedRange=null;
 var BRB_COLORS=['#111111','#c04040','#5e72c4','#2d9462','#c47818','#7c6fd4'];
+// remember the last text selection made inside a label, so the Size <select> (which
+// steals focus and collapses the selection on click) can restore it before applying.
+document.addEventListener('selectionchange',function(){
+  var sel=window.getSelection(); if(!sel||!sel.rangeCount) return;
+  var a=sel.anchorNode; if(!a) return;
+  var host=a.nodeType===3?a.parentNode:a;
+  if(host&&host.closest&&host.closest('.lbl-in,.grp-lbl')) _blotSavedRange=sel.getRangeAt(0).cloneRange();
+});
+function _blotRestoreSel(){ if(!_blotSavedRange) return; try{ var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(_blotSavedRange); }catch(e){} }
 function blotColorSwatches(){ return BRB_COLORS.map(function(c){return '<button class="brb-swatch" style="background:'+c+'" onmousedown="event.preventDefault();blotFmtColor(\''+c+'\')" title="'+c+'"></button>';}).join(''); }
 function blotFmt(cmd){ if(!_blotActiveEd) return; _blotActiveEd.focus(); try{ document.execCommand(cmd,false,null); }catch(e){} _blotActiveEd.dispatchEvent(new Event('input')); }
-function blotFmtSize(px){ if(!_blotActiveEd||!px) return; _blotActiveEd.focus(); try{ document.execCommand('styleWithCSS',false,true); var sel=window.getSelection(); if(sel&&sel.rangeCount&&!sel.isCollapsed){ document.execCommand('fontSize',false,'7'); _blotActiveEd.querySelectorAll('font[size="7"]').forEach(function(f){ var s=document.createElement('span'); s.style.fontSize=px+'px'; s.innerHTML=f.innerHTML; f.parentNode.replaceChild(s,f); }); } }catch(e){} _blotActiveEd.dispatchEvent(new Event('input')); }
-function blotFmtColor(c){ if(!_blotActiveEd) return; _blotActiveEd.focus(); try{ document.execCommand('styleWithCSS',false,true); document.execCommand('foreColor',false,c); }catch(e){} _blotActiveEd.dispatchEvent(new Event('input')); }
+function blotFmtSize(px){
+  if(!_blotActiveEd||!px) return;
+  _blotActiveEd.focus(); _blotRestoreSel();
+  var sel=window.getSelection();
+  if(!sel||!sel.rangeCount||sel.isCollapsed){ toast('Select some label text first'); return; }
+  try{ document.execCommand('styleWithCSS',false,true); document.execCommand('fontSize',false,'7');
+    _blotActiveEd.querySelectorAll('font[size="7"]').forEach(function(f){ var s=document.createElement('span'); s.style.fontSize=px+'px'; s.innerHTML=f.innerHTML; f.parentNode.replaceChild(s,f); });
+  }catch(e){}
+  _blotActiveEd.dispatchEvent(new Event('input'));
+}
+function blotFmtColor(c){ if(!_blotActiveEd) return; _blotActiveEd.focus(); _blotRestoreSel(); try{ document.execCommand('styleWithCSS',false,true); document.execCommand('foreColor',false,c); }catch(e){} _blotActiveEd.dispatchEvent(new Event('input')); }
 
 /* ── Export ── */
 function toggleExportMenu(e){ e.stopPropagation(); var m=el('exp-menu'), was=m.classList.contains('open'); closeMenus(); if(!was) m.classList.add('open'); }
@@ -2714,6 +2870,15 @@ async function renderFigureCanvas(scale){
       ctx.moveTo(lr.x,ly); ctx.lineTo(lr.x+lr.w,ly); ctx.moveTo(lr.x,ly);ctx.lineTo(lr.x,ly+6); ctx.moveTo(lr.x+lr.w,ly);ctx.lineTo(lr.x+lr.w,ly+6); ctx.stroke(); }
     if(lbl) drawLabel(lbl,0,'center');
   });
+  // 5) sample-conditions matrix (labels + on/off markers)
+  fig.querySelectorAll('.cond-band .cond-lblcell .lbl-in').forEach(function(inEl){ drawLabel(inEl,0,'right'); });
+  fig.querySelectorAll('.cond-band .cond-cell').forEach(function(cell){
+    var r=rel(cell), on=cell.classList.contains('on'), cx=r.cx, cy=r.cy;
+    ctx.fillStyle='#111'; ctx.strokeStyle='#111';
+    if(FIG.condStyle==='plusminus'){ ctx.font='600 17px "IBM Plex Sans",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(on?'+':'−', cx, cy); }
+    else if(FIG.condStyle==='dot'){ ctx.beginPath(); ctx.arc(cx,cy,on?7:3,0,2*Math.PI); ctx.fill(); }
+    else { ctx.lineWidth=2; ctx.beginPath(); ctx.arc(cx,cy,8,0,2*Math.PI); if(on) ctx.fill(); ctx.stroke(); }
+  });
   return cv;
 }
 
@@ -2773,17 +2938,57 @@ function buildImagePdf(jpegBytes, pxW, pxH, scale){
   return out;
 }
 
+/* ── Saved-blots + presets store: localStorage cache + Firebase /journal/blot sync
+   (same adopt-if-newer pattern as Plasmids). Saving no longer fails on a full
+   localStorage — the entry stays in memory + syncs to Firebase, and the local cache
+   trims its oldest saved figures to fit rather than throwing "storage full". ── */
+var BKEY='blot_store';
+var BSTORE=null;
+function bLoadStore(){
+  try{ BSTORE=JSON.parse(localStorage.getItem(BKEY)||'null'); }catch(e){}
+  if(!BSTORE||typeof BSTORE!=='object') BSTORE={history:[],presets:[],updated:0};
+  if(!Array.isArray(BSTORE.history)) BSTORE.history=[];
+  if(!Array.isArray(BSTORE.presets)) BSTORE.presets=[];
+  // one-time migration from the old separate keys
+  try{ var oh=JSON.parse(localStorage.getItem('blot_history')||'[]'); if(Array.isArray(oh)&&oh.length&&!BSTORE.history.length){ BSTORE.history=oh; } }catch(e){}
+  try{ var op=JSON.parse(localStorage.getItem('blot_presets')||'[]'); if(Array.isArray(op)&&op.length&&!BSTORE.presets.length){ BSTORE.presets=op; } }catch(e){}
+}
+var _bFbRef=null,_bAdopting=false,_bSyncT=null;
+function bFb(){ if(_bFbRef!==null) return _bFbRef; try{ _bFbRef=(window.parent&&window.parent.firebase)?window.parent.firebase.database().ref('journal/blot'):undefined; }catch(e){ _bFbRef=undefined; } return _bFbRef; }
+function bSaveLocal(){
+  try{ localStorage.setItem(BKEY, JSON.stringify(BSTORE)); return true; }
+  catch(e){ // quota: trim oldest saved figures (presets are light — keep them) until it fits
+    var h=BSTORE.history.slice();
+    while(h.length){ h.pop();
+      try{ localStorage.setItem(BKEY, JSON.stringify({history:h,presets:BSTORE.presets,updated:BSTORE.updated})); return true; }catch(e2){}
+    }
+    try{ localStorage.setItem(BKEY, JSON.stringify({history:[],presets:BSTORE.presets,updated:BSTORE.updated})); return true; }catch(e3){ return false; }
+  }
+}
+function bSaveStore(){
+  BSTORE.updated=Date.now(); bSaveLocal();
+  if(_bAdopting) return;
+  clearTimeout(_bSyncT);
+  _bSyncT=setTimeout(function(){ var r=bFb(); if(r){ try{ r.set(BSTORE).catch(function(){}); }catch(e){} } }, 1200);
+}
+function bInitSync(){
+  var r=bFb(); if(!r) return;
+  try{ r.once('value').then(function(s){ var v=s.val();
+    if(v&&typeof v==='object'&&(v.updated||0)>(BSTORE.updated||0)){
+      _bAdopting=true; BSTORE={history:Array.isArray(v.history)?v.history:[],presets:Array.isArray(v.presets)?v.presets:[],updated:v.updated}; bSaveLocal(); _bAdopting=false;
+      if(el('hist-back').classList.contains('open')) renderHistoryList();
+      if(el('preset-back').classList.contains('open')) renderPresetsList();
+    }
+  }).catch(function(){}); }catch(e){}
+}
+
 /* ── History (save/browse/load/delete past figures) ── */
-var HIST_KEY='blot_history';
-function getHistoryList(){ try{ var l=JSON.parse(localStorage.getItem(HIST_KEY)||'[]'); return Array.isArray(l)?l:[]; }catch(e){ return []; } }
+function getHistoryList(){ return BSTORE.history; }
 function saveHistory(){
-  try{
-    var list=getHistoryList();
-    list.unshift({ts:Date.now(), fig:JSON.parse(JSON.stringify(FIG))});
-    list=list.slice(0,12);
-    localStorage.setItem(HIST_KEY,JSON.stringify(list));
-    toast('Figure saved');
-  }catch(e){ toast('Could not save (storage full)'); }
+  BSTORE.history.unshift({ts:Date.now(), fig:JSON.parse(JSON.stringify(FIG))});
+  BSTORE.history=BSTORE.history.slice(0,12);
+  bSaveStore();
+  toast('Figure saved');
 }
 function openHistoryModal(){ renderHistoryList(); el('hist-back').classList.add('open'); }
 function closeHistoryModal(){ el('hist-back').classList.remove('open'); }
@@ -2809,15 +3014,13 @@ function loadHistoryEntry(i){
   save(); render(); closeHistoryModal(); toast('Figure loaded');
 }
 function deleteHistoryEntry(i){
-  var list=getHistoryList(); list.splice(i,1);
-  try{ localStorage.setItem(HIST_KEY,JSON.stringify(list)); }catch(e){}
+  BSTORE.history.splice(i,1); bSaveStore();
   renderHistoryList();
 }
 
 /* ── Presets (blank templates: protein names / kDa / lanes / layout, no images) ── */
-var PRESET_KEY='blot_presets';
-function getPresets(){ try{ var l=JSON.parse(localStorage.getItem(PRESET_KEY)||'[]'); return Array.isArray(l)?l:[]; }catch(e){ return []; } }
-function savePresetsList(list){ try{ localStorage.setItem(PRESET_KEY,JSON.stringify(list)); }catch(e){ toast('Could not save preset (storage full)'); } }
+function getPresets(){ return BSTORE.presets; }
+function savePresetsList(list){ BSTORE.presets=list; bSaveStore(); }
 function openPresetsModal(){ renderPresetsList(); el('preset-back').classList.add('open'); }
 function closePresetsModal(){ el('preset-back').classList.remove('open'); }
 function renderPresetsList(){
@@ -2850,8 +3053,9 @@ function loadPreset(i){
 function deletePreset(i){ var list=getPresets(); list.splice(i,1); savePresetsList(list); renderPresetsList(); }
 
 /* ── Boot ── */
-load(); render();
+load(); bLoadStore(); render();
 var _swEl=el('brb-swatches'); if(_swEl) _swEl.innerHTML=blotColorSwatches();
+bInitSync();
 </script>
 </body>
 </html>
