@@ -216,6 +216,20 @@ tbody tr:hover{background:var(--surface2);}
 .tb-btn.lg{padding:8px 18px;font-size:13px;}
 
 /* LEGEND */
+.boxview-seg{display:inline-flex;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:2px;gap:2px;}
+.bvseg-btn{border:none;background:none;color:var(--text2);font-size:12px;font-weight:600;padding:5px 11px;border-radius:6px;cursor:pointer;font-family:inherit;}
+.bvseg-btn.on{background:var(--accent);color:#fff;}
+/* Grouped-by-cell-line view */
+.cl-group{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.cl-group-hd{display:flex;align-items:center;gap:9px;margin-bottom:9px;}
+.cl-group-sw{width:14px;height:14px;border-radius:4px;flex-shrink:0;border:1px solid var(--border);}
+.cl-group-name{font-size:13.5px;font-weight:600;color:var(--text);}
+.cl-group-count{font-size:11px;color:var(--text3);font-family:var(--mono);margin-left:auto;}
+.cl-pos-row{display:flex;flex-wrap:wrap;gap:6px;}
+.cl-pos{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-family:var(--mono);color:var(--text);background:var(--surface);border:1px solid var(--border2);border-radius:6px;padding:3px 8px;cursor:pointer;transition:border-color .12s;}
+.cl-pos:hover{border-color:var(--accent);}
+.cl-pos .cl-pos-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.cl-pos .cl-pos-p{color:var(--text3);}
 .legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
 .legend-item{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);}
 .legend-sw{width:10px;height:10px;border-radius:50%;border:1px solid var(--border);}
@@ -360,6 +374,10 @@ tbody tr:hover{background:var(--surface2);}
     <div class="detail-toolbar">
       <button class="tb-btn primary" onclick="openAddVial()">+ Add vial</button>
       <button class="tb-btn" onclick="openBulkAdd()">Bulk add (paste)</button>
+      <span class="boxview-seg" id="boxview-seg">
+        <button class="bvseg-btn" data-view="grid" onclick="setBoxView('grid')">Grid</button>
+        <button class="bvseg-btn" data-view="group" onclick="setBoxView('group')">By cell line</button>
+      </span>
       <span style="flex:1;"></span>
       <span class="detail-sub" id="detail-box-fill"></span>
     </div>
@@ -551,6 +569,7 @@ var state = {
   },
   cellLineColors: {}, // 'HeLa' -> '#hex'
   view: 'grid', // 'grid' | 'table'
+  boxView: 'grid', // box detail: 'grid' | 'group'
   search: ''
 };
 var currentTab = 'minus80';
@@ -691,16 +710,29 @@ function seedWhenAdminReady(tries){
 }
 function uid(){ return 'id-' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
 
-// ─── COLOR (cell-line hashing) ────────────────────────────────────────────
-var _hueCache = {};
+// ─── COLOR (cell-line families) ───────────────────────────────────────────
+// Curated pastel hue wheel. A cell-line FAMILY (the base name before the first
+// comma/paren — e.g. "HCT116" in "HCT116, DCAF15 KO #15") gets one stable hue, and
+// clones within that family differ only by a small deterministic lightness shift — so
+// related lines read as a family instead of getting wildly different random colours.
+var _hueCache = {}, _baseHue = {};
+var CELL_HUES = [210, 158, 32, 340, 265, 128, 46, 192, 300, 16, 92, 238, 318, 74, 178, 355];
+function _cellBase(name){ return String(name||'').split(/[,(]/)[0].trim().toLowerCase(); }
+function cellLineFamilyHue(name){
+  var base = _cellBase(name);
+  if (_baseHue[base] === undefined) _baseHue[base] = Object.keys(_baseHue).length;
+  return CELL_HUES[_baseHue[base] % CELL_HUES.length];
+}
 function cellLineColor(name){
   if (!name) return 'var(--text3)';
   if (state.cellLineColors[name]) return state.cellLineColors[name];
   if (_hueCache[name]) return _hueCache[name];
-  var h = 0;
-  for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+  var hue = cellLineFamilyHue(name);
+  var suffix = String(name).slice(_cellBase(name).length);
+  var sh = 0; for (var i = 0; i < suffix.length; i++) sh = (sh + suffix.charCodeAt(i)) % 11;
   var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  var col = 'hsl(' + h + ', ' + (isDark ? '55%, 58%' : '55%, 52%') + ')';
+  var light = (isDark ? 62 : 60) + (sh - 5);   // ±5% per-clone variation
+  var col = 'hsl(' + hue + ', ' + (isDark ? '46%' : '56%') + ', ' + light + '%)';
   _hueCache[name] = col;
   return col;
 }
@@ -1048,7 +1080,7 @@ function renderBoxDetail(){
   }
   gridHtml += '</div></div>';
 
-  // Cell-line legend (top 8)
+  // Cell-line legend (top 12)
   var counts = {};
   Object.values(box.vials || {}).forEach(function(v){ if (v.cellLine) counts[v.cellLine] = (counts[v.cellLine] || 0) + 1; });
   var lines = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; }).slice(0, 12);
@@ -1058,7 +1090,38 @@ function renderBoxDetail(){
       }).join('') + '</div>'
     : '';
 
-  document.getElementById('detail-body').innerHTML = gridHtml + legend;
+  // Grouped-by-cell-line view: one card per cell line (family-hue swatch) listing its
+  // vial positions as clickable chips — so you see "what's in this box" at a glance.
+  var groupHtml = '';
+  if (state.boxView === 'group') {
+    var byLine = {};
+    Object.keys(box.vials || {}).forEach(function(pos){
+      var v = box.vials[pos]; var cl = (v && v.cellLine) || '(unlabelled)';
+      (byLine[cl] = byLine[cl] || []).push({ pos: pos, v: v });
+    });
+    var clNames = Object.keys(byLine).sort(function(a, b){
+      var fa = cellLineFamilyHue(a), fb = cellLineFamilyHue(b);
+      if (fa !== fb) return fa - fb;                // keep families adjacent
+      return a.localeCompare(b);
+    });
+    groupHtml = clNames.length ? clNames.map(function(cl){
+      var members = byLine[cl].sort(function(a, b){ return _posOrder(a.pos) - _posOrder(b.pos); });
+      var chips = members.map(function(m){
+        var p = (m.v && m.v.passage) ? ('<span class="cl-pos-p">P' + esc(m.v.passage) + '</span>') : '';
+        return '<span class="cl-pos" data-pos="' + m.pos + '"><span class="cl-pos-dot" style="background:' + cellLineColor(cl) + ';"></span>' + m.pos + ' ' + p + '</span>';
+      }).join('');
+      return '<div class="cl-group"><div class="cl-group-hd"><span class="cl-group-sw" style="background:' + cellLineColor(cl) + ';"></span>'
+        + '<span class="cl-group-name">' + esc(cl) + '</span><span class="cl-group-count">' + members.length + ' vial' + (members.length > 1 ? 's' : '') + '</span></div>'
+        + '<div class="cl-pos-row">' + chips + '</div></div>';
+    }).join('') : '<div class="empty-hint">No vials in this box yet.</div>';
+  }
+
+  // Segment toggle reflects the active view.
+  document.querySelectorAll('#boxview-seg .bvseg-btn').forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-view') === (state.boxView || 'grid'));
+  });
+
+  document.getElementById('detail-body').innerHTML = (state.boxView === 'group' ? groupHtml : gridHtml) + legend;
 
   // Hover + click handlers on wells. On touch-only devices the hover tooltip is
   // suppressed — users tap the well to open the edit modal which shows the same info.
@@ -1071,7 +1134,13 @@ function renderBoxDetail(){
     }
     el.addEventListener('click', function(){ wellClick(el.dataset.pos); });
   });
+  // Grouped-view chips open the same vial editor.
+  document.querySelectorAll('#detail-body .cl-pos').forEach(function(el){
+    el.addEventListener('click', function(){ wellClick(el.dataset.pos); });
+  });
 }
+function _posOrder(pos){ var m = /^([A-Z])(\d+)$/.exec(pos); return m ? (m[1].charCodeAt(0) - 65) * 100 + parseInt(m[2], 10) : 0; }
+function setBoxView(v){ state.boxView = v; try { saveState(); } catch(e){} renderBoxDetail(); }
 function wellHoverEnter(e){
   var pos = e.currentTarget.dataset.pos;
   var box = getCurrentBox();

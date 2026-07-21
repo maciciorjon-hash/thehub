@@ -298,6 +298,15 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .dfx-blk:first-child{border-top:none;}
 .dfx-blk-t{font-size:11px;font-weight:600;color:var(--text3);padding:8px 16px 0;cursor:pointer;}
 .dfx-blk-t:hover{color:var(--accent);}
+/* Carried-over unfinished work */
+.day-carry-lbl{color:var(--accent);opacity:.85;}
+.day-exp.day-carry{border-style:dashed;border-color:var(--border2);background:var(--surface2);}
+.day-carry-hd{display:flex;align-items:center;gap:8px;padding:8px 16px 0;flex-wrap:wrap;}
+.carry-from{font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#fff;background:var(--accent);opacity:.85;border-radius:5px;padding:2px 7px;}
+.dfx-blk-t2{font-size:11px;font-weight:600;color:var(--text3);cursor:pointer;}
+.dfx-blk-t2:hover{color:var(--accent);}
+.carry-move{margin-left:auto;font-size:10.5px;font-weight:600;color:var(--accent);background:var(--accent-dim);border:none;border-radius:6px;padding:3px 9px;cursor:pointer;}
+.carry-move:hover{filter:brightness(1.05);}
 .dfx-blk-link{opacity:.55;font-size:10px;}
 .dfx-proj{font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;}
 .dfx-sep{color:var(--text3);font-size:11px;}
@@ -736,6 +745,38 @@ function cycleProjColor(id){ var p=projById(id); if(!p) return; var i=PROJ_COLOR
 function isCoded(e){ return e.kind!=='note'; }
 function allBlockDates(){ var set={}; Object.keys(LB.data.experiments).forEach(function(k){ (LB.data.experiments[k].blocks||[]).forEach(function(b){ if(b.date) set[b.date]=1; }); }); return set; }
 function blocksForDate(D){ var out=[]; Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; (e.blocks||[]).forEach(function(b){ if(b.date===D) out.push({exp:e,block:b}); }); }); return out; }
+// A block is "unfinished" if it holds a checklist item that isn't ticked (done).
+// This drives day-to-day carryover: unfinished work rolls forward until it's checked off.
+function _blockHasUnchecked(html){
+  if(!html || html.indexOf('lb-check')<0 && html.indexOf('lb-todo')<0) return false;
+  try{ var d=document.createElement('div'); d.innerHTML=html;
+    var lis=d.querySelectorAll('ul.lb-check > li, ul.lb-check ul > li, li.lb-todo');
+    for(var i=0;i<lis.length;i++){ if(!lis[i].classList.contains('done')) return true; }
+  }catch(e){}
+  return false;
+}
+// Blocks dated strictly before D that still have unticked checklist items — grouped by
+// experiment, most-recent date first. These are "dragged" onto day D's notebook.
+function carryoverForDate(D){
+  var byExp={}, order=[];
+  Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
+    (e.blocks||[]).forEach(function(b){
+      if(b.date && b.date<D && _blockHasUnchecked(b.html)){
+        if(!byExp[e.id]){ byExp[e.id]={exp:e,blocks:[]}; order.push(e.id); }
+        byExp[e.id].blocks.push(b);
+      }
+    });
+  });
+  order.forEach(function(id){ byExp[id].blocks.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }); });
+  return {byExp:byExp, order:order};
+}
+// Destructive "carry to today": re-date an unfinished block onto day D so it physically
+// moves into today's notebook (the reference view already shows it non-destructively).
+function carryBlockToToday(expId,blockId,D){
+  var e=LB.data.experiments[expId]; if(!e) return;
+  var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0]; if(!b) return;
+  b.date=D; save(); renderAll();
+}
 function entryMatchesTag(html,tag){ return (html||'').indexOf('data-tag="'+tag+'"')>=0; }
 function typeName(id){ var t=EXP_TYPES.filter(function(x){return x.id===id;})[0]; return t?t.name:id; }
 function pageItemExp(e){ var code=isCoded(e)?('<div class="page-code">'+esc(e.code||'')+'</div>'):('<div class="page-kind">'+esc(e.noteType||'note')+'</div>');
@@ -874,8 +915,13 @@ function renderNotebookEditor(host){
   var from = order.length ? ('<div style="margin-top:14px"><div class="day-from-lbl">What to do today — from your experiments</div>'+order.map(function(id){ var g=byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
     var blks=g.blocks.map(function(b){ return (b.title?'<div class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></div>':'')+'<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
     return '<div class="day-exp"><div class="day-exp-hd"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span><button class="dfx-open" onclick="openExp(\''+g.exp.id+'\')">Open &#8599;</button></div>'+blks+'</div>'; }).join('')+'</div>') : '';
+  // Carried-over unfinished work from earlier days (unticked checklist items roll forward).
+  var co=carryoverForDate(D);
+  var carried = co.order.length ? ('<div style="margin-top:16px"><div class="day-from-lbl day-carry-lbl">↩ Carried over — unfinished from earlier days</div>'+co.order.map(function(id){ var g=co.byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
+    var blks=g.blocks.map(function(b){ return '<div class="day-carry-hd"><span class="carry-from">from '+esc(fmtDate(b.date))+'</span>'+(b.title?'<span class="dfx-blk-t2" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'')+'<button class="carry-move" title="Move this block onto today" onclick="carryBlockToToday(\''+g.exp.id+'\',\''+b.id+'\',\''+D+'\')">Move to today &#8595;</button></div><div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
+    return '<div class="day-exp day-carry"><div class="day-exp-hd"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span></div>'+blks+'</div>'; }).join('')+'</div>') : '';
   host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+esc(fmtDate(D))+'</div><div class="exh-acts"><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">Daily notebook</div></div>'
-    +'<div class="nb-free"><div class="day-from-lbl">Daily note</div><div class="rt nb-body" contenteditable="true" data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>'+from+'</div>';
+    +'<div class="nb-free"><div class="day-from-lbl">Daily note</div><div class="rt nb-body" contenteditable="true" data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>'+from+carried+'</div>';
   hydrateAtt(host); renderDockPanels();
 }
 function delDay(D){ lbConfirm('Delete this daily note? (Experiment blocks on this date are not deleted.)',{danger:true,title:'Delete daily note'}).then(function(ok){ if(!ok) return; delete LB.data.notebook[D]; SEL.page=null; save(); renderAll(); }); }

@@ -142,14 +142,21 @@ header{border-bottom:1px solid var(--border);padding:0 22px;display:flex;align-i
 .status-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 11px;border-radius:20px;}
 .pill-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
 .pill{font-size:11px;background:var(--accent-dim);color:var(--accent);padding:3px 9px;border-radius:20px;font-weight:500;}
-/* Classic formatting ribbon (shared "OneNote"-style bar) for the Notes editor */
-.pl-rb{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:4px 6px;background:var(--surface2);border:1px solid var(--border2);border-bottom:none;border-radius:8px 8px 0 0;}
-.pl-rb .tb{min-width:26px;height:24px;padding:0 6px;border:none;background:none;color:var(--text2);border-radius:5px;cursor:pointer;font-size:13px;font-family:var(--sans);display:inline-flex;align-items:center;justify-content:center;}
+/* Formatting ribbon — unified dHUB "OneNote" language (matches Labbook/Blot) */
+.pl-rb{display:flex;flex-wrap:wrap;align-items:center;gap:3px;padding:5px 7px;background:var(--surface2);border:1px solid var(--border2);border-bottom:none;border-radius:8px 8px 0 0;}
+.pl-rb .tb{width:34px;height:34px;padding:0;border:none;background:none;color:var(--text2);border-radius:8px;cursor:pointer;font-size:13px;font-family:var(--sans);display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;}
+.pl-rb .tb svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
 .pl-rb .tb:hover{background:var(--surface3);color:var(--text);}
-.pl-rb .tb b,.pl-rb .tb i,.pl-rb .tb u{font-size:13px;}
-.pl-rb select.tb-sel{height:24px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-size:11px;font-family:var(--sans);padding:0 4px;cursor:pointer;}
-.pl-rb .tb-sep{width:1px;height:16px;background:var(--border2);margin:0 4px;}
-.pl-rb input[type=color]{width:22px;height:22px;border:none;background:none;padding:0;cursor:pointer;}
+.pl-rb .tb.active{background:var(--accent-dim);color:var(--accent);}
+.pl-rb select.tb-sel{height:32px;background:var(--surface);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-size:11.5px;font-family:var(--sans);padding:0 6px;cursor:pointer;}
+.pl-rb .tb-sep{width:1px;height:20px;background:var(--border2);margin:0 4px;}
+.pl-rb .tb-color{position:relative;}
+.pl-rb .tb-color .tb-color-bar{position:absolute;left:7px;right:7px;bottom:6px;height:3px;border-radius:2px;background:var(--accent);}
+.pl-swatch-pop{position:fixed;z-index:120;background:var(--surface);border:1px solid var(--border2);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.28);padding:8px;display:none;grid-template-columns:repeat(6,20px);gap:6px;}
+.pl-swatch-pop.open{display:grid;}
+.pl-swatch-pop .sw{width:20px;height:20px;border-radius:6px;cursor:pointer;border:1px solid rgba(0,0,0,.12);}
+.pl-swatch-pop .sw.none{display:flex;align-items:center;justify-content:center;background:var(--surface2);color:var(--text3);font-size:12px;grid-column:span 6;height:22px;border-radius:6px;}
+#pl-tip{position:fixed;z-index:300;background:#1c2030;color:#e8eaf2;font-size:11px;font-family:var(--sans);padding:4px 8px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .1s;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.3);}
 .pl-rt{min-height:82px;max-height:240px;overflow:auto;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 8px 8px;
   padding:9px 11px;font-family:var(--sans);font-size:13px;color:var(--text);line-height:1.55;outline:none;}
 .pl-rt:focus{border-color:var(--accent);}
@@ -243,7 +250,7 @@ function nextCode(){
   return 'pJM'+('0'+(max+1)).slice(-2);
 }
 function newPlasmid(){
-  var p={id:uid(),code:nextCode(),name:'',backbone:'',insert:'',resistance:'Amp',tags:'',poi:'',source:'Cloned in-house',status:'idea',seq:'',notes:'',mapImage:'',mapName:'',created:Date.now(),updated:Date.now()};
+  var p={id:uid(),code:nextCode(),name:'',backbone:'',insert:'',resistance:'Amp',tags:'',source:'Cloned in-house',status:'idea',seq:'',notes:'',mapImage:'',mapName:'',created:Date.now(),updated:Date.now()};
   DATA.plasmids[p.id]=p; save(); SEL=p.id; renderAll();
   setTimeout(function(){ var n=document.querySelector('.pl-name-in'); if(n) n.focus(); },30);
 }
@@ -259,21 +266,59 @@ function setF(f,v){ var p=_cur(); if(!p) return; p[f]=v; p.updated=Date.now(); s
 var _plActiveEd=null;
 function _plNotesHtml(v){ v=String(v==null?'':v); return /<[a-z/][^>]*>/i.test(v) ? v : esc(v).replace(/\n/g,'<br>'); }
 function _plStrip(v){ var d=document.createElement('div'); d.innerHTML=String(v==null?'':v); return (d.textContent||d.innerText||'').replace(/\s+/g,' ').trim(); }
+var PL_TB_SVG={
+  bold:'<path d="M6 4h6a3.5 3.5 0 0 1 0 7H6zM6 11h7a3.5 3.5 0 0 1 0 7H6z"/>',
+  italic:'<path d="M15 4h-5M14 20H9M14 4l-4 16"/>',
+  underline:'<path d="M7 4v7a5 5 0 0 0 10 0V4M5 21h14"/>',
+  strike:'<path d="M5 12h14M8 8a3 3 0 0 1 3-2h2a3 3 0 0 1 3 2M16 16a3 3 0 0 1-3 2h-2a3 3 0 0 1-3-2"/>',
+  ul:'<circle cx="4.5" cy="6.5" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4.5" cy="17.5" r="1.4" fill="currentColor" stroke="none"/><path d="M9 6.5h11M9 12h11M9 17.5h11"/>',
+  ol:'<path d="M9 6.5h11M9 12h11M9 17.5h11M3.5 5v3M3 5.2h1M3 11.8h1.4L3 13.5h1.2M3 16.4h1.2v1H3.4v1H4.4"/>',
+  color:'<path d="M12 3l4.5 11.5a5 5 0 1 1-9 0z"/>',
+  clear:'<path d="M5 5l14 14M9 5h10M14.5 5l-2 6M8 19h7"/>'
+};
+function plTb(name,label,onclick){ return '<button type="button" class="tb" data-tip="'+label+'" onclick="'+onclick+'"><svg viewBox="0 0 24 24">'+PL_TB_SVG[name]+'</svg></button>'; }
 function plRibbon(){
   var sizes=[10,12,14,16,18,20,24].map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('');
   return '<div class="pl-rb" onmousedown="event.preventDefault()">'
-    +'<button type="button" class="tb" title="Bold" onclick="plFmt(\'bold\')"><b>B</b></button>'
-    +'<button type="button" class="tb" title="Italic" onclick="plFmt(\'italic\')"><i>I</i></button>'
-    +'<button type="button" class="tb" title="Underline" onclick="plFmt(\'underline\')"><u>U</u></button>'
+    +plTb('bold','Bold','plFmt(\'bold\')')
+    +plTb('italic','Italic','plFmt(\'italic\')')
+    +plTb('underline','Underline','plFmt(\'underline\')')
+    +plTb('strike','Strikethrough','plFmt(\'strikeThrough\')')
     +'<span class="tb-sep"></span>'
-    +'<select class="tb-sel" title="Font size" onchange="plFmtSize(this.value);this.selectedIndex=0"><option value="">Size</option>'+sizes+'</select>'
-    +'<input type="color" title="Text colour" value="#6d7bd0" oninput="plFmtColor(this.value)">'
+    +'<select class="tb-sel" data-tip="Font size" onchange="plFmtSize(this.value);this.selectedIndex=0"><option value="">Size</option>'+sizes+'</select>'
+    +'<button type="button" class="tb tb-color" data-tip="Text colour" onclick="plColorPop(this)"><svg viewBox="0 0 24 24">'+PL_TB_SVG.color+'</svg><span class="tb-color-bar"></span></button>'
     +'<span class="tb-sep"></span>'
-    +'<button type="button" class="tb" title="Bullet list" onclick="plFmt(\'insertUnorderedList\')">&#8226;</button>'
-    +'<button type="button" class="tb" title="Numbered list" onclick="plFmt(\'insertOrderedList\')">1.</button>'
-    +'<button type="button" class="tb" title="Clear formatting" onclick="plFmt(\'removeFormat\')">⨯</button>'
+    +plTb('ul','Bullet list','plFmt(\'insertUnorderedList\')')
+    +plTb('ol','Numbered list','plFmt(\'insertOrderedList\')')
+    +plTb('clear','Clear formatting','plFmt(\'removeFormat\')')
   +'</div>';
 }
+// Pastel colour swatch popover (replaces the raw <input type=color>).
+var PL_SWATCHES=['#6d7bd0','#5e87c5','#51c3ce','#4f9d8f','#7bbf7b','#e6b45e','#e36c69','#c07a8e','#816baf','#8b90a8','#5a5f7a','#1a1d2e'];
+function plColorPop(btn){
+  var pop=document.getElementById('pl-swatch-pop');
+  if(!pop){ pop=document.createElement('div'); pop.id='pl-swatch-pop'; pop.className='pl-swatch-pop';
+    pop.innerHTML=PL_SWATCHES.map(function(c){return '<div class="sw" style="background:'+c+'" data-c="'+c+'"></div>';}).join('')+'<div class="sw none" data-c="none">None</div>';
+    document.body.appendChild(pop);
+    pop.addEventListener('mousedown',function(e){ e.preventDefault(); var t=e.target.closest('.sw'); if(!t)return; var c=t.getAttribute('data-c'); if(c==='none') plFmt('removeFormat'); else plFmtColor(c); pop.classList.remove('open'); });
+  }
+  var r=btn.getBoundingClientRect();
+  pop.style.left=Math.max(6,r.left)+'px'; pop.style.top=(r.bottom+4)+'px';
+  pop.classList.toggle('open');
+  var close=function(ev){ if(!pop.contains(ev.target)&&ev.target!==btn){ pop.classList.remove('open'); document.removeEventListener('mousedown',close,true); } };
+  if(pop.classList.contains('open')) setTimeout(function(){ document.addEventListener('mousedown',close,true); },0);
+}
+// Fast custom tooltip (suppresses the slow native title), matching Labbook's #lb-tip.
+(function(){
+  var tip; function ensure(){ if(!tip){ tip=document.createElement('div'); tip.id='pl-tip'; document.body.appendChild(tip); } return tip; }
+  var showT;
+  document.addEventListener('mouseover',function(e){
+    var el=e.target.closest&&e.target.closest('[data-tip]'); if(!el) return;
+    clearTimeout(showT); showT=setTimeout(function(){ var t=ensure(); t.textContent=el.getAttribute('data-tip'); var r=el.getBoundingClientRect();
+      t.style.left=Math.round(r.left+r.width/2)+'px'; t.style.top=(r.bottom+6)+'px'; t.style.transform='translateX(-50%)'; t.style.opacity='1'; },140);
+  });
+  document.addEventListener('mouseout',function(e){ if(e.target.closest&&e.target.closest('[data-tip]')){ clearTimeout(showT); if(tip) tip.style.opacity='0'; } });
+})();
 function _plEd(){ var e=_plActiveEd; if(!e){ e=document.querySelector('.pl-rt'); } return e; }
 function plFmt(cmd){ var e=_plEd(); if(!e) return; e.focus(); try{ document.execCommand(cmd,false,null); }catch(x){} setF('notes',e.innerHTML); }
 function plFmtSize(px){ var e=_plEd(); if(!e||!px) return; e.focus(); try{ document.execCommand('styleWithCSS',false,true); var sel=window.getSelection(); if(sel&&sel.rangeCount&&!sel.isCollapsed){ document.execCommand('fontSize',false,'7'); e.querySelectorAll('font[size="7"]').forEach(function(f){ var s=document.createElement('span'); s.style.fontSize=px+'px'; s.innerHTML=f.innerHTML; f.parentNode.replaceChild(s,f); }); } }catch(x){} setF('notes',e.innerHTML); }
@@ -283,7 +328,7 @@ function plFmtColor(c){ var e=_plEd(); if(!e) return; e.focus(); try{ document.e
 function renderList(){
   var q=(el('search').value||'').trim().toLowerCase();
   var items=Object.keys(DATA.plasmids).map(function(k){return DATA.plasmids[k];})
-    .filter(function(p){ if(!q) return true; return ((p.code||'')+' '+(p.name||'')+' '+(p.insert||'')+' '+(p.tags||'')+' '+(p.poi||'')).toLowerCase().indexOf(q)>=0; })
+    .filter(function(p){ if(!q) return true; return ((p.code||'')+' '+(p.name||'')+' '+(p.insert||'')+' '+(p.tags||'')).toLowerCase().indexOf(q)>=0; })
     .sort(function(a,b){ return (a.code||'').localeCompare(b.code||'', undefined, {numeric:true}); });
   var host=el('list');
   if(!items.length){ host.innerHTML='<div class="list-empty">'+(Object.keys(DATA.plasmids).length?'No matches.':'No plasmids yet.<br>Add one with <b>+ New</b>.')+'</div>'; return; }
@@ -397,7 +442,6 @@ function renderEditor(){
         +'<div class="fld"><label>Insert</label><input value="'+esc(p.insert||'')+'" placeholder="DCAF15-NL…" onchange="setF(\'insert\',this.value)"></div>'
         +'<div class="fld"><label>Resistance</label><input value="'+esc(p.resistance||'')+'" placeholder="Amp" onchange="setF(\'resistance\',this.value)"></div>'
         +'<div class="fld"><label>Tags</label><input value="'+esc(p.tags||'')+'" placeholder="HiBiT, HA, Tet-On" onchange="setF(\'tags\',this.value)"></div>'
-        +'<div class="fld"><label>POI / target</label><input value="'+esc(p.poi||'')+'" placeholder="DCAF15" onchange="setF(\'poi\',this.value)"></div>'
         +'<div class="fld"><label>Status</label><select onchange="setF(\'status\',this.value)">'+statusOpts+'</select></div>'
         +'<div class="fld"><label>Source</label><input value="'+esc(p.source||'')+'" placeholder="Cloned in-house / gift / Addgene" onchange="setF(\'source\',this.value)"></div>'
         +'<div class="fld full"><label>Sequencing</label><input value="'+esc(p.seq||'')+'" placeholder="Sanger + Plasmidsaurus OK; 1 N deletion in…" onchange="setF(\'seq\',this.value)"></div>'
@@ -454,7 +498,7 @@ function openLightbox(){ var p=_cur(); if(!p||!p.mapImage) return; el('lightbox-
 
 // ── CSV export ──────────────────────────────────────────────────────────────
 function exportCSV(){
-  var cols=['code','name','backbone','insert','resistance','tags','poi','status','source','seq','notes'];
+  var cols=['code','name','backbone','insert','resistance','tags','status','source','seq','notes'];
   var rows=[cols.join(',')];
   Object.keys(DATA.plasmids).map(function(k){return DATA.plasmids[k];})
     .sort(function(a,b){ return (a.code||'').localeCompare(b.code||'', undefined, {numeric:true}); })

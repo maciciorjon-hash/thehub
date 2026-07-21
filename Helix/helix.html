@@ -123,6 +123,15 @@ select:focus,input:focus{border-color:var(--accent);}
 .vec-rc-note{font-size:11px;color:var(--text3);margin-top:4px;padding:4px 8px;background:var(--surface2);border-radius:5px;border-left:2px solid var(--accent);}
 .grp-hdr{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:18px 0 8px;}
 .search-input{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--sans);font-size:13px;outline:none;width:100%;}
+.hx-gb-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:12px 0;}
+.hx-gb-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap;}
+.hx-gb-title{font-size:13.5px;font-weight:600;color:var(--text);}
+.hx-gb-sub{font-size:11.5px;color:var(--text3);margin-top:2px;max-width:520px;line-height:1.5;}
+.hx-gb-input{width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:9px 11px;color:var(--text);font-family:var(--mono);font-size:11px;outline:none;resize:vertical;}
+.hx-gb-input:focus{border-color:var(--accent2,#5e87c5);}
+.hx-gb-out:empty{display:none;}
+.hx-gb-result{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;margin-top:12px;}
+.hx-gb-feats{flex:1;min-width:200px;}
 .search-input:focus{border-color:var(--accent);}
 .empty-msg{color:var(--text3);font-size:13px;padding:20px 0;}
 ::-webkit-scrollbar{width:5px;height:5px;}
@@ -447,8 +456,20 @@ select:focus,input:focus{border-color:var(--accent);}
     <input class="search-input" id="vec-search" type="text" placeholder="Search vectors by name or tag (e.g. His, Gateway, AmpR…)" oninput="filterVectors()" style="flex:1;">
     <button class="btn btn-sec" id="maps-toggle-btn" onclick="toggleAllMaps()" style="white-space:nowrap;flex-shrink:0;">⊞ Show all maps</button>
   </div>
+  <!-- Load-your-own accurate map (works for ANY plasmid) -->
+  <div id="hx-gb-panel" class="hx-gb-panel">
+    <div class="hx-gb-hd">
+      <div>
+        <div class="hx-gb-title">Draw an accurate map from a real sequence</div>
+        <div class="hx-gb-sub">Paste a GenBank record or drop a <b>.gb / .gbk</b> file — the map is built from its real feature coordinates. Works for any vector or your own construct.</div>
+      </div>
+      <label class="btn btn-sec" style="cursor:pointer;white-space:nowrap;">Load .gb file<input type="file" accept=".gb,.gbk,.genbank,.ape,.txt" style="display:none" onchange="hxLoadGbFile(this.files[0])"></label>
+    </div>
+    <textarea id="hx-gb-input" class="hx-gb-input" rows="4" placeholder="Paste GenBank text here (LOCUS … FEATURES … ), then press Draw map." oninput="hxDrawUserGb()"></textarea>
+    <div id="hx-gb-out" class="hx-gb-out"></div>
+  </div>
   <div id="vec-library"></div>
-  <div style="font-size:11px;color:var(--text3);margin-top:4px;">Sizes are approximate from deposited sequences; verify with current Addgene entries.</div>
+  <div style="font-size:11px;color:var(--text3);margin-top:4px;">Bundled maps are drawn from verified GenBank feature tables. Sizes for un-mapped vectors are approximate — verify with current Addgene entries, or load the real <b>.gb</b> above for an accurate map.</div>
 </div>
 
 <!-- GUIDE -->
@@ -1264,12 +1285,105 @@ const VECTORS=[
   {id:'pX458',name:'pX458 (pSpCas9(BB)-2A-GFP)',group:'CRISPR',size:9288,promoter:'CBh (Cas9) · U6 (sgRNA)',resistance:'AmpR',origin:'pUC',tags:'SpCas9 · 2A-EGFP · BbsI sites',addgeneId:48138,use:'All-in-one CRISPR vector. SpCas9 and EGFP co-expressed from CBh promoter via 2A peptide. sgRNA cloned via BbsI.',keywords:['CRISPR','AmpR','SpCas9','sgRNA','GFP','CBh','BbsI','knockout']},
 ];
 
+// ─── Real GenBank maps ─────────────────────────────────────────────────────
+// The old maps were drawn from hand-typed, fabricated feature coordinates and were
+// therefore wrong. These are the real thing: a GenBank parser (feature table → real
+// coordinates) + a circular renderer shared, visually, with the Plasmids app. Vectors
+// with a bundled, verified record below render an ACCURATE map; any other vector (or a
+// user's own construct) can be rendered by pasting/loading its .gb file.
+function hxParseGB(text){
+  if(!text || text.indexOf('LOCUS')<0) return null;
+  var lines=text.split(/\r?\n/), out={name:'',length:0,circular:false,features:[]};
+  var lm=(lines[0]||'').match(/^LOCUS\s+(\S+)\s+(\d+)\s*bp/i);
+  if(lm){ out.name=lm[1]; out.length=parseInt(lm[2],10)||0; }
+  if(/\bcircular\b/i.test(lines[0]||'')) out.circular=true;
+  var inFeat=false, cur=null;
+  function push(){ if(cur && cur.start && cur.end) out.features.push(cur); cur=null; }
+  for(var i=0;i<lines.length;i++){ var ln=lines[i];
+    if(/^FEATURES/.test(ln)){ inFeat=true; continue; }
+    if(!inFeat) continue;
+    if(/^ORIGIN|^\/\/|^[A-Z]/.test(ln)){ push(); break; }
+    var fk=ln.match(/^ {5}(\S+)\s+(.+)$/);
+    if(fk){ push(); var loc=fk[2], strand=/complement/.test(loc)?-1:1, nums=loc.match(/<?(\d+)\.\.>?(\d+)/), s=0,e=0;
+      if(nums){ s=parseInt(nums[1],10); e=parseInt(nums[2],10); } else { var one=loc.match(/(\d+)/); if(one){ s=parseInt(one[1],10); e=s; } }
+      cur={type:fk[1],start:s,end:e,strand:strand,label:''};
+    } else if(cur){ var q=ln.match(/^\s+\/(?:label|gene|product|note)=?"?([^"]+)"?/); if(q && !cur.label) cur.label=q[1].replace(/"+$/,'').slice(0,28); }
+  }
+  push();
+  if(!out.length){ out.features.forEach(function(f){ if(f.end>out.length) out.length=f.end; }); }
+  return out.length ? out : null;
+}
+var HX_FCOL={CDS:'#5e87c5',gene:'#4f9d8f',promoter:'#e0906a',terminator:'#c98fc0',rep_origin:'#f0b060',oriT:'#f0b060',misc_feature:'#8ba7e0',primer_bind:'#a6d98f',protein_bind:'#7fd0c0',regulatory:'#e0906a'};
+function hxFcol(t){ return HX_FCOL[t]||'#9aa0b8'; }
+function hxPolar(cx,cy,r,deg){ var a=(deg-90)*Math.PI/180; return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; }
+function hxArc(cx,cy,r1,r2,a0,a1){ var large=((a1-a0)%360)>180?1:0; var p1=hxPolar(cx,cy,r2,a0),p2=hxPolar(cx,cy,r2,a1),p3=hxPolar(cx,cy,r1,a1),p4=hxPolar(cx,cy,r1,a0);
+  return 'M'+p1[0].toFixed(1)+' '+p1[1].toFixed(1)+' A'+r2+' '+r2+' 0 '+large+' 1 '+p2[0].toFixed(1)+' '+p2[1].toFixed(1)+' L'+p3[0].toFixed(1)+' '+p3[1].toFixed(1)+' A'+r1+' '+r1+' 0 '+large+' 0 '+p4[0].toFixed(1)+' '+p4[1].toFixed(1)+' Z'; }
+function hxMapSvg(gb,title,size){
+  size=size||240; var s=size/240, cx=120,cy=120,L=gb.length||1;
+  var segs=gb.features.filter(function(f){return f.type!=='source';}).slice(0,80).map(function(f){
+    var a0=(f.start/L)*360, a1=(f.end/L)*360; if(a1<=a0) a1=a0+0.8;
+    var out=f.strand<0, r1=out?72:76, r2=out?86:90;
+    return '<path d="'+hxArc(cx,cy,r1,r2,a0,a1)+'" fill="'+hxFcol(f.type)+'" opacity=".92"><title>'+esc((f.label||f.type)+' · '+f.start+'..'+f.end+(f.strand<0?' (–)':' (+)'))+'</title></path>';
+  }).join('');
+  var ring='<circle cx="120" cy="120" r="81" fill="none" stroke="var(--border2)" stroke-width="1.5"/>';
+  var center='<text x="120" y="115" text-anchor="middle" style="font-size:15px;font-weight:600;fill:var(--text)">'+esc(String(title||'').slice(0,18))+'</text><text x="120" y="133" text-anchor="middle" style="font-size:10px;fill:var(--text3)">'+L+' bp'+(gb.circular?' · circular':'')+'</text>';
+  return '<svg viewBox="0 0 240 240" width="'+size+'" height="'+size+'" style="max-width:100%;height:auto;">'+ring+segs+center+'</svg>';
+}
+var _gbCache={};
+function hxVecGb(v){
+  if(v && v.id && REAL_GB[v.id]){ if(!_gbCache[v.id]) _gbCache[v.id]=hxParseGB(REAL_GB[v.id]); return _gbCache[v.id]; }
+  return null;
+}
+// A vector's map: accurate GenBank render if we have a verified record, else an honest
+// "no verified map" placeholder that invites loading a real .gb (never a fake map).
+function hxVecMap(v,size){
+  size=size||240;
+  var gb=hxVecGb(v);
+  if(gb) return '<div class="vec-map-svg">'+hxMapSvg(gb,v.name,size)+'</div>';
+  return '<div class="vec-map-svg vec-map-none" style="width:'+size+'px;max-width:100%;height:'+size+'px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">'
+    +'<svg viewBox="0 0 240 240" width="'+Math.min(size,160)+'" height="'+Math.min(size,160)+'" style="opacity:.35"><circle cx="120" cy="120" r="80" fill="none" stroke="var(--border2)" stroke-width="2" stroke-dasharray="5 6"/></svg>'
+    +'<div style="font-size:10.5px;color:var(--text3);text-align:center;max-width:180px;">No verified map bundled yet — <a href="#" onclick="event.stopPropagation();gotoLoadMap();return false;" style="color:var(--accent2)">load its .gb file</a> for an accurate map.</div></div>';
+}
+// Bundled, verified GenBank records (LOCUS + real feature coordinates). Add more here as
+// authoritative .gb files are verified — the map renders straight from these coordinates.
+var REAL_GB={
+  'pUC19':'LOCUS       pUC19                   2686 bp    DNA     circular     18-OCT-2007\n'
+    +'FEATURES             Location/Qualifiers\n'
+    +'     source          1..2686\n                     /organism="Cloning vector pUC19"\n'
+    +'     CDS             complement(146..469)\n                     /gene="lacZalpha"\n                     /product="LacZ-alpha"\n'
+    +'     misc_feature    396..452\n                     /note="MCS (EcoRI-HindIII)"\n'
+    +'     promoter        complement(514..543)\n                     /note="lac promoter"\n'
+    +'     protein_bind    complement(563..575)\n                     /note="CAP site"\n'
+    +'     rep_origin      complement(867..1455)\n                     /note="pMB1 ori"\n'
+    +'     CDS             complement(1626..2486)\n                     /gene="bla"\n                     /product="AmpR (bla)"\n'
+    +'     promoter        complement(2530..2556)\n                     /note="bla promoter"\n'
+};
+
 const VEC_GROUPS=['Bacterial Cloning','Bacterial Expression','Gateway / Recombination','Mammalian Expression','Lentiviral System','CRISPR'];
-let _vecQuery='', _expandedVec=null, _showAllMaps=false;
+let _vecQuery='', _expandedVec=null, _showAllMaps=false, _userGb=null;
 
 function filterVectors(){
   _vecQuery=document.getElementById('vec-search').value.trim().toLowerCase();
   renderVectorLibrary();
+}
+// Render an accurate map from user-pasted / uploaded GenBank.
+function hxDrawUserGb(){
+  var txt=(document.getElementById('hx-gb-input')||{}).value||'';
+  var out=document.getElementById('hx-gb-out'); if(!out) return;
+  if(!txt.trim()){ out.innerHTML=''; _userGb=null; return; }
+  var gb=hxParseGB(txt);
+  if(!gb){ out.innerHTML='<div style="font-size:12px;color:var(--warn,#e36c69);padding:8px 0;">Couldn\'t parse that — make sure it\'s a GenBank record with a LOCUS line and a FEATURES table.</div>'; _userGb=null; return; }
+  _userGb=gb;
+  out.innerHTML='<div class="hx-gb-result"><div>'+hxMapSvg(gb, gb.name||'plasmid', 240)+'</div>'
+    +'<div class="hx-gb-feats">'+gb.features.filter(function(f){return f.type!=='source';}).map(function(f){
+      return '<div class="vec-feat-item"><span class="vec-feat-dot" style="background:'+hxFcol(f.type)+'"></span><span class="vec-feat-name">'+esc(f.label||f.type)+'</span><span class="vec-feat-pos">'+f.start+'–'+f.end+' bp'+(f.strand<0?' (–)':'')+'</span></div>';
+    }).join('')+'</div></div>';
+}
+function hxLoadGbFile(file){
+  if(!file) return;
+  var r=new FileReader();
+  r.onload=function(){ var ta=document.getElementById('hx-gb-input'); if(ta){ ta.value=String(r.result||''); } hxDrawUserGb(); };
+  r.readAsText(file);
 }
 
 function toggleAllMaps(){
@@ -1296,7 +1410,7 @@ function renderVectorLibrary(){
       if(_showAllMaps){
         // Gallery mode: map + name + tags, click opens modal
         html+=`<div class="vec-card gallery-card" onclick="openVecModal('${v.id}')">
-          <div class="vec-map-svg">${drawPlasmidMap(v.id,v.size,240)}</div>
+          ${hxVecMap(v,240)}
           <div class="vec-name" style="margin-top:8px;">${esc(v.name)}</div>
           <div class="vec-size">${v.size.toLocaleString()} bp</div>
           <div class="vec-tags" style="justify-content:center;">
@@ -1317,15 +1431,16 @@ function renderVectorLibrary(){
           <div class="vec-use">${esc(v.use)}</div>
           <div class="vec-detail">
             <div class="vec-map-wrap">
-              <div class="vec-map-svg">${drawPlasmidMap(v.id,v.size)}</div>
+              ${hxVecMap(v,200)}
               <div>
                 <dl class="vec-feat" style="margin-bottom:8px;">
                   <dt>Promoter</dt><dd>${esc(v.promoter)}</dd>
                   <dt>Resistance</dt><dd>${esc(v.resistance)}</dd>
                   <dt>Origin</dt><dd>${esc(v.origin)}</dd>
                   ${v.tags?`<dt>Tags</dt><dd>${esc(v.tags)}</dd>`:''}
+                  ${v.addgeneId?`<dt>Addgene</dt><dd><a href="https://www.addgene.org/${v.addgeneId}/" onclick="event.stopPropagation();hxOpenExt('https://www.addgene.org/${v.addgeneId}/');return false;" style="color:var(--accent2);text-decoration:none;">#${v.addgeneId} ↗</a></dd>`:''}
                 </dl>
-                ${(VEC_FEATURES[v.id]||[]).map(f=>`<div class="vec-feat-item"><span class="vec-feat-dot" style="background:${TYPE_COLORS[f.t]||'#bdc3c7'}"></span><span class="vec-feat-name">${esc(f.n)}</span><span class="vec-feat-pos">${f.s}–${f.e} bp</span></div>`).join('')}
+                ${hxFeatList(v)}
               </div>
             </div>
             <div style="margin-top:8px;font-size:11px;color:var(--text3);">Click again to collapse</div>
@@ -1360,13 +1475,28 @@ function _fallbackCopy(txt){
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 // ─── Vector modal ─────────────────────────────────────────────────────────────
+// Real parsed-feature list for a vector (from the bundled GenBank), or an honest note.
+function hxFeatList(v){
+  var gb=hxVecGb(v);
+  if(gb && gb.features.length){
+    return '<div>'+gb.features.filter(function(f){return f.type!=='source';}).map(function(f){
+      return '<div class="vec-feat-item"><span class="vec-feat-dot" style="background:'+hxFcol(f.type)+'"></span><span class="vec-feat-name">'+esc(f.label||f.type)+'</span><span class="vec-feat-pos">'+f.start+'–'+f.end+' bp'+(f.strand<0?' (–)':'')+'</span></div>';
+    }).join('')+'</div>';
+  }
+  return '<div style="font-size:11px;color:var(--text3);line-height:1.5;">No verified feature map bundled for this vector yet. Load its real <b>.gb</b> file (Addgene / SnapGene) below to draw an accurate map.</div>';
+}
+// Open an external link from inside dHUB's sandboxed iframe via the top window.
+function hxOpenExt(u){ try{ (window.top||window).open(u,'_blank','noopener'); }catch(e){ window.open(u,'_blank','noopener'); } }
+function gotoLoadMap(){ var p=document.getElementById('hx-gb-panel'); if(p){ p.scrollIntoView({behavior:'smooth',block:'center'}); var ta=document.getElementById('hx-gb-input'); if(ta) ta.focus(); } }
+
+// ─── Vector modal ─────────────────────────────────────────────────────────────
 function openVecModal(id) {
   const v = VECTORS.find(x => x.id === id);
   if (!v) return;
-  const svgHtml = drawPlasmidMap(v.id, v.size, 380);
-  const feats = VEC_FEATURES[v.id] || [];
+  const gb = hxVecGb(v);
+  const svgHtml = hxVecMap(v, 340);
   const addgeneHtml = v.addgeneId
-    ? `<a class="vec-modal-link" href="https://www.addgene.org/${v.addgeneId}/" target="_blank" rel="noopener">&#8599; Addgene #${v.addgeneId}</a>`
+    ? `<a class="vec-modal-link" href="https://www.addgene.org/${v.addgeneId}/" onclick="hxOpenExt('https://www.addgene.org/${v.addgeneId}/');return false;">&#8599; Addgene #${v.addgeneId}</a>`
     : (v.generic ? `<div style="font-size:11px;color:var(--text3);margin-top:6px;padding:6px 10px;background:var(--surface3);border-radius:6px;">Generic name — ${esc(v.note||'check manufacturer catalogue')}</div>` : '');
   document.getElementById('vec-modal-content').innerHTML = `
     <div class="vec-modal-body">
@@ -1381,9 +1511,9 @@ function openVecModal(id) {
           <dt>Origin</dt><dd>${esc(v.origin)}</dd>
           ${v.tags ? `<dt>Tags</dt><dd>${esc(v.tags)}</dd>` : ''}
         </dl>
-        ${feats.length ? `<div>${feats.map(f=>`<div class="vec-feat-item"><span class="vec-feat-dot" style="background:${TYPE_COLORS[f.t]||'#bdc3c7'}"></span><span class="vec-feat-name">${esc(f.n)}</span><span class="vec-feat-pos">${f.s}–${f.e} bp</span></div>`).join('')}</div>` : ''}
+        ${hxFeatList(v)}
         ${addgeneHtml}
-        <div style="font-size:10px;color:var(--text3);margin-top:12px;line-height:1.5;">Schematic only — feature positions are approximate.</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:12px;line-height:1.5;">${gb?'Map drawn from a verified GenBank feature table (real coordinates).':'Load a .gb file to draw an accurate map for this vector.'}</div>
       </div>
     </div>`;
   document.getElementById('vec-modal-overlay').style.display = 'flex';
