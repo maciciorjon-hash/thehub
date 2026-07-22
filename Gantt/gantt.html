@@ -88,7 +88,7 @@ header{border-bottom:1px solid var(--border);padding:0 22px;display:flex;align-i
 
 /* ── Stage / chart ── */
 .stage{flex:1;overflow:auto;padding:26px 26px 90px;display:flex;justify-content:center;align-items:flex-start;}
-.paper{background:#fff;border-radius:8px;box-shadow:var(--shadow-md);padding:26px 30px 30px;min-width:760px;width:100%;max-width:1180px;}
+.paper{background:#fff;border-radius:8px;box-shadow:var(--shadow-md);padding:26px 30px 30px;min-width:760px;width:100%;max-width:1180px;font-family:var(--chart-font,var(--sans));}
 [data-theme="dark"] .paper{background:#12141b;box-shadow:var(--shadow-lg);}
 .paper-head{display:flex;align-items:baseline;gap:12px;margin-bottom:3px;flex-wrap:wrap;}
 .paper-title{font-size:21px;font-weight:700;letter-spacing:-0.4px;color:var(--text);}
@@ -147,7 +147,7 @@ header{border-bottom:1px solid var(--border);padding:0 22px;display:flex;align-i
 .mk.milestone .mk-glyph{width:15px;height:15px;background:var(--accent);transform:rotate(45deg);border:1.5px solid #fff;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.3);}
 [data-theme="dark"] .mk.milestone .mk-glyph{border-color:#12141b;}
 .mk.deliverable .mk-glyph{width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:13px solid #4f8ac2;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));}
-.mk-tag{font-size:8.5px;font-weight:700;font-family:var(--mono);color:var(--text2);margin-top:1px;white-space:nowrap;pointer-events:none;background:var(--surface);padding:0 2px;border-radius:3px;}
+.mk-tag{font-size:8.5px;font-weight:700;font-family:inherit;color:var(--text2);margin-top:1px;white-space:nowrap;pointer-events:none;background:var(--surface);padding:0 2px;border-radius:3px;}
 .mk-del{position:absolute;top:-8px;right:-10px;width:14px;height:14px;border-radius:50%;background:#d9534f;color:#fff;font-size:10px;line-height:14px;text-align:center;cursor:pointer;display:none;}
 .mk:hover .mk-del{display:block;}
 
@@ -259,6 +259,12 @@ header{border-bottom:1px solid var(--border);padding:0 22px;display:flex;align-i
       <span class="rb-glabel">Structure</span>
       <button class="btn sm primary" onclick="addWP()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Work package</button>
       <button class="btn sm" onclick="addTask()">+ Task</button>
+    </div>
+    <div class="rb-group">
+      <span class="rb-glabel">Font</span>
+      <div class="rb-field">
+        <select id="in-font" onchange="setFont(this.value)" title="Chart typeface — some funders require Times New Roman / Arial"></select>
+      </div>
     </div>
     <div class="rb-group">
       <span class="rb-glabel">Colour</span>
@@ -381,12 +387,25 @@ var SCHEMES={
 var SCHEME_ORDER=['sunset','meadow','ocean','berry','slate'];
 var DELIV_COLOR='#4f8ac2';
 
+/* ── Typefaces (grant-friendly; some funders mandate Times New Roman / Arial) ── */
+var FONTS=[
+  {id:'sans',    name:'Plex Sans',        css:"'IBM Plex Sans',-apple-system,'Segoe UI',sans-serif"},
+  {id:'arial',   name:'Arial',            css:"Arial,'Helvetica Neue',Helvetica,sans-serif"},
+  {id:'helvetica',name:'Helvetica',       css:"'Helvetica Neue',Helvetica,Arial,sans-serif"},
+  {id:'calibri', name:'Calibri',          css:"Calibri,'Segoe UI','Trebuchet MS',sans-serif"},
+  {id:'times',   name:'Times New Roman',  css:"'Times New Roman',Times,serif"},
+  {id:'georgia', name:'Georgia',          css:"Georgia,'Times New Roman',serif"},
+  {id:'garamond',name:'Garamond',         css:"'EB Garamond',Garamond,'Times New Roman',serif"},
+  {id:'cambria', name:'Cambria',          css:"Cambria,Georgia,serif"}
+];
+function fontCss(){var f=FONTS.filter(function(x){return x.id===(CHART&&CHART.font);})[0]||FONTS[0];return f.css;}
+
 /* ── Data model ── */
 var CHART=null;
 function blankChart(){
   return {title:'',acronym:'',months:24,unit:'M',
     quarters:true,years:true,altRows:true,wpBars:true,legend:true,barLabels:true,
-    scheme:'sunset',monthW:0,wps:[],markers:[]};
+    scheme:'sunset',font:'sans',monthW:0,wps:[],markers:[]};
 }
 function newTask(name,start,dur,kind){return{id:uid(),name:name||'New task',start:start||1,dur:dur||3,kind:kind||'task'};}
 function newWP(name,color){return{id:uid(),name:name||'New work package',color:color||'#7ba587',tasks:[]};}
@@ -434,10 +453,15 @@ function render(){
   $('v-wpbar').checked=CHART.wpBars;$('v-legend').checked=CHART.legend;$('v-barlbl').checked=CHART.barLabels;
   $('in-zoom').value=CHART.monthW?Math.round(CHART.monthW):0;
 
+  $('in-font').value=CHART.font||'sans';
+  $('paper').style.setProperty('--chart-font',fontCss());
+
   var chart=$('chart');
   var LW=labelW(), MW=computeMonthW(), N=CHART.months;
   chart.style.setProperty('--label-w',LW+'px');
   chart.style.setProperty('--month-w',MW+'px');
+  // adaptive: only label every Nth unit so numbers never collide
+  var lstep=Math.max(1,Math.ceil(23/MW));
   var timelineW=MW*N;
   var qsize=(CHART.unit==='Q')?1:(CHART.unit==='W')?13:3; // units per "quarter/period" band
   var bandSize=(CHART.unit==='W')?13:(CHART.unit==='Q')?4:12; // units per period band (year-ish)
@@ -457,7 +481,8 @@ function render(){
   }
   for(var m=0;m<N;m++){
     var isQ=(m%qsize===0);
-    h+='<div class="gc-mcell'+(isQ?' qstart':'')+'" style="left:'+(m*MW)+'px;width:'+MW+'px">'+unitPrefix()+(m+1)+'</div>';
+    var showLbl=(m%lstep===0);
+    h+='<div class="gc-mcell'+(isQ?' qstart':'')+'" style="left:'+(m*MW)+'px;width:'+MW+'px">'+(showLbl?unitPrefix()+(m+1):'')+'</div>';
   }
   h+='</div></div>';
 
@@ -664,6 +689,7 @@ function cycleColor(wpId){
   var pal=SCHEMES[CHART.scheme];var i=pal.indexOf(wp.color);wp.color=pal[(i+1)%pal.length];render();queueSave();
 }
 function applyScheme(name){CHART.scheme=name;var pal=SCHEMES[name];CHART.wps.forEach(function(wp,i){wp.color=pal[i%pal.length];});render();queueSave();}
+function setFont(id){CHART.font=id;render();queueSave();}
 function addMarker(type,rowId){
   var rid=rowId||firstRowId();
   if(!rid){toast('Add a work package first');return;}
@@ -693,6 +719,11 @@ document.querySelectorAll('.rb-tab').forEach(function(tab){
     document.querySelector('.rb-panel[data-panel="'+tab.dataset.tab+'"]').classList.add('on');
   };
 });
+// font select options
+(function(){
+  var sel=$('in-font');
+  sel.innerHTML=FONTS.map(function(f){return '<option value="'+f.id+'">'+f.name+'</option>';}).join('');
+})();
 // scheme swatches
 (function(){
   var wrap=$('scheme-dots');
@@ -722,8 +753,10 @@ function buildSVG(){
   var qsize=(CHART.unit==='Q')?1:(CHART.unit==='W')?13:3;
   var bandSize=(CHART.unit==='W')?13:(CHART.unit==='Q')?4:12;
   var x0=PAD+LW, y0=PAD+titleH+HEADH;
+  var FF=fontCss().replace(/"/g,'&quot;');
+  var lstep=Math.max(1,Math.ceil(23/MW));
   var s='';
-  function T(x,y,t,size,color,weight,anchor,extra){return '<text x="'+x+'" y="'+y+'" font-family="IBM Plex Sans, Arial, sans-serif" font-size="'+size+'" fill="'+color+'" font-weight="'+(weight||400)+'" text-anchor="'+(anchor||'start')+'"'+(extra||'')+'>'+esc(t)+'</text>';}
+  function T(x,y,t,size,color,weight,anchor,extra){return '<text x="'+x+'" y="'+y+'" font-family="'+FF+'" font-size="'+size+'" fill="'+color+'" font-weight="'+(weight||400)+'" text-anchor="'+(anchor||'start')+'"'+(extra||'')+'>'+esc(t)+'</text>';}
   function R(x,y,w,hh,r,fill,extra){return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+hh+'" rx="'+r+'" fill="'+fill+'"'+(extra||'')+'/>';}
   s+='<svg xmlns="http://www.w3.org/2000/svg" width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'">';
   s+=R(0,0,W,H,0,col.paper);
@@ -734,7 +767,7 @@ function buildSVG(){
   // period bands
   if(CHART.years){for(var b=0;b<N;b+=bandSize){var bw=Math.min(bandSize,N-b)*MW;if(Math.floor(b/bandSize)%2===1)s+=R(x0+b*MW,y0,bw,bodyH,0,col.band);var yl=(CHART.unit==='W')?('Q'+(Math.floor(b/bandSize)+1)):('Year '+(Math.floor(b/bandSize)+1));s+=T(x0+b*MW+bw/2,PAD+titleH+15,yl,10.5,col.text2,600,'middle');}}
   // month header + gridlines
-  for(var m=0;m<N;m++){var isQ=(m%qsize===0);s+='<line x1="'+(x0+m*MW)+'" y1="'+(PAD+titleH+22)+'" x2="'+(x0+m*MW)+'" y2="'+(y0+bodyH)+'" stroke="'+(isQ?col.grid2:col.grid)+'" stroke-width="1"/>';s+=T(x0+m*MW+MW/2,y0-8,unitPrefix()+(m+1),9.5,isQ?col.text2:col.text3,500,'middle');}
+  for(var m=0;m<N;m++){var isQ=(m%qsize===0);s+='<line x1="'+(x0+m*MW)+'" y1="'+(PAD+titleH+22)+'" x2="'+(x0+m*MW)+'" y2="'+(y0+bodyH)+'" stroke="'+(isQ?col.grid2:col.grid)+'" stroke-width="1"/>';if(m%lstep===0)s+=T(x0+m*MW+MW/2,y0-8,unitPrefix()+(m+1),9.5,isQ?col.text2:col.text3,500,'middle');}
   s+='<line x1="'+(x0+N*MW)+'" y1="'+(PAD+titleH+22)+'" x2="'+(x0+N*MW)+'" y2="'+(y0+bodyH)+'" stroke="'+col.grid2+'" stroke-width="1"/>';
   s+=T(PAD,y0-8,'Work packages / tasks',10,col.text3,600);
   // rows
