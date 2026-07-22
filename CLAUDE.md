@@ -40,6 +40,8 @@
 | `bench` | Incubator (**admin-only** — cell-culture tracker; id stays `bench`, was "Bench") | SVG incubator/cell dish | `#4f9d8f` (teal) | `Bench/bench.html` |
 | `labbook` | Labbook (**admin-only** — electronic lab notebook / OneNote replacement) | SVG notebook | `#4f9d8f` (teal) | `Labbook/labbook.html` |
 | `plasmids` | Plasmids (**admin-only** — plasmid database + SnapGene maps) | SVG plasmid | `#6d7bd0` (indigo) | `Plasmids/plasmids.html` |
+| `blot` | Blot (western blot figure builder) | SVG blot panels | `#5b6b7a` (slate) | `WesternBlot/westernblot.html` |
+| `gantt` | Cadence (grant/fellowship Gantt charts) | SVG timeline bars | `#d99a4e` (amber) | `Gantt/gantt.html` |
 
 **Home grid packages:** the home cards are grouped into labelled sections by `PACKAGES` in `hub-shell.html` (Data Analysis · Design & Presentation · Molecular Biology · Lab Operations · Just for Fun). `_buildPackages()` reorganizes the flat `#app-grid` into per-package `.grid` blocks at load; drag-reorder is scoped within a package and persisted per-package in `localStorage` (`hub_card_order_v2`). Empty sections auto-hide via `_updateSectionVisibility()`. Any app id not in `PACKAGES` falls into a trailing "More" section.
 
