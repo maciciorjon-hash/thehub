@@ -501,6 +501,35 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .nm-preview .nm-pv-day{font-weight:700;color:var(--accent,#4f9d8f);white-space:nowrap;font-size:11px;}
 .nm-preview .nm-pv-t{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .nm-preview .nm-pv-empty{font-size:12px;color:var(--text3);font-style:italic;}
+.nm-preview .nm-pv-ref{font-size:9px;background:var(--surface3);color:var(--text3);border-radius:6px;padding:1px 5px;text-transform:uppercase;letter-spacing:.3px;}
+/* New-experiment source-protocol chips */
+.nm-protocols{margin:4px 0 2px;}
+.nm-proto-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.nm-proto-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:4px 6px 4px 10px;}
+.nm-proto-chip.synth{border-style:dashed;color:var(--text2);}
+.nm-proto-chip .x{cursor:pointer;color:var(--text3);font-size:15px;line-height:1;padding:0 3px;border-radius:8px;}
+.nm-proto-chip .x:hover{color:var(--danger);}
+.nm-proto-add{font-size:12px;background:transparent;border:1px dashed var(--border2);color:var(--accent);border-radius:16px;padding:4px 12px;cursor:pointer;}
+.nm-proto-add:hover{background:var(--surface2);}
+/* Experiment tabs (Dated · Observations · Publication ready) */
+.exp-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:10px 0 0;}
+.exp-tab{position:relative;background:none;border:none;color:var(--text2);font-size:13px;font-weight:600;padding:9px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:6px;}
+.exp-tab:hover{color:var(--text);}
+.exp-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+.exp-tab-n{font-size:10px;background:var(--surface3);color:var(--text2);border-radius:9px;padding:1px 6px;font-weight:700;}
+.exp-tab.on .exp-tab-n{background:var(--accent-dim);color:var(--accent);}
+.exp-tab-body{padding-top:14px;}
+.exp-tab-body .exp-canvas{margin-top:0;}
+.exp-dated-empty{font-size:13px;color:var(--text3);font-style:italic;padding:6px 2px 12px;}
+.blk-part{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--accent);background:var(--accent-dim);border-radius:6px;padding:2px 7px;white-space:nowrap;}
+.exp-pub-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.exp-pub-lbl{font-size:12px;color:var(--text2);font-weight:600;}
+.pub-btn{font-size:12px;border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:8px;padding:5px 12px;cursor:pointer;}
+.pub-btn:hover{background:var(--surface2);}
+.pub-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+.pub-btn.primary:hover{filter:brightness(1.06);}
+.exp-pub-src{font-size:11px;color:var(--text3);margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.exp-pub{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-xs);min-height:160px;line-height:1.7;}
 </style>
 </head>
 <body>
@@ -528,11 +557,12 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 <div class="modal-back" id="new-modal">
   <div class="modal">
     <div class="modal-t">New experiment</div>
-    <div class="mrow"><label>Preset / type</label><select id="nm-type" onchange="nmUpdateCode();nmPreview()"></select></div>
+    <div class="mrow"><label>Preset / type</label><select id="nm-type" onchange="nmUpdateCode();nmSeedProtos(this.value);nmProtos();nmPreview()"></select></div>
     <div class="mrow"><label>Code prefix (optional)</label><input id="nm-poi" placeholder="e.g. SM" autocomplete="off" oninput="nmUpdateCode()"></div>
     <div class="mrow"><label>Start date</label><input id="nm-date" type="date" oninput="nmUpdateCode();nmPreview()"></div>
     <div class="mrow"><label>Title / plan (optional)</label><input id="nm-title" placeholder="Auto-filled from preset" autocomplete="off"></div>
     <div class="mrow"><label>Code (auto — editable)</label><input id="nm-code" class="mcode" autocomplete="off" spellcheck="false"></div>
+    <div id="nm-protocols" class="nm-protocols"></div>
     <div id="nm-preview" class="nm-preview"></div>
     <div class="modal-act"><button class="btn ghost sm" onclick="openPresetEditor()">Edit presets…</button><span class="grow"></span><button class="btn ghost" onclick="closeNew()">Cancel</button><button class="btn" onclick="createExperiment()">Create</button></div>
   </div>
@@ -740,7 +770,7 @@ var SEL={ node:{kind:'notebook'}, page:null };
 var EXPANDED={}, TAGFILTER=null;
 function nodeEq(a,b){ return !!a&&!!b&&a.kind===b.kind&&(a.projectId||null)===(b.projectId||null)&&(a.sectionId||null)===(b.sectionId||null); }
 function selectNode(kind,projectId,sectionId){ SEL.node={kind:kind,projectId:projectId||null,sectionId:sectionId||null}; SEL.page=null; TAGFILTER=null; renderAll(); }
-function selectPage(id){ SEL.page=id; renderAll(); }
+function selectPage(id){ if(id!==SEL.page) EXP_TAB='dated'; SEL.page=id; renderAll(); }
 function toggleProj(id){ EXPANDED[id]=!EXPANDED[id]; renderSections(); }
 function genSecById(id){ return LB.data.generalSections.filter(function(s){return s.id===id;})[0]; }
 
@@ -910,31 +940,112 @@ function openAddMenu(ev){ ev.stopPropagation(); if(SEL.node.kind!=='expsec') ret
 }
 function openNew(){ if(SEL.node.kind!=='expsec') return;
   el('nm-type').innerHTML=EXP_TYPES.map(function(t){ var nm=(LB.data.presets[t.id]&&LB.data.presets[t.id].name)||t.name; return '<option value="'+t.id+'">'+esc(nm)+' ('+t.id+')</option>'; }).join('');
-  el('nm-poi').value=''; el('nm-date').value=todayStr(); el('nm-title').value=''; nmUpdateCode(); nmPreview(); el('new-modal').classList.add('open'); }
+  el('nm-poi').value=''; el('nm-date').value=todayStr(); el('nm-title').value=''; nmUpdateCode();
+  nmSeedProtos(el('nm-type').value); nmProtos(); nmPreview(); el('new-modal').classList.add('open');
+  // Preload Archive so protocol names + calculators resolve, then refresh the chips/preview.
+  ensureArchive(function(){ nmSeedProtos(el('nm-type').value); nmProtos(); nmPreview(); }); }
 function closeNew(){ el('new-modal').classList.remove('open'); }
+// ── Protocol-sourced experiments ─────────────────────────────────────────
+// Each experiment type maps to an ordered list of Archive protocol ids (its "parts").
+// __seq / __nanobret are synthetic parts (no dedicated Archive protocol) → reference blocks.
+var TYPE_PROTOCOLS={
+  CLONE:['gibson','transfo','miniprep','__seq'],
+  WB:['bca','westernblot'],
+  CTG:['ctg2'],
+  RTX:['revtx'],
+  PR:['strap','diann','perseus'],
+  HB:['hibitlytic'],
+  KD:['hibitlytic','transfection'],
+  D2B:['transfection','ctg2'],
+  NB:['transfection','__nanobret'],
+  EXP:[]
+};
+// Default day-offset per protocol part (fallback = sequential index). Dates stay editable.
+var PROTO_OFFSET={ gibson:0,redigest:0,transfo:0,miniprep:1,nucleospin:0,__seq:2, bca:0,westernblot:0,ctg2:0,revtx:0,hibitlytic:1,transfection:0, strap:0,diann:1,perseus:2,__nanobret:0 };
+// Synthetic parts: concise reference block + a publication sentence.
+var SYNTH_PARTS={
+  __seq:{name:'Sequencing verification', html:'<p><strong>Sequencing verification</strong></p><ul class="lb-check"><li>Sanger-sequence the insert &amp; cloning junctions with sequencing primers</li><li>Whole-plasmid sequencing (Plasmidsaurus) to confirm the full construct</li></ul><p><em>No dedicated Archive protocol — reference your sequencing SOP / provider.</em></p>'},
+  __nanobret:{name:'NanoBRET target engagement', html:'<p><strong>NanoBRET target-engagement assay</strong></p><ul class="lb-check"><li>Transfect cells with the NanoLuc–target fusion</li><li>Add NanoBRET tracer + test compound; incubate</li><li>Add NanoBRET substrate; read donor &amp; acceptor; compute the BRET ratio</li></ul><p><em>No dedicated Archive protocol — use the Beacon app for analysis.</em></p>'}
+};
+// Nature-methods prose per protocol (concise, editable after creation).
+var PUB_SEED={
+  gibson:'DNA fragments were assembled by NEB HiFi/Gibson assembly: the vector was PCR-linearised, treated with DpnI and gel-purified, then combined with inserts at a 2:1 insert:vector molar ratio and incubated at 50 °C for 15–60 min.',
+  redigest:'Vector and inserts were digested with the appropriate restriction enzymes (NEB), gel-purified and ligated with T4 DNA ligase.',
+  transfo:'Assembly/ligation products were transformed into chemically competent E. coli by heat shock (42 °C, 30 s), recovered in SOC and plated on LB-agar containing the appropriate antibiotic.',
+  miniprep:'Plasmid DNA was isolated from overnight cultures by column miniprep (Thermo GeneJET) and quantified by NanoDrop.',
+  nucleospin:'DNA was purified with the NucleoSpin Gel and PCR Clean-up kit (Macherey-Nagel) per the manufacturer’s instructions.',
+  bca:'Total protein was quantified by BCA assay (Pierce) against a BSA standard curve.',
+  westernblot:'Lysates were resolved by SDS-PAGE, transferred to membrane and probed with the indicated primary and HRP-conjugated secondary antibodies; signal was detected by chemiluminescence.',
+  ctg2:'Cell viability was measured with CellTiter-Glo 2.0 (Promega); luminescence was recorded on a plate reader and normalised to vehicle-treated controls.',
+  revtx:'Cells were reverse-transfected in-plate with FuGENE at the optimised DNA:reagent ratio and assayed after the stated incubation.',
+  hibitlytic:'HiBiT levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega); luminescence was normalised to DMSO controls to derive degradation parameters (DC50/Dmax).',
+  transfection:'Cells were transfected with the indicated plasmid(s) using the stated lipid reagent at the optimised DNA:reagent ratio and assayed after the stated period.',
+  strap:'Proteins were reduced, alkylated, digested and cleaned up on S-Trap columns (ProtiFi) prior to LC-MS/MS.',
+  diann:'DIA raw files were processed with DIA-NN for peptide and protein identification and label-free quantification.',
+  perseus:'Statistical analysis of the proteomics data was performed in Perseus.',
+  __seq:'All constructs were verified by Sanger and whole-plasmid (Plasmidsaurus) sequencing.',
+  __nanobret:'Target engagement was assessed by NanoBRET: cells expressing the NanoLuc–target fusion were treated with tracer and compound and the acceptor:donor BRET ratio recorded.'
+};
+function archiveCalc(pid){ try{ if(window.parent && window.parent.ARCHIVE_CALC) return window.parent.ARCHIVE_CALC(pid); }catch(e){} return null; }
+// Render a calculator's computed recipe ({label,bullets}[]) as editable HTML.
+function calcRecipeHtml(calc){ if(!calc||!calc.steps||!calc.steps.length) return ''; return calc.steps.map(function(s){ var b=(s.bullets||[]).map(function(x){return '<li>'+x+'</li>';}).join(''); return '<p><strong>'+esc(s.label||'')+'</strong></p>'+(b?'<ul>'+b+'</ul>':''); }).join(''); }
+// Build one dated-block's html for a protocol part: concise protocol prose + calculator recipe + a link to the live calc.
+function partBlockHtml(pid,calc,steps){ var h='';
+  if(steps&&steps.length){ steps.forEach(function(seg){ if(seg.type==='section'){ h+='<p><strong>'+esc(seg.text)+'</strong></p>'; } else { var tag=seg.ordered?'ol':'ul'; h+='<'+tag+'>'+seg.items.map(function(x){return '<li>'+x+'</li>';}).join('')+'</'+tag+'>'; } }); }
+  var nm=(calc&&calc.name)||''; var link='<a class="lb-link proto" data-app="protocols" data-pid="'+esc(pid)+'" contenteditable="false">open '+esc(nm||'calculator')+' &#8599;</a>';
+  if(calc&&calc.steps&&calc.steps.length){ h+='<p><strong>Recipe (from Archive calculator)</strong> '+link+'</p>'+calcRecipeHtml(calc); }
+  else if(calc&&calc.hasCalc){ h+='<p>'+link+'</p>'; }
+  return h||'<p></p>'; }
+// Publication-ready draft from a list of source protocols ([{id,name}]).
+function buildPubReady(protos){ var parts=(protos||[]).map(function(p){ return PUB_SEED[p.id]||('The '+(p.name||p.id)+' protocol was performed as described (see Archive).'); }).filter(Boolean); return parts.length?('<p>'+parts.join(' ')+'</p>'):'<p></p>'; }
+function rebuildPub(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Rebuild the publication-ready text from this experiment’s source protocols? Your current edits will be replaced.',{title:'Rebuild publication text'}).then(function(ok){ if(!ok) return; e.pubReady=buildPubReady(e.protocols||[]); e.updated=Date.now(); save(); renderEditor(); }); }
+// Copy helpers
+function _copyFallback(str){ try{ var ta=document.createElement('textarea'); ta.value=str; ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied'); }catch(e){ toast('Copy failed'); } }
+function lbCopyText(str){ try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(str).then(function(){toast('Copied');},function(){_copyFallback(str);}); return; } }catch(e){} _copyFallback(str); }
+function copyPubReady(id){ var e=LB.data.experiments[id]; if(!e) return; var t=document.createElement('div'); t.innerHTML=e.pubReady||''; lbCopyText((t.textContent||'').replace(/\s+/g,' ').trim()); }
+// New-experiment source-protocol picker state
+var NM_PROTOS=[];
+function nmSeedProtos(type){ var ids=TYPE_PROTOCOLS[type]||[]; var idx=archiveIndex(); NM_PROTOS=ids.map(function(pid){ if(SYNTH_PARTS[pid]) return {id:pid,name:SYNTH_PARTS[pid].name,synth:true}; var m=idx.filter(function(p){return p.id===pid;})[0]; return {id:pid,name:m?m.name:pid}; }); }
+function nmProtos(){ var host=el('nm-protocols'); if(!host) return;
+  var chips=NM_PROTOS.map(function(p,i){ return '<span class="nm-proto-chip'+(p.synth?' synth':'')+'">'+esc(p.name||p.id)+'<span class="x" title="Remove" onclick="nmDelProto('+i+')">&times;</span></span>'; }).join('');
+  host.innerHTML='<div class="nm-pv-hd">Build from protocols'+(NM_PROTOS.length?'':' — none (blank experiment)')+'</div><div class="nm-proto-chips">'+chips+'<button type="button" class="nm-proto-add" onclick="nmAddProto()">+ protocol</button></div>'; }
+function nmDelProto(i){ NM_PROTOS.splice(i,1); nmProtos(); nmPreview(); }
+function nmAddProto(){ ensureArchive(function(){ var idx=archiveIndex(); var items=idx.filter(function(p){ return !NM_PROTOS.some(function(x){return x.id===p.id;}); }).map(function(p){ return {id:p.id,label:p.name+(p.hasCalc?' · calc':''),sub:p.category||'protocol',ic:'A',c:'#a56983'}; }); if(!items.length){ toast('No more protocols to add'); return; } lbPicker('Add source protocol',items,function(it){ NM_PROTOS.push({id:it.id,name:it.label.replace(/ · calc$/,'')}); nmProtos(); nmPreview(); }); }); }
 function nmUpdateCode(){ var type=el('nm-type').value, poi=(el('nm-poi').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,''), d=dateCompact(el('nm-date').value);
   el('nm-code').value = (poi && type==='D2B') ? (poi+'_'+type+'_'+d) : (type+d+(poi?('_'+poi):'')); }
-// Live preview of what the chosen type will auto-fill: default title + the exact dated blocks.
+// Live preview of the parts (source protocols) that will become dated blocks.
 function nmPreview(){ var host=el('nm-preview'); if(!host) return;
   var type=el('nm-type').value, tpl=LB.data.presets[type]; var start=el('nm-date').value||todayStr();
-  // Suggest the preset's default title as the input placeholder (leave what the user typed).
   var ti=el('nm-title'); if(ti){ ti.placeholder=(tpl&&tpl.title)?tpl.title:'Short description'; }
-  var blocks=(tpl&&tpl.blocks)||[];
-  if(!blocks.length){ host.innerHTML='<div class="nm-pv-empty">No preset day-blocks — a single blank block will be created.</div>'; return; }
-  var rows=blocks.map(function(b){ var off=b.dayOffset||0; var date=addDays(start,off);
-    return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+' · '+fmtDate(date)+'</span><span class="nm-pv-t">'+esc(b.title||'(untitled step)')+'</span></div>'; }).join('');
-  host.innerHTML='<div class="nm-pv-hd">Will create '+blocks.length+' dated block'+(blocks.length>1?'s':'')+'</div><div class="nm-pv-list">'+rows+'</div>'; }
+  if(!NM_PROTOS.length){ host.innerHTML='<div class="nm-pv-empty">No source protocols — a blank experiment will be created (add protocols above).</div>'; return; }
+  var rows=NM_PROTOS.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; var date=addDays(start,off);
+    return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+' · '+fmtDate(date)+'</span><span class="nm-pv-t">'+esc(p.name||p.id)+(SYNTH_PARTS[p.id]?' <span class="nm-pv-ref">reference</span>':'')+'</span></div>'; }).join('');
+  host.innerHTML='<div class="nm-pv-hd">Will create '+NM_PROTOS.length+' dated part-block'+(NM_PROTOS.length>1?'s':'')+' + a publication-ready draft</div><div class="nm-pv-list">'+rows+'</div>'; }
 function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   var type=el('nm-type').value, tpl=LB.data.presets[type]||{title:'',blocks:[{dayOffset:0,title:'',html:'<p></p>'}]};
   var startDate=el('nm-date').value||todayStr();
-  // Empty title auto-fills from the preset default (the type-driven auto-fill Jon asked for);
-  // if the preset has no default title it stays empty → the editor shows the big code instead.
   var title=(el('nm-title').value||'').trim()||(tpl.title||'').trim();
-  var e={ id:uid(), projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, code:(el('nm-code').value||'').trim(), type:type,
-    title:title, status:'planned', startDate:startDate, plasmids:'', cellLines:'',
-    blocks:tpl.blocks.map(function(b){ return {id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html}; }),
-    created:Date.now(), updated:Date.now() };
-  LB.data.experiments[e.id]=e; save(); closeNew(); SEL.page=e.id; renderAll(); }
+  var code=(el('nm-code').value||'').trim();
+  var protos=NM_PROTOS.slice();
+  function finish(blocks,protoList){
+    var e={ id:uid(), projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, code:code, type:type,
+      title:title, status:'planned', startDate:startDate, plasmids:'', cellLines:'',
+      protocols:protoList||[], pubReady:buildPubReady(protoList||[]),
+      blocks:blocks, created:Date.now(), updated:Date.now() };
+    LB.data.experiments[e.id]=e; save(); closeNew(); SEL.page=e.id; EXP_TAB='dated'; renderAll();
+  }
+  // No source protocols → fall back to the type preset (old behaviour, nothing breaks offline).
+  if(!protos.length){ finish(tpl.blocks.map(function(b){ return {id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html}; }), []); return; }
+  toast('Building from protocols…');
+  ensureArchive(function(){
+    var blocks=protos.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; var html;
+      if(SYNTH_PARTS[p.id]){ html=SYNTH_PARTS[p.id].html; }
+      else { var steps=archiveSteps(p.id); var calc=archiveCalc(p.id); html=partBlockHtml(p.id,calc,steps); }
+      return {id:uid(), date:addDays(startDate,off), dayOffset:off, title:p.name||p.id, part:p.name||p.id, sourcePid:p.id, html:html};
+    });
+    finish(blocks,protos);
+  });
+}
 function newNote(kind){ var e={ id:uid(), kind:'note', noteType:kind, projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, title:'', date:todayStr(), html:'<p></p>', created:Date.now(), updated:Date.now() };
   LB.data.experiments[e.id]=e; save(); SEL.page=e.id; renderAll(); }
 function dupExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; var c=JSON.parse(JSON.stringify(e)); c.id=uid(); c.title=(e.title||'')+' (copy)'; if(e.code) c.code=e.code+'_copy'; if(c.blocks) c.blocks.forEach(function(b){b.id=uid();}); c.created=Date.now(); c.updated=Date.now(); LB.data.experiments[c.id]=c; save(); SEL.page=c.id; renderAll(); }
@@ -968,14 +1079,33 @@ function renderExpEditor(host,e){
     +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div></div>'
     +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" oninput="updChips(\'cellLines\',this.value)" onchange="setField(\'cellLines\',this.value)"><div class="exh-chips" id="chips-cell">'+_chipInner(e.cellLines,'cell')+'</div></div></div>';
   var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+'</div>';
-  var canvas='<div class="rt exp-canvas" contenteditable="true" data-ctx="expfree:'+e.id+'" data-ph="Write freely here — like a blank OneNote page…" oninput="setField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div>';
-  var blocks=e.blocks.map(function(b){ var dl=(b.dayOffset!=null)?('<span class="blk-day">Day '+b.dayOffset+'</span>'):'';
-    return '<div class="blk" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+dl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
-      +'<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }).join('');
-  var dated='<details class="exp-dated"'+(e.blocks.length?' open':'')+'><summary><span class="exp-dated-t">Dated sections</span><span class="exp-dated-n">'+e.blocks.length+'</span></summary><div class="exp-dated-body">'+blocks+'<button class="add-blk" onclick="addBlock()">+ Add dated block</button></div></details>';
-  host.innerHTML='<div class="ed-wrap">'+header+canvas+dated+'</div>';
+  var tab=(EXP_TAB==='obs'||EXP_TAB==='pub')?EXP_TAB:'dated';
+  var tabs='<div class="exp-tabs">'
+    +'<button class="exp-tab'+(tab==='dated'?' on':'')+'" onclick="expTab(\'dated\')">Dated sections<span class="exp-tab-n">'+(e.blocks?e.blocks.length:0)+'</span></button>'
+    +'<button class="exp-tab'+(tab==='obs'?' on':'')+'" onclick="expTab(\'obs\')">Observations</button>'
+    +'<button class="exp-tab'+(tab==='pub'?' on':'')+'" onclick="expTab(\'pub\')">Publication ready</button></div>';
+  var body;
+  if(tab==='obs'){
+    body='<div class="rt exp-canvas" contenteditable="true" data-ctx="expfree:'+e.id+'" data-ph="Observations — notes, thoughts, anything you want to jot down…" oninput="setField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div>';
+  } else if(tab==='pub'){
+    var srcChips=(e.protocols||[]).map(function(p){ return '<a class="lb-link proto" data-app="protocols" data-pid="'+esc(p.id)+'" contenteditable="false">'+esc(p.name||p.id)+' &#8599;</a>'; }).join(' ');
+    body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods — concise continuous prose (Nature style)</span><span class="grow"></span>'
+      +'<button class="pub-btn" onclick="rebuildPub(\''+e.id+'\')" title="Regenerate from the source protocols">&#8635; Rebuild</button>'
+      +'<button class="pub-btn primary" onclick="copyPubReady(\''+e.id+'\')">Copy</button></div>'
+      +(srcChips?'<div class="exp-pub-src">Sources: '+srcChips+'</div>':'')
+      +'<div class="rt exp-pub" contenteditable="true" data-ctx="pub:'+e.id+'" data-ph="Write the methods paragraph here…" oninput="setField(\'pubReady\',this.innerHTML)" onfocus="_activeEd=this">'+(e.pubReady||'')+'</div>';
+  } else {
+    var blocks=e.blocks.map(function(b){ var dl=(b.dayOffset!=null)?('<span class="blk-day">Day '+b.dayOffset+'</span>'):'';
+      var pl=b.part?('<span class="blk-part">'+esc(b.part)+'</span>'):'';
+      return '<div class="blk" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+dl+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+        +'<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }).join('');
+    body='<div class="exp-dated-body">'+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')+'<button class="add-blk" onclick="addBlock()">+ Add dated block</button></div>';
+  }
+  host.innerHTML='<div class="ed-wrap">'+header+tabs+'<div class="exp-tab-body">'+body+'</div></div>';
   hydrateAtt(host); renderDockPanels();
 }
+var EXP_TAB='dated';
+function expTab(name){ EXP_TAB=name; renderEditor(); }
 function renderNoteEditor(host,e){ (el('export-btn')||{style:{}}).style.display='';
   var header='<div class="exh"><div class="exh-top"><div class="exh-code">'+esc((e.noteType||'note').toUpperCase())+'</div>'+expActs(e.id)+'</div><input class="exh-title" value="'+esc(e.title||'')+'" placeholder="'+(e.noteType==='meeting'?'Meeting title':'Note title')+'" onchange="setNoteField(\'title\',this.value)" onblur="renderPages()"><div class="exh-fields"><div class="exh-fld"><label>Date</label><input type="date" value="'+esc(e.date||'')+'" onchange="setNoteField(\'date\',this.value)"></div></div></div>';
   host.innerHTML='<div class="ed-wrap">'+header+'<div class="rt pg-body" contenteditable="true" data-ctx="note:'+e.id+'" oninput="setNoteField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div></div>';
@@ -1019,7 +1149,7 @@ function renderSeminarEditor(host,pg){ (el('export-btn')||{style:{}}).style.disp
   host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-code">Seminar</div><input class="exh-title" value="'+esc(pg.title||'')+'" placeholder="Seminar title" onchange="setPage(\'title\',this.value)" onblur="renderPages()">'+fields+'</div>'
     +'<div class="rt pg-body" contenteditable="true" data-ctx="page:'+pg.id+'" oninput="setPage(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>';
   hydrateAtt(host); renderDockPanels(); }
-function openExp(id){ var e=LB.data.experiments[id]; if(!e) return; selectNode('expsec',e.projectId,e.sectionId); SEL.page=id; renderAll(); }
+function openExp(id){ var e=LB.data.experiments[id]; if(!e) return; EXP_TAB='dated'; selectNode('expsec',e.projectId,e.sectionId); SEL.page=id; renderAll(); }
 function openBlk(expId,blkId){ openExp(expId); setTimeout(function(){ scrollBlk(blkId); },90); }
 
 // ── Week planner ──
@@ -1326,7 +1456,7 @@ document.addEventListener('click',function(e){
 // ── Setters ──
 function _curExp(){ return (SEL.node.kind==='expsec'&&SEL.page)?LB.data.experiments[SEL.page]:null; }
 function _curPage(){ return (SEL.node.kind==='general'&&SEL.page)?LB.data.pages[SEL.page]:null; }
-function setField(f,v){ var e=_curExp(); if(!e) return; e[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html'){ queueSave(); return; } save(); if(f==='status') renderDockPanels(); if(f==='code'||f==='status'||f==='startDate') renderPages(); }
+function setField(f,v){ var e=_curExp(); if(!e) return; e[f]=(f==='html'||f==='pubReady')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html'||f==='pubReady'){ queueSave(); return; } save(); if(f==='status') renderDockPanels(); if(f==='code'||f==='status'||f==='startDate') renderPages(); }
 function setNoteField(f,v){ var e=_curExp(); if(!e) return; e[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html') queueSave(); else { save(); renderPages(); } }
 function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===id;})[0]; if(!b) return; b[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html') queueSave(); else { save(); if(f==='date') renderPages(); } }
 function setExpBlockHtml(expId,blkId,html){ var e=LB.data.experiments[expId]; if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===blkId;})[0]; if(!b) return; b.html=_persistImgHtml(html); e.updated=Date.now(); queueSave(); }
@@ -1607,9 +1737,20 @@ var PRINT_CSS='<style>#print-root{padding:0;color:#111}#print-root *{box-sizing:
  +'.lb-todo{list-style:none}.lb-box{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:2px;margin-right:6px;vertical-align:middle}.lb-todo.done .lb-box{background:#4f9d8f;border-color:#4f9d8f}'
  +'ul.lb-check{list-style:none;margin-left:4px;padding-left:0}ul.lb-check li{position:relative;list-style:none;padding-left:20px;margin:2px 0}ul.lb-check li::before{content:"";position:absolute;left:0;top:2px;width:11px;height:11px;border:1px solid #888;border-radius:2px}ul.lb-check li.done::before{background:#4f9d8f;border-color:#4f9d8f}ul.lb-check li.done{color:#888;text-decoration:line-through}'
  +'img.lb-att{max-width:100%;height:auto;border-radius:6px;margin:6px 0;display:block;page-break-inside:avoid}'
+ +'.pd-sec-hd{font:700 11px/1 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#4f9d8f;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #e2e2e2}'
+ +'.pd-part-hd{font:700 13px/1.3 sans-serif;color:#2b6b60;background:#eef4f2;border-left:3px solid #4f9d8f;border-radius:4px;padding:5px 10px;margin:16px 0 2px;page-break-after:avoid}'
+ +'.pd-pub{font:400 13px/1.75 sans-serif;color:#1a1a1a;background:#fafbfb;border:1px solid #e2e2e2;border-radius:8px;padding:12px 16px;margin-top:6px}'
  +'.pd-foot{margin-top:26px;padding-top:10px;border-top:1px solid #e2e2e2;font:400 10px/1.4 sans-serif;color:#999}</style>';
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
 function printBlocks(blocks){ return blocks.map(function(b){ var hd=(b.dayOffset!=null?'<span class="pd-day">Day '+b.dayOffset+'</span>':'')+(b.date?'<span class="pd-bdate">'+fmtDate(b.date)+'</span>':'')+(b.title?'<span class="pd-btitle">'+esc(b.title)+'</span>':''); return '<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body">'+(b.html||'')+'</div></div>'; }).join(''); }
+// Experiment blocks, grouped under a part header when blocks carry a sourcePid.
+function printExpBlocks(blocks){ if(!blocks||!blocks.length) return '';
+  var anyPart=blocks.some(function(b){return b.part;}); if(!anyPart) return printBlocks(blocks);
+  var h='', last=null;
+  blocks.forEach(function(b){ var key=b.sourcePid||b.part||''; if(b.part && key!==last){ h+='<div class="pd-part-hd">'+esc(b.part)+'</div>'; last=key; }
+    var hd=(b.dayOffset!=null?'<span class="pd-day">Day '+b.dayOffset+'</span>':'')+(b.date?'<span class="pd-bdate">'+fmtDate(b.date)+'</span>':'')+(b.title&&b.title!==b.part?'<span class="pd-btitle">'+esc(b.title)+'</span>':'');
+    h+='<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body">'+(b.html||'')+'</div></div>'; });
+  return h; }
 function foot(){ return '<div class="pd-foot">dHUB Labbook · exported '+fmtDate(todayStr())+'</div>'; }
 function buildPrintDoc(){
   var node=SEL.node, h=PRINT_CSS;
@@ -1627,8 +1768,10 @@ function buildPrintDoc(){
   if(e.kind==='note'){ h+='<div class="pd-head"><div class="pd-kicker">'+esc(e.noteType||'note')+'</div><div class="pd-title">'+esc(e.title||'')+'</div><div class="pd-crumb">'+esc(fmtDate(e.date||''))+'</div></div>'; return h+'<div class="pd-body">'+(e.html||'')+'</div>'+foot(); }
   var chips=[]; if(e.startDate)chips.push('Start '+fmtDate(e.startDate)); if(e.status)chips.push(e.status); if(e.plasmids)chips.push(e.plasmids); if(e.cellLines)chips.push(e.cellLines);
   h+='<div class="pd-head"><div class="pd-code">'+esc(e.code||'')+'</div><div class="pd-title">'+esc(e.title||e.code||'')+'</div><div class="pd-crumb">'+esc(projCrumb(e))+'</div><div class="pd-chips">'+chips.map(function(x){return '<span class="pd-chip">'+esc(x)+'</span>';}).join('')+'</div></div>';
-  var free=(e.html&&e.html.replace(/<[^>]+>/g,'').trim())?('<div class="pd-body">'+e.html+'</div>'):'';
-  return h+free+printBlocks(e.blocks||[])+foot();
+  var obs=(e.html&&e.html.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Observations</div><div class="pd-body">'+e.html+'</div>'):'';
+  var steps=(e.blocks&&e.blocks.length)?('<div class="pd-sec-hd">Protocol — dated sections</div>'+printExpBlocks(e.blocks)):'';
+  var pub=(e.pubReady&&e.pubReady.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Publication ready</div><div class="pd-pub">'+e.pubReady+'</div>'):'';
+  return h+obs+steps+pub+foot();
 }
 function exportPDF(){ var pr=el('print-root'); pr.innerHTML=buildPrintDoc(); hydrateAtt(pr).then(function(){ setTimeout(function(){ try{ window.print(); }catch(e){} }, 80); }); }
 

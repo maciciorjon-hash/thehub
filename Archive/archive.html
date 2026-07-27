@@ -4688,7 +4688,17 @@ document.addEventListener('DOMContentLoaded', function() {
   calcSPR();
   // Publish the protocol index to the parent so other dHUB apps (e.g. Labbook) can search/link protocols.
   try{ if(window.parent && window.parent!==window){
-    window.parent.ARCHIVE_INDEX = PROTOCOLS.map(function(p){ return {id:p.id,name:p.name,category:p.category}; });
+    window.parent.ARCHIVE_INDEX = PROTOCOLS.map(function(p){ return {id:p.id,name:p.name,category:p.category,hasCalc:!!p.hasCalc}; });
+    // Calculator recipe: the computed {label,bullets} step set (+ CSV table when present) so Labbook
+    // can bake a reproducible, editable recipe into an experiment day-block. Values reflect the
+    // protocol's current DOM inputs (primed with sensible defaults on load).
+    window.parent.ARCHIVE_CALC = function(pid){
+      try{
+        var p=PROTOCOLS.filter(function(x){ return x.id===pid; })[0]; if(!p) return null;
+        var steps=(p.genSteps)?p.genSteps():null;
+        return {hasCalc:!!p.hasCalc, name:p.name, steps:steps, table:_lastCalcTable[pid]||null};
+      }catch(e){ return null; }
+    };
     // Structured protocol steps (sections + step lists) so Labbook can pull a real protocol into a day-block.
     window.parent.ARCHIVE_STEPS = function(pid){
       try{
