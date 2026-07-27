@@ -697,6 +697,7 @@ document.addEventListener('click', function(ev){
               <th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Transfer (nL)</th>
               <th id="eg-th-final" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Final (nM)</th>
               <th id="eg-th-plan" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Plan (nM)</th>
+              <th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0" title="DMSO % of this point (assumes neat-DMSO stocks)">DMSO %</th>
               <th style="padding:6px 8px;text-align:center;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;letter-spacing:0"></th>
             </tr>
           </thead>
@@ -9295,30 +9296,27 @@ function _unhideAllResultsCols() {
     // Store for row callbacks
     window._egRows=rows; window._egVol=vol; window._egMaxT=maxT; window._egSorted=sorted;
 
-    // Render table body (preserving manual nL overrides where stock hasn't changed)
+    // Render table body. Transfer is always the freshly snapped ideal (c.vAdj) so
+    // Ideal/Transfer/Final/Plan can never drift out of sync. Manual per-row edits are
+    // applied via _egRowVol -> _egRowVolCalc (which touch only that row and never call
+    // _egUpdate), so they survive until a parameter change regenerates the whole ladder.
     var tbody=document.getElementById('eg-tbody'); if(!tbody) return;
-    var oldInputs={};
-    tbody.querySelectorAll('tr').forEach(function(tr){
-      var pt=parseInt(tr.dataset.pt||0);
-      var sel=tr.querySelector('select');
-      var inp=tr.querySelector('input[type=number]');
-      if(pt&&sel&&inp) oldInputs[pt]={stockIdx:parseInt(sel.value),nL:parseFloat(inp.value)||0,cs:parseFloat(inp.dataset.cs)||0};
-    });
     tbody.innerHTML='';
     rows.forEach(function(row){
       var c=row.chosen;
-      var old=oldInputs[row.pt];
-      var useOld=old&&c&&old.stockIdx===c.origIdx&&Math.abs(old.cs-c.cM)<c.cM*1e-9&&old.nL!==c.vAdj;
       var vA=c?c.vAdj:0, cS=c?c.cM:0;
-      if(useOld&&old.nL>0){vA=old.nL;}
       // Convert to display unit (plan and final both use topUnitMult)
       var planDisp=row.planM*topUnitMult;
       var finalDisp=(vA&&cS)?(vA*cS/(vol*1000))*topUnitMult:null;
       var finalNM=(vA&&cS)?(vA*cS/(vol*1000))*1e9:null; // keep nM for status check
-      var ok=c&&vA>=DROP&&vA<=maxT;
+      var dmsoPct=vA?(vA/(vol*1000))*100:null;
+      var overDmso=dmsoPct!=null&&dmsoPct>dmso+1e-9;
+      var inRange=c&&vA>=DROP&&vA<=maxT;
+      var exact=inRange&&finalNM!==null&&row.planNM&&Math.abs(finalNM-row.planNM)/row.planNM<0.002;
       var statusHtml=!c?'<span style="color:#ef4444" title="No feasible stock">✗</span>'
-                    :ok?'<span style="color:#22c55e">✓</span>'
-                    :'<span style="color:#f59e0b">⚠</span>';
+                    :!inRange?'<span style="color:#ef4444" title="Transfer out of range">✗</span>'
+                    :exact?'<span style="color:#22c55e" title="Final matches plan">✓</span>'
+                    :'<span style="color:#f59e0b" title="Closest achievable (2.5 nL snap)">~</span>';
       var stockOpts=sorted.map(function(s){
         return '<option value="'+s.i+'"'+(c&&s.i===c.origIdx?' selected':'')+'>'+s.label+'</option>';
       }).join('');
@@ -9343,6 +9341,7 @@ function _unhideAllResultsCols() {
             'font-variant-numeric:tabular-nums"></td>'+
         '<td id="eg-f'+row.pt+'" style="padding:5px 8px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums">'+fmtTbl(finalDisp)+'</td>'+
         '<td style="padding:5px 8px;text-align:right;color:var(--text3);font-variant-numeric:tabular-nums">'+fmtTbl(planDisp)+'</td>'+
+        '<td id="eg-d'+row.pt+'" style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums'+(overDmso?';color:#ef4444;font-weight:600':';color:var(--text3)')+'">'+(dmsoPct!=null?dmsoPct.toFixed(2)+'%':'—')+'</td>'+
         '<td id="eg-st'+row.pt+'" style="padding:5px 8px;text-align:center">'+statusHtml+'</td>';
       tbody.appendChild(tr);
     });
@@ -9427,7 +9426,10 @@ function _unhideAllResultsCols() {
     // intermediate-plate wells).
     var backfillPerCompoundNL=0;
     rows.forEach(function(row){
+      // Use the effective transfer shown in the table (may be a manual edit), not just vAdj.
       var vA=row.chosen?row.chosen.vAdj:0;
+      var inp=document.querySelector('#eg-tbody tr[data-pt="'+row.pt+'"] input[type=number]');
+      if(inp){ var dv=parseFloat(inp.value); if(!isNaN(dv)&&dv>=0) vA=dv; }
       backfillPerCompoundNL += Math.max(0, maxT - vA);
     });
     var compoundBackfillNL=backfillPerCompoundNL*nComp*nSets*nReps;
@@ -9548,17 +9550,28 @@ function _unhideAllResultsCols() {
     var finalNM=(vA&&cS)?(vA*cS/(vol*1000))*1e9:null;
     var unitMult=window._egTopUnitMult||1e9;
     var finalDisp=(vA&&cS)?(vA*cS/(vol*1000))*unitMult:null;
+    var dmsoMax=(vol>0)?(maxT/(vol*1000))*100:0; // DMSO budget % (maxT is the nL budget)
+    var dmsoPct=(vA&&vol>0)?(vA/(vol*1000))*100:null;
+    var overDmso=dmsoPct!=null&&dmsoPct>dmsoMax+1e-9;
     var fe=document.getElementById('eg-f'+pt);
+    var de=document.getElementById('eg-d'+pt);
     var se=document.getElementById('eg-st'+pt);
     var row=(window._egRows||[]).find(function(r){return r.pt===pt;});
     if(fe) fe.textContent=fmtTbl(finalDisp);
+    if(de){
+      de.textContent=(dmsoPct!=null?dmsoPct.toFixed(2)+'%':'—');
+      de.style.color=overDmso?'#ef4444':'var(--text3)';
+      de.style.fontWeight=overDmso?'600':'';
+    }
     if(se){
       var ok=vA>=DROP&&vA<=maxT;
-      var exact=row&&finalNM!==null&&Math.abs(finalNM-row.planNM)/row.planNM<0.002;
-      se.innerHTML=!ok?'<span style="color:#ef4444">✗</span>'
-                  :exact?'<span style="color:#22c55e">✓</span>'
-                  :'<span style="color:#f59e0b">~</span>';
+      var exact=row&&finalNM!==null&&row.planNM&&Math.abs(finalNM-row.planNM)/row.planNM<0.002;
+      se.innerHTML=!ok?'<span style="color:#ef4444" title="Transfer out of range">✗</span>'
+                  :exact?'<span style="color:#22c55e" title="Final matches plan">✓</span>'
+                  :'<span style="color:#f59e0b" title="Closest achievable (2.5 nL snap)">~</span>';
     }
+    // Keep the intermediate-plate / backfill card in sync with manual transfer edits.
+    if(typeof _egBfCalc==='function') _egBfCalc();
   }
 
   // ── Copy ──────────────────────────────────────────────────────────────
@@ -9600,10 +9613,10 @@ function _unhideAllResultsCols() {
     var html='<div style="font-family:sans-serif;font-size:13px;color:#111">'+
       metaLines.map(function(l){return '<p style="margin:0 0 3px">'+esc(l)+'</p>';}).join('');
 
-    // TSV header — column order matches table: #, Stock, Ideal, Transfer, Final, Plan, Status
+    // TSV header — column order matches table: #, Stock, Ideal, Transfer, Final, Plan, DMSO %, Status
     var _uStr=window._egTopUnitStr||'nM';
-    var mainHeaders=['#','Stock','Ideal (nL)','Transfer (nL)','Final ('+_uStr+')','Plan ('+_uStr+')','Status'];
-    var mainAligns=['center','center','right','right','right','right','center'];
+    var mainHeaders=['#','Stock','Ideal (nL)','Transfer (nL)','Final ('+_uStr+')','Plan ('+_uStr+')','DMSO %','Status'];
+    var mainAligns=['center','center','right','right','right','right','right','center'];
     lines.push(mainHeaders.join('\t'));
     var mainRows=[];
     // TSV data rows — strip locale commas from numbers for clean paste into Excel. Every field
@@ -9615,11 +9628,11 @@ function _unhideAllResultsCols() {
       var tds=tr.querySelectorAll('td');
       var sel=tr.querySelector('select');
       var inp=tr.querySelector('input[type=number]');
-      var stEl=tds[6]?tds[6].querySelector('span'):null;
+      var stEl=tds[7]?tds[7].querySelector('span'):null;
       var stTxt=stEl?stEl.textContent.trim():'';
       // Map HTML glyphs to readable text
       stTxt=stTxt==='✓'?'exact':stTxt==='~'?'approx':stTxt==='✗'?'infeasible':'—';
-      // td[0]=#, td[1]=Stock(select), td[2]=Ideal, td[3]=Transfer(input), td[4]=Final, td[5]=Plan, td[6]=Status
+      // td[0]=#, td[1]=Stock(select), td[2]=Ideal, td[3]=Transfer(input), td[4]=Final, td[5]=Plan, td[6]=DMSO %, td[7]=Status
       var row=[
         tds[0]?tds[0].textContent.trim():'—',
         sel?sel.options[sel.selectedIndex].text:'—',
@@ -9627,6 +9640,7 @@ function _unhideAllResultsCols() {
         (inp&&inp.value)?inp.value:'—',
         tds[4]?tds[4].textContent.trim().replace(/,/g,''):'—',
         tds[5]?tds[5].textContent.trim().replace(/,/g,''):'—',
+        tds[6]?tds[6].textContent.trim():'—',
         stTxt
       ];
       mainRows.push(row);
