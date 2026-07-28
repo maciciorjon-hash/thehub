@@ -4699,6 +4699,42 @@ document.addEventListener('DOMContentLoaded', function() {
         return {hasCalc:!!p.hasCalc, name:p.name, steps:steps, table:_lastCalcTable[pid]||null};
       }catch(e){ return null; }
     };
+    // Calculator INPUT SCHEMA — lets Labbook render this protocol's calculator inline and drive it.
+    window.parent.ARCHIVE_CALC_SCHEMA = function(pid){
+      try{
+        var wrap=document.getElementById('detail-'+pid); if(!wrap) return null;
+        var pane=wrap.querySelector('.dpane[data-tab="calc"]'); if(!pane) return null;
+        var out=[];
+        var scanBox=function(box){
+          var t=(box.querySelector('.calc-box-title')||{}).textContent||''; t=t.replace(/\s+/g,' ').trim();
+          var fields=[];
+          Array.prototype.forEach.call(box.querySelectorAll('input[id],select[id]'),function(inp){
+            if(inp.type==='button'||inp.type==='hidden'||inp.type==='file'||inp.type==='checkbox'||inp.type==='radio') return;
+            var fld=inp.closest?inp.closest('.field'):null; var lab=fld?fld.querySelector('label'):null;
+            var label=((lab?lab.textContent:'')||inp.getAttribute('placeholder')||inp.id||'').replace(/\s+/g,' ').trim();
+            var f={id:inp.id, label:label, type:(inp.tagName==='SELECT'?'select':(inp.type||'text')), value:inp.value};
+            if(inp.tagName==='SELECT') f.options=Array.prototype.map.call(inp.options,function(o){ return {value:o.value,label:(o.textContent||'').trim()}; });
+            fields.push(f);
+          });
+          if(fields.length) out.push({title:t, fields:fields});
+        };
+        var boxes=pane.querySelectorAll('.calc-box');
+        if(boxes.length) Array.prototype.forEach.call(boxes,scanBox); else scanBox(pane);
+        return out.length?out:null;
+      }catch(e){ return null; }
+    };
+    // Drive the real calculator: set inputs, read back the computed recipe, then RESTORE Archive's own inputs.
+    window.parent.ARCHIVE_COMPUTE = function(pid, inputMap){
+      try{
+        var p=PROTOCOLS.filter(function(x){ return x.id===pid; })[0]; if(!p) return null;
+        var snap={};
+        if(inputMap){ Object.keys(inputMap).forEach(function(id){ var el=document.getElementById(id); if(el){ snap[id]=el.value; el.value=inputMap[id]; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); } }); }
+        var steps=(p.genSteps)?p.genSteps():null;
+        var table=_lastCalcTable[pid]||null;
+        Object.keys(snap).forEach(function(id){ var el=document.getElementById(id); if(el){ el.value=snap[id]; el.dispatchEvent(new Event('input',{bubbles:true})); } });
+        return {hasCalc:!!p.hasCalc, name:p.name, steps:steps, table:table};
+      }catch(e){ return null; }
+    };
     // Structured protocol steps (sections + step lists) so Labbook can pull a real protocol into a day-block.
     window.parent.ARCHIVE_STEPS = function(pid){
       try{

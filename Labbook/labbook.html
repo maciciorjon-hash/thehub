@@ -237,6 +237,13 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .blk:hover{box-shadow:var(--glass-shadow),0 4px 12px -4px rgba(32,44,84,.18),var(--glass-hi);}
 .blk-hd{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--surface2);border-bottom:1px solid var(--border);}
 .blk-day{font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--accent);background:var(--accent-dim);border-radius:5px;padding:2px 6px;flex-shrink:0;}
+.day-group{margin-bottom:16px;}
+.day-group-hd{display:flex;align-items:center;gap:9px;margin:2px 0 8px;padding:0 2px;}
+.day-group-hd::after{content:"";flex:1;height:1px;background:var(--border);}
+.dg-day{font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#fff;background:var(--accent);border-radius:5px;padding:3px 9px;flex-shrink:0;}
+.dg-day.dg-nodate{background:var(--text3);}
+.dg-date{font-size:12px;font-weight:600;color:var(--text2);flex-shrink:0;}
+.day-group .blk{margin-bottom:8px;}
 .blk-date{font-family:var(--sans);font-size:12px;color:var(--text);background:none;border:1px solid var(--border2);border-radius:6px;padding:3px 8px;outline:none;}
 .blk-date:focus{border-color:var(--accent);}
 .blk-title{font-size:12.5px;font-weight:600;color:var(--text2);border:none;background:none;outline:none;flex:1;font-family:var(--sans);}
@@ -289,6 +296,12 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .blk-calc{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--border2);border-left:3px solid #4f9d8f;border-radius:10px;padding:9px 11px;margin:6px 0 8px;}
 .cc-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
 .cc-tag{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#4f9d8f;}
+.blk-calc.archive{border-left-color:#a56983;}
+.blk-calc.archive .cc-tag{color:#a56983;}
+.cc-src{font-size:8.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#a56983;background:rgba(165,105,131,.14);border-radius:4px;padding:2px 5px;}
+.cc-box-t{font-size:10px;font-weight:600;color:var(--text2);margin:9px 0 5px;padding-bottom:3px;border-bottom:1px dashed var(--border);}
+.cc-box-t:first-of-type{margin-top:2px;}
+.cc-load{color:var(--text3);font-style:italic;font-size:12px;}
 .cc-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;line-height:1;padding:0 4px;border-radius:5px;}.cc-x:hover{color:var(--danger);background:var(--surface3);}
 .cc-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px 10px;}
 .ci-f{display:flex;flex-direction:column;gap:3px;}
@@ -636,6 +649,16 @@ function todayStr(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMon
 function dateCompact(s){ return s? s.replace(/-/g,'') : ''; }
 function fmtDate(s){ if(!s) return ''; var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
 function addDays(s,n){ if(!s) return s; var d=new Date(s+'T00:00:00'); d.setDate(d.getDate()+(n||0)); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function daysBetween(a,b){ if(!a||!b) return 0; return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000); }
+// Earliest dated block = the experiment's Day 0 anchor (falls back to start date).
+function expAnchorDate(e){ var ds=(e.blocks||[]).filter(function(b){return b.date;}).map(function(b){return b.date;}).sort(); return ds.length?ds[0]:(e.startDate||todayStr()); }
+function recomputeDayOffsets(e){ var anc=expAnchorDate(e); (e.blocks||[]).forEach(function(b){ if(b.date) b.dayOffset=daysBetween(anc,b.date); }); }
+// Blocks sorted by date (undated last), grouped into { key(date), day, blocks[] } day-groups.
+function dayGroups(e){ var idx={}; (e.blocks||[]).forEach(function(b,i){ idx[b.id]=i; });
+  var sorted=(e.blocks||[]).slice().sort(function(a,b){ var ad=a.date||'9999-99-99', bd=b.date||'9999-99-99'; return ad!==bd?(ad<bd?-1:1):(idx[a.id]-idx[b.id]); });
+  var anc=expAnchorDate(e), groups=[], cur=null;
+  sorted.forEach(function(b){ var key=b.date||''; if(!cur||cur.key!==key){ cur={key:key, day:key?daysBetween(anc,key):null, blocks:[]}; groups.push(cur); } cur.blocks.push(b); });
+  return groups; }
 var PROJ_COLORS=['#4f9d8f','#5e72c4','#c47818','#c04040','#7c6fd4','#2d9462','#a56983','#d17a4a','#0079b9','#8d6e63'];
 
 // ── Types + presets ──
@@ -740,9 +763,17 @@ var CALC_KINDS={
       return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; '+nfmt(r)+' µL '+esc(v.name||'reagent')+' (1:'+nfmt(dil)+') + '+nfmt(d)+' µL '+esc(v.diluent||'diluent')+' = '+nfmt(tot)+' µL total.'; } }
 };
 function calcDefaults(kind){ var c=CALC_KINDS[kind]; return c?JSON.parse(JSON.stringify(c.defaults)):{}; }
-function expCalcRecipe(b){ if(!b||!b.calc||!CALC_KINDS[b.calc.kind]) return ''; try{ return CALC_KINDS[b.calc.kind].compute(b.calc.inputs||{}); }catch(e){ return ''; } }
+// Archive calculator bridge (fetch schema + drive the real calc).
+var _arcSchemaCache={};
+function archiveSchema(pid){ if(_arcSchemaCache[pid]) return _arcSchemaCache[pid]; try{ if(window.parent&&window.parent.ARCHIVE_CALC_SCHEMA){ var s=window.parent.ARCHIVE_CALC_SCHEMA(pid); if(s){ _arcSchemaCache[pid]=s; return s; } } }catch(e){} return null; }
+function archiveName(pid){ var m=archiveIndex().filter(function(p){return p.id===pid;})[0]; return m?m.name:pid; }
+function archiveComputeRecipe(b){ try{ if(window.parent&&window.parent.ARCHIVE_COMPUTE){ var r=window.parent.ARCHIVE_COMPUTE(b.calc.pid,b.calc.inputs||{}); if(r&&r.steps&&r.steps.length){ var html=calcRecipeHtml({steps:r.steps}); b.calc.recipe=html; return html; } } }catch(e){} return b.calc.recipe||''; }
+function expCalcRecipe(b){ if(!b||!b.calc) return '';
+  if(b.calc.kind==='archive') return archiveComputeRecipe(b);
+  if(!CALC_KINDS[b.calc.kind]) return ''; try{ return CALC_KINDS[b.calc.kind].compute(b.calc.inputs||{}); }catch(e){ return ''; } }
 // Editable calculator widget shown inside an experiment block.
-function calcInputsHtml(b){ var C=CALC_KINDS[b.calc.kind]; if(!C) return ''; var inp=b.calc.inputs||{};
+function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b);
+  var C=CALC_KINDS[b.calc.kind]; if(!C) return ''; var inp=b.calc.inputs||{};
   var fields=C.fields.map(function(f){ var v=inp[f.k];
     if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
       return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="calcCellLine(\''+b.id+'\',this.value)">'+opts+'</select></label>'; }
@@ -761,8 +792,25 @@ function calcUpd(id){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=docum
 function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; b.calc.inputs.cellLine=clid; var d=cellLineDef(clid); if(d&&d.cpw) b.calc.inputs.cellsPerWell=d.cpw; save(); renderEditor(); }
 function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove the prep calculator from this step? (Your written notes stay.)',{title:'Remove calculator'}).then(function(ok){ if(!ok) return; delete b.calc; save(); renderEditor(); }); }
 function addCalcToBlock(id,kind){ var b=_blkById(id); if(!b) return; b.calc={kind:kind,inputs:calcDefaults(kind)}; save(); renderEditor(); }
-function calcMenu(id){ var items=Object.keys(CALC_KINDS).map(function(k){ return {id:k,label:CALC_KINDS[k].label,sub:'Live prep calculator',ic:'∑',c:'#4f9d8f'}; });
-  lbPicker('Add a prep calculator to this step',items,function(it){ addCalcToBlock(id,it.id); }); }
+function addArchiveCalcToBlock(id,pid){ var b=_blkById(id); if(!b) return; b.calc={kind:'archive',pid:pid,inputs:{},recipe:''}; save(); renderEditor(); }
+// Render an Archive calculator inline (generic form from ARCHIVE_CALC_SCHEMA + live recipe).
+function archiveCalcHtml(b){ var name=archiveName(b.calc.pid); var sch=archiveSchema(b.calc.pid);
+  var head='<div class="cc-hd"><span class="cc-tag">&#8721; '+esc(name)+'</span><span class="cc-src">Archive</span><span class="grow"></span><button class="cc-x" title="Remove calculator" onclick="calcRemove(\''+b.id+'\')">&times;</button></div>';
+  if(!sch){ return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+'<div class="cc-recipe" id="ccr-'+b.id+'">'+(b.calc.recipe||'<span class="cc-load">Open this in dHUB (with Archive) to load the calculator inputs.</span>')+'</div></div>'; }
+  var inp=b.calc.inputs||(b.calc.inputs={});
+  var boxes=sch.map(function(box){ var fields=box.fields.map(function(f){ if(inp[f.id]==null) inp[f.id]=f.value; var v=inp[f.id];
+      if(f.type==='select'){ var opts=(f.options||[]).map(function(o){ return '<option value="'+esc(o.value)+'"'+(String(v)===String(o.value)?' selected':'')+'>'+esc(o.label)+'</option>'; }).join(''); return '<label class="ci-f"><span>'+esc(f.label)+'</span><select data-k="'+esc(f.id)+'" onchange="calcUpd(\''+b.id+'\')">'+opts+'</select></label>'; }
+      var t=(f.type==='number')?'number':'text';
+      return '<label class="ci-f"><span>'+esc(f.label)+'</span><input type="'+t+'" data-k="'+esc(f.id)+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>';
+    }).join('');
+    return (box.title?'<div class="cc-box-t">'+esc(box.title)+'</div>':'')+'<div class="cc-inputs">'+fields+'</div>';
+  }).join('');
+  return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+boxes+'<div class="cc-recipe" id="ccr-'+b.id+'">'+expCalcRecipe(b)+'</div></div>'; }
+function calcMenu(id){ ensureArchive(function(){
+  var items=Object.keys(CALC_KINDS).map(function(k){ return {id:'native:'+k,label:CALC_KINDS[k].label,sub:'quick calculator',ic:'∑',c:'#4f9d8f'}; });
+  var arc=archiveIndex().filter(function(p){return p.hasCalc;}).map(function(p){ return {id:'arc:'+p.id,label:p.name,sub:'Archive calculator',ic:'A',c:'#a56983'}; });
+  lbPicker('Add a calculator to this step',items.concat(arc),function(it){ if(it.id.indexOf('native:')===0) addCalcToBlock(id,it.id.slice(7)); else if(it.id.indexOf('arc:')===0) addArchiveCalcToBlock(id,it.id.slice(4)); });
+}); }
 // Common reusable steps for the step library.
 var STEP_LIBRARY=[
   {id:'lib:seed',label:'Cell seeding (calc)',sub:'live prep calculator',calc:'seed'},
@@ -777,22 +825,23 @@ var STEP_LIBRARY=[
   {id:'lib:seq',label:'Sequencing',sub:'text step',html:'<p><b>Sanger</b> + <b>Plasmidsaurus</b> whole-plasmid sequencing.</p>'},
   {id:'lib:results',label:'Results / data analysis',sub:'text step',html:'<p><b>Results</b></p><p></p>'}
 ];
-function insertStepBlock(spec){ var e=_curExp(); if(!e) return; var lastOff=(e.blocks&&e.blocks.length)?(e.blocks[e.blocks.length-1].dayOffset||0):0;
-  var blk={id:uid(), dayOffset:lastOff, date:addDays(e.startDate||todayStr(),lastOff), title:spec.title||'', html:spec.html||'<p></p>'};
-  if(spec.calc) blk.calc={kind:spec.calc,inputs:calcDefaults(spec.calc)};
+function insertStepBlock(spec){ var e=_curExp(); if(!e) return; var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr();
+  var blk={id:uid(), date:d, dayOffset:daysBetween(expAnchorDate(e),d), title:spec.title||'', html:spec.html||'<p></p>'};
+  if(spec.archivePid) blk.calc={kind:'archive',pid:spec.archivePid,inputs:{},recipe:''};
+  else if(spec.calc) blk.calc={kind:spec.calc,inputs:calcDefaults(spec.calc)};
   if(spec.part){ blk.part=spec.part; blk.sourcePid=spec.sourcePid; }
   e.blocks.push(blk); save(); renderEditor(); setTimeout(function(){ scrollBlk(blk.id); },80); }
 function stepPalette(){ var e=_curExp(); if(!e) return;
   toast('Loading step library…');
   ensureArchive(function(){ var idx=archiveIndex();
     var libItems=STEP_LIBRARY.map(function(s){ return {id:s.id,label:s.label,sub:s.sub,ic:s.calc?'∑':'✎',c:s.calc?'#4f9d8f':'#8a93a6'}; });
-    var arItems=idx.map(function(p){ return {id:'ar:'+p.id,label:p.name,sub:'Archive protocol · full steps',ic:'A',c:'#a56983'}; });
+    var arItems=idx.map(function(p){ return {id:'ar:'+p.id,label:p.name,sub:'Archive protocol'+(p.hasCalc?' · steps + calculator':' · full steps'),ic:'A',c:'#a56983'}; });
     var items=libItems.concat(arItems);
     lbPicker('Add a step — search library + Archive',items,function(it){
       if(it.id.indexOf('lib:')===0){ var spec=STEP_LIBRARY.filter(function(s){return s.id===it.id;})[0]; if(spec) insertStepBlock({title:spec.label.replace(/ \(calc\)$/,''),html:spec.html,calc:spec.calc}); return; }
-      if(it.id.indexOf('ar:')===0){ var pid=it.id.slice(3); var steps=archiveSteps(pid); var name=it.label;
+      if(it.id.indexOf('ar:')===0){ var pid=it.id.slice(3); var steps=archiveSteps(pid); var name=it.label; var m=idx.filter(function(p){return p.id===pid;})[0];
         var html=(steps&&steps.length)?protocolStepsHtml({id:pid,label:name},steps):'<p></p>';
-        insertStepBlock({title:name,html:html,part:name,sourcePid:pid}); return; }
+        insertStepBlock({title:name,html:html,part:name,sourcePid:pid,archivePid:(m&&m.hasCalc)?pid:null}); return; }
     });
   });
 }
@@ -1145,9 +1194,27 @@ function partBlockHtml(pid,calc,steps){ var h='';
   if(calc&&calc.steps&&calc.steps.length){ h+='<p><strong>Recipe (from Archive calculator)</strong> '+link+'</p>'+calcRecipeHtml(calc); }
   else if(calc&&calc.hasCalc){ h+='<p>'+link+'</p>'; }
   return h||'<p></p>'; }
-// Publication-ready draft from a list of source protocols ([{id,name}]).
+// Publication-ready draft from a list of source protocols ([{id,name}]) — legacy path.
 function buildPubReady(protos){ var parts=(protos||[]).map(function(p){ return PUB_SEED[p.id]||('The '+(p.name||p.id)+' protocol was performed as described (see Archive).'); }).filter(Boolean); return parts.length?('<p>'+parts.join(' ')+'</p>'):'<p></p>'; }
-function rebuildPub(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Rebuild the publication-ready text from this experiment’s source protocols? Your current edits will be replaced.',{title:'Rebuild publication text'}).then(function(ok){ if(!ok) return; e.pubReady=buildPubReady(e.protocols||[]); e.updated=Date.now(); save(); renderEditor(); }); }
+function _plain(html){ var d=document.createElement('div'); d.innerHTML=html||''; return (d.textContent||'').replace(/\s+/g,' ').trim(); }
+// Past-tense Nature-methods sentence per native calculator kind.
+var CALC_PUB={
+  seed:function(v){ var line=((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,''); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; return line+' cells were seeded at '+nfmt(v.cellsPerWell)+' cells/well ('+nfmt(dens)+' M/mL) in '+nfmt(v.volPerWell)+' µL/well in '+String(v.format)+'-well plates.'; },
+  lytic:function(v){ var rvol=(+v.cellVolPerWell)/(+v.ratio||2); return 'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): '+nfmt(rvol)+' µL of lytic reagent (LgBiT 1:'+nfmt(v.lgbitDil)+', substrate 1:'+nfmt(v.subDil)+') was added per well and luminescence recorded after a 10 min room-temperature incubation.'; },
+  ctg:function(v){ return 'Cell viability was measured with CellTiter-Glo (Promega; '+nfmt(v.volPerWell)+' µL/well), luminescence being recorded after a 10–20 min equilibration and normalised to vehicle controls.'; },
+  reagent:function(v){ return (v.name||'The reagent')+' was prepared at a 1:'+nfmt(v.dilution)+' dilution in '+(v.diluent||'buffer')+'.'; }
+};
+function pubSentence(b){
+  if(b.calc){ if(b.calc.kind==='archive') return PUB_SEED[b.calc.pid]||_plain(expCalcRecipe(b));
+    var f=CALC_PUB[b.calc.kind]; if(f){ try{ return f(b.calc.inputs||{}); }catch(e){} } return _plain(expCalcRecipe(b)); }
+  if(b.sourcePid && PUB_SEED[b.sourcePid]) return PUB_SEED[b.sourcePid];
+  var body=_plain(b.html); if(/^results\b/i.test(body)) return ''; return body;
+}
+// Publication-ready prose from the experiment's own steps + their calculators (real quantities).
+function buildPubReadyFromExp(e){ var parts=[]; dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ var s=(pubSentence(b)||'').trim(); if(s) parts.push(s); }); });
+  parts=parts.filter(function(s,i){ return s && s!==parts[i-1]; });
+  return parts.length? ('<p>'+parts.join(' ')+'</p>') : '<p></p>'; }
+function rebuildPub(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Rebuild the publication-ready text from this experiment’s steps and calculators? Your current edits will be replaced.',{title:'Rebuild publication text'}).then(function(ok){ if(!ok) return; e.pubReady=buildPubReadyFromExp(e); e.updated=Date.now(); save(); renderEditor(); }); }
 // Copy helpers
 function _copyFallback(str){ try{ var ta=document.createElement('textarea'); ta.value=str; ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied'); }catch(e){ toast('Copy failed'); } }
 function lbCopyText(str){ try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(str).then(function(){toast('Copied');},function(){_copyFallback(str);}); return; } }catch(e){} _copyFallback(str); }
@@ -1183,7 +1250,7 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
     var all=blocks.concat(extra||[]);
     var e={ id:uid(), projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, code:code, type:presetBase(key), presetKey:key,
       title:title, status:'planned', startDate:startDate, plasmids:'', cellLines:'',
-      protocols:protoList||[], pubReady:buildPubReady(protoList||[]),
+      protocols:protoList||[], pubReady:buildPubReadyFromExp({blocks:all, startDate:startDate}),
       blocks:all, created:Date.now(), updated:Date.now() };
     LB.data.experiments[e.id]=e; save(); closeNew(); SEL.page=e.id; EXP_TAB='dated'; renderAll();
   }
@@ -1222,6 +1289,11 @@ function renderEditor(){
 }
 function expActs(id){ return '<div class="exh-acts"><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
 function titleField(e){ var empty=!(e.title||'').trim(); return '<input class="exh-title'+(empty?' code-big':'')+'" value="'+esc(empty?(e.code||''):e.title)+'" placeholder="'+(empty?'':'Title')+'" onchange="setField(\'title\',this.value)" onblur="renderPages()">'; }
+// One step card (day label now lives on the day-group header).
+function blkCardHtml(b){ var pl=b.part?('<span class="blk-part">'+esc(b.part)+'</span>'):'';
+  return '<div class="blk" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+(b.calc?'':'<button class="blk-calcbtn" title="Add a live prep calculator" onclick="calcMenu(\''+b.id+'\')">&#8721; calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+    +(b.calc?calcInputsHtml(b):'')
+    +'<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }
 function renderExpEditor(host,e){
   (el('export-btn')||{style:{}}).style.display='';
   var fields='<div class="exh-fields">'
@@ -1242,16 +1314,16 @@ function renderExpEditor(host,e){
   } else if(tab==='pub'){
     var srcChips=(e.protocols||[]).map(function(p){ return '<a class="lb-link proto" data-app="protocols" data-pid="'+esc(p.id)+'" contenteditable="false">'+esc(p.name||p.id)+' &#8599;</a>'; }).join(' ');
     body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods — concise continuous prose (Nature style)</span><span class="grow"></span>'
-      +'<button class="pub-btn" onclick="rebuildPub(\''+e.id+'\')" title="Regenerate from the source protocols">&#8635; Rebuild</button>'
+      +'<button class="pub-btn" onclick="rebuildPub(\''+e.id+'\')" title="Regenerate the prose from this experiment\'s steps + calculators">&#8635; Rebuild</button>'
       +'<button class="pub-btn primary" onclick="copyPubReady(\''+e.id+'\')">Copy</button></div>'
       +(srcChips?'<div class="exp-pub-src">Sources: '+srcChips+'</div>':'')
       +'<div class="rt exp-pub" contenteditable="true" data-ctx="pub:'+e.id+'" data-ph="Write the methods paragraph here…" oninput="setField(\'pubReady\',this.innerHTML)" onfocus="_activeEd=this">'+(e.pubReady||'')+'</div>';
   } else {
-    var blocks=e.blocks.map(function(b){ var dl=(b.dayOffset!=null)?('<span class="blk-day">Day '+b.dayOffset+'</span>'):'';
-      var pl=b.part?('<span class="blk-part">'+esc(b.part)+'</span>'):'';
-      return '<div class="blk" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+dl+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+(b.calc?'':'<button class="blk-calcbtn" title="Add a live prep calculator" onclick="calcMenu(\''+b.id+'\')">&#8721; calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
-        +(b.calc?calcInputsHtml(b):'')
-        +'<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }).join('');
+    var groups=(e.blocks&&e.blocks.length)?dayGroups(e):[];
+    var blocks=groups.map(function(g){
+      var hd='<div class="day-group-hd">'+(g.key?('<span class="dg-day">Day '+g.day+'</span><span class="dg-date">'+esc(fmtDate(g.key))+'</span>'):'<span class="dg-day dg-nodate">No date</span>')+'</div>';
+      return '<div class="day-group">'+hd+g.blocks.map(blkCardHtml).join('')+'</div>';
+    }).join('');
     body='<div class="exp-dated-body">'+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')+'<div class="blk-addrow"><button class="add-blk" onclick="addBlock()">+ Add day-block</button><button class="add-blk add-step" onclick="stepPalette()">&#8981; Add step from library / Archive…</button></div></div>';
   }
   host.innerHTML='<div class="ed-wrap">'+header+tabs+'<div class="exp-tab-body">'+body+'</div></div>';
@@ -1609,11 +1681,16 @@ document.addEventListener('click',function(e){
 // ── Setters ──
 function _curExp(){ return (SEL.node.kind==='expsec'&&SEL.page)?LB.data.experiments[SEL.page]:null; }
 function _curPage(){ return (SEL.node.kind==='general'&&SEL.page)?LB.data.pages[SEL.page]:null; }
-function setField(f,v){ var e=_curExp(); if(!e) return; e[f]=(f==='html'||f==='pubReady')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html'||f==='pubReady'){ queueSave(); return; } save(); if(f==='status') renderDockPanels(); if(f==='code'||f==='status'||f==='startDate') renderPages(); }
+function setField(f,v){ var e=_curExp(); if(!e) return;
+  if(f==='startDate'){ var old=e.startDate; e.startDate=v; if(old&&v){ var delta=daysBetween(old,v); if(delta) (e.blocks||[]).forEach(function(b){ if(b.date) b.date=addDays(b.date,delta); }); } recomputeDayOffsets(e); e.updated=Date.now(); save(); renderPages(); renderEditor(); return; }
+  e[f]=(f==='html'||f==='pubReady')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html'||f==='pubReady'){ queueSave(); return; } save(); if(f==='status') renderDockPanels(); if(f==='code'||f==='status') renderPages(); }
 function setNoteField(f,v){ var e=_curExp(); if(!e) return; e[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html') queueSave(); else { save(); renderPages(); } }
-function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===id;})[0]; if(!b) return; b[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html') queueSave(); else { save(); if(f==='date') renderPages(); } }
+function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===id;})[0]; if(!b) return; b[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now();
+  if(f==='html'){ queueSave(); return; }
+  if(f==='date'){ recomputeDayOffsets(e); save(); renderPages(); renderEditor(); return; }
+  save(); }
 function setExpBlockHtml(expId,blkId,html){ var e=LB.data.experiments[expId]; if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===blkId;})[0]; if(!b) return; b.html=_persistImgHtml(html); e.updated=Date.now(); queueSave(); }
-function addBlock(){ var e=_curExp(); if(!e) return; e.blocks.push({id:uid(),date:'',title:'',html:'<p></p>'}); save(); renderEditor(); }
+function addBlock(){ var e=_curExp(); if(!e) return; var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'<p></p>'}); save(); renderEditor(); }
 function delBlock(id){ var e=_curExp(); if(!e) return; e.blocks=e.blocks.filter(function(b){return b.id!==id;}); save(); renderEditor(); }
 function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
 function moveBlock(id,dir){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; save(); renderEditor(); }
@@ -1652,6 +1729,23 @@ function _imgInputChange(inp){ var r=inp._range; Array.prototype.forEach.call(in
 document.addEventListener('paste',function(e){ var ed=e.target && e.target.closest && e.target.closest('.rt'); if(!ed) return; var items=(e.clipboardData&&e.clipboardData.items)||[]; var imgs=[]; for(var i=0;i<items.length;i++){ if(items[i].type && items[i].type.indexOf('image')===0){ var f=items[i].getAsFile(); if(f) imgs.push(f); } } if(!imgs.length) return; e.preventDefault(); _activeEd=ed; var r=_saveSel(); imgs.forEach(function(f){ handleImageFile(f,r); }); });
 document.addEventListener('dragover',function(e){ if(e.target && e.target.closest && e.target.closest('.rt')) e.preventDefault(); });
 document.addEventListener('drop',function(e){ var ed=e.target && e.target.closest && e.target.closest('.rt'); if(!ed) return; var files=(e.dataTransfer&&e.dataTransfer.files)||[]; var imgs=[]; for(var i=0;i<files.length;i++){ if(files[i].type && files[i].type.indexOf('image')===0) imgs.push(files[i]); } if(!imgs.length) return; e.preventDefault(); _activeEd=ed; ed.focus(); var r=(document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null)||_saveSel(); imgs.forEach(function(f){ handleImageFile(f,r); }); });
+
+// ── Inline math (OneNote-style): type a simple sum ending in "=" and it appends the result. ──
+function _fmtMath(x){ if(!isFinite(x)) return null; var r=parseFloat(x.toFixed(10)); return (Object.is(r,-0)?0:r).toString(); }
+function _safeMath(expr){ expr=expr.replace(/×/g,'*').replace(/÷/g,'/').replace(/\s+/g,''); if(!expr) return null;
+  if(!/^[0-9.()+\-*/]+$/.test(expr)) return null;              // arithmetic charset only — never eval free text
+  if(!/[+\-*/]/.test(expr) || !/[0-9]/.test(expr)) return null;// need an operator and a digit
+  if(/[+\-*/]{3,}/.test(expr)) return null;
+  try{ var v=Function('"use strict";return('+expr+')')(); return (typeof v==='number')?_fmtMath(v):null; }catch(e){ return null; } }
+var _mathBusy=false;
+document.addEventListener('input',function(e){ if(_mathBusy) return; var ed=e.target && e.target.closest && e.target.closest('.rt'); if(!ed) return;
+  if(e.inputType!=='insertText' || e.data!=='=') return;
+  var sel=window.getSelection(); if(!sel||!sel.rangeCount) return; var node=sel.anchorNode; if(!node||node.nodeType!==3) return;
+  var off=sel.anchorOffset; var before=node.textContent.slice(0,off); var m=before.match(/([0-9.\s()+\-*/×÷]{1,40})=$/); if(!m) return;
+  var res=_safeMath(m[1]); if(res==null) return;
+  _mathBusy=true;
+  try{ var r=sel.getRangeAt(0); var tn=document.createTextNode(res); r.insertNode(tn); r.setStartAfter(tn); r.setEndAfter(tn); sel.removeAllRanges(); sel.addRange(r); ed.dispatchEvent(new Event('input')); }catch(_e){}
+  _mathBusy=false; }, true);
 
 // ── Popup helper (autocomplete, ctx, add) ──
 function popOpen(id,items,rect){ var pop=el(id); pop.innerHTML=items.map(function(it,i){ if(it.sep) return '<div class="pop-sep"></div>';
@@ -1928,6 +2022,7 @@ var PRINT_CSS='<style>#print-root{padding:0;color:#111}#print-root *{box-sizing:
  +'.pd-part-hd{font:700 13px/1.3 sans-serif;color:#2b6b60;background:#eef4f2;border-left:3px solid #4f9d8f;border-radius:4px;padding:5px 10px;margin:16px 0 2px;page-break-after:avoid}'
  +'.pd-pub{font:400 13px/1.75 sans-serif;color:#1a1a1a;background:#fafbfb;border:1px solid #e2e2e2;border-radius:8px;padding:12px 16px;margin-top:6px}'
  +'.pd-recipe{font:400 12.5px/1.55 sans-serif;color:#1a1a1a;background:#eef4f2;border-left:3px solid #4f9d8f;border-radius:0 6px 6px 0;padding:7px 11px;margin:0 0 7px}.pd-recipe b{color:#2b6b60}'
+ +'.pd-daygroup{margin-top:14px;page-break-inside:auto}.pd-dayhd{display:flex;align-items:center;gap:8px;margin:14px 0 6px;border-bottom:2px solid #4f9d8f;padding-bottom:4px}.pd-dayhd .pd-day{font:700 10px/1 sans-serif;color:#fff;background:#4f9d8f;border-radius:4px;padding:3px 8px;text-transform:uppercase}.pd-dayhd .pd-bdate{font:600 12px/1 sans-serif;color:#555}'
  +'.pd-foot{margin-top:26px;padding-top:10px;border-top:1px solid #e2e2e2;font:400 10px/1.4 sans-serif;color:#999}</style>';
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
 function pdRecipe(b){ var r=expCalcRecipe(b); return r?'<div class="pd-recipe">'+r+'</div>':''; }
@@ -1940,6 +2035,14 @@ function printExpBlocks(blocks){ if(!blocks||!blocks.length) return '';
     var hd=(b.dayOffset!=null?'<span class="pd-day">Day '+b.dayOffset+'</span>':'')+(b.date?'<span class="pd-bdate">'+fmtDate(b.date)+'</span>':'')+(b.title&&b.title!==b.part?'<span class="pd-btitle">'+esc(b.title)+'</span>':'');
     h+='<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body">'+pdRecipe(b)+(b.html||'')+'</div></div>'; });
   return h; }
+// Export the experiment step-by-step, grouped under merged Day headers.
+function printExpByDay(e){ var groups=dayGroups(e); if(!groups.length) return '';
+  return groups.map(function(g){
+    var dh = g.key ? ('<div class="pd-dayhd"><span class="pd-day">Day '+g.day+'</span><span class="pd-bdate">'+fmtDate(g.key)+'</span></div>')
+                   : '<div class="pd-dayhd"><span class="pd-day">No date</span></div>';
+    var cards=g.blocks.map(function(b){ var hd=(b.title?'<span class="pd-btitle">'+esc(b.title)+'</span>':''); return '<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body">'+pdRecipe(b)+(b.html||'')+'</div></div>'; }).join('');
+    return '<div class="pd-daygroup">'+dh+cards+'</div>';
+  }).join(''); }
 function foot(){ return '<div class="pd-foot">dHUB Labbook · exported '+fmtDate(todayStr())+'</div>'; }
 function buildPrintDoc(){
   var node=SEL.node, h=PRINT_CSS;
@@ -1958,7 +2061,7 @@ function buildPrintDoc(){
   var chips=[]; if(e.startDate)chips.push('Start '+fmtDate(e.startDate)); if(e.status)chips.push(e.status); if(e.plasmids)chips.push(e.plasmids); if(e.cellLines)chips.push(e.cellLines);
   h+='<div class="pd-head"><div class="pd-code">'+esc(e.code||'')+'</div><div class="pd-title">'+esc(e.title||e.code||'')+'</div><div class="pd-crumb">'+esc(projCrumb(e))+'</div><div class="pd-chips">'+chips.map(function(x){return '<span class="pd-chip">'+esc(x)+'</span>';}).join('')+'</div></div>';
   var obs=(e.html&&e.html.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Observations</div><div class="pd-body">'+e.html+'</div>'):'';
-  var steps=(e.blocks&&e.blocks.length)?('<div class="pd-sec-hd">Protocol — dated sections</div>'+printExpBlocks(e.blocks)):'';
+  var steps=(e.blocks&&e.blocks.length)?('<div class="pd-sec-hd">Protocol — step by step</div>'+printExpByDay(e)):'';
   var pub=(e.pubReady&&e.pubReady.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Publication ready</div><div class="pd-pub">'+e.pubReady+'</div>'):'';
   return h+obs+steps+pub+foot();
 }
