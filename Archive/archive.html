@@ -1796,7 +1796,7 @@ body.step-notes-on li:hover>.step-note-btn,
       <button class="dtab-btn" onclick="showDTab('revtx','output')">Output</button>
     </div>
     <div class="dpane active" data-tab="protocol">
-      <div class="proto-note"><strong>Reverse transfection</strong> — DNA&ndash;FuGENE complexes are dispensed first, then cells are seeded on top in a single step. Amounts below are per <strong>12-well</strong>; the calculator scales them to any plate format. Opti-MEM per well stays 100 &micro;L. FuGENE:DNA = 3:1 (&micro;L:&micro;g).</div>
+      <div class="proto-note"><strong>Reverse transfection</strong> — DNA&ndash;FuGENE complexes are dispensed first, then cells are seeded on top in a single step. Amounts below are per <strong>12-well</strong>; the calculator scales DNA/FuGENE/cells to any plate format. Opti-MEM stays at 100 &micro;L down to 24-well (standard practice, well capacity easily accommodates it); only <strong>96-well</strong> needs less (~10 &micro;L) so the complex + cell suspension don't exceed the well's working volume. FuGENE:DNA = 3:1 (&micro;L:&micro;g).</div>
       <div class="proto-section">Transfection conditions (per 12-well)</div>
       <ul class="proto-list"><li>Plasmid DNA &mdash; 800 ng</li><li>FuGENE HD &mdash; 2.4 &micro;L</li><li>Opti-MEM &mdash; 100 &micro;L</li><li>Cell suspension &mdash; 1 mL containing 1.5&ndash;2.0&times;10&#8309; cells</li></ul>
       <div class="proto-section">Cell seeding</div>
@@ -1807,7 +1807,7 @@ body.step-notes-on li:hover>.step-note-btn,
         <li>Add the appropriate amount of plasmid DNA and mix gently.</li>
         <li>Add FuGENE directly into the diluted DNA solution &mdash; avoid letting undiluted reagent contact the tube walls.</li>
         <li>Mix briefly (gentle vortex or pipette) and incubate 5&ndash;15 min RT to form DNA&ndash;FuGENE complexes.</li>
-        <li>Dispense 100 &micro;L of transfection complex into each well.</li>
+        <li>Dispense the calculated volume of transfection complex (see Calculate tab &mdash; scales with plate format) into each well.</li>
         <li>Immediately overlay each well with 1 mL complete medium containing 1.5&ndash;2.0&times;10&#8309; freshly trypsinized cells (per 12-well).</li>
         <li>Gently rock the plate to distribute evenly.</li>
         <li>Incubate under standard conditions (37&deg;C, 5% CO&#8322;) to the experimental endpoint.</li>
@@ -1819,7 +1819,7 @@ body.step-notes-on li:hover>.step-note-btn,
         <div class="grid-2" style="gap:12px">
           <div class="field"><label>Plate format</label><select id="rtx-format" onchange="calcRevTx()"><option value="96">96-well</option><option value="24">24-well</option><option value="12" selected>12-well</option><option value="6">6-well</option></select></div>
           <div class="field"><label>Number of wells</label><input type="number" id="rtx-nwells" value="12" min="1" step="1" oninput="calcRevTx()"></div>
-          <div class="field"><label>Extra reactions (pipetting loss)</label><input type="number" id="rtx-extra" value="1" min="0" step="1" oninput="calcRevTx()"></div>
+          <div class="field"><label title="Extra reactions (pipetting loss)">Extra reactions</label><input type="number" id="rtx-extra" value="1" min="0" step="1" oninput="calcRevTx()"></div>
         </div>
         <div id="rtx-result" style="margin-top:18px"></div>
       </div>
@@ -4674,13 +4674,19 @@ function generateTransfectionSteps() {
 
 // ── Reverse Transfection (FuGENE) ──
 var _RTX_FACTOR = { '96':0.1, '24':0.5, '12':1, '6':2.5 };
+// Opti-MEM/complex volume is NOT proportional to _RTX_FACTOR: published FuGENE HD/Lipofectamine reverse-transfection
+// protocols use a flat ~100 uL complex volume down to 24-well (Promega TM328, Thermo Fisher reverse-transfection refs);
+// it only needs to shrink for 96-well, where total well capacity (~300-360 uL max, ~100-200 uL practical working volume)
+// can't fit a 100 uL complex plus ~100 uL cell suspension — FuGENE HD's own manual specifies 2-10 uL for 96-well.
+var _RTX_OPTI = { '96':10, '24':100, '12':100, '6':100 };
 function _rtxFmt(v){ if(v<1) return +v.toFixed(2)+''; if(v<10) return +v.toFixed(2)+''; if(v<100) return +v.toFixed(1)+''; return Math.round(v)+''; }
 function calcRevTx(){
   var fmtF = document.getElementById('rtx-format').value;
   var n = parseFloat(document.getElementById('rtx-nwells').value) || 1;
   var extra = parseFloat(document.getElementById('rtx-extra').value); if(isNaN(extra)) extra = 1;
   var f = _RTX_FACTOR[fmtF] || 1; var N = n + extra;
-  var dnaW = 800*f, fugW = 2.4*f, optW = 100, cLow = 1.5*f, cHigh = 2.0*f, medW = 1.0*f; // per well (ng, uL, uL, ×1e5, ×1e5, mL)
+  var optW = (_RTX_OPTI[fmtF] != null) ? _RTX_OPTI[fmtF] : 100;
+  var dnaW = 800*f, fugW = 2.4*f, cLow = 1.5*f, cHigh = 2.0*f, medW = 1.0*f; // per well (ng, uL, ×1e5, ×1e5, mL); optW set above (uL)
   var dnaT = dnaW*N/1000, fugT = fugW*N, optT = optW*N; // totals: ug, uL, uL
   function row(l,v){ return '<div class="result-row"><span class="result-label">'+l+'</span><span class="result-val">'+v+'</span></div>'; }
   var html = '<div class="result-box"><div style="font-size:11.5px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;margin:0 0 6px">Per well ('+fmtF+'-well)</div>'
