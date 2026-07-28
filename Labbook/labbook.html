@@ -281,6 +281,25 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .rt ul.lb-check li.done{opacity:.62;text-decoration:line-through;}
 .add-blk{width:100%;border:1.5px dashed var(--border2);background:none;color:var(--text3);border-radius:11px;padding:11px;font-family:var(--sans);font-size:12.5px;cursor:pointer;transition:color .15s,border-color .15s;}
 .add-blk:hover{color:var(--accent);border-color:var(--accent);}
+.blk-addrow{display:flex;gap:8px;margin-top:2px;}.blk-addrow .add-blk{flex:1;}
+.add-step:hover{color:#a56983;border-color:#a56983;}
+/* Live prep calculators inside experiment steps */
+.blk-calcbtn{background:none;border:1px solid var(--border2);color:#4f9d8f;cursor:pointer;font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;font-family:var(--sans);margin-right:4px;}
+.blk-calcbtn:hover{background:var(--surface3);}
+.blk-calc{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--border2);border-left:3px solid #4f9d8f;border-radius:10px;padding:9px 11px;margin:6px 0 8px;}
+.cc-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.cc-tag{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#4f9d8f;}
+.cc-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;line-height:1;padding:0 4px;border-radius:5px;}.cc-x:hover{color:var(--danger);background:var(--surface3);}
+.cc-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px 10px;}
+.ci-f{display:flex;flex-direction:column;gap:3px;}
+.ci-f span{font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.2px;}
+.ci-f input,.ci-f select{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:7px;padding:5px 7px;font-family:var(--sans);font-size:12.5px;}
+.ci-f input:focus,.ci-f select:focus{outline:none;border-color:#4f9d8f;box-shadow:0 0 0 2px rgba(79,157,143,.18);}
+.cc-recipe{margin-top:9px;background:var(--surface);border:1px dashed var(--border2);border-radius:8px;padding:8px 11px;font-size:12.5px;line-height:1.55;color:var(--text);}
+.cc-recipe b{color:#2b7d6e;}
+.dfx-recipe,.pd-recipe{background:#eef4f2;border-left:3px solid #4f9d8f;border-radius:0 8px 8px 0;padding:7px 11px;margin:4px 0 6px;font-size:12.5px;line-height:1.55;}
+.dfx-recipe b{color:#2b7d6e;}
+.ps-calc{margin:4px 0 6px;}.ps-calc-add{background:none;border:1px dashed var(--border2);color:#4f9d8f;cursor:pointer;font-size:11px;padding:5px 10px;border-radius:8px;font-family:var(--sans);margin:4px 0;}.ps-calc-add:hover{border-color:#4f9d8f;}
 /* Experiment free canvas + collapsible dated sections */
 .exp-canvas{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-xs);min-height:180px;margin:6px 0 14px;}
 .rt[data-ph]:empty::before{content:attr(data-ph);color:var(--text3);pointer-events:none;}
@@ -564,7 +583,7 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
     <div class="mrow"><label>Code (auto — editable)</label><input id="nm-code" class="mcode" autocomplete="off" spellcheck="false"></div>
     <div id="nm-protocols" class="nm-protocols"></div>
     <div id="nm-preview" class="nm-preview"></div>
-    <div class="modal-act"><button class="btn ghost sm" onclick="openPresetEditor()">Edit presets…</button><span class="grow"></span><button class="btn ghost" onclick="closeNew()">Cancel</button><button class="btn" onclick="createExperiment()">Create</button></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="openPresetEditor()">Edit preset…</button><button class="btn ghost sm" onclick="newPresetFromType()">New preset…</button><span class="grow"></span><button class="btn ghost" onclick="closeNew()">Cancel</button><button class="btn" onclick="createExperiment()">Create</button></div>
   </div>
 </div>
 
@@ -572,9 +591,10 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 <div class="modal-back" id="preset-modal">
   <div class="modal wide">
     <div class="modal-t">Experiment presets<span class="grow"></span><select id="pe-type" class="tb-sel" onchange="peRender()"></select></div>
+    <div class="mrow"><label>Preset name</label><input id="pe-name"></div>
     <div class="mrow"><label>Default title</label><input id="pe-title"></div>
     <div id="pe-body"></div>
-    <div class="modal-act"><button class="btn ghost sm" onclick="peAddBlock()">+ Add day-block</button><span class="grow"></span><button class="btn ghost" onclick="closePresetEditor()">Close</button><button class="btn" onclick="peSave()">Save preset</button></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="peAddBlock()">+ Add day-block</button><button class="btn ghost sm" id="pe-del" onclick="peDelete()" style="color:var(--danger)">Delete preset</button><span class="grow"></span><button class="btn ghost" onclick="closePresetEditor()">Close</button><button class="btn" onclick="peSave()">Save preset</button></div>
   </div>
 </div>
 
@@ -626,42 +646,156 @@ var EXP_TYPES=[
 ];
 var PRESET_SEED={
   WB:{title:'Western blot',blocks:[
-    {d:0,title:'Sample prep',html:'<p><b>Lysis &amp; sample prep</b></p><ul><li>Lyse in RIPA + protease/phosphatase inhibitors</li><li>BCA quantification (see BCA app)</li><li>Normalize, add 4× LDS + reducing agent, denature 95 °C × 5 min</li></ul>'},
-    {d:0,title:'Run + transfer',html:'<p><b>Gel</b>: MOPS, 165 V, 100 min</p><p><b>Transfer</b>: wet transfer, 90 V, 90 min</p><p><b>Blocking</b>: 1 h, RT</p>'},
-    {d:1,title:'Antibodies + imaging',html:'<p><b>Primary</b>: 4 °C, overnight</p><ul><li>α-HaloTag Ms (1:1000)</li><li>α-NanoLuc Ms (1:1000)</li><li>α-HA Rat (1:1000)</li></ul><p><b>Secondary</b>: 1 h RT · <b>Image</b></p>'},
-    {d:1,title:'Results',html:'<p><b>Results</b></p><p></p>'}]},
+    {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293',cellsPerWell:20000,volPerWell:90,format:'96',nPlates:4,excess:1.1}},html:'<p>Seed clear-well plates (2 compounds/plate). Incubate 24&ndash;48 h until ~80% confluent.</p>'},
+    {d:2,title:'Compound addition + lysis',html:'<p><b>Compounds</b>: 1000&times; stocks in DMSO (serial dilution). Add 1 &micro;L stock to 99 &micro;L DMEM (10&times;), then 10 &micro;L of 10&times; to cells. Incubate 6 h.</p><p><b>Lysis</b>: 20 &micro;L/well, 2% SDS, 50 mM Tris&middot;HCl, 100&times; PI, 1000&times; benzonase. Store &minus;20 &deg;C.</p>'},
+    {d:3,title:'Sample prep + gel + transfer + primary',html:'<p><b>Sample prep</b> (96 samples, +10%): 4&times; LDS 3250 &micro;L + 10&times; DTT 1300 &micro;L &rarr; 43.1 &micro;L/sample. Denature.</p><p><b>Gel</b>: MOPS, 145 V, 90 min. <b>Transfer</b>: wet, 90 V, 90 min (Ponceau). <b>Block</b>: 1 h RT.</p><p><b>Primary</b> (4 &deg;C, overnight): &alpha;-BRD4 Rb 1:1000 (CST) &middot; &alpha;-BRD3 Ms 1:500 (Abcam) &middot; &alpha;-BRD2 Rb 1:1000 &middot; &alpha;-CRBN Rb 1:1000 &middot; &alpha;-VHL Rb 1:1000.</p><p><i>Variations (edit as needed): 170 V running &middot; iBlot dry transfer &middot; primary 1 h RT.</i></p>'},
+    {d:4,title:'Secondary + image',html:'<p><b>Secondary</b> (1 h RT): &alpha;-Tub Rho 1:5000 &middot; &alpha;-Rb/Ms 800 1:5000. <b>Image</b>.</p><p><b>Results</b></p><p></p>'}]},
   HB:{title:'HiBiT: seed → overnight → compound → lytic read',blocks:[
-    {d:0,title:'Seeding',html:'<p><b>Seeding</b></p><ul><li>Seed <b>N</b> × 384-well plate / cell line</li><li>30 µL/well · 0.10 M/mL · 3000 cells/well</li></ul><p>Incubate overnight.</p>'},
-    {d:1,title:'Compound addition + HiBiT Lytic',html:'<p><b>Compound addition (Echo)</b></p><p><b>HiBiT Lytic</b>: 15 µL/well (1:2 reagent:cell) · shake 300 rpm × 1 min · RT 10 min</p><p><b>Read</b>: PHERAstar · 0.2 s/well</p>'},
+    {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293',cellsPerWell:3000,volPerWell:30,format:'384',nPlates:1,excess:1.5}},html:'<p>Seed 384-well plate / cell line. Incubate overnight.</p>'},
+    {d:1,title:'Compound addition (Echo)',html:'<p><b>Compound addition (Echo)</b>. Picklist: &lt;code&gt;_Picklist.csv. Incubate 6 h.</p>'},
+    {d:1,title:'HiBiT Lytic + read',calc:{kind:'lytic',inputs:{format:'384',nPlates:1,cellVolPerWell:30,ratio:2,lgbitDil:100,subDil:50,excess:1.1}},html:'<p><b>Read</b>: PHERAstar, 0.2 s/well.</p>'},
     {d:1,title:'Results',html:'<p><b>Results</b></p><p></p>'}]},
   CTG:{title:'Cell viability (CellTiter-Glo)',blocks:[
-    {d:0,title:'Plan + seeding',html:'<p><b>Plan</b>: viability in 96-well plates.</p><p><b>Seed</b>: 90 µL/well · 30 000 cells/well (0.3 M/mL). Incubate.</p>'},
-    {d:3,title:'CTG readout',html:'<p><b>CTG — 72 h</b>: add 50 µL/well · equilibrate 10–20 min · read luminescence</p>'},
-    {d:3,title:'Data analysis',html:'<p><b>Data analysis</b></p><p></p>'}]},
+    {d:0,title:'Seed + compounds',calc:{kind:'seed',inputs:{cellLine:'SUDHL5',cellsPerWell:30000,volPerWell:90,format:'96',nPlates:4,excess:1.1}},html:'<p>2 plate copies (24 h + 72 h readouts). <b>Serial dilution</b>: 1000 nM top, DF=4, 11 points + DMSO. Add compounds; incubate.</p>'},
+    {d:1,title:'CTG — 24 h readout',calc:{kind:'ctg',inputs:{format:'96',nPlates:2,volPerWell:50,excess:1.1}},html:'<p>Read luminescence. Data analysis (24 h).</p>'},
+    {d:3,title:'CTG — 72 h readout',calc:{kind:'ctg',inputs:{format:'96',nPlates:2,volPerWell:50,excess:1.1}},html:'<p>Read luminescence. Data analysis (72 h).</p>'}]},
   NB:{title:'NanoBRET biosensor',blocks:[
-    {d:0,title:'Seed + transfection',html:'<p><b>Seed HEK293</b>: 6-well, 0.8 M/well.</p><p><b>Transfect</b>: 0.02 µg plasmid + 2 µg carrier + FuGENE HD. ~20 h.</p>'},
-    {d:1,title:'Harvest + plate',html:'<p><b>Harvest</b>: trypsinize, resuspend in phenol-red-free OptiMEM + 4% FBS, 2.2×10⁵ cells/mL.</p>'},
-    {d:1,title:'Treat + read',html:'<p><b>MG132</b> 10 µM, 1 h · <b>Test compounds</b> 3 h · <b>NanoBRET substrate</b>, read.</p>'}]},
-  KD:{title:'Kinetic degradation',blocks:[
-    {d:0,title:'Seeding',html:'<p><b>Seed</b> HiBiT reporter line · 384-well · overnight</p>'},
-    {d:1,title:'Compound + kinetic read',html:'<p><b>Degrader series</b> (Echo) · <b>Endurazine</b> live reagent · <b>Kinetic read</b>: 0,1,2,4,6,8,24 h</p>'},
-    {d:2,title:'Analysis',html:'<p><b>Analysis</b>: kinetic Dmax / rate</p><p></p>'}]},
+    {d:0,title:'Seed',calc:{kind:'seed',inputs:{cellLine:'HEK293',cellsPerWell:800000,volPerWell:2000,format:'6',nPlates:1,excess:1.1}},html:'<p>Seed HEK293 in a 6-well plate: 3 transfected + 1 untransfected, 0.8 M/well.</p>'},
+    {d:1,title:'Transfection (FuGENE HD)',html:'<p>Per 6-well: 0.02 &micro;g plasmid + 2 &micro;g carrier DNA &rarr; 100 &micro;L OptiMEM. Add 6 &micro;L FuGENE HD, mix gently (do not vortex), 10 min RT. Add dropwise. Incubate ~20 h at 37 &deg;C, 5% CO&#8322;.</p>'},
+    {d:2,title:'Harvest + replate',html:'<p>Trypsinize; resuspend in phenol-red-free OptiMEM + 4% FBS; adjust to 2.2&times;10&#8309; cells/mL.</p><p>&minus; ligand: 90 &micro;L/well. + ligand: HT618 at 1 &micro;L/mL suspension, then 90 &micro;L/well.</p>'},
+    {d:3,title:'Treat + NanoBRET read',calc:{kind:'reagent',inputs:{name:'NanoBRET substrate',diluent:'OptiMEM',totalVol:2520,dilution:100}},html:'<p><b>MG132</b> 10 &micro;M final (10&times; in OptiMEM), 1 h. <b>Test compounds</b>: 10&times; serial (1 &micro;M, DF=3) in OptiMEM, add 11 &micro;L (&rarr;110 &micro;L), 3 h.</p><p><b>NanoBRET substrate</b> (prepared above): add 25 &micro;L/well, shake ~10 s, read.</p>'}]},
+  KD:{title:'Kinetic degradation (live-cell HiBiT)',blocks:[
+    {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:20000,volPerWell:75,format:'96',nPlates:2,excess:1.5}},html:'<p>Seed HiBiT reporter line into a <b>WHITE</b> 96-well plate.</p>'},
+    {d:1,title:'LgBiT transfection (ViaScript mRNA)',html:'<p>Per 2&times;96: 20 &micro;L LgBiT mRNA + 20 &micro;L ViaScript &rarr; 160 &micro;L buffer, 15&ndash;30 min. Dilute with 1800 &micro;L buffer, add to 18 mL media. Aspirate; add 100 &micro;L/well. Incubate overnight at 37 &deg;C.</p>'},
+    {d:2,title:'Endurazine + kinetic read',calc:{kind:'reagent',inputs:{name:'Endurazine',diluent:'assay medium',totalVol:9500,dilution:100}},html:'<p>Assay medium = CO&#8322;-independent + 10% FBS. Aspirate; add 90 &micro;L Endurazine/well; equilibrate 2.5 h at 37 &deg;C.</p><p>Prepare 10&times; compounds in assay medium. Plate-read before start (normalization). Add 10 &micro;L 10&times;/well. <b>Kinetic read</b> GloMax 37 &deg;C (e.g. 900 min / 5 min intervals).</p>'}]},
   RTX:{title:'Reverse transfection (FuGENE)',blocks:[
-    {d:0,title:'Master mix + seed (reverse transfection)',html:'<p><b>Reverse transfection</b> — see the <b>Reverse Transfection</b> protocol in Archive for the plate-format calculator (6/12/24/96-well).</p><ul><li>Master mix (per 12-well): 100 µL OptiMEM + 800 ng DNA + 2.4 µL FuGENE (3:1)</li><li>Incubate complexes 5–15 min RT · dispense 100 µL/well</li><li>Overlay 1 mL medium + 1.5–2.0×10⁵ freshly trypsinized cells/well</li></ul><p>Incubate 37 °C, 5% CO₂ to endpoint.</p>'},
+    {d:0,title:'Master mix + seed (reverse transfection)',html:'<p><b>Reverse transfection</b> &mdash; see the <b>Reverse Transfection</b> protocol in Archive for the plate-format calculator (6/12/24/96-well).</p><ul><li>Master mix (per 12-well): 100 &micro;L OptiMEM + 800 ng DNA + 2.4 &micro;L FuGENE (3:1)</li><li>Incubate complexes 5&ndash;15 min RT; dispense 100 &micro;L/well</li><li>Overlay 1 mL medium + 1.5&ndash;2.0&times;10&#8309; freshly trypsinized cells/well</li></ul><p>Incubate 37 &deg;C, 5% CO&#8322; to endpoint.</p>'},
     {d:2,title:'Readout',html:'<p><b>Readout</b> at endpoint</p><p></p>'}]},
-  D2B:{title:'Direct-to-Biology',blocks:[
-    {d:0,title:'Reaction setup',html:'<p><b>Reaction</b>: Cherry Pick + Plate Reformat · react overnight</p>'},
-    {d:1,title:'Compound addition + seed',html:'<p><b>Echo gradient (D2B)</b> · <b>Seed</b> 20 µL/well · 0.15 M/mL · ~20 h</p>'},
-    {d:2,title:'HiBiT Lytic + read',html:'<p><b>HiBiT Lytic</b> 10 µL/well · <b>Read</b> PHERAstar</p>'}]},
-  PR:{title:'Proteomics sample prep',blocks:[
-    {d:0,title:'Lysis + digestion (S-Trap)',html:'<p><b>Lyse</b> · <b>BCA</b> · normalize · <b>S-Trap</b>: reduce, alkylate, trap, trypsin, elute</p>'},
-    {d:1,title:'LC-MS + analysis',html:'<p><b>Desalt</b> · LC-MS (DIA) · <b>DIA-NN → Perseus</b></p>'}]},
-  CLONE:{title:'Cloning / plasmid',blocks:[
-    {d:0,title:'Design + assembly + transformation',html:'<p><b>Vector</b> linearise (BbsI) · <b>HiFi assembly</b> (NEB E2621, 50 °C 60 min) · <b>Transform</b> NEB Stable · plate LB+amp overnight</p>'},
-    {d:1,title:'Colony pick',html:'<p><b>Pick</b> 3 colonies → 5 mL LB+amp · overnight 37 °C</p>'},
-    {d:2,title:'Miniprep + sequencing',html:'<p><b>Miniprep</b> · <b>Sanger</b> · <b>Plasmidsaurus</b> full-plasmid seq</p>'}]},
+  D2B:{title:'Direct-to-Biology (dose → seed → read)',blocks:[
+    {d:0,title:'Reaction setup',html:'<p><b>Reaction</b>: Cherry Pick + Plate Reformat. React overnight.</p>'},
+    {d:1,title:'Compound addition (Echo gradient) + seed',calc:{kind:'seed',inputs:{cellLine:'HEK293',cellsPerWell:3000,volPerWell:20,format:'384',nPlates:19,excess:1.5}},html:'<p><b>Echo gradient</b> (see Echo app): DMSO &le; 0.25%, max transfer 50 nL, drop 2.5 nL. Pre-fill intermediates + backfill wells with 40 &micro;L neat DMSO before the run. <b>Seed on top</b>; incubate ~20 h.</p>'},
+    {d:2,title:'HiBiT Lytic + read',calc:{kind:'lytic',inputs:{format:'384',nPlates:38,cellVolPerWell:20,ratio:2,lgbitDil:100,subDil:50,excess:1.2}},html:'<p><b>Read</b>: PHERAstar, 0.2 s/well.</p>'}]},
+  PR:{title:'Proteomics (S-Trap → DIA-NN → Perseus)',blocks:[
+    {d:0,title:'BCA + S-Trap digestion',html:'<p><b>BCA</b> protein quantification. <b>S-Trap</b> (micro), take 50 &micro;g: 50/[conc] &micro;L + water to 50 &micro;L.</p><ul><li>Reduce: DTT 500 mM, 2 &micro;L/tube, 55 &deg;C 20&ndash;30 min</li><li>Alkylate: IAA 375 mM, 2.8 &micro;L/tube, RT 10 min (dark)</li><li>Acidify: 12% phosphoric acid, 1:10</li><li>Trap: 7&times; binding/wash buffer; spin 4000g</li><li>Wash &times;3 (150 &micro;L binding/wash)</li><li>Trypsin 1:20 (2.5 &micro;g/sample; 40 &micro;L/S-Trap), cap loose, 37 &deg;C overnight</li></ul>'},
+    {d:1,title:'Elute + submit + analysis',html:'<p><b>Elute</b>: 50 mM TEAB &rarr; 0.15% formic acid &rarr; 50% ACN (spins 4000g). Dry 60 &micro;L (~10 &micro;g), speedvac 30 &deg;C.</p><p>Submit to proteomics facility. <b>DIA-NN</b> &rarr; <b>Perseus</b>.</p>'}]},
+  CLONE:{title:'Cloning — Gibson assembly',blocks:[
+    {d:0,title:'Primer design + PCR',html:'<p><b>Primers</b>: design overlapping FW/RV for vector and insert.</p><p><b>PCR</b> (Q5, 50 &micro;L): 2.5 &micro;L each primer, 25 &micro;L Q5 Master Mix, 1 &micro;L DNA (~100 ng), 19 &micro;L H&#8322;O. ~4 min extension (~2.5 h).</p><p><b>Gel</b>: 1% agarose in 1&times; TAE, big-well comb, 60 min. Cut bands. <b>NucleoSpin</b> clean-up, elute 15 &micro;L. NanoDrop.</p>'},
+    {d:1,title:'Gibson assembly + transformation',html:'<p><b>Gibson</b>: 35 ng vector + ~2&times; molar insert (Promega calculator), 5 &micro;L Gibson Master Mix, H&#8322;O to 10 &micro;L. Incubate <b>15 min 42 &deg;C + 45 min 50 &deg;C</b>.</p><p><b>Transform</b> (NEB Stable): 5 &micro;L product + 25 &micro;L cells; ice 2 min; 42 &deg;C 30 s; ice 2 min; +450 &micro;L SOC; 37 &deg;C 1 h. Plate LB+amp, overnight.</p>'},
+    {d:2,title:'Colony pick',html:'<p>Pick 3 colonies &rarr; 5 mL LB + 5 &micro;L amp (1000&times;). Overnight 37 &deg;C.</p>'},
+    {d:3,title:'Miniprep',html:'<p><b>Miniprep</b> (GeneJET). NanoDrop.</p>'},
+    {d:5,title:'Sequencing',html:'<p><b>Sanger</b> + <b>Plasmidsaurus</b> whole-plasmid sequencing.</p><p><b>Results</b></p><p></p>'}]},
   EXP:{title:'',blocks:[{d:0,title:'',html:'<p></p>'}]}
 };
+// Extra ready-made presets (variants) seeded once; safe to delete/rename in-app.
+var EXTRA_PRESET_SEED={
+  'CLONE_HIFI':{name:'Cloning — Restriction + HiFi (PX458)',baseType:'CLONE',title:'Cloning — Restriction + HiFi (PX458)',blocks:[
+    {d:0,title:'Vector linearization + HiFi assembly + transformation',html:'<p><b>Linearize</b>: digest 1 &micro;g PX458 with BbsI (NEB), 37 &deg;C 30 min. Confirm on 1% gel (~9.3 kb). Excise, NucleoSpin, NanoDrop.</p><p><b>HiFi assembly</b> (20 &micro;L, NEB E2621), on ice in order: 6.22 &micro;L H&#8322;O, 2.78 &micro;L linearized vector (~11 ng/&micro;L, 0.005 pmol), 1 &micro;L ssOligo (1 &micro;M, 200:1 insert:vector), 10 &micro;L NEBuilder HiFi 2&times; (last). 50 &deg;C 60 min.</p><p><b>Transform</b> (NEB Stable): 2 &micro;L product + 25 &micro;L cells; ice 2 min; 42 &deg;C 30 s; ice 2 min; +450 &micro;L SOC; 37 &deg;C 1 h. Plate LB+amp, overnight.</p>'},
+    {d:1,title:'Colony pick',html:'<p>Pick 3 colonies/plate &rarr; 5 mL LB + 5 &micro;L amp (1000&times;). Overnight 37 &deg;C.</p>'},
+    {d:3,title:'Miniprep + sequencing',html:'<p><b>Miniprep</b>. <b>Sanger</b> + <b>Plasmidsaurus</b>.</p><p><b>Results</b></p><p></p>'}]}
+};
+
+// ── Live prep calculators (connected + editable) ──
+var WELLSMAP={'6':6,'12':12,'24':24,'48':48,'96':96,'384':384};
+function wellsOf(f){ return WELLSMAP[String(f)]||96; }
+var CELL_LINES=[
+  {id:'HEK293',label:'HEK293',cpw:3000},
+  {id:'HEK293-HiBiT',label:'HEK293 (HiBiT reporter)',cpw:20000},
+  {id:'SUDHL5',label:'SU-DHL-5 (suspension)',cpw:30000},
+  {id:'HeLa',label:'HeLa',cpw:3000},
+  {id:'HCT116',label:'HCT-116',cpw:3000},
+  {id:'U2OS',label:'U2OS',cpw:2500},
+  {id:'',label:'Other / custom',cpw:3000}
+];
+function cellLineDef(id){ for(var i=0;i<CELL_LINES.length;i++){ if(CELL_LINES[i].id===id) return CELL_LINES[i]; } return CELL_LINES[CELL_LINES.length-1]; }
+function nfmt(x){ x=+x; if(!isFinite(x)) return '—'; var a=Math.abs(x); if(a===0) return '0';
+  if(a>=1000) return Math.round(x).toLocaleString('en-GB'); if(a>=100) return String(Math.round(x));
+  if(a>=1) return String(Math.round(x*100)/100); return String(Math.round(x*1000)/1000); }
+function mlfmt(ul){ return nfmt(ul)+' µL ('+nfmt(ul/1000)+' mL)'; }
+var CALC_KINDS={
+  seed:{ label:'Cell seeding', fields:[
+    {k:'cellLine',t:'cellline',lbl:'Cell line'},{k:'cellsPerWell',t:'num',lbl:'Cells / well'},
+    {k:'volPerWell',t:'num',lbl:'Vol / well (µL)'},{k:'format',t:'format',lbl:'Plate'},
+    {k:'nPlates',t:'num',lbl:'# plates'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
+    defaults:{cellLine:'HEK293',cellsPerWell:3000,volPerWell:30,format:'384',nPlates:1,excess:1.5},
+    compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*(+v.excess||1); var cells=dens*(totUL/1000);
+      return '<b>Prepare</b> '+nfmt(dens)+' M/mL &mdash; '+mlfmt(totUL)+' total ('+nfmt(cells)+' M cells). <b>Seed</b> '+nfmt(v.volPerWell)+' µL/well → '+nfmt(v.cellsPerWell)+' cells/well &middot; '+nfmt(v.nPlates)+'× '+esc(String(v.format))+'-well ('+wells+' wells).'; } },
+  lytic:{ label:'HiBiT Lytic reagent', fields:[
+    {k:'format',t:'format',lbl:'Plate'},{k:'nPlates',t:'num',lbl:'# plates'},
+    {k:'cellVolPerWell',t:'num',lbl:'Cell vol/well (µL)'},{k:'ratio',t:'num',lbl:'Reagent 1:X cell'},
+    {k:'lgbitDil',t:'num',lbl:'LgBiT 1:X'},{k:'subDil',t:'num',lbl:'Substrate 1:X'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
+    defaults:{format:'384',nPlates:1,cellVolPerWell:30,ratio:2,lgbitDil:100,subDil:50,excess:1.1},
+    compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var rvol=(+v.cellVolPerWell)/(+v.ratio||2); var tot=rvol*wells*(+v.excess||1); var lg=tot/(+v.lgbitDil||100), su=tot/(+v.subDil||50);
+      return '<b>HiBiT Lytic reagent</b> &mdash; Buffer '+nfmt(tot)+' µL + LgBiT (1:'+nfmt(v.lgbitDil)+') '+nfmt(lg)+' µL + Substrate (1:'+nfmt(v.subDil)+') '+nfmt(su)+' µL. Mix gently, do not vortex.<br><b>Add</b> '+nfmt(rvol)+' µL/well (1:'+nfmt(v.ratio)+' reagent:cell) &middot; shake 300 rpm ×1 min &middot; RT 10 min &middot; read.'; } },
+  ctg:{ label:'CellTiter-Glo reagent', fields:[
+    {k:'format',t:'format',lbl:'Plate'},{k:'nPlates',t:'num',lbl:'# plates'},
+    {k:'volPerWell',t:'num',lbl:'CTG µL/well'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
+    defaults:{format:'96',nPlates:2,volPerWell:50,excess:1.1},
+    compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var tot=(+v.volPerWell)*wells*(+v.excess||1);
+      return '<b>CellTiter-Glo</b> &mdash; add '+nfmt(v.volPerWell)+' µL/well &middot; '+mlfmt(tot)+' reagent needed &middot; equilibrate 10–20 min &middot; read luminescence.'; } },
+  reagent:{ label:'Reagent dilution', fields:[
+    {k:'name',t:'txt',lbl:'Reagent'},{k:'diluent',t:'txt',lbl:'Diluent'},
+    {k:'totalVol',t:'num',lbl:'Total (µL)'},{k:'dilution',t:'num',lbl:'Dilution 1:X'}],
+    defaults:{name:'Substrate',diluent:'OptiMEM',totalVol:2520,dilution:100},
+    compute:function(v){ var tot=+v.totalVol||0, dil=+v.dilution||1; var r=tot/dil, d=tot-r;
+      return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; '+nfmt(r)+' µL '+esc(v.name||'reagent')+' (1:'+nfmt(dil)+') + '+nfmt(d)+' µL '+esc(v.diluent||'diluent')+' = '+nfmt(tot)+' µL total.'; } }
+};
+function calcDefaults(kind){ var c=CALC_KINDS[kind]; return c?JSON.parse(JSON.stringify(c.defaults)):{}; }
+function expCalcRecipe(b){ if(!b||!b.calc||!CALC_KINDS[b.calc.kind]) return ''; try{ return CALC_KINDS[b.calc.kind].compute(b.calc.inputs||{}); }catch(e){ return ''; } }
+// Editable calculator widget shown inside an experiment block.
+function calcInputsHtml(b){ var C=CALC_KINDS[b.calc.kind]; if(!C) return ''; var inp=b.calc.inputs||{};
+  var fields=C.fields.map(function(f){ var v=inp[f.k];
+    if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
+      return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="calcCellLine(\''+b.id+'\',this.value)">'+opts+'</select></label>'; }
+    if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
+      return '<label class="ci-f"><span>'+f.lbl+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+fo+'</select></label>'; }
+    if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input data-k="'+f.k+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>'; }
+    return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>';
+  }).join('');
+  return '<div class="blk-calc" data-calc="'+b.id+'"><div class="cc-hd"><span class="cc-tag">&#8721; '+esc(C.label)+'</span><span class="grow"></span><button class="cc-x" title="Remove calculator" onclick="calcRemove(\''+b.id+'\')">&times;</button></div>'
+    +'<div class="cc-inputs">'+fields+'</div><div class="cc-recipe" id="ccr-'+b.id+'">'+expCalcRecipe(b)+'</div></div>';
+}
+function _blkById(id){ var e=_curExp(); if(!e) return null; return (e.blocks||[]).filter(function(x){return x.id===id;})[0]||null; }
+function calcUpd(id){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=document.querySelector('.blk-calc[data-calc="'+id+'"]'); if(!wrap) return;
+  wrap.querySelectorAll('[data-k]').forEach(function(n){ var k=n.getAttribute('data-k'); var val=n.value; b.calc.inputs[k]=(n.type==='number')?(val===''?'':parseFloat(val)):val; });
+  var r=el('ccr-'+id); if(r) r.innerHTML=expCalcRecipe(b); var e=_curExp(); if(e) e.updated=Date.now(); queueSave(); }
+function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; b.calc.inputs.cellLine=clid; var d=cellLineDef(clid); if(d&&d.cpw) b.calc.inputs.cellsPerWell=d.cpw; save(); renderEditor(); }
+function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove the prep calculator from this step? (Your written notes stay.)',{title:'Remove calculator'}).then(function(ok){ if(!ok) return; delete b.calc; save(); renderEditor(); }); }
+function addCalcToBlock(id,kind){ var b=_blkById(id); if(!b) return; b.calc={kind:kind,inputs:calcDefaults(kind)}; save(); renderEditor(); }
+function calcMenu(id){ var items=Object.keys(CALC_KINDS).map(function(k){ return {id:k,label:CALC_KINDS[k].label,sub:'Live prep calculator',ic:'∑',c:'#4f9d8f'}; });
+  lbPicker('Add a prep calculator to this step',items,function(it){ addCalcToBlock(id,it.id); }); }
+// Common reusable steps for the step library.
+var STEP_LIBRARY=[
+  {id:'lib:seed',label:'Cell seeding (calc)',sub:'live prep calculator',calc:'seed'},
+  {id:'lib:lytic',label:'HiBiT Lytic + read (calc)',sub:'live prep calculator',calc:'lytic'},
+  {id:'lib:ctg',label:'CellTiter-Glo readout (calc)',sub:'live prep calculator',calc:'ctg'},
+  {id:'lib:reagent',label:'Reagent dilution (calc)',sub:'live prep calculator',calc:'reagent'},
+  {id:'lib:compound',label:'Compound addition (Echo)',sub:'text step',html:'<p><b>Compound addition (Echo)</b>. Picklist: &lt;code&gt;_Picklist.csv.</p>'},
+  {id:'lib:transfection',label:'Transfection (FuGENE HD)',sub:'text step',html:'<p><b>Transfection</b>: DNA + carrier in OptiMEM + FuGENE HD (3:1), 10 min RT, dropwise. Incubate ~20 h.</p>'},
+  {id:'lib:lysis',label:'Lysis',sub:'text step',html:'<p><b>Lysis</b>: 20 &micro;L/well, 2% SDS, 50 mM Tris&middot;HCl, 100&times; PI, 1000&times; benzonase. Store &minus;20 &deg;C.</p>'},
+  {id:'lib:colony',label:'Colony pick',sub:'text step',html:'<p>Pick colonies &rarr; 5 mL LB + amp. Overnight 37 &deg;C.</p>'},
+  {id:'lib:miniprep',label:'Miniprep + NanoDrop',sub:'text step',html:'<p><b>Miniprep</b>. NanoDrop.</p>'},
+  {id:'lib:seq',label:'Sequencing',sub:'text step',html:'<p><b>Sanger</b> + <b>Plasmidsaurus</b> whole-plasmid sequencing.</p>'},
+  {id:'lib:results',label:'Results / data analysis',sub:'text step',html:'<p><b>Results</b></p><p></p>'}
+];
+function insertStepBlock(spec){ var e=_curExp(); if(!e) return; var lastOff=(e.blocks&&e.blocks.length)?(e.blocks[e.blocks.length-1].dayOffset||0):0;
+  var blk={id:uid(), dayOffset:lastOff, date:addDays(e.startDate||todayStr(),lastOff), title:spec.title||'', html:spec.html||'<p></p>'};
+  if(spec.calc) blk.calc={kind:spec.calc,inputs:calcDefaults(spec.calc)};
+  if(spec.part){ blk.part=spec.part; blk.sourcePid=spec.sourcePid; }
+  e.blocks.push(blk); save(); renderEditor(); setTimeout(function(){ scrollBlk(blk.id); },80); }
+function stepPalette(){ var e=_curExp(); if(!e) return;
+  toast('Loading step library…');
+  ensureArchive(function(){ var idx=archiveIndex();
+    var libItems=STEP_LIBRARY.map(function(s){ return {id:s.id,label:s.label,sub:s.sub,ic:s.calc?'∑':'✎',c:s.calc?'#4f9d8f':'#8a93a6'}; });
+    var arItems=idx.map(function(p){ return {id:'ar:'+p.id,label:p.name,sub:'Archive protocol · full steps',ic:'A',c:'#a56983'}; });
+    var items=libItems.concat(arItems);
+    lbPicker('Add a step — search library + Archive',items,function(it){
+      if(it.id.indexOf('lib:')===0){ var spec=STEP_LIBRARY.filter(function(s){return s.id===it.id;})[0]; if(spec) insertStepBlock({title:spec.label.replace(/ \(calc\)$/,''),html:spec.html,calc:spec.calc}); return; }
+      if(it.id.indexOf('ar:')===0){ var pid=it.id.slice(3); var steps=archiveSteps(pid); var name=it.label;
+        var html=(steps&&steps.length)?protocolStepsHtml({id:pid,label:name},steps):'<p></p>';
+        insertStepBlock({title:name,html:html,part:name,sourcePid:pid}); return; }
+    });
+  });
+}
 
 // ── Store ──
 var LB={ data:null };
@@ -676,8 +810,23 @@ Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[
   if(e.projectId && !e.sectionId){ var p=LB.data.projects.filter(function(x){return x.id===e.projectId;})[0];
     if(p){ var u=(p.sections||[]).filter(function(s){return s.name==='Unclassified';})[0];
       if(!u){ u={id:uid(),name:'Unclassified',created:Date.now()}; p.sections.push(u); } e.sectionId=u.id; } } });
+// preset instantiation from a seed (carries live calculators)
+function presetFromSeed(seed,name,baseType){ return {name:name,baseType:baseType,title:seed.title,blocks:(seed.blocks||[]).map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html}; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; })}; }
+function seedPresets(){
+  // One-time upgrade: refresh built-in presets to the calc-enabled, correctly-dated versions.
+  // (Only rewrites the built-in type presets; user-added custom presets are never touched.)
+  var upgrade=!LB.data._presetV2;
+  EXP_TYPES.forEach(function(t){ if(!LB.data.presets[t.id] || upgrade){ var s=PRESET_SEED[t.id]||PRESET_SEED.EXP; LB.data.presets[t.id]=presetFromSeed(s,(LB.data.presets[t.id]&&LB.data.presets[t.id].name)||t.name,t.id); }
+    else if(!LB.data.presets[t.id].baseType){ LB.data.presets[t.id].baseType=t.id; } });
+  if(upgrade) LB.data._presetV2=true;
+  if(!LB.data._extraPresets){ Object.keys(EXTRA_PRESET_SEED).forEach(function(k){ if(!LB.data.presets[k]){ var s=EXTRA_PRESET_SEED[k]; LB.data.presets[k]={name:s.name,baseType:s.baseType,title:s.title,blocks:s.blocks.map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html}; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; })}; } }); LB.data._extraPresets=true; }
+}
+// preset key helpers (built-in types + user-added custom presets)
+function isBuiltinPreset(k){ return EXP_TYPES.some(function(t){return t.id===k;}); }
+function allPresetKeys(){ var built=EXP_TYPES.map(function(t){return t.id;}).filter(function(k){return LB.data.presets[k];}); var custom=Object.keys(LB.data.presets).filter(function(k){return !isBuiltinPreset(k);}).sort(function(a,b){ return ((LB.data.presets[a].name||a)).localeCompare(LB.data.presets[b].name||b); }); return built.concat(custom); }
+function presetBase(k){ var p=LB.data.presets[k]; return (p&&p.baseType)||k; }
 // presets seed / refresh (adds RTX for existing users)
-EXP_TYPES.forEach(function(t){ if(!LB.data.presets[t.id]){ var s=PRESET_SEED[t.id]||PRESET_SEED.EXP; LB.data.presets[t.id]={name:t.name,title:s.title,blocks:s.blocks.map(function(b){return {dayOffset:b.d,title:b.title,html:b.html};})}; } });
+seedPresets();
 
 var SEED_GENERAL=[{name:'Notes',kind:'notes'},{name:'Papers I read',kind:'notes'},{name:'Antibodies',kind:'antibodies'},{name:'Bio Safety Committee',kind:'notes'},{name:'Seminars',kind:'seminars'}];
 var SEED_PROJECTS=[
@@ -732,9 +881,9 @@ function lbInitSync(){
     var remoteHas = v && ((v.projects||[]).length || Object.keys(v.experiments||{}).length || (v.generalSections||[]).length || Object.keys(v.pages||{}).length || Object.keys(v.notebook||{}).length);
     if(v && typeof v==='object' && remoteHas && (v.updated||0) > (LB.data.updated||0)){
       _adopting=true;
-      LB.data={projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},_seeded:(v._seeded===undefined?true:v._seeded),updated:v.updated||Date.now()};
+      LB.data={projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,_presetV2:v._presetV2,updated:v.updated||Date.now()};
       LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
-      EXP_TYPES.forEach(function(t){ if(!LB.data.presets[t.id]){ var sd=PRESET_SEED[t.id]||PRESET_SEED.EXP; LB.data.presets[t.id]={name:t.name,title:sd.title,blocks:sd.blocks.map(function(b){return {dayOffset:b.d,title:b.title,html:b.html};})}; } });
+      seedPresets();
       try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
       _adopting=false; maybeSeed(); renderAll();
     }
@@ -938,12 +1087,12 @@ function openAddMenu(ev){ ev.stopPropagation(); if(SEL.node.kind!=='expsec') ret
     {label:'Note (no code)',ic:['N','#c47818'],fn:function(){newNote('note');}}
   ], ev.currentTarget.getBoundingClientRect());
 }
+function nmFillTypes(sel){ el('nm-type').innerHTML=allPresetKeys().map(function(k){ var p=LB.data.presets[k]; var lbl=(p&&p.name)||k; return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(lbl)+(isBuiltinPreset(k)?(' ('+k+')'):'')+'</option>'; }).join(''); }
 function openNew(){ if(SEL.node.kind!=='expsec') return;
-  el('nm-type').innerHTML=EXP_TYPES.map(function(t){ var nm=(LB.data.presets[t.id]&&LB.data.presets[t.id].name)||t.name; return '<option value="'+t.id+'">'+esc(nm)+' ('+t.id+')</option>'; }).join('');
-  el('nm-poi').value=''; el('nm-date').value=todayStr(); el('nm-title').value=''; nmUpdateCode();
+  nmFillTypes(); el('nm-poi').value=''; el('nm-date').value=todayStr(); el('nm-title').value=''; nmUpdateCode();
   nmSeedProtos(el('nm-type').value); nmProtos(); nmPreview(); el('new-modal').classList.add('open');
   // Preload Archive so protocol names + calculators resolve, then refresh the chips/preview.
-  ensureArchive(function(){ nmSeedProtos(el('nm-type').value); nmProtos(); nmPreview(); }); }
+  ensureArchive(function(){ nmProtos(); nmPreview(); }); }
 function closeNew(){ el('new-modal').classList.remove('open'); }
 // ── Protocol-sourced experiments ─────────────────────────────────────────
 // Each experiment type maps to an ordered list of Archive protocol ids (its "parts").
@@ -1005,45 +1154,48 @@ function lbCopyText(str){ try{ if(navigator.clipboard&&navigator.clipboard.write
 function copyPubReady(id){ var e=LB.data.experiments[id]; if(!e) return; var t=document.createElement('div'); t.innerHTML=e.pubReady||''; lbCopyText((t.textContent||'').replace(/\s+/g,' ').trim()); }
 // New-experiment source-protocol picker state
 var NM_PROTOS=[];
-function nmSeedProtos(type){ var ids=TYPE_PROTOCOLS[type]||[]; var idx=archiveIndex(); NM_PROTOS=ids.map(function(pid){ if(SYNTH_PARTS[pid]) return {id:pid,name:SYNTH_PARTS[pid].name,synth:true}; var m=idx.filter(function(p){return p.id===pid;})[0]; return {id:pid,name:m?m.name:pid}; }); }
+// The preset already carries the full experiment; extra Archive protocols are optional add-ons.
+function nmSeedProtos(type){ NM_PROTOS=[]; }
 function nmProtos(){ var host=el('nm-protocols'); if(!host) return;
   var chips=NM_PROTOS.map(function(p,i){ return '<span class="nm-proto-chip'+(p.synth?' synth':'')+'">'+esc(p.name||p.id)+'<span class="x" title="Remove" onclick="nmDelProto('+i+')">&times;</span></span>'; }).join('');
-  host.innerHTML='<div class="nm-pv-hd">Build from protocols'+(NM_PROTOS.length?'':' — none (blank experiment)')+'</div><div class="nm-proto-chips">'+chips+'<button type="button" class="nm-proto-add" onclick="nmAddProto()">+ protocol</button></div>'; }
+  host.innerHTML='<div class="nm-pv-hd">Optional — add extra Archive protocol steps</div><div class="nm-proto-chips">'+chips+'<button type="button" class="nm-proto-add" onclick="nmAddProto()">+ protocol</button></div>'; }
 function nmDelProto(i){ NM_PROTOS.splice(i,1); nmProtos(); nmPreview(); }
 function nmAddProto(){ ensureArchive(function(){ var idx=archiveIndex(); var items=idx.filter(function(p){ return !NM_PROTOS.some(function(x){return x.id===p.id;}); }).map(function(p){ return {id:p.id,label:p.name+(p.hasCalc?' · calc':''),sub:p.category||'protocol',ic:'A',c:'#a56983'}; }); if(!items.length){ toast('No more protocols to add'); return; } lbPicker('Add source protocol',items,function(it){ NM_PROTOS.push({id:it.id,name:it.label.replace(/ · calc$/,'')}); nmProtos(); nmPreview(); }); }); }
-function nmUpdateCode(){ var type=el('nm-type').value, poi=(el('nm-poi').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,''), d=dateCompact(el('nm-date').value);
+function nmUpdateCode(){ var key=el('nm-type').value, type=presetBase(key), poi=(el('nm-poi').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,''), d=dateCompact(el('nm-date').value);
   el('nm-code').value = (poi && type==='D2B') ? (poi+'_'+type+'_'+d) : (type+d+(poi?('_'+poi):'')); }
-// Live preview of the parts (source protocols) that will become dated blocks.
+// Live preview of the preset's own day-blocks (+ any extra protocols).
 function nmPreview(){ var host=el('nm-preview'); if(!host) return;
-  var type=el('nm-type').value, tpl=LB.data.presets[type]; var start=el('nm-date').value||todayStr();
+  var key=el('nm-type').value, tpl=LB.data.presets[key]||{blocks:[]}; var start=el('nm-date').value||todayStr();
   var ti=el('nm-title'); if(ti){ ti.placeholder=(tpl&&tpl.title)?tpl.title:'Short description'; }
-  if(!NM_PROTOS.length){ host.innerHTML='<div class="nm-pv-empty">No source protocols — a blank experiment will be created (add protocols above).</div>'; return; }
-  var rows=NM_PROTOS.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; var date=addDays(start,off);
-    return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+' · '+fmtDate(date)+'</span><span class="nm-pv-t">'+esc(p.name||p.id)+(SYNTH_PARTS[p.id]?' <span class="nm-pv-ref">reference</span>':'')+'</span></div>'; }).join('');
-  host.innerHTML='<div class="nm-pv-hd">Will create '+NM_PROTOS.length+' dated part-block'+(NM_PROTOS.length>1?'s':'')+' + a publication-ready draft</div><div class="nm-pv-list">'+rows+'</div>'; }
+  var rows=(tpl.blocks||[]).map(function(b){ var off=b.dayOffset||0; var date=addDays(start,off);
+    return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+' · '+fmtDate(date)+'</span><span class="nm-pv-t">'+esc(b.title||'—')+(b.calc?' <span class="nm-pv-ref">calc</span>':'')+'</span></div>'; }).join('');
+  var extra=NM_PROTOS.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+' · extra</span><span class="nm-pv-t">'+esc(p.name||p.id)+' <span class="nm-pv-ref">Archive</span></span></div>'; }).join('');
+  host.innerHTML='<div class="nm-pv-hd">Will create '+((tpl.blocks||[]).length+NM_PROTOS.length)+' day-block'+(((tpl.blocks||[]).length+NM_PROTOS.length)!==1?'s':'')+'</div><div class="nm-pv-list">'+rows+extra+'</div>'; }
 function createExperiment(){ if(SEL.node.kind!=='expsec') return;
-  var type=el('nm-type').value, tpl=LB.data.presets[type]||{title:'',blocks:[{dayOffset:0,title:'',html:'<p></p>'}]};
+  var key=el('nm-type').value, tpl=LB.data.presets[key]||{title:'',blocks:[{dayOffset:0,title:'',html:'<p></p>'}]};
   var startDate=el('nm-date').value||todayStr();
   var title=(el('nm-title').value||'').trim()||(tpl.title||'').trim();
   var code=(el('nm-code').value||'').trim();
   var protos=NM_PROTOS.slice();
-  function finish(blocks,protoList){
-    var e={ id:uid(), projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, code:code, type:type,
+  // Instantiate the preset's own blocks (day structure + live calculators + text).
+  var blocks=(tpl.blocks||[]).map(function(b){ var o={id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html}; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; });
+  function finish(extra,protoList){
+    var all=blocks.concat(extra||[]);
+    var e={ id:uid(), projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, code:code, type:presetBase(key), presetKey:key,
       title:title, status:'planned', startDate:startDate, plasmids:'', cellLines:'',
       protocols:protoList||[], pubReady:buildPubReady(protoList||[]),
-      blocks:blocks, created:Date.now(), updated:Date.now() };
+      blocks:all, created:Date.now(), updated:Date.now() };
     LB.data.experiments[e.id]=e; save(); closeNew(); SEL.page=e.id; EXP_TAB='dated'; renderAll();
   }
-  // No source protocols → fall back to the type preset (old behaviour, nothing breaks offline).
-  if(!protos.length){ finish(tpl.blocks.map(function(b){ return {id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html}; }), []); return; }
-  toast('Building from protocols…');
+  if(!protos.length){ finish([],[]); return; }
+  toast('Adding protocol steps…');
   ensureArchive(function(){
-    var blocks=protos.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; var html;
+    var extra=protos.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; var html;
       if(SYNTH_PARTS[p.id]){ html=SYNTH_PARTS[p.id].html; }
       else { var steps=archiveSteps(p.id); var calc=archiveCalc(p.id); html=partBlockHtml(p.id,calc,steps); }
       return {id:uid(), date:addDays(startDate,off), dayOffset:off, title:p.name||p.id, part:p.name||p.id, sourcePid:p.id, html:html};
     });
-    finish(blocks,protos);
+    finish(extra,protos);
   });
 }
 function newNote(kind){ var e={ id:uid(), kind:'note', noteType:kind, projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, title:'', date:todayStr(), html:'<p></p>', created:Date.now(), updated:Date.now() };
@@ -1097,9 +1249,10 @@ function renderExpEditor(host,e){
   } else {
     var blocks=e.blocks.map(function(b){ var dl=(b.dayOffset!=null)?('<span class="blk-day">Day '+b.dayOffset+'</span>'):'';
       var pl=b.part?('<span class="blk-part">'+esc(b.part)+'</span>'):'';
-      return '<div class="blk" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+dl+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+      return '<div class="blk" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+dl+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+(b.calc?'':'<button class="blk-calcbtn" title="Add a live prep calculator" onclick="calcMenu(\''+b.id+'\')">&#8721; calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+        +(b.calc?calcInputsHtml(b):'')
         +'<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }).join('');
-    body='<div class="exp-dated-body">'+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')+'<button class="add-blk" onclick="addBlock()">+ Add dated block</button></div>';
+    body='<div class="exp-dated-body">'+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')+'<div class="blk-addrow"><button class="add-blk" onclick="addBlock()">+ Add day-block</button><button class="add-blk add-step" onclick="stepPalette()">&#8981; Add step from library / Archive…</button></div></div>';
   }
   host.innerHTML='<div class="ed-wrap">'+header+tabs+'<div class="exp-tab-body">'+body+'</div></div>';
   hydrateAtt(host); renderDockPanels();
@@ -1117,7 +1270,7 @@ function renderNotebookEditor(host){
   // group blocks by experiment
   var byExp={}, order=[]; blocksForDate(D).forEach(function(fb){ if(!byExp[fb.exp.id]){ byExp[fb.exp.id]={exp:fb.exp,blocks:[]}; order.push(fb.exp.id); } byExp[fb.exp.id].blocks.push(fb.block); });
   var from = order.length ? ('<div style="margin-top:14px"><div class="day-from-lbl">What to do today — from your experiments</div>'+order.map(function(id){ var g=byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
-    var blks=g.blocks.map(function(b){ return (b.title?'<div class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></div>':'')+'<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
+    var blks=g.blocks.map(function(b){ var rc=expCalcRecipe(b); return (b.title?'<div class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></div>':'')+(rc?'<div class="dfx-recipe">'+rc+'</div>':'')+'<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
     return '<div class="day-exp"><div class="day-exp-hd"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span><button class="dfx-open" onclick="openExp(\''+g.exp.id+'\')">Open &#8599;</button></div>'+blks+'</div>'; }).join('')+'</div>') : '';
   // Carried-over unfinished work from earlier days (unticked checklist items roll forward).
   var co=carryoverForDate(D);
@@ -1710,18 +1863,52 @@ function spotHi(){ var nodes=el('spot-res').querySelectorAll('.spot-item'); node
 
 // ── Preset editor ──
 var PE={type:null,work:null};
-function openPresetEditor(){ el('pe-type').innerHTML=EXP_TYPES.map(function(t){return '<option value="'+t.id+'">'+esc(t.name)+' ('+t.id+')</option>';}).join(''); PE.type=el('pe-type').value; peLoad(); el('preset-modal').classList.add('open'); }
+function peFillTypes(sel){ el('pe-type').innerHTML=allPresetKeys().map(function(k){ var p=LB.data.presets[k]; return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc((p&&p.name)||k)+(isBuiltinPreset(k)?(' ('+k+')'):'')+'</option>'; }).join(''); }
+function openPresetEditor(){ var pre=(el('nm-type')&&el('nm-type').value)||null; openPresetEditorFor(pre); }
+function openPresetEditorFor(key){ peFillTypes(key); if(key) el('pe-type').value=key; PE.type=el('pe-type').value; peLoad(); el('preset-modal').classList.add('open'); }
 function closePresetEditor(){ el('preset-modal').classList.remove('open'); }
 function peRender(){ peSync(); PE.type=el('pe-type').value; peLoad(); }
-function peLoad(){ var p=LB.data.presets[PE.type]||{name:PE.type,title:'',blocks:[]}; PE.work=JSON.parse(JSON.stringify(p)); el('pe-title').value=PE.work.title||''; peDraw(); }
+function peLoad(){ var p=LB.data.presets[PE.type]||{name:PE.type,title:'',blocks:[]}; PE.work=JSON.parse(JSON.stringify(p));
+  var nm=el('pe-name'); if(nm) nm.value=PE.work.name||PE.type; el('pe-title').value=PE.work.title||'';
+  var del=el('pe-del'); if(del) del.style.display=isBuiltinPreset(PE.type)?'none':''; peDraw(); }
+function peCalcInputs(b,i){ if(!b.calc||!CALC_KINDS[b.calc.kind]) return '<button class="ps-calc-add" onmousedown="event.preventDefault();peAddCalc('+i+')">&#8721; add prep calculator</button>';
+  var C=CALC_KINDS[b.calc.kind], inp=b.calc.inputs||{};
+  var fields=C.fields.map(function(f){ var v=inp[f.k];
+    if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>';}).join(''); return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+opts+'</select></label>'; }
+    if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>';}).join(''); return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+fo+'</select></label>'; }
+    if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input value="'+esc(v==null?'':v)+'" oninput="peCalcSet('+i+',\''+f.k+'\',this.value)"></label>'; }
+    return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="peCalcSet('+i+',\''+f.k+'\',this.value)"></label>';
+  }).join('');
+  return '<div class="blk-calc ps-calc"><div class="cc-hd"><span class="cc-tag">&#8721; '+esc(C.label)+'</span><span class="grow"></span><button class="cc-x" onmousedown="event.preventDefault();peDelCalc('+i+')">&times;</button></div><div class="cc-inputs">'+fields+'</div><div class="cc-recipe" id="pecr-'+i+'">'+expCalcRecipe(b)+'</div></div>'; }
 function peDraw(){ var w=PE.work;
-  el('pe-body').innerHTML=w.blocks.map(function(b,i){ return '<div class="ps-blk"><div class="ps-blk-hd"><span class="ps-day"><span class="ps-day-lbl">Day</span> <input type="number" min="0" value="'+(b.dayOffset||0)+'" oninput="PE.work.blocks['+i+'].dayOffset=parseInt(this.value)||0"></span><input class="ps-title" placeholder="Block title" value="'+esc(b.title||'')+'" oninput="PE.work.blocks['+i+'].title=this.value"><button class="ps-move" title="Up" onmousedown="event.preventDefault();peMove('+i+',-1)">&#9650;</button><button class="ps-move" title="Down" onmousedown="event.preventDefault();peMove('+i+',1)">&#9660;</button><button class="ps-move" title="Remove" onmousedown="event.preventDefault();peDelBlock('+i+')" style="color:var(--danger)">&times;</button></div><div class="rt ps-rt" contenteditable="true" data-i="'+i+'" oninput="PE.work.blocks['+i+'].html=this.innerHTML" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }).join('');
+  el('pe-body').innerHTML=w.blocks.map(function(b,i){ return '<div class="ps-blk"><div class="ps-blk-hd"><span class="ps-day"><span class="ps-day-lbl">Day</span> <input type="number" min="0" value="'+(b.dayOffset||0)+'" oninput="PE.work.blocks['+i+'].dayOffset=parseInt(this.value)||0"></span><input class="ps-title" placeholder="Block title" value="'+esc(b.title||'')+'" oninput="PE.work.blocks['+i+'].title=this.value"><button class="ps-move" title="Up" onmousedown="event.preventDefault();peMove('+i+',-1)">&#9650;</button><button class="ps-move" title="Down" onmousedown="event.preventDefault();peMove('+i+',1)">&#9660;</button><button class="ps-move" title="Remove" onmousedown="event.preventDefault();peDelBlock('+i+')" style="color:var(--danger)">&times;</button></div>'+peCalcInputs(b,i)+'<div class="rt ps-rt" contenteditable="true" data-i="'+i+'" oninput="PE.work.blocks['+i+'].html=this.innerHTML" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }).join('');
 }
-function peSync(){ var t=el('pe-title'); if(t&&PE.work) PE.work.title=t.value; }
+function peCalcSet(i,k,val){ var b=PE.work.blocks[i]; if(!b||!b.calc) return; var C=CALC_KINDS[b.calc.kind]; var f=C.fields.filter(function(x){return x.k===k;})[0];
+  if(k==='cellLine'){ b.calc.inputs.cellLine=val; var d=cellLineDef(val); if(d&&d.cpw){ b.calc.inputs.cellsPerWell=d.cpw; peDraw(); return; } }
+  else b.calc.inputs[k]=(f&&f.t==='num')?(val===''?'':parseFloat(val)):val;
+  var r=el('pecr-'+i); if(r) r.innerHTML=expCalcRecipe(b); }
+function peAddCalc(i){ var items=Object.keys(CALC_KINDS).map(function(k){return {id:k,label:CALC_KINDS[k].label,sub:'live prep calculator',ic:'∑',c:'#4f9d8f'};});
+  lbPicker('Add a prep calculator',items,function(it){ PE.work.blocks[i].calc={kind:it.id,inputs:calcDefaults(it.id)}; peDraw(); }); }
+function peDelCalc(i){ delete PE.work.blocks[i].calc; peDraw(); }
+function peSync(){ var t=el('pe-title'); if(t&&PE.work) PE.work.title=t.value; var nm=el('pe-name'); if(nm&&PE.work) PE.work.name=nm.value; }
 function peAddBlock(){ peSync(); PE.work.blocks.push({dayOffset:(PE.work.blocks.length?(PE.work.blocks[PE.work.blocks.length-1].dayOffset||0):0),title:'',html:'<p></p>'}); peDraw(); }
 function peDelBlock(i){ PE.work.blocks.splice(i,1); peDraw(); }
 function peMove(i,dir){ var j=i+dir; if(j<0||j>=PE.work.blocks.length) return; var t=PE.work.blocks[i]; PE.work.blocks[i]=PE.work.blocks[j]; PE.work.blocks[j]=t; peDraw(); }
-function peSave(){ peSync(); LB.data.presets[PE.type]=PE.work; save(); closePresetEditor(); }
+function peSave(){ peSync(); if(!PE.work.baseType) PE.work.baseType=presetBase(PE.type); LB.data.presets[PE.type]=PE.work; save(); closePresetEditor(); toast('Preset saved'); }
+function peDelete(){ if(isBuiltinPreset(PE.type)){ toast('Built-in presets cannot be deleted'); return; }
+  lbConfirm('Delete the preset "'+esc(PE.work.name||PE.type)+'"? (Experiments already created from it are unaffected.)',{danger:true,title:'Delete preset'}).then(function(ok){ if(!ok) return; delete LB.data.presets[PE.type]; save(); closePresetEditor(); if(el('nm-type')){ nmFillTypes(); nmUpdateCode(); nmPreview(); } toast('Preset deleted'); }); }
+// Create a new custom preset based on a built-in type, then open it for editing.
+function newPresetFromType(){ var items=EXP_TYPES.filter(function(t){return t.id!=='EXP';}).map(function(t){ return {id:t.id,label:LB.data.presets[t.id]?LB.data.presets[t.id].name:t.name,sub:'base it on '+t.id,ic:t.id.slice(0,2),c:'#4f9d8f'}; });
+  lbPicker('New preset — base it on…',items,function(it){
+    lbPrompt('Name the new preset (e.g. "CTG — SU-DHL-5")',(LB.data.presets[it.id].name||it.id)+' — variant',{title:'New preset',ok:'Create'}).then(function(name){ if(name==null) return; name=(name||'').trim(); if(!name) return;
+      var base=LB.data.presets[it.id]; var key=it.id+'_'+Date.now().toString(36);
+      LB.data.presets[key]={name:name,baseType:it.id,title:base.title,blocks:JSON.parse(JSON.stringify(base.blocks))};
+      save();
+      if(el('nm-type')){ nmFillTypes(key); nmUpdateCode(); nmSeedProtos(key); nmProtos(); nmPreview(); }
+      toast('Preset "'+name+'" added — set your numbers'); openPresetEditorFor(key);
+    });
+  });
+}
 
 // ── PDF export ──
 var PRINT_CSS='<style>#print-root{padding:0;color:#111}#print-root *{box-sizing:border-box}'
@@ -1740,16 +1927,18 @@ var PRINT_CSS='<style>#print-root{padding:0;color:#111}#print-root *{box-sizing:
  +'.pd-sec-hd{font:700 11px/1 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#4f9d8f;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #e2e2e2}'
  +'.pd-part-hd{font:700 13px/1.3 sans-serif;color:#2b6b60;background:#eef4f2;border-left:3px solid #4f9d8f;border-radius:4px;padding:5px 10px;margin:16px 0 2px;page-break-after:avoid}'
  +'.pd-pub{font:400 13px/1.75 sans-serif;color:#1a1a1a;background:#fafbfb;border:1px solid #e2e2e2;border-radius:8px;padding:12px 16px;margin-top:6px}'
+ +'.pd-recipe{font:400 12.5px/1.55 sans-serif;color:#1a1a1a;background:#eef4f2;border-left:3px solid #4f9d8f;border-radius:0 6px 6px 0;padding:7px 11px;margin:0 0 7px}.pd-recipe b{color:#2b6b60}'
  +'.pd-foot{margin-top:26px;padding-top:10px;border-top:1px solid #e2e2e2;font:400 10px/1.4 sans-serif;color:#999}</style>';
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
-function printBlocks(blocks){ return blocks.map(function(b){ var hd=(b.dayOffset!=null?'<span class="pd-day">Day '+b.dayOffset+'</span>':'')+(b.date?'<span class="pd-bdate">'+fmtDate(b.date)+'</span>':'')+(b.title?'<span class="pd-btitle">'+esc(b.title)+'</span>':''); return '<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body">'+(b.html||'')+'</div></div>'; }).join(''); }
+function pdRecipe(b){ var r=expCalcRecipe(b); return r?'<div class="pd-recipe">'+r+'</div>':''; }
+function printBlocks(blocks){ return blocks.map(function(b){ var hd=(b.dayOffset!=null?'<span class="pd-day">Day '+b.dayOffset+'</span>':'')+(b.date?'<span class="pd-bdate">'+fmtDate(b.date)+'</span>':'')+(b.title?'<span class="pd-btitle">'+esc(b.title)+'</span>':''); return '<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body">'+pdRecipe(b)+(b.html||'')+'</div></div>'; }).join(''); }
 // Experiment blocks, grouped under a part header when blocks carry a sourcePid.
 function printExpBlocks(blocks){ if(!blocks||!blocks.length) return '';
   var anyPart=blocks.some(function(b){return b.part;}); if(!anyPart) return printBlocks(blocks);
   var h='', last=null;
   blocks.forEach(function(b){ var key=b.sourcePid||b.part||''; if(b.part && key!==last){ h+='<div class="pd-part-hd">'+esc(b.part)+'</div>'; last=key; }
     var hd=(b.dayOffset!=null?'<span class="pd-day">Day '+b.dayOffset+'</span>':'')+(b.date?'<span class="pd-bdate">'+fmtDate(b.date)+'</span>':'')+(b.title&&b.title!==b.part?'<span class="pd-btitle">'+esc(b.title)+'</span>':'');
-    h+='<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body">'+(b.html||'')+'</div></div>'; });
+    h+='<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body">'+pdRecipe(b)+(b.html||'')+'</div></div>'; });
   return h; }
 function foot(){ return '<div class="pd-foot">dHUB Labbook · exported '+fmtDate(todayStr())+'</div>'; }
 function buildPrintDoc(){
