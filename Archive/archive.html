@@ -1678,7 +1678,7 @@ body.step-notes-on li:hover>.step-note-btn,
   <div class="detail-wrap" id="detail-transfection" data-pid="transfection">
     <button class="back-btn" onclick="closeProtocol()">&larr; All protocols</button>
     <div class="detail-header">
-      <h2>Transfection Calculator</h2>
+      <h2>Transfection &mdash; Forward</h2>
       <div class="detail-badges"><span class="tag tag-calc">Calculator</span><span class="tag tag-cat">Cell Biology</span></div>
     </div>
     <div class="dtabs">
@@ -1687,7 +1687,17 @@ body.step-notes-on li:hover>.step-note-btn,
       <button class="dtab-btn" onclick="showDTab('transfection','output')">Output</button>
     </div>
     <div class="dpane active" data-tab="protocol">
-      <div class="proto-note">Per-well reagent amounts and step-by-step protocol for common transfection reagents. Includes 10% overage by default.</div>
+      <div class="proto-note"><strong>Forward transfection</strong> &mdash; cells are seeded first and grown to ~70&ndash;80% confluence, then DNA&ndash;reagent complexes are added on top. Reagent volumes are per well (see the calculator); 10% overage by default. For the reverse workflow (complexes first, cells on top) use <strong>Transfection &mdash; Reverse</strong>.</div>
+      <div class="proto-section">Day 0 &mdash; Seeding</div>
+      <ol class="proto-list"><li>Seed cells so they reach ~70&ndash;80% confluence at the time of transfection (next day).</li><li>Incubate overnight at 37&nbsp;&deg;C, 5% CO&#8322;.</li></ol>
+      <div class="proto-section">Day 1 &mdash; Transfection</div>
+      <ol class="proto-list">
+        <li>Warm reagents to RT. Dilute the plasmid DNA in Opti-MEM (see calculator for per-well amounts).</li>
+        <li>Add the transfection reagent directly to the diluted DNA at the chosen ratio &mdash; do not let undiluted reagent touch the tube wall. Mix gently.</li>
+        <li>Incubate 10&ndash;15 min at RT to form complexes (5&ndash;20 min depending on reagent).</li>
+        <li>Add the complexes dropwise onto the pre-seeded cells and rock gently to distribute.</li>
+        <li>Incubate 24&ndash;48&nbsp;h (37&nbsp;&deg;C, 5% CO&#8322;) to the experimental endpoint; change medium after 4&ndash;6&nbsp;h if using PEI.</li>
+      </ol>
     </div>
     <div class="dpane" data-tab="calc">
       <div class="calc-box">
@@ -1733,7 +1743,7 @@ body.step-notes-on li:hover>.step-note-btn,
   <div class="detail-wrap" id="detail-revtx" data-pid="revtx">
     <button class="back-btn" onclick="closeProtocol()">&larr; All protocols</button>
     <div class="detail-header">
-      <h2>Reverse Transfection (FuGENE)</h2>
+      <h2>Transfection &mdash; Reverse</h2>
       <div class="detail-badges"><span class="tag tag-calc">Calculator</span><span class="tag tag-cat">Cell Biology</span></div>
     </div>
     <div class="dtabs">
@@ -2775,8 +2785,8 @@ var PROTOCOLS = [
   { id:'hibitlytic', category:'cellbio', name:'HiBiT Lytic Assay', desc:'Plate-format + reagent-ratio calculator for the Nano-Glo HiBiT Lytic assay.', hasCalc:true, icon:ICON_CELLBIO, genSteps:function(){ return generateHiBiTLyticSteps(); } },
   { id:'ctg2', category:'cellbio', name:'CellTiter-Glo® 2.0 — Cell Viability', desc:'Luminescent ATP viability assay; reagent-volume calculator for any plate format.', hasCalc:true, icon:ICON_CELLBIO, genSteps:function(){ return generateCTGSteps(); } },
   { id:'lenti', category:'cellbio', name:'Retro/Lentiviral Transduction', desc:'HEK293FT virus production, harvest and infection of target cells.', hasCalc:true, icon:ICON_CELLBIO, genSteps:function(){ return generateLentiSteps(); } },
-  { id:'transfection', category:'cellbio', name:'Transfection Calculator', desc:'Per-well reagent volumes for FuGENE HD, Lipofectamine 2000/3000, or PEI, any plate format.', hasCalc:true, icon:ICON_CELLBIO, genSteps:function(){ return generateTransfectionSteps(); } },
-  { id:'revtx', category:'cellbio', name:'Reverse Transfection (FuGENE)', desc:'Seed + transfect in one step. Plate-format + well-count master-mix calculator (FuGENE HD, 3:1).', hasCalc:true, icon:ICON_CELLBIO, genSteps:function(){ return generateRevTxSteps(); } },
+  { id:'transfection', category:'cellbio', name:'Transfection — Forward', desc:'Seed first, transfect pre-seeded cells. Per-well reagent volumes for FuGENE HD, Lipofectamine 2000/3000 or PEI, any plate format.', hasCalc:true, icon:ICON_CELLBIO, genSteps:function(){ return generateTransfectionSteps(); } },
+  { id:'revtx', category:'cellbio', name:'Transfection — Reverse', desc:'Dispense DNA–FuGENE complexes first, seed cells on top in one step. Plate-format + well-count master-mix calculator (FuGENE HD, 3:1).', hasCalc:true, icon:ICON_CELLBIO, genSteps:function(){ return generateRevTxSteps(); } },
 
   // ── PROTEOMICS ──
   { id:'strap', category:'proteomics', name:'S-Trap Sample Preparation', desc:'Reduce, alkylate, trap, wash and on-column trypsin digest for LC-MS/MS.', hasCalc:true, icon:ICON_PROTEOMICS, genSteps:function(){ return generateStrapSteps(); } },
@@ -4705,18 +4715,25 @@ document.addEventListener('DOMContentLoaded', function() {
         var wrap=document.getElementById('detail-'+pid); if(!wrap) return null;
         var pane=wrap.querySelector('.dpane[data-tab="calc"]'); if(!pane) return null;
         var out=[];
+        var fieldOf=function(inp){ if(inp.type==='button'||inp.type==='hidden'||inp.type==='file'||inp.type==='checkbox'||inp.type==='radio') return null;
+          var fld=inp.closest?inp.closest('.field'):null; var lab=fld?fld.querySelector('label'):null;
+          var label=((lab?lab.textContent:'')||inp.getAttribute('placeholder')||inp.id||'').replace(/\s+/g,' ').trim();
+          var f={id:inp.id, label:label, type:(inp.tagName==='SELECT'?'select':(inp.type||'text')), value:inp.value};
+          if(inp.tagName==='SELECT') f.options=Array.prototype.map.call(inp.options,function(o){ return {value:o.value,label:(o.textContent||'').trim()}; });
+          return f; };
         var scanBox=function(box){
           var t=(box.querySelector('.calc-box-title')||{}).textContent||''; t=t.replace(/\s+/g,' ').trim();
-          var fields=[];
-          Array.prototype.forEach.call(box.querySelectorAll('input[id],select[id]'),function(inp){
-            if(inp.type==='button'||inp.type==='hidden'||inp.type==='file'||inp.type==='checkbox'||inp.type==='radio') return;
-            var fld=inp.closest?inp.closest('.field'):null; var lab=fld?fld.querySelector('label'):null;
-            var label=((lab?lab.textContent:'')||inp.getAttribute('placeholder')||inp.id||'').replace(/\s+/g,' ').trim();
-            var f={id:inp.id, label:label, type:(inp.tagName==='SELECT'?'select':(inp.type||'text')), value:inp.value};
-            if(inp.tagName==='SELECT') f.options=Array.prototype.map.call(inp.options,function(o){ return {value:o.value,label:(o.textContent||'').trim()}; });
-            fields.push(f);
-          });
-          if(fields.length) out.push({title:t, fields:fields});
+          var groups=[{label:'',fields:[]}], cur=groups[0];
+          // Walk the box in DOM order so sub-headers (.calc-source) split fields into labelled groups (e.g. Vector vs Insert).
+          var walk=function(node){ for(var i=0;i<node.children.length;i++){ var ch=node.children[i];
+              if(ch.classList){ if(ch.classList.contains('calc-box-title')) continue;
+                if(ch.classList.contains('calc-source')){ var lt=(ch.textContent||'').replace(/\s+/g,' ').trim(); if(lt){ cur={label:lt,fields:[]}; groups.push(cur); } continue; } }
+              if((ch.tagName==='INPUT'||ch.tagName==='SELECT')&&ch.id){ var f=fieldOf(ch); if(f) cur.fields.push(f); continue; }
+              if(ch.children&&ch.children.length) walk(ch);
+            } };
+          walk(box);
+          groups=groups.filter(function(g){return g.fields.length;});
+          if(groups.length) out.push({title:t, groups:groups});
         };
         var boxes=pane.querySelectorAll('.calc-box');
         if(boxes.length) Array.prototype.forEach.call(boxes,scanBox); else scanBox(pane);

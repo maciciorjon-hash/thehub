@@ -308,8 +308,14 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .ci-f span{font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.2px;}
 .ci-f input,.ci-f select{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:7px;padding:5px 7px;font-family:var(--sans);font-size:12.5px;}
 .ci-f input:focus,.ci-f select:focus{outline:none;border-color:#4f9d8f;box-shadow:0 0 0 2px rgba(79,157,143,.18);}
-.cc-recipe{margin-top:9px;background:var(--surface);border:1px dashed var(--border2);border-radius:8px;padding:8px 11px;font-size:12.5px;line-height:1.55;color:var(--text);}
-.cc-recipe b{color:#2b7d6e;}
+.cc-recipe{margin-top:9px;background:var(--surface);border:1px dashed var(--border2);border-radius:8px;padding:9px 12px;font-size:12.5px;line-height:1.55;color:var(--text);}
+.cc-recipe b,.cc-recipe strong{color:#2b7d6e;}
+.cc-recipe p{margin:8px 0 2px;font-weight:600;}
+.cc-recipe p:first-child{margin-top:0;}
+.cc-recipe ul{margin:2px 0 6px;padding-left:18px;list-style:disc;}
+.cc-recipe li{margin:1px 0;font-weight:400;}
+.cc-grp{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#a56983;margin:9px 0 5px;}
+.cc-grp:first-of-type{margin-top:3px;}
 .dfx-recipe,.pd-recipe{background:#eef4f2;border-left:3px solid #4f9d8f;border-radius:0 8px 8px 0;padding:7px 11px;margin:4px 0 6px;font-size:12.5px;line-height:1.55;}
 .dfx-recipe b{color:#2b7d6e;}
 .ps-calc{margin:4px 0 6px;}.ps-calc-add{background:none;border:1px dashed var(--border2);color:#4f9d8f;cursor:pointer;font-size:11px;padding:5px 10px;border-radius:8px;font-family:var(--sans);margin:4px 0;}.ps-calc-add:hover{border-color:#4f9d8f;}
@@ -798,12 +804,13 @@ function archiveCalcHtml(b){ var name=archiveName(b.calc.pid); var sch=archiveSc
   var head='<div class="cc-hd"><span class="cc-tag">&#8721; '+esc(name)+'</span><span class="cc-src">Archive</span><span class="grow"></span><button class="cc-x" title="Remove calculator" onclick="calcRemove(\''+b.id+'\')">&times;</button></div>';
   if(!sch){ return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+'<div class="cc-recipe" id="ccr-'+b.id+'">'+(b.calc.recipe||'<span class="cc-load">Open this in dHUB (with Archive) to load the calculator inputs.</span>')+'</div></div>'; }
   var inp=b.calc.inputs||(b.calc.inputs={});
-  var boxes=sch.map(function(box){ var fields=box.fields.map(function(f){ if(inp[f.id]==null) inp[f.id]=f.value; var v=inp[f.id];
-      if(f.type==='select'){ var opts=(f.options||[]).map(function(o){ return '<option value="'+esc(o.value)+'"'+(String(v)===String(o.value)?' selected':'')+'>'+esc(o.label)+'</option>'; }).join(''); return '<label class="ci-f"><span>'+esc(f.label)+'</span><select data-k="'+esc(f.id)+'" onchange="calcUpd(\''+b.id+'\')">'+opts+'</select></label>'; }
-      var t=(f.type==='number')?'number':'text';
-      return '<label class="ci-f"><span>'+esc(f.label)+'</span><input type="'+t+'" data-k="'+esc(f.id)+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>';
-    }).join('');
-    return (box.title?'<div class="cc-box-t">'+esc(box.title)+'</div>':'')+'<div class="cc-inputs">'+fields+'</div>';
+  var fieldHtml=function(f){ if(inp[f.id]==null) inp[f.id]=f.value; var v=inp[f.id];
+    if(f.type==='select'){ var opts=(f.options||[]).map(function(o){ return '<option value="'+esc(o.value)+'"'+(String(v)===String(o.value)?' selected':'')+'>'+esc(o.label)+'</option>'; }).join(''); return '<label class="ci-f"><span>'+esc(f.label)+'</span><select data-k="'+esc(f.id)+'" onchange="calcUpd(\''+b.id+'\')">'+opts+'</select></label>'; }
+    var t=(f.type==='number')?'number':'text';
+    return '<label class="ci-f"><span>'+esc(f.label)+'</span><input type="'+t+'" data-k="'+esc(f.id)+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>'; };
+  var boxes=sch.map(function(box){ var groups=box.groups||[{label:'',fields:box.fields||[]}];
+    var g=groups.map(function(gr){ return (gr.label?'<div class="cc-grp">'+esc(gr.label)+'</div>':'')+'<div class="cc-inputs">'+gr.fields.map(fieldHtml).join('')+'</div>'; }).join('');
+    return (box.title?'<div class="cc-box-t">'+esc(box.title)+'</div>':'')+g;
   }).join('');
   return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+boxes+'<div class="cc-recipe" id="ccr-'+b.id+'">'+expCalcRecipe(b)+'</div></div>'; }
 function calcMenu(id){ ensureArchive(function(){
@@ -1353,7 +1360,9 @@ function renderNotebookEditor(host){
     +'<div class="nb-free"><div class="day-from-lbl">Daily note</div><div class="rt nb-body" contenteditable="true" data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>'+from+carried+'</div>';
   hydrateAtt(host); renderDockPanels();
 }
-function delDay(D){ lbConfirm('Delete this daily note? (Experiment blocks on this date are not deleted.)',{danger:true,title:'Delete daily note'}).then(function(ok){ if(!ok) return; delete LB.data.notebook[D]; SEL.page=null; save(); renderAll(); }); }
+function delDay(D){ var hasBlocks=blocksForDate(D).length>0;
+  if(hasBlocks){ lbConfirm('This day has experiment steps, so the day itself stays here — remove those steps from their experiment to clear it. Clear the day’s free note now?',{danger:true,title:'Clear daily note'}).then(function(ok){ if(!ok) return; delete LB.data.notebook[D]; save(); renderAll(); toast('Daily note cleared — the day stays (it still has experiment steps).'); }); return; }
+  lbConfirm('Delete this daily note? This cannot be undone.',{danger:true,title:'Delete daily note'}).then(function(ok){ if(!ok) return; delete LB.data.notebook[D]; if(SEL.page===D) SEL.page=null; save(); renderAll(); toast('Daily note deleted.'); }); }
 function renderOngoing(host){
   (el('export-btn')||{style:{}}).style.display='none';
   var byProj={}; Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; if(isCoded(e)&&e.status==='ongoing'){ (byProj[e.projectId]=byProj[e.projectId]||[]).push(e); } });
