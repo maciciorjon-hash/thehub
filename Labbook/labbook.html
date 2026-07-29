@@ -679,6 +679,7 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 </div>
 <input type="file" id="lb-img-input" accept="image/*" multiple style="display:none" onchange="_imgInputChange(this)">
 <input type="file" id="lb-import-input" multiple webkitdirectory style="display:none" onchange="_importInputChange(this)">
+<input type="file" id="lb-restore-input" accept=".json" style="display:none" onchange="_restoreInputChange(this)">
 <div id="print-root"></div>
 
 <script>
@@ -1606,6 +1607,7 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="Show or hide the right panel (Outline · Tags · Info)" onmousedown="event.preventDefault();toggleDock()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>')+'</span><span class="rb-lbtn-lbl">Right panel</span></button>'
   +'<button class="rb-lbtn" id="export-btn" title="Export the current entry to a PDF" onmousedown="event.preventDefault();exportPDF()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>')+'</span><span class="rb-lbtn-lbl">Export PDF</span></button>'
   +'<button class="rb-lbtn" id="backup-btn" title="Save a dated backup of the whole notebook to a folder (right-click to choose the folder). Runs automatically once a day too." onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
+  +'<button class="rb-lbtn" title="Restore the whole notebook from a backup JSON file — REPLACES all current content" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore…</span></button>'
   +'<button class="rb-lbtn" title="Import a notebook bundle (onenote_import.json + its images folder) as new sections/pages" onmousedown="event.preventDefault();openImportBundle()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/>')+'</span><span class="rb-lbtn-lbl">Import notebook…</span></button>'
   +'</div>'; }
 var _rbTab='home';
@@ -2269,6 +2271,27 @@ function doBackup(manual){ var name='labbook-'+todayStr()+'.json'; var text=JSON
     : (function(){ if(typeof window.showDirectoryPicker!=='function') return Promise.reject(); return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h) return Promise.reject(); _selfDir=h; return _verify(h).then(function(v){ if(!v) return Promise.reject(); return h.getFileHandle(name,{create:true}).then(function(fh){ return fh.createWritable().then(function(w){ return w.write(text).then(function(){ return w.close(); }); }); }).then(function(){return 'fs';}); }); }); })();
   chain.then(function(){ try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-',5); }catch(e){} } else { _rotateSelfBackups('labbook-',5); } if(manual) toast('Backup saved to folder ✓'); })
     .catch(function(){ _download(name,text); try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} if(manual) toast('Backup downloaded ✓ (right-click Backup to choose a folder)'); });
+}
+// ── Restore from a backup JSON (labbook-YYYY-MM-DD.json / dhub-backup-*.json) — REPLACES everything ──
+function openRestoreBackup(){ var inp=el('lb-restore-input'); if(!inp) return; inp.value=''; inp.click(); }
+function _restoreInputChange(inp){ var f=(inp.files||[])[0]; inp.value=''; if(f) restoreFromBackupFile(f); }
+function restoreFromBackupFile(file){
+  var reader=new FileReader();
+  reader.onload=function(){
+    var parsed; try{ parsed=JSON.parse(reader.result); }catch(e){ toast('Could not parse that file — not valid JSON.'); return; }
+    // Accept either a raw LB.data dump (Labbook's own backups) or the
+    // hub-shell wrapper ({app:'dHUB', journal:{labbook:{...}}}).
+    var data = (parsed && parsed.journal && parsed.journal.labbook) ? parsed.journal.labbook : parsed;
+    if(!data || typeof data!=='object' || !('experiments' in data)){ toast('That file doesn\'t look like a Labbook backup.'); return; }
+    lbConfirm('Restore this backup? This REPLACES your entire current notebook — anything added since this backup was made will be lost unless it\'s in another backup.',{danger:true,title:'Restore from backup',ok:'Replace everything'}).then(function(ok){
+      if(!ok) return;
+      LB.data=data; save();
+      toast('Restored — reloading…');
+      setTimeout(function(){ location.reload(); },600);
+    });
+  };
+  reader.onerror=function(){ toast('Could not read that file.'); };
+  reader.readAsText(file);
 }
 function maybeAutoBackup(){ var last=''; try{ last=localStorage.getItem('lb_last_backup')||''; }catch(e){} if(last===todayStr()) return; var pb=_parentBackup(); var hasFs=(pb&&pb.writeFile)||typeof window.showDirectoryPicker==='function'; if(hasFs) doBackup(false); }
 
