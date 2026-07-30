@@ -678,7 +678,6 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
   <button class="danger" onmousedown="event.preventDefault();tblDelTable()" title="Delete table">&#128465;</button>
 </div>
 <input type="file" id="lb-img-input" accept="image/*" multiple style="display:none" onchange="_imgInputChange(this)">
-<input type="file" id="lb-import-input" multiple webkitdirectory style="display:none" onchange="_importInputChange(this)">
 <input type="file" id="lb-restore-input" accept=".json" style="display:none" onchange="_restoreInputChange(this)">
 <div id="print-root"></div>
 
@@ -1608,7 +1607,6 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" id="export-btn" title="Export the current entry to a PDF" onmousedown="event.preventDefault();exportPDF()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>')+'</span><span class="rb-lbtn-lbl">Export PDF</span></button>'
   +'<button class="rb-lbtn" id="backup-btn" title="Save a dated backup of the whole notebook to a folder (right-click to choose the folder). Runs automatically once a day too." onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
   +'<button class="rb-lbtn" title="Restore the whole notebook from a backup JSON file — REPLACES all current content" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore…</span></button>'
-  +'<button class="rb-lbtn" title="Import a notebook bundle (onenote_import.json + its images folder) as new sections/pages" onmousedown="event.preventDefault();openImportBundle()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 21h16"/>')+'</span><span class="rb-lbtn-lbl">Import notebook…</span></button>'
   +'</div>'; }
 var _rbTab='home';
 function setRbTab(t){ _rbTab=t; renderRibbon(); }
@@ -2295,62 +2293,6 @@ function restoreFromBackupFile(file){
 }
 function maybeAutoBackup(){ var last=''; try{ last=localStorage.getItem('lb_last_backup')||''; }catch(e){} if(last===todayStr()) return; var pb=_parentBackup(); var hasFs=(pb&&pb.writeFile)||typeof window.showDirectoryPicker==='function'; if(hasFs) doBackup(false); }
 
-// ── Notebook import (e.g. from onenote_import_extract.py) — additive only, never touches existing content ──
-function openImportBundle(){ var inp=el('lb-import-input'); if(!inp) return; inp.value=''; inp.click(); }
-function _importInputChange(inp){ var files=Array.prototype.slice.call(inp.files||[]); inp.value=''; if(files.length) processImportBundle(files); }
-function processImportBundle(files){
-  var jsonFile=files.filter(function(f){ return /\.json$/i.test(f.name); })[0];
-  if(!jsonFile){ toast('No .json file found in the selection — pick onenote_import.json together with its images folder.'); return; }
-  var imageFiles={}; files.forEach(function(f){ if(f!==jsonFile) imageFiles[f.name]=f; });
-  var reader=new FileReader();
-  reader.onload=function(){
-    var bundle; try{ bundle=JSON.parse(reader.result); }catch(e){ toast('Could not parse the import JSON.'); return; }
-    var sections=bundle.sections||[];
-    var totalPages=0; sections.forEach(function(s){ totalPages+=(s.pages||[]).length; });
-    lbConfirm('Import '+sections.length+' section(s), '+totalPages+' page(s) as new Labbook sections/pages? Existing content is never modified — sections with a matching name get new pages added into them.',{title:'Import notebook'}).then(function(ok){ if(ok) importBundleData(bundle,imageFiles); });
-  };
-  reader.onerror=function(){ toast('Could not read the import JSON file.'); };
-  reader.readAsText(jsonFile);
-}
-function importBundleData(bundle,imageFiles){
-  var sections=bundle.sections||[];
-  var totalPages=0,totalImgs=0,doneImgs=0,doneSections=0;
-  sections.forEach(function(s){ totalPages+=(s.pages||[]).length; (s.pages||[]).forEach(function(p){ totalImgs+=(p.images||[]).length; }); });
-  toast('Importing '+sections.length+' section(s)…');
-  var chain=Promise.resolve();
-  sections.forEach(function(sec){
-    chain=chain.then(function(){
-      var secObj=LB.data.generalSections.filter(function(x){ return x.name===sec.name; })[0];
-      if(!secObj){ secObj={id:uid(),name:sec.name,kind:'notes',created:Date.now()}; LB.data.generalSections.push(secObj); }
-      var pageChain=Promise.resolve();
-      (sec.pages||[]).forEach(function(pg){
-        pageChain=pageChain.then(function(){
-          var prov='<p style="color:#999;font-size:11px">Imported from OneNote — '+esc(pg.dateRaw||pg.date||'')+' &middot; source PDF p.'+esc(String(pg.sourcePage||''))+'</p>';
-          var pageObj={id:uid(),sectionId:secObj.id,kind:'notes',title:pg.title||'Untitled',html:prov+(pg.html||'<p></p>'),created:Date.now(),updated:Date.now(),floatImgs:[]};
-          LB.data.pages[pageObj.id]=pageObj;
-          var imgChain=Promise.resolve();
-          (pg.images||[]).forEach(function(im){
-            imgChain=imgChain.then(function(){
-              var file=imageFiles[im.file]; if(!file) return;
-              return _compressImage(file).then(function(dataURL){
-                var attId='att'+uid();
-                return _attPut(attId,dataURL).then(function(){
-                  _attUpload(attId,dataURL);
-                  var mz=0; pageObj.floatImgs.forEach(function(o){mz=Math.max(mz,o.z||0);});
-                  pageObj.floatImgs.push({id:'fi'+uid(),attId:attId,x:im.x||20,y:im.y||20,w:im.w||220,h:im.h||160,z:mz+1,rot:0,locked:false,caption:'',annotations:[]});
-                  doneImgs++;
-                });
-              }).catch(function(){});
-            });
-          });
-          return imgChain;
-        });
-      });
-      return pageChain.then(function(){ doneSections++; save(); toast('Imported section '+doneSections+'/'+sections.length+' — '+sec.name); });
-    });
-  });
-  chain.then(function(){ save(); renderAll(); gcAttachments(); toast('Import complete: '+sections.length+' section(s), '+totalPages+' page(s), '+doneImgs+'/'+totalImgs+' image(s).'); });
-}
 var _toastT=null; function toast(msg){ var t=el('lb-toast'); if(!t){ t=document.createElement('div'); t.id='lb-toast'; t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--text);border:1px solid var(--border2);box-shadow:var(--shadow-md);border-radius:10px;padding:10px 16px;font-size:13px;z-index:400;opacity:0;transition:opacity .2s'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; clearTimeout(_toastT); _toastT=setTimeout(function(){t.style.opacity='0';},2600); }
 function updateNet(){ updateStatus(); }
 window.addEventListener('online',updateNet); window.addEventListener('offline',updateNet);

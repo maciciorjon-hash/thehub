@@ -302,5 +302,4 @@ python3 embed.py
 - **Archive calculator audit**: the 9 "verify" calcs (trfret/fp/spr/miniprep/nucleospin/lenti/miseq/ip/crispr) were spot-checked against worked examples and found OK — no gaps, but not re-derived from scratch.
 - **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for full cross-device sync — until deployed, admin writes silently stay local-only.
 - **Firebase Storage** not yet enabled in console — blocks true cross-device image sync for Labbook/Plasmids (currently IndexedDB/base64 fallback, works fine device-local).
-- **OneNote import** blocked on the Microsoft 365 connector — needs Jon to run `/mcp` and authenticate before a real Graph-based import of his OneNote can happen.
 - Minor/possible polish, no urgency: drag-drop step palette (search-insert already works), per-cell-line seeding-density recommendations, `PUB_SEED` prose refinement with more real numbers, deep-link Archive's calc-chip straight to its Calculate tab, excise inert dead code (`PACKAGES`/`_buildPackages` in hub-shell, `TYPE_PROTOCOLS` in Labbook — both superseded, harmless if left).
