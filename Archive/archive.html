@@ -1668,13 +1668,14 @@ body.step-notes-on li:hover>.step-note-btn,
       <button class="dtab-btn" onclick="showDTab('lenti','output')">Output</button>
     </div>
     <div class="dpane active" data-tab="protocol">
-      <div class="proto-note"><strong>What is this?</strong> Retro/lentiviral transduction delivers a gene of interest into target cells via viral particles produced in HEK293FT packaging cells. Unlike transient transfection, the viral cargo integrates into the host genome, giving stable, heritable expression. Retroviruses integrate only in dividing cells; lentiviruses can infect non-dividing cells. Polybrene is added during infection to neutralise charge repulsion between the viral envelope and cell membrane.</div>
+      <div class="proto-note"><strong>What is this?</strong> Retro/lentiviral transduction delivers a gene of interest into target cells via viral particles produced in HEK293FT packaging cells. Unlike transient transfection, the viral cargo integrates into the host genome, giving stable, heritable expression. Retroviruses (MLV-based, e.g. <strong>pBabe/pRetroX</strong> backbones) integrate only in dividing cells; lentiviruses (HIV-1-based backbones, e.g. <strong>pLVX/pLKO.1</strong>) can also infect non-dividing cells. Polybrene is added during infection to neutralise charge repulsion between the viral envelope and cell membrane.</div>
+      <div class="proto-note warn"><strong>Gag-Pol plasmid is virus-family specific &mdash; the two kits are NOT interchangeable:</strong> use <strong>Retro-X GAG-POL</strong> (Clontech/Takara, MLV-based) with retroviral <strong>pBabe/pRetroX</strong> vectors, and <strong>Lenti-X GAG-POL</strong> (Clontech/Takara, HIV-1-based) with lentiviral vectors (e.g. pLVX/pLKO.1). The <strong>VSV-G</strong> envelope plasmid is the same reagent either way &mdash; it only pseudotypes the particle for broad tropism and is common to both systems.</div>
       <div class="proto-section">Virus generation</div>
       <div class="proto-note warn">Steps 1&ndash;6: do NOT use Pen/Strep in the media.</div>
       <ol class="proto-list">
         <li>Plate HEK293FT at 1.5&times;10&#8309; cells/mL in 10 mL into 10 cm dish.</li>
-        <li>Next day (~60% confluency): prepare transfection mix:<br>
-          Tube 1: 300 &micro;L OptiMEM + 6 &micro;g pBabe/pRetroX + 3.8 &micro;g Clontech GAG/POL + 2 &micro;g Clontech VSVG<br>
+        <li>Next day (~60% confluency): prepare transfection mix &mdash; pick the Gag-Pol plasmid that matches your vector (see note above):<br>
+          Tube 1: 300 &micro;L OptiMEM + 6 &micro;g vector plasmid (<strong>pBabe/pRetroX</strong> for retroviral, or your lentiviral transfer plasmid) + 3.8 &micro;g Gag-Pol (<strong>Retro-X GAG-POL</strong> for retroviral &middot; <strong>Lenti-X GAG-POL</strong> for lentiviral) + 2 &micro;g <strong>VSV-G</strong> (same reagent, either system)<br>
           Tube 2: 300 &micro;L OptiMEM + 24 &micro;L PEI</li>
         <li>Incubate 5 min in hood; combine tubes, mix gently, incubate 20 min.</li>
         <li>Add to 9 mL pre-warmed complete media; mix gently.</li>
@@ -1696,8 +1697,14 @@ body.step-notes-on li:hover>.step-note-btn,
     <div class="dpane" data-tab="calc">
       <div class="calc-box">
         <div class="calc-box-title">Packaging transfection mix — per 10 cm dish scaling</div>
-        <div class="calc-source">Tube 1: OptiMEM + plasmid + GAG/POL + VSVG · Tube 2: OptiMEM + PEI</div>
+        <div class="calc-source">Tube 1: OptiMEM + vector + Gag-Pol + VSV-G · Tube 2: OptiMEM + PEI</div>
         <div class="grid-2" style="gap:10px;margin-bottom:10px">
+          <div class="field"><label>Vector system</label>
+            <select id="ln-system" onchange="calcLenti()">
+              <option value="retro">Retroviral (pBabe/pRetroX) — Retro-X GAG-POL</option>
+              <option value="lenti">Lentiviral (pLVX/pLKO.1/etc.) — Lenti-X GAG-POL</option>
+            </select>
+          </div>
           <div class="field"><label>Number of dishes</label><input type="number" id="ln-dishes" value="1" min="1" step="1" oninput="calcLenti()"></div>
           <div class="field"><label>Excess multiplier (pipetting loss)</label><input type="number" id="ln-excess" value="1.1" min="1" step="0.05" oninput="calcLenti()"></div>
         </div>
@@ -4079,14 +4086,17 @@ function calcLenti() {
   var excess = parseFloat(document.getElementById('ln-excess').value) || 1.1;
   var tubeEl = document.getElementById('ln-tube-result'), pbEl = document.getElementById('ln-pb-result');
   if (!tubeEl || !pbEl) return;
+  var system = (document.getElementById('ln-system')||{}).value || 'retro';
+  var vectorLabel = system === 'lenti' ? 'Lentiviral transfer plasmid (pLVX/pLKO.1/etc.)' : 'pBabe/pRetroX plasmid';
+  var gagpolLabel = system === 'lenti' ? 'Lenti-X GAG-POL (HIV-1-based)' : 'Retro-X GAG-POL (MLV-based)';
   var optimem1 = 300 * dishes * excess, plasmid = 6 * dishes * excess, gagpol = 3.8 * dishes * excess, vsvg = 2 * dishes * excess;
   var optimem2 = 300 * dishes * excess, pei = 24 * dishes * excess;
   tubeEl.innerHTML =
     '<table class="proto-table" style="margin-top:10px"><tr><th>Tube</th><th>Component</th><th>Amount</th></tr>' +
     '<tr><td rowspan="4">Tube 1</td><td>OptiMEM</td><td style="color:var(--accent2)">' + optimem1.toFixed(0) + ' uL</td></tr>' +
-    '<tr><td>pBabe/pRetroX plasmid</td><td style="color:var(--accent)">' + plasmid.toFixed(2) + ' ug</td></tr>' +
-    '<tr><td>Clontech GAG/POL</td><td style="color:var(--accent)">' + gagpol.toFixed(2) + ' ug</td></tr>' +
-    '<tr><td>Clontech VSVG</td><td style="color:var(--accent)">' + vsvg.toFixed(2) + ' ug</td></tr>' +
+    '<tr><td>' + vectorLabel + '</td><td style="color:var(--accent)">' + plasmid.toFixed(2) + ' ug</td></tr>' +
+    '<tr><td>' + gagpolLabel + '</td><td style="color:var(--accent)">' + gagpol.toFixed(2) + ' ug</td></tr>' +
+    '<tr><td>VSV-G (same reagent, either system)</td><td style="color:var(--accent)">' + vsvg.toFixed(2) + ' ug</td></tr>' +
     '<tr><td rowspan="2">Tube 2</td><td>OptiMEM</td><td style="color:var(--accent2)">' + optimem2.toFixed(0) + ' uL</td></tr>' +
     '<tr><td>PEI</td><td style="color:var(--accent)">' + pei.toFixed(2) + ' uL</td></tr></table>' +
     '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Incubate 5 min separately in hood; combine tubes, mix gently, incubate 20 min; add to ' + (9*dishes).toFixed(0) + ' mL pre-warmed complete media per ' + dishes + ' dish(es).</div>';
@@ -4104,13 +4114,16 @@ function calcLenti() {
 }
 function generateLentiSteps() {
   var dishes = gdn('ln-dishes') || 1, excess = gdn('ln-excess') || 1.1;
+  var system = gdv('ln-system') || 'retro';
+  var vectorLabel = system === 'lenti' ? 'lentiviral transfer plasmid (pLVX/pLKO.1/etc.)' : 'pBabe/pRetroX plasmid';
+  var gagpolLabel = system === 'lenti' ? 'Lenti-X GAG-POL (HIV-1-based)' : 'Retro-X GAG-POL (MLV-based)';
   var optimem1 = 300 * dishes * excess, plasmid = 6 * dishes * excess, gagpol = 3.8 * dishes * excess, vsvg = 2 * dishes * excess;
   var optimem2 = 300 * dishes * excess, pei = 24 * dishes * excess;
   var wells = gdn('ln-wells') || 3, mediaVol = gdn('ln-mediavol') || 2, target = gdn('ln-target') || 8, stock = gdn('ln-stock') || 10;
   var perWell = (target * mediaVol) / stock, total = perWell * wells * excess; // stock is mg/mL, numerically equal to ug/uL
   return [
-    { label: 'Packaging transfection mix (' + dishes + ' dish(es))', bullets: [
-      'Tube 1: ' + optimem1.toFixed(0) + ' uL OptiMEM + ' + plasmid.toFixed(2) + ' ug plasmid + ' + gagpol.toFixed(2) + ' ug GAG/POL + ' + vsvg.toFixed(2) + ' ug VSVG',
+    { label: 'Packaging transfection mix (' + dishes + ' dish(es), ' + (system === 'lenti' ? 'lentiviral' : 'retroviral') + ' system)', bullets: [
+      'Tube 1: ' + optimem1.toFixed(0) + ' uL OptiMEM + ' + plasmid.toFixed(2) + ' ug ' + vectorLabel + ' + ' + gagpol.toFixed(2) + ' ug ' + gagpolLabel + ' + ' + vsvg.toFixed(2) + ' ug VSV-G (same reagent, either system)',
       'Tube 2: ' + optimem2.toFixed(0) + ' uL OptiMEM + ' + pei.toFixed(2) + ' uL PEI',
       'Incubate 5 min separately; combine, mix gently, incubate 20 min',
       'Add to ' + (9*dishes).toFixed(0) + ' mL pre-warmed complete media per ' + dishes + ' dish(es)'
