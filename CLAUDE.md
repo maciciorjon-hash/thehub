@@ -321,7 +321,26 @@ same experiment** forward n days, then `recomputeDayOffsets`. Buttons in `blkCar
 `blkCardHtml(b, expId)`), both notebook sections, and `ctxBlock` (1 day / 1 week). It takes
 `expId` explicitly because `_curExp()` is null in the notebook.
 
-**Plate maps** — structured objects attached like `b.calc`, not inline rich text:
+**Plate maps** — the point is the *record*: what was in each well, so a run can be repeated or
+read back later. Every view therefore pairs a colour grid (the shape at a glance) with
+`plateSummary()` — wells grouped by identical content and compacted into ranges, so a whole
+96-well plate reads as ~5 lines ("B1–D10 · SU-DHL-5 · JQ1 · 1 µM → 3.81 pM (10 pts, 4-fold)
+×3 replicates"). `_compactRanges` merges rows with identical column runs; `_concDesc` collapses
+a series repeated across replicate rows/columns; `_seriesText` fits the fold from the endpoints
+in log space (per-step ratios break on rounded values) and snaps to the nearest standard
+dilution. `plateSummaryText` backs the Copy button.
+
+Three drawing idioms are supported, all from Jon's real OneNote pages:
+per-well text; **per-well `shade`** (a visual gradient when the numbers live in an Echo
+picklist, `plApplyShade`); and **block labels** (`plate.groups[gid].label` + `well.groupId`,
+one name written once across a rectangle, `plGroupLabel`), plus **column headers**
+(`plate.colLabels`/`colTitle`, e.g. the nM of each dose column — `plDoseToCols` writes a series
+into them). Grids place **every** cell explicitly (`grid-row`/`grid-column`): block labels are
+grid items spanning their wells, and any auto-placed sibling would flow around them.
+`PLATE_LAYOUTS` holds ready-made starting layouts (`echo384`, `blocks384`), offered via
+"Start from a layout…" and seeded automatically for a 384-well Echo HB/D2B experiment.
+
+Storage is structured objects attached like `b.calc`, not inline rich text:
 `e.plate` (experiment-level, optionally seeded at creation) and `b.plate` (per day-block, via
 the `⊞ plate` button, the ribbon Insert tab, or `/plate map`). Shape:
 `{format, title, types[], wells:{A1:{typeId, cellLine, compound, conc, label}}}` — well ids are
@@ -344,5 +363,5 @@ picker, annotations and heatmap were deliberately not ported.
 - **Archive calculator audit**: the 9 "verify" calcs (trfret/fp/spr/miniprep/nucleospin/lenti/miseq/ip/crispr) were spot-checked against worked examples and found OK — no gaps, but not re-derived from scratch.
 - **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for full cross-device sync — until deployed, admin writes silently stay local-only.
 - **Firebase Storage** not yet enabled in console — blocks true cross-device image sync for Labbook/Plasmids (currently IndexedDB/base64 fallback, works fine device-local).
-- **Labbook plate maps**: no PNG export yet (CSV + PDF only); no plate-reader value overlay (Blueprint's `pdParseValues` is the obvious donor if wanted); custom well types can't be added/renamed from the editor yet (`plate.types` supports it, the UI doesn't).
+- **Labbook plate maps**: no PNG export yet (CSV + PDF only); no plate-reader value overlay (Blueprint's `pdParseValues` is the obvious donor if wanted); custom well types can't be added/renamed from the editor yet (`plate.types` supports it, and the built-in layouts set their own, but the UI doesn't); no Echo picklist import to name the wells automatically.
 - Minor/possible polish, no urgency: drag-drop step palette (search-insert already works), per-cell-line seeding-density recommendations, `PUB_SEED` prose refinement with more real numbers, deep-link Archive's calc-chip straight to its Calculate tab, excise inert dead code (`PACKAGES`/`_buildPackages` in hub-shell — superseded, harmless if left; `TYPE_PROTOCOLS` was already gone).
