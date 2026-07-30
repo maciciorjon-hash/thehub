@@ -38,7 +38,7 @@
 | `protocols` | Archive (formerly Protocols) | SVG open book | `#a56983` (dusty pink) | `Archive/archive.html` |
 | `cellarchive` | Cell Archive | SVG cell/nucleus | `#d17a4a` (terracotta) | `Cell_Archive/cell_archive.html` |
 | `bench` | Incubator (**admin-only** — cell-culture tracker; id stays `bench`, was "Bench") | SVG incubator/cell dish | `#4f9d8f` (teal) | `Bench/bench.html` |
-| `labbook` | Labbook (**admin-only** — electronic lab notebook / OneNote replacement) | SVG notebook | `#4f9d8f` (teal) | `Labbook/labbook.html` |
+| `labbook` | Labbook (**admin-only** — electronic lab notebook; experiment-centric planner) | SVG notebook | `#4f9d8f` (teal) | `Labbook/labbook.html` |
 | `plasmids` | Plasmids (**admin-only** — plasmid database + SnapGene maps) | SVG plasmid | `#6d7bd0` (indigo) | `Plasmids/plasmids.html` |
 | `blot` | Blot (western blot figure builder) | SVG blot panels | `#5b6b7a` (slate) | `WesternBlot/westernblot.html` |
 | `gantt` | Cadence (grant/fellowship Gantt charts) | SVG timeline bars | `#d99a4e` (amber) | `Gantt/gantt.html` |
@@ -294,6 +294,48 @@ python3 embed.py
 
 ---
 
+## Labbook — experiment-centric planning (added 2026-07-30)
+
+The axis of Labbook is the **individual experiment**: you design one, it expands into dated
+day-blocks, and each day's blocks surface in that day's notebook (`blocksForDate` →
+`renderNotebookEditor`). Three systems support that:
+
+**Setup parameters** — `SETUP_SCHEMA` (one entry per experiment type) declares the handful of
+decisions you make when planning. The plate assays (WB/HB/CTG/NB/KD/RTX/D2B) lead with
+**Format: 96/384**; Proteomics and Cloning get non-plate fields. Answers are collected in the
+New-experiment modal (`nmSetup`/`nmSetupUpd`, transient `NM_SETUP`), pushed into the
+instantiated blocks by `applySetupToBlocks` (rewrites calculator inputs — plate format, cell
+line, cells/well, plate counts by ratio, per-well volumes scaled via `PLATE_VOL` — and fills
+`{{placeholder}}` tokens in the preset text via `fillSetup`), and stored on the record as
+`e.setup` (shown as read-only chips by `setupSummaryHtml`). A type may add an `apply(setup,
+blocks)` hook for structural changes — CTG uses it to drop the readout you didn't ask for.
+
+**Templates** live in `PRESET_SEED` and now carry `{{placeholders}}` plus `ul.lb-check`
+checklists (which is what drives the existing carry-over logic). The seed version flag was
+bumped `_presetV2` → **`_presetV3`**, so `seedPresets()` re-seeds all built-in presets once
+per browser. Custom/user-added presets are untouched; hand-edits to built-in presets made
+before this change are overwritten. **Bump to `_presetV4` if you edit `PRESET_SEED` again.**
+
+**Snooze** — `snoozeBlock(expId, blockId, n)` pushes a step **and every later-dated step in the
+same experiment** forward n days, then `recomputeDayOffsets`. Buttons in `blkCardHtml` (needs
+`blkCardHtml(b, expId)`), both notebook sections, and `ctxBlock` (1 day / 1 week). It takes
+`expId` explicitly because `_curExp()` is null in the notebook.
+
+**Plate maps** — structured objects attached like `b.calc`, not inline rich text:
+`e.plate` (experiment-level, optionally seeded at creation) and `b.plate` (per day-block, via
+the `⊞ plate` button, the ribbon Insert tab, or `/plate map`). Shape:
+`{format, title, types[], wells:{A1:{typeId, cellLine, compound, conc, label}}}` — well ids are
+**unpadded** (`A1`, `A10`), so always go through `wellRC()`, never sort them as strings.
+`platePreviewHtml(plate, ownerKey)` renders the read-only inline card; `openPlateEditor(key)`
+opens `#plate-modal` (div grid, not canvas) with drag/shift-range/row/column selection, a type
+palette, structured per-well fields showing `Mixed…`, and a dose-series filler. `ownerKey` is
+`exp:<expId>` or `blk:<expId>:<blkId>`, resolved by `_plateOwner`. Edits are live-saved (no
+OK/Cancel). Format switching **keeps** wells that still fit the new grid — unlike Blueprint's
+`setFormat`, which wipes them. PDF export via `pdPlate()`.
+
+Blueprint was the design reference for the grid but shares **no code** — its brackets, colour
+picker, annotations and heatmap were deliberately not ported.
+
 ## Current state
 
 **v1.3.16**, 22 apps, last worked 2026-07-28. Full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
@@ -302,4 +344,5 @@ python3 embed.py
 - **Archive calculator audit**: the 9 "verify" calcs (trfret/fp/spr/miniprep/nucleospin/lenti/miseq/ip/crispr) were spot-checked against worked examples and found OK — no gaps, but not re-derived from scratch.
 - **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for full cross-device sync — until deployed, admin writes silently stay local-only.
 - **Firebase Storage** not yet enabled in console — blocks true cross-device image sync for Labbook/Plasmids (currently IndexedDB/base64 fallback, works fine device-local).
-- Minor/possible polish, no urgency: drag-drop step palette (search-insert already works), per-cell-line seeding-density recommendations, `PUB_SEED` prose refinement with more real numbers, deep-link Archive's calc-chip straight to its Calculate tab, excise inert dead code (`PACKAGES`/`_buildPackages` in hub-shell, `TYPE_PROTOCOLS` in Labbook — both superseded, harmless if left).
+- **Labbook plate maps**: no PNG export yet (CSV + PDF only); no plate-reader value overlay (Blueprint's `pdParseValues` is the obvious donor if wanted); custom well types can't be added/renamed from the editor yet (`plate.types` supports it, the UI doesn't).
+- Minor/possible polish, no urgency: drag-drop step palette (search-insert already works), per-cell-line seeding-density recommendations, `PUB_SEED` prose refinement with more real numbers, deep-link Archive's calc-chip straight to its Calculate tab, excise inert dead code (`PACKAGES`/`_buildPackages` in hub-shell — superseded, harmless if left; `TYPE_PROTOCOLS` was already gone).
