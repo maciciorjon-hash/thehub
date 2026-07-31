@@ -2,19 +2,28 @@
 """Bundle all apps into dHUB.
 
 Usage:
-  python embed.py                      ->  ./dHUB.html      (local dev)
-  python embed.py dist/index.html     ->  dist/index.html   (CI / GitHub Pages)
+  python embed.py                                  ->  ./dHUB.html     (local dev, everything)
+  python embed.py dist/index.html                 ->  dist/index.html (CI / GitHub Pages)
+  python embed.py --profile=product dist/index.html
+        ->  only the apps that make up the product story (see PROFILES). Personal-workflow
+            apps stay in the repo and in the default build; they just don't ship.
 """
 import base64, re, os, sys
 
 BASE  = os.path.dirname(os.path.abspath(__file__))
 SHELL = os.path.join(BASE, 'hub-shell.html')
-OUT   = sys.argv[1] if len(sys.argv) > 1 else os.path.join(BASE, 'dHUB.html')
+
+args    = [a for a in sys.argv[1:] if not a.startswith('--')]
+flags   = [a for a in sys.argv[1:] if a.startswith('--')]
+profile = 'all'
+for f in flags:
+    if f.startswith('--profile='):
+        profile = f.split('=', 1)[1]
+OUT = args[0] if args else os.path.join(BASE, 'dHUB.html')
 
 APPS = [
     ('echo', 'Echo/echo.html'),
     ('deg',  'Dora/dora.html'),
-    ('lm',   'Labmate/labmate.html'),
     ('pd',   'Blueprint/blueprint.html'),
     ('dna',  'Helix/helix.html'),
     ('pt',   'Protein_Tools/protein_tools.html'),
@@ -26,7 +35,6 @@ APPS = [
     ('beacon',     'Beacon/beacon.html'),
     ('lumina',     'Lumina/lumina.html'),
     ('ribbon',     'Ribbon/ribbon.html'),
-    ('arc',        'Arc/arc.html'),
     ('protocols',  'Archive/archive.html'),
     ('cellarchive', 'Cell_Archive/cell_archive.html'),
     ('bench',       'Bench/bench.html'),
@@ -36,8 +44,39 @@ APPS = [
     ('gantt',       'Gantt/gantt.html'),
 ]
 
+# Which apps ship in which build. 'all' is the personal Hub; 'product' is the sellable
+# story — the notebook, the analysis that feeds it, the protocol library and the modules
+# they depend on. Cuppa/Fabricata/Cadence and the off-path tools stay out.
+PROFILES = {
+    'product': ['labbook', 'echo', 'protocols', 'pd', 'blot', 'dna', 'plasmids',
+                'cellarchive', 'bench', 'cryo', 'deg', 'ldi', 'spectra', 'beacon', 'lumina'],
+}
+if profile != 'all':
+    if profile not in PROFILES:
+        sys.stderr.write('unknown profile: %s (known: %s)\n' % (profile, ', '.join(PROFILES)))
+        sys.exit(1)
+    keep = set(PROFILES[profile])
+    unknown = keep - {k for k, _ in APPS}
+    if unknown:
+        sys.stderr.write('profile %s lists unknown app ids: %s\n' % (profile, ', '.join(sorted(unknown))))
+        sys.exit(1)
+    dropped = [k for k, _ in APPS if k not in keep]
+    APPS = [(k, r) for k, r in APPS if k in keep]
+    print('profile=%s — shipping %d apps, omitting: %s' % (profile, len(APPS), ', '.join(dropped)))
+
 src = open(SHELL, encoding='utf-8').read()
 errors = []
+
+# Omitted apps keep their placeholder in the shell, so blank it (no payload) and strip their
+# home card, otherwise the build ships a card that opens an empty iframe.
+if profile != 'all':
+    for key in dropped:
+        src = re.sub(r'(?<=' + key + r': ")[^"]*', '', src)
+        card = re.search(r'[ \t]*<div class="card"[^>]*data-app-id="' + key + r'"[\s\S]*?\n[ \t]*</div>\n',
+                         src)
+        if card:
+            src = src[:card.start()] + src[card.end():]
+
 for key, rel in APPS:
     path = os.path.join(BASE, rel)
     try:

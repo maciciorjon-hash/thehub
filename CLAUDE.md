@@ -21,7 +21,6 @@
 | ID | Name | Logo | Accent | Standalone file |
 |----|------|------|--------|-----------------|
 | `echo` | Echo (formerly Labcyte Echo / Echo Data Analysis) | SVG bar chart | `#ff5760` | `Echo/echo.html` |
-| `lm` | LabMate (hidden from the home grid, not deleted) | SVG flask | `#e08c30` (amber) | `Labmate/labmate.html` |
 | `deg` | Dora (formerly Degradation Explorer) | SVG curve | `#7c6fd4` | `Dora/dora.html` |
 | `pd` | Blueprint (formerly Lab Designer) | SVG wells | `#0079b9` | `Blueprint/blueprint.html` |
 | `dna` | Helix | SVG helix | `#43a047` | `Helix/helix.html` |
@@ -34,7 +33,6 @@
 | `beacon` | Beacon | SVG donor/acceptor BRET glyph | `#5e72c4` | `Beacon/beacon.html` |
 | `lumina` | Lumina | SVG light bulb | `#f5c518` (warm gold) | `Lumina/lumina.html` |
 | `ribbon` | Ribbon | SVG ribbon waves | `#e36c69` (salmon) | `Ribbon/ribbon.html` |
-| `arc` | Arc (hidden from the home grid, not deleted) | SVG narrative arc + nodes | `#816baf` (purple) | `Arc/arc.html` |
 | `protocols` | Archive (formerly Protocols) | SVG open book | `#a56983` (dusty pink) | `Archive/archive.html` |
 | `cellarchive` | Cell Archive | SVG cell/nucleus | `#d17a4a` (terracotta) | `Cell_Archive/cell_archive.html` |
 | `bench` | Incubator (**admin-only** — cell-culture tracker; id stays `bench`, was "Bench") | SVG incubator/cell dish | `#4f9d8f` (teal) | `Bench/bench.html` |
@@ -64,9 +62,6 @@ The_Hub/
 │   └── echo.html
 ├── Dora/
 │   └── dora.html
-├── Labmate/
-│   ├── labmate.html
-│   └── RDKit_minimal.js / .wasm             ← ORPHANED (no longer referenced by labmate.html)
 ├── Blueprint/
 │   └── blueprint.html
 ├── Helix/
@@ -89,8 +84,6 @@ The_Hub/
 │   └── lumina.html
 ├── Ribbon/
 │   └── ribbon.html
-├── Arc/
-│   └── arc.html                              ← hidden from the home grid, still built
 ├── Archive/
 │   └── archive.html
 └── Cell_Archive/
@@ -102,8 +95,9 @@ The_Hub/
 **`embed.py`** reads from `hub-shell.html` and fills in each app's base64. Run from `The_Hub/`:
 
 ```bash
-python3 embed.py                      # → dHUB.html  (local/offline use)
+python3 embed.py                      # → dHUB.html  (local/offline use — every app)
 python3 embed.py dist/index.html     # → dist/index.html  (CI/Pages build)
+python3 embed.py --profile=product dist/index.html   # → only the product apps
 ```
 
 The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix bug. `embed.py` fails loudly (exit 1) if a source file is missing or a key doesn't match exactly one placeholder.
@@ -111,7 +105,9 @@ The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix
 ### Shared curve-fit engine (Echo is canonical)
 
 There is no module system, so the 4PL Levenberg-Marquardt fitter (`_lmFit`, `_solveLin`, `_matInv`, `_fitBest`, `_4plVal4`/`_gain`, `_4plJac4`/`_gain`, `_xAtYMid`, `_tQ95`) is **duplicated** in **Echo** (canonical), **Beacon**, and **Lumina**. As of v1.4.0 (2026-07-13) all three are **in sync** — Beacon/Lumina's copies were reconciled onto Echo's (verified fit-for-fit identical: Beacon in-browser maxParamDiff=0, Lumina Node A/B maxParamDiff=0). Two scripts maintain this:
-- **`check_shared.py`** — read-only drift monitor (`python3 check_shared.py`, exit 1 on drift). Run after editing any fit function.
+- **`check_shared.py`** — read-only drift monitor (`python3 check_shared.py`, exit 1 on drift, 2 on a missing source). Run after editing any fit function.
+  Both scripts pointed at the pre-rename `Labcyte_Echo/labcyte_echo.html` from the Echo rename until 2026-07-30, so they errored out instead of checking anything.
+  Fixed and re-run: **Beacon and Lumina are confirmed byte-identical to Echo** for every shared function (`_4plVal3`/`_tQ95` are Echo-only).
 - **`sync_fit_engine.py`** — copies Echo's canonical versions into Beacon/Lumina (`--check` for dry run).
 
 Workflow: **edit the fit math in Echo only**, then `python3 sync_fit_engine.py` to propagate, then verify fits numerically (outputs *can* change if you altered the actual math), then `python3 embed.py`. Neither script is wired into `embed.py`'s build gate.
@@ -355,13 +351,78 @@ OK/Cancel). Format switching **keeps** wells that still fit the new grid — unl
 Blueprint was the design reference for the grid but shares **no code** — its brackets, colour
 picker, annotations and heatmap were deliberately not ported.
 
+## Attachments & data-dump files (Labbook)
+
+**Attachment bytes never go in `LB.data`.** `save()` re-`set()`s the whole tree to RTDB on a
+1.2 s debounce, so a base64 image there would be re-uploaded on every keystroke. The contract is:
+metadata in `LB.data`, bytes in IndexedDB (`lb_att`), optional cloud copy in Firebase Storage.
+
+- **`e.files[]`** — the per-experiment data dump (Files tab): `{id, attId, name, mime, size,
+  kind, added, caption, include}`. `addFileTo(key,file)` / `addFilesTo` accept any type;
+  `fileKind()` classifies for the icon; images route through `_compressImage`. `include`
+  controls whether it lands in the PDF (`pdFiles()` — images embedded, everything else listed,
+  since `window.print()` cannot embed a foreign file). Owner keys are the plate-map keys
+  (`exp:<id>` / `blk:<expId>:<blkId>`, resolved by `_plateOwner`).
+- **`_collectAttIds()` must know about every place an attId can live.** `gcAttachments()` runs
+  4 s after each load and hard-deletes any `lb_att` key it doesn't recognise — a new attachment
+  site that isn't scanned there is silent data loss. It currently scans rich-text `data-att`,
+  `floatImgs[]` and `files[]`.
+- **Backups carry the bytes** (`_buildBackupPayload` → `{_lbBackup:2, data, blobs}`). Restore
+  writes blobs back via `_attPut` *before* swapping the tree. Pre-v2 backups still restore, with
+  a warning that images will be placeholders.
+- **Storage failures are loud.** `_attPut` resolves `false` and calls `_storageFailed`, which
+  flips the status pill to "Not saved!" and shows `lbAlert` once. `_flushLocal` no longer
+  swallows quota errors. `_storageRoom(bytes)` pre-checks via `navigator.storage.estimate()`.
+- **Firebase Storage must be enabled in the console** for cross-device sync. The SDK is loaded
+  and `lbStorage()` resolves, but uploads fail until the bucket exists — `_cloudUnavailable`
+  says so once, then falls back to device-local + backups.
+
 ## Current state
 
 **v1.3.16**, 22 apps, last worked 2026-07-28. Full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
-- **Archive calculator audit**: the 9 "verify" calcs (trfret/fp/spr/miniprep/nucleospin/lenti/miseq/ip/crispr) were spot-checked against worked examples and found OK — no gaps, but not re-derived from scratch.
-- **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for full cross-device sync — until deployed, admin writes silently stay local-only.
-- **Firebase Storage** not yet enabled in console — blocks true cross-device image sync for Labbook/Plasmids (currently IndexedDB/base64 fallback, works fine device-local).
-- **Labbook plate maps**: no PNG export yet (CSV + PDF only); no plate-reader value overlay (Blueprint's `pdParseValues` is the obvious donor if wanted); custom well types can't be added/renamed from the editor yet (`plate.types` supports it, and the built-in layouts set their own, but the UI doesn't); no Echo picklist import to name the wells automatically.
-- Minor/possible polish, no urgency: drag-drop step palette (search-insert already works), per-cell-line seeding-density recommendations, `PUB_SEED` prose refinement with more real numbers, deep-link Archive's calc-chip straight to its Calculate tab, excise inert dead code (`PACKAGES`/`_buildPackages` in hub-shell — superseded, harmless if left; `TYPE_PROTOCOLS` was already gone).
+- **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
+  Labbook and Plasmids. Everything works device-local and survives backup/restore without it.
+- **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for
+  full cross-device sync — until deployed, admin writes silently stay local-only.
+- **IP ownership is unresolved.** As employee-created work, the University of Dundee very
+  likely owns or co-owns this. Resolve with Research & Innovation Services before any sale
+  conversation — it also opens the legitimate routes (spin-out, licence).
+- **The public Pages URL still serves the full personal build.** Seed data is now neutral, but
+  the real instance should sit behind auth rather than on a public URL.
+- **The leaked legacy RTDB secret** (see Firebase section) is accepted risk for personal use but
+  is disqualifying for a product — Phase 3 migrates off `thehub-f80ae` entirely.
+- **Archive calculator audit**: the 9 "verify" calcs (trfret/fp/spr/miniprep/nucleospin/lenti/
+  miseq/ip/crispr) were spot-checked against worked examples and found OK — not re-derived.
+- **Labbook plate maps**: no PNG export (CSV + PDF only); no plate-reader value overlay
+  (Blueprint's `pdParseValues` is the obvious donor); custom well types can't be added/renamed
+  from the editor yet; no Echo picklist import to name wells automatically.
+- Minor polish, no urgency: drag-drop step palette, per-cell-line seeding-density
+  recommendations, `PUB_SEED` prose refinement, deep-link Archive's calc-chip to its Calculate
+  tab, excise `PACKAGES`/`_buildPackages` in hub-shell (superseded, harmless).
+
+### Product direction (agreed 2026-07-30)
+
+The sellable asset is the **encoded domain knowledge**, not the app framework — 33 Archive
+protocols with working calculators, parameterised experiment templates, and a plan → execute →
+analyse loop that understands what a dose-response plate is. Generic ELNs (Benchling, MBook,
+LabArchives) are rich text plus attachments; none of them know what a 384-well plate or a DC50
+is. Positioning: **a domain-aware ELN for targeted protein degradation and chemical biology.**
+
+Consequence: stop adding app surface area; invest in the loop and the science content.
+
+- **Spine** Labbook · **Flagship** Echo · **Moat** Archive.
+- **Fold in (Phase 2)**: Lumina → an Echo mode and Beacon → an Echo assay type (removes two
+  copies of the 4PL engine); one plate engine (Labbook's, plus Blueprint's `pdParseValues`);
+  Helix + Plasmids (two GenBank parsers); Blot + Blueprint's Gel Designer; Cell Archive +
+  Incubator + Iceberg into one "Cells" lifecycle; Dora + LDI.
+- **The demo that sells it**: Echo picklist → Labbook plate-map well names, and Echo DC50/Dmax
+  → back into the experiment record and the publication-ready prose. Prioritise this over any
+  consolidation that doesn't enable it.
+- **Out of the product build**: Cuppa, Fabricata, Cadence, Ribbon, Protein Tools (see
+  `PROFILES` in `embed.py`). They stay in the repo and in the default build.
+- **Retired 2026-07-30**: LabMate and Arc removed from `embed.py`, `APP_INFO` and the shell —
+  both had been unreachable (no card, no `openApp()`) and together were ~3.6 MB of the bundle.
+  Files remain on disk. Beacon stays deliberately hidden (see the comment in `hub-shell.html`)
+  and is still built, pending its Phase 2 absorption into Echo.

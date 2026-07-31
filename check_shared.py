@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drift monitor for the shared 4PL curve-fit engine.
 
-Echo (Labcyte_Echo/labcyte_echo.html) is the CANONICAL implementation of the
+Echo (Echo/echo.html) is the CANONICAL implementation of the
 Levenberg-Marquardt 4PL fitter. Beacon and Lumina carry their own copies of the
 same functions (there is no build step / module system in this repo, so the code
 is duplicated on purpose). Over time those copies drift.
@@ -23,7 +23,7 @@ import os, re, sys
 BASE = os.path.dirname(os.path.abspath(__file__))
 CANONICAL = 'Echo'
 FILES = {
-    'Echo':   'Labcyte_Echo/labcyte_echo.html',
+    'Echo':   'Echo/echo.html',
     'Beacon': 'Beacon/beacon.html',
     'Lumina': 'Lumina/lumina.html',
 }

@@ -517,6 +517,13 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 #print-root{display:none;color:#111;background:#fff;font-family:'IBM Plex Sans',sans-serif;}
 
 /* ── Mobile ─────────────────────────────────────────────────────────────── */
+/* Touch devices: anything revealed only on hover is unreachable, and hover transforms stick. */
+@media (hover:none){
+  .page-del{opacity:.55!important;}
+  .wk-task .wk-del{opacity:.7!important;}
+  .sec-item .del{opacity:.7!important;}
+  .card:hover,.mcard:hover{transform:none!important;}
+}
 @media(max-width:760px){
   header{padding:0 12px;min-height:44px;}
   #mobile-nav-btn{display:flex;}
@@ -529,8 +536,19 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
   body.mobile-drawer-open .mobile-drawer{transform:translateX(0);}
   body.mobile-drawer-open #mobile-backdrop,body.mobile-dock-open #mobile-backdrop{display:block;position:fixed;inset:0;z-index:44;background:rgba(0,0,0,.35);}
   .pane-sec,.pane-pages{width:auto!important;flex:1 1 0;min-width:0;}
+  /* A pane collapsed on desktop persists in lb_layout. Without this it stays a 34px sliver
+     inside the drawer forever, because .pane.collapsed is more specific than .pane-sec. */
+  .pane.collapsed{width:auto!important;flex:1 1 0!important;}
+  .pane.collapsed .pane-inner{display:flex!important;}
+  .pane.collapsed .rail{display:none!important;}
   .splitter{display:none;}
   .pane-ed{width:100%;flex:1;}
+  /* Same trap for the right dock: applyLayout() sets display:none, which beats the slide-in
+     transform, so Outline/Tags/Info become permanently unreachable on a phone. */
+  #rightdock.hidden{display:block!important;}
+  /* The Insert ribbon wraps to ~4 rows and eats the editor — scroll it instead. */
+  .rb-labelled{flex-wrap:nowrap!important;}
+  .rb-tabbar{overflow-x:auto;}
   .ed-wrap{padding:16px 14px 80px;}
   .tb{width:32px;height:32px;}
   .hdr-btn{padding:7px 10px;}
@@ -646,9 +664,34 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 .pl-row2{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;}
 .pl-btn{font-size:11.5px;font-weight:600;font-family:var(--sans);background:var(--surface);border:1px solid var(--border2);color:var(--text2);border-radius:7px;padding:4px 11px;cursor:pointer;}
 .pl-btn:hover:not(:disabled){color:var(--text);background:var(--surface3);}
+.pl-btn.on{border-color:#4f9d8f;color:#4f9d8f;font-weight:700;}
+/* Stop the browser panning/zooming while painting a well selection with a finger. */
+.pl-grid{touch-action:none;}
 .pl-btn:disabled{opacity:.45;cursor:default;}
 .pl-btn.danger{color:var(--danger);}
 @media(max-width:820px){ .pl-body{flex-direction:column;} .pl-side{width:100%;max-height:none;} .pl-gridwrap{max-height:46vh;width:100%;} }
+/* ── Files pane (data dump) ── */
+.fx-pane{padding:2px 0 20px;}
+.fx-drop{border:2px dashed var(--border2);border-radius:14px;padding:26px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;}
+.fx-drop:hover{border-color:#4f9d8f;background:var(--surface2);}
+.fx-drop.over{border-color:#4f9d8f;background:var(--surface2);border-style:solid;}
+.fx-drop-t{font-size:14px;font-weight:600;color:var(--text);margin-bottom:5px;}
+.fx-drop-s{font-size:11.5px;color:var(--text3);max-width:460px;margin:0 auto;line-height:1.5;}
+.fx-list-hd{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text2);margin:18px 0 8px;}
+.fx-empty{font-size:12.5px;color:var(--text3);margin-top:16px;text-align:center;}
+.fx-list{display:flex;flex-direction:column;gap:8px;}
+.fx-row{display:flex;align-items:flex-start;gap:12px;border:1px solid var(--border);border-radius:11px;background:var(--surface2);padding:10px 12px;}
+.fx-thumb{width:52px;height:52px;object-fit:cover;border-radius:7px;flex:none;background:var(--surface3);}
+.fx-ico{width:52px;height:52px;border-radius:7px;flex:none;background:var(--surface3);display:flex;align-items:center;justify-content:center;font-size:22px;}
+.fx-main{flex:1;min-width:0;}
+.fx-name{font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fx-meta{font-size:10.5px;color:var(--text3);margin:2px 0 6px;}
+.fx-cap{width:100%;border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:7px;padding:4px 8px;font-family:var(--sans);font-size:12px;}
+.fx-cap:focus{outline:none;border-color:#4f9d8f;}
+.fx-acts{display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex:none;}
+.fx-inc{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text2);cursor:pointer;white-space:nowrap;}
+.fx-inc input{width:14px;height:14px;accent-color:#4f9d8f;cursor:pointer;}
+@media(max-width:640px){ .fx-row{flex-wrap:wrap;} .fx-acts{flex-direction:row;width:100%;justify-content:flex-end;} }
 /* Experiment header — setup summary chips */
 .exh-setup{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
 .exh-setup-i{font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:3px 10px;}
@@ -747,7 +790,7 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 <!-- Plate map editor -->
 <div class="modal-back" id="plate-modal">
   <div class="modal plate-modal">
-    <div class="modal-t">Plate map<span class="pl-count" id="pl-count"></span><span class="grow"></span><span class="pl-hint">Click · drag · shift-click a range · click a row/column header</span></div>
+    <div class="modal-t">Plate map<span class="pl-count" id="pl-count"></span><span class="grow"></span><span class="pl-hint">Drag to select · shift-click a range · tap a row/column header</span></div>
     <div class="pl-body">
       <div class="pl-left">
         <div class="pl-gridwrap"><div id="pl-grid" class="pl-grid"></div></div>
@@ -782,6 +825,7 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-i
 </div>
 <input type="file" id="lb-img-input" accept="image/*" multiple style="display:none" onchange="_imgInputChange(this)">
 <input type="file" id="lb-restore-input" accept=".json" style="display:none" onchange="_restoreInputChange(this)">
+<input type="file" id="lb-file-input" multiple style="display:none" onchange="_fileInputChange(this)">
 <div id="print-root"></div>
 
 <script>
@@ -1526,6 +1570,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'<div class="pl-sec"><div class="pl-sec-t">'+(n?(n+' well'+(n!==1?'s':'')+' selected'):'Select wells to edit')+'</div>'
     +'<div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')+fld('compound','Compound')+fld('conc','Concentration')+fld('label','Label (override)')+'</div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plSelectAll()">Select all</button><button class="pl-btn" onclick="plClearSel()">Deselect</button>'
+    +'<button class="pl-btn'+(PL.touchAdd?' on':'')+'" onclick="plToggleTouchAdd()" title="Keep adding to the selection instead of starting a new one — the touch equivalent of holding ctrl">'+(PL.touchAdd?'✓ Add mode':'Add mode')+'</button>'
     +'<button class="pl-btn danger"'+(n?'':' disabled')+' onclick="plEraseSel()">Clear wells</button></div></div>'
     +block+dose+shade+cols
     +'<datalist id="pl-cl">'+CELL_LINES.filter(function(c){return c.id;}).map(function(c){ return '<option value="'+esc(c.id)+'">'; }).join('')+'</datalist>';
@@ -1662,6 +1707,29 @@ function plApplyDose(dir){ var p=plCur(); if(!p) return; var axis=plSelAxis(); i
   toast(ids.length+'-point series, '+fold+'-fold, from '+_fmtConc(top)); }
 // Drag-select ends wherever the mouse comes up, even outside the grid.
 document.addEventListener('mouseup',function(){ if(PL.drag){ PL.drag=false; plRenderSide(); } });
+// Touch: mouseenter never fires, and there is no shift/ctrl on a phone, so without this you
+// can only ever select one well at a time. Drag across the grid to paint a selection.
+(function(){
+  function wellAt(t){ if(!t) return null; var n=document.elementFromPoint(t.clientX,t.clientY);
+    n=n&&n.closest?n.closest('.pl-w[data-w]'):null; return n?n.getAttribute('data-w'):null; }
+  var grid=null;
+  document.addEventListener('touchstart',function(e){
+    var g=e.target.closest&&e.target.closest('#pl-grid'); if(!g) return;
+    var id=wellAt(e.touches[0]); if(!id) return;
+    grid=g; e.preventDefault();
+    // A fresh touch starts a new selection unless "add" mode is on (the range toggle).
+    if(!PL.touchAdd) PL.sel={};
+    PL.sel[id]=1; PL.anchor=id; PL.drag=true; plRenderGrid();
+  },{passive:false});
+  document.addEventListener('touchmove',function(e){
+    if(!PL.drag||!grid) return; e.preventDefault();
+    var id=wellAt(e.touches[0]); if(id&&!PL.sel[id]){ PL.sel[id]=1; plRenderGrid(); }
+  },{passive:false});
+  document.addEventListener('touchend',function(){
+    if(!PL.drag) return; PL.drag=false; grid=null; plRenderSide();
+  });
+})();
+function plToggleTouchAdd(){ PL.touchAdd=!PL.touchAdd; plRenderSide(); }
 document.addEventListener('keydown',function(ev){
   if(!PL.key||!el('plate-modal').classList.contains('open')) return;
   if(ev.key==='Escape'){ if(plSelIds().length) plClearSel(); else closePlateEditor(); }
@@ -1701,11 +1769,12 @@ seedPresets();
 
 var SEED_GENERAL=[{name:'Notes',kind:'notes'},{name:'Papers I read',kind:'notes'},{name:'Antibodies',kind:'antibodies'},{name:'Bio Safety Committee',kind:'notes'},{name:'Seminars',kind:'seminars'}];
 var SEED_PROJECTS=[
-  {name:'Multivalent Chemistry',sections:['Meetings','TCIPs','Degradation','Kinetic Degradation','RIPTACs','CRISPR','NanoBRET Biosensor']},
-  {name:'LRRC58',sections:['Information','TurboID']},{name:'RTag',sections:['Meetings','Information','Cloning']},
-  {name:'SPARK NS',sections:['Meetings','Information','NanoBRET']},{name:'SMARCA Glues',sections:['HiBiT Degradation Screens']},
-  {name:'Eisai',sections:['Degradation','Viability','Kinetic Degradation','Proteomics','Cell Lines']},
-  {name:'EXTRA',sections:['Meetings','EUROPIN Summer School','Silvia Stay']},{name:'USC Projects',sections:['Marie Curie','USC PROTAC evaluation']}
+  {name:'Degrader Discovery',sections:['Meetings','Degradation','Kinetic Degradation','Viability','CRISPR','NanoBRET Biosensor']},
+  {name:'Target A',sections:['Information','Cloning','Proteomics']},
+  {name:'Target B',sections:['Meetings','Information','NanoBRET']},
+  {name:'Molecular Glues',sections:['HiBiT Degradation Screens']},
+  {name:'Collaboration',sections:['Degradation','Viability','Kinetic Degradation','Proteomics','Cell Lines']},
+  {name:'General',sections:['Meetings','Conferences','Visitors']}
 ];
 function maybeSeed(){
   if(LB.data._seeded){ // ensure an Antibodies section exists for already-seeded books
@@ -1727,12 +1796,18 @@ var _syncT=null,_adopting=false,_synced=true;
 function setSync(ok){ _synced=ok; updateStatus(); }
 function updateStatus(){ var p=el('lb-status'); if(!p) return; var txt=el('lb-status-txt'); var on=navigator.onLine;
   p.classList.remove('online','offline','saving');
+  // A storage failure outranks everything else — never show "Saved ✓" when it isn't true.
+  if(_storageBroken){ p.classList.add('offline'); if(txt) txt.textContent='Not saved!'; p.title='Browser storage rejected a write — see the warning. Export a backup now.'; return; }
   if(!on){ p.classList.add('offline'); if(txt) txt.textContent='Offline'; p.title='Offline — changes saved locally'; }
   else if(_synced){ p.classList.add('online'); if(txt) txt.textContent='Saved ✓'; p.title='Saved and synced'; }
   else { p.classList.add('saving'); if(txt) txt.textContent='Saving…'; p.title='Saving changes…'; }
 }
 var _lsT=null,_lsDirty=false;
-function _flushLocal(){ if(!_lsDirty) return; _lsDirty=false; clearTimeout(_lsT); _lsT=null; try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data)); }catch(e){} }
+function _flushLocal(){ if(!_lsDirty) return; _lsDirty=false; clearTimeout(_lsT); _lsT=null;
+  try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data)); }
+  // Silently dropping this means the notebook stops persisting and nobody finds out until a
+  // reload wipes the day's work. Always surface it.
+  catch(e){ _storageFailed(e); } }
 function save(){
   if(_adopting) return;
   LB.data.updated=Date.now();
@@ -1778,7 +1853,9 @@ function applyLayout(){
 }
 function toggleCollapse(which){ if(which==='sec') LAYOUT.colSec=!LAYOUT.colSec; else LAYOUT.colPages=!LAYOUT.colPages; saveLayout(); applyLayout(); }
 function toggleMobileNav(force){ var open=(force===undefined)?!document.body.classList.contains('mobile-drawer-open'):!!force; document.body.classList.toggle('mobile-drawer-open',open); }
-document.addEventListener('click',function(e){ if(window.innerWidth>640) return; var inSec=e.target.closest&&(e.target.closest('#pane-sec')||e.target.closest('#pane-pages')); if(inSec && !e.target.closest('.rail-btn')) setTimeout(function(){ toggleMobileNav(false); },0); });
+// 760 to match the drawer's own breakpoint — at 641-760px the drawer opened but never
+// auto-closed, so it sat on top of the editor.
+document.addEventListener('click',function(e){ if(window.innerWidth>760) return; var inSec=e.target.closest&&(e.target.closest('#pane-sec')||e.target.closest('#pane-pages')); if(inSec && !e.target.closest('.rail-btn')) setTimeout(function(){ toggleMobileNav(false); },0); });
 function resetPane(which){ if(which==='sec') LAYOUT.wSec=210; else LAYOUT.wPages=280; saveLayout(); applyLayout(); }
 var _rz=null;
 function startResize(ev,which){ ev.preventDefault(); _rz={which:which,x:ev.clientX,w:(which==='sec'?LAYOUT.wSec:LAYOUT.wPages)}; var sp=el('split-'+which); sp.classList.add('drag'); try{sp.setPointerCapture(ev.pointerId);}catch(e){} document.body.classList.add('lb-rz'); document.body.style.cursor='col-resize'; document.body.style.userSelect='none'; }
@@ -2169,6 +2246,50 @@ function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.pa
     +(b.calc?calcInputsHtml(b):'')
     +(b.plate&&pkey?platePreviewHtml(b.plate,pkey):'')
     +'<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }
+// ── Files pane (the data dump) ──
+// Everything you generated for this experiment in one place: picklists, gel scans, Prism
+// exports. Images marked "in PDF" are embedded on export; other types print as a listed card,
+// because window.print() cannot embed a foreign file.
+function filesPaneHtml(key,files){
+  var rows=files.map(function(f){
+    var k=fileKind(f.mime,f.name);
+    var thumb=(f.kind==='image')
+      ? '<img class="lb-att fx-thumb" data-att="'+esc(f.attId)+'" alt="">'
+      : '<span class="fx-ico">'+k.ic+'</span>';
+    return '<div class="fx-row">'+thumb
+      +'<div class="fx-main"><div class="fx-name" title="'+esc(f.name)+'">'+esc(f.name)+'</div>'
+      +'<div class="fx-meta">'+esc(k.label)+' · '+_fmtBytes(f.size||0)+' · '+esc(fmtDate(new Date(f.added).toISOString().slice(0,10)))+'</div>'
+      +'<input class="fx-cap" value="'+esc(f.caption||'')+'" placeholder="Caption (appears in the PDF)" oninput="setFileCaption(\''+key+'\',\''+f.id+'\',this.value)"></div>'
+      +'<div class="fx-acts">'
+        +'<label class="fx-inc" title="Include this in the exported PDF"><input type="checkbox"'+(f.include!==false?' checked':'')+' onchange="toggleFilePdf(\''+key+'\',\''+f.id+'\',this.checked)"><span>in PDF</span></label>'
+        +'<button class="pl-btn" onclick="downloadFile(\''+key+'\',\''+f.id+'\')">Download</button>'
+        +'<button class="pl-btn danger" onclick="removeFile(\''+key+'\',\''+f.id+'\')">Remove</button>'
+      +'</div></div>';
+  }).join('');
+  var total=files.reduce(function(a,f){ return a+(f.size||0); },0);
+  return '<div class="fx-pane">'
+    +'<div class="fx-drop" id="fx-drop" data-key="'+esc(key)+'" onclick="pickFiles(\''+key+'\')">'
+      +'<div class="fx-drop-t">Drop files here</div>'
+      +'<div class="fx-drop-s">Picklists, gel images, cropped figures, Prism exports — anything belonging to this experiment. Click to browse. Max '+_fmtBytes(FILE_MAX_BYTES)+' each.</div>'
+    +'</div>'
+    +(files.length?('<div class="fx-list-hd">'+files.length+' file'+(files.length!==1?'s':'')+' · '+_fmtBytes(total)+'</div><div class="fx-list">'+rows+'</div>')
+                  :'<div class="fx-empty">Nothing attached yet.</div>')
+    +'</div>';
+}
+function pickFiles(key){ var inp=el('lb-file-input'); if(!inp) return; inp._key=key; inp.value=''; inp.click(); }
+function _fileInputChange(inp){ var key=inp._key; var fs=inp.files; inp.value=''; if(key&&fs&&fs.length) addFilesTo(key,fs); }
+// The global dragover handler only preventDefaults inside .rt, so the drop zone needs its own —
+// otherwise the browser navigates away from the app when you let go.
+function wireFileDrop(root){
+  var z=(root||document).querySelector('#fx-drop'); if(!z||z._wired) return; z._wired=true;
+  ['dragenter','dragover'].forEach(function(ev){ z.addEventListener(ev,function(e){
+    e.preventDefault(); e.stopPropagation(); z.classList.add('over'); }); });
+  ['dragleave','dragend'].forEach(function(ev){ z.addEventListener(ev,function(e){
+    e.preventDefault(); e.stopPropagation(); if(e.target===z) z.classList.remove('over'); }); });
+  z.addEventListener('drop',function(e){
+    e.preventDefault(); e.stopPropagation(); z.classList.remove('over');
+    var dt=e.dataTransfer; if(dt&&dt.files&&dt.files.length) addFilesTo(z.getAttribute('data-key'),dt.files); });
+}
 // Read-only reminder of the answers this experiment was set up with. The blocks themselves are
 // the live copy — this is just so you can see the plan at a glance.
 function setupSummaryHtml(e){
@@ -2191,14 +2312,17 @@ function renderExpEditor(host,e){
     +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div></div>'
     +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" oninput="updChips(\'cellLines\',this.value)" onchange="setField(\'cellLines\',this.value)"><div class="exh-chips" id="chips-cell">'+_chipInner(e.cellLines,'cell')+'</div></div></div>';
   var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+setupSummaryHtml(e)+'</div>';
-  var tab=(EXP_TAB==='obs'||EXP_TAB==='pub')?EXP_TAB:'dated';
+  var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files')?EXP_TAB:'dated';
   var tabs='<div class="exp-tabs">'
     +'<button class="exp-tab'+(tab==='dated'?' on':'')+'" onclick="expTab(\'dated\')">Dated sections<span class="exp-tab-n">'+(e.blocks?e.blocks.length:0)+'</span></button>'
     +'<button class="exp-tab'+(tab==='obs'?' on':'')+'" onclick="expTab(\'obs\')">Observations</button>'
-    +'<button class="exp-tab'+(tab==='pub'?' on':'')+'" onclick="expTab(\'pub\')">Publication ready</button></div>';
+    +'<button class="exp-tab'+(tab==='pub'?' on':'')+'" onclick="expTab(\'pub\')">Publication ready</button>'
+    +'<button class="exp-tab'+(tab==='files'?' on':'')+'" onclick="expTab(\'files\')">Files'+((e.files&&e.files.length)?('<span class="exp-tab-n">'+e.files.length+'</span>'):'')+'</button></div>';
   var body;
   if(tab==='obs'){
     body='<div class="rt exp-canvas" contenteditable="true" data-ctx="expfree:'+e.id+'" data-ph="Observations — notes, thoughts, anything you want to jot down…" oninput="setField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div>';
+  } else if(tab==='files'){
+    body=filesPaneHtml('exp:'+e.id, e.files||[]);
   } else if(tab==='pub'){
     var srcChips=(e.protocols||[]).map(function(p){ return '<a class="lb-link proto" data-app="protocols" data-pid="'+esc(p.id)+'" contenteditable="false">'+esc(p.name||p.id)+' &#8599;</a>'; }).join(' ');
     body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods — concise continuous prose (Nature style)</span><span class="grow"></span>'
@@ -2220,7 +2344,7 @@ function renderExpEditor(host,e){
       +(e.plate?'':'<button class="add-blk add-plate" onclick="addPlateTo(\''+pk+'\')">&#9638; Add plate map</button>')+'</div></div>';
   }
   host.innerHTML='<div class="ed-wrap">'+header+tabs+'<div class="exp-tab-body">'+body+'</div></div>';
-  hydrateAtt(host); hydrateFloatLayers(host); renderDockPanels();
+  hydrateAtt(host); hydrateFloatLayers(host); wireFileDrop(host); renderDockPanels();
 }
 var EXP_TAB='dated';
 function expTab(name){ EXP_TAB=name; renderEditor(); }
@@ -2613,7 +2737,33 @@ function setPage(f,v){ var pg=_curPage(); if(!pg) return; pg[f]=(f==='html')?_pe
 // ── Image attachments (paste / drag-drop, stored in IndexedDB) ──
 var _attDBPromise=null;
 function _attDB(){ if(_attDBPromise) return _attDBPromise; _attDBPromise=new Promise(function(res,rej){ var r=indexedDB.open('lb_att',1); r.onupgradeneeded=function(){ if(!r.result.objectStoreNames.contains('att')) r.result.createObjectStore('att'); }; r.onsuccess=function(){ var db=r.result; db.onclose=function(){ _attDBPromise=null; }; res(db); }; r.onerror=function(){ _attDBPromise=null; rej(r.error); }; }); return _attDBPromise; }
-function _attPut(id,dataURL){ return _attDB().then(function(db){ return new Promise(function(res){ var t=db.transaction('att','readwrite').objectStore('att').put(dataURL,id); t.onsuccess=function(){res();}; t.onerror=function(){res();}; }); }); }
+// Storing a file must never fail quietly — losing a gel image without being told is the worst
+// thing this app can do. Resolves true on success, false (loudly) on failure.
+function _attPut(id,dataURL){ return _attDB().then(function(db){ return new Promise(function(res){
+  var t=db.transaction('att','readwrite').objectStore('att').put(dataURL,id);
+  t.onsuccess=function(){ res(true); };
+  t.onerror=function(){ _storageFailed(t.error); res(false); };
+}); }).catch(function(err){ _storageFailed(err); return false; }); }
+var _storageWarned=false, _storageBroken=false;
+function _storageFailed(err){
+  var quota=err&&(err.name==='QuotaExceededError'||/quota/i.test(err.name||err.message||''));
+  _storageBroken=true; updateStatus();
+  if(_storageWarned){ toast(quota?'Storage full — that file was not saved':'That file was not saved'); return; }
+  _storageWarned=true;
+  lbAlert(quota
+    ? 'Your browser storage is full, so that file could NOT be saved. Nothing you already had is lost, but new images and files will not stick until you free space — export a backup, then delete attachments you no longer need.'
+    : 'That file could not be saved to this browser ('+((err&&(err.name||err.message))||'unknown error')+'). Do not rely on it being kept.',
+    {title:'Attachment NOT saved',danger:true,ok:'I understand'});
+}
+// Rough space check before accepting a large file.
+function _storageRoom(bytes){
+  try{ if(!navigator.storage||!navigator.storage.estimate) return Promise.resolve(true);
+    return navigator.storage.estimate().then(function(est){
+      if(!est||!est.quota) return true;
+      return (est.usage||0)+bytes < est.quota*0.92;
+    }).catch(function(){ return true; });
+  }catch(e){ return Promise.resolve(true); }
+}
 function _attGet(id){ return _attDB().then(function(db){ return new Promise(function(res){ var t=db.transaction('att','readonly').objectStore('att').get(id); t.onsuccess=function(){res(t.result||null);}; t.onerror=function(){res(null);}; }); }).catch(function(){return null;}); }
 function _persistImgHtml(html){ if(!html || html.indexOf('lb-att')<0) return html; var t=document.createElement('div'); t.innerHTML=html; Array.prototype.forEach.call(t.querySelectorAll('img.lb-att'),function(im){ im.removeAttribute('src'); im.classList.remove('att-missing'); }); return t.innerHTML; }
 function _compressImage(file){ return new Promise(function(res,rej){ var url=URL.createObjectURL(file); var img=new Image(); img.onload=function(){ URL.revokeObjectURL(url); var max=1400,w=img.naturalWidth,h=img.naturalHeight; if(w>max||h>max){ var s=Math.min(max/w,max/h); w=Math.round(w*s); h=Math.round(h*s); } var c=document.createElement('canvas'); c.width=w||1; c.height=h||1; try{ c.getContext('2d').drawImage(img,0,0,w,h); }catch(e){ return rej(e); } var out; try{ out=c.toDataURL('image/jpeg',0.85); if(!out||out.length<40) out=c.toDataURL('image/png'); }catch(e2){ return rej(e2); } res(out); }; img.onerror=function(){ URL.revokeObjectURL(url); rej(); }; img.src=url; }); }
@@ -2623,14 +2773,96 @@ function _compressImage(file){ return new Promise(function(res,rej){ var url=URL
 var _lbStore=null,_lbStoreTried=false;
 function lbStorage(){ if(_lbStoreTried) return _lbStore; _lbStoreTried=true; try{ if(window.parent && window.parent.firebase && window.parent.firebase.storage){ _lbStore=window.parent.firebase.storage(); } }catch(e){ _lbStore=null; } return _lbStore; }
 function _attUpload(id,dataURL){ var st=lbStorage(); if(!st) return Promise.resolve(null);
-  try{ var ref=st.ref('labbook/'+id); return ref.putString(dataURL,'data_url').then(function(){ return ref.getDownloadURL(); }).then(function(url){ (LB.data.attachments||(LB.data.attachments={}))[id]={url:url}; save(); return url; }).catch(function(){ return null; }); }catch(e){ return Promise.resolve(null); } }
-function handleImageFile(file,range){ if(!_activeEd || !file) return; toast('Adding image…'); _compressImage(file).then(function(dataURL){ var id='att'+uid(); return _attPut(id,dataURL).then(function(){ insertHtmlAtCaret('<img class="lb-att" data-att="'+id+'" src="'+dataURL+'">',range); _attUpload(id,dataURL); }); }).catch(function(){ toast('Could not add image.'); }); }
+  try{ var ref=st.ref('labbook/'+id); return ref.putString(dataURL,'data_url').then(function(){ return ref.getDownloadURL(); }).then(function(url){ (LB.data.attachments||(LB.data.attachments={}))[id]={url:url}; save(); _cloudWarned=true; return url; }).catch(function(err){ _cloudUnavailable(err); return null; }); }catch(e){ _cloudUnavailable(e); return Promise.resolve(null); } }
+// Cloud copy is a bonus on top of local IndexedDB + backups, so a failure is not fatal — but
+// say it once, otherwise "why are my images missing on my laptop?" is unanswerable.
+var _cloudWarned=false;
+function _cloudUnavailable(err){ if(_cloudWarned) return; _cloudWarned=true;
+  console.warn('Labbook: Firebase Storage upload failed —',err);
+  toast('Images are saved on this device only (cloud storage unavailable). Use Backup to move them.'); }
+function handleImageFile(file,range){ if(!_activeEd || !file) return; toast('Adding image…'); _compressImage(file).then(function(dataURL){ var id='att'+uid(); return _attPut(id,dataURL).then(function(ok){ if(!ok) return; insertHtmlAtCaret('<img class="lb-att" data-att="'+id+'" src="'+dataURL+'">',range); _attUpload(id,dataURL); }); }).catch(function(){ toast('Could not add image.'); }); }
 function _warmAtt(id,url){ try{ fetch(url).then(function(r){return r.blob();}).then(function(b){ var fr=new FileReader(); fr.onload=function(){ _attPut(id,fr.result); }; fr.readAsDataURL(b); }).catch(function(){}); }catch(e){} }
 function hydrateAtt(root){ if(!root) return Promise.resolve(); var imgs=root.querySelectorAll('img.lb-att[data-att]'); if(!imgs.length) return Promise.resolve(); var atts=LB.data.attachments||{}; var ps=[]; Array.prototype.forEach.call(imgs,function(im){ if(im.getAttribute('src')) return; var id=im.dataset.att; ps.push(_attGet(id).then(function(d){ if(d){ im.src=d; im.classList.remove('att-missing'); return; } var meta=atts[id]; if(meta&&meta.url){ im.src=meta.url; im.classList.remove('att-missing'); _warmAtt(id,meta.url); } else im.classList.add('att-missing'); })); }); return Promise.all(ps); }
+// ── Data dump: arbitrary files attached to an experiment ──
+// Excel picklists, gel scans, cropped figures, Prism exports. Same storage contract as images:
+// metadata in LB.data (small, syncs + backs up), bytes in IndexedDB (never in the RTDB tree,
+// which is re-written whole on every save).
+var FILE_MAX_BYTES=25*1024*1024;
+var FILE_KINDS=[
+  {re:/^image\//,                                  kind:'image',  ic:'🖼', label:'Image'},
+  {re:/pdf/,                                       kind:'pdf',    ic:'📕', label:'PDF'},
+  {re:/sheet|excel|csv|comma-separated/,           kind:'sheet',  ic:'📊', label:'Spreadsheet'},
+  {re:/zip|compressed/,                            kind:'zip',    ic:'🗜', label:'Archive'},
+  {re:/word|document|text\//,                      kind:'doc',    ic:'📄', label:'Document'}
+];
+function fileKind(mime,name){
+  var m=(mime||'')+' '+(name||'').toLowerCase();
+  if(/\.(pzfx|pzf)$/i.test(name||'')) return {kind:'prism',ic:'📈',label:'Prism'};
+  for(var i=0;i<FILE_KINDS.length;i++) if(FILE_KINDS[i].re.test(m)) return FILE_KINDS[i];
+  return {kind:'other',ic:'📎',label:(((name||'').split('.').pop()||'file').toUpperCase())};
+}
+function _readAsDataURL(file){ return new Promise(function(res,rej){
+  var fr=new FileReader(); fr.onload=function(){ res(fr.result); }; fr.onerror=function(){ rej(fr.error); }; fr.readAsDataURL(file); }); }
+// Accept one dropped file onto an owner ('exp:<id>' or 'blk:<expId>:<blkId>').
+function addFileTo(key,file){
+  var o=_plateOwner(key); if(!o||!file) return Promise.resolve(false);
+  if(file.size>FILE_MAX_BYTES){
+    lbAlert('"'+file.name+'" is '+_fmtBytes(file.size)+'. The limit is '+_fmtBytes(FILE_MAX_BYTES)+' per file, because everything is stored in your browser and included in backups. Link to it or compress it instead.',{title:'File too large',danger:true});
+    return Promise.resolve(false);
+  }
+  return _storageRoom(file.size*1.37).then(function(room){   // base64 inflates ~37%
+    if(!room){ lbAlert('There is not enough browser storage left to keep "'+file.name+'" safely. Export a backup and remove old attachments first.',{title:'Not enough space',danger:true}); return false; }
+    // Images get compressed and reused as their own thumbnail; everything else is stored as-is.
+    var k=fileKind(file.type,file.name);
+    var prep = (k.kind==='image') ? _compressImage(file).catch(function(){ return _readAsDataURL(file); })
+                                  : _readAsDataURL(file);
+    return prep.then(function(dataURL){
+      var id='att'+uid();
+      return _attPut(id,dataURL).then(function(ok){
+        if(!ok) return false;
+        var arr=o.obj.files||(o.obj.files=[]);
+        arr.push({id:'f'+uid(), attId:id, name:file.name||'file', mime:file.type||'', size:file.size||0,
+                  kind:k.kind, added:Date.now(), caption:'', include:true});
+        o.exp.updated=Date.now(); save();
+        _attUpload(id,dataURL);
+        return true;
+      });
+    });
+  }).catch(function(){ toast('Could not read "'+(file.name||'file')+'"'); return false; });
+}
+function addFilesTo(key,list){
+  var files=Array.prototype.slice.call(list||[]); if(!files.length) return;
+  toast('Adding '+files.length+' file'+(files.length!==1?'s':'')+'…');
+  // Sequential: parallel FileReaders on big files spike memory and confuse quota checks.
+  var added=0;
+  files.reduce(function(p,f){ return p.then(function(){ return addFileTo(key,f).then(function(ok){ if(ok) added++; }); }); }, Promise.resolve())
+    .then(function(){ if(added) toast(added+' file'+(added!==1?'s':'')+' added'); renderEditor(); });
+}
+function _fileArr(key){ var o=_plateOwner(key); return o?(o.obj.files||[]):[]; }
+function removeFile(key,fid){ var o=_plateOwner(key); if(!o||!o.obj.files) return;
+  var f=o.obj.files.filter(function(x){return x.id===fid;})[0]; if(!f) return;
+  lbConfirm('Remove "'+f.name+'" from this experiment?',{danger:true,title:'Remove file'}).then(function(ok){
+    if(!ok) return;
+    o.obj.files=o.obj.files.filter(function(x){return x.id!==fid;});
+    o.exp.updated=Date.now(); save(); renderEditor(); gcAttachments(); });
+}
+function setFileCaption(key,fid,v){ var f=_fileArr(key).filter(function(x){return x.id===fid;})[0]; if(!f) return;
+  f.caption=v; var o=_plateOwner(key); if(o) o.exp.updated=Date.now(); queueSave(); }
+function toggleFilePdf(key,fid,on){ var f=_fileArr(key).filter(function(x){return x.id===fid;})[0]; if(!f) return;
+  f.include=!!on; var o=_plateOwner(key); if(o) o.exp.updated=Date.now(); save(); }
+function downloadFile(key,fid){ var f=_fileArr(key).filter(function(x){return x.id===fid;})[0]; if(!f) return;
+  _attGet(f.attId).then(function(d){
+    if(!d){ toast('That file is not on this device — restore a backup that contains it.'); return; }
+    var a=document.createElement('a'); a.href=d; a.download=f.name||'file';
+    document.body.appendChild(a); a.click(); a.remove(); });
+}
 // Drop IndexedDB blobs + attachment-map entries no longer referenced anywhere in the notebook.
 function _collectAttIds(){ var ids={}; function scan(h){ if(!h||h.indexOf('lb-att')<0) return; var re=/data-att="([^"]+)"/g,m; while((m=re.exec(h))) ids[m[1]]=1; }
   function scanFloat(arr){ (arr||[]).forEach(function(o){ if(o&&o.attId) ids[o.attId]=1; }); }
-  Object.keys(LB.data.experiments||{}).forEach(function(k){ var e=LB.data.experiments[k]; scan(e.html); scan(e.pubReady); scanFloat(e.floatImgs); (e.blocks||[]).forEach(function(b){ scan(b.html); scanFloat(b.floatImgs); }); });
+  // Data-dump files live here too. Miss them and gcAttachments() deletes every dropped file
+  // four seconds after the next load.
+  function scanFiles(arr){ (arr||[]).forEach(function(f){ if(f&&f.attId) ids[f.attId]=1; if(f&&f.thumbAttId) ids[f.thumbAttId]=1; }); }
+  Object.keys(LB.data.experiments||{}).forEach(function(k){ var e=LB.data.experiments[k]; scan(e.html); scan(e.pubReady); scanFloat(e.floatImgs); scanFiles(e.files); (e.blocks||[]).forEach(function(b){ scan(b.html); scanFloat(b.floatImgs); scanFiles(b.files); }); });
   Object.keys(LB.data.pages||{}).forEach(function(k){ scan(LB.data.pages[k].html); scanFloat(LB.data.pages[k].floatImgs); });
   Object.keys(LB.data.notebook||{}).forEach(function(k){ scan(LB.data.notebook[k].html); scanFloat(LB.data.notebook[k].floatImgs); });
   return ids; }
@@ -2810,6 +3042,15 @@ function lbConfirm(msg,opts){ opts=opts||{}; return new Promise(function(res){
     +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" id="lb-dlg-cancel">'+esc(opts.cancel||'Cancel')+'</button><button class="btn'+(opts.danger?' danger':'')+'" id="lb-dlg-ok">'+esc(opts.ok||(opts.danger?'Delete':'OK'))+'</button></div>';
   d.classList.add('open'); function done(v){ _lbDlgClose(); res(v); }
   d._onCancel=function(){ done(false); }; el('lb-dlg-cancel').onclick=function(){ done(false); }; el('lb-dlg-ok').onclick=function(){ done(true); };
+  setTimeout(function(){ el('lb-dlg-ok').focus(); },30);
+}); }
+// Single-button notice — for things the user must be told, not asked.
+function lbAlert(msg,opts){ opts=opts||{}; return new Promise(function(res){
+  var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
+  card.innerHTML='<div class="modal-t">'+esc(opts.title||'Notice')+'</div><div class="dlg-msg">'+esc(msg)+'</div>'
+    +'<div class="modal-act"><span class="grow"></span><button class="btn'+(opts.danger?' danger':'')+'" id="lb-dlg-ok">'+esc(opts.ok||'OK')+'</button></div>';
+  d.classList.add('open'); function done(){ _lbDlgClose(); res(true); }
+  d._onCancel=done; el('lb-dlg-ok').onclick=done;
   setTimeout(function(){ el('lb-dlg-ok').focus(); },30);
 }); }
 function lbPrompt(label,value,opts){ opts=opts||{}; return new Promise(function(res){
@@ -3077,6 +3318,11 @@ var PRINT_CSS='<style>#print-root{padding:0;color:#111}#print-root *{box-sizing:
  +'.pd-psum-r{white-space:nowrap;font-weight:700;font-family:ui-monospace,monospace}.pd-psum-r i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}'
  +'.pd-psum-n{text-align:right;color:#888;white-space:nowrap;padding-right:0}'
  +'.pd-pnote{font:400 8px/1.35 sans-serif;color:#666;margin:0 0 4px}'
+ +'.pd-file-fig{margin:8px 0;page-break-inside:avoid}.pd-file-fig img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px;display:block}'
+ +'.pd-file-fig figcaption{font:400 9px/1.35 sans-serif;color:#555;margin-top:3px}'
+ +'.pd-filelist{border-collapse:collapse;width:100%;margin-top:6px;page-break-inside:avoid}'
+ +'.pd-filelist td{font:400 9px/1.35 sans-serif;color:#333;padding:3px 8px 3px 0;border-bottom:1px solid #eee;vertical-align:top}'
+ +'.pd-fl-n{font-weight:700}.pd-fl-c{color:#666}'
  +'.pd-plate-g td.pd-pgl{font:700 8px/1.1 sans-serif;text-align:center}.pd-plate-g th.pd-pcl{font:600 5px/1 sans-serif;color:#555}'
  +'.pd-body{position:relative}.pd-float-wrap{position:absolute;left:0;top:0;right:0;min-height:100%;pointer-events:none}.pd-float-fig{position:absolute;page-break-inside:avoid}.pd-float-fig img{width:100%;height:100%;object-fit:contain;border-radius:6px;border:1px solid #ddd}.pd-float-cap{font:400 10px/1.3 sans-serif;color:#555;text-align:center;margin-top:2px}</style>';
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
@@ -3124,6 +3370,25 @@ function printExpByDay(e){ var groups=dayGroups(e); if(!groups.length) return ''
     var cards=g.blocks.map(function(b){ var hd=(b.title?'<span class="pd-btitle">'+esc(b.title)+'</span>':''); return '<div class="pd-block">'+(hd?'<div class="pd-bhd">'+hd+'</div>':'')+'<div class="pd-body" data-ctx="expblock:'+e.id+':'+b.id+'">'+pdRecipe(b)+pdPlate(b.plate)+(b.html||'')+'</div></div>'; }).join('');
     return '<div class="pd-daygroup">'+dh+cards+'</div>';
   }).join(''); }
+// Attached data in the export. Images print full-width (hydrateAtt fills the src before
+// window.print()); everything else is listed, because print cannot embed a foreign file.
+function pdFiles(files){
+  files=(files||[]).filter(function(f){ return f.include!==false; });
+  if(!files.length) return '';
+  var imgs=files.filter(function(f){ return f.kind==='image'; });
+  var rest=files.filter(function(f){ return f.kind!=='image'; });
+  var h='<div class="pd-sec-hd">Attached data</div>';
+  h+=imgs.map(function(f){
+    return '<figure class="pd-file-fig"><img class="lb-att" data-att="'+esc(f.attId)+'">'
+      +'<figcaption>'+esc(f.caption||f.name)+'</figcaption></figure>'; }).join('');
+  if(rest.length){
+    h+='<table class="pd-filelist">'+rest.map(function(f){
+      var k=fileKind(f.mime,f.name);
+      return '<tr><td class="pd-fl-n">'+esc(f.name)+'</td><td>'+esc(k.label)+'</td>'
+        +'<td>'+_fmtBytes(f.size||0)+'</td><td class="pd-fl-c">'+esc(f.caption||'')+'</td></tr>'; }).join('')+'</table>';
+  }
+  return h;
+}
 function foot(){ return '<div class="pd-foot">dHUB Labbook · exported '+fmtDate(todayStr())+'</div>'; }
 function buildPrintDoc(){
   var node=SEL.node, h=PRINT_CSS;
@@ -3145,7 +3410,7 @@ function buildPrintDoc(){
   var expPlate=e.plate?('<div class="pd-sec-hd">Plate layout</div>'+pdPlate(e.plate)):'';
   var steps=expPlate+((e.blocks&&e.blocks.length)?('<div class="pd-sec-hd">Protocol — step by step</div>'+printExpByDay(e)):'');
   var pub=(e.pubReady&&e.pubReady.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Publication ready</div><div class="pd-pub">'+e.pubReady+'</div>'):'';
-  return h+obs+steps+pub+foot();
+  return h+obs+steps+pub+pdFiles(e.files)+foot();
 }
 function printFloatLayers(root){ var nodes=root.querySelectorAll('.pd-body[data-ctx]'); var ps=[];
   Array.prototype.forEach.call(nodes,function(body){ var obj=_ctxObj(body.dataset.ctx); if(!obj) return; var arr=_floatArr(obj); if(!arr.length) return;
@@ -3176,12 +3441,31 @@ function _rotateSelfBackups(prefix,keep){ return (_selfDir?Promise.resolve(_self
 function chooseBackupDir(){ var pb=_parentBackup(); if(pb&&pb.pickDir){ return pb.pickDir().then(function(n){ toast('Backup folder: '+n); }).catch(function(){ toast('Could not open folder picker — backups will download.'); }); }
   if(typeof window.showDirectoryPicker==='function'){ return window.showDirectoryPicker({mode:'readwrite'}).then(function(h){ _selfDir=h; return _idbSet(h).then(function(){ toast('Backup folder: '+h.name); }); }).catch(function(){ toast('Folder picker unavailable — backups will download.'); }); }
   toast('No folder access — backups will download.'); return Promise.resolve(); }
-function doBackup(manual){ var name='labbook-'+todayStr()+'.json'; var text=JSON.stringify(LB.data,null,2); var pb=_parentBackup();
+// A backup that omits the image bytes is not a backup — restoring it on another machine used
+// to give you every gel image as an "att-missing" box. Pull every live attachment out of
+// IndexedDB and ship it inside the file.
+function _buildBackupPayload(){
+  var ids=Object.keys(_collectAttIds());
+  return Promise.all(ids.map(function(id){ return _attGet(id).then(function(d){ return d?[id,d]:null; }); }))
+    .then(function(pairs){
+      var blobs={}, bytes=0;
+      pairs.forEach(function(p){ if(p){ blobs[p[0]]=p[1]; bytes+=p[1].length; } });
+      return {payload:{_lbBackup:2, savedAt:Date.now(), data:LB.data, blobs:blobs}, count:Object.keys(blobs).length, bytes:bytes};
+    });
+}
+function doBackup(manual){ var name='labbook-'+todayStr()+'.json'; var pb=_parentBackup();
+  return _buildBackupPayload().then(function(r){ return _doBackupWrite(name,JSON.stringify(r.payload),manual,r,pb); })
+    .catch(function(){ return _doBackupWrite(name,JSON.stringify({_lbBackup:2,savedAt:Date.now(),data:LB.data,blobs:{}},null,2),manual,null,pb); });
+}
+function _doBackupWrite(name,text,manual,info,pb){
+  var note=info?(' ('+info.count+' attachment'+(info.count!==1?'s':'')+', '+_fmtBytes(text.length)+')'):'';
   var chain = pb&&pb.writeFile ? pb.writeFile(name,text).then(function(){return 'fs';})
     : (function(){ if(typeof window.showDirectoryPicker!=='function') return Promise.reject(); return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h) return Promise.reject(); _selfDir=h; return _verify(h).then(function(v){ if(!v) return Promise.reject(); return h.getFileHandle(name,{create:true}).then(function(fh){ return fh.createWritable().then(function(w){ return w.write(text).then(function(){ return w.close(); }); }); }).then(function(){return 'fs';}); }); }); })();
-  chain.then(function(){ try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-',5); }catch(e){} } else { _rotateSelfBackups('labbook-',5); } if(manual) toast('Backup saved to folder ✓'); })
-    .catch(function(){ _download(name,text); try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} if(manual) toast('Backup downloaded ✓ (right-click Backup to choose a folder)'); });
+  chain.then(function(){ try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-',5); }catch(e){} } else { _rotateSelfBackups('labbook-',5); } if(manual) toast('Backup saved to folder ✓'+note); })
+    .catch(function(){ _download(name,text); try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} if(manual) toast('Backup downloaded ✓'+note+' (right-click Backup to choose a folder)'); });
 }
+function _fmtBytes(n){ if(n<1024) return n+' B'; if(n<1048576) return (n/1024).toFixed(0)+' KB';
+  return (n/1048576).toFixed(n<10485760?1:0)+' MB'; }
 // ── Restore from a backup JSON (labbook-YYYY-MM-DD.json / dhub-backup-*.json) — REPLACES everything ──
 function openRestoreBackup(){ var inp=el('lb-restore-input'); if(!inp) return; inp.value=''; inp.click(); }
 function _restoreInputChange(inp){ var f=(inp.files||[])[0]; inp.value=''; if(f) restoreFromBackupFile(f); }
@@ -3189,15 +3473,28 @@ function restoreFromBackupFile(file){
   var reader=new FileReader();
   reader.onload=function(){
     var parsed; try{ parsed=JSON.parse(reader.result); }catch(e){ toast('Could not parse that file — not valid JSON.'); return; }
-    // Accept either a raw LB.data dump (Labbook's own backups) or the
-    // hub-shell wrapper ({app:'dHUB', journal:{labbook:{...}}}).
-    var data = (parsed && parsed.journal && parsed.journal.labbook) ? parsed.journal.labbook : parsed;
+    // Accept three shapes: the v2 backup ({_lbBackup:2, data, blobs}), a raw LB.data dump
+    // (Labbook's own pre-v2 backups), or the hub-shell wrapper ({journal:{labbook:{...}}}).
+    var blobs=(parsed && parsed._lbBackup && parsed.blobs) ? parsed.blobs : null;
+    var data = (parsed && parsed._lbBackup && parsed.data) ? parsed.data
+             : (parsed && parsed.journal && parsed.journal.labbook) ? parsed.journal.labbook : parsed;
     if(!data || typeof data!=='object' || !('experiments' in data)){ toast('That file doesn\'t look like a Labbook backup.'); return; }
-    lbConfirm('Restore this backup? This REPLACES your entire current notebook — anything added since this backup was made will be lost unless it\'s in another backup.',{danger:true,title:'Restore from backup',ok:'Replace everything'}).then(function(ok){
+    var nBlob=blobs?Object.keys(blobs).length:0;
+    var warn=blobs
+      ? ('It contains '+nBlob+' attachment'+(nBlob!==1?'s':'')+', which will be restored too.')
+      : 'This is an older backup with no attachment data — images and files will come back as empty placeholders.';
+    lbConfirm('Restore this backup? This REPLACES your entire current notebook — anything added since this backup was made will be lost unless it\'s in another backup.\n\n'+warn,{danger:true,title:'Restore from backup',ok:'Replace everything'}).then(function(ok){
       if(!ok) return;
-      LB.data=data; save();
-      toast('Restored — reloading…');
-      setTimeout(function(){ location.reload(); },600);
+      // Write the attachment bytes back into IndexedDB before swapping the tree, so the
+      // reload finds them already in place.
+      var ids=blobs?Object.keys(blobs):[];
+      Promise.all(ids.map(function(id){ return _attPut(id,blobs[id]); })).then(function(results){
+        var failed=results.filter(function(x){ return x===false; }).length;
+        LB.data=data; save();
+        if(failed){ lbAlert(failed+' of '+ids.length+' attachments could not be written to this browser\'s storage — the notebook text restored fine, but those images will be missing. Free up space and restore again.',{title:'Some attachments not restored',danger:true}).then(function(){ location.reload(); }); return; }
+        toast('Restored'+(ids.length?(' with '+ids.length+' attachment'+(ids.length!==1?'s':'')):'')+' — reloading…');
+        setTimeout(function(){ location.reload(); },600);
+      });
     });
   };
   reader.onerror=function(){ toast('Could not read that file.'); };

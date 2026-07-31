@@ -21,7 +21,7 @@ Usage:  python3 sync_fit_engine.py         # apply
 import os, re, sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-CANONICAL = ('Echo', 'Labcyte_Echo/labcyte_echo.html')
+CANONICAL = ('Echo', 'Echo/echo.html')
 TARGETS = [('Beacon', 'Beacon/beacon.html'), ('Lumina', 'Lumina/lumina.html')]
 # Shared engine functions. _4plVal3 is Echo-only (not synced). Only functions
 # present in a target get replaced.
