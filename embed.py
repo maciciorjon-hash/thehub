@@ -51,6 +51,24 @@ PROFILES = {
     'product': ['labbook', 'echo', 'protocols', 'pd', 'blot', 'dna', 'plasmids',
                 'cellarchive', 'bench', 'cryo', 'deg', 'ldi', 'spectra', 'beacon', 'lumina'],
 }
+# ── Standalone Labbook ────────────────────────────────────────────────────
+# Labbook + Archive as one self-contained file, with no dHUB around it. Archive is embedded
+# verbatim as a base64 iframe: it publishes its bridge onto window.parent, which inside Labbook
+# IS Labbook — so nothing in either app has to be forked or de-collided.
+if profile == 'labbook':
+    lb = open(os.path.join(BASE, 'Labbook/labbook.html'), encoding='utf-8').read()
+    arc = open(os.path.join(BASE, 'Archive/archive.html'), 'rb').read()
+    arc_b64 = base64.b64encode(arc).decode('ascii')
+    lb, n = re.subn(r'(?<=var ARCHIVE_B64 = ")[^"]*', arc_b64, lb)
+    if n != 1:
+        sys.stderr.write('labbook profile: expected 1 ARCHIVE_B64 placeholder, got %d\n' % n)
+        sys.exit(1)
+    out = OUT if args else os.path.join(BASE, 'labbook-standalone.html')
+    open(out, 'w', encoding='utf-8').write(lb)
+    print('Labbook standalone: %s (%s chars, Archive embedded: %s chars)'
+          % (out, f'{len(lb):,}', f'{len(arc_b64):,}'))
+    sys.exit(0)
+
 if profile != 'all':
     if profile not in PROFILES:
         sys.stderr.write('unknown profile: %s (known: %s)\n' % (profile, ', '.join(PROFILES)))

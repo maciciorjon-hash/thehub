@@ -378,6 +378,13 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .exp-dated-body{margin-top:6px;}
 
 .nb-body,.pg-body{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow-xs);min-height:200px;}
+/* Embedded Archive: parked off-screen (not display:none — its bridge scrapes a laid-out DOM,
+   and an unrendered document measures nothing). */
+#arc-host{position:fixed;left:-10000px;top:0;width:1200px;height:900px;overflow:hidden;pointer-events:none;}
+#arc-frame{width:100%;height:100%;border:0;display:block;background:var(--bg);}
+.arc-view{position:absolute;inset:0;display:flex;}
+.arc-mount{flex:1;min-width:0;display:flex;}
+#arc-frame.arc-visible{pointer-events:auto;}
 .nb-free{margin-bottom:14px;}
 /* Planner tasks shown inside the daily notebook */
 .nbt-list{border:1px solid var(--border);border-radius:10px;background:var(--surface2);padding:6px 4px;}
@@ -880,6 +887,9 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 <input type="file" id="lb-restore-input" accept=".json" style="display:none" onchange="_restoreInputChange(this)">
 <input type="file" id="lb-file-input" multiple style="display:none" onchange="_fileInputChange(this)">
 <div id="print-root"></div>
+<!-- Archive lives here when its view isn't on screen; the bridge scrapes its live DOM, so it
+     has to stay in the document rather than be torn down. -->
+<div id="arc-host" aria-hidden="true"></div>
 
 <script>
 // ── Theme ──
@@ -1131,9 +1141,9 @@ var CALC_KINDS={
 function calcDefaults(kind){ var c=CALC_KINDS[kind]; return c?JSON.parse(JSON.stringify(c.defaults)):{}; }
 // Archive calculator bridge (fetch schema + drive the real calc).
 var _arcSchemaCache={};
-function archiveSchema(pid){ if(_arcSchemaCache[pid]) return _arcSchemaCache[pid]; try{ if(window.parent&&window.parent.ARCHIVE_CALC_SCHEMA){ var s=window.parent.ARCHIVE_CALC_SCHEMA(pid); if(s){ _arcSchemaCache[pid]=s; return s; } } }catch(e){} return null; }
+function archiveSchema(pid){ if(_arcSchemaCache[pid]) return _arcSchemaCache[pid]; try{ var _w=_arcWin(); if(_w&&_w.ARCHIVE_CALC_SCHEMA){ var s=_w.ARCHIVE_CALC_SCHEMA(pid); if(s){ _arcSchemaCache[pid]=s; return s; } } }catch(e){} return null; }
 function archiveName(pid){ var m=archiveIndex().filter(function(p){return p.id===pid;})[0]; return m?m.name:pid; }
-function archiveComputeRecipe(b){ try{ if(window.parent&&window.parent.ARCHIVE_COMPUTE){ var r=window.parent.ARCHIVE_COMPUTE(b.calc.pid,b.calc.inputs||{}); if(r&&r.steps&&r.steps.length){ var html=calcRecipeHtml({steps:r.steps}); b.calc.recipe=html; return html; } } }catch(e){} return b.calc.recipe||''; }
+function archiveComputeRecipe(b){ try{ var _w=_arcWin(); if(_w&&_w.ARCHIVE_COMPUTE){ var r=_w.ARCHIVE_COMPUTE(b.calc.pid,b.calc.inputs||{}); if(r&&r.steps&&r.steps.length){ var html=calcRecipeHtml({steps:r.steps}); b.calc.recipe=html; return html; } } }catch(e){} return b.calc.recipe||''; }
 function expCalcRecipe(b){ if(!b||!b.calc) return '';
   if(b.calc.kind==='archive') return archiveComputeRecipe(b);
   if(!CALC_KINDS[b.calc.kind]) return ''; try{ return CALC_KINDS[b.calc.kind].compute(b.calc.inputs||{}); }catch(e){ return ''; } }
@@ -1957,6 +1967,7 @@ var NB_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke=
 var PAGE_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>';
 var SEM_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="10" rx="3"/><path d="M6 11a6 6 0 0012 0M12 17v3M9 21h6"/></svg>';
 var AB_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3v6l-3 9a2 2 0 002 3h14a2 2 0 002-3l-3-9V3M6 3h12M8 15h8"/></svg>';
+var ARC_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 5.5A2.5 2.5 0 015.5 3H11v16H5.5A2.5 2.5 0 003 21.5v-16z"/><path d="M21 5.5A2.5 2.5 0 0018.5 3H13v16h5.5A2.5 2.5 0 0121 21.5v-16z"/></svg>';
 var WK_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h2M11 13h2M15 13h2M7 17h2M11 17h2"/></svg>';
 function secIcon(s){ return s.kind==='seminars'?SEM_ICON:(s.kind==='antibodies'?AB_ICON:PAGE_ICON); }
 function secLeaf(node,label,icon,delCall,ctx){
@@ -1971,6 +1982,7 @@ function renderSections(){
   h+='<div class="pane-lbl" style="display:flex;align-items:center;">Journal<button class="collapse-btn" onclick="toggleCollapse(\'sec\')" title="Collapse">&#10094;</button></div>';
   h+=secLeaf({kind:'notebook'},'Notebook',NB_ICON,null);
   h+=secLeaf({kind:'week'},'Week planner',WK_ICON,null);
+  if(archiveEmbedded()) h+=secLeaf({kind:'archive'},'Archive',ARC_ICON,null);
   h+='<div class="pane-lbl">General</div>';
   LB.data.generalSections.forEach(function(s){ h+=secLeaf({kind:'general',sectionId:s.id}, s.name, secIcon(s), "delGeneral('"+s.id+"')", "ctxGeneral(event,'"+s.id+"')"); });
   h+='<div class="add-row"><input id="new-gen" placeholder="New section…" autocomplete="off" onkeydown="if(event.key===\'Enter\')addGeneral()"><button onclick="addGeneral()">+</button></div>';
@@ -2101,7 +2113,7 @@ function pageItemExp(e){ var code=isCoded(e)?('<div class="page-code">'+esc(e.co
 function renderPages(){
   var host=el('pane-pages'); var node=SEL.node;
   var ppw=el('pane-pages-wrap'), spg=el('split-pages'); if(ppw) ppw.style.display=''; if(spg) spg.style.display='';
-  if(node.kind==='week'){ if(ppw) ppw.style.display='none'; if(spg) spg.style.display='none'; host.innerHTML=''; return; }
+  if(node.kind==='week'||node.kind==='archive'){ if(ppw) ppw.style.display='none'; if(spg) spg.style.display='none'; host.innerHTML=''; return; }
   if(node.kind==='notebook'){
     var dset=allBlockDates(); Object.keys(LB.data.notebook).forEach(function(k){dset[k]=1;});
     var days=Object.keys(dset).sort(); if(LAYOUT.daysDesc) days.reverse();
@@ -2199,7 +2211,7 @@ var PUB_SEED={
   __seq:'All constructs were verified by Sanger and whole-plasmid (Plasmidsaurus) sequencing.',
   __nanobret:'Target engagement was assessed by NanoBRET: cells expressing the NanoLuc–target fusion were treated with tracer and compound and the acceptor:donor BRET ratio recorded.'
 };
-function archiveCalc(pid){ try{ if(window.parent && window.parent.ARCHIVE_CALC) return window.parent.ARCHIVE_CALC(pid); }catch(e){} return null; }
+function archiveCalc(pid){ try{ var _w=_arcWin(); if(_w && _w.ARCHIVE_CALC) return _w.ARCHIVE_CALC(pid); }catch(e){} return null; }
 // Render a calculator's computed recipe ({label,bullets}[]) as editable HTML.
 function calcRecipeHtml(calc){ if(!calc||!calc.steps||!calc.steps.length) return ''; return calc.steps.map(function(s){ var b=(s.bullets||[]).map(function(x){return '<li>'+x+'</li>';}).join(''); return '<p><strong>'+esc(s.label||'')+'</strong></p>'+(b?'<ul>'+b+'</ul>':''); }).join(''); }
 // Build one dated-block's html for a protocol part: concise protocol prose + calculator recipe + a link to the live calc.
@@ -2342,7 +2354,9 @@ function newSeminar(){ if(SEL.node.kind!=='general') return; var pg={id:uid(),se
 var _saveT=null; function queueSave(){ clearTimeout(_saveT); _saveT=setTimeout(save,600); }
 function renderEditor(){
   var host=el('pane-ed'); (el('export-btn')||{style:{}}).style.display='none'; var node=SEL.node;
+  if(node.kind!=='archive') _arcPark();
   if(node.kind==='week'){ return renderWeekPlanner(host); }
+  if(node.kind==='archive'){ return renderArchiveView(host); }
   if(node.kind==='notebook' && SEL.page==='__ongoing__'){ return renderOngoing(host); }
   if(node.kind==='notebook' && SEL.page){ return renderNotebookEditor(host); }
   if(node.kind==='general'){ var sec=genSecById(node.sectionId); if(sec&&sec.kind==='antibodies'){ return renderAntibodies(host); }
@@ -3383,7 +3397,7 @@ function renamePage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbPrompt('Ren
 var AC={open:false};
 function acClose(){ AC.open=false; el('acpop').classList.remove('open'); }
 function caretToken(){ var s=window.getSelection(); if(!s||!s.rangeCount) return null; var r=s.getRangeAt(0); if(!r.collapsed) return null; var node=r.startContainer; if(node.nodeType!==3) return null; var text=node.textContent.slice(0,r.startOffset); var m=text.match(/(^|\s)([@#\/])([\w\-α]*)$/); if(!m) return null; return {trigger:m[2],query:m[3],len:m[2].length+m[3].length,range:r}; }
-function archiveIndex(){ try{ if(window.parent && window.parent.ARCHIVE_INDEX) return window.parent.ARCHIVE_INDEX; }catch(e){} return []; }
+function archiveIndex(){ try{ var _w=_arcWin(); if(_w && _w.ARCHIVE_INDEX) return _w.ARCHIVE_INDEX; }catch(e){} return []; }
 function acScan(){ if(!_activeEd) return; var t=caretToken(); if(!t){ if(AC.open) acClose(); return; }
   AC.trigger=t.trigger; AC.query=t.query; AC.tokenLen=t.len; AC.node=t.range.startContainer; AC.offset=t.range.startOffset;
   var items=[], q=t.query.toLowerCase();
@@ -3440,12 +3454,68 @@ function openProtocolIns(){ if(!_activeEd) return; var r=_saveSel(); toast('Load
   var items=idx.map(function(p){ return {id:p.id,label:p.name,sub:'protocol',ic:'A',c:'#a56983'}; });
   lbPicker('Insert Archive protocol (link)',items,function(it){ insertHtmlAtCaret('<a class="lb-link proto" data-app="protocols" data-pid="'+esc(String(it.id))+'" contenteditable="false">'+esc(it.label)+' &#8599;</a>&nbsp;',r); });
   }); }
-function archiveSteps(pid){ try{ if(window.parent && window.parent.ARCHIVE_STEPS) return window.parent.ARCHIVE_STEPS(pid); }catch(e){} return null; }
-// Ensure Archive is loaded (populates window.parent.ARCHIVE_INDEX/STEPS), then run cb when ready.
+function archiveSteps(pid){ try{ var _w=_arcWin(); if(_w && _w.ARCHIVE_STEPS) return _w.ARCHIVE_STEPS(pid); }catch(e){} return null; }
+// ── Archive bridge ──────────────────────────────────────────────────────
+// Archive publishes ARCHIVE_INDEX/CALC/CALC_SCHEMA/COMPUTE/STEPS onto ITS window.parent.
+// That means an Archive running in an iframe *inside Labbook* publishes straight onto this
+// window — so the standalone build embeds Archive verbatim (no forking, no CSS surgery) and
+// every consumer below keeps working unchanged. Inside dHUB the placeholder stays empty and we
+// use the shell's Archive instead.
+var ARCHIVE_B64 = "";           // filled by embed.py for the standalone build
+var _arcFrame=null, _arcLoading=false;
+function _arcHasLocal(){ try{ return !!(window.ARCHIVE_INDEX && window.ARCHIVE_INDEX.length); }catch(e){ return false; } }
+// Whichever window is actually holding the Archive globals.
+function _arcWin(){ if(_arcHasLocal()) return window; try{ return window.parent||window; }catch(e){ return window; } }
+function archiveEmbedded(){ return !!ARCHIVE_B64; }
+// Create (once) the hidden iframe that hosts Archive's document. Kept in the DOM so the
+// scraper bridge (ARCHIVE_STEPS/COMPUTE walk Archive's live DOM) has something to read.
+function _arcEnsureFrame(){
+  if(_arcFrame||!ARCHIVE_B64) return _arcFrame;
+  var host=el('arc-host'); if(!host) return null;
+  _arcFrame=document.createElement('iframe');
+  _arcFrame.id='arc-frame';
+  _arcFrame.setAttribute('sandbox','allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups');
+  _arcFrame.srcdoc=decodeB64(ARCHIVE_B64);
+  host.appendChild(_arcFrame);
+  return _arcFrame;
+}
+function decodeB64(b64){
+  var bin=atob(b64), bytes=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
+}
+// Ensure Archive is loaded, then run cb(ok).
 function ensureArchive(cb){
-  try{ if(window.parent && (window.parent.ARCHIVE_INDEX||[]).length){ cb(true); return; } }catch(e){}
+  cb=cb||function(){};
+  if(_arcHasLocal()) return cb(true);
+  try{ if(window.parent && window.parent!==window && (window.parent.ARCHIVE_INDEX||[]).length){ cb(true); return; } }catch(e){}
+  if(ARCHIVE_B64){
+    _arcEnsureFrame();
+    var t=0; (function poll(){ t++; if(_arcHasLocal()) return cb(true); if(t>60) return cb(false); setTimeout(poll,100); })();
+    return;
+  }
   try{ if(window.parent && window.parent.hubEnsureApp) window.parent.hubEnsureApp('protocols'); }catch(e2){}
-  var tries=0; (function poll(){ tries++; var ok=false; try{ ok=(window.parent.ARCHIVE_INDEX||[]).length>0; }catch(e){} if(ok) return cb(true); if(tries>20) return cb(false); setTimeout(poll,150); })();
+  var tries=0; (function poll2(){ tries++; var ok=false; try{ ok=(window.parent.ARCHIVE_INDEX||[]).length>0; }catch(e){} if(ok) return cb(true); if(tries>20) return cb(false); setTimeout(poll2,150); })();
+}
+// The browsable Archive view — the point of embedding it is being able to look a protocol up,
+// on a phone, without the notebook getting in the way.
+function renderArchiveView(host){
+  (el('export-btn')||{style:{}}).style.display='none';
+  if(!archiveEmbedded()){
+    host.innerHTML='<div class="ed-empty"><div class="t">Archive isn\'t part of this build</div><div>Open Archive from the dHUB home instead.</div></div>';
+    return;
+  }
+  host.innerHTML='<div class="arc-view"><div id="arc-mount" class="arc-mount"></div></div>';
+  _arcEnsureFrame();
+  var mount=el('arc-mount');
+  if(_arcFrame && mount && _arcFrame.parentNode!==mount) mount.appendChild(_arcFrame);
+  if(_arcFrame){ _arcFrame.classList.add('arc-visible'); }
+  renderDockPanels();
+}
+// Park the frame back in the hidden host so it keeps living (and keeps its state) between views.
+function _arcPark(){
+  var host=el('arc-host');
+  if(_arcFrame&&host&&_arcFrame.parentNode!==host){ _arcFrame.classList.remove('arc-visible'); host.appendChild(_arcFrame); }
 }
 function protocolStepsHtml(it,steps){
   var h='<div class="lb-proto-hd"><a class="lb-link proto" data-app="protocols" data-pid="'+esc(String(it.id))+'" contenteditable="false">'+esc(it.label)+' &#8599;</a></div>';

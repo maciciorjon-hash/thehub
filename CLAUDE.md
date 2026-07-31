@@ -98,6 +98,7 @@ The_Hub/
 python3 embed.py                      # → dHUB.html  (local/offline use — every app)
 python3 embed.py dist/index.html     # → dist/index.html  (CI/Pages build)
 python3 embed.py --profile=product dist/index.html   # → only the product apps
+python3 embed.py --profile=labbook                   # → labbook-standalone.html (Labbook + Archive)
 ```
 
 The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix bug. `embed.py` fails loudly (exit 1) if a source file is missing or a key doesn't match exactly one placeholder.
@@ -350,6 +351,30 @@ OK/Cancel). Format switching **keeps** wells that still fit the new grid — unl
 
 Blueprint was the design reference for the grid but shares **no code** — its brackets, colour
 picker, annotations and heatmap were deliberately not ported.
+
+## Standalone Labbook (Labbook + Archive in one file)
+
+`python3 embed.py --profile=labbook` → `labbook-standalone.html` (~920 KB): the notebook,
+experiments, week planner **and the full Archive** — 33 protocols with their 24 live
+calculators — with no dHUB and no parent frame.
+
+**Archive is embedded as a base64 iframe, not inlined.** Archive publishes its bridge
+(`ARCHIVE_INDEX/CALC/CALC_SCHEMA/COMPUTE/STEPS`) onto *its* `window.parent`, so an Archive
+running inside Labbook publishes straight onto Labbook's window. That means:
+- `archive.html` is used **verbatim** — no fork, no CSS/ID de-collision, and it stays its own
+  app in dHUB.
+- Four of the five bridge functions are DOM scrapers (`ARCHIVE_STEPS` walks `.proto-section`;
+  `ARCHIVE_COMPUTE` mutates Archive's live inputs, fires synthetic events and reads
+  `_lastCalcTable` back). They need a **laid-out** document, so the parked frame is positioned
+  off-screen (`#arc-host`, `left:-10000px`) — never `display:none`, which would measure nothing.
+- `_arcWin()` resolves which window holds the globals: the local frame if `ARCHIVE_B64` was
+  filled, otherwise `window.parent` (the dHUB shell). `archiveEmbedded()` gates the Archive nav
+  node, so the dHUB build shows no duplicate.
+- The frame is created once and moved between `#arc-host` and the visible `.arc-mount`
+  (`_arcPark()`), so Archive keeps its calculator state across view switches.
+
+Archive is a **browsable view** in the standalone build (nav node next to Week planner), not a
+hidden data source — looking a protocol up on a phone is a first-class use case.
 
 ## Attachments & data-dump files (Labbook)
 
