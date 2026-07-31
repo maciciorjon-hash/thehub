@@ -376,6 +376,31 @@ running inside Labbook publishes straight onto Labbook's window. That means:
 Archive is a **browsable view** in the standalone build (nav node next to Week planner), not a
 hidden data source — looking a protocol up on a phone is a first-class use case.
 
+### Standalone honesty
+
+Things the standalone build used to claim but not do, now fixed — worth knowing because they
+are the failure modes a customer would hit first:
+
+- **The status pill lied.** With no parent Firebase, `lbFb()` returns undefined but `save()`
+  still called `setSync(true)`, so it read "Saved ✓ / Saved and synced" on a build that syncs
+  nowhere. `hasCloud()` now gates it: standalone shows **"Saved on this device"**.
+- **Auto-backup never ran on Firefox or Safari.** `maybeAutoBackup` gated on the File System
+  Access API, so on the browsers where the backup file is the *only* durability guarantee,
+  nothing happened, silently. It now falls back to `_snapshotBackup()` — a rolling 3-day v2
+  payload in IndexedDB (`snapshot:<date>` in the `lb_backup` store), restorable from
+  **View → Snapshots…** (`restoreFromSnapshot`).
+- **A fresh install silently downloaded a JSON** on first load, because the same path fell
+  through to `_download()` with no directory handle and no user gesture. It now writes a
+  snapshot and asks once (`lb_backup_nudged`) for a real folder.
+- `_attUpload` returned *before* `_cloudUnavailable()` when no storage was configured, so the
+  "images are on this device only" warning never fired in the build that needed it.
+- Exported PDFs were footed "dHUB Labbook". `_brand()` reports **"Labbook"** when there is no
+  host frame.
+- **Dark mode was unreachable** — the palette existed but only responded to a `postMessage`
+  from the shell. There's a **View → Dark mode** toggle now.
+- Cross-app links (`data-app`) were styled, clickable and inert with no host. They now route a
+  `protocols` link to the embedded Archive, and otherwise say the target isn't in this build.
+
 ## Attachments & data-dump files (Labbook)
 
 **Attachment bytes never go in `LB.data`.** `save()` re-`set()`s the whole tree to RTDB on a

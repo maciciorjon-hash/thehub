@@ -1172,7 +1172,7 @@ function addArchiveCalcToBlock(id,pid){ var b=_blkById(id); if(!b) return; b.cal
 // Render an Archive calculator inline (generic form from ARCHIVE_CALC_SCHEMA + live recipe).
 function archiveCalcHtml(b){ var name=archiveName(b.calc.pid); var sch=archiveSchema(b.calc.pid);
   var head='<div class="cc-hd"><span class="cc-tag">&#8721; '+esc(name)+'</span><span class="cc-src">Archive</span><span class="grow"></span><button class="cc-x" title="Remove calculator" onclick="calcRemove(\''+b.id+'\')">&times;</button></div>';
-  if(!sch){ return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+'<div class="cc-recipe" id="ccr-'+b.id+'">'+(b.calc.recipe||'<span class="cc-load">Open this in dHUB (with Archive) to load the calculator inputs.</span>')+'</div></div>'; }
+  if(!sch){ return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+'<div class="cc-recipe" id="ccr-'+b.id+'">'+(b.calc.recipe||'<span class="cc-load">'+(archiveEmbedded()?'Loading the calculator…':'The Archive protocol library isn\'t available in this build, so this calculator can\'t be loaded.')+'</span>')+'</div></div>'; }
   var inp=b.calc.inputs||(b.calc.inputs={});
   var fieldHtml=function(f){ if(inp[f.id]==null) inp[f.id]=f.value; var v=inp[f.id];
     if(f.type==='select'){ var opts=(f.options||[]).map(function(o){ return '<option value="'+esc(o.value)+'"'+(String(v)===String(o.value)?' selected':'')+'>'+esc(o.label)+'</option>'; }).join(''); return '<label class="ci-f"><span>'+esc(f.label)+'</span><select data-k="'+esc(f.id)+'" onchange="calcUpd(\''+b.id+'\')">'+opts+'</select></label>'; }
@@ -1883,10 +1883,21 @@ var _lbFbRef=null;
 function lbFb(){ if(_lbFbRef!==null) return _lbFbRef; try{ if(window.parent && window.parent.firebase){ _lbFbRef=window.parent.firebase.database().ref('journal/labbook'); } else _lbFbRef=undefined; }catch(e){ _lbFbRef=undefined; } return _lbFbRef; }
 var _syncT=null,_adopting=false,_synced=true;
 function setSync(ok){ _synced=ok; updateStatus(); }
+// True only when there is a real cloud target. Standalone there is none, and the status pill
+// must not claim otherwise — "Saved and synced" on a build that syncs nowhere is the kind of
+// false durability promise that loses somebody's data.
+function hasCloud(){ return !!lbFb(); }
 function updateStatus(){ var p=el('lb-status'); if(!p) return; var txt=el('lb-status-txt'); var on=navigator.onLine;
   p.classList.remove('online','offline','saving');
   // A storage failure outranks everything else — never show "Saved ✓" when it isn't true.
   if(_storageBroken){ p.classList.add('offline'); if(txt) txt.textContent='Not saved!'; p.title='Browser storage rejected a write — see the warning. Export a backup now.'; return; }
+  if(!hasCloud()){
+    // No cloud configured at all (standalone build): saved, but only here.
+    p.classList.add(_synced?'online':'saving');
+    if(txt) txt.textContent=_synced?'Saved on this device':'Saving…';
+    p.title=_synced?'Saved to this browser. There is no cloud sync in this build — use Backup to move your notebook between machines.':'Saving to this browser…';
+    return;
+  }
   if(!on){ p.classList.add('offline'); if(txt) txt.textContent='Offline'; p.title='Offline — changes saved locally'; }
   else if(_synced){ p.classList.add('online'); if(txt) txt.textContent='Saved ✓'; p.title='Saved and synced'; }
   else { p.classList.add('saving'); if(txt) txt.textContent='Saving…'; p.title='Saving changes…'; }
@@ -2744,7 +2755,7 @@ function buildWeekPrintDoc(){
       return '<div class="wp-blk" style="border-left-color:'+pc+'"><span class="wp-box"></span><b>'+esc(x.exp.code||x.exp.title||'Exp')+'</b><span>'+esc(x.block.title||'')+' · '+esc(fmtDate(x.block.date))+'</span></div>'; }).join('');
     h+='</div>';
   }
-  h+='<div class="wp-foot">dHUB Labbook · Week planner · exported '+fmtDate(todayStr())+'</div>';
+  h+='<div class="wp-foot">'+_brand()+' · Week planner · exported '+fmtDate(todayStr())+'</div>';
   return h;
 }
 function exportWeekPDF(){ var pr=el('print-root'); pr.innerHTML=buildWeekPrintDoc(); setTimeout(function(){ try{ window.print(); }catch(e){} }, 60); }
@@ -2848,6 +2859,8 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="Show or hide the right panel (Outline · Tags · Info)" onmousedown="event.preventDefault();toggleDock()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>')+'</span><span class="rb-lbtn-lbl">Right panel</span></button>'
   +'<button class="rb-lbtn" id="export-btn" title="Export the current entry to a PDF" onmousedown="event.preventDefault();exportPDF()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>')+'</span><span class="rb-lbtn-lbl">Export PDF</span></button>'
   +'<button class="rb-lbtn" id="backup-btn" title="Save a dated backup of the whole notebook to a folder (right-click to choose the folder). Runs automatically once a day too." onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
+  +'<button class="rb-lbtn" title="Restore from a daily snapshot kept inside this browser (a fallback when you have no backup file)" onmousedown="event.preventDefault();restoreFromSnapshot()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Snapshots…</span></button>'
+  +'<button class="rb-lbtn" title="Switch between light and dark" onmousedown="event.preventDefault();toggleTheme()"><span class="rb-lbtn-ico">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>')+'</span><span class="rb-lbtn-lbl">'+(_themeIsDark()?'Light mode':'Dark mode')+'</span></button>'
   +'<button class="rb-lbtn" title="Restore the whole notebook from a backup JSON file — REPLACES all current content" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore…</span></button>'
   +'</div>'; }
 var _rbTab='home';
@@ -2984,7 +2997,15 @@ document.addEventListener('click',function(e){
   var abx=e.target.closest && e.target.closest('.lb-ab');
   if(abx && abx.dataset.ab){ e.preventDefault(); var s=LB.data.generalSections.filter(function(x){return x.kind==='antibodies';})[0]; if(s){ window._abQ=(LB.data.antibodies[abx.dataset.ab]||{}).name||''; selectNode('general','',s.id); } return; }
   var a=e.target.closest && e.target.closest('a.lb-link');
-  if(a){ e.preventDefault(); if(a.dataset.exp){ openExp(a.dataset.exp); } else if(a.dataset.page){ var pg=LB.data.pages[a.dataset.page]; if(pg){ selectNode('general','',pg.sectionId); SEL.page=a.dataset.page; renderAll(); } } else if(a.dataset.app){ try{ if(window.parent && window.parent.openApp) window.parent.openApp(a.dataset.app, undefined, a.dataset.pid||undefined); }catch(err){} } }
+  if(a){ e.preventDefault(); if(a.dataset.exp){ openExp(a.dataset.exp); } else if(a.dataset.page){ var pg=LB.data.pages[a.dataset.page]; if(pg){ selectNode('general','',pg.sectionId); SEL.page=a.dataset.page; renderAll(); } } else if(a.dataset.app){
+      // Cross-app links only mean something when a host is there to route them. Standalone,
+      // an embedded Archive can still answer a protocol link; anything else should say so
+      // rather than look clickable and do nothing.
+      var routed=false;
+      try{ if(window.parent && window.parent!==window && window.parent.openApp){ window.parent.openApp(a.dataset.app, undefined, a.dataset.pid||undefined); routed=true; } }catch(err){}
+      if(!routed && a.dataset.app==='protocols' && archiveEmbedded()){ selectNode('archive'); routed=true; }
+      if(!routed) toast('That link opens "'+(a.dataset.app||'another app')+'", which isn\'t part of this build.');
+    } }
 });
 
 // ── Setters ──
@@ -3048,7 +3069,7 @@ function _compressImage(file){ return new Promise(function(res,rej){ var url=URL
 // {id:{url}} map in LB.data.attachments syncs cross-device via RTDB + appears in backups.
 var _lbStore=null,_lbStoreTried=false;
 function lbStorage(){ if(_lbStoreTried) return _lbStore; _lbStoreTried=true; try{ if(window.parent && window.parent.firebase && window.parent.firebase.storage){ _lbStore=window.parent.firebase.storage(); } }catch(e){ _lbStore=null; } return _lbStore; }
-function _attUpload(id,dataURL){ var st=lbStorage(); if(!st) return Promise.resolve(null);
+function _attUpload(id,dataURL){ var st=lbStorage(); if(!st){ _cloudUnavailable('no storage configured'); return Promise.resolve(null); }
   try{ var ref=st.ref('labbook/'+id); return ref.putString(dataURL,'data_url').then(function(){ return ref.getDownloadURL(); }).then(function(url){ (LB.data.attachments||(LB.data.attachments={}))[id]={url:url}; save(); _cloudWarned=true; return url; }).catch(function(err){ _cloudUnavailable(err); return null; }); }catch(e){ _cloudUnavailable(e); return Promise.resolve(null); } }
 // Cloud copy is a bonus on top of local IndexedDB + backups, so a failure is not fatal — but
 // say it once, otherwise "why are my images missing on my laptop?" is unanswerable.
@@ -3502,7 +3523,7 @@ function ensureArchive(cb){
 function renderArchiveView(host){
   (el('export-btn')||{style:{}}).style.display='none';
   if(!archiveEmbedded()){
-    host.innerHTML='<div class="ed-empty"><div class="t">Archive isn\'t part of this build</div><div>Open Archive from the dHUB home instead.</div></div>';
+    host.innerHTML='<div class="ed-empty"><div class="t">Archive isn\'t part of this build</div><div>This build reads the protocol library from its host application.</div></div>';
     return;
   }
   host.innerHTML='<div class="arc-view"><div id="arc-mount" class="arc-mount"></div></div>';
@@ -3723,7 +3744,9 @@ function pdFiles(files){
   }
   return h;
 }
-function foot(){ return '<div class="pd-foot">dHUB Labbook · exported '+fmtDate(todayStr())+'</div>'; }
+// Standalone builds must not carry dHUB branding into a customer's exported PDF.
+function _brand(){ try{ return (window.parent&&window.parent!==window)?'dHUB Labbook':'Labbook'; }catch(e){ return 'Labbook'; } }
+function foot(){ return '<div class="pd-foot">'+_brand()+' · exported '+fmtDate(todayStr())+'</div>'; }
 function buildPrintDoc(){
   var node=SEL.node, h=PRINT_CSS;
   if(node.kind==='notebook' && SEL.page && SEL.page!=='__ongoing__'){ var D=SEL.page; var pg=LB.data.notebook[D]||{html:''};
@@ -3834,9 +3857,88 @@ function restoreFromBackupFile(file){
   reader.onerror=function(){ toast('Could not read that file.'); };
   reader.readAsText(file);
 }
-function maybeAutoBackup(){ var last=''; try{ last=localStorage.getItem('lb_last_backup')||''; }catch(e){} if(last===todayStr()) return; var pb=_parentBackup(); var hasFs=(pb&&pb.writeFile)||typeof window.showDirectoryPicker==='function'; if(hasFs) doBackup(false); }
+// Daily safety net.
+//
+// Two things were wrong here. It only ran when the File System Access API existed, so on
+// Firefox and Safari — where the backup file is the ONLY durability guarantee — no automatic
+// backup ever happened, silently. And when a folder had never been chosen it fell through to
+// _download(), so a fresh install spat a JSON file into Downloads on first load with no user
+// action. Now: write to the folder if we have one, otherwise keep a rolling snapshot in
+// IndexedDB and ask (once) for somewhere real to put it.
+function maybeAutoBackup(){
+  var last=''; try{ last=localStorage.getItem('lb_last_backup')||''; }catch(e){}
+  if(last===todayStr()) return;
+  var pb=_parentBackup();
+  if(pb&&pb.writeFile){ doBackup(false); return; }
+  (typeof window.showDirectoryPicker==='function' ? _idbGet() : Promise.resolve(null))
+    .catch(function(){ return null; })
+    .then(function(h){
+      if(h){ doBackup(false); return; }          // folder already chosen — normal path
+      return _snapshotBackup().then(function(ok){ if(ok) _nudgeBackupFolder(); });
+    });
+}
+// Rolling local snapshot: not a substitute for a real backup file, but it means a browser that
+// can't write to disk still has yesterday's notebook recoverable.
+function _snapshotBackup(){
+  return _buildBackupPayload().then(function(r){
+    return _idb().then(function(db){
+      return new Promise(function(res){
+        try{
+          var tx=db.transaction('h','readwrite').objectStore('h');
+          tx.put({at:Date.now(),date:todayStr(),json:JSON.stringify(r.payload)},'snapshot:'+todayStr());
+          // Keep the last 3 days only — this data is large.
+          var all=tx.getAllKeys?tx.getAllKeys():null;
+          if(all) all.onsuccess=function(){
+            var keys=(all.result||[]).filter(function(k){ return String(k).indexOf('snapshot:')===0; }).sort();
+            var extra=keys.length-3;
+            for(var i=0;i<extra;i++){ try{ db.transaction('h','readwrite').objectStore('h').delete(keys[i]); }catch(e){} }
+          };
+          tx.transaction.oncomplete=function(){ try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} res(true); };
+          tx.transaction.onerror=function(){ res(false); };
+        }catch(e){ res(false); }
+      });
+    });
+  }).catch(function(){ return false; });
+}
+// Ask once — never on every load — for a folder to keep real backup files in.
+function _nudgeBackupFolder(){
+  try{ if(localStorage.getItem('lb_backup_nudged')==='1') return; localStorage.setItem('lb_backup_nudged','1'); }catch(e){}
+  var canPick=(typeof window.showDirectoryPicker==='function');
+  lbAlert(canPick
+    ? 'Your notebook is saved in this browser, and a daily snapshot is kept here too — but that all lives on this one device. Use Backup (in the View tab) to choose a folder for real backup files.'
+    : 'Your notebook is saved in this browser, and a daily snapshot is kept here too — but that all lives on this one device, and this browser cannot write backup files automatically. Use Backup (in the View tab) now and then to download one.',
+    {title:'Keep a backup somewhere else'});
+}
+// Recover from the rolling snapshot when there is no backup file to hand.
+function restoreFromSnapshot(){
+  _idb().then(function(db){
+    var os=db.transaction('h','readonly').objectStore('h');
+    if(!os.getAllKeys){ toast('No snapshots available in this browser.'); return; }
+    var rq=os.getAllKeys();
+    rq.onsuccess=function(){
+      var keys=(rq.result||[]).filter(function(k){ return String(k).indexOf('snapshot:')===0; }).sort().reverse();
+      if(!keys.length){ toast('No local snapshots yet.'); return; }
+      var items=keys.map(function(k){ return {id:k,label:fmtDate(String(k).slice(9)),sub:'local snapshot',ic:'↻',c:'#4f9d8f'}; });
+      lbPicker('Restore a local snapshot',items,function(it){
+        db.transaction('h','readonly').objectStore('h').get(it.id).onsuccess=function(ev){
+          var rec=ev.target.result; if(!rec||!rec.json){ toast('That snapshot could not be read.'); return; }
+          var blob=new Blob([rec.json],{type:'application/json'});
+          restoreFromBackupFile(new File([blob],'snapshot-'+String(it.id).slice(9)+'.json'));
+        };
+      });
+    };
+  }).catch(function(){ toast('Could not open local snapshots.'); });
+}
 
 var _toastT=null; function toast(msg){ var t=el('lb-toast'); if(!t){ t=document.createElement('div'); t.id='lb-toast'; t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--text);border:1px solid var(--border2);box-shadow:var(--shadow-md);border-radius:10px;padding:10px 16px;font-size:13px;z-index:400;opacity:0;transition:opacity .2s'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; clearTimeout(_toastT); _toastT=setTimeout(function(){t.style.opacity='0';},2600); }
+function toggleTheme(){
+  var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
+  var next=cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  try{ localStorage.setItem('hub_theme',next); }catch(e){}
+  renderRibbon();
+}
+function _themeIsDark(){ return document.documentElement.getAttribute('data-theme')==='dark'; }
 function updateNet(){ updateStatus(); }
 window.addEventListener('online',updateNet); window.addEventListener('offline',updateNet);
 
