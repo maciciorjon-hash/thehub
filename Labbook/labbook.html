@@ -328,6 +328,16 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 /* Live prep calculators inside experiment steps */
 .blk-calcbtn{background:none;border:1px solid var(--border2);color:#4f9d8f;cursor:pointer;font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;font-family:var(--sans);margin-right:4px;}
 .blk-calcbtn:hover{background:var(--surface3);}
+/* Step completion */
+.blk-done{width:20px;height:20px;flex-shrink:0;border:1.5px solid var(--border2);background:none;border-radius:50%;cursor:pointer;color:#fff;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;margin-right:2px;}
+.blk-done:hover{border-color:#4f9d8f;}
+.blk-done.on{background:#4f9d8f;border-color:#4f9d8f;}
+.blk.blk-is-done > .blk-hd .blk-title{text-decoration:line-through;opacity:.6;}
+.blk.blk-is-done{opacity:.72;}
+.blk.blk-is-done:hover{opacity:1;}
+.exp-prog{font-size:11px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:3px 10px;}
+.exp-prog b{color:#4f9d8f;}
+.pg-prog{font-size:9.5px;color:var(--text3);}
 .blk-platebtn{background:none;border:1px solid var(--border2);color:#6d7bd0;cursor:pointer;font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;font-family:var(--sans);margin-right:4px;}
 .blk-platebtn:hover{background:var(--surface3);}
 .blk-calc{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--border2);border-left:3px solid #4f9d8f;border-radius:10px;padding:9px 11px;margin:6px 0 8px;}
@@ -1146,7 +1156,7 @@ var STEP_LIBRARY=[
   {id:'lib:results',label:'Results / data analysis',sub:'text step',html:'<p><b>Results</b></p><p></p>'}
 ];
 function insertStepBlock(spec){ var e=_curExp(); if(!e) return; var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr();
-  var blk={id:uid(), date:d, dayOffset:daysBetween(expAnchorDate(e),d), title:spec.title||'', html:spec.html||'<p></p>'};
+  var blk={id:uid(), date:d, dayOffset:daysBetween(expAnchorDate(e),d), title:spec.title||'', html:spec.html||'<p></p>', done:false, completedAt:null};
   if(spec.archivePid) blk.calc={kind:'archive',pid:spec.archivePid,inputs:{},recipe:''};
   else if(spec.calc) blk.calc={kind:spec.calc,inputs:calcDefaults(spec.calc)};
   if(spec.part){ blk.part=spec.part; blk.sourcePid=spec.sourcePid; }
@@ -1755,6 +1765,32 @@ Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[
   if(e.projectId && !e.sectionId){ var p=LB.data.projects.filter(function(x){return x.id===e.projectId;})[0];
     if(p){ var u=(p.sections||[]).filter(function(s){return s.name==='Unclassified';})[0];
       if(!u){ u={id:uid(),name:'Unclassified',created:Date.now()}; p.sections.push(u); } e.sectionId=u.id; } } });
+// One-time backfill of the explicit `done` flag. Carry-over used to be inferred from unticked
+// checkboxes; every template block ships with a checklist, so without this every historical
+// step in an existing notebook would land in carry-over on the first load after the upgrade.
+// Anything already past the lookback window is treated as settled.
+if(!LB.data._doneV1){
+  var _cutoff=addDays(todayStr(),-CARRY_LOOKBACK_DAYS);
+  Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
+    (e.blocks||[]).forEach(function(b){
+      if(b.done!==undefined) return;
+      // Old enough to be history, or its checklist is fully ticked → done.
+      b.done = (!b.date || b.date<_cutoff) ? true : !_legacyHasUnchecked(b.html);
+      b.completedAt = b.done?(e.updated||Date.now()):null;
+    });
+    if(e.status==='done') (e.blocks||[]).forEach(function(b){ if(b.done===false){ b.done=true; b.completedAt=e.updated||Date.now(); } });
+  });
+  LB.data._doneV1=true;
+}
+// Only used by the migration above, to read the pre-existing checkbox state once.
+function _legacyHasUnchecked(html){
+  if(!html || html.indexOf('lb-check')<0) return false;
+  try{ var d=document.createElement('div'); d.innerHTML=html;
+    var lis=d.querySelectorAll('ul.lb-check > li, ul.lb-check ul > li');
+    for(var i=0;i<lis.length;i++){ if(!lis[i].classList.contains('done')) return true; }
+  }catch(e){}
+  return false;
+}
 // preset instantiation from a seed (carries live calculators)
 function presetFromSeed(seed,name,baseType){ return {name:name,baseType:baseType,title:seed.title,blocks:(seed.blocks||[]).map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html}; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; })}; }
 function seedPresets(){
@@ -1941,22 +1977,51 @@ function isCoded(e){ return e.kind!=='note'; }
 function allBlockDates(){ var set={}; Object.keys(LB.data.experiments).forEach(function(k){ (LB.data.experiments[k].blocks||[]).forEach(function(b){ if(b.date) set[b.date]=1; }); }); return set; }
 function blocksForDate(D){ var out=[]; Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; (e.blocks||[]).forEach(function(b){ if(b.date===D) out.push({exp:e,block:b}); }); }); return out; }
 // A block is "unfinished" if it holds a checklist item that isn't ticked (done).
-// This drives day-to-day carryover: unfinished work rolls forward until it's checked off.
-function _blockHasUnchecked(html){
-  if(!html || html.indexOf('lb-check')<0 && html.indexOf('lb-todo')<0) return false;
-  try{ var d=document.createElement('div'); d.innerHTML=html;
-    var lis=d.querySelectorAll('ul.lb-check > li, ul.lb-check ul > li, li.lb-todo');
-    for(var i=0;i<lis.length;i++){ if(!lis[i].classList.contains('done')) return true; }
-  }catch(e){}
-  return false;
+// ── Step completion ──
+// A step is done when you say so. Ticking every checkbox in it says so for you, but a
+// prose-only step can be completed too — which the old checkbox-inference could never express.
+function blockDone(b){ return !!(b&&b.done); }
+// Outstanding = dated, in the past, and not finished. Deliberately NOT derived from checkboxes:
+// every template block ships with a checklist, so inferring from them made every experiment
+// permanently "unfinished" and grew the carry-over list without bound.
+function blockOutstanding(b){ return !!(b && b.date && !b.done); }
+function blockFinder(expId,blockId){
+  var e=LB.data.experiments[expId]; if(!e) return null;
+  var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0];
+  return b?{exp:e,block:b}:null;
 }
-// Blocks dated strictly before D that still have unticked checklist items — grouped by
-// experiment, most-recent date first. These are "dragged" onto day D's notebook.
+function setBlockDone(expId,blockId,done,silent){
+  var f=blockFinder(expId,blockId); if(!f) return;
+  f.block.done=!!done; f.block.completedAt=done?Date.now():null;
+  syncExpStatus(f.exp); f.exp.updated=Date.now(); save();
+  if(!silent) renderAll();
+}
+function toggleDone(expId,blockId){
+  var f=blockFinder(expId,blockId); if(!f) return;
+  setBlockDone(expId,blockId,!f.block.done);
+}
+function expProgress(e){
+  var bs=(e.blocks||[]); var done=0;
+  bs.forEach(function(b){ if(b.done) done++; });
+  return {done:done,total:bs.length};
+}
+// Status used to be a manual dropdown that silently drifted out of truth. Derive it from the
+// steps instead, so "ongoing" always means what it says. With no steps done we leave the
+// status alone — that's the one case where the user's own choice carries information.
+function syncExpStatus(e){
+  if(!e || !isCoded(e) || !(e.blocks||[]).length) return;
+  var p=expProgress(e);
+  if(!p.total || !p.done) return;
+  e.status = (p.done===p.total) ? 'done' : 'ongoing';
+}
+// How far back carry-over looks. Without a bound it scans all history for ever.
+var CARRY_LOOKBACK_DAYS=21;
+// Blocks dated before D that are still outstanding, grouped by experiment, most recent first.
 function carryoverForDate(D){
-  var byExp={}, order=[];
+  var byExp={}, order=[], floor=addDays(D,-CARRY_LOOKBACK_DAYS);
   Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
     (e.blocks||[]).forEach(function(b){
-      if(b.date && b.date<D && _blockHasUnchecked(b.html)){
+      if(b.date && b.date<D && b.date>=floor && !b.done && !b.carryDismissed){
         if(!byExp[e.id]){ byExp[e.id]={exp:e,blocks:[]}; order.push(e.id); }
         byExp[e.id].blocks.push(b);
       }
@@ -1965,12 +2030,19 @@ function carryoverForDate(D){
   order.forEach(function(id){ byExp[id].blocks.sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }); });
   return {byExp:byExp, order:order};
 }
-// Destructive "carry to today": re-date an unfinished block onto day D so it physically
-// moves into today's notebook (the reference view already shows it non-destructively).
+// Stop nagging about a step without claiming it was done.
+function dismissCarry(expId,blockId){
+  var f=blockFinder(expId,blockId); if(!f) return;
+  f.block.carryDismissed=true; f.exp.updated=Date.now(); save(); renderAll();
+  toast('Removed from carry-over — the step itself is unchanged.');
+}
+// Re-date an outstanding block onto day D so it physically moves into that day's notebook.
 function carryBlockToToday(expId,blockId,D){
-  var e=LB.data.experiments[expId]; if(!e) return;
-  var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0]; if(!b) return;
-  b.date=D; save(); renderAll();
+  var f=blockFinder(expId,blockId); if(!f) return;
+  f.block.date=D;
+  // Peers (setBlock('date'), snoozeBlock) both do this; omitting it left dayOffset stale, so
+  // the wrong "Day N" printed in the outline and the PDF.
+  recomputeDayOffsets(f.exp); f.exp.updated=Date.now(); save(); renderAll();
 }
 // Snooze: didn't get to this step today? Push it n days forward. Every later-dated step in the
 // same experiment moves with it, so the day spacing you designed stays intact.
@@ -1986,7 +2058,8 @@ function snoozeBlock(expId,blockId,n){
 function entryMatchesTag(html,tag){ return (html||'').indexOf('data-tag="'+tag+'"')>=0; }
 function typeName(id){ var t=EXP_TYPES.filter(function(x){return x.id===id;})[0]; return t?t.name:id; }
 function pageItemExp(e){ var code=isCoded(e)?('<div class="page-code">'+esc(e.code||'')+'</div>'):('<div class="page-kind">'+esc(e.noteType||'note')+'</div>');
-  var meta=isCoded(e)?('<span class="pg-status '+(e.status||'planned')+'">'+esc(e.status||'planned')+'</span><span>'+esc(fmtDate(e.startDate||''))+'</span>'):('<span>'+esc(fmtDate(e.date||e.startDate||''))+'</span>');
+  var pgp=isCoded(e)?expProgress(e):null;
+  var meta=isCoded(e)?('<span class="pg-status '+(e.status||'planned')+'">'+esc(e.status||'planned')+'</span>'+(pgp&&pgp.total?('<span class="pg-prog">'+pgp.done+'/'+pgp.total+'</span>'):'')+'<span>'+esc(fmtDate(e.startDate||''))+'</span>'):('<span>'+esc(fmtDate(e.date||e.startDate||''))+'</span>');
   return '<div class="page-item'+(SEL.page===e.id?' active':'')+'" onclick="selectPage(\''+e.id+'\')" oncontextmenu="ctxExp(event,\''+e.id+'\')"><div class="page-body">'+code+'<div class="page-title">'+esc(e.title||(isCoded(e)?e.code:'Untitled'))+'</div><div class="page-meta">'+meta+'</div></div></div>'; }
 function renderPages(){
   var host=el('pane-pages'); var node=SEL.node;
@@ -2188,7 +2261,7 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   var code=(el('nm-code').value||'').trim();
   var protos=NM_PROTOS.slice();
   // Instantiate the preset's own blocks (day structure + live calculators + text).
-  var blocks=(tpl.blocks||[]).map(function(b){ var o={id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html}; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; });
+  var blocks=(tpl.blocks||[]).map(function(b){ var o={id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html, done:false, completedAt:null}; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; });
   // Rewrite the instantiated blocks with the setup answers before anything else sees them.
   var type=presetBase(key), setup=JSON.parse(JSON.stringify(NM_SETUP||{}));
   blocks=applySetupToBlocks(type,setup,blocks);
@@ -2214,7 +2287,7 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
     var extra=protos.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; var html;
       if(SYNTH_PARTS[p.id]){ html=SYNTH_PARTS[p.id].html; }
       else { var steps=archiveSteps(p.id); var calc=archiveCalc(p.id); html=partBlockHtml(p.id,calc,steps); }
-      return {id:uid(), date:addDays(startDate,off), dayOffset:off, title:p.name||p.id, part:p.name||p.id, sourcePid:p.id, html:html};
+      return {id:uid(), date:addDays(startDate,off), dayOffset:off, title:p.name||p.id, part:p.name||p.id, sourcePid:p.id, html:html, done:false, completedAt:null};
     });
     finish(extra,protos);
   });
@@ -2248,7 +2321,8 @@ function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.pa
   var snooze=(expId&&b.date)?('<button class="blk-snooze" title="Not today — push this step and everything after it one day forward" onclick="snoozeBlock(\''+expId+'\',\''+b.id+'\',1)">&#9200; snooze</button>'):'';
   var pkey=expId?('blk:'+expId+':'+b.id):'';
   var plateBtn=(expId&&!b.plate)?('<button class="blk-platebtn" title="Insert a plate map into this section" onclick="addPlateTo(\''+pkey+'\')">&#9638; plate</button>'):'';
-  return '<div class="blk" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+snooze+plateBtn+(b.calc?'':'<button class="blk-calcbtn" title="Add a live prep calculator" onclick="calcMenu(\''+b.id+'\')">&#8721; calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+  var doneBtn=expId?('<button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+expId+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'):'';
+  return '<div class="blk'+(b.done?' blk-is-done':'')+'" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+doneBtn+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+snooze+plateBtn+(b.calc?'':'<button class="blk-calcbtn" title="Add a live prep calculator" onclick="calcMenu(\''+b.id+'\')">&#8721; calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
     +(b.calc?calcInputsHtml(b):'')
     +(b.plate&&pkey?platePreviewHtml(b.plate,pkey):'')
     +'<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }
@@ -2320,7 +2394,7 @@ function renderExpEditor(host,e){
   var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+setupSummaryHtml(e)+'</div>';
   var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files')?EXP_TAB:'dated';
   var tabs='<div class="exp-tabs">'
-    +'<button class="exp-tab'+(tab==='dated'?' on':'')+'" onclick="expTab(\'dated\')">Dated sections<span class="exp-tab-n">'+(e.blocks?e.blocks.length:0)+'</span></button>'
+    +'<button class="exp-tab'+(tab==='dated'?' on':'')+'" onclick="expTab(\'dated\')">Dated sections<span class="exp-tab-n">'+(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):0)+'</span></button>'
     +'<button class="exp-tab'+(tab==='obs'?' on':'')+'" onclick="expTab(\'obs\')">Observations</button>'
     +'<button class="exp-tab'+(tab==='pub'?' on':'')+'" onclick="expTab(\'pub\')">Publication ready</button>'
     +'<button class="exp-tab'+(tab==='files'?' on':'')+'" onclick="expTab(\'files\')">Files'+((e.files&&e.files.length)?('<span class="exp-tab-n">'+e.files.length+'</span>'):'')+'</button></div>';
@@ -2360,13 +2434,16 @@ function renderNoteEditor(host,e){ (el('export-btn')||{style:{}}).style.display=
   hydrateAtt(host); hydrateFloatLayers(host); renderDockPanels();
 }
 function renderNotebookEditor(host){
-  var D=SEL.page; if(!LB.data.notebook[D]) LB.data.notebook[D]={date:D,html:'<p></p>'};
-  var pg=LB.data.notebook[D]; (el('export-btn')||{style:{}}).style.display='';
+  var D=SEL.page;
+  // Viewing a day must not create it — clicking through the week planner used to litter the
+  // Notebook list with empty days. setNotebook() persists it on the first real edit.
+  var pg=LB.data.notebook[D]||{date:D,html:''};
+  (el('export-btn')||{style:{}}).style.display='';
   // group blocks by experiment
   var byExp={}, order=[]; blocksForDate(D).forEach(function(fb){ if(!byExp[fb.exp.id]){ byExp[fb.exp.id]={exp:fb.exp,blocks:[]}; order.push(fb.exp.id); } byExp[fb.exp.id].blocks.push(fb.block); });
   var from = order.length ? ('<div style="margin-top:14px"><div class="day-from-lbl">What to do today — from your experiments</div>'+order.map(function(id){ var g=byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
     var blks=g.blocks.map(function(b){ var rc=expCalcRecipe(b);
-      var hd='<div class="dfx-blk-hd">'+(b.title?'<span class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'<span class="dfx-blk-t dim">Step</span>')
+      var hd='<div class="dfx-blk-hd'+(b.done?' dfx-done':'')+'"><button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'+(b.title?'<span class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'<span class="dfx-blk-t dim">Step</span>')
         +'<button class="dfx-snooze" title="Not today — push this step and everything after it one day forward" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">&#9200; Snooze &#8594;</button></div>';
       var pv=b.plate?('<div class="dfx-plate">'+platePreviewHtml(b.plate,'blk:'+g.exp.id+':'+b.id)+'</div>'):'';
       return hd+(rc?'<div class="dfx-recipe">'+rc+'</div>':'')+pv+'<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
@@ -2374,7 +2451,7 @@ function renderNotebookEditor(host){
   // Carried-over unfinished work from earlier days (unticked checklist items roll forward).
   var co=carryoverForDate(D);
   var carried = co.order.length ? ('<div style="margin-top:16px"><div class="day-from-lbl day-carry-lbl">↩ Carried over — unfinished from earlier days</div>'+co.order.map(function(id){ var g=co.byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
-    var blks=g.blocks.map(function(b){ return '<div class="day-carry-hd"><span class="carry-from">from '+esc(fmtDate(b.date))+'</span>'+(b.title?'<span class="dfx-blk-t2" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'')+'<button class="carry-move" title="Move this block onto today" onclick="carryBlockToToday(\''+g.exp.id+'\',\''+b.id+'\',\''+D+'\')">Move to today &#8595;</button><button class="dfx-snooze" style="margin-left:0" title="Push this step and everything after it one day forward" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">&#9200; Snooze &#8594;</button></div><div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
+    var blks=g.blocks.map(function(b){ return '<div class="day-carry-hd"><button class="blk-done" title="Mark this step done" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')"></button><span class="carry-from">from '+esc(fmtDate(b.date))+'</span>'+(b.title?'<span class="dfx-blk-t2" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'')+'<button class="carry-move" title="Move this step onto the day you are viewing" onclick="carryBlockToToday(\''+g.exp.id+'\',\''+b.id+'\',\''+D+'\')">Move to this day &#8595;</button><button class="dfx-snooze" style="margin-left:0" title="Push this step and everything after it one day forward" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">&#9200; Snooze &#8594;</button><button class="dfx-snooze" style="margin-left:0" title="Stop showing this in carry-over, without marking it done" onclick="dismissCarry(\''+g.exp.id+'\',\''+b.id+'\')">Dismiss</button></div><div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
     return '<div class="day-exp day-carry"><div class="day-exp-hd"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span></div>'+blks+'</div>'; }).join('')+'</div>') : '';
   host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+esc(fmtDate(D))+'</div><div class="exh-acts"><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">Daily notebook</div></div>'
     +'<div class="nb-free"><div class="day-from-lbl">Daily note</div><div class="rt nb-body" contenteditable="true" data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>'+from+carried+'</div>';
@@ -2389,7 +2466,7 @@ function renderOngoing(host){
   var pids=Object.keys(byProj);
   var body=pids.length? pids.map(function(pid){ var p=projById(pid); var col=projColor(pid);
     return '<div class="ov-proj"><div class="ov-proj-hd"><span class="pdot" style="background:'+col+'"></span>'+esc(p?p.name:'—')+'</div>'+byProj[pid].sort(function(a,b){return (b.startDate||'').localeCompare(a.startDate||'');}).map(function(e){
-      return '<div class="ov-card" style="border-left-color:'+col+'" onclick="openExp(\''+e.id+'\')"><span class="c">'+esc(e.code||'')+'</span><span class="t">'+esc(e.title||'')+'</span><span class="d">'+esc(fmtDate(e.startDate||''))+'</span></div>'; }).join('')+'</div>'; }).join('')
+      return '<div class="ov-card" style="border-left-color:'+col+'" onclick="openExp(\''+e.id+'\')"><span class="c">'+esc(e.code||'')+'</span><span class="t">'+esc(e.title||'')+'</span><span class="d">'+(function(){var q=expProgress(e); return q.total?(q.done+'/'+q.total+' steps · '):'';})()+esc(fmtDate(e.startDate||''))+'</span></div>'; }).join('')+'</div>'; }).join('')
     : '<div class="ed-empty" style="height:auto;padding:60px 20px;"><div class="t">No ongoing experiments</div><div>Set an experiment\'s status to <b>ongoing</b> and it shows here.</div></div>';
   host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-title" style="cursor:default;">&#9733; Ongoing experiments</div><div class="exh-code">Grouped by project</div></div>'+body+'</div>';
   renderDockPanels();
@@ -2710,10 +2787,26 @@ window.addEventListener('scroll',function(){ if(_tblCur) _queueTableTools(); },t
 function insertDivider(){ if(!_activeEd) return; _activeEd.focus(); try{ document.execCommand('insertHTML',false,'<hr><p></p>'); }catch(e){} _activeEd.dispatchEvent(new Event('input')); }
 function insertHtmlAtCaret(html,range){ if(!_activeEd) return; _activeEd.focus(); if(range) _restoreSel(range); try{ document.execCommand('insertHTML',false,html); }catch(e){} _activeEd.dispatchEvent(new Event('input')); }
 
+// Ticking the last box in a step's checklist completes the step; unticking one reopens it.
+// The explicit flag is still the source of truth — this only keeps it in step with the boxes.
+function _checklistDoneSync(ed){
+  var ctx=(ed.getAttribute('data-ctx')||'').split(':'), expId=null, blkId=null;
+  if(ctx[0]==='block'){ var ce=_curExp(); if(ce){ expId=ce.id; blkId=ctx[1]; } }
+  else if(ctx[0]==='expblock'){ expId=ctx[1]; blkId=ctx[2]; }
+  if(!expId||!blkId) return;
+  var lis=ed.querySelectorAll('ul.lb-check > li, ul.lb-check ul > li');
+  if(!lis.length) return;
+  var all=true; for(var i=0;i<lis.length;i++) if(!lis[i].classList.contains('done')){ all=false; break; }
+  var f=blockFinder(expId,blkId); if(!f || !!f.block.done===all) return;
+  // Re-render so the step leaves (or rejoins) the carry-over list immediately.
+  setBlockDone(expId,blkId,all);
+}
 document.addEventListener('click',function(e){
   // Checklist: click the checkbox zone (left marker area) of a lb-check <li>
   var cli=e.target.closest && e.target.closest('li');
-  if(cli && cli.closest('ul.lb-check')){ var r=cli.getBoundingClientRect(); var pl=parseFloat(getComputedStyle(cli).paddingLeft)||26; if(e.clientX-r.left<=pl && (e.clientY-r.top)<=Math.max(pl,parseFloat(getComputedStyle(cli).lineHeight)||22)){ cli.classList.toggle('done'); var edc=cli.closest('.rt'); if(edc) edc.dispatchEvent(new Event('input')); return; } }
+  if(cli && cli.closest('ul.lb-check')){ var r=cli.getBoundingClientRect(); var pl=parseFloat(getComputedStyle(cli).paddingLeft)||26; if(e.clientX-r.left<=pl && (e.clientY-r.top)<=Math.max(pl,parseFloat(getComputedStyle(cli).lineHeight)||22)){ cli.classList.toggle('done'); var edc=cli.closest('.rt'); if(edc){ edc.dispatchEvent(new Event('input')); _checklistDoneSync(edc); } return; } }
+  // Legacy .lb-todo/.lb-box lists: nothing creates them any more, but old notebooks may still
+  // contain them, so they stay tickable.
   if(e.target.classList && e.target.classList.contains('lb-box')){ var td=e.target.closest('.lb-todo'); if(td){ td.classList.toggle('done'); var ed=e.target.closest('.rt'); if(ed) ed.dispatchEvent(new Event('input')); } }
   var abx=e.target.closest && e.target.closest('.lb-ab');
   if(abx && abx.dataset.ab){ e.preventDefault(); var s=LB.data.generalSections.filter(function(x){return x.kind==='antibodies';})[0]; if(s){ window._abQ=(LB.data.antibodies[abx.dataset.ab]||{}).name||''; selectNode('general','',s.id); } return; }
@@ -2733,11 +2826,15 @@ function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).
   if(f==='date'){ recomputeDayOffsets(e); save(); renderPages(); renderEditor(); return; }
   save(); }
 function setExpBlockHtml(expId,blkId,html){ var e=LB.data.experiments[expId]; if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===blkId;})[0]; if(!b) return; b.html=_persistImgHtml(html); e.updated=Date.now(); queueSave(); }
-function addBlock(){ var e=_curExp(); if(!e) return; var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'<p></p>'}); save(); renderEditor(); }
+function addBlock(){ var e=_curExp(); if(!e) return; var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'<p></p>',done:false,completedAt:null}); save(); renderEditor(); }
 function delBlock(id){ var e=_curExp(); if(!e) return; e.blocks=e.blocks.filter(function(b){return b.id!==id;}); save(); renderEditor(); }
 function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
 function moveBlock(id,dir){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; save(); renderEditor(); }
-function setNotebook(html){ var pg=LB.data.notebook[SEL.page]; if(!pg) return; pg.html=_persistImgHtml(html); queueSave(); }
+// Creates the day on first edit — renderNotebookEditor deliberately doesn't, so that merely
+// looking at a day never adds it to the Notebook list.
+function setNotebook(html){ var D=SEL.page; if(!D) return;
+  var pg=LB.data.notebook[D]||(LB.data.notebook[D]={date:D,html:''});
+  pg.html=_persistImgHtml(html); queueSave(); }
 function setPage(f,v){ var pg=_curPage(); if(!pg) return; pg[f]=(f==='html')?_persistImgHtml(v):v; pg.updated=Date.now(); if(f==='html') queueSave(); else { save(); renderPages(); } }
 
 // ── Image attachments (paste / drag-drop, stored in IndexedDB) ──
@@ -3108,6 +3205,8 @@ function ctxBlock(ev,id){ var e=_curExp(); ctxAt(ev,[
   {label:'Move up',fn:function(){moveBlock(id,-1);}},
   {label:'Move down',fn:function(){moveBlock(id,1);}},
   {sep:true},
+  {label:(function(){ var b=e?(e.blocks||[]).filter(function(x){return x.id===id;})[0]:null; return (b&&b.done)?'Reopen step':'Mark step done'; })(),
+   fn:function(){ if(e) toggleDone(e.id,id); }},
   {label:'Snooze 1 day',fn:function(){ if(e) snoozeBlock(e.id,id,1); }},
   {label:'Snooze 1 week',fn:function(){ if(e) snoozeBlock(e.id,id,7); }},
   {sep:true},{label:'Delete block',danger:true,fn:function(){delBlock(id);}}
