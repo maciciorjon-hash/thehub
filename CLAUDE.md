@@ -534,7 +534,7 @@ metadata in `LB.data`, bytes in IndexedDB (`lb_att`), optional cloud copy in Fir
 
 ## Current state
 
-**v1.4.1**, 20 apps, last worked 2026-08-01. Full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.4.1**, 20 apps, last worked 2026-08-01. Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
@@ -579,5 +579,5 @@ Consequence: stop adding app surface area; invest in the loop and the science co
   `PROFILES` in `embed.py`). They stay in the repo and in the default build.
 - **Retired 2026-07-30**: LabMate and Arc removed from `embed.py`, `APP_INFO` and the shell —
   both had been unreachable (no card, no `openApp()`) and together were ~3.6 MB of the bundle.
-  Files remain on disk. Beacon stays deliberately hidden (see the comment in `hub-shell.html`)
-  and is still built, pending its Phase 2 absorption into Echo.
+  Files remain on disk. Beacon is visible to admins inside Data Analysis but remains outside the
+  public unlock flow, pending its Phase 2 absorption into Echo.
