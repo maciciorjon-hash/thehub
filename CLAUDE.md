@@ -77,13 +77,13 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 | `ribbon` | Ribbon | SVG ribbon waves | `#e36c69` (salmon) | `Ribbon/ribbon.html` |
 | `protocols` | Archive (formerly Protocols) | SVG open book | `#a56983` (dusty pink) | `Archive/archive.html` |
 | `cellarchive` | Cell Archive | SVG cell/nucleus | `#d17a4a` (terracotta) | `Cell_Archive/cell_archive.html` |
-| `bench` | Incubator (**admin-only** — cell-culture tracker; id stays `bench`, was "Bench") | SVG incubator/cell dish | `#4f9d8f` (teal) | `Bench/bench.html` |
+| `incubator` | Incubator (**admin-only** — cell-culture tracker) | SVG incubator/cell dish | `#4f9d8f` (teal) | `Incubator/incubator.html` |
 | `labbook` | Labbook (**admin-only** — electronic lab notebook; experiment-centric planner) | SVG notebook | `#4f9d8f` (teal) | `Labbook/labbook.html` |
 | `plasmids` | Plasmids (**admin-only** — plasmid database + SnapGene maps) | SVG plasmid | `#6d7bd0` (indigo) | `Plasmids/plasmids.html` |
 | `blot` | Blot (western blot figure builder) | SVG blot panels | `#5b6b7a` (slate) | `WesternBlot/westernblot.html` |
 | `gantt` | Cadence (grant/fellowship Gantt charts) | SVG timeline bars | `#d99a4e` (amber) | `Gantt/gantt.html` |
 
-**Home grid packages:** the home cards are grouped into labelled sections by `PACKAGES` in `hub-shell.html` (Data Analysis · Design & Presentation · Molecular Biology · Lab Operations · Just for Fun). `_buildPackages()` reorganizes the flat `#app-grid` into per-package `.grid` blocks at load; drag-reorder is scoped within a package and persisted per-package in `localStorage` (`hub_card_order_v2`). Empty sections auto-hide via `_updateSectionVisibility()`. Any app id not in `PACKAGES` falls into a trailing "More" section.
+**Home navigation:** the admin home has four primary cards (`PRIMARY_CARDS`: Labbook, Archive, Data Analysis, Incubator). Incubator groups the Incubator, Cell Archive and Iceberg apps. Remaining apps are grouped under `EXTRA_GROUPS` with thematic separators: Design & Presentation, Molecular Biology and Personal. Visitors retain the individual-app discovery flow. The old `PACKAGES`/`_buildPackages()` card-order machinery is legacy and no longer drives navigation.
 
 ---
 
@@ -555,7 +555,7 @@ metadata in `LB.data`, bytes in IndexedDB (`lb_att`), optional cloud copy in Fir
   from the editor yet; no Echo picklist import to name wells automatically.
 - Minor polish, no urgency: drag-drop step palette, per-cell-line seeding-density
   recommendations, `PUB_SEED` prose refinement, deep-link Archive's calc-chip to its Calculate
-  tab, excise `PACKAGES`/`_buildPackages` in hub-shell (superseded, harmless).
+  tab.
 
 ### Product direction (agreed 2026-07-30)
 

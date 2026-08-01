@@ -37,7 +37,7 @@ APPS = [
     ('ribbon',     'Ribbon/ribbon.html'),
     ('protocols',  'Archive/archive.html'),
     ('cellarchive', 'Cell_Archive/cell_archive.html'),
-    ('bench',       'Bench/bench.html'),
+    ('incubator',   'Incubator/incubator.html'),
     ('labbook',     'Labbook/labbook.html'),
     ('plasmids',    'Plasmids/plasmids.html'),
     ('blot',        'WesternBlot/westernblot.html'),
@@ -49,7 +49,7 @@ APPS = [
 # they depend on. Cuppa/Fabricata/Cadence and the off-path tools stay out.
 PROFILES = {
     'product': ['labbook', 'echo', 'protocols', 'pd', 'blot', 'dna', 'plasmids',
-                'cellarchive', 'bench', 'cryo', 'deg', 'ldi', 'spectra', 'beacon', 'lumina'],
+                'cellarchive', 'incubator', 'cryo', 'deg', 'ldi', 'spectra', 'beacon', 'lumina'],
 }
 # ── Standalone Labbook ────────────────────────────────────────────────────
 # Labbook + Archive as one self-contained file, with no dHUB around it. Archive is embedded
