@@ -16,6 +16,48 @@
 
 ---
 
+## Where this is going — read this first
+
+**The product is Labbook**: a domain-aware ELN for targeted protein degradation and chemical
+biology. The sellable asset is the **encoded domain knowledge** — 33 Archive protocols with
+working calculators, parameterised experiment templates, and a plan → execute → analyse loop
+that understands what a dose-response plate is. Benchling/MBook/LabArchives are rich text plus
+attachments; none of them know what a 384-well plate or a DC50 is. That gap is the wedge.
+
+**Spine** Labbook · **Flagship** Echo · **Moat** Archive. Everything else is either folded in,
+supporting, or out of the product build. Stop adding app surface area; invest in the loop and
+the science content.
+
+Three builds, one source (`embed.py`):
+
+| build | command | what it is |
+|---|---|---|
+| personal Hub | `python3 embed.py` | all 20 apps, ~11 MB — Jon's daily driver |
+| product | `python3 embed.py --profile=product dist/index.html` | the sellable subset |
+| standalone Labbook | `python3 embed.py --profile=labbook` | Labbook + Archive in one 927 KB file, no shell |
+
+**Where we are (2026-08-01).** Labbook is the focus and is in good shape: durable attachments,
+a per-experiment Files tab, explicit step completion with bounded carry-over, a week planner
+that is a real peer view of experiments and the notebook, plate maps, and a standalone build
+that carries the whole protocol library with live calculators. Mobile works. Seed data is
+neutral. See the Labbook sections below for how each part works.
+
+**Where we're going, in order.**
+1. **Echo ↔ Labbook loop** — Echo picklist → plate-map well names; DC50/Dmax → back into the
+   experiment record and the publication prose. This is the demo that sells the product.
+2. **Consolidation** — Lumina → an Echo mode, Beacon → an Echo assay type (kills two copies of
+   the 4PL engine); one plate engine; Helix + Plasmids; Blot + Blueprint's Gel Designer;
+   Cell Archive + Incubator + Iceberg into one "Cells" lifecycle.
+3. **ChemLib** — Labbook becomes ChemLib's biology notebook, joined project-to-project with
+   ChemLib owning access control. See the ChemLib section.
+4. **Product credibility** — migrate off `thehub-f80ae`, multi-user, audit trail, export.
+
+**Blocked on Jon, not on code**: University of Dundee IP ownership (gates any sale — talk to
+Research & Innovation Services), enabling Firebase Storage in the console, and pasting the
+`/journal` rules into the Firebase console.
+
+---
+
 ## Current apps
 
 | ID | Name | Logo | Accent | Standalone file |
@@ -55,7 +97,7 @@
 
 ```
 The_Hub/
-├── dHUB.html                                 ← self-contained, ~11.6MB
+├── dHUB.html                                 ← self-contained, ~11 MB (generated)
 ├── hub-shell.html                            ← source-of-truth shell
 ├── embed.py                                  ← build script
 ├── Echo/
@@ -492,7 +534,7 @@ metadata in `LB.data`, bytes in IndexedDB (`lb_att`), optional cloud copy in Fir
 
 ## Current state
 
-**v1.3.16**, 22 apps, last worked 2026-07-28. Full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.4.1**, 20 apps, last worked 2026-08-01. Full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
