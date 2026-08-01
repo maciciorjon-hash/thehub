@@ -432,7 +432,16 @@ function switchTab(name){
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===name); });
   document.querySelectorAll('.pane').forEach(function(p){ p.classList.toggle('active', p.id==='tab-'+name); });
 }
-window.addEventListener('message', function(e){ if(e.data && e.data.type==='switchTab'){ if(e.data.tab) switchTab(e.data.tab); if(e.data.item) focusCulture(String(e.data.item)); } });
+function _incDHubAck(e){ try{ if(e&&e.data&&e.data.requestId&&window.parent&&window.parent!==window) window.parent.postMessage({type:'dhub:ack',requestId:e.data.requestId,app:'incubator'},'*'); }catch(err){} }
+function _incubatorContext(id){
+  var c=STORE.get().incubator[id]; if(!c) return null;
+  return {source:'incubator',experiment:null,cellLines:[{id:id,label:c.line||'Culture',passage:c.passage||0,type:c.type||'',media:c.media||'',vessel:c.vessel||''}],compounds:[],plateMaps:[],protocols:[],results:[{id:'culture-'+id,source:'incubator',label:'Culture status',data:{passage:c.passage||0,lastSplit:c.seeded||'',alerts:computeCellAlerts(c,Date.now()).map(function(a){return a.msg;})},createdAt:Date.now()}]};
+}
+function openCultureInLabbook(id){ var ctx=_incubatorContext(id); if(!ctx) return; try{ if(window.parent&&window.parent.openApp) window.parent.openApp('labbook',undefined,undefined,ctx); else showToast('Open Labbook in dHUB to attach this culture'); }catch(e){ showToast('Could not open Labbook'); } }
+window.addEventListener('message', function(e){
+  if(e.data && e.data.type==='dhub:context' && e.data.version===1){ var cs=e.data.context&&e.data.context.cellLines||[]; if(cs.length){ switchTab('incubator'); focusCulture(cs[0].label||cs[0].id||''); } _incDHubAck(e); return; }
+  if(e.data && e.data.type==='switchTab'){ if(e.data.tab) switchTab(e.data.tab); if(e.data.item) focusCulture(String(e.data.item)); _incDHubAck(e); }
+});
 // Deep-link from a Labbook cell-line chip: scroll to + highlight the matching culture.
 function focusCulture(line){
   var want=String(line||'').trim().toLowerCase(); if(!want) return;
@@ -667,6 +676,7 @@ function renderIncubator(){
         +'<div class="cc-actions">'
           +'<button class="btn sm" onclick="openSplit(\''+id+'\')">Log split</button>'
           +'<button class="btn ghost sm" onclick="logMyco(\''+id+'\')">Log myco test</button>'
+          +'<button class="btn ghost sm" onclick="openCultureInLabbook(\''+id+'\')">Open in Labbook</button>'
           +'<button class="btn ghost sm" onclick="openCellForm(\''+id+'\')">Edit</button>'
           +'<button class="btn ghost sm" onclick="askRemove(\''+id+'\')">Remove</button>'
         +'</div>'

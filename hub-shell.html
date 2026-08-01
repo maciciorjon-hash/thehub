@@ -1844,7 +1844,10 @@ function _loadApp(id) {
     'try{if(window.parent&&window.parent.backToHub){window.parent.backToHub();return;}}catch(e){}' +
     'window.parent.postMessage("backToHub","*");' +
     '});' +
-    '});})<\/script>';
+    '});' +
+    'try{window.parent.postMessage({type:"dhub:appReady",app:"' + id + '"},"*");}catch(e){}' +
+    '});' +
+    '});<\/script>';
   html = _insertBeforeRealHeadClose(html, backScript);
   frame.srcdoc = html;
   frame.addEventListener('load', function() {
@@ -1859,19 +1862,26 @@ function _loadApp(id) {
 // demand instead of relying on the startup preload timing.
 window.hubEnsureApp = function(id){ try{ _loadApp(id); }catch(e){} return !!loaded[id]; };
 
-function openApp(id, tab, item) {
+var _hubPendingMessages={};
+function _hubQueueMessage(id,msg){
+  var frame=document.getElementById('frame-'+id); if(!frame) return;
+  var token={id:msg.requestId,msg:msg,tries:0}; _hubPendingMessages[id]=token;
+  function send(){
+    if(_hubPendingMessages[id]!==token||!frame.contentWindow) return;
+    try{ frame.contentWindow.postMessage(msg,'*'); }catch(e){}
+    token.tries++;
+    if(token.tries<10) setTimeout(send,250);
+  }
+  send();
+}
+function openApp(id, tab, item, context) {
   var frame = document.getElementById('frame-' + id);
   _loadApp(id);
-  if (tab || item) {
-    var tabMsg = {type:'switchTab', tab:tab};
+  if (tab || item || context) {
+    var tabMsg = {type:'switchTab', tab:tab, requestId:'dhub'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)};
     if (item) tabMsg.item = item;
-    frame.addEventListener('load', function onTabLoad() {
-      frame.removeEventListener('load', onTabLoad);
-      setTimeout(function() {
-        try { frame.contentWindow.postMessage(tabMsg, '*'); } catch(e) {}
-      }, 100);
-    });
-    try { frame.contentWindow.postMessage(tabMsg, '*'); } catch(e) {}
+    if (context) { tabMsg.type='dhub:context'; tabMsg.version=1; tabMsg.source=context.source||'hub'; tabMsg.target=id; tabMsg.action='open'; tabMsg.context=context; }
+    _hubQueueMessage(id,tabMsg);
   }
   currentApp = id;
   var view = document.getElementById('view-' + id);
@@ -3349,6 +3359,13 @@ function lockFabricata() {
 
 window.addEventListener('message', function(e) {
   if (e.data === 'backToHub') backToHub();
+  if (e.data && e.data.type === 'dhub:appReady' && e.data.app && _hubPendingMessages[e.data.app]) {
+    var pending=_hubPendingMessages[e.data.app];
+    try{ document.getElementById('frame-'+e.data.app).contentWindow.postMessage(pending.msg,'*'); }catch(err){}
+  }
+  if (e.data && e.data.type === 'dhub:ack' && e.data.requestId) {
+    Object.keys(_hubPendingMessages).forEach(function(k){ if(_hubPendingMessages[k].id===e.data.requestId) delete _hubPendingMessages[k]; });
+  }
   if (e.data === 'fabricataClose') {
     backToHub();
     setTimeout(lockFabricata, 320);

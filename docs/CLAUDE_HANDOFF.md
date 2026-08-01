@@ -7,9 +7,10 @@ the full historical detail lives in `Archive_Log/SESSION_HISTORY.md`.
 
 - Date: 2026-08-01
 - Branch: `main`
-- Latest commit: `6d23e34 Rename Bench app to Incubator and reorganize hub`
-- Remote: `origin/main` is aligned with the latest commit. The user ran `git push origin main`
-  and Terminal returned `Everything up-to-date`.
+- Latest commit: the current Labbook UX/context checkpoint is recorded in the Git history;
+  use `git log -1` for its exact hash.
+- Remote: this checkpoint is intended to remain a separate commit on `origin/main`. The Pages
+  workflow rebuilds from the tracked source files after push.
 - GitHub Pages deploys from `.github/workflows/deploy.yml`; it rebuilds `dist/index.html` from
   the tracked source files. Local `dHUB.html`, `dist/`, and standalone generated bundles are
   intentionally ignored.
@@ -41,6 +42,49 @@ the full historical detail lives in `Archive_Log/SESSION_HISTORY.md`.
 - `git diff --check`
 - Local browser smoke test: 20 app cards, four primary groups, Incubator view, and zero console
   errors.
+
+## Codex checkpoint: Labbook UX and app context
+
+- Date: 2026-08-01
+- Status: implementation and validation completed in a separate checkpoint from the Incubator
+  rename.
+- Files changed: `Labbook/labbook.html`, `hub-shell.html`, `Archive/archive.html`, and
+  `Incubator/incubator.html`.
+- Experiment creation now uses semantic titles such as `HiBiT degradation`, `Cell viability`,
+  `Western blot`, `Kinetic degradation`, `Direct-to-biology`, and `NanoBRET target engagement`.
+  A one-time migration only changes empty or known auto-generated legacy titles; custom titles
+  are preserved.
+- Publication-ready rebuild now explicitly includes setup fields, Archive protocol names,
+  dated block titles and text, checklist text, calculator output, compound-addition text, and
+  plate-map summaries. It remains manually editable and is replaced only after `Rebuild`.
+- The Labbook ribbon has a stable height. Insert keeps `Plate map` as the contextual command;
+  the repeated per-step plate button was removed. The plate editor now has compact `Paint`,
+  `Select`, and `Erase` modes, drag painting, and quick well types such as DMSO, Control,
+  Compound, Dose, and Blank while retaining the existing plate-map schema and range tools.
+- `Image (inline)` was removed from Insert and slash commands, while legacy inline images still
+  render. Floating `Picture` objects support persistent 16 px `Snap to grid`, arrow nudging,
+  Delete/Backspace, and Escape deselection with text-input guards.
+- Added versioned `dHUB context v1` messaging. The shell queues messages until `appReady` and
+  clears them on `ack`. Labbook sends and receives experiment, cell-line, compound, plate-map,
+  protocol, and result context through optional `e.integration` fields (or `LB.data.dhubInbox`
+  when no experiment is open). Archive keeps `ARCHIVE_INDEX`, `ARCHIVE_STEPS`,
+  `ARCHIVE_CALC_SCHEMA`, and `ARCHIVE_COMPUTE`, and adds `Use in Labbook`. Incubator can open a
+  culture in Labbook and focuses cultures received from Labbook.
+- Full Echo/Dora/Beacon result adapters remain intentionally deferred. The result envelope is
+  ready for that later phase. `JournalStore.incubator` was not changed.
+
+### Codex verification for this checkpoint
+
+- `python3 embed.py` regenerated the local dHUB, product, personal, and standalone bundles.
+- `python3 -m py_compile embed.py`
+- `python3 check_shared.py`
+- `git diff --check`
+- Inline JavaScript syntax checks passed for the four source files plus `dHUB.html` and
+  `labbook-standalone.html`.
+- Browser interaction verification remains a gap in this environment: bundled Chromium was not
+  installed and the available system Chrome aborted in headless mode. Recheck the plate painter,
+  Picture keyboard controls, and cold deep links in a normal browser before publishing if time
+  allows.
 
 ## Next useful check
 
