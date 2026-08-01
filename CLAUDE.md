@@ -352,6 +352,69 @@ OK/Cancel). Format switching **keeps** wells that still fit the new grid — unl
 Blueprint was the design reference for the grid but shares **no code** — its brackets, colour
 picker, annotations and heatmap were deliberately not ported.
 
+## ChemLib integration (Rubén Prieto)
+
+**ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie
+auth, vanilla-JS frontend where ~15 scripts share one global scope, no build step. It already
+has an ELN, a biology assay module with its own client-side 4PL (`_beFit4PL` + `_beNelderMead`,
+Nelder–Mead), and a D2B plate module.
+
+**The seam is an iframe, never a script merge.** ChemLib's scripts all live in one global scope
+and already define `showToast`, `api`, `escHtml`, `closeModals`, `#modal`, `#search-input` —
+pasting a thehub app in as a 16th script would collide silently. An iframe gets its own window,
+scope and CSS cascade, which is what dHUB already does. Nothing here requires changing
+`hub-shell.html`, `embed.py` or the base64 pipeline; it is additive.
+
+**Bucket A — importable as-is** (no shell globals, no Firebase): Echo, Dora, Blueprint, Helix,
+Protein Tools, BCA, LDI, Beacon, Lumina. Of these, Blueprint, Helix, Protein Tools, BCA, Beacon
+and LDI are fully self-contained. **Bucket B — needs a host or Firebase**: Labbook, Archive,
+Plasmids, Incubator, Cell Archive, Iceberg, Blot, Ribbon, Cadence, Cuppa.
+
+**The rule that keeps Bucket A importable:** a standalone app must never depend on
+`decodeB64App`, `APP_INFO`, `openApp`, `backToHub` or any other dHUB-shell global, and must not
+hardcode an absolute URL to its own assets. Both are currently true — keep it that way.
+
+### Labbook → ChemLib's biology notebook (agreed, not built)
+
+**The join is the Project.** ChemLib has projects; Labbook has projects; one maps to one. A user
+sees a Labbook project only if ChemLib has already granted access to the corresponding ChemLib
+project.
+
+**Labbook gets no permission model of its own.** It is a OneNote replacement — a notebook with
+protocol integration. Confidentiality is enforced once, by ChemLib, at the project boundary.
+That removes per-record ACLs, sharing rules and any notion of groups or divisions inside
+Labbook: it inherits them by only ever being handed projects the user can already see. It is an
+organisation problem, not a security one.
+
+Consequences: the only structural addition Labbook ever needs is a stable link from its project
+record to the ChemLib project id (one optional field, added at migration time — don't guess it
+now). The whole-tree `save()` must go, since with two people it is last-write-wins over the
+entire notebook; the natural unit of sync is the project, which is also the permission
+boundary. Sections stay Labbook's own sub-level inside a ChemLib project. Archive stays global —
+it is a shared reference library, not project data. The persistence seam is the four existing
+entry points (`save`, `_flushLocal`, `lbFb`, `lbInitSync`); attachments already have the right
+split (metadata in the tree, bytes in IndexedDB) and map cleanly onto REST + file storage.
+
+**Fit engines:** Echo's LM 4PL is canonical here and guarded by `check_shared.py`. It can be
+offered to ChemLib, but only after both fitters are run on the same real dose-response data and
+shown to agree — the bar `sync_fit_engine.py` already sets. A fitter that produces published
+DC50s is not swapped because the shapes look similar.
+
+### Offline / self-hosted robustness
+
+A self-hosted ChemLib may sit behind a firewall, and a bench laptop may have no wifi, so remote
+dependencies matter. Chart.js is now **embedded** in Dora, LDI and Lumina (all standardised on
+4.4.2, the copy Echo already carries) — LDI is fully self-contained as a result. Every app's
+`--sans`/`--mono` carries a real system fallback stack, so a blocked `fonts.googleapis.com`
+degrades to the platform UI font.
+
+Still remote, deliberately: **SheetJS** (Dora, Lumina, Iceberg — ~640 KB each, already embedded
+in Echo and BCA; three more copies would add ~1.9 MB) and **3Dmol** (Ribbon, ~2 MB, out of the
+product build). Each of those apps now shows a plain banner when the global is missing at load
+instead of throwing into the console. **Note the honest consequence: Dora and Lumina read Excel
+as their primary input, so offline they are announced-but-not-usable.** Embedding SheetJS in
+those two costs ~1.28 MB if that trade changes.
+
 ## Standalone Labbook (Labbook + Archive in one file)
 
 `python3 embed.py --profile=labbook` → `labbook-standalone.html` (~920 KB): the notebook,
