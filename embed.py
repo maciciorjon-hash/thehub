@@ -78,13 +78,18 @@ if profile == 'labbook':
 # manifest, icons and a service worker so "Add to Home Screen" gives a real offline app at
 # the bench. The source file is untouched — the PWA tags are injected here, so the copy
 # embedded in dHUB never registers a service worker.
+# The path is deliberately an unguessable slug, not /archive/: the Pages site is public
+# (private-repo Pages sites still serve to anyone), so the URL itself is the access control.
+# It is a bearer link — unguessable, but permanent for anyone you send it to. Keep the slug
+# stable or every installed home-screen app breaks.
+ARCHIVE_SLUG = 'archive-14cadcd792a2'
 if profile == 'archive':
     import hashlib, shutil
-    out_dir = os.path.abspath(args[0]) if args else os.path.join(BASE, 'dist', 'archive')
+    out_dir = os.path.abspath(args[0]) if args else os.path.join(BASE, 'dist', ARCHIVE_SLUG)
     html = open(os.path.join(BASE, 'Archive/archive.html'), encoding='utf-8').read()
-    ver = hashlib.sha256(html.encode('utf-8')).hexdigest()[:10]
 
     head = '''
+<meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#13161e" media="(prefers-color-scheme: dark)">
@@ -116,6 +121,8 @@ if ('serviceWorker' in navigator) {
     if n != 1:
         sys.stderr.write('archive profile: could not find </head>\n')
         sys.exit(1)
+    # Hash the *built* page, so a change to the injected head is a new cache too.
+    ver = hashlib.sha256(html.encode('utf-8')).hexdigest()[:10]
 
     manifest = '''{
   "name": "Archive — protocol library",
@@ -241,3 +248,11 @@ if out_dir:
     os.makedirs(out_dir, exist_ok=True)
 open(OUT, 'w', encoding='utf-8').write(src)
 print(f'Output: {OUT} ({len(src):,} chars)')
+
+# A dist/ build is the deployed Pages site — Jon's personal Hub and an unlisted Archive.
+# Neither belongs in a search index. (robots.txt only counts at the site root, which is why
+# it is written here rather than alongside the Archive build.)
+if args and out_dir:
+    open(os.path.join(out_dir, 'robots.txt'), 'w', encoding='utf-8').write(
+        'User-agent: *\nDisallow: /\n')
+    print(f'Wrote {os.path.join(out_dir, "robots.txt")} (noindex for the whole site)')

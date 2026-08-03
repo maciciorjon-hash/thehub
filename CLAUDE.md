@@ -35,7 +35,7 @@ Four builds, one source (`embed.py`):
 | personal Hub | `python3 embed.py` | all 20 apps, ~11 MB — Jon's daily driver |
 | product | `python3 embed.py --profile=product dist/index.html` | the sellable subset |
 | standalone Labbook | `python3 embed.py --profile=labbook` | Labbook + Archive in one 927 KB file, no shell |
-| Archive PWA | `python3 embed.py --profile=archive dist/archive` | Archive alone, installable + offline on a phone |
+| Archive PWA | `python3 embed.py --profile=archive` | Archive alone, installable + offline on a phone |
 
 **Where we are (2026-08-01).** Labbook is the focus and is in good shape: durable attachments,
 a per-experiment Files tab, explicit step completion with bounded carry-over, a week planner
@@ -460,10 +460,22 @@ those two costs ~1.28 MB if that trade changes.
 
 ## Archive as a phone app (installable PWA)
 
-`python3 embed.py --profile=archive dist/archive` packages Archive on its own for bench use:
+`python3 embed.py --profile=archive` packages Archive on its own for bench use:
 `index.html` + `manifest.webmanifest` + `sw.js` + `icons/`. CI builds it on every push, so it is
-live at **`https://maciciorjon-hash.github.io/thehub/archive/`** — Safari → Share → *Add to Home
-Screen* gives a real app icon, no browser chrome, and it works with no signal.
+live at **`https://maciciorjon-hash.github.io/thehub/archive-14cadcd792a2/`** — Safari → Share →
+*Add to Home Screen* gives a real app icon, no browser chrome, and it works with no signal.
+
+**The path is the access control.** A private repo still serves a *public* Pages site (per-site
+access control is Enterprise-only), so Archive is published under an unguessable slug —
+`ARCHIVE_SLUG` in `embed.py` — plus `noindex` on the page and a site-wide `robots.txt`
+(`Disallow: /`, written into `dist/` by the main build) so it never turns up in search. Be honest
+about what that is: a **bearer link**. Unguessable, but permanent for anyone it is sent to, and it
+leaks through browser history. **Never change the slug** — every installed home-screen app is
+pinned to it and would silently stop updating. If it ever needs to be genuinely private, the two
+real options are an encrypted payload unlocked by a passcode (AES-GCM + PBKDF2, decrypted
+client-side, keeps offline + one-tap) or moving to a host with auth in front (Cloudflare Pages +
+Access). Note the dHUB `APP_UNLOCK_WORDS` code gate is **not** protection — the codewords are in
+plain JS and every app is embedded regardless.
 
 **The source file is never modified for this.** `Archive/archive.html` is already self-contained
 (no external JS, notes in `localStorage`, and the two dHUB hooks — `window.parent.openApp` and
@@ -496,9 +508,9 @@ magnifier that appears only when a protocol is open on a narrow screen (`_syncSe
 doesn't blank the screen — it re-acquires on `visibilitychange`, since iOS drops the lock whenever
 the app is backgrounded.
 
-**Public-exposure note:** the Pages site is public and the root build already embeds Archive, so
-publishing `/archive/` adds no new exposure — but it is the same open item as the rest of the
-public build (see *Open items*).
+**Public-exposure note:** the root build at the Pages URL already embeds Archive and is still
+served publicly at a guessable address — the unlisted slug protects the phone app, not the Hub
+(see *Open items*).
 
 ## Standalone Labbook (Labbook + Archive in one file)
 
