@@ -7,6 +7,9 @@ Usage:
   python embed.py --profile=product dist/index.html
         ->  only the apps that make up the product story (see PROFILES). Personal-workflow
             apps stay in the repo and in the default build; they just don't ship.
+  python embed.py --profile=labbook               ->  ./labbook-standalone.html
+  python embed.py --profile=archive [dist/archive]
+        ->  Archive on its own as an installable, offline PWA (phone use at the bench).
 """
 import base64, re, os, sys
 
@@ -67,6 +70,122 @@ if profile == 'labbook':
     open(out, 'w', encoding='utf-8').write(lb)
     print('Labbook standalone: %s (%s chars, Archive embedded: %s chars)'
           % (out, f'{len(lb):,}', f'{len(arc_b64):,}'))
+    sys.exit(0)
+
+# ── Standalone Archive (installable PWA) ──────────────────────────────────
+# Archive/archive.html is already self-contained (no external JS, notes in localStorage, the
+# two dHUB hooks degrade to a toast). This profile only *packages* it for a phone: a web
+# manifest, icons and a service worker so "Add to Home Screen" gives a real offline app at
+# the bench. The source file is untouched — the PWA tags are injected here, so the copy
+# embedded in dHUB never registers a service worker.
+if profile == 'archive':
+    import hashlib, shutil
+    out_dir = os.path.abspath(args[0]) if args else os.path.join(BASE, 'dist', 'archive')
+    html = open(os.path.join(BASE, 'Archive/archive.html'), encoding='utf-8').read()
+    ver = hashlib.sha256(html.encode('utf-8')).hexdigest()[:10]
+
+    head = '''
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#13161e" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Archive">
+<meta name="description" content="Assay and experiment protocol library with live calculators — works offline.">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      reg.addEventListener('updatefound', function(){
+        var w = reg.installing; if (!w) return;
+        w.addEventListener('statechange', function(){
+          // Only after a first install is there anything to update *from*.
+          if (w.state === 'installed' && navigator.serviceWorker.controller && window.showToast)
+            showToast('Update ready — reopen Archive to apply');
+        });
+      });
+    }).catch(function(){});
+  });
+}
+</script>
+</head>'''
+    html, n = re.subn(r'</head>', head, html, count=1)
+    if n != 1:
+        sys.stderr.write('archive profile: could not find </head>\n')
+        sys.exit(1)
+
+    manifest = '''{
+  "name": "Archive — protocol library",
+  "short_name": "Archive",
+  "description": "Assay and experiment protocol library with live calculators.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f5f8",
+  "theme_color": "#a56983",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
+'''
+    # Cache-first: at the bench there is often no signal, and a protocol that loads instantly
+    # matters more than one that is seconds-fresh. A new build gets a new cache name, so the
+    # next launch after an update picks it up and the old cache is dropped.
+    sw = '''const CACHE = 'archive-%s';
+const SHELL = ['./', './index.html', './manifest.webmanifest',
+  './icons/icon-192.png', './icons/icon-512.png',
+  './icons/icon-maskable-512.png', './icons/apple-touch-icon.png'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys()
+      .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  // Navigations always resolve to the cached shell so the app opens with no network.
+  if (req.mode === 'navigate') {
+    e.respondWith(caches.match('./index.html').then(r => r || fetch(req)));
+    return;
+  }
+  e.respondWith(
+    caches.match(req).then(hit => hit || fetch(req).then(res => {
+      // Runtime-cache what we fetch (the Google Fonts CSS/woff2 among it) so the second
+      // launch is fully offline. Opaque cross-origin responses cache fine here.
+      const copy = res.clone();
+      caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+      return res;
+    }).catch(() => hit))
+  );
+});
+''' % ver
+
+    os.makedirs(os.path.join(out_dir, 'icons'), exist_ok=True)
+    open(os.path.join(out_dir, 'index.html'), 'w', encoding='utf-8').write(html)
+    open(os.path.join(out_dir, 'manifest.webmanifest'), 'w', encoding='utf-8').write(manifest)
+    open(os.path.join(out_dir, 'sw.js'), 'w', encoding='utf-8').write(sw)
+    icons = ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png']
+    for name in icons:
+        src_icon = os.path.join(BASE, 'Archive/icons', name)
+        if not os.path.exists(src_icon):
+            sys.stderr.write('archive profile: missing icon %s (run Archive/icons/make_icons.py)\n' % name)
+            sys.exit(1)
+        shutil.copyfile(src_icon, os.path.join(out_dir, 'icons', name))
+    print('Archive PWA: %s (index.html %s chars, cache %s)' % (out_dir, f'{len(html):,}', 'archive-' + ver))
     sys.exit(0)
 
 if profile != 'all':
