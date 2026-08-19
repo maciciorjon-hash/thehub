@@ -1044,7 +1044,7 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 
 <!-- Cmd+K spotlight -->
 <div id="spot-back" onclick="if(event.target.id==='spot-back')closeSpot()">
-  <div id="spot"><input id="spot-in" type="text" placeholder="Search experiments, pages, tags, antibodies, folders…" autocomplete="off" oninput="spotRender()"><div id="spot-res"></div></div>
+  <div id="spot"><input id="spot-in" type="text" placeholder="Search experiments, protocols, antibodies, primers, cultures, vials…" autocomplete="off" oninput="spotRender()"><div id="spot-res"></div></div>
 </div>
 
 <div class="pop" id="acpop"></div>
@@ -4712,8 +4712,59 @@ function spotAll(){ var out=[];
   LB.data.generalSections.forEach(function(s){ out.push({a:s.name,b:'section',k:'sec',ic:'§',c:'#5e72c4',fn:function(){selectNode('general','',s.id);}}); });
   LB.data.projects.forEach(function(p){ out.push({a:p.name,b:'project',k:'proj',ic:'▸',c:p.color,fn:function(){EXPANDED[p.id]=true;renderSections();}}); (p.sections||[]).forEach(function(s){ out.push({a:s.name,b:p.name,k:'folder',ic:'•',c:p.color,fn:function(){selectNode('expsec',p.id,s.id);}}); }); });
   Object.keys(LB.data.pages).forEach(function(k){ var pg=LB.data.pages[k]; if(pg.title) out.push({a:pg.title,b:'page',k:'page',ic:'P',c:'#5e72c4',fn:function(){selectNode('general','',pg.sectionId);SEL.page=pg.id;renderAll();}}); });
-  Object.keys(LB.data.antibodies).forEach(function(k){ var a=LB.data.antibodies[k]; if(a.name) out.push({a:'α-'+a.name,b:a.catalog||'antibody',k:'ab',ic:'α',c:'#c47818',fn:function(){var s=LB.data.generalSections.filter(function(x){return x.kind==='antibodies';})[0]; if(s){window._abQ=a.name;selectNode('general','',s.id);}}}); });
+  // Skipped when the shared Library is reachable — otherwise every antibody is listed twice,
+  // once from here and once from Archive.
+  if(!_abShared()) Object.keys(LB.data.antibodies).forEach(function(k){ var a=LB.data.antibodies[k]; if(!a.name) return;
+    out.push({a:(/^α/.test(a.name)?a.name:('α-'+a.name)),b:a.catalog||'antibody',k:'antibody',ic:'α',c:'#c47818',
+      fn:function(){var s=LB.data.generalSections.filter(function(x){return x.kind==='antibodies';})[0]; if(s){window._abQ=a.name;selectNode('general','',s.id);}}}); });
   LB.data.tags.forEach(function(t){ out.push({a:'#'+t,b:'tag',k:'tag',ic:'#',c:'#5e72c4',fn:function(){TAGFILTER=t;/*stay*/ }}); });
+  out=out.concat(spotBeyondLabbook());
+  return out;
+}
+// ── One search box for the whole hub ────────────────────────────────────────────────────────
+// "Where is the anti-BRD4" and "what was the Gibson incubation" are the same question shape and
+// used to need three apps. Everything reachable through a bridge is searchable from here; each
+// source degrades to nothing when its app is absent rather than erroring.
+function spotBeyondLabbook(){
+  var out=[], W=null, H=null;
+  try{ W=_arcWin(); }catch(e){}
+  try{ H=(window.parent&&window.parent!==window)?window.parent:null; }catch(e){}
+  // Archive protocols
+  try{ (W&&W.ARCHIVE_INDEX||[]).forEach(function(p){
+    out.push({a:p.name,b:'protocol'+(p.hasCalc?' · calculator':''),k:'proto',ic:'A',c:'#a56983',
+      fn:function(){ openArchiveProtocol(p.id); }});
+  }); }catch(e){}
+  // Archive Library — antibodies and primers
+  try{ if(W&&W.ARCHIVE_LIB){
+    [['antibodies','α','#c47818','antibody'],['primers','⁵','#6d7bd0','primer']].forEach(function(kind){
+      var all=W.ARCHIVE_LIB(kind[0])||{};
+      Object.keys(all).forEach(function(id){ var r=all[id]; if(!r.name) return;
+        var where=r.location?(' · '+r.location):'';
+        out.push({a:r.name, b:(r.target||r.targetGene||kind[0].replace(/s$/,''))+where,
+          k:kind[3], ic:kind[1], c:kind[2],
+          fn:function(){ try{ window.parent.openApp('protocols'); setTimeout(function(){
+            var w=_arcWin(); if(w&&w.setLibKind){ w.setLibKind(kind[0]);
+              var si=w.document.getElementById('proto-search'); if(si){ si.value=r.name; w.renderLib(); } } },400);
+          }catch(e){} }});
+      });
+    });
+  } }catch(e){}
+  // Cultures and freezer vials, through the shell's join
+  try{ if(H&&H.JournalStore){
+    var inc=(H.JournalStore.get()||{}).incubator||{};
+    Object.keys(inc).forEach(function(id){ var c=inc[id]; if(!c||!c.line) return;
+      out.push({a:c.line,b:'in culture · p'+(c.passage==null?'?':c.passage)+(c.vessel?(' · '+c.vessel):''),
+        k:'culture',ic:'🧫',c:'#4f9d8f',fn:function(){ openIncubatorLink(c.line); }});
+    });
+  } }catch(e){}
+  try{ if(H&&H.cellsLineStats){
+    var st=H.cellsLineStats();
+    Object.keys(st).forEach(function(k){ var v=st[k]; if(!v.vials) return;
+      out.push({a:k,b:v.vials+' vial'+(v.vials===1?'':'s')+(v.where.length?(' · '+v.where.join(', ')):''),
+        k:'freezer',ic:'❄',c:'#00acc1',
+        fn:function(){ try{ window.parent.openApp('cryo'); }catch(e){} }});
+    });
+  } }catch(e){}
   return out;
 }
 function spotRender(){ var q=(el('spot-in').value||'').toLowerCase().trim();

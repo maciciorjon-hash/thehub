@@ -1938,6 +1938,83 @@ function cellsLineStats(){
   } catch(e){}
   return out;
 }
+// ── Thaw a vial ─────────────────────────────────────────────────────────────────────────────
+// The lifecycle runs backwards too: a vial becomes a flask. Doing it by hand means finding the
+// box in Iceberg, remembering to decrement it, and retyping the line and passage into
+// Incubator — three chances to leave the inventory saying something untrue.
+function cellsFindVials(name){
+  var key = cellsBaseLine(name), out = [];
+  var st = null;
+  try { var cf = document.getElementById('frame-cryo'); if (cf && cf.contentWindow && cf.contentWindow.state) st = cf.contentWindow.state; } catch(e){}
+  if (!st) { try { st = JSON.parse(localStorage.getItem('cryo_state_v1') || 'null'); } catch(e){} }
+  if (!st || !st.storages) return out;
+  Object.keys(st.storages).forEach(function(sk){
+    (st.storages[sk].racks || []).forEach(function(rk){
+      (rk.boxes || []).forEach(function(bx){
+        var vs = bx.vials || bx.positions || {};
+        Object.keys(vs).forEach(function(pos){
+          var v = vs[pos] || {};
+          if (cellsBaseLine(v.cellLine) !== key) return;
+          out.push({storage:sk, storageLabel:st.storages[sk].label||sk, rack:rk.name, box:bx.name,
+                    boxId:bx.id, pos:pos, vial:v, count:(parseInt(v.vialCount,10)||1)});
+        });
+      });
+    });
+  });
+  // Oldest freeze first — you thaw the oldest vial so the newest stock keeps its shelf life.
+  out.sort(function(a,b){ return String(a.vial.freezeDate||'9999').localeCompare(String(b.vial.freezeDate||'9999')); });
+  return out;
+}
+function cellsThaw(name){
+  var vs = cellsFindVials(name);
+  if (!vs.length){ alert('No vials of ' + name + ' in the freezer.'); return; }
+  var v = vs[0];
+  var line = v.vial.cellLine || name;
+  var msg = 'Thaw ' + line + '\n\n' + v.storageLabel + ' · ' + (v.rack||'') + ' · ' + v.box + ' · position ' + v.pos
+    + (v.vial.passage ? ('\npassage ' + v.vial.passage) : '')
+    + (v.vial.freezeDate ? ('\nfrozen ' + v.vial.freezeDate) : '')
+    + '\n\n' + v.count + ' vial' + (v.count===1?'':'s') + ' there. Take one, and start a culture?';
+  if (!confirm(msg)) return;
+  // Decrement the freezer first: if the culture write fails, an over-counted freezer is a
+  // smaller lie than a vial recorded twice.
+  try {
+    var cf = document.getElementById('frame-cryo');
+    var st = cf && cf.contentWindow && cf.contentWindow.state;
+    if (st){
+      Object.keys(st.storages).forEach(function(sk){
+        (st.storages[sk].racks||[]).forEach(function(rk){
+          (rk.boxes||[]).forEach(function(bx){
+            if (bx.id !== v.boxId) return;
+            var vs2 = bx.vials || bx.positions || {};
+            var cur = vs2[v.pos]; if (!cur) return;
+            var n = (parseInt(cur.vialCount,10)||1) - 1;
+            if (n > 0) cur.vialCount = n; else delete vs2[v.pos];
+          });
+        });
+      });
+      if (cf.contentWindow.saveState) cf.contentWindow.saveState();
+      if (cf.contentWindow.renderTab) cf.contentWindow.renderTab();
+    }
+  } catch(e){}
+  var pass = parseInt(String(v.vial.passage||'').replace(/[^0-9]/g,''), 10);
+  var base = String(line).split(',')[0].trim();
+  var suffix = String(line).indexOf(',') > -1 ? String(line).slice(String(line).indexOf(',')+1).trim() : '';
+  var ref = null;
+  try { ref = (getCellArchive()||[]).filter(function(x){ return cellsBaseLine(x.name) === cellsBaseLine(base); })[0]; } catch(e){}
+  JournalStore.addCell({
+    line: line, baseLine: base, titleSuffix: suffix,
+    passage: isNaN(pass) ? 1 : pass,
+    vessel: 'T25', media: (ref&&ref.media) || v.vial.cultureMedia || '',
+    intervalDays: (ref&&ref.intervalDays) || 3,
+    passageLimit: (ref&&ref.passageLimit) || 30,
+    ratio: (ref&&ref.ratio) || '', type: (ref&&ref.type) || '',
+    seeded: Date.now(), mycoLast: 0,
+    notes: 'Thawed from ' + v.box + ' ' + v.pos + (v.vial.freezeDate?(' (frozen '+v.vial.freezeDate+')'):''),
+    history: [{action:'thawed', passage: isNaN(pass)?1:pass, ts: Date.now()}]
+  });
+  openCells('incubator');
+}
+
 function cellsStatsFor(name){
   var s = cellsLineStats()[cellsBaseLine(name)];
   return s ? {cultures:s.cultures, vials:s.vials, where:s.where.slice()} : {cultures:0, vials:0, where:[]};
