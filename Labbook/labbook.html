@@ -3458,12 +3458,45 @@ function ongoingHtml(D){
 function openIncubatorLink(line){ try{ if(window.parent && window.parent.openApp) window.parent.openApp('incubator','incubator', line, dHubContextFor(_curExp(),{cellLines:[{label:String(line)}]})); }catch(e){} }
 document.addEventListener('click',function(e){ var c=e.target.closest && e.target.closest('.exh-chip'); if(!c) return; if(c.dataset.kind==='plasmid') openPlasmidLink(c.dataset.val); else openIncubatorLink(c.dataset.val); });
 
+// ── Antibodies now live in the shared library ───────────────────────────────────────────────
+// The catalogue moved to journal/antibodies so Archive's Library and Labbook show one list
+// instead of two that drift. The copy is one-way and non-destructive: LB.data.antibodies is
+// left exactly as it was, so nothing is lost if the shell is unavailable or the move is undone.
+function _abShared(){
+  try{ var H=(window.parent&&window.parent!==window)?window.parent:null;
+    if(H&&H.JournalStore&&H.JournalStore.libAdd) return H.JournalStore; }catch(e){}
+  return null;
+}
+function abStoreAll(){
+  var S=_abShared();
+  if(S){ try{ return S.get().antibodies||{}; }catch(e){} }
+  return LB.data.antibodies||{};
+}
+function _abNorm(n){ return String(n||'').trim().toLowerCase().replace(/\s+/g,' '); }
+function migrateAntibodiesToLibrary(){
+  var S=_abShared(); if(!S) return;
+  if(LB.data._abMigrated) return;
+  var mine=LB.data.antibodies||{}, ids=Object.keys(mine);
+  if(!ids.length){ LB.data._abMigrated=true; return; }
+  var there={}; try{ var t=S.get().antibodies||{};
+    Object.keys(t).forEach(function(k){ there[_abNorm(t[k].name)]=1; }); }catch(e){ return; }
+  var n=0;
+  ids.forEach(function(k){ var a=mine[k]; if(!a||!a.name) return;
+    if(there[_abNorm(a.name)]) return;
+    S.libAdd('antibodies',{name:a.name||'',target:a.target||'',host:a.host||'',clonality:'',
+      vendor:'',catalog:a.catalog||'',lot:'',dilution:a.dilution||'',location:'',
+      usedIn:(a.usedIn||[]).slice(),created:a.created||Date.now()});
+    n++; });
+  LB.data._abMigrated=true; save();
+  if(n) toast(n+' antibod'+(n===1?'y':'ies')+' copied into the shared Library');
+}
 // ── Antibody DB ──
 function abUsedCodes(ab){ return (ab.usedIn||[]).map(function(eid){ var e=LB.data.experiments[eid]; return e?(e.code||e.title):null; }).filter(Boolean); }
 function renderAntibodies(host){
   (el('export-btn')||{style:{}}).style.display='none';
   var q=(window._abQ||'').toLowerCase();
-  var abs=Object.keys(LB.data.antibodies).map(function(k){return LB.data.antibodies[k];}).filter(function(a){return !q||((a.name||'')+' '+(a.catalog||'')+' '+(a.target||'')).toLowerCase().indexOf(q)>=0;}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var _src=abStoreAll();
+  var abs=Object.keys(_src).map(function(k){ var a=_src[k]; a.id=a.id||k; return a; }).filter(function(a){return !q||((a.name||'')+' '+(a.catalog||'')+' '+(a.target||'')).toLowerCase().indexOf(q)>=0;}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   var rows=abs.map(function(a){ var used=abUsedCodes(a);
     return '<div class="ab-row"><input class="abn" value="'+esc(a.name||'')+'" placeholder="name (α-…)" onchange="abSet(\''+a.id+'\',\'name\',this.value)"><input value="'+esc(a.catalog||'')+'" placeholder="catalog #" onchange="abSet(\''+a.id+'\',\'catalog\',this.value)"><input value="'+esc(a.host||'')+'" placeholder="host" onchange="abSet(\''+a.id+'\',\'host\',this.value)"><input value="'+esc(a.dilution||'')+'" placeholder="dilution" onchange="abSet(\''+a.id+'\',\'dilution\',this.value)"><button class="ab-del" title="Delete" onclick="abDel(\''+a.id+'\')">&times;</button>'
       +(used.length?'<div class="ab-used">Used in: '+used.map(function(c){return '<a onclick="jumpCode(\''+esc(c)+'\')">'+esc(c)+'</a>';}).join(', ')+'</div>':'<div class="ab-used">Not yet used in any experiment</div>')+'</div>'; }).join('');
@@ -4687,6 +4720,7 @@ applyLayout(); renderPanels(); renderAll();
 lbInitSync();
 setTimeout(maybeAutoBackup,1500);
 setTimeout(gcAttachments,4000);
+setTimeout(migrateAntibodiesToLibrary,2500);
 function _mergeDHubContext(ctx){
   ctx=ctx||{}; var e=(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
   // No experiment open: there is nowhere to attach this. Say so rather than buffering it into

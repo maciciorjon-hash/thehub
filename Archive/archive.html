@@ -84,6 +84,33 @@ input:checked+.theme-slider::before{transform:translateX(16px);}
 }
 .search-box input:focus{border-color:var(--accent);}
 .search-box svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:var(--text3);pointer-events:none;}
+.lib-kinds{display:flex;gap:4px;margin:0 0 14px;flex-wrap:wrap;}
+.lib-kind{font:inherit;font-size:12.5px;font-weight:500;background:none;border:1px solid transparent;
+  border-radius:8px;padding:5px 13px;color:var(--text2);cursor:pointer;}
+.lib-kind:hover{color:var(--text);background:var(--surface2);}
+.lib-kind.on{background:var(--surface2);border-color:var(--border2);color:var(--text);font-weight:600;}
+.lib-kind .n{font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:5px;}
+.lib-add{border:1px dashed var(--border2);border-radius:10px;padding:13px 15px;margin-bottom:14px;}
+.lib-add-hd{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:9px;}
+.lib-add-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:7px;}
+.lib-add-grid input,.lib-add-grid select{font:inherit;font-size:12.5px;background:var(--surface);
+  border:1px solid var(--border2);border-radius:7px;padding:6px 9px;color:var(--text);min-width:0;}
+.lib-add-grid input:focus,.lib-add-grid select:focus{outline:none;border-color:var(--accent);}
+.lib-list{display:flex;flex-direction:column;gap:7px;}
+.lib-row{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:10px 14px;}
+.lib-row-top{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;}
+.lib-nm{font-size:14px;font-weight:600;}
+.lib-tg{font-size:11.5px;color:var(--accent);font-weight:600;}
+.lib-seq{font-family:var(--mono);font-size:11.5px;color:var(--text2);word-break:break-all;}
+.lib-meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:5px;font-size:11.5px;color:var(--text2);}
+.lib-meta b{font-weight:600;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-right:4px;}
+.lib-where{color:#4f9d8f;font-weight:600;}
+.lib-used{margin-top:6px;font-size:11px;color:var(--text3);}
+.lib-acts{margin-left:auto;display:flex;gap:6px;}
+.lib-x{background:none;border:none;color:var(--text3);font-size:17px;line-height:1;cursor:pointer;padding:0 3px;}
+.lib-x:hover{color:#e05252;}
+.lib-empty{padding:46px 20px;text-align:center;color:var(--text3);font-size:13px;line-height:1.7;}
+.lib-note{font-size:11.5px;color:var(--text3);margin-bottom:12px;}
 .filter-pills{display:flex;gap:7px;flex-wrap:wrap;}
 .filter-pill{
   padding:6px 13px;border-radius:20px;border:1.5px solid var(--border2);background:var(--surface);
@@ -374,15 +401,17 @@ body.step-notes-on li:hover>.step-note-btn,
 
   <!-- ── HOME ── -->
   <div class="home-wrap" id="home-view">
+    <div class="lib-kinds" id="lib-kinds"></div>
     <div class="home-toolbar">
       <div class="search-box">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <input type="text" id="proto-search" placeholder="Search protocols…" oninput="renderProtoGrid()">
+        <input type="text" id="proto-search" placeholder="Search protocols…" oninput="_libKind==='protocols'?renderProtoGrid():renderLib()">
       </div>
       <div class="filter-pills" id="filter-pills"></div>
     </div>
     <div class="proto-grid" id="proto-grid"></div>
     <div class="empty-hint" id="empty-hint" style="display:none">No protocols match your search.</div>
+    <div id="lib-view" style="display:none"></div>
   </div>
 
   <!-- ── DETAIL: Gibson Assembly ── -->
@@ -1905,6 +1934,164 @@ var PROTOCOLS = [
 
 var _activeFilter = 'all';
 var _openProtocolId = null;
+
+// ── Library: the reagents this lab makes or buys ────────────────────────────────────────────
+// Archive holds shared knowledge. Protocols are read-only and universal; antibodies and primers
+// are yours and change, so they live in the same store the rest of dHUB uses (journal/…) rather
+// than inside Archive's own file. Standalone — the bench PWA with no shell — falls back to
+// localStorage, which means last-write-wins per record on reconnect. That is the honest cost of
+// letting the phone edit them offline, and it is stated in the UI rather than hidden.
+var LIB_KINDS = [
+  {id:'protocols',  label:'Protocols'},
+  {id:'antibodies', label:'Antibodies'},
+  {id:'primers',    label:'Primers'}
+];
+var LIB_FIELDS = {
+  antibodies: [
+    {f:'name',      lbl:'Name (α-…)',     w:1},
+    {f:'target',    lbl:'Target',          w:1},
+    {f:'host',      lbl:'Host',            w:1},
+    {f:'clonality', lbl:'Mono/polyclonal', w:1},
+    {f:'vendor',    lbl:'Vendor',          w:1},
+    {f:'catalog',   lbl:'Catalog #',       w:1},
+    {f:'lot',       lbl:'Lot #',           w:1},
+    {f:'dilution',  lbl:'Dilution (1:1000)',w:1},
+    {f:'location',  lbl:'Where it lives',  w:1}
+  ],
+  primers: [
+    {f:'name',      lbl:'Name',            w:1},
+    {f:'seq',       lbl:"Sequence 5'→3'",  w:2},
+    {f:'purpose',   lbl:'Purpose',         w:1, opts:['cloning','sequencing','qPCR','genotyping','mutagenesis']},
+    {f:'targetGene',lbl:'Target gene',     w:1},
+    {f:'vendor',    lbl:'Ordered from',    w:1},
+    {f:'location',  lbl:'Where it lives',  w:1}
+  ]
+};
+var _libKind = 'protocols';
+
+function _libHost(){ try{ return (window.parent && window.parent !== window) ? window.parent : null; }catch(e){ return null; } }
+function _libStoreOk(){ var H=_libHost(); return !!(H && H.JournalStore && H.JournalStore.libAdd); }
+function _libLocalKey(kind){ return 'archive_lib_' + kind; }
+function libAll(kind){
+  if (_libStoreOk()){ try{ return (_libHost().JournalStore.get()||{})[kind] || {}; }catch(e){} }
+  try{ return JSON.parse(localStorage.getItem(_libLocalKey(kind)) || '{}') || {}; }catch(e){ return {}; }
+}
+function _libLocalSave(kind, all){ try{ localStorage.setItem(_libLocalKey(kind), JSON.stringify(all)); }catch(e){} }
+function libAdd(kind, rec){
+  if (_libStoreOk()) return _libHost().JournalStore.libAdd(kind, rec);
+  var all = libAll(kind), id = 'loc-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  all[id] = rec; _libLocalSave(kind, all); return id;
+}
+function libSet(kind, id, patch){
+  if (_libStoreOk()) return _libHost().JournalStore.libSet(kind, id, patch);
+  var all = libAll(kind); all[id] = Object.assign({}, all[id], patch); _libLocalSave(kind, all);
+}
+function libDel(kind, id){
+  if (_libStoreOk()) return _libHost().JournalStore.libDel(kind, id);
+  var all = libAll(kind); delete all[id]; _libLocalSave(kind, all);
+}
+// Wallace for short oligos, GC-based above 13 nt. A hint, not a substitute for the supplier's.
+function libTm(seq){
+  var q = String(seq||'').toUpperCase().replace(/[^ACGT]/g,'');
+  if (q.length < 6) return null;
+  var gc = (q.match(/[GC]/g)||[]).length, at = q.length - gc;
+  var tm = (q.length < 14) ? (2*at + 4*gc) : (64.9 + 41*(gc - 16.4)/q.length);
+  return Math.round(tm*10)/10;
+}
+function libGC(seq){
+  var q = String(seq||'').toUpperCase().replace(/[^ACGT]/g,'');
+  if (!q.length) return null;
+  return Math.round(1000*(q.match(/[GC]/g)||[]).length/q.length)/10;
+}
+
+function setLibKind(k){
+  _libKind = k;
+  var isP = (k === 'protocols');
+  document.getElementById('filter-pills').style.display = isP ? '' : 'none';
+  document.getElementById('proto-grid').style.display   = isP ? '' : 'none';
+  document.getElementById('lib-view').style.display     = isP ? 'none' : '';
+  document.getElementById('empty-hint').style.display   = 'none';
+  var si = document.getElementById('proto-search');
+  si.placeholder = isP ? 'Search protocols…'
+    : ('Search ' + (LIB_KINDS.filter(function(x){return x.id===k;})[0]||{}).label.toLowerCase() + '…');
+  renderLibKinds();
+  if (isP) renderProtoGrid(); else renderLib();
+}
+function renderLibKinds(){
+  var wrap = document.getElementById('lib-kinds'); if (!wrap) return;
+  wrap.innerHTML = LIB_KINDS.map(function(k){
+    var n = (k.id === 'protocols') ? PROTOCOLS.length : Object.keys(libAll(k.id)).length;
+    return '<button class="lib-kind' + (k.id===_libKind?' on':'') + '" onclick="setLibKind(\'' + k.id + '\')">'
+      + esc(k.label) + '<span class="n">' + n + '</span></button>';
+  }).join('');
+}
+function libAddFromForm(){
+  var kind = _libKind, rec = {created: Date.now(), usedIn: []};
+  LIB_FIELDS[kind].forEach(function(f){
+    var el2 = document.getElementById('libf-' + f.f);
+    if (el2) rec[f.f] = (el2.value||'').trim();
+  });
+  if (!rec.name){ alert('Give it a name first.'); return; }
+  libAdd(kind, rec);
+  LIB_FIELDS[kind].forEach(function(f){ var el2=document.getElementById('libf-'+f.f); if(el2) el2.value=''; });
+  renderLib(); renderLibKinds();
+}
+function libEdit(kind, id, f, v){ libSet(kind, id, (function(o){ o[f]=v; return o; })({})); renderLib(); }
+function libRemove(kind, id, name){
+  if (!confirm('Delete "' + (name||'this record') + '"? This cannot be undone.')) return;
+  libDel(kind, id); renderLib(); renderLibKinds();
+}
+function renderLib(){
+  var host = document.getElementById('lib-view'); if (!host) return;
+  var kind = _libKind, fields = LIB_FIELDS[kind] || [];
+  var q = (document.getElementById('proto-search').value||'').toLowerCase().trim();
+  var all = libAll(kind);
+  var ids = Object.keys(all).filter(function(id){
+    if (!q) return true;
+    return fields.some(function(f){ return String(all[id][f.f]||'').toLowerCase().indexOf(q) > -1; });
+  }).sort(function(a,b){ return String(all[a].name||'').localeCompare(String(all[b].name||'')); });
+
+  var form = '<div class="lib-add"><div class="lib-add-hd">Add ' + kind.replace(/s$/,'') + '</div><div class="lib-add-grid">'
+    + fields.map(function(f){
+        if (f.opts) return '<select id="libf-' + f.f + '"><option value="">' + esc(f.lbl) + '</option>'
+          + f.opts.map(function(o){ return '<option value="' + esc(o) + '">' + esc(o) + '</option>'; }).join('') + '</select>';
+        return '<input id="libf-' + f.f + '" placeholder="' + esc(f.lbl) + '" autocomplete="off"'
+          + (f.w>1?' style="grid-column:span 2"':'')
+          + ' onkeydown="if(event.key===\'Enter\')libAddFromForm()">';
+      }).join('')
+    + '<button class="btn btn-sm" onclick="libAddFromForm()" style="align-self:stretch">+ Add</button></div></div>';
+
+  var note = _libStoreOk() ? ''
+    : '<div class="lib-note">Saved on this device. Without the dHUB shell there is no sync — edits made here and elsewhere will not merge.</div>';
+
+  var rows = ids.map(function(id){
+    var r = all[id];
+    var meta = fields.filter(function(f){ return f.f!=='name' && f.f!=='seq' && f.f!=='target' && r[f.f]; })
+      .map(function(f){
+        var v = esc(String(r[f.f]));
+        if (f.f==='location') v = '<span class="lib-where">' + v + '</span>';
+        return '<span><b>' + esc(f.lbl.replace(/ \(.*\)$/,'')) + '</b>' + v + '</span>';
+      });
+    if (kind==='primers' && r.seq){
+      var tm = libTm(r.seq), gc = libGC(r.seq);
+      if (tm!=null) meta.unshift('<span><b>Tm</b>' + tm + ' °C</span>');
+      if (gc!=null) meta.unshift('<span><b>GC</b>' + gc + ' %</span>');
+      if (r.seq) meta.unshift('<span><b>Length</b>' + String(r.seq).replace(/[^ACGTacgt]/g,'').length + ' nt</span>');
+    }
+    var used = (r.usedIn||[]).length;
+    return '<div class="lib-row"><div class="lib-row-top"><span class="lib-nm">' + esc(r.name||'—') + '</span>'
+      + (r.target?'<span class="lib-tg">' + esc(r.target) + '</span>':'')
+      + '<span class="lib-acts"><button class="lib-x" title="Delete" onclick="libRemove(\'' + kind + '\',\'' + id + '\',\'' + esc(String(r.name||'').replace(/'/g,"")) + '\')">&times;</button></span></div>'
+      + (r.seq?'<div class="lib-seq">' + esc(r.seq) + '</div>':'')
+      + (meta.length?'<div class="lib-meta">' + meta.join('') + '</div>':'')
+      + '<div class="lib-used">' + (used ? ('Used in ' + used + ' experiment' + (used===1?'':'s')) : 'Not yet used in an experiment') + '</div>'
+      + '</div>';
+  }).join('');
+
+  host.innerHTML = note + form + (ids.length
+    ? ('<div class="lib-list">' + rows + '</div>')
+    : '<div class="lib-empty">Nothing here yet' + (q?' matching that search':'') + '. Fill the form above.</div>');
+}
 
 function renderFilterPills() {
   var wrap = document.getElementById('filter-pills');
@@ -3959,6 +4146,7 @@ function generateMiSeqSteps() {
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', function() {
   renderFilterPills();
+  renderLibKinds();
   renderProtoGrid();
   wireDHubLabbookLinks();
   setTimeout(anInitSync, 400); // reconcile sticky notes with the cloud once the parent Firebase is up
@@ -4044,6 +4232,12 @@ document.addEventListener('DOMContentLoaded', function() {
         return {hasCalc:!!p.hasCalc, name:p.name, steps:steps, table:table};
       }catch(e){ return null; }
     };
+    // The reagent catalogue, so Labbook can resolve an @mention without keeping its own copy.
+    window.parent.ARCHIVE_LIB = function(kind){ try{ return JSON.parse(JSON.stringify(libAll(kind)||{})); }catch(e){ return null; } };
+    window.parent.ARCHIVE_LIB_USE = function(kind,id,expId){
+      try{ var r=(libAll(kind)||{})[id]; if(!r) return false;
+        var u=(r.usedIn||[]).slice(); if(u.indexOf(expId)<0) u.push(expId);
+        libSet(kind,id,{usedIn:u}); return true; }catch(e){ return false; } };
     // The full structured protocol: stages -> ordered body[] -> steps with typed params.
     // This is what Labbook instantiates an experiment from — one dated block per stage.
     window.parent.ARCHIVE_PROTOCOL = function(pid){

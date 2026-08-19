@@ -572,6 +572,38 @@ lightbox, no click handler). Resized to 347×260 at q82 they still exceed what c
 screen: **742 KB → 323 KB**. Do not delete these photos — knowing what a line should look like
 down the microscope is the reason the tab exists.
 
+## Archive Library — the reagents this lab makes or buys
+
+Archive is no longer only protocols. A kind switcher (`LIB_KINDS`) sits above the search:
+**Protocols · Antibodies · Primers**. Protocols are shared, universal and read-only; antibodies
+and primers are *yours* and change, so they live in the same store the rest of dHUB uses
+(`journal/antibodies`, `journal/primers` via `JournalStore.libAdd/libSet/libDel`) rather than
+inside Archive's own file. `LIB_FIELDS` declares each kind, so a third kind is a data entry, not
+three more methods.
+
+Scope is **catalogue + location + lot**, not stock management: what it is, whose, catalog, lot,
+the dilution that worked, and where it physically lives. Inventory with quantities only tells
+the truth if every use is decremented, and a stock figure nobody maintains is worse than none.
+Primers show computed **length, GC% and Tm** (Wallace under 14 nt, GC-based above) — a hint, not
+a replacement for the supplier's value.
+
+**Plasmids and cell lines are deliberately *not* duplicated here.** Plasmids is a working app
+with a GenBank map renderer, and cell lines live in Cells with the culture and vial counts that
+give them meaning. Copying either into Archive would create a second place to edit the same
+record, which is the problem this rework exists to remove.
+
+**Standalone Archive (the bench PWA) falls back to `localStorage`**, so records are editable
+offline and reconcile last-write-wins *per record*. That cost is printed in the UI rather than
+hidden — same rule as `hasCloud()` in Labbook.
+
+**Labbook's antibodies were copied, not moved.** `migrateAntibodiesToLibrary()` runs once
+(`LB.data._abMigrated`), dedupes by normalised name, preserves `usedIn[]`, and leaves
+`LB.data.antibodies` **exactly as it was** — so nothing is lost if the shell is unavailable or
+the move is reversed. Labbook's Antibodies section reads the shared store when there is one and
+falls back to its own.
+
+Bridge: `ARCHIVE_LIB(kind)` returns the catalogue; `ARCHIVE_LIB_USE(kind, id, expId)` records a use.
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie
