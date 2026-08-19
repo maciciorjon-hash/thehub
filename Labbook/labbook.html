@@ -926,6 +926,21 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .nm-proto-off{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:var(--text3);}
 .nm-proto-off input{width:3.1em;font:inherit;font-family:var(--mono);font-size:11px;text-align:center;
   background:var(--surface);border:1px solid var(--border2);border-radius:5px;padding:1px 2px;color:var(--text);}
+.nm-proto-add.echo{border-color:#ff5760;color:#ff5760;}
+.nm-echo{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text2);
+  border:1px solid #ff5760;border-radius:8px;padding:6px 11px;margin-bottom:9px;}
+.nm-echo-t{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#ff5760;}
+.nm-echo-x{margin-left:auto;background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;line-height:1;}
+.pl-wv{font-family:var(--mono);font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45);}
+.pl-vals{display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--text2);
+  padding:7px 10px;margin-bottom:9px;border:1px solid var(--border2);border-radius:8px;}
+.pl-vals-t{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);}
+.pl-vals-sc{display:inline-flex;border-radius:3px;overflow:hidden;}
+.pl-vals-sc i{width:16px;height:9px;display:block;}
+.pl-vals-sc .lo{background:rgb(40,90,200);} .pl-vals-sc .mid{background:rgb(148,150,125);} .pl-vals-sc .hi{background:rgb(255,90,50);}
+.pl-vals-r{font-family:var(--mono);}
+.pl-vals-n{color:var(--text3);margin-left:auto;}
+.mrow.col{flex-direction:column;align-items:stretch;gap:6px;}
 .nm-proto-chip.synth{border-style:dashed;color:var(--text2);}
 .nm-proto-chip .x{cursor:pointer;color:var(--text3);font-size:15px;line-height:1;padding:0 3px;border-radius:8px;}
 .nm-proto-chip .x:hover{color:var(--danger);}
@@ -1019,11 +1034,11 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
     <div class="pl-body">
       <div class="pl-left">
         <div class="pl-gridwrap"><div id="pl-grid" class="pl-grid"></div></div>
-        <div class="pl-sum"><div class="pl-sec-t">Layout &mdash; what goes where</div><div id="pl-sum"></div></div>
+        <div class="pl-sum"><div id="pl-vals-legend"></div><div class="pl-sec-t">Layout &mdash; what goes where</div><div id="pl-sum"></div></div>
       </div>
       <div id="pl-side" class="pl-side"></div>
     </div>
-    <div class="modal-act"><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="plPasteValues()" title="Paste the plate-reader grid over this map">Paste reader values</button><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
   </div>
 </div>
 
@@ -1731,6 +1746,16 @@ function _csvRow(line){
 }
 function parseEchoPicklist(text){
   var lines=String(text||'').split(/\r?\n/);
+  // The preamble names the Echo protocol and the run date, which is enough to date the
+  // experiment and guess its type instead of asking for both again.
+  var meta={};
+  for(var h=0;h<lines.length&&h<12;h++){
+    var kv=_csvRow(lines[h]); if(kv.length<2) continue;
+    var k=(kv[0]||'').trim().toLowerCase();
+    if(k==='protocol name') meta.protocol=(kv[1]||'').trim();
+    else if(k==='run date/time') meta.runDate=(kv[1]||'').trim().slice(0,10);
+    else if(k==='application name') meta.app=(kv[1]||'').trim();
+  }
   var hdr=-1;
   for(var i=0;i<lines.length;i++){ if(/destination\s+well/i.test(lines[i])){ hdr=i; break; } }
   if(hdr<0) return {error:'This does not look like an Echo picklist — no "Destination Well" column.'};
@@ -1765,7 +1790,7 @@ function parseEchoPicklist(text){
   var list=Object.keys(plates).map(function(k){ return plates[k]; })
              .sort(function(a,b){ return b.n-a.n; });
   if(!list.length) return {error:'No usable transfers found in this picklist.'};
-  return {plates:list, skipped:skipped, bad:bad};
+  return {plates:list, skipped:skipped, bad:bad, meta:meta};
 }
 // Apply one parsed destination plate onto the plate map, keeping everything it does not touch.
 function applyEchoToPlate(plate,dest){
@@ -1782,6 +1807,126 @@ function applyEchoToPlate(plate,dest){
     n=n;
   });
   return {compounds:n, vehicle:dm};
+}
+// 384 uses rows past H or columns past 12; anything smaller is a 96.
+function echoGuessFormat(dest){
+  var mr=0, mc=0;
+  Object.keys(dest.wells).forEach(function(w){ var rc=wellRC(w); if(!rc) return;
+    mr=Math.max(mr,rc.r+1); mc=Math.max(mc,rc.c+1); });
+  if(mr>16||mc>24) return '1536';
+  if(mr>8||mc>12) return '384';
+  if(mr>6||mc>8) return '96';
+  return '96';
+}
+// Experiment type from the Echo protocol name — HB20260504_BET.edr is a HiBiT run.
+function echoGuessType(meta){
+  var n=String((meta&&meta.protocol)||'').toUpperCase();
+  if(/^HB|HIBIT/.test(n)) return 'HB';
+  if(/^CTG|VIAB/.test(n)) return 'CTG';
+  if(/^D2B|DTB/.test(n)) return 'D2B';
+  if(/^NB|NANOBRET/.test(n)) return 'NB';
+  if(/^WB/.test(n)) return 'WB';
+  return null;
+}
+// ── A picklist is already an experiment plan ────────────────────────────────────────────────
+// It says which compounds, at which doses, in which wells, on which day. Everything the New
+// experiment modal was about to ask for. Read it once and fill the form instead.
+var NM_ECHO=null;
+function nmImportEcho(){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='.csv,text/csv,text/plain';
+  inp.onchange=function(){
+    var f=inp.files&&inp.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      var res=parseEchoPicklist(String(rd.result||''));
+      if(res.error){ lbAlert(res.error,{title:'Echo picklist'}); return; }
+      function go(dest){
+        var fmt=echoGuessFormat(dest);
+        NM_ECHO={dest:dest, format:fmt, meta:res.meta||{}};
+        NM_PLATE=true;
+        var t=echoGuessType(res.meta);
+        if(t){ var opt=[].slice.call(el('nm-type').options).filter(function(o){ return presetBase(o.value)===t; })[0];
+          if(opt){ el('nm-type').value=opt.value; nmResetSetup(); } }
+        if(NM_SETUP&&NM_SETUP.format!==undefined) NM_SETUP.format=fmt;
+        if(res.meta&&res.meta.runDate&&/^\d{4}-\d{2}-\d{2}$/.test(res.meta.runDate)) el('nm-date').value=res.meta.runDate;
+        var cmp={}; Object.keys(dest.wells).forEach(function(w){ var c=dest.wells[w]; if(!c.dmsoOnly&&c.compound) cmp[c.compound]=1; });
+        NM_ECHO.compounds=Object.keys(cmp);
+        if(!el('nm-title').value && res.meta && res.meta.protocol)
+          el('nm-title').value=String(res.meta.protocol).replace(/\.edr$/i,'');
+        nmUpdateCode(); nmSetup(); nmProtos(); nmPreview();
+        toast('Picklist read — '+Object.keys(dest.wells).length+' wells, '+NM_ECHO.compounds.length+' compounds');
+      }
+      if(res.plates.length===1) return go(res.plates[0]);
+      lbPicker('Which destination plate?',res.plates.map(function(b){
+        return {id:b.name,label:b.name,sub:Object.keys(b.wells).length+' wells · '+b.n+' transfers',ic:'E',c:'#ff5760'};
+      }),function(it){ go(res.plates.filter(function(b){return b.name===it.id;})[0]); });
+    };
+    rd.readAsText(f);
+  };
+  inp.click();
+}
+function nmEchoSummary(){
+  if(!NM_ECHO) return '';
+  return '<div class="nm-echo"><span class="nm-echo-t">Echo picklist</span>'
+    +esc(NM_ECHO.dest.name)+' · '+Object.keys(NM_ECHO.dest.wells).length+' wells · '
+    +NM_ECHO.compounds.length+' compounds · '+NM_ECHO.format+'-well'
+    +'<button class="nm-echo-x" onclick="NM_ECHO=null;nmPreview();">&times;</button></div>';
+}
+// ── Plate-reader values on the map ──────────────────────────────────────────────────────────
+// Paste the reader's grid and see the numbers in their wells. An edge effect or a dead column
+// is obvious here and invisible in a fitted curve, so this belongs before analysis, not after.
+// The grid parser is Blueprint's pdParseValues, ported rather than reinvented.
+function plParseValues(text,fmt){
+  // Labbook's formats are {r,c}, not Blueprint's {rows,cols} — the port has to translate.
+  var d=PLATE_FORMATS[String(fmt)]||PLATE_FORMATS['96'], cols=d.c, rl=PLATE_ROWS.slice(0,d.r);
+  var lines=String(text||'').trim().split(/\r?\n/).filter(function(l){ return l.trim()!==''; });
+  var grid=lines.map(function(l){ return l.split(/[\t,;]+/).map(function(x){ return x.trim(); }); });
+  function isColHeader(c){
+    var off=(/^[A-P]$/i.test(c[0]||'')||(c[0]||'')==='')?1:0;
+    for(var i=0;i<cols;i++){ if(parseInt(c[off+i],10)!==i+1) return false; }
+    return true;
+  }
+  if(grid.length&&(isColHeader(grid[0])||(isNaN(parseFloat(grid[0][0]))&&!/^[A-P]$/i.test(grid[0][0]||'')))) grid=grid.slice(1);
+  var vals={}, n=0;
+  grid.forEach(function(c,ri){
+    var start=/^[A-P]$/i.test(c[0]||'')?1:0;
+    var letter=start===1?c[0].toUpperCase():rl[ri];
+    if(!letter||rl.indexOf(letter)<0) return;
+    for(var i=0;i<cols;i++){ var raw=c[start+i], v=parseFloat(raw);
+      if(raw!=null&&raw!==''&&!isNaN(v)){ vals[letter+(i+1)]=v; n++; } }
+  });
+  return n?vals:null;
+}
+function plPasteValues(){
+  var p=plCur(); if(!p) return;
+  lbPromptBig('Paste the plate-reader grid (rows × columns, tab/comma separated). Row letters and a header row are both optional.','')
+    .then(function(t){
+      if(t==null) return;
+      var v=plParseValues(t,p.format);
+      if(!v){ lbAlert('Could not read a value grid from that. Expected one row per plate row.',{title:'Plate values'}); return; }
+      var ks=Object.keys(v).map(function(k){ return v[k]; });
+      p.values={data:v, min:Math.min.apply(null,ks), max:Math.max.apply(null,ks), added:Date.now()};
+      platePersist(PL.key); plRender();
+      toast(ks.length+' values read · '+_plTrim(p.values.min)+' – '+_plTrim(p.values.max));
+    });
+}
+function plClearValues(){ var p=plCur(); if(!p) return; delete p.values; platePersist(PL.key); plRender(); }
+// Blue → red across the range actually present, so the spread is visible rather than absolute.
+function plValueColor(p,id){
+  if(!p.values||!p.values.data) return null;
+  var v=p.values.data[id]; if(v==null) return null;
+  var lo=p.values.min, hi=p.values.max, t=(hi>lo)?((v-lo)/(hi-lo)):0.5;
+  var r=Math.round(40+215*t), b=Math.round(200-150*t), g=Math.round(90+60*(1-Math.abs(t-0.5)*2));
+  return 'rgb('+r+','+g+','+b+')';
+}
+function plValuesLegend(p){
+  if(!p.values||!p.values.data) return '';
+  var n=Object.keys(p.values.data).length;
+  return '<div class="pl-vals"><span class="pl-vals-t">Reader values</span>'
+    +'<span class="pl-vals-sc"><i class="lo"></i><i class="mid"></i><i class="hi"></i></span>'
+    +'<span class="pl-vals-r">'+_plTrim(p.values.min)+' – '+_plTrim(p.values.max)+'</span>'
+    +'<span class="pl-vals-n">'+n+' wells</span>'
+    +'<button class="pl-btn" onclick="plClearValues()">Clear</button></div>';
 }
 function plImportEcho(){
   var inp=document.createElement('input'); inp.type='file'; inp.accept='.csv,text/csv,text/plain';
@@ -1857,6 +2002,7 @@ function openPlateEditor(key){ var p=plateOf(key); if(!p){ toast('No plate map h
 function closePlateEditor(){ el('plate-modal').classList.remove('open'); PL.key=null; PL.sel={}; renderEditor(); }
 function plRender(){ var p=plCur(); if(!p) return; plRenderGrid(); plRenderSide(); plRenderSum(); }
 function plRenderSum(){ var p=plCur(), host=el('pl-sum'); if(!p||!host) return;
+  var lg=el('pl-vals-legend'); if(lg) lg.innerHTML=plValuesLegend(p);
   host.innerHTML=plateSummaryHtml(p)||'<div class="pl-sum-empty">Nothing filled in yet — select wells and type what is in them.</div>'; }
 function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return;
   var d=plateDims(p), wpx=PLATE_WPX[String(p.format)]||34, fs=Math.max(6,Math.round(wpx/4.2));
@@ -1875,10 +2021,12 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
   for(var r=0;r<d.r;r++){
     h+='<div class="pl-rowh" style="'+at(r+base,1)+'" title="Select row '+PLATE_ROWS.charAt(r)+'" onmousedown="plSelectRow('+r+',event)">'+PLATE_ROWS.charAt(r)+'</div>';
     for(var c2=0;c2<d.c;c2++){ var id=wellIdOf(r,c2), w=(p.wells||{})[id];
-      var col=plateWellColor(p,w), txt=(w&&w.groupId&&grouped[w.groupId])?'':plateWellShort(w);
+      var col=plValueColor(p,id)||plateWellColor(p,w), txt=(w&&w.groupId&&grouped[w.groupId])?'':plateWellShort(w);
       h+='<div class="pl-w'+(PL.sel[id]?' sel':'')+(w?'':' empty')+'" data-w="'+id+'" style="'+at(r+base,c2+2)+(col?'background:'+col:'')+'"'
         +' title="'+esc(plateWellTip(p,id,w))+'" onmousedown="plWellDown(\''+id+'\',event)" onmouseenter="plWellEnter(\''+id+'\')">'
-        +(txt&&wpx>=28?'<span class="pl-wt">'+esc(txt)+'</span>':'')+'</div>'; }
+        +(function(){ var vv=(p.values&&p.values.data)?p.values.data[id]:null;
+            if(vv!=null&&wpx>=22) return '<span class="pl-wt pl-wv">'+esc(_plTrim(vv))+'</span>';
+            return (txt&&wpx>=28)?('<span class="pl-wt">'+esc(txt)+'</span>'):''; })()+'</div>'; }
   }
   plateGroupBoxes(p).forEach(function(b){
     h+='<div class="pl-gl" style="grid-row:'+(b.r1+base)+'/'+(b.r2+base+1)+';grid-column:'+(b.c1+2)+'/'+(b.c2+3)+'">'
@@ -2762,7 +2910,7 @@ var NM_PROTOS=[];
 var NM_SETUP={}, NM_PLATE=false;
 function nmResetSetup(){
   var type=presetBase(el('nm-type').value); var S=setupSchema(type);
-  NM_PROTOS=[]; NM_SETUP=setupDefaults(type); NM_PLATE=!!(S.plate&&S.plateOn);
+  NM_PROTOS=[]; NM_SETUP=setupDefaults(type); NM_PLATE=!!(S.plate&&S.plateOn); NM_ECHO=null;
   nmSetup();
 }
 // One setup field. Deliberately reuses the calculators' .ci-f markup so the two look identical.
@@ -2805,7 +2953,8 @@ function nmProtos(){ var host=el('nm-protocols'); if(!host) return;
     return '<span class="nm-proto-chip'+(p.synth?' synth':'')+'">'+esc(p.name||p.id)
       +(st?'<span class="nm-proto-n">'+st.length+' stage'+(st.length!==1?'s':'')+'</span>':'')
       +vs+off+'<span class="x" title="Remove" onclick="nmDelProto('+i+')">&times;</span></span>'; }).join('');
-  host.innerHTML='<div class="nm-pv-hd">Optional — add extra Archive protocol steps</div><div class="nm-proto-chips">'+chips+'<button type="button" class="nm-proto-add" onclick="nmAddProto()">+ protocol</button></div>'; }
+  host.innerHTML='<div class="nm-pv-hd">Optional — add extra Archive protocol steps</div><div class="nm-proto-chips">'+chips+'<button type="button" class="nm-proto-add" onclick="nmAddProto()">+ protocol</button>'
+    +'<button type="button" class="nm-proto-add echo" onclick="nmImportEcho()" title="Read compounds, doses and wells from an Echo transfer picklist">&#8681; Echo picklist…</button></div>'; }
 function nmDelProto(i){ NM_PROTOS.splice(i,1); nmProtos(); nmPreview(); }
 function nmAddProto(){ ensureArchive(function(){ var idx=archiveIndex(); var items=idx.filter(function(p){ return !NM_PROTOS.some(function(x){return x.id===p.id;}); }).map(function(p){ return {id:p.id,label:p.name+(p.hasCalc?' · calc':''),sub:p.category||'protocol',ic:'A',c:'#a56983'}; }); if(!items.length){ toast('No more protocols to add'); return; } lbPicker('Add source protocol',items,function(it){
   var e={id:it.id,name:it.label.replace(/ · calc$/,'')};
@@ -2878,7 +3027,7 @@ function nmPreview(){ var host=el('nm-preview'); if(!host) return;
         +'</span></div>'; }).join('');
   }).join('');
   var n=list.length+nExtra;
-  host.innerHTML='<div class="nm-pv-hd">Will create '+n+' day-block'+(n!==1?'s':'')+(NM_PLATE?' + a plate map':'')+'</div><div class="nm-pv-list">'+rows+extra+'</div>'; }
+  host.innerHTML=nmEchoSummary()+'<div class="nm-pv-hd">Will create '+n+' day-block'+(n!==1?'s':'')+(NM_PLATE?' + a plate map':'')+'</div><div class="nm-pv-list">'+rows+extra+'</div>'; }
 function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   var key=el('nm-type').value, tpl=LB.data.presets[key]||{title:'',blocks:[{dayOffset:0,title:'',html:'<p></p>'}]};
   var startDate=el('nm-date').value||todayStr();
@@ -2900,7 +3049,14 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
       protocols:protoList||[], pubReady:buildPubReadyFromExp({blocks:all, startDate:startDate, setup:setup, type:type, protocols:protoList||[]}),
       blocks:all, created:Date.now(), updated:Date.now() };
     // A 384-well Echo run gets the standard Echo layout straight away rather than a blank plate.
-    if(wantPlate){
+    if(NM_ECHO){
+      // A real picklist beats any ready-made layout: it is what the machine actually did.
+      e.plate=newPlate(NM_ECHO.format);
+      applyEchoToPlate(e.plate,NM_ECHO.dest);
+      e.plate.title=NM_ECHO.dest.name;
+      e.echoRun={protocol:(NM_ECHO.meta||{}).protocol||'', runDate:(NM_ECHO.meta||{}).runDate||'',
+                 compounds:NM_ECHO.compounds.slice()};
+    } else if(wantPlate){
       var L=(String(setup.format)==='384'&&(type==='HB'||type==='D2B')&&setup.dosing!=='Manual (serial dilution)')
         ? PLATE_LAYOUTS.filter(function(x){return x.id==='echo384';})[0] : null;
       e.plate = L ? L.build() : newPlate(setup.format||'96');
@@ -4308,6 +4464,20 @@ function lbAlert(msg,opts){ opts=opts||{}; return new Promise(function(res){
   d.classList.add('open'); function done(){ _lbDlgClose(); res(true); }
   d._onCancel=done; el('lb-dlg-ok').onclick=done;
   setTimeout(function(){ el('lb-dlg-ok').focus(); },30);
+}); }
+function lbPromptBig(label,value,opts){ opts=opts||{}; return new Promise(function(res){
+  var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
+  card.innerHTML='<div class="modal-t">'+esc(opts.title||'Paste values')+'</div>'
+    +'<div class="mrow col"><label>'+esc(label||'')+'</label>'
+    +'<textarea id="lb-dlg-ta" spellcheck="false" style="width:100%;min-height:190px;font:12px/1.45 var(--mono);'
+    +'background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:9px;color:var(--text);resize:vertical"></textarea></div>'
+    +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" id="lb-dlg-cancel">Cancel</button><button class="btn" id="lb-dlg-ok">'+esc(opts.ok||'Read')+'</button></div>';
+  d.classList.add('open'); var ta=el('lb-dlg-ta'); ta.value=(value==null?'':value);
+  function done(v){ _lbDlgClose(); res(v); }
+  d._onCancel=function(){ done(null); }; el('lb-dlg-cancel').onclick=function(){ done(null); };
+  el('lb-dlg-ok').onclick=function(){ done(ta.value); };
+  ta.onkeydown=function(e){ if(e.key==='Escape'){ e.preventDefault(); done(null); } };
+  setTimeout(function(){ ta.focus(); },30);
 }); }
 function lbPrompt(label,value,opts){ opts=opts||{}; return new Promise(function(res){
   var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
