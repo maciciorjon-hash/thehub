@@ -636,6 +636,33 @@ in a sentence. None of it is possible in a rich-text notebook.
   override with no home is dropped, but only after the dialog has said so, and the deviation
   report had already shown it to you.
 
+## Backups: an automatic one never downloads
+
+The rule, after Jon reported a save dialog appearing out of nowhere: **a download is something
+you pressed a button for.** An automatic backup may write to a folder you chose, or keep a local
+snapshot. It may not open a file dialog.
+
+Two separate daily jobs were both breaking that rule when **no backup folder had ever been
+chosen** — which is the default state:
+
+- **Labbook `maybeAutoBackup`.** Embedded in dHUB it checked `pb.writeFile` *exists* and went
+  straight to `doBackup(false)`. But `window.lbBackup` always exposes `writeFile`; that says
+  nothing about whether a folder is configured. `writeFile` then rejected with `nodir` and
+  `_doBackupWrite`'s catch called `_download()`. It now asks `pb.dirName()` first, and the catch
+  only downloads when `manual` is true — otherwise it keeps a snapshot and explains once.
+  (The *standalone* path had already been fixed for exactly this; the embedded one had not.)
+- **Shell `backupJournal`.** Its own comment said "never auto-downloads". It did: the same
+  `nodir` rejection hit a catch that downloaded unconditionally. Now gated on `manual`.
+
+So on the first load of any day with no folder set, you could get **two** unexplained JSON save
+dialogs — one per job — and nothing said why.
+
+Also added so the safety net is visible rather than mysterious: `_markBackup(kind)` records
+*when* and *where* (`folder` / `download` / `snapshot`), and `backupStatus()` puts it on the
+Backup button ("Last backup today") and in its tooltip ("Saved today to your backup folder").
+The one-time nudge now leads with **"Nothing was downloaded"**, because that is the thing the
+user is confused about.
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie

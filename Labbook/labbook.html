@@ -87,6 +87,7 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .rb-lbtn:hover{background:var(--surface2);color:var(--text);border-color:var(--border);}
 .rb-lbtn-ico{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;}
 .rb-lbtn-ico svg{width:20px;height:20px;}
+.rb-lbtn-sub{display:block;font-size:9.5px;font-weight:500;color:var(--text3);letter-spacing:0;margin-top:1px;}
 .rb-lbtn-lbl{font-size:10.5px;font-weight:600;white-space:nowrap;}
 .tb b,.tb i,.tb u,.tb s{pointer-events:none;}
 .tb svg{width:18px;height:18px;pointer-events:none;}
@@ -4051,7 +4052,7 @@ function insertPane(){ return '<div class="rb-core rb-labelled">'+INSERT_ITEMS.m
 function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="Show or hide the right panel (Outline · Tags · Info)" onmousedown="event.preventDefault();toggleDock()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>')+'</span><span class="rb-lbtn-lbl">Right panel</span></button>'
   +'<button class="rb-lbtn" id="export-btn" title="Export the current entry to a PDF" onmousedown="event.preventDefault();exportPDF()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>')+'</span><span class="rb-lbtn-lbl">Export PDF</span></button>'
-  +'<button class="rb-lbtn" id="backup-btn" title="Save a dated backup of the whole notebook to a folder (right-click to choose the folder). Runs automatically once a day too." onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
+  +'<button class="rb-lbtn" id="backup-btn" title="'+esc(backupStatus().detail)+' Click to back up now; right-click to choose a folder." onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span><span class="rb-lbtn-sub">'+esc(backupStatus().text)+'</span></button>'
   +'<button class="rb-lbtn" title="Restore from a daily snapshot kept inside this browser (a fallback when you have no backup file)" onmousedown="event.preventDefault();restoreFromSnapshot()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Snapshots…</span></button>'
   +'<button class="rb-lbtn" title="Switch between light and dark" onmousedown="event.preventDefault();toggleTheme()"><span class="rb-lbtn-ico">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>')+'</span><span class="rb-lbtn-lbl">'+(_themeIsDark()?'Light mode':'Dark mode')+'</span></button>'
   +'<button class="rb-lbtn" title="Restore the whole notebook from a backup JSON file — REPLACES all current content" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore…</span></button>'
@@ -5123,8 +5124,20 @@ function _doBackupWrite(name,text,manual,info,pb){
   var note=info?(' ('+info.count+' attachment'+(info.count!==1?'s':'')+', '+_fmtBytes(text.length)+')'):'';
   var chain = pb&&pb.writeFile ? pb.writeFile(name,text).then(function(){return 'fs';})
     : (function(){ if(typeof window.showDirectoryPicker!=='function') return Promise.reject(); return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h) return Promise.reject(); _selfDir=h; return _verify(h).then(function(v){ if(!v) return Promise.reject(); return h.getFileHandle(name,{create:true}).then(function(fh){ return fh.createWritable().then(function(w){ return w.write(text).then(function(){ return w.close(); }); }); }).then(function(){return 'fs';}); }); }); })();
-  chain.then(function(){ try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-',5); }catch(e){} } else { _rotateSelfBackups('labbook-',5); } if(manual) toast('Backup saved to folder ✓'+note); })
-    .catch(function(){ _download(name,text); try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} if(manual) toast('Backup downloaded ✓'+note+' (right-click Backup to choose a folder)'); });
+  chain.then(function(){
+      _markBackup('folder'); 
+      if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-',5); }catch(e){} }
+      else { _rotateSelfBackups('labbook-',5); }
+      if(manual) toast('Backup saved to folder ✓'+note); })
+    .catch(function(){
+      // A file dialog you did not ask for is not a backup strategy — it is an interruption, and
+      // it was appearing on the first load of every day when no folder had been chosen. Only a
+      // backup you pressed the button for may download; the automatic one keeps a local
+      // snapshot instead and says so once.
+      if(manual){ _download(name,text); _markBackup('download');
+        toast('Backup downloaded ✓'+note+' (right-click Backup to choose a folder)'); return; }
+      _snapshotBackup().then(function(ok){ if(ok) _nudgeBackupFolder(); });
+    });
 }
 function _fmtBytes(n){ if(n<1024) return n+' B'; if(n<1048576) return (n/1024).toFixed(0)+' KB';
   return (n/1048576).toFixed(n<10485760?1:0)+' MB'; }
@@ -5174,13 +5187,15 @@ function maybeAutoBackup(){
   var last=''; try{ last=localStorage.getItem('lb_last_backup')||''; }catch(e){}
   if(last===todayStr()) return;
   var pb=_parentBackup();
-  if(pb&&pb.writeFile){ doBackup(false); return; }
-  (typeof window.showDirectoryPicker==='function' ? _idbGet() : Promise.resolve(null))
-    .catch(function(){ return null; })
-    .then(function(h){
-      if(h){ doBackup(false); return; }          // folder already chosen — normal path
-      return _snapshotBackup().then(function(ok){ if(ok) _nudgeBackupFolder(); });
-    });
+  // window.lbBackup always exposes writeFile; that says nothing about whether a folder was ever
+  // chosen. Asking dirName() first is what stops the "nodir" rejection turning into a download.
+  var haveDir = (pb && pb.dirName) ? pb.dirName().catch(function(){ return null; })
+    : (typeof window.showDirectoryPicker==='function' ? _idbGet().catch(function(){ return null; })
+                                                      : Promise.resolve(null));
+  haveDir.then(function(h){
+    if(h){ doBackup(false); return; }            // folder configured — write a real file
+    return _snapshotBackup().then(function(ok){ if(ok) _nudgeBackupFolder(); });
+  });
 }
 // Rolling local snapshot: not a substitute for a real backup file, but it means a browser that
 // can't write to disk still has yesterday's notebook recoverable.
@@ -5198,7 +5213,7 @@ function _snapshotBackup(){
             var extra=keys.length-3;
             for(var i=0;i<extra;i++){ try{ db.transaction('h','readwrite').objectStore('h').delete(keys[i]); }catch(e){} }
           };
-          tx.transaction.oncomplete=function(){ try{ localStorage.setItem('lb_last_backup',todayStr()); }catch(e){} res(true); };
+          tx.transaction.oncomplete=function(){ _markBackup('snapshot'); res(true); };
           tx.transaction.onerror=function(){ res(false); };
         }catch(e){ res(false); }
       });
@@ -5206,13 +5221,32 @@ function _snapshotBackup(){
   }).catch(function(){ return false; });
 }
 // Ask once — never on every load — for a folder to keep real backup files in.
+// Where the last backup went and when. Shown on the Backup button, because a safety net you
+// cannot see is one you cannot trust.
+function _markBackup(kind){
+  try{ localStorage.setItem('lb_last_backup',todayStr());
+       localStorage.setItem('lb_last_backup_kind',kind);
+       localStorage.setItem('lb_last_backup_at',String(Date.now())); }catch(e){}
+}
+function backupStatus(){
+  var d='',k='',at=0;
+  try{ d=localStorage.getItem('lb_last_backup')||''; k=localStorage.getItem('lb_last_backup_kind')||'';
+       at=parseInt(localStorage.getItem('lb_last_backup_at')||'0',10); }catch(e){}
+  if(!d) return {text:'No backup yet', detail:'Press Backup to save a file. Right-click to choose a folder.'};
+  var where = k==='folder' ? 'to your backup folder'
+            : k==='download' ? 'as a download'
+            : 'as a snapshot in this browser only';
+  var when = (d===todayStr()) ? 'today' : fmtDate(d);
+  return {text:'Last backup '+when, detail:'Saved '+when+' '+where+'.'
+    +(k==='snapshot'?' Right-click Backup to choose a folder for real files.':'')};
+}
 function _nudgeBackupFolder(){
   try{ if(localStorage.getItem('lb_backup_nudged')==='1') return; localStorage.setItem('lb_backup_nudged','1'); }catch(e){}
   var canPick=(typeof window.showDirectoryPicker==='function');
   lbAlert(canPick
-    ? 'Your notebook is saved in this browser, and a daily snapshot is kept here too — but that all lives on this one device. Use Backup (in the View tab) to choose a folder for real backup files.'
-    : 'Your notebook is saved in this browser, and a daily snapshot is kept here too — but that all lives on this one device, and this browser cannot write backup files automatically. Use Backup (in the View tab) now and then to download one.',
-    {title:'Keep a backup somewhere else'});
+    ? 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, so it does not survive a wiped browser or a lost laptop. To get real backup files, right-click Backup in the View tab and pick a folder once. After that it writes there quietly, every day, with no dialogs.'
+    : 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, and this browser cannot write files to a folder on its own. Press Backup in the View tab now and then to download one you can keep.',
+    {title:'Your notebook is backed up here only'});
 }
 // Recover from the rolling snapshot when there is no backup file to hand.
 function restoreFromSnapshot(){
