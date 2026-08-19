@@ -10,11 +10,20 @@ This script parses those panes into stages -> steps -> typed params, so a protoc
 data. Extraction is mechanical; naming the params and setting each stage's `day` is human
 work, so every generated label is prefixed TODO: for review.
 
-    python3 migrate_protocols.py            # parse, write PROTOCOL_DATA into archive.html
-    python3 migrate_protocols.py --dry-run  # parse and report, touch nothing
-    python3 migrate_protocols.py --check    # verify JSON round-trips to the original prose
+    python3 migrate_protocols.py --from <html>            # parse and inject PROTOCOL_DATA
+    python3 migrate_protocols.py --from <html> --dry-run  # parse and report, touch nothing
+    python3 migrate_protocols.py --from <html> --check    # verify the round trip
 
-Not part of the build. Run it, review the report, then hand-edit the emitted data.
+The migration has already run: archive.html's Protocol panes are now generated, so it is no
+longer its own source. Re-verify against the pre-migration file from git, e.g.
+
+    git show <pre-migration-sha>:Archive/archive.html > /tmp/orig.html
+    python3 migrate_protocols.py --from /tmp/orig.html --check
+
+Without --from it reads archive.html and will refuse, because parsing the generated panes
+would yield empty stages and injecting those would destroy all 33 protocols.
+
+Not part of the build.
 """
 import re, sys, json, html as htmllib
 from html.parser import HTMLParser
@@ -296,7 +305,10 @@ def parse_table(dom, node):
 def main():
     dry   = '--dry-run' in sys.argv
     check = '--check' in sys.argv
-    src = open(SRC, encoding='utf-8').read()
+    frm = SRC
+    if '--from' in sys.argv:
+        frm = sys.argv[sys.argv.index('--from') + 1]
+    src = open(frm, encoding='utf-8').read()
     dom = DOM(src)
 
     wraps = [n for n in dom.root.find_all(lambda x: x.has('detail-wrap')) if n.attrs.get('data-pid')]
@@ -307,6 +319,19 @@ def main():
         pid = w.attrs['data-pid']
         p = parse_protocol(dom, w, pid, report)
         if p: data[pid] = p
+
+    # Refuse to run against already-generated panes. They parse to empty stages, --check
+    # would then compare empty with empty and pass, and an inject would wipe every protocol.
+    total_steps = sum(len(b['items']) for p in data.values() for s in p['stages']
+                      for b in s['body'] if b['t'] == 'steps')
+    if total_steps < 100:
+        print('\nABORTA: %s produce solo %d pasos — sus paneles ya están generados.\n'
+              'Este script necesita el HTML PRE-migración. Sácalo de git:\n'
+              '  git log --oneline -- Archive/archive.html\n'
+              '  git show <sha>:Archive/archive.html > /tmp/orig.html\n'
+              '  python3 migrate_protocols.py --from /tmp/orig.html --check'
+              % (frm, total_steps), file=sys.stderr)
+        return 2
 
     # ── coverage report ──
     n_st = sum(len(p['stages']) for p in data.values())
@@ -337,7 +362,7 @@ def main():
     if dry:
         print('(dry-run: archive.html sin tocar)')
         return 0
-    inject(src, data)
+    inject(open(SRC, encoding='utf-8').read(), data)
     return 0
 
 
@@ -409,7 +434,8 @@ def do_check(dom, wraps, data):
 
 
 def inject(src, data):
-    js = 'var PROTOCOL_DATA = ' + json.dumps(data, ensure_ascii=False, indent=1) + ';'
+    js = 'var PROTOCOL_DATA = ' + json.dumps(data, ensure_ascii=False,
+                                             separators=(',', ':')) + ';'
     block = BEGIN + '\n' + js + '\n' + END
     if BEGIN in src:
         src = re.sub(re.escape(BEGIN) + r'.*?' + re.escape(END), lambda m: block, src, flags=re.S)

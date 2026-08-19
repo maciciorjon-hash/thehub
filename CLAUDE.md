@@ -395,6 +395,60 @@ OK/Cancel). Format switching **keeps** wells that still fit the new grid — unl
 Blueprint was the design reference for the grid but shares **no code** — its brackets, colour
 picker, annotations and heatmap were deliberately not ported.
 
+## Archive protocols are data (`PROTOCOL_DATA`)
+
+The Protocol tab used to be 33 hand-authored HTML panes. It is now **generated from
+`PROTOCOL_DATA`**, an inline structured model in `Archive/archive.html`:
+
+```
+pid: { stages:[ { id, name, day, durationH, part?, badge?, variant?,
+                  body:[ {t:'steps', ordered, items:[{id, html, params}]}
+                       | {t:'note'|'warn'|'tip', html}
+                       | {t:'table', headers, rows}
+                       | {t:'variantPicker', label, options} ] } ],
+       preamble:[...same body items...], variants?:[{id,label}] }
+```
+
+- **`body[]` is ordered on purpose.** Separate buckets for steps/notes/tables would render a
+  "do not exceed 80 bp" warning five steps from the step it warns about, which is where it is
+  useless.
+- **`params`** are typed values (`temp|time|vol|conc|mass|pct|ratio|fold|count|range`) referenced
+  from the step prose as `{{p.key}}`. `substParams()` renders them as
+  `<span class="pparam" data-p="key">`, and accepts an override map so Labbook can supply an
+  experiment's own value without touching the protocol. Units follow the prose convention:
+  no space before `°C`, `%`, `×`; a space before everything else (`_punit`).
+- **`variant`** solves "one protocol, two methods" (`crispr-ko`, `crispr-ki`). A stage with no
+  `variant` is shared; a stage tagged with one is shown only when that delivery method is
+  selected. `setMethodBranch` repaints the pane; the **Calculate** pane still uses the old
+  `.method-branch` display toggling and was not touched.
+- `renderProtocolPane(pid)` builds the markup (mirroring the original classes exactly, so the
+  CSS is unchanged); `paintProtocolPane(pid)` is called from `openProtocol`, **before**
+  `openNotesForProtocol`, since notes attach nodes to the pane.
+- Cost: archive.html went 414 KB → 498 KB (+83 KB). Structure is not free; the JSON is bigger
+  than the markup it replaced. Some of that comes back as the `TODO:` labels get short names.
+
+**Bridge (`ARCHIVE_API_VERSION` is now 2):** `ARCHIVE_PROTOCOL(pid)` returns the whole structured
+protocol — this is what Labbook instantiates an experiment from. `ARCHIVE_STEPS(pid)` stays for
+back-compat but **now reads `PROTOCOL_DATA`, not the DOM** — panes are painted on demand, so
+scraping returned nothing for any protocol the user had not opened. It also now emits `note` and
+`table` entries: the old scraper dropped all 111 notes/warnings/tips and every table, so a
+protocol reached the notebook stripped of the warnings that stop the experiment failing.
+`partBlockHtml` in Labbook renders them (`.lb-note`, `.lb-note-warn`, `.lb-note-tip`,
+`.lb-table`), including in the PDF export.
+
+**`migrate_protocols.py`** produced the model and verifies it: `--check` compares, letter by
+letter, the prose rendered from the JSON against the original pane — **33/33**. It is one-shot
+and **refuses to run against the generated panes** (they parse to empty stages, which would pass
+a vacuous check and then wipe every protocol on inject). Re-verify against git:
+
+```bash
+git show <pre-migration-sha>:Archive/archive.html > /tmp/orig.html
+python3 migrate_protocols.py --from /tmp/orig.html --check
+```
+
+Review list for the remaining human work — naming the 565 params, setting each stage's `day`:
+[`docs/PROTOCOL_MIGRATION_REVIEW.md`](docs/PROTOCOL_MIGRATION_REVIEW.md).
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie

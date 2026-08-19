@@ -275,6 +275,16 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .rt sup{vertical-align:super;font-size:.75em;line-height:0;}
 .rt a.lb-link{color:var(--accent);font-weight:600;cursor:pointer;text-decoration:none;border-bottom:1px dashed var(--accent);}
 .rt a.lb-link.proto{color:#a56983;border-bottom-color:#a56983;}
+/* Protocol callouts carried over from Archive. A warning must not read as prose — it is
+   the sentence that stops the experiment failing. */
+.rt .lb-note{margin:8px 0;padding:8px 12px;border-left:3px solid var(--border2);background:var(--surface2);border-radius:0 6px 6px 0;font-size:13px;color:var(--text2);}
+.rt .lb-note-warn{border-left-color:#e0803a;color:var(--text);}
+.rt .lb-note-tip{border-left-color:#4f9d8f;}
+.rt .lb-table{border-collapse:collapse;margin:8px 0;font-size:12.5px;}
+.rt .lb-table th,.rt .lb-table td{border:1px solid var(--border2);padding:4px 9px;text-align:left;}
+.rt .lb-table th{background:var(--surface2);font-weight:600;}
+/* A protocol parameter rendered inside a copied step. */
+.rt .pparam{border-bottom:1px dotted var(--border2);}
 .rt a.lb-link.plasmid{color:#6d7bd0;border-bottom-color:#6d7bd0;}
 .rt a.lb-url{color:var(--accent2);text-decoration:underline;cursor:pointer;}
 .rt img.lb-att{max-width:100%;height:auto;border-radius:8px;margin:6px 0;display:block;box-shadow:var(--shadow-xs);border:1px solid var(--border);}
@@ -2245,7 +2255,18 @@ function archiveCalc(pid){ try{ var _w=_arcWin(); if(_w && _w.ARCHIVE_CALC) retu
 function calcRecipeHtml(calc){ if(!calc||!calc.steps||!calc.steps.length) return ''; return calc.steps.map(function(s){ var b=(s.bullets||[]).map(function(x){return '<li>'+x+'</li>';}).join(''); return '<p><strong>'+esc(s.label||'')+'</strong></p>'+(b?'<ul>'+b+'</ul>':''); }).join(''); }
 // Build one dated-block's html for a protocol part: concise protocol prose + calculator recipe + a link to the live calc.
 function partBlockHtml(pid,calc,steps){ var h='';
-  if(steps&&steps.length){ steps.forEach(function(seg){ if(seg.type==='section'){ h+='<p><strong>'+esc(seg.text)+'</strong></p>'; } else { var tag=seg.ordered?'ol':'ul'; h+='<'+tag+'>'+seg.items.map(function(x){return '<li>'+x+'</li>';}).join('')+'</'+tag+'>'; } }); }
+  if(steps&&steps.length){ steps.forEach(function(seg){
+    if(seg.type==='section'){ h+='<p><strong>'+esc(seg.text)+'</strong></p>'; }
+    // Archive now hands over its notes, warnings, tips and tables too. They used to be
+    // dropped on the floor, so a protocol arrived here without the warning that stops the
+    // experiment failing. A warning is styled so it cannot be mistaken for prose.
+    else if(seg.type==='note'){ var pre=seg.kind==='warn'?'⚠ ':(seg.kind==='tip'?'Tip — ':'');
+      h+='<blockquote class="lb-note lb-note-'+esc(seg.kind||'note')+'">'+pre+seg.html+'</blockquote>'; }
+    else if(seg.type==='table'){
+      h+='<table class="lb-table">'+((seg.headers||[]).length?'<thead><tr>'+seg.headers.map(function(x){return '<th>'+x+'</th>';}).join('')+'</tr></thead>':'')
+        +'<tbody>'+(seg.rows||[]).map(function(r){return '<tr>'+r.map(function(x){return '<td>'+x+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>'; }
+    else if(seg.items){ var tag=seg.ordered?'ol':'ul'; h+='<'+tag+'>'+seg.items.map(function(x){return '<li>'+x+'</li>';}).join('')+'</'+tag+'>'; }
+  }); }
   var nm=(calc&&calc.name)||''; var link='<a class="lb-link proto" data-app="protocols" data-pid="'+esc(pid)+'" contenteditable="false">open '+esc(nm||'calculator')+' &#8599;</a>';
   if(calc&&calc.steps&&calc.steps.length){ h+='<p><strong>Recipe (from Archive calculator)</strong> '+link+'</p>'+calcRecipeHtml(calc); }
   else if(calc&&calc.hasCalc){ h+='<p>'+link+'</p>'; }
@@ -3760,6 +3781,10 @@ var PRINT_CSS='<style>#print-root{padding:0;color:#111}#print-root *{box-sizing:
  +'.pd-block{margin-top:16px;page-break-inside:avoid}.pd-bhd{display:flex;gap:10px;align-items:baseline;border-bottom:1px solid #e2e2e2;padding-bottom:4px;margin-bottom:6px}'
  +'.pd-day{font:700 9px/1 sans-serif;color:#fff;background:#4f9d8f;border-radius:4px;padding:2px 6px;text-transform:uppercase}.pd-bdate{font:600 12px/1 sans-serif;color:#777}.pd-btitle{font:700 13px/1.3 sans-serif}'
  +'.pd-body{font:400 13px/1.65 sans-serif;color:#222}.pd-body ul,.pd-body ol{margin:0 0 6px 20px}.pd-body h1,.pd-body h2,.pd-body h3{margin:8px 0 4px}.pd-body table{border-collapse:collapse;margin:6px 0}.pd-body td,.pd-body th{border:1px solid #bbb;padding:4px 8px}.pd-body hr{border:none;border-top:1px solid #ccc;margin:10px 0}.pd-body .lb-tag{color:#5e72c4;font-weight:600}.pd-body .lb-ab{color:#c47818;font-weight:600}.pd-body a.lb-link{color:#4f9d8f;text-decoration:none}'
+ +'.pd-body .lb-note{margin:6px 0;padding:5px 9px;border-left:3px solid #bbb;background:#f6f6f6;font-size:12px}'
+ +'.pd-body .lb-note-warn{border-left-color:#e0803a}.pd-body .lb-note-tip{border-left-color:#4f9d8f}'
+ +'.pd-body .lb-table{border-collapse:collapse;margin:6px 0;font-size:11.5px}'
+ +'.pd-body .lb-table th,.pd-body .lb-table td{border:1px solid #bbb;padding:3px 7px}'
  +'.lb-todo{list-style:none}.lb-box{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:2px;margin-right:6px;vertical-align:middle}.lb-todo.done .lb-box{background:#4f9d8f;border-color:#4f9d8f}'
  +'ul.lb-check{list-style:none;margin-left:4px;padding-left:0}ul.lb-check li{position:relative;list-style:none;padding-left:20px;margin:2px 0}ul.lb-check li::before{content:"";position:absolute;left:0;top:2px;width:11px;height:11px;border:1px solid #888;border-radius:2px}ul.lb-check li.done::before{background:#4f9d8f;border-color:#4f9d8f}ul.lb-check li.done{color:#888;text-decoration:line-through}'
  +'img.lb-att{max-width:100%;height:auto;border-radius:6px;margin:6px 0;display:block;page-break-inside:avoid}'
