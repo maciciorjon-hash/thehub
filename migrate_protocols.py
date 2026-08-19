@@ -116,26 +116,35 @@ def detypo(s):
 UNIT_ALT = (r'(?:°C|ng/µL|ng/uL|mg/mL|µg/mL|U/µL|cycles|µmol|nmol|pmol|hours|days|'
             r'µL|uL|μL|mL|rpm|min|sec|hrs|nM|µM|uM|mM|bp|nt|µg|ug|mg|hr|day|%|×|L|M|h|s|g|d)')
 UEND = r'(?![A-Za-z0-9])'
+# Non-capturing on purpose: NUM carries a top-level |, so embedding it bare inside a
+# larger group (as the temp rule does with the sign) would split that whole group and
+# silently drop the sign from one branch.
+NUM  = r'(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)'
+PRE  = r'(?<![\w.,])'
 # Ordered most-specific first. A range must be tried before the singular patterns, or
 # "invert 4–6×" is captured as a bare 6× and the lower bound is orphaned in the prose.
 PARAM_RES = [
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)\s*×\s*10(&#\d+;|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)'), 'sci'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)\s*(' + UNIT_ALT + r')' + UEND), 'range'),
-    (re.compile(r'(?<![\w.])(-?−?\d+(?:\.\d+)?)\s*°C'), 'temp'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(min|hours|hour|hrs|hr|h|sec|s|days|day|d)' + UEND), 'time'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(µL|uL|μL|mL|L)' + UEND), 'vol'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(ng/µL|ng/uL|mg/mL|µg/mL|U/µL|nM|µM|uM|mM|M)' + UEND), 'conc'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(pmol|nmol|µmol|ng|µg|ug|mg|g)' + UEND), 'mass'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*%'), 'pct'),
-    (re.compile(r'(?<![\w.])1\s*:\s*(\d+(?:,\d+)?)'), 'ratio'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*×(?!\s*g)(?!\s*10)'), 'fold'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(bp|nt|cycles|rpm)' + UEND), 'count'),
+    (re.compile(PRE + r'(' + NUM + r')\s*[–—-]\s*(' + NUM + r')\s*×\s*10(&#\d+;|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)'), 'sci'),
+    (re.compile(PRE + r'(' + NUM + r')\s*[–—-]\s*(' + NUM + r')\s*(' + UNIT_ALT + r')' + UEND), 'range'),
+    (re.compile(PRE + r'(-?−?' + NUM + r')\s*°C'), 'temp'),
+    (re.compile(PRE + r'(' + NUM + r')\s*(min|hours|hour|hrs|hr|h|sec|s|days|day|d)' + UEND), 'time'),
+    (re.compile(PRE + r'(' + NUM + r')\s*(µL|uL|μL|mL|L)' + UEND), 'vol'),
+    (re.compile(PRE + r'(' + NUM + r')\s*(ng/µL|ng/uL|mg/mL|µg/mL|U/µL|nM|µM|uM|mM|M)' + UEND), 'conc'),
+    (re.compile(PRE + r'(' + NUM + r')\s*(pmol|nmol|µmol|ng|µg|ug|mg|g)' + UEND), 'mass'),
+    (re.compile(PRE + r'(' + NUM + r')\s*%'), 'pct'),
+    (re.compile(PRE + r'1\s*:\s*(' + NUM + r')'), 'ratio'),
+    (re.compile(PRE + r'(' + NUM + r')\s*×(?!\s*g)(?!\s*10)'), 'fold'),
+    (re.compile(PRE + r'(' + NUM + r')\s*(bp|nt|cycles|rpm)' + UEND), 'count'),
 ]
 UNIT_FOR = {'temp':'°C','pct':'%','fold':'×','ratio':''}
 SUFFIX   = {'sci':'Range','temp':'T','time':'Min','vol':'Vol','conc':'Conc','mass':'Amt','pct':'Pct',
             'ratio':'Ratio','fold':'X','count':'N','range':'Range'}
 STOP = {'the','a','an','and','or','of','to','in','at','for','with','on','by','is','are','be',
         'add','then','from','into','each','all','it','its','this','that','if','as','per','no'}
+
+def _num(t):
+    try: return float(str(t).replace(',', ''))
+    except ValueError: return t
 
 def slug(words, fallback='p'):
     ws = [re.sub(r'[^a-z0-9]', '', w.lower()) for w in words]
@@ -174,19 +183,17 @@ def extract_params(step_html, used):
                 used.add(n)
                 if kind == 'sci':
                     lo, hi, exp = m.group(1), m.group(2), m.group(3)
-                    params[n] = {'type':'range','value':float(lo),'max':float(hi),
+                    params[n] = {'type':'range','value':_num(lo),'max':_num(hi),
                                  'unit':'×10' + exp, 'label':'TODO: ' + phrase}
                 elif kind == 'range':
                     lo, hi, unit = m.group(1), m.group(2), m.group(3)
-                    params[n] = {'type':'range','value':float(lo),'max':float(hi),'unit':unit,
+                    params[n] = {'type':'range','value':_num(lo),'max':_num(hi),'unit':unit,
                                  'label':'TODO: ' + phrase}
                 else:
                     unit = UNIT_FOR.get(kind)
                     if unit is None:
                         unit = m.group(2) if m.lastindex and m.lastindex >= 2 else ''
-                    val = m.group(1).replace('−', '-')
-                    try: val = float(val)
-                    except ValueError: pass
+                    val = _num(m.group(1).replace('−', '-'))
                     params[n] = {'type':kind,'value':val,'unit':unit,'label':'TODO: ' + phrase}
                 return '{{p.' + n + '}}'
             seg = rx.sub(repl, seg)
@@ -293,6 +300,12 @@ def parse_protocol(dom, wrap, pid, report):
 
     walk(pane)
 
+    # Day defaults are only inferred where the protocol states them ("Day 0 — Cell seeding").
+    # Everything else stays at 0 and gets set in Labbook's experiment timeline, in context,
+    # rather than guessed here across 153 stages with no experiment in front of you.
+    for st in stages:
+        mday = re.search(r'\bday\s*(\d+)', st['name'], re.I)
+        if mday: st['day'] = int(mday.group(1))
     out = {'stages':stages, 'preamble':preamble}
     if variants: out['variants'] = variants
     return out
@@ -316,6 +329,17 @@ def parse_table(dom, node):
 def main():
     dry   = '--dry-run' in sys.argv
     check = '--check' in sys.argv
+    # --inject re-injects the reviewed JSON (renamed keys, human labels) without re-parsing.
+    if '--inject' in sys.argv:
+        out = '/private/tmp/claude-501/-Users-jonmacicior-Desktop-The-Hub/2e4a7707-c788-4214-b2d1-14cd7d3a1fc2/scratchpad'
+        data = json.load(open(out + '/protocol_data.json', encoding='utf-8'))
+        n = sum(len(i['params']) for p in data.values() for st in p['stages']
+                for b in st['body'] if b['t'] == 'steps' for i in b['items'])
+        if len(data) != 33 or n < 500:
+            print('ABORTA: el JSON tiene %d protocolos / %d params' % (len(data), n), file=sys.stderr)
+            return 2
+        inject(open(SRC, encoding='utf-8').read(), data)
+        return 0
     frm = SRC
     if '--from' in sys.argv:
         frm = sys.argv[sys.argv.index('--from') + 1]
@@ -377,6 +401,12 @@ def main():
     return 0
 
 
+def _fmt(n):
+    if not isinstance(n, float): return str(n)
+    r = round(n, 6)
+    return str(int(r)) if abs(r - round(r)) < 1e-9 else str(r)
+
+
 def render_text(p):
     """Reconstruct the readable prose from the JSON, in document order, for the check."""
     bits = []
@@ -386,9 +416,12 @@ def render_text(p):
             for st in b['items']:
                 h = st['html']
                 for k, v in st['params'].items():
-                    rep = str(v['value'])
-                    if v['type'] == 'range': rep += '-' + str(v.get('max',''))
-                    if v.get('unit'): rep += ' ' + v['unit']
+                    if v['type'] == 'ratio':
+                        rep = '1:' + _fmt(v['value'])
+                    else:
+                        rep = _fmt(v['value'])
+                        if v['type'] == 'range': rep += '-' + _fmt(v.get('max',''))
+                        if v.get('unit'): rep += ' ' + v['unit']
                     h = h.replace('{{p.%s}}' % k, rep)
                 bits.append(h)
         elif t == 'table':
@@ -412,6 +445,15 @@ def render_text(p):
     return bits
 
 
+def _digits(s):
+    """Numbers as they read, separators and trailing .0 removed, in document order."""
+    out = []
+    for t in re.findall(r'\d[\d,]*(?:\.\d+)?', s.replace(':', ' ')):
+        t = t.replace(',', '')
+        out.append(_fmt(float(t)) if '.' in t else t)
+    return out
+
+
 def norm(s):
     s = re.sub(r'<[^>]+>', ' ', s)
     s = htmllib.unescape(detypo(s))
@@ -431,15 +473,24 @@ def do_check(dom, wraps, data):
         # numbers may be reformatted (60 -> 60.0); compare on letters only, plus a length guard
         o_l = re.sub(r'[^a-z]', '', orig)
         g_l = re.sub(r'[^a-z]', '', got)
-        if o_l != g_l:
+        # Digits must be checked too. Comparing letters only once hid "13,000 rpm" being
+        # parsed as 000 and rendered "13,0 rpm".
+        o_n = _digits(orig)
+        g_n = _digits(got)
+        if o_l != g_l or o_n != g_n:
             bad += 1
-            miss = len(o_l) - len(g_l)
-            print('  DIFF %-14s letras orig=%d json=%d (falta %d)' % (pid, len(o_l), len(g_l), miss))
-            for i in range(min(len(o_l), len(g_l))):
-                if o_l[i] != g_l[i]:
-                    print('        primer desvío @%d: orig …%s… json …%s…'
-                          % (i, o_l[max(0,i-30):i+30], g_l[max(0,i-30):i+30]))
-                    break
+            if o_l != g_l:
+                print('  DIFF %-14s letras orig=%d json=%d' % (pid, len(o_l), len(g_l)))
+                for i in range(min(len(o_l), len(g_l))):
+                    if o_l[i] != g_l[i]:
+                        print('        @%d: orig …%s… json …%s…'
+                              % (i, o_l[max(0,i-30):i+30], g_l[max(0,i-30):i+30]))
+                        break
+            if o_n != g_n:
+                d1 = [x for x in o_n if x not in g_n][:6]
+                d2 = [x for x in g_n if x not in o_n][:6]
+                print('  DIFF %-14s números orig=%d json=%d · solo en orig %s · solo en json %s'
+                      % (pid, len(o_n), len(g_n), d1, d2))
     print('\ncheck: %d/%d protocolos idénticos' % (len(data) - bad, len(data)))
     return 1 if bad else 0
 

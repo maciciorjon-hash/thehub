@@ -1,835 +1,1155 @@
-# Revisión de la migración de protocolos
+# Protocol parameters — review list
 
-Generado por `migrate_protocols.py`. El parser saca la estructura; **nombrar los parámetros
-y fijar el `day` de cada etapa es trabajo humano** — esta es la lista para hacerlo.
-
-Round-trip verificado: **33/33 protocolos** conservan cada palabra del panel original.
-Totales: **153 etapas**, **565 parámetros** a nombrar.
+Every parameter extracted from the 33 Archive protocols, with the label it now shows in the UI.
+Generated from `PROTOCOL_DATA`; regenerate with `migrate_protocols.py` + the rename step.
+Totals: **561 parameters** across **118 stages** in 33 protocols.
 
 
-Para cada etapa: `day` es el día relativo al inicio del experimento (0 = primer día).
-El migrador los deja todos a 0 salvo donde el protocolo ya marcaba pasos por día.
-Para cada parámetro: sustituye `TODO: …` por una etiqueta corta y legible.
+**How to read this.** `key` is what appears as `{{p.key}}` in the step prose and as `data-p` on
+the rendered span. The label is what a person sees when editing the value in Labbook.
+
+`day` is the stage's offset from the experiment start. It is only set where the protocol states
+it explicitly (3 stages). The rest are 0 by design — they get set in Labbook's experiment
+timeline, in context, not guessed here.
 
 ## Gibson Assembly  (`gibson`)
 
-- **Overview — the 3-step workflow** — `day: 0` · 0 paso(s) · 1 callout(s): note
-- **1 — Design overlapping primers (before PCR)** — `day: 0` · 3 paso(s) · 1 callout(s): warn
-    - `valRange` = 15.0 – 30.0 bp  ·  TODO: ⟨15–30 bp⟩
-    - `bindingRegionTmT` = 60.0 °C  ·  TODO: region Tm ⟨60°C⟩ and the
-- **2 — PCR → DpnI → gel purification (one continuous workflow)** — `day: 0` · 4 paso(s)
-    - `exchangeNeededIncubateT` = 37.0 °C  ·  TODO: needed Incubate ⟨37°C⟩ min
-    - `exchangeNeededIncubateMin` = 60.0 min  ·  TODO: needed Incubate ⟨60 min⟩
-    - `valX` = 6.0 ×  ·  TODO: Add ⟨6×⟩ DNA loading
-    - `wholeThingPct` = 1.0 %  ·  TODO: thing on ⟨1%⟩ agarose gel
-- **3 — Gibson assembly reaction** — `day: 0` · 4 paso(s) · 1 callout(s): tip
-    - `firstNebhifiX` = 2.0 ×  ·  TODO: add NEBHiFi ⟨2×⟩ Master Mix
-    - `bpAimAmt` = 0.06 pmol  ·  TODO: aim for ⟨0.06 pmol⟩ vector molar
-    - `aimVectorX` = 2.0 ×  ·  TODO: for vector ⟨2×⟩ molar excess
-    - `incubateT` = 50.0 °C  ·  TODO: Incubate at ⟨50°C⟩
-    - `valMin` = 15.0 min  ·  TODO: ⟨15 min⟩
-    - `valMin2` = 60.0 min  ·  TODO: ⟨60 min⟩
-    - `iceT` = -20.0 °C  ·  TODO: or at ⟨−20°C⟩ Transform uL
-    - `transformVol` = 2.0 uL  ·  TODO: at Transform ⟨2 uL⟩ into competent
+**1 — Design overlapping primers (before PCR)**
+
+| key | value | label |
+|---|---|---|
+| `overlapLen` | 15.0–30.0 bp | Primer overlap length |
+| `primerTm` | 60.0 °C | Primer binding Tm |
+
+**2 — PCR → DpnI → gel purification (one continuous workflow)**
+
+| key | value | label |
+|---|---|---|
+| `dpniTemp` | 37.0 °C | DpnI digest temp |
+| `dpniTime` | 60.0 min | DpnI digest time |
+| `loadingDyeX` | 6.0 × | DNA loading dye strength |
+| `agarosePct` | 1.0 % | Agarose gel % |
+
+**3 — Gibson assembly reaction**
+
+| key | value | label |
+|---|---|---|
+| `masterMixX` | 2.0 × | HiFi Master Mix strength |
+| `vectorAmt` | 0.06 pmol | Vector amount |
+| `insertExcess` | 2.0 × | Insert molar excess |
+| `assemblyTemp` | 50.0 °C | Assembly temp |
+| `assemblyTimeFew` | 15.0 min | Assembly time (2–3 fragments) |
+| `assemblyTimeMany` | 60.0 min | Assembly time (4–6 fragments) |
+| `storageTemp` | -20.0 °C | Storage temp |
+| `transformVol` | 2.0 uL | Volume to transform |
 
 ## Restriction Enzyme Cloning (NEB)  (`redigest`)
 
-- **1 — Choose your enzymes** — `day: 0` · 4 paso(s) · 1 callout(s): warn
-- **2 — Digest reaction** — `day: 0` · 4 paso(s) · 2 callout(s): note/warn
-    - `mostNebEnzymesT` = 37.0 °C  ·  TODO: NEB enzymes ⟨37°C⟩ for min
-    - `nebEnzymesMin` = 60.0 min  ·  TODO: enzymes for ⟨60 min⟩ Time Saver
-    - `enzymesMarkedTsMin` = 15.0 min  ·  TODO: marked TS ⟨15 min⟩ is sufficient
-    - `heatInactivateT` = 65.0 °C  ·  TODO: inactivate at ⟨65°C⟩ min most
-    - `hfEnzymesT` = 80.0 °C  ·  TODO: enzymes or ⟨80°C⟩ min check
-    - `heatInactivateMin` = 20.0 min  ·  TODO: inactivate at ⟨20 min⟩ most HF
-    - `hfEnzymesMin` = 20.0 min  ·  TODO: enzymes or ⟨20 min⟩ check the
-- **3 — Gel verification and purification** — `day: 0` · 3 paso(s)
-    - `entireDigestPct` = 1.0 %  ·  TODO: digest on ⟨1%⟩ TAE agarose
-    - `coloniesEluteRange` = 15.0 – 20.0 µL  ·  TODO: Elute in ⟨15–20 µL⟩ Measure by
-- **4 — Dephosphorylation of vector (recommended for single digests)** — `day: 0` · 4 paso(s)
-    - `purifiedVectorIncubateT` = 37.0 °C  ·  TODO: vector incubate ⟨37°C⟩ min
-    - `purifiedVectorIncubateMin` = 10.0 min  ·  TODO: vector incubate ⟨10 min⟩
-    - `valVol` = 1.0 µL  ·  TODO: Add ⟨1 µL⟩ Quick CIP
-    - `heatInactivateT2` = 80.0 °C  ·  TODO: Heat inactivate ⟨80°C⟩ min Quick
-    - `quickCipT` = 65.0 °C  ·  TODO: CIP or ⟨65°C⟩ min rSAP
-    - `heatInactivateMin2` = 2.0 min  ·  TODO: Heat inactivate ⟨2 min⟩ Quick CIP
-    - `quickCipMin` = 5.0 min  ·  TODO: CIP or ⟨5 min⟩ rSAP
-- **5 — Ligation** — `day: 0` · 5 paso(s) · 2 callout(s): note/warn
-    - `iceWaterX` = 10.0 ×  ·  TODO: ice water ⟨10×⟩ Ligase Buffer
-    - `overnightColdRoomT` = 16.0 °C  ·  TODO: ⟨16°C⟩ overnight cold
-    - `overnightColdRoomMin` = 16.0 h  ·  TODO: ⟨16 h⟩ overnight cold
-    - `convenientRoutineRange` = 5.0 – 15.0 min  ·  TODO: ⟨5–15 min⟩ Convenient for
-    - `conveniT` = 25.0 °C  ·  TODO: ⟨25°C⟩ Conveni
-    - `heatInactivateT3` = 65.0 °C  ·  TODO: inactivate at ⟨65°C⟩ min then
-    - `heatInactivateMin3` = 10.0 min  ·  TODO: inactivate at ⟨10 min⟩ then chill
-    - `transformRange` = 2.0 – 5.0 µL  ·  TODO: Transform ⟨2–5 µL⟩ into competent
+**2 — Digest reaction**
+
+| key | value | label |
+|---|---|---|
+| `digestTemp` | 37.0 °C | Digest temp (most NEB enzymes) |
+| `digestTime` | 60.0 min | Digest time |
+| `digestTimeTS` | 15.0 min | Digest time (Time-Saver enzymes) |
+| `hiTemp` | 65.0 °C | Heat-inactivation temp |
+| `hiTempHF` | 80.0 °C | Heat-inactivation temp (HF enzymes) |
+| `hiTime` | 20.0 min | Heat-inactivation time |
+| `hiTimeHF` | 20.0 min | Heat-inactivation time (HF enzymes) |
+
+**3 — Gel verification and purification**
+
+| key | value | label |
+|---|---|---|
+| `gelPct` | 0.8–1.0 % | Agarose gel % |
+| `gelEluteVol` | 15.0–20.0 µL | Gel-extraction elution volume |
+
+**4 — Dephosphorylation of vector (recommended for single digests)**
+
+| key | value | label |
+|---|---|---|
+| `cipTemp` | 37.0 °C | Dephosphorylation temp |
+| `cipTime` | 10.0 min | Dephosphorylation time |
+| `cipVol` | 1.0 µL | Quick CIP / rSAP volume |
+| `cipHiTempQuick` | 80.0 °C | CIP inactivation temp (Quick CIP) |
+| `cipHiTempRsap` | 65.0 °C | CIP inactivation temp (rSAP) |
+| `cipHiTimeQuick` | 2.0 min | CIP inactivation time (Quick CIP) |
+| `cipHiTimeRsap` | 5.0 min | CIP inactivation time (rSAP) |
+
+**5 — Ligation**
+
+| key | value | label |
+|---|---|---|
+| `ligaseBufferX` | 10.0 × | T4 Ligase Buffer strength |
+| `ligTemp` | 16.0 °C | Standard ligation temp |
+| `ligTime` | 16.0 h | Standard ligation time |
+| `quickLigTime` | 5.0–15.0 min | Quick Ligation time |
+| `quickLigTemp` | 25.0 °C | Quick Ligation temp |
+| `ligHiTemp` | 65.0 °C | Ligase inactivation temp |
+| `ligHiTime` | 10.0 min | Ligase inactivation time |
+| `transformVol` | 2.0–5.0 µL | Volume to transform |
 
 ## Transformation of Competent Cells  (`transfo`)
 
-- **Preparation** — `day: 0` · 2 paso(s)
-    - `iceDhRange` = 20.0 – 30.0 min  ·  TODO: ice DH ⟨20–30 min⟩
-    - `nebStableRange` = 5.0 – 10.0 min  ·  TODO: NEB Stable ⟨5–10 min⟩
-    - `appropriateAntibioticT` = 37.0 °C  ·  TODO: antibiotic at ⟨37°C⟩
-- **Transformation** — `day: 0` · 5 paso(s)
-    - `mixRange` = 1.0 – 5.0 µL  ·  TODO: Mix ⟨1–5 µL⟩ plasmid DNA
-    - `pgNgRange` = 25.0 – 50.0 µL  ·  TODO: ng with ⟨25–50 µL⟩ competent cells
-    - `plasmidDnaPgAmt` = 100.0 ng  ·  TODO: DNA pg ⟨100 ng⟩ with competent
-    - `incubateIceMin` = 2.0 min  ·  TODO: on ice ⟨2 min⟩
-    - `heatShockT` = 42.0 °C  ·  TODO: Heat shock ⟨42°C⟩ typically for
-    - `heatShockMin` = 60.0 s  ·  TODO: Heat shock ⟨60 s⟩ typically for
-    - `heatShockTypicallyMin` = 45.0 s  ·  TODO: shock typically ⟨45 s⟩ for NEB
-    - `heatShockTypicallyMin2` = 30.0 s  ·  TODO: shock typically ⟨30 s⟩ for NEB
-    - `backIceMin` = 2.0 min  ·  TODO: on ice ⟨2 min⟩
-    - `lbSocIncubateT` = 37.0 °C  ·  TODO: SOC incubate ⟨37°C⟩ at rpm
-    - `lbSocIncubateMin` = 1.0 h  ·  TODO: SOC incubate ⟨1 h⟩ at rpm
-    - `valVol` = 450.0 µL  ·  TODO: Add ⟨450 µL⟩ LB SOC
-    - `cubateN` = 250.0 rpm  ·  TODO: cubate at ⟨250 rpm⟩
-    - `lentiviralPlasmidsT` = 30.0 °C  ·  TODO: ⟨30°C⟩ for lentiviral
-- **Plating** — `day: 0` · 2 paso(s)
-    - `valVol2` = 50.0 µL  ·  TODO: ⟨50 µL⟩
-    - `incubateOvernightT` = 37.0 °C  ·  TODO: Incubate overnight ⟨37°C⟩
-    - `lentiviralT` = 30.0 °C  ·  TODO: ⟨30°C⟩ for lentiviral
-- **Colony selection** — `day: 0` · 1 paso(s)
-    - `tubeIncubateOvernightT` = 37.0 °C  ·  TODO: incubate overnight ⟨37°C⟩ rpm
-    - `singleColoniesVol` = 5.0 mL  ·  TODO: colonies into ⟨5 mL⟩ LB antibiotic
-    - `mlLbAntibioticVol` = 15.0 mL  ·  TODO: LB antibiotic ⟨15 mL⟩ tube incubate
-    - `tubeIncubateOvernightN` = 200.0 rpm  ·  TODO: incubate overnight ⟨200 rpm⟩
+**Preparation**
+
+| key | value | label |
+|---|---|---|
+| `thawTimeDh5a` | 20.0–30.0 min | Thaw time (DH5α) |
+| `thawTimeStable` | 5.0–10.0 min | Thaw time (NEB Stable) |
+| `plateWarmTemp` | 37.0 °C | Plate pre-warm temp |
+
+**Transformation**
+
+| key | value | label |
+|---|---|---|
+| `dnaVol` | 1.0–5.0 µL | Plasmid DNA volume |
+| `cellsVol` | 25.0–50.0 µL | Competent cells volume |
+| `dnaMaxAmt` | 100.0 ng | Max plasmid DNA |
+| `iceTimeBefore` | 2.0 min | Ice incubation before shock |
+| `shockTime` | 30.0–60.0 s | Heat-shock time |
+| `shockTemp` | 42.0 °C | Heat-shock temp |
+| `shockTimeDh5a` | 45.0 s | Heat-shock time (DH5α) |
+| `shockTimeStable` | 30.0 s | Heat-shock time (NEB Stable) |
+| `iceTimeAfter` | 2.0 min | Ice incubation after shock |
+| `recoveryShake` | 200.0–250.0 rpm | Recovery shaking speed |
+| `recoveryTemp` | 37.0 °C | Recovery temp |
+| `recoveryTime` | 1.0 h | Recovery time |
+| `recoveryVol` | 450.0 µL | Recovery medium volume |
+| `recoveryTempLenti` | 30.0 °C | Recovery temp (lentiviral) |
+
+**Plating**
+
+| key | value | label |
+|---|---|---|
+| `platingVol` | 50.0 µL | Plating volume |
+| `plateTemp` | 37.0 °C | Plate incubation temp |
+| `plateTempLenti` | 30.0 °C | Plate incubation temp (lentiviral) |
+
+**Colony selection**
+
+| key | value | label |
+|---|---|---|
+| `cultureShake` | 150.0–200.0 rpm | Overnight culture shaking |
+| `cultureTemp` | 37.0 °C | Overnight culture temp |
+| `cultureVol` | 5.0 mL | Overnight culture volume |
+| `cultureTubeVol` | 15.0 mL | Culture tube size |
 
 ## Miniprep — GeneJET  (`miniprep`)
 
-- **1 — Harvest &amp; lyse** — `day: 0` · 4 paso(s)
-    - `cultureRpmMin` = 2.0 min  ·  TODO: at rpm ⟨2 min⟩ discard supernatant
-    - `centrifugeVol` = 5.0 mL  ·  TODO: Centrifuge ⟨5 mL⟩ culture at
-    - `centrifugeCultureN` = 8000.0 rpm  ·  TODO: culture at ⟨8000 rpm⟩ disca
-    - `valVol` = 250.0 µL  ·  TODO: Add ⟨250 µL⟩
-    - `valVol2` = 250.0 µL  ·  TODO: Add ⟨250 µL⟩
-    - `invertGentlyX` = 6.0 ×  ·  TODO: invert gently ⟨6×⟩ until clear
-    - `valVol3` = 350.0 µL  ·  TODO: Add ⟨350 µL⟩
-    - `invertCentrifugeMin` = 5.0 min  ·  TODO: invert centrifuge ⟨5 min⟩ to pellet
-    - `invertX` = 6.0 ×  ·  TODO: invert ⟨6×⟩ centrifuge
-- **2 — Bind, wash &amp; elute** — `day: 0` · 4 paso(s) · 1 callout(s): warn
-    - `collectionTubeCentrifuMin` = 1.0 min  ·  TODO: tube centrifuge ⟨1 min⟩ discard flow
-    - `valVol4` = 500.0 µL  ·  TODO: Add ⟨500 µL⟩
-    - `centrifugeMin` = 60.0 s  ·  TODO: centrifuge ⟨60 s⟩ discard flow
-    - `centrifugeEmptyColumnMin` = 1.0 min  ·  TODO: empty column ⟨1 min⟩ to dry
-    - `columnCleanVol` = 1.5 mL  ·  TODO: to clean ⟨1.5 mL⟩ tube add
-    - `mlTubeVol` = 50.0 µL  ·  TODO: tube add ⟨50 µL⟩
-    - `preWarmedT` = 65.0 °C  ·  TODO: warmed to ⟨65°C⟩ for higher
-    - `higherYieldIncubateMin` = 2.0 min  ·  TODO: yield incubate ⟨2 min⟩ at RT
-    - `rtCentrifugeMin` = 2.0 min  ·  TODO: RT centrifuge ⟨2 min⟩
+**1 — Harvest &amp; lyse**
+
+| key | value | label |
+|---|---|---|
+| `pelletTime` | 2.0 min | Pellet spin time |
+| `cultureVol` | 5.0 mL | Culture volume |
+| `pelletSpeed` | 8000.0 rpm | Pellet spin speed |
+| `resuspVol` | 250.0 µL | Resuspension Solution volume |
+| `lysisVol` | 250.0 µL | Lysis Solution volume |
+| `lysisInverts` | 4.0–6.0 × | Lysis inversions |
+| `neutrVol` | 350.0 µL | Neutralization Solution volume |
+| `neutrInverts` | 4.0–6.0 × | Neutralization inversions |
+| `debrisSpinTime` | 5.0 min | Debris spin time |
+
+**2 — Bind, wash &amp; elute**
+
+| key | value | label |
+|---|---|---|
+| `bindSpinTime` | 1.0 min | Binding spin time |
+| `washVol` | 500.0 µL | Wash Solution volume |
+| `washSpinTime` | 30.0–60.0 s | Wash spin time |
+| `drySpinTime` | 1.0 min | Membrane drying spin |
+| `eluteTubeVol` | 1.5 mL | Elution tube size |
+| `eluteVol` | 50.0 µL | Elution volume |
+| `eluteTemp` | 65.0 °C | Elution buffer temp |
+| `eluteWait` | 2.0 min | Elution incubation |
+| `eluteSpinTime` | 2.0 min | Elution spin time |
 
 ## NucleoSpin Gel & PCR Clean-up  (`nucleospin`)
 
-- **PCR cleanup mode** — `day: 0` · 5 paso(s)
-    - `reactionNtiNtiVol` = 100.0 µL  ·  TODO: ⟨100 µL⟩ reaction NTI
-    - `reactionVol` = 200.0 µL  ·  TODO: reaction ⟨200 µL⟩ NTI NTI
-    - `collectionTubeSpinMin` = 30.0 s  ·  TODO: tube spin ⟨30 s⟩ discard flow
-    - `loadUpVol` = 700.0 µL  ·  TODO: up to ⟨700 µL⟩ of the
-    - `washNtSpinMin` = 30.0 s  ·  TODO: NT spin ⟨30 s⟩ discard Repeat
-    - `washVol` = 700.0 µL  ·  TODO: Wash ⟨700 µL⟩ NT spin
-    - `drySpinMin` = 1.0 min  ·  TODO: Dry spin ⟨1 min⟩ empty column
-    - `eluteRange` = 15.0 – 20.0 µL  ·  TODO: Elute add ⟨15–20 µL⟩ NE buffer
-    - `neBufferWaitMin` = 1.0 min  ·  TODO: buffer wait ⟨1 min⟩ RT transfer
-    - `freshTubeSpinMin` = 1.0 min  ·  TODO: tube spin ⟨1 min⟩
-- **Gel extraction mode** — `day: 0` · 5 paso(s) · 1 callout(s): warn
-    - `ntiBufferVol` = 200.0 µL  ·  TODO: ⟨200 µL⟩ NTI buffer
-    - `ntiBufferAmt` = 100.0 mg  ·  TODO: buffer per ⟨100 mg⟩ gel
-    - `incubateUntilDissolvedRange` = 5.0 – 10.0 min  ·  TODO: until dissolved ⟨5–10 min⟩ vortex occasionally
-    - `incubateT` = 50.0 °C  ·  TODO: incubate ⟨50°C⟩ until dissolved
-    - `columnSpinMin` = 30.0 s  ·  TODO: column spin ⟨30 s⟩ discard flow
-    - `washNtSpinMin2` = 30.0 s  ·  TODO: NT spin ⟨30 s⟩ discard Repeat
-    - `onceDrySpinMin` = 1.0 min  ·  TODO: Dry spin ⟨1 min⟩
-    - `washVol2` = 700.0 µL  ·  TODO: Wash ⟨700 µL⟩ NT spin
-    - `eluteRange2` = 15.0 – 20.0 µL  ·  TODO: Elute add ⟨15–20 µL⟩ NE buffer
-    - `preWarmT` = 70.0 °C  ·  TODO: warm to ⟨70°C⟩ for large
-    - `rtWaitMin` = 1.0 min  ·  TODO: RT wait ⟨1 min⟩ spin min
-    - `waitMinSpinMin` = 1.0 min  ·  TODO: min spin ⟨1 min⟩
+**PCR cleanup mode**
+
+| key | value | label |
+|---|---|---|
+| `pcrSampleVol` | 100.0 µL | PCR sample volume |
+| `ntiVol` | 200.0 µL | Buffer NTI volume |
+| `bindSpinTime` | 30.0 s | Binding spin time |
+| `columnLoadVol` | 700.0 µL | Max load per spin |
+| `washSpinTime` | 30.0 s | Wash spin time |
+| `washVol` | 700.0 µL | NT3 wash volume |
+| `drySpinTime` | 1.0 min | Drying spin time |
+| `eluteVol` | 15.0–20.0 µL | Elution volume |
+| `eluteWait` | 1.0 min | Elution wait at RT |
+| `eluteSpinTime` | 1.0 min | Elution spin time |
+
+**Gel extraction mode**
+
+| key | value | label |
+|---|---|---|
+| `gelNtiVol` | 200.0 µL | NTI buffer per gel mass |
+| `gelSliceMass` | 100.0 mg | Gel mass NTI refers to |
+| `gelDissolveTime` | 5.0–10.0 min | Gel dissolving time |
+| `gelDissolveTemp` | 50.0 °C | Gel dissolving temp |
+| `gelBindSpinTime` | 30.0 s | Binding spin time (gel) |
+| `gelWashSpinTime` | 30.0 s | Wash spin time (gel) |
+| `gelDrySpinTime` | 1.0 min | Drying spin time (gel) |
+| `gelWashVol` | 700.0 µL | NT3 wash volume (gel) |
+| `gelEluteVol` | 15.0–20.0 µL | Elution volume (gel) |
+| `gelEluteTemp` | 70.0 °C | Elution buffer temp (large fragments) |
+| `gelEluteWait` | 1.0 min | Elution wait at RT (gel) |
+| `gelEluteSpinTime` | 1.0 min | Elution spin time (gel) |
 
 ## gRNA & Donor Design  (`grna`)
 
-- **1 — Retrieve gene sequence (NCBI)** — `day: 0` · 5 paso(s)
-- **2 — Select region of interest** — `day: 0` · 3 paso(s)
-    - `selectN` = 200.0 bp  ·  TODO: Select ⟨200 bp⟩ region centred
-- **3 — Design gRNA candidates (IDT)** — `day: 0` · 4 paso(s) · 2 callout(s): warn/tip
-    - `pasteYourN` = 200.0 bp  ·  TODO: paste your ⟨200 bp⟩ region
-- **4 — (Knock-in) design the donor template (ssODN)** — `day: 0` · 5 paso(s)
-    - `protospacerN` = 12.0 bp  ·  TODO: protospacer the ⟨12 bp⟩ proximal to
-    - `keepDonorN` = 200.0 bp  ·  TODO: the donor ⟨200 bp⟩ total Place
-    - `typicalDesignRange` = 50.0 – 80.0 bp  ·  TODO: Typical design ⟨50–80 bp⟩ homology arm
-    - `armTagMutationRange` = 50.0 – 80.0 bp  ·  TODO: tag mutation ⟨50–80 bp⟩ homology arm
-    - `ultramerGtN` = 60.0 nt  ·  TODO: if gt ⟨60 nt⟩ standard PAGE
-- **5 — Pre-plan controls and record-keeping** — `day: 0` · 3 paso(s) · 1 callout(s): tip
-    - `editSiteAmpliconRange` = 200.0 – 300.0 bp  ·  TODO: site amplicon ⟨200–300 bp⟩
+**2 — Select region of interest**
+
+| key | value | label |
+|---|---|---|
+| `regionLen` | 200.0 bp | Design region length |
+
+**3 — Design gRNA candidates (IDT)**
+
+| key | value | label |
+|---|---|---|
+| `idtRegionLen` | 200.0 bp | Region pasted into IDT tool |
+
+**4 — (Knock-in) design the donor template (ssODN)**
+
+| key | value | label |
+|---|---|---|
+| `seedLen` | 12.0 bp | Seed region length |
+| `donorMaxLen` | 200.0 bp | Max donor length |
+| `armLen5` | 50.0–80.0 bp | 5′ homology arm length |
+| `armLen3` | 50.0–80.0 bp | 3′ homology arm length |
+| `ultramerCutoff` | 60.0 nt | Ultramer length cutoff |
+
+**5 — Pre-plan controls and record-keeping**
+
+| key | value | label |
+|---|---|---|
+| `ampliconLen` | 200.0–300.0 bp | Genotyping amplicon length |
 
 ## CRISPR Knockout  (`crispr-ko`)
 
-> Variantes de método: `px458` PX458 Plasmid (Lipofectamine/FuGENE), `rnp` RNP Electroporation
+> Method variants: `px458` PX458 Plasmid (Lipofectamine/FuGENE), `rnp` RNP Electroporation
 
-### Part 1 — Clone the gRNA into PX458
-- **ssOligo design &amp; order (IDT)** — `day: 0` · 5 paso(s) · variante `px458` · 2 callout(s): note/warn
-    - `grnaSpacerN` = 20.0 bp  ·  TODO: ⟨20 bp⟩ gRNA spacer
-    - `asympN` = 70.0 nt  ·  TODO: asymp ⟨70 nt⟩ total homology
-    - `totalHomologyArmN` = 25.0 bp  ·  TODO: homology arm ⟨25 bp⟩ matches PX
-    - `cutSiteMiddotN` = 20.0 bp  ·  TODO: site middot ⟨20 bp⟩ gRNA spacer
-    - `middotHomologyArmN` = 25.0 bp  ·  TODO: homology arm ⟨25 bp⟩ matches PX
-    - `scaleAmt` = 100.0 nmol  ·  TODO: ⟨100 nmol⟩ scale
-    - `teBufferConc` = 50.0 mM  ·  TODO: TE buffer ⟨50 mM⟩ NaCl to
-    - `valConc` = 100.0 µM  ·  TODO: ⟨100 µM⟩
-    - `freezeT` = -20.0 °C  ·  TODO: freeze at ⟨−20°C⟩
-    - `workingStockConc` = 1.0 µM  ·  TODO: ⟨1 µM⟩ working stock
-    - `diluteVol` = 1.0 µL  ·  TODO: dilute ⟨1 µL⟩ of stock
-    - `stockVol` = 99.0 µL  ·  TODO: stock into ⟨99 µL⟩ buffer
-    - `diluteConc` = 100.0 µM  ·  TODO: dilute of ⟨100 µM⟩ stock into
-- **Plasmid linearisation (BbsI digest)** — `day: 0` · 3 paso(s) · variante `px458`
-    - `pxAmt` = 1.0 µg  ·  TODO: ⟨1 µg⟩ PX
-    - `nebT` = 37.0 °C  ·  TODO: NEB at ⟨37°C⟩ for min
-    - `nebMin` = 30.0 min  ·  TODO: at for ⟨30 min⟩ following the
-    - `agaroseGelPct` = 1.0 %  ·  TODO: ⟨1%⟩ agarose gel
-- **HiFi assembly &amp; transformation** — `day: 0` · 4 paso(s) · variante `px458` · 1 callout(s): note
-    - `minT` = 50.0 °C  ·  TODO: ⟨50°C⟩ for min
-    - `valMin` = 60.0 min  ·  TODO: for ⟨60 min⟩
-    - `setT` = 55.0 °C  ·  TODO: set to ⟨55°C⟩
-    - `valVol` = 2.0 µL  ·  TODO: ⟨2 µL⟩
-    - `protocolHeatShockT` = 42.0 °C  ·  TODO: heat shock ⟨42°C⟩
-    - `valMin2` = 30.0 s  ·  TODO: ⟨30 s⟩
-    - `lbAmpicillinConc` = 100.0 µg/mL  ·  TODO: LB ampicillin ⟨100 µg/mL⟩ pick colonies
-### Part 2 — Transfect &amp; enrich
-- **Day 0 — Cell seeding** — `day: 0` · 2 paso(s) · variante `px458`
-    - `wildTypeCellsX` = 1.0 ×  ·  TODO: ⟨1 ×⟩ wild type
-- **Day 1 — Transfection (FugeneHD, 6-well plate)** — `day: 0` · 4 paso(s) · variante `px458`
-    - `pxGrnaPlasmidAmt` = 1.0 µg  ·  TODO: ⟨1 µg⟩ PX gRNA
-    - `optiMemVol` = 100.0 µL  ·  TODO: ⟨100 µL⟩ Opti MEM
-    - `fugenehdVol` = 3.0 µL  ·  TODO: ⟨3 µL⟩ FugeneHD
-    - `optiMemVol2` = 100.0 µL  ·  TODO: ⟨100 µL⟩ Opti MEM
-    - `rtMin` = 5.0 min  ·  TODO: ⟨5 min⟩ at RT
-- **Day 2–3 — FACS sorting** — `day: 0` · 2 paso(s) · variante `px458` · 1 callout(s): warn
-    - `valRange` = 24.0 – 48.0 h  ·  TODO: ⟨24–48 h⟩
-- **(sin título)** — `day: 0` · 0 paso(s) · variante `rnp` · 1 callout(s): note
-- **Reconstitution — TracrRNA &amp; crRNA** — `day: 0` · 3 paso(s) · variante `rnp`
-    - `tracrrnaNmolVol` = 200.0 µL  ·  TODO: tracrRNA nmol ⟨200 µL⟩ Nuclease Free
-    - `tracrrnaAmt` = 20.0 nmol  ·  TODO: tracrRNA ⟨20 nmol⟩ Nuclease Free
-    - `stockConc` = 100.0 µM  ·  TODO: ⟨100 µM⟩ stock
-    - `crrnaNmolVol` = 20.0 µL  ·  TODO: crRNA nmol ⟨20 µL⟩ duplex buffer
-    - `crrnaAmt` = 2.0 nmol  ·  TODO: crRNA ⟨2 nmol⟩ duplex buffer
-    - `stockConc2` = 100.0 µM  ·  TODO: ⟨100 µM⟩ stock
-- **Reconstitution — Cas9** — `day: 0` · 2 paso(s) · variante `rnp`
-    - `valVol2` = 50.0 µL  ·  TODO: Add ⟨50 µL⟩ reconstitution solution
-    - `casAmt` = 1.0 µg  ·  TODO: Cas ⟨1 µg⟩
-    - `spinDownIncubateMin` = 10.0 min  ·  TODO: down incubate ⟨10 min⟩ on ice
-- **Anneal TracrRNA + crRNA** — `day: 0` · 2 paso(s) · variante `rnp`
-    - `valVol3` = 5.0 µL  ·  TODO: Add ⟨5 µL⟩ of each
-    - `incubateT` = 95.0 °C  ·  TODO: Incubate at ⟨95°C⟩ min then
-    - `incubateMin` = 5.0 min  ·  TODO: Incubate at ⟨5 min⟩ then spin
-- **RNP complex formation (per 2 electroporations, ~0.4M cells)** — `day: 0` · 1 paso(s) · variante `rnp` · 1 callout(s): note
-    - `componentsIncubateMin` = 20.0 min  ·  TODO: and incubate ⟨20 min⟩ at RT
-- **Cell preparation** — `day: 0` · 4 paso(s) · variante `rnp`
-    - `pbsResuspendVol` = 1.0 mL  ·  TODO: resuspend in ⟨1 mL⟩ PBS
-    - `countX` = 2.0 ×  ·  TODO: Count add ⟨2×⟩ cells electroporation
-    - `valVol4` = 2.0 mL  ·  TODO: Add ⟨2 mL⟩ media to
-- **Electroporation** — `day: 0` · 5 paso(s) · variante `rnp`
-    - `fillVol` = 50.0 mL  ·  TODO: Fill ⟨50 mL⟩ falcon with
-    - `valVol5` = 3.0 mL  ·  TODO: Add ⟨3 mL⟩ electrolyte solution
-    - `takeVol` = 10.0 µL  ·  TODO: Take ⟨10 µL⟩ of mix
-    - `leaveCellsRange` = 48.0 – 72.0 h  ·  TODO: Leave cells ⟨48–72 h⟩ before analysis
-- **After electroporation — pool validation (before single-cell sorting)** — `day: 0` · 3 paso(s) · variante `rnp` · 2 callout(s): note/tip
-    - `pooledPopulationRange` = 48.0 – 72.0 h  ·  TODO: population for ⟨48–72 h⟩ minimum before
-    - `aimGtPct` = 70.0 %  ·  TODO: for gt ⟨70%⟩ frameshift indels
-    - `beforeSortingGtPct` = 70.0 %  ·  TODO: sorting gt ⟨70%⟩ indels by
-- **(sin título)** — `day: 0` · 0 paso(s) · 1 callout(s): tip
+**ssOligo design &amp; order (IDT)** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `spacerLen` | 20.0 bp | gRNA spacer length |
+| `ssOligoLen` | 70.0 nt | ssOligo insert total length |
+| `armLen5` | 25.0 bp | 5′ homology arm length |
+| `oligoSpacerLen` | 20.0 bp | gRNA spacer in oligo |
+| `armLen3` | 25.0 bp | 3′ homology arm length |
+| `orderScale` | 100.0 nmol | Oligo synthesis scale |
+| `naclConc` | 50.0 mM | NaCl in TE buffer |
+| `oligoStockConc` | 100.0 µM | ssOligo stock concentration |
+| `oligoStoreTemp` | -20.0 °C | ssOligo storage temp |
+| `workStockConc` | 1.0 µM | Working stock concentration |
+| `workStockDnaVol` | 1.0 µL | Stock volume to dilute |
+| `workStockBufferVol` | 99.0 µL | Buffer volume for dilution |
+| `workStockSrcConc` | 100.0 µM | Stock concentration diluted from |
+
+**Plasmid linearisation (BbsI digest)** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `px458Amt` | 1.0 µg | PX458 to digest |
+| `bbsiTemp` | 37.0 °C | BbsI digest temp |
+| `bbsiTime` | 30.0 min | BbsI digest time |
+| `agarosePct` | 1.0 % | Agarose gel % |
+
+**HiFi assembly &amp; transformation** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `assemblyTemp` | 50.0 °C | HiFi assembly temp |
+| `assemblyTime` | 60.0 min | HiFi assembly time |
+| `assemblyLidTemp` | 55.0 °C | Thermocycler lid temp |
+| `transformVol` | 2.0 µL | Volume to transform |
+| `shockTemp` | 42.0 °C | Heat-shock temp |
+| `shockTime` | 30.0 s | Heat-shock time |
+| `ampConc` | 100.0 µg/mL | Ampicillin concentration |
+
+**Day 1 — Transfection (FugeneHD, 6-well plate)** — variant `px458`, **day 1**
+
+| key | value | label |
+|---|---|---|
+| `transfectDnaAmt` | 1.0 µg | PX458-gRNA plasmid per well |
+| `optiMemVolA` | 100.0 µL | Opti-MEM volume (tube A) |
+| `fugeneVol` | 3.0 µL | FugeneHD volume |
+| `optiMemVolB` | 100.0 µL | Opti-MEM volume (tube B) |
+| `complexTime` | 5.0 min | Complex formation time at RT |
+
+**Day 2–3 — FACS sorting** — variant `px458`, **day 2**
+
+| key | value | label |
+|---|---|---|
+| `gfpExpressTime` | 24.0–48.0 h | Time to GFP expression |
+
+**Reconstitution — TracrRNA &amp; crRNA** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `tracrBufferVol` | 200.0 µL | Duplex buffer for tracrRNA |
+| `tracrAmt` | 20.0 nmol | tracrRNA amount supplied |
+| `tracrStockConc` | 100.0 µM | tracrRNA stock concentration |
+| `crrnaBufferVol` | 20.0 µL | Duplex buffer for crRNA |
+| `crrnaAmt` | 2.0 nmol | crRNA amount supplied |
+| `crrnaStockConc` | 100.0 µM | crRNA stock concentration |
+
+**Reconstitution — Cas9** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `cas9ReconVol` | 50.0 µL | Cas9 reconstitution volume |
+| `cas9Conc` | 1.0 µg | Cas9 concentration after reconstitution |
+| `cas9DissolveTime` | 10.0 min | Cas9 dissolving time on ice |
+
+**Anneal TracrRNA + crRNA** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `annealVol` | 5.0 µL | Volume of each RNA to anneal |
+| `annealTemp` | 95.0 °C | Annealing temp |
+| `annealTime` | 5.0 min | Annealing time |
+
+**RNP complex formation (per 2 electroporations, ~0.4M cells)** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `rnpTime` | 20.0 min | RNP complex formation time |
+
+**Cell preparation** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `pbsResuspendVol` | 1.0 mL | PBS resuspension volume |
+| `platingMediaVol` | 2.0 mL | Media per 6-well |
+
+**Electroporation** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `falconVol` | 50.0 mL | Falcon size for ethanol |
+| `electrolyteVol` | 3.0 mL | Electrolyte solution volume |
+| `electroporationVol` | 10.0 µL | Volume per electroporation |
+| `recoveryTime` | 48.0–72.0 h | Recovery before sorting |
+
+**After electroporation — pool validation (before single-cell sorting)** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `poolTime` | 48.0–72.0 h | Pooled culture before analysis |
+| `indelTarget` | 70.0 % | Target indel % before sorting |
+| `indelGoNoGo` | 70.0 % | Go/no-go indel threshold |
 
 ## CRISPR Knock-in  (`crispr-ki`)
 
-> Variantes de método: `px458` PX458 + Plasmid Donor, `rnp` RNP Electroporation + ssODN
+> Method variants: `px458` PX458 + Plasmid Donor, `rnp` RNP Electroporation + ssODN
 
-- **1 — Clone gRNA into PX458** — `day: 0` · 0 paso(s) · variante `px458`
-- **Design &amp; order ssOligo insert** — `day: 0` · 3 paso(s) · variante `px458` · 1 callout(s): note
-    - `grnaSpacerN` = 20.0 bp  ·  TODO: ⟨20 bp⟩ gRNA spacer
-    - `homologyArmN` = 25.0 bp  ·  TODO: homology arm ⟨25 bp⟩
-    - `grnaSpacerN2` = 20.0 bp  ·  TODO: gRNA spacer ⟨20 bp⟩
-    - `homologyArmN2` = 25.0 bp  ·  TODO: homology arm ⟨25 bp⟩
-    - `workingStockConc` = 1.0 µM  ·  TODO: ⟨1 µM⟩ working stock
-- **Plasmid linearisation (BbsI digest)** — `day: 0` · 3 paso(s) · variante `px458`
-    - `pxAmt` = 1.0 µg  ·  TODO: ⟨1 µg⟩ PX
-    - `nebT` = 37.0 °C  ·  TODO: NEB at ⟨37°C⟩ for min
-    - `nebMin` = 30.0 min  ·  TODO: at for ⟨30 min⟩ following the
-    - `agaroseGelPct` = 1.0 %  ·  TODO: ⟨1%⟩ agarose gel
-- **HiFi assembly &amp; transformation** — `day: 0` · 4 paso(s) · variante `px458` · 1 callout(s): note
-    - `minT` = 50.0 °C  ·  TODO: ⟨50°C⟩ for min
-    - `valMin` = 60.0 min  ·  TODO: for ⟨60 min⟩
-    - `lidOffT` = 55.0 °C  ·  TODO: off or ⟨55°C⟩
-    - `transformVol` = 2.0 µL  ·  TODO: Transform ⟨2 µL⟩ into NEB
-    - `ampicillinMlOvernightT` = 37.0 °C  ·  TODO: mL overnight ⟨37°C⟩
-    - `lbAmpicillinConc` = 100.0 µg/mL  ·  TODO: LB ampicillin ⟨100 µg/mL⟩ overnight
-- **2 — Plasmid donor design** — `day: 0` · 5 paso(s) · variante `px458`
-    - `leftHaRange` = 400.0 – 800.0 bp  ·  TODO: Left HA ⟨400–800 bp⟩ Insert Right
-    - `insertRightHaRange` = 400.0 – 800.0 bp  ·  TODO: Right HA ⟨400–800 bp⟩
-    - `silentDiagnosticSnpRange` = 10.0 – 15.0 bp  ·  TODO: diagnostic SNP ⟨10–15 bp⟩ from the
-- **3 — Transfection (Lipofectamine 3000)** — `day: 0` · 4 paso(s) · variante `px458`
-    - `seedCellsPct` = 70.0 %  ·  TODO: cells at ⟨70%⟩ confluency the
-    - `pxPlasmidDonorRange` = 3.0 – 4.0 µg  ·  TODO: plasmid donor ⟨3–4 µg⟩
-    - `pxAmt2` = 1.5 µg  ·  TODO: PX ⟨1.5 µg⟩ plasmid donor
-    - `wellRatioRatio` = 2.0   ·  TODO: well ratio ⟨1:2⟩ Cas donor
-    - `incubateRange` = 24.0 – 48.0 h  ·  TODO: Incubate ⟨24–48 h⟩ Check GFP
-    - `fluorescenceMicroscopyPct` = 60.0 %  ·  TODO: microscopy expect ⟨60%⟩ GFP in
-    - `duringFirstMin` = 48.0 h  ·  TODO: the first ⟨48 h⟩ post transfection
-- **4 — FACS sorting &amp; clonal expansion** — `day: 0` · 3 paso(s) · variante `px458`
-    - `postTransfectionTrypsiMin` = 48.0 h  ·  TODO: ⟨48 h⟩ post transfection
-    - `bufferPbsFbsConc` = 10.0 mM  ·  TODO: PBS FBS ⟨10 mM⟩ HEPES filter
-    - `sortingBufferPbsPct` = 2.0 %  ·  TODO: buffer PBS ⟨2%⟩ FBS HEPES
-    - `excitationGateTopPct` = 20.0 %  ·  TODO: Gate top ⟨20%⟩ GFP for
-- **5 — Clone screening** — `day: 0` · 4 paso(s) · variante `px458`
-- **(sin título)** — `day: 0` · 0 paso(s) · variante `rnp` · 1 callout(s): note
-- **1 — ssODN design** — `day: 0` · 4 paso(s) · variante `rnp`
-    - `valRange` = 100.0 – 200.0 nt  ·  TODO: ⟨100–200 nt⟩
-    - `valRange2` = 40.0 – 80.0 nt  ·  TODO: ⟨40–80 nt⟩ each
-    - `silentDiagnosticSnpN` = 10.0 bp  ·  TODO: diagnostic SNP ⟨10 bp⟩ from the
-    - `tePhConc` = 100.0 µM  ·  TODO: pH at ⟨100 µM⟩
-    - `synthesisSufficientN` = 120.0 nt  ·  TODO: sufficient for ⟨120 nt⟩ PAGE purify
-    - `purifyGtN` = 120.0 nt  ·  TODO: if gt ⟨120 nt⟩ Resuspend in
-- **2 — RNP assembly (IDT Alt-R system)** — `day: 0` · 4 paso(s) · variante `rnp`
-    - `tracrrnaConc` = 200.0 µM  ·  TODO: tracrRNA to ⟨200 µM⟩ in nuclease
-    - `tracrrnaAnnealT` = 95.0 °C  ·  TODO: anneal at ⟨95°C⟩ for min
-    - `annealMin` = 5.0 min  ·  TODO: at for ⟨5 min⟩ then cool
-    - `finalGrnaDuplexConc` = 100.0 µM  ·  TODO: gRNA duplex ⟨100 µM⟩
-    - `proteinVolumeVol` = 1.0 µL  ·  TODO: by volume ⟨1 µL⟩ Cas gRNA
-    - `volumeCasVol` = 1.0 µL  ·  TODO: volume Cas ⟨1 µL⟩ gRNA used
-    - `proteinVolumeConc` = 61.0 µM  ·  TODO: by volume ⟨61 µM⟩ Cas gRNA
-    - `casConc` = 100.0 µM  ·  TODO: Cas ⟨100 µM⟩ gRNA used
-    - `duplexCasProteinRatio` = 1.0   ·  TODO: Cas protein ⟨1:1⟩ by volume
-    - `incubateRange2` = 10.0 – 15.0 min  ·  TODO: Incubate ⟨10–15 min⟩ at RT
-- **3 — Electroporation** — `day: 0` · 6 paso(s) · variante `rnp`
-    - `logPhasePct` = 80.0 %  ·  TODO: log phase ⟨80%⟩ confluency Viability
-    - `mustGtPct` = 90.0 %  ·  TODO: be gt ⟨90%⟩ before electroporation
-    - `cellsMin` = 5.0 min  ·  TODO: at for ⟨5 min⟩ Wash once
-    - `pelletX` = 5.0 ×  ·  TODO: Pellet ⟨5 ×⟩ cells at
-    - `bufferVol` = 10.0 µL  ·  TODO: Buffer ⟨10 µL⟩ tip or
-    - `seBufferVol` = 20.0 µL  ·  TODO: SE buffer ⟨20 µL⟩ per cell
-    - `valRange3` = 1.0 – 2.0 µL  ·  TODO: ⟨1–2 µL⟩
-    - `casSsodnAmt` = 200.0 pmol  ·  TODO: ⟨200 pmol⟩ Cas ssODN
-    - `valRange4` = 1.0 – 2.0 µL  ·  TODO: ⟨1–2 µL⟩
-    - `cellAmt` = 200.0 pmol  ·  TODO: ⟨200 pmol⟩ to the
-    - `notDisturbMin` = 10.0 min  ·  TODO: disturb for ⟨10 min⟩
-- **4 — Recovery &amp; clonal expansion** — `day: 0` · 3 paso(s) · variante `rnp`
-    - `postElectroporationCheMin` = 24.0 h  ·  TODO: ⟨24 h⟩ post electroporation
-    - `refreshMediumExpectPct` = 80.0 %  ·  TODO: medium Expect ⟨80%⟩ viability
-    - `harvestSmallAliquotRange` = 48.0 – 72.0 h  ·  TODO: ⟨48–72 h⟩ harvest small
-    - `rnpActivityExpectPct` = 60.0 %  ·  TODO: activity expect ⟨60%⟩ indels as
-- **5 — Genotyping HDR clones** — `day: 0` · 4 paso(s) · variante `rnp`
-    - `templateExpectedAmplicRange` = 300.0 – 600.0 bp  ·  TODO: Expected amplicon ⟨300–600 bp⟩
-    - `differenceInsertN` = 20.0 bp  ·  TODO: if insert ⟨20 bp⟩ Sequence all
-- **(sin título)** — `day: 0` · 0 paso(s) · 1 callout(s): tip
+**Design &amp; order ssOligo insert** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `spacerLen` | 20.0 bp | gRNA spacer length |
+| `oligoArmLen5` | 25.0 bp | 5′ homology arm (cloning oligo) |
+| `oligoSpacerLen` | 20.0 bp | gRNA spacer in oligo |
+| `oligoArmLen3` | 25.0 bp | 3′ homology arm (cloning oligo) |
+| `workStockConc` | 1.0 µM | ssOligo working stock |
+
+**Plasmid linearisation (BbsI digest)** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `px458Amt` | 1.0 µg | PX458 to digest |
+| `bbsiTemp` | 37.0 °C | BbsI digest temp |
+| `bbsiTime` | 30.0 min | BbsI digest time |
+| `agarosePct` | 1.0 % | Agarose gel % |
+
+**HiFi assembly &amp; transformation** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `assemblyTemp` | 50.0 °C | HiFi assembly temp |
+| `assemblyTime` | 60.0 min | HiFi assembly time |
+| `assemblyLidTemp` | 55.0 °C | Thermocycler lid temp |
+| `transformVol` | 2.0 µL | Volume to transform |
+| `plateTemp` | 37.0 °C | Plate incubation temp |
+| `ampConc` | 100.0 µg/mL | Ampicillin concentration |
+
+**2 — Plasmid donor design** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `donorArmLen5` | 400.0–800.0 bp | Left homology arm (plasmid donor) |
+| `donorArmLen3` | 400.0–800.0 bp | Right homology arm (plasmid donor) |
+| `snpDistance` | 10.0–15.0 bp | Diagnostic SNP distance from cut |
+
+**3 — Transfection (Lipofectamine 3000)** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `seedConfluency` | 60.0–70.0 % | Seeding confluency |
+| `transfectDonorAmt` | 3.0–4.0 µg | Plasmid donor per well |
+| `transfectCas9Amt` | 1.5 µg | PX458 per well |
+| `cas9DonorRatio` | 2.0 | Cas9:donor ratio |
+| `gfpCheckTime` | 24.0–48.0 h | Time before GFP check |
+| `gfpExpected` | 20.0–60.0 % | Expected GFP+ fraction |
+| `noSelectionTime` | 48.0 h | No antibiotic selection window |
+
+**4 — FACS sorting &amp; clonal expansion** — variant `px458`
+
+| key | value | label |
+|---|---|---|
+| `sortTime` | 48.0 h | Time to sorting |
+| `sortHepesConc` | 10.0 mM | HEPES in sorting buffer |
+| `sortFbsPct` | 2.0 % | FBS in sorting buffer |
+| `sortGate` | 10.0–20.0 % | GFP+ gate (top %) |
+
+**1 — ssODN design** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `ssodnLen` | 100.0–200.0 nt | ssODN total length |
+| `ssodnArmLen` | 40.0–80.0 nt | ssODN homology arm each side |
+| `ssodnSnpDistance` | 10.0 bp | Diagnostic SNP distance from cut |
+| `ssodnStockConc` | 100.0 µM | ssODN stock concentration |
+| `desaltMaxLen` | 120.0 nt | Max length for desalted synthesis |
+| `pageMinLen` | 120.0 nt | Length above which to PAGE-purify |
+
+**2 — RNP assembly (IDT Alt-R system)** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `rnaStockConc` | 200.0 µM | crRNA / tracrRNA stock |
+| `annealTemp` | 95.0 °C | Annealing temp |
+| `annealTime` | 5.0 min | Annealing time |
+| `duplexConc` | 100.0 µM | Final gRNA duplex concentration |
+| `rnpCas9Vol` | 1.0 µL | Cas9 volume |
+| `rnpGrnaVol` | 1.0 µL | gRNA volume |
+| `rnpCas9Conc` | 61.0 µM | Cas9 concentration |
+| `rnpGrnaConc` | 100.0 µM | gRNA concentration |
+| `rnpRatio` | 1.0 | gRNA:Cas9 volume ratio |
+| `rnpTime` | 10.0–15.0 min | RNP complex formation time |
+
+**3 — Electroporation** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `harvestConfluency` | 70.0–80.0 % | Harvest confluency |
+| `minViability` | 90.0 % | Minimum viability |
+| `cellsPerReaction` | 1.0–5.0 ×10&#8309; | Cells to pellet |
+| `pelletTime` | 5.0 min | Pellet spin time |
+| `neonTipVol` | 10.0 µL | Neon tip size |
+| `nucleofectorVol` | 20.0 µL | 4D buffer volume |
+| `rnpAddVol` | 1.0–2.0 µL | RNP volume added |
+| `rnpCas9Amt` | 100.0–200.0 pmol | Cas9 amount added |
+| `ssodnAddVol` | 1.0–2.0 µL | ssODN volume added |
+| `ssodnAmt` | 100.0–200.0 pmol | ssODN amount added |
+| `settleTime` | 10.0 min | Undisturbed recovery time |
+
+**4 — Recovery &amp; clonal expansion** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `expectedViability` | 50.0–80.0 % | Expected viability |
+| `viabilityCheckTime` | 24.0 h | Time to viability check |
+| `iceHarvestTime` | 48.0–72.0 h | Time to ICE/T7E1 harvest |
+| `expectedIndels` | 20.0–60.0 % | Expected indel % |
+
+**5 — Genotyping HDR clones** — variant `rnp`
+
+| key | value | label |
+|---|---|---|
+| `genotypeAmpliconLen` | 300.0–600.0 bp | Genotyping amplicon length |
+| `gelVisibleInsert` | 20.0 bp | Insert size visible on gel |
 
 ## Single Cell Sorting (FACS)  (`scs`)
 
-- **Make conditioned media** — `day: 0` · 4 paso(s)
-    - `growFlasksPct` = 70.0 %  ·  TODO: flasks to ⟨70%⟩ confluency in
-    - `aliquotsT` = 4.0 °C  ·  TODO: aliquots at ⟨4°C⟩ few weeks
-    - `fewWeeksT` = -20.0 °C  ·  TODO: weeks or ⟨−20°C⟩ long term
-    - `useSpinRpmMin` = 5.0 min  ·  TODO: spin rpm ⟨5 min⟩ discard pellet
-    - `beforeUseSpinN` = 4000.0 rpm  ·  TODO: use spin ⟨4000 rpm⟩ discard pellet
-    - `dilutePct` = 20.0 %  ·  TODO: Dilute with ⟨20%⟩ FBS media
-    - `diluteRatio` = 1.0   ·  TODO: Dilute ⟨1:1⟩ with FBS
-- **24 h before sorting — prepare 96-well plates** — `day: 0` · 1 paso(s) · 1 callout(s): note
-    - `wellLeaveT` = 37.0 °C  ·  TODO: leave at ⟨37°C⟩ CO
-    - `aliquotVol` = 150.0 µL  ·  TODO: Aliquot ⟨150 µL⟩ well leave
-    - `wellLeavePct` = 5.0 %  ·  TODO: leave at ⟨5%⟩ CO
-- **1–2 h before sorting** — `day: 0` · 1 paso(s)
-    - `facsMediaVol` = 10.0 mL  ·  TODO: FACS media ⟨10 mL⟩ media FBS
-    - `mediaMlMediaVol` = 100.0 µL  ·  TODO: mL media ⟨100 µL⟩ FBS DAPI
-    - `mlMediaFbsVol` = 1.0 µL  ·  TODO: media FBS ⟨1 µL⟩ DAPI filter
-- **30 min before sorting** — `day: 0` · 1 paso(s)
-    - `mediaFbsMaxVol` = 300.0 µL  ·  TODO: FBS max ⟨300 µL⟩ if lt
-    - `maxLtConc` = 2.0 M  ·  TODO: if lt ⟨2M⟩ cells
-    - `mlMediaPct` = 1.0 %  ·  TODO: in media ⟨1%⟩ FBS max
-    - `pelletResuspendX` = 5.0 ×  ·  TODO: resuspend at ⟨5×⟩ mL in
-- **At the sorting facility** — `day: 0` · 2 paso(s) · 1 callout(s): note
-    - `backIncubatorT` = 37.0 °C  ·  TODO: of incubator ⟨37°C⟩ days
-    - `backIncubatorMin` = 20.0 days  ·  TODO: of incubator ⟨20 days⟩
-- **Clone expansion** — `day: 0` · 3 paso(s)
-    - `afterMin` = 20.0 days  ·  TODO: After ⟨20 days⟩ mark wells
-    - `valVol` = 50.0 µL  ·  TODO: Add ⟨50 µL⟩ fresh media
+**Make conditioned media**
+
+| key | value | label |
+|---|---|---|
+| `condMediaConfluency` | 60.0–70.0 % | Confluency for conditioned media |
+| `condMediaTempShort` | 4.0 °C | Conditioned media storage (short) |
+| `condMediaTempLong` | -20.0 °C | Conditioned media storage (long) |
+| `condMediaSpinTime` | 5.0 min | Conditioned media spin time |
+| `condMediaSpeed` | 4000.0 rpm | Conditioned media spin speed |
+| `condMediaFbsPct` | 20.0 % | FBS in dilution media |
+| `condMediaDilution` | 1.0 | Conditioned media dilution |
+
+**24 h before sorting — prepare 96-well plates**
+
+| key | value | label |
+|---|---|---|
+| `plateTemp` | 37.0 °C | Plate incubation temp |
+| `wellVol` | 150.0 µL | Volume per 96-well |
+| `plateCo2` | 5.0 % | CO₂ % |
+
+**1–2 h before sorting**
+
+| key | value | label |
+|---|---|---|
+| `facsMediaVol` | 10.0 mL | FACS media volume |
+| `facsFbsVol` | 100.0 µL | FBS in FACS media |
+| `facsDapiVol` | 1.0 µL | DAPI in FACS media |
+
+**30 min before sorting**
+
+| key | value | label |
+|---|---|---|
+| `sortMaxVol` | 300.0 µL | Max volume for sorting |
+| `sortMaxCells` | 2.0 M | Cell count that volume covers |
+| `sortFbsPct` | 1.0 % | FBS in sorting media |
+
+**At the sorting facility**
+
+| key | value | label |
+|---|---|---|
+| `cloneTemp` | 37.0 °C | Clonal expansion temp |
+| `cloneTime` | 20.0 days | Undisturbed clonal expansion |
+
+**Clone expansion**
+
+| key | value | label |
+|---|---|---|
+| `cloneCheckDay` | 20.0 days | Day to check for colonies |
+| `cloneFeedVol` | 50.0 µL | Fresh media per chosen well |
 
 ## BCA & Sample Prep  (`bca`)
 
-- **1 — BCA assay** — `day: 0` · 5 paso(s) · 1 callout(s): warn
-    - `mlDdhVol` = 25.0 µL  ·  TODO: in ddH ⟨25 µL⟩ well in
-    - `prepareBsaStandardsConc` = 0.125 mg/mL  ·  TODO: BSA standards ⟨0.125 mg/mL⟩ in ddH
-    - `diluteLysatesVol` = 10.0 µL  ·  TODO: Dilute lysates ⟨10 µL⟩ lysate ddH
-    - `diluteLysatesLysateVol` = 50.0 µL  ·  TODO: lysates lysate ⟨50 µL⟩ ddH or
-    - `veryConcentratedSampleVol` = 25.0 µL  ·  TODO: concentrated samples ⟨25 µL⟩ well in
-    - `diluteLysatesRatio` = 6.0   ·  TODO: Dilute lysates ⟨1:6⟩ lysate di
-    - `lysateDdhRatio` = 10.0   ·  TODO: ddH or ⟨1:10⟩ for very
-    - `rpmMinIncubateT` = 37.0 °C  ·  TODO: min incubate ⟨37°C⟩ min
-    - `mixRpmMin` = 1.0 min  ·  TODO: at rpm ⟨1 min⟩ incubate mi
-    - `rpmMinIncubateMin` = 30.0 min  ·  TODO: min incubate ⟨30 min⟩
-    - `valVol` = 200.0 µL  ·  TODO: Add ⟨200 µL⟩ BCA reagent
-    - `reagentMixN` = 600.0 rpm  ·  TODO: mix at ⟨600 rpm⟩ incubate rpmMinI
-- **2 — Sample prep calculator** — `day: 0` · 0 paso(s) · 1 callout(s): note
+**1 — BCA assay**
+
+| key | value | label |
+|---|---|---|
+| `stdWellVol` | 25.0 µL | Standard volume per well |
+| `bsaLowStd` | 0.125 mg/mL | Lowest BSA standard |
+| `lysateVol` | 10.0 µL | Lysate volume |
+| `lysateWaterVol` | 50.0 µL | Water volume |
+| `sampleWellVol` | 25.0 µL | Sample volume per well |
+| `lysateDilution` | 6.0 | Lysate dilution |
+| `lysateDilutionHigh` | 10.0 | Dilution for concentrated samples |
+| `devTemp` | 37.0 °C | Colour development temp |
+| `mixTime` | 1.0 min | Plate mixing time |
+| `devTime` | 30.0 min | Colour development time |
+| `bcaReagentVol` | 200.0 µL | BCA reagent volume |
+| `mixSpeed` | 600.0 rpm | Plate mixing speed |
 
 ## Western Blot  (`westernblot`)
 
-- **Cell lysis** — `day: 0` · 7 paso(s)
-    - `coolCentrifugeT` = 4.0 °C  ·  TODO: centrifuge at ⟨4°C⟩
-    - `iceRipaVol` = 100.0 uL  ·  TODO: ice RIPA ⟨100 uL⟩ well uL
-    - `ripaUlWellVol` = 50.0 uL  ·  TODO: uL well ⟨50 uL⟩ well PI
-    - `wellWellX` = 1.0 ×  ·  TODO: well well ⟨1×⟩ PI stock
-    - `wellWellPiX` = 100.0 ×  ·  TODO: well PI ⟨100×⟩ stock benzonase
-    - `piStockBenzonaseX` = 1000.0 ×  ·  TODO: stock benzonase ⟨1000×⟩
-    - `distributeCarefullyIncMin` = 10.0 min  ·  TODO: carefully incubate ⟨10 min⟩ in fridge
-    - `centrifugeT` = 4.0 °C  ·  TODO: centrifuge ⟨4°C⟩ min transfer
-    - `centrifugeMin` = 15.0 min  ·  TODO: centrifuge ⟨15 min⟩ transfer supernatant
-    - `freezeT` = -80.0 °C  ·  TODO: freeze at ⟨−80°C⟩
-- **BCA protein quantification** — `day: 0` · 5 paso(s)
-    - `mlDdhVol` = 25.0 uL  ·  TODO: in ddH ⟨25 uL⟩ per well
-    - `bsaStandardsConc` = 0.125 mg/mL  ·  TODO: BSA standards ⟨0.125 mg/mL⟩ in ddH
-    - `diluteLysatesVol` = 10.0 uL  ·  TODO: Dilute lysates ⟨10 uL⟩ uL ddH
-    - `diluteLysatesUlVol` = 50.0 uL  ·  TODO: lysates uL ⟨50 uL⟩ ddH or
-    - `diluteLysatesRatio` = 6.0   ·  TODO: Dilute lysates ⟨1:6⟩ diluteLys
-    - `lutelysatesvolDdhRatio` = 10.0   ·  TODO: ddH or ⟨1:10⟩ for concentrated
-    - `mixRpmMinT` = 37.0 °C  ·  TODO: rpm min ⟨37°C⟩ min
-    - `reagentMixRpmMin` = 1.0 min  ·  TODO: mix rpm ⟨1 min⟩ min
-    - `mixRpmMinMin` = 30.0 min  ·  TODO: rpm min ⟨30 min⟩
-    - `loadVol` = 25.0 uL  ·  TODO: Load ⟨25 uL⟩ standard sample
-    - `duplicateVol` = 200.0 uL  ·  TODO: duplicate add ⟨200 uL⟩ BCA reagent
-    - `bcaReagentMixN` = 600.0 rpm  ·  TODO: reagent mix ⟨600 rpm⟩ mixRpmMin
-- **SDS-PAGE** — `day: 0` · 3 paso(s)
-    - `mopsStockVol` = 1.0 L  ·  TODO: from stock ⟨1 L⟩
-    - `runningBufferX` = 1.0 ×  ·  TODO: Running buffer ⟨1×⟩ MOPS from
-    - `bufferMopsX` = 20.0 ×  ·  TODO: MOPS from ⟨20×⟩ stock
-    - `nupagePct` = 12.0 %  ·  TODO: NuPAGE ⟨12%⟩ bis tris
-    - `ladderUlRunMin` = 1.0 h  ·  TODO: uL run ⟨1h⟩ min well
-    - `ladderUlRunMin2` = 15.0 min  ·  TODO: uL run ⟨15 min⟩ well gel
-    - `loadLadderVol` = 2.5 uL  ·  TODO: Load ladder ⟨2.5 uL⟩ run
-- **Transfer &amp; blotting** — `day: 0` · 5 paso(s) · 1 callout(s): note
-    - `filterPaperX` = 7.0 ×  ·  TODO: paper to ⟨7×⟩ cm pre
-    - `blackRunMin` = 90.0 min  ·  TODO: black run ⟨90 min⟩ in ice
-    - `ponceauMin` = 1.0 min  ·  TODO: Ponceau ⟨1 min⟩ rocking rinse
-    - `washTbsMin` = 5.0 min  ·  TODO: Wash TBS ⟨5 min⟩ block milk
-    - `blockMilkTbsMin` = 1.0 h  ·  TODO: milk TBS ⟨1 h⟩ RT rinse
-    - `rtRinseTbsMin` = 5.0 s  ·  TODO: rinse TBS ⟨5 s⟩
-    - `washTbsBlockPct` = 5.0 %  ·  TODO: TBS block ⟨5%⟩ milk TBS
-    - `tbsOvernightT` = 4.0 °C  ·  TODO: overnight at ⟨4°C⟩ keep antibody
-    - `primaryAntibodyPct` = 5.0 %  ·  TODO: antibody in ⟨5%⟩ milk TBS
-- **Next day** — `day: 0` · 3 paso(s) · 1 callout(s): tip
-    - `washTbsRange` = 5.0 – 10.0 min  ·  TODO: Wash TBS ⟨5–10 min⟩
-    - `washX` = 2.0 ×  ·  TODO: Wash ⟨2×⟩ TBS
-    - `rhodamineTbsMin` = 1.0 h  ·  TODO: in TBS ⟨1 h⟩ RT on
-    - `secondaryMsRbRatio` = 4000.0   ·  TODO: Ms Rb ⟨1:4000⟩ tubulin hFAB
-    - `tubulinHfabRhodamineRatio` = 4000.0   ·  TODO: hFAB rhodamine ⟨1:4000⟩ in TBS
-    - `washTbsRange2` = 5.0 – 10.0 min  ·  TODO: Wash TBS ⟨5–10 min⟩ image
-    - `washX2` = 5.0 ×  ·  TODO: Wash ⟨5×⟩ TBS image
+**Cell lysis**
+
+| key | value | label |
+|---|---|---|
+| `precoolTemp` | 4.0 °C | Centrifuge pre-cool temp |
+| `ripaVol6` | 50.0–100.0 uL | RIPA per 6-well |
+| `ripaVol12` | 50.0 uL | RIPA per 12-well |
+| `piFinalX` | 1.0 × | Protease inhibitor (final) |
+| `piStockX` | 100.0 × | Protease inhibitor stock |
+| `benzonaseX` | 1000.0 × | Benzonase dilution |
+| `lysisTime` | 10.0 min | Lysis time in fridge |
+| `clearTemp` | 4.0 °C | Clearing spin temp |
+| `clearTime` | 15.0 min | Clearing spin time |
+| `lysateStoreTemp` | -80.0 °C | Lysate storage temp |
+
+**BCA protein quantification**
+
+| key | value | label |
+|---|---|---|
+| `stdWellVol` | 25.0 uL | Standard volume per well |
+| `bsaLowStd` | 0.125 mg/mL | Lowest BSA standard |
+| `lysateVol` | 10.0 uL | Lysate volume |
+| `lysateWaterVol` | 50.0 uL | Water volume |
+| `lysateDilution` | 6.0 | Lysate dilution |
+| `lysateDilutionHigh` | 10.0 | Dilution for concentrated samples |
+| `devTemp` | 37.0 °C | Colour development temp |
+| `mixTime` | 1.0 min | Plate mixing time |
+| `devTime` | 30.0 min | Colour development time |
+| `bcaLoadVol` | 25.0 uL | Standard/sample per well |
+| `bcaReagentVol` | 200.0 uL | BCA reagent volume |
+| `mixSpeed` | 600.0 rpm | Plate mixing speed |
+
+**SDS-PAGE**
+
+| key | value | label |
+|---|---|---|
+| `runBufferVol` | 1.0 L | Running buffer volume |
+| `runBufferX` | 1.0 × | MOPS working strength |
+| `mopsStockX` | 20.0 × | MOPS stock strength |
+| `gelPct` | 4.0–12.0 % | Bis-Tris gel % |
+| `runTimeH` | 1.0 h | Gel run time (hours) |
+| `runTimeMin` | 15.0 min | Gel run time (extra minutes) |
+| `ladderVol` | 2.5 uL | Ladder volume |
+
+**Transfer &amp; blotting**
+
+| key | value | label |
+|---|---|---|
+| `membraneSize` | 7.0 × | Membrane cut size |
+| `transferTime` | 90.0 min | Transfer time |
+| `ponceauTime` | 1.0 min | Ponceau staining time |
+| `preBlockWash` | 5.0 min | Wash before blocking |
+| `blockTime` | 1.0 h | Blocking time |
+| `postBlockRinse` | 5.0 s | Rinse after blocking |
+| `blockMilkPct` | 5.0 % | Milk % for blocking |
+| `primaryTemp` | 4.0 °C | Primary incubation temp |
+| `primaryMilkPct` | 5.0 % | Milk % for primary |
+
+**Next day**
+
+| key | value | label |
+|---|---|---|
+| `primaryWashTime` | 5.0–10.0 min | Wash time after primary |
+| `primaryWashCount` | 2.0 × | Washes after primary |
+| `secondaryTime` | 1.0 h | Secondary incubation time |
+| `secondaryDilution` | 4000.0 | Secondary antibody dilution |
+| `tubulinDilution` | 4000.0 | hFAB tubulin dilution |
+| `finalWashCount` | 3.0–5.0 × | Washes after secondary |
+| `finalWashTime` | 5.0–10.0 min | Wash time after secondary |
 
 ## Immunoprecipitation  (`ip`)
 
-- **Seeding &amp; treatment** — `day: 0` · 3 paso(s)
-    - `plateConditionConc` = 1.2 M  ·  TODO: per condition ⟨1.2M⟩ cells plate
-    - `cellsStartMin` = 1.0 h  ·  TODO: start with ⟨1 h⟩ compound incubation
-- **Lysis** — `day: 0` · 4 paso(s)
-    - `pbsRipaVol` = 300.0 µL  ·  TODO: add RIPA ⟨300 µL⟩ well PI
-    - `ripaWellX` = 1.0 ×  ·  TODO: RIPA well ⟨1×⟩ PI benzonase
-    - `ripaWellPiX` = 100.0 ×  ·  TODO: well PI ⟨100×⟩ benzonase
-    - `wellPiBenzonaseX` = 1000.0 ×  ·  TODO: PI benzonase ⟨1000×⟩
-    - `incubateMin` = 10.0 min  ·  TODO: Incubate ⟨10 min⟩ in fridge
-    - `eppendorfCentrifugeRpmMin` = 15.0 min  ·  TODO: centrifuge rpm ⟨15 min⟩ keep supernatant
-    - `eppendorfCentrifugeN` = 0.0 rpm  ·  TODO: Eppendorf centrifuge ⟨000 rpm⟩ keep
-    - `quantificationNormalizAmt` = 3.0 mg  ·  TODO: normalize to ⟨3 mg⟩ sample
-- **Immunoprecipitation (RBM39 IgG sc-376531 example)** — `day: 0` · 3 paso(s)
-    - `sampleSplitInputAmt` = 200.0 µg  ·  TODO: ⟨200 µg⟩ sample split
-    - `sampleSplitAmt` = 100.0 µg  ·  TODO: sample split ⟨100 µg⟩ INPUT IP
-    - `sampleSplitInputAmt2` = 100.0 µg  ·  TODO: split INPUT ⟨100 µg⟩ IP
-    - `rbmIggProteinVol` = 40.0 µL  ·  TODO: IgG protein ⟨40 µL⟩ mg if
-    - `mgConc` = 200.0 µg/mL  ·  TODO: if at ⟨200 µg/mL⟩ Tube Ms
-    - `tubeRbmIggAmt` = 2.0 µg  ·  TODO: RBM IgG ⟨2 µg⟩ protein
-    - `tubeRbmIggAmt2` = 250.0 µg  ·  TODO: RBM IgG ⟨250 µg⟩ protein mg
-    - `msIggControlAmt` = 1.0 µg  ·  TODO: IgG control ⟨1 µg⟩ mg lysate
-    - `totalIncubateOvernightT` = 4.0 °C  ·  TODO: incubate overnight ⟨4°C⟩ with rotation
-    - `ripaVol` = 1.0 mL  ·  TODO: RIPA to ⟨1 mL⟩ total incubate
-- **Bead capture** — `day: 0` · 4 paso(s)
-    - `washProteinBeadsVol` = 25.0 µL  ·  TODO: Protein beads ⟨25 µL⟩ sample wash
-    - `proteinBeadsSampleVol` = 500.0 µL  ·  TODO: beads sample ⟨500 µL⟩ wash buffer
-    - `sampleWashBufferConc` = 50.0 mM  ·  TODO: wash buffer ⟨50 mM⟩ Tris mM
-    - `bufferMmTrisConc` = 150.0 mM  ·  TODO: mM Tris ⟨150 mM⟩ NaCl magnetic
-    - `beadsIncubateT` = 4.0 °C  ·  TODO: beads incubate ⟨4°C⟩ with rotation
-    - `beadsIncubateMin` = 1.0 h  ·  TODO: beads incubate ⟨1 h⟩ with rotation
-    - `washVol` = 1000.0 µL  ·  TODO: Wash with ⟨1000 µL⟩ wash buffer
-    - `washX` = 5.0 ×  ·  TODO: Wash ⟨5×⟩ with wash
-- **Elution** — `day: 0` · 2 paso(s) · 1 callout(s): warn
-    - `ldsDttBoilT` = 90.0 °C  ·  TODO: DTT boil ⟨90°C⟩ min collect
-    - `ldsDttBoilMin` = 10.0 min  ·  TODO: DTT boil ⟨10 min⟩ collect supernatant
-    - `valVol` = 80.0 µL  ·  TODO: Add ⟨80 µL⟩ loading buffer
-    - `loadingBufferX` = 4.0 ×  ·  TODO: loading buffer ⟨4×⟩ LDS DTT
-    - `loadingBufferLdsX` = 10.0 ×  ·  TODO: buffer LDS ⟨10×⟩ DTT boil
+**Seeding &amp; treatment**
+
+| key | value | label |
+|---|---|---|
+| `cellsPerPlate` | 1.2 M | Cells per 10 cm plate |
+| `treatTime` | 1.0 h | Compound incubation time |
+
+**Lysis**
+
+| key | value | label |
+|---|---|---|
+| `lysisRipaVol` | 300.0 µL | RIPA per well |
+| `piFinalX` | 1.0 × | Protease inhibitor (final) |
+| `piStockX` | 100.0 × | Protease inhibitor stock |
+| `benzonaseX` | 1000.0 × | Benzonase dilution |
+| `lysisTime` | 10.0 min | Lysis time in fridge |
+| `clearTime` | 15.0 min | Clearing spin time |
+| `clearSpeed` | 13000.0 rpm | Clearing spin speed |
+| `proteinPerSample` | 3.0 mg | Protein per sample |
+
+**Immunoprecipitation (RBM39 IgG sc-376531 example)**
+
+| key | value | label |
+|---|---|---|
+| `splitTotal` | 200.0 µg | Total protein to split |
+| `inputAmt` | 100.0 µg | INPUT fraction |
+| `ipAmt` | 100.0 µg | IP fraction |
+| `abVolPerMg` | 40.0 µL | Antibody volume per mg lysate |
+| `abStockConc` | 200.0 µg/mL | Antibody stock concentration |
+| `abAmt` | 2.0 µg | Antibody amount |
+| `abPerProtein` | 250.0 µg | Protein that antibody covers |
+| `iggControlAmt` | 1.0 µg | Control IgG per mg lysate |
+| `ipTemp` | 4.0 °C | IP incubation temp |
+| `ipTotalVol` | 1.0 mL | IP reaction volume |
+
+**Bead capture**
+
+| key | value | label |
+|---|---|---|
+| `beadsVol` | 25.0 µL | Beads per sample |
+| `beadsWashVol` | 500.0 µL | Bead wash volume |
+| `trisConc` | 50.0 mM | Tris in wash buffer |
+| `naclConc` | 150.0 mM | NaCl in wash buffer |
+| `beadsTemp` | 4.0 °C | Bead binding temp |
+| `beadsTime` | 1.0 h | Bead binding time |
+| `washVol` | 1000.0 µL | Wash volume |
+| `washCount` | 5.0 × | Number of washes |
+
+**Elution**
+
+| key | value | label |
+|---|---|---|
+| `boilTemp` | 90.0 °C | Boil temp |
+| `boilTime` | 10.0 min | Boil time |
+| `elutionVol` | 80.0 µL | Loading buffer volume |
+| `ldsX` | 4.0 × | LDS strength |
+| `dttX` | 10.0 × | DTT strength |
 
 ## HiBiT Blotting System (Promega)  (`hibit`)
 
-- **(sin título)** — `day: 0` · 6 paso(s) · 1 callout(s): tip
-    - `hibitReagentDiluteX` = 10.0 ×  ·  TODO: reagent dilute ⟨10×⟩ Nano Glo
-    - `waterLgbitX` = 200.0 ×  ·  TODO: add LgBiT ⟨200×⟩ add Nano
-    - `regLuciferaseSubstrateX` = 500.0 ×  ·  TODO: Luciferase Substrate ⟨500×⟩
-    - `incubateMembraneMin` = 5.0 min  ·  TODO: Incubate membrane ⟨5 min⟩ with gentle
+**(untitled)**
+
+| key | value | label |
+|---|---|---|
+| `blottingBufferX` | 10.0 × | Blotting Buffer dilution |
+| `lgbitX` | 200.0 × | LgBiT dilution |
+| `substrateX` | 500.0 × | Luciferase Substrate dilution |
+| `membraneTime` | 5.0 min | Membrane incubation time |
 
 ## HiBiT Lytic Assay  (`hibitlytic`)
 
-- **Protocol** — `day: 0` · 5 paso(s)
-    - `requiredTypicallyRange` = 4.0 – 24.0 h  ·  TODO: required typically ⟨4–24 h⟩ for degraders
-    - `plateShakerRpmMin` = 1.0 min  ·  TODO: shaker rpm ⟨1 min⟩
-    - `plateShakerN` = 300.0 rpm  ·  TODO: plate shaker ⟨300 rpm⟩
-    - `valMin` = 10.0 min  ·  TODO: ⟨10 min⟩
-    - `valMin2` = 0.3 s  ·  TODO: ⟨0.3 s⟩
+**Protocol**
+
+| key | value | label |
+|---|---|---|
+| `treatTime` | 4.0–24.0 h | Degrader incubation time |
+| `shakeTime` | 1.0 min | Plate shaking time |
+| `shakeSpeed` | 300.0 rpm | Plate shaker speed |
+| `developTime` | 10.0 min | Signal development time |
+| `integrationTime` | 0.3 s | Luminescence integration time |
 
 ## CellTiter-Glo® 2.0 — Cell Viability  (`ctg2`)
 
-- **Reagent preparation** — `day: 0` · 3 paso(s)
-    - `overnightT` = 4.0 °C  ·  TODO: ⟨4°C⟩ overnight
-    - `valT` = 22.0 °C  ·  TODO: or in ⟨22°C⟩ water bath
-    - `leaveBenchRange` = 10.0 – 15.0 min  ·  TODO: on bench ⟨10–15 min⟩ before water
-    - `doNotExceedT` = 25.0 °C  ·  TODO: not exceed ⟨25°C⟩ if stored
-    - `storedT` = -65.0 °C  ·  TODO: stored at ⟨−65°C⟩ leave on
-    - `waterBathT` = 22.0 °C  ·  TODO: ⟨22°C⟩ water bath
-    - `mlRequiresMin` = 30.0 min  ·  TODO: mL requires ⟨30 min⟩ mL requires
-    - `minMlRequiresMin` = 100.0 min  ·  TODO: mL requires ⟨100 min⟩
-    - `requiresMlVol` = 100.0 mL  ·  TODO: ⟨100 mL⟩ requires mL
-    - `mlRequiresVol` = 500.0 mL  ·  TODO: mL requires ⟨500 mL⟩ requires
-- **Cell viability protocol** — `day: 0` · 8 paso(s) · 2 callout(s): warn/tip
-    - `valMin` = 30.0 min  ·  TODO: ⟨30 min⟩
-    - `wellWellVol` = 100.0 µL  ·  TODO: well well ⟨100 µL⟩ reagent to
-    - `wellReagentVol` = 100.0 µL  ·  TODO: reagent to ⟨100 µL⟩ medium well
-    - `mediumWellVol` = 25.0 µL  ·  TODO: medium well ⟨25 µL⟩ to
-    - `mediumWellVol2` = 25.0 µL  ·  TODO: well to ⟨25 µL⟩
-    - `valMin2` = 2.0 min  ·  TODO: ⟨2 min⟩
-    - `valMin3` = 10.0 min  ·  TODO: ⟨10 min⟩
-    - `wellMin` = 1.0 s  ·  TODO: ⟨1 s⟩ well
+**Reagent preparation**
+
+| key | value | label |
+|---|---|---|
+| `thawTempFridge` | 4.0 °C | Overnight thaw temp |
+| `thawTempBath` | 22.0 °C | Water bath thaw temp |
+| `benchTime` | 10.0–15.0 min | Bench equilibration time |
+| `thawMaxTemp` | 25.0 °C | Thaw temp not to exceed |
+| `coldStorageTemp` | -65.0 °C | Cold storage temp |
+| `equilTempBath` | 22.0 °C | Water bath temp |
+| `equilTimeSmall` | 30.0 min | Equilibration time (small volume) |
+| `equilTimeLarge` | 100.0 min | Equilibration time (large volume) |
+| `volSmall` | 100.0 mL | Reagent volume (small) |
+| `volLarge` | 500.0 mL | Reagent volume (large) |
+
+**Cell viability protocol**
+
+| key | value | label |
+|---|---|---|
+| `plateEquilTime` | 30.0 min | Plate equilibration time |
+| `reagentVol96` | 100.0 µL | Reagent per 96-well |
+| `mediumVol96` | 100.0 µL | Medium per 96-well |
+| `reagentVol384` | 25.0 µL | Reagent per 384-well |
+| `mediumVol384` | 25.0 µL | Medium per 384-well |
+| `lysisShakeTime` | 2.0 min | Orbital shaking for lysis |
+| `stabiliseTime` | 10.0 min | Signal stabilisation time |
+| `integrationTime` | 0.25–1.0 s | Luminescence integration time |
 
 ## Retro/Lentiviral Transduction  (`lenti`)
 
-- **Virus generation** — `day: 0` · 6 paso(s) · 1 callout(s): warn
-    - `cellsMlVol` = 10.0 mL  ·  TODO: mL in ⟨10 mL⟩ into cm
-    - `hekFtX` = 1.5 ×  ·  TODO: FT at ⟨1.5×⟩ cells mL
-    - `nextDayPct` = 60.0 %  ·  TODO: Next day ⟨60%⟩ confluency prepare
-    - `tubeVol` = 300.0 µL  ·  TODO: Tube ⟨300 µL⟩ OptiMEM vector
-    - `tubeOptimemAmt` = 6.0 µg  ·  TODO: Tube OptiMEM ⟨6 µg⟩ vector plasmid
-    - `lentiviralTransferPlasAmt` = 3.8 µg  ·  TODO: transfer plasmid ⟨3.8 µg⟩ Gag Pol
-    - `lentiviralAmt` = 2.0 µg  ·  TODO: for lentiviral ⟨2 µg⟩
-    - `tubeVol2` = 300.0 µL  ·  TODO: Tube ⟨300 µL⟩ OptiMEM PEI
-    - `tubeOptimemVol` = 24.0 µL  ·  TODO: Tube OptiMEM ⟨24 µL⟩ PEI
-    - `incubateMin` = 5.0 min  ·  TODO: Incubate ⟨5 min⟩ in hood
-    - `mixGentlyIncubateMin` = 20.0 min  ·  TODO: gently incubate ⟨20 min⟩
-    - `valVol` = 9.0 mL  ·  TODO: Add to ⟨9 mL⟩ pre warmed
-    - `freshMlIncubateMin` = 24.0 h  ·  TODO: mL incubate ⟨24 h⟩
-    - `replaceFreshVol` = 10.0 mL  ·  TODO: with fresh ⟨10 mL⟩ incubate
-- **Harvest (24 h after media change)** — `day: 0` · 1 paso(s) · 1 callout(s): note
-    - `storeT` = -80.0 °C  ·  TODO: store at ⟨−80°C⟩
-    - `removeMediaCentrifugeMin` = 5.0 min  ·  TODO: media centrifuge ⟨5 min⟩ filter through
-- **Viral infection** — `day: 0` · 5 paso(s)
-    - `overnightCellsWellVol` = 2.0 mL  ·  TODO: cells well ⟨2 mL⟩ media
-    - `wellPlateOvernightConc` = 0.5 M  ·  TODO: plate overnight ⟨0.5M⟩ cells well
-    - `onlyVirusMediaRatio` = 1.0   ·  TODO: virus media ⟨1:1⟩ media only
-    - `wellIncubateMin` = 24.0 h  ·  TODO: well incubate ⟨24 h⟩
-    - `polybreneMlVol` = 1.6 µL  ·  TODO: to mL ⟨1.6 µL⟩ mL add
-    - `polybreneMlVol2` = 2.0 mL  ·  TODO: to mL ⟨2 mL⟩ add to
-    - `polybreneConc` = 8.0 µg/mL  ·  TODO: Polybrene to ⟨8 µg/mL⟩ polybreneMlVo
-    - `selectionAntibioticRange` = 48.0 – 72.0 h  ·  TODO: antibiotic at ⟨48–72 h⟩ post transduction
+**Virus generation**
+
+| key | value | label |
+|---|---|---|
+| `seedVol` | 10.0 mL | Plating volume (10 cm dish) |
+| `transfectConfluency` | 60.0 % | Confluency at transfection |
+| `optiMemVolDna` | 300.0 µL | Opti-MEM (DNA tube) |
+| `gagPolAmt` | 6.0 µg | Gag-Pol plasmid |
+| `transferAmt` | 3.8 µg | Transfer plasmid |
+| `envelopeAmt` | 2.0 µg | Envelope plasmid |
+| `optiMemVolReagent` | 300.0 µL | Opti-MEM (reagent tube) |
+| `transfectReagentVol` | 24.0 µL | Transfection reagent volume |
+| `tubeRestTime` | 5.0 min | Tube rest time |
+| `complexTime` | 20.0 min | Complex formation time |
+| `mediaVol` | 9.0 mL | Pre-warmed media volume |
+| `harvestTime` | 24.0 h | Time to virus harvest |
+| `refreshVol` | 10.0 mL | Fresh media volume |
+
+**Harvest (24 h after media change)**
+
+| key | value | label |
+|---|---|---|
+| `virusStoreTemp` | -80.0 °C | Virus storage temp |
+| `clearSpinTime` | 5.0 min | Virus clearing spin time |
+
+**Viral infection**
+
+| key | value | label |
+|---|---|---|
+| `transduceVol` | 2.0 mL | Media per well |
+| `transduceCells` | 0.5 M | Cells per well |
+| `virusDilution` | 1.0 | Virus:media dilution |
+| `transduceTime` | 24.0 h | Transduction time |
+| `polybreneVol` | 1.6 µL | Polybrene volume |
+| `polybreneMediaVol` | 2.0 mL | Media Polybrene is added to |
+| `polybreneConc` | 8.0 µg/mL | Polybrene concentration |
+| `selectionStart` | 48.0–72.0 h | Time to start selection |
 
 ## Transfection — Forward  (`transfection`)
 
-- **Day 0 — Seeding** — `day: 0` · 2 paso(s)
-    - `soTheyReachPct` = 80.0 %  ·  TODO: they reach ⟨80%⟩ confluence at
-    - `overnightNbspPct` = 5.0 %  ·  TODO: at nbsp ⟨5%⟩ CO
-- **Day 1 — Transfection** — `day: 0` · 5 paso(s)
-    - `incubateRange` = 10.0 – 15.0 min  ·  TODO: Incubate ⟨10–15 min⟩ at RT
-    - `formComplexesRange` = 5.0 – 20.0 min  ·  TODO: form complexes ⟨5–20 min⟩ depending on
-    - `incubateNbspNbspPct` = 5.0 %  ·  TODO: nbsp nbsp ⟨5%⟩ CO to
+**Day 0 — Seeding**
+
+| key | value | label |
+|---|---|---|
+| `seedConfluency` | 70.0–80.0 % | Confluency at transfection |
+| `co2Pct` | 5.0 % | CO₂ % |
+
+**Day 1 — Transfection** — **day 1**
+
+| key | value | label |
+|---|---|---|
+| `complexTime` | 10.0–15.0 min | Complex formation time |
+| `complexTimeRange` | 5.0–20.0 min | Complex time (reagent-dependent) |
+| `co2PctEndpoint` | 5.0 % | CO₂ % (endpoint incubation) |
 
 ## Transfection — Reverse  (`revtx`)
 
-- **Transfection conditions (per 12-well)** — `day: 0` · 4 paso(s)
-    - `plasmidDnaAmt` = 800.0 ng  ·  TODO: Plasmid DNA ⟨800 ng⟩
-    - `fugeneHdVol` = 2.4 µL  ·  TODO: FuGENE HD ⟨2.4 µL⟩
-    - `optiMemVol` = 100.0 µL  ·  TODO: Opti MEM ⟨100 µL⟩
-    - `cellSuspensionVol` = 1.0 mL  ·  TODO: Cell suspension ⟨1 mL⟩ containing cells
-    - `cellSuspensionContainiX` = 2.0 ×  ·  TODO: suspension containing ⟨2.0×⟩ cells
-- **Cell seeding** — `day: 0` · 2 paso(s)
-    - `seedX` = 2.0 ×  ·  TODO: Seed ⟨2.0×⟩ cells per
-- **Procedure** — `day: 0` · 8 paso(s)
-    - `pipetteIncubateRange` = 5.0 – 15.0 min  ·  TODO: and incubate ⟨5–15 min⟩ RT to
-    - `wellVol` = 1.0 mL  ·  TODO: well with ⟨1 mL⟩ complete medium
-    - `completeMediumContainiX` = 2.0 ×  ·  TODO: medium containing ⟨2.0×⟩ freshly trypsinized
-    - `underStandardConditionT` = 37.0 °C  ·  TODO: standard conditions ⟨37°C⟩ CO to
-    - `underStandardConditionPct` = 5.0 %  ·  TODO: standard conditions ⟨5%⟩ CO to
+**Transfection conditions (per 12-well)**
+
+| key | value | label |
+|---|---|---|
+| `dnaAmt` | 800.0 ng | Plasmid DNA per well |
+| `fugeneVol` | 2.4 µL | FuGENE HD volume |
+| `optiMemVol` | 100.0 µL | Opti-MEM volume |
+| `suspensionCells` | 1.5–2.0 ×10&#8309; | Cells in suspension |
+| `suspensionVol` | 1.0 mL | Cell suspension volume |
+
+**Cell seeding**
+
+| key | value | label |
+|---|---|---|
+| `seedCells` | 1.5–2.0 ×10&#8309; | Cells per 12-well |
+
+**Procedure**
+
+| key | value | label |
+|---|---|---|
+| `complexTime` | 5.0–15.0 min | Complex formation time |
+| `overlayCells` | 1.5–2.0 ×10&#8309; | Cells in overlay |
+| `overlayVol` | 1.0 mL | Overlay medium volume |
+| `incubateTemp` | 37.0 °C | Incubation temp |
+| `co2Pct` | 5.0 % | CO₂ % |
 
 ## Cell Seeding  (`seeding`)
 
-- **Procedure** — `day: 0` · 4 paso(s)
+_No numeric parameters — reference protocol._
 
 ## S-Trap Sample Preparation  (`strap`)
 
-- **Reduction** — `day: 0` · 2 paso(s)
-    - `dttVialMgVol` = 100.0 µL  ·  TODO: vial mg ⟨100 µL⟩ mM stock
-    - `dttVialMgConc` = 500.0 mM  ·  TODO: vial mg ⟨500 mM⟩ stock add
-    - `volumeConc` = 20.0 mM  ·  TODO: volume for ⟨20 mM⟩ final in
-    - `dttVialAmt` = 7.7 mg  ·  TODO: DTT vial ⟨7.7 mg⟩
-    - `incubateRange` = 20.0 – 30.0 min  ·  TODO: Incubate ⟨20–30 min⟩
-    - `incubateT` = 55.0 °C  ·  TODO: Incubate ⟨55°C⟩
-- **Alkylation** — `day: 0` · 2 paso(s)
-    - `stockVol` = 132.0 µL  ·  TODO: stock add ⟨132 µL⟩ to alkylator
-    - `teabStockConc` = 200.0 mM  ·  TODO: ⟨200 mM⟩ TEAB from
-    - `mmTeabConc` = 1.0 M  ·  TODO: TEAB from ⟨1 M⟩ stock add
-    - `alkylatorVialConc` = 375.0 mM  ·  TODO: alkylator vial ⟨375 mM⟩ add for
-    - `mmConc` = 20.0 mM  ·  TODO: add for ⟨20 mM⟩ final
-    - `incubateMin` = 10.0 min  ·  TODO: Incubate ⟨10 min⟩ RT in
-- **Acidify** — `day: 0` · 1 paso(s)
-    - `phosphoricAcidVol` = 5.0 µL  ·  TODO: phosphoric acid ⟨5 µL⟩ to sample
-    - `phosphoricAcidVol2` = 45.0 µL  ·  TODO: acid to ⟨45 µL⟩ sample
-    - `valPct` = 12.0 %  ·  TODO: Add of ⟨12%⟩ phosphoric acid
-    - `valRatio` = 10.0   ·  TODO: Add ⟨1:10⟩ of phosphoric
-- **Trap protein on S-Trap** — `day: 0` · 3 paso(s)
-    - `bindingWashBufferVol` = 1.0 mL  ·  TODO: Wash buffer ⟨1 mL⟩ TEAB mL
-    - `bufferMlTeabVol` = 9.0 mL  ·  TODO: mL TEAB ⟨9 mL⟩ MeOH mM
-    - `washBufferTeabConc` = 1.0 M  ·  TODO: buffer TEAB ⟨1M⟩ MeOH mM
-    - `indingwashbuffervolTeaConc` = 100.0 mM  ·  TODO: TEAB MeOH ⟨100 mM⟩ TEAB in
-    - `meohTeabPct` = 90.0 %  ·  TODO: TEAB in ⟨90%⟩ MeOH
-    - `trapVol` = 1.5 mL  ·  TODO: Trap in ⟨1.5 mL⟩ tube
-    - `valX` = 7.0 ×  ·  TODO: Add ⟨7×⟩ sample volume
-    - `centrifugeMin` = 30.0 s  ·  TODO: Centrifuge ⟨30 s⟩ if not
-- **Wash × 3** — `day: 0` · 2 paso(s)
-    - `washBufferCentrifugeMin` = 30.0 s  ·  TODO: buffer centrifuge ⟨30 s⟩ discard flow
-    - `valVol` = 150.0 µL  ·  TODO: Add ⟨150 µL⟩ Binding Wash
-    - `finalCentrifugeMin` = 1.0 min  ·  TODO: Final centrifuge ⟨1 min⟩ transfer Trap
-- **Trypsin digestion** — `day: 0` · 4 paso(s)
-    - `mixTrypsinVol` = 1500.0 µL  ·  TODO: trypsin in ⟨1500 µL⟩ mM TEAB
-    - `mmTeabVol` = 100.0 µL  ·  TODO: TEAB add ⟨100 µL⟩ to each
-    - `mixTrypsinConc` = 100.0 mM  ·  TODO: trypsin in ⟨100 mM⟩ TEAB add
-    - `ratioRecommendedAmt` = 100.0 µg  ·  TODO: Ratio recommended ⟨100 µg⟩ protein trypsin
-    - `ratioRecommendedProteiAmt` = 6.67 µg  ·  TODO: recommended protein ⟨6.67 µg⟩ trypsin mix
-    - `proteinTrypsinMixAmt` = 100.0 µg  ·  TODO: trypsin mix ⟨100 µg⟩ trypsin in
-    - `ratioRatio` = 15.0   ·  TODO: Ratio ⟨1:15⟩ recommended ratioRecommendedAmt
-    - `incubateT2` = 37.0 °C  ·  TODO: Incubate ⟨37°C⟩ overnight
-- **Elution** — `day: 0` · 4 paso(s)
-    - `mmTeabMin` = 1.0 min  ·  TODO: mM TEAB ⟨1 min⟩
-    - `mmTeabVol2` = 100.0 µL  ·  TODO: ⟨100 µL⟩ mM TEAB
-    - `teabConc` = 50.0 mM  ·  TODO: ⟨50 mM⟩ TEAB
-    - `formicAcidMin` = 1.0 min  ·  TODO: formic acid ⟨1 min⟩
-    - `formicAcidFormVol` = 100.0 µL  ·  TODO: ⟨100 µL⟩ formic acid
-    - `formicAcidFormicacidPct` = 0.15 %  ·  TODO: ⟨0.15%⟩ formic acid
-    - `acnMin` = 1.0 min  ·  TODO: ACN ⟨1 min⟩
-    - `acnVol` = 100.0 µL  ·  TODO: ⟨100 µL⟩ ACN
-    - `acnPct` = 50.0 %  ·  TODO: ⟨50%⟩ ACN
-    - `labelledTubesTakeAmt` = 30.0 µg  ·  TODO: tubes take ⟨30 µg⟩ sample dry
+**Reduction**
+
+| key | value | label |
+|---|---|---|
+| `dttWaterVol` | 100.0 µL | Water to dissolve DTT |
+| `dttStockConc` | 500.0 mM | DTT stock concentration |
+| `dttFinalConc` | 20.0 mM | DTT final concentration |
+| `dttMass` | 7.7 mg | DTT per vial |
+| `reduceTime` | 20.0–30.0 min | Reduction time |
+| `reduceTemp` | 55.0 °C | Reduction temp |
+
+**Alkylation**
+
+| key | value | label |
+|---|---|---|
+| `alkylatorTeabVol` | 132.0 µL | TEAB added to alkylator vial |
+| `teabWorkConc` | 200.0 mM | TEAB working concentration |
+| `teabStockConc` | 1.0 M | TEAB stock concentration |
+| `alkylatorStockConc` | 375.0 mM | Alkylator stock concentration |
+| `alkylatorFinalConc` | 20.0 mM | Alkylator final concentration |
+| `alkylateTime` | 10.0 min | Alkylation time |
+
+**Acidify**
+
+| key | value | label |
+|---|---|---|
+| `acidVol` | 5.0 µL | Acid volume |
+| `acidSampleVol` | 45.0 µL | Sample volume |
+| `acidPct` | 12.0 % | Phosphoric acid % |
+| `acidRatio` | 10.0 | Phosphoric acid ratio |
+
+**Trap protein on S-Trap**
+
+| key | value | label |
+|---|---|---|
+| `bindTeabVol` | 1.0 mL | TEAB in binding buffer |
+| `bindMeohVol` | 9.0 mL | MeOH in binding buffer |
+| `bindTeabStock` | 1.0 M | TEAB stock for binding buffer |
+| `bindTeabFinal` | 100.0 mM | TEAB final in binding buffer |
+| `bindMeohPct` | 90.0 % | MeOH % in binding buffer |
+| `trapTubeVol` | 1.5 mL | S-Trap tube size |
+| `bindBufferX` | 7.0 × | Binding buffer per sample volume |
+| `loadSpinTime` | 30.0 s | Loading spin time |
+
+**Wash × 3**
+
+| key | value | label |
+|---|---|---|
+| `washSpinTime` | 30.0 s | Wash spin time |
+| `washVol` | 150.0 µL | Binding/Wash buffer volume |
+| `finalSpinTime` | 1.0 min | Final spin time |
+
+**Trypsin digestion**
+
+| key | value | label |
+|---|---|---|
+| `trypsinDissolveVol` | 1500.0 µL | Volume to dissolve trypsin |
+| `trypsinTeabVol` | 100.0 µL | TEAB volume for trypsin |
+| `trypsinTeabConc` | 100.0 mM | TEAB concentration for trypsin |
+| `digestProteinAmt` | 100.0 µg | Protein digested |
+| `trypsinAmt` | 6.67 µg | Trypsin used |
+| `trypsinVialAmt` | 100.0 µg | Trypsin per vial |
+| `trypsinRatio` | 15.0 | Trypsin:protein ratio |
+| `digestTemp` | 37.0 °C | Digestion temp |
+
+**Elution**
+
+| key | value | label |
+|---|---|---|
+| `elute1SpinTime` | 1.0 min | Elution 1 spin time |
+| `elute1Vol` | 100.0 µL | Elution 1 volume (TEAB) |
+| `elute1Conc` | 50.0 mM | Elution 1 TEAB concentration |
+| `elute2SpinTime` | 1.0 min | Elution 2 spin time |
+| `elute2Vol` | 100.0 µL | Elution 2 volume (formic acid) |
+| `elute2Pct` | 0.15 % | Formic acid % |
+| `elute3SpinTime` | 1.0 min | Elution 3 spin time |
+| `elute3Vol` | 100.0 µL | Elution 3 volume (ACN) |
+| `elute3Pct` | 50.0 % | ACN % |
+| `submitAmt` | 30.0 µg | Peptide submitted |
 
 ## DIA-NN — Data-Independent Acquisition  (`diann`)
 
-- **A — Data organisation** — `day: 0` · 3 paso(s)
-- **B — FASTA file preparation** — `day: 0` · 3 paso(s)
-- **C — DIA-NN processing setup** — `day: 0` · 8 paso(s)
-- **D — Key output files** — `day: 0` · 3 paso(s) · 1 callout(s): tip
+_No numeric parameters — reference protocol._
 
 ## Perseus — Statistical Analysis  (`perseus`)
 
-- **A — Import data** — `day: 0` · 5 paso(s)
-- **B — Sample annotation** — `day: 0` · 4 paso(s)
-- **C — Log&#8322; transformation** — `day: 0` · 2 paso(s)
-- **D — Filter contaminants and low-quality IDs** — `day: 0` · 5 paso(s) · 1 callout(s): note
-- **E — Filter by valid values** — `day: 0` · 4 paso(s)
-- **F — Missing value imputation** — `day: 0` · 3 paso(s)
-- **G — Exploratory analysis: PCA (optional but recommended)** — `day: 0` · 3 paso(s)
-- **H — Differential analysis: volcano plot** — `day: 0` · 4 paso(s)
-- **I — Export results** — `day: 0` · 3 paso(s) · 1 callout(s): tip
+_No numeric parameters — reference protocol._
 
 ## MiSeq — Amplicon Sequencing  (`miseq`)
 
-- **1 — Design primers** — `day: 0` · 6 paso(s)
-    - `interestOptimalAmplicoN` = 200.0 bp  ·  TODO: optimal amplicon ⟨200 bp⟩ excl universal
-    - `templateSetRangeN` = 300.0 bp  ·  TODO: ⟨300 bp⟩ template set
-    - `desaltedReconstituteConc` = 100.0 µM  ·  TODO: reconstitute to ⟨100 µM⟩ stock working
-    - `stockWorkingConc` = 10.0 µM  ·  TODO: working at ⟨10 µM⟩
-- **2 — Test PCR (GoTAQ G2, optional)** — `day: 0` · 1 paso(s) · 1 callout(s): note
-    - `runVol` = 10.0 µL  ·  TODO: Run ⟨10 µL⟩ on TAE
-    - `runPct` = 1.0 %  ·  TODO: Run on ⟨1%⟩ TAE agarose
-    - `agaroseGelExpectN` = 267.0 bp  ·  TODO: gel expect ⟨267 bp⟩ for bp
-    - `expectBpN` = 200.0 bp  ·  TODO: bp for ⟨200 bp⟩ amplicon
-- **3 — High-fidelity PCR for MiSeq submission** — `day: 0` · 2 paso(s) · 1 callout(s): note
-    - `runVol2` = 10.0 µL  ·  TODO: Run ⟨10 µL⟩ on TAE
-    - `runPct2` = 1.0 %  ·  TODO: Run on ⟨1%⟩ TAE agarose
-- **4 — Clean up (AMPure XP beads)** — `day: 0` · 4 paso(s)
-    - `rtVortexMin` = 10.0 s  ·  TODO: RT vortex ⟨10 s⟩ add bead
-    - `incubateRtMin` = 8.0 min  ·  TODO: Incubate RT ⟨8 min⟩ magnetic separator
-    - `minMagneticSeparatorMin` = 5.0 min  ·  TODO: magnetic separator ⟨5 min⟩ remove supernatant
-    - `freshEtohWashesMin` = 30.0 s  ·  TODO: EtOH washes ⟨30 s⟩ each on
-    - `valVol` = 200.0 µL  ·  TODO: Add ⟨200 µL⟩ fresh EtOH
-    - `freshPct` = 80.0 %  ·  TODO: Add fresh ⟨80%⟩ EtOH washes
-    - `molecularGradeIncubateMin` = 2.0 min  ·  TODO: grade incubate ⟨2 min⟩ RT transfer
-    - `cracksAppearVol` = 30.0 µL  ·  TODO: appear add ⟨30 µL⟩ molecular grade
-- **5 — Submission** — `day: 0` · 2 paso(s)
-    - `submitRange` = 15.0 – 25.0 ng  ·  TODO: Submit at ⟨15–25 ng⟩ label name
-    - `submitVol` = 6.0 µL  ·  TODO: Submit ⟨6 µL⟩ at label
+**1 — Design primers**
+
+| key | value | label |
+|---|---|---|
+| `ampliconLen` | 200.0 bp | Optimal amplicon length |
+| `templateLen` | 300.0 bp | Template length for Primer-Blast |
+| `primerStockConc` | 100.0 µM | Primer stock concentration |
+| `primerWorkConc` | 10.0 µM | Primer working concentration |
+
+**2 — Test PCR (GoTAQ G2, optional)**
+
+| key | value | label |
+|---|---|---|
+| `gelLoadVol1` | 10.0 µL | Gel load volume (test PCR) |
+| `gelPct1` | 1.0 % | Agarose gel % (test PCR) |
+| `expectedBandLen` | 267.0 bp | Expected band with tags |
+| `ampliconLenNoTag` | 200.0 bp | Amplicon without tags |
+
+**3 — High-fidelity PCR for MiSeq submission**
+
+| key | value | label |
+|---|---|---|
+| `gelLoadVol2` | 10.0 µL | Gel load volume (full PCR) |
+| `gelPct2` | 1.0 % | Agarose gel % (full PCR) |
+
+**4 — Clean up (AMPure XP beads)**
+
+| key | value | label |
+|---|---|---|
+| `beadVortexTime` | 10.0 s | Bead vortex time |
+| `beadBindTime` | 8.0 min | Bead binding time |
+| `magnetTime` | 5.0 min | Time on magnet |
+| `etohWashTime` | 30.0 s | EtOH wash time |
+| `etohVol` | 200.0 µL | EtOH volume |
+| `etohPct` | 80.0 % | EtOH % |
+| `eluteTime` | 2.0 min | Elution incubation |
+| `eluteVol` | 30.0 µL | Elution water volume |
+
+**5 — Submission**
+
+| key | value | label |
+|---|---|---|
+| `submitConc` | 15.0–25.0 ng/µL | Concentration to submit |
+| `submitVol` | 6.0 µL | Volume to submit |
 
 ## Retrieve & Annotate Gene Sequences  (`geneseq`)
 
-- **1 — Obtain gene sequence (NCBI)** — `day: 0` · 3 paso(s)
-- **2 — Import into SnapGene** — `day: 0` · 3 paso(s)
-- **3 — Retrieve promoter (EPD)** — `day: 0` · 2 paso(s)
-    - `tataBoxN` = 30.0 bp  ·  TODO: TATA box ⟨30 bp⟩ upstream may
-- **4 — Transcription factor binding sites** — `day: 0` · 1 paso(s)
-- **5 — Final annotation in SnapGene** — `day: 0` · 1 paso(s) · 1 callout(s): tip
+**3 — Retrieve promoter (EPD)**
+
+| key | value | label |
+|---|---|---|
+| `tataDistance` | 30.0 bp | TATA box distance upstream |
 
 ## Finding & Evaluating Crystal Structures (PDB)  (`pdb`)
 
-- **1 — Search for your protein** — `day: 0` · 3 paso(s)
-- **2 — Evaluate a structure before using it** — `day: 0` · 5 paso(s) · 1 callout(s): note
-- **3 — Download the structure** — `day: 0` · 3 paso(s)
-- **4 — Useful PDB tools** — `day: 0` · 3 paso(s) · 1 callout(s): tip
+_No numeric parameters — reference protocol._
 
 ## AlphaFold — Structure Prediction  (`alphafold`)
 
-- **When to use AlphaFold vs a crystal structure** — `day: 0` · 2 paso(s) · 1 callout(s): warn
-- **1 — AlphaFold database (pre-computed models)** — `day: 0` · 4 paso(s)
-- **2 — Understanding pLDDT (confidence score)** — `day: 0` · 0 paso(s) · 1 callout(s): note
-- **3 — AlphaFold3 / ColabFold for custom predictions** — `day: 0` · 3 paso(s)
-    - `sequenceWaitRange` = 10.0 – 30.0 min  ·  TODO: and wait ⟨10–30 min⟩
-- **4 — PAE plot (for multimers)** — `day: 0` · 0 paso(s) · 2 callout(s): note/tip
+**3 — AlphaFold3 / ColabFold for custom predictions**
+
+| key | value | label |
+|---|---|---|
+| `predictTime` | 10.0–30.0 min | AF3 prediction time |
 
 ## PyMOL — Getting Started  (`pymol`)
 
-- **The PyMOL interface — what you're looking at** — `day: 0` · 4 paso(s)
-- **Loading a structure** — `day: 0` · 3 paso(s)
-- **Essential commands (type in the command line)** — `day: 0` · 0 paso(s)
-- **Useful selections** — `day: 0` · 0 paso(s) · 1 callout(s): note
-- **Aligning two structures** — `day: 0` · 3 paso(s) · 1 callout(s): tip
+_No numeric parameters — reference protocol._
 
 ## PyMOL — Publication-Quality Figures  (`pymolfig`)
 
-- **Standard figure setup** — `day: 0` · 8 paso(s)
-- **Useful colour schemes** — `day: 0` · 0 paso(s)
-- **H-bonds and interactions** — `day: 0` · 3 paso(s) · 1 callout(s): tip
+_No numeric parameters — reference protocol._
 
 ## Binding Site & Pocket Analysis  (`pockets`)
 
-- **Case 1 — Structure has a known ligand (easiest)** — `day: 0` · 4 paso(s)
-- **Case 2 — Apo structure or no ligand (use CASTp)** — `day: 0` · 5 paso(s)
-- **Druggability assessment** — `day: 0` · 0 paso(s) · 1 callout(s): note
-- **Comparing pockets between structures (conformational changes)** — `day: 0` · 3 paso(s) · 1 callout(s): tip
+_No numeric parameters — reference protocol._
 
 ## Ternary Complex Modelling (PROTAC)  (`ternary`)
 
-- **Why model it?** — `day: 0` · 3 paso(s)
-- **Step 1 — Gather your starting structures** — `day: 0` · 3 paso(s)
-- **Step 2 — Predict the ternary complex** — `day: 0` · 3 paso(s)
-- **Step 3 — Evaluate the model in PyMOL** — `day: 0` · 6 paso(s)
-- **Step 4 — Linker length estimation** — `day: 0` · 0 paso(s) · 2 callout(s): note/tip
+_No numeric parameters — reference protocol._
 
 ## TR-FRET — Ternary Complex Formation  (`trfret`)
 
-- **Principle &amp; key parameters** — `day: 0` · 5 paso(s)
-    - `nmAcceptorRatioX` = 0.0 ×  ·  TODO: acceptor Ratio ⟨000 ×⟩ nm nm
-    - `typicallyPct` = 1.0 %  ·  TODO: typically ⟨1%⟩ DMSO final
-    - `flatUpPct` = 1.0 %  ·  TODO: up to ⟨1%⟩ and drop
-    - `dropOnlyAbovePct` = 2.0 %  ·  TODO: only above ⟨2%⟩
-- **Reagents &amp; setup** — `day: 0` · 5 paso(s)
-    - `bufferConc` = 25.0 mM  ·  TODO: Buffer ⟨25 mM⟩ HEPES pH
-    - `mmHepesPhConc` = 150.0 mM  ·  TODO: HEPES pH ⟨150 mM⟩ NaCl mM
-    - `phMmNaclConc` = 0.5 mM  ·  TODO: mM NaCl ⟨0.5 mM⟩ TCEP Tween
-    - `phNaclTcepPct` = 0.05 %  ·  TODO: NaCl TCEP ⟨0.05%⟩ Tween BSA
-    - `naclTcepTweenPct` = 0.1 %  ·  TODO: TCEP Tween ⟨0.1%⟩ BSA Prepare
-    - `bdCheckPurityPct` = 90.0 %  ·  TODO: Check purity ⟨90%⟩ by SDS
-    - `wallsMaximiseSignalRange` = 10.0 – 20.0 µL  ·  TODO: maximise signal ⟨10–20 µL⟩ total reaction
-    - `doseResponseTypicallyConc` = 10.0 µM  ·  TODO: response typically ⟨10 µM⟩ nM fold
-    - `doseResponseTypicallyConc2` = 0.1 nM  ·  TODO: response typically ⟨0.1 nM⟩ fold dilutions
-    - `foldDilutionsPct` = 100.0 %  ·  TODO: dilutions in ⟨100%⟩ DMSO then
-    - `assayAchievePct` = 1.0 %  ·  TODO: to achieve ⟨1%⟩ DMSO final
-    - `dmsoDiluteRatio` = 100.0   ·  TODO: then dilute ⟨1:100⟩ into assay
-- **Optimisation (stepwise, after Lin &amp; Chen, ACS Pharmacol. Transl. Sci. 2021)** — `day: 0` · 5 paso(s)
-    - `titrateDonorAbConc` = 8.0 nM  ·  TODO: donor Ab ⟨8 nM⟩ and acceptor
-    - `acceptorAbConc` = 16.0 nM  ·  TODO: acceptor Ab ⟨16 nM⟩ in matrix
-    - `tbAntiHisConc` = 2.0 nM  ·  TODO: anti His ⟨2 nM⟩ AF anti
-    - `afAntiGstConc` = 4.0 nM  ·  TODO: anti GST ⟨4 nM⟩
-    - `titratePoiConc` = 20.0 nM  ·  TODO: POI and ⟨20 nM⟩ each For
-    - `protacsGstBrdConc` = 2.0 nM  ·  TODO: GST BRD ⟨2 nM⟩ His CRBN
-    - `hisCrbnDdbConc` = 8.0 nM  ·  TODO: CRBN DDB ⟨8 nM⟩ ratio is
-    - `minTypicallyRange` = 120.0 – 180.0 min  ·  TODO: min Typically ⟨120–180 min⟩ at RT
-    - `measureSignalMin` = 300.0 min  ·  TODO: signal at ⟨300 min⟩ Typically at
-    - `valPct` = 4.0 %  ·  TODO: add ⟨4%⟩ DMSO Assay
-    - `stablePct` = 1.0 %  ·  TODO: stable at ⟨1%⟩ DMSO
-- **Protocol — 384-well setup (20 uL)** — `day: 0` · 7 paso(s) · 2 callout(s): note/tip
-    - `prepareAssayBufferConc` = 25.0 mM  ·  TODO: assay buffer ⟨25 mM⟩ HEPES pH
-    - `mmHepesPhConc2` = 50.0 mM  ·  TODO: HEPES pH ⟨50 mM⟩ NaCl mM
-    - `phMmNaclConc2` = 2.0 mM  ·  TODO: mM NaCl ⟨2 mM⟩ TCEP Tween
-    - `naclTcepPct` = 0.005 %  ·  TODO: NaCl TCEP ⟨0.005%⟩ Tween Prepare
-    - `valConc` = 25.0 nM  ·  TODO: ⟨25 nM⟩
-    - `valConc2` = 2.5 nM  ·  TODO: ⟨2.5 nM⟩
-    - `valConc3` = 0.25 nM  ·  TODO: ⟨0.25 nM⟩
-    - `wellVol` = 20.0 µL  ·  TODO: ⟨20 µL⟩ well
-    - `valMin` = 17.0 hours  ·  TODO: ⟨17 hours⟩
+**Principle &amp; key parameters**
+
+| key | value | label |
+|---|---|---|
+| `ratioScale` | 10000.0 × | Ratio scaling factor |
+| `dmsoMaxPct` | 1.0 % | Max DMSO final |
+| `dmsoFlatPct` | 1.0 % | DMSO tolerated (flat signal) |
+| `dmsoDropPct` | 2.0 % | DMSO where signal drops |
+
+**Reagents &amp; setup**
+
+| key | value | label |
+|---|---|---|
+| `hepesConc` | 25.0 mM | HEPES |
+| `naclConc` | 150.0 mM | NaCl |
+| `tcepConc` | 0.5 mM | TCEP |
+| `tween20Pct` | 0.05 % | Tween-20 |
+| `bsaPct` | 0.1 % | BSA |
+| `minPurity` | 90.0 % | Minimum protein purity |
+| `reactionVol` | 10.0–20.0 µL | Reaction volume |
+| `doseTop` | 10.0 µM | Dose-response top |
+| `doseBottom` | 0.1 nM | Dose-response bottom |
+| `dmsoStockPct` | 100.0 % | DMSO in compound plate |
+| `dmsoAssayPct` | 1.0 % | DMSO in assay |
+| `dmsoDilution` | 100.0 | Dilution into assay |
+
+**Optimisation (stepwise, after Lin &amp; Chen, ACS Pharmacol. Transl. Sci. 2021)**
+
+| key | value | label |
+|---|---|---|
+| `donorAbRange` | 0.25–8.0 nM | Donor antibody titration range |
+| `acceptorAbRange` | 0.5–16.0 nM | Acceptor antibody titration range |
+| `acceptorAbConc` | 2.0–4.0 nM | Optimal acceptor antibody |
+| `donorAbConc` | 2.0 nM | Optimal donor antibody |
+| `proteinTitrRange` | 1.0–20.0 nM | Protein titration range |
+| `poiConc` | 2.0 nM | Optimal POI concentration |
+| `e3Conc` | 8.0 nM | Optimal E3 concentration |
+| `incubateTime` | 120.0–180.0 min | Typical incubation time |
+| `timeCourseMax` | 300.0 min | Longest time point |
+| `dmsoTestMax` | 4.0 % | Top DMSO tested |
+| `dmsoStablePct` | 1.0 % | DMSO where assay is stable |
+
+**Protocol — 384-well setup (20 uL)**
+
+| key | value | label |
+|---|---|---|
+| `hepesConc2` | 25.0 mM | HEPES (LANCE buffer) |
+| `naclConc2` | 50.0 mM | NaCl (LANCE buffer) |
+| `tcepConc2` | 2.0 mM | TCEP (LANCE buffer) |
+| `tween20Pct2` | 0.005 % | Tween-20 (LANCE buffer) |
+| `proteinAConc` | 25.0 nM | Alexa647 Protein A |
+| `proteinBConc` | 2.5 nM | Biotinylated Protein B |
+| `streptavidinConc` | 0.25 nM | LANCE Streptavidin Fluorophore |
+| `wellVol` | 20.0 µL | Final volume per well |
+| `lanceIncubateTime` | 17.0 hours | LANCE incubation time |
 
 ## Fluorescence Polarization (FP)  (`fp`)
 
-- **Principle** — `day: 0` · 4 paso(s)
-    - `polarizationMpX` = 1000.0 ×  ·  TODO: Polarization mP ⟨1000 ×⟩
-    - `poiBrdX` = 10.0 ×  ·  TODO: BRD at ⟨10×⟩
-- **VHL FP assay — reagents** — `day: 0` · 4 paso(s)
-    - `hifPeptideTracerConc` = 10.0 nM  ·  TODO: peptide Tracer ⟨10 nM⟩ at or
-    - `soCompetitionConc` = 10.0 nM  ·  TODO: ⟨10 nM⟩ so the
-    - `typicalAssayConcentratConc` = 200.0 nM  ·  TODO: assay concentration ⟨200 nM⟩
-    - `bufferConc` = 25.0 mM  ·  TODO: Buffer ⟨25 mM⟩ HEPES pH
-    - `mmHepesPhConc` = 150.0 mM  ·  TODO: HEPES pH ⟨150 mM⟩ NaCl mM
-    - `phMmNaclConc` = 0.5 mM  ·  TODO: mM NaCl ⟨0.5 mM⟩ TCEP Tween
-    - `phNaclTcepPct` = 0.01 %  ·  TODO: NaCl TCEP ⟨0.01%⟩ Tween No
-    - `minimiseBackgroundFluoRange` = 20.0 – 50.0 µL  ·  TODO: background fluorescence ⟨20–50 µL⟩ reaction volume
-- **VHL FP assay protocol** — `day: 0` · 7 paso(s)
-    - `pointsFoldTopConc` = 500.0 µM  ·  TODO: fold top ⟨500 µM⟩ Maximum DMSO
-    - `foldTopMaximumPct` = 1.0 %  ·  TODO: top Maximum ⟨1%⟩ DMSO final
-    - `bufferPreIncubateMin` = 30.0 min  ·  TODO: Pre incubate ⟨30 min⟩ on ice
-    - `mixVcbX` = 2.0 ×  ·  TODO: VCB at ⟨2×⟩ final FAM
-    - `famTracerX` = 2.0 ×  ·  TODO: tracer at ⟨2×⟩ final in
-    - `valVol` = 10.0 µL  ·  TODO: Add ⟨10 µL⟩ compound to
-    - `wellsVol` = 10.0 µL  ·  TODO: wells add ⟨10 µL⟩ protein tracer
-    - `tracerMixTotalVol` = 20.0 µL  ·  TODO: mix Total ⟨20 µL⟩
-    - `incubateRange` = 30.0 – 60.0 min  ·  TODO: Incubate ⟨30–60 min⟩ at RT
-    - `proteinX` = 10.0 ×  ·  TODO: if protein ⟨10×⟩
-- **CRBN FP assay — notes** — `day: 0` · 4 paso(s)
-    - `lenalidomideDerivativeConc` = 50.0 nM  ·  TODO: derivative Tracer ⟨50 nM⟩
-    - `crbnDdbComplexConc` = 500.0 nM  ·  TODO: DDB complex ⟨500 nM⟩ Avoid CRBN
-    - `lenalidomideConc` = 5.0 µM  ·  TODO: ⟨5 µM⟩ lenalidomide
-    - `lenalidomideConc2` = 50.0 µM  ·  TODO: lenalidomide ⟨50 µM⟩
-- **Cooperativity by FP** — `day: 0` · 4 paso(s) · 1 callout(s): tip
-    - `brdBdX` = 10.0 ×  ·  TODO: BD at ⟨10×⟩
+**Principle**
+
+| key | value | label |
+|---|---|---|
+| `mpScale` | 1000.0 × | mP scaling factor |
+| `coopPoiX` | 10.0 × | POI excess over KD (cooperativity) |
+
+**VHL FP assay — reagents**
+
+| key | value | label |
+|---|---|---|
+| `tracerConc` | 5.0–10.0 nM | Tracer concentration |
+| `tracerKd` | 5.0–10.0 nM | Tracer KD |
+| `vcbConc` | 100.0–200.0 nM | VCB assay concentration |
+| `hepesConc` | 25.0 mM | HEPES |
+| `naclConc` | 150.0 mM | NaCl |
+| `tcepConc` | 0.5 mM | TCEP |
+| `tween20Pct` | 0.01 % | Tween-20 |
+| `reactionVol` | 20.0–50.0 µL | Reaction volume |
+
+**VHL FP assay protocol**
+
+| key | value | label |
+|---|---|---|
+| `doseTop` | 100.0–500.0 µM | Top compound concentration |
+| `dmsoMaxPct` | 1.0 % | Max DMSO final |
+| `preIncubateTime` | 30.0 min | Pre-incubation on ice |
+| `vcbMixX` | 2.0 × | VCB mix strength |
+| `tracerMixX` | 2.0 × | Tracer mix strength |
+| `compoundVol` | 10.0 µL | Compound volume |
+| `mixVol` | 10.0 µL | Protein-tracer mix volume |
+| `totalVol` | 20.0 µL | Total well volume |
+| `incubateTime` | 30.0–60.0 min | Incubation time |
+| `directFitX` | 10.0 × | Protein excess for direct fit |
+
+**CRBN FP assay — notes**
+
+| key | value | label |
+|---|---|---|
+| `crbnTracerConc` | 10.0–50.0 nM | CRBN tracer concentration |
+| `crbnConc` | 200.0–500.0 nM | CRBN-DDB1 concentration |
+| `pomalidomideKd` | 1.0–5.0 µM | Pomalidomide KD |
+| `lenalidomideKd` | 10.0–50.0 µM | Lenalidomide KD |
+
+**Cooperativity by FP**
+
+| key | value | label |
+|---|---|---|
+| `coopPoiTernaryX` | 10.0 × | POI excess for ternary FP |
 
 ## SPR (Biacore) — Binary & Ternary Kinetics  (`spr`)
 
-- **SPR assay design — ternary complex** — `day: 0` · 4 paso(s)
-    - `protacAloneTypicallyX` = 10.0 ×  ·  TODO: alone typically ⟨10×⟩
-    - `ltConc` = 100.0 nM  ·  TODO: lt ⟨100 nM⟩ slow
-    - `bdProtacMin` = 30.0 min  ·  TODO: with PROTAC ⟨30 min⟩ on ice
-    - `saturatingPoiConc` = 10.0 µM  ·  TODO: saturating POI ⟨10 µM⟩ BRD BD
-    - `brdBdConc` = 1.0 µM  ·  TODO: BD with ⟨1 µM⟩ PROTAC on
-- **Running buffer &amp; surface prep** — `day: 0` · 4 paso(s)
-    - `pbsCytivaConc` = 10.0 mM  ·  TODO: Cytiva or ⟨10 mM⟩ HEPES pH
-    - `mmHepesPhConc` = 150.0 mM  ·  TODO: HEPES pH ⟨150 mM⟩ NaCl Tween
-    - `mmNaclTweenConc` = 0.5 mM  ·  TODO: NaCl Tween ⟨0.5 mM⟩ TCEP Degas
-    - `hepesPhNaclPct` = 0.005 %  ·  TODO: pH NaCl ⟨0.005%⟩ Tween TCEP
-    - `smallMoleculesPct` = 2.0 %  ·  TODO: molecules add ⟨2%⟩ DMSO if
-    - `performDmsoCalibrationPct` = 3.0 %  ·  TODO: DMSO calibration ⟨3%⟩ DMSO point
-    - `glycinePhPulseMin` = 5.0 s  ·  TODO: pH pulse ⟨5 s⟩ or NaCl
-    - `dissociatesSlowlyShortConc` = 10.0 mM  ·  TODO: slowly short ⟨10 mM⟩ glycine pH
-    - `phPulseConc` = 1.0 M  ·  TODO: pulse or ⟨1 M⟩ NaCl pulse
-- **Protocol — binary binding (PROTAC vs. immobilised VCB)** — `day: 0` · 5 paso(s)
-    - `conditionChipX` = 3.0 ×  ·  TODO: chip with ⟨3×⟩ buffer injections
-    - `saSitesMin` = 1.0 min  ·  TODO: sites with ⟨1 min⟩ biotin injections
-    - `vcbBiotinVol` = 5.0 µL  ·  TODO: biotin at ⟨5 µL⟩ min until
-    - `saChipInjectConc` = 50.0 nM  ·  TODO: chip inject ⟨50 nM⟩ VCB biotin
-    - `saSitesX` = 3.0 ×  ·  TODO: sites with ⟨3×⟩ biotin injections
-    - `dmsoFinalTypicalConc` = 1.3 nM  ·  TODO: final Typical ⟨1.3 nM⟩ points fold
-    - `runningBufferPct` = 1.0 %  ·  TODO: running buffer ⟨1%⟩ DMSO final
-    - `dissociationFlowRateRange` = 30.0 – 100.0 µL  ·  TODO: flow rate ⟨30–100 µL⟩ min Double
-    - `concentrationAssociatiMin` = 120.0 s  ·  TODO: concentration association ⟨120 s⟩ dissociation flow
-    - `concentrationAssociatiMin2` = 300.0 s  ·  TODO: association dissociation ⟨300 s⟩ flow rate
-    - `fitRatio` = 1.0   ·  TODO: Fit to ⟨1:1⟩ Langmuir model
-- **Protocol — ternary complex (pre-formed PROTAC:POI vs. VCB)** — `day: 0` · 5 paso(s)
-    - `runningBufferMin` = 30.0 min  ·  TODO: running buffer ⟨30 min⟩ on ice
-    - `saturatingPoiConc2` = 10.0 µM  ·  TODO: saturating POI ⟨10 µM⟩ BRD BD
-    - `bdTitratedProtacConc` = 12.0 nM  ·  TODO: titrated PROTAC ⟨12 nM⟩ in running
-    - `withoutRegenerationAssMin` = 100.0 s  ·  TODO: regeneration association ⟨100 s⟩ per concentration
-    - `concentrationFinalDissMin` = 1200.0 s  ·  TODO: final dissociation ⟨1200 s⟩ Minimises surface
-    - `fitRatio2` = 1.0   ·  TODO: fit to ⟨1:1⟩ model The
-- **Interpreting results in the degrader context** — `day: 0` · 4 paso(s) · 1 callout(s): tip
-    - `valMin` = 0.006 s  ·  TODO: ⟨0.006 s⟩
-    - `asympMin` = 130.0 s  ·  TODO: asymp ⟨130 s⟩ Roy et
+**SPR assay design — ternary complex**
+
+| key | value | label |
+|---|---|---|
+| `analyteRange` | 0.1–10.0 × | PROTAC range (× KD) |
+| `mckThreshold` | 100.0 nM | KD below which to use MCK |
+| `preformTime` | 30.0 min | Pre-incubation time |
+| `preformPoiConc` | 10.0 µM | Saturating POI for pre-form |
+| `preformProtacConc` | 1.0 µM | PROTAC in pre-form |
+
+**Running buffer &amp; surface prep**
+
+| key | value | label |
+|---|---|---|
+| `dmsoPct` | 1.0–2.0 % | DMSO for small molecules |
+| `hepesConc` | 10.0 mM | HEPES |
+| `naclConc` | 150.0 mM | NaCl |
+| `tcepConc` | 0.5 mM | TCEP |
+| `tween20Pct` | 0.005 % | Tween-20 |
+| `dmsoCalRange` | 0.5–3.0 % | DMSO calibration range |
+| `regenPulseTime` | 5.0 s | Regeneration pulse time |
+| `glycineConc` | 10.0 mM | Glycine for regeneration |
+| `naclRegenConc` | 1.0 M | NaCl for regeneration |
+
+**Protocol — binary binding (PROTAC vs. immobilised VCB)**
+
+| key | value | label |
+|---|---|---|
+| `conditionInjections` | 3.0 × | Chip conditioning injections |
+| `captureConc` | 10.0–50.0 nM | VCB-biotin capture concentration |
+| `blockTime` | 1.0 min | Blocking injection time |
+| `captureFlow` | 5.0 µL | Capture flow rate |
+| `blockInjections` | 3.0 × | Blocking injections |
+| `doseBottom` | 1.3 nM | Lowest PROTAC concentration |
+| `runDmsoPct` | 1.0 % | DMSO in running buffer |
+| `assocTime` | 60.0–120.0 s | Association time |
+| `dissocTime` | 120.0–300.0 s | Dissociation time |
+| `flowRate` | 30.0–100.0 µL | Flow rate |
+| `binaryFitModel` | 1.0 | Binding model (binary) |
+
+**Protocol — ternary complex (pre-formed PROTAC:POI vs. VCB)**
+
+| key | value | label |
+|---|---|---|
+| `ternaryPreformTime` | 30.0 min | Pre-incubation time (ternary) |
+| `ternaryPoiConc` | 10.0 µM | Saturating POI (ternary) |
+| `ternaryDoseBottom` | 12.0 nM | Lowest PROTAC (ternary) |
+| `sckDissocTime` | 600.0–1200.0 s | Final dissociation (SCK) |
+| `sckAssocTime` | 100.0 s | Association per concentration (SCK) |
+| `ternaryFitModel` | 1.0 | Binding model (ternary) |
+
+**Interpreting results in the degrader context**
+
+| key | value | label |
+|---|---|---|
+| `mz1Koff` | 0.006 s | MZ1 koff |
+| `mz1HalfLife` | 130.0 s | MZ1 ternary complex half-life |
