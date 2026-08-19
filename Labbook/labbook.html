@@ -941,6 +941,20 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .pl-vals-r{font-family:var(--mono);}
 .pl-vals-n{color:var(--text3);margin-left:auto;}
 .mrow.col{flex-direction:column;align-items:stretch;gap:6px;}
+/* ── Protocol moved on under a recorded step ──────────────────────────────────────────── */
+.pupd{display:flex;align-items:center;gap:9px;margin:0 0 9px;padding:6px 11px;border-radius:8px;
+  background:var(--surface2);border:1px solid var(--border2);font-size:11.5px;color:var(--text2);}
+.pupd.gone{color:var(--text3);}
+.pupd-t{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5e72c4;}
+.pupd-b{margin-left:auto;background:none;border:1px solid var(--border2);border-radius:6px;
+  padding:2px 9px;font:inherit;font-size:11px;color:var(--text2);cursor:pointer;}
+.pupd-b:hover{border-color:#5e72c4;color:#5e72c4;}
+.pupd-b.keep{margin-left:0;}
+.pupd-diff{max-height:46vh;overflow:auto;font-size:12.5px;line-height:1.55;}
+.pupd-diff ul{margin:4px 0 10px 18px;} .pupd-diff li{margin-bottom:3px;color:var(--text2);}
+.pupd-diff p{margin:8px 0 2px;}
+.pupd-warn{margin-top:12px;padding:9px 12px;border-left:3px solid #e0803a;background:var(--surface2);
+  border-radius:0 7px 7px 0;font-size:12px;}
 .nm-proto-chip.synth{border-style:dashed;color:var(--text2);}
 .nm-proto-chip .x{cursor:pointer;color:var(--text3);font-size:15px;line-height:1;padding:0 3px;border-radius:8px;}
 .nm-proto-chip .x:hover{color:var(--danger);}
@@ -2819,6 +2833,100 @@ function freeEditBlock(bId){
     f.exp.updated=Date.now(); save(); renderEditor();
   });
 }
+// ── When the protocol changes underneath a recorded experiment ──────────────────────────────
+// The block renders the version it was created from, always — an entry is evidence and must not
+// change under you. But you should be told the protocol moved on, and be able to take the new
+// one deliberately. b.proto.v is what makes that possible.
+function _protoCurrent(pid){
+  try{ var W=_arcWin(); if(W&&W.ARCHIVE_PROTOCOL) return W.ARCHIVE_PROTOCOL(pid); }catch(e){}
+  return null;
+}
+function protoOutdated(b){
+  if(!b||!b.proto) return null;
+  var P=_protoCurrent(b.proto.pid); if(!P) return null;
+  if(!(P.version>b.proto.v)) return null;
+  var st=(P.stages||[]).filter(function(x){ return x.id===b.proto.stageId; })[0];
+  if(!st) return {gone:true, from:b.proto.v, to:P.version};
+  return {from:b.proto.v, to:P.version, stage:st, proto:P};
+}
+function _stepIds(body){ var o={}; (body||[]).forEach(function(x){ if(x.t!=='steps') return;
+  (x.items||[]).forEach(function(it){ o[it.id]=it; }); }); return o; }
+function _paramKeys(body){ var o={}; (body||[]).forEach(function(x){ if(x.t!=='steps') return;
+  (x.items||[]).forEach(function(it){ Object.keys(it.params||{}).forEach(function(k){ o[k]=it.params[k]; }); }); }); return o; }
+function protoDiff(b){
+  var u=protoOutdated(b); if(!u||u.gone) return null;
+  var oldS=_stepIds(b.proto.body), newS=_stepIds(u.stage.body);
+  var oldP=_paramKeys(b.proto.body), newP=_paramKeys(u.stage.body);
+  function plain(h){ return String(h||'').replace(/\{\{p\.[A-Za-z0-9_]+\}\}/g,'§').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim(); }
+  var added=[], removed=[], changed=[];
+  Object.keys(newS).forEach(function(id){ if(!oldS[id]) added.push(newS[id]);
+    else if(plain(oldS[id].html)!==plain(newS[id].html)) changed.push({id:id,from:oldS[id],to:newS[id]}); });
+  Object.keys(oldS).forEach(function(id){ if(!newS[id]) removed.push(oldS[id]); });
+  var pAdd=Object.keys(newP).filter(function(k){ return !oldP[k]; });
+  var pDrop=Object.keys(oldP).filter(function(k){ return !newP[k]; });
+  // What YOU wrote that the new version has no home for. Never silently discarded.
+  var lostParams=Object.keys(b.params||{}).filter(function(k){ return !newP[k]; });
+  var lostNotes=Object.keys(b.stepNotes||{}).filter(function(id){ return !newS[id] && _plain(b.stepNotes[id]); });
+  return {u:u, added:added, removed:removed, changed:changed, pAdd:pAdd, pDrop:pDrop,
+          lostParams:lostParams, lostNotes:lostNotes};
+}
+function protoUpdateHtml(b){
+  var u=protoOutdated(b); if(!u) return '';
+  if(u.gone) return '<div class="pupd gone">This stage no longer exists in '+esc(b.proto.protoName||b.proto.pid)
+    +' (protocol is now v'+u.to+'). Kept as recorded.</div>';
+  return '<div class="pupd"><span class="pupd-t">Protocol updated</span> v'+u.from+' → v'+u.to
+    +'<button class="pupd-b" onclick="showProtoDiff(\''+b.id+'\')">See what changed</button>'
+    +'<button class="pupd-b keep" onclick="dismissProtoUpdate(\''+b.id+'\')">Keep mine</button></div>';
+}
+function dismissProtoUpdate(bId){
+  var f=_findBlk(bId); if(!f||!f.blk.proto) return;
+  var u=protoOutdated(f.blk); if(!u) return;
+  f.blk.proto.v=u.to; f.blk.protoPinned=true;   // acknowledged, still rendering what was recorded
+  f.exp.updated=Date.now(); save(); renderEditor();
+}
+function showProtoDiff(bId){
+  var f=_findBlk(bId); if(!f) return;
+  var d=protoDiff(f.blk); if(!d){ toast('Nothing to compare'); return; }
+  function li(t){ return '<li>'+esc(String(t).replace(/<[^>]+>/g,'').replace(/\s+/g,' ').slice(0,150))+'</li>'; }
+  var h='';
+  if(d.added.length)   h+='<p><b>'+d.added.length+' new step'+(d.added.length===1?'':'s')+'</b></p><ul>'+d.added.map(function(x){return li(x.html);}).join('')+'</ul>';
+  if(d.removed.length) h+='<p><b>'+d.removed.length+' step'+(d.removed.length===1?'':'s')+' removed</b></p><ul>'+d.removed.map(function(x){return li(x.html);}).join('')+'</ul>';
+  if(d.changed.length) h+='<p><b>'+d.changed.length+' step'+(d.changed.length===1?'':'s')+' reworded</b></p><ul>'+d.changed.map(function(x){return li(x.to.html);}).join('')+'</ul>';
+  if(d.pAdd.length)    h+='<p><b>New parameters:</b> '+esc(d.pAdd.join(', '))+'</p>';
+  if(d.pDrop.length)   h+='<p><b>Parameters gone:</b> '+esc(d.pDrop.join(', '))+'</p>';
+  if(!h) h='<p>The prose is the same; only the protocol version changed.</p>';
+  var warn='';
+  if(d.lostParams.length||d.lostNotes.length){
+    warn='<div class="pupd-warn"><b>What you changed that the new version has no place for:</b><br>'
+      +(d.lostParams.length?(d.lostParams.length+' edited parameter'+(d.lostParams.length===1?'':'s')+' will be dropped. '):'')
+      +(d.lostNotes.length?(d.lostNotes.length+' step note'+(d.lostNotes.length===1?'':'s')+' will be moved into this block\'s Notes rather than deleted.'):'')
+      +'</div>';
+  }
+  lbConfirm('<div class="pupd-diff">'+h+warn+'</div>',
+            {title:'Protocol v'+d.u.from+' → v'+d.u.to, html:true, ok:'Update this step'})
+    .then(function(ok){ if(ok) applyProtoUpdate(bId); });
+}
+function applyProtoUpdate(bId){
+  var f=_findBlk(bId); if(!f) return; var b=f.blk;
+  var d=protoDiff(b); if(!d) return;
+  var newP=_paramKeys(d.u.stage.body), newS=_stepIds(d.u.stage.body);
+  // Anything you wrote against a step that is gone is moved into the block note. Losing typed
+  // text to a protocol edit would be unforgivable; losing a numeric override is recoverable
+  // because the deviation report has already shown it to you.
+  var carried=[];
+  Object.keys(b.stepNotes||{}).forEach(function(id){
+    if(newS[id]) return; var t=b.stepNotes[id]; if(!_plain(t)) return;
+    carried.push('<p><em>From a step removed in v'+d.u.to+':</em></p>'+t); delete b.stepNotes[id];
+  });
+  if(carried.length) b.note=(b.note||'')+carried.join('');
+  Object.keys(b.params||{}).forEach(function(k){ if(!newP[k]) delete b.params[k]; });
+  Object.keys(b.stepDone||{}).forEach(function(id){ if(!newS[id]) delete b.stepDone[id]; });
+  b.proto.body=JSON.parse(JSON.stringify(d.u.stage.body));
+  b.proto.name=d.u.stage.name; b.proto.v=d.u.to; delete b.protoPinned;
+  if(d.u.stage.name) b.title=d.u.stage.name;
+  refreshProtoHtml(b); f.exp.updated=Date.now(); save(); renderEditor();
+  toast('Step updated to v'+d.u.to+(carried.length?(' · '+carried.length+' note'+(carried.length===1?'':'s')+' moved to Notes'):''));
+}
 function protoBlockHtml(b,live){
   var P=b.proto; if(!P) return '';
   var n=(P.body||[]).reduce(function(a,x){ return a+(x.t==='steps'?x.items.length:0); },0);
@@ -2834,7 +2942,8 @@ function protoBlockHtml(b,live){
       +' data-ctx="pnote:'+b.id+'" oninput="setProtoBlockNote(\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'
       +(b.note||'')+'</div></div>'
     : '';
-  return '<div class="pblk">'+(live?hd:'')+protoRenderHtml(b,live)+note+'</div>';
+  return '<div class="pblk">'+(live?hd:'')+(live&&!b.protoPinned?protoUpdateHtml(b):'')
+    +protoRenderHtml(b,live)+note+'</div>';
 }
 
 function _plain(html){ var d=document.createElement('div'); d.innerHTML=html||''; return (d.textContent||'').replace(/\s+/g,' ').trim(); }
@@ -4450,7 +4559,9 @@ function _saveSel(){ var s=window.getSelection(); return (s&&s.rangeCount)?s.get
 function _restoreSel(r){ if(!r) return; try{ var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){} }
 function lbConfirm(msg,opts){ opts=opts||{}; return new Promise(function(res){
   var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
-  card.innerHTML='<div class="modal-t">'+esc(opts.title||'Confirm')+'</div><div class="dlg-msg">'+esc(msg)+'</div>'
+  // opts.html is for messages this file builds itself (the protocol diff). Never pass user
+  // text through it.
+  card.innerHTML='<div class="modal-t">'+esc(opts.title||'Confirm')+'</div><div class="dlg-msg">'+(opts.html?msg:esc(msg))+'</div>'
     +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" id="lb-dlg-cancel">'+esc(opts.cancel||'Cancel')+'</button><button class="btn'+(opts.danger?' danger':'')+'" id="lb-dlg-ok">'+esc(opts.ok||(opts.danger?'Delete':'OK'))+'</button></div>';
   d.classList.add('open'); function done(v){ _lbDlgClose(); res(v); }
   d._onCancel=function(){ done(false); }; el('lb-dlg-cancel').onclick=function(){ done(false); }; el('lb-dlg-ok').onclick=function(){ done(true); };

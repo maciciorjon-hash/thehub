@@ -604,6 +604,38 @@ falls back to its own.
 
 Bridge: `ARCHIVE_LIB(kind)` returns the catalogue; `ARCHIVE_LIB_USE(kind, id, expId)` records a use.
 
+## What the typed parameters bought
+
+Everything here exists because a protocol step's numbers are typed values rather than characters
+in a sentence. None of it is possible in a rich-text notebook.
+
+- **Deviation report** (`expDeviations`) — `b.params` holds overrides only, so the difference
+  between the protocol and this run is already in the data. Panel above the day blocks, plus its
+  own sentence in the publication prose.
+- **Bench timers** (`startTimer`) — a play button on every `time` parameter; timers stack
+  bottom-right naming the step they came from, beep, and hold a screen wake lock.
+- **Biological replicates** (`repeatExperiment`) — a repeat *is* the next replicate, so it joins
+  a `repGroup` and shows "Biological replicate 2 of 3" linking siblings. Dates rebase keeping
+  the intervals; ticks reset; **params and notes are kept on purpose** — a replicate repeats
+  what you actually did, deviations included.
+- **Picklist → experiment** (`nmImportEcho`) — the Echo preamble names the protocol
+  (`HB20260504_BET.edr` → type HB) and the run date; the wells give the format; the destination
+  plate becomes the plate map. One file, whole experiment.
+- **Reader values on the plate** (`plParseValues`, ported from Blueprint's `pdParseValues` —
+  translate its `{rows,cols}` to Labbook's `{r,c}`) — colours across the range present, numbers
+  where the format has room. A dead column is obvious here and invisible in a fitted curve.
+- **Hub-wide Cmd+K** (`spotBeyondLabbook`) — protocols, antibodies and primers with their shelf,
+  cultures, freezer vials with their box. Labbook's own antibody list drops out when the shared
+  Library is reachable, or everything appears twice.
+- **Thaw** (`cellsThaw`, in the shell) — oldest vial by freeze date, shows box and position
+  first, **decrements the freezer before writing the culture** (an over-counted freezer is a
+  smaller lie than a vial recorded twice), and seeds media/interval from the Cell Archive entry.
+- **Protocol update diff** (`protoDiff`/`applyProtoUpdate`) — a block always renders the version
+  it was recorded from, but says when the protocol moved on. The rule that matters: **a step
+  note whose step no longer exists is moved into the block's Notes, never deleted.** A numeric
+  override with no home is dropped, but only after the dialog has said so, and the deviation
+  report had already shown it to you.
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie
