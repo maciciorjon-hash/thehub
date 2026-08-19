@@ -847,6 +847,46 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .res-tbl tr.flagged td{color:var(--text3);}
 .res-tbl tr.flagged td:first-child::after{content:' ⚑';color:#e0803a;}
 .res-raw{font-family:var(--mono);font-size:11px;padding:10px 13px;margin:0;white-space:pre-wrap;color:var(--text2);}
+/* ── Deviations from the protocol ─────────────────────────────────────────────────────── */
+.dev-pane{border:1px solid #e0a06a;border-radius:10px;background:var(--surface);margin-bottom:14px;overflow:hidden;}
+.dev-hd{padding:8px 14px;border-bottom:1px solid var(--border);font-size:12.5px;font-weight:600;color:#c8752f;}
+.dev-sub{font-weight:400;color:var(--text3);margin-left:8px;font-size:11.5px;}
+.dev-row{display:flex;align-items:baseline;gap:9px;padding:6px 14px;font-size:12.5px;cursor:pointer;
+  border-bottom:1px solid var(--border);}
+.dev-row:last-child{border-bottom:none;}
+.dev-row:hover{background:var(--surface2);}
+.dev-step{font-family:var(--mono);font-size:10.5px;color:var(--text3);min-width:120px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dev-lbl{flex:1 1 auto;color:var(--text2);}
+.dev-from{font-family:var(--mono);color:var(--text3);text-decoration:line-through;}
+.dev-arw{color:var(--text3);}
+.dev-to{font-family:var(--mono);color:#c8752f;font-weight:600;}
+/* ── Biological replicates ────────────────────────────────────────────────────────────── */
+.rep-chip{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:4px 10px;
+  border:1px solid var(--border2);border-radius:16px;background:var(--surface2);font-size:11.5px;}
+.rep-t{color:var(--text2);font-weight:600;}
+.rep-l{font-family:var(--mono);font-size:11px;width:19px;height:19px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;background:var(--surface);
+  border:1px solid var(--border2);color:var(--text2);cursor:pointer;}
+.rep-l:hover{border-color:#4f9d8f;color:#4f9d8f;}
+.rep-l.on{background:#4f9d8f;border-color:#4f9d8f;color:#fff;font-weight:700;}
+/* ── Bench timers ─────────────────────────────────────────────────────────────────────── */
+.ptimer{background:none;border:none;color:var(--text3);font-size:10px;cursor:pointer;padding:0 0 0 3px;
+  vertical-align:baseline;}
+.ptimer:hover{color:#4f9d8f;}
+#lb-timers{position:fixed;right:16px;bottom:16px;z-index:900;display:flex;flex-direction:column;
+  gap:7px;width:246px;}
+.tmr{position:relative;overflow:hidden;display:flex;align-items:center;gap:9px;padding:9px 11px;
+  border-radius:10px;background:var(--surface);border:1px solid var(--border2);
+  box-shadow:0 6px 20px rgba(0,0,0,.16);font-size:12.5px;}
+.tmr-bar{position:absolute;left:0;top:0;bottom:0;background:rgba(79,157,143,.14);transition:width 1s linear;}
+.tmr.done{border-color:#4f9d8f;}
+.tmr.done .tmr-bar{background:rgba(79,157,143,.3);}
+.tmr-time{position:relative;font-family:var(--mono);font-weight:700;font-size:13px;color:#4f9d8f;min-width:56px;}
+.tmr-lbl{position:relative;flex:1 1 auto;overflow:hidden;line-height:1.3;}
+.tmr-sub{display:block;font-size:10.5px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tmr-x{position:relative;background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;line-height:1;}
+.tmr-x:hover{color:var(--danger);}
 /* ── Day view: date nav, live cultures, running experiments ───────────────────────────── */
 .day-nav{display:flex;align-items:center;gap:5px;margin-left:14px;}
 .day-arw{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);
@@ -2531,6 +2571,9 @@ function protoParamHtml(b,key,v,live){
   else if(v.type==='range'&&e.max!=null)
     inner=_chip(b.id,key,'value',_pnum(e.value))+'–'+_chip(b.id,key,'max',_pnum(e.max))+unit;
   else inner=_chip(b.id,key,'value',_pnum(e.value))+unit;
+  // A duration is the one parameter the notebook can act on rather than just record.
+  if(v.type==='time'||(v.type==='range'&&/^(min|s|h|hr|hrs|hours|d|days)$/i.test(v.unit||'')))
+    inner+='<button class="ptimer" title="Start a timer for this" onclick="startTimer(\''+b.id+'\',\''+key+'\')">▶</button>';
   return '<span class="pparam live'+changed+'" title="'+lbl+'">'+inner+'</span>';
 }
 function protoSubst(b,html,params,live){
@@ -2704,6 +2747,7 @@ function buildPubReadyFromExp(e){ var parts=[]; var _resSent=pubResultsSentence(
   if(protos.length) parts.push('Archive protocols used: '+protos.join(', ')+'.');
   if(e.plate) parts.push(_pubPlateText(e.plate,'Experiment plate map'));
   dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ var s=(pubSentence(b)||'').trim(); if(s) parts.push(s); if(b.plate) parts.push(_pubPlateText(b.plate,'Step plate map')); }); });
+  var _devSent=deviationsSentence(e); if(_devSent) parts.push(_devSent);
   if(_resSent) parts.push(_resSent);
   parts=parts.filter(function(s,i){ return s&&s!==parts[i-1]; });
   return parts.length?parts.map(function(s){return '<p>'+esc(s)+'</p>';}).join(''):'<p></p>'; }
@@ -2925,7 +2969,7 @@ function renderEditor(){
   host.innerHTML='<div class="ed-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><div class="t">Nothing open</div><div>Pick an entry on the left, or create one with <b>+ Add</b>.</div></div>';
   renderDockPanels();
 }
-function expActs(id){ return '<div class="exh-acts"><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
+function expActs(id){ return '<div class="exh-acts"><button class="exh-act" title="Repeat as the next biological replicate" onclick="repeatExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></button><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
 function titleField(e){ var empty=!(e.title||'').trim(); return '<input class="exh-title'+(empty?' code-big':'')+'" value="'+esc(empty?(e.code||''):e.title)+'" placeholder="'+(empty?'':'Title')+'" onchange="setField(\'title\',this.value)" onblur="renderPages()">'; }
 // One step card (day label now lives on the day-group header).
 function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.part)+'</span>'):'';
@@ -3048,6 +3092,166 @@ function pubResultsSentence(e){
     +rows.length+' compound'+(rows.length===1?'':'s')+' gave measurable '+pl+' values, the most potent being '
     +best.join(', ')+'.';
 }
+// ── What you actually changed ───────────────────────────────────────────────────────────────
+// b.params holds overrides only, never a copy of the protocol's defaults, so the difference
+// between "what the protocol says" and "what I did" is already in the data. This is what a
+// reviewer asks for, what you need when a repeat behaves differently, and the one thing a
+// generic ELN cannot produce — it never knew what the original value was.
+function expDeviations(e){
+  var out=[];
+  (e.blocks||[]).forEach(function(b){
+    if(b.freedFrom){
+      out.push({block:b, kind:'unlocked', label:'Step unlocked from the protocol',
+                from:(b.freedFrom.pid||'')+'/'+(b.freedFrom.stageId||''), to:'free text'});
+      return;
+    }
+    if(!b.proto||!b.params) return;
+    var defs={};
+    (b.proto.body||[]).forEach(function(x){ if(x.t!=='steps') return;
+      (x.items||[]).forEach(function(it){ Object.keys(it.params||{}).forEach(function(k){ defs[k]=it.params[k]; }); }); });
+    Object.keys(b.params).forEach(function(k){
+      var d=defs[k]; if(!d) return;
+      var ov=b.params[k];
+      var was=protoParamText(d,null), now=protoParamText(d,ov);
+      if(was===now) return;
+      out.push({block:b, kind:'param', label:d.label||k, from:was, to:now});
+    });
+  });
+  return out;
+}
+function deviationsHtml(e){
+  var d=expDeviations(e); if(!d.length) return '';
+  var rows=d.map(function(x){
+    return '<div class="dev-row" onclick="openBlk(\''+e.id+'\',\''+x.block.id+'\')" title="Jump to this step">'
+      +'<span class="dev-step">'+esc(x.block.title||'step')+'</span>'
+      +'<span class="dev-lbl">'+esc(x.label)+'</span>'
+      +'<span class="dev-from">'+esc(x.from)+'</span><span class="dev-arw">→</span>'
+      +'<span class="dev-to">'+esc(x.to)+'</span></div>';
+  }).join('');
+  return '<div class="dev-pane"><div class="dev-hd">⚗ '+d.length+' deviation'+(d.length===1?'':'s')
+    +' from the protocol<span class="dev-sub">what this run did differently</span></div>'+rows+'</div>';
+}
+function deviationsSentence(e){
+  var d=expDeviations(e).filter(function(x){ return x.kind==='param'; });
+  if(!d.length) return '';
+  return 'Deviations from the published protocol: '
+    + d.map(function(x){ return String(x.label).replace(/\s*\(.*\)$/,'')+' '+x.from+' → '+x.to; }).join('; ') + '.';
+}
+
+// ── Biological replicates ───────────────────────────────────────────────────────────────────
+// Repeating an experiment is not making a copy of it. The repeat IS the second biological
+// replicate, and the link between them is the thing statistics and a figure legend need — an
+// unlinked duplicate loses exactly the fact that makes it worth doing.
+function repGroupOf(e){ return e.repGroup||null; }
+function repSiblings(e){
+  var g=repGroupOf(e); if(!g) return [];
+  return Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
+    .filter(function(x){ return x.repGroup===g; })
+    .sort(function(a,b){ return (a.repIndex||0)-(b.repIndex||0); });
+}
+function repeatExperiment(id){
+  var e=LB.data.experiments[id]; if(!e||!isCoded(e)) return;
+  var start=todayStr();
+  lbPrompt('Start date for the next biological replicate', start).then(function(v){
+    if(v===null) return;
+    start=v||start;
+    // Anchor the whole day structure on the new start, keeping the intervals between steps.
+    var anchor=expAnchorDate(e);
+    var c=JSON.parse(JSON.stringify(e));
+    c.id=uid();
+    if(!e.repGroup){ e.repGroup=e.id; e.repIndex=1; }
+    c.repGroup=e.repGroup;
+    c.repIndex=(repSiblings(e).reduce(function(m,x){ return Math.max(m,x.repIndex||1); },1))+1;
+    c.status='planned'; c.startDate=start;
+    c.pubReady=e.pubReady;
+    (c.blocks||[]).forEach(function(b){
+      b.id=uid();
+      if(b.date) b.date=addDays(start, daysBetween(anchor,b.date));
+      b.done=false; b.completedAt=null; b.stepDone={}; delete b._openNote;
+      // params and notes are kept on purpose: a replicate repeats what you actually did,
+      // including the deviations, not the pristine protocol.
+    });
+    if(e.code) c.code=e.code+'_R'+c.repIndex;
+    c.created=Date.now(); c.updated=Date.now(); e.updated=Date.now();
+    LB.data.experiments[c.id]=c; save(); SEL.page=c.id; EXP_TAB='dated'; renderAll();
+    toast('Biological replicate '+c.repIndex+' created');
+  });
+}
+function repChipHtml(e){
+  var sib=repSiblings(e); if(sib.length<2) return '';
+  var links=sib.map(function(x){
+    return '<a class="rep-l'+(x.id===e.id?' on':'')+'" onclick="openExp(\''+x.id+'\')" title="'
+      +esc(x.code||x.title||'')+'">'+(x.repIndex||'?')+'</a>';
+  }).join('');
+  return '<div class="rep-chip" title="Biological replicates of the same experiment">'
+    +'<span class="rep-t">Biological replicate '+(e.repIndex||1)+' of '+sib.length+'</span>'+links+'</div>';
+}
+
+// ── Bench timers ────────────────────────────────────────────────────────────────────────────
+// Every time in a protocol step is now a typed value, which means the notebook can run the
+// clock instead of you reaching for a phone. This is the payoff of typing the parameters, and
+// no rich-text ELN can do it: it does not know that "60 min" is a duration.
+var LB_TIMERS=[], _timerTick=null, _wakeLock=null;
+function _tsec(v,ov){
+  var e=_pval(v,ov); var n=parseFloat(e.value); if(!isFinite(n)) return 0;
+  var u=String(v.unit||'').toLowerCase();
+  if(u==='s'||u==='sec') return Math.round(n);
+  if(u==='h'||u==='hr'||u==='hrs'||u==='hour'||u==='hours') return Math.round(n*3600);
+  if(u==='d'||u==='day'||u==='days') return Math.round(n*86400);
+  return Math.round(n*60);
+}
+function startTimer(bId,key,label){
+  var f=_findBlk(bId); if(!f||!f.blk.proto) return;
+  var b=f.blk, def=null;
+  (b.proto.body||[]).forEach(function(x){ if(x.t!=='steps') return;
+    (x.items||[]).forEach(function(it){ if(it.params&&it.params[key]) def=it.params[key]; }); });
+  if(!def) return;
+  var secs=_tsec(def,(b.params||{})[key]); if(secs<=0) return;
+  LB_TIMERS.push({id:uid(), label:(label||def.label||key), sub:(b.title||''), expId:f.exp.id, blkId:bId,
+                  ends:Date.now()+secs*1000, total:secs});
+  _timerWake(true); renderTimers();
+}
+function stopTimer(id){ LB_TIMERS=LB_TIMERS.filter(function(t){ return t.id!==id; }); if(!LB_TIMERS.length) _timerWake(false); renderTimers(); }
+function _timerWake(on){
+  try{
+    if(on&&!_wakeLock&&navigator.wakeLock) navigator.wakeLock.request('screen').then(function(l){ _wakeLock=l; }).catch(function(){});
+    if(!on&&_wakeLock){ _wakeLock.release(); _wakeLock=null; }
+  }catch(e){}
+}
+function _fmtLeft(ms){
+  var s=Math.max(0,Math.round(ms/1000));
+  var h=Math.floor(s/3600), m=Math.floor((s%3600)/60), q=s%60;
+  return (h?h+':':'')+(h?String(m).padStart(2,'0'):m)+':'+String(q).padStart(2,'0');
+}
+function renderTimers(){
+  var host=el('lb-timers');
+  if(!host){ host=document.createElement('div'); host.id='lb-timers'; document.body.appendChild(host); }
+  if(!LB_TIMERS.length){ host.innerHTML=''; host.style.display='none'; if(_timerTick){ clearInterval(_timerTick); _timerTick=null; } return; }
+  host.style.display='';
+  host.innerHTML=LB_TIMERS.map(function(t){
+    var left=t.ends-Date.now(), done=left<=0;
+    var pct=Math.max(0,Math.min(100,100*(1-left/(t.total*1000))));
+    return '<div class="tmr'+(done?' done':'')+'"><div class="tmr-bar" style="width:'+pct+'%"></div>'
+      +'<span class="tmr-time">'+(done?'done':_fmtLeft(left))+'</span>'
+      +'<span class="tmr-lbl">'+esc(t.label)+(t.sub?('<span class="tmr-sub">'+esc(t.sub)+'</span>'):'')+'</span>'
+      +'<button class="tmr-x" title="Dismiss" onclick="stopTimer(\''+t.id+'\')">&times;</button></div>';
+  }).join('');
+  if(!_timerTick) _timerTick=setInterval(function(){
+    var fired=LB_TIMERS.filter(function(t){ return !t.rang && t.ends<=Date.now(); });
+    fired.forEach(function(t){ t.rang=true; _timerBeep(); toast('⏱ '+t.label+' — done'); });
+    renderTimers();
+  },1000);
+}
+function _timerBeep(){
+  try{ var C=window.AudioContext||window.webkitAudioContext; if(!C) return;
+    var a=new C(), o=a.createOscillator(), g=a.createGain();
+    o.connect(g); g.connect(a.destination); o.frequency.value=880; o.type='sine';
+    g.gain.setValueAtTime(0.0001,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25,a.currentTime+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+0.9);
+    o.start(); o.stop(a.currentTime+0.95);
+  }catch(e){}
+}
 function renderExpEditor(host,e){
   (el('export-btn')||{style:{}}).style.display='';
   var fields='<div class="exh-fields">'
@@ -3056,7 +3260,7 @@ function renderExpEditor(host,e){
     +'<div class="exh-fld"><label>Start date</label><input type="date" value="'+esc(e.startDate||'')+'" onchange="setField(\'startDate\',this.value)"></div>'
     +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div></div>'
     +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" oninput="updChips(\'cellLines\',this.value)" onchange="setField(\'cellLines\',this.value)"><div class="exh-chips" id="chips-cell">'+_chipInner(e.cellLines,'cell')+'</div></div></div>';
-  var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+setupSummaryHtml(e)+'</div>';
+  var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
   var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res')?EXP_TAB:'dated';
   var nRes=((e.integration&&e.integration.results)||[]).length;
   var tabs='<div class="exp-tabs">'
@@ -3088,7 +3292,7 @@ function renderExpEditor(host,e){
     // The experiment-level plate map sits above everything — it's the layout for the whole run.
     var pk='exp:'+e.id;
     var topPlate=e.plate?platePreviewHtml(e.plate,pk):'';
-    body='<div class="exp-dated-body">'+topPlate+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')
+    body='<div class="exp-dated-body">'+deviationsHtml(e)+topPlate+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')
       +'<div class="blk-addrow"><button class="add-blk" onclick="addBlock()">+ Add day-block</button><button class="add-blk add-step" onclick="stepPalette()">&#8981; Add step from library / Archive…</button></div></div>';
   }
   host.innerHTML='<div class="ed-wrap">'+header+tabs+'<div class="exp-tab-body">'+body+'</div></div>';
