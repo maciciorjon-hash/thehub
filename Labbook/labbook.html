@@ -819,6 +819,13 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .nm-proto-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
 .nm-proto-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:4px 6px 4px 10px;}
 .nm-proto-n{font-family:var(--mono);font-size:10.5px;color:var(--text3);}
+.nm-pv-dayin{width:2.8em;font:inherit;font-family:var(--mono);font-size:11px;text-align:center;
+  background:var(--surface);border:1px solid var(--border2);border-radius:5px;padding:0 2px;color:var(--text2);}
+.nm-pv-dayin:focus{outline:none;border-color:var(--accent);color:var(--text);}
+.nm-pv-dayin.own{border-color:var(--accent);color:var(--accent);}
+.nm-pv-reset{background:none;border:none;color:var(--text3);font-size:10.5px;cursor:pointer;
+  text-decoration:underline;padding:0 0 0 6px;}
+.nm-pv-reset:hover{color:var(--accent);}
 .nm-proto-var{font:inherit;font-size:11px;background:var(--surface);border:1px solid var(--border2);
   border-radius:10px;padding:1px 4px;color:var(--text2);max-width:150px;}
 .nm-proto-off{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:var(--text3);}
@@ -1897,7 +1904,7 @@ document.addEventListener('keydown',function(ev){
 
 // ── Store ──
 var LB={ data:null };
-function lbBlank(){ return {projects:[],generalSections:[],experiments:{},pages:{},notebook:{},tags:[],presets:{},antibodies:{},attachments:{},planner:{tasks:{}},_seeded:false,updated:0}; }
+function lbBlank(){ return {projects:[],generalSections:[],experiments:{},pages:{},notebook:{},tags:[],presets:{},antibodies:{},attachments:{},planner:{tasks:{}},protoDays:{},_seeded:false,updated:0}; }
 try{ LB.data=JSON.parse(localStorage.getItem('hub_labbook')||'null'); }catch(e){}
 if(!LB.data||typeof LB.data!=='object') LB.data=lbBlank();
 ['projects','generalSections','experiments','pages','notebook','tags','presets','antibodies','attachments'].forEach(function(k){ if(!LB.data[k]) LB.data[k]=(k==='projects'||k==='generalSections'||k==='tags')?[]:{}; });
@@ -2023,7 +2030,7 @@ function lbInitSync(){
     var remoteHas = v && ((v.projects||[]).length || Object.keys(v.experiments||{}).length || (v.generalSections||[]).length || Object.keys(v.pages||{}).length || Object.keys(v.notebook||{}).length);
     if(v && typeof v==='object' && remoteHas && (v.updated||0) > (LB.data.updated||0)){
       _adopting=true;
-      LB.data={projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()};
+      LB.data={projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},protoDays:v.protoDays||{},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()};
       LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
       seedPresets();
       try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
@@ -2602,7 +2609,30 @@ function nmLoadStages(p){
   if(!P||!(P.stages||[]).length) return;
   p.variants=P.variants||null;
   if(p.variants&&p.variants.length&&!p.variant) p.variant=p.variants[0].id;
-  p.stages=P.stages.map(function(st){ return {id:st.id,name:st.name,day:st.day||0,variant:st.variant||null}; });
+  var mine=protoDays(p.id);
+  p.stages=P.stages.map(function(st){
+    var d=(mine&&mine[st.id]!=null)?mine[st.id]:(st.day||0);
+    return {id:st.id,name:st.name,day:d,variant:st.variant||null};
+  });
+}
+// Your lab's own day cadence for a protocol's stages. Archive only states a stage's day where
+// the protocol says so (3 of 153); the rest are 0. Rather than ask anyone to decide 150 of them
+// in the abstract, they get set here against a real experiment and are remembered per protocol,
+// so the layout converges over the first few runs. Protocol content is Archive's; cadence is yours.
+function protoDays(pid){ LB.data.protoDays=LB.data.protoDays||{}; return LB.data.protoDays[pid]||null; }
+function nmSetStageDay(i,stageId,v){
+  var p=NM_PROTOS[i]; if(!p) return;
+  var n=parseInt(v,10); if(isNaN(n)||n<0) n=0;
+  LB.data.protoDays=LB.data.protoDays||{};
+  var m=LB.data.protoDays[p.id]=LB.data.protoDays[p.id]||{};
+  m[stageId]=n;
+  (p.stages||[]).forEach(function(st){ if(st.id===stageId) st.day=n; });
+  save(); nmPreview();
+}
+function nmResetDays(i){
+  var p=NM_PROTOS[i]; if(!p) return;
+  if(LB.data.protoDays) delete LB.data.protoDays[p.id];
+  nmLoadStages(p); save(); nmProtos(); nmPreview();
 }
 function nmSetVariant(i,v){ if(!NM_PROTOS[i]) return; NM_PROTOS[i].variant=v; nmPreview(); }
 function nmSetOffset(i,v){ if(!NM_PROTOS[i]) return; var n=parseInt(v,10); NM_PROTOS[i].off=isNaN(n)?null:n; nmPreview(); }
@@ -2628,9 +2658,16 @@ function nmPreview(){ var host=el('nm-preview'); if(!host) return;
     var off=nmProtoOff(p,i), st=nmProtoStages(p,i);
     if(!st||!st.length){ nExtra+=1; return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+'</span><span class="nm-pv-t">'+esc(p.name||p.id)+' <span class="nm-pv-ref">Archive</span></span></div>'; }
     nExtra+=st.length;
-    return st.map(function(x,si){ var d=off+(x.day||0);
-      return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+d+' · '+fmtDate(addDays(start,d))+'</span>'
-        +'<span class="nm-pv-t">'+esc(x.name||p.name)+(si===0?' <span class="nm-pv-ref">'+esc(p.name||p.id)+'</span>':'')+'</span></div>'; }).join('');
+    var mine=protoDays(p.id);
+    return st.map(function(x,si){ var d=off+(x.day||0); var own=!!(mine&&mine[x.id]!=null);
+      return '<div class="nm-pv-row"><span class="nm-pv-day">'
+        +'<input class="nm-pv-dayin'+(own?' own':'')+'" type="number" min="0" value="'+(x.day||0)+'"'
+        +' title="'+(own?'Your cadence for this stage':'From the protocol')+'"'
+        +' onchange="nmSetStageDay('+i+',\''+esc(x.id)+'\',this.value)"> '+fmtDate(addDays(start,d))+'</span>'
+        +'<span class="nm-pv-t">'+esc(x.name||p.name)
+        +(si===0?' <span class="nm-pv-ref">'+esc(p.name||p.id)+'</span>':'')
+        +(si===0&&mine?' <button type="button" class="nm-pv-reset" onclick="nmResetDays('+i+')">reset days</button>':'')
+        +'</span></div>'; }).join('');
   }).join('');
   var n=list.length+nExtra;
   host.innerHTML='<div class="nm-pv-hd">Will create '+n+' day-block'+(n!==1?'s':'')+(NM_PLATE?' + a plate map':'')+'</div><div class="nm-pv-list">'+rows+extra+'</div>'; }
