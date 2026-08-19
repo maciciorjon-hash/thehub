@@ -1967,7 +1967,7 @@ function lbInitSync(){
     var remoteHas = v && ((v.projects||[]).length || Object.keys(v.experiments||{}).length || (v.generalSections||[]).length || Object.keys(v.pages||{}).length || Object.keys(v.notebook||{}).length);
     if(v && typeof v==='object' && remoteHas && (v.updated||0) > (LB.data.updated||0)){
       _adopting=true;
-      LB.data={projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,_presetV2:v._presetV2,updated:v.updated||Date.now()};
+      LB.data={projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()};
       LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
       seedPresets();
       try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
@@ -2078,13 +2078,10 @@ function allBlockDates(){ var set={}; Object.keys(LB.data.experiments).forEach(f
 function blocksForDate(D){ var out=[]; Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; (e.blocks||[]).forEach(function(b){ if(b.date===D) out.push({exp:e,block:b}); }); }); return out; }
 // A block is "unfinished" if it holds a checklist item that isn't ticked (done).
 // ── Step completion ──
-// A step is done when you say so. Ticking every checkbox in it says so for you, but a
-// prose-only step can be completed too — which the old checkbox-inference could never express.
-function blockDone(b){ return !!(b&&b.done); }
-// Outstanding = dated, in the past, and not finished. Deliberately NOT derived from checkboxes:
-// every template block ships with a checklist, so inferring from them made every experiment
-// permanently "unfinished" and grew the carry-over list without bound.
-function blockOutstanding(b){ return !!(b && b.date && !b.done); }
+// A step is done when you say so — `b.done` is set explicitly, never inferred from
+// checkboxes. Every template block ships with a checklist, so inference made every
+// experiment permanently "unfinished" and grew the carry-over list without bound.
+// It also lets a prose-only step be completed, which inference could never express.
 function blockFinder(expId,blockId){
   var e=LB.data.experiments[expId]; if(!e) return null;
   var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0];
@@ -2243,25 +2240,6 @@ var SYNTH_PARTS={
   __seq:{name:'Sequencing verification', html:'<p><strong>Sequencing verification</strong></p><ul class="lb-check"><li>Sanger-sequence the insert &amp; cloning junctions with sequencing primers</li><li>Whole-plasmid sequencing (Plasmidsaurus) to confirm the full construct</li></ul><p><em>No dedicated Archive protocol — reference your sequencing SOP / provider.</em></p>'},
   __nanobret:{name:'NanoBRET target engagement', html:'<p><strong>NanoBRET target-engagement assay</strong></p><ul class="lb-check"><li>Transfect cells with the NanoLuc–target fusion</li><li>Add NanoBRET tracer + test compound; incubate</li><li>Add NanoBRET substrate; read donor &amp; acceptor; compute the BRET ratio</li></ul><p><em>No dedicated Archive protocol — use the Beacon app for analysis.</em></p>'}
 };
-// Nature-methods prose per protocol (concise, editable after creation).
-var PUB_SEED={
-  gibson:'DNA fragments were assembled by NEB HiFi/Gibson assembly: the vector was PCR-linearised, treated with DpnI and gel-purified, then combined with inserts at a 2:1 insert:vector molar ratio and incubated at 50 °C for 15–60 min.',
-  redigest:'Vector and inserts were digested with the appropriate restriction enzymes (NEB), gel-purified and ligated with T4 DNA ligase.',
-  transfo:'Assembly/ligation products were transformed into chemically competent E. coli by heat shock (42 °C, 30 s), recovered in SOC and plated on LB-agar containing the appropriate antibiotic.',
-  miniprep:'Plasmid DNA was isolated from overnight cultures by column miniprep (Thermo GeneJET) and quantified by NanoDrop.',
-  nucleospin:'DNA was purified with the NucleoSpin Gel and PCR Clean-up kit (Macherey-Nagel) per the manufacturer’s instructions.',
-  bca:'Total protein was quantified by BCA assay (Pierce) against a BSA standard curve.',
-  westernblot:'Lysates were resolved by SDS-PAGE, transferred to membrane and probed with the indicated primary and HRP-conjugated secondary antibodies; signal was detected by chemiluminescence.',
-  ctg2:'Cell viability was measured with CellTiter-Glo 2.0 (Promega); luminescence was recorded on a plate reader and normalised to vehicle-treated controls.',
-  revtx:'Cells were reverse-transfected in-plate with FuGENE at the optimised DNA:reagent ratio and assayed after the stated incubation.',
-  hibitlytic:'HiBiT levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega); luminescence was normalised to DMSO controls to derive degradation parameters (DC50/Dmax).',
-  transfection:'Cells were transfected with the indicated plasmid(s) using the stated lipid reagent at the optimised DNA:reagent ratio and assayed after the stated period.',
-  strap:'Proteins were reduced, alkylated, digested and cleaned up on S-Trap columns (ProtiFi) prior to LC-MS/MS.',
-  diann:'DIA raw files were processed with DIA-NN for peptide and protein identification and label-free quantification.',
-  perseus:'Statistical analysis of the proteomics data was performed in Perseus.',
-  __seq:'All constructs were verified by Sanger and whole-plasmid (Plasmidsaurus) sequencing.',
-  __nanobret:'Target engagement was assessed by NanoBRET: cells expressing the NanoLuc–target fusion were treated with tracer and compound and the acceptor:donor BRET ratio recorded.'
-};
 function archiveCalc(pid){ try{ var _w=_arcWin(); if(_w && _w.ARCHIVE_CALC) return _w.ARCHIVE_CALC(pid); }catch(e){} return null; }
 // Render a calculator's computed recipe ({label,bullets}[]) as editable HTML.
 function calcRecipeHtml(calc){ if(!calc||!calc.steps||!calc.steps.length) return ''; return calc.steps.map(function(s){ var b=(s.bullets||[]).map(function(x){return '<li>'+x+'</li>';}).join(''); return '<p><strong>'+esc(s.label||'')+'</strong></p>'+(b?'<ul>'+b+'</ul>':''); }).join(''); }
@@ -2272,8 +2250,6 @@ function partBlockHtml(pid,calc,steps){ var h='';
   if(calc&&calc.steps&&calc.steps.length){ h+='<p><strong>Recipe (from Archive calculator)</strong> '+link+'</p>'+calcRecipeHtml(calc); }
   else if(calc&&calc.hasCalc){ h+='<p>'+link+'</p>'; }
   return h||'<p></p>'; }
-// Publication-ready draft from a list of source protocols ([{id,name}]) — legacy path.
-function buildPubReady(protos){ var parts=(protos||[]).map(function(p){ return PUB_SEED[p.id]||('The '+(p.name||p.id)+' protocol was performed as described (see Archive).'); }).filter(Boolean); return parts.length?('<p>'+parts.join(' ')+'</p>'):'<p></p>'; }
 function _plain(html){ var d=document.createElement('div'); d.innerHTML=html||''; return (d.textContent||'').replace(/\s+/g,' ').trim(); }
 // Past-tense Nature-methods sentence per native calculator kind.
 var CALC_PUB={
@@ -4081,7 +4057,9 @@ setTimeout(maybeAutoBackup,1500);
 setTimeout(gcAttachments,4000);
 function _mergeDHubContext(ctx){
   ctx=ctx||{}; var e=(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
-  if(!e){ LB.data.dhubInbox=LB.data.dhubInbox||[]; LB.data.dhubInbox.push({receivedAt:Date.now(),context:ctx}); save(); toast('Context saved in the Labbook inbox'); return; }
+  // No experiment open: there is nowhere to attach this. Say so rather than buffering it into
+  // a store nothing reads — the old dhubInbox silently swallowed every such context.
+  if(!e){ toast('Open an experiment first, then send this from '+(ctx.source||'the other app')+' again'); return; }
   e.integration=e.integration||{sources:[],cellLines:[],compounds:[],plateMaps:[],protocols:[],results:[]};
   ['cellLines','compounds','plateMaps','protocols','results'].forEach(function(k){ var incoming=Array.isArray(ctx[k])?ctx[k]:[]; e.integration[k]=e.integration[k]||[]; incoming.forEach(function(item){ var sig=JSON.stringify(item); if(!e.integration[k].some(function(old){return JSON.stringify(old)===sig;})) e.integration[k].push(item); }); });
   if(ctx.source){ e.integration.sources=e.integration.sources||[]; if(e.integration.sources.indexOf(ctx.source)<0) e.integration.sources.push(ctx.source); }
