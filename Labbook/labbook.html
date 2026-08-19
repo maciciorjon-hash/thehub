@@ -826,6 +826,27 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .nm-pv-reset{background:none;border:none;color:var(--text3);font-size:10.5px;cursor:pointer;
   text-decoration:underline;padding:0 0 0 6px;}
 .nm-pv-reset:hover{color:var(--accent);}
+/* ── Results handed over from an analysis app ─────────────────────────────────────────── */
+.res-empty{padding:52px 22px;text-align:center;color:var(--text3);font-size:13px;line-height:1.7;}
+.res-empty .t{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px;}
+.res-card{border:1px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:14px;overflow:hidden;}
+.res-hd{display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1px solid var(--border);
+  font-size:12.5px;font-weight:600;}
+.res-src{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.5px;
+  background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:1px 6px;color:var(--text3);}
+.res-when{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--text3);font-weight:400;}
+.res-flag{font-size:10.5px;color:#e0803a;font-weight:600;}
+.res-del{background:none;border:none;color:var(--text3);font-size:17px;cursor:pointer;line-height:1;padding:0 2px;}
+.res-del:hover{color:var(--danger);}
+.res-tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+.res-tbl th{text-align:left;font-weight:600;color:var(--text3);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.4px;padding:7px 13px;border-bottom:1px solid var(--border);}
+.res-tbl td{padding:6px 13px;border-bottom:1px solid var(--border);}
+.res-tbl td.num{font-family:var(--mono);text-align:right;}
+.res-tbl tr:last-child td{border-bottom:none;}
+.res-tbl tr.flagged td{color:var(--text3);}
+.res-tbl tr.flagged td:first-child::after{content:' ⚑';color:#e0803a;}
+.res-raw{font-family:var(--mono);font-size:11px;padding:10px 13px;margin:0;white-space:pre-wrap;color:var(--text2);}
 /* ── Day view: date nav, live cultures, running experiments ───────────────────────────── */
 .day-nav{display:flex;align-items:center;gap:5px;margin-left:14px;}
 .day-arw{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);
@@ -962,7 +983,7 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
       </div>
       <div id="pl-side" class="pl-side"></div>
     </div>
-    <div class="modal-act"><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
   </div>
 </div>
 
@@ -1641,6 +1662,113 @@ function addPlateTo(key,fmt){ var o=_plateOwner(key); if(!o) return;
 function removePlateFrom(key){ var o=_plateOwner(key); if(!o||!o.obj.plate) return;
   lbConfirm('Remove this plate map? The wells you laid out will be lost.',{danger:true,title:'Remove plate map'}).then(function(ok){
     if(!ok) return; delete o.obj.plate; o.exp.updated=Date.now(); save(); renderEditor(); }); }
+// ── Echo picklist → plate map ───────────────────────────────────────────────────────────────
+// The picklist already records exactly what a plate map is for: which compound went into which
+// well, and at what concentration. Retyping it by hand is both tedious and the most likely
+// place for the record to stop matching the plate that was actually run. Parsed here rather
+// than fetched from Echo, so it works from the file alone with Echo closed.
+
+// Echo writes concentrations in molar, often as 2.001E-05. Show them the way they are spoken.
+function _echoConc(v,unit){
+  var n=parseFloat(v); if(!isFinite(n)) return '';
+  unit=String(unit||'M').trim();
+  if(unit!=='M') return _plTrim(n)+' '+unit;
+  if(n>=1e-3)  return _plTrim(n*1e3)+' mM';
+  if(n>=1e-6)  return _plTrim(n*1e6)+' µM';
+  if(n>=1e-9)  return _plTrim(n*1e9)+' nM';
+  return _plTrim(n*1e12)+' pM';
+}
+function _plTrim(n){ var r=Math.round(n*1000)/1000; return String(r); }
+// Minimal CSV row splitter — Echo quotes fields containing commas.
+function _csvRow(line){
+  var out=[],cur='',q=false;
+  for(var i=0;i<line.length;i++){ var ch=line[i];
+    if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else if(ch==='"') q=true;
+    else if(ch===','){ out.push(cur); cur=''; }
+    else cur+=ch; }
+  out.push(cur); return out;
+}
+function parseEchoPicklist(text){
+  var lines=String(text||'').split(/\r?\n/);
+  var hdr=-1;
+  for(var i=0;i<lines.length;i++){ if(/destination\s+well/i.test(lines[i])){ hdr=i; break; } }
+  if(hdr<0) return {error:'This does not look like an Echo picklist — no "Destination Well" column.'};
+  var cols=_csvRow(lines[hdr]).map(function(c){ return c.trim().toLowerCase(); });
+  function col(){ for(var a=0;a<arguments.length;a++){ var k=cols.indexOf(arguments[a]); if(k>=0) return k; } return -1; }
+  var iWell=col('destination well'), iConc=col('destination concentration'),
+      iUnit=col('destination concentration units'),
+      iName=col('sample name','sample id'), iPlate=col('destination plate name'),
+      iStat=col('transfer status'), iVol=col('actual volume','transfer volume'),
+      iFluid=col('fluid type');
+  var plates={}, skipped=0, bad=0;
+  for(var r=hdr+1;r<lines.length;r++){
+    var L=lines[r]; if(!L.trim()) continue;
+    var f=_csvRow(L); if(f.length<3) continue;
+    var w=(f[iWell]||'').trim().toUpperCase();
+    if(!/^[A-P]\d{1,2}$/.test(w)){ bad++; continue; }
+    // A failed transfer never reached the plate; recording it would be a lie.
+    if(iStat>=0 && (f[iStat]||'').trim() && !/^ok$/i.test((f[iStat]||'').trim())){ skipped++; continue; }
+    var pl=(iPlate>=0?(f[iPlate]||'').trim():'')||'(plate)';
+    var b=plates[pl]||(plates[pl]={name:pl,wells:{},n:0});
+    var name=(iName>=0?(f[iName]||'').trim():'');
+    var fluid=(iFluid>=0?(f[iFluid]||'').trim():'');
+    var conc=(iConc>=0?_echoConc(f[iConc], iUnit>=0?f[iUnit]:'M'):'');
+    var vol =(iVol>=0?parseFloat(f[iVol]):NaN);
+    var cell=b.wells[w]||(b.wells[w]={compound:'',conc:'',vol:0,dmsoOnly:true});
+    if(isFinite(vol)) cell.vol+=vol;
+    // DMSO backfill transfers carry no compound — they must not overwrite the real one.
+    var isVeh=(!name)||/^dmso$/i.test(name)||(!name&&/dmso/i.test(fluid));
+    if(!isVeh){ cell.compound=name; cell.conc=conc; cell.dmsoOnly=false; }
+    b.n++;
+  }
+  var list=Object.keys(plates).map(function(k){ return plates[k]; })
+             .sort(function(a,b){ return b.n-a.n; });
+  if(!list.length) return {error:'No usable transfers found in this picklist.'};
+  return {plates:list, skipped:skipped, bad:bad};
+}
+// Apply one parsed destination plate onto the plate map, keeping everything it does not touch.
+function applyEchoToPlate(plate,dest){
+  var n=0, dm=0;
+  Object.keys(dest.wells).forEach(function(w){
+    if(!wellRC(w)) return;                        // outside this format — leave it alone
+    var d=plate.format, dims=plateDims(plate), rc=wellRC(w);
+    if(rc.r>=dims.rows||rc.c>=dims.cols) return;
+    var src=dest.wells[w];
+    var cur=plate.wells[w]||(plate.wells[w]={});
+    if(src.dmsoOnly){ cur.typeId='vehicle'; if(!cur.compound) cur.compound='DMSO'; dm++; }
+    else { cur.typeId=cur.typeId||'dose'; cur.compound=src.compound; cur.conc=src.conc; n++; }
+    cur.echoVol=Math.round(src.vol*100)/100;
+    n=n;
+  });
+  return {compounds:n, vehicle:dm};
+}
+function plImportEcho(){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='.csv,text/csv,text/plain';
+  inp.onchange=function(){
+    var f=inp.files&&inp.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      var res=parseEchoPicklist(String(rd.result||''));
+      if(res.error){ lbAlert(res.error,{title:'Echo picklist'}); return; }
+      var plate=plCur(); if(!plate){ toast('No plate open'); return; }
+      function go(dest){
+        var out=applyEchoToPlate(plate,dest);
+        if(!plate.title) plate.title=dest.name;
+        platePersist(PL.key); plRender();
+        toast('Imported '+out.compounds+' compound well'+(out.compounds===1?'':'s')
+              +(out.vehicle?(' + '+out.vehicle+' vehicle'):'')
+              +(res.skipped?(' · '+res.skipped+' failed transfer'+(res.skipped===1?'':'s')+' skipped'):''));
+      }
+      if(res.plates.length===1) return go(res.plates[0]);
+      lbPicker('Which destination plate?',res.plates.map(function(b){
+        return {id:b.name,label:b.name,sub:Object.keys(b.wells).length+' wells · '+b.n+' transfers',ic:'E',c:'#ff5760'};
+      }),function(it){ go(res.plates.filter(function(b){return b.name===it.id;})[0]); });
+    };
+    rd.readAsText(f);
+  };
+  inp.click();
+}
 function exportPlateCSV(key){ var p=plateOf(key); if(!p) return;
   _plDownload('plate_'+p.format+'well.csv',plateToCSV(p)); }
 
@@ -2570,12 +2698,13 @@ function pubSentence(b){
   return parts.join(' ').replace(/\s+([,.;])/g,'$1').trim();
 }
 // Publication-ready prose from every dated block, its live calculators, setup and plate maps.
-function buildPubReadyFromExp(e){ var parts=[];
+function buildPubReadyFromExp(e){ var parts=[]; var _resSent=pubResultsSentence(e);
   var setup=_pubSetupText(e); if(setup) parts.push(setup);
   var protos=(e.protocols||[]).map(function(p){return p.name||p.id;}).filter(Boolean);
   if(protos.length) parts.push('Archive protocols used: '+protos.join(', ')+'.');
   if(e.plate) parts.push(_pubPlateText(e.plate,'Experiment plate map'));
   dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ var s=(pubSentence(b)||'').trim(); if(s) parts.push(s); if(b.plate) parts.push(_pubPlateText(b.plate,'Step plate map')); }); });
+  if(_resSent) parts.push(_resSent);
   parts=parts.filter(function(s,i){ return s&&s!==parts[i-1]; });
   return parts.length?parts.map(function(s){return '<p>'+esc(s)+'</p>';}).join(''):'<p></p>'; }
 function rebuildPub(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Rebuild the publication-ready text from this experiment’s steps and calculators? Your current edits will be replaced.',{title:'Rebuild publication text'}).then(function(ok){ if(!ok) return; e.pubReady=buildPubReadyFromExp(e); e.updated=Date.now(); save(); renderEditor(); }); }
@@ -2866,6 +2995,59 @@ function setupSummaryHtml(e){
   }).filter(Boolean).join('');
   return parts?('<div class="exh-setup">'+parts+'</div>'):'';
 }
+// ── Results handed over by an analysis app ─────────────────────────────────────────────────
+// A DC50 typed by hand into a notebook is where a published number stops being traceable to
+// the curve it came from. These arrive as data from Echo (dhub:context v1) and keep the flag
+// the fitting app raised, so a curve Echo was unhappy about stays visibly unhappy here.
+function _rn(v,d){ var n=parseFloat(v); if(!isFinite(n)) return '—';
+  return (Math.abs(n)>=100?n.toFixed(0):Math.abs(n)>=10?n.toFixed(1):n.toFixed(2)); }
+function resultsPaneHtml(e){
+  var rs=(e.integration&&e.integration.results)||[];
+  if(!rs.length){
+    return '<div class="res-empty"><div class="t">No results attached yet</div>'
+      +'<div>Fit curves in <b>Echo</b>, then press <b>Send to Labbook</b> with this experiment open. '
+      +'DC50, D<sub>max</sub>, Hill slope and R² arrive as data — not retyped.</div></div>';
+  }
+  return rs.map(function(r,i){
+    var rows=(r.rows||[]);
+    if(!rows.length) return '<div class="res-card"><div class="res-hd">'+esc(r.label||r.source||'result')+'</div>'
+      +'<pre class="res-raw">'+esc(JSON.stringify(r.data||r,null,1)).slice(0,1200)+'</pre></div>';
+    var flagged=rows.filter(function(x){return x.flag;}).length;
+    return '<div class="res-card">'
+      +'<div class="res-hd"><span class="res-src">'+esc(r.source||'')+'</span>'+esc(r.label||'')
+      +'<span class="res-when">'+esc((r.createdAt||'').slice(0,10))+'</span>'
+      +(flagged?('<span class="res-flag">'+flagged+' flagged</span>'):'')
+      +'<button class="res-del" title="Remove this result" onclick="delResult(\''+e.id+'\',\''+esc(r.id||'')+'\')">&times;</button></div>'
+      +'<table class="res-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(r.potencyLabel||'Potency')
+      +'</th><th>'+esc(r.effectLabel||'Effect')+'</th><th>Hill</th><th>R²</th></tr></thead><tbody>'
+      +rows.map(function(x){ return '<tr'+(x.flag?' class="flagged"':'')+'><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td>'
+        +'<td class="num">'+_rn(x.potency)+'</td><td class="num">'+_rn(x.effect)+'</td>'
+        +'<td class="num">'+_rn(x.hill)+'</td><td class="num">'+_rn(x.r2)+'</td></tr>'; }).join('')
+      +'</tbody></table></div>';
+  }).join('');
+}
+function delResult(expId,rid){
+  var e=LB.data.experiments[expId]; if(!e||!e.integration) return;
+  e.integration.results=(e.integration.results||[]).filter(function(r){ return String(r.id)!==String(rid); });
+  e.updated=Date.now(); save(); renderEditor();
+}
+// One sentence of methods prose from the potencies, so the numbers reach the paragraph the
+// same way the protocol steps do.
+function pubResultsSentence(e){
+  var rs=(e.integration&&e.integration.results)||[];
+  var rows=[]; var pl='DC50', el2='Dmax';
+  rs.forEach(function(r){ (r.rows||[]).forEach(function(x){ if(!x.flag&&isFinite(parseFloat(x.potency))) rows.push(x); });
+    if(r.potencyLabel) pl=String(r.potencyLabel).split(' ')[0];
+    if(r.effectLabel) el2=String(r.effectLabel).split(' ')[0]; });
+  if(!rows.length) return '';
+  rows.sort(function(a,b){ return parseFloat(a.potency)-parseFloat(b.potency); });
+  var best=rows.slice(0,3).map(function(x){
+    return String(x.compound)+' ('+pl+' '+_rn(x.potency)+' nM'
+      +(isFinite(parseFloat(x.effect))?(', '+el2+' '+_rn(x.effect)+'%'):'')+')'; });
+  return 'Dose–response curves were fitted with a four-parameter logistic model; '
+    +rows.length+' compound'+(rows.length===1?'':'s')+' gave measurable '+pl+' values, the most potent being '
+    +best.join(', ')+'.';
+}
 function renderExpEditor(host,e){
   (el('export-btn')||{style:{}}).style.display='';
   var fields='<div class="exh-fields">'
@@ -2875,10 +3057,12 @@ function renderExpEditor(host,e){
     +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div></div>'
     +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" oninput="updChips(\'cellLines\',this.value)" onchange="setField(\'cellLines\',this.value)"><div class="exh-chips" id="chips-cell">'+_chipInner(e.cellLines,'cell')+'</div></div></div>';
   var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+setupSummaryHtml(e)+'</div>';
-  var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files')?EXP_TAB:'dated';
+  var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res')?EXP_TAB:'dated';
+  var nRes=((e.integration&&e.integration.results)||[]).length;
   var tabs='<div class="exp-tabs">'
     +'<button class="exp-tab'+(tab==='dated'?' on':'')+'" onclick="expTab(\'dated\')">Dated sections<span class="exp-tab-n">'+(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):0)+'</span></button>'
     +'<button class="exp-tab'+(tab==='obs'?' on':'')+'" onclick="expTab(\'obs\')">Observations</button>'
+    +'<button class="exp-tab'+(tab==='res'?' on':'')+'" onclick="expTab(\'res\')">Results'+(nRes?('<span class="exp-tab-n">'+nRes+'</span>'):'')+'</button>'
     +'<button class="exp-tab'+(tab==='pub'?' on':'')+'" onclick="expTab(\'pub\')">Publication ready</button>'
     +'<button class="exp-tab'+(tab==='files'?' on':'')+'" onclick="expTab(\'files\')">Files'+((e.files&&e.files.length)?('<span class="exp-tab-n">'+e.files.length+'</span>'):'')+'</button></div>';
   var body;
@@ -2886,6 +3070,8 @@ function renderExpEditor(host,e){
     body='<div class="rt exp-canvas" contenteditable="true" data-ctx="expfree:'+e.id+'" data-ph="Observations — notes, thoughts, anything you want to jot down…" oninput="setField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div>';
   } else if(tab==='files'){
     body=filesPaneHtml('exp:'+e.id, e.files||[]);
+  } else if(tab==='res'){
+    body=resultsPaneHtml(e);
   } else if(tab==='pub'){
     var srcChips=(e.protocols||[]).map(function(p){ return '<a class="lb-link proto" data-app="protocols" data-pid="'+esc(p.id)+'" contenteditable="false">'+esc(p.name||p.id)+' &#8599;</a>'; }).join(' ');
     body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods — concise continuous prose (Nature style)</span><span class="grow"></span>'

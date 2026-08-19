@@ -519,6 +519,34 @@ In the standalone build there is no shell, so `lbCultures()` returns `null` and 
 `setNotebook(html, D)` now takes the date explicitly; it used to read `SEL.page`, which is null
 in the Today view.
 
+## The Echo ↔ Labbook loop
+
+This is the demo the product direction calls for, and it runs in both directions.
+
+**Picklist → plate map.** `parseEchoPicklist(text)` reads a Labcyte transfer CSV in Labbook
+itself — not through Echo — so it works from the file alone with Echo closed. It finds the
+header by looking for `Destination Well` (there is a preamble and a `[DETAILS]` line above it),
+groups by destination plate, and returns wells carrying compound, concentration and summed
+volume. `applyEchoToPlate` writes them onto an existing map, keeping every well it does not
+touch. Two rules matter: a transfer whose `Transfer Status` is set and not OK **never reached
+the plate**, so recording it would be a lie; and DMSO backfill transfers carry no sample name
+and must not overwrite the compound already in the well. Concentrations are converted out of
+molar into how they are spoken (`2.001E-05 M` → `20.01 µM`). Verified against Echo's own 2,867-line
+test picklist: 7 destination plates, 14 compounds, 308 wells, and `plateSummary` then reads them
+back as "EDA-099 · 10 concentrations ×2 replicates · B2–C11" with no typing at all.
+
+**Potencies → the experiment record.** Echo gained `sendResultsToLabbook()` and a *Send to
+Labbook* button next to Copy TSV, plus `ECHO_RESULTS`/`ECHO_API_VERSION` on the parent. It posts
+`dhub:context v1` with a `results[]` entry carrying compound, target, potency, effect, Hill, R²
+and Echo's own flag, labelled per assay type (`DC50`/`IC50`/`EC50`/Potency). Labbook renders them
+in a new **Results** tab (`resultsPaneHtml`), keeping the flag visible so a curve Echo was
+unhappy about stays visibly unhappy in the notebook. `pubResultsSentence` folds them into the
+publication prose, **excluding flagged rows** and sorted by potency.
+
+Note for anyone testing Echo from the outside: `_lastResultsData` is a top-level `let`, so
+assigning `echoFrame.contentWindow._lastResultsData` does *not* reach it. Use `eval` inside
+Echo's own scope, or call `renderResults(data)`.
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie

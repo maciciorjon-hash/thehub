@@ -2597,6 +2597,65 @@ document.addEventListener('keydown', e => {
 });
 
 // ===== RENDER RESULTS =====
+// ── dHUB bridge: hand fitted potencies back to the experiment record ─────────────────────────
+// The numbers Echo produces are the result of an experiment that Labbook planned. Retyping a
+// DC50 into a notebook is where a published number stops being traceable to its curve, so the
+// row travels as data — compound, potency, Dmax, Hill, R², and the flag Echo raised.
+var ECHO_ASSAY_LABELS = {
+  hibit:        {potency:'DC50 (nM)',    effect:'Dmax (%)'},
+  ctg:          {potency:'IC50 (nM)',    effect:'Span (%)'},
+  displacement: {potency:'IC50 (nM)',    effect:'Span (%)'},
+  gain:         {potency:'EC50 (nM)',    effect:'Emax'},
+  multi:        {potency:'Potency (nM)', effect:'Efficacy'}
+};
+function echoResultRows(){
+  var d = (typeof _lastResultsData !== 'undefined' && _lastResultsData) || [];
+  var t = window._lastAssayType || 'hibit';
+  var lab = ECHO_ASSAY_LABELS[t] || ECHO_ASSAY_LABELS.hibit;
+  return d.map(function(r){
+    return {
+      compound: r.Sample_ID || '',
+      target:   r.Protein || '',
+      potency:  r.DC50_nM,
+      potencyAbs: r.AbsDC50_nM,
+      effect:   r.Dmax_pct,
+      hill:     r.HillSlope,
+      r2:       r.R2,
+      flag:     r.Flag === 'Yes'
+    };
+  }).filter(function(x){ return x.compound; })
+    .concat([]).map(function(x){ x.assay=t; x.potencyLabel=lab.potency; x.effectLabel=lab.effect; return x; });
+}
+try{ if (window.parent && window.parent !== window){
+  window.parent.ECHO_API_VERSION = 1;
+  window.parent.ECHO_RESULTS = function(){ try{ return JSON.parse(JSON.stringify(echoResultRows())); }catch(e){ return null; } };
+} }catch(e){}
+
+function sendResultsToLabbook(){
+  var rows = echoResultRows();
+  if (!rows.length){ alert('No fitted results to send yet — run an analysis first.'); return; }
+  var t = window._lastAssayType || 'hibit';
+  var lab = ECHO_ASSAY_LABELS[t] || ECHO_ASSAY_LABELS.hibit;
+  var ctx = {
+    source:'echo', experiment:null, cellLines:[], plateMaps:[], protocols:[],
+    compounds: rows.map(function(r){ return {name:r.compound}; }),
+    results: [{
+      id: 'echo-' + Date.now(),
+      source: 'echo',
+      label: (lab.potency.split(' ')[0]) + ' · ' + rows.length + ' compound' + (rows.length===1?'':'s'),
+      assay: t,
+      potencyLabel: lab.potency,
+      effectLabel: lab.effect,
+      rows: rows,
+      createdAt: new Date().toISOString()
+    }]
+  };
+  try{
+    if (window.parent && window.parent.openApp){ window.parent.openApp('labbook', undefined, undefined, ctx); }
+    else { alert('Open Echo inside dHUB to send results to Labbook.'); }
+  }catch(e){ alert('Could not reach Labbook.'); }
+}
+
 function renderResults(data) {
   _lastResultsData = data;
   if (window._lastAnalysisParams?.multiAssay && data.length) { renderMultiAssayResults(data); return; }
@@ -2677,6 +2736,7 @@ function renderResults(data) {
   const _dlBtnHover='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
   let _dlSection = '<div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel">📋 Copy TSV</button>'
+    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="sendResultsToLabbook()" title="Attach these potencies to the Labbook experiment">🧪 Send to Labbook</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputXLSX()">📥 Results XLSX</button>';
   if (_rawBlob) {
     _dlSection += '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))">📊 Raw Data CSV</button>';
