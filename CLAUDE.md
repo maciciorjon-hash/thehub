@@ -491,6 +491,34 @@ made `ARCHIVE_PROTOCOL` throw into its own `catch` and return `null`, so every e
 quietly fell back to the flat one-block path. Anything declared between those markers is
 regenerated away.
 
+## Labbook: one day view, and live cultures
+
+**Today** (`kind:'today'`) and any Notebook date are now the *same screen* — `renderDayView(host, D)`
+— with a date navigator. Three places showing the same block was the thing that needed cutting:
+the Notebook day page, the `__ongoing__` dashboard and the carry-over list have become one view.
+`renderOngoing` and the `__ongoing__` page item are gone; what they were for survives as
+`ongoingHtml(D)`, a compact strip of running experiments with progress and the date of their
+next step. Today hides the middle pane (it joins `week`/`archive` in the condition that already
+existed in `renderPages`) because there is nothing to pick from — the day *is* the thing.
+
+Order in the day: steps due · carried over · tasks · **cell cultures** · running experiments ·
+daily note. The note is last because it is the biggest surface and the one you scroll to when
+you are already working; the actionable parts come first.
+
+**Cultures are read, never copied.** `lbCultures()` reads `window.parent.JournalStore.get().incubator`
+and calls the shell's `computeCellAlerts` — the same store and the same canonical alert logic
+Incubator itself uses. Nothing is duplicated, so nothing can drift, and a passage logged in
+Incubator shows up here immediately: `lbWatchCultures()` subscribes **once** and patches only
+`#lb-cultures` rather than re-rendering the view, or an update arriving from another app would
+yank the caret out of whatever you were typing.
+
+In the standalone build there is no shell, so `lbCultures()` returns `null` and the section is
+**not drawn at all** — no empty panel implying you have no cells. Same honesty rule as
+`hasCloud()`.
+
+`setNotebook(html, D)` now takes the date explicitly; it used to read `SEL.page`, which is null
+in the Today view.
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie
