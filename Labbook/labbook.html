@@ -285,6 +285,46 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .rt .lb-table th{background:var(--surface2);font-weight:600;}
 /* A protocol parameter rendered inside a copied step. */
 .rt .pparam{border-bottom:1px dotted var(--border2);}
+/* ── Protocol-driven step block ────────────────────────────────────────────────────────
+   The prose is the protocol's and is not editable. What you can touch is a parameter, a
+   tick, and a note — so the record always says what the protocol said, plus what you did
+   differently, and never quietly loses the difference between the two. */
+.pblk{border:1px solid var(--border);border-radius:9px;background:var(--surface);padding:2px 14px 10px;}
+.pblk-src{display:flex;align-items:center;gap:10px;padding:9px 0 7px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.pblk-src .lb-link.proto{font-size:12px;}
+.pblk-count{font-family:var(--mono);font-size:11px;color:var(--text3);}
+.pblk-free{margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text3);
+  font-size:11px;padding:3px 9px;border-radius:6px;cursor:pointer;}
+.pblk-free:hover{color:var(--text);border-color:var(--text3);}
+.psteps{margin:6px 0 6px 4px;padding-left:20px;}
+.psteps>li{margin:0 0 7px;line-height:1.6;position:relative;padding-left:2px;}
+.psteps>li.pstep-done .pstep-t{opacity:.45;text-decoration:line-through;text-decoration-color:var(--text3);}
+.pstep-t{cursor:default;}
+.pstep-tick{position:absolute;left:-38px;top:2px;width:17px;height:17px;border-radius:5px;
+  border:1.5px solid var(--border2);background:var(--surface2);color:#fff;font-size:11px;
+  line-height:1;cursor:pointer;padding:0;}
+.pstep-tick:hover{border-color:var(--accent);}
+.pstep-tick.on{background:var(--accent);border-color:var(--accent);}
+.pstep-noteb{margin-left:7px;background:none;border:none;color:var(--text3);font-size:11px;
+  cursor:pointer;opacity:0;transition:opacity .12s;padding:0 2px;}
+.psteps>li:hover .pstep-noteb{opacity:1;}
+.pstep-noteb:hover{color:var(--accent);}
+.pstep-note{margin:5px 0 8px;padding:6px 10px;border-left:2px solid var(--accent);
+  background:var(--surface2);border-radius:0 6px 6px 0;font-size:12.5px;min-height:1.4em;}
+.pblk-note{margin-top:10px;padding-top:9px;border-top:1px solid var(--border);}
+.pblk-note-lbl{font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--text3);margin-bottom:4px;}
+/* A parameter you can change. It has to read as part of the sentence, not as a form field —
+   the step is still prose. */
+.rt .pparam,.pblk .pparam{border-bottom:1px dotted var(--border2);}
+.pblk .pparam.live{border-bottom:none;white-space:nowrap;}
+.pblk .pparam.changed .pchip{border-color:var(--accent);color:var(--accent);font-weight:600;}
+.pchip{font:inherit;font-family:var(--mono);font-size:.92em;text-align:center;
+  background:var(--surface2);border:1px solid var(--border2);border-radius:5px;
+  padding:0 3px;color:var(--text);min-width:1.7em;}
+.pchip:hover{border-color:var(--text3);}
+.pchip:focus{outline:none;border-color:var(--accent);background:var(--surface);}
+.punit{color:var(--text2);}
 .rt a.lb-link.plasmid{color:#6d7bd0;border-bottom-color:#6d7bd0;}
 .rt a.lb-url{color:var(--accent2);text-decoration:underline;cursor:pointer;}
 .rt img.lb-att{max-width:100%;height:auto;border-radius:8px;margin:6px 0;display:block;box-shadow:var(--shadow-xs);border:1px solid var(--border);}
@@ -778,6 +818,12 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .nm-protocols{margin:4px 0 2px;}
 .nm-proto-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
 .nm-proto-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:4px 6px 4px 10px;}
+.nm-proto-n{font-family:var(--mono);font-size:10.5px;color:var(--text3);}
+.nm-proto-var{font:inherit;font-size:11px;background:var(--surface);border:1px solid var(--border2);
+  border-radius:10px;padding:1px 4px;color:var(--text2);max-width:150px;}
+.nm-proto-off{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:var(--text3);}
+.nm-proto-off input{width:3.1em;font:inherit;font-family:var(--mono);font-size:11px;text-align:center;
+  background:var(--surface);border:1px solid var(--border2);border-radius:5px;padding:1px 2px;color:var(--text);}
 .nm-proto-chip.synth{border-style:dashed;color:var(--text2);}
 .nm-proto-chip .x{cursor:pointer;color:var(--text3);font-size:15px;line-height:1;padding:0 3px;border-radius:8px;}
 .nm-proto-chip .x:hover{color:var(--danger);}
@@ -2271,6 +2317,165 @@ function partBlockHtml(pid,calc,steps){ var h='';
   if(calc&&calc.steps&&calc.steps.length){ h+='<p><strong>Recipe (from Archive calculator)</strong> '+link+'</p>'+calcRecipeHtml(calc); }
   else if(calc&&calc.hasCalc){ h+='<p>'+link+'</p>'; }
   return h||'<p></p>'; }
+// ── Protocol-driven step blocks ────────────────────────────────────────────────────────────
+// A protocol stage becomes one dated block. The prose is locked; only its typed parameters,
+// a per-step tick and a per-step annotation are writable. The stage is snapshotted into the
+// block at creation rather than looked up live, because a notebook entry is evidence: it has
+// to render the same years later even if the protocol was edited or retired. `proto.v` records
+// which version it came from, so a later protocol change can still be offered as an update.
+//
+// b.html is kept as a DERIVED cache of the same content, refreshed on every edit, so the PDF
+// export, publication text, search and tag filter keep reading blocks the way they always have.
+
+function _pnum(n){
+  if(typeof n!=='number'||!isFinite(n)) return String(n);
+  var r=Math.round(n*1e6)/1e6;
+  if(Math.abs(r-Math.round(r))>=1e-9) return (r<0?'−':'')+String(Math.abs(r));
+  var sign=(r<0)?'−':''; r=Math.abs(Math.round(r));
+  return sign+((r>=10000)?r.toLocaleString('en-US'):String(r));
+}
+function _pgap(u){ return (u==='°C'||u==='%'||!u||u.charAt(0)==='×')?'':' '; }
+function _pval(v,ov){ return {value:(ov&&ov.value!=null)?ov.value:v.value,
+                              max:(ov&&ov.max!=null)?ov.max:v.max}; }
+function protoParamText(v,ov){
+  var e=_pval(v,ov);
+  if(v.type==='ratio') return '1:'+_pnum(e.value);
+  var t=_pnum(e.value);
+  if(v.type==='range'&&e.max!=null) t+='–'+_pnum(e.max);
+  return t+_pgap(v.unit)+(v.unit||'');
+}
+function _chip(bId,key,field,val){
+  var t=String(val); var w=Math.max(1.7,t.length*0.62+0.8);
+  return '<input class="pchip" style="width:'+w.toFixed(2)+'em" value="'+esc(t)+'"'
+    +' onchange="setProtoParam(\''+bId+'\',\''+key+'\',\''+field+'\',this.value)"'
+    +' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">';
+}
+function protoParamHtml(b,key,v,live){
+  var ov=(b.params||{})[key], e=_pval(v,ov);
+  var changed=ov?' changed':'';
+  var lbl=esc(v.label||key)+(ov?' — changed from the protocol':'');
+  if(!live) return '<span class="pparam'+changed+'" title="'+lbl+'">'+protoParamText(v,ov)+'</span>';
+  var unit=v.unit?('<span class="punit">'+_pgap(v.unit)+esc(v.unit)+'</span>'):'';
+  var inner;
+  if(v.type==='ratio') inner='1:'+_chip(b.id,key,'value',_pnum(e.value));
+  else if(v.type==='range'&&e.max!=null)
+    inner=_chip(b.id,key,'value',_pnum(e.value))+'–'+_chip(b.id,key,'max',_pnum(e.max))+unit;
+  else inner=_chip(b.id,key,'value',_pnum(e.value))+unit;
+  return '<span class="pparam live'+changed+'" title="'+lbl+'">'+inner+'</span>';
+}
+function protoSubst(b,html,params,live){
+  return String(html||'').replace(/\{\{p\.([A-Za-z0-9_]+)\}\}/g,function(m,k){
+    var v=params&&params[k]; if(!v) return m;
+    return protoParamHtml(b,k,v,live);
+  });
+}
+function protoItemHtml(b,it,live){
+  var sid=it.id;
+  var text='<span class="pstep-t">'+protoSubst(b,it.html,it.params,live)+'</span>';
+  var note=((b.stepNotes||{})[sid]||'');
+  if(!live) return '<li>'+text+(note?'<div class="pstep-note">'+note+'</div>':'')+'</li>';
+  var on=!!(b.stepDone||{})[sid];
+  return '<li'+(on?' class="pstep-done"':'')+' data-step="'+esc(sid)+'">'
+    +'<button class="pstep-tick'+(on?' on':'')+'" title="'+(on?'Done — click to reopen':'Mark this step done')
+      +'" onclick="toggleProtoStep(\''+b.id+'\',\''+esc(sid)+'\')">'+(on?'✓':'')+'</button>'
+    +text
+    +'<button class="pstep-noteb" title="Add a note to this step" onclick="addProtoNote(\''+b.id+'\',\''+esc(sid)+'\')">+ note</button>'
+    +((note!==''||b._openNote===sid)
+       ? '<div class="rt pstep-note" contenteditable="true" data-ph="Note on this step…" data-ctx="pstep:'+b.id+':'+esc(sid)+'"'
+         +' oninput="setProtoNote(\''+b.id+'\',\''+esc(sid)+'\',this.innerHTML)" onfocus="_activeEd=this">'+note+'</div>'
+       : '')
+    +'</li>';
+}
+function protoBodyHtml(b,x,live){
+  if(x.t==='steps'){
+    var tag=x.ordered?'ol':'ul';
+    return '<'+tag+' class="psteps">'+(x.items||[]).map(function(it){return protoItemHtml(b,it,live);}).join('')+'</'+tag+'>';
+  }
+  if(x.t==='warn') return '<blockquote class="lb-note lb-note-warn">⚠ '+x.html+'</blockquote>';
+  if(x.t==='tip')  return '<blockquote class="lb-note lb-note-tip">Tip — '+x.html+'</blockquote>';
+  if(x.t==='note') return '<blockquote class="lb-note">'+x.html+'</blockquote>';
+  if(x.t==='table'){
+    if(!(x.headers||[]).length&&!(x.rows||[]).length) return x.html||'';
+    return '<table class="lb-table">'
+      +((x.headers||[]).length?'<thead><tr>'+x.headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>':'')
+      +'<tbody>'+(x.rows||[]).map(function(r){return '<tr>'+r.map(function(c){return '<td>'+c+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>';
+  }
+  return '';
+}
+function protoRenderHtml(b,live){
+  var P=b.proto; if(!P) return b.html||'';
+  return (P.body||[]).map(function(x){ return protoBodyHtml(b,x,live); }).join('');
+}
+function refreshProtoHtml(b){
+  if(!b.proto) return;
+  b.html=protoRenderHtml(b,false)
+    +((b.note&&_plain(b.note))?('<div class="pblk-note"><strong>Notes</strong>'+b.note+'</div>'):'');
+}
+function setProtoBlockNote(bId,html){
+  var f=_findBlk(bId); if(!f) return; var b=f.blk;
+  b.note=_persistImgHtml(html); refreshProtoHtml(b); f.exp.updated=Date.now(); queueSave();
+}
+
+function _findBlk(bId){
+  var ids=Object.keys(LB.data.experiments);
+  for(var i=0;i<ids.length;i++){ var e=LB.data.experiments[ids[i]];
+    var bs=e.blocks||[]; for(var j=0;j<bs.length;j++) if(bs[j].id===bId) return {exp:e,blk:bs[j]}; }
+  return null;
+}
+function setProtoParam(bId,key,field,raw){
+  var f=_findBlk(bId); if(!f||!f.blk.proto) return; var b=f.blk;
+  var n=parseFloat(String(raw).replace(/,/g,'').replace(/−/g,'-'));
+  b.params=b.params||{};
+  if(isNaN(n)){ delete b.params[key]; }
+  else { b.params[key]=b.params[key]||{}; b.params[key][field]=n; }
+  refreshProtoHtml(b); f.exp.updated=Date.now(); save(); renderEditor();
+}
+function toggleProtoStep(bId,sid){
+  var f=_findBlk(bId); if(!f) return; var b=f.blk;
+  b.stepDone=b.stepDone||{}; if(b.stepDone[sid]) delete b.stepDone[sid]; else b.stepDone[sid]=true;
+  f.exp.updated=Date.now(); save(); renderEditor();
+}
+function addProtoNote(bId,sid){
+  var f=_findBlk(bId); if(!f) return; f.blk._openNote=sid; renderEditor();
+  setTimeout(function(){ var n=document.querySelector('[data-ctx="pstep:'+bId+':'+sid+'"]'); if(n) n.focus(); },30);
+}
+function setProtoNote(bId,sid,html){
+  var f=_findBlk(bId); if(!f) return; var b=f.blk;
+  b.stepNotes=b.stepNotes||{}; b.stepNotes[sid]=_persistImgHtml(html);
+  refreshProtoHtml(b); f.exp.updated=Date.now(); queueSave();
+}
+// The escape hatch. Sometimes the experiment genuinely leaves the protocol, and a locked pane
+// is then in the way. One-way on purpose: the block becomes ordinary rich text and stops
+// following the protocol, which is recorded so the entry still says where it came from.
+function freeEditBlock(bId){
+  var f=_findBlk(bId); if(!f||!f.blk.proto) return;
+  lbConfirm('Unlock this step for free editing? It stops following the protocol and cannot be re-locked.',
+            {title:'Edit freely'}).then(function(ok){
+    if(!ok) return; var b=f.blk;
+    b.html=protoRenderHtml(b,false);
+    b.freedFrom={pid:b.proto.pid,stageId:b.proto.stageId,v:b.proto.v};
+    delete b.proto; delete b.params; delete b.stepNotes; delete b.stepDone; delete b._openNote;
+    f.exp.updated=Date.now(); save(); renderEditor();
+  });
+}
+function protoBlockHtml(b,live){
+  var P=b.proto; if(!P) return '';
+  var n=(P.body||[]).reduce(function(a,x){ return a+(x.t==='steps'?x.items.length:0); },0);
+  var done=Object.keys(b.stepDone||{}).length;
+  var hd='<div class="pblk-src">'
+    +'<a class="lb-link proto" data-app="protocols" data-pid="'+esc(P.pid)+'" contenteditable="false">'+esc(P.protoName||P.pid)+' ↗</a>'
+    +(n?'<span class="pblk-count">'+done+'/'+n+' steps</span>':'')
+    +'<button class="pblk-free" title="Stop following the protocol and edit this as plain text" onclick="freeEditBlock(\''+b.id+'\')">edit freely</button>'
+    +'</div>';
+  var note=live
+    ? '<div class="pblk-note"><div class="pblk-note-lbl">Notes</div>'
+      +'<div class="rt" contenteditable="true" data-ph="Anything about this step — what you actually did, what went wrong…"'
+      +' data-ctx="pnote:'+b.id+'" oninput="setProtoBlockNote(\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'
+      +(b.note||'')+'</div></div>'
+    : '';
+  return '<div class="pblk">'+(live?hd:'')+protoRenderHtml(b,live)+note+'</div>';
+}
+
 function _plain(html){ var d=document.createElement('div'); d.innerHTML=html||''; return (d.textContent||'').replace(/\s+/g,' ').trim(); }
 // Past-tense Nature-methods sentence per native calculator kind.
 var CALC_PUB={
@@ -2375,10 +2580,38 @@ function nmSetupUpd(reRender){ var host=el('nm-setup'); if(!host) return;
   nmPreview();
 }
 function nmProtos(){ var host=el('nm-protocols'); if(!host) return;
-  var chips=NM_PROTOS.map(function(p,i){ return '<span class="nm-proto-chip'+(p.synth?' synth':'')+'">'+esc(p.name||p.id)+'<span class="x" title="Remove" onclick="nmDelProto('+i+')">&times;</span></span>'; }).join('');
+  var chips=NM_PROTOS.map(function(p,i){
+    var vs=(p.variants&&p.variants.length>1)
+      ? '<select class="nm-proto-var" title="Delivery method" onchange="nmSetVariant('+i+',this.value)">'
+        +p.variants.map(function(v){ return '<option value="'+esc(v.id)+'"'+(p.variant===v.id?' selected':'')+'>'+esc(v.label)+'</option>'; }).join('')
+        +'</select>' : '';
+    var st=nmProtoStages(p,i);
+    var off='<label class="nm-proto-off" title="Start this protocol this many days into the experiment">day <input type="number" min="0" value="'+nmProtoOff(p,i)+'" onchange="nmSetOffset('+i+',this.value)"></label>';
+    return '<span class="nm-proto-chip'+(p.synth?' synth':'')+'">'+esc(p.name||p.id)
+      +(st?'<span class="nm-proto-n">'+st.length+' stage'+(st.length!==1?'s':'')+'</span>':'')
+      +vs+off+'<span class="x" title="Remove" onclick="nmDelProto('+i+')">&times;</span></span>'; }).join('');
   host.innerHTML='<div class="nm-pv-hd">Optional — add extra Archive protocol steps</div><div class="nm-proto-chips">'+chips+'<button type="button" class="nm-proto-add" onclick="nmAddProto()">+ protocol</button></div>'; }
 function nmDelProto(i){ NM_PROTOS.splice(i,1); nmProtos(); nmPreview(); }
-function nmAddProto(){ ensureArchive(function(){ var idx=archiveIndex(); var items=idx.filter(function(p){ return !NM_PROTOS.some(function(x){return x.id===p.id;}); }).map(function(p){ return {id:p.id,label:p.name+(p.hasCalc?' · calc':''),sub:p.category||'protocol',ic:'A',c:'#a56983'}; }); if(!items.length){ toast('No more protocols to add'); return; } lbPicker('Add source protocol',items,function(it){ NM_PROTOS.push({id:it.id,name:it.label.replace(/ · calc$/,'')}); nmProtos(); nmPreview(); }); }); }
+function nmAddProto(){ ensureArchive(function(){ var idx=archiveIndex(); var items=idx.filter(function(p){ return !NM_PROTOS.some(function(x){return x.id===p.id;}); }).map(function(p){ return {id:p.id,label:p.name+(p.hasCalc?' · calc':''),sub:p.category||'protocol',ic:'A',c:'#a56983'}; }); if(!items.length){ toast('No more protocols to add'); return; } lbPicker('Add source protocol',items,function(it){
+  var e={id:it.id,name:it.label.replace(/ · calc$/,'')};
+  nmLoadStages(e); NM_PROTOS.push(e); nmProtos(); nmPreview(); }); }); }
+// Pull the protocol's stage list up front so the modal can show the real day structure and
+// ask which delivery method you want, instead of promising "1 block" and producing 8.
+function nmLoadStages(p){
+  var P=null; try{ var W=_arcWin(); if(W&&W.ARCHIVE_PROTOCOL) P=W.ARCHIVE_PROTOCOL(p.id); }catch(e){}
+  if(!P||!(P.stages||[]).length) return;
+  p.variants=P.variants||null;
+  if(p.variants&&p.variants.length&&!p.variant) p.variant=p.variants[0].id;
+  p.stages=P.stages.map(function(st){ return {id:st.id,name:st.name,day:st.day||0,variant:st.variant||null}; });
+}
+function nmSetVariant(i,v){ if(!NM_PROTOS[i]) return; NM_PROTOS[i].variant=v; nmPreview(); }
+function nmSetOffset(i,v){ if(!NM_PROTOS[i]) return; var n=parseInt(v,10); NM_PROTOS[i].off=isNaN(n)?null:n; nmPreview(); }
+function nmProtoStages(p,i){
+  if(!p.stages) return null;
+  var v=p.variant;
+  return p.stages.filter(function(st){ return !st.variant||st.variant===v; });
+}
+function nmProtoOff(p,i){ return (p.off!=null)?p.off:((PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i); }
 function nmUpdateCode(){ var key=el('nm-type').value, type=presetBase(key), poi=(el('nm-poi').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,''), d=dateCompact(el('nm-date').value);
   el('nm-code').value = (poi && type==='D2B') ? (poi+'_'+type+'_'+d) : (type+d+(poi?('_'+poi):'')); }
 // Live preview of the preset's own day-blocks (+ any extra protocols).
@@ -2390,8 +2623,16 @@ function nmPreview(){ var host=el('nm-preview'); if(!host) return;
   if(S.apply){ try{ list=S.apply(NM_SETUP,list.slice())||list; }catch(e){} }
   var rows=list.map(function(b){ var off=b.dayOffset||0; var date=addDays(start,off);
     return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+' · '+fmtDate(date)+'</span><span class="nm-pv-t">'+esc(b.title||'—')+(b.calc?' <span class="nm-pv-ref">calc</span>':'')+'</span></div>'; }).join('');
-  var extra=NM_PROTOS.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+' · extra</span><span class="nm-pv-t">'+esc(p.name||p.id)+' <span class="nm-pv-ref">Archive</span></span></div>'; }).join('');
-  var n=list.length+NM_PROTOS.length;
+  var nExtra=0;
+  var extra=NM_PROTOS.map(function(p,i){
+    var off=nmProtoOff(p,i), st=nmProtoStages(p,i);
+    if(!st||!st.length){ nExtra+=1; return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+'</span><span class="nm-pv-t">'+esc(p.name||p.id)+' <span class="nm-pv-ref">Archive</span></span></div>'; }
+    nExtra+=st.length;
+    return st.map(function(x,si){ var d=off+(x.day||0);
+      return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+d+' · '+fmtDate(addDays(start,d))+'</span>'
+        +'<span class="nm-pv-t">'+esc(x.name||p.name)+(si===0?' <span class="nm-pv-ref">'+esc(p.name||p.id)+'</span>':'')+'</span></div>'; }).join('');
+  }).join('');
+  var n=list.length+nExtra;
   host.innerHTML='<div class="nm-pv-hd">Will create '+n+' day-block'+(n!==1?'s':'')+(NM_PLATE?' + a plate map':'')+'</div><div class="nm-pv-list">'+rows+extra+'</div>'; }
 function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   var key=el('nm-type').value, tpl=LB.data.presets[key]||{title:'',blocks:[{dayOffset:0,title:'',html:'<p></p>'}]};
@@ -2425,10 +2666,36 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   if(!protos.length){ finish([],[]); return; }
   toast('Adding protocol steps…');
   ensureArchive(function(){
-    var extra=protos.map(function(p,i){ var off=(PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i; var html;
-      if(SYNTH_PARTS[p.id]){ html=SYNTH_PARTS[p.id].html; }
-      else { var steps=archiveSteps(p.id); var calc=archiveCalc(p.id); html=partBlockHtml(p.id,calc,steps); }
-      return {id:uid(), date:addDays(startDate,off), dayOffset:off, title:p.name||p.id, part:p.name||p.id, sourcePid:p.id, html:html, done:false, completedAt:null};
+    var W=_arcWin();
+    var extra=[];
+    protos.forEach(function(p,i){
+      var off=nmProtoOff(p,i);
+      var base={id:uid(), date:addDays(startDate,off), dayOffset:off, title:p.name||p.id,
+                part:p.name||p.id, sourcePid:p.id, done:false, completedAt:null};
+      if(SYNTH_PARTS[p.id]){ base.html=SYNTH_PARTS[p.id].html; extra.push(base); return; }
+      var P=null; try{ if(W&&W.ARCHIVE_PROTOCOL) P=W.ARCHIVE_PROTOCOL(p.id); }catch(err){}
+      // Older Archive (API v1) has no structured protocol — keep the flat one-block behaviour
+      // rather than silently dropping the protocol from the experiment.
+      if(!P||!(P.stages||[]).length){
+        base.html=partBlockHtml(p.id,archiveCalc(p.id),archiveSteps(p.id));
+        extra.push(base); return;
+      }
+      // One dated block per stage. This is the whole point: a protocol is a sequence of days,
+      // not a single lump, and stage.day is what lets two protocols interleave on the calendar.
+      var variant=p.variant||((P.variants&&P.variants[0])?P.variants[0].id:null);
+      var stages=(P.stages||[]).filter(function(st){ return !st.variant||st.variant===variant; });
+      var pre=(P.preamble||[]).filter(function(x){ return x.t!=='variantPicker'; });
+      stages.forEach(function(st,si){
+        var body=(si===0&&pre.length)?pre.concat(st.body||[]):(st.body||[]);
+        var d=off+(st.day||0);
+        var b={id:uid(), date:addDays(startDate,d), dayOffset:d,
+               title:st.name||p.name||p.id, part:st.part||p.name||p.id, sourcePid:p.id,
+               proto:{pid:p.id, protoName:P.name, stageId:st.id, v:P.version,
+                      name:st.name, badge:st.badge||null, variant:st.variant||null, body:body},
+               params:{}, stepNotes:{}, stepDone:{}, html:'', done:false, completedAt:null};
+        refreshProtoHtml(b);
+        extra.push(b);
+      });
     });
     finish(extra,protos);
   });
@@ -2467,7 +2734,9 @@ function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.pa
   return '<div class="blk'+(b.done?' blk-is-done':'')+'" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+doneBtn+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a live prep calculator" onclick="calcMenu(\''+b.id+'\')">&#8721; calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
     +(b.calc?calcInputsHtml(b):'')
     +(b.plate&&pkey?platePreviewHtml(b.plate,pkey):'')
-    +'<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }
+    +(b.proto ? protoBlockHtml(b,true)
+              : '<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>')
+    +'</div>'; }
 // ── Files pane (the data dump) ──
 // Everything you generated for this experiment in one place: picklists, gel scans, Prism
 // exports. Images marked "in PDF" are embedded on export; other types print as a listed card,
@@ -2587,12 +2856,16 @@ function renderNotebookEditor(host){
       var hd='<div class="dfx-blk-hd'+(b.done?' dfx-done':'')+'"><button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'+(b.title?'<span class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'<span class="dfx-blk-t dim">Step</span>')
         +'<button class="dfx-snooze" title="Not today — push this step and everything after it one day forward" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">&#9200; Snooze &#8594;</button></div>';
       var pv=b.plate?('<div class="dfx-plate">'+platePreviewHtml(b.plate,'blk:'+g.exp.id+':'+b.id)+'</div>'):'';
-      return hd+(rc?'<div class="dfx-recipe">'+rc+'</div>':'')+pv+'<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
+      return hd+(rc?'<div class="dfx-recipe">'+rc+'</div>':'')+pv
+        +(b.proto ? protoBlockHtml(b,true)
+                  : '<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'); }).join('');
     return '<div class="day-exp"><div class="day-exp-hd"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span><button class="dfx-open" onclick="openExp(\''+g.exp.id+'\')">Open &#8599;</button></div>'+blks+'</div>'; }).join('')+'</div>') : '';
   // Carried-over unfinished work from earlier days (unticked checklist items roll forward).
   var co=carryoverForDate(D);
   var carried = co.order.length ? ('<div style="margin-top:16px"><div class="day-from-lbl day-carry-lbl">↩ Carried over — unfinished from earlier days</div>'+co.order.map(function(id){ var g=co.byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
-    var blks=g.blocks.map(function(b){ return '<div class="day-carry-hd"><button class="blk-done" title="Mark this step done" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')"></button><span class="carry-from">from '+esc(fmtDate(b.date))+'</span>'+(b.title?'<span class="dfx-blk-t2" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'')+'<button class="carry-move" title="Move this step onto the day you are viewing" onclick="carryBlockToToday(\''+g.exp.id+'\',\''+b.id+'\',\''+D+'\')">Move to this day &#8595;</button><button class="dfx-snooze" style="margin-left:0" title="Push this step and everything after it one day forward" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">&#9200; Snooze &#8594;</button><button class="dfx-snooze" style="margin-left:0" title="Stop showing this in carry-over, without marking it done" onclick="dismissCarry(\''+g.exp.id+'\',\''+b.id+'\')">Dismiss</button></div><div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'; }).join('');
+    var blks=g.blocks.map(function(b){ return '<div class="day-carry-hd"><button class="blk-done" title="Mark this step done" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')"></button><span class="carry-from">from '+esc(fmtDate(b.date))+'</span>'+(b.title?'<span class="dfx-blk-t2" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'')+'<button class="carry-move" title="Move this step onto the day you are viewing" onclick="carryBlockToToday(\''+g.exp.id+'\',\''+b.id+'\',\''+D+'\')">Move to this day &#8595;</button><button class="dfx-snooze" style="margin-left:0" title="Push this step and everything after it one day forward" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">&#9200; Snooze &#8594;</button><button class="dfx-snooze" style="margin-left:0" title="Stop showing this in carry-over, without marking it done" onclick="dismissCarry(\''+g.exp.id+'\',\''+b.id+'\')">Dismiss</button></div>'
+      +(b.proto ? protoBlockHtml(b,true)
+                : '<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'); }).join('');
     return '<div class="day-exp day-carry"><div class="day-exp-hd"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span></div>'+blks+'</div>'; }).join('')+'</div>') : '';
   host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+esc(fmtDate(D))+'</div><div class="exh-acts"><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">Daily notebook</div></div>'
     +'<div class="nb-free"><div class="day-from-lbl">Daily note</div><div class="rt nb-body" contenteditable="true" data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>'+nbTasksHtml(D)+from+carried+'</div>';
@@ -3785,6 +4058,9 @@ var PRINT_CSS='<style>#print-root{padding:0;color:#111}#print-root *{box-sizing:
  +'.pd-body .lb-note-warn{border-left-color:#e0803a}.pd-body .lb-note-tip{border-left-color:#4f9d8f}'
  +'.pd-body .lb-table{border-collapse:collapse;margin:6px 0;font-size:11.5px}'
  +'.pd-body .lb-table th,.pd-body .lb-table td{border:1px solid #bbb;padding:3px 7px}'
+ +'.pd-body .pstep-note{margin:4px 0 6px;padding:4px 8px;border-left:2px solid #4f9d8f;background:#f6f6f6;font-size:11.5px}'
+ +'.pd-body .pblk-note{margin-top:7px;padding-top:6px;border-top:1px solid #ddd}'
+ +'.pd-body .pparam{border-bottom:1px dotted #999}'
  +'.lb-todo{list-style:none}.lb-box{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:2px;margin-right:6px;vertical-align:middle}.lb-todo.done .lb-box{background:#4f9d8f;border-color:#4f9d8f}'
  +'ul.lb-check{list-style:none;margin-left:4px;padding-left:0}ul.lb-check li{position:relative;list-style:none;padding-left:20px;margin:2px 0}ul.lb-check li::before{content:"";position:absolute;left:0;top:2px;width:11px;height:11px;border:1px solid #888;border-radius:2px}ul.lb-check li.done::before{background:#4f9d8f;border-color:#4f9d8f}ul.lb-check li.done{color:#888;text-decoration:line-through}'
  +'img.lb-att{max-width:100%;height:auto;border-radius:6px;margin:6px 0;display:block;page-break-inside:avoid}'

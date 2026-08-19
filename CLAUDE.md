@@ -449,6 +449,48 @@ python3 migrate_protocols.py --from /tmp/orig.html --check
 Review list for the remaining human work — naming the 565 params, setting each stage's `day`:
 [`docs/PROTOCOL_MIGRATION_REVIEW.md`](docs/PROTOCOL_MIGRATION_REVIEW.md).
 
+## Labbook: a protocol stage is a dated block
+
+`createExperiment` used to turn each chosen protocol into **one** block dated at
+`PROTO_OFFSET[pid]`. A three-stage protocol was a single day. It now produces **one block per
+stage**, dated `startDate + protoOffset + stage.day` — which is also what lets two protocols
+interleave on the calendar (Gibson on day 0, Transformation on day 3, in one experiment).
+
+**The stage is snapshotted into the block** (`b.proto = {pid, protoName, stageId, v, name,
+badge, variant, body}`), not looked up live. A notebook entry is evidence: it has to render the
+same years later even if the protocol was edited or retired, and it must not need Archive loaded
+to display. `proto.v` records the version it came from, so a later protocol change can still be
+offered as an update.
+
+Writable state lives **outside** the snapshot, so the protocol and what you did stay separable:
+- `b.params[key] = {value, max?}` — **overrides only**, never a copy of the defaults.
+- `b.stepNotes[stepId]`, `b.stepDone[stepId]`, and `b.note` for the whole block.
+
+**`b.html` is a derived cache**, rebuilt by `refreshProtoHtml(b)` on every edit. That is what
+keeps ~15 existing consumers (PDF export, `buildPubReadyFromExp`, search, tag filter,
+`_collectAttIds`) working untouched — they still read `b.html` and never learn about `b.proto`.
+`protoRenderHtml(b, live)` renders interactive (chips, ticks, note buttons) or static (the
+cache, the PDF).
+
+- Parameters render as `<input class="pchip">` sized to their content, so a value stays part of
+  the sentence rather than becoming a form field. A changed one is accented — the deviation from
+  the protocol is visible without opening anything.
+- `freeEditBlock` is the escape hatch and is **one-way**: the block becomes ordinary rich text,
+  stops following the protocol, and records `b.freedFrom` so the entry still says where it came
+  from.
+- Blocks with no `b.proto` (presets, older experiments, `SYNTH_PARTS`) keep the free
+  contenteditable exactly as before. So does an Archive that only speaks API v1.
+- The New-experiment modal pulls each protocol's stage list up front (`nmLoadStages`), so the
+  preview shows the real dated stages instead of promising "1 block" and producing 8. Protocols
+  with delivery variants (`crispr-ko`, `crispr-ki`) get a method `<select>`; each protocol gets a
+  start-day offset.
+
+**`PROTOCOL_VERSION` is declared outside the `PROTOCOL_DATA` markers on purpose.** It was
+originally inside them, and the next `migrate_protocols.py --inject` silently wiped it — which
+made `ARCHIVE_PROTOCOL` throw into its own `catch` and return `null`, so every experiment
+quietly fell back to the flat one-block path. Anything declared between those markers is
+regenerated away.
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie
