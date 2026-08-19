@@ -112,20 +112,27 @@ def detypo(s):
 
 # ── parameter extraction ─────────────────────────────────────────────────────────────────
 # Ordered most-specific first. Each: (regex, type, unit-group or literal, key suffix)
+# Every unit the prose uses, longest-first so `min` wins over `m` and `hours` over `h`.
+UNIT_ALT = (r'(?:°C|ng/µL|ng/uL|mg/mL|µg/mL|U/µL|cycles|µmol|nmol|pmol|hours|days|'
+            r'µL|uL|μL|mL|rpm|min|sec|hrs|nM|µM|uM|mM|bp|nt|µg|ug|mg|hr|day|%|×|L|M|h|s|g|d)')
+UEND = r'(?![A-Za-z0-9])'
+# Ordered most-specific first. A range must be tried before the singular patterns, or
+# "invert 4–6×" is captured as a bare 6× and the lower bound is orphaned in the prose.
 PARAM_RES = [
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)\s*(°C|min|h|bp|nt|%|µL|mL|ng|µg)\b'), 'range'),
+    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)\s*×\s*10(&#\d+;|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)'), 'sci'),
+    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*[–—-]\s*(\d+(?:\.\d+)?)\s*(' + UNIT_ALT + r')' + UEND), 'range'),
     (re.compile(r'(?<![\w.])(-?−?\d+(?:\.\d+)?)\s*°C'), 'temp'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(min|hours|hour|hrs|hr|h|sec|s|days|day|d)\b'), 'time'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(µL|uL|μL|mL|L)\b'), 'vol'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(ng/µL|ng/uL|mg/mL|µg/mL|U/µL|nM|µM|uM|mM|M)\b'), 'conc'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(pmol|nmol|µmol|ng|µg|ug|mg|g)\b'), 'mass'),
+    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(min|hours|hour|hrs|hr|h|sec|s|days|day|d)' + UEND), 'time'),
+    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(µL|uL|μL|mL|L)' + UEND), 'vol'),
+    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(ng/µL|ng/uL|mg/mL|µg/mL|U/µL|nM|µM|uM|mM|M)' + UEND), 'conc'),
+    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(pmol|nmol|µmol|ng|µg|ug|mg|g)' + UEND), 'mass'),
     (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*%'), 'pct'),
     (re.compile(r'(?<![\w.])1\s*:\s*(\d+(?:,\d+)?)'), 'ratio'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*×(?!\s*g)'), 'fold'),
-    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(bp|nt|cycles|rpm)\b'), 'count'),
+    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*×(?!\s*g)(?!\s*10)'), 'fold'),
+    (re.compile(r'(?<![\w.])(\d+(?:\.\d+)?)\s*(bp|nt|cycles|rpm)' + UEND), 'count'),
 ]
 UNIT_FOR = {'temp':'°C','pct':'%','fold':'×','ratio':''}
-SUFFIX   = {'temp':'T','time':'Min','vol':'Vol','conc':'Conc','mass':'Amt','pct':'Pct',
+SUFFIX   = {'sci':'Range','temp':'T','time':'Min','vol':'Vol','conc':'Conc','mass':'Amt','pct':'Pct',
             'ratio':'Ratio','fold':'X','count':'N','range':'Range'}
 STOP = {'the','a','an','and','or','of','to','in','at','for','with','on','by','is','are','be',
         'add','then','from','into','each','all','it','its','this','that','if','as','per','no'}
@@ -165,7 +172,11 @@ def extract_params(step_html, used):
                 while n in used:
                     n = key + str(k); k += 1
                 used.add(n)
-                if kind == 'range':
+                if kind == 'sci':
+                    lo, hi, exp = m.group(1), m.group(2), m.group(3)
+                    params[n] = {'type':'range','value':float(lo),'max':float(hi),
+                                 'unit':'×10' + exp, 'label':'TODO: ' + phrase}
+                elif kind == 'range':
                     lo, hi, unit = m.group(1), m.group(2), m.group(3)
                     params[n] = {'type':'range','value':float(lo),'max':float(hi),'unit':unit,
                                  'label':'TODO: ' + phrase}
