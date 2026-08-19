@@ -89,6 +89,14 @@ body.in-app::before{opacity:0;}
 /* VIEWS */
 #hub-home{margin-top:58px;flex:1;overflow-y:auto;position:relative;z-index:1;opacity:0;transition:opacity 0.35s ease;}
 #hub-bg-canvas{display:block;position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.55;mix-blend-mode:soft-light;}
+.cells-tabs{display:flex;align-items:center;gap:2px;padding:0 18px;height:44px;flex:0 0 auto;
+  border-bottom:1px solid var(--border);background:var(--surface);}
+.cells-tab{font:inherit;font-size:13px;font-weight:500;background:none;border:none;color:var(--text2);
+  padding:0 14px;height:100%;cursor:pointer;border-bottom:2px solid transparent;}
+.cells-tab:hover{color:var(--text);}
+.cells-tab.on{color:var(--text);border-bottom-color:#4f9d8f;font-weight:600;}
+.cells-host{flex:1 1 auto;position:relative;min-height:0;}
+.cells-host>iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
 .app-view{position:fixed;top:58px;left:0;right:0;bottom:0;z-index:10;display:none;flex-direction:column;overflow:hidden;background:var(--bg);transition:opacity 0.28s ease;}
 .app-view iframe{flex:1;width:100%;height:100%;border:none;display:block;}
 
@@ -1160,6 +1168,10 @@ body.hub-announcing #hub-home{margin-top:98px;}
 </div>
 
 <!-- APP VIEWS -->
+<div class="app-view" id="view-cells">
+  <div class="cells-tabs" id="cells-tabs"></div>
+  <div class="cells-host" id="cells-host"></div>
+</div>
 <div class="app-view" id="view-incubator">
   <iframe id="frame-incubator" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
 </div>
@@ -1752,6 +1764,7 @@ function decodeB64App(b64) {
 }
 
 var APP_INFO = {
+  cells: { letter:'C', color:'#4f9d8f', name:'Cells' },
   echo:    { letter:'E', color:'#ff5760', name:'Echo' },
   deg:     { letter:'D', color:'#7c6fd4', name:'Dora' },
   cellarchive: { letter:'CA', color:'#d17a4a', name:'Cell Archive' },
@@ -1879,7 +1892,99 @@ function _hubQueueMessage(id,msg){
   }
   send();
 }
+// The three Cells tabs are joined by cell line, and all three write it as free text:
+// Incubator splits baseLine + titleSuffix, Iceberg writes "HCT116, DCAF15 KO #15 JMM06 Pool",
+// Cell Archive stores the plain name. The base line is the part before the first comma. This
+// resolves them at read time rather than migrating anyone's freezer inventory to carry ids —
+// a rewrite of real vial records to gain a join is not a trade worth making.
+function cellsBaseLine(s){
+  return String(s||'').split(',')[0].trim().toLowerCase().replace(/\s+/g,' ').replace(/[-_]/g,'');
+}
+function cellsLineStats(){
+  var out = {};
+  function bucket(k){ return out[k] || (out[k] = {cultures:0, vials:0, where:[]}); }
+  try {
+    var inc = (JournalStore.get()||{}).incubator || {};
+    Object.keys(inc).forEach(function(id){
+      var c = inc[id] || {};
+      var k = cellsBaseLine(c.baseLine || c.line);
+      if (k) bucket(k).cultures++;
+    });
+  } catch(e){}
+  try {
+    // Prefer the live frame: Iceberg only writes localStorage when something changes, so on a
+    // fresh session the stored copy is empty while the app on screen is not.
+    var st = null;
+    try { var cf = document.getElementById('frame-cryo'); if (cf && cf.contentWindow && cf.contentWindow.state) st = cf.contentWindow.state; } catch(e2){}
+    if (!st) st = JSON.parse(localStorage.getItem('cryo_state_v1') || 'null');
+    if (st && st.storages) Object.keys(st.storages).forEach(function(sk){
+      (st.storages[sk].racks || []).forEach(function(rk){
+        (rk.boxes || []).forEach(function(bx){
+          var vs = bx.vials || bx.positions || {};
+          Object.keys(vs).forEach(function(pos){
+            var v = vs[pos] || {};
+            var k = cellsBaseLine(v.cellLine);
+            if (!k) return;
+            var b = bucket(k);
+            b.vials += (parseInt(v.vialCount, 10) || 1);
+            if (b.where.indexOf(bx.name) < 0 && b.where.length < 4) b.where.push(bx.name);
+          });
+        });
+      });
+    });
+  } catch(e){}
+  return out;
+}
+function cellsStatsFor(name){
+  var s = cellsLineStats()[cellsBaseLine(name)];
+  return s ? {cultures:s.cultures, vials:s.vials, where:s.where.slice()} : {cultures:0, vials:0, where:[]};
+}
+
+// ── Cells: one app made of three ────────────────────────────────────────────────────────────
+// Culture, cell-line reference and cryostorage are one lifecycle — a line becomes a flask
+// becomes a vial — and were three cards joined only by matching strings. Merged here at the
+// shell rather than by merging three codebases: each keeps its own window, CSS and ids, which
+// is exactly what an iframe is for, and no data moves.
+var CELLS_TABS = [
+  {id:'incubator',   label:'Cultures'},
+  {id:'cellarchive', label:'Lines'},
+  {id:'cryo',        label:'Freezer'}
+];
+var _cellsTab = null;
+function openCells(tab, item, context){
+  tab = tab || _cellsTab || 'incubator';
+  if (!CELLS_TABS.some(function(t){ return t.id===tab; })) tab = 'incubator';
+  _cellsTab = tab;
+  var host = document.getElementById('cells-host');
+  CELLS_TABS.forEach(function(t){
+    _loadApp(t.id);
+    var f = document.getElementById('frame-' + t.id);
+    if (f && f.parentNode !== host) host.appendChild(f);   // move it in once, keep its state
+    if (f) f.style.display = (t.id === tab) ? '' : 'none';
+  });
+  document.getElementById('cells-tabs').innerHTML = CELLS_TABS.map(function(t){
+    return '<button class="cells-tab' + (t.id===tab?' on':'') + '" onclick="openCells(\'' + t.id + '\')">' + t.label + '</button>';
+  }).join('');
+  if (item || context){
+    var m = {type:'switchTab', tab:tab, requestId:'dhub'+Date.now().toString(36)};
+    if (item) m.item = item;
+    if (context){ m.type='dhub:context'; m.version=1; m.source=context.source||'hub'; m.target=tab; m.action='open'; m.context=context; }
+    _hubQueueMessage(tab, m);
+  }
+  currentApp = 'cells';
+  var view = document.getElementById('view-cells');
+  document.querySelectorAll('.app-view').forEach(function(v){ if (v!==view){ v.style.display='none'; v.style.opacity=''; } });
+  view.style.opacity='0'; view.style.display='flex';
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){ view.style.opacity='1'; }); });
+  setTimeout(function(){ if(currentApp==='cells') enterAppNav('cells'); }, 0);
+  try { history.pushState({_hubApp:'cells'}, '', '#cells'); } catch(e){}
+}
+
 function openApp(id, tab, item, context) {
+  // Incubator / Cell Archive / Iceberg are tabs of Cells now. Route rather than rename, so
+  // Labbook's openIncubatorLink, saved #hashes and the app catalog keep working untouched.
+  if (id==='cells') return openCells(null, item, context);
+  if (id==='incubator'||id==='cellarchive'||id==='cryo') return openCells(id, item, context);
   var frame = document.getElementById('frame-' + id);
   _loadApp(id);
   if (tab || item || context) {
@@ -2764,7 +2869,7 @@ var PRIMARY_CARDS = [
   { id:'labbook',   name:'Labbook',       color:'#4f9d8f', icon:'archive',   tag:'Daily notebook, experiments, planning and publication-ready records', apps:['labbook'], directApp:'labbook', adminOnly:true },
   { id:'archive',   name:'Archive',       color:'#a56983', icon:'archive',   tag:'Protocols, calculators and reusable experimental knowledge', apps:['protocols'], directApp:'protocols' },
   { id:'analysis',  name:'Data Analysis', color:'#5e87c5', icon:'analysis',  tag:'Echo-led analysis for dose response, plates and assay readouts', apps:['echo','deg','spectra','ldi','lumina','beacon'] },
-  { id:'incubator', name:'Incubator',     color:'#4f9d8f', icon:'incubator', tag:'Cell culture, cell-line reference and cryostorage', apps:['incubator','cellarchive','cryo'], adminOnly:true }
+  { id:'cells',     name:'Cells',         color:'#4f9d8f', icon:'incubator', tag:'One lifecycle — cultures in the incubator, the cell-line reference, and vials in the freezer', apps:['incubator','cellarchive','cryo'], directApp:'cells', adminOnly:true }
 ];
 var EXTRA_GROUPS = [
   { id:'design',    name:'Design & Presentation', color:'#e36c69', icon:'design', tag:'Structures, plates, gels, figures and project timelines', apps:['pd','blot','ribbon','gantt'] },

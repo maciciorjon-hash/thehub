@@ -547,6 +547,31 @@ Note for anyone testing Echo from the outside: `_lastResultsData` is a top-level
 assigning `echoFrame.contentWindow._lastResultsData` does *not* reach it. Use `eval` inside
 Echo's own scope, or call `renderResults(data)`.
 
+## Cells — Incubator + Cell Archive + Iceberg as one app
+
+A line becomes a flask becomes a vial: one lifecycle that used to be three home cards joined by
+nothing but matching strings. **Merged at the shell, not by merging three codebases.** `view-cells`
+holds a tab bar (Cultures · Lines · Freezer) and the three existing frames are *moved into it*
+on first open, so each keeps its own window, CSS, ids and state, and no data moves. `openApp`
+routes `incubator`/`cellarchive`/`cryo` into `openCells(tab)`, so Labbook's `openIncubatorLink`,
+saved `#hashes` and the app catalog all keep working untouched.
+
+**The join is resolved at read time, not migrated.** All three write the cell line as free text —
+Incubator splits `baseLine` + `titleSuffix`, Iceberg writes `"HCT116, DCAF15 KO #15 JMM06 Pool"`,
+Cell Archive stores the plain name. `cellsBaseLine()` takes the part before the first comma;
+`cellsLineStats()` sums cultures from `JournalStore.incubator` and vials from Iceberg (preferring
+the **live frame**, since Iceberg only writes localStorage on change and a fresh session has an
+empty stored copy). Cell Archive's tiles then read "HCT116 · 1 in culture · 3 vials". Rewriting
+real vial records to carry ids, just to gain a join that name resolution already provides, is not
+a trade worth making.
+
+**Correction to an earlier claim in this file:** Cell_Archive's 760 KB was described as static
+prose. It is not — it is **9 embedded JPEG micrographs** (709 KB); the markup is only 41 KB. They
+are 720×540 but displayed at 130×130 with `object-fit:cover`, and nothing enlarges them (no
+lightbox, no click handler). Resized to 347×260 at q82 they still exceed what can reach the
+screen: **742 KB → 323 KB**. Do not delete these photos — knowing what a line should look like
+down the microscope is the reason the tab exists.
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie
