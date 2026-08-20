@@ -70,6 +70,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .tab .ti svg{width:15px;height:15px;flex-shrink:0;}
 .tab .tcount{font-size:10px;color:var(--text3);font-family:var(--mono);background:var(--surface2);padding:1px 7px;border-radius:10px;}
 .tab.active .tcount{color:var(--accent);background:var(--accent-dim);}
+.tab.tab-add{font-size:16px;font-weight:600;color:var(--text3);padding-left:14px;padding-right:14px;}
+.tab.tab-add:hover{color:var(--accent);}
 
 /* MAIN */
 main{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0;}
@@ -345,19 +347,9 @@ tbody tr:hover{background:var(--surface2);}
   <input type="file" id="import-file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importXLSX(this.files[0])">
 </div>
 
-<div class="tabs">
-  <button class="tab active" data-tab="minus80" onclick="switchTab('minus80')">
-    <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg></span><span>&minus;80&deg;C</span><span class="tcount" id="tc-minus80">0</span>
-  </button>
-  <button class="tab" data-tab="n2" onclick="switchTab('n2')">
-    <span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2c0 3-3 5-3 9a5 5 0 0010 0c0-1.5-.7-2.7-1.5-3.8"/><path d="M9 8c.5 1 1.5 1.5 1.5 3"/></svg></span><span>Liquid N&#8322;</span><span class="tcount" id="tc-n2">0</span>
-  </button>
-</div>
+<div class="tabs" id="storage-tabs"></div>
 
-<main>
-  <div class="tab-pane active" id="pane-minus80" data-store="minus80"></div>
-  <div class="tab-pane" id="pane-n2" data-store="n2"></div>
-</main>
+<main id="storage-panes"></main>
 
 <!-- BOX DETAIL OVERLAY -->
 <div class="detail-overlay" id="detail-overlay" onclick="if(event.target===this)closeBoxDetail()">
@@ -377,8 +369,9 @@ tbody tr:hover{background:var(--surface2);}
       <button class="tb-btn" onclick="openBulkAdd()">Bulk add (paste)</button>
       <span class="boxview-seg" id="boxview-seg">
         <button class="bvseg-btn" data-view="grid" onclick="setBoxView('grid')">Grid</button>
-        <button class="bvseg-btn" data-view="group" onclick="setBoxView('group')">By cell line</button>
+        <button class="bvseg-btn" data-view="group" onclick="setBoxView('group')">By contents</button>
       </span>
+      <button class="tb-btn" id="boxlog-btn" onclick="showBoxLog()" style="display:none;" title="What has been used up or discarded from this box">History</button>
       <span style="flex:1;"></span>
       <span class="detail-sub" id="detail-box-fill"></span>
     </div>
@@ -401,11 +394,15 @@ tbody tr:hover{background:var(--surface2);}
           <span class="hint">Row letter + column number (e.g. A1, B12)</span>
         </div>
         <div class="field">
-          <label>Cell line *</label>
+          <label>What is it</label>
+          <select id="vf-kind" onchange="vfSyncKind()"></select>
+        </div>
+        <div class="field">
+          <label id="vf-cl-lbl">Cell line *</label>
           <input type="text" id="vf-cl" list="cl-suggestions" placeholder="HeLa, U2OS, HEK293T&hellip;" required>
           <datalist id="cl-suggestions"></datalist>
         </div>
-        <div class="field">
+        <div class="field vf-cells">
           <label>Passage number</label>
           <input type="text" id="vf-passage" placeholder="P12">
         </div>
@@ -413,21 +410,26 @@ tbody tr:hover{background:var(--surface2);}
           <label>Freeze date</label>
           <input type="date" id="vf-date">
         </div>
-        <div class="field span2">
+        <div class="field span2 vf-cells">
           <label>Freezing media</label>
           <input type="text" id="vf-fmedia" placeholder="e.g. DMEM + 10% FBS + 10% DMSO">
         </div>
-        <div class="field span2">
+        <div class="field span2 vf-cells">
           <label>Culture media / conditions</label>
           <input type="text" id="vf-culture" placeholder="e.g. DMEM + 10% FBS + 1% P/S, 37&deg;C 5% CO&#8322;">
         </div>
-        <div class="field">
-          <label>Frozen by</label>
-          <input type="text" id="vf-by" placeholder="initials">
+        <div class="field span2 vf-other" style="display:none;">
+          <label id="vf-conc-lbl">Concentration / details</label>
+          <input type="text" id="vf-conc" placeholder="e.g. 1 mg/mL, 100 &micro;M stock">
         </div>
         <div class="field">
-          <label>Vials at this position</label>
-          <input type="number" id="vf-count" value="1" min="1">
+          <label id="vf-by-lbl">Frozen by</label>
+          <input type="text" id="vf-by" placeholder="initials">
+        </div>
+        <div class="field" id="vf-fill-field">
+          <label>How many vials</label>
+          <input type="number" id="vf-count" value="1" min="1" max="200">
+          <span class="hint" id="vf-fill-hint">One per position, filling forward from here</span>
         </div>
         <div class="field span2">
           <label>Notes</label>
@@ -437,6 +439,9 @@ tbody tr:hover{background:var(--surface2);}
     </div>
     <div class="modal-foot">
       <button class="tb-btn lg danger" id="vf-delete-btn" style="margin-right:auto;display:none;" onclick="deleteVial()">Delete</button>
+      <button class="tb-btn lg" id="vf-discard-btn" style="display:none;" onclick="discardVial()" title="Used up or failed \u2014 removed from the box but kept in its history">Discard</button>
+      <button class="tb-btn lg" id="vf-dup-btn" style="display:none;" onclick="duplicateVial()" title="Same contents, next free position">Duplicate</button>
+      <button class="tb-btn lg" id="vf-thaw-btn" style="display:none;" onclick="thawVial()" title="Take this vial out and start a culture in Incubator">Thaw \u2192</button>
       <button class="tb-btn lg" onclick="closeVialModal()">Cancel</button>
       <button class="tb-btn lg primary" onclick="saveVial()">Save</button>
     </div>
@@ -682,7 +687,7 @@ var SEED_DATA = {
 };
 
 function _hasAnyVials(st){
-  return ['minus80', 'n2'].some(function(tab){
+  return Object.keys((st && st.storages) || {}).some(function(tab){
     var s = st.storages[tab];
     return s && s.racks && s.racks.some(function(r){
       return r.boxes && r.boxes.some(function(b){ return b.vials && Object.keys(b.vials).length > 0; });
@@ -718,6 +723,21 @@ function uid(){ return 'id-' + Math.random().toString(36).slice(2,9) + Date.now(
 // related lines read as a family instead of getting wildly different random colours.
 var _hueCache = {}, _baseHue = {};
 var CELL_HUES = [210, 158, 32, 340, 265, 128, 46, 192, 300, 16, 92, 238, 318, 74, 178, 355];
+// ─── WHAT IS IN A VIAL ────────────────────────────────────────────────────
+// A freezer holds more than cells. A record with no kind is a cell vial, because that is what
+// every vial written before today is — nothing migrates.
+var VIAL_KINDS = [
+  {id:'cells',    label:'Cells'},
+  {id:'plasmid',  label:'Plasmid'},
+  {id:'antibody', label:'Antibody'},
+  {id:'primer',   label:'Primer'},
+  {id:'other',    label:'Other'}
+];
+function vialKind(v){ return (v && v.kind) || 'cells'; }
+function vialKindLabel(k){ var m=VIAL_KINDS.filter(function(x){return x.id===k;})[0]; return m?m.label:'Other'; }
+// The one name a vial is known by, whatever it holds. Everything that colours, searches,
+// groups or exports goes through this so a plasmid box is not a grid of blank wells.
+function vialLabel(v){ return (v && (v.cellLine || v.label)) || ''; }
 function _cellBase(name){ return String(name||'').split(/[,(]/)[0].trim().toLowerCase(); }
 function cellLineFamilyHue(name){
   var base = _cellBase(name);
@@ -769,10 +789,80 @@ window.addEventListener('popstate', function(){
 });
 
 // ─── TAB SWITCHING ────────────────────────────────────────────────────────
+// ─── STORAGES ─────────────────────────────────────────────────────────────
+// The freezer map is no longer two hardcoded tabs. Antibodies live at -20, enzymes at 4,
+// and a record elsewhere in the Hub can only point at a box that exists here — so the set
+// of storages has to be the lab's, not this file's. The two original keys are untouched.
+var STORAGE_ICONS = {
+  minus80: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>',
+  n2:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2c0 3-3 5-3 9a5 5 0 0010 0c0-1.5-.7-2.7-1.5-3.8"/><path d="M9 8c.5 1 1.5 1.5 1.5 3"/></svg>',
+  _fridge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 9h14M8 5.5v1.5M8 12v2.5"/></svg>'
+};
+// Offered by "+ Storage" — the freezers a wet lab actually has, so nobody types "-20 C" three
+// different ways and ends up with three of them.
+var STORAGE_PRESETS = [
+  {key:'minus20', label:'\u221220\u00b0C'},
+  {key:'plus4',   label:'4\u00b0C'},
+  {key:'rt',      label:'Room temp'}
+];
+function storageKeys(){ return Object.keys(state.storages || {}); }
+function storageIcon(key){ return STORAGE_ICONS[key] || STORAGE_ICONS._fridge; }
+function renderStorageTabs(){
+  var tabs = document.getElementById('storage-tabs'), panes = document.getElementById('storage-panes');
+  if (!tabs || !panes) return;
+  var keys = storageKeys();
+  if (keys.indexOf(currentTab) < 0) currentTab = keys[0];
+  tabs.innerHTML = keys.map(function(k){
+    return '<button class="tab' + (k === currentTab ? ' active' : '') + '" data-tab="' + esc(k) + '" onclick="switchTab(\'' + esc(k) + '\')">'
+      + '<span class="ti">' + storageIcon(k) + '</span><span>' + esc(state.storages[k].label || k) + '</span>'
+      + '<span class="tcount" id="tc-' + esc(k) + '">0</span></button>';
+  }).join('')
+  + '<button class="tab tab-add" title="Add a storage unit" onclick="addStorage()">+</button>';
+  // Panes are kept, not rebuilt, so a rendered box survives a tab bar repaint.
+  keys.forEach(function(k){
+    var pane = panes.querySelector('.tab-pane[data-store="' + k + '"]');
+    if (!pane){ pane = document.createElement('div'); pane.className = 'tab-pane'; pane.id = 'pane-' + k; pane.dataset.store = k; panes.appendChild(pane); }
+    pane.classList.toggle('active', k === currentTab);
+  });
+  Array.prototype.forEach.call(panes.querySelectorAll('.tab-pane'), function(pn){
+    if (keys.indexOf(pn.dataset.store) < 0) pn.remove();
+  });
+}
+function addStorage(){
+  var taken = storageKeys();
+  var free = STORAGE_PRESETS.filter(function(p){ return taken.indexOf(p.key) < 0; });
+  var label = prompt('Name the storage unit'
+    + (free.length ? ' (e.g. ' + free.map(function(f){ return f.label; }).join(', ') + ')' : '') + ':',
+    free.length ? free[0].label : '');
+  if (label === null) return;
+  label = String(label).trim();
+  if (!label) return;
+  var preset = free.filter(function(f){ return f.label === label; })[0];
+  var key = preset ? preset.key : ('st' + Date.now().toString(36));
+  state.storages[key] = { label: label, racks: [] };
+  saveState();
+  renderStorageTabs();
+  switchTab(key);
+  toast('Added ' + label);
+}
+function renameStorage(key){
+  var label = prompt('Rename this storage unit:', state.storages[key].label || key);
+  if (label === null) return;
+  label = String(label).trim(); if (!label) return;
+  state.storages[key].label = label; saveState(); renderStorageTabs(); switchTab(key);
+}
+function deleteStorage(key){
+  var s = state.storages[key]; if (!s) return;
+  var n = 0; (s.racks||[]).forEach(function(r){ (r.boxes||[]).forEach(function(b){ n += Object.keys(b.vials||{}).length; }); });
+  if (storageKeys().length < 2){ toast('This is the only storage unit'); return; }
+  if (!confirm('Delete "' + (s.label||key) + '"' + (n ? ' and the ' + n + ' vial' + (n===1?'':'s') + ' recorded in it' : '') + '? This cannot be undone.')) return;
+  delete state.storages[key]; saveState();
+  currentTab = storageKeys()[0]; renderStorageTabs(); switchTab(currentTab);
+}
 function switchTab(tab){
+  if (!state.storages[tab]) tab = storageKeys()[0];
   currentTab = tab;
-  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab === tab); });
-  document.querySelectorAll('.tab-pane').forEach(function(p){ p.classList.toggle('active', p.dataset.store === tab); });
+  renderStorageTabs();
   document.getElementById('hdr-sub').textContent = state.storages[tab].label + ' inventory';
   renderTab(tab);
 }
@@ -833,7 +923,7 @@ function boxMatchesSearch(box, q) {
   if (box.name.toLowerCase().includes(q)) return true;
   return Object.entries(box.vials || {}).some(function(kv){
     var pos = kv[0], v = kv[1];
-    return [v.cellLine, pos, v.notes, v.freezeMedia, v.cultureMedia, v.frozenBy].some(function(x){ return x && String(x).toLowerCase().includes(q); });
+    return [vialLabel(v), vialKindLabel(vialKind(v)), pos, v.notes, v.freezeMedia, v.cultureMedia, v.frozenBy].some(function(x){ return x && String(x).toLowerCase().includes(q); });
   });
 }
 
@@ -878,7 +968,7 @@ function renderBoxCard(tab, rackId, box){
     for (var c = 0; c < previewCols; c++) {
       var pos = String.fromCharCode(65 + r) + (c + 1);
       var v = vials[pos];
-      var bg = v ? cellLineColor(v.cellLine) : 'var(--surface)';
+      var bg = v ? cellLineColor(vialLabel(v)) : 'var(--surface)';
       preview += '<div class="pw' + (v ? ' filled' : '') + '" style="background:' + (v ? bg : '') + ';"></div>';
     }
   }
@@ -894,9 +984,9 @@ function computeDominantCellLine(box){
   var counts = {};
   var maxCl = null, maxN = 0;
   Object.values(box.vials || {}).forEach(function(v){
-    if (!v.cellLine) return;
-    counts[v.cellLine] = (counts[v.cellLine] || 0) + 1;
-    if (counts[v.cellLine] > maxN) { maxN = counts[v.cellLine]; maxCl = v.cellLine; }
+    var nm = vialLabel(v); if (!nm) return;
+    counts[nm] = (counts[nm] || 0) + 1;
+    if (counts[nm] > maxN) { maxN = counts[nm]; maxCl = nm; }
   });
   return maxCl;
 }
@@ -915,10 +1005,10 @@ function computeStats(tab){
       Object.values(b.vials || {}).forEach(function(v){
         var cnt = v.vialCount || 1;
         totalVials += cnt;
-        if (v.cellLine) cellLines[v.cellLine] = (cellLines[v.cellLine] || 0) + cnt;
+        var nm2 = vialLabel(v); if (nm2) cellLines[nm2] = (cellLines[nm2] || 0) + cnt;
         if (v.freezeDate) {
           var d = new Date(v.freezeDate);
-          if (!isNaN(d) && (!oldestDate || d < oldestDate)) { oldestDate = d; oldestVial = v.cellLine || ''; }
+          if (!isNaN(d) && (!oldestDate || d < oldestDate)) { oldestDate = d; oldestVial = vialLabel(v); }
         }
       });
     });
@@ -951,7 +1041,7 @@ function renderTableView(tab){
         var v = b.vials[pos];
         rows.push({
           rack: r.name, box: b.name, pos: pos,
-          cellLine: v.cellLine || '', passage: v.passage || '',
+          cellLine: vialLabel(v), kind: vialKind(v), passage: v.passage || '',
           freezeDate: v.freezeDate || '', freezeMedia: v.freezeMedia || '',
           culture: v.cultureMedia || '', by: v.frozenBy || '',
           count: v.vialCount || 1, notes: v.notes || '',
@@ -1075,7 +1165,7 @@ function renderBoxDetail(){
     for (var c = 1; c <= cols; c++) {
       var pos = rLetter + c;
       var v = (box.vials || {})[pos];
-      var bg = v ? cellLineColor(v.cellLine) : 'var(--surface2)';
+      var bg = v ? cellLineColor(vialLabel(v)) : 'var(--surface2)';
       gridHtml += '<div class="well' + (v ? ' filled' : '') + '" data-pos="' + pos + '" style="background:' + bg + ';"></div>';
     }
   }
@@ -1083,7 +1173,7 @@ function renderBoxDetail(){
 
   // Cell-line legend (top 12)
   var counts = {};
-  Object.values(box.vials || {}).forEach(function(v){ if (v.cellLine) counts[v.cellLine] = (counts[v.cellLine] || 0) + 1; });
+  Object.values(box.vials || {}).forEach(function(v){ var n=vialLabel(v); if (n) counts[n] = (counts[n] || 0) + 1; });
   var lines = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; }).slice(0, 12);
   var legend = lines.length
     ? '<div class="legend">' + lines.map(function(cl){
@@ -1097,7 +1187,7 @@ function renderBoxDetail(){
   if (state.boxView === 'group') {
     var byLine = {};
     Object.keys(box.vials || {}).forEach(function(pos){
-      var v = box.vials[pos]; var cl = (v && v.cellLine) || '(unlabelled)';
+      var v = box.vials[pos]; var cl = vialLabel(v) || '(unlabelled)';
       (byLine[cl] = byLine[cl] || []).push({ pos: pos, v: v });
     });
     var clNames = Object.keys(byLine).sort(function(a, b){
@@ -1122,6 +1212,8 @@ function renderBoxDetail(){
     b.classList.toggle('on', b.getAttribute('data-view') === (state.boxView || 'grid'));
   });
 
+  var lg = document.getElementById('boxlog-btn');
+  if (lg) lg.style.display = (box.log && box.log.length) ? '' : 'none';
   document.getElementById('detail-body').innerHTML = (state.boxView === 'group' ? groupHtml : gridHtml) + legend;
 
   // Hover + click handlers on wells. On touch-only devices the hover tooltip is
@@ -1133,11 +1225,11 @@ function renderBoxDetail(){
       el.addEventListener('mouseleave', wellHoverLeave);
       el.addEventListener('mousemove', wellHoverMove);
     }
-    el.addEventListener('click', function(){ wellClick(el.dataset.pos); });
+    el.addEventListener('click', function(ev){ wellClick(el.dataset.pos, ev); });
   });
   // Grouped-view chips open the same vial editor.
   document.querySelectorAll('#detail-body .cl-pos').forEach(function(el){
-    el.addEventListener('click', function(){ wellClick(el.dataset.pos); });
+    el.addEventListener('click', function(ev){ wellClick(el.dataset.pos, ev); });
   });
 }
 function _posOrder(pos){ var m = /^([A-Z])(\d+)$/.exec(pos); return m ? (m[1].charCodeAt(0) - 65) * 100 + parseInt(m[2], 10) : 0; }
@@ -1159,7 +1251,7 @@ function wellHoverEnter(e){
     if (v.frozenBy) rows += '<div class="tt-row"><span class="tt-key">By</span><span class="tt-val">' + esc(v.frozenBy) + '</span></div>';
     if (v.vialCount && v.vialCount > 1) rows += '<div class="tt-row"><span class="tt-key">Count</span><span class="tt-val">' + v.vialCount + ' vials</span></div>';
     if (v.notes) rows += '<div class="tt-line"></div><div style="font-size:11px;color:var(--text2);line-height:1.5;">' + esc(v.notes) + '</div>';
-    tt.innerHTML = '<div class="tt-cell" style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:' + cellLineColor(v.cellLine) + ';display:inline-block;"></span>' + esc(v.cellLine) + ' <span class="tt-key" style="margin-left:auto;">' + pos + '</span></div>' + rows;
+    tt.innerHTML = '<div class="tt-cell" style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:50%;background:' + cellLineColor(vialLabel(v)) + ';display:inline-block;"></span>' + esc(vialLabel(v)) + ' <span class="tt-key" style="margin-left:auto;">' + pos + '</span></div>' + rows;
   }
   tt.classList.add('show');
 }
@@ -1176,47 +1268,112 @@ function wellHoverMove(e){
 function wellHoverLeave(){
   document.getElementById('tt-card').classList.remove('show');
 }
-function wellClick(pos){
+var _lastWellPos = null;
+function _rangePositions(box, a, b){
+  var ra = a.charCodeAt(0) - 65, rb = b.charCodeAt(0) - 65;
+  var ca = parseInt(a.slice(1), 10), cb = parseInt(b.slice(1), 10);
+  var r0 = Math.min(ra, rb), r1 = Math.max(ra, rb), c0 = Math.min(ca, cb), c1 = Math.max(ca, cb);
+  var out = [];
+  for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) out.push(String.fromCharCode(65 + r) + c);
+  return out;
+}
+function wellClick(pos, ev){
   var box = getCurrentBox();
   if (!box) return;
+  // Shift-click paints the rectangle between the last well and this one with the same
+  // contents — a row of ten vials of one stock is one gesture.
+  if (ev && ev.shiftKey && _lastWellPos && _lastWellPos !== pos){
+    var src = (box.vials || {})[_lastWellPos] || box._last;
+    if (!src){ toast('Click a filled vial first, then shift-click to copy it across'); return; }
+    var targets = _rangePositions(box, _lastWellPos, pos).filter(function(p2){ return !(box.vials||{})[p2]; });
+    if (!targets.length){ toast('Those positions are already filled'); return; }
+    if (!confirm('Fill ' + targets.length + ' position' + (targets.length===1?'':'s') + ' with ' + vialLabel(src) + '?')) return;
+    box.vials = box.vials || {};
+    targets.forEach(function(p2){ box.vials[p2] = JSON.parse(JSON.stringify(src)); });
+    box._last = JSON.parse(JSON.stringify(src));
+    saveState(); renderBoxDetail();
+    toast(targets.length + ' vial' + (targets.length===1?'':'s') + ' added');
+    return;
+  }
+  _lastWellPos = pos;
   var v = (box.vials || {})[pos];
   if (v) openEditVial(pos);
   else { document.getElementById('vf-pos').value = pos; openAddVial(); }
 }
 
 // ─── VIAL ADD / EDIT ───────────────────────────────────────────────────────
+function _vf(id){ return document.getElementById('vf-' + id); }
+// The form is one shape for five kinds of contents. Passage and freezing media are questions
+// about cells; asking them about an antibody aliquot is noise, so they are hidden rather than
+// left blank.
+function vfSyncKind(){
+  var k = _vf('kind').value || 'cells', cells = (k === 'cells');
+  document.querySelectorAll('#vial-form .vf-cells').forEach(function(f){ f.style.display = cells ? '' : 'none'; });
+  document.querySelectorAll('#vial-form .vf-other').forEach(function(f){ f.style.display = cells ? 'none' : ''; });
+  _vf('cl-lbl').textContent = cells ? 'Cell line *' : (vialKindLabel(k) + ' *');
+  _vf('cl').placeholder = cells ? 'HeLa, U2OS, HEK293T\u2026'
+    : (k === 'plasmid' ? 'pJM07 \u2014 pLKO-shDCAF15'
+    : (k === 'antibody' ? '\u03b1-Tubulin'
+    : (k === 'primer' ? 'DCAF15_F1' : 'What is in the vial')));
+  _vf('by-lbl').textContent = cells ? 'Frozen by' : 'Put away by';
+  var thaw = document.getElementById('vf-thaw-btn');
+  if (thaw) thaw.style.display = (cells && editingVialPos) ? '' : 'none';
+}
+function _boxLastVial(box){
+  // Prefill from the last thing put in this box: a second vial of the same stock is two
+  // keystrokes, not a re-typed form.
+  if (!box || !box._last) return null;
+  return box._last;
+}
 function openAddVial(){
   editingVialPos = null;
+  var box = getCurrentBox(), last = _boxLastVial(box);
   document.getElementById('vial-modal-title').textContent = 'Add vial';
   document.getElementById('vf-delete-btn').style.display = 'none';
-  document.getElementById('vf-cl').value = '';
-  document.getElementById('vf-passage').value = '';
-  document.getElementById('vf-date').value = new Date().toISOString().slice(0, 10);
-  document.getElementById('vf-fmedia').value = '';
-  document.getElementById('vf-culture').value = '';
-  document.getElementById('vf-by').value = '';
-  document.getElementById('vf-count').value = 1;
-  document.getElementById('vf-notes').value = '';
+  document.getElementById('vf-discard-btn').style.display = 'none';
+  document.getElementById('vf-dup-btn').style.display = 'none';
+  document.getElementById('vf-thaw-btn').style.display = 'none';
+  document.getElementById('vf-fill-field').style.display = '';
+  _vf('kind').innerHTML = VIAL_KINDS.map(function(k){ return '<option value="' + k.id + '">' + k.label + '</option>'; }).join('');
+  _vf('kind').value = (last && last.kind) || (box && box.content) || 'cells';
+  _vf('cl').value = (last && (last.cellLine || last.label)) || '';
+  _vf('passage').value = (last && last.passage) || '';
+  _vf('date').value = new Date().toISOString().slice(0, 10);
+  _vf('fmedia').value = (last && last.freezeMedia) || '';
+  _vf('culture').value = (last && last.cultureMedia) || '';
+  _vf('conc').value = (last && last.conc) || '';
+  _vf('by').value = (last && last.frozenBy) || '';
+  _vf('count').value = 1;
+  _vf('notes').value = '';
+  vfSyncKind();
   refreshCellLineSuggestions();
   document.getElementById('vial-modal').classList.add('open');
   pushNavLevel(function(){ document.getElementById('vial-modal').classList.remove('open'); editingVialPos=null; });
-  setTimeout(function(){ document.getElementById('vf-pos').focus(); }, 50);
+  setTimeout(function(){ document.getElementById(last ? 'vf-count' : 'vf-pos').focus(); }, 50);
 }
 function openEditVial(pos){
   var box = getCurrentBox(); if (!box) return;
   var v = (box.vials || {})[pos]; if (!v) return openAddVial();
   editingVialPos = pos;
-  document.getElementById('vial-modal-title').textContent = 'Edit vial — ' + pos;
+  document.getElementById('vial-modal-title').textContent = 'Edit vial \u2014 ' + pos;
   document.getElementById('vf-delete-btn').style.display = 'inline-flex';
-  document.getElementById('vf-pos').value = pos;
-  document.getElementById('vf-cl').value = v.cellLine || '';
-  document.getElementById('vf-passage').value = v.passage || '';
-  document.getElementById('vf-date').value = v.freezeDate || '';
-  document.getElementById('vf-fmedia').value = v.freezeMedia || '';
-  document.getElementById('vf-culture').value = v.cultureMedia || '';
-  document.getElementById('vf-by').value = v.frozenBy || '';
-  document.getElementById('vf-count').value = v.vialCount || 1;
-  document.getElementById('vf-notes').value = v.notes || '';
+  document.getElementById('vf-discard-btn').style.display = 'inline-flex';
+  document.getElementById('vf-dup-btn').style.display = 'inline-flex';
+  // Editing one vial is not the moment to create six more.
+  document.getElementById('vf-fill-field').style.display = 'none';
+  _vf('kind').innerHTML = VIAL_KINDS.map(function(k){ return '<option value="' + k.id + '">' + k.label + '</option>'; }).join('');
+  _vf('kind').value = vialKind(v);
+  _vf('pos').value = pos;
+  _vf('cl').value = vialLabel(v);
+  _vf('passage').value = v.passage || '';
+  _vf('date').value = v.freezeDate || '';
+  _vf('fmedia').value = v.freezeMedia || '';
+  _vf('culture').value = v.cultureMedia || '';
+  _vf('conc').value = v.conc || '';
+  _vf('by').value = v.frozenBy || '';
+  _vf('count').value = v.vialCount || 1;
+  _vf('notes').value = v.notes || '';
+  vfSyncKind();
   refreshCellLineSuggestions();
   document.getElementById('vial-modal').classList.add('open');
   pushNavLevel(function(){ document.getElementById('vial-modal').classList.remove('open'); editingVialPos=null; });
@@ -1230,36 +1387,89 @@ function normalisePos(p){
   if (!m) return null;
   return m[1] + parseInt(m[2], 10);
 }
+// Positions in reading order, so "the next free one" means what it looks like in the box.
+function _boxPositions(box){
+  var out = [];
+  for (var r = 0; r < box.rows; r++)
+    for (var c = 1; c <= box.cols; c++) out.push(String.fromCharCode(65 + r) + c);
+  return out;
+}
+function _freeFrom(box, startPos, n){
+  var all = _boxPositions(box), i = all.indexOf(startPos);
+  if (i < 0) i = 0;
+  var out = [], vials = box.vials || {};
+  for (var k = i; k < all.length && out.length < n; k++) if (!vials[all[k]]) out.push(all[k]);
+  // Wrap to the front of the box rather than refusing because the tail is full.
+  for (var k2 = 0; k2 < i && out.length < n; k2++) if (!vials[all[k2]]) out.push(all[k2]);
+  return out;
+}
+function _vialFromForm(){
+  var kind = _vf('kind').value || 'cells', name = _vf('cl').value.trim();
+  var v = {
+    kind: kind,
+    freezeDate: _vf('date').value || '',
+    frozenBy: _vf('by').value.trim(),
+    notes: _vf('notes').value.trim()
+  };
+  // Cells keep writing cellLine — every reader outside this app expects it there. A hidden
+  // field is not an empty one: prefill can leave a passage sitting in it, and a plasmid
+  // aliquot carrying "P12" is a record that reads as a lie.
+  if (kind === 'cells'){
+    v.cellLine = name;
+    v.passage = _vf('passage').value.trim();
+    v.freezeMedia = _vf('fmedia').value.trim();
+    v.cultureMedia = _vf('culture').value.trim();
+  } else {
+    v.label = name;
+    v.conc = _vf('conc').value.trim();
+  }
+  return v;
+}
 function saveVial(){
   var box = getCurrentBox(); if (!box) return;
   var pos = normalisePos(document.getElementById('vf-pos').value);
   if (!pos) { toast('Position must be like A1, B12 etc.'); return; }
   var rowIdx = pos.charCodeAt(0) - 65;
   var colIdx = parseInt(pos.slice(1), 10);
-  if (rowIdx < 0 || rowIdx >= box.rows) { toast('Row out of range — this box has ' + box.rows + ' rows (A–' + String.fromCharCode(64 + box.rows) + ')'); return; }
-  if (colIdx < 1 || colIdx > box.cols) { toast('Column out of range — this box has ' + box.cols + ' columns'); return; }
-  var cellLine = document.getElementById('vf-cl').value.trim();
-  if (!cellLine) { toast('Cell line is required'); return; }
+  if (rowIdx < 0 || rowIdx >= box.rows) { toast('Row out of range \u2014 this box has ' + box.rows + ' rows (A\u2013' + String.fromCharCode(64 + box.rows) + ')'); return; }
+  if (colIdx < 1 || colIdx > box.cols) { toast('Column out of range \u2014 this box has ' + box.cols + ' columns'); return; }
+  var name = document.getElementById('vf-cl').value.trim();
+  if (!name) { toast((_vf('kind').value === 'cells' ? 'Cell line' : 'A name') + ' is required'); return; }
 
-  // If editing and position changed, delete the old key first
-  if (editingVialPos && editingVialPos !== pos) {
-    delete box.vials[editingVialPos];
-  }
   if (!box.vials) box.vials = {};
-  box.vials[pos] = {
-    cellLine: cellLine,
-    passage: document.getElementById('vf-passage').value.trim(),
-    freezeDate: document.getElementById('vf-date').value || '',
-    freezeMedia: document.getElementById('vf-fmedia').value.trim(),
-    cultureMedia: document.getElementById('vf-culture').value.trim(),
-    frozenBy: document.getElementById('vf-by').value.trim(),
-    vialCount: parseInt(document.getElementById('vf-count').value, 10) || 1,
-    notes: document.getElementById('vf-notes').value.trim()
-  };
+  // If editing and position changed, delete the old key first
+  if (editingVialPos && editingVialPos !== pos) delete box.vials[editingVialPos];
+
+  var base = _vialFromForm();
+  var howMany = editingVialPos ? 1 : Math.max(1, Math.min(200, parseInt(_vf('count').value, 10) || 1));
+
+  if (editingVialPos){
+    base.vialCount = parseInt(_vf('count').value, 10) || 1;
+    box.vials[pos] = base;
+  } else {
+    // N vials means N positions. Stacking them on one key was a picture of the box that the
+    // box does not agree with, and it made "how many are left" unanswerable by looking.
+    var targets = [pos].concat(_freeFrom(box, pos, howMany).filter(function(p2){ return p2 !== pos; })).slice(0, howMany);
+    if (targets.length < howMany) toast('Only ' + targets.length + ' free position' + (targets.length===1?'':'s') + ' left in this box');
+    targets.forEach(function(p2){ box.vials[p2] = JSON.parse(JSON.stringify(base)); });
+    pos = targets[0]; howMany = targets.length;
+  }
+  box._last = JSON.parse(JSON.stringify(base));
   saveState();
   closeVialModal();
   renderBoxDetail();
-  toast(editingVialPos ? 'Vial updated' : 'Vial added at ' + pos);
+  toast(editingVialPos ? 'Vial updated'
+        : (howMany > 1 ? (howMany + ' vials added') : ('Vial added at ' + pos)));
+}
+function duplicateVial(){
+  var box = getCurrentBox(); if (!box || !editingVialPos) return;
+  var v = box.vials[editingVialPos]; if (!v) return;
+  var free = _freeFrom(box, editingVialPos, 1);
+  if (!free.length){ toast('This box is full'); return; }
+  box.vials[free[0]] = JSON.parse(JSON.stringify(v));
+  box._last = JSON.parse(JSON.stringify(v));
+  saveState(); closeVialModal(); renderBoxDetail();
+  toast('Copied to ' + free[0]);
 }
 function deleteVial(){
   var box = getCurrentBox(); if (!box || !editingVialPos) return;
@@ -1268,6 +1478,40 @@ function deleteVial(){
   closeVialModal();
   renderBoxDetail();
   toast('Vial removed');
+}
+// Discard is not delete. A vial that was used up or failed is part of what happened in this
+// box; erasing it makes the box's history a lie about a box that was always full.
+function discardVial(){
+  var box = getCurrentBox(); if (!box || !editingVialPos) return;
+  var v = box.vials[editingVialPos]; if (!v) return;
+  var reason = prompt('Discard ' + vialLabel(v) + ' at ' + editingVialPos + '.\nWhy? (used up, failed, contaminated\u2026)', 'used up');
+  if (reason === null) return;
+  box.log = box.log || [];
+  box.log.push({ pos: editingVialPos, vial: JSON.parse(JSON.stringify(v)), ts: Date.now(), reason: String(reason).trim() || 'discarded' });
+  delete box.vials[editingVialPos];
+  saveState(); closeVialModal(); renderBoxDetail();
+  toast('Discarded \u2014 kept in this box\u2019s history');
+}
+function showBoxLog(){
+  var box = getCurrentBox(); if (!box) return;
+  var log = (box.log || []).slice().reverse();
+  if (!log.length){ toast('Nothing has been discarded from this box'); return; }
+  alert('Discarded from ' + box.name + '\n\n' + log.map(function(e){
+    return new Date(e.ts).toLocaleDateString('en-GB') + '  ' + e.pos + '  ' + vialLabel(e.vial) + '  \u2014 ' + e.reason;
+  }).join('\n'));
+}
+// A vial becoming a flask is the other half of the lifecycle. The Hub owns the one
+// implementation (it has to write the culture and decrement the freezer in that order);
+// this just says which vial.
+function thawVial(){
+  var box = getCurrentBox(); if (!box || !editingVialPos) return;
+  var v = box.vials[editingVialPos]; if (!v) return;
+  if (vialKind(v) !== 'cells'){ toast('Only cell vials can be thawed into a culture'); return; }
+  var H = null; try { H = (window.parent && window.parent !== window) ? window.parent : null; } catch(e){}
+  if (!H || !H.hubThawVial){ toast('Thawing into Incubator needs the dHUB shell'); return; }
+  var loc = { storage: currentBoxDetail.storage, rackId: currentBoxDetail.rackId, boxId: box.id, pos: editingVialPos };
+  closeVialModal();
+  H.hubThawVial(loc);
 }
 
 // ─── BULK ADD ───────────────────────────────────────────────────────────────
@@ -1456,8 +1700,8 @@ function renameBoxStart(){
 function exportAllXLSX(){
   if (typeof XLSX === 'undefined') { toast('XLSX library not loaded'); return; }
   var wb = XLSX.utils.book_new();
-  ['minus80', 'n2'].forEach(function(tab){
-    var rows = [['Rack', 'Box', 'Position', 'Cell line', 'Passage', 'Freeze date', 'Freezing media', 'Culture media / conditions', 'Frozen by', 'Vials', 'Notes']];
+  storageKeys().forEach(function(tab){
+    var rows = [['Rack', 'Box', 'Position', 'Kind', 'Contents', 'Passage', 'Freeze date', 'Freezing media', 'Culture media / conditions', 'Frozen by', 'Vials', 'Notes']];
     state.storages[tab].racks.forEach(function(r){
       r.boxes.forEach(function(b){
         Object.keys(b.vials || {}).sort(function(a, b){
@@ -1466,7 +1710,7 @@ function exportAllXLSX(){
           return ar !== br ? ar - br : ac - bc;
         }).forEach(function(pos){
           var v = b.vials[pos];
-          rows.push([r.name, b.name, pos, v.cellLine, v.passage, v.freezeDate, v.freezeMedia, v.cultureMedia, v.frozenBy, v.vialCount || 1, v.notes]);
+          rows.push([r.name, b.name, pos, vialKindLabel(vialKind(v)), vialLabel(v), v.passage, v.freezeDate, v.freezeMedia, v.cultureMedia, v.frozenBy, v.vialCount || 1, v.notes]);
         });
       });
     });
@@ -1706,11 +1950,11 @@ function refreshCellLineSuggestions(){
   var dl = document.getElementById('cl-suggestions');
   if (!dl) return;
   var lines = {};
-  ['minus80', 'n2'].forEach(function(tab){
+  storageKeys().forEach(function(tab){
     state.storages[tab].racks.forEach(function(r){
       r.boxes.forEach(function(b){
         Object.values(b.vials || {}).forEach(function(v){
-          if (v.cellLine) lines[v.cellLine] = (lines[v.cellLine] || 0) + 1;
+          if (vialKind(v) === 'cells' && v.cellLine) lines[v.cellLine] = (lines[v.cellLine] || 0) + 1;
         });
       });
     });
@@ -1719,7 +1963,7 @@ function refreshCellLineSuggestions(){
   dl.innerHTML = sorted.map(function(cl){ return '<option value="' + esc(cl) + '">'; }).join('');
 }
 function updateTabCounts(){
-  ['minus80', 'n2'].forEach(function(tab){
+  storageKeys().forEach(function(tab){
     var n = 0;
     state.storages[tab].racks.forEach(function(r){
       r.boxes.forEach(function(b){ n += Object.keys(b.vials || {}).length; });
@@ -1752,9 +1996,10 @@ document.addEventListener('keydown', function(e){
 
 // ─── INIT ──────────────────────────────────────────────────────────────────
 loadState();
-switchTab('minus80');           // paint immediately from local cache
+renderStorageTabs();
+switchTab(currentTab);          // paint immediately from local cache
 cryoInitSync(function(adopted){  // then reconcile with the cloud (admin, cross-device)
-  if(adopted) renderTab(currentTab);
+  if(adopted){ renderStorageTabs(); renderTab(currentTab); }
   else seedWhenAdminReady(6);    // only seed the skeleton if the cloud had nothing newer
 });
 </script>

@@ -1128,7 +1128,7 @@ function cellsBaseLine(s){
 }
 function cellsLineStats(){
   var out = {};
-  function bucket(k){ return out[k] || (out[k] = {cultures:0, vials:0, where:[]}); }
+  function bucket(k){ return out[k] || (out[k] = {cultures:0, vials:0, where:[], slots:[]}); }
   try {
     var inc = (JournalStore.get()||{}).incubator || {};
     Object.keys(inc).forEach(function(id){
@@ -1138,87 +1138,146 @@ function cellsLineStats(){
     });
   } catch(e){}
   try {
-    // Prefer the live frame: Iceberg only writes localStorage when something changes, so on a
-    // fresh session the stored copy is empty while the app on screen is not.
-    var st = null;
-    try { var cf = document.getElementById('frame-cryo'); if (cf && cf.contentWindow && cf.contentWindow.state) st = cf.contentWindow.state; } catch(e2){}
-    if (!st) st = JSON.parse(localStorage.getItem('cryo_state_v1') || 'null');
-    if (st && st.storages) Object.keys(st.storages).forEach(function(sk){
-      (st.storages[sk].racks || []).forEach(function(rk){
-        (rk.boxes || []).forEach(function(bx){
-          var vs = bx.vials || bx.positions || {};
-          Object.keys(vs).forEach(function(pos){
-            var v = vs[pos] || {};
-            var k = cellsBaseLine(v.cellLine);
-            if (!k) return;
-            var b = bucket(k);
-            b.vials += (parseInt(v.vialCount, 10) || 1);
-            if (b.where.indexOf(bx.name) < 0 && b.where.length < 4) b.where.push(bx.name);
-          });
-        });
-      });
+    HUB_FREEZER_WALK(function(slot){
+      if ((slot.vial.kind || 'cells') !== 'cells') return;   // a plasmid box is not cells
+      var k = cellsBaseLine(slot.vial.cellLine);
+      if (!k) return;
+      var b = bucket(k);
+      b.vials += slot.count;
+      if (b.where.indexOf(slot.box) < 0 && b.where.length < 4) b.where.push(slot.box);
+      if (b.slots.length < 12) b.slots.push(slot);
     });
   } catch(e){}
   return out;
 }
+// ── The freezer map, for the whole Hub ───────────────────────────────────────────────────────
+// Iceberg owns the boxes. Everything else — a plasmid record in Archive's Library, a culture
+// about to be frozen — asks here rather than keeping its own idea of where things are, because
+// two places that both remember a box position will disagree the first time one is edited.
+function HUB_FREEZER(){
+  // Prefer the live frame: Iceberg only writes localStorage when something changes, so on a
+  // fresh session the stored copy is empty while the app on screen is not.
+  try { var cf = document.getElementById('frame-cryo'); if (cf && cf.contentWindow && cf.contentWindow.state) return cf.contentWindow.state; } catch(e){}
+  try { return JSON.parse(localStorage.getItem('cryo_state_v1') || 'null'); } catch(e){ return null; }
+}
+// One walker. Everything below is a filter over it, so there is no second traversal to keep
+// in step with the first.
+function HUB_FREEZER_WALK(fn){
+  var st = HUB_FREEZER();
+  if (!st || !st.storages) return;
+  Object.keys(st.storages).forEach(function(sk){
+    var sto = st.storages[sk] || {};
+    (sto.racks || []).forEach(function(rk){
+      (rk.boxes || []).forEach(function(bx){
+        var vs = bx.vials || bx.positions || {};
+        Object.keys(vs).forEach(function(pos){
+          fn({ storage:sk, storageLabel:sto.label || sk, rackId:rk.id, rack:rk.name,
+               boxId:bx.id, box:bx.name, pos:pos, vial:(vs[pos] || {}),
+               count:(parseInt((vs[pos]||{}).vialCount, 10) || 1) });
+        });
+      });
+    });
+  });
+}
+function HUB_FREEZER_FIND(pred){
+  var out = [];
+  HUB_FREEZER_WALK(function(slot){ try { if (pred(slot)) out.push(slot); } catch(e){} });
+  return out;
+}
+// "Rack · Box · A4" — the sentence a record shows so you can walk to it.
+function HUB_FREEZER_LOCATE(loc){
+  if (!loc || !loc.boxId) return null;
+  var hit = HUB_FREEZER_FIND(function(s){ return s.boxId === loc.boxId && s.pos === loc.pos; })[0];
+  if (hit) return hit;
+  // The slot may be empty (a record pointing at a position nothing is in yet) — still name it.
+  var st = HUB_FREEZER(); if (!st || !st.storages) return null;
+  var found = null;
+  Object.keys(st.storages).forEach(function(sk){
+    (st.storages[sk].racks || []).forEach(function(rk){
+      (rk.boxes || []).forEach(function(bx){
+        if (bx.id === loc.boxId) found = { storage:sk, storageLabel:st.storages[sk].label || sk,
+          rackId:rk.id, rack:rk.name, boxId:bx.id, box:bx.name, pos:loc.pos, vial:null, count:0 };
+      });
+    });
+  });
+  return found;
+}
+function HUB_FREEZER_TEXT(loc){
+  var s = HUB_FREEZER_LOCATE(loc);
+  if (!s) return (loc && loc.text) || '';
+  return [s.storageLabel, s.rack, s.box, s.pos].filter(Boolean).join(' \u00b7 ');
+}
+// Write a slot into Iceberg. Goes through the live frame so Iceberg saves and repaints it
+// itself — there is no second writer for freezer state.
+function HUB_FREEZER_PLACE(loc, item){
+  var cf = document.getElementById('frame-cryo');
+  var w = cf && cf.contentWindow, st = w && w.state;
+  if (!st || !loc || !loc.boxId) return false;
+  var done = false;
+  Object.keys(st.storages || {}).forEach(function(sk){
+    (st.storages[sk].racks || []).forEach(function(rk){
+      (rk.boxes || []).forEach(function(bx){
+        if (bx.id !== loc.boxId || done) return;
+        bx.vials = bx.vials || {};
+        if (item) bx.vials[loc.pos] = item; else delete bx.vials[loc.pos];
+        done = true;
+      });
+    });
+  });
+  if (!done) return false;
+  try { w.saveState(); } catch(e){}
+  try { if (w.renderBoxDetail && w.currentBoxDetail) w.renderBoxDetail(); if (w.renderTab) w.renderTab(w.currentTab); } catch(e){}
+  return true;
+}
+// A flat list of boxes, for a "where does this live" picker built anywhere in the Hub.
+function HUB_FREEZER_BOXES(){
+  var st = HUB_FREEZER(), out = [];
+  if (!st || !st.storages) return out;
+  Object.keys(st.storages).forEach(function(sk){
+    (st.storages[sk].racks || []).forEach(function(rk){
+      (rk.boxes || []).forEach(function(bx){
+        out.push({ storage:sk, storageLabel:st.storages[sk].label || sk, rackId:rk.id, rack:rk.name,
+                   boxId:bx.id, box:bx.name, rows:bx.rows, cols:bx.cols,
+                   vials:bx.vials || {}, filled:Object.keys(bx.vials || {}).length });
+      });
+    });
+  });
+  return out;
+}
+
 // ── Thaw a vial ─────────────────────────────────────────────────────────────────────────────
 // The lifecycle runs backwards too: a vial becomes a flask. Doing it by hand means finding the
 // box in Iceberg, remembering to decrement it, and retyping the line and passage into
 // Incubator — three chances to leave the inventory saying something untrue.
 function cellsFindVials(name){
-  var key = cellsBaseLine(name), out = [];
-  var st = null;
-  try { var cf = document.getElementById('frame-cryo'); if (cf && cf.contentWindow && cf.contentWindow.state) st = cf.contentWindow.state; } catch(e){}
-  if (!st) { try { st = JSON.parse(localStorage.getItem('cryo_state_v1') || 'null'); } catch(e){} }
-  if (!st || !st.storages) return out;
-  Object.keys(st.storages).forEach(function(sk){
-    (st.storages[sk].racks || []).forEach(function(rk){
-      (rk.boxes || []).forEach(function(bx){
-        var vs = bx.vials || bx.positions || {};
-        Object.keys(vs).forEach(function(pos){
-          var v = vs[pos] || {};
-          if (cellsBaseLine(v.cellLine) !== key) return;
-          out.push({storage:sk, storageLabel:st.storages[sk].label||sk, rack:rk.name, box:bx.name,
-                    boxId:bx.id, pos:pos, vial:v, count:(parseInt(v.vialCount,10)||1)});
-        });
-      });
-    });
+  var key = cellsBaseLine(name);
+  var out = HUB_FREEZER_FIND(function(s){
+    return (s.vial.kind || 'cells') === 'cells' && cellsBaseLine(s.vial.cellLine) === key;
   });
   // Oldest freeze first — you thaw the oldest vial so the newest stock keeps its shelf life.
   out.sort(function(a,b){ return String(a.vial.freezeDate||'9999').localeCompare(String(b.vial.freezeDate||'9999')); });
   return out;
 }
-function cellsThaw(name){
-  var vs = cellsFindVials(name);
-  if (!vs.length){ alert('No vials of ' + name + ' in the freezer.'); return; }
-  var v = vs[0];
-  var line = v.vial.cellLine || name;
-  var msg = 'Thaw ' + line + '\n\n' + v.storageLabel + ' · ' + (v.rack||'') + ' · ' + v.box + ' · position ' + v.pos
+// One implementation, three doorways: the Lines list ("thaw the oldest"), the Freezer's own
+// vial modal ("thaw this one"), and anything else that hands over a slot.
+function hubThawVial(loc){
+  var v = loc && loc.boxId
+    ? HUB_FREEZER_FIND(function(s){ return s.boxId === loc.boxId && s.pos === loc.pos; })[0]
+    : loc;
+  if (!v || !v.vial){ alert('That vial is no longer in the freezer.'); return; }
+  var line = v.vial.cellLine || '';
+  var msg = 'Thaw ' + line + '\n\n' + v.storageLabel + ' \u00b7 ' + (v.rack||'') + ' \u00b7 ' + v.box + ' \u00b7 position ' + v.pos
     + (v.vial.passage ? ('\npassage ' + v.vial.passage) : '')
     + (v.vial.freezeDate ? ('\nfrozen ' + v.vial.freezeDate) : '')
     + '\n\n' + v.count + ' vial' + (v.count===1?'':'s') + ' there. Take one, and start a culture?';
   if (!confirm(msg)) return;
   // Decrement the freezer first: if the culture write fails, an over-counted freezer is a
   // smaller lie than a vial recorded twice.
-  try {
-    var cf = document.getElementById('frame-cryo');
-    var st = cf && cf.contentWindow && cf.contentWindow.state;
-    if (st){
-      Object.keys(st.storages).forEach(function(sk){
-        (st.storages[sk].racks||[]).forEach(function(rk){
-          (rk.boxes||[]).forEach(function(bx){
-            if (bx.id !== v.boxId) return;
-            var vs2 = bx.vials || bx.positions || {};
-            var cur = vs2[v.pos]; if (!cur) return;
-            var n = (parseInt(cur.vialCount,10)||1) - 1;
-            if (n > 0) cur.vialCount = n; else delete vs2[v.pos];
-          });
-        });
-      });
-      if (cf.contentWindow.saveState) cf.contentWindow.saveState();
-      if (cf.contentWindow.renderTab) cf.contentWindow.renderTab();
-    }
-  } catch(e){}
+  var n = v.count - 1;
+  var next = null;
+  if (n > 0){ next = JSON.parse(JSON.stringify(v.vial)); next.vialCount = n; }
+  HUB_FREEZER_PLACE({boxId:v.boxId, pos:v.pos}, next);
+
   var pass = parseInt(String(v.vial.passage||'').replace(/[^0-9]/g,''), 10);
   var base = String(line).split(',')[0].trim();
   var suffix = String(line).indexOf(',') > -1 ? String(line).slice(String(line).indexOf(',')+1).trim() : '';
@@ -1232,15 +1291,22 @@ function cellsThaw(name){
     passageLimit: (ref&&ref.passageLimit) || 30,
     ratio: (ref&&ref.ratio) || '', type: (ref&&ref.type) || '',
     seeded: Date.now(), mycoLast: 0,
+    incubator: '', shelf: '',
     notes: 'Thawed from ' + v.box + ' ' + v.pos + (v.vial.freezeDate?(' (frozen '+v.vial.freezeDate+')'):''),
     history: [{action:'thawed', passage: isNaN(pass)?1:pass, ts: Date.now()}]
   });
   openCells('incubator');
 }
+function cellsThaw(name){
+  var vs = cellsFindVials(name);
+  if (!vs.length){ alert('No vials of ' + name + ' in the freezer.'); return; }
+  hubThawVial(vs[0]);
+}
 
 function cellsStatsFor(name){
   var s = cellsLineStats()[cellsBaseLine(name)];
-  return s ? {cultures:s.cultures, vials:s.vials, where:s.where.slice()} : {cultures:0, vials:0, where:[]};
+  return s ? {cultures:s.cultures, vials:s.vials, where:s.where.slice(), slots:(s.slots||[]).slice()}
+           : {cultures:0, vials:0, where:[], slots:[]};
 }
 
 // ── Cells: one app made of three ────────────────────────────────────────────────────────────
