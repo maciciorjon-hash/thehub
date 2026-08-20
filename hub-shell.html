@@ -606,18 +606,6 @@ body.hub-announcing #hub-home{margin-top:98px;}
     <div id="hub-suite-detail"></div>
     <div class="grid" id="app-grid" style="display:none;">
 
-      <div class="card dash-admin-card" tabindex="0" data-app-id="plasmids" style="display:none;"
-           onclick="openApp('plasmids')"
-           onkeydown="if(event.key==='Enter')openApp('plasmids')">
-        <div class="card-header-row">
-          <div class="card-logo" style="background:#6d7bd0;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="8.5" stroke="white" stroke-width="1.7"/><circle cx="12" cy="3.5" r="1.8" fill="white"/><circle cx="20.5" cy="12" r="1.8" fill="white"/><path d="M12 8v3l2 1.5" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg></div>
-          <div class="card-name">Plasmids</div>
-        </div>
-        <div class="card-desc">Your plasmid database (pJM##) &mdash; backbone, insert, tags, sequencing status and SnapGene maps, all searchable and linkable.</div>
-        <div class="card-foot">
-          <span>Database &middot; Maps &middot; CSV</span>
-          <span class="card-arrow">&#8594;</span>
-        </div>
       </div>
 
       <div class="card dash-admin-card" tabindex="0" data-app-id="labbook" style="display:none;"
@@ -901,9 +889,6 @@ body.hub-announcing #hub-home{margin-top:98px;}
 <div class="app-view" id="view-labbook">
   <iframe id="frame-labbook" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
 </div>
-<div class="app-view" id="view-plasmids">
-  <iframe id="frame-plasmids" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
-</div>
 <div class="app-view" id="view-echo">
   <iframe id="frame-echo" sandbox="allow-scripts allow-same-origin allow-downloads allow-forms allow-modals allow-popups allow-top-navigation-by-user-activation"></iframe>
 </div>
@@ -969,7 +954,7 @@ body.hub-announcing #hub-home{margin-top:98px;}
 
 <script>
 /* embedded app sources (base64-encoded UTF-8 HTML) */
-var APP_B64_NEW = { dna: "", pd: "", pt: "", spectra: "PLACEHOLDER_SPECTRA", ldi: "PLACEHOLDER_LDI", cryo: "PLACEHOLDER_CRYO", cuppa: "PLACEHOLDER_CUPPA", fabricata: "PLACEHOLDER_FABRICATA", beacon: "PLACEHOLDER_BEACON", lumina: "PLACEHOLDER_LUMINA", ribbon: "PLACEHOLDER_RIBBON", protocols: "PLACEHOLDER_PROTOCOLS", cellarchive: "PLACEHOLDER_CELLARCHIVE", incubator: "PLACEHOLDER_INCUBATOR", labbook: "PLACEHOLDER_LABBOOK", plasmids: "PLACEHOLDER_PLASMIDS", blot: "PLACEHOLDER_BLOT", gantt: "PLACEHOLDER_GANTT" };
+var APP_B64_NEW = { dna: "", pd: "", pt: "", spectra: "PLACEHOLDER_SPECTRA", ldi: "PLACEHOLDER_LDI", cryo: "PLACEHOLDER_CRYO", cuppa: "PLACEHOLDER_CUPPA", fabricata: "PLACEHOLDER_FABRICATA", beacon: "PLACEHOLDER_BEACON", lumina: "PLACEHOLDER_LUMINA", ribbon: "PLACEHOLDER_RIBBON", protocols: "PLACEHOLDER_PROTOCOLS", cellarchive: "PLACEHOLDER_CELLARCHIVE", incubator: "PLACEHOLDER_INCUBATOR", labbook: "PLACEHOLDER_LABBOOK", blot: "PLACEHOLDER_BLOT", gantt: "PLACEHOLDER_GANTT" };
 var APP_B64 = {
   echo: "",
   deg: ""
@@ -1005,7 +990,6 @@ var APP_INFO = {
   protocols:  { letter:'Ar', color:'#a56983', name:'Archive' },
   incubator:  { letter:'Ic', color:'#4a8fb5', name:'Incubator' },
   labbook:    { letter:'Lb', color:'#3f6fa8', name:'Labbook' },
-  plasmids:   { letter:'Pl', color:'#6d7bd0', name:'Plasmids' },
   blot:       { letter:'Bl', color:'#5b6b7a', name:'Blot' },
   gantt:      { letter:'Cd', color:'#d99a4e', name:'Cadence' }
 };
@@ -1072,9 +1056,7 @@ function _loadApp(id) {
         ? common + 'header .logo,header .logo+div{display:none!important;}'
         : id === 'labbook'
           ? common + 'header{display:none!important;}'
-          : id === 'plasmids'
-            ? common + 'header .logo,header .logo+div{display:none!important;}header{min-height:46px!important;}'
-            : common + 'header{display:none!important;}';
+          : common + 'header{display:none!important;}';
   html = _insertBeforeRealHeadClose(html, '<style>' + embedStyle + '</style>');
   var backScript = '<script>document.addEventListener("DOMContentLoaded",function(){' +
     'var logo=document.querySelector(".logo,.app-logo");' +
@@ -1350,6 +1332,16 @@ function openCells(tab, item, context){
 }
 
 function openApp(id, tab, item, context) {
+  // Plasmids folded into Archive's Library, where the record has a detail pane and a real map.
+  // Route rather than break: a saved #plasmids hash or a Labbook data-app link still lands on
+  // the plasmid list, just in its new home.
+  if (id === 'plasmids'){
+    openApp('protocols');
+    _hubQueueMessage('protocols', {type:'dhub:context', version:1, source:'hub', target:'protocols',
+      action:'open', requestId:'dhub'+Date.now().toString(36),
+      context:{lib:'plasmids', id:(item||null)}});
+    return;
+  }
   // Incubator / Cell Archive / Iceberg are tabs of Cells now. Route rather than rename, so
   // Labbook's openIncubatorLink, saved #hashes and the app catalog keep working untouched.
   if (id==='cells') return openCells(null, item, context);
@@ -1970,11 +1962,11 @@ var PRIMARY_CARDS = [
 ];
 var EXTRA_GROUPS = [
   { id:'design',    name:'Design & Presentation', color:'#e36c69', icon:'design', tag:'Structures, plates, gels, figures and project timelines', apps:['pd','blot','ribbon','gantt'] },
-  { id:'molecular', name:'Molecular Biology',     color:'#9c6fd4', icon:'tools',  tag:'Sequences, proteins and plasmid records', apps:['dna','pt','plasmids'] },
+  { id:'molecular', name:'Molecular Biology',     color:'#9c6fd4', icon:'tools',  tag:'Sequences, proteins and plasmid records', apps:['dna','pt'] },
   { id:'personal',  name:'Personal',              color:'#8d6e63', icon:'design', tag:'Small personal utilities and experiments', apps:['cuppa','fabricata'] }
 ];
 // Apps only Jon can reach (never shown to visitors, no public unlock code).
-var ADMIN_ONLY_APPS = { cellarchive:1, incubator:1, labbook:1, plasmids:1 };
+var ADMIN_ONLY_APPS = { cellarchive:1, incubator:1, labbook:1 };
 // Apps visitors can discover individually (the per-app unlock codes below).
 var PUBLIC_APPS = ['echo','lumina','spectra','deg','ldi','protocols','ribbon','pd','dna','pt','cryo','cuppa','blot','gantt'];
 var FABRICATA_WORD = 'fabricate'; // hidden easter egg — opens Fabricata directly

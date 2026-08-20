@@ -42,7 +42,6 @@ APPS = [
     ('cellarchive', 'Cell_Archive/cell_archive.html'),
     ('incubator',   'Incubator/incubator.html'),
     ('labbook',     'Labbook/labbook.html'),
-    ('plasmids',    'Plasmids/plasmids.html'),
     ('blot',        'WesternBlot/westernblot.html'),
     ('gantt',       'Gantt/gantt.html'),
 ]
