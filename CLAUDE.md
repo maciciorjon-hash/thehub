@@ -663,6 +663,50 @@ Backup button ("Last backup today") and in its tooltip ("Saved today to your bac
 The one-time nudge now leads with **"Nothing was downloaded"**, because that is the thing the
 user is confused about.
 
+## Visual system, and what dHUB stopped being
+
+Jon's read was that Labbook felt "frágil y poco compacto" and dHUB "una página genérica hecha
+por IA". Both had concrete causes.
+
+**One type scale, one radius scale.** Labbook had 22 distinct font sizes, the shell 23, Archive
+17 — including half-pixels (12.5, 10.5, 9.5), which is what per-component nudging looks like
+after two years. Eight values between 7px and 10.5px were all doing one job. There are nine
+steps now (`--fs-1` … `--fs-9`: 10 · 11 · 12 · 13 · 15 · 17 · 20 · 26 · 38) and five radii
+(`--r-1` … `--r-4`, `--r-full`). 661 substitutions; **no loose px value for `font-size` or
+`border-radius` survives in any of the three stylesheets.** Inline styles built in JS strings
+are deliberately untouched — smaller, riskier to rewrite blind.
+
+**One icon language.** `tbSvg()` (24×24, stroke 1.9, outline) is now the only one. Every emoji
+and glyph used as an icon is gone: `α` `#` `⚗` `⏱` `▶` `🧫` `❄` `▤` and the five file-type emoji.
+`hdIcon()` wraps one at label size so a heading reads as a single object. What remains is
+typography, not iconography: the `✓` inside a checkbox, `X₂`/`X²`, `α-Tubulin` as a default
+value, and DH5α in protocol prose.
+
+**The ribbon sizes to its content.** `.rb-pane` and `.rb-lbtn` had fixed `height`, so anything
+needing more room was clipped against a ceiling — that is what broke when the backup status was
+put inside a button. Both are `min-height`. The status itself moved next to the save pill, which
+is where you already look. Insert went from eleven 82px buttons (~900px, running off the edge)
+to six at 68px, with the rest in the `/` menu — and `SLASH_ITEMS` is now one declared list, so
+the menu genuinely contains them. It did not at first: Web link and Tag were in neither place
+after the trim.
+
+**dHUB lost 1,565 lines and 40% of its size** (297 KB → 179 KB): three easter eggs including a
+32 KB inline-SVG comic with colleagues' real names, a 28 KB embedded changelog, twelve jokey
+rotating subtitles, the weather widget and its painted sky, and a ~340-line card-reorder
+subsystem driving `#hub-packages` — an element the current home never builds. `tryUnlock` was
+defined twice; the earlier copy and its three helpers were dead weight attached to the live
+input.
+
+**Kept on Jon's instruction:** the code-word unlock. It hides the app list from casual visitors,
+which is what he uses it for. It is *not* access control — the words are in plain JS and every
+app is embedded regardless.
+
+Two traps this pass hit, both worth remembering: an end-anchor searched from the start of the
+file instead of forward from the start index duplicated 14 KB, because
+`classList.add('pulsing')` appears twice; and the reorder block spans into `initHub`, so slicing
+from its comment to the next landmark crossed a function boundary. Assert brace balance before
+writing, and load the page — neither showed up in a diff.
+
 ## ChemLib integration (Rubén Prieto)
 
 **ChemLib** is a lab-management app in the same group: FastAPI + SQLAlchemy + SQLite, JWT cookie
