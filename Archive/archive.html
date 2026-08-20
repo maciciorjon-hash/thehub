@@ -166,6 +166,12 @@ input:checked+.theme-slider::before{transform:translateX(16px);}
 .btn.danger{color:#c96b6b;border-color:#c96b6b;}
 .btn.danger:hover{background:rgba(201,107,107,.1);}
 /* ── Plasmid map ── */
+.pm-img{max-width:100%;max-height:420px;display:block;border:1px solid var(--border);
+  border-radius:var(--r-2);background:#fff;cursor:zoom-in;margin-bottom:8px;}
+.pm-imgnote{font-size:var(--fs-2);color:var(--text3);line-height:1.6;margin-bottom:10px;}
+.pm-lb{position:fixed;inset:0;background:rgba(10,14,26,.82);z-index:400;display:flex;
+  align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}
+.pm-lb img{max-width:100%;max-height:100%;border-radius:var(--r-2);background:#fff;}
 .pm-drop{border:1px dashed var(--border2);border-radius:var(--r-2);padding:30px 18px;text-align:center;
   color:var(--text3);font-size:var(--fs-3);line-height:1.7;cursor:pointer;transition:border-color .15s,background .15s;}
 .pm-drop:hover,.pm-drop.over{border-color:var(--accent);background:var(--accent-dim);color:var(--text2);}
@@ -2419,7 +2425,7 @@ function pmapRead(id, file){
     _pmCache[id]=gb;
     pmapPut(id,{kind:kind, name:name, file:dataUri||'', gb:(kind==='snapgene'?null:gb)})
       .then(function(){
-        libSet('plasmids', id, {mapName:name, mapKind:kind, mapLen:(gb&&gb.length)||0});
+        libSet('plasmids', id, {mapName:name, mapKind:kind, mapLen:(gb&&gb.length)||0, mapImage:'', mapGb:null});
         renderLib();
       });
   }
@@ -2447,7 +2453,20 @@ function pmapRead(id, file){
 function pmapRemove(id){
   if(!confirm('Remove the map from this plasmid?')) return;
   delete _pmCache[id];
-  pmapDel(id).then(function(){ libSet('plasmids',id,{mapName:'',mapKind:'',mapLen:0}); renderLib(); });
+  pmapDel(id).then(function(){
+    libSet('plasmids',id,{mapName:'',mapKind:'',mapLen:0,mapImage:'',mapGb:null});
+    _pmCache[id]=null; renderLib();
+  });
+}
+// A map picture is worth looking at full size — it is usually the only place the feature
+// names are legible.
+function pmLightbox(id){
+  var r=libAll('plasmids')[id]||{}; if(!r.mapImage) return;
+  var b=document.createElement('div');
+  b.className='pm-lb';
+  b.onclick=function(){ b.remove(); };
+  b.innerHTML='<img src="'+esc(r.mapImage)+'" alt="'+esc(r.mapName||'plasmid map')+'">';
+  document.body.appendChild(b);
 }
 
 function setLibKind(k){
@@ -2602,6 +2621,15 @@ function abTarget(r){
   if (r.target) return String(r.target).trim();
   return String(r.name||'').replace(/^\s*(?:anti|α)\s*[-\u2010-\u2015]?\s*|^\s*a\s*[-\u2010-\u2015]\s*/i, '').trim();
 }
+// Notes came out of a rich-text editor in the old app, so a plain textarea showed people
+// their own "<br>" tags. Keep the line breaks, drop the markup.
+function libPlainNotes(v){
+  var t=String(v==null?'':v);
+  if(!/<[a-z/][^>]*>/i.test(t)) return t;
+  t=t.replace(/<\s*br\s*\/?>/gi,'\n').replace(/<\/(p|div|li|h[1-6])\s*>/gi,'\n');
+  var d=document.createElement('div'); d.innerHTML=t;
+  return (d.textContent||d.innerText||'').replace(/\n{3,}/g,'\n\n').trim();
+}
 function libDisplayName(kind, r){
   if (!r) return '';
   if (kind === 'antibodies'){ var t = abTarget(r); return t ? ('α-' + t) : (r.name || '—'); }
@@ -2698,7 +2726,7 @@ function libDetailHtml(kind, id){
 
   h += '<div class="lib-dsec">Notes</div>'
     + '<textarea class="lib-notes" placeholder="Anything worth remembering about this one…" '
-    + 'onchange="libEdit(\'' + kind + '\',\'' + id + '\',\'notes\',this.value)">' + esc(r.notes||'') + '</textarea>';
+    + 'onchange="libEdit(\'' + kind + '\',\'' + id + '\',\'notes\',this.value)">' + esc(libPlainNotes(r.notes)) + '</textarea>';
 
   var used = (r.usedIn||[]).length;
   h += '<div class="lib-used">' + (used ? ('Used in ' + used + ' experiment' + (used===1?'':'s')) : 'Not yet used in an experiment') + '</div>';
@@ -2716,16 +2744,31 @@ function pmSelect(i){ _pmSel = (_pmSel === i ? null : i); if (_libOpenId) render
 
 function plasmidPaneHtml(id, r){
   var h = '<div class="lib-dsec">Map</div>';
+  var hasAny = r.mapName || r.mapImage;
   h += '<div class="lib-maprow">'
-     + '<button class="btn btn-sm" onclick="pmapPick(\'' + id + '\')">' + (r.mapName ? 'Replace map' : 'Add map (.dna / GenBank / FASTA)') + '</button>'
-     + (r.mapName ? ('<button class="btn btn-sm" onclick="pmapRemove(\'' + id + '\')">Remove</button>'
-                    + '<span class="lib-mapname">' + esc(r.mapName) + '</span>') : '')
+     + '<button class="btn btn-sm" onclick="pmapPick(\'' + id + '\')">' + (hasAny ? 'Replace map' : 'Add map (.dna / GenBank / FASTA)') + '</button>'
+     + (hasAny ? ('<button class="btn btn-sm" onclick="pmapRemove(\'' + id + '\')">Remove</button>'
+                  + '<span class="lib-mapname">' + esc(r.mapName || 'image') + '</span>') : '')
      + '</div>';
   var gb = _pmCache[id];
+  if (gb === undefined){                      // not looked up yet
+    h += '<div class="pm-drop" id="pm-drop" data-pid="' + id + '">Reading ' + esc(r.mapName || 'map') + '…</div>';
+    return h;
+  }
   if (!gb){
+    // Nothing parseable. Records from the old Plasmids app often carry a picture of the map
+    // instead — a PNG exported from SnapGene. Showing it is the whole point of the record;
+    // "Reading…" forever was the bug, and pretending there is no map would be the next one.
+    if (r.mapImage){
+      h += '<img class="pm-img" src="' + esc(r.mapImage) + '" alt="' + esc(r.mapName || 'plasmid map') + '"'
+         + ' onclick="pmLightbox(\'' + id + '\')" title="Click to enlarge">'
+         + '<div class="pm-imgnote">This is a picture of the map. Add the <b>.dna</b> or <b>.gb</b> file '
+         + 'and you get the ring, the sequence and the cutters instead.</div>';
+    }
     h += '<div class="pm-drop" id="pm-drop" data-pid="' + id + '">'
-       + (r.mapName ? 'Reading ' + esc(r.mapName) + '…'
-                    : 'Drop a SnapGene <b>.dna</b>, a GenBank <b>.gb</b> or a FASTA here — or use the button above.')
+       + (r.mapName && !r.mapImage
+            ? ('Could not read <b>' + esc(r.mapName) + '</b> as a map. Drop a SnapGene <b>.dna</b>, a GenBank <b>.gb</b> or a FASTA here.')
+            : 'Drop a SnapGene <b>.dna</b>, a GenBank <b>.gb</b> or a FASTA here — or use the button above.')
        + '</div>';
     return h;
   }
@@ -2852,6 +2895,8 @@ function libAfterDetail(kind, id){
   }
   if (_pmCache[id] !== undefined) return;
   var r = libAll(kind)[id] || {};
+  // The old Plasmids app kept the parsed model on the record itself.
+  if (r.mapGb && r.mapGb.features){ _pmCache[id] = r.mapGb; renderLib(); return; }
   if (!r.mapName){ _pmCache[id] = null; return; }
   pmapGet(id).then(function(rec){
     var gb = null;

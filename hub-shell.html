@@ -1322,13 +1322,21 @@ function openCells(tab, item, context){
     if (context){ m.type='dhub:context'; m.version=1; m.source=context.source||'hub'; m.target=tab; m.action='open'; m.context=context; }
     _hubQueueMessage(tab, m);
   }
+  // Every tab click calls openCells again. Pushing a history entry each time meant three
+  // clicks left three #cells entries, and backToHub's single history.back() only undid one —
+  // so leaving Cells left "#cells" in the address bar, and the next refresh opened Cells
+  // again. Push once on the way in; replace while you are already there.
+  var entering = (currentApp !== 'cells');
   currentApp = 'cells';
   var view = document.getElementById('view-cells');
   document.querySelectorAll('.app-view').forEach(function(v){ if (v!==view){ v.style.display='none'; v.style.opacity=''; } });
   view.style.opacity='0'; view.style.display='flex';
   requestAnimationFrame(function(){ requestAnimationFrame(function(){ view.style.opacity='1'; }); });
   setTimeout(function(){ if(currentApp==='cells') enterAppNav('cells'); }, 0);
-  try { history.pushState({_hubApp:'cells'}, '', '#cells'); } catch(e){}
+  try {
+    if (entering) history.pushState({_hubApp:'cells'}, '', '#cells');
+    else history.replaceState({_hubApp:'cells'}, '', '#cells');
+  } catch(e){}
 }
 
 function openApp(id, tab, item, context) {
@@ -1354,6 +1362,7 @@ function openApp(id, tab, item, context) {
     if (context) { tabMsg.type='dhub:context'; tabMsg.version=1; tabMsg.source=context.source||'hub'; tabMsg.target=id; tabMsg.action='open'; tabMsg.context=context; }
     _hubQueueMessage(id,tabMsg);
   }
+  var _wasIn = currentApp;
   currentApp = id;
   var view = document.getElementById('view-' + id);
   document.querySelectorAll('.app-view').forEach(function(v) {
@@ -1368,8 +1377,13 @@ function openApp(id, tab, item, context) {
   });
   setTimeout(function() { if(currentApp===id) enterAppNav(id); }, 0);
   // Push a history entry so the phone hardware back returns to the hub home
-  // instead of leaving the page. _backPopping guards against re-entry.
-  try { history.pushState({_hubApp: id}, '', '#' + id); } catch(e) {}
+  // instead of leaving the page. _backPopping guards against re-entry. Re-opening the app
+  // you are already in replaces rather than stacks, or backToHub's single history.back()
+  // cannot get you out.
+  try {
+    if (_wasIn === id) history.replaceState({_hubApp: id}, '', '#' + id);
+    else history.pushState({_hubApp: id}, '', '#' + id);
+  } catch(e) {}
 }
 
 var _backPopping = false;
@@ -1386,6 +1400,15 @@ function backToHub() {
   // Roll back the history entry we pushed in openApp, unless we got here
   // via popstate itself (which already consumed it).
   if (!_backPopping) { try { history.back(); } catch(e) {} }
+  // Belt and braces: whatever the history stack looks like, the hub home must not be sitting
+  // at "#someapp" — that is what made a refresh reopen the app you had just left.
+  setTimeout(function(){
+    if (currentApp) return;
+    var h = (location.hash || '').replace(/^#/, '');
+    if (h && (h === 'cells' || APP_INFO[h])) {
+      try { history.replaceState({}, '', location.pathname + location.search); } catch(e){}
+    }
+  }, 340);
 }
 window.addEventListener('popstate', function(){
   if (currentApp) {
