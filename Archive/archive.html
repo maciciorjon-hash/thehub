@@ -113,6 +113,18 @@ input:checked+.theme-slider::before{transform:translateX(16px);}
 .lib-acts{margin-left:auto;display:flex;gap:6px;}
 .lib-x{background:none;border:none;color:var(--text3);font-size:var(--fs-6);line-height:1;cursor:pointer;padding:0 3px;}
 .lib-x:hover{color:#e05252;}
+.pm-svg{width:100%;height:auto;display:block;}
+.pm-ring{stroke:var(--border2);stroke-width:1;}
+.pm-title{fill:var(--text);font-family:var(--sans);font-size:13px;font-weight:700;}
+.pm-len{fill:var(--text3);font-family:var(--sans);font-size:9.5px;}
+.pm-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:10px;}
+.pm-leg{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text2);}
+.pm-leg i{width:10px;height:10px;border-radius:3px;display:inline-block;flex-shrink:0;}
+.lib-map{margin:10px 0 6px;display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;}
+.lib-map .pm-svg{width:190px;height:190px;flex:0 0 auto;}
+.lib-maprow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;}
+.lib-mapname{font-family:var(--mono);font-size:var(--fs-2);color:var(--text3);}
+.lib-mapfile{font-family:var(--mono);font-size:var(--fs-3);color:var(--text2);padding:10px 0;}
 .lib-empty{padding:46px 20px;text-align:center;color:var(--text3);font-size:var(--fs-4);line-height:1.7;}
 .lib-note{font-size:var(--fs-2);color:var(--text3);margin-bottom:12px;}
 .filter-pills{display:flex;gap:7px;flex-wrap:wrap;}
@@ -1948,7 +1960,8 @@ var _openProtocolId = null;
 var LIB_KINDS = [
   {id:'protocols',  label:'Protocols'},
   {id:'antibodies', label:'Antibodies'},
-  {id:'primers',    label:'Primers'}
+  {id:'primers',    label:'Primers'},
+  {id:'plasmids',   label:'Plasmids'}
 ];
 var LIB_FIELDS = {
   antibodies: [
@@ -1960,6 +1973,16 @@ var LIB_FIELDS = {
     {f:'catalog',   lbl:'Catalog #',       w:1},
     {f:'lot',       lbl:'Lot #',           w:1},
     {f:'dilution',  lbl:'Dilution (1:1000)',w:1},
+    {f:'location',  lbl:'Where it lives',  w:1}
+  ],
+  plasmids: [
+    {f:'code',      lbl:'Code (pJM##)',    w:1},
+    {f:'name',      lbl:'Name',            w:1},
+    {f:'backbone',  lbl:'Backbone',        w:1},
+    {f:'insert',    lbl:'Insert',          w:1},
+    {f:'resistance',lbl:'Resistance',      w:1, opts:['Amp','Kan','Cm','Puro','Blast','Hygro','Zeo','Neo']},
+    {f:'source',    lbl:'Source',          w:1},
+    {f:'status',    lbl:'Status',          w:1, opts:['idea','cloning','sequencing','verified','failed']},
     {f:'location',  lbl:'Where it lives',  w:1}
   ],
   primers: [
@@ -2012,6 +2035,147 @@ function libGC(seq){
   return Math.round(1000*(q.match(/[GC]/g)||[]).length/q.length)/10;
 }
 
+// ── Plasmid maps ──────────────────────────────────────
+// Ported from the standalone Plasmids app. A plasmid record without its map is a row in a
+// table; the map is the reason you open the record at all.
+var FCOL={CDS:'#5e87c5',gene:'#4f9d8f',promoter:'#e0906a',terminator:'#c98fc0',rep_origin:'#f0b060',oriT:'#f0b060',misc_feature:'#8ba7e0',primer_bind:'#a6d98f','5\'UTR':'#c5b0e0','3\'UTR':'#c5b0e0',polyA_signal:'#d9a0b0',protein_bind:'#7fd0c0'};
+function parseGenBank(text){
+  if(!text || text.indexOf('LOCUS')<0) return null;
+  var lines=text.split(/\r?\n/), out={name:'',length:0,circular:false,features:[]};
+  var lm=(lines[0]||'').match(/^LOCUS\s+(\S+)\s+(\d+)\s*bp/i);
+  if(lm){ out.name=lm[1]; out.length=parseInt(lm[2],10)||0; }
+  if(/\bcircular\b/i.test(lines[0]||'')) out.circular=true;
+  var inFeat=false, cur=null;
+  function push(){ if(cur && cur.start && cur.end) out.features.push(cur); cur=null; }
+  for(var i=0;i<lines.length;i++){ var ln=lines[i];
+    if(/^FEATURES/.test(ln)){ inFeat=true; continue; }
+    if(!inFeat) continue;
+    if(/^ORIGIN|^\/\/|^[A-Z]/.test(ln)){ push(); break; }
+    var fk=ln.match(/^ {5}(\S+)\s+(.+)$/);
+    if(fk){ push(); var loc=fk[2], strand=/complement/.test(loc)?-1:1, nums=loc.match(/<?(\d+)\.\.>?(\d+)/), s=0,e=0;
+      if(nums){ s=parseInt(nums[1],10); e=parseInt(nums[2],10); } else { var one=loc.match(/(\d+)/); if(one){ s=parseInt(one[1],10); e=s; } }
+      cur={type:fk[1],start:s,end:e,strand:strand,label:''};
+    } else if(cur){ var q=ln.match(/^\s+\/(?:label|gene|product|note)=?"?([^"]+)"?/); if(q && !cur.label) cur.label=q[1].replace(/"+$/,'').slice(0,28); }
+  }
+  push();
+  if(!out.length){ out.features.forEach(function(f){ if(f.end>out.length) out.length=f.end; }); }
+  return out.length ? out : null;
+}
+function _polar(cx,cy,r,deg){ var a=(deg-90)*Math.PI/180; return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; }
+function _arcPath(cx,cy,r1,r2,a0,a1){ var large=((a1-a0)%360)>180?1:0; var p1=_polar(cx,cy,r2,a0),p2=_polar(cx,cy,r2,a1),p3=_polar(cx,cy,r1,a1),p4=_polar(cx,cy,r1,a0);
+  return 'M'+p1[0].toFixed(1)+' '+p1[1].toFixed(1)+' A'+r2+' '+r2+' 0 '+large+' 1 '+p2[0].toFixed(1)+' '+p2[1].toFixed(1)+' L'+p3[0].toFixed(1)+' '+p3[1].toFixed(1)+' A'+r1+' '+r1+' 0 '+large+' 0 '+p4[0].toFixed(1)+' '+p4[1].toFixed(1)+' Z'; }
+function _fcol(t){ return FCOL[t]||'#9aa0b8'; }
+function _mapLegend(gb){
+  var seen={}, order=[];
+  gb.features.forEach(function(f){ if(f.type!=='source' && !seen[f.type]){ seen[f.type]=1; order.push(f.type); } });
+  if(!order.length) return '';
+  return '<div class="pm-legend">'+order.slice(0,8).map(function(t){ return '<span class="pm-leg"><i style="background:'+_fcol(t)+'"></i>'+esc(t)+'</span>'; }).join('')+'</div>';
+}
+function plasmidMapSvg(gb,title){
+  var cx=120,cy=120,L=gb.length||1;
+  var segs=gb.features.filter(function(f){return f.type!=='source';}).slice(0,80).map(function(f){
+    var a0=(f.start/L)*360, a1=(f.end/L)*360; if(a1<=a0) a1=a0+0.8;
+    var out=f.strand<0, r1=out?72:76, r2=out?86:90;
+    return '<path d="'+_arcPath(cx,cy,r1,r2,a0,a1)+'" fill="'+_fcol(f.type)+'" opacity=".92"><title>'+esc((f.label||f.type)+' · '+f.start+'..'+f.end+(f.strand<0?' (–)':' (+)'))+'</title></path>';
+  }).join('');
+  var ring='<circle cx="120" cy="120" r="81" fill="none" class="pm-ring"/>';
+  var center='<text x="120" y="115" text-anchor="middle" class="pm-title">'+esc(String(title||'').slice(0,18))+'</text><text x="120" y="133" text-anchor="middle" class="pm-len">'+L+' bp'+(gb.circular?' · circular':'')+'</text>';
+  return '<svg class="pm-svg" viewBox="0 0 240 240">'+ring+segs+center+'</svg>';
+}
+
+// Map bytes never go in journal/plasmids. A GenBank file or a SnapGene .dna as base64 is large
+// and JournalStore rewrites the whole record on every edit - the same mistake Labbook's
+// attachments already avoid. Metadata in the store, bytes in IndexedDB keyed by record id.
+function _pmapDB(){ return new Promise(function(res,rej){
+  var r=indexedDB.open('archive_maps',1);
+  r.onupgradeneeded=function(){ if(!r.result.objectStoreNames.contains('m')) r.result.createObjectStore('m'); };
+  r.onsuccess=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); }; }); }
+function pmapPut(id,rec){ return _pmapDB().then(function(db){ return new Promise(function(res){
+  var t=db.transaction('m','readwrite').objectStore('m').put(rec,id);
+  t.onsuccess=function(){ res(true); }; t.onerror=function(){ res(false); }; }); }).catch(function(){ return false; }); }
+function pmapGet(id){ return _pmapDB().then(function(db){ return new Promise(function(res){
+  var t=db.transaction('m','readonly').objectStore('m').get(id);
+  t.onsuccess=function(){ res(t.result||null); }; t.onerror=function(){ res(null); }; }); }).catch(function(){ return null; }); }
+function pmapDel(id){ return _pmapDB().then(function(db){ return new Promise(function(res){
+  var t=db.transaction('m','readwrite').objectStore('m').delete(id);
+  t.onsuccess=function(){ res(true); }; t.onerror=function(){ res(false); }; }); }).catch(function(){ return false; }); }
+
+// One-time, non-destructive hand-off from the standalone Plasmids app. Deduped by code, so
+// running it twice cannot double the catalogue, and localStorage['hub_plasmids'] is left
+// exactly as it was — the app still opens and still shows everything.
+function migratePlasmidsToLibrary(){
+  try{
+    if(localStorage.getItem('archive_plasmids_migrated')==='1') return;
+    var raw=localStorage.getItem('hub_plasmids'); if(!raw) { localStorage.setItem('archive_plasmids_migrated','1'); return; }
+    var old=JSON.parse(raw); if(!old||!old.plasmids) { localStorage.setItem('archive_plasmids_migrated','1'); return; }
+    var have={}; var mine=libAll('plasmids');
+    Object.keys(mine).forEach(function(k){ have[String(mine[k].code||'').toLowerCase()]=1; });
+    var n=0;
+    Object.keys(old.plasmids).forEach(function(k){
+      var o=old.plasmids[k]; if(!o) return;
+      var code=String(o.code||'').toLowerCase();
+      if(code && have[code]) return;
+      var id=libAdd('plasmids',{code:o.code||'',name:o.name||'',backbone:o.backbone||'',
+        insert:o.insert||'',resistance:o.resistance||'',source:o.source||'',status:o.status||'',
+        location:'',notes:o.notes||'',usedIn:[],created:o.created||Date.now(),
+        mapName:o.mapFileName||o.mapName||'', mapKind:o.mapFileKind||'', mapLen:(o.mapGb&&o.mapGb.length)||0});
+      // the bytes go to IndexedDB, never into the record
+      if(o.mapGb||o.mapFile) pmapPut(id,{kind:o.mapFileKind||'genbank',name:o.mapFileName||o.mapName||'',
+        file:o.mapFile||'', gb:o.mapGb||null});
+      n++;
+    });
+    localStorage.setItem('archive_plasmids_migrated','1');
+    if(n) console.log('[Archive] '+n+' plasmids copied into the Library');
+  }catch(e){}
+}
+function nextPlasmidCode(){
+  var max=0, all=libAll('plasmids');
+  Object.keys(all).forEach(function(k){
+    var m=String(all[k].code||'').match(/pJM0*([0-9]+)/i);
+    if(m){ var n=parseInt(m[1],10); if(n>max) max=n; }
+  });
+  return 'pJM'+('0'+(max+1)).slice(-2);
+}
+function pmapPick(id){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='.gb,.gbk,.genbank,.dna,.txt';
+  inp.onchange=function(){
+    var f=inp.files&&inp.files[0]; if(!f) return;
+    var name=f.name, ext=(name.split('.').pop()||'').toLowerCase();
+    var rd=new FileReader();
+    if(ext==='dna'){
+      rd.onload=function(){ pmapPut(id,{kind:'snapgene',name:name,file:String(rd.result||''),gb:null})
+        .then(function(){ libSet('plasmids',id,{mapName:name,mapKind:'snapgene'}); renderLib(); }); };
+      rd.readAsDataURL(f); return;
+    }
+    rd.onload=function(){
+      var txt=String(rd.result||''), gb=parseGenBank(txt);
+      if(!gb){ alert('Could not read that as GenBank.'); return; }
+      pmapPut(id,{kind:'genbank',name:name,file:'',gb:gb})
+        .then(function(){ libSet('plasmids',id,{mapName:name,mapKind:'genbank',mapLen:gb.length||0}); renderLib(); });
+    };
+    rd.readAsText(f);
+  };
+  inp.click();
+}
+function pmapRemove(id){
+  if(!confirm('Remove the map from this plasmid?')) return;
+  pmapDel(id).then(function(){ libSet('plasmids',id,{mapName:'',mapKind:'',mapLen:0}); renderLib(); });
+}
+function pmapPaintAll(){
+  document.querySelectorAll('.lib-map[data-pid]').forEach(function(box){
+    var id=box.getAttribute('data-pid');
+    pmapGet(id).then(function(rec){
+      if(!rec){ box.innerHTML=''; return; }
+      if(rec.kind==='genbank' && rec.gb && rec.gb.features){
+        var all=libAll('plasmids'), r=all[id]||{};
+        box.innerHTML=plasmidMapSvg(rec.gb, r.name||r.code||'')+_mapLegend(rec.gb);
+      } else {
+        box.innerHTML='<div class="lib-mapfile">'+esc(rec.name||'map file')+' &middot; SnapGene</div>';
+      }
+    });
+  });
+}
+
 function setLibKind(k){
   _libKind = k;
   var isP = (k === 'protocols');
@@ -2035,11 +2199,13 @@ function renderLibKinds(){
 }
 function libAddFromForm(){
   var kind = _libKind, rec = {created: Date.now(), usedIn: []};
+  if (kind === 'plasmids') rec.code = nextPlasmidCode();
   LIB_FIELDS[kind].forEach(function(f){
     var el2 = document.getElementById('libf-' + f.f);
     if (el2) rec[f.f] = (el2.value||'').trim();
   });
-  if (!rec.name){ alert('Give it a name first.'); return; }
+  if (kind === 'plasmids' && !rec.name && !rec.insert){ alert('Give it a name or an insert first.'); return; }
+  if (kind !== 'plasmids' && !rec.name){ alert('Give it a name first.'); return; }
   libAdd(kind, rec);
   LIB_FIELDS[kind].forEach(function(f){ var el2=document.getElementById('libf-'+f.f); if(el2) el2.value=''; });
   renderLib(); renderLibKinds();
@@ -2092,6 +2258,13 @@ function renderLib(){
       + '<span class="lib-acts"><button class="lib-x" title="Delete" onclick="libRemove(\'' + kind + '\',\'' + id + '\',\'' + esc(String(r.name||'').replace(/'/g,"")) + '\')">&times;</button></span></div>'
       + (r.seq?'<div class="lib-seq">' + esc(r.seq) + '</div>':'')
       + (meta.length?'<div class="lib-meta">' + meta.join('') + '</div>':'')
+      + (kind==='plasmids'
+          ? ('<div class="lib-map" data-pid="' + id + '"></div>'
+             + '<div class="lib-maprow">'
+             + '<button class="btn btn-sm" onclick="pmapPick(\'' + id + '\')">' + (r.mapName?'Replace map':'Add map (GenBank / .dna)') + '</button>'
+             + (r.mapName ? ('<button class="btn btn-sm" onclick="pmapRemove(\'' + id + '\')">Remove map</button><span class="lib-mapname">' + esc(r.mapName) + '</span>') : '')
+             + '</div>')
+          : '')
       + '<div class="lib-used">' + (used ? ('Used in ' + used + ' experiment' + (used===1?'':'s')) : 'Not yet used in an experiment') + '</div>'
       + '</div>';
   }).join('');
@@ -2099,6 +2272,7 @@ function renderLib(){
   host.innerHTML = note + form + (ids.length
     ? ('<div class="lib-list">' + rows + '</div>')
     : '<div class="lib-empty">Nothing here yet' + (q?' matching that search':'') + '. Fill the form above.</div>');
+  if (kind==='plasmids') setTimeout(pmapPaintAll, 0);
   if (_libHit){
     var hit = host.querySelector('.lib-row[data-id="' + _libHit + '"]');
     if (hit){ hit.classList.add('lib-hit'); hit.scrollIntoView({block:'center'});
@@ -4160,6 +4334,7 @@ function generateMiSeqSteps() {
 document.addEventListener('DOMContentLoaded', function() {
   renderFilterPills();
   renderLibKinds();
+  setTimeout(migratePlasmidsToLibrary, 900);
   renderProtoGrid();
   wireDHubLabbookLinks();
   setTimeout(anInitSync, 400); // reconcile sticky notes with the cloud once the parent Firebase is up

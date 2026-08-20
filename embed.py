@@ -50,9 +50,15 @@ APPS = [
 # Which apps ship in which build. 'all' is the personal Hub; 'product' is the sellable
 # story — the notebook, the analysis that feeds it, the protocol library and the modules
 # they depend on. Cuppa/Fabricata/Cadence and the off-path tools stay out.
+# The sellable build is the spine plus what feeds it: Labbook (the notebook), Archive (protocols
+# AND the reagent Library, which now holds plasmids too), Cells (the three frames the merged app
+# hosts), Echo, and the analysis apps Echo hands off to. Blueprint, Blot and Helix are useful in
+# a TPD lab but sit outside the plan -> execute -> analyse loop, so they stay in the personal
+# build and the repo. Plasmids is no longer shipped as its own app: it is a Library tab.
 PROFILES = {
-    'product': ['labbook', 'echo', 'protocols', 'pd', 'blot', 'dna', 'plasmids',
-                'cellarchive', 'incubator', 'cryo', 'deg', 'ldi', 'spectra', 'beacon', 'lumina'],
+    'product': ['labbook', 'protocols',
+                'incubator', 'cellarchive', 'cryo',
+                'echo', 'deg', 'spectra', 'ldi', 'lumina', 'beacon'],
 }
 # ── Standalone Labbook ────────────────────────────────────────────────────
 # Labbook + Archive as one self-contained file, with no dHUB around it. Archive is embedded
