@@ -1035,6 +1035,51 @@ are deliberately left alone.
 1.58 device px — small and muddy at once. Icons render at their native 24px with a **1.5**
 stroke and `geometricPrecision`; Insert buttons grew 68→76px to hold them.
 
+## What was left over in Labbook (audited 2026-08-20)
+
+An audit for dead and duplicated code, re-run until it came back clean — removing the first
+round orphaned two more (`printBlocks` lost its only caller, `.dock-btn` its only user).
+
+**The panel drag-and-drop subsystem could not run.** All three panels are `dockOnly`,
+`#rb-move` does not exist, and nothing in the document is `draggable`. `panelDrag`,
+`panelDrop`, `movePanel`, `_dragPanel`, the `dockOnly` flag, the persisted `LAYOUT.panels`
+map and the `.rb-move-zone`/`.panel-swap`/`.pdrag` CSS are gone. `DOCK_PANELS` is the list.
+
+**`renderPanels` built every panel body twice** — `panelDom` calls `build()`, then
+`renderDockPanels` rebuilt all three on top. `renderDockPanels` stays (refreshing bodies in
+place is what you want when a tag changes); the redundant call does not.
+
+Also gone, each defined and never reachable: `btns()`, `applyFont()` (no font-family picker
+exists; `applyFontSize` is the survivor), `printExpBlocks()` + `printBlocks()` (superseded by
+`printExpByDay`), `plateGroupRange()` + `plateWellText()` (superseded by
+`plateSummary`/`_compactRanges`), and 15 orphaned CSS classes — including the `.ov-*` rules
+left from the `renderOngoing` dashboard the one day view replaced.
+
+**One thing was half-dead, and was fixed rather than deleted**: `openImageIns` is a complete
+inline-image picker with no entry point — paste and drop were the only routes to an image in
+the text. It is in the `/` menu as **"Image in the text"**, beside Picture (which places a
+movable object).
+
+The audit is reproducible: parse `function NAME(`, count occurrences of `NAME` in the whole
+file, and flag any where the count equals the number of definitions. Same trick on `.class`
+selectors, comparing the stylesheet against everything after `</style>`.
+
+## The Incubator flask, and phenol red
+
+The old drawing was a rectangle with a stub on its side, which is why it read as a blob. What
+makes a T-flask recognisable is the canted neck: the body is a rounded rectangle with the
+top-left corner cut at 45° (`FLASK_BODY`), and a real tube rises out of that cut in a rotated
+frame, capped, with two vent ribs.
+
+**The body must be opaque** (`.vsl-base`). The neck is drawn behind it, and through a
+translucent glass fill it showed as a diagonal line straight across the medium.
+
+**The fill colours are phenol red, not a traffic light.** Fresh medium is red-pink and
+acidifies through orange to yellow as the culture grows out — so a healthy flask is red and an
+overdue one is yellow. It reads as inverted status colour until you know that, which is why
+`_vslStops` now says so. The passage number is dark ink: the fills went pastel, and white
+needed a heavy shadow to survive on the yellow.
+
 ## Current state
 
 **v1.6.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (Plasmids was retired as an app this session — its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
