@@ -2075,7 +2075,8 @@ var LIB_KINDS = [
 ];
 var LIB_FIELDS = {
   antibodies: [
-    {f:'name',      lbl:'Name (α-…)',     w:1},
+    // The name was always "α-" plus the target typed out again, which is two fields that can
+    // disagree. You give the target; the name is derived.
     {f:'target',    lbl:'Target',          w:1},
     {f:'host',      lbl:'Host',            w:1},
     {f:'clonality', lbl:'Mono/polyclonal', w:1},
@@ -2482,7 +2483,8 @@ function libAddFromForm(){
   // which is how every plasmid added through this form ended up with no code at all.
   if (kind === 'plasmids' && !rec.code) rec.code = nextPlasmidCode();
   if (kind === 'plasmids' && !rec.name && !rec.insert){ alert('Give it a name or an insert first.'); return; }
-  if (kind !== 'plasmids' && !rec.name){ alert('Give it a name first.'); return; }
+  if (kind === 'antibodies' && !rec.target){ alert('Give it a target first — the name is α- plus that.'); return; }
+  if (kind === 'primers' && !rec.name){ alert('Give it a name first.'); return; }
   libAdd(kind, rec);
   LIB_FIELDS[kind].forEach(function(f){ var el2=document.getElementById('libf-'+f.f); if(el2) el2.value=''; });
   renderLib(); renderLibKinds();
@@ -2592,9 +2594,17 @@ function libCloseLoc(){ _locPick=null; var m=document.getElementById('lib-loc-mo
 var _libOpenId = null;
 function libOpen(kind, id){ _libOpenId = id; _libKind = kind; renderLib(); try{ document.getElementById('app-body').scrollTop = 0; }catch(e){} }
 function libClose(){ _libOpenId = null; renderLib(); }
+// "α-" is written once, here. A record from before this change keeps its name — nothing is
+// rewritten — and its target is read out of that name so it still displays and sorts with
+// the rest.
+function abTarget(r){
+  if (!r) return '';
+  if (r.target) return String(r.target).trim();
+  return String(r.name||'').replace(/^\s*(?:anti|α)\s*[-\u2010-\u2015]?\s*|^\s*a\s*[-\u2010-\u2015]\s*/i, '').trim();
+}
 function libDisplayName(kind, r){
   if (!r) return '';
-  if (kind === 'antibodies') return r.target ? ('α-' + r.target) : (r.name || '—');
+  if (kind === 'antibodies'){ var t = abTarget(r); return t ? ('α-' + t) : (r.name || '—'); }
   if (kind === 'plasmids')   return [r.code, r.name].filter(Boolean).join(' — ') || (r.insert || '—');
   return r.name || '—';
 }

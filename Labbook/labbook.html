@@ -2337,6 +2337,29 @@ function maybeSeed(){
     sp.sections.forEach(function(sn){ p.sections.push({id:uid(),name:sn,created:Date.now()}); }); LB.data.projects.push(p); });
   LB.data._seeded=true; return true;
 }
+// ── The Antibodies section people still see ─────────────────────────────────────────────────
+// It is data, not code. An older seed created it; the seed stopped, but every notebook that
+// already had one kept it, and nothing ever took it away. The catalogue lives in Archive's
+// Library now, so an *empty* one is just a dead tab and goes. One that has pages in it is
+// somebody's writing — that stays, and says where the catalogue went instead.
+function cleanupAntibodySection(){
+  if(LB.data._abSecCleaned) return;
+  var secs=(LB.data.generalSections||[]).filter(function(sc){
+    return sc.kind==='antibodies' || /^antibod(y|ies)$/i.test(String(sc.name||'').trim());
+  });
+  if(!secs.length){ LB.data._abSecCleaned=true; return; }
+  var pages=LB.data.pages||{}, removed=0;
+  secs.forEach(function(sc){
+    var has=Object.keys(pages).some(function(k){ return pages[k].sectionId===sc.id; });
+    if(has) return;
+    LB.data.generalSections=LB.data.generalSections.filter(function(x){ return x.id!==sc.id; });
+    if(SEL && SEL.node && SEL.node.sectionId===sc.id) SEL={node:{kind:'notebook',projectId:null,sectionId:null},page:null};
+    removed++;
+  });
+  LB.data._abSecCleaned=true;
+  save();
+  if(removed){ renderAll(); toast('Removed the empty Antibodies section — the catalogue is in Archive → Library'); }
+}
 function projById(id){ return LB.data.projects.filter(function(p){return p.id===id;})[0]; }
 function projColor(id){ var p=projById(id); return p?(p.color||'#5e87c5'):'#9ca0b8'; }
 
@@ -3943,7 +3966,10 @@ function migrateAntibodiesToLibrary(){
   var n=0;
   ids.forEach(function(k){ var a=mine[k]; if(!a||!a.name) return;
     if(there[_abNorm(a.name)]) return;
-    S.libAdd('antibodies',{name:a.name||'',target:a.target||'',host:a.host||'',clonality:'',
+    // The Library keys an antibody by its target now. The old local record only had a name,
+    // so derive one — and keep the name too, so nothing is lost if the derivation is wrong.
+    var tgt=a.target||String(a.name||'').replace(/^\s*(?:anti|α)\s*[-\u2010-\u2015]?\s*|^\s*a\s*[-\u2010-\u2015]\s*/i,'').trim();
+    S.libAdd('antibodies',{target:tgt,name:a.name||'',host:a.host||'',clonality:'',
       vendor:'',catalog:a.catalog||'',lot:'',dilution:a.dilution||'',location:'',
       usedIn:(a.usedIn||[]).slice(),created:a.created||Date.now()});
     n++; });
@@ -3954,6 +3980,20 @@ function migrateAntibodiesToLibrary(){
 // read the shared list, and record the use against the record that already exists there.
 function libAntibodies(){
   try{ var W=_arcWin(); if(W&&W.ARCHIVE_LIB) return W.ARCHIVE_LIB('antibodies')||{}; }catch(e){}
+  return {};
+}
+// An antibody is a target now — the name is "α-" plus that, written in one place. Records
+// from before the change kept their name, so fall back to it rather than showing nothing.
+function abName(a){
+  if(!a) return '';
+  var t=a.target ? String(a.target).trim()
+                 : String(a.name||'').replace(/^\s*(?:anti|α)\s*[-\u2010-\u2015]?\s*|^\s*a\s*[-\u2010-\u2015]\s*/i,'').trim();
+  return t ? ('α-'+t) : (a.name||'');
+}
+// The plasmid catalogue moved into Archive's Library with the app. Reading the retired app's
+// localStorage would show a list that has stopped being edited.
+function libPlasmids(){
+  try{ var W=_arcWin(); if(W&&W.ARCHIVE_LIB) return W.ARCHIVE_LIB('plasmids')||{}; }catch(e){}
   return {};
 }
 function libAbUse(id){
@@ -4304,6 +4344,7 @@ function hydrateAtt(root){ if(!root) return Promise.resolve(); var imgs=root.que
 // which is re-written whole on every save).
 var FILE_MAX_BYTES=25*1024*1024;
 var ICON_PRIMER=tbSvg('<path d="M3 8c3-2.5 6-2.5 9 0s6 2.5 9 0"/><path d="M3 16c3-2.5 6-2.5 9 0s6 2.5 9 0"/><path d="M7 6.5v11M17 6.5v11"/>');
+var ICON_PLASMID=tbSvg('<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v3M20.5 12h-3"/><path d="M8.5 14.5l2.5-4 2 2 2.5-4"/>');
 var P_FILE='<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>';
 var FILE_KINDS=[
   {re:/^image\//,                        kind:'image', label:'Image',
@@ -4696,10 +4737,12 @@ function acScan(){ if(!_activeEd) return; var t=caretToken(); if(!t){ if(AC.open
   if(t.trigger==='@'){
     Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; if(!isCoded(e)) return; var lbl=(e.code||'')+' '+(e.title||''); if(!q||lbl.toLowerCase().indexOf(q)>=0) items.push({t:'exp',id:e.id,label:e.code||e.title||'exp',sub:e.title||'',ic:'E',c:'#5e87c5'}); });
     Object.keys(LB.data.pages).forEach(function(k){ var p=LB.data.pages[k]; if(!p.title) return; if(!q||p.title.toLowerCase().indexOf(q)>=0) items.push({t:'page',id:p.id,label:p.title,sub:'page',ic:'P',c:'#5e72c4'}); });
-    (function(){ var ab=libAntibodies(); Object.keys(ab).forEach(function(k){ var a=ab[k]; if(!a.name) return;
-      if(!q||a.name.toLowerCase().indexOf(q)>=0) items.push({t:'ab',id:k,label:a.name,sub:a.target||a.catalog||'antibody',svg:ICON_ANTIBODY,c:'#c47818'}); }); })();
+    (function(){ var ab=libAntibodies(); Object.keys(ab).forEach(function(k){ var a=ab[k], nm=abName(a); if(!nm) return;
+      if(!q||nm.toLowerCase().indexOf(q)>=0) items.push({t:'ab',id:k,label:nm,sub:[a.host,a.dilution,a.catalog].filter(Boolean).join(' · ')||'antibody',svg:ICON_ANTIBODY,c:'#c47818'}); }); })();
     archiveIndex().forEach(function(p){ if(!q||p.name.toLowerCase().indexOf(q)>=0){ items.push({t:'proto',id:p.id,label:p.name,sub:'protocol link',ic:'A',c:'#a56983'}); items.push({t:'protosteps',id:p.id,label:p.name,sub:'insert steps',svg:ICON_PROTO_STEPS,c:'#8a5674'}); } });
-    try{ var pd=JSON.parse(localStorage.getItem('hub_plasmids')||'null'); if(pd&&pd.plasmids){ Object.keys(pd.plasmids).forEach(function(k){ var pl=pd.plasmids[k]; if(!pl.code&&!pl.name) return; var lbl=((pl.code||'')+' '+(pl.name||'')).toLowerCase(); if(!q||lbl.indexOf(q)>=0) items.push({t:'plasmid',id:pl.code||pl.id,label:pl.code||pl.name,sub:pl.name||'plasmid',ic:'p',c:'#6d7bd0'}); }); } }catch(e){}
+    (function(){ var pd=libPlasmids(); Object.keys(pd).forEach(function(k){ var pl=pd[k]; if(!pl.code&&!pl.name) return;
+      var lbl=((pl.code||'')+' '+(pl.name||'')).toLowerCase();
+      if(!q||lbl.indexOf(q)>=0) items.push({t:'plasmid',id:pl.code||k,label:pl.code||pl.name,sub:[pl.name,pl.insert].filter(Boolean).join(' · ')||'plasmid',ic:'p',c:'#6d7bd0'}); }); })();
     items=items.slice(0,16);
   } else if(t.trigger==='#'){
     LB.data.tags.filter(function(tg){return !q||tg.toLowerCase().indexOf(q)>=0;}).slice(0,10).forEach(function(tg){ items.push({t:'tag',id:tg,label:'#'+tg,sub:'tag',svg:ICON_TAG,c:'#5e72c4'}); });
@@ -4747,7 +4790,7 @@ function openAntibodyIns(){
     return;
   }
   var items=keys.map(function(k){ var a=ab[k];
-    return {id:k,label:a.name||'(unnamed)',sub:[a.target,a.dilution,a.location].filter(Boolean).join(' · '),svg:ICON_ANTIBODY,c:'#c47818'}; })
+    return {id:k,label:abName(a)||'(unnamed)',sub:[a.host,a.dilution,a.locText||a.location].filter(Boolean).join(' · '),svg:ICON_ANTIBODY,c:'#c47818'}; })
     .sort(function(x,y){ return String(x.label).localeCompare(String(y.label)); });
   lbPicker('Insert antibody',items,function(it){
     libAbUse(it.id);
@@ -4883,18 +4926,24 @@ function spotBeyondLabbook(){
     out.push({a:p.name,b:'protocol'+(p.hasCalc?' · calculator':''),k:'proto',ic:'A',c:'#a56983',
       fn:function(){ openArchiveProtocol(p.id); }});
   }); }catch(e){}
-  // Archive Library — antibodies and primers
+  // Archive Library — antibodies, primers and plasmids, each with where it lives
   try{ if(W&&W.ARCHIVE_LIB){
-    [['antibodies',ICON_ANTIBODY,'#c47818','antibody'],['primers',ICON_PRIMER,'#6d7bd0','primer']].forEach(function(kind){
+    [['antibodies',ICON_ANTIBODY,'#c47818','antibody'],
+     ['primers',ICON_PRIMER,'#6d7bd0','primer'],
+     ['plasmids',ICON_PLASMID,'#6d7bd0','plasmid']].forEach(function(kind){
       var all=W.ARCHIVE_LIB(kind[0])||{};
-      Object.keys(all).forEach(function(id){ var r=all[id]; if(!r.name) return;
-        var where=r.location?(' · '+r.location):'';
-        out.push({a:r.name, b:(r.target||r.targetGene||kind[0].replace(/s$/,''))+where,
+      Object.keys(all).forEach(function(id){
+        var r=all[id];
+        var nm = kind[0]==='antibodies' ? abName(r)
+               : kind[0]==='plasmids'   ? ([r.code,r.name].filter(Boolean).join(' — ')||r.insert||'')
+               : (r.name||'');
+        if(!nm) return;
+        var where = r.locText || r.location || '';
+        out.push({a:nm, b:[(r.host||r.targetGene||r.insert||kind[0].replace(/s$/,'')), where].filter(Boolean).join(' · '),
           k:kind[3], svg:kind[1], c:kind[2],
-          fn:function(){ try{ window.parent.openApp('protocols'); setTimeout(function(){
-            var w=_arcWin(); if(w&&w.setLibKind){ w.setLibKind(kind[0]);
-              var si=w.document.getElementById('proto-search'); if(si){ si.value=r.name; w.renderLib(); } } },400);
-          }catch(e){} }});
+          // openLibRecord navigates first and then opens the record; the old path typed the
+          // name into the search box after 400ms and hoped.
+          fn:function(){ openLibRecord(kind[0], id); }});
       });
     });
   } }catch(e){}
@@ -5328,6 +5377,7 @@ lbInitSync();
 setTimeout(maybeAutoBackup,1500);
 setTimeout(gcAttachments,4000);
 setTimeout(migrateAntibodiesToLibrary,2500);
+setTimeout(cleanupAntibodySection,2600);
 function _mergeDHubContext(ctx){
   ctx=ctx||{}; var e=(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
   // No experiment open: there is nowhere to attach this. Say so rather than buffering it into
