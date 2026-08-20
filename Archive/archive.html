@@ -97,6 +97,8 @@ input:checked+.theme-slider::before{transform:translateX(16px);}
   border:1px solid var(--border2);border-radius:7px;padding:6px 9px;color:var(--text);min-width:0;}
 .lib-add-grid input:focus,.lib-add-grid select:focus{outline:none;border-color:var(--accent);}
 .lib-list{display:flex;flex-direction:column;gap:7px;}
+@keyframes libHit{0%{box-shadow:0 0 0 0 rgba(165,105,131,.55);}100%{box-shadow:0 0 0 9px rgba(165,105,131,0);}}
+.lib-row.lib-hit{border-color:var(--accent);animation:libHit .9s ease-out 2;}
 .lib-row{border:1px solid var(--border);border-radius:10px;background:var(--surface);padding:10px 14px;}
 .lib-row-top{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;}
 .lib-nm{font-size:14px;font-weight:600;}
@@ -1968,6 +1970,10 @@ var LIB_FIELDS = {
   ]
 };
 var _libKind = 'protocols';
+// Set by ARCHIVE_LIB_OPEN and consumed by the next renderLib(). A timer that adds a class after
+// the render loses the race whenever something re-renders — and in the standalone build the
+// frame is moved into place after the call, which does exactly that.
+var _libHit = null;
 
 function _libHost(){ try{ return (window.parent && window.parent !== window) ? window.parent : null; }catch(e){ return null; } }
 function _libStoreOk(){ var H=_libHost(); return !!(H && H.JournalStore && H.JournalStore.libAdd); }
@@ -2079,7 +2085,7 @@ function renderLib(){
       if (r.seq) meta.unshift('<span><b>Length</b>' + String(r.seq).replace(/[^ACGTacgt]/g,'').length + ' nt</span>');
     }
     var used = (r.usedIn||[]).length;
-    return '<div class="lib-row"><div class="lib-row-top"><span class="lib-nm">' + esc(r.name||'—') + '</span>'
+    return '<div class="lib-row" data-id="' + id + '"><div class="lib-row-top"><span class="lib-nm">' + esc(r.name||'—') + '</span>'
       + (r.target?'<span class="lib-tg">' + esc(r.target) + '</span>':'')
       + '<span class="lib-acts"><button class="lib-x" title="Delete" onclick="libRemove(\'' + kind + '\',\'' + id + '\',\'' + esc(String(r.name||'').replace(/'/g,"")) + '\')">&times;</button></span></div>'
       + (r.seq?'<div class="lib-seq">' + esc(r.seq) + '</div>':'')
@@ -2091,6 +2097,11 @@ function renderLib(){
   host.innerHTML = note + form + (ids.length
     ? ('<div class="lib-list">' + rows + '</div>')
     : '<div class="lib-empty">Nothing here yet' + (q?' matching that search':'') + '. Fill the form above.</div>');
+  if (_libHit){
+    var hit = host.querySelector('.lib-row[data-id="' + _libHit + '"]');
+    if (hit){ hit.classList.add('lib-hit'); hit.scrollIntoView({block:'center'});
+      setTimeout(function(){ hit.classList.remove('lib-hit'); }, 1800); _libHit = null; }
+  }
 }
 
 function renderFilterPills() {
@@ -4234,6 +4245,22 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     // The reagent catalogue, so Labbook can resolve an @mention without keeping its own copy.
     window.parent.ARCHIVE_LIB = function(kind){ try{ return JSON.parse(JSON.stringify(libAll(kind)||{})); }catch(e){ return null; } };
+    // Open the Library on a record. Replaces the "openApp then setTimeout(400) then prefill the
+    // search box" dance callers were doing, which raced the frame's own load.
+    window.parent.ARCHIVE_LIB_OPEN = function(kind,id){
+      try{
+        closeProtocol && closeProtocol();
+        setLibKind(kind);
+        if(id){
+          var r=(libAll(kind)||{})[id];
+          var si=document.getElementById('proto-search');
+          if(si) si.value = r ? (r.name||'') : '';
+          _libHit = id;
+          renderLib();
+        }
+        return true;
+      }catch(e){ return false; }
+    };
     window.parent.ARCHIVE_LIB_USE = function(kind,id,expId){
       try{ var r=(libAll(kind)||{})[id]; if(!r) return false;
         var u=(r.usedIn||[]).slice(); if(u.indexOf(expId)<0) u.push(expId);
