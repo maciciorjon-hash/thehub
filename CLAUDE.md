@@ -901,7 +901,7 @@ metadata in `LB.data`, bytes in IndexedDB (`lb_att`), optional cloud copy in Fir
 
 ## Current state
 
-**v1.4.1**, 20 apps, last worked 2026-08-01. Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.5.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (The shell's version pill had drifted to v1.3.16 while this line said v1.4.1; both are aligned now.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
