@@ -197,13 +197,23 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 .vsl-face:hover .vsl-svg{transform:translateY(-4px);}
 .vsl-glass{fill:rgba(255,255,255,.14);stroke:var(--border2);stroke-width:1.6;}
 [data-theme="dark"] .vsl-glass{fill:rgba(255,255,255,.06);stroke:rgba(255,255,255,.18);}
-.vsl-cap{fill:#5b7fc4;stroke:#43619e;stroke-width:1;}
-.vsl-neck{fill:rgba(255,255,255,.14);stroke:var(--border2);stroke-width:1.4;}
-[data-theme="dark"] .vsl-neck{fill:rgba(255,255,255,.06);stroke:rgba(255,255,255,.18);}
+/* The flask body is opaque: the neck is drawn behind it, and through a translucent fill it
+   showed as a diagonal line straight across the medium. */
+.vsl-base{fill:#fbfcfe;}
+[data-theme="dark"] .vsl-base{fill:#252b3b;}
+.vsl-cap{fill:#6f8fc9;stroke:#4c6ba6;stroke-width:1.1;}
+.vsl-capline{stroke:rgba(0,0,0,.18);stroke-width:1;stroke-linecap:round;}
+[data-theme="dark"] .vsl-capline{stroke:rgba(0,0,0,.3);}
+.vsl-neck{fill:#eef1f7;stroke:rgba(28,38,66,.22);stroke-width:1.6;}
+[data-theme="dark"] .vsl-neck{fill:#232838;stroke:rgba(255,255,255,.2);}
+.vsl-men{fill:none;stroke:rgba(255,255,255,.62);stroke-width:1.5;}
 .vsl-line{stroke:rgba(255,255,255,.5);stroke-width:1.2;}
-.vsl-rim{fill:none;stroke:var(--border2);stroke-width:1.6;}
+.vsl-rim{fill:none;stroke:rgba(28,38,66,.26);stroke-width:1.7;}
+[data-theme="dark"] .vsl-rim{stroke:rgba(255,255,255,.26);}
 .vsl-sheen{fill:rgba(255,255,255,.28);}
-.vsl-p{position:absolute;left:0;right:0;bottom:26%;font-size:16px;font-weight:800;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.4);letter-spacing:.2px;pointer-events:none;}
+/* Dark ink, not white. The medium is pastel now, so white needed a heavy shadow to survive
+   on the yellow and still read as a smudge; dark ink is legible on all three. */
+.vsl-p{position:absolute;left:0;right:0;bottom:24%;font-size:16px;font-weight:700;color:#4a3b33;text-shadow:0 1px 0 rgba(255,255,255,.45);letter-spacing:.2px;pointer-events:none;}
 .vsl-name{font-size:13px;font-weight:700;color:var(--text);margin-top:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .vsl-tag{font-size:10.5px;font-weight:600;margin-top:2px;line-height:1.3;color:var(--text3);max-width:100%;}
 .vsl-tag.st-ok{color:var(--ok);}
@@ -527,23 +537,54 @@ function toggleCell(id){ if(_openCell===id) closeDrawer(); else openDrawer(id); 
 // Vessel visuals — the medium is phenol-red: healthy culture = RED, and it turns YELLOWER
 // (more acidic) the more urgent a split is. All native SVG/CSS.
 // ok = healthy media → deep phenol red; soft = "soon to split" → orange; warn = split due/overdue → acidic yellow.
+// Phenol red, not a traffic light. Fresh medium is red-pink and acidifies through orange to
+// yellow as the culture grows out — so a healthy flask is red and an overdue one is yellow.
+// It looks inverted if you read it as a status colour; it is the medium.
 function _vslStops(st){ return st==='warn' ? ['#e8d492','#ddc477'] : (st==='soft' ? ['#e8b07a','#dd9a5e'] : ['#d98b86','#c47872']); }
 // Reclined T-flask lying on its side (matches Jon's ref image): angled body, blue ribbed
 // screw cap on the left neck, media pooled along the bottom. Media colour fills via the clip.
-var FLASK_BODY='M34 38 L84 38 Q90 38 90 44 L90 82 Q90 88 84 88 L34 88 Q28 88 28 82 L28 68 L21 69 Q16 68 16 62 Q16 56 21 55 L28 56 L28 44 Q28 38 34 38 Z';
-function flaskSvg(id,st){ var s=_vslStops(st), g='vg_'+id, cp='cvg_'+id;
+// ── A T-flask, drawn as one object ─────────────────────────────────────────
+// The old drawing was a rectangle with a stub stuck on its side, which is why it read as a
+// blob rather than a flask. What makes a T-flask recognisable is the canted neck: the body is
+// a rounded rectangle with its top-left corner cut away at 45°, and a tube rises out of that
+// cut. Neck and cap are drawn in a rotated frame so the geometry stays readable.
+var FLASK_BODY = 'M22 50 L38 34 Q40.5 31.5 44 31.5 L84 31.5 Q92 31.5 92 39.5 '
+               + 'L92 84 Q92 92 84 92 L30 92 Q22 92 22 84 Z';
+
+function flaskSvg(id, st){
+  var s = _vslStops(st), g = 'vg_' + id, cp = 'cvg_' + id, hl = 'vh_' + id;
+  // Confluence is not tracked, so the fill level is fixed — it says "there is medium in
+  // this flask", not how much.
+  var top = 58;
   return '<svg class="vsl-svg" viewBox="0 0 104 104" aria-hidden="true">'
-    +'<defs><linearGradient id="'+g+'" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="'+s[0]+'"/><stop offset="1" stop-color="'+s[1]+'"/></linearGradient>'
-    +'<clipPath id="'+cp+'"><path d="'+FLASK_BODY+'"/></clipPath></defs>'
-    +'<g><rect class="vsl-cap" x="5" y="50" width="15" height="24" rx="3"/>'
-    +'<line x1="9" y1="53" x2="9" y2="71" stroke="rgba(0,0,0,.16)" stroke-width="1"/>'
-    +'<line x1="12.5" y1="53" x2="12.5" y2="71" stroke="rgba(0,0,0,.16)" stroke-width="1"/>'
-    +'<line x1="16" y1="53" x2="16" y2="71" stroke="rgba(0,0,0,.16)" stroke-width="1"/></g>'
-    +'<rect x="24" y="60" width="70" height="32" fill="url(#'+g+')" clip-path="url(#'+cp+')"/>'
-    +'<path class="vsl-glass" d="'+FLASK_BODY+'"/>'
-    +'<line class="vsl-line" x1="28" y1="60" x2="90" y2="60" clip-path="url(#'+cp+')"/>'
-    +'<ellipse class="vsl-sheen" cx="52" cy="47" rx="20" ry="4.5"/>'
-    +'</svg>';
+    + '<defs>'
+      + '<linearGradient id="' + g + '" x1="0" y1="1" x2="0" y2="0">'
+        + '<stop offset="0" stop-color="' + s[1] + '"/><stop offset="1" stop-color="' + s[0] + '"/></linearGradient>'
+      + '<linearGradient id="' + hl + '" x1="0" y1="0" x2="1" y2="0">'
+        + '<stop offset="0" stop-color="rgba(255,255,255,.55)"/><stop offset="1" stop-color="rgba(255,255,255,0)"/></linearGradient>'
+      + '<clipPath id="' + cp + '"><path d="' + FLASK_BODY + '"/></clipPath>'
+    + '</defs>'
+    // Neck and cap, drawn before the body so the join disappears under it. The body needs an
+    // opaque base for that to work — with a translucent glass fill the neck showed straight
+    // through the medium as a diagonal line.
+    + '<g transform="translate(32 44) rotate(45)">'
+      + '<rect class="vsl-neck" x="-30" y="-7.5" width="34" height="15" rx="3.5"/>'
+      + '<rect class="vsl-cap" x="-39" y="-10" width="11" height="20" rx="3.5"/>'
+      + '<line class="vsl-capline" x1="-35.5" y1="-6" x2="-35.5" y2="6"/>'
+      + '<line class="vsl-capline" x1="-32" y1="-6" x2="-32" y2="6"/>'
+    + '</g>'
+    // Body: an opaque base, the medium clipped inside it, then the outline last so nothing
+    // paints over it.
+    + '<path class="vsl-base" d="' + FLASK_BODY + '"/>'
+    + '<g clip-path="url(#' + cp + ')">'
+      + '<rect x="20" y="' + top + '" width="74" height="40" fill="url(#' + g + ')"/>'
+      + '<path class="vsl-men" d="M20 ' + top + ' Q57 ' + (top - 3) + ' 94 ' + top + '"/>'
+      // One soft highlight down the left wall — the only piece of gloss kept. It starts below
+      // the chamfer, or the clip cuts its top corner off at an angle and it reads as a smudge.
+      + '<rect x="27" y="' + (top - 6) + '" width="7" height="30" rx="3.5" fill="url(#' + hl + ')"/>'
+    + '</g>'
+    + '<path class="vsl-rim" d="' + FLASK_BODY + '"/>'
+  + '</svg>';
 }
 // Top-down culture dish with real depth: an outer wall ring (bevel-shaded), the medium
 // pool, an inner-wall shadow for thickness, a meniscus ring and a lighting sheen.
