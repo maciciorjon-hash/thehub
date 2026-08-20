@@ -80,7 +80,6 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 | `cellarchive` | Cell Archive | SVG cell/nucleus | `#d17a4a` (terracotta) | `Cell_Archive/cell_archive.html` |
 | `incubator` | Incubator (**admin-only** — cell-culture tracker) | SVG incubator/cell dish | `#4f9d8f` (teal) | `Incubator/incubator.html` |
 | `labbook` | Labbook (**admin-only** — electronic lab notebook; experiment-centric planner) | SVG notebook | `#4f9d8f` (teal) | `Labbook/labbook.html` |
-| `plasmids` | Plasmids (**admin-only** — plasmid database + SnapGene maps) | SVG plasmid | `#6d7bd0` (indigo) | `Plasmids/plasmids.html` |
 | `blot` | Blot (western blot figure builder) | SVG blot panels | `#5b6b7a` (slate) | `WesternBlot/westernblot.html` |
 | `gantt` | Cadence (grant/fellowship Gantt charts) | SVG timeline bars | `#d99a4e` (amber) | `Gantt/gantt.html` |
 
@@ -899,13 +898,150 @@ metadata in `LB.data`, bytes in IndexedDB (`lb_att`), optional cloud copy in Fir
   and `lbStorage()` resolves, but uploads fail until the bucket exists — `_cloudUnavailable`
   says so once, then falls back to device-local + backups.
 
+## Inventory says where things are (2026-08-20)
+
+The complaint was that Plasmids was useless — you could not open a record, see where it was, or
+look at a box. The root was wider: **nothing in the Hub said where anything physically is.**
+Library records carried a free-text `location`, cultures had none, and only Iceberg knew what a
+box was — for cell vials only.
+
+**Iceberg is now the one freezer map, for everything.** A vial record carries a `kind`
+(`cells|plasmid|antibody|primer|other`); absent means cells, so nothing migrated. Cells keep
+writing `cellLine` because every reader outside the app expects it there; other kinds write
+`label` + `conc`, and everything that colours, searches, groups or exports goes through
+`vialLabel(v)`. Storages are rendered from `state.storages` with a `+` button, so −20 °C and
+4 °C exist and an antibody has a home; the four hardcoded `['minus80','n2']` loops now walk
+whatever is there. `box.log[]` keeps discarded vials with a reason (**discard ≠ delete**).
+
+The shell exposes `HUB_FREEZER` / `_WALK` / `_FIND` / `_LOCATE` / `_TEXT` / `_PLACE` / `_BOXES`.
+**`_WALK` is the only traversal** — `cellsFindVials` and `cellsLineStats` were two more copies
+and now go through it. Anything that wants to know where something is asks; nothing keeps a
+second copy of the answer.
+
+**Vials without retyping**: "how many" fills that many *consecutive free positions* rather than
+stacking a count on one key (a stack was a picture of the box the box did not agree with, and
+made "how many are left" unanswerable by looking); plus duplicate-to-next-free, shift-click to
+paint a rectangle, and a form prefilled from the last thing put in that box (`box._last`).
+
+**The lifecycle closes both ways.** `hubThawVial(loc)` in the shell is the one implementation —
+it must decrement the freezer *before* writing the culture — with three doorways: the Freezer's
+vial modal, the Lines list, and anything holding a slot. `freezeCulture(id)` in Incubator is the
+counterpart: pick a box, say how many, and real vials land in consecutive free positions
+carrying the line, passage and media already on screen.
+
+## Plasmids: one home, and maps you can actually read
+
+`Plasmids/plasmids.html` is **retired** — dropped from `APP_INFO`, the home group, `embed.py`
+and the shell. `openApp('plasmids')` routes to Archive → Library → Plasmids via a
+`dhub:context {lib:'plasmids'}` message, so saved `#hashes` and Labbook's `data-app` links still
+land somewhere real. The file stays on disk, unreferenced.
+
+**Every Library kind got a master/detail.** `renderLib` rendered static text with a delete
+cross; there is a list (name · identifying facts · location chip) and `libOpen(kind,id)` opens
+the record with editable fields, location, notes and used-in. That fixed antibodies and primers
+at the same time.
+
+**Location is structured**: `r.loc = {storage, rackId, boxId, pos}` plus a cached `locText`.
+`libPickLoc` opens the freezer map itself and you click a free position; it writes **both** the
+record's `loc` and the Iceberg slot (with a `ref` back to the record), so the two cannot drift.
+No shell ⇒ prompt fallback that says the map is not there.
+
+**`parseSnapGene(buf)` reads .dna directly** — `0x09` header + `SnapGene` magic, then
+`[type:u8][len:u32be][payload]`; type 0 sequence (first byte's low bit = circular), 10 feature
+XML, 6 notes. It returns **the shape `parseGenBank` returns**, so there is one renderer, not
+two. Verified against the same construct in both formats: identical features, byte-identical
+sequence. `parseGenBank` now also reads `ORIGIN`; FASTA loads; a file can be dropped on the
+record.
+
+**The viewer** is a labelled ring with bp ticks, a linear view, the sequence at 60/line with the
+selected feature called out and copyable, and the cutters. `findSites` searches the sequence
+**wrapped by one site length when circular** — a site straddling position 1 is exactly the one
+that ruins a digest, and a linear search silently misses it (verified: a planted EcoRI site
+across the origin is found circular, missed linear).
+
+Bytes stay in the `archive_maps` IndexedDB; only metadata goes on the record. `_pmCache` holds
+the parsed model so switching views is not a re-read.
+
+**Two bugs found here**: `libAddFromForm` generated the `pJM##` code *before* reading the form,
+so the empty Code input wiped it — every plasmid added through the form had no code. And
+`migratePlasmidsToLibrary` used one "done" flag, stranding anything added to the old app after
+the first run; it remembers which source records it has seen instead. **That migration matters
+now** — it is the only route from `localStorage['hub_plasmids']`.
+
+## An antibody is a target
+
+`LIB_FIELDS.antibodies` leads with `target` and has no `name`: the name was always "α-" plus the
+target typed again, which is two fields that can disagree. `libDisplayName`/`abName` derive it in
+one place, used by Archive's list and detail, Labbook's `@` list, the insert picker and Cmd+K.
+Legacy records keep their `name` and have a target read out of it.
+
+**The regex is worth remembering**: alternation is ordered, so `/(α|a|anti)/` matched the bare
+`a` first and turned `anti-DCAF15` into `α-nti-DCAF15`. Longest alternative first, and a bare
+`a` only strips when a separator follows — otherwise `ALK` and `Actin` get mangled too.
+
+**The Antibodies tab in Labbook was data, not code.** An older seed created a `generalSections`
+entry; the seed stopped, but nothing removed the ones already written.
+`cleanupAntibodySection()` (guarded by `LB.data._abSecCleaned`) deletes an **empty** one and
+leaves one with pages alone.
+
+## Cells: a list, a drawer, and a location
+
+Cultures were a wall of flask drawings that expanded in place, so the list reflowed under the
+cursor. There is a dense sortable list (status · line · P · vessel · media · **next split** ·
+where), overdue first, with the detail in a **right drawer**. Search plus All / Overdue / Needs
+attention / Healthy with live counts. The grid survives as a toggle — the flask and plate
+drawings are the good part.
+
+`_incLayout` (list/grid) and `_incView` (flask/plate) are **separate now**; they shared one
+variable, so choosing "Plates" also decided whether you got a list. Cultures gained
+`incubator` + `shelf` — live cells are inventory too.
+
+Cell Archive lost its tab bar and the Guide behind it (an "about this reference" blurb two
+clicks away). One panel, a search, and the same Grid | List toggle — implemented by
+**restyling the tiles into rows**, not by a second renderer, so user lines, the add tile and the
+culture/vial badges work in both. The Cells tabs read **Incubator · Lines · Freezer**.
+
+## OneNote export
+
+OneNote's paste keeps inline style and discards stylesheets — which is why copying out of
+Labbook arrived as unstyled text. `buildPrintDoc()` already resolves whichever entry you are on,
+so `buildOneNoteHtml()` renders it off-screen and **inlines the computed styles**.
+`copyForOneNote()` writes `text/html` + `text/plain` via `ClipboardItem` with an
+`execCommand('copy')` fallback (Safari/older Firefox — `writeText` cannot carry the HTML
+flavour); `exportOneNoteDoc()` saves the same HTML in a Word envelope for Insert → File Printout.
+
+Three traps, all found by looking at the output:
+- The stage is positioned off-screen, **never `display:none`** — `getComputedStyle` on a hidden
+  tree returns nothing usable.
+- **Read every element's style before touching the DOM.** Removing the `<style>` block during
+  the walk stripped the CSS out from under everything measured after it, so tables came out
+  unruled — measured correctly, with no stylesheet left to measure.
+- `PRINT_CSS` is written against `#print-root`, which the stage is not; it is **rescoped to the
+  stage** rather than given a duplicate id.
+
+Checkbox squares are `::before` and cannot be inlined, so real ☐/☑ characters go in first —
+and `list-style-type:none` is the one place `none` is the value we mean, not a default to skip.
+
+## One blue, and icons that survive a non-Retina monitor
+
+Every app's `--accent` is one pastel blue (`#5e87c5` light / `#8aaee0` dark, with `--accent-dim`
+and a new `--accent-soft`) — a colour the Hub already wore as Archive's `--accent2`. Each app's
+own colour survives as **`--brand`**, used only by its 32px logo box; home-card tints are
+unchanged. Labbook and Cells get their own brand blues (`#3f6fa8`, `#4a8fb5`) rather than
+collapsing onto the Data Analysis card. Semantic greens (`--good`, "ok" badges, chart series)
+are deliberately left alone.
+
+`tbSvg` drew stroke **1.9** into a 24 viewBox rendered at **20px**, so every stroke landed at
+1.58 device px — small and muddy at once. Icons render at their native 24px with a **1.5**
+stroke and `geometricPrecision`; Insert buttons grew 68→76px to hold them.
+
 ## Current state
 
-**v1.5.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (The shell's version pill had drifted to v1.3.16 while this line said v1.4.1; both are aligned now.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.6.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (Plasmids was retired as an app this session — its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
-  Labbook and Plasmids. Everything works device-local and survives backup/restore without it.
+  Labbook. Everything works device-local and survives backup/restore without it.
 - **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for
   full cross-device sync — until deployed, admin writes silently stay local-only.
 - **IP ownership is unresolved.** As employee-created work, the University of Dundee very
@@ -917,9 +1053,8 @@ metadata in `LB.data`, bytes in IndexedDB (`lb_att`), optional cloud copy in Fir
   is disqualifying for a product — Phase 3 migrates off `thehub-f80ae` entirely.
 - **Archive calculator audit**: the 9 "verify" calcs (trfret/fp/spr/miniprep/nucleospin/lenti/
   miseq/ip/crispr) were spot-checked against worked examples and found OK — not re-derived.
-- **Labbook plate maps**: no PNG export (CSV + PDF only); no plate-reader value overlay
-  (Blueprint's `pdParseValues` is the obvious donor); custom well types can't be added/renamed
-  from the editor yet; no Echo picklist import to name wells automatically.
+- **Labbook plate maps**: no PNG export (CSV + PDF only); custom well types can't be
+  added/renamed from the editor yet.
 - Minor polish, no urgency: drag-drop step palette, per-cell-line seeding-density
   recommendations, `PUB_SEED` prose refinement, deep-link Archive's calc-chip to its Calculate
   tab.

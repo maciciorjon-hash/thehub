@@ -5,7 +5,7 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-08-20 · **v1.5.0** · branch `main`, pushed. `git log -1` for the hash.
+- Date: 2026-08-20 · **v1.6.0** · branch `main`, pushed. `git log -1` for the hash.
 - The Labbook/Archive rework and the visual pass landed across ~24 commits. Every piece has a
   section in `CLAUDE.md`; this file is the running order, the open ends, and the traps.
 
@@ -22,9 +22,15 @@ Compact coordination note. Read it before starting work; the full changelog is
 4. **The Echo loop runs both ways**: picklist → plate map (parsed in Labbook) and picklist →
    whole experiment; potencies → Results tab and the publication prose.
 5. **Cells** = Incubator + Cell Archive + Iceberg, merged at the shell, joined by base cell-line
-   name at read time.
-6. **Archive is a Library**: Protocols · Antibodies · Primers · Plasmids (with GenBank maps).
-   Labbook has no reagent catalogue of its own any more — only mentions.
+   name at read time. Incubator is a dense list with a right drawer; Cell Archive has no tab bar.
+   The lifecycle closes both ways — `hubThawVial(loc)` and `freezeCulture(id)`.
+6. **Archive is a Library**: Protocols · Antibodies · Primers · Plasmids, each with a detail
+   pane and a structured location that points at a real Iceberg box. Plasmids reads SnapGene
+   `.dna` and GenBank, with ring/linear/sequence views and unique cutters. The standalone
+   Plasmids app is retired. Labbook has no reagent catalogue of its own — only mentions.
+9. **Iceberg is the one freezer map** for every kind of contents, and the shell's
+   `HUB_FREEZER_*` bridge is how anything else asks where something is.
+10. **OneNote export** in Labbook: `copyForOneNote()` and `exportOneNoteDoc()`.
 7. **Eight features off the typed params**: deviations, timers, biological replicates, protocol
    update diff, picklist→experiment, reader values, hub-wide Cmd+K, thaw.
 8. **Visual system**: nine type steps, five radii, one icon set (`tbSvg`). dHUB is 40% smaller.
@@ -47,6 +53,17 @@ Compact coordination note. Read it before starting work; the full changelog is
   in `embed.py`.
 
 ## Traps
+
+- **OneNote export**: read every element's computed style *before* mutating the DOM. Removing
+  the `<style>` block during the walk strips the CSS from everything measured after it — the
+  symptom is unruled tables, and it looks like a CSS bug rather than an ordering one.
+- **`_ON_*` inlining** renders into a stage that is *positioned off-screen*, never
+  `display:none` — `getComputedStyle` on a hidden tree returns nothing usable. Same reason
+  Archive's parked frame uses `left:-10000px`.
+- **Regex alternation is ordered.** `/(α|a|anti)/` strips the `a` out of `anti-DCAF15`. This bit
+  the antibody name derivation; longest alternative first.
+- **`migratePlasmidsToLibrary` is now the only route** out of the retired app's
+  `localStorage['hub_plasmids']`. Don't break it.
 
 - Anything declared **between the `PROTOCOL_DATA` markers is regenerated away** by
   `migrate_protocols.py --inject`. `PROTOCOL_VERSION` was lost that way once, and every
