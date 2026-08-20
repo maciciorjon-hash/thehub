@@ -59,6 +59,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .hdr-btn{background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:5px 10px;font-family:var(--sans);font-size:12px;cursor:pointer;transition:background .15s,color .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
 .hdr-btn:hover{background:var(--surface2);color:var(--text);}
 .hdr-btn svg{width:14px;height:14px;}
+.backup-note{font-size:11px;color:var(--text3);cursor:pointer;padding:3px 8px;border-radius:999px;white-space:nowrap;}
+.backup-note:hover{color:var(--text2);background:var(--surface2);}
 .status-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);padding:3px 9px;border-radius:20px;background:var(--surface2);white-space:nowrap;}
 .status-pill .dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:background .3s;flex-shrink:0;}
 .status-pill.online{color:var(--good);}
@@ -75,7 +77,9 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .rb-tab.on{color:var(--accent);}
 .rb-tab.on::after{content:'';position:absolute;left:10px;right:10px;bottom:-1px;height:2.5px;background:var(--accent);border-radius:2px;}
 .rb-tab-spacer{flex:1;}
-.rb-pane{display:flex;align-items:center;gap:4px;padding:6px 12px;overflow-x:auto;height:76px;min-height:76px;position:relative;}
+/* min-height, never height: a fixed 76px row cannot grow, so a button whose content needs
+   more room is clipped against a ceiling instead of the row expanding to fit it. */
+.rb-pane{display:flex;align-items:center;gap:4px;padding:6px 12px;overflow-x:auto;min-height:72px;position:relative;}
 .rb-core{display:flex;align-items:center;gap:3px;flex-wrap:nowrap;}
 .tb-grouplbl{font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin:0 6px 0 2px;flex-shrink:0;}
 .tb{width:34px;height:34px;border:none;background:none;border-radius:8px;color:var(--text2);cursor:pointer;font-size:15px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;font-family:var(--sans);flex-shrink:0;}
@@ -83,12 +87,11 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .tb.active{background:var(--accent-dim);color:var(--accent);}
 /* labelled buttons (Insertar / Vista tabs) */
 .rb-labelled{gap:4px;flex-wrap:nowrap;min-height:62px;align-items:center;}
-.rb-lbtn{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:82px;min-width:82px;height:60px;padding:6px;border:1px solid transparent;border-radius:9px;background:none;color:var(--text2);cursor:pointer;transition:background .12s,color .12s,border-color .12s;font-family:var(--sans);flex:0 0 82px;}
+.rb-lbtn{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:68px;min-width:68px;min-height:58px;padding:7px 4px;border:1px solid transparent;border-radius:10px;background:none;color:var(--text2);cursor:pointer;transition:background .12s,color .12s,border-color .12s;font-family:var(--sans);flex:0 0 68px;}
 .rb-lbtn:hover{background:var(--surface2);color:var(--text);border-color:var(--border);}
 .rb-lbtn-ico{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;}
 .rb-lbtn-ico svg{width:20px;height:20px;}
-.rb-lbtn-sub{display:block;font-size:9.5px;font-weight:500;color:var(--text3);letter-spacing:0;margin-top:1px;}
-.rb-lbtn-lbl{font-size:10.5px;font-weight:600;white-space:nowrap;}
+.rb-lbtn-lbl{font-size:10.5px;font-weight:600;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .tb b,.tb i,.tb u,.tb s{pointer-events:none;}
 .tb svg{width:18px;height:18px;pointer-events:none;}
 .rb-tabbar .status-pill{margin-right:2px;}
@@ -566,6 +569,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .pop-item{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;font-size:12.5px;color:var(--text2);}
 .pop-item.sel,.pop-item:hover{background:var(--surface2);color:var(--text);}
 .pop-item.danger:hover{color:var(--danger);}
+.pop-item .ic.ic-svg{padding:3px;}
+.pop-item .ic.ic-svg svg{width:100%;height:100%;display:block;stroke-width:2.2;}
 .pop-item .ic{width:18px;height:18px;border-radius:5px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:700;}
 .pop-item .sub{font-size:10.5px;color:var(--text3);margin-left:auto;font-family:var(--sans);}
 .pop-sep{height:1px;background:var(--border);margin:4px 0;}
@@ -2356,6 +2361,10 @@ function setSync(ok){ _synced=ok; updateStatus(); }
 // false durability promise that loses somebody's data.
 function hasCloud(){ return !!lbFb(); }
 function updateStatus(){ var p=el('lb-status'); if(!p) return; var txt=el('lb-status-txt'); var on=navigator.onLine;
+  // Backup state sits beside save state, not inside a ribbon button: this is the one place you
+  // already look to find out whether your work is safe.
+  var bn=el('lb-backup-note');
+  if(bn){ var bs=backupStatus(); bn.textContent=bs.text; bn.title=bs.detail+' Click to back up now; right-click to choose a folder.'; }
   p.classList.remove('online','offline','saving');
   // A storage failure outranks everything else — never show "Saved ✓" when it isn't true.
   if(_storageBroken){ p.classList.add('offline'); if(txt) txt.textContent='Not saved!'; p.title='Browser storage rejected a write — see the warning. Export a backup now.'; return; }
@@ -4033,29 +4042,63 @@ function colorBtn(label,cmd,cols){
 function toggleSwatch(cmd){ var w=el('col-'+cmd); document.querySelectorAll('.tb-color').forEach(function(x){ if(x!==w) x.classList.remove('open'); }); var willOpen=!w.classList.contains('open'); w.classList.toggle('open'); if(willOpen){ var sw=w.querySelector('.tb-swatch'); var r=w.getBoundingClientRect(); sw.style.left=Math.max(6,Math.min(r.left,window.innerWidth-192))+'px'; sw.style.top=Math.max(6,Math.min(r.bottom+4,window.innerHeight-sw.offsetHeight-6))+'px'; } }
 function applyColor(cmd,c){ el('col-'+cmd).classList.remove('open'); if(_activeEd){ _activeEd.focus(); try{ document.execCommand('styleWithCSS',true); document.execCommand(cmd,false,c); }catch(e){} _activeEd.dispatchEvent(new Event('input')); } }
 document.addEventListener('mousedown',function(e){ if(!e.target.closest('.tb-color')) document.querySelectorAll('.tb-color').forEach(function(x){x.classList.remove('open');}); });
-function ribbonStatus(){ return '<span class="status-pill" id="lb-status" title="Save status"><span class="dot"></span><span id="lb-status-txt">Saved</span></span>'; }
+function ribbonStatus(){
+  return '<span class="status-pill" id="lb-status" title="Save status"><span class="dot"></span><span id="lb-status-txt">Saved</span></span>'
+    +'<span class="backup-note" id="lb-backup-note" title="" onclick="doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"></span>'; }
 // OneNote-style Insert actions (icon + label)
+// The six things you reach for daily get a labelled button; everything else lives in the "/"
+// menu, which already lists all of them. Eleven 82px buttons in a nowrap row came to 900px and
+// simply ran off the edge of the ribbon.
 var INSERT_ITEMS=[
-  ['Mention entry (@)','openMention',tbSvg('<circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 005 0V12a9 9 0 10-3.5 7.1"/>')],
-  ['Protocol steps (Archive)','openProtocolSteps',tbSvg('<path d="M6 3h9l4 4v14H6zM15 3v4h4"/><path d="M9 11l1.5 1.5L13 10M9 16l1.5 1.5L13 15"/>')],
-  ['Protocol link (Archive)','openProtocolIns',tbSvg('<path d="M6 3h9l4 4v14H6zM15 3v4h4"/><path d="M9 12h6M9 16h4"/>')],
-  ['Antibody (α)','openAntibodyIns','<b style="font-size:16px">α</b>'],
-  ['Web link (URL)','openLinkIns',tbSvg('<path d="M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7 0l-2 2a5 5 0 007 7l1-1"/>')],
-  ['Tag (#)','openTag','<b style="font-size:16px">#</b>'],
+  ['Mention','openMention',tbSvg('<circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 005 0V12a9 9 0 10-3.5 7.1"/>')],
+  ['Protocol','openProtocolSteps',tbSvg('<path d="M6 3h9l4 4v14H6zM15 3v4h4"/><path d="M9 11l1.5 1.5L13 10M9 16l1.5 1.5L13 15"/>')],
   ['Plate map','openPlateIns',tbSvg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="10" r="1.4"/><circle cx="12" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/><circle cx="8" cy="14.5" r="1.4"/><circle cx="12" cy="14.5" r="1.4"/><circle cx="16" cy="14.5" r="1.4"/>')],
   ['Table','insertTable',tbSvg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/>')],
   ['Picture','openFloatImageIns',tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M4 17l5-5 4 4 3-3 4 4"/>')],
-  ['Divider','insertDivider',tbSvg('<path d="M3 12h18"/>')],
-  ['Insert block (/)','openSlash',tbSvg('<path d="M12 5v14M5 12h14"/>')]
+  ['More…','openSlash',tbSvg('<circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/>')]
 ];
+// Icons for the actions that moved into the "/" menu, so they read the same there as they did
+// in the ribbon. Antibody and Tag used to be the literal glyphs α and # sitting next to real
+// stroke icons, which is most of why the toolbar looked unfinished.
+var ICON_ANTIBODY=tbSvg('<path d="M12 21v-7.5"/><path d="M12 13.5L6.8 4.6"/><path d="M12 13.5l5.2-8.9"/><path d="M4.6 3.2l2.2 1.4 2.2-1.4"/><path d="M15 3.2l2.2 1.4 2.2-1.4"/>');
+var ICON_TAG=tbSvg('<path d="M20.6 13.4L12 4.8H4.8V12l8.6 8.6a2 2 0 002.8 0l4.4-4.4a2 2 0 000-2.8z"/><circle cx="8.6" cy="8.6" r="1.2" fill="currentColor" stroke="none"/>');
+var ICON_LINK=tbSvg('<path d="M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7 0l-2 2a5 5 0 007 7l1-1"/>');
+var ICON_PROTO_LINK=tbSvg('<path d="M6 3h9l4 4v14H6zM15 3v4h4"/><path d="M9 12h6M9 16h4"/>');
+var ICON_DIVIDER=tbSvg('<path d="M3 12h18"/>');
+var ICON_PROTO_STEPS=tbSvg('<path d="M6 3h9l4 4v14H6zM15 3v4h4"/><path d="M9 11l1.5 1.5L13 10M9 16l1.5 1.5L13 15"/>');
+var ICON_HEADING=tbSvg('<path d="M6 4v16M18 4v16M6 12h12"/>');
+var ICON_CHECKLIST=tbSvg('<rect x="3" y="5" width="6" height="6" rx="1"/><path d="M4.5 8l1 1 2-2M13 8h8M3 17h6M13 17h8"/>');
+var ICON_BULLETS=tbSvg('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.1" fill="currentColor"/><circle cx="3.5" cy="12" r="1.1" fill="currentColor"/><circle cx="3.5" cy="18" r="1.1" fill="currentColor"/>');
+var ICON_NUMBERS=tbSvg('<path d="M10 6h11M10 12h11M10 18h11M4 6h1v4M4 16h2M4 16v-1h1.5"/>');
+var ICON_TABLE=tbSvg('<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16M15 4v16"/>');
+var ICON_PLATE=tbSvg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="10" r="1.4"/><circle cx="12" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/><circle cx="8" cy="14.5" r="1.4"/><circle cx="12" cy="14.5" r="1.4"/><circle cx="16" cy="14.5" r="1.4"/>');
+var ICON_PICTURE=tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M4 17l5-5 4 4 3-3 4 4"/>');
+// Everything reachable from "/". Web link and Tag are here because they left the Insert ribbon —
+// trimming the ribbon is only honest if the actions actually land somewhere.
+var SLASH_ITEMS=[
+  ['Heading','slHeading',ICON_HEADING],
+  ['Checklist','slTodo',ICON_CHECKLIST],
+  ['Bullet list','slBullet',ICON_BULLETS],
+  ['Numbered list','slNumber',ICON_NUMBERS],
+  ['Table','slTable',ICON_TABLE],
+  ['Plate map','openPlateIns',ICON_PLATE],
+  ['Picture','openFloatImageIns',ICON_PICTURE],
+  ['Divider','slDivider',ICON_DIVIDER],
+  ['Web link','openLinkIns',ICON_LINK],
+  ['Tag','openTag',ICON_TAG],
+  ['Antibody','openAntibodyIns',ICON_ANTIBODY],
+  ['Protocol link','openProtocolIns',ICON_PROTO_LINK],
+  ['Protocol steps','openProtocolSteps',ICON_PROTO_STEPS]
+];
+
 function insertPane(){ return '<div class="rb-core rb-labelled">'+INSERT_ITEMS.map(function(x){ return '<button class="rb-lbtn" title="'+esc(x[0])+'" onmousedown="event.preventDefault();'+x[1]+'()"><span class="rb-lbtn-ico">'+x[2]+'</span><span class="rb-lbtn-lbl">'+esc(x[0].replace(/ *\([^)]*\)/,''))+'</span></button>'; }).join('')+'</div>'; }
 function viewPane(){ return '<div class="rb-core rb-labelled">'
-  +'<button class="rb-lbtn" title="Show or hide the right panel (Outline · Tags · Info)" onmousedown="event.preventDefault();toggleDock()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>')+'</span><span class="rb-lbtn-lbl">Right panel</span></button>'
-  +'<button class="rb-lbtn" id="export-btn" title="Export the current entry to a PDF" onmousedown="event.preventDefault();exportPDF()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>')+'</span><span class="rb-lbtn-lbl">Export PDF</span></button>'
-  +'<button class="rb-lbtn" id="backup-btn" title="'+esc(backupStatus().detail)+' Click to back up now; right-click to choose a folder." onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span><span class="rb-lbtn-sub">'+esc(backupStatus().text)+'</span></button>'
-  +'<button class="rb-lbtn" title="Restore from a daily snapshot kept inside this browser (a fallback when you have no backup file)" onmousedown="event.preventDefault();restoreFromSnapshot()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Snapshots…</span></button>'
-  +'<button class="rb-lbtn" title="Switch between light and dark" onmousedown="event.preventDefault();toggleTheme()"><span class="rb-lbtn-ico">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>')+'</span><span class="rb-lbtn-lbl">'+(_themeIsDark()?'Light mode':'Dark mode')+'</span></button>'
-  +'<button class="rb-lbtn" title="Restore the whole notebook from a backup JSON file — REPLACES all current content" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore…</span></button>'
+  +'<button class="rb-lbtn" title="Show or hide the right panel (Outline · Tags · Info)" onmousedown="event.preventDefault();toggleDock()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>')+'</span><span class="rb-lbtn-lbl">Panel</span></button>'
+  +'<button class="rb-lbtn" id="export-btn" title="Export the current entry to a PDF" onmousedown="event.preventDefault();exportPDF()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>')+'</span><span class="rb-lbtn-lbl">PDF</span></button>'
+  +'<button class="rb-lbtn" id="backup-btn" title="'+esc(backupStatus().detail)+' Click to back up now; right-click to choose a folder." onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
+  +'<button class="rb-lbtn" title="Restore from a daily snapshot kept inside this browser (a fallback when you have no backup file)" onmousedown="event.preventDefault();restoreFromSnapshot()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Snapshots</span></button>'
+  +'<button class="rb-lbtn" title="Switch between light and dark" onmousedown="event.preventDefault();toggleTheme()"><span class="rb-lbtn-ico">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>')+'</span><span class="rb-lbtn-lbl">Theme</span></button>'
+  +'<button class="rb-lbtn" title="Restore the whole notebook from a backup JSON file — REPLACES all current content" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore</span></button>'
   +'</div>'; }
 var _rbTab='home';
 function setRbTab(t){ _rbTab=t; renderRibbon(); }
@@ -4666,21 +4709,22 @@ function acScan(){ if(!_activeEd) return; var t=caretToken(); if(!t){ if(AC.open
   if(t.trigger==='@'){
     Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; if(!isCoded(e)) return; var lbl=(e.code||'')+' '+(e.title||''); if(!q||lbl.toLowerCase().indexOf(q)>=0) items.push({t:'exp',id:e.id,label:e.code||e.title||'exp',sub:e.title||'',ic:'E',c:'#4f9d8f'}); });
     Object.keys(LB.data.pages).forEach(function(k){ var p=LB.data.pages[k]; if(!p.title) return; if(!q||p.title.toLowerCase().indexOf(q)>=0) items.push({t:'page',id:p.id,label:p.title,sub:'page',ic:'P',c:'#5e72c4'}); });
-    Object.keys(LB.data.antibodies).forEach(function(k){ var a=LB.data.antibodies[k]; if(!a.name) return; if(!q||a.name.toLowerCase().indexOf(q)>=0) items.push({t:'ab',id:a.id,label:'α-'+a.name,sub:a.catalog||'antibody',ic:'α',c:'#c47818'}); });
-    archiveIndex().forEach(function(p){ if(!q||p.name.toLowerCase().indexOf(q)>=0){ items.push({t:'proto',id:p.id,label:p.name,sub:'protocol link',ic:'A',c:'#a56983'}); items.push({t:'protosteps',id:p.id,label:p.name,sub:'insert steps',ic:'▤',c:'#8a5674'}); } });
+    Object.keys(LB.data.antibodies).forEach(function(k){ var a=LB.data.antibodies[k]; if(!a.name) return; if(!q||a.name.toLowerCase().indexOf(q)>=0) items.push({t:'ab',id:a.id,label:a.name,sub:a.catalog||'antibody',svg:ICON_ANTIBODY,c:'#c47818'}); });
+    archiveIndex().forEach(function(p){ if(!q||p.name.toLowerCase().indexOf(q)>=0){ items.push({t:'proto',id:p.id,label:p.name,sub:'protocol link',ic:'A',c:'#a56983'}); items.push({t:'protosteps',id:p.id,label:p.name,sub:'insert steps',svg:ICON_PROTO_STEPS,c:'#8a5674'}); } });
     try{ var pd=JSON.parse(localStorage.getItem('hub_plasmids')||'null'); if(pd&&pd.plasmids){ Object.keys(pd.plasmids).forEach(function(k){ var pl=pd.plasmids[k]; if(!pl.code&&!pl.name) return; var lbl=((pl.code||'')+' '+(pl.name||'')).toLowerCase(); if(!q||lbl.indexOf(q)>=0) items.push({t:'plasmid',id:pl.code||pl.id,label:pl.code||pl.name,sub:pl.name||'plasmid',ic:'p',c:'#6d7bd0'}); }); } }catch(e){}
     items=items.slice(0,16);
   } else if(t.trigger==='#'){
-    LB.data.tags.filter(function(tg){return !q||tg.toLowerCase().indexOf(q)>=0;}).slice(0,10).forEach(function(tg){ items.push({t:'tag',id:tg,label:'#'+tg,sub:'tag',ic:'#',c:'#5e72c4'}); });
+    LB.data.tags.filter(function(tg){return !q||tg.toLowerCase().indexOf(q)>=0;}).slice(0,10).forEach(function(tg){ items.push({t:'tag',id:tg,label:'#'+tg,sub:'tag',svg:ICON_TAG,c:'#5e72c4'}); });
     if(t.query) items.unshift({t:'newtag',id:t.query,label:'Create #'+t.query,sub:'new',ic:'+',c:'#4f9d8f'});
   } else if(t.trigger==='/'){
-    [['Heading','slHeading'],['Checklist','slTodo'],['Bullet list','slBullet'],['Numbered list','slNumber'],['Table','slTable'],['Plate map','openPlateIns'],['Picture','openFloatImageIns'],['Divider','slDivider'],['Antibody','openAntibodyIns'],['Protocol link','openProtocolIns'],['Protocol steps','openProtocolSteps']].filter(function(o){return !q||o[0].toLowerCase().indexOf(q)>=0;}).forEach(function(o){ items.push({t:'slash',id:o[1],label:o[0],sub:'',ic:'/',c:'#7c6fd4'}); });
+    SLASH_ITEMS.filter(function(o){return !q||o[0].toLowerCase().indexOf(q)>=0;})
+      .forEach(function(o){ items.push({t:'slash',id:o[1],label:o[0],sub:o[3]||'',svg:o[2],c:'#7c6fd4'}); });
   }
   if(!items.length){ acClose(); return; }
   AC.open=true; AC.items=items; AC.sel=0; acRender();
   var rect=t.range.getBoundingClientRect(); var pop=el('acpop'); pop.style.left=Math.min(rect.left,window.innerWidth-260)+'px'; pop.style.top=(rect.bottom+6)+'px';
 }
-function acRender(){ var pop=el('acpop'); pop.innerHTML=AC.items.map(function(it,i){ return '<div class="pop-item'+(i===AC.sel?' sel':'')+'" onmousedown="event.preventDefault();acPick('+i+')"><span class="ic" style="background:'+it.c+'">'+esc(it.ic)+'</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'+(it.sub?'<span class="sub">'+esc(it.sub)+'</span>':'')+'</div>'; }).join(''); pop.classList.add('open'); }
+function acRender(){ var pop=el('acpop'); pop.innerHTML=AC.items.map(function(it,i){ return '<div class="pop-item'+(i===AC.sel?' sel':'')+'" onmousedown="event.preventDefault();acPick('+i+')"><span class="ic'+(it.svg?' ic-svg':'')+'" style="background:'+it.c+'">'+(it.svg||esc(it.ic))+'</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'+(it.sub?'<span class="sub">'+esc(it.sub)+'</span>':'')+'</div>'; }).join(''); pop.classList.add('open'); }
 function acDeleteToken(){ try{ var r=document.createRange(); r.setStart(AC.node, Math.max(0,AC.offset-AC.tokenLen)); r.setEnd(AC.node, AC.offset); var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('delete'); }catch(e){} }
 function acPick(i){ var it=AC.items[i]; if(!it) return; acDeleteToken();
   if(it.t==='exp'){ var ex=LB.data.experiments[it.id]; var pr=ex?projById(ex.projectId):null; var pfx=pr?(esc(pr.name)+' · '):''; insertHtmlAtCaret('<a class="lb-link" data-exp="'+it.id+'" contenteditable="false">'+pfx+esc(it.label)+' &#8599;</a>&nbsp;'); }
