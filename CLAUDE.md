@@ -1133,6 +1133,56 @@ right dock are hidden (`body.lb-on-home`), and **the tree is hidden only when th
 frame**: in the standalone build the rail does not exist, so hiding it would make the home a
 room with no doors.
 
+## One visual system, and the audit that keeps it
+
+`docs/UI.md` is the standard every app is edited against — the two scales, the palette, the
+components, the breakpoints. It is **not** a stylesheet anyone imports (there is no build step
+here); it is what stops the twentieth app from inventing its own eighteenth grey. Three
+exceptions are written into it rather than "fixed", because in each case the token would be the
+wrong answer: values inside JS strings, **text drawn inside an SVG** (sized against the drawing's
+viewBox, not the interface), and a **print stylesheet** (paper has one theme).
+
+All 19 apps are through it. What that actually meant, app by app: none of them had the type or
+radius scales (Echo alone had 106 loose font sizes, Cuppa 150); Echo, Helix and Protein Tools
+were **dark-first**, so every rule was authored against the theme the Hub does not open in; Dora
+carried an entire private purple palette and had **no header at all**, so opened on its own it
+never said what it was; and Fabricata's dark mode was half-defined, leaving the app pale in a
+dark Hub. Each app's own colour survives as `--brand` on its 32px logo; everything interactive
+is the one blue. Cuppa and Fabricata keep their warm palettes on purpose — both sit outside the
+product build, and a coffee ledger that looks like a coffee ledger is the point.
+
+### `tools/audit_app.py`
+
+The audit is a script now, because running it by regex kept being wrong in ways that delete
+working code:
+
+- **Vendor code is excluded by marker, not by shape.** Chart.js, SheetJS and UTIF ship property
+  names that look exactly like class names. A density heuristic was tried first and was worse:
+  Echo builds its markup from long template strings, so "minified-looking" threw away the very
+  code that uses its classes.
+- **Definitions come from the app's own code; uses are counted against the whole file.** Counting
+  uses in the filtered text is what made Blueprint's live classes look dead — it puts a lot of
+  markup on very long lines.
+- **A named IIFE runs itself.** `(function initTheme(){…})()` legitimately appears once. I deleted
+  two of those in Lumina before adding that rule and broke its theme and its reader dropzone.
+- `// AUDIT-KEEP:` above a function marks a deliberate placeholder (Lumina's GloMax parser, which
+  the UI already says is not implemented).
+
+**Deleting a dead entry point cascades**, and that is the point: removing Echo's unreachable
+`renderQCTab` orphaned four more functions, which orphaned two more. Re-run until it comes back
+clean, and check each name against the *committed* version first — if it had one occurrence
+before you started, it was already dead.
+
+What the audit found that styling never would: Protein Tools still advertised a **Structure tab**
+in its subtitle and guide and carried the whole NGL viewer for a screen that no longer exists
+(structures live in Ribbon); Helix had `drawPlasmidMap` with hand-written feature coordinates,
+from before the Vector Library learned to draw a map from a real GenBank record — two sources of
+truth for where a feature sits; Incubator's `cfPrefill` had been replaced by `cfArchPrefill` and
+never unhooked; and Iceberg's `renameStorage`/`deleteStorage` were complete, careful functions
+with **no way in at all**, so you could add a storage unit and never fix a typo in its name.
+Those two are on a right-click menu now — fixed rather than deleted, as Labbook's image picker
+was.
+
 ## Current state
 
 **v1.6.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (Plasmids was retired as an app this session — its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
