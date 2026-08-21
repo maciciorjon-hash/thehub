@@ -37,6 +37,15 @@ Four builds, one source (`embed.py`):
 | standalone Labbook | `python3 embed.py --profile=labbook` | Labbook + Archive in one 927 KB file, no shell |
 | Archive PWA | `python3 embed.py --profile=archive` | Archive alone, installable + offline on a phone |
 
+### Where things live (reorganised 2026-08-21)
+
+`shell/hub-shell.html` is the shell, `apps/<name>/<name>.html` is every app (folder name == file
+name), `tools/` holds the scripts that are not part of the build, `docs/` the documentation, and
+**`old_stuff/`** the retired apps and dead plans — see its README. `embed.py` stays at the root
+because CI calls it there. **`Backup/` must never be moved or renamed**: it holds your real data
+backups and the browser's directory handle finds it by name, so renaming it breaks the automatic
+backup silently.
+
 **Where we are (2026-08-01).** Labbook is the focus and is in good shape: durable attachments,
 a per-experiment Files tab, explicit step completion with bounded carry-over, a week planner
 that is a real peer view of experiments and the notebook, plate maps, and a standalone build
@@ -63,25 +72,25 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 
 | ID | Name | Logo | Accent | Standalone file |
 |----|------|------|--------|-----------------|
-| `echo` | Echo (formerly Labcyte Echo / Echo Data Analysis) | SVG bar chart | `#ff5760` | `Echo/echo.html` |
-| `deg` | Dora (formerly Degradation Explorer) | SVG curve | `#7c6fd4` | `Dora/dora.html` |
-| `pd` | Blueprint (formerly Lab Designer) | SVG wells | `#0079b9` | `Blueprint/blueprint.html` |
-| `dna` | Helix | SVG helix | `#43a047` | `Helix/helix.html` |
-| `pt` | Protein Tools | SVG chain | `#9c6fd4` | `Protein_Tools/protein_tools.html` |
-| `spectra` | BCA (formerly Spectra) | SVG standard curve | `#26a69a` | `BCA/bca.html` |
-| `ldi` | LDI | SVG balance/scale | `#e91e63` | `LDI/ldi.html` |
-| `cryo` | Iceberg | SVG snowflake | `#00acc1` | `Iceberg/iceberg.html` |
-| `cuppa` | Cuppa | SVG coffee cup | `#8d6e63` | `Cuppa/cuppa.html` |
-| `fabricata` | Fabricata™ | SVG bar chart + star | `#c07a8e` | `Fabricata/fabricata.html` |
-| `beacon` | Beacon | SVG donor/acceptor BRET glyph | `#5e72c4` | `Beacon/beacon.html` |
-| `lumina` | Lumina | SVG light bulb | `#f5c518` (warm gold) | `Lumina/lumina.html` |
-| `ribbon` | Ribbon | SVG ribbon waves | `#e36c69` (salmon) | `Ribbon/ribbon.html` |
-| `protocols` | Archive (formerly Protocols) | SVG open book | `#a56983` (dusty pink) | `Archive/archive.html` |
-| `cellarchive` | Cell Archive | SVG cell/nucleus | `#d17a4a` (terracotta) | `Cell_Archive/cell_archive.html` |
-| `incubator` | Incubator (**admin-only** — cell-culture tracker) | SVG incubator/cell dish | `#4f9d8f` (teal) | `Incubator/incubator.html` |
-| `labbook` | Labbook (**admin-only** — electronic lab notebook; experiment-centric planner) | SVG notebook | `#4f9d8f` (teal) | `Labbook/labbook.html` |
-| `blot` | Blot (western blot figure builder) | SVG blot panels | `#5b6b7a` (slate) | `WesternBlot/westernblot.html` |
-| `gantt` | Cadence (grant/fellowship Gantt charts) | SVG timeline bars | `#d99a4e` (amber) | `Gantt/gantt.html` |
+| `echo` | Echo (formerly Labcyte Echo / Echo Data Analysis) | SVG bar chart | `#ff5760` | `apps/echo/echo.html` |
+| `deg` | Dora (formerly Degradation Explorer) | SVG curve | `#7c6fd4` | `apps/dora/dora.html` |
+| `pd` | Blueprint (formerly Lab Designer) | SVG wells | `#0079b9` | `apps/blueprint/blueprint.html` |
+| `dna` | Helix | SVG helix | `#43a047` | `apps/helix/helix.html` |
+| `pt` | Protein Tools | SVG chain | `#9c6fd4` | `apps/protein-tools/protein-tools.html` |
+| `spectra` | BCA (formerly Spectra) | SVG standard curve | `#26a69a` | `apps/bca/bca.html` |
+| `ldi` | LDI | SVG balance/scale | `#e91e63` | `apps/ldi/ldi.html` |
+| `cryo` | Iceberg | SVG snowflake | `#00acc1` | `apps/iceberg/iceberg.html` |
+| `cuppa` | Cuppa | SVG coffee cup | `#8d6e63` | `apps/cuppa/cuppa.html` |
+| `fabricata` | Fabricata™ | SVG bar chart + star | `#c07a8e` | `apps/fabricata/fabricata.html` |
+| `beacon` | Beacon | SVG donor/acceptor BRET glyph | `#5e72c4` | `apps/beacon/beacon.html` |
+| `lumina` | Lumina | SVG light bulb | `#f5c518` (warm gold) | `apps/lumina/lumina.html` |
+| `ribbon` | Ribbon | SVG ribbon waves | `#e36c69` (salmon) | `apps/ribbon/ribbon.html` |
+| `protocols` | Archive (formerly Protocols) | SVG open book | `#a56983` (dusty pink) | `apps/archive/archive.html` |
+| `cellarchive` | Cell Archive | SVG cell/nucleus | `#d17a4a` (terracotta) | `apps/cell-archive/cell-archive.html` |
+| `incubator` | Incubator (**admin-only** — cell-culture tracker) | SVG incubator/cell dish | `#4f9d8f` (teal) | `apps/incubator/incubator.html` |
+| `labbook` | Labbook (**admin-only** — electronic lab notebook; experiment-centric planner) | SVG notebook | `#4f9d8f` (teal) | `apps/labbook/labbook.html` |
+| `blot` | Blot (western blot figure builder) | SVG blot panels | `#5b6b7a` (slate) | `apps/western-blot/western-blot.html` |
+| `gantt` | Cadence (grant/fellowship Gantt charts) | SVG timeline bars | `#d99a4e` (amber) | `apps/gantt/gantt.html` |
 
 **Home navigation:** the admin home is a **wall of four full-height panels** (`PRIMARY_CARDS`: Labbook · Archive · Data Analysis · Cells), drawn by `_renderPanels()` — see the *Home: four panels* section below. `EXTRA_GROUPS` (Design & Presentation, Molecular Biology, Personal) sit in one horizontal row underneath and still drill in through `openSuite`. Visitors keep the titled, centred landing and the individual-app discovery flow (`_renderVisitorGrid`). The old `PACKAGES`/`_buildPackages()` card-order machinery is legacy and no longer drives navigation.
 
@@ -97,44 +106,35 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 
 ```
 The_Hub/
-├── dHUB.html                                 ← self-contained, ~11 MB (generated)
-├── hub-shell.html                            ← source-of-truth shell
-├── embed.py                                  ← build script
-├── Echo/
-│   └── echo.html
-├── Dora/
-│   └── dora.html
-├── Blueprint/
-│   └── blueprint.html
-├── Helix/
-│   └── helix.html
-├── Protein_Tools/
-│   └── protein_tools.html
-├── BCA/
-│   └── bca.html
-├── LDI/
-│   └── ldi.html
-├── Iceberg/
-│   └── iceberg.html
-├── Cuppa/
-│   └── cuppa.html
-├── Fabricata/
-│   └── fabricata.html
-├── Beacon/
-│   └── beacon.html
-├── Lumina/
-│   └── lumina.html
-├── Ribbon/
-│   └── ribbon.html
-├── Archive/
-│   └── archive.html
-└── Cell_Archive/
-    └── cell_archive.html
+├── CLAUDE.md · README.md · LICENSE
+├── embed.py                    ← build script (CI runs it from the repo root)
+├── dHUB.html                   ← self-contained, ~11 MB (generated, gitignored)
+├── labbook-standalone.html     ← generated by --profile=labbook (gitignored)
+├── firebase.json · .firebaserc · database.rules.json · storage.rules
+├── shell/
+│   └── hub-shell.html          ← source-of-truth shell
+├── apps/                       ← one folder per app, folder name == file name
+│   ├── labbook/labbook.html    (+ backups/)
+│   ├── archive/archive.html    (+ icons/ for the PWA build)
+│   ├── echo/echo.html   dora/dora.html   blueprint/blueprint.html
+│   ├── helix/  protein-tools/  bca/  ldi/  iceberg/  incubator/  cell-archive/
+│   └── beacon/  lumina/  western-blot/  gantt/  ribbon/  cuppa/  fabricata/
+├── tools/                      ← not part of the build
+│   ├── check_shared.py         sync_fit_engine.py
+│   ├── migrate_protocols.py    make_icons.py
+├── docs/
+│   ├── CLAUDE_HANDOFF.md       SESSION_HISTORY.md       UI.md
+│   ├── PROTOCOL_MIGRATION_REVIEW.md
+│   └── mockups/
+├── old_stuff/                  ← retired apps and dead docs; see its README
+│   ├── arc/  labmate/  plasmids/  images/  superpowers/
+└── Backup/                     ← YOUR data backups. Untracked, and never move this folder:
+                                  the browser's backup directory handle points at it by name.
 ```
 
 ### Regenerating the self-contained dHUB after app changes
 
-**`embed.py`** reads from `hub-shell.html` and fills in each app's base64. Run from `The_Hub/`:
+**`embed.py`** reads from `shell/hub-shell.html` and fills in each app's base64. Run from `The_Hub/`:
 
 ```bash
 python3 embed.py                      # → dHUB.html  (local/offline use — every app)
@@ -148,12 +148,12 @@ The key regex is `[^"]*` (not `[A-Za-z0-9+/=]+`) to avoid the PLACEHOLDER suffix
 ### Shared curve-fit engine (Echo is canonical)
 
 There is no module system, so the 4PL Levenberg-Marquardt fitter (`_lmFit`, `_solveLin`, `_matInv`, `_fitBest`, `_4plVal4`/`_gain`, `_4plJac4`/`_gain`, `_xAtYMid`, `_tQ95`) is **duplicated** in **Echo** (canonical), **Beacon**, and **Lumina**. As of v1.4.0 (2026-07-13) all three are **in sync** — Beacon/Lumina's copies were reconciled onto Echo's (verified fit-for-fit identical: Beacon in-browser maxParamDiff=0, Lumina Node A/B maxParamDiff=0). Two scripts maintain this:
-- **`check_shared.py`** — read-only drift monitor (`python3 check_shared.py`, exit 1 on drift, 2 on a missing source). Run after editing any fit function.
+- **`tools/check_shared.py`** — read-only drift monitor (`python3 tools/check_shared.py`, exit 1 on drift, 2 on a missing source). Run after editing any fit function.
   Both scripts pointed at the pre-rename `Labcyte_Echo/labcyte_echo.html` from the Echo rename until 2026-07-30, so they errored out instead of checking anything.
   Fixed and re-run: **Beacon and Lumina are confirmed byte-identical to Echo** for every shared function (`_4plVal3`/`_tQ95` are Echo-only).
-- **`sync_fit_engine.py`** — copies Echo's canonical versions into Beacon/Lumina (`--check` for dry run).
+- **`tools/sync_fit_engine.py`** — copies Echo's canonical versions into Beacon/Lumina (`--check` for dry run).
 
-Workflow: **edit the fit math in Echo only**, then `python3 sync_fit_engine.py` to propagate, then verify fits numerically (outputs *can* change if you altered the actual math), then `python3 embed.py`. Neither script is wired into `embed.py`'s build gate.
+Workflow: **edit the fit math in Echo only**, then `python3 tools/sync_fit_engine.py` to propagate, then verify fits numerically (outputs *can* change if you altered the actual math), then `python3 embed.py`. Neither script is wired into `embed.py`'s build gate.
 
 ### GitHub Actions auto-deploy
 
@@ -172,18 +172,18 @@ On every push to `main`:
 python3 embed.py
 # 3. Open dHUB.html to test
 # 4. Push → Pages auto-rebuilds
-git add Echo/echo.html hub-shell.html CLAUDE.md
+git add apps/echo/echo.html hub-shell.html CLAUDE.md
 git commit -m "Fix: description"
 git push
 ```
 
-**Files tracked in git:** `hub-shell.html`, `embed.py`, `.gitignore`, `.github/`, all standalone app HTMLs, `CLAUDE.md`, `database.rules.json`/`firebase.json`/`.firebaserc` (Firebase RTDB security rules, deployable via `firebase deploy --only database` if the CLI is installed — see Firebase integration section)  
-**Files NOT tracked:** `dHUB.html` (generated), `dist/`, `Labmate/RDKit_minimal.*`
+**Files tracked in git:** `shell/hub-shell.html`, `embed.py`, `.gitignore`, `.github/`, all standalone app HTMLs, `CLAUDE.md`, `database.rules.json`/`firebase.json`/`.firebaserc` (Firebase RTDB security rules, deployable via `firebase deploy --only database` if the CLI is installed — see Firebase integration section)  
+**Files NOT tracked:** `dHUB.html` (generated), `dist/`, `old_stuff/labmate/RDKit_minimal.*`
 
 ### dHUB shell structure
 
 ```
-hub-shell.html / dHUB.html
+shell/hub-shell.html / dHUB.html
 ├── <script>APP_B64{echo,deg,lm}</script>         — base64-encoded app HTML
 ├── <script>APP_B64_NEW{dna,pd,pt,spectra,ldi}</script> — base64-encoded app HTML
 ├── #hub-nav       — nav bar: d logo + "dHUB" + theme toggle + lab/settings btns
@@ -277,9 +277,9 @@ All hub chrome uses Echo's exact CSS variables and IBM Plex fonts:
 
 ### 1. Build the app HTML file (standalone)
 
-Create `MyApp/myapp.html`. Use IBM Plex Sans/Mono, Echo palette CSS vars, 58px header.
+Create `apps/myapp/myapp.html`. Use IBM Plex Sans/Mono, Echo palette CSS vars, 58px header.
 
-### 2. Add app card to `#hub-home` in `hub-shell.html`
+### 2. Add app card to `#hub-home` in `shell/hub-shell.html`
 
 ```html
 <div class="card" tabindex="0" data-app-id="myapp" onclick="openApp('myapp')" onkeydown="if(event.key==='Enter')openApp('myapp')">
@@ -292,7 +292,7 @@ Create `MyApp/myapp.html`. Use IBM Plex Sans/Mono, Echo palette CSS vars, 58px h
 </div>
 ```
 
-### 3. Add app-view iframe in `hub-shell.html`
+### 3. Add app-view iframe in `shell/hub-shell.html`
 
 ```html
 <div class="app-view" id="view-myapp">
@@ -319,7 +319,7 @@ python3 embed.py
 
 **Self-contained embedding:** Apps stored as UTF-8 base64 in `APP_B64` / `APP_B64_NEW`. Decoded at runtime via `decodeB64App()` using `atob()` + `TextDecoder`.
 
-**LabMate RDKit (removed):** LabMate no longer uses RDKit — `labmate.html` has zero references to it (the chemistry that needed it went with the removed PROTAC Tools section). The `Labmate/RDKit_minimal.js`/`.wasm` files on disk are orphaned (and gitignored, so not in the repo or the built Hub). The old `<base href>` injection note no longer applies; safe to delete the local assets.
+**LabMate RDKit (removed):** LabMate no longer uses RDKit — `labmate.html` has zero references to it (the chemistry that needed it went with the removed PROTAC Tools section). The `old_stuff/labmate/RDKit_minimal.js`/`.wasm` files on disk are orphaned (and gitignored, so not in the repo or the built Hub). The old `<base href>` injection note no longer applies; safe to delete the local assets.
 
 **Same-origin srcdoc:** `srcdoc` iframes with `allow-same-origin` are same-origin as dHUB. `localStorage` and `window.parent` calls work.
 
@@ -327,7 +327,7 @@ python3 embed.py
 
 **Plate Designer mobile:** `.sel-toolbar` anchored to `top:58px` on mobile with `max-height:calc(100vh - 80px); overflow-y:auto` so it never covers the plate canvas.
 
-**Favicon:** SVG data URI in `hub-shell.html` `<head>` — dark rounded square with white "d", matches nav logo.
+**Favicon:** SVG data URI in `shell/hub-shell.html` `<head>` — dark rounded square with white "d", matches nav logo.
 
 **`labBtn.style.display`:** Must be set to `'inline-block'` (not `''`) — a CSS rule hides it by default and `''` doesn't override it.
 
@@ -397,7 +397,7 @@ picker, annotations and heatmap were deliberately not ported.
 ## Archive protocols are data (`PROTOCOL_DATA`)
 
 The Protocol tab used to be 33 hand-authored HTML panes. It is now **generated from
-`PROTOCOL_DATA`**, an inline structured model in `Archive/archive.html`:
+`PROTOCOL_DATA`**, an inline structured model in `apps/archive/archive.html`:
 
 ```
 pid: { stages:[ { id, name, day, durationH, part?, badge?, variant?,
@@ -435,14 +435,14 @@ protocol reached the notebook stripped of the warnings that stop the experiment 
 `partBlockHtml` in Labbook renders them (`.lb-note`, `.lb-note-warn`, `.lb-note-tip`,
 `.lb-table`), including in the PDF export.
 
-**`migrate_protocols.py`** produced the model and verifies it: `--check` compares, letter by
+**`tools/migrate_protocols.py`** produced the model and verifies it: `--check` compares, letter by
 letter, the prose rendered from the JSON against the original pane — **33/33**. It is one-shot
 and **refuses to run against the generated panes** (they parse to empty stages, which would pass
 a vacuous check and then wipe every protocol on inject). Re-verify against git:
 
 ```bash
-git show <pre-migration-sha>:Archive/archive.html > /tmp/orig.html
-python3 migrate_protocols.py --from /tmp/orig.html --check
+git show <pre-migration-sha>:apps/archive/archive.html > /tmp/orig.html
+python3 tools/migrate_protocols.py --from /tmp/orig.html --check
 ```
 
 Review list for the remaining human work — naming the 565 params, setting each stage's `day`:
@@ -564,7 +564,7 @@ empty stored copy). Cell Archive's tiles then read "HCT116 · 1 in culture · 3 
 real vial records to carry ids, just to gain a join that name resolution already provides, is not
 a trade worth making.
 
-**Correction to an earlier claim in this file:** Cell_Archive's 760 KB was described as static
+**Correction to an earlier claim in this file:** Cell Archive's 760 KB was described as static
 prose. It is not — it is **9 embedded JPEG micrographs** (709 KB); the markup is only 41 KB. They
 are 720×540 but displayed at 130×130 with `object-fit:cover`, and nothing enlarges them (no
 lightbox, no click handler). Resized to 347×260 at q82 they still exceed what can reach the
@@ -717,7 +717,7 @@ Nelder–Mead), and a D2B plate module.
 and already define `showToast`, `api`, `escHtml`, `closeModals`, `#modal`, `#search-input` —
 pasting a thehub app in as a 16th script would collide silently. An iframe gets its own window,
 scope and CSS cascade, which is what dHUB already does. Nothing here requires changing
-`hub-shell.html`, `embed.py` or the base64 pipeline; it is additive.
+`shell/hub-shell.html`, `embed.py` or the base64 pipeline; it is additive.
 
 **Bucket A — importable as-is** (no shell globals, no Firebase): Echo, Dora, Blueprint, Helix,
 Protein Tools, BCA, LDI, Beacon, Lumina. Of these, Blueprint, Helix, Protein Tools, BCA, Beacon
@@ -749,9 +749,9 @@ it is a shared reference library, not project data. The persistence seam is the 
 entry points (`save`, `_flushLocal`, `lbFb`, `lbInitSync`); attachments already have the right
 split (metadata in the tree, bytes in IndexedDB) and map cleanly onto REST + file storage.
 
-**Fit engines:** Echo's LM 4PL is canonical here and guarded by `check_shared.py`. It can be
+**Fit engines:** Echo's LM 4PL is canonical here and guarded by `tools/check_shared.py`. It can be
 offered to ChemLib, but only after both fitters are run on the same real dose-response data and
-shown to agree — the bar `sync_fit_engine.py` already sets. A fitter that produces published
+shown to agree — the bar `tools/sync_fit_engine.py` already sets. A fitter that produces published
 DC50s is not swapped because the shapes look similar.
 
 ### Offline / self-hosted robustness
@@ -788,7 +788,7 @@ client-side, keeps offline + one-tap) or moving to a host with auth in front (Cl
 Access). Note the dHUB `APP_UNLOCK_WORDS` code gate is **not** protection — the codewords are in
 plain JS and every app is embedded regardless.
 
-**The source file is never modified for this.** `Archive/archive.html` is already self-contained
+**The source file is never modified for this.** `apps/archive/archive.html` is already self-contained
 (no external JS, notes in `localStorage`, and the two dHUB hooks — `window.parent.openApp` and
 the Firebase note sync — fall back to a toast). The profile injects the manifest link, the Apple
 meta tags and the service-worker registration at build time, so **the copy embedded in dHUB never
@@ -801,15 +801,15 @@ registers a service worker** — which matters, since a `srcdoc` iframe cannot a
 - **Updates**: the cache name carries a hash of the built HTML (`archive-<sha8>`), so a new build
   is a new cache; `activate` deletes the old ones. A running app shows a toast ("Update ready —
   reopen Archive to apply") rather than swapping the page under you mid-protocol.
-- **Icons are committed**, not generated at build time: `Archive/icons/*.png`, regenerated by
-  `python3 Archive/icons/make_icons.py` (Pillow) only if the glyph or accent changes. iOS ignores
+- **Icons are committed**, not generated at build time: `apps/archive/icons/*.png`, regenerated by
+  `python3 tools/make_icons.py` (Pillow) only if the glyph or accent changes. iOS ignores
   SVG for `apple-touch-icon`, which is why these are PNG.
 - `embed.py` **fails loudly** if an icon is missing rather than shipping an uninstallable app.
 - Verified end-to-end over `localhost` (service workers need a secure context): registration,
   precache contents, and a full reload with the server stopped — all 33 protocols and their
   calculators work with no network.
 
-**Bench affordances in `Archive/archive.html`** (shared with dHUB, not PWA-only): the `.dtabs`
+**Bench affordances in `apps/archive/archive.html`** (shared with dHUB, not PWA-only): the `.dtabs`
 row is `position:sticky` on ≤720px so Protocol/Calculate/Output stay one thumb-tap away in a long
 protocol; `#app-body` is the scroll container, so `openProtocol` resets *its* `scrollTop` (the old
 `window.scrollTo` did nothing on a phone) and `closeProtocol` restores where you were in the list;
@@ -931,7 +931,7 @@ carrying the line, passage and media already on screen.
 
 ## Plasmids: one home, and maps you can actually read
 
-`Plasmids/plasmids.html` is **retired** — dropped from `APP_INFO`, the home group, `embed.py`
+`old_stuff/plasmids/plasmids.html` is **retired** — dropped from `APP_INFO`, the home group, `embed.py`
 and the shell. `openApp('plasmids')` routes to Archive → Library → Plasmids via a
 `dhub:context {lib:'plasmids'}` message, so saved `#hashes` and Labbook's `data-app` links still
 land somewhere real. The file stays on disk, unreferenced.
@@ -1131,7 +1131,7 @@ trusting anything that selects through it.
 
 ## Current state
 
-**v1.6.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (Plasmids was retired as an app this session — its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.6.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (Plasmids was retired as an app this session — its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Labbook home is a mockup awaiting a decision** — [`docs/mockups/labbook-home.html`](docs/mockups/labbook-home.html)
@@ -1141,7 +1141,7 @@ trusting anything that selects through it.
   deviation report — as the default landing, replacing the *"Nothing open — pick an entry on
   the left"* empty state. Everything it shows already exists in the data (`blocksForDate`,
   `b.done`, `e.status`, `e.updated`, `expDeviations`, `resultsPaneHtml`); the three-pane editor
-  stays untouched for actual editing. `Labbook/labbook.html` is unchanged until Jon approves.
+  stays untouched for actual editing. `apps/labbook/labbook.html` is unchanged until Jon approves.
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
   Labbook. Everything works device-local and survives backup/restore without it.
 - **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for

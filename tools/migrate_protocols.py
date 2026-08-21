@@ -17,7 +17,7 @@ work, so every generated label is prefixed TODO: for review.
 The migration has already run: archive.html's Protocol panes are now generated, so it is no
 longer its own source. Re-verify against the pre-migration file from git, e.g.
 
-    git show <pre-migration-sha>:Archive/archive.html > /tmp/orig.html
+    git show <pre-migration-sha>:apps/archive/archive.html > /tmp/orig.html
     python3 migrate_protocols.py --from /tmp/orig.html --check
 
 Without --from it reads archive.html and will refuse, because parsing the generated panes
@@ -28,7 +28,7 @@ Not part of the build.
 import re, sys, json, html as htmllib
 from html.parser import HTMLParser
 
-SRC = 'Archive/archive.html'
+SRC = 'apps/archive/archive.html'
 BEGIN = '// <<< PROTOCOL_DATA GENERATED — see migrate_protocols.py >>>'
 END   = '// <<< END PROTOCOL_DATA >>>'
 VOID = {'br','img','input','hr','meta','link','source','area','base','col','embed','param','track','wbr'}
@@ -362,8 +362,8 @@ def main():
     if total_steps < 100:
         print('\nABORTA: %s produce solo %d pasos — sus paneles ya están generados.\n'
               'Este script necesita el HTML PRE-migración. Sácalo de git:\n'
-              '  git log --oneline -- Archive/archive.html\n'
-              '  git show <sha>:Archive/archive.html > /tmp/orig.html\n'
+              '  git log --oneline -- apps/archive/archive.html\n'
+              '  git show <sha>:apps/archive/archive.html > /tmp/orig.html\n'
               '  python3 migrate_protocols.py --from /tmp/orig.html --check'
               % (frm, total_steps), file=sys.stderr)
         return 2

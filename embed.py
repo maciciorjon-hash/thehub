@@ -14,7 +14,7 @@ Usage:
 import base64, re, os, sys
 
 BASE  = os.path.dirname(os.path.abspath(__file__))
-SHELL = os.path.join(BASE, 'hub-shell.html')
+SHELL = os.path.join(BASE, 'shell/hub-shell.html')
 
 args    = [a for a in sys.argv[1:] if not a.startswith('--')]
 flags   = [a for a in sys.argv[1:] if a.startswith('--')]
@@ -25,25 +25,25 @@ for f in flags:
 OUT = args[0] if args else os.path.join(BASE, 'dHUB.html')
 
 APPS = [
-    ('echo', 'Echo/echo.html'),
-    ('deg',  'Dora/dora.html'),
-    ('pd',   'Blueprint/blueprint.html'),
-    ('dna',  'Helix/helix.html'),
-    ('pt',   'Protein_Tools/protein_tools.html'),
-    ('spectra', 'BCA/bca.html'),
-    ('ldi',     'LDI/ldi.html'),
-    ('cryo',    'Iceberg/iceberg.html'),
-    ('cuppa',      'Cuppa/cuppa.html'),
-    ('fabricata',  'Fabricata/fabricata.html'),
-    ('beacon',     'Beacon/beacon.html'),
-    ('lumina',     'Lumina/lumina.html'),
-    ('ribbon',     'Ribbon/ribbon.html'),
-    ('protocols',  'Archive/archive.html'),
-    ('cellarchive', 'Cell_Archive/cell_archive.html'),
-    ('incubator',   'Incubator/incubator.html'),
-    ('labbook',     'Labbook/labbook.html'),
-    ('blot',        'WesternBlot/westernblot.html'),
-    ('gantt',       'Gantt/gantt.html'),
+    ('echo', 'apps/echo/echo.html'),
+    ('deg',  'apps/dora/dora.html'),
+    ('pd',   'apps/blueprint/blueprint.html'),
+    ('dna',  'apps/helix/helix.html'),
+    ('pt',   'apps/protein-tools/protein-tools.html'),
+    ('spectra', 'apps/bca/bca.html'),
+    ('ldi',     'apps/ldi/ldi.html'),
+    ('cryo',    'apps/iceberg/iceberg.html'),
+    ('cuppa',      'apps/cuppa/cuppa.html'),
+    ('fabricata',  'apps/fabricata/fabricata.html'),
+    ('beacon',     'apps/beacon/beacon.html'),
+    ('lumina',     'apps/lumina/lumina.html'),
+    ('ribbon',     'apps/ribbon/ribbon.html'),
+    ('protocols',  'apps/archive/archive.html'),
+    ('cellarchive', 'apps/cell-archive/cell-archive.html'),
+    ('incubator',   'apps/incubator/incubator.html'),
+    ('labbook',     'apps/labbook/labbook.html'),
+    ('blot',        'apps/western-blot/western-blot.html'),
+    ('gantt',       'apps/gantt/gantt.html'),
 ]
 
 # Which apps ship in which build. 'all' is the personal Hub; 'product' is the sellable
@@ -64,8 +64,8 @@ PROFILES = {
 # verbatim as a base64 iframe: it publishes its bridge onto window.parent, which inside Labbook
 # IS Labbook — so nothing in either app has to be forked or de-collided.
 if profile == 'labbook':
-    lb = open(os.path.join(BASE, 'Labbook/labbook.html'), encoding='utf-8').read()
-    arc = open(os.path.join(BASE, 'Archive/archive.html'), 'rb').read()
+    lb = open(os.path.join(BASE, 'apps/labbook/labbook.html'), encoding='utf-8').read()
+    arc = open(os.path.join(BASE, 'apps/archive/archive.html'), 'rb').read()
     arc_b64 = base64.b64encode(arc).decode('ascii')
     lb, n = re.subn(r'(?<=var ARCHIVE_B64 = ")[^"]*', arc_b64, lb)
     if n != 1:
@@ -78,7 +78,7 @@ if profile == 'labbook':
     sys.exit(0)
 
 # ── Standalone Archive (installable PWA) ──────────────────────────────────
-# Archive/archive.html is already self-contained (no external JS, notes in localStorage, the
+# apps/archive/archive.html is already self-contained (no external JS, notes in localStorage, the
 # two dHUB hooks degrade to a toast). This profile only *packages* it for a phone: a web
 # manifest, icons and a service worker so "Add to Home Screen" gives a real offline app at
 # the bench. The source file is untouched — the PWA tags are injected here, so the copy
@@ -91,7 +91,7 @@ ARCHIVE_SLUG = 'archive-14cadcd792a2'
 if profile == 'archive':
     import hashlib, shutil
     out_dir = os.path.abspath(args[0]) if args else os.path.join(BASE, 'dist', ARCHIVE_SLUG)
-    html = open(os.path.join(BASE, 'Archive/archive.html'), encoding='utf-8').read()
+    html = open(os.path.join(BASE, 'apps/archive/archive.html'), encoding='utf-8').read()
 
     head = '''
 <meta name="robots" content="noindex, nofollow">
@@ -192,9 +192,9 @@ self.addEventListener('fetch', e => {
     open(os.path.join(out_dir, 'sw.js'), 'w', encoding='utf-8').write(sw)
     icons = ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png']
     for name in icons:
-        src_icon = os.path.join(BASE, 'Archive/icons', name)
+        src_icon = os.path.join(BASE, 'apps/archive/icons', name)
         if not os.path.exists(src_icon):
-            sys.stderr.write('archive profile: missing icon %s (run Archive/icons/make_icons.py)\n' % name)
+            sys.stderr.write('archive profile: missing icon %s (run tools/make_icons.py)\n' % name)
             sys.exit(1)
         shutil.copyfile(src_icon, os.path.join(out_dir, 'icons', name))
     print('Archive PWA: %s (index.html %s chars, cache %s)' % (out_dir, f'{len(html):,}', 'archive-' + ver))

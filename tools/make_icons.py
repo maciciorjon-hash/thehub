@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the Archive PWA icons (rounded square + the header book glyph).
 
-Run from anywhere: python3 Archive/icons/make_icons.py — writes the PNGs next to itself.
+Run from anywhere: python3 tools/make_icons.py — writes the PNGs into apps/archive/icons/.
 Only needed if the icon or the accent colour changes; the PNGs are committed.
 Requires Pillow.
 """
@@ -9,7 +9,7 @@ import os
 from PIL import Image, ImageDraw
 
 ACCENT = (165, 105, 131, 255)          # #a56983
-OUT = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'apps', 'archive', 'icons')
 
 # The header glyph, 24x24 viewBox, as explicit segments.
 def cub(p0, c1, c2, p1, n=48):

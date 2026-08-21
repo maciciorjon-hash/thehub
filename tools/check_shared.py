@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Drift monitor for the shared 4PL curve-fit engine.
 
-Echo (Echo/echo.html) is the CANONICAL implementation of the
+Echo (apps/echo/echo.html) is the CANONICAL implementation of the
 Levenberg-Marquardt 4PL fitter. Beacon and Lumina carry their own copies of the
 same functions (there is no build step / module system in this repo, so the code
 is duplicated on purpose). Over time those copies drift.
@@ -20,12 +20,12 @@ a bundle — run it manually:
 """
 import os, re, sys
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root, one up from tools/
 CANONICAL = 'Echo'
 FILES = {
-    'Echo':   'Echo/echo.html',
-    'Beacon': 'Beacon/beacon.html',
-    'Lumina': 'Lumina/lumina.html',
+    'Echo':   'apps/echo/echo.html',
+    'Beacon': 'apps/beacon/beacon.html',
+    'Lumina': 'apps/lumina/lumina.html',
 }
 # The functions that make up the shared engine (superset — not all exist in every app).
 FUNCS = ['_4plVal4', '_4plVal4_gain', '_4plVal3', '_4plJac4', '_4plJac4_gain',
