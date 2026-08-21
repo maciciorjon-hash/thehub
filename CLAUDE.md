@@ -1134,6 +1134,14 @@ trusting anything that selects through it.
 **v1.6.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (Plasmids was retired as an app this session — its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`Archive_Log/SESSION_HISTORY.md`](Archive_Log/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
+- **Labbook home is a mockup awaiting a decision** — [`docs/mockups/labbook-home.html`](docs/mockups/labbook-home.html)
+  (static, invented data, nothing wired). It proposes a card grid — today band with a step
+  progress ring, this week, running experiments with progress and next step, projects that
+  drill into folders and experiments **inside the card**, recently edited, Echo results and the
+  deviation report — as the default landing, replacing the *"Nothing open — pick an entry on
+  the left"* empty state. Everything it shows already exists in the data (`blocksForDate`,
+  `b.done`, `e.status`, `e.updated`, `expDeviations`, `resultsPaneHtml`); the three-pane editor
+  stays untouched for actual editing. `Labbook/labbook.html` is unchanged until Jon approves.
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
   Labbook. Everything works device-local and survives backup/restore without it.
 - **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for
