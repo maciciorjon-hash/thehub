@@ -56,11 +56,15 @@ Every app declares the same names. Two scales, no loose values.
 opens in — is the special case, and every new rule gets written for the wrong theme first. Flip it.
 
 **Rules, not suggestions**
-- No loose `px` for `font-size` or `border-radius` anywhere in a stylesheet. Values inside JS
-  strings are the one tolerated exception, and only where rewriting them blind would be risky.
+- No loose `px` for `font-size` or `border-radius` anywhere in a stylesheet. Two exceptions, both
+  narrow: values inside JS strings, where rewriting them blind would be risky; and **text drawn
+  inside an SVG** (a label on a plasmid ring, a tick on an axis), which is sized against the
+  drawing's viewBox and is part of the picture, not of the interface.
 - `--accent` owns everything interactive: focus rings, active tabs, links, primary buttons,
   selection. `--brand` appears in exactly two places: the 32px logo box and the app's card.
-- Semantic colour is `--good` / `--warn` / `--danger`, never a raw hex.
+- Semantic colour is `--good` / `--warn` / `--danger`, never a raw hex. The exception is a
+  **print stylesheet** (`#print-root`, `@media print`): paper has one theme, so fixed values there
+  are correct and theme tokens would be wrong.
 - Every colour has a dark value. If you cannot say what a rule does in dark mode, it is not done.
 
 ---
