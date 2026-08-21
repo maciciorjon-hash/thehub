@@ -83,7 +83,7 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 | `blot` | Blot (western blot figure builder) | SVG blot panels | `#5b6b7a` (slate) | `WesternBlot/westernblot.html` |
 | `gantt` | Cadence (grant/fellowship Gantt charts) | SVG timeline bars | `#d99a4e` (amber) | `Gantt/gantt.html` |
 
-**Home navigation:** the admin home has four primary cards (`PRIMARY_CARDS`: Labbook, Archive, Data Analysis, Incubator). Incubator groups the Incubator, Cell Archive and Iceberg apps. Remaining apps are grouped under `EXTRA_GROUPS` with thematic separators: Design & Presentation, Molecular Biology and Personal. Visitors retain the individual-app discovery flow. The old `PACKAGES`/`_buildPackages()` card-order machinery is legacy and no longer drives navigation.
+**Home navigation:** the admin home is a **wall of four full-height panels** (`PRIMARY_CARDS`: Labbook · Archive · Data Analysis · Cells), drawn by `_renderPanels()` — see the *Home: four panels* section below. `EXTRA_GROUPS` (Design & Presentation, Molecular Biology, Personal) sit in one horizontal row underneath and still drill in through `openSuite`. Visitors keep the titled, centred landing and the individual-app discovery flow (`_renderVisitorGrid`). The old `PACKAGES`/`_buildPackages()` card-order machinery is legacy and no longer drives navigation.
 
 ---
 
@@ -1079,6 +1079,55 @@ acidifies through orange to yellow as the culture grows out — so a healthy fla
 overdue one is yellow. It reads as inverted status colour until you know that, which is why
 `_vslStops` now says so. The passage number is dark ink: the fills went pastel, and white
 needed a heavy shadow to survive on the yellow.
+
+## Home: four panels, one strip, and a stray `</div>`
+
+Jon's sketch: nav on top, then **Labbook · Archive · Data Analysis · Cells** as full-height
+panels side by side, with the remaining groups in one horizontal row underneath. `.hub-panels`
+is `flex:1 1 auto; min-height:360px` inside a flex-column `.home-wrap`, which is the whole of
+"height adapts to the monitor" — a tall screen grows the panels, a laptop stops at the minimum
+and scrolls. Narrow screens invert it: ≤1100px goes 2×2, **≤760px turns each panel into a
+full-width row** with the illustration bleeding off the right edge instead of the bottom.
+
+Each panel carries **a line illustration in its category colour** (`PANEL_ART` — a notebook
+with dated step cards, an open book, a 4PL dose–response, a T-flask with its canted neck and
+two vials), masked to fade top→bottom, plus a **live peek** underneath it. The colour stays
+"slight": a 3px top bar and a wash that dies by 55% height; `--accent` still owns everything
+interactive.
+
+**A peek whose source cannot be read renders nothing — never a zero.** "0 experiments" and
+"I could not look" are different statements. Sources: Labbook's peek parses
+`localStorage['hub_labbook']` directly (srcdoc iframes are same-origin, so the shell can read
+the notebook's own store) for steps due today and running experiments; Archive counts the
+shared Library (`journal/antibodies|primers|plasmids`); Data Analysis lists its apps ordered
+by `hub_recent`, written by `openApp`; Cells reuses `computeCellAlerts` and `HUB_FREEZER_WALK`.
+
+**`#hub-today`** replaced the widget dashboard: greeting, date, cell-alert chip, open-task
+count, Note and a clock, in one 52px line. The **task list and quick note keep their exact
+bodies and handlers** (`_tasksWidgetHtml`, `_noteWidgetHtml`) inside a popover. Two details
+that bite:
+- `#hub-today` needs `z-index:20`. Every panel below it uses `backdrop-filter`, which makes it
+  its own stacking context painted above an auto-z sibling — without the z-index the popover
+  opens *behind* the wall.
+- A store write while you are typing in the popover must not rebuild the strip, or the caret
+  goes with it. `_homeLive()` detects focus inside `#td-pop` and calls `_tdRefresh()`, which
+  patches the chip count and the task rows in place. Adding a task is exactly this case.
+
+Removed with the dashboard, all unreachable afterwards: `WIDGET_TYPES`, `SIZE_SPAN`,
+`DEFAULT_LAYOUT`, `_getLayout`/`_normSize`, `renderWidgets`, `_widgetHtml`, `_addTileHtml`,
+the whole drag/resize subsystem (`_wireWidgetDnD`, `_wg*Drag*`, `_wgTouch*`, `_flipMove`,
+`wgSetSize`, `_persistLayoutFromDom`), the shortcuts widget and its picker, the clock and
+Live-Incubator tiles, `_greetingHtml`, the dead `#hub-dash` command-center CSS, the orphaned
+`@keyframes wxSpin/wxDrop/wxFlake/wxBolt/sunRays` from the deleted weather widget, and
+`JournalStore.setLayout`/`setShortcuts` with the `layout`/`shortcuts` keys they wrote.
+
+**The bug this uncovered: a stray `</div>` closed `#app-grid` immediately**, so all 19 app
+cards were siblings of the grid, not children. Every `#app-grid .card[data-app-id]` lookup —
+the suite app counts, `openSuite`'s drill-in grid, `_appMiniIcon`, `_applyDashAdmin`'s
+incubator card and **the visitor grid** — matched nothing. Suite cards read "0 apps", drill-in
+opened empty, and a visitor who typed a correct code word unlocked an app and was shown an
+empty page. One deleted line fixes all of it; check `#app-grid` actually contains cards before
+trusting anything that selects through it.
 
 ## Current state
 
