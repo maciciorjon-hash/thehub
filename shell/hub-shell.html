@@ -77,7 +77,7 @@ body.in-app::before{opacity:0;}
 #hub-back-lbl{display:none;font-size:var(--fs-3);font-weight:600;color:var(--text2);cursor:pointer;margin-left:-2px;}
 /* Touch devices: hover-revealed controls are unreachable and hover transforms stick. */
 @media (hover:none){
-  .card:hover,.suite-card:hover,.hpanel:hover{transform:none!important;}
+  .card:hover,.ld-card:hover{transform:none!important;}
 }
 #nav-title{font-size:var(--fs-5);font-weight:600;color:var(--text);white-space:nowrap;}
 /* SEARCH */
@@ -103,8 +103,6 @@ body.in-app::before{opacity:0;}
 .app-view iframe{flex:1;width:100%;height:100%;border:none;display:block;}
 
 /* HOME */
-/* The admin home is a wall of four full-height panels, so the wrap is a flex column that
-   hands the leftover height to .hub-panels — tall monitor, taller panels. */
 .home-wrap{padding:20px 28px 26px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;}
 .home-wrap.centered{max-width:1280px;padding:48px 56px;}
 .home-hdr{margin-bottom:28px;}
@@ -274,139 +272,119 @@ body.hub-announcing #hub-home{margin-top:98px;min-height:calc(100vh - 98px);}
 /* the visitor grid's empty state — all that survives of the removed command-center band */
 .dash-empty{font-size:var(--fs-3);color:var(--text3);padding:14px 0 6px;text-align:center;}
 
-/* ══ WORKSPACE: the day strip, the category panels, the drill-in ════════ */
-#hub-suites{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;}
+/* ══ WORKSPACE: rail, header, landings ═════════════════════════════════ */
+/* Two faces, one file. Signed out you get dHUB as it always was — title, "discover" and the
+   cards you unlock. Signed in you get the workspace: a rail on the left, the section you are
+   in named in the header, and Labbook's dashboard as the home. */
+:root{--rail-w:180px;--railbar-h:0px;}
+body.ws-collapsed{--rail-w:52px;}
 
-/* ── slim "your day" strip ── */
-/* z-index: the panels below use backdrop-filter, which makes each of them a stacking context
-   painted above an auto-z sibling — without this the popover opens behind the wall. */
-#hub-today{position:relative;z-index:20;display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:0 0 auto;
-  padding:11px 18px;margin-bottom:14px;background:var(--glass);
-  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.5);backdrop-filter:blur(var(--glass-blur)) saturate(1.5);
-  border:1px solid var(--glass-brd);border-radius:var(--r2);box-shadow:var(--glass-shadow),var(--glass-hi);}
-.td-greet{font-size:var(--fs-5);font-weight:700;letter-spacing:-.2px;color:var(--text);}
-.td-date{font-size:var(--fs-3);color:var(--text3);}
-.td-grow{flex:1 1 auto;}
-.td-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 13px;border:1px solid var(--border2);
-  border-radius:var(--r-4);background:none;color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);
-  cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
-.td-chip:hover{background:var(--surface2);color:var(--text);}
-.td-chip.on{background:var(--surface2);color:var(--text);border-color:var(--border2);}
-.td-chip .td-n{font-family:var(--mono);font-weight:700;color:var(--text);}
-.td-chip.warn{border-color:rgba(224,140,48,.45);color:#c47818;}
-.td-chip.warn .td-n{color:#c47818;}
-[data-theme="dark"] .td-chip.warn{color:#f0b060;}
-[data-theme="dark"] .td-chip.warn .td-n{color:#f0b060;}
-.td-clock{font-family:var(--mono);font-size:var(--fs-5);font-weight:600;color:var(--text);
-  font-variant-numeric:tabular-nums;letter-spacing:-.3px;}
-.td-clock span{font-size:var(--fs-2);color:var(--text3);margin-left:4px;}
-#td-pop{position:absolute;top:calc(100% + 8px);right:0;width:330px;max-width:calc(100vw - 32px);z-index:30;
-  background:var(--surface);border:1px solid var(--border2);border-radius:var(--r2);box-shadow:var(--shadow-lg);
-  animation:tdPop .18s cubic-bezier(.16,.84,.44,1);}
+#ws-rail{position:fixed;top:58px;left:0;bottom:0;width:var(--rail-w);z-index:15;display:none;
+  flex-direction:column;padding:10px 8px;gap:2px;background:var(--surface);
+  border-right:1px solid var(--border);transition:width .18s var(--ease);}
+body.ws #ws-rail{display:flex;}
+body.hub-announcing #ws-rail{top:98px;}
+.ws-item{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:var(--r-2);
+  border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:var(--fs-4);
+  font-weight:500;cursor:pointer;text-align:left;width:100%;white-space:nowrap;overflow:hidden;
+  transition:background .14s,color .14s;}
+.ws-item:hover{background:var(--surface2);color:var(--text);}
+.ws-item.on{background:var(--accent-dim);color:var(--accent);font-weight:600;}
+.ws-ico{width:22px;height:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.ws-ico svg{width:19px;height:19px;}
+.ws-lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+body.ws-collapsed .ws-lbl{display:none;}
+body.ws-collapsed .ws-item{justify-content:center;padding:9px 0;}
+.ws-sep{height:1px;background:var(--border);margin:8px 6px;flex-shrink:0;}
+.ws-grow{flex:1;}
+.ws-fold{color:var(--text3);}
+.ws-fold svg{transition:transform .18s var(--ease);}
+body.ws-collapsed .ws-fold svg{transform:rotate(180deg);}
+
+/* the workspace shifts everything right of the rail */
+body.ws #hub-home{margin-left:var(--rail-w);transition:margin-left .18s var(--ease);}
+body.ws .app-view{left:var(--rail-w);transition:left .18s var(--ease);}
+body.ws #hub-home .home-wrap{max-width:none;padding:22px 26px 40px;}
+
+/* header: the d, then where you are */
+#ws-where{font-size:var(--fs-5);font-weight:600;color:var(--text);white-space:nowrap;}
+.nav-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border:1px solid var(--border2);
+  border-radius:var(--r-4);background:none;color:var(--text2);font-family:var(--sans);
+  font-size:var(--fs-3);cursor:pointer;transition:background .15s,color .15s;}
+.nav-chip:hover{background:var(--surface2);color:var(--text);}
+.nav-chip .nav-n{font-family:var(--mono);font-weight:700;color:var(--text);}
+.nav-chip.warn{border-color:rgba(224,140,48,.45);color:#c47818;}
+.nav-chip.warn .nav-n{color:#c47818;}
+[data-theme="dark"] .nav-chip.warn,[data-theme="dark"] .nav-chip.warn .nav-n{color:#f0b060;}
+#nav-pop{position:fixed;top:56px;right:16px;width:330px;max-width:calc(100vw - 32px);z-index:40;
+  background:var(--surface);border:1px solid var(--border2);border-radius:var(--r2);
+  box-shadow:var(--shadow-lg);animation:tdPop .18s cubic-bezier(.16,.84,.44,1);}
 @keyframes tdPop{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
 
-/* ── the four category panels ── */
-.hub-panels{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;
-  flex:1 1 auto;min-height:360px;margin-bottom:20px;}
-.hpanel{position:relative;display:flex;flex-direction:column;gap:9px;padding:20px 20px 15px;overflow:hidden;
-  cursor:pointer;outline:none;background:var(--glass);
-  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.5);backdrop-filter:blur(var(--glass-blur)) saturate(1.5);
-  border:1px solid var(--glass-brd);border-radius:var(--r3);box-shadow:var(--glass-shadow),var(--glass-hi);
-  transition:border-color .2s,box-shadow .24s var(--ease),transform .18s var(--ease);
-  animation:cardIn .42s ease both;}
-.hpanel:hover{box-shadow:var(--glass-shadow-lg),var(--glass-hi);transform:translateY(-3px);}
-.hpanel:active{transform:scale(.995);}
-.hpanel:focus-visible{border-color:var(--cat);}
-/* the slight per-category accent: a hairline at the top and a wash that dies by mid-panel */
-.hpanel::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--cat);z-index:2;}
-.hpanel::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
-  background:linear-gradient(180deg,color-mix(in srgb,var(--cat) 14%,transparent) 0%,transparent 55%);}
-.hpanel>*{position:relative;z-index:1;}
-/* the illustration: line art in the category colour, faded out top→bottom */
-.hp-art{position:absolute;left:0;right:0;top:96px;bottom:0;z-index:0;color:var(--cat);opacity:.26;
-  pointer-events:none;overflow:hidden;
-  -webkit-mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.5) 62%,transparent 100%);
-  mask-image:linear-gradient(180deg,#000 0%,rgba(0,0,0,.5) 62%,transparent 100%);}
-.hp-art svg{position:absolute;left:50%;top:4px;transform:translateX(-50%);width:88%;max-height:100%;
-  height:auto;shape-rendering:geometricPrecision;}
-[data-theme="dark"] .hp-art{opacity:.32;}
-.hp-head{display:flex;align-items:center;gap:11px;}
-.hp-ico{width:34px;height:34px;border-radius:var(--r-2);display:flex;align-items:center;justify-content:center;
-  background:var(--cat);color:#fff;flex-shrink:0;box-shadow:0 4px 12px -5px var(--cat);}
-.hp-ico svg{width:20px;height:20px;}
-.hp-name{font-size:var(--fs-6);font-weight:700;letter-spacing:-.3px;color:var(--text);}
-.hp-tag{font-size:var(--fs-3);color:var(--text2);line-height:1.5;}
-.hp-peek{margin-top:auto;padding-top:10px;
-  /* the peek sits over the illustration, so it carries its own scrim — the drawing must
-     not run through the one line that tells you what is actually happening today */
-  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
-  -webkit-mask-image:none;mask-image:none;}
-.hp-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid var(--border);}
-.hp-main{flex:1;min-width:0;}
-.hp-t{font-size:var(--fs-3);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.hp-s{font-size:var(--fs-2);color:var(--text2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.hp-lead{display:flex;align-items:baseline;gap:8px;padding:2px 0 6px;}
-.hp-num{font-family:var(--mono);font-size:var(--fs-8);font-weight:700;line-height:1;letter-spacing:-1.4px;color:var(--text);}
-.hp-num-lbl{font-size:var(--fs-3);color:var(--text2);}
-.hp-badge{font-family:var(--mono);font-size:var(--fs-1);font-weight:700;letter-spacing:.6px;text-transform:uppercase;
-  padding:3px 7px;border-radius:var(--r-4);flex-shrink:0;}
-.hp-badge.warn{background:rgba(224,140,48,.16);color:#c47818;}
-.hp-badge.soft{background:rgba(94,135,197,.16);color:#5075b5;}
-.hp-badge.ok{background:rgba(45,148,98,.15);color:#2d9462;}
-[data-theme="dark"] .hp-badge.warn{color:#f0b060;}
-[data-theme="dark"] .hp-badge.soft{color:#8fb0e0;}
-[data-theme="dark"] .hp-badge.ok{color:#6ddca8;}
-.hp-stats{display:flex;gap:18px;padding:8px 0 2px;border-top:1px solid var(--border);}
-.hp-stat-n{font-family:var(--mono);font-size:var(--fs-6);font-weight:700;color:var(--text);line-height:1.1;}
-.hp-stat-l{font-size:var(--fs-2);color:var(--text3);}
-.hp-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 2px;border-top:1px solid var(--border);}
-.hp-chip{display:flex;align-items:center;gap:6px;padding:4px 9px 4px 4px;border:1px solid var(--border);
-  border-radius:var(--r-4);background:var(--surface2);font-size:var(--fs-2);font-weight:600;color:var(--text);}
-.hp-chip-ico{width:19px;height:19px;border-radius:var(--r-1);display:flex;align-items:center;justify-content:center;
-  color:#fff;flex-shrink:0;}
-.hp-chip-ico svg{width:12px;height:12px;}
-.hp-foot{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);
-  font-size:var(--fs-1);color:var(--text3);padding-top:11px;}
-.hp-open{color:var(--cat);font-weight:600;display:flex;align-items:center;gap:4px;}
-.hpanel:hover .hp-open .sar{transform:translateX(3px);}
+/* ── landings: a live band, then cards for what is inside ── */
+.ld-hd{margin-bottom:18px;}
+.ld-title{font-size:var(--fs-8);font-weight:700;letter-spacing:-.6px;line-height:1.15;}
+.ld-sub{font-size:var(--fs-4);color:var(--text2);margin-top:5px;max-width:70ch;line-height:1.5;}
+.ld-band{display:flex;align-items:center;gap:26px;flex-wrap:wrap;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r3);padding:16px 20px;margin-bottom:18px;
+  box-shadow:var(--shadow-xs);}
+.ld-stat-n{font-family:var(--mono);font-size:var(--fs-7);font-weight:700;line-height:1.1;color:var(--text);}
+.ld-stat-l{font-size:var(--fs-2);color:var(--text3);letter-spacing:.3px;}
+.ld-rows{flex:1;min-width:240px;display:flex;flex-direction:column;gap:6px;}
+.ld-row{display:flex;align-items:center;gap:10px;font-size:var(--fs-3);}
+.ld-row .t{font-weight:600;color:var(--text);}
+.ld-row .s{color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ld-badge{font-family:var(--mono);font-size:var(--fs-1);font-weight:700;letter-spacing:.6px;
+  text-transform:uppercase;padding:3px 7px;border-radius:var(--r-4);flex-shrink:0;}
+.ld-badge.warn{background:rgba(224,140,48,.16);color:#c47818;}
+.ld-badge.soft{background:rgba(94,135,197,.16);color:#5075b5;}
+.ld-badge.ok{background:rgba(45,148,98,.15);color:#2d9462;}
+[data-theme="dark"] .ld-badge.warn{color:#f0b060;}
+[data-theme="dark"] .ld-badge.soft{color:#8fb0e0;}
+[data-theme="dark"] .ld-badge.ok{color:#6ddca8;}
+.ld-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
+.ld-card{position:relative;display:flex;flex-direction:column;gap:10px;padding:18px;cursor:pointer;
+  outline:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--r3);
+  box-shadow:var(--shadow-xs);transition:border-color .18s,box-shadow .22s var(--ease),transform .18s var(--ease);
+  animation:cardIn .38s ease both;}
+.ld-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);}
+.ld-card:active{transform:scale(.995);}
+.ld-top{display:flex;align-items:center;gap:11px;}
+.ld-ico{width:36px;height:36px;border-radius:var(--r-2);display:flex;align-items:center;
+  justify-content:center;background:var(--brand,var(--accent));color:#fff;flex-shrink:0;}
+.ld-ico svg{width:20px;height:20px;}
+.ld-name{font-size:var(--fs-5);font-weight:700;letter-spacing:-.2px;color:var(--text);}
+.ld-desc{font-size:var(--fs-3);color:var(--text2);line-height:1.55;}
+.ld-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;
+  font-family:var(--mono);font-size:var(--fs-1);color:var(--text3);padding-top:4px;}
+.ld-open{color:var(--accent);font-weight:600;display:flex;align-items:center;gap:4px;}
+.ld-card:hover .ld-open .sar{transform:translateX(3px);}
 .sar{transition:transform .15s;display:inline-block;}
+.ld-group{margin-top:26px;}
+.ld-group-lbl{display:flex;align-items:center;gap:12px;font-size:var(--fs-2);font-weight:700;
+  letter-spacing:1.3px;text-transform:uppercase;color:var(--text3);margin:0 0 12px;}
+.ld-group-lbl::after{content:'';height:1px;flex:1;background:var(--border);}
 
-/* ── the remaining app groups: one horizontal row under the panels ── */
-#hub-extras{flex:0 0 auto;}
-.hub-extras-title{font-size:var(--fs-2);font-weight:700;letter-spacing:1.6px;text-transform:uppercase;
-  color:var(--text3);margin:0 0 12px;}
-.hub-extra-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;}
-.suite-card{position:relative;display:flex;align-items:center;gap:14px;padding:14px 16px;cursor:pointer;
-  overflow:hidden;background:var(--glass);
-  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.5);backdrop-filter:blur(var(--glass-blur)) saturate(1.5);
-  border:1px solid var(--glass-brd);border-radius:var(--r3);box-shadow:var(--glass-shadow),var(--glass-hi);
-  transition:border-color .2s,box-shadow .24s var(--ease),transform .18s var(--ease);animation:cardIn .42s ease both;}
-.suite-card:hover{box-shadow:var(--glass-shadow-lg),var(--glass-hi);transform:translateY(-3px);}
-.suite-card:active{transform:scale(.99);}
-.suite-ico{width:40px;height:40px;border-radius:var(--r-2);display:flex;align-items:center;justify-content:center;
-  background:var(--suite-c);color:#fff;flex-shrink:0;box-shadow:0 4px 12px -5px var(--suite-c);}
-.suite-ico svg{width:22px;height:22px;}
-.suite-main{flex:1;min-width:0;}
-.suite-name{font-size:var(--fs-5);font-weight:700;letter-spacing:-.2px;color:var(--text);}
-.suite-tag{font-size:var(--fs-2);color:var(--text2);line-height:1.45;margin-top:2px;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.suite-foot{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:var(--fs-1);
-  color:var(--text3);flex-shrink:0;}
-.suite-open{color:var(--suite-c);font-weight:600;display:flex;align-items:center;gap:4px;}
-.suite-card:hover .suite-open .sar{transform:translateX(3px);}
-
-#hub-suite-detail{display:none;}
-#hub-suite-detail.open{display:block;animation:suiteIn .32s cubic-bezier(.16,.84,.44,1);}
-@keyframes suiteIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
-.sd-hd{display:flex;align-items:center;gap:14px;margin-bottom:24px;}
-.sd-back{width:38px;height:38px;border-radius:var(--r-2);border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s,color .15s;}
-.sd-back:hover{background:var(--surface2);color:var(--text);}
-.sd-back svg{width:18px;height:18px;}
-.sd-ico{width:40px;height:40px;border-radius:var(--r-2);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;}
-.sd-ico svg{width:22px;height:22px;}
-.sd-title{font-size:var(--fs-7);font-weight:700;letter-spacing:-.5px;}
-.sd-sub{font-size:var(--fs-3);color:var(--text2);margin-top:1px;}
-
+/* ── mobile: the rail becomes a bottom tab bar ── */
+#ws-tabs{position:fixed;left:0;right:0;bottom:0;z-index:16;display:none;
+  background:var(--glass-solid);-webkit-backdrop-filter:blur(18px) saturate(1.5);
+  backdrop-filter:blur(18px) saturate(1.5);border-top:1px solid var(--border);
+  padding-bottom:env(safe-area-inset-bottom);}
+.ws-tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 2px 7px;
+  border:none;background:none;color:var(--text3);font-family:var(--sans);font-size:var(--fs-1);
+  font-weight:600;cursor:pointer;}
+.ws-tab.on{color:var(--accent);}
+.ws-tab svg{width:20px;height:20px;}
+@media(max-width:760px){
+  body.ws #ws-rail{display:none;}
+  body.ws #ws-tabs{display:flex;}
+  body.ws #hub-home{margin-left:0;padding-bottom:64px;}
+  body.ws .app-view{left:0;bottom:calc(56px + env(safe-area-inset-bottom));}
+  body.ws #hub-home .home-wrap{padding:16px 12px 40px;}
+  .ld-title{font-size:var(--fs-7);}
+  .ld-grid{grid-template-columns:1fr;gap:10px;}
+  .ld-band{gap:16px;padding:14px 16px;}
+}
 /* ══ Task list + quick note (shared by the strip's popovers) ════════════ */
 .wg-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 0;}
 .wg-title{font-size:var(--fs-2);font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--text3);}
@@ -440,41 +418,10 @@ body.hub-announcing #hub-home{margin-top:98px;min-height:calc(100vh - 98px);}
 .wg-note{width:100%;min-height:130px;resize:vertical;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);padding:10px 12px;font-family:var(--sans);font-size:var(--fs-4);line-height:1.5;color:var(--text);outline:none;transition:border-color .15s;}
 .wg-note:focus{border-color:var(--accent2);}
 
-/* Narrow: the same idea inverted — the four panels become full-width rows stacked
-   down the page, the illustration bleeding off the right edge instead of the bottom. */
-@media(max-width:1100px){
-  .hub-panels{grid-template-columns:repeat(2,minmax(0,1fr));min-height:0;}
-  .hub-extra-row{grid-template-columns:repeat(2,minmax(0,1fr));}
-}
-@media(max-width:760px){
-  .hub-panels{grid-template-columns:1fr;gap:10px;min-height:0;}
-  .hpanel{flex-direction:row;align-items:center;gap:14px;padding:14px 16px;min-height:112px;}
-  .hpanel::before{right:auto;bottom:0;width:3px;height:auto;}
-  .hpanel::after{background:linear-gradient(90deg,color-mix(in srgb,var(--cat) 14%,transparent) 0%,transparent 55%);}
-  .hpanel .hp-main-col{flex:0 0 40%;min-width:0;display:flex;flex-direction:column;gap:5px;}
-  .hp-art{left:auto;top:0;right:0;width:44%;
-    -webkit-mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.5) 40%,#000 100%);
-    mask-image:linear-gradient(90deg,transparent 0%,rgba(0,0,0,.5) 40%,#000 100%);}
-  .hp-art svg{left:auto;right:-8%;bottom:50%;transform:translateY(50%);width:100%;}
-  .hp-tag{display:none;}
-  .hp-peek{flex:1 1 auto;min-width:0;margin-top:0;padding-top:0;}
-  .hp-row{border-top:none;padding:2px 0;}
-  .hp-row+.hp-row{display:none;}
-  .hp-lead{padding:0;}
-  .hp-num{font-size:var(--fs-7);letter-spacing:-.8px;}
-  .hp-stats{border-top:none;padding:0;gap:14px;}
-  .hp-chips{border-top:none;padding:0;}
-  /* a row is one glance wide: three tools, not six */
-  .hp-chip:nth-child(n+4){display:none;}
-  .hp-foot{display:none;}
-  .hub-extra-row{grid-template-columns:1fr;}
-  #hub-today{gap:10px;padding:10px 14px;}
-  .td-clock{display:none;}
-}
 @media(max-width:640px){
-  .td-greet{font-size:var(--fs-4);}
-  .td-date{display:none;}
-  #td-pop{right:auto;left:0;width:calc(100vw - 32px);}
+  #nav-pop{right:8px;left:8px;width:auto;}
+  #nav-chips .nav-chip{padding:6px 10px;font-size:var(--fs-2);}
+  #ws-where{display:none;}
   #hub-nav{padding:0 10px;gap:6px;}
   #nav-title{font-size:var(--fs-4);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   #hub-search-wrap{width:auto;flex:1;max-width:none;min-width:60px;}
@@ -489,6 +436,7 @@ body.hub-announcing #hub-home{margin-top:98px;min-height:calc(100vh - 98px);}
   /* ...which left the logo as the only way out, advertised solely by a hover tooltip that a
      touch device can never show. Give it a visible label. */
   body.in-app #hub-back-lbl{display:inline;}
+  body.ws #hub-back-lbl{display:none;}
   #lab-btn{padding:0 10px;font-size:var(--fs-2);}
   .home-wrap{padding:18px 12px 60px;}
   .hub-title{font-size:var(--fs-8);letter-spacing:-.5px;}
@@ -513,10 +461,12 @@ body.hub-announcing #hub-home{margin-top:98px;min-height:calc(100vh - 98px);}
     <div id="crumb-icon" style="width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#fff;font-family:var(--mono);flex-shrink:0;"></div>
     <span id="crumb-name" style="font-size:14px;font-weight:500;color:var(--text);white-space:nowrap;"></span>
   </div>
+  <span id="ws-where"></span>
   <div id="hub-search-wrap">
     <input id="hub-search" type="text" placeholder="Search apps, tools, assays…" autocomplete="off" oninput="hubSearch(this.value)" onkeydown="hubSearchKey(event)">
     <div id="hub-search-results"></div>
   </div>
+  <div id="nav-chips" style="display:flex;align-items:center;gap:8px;"></div>
   <button id="opts-btn" onclick="toggleOpts()">&#9881;<span class="nav-btn-label"> Settings</span></button>
   <button id="lab-btn" onclick="toggleLabPanel()"><span id="lab-status"></span>Lab</button>
 </div>
@@ -563,6 +513,8 @@ body.hub-announcing #hub-home{margin-top:98px;min-height:calc(100vh - 98px);}
 <div id="lab-panel" class="opts-panel hidden"></div>
 
 <canvas id="hub-bg-canvas"></canvas>
+<nav id="ws-rail"></nav>
+<nav id="ws-tabs"></nav>
 <div id="hub-home">
   <div class="home-wrap">
     <div class="home-hdr" id="hub-home-hdr">
@@ -570,7 +522,6 @@ body.hub-announcing #hub-home{margin-top:98px;min-height:calc(100vh - 98px);}
       <div class="hub-sub" id="hub-sub">Lab notebook, protocols and analysis for targeted protein degradation.</div>
     </div>
     <div id="hub-suites"></div>
-    <div id="hub-suite-detail"></div>
     <div class="grid" id="app-grid" style="display:none;">
 
 
@@ -974,17 +925,29 @@ function enterAppNav(id) {
   var nm = document.getElementById('crumb-name');
   if (nm) nm.textContent = info.name || id;
   var crumb = document.getElementById('nav-crumb');
-  if (crumb) {
+  // In the workspace the rail plus the section label already say where you are, so the
+  // "dHUB › App" trail would just repeat itself. Visitors still get it.
+  if (crumb && isAdmin) { crumb.style.display = 'none'; crumb.style.opacity = '0'; }
+  else if (crumb) {
     crumb.style.opacity = '0';
     crumb.style.display = 'flex';
     requestAnimationFrame(function() {
       requestAnimationFrame(function() { crumb.style.opacity = '1'; });
     });
   }
+  // Home and Labbook are the same frame at two views, so the app's own name would overwrite
+  // which of the two you actually asked for. Anything opened from a landing keeps its name.
+  if (isAdmin) wsSetWhere(_wsSection==='home' ? 'Home'
+                        : _wsSection==='labbook' ? 'Labbook'
+                        : (info.name || id));
 }
 
 function exitAppNav() {
   document.body.classList.remove('in-app');
+  if (isAdmin) {
+    var n = (WS_NAV.filter(function(x){ return x.id===_wsSection; })[0]||{}).name;
+    wsSetWhere(_wsSection==='home' ? 'Home' : (n||''));
+  }
   document.getElementById('hub-logo').classList.add('pulsing');
   document.getElementById('hub-logo').title = '';
   var crumb = document.getElementById('nav-crumb');
@@ -1519,7 +1482,6 @@ var _labPreview = false;
 
 function applyLabConfig() {
   renderSuites();
-  if (_openSuiteId) openSuite(_openSuiteId);
 }
 
 
@@ -1958,7 +1920,6 @@ var ADMIN_ONLY_APPS = { cellarchive:1, incubator:1, labbook:1 };
 var PUBLIC_APPS = ['echo','lumina','spectra','deg','ldi','protocols','ribbon','pd','dna','pt','cryo','cuppa','blot','gantt'];
 var FABRICATA_WORD = 'fabricate'; // hidden easter egg — opens Fabricata directly
 function _allGroups(){ return PRIMARY_CARDS.concat(EXTRA_GROUPS); }
-function _suiteById(id){ var all=_allGroups(); for (var i=0;i<all.length;i++) if (all[i].id===id) return all[i]; return null; }
 function _suiteVisibleApps(s){ return s.apps.filter(function(id){ return (isAdmin || labConfig[id] !== false) && document.querySelector('#app-grid .card[data-app-id="'+id+'"]'); }); }
 function _isAppAccessible(appId){ if (isAdmin) return true; if (ADMIN_ONLY_APPS[appId]) return false; return _unlockedApps.has(appId) && labConfig[appId] !== false; }
 
@@ -1970,205 +1931,281 @@ function _isAppAccessible(appId){ if (isAdmin) return true; if (ADMIN_ONLY_APPS[
 //
 // A peek whose source cannot be read renders NOTHING — never a zero. "0 experiments" and
 // "I could not look" are different statements, and only one of them is true.
-var PANEL_ART = {
-  // ruled pages, and the dated step cards an experiment expands into
-  labbook:'<svg viewBox="0 0 220 150" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="12" width="106" height="126" rx="9"/><path d="M42 12v126"/><path d="M56 38h44M56 56h44M56 74h26"/><rect x="112" y="46" width="94" height="36" rx="8" fill="var(--surface)"/><path d="M126 64h42"/><rect x="126" y="94" width="86" height="36" rx="8" fill="var(--surface)"/><path d="M140 112h38"/></svg>',
-  // an open book — Archive is the shared reference library
-  archive:'<svg viewBox="0 0 220 150" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M110 44c-16-10-40-14-64-10v96c24-4 48 0 64 10c16-10 40-14 64-10V34c-24-4-48 0-64 10z"/><path d="M110 44v96"/><path d="M62 64h32M62 82h32M126 64h32M126 82h32M62 100h20M126 100h20"/></svg>',
-  // a 4PL dose–response: the shape every assay in Data Analysis ends up as
-  analysis:'<svg viewBox="0 0 220 150" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M30 16v112h172"/><path d="M44 40c30 0 34 3 48 26c12 20 24 36 96 36"/><circle cx="48" cy="40" r="4.5"/><circle cx="74" cy="42" r="4.5"/><circle cx="96" cy="60" r="4.5"/><circle cx="112" cy="84" r="4.5"/><circle cx="140" cy="98" r="4.5"/><circle cx="180" cy="102" r="4.5"/><path d="M30 128h172" stroke-dasharray="1 7"/></svg>',
-  // a T-flask (canted neck, as drawn in Incubator) beside two vials
-  cells:'<svg viewBox="0 0 220 150" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M30 78 L62 46 H124 a10 10 0 0 1 10 10 v72 a10 10 0 0 1-10 10 H40 a10 10 0 0 1-10-10 z" fill="var(--surface)"/><g transform="rotate(-45 46 62)"><rect x="35" y="26" width="22" height="36" rx="4" fill="var(--surface)"/><path d="M35 36h22"/></g><path d="M30 98h104"/><rect x="156" y="58" width="24" height="76" rx="9"/><path d="M156 72h24"/><rect x="188" y="76" width="22" height="58" rx="8"/><path d="M188 88h22"/></svg>'
+// ══════════════════════════════════════════════════════════════════════════
+// THE WORKSPACE — rail, sections and landings (admin only)
+//
+// Signed out, dHUB is what it always was: a title, the "discover" box and the cards you
+// unlock with a code word (_renderVisitorGrid, untouched below).
+//
+// Signed in, the same file becomes a workspace: a rail down the left, the section you are in
+// named in the header, and Labbook's own dashboard as the home. The dashboard lives INSIDE
+// Labbook, not here — one implementation, reading LB.data itself, serving both this and
+// labbook-standalone. Rendering a second copy here from Labbook's localStorage snapshot is
+// exactly the duplication this rework exists to remove.
+// ══════════════════════════════════════════════════════════════════════════
+var WS_NAV = [
+  { id:'home',     name:'Home',          icon:'home',    kind:'labbook', view:'home' },
+  { id:'labbook',  name:'Labbook',       icon:'archive', kind:'labbook', view:'notebook' },
+  { sep:true },
+  { id:'analysis', name:'Data Analysis', icon:'analysis',kind:'landing' },
+  { id:'archive',  name:'Archive',       icon:'archive', kind:'landing' },
+  { id:'cells',    name:'Cells',         icon:'incubator',kind:'landing' },
+  { sep:true },
+  { id:'more',     name:'More apps',     icon:'tools',   kind:'landing' }
+];
+var WS_ICONS = {
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
+  fold:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'
 };
+function _wsIcon(name){ return WS_ICONS[name] || SUITE_ICONS[name] || ''; }
+var WS_TABS = ['home','labbook','analysis','archive','cells'];   // the phone's bottom bar
+var _wsSection = 'home';
 
-// Home dispatcher: admin → the panel wall; visitor → individually unlocked apps.
-function renderSuites(){ if (isAdmin) _renderPanels(); else _renderVisitorGrid(); }
+function renderRail(){
+  var rail=document.getElementById('ws-rail'), tabs=document.getElementById('ws-tabs');
+  if(!rail || !tabs) return;
+  rail.innerHTML = WS_NAV.map(function(n){
+      if(n.sep) return '<div class="ws-sep"></div>';
+      return '<button class="ws-item'+(_wsSection===n.id?' on':'')+'" data-ws="'+n.id+'" onclick="wsGo(\''+n.id+'\')" title="'+_dashEsc(n.name)+'">'
+        +'<span class="ws-ico">'+_wsIcon(n.icon)+'</span><span class="ws-lbl">'+_dashEsc(n.name)+'</span></button>';
+    }).join('')
+    + '<div class="ws-grow"></div>'
+    + '<button class="ws-item ws-fold" onclick="wsToggleRail()" title="Collapse the rail">'
+      +'<span class="ws-ico">'+WS_ICONS.fold+'</span><span class="ws-lbl">Collapse</span></button>';
+  tabs.innerHTML = WS_TABS.map(function(id){
+    var n=WS_NAV.filter(function(x){ return x.id===id; })[0]; if(!n) return '';
+    var short = n.id==='analysis' ? 'Analysis' : n.name;
+    return '<button class="ws-tab'+(_wsSection===id?' on':'')+'" onclick="wsGo(\''+id+'\')">'
+      +_wsIcon(n.icon)+'<span>'+_dashEsc(short)+'</span></button>';
+  }).join('');
+}
+function wsToggleRail(){
+  var c=document.body.classList.toggle('ws-collapsed');
+  try{ localStorage.setItem('hub_rail', c?'collapsed':'open'); }catch(e){}
+}
+function _wsRestoreRail(){ try{ if(localStorage.getItem('hub_rail')==='collapsed') document.body.classList.add('ws-collapsed'); }catch(e){} }
 
-function _renderPanels(){
-  var host=document.getElementById('hub-suites'); if(!host) return;
-  host.style.display='';
-  // the 42px title + rotating subtitle are the visitor's landing, not the working home
-  var hdr=document.getElementById('hub-home-hdr'); if(hdr) hdr.style.display='none';
-  var wrap=document.querySelector('.home-wrap'); if(wrap) wrap.classList.remove('centered');
-  var panels=PRIMARY_CARDS.map(function(s){
-    var apps=_suiteVisibleApps(s);
-    return '<div class="hpanel" data-cat="'+s.id+'" style="--cat:'+s.color+'" tabindex="0" onclick="openSuite(\''+s.id+'\')" onkeydown="if(event.key===\'Enter\')openSuite(\''+s.id+'\')">'
-      +'<div class="hp-art">'+(PANEL_ART[s.id]||'')+'</div>'
-      +'<div class="hp-main-col">'
-        +'<div class="hp-head"><span class="hp-ico">'+(SUITE_ICONS[s.icon||s.id]||'')+'</span><span class="hp-name">'+_dashEsc(s.name)+'</span></div>'
-        +'<div class="hp-tag">'+_dashEsc(s.tag)+'</div>'
-      +'</div>'
-      +'<div class="hp-peek">'+_panelPeek(s.id)+'</div>'
-      +'<div class="hp-foot"><span>'+(apps.length>1?(apps.length+' apps'):'')+'</span><span class="hp-open">Open <span class="sar">&#8594;</span></span></div>'
-    +'</div>';
-  }).join('');
-  var extras=EXTRA_GROUPS.filter(function(s){ return _suiteVisibleApps(s).length; }).map(function(s){
-    var apps=_suiteVisibleApps(s);
-    return '<div class="suite-card" data-suite="'+s.id+'" style="--suite-c:'+s.color+'" tabindex="0" onclick="openSuite(\''+s.id+'\')" onkeydown="if(event.key===\'Enter\')openSuite(\''+s.id+'\')">'
-      +'<div class="suite-ico">'+(SUITE_ICONS[s.icon||s.id]||'')+'</div>'
-      +'<div class="suite-main"><div class="suite-name">'+_dashEsc(s.name)+'</div><div class="suite-tag">'+_dashEsc(s.tag)+'</div></div>'
-      +'<div class="suite-foot"><span>'+apps.length+'</span><span class="suite-open">Open <span class="sar">&#8594;</span></span></div>'
-    +'</div>';
-  }).join('');
-  host.innerHTML='<div id="hub-today"></div>'
-    +'<div class="hub-panels">'+panels+'</div>'
-    +(extras?'<div id="hub-extras"><div class="hub-extras-title">More apps</div><div class="hub-extra-row">'+extras+'</div></div>':'');
-  renderToday();
+// The router. Labbook sections open the Labbook frame at the right view; the rest are
+// landings rendered here.
+function wsGo(id){
+  var n=WS_NAV.filter(function(x){ return x.id===id; })[0]; if(!n) return;
+  _wsSection=id;
+  renderRail();
+  if(n.kind==='labbook'){
+    openApp('labbook');
+    _hubQueueMessage('labbook', {type:'lb:go', view:n.view, requestId:'dhub'+Date.now().toString(36)});
+    wsSetWhere(n.view==='home' ? 'Home' : 'Labbook');
+    return;
+  }
+  if(currentApp) backToHub();      // leave whatever app is open; the section is already set
+  renderLanding(id);
+  wsSetWhere(n.name);
+}
+function wsSetWhere(text){
+  var w=document.getElementById('ws-where'); if(w) w.textContent=text||'';
+  // the crumb was the old "dHUB › App" trail; in the workspace the rail plus this label
+  // already say where you are, so it would just repeat itself
+  var c=document.getElementById('nav-crumb'); if(c && isAdmin){ c.style.display='none'; c.style.opacity=0; }
 }
 
-function _panelPeek(id){
+// ── Landings: a live band, then cards for what is inside ──────────────────
+// Cards are apps when the category is a group of apps, and sections when it is one app.
+// Every target below already has an entry point: openApp, openCells(tab) and Archive's
+// dhub:context {lib}. Nothing new has to be taught to any app.
+var LANDINGS = {
+  analysis: { title:'Data Analysis', sub:'Echo-led analysis for dose response, plates and assay readouts.',
+              apps:['echo','deg','spectra','ldi','lumina','beacon'] },
+  archive:  { title:'Archive', sub:'Protocols, calculators and the reagent library this lab makes or buys.',
+              sections:[
+                {name:'Protocols', desc:'33 protocols with live calculators, staged by day.', go:"openApp('protocols')", brand:'#a56983', icon:'archive'},
+                {name:'Antibodies', desc:'Target, host, catalog, lot, the dilution that worked and where it lives.', go:"openArchiveLib('antibodies')", brand:'#a56983', icon:'archive'},
+                {name:'Primers', desc:'Sequence with computed length, GC% and Tm.', go:"openArchiveLib('primers')", brand:'#a56983', icon:'archive'},
+                {name:'Plasmids', desc:'GenBank and SnapGene maps, cutters, and the box they sit in.', go:"openArchiveLib('plasmids')", brand:'#a56983', icon:'archive'}
+              ] },
+  cells:    { title:'Cells', sub:'One lifecycle — cultures in the incubator, the cell-line reference, and vials in the freezer.',
+              sections:[
+                {name:'Incubator', desc:'Live cultures, passages, split due dates and what needs attention.', go:"openCells('incubator')", brand:'#4f9d8f', icon:'incubator'},
+                {name:'Lines', desc:'The reference: what each line is, how it grows and what it looks like.', go:"openCells('cellarchive')", brand:'#d17a4a', icon:'incubator'},
+                {name:'Freezer', desc:'Every box and position — cells, plasmids, antibodies and primers.', go:"openCells('cryo')", brand:'#00acc1', icon:'incubator'}
+              ] },
+  more:     { title:'More apps', sub:'Everything outside the daily loop.', groups:true }
+};
+function openArchiveLib(kind){
+  openApp('protocols');
+  _hubQueueMessage('protocols', {type:'dhub:context', version:1, source:'hub', target:'protocols',
+    action:'open', requestId:'dhub'+Date.now().toString(36), context:{lib:kind}});
+}
+function renderLanding(id){
+  var host=document.getElementById('hub-suites'); if(!host) return;
+  var L=LANDINGS[id]; if(!L) return;
+  var hdr=document.getElementById('hub-home-hdr'); if(hdr) hdr.style.display='none';
+  var wrap=document.querySelector('.home-wrap'); if(wrap) wrap.classList.remove('centered');
+  host.style.display='block';
+  var body;
+  if(L.groups){
+    body = EXTRA_GROUPS.filter(function(s){ return _suiteVisibleApps(s).length; }).map(function(s){
+      return '<div class="ld-group"><div class="ld-group-lbl">'+_dashEsc(s.name)+'</div>'
+        +'<div class="ld-grid">'+_suiteVisibleApps(s).map(_appCardHtml).join('')+'</div></div>';
+    }).join('');
+  } else if(L.sections){
+    body = '<div class="ld-grid">'+L.sections.map(function(x){
+      return '<div class="ld-card" tabindex="0" onclick="'+x.go+'" onkeydown="if(event.key===\'Enter\'){'+x.go+'}">'
+        +'<div class="ld-top"><span class="ld-ico" style="background:'+x.brand+'">'+_wsIcon(x.icon)+'</span>'
+        +'<span class="ld-name">'+_dashEsc(x.name)+'</span></div>'
+        +'<div class="ld-desc">'+_dashEsc(x.desc)+'</div>'
+        +'<div class="ld-foot"><span></span><span class="ld-open">Open <span class="sar">&#8594;</span></span></div></div>';
+    }).join('')+'</div>';
+  } else {
+    var apps=L.apps.filter(function(a){ return document.querySelector('#app-grid .card[data-app-id="'+a+'"]'); });
+    var rec=_recentApps();
+    apps.sort(function(a,b){ var ia=rec.indexOf(a), ib=rec.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); });
+    body = '<div class="ld-grid">'+apps.map(_appCardHtml).join('')+'</div>';
+  }
+  host.innerHTML = '<div class="ld-hd"><div class="ld-title">'+_dashEsc(L.title)+'</div>'
+      +'<div class="ld-sub">'+_dashEsc(L.sub)+'</div></div>'
+    + _landingBand(id) + body;
+  var home=document.getElementById('hub-home'); if(home) home.scrollTop=0;
+}
+// One card per app, built from the app's own home card so name, colour, icon and description
+// stay in one place.
+function _appCardHtml(appId){
+  var src=document.querySelector('#app-grid .card[data-app-id="'+appId+'"]');
+  var info=APP_INFO[appId]||{};
+  var desc=src?(src.querySelector('.card-desc')||{}).textContent||'':'';
+  var foot=src?((src.querySelector('.card-foot span')||{}).textContent||''):'';
+  var ico=src?((src.querySelector('.card-logo svg')||{}).outerHTML||''):'';
+  return '<div class="ld-card" tabindex="0" onclick="openApp(\''+appId+'\')" onkeydown="if(event.key===\'Enter\')openApp(\''+appId+'\')">'
+    +'<div class="ld-top"><span class="ld-ico" style="background:'+(info.color||'#888')+'">'+ico+'</span>'
+    +'<span class="ld-name">'+_dashEsc(info.name||appId)+'</span></div>'
+    +'<div class="ld-desc">'+_dashEsc(desc)+'</div>'
+    +'<div class="ld-foot"><span>'+_dashEsc(foot)+'</span><span class="ld-open">Open <span class="sar">&#8594;</span></span></div>'
+  +'</div>';
+}
+// The live band. A source that cannot be read draws NOTHING — never a zero, which would read
+// as "you have none" when it means "I could not look".
+function _landingBand(id){
   try{
-    if(id==='labbook')  return _peekLabbook();
-    if(id==='archive')  return _peekArchive();
-    if(id==='analysis') return _peekAnalysis();
-    if(id==='cells')    return _peekCells();
+    if(id==='archive') return _bandArchive();
+    if(id==='cells')   return _bandCells();
+    if(id==='analysis')return _bandAnalysis();
   }catch(e){}
   return '';
 }
-function _isoDay(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
-function _dayWord(iso){
-  var t=new Date(), T=_isoDay(t); if(iso===T) return 'today';
-  var tm=new Date(t.getTime()+864e5); if(iso===_isoDay(tm)) return 'tomorrow';
-  var p=iso.split('-'); if(p.length!==3) return iso;
-  var d=new Date(+p[0],+p[1]-1,+p[2]);
-  return d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
-}
-// Labbook is a srcdoc iframe, so its store is same-origin and readable from here.
-function _peekLabbook(){
-  var raw; try{ raw=localStorage.getItem('hub_labbook'); }catch(e){ return ''; }
-  if(!raw) return '';
-  var d; try{ d=JSON.parse(raw); }catch(e){ return ''; }
-  var exps=d&&d.experiments; if(!exps||typeof exps!=='object') return '';
-  var T=_isoDay(new Date()), due=0, running=[];
-  Object.keys(exps).forEach(function(k){
-    var e=exps[k]||{}; if(e.status==='done'||e.kind==='note') return;
-    var blocks=e.blocks||[], open=0, next=null, done=0;
-    blocks.forEach(function(b){
-      if(!b||!b.date) return;
-      if(b.done){ done++; return; }
-      open++; if(b.date===T) due++;
-      if(b.date>=T && (!next || b.date<next)) next=b.date;
-    });
-    if(open) running.push({name:e.code||e.title||'Experiment', next:next, done:done, total:blocks.length});
-  });
-  if(!due && !running.length) return '';
-  running.sort(function(a,b){ return (a.next||'9999-99-99').localeCompare(b.next||'9999-99-99'); });
-  var lead=due?('<div class="hp-lead"><span class="hp-num">'+due+'</span><span class="hp-num-lbl">step'+(due===1?'':'s')+' due today</span></div>'):'';
-  var rows=running.slice(0,3).map(function(r){
-    return '<div class="hp-row"><div class="hp-main"><div class="hp-t">'+_dashEsc(r.name)+'</div>'
-      +'<div class="hp-s">'+r.done+' of '+r.total+' steps'+(r.next?(' · next '+_dashEsc(_dayWord(r.next))):'')+'</div></div></div>';
-  }).join('');
-  var more=running.length>3?('<div class="hp-row"><div class="hp-s">+ '+(running.length-3)+' more running</div></div>'):'';
-  return lead+rows+more;
-}
-function _peekArchive(){
+function _stat(n,l){ return '<div><div class="ld-stat-n">'+n+'</div><div class="ld-stat-l">'+_dashEsc(l)+'</div></div>'; }
+function _bandArchive(){
   var d=JournalStore.get()||{};
   function n(k){ return Object.keys(d[k]||{}).length; }
   var ab=n('antibodies'), pr=n('primers'), pl=n('plasmids');
   if(!(ab+pr+pl)) return '';
-  return '<div class="hp-stats">'
-    +'<div><div class="hp-stat-n">'+ab+'</div><div class="hp-stat-l">antibodies</div></div>'
-    +'<div><div class="hp-stat-n">'+pr+'</div><div class="hp-stat-l">primers</div></div>'
-    +'<div><div class="hp-stat-n">'+pl+'</div><div class="hp-stat-l">plasmids</div></div>'
-  +'</div>';
+  return '<div class="ld-band">'+_stat(ab,'antibodies')+_stat(pr,'primers')+_stat(pl,'plasmids')+'</div>';
 }
-function _peekAnalysis(){
-  var s=_suiteById('analysis'); if(!s) return '';
-  var apps=_suiteVisibleApps(s); if(!apps.length) return '';
-  var rec=_recentApps();
-  apps=apps.slice().sort(function(a,b){
-    var ia=rec.indexOf(a), ib=rec.indexOf(b);
-    return (ia<0?99:ia)-(ib<0?99:ib);
-  });
-  return '<div class="hp-chips">'+apps.map(function(id){
-    var info=APP_INFO[id]||{};
-    return '<span class="hp-chip"><span class="hp-chip-ico" style="background:'+(info.color||'#888')+'">'+_appMiniIcon(id)+'</span>'+_dashEsc(info.name||id)+'</span>';
-  }).join('')+'</div>';
-}
-function _peekCells(){
+function _bandCells(){
   var cells=(JournalStore.get()||{}).incubator||{}, now=Date.now();
-  var rows=Object.keys(cells).map(function(id){ return {cell:cells[id]||{}, alerts:computeCellAlerts(cells[id],now)||[]}; });
+  var rows=Object.keys(cells).map(function(k){ return {cell:cells[k]||{}, alerts:computeCellAlerts(cells[k],now)||[]}; });
   if(!rows.length) return '';
-  function rank(r){ if(r.alerts.some(function(a){return a.level==='warn';})) return 0; if(r.alerts.some(function(a){return a.level==='soft';})) return 1; return 2; }
+  function rank(r){ if(r.alerts.some(function(a){return a.level==='warn';})) return 0;
+                    if(r.alerts.some(function(a){return a.level==='soft';})) return 1; return 2; }
   rows.sort(function(a,b){ return rank(a)-rank(b); });
   var vials=0; try{ HUB_FREEZER_WALK(function(){ vials++; }); }catch(e){}
-  var body=rows.slice(0,3).map(function(r){
+  var list=rows.slice(0,3).map(function(r){
     var top=r.alerts[0]||{level:'ok',msg:'Healthy'};
     var b=top.level==='warn'?'warn':(top.level==='soft'?'soft':'ok');
     var bt=top.level==='warn'?'Check':(top.level==='soft'?'Soon':'OK');
-    var psg=(r.cell.passage!=null)?(' · P'+r.cell.passage):'';
-    return '<div class="hp-row"><div class="hp-main"><div class="hp-t">'+_dashEsc(r.cell.line||'Culture')+'</div>'
-      +'<div class="hp-s">'+_dashEsc(top.msg)+_dashEsc(psg)+'</div></div><span class="hp-badge '+b+'">'+bt+'</span></div>';
+    return '<div class="ld-row"><span class="t">'+_dashEsc(r.cell.line||'Culture')+'</span>'
+      +'<span class="s">'+_dashEsc(top.msg)+(r.cell.passage!=null?(' · P'+r.cell.passage):'')+'</span>'
+      +'<span class="ld-badge '+b+'">'+bt+'</span></div>';
   }).join('');
-  var tail=[];
-  if(rows.length>3) tail.push('+ '+(rows.length-3)+' more in culture');
-  if(vials) tail.push(vials+' vial'+(vials===1?'':'s')+' frozen');
-  return body+(tail.length?('<div class="hp-row"><div class="hp-s">'+_dashEsc(tail.join(' · '))+'</div></div>'):'');
+  return '<div class="ld-band">'+_stat(rows.length,'in culture')+(vials?_stat(vials,'vials frozen'):'')
+    +'<div class="ld-rows">'+list+'</div></div>';
+}
+// Echo posts its potencies into Labbook, so the most recent ones live in Labbook's own store.
+function _bandAnalysis(){
+  var d=null;
+  try{ d=JSON.parse(localStorage.getItem('hub_labbook')||'null'); }catch(e){ return ''; }
+  var exps=d&&d.experiments; if(!exps) return '';
+  var rows=[];
+  Object.keys(exps).forEach(function(k){
+    (exps[k].results||[]).forEach(function(r){ rows.push({r:r, code:exps[k].code||''}); });
+  });
+  if(!rows.length) return '';
+  var list=rows.slice(-3).reverse().map(function(x){
+    return '<div class="ld-row"><span class="t">'+_dashEsc(x.r.compound||'—')+'</span>'
+      +'<span class="s">'+_dashEsc((x.r.target||'')+' · '+(x.r.label||'Potency')+' '+(x.r.potency||''))+'</span>'
+      +(x.r.flag?'<span class="ld-badge warn">'+_dashEsc(x.r.flag)+'</span>':'')+'</div>';
+  }).join('');
+  return '<div class="ld-band">'+_stat(rows.length,'results in')+'<div class="ld-rows">'+list+'</div></div>';
 }
 
-// ── The slim "your day" strip ─────────────────────────────────────────────
-// What the widget dashboard was actually for, in one line: whether anything needs you
-// today. The task list and the quick note keep their exact bodies and handlers — they
-// just live in a popover now instead of a resizable tile.
-var _tdPop=null, _tdClockT=null;
-function renderToday(){
-  var host=document.getElementById('hub-today'); if(!host) return;
+// Home dispatcher: admin → the workspace; visitor → dHUB as it always was.
+function renderSuites(){
+  document.body.classList.toggle('ws', !!isAdmin);
+  if(!isAdmin){
+    document.getElementById('ws-rail').innerHTML='';
+    document.getElementById('ws-tabs').innerHTML='';
+    _navPop=null; renderNavChips(); wsSetWhere('');
+    var p=document.getElementById('nav-pop'); if(p) p.remove();
+    return _renderVisitorGrid();
+  }
+  _wsRestoreRail();
+  renderRail();
+  wsGo(_wsSection || 'home');
+}
+// Tasks and the quick note keep their exact bodies and handlers — they live in a header
+// popover now instead of a dashboard tile.
+var _navPop=null;
+function renderNavChips(){
+  var host=document.getElementById('nav-chips'); if(!host) return;
+  if(!isAdmin){ host.innerHTML=''; return; }
   var d=JournalStore.get()||{};
   var open=Object.keys(d.tasks||{}).filter(function(id){ return !d.tasks[id].done; }).length;
   var warn=Object.keys(d.incubator||{}).filter(function(id){ return (computeCellAlerts(d.incubator[id])||[]).some(function(a){ return a.level==='warn'; }); }).length;
-  var h=new Date().getHours();
-  var greet=h<5?'Good night':h<12?'Good morning':h<18?'Good afternoon':'Good evening';
-  var c=_fmtClock();
-  host.innerHTML='<span class="td-greet">'+greet+'</span>'
-    +'<span class="td-date">'+_dashEsc(new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}))+'</span>'
-    +'<span class="td-grow"></span>'
-    +(warn?('<button class="td-chip warn" onclick="event.stopPropagation();openSuite(\'cells\')"><span class="td-n">'+warn+'</span> need'+(warn===1?'s':'')+' attention</button>'):'')
-    +'<button class="td-chip'+(_tdPop==='tasks'?' on':'')+'" onclick="tdTogglePop(\'tasks\',event)"><span class="td-n">'+open+'</span> open task'+(open===1?'':'s')+'</button>'
-    +'<button class="td-chip'+(_tdPop==='note'?' on':'')+'" onclick="tdTogglePop(\'note\',event)">Note</button>'
-    +'<span class="td-clock" id="td-clock">'+c.t+'<span>'+c.ap+'</span></span>'
-    +(_tdPop?('<div id="td-pop" onclick="event.stopPropagation()">'+(_tdPop==='tasks'?_tasksWidgetHtml():_noteWidgetHtml())+'</div>'):'');
-  if(_tdClockT){ clearInterval(_tdClockT); _tdClockT=null; }
-  _tdClockT=setInterval(_tickClock,1000);
+  host.innerHTML =
+      (warn?('<button class="nav-chip warn" onclick="wsGo(\'cells\')" title="Cultures needing attention"><span class="nav-n">'+warn+'</span> need'+(warn===1?'s':'')+' attention</button>'):'')
+    + '<button class="nav-chip'+(_navPop==='tasks'?' on':'')+'" onclick="navPop(\'tasks\',event)"><span class="nav-n">'+open+'</span> task'+(open===1?'':'s')+'</button>'
+    + '<button class="nav-chip'+(_navPop==='note'?' on':'')+'" onclick="navPop(\'note\',event)">Note</button>';
+  var pop=document.getElementById('nav-pop');
+  if(pop) pop.remove();
+  if(_navPop){
+    pop=document.createElement('div'); pop.id='nav-pop';
+    pop.onclick=function(e){ e.stopPropagation(); };
+    pop.innerHTML = _navPop==='tasks' ? _tasksWidgetHtml() : _noteWidgetHtml();
+    document.body.appendChild(pop);
+  }
 }
-function tdTogglePop(kind,ev){
+function navPop(kind,ev){
   if(ev) ev.stopPropagation();
-  _tdPop=(_tdPop===kind?null:kind);
-  renderToday();
-  var i=document.getElementById(_tdPop==='tasks'?'wg-task-input':(_tdPop==='note'?'wg-note':''));
+  _navPop=(_navPop===kind?null:kind);
+  renderNavChips();
+  var i=document.getElementById(_navPop==='tasks'?'wg-task-input':(_navPop==='note'?'wg-note':''));
   if(i) i.focus();
 }
 document.addEventListener('click', function(e){
-  if(!_tdPop) return;
-  var strip=document.getElementById('hub-today');
-  if(strip && strip.contains(e.target)) return;
-  _tdPop=null; renderToday();
+  if(!_navPop) return;
+  var chips=document.getElementById('nav-chips'), pop=document.getElementById('nav-pop');
+  if((chips&&chips.contains(e.target))||(pop&&pop.contains(e.target))) return;
+  _navPop=null; renderNavChips();
 });
-// Live home. A store write while you are typing in the popover must not rebuild the strip —
-// that would take the caret with it — so the counts and the task rows are patched in place
-// instead. (Adding a task is exactly this case: the input keeps focus after Enter.)
+// A store write while you are typing in the popover must not rebuild it — the caret would go
+// with it — so the count and the rows are patched in place instead.
 function _homeLive(){
-  if(!isAdmin || _openSuiteId) return;
+  if(!isAdmin) return;
   var a=document.activeElement;
-  if(a && a.closest && a.closest('#td-pop')){ _tdRefresh(); return; }
-  renderToday(); _renderPanelPeeks();
+  if(a && a.closest && a.closest('#nav-pop')){ _navRefresh(); return; }
+  renderNavChips();
+  if(_wsSection && LANDINGS[_wsSection] && !currentApp) renderLanding(_wsSection);
 }
-function _tdRefresh(){
+function _navRefresh(){
   var d=JournalStore.get()||{};
   var open=Object.keys(d.tasks||{}).filter(function(id){ return !d.tasks[id].done; }).length;
-  var n=document.querySelector('#hub-today .td-chip .td-n'); if(n) n.textContent=open;
-  if(_tdPop!=='tasks') return;
-  var list=document.querySelector('#td-pop .wg-tasklist'); if(!list) return;
+  var n=document.querySelector('#nav-chips .nav-chip:not(.warn) .nav-n'); if(n) n.textContent=open;
+  if(_navPop!=='tasks') return;
+  var list=document.querySelector('#nav-pop .wg-tasklist'); if(!list) return;
   var frag=document.createElement('div'); frag.innerHTML=_tasksWidgetHtml();
   var fresh=frag.querySelector('.wg-tasklist'); if(fresh) list.innerHTML=fresh.innerHTML;
 }
-// Peeks only — rebuilding the whole wall would restart the card-in animation on every write.
-function _renderPanelPeeks(){
-  PRIMARY_CARDS.forEach(function(s){
-    var p=document.querySelector('.hpanel[data-cat="'+s.id+'"] .hp-peek');
-    if(p) p.innerHTML=_panelPeek(s.id);
-  });
-}
-// Most-recently-opened apps, so the Data Analysis peek leads with what you actually use.
+function renderToday(){ renderNavChips(); }   // the task widget's handlers call this by name
+
+// Most-recently-opened apps, so a landing leads with what you actually use.
 function _pushRecent(id){
   try{
     var a=_recentApps().filter(function(x){ return x!==id; });
@@ -2180,7 +2217,7 @@ function _recentApps(){ try{ var a=JSON.parse(localStorage.getItem('hub_recent')
 function _renderVisitorGrid(){
   var host=document.getElementById('hub-suites'); if(!host) return;
   host.style.display='block';
-  // visitors keep the titled, centred landing — the panel wall is Jon's working home
+  // visitors get dHUB exactly as it was: the title, the code box, and the cards they unlock
   var hdr=document.getElementById('hub-home-hdr'); if(hdr) hdr.style.display='';
   var wrap=document.querySelector('.home-wrap'); if(wrap) wrap.classList.add('centered');
   var unlocked=PUBLIC_APPS.filter(function(id){ return _unlockedApps.has(id) && labConfig[id]!==false; });
@@ -2214,50 +2251,9 @@ function tryUnlock(code){
   return true;
 }
 
-var _openSuiteId = null;
-function openSuite(id){
-  var s=_suiteById(id); if(!s || !isAdmin) return;
-  var _apps=_suiteVisibleApps(s);
-  if(s.directApp){ openApp(s.directApp); return; }
-  _openSuiteId = id;
-  var detail=document.getElementById('hub-suite-detail');
-  detail.innerHTML =
-    '<div class="sd-hd">'
-      +'<button class="sd-back" onclick="closeSuite()" title="Back to workspace"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>'
-      +'<div class="sd-ico" style="background:'+s.color+'">'+(SUITE_ICONS[s.icon||s.id]||'')+'</div>'
-      +'<div><div class="sd-title">'+_dashEsc(s.name)+'</div><div class="sd-sub">'+_dashEsc(s.tag)+'</div></div>'
-    +'</div>';
-  var grid=document.createElement('div'); grid.className='grid';
-  _suiteVisibleApps(s).forEach(function(appId){
-    var src=document.querySelector('#app-grid .card[data-app-id="'+appId+'"]');
-    if(src){ var c=src.cloneNode(true); c.style.display=''; c.classList.remove('dash-admin-card'); grid.appendChild(c); }
-  });
-  detail.appendChild(grid);
-  detail.classList.add('open');
-  document.getElementById('hub-suites').style.display='none';
-  var hdr=document.getElementById('hub-home-hdr'); if(hdr) hdr.style.display='none';
-  var wrap=document.querySelector('.home-wrap'); if(wrap) wrap.classList.add('centered');
-  var home=document.getElementById('hub-home'); if(home) home.scrollTop=0;
-}
-function closeSuite(){
-  _openSuiteId=null;
-  var detail=document.getElementById('hub-suite-detail');
-  if(detail){ detail.classList.remove('open'); detail.innerHTML=''; }
-  var suites=document.getElementById('hub-suites'); if(suites) suites.style.display='';
-  renderSuites();   // repaint the wall: the peeks may have moved on while you were inside
-}
 
 
-
-// ── Tasks and the quick note (rendered inside the day strip's popovers) ────
-function _appMiniIcon(appId){ var c=document.querySelector('#app-grid .card[data-app-id="'+appId+'"] .card-logo svg'); return c?c.outerHTML:''; }
-function _fmtClock(){ var d=new Date(); var hh=d.getHours(), mm=d.getMinutes(); var ap=hh<12?'AM':'PM'; var h12=hh%12||12; return { t:h12+':'+('0'+mm).slice(-2), ap:ap }; }
-// The strip's clock, updated in place — a full re-render every second would fight the popover.
-function _tickClock(){
-  var t=document.getElementById('td-clock');
-  if(!t){ if(_tdClockT){ clearInterval(_tdClockT); _tdClockT=null; } return; }
-  var c=_fmtClock(); t.innerHTML=c.t+'<span>'+c.ap+'</span>';
-}
+// ── Tasks and the quick note (rendered inside the header popover) ──────────
 // Quick-note widget (cross-device via JournalStore, debounced; no re-render on keystroke)
 var _wgNoteT=null;
 function _noteWidgetHtml(){ var v=JournalStore.get().note||''; return '<div class="wg-hd"><span class="wg-title">Quick note</span></div><div class="wg-body"><textarea class="wg-note" id="wg-note" placeholder="Jot something down…" oninput="wgNoteInput(this.value)">'+_dashEsc(v)+'</textarea></div>'; }
@@ -2347,6 +2343,9 @@ window.addEventListener('message', function(e) {
 
 document.getElementById('hub-back-lbl').addEventListener('click', function(){ if (currentApp) backToHub(); });
 document.getElementById('hub-logo').addEventListener('click', function() {
+  // In the workspace the home is itself an app (Labbook), so "back out of the app" is not a
+  // thing you can mean here — the logo goes home instead.
+  if (isAdmin) { wsGo('home'); return; }
   if (currentApp) backToHub();
 });
 

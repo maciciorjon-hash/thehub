@@ -1080,54 +1080,58 @@ overdue one is yellow. It reads as inverted status colour until you know that, w
 `_vslStops` now says so. The passage number is dark ink: the fills went pastel, and white
 needed a heavy shadow to survive on the yellow.
 
-## Home: four panels, one strip, and a stray `</div>`
+## The workspace: one file, two faces
 
-Jon's sketch: nav on top, then **Labbook · Archive · Data Analysis · Cells** as full-height
-panels side by side, with the remaining groups in one horizontal row underneath. `.hub-panels`
-is `flex:1 1 auto; min-height:360px` inside a flex-column `.home-wrap`, which is the whole of
-"height adapts to the monitor" — a tall screen grows the panels, a laptop stops at the minimum
-and scrolls. Narrow screens invert it: ≤1100px goes 2×2, **≤760px turns each panel into a
-full-width row** with the illustration bleeding off the right edge instead of the bottom.
+**Signed out, dHUB is what it always was** — the 42px title, the `discover` box and the cards
+you unlock with a code word (`_renderVisitorGrid`). That is the public face on Pages and it is
+deliberately unchanged.
 
-Each panel carries **a line illustration in its category colour** (`PANEL_ART` — a notebook
-with dated step cards, an open book, a 4PL dose–response, a T-flask with its canted neck and
-two vials), masked to fade top→bottom, plus a **live peek** underneath it. The colour stays
-"slight": a 3px top bar and a wash that dies by 55% height; `--accent` still owns everything
-interactive.
+**Signed in, the same file is a workspace**: a rail down the left (`#ws-rail`, 180px with icon
+and label, collapsing to 52px — `localStorage['hub_rail']`), the section you are in named in
+the header (`#ws-where`), and Labbook's own dashboard as the home. `renderSuites()` is still
+the dispatcher; it toggles `body.ws` and everything follows from that class.
 
-**A peek whose source cannot be read renders nothing — never a zero.** "0 experiments" and
-"I could not look" are different statements. Sources: Labbook's peek parses
-`localStorage['hub_labbook']` directly (srcdoc iframes are same-origin, so the shell can read
-the notebook's own store) for steps due today and running experiments; Archive counts the
-shared Library (`journal/antibodies|primers|plasmids`); Data Analysis lists its apps ordered
-by `hub_recent`, written by `openApp`; Cells reuses `computeCellAlerts` and `HUB_FREEZER_WALK`.
+**The rail is categories only** — Home · Labbook · Data Analysis · Archive · Cells · More apps
+(`WS_NAV`). Labbook's own tree stays inside Labbook, one level down. `wsGo(id)` routes: the two
+Labbook entries open the frame and post **`{type:'lb:go', view}`** (a ~15-line handler next to
+Labbook's `dhub:context` one); the rest render a landing here.
 
-**`#hub-today`** replaced the widget dashboard: greeting, date, cell-alert chip, open-task
-count, Note and a clock, in one 52px line. The **task list and quick note keep their exact
-bodies and handlers** (`_tasksWidgetHtml`, `_noteWidgetHtml`) inside a popover. Two details
-that bite:
-- `#hub-today` needs `z-index:20`. Every panel below it uses `backdrop-filter`, which makes it
-  its own stacking context painted above an auto-z sibling — without the z-index the popover
-  opens *behind* the wall.
-- A store write while you are typing in the popover must not rebuild the strip, or the caret
-  goes with it. `_homeLive()` detects focus inside `#td-pop` and calls `_tdRefresh()`, which
-  patches the chip count and the task rows in place. Adding a task is exactly this case.
+**The home is Labbook's dashboard, not a copy of it.** The shell opens the Labbook frame at
+`kind:'home'`. One implementation, in `apps/labbook/labbook.html`, serving both the workspace
+and `labbook-standalone`. Rendering a second copy in the shell would mean two panels reading
+two sources — `LB.data` here, a `localStorage` snapshot there — which is the duplication this
+rework exists to remove.
 
-Removed with the dashboard, all unreachable afterwards: `WIDGET_TYPES`, `SIZE_SPAN`,
-`DEFAULT_LAYOUT`, `_getLayout`/`_normSize`, `renderWidgets`, `_widgetHtml`, `_addTileHtml`,
-the whole drag/resize subsystem (`_wireWidgetDnD`, `_wg*Drag*`, `_wgTouch*`, `_flipMove`,
-`wgSetSize`, `_persistLayoutFromDom`), the shortcuts widget and its picker, the clock and
-Live-Incubator tiles, `_greetingHtml`, the dead `#hub-dash` command-center CSS, the orphaned
-`@keyframes wxSpin/wxDrop/wxFlake/wxBolt/sunRays` from the deleted weather widget, and
-`JournalStore.setLayout`/`setShortcuts` with the `layout`/`shortcuts` keys they wrote.
+**Landings follow one rule: a live band, then cards for what is inside** — apps when the
+category is a group of apps (Data Analysis), sections when it is one app (Archive → Protocols ·
+Antibodies · Primers · Plasmids; Cells → Incubator · Lines · Freezer). Every target already had
+an entry point (`openApp`, `openCells(tab)`, Archive's `dhub:context {lib}`), so no app had to
+learn anything new. A band whose source cannot be read draws **nothing**, never a zero.
 
-**The bug this uncovered: a stray `</div>` closed `#app-grid` immediately**, so all 19 app
-cards were siblings of the grid, not children. Every `#app-grid .card[data-app-id]` lookup —
-the suite app counts, `openSuite`'s drill-in grid, `_appMiniIcon`, `_applyDashAdmin`'s
-incubator card and **the visitor grid** — matched nothing. Suite cards read "0 apps", drill-in
-opened empty, and a visitor who typed a correct code word unlocked an app and was shown an
-empty page. One deleted line fixes all of it; check `#app-grid` actually contains cards before
-trusting anything that selects through it.
+Three things that bite when the rail exists:
+- `.app-view` and `#hub-home` shift by `var(--rail-w)` under `body.ws`. Nothing else about app
+  hosting changed — `_loadApp` already hides each embedded app's own header.
+- `enterAppNav` must not overwrite `#ws-where` for Home and Labbook: they are the *same frame*
+  at two views, so the app's name would erase which of the two you asked for.
+- The logo means "go home" in the workspace, not "back out of the app" — the home *is* an app.
+
+**On a phone the rail becomes a bottom tab bar** (`#ws-tabs`, five tabs; More apps lives inside
+Home), `.app-view` gets `bottom:56px`, and Labbook's floating pane button is hidden on Home.
+
+### Labbook's home (`kind:'home'`, the default landing)
+
+`renderHome()` — the band (progress ring over today's steps, the carried-over ones flagged, the
+cultures needing attention), This week, Running experiments with progress and next step,
+Projects that drill into folders and then experiments **inside the card** (`HOME_PROJ`),
+Recently edited, Results in from Echo with their flags intact, and Deviations. Every number
+comes from data that already existed — `blocksForDate`, `carryoverForDate`, `b.done`,
+`e.status`, `e.updated`, `expDeviations`, `lbCultures` — no schema was added.
+
+`SEL.node` now defaults to `{kind:'home'}`; it used to be `notebook`, which meant a fresh
+session opened on *"Nothing open — pick an entry on the left"*. On Home the ribbon and the
+right dock are hidden (`body.lb-on-home`), and **the tree is hidden only when there is a host
+frame**: in the standalone build the rail does not exist, so hiding it would make the home a
+room with no doors.
 
 ## Current state
 
