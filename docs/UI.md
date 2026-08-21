@@ -117,6 +117,28 @@ sentence saying what to do about it. Never a bare "No data".
 **Icons** — 24-unit viewBox, `stroke-width:1.5`, `stroke-linecap/linejoin:round`, rendered at their
 native size with `shape-rendering:geometricPrecision`. Outline only. No emoji as iconography.
 
+An icon set *inside a line of text* — a chevron in a button label, a marker on a chip — is the
+same 24 viewBox rendered at 12–15px with **`stroke-width:2`**, because 1.5 scaled to 13px lands
+under one device pixel and turns to mud. Labbook's `tbIco(path, size)` is that variant;
+`tbSvg(path)` stays the native-size one.
+
+**Two things the earlier sweeps missed, so check both:**
+- **Entity-encoded glyphs.** `&#9200;` is ⏰. Grepping for literal emoji found nothing and the
+  snooze button kept its alarm clock for another two releases. Sweep decimal entities too.
+- **`content:'▸'` in CSS.** A stylesheet cannot hold an SVG inline, so these hide from a markup
+  sweep. Draw the shape in CSS (a rotated border corner makes a chevron; a `border-radius` box
+  makes a dot) or use a `background-image:url("data:image/svg+xml,…")`.
+
+**Never use a semantic `<header>` inside an app.** The shell injects
+`header{display:none!important}` into every embedded app to strip its own title bar, so any
+`<header>` you add anywhere in the tree silently vanishes once it is inside dHUB — and only
+inside dHUB, so the standalone file looks fine while the real product does not.
+
+**What is *not* iconography, and must be left alone:** the scatter-plot marker palettes in
+Echo/BCA/Beacon (`■ □ ▲ ● ○ ◆ ★ ♂ ♀ ⌠ ⌡` and the rest — those are chart marks a user picks
+from), the `✓` inside a checkbox, `→` in prose, and sub/superscripts. Cuppa and Fabricata keep
+their warm glyphs on purpose.
+
 ---
 
 ## Layout

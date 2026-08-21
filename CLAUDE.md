@@ -1183,9 +1183,87 @@ with **no way in at all**, so you could add a storage unit and never fix a typo 
 Those two are on a right-click menu now — fixed rather than deleted, as Labbook's image picker
 was.
 
+## Three surfaces, and the OneNote tree that went with them
+
+Jon's read after using the workspace: the OneNote metaphor is the wrong frame. It is, and the
+data says so — **the notebook was already derived**. A day page is `renderDayView` assembling
+that date's experiment blocks, which the experiment already owns. What was left of OneNote was
+the parallel `sections → pages` filing cabinet storing the same science a second time.
+
+Labbook is **Home · Experiments · Journal**, matching the shell rail one-to-one:
+
+| surface | kind | renderer |
+|---|---|---|
+| Home | `home` | `renderHome` — unchanged; it already had the today band, This week and Running |
+| Experiments | `exps` | `renderExperiments` — **new** |
+| Journal | `journal` | `renderDayView` + `renderWeekPlanner` behind a Day / Week toggle |
+
+**Nothing was deleted and no data moved.** `today` and `notebook` are aliased to `journal` by
+`NODE_ALIAS` inside `selectNode`, so every existing caller — the Home cards, week column
+headers, `openIncubatorLink`, the shell's `lb:go` — still works. `generalSections` and
+`LB.data.pages` keep their shape and appear under Journal › Notes.
+
+**Experiments is the surface Jon asked for**: projects expand in place into their folders and
+experiments, with progress and next step, and picking one opens `renderExpEditor` completely
+unchanged — Archive protocols, day blocks, calculators, plate maps, Files, Results, Output.
+`lbSurface()` maps a node to its surface; `expsec` is "inside an experiment", which is the one
+state where the tree shows Projects.
+
+**The tree is contextual and hides itself.** `renderSections()` returns whether it drew
+anything and `renderPages` hides the pane when it did not; `renderAll` no longer calls it
+separately, so the pane's visibility and its contents cannot disagree. **With a host frame the
+tree never lists the three surfaces** — the rail owns them, and listing them twice was the
+duplicate Home button one level down. Standalone has no rail, so there it keeps them.
+
+`body.lb-dash` (home · exps · week) hides the ribbon, the right dock and the mobile nav
+button: none of those three screens has text being edited for them to act on.
+
+**Creation had to move with the list.** Dropping the surfaces from the tree also dropped its
+`new-proj` input, which is the only caller `addProject()` has — so for one build there was no
+way to make a project. Both adders live in the Experiments view now (and the tree keeps its
+own when you are inside an experiment). If you touch `renderSections`, check `addProject` and
+`addSection` still have their `#new-proj` / `#new-sec-<id>` inputs somewhere on screen.
+
+## The tooltip was three bugs
+
+`#lb-tip` set `white-space:nowrap` **and** `max-width:240px` — nowrap wins, so the box grew to
+the full one-line width of its text and covered the content under the ribbon. The clamp pinned
+the tooltip's **centre** to `[60, innerWidth-60]`, which says nothing about where its edges
+land. And `top` was always `r.bottom+7`. It now measures itself off-screen first, clamps its
+real rect, and flips above the trigger when there is no room below.
+
+Then the strings: OneNote was 78 characters, Word 91, Snapshots 96, and Backup was
+`backupStatus().detail` plus 54 more — and the detail already repeated the right-click hint the
+suffix gave. **A tooltip is a label, not a sentence.**
+
+## Settings: one modal, four tabs
+
+It was a 300px popover holding seven unlike things, with destructive **Reset app data** one
+click from the accent swatches, plus a second popover for Lab that looked identical to it.
+Now `#settings-back` with Appearance · Data · Lab (admin) · About. Re-housing, not rewriting:
+`toggleOpts`, `backupJournal`, `chooseBackupFolder`, `resetAllData`, `buildLabPanel` and
+`updateAdminAuthUI` all keep their names and their element ids. `toggleLabPanel` opens the same
+modal on its Lab tab; `_labPanelOpen` and the `.opts-panel` rules are gone. Reset now names what
+it erases instead of asking about "settings and data".
+
+## The background was two layers
+
+`body::before` (four accent-tinted radial gradients) **and** `#hub-bg-canvas` — an animated
+"marble ripples" canvas at `mix-blend-mode:soft-light` running a permanent rAF loop, which
+unlike the mesh was never hidden in-app. Both removed; the ground is flat `--bg`.
+
+The glass surfaces stay, but the tokens had to be rebalanced: light-mode `--glass-brd` was
+`rgba(255,255,255,0.7)`, a **white** border that only read against a tinted ground and vanished
+on a flat one. It is a real border now, and the shadows are lighter to match.
+
+**Full width**: the shell workspace was already uncapped; the cap was `.lh-wrap` at 1180px
+inside Labbook. Home and Experiments are edge-to-edge with `clamp()` padding. `.ed-wrap` went
+1060 → 1400 but **keeps a measure on purpose** — it is the prose column, and body text the full
+width of a 27" monitor is unreadable.
+
 ## Current state
 
-**v1.6.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-20. (Plasmids was retired as an app this session — its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.7.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-21. (Labbook moved to three surfaces this session — see above. Plasmids was retired earlier; its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Labbook home is a mockup awaiting a decision** — [`docs/mockups/labbook-home.html`](docs/mockups/labbook-home.html)
