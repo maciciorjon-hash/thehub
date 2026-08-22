@@ -27,8 +27,44 @@ jobs:
         with:
           python-version: '3.x'
 
+      # tools/check_js.py shells out to node to parse every app's inline <script>.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # There is no test suite and no module system, so these two scripts are the whole
+      # safety net: a SyntaxError in any app, and drift in the 4PL engine Beacon and Lumina
+      # copy from Echo. Both were manual-only before and neither ran on the way to Pages.
+      - name: Parse-check every app's inline JavaScript
+        run: python tools/check_js.py
+
+      - name: Check the shared fit engine for drift
+        run: python tools/check_shared.py
+
+      # Smoke test only — the sellable subset is not what Pages serves (see below), but a
+      # broken product build should fail here rather than the day someone asks for it.
+      - name: Build the product profile (smoke test)
+        run: python embed.py --profile=product /tmp/product.html
+
+      # Pages serves the full personal build. The apps that must not be public are gated by
+      # ADMIN_ONLY_APPS, which openApp now enforces from every entry point including #hashes.
       - name: Build dHUB
         run: python embed.py dist/index.html
+
+      # This was never built in CI, and dist/ is gitignored — so the Archive PWA has only
+      # ever existed on Jon's laptop while every installed home-screen copy pointed at a 404
+      # that its own service worker hid. ARCHIVE_SLUG must never change: each installed app
+      # is pinned to it.
+      - name: Build the Archive PWA
+        run: python embed.py --profile=archive dist/archive-14cadcd792a2
+
+      - name: Verify the PWA is actually in the artifact
+        run: |
+          for f in index.html manifest.webmanifest sw.js icons/icon-192.png; do
+            test -s "dist/archive-14cadcd792a2/$f" || { echo "MISSING dist/archive-14cadcd792a2/$f"; exit 1; }
+          done
+          test -s dist/index.html
+          echo "dist contents:"; find dist -type f | sort
 
       - uses: actions/upload-pages-artifact@v3
         with:
