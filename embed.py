@@ -10,6 +10,9 @@ Usage:
   python embed.py --profile=labbook               ->  ./labbook-standalone.html
   python embed.py --profile=archive [dist/archive]
         ->  Archive on its own as an installable, offline PWA (phone use at the bench).
+
+Every build parses each app's inline JavaScript first (tools/check_js.py) and refuses to
+write a bundle that would ship a SyntaxError. --no-js-check skips that gate.
 """
 import base64, re, os, sys
 
@@ -23,6 +26,19 @@ for f in flags:
     if f.startswith('--profile='):
         profile = f.split('=', 1)[1]
 OUT = args[0] if args else os.path.join(BASE, 'dHUB.html')
+
+# There is no build step and no module system here, so a stray brace in an app's inline
+# script only shows up as a blank pane in a srcdoc iframe — and the shell's retry loop
+# hides even that. Parse everything first; a bundle that cannot run is not worth writing.
+if '--no-js-check' not in flags:
+    import subprocess
+    _chk = subprocess.run([sys.executable, os.path.join(BASE, 'tools/check_js.py'), '--quiet'])
+    if _chk.returncode == 1:
+        sys.stderr.write('\nembed.py FAILED — JS parse errors above. Nothing was written.\n'
+                         '(Use --no-js-check only if you know why.)\n')
+        sys.exit(1)
+    if _chk.returncode == 2:
+        print('  (node not found — JS parse check skipped)')
 
 APPS = [
     ('echo', 'apps/echo/echo.html'),
@@ -216,15 +232,51 @@ if profile != 'all':
 src = open(SHELL, encoding='utf-8').read()
 errors = []
 
+def strip_card(html, key):
+    r"""Remove one app's home card, matching <div>s by depth.
+
+    A lazy [\s\S]*? up to the next indented </div> stops at the one closing
+    .card-header-row, not the card: it took 4 opens and 3 closes, leaving an
+    orphaned .card-desc/.card-foot and unbalanced DOM in the build. Anchor on
+    data-app-id rather than class="card" too — Labbook and Incubator carry
+    class="card dash-admin-card" and a class-exact match would skip them.
+    """
+    m = re.search(r'[ \t]*<div class="card[^"]*"[^>]*\bdata-app-id="' + re.escape(key) + r'"', html)
+    if not m:
+        return html, False
+    depth, i, n = 0, m.start(), len(html)
+    tag = re.compile(r'<(/?)div\b', re.I)
+    while i < n:
+        t = tag.search(html, i)
+        if not t:
+            return html, False           # unbalanced source — leave it alone rather than guess
+        depth += -1 if t.group(1) else 1
+        i = t.end()
+        if depth == 0:
+            end = html.find('>', i)
+            if end < 0:
+                return html, False
+            end += 1
+            while end < n and html[end] in ' \t':
+                end += 1
+            if end < n and html[end] == '\n':
+                end += 1
+            return html[:m.start()] + html[end:], True
+    return html, False
+
+
 # Omitted apps keep their placeholder in the shell, so blank it (no payload) and strip their
 # home card, otherwise the build ships a card that opens an empty iframe.
 if profile != 'all':
     for key in dropped:
-        src = re.sub(r'(?<=' + key + r': ")[^"]*', '', src)
-        card = re.search(r'[ \t]*<div class="card"[^>]*data-app-id="' + key + r'"[\s\S]*?\n[ \t]*</div>\n',
-                         src)
-        if card:
-            src = src[:card.start()] + src[card.end():]
+        src, n_blank = re.subn(r'(?<=' + key + r': ")[^"]*', '', src)
+        # Same reasoning as the fill loop below: a renamed key here silently ships the
+        # dropped app's full payload inside a build that claims not to contain it.
+        if n_blank != 1:
+            errors.append('%s: expected 1 placeholder to blank, got %d' % (key, n_blank))
+        src, ok = strip_card(src, key)
+        if not ok:
+            errors.append('%s: home card not found or unbalanced — it would ship a dead card' % key)
 
 for key, rel in APPS:
     path = os.path.join(BASE, rel)

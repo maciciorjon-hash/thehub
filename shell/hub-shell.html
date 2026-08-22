@@ -1264,17 +1264,22 @@ var CELLS_TABS = [
 ];
 var _cellsTab = null;
 function openCells(tab, item, context){
-  tab = tab || _cellsTab || 'incubator';
-  if (!CELLS_TABS.some(function(t){ return t.id===tab; })) tab = 'incubator';
+  // Cells is three apps behind one tab bar, and two of them (Incubator, Lines) are
+  // admin-only. openApp's guard cannot see that — it is asked about 'cells' — so the
+  // filter has to happen here, or #cells would be the way around the gate.
+  var tabs = CELLS_TABS.filter(function(t){ return _isAppAccessible(t.id); });
+  if (!tabs.length) { if (!_authResolved) _pendingDeepLink = 'cells'; else { try { location.hash=''; } catch(e){} } return; }
+  tab = tab || _cellsTab || tabs[0].id;
+  if (!tabs.some(function(t){ return t.id===tab; })) tab = tabs[0].id;
   _cellsTab = tab;
   var host = document.getElementById('cells-host');
-  CELLS_TABS.forEach(function(t){
+  tabs.forEach(function(t){
     _loadApp(t.id);
     var f = document.getElementById('frame-' + t.id);
     if (f && f.parentNode !== host) host.appendChild(f);   // move it in once, keep its state
     if (f) f.style.display = (t.id === tab) ? '' : 'none';
   });
-  document.getElementById('cells-tabs').innerHTML = CELLS_TABS.map(function(t){
+  document.getElementById('cells-tabs').innerHTML = tabs.map(function(t){
     return '<button class="cells-tab' + (t.id===tab?' on':'') + '" onclick="openCells(\'' + t.id + '\')">' + t.label + '</button>';
   }).join('');
   if (item || context){
@@ -1301,6 +1306,12 @@ function openCells(tab, item, context){
 }
 
 function openApp(id, tab, item, context) {
+  // The unlock words are a discovery gimmick and deliberately do not gate anything here.
+  // ADMIN_ONLY_APPS is a different thing: it is the only real access control the shell has,
+  // and it used to live solely in the card renderer — so #labbook opened Labbook for anyone.
+  // openApp is the single door every entry point goes through (cards, deep links, wsGo,
+  // cross-app routing), which is why the check belongs here and not in _openFromHash.
+  if (_adminOnlyBlocked(id)) return;
   // Plasmids folded into Archive's Library, where the record has a detail pane and a real map.
   // Route rather than break: a saved #plasmids hash or a Labbook data-app link still lands on
   // the plasmid list, just in its new home.
@@ -1424,6 +1435,8 @@ document.addEventListener('DOMContentLoaded', initHub);
 var HUB_FB = 'https://thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app';
 var HUB_ADMIN_EMAIL = 'maciciorjon@gmail.com';
 var isAdmin = false;
+// Has onAuthStateChanged answered yet? Distinguishes "not admin" from "do not know yet".
+var _authResolved = false;
 var _hubShown = false;
 function _showHub() {
   if (_hubShown) return;
@@ -1432,20 +1445,62 @@ function _showHub() {
   if (h) h.style.opacity = '1';
 }
 
-firebase.initializeApp({
-  apiKey: 'AIzaSyBpw9UbXnCciIi7VBapBeBJOq9U7RSS4g8',
-  authDomain: 'thehub-f80ae.firebaseapp.com',
-  projectId: 'thehub-f80ae',
-  storageBucket: 'thehub-f80ae.firebasestorage.app',
-  messagingSenderId: '30483085120',
-  appId: '1:30483085120:web:1de8be497e632f12a22ca5',
-  databaseURL: 'https://thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app'
-});
+// The Firebase SDK comes from four gstatic <script> tags. If any of them is blocked —
+// offline, a corporate proxy, a CDN outage — `firebase` is undefined, and this used to be an
+// unguarded top-level call inside the one <script> block that also defines JournalStore,
+// WS_NAV, PRIMARY_CARDS and the whole DOM wiring. One ReferenceError here and none of that
+// was ever declared: the hub rendered as a blank page. Losing sync is survivable; losing the
+// app is not, so nothing below may depend on the SDK having loaded.
+var FB_OK = false;
+function fbReady(){ return FB_OK; }
+try {
+  if (typeof firebase === 'undefined' || !firebase || !firebase.initializeApp) throw new Error('SDK absent');
+  firebase.initializeApp({
+    apiKey: 'AIzaSyBpw9UbXnCciIi7VBapBeBJOq9U7RSS4g8',
+    authDomain: 'thehub-f80ae.firebaseapp.com',
+    projectId: 'thehub-f80ae',
+    storageBucket: 'thehub-f80ae.firebasestorage.app',
+    messagingSenderId: '30483085120',
+    appId: '1:30483085120:web:1de8be497e632f12a22ca5',
+    databaseURL: 'https://thehub-f80ae-default-rtdb.europe-west1.firebasedatabase.app'
+  });
+  FB_OK = true;
+} catch (e) {
+  FB_OK = false;
+}
 
-firebase.auth().onAuthStateChanged(function(user) {
-  isAdmin = !!(user && user.email === HUB_ADMIN_EMAIL);
-  onAdminStateChanged();
-});
+if (FB_OK) {
+  try {
+    firebase.auth().onAuthStateChanged(function(user) {
+      isAdmin = !!(user && user.email === HUB_ADMIN_EMAIL);
+      _authResolved = true;
+      onAdminStateChanged();
+    });
+  } catch (e) { FB_OK = false; }
+}
+if (!FB_OK) {
+  // Resolve auth as "not admin" rather than leaving it pending for ever: a parked deep link
+  // would wait on an answer that is never coming, and the hub would never finish settling.
+  isAdmin = false; _authResolved = true;
+  document.addEventListener('DOMContentLoaded', function(){
+    try { onAdminStateChanged(); } catch(e) {}
+    _showOfflineNotice();
+  });
+}
+// Says the true thing rather than nothing. Same rule as Labbook's hasCloud(): never render a
+// state that implies durability you do not have.
+function _showOfflineNotice(){
+  if (document.getElementById('hub-offline')) return;
+  var b = document.createElement('div');
+  b.id = 'hub-offline';
+  b.textContent = 'Offline — everything works, but nothing syncs. Changes stay on this device.';
+  b.style.cssText = 'position:fixed;left:0;right:0;top:58px;z-index:60;padding:7px 16px;'
+    + 'font-size:var(--fs-2);text-align:center;background:var(--surface2);color:var(--text2);'
+    + 'border-bottom:1px solid var(--border);cursor:pointer';
+  b.title = 'Dismiss';
+  b.onclick = function(){ b.remove(); };
+  document.body.appendChild(b);
+}
 
 // ── Labbook backup bridge ──────────────────────────────────────────────────
 // The Labbook app runs in a sandboxed iframe where the File System Access
@@ -1524,6 +1579,7 @@ function applyLabConfig() {
 
 
 function saveLabConfig() {
+  if (!fbReady()) return Promise.reject(new Error('offline'));
   return firebase.database().ref('/labconfig').set(labConfig);
 }
 
@@ -1657,10 +1713,12 @@ function onAdminStateChanged() {
   }
   updateAdminAuthUI();
   _applyDashAdmin();
+  _replayDeepLink();
   setTimeout(_showHub, 80);
 }
 
 function adminSignIn() {
+  if (!fbReady()) { alert('Sign-in needs a connection — the Firebase SDK did not load.'); return; }
   var provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ login_hint: HUB_ADMIN_EMAIL });
   firebase.auth().signInWithPopup(provider).then(function(result) {
@@ -1676,6 +1734,7 @@ function adminSignIn() {
 }
 
 function adminSignOut() {
+  if (!fbReady()) return;
   firebase.auth().signOut();
 }
 
@@ -1746,6 +1805,7 @@ function dismissAnnounce() {
 }
 
 function saveAnnouncement(text, enabled) {
+  if (!fbReady()) return Promise.reject(new Error('offline'));
   return firebase.database().ref('/announcement').set({text: text, enabled: enabled});
 }
 
@@ -1848,7 +1908,7 @@ var JournalStore = (function(){
   function _write(path, val){ try { return firebase.database().ref('journal/' + path).set(val).catch(function(){}); } catch(e){ return Promise.resolve(); } }
   function _seedKey(k){ try { firebase.database().ref('journal/' + k).set(_data[k]).catch(function(){}); } catch(e){} }
   function attach(){
-    if (_ref) return;
+    if (_ref || !fbReady()) return;
     try {
       _ref = firebase.database().ref('journal');
       _ref.on('value', function(snap){
@@ -1898,6 +1958,7 @@ function backupJournal(manual){
   try {
     var today = new Date().toISOString().slice(0,10);
     if (!manual && localStorage.getItem('hub_journal_last_backup') === today) return;
+    if (!fbReady()) { if (manual) alert('Backup needs a connection — the Firebase SDK did not load.'); return; }
     firebase.database().ref('journal').once('value').then(function(s){
       var data = s.val();
       if (!data) { if (manual) alert('Nothing to back up yet.'); return; }
@@ -1949,6 +2010,24 @@ var FABRICATA_WORD = 'fabricate'; // hidden easter egg — opens Fabricata direc
 function _allGroups(){ return PRIMARY_CARDS.concat(EXTRA_GROUPS); }
 function _suiteVisibleApps(s){ return s.apps.filter(function(id){ return (isAdmin || labConfig[id] !== false) && document.querySelector('#app-grid .card[data-app-id="'+id+'"]'); }); }
 function _isAppAccessible(appId){ if (isAdmin) return true; if (ADMIN_ONLY_APPS[appId]) return false; return _unlockedApps.has(appId) && labConfig[appId] !== false; }
+// Admin-only means admin-only from every direction. Returns true when the open must not happen.
+// isAdmin is resolved asynchronously by onAuthStateChanged, so a deep link read at DOMContentLoaded
+// arrives before we know who you are: park it and let onAdminStateChanged replay it rather than
+// bouncing Jon out of his own #labbook link on every reload.
+var _pendingDeepLink = null;
+function _adminOnlyBlocked(appId){
+  if (!ADMIN_ONLY_APPS[appId]) return false;
+  if (isAdmin) return false;
+  if (!_authResolved) { _pendingDeepLink = appId; return true; }
+  _pendingDeepLink = null;
+  try { location.hash = ''; } catch(e) {}
+  return true;
+}
+function _replayDeepLink(){
+  var id = _pendingDeepLink; if (!id) return;
+  _pendingDeepLink = null;
+  try { (id === 'cells') ? openCells(null) : openApp(id); } catch(e) {}
+}
 
 // ── Home: the four category panels ────────────────────────────────────────
 // The wall Jon sketched: nav on top, then Labbook · Archive · Data Analysis · Cells as
