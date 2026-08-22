@@ -92,7 +92,17 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 | `blot` | Blot (western blot figure builder) | SVG blot panels | `#5b6b7a` (slate) | `apps/western-blot/western-blot.html` |
 | `gantt` | Cadence (grant/fellowship Gantt charts) | SVG timeline bars | `#d99a4e` (amber) | `apps/gantt/gantt.html` |
 
-**Home navigation:** the admin home is a **wall of four full-height panels** (`PRIMARY_CARDS`: Labbook · Archive · Data Analysis · Cells), drawn by `_renderPanels()` — see the *Home: four panels* section below. `EXTRA_GROUPS` (Design & Presentation, Molecular Biology, Personal) sit in one horizontal row underneath and still drill in through `openSuite`. Visitors keep the titled, centred landing and the individual-app discovery flow (`_renderVisitorGrid`). The old `PACKAGES`/`_buildPackages()` card-order machinery is legacy and no longer drives navigation.
+**Home navigation:** signed in, the admin home is the **workspace** — the `#ws-rail` left rail
+driven by `WS_NAV`, with each non-Labbook entry rendering a landing from `LANDINGS`. `EXTRA_GROUPS`
+(Design & Presentation, Molecular Biology, Personal) is what the *More apps* landing groups.
+Visitors keep the titled, centred landing and the individual-app discovery flow
+(`_renderVisitorGrid`).
+
+*(Corrected 2026-08-22. This paragraph described a wall of four panels drawn from `PRIMARY_CARDS`
+by `_renderPanels()`. `_renderPanels` does not exist — the workspace rework replaced it — and
+`PRIMARY_CARDS`' only remaining reader was `_allGroups()`, itself called by nothing. Both are
+deleted. `PACKAGES`/`_buildPackages()` were already gone; their stylesheet survived them until
+now.)*
 
 ---
 
@@ -1170,6 +1180,19 @@ product build, and a coffee ledger that looks like a coffee ledger is the point.
 
 The audit is a script now, because running it by regex kept being wrong in ways that delete
 working code:
+
+- **Run it with `--xref` over the shell and every app.** Per file it reports the cross-app
+  bridges as orphans — `HUB_FREEZER_BOXES`, `HUB_FREEZER_TEXT`, `cellsThaw`, `cellsStatsFor`,
+  `CELL_REF` — because the consumer lives in another file and reaches them through
+  `window.parent`. Deleting one on the audit's word takes a live bridge with it. `--xref` counts
+  uses across every file given; the whole repo is clean under it.
+- **CSS stays per file on purpose.** Each app is a separate document inside a `srcdoc` iframe, so
+  the shell's stylesheet cannot reach it: a class the shell defines and never applies is dead
+  however many apps happen to use the same name (`.section-lbl` was exactly this).
+- **It now also checks top-level SHOUTY_CASE data tables**, and a mention inside a comment does
+  not count as a use. That blind spot is how `PRIMARY_CARDS` survived: a six-entry table whose
+  one reader was an orphan function, so removing the function left the table unreferenced and
+  the audit still said clean.
 
 - **Vendor code is excluded by marker, not by shape.** Chart.js, SheetJS and UTIF ship property
   names that look exactly like class names. A density heuristic was tried first and was worse:

@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-"""Find CSS classes and JS functions an app defines and never uses.
+"""Find CSS classes, JS functions and top-level data tables an app defines and never uses.
 
   python3 tools/audit_app.py apps/echo/echo.html
+  python3 tools/audit_app.py --xref shell/hub-shell.html apps/*/*.html
+
+--xref counts JS uses across EVERY file given, not just the one being audited. Apps reach into
+the shell as `window.parent.HUB_FREEZER_BOXES`, so a per-file audit calls those orphans and
+deleting one takes a live bridge with it. CSS stays per-file on purpose: each app is a separate
+document inside a srcdoc iframe, so the shell's stylesheet genuinely cannot reach it and a class
+the shell defines but never applies is dead however many apps happen to use the same name.
 
 Embedded libraries (Chart.js, SheetJS) ship as one enormous minified line, and their property
 names look exactly like class names and function names to a regex — which is why a naive audit
@@ -30,7 +37,7 @@ def strip_libs(text):
     joined = ''.join(out)
     return '\n'.join(l for l in joined.split('\n') if len(l) <= LIB_LINE)
 
-def audit(path):
+def audit(path, xref_src=''):
     """Definitions come from the app's own code; USES are counted against the whole file.
 
     Counting uses in the filtered text was the bug that nearly cost real code: Blueprint puts
@@ -52,12 +59,40 @@ def audit(path):
     for n in sorted(set(re.findall(r'function\s+([A-Za-z_$][\w$]*)\s*\(', own)) - keep):
         defs = len(re.findall(r'function\s+' + re.escape(n) + r'\s*\(', src))
         if len(re.findall(r'\b' + re.escape(n) + r'\b', src)) <= defs:
+            if xref_src and re.search(r'\b' + re.escape(n) + r'\b', xref_src):
+                continue                       # another file consumes it — a bridge, not an orphan
             fns.append(n)
-    return css, fns
+
+    # Top-level data tables. Checking only `function NAME(` is how PRIMARY_CARDS survived in the
+    # shell: a six-entry array describing the old home, whose one reader was itself an orphan
+    # function. Deleting that function left the table unreferenced and the audit still said
+    # clean. Restricted to SHOUTY_CASE at the start of a line, because that is what these tables
+    # are called here and a loose `var x =` match reports every local in the file.
+    tables = []
+    for n in sorted(set(re.findall(r'^var ([A-Z][A-Z0-9_]{2,})\s*=\s*[\[{]', own, re.M))):
+        if n in keep:
+            continue
+        # A mention inside a comment is not a use — that is exactly what a superseded table
+        # tends to have left behind.
+        uses = len([1 for line in src.split('\n')
+                    if re.search(r'\b' + re.escape(n) + r'\b', line)
+                    and not line.lstrip().startswith(('//', '*'))])
+        if uses <= 1:
+            if xref_src and re.search(r'\b' + re.escape(n) + r'\b', xref_src):
+                continue
+            tables.append(n)
+    return css, fns, tables
 
 if __name__ == '__main__':
-    for p in sys.argv[1:]:
-        css, fns = audit(p)
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
+    xref = '--xref' in sys.argv
+    others = {}
+    if xref:
+        for p in args:
+            others[p] = '\n'.join(open(q, encoding='utf-8').read() for q in args if q != p)
+    for p in args:
+        css, fns, tables = audit(p, others.get(p, ''))
         print(f'== {p}')
         print('   CSS:', ', '.join(css) or 'clean')
         print('   JS :', ', '.join(fns) or 'clean')
+        print('   VAR:', ', '.join(tables) or 'clean')
