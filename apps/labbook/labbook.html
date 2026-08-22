@@ -187,6 +187,12 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .pg-status.planned{background:var(--surface3);color:var(--text2);}
 .pg-status.ongoing{background:rgba(94,135,197,.16);color:#5075b5;}
 .pg-status.done{background:rgba(45,148,98,.15);color:var(--good);}
+/* paused and abandoned are decisions, not stages, so they read as muted rather than as
+   another point on the planned->done track. */
+.pg-status.paused{background:rgba(201,154,78,.16);color:#a3762f;}
+.pg-status.abandoned{background:var(--surface3);color:var(--text3);text-decoration:line-through;}
+.exh-arch{margin-left:8px;padding:1px 7px;border-radius:var(--r-2);background:var(--surface3);color:var(--text3);
+  font-size:var(--fs-1);text-transform:uppercase;letter-spacing:.4px;font-weight:600;align-self:center;}
 .pages-empty{padding:36px 20px;text-align:center;color:var(--text3);font-size:var(--fs-3);line-height:1.6;}
 
 .pane-ed{flex:1;overflow-y:auto;min-width:0;background:var(--bg);}
@@ -992,6 +998,8 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 .xv-late{color:var(--accent);font-weight:600;}
 .xv-arw{display:inline-flex;color:var(--text3);flex:none;}
 .xv-row.xv-done .xv-code,.xv-row.xv-done .xv-name{color:var(--text3);}
+.xv-row.xv-arch{opacity:.62;}
+.xv-row.xv-arch .xv-code{text-decoration:line-through;}
 .xv-empty{padding:16px;font-size:var(--fs-3);color:var(--text3);}
 .xv-newproj{flex:none;width:190px;margin:0;}
 .xv-newsec{margin:8px 16px 12px;width:220px;}
@@ -2701,7 +2709,7 @@ function cycleProjColor(id){ var p=projById(id); if(!p) return; var i=PROJ_COLOR
 // ── Pages ──
 function isCoded(e){ return e.kind!=='note'; }
 function allBlockDates(){ var set={}; Object.keys(LB.data.experiments).forEach(function(k){ (LB.data.experiments[k].blocks||[]).forEach(function(b){ if(b.date) set[b.date]=1; }); }); return set; }
-function blocksForDate(D){ var out=[]; Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; (e.blocks||[]).forEach(function(b){ if(b.date===D) out.push({exp:e,block:b}); }); }); return out; }
+function blocksForDate(D){ var out=[]; Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; if(expArchived(e)) return; (e.blocks||[]).forEach(function(b){ if(b.date===D) out.push({exp:e,block:b}); }); }); return out; }
 // A block is "unfinished" if it holds a checklist item that isn't ticked (done).
 // ── Step completion ──
 // A step is done when you say so — `b.done` is set explicitly, never inferred from
@@ -2731,11 +2739,54 @@ function expProgress(e){
 // Status used to be a manual dropdown that silently drifted out of truth. Derive it from the
 // steps instead, so "ongoing" always means what it says. With no steps done we leave the
 // status alone — that's the one case where the user's own choice carries information.
+// planned/ongoing/done are derived from the steps. paused and abandoned never can be — no
+// pattern of ticks means "we stopped". Without them an experiment that ended early stayed
+// "ongoing" for ever: in Home's running list, in the project counter, and nagging from
+// carry-over for 21 days before vanishing unresolved.
+var EXP_STATUSES=['planned','ongoing','paused','done','abandoned'];
+// States that are a decision rather than a consequence. Derivation must not overwrite these,
+// which is what silently reverted a manually-set "done" on the next step you ticked.
+var EXP_DECIDED={paused:1,abandoned:1,done:1};
+// Archived is not a status: a finished experiment and an abandoned one are both worth filing
+// away, and both keep whatever they ended as. It only means "stop putting this in front of me".
+function expArchived(e){ return !!(e && e.archived); }
+// Live = still expected to produce work. The single predicate every time-based view asks.
+function expLive(e){ return isCoded(e) && !expArchived(e) && e.status==='ongoing'; }
 function syncExpStatus(e){
   if(!e || !isCoded(e) || !(e.blocks||[]).length) return;
+  if(e.statusLocked || expArchived(e)) return;   // you said so; do not argue with it
   var p=expProgress(e);
   if(!p.total || !p.done) return;
   e.status = (p.done===p.total) ? 'done' : 'ongoing';
+}
+// Set from the UI. Choosing a decided state locks it; going back to planned/ongoing hands
+// control back to the steps.
+function setExpStatus(id,st){
+  var e=LB.data.experiments[id]; if(!e) return;
+  if(EXP_STATUSES.indexOf(st)<0) return;
+  e.status=st;
+  e.statusLocked = !!EXP_DECIDED[st];
+  e.updated=Date.now(); save(); renderAll();
+}
+function setExpArchived(id,on){
+  var e=LB.data.experiments[id]; if(!e) return;
+  e.archived=!!on; e.updated=Date.now(); save(); renderAll();
+  toast(on ? 'Archived — out of Home, the planner and the counters. Still in Experiments and in reports.'
+           : 'Unarchived.');
+}
+// Closing an experiment is a small conversation, because the unticked steps mean something.
+function closeExperiment(id){
+  var e=LB.data.experiments[id]; if(!e) return;
+  var p=expProgress(e), left=p.total-p.done;
+  var opts=[{id:'done',label:'Completed',sub:'It finished. '+(left?(left+' step'+(left===1?'':'s')+' left unticked'):'All steps ticked'),ic:'C',c:'#3f9d76'},
+            {id:'paused',label:'On hold',sub:'Coming back to it — keep it out of the way meanwhile',ic:'P',c:'#c99a4e'},
+            {id:'abandoned',label:'Abandoned',sub:'It stopped and is not coming back',ic:'A',c:'#b06a6a'}];
+  lbPicker('How did '+(e.code||e.title||'this experiment')+' end?',opts,function(it){
+    setExpStatus(id,it.id);
+    // Steps are never auto-ticked here. A step you did not do must not become a step you did:
+    // that is exactly the lie the record exists to prevent.
+    setExpArchived(id,true);
+  });
 }
 // How far back carry-over looks. Without a bound it scans all history for ever.
 var CARRY_LOOKBACK_DAYS=21;
@@ -2743,6 +2794,7 @@ var CARRY_LOOKBACK_DAYS=21;
 function carryoverForDate(D){
   var byExp={}, order=[], floor=addDays(D,-CARRY_LOOKBACK_DAYS);
   Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
+    if(expArchived(e)) return;   // a closed experiment stops nagging the moment you close it
     (e.blocks||[]).forEach(function(b){
       if(b.date && b.date<D && b.date>=floor && !b.done && !b.carryDismissed){
         if(!byExp[e.id]){ byExp[e.id]={exp:e,blocks:[]}; order.push(e.id); }
@@ -3483,7 +3535,7 @@ function homeTodayBand(D){
   if(due.length) sub.push((due.length-done)+' step'+((due.length-done)===1?'':'s')+' left today');
   if(nCarry) sub.push(nCarry+' carried over');
   var running=Object.keys(LB.data.experiments).filter(function(k){
-    var e=LB.data.experiments[k]; return isCoded(e)&&e.status==='ongoing'; }).length;
+    var e=LB.data.experiments[k]; return expLive(e); }).length;
   if(running) sub.push(running+' experiment'+(running===1?'':'s')+' running');
   if(!sub.length) sub.push('Nothing scheduled — a good day to plan one');
   var side=homeAlertsHtml();
@@ -3537,7 +3589,7 @@ function homeWeekCard(D){
 function homeRunningCard(D){
   var out=[];
   Object.keys(LB.data.experiments).forEach(function(k){
-    var e=LB.data.experiments[k]; if(!isCoded(e)||e.status!=='ongoing') return;
+    var e=LB.data.experiments[k]; if(!expLive(e)) return;
     var q=expProgress(e);
     var next=(e.blocks||[]).filter(function(b){ return b.date&&!b.done&&b.date>=D; })
                            .sort(function(a,b){ return a.date.localeCompare(b.date); })[0];
@@ -3583,7 +3635,11 @@ function xvMatch(e,q){
   return ((e.code||'')+' '+(e.title||'')+' '+(e.type||'')).toLowerCase().indexOf(q)>=0;
 }
 function xvKeep(e){
-  if(XV.filter==='running') return e.status==='ongoing';
+  // Archived rows are hidden everywhere except their own filter — otherwise "archive" would
+  // just mean "lose", and nobody would trust the button.
+  if(XV.filter==='archived') return expArchived(e);
+  if(expArchived(e)) return false;
+  if(XV.filter==='running') return expLive(e);
   if(XV.filter==='done')    return e.status==='done';
   return true;
 }
@@ -3595,7 +3651,7 @@ function xvRow(e,p){
                          .sort(function(a,b){ return a.date.localeCompare(b.date); })[0];
   var when = late ? '<span class="xv-late">overdue '+esc(fmtDate(late.date))+'</span>'
                   : (next ? esc(_homeWhen(next.date,D)) : '');
-  var st=e.status==='done'?' xv-done':'';
+  var st=(e.status==='done'?' xv-done':'')+(expArchived(e)?' xv-arch':'');
   return '<div class="xv-row'+st+'" onclick="openExp(\''+e.id+'\')">'
     +'<span class="xv-dot" style="background:'+((p&&p.color)||'var(--accent)')+'"></span>'
     +'<span class="xv-code">'+esc(e.code||'')+'</span>'
@@ -3626,23 +3682,33 @@ function xvAddTo(pid,sid){ selectNode('expsec',pid,sid); setTimeout(function(){ 
 function renderExperiments(host, qOnly){
   var q=(XV.q||'').toLowerCase();
   var body=LB.data.projects.map(function(p){
-    var open = !!q || !!XV.open[p.id];
+    // A search already forces projects open, and a filter is the same act: you asked to see a
+    // subset, so showing collapsed headers and no rows answers a question you did not ask.
+    // (The Archived tab counted 1 and displayed nothing until you expanded a project.)
+    var open = !!q || XV.filter!=='all' || !!XV.open[p.id];
     var n=Object.keys(LB.data.experiments).filter(function(k){
       var e=LB.data.experiments[k]; return e.projectId===p.id && xvKeep(e) && xvMatch(e,q); }).length;
     var run=Object.keys(LB.data.experiments).filter(function(k){
-      var e=LB.data.experiments[k]; return e.projectId===p.id && e.status==='ongoing'; }).length;
-    if(q && !n) return '';
+      var e=LB.data.experiments[k]; return e.projectId===p.id && expLive(e); }).length;
+    if((q || XV.filter!=='all') && !n) return '';
     return '<div class="xv-proj'+(open?' open':'')+'">'
       +'<div class="xv-ph" onclick="xvToggle(\''+p.id+'\')">'
         +'<span class="xv-chev">'+tbIco(P_CHEV_R,13)+'</span>'
         +'<span class="xv-pc" style="background:'+(p.color||'var(--accent)')+'"></span>'
         +'<span class="xv-pn">'+esc(p.name)+'</span>'
-        +'<span class="xv-pm">'+n+' experiment'+(n===1?'':'s')+(run?' · '+run+' running':'')+'</span>'
+        // n counts what the filter shows; run counts what is actually running. Printing both
+        // under a filter reads as one sentence about one set and is not — "1 experiment · 1
+        // running" on the Archived tab meant one archived and one running, a different one.
+        +'<span class="xv-pm">'+n+(XV.filter==='all'?(' experiment'+(n===1?'':'s')):' shown')
+          +((run&&XV.filter==='all')?(' · '+run+' running'):'')+'</span>'
         +'<span class="xv-parw">'+tbIco(P_CHEV_D,13)+'</span></div>'
       +(open?'<div class="xv-pb">'+xvProjectBody(p,q)+'</div>':'')+'</div>';
   }).join('');
   if(!LB.data.projects.length) body='<div class="xv-empty">No projects yet. Name one above to start.</div>';
-  var f=['all','running','done'], flbl={all:'All',running:'Running',done:'Done'};
+  var f=['all','running','done','archived'], flbl={all:'All',running:'Running',done:'Done',archived:'Archived'};
+  // Count it in the tab: an archive you cannot see the size of is a place things go missing.
+  var nArch=Object.keys(LB.data.experiments).filter(function(k){ return expArchived(LB.data.experiments[k]); }).length;
+  if(nArch) flbl.archived='Archived · '+nArch;
   host.innerHTML='<div class="xv-wrap"><div class="xv-top">'
     +'<div class="xv-h">Experiments</div>'
     +'<input class="xv-q" id="xv-q" placeholder="Search code, title or type…" value="'+esc(XV.q)+'" oninput="xvSetQ(this.value)" autocomplete="off">'
@@ -3801,7 +3867,11 @@ function renderEditor(){
   host.innerHTML='<div class="ed-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><div class="t">Nothing open</div><div>Pick an entry on the left, or create one with <b>+ Add</b>.</div></div>';
   renderDockPanels();
 }
-function expActs(id){ return '<div class="exh-acts"><button class="exh-act" title="Repeat as the next biological replicate" onclick="repeatExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></button><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
+function expActs(id){ var e=LB.data.experiments[id]||{};
+  var close = expArchived(e)
+    ? '<button class="exh-act" title="Unarchive — bring it back into Home and the planner" onclick="setExpArchived(\''+id+'\',false)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18v4H3z"/><path d="M5 11v9h14v-9"/><path d="M12 18V13"/><path d="M9.5 15.5L12 13l2.5 2.5"/></svg></button>'
+    : '<button class="exh-act" title="Close this experiment — say how it ended and file it away" onclick="closeExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18v4H3z"/><path d="M5 11v9h14v-9"/><path d="M12 13v5"/><path d="M9.5 15.5L12 18l2.5-2.5"/></svg></button>';
+  return '<div class="exh-acts">'+close+'<button class="exh-act" title="Repeat as the next biological replicate" onclick="repeatExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></button><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
 function titleField(e){ var empty=!(e.title||'').trim(); return '<input class="exh-title'+(empty?' code-big':'')+'" value="'+esc(empty?(e.code||''):e.title)+'" placeholder="'+(empty?'':'Title')+'" onchange="setField(\'title\',this.value)" onblur="renderPages()">'; }
 // One step card (day label now lives on the day-group header).
 function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.part)+'</span>'):'';
@@ -4092,7 +4162,8 @@ function renderExpEditor(host,e){
   (el('export-btn')||{style:{}}).style.display='';
   var fields='<div class="exh-fields">'
     +'<div class="exh-fld"><label>Type</label><select onchange="setField(\'type\',this.value)">'+EXP_TYPES.map(function(t){return '<option value="'+t.id+'"'+(t.id===e.type?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')+'</select></div>'
-    +'<div class="exh-fld"><label>Status</label><select onchange="setField(\'status\',this.value)">'+['planned','ongoing','done'].map(function(s){return '<option value="'+s+'"'+(s===e.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>'
+        +'<div class="exh-fld"><label>Status</label><select onchange="setExpStatus(\''+e.id+'\',this.value)">'+EXP_STATUSES.map(function(s){return '<option value="'+s+'"'+(s===e.status?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select>'
+      +(expArchived(e)?'<span class="exh-arch" title="Hidden from Home, the planner and the counters">archived</span>':'')+'</div>'
     +'<div class="exh-fld"><label>Start date</label><input type="date" value="'+esc(e.startDate||'')+'" onchange="setField(\'startDate\',this.value)"></div>'
     +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div></div>'
     +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" oninput="updChips(\'cellLines\',this.value)" onchange="setField(\'cellLines\',this.value)"><div class="exh-chips" id="chips-cell">'+_chipInner(e.cellLines,'cell')+'</div></div></div>';
@@ -4475,8 +4546,8 @@ function lbWatchCultures(){
 // and when its next step falls — as a strip inside the day, not a screen of its own.
 function ongoingHtml(D){
   var out=[];
-  Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
-    if(!isCoded(e)||e.status!=='ongoing') return;
+    Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
+    if(!expLive(e)) return;
     var q=expProgress(e);
     var next=(e.blocks||[]).filter(function(b){ return b.date&&!b.done&&b.date>=D; })
                            .sort(function(a,b){ return a.date.localeCompare(b.date); })[0];
@@ -5271,6 +5342,9 @@ function ctxFolder(ev,pid,sid){ ctxAt(ev,[
 function ctxGeneral(ev,id){ ctxAt(ev,[{label:'Rename',fn:function(){renameGeneral(id);}},{sep:true},{label:'Delete section',danger:true,fn:function(){delGeneral(id);}}]); }
 function ctxExp(ev,id){ var e=LB.data.experiments[id]; ctxAt(ev,[
   {label:'Open',fn:function(){openExp(id);}},
+  (isCoded(e)?(expArchived(e)
+    ? {label:'Unarchive',fn:function(){setExpArchived(id,false);}}
+    : {label:'Close experiment…',fn:function(){closeExperiment(id);}}):{sep:true}),
   {label:'Duplicate',fn:function(){dupExperiment(id);}},
   (isCoded(e)?{label:'Export PDF',fn:function(){openExp(id);setTimeout(exportPDF,120);}}:{sep:true}),
   (isCoded(e)?{label:'Copy for OneNote',fn:function(){openExp(id);setTimeout(copyForOneNote,140);}}:{sep:true}),
