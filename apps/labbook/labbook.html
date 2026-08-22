@@ -782,6 +782,9 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .exh-setup-edit{margin-left:6px;padding:1px 8px;border-radius:var(--r-2);border:1px solid var(--border2);
   background:var(--surface2);color:var(--text2);font-size:var(--fs-1);cursor:pointer;}
 .exh-setup-edit:hover{color:var(--accent);border-color:var(--accent);}
+.lb-remote{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:900;max-width:min(560px,92vw);
+  padding:9px 14px;border-radius:var(--r-2);background:var(--surface2);color:var(--text);border:1px solid var(--border2);
+  box-shadow:0 8px 28px rgba(0,0,0,.18);font-size:var(--fs-2);cursor:pointer;}
 .rp-opts{display:flex;gap:14px;margin:12px 0 6px;font-size:var(--fs-3);color:var(--text2);}
 .rp-opts label{display:flex;align-items:center;gap:5px;cursor:pointer;}
 .rp-count{font-size:var(--fs-2);color:var(--text3);border-top:1px solid var(--border);padding-top:9px;}
@@ -2613,6 +2616,125 @@ function _flushLocal(){ if(!_lsDirty) return; _lsDirty=false; clearTimeout(_lsT)
   // Silently dropping this means the notebook stops persisting and nobody finds out until a
   // reload wipes the day's work. Always surface it.
   catch(e){ _storageFailed(e); } }
+// ── Cloud sync: per record, not the whole notebook ──────────────────────────────────────────
+// save() used to r.set(LB.data) — the entire tree, every 1.2 s. Two people, or two tabs, meant
+// last-writer-wins over everything: you did not lose the paragraph you were both editing, you
+// lost every experiment the other person had touched since your page loaded. And lbInitSync
+// read once at load and never listened, so neither side ever found out.
+//
+// Nothing at the ~200 save() call sites changes. The unit of a write is derived here by
+// comparing a per-record fingerprint against what we last knew the cloud to hold, so only the
+// records that actually moved are sent, as one multi-path update().
+var _cloudSeen=null;      // path -> JSON string, as last written or received
+var _cloudOn=false;
+
+// Firebase path segments cannot contain . # $ [ ] or /. Ids from uid() and ISO dates are safe,
+// but a key from an older import might not be, and a bad path fails the WHOLE update.
+function _pathOk(k){ return !!k && !/[.#$\[\]\/]/.test(k); }
+
+var _CLOUD_ROOTS=['projects','generalSections','tags','presets','antibodies','attachments','planner','protoDays','_extraPresets','_seeded'];
+var _CLOUD_MAPS=['experiments','notebook','pages'];
+var _cloudSkipWarned=false;
+function _cloudFingerprint(){
+  var m={}, skipped=[];
+  _CLOUD_ROOTS.forEach(function(k){ if(LB.data[k]!==undefined) m[k]=JSON.stringify(LB.data[k]); });
+  _CLOUD_MAPS.forEach(function(coll){
+    var o=LB.data[coll]||{};
+    Object.keys(o).forEach(function(id){
+      if(_pathOk(id)) m[coll+'/'+id]=JSON.stringify(o[id]);
+      else skipped.push(coll+'/'+id);
+    });
+  });
+  // A record whose id cannot be a Firebase path can never sync. Saying nothing would make it
+  // a record that looks saved on this device and quietly exists nowhere else.
+  if(skipped.length && !_cloudSkipWarned && hasCloud()){
+    _cloudSkipWarned=true;
+    _remoteNote=(skipped.length===1
+      ? '1 record cannot sync — its id contains characters a cloud path cannot hold ('+esc(skipped[0])+'). It is safe on this device and in backups.'
+      : skipped.length+' records cannot sync — their ids contain characters a cloud path cannot hold (e.g. '+esc(skipped[0])+'). They are safe on this device and in backups.');
+    try{ _cloudBanner(); }catch(e){}
+  }
+  return m;
+}
+// Records that changed since the last successful write. A record that disappeared is sent as
+// null, which is how Firebase spells "delete this child" in a multi-path update.
+function _cloudDelta(now){
+  var out={}, n=0;
+  Object.keys(now).forEach(function(p){ if(!_cloudSeen || _cloudSeen[p]!==now[p]){ out[p]=JSON.parse(now[p]); n++; } });
+  if(_cloudSeen) Object.keys(_cloudSeen).forEach(function(p){ if(now[p]===undefined){ out[p]=null; n++; } });
+  return n?out:null;
+}
+function _cloudPush(){
+  var r=lbFb(); if(!r){ setSync(true,true); return; }
+  var now=_cloudFingerprint();
+  var delta=_cloudDelta(now);
+  if(!delta){ setSync(true,true); return; }
+  delta.updated=LB.data.updated||Date.now();
+  try{
+    r.update(delta).then(function(){
+      // Only now is this what the cloud holds. Recording it before the write lands would make
+      // a failed write invisible to the next diff, and the record would never be retried.
+      _cloudSeen=now; setSync(true,true);
+    }).catch(function(){ setSync(true,false); });
+  }catch(e){ setSync(true,false); }
+}
+
+// ── Hearing about someone else's change ─────────────────────────────────────────────────────
+// Applying a remote record to the one you have open would move the caret out from under you —
+// the same reason lbWatchCultures patches a single node instead of re-rendering. So: apply it
+// to the data always, re-render only when you are not standing on it, and say so when you are.
+var _remoteNote=null;
+function _openRecordPath(){
+  var k=SEL.node&&SEL.node.kind;
+  if(SEL.page && LB.data.experiments[SEL.page]) return 'experiments/'+SEL.page;
+  if(SEL.page && LB.data.pages[SEL.page]) return 'pages/'+SEL.page;
+  if(k==='journal'||k==='today'||k==='notebook'){ var D=SEL.page||DAY_VIEW||todayStr(); return 'notebook/'+D; }
+  return null;
+}
+function _applyRemote(coll,id,val){
+  var path=coll+'/'+id;
+  var incoming=val==null?undefined:JSON.stringify(val);
+  // Our own write coming back. Nothing to do, and re-rendering on it would make every
+  // keystroke's round trip repaint the screen.
+  if(_cloudSeen && _cloudSeen[path]===incoming) return;
+  // A record we have edited since our last successful push. Theirs must not silently win.
+  var mine=LB.data[coll] && LB.data[coll][id]!==undefined ? JSON.stringify(LB.data[coll][id]) : undefined;
+  var dirty=_cloudSeen ? (_cloudSeen[path]!==mine) : (mine!==undefined);
+  if(dirty && incoming!==undefined){
+    _remoteNote='This record was changed elsewhere too. Your version is kept here; export a backup before merging.';
+    _cloudBanner();
+    return;
+  }
+  if(val==null){ if(LB.data[coll]) delete LB.data[coll][id]; }
+  else { LB.data[coll]=LB.data[coll]||{}; LB.data[coll][id]=val; }
+  if(_cloudSeen) { if(incoming===undefined) delete _cloudSeen[path]; else _cloudSeen[path]=incoming; }
+  _lsDirty=true; clearTimeout(_lsT); _lsT=setTimeout(_flushLocal,150);
+  if(_openRecordPath()===path){
+    _remoteNote='Updated elsewhere — reopen this entry to see the new version.';
+    _cloudBanner();
+  } else {
+    renderAll();
+  }
+}
+function _cloudBanner(){
+  var b=el('lb-remote');
+  if(!b){ b=document.createElement('div'); b.id='lb-remote'; b.className='lb-remote';
+    b.onclick=function(){ b.remove(); }; document.body.appendChild(b); }
+  b.textContent=_remoteNote||'';
+  clearTimeout(b._t); b._t=setTimeout(function(){ if(b.parentNode) b.remove(); }, 9000);
+}
+function _cloudListen(r){
+  if(_cloudOn) return; _cloudOn=true;
+  _CLOUD_MAPS.forEach(function(coll){
+    var c=r.child(coll);
+    try{
+      c.on('child_changed',function(s){ _applyRemote(coll,s.key,s.val()); });
+      c.on('child_added',  function(s){ _applyRemote(coll,s.key,s.val()); });
+      c.on('child_removed',function(s){ _applyRemote(coll,s.key,null); });
+    }catch(e){}
+  });
+}
+
 function save(){
   if(_adopting) return;
   LB.data.updated=Date.now();
@@ -2620,10 +2742,8 @@ function save(){
   // multi-step structural op serialises once. Keystrokes already arrive via queueSave (600ms).
   _lsDirty=true; clearTimeout(_lsT); _lsT=setTimeout(_flushLocal,150);
   setSync(false); clearTimeout(_syncT);
-  _syncT=setTimeout(function(){ _flushLocal(); var r=lbFb();
-    if(r){ try{ r.set(LB.data).then(function(){setSync(true,true);}).catch(function(){setSync(true,false);}); }catch(e){ setSync(true,false); } }
-    else { setSync(true,true); }   // no cloud configured is not a cloud failure; hasCloud() renders that case
-  }, 1200);
+  // No cloud configured is not a cloud failure; hasCloud() renders that case.
+  _syncT=setTimeout(function(){ _flushLocal(); _cloudPush(); }, 1200);
 }
 // Never lose a pending local write if the tab is hidden/closed before the 150ms flush.
 window.addEventListener('pagehide',_flushLocal);
@@ -2634,15 +2754,29 @@ function lbInitSync(){
     var v=s.val();
     var remoteHas = v && ((v.projects||[]).length || Object.keys(v.experiments||{}).length || (v.generalSections||[]).length || Object.keys(v.pages||{}).length || Object.keys(v.notebook||{}).length);
     if(v && typeof v==='object' && remoteHas && (v.updated||0) > (LB.data.updated||0)){
+      // Adoption replaces the local tree wholesale, so anything done offline since the last
+      // successful push is about to be overwritten. Take a snapshot first: it costs nothing
+      // and it is the difference between "the cloud won" and "the work is gone".
+      try{ _snapshotBackup(); }catch(e){}
       _adopting=true;
-      LB.data={projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},protoDays:v.protoDays||{},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()};
+      // The reconstruction below names every key it keeps, so anything not on that list —
+      // one-time migration flags like _abMigrated and _abSecCleaned, and any key a newer build
+      // adds — was dropped on every adopt, and the migrations then ran again. Carry the rest
+      // across first, then let the named keys overwrite what they cover.
+      var _carry={}; Object.keys(LB.data).forEach(function(k){ _carry[k]=LB.data[k]; });
+      Object.keys(v).forEach(function(k){ _carry[k]=v[k]; });
+      LB.data=Object.assign(_carry,{projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},protoDays:v.protoDays||{},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()});
       LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
       seedPresets();
       try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
       _adopting=false; maybeSeed(); renderAll();
     }
-    setSync(true);
-  }).catch(function(){}); }catch(e){}
+    // What we now believe the cloud holds. Without this the first push after load would send
+    // the whole tree again and undo whatever arrived in between.
+    _cloudSeen=_cloudFingerprint();
+    setSync(true,true);
+    _cloudListen(r);
+  }).catch(function(){ setSync(true,false); }); }catch(e){}
 }
 
 // ── Layout ──
