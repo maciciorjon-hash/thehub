@@ -120,6 +120,22 @@ input:checked+.theme-slider::before{transform:translateX(16px);}
 .lib-mapname{font-family:var(--mono);font-size:var(--fs-2);color:var(--text3);}
 .lib-empty{padding:46px 20px;text-align:center;color:var(--text3);font-size:var(--fs-4);line-height:1.7;}
 .lib-note{font-size:var(--fs-2);color:var(--text3);margin-bottom:12px;}
+.lib-io{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.lib-io-n{margin-left:auto;font-size:var(--fs-1);color:var(--text3);}
+.libimp-back{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;display:flex;align-items:center;justify-content:center;padding:20px;}
+.libimp-box{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);padding:18px 20px;
+  width:min(620px,100%);max-height:82vh;overflow:auto;box-shadow:0 18px 60px rgba(0,0,0,.3);}
+.libimp-hd{font-size:var(--fs-6);font-weight:700;letter-spacing:-.3px;margin-bottom:4px;}
+.libimp-sum{font-size:var(--fs-3);color:var(--text2);margin-bottom:12px;}
+.libimp-sec{font-size:var(--fs-1);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:14px 0 5px;}
+.libimp-row{display:flex;gap:9px;align-items:baseline;padding:2px 0;font-size:var(--fs-2);}
+.libimp-l{color:var(--text3);font-family:var(--mono);min-width:30px;text-align:right;}
+.libimp-n{color:var(--text);}
+.libimp-x{color:var(--text3);}
+.libimp-row.skip .libimp-n{color:var(--text3);}
+.libimp-row.warn .libimp-n{color:#a3762f;}
+.libimp-more{font-size:var(--fs-2);color:var(--text3);padding:3px 0 0 39px;}
+.libimp-act{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;padding-top:12px;border-top:1px solid var(--border);}
 /* ── Library: a list you can open ── */
 .lib-row-btn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;cursor:pointer;
   transition:border-color .14s,background .14s;}
@@ -2090,6 +2106,8 @@ var LIB_FIELDS = {
     {f:'vendor',    lbl:'Ordered from',    w:1}
   ]
 };
+// "antibodies".replace(/s$/,'') is "antibodie". English plurals are not a regex.
+function LIB_SINGULAR(kind){ return ({antibodies:'antibody', primers:'primer', plasmids:'plasmid', protocols:'protocol'})[kind] || kind.replace(/s$/,''); }
 var _libKind = 'protocols';
 // Set by ARCHIVE_LIB_OPEN and consumed by the next renderLib(). A timer that adds a class after
 // the render loses the race whenever something re-renders — and in the standalone build the
@@ -2481,13 +2499,217 @@ function libAddFromForm(){
   if (kind === 'plasmids' && !rec.name && !rec.insert){ alert('Give it a name or an insert first.'); return; }
   if (kind === 'antibodies' && !rec.target){ alert('Give it a target first — the name is α- plus that.'); return; }
   if (kind === 'primers' && !rec.name){ alert('Give it a name first.'); return; }
+  // The form validated only that one identifying field was non-empty, so the same antibody
+  // could be added five times and nothing said a word.
+  var _k = libKey(kind, rec), _all = libAll(kind);
+  if (_k){
+    var _hit = Object.keys(_all).filter(function(id){ return libKey(kind, _all[id]) === _k; })[0];
+    if (_hit && !confirm('"' + libDisplayName(kind, _all[_hit]) + '" already looks like this one.\n\nAdd it anyway?')) return;
+  }
   libAdd(kind, rec);
   LIB_FIELDS[kind].forEach(function(f){ var el2=document.getElementById('libf-'+f.f); if(el2) el2.value=''; });
   renderLib(); renderLibKinds();
 }
+
+// ── The catalogue has a way in and a way out ────────────────────────────────
+// The Library had complete CRUD and no import, no export, no bulk anything, and no duplicate
+// check. Migrating an existing spreadsheet meant retyping every record one form at a time, and
+// standalone — where there is no sync either — the catalogue had no exit at all.
+//
+// CSV rather than JSON because the thing on the other side is a spreadsheet, which is where
+// this data lives today. LIB_FIELDS already declares the columns, so all three kinds are one
+// function rather than three.
+
+// What makes two records the same thing. Not the display name: two antibodies against the same
+// target from different vendors are different reagents, and the same primer under two names is
+// one oligo.
+var LIB_DEDUPE = {
+  antibodies: function(r){ return [r.target, r.vendor, r.catalog].map(_libNorm).join('|'); },
+  primers:    function(r){ return _libNorm(String(r.seq||'').replace(/\s+/g,'')); },
+  plasmids:   function(r){ return _libNorm(r.code) || ('name:' + _libNorm(r.name)); }
+};
+function _libNorm(v){ return String(v==null?'':v).trim().toLowerCase(); }
+// Comparing a field for "did this really change" has to use the same normalisation the dedupe
+// key uses, or a sequence written "atg gcg tta" reads as different from "ATGGCGTTA" and the
+// import offers to overwrite a clean record with a worse-formatted copy of itself.
+function _libCmpVal(f, v){ return f === 'seq' ? _libNorm(v).replace(/\s+/g,'') : _libNorm(v); }
+function libKey(kind, r){
+  var f = LIB_DEDUPE[kind];
+  if (!f) return '';
+  var k = f(r);
+  // An all-empty key would collapse every incomplete record into one "duplicate".
+  return /^[|]*$/.test(k) || k === 'name:' ? '' : k;
+}
+
+function libExportCSV(kind){
+  kind = kind || _libKind;
+  var fields = LIB_FIELDS[kind] || [], all = libAll(kind);
+  var ids = Object.keys(all).sort(function(a,b){ return libSortKey(kind,all[a]).localeCompare(libSortKey(kind,all[b])); });
+  if (!ids.length){ showToast('Nothing to export yet'); return; }
+  // locText is carried so a round trip does not lose where the tube is; loc itself is a pointer
+  // into the freezer map and is deliberately not exported as text you could edit into nonsense.
+  var cols = fields.map(function(f){ return f.f; }).concat(['location','notes']);
+  var head = fields.map(function(f){ return f.lbl; }).concat(['Location','Notes']);
+  var lines = [head.map(csvSafe).join(',')];
+  ids.forEach(function(id){
+    var r = all[id];
+    lines.push(cols.map(function(c){
+      if (c === 'location') return csvSafe(r.locText || libWhere(r) || '');
+      return csvSafe(r[c]);
+    }).join(','));
+  });
+  var blob = new Blob(['﻿' + lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = kind + '-' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Exported ' + ids.length + ' ' + kind);
+}
+
+// A real CSV parser, not a split(','). Vendor names have commas in them and a sequence field
+// can be quoted; splitting would shift every column after the first comma and write nonsense
+// into the catalogue silently.
+function libParseCSV(text){
+  var rows = [], row = [], cur = '', q = false, i = 0;
+  text = String(text||'').replace(/^﻿/, '');
+  while (i < text.length){
+    var c = text[i];
+    if (q){
+      if (c === '"'){ if (text[i+1] === '"'){ cur += '"'; i += 2; continue; } q = false; i++; continue; }
+      cur += c; i++; continue;
+    }
+    if (c === '"'){ q = true; i++; continue; }
+    if (c === ','){ row.push(cur); cur = ''; i++; continue; }
+    if (c === '\r'){ i++; continue; }
+    if (c === '\n'){ row.push(cur); rows.push(row); row = []; cur = ''; i++; continue; }
+    cur += c; i++;
+  }
+  if (cur.length || row.length){ row.push(cur); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(x){ return String(x).trim(); }); });
+}
+
+var _libImport = null;   // {kind, add:[], dupe:[], conflict:[]}
+
+function libImportPick(){
+  var kind = _libKind;
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.csv,.tsv,text/csv,text/plain';
+  inp.onchange = function(){
+    var f = inp.files && inp.files[0]; if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function(){ libImportPrepare(kind, String(rd.result||'')); };
+    rd.readAsText(f);
+  };
+  inp.click();
+}
+
+function libImportPrepare(kind, text){
+  var rows = libParseCSV(text);
+  if (rows.length < 2){ alert('That file has no rows under its header.'); return; }
+  var fields = LIB_FIELDS[kind] || [];
+  // Match columns by label first, then by field name, both case- and space-insensitive, so a
+  // sheet exported from here re-imports and a hand-made one has a fair chance too.
+  var head = rows[0].map(function(h){ return _libNorm(h).replace(/[^a-z0-9]/g,''); });
+  var map = {};
+  fields.forEach(function(f){
+    var want = [_libNorm(f.lbl).replace(/[^a-z0-9]/g,''), _libNorm(f.f).replace(/[^a-z0-9]/g,'')];
+    for (var i=0;i<head.length;i++) if (want.indexOf(head[i]) > -1){ map[f.f] = i; break; }
+  });
+  var notesIdx = head.indexOf('notes'), locIdx = head.indexOf('location');
+  if (!Object.keys(map).length){
+    alert('None of the columns in that file match this catalogue.\n\nExpected one of: '
+      + fields.map(function(f){ return f.lbl; }).join(', '));
+    return;
+  }
+  var existing = libAll(kind), byKey = {};
+  Object.keys(existing).forEach(function(id){ var k = libKey(kind, existing[id]); if (k) byKey[k] = id; });
+
+  var add = [], dupe = [], conflict = [], seen = {};
+  rows.slice(1).forEach(function(cells, n){
+    var rec = {};
+    fields.forEach(function(f){ if (map[f.f] != null) rec[f.f] = String(cells[map[f.f]]||'').trim(); });
+    if (notesIdx > -1) rec.notes = String(cells[notesIdx]||'').trim();
+    if (locIdx > -1 && String(cells[locIdx]||'').trim()) rec.locText = String(cells[locIdx]).trim();
+    if (!fields.some(function(f){ return rec[f.f]; })) return;   // blank row
+    var k = libKey(kind, rec);
+    var row = {rec:rec, line:n+2, key:k};
+    if (k && byKey[k]){
+      row.against = existing[byKey[k]]; row.id = byKey[k];
+      // Same record, but does the file disagree with what is here? That is worth showing.
+      var diffs = fields.filter(function(f){
+        var a = _libCmpVal(f.f, row.against[f.f]), b = _libCmpVal(f.f, rec[f.f]);
+        return b && a && a !== b;
+      }).map(function(f){ return f.lbl; });
+      row.diffs = diffs;
+      (diffs.length ? conflict : dupe).push(row);
+    } else if (k && seen[k]){
+      row.against = seen[k].rec; row.diffs = []; dupe.push(row);   // duplicated inside the file itself
+    } else {
+      if (k) seen[k] = row;
+      add.push(row);
+    }
+  });
+  _libImport = {kind:kind, add:add, dupe:dupe, conflict:conflict};
+  libImportShow();
+}
+
+// Nothing is written until this is confirmed. An import that silently doubles a catalogue is
+// worse than no import, because the duplicates are only visible one record at a time.
+function libImportShow(){
+  var im = _libImport; if (!im) return;
+  var fields = LIB_FIELDS[im.kind] || [];
+  function line(r, tag){
+    var name = libDisplayName(im.kind, r.rec) || '(no name)';
+    var extra = r.diffs && r.diffs.length ? (' &middot; differs on ' + esc(r.diffs.join(', '))) : '';
+    return '<div class="libimp-row ' + tag + '"><span class="libimp-l">' + r.line + '</span>'
+      + '<span class="libimp-n">' + esc(name) + '</span><span class="libimp-x">' + extra + '</span></div>';
+  }
+  var h = '<div class="libimp-box"><div class="libimp-hd">Import ' + esc(im.kind) + '</div>';
+  h += '<div class="libimp-sum">'
+    + '<b>' + im.add.length + '</b> new'
+    + ' &middot; <b>' + im.dupe.length + '</b> already here'
+    + ' &middot; <b>' + im.conflict.length + '</b> already here but different</div>';
+  if (im.add.length)      h += '<div class="libimp-sec">Will be added</div>' + im.add.slice(0,60).map(function(r){ return line(r,'ok'); }).join('')
+                             + (im.add.length>60 ? '<div class="libimp-more">…and ' + (im.add.length-60) + ' more</div>' : '');
+  if (im.conflict.length) h += '<div class="libimp-sec">Already here, with different values</div>' + im.conflict.slice(0,40).map(function(r){ return line(r,'warn'); }).join('');
+  if (im.dupe.length)     h += '<div class="libimp-sec">Already here, unchanged &mdash; skipped</div>' + im.dupe.slice(0,40).map(function(r){ return line(r,'skip'); }).join('');
+  h += '<div class="libimp-act">'
+    + '<button class="btn btn-sm ghost" onclick="libImportCancel()">Cancel</button>'
+    + (im.conflict.length ? '<button class="btn btn-sm ghost" onclick="libImportRun(true)">Add new + update the ' + im.conflict.length + ' different</button>' : '')
+    + '<button class="btn btn-sm" onclick="libImportRun(false)">Add ' + im.add.length + ' new</button></div></div>';
+  var back = document.createElement('div');
+  back.className = 'libimp-back'; back.id = 'libimp-back';
+  back.innerHTML = h;
+  back.onclick = function(e){ if (e.target === back) libImportCancel(); };
+  document.body.appendChild(back);
+}
+function libImportCancel(){ var b = document.getElementById('libimp-back'); if (b) b.remove(); _libImport = null; }
+function libImportRun(withUpdates){
+  var im = _libImport; if (!im) return;
+  var n = 0, u = 0;
+  im.add.forEach(function(r){ r.rec.created = Date.now(); r.rec.usedIn = []; libAdd(im.kind, r.rec); n++; });
+  if (withUpdates) im.conflict.forEach(function(r){
+    // Merge, never replace: the file does not know about usedIn, the location pointer, or
+    // anything this catalogue has that the spreadsheet never had a column for.
+    var patch = {};
+    Object.keys(r.rec).forEach(function(k){ if (String(r.rec[k]||'').trim()) patch[k] = r.rec[k]; });
+    delete patch.usedIn; delete patch.created;
+    libSet(im.kind, r.id, patch); u++;
+  });
+  libImportCancel();
+  renderLib(); renderLibKinds();
+  showToast('Imported ' + n + ' new' + (u ? (', updated ' + u) : '') + ' — ' + im.dupe.length + ' skipped');
+}
+
 function libEdit(kind, id, f, v){ libSet(kind, id, (function(o){ o[f]=v; return o; })({})); renderLib(); }
 function libRemove(kind, id, name){
-  if (!confirm('Delete "' + (name||'this record') + '"? This cannot be undone.')) return;
+  // usedIn is a list of experiments that reference this record. Deleting it leaves those
+  // pointing at nothing, which is a worse record than a stale one.
+  var _u = ((libAll(kind)[id]||{}).usedIn || []).length;
+  var _msg = 'Delete "' + (name||'this record') + '"? This cannot be undone.'
+    + (_u ? ('\n\nIt is recorded as used in ' + _u + ' experiment' + (_u===1?'':'s') + ', which will be left referring to a record that no longer exists.') : '');
+  if (!confirm(_msg)) return;
   libDel(kind, id); renderLib(); renderLibKinds();
 }
 // ── Where a record physically lives ───────────────────────────────────────
@@ -2629,7 +2851,7 @@ function renderLib(){
     return fields.some(function(f){ return String(all[id][f.f]||'').toLowerCase().indexOf(q) > -1; });
   }).sort(function(a,b){ return libSortKey(kind,all[a]).localeCompare(libSortKey(kind,all[b])); });
 
-  var form = '<div class="lib-add"><div class="lib-add-hd">Add ' + kind.replace(/s$/,'') + '</div><div class="lib-add-grid">'
+  var form = '<div class="lib-add"><div class="lib-add-hd">Add ' + LIB_SINGULAR(kind) + '</div><div class="lib-add-grid">'
     + fields.map(function(f){
         if (f.opts) return '<select id="libf-' + f.f + '"><option value="">' + esc(f.lbl) + '</option>'
           + f.opts.map(function(o){ return '<option value="' + esc(o) + '">' + esc(o) + '</option>'; }).join('') + '</select>';
@@ -2640,7 +2862,13 @@ function renderLib(){
     + '<button class="btn btn-sm" onclick="libAddFromForm()" style="align-self:stretch">+ Add</button></div></div>';
 
   var note = _libStoreOk() ? ''
-    : '<div class="lib-note">Saved on this device. Without the dHUB shell there is no sync — edits made here and elsewhere will not merge.</div>';
+    : '<div class="lib-note">Saved on this device. Without the dHUB shell there is no sync — edits made here and elsewhere will not merge. Export a CSV to get this catalogue out.</div>';
+  // Import/export live above the list because that is where you look when the question is
+  // "how do I get my spreadsheet in", not inside a record.
+  var io = '<div class="lib-io">'
+    + '<button class="btn btn-sm ghost" onclick="libImportPick()" title="Read a CSV — you see what will change before anything is written">Import CSV</button>'
+    + '<button class="btn btn-sm ghost" onclick="libExportCSV()" title="Every ' + esc(kind) + ' as a spreadsheet, including where each one lives">Export CSV</button>'
+    + '<span class="lib-io-n">' + Object.keys(all).length + ' record' + (Object.keys(all).length===1?'':'s') + '</span></div>';
 
   // The list is a list now: name, the two or three facts that identify it, and where it is.
   var rows = ids.map(function(id){
@@ -2659,7 +2887,7 @@ function renderLib(){
       + '<span class="lib-go">→</span></button>';
   }).join('');
 
-  host.innerHTML = note + form + (ids.length
+  host.innerHTML = note + io + form + (ids.length
     ? ('<div class="lib-list">' + rows + '</div>')
     : '<div class="lib-empty">Nothing here yet' + (q?' matching that search':'') + '. Fill the form above.</div>');
   if (_libHit){
