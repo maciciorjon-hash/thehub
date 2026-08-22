@@ -779,6 +779,17 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 /* New-experiment setup parameters */
 .nm-setup{margin:10px 0 2px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:10px 12px 12px;}
 .nm-setup-hd{font-size:var(--fs-1);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#5e87c5;margin-bottom:8px;}
+.exh-setup-edit{margin-left:6px;padding:1px 8px;border-radius:var(--r-2);border:1px solid var(--border2);
+  background:var(--surface2);color:var(--text2);font-size:var(--fs-1);cursor:pointer;}
+.exh-setup-edit:hover{color:var(--accent);border-color:var(--accent);}
+.es-diffwrap{margin-top:14px;border-top:1px solid var(--border);padding-top:10px;max-height:38vh;overflow:auto;}
+.es-sec{font-size:var(--fs-1);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:10px 0 5px;}
+.es-row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:baseline;padding:3px 0;font-size:var(--fs-3);}
+.es-k{color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.es-a{color:var(--text3);text-decoration:line-through;font-family:var(--mono);}
+.es-ar{color:var(--text3);}
+.es-b{color:var(--accent);font-family:var(--mono);font-weight:600;}
+.es-note{font-size:var(--fs-2);color:var(--text2);line-height:1.55;}
 .nm-setup .ci-f.lead span{color:#5e87c5;}
 .nm-setup .ci-f.lead select{border-color:#5e87c5;font-weight:600;}
 .nm-setup-plate{display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:10px;border-top:1px dashed var(--border);font-size:var(--fs-3);color:var(--text2);cursor:pointer;}
@@ -1182,6 +1193,17 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
   </div>
 </div>
 
+<!-- Setup editor: change the experiment's setup parameters after it exists -->
+<div class="modal-back" id="es-modal">
+  <div class="modal">
+    <div class="modal-t">Experiment setup<span class="grow"></span></div>
+    <div class="nm-setup-hd">Set up</div>
+    <div class="cc-inputs" id="es-fields"></div>
+    <div class="es-diffwrap" id="es-diff"></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="closeSetupEditor()">Cancel</button><button class="btn sm" onclick="applySetupEdit()">Apply</button></div>
+  </div>
+</div>
+
 <!-- Plate map editor -->
 <div class="modal-back" id="plate-modal">
   <div class="modal plate-modal">
@@ -1422,7 +1444,8 @@ function fillSetup(s,setup){ if(!s) return s;
     return esc(String(v)); });
 }
 // Push the setup answers into the instantiated day-blocks.
-function applySetupToBlocks(type,setup,blocks){
+// prevSetup is given when re-applying to an existing experiment. Without it this is creation.
+function applySetupToBlocks(type,setup,blocks,prevSetup){
   var S=setupSchema(type); if(!S||!setup) return blocks;
   var fmt=(setup.format!=null&&setup.format!=='')?String(setup.format):null;
   // The seeding block's own plate count is the reference: readout blocks that originally used
@@ -1444,8 +1467,22 @@ function applySetupToBlocks(type,setup,blocks){
         I.nPlates = base ? Math.max(1,Math.round((+I.nPlates/base)*(+setup.nPlates||1))) : (+setup.nPlates||1);
       }
     }
-    b.title=fillSetup(b.title,setup);
-    b.html=fillSetup(b.html,setup);
+    // fillSetup substitutes {{placeholders}} in place, so after one pass the template is gone
+    // and a second pass has nothing left to fill. Keep the original the first time through.
+    // Protocol blocks are excluded: their html is a cache rebuilt by refreshProtoHtml, not prose.
+    if(!b.proto && !b.tpl) b.tpl={title:b.title, html:b.html};
+    if(b.proto){ /* protocol prose is owned by the snapshot, not by the setup */ }
+    else if(prevSetup===undefined){
+      b.title=fillSetup(b.tpl.title,setup);
+      b.html=fillSetup(b.tpl.html,setup);
+    } else {
+      // Re-applying. Only re-render prose that is still exactly what the template produced —
+      // anything you have typed into is yours and silently regenerating it would be data loss.
+      if(b.tpl){
+        if(b.title===fillSetup(b.tpl.title,prevSetup)) b.title=fillSetup(b.tpl.title,setup);
+        if(b.html===fillSetup(b.tpl.html,prevSetup))  b.html=fillSetup(b.tpl.html,setup);
+      }
+    }
   });
   if(S.apply){ try{ blocks=S.apply(setup,blocks)||blocks; }catch(e){} }
   return blocks;
@@ -3280,17 +3317,20 @@ function nmResetSetup(){
   nmSetup();
 }
 // One setup field. Deliberately reuses the calculators' .ci-f markup so the two look identical.
-function nmSetupField(f,lead){
-  var v=NM_SETUP[f.f], cls='ci-f'+(lead?' lead':'');
+// src/upd default to the New-experiment modal's globals; the setup editor passes its own,
+// so there is one field renderer rather than two that drift.
+function nmSetupField(f,lead,src,upd){
+  src=src||NM_SETUP; upd=upd||'nmSetupUpd';
+  var v=src[f.f], cls='ci-f'+(lead?' lead':'');
   if(f.t==='format'){ var opts=(f.opts||['6','12','24','48','96','384']).map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
-    return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="nmSetupUpd()">'+opts+'</select></label>'; }
+    return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'()">'+opts+'</select></label>'; }
   if(f.t==='cellline'){ var co=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
-    return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="nmSetupUpd(true)">'+co+'</select></label>'; }
+    return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'(true)">'+co+'</select></label>'; }
   if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
-    return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="nmSetupUpd()">'+so+'</select></label>'; }
-  if(f.t==='check'){ return '<label class="ci-f chk"><input type="checkbox" data-sf="'+f.f+'"'+(v?' checked':'')+' onchange="nmSetupUpd()"><span>'+esc(f.lbl)+'</span></label>'; }
-  if(f.t==='txt'){ return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input data-sf="'+f.f+'" value="'+esc(v==null?'':v)+'" oninput="nmSetupUpd()"></label>'; }
-  return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input type="number" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="nmSetupUpd()"></label>';
+    return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'()">'+so+'</select></label>'; }
+  if(f.t==='check'){ return '<label class="ci-f chk"><input type="checkbox" data-sf="'+f.f+'"'+(v?' checked':'')+' onchange="'+upd+'()"><span>'+esc(f.lbl)+'</span></label>'; }
+  if(f.t==='txt'){ return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input data-sf="'+f.f+'" value="'+esc(v==null?'':v)+'" oninput="'+upd+'()"></label>'; }
+  return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input type="number" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="'+upd+'()"></label>';
 }
 function nmSetup(){ var host=el('nm-setup'); if(!host) return;
   var type=presetBase(el('nm-type').value); var S=setupSchema(type);
@@ -3930,6 +3970,98 @@ function wireFileDrop(root){
 }
 // Read-only reminder of the answers this experiment was set up with. The blocks themselves are
 // the live copy — this is just so you can see the plan at a glance.
+// ── Editing the setup after the experiment exists ───────────────────────────────────────────
+// applySetupToBlocks — and the volume rescaling that is the most useful thing in this file —
+// ran exactly once, at creation. Changing your mind about 96 vs 384, cells/well or the number
+// of plates meant editing every calculator by hand, so in practice nobody did and the record
+// drifted from the run.
+//
+// It shows what it is about to change before it changes it. Re-applying rewrites numbers the
+// experiment already carries, so this is one of the few places in Labbook where a preview
+// earns its keep.
+var ES_SETUP=null, ES_EXP=null;
+function openSetupEditor(expId){
+  var e=LB.data.experiments[expId]; if(!e) return;
+  var S=setupSchema(e.type);
+  if(!S.fields||!S.fields.length){ toast('This experiment type has no setup parameters.'); return; }
+  ES_EXP=expId;
+  ES_SETUP=JSON.parse(JSON.stringify(e.setup||setupDefaults(e.type)));
+  el('es-modal').classList.add('open');
+  esRender();
+}
+function closeSetupEditor(){ el('es-modal').classList.remove('open'); ES_SETUP=null; ES_EXP=null; }
+function esRender(){
+  var e=LB.data.experiments[ES_EXP]; if(!e) return;
+  var S=setupSchema(e.type);
+  var fields=(S.fields||[]).map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format',ES_SETUP,'esSetupUpd'); }).join('');
+  el('es-fields').innerHTML=fields;
+  el('es-diff').innerHTML=esDiffHtml(e);
+}
+function esSetupUpd(reRender){
+  var host=el('es-fields'); if(!host) return;
+  host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
+    ES_SETUP[k]=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value); });
+  if(reRender&&ES_SETUP.cellLine!=null){ var d=cellLineDef(ES_SETUP.cellLine); if(d&&d.cpw&&ES_SETUP.cellsPerWell!=null) ES_SETUP.cellsPerWell=d.cpw; esRender(); return; }
+  el('es-diff').innerHTML=esDiffHtml(LB.data.experiments[ES_EXP]);
+}
+// Dry-run against a clone: the diff is the real result of the real function, not a second
+// implementation of it that could disagree with what actually happens.
+function esPreview(e){
+  var clone=JSON.parse(JSON.stringify(e.blocks||[]));
+  clone=applySetupToBlocks(e.type,ES_SETUP,clone,e.setup||setupDefaults(e.type));
+  return clone;
+}
+function esDiffHtml(e){
+  if(!e||!ES_SETUP) return '';
+  var S=setupSchema(e.type), old=e.setup||{}, rows=[];
+  (S.fields||[]).forEach(function(f){
+    var a=old[f.f], b=ES_SETUP[f.f];
+    if(String(a==null?'':a)===String(b==null?'':b)) return;
+    function show(v){ if(v==null||v==='') return '—';
+      if(f.t==='cellline'){ var d=cellLineDef(v); return (d&&d.label)||v; }
+      if(f.t==='format') return v+'-well';
+      if(f.t==='check') return v?'yes':'no';
+      return String(v); }
+    rows.push('<div class="es-row"><span class="es-k">'+esc(f.lbl)+'</span><span class="es-a">'+esc(show(a))
+      +'</span><span class="es-ar">\u2192</span><span class="es-b">'+esc(show(b))+'</span></div>');
+  });
+  var before=e.blocks||[], after=esPreview(e), calc=[], prose=0, kept=0;
+  after.forEach(function(nb,i){
+    var ob=before[i]; if(!ob) return;
+    var oi=(ob.calc&&ob.calc.inputs)||null, ni=(nb.calc&&nb.calc.inputs)||null;
+    if(oi&&ni) Object.keys(ni).forEach(function(k){
+      if(String(oi[k])===String(ni[k])) return;
+      calc.push('<div class="es-row"><span class="es-k">'+esc(ob.title||'step')+' &middot; '+esc(k)+'</span>'
+        +'<span class="es-a">'+esc(String(oi[k]))+'</span><span class="es-ar">\u2192</span><span class="es-b">'+esc(String(ni[k]))+'</span></div>');
+    });
+    if(ob.html!==nb.html) prose++;
+    else if(ob.tpl && !ob.proto) kept++;
+  });
+  var edited=(before.filter(function(b){ return b.tpl && !b.proto; }).length)-prose-kept;
+  var out='';
+  out+=rows.length?('<div class="es-sec">Setup</div>'+rows.join('')):'';
+  out+=calc.length?('<div class="es-sec">Calculators</div>'+calc.join('')):'';
+  var notes=[];
+  if(prose) notes.push(prose===1 ? '1 step will have its text re-rendered from the template'
+                                 : prose+' steps will have their text re-rendered from the template');
+  if(edited>0) notes.push(edited===1 ? '1 step you have edited will be left exactly as it is'
+                                     : edited+' steps you have edited will be left exactly as they are');
+  var noTpl=(before.filter(function(b){ return !b.tpl && !b.proto; }).length);
+  if(noTpl) notes.push(noTpl===1 ? '1 step pre-dates this feature and has no template, so only its calculator changes'
+                                 : noTpl+' steps pre-date this feature and have no template, so only their calculators change');
+  if(notes.length) out+='<div class="es-sec">Text</div><div class="es-note">'+notes.map(esc).join('<br>')+'</div>';
+  if(!out) out='<div class="es-note">Nothing would change yet \u2014 adjust a value above.</div>';
+  return out;
+}
+function applySetupEdit(){
+  var e=LB.data.experiments[ES_EXP]; if(!e||!ES_SETUP) return;
+  var prev=e.setup||setupDefaults(e.type);
+  e.blocks=applySetupToBlocks(e.type,ES_SETUP,e.blocks||[],prev);
+  e.setup=JSON.parse(JSON.stringify(ES_SETUP));
+  if(ES_SETUP.cellLine!=null){ var d=cellLineDef(ES_SETUP.cellLine); e.cellLines=(d&&d.label)||String(ES_SETUP.cellLine); }
+  e.updated=Date.now(); save(); closeSetupEditor(); renderAll();
+  toast('Setup applied.');
+}
 function setupSummaryHtml(e){
   if(!e.setup) return '';
   var S=setupSchema(e.type); var parts=(S.fields||[]).map(function(f){
@@ -3939,7 +4071,10 @@ function setupSummaryHtml(e){
     else if(f.t==='check') v=v?'yes':'no';
     return '<span class="exh-setup-i"><b>'+esc(f.lbl)+'</b> '+esc(String(v))+'</span>';
   }).filter(Boolean).join('');
-  return parts?('<div class="exh-setup">'+parts+'</div>'):'';
+  // The chips were read-only, which is where the dead end was: you could see the setup and
+  // not change it.
+  var edit='<button class="exh-setup-edit" title="Change these and re-apply them to the steps" onclick="openSetupEditor(\''+e.id+'\')">Edit setup</button>';
+  return parts?('<div class="exh-setup">'+parts+edit+'</div>'):'';
 }
 // ── Results handed over by an analysis app ─────────────────────────────────────────────────
 // A DC50 typed by hand into a notebook is where a published number stops being traceable to
