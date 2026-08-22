@@ -1,7 +1,7 @@
 # Claude Handoff
 
 Compact coordination note. Read it before starting work; the full changelog is
-`Archive_Log/SESSION_HISTORY.md`, and the durable design facts are in `CLAUDE.md`.
+`docs/SESSION_HISTORY.md`, and the durable design facts are in `CLAUDE.md`.
 
 ## Current checkpoint
 
@@ -91,5 +91,5 @@ for console errors.
 ## Coordination rule
 
 After each meaningful change, update this file with what changed, what it touched, what was
-verified and what is still open. Add a dense entry to `Archive_Log/SESSION_HISTORY.md`. Keep
+verified and what is still open. Add a dense entry to `docs/SESSION_HISTORY.md`. Keep
 `CLAUDE.md` for durable design facts. Keep secrets out.

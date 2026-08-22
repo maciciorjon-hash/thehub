@@ -2,7 +2,9 @@
 
 Every parameter extracted from the 33 Archive protocols, with the label it now shows in the UI.
 Generated from `PROTOCOL_DATA`; regenerate with `migrate_protocols.py` + the rename step.
-Totals: **561 parameters** across **118 stages** in 33 protocols.
+Totals: **561 parameters** across **153 stages** in 33 protocols.
+(The stage count read 118 until 2026-08-22; it was counted before the last split of the
+CRISPR variants. Verified by parsing PROTOCOL_DATA.)
 
 
 **How to read this.** `key` is what appears as `{{p.key}}` in the step prose and as `data-p` on

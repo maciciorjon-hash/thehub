@@ -2608,11 +2608,6 @@ function echoResultRows(){
   }).filter(function(x){ return x.compound; })
     .concat([]).map(function(x){ x.assay=t; x.potencyLabel=lab.potency; x.effectLabel=lab.effect; return x; });
 }
-try{ if (window.parent && window.parent !== window){
-  window.parent.ECHO_API_VERSION = 1;
-  window.parent.ECHO_RESULTS = function(){ try{ return JSON.parse(JSON.stringify(echoResultRows())); }catch(e){ return null; } };
-} }catch(e){}
-
 function sendResultsToLabbook(){
   var rows = echoResultRows();
   if (!rows.length){ alert('No fitted results to send yet — run an analysis first.'); return; }
@@ -5439,7 +5434,10 @@ async function downloadScatterHiRes() {
   log(`Hi-res PNG exported: ${W}×${H}px (≈600 DPI)`, 'ok');
 }
 
-// ===== SMILES PROCESSING (embedded RDKit.js, fully offline) =====
+// ===== SMILES PROCESSING =====
+// NOT offline: RDKit is fetched from unpkg below. This comment used to claim the opposite,
+// which is the sort of thing you only find out at the bench with no wifi. SheetJS and
+// Chart.js ARE embedded; structure rendering is the one thing here that needs a network.
 async function processSmilesWithRDKit(file) {
   log('Reading SMILES file: ' + file.name, 'info');
 
@@ -5450,16 +5448,10 @@ async function processSmilesWithRDKit(file) {
   const isXls  = magic[0]===0xD0 && magic[1]===0xCF;
   let rawText;
   if (isXlsx || isXls) {
-    log('Excel format detected — loading SheetJS…', 'info');
-    if (!window.XLSX) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-        s.onload = resolve;
-        s.onerror = () => reject(new Error('SheetJS CDN failed. Save as .csv instead.'));
-        document.head.appendChild(s);
-      });
-    }
+    // SheetJS is embedded and window.XLSX is assigned ~4,000 lines above, so the CDN fallback
+    // that used to live here could never run — including its user-facing "SheetJS CDN failed"
+    // message, which was unreachable text promising a failure mode that cannot happen.
+    log('Excel format detected', 'info');
     const wb = window.XLSX.read(buf, { type: 'array' });
     const wsName = wb.SheetNames[0];
     log('Sheet: "' + wsName + '"', 'info');

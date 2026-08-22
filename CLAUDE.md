@@ -763,11 +763,26 @@ dependencies matter. Chart.js is now **embedded** in Dora, LDI and Lumina (all s
 degrades to the platform UI font.
 
 Still remote, deliberately: **SheetJS** (Dora, Lumina, Iceberg — ~640 KB each, already embedded
-in Echo and BCA; three more copies would add ~1.9 MB) and **3Dmol** (Ribbon, ~2 MB, out of the
-product build). Each of those apps now shows a plain banner when the global is missing at load
-instead of throwing into the console. **Note the honest consequence: Dora and Lumina read Excel
-as their primary input, so offline they are announced-but-not-usable.** Embedding SheetJS in
-those two costs ~1.28 MB if that trade changes.
+in Echo, **Beacon** and BCA; three more copies would add ~1.9 MB) and **3Dmol** (Ribbon, ~2 MB,
+out of the product build). Each of those apps now shows a plain banner when the global is
+missing at load instead of throwing into the console. **Note the honest consequence: Dora and
+Lumina read Excel as their primary input, so offline they are announced-but-not-usable.**
+Embedding SheetJS in those two costs ~1.28 MB if that trade changes.
+
+**Two remote dependencies this section used to omit entirely** (audited 2026-08-22):
+
+- **jsPDF from cdnjs** in Echo (`apps/echo/echo.html:434`). PDF export dies offline; Echo already
+  shows a banner for it. Analysis, plots, XLSX and CSV all work.
+- **RDKit from unpkg** in Echo (`:5508`) and Dora (`:1171`). Structure rendering dies offline and
+  **neither app has a page-level banner for it** — Echo throws into its own log, Dora shows only
+  status text. Echo's section header claimed the opposite ("embedded RDKit.js, fully offline");
+  it now says what is true. This is the one dependency still unannounced to the user.
+
+The shell itself loads **four Firebase scripts from gstatic**. Until 2026-08-22 a blocked gstatic
+meant a blank page — `firebase.initializeApp` was an unguarded top-level call inside the single
+`<script>` block that also defines `JournalStore`, `WS_NAV` and the DOM wiring, so one
+ReferenceError took all of it with it. `FB_OK` now gates every SDK call site and the hub renders
+with an offline banner. Verified with the four tags stripped.
 
 ## Archive as a phone app (installable PWA)
 
