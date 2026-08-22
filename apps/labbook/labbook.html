@@ -782,6 +782,9 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .exh-setup-edit{margin-left:6px;padding:1px 8px;border-radius:var(--r-2);border:1px solid var(--border2);
   background:var(--surface2);color:var(--text2);font-size:var(--fs-1);cursor:pointer;}
 .exh-setup-edit:hover{color:var(--accent);border-color:var(--accent);}
+.rp-opts{display:flex;gap:14px;margin:12px 0 6px;font-size:var(--fs-3);color:var(--text2);}
+.rp-opts label{display:flex;align-items:center;gap:5px;cursor:pointer;}
+.rp-count{font-size:var(--fs-2);color:var(--text3);border-top:1px solid var(--border);padding-top:9px;}
 .es-diffwrap{margin-top:14px;border-top:1px solid var(--border);padding-top:10px;max-height:38vh;overflow:auto;}
 .es-sec{font-size:var(--fs-1);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:10px 0 5px;}
 .es-row{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:baseline;padding:3px 0;font-size:var(--fs-3);}
@@ -1193,6 +1196,15 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
   </div>
 </div>
 
+<!-- Report across experiments -->
+<div class="modal-back" id="rp-modal">
+  <div class="modal">
+    <div class="modal-t">Report<span class="grow"></span></div>
+    <div id="rp-body"></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="closeReport()">Cancel</button><button class="btn ghost sm" onclick="exportReportCSV()">CSV</button><button class="btn sm" onclick="exportReportPDF()">PDF</button></div>
+  </div>
+</div>
+
 <!-- Setup editor: change the experiment's setup parameters after it exists -->
 <div class="modal-back" id="es-modal">
   <div class="modal">
@@ -1485,6 +1497,10 @@ function applySetupToBlocks(type,setup,blocks,prevSetup){
     }
   });
   if(S.apply){ try{ blocks=S.apply(setup,blocks)||blocks; }catch(e){} }
+  // The planned value of every calculator input, so a later hand edit is visible as a
+  // deviation. Captured after the setup is applied — answering the setup panel is planning,
+  // not deviating — and refreshed when the setup is re-applied for the same reason.
+  blocks.forEach(function(b){ if(b.calc&&b.calc.inputs) b.calcSeed=JSON.parse(JSON.stringify(b.calc.inputs)); });
   return blocks;
 }
 
@@ -3753,6 +3769,7 @@ function renderExperiments(host, qOnly){
     +'<div class="xv-h">Experiments</div>'
     +'<input class="xv-q" id="xv-q" placeholder="Search code, title or type…" value="'+esc(XV.q)+'" oninput="xvSetQ(this.value)" autocomplete="off">'
     +'<div class="xv-filters">'+f.map(function(x){ return '<button class="xv-f'+(XV.filter===x?' on':'')+'" onclick="xvSetFilter(\''+x+'\')">'+flbl[x]+'</button>'; }).join('')+'</div>'
+    +'<button class="xv-f" title="Report across experiments — project or date range" onclick="openReport()">Report</button>'
     +'<div class="add-row xv-newproj"><input id="new-proj" placeholder="New project…" autocomplete="off" onkeydown="if(event.key===\'Enter\')addProject()"><button onclick="addProject()">+</button></div>'
     +'</div>'+body+'</div>';
   if(qOnly){ var i=el('xv-q'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } }
@@ -4138,6 +4155,14 @@ function pubResultsSentence(e){
 // between "what the protocol says" and "what I did" is already in the data. This is what a
 // reviewer asks for, what you need when a repeat behaves differently, and the one thing a
 // generic ELN cannot produce — it never knew what the original value was.
+// A calculator input's own label if the calculator declares one, else the key.
+function _calcLabel(b,k){
+  try{ var C=CALC_KINDS[b.calc.kind];
+    var f=C&&(C.fields||[]).filter(function(x){ return x.k===k; })[0];
+    if(f&&f.lbl) return f.lbl;
+  }catch(err){}
+  return k;
+}
 function expDeviations(e){
   var out=[];
   (e.blocks||[]).forEach(function(b){
@@ -4145,6 +4170,18 @@ function expDeviations(e){
       out.push({block:b, kind:'unlocked', label:'Step unlocked from the protocol',
                 from:(b.freedFrom.pid||'')+'/'+(b.freedFrom.stageId||''), to:'free text'});
       return;
+    }
+    // Calculator inputs, for every block that has them. expDeviations used to early-return on
+    // anything without b.proto/b.params, so an experiment built from a preset — a plain WB or
+    // CTG, i.e. most of them — had a structurally empty deviation report, and changing a
+    // calculator value, which is the thing people actually change, counted as nothing.
+    if(b.calc&&b.calc.inputs&&b.calcSeed){
+      Object.keys(b.calc.inputs).forEach(function(k){
+        var was=b.calcSeed[k], now=b.calc.inputs[k];
+        if(was===undefined) return;
+        if(String(was)===String(now)) return;
+        out.push({block:b, kind:'calc', label:_calcLabel(b,k), from:String(was), to:String(now)});
+      });
     }
     if(!b.proto||!b.params) return;
     var defs={};
@@ -4887,6 +4924,7 @@ function insertPane(){ return '<div class="rb-core rb-labelled">'+INSERT_ITEMS.m
 function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="Outline, tags and info" onmousedown="event.preventDefault();toggleDock()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>')+'</span><span class="rb-lbtn-lbl">Panel</span></button>'
   +'<button class="rb-lbtn" id="export-btn" title="Export this entry as a PDF" onmousedown="event.preventDefault();exportPDF()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>')+'</span><span class="rb-lbtn-lbl">PDF</span></button>'
+  +'<button class="rb-lbtn" title="Report across experiments" onmousedown="event.preventDefault();openReport()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>')+'</span><span>Report</span></button>'
   +'<button class="rb-lbtn" title="Copy, formatted for OneNote" onmousedown="event.preventDefault();copyForOneNote()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="9" y="3" width="12" height="16" rx="2"/><path d="M15 21H5a2 2 0 01-2-2V7"/><path d="M12.5 15V8.5l5 6.5V8.5"/>')+'</span><span class="rb-lbtn-lbl">OneNote</span></button>'
   +'<button class="rb-lbtn" title="Save as a Word file" onmousedown="event.preventDefault();exportOneNoteDoc()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><path d="M9 12l1.6 5 1.4-3.6L13.4 17 15 12"/>')+'</span><span class="rb-lbtn-lbl">Word</span></button>'
   +'<button class="rb-lbtn" id="backup-btn" title="'+esc(backupStatus().detail)+' Back up now \u00b7 right-click for the folder" onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
@@ -5810,7 +5848,7 @@ function newPresetFromType(){ var items=EXP_TYPES.filter(function(t){return t.id
 }
 
 // ── PDF export ──
-var PRINT_CSS='<style>#print-root{padding:0;color:#111}#print-root *{box-sizing:border-box}'
+var PRINT_CSS='<style>#print-root .pd-tbl{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:10.5pt}#print-root .pd-tbl th,#print-root .pd-tbl td{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:top}#print-root .pd-tbl th{background:#f2f2f2;font-weight:600}#print-root .pd-res{margin-bottom:10px}#print-root .pd-res-hd{font-weight:600;margin-bottom:3px}#print-root .pd-res-when{float:right;font-weight:400;color:#666}#print-root .pd-exp{margin-top:18px}#print-root .pd-exp-hd{font-weight:700;border-bottom:2px solid #333;padding-bottom:3px;margin-bottom:8px}#print-root .pd-exp-hd span{font-weight:400;color:#444}#print-root{padding:0;color:#111}#print-root *{box-sizing:border-box}'
  +'.pd-head{border-bottom:2px solid #5e87c5;padding:0 0 12px;margin-bottom:16px}'
  +'.pd-kicker{font:600 11px/1 sans-serif;letter-spacing:1px;color:#5e87c5;text-transform:uppercase}'
  +'.pd-code{font:600 13px/1.4 sans-serif;color:#5e87c5;margin-top:8px}'
@@ -5910,6 +5948,151 @@ function pdFiles(files){
 // Standalone builds must not carry dHUB branding into a customer's exported PDF.
 function _brand(){ try{ return (window.parent&&window.parent!==window)?'dHUB Labbook':'Labbook'; }catch(e){ return 'Labbook'; } }
 function foot(){ return '<div class="pd-foot">'+_brand()+' · exported '+fmtDate(todayStr())+'</div>'; }
+// Static print versions. resultsPaneHtml and deviationsHtml carry delete buttons and jump
+// handlers that mean nothing on paper, so the print forms are separate — but they read the same
+// data, so a PDF cannot disagree with the screen.
+function pdResults(e){
+  var rs=(e.integration&&e.integration.results)||[];
+  if(!rs.length) return '';
+  return '<div class="pd-sec-hd">Results</div>' + rs.map(function(r){
+    var rows=(r.rows||[]); if(!rows.length) return '';
+    var pu=r.potencyUnit?(' ('+r.potencyUnit+')'):'', eu=r.effectUnit?(' ('+r.effectUnit+')'):'';
+    return '<div class="pd-res"><div class="pd-res-hd">'+esc(r.label||r.source||'result')
+      +'<span class="pd-res-when">'+esc(String(r.createdAt||'').slice(0,10))+'</span></div>'
+      +'<table class="pd-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(String(r.potencyLabel||'Potency').split(' ')[0])+pu
+      +'</th><th>'+esc(String(r.effectLabel||'Effect').split(' ')[0])+eu+'</th><th>Hill</th><th>R&sup2;</th><th>Flag</th></tr></thead><tbody>'
+      + rows.map(function(x){
+          return '<tr><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rn(x.potency))+'</td>'
+            +'<td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.hill))+'</td><td>'+esc(_rn(x.r2))+'</td>'
+            // A curve the fitting app was unhappy about must stay visibly unhappy on paper too.
+            +'<td>'+(x.flag?'flagged':'')+'</td></tr>';
+        }).join('')
+      +'</tbody></table></div>';
+  }).join('');
+}
+function pdDeviations(e){
+  var d=[]; try{ d=expDeviations(e)||[]; }catch(err){}
+  if(!d.length) return '';
+  return '<div class="pd-sec-hd">Deviations from plan</div><table class="pd-tbl">'
+    +'<thead><tr><th>Step</th><th>What</th><th>Planned</th><th>Actual</th></tr></thead><tbody>'
+    + d.map(function(x){ return '<tr><td>'+esc(x.block.title||'step')+'</td><td>'+esc(x.label||'')
+        +'</td><td>'+esc(x.from||'')+'</td><td>'+esc(x.to||'')+'</td></tr>'; }).join('')
+    +'</tbody></table>';
+}
+
+// ── Reports across experiments ──────────────────────────────────────────────────────────────
+// buildPrintDoc knows how to print exactly one node. "How did this project go" and "what did I
+// do in March" had no answer that did not involve exporting experiments one at a time and
+// stapling them together.
+var RP={scope:'project', projectId:null, from:'', to:'', results:true, devs:true, steps:false};
+function openReport(){
+  var e=_curExp();
+  RP.projectId=RP.projectId||(e&&e.projectId)||((LB.data.projects[0]||{}).id)||null;
+  if(!RP.from){ RP.to=todayStr(); RP.from=addDays(RP.to,-30); }
+  el('rp-modal').classList.add('open'); rpRender();
+}
+function closeReport(){ el('rp-modal').classList.remove('open'); }
+function rpSet(k,v){ RP[k]=v; rpRender(); }
+function rpRender(){
+  var projs=LB.data.projects.map(function(p){ return '<option value="'+p.id+'"'+(p.id===RP.projectId?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
+  el('rp-body').innerHTML=
+     '<div class="cc-inputs">'
+    +'<label class="ci-f"><span>Scope</span><select onchange="rpSet(\'scope\',this.value)">'
+      +'<option value="project"'+(RP.scope==='project'?' selected':'')+'>A project</option>'
+      +'<option value="range"'+(RP.scope==='range'?' selected':'')+'>A date range</option></select></label>'
+    +(RP.scope==='project'
+       ? '<label class="ci-f"><span>Project</span><select onchange="rpSet(\'projectId\',this.value)">'+projs+'</select></label>'
+       : '<label class="ci-f"><span>From</span><input type="date" value="'+esc(RP.from)+'" onchange="rpSet(\'from\',this.value)"></label>'
+        +'<label class="ci-f"><span>To</span><input type="date" value="'+esc(RP.to)+'" onchange="rpSet(\'to\',this.value)"></label>')
+    +'</div>'
+    +'<div class="rp-opts">'
+    +'<label><input type="checkbox"'+(RP.results?' checked':'')+' onchange="rpSet(\'results\',this.checked)"> Results</label>'
+    +'<label><input type="checkbox"'+(RP.devs?' checked':'')+' onchange="rpSet(\'devs\',this.checked)"> Deviations</label>'
+    +'<label><input type="checkbox"'+(RP.steps?' checked':'')+' onchange="rpSet(\'steps\',this.checked)"> Every step (long)</label>'
+    +'</div>'
+    +'<div class="rp-count">'+rpDescribe()+'</div>';
+}
+// Archived experiments ARE included: a report is history, and leaving out the ones that were
+// abandoned would make every project look like it always worked.
+function rpExps(){
+  var all=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; }).filter(isCoded);
+  if(RP.scope==='project') return all.filter(function(e){ return e.projectId===RP.projectId; })
+    .sort(function(a,b){ return String(a.startDate||'').localeCompare(String(b.startDate||'')); });
+  return all.filter(function(e){
+    var ds=(e.blocks||[]).map(function(b){ return b.date; }).filter(Boolean).concat(e.startDate?[e.startDate]:[]);
+    return ds.some(function(d){ return d>=RP.from && d<=RP.to; });
+  }).sort(function(a,b){ return String(a.startDate||'').localeCompare(String(b.startDate||'')); });
+}
+function rpDescribe(){
+  var xs=rpExps(); if(!xs.length) return 'No experiments in that scope.';
+  var nArch=xs.filter(expArchived).length, nRes=0, nDev=0;
+  xs.forEach(function(e){ nRes+=((e.integration&&e.integration.results)||[]).reduce(function(a,r){ return a+((r.rows||[]).length); },0);
+    try{ nDev+=(expDeviations(e)||[]).length; }catch(err){} });
+  return xs.length+' experiment'+(xs.length===1?'':'s')+(nArch?(' ('+nArch+' archived)'):'')
+    +' · '+nRes+' result row'+(nRes===1?'':'s')+' · '+nDev+' deviation'+(nDev===1?'':'s');
+}
+function buildReportDoc(){
+  var xs=rpExps(), h=PRINT_CSS;
+  var title=(RP.scope==='project')
+    ? ((LB.data.projects.filter(function(p){return p.id===RP.projectId;})[0]||{}).name||'Project')
+    : (fmtDate(RP.from)+' – '+fmtDate(RP.to));
+  h+='<div class="pd-head"><div class="pd-kicker">'+(RP.scope==='project'?'Project report':'Date range report')+'</div>'
+    +'<div class="pd-title">'+esc(title)+'</div><div class="pd-crumb">'+esc(rpDescribe())+'</div></div>';
+  if(!xs.length) return h+foot();
+  h+='<div class="pd-sec-hd">Experiments</div><table class="pd-tbl"><thead><tr>'
+    +'<th>Code</th><th>Title</th><th>Type</th><th>Start</th><th>Status</th><th>Steps done</th></tr></thead><tbody>'
+    + xs.map(function(e){ var q=expProgress(e);
+        return '<tr><td>'+esc(e.code||'')+'</td><td>'+esc(e.title||'')+'</td><td>'+esc(typeName(e.type))+'</td>'
+          +'<td>'+esc(fmtDate(e.startDate||''))+'</td><td>'+esc(e.status||'')+(expArchived(e)?' (archived)':'')+'</td>'
+          +'<td>'+q.done+'/'+q.total+'</td></tr>'; }).join('')
+    +'</tbody></table>';
+  xs.forEach(function(e){
+    var body='';
+    if(RP.results) body+=pdResults(e);
+    if(RP.devs)    body+=pdDeviations(e);
+    if(RP.steps&&(e.blocks||[]).length) body+='<div class="pd-sec-hd">Protocol — step by step</div>'+printExpByDay(e);
+    if(!body) return;
+    h+='<div class="pd-exp"><div class="pd-exp-hd">'+esc(e.code||'')+' <span>'+esc(e.title||'')+'</span></div>'+body+'</div>';
+  });
+  return h+foot();
+}
+function exportReportPDF(){
+  var pr=el('print-root'); pr.innerHTML=buildReportDoc();
+  closeReport();
+  setTimeout(function(){ try{ window.print(); }catch(e){} }, 120);
+}
+// CSV, because the answer to "which compounds worked" belongs in a spreadsheet more often
+// than in a PDF.
+function exportReportCSV(){
+  var xs=rpExps();
+  var lines=[['Experiment','Title','Type','Start','Status','Archived','Kind','Compound/Step','Target/What','Value/Planned','Effect/Actual','Hill','R2','Flag'].join(',')];
+  function q(v){ var t=(v==null?'':String(v)); return /[",\n\r]/.test(t)?('"'+t.replace(/"/g,'""')+'"'):t; }
+  xs.forEach(function(e){
+    var base=[e.code||'',e.title||'',typeName(e.type),e.startDate||'',e.status||'',expArchived(e)?'yes':'no'];
+    var any=false;
+    if(RP.results) ((e.integration&&e.integration.results)||[]).forEach(function(r){
+      (r.rows||[]).forEach(function(x){ any=true;
+        lines.push(base.concat(['result',x.compound||'',x.target||'',
+          (x.potency==null?'':x.potency)+(r.potencyUnit?(' '+r.potencyUnit):''),
+          (x.effect==null?'':x.effect)+(r.effectUnit?(' '+r.effectUnit):''),
+          x.hill==null?'':x.hill, x.r2==null?'':x.r2, x.flag?'flagged':'']).map(q).join(','));
+      });
+    });
+    if(RP.devs){ var d=[]; try{ d=expDeviations(e)||[]; }catch(err){}
+      d.forEach(function(x){ any=true;
+        lines.push(base.concat(['deviation',x.block.title||'',x.label||'',x.from||'',x.to||'','','','']).map(q).join(','));
+      });
+    }
+    if(!any) lines.push(base.concat(['','','','','','','','']).map(q).join(','));
+  });
+  var blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='labbook-report-'+todayStr()+'.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },800);
+  closeReport();
+  toast('Exported '+xs.length+' experiment'+(xs.length===1?'':'s')+'.');
+}
 function buildPrintDoc(){
   var node=SEL.node, h=PRINT_CSS;
   if(node.kind==='journal'){ var D=SEL.page||DAY_VIEW||todayStr(); var pg=LB.data.notebook[D]||{html:''};
@@ -5930,7 +6113,9 @@ function buildPrintDoc(){
   var expPlate=e.plate?('<div class="pd-sec-hd">Plate layout</div>'+pdPlate(e.plate)):'';
   var steps=expPlate+((e.blocks&&e.blocks.length)?('<div class="pd-sec-hd">Protocol — step by step</div>'+printExpByDay(e)):'');
   var pub=(e.pubReady&&e.pubReady.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Publication ready</div><div class="pd-pub">'+e.pubReady+'</div>'):'';
-  return h+obs+steps+pub+pdFiles(e.files)+foot();
+  // The exported record used to omit both the measured data and how the run departed from the
+  // protocol — the two things a reviewer, or you in a year, actually asks for.
+  return h+obs+steps+pdResults(e)+pdDeviations(e)+pub+pdFiles(e.files)+foot();
 }
 function printFloatLayers(root){ var nodes=root.querySelectorAll('.pd-body[data-ctx]'); var ps=[];
   Array.prototype.forEach.call(nodes,function(body){ var obj=_ctxObj(body.dataset.ctx); if(!obj) return; var arr=_floatArr(obj); if(!arr.length) return;
