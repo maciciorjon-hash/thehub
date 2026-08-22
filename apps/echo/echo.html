@@ -927,6 +927,8 @@ document.addEventListener('click', function(ev){
     </div><!-- end setup-sbody -->
     <div class="setup-foot">
       <div class="setup-fstatus" id="setup-fstatus">Echo CSV and PHERAstar files required</div>
+      <button class="setup-cancel-btn" onclick="openEchoProject()" title="Open a saved .echo.json project — files, settings and QC">Open project</button>
+      <button class="setup-cancel-btn" onclick="saveEchoProject()" title="Save files, settings and QC as one .echo.json you can archive or send on">Save project</button>
       <button class="setup-cancel-btn" onclick="clearSetup()" title="Remove all files and reset settings to defaults">✕ Clear</button>
       <button id="setup-cancel" class="setup-cancel-btn" onclick="closeSetupModal()" style="display:none">Close</button>
       <button id="run-btn" class="setup-run-btn" disabled onclick="runPipeline()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" style="vertical-align:-.15em"><path d="M7 4.5l12 7.5-12 7.5z"/></svg> Run Analysis</button>
@@ -1426,7 +1428,7 @@ function rmEchoFile(name) {
   echoFiles = echoFiles.filter(f => f.name !== name);
   if (!echoFiles.length) {
     document.getElementById('echo-zone').classList.remove('filled');
-    document.getElementById('echo-icon').textContent = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>';
+    document.getElementById('echo-icon').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>';
   }
   renderEchoList();
   checkReady();
@@ -1772,6 +1774,7 @@ async function runPipeline() {
     document.getElementById('sc').textContent = results.length;
     document.getElementById('pc').textContent = nMatched || '';
     document.querySelector('[data-tab="results"]').click();
+    _esAutoSave('run');   // the moment there is something worth not losing
 
   } catch(e) {
     log('Pipeline error: ' + (e.message||String(e)), 'err');
@@ -8517,7 +8520,301 @@ document.addEventListener('wheel',function(e){
   const tw=e.target.closest('.tbl-wrap');
   if(tw&&tw.scrollWidth>tw.clientWidth+2){tw.scrollLeft+=e.deltaY*0.8;e.preventDefault();}
 },{passive:false});
-(function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});onAssayTypeChange();})();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SESSION PERSISTENCE
+// ═══════════════════════════════════════════════════════════════════════════════
+// Echo touched localStorage exactly twice, both for the theme. Everything else — the
+// dropped files, every QC exclusion, every constraint, the axis and filter choices —
+// lived in memory and died on reload. A curve you spent twenty minutes cleaning up was
+// one accidental Cmd-R from gone, with nothing to recover it from.
+//
+// Nothing new is modelled here. window._lastAnalysisParams is already a complete record
+// of the settings a run used, window._qcOverrides already holds the exclusions, and
+// loadTestData() already shows how to turn bytes back into the File objects the pipeline
+// expects. This just writes those down and reads them back.
+//
+// Two products, one snapshot:
+//   • an autosaved "current session" in IndexedDB, so reloading costs nothing;
+//   • an .echo.json project file, so an analysis can be archived or handed to someone.
+const ECHO_SESSION_V = 1;
+const _ES_DB = 'echo_session', _ES_STORE = 'session', _ES_KEY = 'current';
+
+function _esIdb() {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open(_ES_DB, 1);
+    rq.onupgradeneeded = () => { rq.result.createObjectStore(_ES_STORE); };
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+function _esPut(key, val) {
+  return _esIdb().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(_ES_STORE, 'readwrite');
+    tx.objectStore(_ES_STORE).put(val, key);
+    tx.oncomplete = () => res(true);
+    tx.onerror = () => rej(tx.error);
+  }));
+}
+function _esGet(key) {
+  return _esIdb().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(_ES_STORE, 'readonly');
+    const rq = tx.objectStore(_ES_STORE).get(key);
+    rq.onsuccess = () => res(rq.result || null);
+    rq.onerror = () => rej(rq.error);
+  }));
+}
+function _esDel(key) {
+  return _esIdb().then(db => new Promise(res => {
+    const tx = db.transaction(_ES_STORE, 'readwrite');
+    tx.objectStore(_ES_STORE).delete(key);
+    tx.oncomplete = () => res(true);
+    tx.onerror = () => res(false);
+  })).catch(() => false);
+}
+
+// IndexedDB stores the bytes as-is; only the .echo.json download needs base64, and it
+// pays for it there rather than doubling the size of every autosave.
+async function _esFileRec(f, asB64) {
+  if (!f) return null;
+  const buf = await f.arrayBuffer();
+  if (!asB64) return { name: f.name, type: f.type || '', buf: buf };
+  let bin = '', bytes = new Uint8Array(buf);
+  // btoa on a 2 MB apply() argument list throws RangeError; chunk it.
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return { name: f.name, type: f.type || '', b64: btoa(bin) };
+}
+function _esRecFile(r) {
+  if (!r) return null;
+  if (r.buf) return new File([r.buf], r.name, { type: r.type || '' });
+  return _b64toFile(r.b64, r.name, r.type || '');
+}
+
+// Every form control with an id, rather than a hand-kept list of the ~40 settings that
+// matter today. A setting added next year is captured without anyone remembering to.
+// File inputs are excluded: their value is not settable, and the bytes travel separately.
+// Controls that live in the page but are not part of an analysis. The theme is a property of
+// this screen, not of this experiment: opening a colleague's project must not repaint your app,
+// and the blanket change-event dispatch below would call toggleTheme() and do exactly that.
+// (Caught by diffing the form before and after a restore — it was the only key that moved.)
+const _ES_SKIP = { 'theme-toggle-chk': 1 };
+function _esFormState() {
+  const out = {};
+  document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+    if (_ES_SKIP[el.id]) return;
+    if (el.type === 'file' || el.type === 'button' || el.type === 'submit') return;
+    out[el.id] = (el.type === 'checkbox' || el.type === 'radio') ? !!el.checked : el.value;
+  });
+  // The CSV column picker is checkboxes keyed by data-col, not by id.
+  out['__csvCols'] = [...document.querySelectorAll('.csv-col-cb')].map(c => !!c.checked);
+  return out;
+}
+function _esApplyForm(state) {
+  if (!state) return;
+  Object.keys(state).forEach(id => {
+    if (id.slice(0, 2) === '__' || _ES_SKIP[id]) return;
+    const el = document.getElementById(id);
+    if (!el || el.type === 'file') return;
+    const v = state[id];
+    if (el.type === 'checkbox' || el.type === 'radio') { if (el.checked !== !!v) el.checked = !!v; }
+    else { el.value = v; }
+    // Values set from script fire nothing, and several of these inputs drive layout through
+    // onchange (assay type swaps whole panels). Announce them as a user edit would.
+    try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+    try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+  });
+  if (Array.isArray(state.__csvCols)) {
+    const cbs = [...document.querySelectorAll('.csv-col-cb')];
+    state.__csvCols.forEach((v, i) => { if (cbs[i]) cbs[i].checked = !!v; });
+  }
+}
+
+async function echoSnapshot(forFile) {
+  const readers = {};
+  for (const n of Object.keys(readerFiles)) readers[n] = await _esFileRec(readerFiles[n], forFile);
+  const echos = [];
+  for (const f of echoFiles) echos.push(await _esFileRec(f, forFile));
+  return {
+    v: ECHO_SESSION_V,
+    savedAt: new Date().toISOString(),
+    // Multi-assay panels are created at runtime, so the count has to be recorded or the
+    // restored form would have nowhere to put mat-*-N back.
+    matPanels: document.querySelectorAll('#mat-type-list [id^="mat-panel-"]').length,
+    files: { echo: echos, readers: readers, smiles: await _esFileRec(smilesFile, forFile) },
+    form: _esFormState(),
+    qc: JSON.parse(JSON.stringify(window._qcOverrides || {})),
+    view: {
+      scatterState: JSON.parse(JSON.stringify(scatterState || {})),
+      sortState: JSON.parse(JSON.stringify(_sortState || {})),
+      assayType: window._lastAssayType || null
+    },
+    hadResults: !!(_lastResultsData && _lastResultsData.length)
+  };
+}
+
+// Restores inputs and files, then re-runs. Re-running rather than replaying stored results
+// is deliberate: the numbers in a restored session are computed by this build from these
+// files, not copied from whatever produced them. A stale result that looks live is worse
+// than a five-second wait.
+async function echoRestore(st, opts) {
+  opts = opts || {};
+  if (!st || st.v !== ECHO_SESSION_V) { alert('This session was saved by a different version of Echo and cannot be restored.'); return false; }
+  clearSetup();
+
+  echoFiles = (st.files.echo || []).map(_esRecFile).filter(Boolean);
+  if (echoFiles.length) {
+    document.getElementById('echo-zone').classList.add('filled');
+    renderEchoList();
+  }
+  readerFiles = {};
+  Object.keys(st.files.readers || {}).forEach(n => { const f = _esRecFile(st.files.readers[n]); if (f) readerFiles[n] = f; });
+  renderReaderList();
+  smilesFile = _esRecFile(st.files.smiles);
+  if (smilesFile) {
+    document.getElementById('smiles-zone').classList.add('filled');
+    const sn = document.getElementById('smiles-name');
+    if (sn) { sn.textContent = smilesFile.name; sn.style.display = 'block'; }
+  }
+
+  // Panels first: _esApplyForm can only write into controls that exist.
+  const want = st.matPanels || 0;
+  const list = document.getElementById('mat-type-list');
+  if (list) { list.innerHTML = ''; _matCounter = 0; for (let i = 0; i < want; i++) addAssayType(); }
+  _esApplyForm(st.form);
+
+  window._qcOverrides = st.qc || {};
+  if (st.view) {
+    if (st.view.scatterState) Object.assign(scatterState, st.view.scatterState);
+    if (st.view.sortState) Object.assign(_sortState, st.view.sortState);
+  }
+  checkReady();
+  log('Session restored (' + (st.savedAt || '').slice(0, 16).replace('T', ' ') + ')', 'ok');
+  if (opts.run !== false && st.hadResults && echoFiles.length && Object.keys(readerFiles).length) {
+    await runPipeline();
+  }
+  return true;
+}
+
+// ── autosave ──────────────────────────────────────────────────────────────────
+let _esT = null, _esOff = false;
+function _esAutoSave(why) {
+  if (_esOff) return;
+  clearTimeout(_esT);
+  _esT = setTimeout(async () => {
+    try {
+      const st = await echoSnapshot(false);
+      // Reader XLS files run to megabytes. Rather than fail the write and lose everything,
+      // drop the bytes and keep the part that took thinking — settings and QC — saying so.
+      let room = true;
+      try {
+        const est = await navigator.storage.estimate();
+        if (est && est.quota) {
+          const need = (st.files.echo || []).reduce((a, f) => a + (f.buf ? f.buf.byteLength : 0), 0)
+            + Object.keys(st.files.readers).reduce((a, n) => a + (st.files.readers[n].buf ? st.files.readers[n].buf.byteLength : 0), 0);
+          room = (est.usage + need) < est.quota * 0.85;
+        }
+      } catch (e) {}
+      if (!room) {
+        st.files = { echo: [], readers: {}, smiles: null };
+        st.filesDropped = true;
+      }
+      await _esPut(_ES_KEY, st);
+      _esBadge(st.filesDropped
+        ? 'Session saved — settings and QC only, no room for the files'
+        : 'Session saved');
+    } catch (e) {
+      _esBadge('Could not save this session (' + (e.name || 'error') + ')', true);
+      _esOff = true;   // one warning, not one per keystroke
+    }
+  }, 900);
+}
+function _esBadge(msg, bad) {
+  let b = document.getElementById('es-badge');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'es-badge';
+    b.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:900;padding:6px 11px;border-radius:var(--r-2);'
+      + 'font-size:var(--fs-1);background:var(--surface2);color:var(--text2);border:1px solid var(--border);'
+      + 'box-shadow:0 2px 10px rgba(0,0,0,.12);transition:opacity .3s;pointer-events:none';
+    document.body.appendChild(b);
+  }
+  b.textContent = msg;
+  b.style.color = bad ? 'var(--accent)' : 'var(--text2)';
+  b.style.opacity = '1';
+  clearTimeout(b._t);
+  b._t = setTimeout(() => { b.style.opacity = '0'; }, bad ? 6000 : 1800);
+}
+
+// QC changes reach _qcOverrides through several paths — per-point exclusion from the curve
+// editor, the restore buttons, the constraint panel — and more will be added. Hooking each
+// mutator means the next one silently is not saved, so watch the object instead. It holds a
+// handful of numbers per curve, so stringifying it every few seconds costs nothing.
+let _esQcSeen = '';
+function _esWatchQc() {
+  setInterval(() => {
+    if (_esOff) return;
+    let now = '';
+    try { now = JSON.stringify(window._qcOverrides || {}); } catch (e) { return; }
+    if (now === _esQcSeen) return;
+    _esQcSeen = now;
+    if (_lastResultsData && _lastResultsData.length) _esAutoSave('qc');
+  }, 3000);
+}
+
+// ── the offer on load ─────────────────────────────────────────────────────────
+async function _esOfferRestore() {
+  let st = null;
+  try { st = await _esGet(_ES_KEY); } catch (e) { return; }
+  if (!st || st.v !== ECHO_SESSION_V) return;
+  const when = (st.savedAt || '').slice(0, 16).replace('T', ' ');
+  const hasFiles = !!((st.files.echo || []).length);
+  const bar = document.createElement('div');
+  bar.id = 'es-resume';
+  bar.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:70px;z-index:950;display:flex;align-items:center;gap:12px;'
+    + 'padding:9px 14px;border-radius:var(--r-2);background:var(--surface2);border:1px solid var(--border2);'
+    + 'box-shadow:0 6px 24px rgba(0,0,0,.18);font-size:var(--fs-2);color:var(--text)';
+  bar.innerHTML = '<span>Unfinished analysis from <b>' + esc(when) + '</b>'
+    + (hasFiles ? '' : ' <span style="color:var(--text3)">(settings and QC only — the files were too large to keep)</span>') + '</span>'
+    + '<button id="es-resume-yes" style="padding:4px 10px;border-radius:var(--r-1);border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-size:var(--fs-1)">Resume</button>'
+    + '<button id="es-resume-no" style="padding:4px 10px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface3);color:var(--text2);cursor:pointer;font-size:var(--fs-1)">Discard</button>';
+  document.body.appendChild(bar);
+  document.getElementById('es-resume-yes').onclick = async () => {
+    bar.remove();
+    try { await echoRestore(st); } catch (e) { log('Restore failed: ' + e.message, 'err'); }
+  };
+  document.getElementById('es-resume-no').onclick = () => { bar.remove(); _esDel(_ES_KEY); };
+}
+
+// ── the project file ──────────────────────────────────────────────────────────
+async function saveEchoProject() {
+  try {
+    const st = await echoSnapshot(true);
+    const name = (document.getElementById('p-assay')?.value || 'echo').replace(/[^\w.-]+/g, '_')
+      + '-' + new Date().toISOString().slice(0, 10) + '.echo.json';
+    const blob = new Blob([JSON.stringify(st)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    log('Project saved: ' + name + ' (' + (blob.size / 1048576).toFixed(1) + ' MB)', 'ok');
+  } catch (e) {
+    alert('Could not save the project file: ' + e.message);
+  }
+}
+function openEchoProject() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json,.echo.json,application/json';
+  inp.onchange = async () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    try {
+      const st = JSON.parse(await f.text());
+      await echoRestore(st);
+    } catch (e) { alert('That file is not an Echo project: ' + e.message); }
+  };
+  inp.click();
+}
+
+(function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});onAssayTypeChange();try{_esWatchQc();_esOfferRestore();}catch(e){}})();
 window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='switchTab'||!e.data.tab)return;
   var id=e.data.tab;
@@ -9477,12 +9774,12 @@ function clearSetup() {
   echoFile = null; echoFiles = []; readerFiles = {}; smilesFile = null;
   // Reset file zone UI
   var ez = document.getElementById('echo-zone'); if(ez) ez.classList.remove('filled');
-  var ei = document.getElementById('echo-icon'); if(ei) ei.textContent = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>';
+  var ei = document.getElementById('echo-icon'); if(ei) ei.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>';
   var el = document.getElementById('echo-list'); if(el) el.innerHTML = '';
   var ri = document.getElementById('reader-input'); if(ri) ri.value = '';
   var rl = document.getElementById('rlist'); if(rl) rl.innerHTML = '';
   var si = document.getElementById('smiles-zone'); if(si) si.classList.remove('filled');
-  var sic = document.getElementById('smiles-icon'); if(sic) sic.textContent = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><circle cx="5.5" cy="17" r="2.4"/><circle cx="18.5" cy="17" r="2.4"/><path d="M10.7 8.1L6.8 14.9M13.3 8.1l3.9 6.8M8 17h8"/></svg>';
+  var sic = document.getElementById('smiles-icon'); if(sic) sic.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><circle cx="5.5" cy="17" r="2.4"/><circle cx="18.5" cy="17" r="2.4"/><path d="M10.7 8.1L6.8 14.9M13.3 8.1l3.9 6.8M8 17h8"/></svg>';
   var sn = document.getElementById('smiles-name'); if(sn){sn.textContent='';sn.style.display='none';}
   // Reset file inputs so same file can be re-selected
   ['echo-input','reader-input','smiles-input'].forEach(function(id){
