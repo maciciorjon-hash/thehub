@@ -5,9 +5,41 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-08-20 · **v1.6.0** · branch `main`, pushed. `git log -1` for the hash.
-- The Labbook/Archive rework and the visual pass landed across ~24 commits. Every piece has a
-  section in `CLAUDE.md`; this file is the running order, the open ends, and the traps.
+- Date: 2026-08-22 · **v1.8.0** · branch `main`. **One commit is NOT pushed** — see below.
+- This pass was corrective: an audit found things the visual work could not see. Deployment did
+  not do what the docs said, three data paths reported things that were not true, and the
+  flagship saved nothing. Then four product gaps: closing an experiment, editing a setup,
+  getting a catalogue in and out, and reporting across experiments.
+
+### Blocked, needs Jon
+
+- **`.github/workflows/deploy.yml` cannot be pushed.** The stored PAT lacks the `workflow`
+  scope, so GitHub refuses the commit. Everything else is on `main`; the CI commit sits at the
+  local tip. Until it lands, **the Archive PWA slug still 404s in production** — confirmed with
+  `curl`, not inferred. Fix: add `workflow` scope to the token, then `git push`.
+
+## What changed this pass
+
+1. **Deployment told the truth.** CI built one profile with no `--profile`, so the Archive PWA
+   was never in the artifact and the public build was the full personal one. `openApp` now
+   enforces `ADMIN_ONLY_APPS` from every entry point (`#labbook` used to open Labbook for
+   anyone); `openCells` filters its three tabs for the same reason. `embed.py`'s card strip used
+   a lazy regex that cut mid-card — 4 opens, 3 closes — so `product` shipped 8 orphaned
+   fragments; it is a depth counter now.
+2. **dHUB survives without Firebase.** `initializeApp` was unguarded at the top of the one
+   `<script>` block that defines everything else, so blocked gstatic was a blank page.
+3. **`tools/check_js.py`** parses all 43 inline script blocks plus the concatenated injected
+   back-button script — the one that shipped a SyntaxError into all 19 apps unnoticed. Wired
+   into `embed.py` and CI.
+4. **Echo persists sessions** — IndexedDB autosave + `.echo.json`. Verified by SHA-256: every
+   input file returns byte-identical through both paths.
+5. **Labbook**: experiments can be closed (paused/abandoned/archived, and a chosen status is no
+   longer reverted by `syncExpStatus`); the setup can be re-applied after creation; reports
+   across a project or a date range; results and deviations finally reach the PDF; deviations
+   now see calculator edits, not just protocol params.
+6. **Sync is per record.** `save()` sent the whole tree every 1.2 s; it sends only what moved,
+   as one `update()`, and listens for other clients.
+7. **Archive Library** has CSV import/export with a preview and real dedupe keys.
 
 ## What exists now, in one pass
 
@@ -51,6 +83,26 @@ Compact coordination note. Read it before starting work; the full changelog is
   by hand.
 - Blueprint, Blot and Helix are out of the product profile. If they should be in, it is one line
   in `embed.py`.
+
+## Traps added this pass
+
+- **`node --check` is the whole test suite.** `tools/check_js.py` is the only thing standing
+  between a stray brace and 19 apps that fail silently in `srcdoc` iframes. Run it; do not
+  `--no-js-check` past it.
+- **A lazy `[\s\S]*?` to the next `</div>` cuts mid-element.** It stops at the first close on
+  its own line, which in a card is `.card-header-row`. Count depth. This is a second instance of
+  the end-anchor family of bugs already recorded below.
+- **`fillSetup` destroys its own template.** Placeholders are substituted in place, so a second
+  pass has nothing to fill — that is why blocks now carry `b.tpl`. And re-rendering prose you
+  have edited is data loss: only regenerate what still matches the template for the *old* setup.
+- **Print rules belong in `PRINT_CSS`, not the app stylesheet.** `buildOneNoteHtml` rescopes and
+  inlines `PRINT_CSS`; anything elsewhere comes out of OneNote unstyled. I put the new table
+  rules in the wrong place first and got exactly the documented unruled-table symptom.
+- **Record `_cloudSeen` only after the write resolves.** Recording it before makes a failed
+  write invisible to the next diff and the record is never retried.
+- **The preview browser's renderer dies during a full Echo analysis.** The committed pre-change
+  Echo does the same, so it is the pane, not your change — verify the pipeline in a real
+  browser and say so rather than claiming an end-to-end check you did not run.
 
 ## Traps
 

@@ -1276,9 +1276,63 @@ inside Labbook. Home and Experiments are edge-to-edge with `clamp()` padding. `.
 1060 → 1400 but **keeps a measure on purpose** — it is the prose column, and body text the full
 width of a 27" monitor is unreadable.
 
+## What this pass corrected (2026-08-22)
+
+Everything here was found by auditing rather than by using the app, which is the point: each one
+was invisible from the screen.
+
+**Deployment did not match the documentation.** `.github/workflows/deploy.yml` ran one command
+with no `--profile`, and `dist/` is gitignored — so `dist/archive-14cadcd792a2/` only ever
+existed on Jon's laptop. Every installed Archive home-screen app resolves to a 404 that its own
+cache-first service worker hides until a cache miss. CI now builds all four profiles and asserts
+the PWA files are in the artifact. **The slug must never change.**
+
+**`ADMIN_ONLY_APPS` was enforced only by the card renderer**, so `#labbook` opened Labbook for
+any visitor on the public Pages site. The check lives in `openApp` now — the one door every
+entry point uses — with a parked-and-replayed deep link, because `isAdmin` resolves after
+`DOMContentLoaded` and bouncing Jon out of his own link on reload is not a fix. `openCells`
+needs its own filter: it is asked about `cells` and loads three frames, two of them admin-only.
+
+**Three Labbook data paths reported things that were not true.** A rejected cloud write called
+`setSync(true)` and rendered as "Saved ✓". `applyEchoToPlate`'s bounds check compared
+`dims.rows`/`dims.cols` against a `{r,c}` object, so it never fired once and a 384 picklist wrote
+invisible-but-counted wells onto a 96 plate. `homeResultsCard` read `e.results`, which nothing
+writes — the card could never appear.
+
+**Echo saved nothing at all.** Ten `localStorage` calls, all `hub_theme`. It now autosaves to
+IndexedDB and can save/open an `.echo.json`. Nothing new was modelled: `_lastAnalysisParams` and
+`_qcOverrides` already existed, and `loadTestData()` already showed how to rebuild `File`
+objects from bytes. Settings are captured as *every form control with an id* rather than a list
+that would drift — with `_ES_SKIP` for the theme, because opening someone's project must not
+repaint your app.
+
+**Sync is per record.** `save()` did `r.set(LB.data)` — the whole tree, every 1.2 s — and
+`lbInitSync` read once and never listened. A per-record fingerprint is diffed against what the
+cloud last held, so one edited experiment sends two paths instead of thirteen. Incoming changes
+never re-render the record you have open (the caret rule `lbWatchCultures` already follows), and
+a record you have edited since your last push keeps *your* version and warns.
+
+**An experiment can be closed.** `paused` and `abandoned` join the three derived states, and a
+status you chose is locked so `syncExpStatus` stops reverting it. `archived` is separate from
+status. Closing never ticks the steps you did not do.
+
+**`e.setup` is editable.** `applySetupToBlocks` ran once, at creation, taking the volume
+rescaling with it. Blocks keep `b.tpl` so prose can be re-rendered — but only prose that still
+matches what the template produced for the old setup.
+
+**The deviation report was structurally empty for most experiments.** It early-returned on
+anything without `b.proto`/`b.params`, so a preset-built WB or CTG had nothing to report and a
+changed calculator value counted as nothing. `b.calcSeed` records the planned value.
+
+**Protocol days cannot be derived from the prose, and that is measured.** Only 18 of 153 stages
+contain any day-ish phrase. Accumulating waits produced 28 proposals of which ~6 were
+defensible; tightened to direct evidence it proposes 10.
+`tools/derive_protocol_days.py` writes a review TSV and injects nothing on its own. The friction
+it was meant to solve is already solved by `LB.data.protoDays`.
+
 ## Current state
 
-**v1.7.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-21. (Labbook moved to three surfaces this session — see above. Plasmids was retired earlier; its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.8.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-22. (Labbook moved to three surfaces this session — see above. Plasmids was retired earlier; its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Labbook home is a mockup awaiting a decision** — [`docs/mockups/labbook-home.html`](docs/mockups/labbook-home.html)
