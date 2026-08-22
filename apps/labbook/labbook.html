@@ -1934,27 +1934,35 @@ function parseEchoPicklist(text){
   return {plates:list, skipped:skipped, bad:bad, meta:meta};
 }
 // Apply one parsed destination plate onto the plate map, keeping everything it does not touch.
+// PLATE_FORMATS is {r,c}; this compared dims.rows/dims.cols, so both sides were undefined and
+// `n >= undefined` is always false — the guard never fired once. A 384 picklist dropped onto a
+// 96 plate wrote I1-P24: invisible to plRenderGrid, which only draws cells inside the format,
+// but counted by plateCount, summarised by plateSummary and exported to CSV. The record said
+// things about wells that were not on the plate. (Blueprint uses {rows,cols}; Labbook uses
+// {r,c}, and porting between them without translating fails silently — same trap as pdParseValues.)
 function applyEchoToPlate(plate,dest){
-  var n=0, dm=0;
+  var n=0, dm=0, out=0;
+  var dims=plateDims(plate);
   Object.keys(dest.wells).forEach(function(w){
-    if(!wellRC(w)) return;                        // outside this format — leave it alone
-    var d=plate.format, dims=plateDims(plate), rc=wellRC(w);
-    if(rc.r>=dims.rows||rc.c>=dims.cols) return;
+    var rc=wellRC(w);
+    if(!rc) return;                                 // not a well id at all
+    if(rc.r>=dims.r||rc.c>=dims.c){ out++; return; } // real well, wrong plate — do not record it
     var src=dest.wells[w];
     var cur=plate.wells[w]||(plate.wells[w]={});
     if(src.dmsoOnly){ cur.typeId='vehicle'; if(!cur.compound) cur.compound='DMSO'; dm++; }
     else { cur.typeId=cur.typeId||'dose'; cur.compound=src.compound; cur.conc=src.conc; n++; }
     cur.echoVol=Math.round(src.vol*100)/100;
-    n=n;
   });
-  return {compounds:n, vehicle:dm};
+  return {compounds:n, vehicle:dm, outside:out};
 }
 // 384 uses rows past H or columns past 12; anything smaller is a 96.
 function echoGuessFormat(dest){
   var mr=0, mc=0;
   Object.keys(dest.wells).forEach(function(w){ var rc=wellRC(w); if(!rc) return;
     mr=Math.max(mr,rc.r+1); mc=Math.max(mc,rc.c+1); });
-  if(mr>16||mc>24) return '1536';
+  // '1536' is not in PLATE_FORMATS, so newPlate() silently fell back to 96 — the largest
+  // picklist we can honestly hold becomes a 384, and the caller is told what was clipped.
+  if(mr>16||mc>24) return '384';
   if(mr>8||mc>12) return '384';
   if(mr>6||mc>8) return '96';
   return '96';
@@ -2085,6 +2093,11 @@ function plImportEcho(){
         toast('Imported '+out.compounds+' compound well'+(out.compounds===1?'':'s')
               +(out.vehicle?(' + '+out.vehicle+' vehicle'):'')
               +(res.skipped?(' · '+res.skipped+' failed transfer'+(res.skipped===1?'':'s')+' skipped'):''));
+        // Silently dropping wells that do not fit is how a picklist and a plate map end up
+        // disagreeing about what the experiment was.
+        if(out.outside) lbAlert(out.outside+' well'+(out.outside===1?'':'s')+' in this picklist fall outside a '
+              +plate.format+'-well plate and were not imported. Switch the plate to a larger format and import again '
+              +'if they belong here.',{title:'Wells outside the plate'});
       }
       if(res.plates.length===1) return go(res.plates[0]);
       lbPicker('Which destination plate?',res.plates.map(function(b){
@@ -2499,7 +2512,12 @@ function projColor(id){ var p=projById(id); return p?(p.color||'#5e87c5'):'#9ca0
 var _lbFbRef=null;
 function lbFb(){ if(_lbFbRef!==null) return _lbFbRef; try{ if(window.parent && window.parent.firebase){ _lbFbRef=window.parent.firebase.database().ref('journal/labbook'); } else _lbFbRef=undefined; }catch(e){ _lbFbRef=undefined; } return _lbFbRef; }
 var _syncT=null,_adopting=false,_synced=true;
-function setSync(ok){ _synced=ok; updateStatus(); }
+// The local write and the cloud write are different promises and must be reported separately.
+// They were not: save()'s .catch() called setSync(true), so a rejected r.set() rendered as
+// "Saved ✓ / Saved and synced". The work WAS on this device — that part was true — but the
+// pill claimed a durability that had just failed. _cloudFailed carries the difference.
+var _cloudFailed=false;
+function setSync(ok,cloudOk){ _synced=ok; if(cloudOk!==undefined) _cloudFailed=!cloudOk; updateStatus(); }
 // True only when there is a real cloud target. Standalone there is none, and the status pill
 // must not claim otherwise — "Saved and synced" on a build that syncs nowhere is the kind of
 // false durability promise that loses somebody's data.
@@ -2520,6 +2538,11 @@ function updateStatus(){ var p=el('lb-status'); if(!p) return; var txt=el('lb-st
     return;
   }
   if(!on){ p.classList.add('offline'); if(txt) txt.textContent='Offline'; p.title='Offline — changes saved locally'; }
+  else if(_synced && _cloudFailed){
+    // Saved here, not saved there. Say the smaller true thing rather than the bigger false one.
+    p.classList.add('offline'); if(txt) txt.textContent='Saved on this device';
+    p.title='Saved to this browser, but the cloud write was rejected — this notebook is not synced right now. Export a backup if it persists.';
+  }
   else if(_synced){ p.classList.add('online'); if(txt) txt.textContent='Saved ✓'; p.title='Saved and synced'; }
   else { p.classList.add('saving'); if(txt) txt.textContent='Saving…'; p.title='Saving changes…'; }
 }
@@ -2536,7 +2559,10 @@ function save(){
   // multi-step structural op serialises once. Keystrokes already arrive via queueSave (600ms).
   _lsDirty=true; clearTimeout(_lsT); _lsT=setTimeout(_flushLocal,150);
   setSync(false); clearTimeout(_syncT);
-  _syncT=setTimeout(function(){ _flushLocal(); var r=lbFb(); if(r){ try{ r.set(LB.data).then(function(){setSync(true);}).catch(function(){setSync(true);}); }catch(e){ setSync(true); } } else { setSync(true); } }, 1200);
+  _syncT=setTimeout(function(){ _flushLocal(); var r=lbFb();
+    if(r){ try{ r.set(LB.data).then(function(){setSync(true,true);}).catch(function(){setSync(true,false);}); }catch(e){ setSync(true,false); } }
+    else { setSync(true,true); }   // no cloud configured is not a cloud failure; hasCloud() renders that case
+  }, 1200);
 }
 // Never lose a pending local write if the tab is hidden/closed before the 150ms flush.
 window.addEventListener('pagehide',_flushLocal);
@@ -3340,8 +3366,13 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
     if(NM_ECHO){
       // A real picklist beats any ready-made layout: it is what the machine actually did.
       e.plate=newPlate(NM_ECHO.format);
-      applyEchoToPlate(e.plate,NM_ECHO.dest);
+      var _eo=applyEchoToPlate(e.plate,NM_ECHO.dest);
       e.plate.title=NM_ECHO.dest.name;
+      // echoGuessFormat caps at 384, so a denser picklist loses its overflow here too. The
+      // experiment is still worth creating; it just must not pretend the plate is complete.
+      if(_eo.outside) setTimeout(function(){ lbAlert(_eo.outside+' well'+(_eo.outside===1?'':'s')
+        +' in the picklist do not fit a '+e.plate.format+'-well plate and are not in this plate map.',
+        {title:'Wells outside the plate'}); },300);
       e.echoRun={protocol:(NM_ECHO.meta||{}).protocol||'', runDate:(NM_ECHO.meta||{}).runDate||'',
                  compounds:NM_ECHO.compounds.slice()};
     } else if(wantPlate){
@@ -3693,20 +3724,38 @@ function _homeAgo(ts){
   return Math.floor(d/7)+'w';
 }
 // ── results in from Echo, and the deviations the typed parameters give us for free ──
+// This read e.results, which nothing has ever written — the only writer is _mergeDHubContext,
+// and it writes e.integration.results. rows was therefore always empty and the card returned ''
+// on the next line, so "Results in from Echo" could not appear however many results you had.
+// The shape differs too: integration.results[] holds result SETS, each with a .rows[] array;
+// the card was reading set objects as if they were rows. Flatten, exactly as resultsPaneHtml does.
 function homeResultsCard(){
   var rows=[];
   Object.keys(LB.data.experiments).forEach(function(k){
     var e=LB.data.experiments[k];
-    (e.results||[]).forEach(function(r){ rows.push({r:r,e:e}); });
+    ((e.integration&&e.integration.results)||[]).forEach(function(set){
+      (set.rows||[]).forEach(function(r){ rows.push({r:r,e:e,set:set,t:set.createdAt||''}); });
+    });
   });
   if(!rows.length) return '';
-  rows=rows.slice(-6).reverse();
+  // Newest set first. createdAt is an ISO string, so a plain string compare is the right order.
+  rows.sort(function(a,b){ return String(b.t).localeCompare(String(a.t)); });
+  rows=rows.slice(0,6);
   var body=rows.map(function(x){
-    return '<div class="lh-res" onclick="openExp(\''+x.e.id+'\')">'
+    // potencyLabel arrives as "DC50 (nM)" — it already carries the unit, so pairing the whole
+    // label with the unit again reads "DC50 (nM) 12.4 nM". Take the name, and let the value
+    // carry the unit, the way pubResultsSentence does.
+    var name=String(x.set.potencyLabel||'Potency').split(' ')[0];
+    var pot=(x.r.potency===undefined||x.r.potency===null||x.r.potency==='')
+      ? '' : (name+' '+_rn(x.r.potency)+' '+(x.set.potencyUnit||'nM'));
+    // Echo sends flag as a boolean (Flag === 'Yes'), so printing it rendered the word "true".
+    // A flag means the fit was questionable; say that, and pass a text flag through if one comes.
+    var fl=(x.r.flag===true)?'flagged':(x.r.flag?String(x.r.flag):'');
+    return '<div class="lh-res" onclick="openExp(\''+x.e.id+'\')" title="'+esc((x.e.code||x.e.title||'')+' · '+(x.set.label||x.set.source||''))+'">'
       +'<span class="cmp">'+esc(x.r.compound||'—')+'</span>'
-      +'<span class="tgt">'+esc((x.r.target||'')+(x.r.label?(' · '+x.r.label):''))+'</span>'
-      +'<span class="val">'+esc(x.r.potency||'')+'</span>'
-      +(x.r.flag?('<span class="lh-flag">'+esc(x.r.flag)+'</span>'):'')+'</div>';
+      +'<span class="tgt">'+esc(x.r.target||x.set.label||'')+'</span>'
+      +'<span class="val">'+esc(pot)+'</span>'
+      +(fl?('<span class="lh-flag" title="Echo was not happy with this fit">'+esc(fl)+'</span>'):'')+'</div>';
   }).join('');
   return '<div class="lh-card w4"><div class="lh-ch"><span class="lh-t">Results in from Echo</span></div>'
     +'<div class="lh-cb">'+body+'</div></div>';
@@ -3862,15 +3911,19 @@ function delResult(expId,rid){
 // same way the protocol steps do.
 function pubResultsSentence(e){
   var rs=(e.integration&&e.integration.results)||[];
-  var rows=[]; var pl='DC50', el2='Dmax';
+  var rows=[]; var pl='DC50', el2='Dmax', pu='nM', eu='%';
   rs.forEach(function(r){ (r.rows||[]).forEach(function(x){ if(!x.flag&&isFinite(parseFloat(x.potency))) rows.push(x); });
     if(r.potencyLabel) pl=String(r.potencyLabel).split(' ')[0];
-    if(r.effectLabel) el2=String(r.effectLabel).split(' ')[0]; });
+    if(r.effectLabel) el2=String(r.effectLabel).split(' ')[0];
+    // The unit used to be the literal 'nM', which happens to be right for Echo's DC50_nM and
+    // would be quietly wrong for anything else that ever sends results here.
+    if(r.potencyUnit) pu=String(r.potencyUnit);
+    if(r.effectUnit) eu=String(r.effectUnit); });
   if(!rows.length) return '';
   rows.sort(function(a,b){ return parseFloat(a.potency)-parseFloat(b.potency); });
   var best=rows.slice(0,3).map(function(x){
-    return String(x.compound)+' ('+pl+' '+_rn(x.potency)+' nM'
-      +(isFinite(parseFloat(x.effect))?(', '+el2+' '+_rn(x.effect)+'%'):'')+')'; });
+    return String(x.compound)+' ('+pl+' '+_rn(x.potency)+' '+pu
+      +(isFinite(parseFloat(x.effect))?(', '+el2+' '+_rn(x.effect)+eu):'')+')'; });
   return 'Dose–response curves were fitted with a four-parameter logistic model; '
     +rows.length+' compound'+(rows.length===1?'':'s')+' gave measurable '+pl+' values, the most potent being '
     +best.join(', ')+'.';
