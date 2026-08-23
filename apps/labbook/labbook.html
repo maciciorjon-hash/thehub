@@ -679,7 +679,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .nm-preview .nm-pv-row{display:flex;gap:8px;align-items:baseline;font-size:var(--fs-3);padding:5px 8px;background:var(--surface2);border-radius:var(--r-1);border-left:3px solid var(--accent,#5e87c5);}
 .nm-preview .nm-pv-day{font-weight:700;color:var(--accent,#5e87c5);white-space:nowrap;font-size:var(--fs-2);}
 .nm-preview .nm-pv-t{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.nm-preview .nm-pv-ref{font-size:var(--fs-1);background:var(--surface3);color:var(--text3);border-radius:var(--r-1);padding:1px 5px;text-transform:uppercase;letter-spacing:.3px;}
+.nm-preview .nm-pv-dur{font-size:var(--fs-1);color:var(--text3);background:var(--surface3);border-radius:var(--r-1);padding:0 5px;margin-left:5px;white-space:nowrap;}
+.nm-pv-ref{font-size:var(--fs-1);background:var(--surface3);color:var(--text3);border-radius:var(--r-1);padding:1px 5px;text-transform:uppercase;letter-spacing:.3px;}
 /* ── Plate maps ── */
 /* Inline read-only card (experiment, step, notebook) */
 .blk-plate{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:9px 12px 11px;margin:0 0 10px;}
@@ -3517,6 +3518,23 @@ function nmAddProto(){ ensureArchive(function(){ var idx=archiveIndex(); var ite
   nmLoadStages(e); NM_PROTOS.push(e); nmProtos(); nmPreview(); }); }); }
 // Pull the protocol's stage list up front so the modal can show the real day structure and
 // ask which delivery method you want, instead of promising "1 block" and producing 8.
+// 16 h is how a protocol spells "overnight"; saying "16 h" back at someone is worse than the
+// word they wrote.
+function _durTxt(h){
+  h=+h||0; if(!h) return '';
+  if(h>=15&&h<=18) return 'overnight';
+  if(h>=24&&h%24===0) return (h/24)+' day'+(h===24?'':'s');
+  return (h%1?h.toFixed(1):h)+' h';
+}
+// Stage names were stored HTML-escaped by the protocol migration ("Transfer &amp; blotting").
+// Archive writes them into its pane as raw HTML so they read correctly there, which is why this
+// went unnoticed; Labbook puts them through esc() and escaped them a second time, so the block
+// title and the New-experiment timeline both showed "Transfer &amp;amp; blotting". Decode once,
+// where the name enters Labbook, rather than teaching every renderer about it.
+function _deEnt(t){
+  if(!t || String(t).indexOf('&')<0) return t;
+  var d=document.createElement('textarea'); d.innerHTML=String(t); return d.value;
+}
 function nmLoadStages(p){
   var P=null; try{ var W=_arcWin(); if(W&&W.ARCHIVE_PROTOCOL) P=W.ARCHIVE_PROTOCOL(p.id); }catch(e){}
   if(!P||!(P.stages||[]).length) return;
@@ -3525,7 +3543,7 @@ function nmLoadStages(p){
   var mine=protoDays(p.id);
   p.stages=P.stages.map(function(st){
     var d=(mine&&mine[st.id]!=null)?mine[st.id]:(st.day||0);
-    return {id:st.id,name:st.name,day:d,variant:st.variant||null};
+    return {id:st.id,name:_deEnt(st.name),day:d,variant:st.variant||null,durationH:st.durationH||null};
   });
 }
 // Your lab's own day cadence for a protocol's stages. Archive only states a stage's day where
@@ -3578,6 +3596,11 @@ function nmPreview(){ var host=el('nm-preview'); if(!host) return;
         +' title="'+(own?'Your cadence for this stage':'From the protocol')+'"'
         +' onchange="nmSetStageDay('+i+',\''+esc(x.id)+'\',this.value)"> '+fmtDate(addDays(start,d))+'</span>'
         +'<span class="nm-pv-t">'+esc(x.name||p.name)
+        // The wait the protocol states at the end of this stage. It is why the next one sits a
+        // day later, so showing it makes the day column explicable instead of just assertive —
+        // and it is the only thing that reads durationH, which was null on all 153 stages and
+        // consumed by nobody.
+        +(x.durationH?(' <span class="nm-pv-dur" title="This stage ends with a wait of about this long">'+esc(_durTxt(x.durationH))+'</span>'):'')
         +(si===0?' <span class="nm-pv-ref">'+esc(p.name||p.id)+'</span>':'')
         +(si===0&&mine?' <button type="button" class="nm-pv-reset" onclick="nmResetDays('+i+')">reset days</button>':'')
         +'</span></div>'; }).join('');
@@ -3651,9 +3674,9 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
         var body=(si===0&&pre.length)?pre.concat(st.body||[]):(st.body||[]);
         var d=off+(st.day||0);
         var b={id:uid(), date:addDays(startDate,d), dayOffset:d,
-               title:st.name||p.name||p.id, part:st.part||p.name||p.id, sourcePid:p.id,
+               title:_deEnt(st.name)||p.name||p.id, part:_deEnt(st.part)||p.name||p.id, sourcePid:p.id,
                proto:{pid:p.id, protoName:P.name, stageId:st.id, v:P.version,
-                      name:st.name, badge:st.badge||null, variant:st.variant||null, body:body},
+                      name:_deEnt(st.name), badge:st.badge||null, variant:st.variant||null, body:body},
                params:{}, stepNotes:{}, stepDone:{}, html:'', done:false, completedAt:null};
         refreshProtoHtml(b);
         extra.push(b);

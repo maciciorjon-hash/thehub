@@ -28,6 +28,12 @@ DATA_RE = re.compile(r'(var PROTOCOL_DATA\s*=\s*)(\{.*?\})(;\s*\n)', re.S)
 
 # Phrases that mean "and then time passes". Ordered longest-first so "next morning" is not
 # eaten by "next".
+# "overnight samples", "overnight culture" — overnight used as an adjective is a REFERENCE to a
+# wait that already happened, not a new one. ip/s4 reads "Add overnight samples to beads", and
+# treating that as a fresh wait pushed Elution to day 2 of a protocol where it follows the same
+# morning. Strip that construction before looking for waits.
+OVERNIGHT_NOUN = re.compile(r'\bover[- ]?night\s+(?!at\b|in\b|on\b|for\b|to\b)[a-z]+s?\b', re.I)
+
 WAIT = [
     (re.compile(r'\bover[- ]?night\b|\bo/n\b', re.I),                 16.0),
     (re.compile(r'\bnext morning\b|\bfollowing morning\b', re.I),     16.0),
@@ -77,15 +83,16 @@ OPTIONAL = re.compile(r'\b(?:or|either)\s+(?:\w+\s+){0,3}?over[- ]?night\b', re.
 def wait_hours(text):
     """Hours implied at the END of this stage, with the phrase that says so."""
     best, why = 0.0, ''
+    scan = OVERNIGHT_NOUN.sub(' ', text)      # drop "overnight <noun>" before looking for waits
     for rx, hrs in WAIT:
-        m = rx.search(text)
+        m = rx.search(scan)
         if not m:
             continue
-        if OPTIONAL.search(text) and 'night' in m.group(0).lower():
+        if OPTIONAL.search(scan) and 'night' in m.group(0).lower():
             continue
         if hrs > best:
             best, why = hrs, m.group(0)
-    for m in DUR.finditer(text):
+    for m in DUR.finditer(scan):
         lo = float(m.group(1))
         hi = float(m.group(2)) if m.group(2) else lo
         unit = m.group(3).lower()
@@ -138,6 +145,17 @@ def analyse(D):
                 src, ev = 'the previous stage ends with a wait', prev_why
             else:
                 day, src, ev = st.get('day', 0), '', ''
+
+            # A stage can never happen before the one in front of it. Without this floor, a
+            # bumped stage followed by an evidence-free one produced ip 0,0,0,1,0 — Elution
+            # dated a day BEFORE the bead capture it follows — and lenti 0,1,0, infecting
+            # before harvesting. This is not accumulation: it invents no new day, it only
+            # refuses to go backwards inside one branch. Only the review file showed it; the
+            # per-row diff looked fine, because each row on its own was.
+            if variant == prev_variant and day < prev_day:
+                day = prev_day
+                if not src:
+                    src, ev = 'follows the previous stage on the same day', ''
 
             rows.append({
                 'pid': pid, 'sid': st.get('id'), 'name': (st.get('name') or '').strip(),
