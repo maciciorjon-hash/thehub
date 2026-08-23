@@ -5,18 +5,15 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-08-22 · **v1.8.0** · branch `main`. **One commit is NOT pushed** — see below.
+- Date: 2026-08-23 · **v1.8.0** · branch `main`, everything pushed and deployed.
 - This pass was corrective: an audit found things the visual work could not see. Deployment did
   not do what the docs said, three data paths reported things that were not true, and the
   flagship saved nothing. Then four product gaps: closing an experiment, editing a setup,
-  getting a catalogue in and out, and reporting across experiments.
-
-### Blocked, needs Jon
-
-- **`.github/workflows/deploy.yml` cannot be pushed.** The stored PAT lacks the `workflow`
-  scope, so GitHub refuses the commit. Everything else is on `main`; the CI commit sits at the
-  local tip. Until it lands, **the Archive PWA slug still 404s in production** — confirmed with
-  `curl`, not inferred. Fix: add `workflow` scope to the token, then `git push`.
+  getting a catalogue in and out, and reporting across experiments. Then a shell dead-code
+  sweep, the protocol-day derivation, and one SheetJS for the whole Hub.
+- **The Archive PWA is live**: `…/archive-14cadcd792a2/` returns 200 with all five files, where
+  it returned 404 for as long as CI has existed. Root `/` serves the 11.61 MB bundle.
+- Full detail is the 2026-08-22/23 entry at the top of `docs/SESSION_HISTORY.md`.
 
 ## What changed this pass
 
@@ -40,6 +37,14 @@ Compact coordination note. Read it before starting work; the full changelog is
 6. **Sync is per record.** `save()` sent the whole tree every 1.2 s; it sends only what moved,
    as one `update()`, and listens for other clients.
 7. **Archive Library** has CSV import/export with a preview and real dedupe keys.
+8. **Shell dead code removed, cross-checked.** Four of the six names the audit flagged were live
+   bridges other apps reach through `window.parent`. `_allGroups` and `wgCompleteTask` went, and
+   with them `PRIMARY_CARDS` — whose only reader `_allGroups` was. `audit_app.py` gained
+   `--xref` and top-level data-table checking; the repo is clean under it.
+9. **8 protocol stage days injected** across 6 protocols, from `tools/derive_protocol_days.py`
+   via a reviewed TSV. `PROTOCOL_VERSION` deliberately not bumped — see Open ends.
+10. **One SheetJS, carried by the shell.** Dora, Lumina and Iceberg take `window.parent.XLSX`
+   and work with no signal; their CDN tag is the standalone fallback. +0.84 MB.
 
 ## What exists now, in one pass
 
@@ -69,15 +74,24 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Open ends
 
-- **150 of 153 stage `day` values are still 0** by design — they get set in the New-experiment
-  timeline against real experiments, and `LB.data.protoDays` remembers them per protocol.
-- **`PROTOCOL_VERSION` is still 1** and nothing bumps it, so the update-diff machinery is tested
-  but has no real case to serve yet.
+- **142 of 153 stage `day` values are 0**, and that is the right number, not a backlog. Only 18
+  stages contain any day-ish phrase and several are false positives; the honest yield was 8.
+  `docs/protocol-days-review.tsv` records the three rejections and why. The rest get set in the
+  New-experiment timeline against a real experiment, and `LB.data.protoDays` remembers them per
+  protocol — which is the mechanism, not a workaround for one.
+- **`PROTOCOL_VERSION` is still 1, deliberately.** `b.proto` does not snapshot `day` and
+  `protoDiff` compares step ids, params and prose, so bumping it for a day-only change would
+  mark every existing block outdated and then show an empty diff. Bump it when protocol *prose*
+  changes; the update-diff machinery still has no real case to serve.
 - **The `/journal` rules still need pasting into the Firebase console.** They already cover the
   new `antibodies`/`primers`/`plasmids` children, so no rules change is needed — but until they
   are deployed the Library is local per device.
-- **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`), which the offline notes in CLAUDE.md
-  do not mention. Not fixed.
+- **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
+  unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
+  with no page-level banner in either app that uses it.
+- **The 2026-08-21 session has no `SESSION_HISTORY.md` entry** (the workspace rail, the three
+  Labbook surfaces, the tooltip/icons/background pass). CLAUDE.md carries the design facts; the
+  changelog does not. Not mine to reconstruct.
 - **The stop-hook is stale**: `.claude/stop-hook.sh` targets `The Hub.html` (gone) and a
   `LAST_SESSION_END` marker that no longer exists, so it is a no-op. The changelog is maintained
   by hand.
@@ -103,6 +117,24 @@ Compact coordination note. Read it before starting work; the full changelog is
 - **The preview browser's renderer dies during a full Echo analysis.** The committed pre-change
   Echo does the same, so it is the pane, not your change — verify the pipeline in a real
   browser and say so rather than claiming an end-to-end check you did not run.
+- **`audit_app.py` cannot see a cross-app bridge.** Apps reach the shell through
+  `window.parent`, so per file the shell's live bridges look like orphans. Run it with
+  `--xref` over the shell and every app before deleting anything. CSS is the opposite and stays
+  per file: a `srcdoc` iframe is a separate document, so a class the shell defines and never
+  applies is dead however many apps use the same name.
+- **Check a candidate against the pre-session commit before deleting it.** If the count is
+  unchanged it was already dead and is not something you orphaned — and if it changed, find out
+  what you broke first.
+- **Reviewing rows one at a time cannot see the sequence.** Every proposed protocol day was
+  defensible alone; loaded into the timeline, `ip` read 0,0,0,1,0 — elution dated a day *before*
+  the capture it follows. Check the whole ordering, not each diff.
+- **"overnight" as an adjective is a reference, not a wait.** "Add overnight samples to beads"
+  describes a wait that already happened. Same shape as the `&amp;` trap: text that means one
+  thing to a reader and another to a matcher.
+- **`len(str)` is characters, not bytes.** SheetJS's codepage tables are multi-byte, so a
+  639,127-char block is 882 KB on disk. Quote sizes from `wc -c`, not from Python's `len`.
+- **`selectNode` takes a string kind, not an object.** `selectNode({kind:'home'})` silently does
+  nothing, which reads as "the view is broken" when it is the test that is.
 
 ## Traps
 
@@ -135,10 +167,15 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Verification used throughout
 
-`migrate_protocols.py --from <pre-migration> --check` (33/33) · inline-JS syntax check of every
-edited file · `python3 -m py_compile` · `check_shared.py` · all four `embed.py` profiles ·
+`tools/check_js.py` (all 43 blocks; also runs inside `embed.py`) · `tools/check_shared.py` ·
+`tools/audit_app.py --xref shell/hub-shell.html apps/*/*.html` · `migrate_protocols.py --from
+<pre-migration> --check` (33/33) · `python3 -m py_compile` · all four `embed.py` profiles ·
 `git diff --check` · browser checks in **both** paths (standalone and dHUB) · and a **fresh tab**
 for console errors.
+
+The pre-migration file for the protocol round trip is `git show 0af7612:Archive/archive.html`
+(the path was `Archive/` before the repo reorganisation). `migrate_protocols.py` refuses to run
+without `--from`, and pointed at its own output it passes vacuously and an inject wipes all 33.
 
 ## Coordination rule
 
