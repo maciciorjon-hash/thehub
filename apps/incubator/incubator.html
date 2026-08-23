@@ -167,7 +167,23 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 .vsl{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6px 4px 10px;border-radius:var(--r3);border:1px solid transparent;transition:background .18s,border-color .18s,box-shadow .25s;}
 .vsl:hover{background:var(--glass);border-color:var(--glass-brd);}
 .vsl-face{position:relative;background:none;border:none;cursor:pointer;padding:0;width:100%;display:flex;align-items:center;justify-content:center;}
-.vsl-svg{width:104px;height:104px;filter:drop-shadow(0 8px 14px rgba(30,40,70,.14));transition:transform .2s var(--ease);}
+.vsl-svg{width:100%;max-width:190px;height:auto;aspect-ratio:232/108;filter:drop-shadow(0 8px 14px rgba(30,40,70,.14));transition:transform .2s var(--ease);}
+/* The medium drifts red -> orange -> yellow as the culture grows. Transitioning the gradient
+   stops means the change is a drift, not a jump, wherever the SVG survives a re-render. */
+.vsl-s1,.vsl-s2{transition:stop-color 1.2s var(--ease);}
+/* Three faces of one translucent box. The front is opaque so the neck drawn behind it does
+   not show through the medium as a diagonal; the top and end are tinted from it. */
+.vsl-face-top{fill:#eef2f8;stroke:none;}
+[data-theme="dark"] .vsl-face-top{fill:#2c3346;}
+.vsl-face-end{fill:#e2e8f2;stroke:none;}
+[data-theme="dark"] .vsl-face-end{fill:#222838;}
+.vsl-rim2{fill:none;stroke:rgba(28,38,66,.16);stroke-width:1.3;}
+[data-theme="dark"] .vsl-rim2{stroke:rgba(255,255,255,.16);}
+.vsl-cap-hi{fill:rgba(255,255,255,.32);}
+.vsl-neck-ring{fill:#dfe5ef;stroke:rgba(28,38,66,.22);stroke-width:1.2;}
+[data-theme="dark"] .vsl-neck-ring{fill:#2a3145;stroke:rgba(255,255,255,.18);}
+.vsl-surface{stroke:none;}
+.vsl-gloss{opacity:.5;}
 .vsl-face:hover .vsl-svg{transform:translateY(-4px);}
 .vsl-glass{fill:rgba(255,255,255,.14);stroke:var(--border2);stroke-width:1.6;}
 [data-theme="dark"] .vsl-glass{fill:rgba(255,255,255,.06);stroke:rgba(255,255,255,.18);}
@@ -187,7 +203,7 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 .vsl-sheen{fill:rgba(255,255,255,.28);}
 /* Dark ink, not white. The medium is pastel now, so white needed a heavy shadow to survive
    on the yellow and still read as a smudge; dark ink is legible on all three. */
-.vsl-p{position:absolute;left:0;right:0;bottom:24%;font-size:var(--fs-6);font-weight:700;color:#4a3b33;text-shadow:0 1px 0 rgba(255,255,255,.45);letter-spacing:.2px;pointer-events:none;}
+.vsl-p{position:absolute;left:16%;right:0;bottom:26%;font-size:var(--fs-5);font-weight:700;color:#4a3b33;text-shadow:0 1px 2px rgba(255,255,255,.7),0 0 6px rgba(255,255,255,.5);letter-spacing:.2px;pointer-events:none;}
 .vsl-name{font-size:var(--fs-4);font-weight:700;color:var(--text);margin-top:4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .vsl-tag{font-size:var(--fs-1);font-weight:600;margin-top:2px;line-height:1.3;color:var(--text3);max-width:100%;}
 .vsl.due .vsl-svg{animation:vslPulse 2.2s ease-in-out infinite;}
@@ -492,54 +508,125 @@ function setIncView(v){ if(v!==_incView){ _incView=v; try{ localStorage.setItem(
 // Phenol red, not a traffic light. Fresh medium is red-pink and acidifies through orange to
 // yellow as the culture grows out — so a healthy flask is red and an overdue one is yellow.
 // It looks inverted if you read it as a status colour; it is the medium.
-function _vslStops(st){ return st==='warn' ? ['#e8d492','#ddc477'] : (st==='soft' ? ['#e8b07a','#dd9a5e'] : ['#d98b86','#c47872']); }
-// Reclined T-flask lying on its side (matches Jon's ref image): angled body, blue ribbed
-// screw cap on the left neck, media pooled along the bottom. Media colour fills via the clip.
-// ── A T-flask, drawn as one object ─────────────────────────────────────────
-// The old drawing was a rectangle with a stub stuck on its side, which is why it read as a
-// blob rather than a flask. What makes a T-flask recognisable is the canted neck: the body is
-// a rounded rectangle with its top-left corner cut away at 45°, and a tube rises out of that
-// cut. Neck and cap are drawn in a rotated frame so the geometry stays readable.
-var FLASK_BODY = 'M22 50 L38 34 Q40.5 31.5 44 31.5 L84 31.5 Q92 31.5 92 39.5 '
-               + 'L92 84 Q92 92 84 92 L30 92 Q22 92 22 84 Z';
+// ── How red the medium is ──────────────────────────────────────────────────
+// Phenol red is not a status light: fresh medium is red-pink, and as the culture grows it
+// acidifies through orange to yellow. So the colour has to track CELL NUMBER, not an alert
+// level — which is why this is a continuous fraction and not the three fixed pairs it used
+// to be (a flask jumped from healthy to warning with nothing in between).
+//
+// Cell number doubles every `doublingH`, and a 1:N split means you need log2(N) doublings to
+// get back to where you were. Both numbers are already in CELL_REF, so:
+//
+//     done   = hours since seeding / doublingH
+//     needed = log2(split ratio)
+//     frac   = done / needed          0 = just split, 1 = back to confluent, >1 = overdue
+//
+// That is why doubling time matters: two lines split 1:8 on the same day diverge, because
+// HCT116 (21 h) gets through three doublings while U2OS (29 h) is still on its second.
+function _vslFrac(cell, now){
+  if(!cell || !cell.seeded) return 0;
+  var ref = refLookup(cell.line) || {};
+  var dh = +(cell.doublingH || ref.doublingH || 0);
+  var ratio = String(cell.ratio || ref.ratio || '');
+  var n = parseFloat((ratio.split(':')[1]||'')) || 0;
+  var hours = (now - cell.seeded) / 3600000;
+  if(dh > 0 && n > 1){
+    var needed = Math.log(n) / Math.LN2;          // 1:8 -> 3 doublings
+    return Math.max(0, Math.min(1.25, (hours/dh) / needed));
+  }
+  // No doubling time for this line: fall back to the split interval, which is the same
+  // statement made coarsely. Better a rough curve than a flask that never changes colour.
+  var days = +(cell.intervalDays || ref.intervalDays || 0);
+  if(days > 0) return Math.max(0, Math.min(1.25, (hours/24) / days));
+  return 0;
+}
+// Phenol red through its real range: red-pink -> orange -> yellow. Interpolated, so the flask
+// drifts rather than stepping.
+var _PHENOL = [
+  {at:0.00, a:'#d8848a', b:'#c06f78'},   // fresh medium, the colour of the reference photo
+  {at:0.55, a:'#dc9a72', b:'#c98159'},   // turning
+  {at:0.90, a:'#e3bb72', b:'#d3a355'},   // orange
+  {at:1.25, a:'#e9db86', b:'#dbc95f'}    // spent, yellow
+];
+function _mix(c1,c2,t){
+  function p(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+  var A=p(c1), B=p(c2);
+  return '#'+[0,1,2].map(function(i){
+    return Math.round(A[i]+(B[i]-A[i])*t).toString(16).padStart(2,'0'); }).join('');
+}
+function _vslStops(frac){
+  // Kept callable with the old status strings so nothing that still passes 'warn' breaks.
+  if(typeof frac==='string') frac = frac==='warn' ? 1.1 : (frac==='soft' ? 0.8 : 0.15);
+  frac = Math.max(0, Math.min(1.25, +frac||0));
+  for(var i=0;i<_PHENOL.length-1;i++){
+    var s=_PHENOL[i], e=_PHENOL[i+1];
+    if(frac<=e.at){ var t=(frac-s.at)/(e.at-s.at); return [_mix(s.a,e.a,t), _mix(s.b,e.b,t)]; }
+  }
+  var L=_PHENOL[_PHENOL.length-1]; return [L.a,L.b];
+}
 
+// ── The flask ──────────────────────────────────────────────────────────────
+// Drawn from Jon's reference: a T-flask lying on its side in three-quarter view, canted
+// shoulder and neck at the left, blue ribbed screw cap, translucent walls, medium pooled
+// along the bottom with its surface visible through the top face.
+//
+// Built in a flat local frame (long axis = x) and rotated once, so the geometry stays
+// readable and the perspective is one skew rather than forty hand-placed points.
+// Geometry, in a flat local frame with the long axis on x. What makes a T-flask a T-flask is
+// the canted shoulder: the body tapers from full height down to a short neck at the lower
+// left, and the cap screws onto that. Drawn as three faces of one box so it reads as a volume.
+//   front  the face we look at, including the shoulder chamfer
+//   top    the same upper silhouette pushed up-right, so the chamfer stays visible in plan
+//   end    the short right-hand face that gives it depth
+var FLASK_FRONT = 'M62 64 L92 28 L196 28 L196 92 L62 92 Z';
+var FLASK_TOP   = 'M62 64 L92 28 L196 28 L216 10 L112 10 L82 46 Z';
+var FLASK_END   = 'M196 28 L216 10 L216 74 L196 92 Z';
 function flaskSvg(id, st){
-  var s = _vslStops(st), g = 'vg_' + id, cp = 'cvg_' + id, hl = 'vh_' + id;
-  // Confluence is not tracked, so the fill level is fixed — it says "there is medium in
-  // this flask", not how much.
-  var top = 58;
-  return '<svg class="vsl-svg" viewBox="0 0 104 104" aria-hidden="true">'
+  var s = _vslStops(st), g='vg_'+id, cp='cvg_'+id, hl='vh_'+id, tp='vt_'+id;
+  var LEVEL = 58;                    // where the medium sits — how full, not how confluent
+  return '<svg class="vsl-svg" viewBox="0 0 232 108" aria-hidden="true">'
     + '<defs>'
-      + '<linearGradient id="' + g + '" x1="0" y1="1" x2="0" y2="0">'
-        + '<stop offset="0" stop-color="' + s[1] + '"/><stop offset="1" stop-color="' + s[0] + '"/></linearGradient>'
-      + '<linearGradient id="' + hl + '" x1="0" y1="0" x2="1" y2="0">'
-        + '<stop offset="0" stop-color="rgba(255,255,255,.55)"/><stop offset="1" stop-color="rgba(255,255,255,0)"/></linearGradient>'
-      + '<clipPath id="' + cp + '"><path d="' + FLASK_BODY + '"/></clipPath>'
+      + '<linearGradient id="'+g+'" x1="0" y1="1" x2="0" y2="0">'
+        + '<stop class="vsl-s1" offset="0" stop-color="'+s[1]+'"/>'
+        + '<stop class="vsl-s2" offset="1" stop-color="'+s[0]+'"/></linearGradient>'
+      + '<linearGradient id="'+tp+'" x1="0" y1="0" x2="1" y2="0">'
+        + '<stop class="vsl-s2" offset="0" stop-color="'+s[0]+'"/>'
+        + '<stop class="vsl-s1" offset="1" stop-color="'+s[1]+'"/></linearGradient>'
+      + '<linearGradient id="'+hl+'" x1="0" y1="0" x2="1" y2="1">'
+        + '<stop offset="0" stop-color="rgba(255,255,255,.8)"/>'
+        + '<stop offset="1" stop-color="rgba(255,255,255,0)"/></linearGradient>'
+      + '<clipPath id="'+cp+'"><path d="'+FLASK_FRONT+'"/></clipPath>'
     + '</defs>'
-    // Neck and cap, drawn before the body so the join disappears under it. The body needs an
-    // opaque base for that to work — with a translucent glass fill the neck showed straight
-    // through the medium as a diagonal line.
-    + '<g transform="translate(32 44) rotate(45)">'
-      + '<rect class="vsl-neck" x="-30" y="-7.5" width="34" height="15" rx="3.5"/>'
-      + '<rect class="vsl-cap" x="-39" y="-10" width="11" height="20" rx="3.5"/>'
-      + '<line class="vsl-capline" x1="-35.5" y1="-6" x2="-35.5" y2="6"/>'
-      + '<line class="vsl-capline" x1="-32" y1="-6" x2="-32" y2="6"/>'
+    + '<g transform="translate(4 6) rotate(-6 116 54)">'
+      // Neck and cap first: the neck join then disappears under the opaque front face.
+      + '<rect class="vsl-neck" x="34" y="62" width="34" height="26" rx="4"/>'
+      + '<rect class="vsl-neck-ring" x="30" y="59" width="8" height="32" rx="3"/>'
+      + '<g class="vsl-capg">'
+        + '<rect class="vsl-cap" x="2" y="55" width="32" height="40" rx="8"/>'
+        + '<rect class="vsl-cap-hi" x="6" y="60" width="7" height="30" rx="3.5"/>'
+        + '<line class="vsl-capline" x1="17" y1="59" x2="17" y2="91"/>'
+        + '<line class="vsl-capline" x1="22" y1="60" x2="22" y2="90"/>'
+        + '<line class="vsl-capline" x1="27" y1="62" x2="27" y2="88"/>'
+      + '</g>'
+      // The box, back faces first.
+      + '<path class="vsl-face-end" d="'+FLASK_END+'"/>'
+      + '<path class="vsl-face-top" d="'+FLASK_TOP+'"/>'
+      + '<path class="vsl-base" d="'+FLASK_FRONT+'"/>'
+      // Medium. The surface is drawn as a receding plane so it reads as a volume rather than
+      // a coloured rectangle, and the meniscus sits on its front edge.
+      + '<g clip-path="url(#'+cp+')">'
+        + '<rect x="55" y="'+LEVEL+'" width="150" height="46" fill="url(#'+g+')"/>'
+        + '<path class="vsl-surface" d="M62 '+LEVEL+' L196 '+LEVEL+' L216 '+(LEVEL-18)+' L82 '+(LEVEL-18)+' Z" fill="url(#'+tp+')" opacity=".45"/>'
+        + '<path class="vsl-men" d="M62 '+LEVEL+' L196 '+LEVEL+'"/>'
+      + '</g>'
+      // One long streak of gloss across the front face, angled with the box.
+      + '<path class="vsl-gloss" d="M104 34 L136 34 L112 86 L82 86 Z" fill="url(#'+hl+')"/>'
+      + '<path class="vsl-rim" d="'+FLASK_FRONT+'"/>'
+      + '<path class="vsl-rim2" d="'+FLASK_TOP+'"/>'
+      + '<path class="vsl-rim2" d="'+FLASK_END+'"/>'
     + '</g>'
-    // Body: an opaque base, the medium clipped inside it, then the outline last so nothing
-    // paints over it.
-    + '<path class="vsl-base" d="' + FLASK_BODY + '"/>'
-    + '<g clip-path="url(#' + cp + ')">'
-      + '<rect x="20" y="' + top + '" width="74" height="40" fill="url(#' + g + ')"/>'
-      + '<path class="vsl-men" d="M20 ' + top + ' Q57 ' + (top - 3) + ' 94 ' + top + '"/>'
-      // One soft highlight down the left wall — the only piece of gloss kept. It starts below
-      // the chamfer, or the clip cuts its top corner off at an angle and it reads as a smudge.
-      + '<rect x="27" y="' + (top - 6) + '" width="7" height="30" rx="3.5" fill="url(#' + hl + ')"/>'
-    + '</g>'
-    + '<path class="vsl-rim" d="' + FLASK_BODY + '"/>'
   + '</svg>';
 }
-// Top-down culture dish with real depth: an outer wall ring (bevel-shaded), the medium
-// pool, an inner-wall shadow for thickness, a meniscus ring and a lighting sheen.
 function plateSvg(id,st){ var s=_vslStops(st), g='vp_'+id, w='vpw_'+id, d='vpd_'+id;
   return '<svg class="vsl-svg" viewBox="0 0 96 104" aria-hidden="true">'
     +'<defs>'
@@ -759,7 +846,8 @@ function _incListHtml(rows){
 function _incGridHtml(rows){
   return '<div class="cell-grid">'+rows.map(function(r){
     var c=r.cell, d=dueText(c);
-    var vessel = _incView==='plate' ? plateSvg(r.id,r.st) : flaskSvg(r.id,r.st);
+    var frac = _vslFrac(c, Date.now());
+    var vessel = _incView==='plate' ? plateSvg(r.id,frac) : flaskSvg(r.id,frac);
     return '<div class="vsl'+(r.st!=='ok'?' due':'')+'" data-line="'+esc(String(c.line||'').toLowerCase())+'" data-id="'+r.id+'">'
       +'<button class="vsl-face" title="'+esc(r.alerts.length?r.alerts[0].msg:'Healthy')+'" onclick="openDrawer(\''+r.id+'\')">'+vessel
       +'<span class="vsl-p">P'+(c.passage!=null?c.passage:'?')+'</span></button>'
@@ -820,7 +908,7 @@ function paintDrawer(){
   if(!c){ closeDrawer(); return; }
   var id=_openCell, alerts=computeCellAlerts(c,Date.now()), st=statusOf(alerts);
   var dd=dueText(c), where=cultureWhere(c);
-  var vessel = _incView==='plate' ? plateSvg('drw_'+id, st) : flaskSvg('drw_'+id, st);
+  var vessel = _incView==='plate' ? plateSvg('drw_'+id, _vslFrac(c, Date.now())) : flaskSvg('drw_'+id, _vslFrac(c, Date.now()));
 
   var meta=[['Next split',dd.text],['Last split',relDays(c.seeded)],['Interval',c.intervalDays?('every '+c.intervalDays+'d'):'—'],
             ['Split ratio',c.ratio||'—'],['Vessel',c.vessel||'—'],['Media',c.media||'—'],
