@@ -171,6 +171,13 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 /* The medium drifts red -> orange -> yellow as the culture grows. Transitioning the gradient
    stops means the change is a drift, not a jump, wherever the SVG survives a re-render. */
 .vsl-s1,.vsl-s2{transition:stop-color 1.2s var(--ease);}
+/* A cited number and an uncited one must not look the same. */
+.ref-cite{font-size:var(--fs-2);color:var(--text2);line-height:1.55;margin-top:10px;padding:9px 12px;
+  background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--r-2);}
+.ref-cite a{color:var(--accent);text-decoration:none;border-bottom:1px solid transparent;}
+.ref-cite a:hover{border-bottom-color:currentColor;}
+.ref-range{color:var(--text3);}
+.ref-cite-none{border-left-color:var(--text3);color:var(--text3);}
 /* Three faces of one translucent box. The front is opaque so the neck drawn behind it does
    not show through the medium as a diagonal; the top and end are tinted from it. */
 .vsl-face-top{fill:#eef2f8;stroke:none;}
@@ -344,18 +351,45 @@ window.addEventListener('message', function(e){
 });
 
 // ── Cell-line reference + alert logic (prefer the shell's shared copy) ──────
+// NOTE: duplicated in shell/hub-shell.html, which WINS inside dHUB (see window.parent.CELL_REF
+// below). Change both or the app shows one set of numbers and the Hub another.
+// Reference data per cell line. Every doubling time here is the one a named repository
+// publishes, not a number somebody remembered: `cvcl` is the Cellosaurus accession and `src`
+// is the specific source Cellosaurus attributes it to, both surfaced in the UI with a link.
+//
+// This matters because the flask colour is computed from doublingH (see _vslFrac), so a wrong
+// value is not cosmetic — it makes the medium turn at the wrong time. Several of the previous
+// values were optimistic: HeLa was 24 h here and no repository puts it under 30.
+//
+// Where sources disagree — and for HCT 116 they range 17 to 48 hours — `dblRange` carries the
+// spread so the app can show it rather than implying a precision nobody has.
 var CELL_REF = {
-  'HEK293':{ratio:'1:8',intervalDays:3,doublingH:24,passageLimit:35,media:'DMEM + 10% FBS',type:'Adherent'},
-  'HEK293T':{ratio:'1:8',intervalDays:3,doublingH:24,passageLimit:35,media:'DMEM + 10% FBS',type:'Adherent'},
-  'HeLa':{ratio:'1:6',intervalDays:3,doublingH:24,passageLimit:30,media:'DMEM + 10% FBS',type:'Adherent'},
-  'U2OS':{ratio:'1:4',intervalDays:4,doublingH:29,passageLimit:30,media:'DMEM + 10% FBS',type:'Adherent'},
-  'A549':{ratio:'1:5',intervalDays:3,doublingH:22,passageLimit:30,media:"Ham's F-12K + 10% FBS",type:'Adherent'},
-  'HCT116':{ratio:'1:6',intervalDays:3,doublingH:21,passageLimit:30,media:"McCoy's 5A + 10% FBS",type:'Adherent'},
-  'MCF7':{ratio:'1:4',intervalDays:4,doublingH:29,passageLimit:30,media:'EMEM + 10% FBS + insulin',type:'Adherent'},
-  'Jurkat':{ratio:'1:4',intervalDays:3,doublingH:24,passageLimit:30,media:'RPMI-1640 + 10% FBS',type:'Suspension'},
-  'NIH/3T3':{ratio:'1:6',intervalDays:3,doublingH:20,passageLimit:25,media:'DMEM + 10% BCS',type:'Adherent'},
-  'CHO':{ratio:'1:8',intervalDays:3,doublingH:18,passageLimit:40,media:"Ham's F-12 + 10% FBS",type:'Adherent'},
-  'Expi293':{ratio:'to 0.5M/mL',intervalDays:3,doublingH:24,passageLimit:40,media:'Expi293 medium',type:'Suspension'}
+  'HEK293':  {ratio:'1:8',intervalDays:3,doublingH:27,dblRange:'24–30 h',passageLimit:35,media:'DMEM + 10% FBS',type:'Adherent',
+              cvcl:'CVCL_0045',src:'DSMZ ACC-305'},
+  'HEK293T': {ratio:'1:8',intervalDays:3,doublingH:27,dblRange:'24–30 h',passageLimit:35,media:'DMEM + 10% FBS',type:'Adherent',
+              cvcl:'CVCL_0063',src:'DSMZ ACC-635'},
+  'HeLa':    {ratio:'1:6',intervalDays:3,doublingH:39,dblRange:'30–48 h',passageLimit:30,media:'DMEM + 10% FBS',type:'Adherent',
+              cvcl:'CVCL_0030',src:'DSMZ ACC-57'},
+  'U2OS':    {ratio:'1:4',intervalDays:4,doublingH:28,dblRange:'25–30 h',passageLimit:30,media:'DMEM + 10% FBS',type:'Adherent',
+              cvcl:'CVCL_0042',src:'DSMZ ACC-785'},
+  'A549':    {ratio:'1:5',intervalDays:3,doublingH:23,dblRange:'18–40 h across sources',passageLimit:30,media:"Ham's F-12K + 10% FBS",type:'Adherent',
+              cvcl:'CVCL_0023',src:'NCI-DCTD (22.9 h)'},
+  'HCT116':  {ratio:'1:6',intervalDays:3,doublingH:21,dblRange:'17–48 h across sources',passageLimit:30,media:"McCoy's 5A + 10% FBS",type:'Adherent',
+              cvcl:'CVCL_0291',src:'PBCF (~21 h)'},
+  'MCF7':    {ratio:'1:4',intervalDays:4,doublingH:38,dblRange:'24–80 h across sources',passageLimit:30,media:'EMEM + 10% FBS + insulin',type:'Adherent',
+              cvcl:'CVCL_0031',src:'PBCF (~38 h)'},
+  'Jurkat':  {ratio:'1:4',intervalDays:3,doublingH:30,dblRange:'25–35 h',passageLimit:30,media:'RPMI-1640 + 10% FBS',type:'Suspension',
+              cvcl:'CVCL_0065',src:'DSMZ ACC-282'},
+  'SU-DHL-5':{ratio:'1:4',intervalDays:3,doublingH:40,dblRange:'~40 h',passageLimit:30,media:'RPMI-1640 + 10% FBS',type:'Suspension',
+              cvcl:'CVCL_1735',src:'DSMZ ACC-571'},
+  'NIH/3T3': {ratio:'1:6',intervalDays:3,doublingH:20,dblRange:'20–21 h',passageLimit:25,media:'DMEM + 10% BCS',type:'Adherent',
+              cvcl:'CVCL_0594',src:'DSMZ ACC-59'},
+  // Cellosaurus lists no doubling time for these two. The value is the lab's working figure and
+  // the UI says so, rather than dressing it up with a citation it does not have.
+  'CHO':     {ratio:'1:8',intervalDays:3,doublingH:18,passageLimit:40,media:"Ham's F-12 + 10% FBS",type:'Adherent',
+              cvcl:'CVCL_0213',src:null},
+  'Expi293': {ratio:'to 0.5M/mL',intervalDays:3,doublingH:24,passageLimit:40,media:'Expi293 medium',type:'Suspension',
+              cvcl:'CVCL_D615',src:null}
 };
 function _localAlerts(cell, now){
   now = now || Date.now(); var DAY=86400000, out=[];
@@ -411,6 +445,24 @@ function fromDateInput(s){ if(!s) return null; var t=new Date(s+'T00:00:00').get
 function daysAgo(ts){ return ts==null?null:Math.floor((Date.now()-ts)/86400000); }
 function relDays(ts){ var d=daysAgo(ts); if(d==null) return '—'; return d<=0?'today':(d===1?'yesterday':d+' days ago'); }
 function fmtDate(ts){ if(!ts) return '—'; return new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+// Where a number came from, shown next to the number. The doubling time drives the flask
+// colour and the split reminders, so "~21 h" with no provenance is a figure you cannot check
+// and cannot correct. Cellosaurus is the link because it carries the accession and names the
+// repository the value is attributed to; a line with no published value says so instead.
+function refCiteHtml(ref){
+  if(!ref) return '';
+  var url = ref.cvcl ? ('https://www.cellosaurus.org/'+ref.cvcl) : null;
+  if(!ref.src){
+    return '<div class="ref-cite ref-cite-none">No published doubling time for this line'
+      + (url?(' &middot; <a href="'+url+'" target="_blank" rel="noopener">'+esc(ref.cvcl)+'</a>'):'')
+      + ' &mdash; the value below is this lab\'s working figure.</div>';
+  }
+  return '<div class="ref-cite">Doubling time '+esc(ref.doublingH)+' h'
+    + (ref.dblRange?(' <span class="ref-range">('+esc(ref.dblRange)+')</span>'):'')
+    + ' &middot; source: '+esc(ref.src)
+    + (url?(' &middot; <a href="'+url+'" target="_blank" rel="noopener">Cellosaurus '+esc(ref.cvcl)+'</a>'):'')
+    + '</div>';
+}
 function refLookup(name){
   if(!name) return null;
   if(CELL_REF[name]) return CELL_REF[name];
@@ -915,6 +967,7 @@ function paintDrawer(){
             ['Passage limit',c.passageLimit?('P'+c.passageLimit):'—'],['Last myco test',c.mycoLast?relDays(c.mycoLast):'never'],
             ['Where',where||'—']]
     .map(function(x){ return '<div class="cc-meta-item"><div class="k">'+esc(x[0])+'</div><div class="v">'+esc(x[1])+'</div></div>'; }).join('');
+  var cite = refCiteHtml(refLookup(c.line));
 
   var split = _splitForm===id ? '<div class="split-panel"><div class="split-row">'
       +'<div class="fld"><label>New passage</label><input id="sp-passage-'+id+'" class="inp" type="number" min="0" value="'+((c.passage||0)+1)+'"></div>'
@@ -945,7 +998,7 @@ function paintDrawer(){
     +'<div class="drw-vessel">'+vessel+'</div>'
     +'<div class="cc-alerts">'+(alerts.length?alerts:[{level:'ok',msg:'Healthy — nothing due'}])
         .map(function(a){ return '<span class="alert '+a.level+'">'+esc(a.msg)+'</span>'; }).join('')+'</div>'
-    +'<div class="drw-sec">Culture</div><div class="cc-meta" style="margin-top:0;padding-top:0;border-top:none;">'+meta+'</div>'
+    +'<div class="drw-sec">Culture</div><div class="cc-meta" style="margin-top:0;padding-top:0;border-top:none;">'+meta+'</div>'+cite
     +(c.notes?'<div class="cc-notes">'+esc(c.notes)+'</div>':'')
     +split+confirm
     +'<div class="drw-sec">Do</div><div class="cc-actions">'
