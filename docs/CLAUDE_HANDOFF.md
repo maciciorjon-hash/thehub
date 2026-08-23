@@ -89,9 +89,10 @@ Compact coordination note. Read it before starting work; the full changelog is
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **The 2026-08-21 session has no `SESSION_HISTORY.md` entry** (the workspace rail, the three
-  Labbook surfaces, the tooltip/icons/background pass). CLAUDE.md carries the design facts; the
-  changelog does not. Not mine to reconstruct.
+- **Version drift is a recurring failure here.** The shell read `v1.7.0` while CLAUDE.md and this
+  note said `v1.8.0`; the shell is bumped. It has happened before (v1.3.16 vs v1.4.1). The
+  version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
+  bump it there when you bump it in the docs.
 - **The stop-hook is stale**: `.claude/stop-hook.sh` targets `The Hub.html` (gone) and a
   `LAST_SESSION_END` marker that no longer exists, so it is a no-op. The changelog is maintained
   by hand.
