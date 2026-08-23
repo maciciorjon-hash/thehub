@@ -68,6 +68,10 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   --nav-glass:rgba(255,255,255,0.72);
   --r1:10px;--r2:14px;--r3:18px;--r4:24px;
   --ease:cubic-bezier(.2,.8,.3,1);
+  /* One motion scale. There were three unrelated durations (.28 app view, .35 home, .38
+     card) chosen separately, which is why a section change read as several things moving
+     at their own speed instead of one thing changing. */
+  --dur-1:120ms; --dur-2:200ms; --dur-3:300ms;
   --ease-spring:cubic-bezier(.16,.84,.44,1);
 }
 [data-theme="dark"] {
@@ -112,7 +116,7 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .sr-item:hover{background:var(--surface2);color:var(--text);}
 .sr-app{font-size:var(--fs-1);font-family:var(--mono);color:var(--text3);letter-spacing:.4px;}
 /* VIEWS */
-#hub-home{margin-top:58px;flex:1;min-height:calc(100vh - 58px);overflow-y:auto;position:relative;z-index:1;opacity:0;transition:opacity 0.35s ease;}
+#hub-home{margin-top:58px;flex:1;min-height:calc(100vh - 58px);overflow-y:auto;position:relative;z-index:1;opacity:0;transition:opacity var(--dur-3) var(--ease);}
 .cells-tabs{display:flex;align-items:center;gap:2px;padding:0 18px;height:44px;flex:0 0 auto;
   border-bottom:1px solid var(--border);background:var(--surface);}
 .cells-tab{font:inherit;font-size:var(--fs-4);font-weight:500;background:none;border:none;color:var(--text2);
@@ -121,7 +125,7 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .cells-tab.on{color:var(--text);border-bottom-color:#5e87c5;font-weight:600;}
 .cells-host{flex:1 1 auto;position:relative;min-height:0;}
 .cells-host>iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
-.app-view{position:fixed;top:58px;left:0;right:0;bottom:0;z-index:10;display:none;flex-direction:column;overflow:hidden;background:var(--bg);transition:opacity 0.28s ease;}
+.app-view{position:fixed;top:58px;left:0;right:0;bottom:0;z-index:10;display:none;flex-direction:column;overflow:hidden;background:var(--bg);transition:opacity var(--dur-2) var(--ease);}
 .app-view iframe{flex:1;width:100%;height:100%;border:none;display:block;}
 
 /* HOME */
@@ -229,8 +233,25 @@ body.hub-announcing #hub-home{margin-top:98px;min-height:calc(100vh - 98px);}
 #egg-list{padding:12px 12px 16px;}
 
 /* ── Card entrance animation ─────────────────────────────────────── */
-@keyframes cardIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
-.card{animation:cardIn .38s ease both;}
+@keyframes cardIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+/* Applied by _enter() to freshly rendered content only. It used to sit on .card itself, so
+   every card replayed its entrance on every re-render — a flash on each section change. */
+.ld-enter > *{animation:cardIn var(--dur-3) var(--ease) both;}
+.ld-enter .ld-grid > *{animation:cardIn var(--dur-3) var(--ease) both;}
+/* A grid should arrive as one gesture, so the stagger is small and capped: past ~8 cards
+   the tail would be waiting on an animation rather than reading a page. */
+.ld-enter .ld-grid > *:nth-child(1){animation-delay:0ms}
+.ld-enter .ld-grid > *:nth-child(2){animation-delay:26ms}
+.ld-enter .ld-grid > *:nth-child(3){animation-delay:52ms}
+.ld-enter .ld-grid > *:nth-child(4){animation-delay:78ms}
+.ld-enter .ld-grid > *:nth-child(5){animation-delay:96ms}
+.ld-enter .ld-grid > *:nth-child(n+6){animation-delay:110ms}
+/* Motion is decoration here: every transition above is a nicety and none of it carries
+   meaning that survives being turned off. Only Cuppa honoured this before. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
+    transition-duration:1ms!important;scroll-behavior:auto!important;}
+}
 .grid .card:nth-child(1){animation-delay:.00s;}
 .grid .card:nth-child(2){animation-delay:.07s;}
 .grid .card:nth-child(3){animation-delay:.13s;}
@@ -1360,11 +1381,18 @@ function openApp(id, tab, item, context) {
   });
   view.style.opacity = '0';
   view.style.display = 'flex';
-  requestAnimationFrame(function() {
-    requestAnimationFrame(function() {
-      view.style.opacity = '1';
-    });
-  });
+  // Fade the home out as the app comes in. .app-view has an opaque background, so once it
+  // lands it covers — but for the length of the fade you were looking through a half-
+  // transparent app at live content underneath, which read as two screens at once.
+  var _home = document.getElementById('hub-home');
+  if (_home) _home.style.opacity = '0';
+  // A forced reflow commits opacity:0 so the transition has a start value, then the final
+  // value is set synchronously. The double requestAnimationFrame this replaces does not run
+  // when the tab is not compositing — and then opacity never reached 1 and the app stayed
+  // invisible for good. That was survivable only because the home was still lit underneath;
+  // fading the home out turned it into a blank screen, which is how I found it.
+  void view.offsetWidth;
+  view.style.opacity = '1';
   setTimeout(function() { if(currentApp===id) enterAppNav(id); }, 0);
   // Push a history entry so the phone hardware back returns to the hub home
   // instead of leaving the page. _backPopping guards against re-entry. Re-opening the app
@@ -1383,6 +1411,8 @@ function backToHub() {
   currentApp = null;
   exitAppNav();
   view.style.opacity = '0';
+  var _home = document.getElementById('hub-home');
+  if (_home) _home.style.opacity = '1';
   setTimeout(function() {
     view.style.display = 'none';
     view.style.opacity = '';
@@ -2186,6 +2216,15 @@ function openArchiveLib(kind){
   _hubQueueMessage('protocols', {type:'dhub:context', version:1, source:'hub', target:'protocols',
     action:'open', requestId:'dhub'+Date.now().toString(36), context:{lib:kind}});
 }
+// Replay the entrance animation on content that was just swapped in. Restarting an animation
+// needs the class off, a reflow, then the class on — without the forced reflow the browser
+// coalesces both changes and nothing plays.
+function _enter(host){
+  if(!host) return;
+  host.classList.remove('ld-enter');
+  void host.offsetWidth;
+  host.classList.add('ld-enter');
+}
 function renderLanding(id){
   var host=document.getElementById('hub-suites'); if(!host) return;
   var L=LANDINGS[id]; if(!L) return;
@@ -2216,6 +2255,7 @@ function renderLanding(id){
       +'<div class="ld-sub">'+_dashEsc(L.sub)+'</div></div>'
     + _landingBand(id) + body;
   var home=document.getElementById('hub-home'); if(home) home.scrollTop=0;
+  _enter(host);
 }
 // One card per app, built from the app's own home card so name, colour, icon and description
 // stay in one place.
