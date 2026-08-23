@@ -772,12 +772,23 @@ dependencies matter. Chart.js is now **embedded** in Dora, LDI and Lumina (all s
 `--sans`/`--mono` carries a real system fallback stack, so a blocked `fonts.googleapis.com`
 degrades to the platform UI font.
 
-Still remote, deliberately: **SheetJS** (Dora, Lumina, Iceberg — ~640 KB each, already embedded
-in Echo, **Beacon** and BCA; three more copies would add ~1.9 MB) and **3Dmol** (Ribbon, ~2 MB,
-out of the product build). Each of those apps now shows a plain banner when the global is
-missing at load instead of throwing into the console. **Note the honest consequence: Dora and
-Lumina read Excel as their primary input, so offline they are announced-but-not-usable.**
-Embedding SheetJS in those two costs ~1.28 MB if that trade changes.
+**SheetJS is carried once, by the shell** (2026-08-23). Dora, Lumina and Iceberg fetched it from
+cdnjs, and Excel is the primary input for the first two — offline they opened, showed a banner
+and could do nothing. An app inside a `srcdoc` iframe is same-origin, so it now takes
+`window.parent.XLSX` before its own `<script src>` runs; the CDN tag stays as the standalone
+fallback, and when it loads it simply replaces the reference with the same library at the same
+version. Verified with the CDN tag removed: all three hold the shell's own object and a
+write-then-read round trip works.
+
+Cost **+0.84 MB** on the bundle (10.72 → 11.61 MB). Embedding a copy in Dora and Lumina instead
+would have cost ~2.35 MB after base64 and left Iceberg out. **Echo, Beacon and BCA keep their own
+embedded copies** — Echo's primary input (PHERAstar XLS) goes through `XLSX.read`, and an app
+that cannot be opened on its own is not what self-contained means. That is why this is +0.84 MB
+rather than the −1.22 MB a naive "remove the duplicates" reading suggests.
+
+Still remote, deliberately: **3Dmol** (Ribbon, ~2 MB, out of the product build), and SheetJS for
+any of these apps opened outside the Hub. Each app still shows a plain banner when the global is
+missing at load instead of throwing into the console.
 
 **Two remote dependencies this section used to omit entirely** (audited 2026-08-22):
 
