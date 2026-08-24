@@ -792,6 +792,23 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .pl-type:hover{color:var(--text);}
 .pl-type.on{border-color:var(--accent);color:var(--text);font-weight:600;}
 .pl-type i{width:10px;height:10px;border-radius:50%;display:inline-block;}
+/* A flag is drawn on the well, not instead of it: the colour still says which pair is in
+   there, and the hatch says the ligand or the substrate is missing. */
+.pl-w.noLig{background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.16) 0 2px,transparent 2px 5px);}
+.pl-w.noSub{box-shadow:inset 0 0 0 2px rgba(0,0,0,.28);}
+.pl-flags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
+.pl-flag{font-family:var(--sans);font-size:var(--fs-2);border:1px solid var(--border2);background:var(--surface);
+  color:var(--text2);border-radius:var(--r-3);padding:3px 10px;cursor:pointer;}
+.pl-flag.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);font-weight:600;}
+.pl-flag.mixed{border-style:dashed;}
+/* Donor / acceptor next to a plasmid in the header. */
+.exh-roles{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.exh-role{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-2);color:var(--text2);
+  background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-3);padding:2px 4px 2px 9px;}
+.exh-role .rl{width:20px;height:20px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);
+  color:var(--text3);font:700 10px/1 var(--sans);cursor:pointer;}
+.exh-role .rl.on.d{background:#5e87c5;border-color:#5e87c5;color:#fff;}
+.exh-role .rl.on.a{background:#c47818;border-color:#c47818;color:#fff;}
 .pl-type-add{font-weight:700;color:var(--text3);padding:3px 11px;}
 .pl-type-add:hover{color:var(--accent);border-color:var(--accent);}
 .pl-row2{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;}
@@ -2134,6 +2151,48 @@ function plLayoutMenu(){
 }
 function plateDims(p){ return PLATE_FORMATS[String(p&&p.format)]||PLATE_FORMATS['96']; }
 function plateTypes(p){ return (p&&p.types&&p.types.length)?p.types:PLATE_TYPES; }
+// ── The constructs in this experiment, and what each one is ─────────────────────────────────
+// The names stay where they already are — the Plasmids field — so nothing is entered twice.
+// What is new is the role: which one is the NanoLuc donor and which the HaloTag acceptor. That
+// is what lets the plate offer real conditions (a pair, each one alone) instead of "Compound".
+function expConstructs(e){
+  if(!e) return [];
+  var roles=e.roles||{};
+  return String(e.plasmids||'').split(/[,;]+/).map(function(x){ return x.trim(); }).filter(Boolean)
+    .map(function(nm){ return {name:nm, role:roles[nm]||''}; });
+}
+function setConstructRole(id,name,role){
+  var e=LB.data.experiments[id]; if(!e) return;
+  e.roles=e.roles||{};
+  if(e.roles[name]===role) delete e.roles[name]; else e.roles[name]=role;
+  e.updated=Date.now(); save(); renderEditor();
+}
+// Controls that mean something for this kind of experiment. An empty list is the honest answer
+// for a type that has none — and a control nobody paints onto the plate is simply not part of
+// the run, which is how "leave it empty and it is not used" is meant to work.
+var PLATE_CONTROL_SETS={
+  NB:[{id:'mock',name:'Mock (carrier DNA)'},{id:'untr',name:'Untransfected'}],
+  HB:[{id:'vehicle',name:'Vehicle / DMSO'},{id:'blank',name:'Blank / media'}],
+  CTG:[{id:'vehicle',name:'Vehicle / DMSO'},{id:'blank',name:'Blank / media'}]
+};
+// The DNA conditions a NanoBRET plate is actually made of: each pair, each construct alone, and
+// the controls. Ligand and substrate are NOT conditions here — they are flags on a well, because
+// a "no ligand" well still contains the pair, and folding them in would double every row.
+function expPlateTypes(e){
+  var cs=expConstructs(e), out=[], i=0;
+  function col(){ return PLATE_TYPE_COLORS[(i++)%PLATE_TYPE_COLORS.length]; }
+  var don=cs.filter(function(c){ return c.role==='donor'; });
+  var acc=cs.filter(function(c){ return c.role==='acceptor'; });
+  don.forEach(function(d){ acc.forEach(function(a){
+    out.push({id:'p:'+d.name+'+'+a.name, name:d.name+' + '+a.name, color:col()}); }); });
+  don.forEach(function(d){ out.push({id:'d:'+d.name, name:d.name+' only', color:col()}); });
+  acc.forEach(function(a){ out.push({id:'a:'+a.name, name:a.name+' only', color:col()}); });
+  (PLATE_CONTROL_SETS[e&&e.type]||[]).forEach(function(c){ out.push({id:c.id, name:c.name, color:col()}); });
+  return out;
+}
+// A dose series belongs to an experiment that doses something. A NanoBRET PPI plate has no
+// compounds at all, and offering it a dilution filler is offering the wrong experiment.
+function expUsesCompounds(e){ return !e || ['NB'].indexOf(e.type)<0; }
 function plateTypeById(p,id){ var t=plateTypes(p).filter(function(x){return x.id===id;})[0]; return t||null; }
 // Optional per-well `shade` (0 = full strength, 1 = palest) draws a concentration gradient
 // without naming a concentration — the Echo case, where the numbers live in the picklist.
@@ -2168,7 +2227,11 @@ function plateWellShort(w){ if(!w) return '';
 function plateWellTip(p,id,w){ if(!w) return id;
   var t=plateTypeById(p,w.typeId); var bits=[id]; if(t) bits.push(t.name);
   if(w.cellLine) bits.push(w.cellLine); if(w.compound) bits.push(w.compound);
-  if(w.conc) bits.push(w.conc); if(w.label) bits.push(w.label); return bits.join(' · '); }
+  if(w.conc) bits.push(w.conc); if(w.label) bits.push(w.label);
+  PLATE_FLAGS.forEach(function(f){ if(w[f.k]) bits.push(f.lbl); });
+  return bits.join(' · '); }
+function plateWellFlags(w){ if(!w) return '';
+  return PLATE_FLAGS.filter(function(f){ return w[f.k]; }).map(function(f){ return f.k; }).join(' '); }
 function plateUsedTypes(p){ var used={}; Object.keys(p.wells||{}).forEach(function(k){ if(p.wells[k]&&p.wells[k].typeId) used[p.wells[k].typeId]=1; });
   return plateTypes(p).filter(function(t){ return used[t.id]; }); }
 function plateCount(p){ return Object.keys(p.wells||{}).length; }
@@ -2261,7 +2324,7 @@ function plateSummary(p){
   var groups={}, order=[];
   Object.keys(p.wells).forEach(function(id){ var w=p.wells[id]; if(!w) return;
     // A labelled block is always its own entry, however its wells are otherwise filled in.
-    var k=w.groupId?('grp:'+w.groupId):[w.typeId||'',w.cellLine||'',w.compound||'',w.label||''].join('');
+    var k=w.groupId?('grp:'+w.groupId):[w.typeId||'',w.cellLine||'',w.compound||'',w.label||'',plateWellFlags(w)].join('');
     if(!groups[k]){ groups[k]={w:w,ids:[],gid:w.groupId||null}; order.push(k); }
     groups[k].ids.push(id); });
   return order.map(function(k){ var g=groups[k], w=g.w;
@@ -2275,8 +2338,14 @@ function plateSummary(p){
     if(g.gid&&p.groups&&p.groups[g.gid]&&p.groups[g.gid].label) bits.push(p.groups[g.gid].label);
     if(w.cellLine) bits.push(w.cellLine); if(w.compound) bits.push(w.compound);
     var cd=_concDesc(p,g.ids); if(cd) bits.push(cd); if(w.label) bits.push(w.label);
-    // Name the well type unless something more specific already identifies these wells.
-    if(!bits.length&&t) bits.push(t.name);
+    // Name the well type unless something more specific already identifies these wells — but a
+    // condition like "pNL + pHT" is never redundant with a cell line, so a derived type
+    // (an experiment's own condition) is always named, and first.
+    var generic=PLATE_TYPES.some(function(x){ return x.id===w.typeId; });
+    if(t && (!bits.length || !generic)) bits.unshift(t.name);
+    // A well missing its ligand or its substrate is a different well, and a sheet you take to
+    // the bench is exactly where that must not be silently merged into the row above.
+    PLATE_FLAGS.forEach(function(f){ if(w[f.k]) bits.push(f.lbl); });
     var sd=_shadeDesc(p,g.ids); if(sd) bits.push(sd);
     return {range:_compactRanges(g.ids), type:t, n:g.ids.length, desc:bits.join(' · ')};
   }).sort(function(a,b){ var A=wellRC(a.range.split(/[–,]/)[0]), B=wellRC(b.range.split(/[–,]/)[0]);
@@ -2406,7 +2475,50 @@ function _plateOwner(key){ var p=String(key||'').split(':');
     var b=(e2.blocks||[]).filter(function(x){return x.id===p[2];})[0]; return b?{obj:b,exp:e2}:null; }
   return null; }
 function plateOf(key){ var o=_plateOwner(key); return o?(o.obj.plate||null):null; }
-function platePersist(key){ var o=_plateOwner(key); if(!o) return; o.exp.updated=Date.now(); queueSave(); }
+// Drawing the plate IS saying how many wells each condition gets, so the calculators take their
+// counts from it rather than asking you the same question twice. Only the counts: everything
+// you have set about amounts — ng per well, ratio, stocks, overage — is left exactly as it is.
+function plateConditionCounts(e){
+  var p=e&&e.plate; if(!p) return null;
+  var c={pair:0,donor:0,acceptor:0,mock:0,untr:0,noLig:0,noSub:0,total:0,transfected:0};
+  Object.keys(p.wells||{}).forEach(function(k){
+    var w=p.wells[k]; if(!w||!w.typeId) return;
+    var id=String(w.typeId);
+    c.total++;
+    if(w.noLig) c.noLig++;
+    if(w.noSub) c.noSub++;
+    if(id.indexOf('p:')===0){ c.pair++; c.transfected++; }
+    else if(id.indexOf('d:')===0){ c.donor++; c.transfected++; }
+    else if(id.indexOf('a:')===0){ c.acceptor++; c.transfected++; }
+    else if(id==='mock'){ c.mock++; c.transfected++; }
+    else if(id==='untr'){ c.untr++; }
+  });
+  return c;
+}
+function syncPlateToCalcs(e){
+  var c=plateConditionCounts(e); if(!c||!c.total) return null;
+  var hit=[];
+  (e.blocks||[]).forEach(function(b){
+    var I=b.calc&&b.calc.inputs; if(!I) return;
+    if(b.calc.kind==='nbtx'){
+      if(I.nPair!==c.pair||I.nDonor!==c.donor||I.nAcceptor!==c.acceptor||I.nMock!==c.mock){
+        I.nPair=c.pair; I.nDonor=c.donor; I.nAcceptor=c.acceptor; I.nMock=c.mock;
+        hit.push('transfection mixes');
+      }
+    } else if(b.calc.kind==='nbsusp'){
+      // A well with no ligand is still a transfected well: it belongs to the − ligand
+      // suspension, not to a different DNA condition.
+      var plus=Math.max(0,c.transfected-c.noLig), minus=c.noLig;
+      if(I.nPlus!==plus||I.nMinus!==minus){ I.nPlus=plus; I.nMinus=minus; hit.push('cell suspensions'); }
+    }
+  });
+  return hit.length?hit:null;
+}
+function platePersist(key){ var o=_plateOwner(key); if(!o) return;
+  var changed=syncPlateToCalcs(o.exp);
+  o.exp.updated=Date.now(); queueSave();
+  if(changed) toast('Well counts from the plate → '+changed.join(' and '));
+  return changed; }
 function addPlateTo(key,fmt){ var o=_plateOwner(key); if(!o) return;
   if(!o.obj.plate) o.obj.plate=newPlate(fmt||(o.exp.setup&&o.exp.setup.format)||'96');
   o.exp.updated=Date.now(); save(); renderEditor(); openPlateEditor(key); }
@@ -2732,7 +2844,8 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
     h+='<div class="pl-rowh" style="'+at(r+base,1)+'" title="Select row '+PLATE_ROWS.charAt(r)+'" onmousedown="plSelectRow('+r+',event)">'+PLATE_ROWS.charAt(r)+'</div>';
     for(var c2=0;c2<d.c;c2++){ var id=wellIdOf(r,c2), w=(p.wells||{})[id];
       var col=plValueColor(p,id)||plateWellColor(p,w), txt=(w&&w.groupId&&grouped[w.groupId])?'':plateWellShort(w);
-      h+='<div class="pl-w'+(PL.sel[id]?' sel':'')+(w?'':' empty')+'" data-w="'+id+'" style="'+at(r+base,c2+2)+(col?'background:'+col:'')+'"'
+      var fl=plateWellFlags(w);
+      h+='<div class="pl-w'+(PL.sel[id]?' sel':'')+(w?'':' empty')+(fl?(' '+fl):'')+'" data-w="'+id+'" style="'+at(r+base,c2+2)+(col?'background:'+col:'')+'"'
         +' title="'+esc(plateWellTip(p,id,w))+'" onmousedown="plWellDown(\''+id+'\',event)" onmouseenter="plWellEnter(\''+id+'\')">'
         +(function(){ var vv=(p.values&&p.values.data)?p.values.data[id]:null;
             if(vv!=null&&wpx>=22) return '<span class="pl-wt pl-wv">'+esc(_plTrim(vv))+'</span>';
@@ -2744,6 +2857,36 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
   host.style.gridTemplateColumns='26px repeat('+d.c+','+wpx+'px)';
   host.style.fontSize=fs+'px';
   host.innerHTML=h; }
+// The flags a well can carry, and which experiment types they mean anything for.
+var PLATE_FLAGS=[
+  {k:'noLig', lbl:'− ligand',    title:'No HaloTag ligand — the matched control for a BRET pair', types:['NB']},
+  {k:'noSub', lbl:'− substrate', title:'No substrate — background well',                          types:['NB']}
+];
+function _plExp(){ var o=_plateOwner(PL.key); return o?o.exp:null; }
+function _plExpTypes(){ var e=_plExp(); return e?expPlateTypes(e):[]; }
+function _plFlagState(p,ids,k){
+  var on=0; ids.forEach(function(id){ var w=(p.wells||{})[id]; if(w&&w[k]) on++; });
+  return on===0?false:(on===ids.length?true:null);
+}
+function plToggleFlag(k){
+  var p=plCur(); if(!p) return; var ids=plSelIds(); if(!ids.length) return;
+  var st=_plFlagState(p,ids,k), want=(st!==true);
+  ids.forEach(function(id){ var w=_plWell(p,id); if(want) w[k]=true; else delete w[k]; });
+  platePersist(PL.key); plRender();
+}
+// Replaces the palette, never the wells: a well keeps whatever it was painted with, and if its
+// type is no longer in the list it simply loses its colour — the same rule as removing a type.
+function plUseExpTypes(){
+  var p=plCur(), t=_plExpTypes(); if(!p||!t.length) return;
+  lbConfirm('Replace this plate’s palette with the conditions of this experiment ('
+    +t.map(function(x){return x.name;}).join(', ')+')? Wells you have already painted keep their contents.',
+    {title:'Use this experiment’s conditions',ok:'Replace palette'}).then(function(ok){
+      if(!ok) return;
+      p.types=JSON.parse(JSON.stringify(t));
+      PL.type=(p.types[0]||{}).id;
+      platePersist(PL.key); plRender();
+    });
+}
 function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return;
   var ids=plSelIds(), n=ids.length;
   var pal=plateTypes(p).map(function(t){ return '<button class="pl-type'+(PL.type===t.id?' on':'')+'" onclick="plSetType(\''+t.id+'\')" oncontextmenu="ctxPlType(event,\''+t.id+'\')" title="'+esc(t.name)+' — right-click to rename, recolour or remove"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</button>'; }).join('')
@@ -2756,8 +2899,14 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
   function fld(k,lbl,list){ var v=shared(k), mixed=(v===null);
     return '<label class="ci-f"><span>'+lbl+'</span><input '+(list?'list="'+list+'" ':'')+'data-pf="'+k+'" value="'+esc(mixed?'':v)+'" placeholder="'+(mixed?'Mixed…':'')+'"'+(n?'':' disabled')+' oninput="plApplyFields()"></label>'; }
   var d=plateDims(p);
+  // Two flags rather than two more well types: a "no ligand" well still contains the pair, so
+  // folding them into the type list would double every condition and lose which pair it was.
+  var flagsHtml=n?('<div class="pl-flags">'+PLATE_FLAGS.filter(function(f){ return (f.types||[]).indexOf((_plExp()||{}).type)>=0; })
+    .map(function(f){ var st=_plFlagState(p,ids,f.k);
+      return '<button class="pl-flag'+(st===true?' on':(st===null?' mixed':''))+'" onclick="plToggleFlag(\''+f.k+'\')" title="'+esc(f.title)+'">'+esc(f.lbl)+'</button>'; }).join('')
+    +'</div>'):'';
   var axis=plSelAxis();
-  var dose=(axis&&n>=2)?('<div class="pl-sec"><div class="pl-sec-t">Dose series &mdash; '+(axis==='row'?'across the row':'down the column')+'</div>'
+  var dose=(axis&&n>=2&&expUsesCompounds(_plExp()))?('<div class="pl-sec"><div class="pl-sec-t">Dose series &mdash; '+(axis==='row'?'across the row':'down the column')+'</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Top conc</span><input type="number" id="pl-dose-top" value="1000"></label>'
     +'<label class="ci-f"><span>Unit</span><select id="pl-dose-unit"><option>nM</option><option>µM</option><option>mM</option></select></label>'
     +'<label class="ci-f"><span>Fold</span><input type="number" id="pl-dose-fold" value="3" step="0.5"></label></div>'
@@ -2784,10 +2933,15 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'<div class="cc-inputs"><label class="ci-f"><span>Format</span><select onchange="plSetFormat(this.value)">'
       +Object.keys(PLATE_FORMATS).sort(function(a,b){return a-b;}).map(function(k){ return '<option value="'+k+'"'+(String(p.format)===k?' selected':'')+'>'+k+'-well</option>'; }).join('')
     +'</select></label><label class="ci-f"><span>Title</span><input value="'+esc(p.title||'')+'" placeholder="e.g. Dose–response" oninput="plSetTitle(this.value)"></label></div>'
-    +'<div class="pl-row2"><button class="pl-btn" onclick="plLayoutMenu()">'+tbIco(P_GRID,13)+' Start from a layout…</button></div></div>'
+    +'<div class="pl-row2"><button class="pl-btn" onclick="plLayoutMenu()">'+tbIco(P_GRID,13)+' Start from a layout…</button>'
+      +(_plExpTypes().length?'<button class="pl-btn" onclick="plUseExpTypes()" title="Replace the palette with the conditions this experiment is made of">Use this experiment\'s conditions</button>':'')
+    +'</div></div>'
     +'<div class="pl-sec"><div class="pl-sec-t">Edit mode</div><div class="pl-modes"><button class="pl-btn pl-mode'+(PL.mode==='paint'?' on':'')+'" onclick="plSetMode(\'paint\')">Paint</button><button class="pl-btn pl-mode'+(PL.mode==='select'?' on':'')+'" onclick="plSetMode(\'select\')">Select</button><button class="pl-btn pl-mode'+(PL.mode==='erase'?' on':'')+'" onclick="plSetMode(\'erase\')">Erase</button></div><div class="pl-sec-t">Quick types</div><div class="pl-quick">'+(quick||'<span class="pl-sum-empty">Choose a type below.</span>')+'</div><div class="pl-sec-t">Well type</div><div class="pl-types">'+pal+'</div></div>'
     +'<div class="pl-sec"><div class="pl-sec-t">'+(n?(n+' well'+(n!==1?'s':'')+' selected'):'Select wells to edit')+'</div>'
-    +'<div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')+fld('compound','Compound')+fld('conc','Concentration')+fld('label','Label (override)')+'</div>'
+    +'<div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')
+      +(expUsesCompounds(_plExp())?(fld('compound','Compound')+fld('conc','Concentration')):'')
+      +fld('label','Label (override)')+'</div>'
+    +flagsHtml
     +'<div class="pl-row2"><button class="pl-btn" onclick="plSelectAll()">Select all</button><button class="pl-btn" onclick="plClearSel()">Deselect</button>'
     +'<button class="pl-btn'+(PL.touchAdd?' on':'')+'" onclick="plToggleTouchAdd()" title="Keep adding to the selection (like holding ctrl)">'+(PL.touchAdd?'✓ Add mode':'Add mode')+'</button>'
     +'<button class="pl-btn danger"'+(n?'':' disabled')+' onclick="plEraseSel()">Clear wells</button></div></div>'
@@ -4873,7 +5027,20 @@ function expActs(id){ var e=LB.data.experiments[id]||{};
   var close = expArchived(e)
     ? '<button class="exh-act" title="Unarchive — bring it back into Home and the planner" onclick="setExpArchived(\''+id+'\',false)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18v4H3z"/><path d="M5 11v9h14v-9"/><path d="M12 18V13"/><path d="M9.5 15.5L12 13l2.5 2.5"/></svg></button>'
     : '<button class="exh-act" title="Close this experiment — say how it ended and file it away" onclick="closeExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18v4H3z"/><path d="M5 11v9h14v-9"/><path d="M12 13v5"/><path d="M9.5 15.5L12 18l2.5-2.5"/></svg></button>';
-  return '<div class="exh-acts">'+close+'<button class="exh-act" title="Repeat as the next biological replicate" onclick="repeatExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></button><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
+  return '<div class="exh-acts">'
+    +'<button class="exh-act" title="Bench sheet — the amounts and the steps, to print and take to the lab" onclick="exportLab(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3h6v3H9z"/><path d="M9 4.5H6.5A1.5 1.5 0 005 6v14a1.5 1.5 0 001.5 1.5h11A1.5 1.5 0 0019 20V6a1.5 1.5 0 00-1.5-1.5H15"/><path d="M8.5 11h7M8.5 15h4"/></svg></button>'
+    +close+'<button class="exh-act" title="Repeat as the next biological replicate" onclick="repeatExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></button><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
+// D / A next to each plasmid: which is the NanoLuc donor, which the HaloTag acceptor. Nothing
+// is required — a plasmid with no role is just a plasmid, and the plate simply will not offer
+// a condition for it.
+function constructRolesHtml(e){
+  var cs=expConstructs(e); if(!cs.length) return '';
+  return '<div class="exh-roles">'+cs.map(function(c){
+    return '<span class="exh-role"><b>'+esc(c.name)+'</b>'
+      +'<button class="rl'+(c.role==='donor'?' on d':'')+'" title="NanoLuc donor" onclick="setConstructRole(\''+e.id+'\',\''+esc(c.name)+'\',\'donor\')">D</button>'
+      +'<button class="rl'+(c.role==='acceptor'?' on a':'')+'" title="HaloTag acceptor" onclick="setConstructRole(\''+e.id+'\',\''+esc(c.name)+'\',\'acceptor\')">A</button></span>';
+  }).join('')+'</div>';
+}
 function titleField(e){ var empty=!(e.title||'').trim(); return '<input class="exh-title'+(empty?' code-big':'')+'" value="'+esc(empty?(e.code||''):e.title)+'" placeholder="'+(empty?'':'Title')+'" onchange="setField(\'title\',this.value)" onblur="renderPages()">'; }
 // One step card (day label now lives on the day-group header).
 function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.part)+'</span>'):'';
@@ -5312,7 +5479,7 @@ function renderExpEditor(host,e){
         +'<div class="exh-fld"><label>Status</label><select onchange="setExpStatus(\''+e.id+'\',this.value)">'+EXP_STATUSES.map(function(s){return '<option value="'+s+'"'+(s===e.status?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select>'
       +(expArchived(e)?'<span class="exh-arch" title="Hidden from Home, the planner and the counters">archived</span>':'')+'</div>'
     +'<div class="exh-fld"><label>Start date</label><input type="date" value="'+esc(e.startDate||'')+'" onchange="setField(\'startDate\',this.value)"></div>'
-    +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div></div>'
+    +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div>'+constructRolesHtml(e)+'</div>'
     +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" oninput="updChips(\'cellLines\',this.value)" onchange="setField(\'cellLines\',this.value)"><div class="exh-chips" id="chips-cell">'+_chipInner(e.cellLines,'cell')+'</div></div></div>';
   var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
   var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res')?EXP_TAB:'dated';
@@ -7385,6 +7552,112 @@ function _printName(){
   if(SEL.node.kind==='journal'||SEL.node.kind==='today'){ var d=SEL.page||todayStr(); return 'Notebook '+d; }
   if(SEL.node.kind==='week') return 'Week planner';
   return 'Labbook';
+}
+// ── Export to the lab ───────────────────────────────────────────────────────────────────────
+// Not the notebook record: the sheet you carry to the culture room. What to prepare and how
+// much, in the order you do it, with boxes to tick — big enough to read at arm's length beside
+// a hood, and with everything that is only meaningful at a desk left out (publication prose,
+// deviations, results, file lists).
+var LAB_CSS='<style>@page{margin:12mm}'
+ +'#print-root{color:#111;font:400 12pt/1.5 ui-sans-serif,system-ui,sans-serif}'
+ +'.lb-h{border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:14px}'
+ +'.lb-h1{font:800 22pt/1.15 sans-serif;margin:0}'
+ +'.lb-h2{font:600 12pt/1.3 sans-serif;color:#444;margin-top:4px}'
+ +'.lb-meta{margin-top:8px;font:600 11pt/1.5 sans-serif;color:#222}'
+ +'.lb-meta span{display:inline-block;margin-right:18px}'
+ +'.lb-day{margin-top:20px;page-break-inside:avoid}'
+ +'.lb-dayhd{font:800 14pt/1.2 sans-serif;background:#111;color:#fff;padding:5px 10px;border-radius:3px}'
+ +'.lb-step{margin-top:12px;page-break-inside:avoid}'
+ +'.lb-stept{font:700 13pt/1.3 sans-serif;margin-bottom:5px}'
+ +'.lb-body{font:400 12pt/1.55 sans-serif}'
+ +'.lb-body p{margin:0 0 6px}.lb-body b{font-weight:700}'
+ +'.lb-body ul,.lb-body ol{margin:4px 0 6px 22px}'
+ +'.lb-tbl{border-collapse:collapse;width:100%;margin:6px 0 8px;font:400 11pt/1.4 sans-serif}'
+ +'.lb-tbl th{background:#eee;font-weight:700;text-align:left;border:1px solid #999;padding:5px 8px}'
+ +'.lb-tbl td{border:1px solid #999;padding:5px 8px;vertical-align:top}'
+ +'.lb-note{font:400 11pt/1.45 sans-serif;color:#333;border-left:4px solid #999;padding:4px 10px;margin:6px 0;background:#f4f4f4}'
+ +'.lb-warn{border-left-color:#c25a12;background:#fdf3ea}'
+ +'.lb-ck{list-style:none;margin:6px 0 0;padding:0}'
+ +'.lb-ck li{position:relative;padding-left:26px;margin:5px 0;font:400 12pt/1.5 sans-serif}'
+ +'.lb-ck li::before{content:"";position:absolute;left:0;top:2px;width:15px;height:15px;border:2px solid #111}'
+ +'.lb-plate{margin-top:10px;page-break-inside:avoid}'
+ +'.lb-ptitle{font:700 12pt/1.3 sans-serif;margin-bottom:4px}'
+ +'.lb-psum{border-collapse:collapse;width:100%;font:400 11pt/1.45 sans-serif}'
+ +'.lb-psum td{border-bottom:1px solid #ddd;padding:4px 8px 4px 0;vertical-align:top}'
+ +'.lb-psum .r{font-weight:700;white-space:nowrap;font-family:ui-monospace,monospace}'
+ +'.lb-foot{margin-top:22px;border-top:1px solid #bbb;padding-top:8px;font:400 10pt/1.4 sans-serif;color:#666}'
+ +'</style>';
+// The recipe tables are the point of this sheet, so they are kept as tables rather than
+// flattened into a sentence the way the publication text does it.
+function _labCalcHtml(b){
+  if(!b.calc) return '';
+  var h=expCalcRecipe(b); if(!h) return '';
+  var d=document.createElement('div'); d.innerHTML=h;
+  Array.prototype.forEach.call(d.querySelectorAll('.cc-tbl'),function(t){ t.className='lb-tbl'; });
+  Array.prototype.forEach.call(d.querySelectorAll('.cc-note,.cc-dim'),function(n){ n.className='lb-note'; });
+  Array.prototype.forEach.call(d.querySelectorAll('.cc-warn'),function(n){ n.className='lb-note lb-warn'; });
+  Array.prototype.forEach.call(d.querySelectorAll('.cc-fix,.cc-tblwrap'),function(n){
+    if(n.className==='cc-fix') n.remove(); else n.replaceWith.apply(n,[].slice.call(n.childNodes)); });
+  return '<div class="lb-body">'+d.innerHTML+'</div>';
+}
+// The checklist is the reason this is a sheet and not a screen: it becomes real boxes.
+function _labBodyHtml(b){
+  var d=document.createElement('div'); d.innerHTML=b.html||'';
+  var checks=[];
+  Array.prototype.forEach.call(d.querySelectorAll('ul.lb-check'),function(ul){
+    Array.prototype.forEach.call(ul.querySelectorAll('li'),function(li){ checks.push(li.textContent.trim()); });
+    ul.remove();
+  });
+  Array.prototype.forEach.call(d.querySelectorAll('.pub-skip'),function(n){ n.remove(); });
+  Array.prototype.forEach.call(d.querySelectorAll('.lb-note-warn'),function(n){ n.className='lb-note lb-warn'; });
+  Array.prototype.forEach.call(d.querySelectorAll('.lb-note'),function(n){ if(n.className.indexOf('lb-warn')<0) n.className='lb-note'; });
+  var body=d.innerHTML.trim();
+  return (body?'<div class="lb-body">'+body+'</div>':'')
+    +(checks.length?('<ul class="lb-ck">'+checks.map(function(c){ return '<li>'+esc(c)+'</li>'; }).join('')+'</ul>'):'');
+}
+function _labPlateHtml(p,title){
+  if(!p) return '';
+  var g=[]; try{ g=plateColSummary(p).concat(plateSummary(p)); }catch(e){}
+  if(!g.length) return '';
+  return '<div class="lb-plate"><div class="lb-ptitle">'+esc(title||('Plate map — '+String(p.format)+'-well'))+'</div>'
+    +'<table class="lb-psum">'+g.map(function(x){
+      return '<tr><td class="r">'+esc(x.range)+'</td><td>'+esc(x.desc)+'</td><td>'+esc(String(x.n))+' wells</td></tr>'; }).join('')
+    +'</table></div>';
+}
+function buildLabSheet(e){
+  var h=LAB_CSS;
+  var proj=projById(e.projectId);
+  h+='<div class="lb-h"><div class="lb-h1">'+esc(e.code||e.title||'Experiment')+'</div>'
+    +(e.title?('<div class="lb-h2">'+esc(e.title)+'</div>'):'')
+    +'<div class="lb-meta">'
+      +(e.startDate?'<span>Start '+esc(fmtDate(e.startDate))+'</span>':'')
+      +(e.cellLines?'<span>Cells: '+esc(e.cellLines)+'</span>':'')
+      +(e.plasmids?'<span>Plasmids: '+esc(e.plasmids)+'</span>':'')
+      +(proj?'<span>'+esc(proj.name)+'</span>':'')
+    +'</div></div>';
+  h+=_labPlateHtml(e.plate,'Plate map — the layout for the run');
+  dayGroups(e).forEach(function(g){
+    h+='<div class="lb-day"><div class="lb-dayhd">Day '+(g.day==null?'—':g.day)
+      +(g.key?(' &middot; '+esc(fmtDate(g.key))):'')+'</div>';
+    g.blocks.forEach(function(b){
+      h+='<div class="lb-step"><div class="lb-stept">'+esc(b.title||'Step')+'</div>'
+        +_labCalcHtml(b)+_labBodyHtml(b)+_labPlateHtml(b.plate,'Plate map for this step')+'</div>';
+    });
+    h+='</div>';
+  });
+  h+='<div class="lb-foot">'+esc(_brand())+' &middot; '+esc(e.code||'')+' &middot; printed '+esc(fmtDate(todayStr()))+'</div>';
+  return h;
+}
+function exportLab(id){
+  var e=LB.data.experiments[id]||_curExp(); if(!e) return;
+  var pr=el('print-root'); pr.innerHTML=buildLabSheet(e);
+  Promise.all([hydrateAtt(pr)]).then(function(){
+    var was=document.title;
+    document.title=((e.code||e.title||'experiment')+' — bench sheet').replace(/[\\/:*?"<>|]/g,'-');
+    var restore=function(){ document.title=was; window.removeEventListener('afterprint',restore); };
+    window.addEventListener('afterprint',restore); setTimeout(restore,8000);
+    setTimeout(function(){ try{ window.print(); }catch(e2){} },80);
+  });
 }
 function exportPDF(){
   var pr=el('print-root'); pr.innerHTML=buildPrintDoc();
