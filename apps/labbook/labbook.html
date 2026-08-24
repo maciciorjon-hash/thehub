@@ -911,6 +911,10 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
   border:1px solid var(--border2);color:var(--text2);cursor:pointer;}
 .rep-l:hover{border-color:#5e87c5;color:#5e87c5;}
 .rep-l.on{background:#5e87c5;border-color:#5e87c5;color:#fff;font-weight:700;}
+.rep-of{color:var(--text2);}
+.rep-of a{color:var(--accent,#5e87c5);font-family:var(--mono);cursor:pointer;text-decoration:none;}
+.rep-of a:hover{text-decoration:underline;}
+.rep-when{color:var(--text3);}
 /* ── Bench timers ─────────────────────────────────────────────────────────────────────── */
 .ptimer{background:none;border:none;color:var(--text3);font-size:var(--fs-1);cursor:pointer;padding:0 0 0 3px;
   vertical-align:baseline;}
@@ -5119,11 +5123,28 @@ function repeatExperiment(id){
       // params and notes are kept on purpose: a replicate repeats what you actually did,
       // including the deviations, not the pristine protocol.
     });
-    if(e.code) c.code=e.code+'_R'+c.repIndex;
+    // The code is the experiment's name on a PDF and in a folder, and two replicates started on
+    // different days may not share one. The date component is replaced rather than the code
+    // rebuilt, so any prefix or suffix you typed yourself survives.
+    if(e.code) c.code=_replicateCode(e.code, start, c.repIndex);
     c.created=Date.now(); c.updated=Date.now(); e.updated=Date.now();
     LB.data.experiments[c.id]=c; save(); SEL.page=c.id; EXP_TAB='dated'; renderAll();
     toast('Biological replicate '+c.repIndex+' created');
   });
+}
+// Swap the 8-digit date in a code for the replicate's own start date; if there is none to swap,
+// append it. Then make sure it is not already taken — two replicates started the same day would
+// otherwise collide, which is the same bug one step along.
+function _replicateCode(code, startDate, idx){
+  var d=dateCompact(startDate);
+  if(!d) return code+'_R'+idx;
+  var out = /\d{8}/.test(code) ? code.replace(/\d{8}/, d) : (code+'_'+d);
+  var taken={};
+  Object.keys(LB.data.experiments).forEach(function(k){ var x=LB.data.experiments[k]; if(x.code) taken[x.code]=1; });
+  if(!taken[out]) return out;
+  var n=idx||2;
+  while(taken[out+'_R'+n]) n++;
+  return out+'_R'+n;
 }
 function repChipHtml(e){
   var sib=repSiblings(e); if(sib.length<2) return '';
@@ -5131,8 +5152,16 @@ function repChipHtml(e){
     return '<a class="rep-l'+(x.id===e.id?' on':'')+'" onclick="openExp(\''+x.id+'\')" title="'
       +esc(x.code||x.title||'')+'">'+(x.repIndex||'?')+'</a>';
   }).join('');
+  // The first of the group is the one this repeats. Naming it beats a row of numbers: "of 3"
+  // does not tell you which experiment you are repeating, and that is the thing you go back to.
+  var first=sib.filter(function(x){ return (x.repIndex||1)===1; })[0] || sib[0];
+  var of=(first && first.id!==e.id)
+    ? ('<span class="rep-of">repeat of <a onclick="openExp(\''+first.id+'\')">'
+        +esc(first.code||first.title||'the first')+'</a>'
+        +(first.startDate?(' <span class="rep-when">'+esc(fmtDate(first.startDate))+'</span>'):'')+'</span>')
+    : '';
   return '<div class="rep-chip" title="Biological replicates of the same experiment">'
-    +'<span class="rep-t">Biological replicate '+(e.repIndex||1)+' of '+sib.length+'</span>'+links+'</div>';
+    +'<span class="rep-t">Biological replicate '+(e.repIndex||1)+' of '+sib.length+'</span>'+of+links+'</div>';
 }
 
 // ── Bench timers ────────────────────────────────────────────────────────────────────────────
@@ -7263,7 +7292,28 @@ function printFloatLayers(root){ var nodes=root.querySelectorAll('.pd-body[data-
     });
     body.appendChild(wrap); });
   return Promise.all(ps); }
-function exportPDF(){ var pr=el('print-root'); pr.innerHTML=buildPrintDoc(); Promise.all([hydrateAtt(pr),printFloatLayers(pr)]).then(function(){ setTimeout(function(){ try{ window.print(); }catch(e){} }, 80); }); }
+// Every browser names the PDF after document.title, so "Labbook.pdf" is what came out of here
+// whatever you were exporting — and inside dHUB, "dHUB.pdf". The title is the experiment's code
+// for the length of the print and then put back.
+function _printName(){
+  var e=_curExp(); if(e) return (e.code||e.title||'experiment');
+  var pg=_curPage(); if(pg) return (pg.title||'page');
+  if(SEL.node.kind==='journal'||SEL.node.kind==='today'){ var d=SEL.page||todayStr(); return 'Notebook '+d; }
+  if(SEL.node.kind==='week') return 'Week planner';
+  return 'Labbook';
+}
+function exportPDF(){
+  var pr=el('print-root'); pr.innerHTML=buildPrintDoc();
+  Promise.all([hydrateAtt(pr),printFloatLayers(pr)]).then(function(){
+    var was=document.title;
+    document.title=_printName().replace(/[\\/:*?"<>|]/g,'-');
+    var restore=function(){ document.title=was; window.removeEventListener('afterprint',restore); };
+    window.addEventListener('afterprint',restore);
+    // Safari does not always fire afterprint; the title must not stay changed either way.
+    setTimeout(restore, 8000);
+    setTimeout(function(){ try{ window.print(); }catch(e){} }, 80);
+  });
+}
 
 // ── OneNote ─────────────────────────────────────────────────────────────────────────────────
 // OneNote's paste keeps inline style and throws stylesheets away, which is the whole reason a
