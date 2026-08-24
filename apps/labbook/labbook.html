@@ -911,6 +911,14 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
   border:1px solid var(--border2);color:var(--text2);cursor:pointer;}
 .rep-l:hover{border-color:#5e87c5;color:#5e87c5;}
 .rep-l.on{background:#5e87c5;border-color:#5e87c5;color:#fff;font-weight:700;}
+/* Publication-ready: sections and the toggles that decide which of them exist. */
+.exp-pub .pub-h{font-size:var(--fs-2);font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--accent,#5e87c5);margin:14px 0 4px;}
+.exp-pub .pub-h:first-child{margin-top:0;}
+.pub-secs{display:flex;flex-wrap:wrap;gap:4px;margin-left:10px;}
+.pub-sec{font-family:var(--sans);font-size:var(--fs-1);border:1px solid var(--border2);background:var(--surface);
+  color:var(--text3);border-radius:var(--r-3);padding:3px 9px;cursor:pointer;}
+.pub-sec.on{background:var(--accent-dim);border-color:var(--accent,#5e87c5);color:var(--accent,#5e87c5);font-weight:600;}
 .rep-of{color:var(--text2);}
 .rep-of a{color:var(--accent,#5e87c5);font-family:var(--mono);cursor:pointer;text-decoration:none;}
 .rep-of a:hover{text-decoration:underline;}
@@ -1475,7 +1483,7 @@ var EXTRA_PRESET_SEED={
     {d:1,title:'NanoBRET read',
      calc:{kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:'assay medium',totalVol:2520,dilution:100}},
      html:'<p>Read per the established NanoBRET protocol: add substrate, equilibrate, then read donor (~460 nm) and acceptor (~618 nm) channels. '
-       +'<i>The 1:100 substrate dilution here is a placeholder from the existing NanoBRET preset — set it to whatever your kit lot says.</i></p>'
+       +'<i class="pub-skip">The 1:100 substrate dilution here is a placeholder from the existing NanoBRET preset — set it to whatever your kit lot says.</i></p>'
        +'<p><b>Controls to include</b></p><ul><li>NanoLuc + HaloTag <b>+ ligand 618</b></li><li>NanoLuc + HaloTag <b>− ligand 618</b></li>'
        +'<li>NanoLuc only and HaloTag only, as the assay design needs</li><li>Mock (carrier DNA only)</li></ul>'
        +'<p>The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the matched − ligand wells.</p>'
@@ -3985,13 +3993,16 @@ function _blockText(root){
   })(root);
   return out;
 }
-function _htmlLines(html){
+function _htmlLines(html,forPub){
   var d=document.createElement('div'); d.innerHTML=html||'';
   Array.prototype.forEach.call(d.querySelectorAll('script,style'),function(n){n.remove();});
+  // A bench checklist ("Mixes made per condition") and a note written to *you* are records, not
+  // methods. They were being read into the published prose word for word.
+  if(forPub) Array.prototype.forEach.call(d.querySelectorAll('ul.lb-check,.pub-skip,.lb-note-tip'),function(n){ n.remove(); });
   return _blockText(d).split('\n')
     // A tick is a state, not a word. It belongs in the record, not in the Methods.
     .map(function(x){ return x.replace(/[☐☑☒✓✔]/g,' ').replace(/\s+/g,' ').replace(/\s+·\s*$/,'').trim(); })
-    .filter(Boolean);
+    .filter(function(x){ return x && !(forPub && /^results$/i.test(x)); });
 }
 function _plain(html){ return _htmlLines(html).join(' '); }
 // Past-tense Nature-methods sentence per native calculator kind.
@@ -3999,18 +4010,48 @@ var CALC_PUB={
   seed:function(v){ var line=((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,''); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; return line+' cells were seeded at '+nfmt(v.cellsPerWell)+' cells/well ('+nfmt(dens)+' M/mL) in '+nfmt(v.volPerWell)+' µL/well in '+String(v.format)+'-well plates.'; },
   lytic:function(v){ var rvol=(+v.cellVolPerWell)/(+v.ratio||2); return 'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): '+nfmt(rvol)+' µL of lytic reagent (LgBiT 1:'+nfmt(v.lgbitDil)+', substrate 1:'+nfmt(v.subDil)+') was added per well and luminescence recorded after a 10 min room-temperature incubation.'; },
   ctg:function(v){ return 'Cell viability was measured with CellTiter-Glo (Promega; '+nfmt(v.volPerWell)+' µL/well), luminescence being recorded after a 10–20 min equilibration and normalised to vehicle controls.'; },
-  reagent:function(v){ return (v.name||'The reagent')+' was prepared at a 1:'+nfmt(v.dilution)+' dilution in '+(v.diluent||'buffer')+'.'; }
+  reagent:function(v){ return (v.name||'The reagent')+' was prepared at a 1:'+nfmt(v.dilution)+' dilution in '+(v.diluent||'buffer')+'.'; },
+  // A recipe table is a bench artefact. Methods want the design: what went in a well and why
+  // the controls exist — which is exactly what the inputs already say.
+  nbtx:function(v){
+    var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0, R=+v.ratio||1, dNg=R?(aNg/R):0;
+    var dn=esc(v.donorName||'the NanoLuc construct'), an=esc(v.acceptorName||'the HaloTag construct');
+    var s='Cells were reverse-transfected with <b>'+nfmt(aNg)+' ng</b> of '+an+' per well and '+dn
+      +' at a <b>1:'+nfmt(R)+'</b> mass ratio (<b>'+nfmt(dNg)+' ng</b>), complexed with <b>'+nfmt(v.fugenePerWell)
+      +' µL</b> FuGENE HD in <b>'+nfmt(v.optimemPerWell)+' µL</b> Opti-MEM per well and dispensed into the plate before the cells.';
+    var ctrl=[];
+    if(+v.nDonor>0) ctrl.push(dn+' alone');
+    if(+v.nAcceptor>0) ctrl.push(an+' alone');
+    if(+v.nMock>0) ctrl.push('a mock transfection');
+    if(ctrl.length) s+=' Control wells received '+_pubList(ctrl)+', made up with carrier DNA to the same <b>'
+      +nfmt(dNg+aNg)+' ng</b> per well so that every well received an equal amount of DNA.';
+    return s;
+  },
+  nbsusp:function(v){
+    var line=esc(((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,''));
+    var s=line+' were seeded at <b>'+nfmt(v.cellsPerWell)+' cells per well</b> in <b>'+nfmt(v.volPerWell)
+      +' µL</b> directly onto the transfection complexes.';
+    if(+v.nPlus>0) s+=' '+esc(v.ligName||'The HaloTag ligand')+' was included in the medium at <b>'+nfmt(v.finalNM)
+      +' nM</b> throughout the expression period'
+      +((+v.nMinus>0)?', and omitted from the matched no-ligand control wells':'')+'.';
+    return s;
+  }
 };
+// Which writers speak for the whole block. A partial one (reagent: a single dilution) must not
+// silence the prose around it — that is how the NanoBRET read lost its list of controls.
+var CALC_PUB_FULL={nbtx:1,nbsusp:1,seed:1,lytic:1,ctg:1};
+// "a, b and c" — an Oxford-free list, because Methods sections read as sentences.
+function _pubList(a){ a=a.filter(Boolean); if(a.length<2) return a[0]||'';
+  return a.slice(0,-1).join(', ')+' and '+a[a.length-1]; }
 // Prose, not a transcript: each block becomes a sentence, and one that already ends in
 // punctuation is left alone rather than given a second full stop.
 function _pubText(html){
-  return _htmlLines(html).map(function(x){ return /[.!?:;]$/.test(x) ? x : (x+'.'); }).join(' ');
+  return _htmlLines(html,true).map(function(x){ return /[.!?:;]$/.test(x) ? x : (x+'.'); }).join(' ');
 }
 // "Experimental setup: Format: 96-well; Cell line: HCT116; Cells / well: 3000." is a form,
 // not a Methods section. The keys are the same across every experiment type in SETUP_SCHEMA,
 // so the common ones get a real sentence and anything else still appears — a setup value that
 // silently vanishes from the Methods is worse than a clumsy clause.
-function _pubCap(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
 function _pubSetupText(e){
   if(!e||!e.setup) return '';
   var S=setupSchema(e.type), v=e.setup, used={}, out=[];
@@ -4043,9 +4084,9 @@ function _pubSetupText(e){
     if(f.t==='cellline'){ var d2=cellLineDef(x); x=(d2&&d2.label)||x; }
     else if(f.t==='format') x=x+'-well';
     else if(f.t==='check') x=x?'yes':'no';
-    rest.push(f.lbl.toLowerCase()+' '+String(x));
+    rest.push(f.lbl+' '+String(x));
   });
-  if(rest.length) out.push(_pubCap(rest.join('; '))+'.');
+  if(rest.length) out.push(rest.join('; ')+'.');
   return out.join(' ');
 }
 function _pubArchiveSteps(pid){
@@ -4065,33 +4106,68 @@ function _pubPlateText(p,label){
   if(!body) return '';
   return 'In the '+String(p.format||'')+'-well plate'+(label?(' ('+label.toLowerCase()+')'):'')+': '+body+'.';
 }
-function pubSentence(b){
+// Returns HTML: a calculator's Methods sentence keeps its bold, and anything derived from your
+// own writing is escaped as it goes in.
+function pubSentence(b,e){
   var parts=[], calcText='';
   if(b.calc){
-    if(b.calc.kind==='archive') calcText=_pubText(expCalcRecipe(b));
-    else { var f=CALC_PUB[b.calc.kind]; if(f){ try{ calcText=f(b.calc.inputs||{}); }catch(e){} } if(!calcText) calcText=_pubText(expCalcRecipe(b)); }
+    // An Archive calculator's recipe is the protocol's own step text, so it belongs. A native
+    // one computes a *table* — condition, DNA, FuGENE, Opti-MEM, total — and flattening that
+    // into a sentence is what made this read like a transcript. Only its Methods writer is used.
+    if(b.calc.kind==='archive') calcText=esc(_pubText(expCalcRecipe(b)));
+    else { var f=CALC_PUB[b.calc.kind]; if(f){ try{ calcText=f(b.calc.inputs||{}); }catch(e){} } }
   }
   if(calcText) parts.push(calcText);
   var body=_pubText(b.html);
   if(/^results\s*$/i.test(body)) body='';
-  if(body) parts.push(body);
-  if(!parts.length&&b.sourcePid){ var archiveBody=_pubArchiveSteps(b.sourcePid); if(archiveBody) parts.push(archiveBody); }
+  // b.tpl is the preset's text before the setup was substituted into it. If the block still
+  // says exactly that, it is the template's bench instructions — "Add DNA to Opti-MEM, then
+  // FuGENE HD" — and a calculator has just reported the same thing in the past tense. Anything
+  // you wrote yourself makes them differ, and then it stays.
+  var untouched=false;
+  try{ untouched = !!(b.tpl && b.tpl.html && e && fillSetup(b.tpl.html, e.setup||{})===b.html); }catch(_e){}
+  if(body && !(calcText && untouched && CALC_PUB_FULL[b.calc&&b.calc.kind])) parts.push(esc(body));
+  if(!parts.length&&b.sourcePid){ var archiveBody=_pubArchiveSteps(b.sourcePid); if(archiveBody) parts.push(esc(archiveBody)); }
   var title=(b.title||'').trim();
-  if(title&&parts.length&&!new RegExp('^'+title.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'[.: —-]','i').test(parts[0])) parts.unshift(title+'.');
-  else if(title&&!parts.length) parts.push(title+'.');
+  if(title&&!parts.length) parts.push(esc(title)+'.');
   return parts.join(' ').replace(/\s+([,.;])/g,'$1').trim();
 }
 // Publication-ready prose from every dated block, its live calculators, setup and plate maps.
-function buildPubReadyFromExp(e){ var parts=[]; var _resSent=pubResultsSentence(e);
-  var setup=_pubSetupText(e); if(setup) parts.push(setup);
-  var protos=(e.protocols||[]).map(function(p){return p.name||p.id;}).filter(Boolean);
-  if(protos.length) parts.push('Archive protocols used: '+protos.join(', ')+'.');
-  if(e.plate) parts.push(_pubPlateText(e.plate,''));
-  dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ var s=(pubSentence(b)||'').trim(); if(s) parts.push(s); if(b.plate) parts.push(_pubPlateText(b.plate,'')); }); });
-  var _devSent=deviationsSentence(e); if(_devSent) parts.push(_devSent);
-  if(_resSent) parts.push(_resSent);
-  parts=parts.filter(function(s,i){ return s&&s!==parts[i-1]; });
-  return parts.length?parts.map(function(s){return '<p>'+esc(s)+'</p>';}).join(''):'<p></p>'; }
+// Sections and bold survive: the whole thing used to be escaped into flat paragraphs, so a
+// number the calculator had emphasised arrived as plain text with no headings around it.
+var PUB_SECTIONS=[{k:'setup',lbl:'Setup'},{k:'methods',lbl:'Methods'},{k:'plate',lbl:'Plate layout'},
+                  {k:'dev',lbl:'Deviations'},{k:'results',lbl:'Results'}];
+function pubOpts(e){ var o=(e&&e.pubOpts)||{}, out={};
+  PUB_SECTIONS.forEach(function(s){ out[s.k]=(o[s.k]===undefined)?true:!!o[s.k]; }); return out; }
+function buildPubReadyFromExp(e){
+  var o=pubOpts(e), out=[];
+  function H(t){ out.push('<h4 class="pub-h">'+esc(t)+'</h4>'); }
+  function P(html){ if(html&&String(html).trim()) out.push('<p>'+html+'</p>'); }
+  var methods=[];
+  if(o.setup){ var st=_pubSetupText(e); if(st) methods.push(esc(st)); }
+  if(o.methods){
+    var protos=(e.protocols||[]).map(function(p){return p.name||p.id;}).filter(Boolean);
+    if(protos.length) methods.push('Protocols followed: '+esc(protos.join(', '))+'.');
+    dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){
+      var s=(pubSentence(b,e)||'').trim(); if(s) methods.push(s); }); });
+  }
+  methods=methods.filter(function(s,i){ return s&&s!==methods[i-1]; });
+  if(methods.length){ H('Methods'); methods.forEach(P); }
+  if(o.plate){
+    var pl=[]; if(e.plate) pl.push(_pubPlateText(e.plate,''));
+    dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ if(b.plate) pl.push(_pubPlateText(b.plate,'')); }); });
+    pl=pl.filter(Boolean);
+    if(pl.length){ H('Plate layout'); pl.forEach(function(x){ P(esc(x)); }); }
+  }
+  if(o.dev){ var d=deviationsSentence(e); if(d){ H('Deviations from the protocol'); P(esc(d)); } }
+  if(o.results){ var r=pubResultsSentence(e); if(r){ H('Results'); P(esc(r)); } }
+  return out.length?out.join(''):'<p></p>';
+}
+function pubToggle(id,k){
+  var e=LB.data.experiments[id]; if(!e) return;
+  var o=pubOpts(e); o[k]=!o[k]; e.pubOpts=o;
+  e.pubReady=buildPubReadyFromExp(e); e.updated=Date.now(); save(); renderEditor();
+}
 function rebuildPub(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Rebuild the publication-ready text from this experiment’s steps and calculators? Your current edits will be replaced.',{title:'Rebuild publication text'}).then(function(ok){ if(!ok) return; e.pubReady=buildPubReadyFromExp(e); e.updated=Date.now(); save(); renderEditor(); }); }
 // Copy helpers
 function _copyFallback(str){ try{ var ta=document.createElement('textarea'); ta.value=str; ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied'); }catch(e){ toast('Copy failed'); } }
@@ -5256,7 +5332,13 @@ function renderExpEditor(host,e){
     body=resultsPaneHtml(e);
   } else if(tab==='pub'){
     var srcChips=(e.protocols||[]).map(function(p){ return '<a class="lb-link proto" data-app="protocols" data-pid="'+esc(p.id)+'" contenteditable="false">'+esc(p.name||p.id)+' &#8599;</a>'; }).join(' ');
-    body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods — concise continuous prose (Nature style)</span><span class="grow"></span>'
+    var _po=pubOpts(e);
+    var _toggles=PUB_SECTIONS.map(function(sx){
+      return '<button class="pub-sec'+(_po[sx.k]?' on':'')+'" onclick="pubToggle(\''+e.id+'\',\''+sx.k+'\')"'
+        +' title="'+(_po[sx.k]?'In the text — click to leave it out':'Left out — click to include it')+'">'+esc(sx.lbl)+'</button>';
+    }).join('');
+    body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods</span>'
+      +'<span class="pub-secs">'+_toggles+'</span><span class="grow"></span>'
       +'<button class="pub-btn" onclick="rebuildPub(\''+e.id+'\')" title="Regenerate the prose from this experiment\'s steps + calculators">'+tbIco(P_REFRESH,13)+' Rebuild</button>'
       +'<button class="pub-btn primary" onclick="copyPubReady(\''+e.id+'\')">Copy</button></div>'
       +(srcChips?'<div class="exp-pub-src">Sources: '+srcChips+'</div>':'')
@@ -7010,47 +7092,49 @@ function newPresetFromType(){ var items=EXP_TYPES.filter(function(t){return t.id
 }
 
 // ── PDF export ──
-var PRINT_CSS='<style>#print-root .pd-tbl{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:10.5pt}#print-root .pd-tbl th,#print-root .pd-tbl td{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:top}#print-root .pd-tbl th{background:#f2f2f2;font-weight:600}#print-root .pd-res{margin-bottom:10px}#print-root .pd-res-hd{font-weight:600;margin-bottom:3px}#print-root .pd-res-when{float:right;font-weight:400;color:#666}#print-root .pd-exp{margin-top:18px}#print-root .pd-exp-hd{font-weight:700;border-bottom:2px solid #333;padding-bottom:3px;margin-bottom:8px}#print-root .pd-exp-hd span{font-weight:400;color:#444}#print-root{padding:0;color:#111}#print-root *{box-sizing:border-box}'
+var PRINT_CSS='<style>@page{margin:14mm}#print-root .pd-tbl{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:10.5pt}#print-root{font-size:11.5pt}#print-root .pd-tbl th,#print-root .pd-tbl td{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:top}#print-root .pd-tbl th{background:#f2f2f2;font-weight:600}#print-root .pd-res{margin-bottom:10px}#print-root .pd-res-hd{font-weight:600;margin-bottom:3px}#print-root .pd-res-when{float:right;font-weight:400;color:#666}#print-root .pd-exp{margin-top:18px}#print-root .pd-exp-hd{font-weight:700;border-bottom:2px solid #333;padding-bottom:3px;margin-bottom:8px}#print-root .pd-exp-hd span{font-weight:400;color:#444}#print-root{padding:0;color:#111}#print-root *{box-sizing:border-box}'
  +'.pd-head{border-bottom:2px solid #5e87c5;padding:0 0 12px;margin-bottom:16px}'
- +'.pd-kicker{font:600 11px/1 sans-serif;letter-spacing:1px;color:#5e87c5;text-transform:uppercase}'
- +'.pd-code{font:600 13px/1.4 sans-serif;color:#5e87c5;margin-top:8px}'
- +'.pd-title{font:700 24px/1.2 sans-serif;margin:3px 0 8px}'
- +'.pd-crumb{font:500 12px/1.4 sans-serif;color:#666}'
- +'.pd-chips{margin-top:9px;display:flex;flex-wrap:wrap;gap:6px}.pd-chip{font:600 10px/1 sans-serif;background:#eef2f9;color:#356;border-radius:var(--r-4);padding:5px 10px}'
+ +'.pd-kicker{font:600 9pt/1 sans-serif;letter-spacing:1px;color:#5e87c5;text-transform:uppercase}'
+ +'.pd-code{font:600 11pt/1.4 sans-serif;color:#5e87c5;margin-top:8px}'
+ +'.pd-title{font:700 20pt/1.2 sans-serif;margin:3px 0 8px}'
+ +'.pd-crumb{font:500 10pt/1.4 sans-serif;color:#666}'
+ +'.pd-chips{margin-top:9px;display:flex;flex-wrap:wrap;gap:6px}.pd-chip{font:600 9pt/1 sans-serif;background:#eef2f9;color:#356;border-radius:var(--r-4);padding:5px 10px}'
  +'.pd-block{margin-top:16px;page-break-inside:avoid}.pd-bhd{display:flex;gap:10px;align-items:baseline;border-bottom:1px solid #e2e2e2;padding-bottom:4px;margin-bottom:6px}'
- +'.pd-day{font:700 9px/1 sans-serif;color:#fff;background:#5e87c5;border-radius:var(--r-1);padding:2px 6px;text-transform:uppercase}.pd-bdate{font:600 12px/1 sans-serif;color:#777}.pd-btitle{font:700 13px/1.3 sans-serif}'
- +'.pd-body{font:400 13px/1.65 sans-serif;color:#222}.pd-body ul,.pd-body ol{margin:0 0 6px 20px}.pd-body h1,.pd-body h2,.pd-body h3{margin:8px 0 4px}.pd-body table{border-collapse:collapse;margin:6px 0}.pd-body td,.pd-body th{border:1px solid #bbb;padding:4px 8px}.pd-body hr{border:none;border-top:1px solid #ccc;margin:10px 0}.pd-body .lb-tag{color:#5e72c4;font-weight:600}.pd-body .lb-ab{color:#c47818;font-weight:600}.pd-body a.lb-link{color:#5e87c5;text-decoration:none}'
- +'.pd-body .lb-note{margin:6px 0;padding:5px 9px;border-left:3px solid #bbb;background:#f6f6f6;font-size:var(--fs-3)}'
+ +'.pd-day{font:700 8pt/1 sans-serif;color:#fff;background:#5e87c5;border-radius:var(--r-1);padding:2px 6px;text-transform:uppercase}.pd-bdate{font:600 10pt/1 sans-serif;color:#777}.pd-btitle{font:700 12pt/1.3 sans-serif}'
+ +'.pd-body{font:400 11.5pt/1.55 sans-serif;color:#222}.pd-body ul,.pd-body ol{margin:0 0 6px 20px}.pd-body h1,.pd-body h2,.pd-body h3{margin:8px 0 4px}.pd-body table{border-collapse:collapse;margin:6px 0}.pd-body td,.pd-body th{border:1px solid #bbb;padding:4px 8px}.pd-body hr{border:none;border-top:1px solid #ccc;margin:10px 0}.pd-body .lb-tag{color:#5e72c4;font-weight:600}.pd-body .lb-ab{color:#c47818;font-weight:600}.pd-body a.lb-link{color:#5e87c5;text-decoration:none}'
+ +'.pd-body .lb-note{margin:6px 0;padding:5px 9px;border-left:3px solid #bbb;background:#f6f6f6;font-size:10.5pt}'
  +'.pd-body .lb-note-warn{border-left-color:#e0803a}.pd-body .lb-note-tip{border-left-color:#5e87c5}'
- +'.pd-body .lb-table{border-collapse:collapse;margin:6px 0;font-size:var(--fs-2)}'
+ +'.pd-body .lb-table{border-collapse:collapse;margin:6px 0;font-size:10pt}'
  +'.pd-body .lb-table th,.pd-body .lb-table td{border:1px solid #bbb;padding:3px 7px}'
- +'.pd-body .pstep-note{margin:4px 0 6px;padding:4px 8px;border-left:2px solid #5e87c5;background:#f6f6f6;font-size:var(--fs-2)}'
+ +'.pd-body .pstep-note{margin:4px 0 6px;padding:4px 8px;border-left:2px solid #5e87c5;background:#f6f6f6;font-size:10pt}'
  +'.pd-body .pblk-note{margin-top:7px;padding-top:6px;border-top:1px solid #ddd}'
  +'.pd-body .pparam{border-bottom:1px dotted #999}'
  +'.lb-todo{list-style:none}.lb-box{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:var(--r-1);margin-right:6px;vertical-align:middle}.lb-todo.done .lb-box{background:#5e87c5;border-color:#5e87c5}'
  +'ul.lb-check{list-style:none;margin-left:4px;padding-left:0}ul.lb-check li{position:relative;list-style:none;padding-left:20px;margin:2px 0}ul.lb-check li::before{content:"";position:absolute;left:0;top:2px;width:11px;height:11px;border:1px solid #888;border-radius:var(--r-1)}ul.lb-check li.done::before{background:#5e87c5;border-color:#5e87c5}ul.lb-check li.done{color:#888;text-decoration:line-through}'
  +'img.lb-att{max-width:100%;height:auto;border-radius:var(--r-1);margin:6px 0;display:block;page-break-inside:avoid}'
- +'.pd-sec-hd{font:700 11px/1 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #e2e2e2}'
- +'.pd-part-hd{font:700 13px/1.3 sans-serif;color:#2f5580;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:var(--r-1);padding:5px 10px;margin:16px 0 2px;page-break-after:avoid}'
- +'.pd-pub{font:400 13px/1.75 sans-serif;color:#1a1a1a;background:#fafbfb;border:1px solid #e2e2e2;border-radius:var(--r-2);padding:12px 16px;margin-top:6px}'
- +'.pd-recipe{font:400 12.5px/1.55 sans-serif;color:#1a1a1a;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:0 6px 6px 0;padding:7px 11px;margin:0 0 7px}.pd-recipe b{color:#2f5580}'
- +'.pd-daygroup{margin-top:14px;page-break-inside:auto}.pd-dayhd{display:flex;align-items:center;gap:8px;margin:14px 0 6px;border-bottom:2px solid #5e87c5;padding-bottom:4px}.pd-dayhd .pd-day{font:700 10px/1 sans-serif;color:#fff;background:#5e87c5;border-radius:var(--r-1);padding:3px 8px;text-transform:uppercase}.pd-dayhd .pd-bdate{font:600 12px/1 sans-serif;color:#555}'
- +'.pd-foot{margin-top:26px;padding-top:10px;border-top:1px solid #e2e2e2;font:400 10px/1.4 sans-serif;color:#999}'
- +'.pd-plate{margin:6px 0 10px;page-break-inside:avoid}.pd-plate-t{font:600 10px/1.3 sans-serif;color:#555;margin-bottom:3px}'
+ +'.pd-sec-hd{font:700 9.5pt/1 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #e2e2e2}'
+ +'.pd-part-hd{font:700 12pt/1.3 sans-serif;color:#2f5580;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:var(--r-1);padding:5px 10px;margin:16px 0 2px;page-break-after:avoid}'
+ +'.pd-pub{font:400 11.5pt/1.6 sans-serif;color:#1a1a1a;background:#fafbfb;border:1px solid #e2e2e2;border-radius:var(--r-2);padding:12px 16px;margin-top:6px}'
+ +'.pd-pub .pub-h{font:700 9.5pt/1.2 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:12px 0 3px}'
+ +'.pd-pub .pub-h:first-child{margin-top:0}.pd-pub p{margin:0 0 7px}'
+ +'.pd-recipe{font:400 11pt/1.5 sans-serif;color:#1a1a1a;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:0 6px 6px 0;padding:7px 11px;margin:0 0 7px}.pd-recipe b{color:#2f5580}'
+ +'.pd-daygroup{margin-top:14px;page-break-inside:auto}.pd-dayhd{display:flex;align-items:center;gap:8px;margin:14px 0 6px;border-bottom:2px solid #5e87c5;padding-bottom:4px}.pd-dayhd .pd-day{font:700 8.5pt/1 sans-serif;color:#fff;background:#5e87c5;border-radius:var(--r-1);padding:3px 8px;text-transform:uppercase}.pd-dayhd .pd-bdate{font:600 10pt/1 sans-serif;color:#555}'
+ +'.pd-foot{margin-top:26px;padding-top:10px;border-top:1px solid #e2e2e2;font:400 8.5pt/1.4 sans-serif;color:#999}'
+ +'.pd-plate{margin:6px 0 10px;page-break-inside:avoid}.pd-plate-t{font:600 9pt/1.3 sans-serif;color:#555;margin-bottom:3px}'
  +'.pd-plate-g{border-collapse:collapse;table-layout:fixed;width:100%}.pd-plate-g td{border:1px solid #ccc;height:15px;font:400 5.5px/1.1 sans-serif;color:#222;text-align:center;overflow:hidden;word-break:break-all}'
  +'.pd-plate-g th{font:700 6px/1 sans-serif;color:#777;padding:1px}.pd-pleg{display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:4px}'
- +'.pd-pleg-i{font:400 8px/1.2 sans-serif;color:#555}.pd-pleg-i i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px}'
- +'.pd-psum{border-collapse:collapse;width:100%;margin-top:6px}.pd-psum td{font:400 8.5px/1.35 sans-serif;color:#333;padding:2px 8px 2px 0;border-bottom:1px solid #eee;vertical-align:top}'
+ +'.pd-pleg-i{font:400 8.5pt/1.2 sans-serif;color:#555}.pd-pleg-i i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px}'
+ +'.pd-psum{border-collapse:collapse;width:100%;margin-top:6px}.pd-psum td{font:400 9pt/1.35 sans-serif;color:#333;padding:2px 8px 2px 0;border-bottom:1px solid #eee;vertical-align:top}'
  +'.pd-psum-r{white-space:nowrap;font-weight:700;font-family:ui-monospace,monospace}.pd-psum-r i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}'
  +'.pd-psum-n{text-align:right;color:#888;white-space:nowrap;padding-right:0}'
- +'.pd-pnote{font:400 8px/1.35 sans-serif;color:#666;margin:0 0 4px}'
+ +'.pd-pnote{font:400 8.5pt/1.35 sans-serif;color:#666;margin:0 0 4px}'
  +'.pd-file-fig{margin:8px 0;page-break-inside:avoid}.pd-file-fig img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:var(--r-1);display:block}'
- +'.pd-file-fig figcaption{font:400 9px/1.35 sans-serif;color:#555;margin-top:3px}'
+ +'.pd-file-fig figcaption{font:400 9pt/1.35 sans-serif;color:#555;margin-top:3px}'
  +'.pd-filelist{border-collapse:collapse;width:100%;margin-top:6px;page-break-inside:avoid}'
- +'.pd-filelist td{font:400 9px/1.35 sans-serif;color:#333;padding:3px 8px 3px 0;border-bottom:1px solid #eee;vertical-align:top}'
+ +'.pd-filelist td{font:400 9pt/1.35 sans-serif;color:#333;padding:3px 8px 3px 0;border-bottom:1px solid #eee;vertical-align:top}'
  +'.pd-fl-n{font-weight:700}.pd-fl-c{color:#666}'
  +'.pd-plate-g td.pd-pgl{font:700 8px/1.1 sans-serif;text-align:center}.pd-plate-g th.pd-pcl{font:600 5px/1 sans-serif;color:#555}'
- +'.pd-body{position:relative}.pd-float-wrap{position:absolute;left:0;top:0;right:0;min-height:100%;pointer-events:none}.pd-float-fig{position:absolute;page-break-inside:avoid}.pd-float-fig img{width:100%;height:100%;object-fit:contain;border-radius:var(--r-1);border:1px solid #ddd}.pd-float-cap{font:400 10px/1.3 sans-serif;color:#555;text-align:center;margin-top:2px}</style>';
+ +'.pd-body{position:relative}.pd-float-wrap{position:absolute;left:0;top:0;right:0;min-height:100%;pointer-events:none}.pd-float-fig{position:absolute;page-break-inside:avoid}.pd-float-fig img{width:100%;height:100%;object-fit:contain;border-radius:var(--r-1);border:1px solid #ddd}.pd-float-cap{font:400 9pt/1.3 sans-serif;color:#555;text-align:center;margin-top:2px}</style>';
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
 function pdRecipe(b){ var r=expCalcRecipe(b); return r?'<div class="pd-recipe">'+r+'</div>':''; }
 // Static plate grid for the PDF — same colours, no interaction.
