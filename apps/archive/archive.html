@@ -116,7 +116,8 @@ input:checked+.theme-slider::before{transform:translateX(16px);}
    pm-seg: that is already the Circular/Linear/Sequence segmented control, so styling the arcs
    with it would have dressed the ring's paths as inline-flex buttons. */
 .pm-stage{position:relative;flex:1 1 380px;min-width:300px;}
-.pm-stage .pm-svg{display:block;width:100%;height:auto;cursor:grab;touch-action:none;}
+.pm-stage .pm-svg{display:block;width:100%;height:auto;cursor:grab;touch-action:pan-y;}
+.pm-stage .pm-svg.pm-zoomed{touch-action:none;}
 .pm-svg.pm-grabbing{cursor:grabbing;}
 .pm-arc{cursor:pointer;transition:opacity .12s;}
 .pm-arc:hover{opacity:1;}
@@ -2339,40 +2340,91 @@ var _pmBox = {x:0, w:400, h:300};   // the box the current map was drawn with, o
 // dropping that on reset shifted the map right and clipped the leftmost name again.
 function _pmVB(){ var v=_pmZoomBox||{x:_pmBox.x,y:0,w:_pmBox.w,h:_pmBox.h}; return v.x+' '+v.y+' '+v.w+' '+v.h; }
 function _pmEl(){ return document.querySelector('.pm-svg'); }
+// One place writes the box, because the touch rule reads off it: a fitted map must give the
+// finger back to the page, and a zoomed one must keep it.
+function _pmApplyBox(el){
+  el = el || _pmEl(); if(!el) return;
+  el.setAttribute('viewBox', _pmVB());
+  el.classList.toggle('pm-zoomed', !!_pmZoomBox);
+}
 function pmZoom(mult, cxFrac, cyFrac){
-  var v = _pmZoomBox || {x:_pmBox.x,y:0,w:_pmBox.w,h:_pmBox.h};
+  var v = _pmV();
   var nw = Math.max(_pmBox.w*0.15, Math.min(_pmBox.w*2.5, v.w*mult));
   var nh = nw * (_pmBox.h/_pmBox.w);
   // Keep the point under the cursor fixed, or zooming walks the map off screen.
   cxFrac = (cxFrac==null?0.5:cxFrac); cyFrac = (cyFrac==null?0.5:cyFrac);
   var ax = v.x + v.w*cxFrac, ay = v.y + v.h*cyFrac;
   _pmZoomBox = {x: ax - nw*cxFrac, y: ay - nh*cyFrac, w: nw, h: nh};
-  var el = _pmEl(); if(el) el.setAttribute('viewBox', _pmVB());
+  _pmApplyBox();
 }
-function pmReset(){ _pmZoomBox=null; var el=_pmEl(); if(el) el.setAttribute('viewBox', _pmVB()); }
+function pmReset(){ _pmZoomBox=null; _pmApplyBox(); }
 function pmWheel(ev){
   ev.preventDefault();
   var el=_pmEl(); if(!el) return;
   var r=el.getBoundingClientRect();
   pmZoom(ev.deltaY>0 ? 1.12 : 0.89, (ev.clientX-r.left)/r.width, (ev.clientY-r.top)/r.height);
 }
-var _pmDrag=null;
+// Pointer Events, not mouse: the bench copy of Archive is a phone, and wheel+mousedown gave a
+// map you could not move there at all. One rule keeps the page usable: a *fitted* map lets a
+// single finger scroll past it (touch-action:pan-y), and only a zoomed one takes the finger to
+// pan. Mouse and pen always drag, and two fingers always pinch.
+var _pmDrag=null;                 // {sx,sy,v,r} — single-pointer pan
+var _pmPinch=null;                // {d,cx,cy,v,r} — two-pointer pinch, measured from its start
+var _pmPts=Object.create(null);   // pointerId -> {x,y}
+function _pmV(){ return _pmZoomBox || {x:_pmBox.x, y:0, w:_pmBox.w, h:_pmBox.h}; }
+function _pmPtList(){ var a=[]; for(var k in _pmPts) a.push(_pmPts[k]); return a; }
+function _pmPinchStart(el, pts){
+  var a=pts[0], b=pts[1];
+  return {d:Math.max(1, Math.hypot(a.x-b.x, a.y-b.y)), cx:(a.x+b.x)/2, cy:(a.y+b.y)/2,
+          v:_pmV(), r:el.getBoundingClientRect()};
+}
 function pmDown(ev){
   var el=_pmEl(); if(!el) return;
-  var v=_pmZoomBox||{x:_pmBox.x,y:0,w:_pmBox.w,h:_pmBox.h};
-  _pmDrag={sx:ev.clientX, sy:ev.clientY, v:v, r:el.getBoundingClientRect()};
+  _pmPts[ev.pointerId]={x:ev.clientX, y:ev.clientY};
+  var pts=_pmPtList();
+  if(pts.length>=2){ _pmDrag=null; _pmPinch=_pmPinchStart(el, pts); el.classList.add('pm-grabbing'); return; }
+  // A fitted map on touch belongs to the page, not to us.
+  if(ev.pointerType==='touch' && !_pmZoomBox){ _pmDrag=null; return; }
+  _pmPinch=null;
+  _pmDrag={sx:ev.clientX, sy:ev.clientY, v:_pmV(), r:el.getBoundingClientRect()};
   el.classList.add('pm-grabbing');
 }
 function pmMove(ev){
+  if(!_pmDrag && !_pmPinch) return;
+  var el=_pmEl(); if(!el) return;
+  if(_pmPts[ev.pointerId]) _pmPts[ev.pointerId]={x:ev.clientX, y:ev.clientY};
+  var pts=_pmPtList();
+  if(_pmPinch && pts.length>=2){
+    var p=_pmPinch, a=pts[0], b=pts[1];
+    var d=Math.max(1, Math.hypot(a.x-b.x, a.y-b.y));
+    var nw=Math.max(_pmBox.w*0.15, Math.min(_pmBox.w*2.5, p.v.w*(p.d/d)));
+    var nh=nw*(_pmBox.h/_pmBox.w);
+    var fx=(p.cx-p.r.left)/p.r.width, fy=(p.cy-p.r.top)/p.r.height;
+    var ax=p.v.x+p.v.w*fx, ay=p.v.y+p.v.h*fy;
+    // The midpoint moves too, so a pinch also pans — that is how you get to a corner in one go.
+    var mx=((a.x+b.x)/2-p.cx)/p.r.width*nw, my=((a.y+b.y)/2-p.cy)/p.r.height*nh;
+    _pmZoomBox={x:ax-nw*fx-mx, y:ay-nh*fy-my, w:nw, h:nh};
+    _pmApplyBox(el);
+    return;
+  }
   if(!_pmDrag) return;
-  var d=_pmDrag;
-  var dx=(ev.clientX-d.sx)/d.r.width*d.v.w, dy=(ev.clientY-d.sy)/d.r.height*d.v.h;
-  _pmZoomBox={x:d.v.x-dx, y:d.v.y-dy, w:d.v.w, h:d.v.h};
-  var el=_pmEl(); if(el) el.setAttribute('viewBox', _pmVB());
+  var g=_pmDrag;
+  var dx=(ev.clientX-g.sx)/g.r.width*g.v.w, dy=(ev.clientY-g.sy)/g.r.height*g.v.h;
+  _pmZoomBox={x:g.v.x-dx, y:g.v.y-dy, w:g.v.w, h:g.v.h};
+  _pmApplyBox(el);
 }
-function pmUp(){ if(!_pmDrag) return; _pmDrag=null; var el=_pmEl(); if(el) el.classList.remove('pm-grabbing'); }
-document.addEventListener('mousemove', pmMove);
-document.addEventListener('mouseup', pmUp);
+function pmUp(ev){
+  if(ev && ev.pointerId!=null) delete _pmPts[ev.pointerId];
+  var pts=_pmPtList(), el=_pmEl();
+  if(pts.length<2) _pmPinch=null;
+  // Lifting one of two fingers must not jump the map: re-anchor the pan on the finger left.
+  if(pts.length===1 && el && !(ev && ev.pointerType==='touch' && !_pmZoomBox))
+    _pmDrag={sx:pts[0].x, sy:pts[0].y, v:_pmV(), r:el.getBoundingClientRect()};
+  if(pts.length===0){ _pmDrag=null; if(el) el.classList.remove('pm-grabbing'); }
+}
+document.addEventListener('pointermove', pmMove);
+document.addEventListener('pointerup', pmUp);
+document.addEventListener('pointercancel', pmUp);
 
 // Rough advance width for the 8.5px label face. Measuring properly needs a laid-out document,
 // which this does not have when it builds the string — and being 10% out only costs padding.
@@ -2430,7 +2482,7 @@ function plasmidMapSvg(gb,title){
   _pmBox={x:-overL, w:PM_W+overL+overR, h:PM_H};
   var vb = _pmZoomBox ? _pmVB() : _pmVB();
   return '<div class="pm-stage">'
-    + '<svg class="pm-svg" viewBox="'+vb+'" onwheel="pmWheel(event)" onmousedown="pmDown(event)">'
+    + '<svg class="pm-svg'+(_pmZoomBox?' pm-zoomed':'')+'" viewBox="'+vb+'" onwheel="pmWheel(event)" onpointerdown="pmDown(event)">'
       + ring+ticks+segs+lbl+center
     + '</svg>'
     + '<div class="pm-zoom">'
@@ -2438,7 +2490,7 @@ function plasmidMapSvg(gb,title){
       + '<button type="button" title="Zoom in" onclick="pmZoom(0.8)">+</button>'
       + '<button type="button" class="pm-zr" title="Fit" onclick="pmReset()">Fit</button>'
     + '</div>'
-    + '<div class="pm-hint">Scroll to zoom &middot; drag to pan &middot; click a feature</div>'
+    + '<div class="pm-hint">Scroll or pinch to zoom &middot; drag to pan &middot; tap a feature</div>'
   + '</div>';
 }
 
