@@ -3559,7 +3559,36 @@ function protoBlockHtml(b,live){
     +protoRenderHtml(b,live)+note+'</div>';
 }
 
-function _plain(html){ var d=document.createElement('div'); d.innerHTML=html||''; return (d.textContent||'').replace(/\s+/g,' ').trim(); }
+// textContent has no idea what a paragraph is: "<p>a</p><p>b</p>" comes back as "ab". Every
+// publication paragraph and every checklist item therefore ran into the next one — and the
+// Cmd+K content index inherited it, so a search for "compound" could not match text that
+// contained it because it had been glued to the previous word.
+var _PUB_BLOCK=/^(P|DIV|LI|TR|H[1-6]|BLOCKQUOTE|TABLE|UL|OL|SECTION|PRE|FIGCAPTION|DD|DT)$/;
+function _blockText(root){
+  var out='';
+  (function walk(n){
+    for(var c=n.firstChild;c;c=c.nextSibling){
+      if(c.nodeType===3){ out+=c.nodeValue; continue; }
+      if(c.nodeType!==1) continue;
+      if(c.nodeName==='BR'){ out+='\n'; continue; }
+      if(c.nodeName==='TD'||c.nodeName==='TH'){ walk(c); out+=' · '; continue; }
+      var b=_PUB_BLOCK.test(c.nodeName);
+      if(b && out && !/\n$/.test(out)) out+='\n';
+      walk(c);
+      if(b) out+='\n';
+    }
+  })(root);
+  return out;
+}
+function _htmlLines(html){
+  var d=document.createElement('div'); d.innerHTML=html||'';
+  Array.prototype.forEach.call(d.querySelectorAll('script,style'),function(n){n.remove();});
+  return _blockText(d).split('\n')
+    // A tick is a state, not a word. It belongs in the record, not in the Methods.
+    .map(function(x){ return x.replace(/[☐☑☒✓✔]/g,' ').replace(/\s+/g,' ').replace(/\s+·\s*$/,'').trim(); })
+    .filter(Boolean);
+}
+function _plain(html){ return _htmlLines(html).join(' '); }
 // Past-tense Nature-methods sentence per native calculator kind.
 var CALC_PUB={
   seed:function(v){ var line=((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,''); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; return line+' cells were seeded at '+nfmt(v.cellsPerWell)+' cells/well ('+nfmt(dens)+' M/mL) in '+nfmt(v.volPerWell)+' µL/well in '+String(v.format)+'-well plates.'; },
@@ -3567,21 +3596,52 @@ var CALC_PUB={
   ctg:function(v){ return 'Cell viability was measured with CellTiter-Glo (Promega; '+nfmt(v.volPerWell)+' µL/well), luminescence being recorded after a 10–20 min equilibration and normalised to vehicle controls.'; },
   reagent:function(v){ return (v.name||'The reagent')+' was prepared at a 1:'+nfmt(v.dilution)+' dilution in '+(v.diluent||'buffer')+'.'; }
 };
+// Prose, not a transcript: each block becomes a sentence, and one that already ends in
+// punctuation is left alone rather than given a second full stop.
 function _pubText(html){
-  var d=document.createElement('div'); d.innerHTML=html||'';
-  Array.prototype.forEach.call(d.querySelectorAll('script,style'),function(n){n.remove();});
-  return (d.textContent||'').replace(/\s+/g,' ').trim();
+  return _htmlLines(html).map(function(x){ return /[.!?:;]$/.test(x) ? x : (x+'.'); }).join(' ');
 }
+// "Experimental setup: Format: 96-well; Cell line: HCT116; Cells / well: 3000." is a form,
+// not a Methods section. The keys are the same across every experiment type in SETUP_SCHEMA,
+// so the common ones get a real sentence and anything else still appears — a setup value that
+// silently vanishes from the Methods is worse than a clumsy clause.
+function _pubCap(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
 function _pubSetupText(e){
   if(!e||!e.setup) return '';
-  var S=setupSchema(e.type), parts=[];
-  (S.fields||[]).forEach(function(f){ var v=e.setup[f.f]; if(v==null||v==='') return;
-    if(f.t==='cellline'){ var d=cellLineDef(v); v=(d&&d.label)||v; }
-    else if(f.t==='format') v=v+'-well';
-    else if(f.t==='check') v=v?'yes':'no';
-    parts.push(f.lbl+': '+String(v));
+  var S=setupSchema(e.type), v=e.setup, used={}, out=[];
+  function has(f){ return v[f]!=null && v[f]!==''; }
+  function take(f){ used[f]=1; return v[f]; }
+  var line = has('cellLine') ? String(((cellLineDef(v.cellLine)||{}).label)||v.cellLine).replace(/\s*\(.*\)$/,'') : '';
+  if(has('cellLine')||has('format')||has('cellsPerWell')){
+    var bits=[(line?(line+' cells'):'Cells')+' were seeded'];
+    used.cellLine=1;
+    if(has('cellsPerWell')) bits.push('at '+nfmt(take('cellsPerWell'))+' cells/well');
+    if(has('format'))       bits.push('in '+take('format')+'-well plates');
+    if(has('nPlates') && +v.nPlates>1) bits.push('('+nfmt(take('nPlates'))+' plates)');
+    used.format=1;
+    out.push(bits.join(' ')+'.');
+  }
+  if(has('treatH')) out.push('Cells were treated for '+nfmt(take('treatH'))+' h.');
+  if(has('topConc')){
+    var d='Compounds were dosed from '+nfmt(take('topConc'))+' nM';
+    if(has('df')) d+=' in '+nfmt(take('df'))+'-fold steps';
+    if(has('nPoints')) d+=' over '+nfmt(take('nPoints'))+' points';
+    if(has('dosing')) d+=' ('+take('dosing')+')';
+    out.push(d+'.');
+  } else if(has('dosing')) out.push('Compound was added by '+take('dosing')+'.');
+  if(has('targets')) out.push('Membranes were probed for '+take('targets')
+    +(has('loadCtrl')?(', with '+take('loadCtrl')+' as loading control'):'')+'.');
+  else if(has('loadCtrl')) out.push(take('loadCtrl')+' was used as loading control.');
+  var rest=[];
+  (S.fields||[]).forEach(function(f){
+    if(used[f.f]) return; var x=v[f.f]; if(x==null||x==='') return;
+    if(f.t==='cellline'){ var d2=cellLineDef(x); x=(d2&&d2.label)||x; }
+    else if(f.t==='format') x=x+'-well';
+    else if(f.t==='check') x=x?'yes':'no';
+    rest.push(f.lbl.toLowerCase()+' '+String(x));
   });
-  return parts.length?'Experimental setup: '+parts.join('; ')+'.':'';
+  if(rest.length) out.push(_pubCap(rest.join('; '))+'.');
+  return out.join(' ');
 }
 function _pubArchiveSteps(pid){
   var steps=archiveSteps(pid), out=[]; if(!steps||!steps.length) return '';
@@ -3591,8 +3651,14 @@ function _pubArchiveSteps(pid){
 }
 function _pubPlateText(p,label){
   if(!p) return '';
-  var s=_pubText(plateSummaryHtml(p));
-  return (label||'Plate map')+' ('+String(p.format||'')+'-well): '+(s||'layout recorded')+'.';
+  // plateSummary already groups identical wells and compacts them into ranges, so the sentence
+  // is the summary — not a re-description of it, and not a dump of 384 well ids.
+  var g=[]; try{ g=plateSummary(p)||[]; }catch(e){}
+  var body=g.length
+    ? g.map(function(x){ return x.range+', '+x.desc; }).join('; ')
+    : _pubText(plateSummaryHtml(p)).replace(/\.$/,'');
+  if(!body) return '';
+  return 'In the '+String(p.format||'')+'-well plate'+(label?(' ('+label.toLowerCase()+')'):'')+': '+body+'.';
 }
 function pubSentence(b){
   var parts=[], calcText='';
@@ -3615,8 +3681,8 @@ function buildPubReadyFromExp(e){ var parts=[]; var _resSent=pubResultsSentence(
   var setup=_pubSetupText(e); if(setup) parts.push(setup);
   var protos=(e.protocols||[]).map(function(p){return p.name||p.id;}).filter(Boolean);
   if(protos.length) parts.push('Archive protocols used: '+protos.join(', ')+'.');
-  if(e.plate) parts.push(_pubPlateText(e.plate,'Experiment plate map'));
-  dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ var s=(pubSentence(b)||'').trim(); if(s) parts.push(s); if(b.plate) parts.push(_pubPlateText(b.plate,'Step plate map')); }); });
+  if(e.plate) parts.push(_pubPlateText(e.plate,''));
+  dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ var s=(pubSentence(b)||'').trim(); if(s) parts.push(s); if(b.plate) parts.push(_pubPlateText(b.plate,'')); }); });
   var _devSent=deviationsSentence(e); if(_devSent) parts.push(_devSent);
   if(_resSent) parts.push(_resSent);
   parts=parts.filter(function(s,i){ return s&&s!==parts[i-1]; });
