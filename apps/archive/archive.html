@@ -5492,6 +5492,10 @@ document.addEventListener('DOMContentLoaded', function() {
 window.addEventListener('message', function(e) {
   if (e.data && e.data.type === 'switchTab' && e.data.item) {
     openProtocol(e.data.item);
+    // The sender has always named a tab and this has always ignored it, so a link that says
+    // "open the seeding calculator" landed on the protocol text with the calculator one tap
+    // away and no sign of it. Painting happens inside openProtocol, so this runs after.
+    if (e.data.tab && e.data.tab !== 'protocol') { try { showDTab(e.data.item, e.data.tab); } catch(_e){} }
     try{ if(e.data.requestId&&window.parent&&window.parent!==window) window.parent.postMessage({type:'dhub:ack',requestId:e.data.requestId,app:'protocols'},'*'); }catch(err){}
   }
   if(e.data && e.data.type==='dhub:context' && e.data.version===1){
@@ -5506,6 +5510,10 @@ window.addEventListener('message', function(e) {
     }
     var ps=ctx.protocols||[], pid=e.data.item||(ps[0]&&ps[0].id);
     if(pid) openProtocol(pid);
+    // The hub rewrites a switchTab into a dhub:context whenever it carries an experiment, so
+    // the requested tab has to be honoured on this branch too — otherwise the deep link works
+    // in the standalone build and silently does not inside dHUB.
+    if(pid && e.data.tab && e.data.tab!=='protocol'){ try{ showDTab(pid, e.data.tab); }catch(_e){} }
     try{ if(e.data.requestId&&window.parent&&window.parent!==window) window.parent.postMessage({type:'dhub:ack',requestId:e.data.requestId,app:'protocols'},'*'); }catch(err2){}
   }
 });

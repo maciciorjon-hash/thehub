@@ -3298,7 +3298,7 @@ function partBlockHtml(pid,calc,steps){ var h='';
         +'<tbody>'+(seg.rows||[]).map(function(r){return '<tr>'+r.map(function(x){return '<td>'+x+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>'; }
     else if(seg.items){ var tag=seg.ordered?'ol':'ul'; h+='<'+tag+'>'+seg.items.map(function(x){return '<li>'+x+'</li>';}).join('')+'</'+tag+'>'; }
   }); }
-  var nm=(calc&&calc.name)||''; var link='<a class="lb-link proto" data-app="protocols" data-pid="'+esc(pid)+'" contenteditable="false">open '+esc(nm||'calculator')+' &#8599;</a>';
+  var nm=(calc&&calc.name)||''; var link='<a class="lb-link proto" data-app="protocols" data-pid="'+esc(pid)+'" data-tab="calc" contenteditable="false">open '+esc(nm||'calculator')+' &#8599;</a>';
   if(calc&&calc.steps&&calc.steps.length){ h+='<p><strong>Recipe (from Archive calculator)</strong> '+link+'</p>'+calcRecipeHtml(calc); }
   else if(calc&&calc.hasCalc){ h+='<p>'+link+'</p>'; }
   return h||'<p></p>'; }
@@ -5455,7 +5455,7 @@ document.addEventListener('click',function(e){
       // rather than look clickable and do nothing.
       var routed=false;
       try{ if(window.parent && window.parent!==window && window.parent.openApp){ window.parent.openApp(a.dataset.app, a.dataset.tab||undefined, a.dataset.pid||undefined, dHubContextFor(_curExp())); routed=true; } }catch(err){}
-      if(!routed && a.dataset.app==='protocols' && archiveEmbedded()){ openArchiveProtocol(a.dataset.pid); routed=true; }
+      if(!routed && a.dataset.app==='protocols' && archiveEmbedded()){ openArchiveProtocol(a.dataset.pid, a.dataset.tab); routed=true; }
       if(!routed) toast('That link opens "'+(a.dataset.app||'another app')+'", which isn\'t part of this build.');
     } }
 });
@@ -6163,11 +6163,17 @@ function ensureArchive(cb){
   try{ if(window.parent && window.parent.hubEnsureApp) window.parent.hubEnsureApp('protocols'); }catch(e2){}
   var tries=0; (function poll2(){ tries++; var ok=false; try{ ok=(window.parent.ARCHIVE_INDEX||[]).length>0; }catch(e){} if(ok) return cb(true); if(tries>20) return cb(false); setTimeout(poll2,150); })();
 }
-function openArchiveProtocol(pid){
+function openArchiveProtocol(pid,tab){
   selectNode('archive');
   ensureArchive(function(ok){ if(!ok||!pid) return;
-    var msg={type:'switchTab',tab:'protocol',item:String(pid)}, tries=0;
-    (function send(){ tries++; try{ if(_arcFrame&&_arcFrame.contentWindow) _arcFrame.contentWindow.postMessage(msg,'*'); }catch(e){} if(tries<8) setTimeout(send,180); })();
+    var rid='arc'+Date.now(), msg={type:'switchTab',tab:(tab||'protocol'),item:String(pid),requestId:rid}, tries=0, done=false;
+    // Archive acks, so stop resending once it has landed. Eight blind repeats over 1.4 s meant
+    // that opening a calculator and then pressing Protocol yourself put you back on Calculate.
+    function onAck(e){ if(e&&e.data&&e.data.type==='dhub:ack'&&e.data.requestId===rid){ done=true; window.removeEventListener('message',onAck); } }
+    window.addEventListener('message',onAck);
+    (function send(){ if(done) return; tries++;
+      try{ if(_arcFrame&&_arcFrame.contentWindow) _arcFrame.contentWindow.postMessage(msg,'*'); }catch(e){}
+      if(tries<8) setTimeout(send,180); else window.removeEventListener('message',onAck); })();
   });
 }
 // The browsable Archive view — the point of embedding it is being able to look a protocol up,

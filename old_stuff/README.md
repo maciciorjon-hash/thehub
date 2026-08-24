@@ -12,6 +12,7 @@ porque haga falta para nada del producto. **Si algo de aquí vuelve, vuelve como
 | `superpowers/` | 20 planes y specs de junio de 2026 (Iceberg, LabMate, Beacon, las fases de densidad). Historia, no documentación viva. | 2026-08-21 |
 | `images/` | Una imagen suelta que estaba en la raíz. | 2026-08-21 |
 | `protocol_param_names.py` | Ayuda de un solo uso para nombrar los 565 parámetros de los protocolos. | 2026-08-21 |
+| `labbook-home-mockup.html` | Boceto estático del home de Labbook, con datos inventados. Lo real se construyó en v1.7.0 (`renderHome`, `kind:'home'`), así que el boceto ya sólo podía contradecirlo. | 2026-08-24 |
 
 Lo que **no** está aquí y no debe acabar aquí: `Backup/` (tus copias reales de datos, en la raíz y
 fuera de git) y `docs/SESSION_HISTORY.md` (el registro de cambios, que sí es documentación viva).

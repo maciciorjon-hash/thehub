@@ -134,8 +134,7 @@ The_Hub/
 │   ├── migrate_protocols.py    make_icons.py
 ├── docs/
 │   ├── CLAUDE_HANDOFF.md       SESSION_HISTORY.md       UI.md
-│   ├── PROTOCOL_MIGRATION_REVIEW.md
-│   └── mockups/
+│   └── PROTOCOL_MIGRATION_REVIEW.md
 ├── old_stuff/                  ← retired apps and dead docs; see its README
 │   ├── arc/  labmate/  plasmids/  images/  superpowers/
 └── Backup/                     ← YOUR data backups. Untracked, and never move this folder:
@@ -1417,14 +1416,6 @@ for.
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, and a Cmd+K that searches contents — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
-- **Labbook home is a mockup awaiting a decision** — [`docs/mockups/labbook-home.html`](docs/mockups/labbook-home.html)
-  (static, invented data, nothing wired). It proposes a card grid — today band with a step
-  progress ring, this week, running experiments with progress and next step, projects that
-  drill into folders and experiments **inside the card**, recently edited, Echo results and the
-  deviation report — as the default landing, replacing the *"Nothing open — pick an entry on
-  the left"* empty state. Everything it shows already exists in the data (`blocksForDate`,
-  `b.done`, `e.status`, `e.updated`, `expDeviations`, `resultsPaneHtml`); the three-pane editor
-  stays untouched for actual editing. `apps/labbook/labbook.html` is unchanged until Jon approves.
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
   Labbook. Everything works device-local and survives backup/restore without it.
 - **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for
@@ -1432,17 +1423,23 @@ for.
 - **IP ownership is unresolved.** As employee-created work, the University of Dundee very
   likely owns or co-owns this. Resolve with Research & Innovation Services before any sale
   conversation — it also opens the legitimate routes (spin-out, licence).
-- **The public Pages URL still serves the full personal build.** Seed data is now neutral, but
-  the real instance should sit behind auth rather than on a public URL.
+- **The public Pages URL still serves the full personal build.** Seed data is neutral and
+  `ADMIN_ONLY_APPS` is enforced in `openApp`, but the real instance should sit behind auth.
 - **The leaked legacy RTDB secret** (see Firebase section) is accepted risk for personal use but
   is disqualifying for a product — Phase 3 migrates off `thehub-f80ae` entirely.
 - **Archive calculator audit**: the 9 "verify" calcs (trfret/fp/spr/miniprep/nucleospin/lenti/
   miseq/ip/crispr) were spot-checked against worked examples and found OK — not re-derived.
-- **Labbook plate maps**: no PNG export (CSV + PDF only); custom well types can't be
-  added/renamed from the editor yet.
+- **Echo still loads jsPDF from cdnjs, and Echo and Dora load RDKit from unpkg.** Both are now
+  *announced* — a banner when the load fails, and a line in each app's own description before
+  you use it — but neither is embedded, so PDF export and structure rendering still need the
+  network. 3Dmol in Ribbon is the third, and is out of the product build.
 - Minor polish, no urgency: drag-drop step palette, per-cell-line seeding-density
-  recommendations, `PUB_SEED` prose refinement, deep-link Archive's calc-chip to its Calculate
-  tab.
+  recommendations, `PUB_SEED` prose refinement.
+
+*(Closed 2026-08-24: Labbook plate maps export PNG and their well types can be added, renamed,
+recoloured and removed; Archive's calculator link opens the **Calculate** tab rather than the
+protocol text; and `docs/mockups/labbook-home.html` was retired to `old_stuff/` — the real home
+shipped in v1.7.0, so the mockup could only contradict it.)*
 
 ### Product direction (agreed 2026-07-30)
 
