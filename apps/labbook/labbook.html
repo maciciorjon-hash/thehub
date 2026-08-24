@@ -416,6 +416,11 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .ci-f input,.ci-f select{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:var(--r-1);padding:5px 7px;font-family:var(--sans);font-size:var(--fs-3);}
 .ci-f input:focus,.ci-f select:focus{outline:none;border-color:#5e87c5;box-shadow:0 0 0 2px rgba(94,135,197,.18);}
 .cc-recipe{margin-top:9px;background:var(--surface);border:1px dashed var(--border2);border-radius:var(--r-2);padding:9px 12px;font-size:var(--fs-3);line-height:1.55;color:var(--text);}
+.cc-warn{margin-top:8px;padding:7px 10px;border-radius:var(--r-1);background:rgba(217,83,79,.10);
+  border:1px solid rgba(217,83,79,.35);color:#b23c38;font-size:var(--fs-2);line-height:1.5;}
+.cc-fix{margin-left:6px;border:1px solid rgba(217,83,79,.5);background:var(--surface);color:#b23c38;
+  font-family:var(--sans);font-size:var(--fs-1);font-weight:600;border-radius:var(--r-1);padding:2px 8px;cursor:pointer;}
+.cc-fix:hover{background:rgba(217,83,79,.12);}
 .cc-recipe b,.cc-recipe strong{color:#2b7d6e;}
 .cc-recipe p{margin:8px 0 2px;font-weight:600;}
 .cc-recipe p:first-child{margin-top:0;}
@@ -1486,6 +1491,49 @@ var SETUP_SCHEMA={
 // Sensible working volume per well (µL) for each plate format — keeps seeding/reagent
 // calculators honest when you switch format in the setup panel.
 var PLATE_VOL={'6':2000,'12':1000,'24':500,'48':250,'96':90,'384':30};
+// Growth area per well (cm²) — the standard flat-bottom figures. Cells scale with area the way
+// volume scales with PLATE_VOL, and until now only the volume moved when you changed the plate:
+// switching a seeding step from 384 to 6-well rescaled 30 µL to 2000 µL and left 3,000
+// cells/well sitting in a well that holds 30× that. The two numbers have to move together or
+// the density is a fiction.
+var PLATE_AREA={'6':9.6,'12':3.8,'24':1.9,'48':0.95,'96':0.32,'384':0.056};
+// The anchor is the lab's own working figure — 0.8 M cells per 6-well — expressed per cm² so
+// every other format follows from it: 800000 / 9.6 ≈ 83,000 cells/cm². That is a seed to be
+// near-confluent the next day; a longer assay wants less, which is what Archive's seeding
+// advisor computes from the line's doubling time.
+var SEED_PER_CM2 = 800000/9.6;
+function _seedRound(n){ if(!(n>0)) return 0;
+  var mag=Math.pow(10, Math.floor(Math.log10(n))-1);
+  return Math.round(n/mag)*mag; }
+function seedCellsFor(fmt){ var a=PLATE_AREA[String(fmt)]; return a?_seedRound(a*SEED_PER_CM2):null; }
+// Keep the density the user chose and move both numbers to the new plate.
+function rescaleSeedInputs(I, newFmt){
+  if(!I || I.format==null) return;
+  var oldF=String(I.format), nf=String(newFmt);
+  if(oldF===nf) return;
+  var aOld=PLATE_AREA[oldF], aNew=PLATE_AREA[nf];
+  var vOld=PLATE_VOL[oldF],  vNew=PLATE_VOL[nf];
+  if(I.cellsPerWell!=null && aOld && aNew) I.cellsPerWell=_seedRound((+I.cellsPerWell)*(aNew/aOld));
+  if(I.volPerWell!=null && vOld && vNew)   I.volPerWell=Math.round((+I.volPerWell)*(vNew/vOld)*10)/10;
+  if(I.cellVolPerWell!=null && vOld && vNew) I.cellVolPerWell=Math.round((+I.cellVolPerWell)*(vNew/vOld)*10)/10;
+  I.format=nf;
+}
+// Say when a density cannot be what you meant. Not a correction — the number is the user's —
+// but 3,000 cells in a 6-well is 0.4% of what that plate takes, and nothing on screen said so.
+function seedPlausibility(I, fixCall){
+  if(!I||I.format==null||I.cellsPerWell==null) return '';
+  var a=PLATE_AREA[String(I.format)]; if(!a) return '';
+  var usual=seedCellsFor(I.format), c=+I.cellsPerWell;
+  if(!(c>0)||!usual) return '';
+  var ratio=c/usual;
+  if(ratio>=0.04 && ratio<=2.5) return '';
+  return '<div class="cc-warn">'+nfmt(c)+' cells/well in a '+esc(String(I.format))+'-well is '
+    +(ratio<1 ? ('1/'+Math.round(1/ratio)+' of') : (Math.round(ratio)+'× '))
+    +' the usual seed for this plate (~'+nfmt(usual)+'/well, from 0.8 M per 6-well). '
+    +'Check the plate format or the cell number.'
+    +(fixCall?(' <button class="cc-fix" onclick="'+fixCall+'">Use '+nfmt(usual)+'/well</button>'):'')
+    +'</div>';
+}
 function setupSchema(type){ return SETUP_SCHEMA[type]||SETUP_SCHEMA.EXP; }
 function setupDefaults(type){ var o={}; (setupSchema(type).fields||[]).forEach(function(f){ o[f.f]=f.d; }); return o; }
 // Fill {{field}} placeholders in preset text with the setup answers.
@@ -1511,10 +1559,8 @@ function applySetupToBlocks(type,setup,blocks,prevSetup){
     if(I){
       // Scale per-well volumes by how much the format itself changed, so a reagent that was
       // half the medium volume at 96-well is still half of it at 384-well.
-      var vScale=(fmt&&I.format!=null&&PLATE_VOL[fmt]&&PLATE_VOL[String(I.format)])?(PLATE_VOL[fmt]/PLATE_VOL[String(I.format)]):1;
-      if(fmt&&I.format!=null) I.format=fmt;
-      if(vScale!==1&&I.volPerWell!=null) I.volPerWell=Math.round((+I.volPerWell)*vScale*10)/10;
-      if(vScale!==1&&I.cellVolPerWell!=null) I.cellVolPerWell=Math.round((+I.cellVolPerWell)*vScale*10)/10;
+      // rescaleSeedInputs moves the volumes AND the cell number, and sets I.format itself.
+      if(fmt&&I.format!=null) rescaleSeedInputs(I,fmt);
       if(setup.cellLine!=null&&I.cellLine!=null) I.cellLine=setup.cellLine;
       if(setup.cellsPerWell!=null&&I.cellsPerWell!=null) I.cellsPerWell=+setup.cellsPerWell;
       if(setup.nPlates!=null&&I.nPlates!=null){
@@ -1570,7 +1616,8 @@ var CALC_KINDS={
     {k:'nPlates',t:'num',lbl:'# plates'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{cellLine:'HEK293',cellsPerWell:3000,volPerWell:30,format:'384',nPlates:1,excess:1.5},
     compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*(+v.excess||1); var cells=dens*(totUL/1000);
-      return '<b>Prepare</b> '+nfmt(dens)+' M/mL &mdash; '+mlfmt(totUL)+' total ('+nfmt(cells)+' M cells). <b>Seed</b> '+nfmt(v.volPerWell)+' µL/well → '+nfmt(v.cellsPerWell)+' cells/well &middot; '+nfmt(v.nPlates)+'× '+esc(String(v.format))+'-well ('+wells+' wells).'; } },
+      return '<b>Prepare</b> '+nfmt(dens)+' M/mL &mdash; '+mlfmt(totUL)+' total ('+nfmt(cells)+' M cells). <b>Seed</b> '+nfmt(v.volPerWell)+' µL/well → '+nfmt(v.cellsPerWell)+' cells/well &middot; '+nfmt(v.nPlates)+'× '+esc(String(v.format))+'-well ('+wells+' wells).'
+        +seedPlausibility(v, _SEED_FIX_CALL); } },
   lytic:{ label:'HiBiT Lytic reagent', fields:[
     {k:'format',t:'format',lbl:'Plate'},{k:'nPlates',t:'num',lbl:'# plates'},
     {k:'cellVolPerWell',t:'num',lbl:'Cell vol/well (µL)'},{k:'ratio',t:'num',lbl:'Reagent 1:X cell'},
@@ -1597,6 +1644,16 @@ var _arcSchemaCache={};
 function archiveSchema(pid){ if(_arcSchemaCache[pid]) return _arcSchemaCache[pid]; try{ var _w=_arcWin(); if(_w&&_w.ARCHIVE_CALC_SCHEMA){ var s=_w.ARCHIVE_CALC_SCHEMA(pid); if(s){ _arcSchemaCache[pid]=s; return s; } } }catch(e){} return null; }
 function archiveName(pid){ var m=archiveIndex().filter(function(p){return p.id===pid;})[0]; return m?m.name:pid; }
 function archiveComputeRecipe(b){ try{ var _w=_arcWin(); if(_w&&_w.ARCHIVE_COMPUTE){ var r=_w.ARCHIVE_COMPUTE(b.calc.pid,b.calc.inputs||{}); if(r&&r.steps&&r.steps.length){ var html=calcRecipeHtml({steps:r.steps}); b.calc.recipe=html; return html; } } }catch(e){} return b.calc.recipe||''; }
+// compute() is a pure function of the inputs, so the surface rendering it parks the fix button's
+// call here for the length of that one render rather than every calculator learning about it.
+var _SEED_FIX_CALL='';
+function withSeedFix(call, fn){ _SEED_FIX_CALL=call||''; try{ return fn(); } finally { _SEED_FIX_CALL=''; } }
+function calcSeedFix(id){ var b=_blkById(id); if(!b||!b.calc||!b.calc.inputs) return;
+  var n=seedCellsFor(b.calc.inputs.format); if(!n) return;
+  b.calc.inputs.cellsPerWell=n; var e=_curExp(); if(e) e.updated=Date.now(); save(); renderEditor(); }
+function peSeedFix(i){ var b=PE.work.blocks[i]; if(!b||!b.calc||!b.calc.inputs) return;
+  var n=seedCellsFor(b.calc.inputs.format); if(!n) return;
+  b.calc.inputs.cellsPerWell=n; peDraw(); }
 function expCalcRecipe(b){ if(!b||!b.calc) return '';
   if(b.calc.kind==='archive') return archiveComputeRecipe(b);
   if(!CALC_KINDS[b.calc.kind]) return ''; try{ return CALC_KINDS[b.calc.kind].compute(b.calc.inputs||{}); }catch(e){ return ''; } }
@@ -1612,12 +1669,22 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
     return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>';
   }).join('');
   return '<div class="blk-calc" data-calc="'+b.id+'"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span><span class="grow"></span><button class="cc-x" title="Remove calculator" onclick="calcRemove(\''+b.id+'\')">&times;</button></div>'
-    +'<div class="cc-inputs">'+fields+'</div><div class="cc-recipe" id="ccr-'+b.id+'">'+expCalcRecipe(b)+'</div></div>';
+    +'<div class="cc-inputs">'+fields+'</div><div class="cc-recipe" id="ccr-'+b.id+'">'
+    +withSeedFix("calcSeedFix('"+b.id+"')", function(){ return expCalcRecipe(b); })+'</div></div>';
 }
 function _blkById(id){ var e=_curExp(); if(!e) return null; return (e.blocks||[]).filter(function(x){return x.id===id;})[0]||null; }
 function calcUpd(id){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=document.querySelector('.blk-calc[data-calc="'+id+'"]'); if(!wrap) return;
+  // The plate is read first: changing it rescales the per-well numbers, and the loop below must
+  // not then write the stale values still sitting in the inputs back over them.
+  var fmtSel=wrap.querySelector('select[data-k="format"]');
+  if(fmtSel && b.calc.inputs.format!=null && String(b.calc.inputs.format)!==String(fmtSel.value)){
+    rescaleSeedInputs(b.calc.inputs, fmtSel.value);
+    var e0=_curExp(); if(e0) e0.updated=Date.now();
+    save(); renderEditor(); return;
+  }
   wrap.querySelectorAll('[data-k]').forEach(function(n){ var k=n.getAttribute('data-k'); var val=n.value; b.calc.inputs[k]=(n.type==='number')?(val===''?'':parseFloat(val)):val; });
-  var r=el('ccr-'+id); if(r) r.innerHTML=expCalcRecipe(b); var e=_curExp(); if(e) e.updated=Date.now(); queueSave(); }
+  var r=el('ccr-'+id); if(r) r.innerHTML=withSeedFix("calcSeedFix('"+id+"')", function(){ return expCalcRecipe(b); });
+  var e=_curExp(); if(e) e.updated=Date.now(); queueSave(); }
 function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; b.calc.inputs.cellLine=clid; var d=cellLineDef(clid); if(d&&d.cpw) b.calc.inputs.cellsPerWell=d.cpw; save(); renderEditor(); }
 function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove the prep calculator from this step? (Your written notes stay.)',{title:'Remove calculator'}).then(function(ok){ if(!ok) return; delete b.calc; save(); renderEditor(); }); }
 function addCalcToBlock(id,kind){ var b=_blkById(id); if(!b) return; b.calc={kind:kind,inputs:calcDefaults(kind)}; save(); renderEditor(); }
@@ -3823,9 +3890,20 @@ function nmSetup(){ var host=el('nm-setup'); if(!host) return;
 // Read the panel back into NM_SETUP. reRender=true when a cell line changed, so its default
 // cells/well can follow (same behaviour as the seeding calculator's cell-line picker).
 function nmSetupUpd(reRender){ var host=el('nm-setup'); if(!host) return;
+  var oldFmt=NM_SETUP.format;
   host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
     NM_SETUP[k]=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value); });
-  if(reRender&&NM_SETUP.cellLine!=null){ var d=cellLineDef(NM_SETUP.cellLine); if(d&&d.cpw&&NM_SETUP.cellsPerWell!=null) NM_SETUP.cellsPerWell=d.cpw; nmSetup(); }
+  // Changing the plate here has to move the cell number with it, exactly as it does inside a
+  // step's calculator — otherwise the setup that seeds every block starts out inconsistent.
+  if(oldFmt!=null && NM_SETUP.format!=null && String(oldFmt)!==String(NM_SETUP.format) && NM_SETUP.cellsPerWell!=null){
+    var a1=PLATE_AREA[String(oldFmt)], a2=PLATE_AREA[String(NM_SETUP.format)];
+    if(a1&&a2){ NM_SETUP.cellsPerWell=_seedRound((+NM_SETUP.cellsPerWell)*(a2/a1)); if(reRender!==true) reRender='format'; }
+  }
+  // `reRender` is passed as true only by the cell-line select, which is also the only change
+  // that may substitute its own default cell number. A format change must re-render WITHOUT
+  // that, or it would immediately overwrite the number it just rescaled.
+  if(reRender===true && NM_SETUP.cellLine!=null){ var d=cellLineDef(NM_SETUP.cellLine); if(d&&d.cpw&&NM_SETUP.cellsPerWell!=null) NM_SETUP.cellsPerWell=d.cpw; }
+  if(reRender) nmSetup();
   nmPreview();
 }
 function nmProtos(){ var host=el('nm-protocols'); if(!host) return;
@@ -6596,14 +6674,16 @@ function peCalcInputs(b,i){ if(!b.calc||!CALC_KINDS[b.calc.kind]) return '<butto
     if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input value="'+esc(v==null?'':v)+'" oninput="peCalcSet('+i+',\''+f.k+'\',this.value)"></label>'; }
     return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="peCalcSet('+i+',\''+f.k+'\',this.value)"></label>';
   }).join('');
-  return '<div class="blk-calc ps-calc"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span><span class="grow"></span><button class="cc-x" onmousedown="event.preventDefault();peDelCalc('+i+')">&times;</button></div><div class="cc-inputs">'+fields+'</div><div class="cc-recipe" id="pecr-'+i+'">'+expCalcRecipe(b)+'</div></div>'; }
+  return '<div class="blk-calc ps-calc"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span><span class="grow"></span><button class="cc-x" onmousedown="event.preventDefault();peDelCalc('+i+')">&times;</button></div><div class="cc-inputs">'+fields+'</div><div class="cc-recipe" id="pecr-'+i+'">'
+    +withSeedFix('peSeedFix('+i+')', function(){ return expCalcRecipe(b); })+'</div></div>'; }
 function peDraw(){ var w=PE.work;
   el('pe-body').innerHTML=w.blocks.map(function(b,i){ return '<div class="ps-blk"><div class="ps-blk-hd"><span class="ps-day"><span class="ps-day-lbl">Day</span> <input type="number" min="0" value="'+(b.dayOffset||0)+'" oninput="PE.work.blocks['+i+'].dayOffset=parseInt(this.value)||0"></span><input class="ps-title" placeholder="Block title" value="'+esc(b.title||'')+'" oninput="PE.work.blocks['+i+'].title=this.value"><button class="ps-move" title="Up" onmousedown="event.preventDefault();peMove('+i+',-1)">'+tbIco(P_CHEV_U,13)+'</button><button class="ps-move" title="Down" onmousedown="event.preventDefault();peMove('+i+',1)">'+tbIco(P_CHEV_D,13)+'</button><button class="ps-move" title="Remove" onmousedown="event.preventDefault();peDelBlock('+i+')" style="color:var(--danger)">&times;</button></div>'+peCalcInputs(b,i)+'<div class="rt ps-rt" contenteditable="true" data-i="'+i+'" oninput="PE.work.blocks['+i+'].html=this.innerHTML" onfocus="_activeEd=this">'+(b.html||'')+'</div></div>'; }).join('');
 }
 function peCalcSet(i,k,val){ var b=PE.work.blocks[i]; if(!b||!b.calc) return; var C=CALC_KINDS[b.calc.kind]; var f=C.fields.filter(function(x){return x.k===k;})[0];
   if(k==='cellLine'){ b.calc.inputs.cellLine=val; var d=cellLineDef(val); if(d&&d.cpw){ b.calc.inputs.cellsPerWell=d.cpw; peDraw(); return; } }
+  else if(k==='format' && b.calc.inputs.format!=null){ rescaleSeedInputs(b.calc.inputs,val); peDraw(); return; }
   else b.calc.inputs[k]=(f&&f.t==='num')?(val===''?'':parseFloat(val)):val;
-  var r=el('pecr-'+i); if(r) r.innerHTML=expCalcRecipe(b); }
+  var r=el('pecr-'+i); if(r) r.innerHTML=withSeedFix('peSeedFix('+i+')', function(){ return expCalcRecipe(b); }); }
 function peAddCalc(i){ var items=Object.keys(CALC_KINDS).map(function(k){return {id:k,label:CALC_KINDS[k].label,sub:'live prep calculator',ic:'∑',c:'#5e87c5'};});
   lbPicker('Add a prep calculator',items,function(it){ PE.work.blocks[i].calc={kind:it.id,inputs:calcDefaults(it.id)}; peDraw(); }); }
 function peDelCalc(i){ delete PE.work.blocks[i].calc; peDraw(); }
