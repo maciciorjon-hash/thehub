@@ -5,46 +5,36 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-08-23 · **v1.8.0** · branch `main`, everything pushed and deployed.
-- This pass was corrective: an audit found things the visual work could not see. Deployment did
-  not do what the docs said, three data paths reported things that were not true, and the
-  flagship saved nothing. Then four product gaps: closing an experiment, editing a setup,
-  getting a catalogue in and out, and reporting across experiments. Then a shell dead-code
-  sweep, the protocol-day derivation, and one SheetJS for the whole Hub.
-- **The Archive PWA is live**: `…/archive-14cadcd792a2/` returns 200 with all five files, where
-  it returned 404 for as long as CI has existed. Root `/` serves the 11.61 MB bundle.
-- Full detail is the 2026-08-22/23 entry at the top of `docs/SESSION_HISTORY.md`.
+- Date: 2026-08-24 · **v1.9.0** · branch `main`, everything pushed and deployed.
+- This pass was the interaction block Jon asked for and the previous session deferred: the
+  verbs a card needs (rename, move, priority, delete), a menu reachable with a thumb, and a
+  Cmd+K that reads what you wrote rather than what you called it. Plus finishing yesterday's
+  plasmid map, which was mouse-only on the app that lives on a phone.
+- Four commits: `941571c` (map on touch) · `ac207a3` (card verbs + one menu, three doorways) ·
+  `3c5b618` (Cmd+K content index) · `2f9b24b` (drag to a folder, empty folders visible).
+- Full detail is the 2026-08-24 entry at the top of `docs/SESSION_HISTORY.md`. The
+  2026-08-23/24 work that ran on after v1.8.0 is written up there too, reconstructed from its
+  commits.
 
 ## What changed this pass
 
-1. **Deployment told the truth.** CI built one profile with no `--profile`, so the Archive PWA
-   was never in the artifact and the public build was the full personal one. `openApp` now
-   enforces `ADMIN_ONLY_APPS` from every entry point (`#labbook` used to open Labbook for
-   anyone); `openCells` filters its three tabs for the same reason. `embed.py`'s card strip used
-   a lazy regex that cut mid-card — 4 opens, 3 closes — so `product` shipped 8 orphaned
-   fragments; it is a depth counter now.
-2. **dHUB survives without Firebase.** `initializeApp` was unguarded at the top of the one
-   `<script>` block that defines everything else, so blocked gstatic was a blank page.
-3. **`tools/check_js.py`** parses all 43 inline script blocks plus the concatenated injected
-   back-button script — the one that shipped a SyntaxError into all 19 apps unnoticed. Wired
-   into `embed.py` and CI.
-4. **Echo persists sessions** — IndexedDB autosave + `.echo.json`. Verified by SHA-256: every
-   input file returns byte-identical through both paths.
-5. **Labbook**: experiments can be closed (paused/abandoned/archived, and a chosen status is no
-   longer reverted by `syncExpStatus`); the setup can be re-applied after creation; reports
-   across a project or a date range; results and deviations finally reach the PDF; deviations
-   now see calculator edits, not just protocol params.
-6. **Sync is per record.** `save()` sent the whole tree every 1.2 s; it sends only what moved,
-   as one `update()`, and listens for other clients.
-7. **Archive Library** has CSV import/export with a preview and real dedupe keys.
-8. **Shell dead code removed, cross-checked.** Four of the six names the audit flagged were live
-   bridges other apps reach through `window.parent`. `_allGroups` and `wgCompleteTask` went, and
-   with them `PRIMARY_CARDS` — whose only reader `_allGroups` was. `audit_app.py` gained
-   `--xref` and top-level data-table checking; the repo is clean under it.
-9. **8 protocol stage days injected** across 6 protocols, from `tools/derive_protocol_days.py`
-   via a reviewed TSV. `PROTOCOL_VERSION` deliberately not bumped — see Open ends.
-10. **One SheetJS, carried by the shell.** Dora, Lumina and Iceberg take `window.parent.XLSX`
-   and work with no signal; their CDN tag is the standalone fallback. +0.84 MB.
+1. **Plasmid maps take touch.** Pointer Events + pinch. The rule: a **fitted** map gives a
+   single finger back to the page (`touch-action:pan-y`); only a **zoomed** one takes it to
+   pan. `_pmApplyBox` is the one writer of the viewBox because the touch rule reads the zoom
+   state off `.pm-zoomed`.
+2. **An experiment can be moved.** `moveExpTo` (picker), drag a row onto a folder header, and
+   folders move up/down or into another project **carrying their experiments**. A project
+   header does not accept a drop — "which folder" would be a guess.
+3. **Priority** is `e.prio` = `high|low`; normal is the absence of the field. It sorts
+   Experiments and only tie-breaks Today/Running, where the date is the fact.
+4. **One menu, three doorways** — right-click, `⋯`, long press. The long press is delegated
+   once against `[oncontextmenu]`, so anything with a menu gets it, now and later.
+5. **Cmd+K indexes content**: block prose, step notes, daily notes, page bodies, observations,
+   files, Echo results and **plate wells**. Built once per open (was: per keystroke), scored
+   (was: unordered then truncated), multi-word (was: one `indexOf`), and the dead tag rows now
+   refine the query.
+6. **Empty folders render while browsing**, because a folder you cannot see is a place you
+   cannot file into. Under a search or filter they hide again.
 
 ## What exists now, in one pass
 
@@ -71,6 +61,9 @@ Compact coordination note. Read it before starting work; the full changelog is
 7. **Eight features off the typed params**: deviations, timers, biological replicates, protocol
    update diff, picklist→experiment, reader values, hub-wide Cmd+K, thaw.
 8. **Visual system**: nine type steps, five radii, one icon set (`tbSvg`). dHUB is 40% smaller.
+11. **Every card can be acted on**, from three doorways — right-click, `⋯`, long press — with
+   rename, move (menu or drag), priority, and delete on one menu per kind of thing. Cmd+K
+   searches the *contents*: prose, notes, days, files, results and plate wells.
 
 ## Open ends
 
@@ -89,8 +82,8 @@ Compact coordination note. Read it before starting work; the full changelog is
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** The shell read `v1.7.0` while CLAUDE.md and this
-  note said `v1.8.0`; the shell is bumped. It has happened before (v1.3.16 vs v1.4.1). The
+- **Version drift is a recurring failure here.** All three now read `v1.9.0`; check the shell
+  whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.
 - **The stop-hook is stale**: `.claude/stop-hook.sh` targets `The Hub.html` (gone) and a
@@ -100,6 +93,24 @@ Compact coordination note. Read it before starting work; the full changelog is
   in `embed.py`.
 
 ## Traps added this pass
+
+- **`touch-action:none` is not "make it work on touch".** It switches off the browser's
+  gestures and gives nothing back; unless you implement pan *and* pinch yourself, it makes the
+  element worse on a phone than doing nothing. And the honest default is `pan-y`, so the page
+  can still scroll past whatever you built.
+- **A long press ends in a click.** Both halves have to be handled: the click after the release
+  would open the row you were only getting a menu for, and a menu drawn under a finger that is
+  still down fires the item nearest the thumb (`pop._armAt`, 260 ms).
+- **A filtered-out empty container is a feature until it becomes a target.** Hiding empty
+  folders was right for browsing and wrong the moment you could drop something into one.
+- **`indexOf` is not a search.** Two words in the right entry but not adjacent returned "no
+  matches", which reads as broken software. And filtering *then* truncating to 40 throws away
+  exact matches: rank before you cut.
+- **A menu item that sets state without rendering does nothing at all**, and looks like the app
+  ignoring you. The Cmd+K tag rows had been dead this way (`TAGFILTER` is cleared by
+  `selectNode` on top of that).
+
+## Traps from the previous pass
 
 - **`node --check` is the whole test suite.** `tools/check_js.py` is the only thing standing
   between a stray brace and 19 apps that fail silently in `srcdoc` iframes. Run it; do not

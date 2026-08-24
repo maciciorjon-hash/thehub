@@ -1364,9 +1364,57 @@ defensible; tightened to direct evidence it proposes 10.
 `tools/derive_protocol_days.py` writes a review TSV and injects nothing on its own. The friction
 it was meant to solve is already solved by `LB.data.protoDays`.
 
+## Acting on a card, and a menu a thumb can reach (2026-08-24)
+
+Projects, folders and experiments could be **created and opened**. Everything else — rename,
+move, prioritise — either had no route or had one that existed only in the left tree and only
+for a mouse.
+
+**One menu, three doorways: right-click, a `⋯` button, and a long press.** The long press is
+delegated **once** against `[oncontextmenu]`, so every menu that exists today or is added later
+works on a phone. Two things must come with it, and both are the kind of bug that only appears
+on a device: the click that follows the release opens the row you were only getting a menu for
+(swallowed for 700 ms after a press fires), and a menu drawn under a finger that is still down
+fires the item nearest the thumb (`pop._armAt`, 260 ms). The `⋯` is always in the DOM — showing
+it on hover would put it on exactly the devices that have no hover — and is 36px under
+`(hover:none)`.
+
+**Move** is `moveExpTo` (the searchable picker that already existed), dragging a row onto a
+folder header, `moveProject`/`moveFolder` for ordering, and `moveFolderTo` across projects —
+which **re-points every experiment in that folder**, because the folder is the address and
+leaving them behind files them in a folder that is no longer there. A **project** header
+deliberately does not accept a drop: "which folder" would be a guess. Dropping also forced
+empty folders to render while browsing (hidden again under a search or filter), since a folder
+you cannot see is a place you cannot file into.
+
+**Priority** is `e.prio` = `high|low`; normal is the **absence** of the field, so nothing is
+written to every existing experiment to say it is ordinary. It sorts the Experiments list,
+where you are choosing what to work on, and only **tie-breaks** Today and Running — there the
+date is the fact, and floating an experiment whose next step is a fortnight away above one due
+this morning would be a lie about the day.
+
+## Cmd+K reads what you wrote
+
+`spotAll()` indexed **names**. "What was the Gibson incubation" is a question about the
+contents of a step, and the only way to answer it was to remember which day you wrote it on.
+`spotContent()` indexes block prose, step notes, block notes, daily notes, page bodies,
+observations, file names and captions, Echo results, and **plate maps** — the wells are
+searchable because they are structured data rather than a picture, which is the whole reason
+the map is modelled.
+
+Three defects came out with it, all invisible from the screen: the index was **rebuilt on every
+keystroke** (it walks Archive, the Library, cultures and the freezer; now once per open — 10 ms
+build / 2 ms search over 2,139 rows); results were **unranked and then cut to 40**, so an exact
+code match could be thrown away (`_spotScore`: name-prefix > name-substring > subtitle > body,
+with the matching sentence shown as the row's subtitle); and **multi-word queries matched
+nothing**, because one `indexOf` needs the phrase adjacent — the phrase is tried first, then
+every word must appear. The tag rows were dead as well: they set `TAGFILTER` with no render, and
+`selectNode` clears it anyway. A tag refines the query now, which is what the content index is
+for.
+
 ## Current state
 
-**v1.8.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-22. (Labbook moved to three surfaces this session — see above. Plasmids was retired earlier; its records live in Archive's Library.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, and a Cmd+K that searches contents — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Labbook home is a mockup awaiting a decision** — [`docs/mockups/labbook-home.html`](docs/mockups/labbook-home.html)
