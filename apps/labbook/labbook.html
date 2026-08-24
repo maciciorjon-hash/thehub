@@ -1015,11 +1015,14 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 .xv-when{font-size:var(--fs-1);color:var(--text3);flex:none;min-width:96px;text-align:right;}
 .xv-late{color:var(--accent);font-weight:600;}
 .xv-arw{display:inline-flex;color:var(--text3);flex:none;}
+.xv-fold.xv-drop{background:var(--accent-dim);outline:1px dashed var(--accent);border-radius:var(--r-1);}
 /* The ⋯ is the touch doorway to the same menu the right button opens. It is always in the
    DOM — appearing on hover only would put it on exactly the devices that have no hover. */
 .lb-mbtn{flex:none;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
   border:0;background:none;color:var(--text3);border-radius:var(--r-1);cursor:pointer;padding:0;opacity:.55;}
 .lb-mbtn:hover{opacity:1;color:var(--accent);background:var(--surface3);}
+/* A thumb is not a cursor: 26px is a comfortable click and a miss on a phone. */
+@media (hover:none){ .lb-mbtn{width:36px;height:36px;opacity:.7;} }
 .xv-prio{display:inline-flex;color:#d9534f;flex:none;}
 .xv-row.xv-lowp .xv-code,.xv-row.xv-lowp .xv-name{color:var(--text3);}
 /* iOS pops its own selection callout on a long press, which lands on top of the menu the
@@ -3869,6 +3872,29 @@ function _homeWhen(date,D){
 // without leaving the page, and picking one drops into the day-block editor unchanged.
 var XV={open:{}, q:'', filter:'all'};
 function xvToggle(pid){ XV.open[pid]=!XV.open[pid]; renderEditor(); }
+// Dragging a row onto a folder header is the gesture for the same move the menu offers. The
+// week planner already drags steps between days; this is the same idea one level up, and it
+// deliberately does NOT accept a drop on a project header — "which folder" would be a guess.
+var XV_DRAG=null;
+function xvDragStart(ev,id){ XV_DRAG=id;
+  try{ ev.dataTransfer.setData('text/plain',id); ev.dataTransfer.effectAllowed='move'; }catch(_e){} }
+function xvDragEnd(){ XV_DRAG=null;
+  Array.prototype.forEach.call(document.querySelectorAll('.xv-fold.xv-drop'),function(n){ n.classList.remove('xv-drop'); }); }
+function xvDragOver(ev){ if(!XV_DRAG) return; ev.preventDefault();
+  try{ ev.dataTransfer.dropEffect='move'; }catch(_e){}
+  ev.currentTarget.classList.add('xv-drop'); }
+function xvDragLeave(ev){ ev.currentTarget.classList.remove('xv-drop'); }
+function xvDrop(ev,pid,sid){
+  ev.preventDefault();
+  var id=XV_DRAG; try{ id=id||ev.dataTransfer.getData('text/plain'); }catch(_e){}
+  xvDragEnd();
+  var e=LB.data.experiments[id]; if(!e) return;
+  if(e.projectId===pid && e.sectionId===sid) return;
+  e.projectId=pid; e.sectionId=sid; e.updated=Date.now();
+  XV.open[pid]=true; save(); renderAll();
+  var p=projById(pid), sc=p&&(p.sections||[]).filter(function(x){return x.id===sid;})[0];
+  toast('Moved to '+((p?p.name:'')+' › '+(sc?sc.name:'')));
+}
 function xvSetQ(v){ XV.q=v||''; var host=el('pane-ed'); if(host) renderExperiments(host, true); }
 function xvSetFilter(f){ XV.filter=f; renderEditor(); }
 function xvMatch(e,q){
@@ -3893,7 +3919,8 @@ function xvRow(e,p){
   var when = late ? '<span class="xv-late">overdue '+esc(fmtDate(late.date))+'</span>'
                   : (next ? esc(_homeWhen(next.date,D)) : '');
   var st=(e.status==='done'?' xv-done':'')+(expArchived(e)?' xv-arch':'')+(expPrio(e)==='low'?' xv-lowp':'');
-  return '<div class="xv-row'+st+'" onclick="openExp(\''+e.id+'\')" oncontextmenu="ctxExp(event,\''+e.id+'\')">'
+  return '<div class="xv-row'+st+'" onclick="openExp(\''+e.id+'\')" oncontextmenu="ctxExp(event,\''+e.id+'\')"'
+    +' draggable="true" ondragstart="xvDragStart(event,\''+e.id+'\')" ondragend="xvDragEnd()">'
     +prioMark(e)
     +'<span class="xv-dot" style="background:'+((p&&p.color)||'var(--accent)')+'"></span>'
     +'<span class="xv-code">'+esc(e.code||'')+'</span>'
@@ -3912,11 +3939,22 @@ function xvProjectBody(p,q){
     // step is in a fortnight above one due this morning would be a lie about the day.
     .sort(function(a,b){ return prioRank(a)-prioRank(b)
       || (b.startDate||b.date||'').localeCompare(a.startDate||a.date||'')||(b.created||0)-(a.created||0); });
-  var out = all.length ? '' : '<div class="xv-empty">'+(q||XV.filter!=='all'?'Nothing here matches.':'No experiments yet — add a folder, then use + Add.')+'</div>';
+  // With every folder now drawn, "add a folder" was printed above the folders it said were
+  // missing. The advice only applies to a project that really has none.
+  var out = all.length ? '' : '<div class="xv-empty">'
+    +(q||XV.filter!=='all' ? 'Nothing here matches.'
+      : ((p.sections||[]).length ? 'No experiments yet — use + Add in a folder.'
+                                 : 'No experiments yet — add a folder, then use + Add.'))+'</div>';
+  // Every folder shows when you are browsing, even an empty one: it is a place to file into —
+  // both the drop target and its own + Add — and hiding it made an empty folder unreachable
+  // from here. Under a search or a filter it goes back to matches only, because there you
+  // asked for a subset.
+  var showEmpty = !q && XV.filter==='all';
   (p.sections||[]).forEach(function(sc){
     var inSec=all.filter(function(e){ return e.sectionId===sc.id; });
-    if(!inSec.length) return;
-    out+='<div class="xv-fold" oncontextmenu="ctxFolder(event,\''+p.id+'\',\''+sc.id+'\')"><span class="xv-fname">'+esc(sc.name)+'</span>'
+    if(!inSec.length && !showEmpty) return;
+    out+='<div class="xv-fold" oncontextmenu="ctxFolder(event,\''+p.id+'\',\''+sc.id+'\')"'
+       +' ondragover="xvDragOver(event)" ondragleave="xvDragLeave(event)" ondrop="xvDrop(event,\''+p.id+'\',\''+sc.id+'\')"><span class="xv-fname">'+esc(sc.name)+'</span>'
        +'<button class="xv-add" onclick="event.stopPropagation();xvAddTo(\''+p.id+'\',\''+sc.id+'\')">+ Add</button>'
        +menuBtn("ctxFolder(event,'"+p.id+"','"+sc.id+"')",'Folder menu')+'</div>'
        +inSec.map(function(e){ return xvRow(e,p); }).join('');
