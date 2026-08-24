@@ -648,7 +648,10 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .wk-top{display:flex;align-items:center;gap:12px;padding:14px 20px 10px;flex-wrap:wrap;}
 .wk-top .wk-h{font-size:var(--fs-7);font-weight:700;letter-spacing:-.3px;display:flex;align-items:center;gap:8px;}
 .wk-range{color:var(--text2);font-size:var(--fs-4);font-weight:500;}
-.wk-nav{display:flex;gap:6px;margin-left:auto;}
+.wk-nav{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap;}
+/* .wk-top wraps but this row did not, so on a phone Export PDF sat past the right edge —
+   clipped rather than overflowing, which is worse: the page looked fine and the button
+   was simply unreachable. */
 .wk-nav button{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:var(--r-2);padding:6px 12px;font-size:var(--fs-4);cursor:pointer;}
 .wk-nav button:hover{background:var(--surface2);}
 .wk-nav button.wk-today{font-weight:600;}
@@ -703,7 +706,13 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .wk-add{margin-top:auto;}
 .wk-add input{width:100%;border:1px dashed var(--border2);background:transparent;color:var(--text);border-radius:var(--r-1);padding:5px 7px;font-size:var(--fs-3);}
 .wk-add input:focus{border-style:solid;border-color:var(--accent,#5e87c5);outline:none;}
-@media(max-width:900px){ .wk-grid{grid-auto-flow:row;grid-template-columns:repeat(2,1fr);} }
+@media(max-width:900px){
+  .wk-grid{grid-auto-flow:row;grid-template-columns:repeat(2,1fr);align-items:start;}
+  /* A day with four steps was cut off mid-row at the height of an empty Sunday: the cells are
+     equal-height in a grid row, and the body scrolled inside 80px nobody could see. */
+  .wk-body{overflow:visible;max-height:none;}
+  .wk-col{overflow:visible;}
+}
 /* ── New-experiment preview ── */
 .nm-preview{margin:4px 0 2px;}
 .nm-preview .nm-pv-hd{font-size:var(--fs-2);text-transform:uppercase;letter-spacing:.4px;color:var(--text2);font-weight:600;margin-bottom:6px;}
@@ -5245,7 +5254,8 @@ function renderWeekPlanner(host){
     +'<button class="wk-export" onclick="exportWeekPDF()" title="Export this week to PDF"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg> Export PDF</button></div></div>'
     +odHtml
     +'<div class="wk-grid">'+cols+'</div>'
-    +'<div class="wk-hint">Drag a step or task onto another day to move it. Right-click a step for more.</div></div>';
+    +'<div class="wk-hint">Drag a step or task onto another day to move it. '
+    +(_lbTouch()?'Press and hold a step for more.':'Right-click a step for more.')+'</div></div>';
   renderDockPanels();
 }
 // ── Week planner: PDF export (landscape weekly grid) ──
@@ -6234,6 +6244,8 @@ function menuBtn(call,title){
 }
 // Delegated once rather than wired per element: anything that already answers `contextmenu`
 // gets the long press for free, including menus added later.
+// One place asks "is this a touch device", so the copy and the gestures cannot disagree.
+function _lbTouch(){ try{ return window.matchMedia('(hover:none)').matches; }catch(e){ return false; } }
 var _lpT=null, _lpAt=null, _lpFired=0;
 document.addEventListener('pointerdown',function(e){
   if(e.pointerType!=='touch' || !e.target.closest) return;
