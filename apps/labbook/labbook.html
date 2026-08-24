@@ -1015,6 +1015,16 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 .xv-when{font-size:var(--fs-1);color:var(--text3);flex:none;min-width:96px;text-align:right;}
 .xv-late{color:var(--accent);font-weight:600;}
 .xv-arw{display:inline-flex;color:var(--text3);flex:none;}
+/* The ⋯ is the touch doorway to the same menu the right button opens. It is always in the
+   DOM — appearing on hover only would put it on exactly the devices that have no hover. */
+.lb-mbtn{flex:none;width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
+  border:0;background:none;color:var(--text3);border-radius:var(--r-1);cursor:pointer;padding:0;opacity:.55;}
+.lb-mbtn:hover{opacity:1;color:var(--accent);background:var(--surface3);}
+.xv-prio{display:inline-flex;color:#d9534f;flex:none;}
+.xv-row.xv-lowp .xv-code,.xv-row.xv-lowp .xv-name{color:var(--text3);}
+/* iOS pops its own selection callout on a long press, which lands on top of the menu the
+   long press just opened. */
+[oncontextmenu]{-webkit-touch-callout:none;}
 .xv-row.xv-done .xv-code,.xv-row.xv-done .xv-name{color:var(--text3);}
 .xv-row.xv-arch{opacity:.62;}
 .xv-row.xv-arch .xv-code{text-decoration:line-through;}
@@ -3829,12 +3839,14 @@ function homeRunningCard(D){
   if(!out.length) return '<div class="lh-card w8">'
     +'<div class="lh-ch"><span class="lh-t">Running experiments</span></div>'
     +'<div class="lh-cb"><div class="lh-empty">Nothing running. Open a project folder and use <b>+ Add</b>.</div></div></div>';
-  out.sort(function(a,b){ return (a.next?a.next.date:'9999').localeCompare(b.next?b.next.date:'9999'); });
+  out.sort(function(a,b){ return (a.next?a.next.date:'9999').localeCompare(b.next?b.next.date:'9999')
+    || prioRank(a.e)-prioRank(b.e); });
   var rows=out.slice(0,6).map(function(x){
     var col=projColor(x.e.projectId), pct=x.q.total?Math.round(100*x.q.done/x.q.total):0;
     var when = x.late ? ('<span class="late">overdue '+esc(fmtDate(x.late.date))+'</span>')
              : (x.next ? esc(_homeWhen(x.next.date,D)) : 'nothing scheduled');
-    return '<div class="lh-exp" onclick="openExp(\''+x.e.id+'\')">'
+    return '<div class="lh-exp" onclick="openExp(\''+x.e.id+'\')" oncontextmenu="ctxExp(event,\''+x.e.id+'\')">'
+      +prioMark(x.e)
       +'<span class="lh-x-code" style="color:'+col+'">'+esc(x.e.code||'')+'</span>'
       +'<span class="lh-x-ti">'+esc(x.e.title||'')+'</span>'
       +'<span class="lh-bar"><i style="width:'+pct+'%;background:'+col+'"></i></span>'
@@ -3880,26 +3892,33 @@ function xvRow(e,p){
                          .sort(function(a,b){ return a.date.localeCompare(b.date); })[0];
   var when = late ? '<span class="xv-late">overdue '+esc(fmtDate(late.date))+'</span>'
                   : (next ? esc(_homeWhen(next.date,D)) : '');
-  var st=(e.status==='done'?' xv-done':'')+(expArchived(e)?' xv-arch':'');
-  return '<div class="xv-row'+st+'" onclick="openExp(\''+e.id+'\')">'
+  var st=(e.status==='done'?' xv-done':'')+(expArchived(e)?' xv-arch':'')+(expPrio(e)==='low'?' xv-lowp':'');
+  return '<div class="xv-row'+st+'" onclick="openExp(\''+e.id+'\')" oncontextmenu="ctxExp(event,\''+e.id+'\')">'
+    +prioMark(e)
     +'<span class="xv-dot" style="background:'+((p&&p.color)||'var(--accent)')+'"></span>'
     +'<span class="xv-code">'+esc(e.code||'')+'</span>'
     +'<span class="xv-name">'+esc(e.title||(isCoded(e)?'':'Untitled'))+'</span>'
     +(e.type?'<span class="xv-type">'+esc(typeName(e.type))+'</span>':'')
     +(q.total?'<span class="xv-prog" title="'+q.done+' of '+q.total+' steps done"><span class="xv-bar"><i style="width:'+pct+'%"></i></span><b>'+q.done+'/'+q.total+'</b></span>':'')
     +'<span class="xv-when">'+when+'</span>'
+    +menuBtn("ctxExp(event,'"+e.id+"')",'Entry menu')
     +'<span class="xv-arw">'+tbIco(P_CHEV_R,13)+'</span></div>';
 }
 function xvProjectBody(p,q){
   var all=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
     .filter(function(e){ return e.projectId===p.id && xvKeep(e) && xvMatch(e,q); })
-    .sort(function(a,b){ return (b.startDate||b.date||'').localeCompare(a.startDate||a.date||'')||(b.created||0)-(a.created||0); });
+    // Priority sorts the browsing list, where you are choosing what to work on. It does NOT
+    // sort Today or Running: there the date is the fact, and putting an experiment whose next
+    // step is in a fortnight above one due this morning would be a lie about the day.
+    .sort(function(a,b){ return prioRank(a)-prioRank(b)
+      || (b.startDate||b.date||'').localeCompare(a.startDate||a.date||'')||(b.created||0)-(a.created||0); });
   var out = all.length ? '' : '<div class="xv-empty">'+(q||XV.filter!=='all'?'Nothing here matches.':'No experiments yet — add a folder, then use + Add.')+'</div>';
   (p.sections||[]).forEach(function(sc){
     var inSec=all.filter(function(e){ return e.sectionId===sc.id; });
     if(!inSec.length) return;
-    out+='<div class="xv-fold"><span class="xv-fname">'+esc(sc.name)+'</span>'
-       +'<button class="xv-add" onclick="event.stopPropagation();xvAddTo(\''+p.id+'\',\''+sc.id+'\')">+ Add</button></div>'
+    out+='<div class="xv-fold" oncontextmenu="ctxFolder(event,\''+p.id+'\',\''+sc.id+'\')"><span class="xv-fname">'+esc(sc.name)+'</span>'
+       +'<button class="xv-add" onclick="event.stopPropagation();xvAddTo(\''+p.id+'\',\''+sc.id+'\')">+ Add</button>'
+       +menuBtn("ctxFolder(event,'"+p.id+"','"+sc.id+"')",'Folder menu')+'</div>'
        +inSec.map(function(e){ return xvRow(e,p); }).join('');
   });
   var loose=all.filter(function(e){ return !(p.sections||[]).some(function(sc){ return sc.id===e.sectionId; }); });
@@ -3921,7 +3940,7 @@ function renderExperiments(host, qOnly){
       var e=LB.data.experiments[k]; return e.projectId===p.id && expLive(e); }).length;
     if((q || XV.filter!=='all') && !n) return '';
     return '<div class="xv-proj'+(open?' open':'')+'">'
-      +'<div class="xv-ph" onclick="xvToggle(\''+p.id+'\')">'
+      +'<div class="xv-ph" onclick="xvToggle(\''+p.id+'\')" oncontextmenu="ctxProject(event,\''+p.id+'\')">'
         +'<span class="xv-chev">'+tbIco(P_CHEV_R,13)+'</span>'
         +'<span class="xv-pc" style="background:'+(p.color||'var(--accent)')+'"></span>'
         +'<span class="xv-pn">'+esc(p.name)+'</span>'
@@ -3930,6 +3949,7 @@ function renderExperiments(host, qOnly){
         // running" on the Archived tab meant one archived and one running, a different one.
         +'<span class="xv-pm">'+n+(XV.filter==='all'?(' experiment'+(n===1?'':'s')):' shown')
           +((run&&XV.filter==='all')?(' · '+run+' running'):'')+'</span>'
+        +menuBtn("ctxProject(event,'"+p.id+"')",'Project menu')
         +'<span class="xv-parw">'+tbIco(P_CHEV_D,13)+'</span></div>'
       +(open?'<div class="xv-pb">'+xvProjectBody(p,q)+'</div>':'')+'</div>';
   }).join('');
@@ -3962,7 +3982,7 @@ function homeProjectsCard(){
       body=(p.sections||[]).map(function(s){
         var n=Object.keys(LB.data.experiments).filter(function(k){
           var e=LB.data.experiments[k]; return e.projectId===p.id&&e.sectionId===s.id; }).length;
-        return '<div class="lh-prow" onclick="homeProjOpen(\''+p.id+'\',\''+s.id+'\')">'
+        return '<div class="lh-prow" onclick="homeProjOpen(\''+p.id+'\',\''+s.id+'\')" oncontextmenu="ctxFolder(event,\''+p.id+'\',\''+s.id+'\')">'
           +'<span class="lh-pc" style="background:'+(p.color||'#5e87c5')+'"></span>'
           +'<span class="nm">'+esc(s.name)+'</span><span class="mt">'+n+'</span><span class="ar">&rsaquo;</span></div>';
       }).join('') || '<div class="lh-empty">No folders yet.</div>';
@@ -3975,8 +3995,8 @@ function homeProjectsCard(){
         .sort(function(a,b){ return (b.startDate||b.date||'').localeCompare(a.startDate||a.date||''); });
       body=exps.slice(0,8).map(function(e){
         var q=expProgress(e);
-        return '<div class="lh-prow" onclick="openExp(\''+e.id+'\')">'
-          +'<span class="lh-pc" style="background:'+(p.color||'#5e87c5')+'"></span>'
+        return '<div class="lh-prow" onclick="openExp(\''+e.id+'\')" oncontextmenu="ctxExp(event,\''+e.id+'\')">'
+          +'<span class="lh-pc" style="background:'+(p.color||'#5e87c5')+'"></span>'+prioMark(e)
           +'<span class="nm">'+esc(e.code||e.title||'Untitled')+'</span>'
           +'<span class="mt">'+q.done+'/'+q.total+'</span><span class="ar">&rsaquo;</span></div>';
       }).join('') || '<div class="lh-empty">Nothing in this folder yet.</div>';
@@ -3985,7 +4005,7 @@ function homeProjectsCard(){
   if(!HOME_PROJ){
     body=LB.data.projects.map(function(p){
       var n=Object.keys(LB.data.experiments).filter(function(k){ return LB.data.experiments[k].projectId===p.id; }).length;
-      return '<div class="lh-prow" onclick="homeProjOpen(\''+p.id+'\')">'
+      return '<div class="lh-prow" onclick="homeProjOpen(\''+p.id+'\')" oncontextmenu="ctxProject(event,\''+p.id+'\')">'
         +'<span class="lh-pc" style="background:'+(p.color||'#5e87c5')+'"></span>'
         +'<span class="nm">'+esc(p.name)+'</span><span class="mt">'+n+'</span><span class="ar">&rsaquo;</span></div>';
     }).join('') || '<div class="lh-empty">No projects yet.</div>';
@@ -3998,16 +4018,16 @@ function homeRecentCard(){
   var items=[];
   Object.keys(LB.data.experiments).forEach(function(k){
     var e=LB.data.experiments[k];
-    items.push({t:e.updated||e.created||0, label:(e.code||e.title||'Untitled'), go:"openExp('"+e.id+"')"});
+    items.push({t:e.updated||e.created||0, label:(e.code||e.title||'Untitled'), go:"openExp('"+e.id+"')", ctx:"ctxExp(event,'"+e.id+"')"});
   });
   Object.keys(LB.data.pages).forEach(function(k){
     var pg=LB.data.pages[k];
-    items.push({t:pg.updated||pg.created||0, label:(pg.title||'Untitled page'), go:"selectPage('"+pg.id+"')"});
+    items.push({t:pg.updated||pg.created||0, label:(pg.title||'Untitled page'), go:"selectPage('"+pg.id+"')", ctx:"ctxPage(event,'"+pg.id+"')"});
   });
   items=items.filter(function(x){ return x.t; }).sort(function(a,b){ return b.t-a.t; }).slice(0,6);
   if(!items.length) return '';
   var rows=items.map(function(x){
-    return '<div class="lh-rec" onclick="'+x.go+'"><span class="w">'+esc(x.label)+'</span>'
+    return '<div class="lh-rec" onclick="'+x.go+'" oncontextmenu="'+x.ctx+'"><span class="w">'+esc(x.label)+'</span>'
       +'<span class="ago">'+esc(_homeAgo(x.t))+'</span></div>'; }).join('');
   return '<div class="lh-card w4"><div class="lh-ch"><span class="lh-t">Recently edited</span></div>'
     +'<div class="lh-cb">'+rows+'</div></div>';
@@ -4572,20 +4592,20 @@ function renderDayView(host,D){
   var byExp={}, order=[]; blocksForDate(D).forEach(function(fb){ if(!byExp[fb.exp.id]){ byExp[fb.exp.id]={exp:fb.exp,blocks:[]}; order.push(fb.exp.id); } byExp[fb.exp.id].blocks.push(fb.block); });
   var from = order.length ? ('<div style="margin-top:14px"><div class="day-from-lbl">What to do today — from your experiments</div>'+order.map(function(id){ var g=byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
     var blks=g.blocks.map(function(b){ var rc=expCalcRecipe(b);
-      var hd='<div class="dfx-blk-hd'+(b.done?' dfx-done':'')+'"><button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'+(b.title?'<span class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'<span class="dfx-blk-t dim">Step</span>')
+      var hd='<div class="dfx-blk-hd'+(b.done?' dfx-done':'')+'" oncontextmenu="wkCtxBlock(event,\''+g.exp.id+'\',\''+b.id+'\')"><button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'+(b.title?'<span class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'<span class="dfx-blk-t dim">Step</span>')
         +'<button class="dfx-snooze" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'Snooze</button></div>';
       var pv=b.plate?('<div class="dfx-plate">'+platePreviewHtml(b.plate,'blk:'+g.exp.id+':'+b.id)+'</div>'):'';
       return hd+(rc?'<div class="dfx-recipe">'+rc+'</div>':'')+pv
         +(b.proto ? protoBlockHtml(b,true)
                   : '<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'); }).join('');
-    return '<div class="day-exp"><div class="day-exp-hd"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span><button class="dfx-open" onclick="openExp(\''+g.exp.id+'\')">Open &#8599;</button></div>'+blks+'</div>'; }).join('')+'</div>') : '';
+    return '<div class="day-exp"><div class="day-exp-hd" oncontextmenu="ctxExp(event,\''+g.exp.id+'\')"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span><button class="dfx-open" onclick="openExp(\''+g.exp.id+'\')">Open &#8599;</button></div>'+blks+'</div>'; }).join('')+'</div>') : '';
   // Carried-over unfinished work from earlier days (unticked checklist items roll forward).
   var co=carryoverForDate(D);
   var carried = co.order.length ? ('<div style="margin-top:16px"><div class="day-from-lbl day-carry-lbl">'+hdIcon('<path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 010 8h-1"/>')+'Carried over — unfinished from earlier days</div>'+co.order.map(function(id){ var g=co.byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
-    var blks=g.blocks.map(function(b){ return '<div class="day-carry-hd"><button class="blk-done" title="Mark this step done" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')"></button><span class="carry-from">from '+esc(fmtDate(b.date))+'</span>'+(b.title?'<span class="dfx-blk-t2" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'')+'<button class="carry-move" title="Move to this day" onclick="carryBlockToToday(\''+g.exp.id+'\',\''+b.id+'\',\''+D+'\')">Move to this day &#8595;</button><button class="dfx-snooze" style="margin-left:0" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'Snooze</button><button class="dfx-snooze" style="margin-left:0" title="Hide from carry-over, not done" onclick="dismissCarry(\''+g.exp.id+'\',\''+b.id+'\')">Dismiss</button></div>'
+    var blks=g.blocks.map(function(b){ return '<div class="day-carry-hd" oncontextmenu="wkCtxBlock(event,\''+g.exp.id+'\',\''+b.id+'\')"><button class="blk-done" title="Mark this step done" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')"></button><span class="carry-from">from '+esc(fmtDate(b.date))+'</span>'+(b.title?'<span class="dfx-blk-t2" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'')+'<button class="carry-move" title="Move to this day" onclick="carryBlockToToday(\''+g.exp.id+'\',\''+b.id+'\',\''+D+'\')">Move to this day &#8595;</button><button class="dfx-snooze" style="margin-left:0" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'Snooze</button><button class="dfx-snooze" style="margin-left:0" title="Hide from carry-over, not done" onclick="dismissCarry(\''+g.exp.id+'\',\''+b.id+'\')">Dismiss</button></div>'
       +(b.proto ? protoBlockHtml(b,true)
                 : '<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'); }).join('');
-    return '<div class="day-exp day-carry"><div class="day-exp-hd"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span></div>'+blks+'</div>'; }).join('')+'</div>') : '';
+    return '<div class="day-exp day-carry"><div class="day-exp-hd" oncontextmenu="ctxExp(event,\''+g.exp.id+'\')"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span></div>'+blks+'</div>'; }).join('')+'</div>') : '';
   var isToday=(D===todayStr());
   var nav='<div class="day-nav">'
     +'<button class="day-arw" title="Previous day" onclick="dayGo(-1)">'+tbIco(P_CHEV_L,15)+'</button>'
@@ -4607,7 +4627,7 @@ function nbTasksHtml(D){
       if(le){ var stepName='';
         if(t.blockId){ var sb=(le.blocks||[]).filter(function(x){return x.id===t.blockId;})[0]; if(sb) stepName=' · '+(sb.title||('Day '+(sb.dayOffset||0))); }
         chip='<span class="nbt-lnk" onclick="'+(t.blockId?('openBlk(\''+t.expId+'\',\''+t.blockId+'\')'):('openExp(\''+t.expId+'\')'))+'" title="Open">'+esc((le.code||le.title||'exp')+stepName)+' &#8599;</span>'; } }
-    return '<div class="nbt'+(t.done?' done':'')+'">'
+    return '<div class="nbt'+(t.done?' done':'')+'" oncontextmenu="ctxTask(event,\''+t.id+'\')">'
       +'<span class="wk-cb" onclick="togglePlannerTask(\''+t.id+'\')" title="Toggle done">'+(t.done?'&#10003;':'')+'</span>'
       +'<span class="nbt-tx"><span contenteditable="true" spellcheck="false" onblur="editPlannerTask(\''+t.id+'\',this.textContent)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'+esc(t.text)+'</span>'+chip+'</span>'
       +'<span class="wk-del" onclick="delPlannerTask(\''+t.id+'\')" title="Delete">&times;</span></div>';
@@ -4688,6 +4708,15 @@ function wkStepChip(e,b,opts){
     +'<span class="wk-sn" onclick="event.stopPropagation();snoozeBlock(\''+e.id+'\',\''+b.id+'\',1)" title="Snooze a day — later steps move too">'+ICON_SNOOZE+'</span>'
     +'</div>';
 }
+function ctxTask(ev,id){
+  var t=plannerTasks()[id]; if(!t) return;
+  ctxAt(ev,[
+    {label:t.done?'Mark not done':'Mark done',fn:function(){ togglePlannerTask(id); }},
+    {label:t.expId?'Change link…':'Link to an experiment…',fn:function(){ linkPlannerTask(id); }},
+    (t.expId?{label:'Open what it links to',fn:function(){ if(t.blockId) openBlk(t.expId,t.blockId); else openExp(t.expId); }}:{sep:true}),
+    {sep:true},{label:'Delete task',danger:true,fn:function(){ delPlannerTask(id); }}
+  ]);
+}
 function wkCtxBlock(ev,expId,blkId){
   var f=blockFinder(expId,blkId); if(!f) return;
   ctxAt(ev,[
@@ -4750,7 +4779,7 @@ function renderWeekPlanner(host){
     var blks=blocksForDate(D).map(function(bt){ return wkStepChip(bt.exp,bt.block); }).join('');
     var tks=tasksForDate(D).map(function(t){
       var linkChip=''; if(t.expId){ var le=LB.data.experiments[t.expId]; if(le) linkChip='<span class="wk-lnk" onclick="event.stopPropagation();openExp(\''+t.expId+'\')" title="Open experiment">'+esc(le.code||le.title||'exp')+' &#8599;</span>'; }
-      return '<div class="wk-task'+(t.done?' done':'')+'" data-id="'+t.id+'" draggable="true" ondragstart="wkDragStart(event,\'task\',\''+t.id+'\')" ondragend="wkDragEnd()">'
+      return '<div class="wk-task'+(t.done?' done':'')+'" data-id="'+t.id+'" draggable="true" ondragstart="wkDragStart(event,\'task\',\''+t.id+'\')" ondragend="wkDragEnd()" oncontextmenu="ctxTask(event,\''+t.id+'\')">'
         +'<span class="wk-cb" onclick="togglePlannerTask(\''+t.id+'\')" title="Toggle done">'+(t.done?'&#10003;':'')+'</span>'
         +'<span class="wk-tx"><span contenteditable="true" spellcheck="false" onblur="editPlannerTask(\''+t.id+'\',this.textContent)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'+esc(t.text)+'</span>'+linkChip+' <span class="wk-lnk" onclick="linkPlannerTask(\''+t.id+'\')" title="Link to an experiment or one of its steps">'+(t.expId?'edit link':'+ link')+'</span></span>'
         +'<span class="wk-del" onclick="delPlannerTask(\''+t.id+'\')" title="Delete">&times;</span></div>';
@@ -4899,7 +4928,8 @@ function ongoingHtml(D){
     out.push({e:e,q:q,next:next});
   });
   if(!out.length) return '';
-  out.sort(function(a,b){ return (a.next?a.next.date:'9999').localeCompare(b.next?b.next.date:'9999'); });
+  out.sort(function(a,b){ return (a.next?a.next.date:'9999').localeCompare(b.next?b.next.date:'9999')
+    || prioRank(a.e)-prioRank(b.e); });
   return '<div style="margin-top:16px"><div class="day-from-lbl">'+hdIcon(P_PLAY)+'Running experiments</div><div class="ong-list">'
     +out.map(function(x){ var col=projColor(x.e.projectId);
       var pct=x.q.total?Math.round(100*x.q.done/x.q.total):0;
@@ -5052,6 +5082,7 @@ var P_CHEV_R='<path d="M9.5 5l7 7-7 7"/>', P_CHEV_L='<path d="M14.5 5l-7 7 7 7"/
     P_CHEV_D='<path d="M5 9l7 7 7-7"/>',  P_CHEV_U='<path d="M19 15l-7-7-7 7"/>';
 var P_GRID='<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.3h18M3 14.6h18M9 4v16M15 4v16"/>';
 var P_SIGMA='<path d="M7 5h10l-6 7 6 7H7"/>';
+var P_FLAG='<path d="M5 21V4.5"/><path d="M5 5.5h11l-2 3.5 2 3.5H5"/>';
 var P_DOWNLOAD='<path d="M12 3v12M7 11l5 5 5-5M4 20h16"/>';
 var P_REFRESH='<path d="M20.5 12.5a8.5 8.5 0 11-2.7-6.2"/><path d="M20.9 3.6v4.2h-4.2"/>';
 var P_RETURN='<path d="M9 9H4.5L9 4.5"/><path d="M4.5 9H15a4.5 4.5 0 010 9h-4"/>';
@@ -5606,7 +5637,12 @@ function popOpen(id,items,rect){ var pop=el(id); pop.innerHTML=items.map(functio
   pop._items=items; pop.classList.add('open');
   var x=rect.left, y=rect.bottom+4; if(x+250>window.innerWidth) x=window.innerWidth-256; if(y+pop.offsetHeight>window.innerHeight) y=Math.max(6,rect.top-pop.offsetHeight-4);
   pop.style.left=x+'px'; pop.style.top=y+'px';
-  pop.onmousedown=function(ev){ var d=ev.target.closest('.pop-item'); if(!d) return; ev.preventDefault(); var it=items[+d.dataset.i]; pop.classList.remove('open'); if(it&&it.fn) it.fn(); };
+  // A long press opens this menu with the finger still down, and the release synthesises a
+  // mousedown. Without an arming delay the item nearest the thumb fires itself.
+  pop._armAt=Date.now();
+  pop.onmousedown=function(ev){ var d=ev.target.closest('.pop-item'); if(!d) return; ev.preventDefault();
+    if(Date.now()-pop._armAt<260) return;
+    var it=items[+d.dataset.i]; pop.classList.remove('open'); if(it&&it.fn) it.fn(); };
 }
 document.addEventListener('mousedown',function(e){ ['ctxmenu','addmenu','tbl-grid'].forEach(function(id){ var p=el(id); if(p&&p.classList.contains('open') && !p.contains(e.target)) p.classList.remove('open'); }); });
 
@@ -5672,22 +5708,135 @@ function lbPicker(title,items,onPick){
   q.oninput=draw; draw(); setTimeout(function(){ q.focus(); },30);
 }
 
+// ── Priority, move, rename: the verbs a card needs ──
+// Three levels, and only two of them are stored. Normal is the *absence* of a value, so
+// nothing is written to 200 existing experiments to record that they are ordinary.
+var PRIO={high:{lbl:'High'}, low:{lbl:'Low'}};
+function expPrio(e){ return (e && PRIO[e.prio]) ? e.prio : ''; }
+// High first, low last, and everything else keeps the order it already had.
+function prioRank(e){ var x=expPrio(e); return x==='high' ? 0 : (x==='low' ? 2 : 1); }
+function setExpPrio(id,v){ var e=LB.data.experiments[id]; if(!e) return;
+  if(v) e.prio=v; else delete e.prio;
+  e.updated=Date.now(); save(); renderAll(); }
+function prioMark(e){ return expPrio(e)==='high'
+  ? '<span class="xv-prio" title="High priority">'+tbIco(P_FLAG,12)+'</span>' : ''; }
+function renameExp(id){ var e=LB.data.experiments[id]; if(!e) return;
+  lbPrompt('Title', e.title||'').then(function(v){ if(v==null) return;
+    e.title=v.trim(); e.updated=Date.now(); save(); renderAll(); }); }
+// An experiment could be created into a folder and never leave it. Filing is a thing you get
+// wrong first and fix later, so it has to be one action rather than duplicate-and-delete.
+function moveExpTo(id){
+  var e=LB.data.experiments[id]; if(!e) return;
+  var items=[];
+  LB.data.projects.forEach(function(p){ (p.sections||[]).forEach(function(sc){
+    items.push({id:p.id+'/'+sc.id, label:sc.name, sub:p.name, ic:'F', c:p.color||'#5e87c5'}); }); });
+  if(!items.length){ lbAlert('There are no folders to move this into. Add one to a project first.'); return; }
+  lbPicker('Move '+(e.code||e.title||'entry')+' to…', items, function(it){
+    var q=String(it.id).split('/');
+    if(e.projectId===q[0] && e.sectionId===q[1]) return;
+    e.projectId=q[0]; e.sectionId=q[1]; e.updated=Date.now();
+    save(); renderAll(); toast('Moved to '+it.sub+' › '+it.label);
+  });
+}
+function moveProject(id,dir){
+  var a=LB.data.projects, i=a.map(function(p){return p.id;}).indexOf(id), j=i+dir;
+  if(i<0 || j<0 || j>=a.length) return;
+  a.splice(j,0,a.splice(i,1)[0]); save(); renderAll();
+}
+function moveFolder(pid,sid,dir){
+  var p=projById(pid); if(!p||!p.sections) return;
+  var a=p.sections, i=a.map(function(sc){return sc.id;}).indexOf(sid), j=i+dir;
+  if(i<0 || j<0 || j>=a.length) return;
+  a.splice(j,0,a.splice(i,1)[0]); save(); renderAll();
+}
+function moveFolderTo(pid,sid){
+  var p=projById(pid), sc=p&&(p.sections||[]).filter(function(x){return x.id===sid;})[0];
+  if(!sc) return;
+  var items=LB.data.projects.filter(function(x){ return x.id!==pid; })
+    .map(function(x){ return {id:x.id, label:x.name, sub:((x.sections||[]).length)+' folder'+(((x.sections||[]).length)===1?'':'s'), ic:'P', c:x.color||'#5e87c5'}; });
+  if(!items.length){ lbAlert('There is no other project to move this folder into.'); return; }
+  lbPicker('Move folder '+sc.name+' to…', items, function(it){
+    var dst=projById(it.id); if(!dst) return;
+    p.sections=p.sections.filter(function(x){ return x.id!==sid; });
+    dst.sections=dst.sections||[]; dst.sections.push(sc);
+    // The folder is the address. Leaving its experiments pointing at the old project would
+    // file them in a folder that is no longer there — they would vanish from both.
+    Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
+      if(e.projectId===pid && e.sectionId===sid){ e.projectId=dst.id; e.updated=Date.now(); } });
+    save(); renderAll(); toast('Folder moved to '+it.label);
+  });
+}
+
 // ── Context menus (Labbook) ──
-function ctxAt(ev,items){ ev.preventDefault(); ev.stopPropagation(); popOpen('ctxmenu',items,{left:ev.clientX,right:ev.clientX,top:ev.clientY,bottom:ev.clientY}); }
-function ctxProject(ev,id){ ctxAt(ev,[
-  {label:'New folder',fn:function(){ EXPANDED[id]=true; renderSections(); var i=el('new-sec-'+id); if(i) i.focus(); }},
+// One menu, three doorways: right-click, the ⋯ button, and a long press. A phone has no
+// right button and no hover, so a menu that only answers `contextmenu` does not exist on the
+// device this notebook is most often carried to.
+var P_DOTS='<circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>';
+function menuBtn(call,title){
+  return '<button class="lb-mbtn" title="'+esc(title||'More…')+'" onclick="event.stopPropagation();'
+    +call+'">'+tbIco(P_DOTS,15)+'</button>';
+}
+// Delegated once rather than wired per element: anything that already answers `contextmenu`
+// gets the long press for free, including menus added later.
+var _lpT=null, _lpAt=null, _lpFired=0;
+document.addEventListener('pointerdown',function(e){
+  if(e.pointerType!=='touch' || !e.target.closest) return;
+  var t=e.target.closest('[oncontextmenu]'); if(!t) return;
+  _lpAt={x:e.clientX, y:e.clientY, t:t};
+  clearTimeout(_lpT);
+  _lpT=setTimeout(function(){
+    _lpT=null; _lpFired=Date.now();
+    try{ if(navigator.vibrate) navigator.vibrate(12); }catch(_e){}
+    _lpAt.t.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:_lpAt.x,clientY:_lpAt.y}));
+  }, 480);
+},true);
+function _lpStop(e){
+  if(!_lpT) return;
+  if(e && e.type==='pointermove' && _lpAt && Math.abs(e.clientX-_lpAt.x)<10 && Math.abs(e.clientY-_lpAt.y)<10) return;
+  clearTimeout(_lpT); _lpT=null;
+}
+document.addEventListener('pointermove',_lpStop,true);
+document.addEventListener('pointerup',_lpStop,true);
+document.addEventListener('pointercancel',_lpStop,true);
+// Lifting the finger after a long press still fires a click on whatever is underneath, which
+// would open the row you were only trying to get a menu for.
+document.addEventListener('click',function(e){
+  if(_lpFired && Date.now()-_lpFired<700){ _lpFired=0; e.preventDefault(); e.stopPropagation(); }
+},true);
+function ctxAt(ev,items){
+ ev.preventDefault(); ev.stopPropagation(); popOpen('ctxmenu',items,{left:ev.clientX,right:ev.clientX,top:ev.clientY,bottom:ev.clientY}); }
+function ctxProject(ev,id){
+  var i=LB.data.projects.map(function(p){return p.id;}).indexOf(id), n=LB.data.projects.length;
+  ctxAt(ev,[
+  {label:'New folder',fn:function(){ EXPANDED[id]=true; XV.open[id]=true; renderAll(); var f=el('new-sec-'+id); if(f) f.focus(); }},
   {label:'Rename',fn:function(){renameProject(id);}},
   {label:'Change colour',fn:function(){cycleProjColor(id);}},
+  {sep:true},
+  (i>0   ? {label:'Move up',fn:function(){moveProject(id,-1);}}   : {sep:true}),
+  (i<n-1 ? {label:'Move down',fn:function(){moveProject(id,1);}} : {sep:true}),
   {sep:true},{label:'Delete project',danger:true,fn:function(){delProject(id);}}
 ]); }
-function ctxFolder(ev,pid,sid){ ctxAt(ev,[
+function ctxFolder(ev,pid,sid){
+  var p=projById(pid), a=(p&&p.sections)||[], i=a.map(function(sc){return sc.id;}).indexOf(sid);
+  ctxAt(ev,[
   {label:'Add entry',fn:function(){ selectNode('expsec',pid,sid); }},
   {label:'Rename',fn:function(){renameSection(pid,sid);}},
+  {sep:true},
+  (i>0          ? {label:'Move up',fn:function(){moveFolder(pid,sid,-1);}}  : {sep:true}),
+  (i<a.length-1 ? {label:'Move down',fn:function(){moveFolder(pid,sid,1);}} : {sep:true}),
+  {label:'Move to project…',fn:function(){moveFolderTo(pid,sid);}},
   {sep:true},{label:'Delete folder',danger:true,fn:function(){delSection(pid,sid);}}
 ]); }
 function ctxGeneral(ev,id){ ctxAt(ev,[{label:'Rename',fn:function(){renameGeneral(id);}},{sep:true},{label:'Delete section',danger:true,fn:function(){delGeneral(id);}}]); }
-function ctxExp(ev,id){ var e=LB.data.experiments[id]; ctxAt(ev,[
+function ctxExp(ev,id){ var e=LB.data.experiments[id]; if(!e) return; var pr=expPrio(e); ctxAt(ev,[
   {label:'Open',fn:function(){openExp(id);}},
+  {label:'Rename…',fn:function(){renameExp(id);}},
+  {label:'Move to folder…',fn:function(){moveExpTo(id);}},
+  {sep:true},
+  {label:'High priority', sub:(pr==='high'?'\u2713':''), fn:function(){ setExpPrio(id, pr==='high'?'':'high'); }},
+  {label:'Normal priority', sub:(pr?'':'\u2713'), fn:function(){ setExpPrio(id,''); }},
+  {label:'Low priority', sub:(pr==='low'?'\u2713':''), fn:function(){ setExpPrio(id, pr==='low'?'':'low'); }},
+  {sep:true},
   (isCoded(e)?(expArchived(e)
     ? {label:'Unarchive',fn:function(){setExpArchived(id,false);}}
     : {label:'Close experiment…',fn:function(){closeExperiment(id);}}):{sep:true}),
