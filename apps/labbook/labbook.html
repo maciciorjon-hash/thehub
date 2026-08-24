@@ -1448,11 +1448,11 @@ var EXTRA_PRESET_SEED={
   'NB_SPARK_RTX96':{name:'NanoBRET_SPARK_Reverse_96',baseType:'NB',title:'NanoBRET — SPARK, reverse transfection (96-well)',
    setup:{format:'96',cellLine:'HeLa',cellsPerWell:20000},blocks:[
     {d:0,title:'Transfection mixes (FuGENE HD)',
-     calc:{kind:'nbtx',inputs:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',ngPerWell:80,ratio:50,
+     calc:{kind:'nbtx',inputs:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
        donorStock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
        nPair:24,nDonor:8,nAcceptor:8,nMock:8,ctrlMode:'same amount as in the pair',excess:1.2}},
-     html:'<p><b>Reverse transfection</b> — one master mix per DNA condition: <b>80 ng total DNA per well</b>, '
-       +'<b>0.24 µL FuGENE HD</b> and <b>10 µL Opti-MEM</b> per well, split donor:acceptor at <b>1:50</b>. '
+     html:'<p><b>Reverse transfection</b> — one master mix per DNA condition: <b>80 ng HaloTag construct per well</b> '
+       +'with the <b>NanoLuc construct at 1:50</b> of it (1.6 ng), <b>0.24 µL FuGENE HD</b> and <b>10 µL Opti-MEM</b> per well. '
        +'Add DNA to Opti-MEM, then FuGENE HD; mix gently (do not vortex) and leave 10–15 min at room temperature.</p>'
        +'<p>Dispense <b>10 µL of mix per well</b> into the white 96-well plate <i>before</i> the cells.</p>'
        +'<ul class="lb-check"><li>Mixes made per condition</li><li>10–15 min at room temperature</li><li>10 µL/well dispensed</li></ul>'},
@@ -1704,7 +1704,7 @@ var CALC_KINDS={
   // So this computes one mix per condition and tops the short ones up with carrier.
   nbtx:{ label:'Reverse transfection — NanoBRET mixes', fields:[
     {k:'donorName',t:'txt',lbl:'Plasmid 1 (NanoLuc)'},{k:'acceptorName',t:'txt',lbl:'Plasmid 2 (HaloTag)'},
-    {k:'ngPerWell',t:'num',lbl:'Total DNA (ng/well)'},{k:'ratio',t:'num',lbl:'Donor 1 : X acceptor',step:'1'},
+    {k:'acceptorNg',t:'num',lbl:'Plasmid 2 ng/well'},{k:'ratio',t:'num',lbl:'Plasmid 1 = 1/X of it',step:'1'},
     {k:'donorStock',t:'num',lbl:'Plasmid 1 stock (ng/µL)'},{k:'acceptorStock',t:'num',lbl:'Plasmid 2 stock (ng/µL)'},
     {k:'carrierStock',t:'num',lbl:'Carrier DNA stock (ng/µL)'},
     {k:'fugenePerWell',t:'num',lbl:'FuGENE HD (µL/well)',step:'0.01'},{k:'optimemPerWell',t:'num',lbl:'Opti-MEM (µL/well)'},
@@ -1712,7 +1712,7 @@ var CALC_KINDS={
     {k:'nAcceptor',t:'num',lbl:'Wells: 2 only'},{k:'nMock',t:'num',lbl:'Wells: mock'},
     {k:'ctrlMode',t:'select',lbl:'Single-plasmid controls',opts:['same amount as in the pair','full DNA of that plasmid']},
     {k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
-    defaults:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',ngPerWell:80,ratio:50,
+    defaults:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
       donorStock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
       nPair:24,nDonor:8,nAcceptor:8,nMock:8,ctrlMode:'same amount as in the pair',excess:1.2},
     compute:function(v){ return nbtxRecipe(v); } },
@@ -1748,13 +1748,17 @@ var CALC_KINDS={
       return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; '+nfmt(r)+' µL '+esc(v.name||'reagent')+' (1:'+nfmt(dil)+') + '+nfmt(d)+' µL '+esc(v.diluent||'diluent')+' = '+nfmt(tot)+' µL total.'; } }
 };
 // ── NanoBRET reverse transfection ───────────────────────────────────────────────────────────
-// The split follows the donor:acceptor ratio you set (1:50 here): donor = total/(1+X). At 80 ng
-// and 1:50 that is 1.57 ng donor + 78.43 ng acceptor, and the two add up to the total, so the
-// pair needs no carrier. A single-plasmid control does: it carries its share of the pair and is
-// topped up, or every well no longer receives the same amount of DNA.
+// The two numbers you decide are the acceptor amount and how dilute the donor is relative to
+// it: 80 ng of HaloTag construct and NanoLuc at 1:50 means 1.6 ng of NanoLuc, and the well
+// therefore receives 81.6 ng — the total is an *output*, not an input. (It was the other way
+// round at first, dividing a fixed 80 ng total by 1+X. The numbers are close and the meaning is
+// not: the quantity a person chooses has to be the one they type.)
 function _nbtxConditions(v){
-  var ng=+v.ngPerWell||0, R=+v.ratio||1;
-  var dNg=ng/(1+R), aNg=ng-dNg;
+  // acceptorNg replaced ngPerWell; an experiment created before that reads its old key, where
+  // the number was the same 80 and meant the total.
+  var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0, R=+v.ratio||1;
+  var dNg=R?(aNg/R):0;
+  var ng=dNg+aNg;
   var full=(String(v.ctrlMode||'').indexOf('full')===0);
   return [
     {key:'pair', name:(v.donorName||'Plasmid 1')+' + '+(v.acceptorName||'Plasmid 2'), n:+v.nPair||0, d:dNg, a:aNg},
@@ -1784,7 +1788,8 @@ function nbtxRecipe(v){
   var cs=_nbtxConditions(v);
   if(!cs.length) return '<b>Reverse transfection</b> — set how many wells each condition needs.';
   var ex=+v.excess||1, dS=+v.donorStock||0, aS=+v.acceptorStock||0, cS=+v.carrierStock||0;
-  var ng=+v.ngPerWell||0, R=+v.ratio||1;
+  var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0, R=+v.ratio||1;
+  var dNg=R?(aNg/R):0, ng=dNg+aNg;
   var rows=cs.map(function(c){
     var W=c.n*ex;
     var dV=_dnaVol(c.d*W,dS), aV=_dnaVol(c.a*W,aS), cV=c.needsCarrier?_dnaVol(c.carrier*W,cS):null;
@@ -1800,13 +1805,12 @@ function nbtxRecipe(v){
       +'<td>'+(parts.join('<br>')||'—')+'</td>'
       +'<td>'+nfmt(fu)+' µL</td><td>'+nfmt(om)+' µL</td><td><b>'+nfmt(tot)+' µL</b></td></tr>';
   }).join('');
-  var dNg=ng/(1+R);
   return '<b>Reverse transfection — one mix per condition</b>'
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Condition</th><th>DNA</th><th>FuGENE HD</th><th>Opti-MEM</th><th>Total</th></tr>'+rows+'</table></div>'
-    +'<div class="cc-note">Split at 1:'+nfmt(R)+' → '+nfmt(dNg)+' ng '+esc(v.donorName||'plasmid 1')+' + '+nfmt(ng-dNg)+' ng '
-    +esc(v.acceptorName||'plasmid 2')+' per well, '+nfmt(ng)+' ng total. '
-    +'Carrier is added only where the shortfall is more than 10% of the total — the '+esc(v.acceptorName||'plasmid 2')
-    +'-only well is short by the donor\'s '+nfmt(dNg)+' ng and gets none. '
+    +'<div class="cc-note">'+nfmt(aNg)+' ng '+esc(v.acceptorName||'plasmid 2')+' per well with '
+    +esc(v.donorName||'plasmid 1')+' at 1:'+nfmt(R)+' of it → '+nfmt(dNg)+' ng, so each well receives <b>'+nfmt(ng)+' ng</b> in total. '
+    +'Every condition is topped up to that same '+nfmt(ng)+' ng, but only where the shortfall is more than 10% of it — the '
+    +esc(v.acceptorName||'plasmid 2')+'-only well is short by the '+nfmt(dNg)+' ng of '+esc(v.donorName||'plasmid 1')+' and gets none. '
     +'Incubate the mix 10–15 min at room temperature, then dispense '+nfmt(v.optimemPerWell)+' µL/well before the cells.</div>';
 }
 function nbsuspRecipe(v){
@@ -1829,6 +1833,10 @@ function nbsuspRecipe(v){
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Suspension</th><th>Volume</th><th>Cells</th><th>Ligand</th></tr>'+rows+'</table></div>'
     +'<div class="cc-note">Two separate suspensions: the ligand goes in the medium, not into each well, so every + well gets the same concentration. '
     +'Seed '+nfmt(vw)+' µL on top of the transfection mix.</div>';
+}
+// What the preset is, ignoring the stamp itself.
+function _presetSig(p){
+  try{ return JSON.stringify([p.title, p.setup||null, p.blocks]); }catch(e){ return ''; }
 }
 function calcDefaults(kind){ var c=CALC_KINDS[kind]; return c?JSON.parse(JSON.stringify(c.defaults)):{}; }
 // Archive calculator bridge (fetch schema + drive the real calc).
@@ -3037,7 +3045,29 @@ function seedPresets(){
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
-  Object.keys(EXTRA_PRESET_SEED).forEach(function(k){ if(!LB.data.presets[k]){ var s=EXTRA_PRESET_SEED[k]; LB.data.presets[k]={name:s.name,baseType:s.baseType,title:s.title,blocks:s.blocks.map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html}; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; })}; } });
+  // An untouched seeded preset follows the seed; one you have edited is yours. The signature is
+  // stamped at seed time and compared against the preset as it stands, so "has the user touched
+  // this" is answered by the data rather than guessed — which is what lets a correction reach a
+  // notebook that already has the preset. A block's prose and its calculator disagreeing (80 ng
+  // total in the text, 81.6 ng in the table) is exactly the case that needs it.
+  Object.keys(EXTRA_PRESET_SEED).forEach(function(k){
+    var s=EXTRA_PRESET_SEED[k], cur=LB.data.presets[k];
+    // A preset seeded before signatures existed carries none, and "no signature" cannot mean
+    // "untouched" — that would overwrite real edits. The one exception is stamped explicitly:
+    // NanoBRET_SPARK_Reverse_96 shipped this morning with `ngPerWell` in its calculator, so a
+    // stored copy carrying that key can only be that build's, and its prose says 80 ng total
+    // while its own table says 81.6.
+    if(cur && !cur._seedSig && k==='NB_SPARK_RTX96'
+       && cur.blocks && cur.blocks[0] && cur.blocks[0].calc && cur.blocks[0].calc.inputs
+       && cur.blocks[0].calc.inputs.ngPerWell!=null) cur=null;
+    if(cur && !(cur._seedSig && cur._seedSig===_presetSig(cur))) return;   // edited — leave it
+    var np={name:s.name,baseType:s.baseType,title:s.title,
+      blocks:s.blocks.map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html};
+        if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; })};
+    if(s.setup) np.setup=JSON.parse(JSON.stringify(s.setup));
+    np._seedSig=_presetSig(np);
+    LB.data.presets[k]=np;
+  });
 }
 // preset key helpers (built-in types + user-added custom presets)
 function isBuiltinPreset(k){ return EXP_TYPES.some(function(t){return t.id===k;}); }
