@@ -725,9 +725,10 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .nm-preview{margin:4px 0 2px;}
 .nm-preview .nm-pv-hd{font-size:var(--fs-2);text-transform:uppercase;letter-spacing:.4px;color:var(--text2);font-weight:600;margin-bottom:6px;}
 .nm-preview .nm-pv-list{display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto;}
-.nm-preview .nm-pv-row{display:flex;gap:8px;align-items:baseline;font-size:var(--fs-3);padding:5px 8px;background:var(--surface2);border-radius:var(--r-1);border-left:3px solid var(--accent,#5e87c5);}
+.nm-preview .nm-pv-row{display:flex;gap:8px;align-items:flex-start;font-size:var(--fs-3);padding:5px 8px;background:var(--surface2);border-radius:var(--r-1);border-left:3px solid var(--accent,#5e87c5);}
 .nm-preview .nm-pv-day{font-weight:700;color:var(--accent,#5e87c5);white-space:nowrap;font-size:var(--fs-2);}
 .nm-preview .nm-pv-t{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.nm-preview .nm-pv-steps{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}
 .nm-preview .nm-pv-dur{font-size:var(--fs-1);color:var(--text3);background:var(--surface3);border-radius:var(--r-1);padding:0 5px;margin-left:5px;white-space:nowrap;}
 .nm-pv-ref{font-size:var(--fs-1);background:var(--surface3);color:var(--text3);border-radius:var(--r-1);padding:1px 5px;text-transform:uppercase;letter-spacing:.3px;}
 /* ── Plate maps ── */
@@ -1446,7 +1447,9 @@ var PRESET_SEED={
 // Extra ready-made presets (variants) seeded once; safe to delete/rename in-app.
 var EXTRA_PRESET_SEED={
   'NB_SPARK_RTX96':{name:'NanoBRET_SPARK_Reverse_96',baseType:'NB',title:'NanoBRET — SPARK, reverse transfection (96-well)',
-   setup:{format:'96',cellLine:'HeLa',cellsPerWell:20000},blocks:[
+   // cellsPerWell is not one of NB's setup questions, so putting it here would be a key that
+   // never reaches anything: the suspension calculator owns the 20,000.
+   setup:{format:'96',cellLine:'HeLa'}, setupHide:['nTransfect','mg132'], blocks:[
     {d:0,title:'Transfection mixes (FuGENE HD)',
      calc:{kind:'nbtx',inputs:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
        donorStock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
@@ -1606,8 +1609,17 @@ function setupDefaults(type){ var o={}; (setupSchema(type).fields||[]).forEach(f
 // A preset may answer the setup for you. The schema still decides which questions are asked —
 // this only changes what they start at — so a variant preset cannot invent fields its type has
 // no idea about.
+function presetSetupHide(presetKey){
+  var p=LB.data.presets[presetKey], sd=EXTRA_PRESET_SEED[presetKey];
+  var h=(p&&p.setupHide)||(sd&&sd.setupHide)||[];
+  return Array.isArray(h)?h:[];
+}
+function setupFieldsFor(presetKey){
+  var hide=presetSetupHide(presetKey);
+  return (setupSchema(presetBase(presetKey)).fields||[]).filter(function(f){ return hide.indexOf(f.f)<0; });
+}
 function setupDefaultsFor(presetKey){
-  var o=setupDefaults(presetBase(presetKey));
+  var o={}; setupFieldsFor(presetKey).forEach(function(f){ o[f.f]=f.d; });
   var p=LB.data.presets[presetKey];
   // The seed table is consulted when the stored preset carries no setup of its own: presets are
   // only ever filled in, never updated, so one seeded before this existed would otherwise be
@@ -4107,10 +4119,11 @@ function nmSetupField(f,lead,src,upd){
   return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input type="number" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="'+upd+'()"></label>';
 }
 function nmSetup(){ var host=el('nm-setup'); if(!host) return;
-  var type=presetBase(el('nm-type').value); var S=setupSchema(type);
-  if(!S.fields||!S.fields.length){ host.style.display='none'; host.innerHTML=''; return; }
+  var key=el('nm-type').value, type=presetBase(key); var S=setupSchema(type);
+  var flds=setupFieldsFor(key);
+  if(!flds.length){ host.style.display='none'; host.innerHTML=''; return; }
   host.style.display='';
-  var fields=S.fields.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format'); }).join('');
+  var fields=flds.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format'); }).join('');
   var plate=S.plate?('<label class="nm-setup-plate"><input type="checkbox" id="nm-plate"'+(NM_PLATE?' checked':'')+' onchange="NM_PLATE=this.checked;nmPreview()"><span>Add a plate map &mdash; lay out wells now (you can also add one to any step later)</span></label>'):'';
   host.innerHTML='<div class="nm-setup-hd">Set up</div><div class="cc-inputs">'+fields+'</div>'+plate;
 }
@@ -4216,20 +4229,26 @@ function nmPreview(){ var host=el('nm-preview'); if(!host) return;
   // Reflect setup choices that change the day structure (e.g. only one CTG readout).
   var list=tpl.blocks||[], S=setupSchema(presetBase(key));
   if(S.apply){ try{ list=S.apply(NM_SETUP,list.slice())||list; }catch(e){} }
-  var rows=list.map(function(b){ var off=b.dayOffset||0; var date=addDays(start,off);
-    return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+' · '+fmtDate(date)+'</span><span class="nm-pv-t">'+esc(b.title||'—')+(b.calc?' <span class="nm-pv-ref">calc</span>':'')+'</span></div>'; }).join('');
+  // One entry per day, not per block. Two steps on day 0 are one day with two steps in it —
+  // repeating "Day 0 · 24/08/2026" above each of them says the experiment has two day-zeros.
+  var items=[];
+  list.forEach(function(b){ var off=b.dayOffset||0;
+    items.push({d:off, html:'<span class="nm-pv-t">'+esc(b.title||'—')+(b.calc?' <span class="nm-pv-ref">calc</span>':'')+'</span>'}); });
   var nExtra=0;
-  var extra=NM_PROTOS.map(function(p,i){
+  NM_PROTOS.forEach(function(p,i){
     var off=nmProtoOff(p,i), st=nmProtoStages(p,i);
-    if(!st||!st.length){ nExtra+=1; return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+off+'</span><span class="nm-pv-t">'+esc(p.name||p.id)+' <span class="nm-pv-ref">Archive</span></span></div>'; }
+    if(!st||!st.length){ nExtra+=1;
+      items.push({d:off, html:'<span class="nm-pv-t">'+esc(p.name||p.id)+' <span class="nm-pv-ref">Archive</span></span>'}); return; }
     nExtra+=st.length;
     var mine=protoDays(p.id);
-    return st.map(function(x,si){ var d=off+(x.day||0); var own=!!(mine&&mine[x.id]!=null);
-      return '<div class="nm-pv-row"><span class="nm-pv-day">'
+    st.forEach(function(x,si){ var d=off+(x.day||0); var own=!!(mine&&mine[x.id]!=null);
+      // The day box stays on the stage, not on the group header: it edits that one stage, and
+      // changing it moves the stage into another day's group, which is the point.
+      items.push({d:d, html:'<span class="nm-pv-t">'
         +'<input class="nm-pv-dayin'+(own?' own':'')+'" type="number" min="0" value="'+(x.day||0)+'"'
         +' title="'+(own?'Your cadence for this stage':'From the protocol')+'"'
-        +' onchange="nmSetStageDay('+i+',\''+esc(x.id)+'\',this.value)"> '+fmtDate(addDays(start,d))+'</span>'
-        +'<span class="nm-pv-t">'+esc(x.name||p.name)
+        +' onchange="nmSetStageDay('+i+',\''+esc(x.id)+'\',this.value)"> '
+        +esc(x.name||p.name)
         // The wait the protocol states at the end of this stage. It is why the next one sits a
         // day later, so showing it makes the day column explicable instead of just assertive —
         // and it is the only thing that reads durationH, which was null on all 153 stages and
@@ -4237,10 +4256,20 @@ function nmPreview(){ var host=el('nm-preview'); if(!host) return;
         +(x.durationH?(' <span class="nm-pv-dur" title="This stage ends with a wait of about this long">'+esc(_durTxt(x.durationH))+'</span>'):'')
         +(si===0?' <span class="nm-pv-ref">'+esc(p.name||p.id)+'</span>':'')
         +(si===0&&mine?' <button type="button" class="nm-pv-reset" onclick="nmResetDays('+i+')">reset days</button>':'')
-        +'</span></div>'; }).join('');
+        +'</span>'});
+    });
+  });
+  var byDay={}, days=[];
+  items.forEach(function(it){ if(!byDay[it.d]){ byDay[it.d]=[]; days.push(it.d); } byDay[it.d].push(it.html); });
+  days.sort(function(a,b){ return a-b; });
+  var rows=days.map(function(d){
+    return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+d+' · '+fmtDate(addDays(start,d))+'</span>'
+      +'<span class="nm-pv-steps">'+byDay[d].join('')+'</span></div>';
   }).join('');
   var n=list.length+nExtra;
-  host.innerHTML=nmEchoSummary()+'<div class="nm-pv-hd">Will create '+n+' day-block'+(n!==1?'s':'')+(NM_PLATE?' + a plate map':'')+'</div><div class="nm-pv-list">'+rows+extra+'</div>'; }
+  host.innerHTML=nmEchoSummary()+'<div class="nm-pv-hd">Will create '+n+' day-block'+(n!==1?'s':'')
+    +' over '+days.length+' day'+(days.length!==1?'s':'')+(NM_PLATE?' + a plate map':'')
+    +'</div><div class="nm-pv-list">'+rows+'</div>'; }
 function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   var key=el('nm-type').value, tpl=LB.data.presets[key]||{title:'',blocks:[{dayOffset:0,title:'',html:'<p></p>'}]};
   var startDate=el('nm-date').value||todayStr();
