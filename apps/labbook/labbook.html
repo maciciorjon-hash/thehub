@@ -6040,15 +6040,22 @@ document.addEventListener('keydown',function(e){
 });
 
 // ── Cmd+K spotlight ──
-var SPOT={open:false,items:[],sel:0};
-function openSpot(){ SPOT.open=true; el('spot-back').classList.add('open'); el('spot-in').value=''; spotRender(); setTimeout(function(){el('spot-in').focus();},30); }
+var SPOT={open:false,items:[],sel:0,idx:null,idxStamp:0};
+function openSpot(){ SPOT.open=true; el('spot-back').classList.add('open'); el('spot-in').value='';
+  // Built here rather than in spotRender: reading every block, day and plate is cheap once per
+  // open and wasteful once per keystroke, which is what it used to be.
+  SPOT.idx=null; spotRender(); setTimeout(function(){el('spot-in').focus();},30); }
 function closeSpot(){ SPOT.open=false; el('spot-back').classList.remove('open'); }
 function spotAll(){ var out=[];
   Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k]; out.push({a:(isCoded(e)?(e.code||e.title):(e.title||e.noteType||'note')),b:(isCoded(e)?(e.title||''):(e.noteType||'')),k:'exp',ic:'E',c:'#5e87c5',fn:function(){openExp(e.id);}}); });
   LB.data.generalSections.forEach(function(s){ out.push({a:s.name,b:'section',k:'sec',ic:'§',c:'#5e72c4',fn:function(){selectNode('general','',s.id);}}); });
   LB.data.projects.forEach(function(p){ out.push({a:p.name,b:'project',k:'proj',svg:tbSvg(P_CHEV_R),c:p.color,fn:function(){EXPANDED[p.id]=true;renderSections();}}); (p.sections||[]).forEach(function(s){ out.push({a:s.name,b:p.name,k:'folder',ic:'•',c:p.color,fn:function(){selectNode('expsec',p.id,s.id);}}); }); });
   Object.keys(LB.data.pages).forEach(function(k){ var pg=LB.data.pages[k]; if(pg.title) out.push({a:pg.title,b:'page',k:'page',ic:'P',c:'#5e72c4',fn:function(){selectNode('general','',pg.sectionId);SEL.page=pg.id;renderAll();}}); });
-  LB.data.tags.forEach(function(t){ out.push({a:'#'+t,b:'tag',k:'tag',ic:'#',c:'#5e72c4',fn:function(){TAGFILTER=t;/*stay*/ }}); });
+  // A tag used to set TAGFILTER and stop — no render, and selectNode clears it anyway, so
+  // picking one from here did nothing at all. It refines the search instead: the content index
+  // knows which entries carry the tag, so the list below is the answer.
+  LB.data.tags.forEach(function(t){ out.push({a:'#'+t,b:'tag',k:'tag',ic:'#',c:'#5e72c4',keepOpen:true,
+    fn:function(){ var i=el('spot-in'); i.value='#'+t; i.focus(); spotRender(); }}); });
   out=out.concat(spotBeyondLabbook());
   return out;
 }
@@ -6104,12 +6111,110 @@ function spotBeyondLabbook(){
   } }catch(e){}
   return out;
 }
-function spotRender(){ var q=(el('spot-in').value||'').toLowerCase().trim();
-  var items=spotAll().filter(function(x){return !q||((x.a||'')+' '+(x.b||'')).toLowerCase().indexOf(q)>=0;}).slice(0,40);
-  SPOT.items=items; SPOT.sel=0;
-  el('spot-res').innerHTML=items.length? items.map(function(x,i){ return '<div class="spot-item'+(i===0?' sel':'')+'" data-i="'+i+'" onmousedown="event.preventDefault();spotPick('+i+')"><span class="ic'+(x.svg?' ic-svg':'')+'" style="background:'+x.c+'">'+(x.svg||esc(x.ic))+'</span><span class="m"><span class="a">'+esc(x.a)+'</span><span class="b">'+esc(x.b)+'</span></span><span class="k">'+esc(x.k)+'</span></div>'; }).join('') : '<div class="spot-empty">No matches</div>';
+// ── What is inside an entry, not just what it is called ─────────────────────────────────────
+// "What was the Gibson incubation" is a question about the contents of a step, and the only
+// way to answer it was to remember which day you wrote it on. Names are one list; the text of
+// every block, daily note, page, plate and result is the other, and both answer one box.
+function spotContent(){
+  var out=[];
+  function add(a,b,k,ic,c,text,fn){ if(!text) return; out.push({a:a,b:b,k:k,ic:ic,c:c,t:String(text).toLowerCase(),raw:String(text),fn:fn}); }
+  Object.keys(LB.data.experiments).forEach(function(k){
+    var e=LB.data.experiments[k], pc=(projById(e.projectId)||{}).color||'#5e87c5';
+    var name=e.code||e.title||'Untitled';
+    (e.blocks||[]).forEach(function(b){
+      var bits=[_plain(b.html), b.note?_plain(b.note):''];
+      if(b.stepNotes) Object.keys(b.stepNotes).forEach(function(sk){ bits.push(_plain(b.stepNotes[sk])); });
+      add(b.title||'Step', name+(b.date?(' · '+fmtDate(b.date)):''), 'step','S',pc,
+          bits.filter(Boolean).join(' '), function(){ openBlk(e.id,b.id); });
+      // A plate is a record of what was in each well, so the well contents are searchable —
+      // that is the whole reason the map is structured data and not a picture.
+      if(b.plate) add('Plate · '+(b.plate.title||(b.title||'step')), name, 'plate','P',pc,
+          plateSummaryText(b.plate), function(){ openBlk(e.id,b.id); });
+    });
+    if(e.plate) add('Plate · '+(e.plate.title||name), name, 'plate','P',pc,
+        plateSummaryText(e.plate), function(){ openExp(e.id); });
+    add(name+' · observations','observations','exp','E',pc,_plain(e.html||''),function(){ openExp(e.id); });
+    (e.files||[]).forEach(function(f){
+      add(f.name||'file', name+' · file', 'file','F',pc, (f.name||'')+' '+(f.caption||''),
+          function(){ openExp(e.id); EXP_TAB='files'; renderEditor(); });
+    });
+    ((e.integration&&e.integration.results)||[]).forEach(function(set){
+      (set.rows||[]).forEach(function(r){
+        add(r.compound||'result', name+(r.target?(' · '+r.target):''), 'result','R',pc,
+            [r.compound,r.target,r.potency,r.effect].filter(function(v){return v!=null&&v!=='';}).join(' '),
+            function(){ openExp(e.id); EXP_TAB='res'; renderEditor(); });
+      });
+    });
+  });
+  Object.keys(LB.data.notebook).forEach(function(D){
+    var pg=LB.data.notebook[D];
+    add(fmtDate(D),'daily note','day','D','#5e72c4',_plain(pg&&pg.html),function(){ selectPage(D); });
+  });
+  Object.keys(LB.data.pages).forEach(function(k){
+    var pg=LB.data.pages[k];
+    add(pg.title||'Untitled page','page','page','P','#5e72c4',_plain(pg.html),
+        function(){ selectNode('general','',pg.sectionId); SEL.page=pg.id; renderAll(); });
+  });
+  return out;
 }
-function spotPick(i){ var x=SPOT.items[i]; closeSpot(); if(x&&x.fn) x.fn(); }
+function spotIndex(){
+  if(!SPOT.idx) SPOT.idx={names:spotAll(), content:spotContent()};
+  return SPOT.idx;
+}
+// Ordered, not just filtered. A name that starts with what you typed is a different answer
+// from the same letters buried in a paragraph, and .slice(0,40) over an unsorted list threw
+// the first away whenever the notebook was big.
+function _spotScore(x,q){
+  var a=(x.a||'').toLowerCase(), b=(x.b||'').toLowerCase();
+  var i=a.indexOf(q);
+  if(i===0) return 100;
+  if(i>0) return (a.charAt(i-1)===' '||a.charAt(i-1)==='-') ? 84 : 68;
+  i=b.indexOf(q); if(i>=0) return 52;
+  if(x.t){ i=x.t.indexOf(q); if(i>=0) return 34-Math.min(14,i/300); }
+  return -1;
+}
+// Nobody types a substring of a sentence. "gibson incubated" is two words that appear in one
+// step in that order but not adjacently, and a plain indexOf answers "no matches" — which
+// reads as the search being broken rather than as the query being a phrase it never was.
+function _spotScoreQ(x,toks){
+  var lo=1e9, hi=-1;
+  for(var i=0;i<toks.length;i++){ var v=_spotScore(x,toks[i]); if(v<0) return -1; if(v<lo) lo=v; if(v>hi) hi=v; }
+  return (lo+hi)/2;
+}
+// Show the sentence the hit is in, not the generic kind label.
+function _spotSnip(x,q,toks){
+  if(!x.raw) return x.b||'';
+  var i=x.t.indexOf(q);
+  if(i<0 && toks) for(var n=0;n<toks.length&&i<0;n++){ i=x.t.indexOf(toks[n]); if(i>=0) q=toks[n]; }
+  if(i<0) return x.b||'';
+  var st=Math.max(0,i-38), en=Math.min(x.raw.length,i+q.length+52);
+  return (st?'…':'')+x.raw.slice(st,en).trim()+(en<x.raw.length?'…':'');
+}
+function spotRender(){ var q=(el('spot-in').value||'').toLowerCase().trim();
+  var ix=spotIndex(), items;
+  if(!q){
+    // With nothing typed there is nothing to rank, so listing paragraphs of notebook text is
+    // noise — the names are the map of what exists.
+    items=ix.names.slice(0,40).map(function(x){ return {x:x,sub:x.b||''}; });
+  } else {
+    var toks=q.split(/\s+/).filter(Boolean);
+    items=ix.names.concat(ix.content).map(function(x){
+        // The whole phrase first, because "dose response" adjacent beats the two words apart.
+        var s=_spotScore(x,q);
+        if(s<0 && toks.length>1) s=_spotScoreQ(x,toks);
+        return {x:x,s:s}; })
+      .filter(function(r){ return r.s>=0; })
+      .sort(function(a,b){ return b.s-a.s; })
+      .slice(0,40)
+      .map(function(r){ return {x:r.x, sub:(r.s<40 ? _spotSnip(r.x,q,toks) : (r.x.b||''))}; });
+  }
+  SPOT.items=items.map(function(r){ return r.x; }); SPOT.sel=0;
+  el('spot-res').innerHTML=items.length? items.map(function(r,i){ var x=r.x; return '<div class="spot-item'+(i===0?' sel':'')+'" data-i="'+i+'" onmousedown="event.preventDefault();spotPick('+i+')"><span class="ic'+(x.svg?' ic-svg':'')+'" style="background:'+x.c+'">'+(x.svg||esc(x.ic))+'</span><span class="m"><span class="a">'+esc(x.a)+'</span><span class="b">'+esc(r.sub)+'</span></span><span class="k">'+esc(x.k)+'</span></div>'; }).join('') : '<div class="spot-empty">No matches</div>';
+}
+function spotPick(i){ var x=SPOT.items[i]; if(!x) return;
+  // A tag refines the query rather than navigating, so it must not close the box it typed into.
+  if(x.keepOpen){ if(x.fn) x.fn(); return; }
+  closeSpot(); if(x.fn) x.fn(); }
 document.addEventListener('keydown',function(e){
   if((e.metaKey||e.ctrlKey) && (e.key==='k'||e.key==='K')){ e.preventDefault(); if(SPOT.open) closeSpot(); else openSpot(); return; }
   if(!SPOT.open) return;
