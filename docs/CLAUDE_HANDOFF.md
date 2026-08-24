@@ -106,9 +106,12 @@ Compact coordination note. Read it before starting work; the full changelog is
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.
-- **The stop-hook is stale**: `.claude/stop-hook.sh` targets `The Hub.html` (gone) and a
-  `LAST_SESSION_END` marker that no longer exists, so it is a no-op. The changelog is maintained
-  by hand.
+- **The stop-hook is gone** (2026-08-24, with Jon's agreement). It targeted `The Hub.html`
+  (removed long ago) and a `LAST_SESSION_END` marker that never made it into CLAUDE.md when the
+  changelog was split out, so it had been rewriting CLAUDE.md with identical content on every
+  session end and changing nothing. Script deleted, `hooks` block dropped from
+  `.claude/settings.json`. **The changelog is maintained by hand** — that is the rule now, not a
+  fallback.
 - Blueprint, Blot and Helix are out of the product profile. If they should be in, it is one line
   in `embed.py`.
 
