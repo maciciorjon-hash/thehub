@@ -10,7 +10,8 @@ Compact coordination note. Read it before starting work; the full changelog is
   verbs a card needs (rename, move, priority, delete), a menu reachable with a thumb, and a
   Cmd+K that reads what you wrote rather than what you called it. Plus finishing yesterday's
   plasmid map, which was mouse-only on the app that lives on a phone.
-- Four commits on the interaction block: `941571c` (map on touch) · `ac207a3` (card verbs +
+- Nothing is queued that does not need Jon; see *Open ends*. Four commits on the interaction
+  block: `941571c` (map on touch) · `ac207a3` (card verbs +
   one menu, three doorways) · `3c5b618` (Cmd+K content index) · `2f9b24b` (drag to a folder,
   empty folders visible). Then an open-items pass: `66af667` (RDKit and jsPDF announced, and
   Dora's silent hang) · `7df31b4` (plate PNG + editable well types) · `6ac2c6e` (the calculator
@@ -48,6 +49,12 @@ Compact coordination note. Read it before starting work; the full changelog is
 9. **The nine "verify" calculators were re-derived numerically.** The maths was right in all
    nine; what was wrong was the arithmetic printed beside the totals, which omitted the
    dead-volume overage. `_ovx(excess)` states it, in the tables and the exported steps.
+10. **The three polish items are done.** Seeding densities are *derived* from the format's
+   growth area and the line's cited doubling time (`seedAdvice`), not tabulated. The
+   publication prose builds real sentences — `textContent` returns "ab" for
+   `<p>a</p><p>b</p>`, which had been gluing every block to the next and every search term to
+   the word before it. And the step palette drags into position (`insertStepBlock(spec, at)`),
+   with blocks reordering from a grip.
 
 ## What exists now, in one pass
 

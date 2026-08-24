@@ -1432,9 +1432,38 @@ buffer volume when the components already exceeded the mix, with a total that re
 recipe were fine. They state the overflow in µL and what to change (a more concentrated stock,
 or more volume per well), in the pane and in the export.
 
+## What the last three polish items turned out to be
+
+**Seeding densities are derived, not remembered.** A table of per-line densities would be the
+same mistake the doubling times were before they were checked. The recommendation is computed
+from the format's growth area (geometry — the standard Corning/Nunc figures in
+`SEED_AREA_CM2`), the line's **cited** doubling time from `CELL_REF`, and how long the assay
+runs: seed what still leaves you at 80% of capacity at readout. HCT116, 96-well, 72 h → 0.32 cm²
+× 1e5/cm² × 80% ÷ 2^(72/21) ≈ 2,400 cells/well, which lands near the 3,000 the calculator
+already defaulted to, from the other direction. The two confluence constants are working values,
+not per-line numbers anyone publishes, and the panel says so beside the citation for the part
+that *is* cited. The line list is read through `window.parent.CELL_REF` — a third copy of that
+table is how its citations came out blank the first time.
+
+**`textContent` does not know what a paragraph is.** `<p>a</p><p>b</p>` returns `"ab"`, so every
+publication-ready build glued each block to the next ("SeedingCells were counted and
+plated.Warm mediumCount cells") and the Cmd+K content index inherited it through `_plain` —
+a search for a word could miss text containing it because it was glued to the one before.
+`_blockText`/`_htmlLines` is the one block-aware extractor both now use; the index costs 24 ms
+instead of 10 ms over 2,141 rows, once per open. With it: the setup renders as Methods prose
+rather than a form dump, ticks stop appearing as words, and the plate map reads off
+`plateSummary`'s groups instead of re-describing them.
+
+**The step library could only append.** `insertStepBlock(spec, at)` takes a position and dates
+the block from the one it lands *after* — a step dropped mid-run belongs to that day, not to the
+last one in the list. The palette is a strip where the steps go, chips are draggable **and**
+clickable (HTML5 drag and drop does not exist on touch, so a drag-only palette is no palette on
+a phone), and blocks reorder from a grip — the grip carries the drag because a draggable
+ancestor stops you selecting text in the inputs inside it.
+
 ## Current state
 
-**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, and a Cmd+K that searches contents — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, and the open-items pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
@@ -1456,8 +1485,9 @@ or more volume per well), in the pane and in the export.
   *announced* — a banner when the load fails, and a line in each app's own description before
   you use it — but neither is embedded, so PDF export and structure rendering still need the
   network. 3Dmol in Ribbon is the third, and is out of the product build.
-- Minor polish, no urgency: drag-drop step palette, per-cell-line seeding-density
-  recommendations, `PUB_SEED` prose refinement.
+- Nothing else is queued that does not need Jon. The three "minor polish" items are done
+  (2026-08-24): the step palette drags into position, seeding densities are derived from the
+  line's cited doubling time, and the publication prose builds real sentences.
 
 *(Closed 2026-08-24: Labbook plate maps export PNG and their well types can be added, renamed,
 recoloured and removed; Archive's calculator link opens the **Calculate** tab rather than the
