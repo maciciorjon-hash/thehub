@@ -372,6 +372,22 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .add-blk{width:100%;border:1.5px dashed var(--border2);background:none;color:var(--text3);border-radius:var(--r-2);padding:11px;font-family:var(--sans);font-size:var(--fs-3);cursor:pointer;transition:color .15s,border-color .15s;}
 .add-blk:hover{color:var(--accent);border-color:var(--accent);}
 .blk-addrow{display:flex;gap:8px;margin-top:2px;}.blk-addrow .add-blk{flex:1;}
+.blk-addrow.drop{outline:2px dashed var(--accent);outline-offset:3px;border-radius:var(--r-2);}
+/* The palette lives where the steps go, not in a panel you have to open. */
+.stepbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}
+.stepbar-t{font-size:var(--fs-1);color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-right:4px;}
+.stepchip{display:inline-flex;align-items:center;gap:5px;font-family:var(--sans);font-size:var(--fs-2);
+  background:var(--surface2);border:1px solid var(--border2);color:var(--text2);border-radius:var(--r-3);
+  padding:4px 10px;cursor:grab;}
+.stepchip:hover{color:var(--text);border-color:var(--accent);}
+.stepchip.has-calc{color:var(--accent);}
+.stepchip:active{cursor:grabbing;}
+.blk-grip{display:inline-flex;align-items:center;color:var(--text3);cursor:grab;flex:none;margin-right:2px;}
+.blk-grip:active{cursor:grabbing;}
+.blk-dragging{opacity:.45;}
+/* Where it will land, drawn on the block it will land against. */
+.blk-drop-before{box-shadow:inset 0 3px 0 0 var(--accent);}
+.blk-drop-after{box-shadow:inset 0 -3px 0 0 var(--accent);}
 .add-step:hover{color:#a56983;border-color:#a56983;}
 /* Live prep calculators inside experiment steps */
 .blk-calcbtn{display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid var(--border2);color:var(--accent);cursor:pointer;font-size:var(--fs-2);font-weight:600;padding:3px 9px;border-radius:var(--r-1);font-family:var(--sans);margin-right:4px;}
@@ -1639,12 +1655,91 @@ var STEP_LIBRARY=[
   {id:'lib:seq',label:'Sequencing',sub:'text step',html:'<p><b>Sanger</b> + <b>Plasmidsaurus</b> whole-plasmid sequencing.</p>'},
   {id:'lib:results',label:'Results / data analysis',sub:'text step',html:'<p><b>Results</b></p><p></p>'}
 ];
-function insertStepBlock(spec){ var e=_curExp(); if(!e) return; var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr();
+// `at` is where it goes; without it a step could only ever land at the end, which is why the
+// palette needed dragging in the first place. The date comes from the block it lands after —
+// a step dropped into the middle of a run belongs to that day, not to the last one.
+function insertStepBlock(spec, at){
+  var e=_curExp(); if(!e) return;
+  var n=(e.blocks||[]).length;
+  var idx=(at==null||at<0||at>n) ? n : at;
+  var prev=(idx>0)?e.blocks[idx-1]:null;
+  var d=(prev&&prev.date) || (n?e.blocks[0].date:'') || e.startDate || todayStr();
   var blk={id:uid(), date:d, dayOffset:daysBetween(expAnchorDate(e),d), title:spec.title||'', html:spec.html||'<p></p>', done:false, completedAt:null};
   if(spec.archivePid) blk.calc={kind:'archive',pid:spec.archivePid,inputs:{},recipe:''};
   else if(spec.calc) blk.calc={kind:spec.calc,inputs:calcDefaults(spec.calc)};
   if(spec.part){ blk.part=spec.part; blk.sourcePid=spec.sourcePid; }
-  e.blocks.push(blk); save(); renderEditor(); setTimeout(function(){ scrollBlk(blk.id); },80); }
+  e.blocks.splice(idx,0,blk);
+  save(); renderEditor(); setTimeout(function(){ scrollBlk(blk.id); },80);
+}
+// ── The step palette you can drag from ────────────────────────────────────────────────────
+// The searchable picker is still there and still the way to reach all 33 Archive protocols;
+// this is the handful you reach for every week, in the place they are going.
+function stepPaletteStrip(){
+  return '<div class="stepbar"><span class="stepbar-t">Drag a step in</span>'
+    +STEP_LIBRARY.map(function(sp){
+      return '<button class="stepchip'+(sp.calc?' has-calc':'')+'" draggable="true"'
+        +' ondragstart="palDragStart(event,\'' + sp.id + '\')" ondragend="blkDragEnd()"'
+        +' onclick="palAdd(\'' + sp.id + '\')" title="'+esc(sp.sub||'')+' — click to add at the end, or drag where you want it">'
+        +(sp.calc?tbIco(P_SIGMA,12):'')+esc(sp.label.replace(/ \(calc\)$/,''))+'</button>';
+    }).join('')+'</div>';
+}
+function libSpec(id){ return STEP_LIBRARY.filter(function(s){ return s.id===id; })[0]||null; }
+function _libInsert(id, at){
+  var sp=libSpec(id); if(!sp) return;
+  insertStepBlock({title:sp.label.replace(/ \(calc\)$/,''), html:sp.html, calc:sp.calc}, at);
+}
+function palAdd(id){ _libInsert(id, null); }
+// One drag state for both kinds, because the drop target does the same thing either way.
+var BLK_DRAG=null;   // {kind:'block'|'lib', id}
+function palDragStart(ev,id){ BLK_DRAG={kind:'lib',id:id};
+  try{ ev.dataTransfer.setData('text/plain',id); ev.dataTransfer.effectAllowed='copy'; }catch(e){} }
+function blkDragStart(ev,id){ BLK_DRAG={kind:'block',id:id};
+  try{ ev.dataTransfer.setData('text/plain',id); ev.dataTransfer.effectAllowed='move'; }catch(e){}
+  var card=document.getElementById('blk-'+id);
+  if(card){ card.classList.add('blk-dragging'); try{ ev.dataTransfer.setDragImage(card,20,20); }catch(e){} } }
+function blkDragEnd(){ BLK_DRAG=null; _blkClearMarks(); }
+function _blkClearMarks(){
+  Array.prototype.forEach.call(document.querySelectorAll('.blk-drop-before,.blk-drop-after,.blk-dragging,.blk-addrow.drop'),
+    function(n){ n.classList.remove('blk-drop-before','blk-drop-after','blk-dragging','drop'); }); }
+function blkDragOver(ev,id){
+  if(!BLK_DRAG) return;
+  if(BLK_DRAG.kind==='block' && BLK_DRAG.id===id) return;   // a block cannot land on itself
+  ev.preventDefault(); ev.stopPropagation();
+  try{ ev.dataTransfer.dropEffect=(BLK_DRAG.kind==='lib')?'copy':'move'; }catch(e){}
+  var card=ev.currentTarget, r=card.getBoundingClientRect();
+  var before=(ev.clientY-r.top) < r.height/2;
+  _blkClearMarks();
+  card.classList.add(before?'blk-drop-before':'blk-drop-after');
+}
+function blkDragLeave(ev){ ev.currentTarget.classList.remove('blk-drop-before','blk-drop-after','drop'); }
+function blkEndOver(ev){ if(!BLK_DRAG) return; ev.preventDefault(); _blkClearMarks(); ev.currentTarget.classList.add('drop'); }
+function _blkIndex(e,id){ return (e.blocks||[]).map(function(b){return b.id;}).indexOf(id); }
+function blkDrop(ev,id){
+  if(!BLK_DRAG) return;
+  ev.preventDefault(); ev.stopPropagation();
+  var card=ev.currentTarget, r=card.getBoundingClientRect();
+  var before=(ev.clientY-r.top) < r.height/2;
+  var e=_curExp(); if(!e) { blkDragEnd(); return; }
+  var target=_blkIndex(e,id); if(target<0){ blkDragEnd(); return; }
+  var at=before?target:target+1;
+  var d=BLK_DRAG; blkDragEnd();
+  if(d.kind==='lib'){ _libInsert(d.id, at); return; }
+  var from=_blkIndex(e,d.id); if(from<0||from===at) return;
+  var moved=e.blocks.splice(from,1)[0];
+  // Splicing out shifts everything after it down by one.
+  e.blocks.splice(from<at?at-1:at, 0, moved);
+  e.updated=Date.now(); save(); renderEditor();
+}
+function blkDropEnd(ev){
+  if(!BLK_DRAG) return;
+  ev.preventDefault();
+  var e=_curExp(); var d=BLK_DRAG; blkDragEnd();
+  if(!e) return;
+  if(d.kind==='lib'){ _libInsert(d.id, null); return; }
+  var from=_blkIndex(e,d.id); if(from<0) return;
+  var moved=e.blocks.splice(from,1)[0];
+  e.blocks.push(moved); e.updated=Date.now(); save(); renderEditor();
+}
 function stepPalette(){ var e=_curExp(); if(!e) return;
   toast('Loading step library…');
   ensureArchive(function(){ var idx=archiveIndex();
@@ -4371,7 +4466,12 @@ function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.pa
   var snooze=(expId&&b.date)?('<button class="blk-snooze" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+expId+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'snooze</button>'):'';
   var pkey=expId?('blk:'+expId+':'+b.id):'';
   var doneBtn=expId?('<button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+expId+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'):'';
-  return '<div class="blk'+(b.done?' blk-is-done':'')+'" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"><div class="blk-hd">'+doneBtn+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a prep calculator" onclick="calcMenu(\''+b.id+'\')">'+tbSvg('<path d="M7 5h10l-6 7 6 7H7"/>')+'calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+  // The grip carries the drag, not the block: a draggable ancestor stops you selecting text in
+  // the title and date inputs it contains.
+  var grip='<span class="blk-grip" draggable="true" title="Drag to reorder" ondragstart="blkDragStart(event,\''+b.id+'\')" ondragend="blkDragEnd()">'
+    +tbIco('<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',13)+'</span>';
+  return '<div class="blk'+(b.done?' blk-is-done':'')+'" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"'
+    +' ondragover="blkDragOver(event,\''+b.id+'\')" ondragleave="blkDragLeave(event)" ondrop="blkDrop(event,\''+b.id+'\')"><div class="blk-hd">'+grip+doneBtn+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a prep calculator" onclick="calcMenu(\''+b.id+'\')">'+tbSvg('<path d="M7 5h10l-6 7 6 7H7"/>')+'calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
     +(b.calc?calcInputsHtml(b):'')
     +(b.plate&&pkey?platePreviewHtml(b.plate,pkey):'')
     +(b.proto ? protoBlockHtml(b,true)
@@ -4808,7 +4908,8 @@ function renderExpEditor(host,e){
     var pk='exp:'+e.id;
     var topPlate=e.plate?platePreviewHtml(e.plate,pk):'';
     body='<div class="exp-dated-body">'+deviationsHtml(e)+topPlate+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')
-      +'<div class="blk-addrow"><button class="add-blk" onclick="addBlock()">+ Add day-block</button><button class="add-blk add-step" onclick="stepPalette()">'+tbIco(P_SEARCHPLUS,13)+' Add step from library / Archive…</button></div></div>';
+      +'<div class="blk-addrow" ondragover="blkEndOver(event)" ondragleave="blkDragLeave(event)" ondrop="blkDropEnd(event)"><button class="add-blk" onclick="addBlock()">+ Add day-block</button><button class="add-blk add-step" onclick="stepPalette()">'+tbIco(P_SEARCHPLUS,13)+' Add step from library / Archive…</button></div>'
+      +stepPaletteStrip()+'</div>';
   }
   host.innerHTML='<div class="ed-wrap">'+header+tabs+'<div class="exp-tab-body">'+body+'</div></div>';
   hydrateAtt(host); hydrateFloatLayers(host); wireFileDrop(host); renderDockPanels();
