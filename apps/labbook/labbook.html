@@ -742,6 +742,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .pl-type:hover{color:var(--text);}
 .pl-type.on{border-color:var(--accent);color:var(--text);font-weight:600;}
 .pl-type i{width:10px;height:10px;border-radius:50%;display:inline-block;}
+.pl-type-add{font-weight:700;color:var(--text3);padding:3px 11px;}
+.pl-type-add:hover{color:var(--accent);border-color:var(--accent);}
 .pl-row2{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;}
 .pl-btn{font-size:var(--fs-2);font-weight:600;font-family:var(--sans);background:var(--surface);border:1px solid var(--border2);color:var(--text2);border-radius:var(--r-1);padding:4px 11px;cursor:pointer;}
 .pl-btn:hover:not(:disabled){color:var(--text);background:var(--surface3);}
@@ -1251,7 +1253,7 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
       </div>
       <div id="pl-side" class="pl-side"></div>
     </div>
-    <div class="modal-act"><button class="btn ghost sm" onclick="plPasteValues()" title="Paste the plate-reader grid over this map">Paste reader values</button><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="plPasteValues()" title="Paste the plate-reader grid over this map">Paste reader values</button><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><button class="btn ghost sm" onclick="exportPlatePNG(PL.key)" title="A picture of this map, at print resolution">Download PNG</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
   </div>
 </div>
 
@@ -1921,6 +1923,86 @@ function copyPlateSummary(key){ var p=plateOf(key); if(!p) return;
   var txt=(p.title?p.title+'\n':'')+plateDims(p).r*plateDims(p).c+'-well plate\n'+plateSummaryText(p);
   try{ navigator.clipboard.writeText(txt); toast('Plate layout copied'); }
   catch(e){ toast('Could not copy'); } }
+// A plate map goes into a slide deck and a lab meeting, and CSV and PDF are neither. Drawn on
+// a canvas rather than screenshotted, so it does not depend on what is scrolled into view and
+// comes out at print resolution.
+function plateToPNG(p,name){
+  if(!p) return;
+  var d=plateDims(p), W=Math.max(18,Math.round(760/d.c)), HDR=26, PAD=18, S=2;
+  var hasCL=plateHasColLabels(p);
+  var titleH=(p.title?26:0), clH=hasCL?18:0;
+  var used=plateUsedTypes(p), legH=used.length?30:0;
+  var cw=PAD*2+HDR+d.c*W, ch=PAD*2+titleH+clH+HDR+d.r*W+legH;
+  var cv=document.createElement('canvas');
+  cv.width=cw*S; cv.height=ch*S;
+  var x=cv.getContext('2d'); x.scale(S,S);
+  var ink='#1a1d2e', faint='#9ca0b8', line='rgba(0,0,0,0.13)';
+  x.fillStyle='#ffffff'; x.fillRect(0,0,cw,ch);
+  x.textBaseline='middle'; x.textAlign='center';
+  var y0=PAD;
+  if(p.title){ x.fillStyle=ink; x.textAlign='left'; x.font='600 15px ui-sans-serif,system-ui,sans-serif';
+    x.fillText(p.title,PAD,y0+11); x.textAlign='center'; y0+=titleH; }
+  if(hasCL){
+    x.fillStyle=faint; x.font='500 9px ui-sans-serif,system-ui,sans-serif';
+    if(p.colTitle){ x.textAlign='right'; x.fillText(p.colTitle,PAD+HDR-3,y0+9); x.textAlign='center'; }
+    for(var ci=0;ci<d.c;ci++){ var cl=(p.colLabels||{})[ci]; if(cl) x.fillText(String(cl),PAD+HDR+ci*W+W/2,y0+9); }
+    y0+=clH;
+  }
+  x.fillStyle=faint; x.font='600 10px ui-sans-serif,system-ui,sans-serif';
+  for(var c=0;c<d.c;c++) x.fillText(String(c+1),PAD+HDR+c*W+W/2,y0+HDR/2);
+  var top=y0+HDR;
+  for(var r=0;r<d.r;r++){
+    x.fillStyle=faint; x.fillText(PLATE_ROWS.charAt(r),PAD+HDR/2,top+r*W+W/2);
+    for(var c2=0;c2<d.c;c2++){
+      var id=wellIdOf(r,c2), w=(p.wells||{})[id];
+      var col=plValueColor(p,id)||plateWellColor(p,w);
+      var wx=PAD+HDR+c2*W, wy=top+r*W;
+      x.fillStyle=col||'#f4f5f8';
+      _plRoundRect(x,wx+1,wy+1,W-2,W-2,Math.min(4,W/6)); x.fill();
+      x.strokeStyle=line; x.lineWidth=0.7; x.stroke();
+      var vv=(p.values&&p.values.data)?p.values.data[id]:null;
+      var txt=(vv!=null)?_plTrim(vv):((w&&w.groupId&&(p.groups||{})[w.groupId])?'':plateWellShort(w));
+      if(txt && W>=22){ x.fillStyle=ink; x.font='500 '+Math.max(6,Math.round(W/4.2))+'px ui-sans-serif,system-ui,sans-serif';
+        x.fillText(_plFit(x,String(txt),W-4),wx+W/2,wy+W/2); }
+    }
+  }
+  // Block labels are written once across their wells, exactly as the editor draws them.
+  plateGroupBoxes(p).forEach(function(b){
+    var bx=PAD+HDR+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
+    x.strokeStyle='rgba(0,0,0,0.28)'; x.lineWidth=1.1;
+    _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke();
+    x.fillStyle=ink; x.font='600 '+Math.max(9,Math.min(15,Math.round(bw/6)))+'px ui-sans-serif,system-ui,sans-serif';
+    x.fillText(_plFit(x,b.label,bw-8),bx+bw/2,by+bh/2);
+  });
+  if(used.length){
+    var lx=PAD, ly=top+d.r*W+16;
+    x.textAlign='left'; x.font='500 10px ui-sans-serif,system-ui,sans-serif';
+    used.forEach(function(t){
+      x.fillStyle=t.color; _plRoundRect(x,lx,ly-5,10,10,2); x.fill();
+      x.strokeStyle=line; x.lineWidth=0.7; x.stroke();
+      x.fillStyle=faint; x.fillText(t.name,lx+15,ly);
+      lx+=15+x.measureText(t.name).width+14;
+    });
+  }
+  cv.toBlob(function(bl){
+    if(!bl){ toast('Could not draw the plate'); return; }
+    var u=URL.createObjectURL(bl), a=document.createElement('a');
+    a.href=u; a.download=name||('plate_'+p.format+'well.png'); document.body.appendChild(a); a.click();
+    document.body.removeChild(a); setTimeout(function(){ URL.revokeObjectURL(u); },800);
+    toast('Plate map saved as PNG');
+  },'image/png');
+}
+function _plRoundRect(x,a,b,w,h,r){ x.beginPath();
+  if(x.roundRect){ x.roundRect(a,b,w,h,r); return; }
+  x.moveTo(a+r,b); x.arcTo(a+w,b,a+w,b+h,r); x.arcTo(a+w,b+h,a,b+h,r);
+  x.arcTo(a,b+h,a,b,r); x.arcTo(a,b,a+w,b,r); x.closePath(); }
+// Truncate to what the well can hold, measured rather than guessed at a character count.
+function _plFit(x,t,max){ t=String(t||''); if(x.measureText(t).width<=max) return t;
+  while(t.length>1 && x.measureText(t+'…').width>max) t=t.slice(0,-1);
+  return t+'…'; }
+function exportPlatePNG(key){ var p=plateOf(key); if(!p){ toast('No plate map here yet'); return; }
+  plateToPNG(p,'plate_'+p.format+'well.png'); }
+
 function _plDownload(name,text,mime){ try{
   var b=new Blob([text],{type:mime||'text/csv'}), u=URL.createObjectURL(b), a=document.createElement('a');
   a.href=u; a.download=name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -2218,6 +2300,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
   var acts=readonly?'':('<button class="cc-x plate-act" title="Edit this plate map" onclick="openPlateEditor(\''+key+'\')">Edit</button>'
     +'<button class="cc-x plate-act" title="Copy the layout as text" onclick="copyPlateSummary(\''+key+'\')">Copy</button>'
     +'<button class="cc-x plate-act" title="Download as CSV" onclick="exportPlateCSV(\''+key+'\')">CSV</button>'
+    +'<button class="cc-x plate-act" title="Download as a picture — for a slide or a lab meeting" onclick="exportPlatePNG(\''+key+'\')">PNG</button>'
     +'<button class="cc-x" title="Remove plate map" onclick="removePlateFrom(\''+key+'\')">&times;</button>');
   var sum=plateSummaryHtml(p);
   return '<div class="blk-plate">'
@@ -2275,7 +2358,8 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
   host.innerHTML=h; }
 function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return;
   var ids=plSelIds(), n=ids.length;
-  var pal=plateTypes(p).map(function(t){ return '<button class="pl-type'+(PL.type===t.id?' on':'')+'" onclick="plSetType(\''+t.id+'\')"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</button>'; }).join('');
+  var pal=plateTypes(p).map(function(t){ return '<button class="pl-type'+(PL.type===t.id?' on':'')+'" onclick="plSetType(\''+t.id+'\')" oncontextmenu="ctxPlType(event,\''+t.id+'\')" title="'+esc(t.name)+' — right-click to rename, recolour or remove"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</button>'; }).join('')
+    +'<button class="pl-type pl-type-add" onclick="plAddType()" title="Add a well type">+</button>';
   var quickNames=['dmso','vehicle','control','compound','dose','blank'];
   var quick=plateTypes(p).filter(function(t){var id=String(t.id).toLowerCase(),nm=String(t.name).toLowerCase(); return quickNames.indexOf(id)>=0||/dmso|vehicle|control|compound|dose|blank/.test(nm);}).map(function(t){ return '<button class="pl-btn'+(PL.type===t.id?' on':'')+'" onclick="plSetType(\''+t.id+'\')">'+esc(t.name)+'</button>'; }).join('');
   // A field shows its shared value, or "Mixed…" when the selection disagrees.
@@ -2357,6 +2441,61 @@ function plSelAxis(){ var ids=plSelIds(); if(ids.length<2) return null;
 
 // Writing into wells
 function _plWell(p,id){ if(!p.wells) p.wells={}; if(!p.wells[id]) p.wells[id]={typeId:PL.type}; return p.wells[id]; }
+// The six built-in types are a starting point, not the vocabulary of every assay: a plate
+// with "siRNA" or "spike-in" wells could be drawn but not named. p.types was already per
+// plate — it was simply never editable, so every plate carried an identical copy.
+var PLATE_TYPE_COLORS=['#9fc3e8','#8fd3d8','#b9a9e0','#f4b98f','#f2a3a1','#d2d5dd',
+                       '#a9d8b0','#e8c48f','#c9a9d8','#8fb8d3','#e3b7c8','#b5c9a0'];
+function _plOwnTypes(p){
+  // Materialise the shared default before mutating it, or an edit here would rewrite the
+  // constant and every other plate with it.
+  if(!p.types || !p.types.length) p.types=JSON.parse(JSON.stringify(PLATE_TYPES));
+  return p.types;
+}
+function plAddType(){
+  var p=plCur(); if(!p) return;
+  lbPrompt('Name of the new well type','').then(function(v){
+    if(v==null) return; v=(v||'').trim(); if(!v) return;
+    var ts=_plOwnTypes(p);
+    var id='t'+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36);
+    ts.push({id:id, name:v, color:PLATE_TYPE_COLORS[ts.length%PLATE_TYPE_COLORS.length]});
+    PL.type=id; platePersist(PL.key); plRender();
+  });
+}
+function plRenameType(id){
+  var p=plCur(); if(!p) return; var ts=_plOwnTypes(p);
+  var t=ts.filter(function(x){return x.id===id;})[0]; if(!t) return;
+  lbPrompt('Well type name',t.name).then(function(v){ if(v==null) return;
+    t.name=(v||'').trim()||t.name; platePersist(PL.key); plRender(); });
+}
+function plCycleTypeColor(id){
+  var p=plCur(); if(!p) return; var ts=_plOwnTypes(p);
+  var t=ts.filter(function(x){return x.id===id;})[0]; if(!t) return;
+  var i=PLATE_TYPE_COLORS.indexOf(t.color);
+  t.color=PLATE_TYPE_COLORS[(i+1)%PLATE_TYPE_COLORS.length];
+  platePersist(PL.key); plRender();
+}
+function plDelType(id){
+  var p=plCur(); if(!p) return; var ts=_plOwnTypes(p);
+  var t=ts.filter(function(x){return x.id===id;})[0]; if(!t) return;
+  var n=Object.keys(p.wells||{}).filter(function(k){ return p.wells[k] && p.wells[k].typeId===id; }).length;
+  // Removing a type must not silently blank the record of what was in those wells: only the
+  // colour goes, everything typed into them stays.
+  lbConfirm(n ? ('“'+t.name+'” is used by '+n+' well'+(n===1?'':'s')+'. Removing it leaves those wells and everything written in them, but they lose their colour.')
+              : ('Remove the well type “'+t.name+'”?'),
+    {danger:true,title:'Remove well type',ok:'Remove'}).then(function(ok){
+    if(!ok) return;
+    p.types=ts.filter(function(x){ return x.id!==id; });
+    Object.keys(p.wells||{}).forEach(function(k){ if(p.wells[k] && p.wells[k].typeId===id) delete p.wells[k].typeId; });
+    if(PL.type===id) PL.type=(plateTypes(p)[0]||{}).id;
+    platePersist(PL.key); plRender();
+  });
+}
+function ctxPlType(ev,id){ ctxAt(ev,[
+  {label:'Rename…',fn:function(){ plRenameType(id); }},
+  {label:'Change colour',fn:function(){ plCycleTypeColor(id); }},
+  {sep:true},{label:'Remove type',danger:true,fn:function(){ plDelType(id); }}
+]); }
 function plSetType(tid){ var p=plCur(); if(!p) return; PL.type=tid;
   plSelIds().forEach(function(id){ _plWell(p,id).typeId=tid; });
   platePersist(PL.key); plRender(); }
