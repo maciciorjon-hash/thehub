@@ -4291,6 +4291,23 @@ function generateRedigestSteps() {
 // ══════════════════════════════════════════════════════════════════════════
 // PROTOCOL: Miniprep — GeneJET batch buffer calculator
 // ══════════════════════════════════════════════════════════════════════════
+// Every batch calculator multiplies by a dead-volume overage, and most of them printed the
+// per-unit arithmetic beside the total without it — "250 uL × 8" next to 2.20 mL. Checking the
+// number by hand then gives a different answer with nothing on screen to say which is right.
+// (calcCTG, calcHiBiTLytic and calcMiSeqPCR already said it; the rest did not.)
+function _ovx(excess){ excess=+excess; return (excess && excess!==1) ? (' × ' + excess + ' overage') : ''; }
+// A master mix whose components already exceed its volume used to print an em-dash for the
+// buffer and a total that read as if the recipe were fine. Say what is wrong and by how much.
+function _overfullNote(bufferVol){
+  return (bufferVol >= 0) ? '' :
+    '<div class="proto-note warn" style="margin-top:8px;margin-bottom:0">The components alone come to '
+    + (-bufferVol).toFixed(2) + ' uL <strong>more</strong> than the mix volume, so there is no room for buffer. '
+    + 'Use a more concentrated stock, or raise the volume per well.</div>';
+}
+function _overfullLine(bufferVol){
+  return (bufferVol >= 0) ? null :
+    'Components exceed the mix volume by ' + (-bufferVol).toFixed(2) + ' uL — use a more concentrated stock or raise the volume per well';
+}
 function calcMiniprep() {
   var n = parseFloat(document.getElementById('mp-n').value) || 8;
   var elution = parseFloat(document.getElementById('mp-elution').value) || 50;
@@ -4300,10 +4317,10 @@ function calcMiniprep() {
   var resus = 250 * n * excess, lysis = 250 * n * excess, neut = 350 * n * excess, wash = 1000 * n * excess, elutionTotal = elution * n;
   el.innerHTML =
     '<table class="proto-table" style="margin-top:10px"><tr><th>Buffer</th><th>Volume</th><th>Notes</th></tr>' +
-    '<tr><td>Resuspension Solution</td><td style="color:var(--accent2)">' + (resus/1000).toFixed(2) + ' mL</td><td>250 uL × ' + n + '</td></tr>' +
-    '<tr><td>Lysis Solution</td><td style="color:var(--accent2)">' + (lysis/1000).toFixed(2) + ' mL</td><td>250 uL × ' + n + '</td></tr>' +
-    '<tr><td>Neutralization Solution</td><td style="color:var(--accent2)">' + (neut/1000).toFixed(2) + ' mL</td><td>350 uL × ' + n + '</td></tr>' +
-    '<tr><td>Wash Solution (ethanol-added)</td><td style="color:var(--accent2)">' + (wash/1000).toFixed(2) + ' mL</td><td>500 uL × 2 washes × ' + n + '</td></tr>' +
+    '<tr><td>Resuspension Solution</td><td style="color:var(--accent2)">' + (resus/1000).toFixed(2) + ' mL</td><td>250 uL × ' + n + _ovx(excess) + '</td></tr>' +
+    '<tr><td>Lysis Solution</td><td style="color:var(--accent2)">' + (lysis/1000).toFixed(2) + ' mL</td><td>250 uL × ' + n + _ovx(excess) + '</td></tr>' +
+    '<tr><td>Neutralization Solution</td><td style="color:var(--accent2)">' + (neut/1000).toFixed(2) + ' mL</td><td>350 uL × ' + n + _ovx(excess) + '</td></tr>' +
+    '<tr><td>Wash Solution (ethanol-added)</td><td style="color:var(--accent2)">' + (wash/1000).toFixed(2) + ' mL</td><td>500 uL × 2 washes × ' + n + _ovx(excess) + '</td></tr>' +
     '<tr style="font-weight:600"><td>Elution Buffer</td><td>' + elutionTotal.toFixed(0) + ' uL</td><td>' + elution + ' uL per sample — no excess (added fresh per column)</td></tr></table>' +
     '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Pre-warm elution buffer/water to 65°C for higher yield. Prepare Wash Solution with ethanol added per kit instructions before use.</div>';
   renderExportPanel('miniprep', generateMiniprepSteps());
@@ -4312,10 +4329,10 @@ function generateMiniprepSteps() {
   var n = gdn('mp-n') || 8, elution = gdn('mp-elution') || 50, excess = gdn('mp-excess') || 1.1;
   var resus = 250 * n * excess, lysis = 250 * n * excess, neut = 350 * n * excess, wash = 1000 * n * excess, elutionTotal = elution * n;
   return [{ label: 'Batch buffer volumes (' + n + ' samples)', bullets: [
-    'Resuspension Solution: ' + (resus/1000).toFixed(2) + ' mL total (250 uL/sample)',
-    'Lysis Solution: ' + (lysis/1000).toFixed(2) + ' mL total (250 uL/sample)',
-    'Neutralization Solution: ' + (neut/1000).toFixed(2) + ' mL total (350 uL/sample)',
-    'Wash Solution: ' + (wash/1000).toFixed(2) + ' mL total (500 uL × 2 washes/sample)',
+    'Resuspension Solution: ' + (resus/1000).toFixed(2) + ' mL total (250 uL × ' + n + _ovx(excess) + ')',
+    'Lysis Solution: ' + (lysis/1000).toFixed(2) + ' mL total (250 uL × ' + n + _ovx(excess) + ')',
+    'Neutralization Solution: ' + (neut/1000).toFixed(2) + ' mL total (350 uL × ' + n + _ovx(excess) + ')',
+    'Wash Solution: ' + (wash/1000).toFixed(2) + ' mL total (500 uL × 2 washes × ' + n + _ovx(excess) + ')',
     'Elution Buffer: ' + elutionTotal.toFixed(0) + ' uL total (' + elution + ' uL/sample, added fresh per column)'
   ]}];
 }
@@ -4371,9 +4388,9 @@ function calcIP() {
   var beads = 25 * n * excess, beadWash = 500 * 2 * n * excess, postWash = 1000 * 5 * n * excess;
   beadEl.innerHTML =
     '<table class="proto-table" style="margin-top:10px"><tr><th>Component</th><th>Volume</th><th>Notes</th></tr>' +
-    '<tr><td>Protein G/A beads</td><td style="color:var(--accent2)">' + beads.toFixed(1) + ' uL</td><td>25 uL × ' + n + ' tubes</td></tr>' +
-    '<tr><td>Bead pre-wash buffer</td><td style="color:var(--accent)">' + (beadWash/1000).toFixed(2) + ' mL</td><td>500 uL × 2 washes × ' + n + '</td></tr>' +
-    '<tr style="font-weight:600"><td>Post-capture wash buffer</td><td>' + (postWash/1000).toFixed(2) + ' mL</td><td>1000 uL × 5 washes × ' + n + '</td></tr></table>';
+    '<tr><td>Protein G/A beads</td><td style="color:var(--accent2)">' + beads.toFixed(1) + ' uL</td><td>25 uL × ' + n + ' tubes' + _ovx(excess) + '</td></tr>' +
+    '<tr><td>Bead pre-wash buffer</td><td style="color:var(--accent)">' + (beadWash/1000).toFixed(2) + ' mL</td><td>500 uL × 2 washes × ' + n + _ovx(excess) + '</td></tr>' +
+    '<tr style="font-weight:600"><td>Post-capture wash buffer</td><td>' + (postWash/1000).toFixed(2) + ' mL</td><td>1000 uL × 5 washes × ' + n + _ovx(excess) + '</td></tr></table>';
   renderExportPanel('ip', generateIPSteps());
 }
 function generateIPSteps() {
@@ -4390,9 +4407,9 @@ function generateIPSteps() {
       'Top up each tube to 1 mL total with RIPA; incubate overnight 4°C with rotation'
     ]},
     { label: 'Bead & wash buffer (' + n + ' IP tubes)', bullets: [
-      'Protein G/A beads: ' + beads.toFixed(1) + ' uL (25 uL × ' + n + ')',
-      'Bead pre-wash buffer: ' + (beadWash/1000).toFixed(2) + ' mL (500 uL × 2 washes × ' + n + ')',
-      'Post-capture wash buffer: ' + (postWash/1000).toFixed(2) + ' mL (1000 uL × 5 washes × ' + n + ')'
+      'Protein G/A beads: ' + beads.toFixed(1) + ' uL (25 uL × ' + n + _ovx(excess) + ')',
+      'Bead pre-wash buffer: ' + (beadWash/1000).toFixed(2) + ' mL (500 uL × 2 washes × ' + n + _ovx(excess) + ')',
+      'Post-capture wash buffer: ' + (postWash/1000).toFixed(2) + ' mL (1000 uL × 5 washes × ' + n + _ovx(excess) + ')'
     ]}
   ];
 }
@@ -4450,7 +4467,7 @@ function calcSCS() {
     '<tr><td>Conditioned media (40%)</td><td style="color:var(--accent2)">' + (conditioned/1000).toFixed(1) + ' mL</td><td></td></tr>' +
     '<tr><td>DMEM (40%)</td><td style="color:var(--accent2)">' + (dmem/1000).toFixed(1) + ' mL</td><td></td></tr>' +
     '<tr><td>FBS (20%)</td><td style="color:var(--accent)">' + (fbs/1000).toFixed(1) + ' mL</td><td></td></tr>' +
-    '<tr style="font-weight:600"><td>Total</td><td>' + (total/1000).toFixed(1) + ' mL</td><td>' + plates + ' plates × 96 wells × ' + volPerWell + ' uL</td></tr></table>' +
+    '<tr style="font-weight:600"><td>Total</td><td>' + (total/1000).toFixed(1) + ' mL</td><td>' + plates + ' plates × 96 wells × ' + volPerWell + ' uL' + _ovx(excess) + '</td></tr></table>' +
     '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Aliquot ' + volPerWell + ' uL/well; leave at 37°C, 5% CO₂ for 24 h before sorting.</div>';
   renderExportPanel('scs', generateSCSSteps());
 }
@@ -4462,7 +4479,7 @@ function generateSCSSteps() {
     'Conditioned media: ' + (conditioned/1000).toFixed(1) + ' mL (40%)',
     'DMEM: ' + (dmem/1000).toFixed(1) + ' mL (40%)',
     'FBS: ' + (fbs/1000).toFixed(1) + ' mL (20%)',
-    'Total: ' + (total/1000).toFixed(1) + ' mL — aliquot ' + volPerWell + ' uL/well',
+    'Total: ' + (total/1000).toFixed(1) + ' mL (' + plates + ' plates × 96 wells × ' + volPerWell + ' uL' + _ovx(excess) + ') — aliquot ' + volPerWell + ' uL/well',
     'Leave at 37°C, 5% CO₂ for 24 h before sorting'
   ]}];
 }
@@ -4485,7 +4502,7 @@ function calcWesternBlot() {
     '<tr><td>RIPA buffer</td><td style="color:var(--accent2)">' + ripa.toFixed(1) + ' uL</td><td></td></tr>' +
     '<tr><td>Protease Inhibitor (' + piDil + '×)</td><td style="color:var(--accent)">' + pi.toFixed(2) + ' uL</td><td>1:' + piDil + '</td></tr>' +
     '<tr><td>Benzonase (' + benzDil + '×)</td><td style="color:var(--accent)">' + benz.toFixed(2) + ' uL</td><td>1:' + benzDil + '</td></tr>' +
-    '<tr style="font-weight:600"><td>Total lysis buffer</td><td>' + total.toFixed(1) + ' uL</td><td>' + volPerWell + ' uL/well × ' + n + ' wells</td></tr></table>' +
+    '<tr style="font-weight:600"><td>Total lysis buffer</td><td>' + total.toFixed(1) + ' uL</td><td>' + volPerWell + ' uL/well × ' + n + ' wells' + _ovx(excess) + '</td></tr></table>' +
     '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Prepare on ice; add to washed cells; incubate 10 min in fridge, redistributing once.</div>';
   calcWBAb();
   renderExportPanel('westernblot', generateWesternBlotSteps());
@@ -4511,7 +4528,7 @@ function generateWesternBlotSteps() {
     'RIPA buffer: ' + ripa.toFixed(1) + ' uL',
     'Protease Inhibitor: ' + pi.toFixed(2) + ' uL (1:' + piDil + ')',
     'Benzonase: ' + benz.toFixed(2) + ' uL (1:' + benzDil + ')',
-    'Total: ' + total.toFixed(1) + ' uL (' + volPerWell + ' uL/well × ' + n + ' wells)',
+    'Total: ' + total.toFixed(1) + ' uL (' + volPerWell + ' uL/well × ' + n + ' wells' + _ovx(excess) + ')',
     'Prepare on ice; add to washed cells; incubate 10 min in fridge, redistributing once'
   ]},
   { label: 'Antibody dilution' + (abN>1?(' ('+abN+' membranes)'):''), bullets: [
@@ -4541,7 +4558,7 @@ function calcLenti() {
     '<tr><td>VSV-G (same reagent, either system)</td><td style="color:var(--accent)">' + vsvg.toFixed(2) + ' ug</td></tr>' +
     '<tr><td rowspan="2">Tube 2</td><td>OptiMEM</td><td style="color:var(--accent2)">' + optimem2.toFixed(0) + ' uL</td></tr>' +
     '<tr><td>PEI</td><td style="color:var(--accent)">' + pei.toFixed(2) + ' uL</td></tr></table>' +
-    '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Incubate 5 min separately in hood; combine tubes, mix gently, incubate 20 min; add to ' + (9*dishes).toFixed(0) + ' mL pre-warmed complete media per ' + dishes + ' dish(es).</div>';
+    '<div class="proto-note" style="margin-top:8px;margin-bottom:0">' + (excess!==1 ? ('Amounts are for ' + dishes + ' dish(es) including a ' + excess + '× overage. ') : '') + 'Incubate 5 min separately in hood; combine tubes, mix gently, incubate 20 min; add to ' + (9*dishes).toFixed(0) + ' mL pre-warmed complete media per ' + dishes + ' dish(es).</div>';
   var wells = parseFloat(document.getElementById('ln-wells').value) || 3;
   var mediaVol = parseFloat(document.getElementById('ln-mediavol').value) || 2;
   var target = parseFloat(document.getElementById('ln-target').value) || 8;
@@ -4551,7 +4568,7 @@ function calcLenti() {
   pbEl.innerHTML =
     '<table class="proto-table" style="margin-top:10px"><tr><th>Component</th><th>Volume</th><th>Notes</th></tr>' +
     '<tr><td>Polybrene, per well</td><td style="color:var(--accent)">' + perWell.toFixed(2) + ' uL</td><td>into ' + mediaVol + ' mL media → ' + target + ' ug/mL final</td></tr>' +
-    '<tr style="font-weight:600"><td>Total (' + wells + ' wells)</td><td>' + total.toFixed(2) + ' uL</td><td>' + stock + ' mg/mL stock</td></tr></table>';
+    '<tr style="font-weight:600"><td>Total (' + wells + ' wells)</td><td>' + total.toFixed(2) + ' uL</td><td>' + stock + ' mg/mL stock' + _ovx(excess) + '</td></tr></table>';
   renderExportPanel('lenti', generateLentiSteps());
 }
 function generateLentiSteps() {
@@ -4567,12 +4584,13 @@ function generateLentiSteps() {
     { label: 'Packaging transfection mix (' + dishes + ' dish(es), ' + (system === 'lenti' ? 'lentiviral' : 'retroviral') + ' system)', bullets: [
       'Tube 1: ' + optimem1.toFixed(0) + ' uL OptiMEM + ' + plasmid.toFixed(2) + ' ug ' + vectorLabel + ' + ' + gagpol.toFixed(2) + ' ug ' + gagpolLabel + ' + ' + vsvg.toFixed(2) + ' ug VSV-G (same reagent, either system)',
       'Tube 2: ' + optimem2.toFixed(0) + ' uL OptiMEM + ' + pei.toFixed(2) + ' uL PEI',
+      (excess!==1 ? ('Amounts are for ' + dishes + ' dish(es) including a ' + excess + '× overage') : 'Amounts are for ' + dishes + ' dish(es)'),
       'Incubate 5 min separately; combine, mix gently, incubate 20 min',
       'Add to ' + (9*dishes).toFixed(0) + ' mL pre-warmed complete media per ' + dishes + ' dish(es)'
     ]},
     { label: 'Polybrene dilution (' + wells + ' wells)', bullets: [
       'Polybrene per well: ' + perWell.toFixed(2) + ' uL into ' + mediaVol + ' mL media (' + target + ' ug/mL final)',
-      'Total for ' + wells + ' wells: ' + total.toFixed(2) + ' uL (from ' + stock + ' mg/mL stock)'
+      'Total for ' + wells + ' wells: ' + total.toFixed(2) + ' uL (from ' + stock + ' mg/mL stock' + _ovx(excess) + ')'
     ]}
   ];
 }
@@ -4598,7 +4616,7 @@ function _trfretCalc() {
   var saVol = saStock ? (saFinal * total) / saStock : null;
   var known = (aVol||0) + (bVol||0) + (saVol||0);
   var bufferVol = total - known;
-  return { total: total, aVol: aVol, bVol: bVol, saVol: saVol, bufferVol: bufferVol, wells: wells, volPerWell: volPerWell };
+  return { total: total, aVol: aVol, bVol: bVol, saVol: saVol, bufferVol: bufferVol, wells: wells, volPerWell: volPerWell, excess: excess };
 }
 function calcTRFRET() {
   var el = document.getElementById('trf-result');
@@ -4611,7 +4629,8 @@ function calcTRFRET() {
     row('Alexa647-Protein A', r.aVol, r.aVol !== null ? 'donor' : '') +
     row('Biotinylated Protein B', r.bVol, r.bVol !== null ? '' : '') +
     row('LANCE Streptavidin', r.saVol, r.saVol !== null ? 'mix in this order — biotin-streptavidin bridge first' : '') +
-    '<tr style="font-weight:600"><td>Total master mix</td><td>' + r.total.toFixed(1) + ' uL</td><td>' + r.wells + ' wells × ' + r.volPerWell + ' uL</td></tr></table>' +
+    '<tr style="font-weight:600"><td>Total master mix</td><td>' + r.total.toFixed(1) + ' uL</td><td>' + r.wells + ' wells × ' + r.volPerWell + ' uL' + _ovx(r.excess) + '</td></tr></table>' +
+    _overfullNote(r.bufferVol) +
     '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Dispense compound first (Echo), then add ' + r.volPerWell + ' uL/well assay mix. Incubate 17 h RT before reading.</div>';
   renderExportPanel('trfret', generateTRFRETSteps());
 }
@@ -4622,9 +4641,9 @@ function generateTRFRETSteps() {
     'Alexa647-Protein A: ' + (r.aVol !== null ? r.aVol.toFixed(2) + ' uL' : 'enter stock concentration for exact volume'),
     'Biotinylated Protein B: ' + (r.bVol !== null ? r.bVol.toFixed(2) + ' uL' : 'enter stock concentration for exact volume'),
     'LANCE Streptavidin: ' + (r.saVol !== null ? r.saVol.toFixed(2) + ' uL' : 'enter stock concentration for exact volume') + ' — mix in this order, biotin-streptavidin bridge first',
-    'Total: ' + r.total.toFixed(1) + ' uL for ' + r.wells + ' wells (' + r.volPerWell + ' uL/well)',
+    'Total: ' + r.total.toFixed(1) + ' uL for ' + r.wells + ' wells (' + r.volPerWell + ' uL/well' + _ovx(r.excess) + ')',
     'Dispense compound (Echo), add assay mix, incubate 17 h RT, read at 337 nm ex / 620+665 nm em'
-  ]}];
+  ].concat(_overfullLine(r.bufferVol)||[]) }];
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -4645,7 +4664,7 @@ function _fpCalc() {
   var proteinVol = proteinStock ? (proteinFinal * 2 * total) / proteinStock : null;
   var known = (tracerVol||0) + (proteinVol||0);
   var bufferVol = total - known;
-  return { total: total, tracerVol: tracerVol, proteinVol: proteinVol, bufferVol: bufferVol, wells: wells, volPerWell: volPerWell };
+  return { total: total, tracerVol: tracerVol, proteinVol: proteinVol, bufferVol: bufferVol, wells: wells, volPerWell: volPerWell, excess: excess };
 }
 function calcFP() {
   var el = document.getElementById('fp-result');
@@ -4656,7 +4675,8 @@ function calcFP() {
     '<tr><td>Assay buffer</td><td style="color:var(--accent2)">' + (r.bufferVol >= 0 ? r.bufferVol.toFixed(2) + ' uL' : '—') + '</td><td>add first</td></tr>' +
     '<tr><td>Protein (2× final)</td><td style="color:var(--accent)">' + (r.proteinVol !== null ? r.proteinVol.toFixed(2) + ' uL' : '? uL (enter stock conc.)') + '</td><td>pre-incubate 30 min on ice</td></tr>' +
     '<tr><td>Tracer (2× final)</td><td style="color:var(--accent)">' + (r.tracerVol !== null ? r.tracerVol.toFixed(2) + ' uL' : '? uL (enter stock conc.)') + '</td><td></td></tr>' +
-    '<tr style="font-weight:600"><td>Total protein-tracer mix</td><td>' + r.total.toFixed(1) + ' uL</td><td>' + r.wells + ' wells × ' + r.volPerWell + ' uL</td></tr></table>' +
+    '<tr style="font-weight:600"><td>Total protein-tracer mix</td><td>' + r.total.toFixed(1) + ' uL</td><td>' + r.wells + ' wells × ' + r.volPerWell + ' uL' + _ovx(r.excess) + '</td></tr></table>' +
+    _overfullNote(r.bufferVol) +
     '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Add ' + r.volPerWell + ' uL compound to wells, then ' + r.volPerWell + ' uL protein-tracer mix. Incubate 30–60 min RT in the dark; read FP at 485 nm ex / 535 nm em.</div>';
   renderExportPanel('fp', generateFPSteps());
 }
@@ -4666,10 +4686,10 @@ function generateFPSteps() {
     'Assay buffer: ' + (r.bufferVol >= 0 ? r.bufferVol.toFixed(2) + ' uL' : '—'),
     'Protein (2× final): ' + (r.proteinVol !== null ? r.proteinVol.toFixed(2) + ' uL' : 'enter stock concentration for exact volume') + ' — pre-incubate 30 min on ice',
     'Tracer (2× final): ' + (r.tracerVol !== null ? r.tracerVol.toFixed(2) + ' uL' : 'enter stock concentration for exact volume'),
-    'Total: ' + r.total.toFixed(1) + ' uL for ' + r.wells + ' wells (' + r.volPerWell + ' uL/well)',
+    'Total: ' + r.total.toFixed(1) + ' uL for ' + r.wells + ' wells (' + r.volPerWell + ' uL/well' + _ovx(r.excess) + ')',
     'Add ' + r.volPerWell + ' uL compound + ' + r.volPerWell + ' uL protein-tracer mix per well',
     'Incubate 30–60 min RT in the dark; read FP at 485 nm ex / 535 nm em'
-  ]}];
+  ].concat(_overfullLine(r.bufferVol)||[]) }];
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -4812,9 +4832,9 @@ function calcKoRnp() {
   var cells = 2e5 * n;
   el.innerHTML =
     '<table class="proto-table" style="margin-top:10px"><tr><th>Component</th><th>Volume</th><th>Notes</th></tr>' +
-    '<tr><td>R Buffer</td><td style="color:var(--accent2)">' + rBuf.toFixed(2) + ' uL</td><td>6 uL per electroporation</td></tr>' +
-    '<tr><td>gRNA duplex (50 uM after 1:1 annealing, tracrRNA:crRNA)</td><td style="color:var(--accent)">' + gRNA.toFixed(2) + ' uL</td><td>0.5 uL per electroporation</td></tr>' +
-    '<tr><td>Cas9 protein (1 ug/uL)</td><td style="color:var(--accent)">' + cas9.toFixed(2) + ' uL</td><td>0.6 uL per electroporation</td></tr>' +
+    '<tr><td>R Buffer</td><td style="color:var(--accent2)">' + rBuf.toFixed(2) + ' uL</td><td>6 uL × ' + n + _ovx(excess) + '</td></tr>' +
+    '<tr><td>gRNA duplex (50 uM after 1:1 annealing, tracrRNA:crRNA)</td><td style="color:var(--accent)">' + gRNA.toFixed(2) + ' uL</td><td>0.5 uL × ' + n + _ovx(excess) + '</td></tr>' +
+    '<tr><td>Cas9 protein (1 ug/uL)</td><td style="color:var(--accent)">' + cas9.toFixed(2) + ' uL</td><td>0.6 uL × ' + n + _ovx(excess) + '</td></tr>' +
     '<tr style="font-weight:600"><td>Total RNP mix</td><td>' + (rBuf + gRNA + cas9).toFixed(2) + ' uL</td><td>incubate 20 min at RT</td></tr></table>' +
     '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Cells needed: ' + n.toFixed(0) + ' × 2×10⁵ ≈ <strong>' + cells.toLocaleString() + ' cells</strong> total, plus a matched negative-control well.</div>';
   renderExportPanel('crispr-ko', generateKoRnpSteps());
@@ -4824,9 +4844,9 @@ function generateKoRnpSteps() {
   var rBuf = 6 * n * excess, gRNA = 0.5 * n * excess, cas9 = 0.6 * n * excess;
   var cells = 2e5 * n;
   return [{ label: 'RNP complex assembly (' + n + ' electroporations)', bullets: [
-    'R Buffer: ' + rBuf.toFixed(2) + ' uL',
-    'gRNA duplex (50 uM after 1:1 annealing, tracrRNA:crRNA): ' + gRNA.toFixed(2) + ' uL',
-    'Cas9 protein (1 ug/uL): ' + cas9.toFixed(2) + ' uL',
+    'R Buffer: ' + rBuf.toFixed(2) + ' uL (6 uL × ' + n + _ovx(excess) + ')',
+    'gRNA duplex (50 uM after 1:1 annealing, tracrRNA:crRNA): ' + gRNA.toFixed(2) + ' uL (0.5 uL × ' + n + _ovx(excess) + ')',
+    'Cas9 protein (1 ug/uL): ' + cas9.toFixed(2) + ' uL (0.6 uL × ' + n + _ovx(excess) + ')',
     'Mix; incubate 20 min at RT',
     'Cells needed: ~' + cells.toLocaleString() + ' total (' + n + ' × 2×10⁵/electroporation), plus a negative-control well'
   ]}];
@@ -4844,8 +4864,8 @@ function calcKiRnp() {
     '<table class="proto-table" style="margin-top:10px"><tr><th>Component</th><th>Volume</th><th>Notes</th></tr>' +
     '<tr><td>Cas9 protein stock</td><td style="color:var(--accent2)">' + cas9Stock.toFixed(2) + ' uL</td><td>1:1 by volume with gRNA duplex</td></tr>' +
     '<tr><td>gRNA duplex (annealed crRNA:tracrRNA)</td><td style="color:var(--accent2)">' + gRnaStock.toFixed(2) + ' uL</td><td>incubate 10–15 min RT to assemble RNP</td></tr>' +
-    '<tr style="font-weight:600"><td>Total RNP complex</td><td>' + totalRnp.toFixed(2) + ' uL</td><td>' + rnpVol + ' uL × ' + n + ' electroporations</td></tr>' +
-    '<tr><td>ssODN donor</td><td style="color:var(--accent)">' + totalSsodn.toFixed(2) + ' uL</td><td>' + ssodnVol + ' uL × ' + n + ' electroporations — add separately</td></tr></table>' +
+    '<tr style="font-weight:600"><td>Total RNP complex</td><td>' + totalRnp.toFixed(2) + ' uL</td><td>' + rnpVol + ' uL × ' + n + ' electroporations' + _ovx(excess) + '</td></tr>' +
+    '<tr><td>ssODN donor</td><td style="color:var(--accent)">' + totalSsodn.toFixed(2) + ' uL</td><td>' + ssodnVol + ' uL × ' + n + ' electroporations' + _ovx(excess) + ' — add separately</td></tr></table>' +
     '<div class="proto-note warn" style="margin-top:8px;margin-bottom:0">Add RNP and ssODN separately to each electroporation — do not pre-mix more than a few seconds before pulsing.</div>';
   renderExportPanel('crispr-ki', generateKiRnpSteps());
 }
@@ -4858,7 +4878,7 @@ function generateKiRnpSteps() {
     'Cas9 protein stock: ' + cas9Stock.toFixed(2) + ' uL',
     'gRNA duplex (annealed crRNA:tracrRNA): ' + gRnaStock.toFixed(2) + ' uL',
     'Mix 1:1; incubate 10–15 min at RT to assemble RNP (~' + totalRnp.toFixed(2) + ' uL total)',
-    'ssODN donor: ' + totalSsodn.toFixed(2) + ' uL total (' + ssodnVol + ' uL per electroporation)',
+    'ssODN donor: ' + totalSsodn.toFixed(2) + ' uL total (' + ssodnVol + ' uL × ' + n + _ovx(excess) + ')',
     'Add RNP (' + rnpVol + ' uL) + ssODN (' + ssodnVol + ' uL) to each electroporation separately — do not pre-mix'
   ]}];
 }

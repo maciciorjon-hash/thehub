@@ -1411,6 +1411,27 @@ every word must appear. The tag rows were dead as well: they set `TAGFILTER` wit
 `selectNode` clears it anyway. A tag refines the query now, which is what the content index is
 for.
 
+## Calculators tell you their overage (2026-08-24)
+
+The nine "verify" calculators were re-derived rather than spot-checked. Every formula was
+right — GeneJET's 250/250/350 and 2×500 µL wash, NucleoSpin's 200 µL NTI per 100 mg,
+C1V1=C2V2 for the TR-FRET mix at 1× (Echo dispenses nanolitres) and the FP mix at 2× (10 µL
+compound + 10 µL mix), IP's µg-per-mg antibody ratio through a µg/mL stock, polybrene from a
+mg/mL stock read as µg/µL, and the RNP volumes.
+
+**What was wrong was what they said about the numbers.** Most of them printed the per-unit
+arithmetic beside a total that silently included the dead-volume overage — "250 uL × 8" next to
+**2.20 mL**. Anyone checking by hand gets 2.00 and nothing on screen says which is right, in the
+part of the product whose whole claim is encoded domain knowledge. `_ovx(excess)` appends the
+factor, and it is now in the tables *and* the exported steps, so the copy that reaches the
+notebook says the same thing as the screen. `calcCTG`, `calcHiBiTLytic` and `calcMiSeqPCR`
+already did this — they are where the idiom came from.
+
+**And a master mix that cannot be made now says so.** TR-FRET and FP printed an em-dash for the
+buffer volume when the components already exceeded the mix, with a total that read as if the
+recipe were fine. They state the overflow in µL and what to change (a more concentrated stock,
+or more volume per well), in the pane and in the export.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, and a Cmd+K that searches contents — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
@@ -1427,8 +1448,10 @@ for.
   `ADMIN_ONLY_APPS` is enforced in `openApp`, but the real instance should sit behind auth.
 - **The leaked legacy RTDB secret** (see Firebase section) is accepted risk for personal use but
   is disqualifying for a product — Phase 3 migrates off `thehub-f80ae` entirely.
-- **Archive calculator audit**: the 9 "verify" calcs (trfret/fp/spr/miniprep/nucleospin/lenti/
-  miseq/ip/crispr) were spot-checked against worked examples and found OK — not re-derived.
+- **Archive calculator audit — done 2026-08-24.** All nine were re-derived and checked
+  numerically in the browser against hand arithmetic (TR-FRET, FP, SPR, miniprep, NucleoSpin,
+  IP, lentivirus/polybrene, MiSeq PCR, CRISPR KO/KI RNP). The **maths was right in every one**;
+  what was wrong was what they said about it — see *Calculators tell you their overage* below.
 - **Echo still loads jsPDF from cdnjs, and Echo and Dora load RDKit from unpkg.** Both are now
   *announced* — a banner when the load fails, and a line in each app's own description before
   you use it — but neither is embedded, so PDF export and structure rendering still need the
