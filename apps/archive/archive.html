@@ -1470,6 +1470,16 @@ body.step-notes-on li:hover>.step-note-btn,
         </div>
         <div id="sd-result" style="margin-top:16px"></div>
       </div>
+      <div class="calc-box" style="margin-top:14px">
+        <div class="calc-box-title">Where to start &mdash; from the line and the length of the assay</div>
+        <div class="grid-2" style="gap:10px">
+          <div class="field"><label>Cell line</label><select id="sd-line" onchange="sdLinePicked()"></select></div>
+          <div class="field"><label>Doubling time (h)</label><input type="number" id="sd-dbl" value="24" min="1" step="1" oninput="sdAdvise()"></div>
+          <div class="field"><label>Assay length to readout (h)</label><input type="number" id="sd-hours" value="72" min="1" step="6" oninput="sdAdvise()"></div>
+          <div class="field"><label>Growth</label><select id="sd-mode" onchange="sdAdvise()"><option value="adherent">Adherent (per cm&sup2;)</option><option value="suspension">Suspension (per mL)</option></select></div>
+        </div>
+        <div id="sd-advice" style="margin-top:14px"></div>
+      </div>
     </div>
     <div class="dpane" data-tab="output">
       <div class="output-toolbar">
@@ -5272,6 +5282,88 @@ function generateGrnaSteps(){
 }
 
 // ── Cell seeding calculator ──
+// ── Seeding: what to start with, derived rather than remembered ─────────────────────────────
+// Standard flat-bottom growth areas (Corning/Nunc). These are geometry, not biology, and are
+// the same on every supplier's plate to within a rounding.
+var SEED_AREA_CM2={'384':0.056,'96':0.32,'48':0.95,'24':1.9,'12':3.8,'6':9.6};
+// The two working figures this rests on. NEITHER is a per-line value a repository publishes,
+// which is why the panel says so in words and calls the answer a starting point: a monolayer is
+// confluent at roughly 1e5 cells/cm2, and a suspension culture saturates near 2e6 cells/mL.
+// The per-line part of the answer is the doubling time, and that one IS cited (CELL_REF).
+var SEED_CONFLUENT_CM2=1e5, SEED_SAT_PER_ML=2e6, SEED_TARGET=0.8;
+function seedAdvice(o){
+  var area=SEED_AREA_CM2[String(o.format)]||SEED_AREA_CM2['96'];
+  var capacity=(o.mode==='suspension')
+      ? SEED_SAT_PER_ML*((+o.volUL||100)/1000)
+      : SEED_CONFLUENT_CM2*area;
+  var target=capacity*SEED_TARGET;
+  var dbl=+o.doublingH||24, hours=+o.hours||0;
+  var growth=Math.pow(2, hours/dbl);
+  var perWell=target/growth;
+  return {area:area, capacity:capacity, target:target, growth:growth, perWell:perWell,
+          mode:o.mode, dbl:dbl, hours:hours,
+          // Below a hundred-odd cells a well seeds unevenly and the edges dominate. That is the
+          // signal that the assay is too long for this format, not that the number is wrong.
+          tooSparse: perWell<100 };
+}
+function _sdRound(n){ // two significant figures — the input is not precise enough for more
+  if(!(n>0)) return 0;
+  var mag=Math.pow(10, Math.floor(Math.log10(n))-1);
+  return Math.round(n/mag)*mag;
+}
+// The line list is the shell's CELL_REF, read through the parent rather than copied: a third
+// copy of that table is exactly how its citations came out blank the first time. Standalone
+// there is no parent, so the picker says so and you type the doubling time yourself.
+function _sdLines(){ try{ if(window.parent && window.parent!==window && window.parent.CELL_REF) return window.parent.CELL_REF; }catch(e){} return null; }
+function sdFillLines(){
+  var sel=document.getElementById('sd-line'); if(!sel) return;
+  var ref=_sdLines();
+  if(!ref){ sel.innerHTML='<option value="">No line list here — type the doubling time</option>'; sel.disabled=true; return; }
+  var names=Object.keys(ref).sort();
+  sel.innerHTML='<option value="">Pick a line…</option>'+names.map(function(n){
+    return '<option value="'+n.replace(/"/g,'&quot;')+'">'+n+'</option>'; }).join('');
+}
+function sdLinePicked(){
+  var sel=document.getElementById('sd-line'), ref=_sdLines();
+  if(!sel||!ref) return sdAdvise();
+  var r=ref[sel.value];
+  if(r){
+    if(r.doublingH) document.getElementById('sd-dbl').value=r.doublingH;
+    var m=document.getElementById('sd-mode');
+    if(m) m.value=(String(r.type||'').toLowerCase().indexOf('susp')>=0)?'suspension':'adherent';
+  }
+  sdAdvise();
+}
+function sdAdvise(){
+  var host=document.getElementById('sd-advice'); if(!host) return;
+  var fmt=gdv('sd-format')||'96', volUL=gdn('sd-vpw')||100;
+  var a=seedAdvice({format:fmt, volUL:volUL, mode:gdv('sd-mode')||'adherent',
+                    doublingH:gdn('sd-dbl')||24, hours:gdn('sd-hours')||72});
+  var rec=_sdRound(a.perWell);
+  var sel=document.getElementById('sd-line'), ref=_sdLines();
+  var line=(sel&&sel.value)||'', r=(ref&&line)?ref[line]:null;
+  var cite=r ? (r.src ? (line+' doubling time '+r.doublingH+' h — '+r.src+(r.dblRange?(', reported '+r.dblRange):''))
+                      : (line+' doubling time '+r.doublingH+' h — lab working figure, no repository value'))
+             : '';
+  var capText=(a.mode==='suspension')
+      ? (_nd(SEED_SAT_PER_ML/1e6,1)+'M cells/mL × '+_nd(volUL/1000,3)+' mL')
+      : (_nd(a.area,3)+' cm² × '+_nd(SEED_CONFLUENT_CM2/1e3,0)+'k cells/cm²');
+  host.innerHTML='<div class="result-box">'
+    +_rrhd('Start at about '+_ni(rec)+' cells/well')
+    +_rr('At readout', _ni(Math.round(a.target))+' cells/well ('+capText+' × '+Math.round(SEED_TARGET*100)+'%)')
+    +_rr('Growth over '+a.hours+' h', _nd(a.growth,2)+'× at a '+a.dbl+' h doubling time')
+    +_rr('So seed', _ni(Math.round(a.target))+' ÷ '+_nd(a.growth,2)+' ≈ '+_ni(rec)+' cells/well')
+    +'</div>'
+    +'<button class="btn btn-sm" style="margin-top:10px" onclick="sdUseAdvice('+rec+')">Use '+_ni(rec)+' cells/well</button>'
+    +(a.tooSparse?'<div class="proto-note warn" style="margin-top:10px;margin-bottom:0">That is under 100 cells per well. A well this sparse seeds unevenly and the edges dominate — use a shorter assay, a bigger well, or accept confluence at readout.</div>':'')
+    +'<div class="proto-note" style="margin-top:10px;margin-bottom:0">A starting point, not a published density. The <strong>doubling time is cited</strong>'
+    +(cite?(' ('+cite+')'):'')+'; the confluence figures behind it — ~1×10⁵ cells/cm² for a monolayer, ~2×10⁶ cells/mL in suspension — are working values, not per-line numbers any repository publishes. Confirm against your own growth curve.</div>';
+}
+function sdUseAdvice(n){
+  var i=document.getElementById('sd-cpw'); if(!i) return;
+  i.value=n; calcSeeding();
+  try{ i.scrollIntoView({block:'nearest'}); }catch(e){}
+}
 function calcSeeding(){
   var wells=({'384':384,'96':96,'48':48,'24':24,'12':12,'6':6}[gdv('sd-format')||'96'])||96;
   var np=gdn('sd-plates')||1, cpw=gdn('sd-cpw')||0, vpw=gdn('sd-vpw')||0, ex=gdn('sd-excess')||1;
@@ -5284,6 +5376,9 @@ function calcSeeding(){
     +_rr('Seed per well', _ni(vpw)+' µL → '+_ni(cpw)+' cells/well')
     +'</div>';
   _lastCalcTable['seeding']={headers:['Parameter','Value'],rows:[['Density (M/mL)',_nd(dens,3)],['Total suspension (uL)',_ni(totUL)],['Cells needed (M)',_nd(cells,2)],['Seed per well (uL)',_ni(vpw)],['Cells per well',_ni(cpw)]]};
+  // The recommendation is a function of the format and the well volume, so it has to move when
+  // they do — otherwise it quietly answers a question about the plate you were looking at before.
+  sdAdvise();
   refreshExportPanel('seeding');
 }
 function generateSeedingSteps(){
@@ -5373,6 +5468,7 @@ document.addEventListener('DOMContentLoaded', function() {
   calcRevTx();
   calcTransfo();
   calcGrna();
+  sdFillLines();
   calcSeeding();
   calcMiniprep();
   calcNucleospin();
