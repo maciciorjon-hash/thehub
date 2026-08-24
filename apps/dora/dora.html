@@ -529,7 +529,7 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
     </div>
     <div class="guide-card">
       <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="8" r="2.4"/><circle cx="17" cy="8" r="2"/><circle cx="12" cy="16" r="2.6"/><path d="M9 9.5l1 4M15 9.3l-1 4.5"/></svg>Properties</h3>
-      <p>Upload a SMILES file (CSV or Excel with <em>Compound</em> and <em>SMILES</em> columns) to compute molecular properties. RDKit runs in-browser — no data leaves your machine. The table shows 2D structure, MW, logP, HBA, HBD, TPSA, and RotBonds alongside the assay DC50 / Dmax from the loaded dataset. Structures also appear in scatter hover tooltips.</p>
+      <p>Upload a SMILES file (CSV or Excel with <em>Compound</em> and <em>SMILES</em> columns) to compute molecular properties. RDKit runs in-browser — no data leaves your machine, but it <b>is fetched from a CDN the first time</b>, so this one panel needs an internet connection; nothing else in Dora does. The table shows 2D structure, MW, logP, HBA, HBD, TPSA, and RotBonds alongside the assay DC50 / Dmax from the loaded dataset. Structures also appear in scatter hover tooltips.</p>
     </div>
   </div>
 
@@ -1167,7 +1167,7 @@ function exportScatter(bg) {
   link.href = out.toDataURL('image/png', 1.0); link.click();
 }
 // ─── SMILES / PROPERTIES ──────────────────────────────────────────────────────
-let _smilesData = {}, _rdkit = null, _rdkitLoading = false;
+let _smilesData = {}, _rdkit = null, _rdkitLoading = false, _rdkitFailed = null;
 function loadRDKit(cb) {
   if (_rdkit) { cb(_rdkit); return; }
   if (_rdkitLoading) { setTimeout(()=>loadRDKit(cb), 300); return; }
@@ -1176,14 +1176,27 @@ function loadRDKit(cb) {
   if (st) st.textContent = 'Loading RDKit…';
   const s = document.createElement('script');
   s.src = 'https://unpkg.com/@rdkit/rdkit/Code/MinimalLib/dist/RDKit_minimal.js';
+  // Every failure path has to call back. It used to drop the callback on error, so the file
+  // you dropped sat at "computing properties…" for ever with no way to tell why — and
+  // initRDKitModule() had no catch either, so a script that loaded but failed to start hung
+  // in exactly the same way.
+  const fail = (why) => {
+    _rdkitLoading = false;
+    _rdkitFailed = why || 'unreachable';
+    const st2 = document.getElementById('smiles-status');
+    if (st2) st2.textContent = 'Structures unavailable — RDKit could not be loaded';
+    cb(null);
+  };
   s.onload = () => {
-    window.initRDKitModule().then(rdk => {
+    let p; try { p = window.initRDKitModule(); } catch(e) { return fail('init'); }
+    if (!p || !p.then) return fail('init');
+    p.then(rdk => {
       _rdkit = rdk; _rdkitLoading = false;
       const st2 = document.getElementById('smiles-status'); if (st2 && st2.textContent==='Loading RDKit…') st2.textContent = '';
       cb(rdk);
-    });
+    }, () => fail('init'));
   };
-  s.onerror = () => { _rdkitLoading = false; const st2=document.getElementById('smiles-status'); if(st2) st2.textContent='Failed to load RDKit'; };
+  s.onerror = () => fail('network');
   document.head.appendChild(s);
 }
 function parseSmilesRows(rows) {
@@ -1224,6 +1237,13 @@ function handleSmilesFile(file) {
       st.textContent = `Found ${pairs.length} structures — computing properties…`;
       document.getElementById('smiles-clear-btn').style.display = '';
       loadRDKit(rdk => {
+        if (!rdk) {
+          // Say what is missing and what still works, where the person is looking.
+          st.innerHTML = '<b>Structures unavailable</b> — RDKit is fetched from a CDN and could not be '
+            + 'reached from this machine. DC50/Dmax, plots and every export are unaffected.';
+          document.getElementById('smiles-clear-btn').style.display = 'none';
+          return;
+        }
         _smilesData = {};
         let ok = 0;
         pairs.forEach(({name, smiles}) => {
