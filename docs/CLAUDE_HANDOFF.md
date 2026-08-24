@@ -10,8 +10,12 @@ Compact coordination note. Read it before starting work; the full changelog is
   verbs a card needs (rename, move, priority, delete), a menu reachable with a thumb, and a
   Cmd+K that reads what you wrote rather than what you called it. Plus finishing yesterday's
   plasmid map, which was mouse-only on the app that lives on a phone.
-- Four commits: `941571c` (map on touch) · `ac207a3` (card verbs + one menu, three doorways) ·
-  `3c5b618` (Cmd+K content index) · `2f9b24b` (drag to a folder, empty folders visible).
+- Four commits on the interaction block: `941571c` (map on touch) · `ac207a3` (card verbs +
+  one menu, three doorways) · `3c5b618` (Cmd+K content index) · `2f9b24b` (drag to a folder,
+  empty folders visible). Then an open-items pass: `66af667` (RDKit and jsPDF announced, and
+  Dora's silent hang) · `7df31b4` (plate PNG + editable well types) · `6ac2c6e` (the calculator
+  link opens the Calculate tab; the superseded home mockup retired) · `cd1307c` (the nine
+  "verify" calculators re-derived — every formula right, every overage now stated).
 - Full detail is the 2026-08-24 entry at the top of `docs/SESSION_HISTORY.md`. The
   2026-08-23/24 work that ran on after v1.8.0 is written up there too, reconstructed from its
   commits.
@@ -35,6 +39,15 @@ Compact coordination note. Read it before starting work; the full changelog is
    refine the query.
 6. **Empty folders render while browsing**, because a folder you cannot see is a place you
    cannot file into. Under a search or filter they hide again.
+7. **The remote dependencies are announced.** RDKit (Echo, Dora) and jsPDF (Echo) still come
+   from a CDN, but each app says so before you use the feature and again if the load fails.
+   `window._depNotice(id, html)` in Echo is the one banner.
+8. **Plate maps export PNG** (canvas, 2×, legend of used types) and their **well types are
+   editable** — `_plOwnTypes` copies the shared default before mutating it, and removing a type
+   keeps the wells.
+9. **The nine "verify" calculators were re-derived numerically.** The maths was right in all
+   nine; what was wrong was the arithmetic printed beside the totals, which omitted the
+   dead-volume overage. `_ovx(excess)` states it, in the tables and the exported steps.
 
 ## What exists now, in one pass
 
