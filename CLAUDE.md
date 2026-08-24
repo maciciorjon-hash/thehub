@@ -1461,9 +1461,47 @@ clickable (HTML5 drag and drop does not exist on touch, so a drag-only palette i
 a phone), and blocks reorder from a grip — the grip carries the drag because a draggable
 ancestor stops you selecting text in the inputs inside it.
 
+## The mobile pass (2026-08-24)
+
+Jon's report was "empieza todo con un zoom y no se ve todo el menú, y las páginas no se adecúan
+a la pantalla". Three separate causes, none of them the one that phrase suggests.
+
+**iOS zooms the page when you focus a control whose text is under 16px, and never zooms back.**
+Everything after that is a magnified page whose fixed header and bottom tab bar are wider than
+the screen. Every control in the Hub was under 16px — Archive alone had 190 at 12px. One device
+rule per file (`@media (hover:none)` → `font-size:16px !important`, excluding checkboxes and
+friends), no `maximum-scale`: taking pinch-zoom away to fix this would trade one accessibility
+bug for a worse one. The rule is `!important` because it must beat every per-component size, and
+it is not a design choice.
+
+**A page that overflows horizontally by any amount is one a phone zooms out to fit.** Three apps
+did: Blot 152px, Cadence 18px, Cuppa 16px. Every one was the same shape — a flex container with
+`flex-wrap:wrap` whose *groups inside it* did not wrap, so one 509px group set the page's
+minimum width. All 19 apps are now clean at 375px, measured in a frame that cannot shrink-to-fit
+and hide it.
+
+**`vh` is the wrong unit on a phone**: iOS measures `100vh` against the viewport with the URL bar
+hidden, so an `88vh` modal puts its buttons below the fold. 46 declarations carry `dvh` after the
+`vh` — a browser without it keeps the first, one with it takes the second.
+
+Then the navigation itself. The header held six controls at 375px, so the title truncated to
+"d…" and the search box showed "Searc": it becomes a magnifier that opens the full-screen
+spotlight — which **had no opener but Cmd+K**, a key a phone does not have, so hub search did not
+exist on mobile at all. In Labbook the ribbon's tool pane starts closed (44px instead of ~200px)
+with the tab row as its switch, and the drawer button is docked into that row instead of
+floating over the bottom-left of every screen for ever.
+
+**`#mobile-nav-btn` must stay outside `<header>`.** The comment on the element says why and it is
+right: dHUB hides each app's own header when embedded, and `display:none` on a parent takes the
+whole subtree with it. Moving it in makes it invisible in the build Jon actually uses.
+
+**`_wsIcon` falls back to the named app's card logo**, because three Cells cards were drawing the
+same house and four Archive cards the same book — every section in `LANDINGS` asked for its
+parent app's icon.
+
 ## Current state
 
-**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, and the open-items pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for

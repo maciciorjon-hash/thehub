@@ -6,6 +6,9 @@ Compact coordination note. Read it before starting work; the full changelog is
 ## Current checkpoint
 
 - Date: 2026-08-24 · **v1.9.0** · branch `main`, everything pushed and deployed.
+- Latest work: the **mobile pass** (iOS zoom-on-focus, horizontal overflow in three apps, `dvh`,
+  a phone-reachable hub search, Labbook's ribbon and drawer button) and the **seeding linkage**
+  (cells per well follow the plate format, with an implausible-density warning).
 - This pass was the interaction block Jon asked for and the previous session deferred: the
   verbs a card needs (rename, move, priority, delete), a menu reachable with a thumb, and a
   Cmd+K that reads what you wrote rather than what you called it. Plus finishing yesterday's
@@ -116,6 +119,19 @@ Compact coordination note. Read it before starting work; the full changelog is
   in `embed.py`.
 
 ## Traps added this pass
+
+- **A viewport meta tag does not make a page fit a phone.** Any horizontal overflow — 16px is
+  enough — makes the browser zoom the whole document out. And iOS zooms *in*, permanently, the
+  moment you focus a control under 16px. Both look like "the layout is broken"; neither is.
+- **`flex-wrap:wrap` on a toolbar does nothing for the groups inside it.** All three overflowing
+  apps were this exact shape.
+- **`s.index('</head>')` is not the head.** SheetJS's minified bundle contains that literal
+  string, so the first match can be inside a `<script>`. Skip `</head>` inside script spans.
+- **`#mobile-nav-btn` lives outside `<header>` on purpose** — dHUB hides each app's own header
+  when embedded and `display:none` takes the subtree with it. The comment on the element is
+  load-bearing; I moved it in and it vanished in the only build that matters.
+- **Cells scale with area, volumes with volume.** `PLATE_VOL` had no `PLATE_AREA` beside it, so
+  changing a plate format rescaled the volume and left the cell count untouched.
 
 - **`touch-action:none` is not "make it work on touch".** It switches off the browser's
   gestures and gives nothing back; unless you implement pan *and* pinch yourself, it makes the
