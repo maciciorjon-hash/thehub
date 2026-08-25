@@ -79,6 +79,20 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 /* min-height, never height: a fixed 76px row cannot grow, so a button whose content needs
    more room is clipped against a ceiling instead of the row expanding to fit it. */
 .rb-pane{display:flex;align-items:center;gap:4px;padding:6px 12px;overflow-x:auto;min-height:80px;position:relative;}
+/* The tab row alone is ~30px against ~120px with the tools open, and it is the switch. */
+body.lb-rb-closed .rb-pane{display:none;}
+/* The selection bubble — formatting where the text is, instead of a permanent strip at the top
+   of the window. It is the reason the pane can default to closed. */
+#lb-bubble{position:fixed;z-index:960;display:none;align-items:center;gap:2px;padding:4px;
+  border-radius:var(--r-2);background:var(--surface);border:1px solid var(--border2);
+  box-shadow:0 8px 26px rgba(0,0,0,.20);white-space:nowrap;}
+#lb-bubble.on{display:flex;}
+#lb-bubble button{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid transparent;background:none;color:var(--text2);border-radius:var(--r-1);cursor:pointer;
+  font-family:var(--sans);font-size:var(--fs-3);font-weight:700;padding:0;}
+#lb-bubble button:hover{background:var(--surface2);color:var(--text);}
+#lb-bubble button svg{width:17px;height:17px;}
+#lb-bubble .sep{width:1px;height:18px;background:var(--border2);margin:0 3px;flex:none;}
 .rb-core{display:flex;align-items:center;gap:3px;flex-wrap:nowrap;}
 .tb-grouplbl{font-size:var(--fs-1);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin:0 6px 0 2px;flex-shrink:0;}
 .tb{width:34px;height:34px;border:none;background:none;border-radius:var(--r-2);color:var(--text2);cursor:pointer;font-size:var(--fs-5);display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;font-family:var(--sans);flex-shrink:0;}
@@ -636,8 +650,7 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
     border-radius:var(--r-2);box-shadow:none;background:var(--surface2);z-index:48;}
   .rb-tabbar{padding-left:44px;}
   #ribbon{padding:4px 8px;gap:3px;}
-  /* Closed by default here: the tab row alone is ~36px, against ~120px with the tools open. */
-  body.lb-rb-closed .rb-pane{display:none;}
+  /* (The closed state is now global — see .rb-pane below.) */
   /* Inside an experiment the tab strip IS the navigation, so it stays put while you scroll a
      long protocol, and clears the floating pane button rather than sitting under it. */
   .exp-tabs{position:sticky;top:0;z-index:12;background:var(--bg);}
@@ -4113,6 +4126,7 @@ function renderPages(){
   var psw=el('pane-sec-wrap'), ssec=el('split-sec');
   document.body.classList.toggle('lb-on-home', node.kind==='home');
   document.body.classList.toggle('lb-dash', node.kind==='home'||node.kind==='exps'||node.kind==='week');
+  _rbOpen=null;   // each surface gets its own answer; a choice made on one does not follow you
   // Home is full width inside the workspace, where the shell's rail is the navigation. In the
   // standalone build there is no rail, so the tree stays — otherwise the home would be a room
   // with no doors.
@@ -5451,6 +5465,11 @@ function homeCulturesCard(){
 }
 
 function renderEditor(){
+  // The pane's open/closed state follows the surface, and the surface changes here as often as
+  // it does through selectNode — openExp() renders the editor without touching the tree. The
+  // class has to be re-derived with the screen or it goes stale showing a 120px strip on a
+  // screen that asked for none.
+  try{ if(el('ribbon')) document.body.classList.toggle('lb-rb-closed', !rbPaneOpen()); }catch(_e){}
   var host=el('pane-ed'); (el('export-btn')||{style:{}}).style.display='none'; var node=SEL.node;
   if(node.kind!=='archive') _arcPark();
   if(node.kind==='home'){ return renderHome(host); }
@@ -6559,15 +6578,24 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="Restore from a backup file" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore</span></button>'
   +'</div>'; }
 var _rbTab='home';
-// On a phone the ribbon's tool pane was 80-120px of formatting buttons above the document, on
-// every screen, whether or not you were editing text. It starts closed there and the tab row
-// is its switch: tap a tab to open it, tap the open one again to put it away. Desktop is
-// unchanged — this follows the width, so nothing is stored.
-var _rbOpen = null;   // null = follow the screen; true/false = what you chose this session
+// A permanent 120px strip of formatting buttons is what a word processor looks like, and this
+// stopped being one. It follows the surface now: open where you sit and write prose (the
+// Journal, a note page), closed where the screen is a record you are filling in — an
+// experiment is mostly calculators, checkboxes, dated blocks and a plate map, and the everyday
+// formatting is on the selection bubble anyway. The tab row stays either way: it is ~30px and
+// it is the switch.
+var _rbOpen = null;   // null = follow the surface; true/false = what you chose this session
 function _rbNarrow(){ try{ return window.matchMedia('(max-width:760px)').matches; }catch(e){ return false; } }
-function rbPaneOpen(){ return _rbOpen==null ? !_rbNarrow() : _rbOpen; }
+// Where the writing happens. Everything else gets the tab row alone.
+function _rbProseSurface(){
+  var k=(SEL.node&&SEL.node.kind)||'';
+  return k==='journal'||k==='today'||k==='notebook'||k==='general';
+}
+function rbPaneOpen(){ return _rbOpen==null ? (!_rbNarrow() && _rbProseSurface()) : _rbOpen; }
 function setRbTab(t){
-  if(_rbNarrow() && t===_rbTab && rbPaneOpen()) _rbOpen=false;   // the active tab closes it
+  // Clicking the tab you are already on puts the pane away — the same gesture at every width,
+  // now that the pane can be closed at every width.
+  if(t===_rbTab && rbPaneOpen()) _rbOpen=false;
   else { _rbTab=t; _rbOpen=true; }
   renderRibbon();
 }
@@ -8490,6 +8518,65 @@ function setAnalysisSoftware(){
     toast(LB.data.settings.analysisSoftware?('Methods will end with "'+LB.data.settings.analysisSoftware+'"'):'Cleared');
   });
 }
+// ── Selection bubble ───────────────────────────────────────────────────────────────────────
+// Everything here is also in the Home pane. The point is not new commands, it is that the eight
+// you actually use follow the text, so a 120px strip does not have to sit above every screen
+// waiting to be needed. Anything rarer is still a tab click away.
+var BUBBLE_ITEMS=[
+  ['bold','Bold','<b>B</b>'], ['italic','Italic','<i>I</i>'], ['underline','Underline','<u>U</u>'],
+  ['strikeThrough','Strikethrough','<s>S</s>'], ['sep'],
+  ['hiliteColor','Highlight','<span style="background:#ffe08a;padding:0 3px;border-radius:3px">H</span>'],
+  ['removeFormat','Clear formatting','<span style="font-weight:600">T&#215;</span>'], ['sep'],
+  ['insertUnorderedList','Bullets','&#8226;&#8801;'], ['link','Link','&#128279;']
+];
+function _bubbleEl(){
+  var b=el('lb-bubble');
+  if(!b){ b=document.createElement('div'); b.id='lb-bubble';
+    b.innerHTML=BUBBLE_ITEMS.map(function(x){
+      if(x[0]==='sep') return '<span class="sep"></span>';
+      return '<button title="'+esc(x[1])+'" data-cmd="'+x[0]+'" onmousedown="event.preventDefault();bubbleCmd(\''+x[0]+'\')">'+x[2]+'</button>';
+    }).join('');
+    document.body.appendChild(b); }
+  return b;
+}
+function bubbleCmd(cmd){
+  if(cmd==='hiliteColor'){ try{ document.execCommand('hiliteColor',false,'#ffe08a'); }catch(e){} }
+  else if(cmd==='link'){ hideBubble(); if(typeof openLinkIns==='function') openLinkIns(); return; }
+  else { try{ document.execCommand(cmd,false,null); }catch(e){} }
+  // The command changed the document; the caller's oninput fires on its own.
+  positionBubble();
+}
+function hideBubble(){ var b=el('lb-bubble'); if(b) b.classList.remove('on'); }
+function positionBubble(){
+  var sel; try{ sel=window.getSelection(); }catch(e){ return hideBubble(); }
+  if(!sel || sel.isCollapsed || !sel.rangeCount) return hideBubble();
+  var node=sel.anchorNode; node=node&&(node.nodeType===1?node:node.parentElement);
+  // Only inside our own rich text: a selection in an input, a table of results or the page
+  // chrome must not be offered bold.
+  var host=node&&node.closest?node.closest('[contenteditable="true"]'):null;
+  if(!host || !host.closest('.rt, .ps-rt, .lb-note-body')){ if(!host) return hideBubble(); }
+  if(!host) return hideBubble();
+  var r; try{ r=sel.getRangeAt(0).getBoundingClientRect(); }catch(e){ return hideBubble(); }
+  if(!r || (!r.width && !r.height)) return hideBubble();
+  var b=_bubbleEl(); b.classList.add('on');
+  var bw=b.offsetWidth||260, bh=b.offsetHeight||38;
+  // Measured, then clamped by its real edges — pinning the centre says nothing about where the
+  // box lands, which is the bug #lb-tip had.
+  var left=Math.round(r.left+r.width/2-bw/2);
+  left=Math.max(8, Math.min(left, window.innerWidth-bw-8));
+  var top=Math.round(r.top-bh-8);
+  if(top<8) top=Math.round(r.bottom+8);          // no room above: flip below the selection
+  b.style.left=left+'px'; b.style.top=top+'px';
+}
+(function initBubble(){
+  var t=null;
+  function later(){ clearTimeout(t); t=setTimeout(positionBubble,10); }
+  document.addEventListener('selectionchange',later);
+  document.addEventListener('mouseup',later);
+  document.addEventListener('keyup',function(e){ if(e.key==='Escape'){ hideBubble(); return; } later(); });
+  window.addEventListener('scroll',hideBubble,true);
+  window.addEventListener('resize',hideBubble);
+})();
 function restoreFromSnapshot(){
   _idb().then(function(db){
     var os=db.transaction('h','readonly').objectStore('h');

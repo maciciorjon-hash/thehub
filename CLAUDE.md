@@ -1772,6 +1772,30 @@ tracker with export**, so the thing you send out matters as much as the thing yo
   software and its version, and writing it into each of the thirteen presets would be thirteen
   places to update when Prism goes to v11. It is skipped when something has already said it.
 
+## The ribbon stopped being furniture
+
+Jon's read: the Home/Insert/View strip is the last of the OneNote frame, and a permanent 120px
+of formatting buttons is what a word processor looks like. It might earn its place in the
+Journal or a note page; above an experiment it is space taken from the thing you came to look at.
+
+**It follows the surface now.** `_rbProseSurface()` is the whole rule: the Journal, a day, a
+note page — the screens you sit and write on — open with the pane; everywhere else gets the tab
+row alone, ~36px against ~160px. `selectNode` resets `_rbOpen` to `null` so each surface
+re-derives its own answer rather than inheriting the last screen's, and clicking the tab you are
+already on puts the pane away at any width (it used to be a phone-only gesture).
+
+`renderEditor` re-derives the class too, because **the surface changes without the tree
+knowing**: `openExp()` renders the editor and never calls `selectNode`, so the class went stale
+and left a full ribbon above a screen that had asked for none.
+
+**The selection bubble is what makes closed the right default.** `positionBubble()` shows eight
+commands — bold, italic, underline, strikethrough, highlight, clear, bullets, link — over any
+non-collapsed selection inside our own rich text, and nothing else: a selection in a results
+table or the page chrome must not be offered bold. It measures itself, clamps by its real edges
+rather than pinning its centre (the bug `#lb-tip` had), and flips below the selection when there
+is no room above. Everything on it is also in the Home pane; the point is that the eight you use
+follow the text, so the other forty do not have to sit above every screen waiting.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
