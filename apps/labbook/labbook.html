@@ -882,6 +882,9 @@ body.lb-rb-closed .rb-pane{display:none;}
 /* New-experiment setup parameters */
 .nm-setup{margin:10px 0 2px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:10px 12px 12px;}
 .nm-setup-hd{font-size:var(--fs-1);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#5e87c5;margin-bottom:8px;}
+.exh-imported{display:inline-flex;align-items:center;gap:5px;margin-right:6px;padding:2px 9px;
+  border-radius:var(--r-4);background:rgba(217,158,79,.14);border:1px solid rgba(217,158,79,.4);
+  color:var(--text2);font-size:var(--fs-1);font-weight:700;letter-spacing:.3px;text-transform:uppercase;}
 .exh-setup-edit{margin-left:6px;padding:1px 8px;border-radius:var(--r-2);border:1px solid var(--border2);
   background:var(--surface2);color:var(--text2);font-size:var(--fs-1);cursor:pointer;}
 .exh-setup-edit:hover{color:var(--accent);border-color:var(--accent);}
@@ -1443,6 +1446,7 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 </div>
 <input type="file" id="lb-img-input" accept="image/*" multiple style="display:none" onchange="_imgInputChange(this)">
 <input type="file" id="lb-restore-input" accept=".json" style="display:none" onchange="_restoreInputChange(this)">
+<input type="file" id="lb-impexp-input" accept=".json,application/json" style="display:none" onchange="_impExpInputChange(this)">
 <input type="file" id="lb-file-input" multiple style="display:none" onchange="_fileInputChange(this)">
 <div id="print-root"></div>
 <!-- Archive lives here when its view isn't on screen; the bridge scrapes its live DOM, so it
@@ -5713,7 +5717,12 @@ function setupSummaryHtml(e){
   // The chips were read-only, which is where the dead end was: you could see the setup and
   // not change it.
   var edit='<button class="exh-setup-edit" title="Change these and re-apply them to the steps" onclick="openSetupEditor(\''+e.id+'\')">Edit setup</button>';
-  return parts?('<div class="exh-setup">'+parts+edit+'</div>'):'';
+  // A record that came from somewhere else says so. Without it an imported experiment is
+  // indistinguishable from one you ran, which is the one thing a lab notebook must never be.
+  var imp=e.imported?('<span class="exh-imported" title="Imported '+esc(new Date(e.imported.at).toISOString().slice(0,10))
+    +(e.imported.originalId?(' · original id '+esc(e.imported.originalId)):'')+'">Imported'
+    +(e.imported.project?(' from '+esc(e.imported.project)+(e.imported.folder?(' › '+esc(e.imported.folder)):'')):'')+'</span>'):'';
+  return (parts||imp)?('<div class="exh-setup">'+imp+parts+edit+'</div>'):'';
 }
 // ── Results handed over by an analysis app ─────────────────────────────────────────────────
 // A DC50 typed by hand into a notebook is where a published number stops being traceable to
@@ -8312,6 +8321,83 @@ function exportExpJSON(id){
   _dl(_expSlug(e)+'.json', buildExpJSON(e), 'application/json');
   toast('Experiment saved as JSON');
 }
+// ── Data in ────────────────────────────────────────────────────────────────────────────────
+// The counterpart of the JSON export. An interchange format that only goes one way is half a
+// feature: this is how an experiment moves between notebooks, or comes back from a colleague.
+//
+// It never overwrites. An import is always a new record — a new id, new block ids, filed where
+// you say — because the alternative is a file quietly replacing work you did after you sent it.
+// Provenance travels on the record so "where did this come from" has an answer later.
+function _impExpInputChange(inp){ var f=(inp.files||[])[0]; inp.value=''; if(f) importExpFile(f); }
+function importExpJSON(){ var i=el('lb-impexp-input'); if(i) i.click(); }
+function _reidExperiment(src){
+  var e=JSON.parse(JSON.stringify(src));
+  e.id=uid();
+  var map={};
+  (e.blocks||[]).forEach(function(b){ var old=b.id; b.id=uid(); if(old) map[old]=b.id; });
+  // A block's own plate map is keyed by block id in PL/owner lookups, not stored by id, so
+  // nothing else has to be rewritten — but attachment ids do have to survive as they are: the
+  // bytes are missing either way, and rewriting them would lose the ability to match them up
+  // if the sender ever supplies a backup.
+  e.created=Date.now(); e.updated=Date.now();
+  return e;
+}
+function _countAtt(e){
+  var n=(e.files||[]).length;
+  (e.blocks||[]).forEach(function(b){ n+=((b.files||[]).length)+((b.floatImgs||[]).length); });
+  try{ n+=(String(JSON.stringify(e)).match(/data-att=/g)||[]).length; }catch(_e){}
+  return n;
+}
+function importExpFile(file){
+  var reader=new FileReader();
+  reader.onload=function(){
+    var parsed; try{ parsed=JSON.parse(reader.result); }
+    catch(e){ lbAlert('That file is not valid JSON.',{title:'Could not read the file'}); return; }
+    if(!parsed || !parsed._lbExperiment || !parsed.experiment || typeof parsed.experiment!=='object'){
+      lbAlert('That does not look like a Labbook experiment export. Use <b>View → Restore</b> for a whole-notebook backup.',
+        {title:'Wrong kind of file'}); return; }
+    var src=parsed.experiment;
+    var e=_reidExperiment(src);
+    var nRes=_resultRowsOf(e).length, nSteps=(e.blocks||[]).length;
+    var nPlate=(e.plate?1:0)+((e.blocks||[]).filter(function(b){return b.plate;}).length);
+    var nAtt=_countAtt(e);
+    var lines=['<b>'+esc(e.title||e.code||'Untitled')+'</b>'
+      +(parsed.project?(' <span class="cc-dim">from '+esc(parsed.project)+(parsed.folder?(' › '+esc(parsed.folder)):'')+'</span>'):'')];
+    lines.push(nSteps+' dated step'+(nSteps===1?'':'s')
+      +(nPlate?(' · '+nPlate+' plate map'+(nPlate===1?'':'s')):'')
+      +(nRes?(' · '+nRes+' measurement'+(nRes===1?'':'s')):''));
+    if(nAtt) lines.push('<b>'+nAtt+' attachment'+(nAtt===1?'':'s')+' cannot come with this file</b> — a JSON export carries the record, not the bytes. '
+      +'They will show as missing until the sender shares a backup.');
+    lines.push('It comes in as a <b>new experiment</b>. Nothing already here is changed or replaced.');
+    lbConfirm(lines.join('<br><br>'), {title:'Import experiment', ok:'Import'}).then(function(ok){
+      if(!ok) return;
+      _placeImported(e, parsed);
+    });
+  };
+  reader.onerror=function(){ lbAlert('Could not read that file.',{title:'Import failed'}); };
+  reader.readAsText(file);
+}
+function _placeImported(e,parsed){
+  function land(pid,sid){
+    e.projectId=pid; e.sectionId=sid;
+    e.imported={at:Date.now(), from:(parsed.app||'Labbook'), exported:parsed.exported||'',
+                project:parsed.project||'', folder:parsed.folder||'', originalId:(parsed.experiment||{}).id||''};
+    // A code that already exists would make two rows look like the same run.
+    var codes={}; Object.keys(LB.data.experiments).forEach(function(k){ var x=LB.data.experiments[k]; if(x.code) codes[x.code]=1; });
+    if(e.code && codes[e.code]){ var base=e.code, n=2; while(codes[base+'_'+n]) n++; e.code=base+'_'+n; }
+    LB.data.experiments[e.id]=e;
+    save(); selectNode('expsec',pid,sid); openExp(e.id);
+    toast('Imported'+(e.code?(' as '+e.code):''));
+  }
+  if(SEL.node && SEL.node.kind==='expsec' && SEL.node.projectId!=null){ land(SEL.node.projectId, SEL.node.sectionId); return; }
+  var items=[];
+  LB.data.projects.forEach(function(p){ (p.sections||[]).forEach(function(sc){
+    items.push({id:p.id+'/'+sc.id, label:sc.name, sub:p.name, ic:'F', c:p.color||'#5e87c5'}); }); });
+  if(!items.length){ lbAlert('There is no folder to import into. Add a project and a folder first.',{title:'Nowhere to put it'}); return; }
+  lbPicker('Import "'+(e.title||e.code||'experiment')+'" into…', items, function(it){
+    var q=String(it.id).split('/'); land(q[0],q[1]);
+  }, function(){ toast('Import cancelled — nothing was added'); });
+}
 function exportDataMenu(){
   var e=_curExp();
   var items=[];
@@ -8327,12 +8413,15 @@ function exportDataMenu(){
   }
   items.push({id:'all', label:'All results in this notebook — CSV',
     sub:'every measurement, every experiment', ic:'∑', c:'#a56983'});
+  items.push({id:'import', label:'Import an experiment — JSON',
+    sub:'a .json exported from Labbook; comes in as a new record', ic:'↓', c:'#2d9462'});
   lbPicker('Export data', items, function(it){
     if(it.id==='json') exportExpJSON();
     else if(it.id==='res') exportResultsCSV();
     else if(it.id==='steps') exportStepsCSV();
     else if(it.id==='plate') exportPlateCSV('exp:'+(_curExp()||{}).id);
     else if(it.id==='all') exportAllResultsCSV();
+    else if(it.id==='import') importExpJSON();
   });
 }
 // ── The methods sheet ──────────────────────────────────────────────────────────────────────

@@ -1819,6 +1819,20 @@ picker rather than five more buttons.
 `_dl(name,text,mime)` replaces the old `_download`, which announced `application/json` whatever
 it was handed.
 
+**And it reads them back.** An interchange format that only goes one way is half a feature:
+`importExpFile` is how an experiment moves between notebooks or comes back from a colleague.
+Three rules, and they are the whole design:
+
+- **It never overwrites.** An import is always a new record — new id, new block ids, filed where
+  you say — because the alternative is a file quietly replacing work you did after you sent it.
+  A `code` that already exists gets a suffix rather than making two rows look like the same run.
+- **It says what cannot come.** The dialog counts the attachments and states plainly that a JSON
+  export carries the record and not the bytes, before you commit to the import rather than after.
+- **The record says where it came from.** `e.imported` holds the date, the sending project and
+  folder and the original id, and the experiment header wears an *Imported from…* chip. Without
+  it an imported experiment is indistinguishable from one you ran, which is the one thing a lab
+  notebook must never be.
+
 **A picker was truncating the wrong half.** `.dlg-item .l` had `flex:1` and the subtitle no
 limit, so a long "why" pushed the "what" into an ellipsis. The label keeps the room it needs and
 the subtitle shrinks first — in every picker in the app, not just this one.
