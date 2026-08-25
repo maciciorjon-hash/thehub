@@ -1796,6 +1796,55 @@ rather than pinning its centre (the bug `#lb-tip` had), and flips below the sele
 is no room above. Everything on it is also in the Home pane; the point is that the eight you use
 follow the text, so the other forty do not have to sit above every screen waiting.
 
+## Multi-day experiments: the three ways they went wrong silently
+
+The focus after the repositioning. Everything here was found by asking what actually breaks over
+a week at the bench, then checking the code rather than guessing.
+
+**A step ticked late left the rest of the plan behind.** `setBlockDone` recorded `completedAt`
+and nothing else, so doing Tuesday's transfection on Thursday and ticking it left every later
+step dated from a day that did not happen — and two days on, the plate is read 48 h early with
+nothing on screen having said so. `_offerSlip` compares the tick date against the planned date
+and offers to move the remaining steps by the same number of days, preserving the intervals.
+Three rules make it right rather than annoying:
+
+- **It offers, never acts.** A step ticked late is often a step done on time and recorded later,
+  and the dialog says exactly that. Same principle as the protocol diff, and as the stocks.
+- **`>=`, not `>`.** A sibling on the *same day* that has not happened either slipped too.
+  `snoozeBlock` already used `>=` for this reason and the two must not disagree about "after".
+- **It asks once per step** (`b.slipAsked`), because a checkbox you toggle twice is not two slips.
+
+**Weekends were invisible.** A protocol that says day 0 → day 3 lands on a Sunday one week in
+seven, and the app knew the weekday all along. The New-experiment preview now names the day
+(`Fri`, `Sat`) and counts them — *"2 of these days fall on a weekend"* — and a weekend date on a
+step is coloured. It does not move anything: which day to lose is a decision about the science.
+
+**A step could fall off the back of the carry-over and never be mentioned again.**
+`CARRY_LOOKBACK_DAYS` is 21, which is right for a list read every morning — three weeks of
+misses would be noise — but nothing else ever said the step was outstanding. `expOverdue(e)`
+puts it where it belongs: on the experiment, which is the thing that is stuck. Verified with a
+run started 40 days ago: five steps, absent from carry-over, and the header says
+**5 STEPS OVERDUE**.
+
+## A recorded number is never rewritten (2026-08-25)
+
+Jon, asked about propagating a corrected calculator default back into experiments already
+created: **no.** Stocks change. A plasmid prep is re-made at a different concentration, a
+compound stock is diluted, a lot runs out. The number in an experiment is what that run used,
+and an app that quietly refreshes it turns a record into a guess — the same failure as a Methods
+paragraph that drifts from its steps, one step worse, because nothing on screen would say it had
+happened.
+
+The existing machinery is already the right shape and stays the model: `protoDiff` /
+`applyProtoUpdate` **offer** a protocol update and show the diff, and even then a step note whose
+step disappeared is moved, never deleted. Offer, show, let the person decide. Never rewrite.
+
+**Compound-level views are ChemLib's, not ours.** A per-compound panel ("what do I know about
+EDA-099") and cross-experiment comparison were proposed and are deliberately not being built
+here: dHUB is going to be folded into ChemLib, where every result is already linked to its
+compound. Building a second, weaker copy of that join would create the duplicate-source problem
+this codebase keeps removing. See the ChemLib section.
+
 ## Data out — JSON and CSV
 
 The PDF and the methods sheet are documents. These are the numbers, and until now there was no

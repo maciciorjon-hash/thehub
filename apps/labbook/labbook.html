@@ -760,6 +760,11 @@ body.lb-rb-closed .rb-pane{display:none;}
 .nm-preview .nm-pv-list{display:flex;flex-direction:column;gap:5px;max-height:200px;overflow-y:auto;}
 .nm-preview .nm-pv-row{display:flex;gap:8px;align-items:flex-start;font-size:var(--fs-3);padding:5px 8px;background:var(--surface2);border-radius:var(--r-1);border-left:3px solid var(--accent,#5e87c5);}
 .nm-preview .nm-pv-day{font-weight:700;color:var(--accent,#5e87c5);white-space:nowrap;font-size:var(--fs-2);}
+.nm-pv-dow{font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;}
+.nm-pv-row.weekend .nm-pv-day,.nm-pv-row.weekend .nm-pv-dow{color:#c07a2e;}
+.nm-pv-we{margin:8px 0 2px;padding:7px 10px;border-radius:var(--r-1);font-size:var(--fs-2);line-height:1.5;
+  background:rgba(217,158,79,.13);border:1px solid rgba(217,158,79,.36);color:var(--text2);}
+.blk-date.weekend{color:#c07a2e;border-color:rgba(217,158,79,.5);}
 .nm-preview .nm-pv-t{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .nm-preview .nm-pv-steps{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;}
 .nm-preview .nm-pv-dur{font-size:var(--fs-1);color:var(--text3);background:var(--surface3);border-radius:var(--r-1);padding:0 5px;margin-left:5px;white-space:nowrap;}
@@ -882,6 +887,9 @@ body.lb-rb-closed .rb-pane{display:none;}
 /* New-experiment setup parameters */
 .nm-setup{margin:10px 0 2px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:10px 12px 12px;}
 .nm-setup-hd{font-size:var(--fs-1);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#5e87c5;margin-bottom:8px;}
+.exh-overdue{display:inline-flex;align-items:center;gap:5px;margin-right:6px;padding:2px 9px;
+  border-radius:var(--r-4);background:rgba(217,83,79,.13);border:1px solid rgba(217,83,79,.42);
+  color:var(--danger);font-size:var(--fs-1);font-weight:700;letter-spacing:.3px;text-transform:uppercase;}
 .exh-imported{display:inline-flex;align-items:center;gap:5px;margin-right:6px;padding:2px 9px;
   border-radius:var(--r-4);background:rgba(217,158,79,.14);border:1px solid rgba(217,158,79,.4);
   color:var(--text2);font-size:var(--fs-1);font-weight:700;letter-spacing:.3px;text-transform:uppercase;}
@@ -1470,6 +1478,13 @@ function addDays(s,n){ if(!s) return s; var d=new Date(s+'T00:00:00'); d.setDate
 function daysBetween(a,b){ if(!a||!b) return 0; return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000); }
 // Earliest dated block = the experiment's Day 0 anchor (falls back to start date).
 function expAnchorDate(e){ var ds=(e.blocks||[]).filter(function(b){return b.date;}).map(function(b){return b.date;}).sort(); return ds.length?ds[0]:(e.startDate||todayStr()); }
+// The app knows what day of the week a date is and never said so. A protocol that says "day 0
+// → day 3" lands on a Sunday one week in seven, and for cell work that is the difference
+// between a plan and a plan nobody can execute.
+function _isWeekend(d){ if(!d) return false; var t=new Date(d+'T00:00:00');
+  if(isNaN(t.getTime())) return false; var n=t.getDay(); return n===0||n===6; }
+function _dayShort(d){ if(!d) return ''; try{ var t=new Date(d+'T00:00:00');
+  return isNaN(t.getTime())?'':t.toLocaleDateString(undefined,{weekday:'short'}); }catch(e){ return ''; } }
 function recomputeDayOffsets(e){ var anc=expAnchorDate(e); (e.blocks||[]).forEach(function(b){ if(b.date) b.dayOffset=daysBetween(anc,b.date); }); }
 // Blocks sorted by date (undated last), grouped into { key(date), day, blocks[] } day-groups.
 function dayGroups(e){ var idx={}; (e.blocks||[]).forEach(function(b,i){ idx[b.id]=i; });
@@ -4054,10 +4069,59 @@ function setBlockDone(expId,blockId,done,silent){
   f.block.done=!!done; f.block.completedAt=done?Date.now():null;
   syncExpStatus(f.exp); f.exp.updated=Date.now(); save();
   if(!silent) renderAll();
+  if(done && !silent) _offerSlip(expId,blockId);
+}
+// ── The slip ───────────────────────────────────────────────────────────────────────────────
+// The failure mode of a multi-day experiment: you do Tuesday's step on Thursday, tick it, and
+// every step after it is still scheduled from a day that did not happen. Nothing said so, and
+// two days later the plate is read 48 h early.
+//
+// snoozeBlock already moves a step and everything after it, preserving the spacing. This is the
+// same move, offered by the fact instead of waiting for you to remember — and it is an offer,
+// never automatic: a step ticked late is often a step you did on time and recorded later.
+function _laterUndone(e,b){
+  return (e.blocks||[]).filter(function(x){ return x.id!==b.id && x.date && b.date && x.date>=b.date && !x.done; });
+}
+function _offerSlip(expId,blockId){
+  var e=LB.data.experiments[expId]; if(!e) return;
+  var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0];
+  if(!b||!b.date||b.slipAsked) return;
+  var slip=daysBetween(b.date, todayStr());
+  if(!slip) return;                              // done on the day it was planned for
+  if(slip<0) return;                             // done early: nothing downstream is at risk yet
+  var later=_laterUndone(e,b);
+  if(!later.length) return;                      // it was the last step
+  b.slipAsked=true; save();
+  var next=later.slice().sort(function(x,y){ return (x.date||'').localeCompare(y.date||''); })[0];
+  lbConfirm('<b>'+esc(b.title||'This step')+'</b> was planned for '+esc(fmtDate(b.date))
+    +' and ticked today — <b>'+slip+' day'+(slip===1?'':'s')+' later</b>.<br><br>'
+    +'The '+later.length+' step'+(later.length===1?'':'s')+' after it '+(later.length===1?'is':'are')
+    +' still dated from the original plan, so <b>'+esc(next.title||'the next step')+'</b> is due '
+    +esc(fmtDate(next.date))+'. Move them all forward by '+slip+' day'+(slip===1?'':'s')
+    +' to keep the intervals you designed?<br><br>'
+    +'<span class="cc-dim">Say no if you did the work on time and are only recording it now.</span>',
+    {title:'This step slipped', ok:'Move the rest', html:true}).then(function(ok){
+      if(!ok){ toast('Left as planned'); return; }
+      var moved=0;
+      (e.blocks||[]).forEach(function(x){ if(x.id!==b.id && x.date && x.date>=b.date && !x.done){ x.date=addDays(x.date,slip); moved++; } });
+      recomputeDayOffsets(e); e.updated=Date.now(); save(); renderAll();
+      toast(moved+' step'+(moved===1?'':'s')+' moved — next is '+fmtDate(_laterUndone(e,b).sort(function(x,y){return (x.date||'').localeCompare(y.date||'');})[0].date));
+    });
 }
 function toggleDone(expId,blockId){
   var f=blockFinder(expId,blockId); if(!f) return;
   setBlockDone(expId,blockId,!f.block.done);
+}
+// carryoverForDate looks back CARRY_LOOKBACK_DAYS and no further, which is right for a list you
+// read every morning — three weeks of misses would be noise. But a step that falls off the back
+// of that window has not been done and nothing anywhere said so again. The experiment itself is
+// where that belongs: it is the thing that is stuck.
+function expOverdue(e){
+  if(!e || expArchived(e) || e.status==='abandoned' || e.status==='paused') return null;
+  var T=todayStr(), late=(e.blocks||[]).filter(function(b){ return b.date && b.date<T && !b.done; });
+  if(!late.length) return null;
+  late.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
+  return {n:late.length, oldest:late[0].date, days:daysBetween(late[0].date,T), blocks:late};
 }
 function expProgress(e){
   var bs=(e.blocks||[]); var done=0;
@@ -4990,13 +5054,19 @@ function nmPreview(){ var host=el('nm-preview'); if(!host) return;
   items.forEach(function(it){ if(!byDay[it.d]){ byDay[it.d]=[]; days.push(it.d); } byDay[it.d].push(it.html); });
   days.sort(function(a,b){ return a-b; });
   var rows=days.map(function(d){
-    return '<div class="nm-pv-row"><span class="nm-pv-day">Day '+d+' · '+fmtDate(addDays(start,d))+'</span>'
+    var _dd=addDays(start,d), _we=_isWeekend(_dd);
+    return '<div class="nm-pv-row'+(_we?' weekend':'')+'"><span class="nm-pv-day">Day '+d+' · '+fmtDate(_dd)
+      +' <span class="nm-pv-dow">'+esc(_dayShort(_dd))+'</span></span>'
       +'<span class="nm-pv-steps">'+byDay[d].join('')+'</span></div>';
   }).join('');
   var n=list.length+nExtra;
+  var nWe=days.filter(function(d){ return _isWeekend(addDays(start,d)); }).length;
   host.innerHTML=nmEchoSummary()+'<div class="nm-pv-hd">Will create '+n+' day-block'+(n!==1?'s':'')
     +' over '+days.length+' day'+(days.length!==1?'s':'')+(NM_PLATE?' + a plate map':'')
-    +'</div><div class="nm-pv-list">'+rows+'</div>'; }
+    +'</div>'
+    +(nWe?('<div class="nm-pv-we">'+nWe+' of these day'+(nWe===1?' falls':'s fall')+' on a weekend. '
+      +'Change the start date, or the day offsets above, if nobody is in.</div>'):'')
+    +'<div class="nm-pv-list">'+rows+'</div>'; }
 function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   var key=el('nm-type').value, tpl=LB.data.presets[key]||{title:'',blocks:[{dayOffset:0,title:'',html:'<p></p>'}]};
   var startDate=el('nm-date').value||todayStr();
@@ -5556,7 +5626,7 @@ function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.pa
   var grip='<span class="blk-grip" draggable="true" title="Drag to reorder" ondragstart="blkDragStart(event,\''+b.id+'\')" ondragend="blkDragEnd()">'
     +tbIco('<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',13)+'</span>';
   return '<div class="blk'+(b.done?' blk-is-done':'')+'" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"'
-    +' ondragover="blkDragOver(event,\''+b.id+'\')" ondragleave="blkDragLeave(event)" ondrop="blkDrop(event,\''+b.id+'\')"><div class="blk-hd">'+grip+doneBtn+pl+'<input class="blk-date" type="date" value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a prep calculator" onclick="calcMenu(\''+b.id+'\')">'+tbSvg('<path d="M7 5h10l-6 7 6 7H7"/>')+'calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+    +' ondragover="blkDragOver(event,\''+b.id+'\')" ondragleave="blkDragLeave(event)" ondrop="blkDrop(event,\''+b.id+'\')"><div class="blk-hd">'+grip+doneBtn+pl+'<input class="blk-date'+(_isWeekend(b.date)?' weekend':'')+'" type="date"'+(_isWeekend(b.date)?' title="This step falls on a weekend"':'')+' value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a prep calculator" onclick="calcMenu(\''+b.id+'\')">'+tbSvg('<path d="M7 5h10l-6 7 6 7H7"/>')+'calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
     +(b.calc?calcInputsHtml(b):'')
     +(b.plate&&pkey?platePreviewHtml(b.plate,pkey):'')
     +(b.proto ? protoBlockHtml(b,true)
@@ -5719,10 +5789,13 @@ function setupSummaryHtml(e){
   var edit='<button class="exh-setup-edit" title="Change these and re-apply them to the steps" onclick="openSetupEditor(\''+e.id+'\')">Edit setup</button>';
   // A record that came from somewhere else says so. Without it an imported experiment is
   // indistinguishable from one you ran, which is the one thing a lab notebook must never be.
+  var ov=expOverdue(e);
+  var over=ov?('<span class="exh-overdue" title="Oldest is '+esc(fmtDate(ov.oldest))+' — '+ov.days+' day'+(ov.days===1?'':'s')+' ago. Snooze a step to move the rest with it.">'
+    +ov.n+' step'+(ov.n===1?'':'s')+' overdue</span>'):'';
   var imp=e.imported?('<span class="exh-imported" title="Imported '+esc(new Date(e.imported.at).toISOString().slice(0,10))
     +(e.imported.originalId?(' · original id '+esc(e.imported.originalId)):'')+'">Imported'
     +(e.imported.project?(' from '+esc(e.imported.project)+(e.imported.folder?(' › '+esc(e.imported.folder)):'')):'')+'</span>'):'';
-  return (parts||imp)?('<div class="exh-setup">'+imp+parts+edit+'</div>'):'';
+  return (parts||imp||over)?('<div class="exh-setup">'+over+imp+parts+edit+'</div>'):'';
 }
 // ── Results handed over by an analysis app ─────────────────────────────────────────────────
 // A DC50 typed by hand into a notebook is where a published number stops being traceable to
