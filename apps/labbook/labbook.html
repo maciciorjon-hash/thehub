@@ -939,12 +939,30 @@ body.lb-rb-closed .rb-pane{display:none;}
 .res-flag{font-size:var(--fs-1);color:#e0803a;font-weight:600;}
 .res-del{background:none;border:none;color:var(--text3);font-size:var(--fs-6);cursor:pointer;line-height:1;padding:0 2px;}
 .res-del:hover{color:var(--danger);}
-.res-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-3);}
+/* 630px of table inside a 467px card with overflow:hidden — the exclude button was simply not
+   reachable. docs/UI.md: a wide table scrolls inside its own container, never the page. */
+.pl-notes{display:flex;flex-wrap:wrap;gap:5px 10px;align-items:baseline;margin-top:8px;padding-top:8px;
+  border-top:1px dashed var(--border);font-size:var(--fs-2);color:var(--text2);line-height:1.5;}
+.pl-notes-h{font-size:var(--fs-1);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);}
+.pl-note b{font-family:var(--mono);color:var(--text);font-weight:600;margin-right:3px;}
+.res-scroll{overflow-x:auto;}
+.res-tbl{width:100%;min-width:560px;border-collapse:collapse;font-size:var(--fs-3);}
 .res-tbl th{text-align:left;font-weight:600;color:var(--text3);font-size:var(--fs-1);text-transform:uppercase;
   letter-spacing:.4px;padding:7px 13px;border-bottom:1px solid var(--border);}
 .res-tbl td{padding:6px 13px;border-bottom:1px solid var(--border);}
 .res-tbl td.num{font-family:var(--mono);text-align:right;}
 .res-tbl tr:last-child td{border-bottom:none;}
+.res-tbl tr.excluded td{opacity:.45;text-decoration:line-through;}
+.res-tbl tr.excluded td.res-note,.res-tbl tr.excluded td.res-x{opacity:1;text-decoration:none;}
+.res-note input{width:100%;min-width:130px;min-height:26px;background:none;border:1px solid transparent;
+  border-radius:var(--r-1);padding:3px 6px;font-family:var(--sans);font-size:var(--fs-2);color:var(--text);}
+.res-note input:hover{border-color:var(--border);}
+.res-note input:focus{outline:none;background:var(--surface);border-color:var(--accent);}
+.res-x button{min-height:26px;padding:3px 9px;border-radius:var(--r-1);border:1px solid var(--border2);
+  background:none;color:var(--text3);font-family:var(--sans);font-size:var(--fs-1);font-weight:600;
+  cursor:pointer;white-space:nowrap;}
+.res-x button:hover{color:var(--danger);border-color:var(--danger);}
+.res-tbl tr.excluded .res-x button{color:var(--danger);border-color:var(--danger);}
 .res-tbl tr.flagged td{color:var(--text3);}
 .res-tbl tr.flagged td:first-child::after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:#e0803a;margin-left:6px;vertical-align:.1em;}
 .res-raw{font-family:var(--mono);font-size:var(--fs-2);padding:10px 13px;margin:0;white-space:pre-wrap;color:var(--text2);}
@@ -2523,7 +2541,7 @@ function plateWellShort(w){ if(!w) return '';
 function plateWellTip(p,id,w){ if(!w) return id;
   var t=plateTypeById(p,w.typeId); var bits=[id]; if(t) bits.push(t.name);
   if(w.cellLine) bits.push(w.cellLine); if(w.compound) bits.push(w.compound);
-  if(w.conc) bits.push(w.conc); if(w.label) bits.push(w.label);
+  if(w.conc) bits.push(w.conc); if(w.label) bits.push(w.label); if(w.note) bits.push('— '+w.note);
   PLATE_FLAGS.forEach(function(f){ if(w[f.k]) bits.push(f.lbl); });
   return bits.join(' · '); }
 function plateWellFlags(w){ if(!w) return '';
@@ -2674,9 +2692,27 @@ function plateColSummary(p){
 function plateSummaryHtml(p){ var s=plateColSummary(p).concat(plateSummary(p)); if(!s.length) return '';
   return '<table class="pl-sum-t">'+s.map(function(g){
     return '<tr><td class="pl-sum-r">'+(g.type?'<i style="background:'+g.type.color+'"></i>':'')+esc(g.range)+'</td>'
-      +'<td class="pl-sum-d">'+esc(g.desc)+'</td><td class="pl-sum-n">'+g.n+'</td></tr>'; }).join('')+'</table>'; }
-function plateSummaryText(p){ return plateColSummary(p).concat(plateSummary(p))
-  .map(function(g){ return g.range+'  '+g.desc+'  ('+g.n+')'; }).join('\n'); }
+      +'<td class="pl-sum-d">'+esc(g.desc)+'</td><td class="pl-sum-n">'+g.n+'</td></tr>'; }).join('')+'</table>'
+    +(function(){ var nt=plateNotes(p); if(!nt.length) return '';
+        return '<div class="pl-notes"><span class="pl-notes-h">Notes</span>'
+          +nt.map(function(x){ return '<span class="pl-note"><b>'+esc(x.well)+'</b> '+esc(x.note)+'</span>'; }).join('')+'</div>'; })(); }
+function plateNotes(p){
+  if(!p||!p.wells) return [];
+  return Object.keys(p.wells).filter(function(id){ return (p.wells[id]||{}).note; })
+    .sort(function(a,b){ var A=wellRC(a),B=wellRC(b); return (A.r-B.r)||(A.c-B.c); })
+    .map(function(id){ return {well:id, note:String(p.wells[id].note)}; });
+}
+function plateNotesText(p){
+  var n=plateNotes(p); if(!n.length) return '';
+  return n.map(function(x){ return x.well+' — '+x.note; }).join('; ');
+}
+function plateSummaryText(p){
+  var body=plateColSummary(p).concat(plateSummary(p))
+    .map(function(g){ return g.range+'  '+g.desc+'  ('+g.n+')'; }).join('\n');
+  var nt=plateNotesText(p);
+  // Notes go into the copied text and therefore into the Cmd+K content index: an annotation
+  // nobody can find later is not an annotation.
+  return nt?(body+'\nNotes: '+nt):body; }
 function copyPlateSummary(key){ var p=plateOf(key); if(!p) return;
   var txt=(p.title?p.title+'\n':'')+plateDims(p).r*plateDims(p).c+'-well plate\n'+plateSummaryText(p);
   try{ navigator.clipboard.writeText(txt); toast('Plate layout copied'); }
@@ -3241,7 +3277,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'<div class="pl-sec"><div class="pl-sec-t">'+(n?(n+' well'+(n!==1?'s':'')+' selected'):'Select wells to edit')+'</div>'
     +'<div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')
       +(expUsesCompounds(_plExp())?(fld('compound','Compound')+fld('conc','Concentration')):'')
-      +fld('label','Label (override)')+'</div>'
+      +fld('label','Label (override)')+fld('note','Note')+'</div>'
     +flagsHtml
     +'<div class="pl-row2"><button class="pl-btn" onclick="plSelectAll()">Select all</button><button class="pl-btn" onclick="plClearSel()">Deselect</button>'
     +'<button class="pl-btn'+(PL.touchAdd?' on':'')+'" onclick="plToggleTouchAdd()" title="Keep adding to the selection (like holding ctrl)">'+(PL.touchAdd?'✓ Add mode':'Add mode')+'</button>'
@@ -5698,13 +5734,38 @@ function resultsPaneHtml(e){
       +'<span class="res-when">'+esc((r.createdAt||'').slice(0,10))+'</span>'
       +(flagged?('<span class="res-flag">'+flagged+' flagged</span>'):'')
       +'<button class="res-del" title="Remove this result" onclick="delResult(\''+e.id+'\',\''+esc(r.id||'')+'\')">&times;</button></div>'
-      +'<table class="res-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(r.potencyLabel||'Potency')
-      +'</th><th>'+esc(r.effectLabel||'Effect')+'</th><th>Hill</th><th>R²</th></tr></thead><tbody>'
-      +rows.map(function(x){ return '<tr'+(x.flag?' class="flagged"':'')+'><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td>'
+      +'<div class="res-scroll"><table class="res-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(r.potencyLabel||'Potency')
+      +'</th><th>'+esc(r.effectLabel||'Effect')+'</th><th>Hill</th><th>R²</th><th>Note</th><th></th></tr></thead><tbody>'
+      +rows.map(function(x,ri){
+        // Echo's flag is the fitter's opinion; excluded is yours. They are kept apart because a
+        // flagged curve you have checked and kept is a different thing from one you threw out,
+        // and only the second may leave the numbers out of the paragraph.
+        var xid="'"+esc(e.id)+"','"+esc(r.id||'')+"',"+ri;
+        return '<tr class="'+(x.flag?'flagged ':'')+(x.excluded?'excluded':'')+'">'
+        +'<td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td>'
         +'<td class="num">'+_rn(x.potency)+'</td><td class="num">'+_rn(x.effect)+'</td>'
-        +'<td class="num">'+_rn(x.hill)+'</td><td class="num">'+_rn(x.r2)+'</td></tr>'; }).join('')
-      +'</tbody></table></div>';
+        +'<td class="num">'+_rn(x.hill)+'</td><td class="num">'+_rn(x.r2)+'</td>'
+        +'<td class="res-note"><input value="'+esc(x.note||'')+'" placeholder="'+(x.flag?'Why it is flagged, or why you kept it':'Note…')
+          +'" oninput="setResultNote('+xid+',this.value)"></td>'
+        +'<td class="res-x"><button title="'+(x.excluded?'Excluded from the results sentence — click to put it back':'Exclude this measurement from the results sentence')
+          +'" onclick="toggleResultExcluded('+xid+')">'+(x.excluded?'excluded':'exclude')+'</button></td></tr>'; }).join('')
+      +'</tbody></table></div></div>';
   }).join('');
+}
+// A note on a measurement is the annotation that matters most: it is where the person who ran
+// the plate says what the fitter could not know.
+function _resRow(expId,rid,i){
+  var e=LB.data.experiments[expId]; if(!e||!e.integration) return null;
+  var set=(e.integration.results||[]).filter(function(r){ return String(r.id)===String(rid); })[0];
+  return (set&&set.rows&&set.rows[i])?{e:e,row:set.rows[i]}:null;
+}
+function setResultNote(expId,rid,i,v){
+  var f=_resRow(expId,rid,i); if(!f) return;
+  f.row.note=String(v||''); f.e.updated=Date.now(); queueSave();
+}
+function toggleResultExcluded(expId,rid,i){
+  var f=_resRow(expId,rid,i); if(!f) return;
+  f.row.excluded=!f.row.excluded; f.e.updated=Date.now(); save(); renderEditor();
 }
 function delResult(expId,rid){
   var e=LB.data.experiments[expId]; if(!e||!e.integration) return;
@@ -5716,7 +5777,7 @@ function delResult(expId,rid){
 function pubResultsSentence(e){
   var rs=(e.integration&&e.integration.results)||[];
   var rows=[]; var pl='DC50', el2='Dmax', pu='nM', eu='%';
-  rs.forEach(function(r){ (r.rows||[]).forEach(function(x){ if(!x.flag&&isFinite(parseFloat(x.potency))) rows.push(x); });
+  rs.forEach(function(r){ (r.rows||[]).forEach(function(x){ if(!x.flag&&!x.excluded&&isFinite(parseFloat(x.potency))) rows.push(x); });
     if(r.potencyLabel) pl=String(r.potencyLabel).split(' ')[0];
     if(r.effectLabel) el2=String(r.effectLabel).split(' ')[0];
     // The unit used to be the literal 'nM', which happens to be right for Echo's DC50_nM and

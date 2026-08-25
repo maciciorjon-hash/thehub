@@ -1796,6 +1796,31 @@ rather than pinning its centre (the bug `#lb-tip` had), and flips below the sele
 is no room above. Everything on it is also in the Home pane; the point is that the eight you use
 follow the text, so the other forty do not have to sit above every screen waiting.
 
+## Annotate, audited
+
+Of the four verbs the product now leads with, this was the one never looked at. Rich text
+exists on blocks, protocol steps, whole blocks, observations, days and note pages; files and
+floating images have captions. Two things carried no annotation at all, and both are where
+log meets analyse:
+
+**A measurement could not be annotated or excluded.** Echo raises a flag; there was nowhere to
+say *why*, and no way to record that you had looked at a flagged curve and kept it, or looked at
+a clean one and thrown it out. `x.note` and `x.excluded` are separate from `x.flag` on purpose:
+the flag is the fitter's opinion, excluded is yours, and **only yours removes the number from
+the results sentence**. An excluded row stays in the table, struck through, with its reason — a
+measurement you discarded is part of the record, not absent from it.
+
+Found while testing it: the table is 630px inside a 467px card with `overflow:hidden`, so the
+new exclude button was simply unreachable. `docs/UI.md` already says a wide table scrolls inside
+its own container and never the page; it does now.
+
+**A well could not carry a note.** "B7 meniscus", "F2 bubble, re-read" — the thing you write on
+the lid. `w.note` is deliberately **not** part of `plateSummary`'s grouping key: a note is about
+that well, not a different condition, and letting it split the ranges would shred the layout
+summary that makes a 384-well plate readable in five lines. It shows in the well tooltip, as its
+own line under the summary, and in `plateSummaryText` — which is what puts it in the Cmd+K
+content index, because an annotation nobody can find later is not an annotation.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
