@@ -4747,6 +4747,8 @@ function buildPubReadyFromExp(e){
   }
   if(o.dev){ var d=deviationsSentence(e); if(d){ H('Deviations from the protocol'); P(esc(d)); } }
   if(o.results){ var r=pubResultsSentence(e); if(r){ H('Results'); P(esc(r)); } }
+  var sw=analysisSoftware();
+  if(sw && out.join(' ').indexOf(esc(sw))<0) P('Data were analysed in '+esc(sw)+'.');
   try{ e.pubSrcSig=_pubSourceSig(e); }catch(_e){}
   return out.length?out.join(''):'<p></p>';
 }
@@ -5966,6 +5968,7 @@ function renderExpEditor(host,e){
     body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods</span>'
       +'<span class="pub-secs">'+_toggles+'</span><span class="grow"></span>'
       +'<button class="pub-btn" onclick="rebuildPub(\''+e.id+'\')" title="Regenerate the prose from this experiment\'s steps + calculators">'+tbIco(P_REFRESH,13)+' Rebuild</button>'
+      +'<button class="pub-btn" onclick="exportMethods(\''+e.id+'\')" title="The paragraph, the plate layout and the numbers — on their own, to send or to paste into a manuscript">'+tbIco(P_FILE,13)+' Methods sheet</button>'
       +'<button class="pub-btn primary" onclick="copyPubReady(\''+e.id+'\')">Copy</button></div>'
       +(pubIsStale(e)?('<div class="pub-stale">The steps or their numbers have changed since this paragraph was written. '
         +'<button onclick="rebuildPub(\''+e.id+'\')">Rebuild it</button> &mdash; or leave it, if the wording is yours.</div>'):'')
@@ -6550,6 +6553,7 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="Copy, formatted for OneNote" onmousedown="event.preventDefault();copyForOneNote()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="9" y="3" width="12" height="16" rx="2"/><path d="M15 21H5a2 2 0 01-2-2V7"/><path d="M12.5 15V8.5l5 6.5V8.5"/>')+'</span><span class="rb-lbtn-lbl">OneNote</span></button>'
   +'<button class="rb-lbtn" title="Save as a Word file" onmousedown="event.preventDefault();exportOneNoteDoc()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><path d="M9 12l1.6 5 1.4-3.6L13.4 17 15 12"/>')+'</span><span class="rb-lbtn-lbl">Word</span></button>'
   +'<button class="rb-lbtn" id="backup-btn" title="'+esc(backupStatus().detail)+' Back up now \u00b7 right-click for the folder" onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
+  +'<button class="rb-lbtn" title="The software named at the end of every Methods paragraph" onmousedown="event.preventDefault();setAnalysisSoftware()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 19V5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1z"/><path d="M8 15l3-4 2 2.5L16 9"/>')+'</span><span class="rb-lbtn-lbl">Analysis</span></button>'
   +'<button class="rb-lbtn" title="Restore a daily snapshot" onmousedown="event.preventDefault();restoreFromSnapshot()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Snapshots</span></button>'
   +'<button class="rb-lbtn" title="Light / dark" onmousedown="event.preventDefault();toggleTheme()"><span class="rb-lbtn-ico">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>')+'</span><span class="rb-lbtn-lbl">Theme</span></button>'
   +'<button class="rb-lbtn" title="Restore from a backup file" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore</span></button>'
@@ -8139,6 +8143,39 @@ function exportLab(id){
     setTimeout(function(){ try{ window.print(); }catch(e2){} },80);
   });
 }
+// ── The methods sheet ──────────────────────────────────────────────────────────────────────
+// What you send a collaborator or paste into a manuscript: the paragraph, the plate layout it
+// refers to, and the numbers. Not the notebook. The full PDF is the record and keeps every
+// step, every tick and every attachment; this is the same experiment with everything that is
+// only meaningful to the person who ran it taken out.
+function buildMethodsDoc(e){
+  if(!e) return PRINT_CSS;
+  var h=PRINT_CSS;
+  h+='<div class="pd-head"><div class="pd-kicker">Methods</div>'
+    +(e.code?('<div class="pd-code">'+esc(e.code)+'</div>'):'')
+    +'<div class="pd-title">'+esc(e.title||e.code||'Experiment')+'</div>'
+    +'<div class="pd-crumb">'+esc(projCrumb(e))+(e.startDate?(' · '+esc(fmtDate(e.startDate))):'')+'</div></div>';
+  var body=(e.pubReady&&e.pubReady.replace(/<[^>]+>/g,'').trim())?e.pubReady:buildPubReadyFromExp(e);
+  h+='<div class="pd-body">'+body+'</div>';
+  if(e.plate) h+='<div class="pd-sec-hd">Plate layout</div>'+pdPlate(e.plate);
+  (e.blocks||[]).forEach(function(b){ if(b.plate) h+=pdPlate(b.plate); });
+  var res=pdResults(e); if(res) h+=res;
+  return h+foot();
+}
+function exportMethods(id){
+  var e=(id&&LB.data.experiments[id])||_curExp(); if(!e){ toast('Open an experiment first'); return; }
+  // The paragraph is a snapshot; exporting a stale one is the version that goes out of the lab.
+  if(pubIsStale(e)) toast('Heads up — the steps changed since this paragraph was written');
+  var pr=el('print-root'); pr.innerHTML=buildMethodsDoc(e);
+  Promise.all([hydrateAtt(pr),printFloatLayers(pr)]).then(function(){
+    var was=document.title;
+    document.title=((e.code||e.title||'experiment')+' — methods').replace(/[\\/:*?"<>|]/g,'-');
+    var restore=function(){ document.title=was; window.removeEventListener('afterprint',restore); };
+    window.addEventListener('afterprint',restore);
+    setTimeout(restore,8000);
+    setTimeout(function(){ try{ window.print(); }catch(_e){} },80);
+  });
+}
 function exportPDF(){
   var pr=el('print-root'); pr.innerHTML=buildPrintDoc();
   Promise.all([hydrateAtt(pr),printFloatLayers(pr)]).then(function(){
@@ -8441,6 +8478,18 @@ function _nudgeBackupFolder(){
     {title:'Your notebook is backed up here only'});
 }
 // Recover from the rolling snapshot when there is no backup file to hand.
+function analysisSoftware(){ return (LB.data.settings&&LB.data.settings.analysisSoftware)||''; }
+function setAnalysisSoftware(){
+  lbPrompt('Which software turned the numbers into results? It closes every Methods paragraph.',
+    analysisSoftware(), {title:'Analysis software', ok:'Save',
+      ph:'e.g. GraphPad Prism 10.2'}).then(function(v){
+    if(v==null) return;
+    LB.data.settings=LB.data.settings||{};
+    LB.data.settings.analysisSoftware=String(v).trim();
+    save(); renderEditor();
+    toast(LB.data.settings.analysisSoftware?('Methods will end with "'+LB.data.settings.analysisSoftware+'"'):'Cleared');
+  });
+}
 function restoreFromSnapshot(){
   _idb().then(function(db){
     var os=db.transaction('h','readonly').objectStore('h');

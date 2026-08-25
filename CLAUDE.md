@@ -1738,6 +1738,21 @@ The MG132 step also said "aspirate media and replace" above sub-steps that spike
 100 µL. The preset says spike, and says why: aspirating takes the conditioned medium and risks
 lifting the monolayer.
 
+## The methods sheet, and the software that closes the paragraph
+
+Two additions that follow from the repositioning (below): the product is an **experiment
+tracker with export**, so the thing you send out matters as much as the thing you keep.
+
+- **`exportMethods(id)`** prints the paragraph, the plate layouts it refers to and the results
+  table — and nothing else. The full PDF is the *record*: every step, every tick, every
+  attachment. This is the same experiment with everything that only means something to the
+  person who ran it taken out. It warns first if the paragraph is stale, because a stale export
+  is the version that leaves the lab.
+- **`analysisSoftware()`** is one lab-wide setting (View → Analysis) appended as the last
+  Methods sentence — "Data were analysed in GraphPad Prism 10.2." A Nature paragraph names the
+  software and its version, and writing it into each of the thirteen presets would be thirteen
+  places to update when Prism goes to v11. It is skipped when something has already said it.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
