@@ -1545,6 +1545,31 @@ The corrections went into `CALC_KINDS`, not into the prose, so the next experime
 `spike`'s source stock is **optional** for exactly that reason: with no `stockUM`/`finalUM` it
 reports the volume per well and how much 10× to make, and says nothing about how to make it.
 
+### Methods prose is a Methods section, not a transcript
+
+Jon's read of the publication-ready output was that it explained itself: it carried the "why"
+("aspirating risks lifting the monolayer"), the bench imperatives and the tense of an
+instruction. A Methods section is the minimum complete information to repeat the work, in the
+past tense — the yardstick is a Nature methods paragraph, ~200 words.
+
+The machinery for that already existed and was not being used. **`CALC_PUB[kind]` writes the
+Methods sentence; the block prose is bench instruction**, and `CALC_PUB_FULL` marks the
+calculators that speak for the whole block so the prose beside them is dropped. `rtxmix` and
+`spike` are both, which is what removed most of the transcript. What is left of the "why" is
+wrapped in `pub-skip`, which `_pubText` already strips.
+
+Two things the setup line was doing that no Methods section does:
+
+- **Repeating what a block already said.** `_pubSetupText(e, said)` now takes the assembled
+  Methods text and is built *last*: it drops its seeding clause when a calculator has already
+  written one with the real numbers, and drops any leftover field whose value appears in the
+  text. The format survives that as "Assays were run in 96-well plates." when nothing else
+  states it — without the plate format the section cannot be repeated.
+- **Printing the form.** A `check` field became "MG132 pre-treatment yes". A tick says nothing:
+  the step it switches on is either in the Methods or it is not.
+
+283 words for the whole NanoBRET preset, all of it past tense, no rationale, numbers intact.
+
 `_pipHint(µL)` is the shared "that is not a volume anyone pipettes" test; the factor scales, so
 0.09 µL is not answered with a fixed 1:10 that produces 0.9 µL.
 
@@ -1564,6 +1589,28 @@ all in the shared `.ci-f` styles rather than one panel's:
 
 Same rule for `.nm-setup-plate`, whose two-line label had the box centred in the gap between
 the lines.
+
+### `tools/audit_align.js` — the alignment audit
+
+A static scan cannot see whether the controls on a row line up, so this is the browser-side
+companion to `tools/audit_app.py`: load each app into a 1280×900 iframe over http, `eval` the
+file in the frame, call `__alignAudit()`, and it returns one line per row that is out of line.
+Its own header lists the four rules and, more usefully, the four things it deliberately ignores
+— every one of which was a false positive first (a checkbox is *meant* to be shorter than a
+text field; a hidden native checkbox behind a custom switch has no height; a stacked group is
+centred as a block on purpose; a 200px pane is not a field row).
+
+The first pass over 18 apps found **18 rows** across ten of them, and every one was the same
+root cause: a bar whose controls had never been given one height. `docs/UI.md` has said **32px**
+since it was written and nothing enforced it. Blueprint's top bar carried 35/13/33/28/28/28;
+Blot's toolbar had five heights in one strip; Incubator's had four in four controls. Fixed per
+bar — `height`, not `min-height`, since most of the offenders were already *taller* than the
+target — plus two that were the `.ci-f` bug in another costume: **LDI's `.params-strip`**
+centred each labelled group as a block, so its shorter controls sat off the line, and
+**Cadence's ribbon title** hung 8px below the tabs. Helix's 2px came from a borderless button
+beside bordered selects, which is the same transparent-border fix `.btn` needed in Labbook.
+
+All 20 surfaces (19 apps + standalone Labbook with an experiment open) come back clean.
 
 **The setup editor asked questions the experiment does not have.** `esRender` mapped
 `SETUP_SCHEMA[type].fields` directly, so a preset's `setupHide` was honoured at creation and
