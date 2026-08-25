@@ -957,6 +957,8 @@ body.lb-rb-closed .rb-pane{display:none;}
 /* ── Results handed over from an analysis app ─────────────────────────────────────────── */
 .res-empty{padding:52px 22px;text-align:center;color:var(--text3);font-size:var(--fs-4);line-height:1.7;}
 .res-empty .t{font-size:var(--fs-5);font-weight:600;color:var(--text2);margin-bottom:6px;}
+.res-empty .btn{margin-top:16px;}
+.res-top{display:flex;justify-content:flex-end;margin-bottom:10px;}
 .res-card{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);margin-bottom:14px;overflow:hidden;}
 .res-hd{display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1px solid var(--border);
   font-size:var(--fs-3);font-weight:600;}
@@ -5884,14 +5886,35 @@ function setupSummaryHtml(e){
 // the fitting app raised, so a curve Echo was unhappy about stays visibly unhappy here.
 function _rn(v,d){ var n=parseFloat(v); if(!isFinite(n)) return '—';
   return (Math.abs(n)>=100?n.toFixed(0):Math.abs(n)>=10?n.toFixed(1):n.toFixed(2)); }
+// Not every assay is fitted in Echo. A NanoBRET read on a plate reader and fitted in Prism is
+// a result like any other, and a Results tab that names one app is a dead end for every
+// experiment that does not use it. The column headings follow the assay, and the numbers can
+// arrive as a pasted table — pasted, so the row still travels with its compound, target and
+// fit statistics attached rather than being retyped one field at a time.
+var RESULT_LABELS={
+  WB:{p:'DC50',pu:'nM',e:'Dmax',eu:'%'},   HB:{p:'DC50',pu:'nM',e:'Dmax',eu:'%'},
+  KD:{p:'DC50',pu:'nM',e:'Dmax',eu:'%'},   D2B:{p:'DC50',pu:'nM',e:'Dmax',eu:'%'},
+  CTG:{p:'IC50',pu:'nM',e:'Span',eu:'%'},  NB:{p:'IC50',pu:'nM',e:'Emax',eu:'%'},
+  RTX:{p:'IC50',pu:'nM',e:'Emax',eu:'%'}
+};
+function resultLabels(e){ return RESULT_LABELS[e&&e.type]||{p:'Potency',pu:'nM',e:'Effect',eu:'%'}; }
+// Echo fits the plate assays it was built for. Naming it above a NanoBRET tells the user the
+// notebook does not know what experiment it is holding.
+var ECHO_FED_TYPES={HB:1,KD:1,D2B:1,CTG:1};
 function resultsPaneHtml(e){
   var rs=(e.integration&&e.integration.results)||[];
+  var L=resultLabels(e);
+  var add='<button class="btn ghost" onclick="openResultsPaste(\''+e.id+'\')">Paste results…</button>';
   if(!rs.length){
     return '<div class="res-empty"><div class="t">No results attached yet</div>'
-      +'<div>Fit curves in <b>Echo</b>, then press <b>Send to Labbook</b> with this experiment open. '
-      +'DC50, D<sub>max</sub>, Hill slope and R² arrive as data — not retyped.</div></div>';
+      +'<div>'+esc(L.p)+', '+esc(L.e)+', Hill slope and R² belong here as data — each row with its own note '
+      +'and its own exclusion — not as a screenshot of a curve.</div>'
+      +'<div>'+(ECHO_FED_TYPES[e.type]
+        ? 'Fit in <b>Echo</b> and press <b>Send to Labbook</b> with this experiment open, or paste a table from whatever you fitted in.'
+        : 'Paste a table from whatever you fitted in — Prism, R, Excel — one row per compound.')
+      +'</div>'+add+'</div>';
   }
-  return rs.map(function(r,i){
+  return '<div class="res-top">'+add+'</div>'+rs.map(function(r,i){
     var rows=(r.rows||[]);
     if(!rows.length) return '<div class="res-card"><div class="res-hd">'+esc(r.label||r.source||'result')+'</div>'
       +'<pre class="res-raw">'+esc(JSON.stringify(r.data||r,null,1)).slice(0,1200)+'</pre></div>';
@@ -5918,6 +5941,87 @@ function resultsPaneHtml(e){
           +'" onclick="toggleResultExcluded('+xid+')">'+(x.excluded?'excluded':'exclude')+'</button></td></tr>'; }).join('')
       +'</tbody></table></div></div>';
   }).join('');
+}
+// ── Results pasted from another fitting app ────────────────────────────────────────────────
+// The column order is not fixed because nobody's export is: the header is matched by name, and
+// a paste with no header falls back to the order the Results CSV export writes.
+function _resNum(v){
+  // ">10000" and "<0.1" are real entries in a potency column and parseFloat returns NaN for
+  // both. The comparison is dropped rather than the row: a bounded value is still a value.
+  var t=String(v==null?'':v).replace(/[<>~≥≤]/g,'').replace(/,/g,'').trim();
+  var m=t.match(/-?\d*\.?\d+(?:[eE][-+]?\d+)?/); if(!m) return null;
+  var n=parseFloat(m[0]); return isFinite(n)?n:null;
+}
+function _resParse(text){
+  var lines=String(text||'').split(/\r?\n/).filter(function(l){ return l.trim(); });
+  if(!lines.length) return [];
+  var sep=(lines[0].indexOf('\t')>=0)?'\t':(lines[0].indexOf(';')>=0?';':',');
+  function cells(l){ return l.split(sep).map(function(c){ return c.trim().replace(/^"|"$/g,''); }); }
+  var head=cells(lines[0]).map(function(c){ return c.toLowerCase(); });
+  function col(res){ for(var i=0;i<head.length;i++){ for(var j=0;j<res.length;j++){ if(res[j].test(head[i])) return i; } } return -1; }
+  var ix={ compound:col([/^compound/,/^sample/,/^cpd/,/^name/,/^id$/]),
+           target:col([/^target/,/^protein/,/^gene/]),
+           potency:col([/dc50/,/ic50/,/ec50/,/potency/,/^kd\b/,/^ki\b/]),
+           effect:col([/dmax/,/emax/,/span/,/effect/,/amplitude/,/top/]),
+           hill:col([/hill|slope/]), r2:col([/r2|r²|r\^2/]) };
+  var body=lines.slice(1);
+  if(ix.compound<0 && ix.potency<0){ ix={compound:0,target:1,potency:2,effect:3,hill:4,r2:5}; body=lines; }
+  return body.map(function(l){
+    var c=cells(l);
+    function g(i){ return (i>=0 && i<c.length)?c[i]:''; }
+    var praw=g(ix.potency);
+    var row={ compound:g(ix.compound), target:g(ix.target),
+             potency:_resNum(praw), effect:_resNum(g(ix.effect)),
+             hill:_resNum(g(ix.hill)), r2:_resNum(g(ix.r2)) };
+    // A bound is not a number and the table has one column for it. Keeping ">10000" as 10000
+    // with nothing said would turn a curve that never reached its bottom into a measured
+    // potency, so the bound goes into the row's own note where the annotation already lives.
+    if(/[<>≥≤]/.test(praw)) row.note='Reported as '+praw.trim();
+    return row;
+  }).filter(function(x){ return x.compound && x.potency!=null; });
+}
+function openResultsPaste(expId){
+  var e=LB.data.experiments[expId]; if(!e) return;
+  var L=resultLabels(e);
+  var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
+  card.innerHTML='<div class="modal-t">Paste results</div>'
+    +'<div class="dlg-msg">One row per compound, tab- or comma-separated, with a header row. '
+    +'Compound, target, potency, effect, Hill and R² are matched by column name — the order does not matter, '
+    +'and columns you do not have can be left out.</div>'
+    +'<div class="mrow"><label>Fitted in</label><input id="rp-src" autocomplete="off" placeholder="Prism, R, Excel…"></div>'
+    +'<div style="display:flex;gap:12px">'
+    +'<div class="mrow" style="flex:1;min-width:0"><label>Potency</label><div style="display:flex;gap:7px">'
+      +'<input id="rp-pl" style="flex:1;min-width:0"><input id="rp-pu" style="width:64px;flex:none" title="Unit"></div></div>'
+    +'<div class="mrow" style="flex:1;min-width:0"><label>Effect</label><div style="display:flex;gap:7px">'
+      +'<input id="rp-el" style="flex:1;min-width:0"><input id="rp-eu" style="width:64px;flex:none" title="Unit"></div></div>'
+    +'</div>'
+    +'<div class="mrow col"><label>Table</label>'
+    +'<textarea id="rp-ta" spellcheck="false" style="width:100%;min-height:170px;font:12px/1.45 var(--mono);'
+    +'background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:9px;color:var(--text);resize:vertical"></textarea></div>'
+    +'<div class="dlg-msg" id="rp-count" style="min-height:18px"></div>'
+    +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" id="lb-dlg-cancel">Cancel</button>'
+    +'<button class="btn" id="rp-ok">Attach</button></div>';
+  d.classList.add('open'); d._onCancel=_lbDlgClose; el('lb-dlg-cancel').onclick=_lbDlgClose;
+  el('rp-src').value='Prism'; el('rp-pl').value=L.p; el('rp-pu').value=L.pu; el('rp-el').value=L.e; el('rp-eu').value=L.eu;
+  var ta=el('rp-ta');
+  // The count is live because a paste that matched no columns should say so before you commit
+  // to it, not after it has attached an empty set.
+  ta.oninput=function(){ var n=_resParse(ta.value).length;
+    el('rp-count').textContent=ta.value.trim()?(n?(n+' measurement'+(n===1?'':'s')+' read.'):'No rows read — is there a compound and a potency column?'):''; };
+  el('rp-ok').onclick=function(){
+    var rows=_resParse(ta.value);
+    if(!rows.length){ lbAlert('Nothing could be read from that table. Each row needs a compound name and a potency.',{title:'No results read'}); return; }
+    var pl=(el('rp-pl').value||'Potency').trim(), pu=(el('rp-pu').value||'').trim();
+    var el2=(el('rp-el').value||'Effect').trim(), eu=(el('rp-eu').value||'').trim();
+    var src=(el('rp-src').value||'pasted').trim();
+    e.integration=e.integration||{}; e.integration.results=e.integration.results||[];
+    e.integration.results.push({ id:'paste-'+Date.now(), source:src,
+      label:pl+' · '+rows.length+' measurement'+(rows.length===1?'':'s'),
+      potencyLabel:pl+(pu?(' ('+pu+')'):''), effectLabel:el2+(eu?(' ('+eu+')'):''),
+      potencyUnit:pu, effectUnit:eu, rows:rows, createdAt:new Date().toISOString() });
+    e.updated=Date.now(); _lbDlgClose(); save(); renderEditor();
+  };
+  setTimeout(function(){ ta.focus(); },30);
 }
 // A note on a measurement is the annotation that matters most: it is where the person who ran
 // the plate says what the fitter could not know.
