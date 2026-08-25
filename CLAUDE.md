@@ -375,9 +375,9 @@ blocks)` hook for structural changes — CTG uses it to drop the readout you did
 
 **Templates** live in `PRESET_SEED` and now carry `{{placeholders}}` plus `ul.lb-check`
 checklists (which is what drives the existing carry-over logic). The seed version flag was
-bumped `_presetV2` → `_presetV3` → `_presetV4` → **`_presetV5`** (2026-08-25, `pub` Methods sentences and the closing analysis clause), so `seedPresets()` re-seeds all built-in presets once
+bumped `_presetV2` → `_presetV3` → `_presetV4` → `_presetV5` → **`_presetV6`** (2026-08-25, `pub` Methods sentences, the closing analysis clause and the `w` waits), so `seedPresets()` re-seeds all built-in presets once
 per browser. Custom/user-added presets are untouched; hand-edits to built-in presets made
-before this change are overwritten. **Bump to `_presetV6` if you edit `PRESET_SEED` again.**
+before this change are overwritten. **Bump to `_presetV7` if you edit `PRESET_SEED` again.**
 
 **Snooze** — `snoozeBlock(expId, blockId, n)` pushes a step **and every later-dated step in the
 same experiment** forward n days, then `recomputeDayOffsets`. Buttons in `blkCardHtml` (needs
@@ -1818,6 +1818,27 @@ Three rules make it right rather than annoying:
 seven, and the app knew the weekday all along. The New-experiment preview now names the day
 (`Fri`, `Sat`) and counts them — *"2 of these days fall on a weekend"* — and a weekend date on a
 step is coloured. It does not move anything: which day to lose is a decision about the science.
+
+**The day had no clock.** A NanoBRET day is 1 h of MG132, then 3 h of compound, then substrate,
+then the read — and the day was a bag of blocks with no sequence and no time: the waits were
+prose, and the only way to know when the read was due was to remember when you started.
+
+`b.waitMin` is the wait **after** a step before the next one can start. `dayPlan(e,date)` walks
+that date's blocks in order and accumulates the offsets; `dayPlanLine` prints the day as
+*"09:00 → 13:05 · 4 h 5 min of waits"* in the day-group header, and each step wears its own wait
+with the clock time the next one is due.
+
+The part that matters is the anchor. **The schedule is relative until you tick something, then
+it is wall-clock from the step you actually completed** — so a day that started at 09:00 reads
+09:00 → 10:00 → 13:00, and a day that started at 11:20 re-times itself with no input. Failing a
+tick it anchors on *now*, and only for today; a future day shows the shape and no false times.
+
+Waits come from three places and no new typing: `w` on a preset block (seeded for the NanoBRET
+MG132/compound/substrate steps, CTG's equilibrations and HiBiT's lytic incubation, shipped by
+`_presetV6`), an Archive stage's `durationH` — but **only under 24 h**, because a longer wait is
+already expressed by the next stage's date — and the `+ wait` button on any step. The wait feeds
+the existing bench timers rather than a second timing system: `startWaitTimer` pushes the
+remaining time into `LB_TIMERS`, which already beeps and already holds the screen wake lock.
 
 **A step could fall off the back of the carry-over and never be mentioned again.**
 `CARRY_LOOKBACK_DAYS` is 21, which is right for a list read every morning — three weeks of
