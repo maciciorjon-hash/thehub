@@ -360,9 +360,9 @@ blocks)` hook for structural changes — CTG uses it to drop the readout you did
 
 **Templates** live in `PRESET_SEED` and now carry `{{placeholders}}` plus `ul.lb-check`
 checklists (which is what drives the existing carry-over logic). The seed version flag was
-bumped `_presetV2` → **`_presetV3`**, so `seedPresets()` re-seeds all built-in presets once
+bumped `_presetV2` → `_presetV3` → **`_presetV4`** (2026-08-25, when every block gained a `pub` Methods sentence), so `seedPresets()` re-seeds all built-in presets once
 per browser. Custom/user-added presets are untouched; hand-edits to built-in presets made
-before this change are overwritten. **Bump to `_presetV4` if you edit `PRESET_SEED` again.**
+before this change are overwritten. **Bump to `_presetV5` if you edit `PRESET_SEED` again.**
 
 **Snooze** — `snoozeBlock(expId, blockId, n)` pushes a step **and every later-dated step in the
 same experiment** forward n days, then `recomputeDayOffsets`. Buttons in `blkCardHtml` (needs
@@ -1569,6 +1569,38 @@ Two things the setup line was doing that no Methods section does:
   the step it switches on is either in the Methods or it is not.
 
 283 words for the whole NanoBRET preset, all of it past tense, no rationale, numbers intact.
+
+### Every preset writes Methods, not bench text (`b.pub`)
+
+The register above had to reach all thirteen presets, and for a prose-only step there was
+nowhere to put it: `pubSentence` fell through to the block's own HTML, which is written in the
+imperative because it is written to be *followed*. **A preset block may now carry `pub`** — the
+past-tense Methods sentence — which beats the calculator and the prose. It is
+`{{placeholder}}`-substituted from `e.setup` exactly as `b.html` is (`b.tpl.pub` holds the
+unsubstituted original), so `{{treatH}}`, `{{targets}}` and `{{nColonies}}` land in the sentence.
+Every block of every seeded preset has one now; **`_presetV4`** ships them.
+
+Four things that were wrong underneath, all of them invisible until the output was read:
+
+- **A block whose only content was its title became a sentence.** "Results." was a Methods
+  paragraph in every HiBiT experiment. That fallback is gone.
+- **A bulleted list was read out one full stop per bullet** — "Controls to include. NanoLuc +
+  HaloTag + ligand 618. Mock." A `<ul>` is now collapsed into one comma list for publication
+  (bench checklists and `pub-skip` are still removed outright).
+- **The setup line printed the form.** "Cells / well 20000", "Trypsin 1:X 20", "Readouts
+  24+72". Every clause and every leftover field is now checked against what the blocks already
+  said, on a word boundary — `\b3\b` matches "3:1" and "3-fold" but not "37 °C", which is the
+  difference between deduping and deleting. `SETUP_SCHEMA[type].pubSkip` drops a field that a
+  block states in its own words (CTG's readout timepoints).
+- **A correction could not reach an existing notebook.** `seedPresets` refuses to overwrite a
+  preset it cannot prove is untouched, and a preset seeded before signatures existed carries no
+  proof — so `CLONE_HIFI` kept its old text for ever. `_seedUnedited(cur,seed)` supplies the
+  proof by comparing title, day offsets and every block's HTML letter-for-letter against the
+  seed. Calculator *inputs* are deliberately not compared: those are the numbers, and a preset
+  whose prose is untouched but whose defaults moved is still the shipped preset.
+
+Result, per preset (words, Methods + plate layout): EXP 6 · CTG 45 · HB 58 · RTX 64 · PR 84 ·
+KD 86 · CLONE_HIFI 87 · D2B 102 · CLONE 103 · WB 123 · NB 126 · NB_SPARK 158 · NB_BIO 284.
 
 `_pipHint(µL)` is the shared "that is not a volume anyone pipettes" test; the factor scales, so
 0.09 µL is not answered with a fixed 1:10 that produces 0.9 µL.
