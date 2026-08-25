@@ -1499,6 +1499,57 @@ whole subtree with it. Moving it in makes it invisible in the build Jon actually
 same house and four Archive cards the same book — every section in `LANDINGS` asked for its
 parent app's icon.
 
+## Curated experiments are presets, not new code (2026-08-25)
+
+Jon is feeding in his own experiments one at a time — versions he has run and validated. Each
+one lands as an entry in **`EXTRA_PRESET_SEED`** with a `baseType` pointing at an existing
+`EXP_TYPES` id, and **nothing about the existing experiment types changes**. The first is
+`NB_BIO_RTX96` / **NanoBRET_biosensor_Reverse_96** (baseType `NB`): a BET biosensor read in
+96-well, reverse-transfected, so there is no 6-well transfection and no replating.
+
+A curated preset can now answer three things the generic type answers for it:
+
+- **`setupHide`** — drop a setup question the variant has no use for (`nTransfect` here).
+- **`plateOn`** — whether this assay gets a plate map, overriding `SETUP_SCHEMA[type].plateOn`
+  (`presetPlateOn`).
+- **`layout`** — the `PLATE_LAYOUTS` id to start that map from (`presetLayout`), which beats the
+  hardcoded HB/D2B → `echo384` rule in `createExperiment`. It is **ignored if the setup moved
+  the format**: a layout drawn for 96 wells is not a starting point for a 384 plate.
+
+`nb96bio` is Jon's own map, drawn as it is on the bench: a labelled control band along row A
+(no HT ligand · untransfected · no substrate), row B empty on purpose, and three compounds in
+row pairs C–H with 11 points at 3-fold across columns 1–11 and DMSO in column 12. The
+concentrations go on the **wells**, not only in the column headers, so `plateSummary` reads it
+straight back as "C1–D11 · Compound 1 · 1 µM → 16.9 pM (11 pts, 3-fold) ×2 replicates".
+`plateSummary` also stopped printing a block or well label that only repeats the well type —
+"No HT ligand · No HT ligand" is one fact twice.
+
+### Three calculators, each one an error the protocol made
+
+The corrections went into `CALC_KINDS`, not into the prose, so the next experiment gets them too.
+
+- **`rtxmix`** — a reverse-transfection master mix where the **diluent is the remainder**. The
+  original made up 880 µL of Opti-MEM and added 7.04 µL DNA and 21.1 µL FuGENE on top: 908 µL,
+  so 10 µL/well delivers 77.5 ng, not the 80 ng the protocol says. The calculator prints both
+  numbers side by side.
+- **`spike`** — a concentrated intermediate going into wells that already hold liquid. The
+  volume is **V/(X−1), not V/X**: 11.11 µL of a 10× into 100 µL, then 12.34 µL into 111.1 µL.
+  The original had the first right and the second wrong (12.2 → "122 µL"), because it took a
+  tenth of the final volume rather than a ninth of the starting one.
+- **`serial`** — a dose series that keeps **the top concentration in the well** and **the
+  strength it is made at** as separate inputs. "10× serial dilutions (1 µM, DF=3)" is ambiguous
+  by exactly a factor of ten. It also states the DMSO reaching the cells, and when the stock
+  aliquot is sub-microlitre it says to **scale tube 1 up**, never to pre-dilute the stock in
+  DMSO — that is the obvious-looking fix and it multiplies the vehicle by the factor you
+  pre-diluted by.
+
+`_pipHint(µL)` is the shared "that is not a volume anyone pipettes" test; the factor scales, so
+0.09 µL is not answered with a fixed 1:10 that produces 0.9 µL.
+
+The MG132 step also said "aspirate media and replace" above sub-steps that spike 11.1 µL into
+100 µL. The preset says spike, and says why: aspirating takes the conditioned medium and risks
+lifting the monolayer.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
