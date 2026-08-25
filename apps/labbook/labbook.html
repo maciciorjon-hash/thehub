@@ -556,8 +556,12 @@ body.lb-rb-closed .rb-pane{display:none;}
 .dlg-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r-2);cursor:pointer;font-size:var(--fs-4);color:var(--text2);}
 .dlg-item:hover,.dlg-item.sel{background:var(--surface2);color:var(--text);}
 .dlg-item .ic{width:20px;height:20px;border-radius:var(--r-1);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:var(--fs-2);color:#fff;font-weight:700;}
-.dlg-item .l{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.dlg-item .s{font-size:var(--fs-2);color:var(--text3);font-family:var(--sans);}
+/* The label is what you are choosing; the subtitle is why. The label had flex:1 and the
+   subtitle no limit at all, so a long "why" pushed the "what" into an ellipsis — backwards.
+   The subtitle shrinks first and truncates; the label keeps the room it needs. */
+.dlg-item .l{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dlg-item .s{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-align:right;font-size:var(--fs-2);color:var(--text3);font-family:var(--sans);}
 .dlg-empty{padding:20px;text-align:center;color:var(--text3);font-size:var(--fs-3);}
 /* Preset editor redesign */
 .ps-blk{border:1px solid var(--border2);border-radius:var(--r-2);margin-bottom:11px;background:var(--surface);overflow:hidden;}
@@ -6633,6 +6637,7 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="Copy, formatted for OneNote" onmousedown="event.preventDefault();copyForOneNote()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="9" y="3" width="12" height="16" rx="2"/><path d="M15 21H5a2 2 0 01-2-2V7"/><path d="M12.5 15V8.5l5 6.5V8.5"/>')+'</span><span class="rb-lbtn-lbl">OneNote</span></button>'
   +'<button class="rb-lbtn" title="Save as a Word file" onmousedown="event.preventDefault();exportOneNoteDoc()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><path d="M9 12l1.6 5 1.4-3.6L13.4 17 15 12"/>')+'</span><span class="rb-lbtn-lbl">Word</span></button>'
   +'<button class="rb-lbtn" id="backup-btn" title="'+esc(backupStatus().detail)+' Back up now \u00b7 right-click for the folder" onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
+  +'<button class="rb-lbtn" title="The numbers, as data — JSON or CSV" onmousedown="event.preventDefault();exportDataMenu()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>')+'</span><span class="rb-lbtn-lbl">Data</span></button>'
   +'<button class="rb-lbtn" title="The software named at the end of every Methods paragraph" onmousedown="event.preventDefault();setAnalysisSoftware()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 19V5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1z"/><path d="M8 15l3-4 2 2.5L16 9"/>')+'</span><span class="rb-lbtn-lbl">Analysis</span></button>'
   +'<button class="rb-lbtn" title="Restore a daily snapshot" onmousedown="event.preventDefault();restoreFromSnapshot()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Snapshots</span></button>'
   +'<button class="rb-lbtn" title="Light / dark" onmousedown="event.preventDefault();toggleTheme()"><span class="rb-lbtn-ico">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>')+'</span><span class="rb-lbtn-lbl">Theme</span></button>'
@@ -8232,6 +8237,104 @@ function exportLab(id){
     setTimeout(function(){ try{ window.print(); }catch(e2){} },80);
   });
 }
+// ── Data out ───────────────────────────────────────────────────────────────────────────────
+// The PDF and the methods sheet are documents; these are the numbers. Someone who wants to
+// analyse this outside needs a table, and someone moving an experiment somewhere else needs
+// the record as data.
+function _csvCell(v){ v=(v==null?'':String(v));
+  return /[",\n\r]/.test(v) ? ('"'+v.replace(/"/g,'""')+'"') : v; }
+function _csv(rows){ return rows.map(function(r){ return r.map(_csvCell).join(','); }).join('\r\n'); }
+function _expSlug(e){ return String(e.code||e.title||'experiment').replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,'_').slice(0,60); }
+
+// One row per measurement, with the experiment on every row: that is the shape a spreadsheet or
+// an R script wants, and it is why the experiment columns are repeated rather than written once.
+var RESULT_COLS=['Experiment','Title','Date','Assay','Compound','Target','Potency','Potency unit',
+                 'Effect','Effect unit','Hill','R2','Flagged','Excluded','Note','Source','Attached'];
+function _resultRowsOf(e){
+  var out=[];
+  ((e.integration&&e.integration.results)||[]).forEach(function(r){
+    (r.rows||[]).forEach(function(x){
+      out.push([e.code||'', e.title||'', e.startDate||'', r.assay||x.assay||'',
+        x.compound||'', x.target||'', x.potency, r.potencyUnit||'', x.effect, r.effectUnit||'',
+        x.hill, x.r2, x.flag?'yes':'', x.excluded?'yes':'', x.note||'',
+        r.source||'', (r.createdAt||'').slice(0,10)]);
+    });
+  });
+  return out;
+}
+function exportResultsCSV(id){
+  var e=(id&&LB.data.experiments[id])||_curExp(); if(!e) return;
+  var rows=_resultRowsOf(e);
+  if(!rows.length){ lbAlert('This experiment has no attached results yet. Fit curves in Echo and send them here first.',{title:'Nothing to export'}); return; }
+  _dl(_expSlug(e)+'_results.csv', _csv([RESULT_COLS].concat(rows)), 'text/csv');
+  toast(rows.length+' measurement'+(rows.length===1?'':'s')+' saved');
+}
+function exportAllResultsCSV(){
+  var rows=[];
+  Object.keys(LB.data.experiments).forEach(function(k){ rows=rows.concat(_resultRowsOf(LB.data.experiments[k])); });
+  if(!rows.length){ lbAlert('No experiment in this notebook has results attached yet.',{title:'Nothing to export'}); return; }
+  _dl('labbook_results_'+todayStr()+'.csv', _csv([RESULT_COLS].concat(rows)), 'text/csv');
+  toast(rows.length+' measurement'+(rows.length===1?'':'s')+' across the notebook');
+}
+// Every dated step as a row: what was due, when, whether it was done, and what you wrote on it.
+// This is the "tracker" half of the product in one table.
+function exportStepsCSV(id){
+  var e=(id&&LB.data.experiments[id])||_curExp(); if(!e) return;
+  var rows=[['Experiment','Day','Date','Step','Done','Completed at','Protocol','Stage','Note']];
+  dayGroups(e).forEach(function(g){ (g.blocks||[]).forEach(function(b){
+    rows.push([e.code||'', (g.day==null?'':g.day), b.date||'', b.title||'',
+      b.done?'yes':'', b.completedAt?new Date(b.completedAt).toISOString().slice(0,16).replace('T',' '):'',
+      (b.proto&&b.proto.protoName)||'', (b.proto&&b.proto.name)||'', _plain(b.note||'')]);
+  }); });
+  if(rows.length===1){ lbAlert('This experiment has no dated steps.',{title:'Nothing to export'}); return; }
+  _dl(_expSlug(e)+'_steps.csv', _csv(rows), 'text/csv');
+  toast((rows.length-1)+' steps saved');
+}
+// The record as data. Attachment *bytes* are deliberately not here — they live in IndexedDB and
+// the Backup path is what carries them. An export that dropped them silently would be the kind
+// of quiet lie this codebase keeps finding; the count and the reason travel instead.
+function buildExpJSON(e){
+  var att=0; (e.files||[]).forEach(function(){ att++; });
+  (e.blocks||[]).forEach(function(b){ (b.files||[]).forEach(function(){ att++; }); });
+  return JSON.stringify({
+    _lbExperiment:1,
+    exported:new Date().toISOString(),
+    app:_brand(),
+    attachments:{count:att, included:false,
+      note:'File bytes are not in this export. Use View → Backup for a copy that carries them.'},
+    project:(projById(e.projectId)||{}).name||'',
+    folder:((projById(e.projectId)||{}).sections||[]).filter(function(x){return x.id===e.sectionId;}).map(function(x){return x.name;})[0]||'',
+    experiment:e
+  },null,1);
+}
+function exportExpJSON(id){
+  var e=(id&&LB.data.experiments[id])||_curExp(); if(!e) return;
+  _dl(_expSlug(e)+'.json', buildExpJSON(e), 'application/json');
+  toast('Experiment saved as JSON');
+}
+function exportDataMenu(){
+  var e=_curExp();
+  var items=[];
+  if(e){
+    var nRes=_resultRowsOf(e).length, nSteps=(e.blocks||[]).length;
+    items.push({id:'json', label:'This experiment — JSON',
+      sub:'the whole record as data: setup, steps, plate maps, results', ic:'{}', c:'#5e87c5'});
+    items.push({id:'res', label:'Results — CSV',
+      sub:nRes?(nRes+' measurement'+(nRes===1?'':'s')+', one per row'):'no results attached yet', ic:'R', c:'#4a8fb5'});
+    items.push({id:'steps', label:'Steps — CSV',
+      sub:nSteps?(nSteps+' dated step'+(nSteps===1?'':'s')+' with dates, ticks and notes'):'no dated steps', ic:'S', c:'#4a8fb5'});
+    if(e.plate) items.push({id:'plate', label:'Plate map — CSV', sub:'one row per well', ic:'P', c:'#6d7bd0'});
+  }
+  items.push({id:'all', label:'All results in this notebook — CSV',
+    sub:'every measurement, every experiment', ic:'∑', c:'#a56983'});
+  lbPicker('Export data', items, function(it){
+    if(it.id==='json') exportExpJSON();
+    else if(it.id==='res') exportResultsCSV();
+    else if(it.id==='steps') exportStepsCSV();
+    else if(it.id==='plate') exportPlateCSV('exp:'+(_curExp()||{}).id);
+    else if(it.id==='all') exportAllResultsCSV();
+  });
+}
 // ── The methods sheet ──────────────────────────────────────────────────────────────────────
 // What you send a collaborator or paste into a manuscript: the paragraph, the plate layout it
 // refers to, and the numbers. Not the notebook. The full PDF is the record and keeps every
@@ -8411,6 +8514,14 @@ function exportOneNoteDoc(){
 
 // ── Backups + offline ──
 function _download(name,text){ try{ var b=new Blob([text],{type:'application/json'}); var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },500); }catch(e){} }
+// _download() has always announced application/json whatever it was handed. A CSV saved as
+// JSON still opens, but the type is a claim about the bytes and it should be true.
+function _dl(name,text,mime){
+  try{ var b=new Blob([text],{type:mime||'application/json'}); var u=URL.createObjectURL(b);
+    var a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },500);
+  }catch(e){ toast('Could not save the file'); }
+}
 function _parentBackup(){ try{ if(window.parent && window.parent!==window && window.parent.lbBackup) return window.parent.lbBackup; }catch(e){} return null; }
 var _selfDir=null;
 function _idb(){ return new Promise(function(res,rej){ var r=indexedDB.open('lb_backup',1); r.onupgradeneeded=function(){ r.result.createObjectStore('h'); }; r.onsuccess=function(){res(r.result);}; r.onerror=function(){rej(r.error);}; }); }

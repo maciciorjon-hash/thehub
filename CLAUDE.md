@@ -1796,6 +1796,33 @@ rather than pinning its centre (the bug `#lb-tip` had), and flips below the sele
 is no room above. Everything on it is also in the Home pane; the point is that the eight you use
 follow the text, so the other forty do not have to sit above every screen waiting.
 
+## Data out — JSON and CSV
+
+The PDF and the methods sheet are documents. These are the numbers, and until now there was no
+way to get them: someone who wants to analyse this outside needs a table, and someone moving an
+experiment elsewhere needs the record as data. One **Data** button in the View ribbon opens a
+picker rather than five more buttons.
+
+- **This experiment — JSON.** The whole record: setup, blocks with their params, calculator
+  inputs, notes and ticks, plate maps, results with their notes and exclusions. Attachment
+  *bytes* are deliberately not in it — they live in IndexedDB and Backup is what carries them —
+  and the export says so in an `attachments` block rather than dropping them silently, which is
+  the kind of quiet lie this file keeps recording.
+- **Results — CSV.** One row per measurement with the experiment repeated on every row, because
+  that is the shape a spreadsheet or an R script wants. Seventeen columns including `Flagged`,
+  `Excluded` and `Note` — the annotation work is what makes the export worth having.
+- **Steps — CSV.** Every dated step: day, date, done, completed at, protocol, stage, note. The
+  tracker half of the product in one table.
+- **All results in this notebook — CSV.** Every measurement across every experiment. "Give me
+  every DC50 I have measured" is one click.
+
+`_dl(name,text,mime)` replaces the old `_download`, which announced `application/json` whatever
+it was handed.
+
+**A picker was truncating the wrong half.** `.dlg-item .l` had `flex:1` and the subtitle no
+limit, so a long "why" pushed the "what" into an ellipsis. The label keeps the room it needs and
+the subtitle shrinks first — in every picker in the app, not just this one.
+
 ## Annotate, audited
 
 Of the four verbs the product now leads with, this was the one never looked at. Rich text
