@@ -5704,12 +5704,27 @@ function pubResultsSentence(e){
     if(r.effectUnit) eu=String(r.effectUnit); });
   if(!rows.length) return '';
   rows.sort(function(a,b){ return parseFloat(a.potency)-parseFloat(b.potency); });
-  var best=rows.slice(0,3).map(function(x){
-    return String(x.compound)+' ('+pl+' '+_rn(x.potency)+' '+pu
+  // A potency belongs to a compound *against a target*: 21 compounds fitted against BRD2, BRD3
+  // and BRD4 are 63 measurements, not 63 compounds, and listing the top three by number alone
+  // named the same compound three times. Count compounds, rank pairs, and say which target.
+  var seen={}, nCpd=0, nTgt={};
+  rows.forEach(function(x){ var c=String(x.compound||''); if(c&&!seen[c]){ seen[c]=1; nCpd++; }
+    if(x.target) nTgt[String(x.target)]=1; });
+  var targets=Object.keys(nTgt);
+  // One line per compound-target pair, best value kept: the same pair fitted on two replicate
+  // plates is one result, and naming it twice in a row reads as a mistake even when it is not.
+  var _hit={}, uniq=rows.filter(function(x){
+    var k=String(x.compound||'')+'\u0000'+String(x.target||'');
+    if(_hit[k]) return false; _hit[k]=1; return true; });
+  var best=uniq.slice(0,3).map(function(x){
+    return String(x.compound)+(x.target?(' against '+String(x.target)):'')
+      +' ('+pl+' '+_rn(x.potency)+' '+pu
       +(isFinite(parseFloat(x.effect))?(', '+el2+' '+_rn(x.effect)+eu):'')+')'; });
-  return 'Dose–response curves were fitted with a four-parameter logistic model; '
-    +rows.length+' compound'+(rows.length===1?'':'s')+' gave measurable '+pl+' values, the most potent being '
-    +best.join(', ')+'.';
+  return 'Dose–response curves were fitted with a four-parameter logistic model. '
+    +nCpd+' compound'+(nCpd===1?'':'s')+' gave measurable '+pl+' values'
+    +(targets.length>1?(' across '+targets.length+' targets ('+_pubList(targets)+')'):
+      (targets.length===1?(' against '+targets[0]):''))
+    +'; the most potent were '+_pubList(best)+'.';
 }
 // ── What you actually changed ───────────────────────────────────────────────────────────────
 // b.params holds overrides only, never a copy of the protocol's defaults, so the difference
@@ -7110,15 +7125,19 @@ function lbPrompt(label,value,opts){ opts=opts||{}; return new Promise(function(
   inp.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); done(inp.value); } else if(e.key==='Escape'){ e.preventDefault(); done(null); } };
   setTimeout(function(){ inp.focus(); inp.select(); },30);
 }); }
-function lbPicker(title,items,onPick){
+// onCancel is optional and matters when dropping the choice means losing something: a caller
+// that has data in hand needs to say so rather than let it disappear behind a closed dialog.
+function lbPicker(title,items,onPick,onCancel){
   var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
   card.innerHTML='<div class="modal-t">'+esc(title)+'</div><input id="lb-pick-q" class="dlg-search" placeholder="Search…" autocomplete="off"><div id="lb-pick-list" class="dlg-list"></div><div class="modal-act"><span class="grow"></span><button class="btn ghost" id="lb-dlg-cancel">Cancel</button></div>';
-  d.classList.add('open'); d._onCancel=function(){ _lbDlgClose(); }; el('lb-dlg-cancel').onclick=function(){ _lbDlgClose(); };
+  var _cancelled=true;
+  function _close(){ _lbDlgClose(); if(_cancelled && onCancel) try{ onCancel(); }catch(_e){} }
+  d.classList.add('open'); d._onCancel=_close; el('lb-dlg-cancel').onclick=_close;
   var q=el('lb-pick-q');
   function draw(){ var s=(q.value||'').toLowerCase();
     var f=items.filter(function(it){ return !s || ((it.label||'')+' '+(it.sub||'')).toLowerCase().indexOf(s)>=0; });
     el('lb-pick-list').innerHTML=f.length? f.map(function(it){ return '<div class="dlg-item" data-id="'+esc(String(it.id))+'">'+((it.svg||it.ic)?'<span class="ic'+(it.svg?' ic-svg':'')+'" style="background:'+(it.c||'#5e87c5')+'">'+(it.svg||esc(it.ic))+'</span>':'')+'<span class="l">'+esc(it.label)+'</span>'+(it.sub?'<span class="s">'+esc(it.sub)+'</span>':'')+'</div>'; }).join('') : '<div class="dlg-empty">No matches.</div>';
-    Array.prototype.forEach.call(el('lb-pick-list').querySelectorAll('.dlg-item'),function(node){ node.onclick=function(){ var it=items.filter(function(x){return String(x.id)===node.dataset.id;})[0]; _lbDlgClose(); if(it) onPick(it); }; });
+    Array.prototype.forEach.call(el('lb-pick-list').querySelectorAll('.dlg-item'),function(node){ node.onclick=function(){ var it=items.filter(function(x){return String(x.id)===node.dataset.id;})[0]; _cancelled=false; _lbDlgClose(); if(it) onPick(it); }; });
   }
   q.oninput=draw; draw(); setTimeout(function(){ q.focus(); },30);
 }
@@ -8467,13 +8486,42 @@ setTimeout(migrateAntibodiesToLibrary,2500);
 setTimeout(cleanupAntibodySection,2600);
 function _mergeDHubContext(ctx){
   ctx=ctx||{}; var e=(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
-  // No experiment open: there is nowhere to attach this. Say so rather than buffering it into
-  // a store nothing reads — the old dhubInbox silently swallowed every such context.
-  if(!e){ toast('Open an experiment first, then send this from '+(ctx.source||'the other app')+' again'); return; }
+  // Nothing open to attach to. Telling the user to go back and press Send again *after* opening
+  // the right experiment throws away a whole analysis for a reason they could not have known
+  // about — and this is the path most people are on, because you fit curves in Echo with
+  // Labbook on the dashboard. Ask which experiment instead.
+  if(!e){ _pickExpForContext(ctx); return; }
   e.integration=e.integration||{sources:[],cellLines:[],compounds:[],plateMaps:[],protocols:[],results:[]};
   ['cellLines','compounds','plateMaps','protocols','results'].forEach(function(k){ var incoming=Array.isArray(ctx[k])?ctx[k]:[]; e.integration[k]=e.integration[k]||[]; incoming.forEach(function(item){ var sig=JSON.stringify(item); if(!e.integration[k].some(function(old){return JSON.stringify(old)===sig;})) e.integration[k].push(item); }); });
   if(ctx.source){ e.integration.sources=e.integration.sources||[]; if(e.integration.sources.indexOf(ctx.source)<0) e.integration.sources.push(ctx.source); }
   e.updated=Date.now(); save(); renderEditor(); toast('Context attached to '+(e.code||e.title||'experiment'));
+}
+// Newest first, because the run you just analysed is the one you just worked on. Closed and
+// archived entries are still offered — reanalysing an old plate is a real thing — but they sort
+// below the live ones.
+function _pickExpForContext(ctx){
+  var n=((ctx.results||[]).reduce(function(a,r){ return a+((r.rows||[]).length||0); },0));
+  var what=n?(n+' result row'+(n===1?'':'s')):'this data';
+  var items=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
+    .filter(function(x){ return x && x.kind!=='note'; })
+    .sort(function(a,b){
+      var la=(a.archived||a.status==='abandoned')?1:0, lb=(b.archived||b.status==='abandoned')?1:0;
+      return (la-lb) || ((b.updated||0)-(a.updated||0)); })
+    .slice(0,60)
+    .map(function(x){
+      var pj=projById(x.projectId)||{};
+      return {id:x.id, label:(x.code?(x.code+' · '):'')+(x.title||'Untitled'),
+              sub:[pj.name, x.startDate?fmtDate(x.startDate):'', x.status||''].filter(Boolean).join(' · '),
+              ic:'E', c:pj.color||'#5e87c5'};
+    });
+  if(!items.length){ lbAlert('There is no experiment to attach these results to yet. Create one, then send them again from '
+    +esc(ctx.source||'the other app')+'.',{title:'Nothing to attach to'}); return; }
+  lbPicker('Attach '+what+' from '+(ctx.source||'the other app')+' to…', items, function(it){
+    var target=LB.data.experiments[it.id]; if(!target) return;
+    openExp(target.id);
+    _mergeDHubContext(Object.assign({}, ctx, {experiment:{id:target.id}}));
+    EXP_TAB='res'; renderEditor();
+  }, function(){ toast('Not attached — the results are still in '+(ctx.source||'the other app')); });
 }
 function _dhubAck(e){ try{ if(e&&e.data&&e.data.requestId&&window.parent&&window.parent!==window) window.parent.postMessage({type:'dhub:ack',requestId:e.data.requestId,app:'labbook'},'*'); }catch(err){} }
 // Deep-link: another app (e.g. Plasmids "Used in") can open a specific experiment/page.

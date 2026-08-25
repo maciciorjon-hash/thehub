@@ -531,6 +531,24 @@ in the Today view.
 
 This is the demo the product direction calls for, and it runs in both directions.
 
+**Verified end to end (2026-08-25)** on Echo's own bundled test data — one picklist, six
+PHERAstar plates: 1,320 merged points, 21 compounds, 3 proteins, 63 fits, *Send to Labbook*,
+63 rows in the Results tab with the 24 flagged ones still flagged, and a Results sentence in the
+publication paragraph. Three things had to be fixed for that to be true:
+
+- **The results were being thrown away on the most likely path.** `_mergeDHubContext` needs an
+  experiment and took `_curExp()` — but you fit curves in Echo with Labbook sitting on its
+  dashboard, so `_curExp()` is null and the whole analysis died in a toast telling you to open
+  an experiment and press Send *again*. It asks which experiment now (`_pickExpForContext`,
+  newest first, closed ones sorted below), opens it on the Results tab, and says plainly when
+  you cancel that nothing was attached. `lbPicker` grew an optional `onCancel` for exactly that:
+  a caller holding data has to be able to tell "picked" from "dismissed".
+- **"63 compounds gave measurable DC50 values"** — 21 compounds against 3 targets is 63
+  measurements, not 63 compounds. Compounds are counted, pairs are ranked.
+- **The top three named the same compound three times**, because a potency belongs to a
+  compound *against a target* and the target was not in the sentence. Now it is, and the ranking
+  is deduplicated by compound-target so a pair fitted on two replicate plates is one result.
+
 **Picklist → plate map.** `parseEchoPicklist(text)` reads a Labcyte transfer CSV in Labbook
 itself — not through Echo — so it works from the file alone with Echo closed. It finds the
 header by looking for `Destination Well` (there is a preamble and a `[DETAILS]` line above it),
