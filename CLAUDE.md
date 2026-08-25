@@ -360,9 +360,9 @@ blocks)` hook for structural changes — CTG uses it to drop the readout you did
 
 **Templates** live in `PRESET_SEED` and now carry `{{placeholders}}` plus `ul.lb-check`
 checklists (which is what drives the existing carry-over logic). The seed version flag was
-bumped `_presetV2` → `_presetV3` → **`_presetV4`** (2026-08-25, when every block gained a `pub` Methods sentence), so `seedPresets()` re-seeds all built-in presets once
+bumped `_presetV2` → `_presetV3` → `_presetV4` → **`_presetV5`** (2026-08-25, `pub` Methods sentences and the closing analysis clause), so `seedPresets()` re-seeds all built-in presets once
 per browser. Custom/user-added presets are untouched; hand-edits to built-in presets made
-before this change are overwritten. **Bump to `_presetV5` if you edit `PRESET_SEED` again.**
+before this change are overwritten. **Bump to `_presetV6` if you edit `PRESET_SEED` again.**
 
 **Snooze** — `snoozeBlock(expId, blockId, n)` pushes a step **and every later-dated step in the
 same experiment** forward n days, then `recomputeDayOffsets`. Buttons in `blkCardHtml` (needs
@@ -1601,6 +1601,46 @@ Four things that were wrong underneath, all of them invisible until the output w
 
 Result, per preset (words, Methods + plate layout): EXP 6 · CTG 45 · HB 58 · RTX 64 · PR 84 ·
 KD 86 · CLONE_HIFI 87 · D2B 102 · CLONE 103 · WB 123 · NB 126 · NB_SPARK 158 · NB_BIO 284.
+
+Each preset's **last** block now closes the paragraph the way a Methods section does — how the
+numbers became a result ("normalised to the vehicle control and fitted with a four-parameter
+logistic model"). No new field: it is the last block's own sentence.
+
+### Anyone can write the sentence (`pePubField`)
+
+Until now only someone editing `labbook.html` could author a curated preset's Methods prose.
+The preset editor has a **Methods sentence** box under each block's bench text, deliberately in
+a different register so it is obvious which one is written to be followed and which to be read.
+It knows when the block's calculator already speaks for it (`CALC_PUB_FULL`) and says so in the
+placeholder; `{{setup}}` placeholders work there too. An empty box is deleted rather than
+stored, so "has a sentence" stays a real question.
+
+### Archive protocols publish Methods too (`st.pub` / `st.noPub`)
+
+A protocol stage is a dated block, so it needed the same treatment — and it was the worst
+offender: a Gibson Assembly experiment published **328 words** that opened with *"Gibson
+Assembly joins linearised DNA fragments that share overlapping sequences… an exonuclease (chews
+back 5′ ends to expose overlaps)"*. A textbook paragraph inside a Methods section.
+
+Three fixes, in order of how much each was worth:
+
+- **A stage may carry `pub`**, snapshotted into the block like the rest of the stage so the
+  entry still publishes correctly years later, and **`noPub`** marks a stage that is reference
+  material — how to read a PAE plot is not a step anybody performed.
+- **A protocol's notes and tips are stripped** from published prose; a *warning* is kept,
+  because it usually encodes a real constraint ("overlaps longer than 80 bp reduce efficiency").
+- **`_pubArchiveSteps` was re-importing the whole protocol.** It is the fallback for the old
+  flat path, and it fired on a stage block the moment that stage's own prose came back empty —
+  putting the preamble back, verbatim, exactly when it had just been removed.
+
+`tools/protocol_pub.py` holds the sentences and injects them into `PROTOCOL_DATA`; re-run it
+after editing. **18 stages have a Methods sentence, 36 are marked reference-only, 99 of 153
+still publish the protocol's own step prose** — that queue is the content job, one protocol at
+a time. Gibson 328 → 78 words, Transformation 126 → 79, Miniprep 156 → 39, PyMOL 494 → 3.
+
+Two things that were quietly wrong and are fixed with it: a bare plate format was inventing
+"Cells were seeded in 96-well plates." for a cloning experiment that has no cells, and the
+format sentence now fires only when a calculator really did say cells were seeded.
 
 `_pipHint(µL)` is the shared "that is not a volume anyone pipettes" test; the factor scales, so
 0.09 µL is not answered with a fixed 1:10 that produces 0.9 µL.
