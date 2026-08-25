@@ -1737,6 +1737,31 @@ centred each labelled group as a block, so its shorter controls sat off the line
 **Cadence's ribbon title** hung 8px below the tabs. Helix's 2px came from a borderless button
 beside bordered selects, which is the same transparent-border fix `.btn` needed in Labbook.
 
+### `margin-left:auto` is a one-line idiom
+
+Jon, on Blueprint's toolbar: *"visually not aligned in this app."* The bar wraps, and the
+actions group carried `margin-left:auto`. That reads as "push right" only while everything fits
+on one line — the moment the group wraps it **keeps** the auto margin and lands on the right of
+the *second* line, leaving a 636px hole under a left-aligned first row.
+
+The fix is two named halves (`.tb-left` / `.tb-right`) and `justify-content:space-between`:
+flex justifies each line separately, so on one line the actions sit right and when they wrap the
+second row starts at the same left edge as the first. Measured both ways — 1280px: rows at
+x=20 and x=20; 1900px: one row with the actions at x=1269.
+
+**The audit now catches the class.** A wrapped flex container whose lines start at different left
+edges is a finding, and it is proven rather than assumed: with the fix in place Blueprint is
+clean, and re-applying `margin-left:auto` in the live page makes the check report *"wrapped rows
+start at different left edges (by 629px)"*. Its first version grouped children by matching
+`top`, which called a 20px separator beside a 33px group a second row — it groups by vertical
+overlap now, the same rule the row check already used.
+
+While measuring it, that bar turned out to hold three heights at 375px (36/32/28): the mobile
+block raises the tap target with `min-height:40px`, which beats a fixed `height:32px`, and the
+two sliders carried `height:28px` **inline**, which beats the stylesheet. The bar has a
+`--tb-h` token now — 32 normally, 40 under the mobile breakpoint — set as both `height` and
+`min-height`, and the inline slider heights are gone. Eight controls, one height, at both widths.
+
 All 20 surfaces (19 apps + standalone Labbook with an experiment open) come back clean, and so
 is every app at **375px** — which is where two of the fixes had to be taken back. A fixed
 `height` only holds if the label cannot wrap inside it: Blueprint's toolbar buttons needed 49px

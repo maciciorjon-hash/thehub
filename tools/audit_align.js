@@ -81,6 +81,29 @@ window.__alignAudit=function(){
       R.push(path(P)+' — '+kind+' :: '+g.items.map(nm).join(' | '));
     });
   });
+  document.querySelectorAll('*').forEach(function(P){
+    if(!vis(P)) return;
+    var cs=getComputedStyle(P);
+    if(cs.display.indexOf('flex')<0 || cs.flexWrap==='nowrap') return;
+    if(/center|around|evenly/.test(cs.justifyContent)) return;   /* centred by choice */
+    var kids=[].filter.call(P.children,function(c){ return c.nodeType===1 && vis(c); });
+    if(kids.length<2) return;
+    /* Same line means the vertical ranges overlap, not that the tops match: a 20px separator
+       beside a 33px group starts 7px lower and is emphatically on the same line. */
+    var lines=[];
+    kids.forEach(function(c){ var r=c.getBoundingClientRect();
+      var g=lines.find(function(x){ return !(r.bottom<=x.top+2 || r.top>=x.bottom-2); });
+      if(g){ g.left=Math.min(g.left,r.left); g.top=Math.min(g.top,r.top); g.bottom=Math.max(g.bottom,r.bottom); g.n++; }
+      else lines.push({top:r.top,bottom:r.bottom,left:r.left,n:1}); });
+    lines.sort(function(a,b){ return a.top-b.top; });
+    if(lines.length<2) return;
+    var ls=lines.map(function(x){ return x.left; });
+    var spread=Math.max.apply(null,ls)-Math.min.apply(null,ls);
+    if(spread<=24) return;
+    var key='wrap|'+path(P); if(seen[key]) return; seen[key]=1;
+    R.push(path(P)+' — wrapped rows start at different left edges (by '+Math.round(spread)+'px) :: '
+      +lines.map(function(x,i){ return 'row'+(i+1)+' @'+Math.round(x.left); }).join(', '));
+  });
   document.querySelectorAll('input[type=checkbox],input[type=radio]').forEach(function(bx){
     if(!vis(bx)) return; var L=bx.closest('label')||bx.parentElement; if(!L||!vis(L)) return;
     var cs=getComputedStyle(L);
