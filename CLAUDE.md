@@ -1638,6 +1638,24 @@ after editing. **18 stages have a Methods sentence, 36 are marked reference-only
 still publish the protocol's own step prose** — that queue is the content job, one protocol at
 a time. Gibson 328 → 78 words, Transformation 126 → 79, Miniprep 156 → 39, PyMOL 494 → 3.
 
+### Three things the Methods work exposed
+
+- **A version bump overwrote every built-in preset, edits included.** Survivable while the only
+  way to change one was to edit `labbook.html`; not survivable now the preset editor has a
+  Methods box in it. Built-ins carry the same `_seedSig` the extra presets do, so from `_presetV5`
+  on a bump refreshes an untouched preset and leaves an edited one alone. This upgrade is still
+  a blunt refresh — no built-in can have been edited through a field that did not exist — and it
+  is what stamps the signatures that make every later bump safe.
+- **The paragraph is a snapshot and never said when it had gone stale.** Change a calculator's
+  number and the Methods quietly keep the old one until somebody remembers to press Rebuild.
+  `_pubSourceSig(e)` fingerprints what the paragraph was built *from* — setup, protocols, each
+  block's `pub`/prose/calculator inputs, the plate summaries — deliberately not the paragraph
+  itself, so typing in it does not make it look out of date, and not `e.updated`, which moves
+  when you tick a step. `pubIsStale` puts a line above the text offering the rebuild and saying
+  it is fine to ignore it if the wording is yours.
+- **Cmd+K did not index the Methods paragraph** — often the most carefully written text in the
+  notebook, and the one place a number appears in a full sentence.
+
 Two things that were quietly wrong and are fixed with it: a bare plate format was inventing
 "Cells were seeded in 96-well plates." for a cloning experiment that has no cells, and the
 format sentence now fires only when a calculator really did say cells were seeded.

@@ -1077,6 +1077,13 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .pub-btn:hover{background:var(--surface2);}
 .pub-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
 .pub-btn.primary:hover{filter:brightness(1.06);}
+.pub-stale{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:9px 0 0;padding:8px 11px;
+  border-radius:var(--r-1);background:rgba(217,158,79,.12);border:1px solid rgba(217,158,79,.35);
+  font-size:var(--fs-2);color:var(--text2);line-height:1.5;}
+.pub-stale button{border:1px solid var(--border2);background:var(--surface);color:var(--text);
+  border-radius:var(--r-1);padding:3px 9px;font-family:var(--sans);font-size:var(--fs-2);
+  font-weight:600;cursor:pointer;min-height:26px;}
+.pub-stale button:hover{border-color:var(--accent);color:var(--accent);}
 .exp-pub-src{font-size:var(--fs-2);color:var(--text3);margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
 .exp-pub{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:16px 18px;box-shadow:var(--shadow-xs);min-height:160px;font-family:var(--sans);font-size:var(--fs-5);line-height:1.72;overflow-wrap:anywhere;}
 .exp-pub p{margin:0 0 12px;max-width:92ch;}
@@ -3497,9 +3504,27 @@ function presetFromSeed(seed,name,baseType){ return {name:name,baseType:baseType
 function seedPresets(){
   // One-time upgrade: refresh built-in presets to the calc-enabled, correctly-dated versions.
   // (Only rewrites the built-in type presets; user-added custom presets are never touched.)
+  // A version bump used to overwrite every built-in preset unconditionally, edits included.
+  // That was survivable while the only way to change one was to edit the file; it is not now
+  // that the preset editor has a Methods box in it. From this version on a built-in carries the
+  // same signature the extra presets do: bump it and an untouched preset is refreshed, while one
+  // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
+  // can have been edited through the new field before the field existed — and it is what stamps
+  // the signatures that make every later bump safe.)
   var upgrade=!LB.data._presetV5;
-  EXP_TYPES.forEach(function(t){ if(!LB.data.presets[t.id] || upgrade){ var s=PRESET_SEED[t.id]||PRESET_SEED.EXP; LB.data.presets[t.id]=presetFromSeed(s,(LB.data.presets[t.id]&&LB.data.presets[t.id].name)||t.name,t.id); }
-    else if(!LB.data.presets[t.id].baseType){ LB.data.presets[t.id].baseType=t.id; } });
+  EXP_TYPES.forEach(function(t){
+    var cur=LB.data.presets[t.id];
+    var edited = cur && cur._seedSig && cur._seedSig!==_presetSig(cur);
+    if(!cur || (upgrade && !edited)){
+      var s=PRESET_SEED[t.id]||PRESET_SEED.EXP;
+      var np=presetFromSeed(s,(cur&&cur.name)||t.name,t.id);
+      np._seedSig=_presetSig(np);
+      LB.data.presets[t.id]=np;
+    } else {
+      if(!cur.baseType) cur.baseType=t.id;
+      if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
+    }
+  });
   if(upgrade) LB.data._presetV5=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
@@ -4686,6 +4711,18 @@ var PUB_SECTIONS=[{k:'setup',lbl:'Setup'},{k:'methods',lbl:'Methods'},{k:'plate'
                   {k:'dev',lbl:'Deviations'},{k:'results',lbl:'Results'}];
 function pubOpts(e){ var o=(e&&e.pubOpts)||{}, out={};
   PUB_SECTIONS.forEach(function(s){ out[s.k]=(o[s.k]===undefined)?true:!!o[s.k]; }); return out; }
+// What the paragraph was built from. Not the whole experiment: typing in the paragraph itself
+// must not make it look out of date, and a tick or a note changes the record without changing
+// the method.
+function _pubSourceSig(e){
+  try{
+    return JSON.stringify([e.setup||null, (e.protocols||[]).map(function(p){return p.id;}),
+      (e.blocks||[]).map(function(b){ return [b.pub||'', b.noPub?1:0, b.html||'',
+        (b.calc&&b.calc.inputs)||null, b.plate?plateSummaryText(b.plate):'']; }),
+      e.plate?plateSummaryText(e.plate):'']);
+  }catch(_e){ return ''; }
+}
+function pubIsStale(e){ return !!(e && e.pubReady && e.pubSrcSig && e.pubSrcSig!==_pubSourceSig(e)); }
 function buildPubReadyFromExp(e){
   var o=pubOpts(e), out=[];
   function H(t){ out.push('<h4 class="pub-h">'+esc(t)+'</h4>'); }
@@ -4710,6 +4747,7 @@ function buildPubReadyFromExp(e){
   }
   if(o.dev){ var d=deviationsSentence(e); if(d){ H('Deviations from the protocol'); P(esc(d)); } }
   if(o.results){ var r=pubResultsSentence(e); if(r){ H('Results'); P(esc(r)); } }
+  try{ e.pubSrcSig=_pubSourceSig(e); }catch(_e){}
   return out.length?out.join(''):'<p></p>';
 }
 function pubToggle(id,k){
@@ -5914,6 +5952,8 @@ function renderExpEditor(host,e){
       +'<span class="pub-secs">'+_toggles+'</span><span class="grow"></span>'
       +'<button class="pub-btn" onclick="rebuildPub(\''+e.id+'\')" title="Regenerate the prose from this experiment\'s steps + calculators">'+tbIco(P_REFRESH,13)+' Rebuild</button>'
       +'<button class="pub-btn primary" onclick="copyPubReady(\''+e.id+'\')">Copy</button></div>'
+      +(pubIsStale(e)?('<div class="pub-stale">The steps or their numbers have changed since this paragraph was written. '
+        +'<button onclick="rebuildPub(\''+e.id+'\')">Rebuild it</button> &mdash; or leave it, if the wording is yours.</div>'):'')
       +(srcChips?'<div class="exp-pub-src">Sources: '+srcChips+'</div>':'')
       +'<div class="rt exp-pub" contenteditable="true" data-ctx="pub:'+e.id+'" data-ph="Write the methods paragraph here…" oninput="setField(\'pubReady\',this.innerHTML)" onfocus="_activeEd=this">'+(e.pubReady||'')+'</div>';
   } else {
@@ -7520,6 +7560,8 @@ function spotContent(){
     if(e.plate) add('Plate · '+(e.plate.title||name), name, 'plate','P',pc,
         plateSummaryText(e.plate), function(){ openExp(e.id); });
     add(name+' · observations','observations','exp','E',pc,_plain(e.html||''),function(){ openExp(e.id); });
+    add(name+' · methods','publication-ready','exp','M',pc,_plain(e.pubReady||''),
+        function(){ openExp(e.id); EXP_TAB='pub'; renderEditor(); });
     (e.files||[]).forEach(function(f){
       add(f.name||'file', name+' · file', 'file','F',pc, (f.name||'')+' '+(f.caption||''),
           function(){ openExp(e.id); EXP_TAB='files'; renderEditor(); });
