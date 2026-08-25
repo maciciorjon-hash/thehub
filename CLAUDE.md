@@ -1642,7 +1642,16 @@ centred each labelled group as a block, so its shorter controls sat off the line
 **Cadence's ribbon title** hung 8px below the tabs. Helix's 2px came from a borderless button
 beside bordered selects, which is the same transparent-border fix `.btn` needed in Labbook.
 
-All 20 surfaces (19 apps + standalone Labbook with an experiment open) come back clean.
+All 20 surfaces (19 apps + standalone Labbook with an experiment open) come back clean, and so
+is every app at **375px** — which is where two of the fixes had to be taken back. A fixed
+`height` only holds if the label cannot wrap inside it: Blueprint's toolbar buttons needed 49px
+for their text at phone width and got `white-space:nowrap` instead, so the *button* wraps to the
+next line and the bar keeps one row height. Cell Archive's "+ Add cell line" was the same shape
+in reverse — stacked in a 44px list row that needed 70 — and is laid out side by side, which is
+what every other row in that list is.
+
+One known survivor: two buttons in a Fabricata confirm dialog are clipped by 3px at 375px.
+Fabricata is outside the product build.
 
 **The setup editor asked questions the experiment does not have.** `esRender` mapped
 `SETUP_SCHEMA[type].fields` directly, so a preset's `setupHide` was honoured at creation and
