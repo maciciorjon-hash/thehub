@@ -1762,6 +1762,26 @@ two sliders carried `height:28px` **inline**, which beats the stylesheet. The ba
 `--tb-h` token now — 32 normally, 40 under the mobile breakpoint — set as both `height` and
 `min-height`, and the inline slider heights are gone. Eight controls, one height, at both widths.
 
+**Swept the rest of the apps for it.** The bug is width-dependent — it only appears where the
+bar actually wraps — so the sweep loads each app once and resizes the frame through ten widths
+(1440 → 375) re-running the audit at each. Three more, all the same idiom, none visible at the
+width anyone develops at:
+
+| app | bar | breaks at | offset |
+|---|---|---|---|
+| Blot | `.toolbar` (Export) | ≤640px | 501px |
+| LDI | `.params-strip` (the hint) | ≤760px | 458px |
+| Cuppa | `.lastupd-bar` (`.hdr-right`) | 375px | 153px |
+
+Each keeps the auto margin where the bar is one line and drops it at the measured breakpoint,
+so the wide layout is unchanged and the wrapped one shares its left edge. Verified both ways:
+Blot's Export sits at x=1317 of 1440 and at x=16 of 640; LDI's hint at 1033 and at 25.
+
+The same sweep turned up two more of the *height* kind at 375px, both the mobile tap-target rule
+beating a fixed height: LDI's strip ran 36/36/30 and Ribbon's top bar 32/40/40/40/40. Both have
+a `--tb-h`/`--ps-h` token now, set as `height` and `min-height` and raised under the mobile
+breakpoint — the same shape as Blueprint's fix.
+
 All 20 surfaces (19 apps + standalone Labbook with an experiment open) come back clean, and so
 is every app at **375px** — which is where two of the fixes had to be taken back. A fixed
 `height` only holds if the label cannot wrap inside it: Blueprint's toolbar buttons needed 49px
