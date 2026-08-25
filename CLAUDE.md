@@ -18,15 +18,30 @@
 
 ## Where this is going — read this first
 
-**The product is Labbook**: a domain-aware ELN for targeted protein degradation and chemical
-biology. The sellable asset is the **encoded domain knowledge** — 33 Archive protocols with
-working calculators, parameterised experiment templates, and a plan → execute → analyse loop
-that understands what a dose-response plate is. Benchling/MBook/LabArchives are rich text plus
-attachments; none of them know what a 384-well plate or a DC50 is. That gap is the wedge.
+**The product is an experiment tracker** — plan, log, annotate, analyse, export — for targeted
+protein degradation and chemical biology. *(Repositioned 2026-08-25. This section used to say
+"a domain-aware ELN" and treat everything but the notebook as supporting cast. The two halves
+that turned out to carry it are **Labbook** and **data analysis**, and the verbs that sell it
+are the ones a generic ELN does badly: annotate, attach results, and get a clean document back
+out.)*
 
-**Spine** Labbook · **Flagship** Echo · **Moat** Archive. Everything else is either folded in,
-supporting, or out of the product build. Stop adding app surface area; invest in the loop and
-the science content.
+Four things have to be excellent, and they are the four to invest in:
+
+| | what it means | where it lives |
+|---|---|---|
+| **Log** | a dated record of what was actually done, deviations included | Labbook day-blocks, `b.params`, `expDeviations` |
+| **Annotate** | notes on a step, on a block, on a day, on a well | `stepNotes`, `b.note`, plate maps, `e.files` |
+| **Analyse** | curves, potencies, plate readings — as data, not screenshots | Echo, `integration.results`, `plParseValues` |
+| **Export** | a document someone else can use: Methods sheet, PDF, OneNote, CSV, PNG | `exportMethods`, `exportPDF`, `copyForOneNote` |
+
+The **encoded domain knowledge** is still the moat under all four — 33 Archive protocols with
+working calculators, parameterised experiment templates, and a loop that understands what a
+dose-response plate is. Benchling/MBook/LabArchives are rich text plus attachments; none of
+them know what a 384-well plate or a DC50 is.
+
+**Spine** Labbook · **Flagship** Echo (analysis is a selling point in its own right now, not
+just a feeder) · **Moat** Archive. Still no new app surface area — but "invest in the loop"
+now explicitly includes the export side of it, which was previously treated as plumbing.
 
 Four builds, one source (`embed.py`):
 
@@ -1652,7 +1667,11 @@ Three fixes, in order of how much each was worth:
   putting the preamble back, verbatim, exactly when it had just been removed.
 
 `tools/protocol_pub.py` holds the sentences and injects them into `PROTOCOL_DATA`; re-run it
-after editing. **18 stages have a Methods sentence, 36 are marked reference-only, 99 of 153
+after editing. [`docs/PROTOCOL_PUB_QUEUE.tsv`](docs/PROTOCOL_PUB_QUEUE.tsv) is the review sheet
+for the ones still outstanding — protocol, stage, stage name, the step text as it publishes
+today, and an empty column for the sentence (or `SKIP` to mark it reference-only). Fill the
+column, and the sentences go into `tools/protocol_pub.py` and get injected. It regenerates from
+whatever is still unresolved, so it shrinks as the queue is worked. **18 stages have a Methods sentence, 36 are marked reference-only, 99 of 153
 still publish the protocol's own step prose** — that queue is the content job, one protocol at
 a time. Gibson 328 → 78 words, Transformation 126 → 79, Miniprep 156 → 39, PyMOL 494 → 3.
 
