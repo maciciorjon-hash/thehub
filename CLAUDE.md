@@ -1537,14 +1537,38 @@ The corrections went into `CALC_KINDS`, not into the prose, so the next experime
   The original had the first right and the second wrong (12.2 → "122 µL"), because it took a
   tenth of the final volume rather than a ninth of the starting one.
 - **`serial`** — a dose series that keeps **the top concentration in the well** and **the
-  strength it is made at** as separate inputs. "10× serial dilutions (1 µM, DF=3)" is ambiguous
-  by exactly a factor of ten. It also states the DMSO reaching the cells, and when the stock
-  aliquot is sub-microlitre it says to **scale tube 1 up**, never to pre-dilute the stock in
-  DMSO — that is the obvious-looking fix and it multiplies the vehicle by the factor you
-  pre-diluted by.
+  strength it is made at** as separate inputs. It is **in the picker but not in this preset**:
+  Jon's call, and the right one — everyone knows how to make a 10× dilution, so the block says
+  "prepare 10× dilutions of each concentration in Opti-MEM and add the 10×" and `spike` gives
+  the only number that is not obvious, the volume that goes in.
+
+`spike`'s source stock is **optional** for exactly that reason: with no `stockUM`/`finalUM` it
+reports the volume per well and how much 10× to make, and says nothing about how to make it.
 
 `_pipHint(µL)` is the shared "that is not a volume anyone pipettes" test; the factor scales, so
 0.09 µL is not answered with a fixed 1:10 that produces 0.9 µL.
+
+### The setup grid, and a class of alignment bug
+
+A checkbox is half the height of a labelled field, so `.cc-inputs` stretched its cell and
+centred it — landing the tick between its neighbours' label row and their inputs. Three rules,
+all in the shared `.ci-f` styles rather than one panel's:
+
+- `.ci-f` is `justify-content:space-between`, so the label sits at the top of the cell and the
+  control at the bottom. A row whose labels are different lengths now lines its controls up
+  even when one of them wraps to two lines.
+- `.ci-f.chk` is `align-self:end` with `padding:6px 0` (not `min-height`), so a one-line label
+  comes to the height of an input and centres against it, and a label that wraps grows
+  downward with the box staying on the line the sentence starts on.
+- `.ci-f.chk` spans two columns: a checkbox's label is a sentence, not a caption over an input.
+
+Same rule for `.nm-setup-plate`, whose two-line label had the box centred in the gap between
+the lines.
+
+**The setup editor asked questions the experiment does not have.** `esRender` mapped
+`SETUP_SCHEMA[type].fields` directly, so a preset's `setupHide` was honoured at creation and
+forgotten on edit — the NanoBRET variant re-offered "# 6-well transfections" as an empty box.
+It goes through `setupFieldsFor(e.presetKey)` now, which is what the New-experiment modal uses.
 
 The MG132 step also said "aspirate media and replace" above sub-steps that spike 11.1 µL into
 100 µL. The preset says spike, and says why: aspirating takes the conditioned medium and risks

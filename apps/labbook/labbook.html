@@ -411,7 +411,10 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .cc-load{color:var(--text3);font-style:italic;font-size:var(--fs-3);}
 .cc-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:var(--fs-5);line-height:1;padding:0 4px;border-radius:var(--r-1);}.cc-x:hover{color:var(--danger);background:var(--surface3);}
 .cc-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px 10px;}
-.ci-f{display:flex;flex-direction:column;gap:3px;}
+/* The label sits at the top of the cell and the control at the bottom, so a row of fields whose
+   labels are different lengths still lines its controls up: "FuGENE HD : DNA (µL:µg)" wrapping
+   to two lines used to push its input a line below every other input beside it. */
+.ci-f{display:flex;flex-direction:column;gap:3px;justify-content:space-between;}
 .ci-f span{font-size:var(--fs-1);font-weight:600;color:var(--text2);letter-spacing:.2px;}
 .ci-f input,.ci-f select{border:1px solid var(--border2);background:var(--surface);color:var(--text);border-radius:var(--r-1);padding:5px 7px;font-family:var(--sans);font-size:var(--fs-3);}
 .ci-f input:focus,.ci-f select:focus{outline:none;border-color:#5e87c5;box-shadow:0 0 0 2px rgba(94,135,197,.18);}
@@ -868,10 +871,24 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .es-note{font-size:var(--fs-2);color:var(--text2);line-height:1.55;}
 .nm-setup .ci-f.lead span{color:#5e87c5;}
 .nm-setup .ci-f.lead select{border-color:#5e87c5;font-weight:600;}
-.nm-setup-plate{display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:10px;border-top:1px dashed var(--border);font-size:var(--fs-3);color:var(--text2);cursor:pointer;}
-.nm-setup-plate input{accent-color:#5e87c5;width:15px;height:15px;cursor:pointer;}
-.ci-f.chk{flex-direction:row;align-items:center;gap:7px;}
-.ci-f.chk input{width:15px;height:15px;accent-color:#5e87c5;}
+.nm-setup-plate{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding-top:11px;border-top:1px dashed var(--border);font-size:var(--fs-3);line-height:1.5;color:var(--text2);cursor:pointer;}
+/* Two lines of label: centring the box puts it in the gap between them. It belongs on the
+   first line, which is the one the sentence starts on. */
+.nm-setup-plate input{accent-color:#5e87c5;width:15px;height:15px;flex:none;margin-top:2px;cursor:pointer;}
+/* A checkbox wears its label beside it, not above it, so on its own it is half the height of a
+   labelled field and the grid centred it — landing between its neighbours' label row and their
+   inputs. It is pinned to the bottom of the cell instead, at the height of an input, so it
+   reads as one more control on the same line. */
+.ci-f.chk{flex-direction:row;align-items:flex-start;justify-content:flex-start;gap:7px;align-self:end;padding:6px 0;
+  grid-column:span 2;}
+/* A checkbox's label is a sentence ("MG132 pre-treatment"), not a two-word caption over an
+   input, so it needs the width of two fields. In a single-column grid the span is clamped and
+   nothing changes. */
+/* padding, not min-height: a one-line label comes to the height of an input and centres against
+   it, and a label that wraps grows downward with the box staying on the line the sentence
+   starts on rather than drifting into the gap between the two lines. */
+.ci-f.chk input{width:15px;height:15px;flex:none;margin-top:1px;accent-color:#5e87c5;}
+.ci-f.chk span{font-size:var(--fs-2);font-weight:600;line-height:1.45;color:var(--text);}
 /* New-experiment source-protocol chips */
 .nm-protocols{margin:4px 0 2px;}
 .nm-proto-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
@@ -1543,16 +1560,17 @@ var EXTRA_PRESET_SEED={
        +'lifting the monolayer; the 10&times; intermediate is designed to go on top of what is already there.</p>'
        +'<p>Incubate <b>1 h</b> at 37 &deg;C before the compounds.</p>'
        +'<ul class="lb-check"><li>10&times; MG132 made fresh in Opti-MEM</li><li>Added to all 84 wells</li><li>1 h, 37 &deg;C</li></ul>'},
-    {d:1,title:'Test compounds — dilution series + addition',
-     calc:{kind:'serial',inputs:{name:'Test compounds',topFinalNM:1000,foldX:10,df:3,nPoints:11,
-       volPerPoint:60,wellVolUL:111.1,stockUM:10000,nCompounds:3,diluent:'Opti-MEM'}},
-     html:'<p>Three compounds, <b>11 points at 3-fold from 1 &micro;M in the well</b>, plus a DMSO column &mdash; two rows each '
-       +'(C/D, E/F, G/H). The series is made at <b>10&times;</b>, so the top tube is <b>10 &micro;M</b>, not 1 &micro;M: that distinction '
-       +'is a factor of ten and it is the one worth writing down.</p>'
+    {d:1,title:'Test compounds',
+     calc:{kind:'spike',inputs:{name:'test compounds',wellVolUL:111.1,foldX:10,finalUM:0,stockUM:0,
+       nWells:84,excess:1.1,diluent:'Opti-MEM'}},
+     html:'<p>Three compounds at the selected concentrations, <b>11 points at 3-fold from 1 &micro;M in the well</b> plus a DMSO column '
+       +'&mdash; two rows each (C/D, E/F, G/H), as laid out in the plate map.</p>'
+       +'<p>Prepare <b>10&times; dilutions of each concentration in Opti-MEM</b> and add the 10&times; to the wells. '
+       +'The concentrations quoted on the plate are the ones <b>in the well</b>, so the 10&times; top point is 10 &micro;M.</p>'
        +'<p>Add the same volume of the matched vehicle to the DMSO column and to the row A controls, so every well on the plate carries '
        +'the same Opti-MEM and DMSO.</p>'
        +'<p>Incubate <b>3 h</b> at 37 &deg;C.</p>'
-       +'<ul class="lb-check"><li>Series made for all three compounds</li><li>Added to the dose wells</li>'
+       +'<ul class="lb-check"><li>10&times; dilutions made for all three compounds</li><li>Added to the dose wells</li>'
        +'<li>Vehicle added to the DMSO column and row A</li><li>3 h, 37 &deg;C</li></ul>'},
     {d:1,title:'NanoBRET substrate + read',
      calc:{kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:'Opti-MEM',totalVol:2520,dilution:100}},
@@ -2026,13 +2044,15 @@ function spikeRecipe(v){
   var df=(inter>0&&stock>0)?(stock/inter):0;
   var vs=df>0?(need/df):0, vd=need-vs;
   var out='<b>Add '+nfmt(add)+' µL per well</b> of a '+nfmt(X)+'× intermediate to the '+nfmt(V)+' µL already in the well → '
-    +nfmt(newV)+' µL/well at '+_fmtConc(fin*1000)+' '+name+'.'
+    +nfmt(newV)+' µL/well'+(fin>0?(' at '+_fmtConc(fin*1000)+' '+name):(' of '+name))+'.'
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Step</th><th>Amount</th></tr>'
-    +'<tr><td>'+nfmt(X)+'× intermediate at '+_fmtConc(inter*1000)+' — '+nfmt(n)+' well'+(n===1?'':'s')+_ovxL(ex)+'</td><td><b>'+nfmt(need)+' µL</b></td></tr>'
-    +'<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', diluted 1:'+nfmt(df)+'</td><td><b>'+nfmt(vs)+' µL</b></td></tr>'
-    +'<tr><td>'+dl+'</td><td><b>'+nfmt(vd)+' µL</b></td></tr></table></div>'
+    +'<tr><td>'+nfmt(X)+'× intermediate'+(inter>0?(' at '+_fmtConc(inter*1000)):'')+' — '+nfmt(n)+' well'+(n===1?'':'s')+_ovxL(ex)+'</td><td><b>'+nfmt(need)+' µL</b></td></tr>'
+    +(df>0?('<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', diluted 1:'+nfmt(df)+'</td><td><b>'+nfmt(vs)+' µL</b></td></tr>'
+           +'<tr><td>'+dl+'</td><td><b>'+nfmt(vd)+' µL</b></td></tr>'):'')
+    +'</table></div>'
     +'<div class="cc-note">V/(X−1), not V/X — the intermediate becomes part of the final volume. Adding a tenth of '+nfmt(V)
-    +' µL instead would put '+nfmt(V/X)+' µL in and land at '+_fmtConc(fin*1000*X/(X+1))+', short of the '+_fmtConc(fin*1000)+' you asked for.</div>';
+    +' µL instead would put '+nfmt(V/X)+' µL in and leave every well at '+nfmt(100*X/(X+1))+'% of the dose you meant'
+    +(fin>0?(' — '+_fmtConc(fin*1000*X/(X+1))+' instead of '+_fmtConc(fin*1000)):'')+'.</div>';
   if(df>0&&df<2) out+='<div class="cc-warn">The stock is only '+nfmt(df)+'× the intermediate — barely a dilution. '
     +'Check the stock concentration or make the intermediate weaker.</div>';
   else if(_pipHint(vs)) out+='<div class="cc-warn">'+nfmt(vs)+' µL of stock is not a volume to pipette directly — '
@@ -5384,7 +5404,8 @@ var ES_SETUP=null, ES_EXP=null;
 function openSetupEditor(expId){
   var e=LB.data.experiments[expId]; if(!e) return;
   var S=setupSchema(e.type);
-  if(!S.fields||!S.fields.length){ toast('This experiment type has no setup parameters.'); return; }
+  var _f=e.presetKey?setupFieldsFor(e.presetKey):(S.fields||[]);
+  if(!_f.length){ toast('This experiment type has no setup parameters.'); return; }
   ES_EXP=expId;
   ES_SETUP=JSON.parse(JSON.stringify(e.setup||setupDefaults(e.type)));
   el('es-modal').classList.add('open');
@@ -5394,7 +5415,11 @@ function closeSetupEditor(){ el('es-modal').classList.remove('open'); ES_SETUP=n
 function esRender(){
   var e=LB.data.experiments[ES_EXP]; if(!e) return;
   var S=setupSchema(e.type);
-  var fields=(S.fields||[]).map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format',ES_SETUP,'esSetupUpd'); }).join('');
+  // The same questions the experiment was created with. A preset's setupHide dropped a field
+  // because that variant has no such step — bringing it back here as an empty box asks about
+  // something the experiment does not have.
+  var flds=e.presetKey?setupFieldsFor(e.presetKey):(S.fields||[]);
+  var fields=flds.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format',ES_SETUP,'esSetupUpd'); }).join('');
   el('es-fields').innerHTML=fields;
   el('es-diff').innerHTML=esDiffHtml(e);
 }
