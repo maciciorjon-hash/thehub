@@ -19,7 +19,7 @@ Every app declares the same names. Two scales, no loose values.
   --fs-1:10px; --fs-2:11px; --fs-3:12px; --fs-4:13px; --fs-5:15px;
   --fs-6:17px; --fs-7:20px; --fs-8:26px; --fs-9:38px;
   /* radius */
-  --r-1:6px; --r-2:10px; --r-3:14px; --r-4:20px; --r-full:999px;
+  --r-1:4px; --r-2:6px; --r-3:9px; --r-4:13px; --r-full:999px;
   --r2:12px; --r3:16px;                 /* the two card radii */
 
   /* light is the default; dark is the override */
@@ -56,6 +56,10 @@ Every app declares the same names. Two scales, no loose values.
 opens in — is the special case, and every new rule gets written for the wrong theme first. Flip it.
 
 **Rules, not suggestions**
+The radii were cut by about a third in 2026-08-26 (6/10/14/20 → 4/6/9/13). Rounder corners read
+as informal; this is a lab record, and the chrome should look like one. `--r-full` is unchanged —
+a pill or a dot is a shape, not a softened rectangle.
+
 - No loose `px` for `font-size` or `border-radius` anywhere in a stylesheet. Two exceptions, both
   narrow: values inside JS strings, where rewriting them blind would be risky; and **text drawn
   inside an SVG** (a label on a plasmid ring, a tick on an axis), which is sized against the
