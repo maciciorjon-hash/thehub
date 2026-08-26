@@ -10,10 +10,17 @@ modal. Nothing throws, nothing logs, and the app just looks wrong.
 The orphan came from deleting a rule that spanned two lines and only removing the first one —
 the same end-anchor family of mistakes already recorded in docs/CLAUDE_HANDOFF.md.
 
+It also checks the second silent way a stylesheet can be wrong: a `var(--token)` that nothing
+in the file ever defines. That is not a parse error either — the declaration is simply invalid
+at computed-value time and the property falls back to its inherited or initial value. Blueprint,
+Helix and Protein Tools each used the whole type and radius scale (79 font sizes in Blueprint)
+without ever declaring it, so every string rendered at the inherited 16px and every corner at 0.
+It looked like a design choice, and nothing anywhere said otherwise.
+
   python3 tools/check_css.py                 # every app + the shell
   python3 tools/check_css.py path.html ...
 
-Exit 1 if any stylesheet has a declaration outside a rule.
+Exit 1 if any stylesheet has a declaration outside a rule, or uses a token it never defines.
 """
 import os, re, sys, glob
 
@@ -68,6 +75,27 @@ def orphans(css, first_line):
     return out
 
 
+def undefined_tokens(html):
+    """Custom properties used by this file that it never defines.
+
+    Definitions are counted across the whole file, not just its <style> blocks: a token can be
+    set from JS with style.setProperty, and a token used in an inline style attribute built in a
+    JS string is read from the same cascade as one used in the stylesheet.
+
+    A var() with a fallback is deliberate and is not reported — `var(--accent-dim,rgba(...))`
+    says what to do when the token is absent.
+    """
+    defined = set(re.findall(r'(--[A-Za-z0-9_-]+)\s*:', html))
+    used = {}
+    for m in re.finditer(r'var\(\s*(--[A-Za-z0-9_-]+)\s*([,)])', html):
+        name, nxt = m.group(1), m.group(2)
+        if nxt == ',':
+            continue                      # has a fallback: absence is handled
+        used.setdefault(name, 0)
+        used[name] += 1
+    return sorted(((n, c) for n, c in used.items() if n not in defined), key=lambda x: -x[1])
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     files = [os.path.abspath(a) for a in args] if args else (
@@ -84,16 +112,25 @@ def main():
         hits = []
         for start, css in stylesheets(html):
             hits += orphans(css, start)
-        if hits:
+        missing = undefined_tokens(html)
+        if hits or missing:
             bad += 1
-            print('  %s: %d orphan(s)' % (rel, len(hits)))
+            parts = []
+            if hits:
+                parts.append('%d orphan(s)' % len(hits))
+            if missing:
+                parts.append('%d undefined token(s)' % len(missing))
+            print('  %s: %s' % (rel, ', '.join(parts)))
             for ln, txt in hits[:8]:
                 print('     line %-6d %s' % (ln, txt))
+            for name, n in missing[:10]:
+                print('     %-18s used %d time(s), never defined' % (name, n))
         else:
             print('  %s: clean' % rel)
     if bad:
-        sys.stderr.write('\ncheck_css.py FAILED — %d file(s) have declarations outside a rule.\n'
-                         'The browser folds these into the next selector and drops that rule silently.\n' % bad)
+        sys.stderr.write('\ncheck_css.py FAILED — %d file(s) with a problem.\n'
+                         'An orphan declaration is folded into the next selector and drops that rule silently;\n'
+                         'an undefined token leaves its property at the inherited or initial value.\n' % bad)
         return 1
     return 0
 
