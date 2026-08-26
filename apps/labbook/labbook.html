@@ -1028,6 +1028,10 @@ body.lb-lean .exh-lean{display:flex;align-items:center;gap:9px;flex-wrap:wrap;ma
   font-size:var(--fs-3);color:var(--text2);}
 body.lb-lean .exh.open .exh-lean{display:none;}
 .exh-lean b{color:var(--text);font-weight:600;}
+.pp-gl-n span{font-size:var(--fs-6);font-weight:800;letter-spacing:0;}
+.pp-leg-i b{font-family:var(--mono);color:var(--text);margin-right:2px;}
+.cc-no{width:26px;text-align:center;font-family:var(--mono);font-weight:700;color:var(--text2);}
+.cc-mix td,.cc-mix th{vertical-align:top;}
 .cc-rule{margin-top:9px;padding:8px 10px;border-radius:var(--r-2);background:var(--surface2);
   border-left:2px solid var(--accent);font-size:var(--fs-2);color:var(--text2);line-height:1.6;}
 .cc-rule b{color:var(--text);}
@@ -1890,6 +1894,10 @@ var SETUP_SCHEMA={
      hint:'Several acceptors go in this one box, separated by commas. Each gets its own acceptor-only control well.'},
     {f:'ratios',t:'txt',lbl:'Donor = 1/X of the acceptor',d:'50',ph:'50, or 10, 50 for two',
      hint:'The X in a 1:X donor:acceptor mass ratio. Two, separated by a comma, makes one full set of mixes per ratio.'},
+    {f:'doseSeries',t:'check',lbl:'Dose–response on this plate',d:false,
+     hint:'Off by default for a NanoBRET: a PPI plate has conditions, not concentrations, and the compound and concentration fields only get in the way of drawing it. Turn it on and the plate editor offers the dilution filler and the per-well concentrations again.'},
+    {f:'minVol',t:'num',lbl:'Smallest volume you will pipette (µL)',d:0.25,step:'0.05',
+     hint:'Below this the calculators stop printing a number you cannot execute and tell you to dilute the plasmid instead. It is a property of your pipettes and your hands, not of the experiment, so it is asked once and used everywhere.'},
     {f:'nTransfect',t:'num',lbl:'# 6-well transfections',d:3},
     {f:'ligand',t:'txt',lbl:'HaloTag ligand',d:'HT618'},
     {f:'mg132',t:'check',lbl:'MG132 pre-treatment',d:true}],
@@ -2013,7 +2021,7 @@ function fillSetup(s,setup){ if(!s) return s;
 // rather than blanking what the block already has: clearing a field is not the same as saying
 // "no donors".
 function applyNbtxSetup(su,blocks){
-  var map={donors:'donorNames', acceptors:'acceptorNames', ratios:'ratios'};
+  var map={donors:'donorNames', acceptors:'acceptorNames', ratios:'ratios', minVol:'minVolUL'};
   (blocks||[]).forEach(function(b){
     if(!b.calc||b.calc.kind!=='nbtx'||!b.calc.inputs) return;
     _nbtxMigrate(b);
@@ -2118,6 +2126,8 @@ var CALC_KINDS={
      hint:'One number for all of them, or one per donor separated by commas, in the same order as the names — several donors are several preps.'},
     {k:'acceptorStock',t:'txt',lbl:'Acceptor stock (ng/µL)',hint:'One number, or one per acceptor, comma-separated.'},
     {k:'carrierStock',t:'num',lbl:'Carrier DNA stock (ng/µL)'},
+    {k:'minVolUL',t:'num',lbl:'Min. volume to pipette (µL)',step:'0.05',
+     hint:'Anything smaller is reported as a dilution to make, not as a volume to take.'},
     {k:'fugenePerWell',t:'num',lbl:'FuGENE HD (µL/well)',step:'0.01'},{k:'optimemPerWell',t:'num',lbl:'Opti-MEM (µL/well)'},
     {k:'nPair',t:'num',lbl:'Wells: pair (each donor × ratio)'},{k:'nDonor',t:'num',lbl:'Wells: donor only (each)'},
     {k:'nAcceptor',t:'num',lbl:'Wells: acceptor only (total)'},
@@ -2258,12 +2268,15 @@ function _nbtxConditions(v){
   ratios.forEach(function(R){
     var dNg=R?(aNg/R):0, ng=dNg+aNg;
     donors.forEach(function(D,di){
+      var rt=(ratios.length>1)?('@'+R):'';
       accs.forEach(function(A,ai){
         var extra=(nCtrl&&R===cR)?nCtrl:0;
-        out.push({key:'pair', name:D+' + '+A+tag(R), n:(+v.nPair||0)+extra,
+        // tid is what the plate paints with: a condition and a well type are the same thing, and
+        // two ratios of the same pair are two conditions, so the ratio belongs in the id.
+        out.push({key:'pair', tid:'p:'+D+'+'+A+rt, name:D+' + '+A+tag(R), n:(+v.nPair||0)+extra,
                   d:dNg, a:aNg, dStock:dStock(di), aStock:P.aStock(ai), ng:ng});
       });
-      out.push({key:'donor', name:D+' only'+tag(R), n:+v.nDonor||0,
+      out.push({key:'donor', tid:'d:'+D+rt, name:D+' only'+tag(R), n:+v.nDonor||0,
                 d:(full?ng:dNg), a:0, dStock:dStock(di), aStock:P.aStock(0), ng:ng});
     });
   });
@@ -2272,10 +2285,12 @@ function _nbtxConditions(v){
   // identical rows and have someone make the same tube twice.
   var ngMax=Math.max.apply(null, ratios.map(function(R){ return aNg+(R?aNg/R:0); }));
   accs.forEach(function(A,ai){
-    out.push({key:'acc', name:A+' only', n:+v.nAcceptor||0, a:(full?ngMax:aNg), d:0,
+    out.push({key:'acc', tid:'a:'+A, name:A+' only', n:+v.nAcceptor||0, a:(full?ngMax:aNg), d:0,
               dStock:dStock(0), aStock:P.aStock(ai), ng:ngMax}); });
-  out.push({key:'mock', name:'Mock (carrier only)', n:+v.nMock||0, d:0, a:0,
+  out.push({key:'mock', tid:'mock', name:'Mock (carrier only)', n:+v.nMock||0, d:0, a:0,
             dStock:dStock(0), aStock:P.aStock(0), ng:ngMax});
+  if(+v.nUntr>0) out.push({key:'untr', tid:'untr', name:'Untransfected', n:+v.nUntr||0, d:0, a:0,
+            dStock:dStock(0), aStock:P.aStock(0), ng:ngMax, noMix:true});
   return out.map(function(c){
     // Every well should receive the same total DNA, and with two ratios the pair totals differ
     // (80 + 8 against 80 + 1.6), so the target is the largest of them. With one ratio that is
@@ -2291,12 +2306,16 @@ function _nbtxConditions(v){
 // 1.57 ng of donor per well is 0.45 µL of a 100 ng/µL prep across a whole 24-well condition —
 // a volume no one pipettes accurately. Say which working dilution makes it a real volume rather
 // than printing a number that cannot be executed.
-function _dnaVol(ng, stock){
+function _dnaVol(ng, stock, minUL){
   if(!(stock>0) || !(ng>0)) return null;
+  // What counts as too small is a property of your pipettes, so it is asked once in the setup
+  // rather than assumed. 1 µL was the old assumption and it made half these rows say "dilute"
+  // when the bench would have pipetted them without blinking.
+  var min=(+minUL>0)?+minUL:0.25;
   var ul=ng/stock;
-  if(ul>=1) return {ul:ul, txt:nfmt(ul)+' µL'};
+  if(ul>=min) return {ul:ul, txt:nfmt(ul)+' µL'};
   var f=10;
-  while(ul*f<2 && f<10000) f*=10;
+  while(ul*f<Math.max(2,min*4) && f<10000) f*=10;
   return {ul:ul, dil:f, txt:nfmt(ul)+' µL — <b>dilute 1:'+f+'</b> and take '+nfmt(ul*f)+' µL'};
 }
 function nbtxRecipe(v){
@@ -2304,35 +2323,52 @@ function nbtxRecipe(v){
   if(!cs.length) return '<b>Reverse transfection</b> — set how many wells each condition needs.';
   var ex=+v.excess||1, dS=+v.donorStock||0, aS=+v.acceptorStock||0, cS=+v.carrierStock||0;
   var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0, R=+v.ratio||1;
-  var dNg=R?(aNg/R):0, ng=dNg+aNg;
-  var rows=cs.map(function(c){
+  var _mv=+v.minVolUL||0.25;
+  var P0=nbtxParts(v);
+  // One column per plasmid, the way FuGENE and Opti-MEM already have one. Three plasmids stacked
+  // as prose inside a single "DNA" cell is the version you cannot read down: what you actually
+  // do at the bench is take the same tube along a column.
+  var cols=P0.donors.concat(P0.accs).concat(['Carrier']);
+  var rows=cs.map(function(c,ci){
     var W=c.n*ex;
     // Each condition carries its own donor and acceptor stock: several donors are several preps,
     // and a shared 100 ng/µL would be a number nobody checked.
-    var dV=_dnaVol(c.d*W,c.dStock||dS), aV=_dnaVol(c.a*W,c.aStock||aS), cV=c.needsCarrier?_dnaVol(c.carrier*W,cS):null;
+    var dV=_dnaVol(c.d*W,c.dStock||dS,_mv), aV=_dnaVol(c.a*W,c.aStock||aS,_mv), cV=c.needsCarrier?_dnaVol(c.carrier*W,cS,_mv):null;
     var dUL=dV?dV.ul:null, aUL=aV?aV.ul:null, cUL=cV?cV.ul:null;
     var fu=(+v.fugenePerWell||0)*W, om=(+v.optimemPerWell||0)*W;
-    var dna=(dUL||0)+(aUL||0)+(cUL||0);
-    var tot=om+fu+dna;
-    var parts=[];
+    var tot=om+fu+(dUL||0)+(aUL||0)+(cUL||0);
     var nm=String(c.name).replace(/\s*\(NL 1:[^)]*\)\s*$/,'');
     var dNm=nm.split(' only')[0].split(' + ')[0], aNm=(nm.indexOf(' + ')>=0?nm.split(' + ')[1]:nm.split(' only')[0]);
-    if(c.d>0) parts.push(nfmt(c.d*W)+' ng '+esc(dNm)+(dV?(' &middot; '+dV.txt):''));
-    if(c.a>0) parts.push(nfmt(c.a*W)+' ng '+esc(aNm)+(aV?(' &middot; '+aV.txt):''));
-    if(c.needsCarrier) parts.push(nfmt(c.carrier*W)+' ng carrier'+(cV?(' &middot; '+cV.txt):''));
-    // A well that is short of the target and gets nothing added is a decision, not an oversight,
-    // and it is invisible unless the table says so.
-    else if(c.carrier>0) parts.push('<span class="cc-dim">no carrier &mdash; short by '+nfmt(c.carrier)
-      +' ng ('+nfmt(c.pct*100)+'%, under the 10% rule)</span>');
-    return '<tr><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'+c.n+' well'+(c.n===1?'':'s')+' × '+nfmt(ex)+' overage</span></td>'
-      +'<td>'+(parts.join('<br>')||'—')+'</td>'
+    function cell(name){
+      if(name==='Carrier'){
+        if(c.needsCarrier) return '<b>'+nfmt(cV?cV.ul:0)+' µL</b><br><span class="cc-dim">'+nfmt(c.carrier*W)+' ng'
+          +(cV&&cV.dil?(' · dilute 1:'+cV.dil+' → '+nfmt(cV.ul*cV.dil)+' µL'):'')+'</span>';
+        // A well short of the target that gets nothing added is a decision, not an oversight.
+        if(c.carrier>0) return '<span class="cc-dim">— short '+nfmt(c.carrier)+' ng ('+nfmt(c.pct*100)+'%)</span>';
+        return '<span class="cc-dim">—</span>';
+      }
+      if(c.d>0 && name===dNm) return '<b>'+nfmt(dUL||0)+' µL</b><br><span class="cc-dim">'+nfmt(c.d*W)+' ng'
+        +(dV&&dV.dil?(' · dilute 1:'+dV.dil+' → '+nfmt(dV.ul*dV.dil)+' µL'):'')+'</span>';
+      if(c.a>0 && name===aNm) return '<b>'+nfmt(aUL||0)+' µL</b><br><span class="cc-dim">'+nfmt(c.a*W)+' ng'
+        +(aV&&aV.dil?(' · dilute 1:'+aV.dil+' → '+nfmt(aV.ul*aV.dil)+' µL'):'')+'</span>';
+      return '<span class="cc-dim">—</span>';
+    }
+    if(c.noMix) return '<tr><td class="cc-no">'+(ci+1)+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'
+      +c.n+' well'+(c.n===1?'':'s')+' — no complex</span></td>'
+      +cols.map(function(){ return '<td><span class="cc-dim">—</span></td>'; }).join('')
+      +'<td><span class="cc-dim">—</span></td><td><span class="cc-dim">—</span></td><td><span class="cc-dim">—</span></td></tr>';
+    return '<tr><td class="cc-no">'+(ci+1)+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'+c.n+' well'+(c.n===1?'':'s')+' × '+nfmt(ex)+' overage</span></td>'
+      +cols.map(function(n){ return '<td>'+cell(n)+'</td>'; }).join('')
       +'<td>'+nfmt(fu)+' µL</td><td>'+nfmt(om)+' µL</td><td><b>'+nfmt(tot)+' µL</b></td></tr>';
   }).join('');
+  var head='<tr><th class="cc-no">#</th><th>Condition</th>'
+    +cols.map(function(n){ return '<th>'+esc(n)+'</th>'; }).join('')
+    +'<th>FuGENE HD</th><th>Opti-MEM</th><th>Total</th></tr>';
   var _P=nbtxParts(v), Rs=_P.ratios, names=_P.donors;
   var ngMax=Math.max.apply(null, Rs.map(function(r){ return aNg+(r?aNg/r:0); }));
   var donorTxt=Rs.map(function(r){ return '1:'+nfmt(r)+' → '+nfmt(r?aNg/r:0)+' ng ('+nfmt(aNg+(r?aNg/r:0))+' ng/well)'; }).join(' &middot; ');
   return '<b>Reverse transfection — one mix per condition</b>'
-    +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Condition</th><th>DNA</th><th>FuGENE HD</th><th>Opti-MEM</th><th>Total</th></tr>'+rows+'</table></div>'
+    +'<div class="cc-tblwrap"><table class="cc-tbl cc-mix">'+head+rows+'</table></div>'
     +'<div class="cc-note">'+nfmt(aNg)+' ng '+esc(_P.accs.join(' or '))+' per well, with '
     +esc(names.join(' and '))+' at '+donorTxt+'. '
     +'Every condition is topped up with carrier to <b>'+nfmt(ngMax)+' ng</b> — the largest of those totals, so every well on the plate '
@@ -2372,8 +2408,9 @@ function _ovxL(ex){ ex=+ex; return (ex&&ex!==1)?(' × '+nfmt(ex)+' overage'):'';
 // Sub-microlitre volumes are printed by every calculator and pipetted accurately by none. Say
 // which interim dilution turns one into a real volume — the factor has to scale, since a fixed
 // 1:10 turns 0.09 µL into 0.9 µL, which is the same problem one decimal place along.
-function _pipHint(ul){ if(!(ul>0)||ul>=1) return null;
-  var f=10; while(ul*f<2 && f<1e6) f*=10;
+function _pipHint(ul,minUL){ var min=(+minUL>0)?+minUL:0.25;
+  if(!(ul>0)||ul>=min) return null;
+  var f=10; while(ul*f<Math.max(2,min*4) && f<1e6) f*=10;
   return {f:f, ul:ul*f, txt:'dilute 1:'+nfmt(f)+' and take '+nfmt(ul*f)+' µL'}; }
 function rtxMixRecipe(v){
   var n=+v.nWells||0, ex=+v.excess||1, W=n*ex;
@@ -2398,8 +2435,8 @@ function rtxMixRecipe(v){
     +nfmt(dnaNg/naive*disp)+' ng.</div>';
   if(dil<=0) out+='<div class="cc-warn">The DNA and FuGENE alone come to '+nfmt(dnaUL+fug)+' µL — more than the '+nfmt(tot)
     +' µL the mix is meant to be. Use a more concentrated plasmid prep, or dispense more per well.</div>';
-  else if(_pipHint(dnaUL)) out+='<div class="cc-warn">'+nfmt(dnaUL)+' µL of plasmid is not a volume to pipette directly — '
-    +_pipHint(dnaUL).txt+'.</div>';
+  else if(_pipHint(dnaUL,v.minVolUL)) out+='<div class="cc-warn">'+nfmt(dnaUL)+' µL of plasmid is not a volume to pipette directly — '
+    +_pipHint(dnaUL,v.minVolUL).txt+'.</div>';
   return out;
 }
 function spikeRecipe(v){
@@ -2421,8 +2458,8 @@ function spikeRecipe(v){
     +(fin>0?(' — '+_fmtConc(fin*1000*X/(X+1))+' instead of '+_fmtConc(fin*1000)):'')+'.</div>';
   if(df>0&&df<2) out+='<div class="cc-warn">The stock is only '+nfmt(df)+'× the intermediate — barely a dilution. '
     +'Check the stock concentration or make the intermediate weaker.</div>';
-  else if(_pipHint(vs)) out+='<div class="cc-warn">'+nfmt(vs)+' µL of stock is not a volume to pipette directly — '
-    +_pipHint(vs).txt+' of it into the '+dl+'.</div>';
+  else if(_pipHint(vs,v.minVolUL)) out+='<div class="cc-warn">'+nfmt(vs)+' µL of stock is not a volume to pipette directly — '
+    +_pipHint(vs,v.minVolUL).txt+' of it into the '+dl+'.</div>';
   return out;
 }
 function serialRecipe(v){
@@ -2454,7 +2491,7 @@ function serialRecipe(v){
   // The advice has to keep the vehicle honest. Pre-diluting the DMSO stock in DMSO and then
   // under-diluting *that* into medium is the obvious-looking fix and it multiplies the DMSO
   // reaching the cells by exactly the factor you pre-diluted by.
-  if(_pipHint(vs)){ var sc=Math.ceil(1/vs), t1=first*sc;
+  if(_pipHint(vs,v.minVolUL)){ var sc=Math.ceil(1/vs), t1=first*sc;
     out+='<div class="cc-warn">'+nfmt(vs)+' µL of DMSO stock is not a volume to pipette directly, and pre-diluting the stock '
       +'<i>in DMSO</i> would carry that much more vehicle into the well. Either make tube 1 at <b>'+nfmt(t1)+' µL</b> ('
       +nfmt(vs*sc)+' µL of stock into '+nfmt(t1-vs*sc)+' µL '+dl+') and discard the excess, or run the '+nfmt(df)
@@ -2744,42 +2781,43 @@ function newPlate(fmt){ fmt=String(fmt||'96'); if(!PLATE_FORMATS[fmt]) fmt='96';
 // pairs. What it will not do is overwrite a map by itself; every caller offers it.
 function nbPlateBlocks(su,I){
   I=I||{}; su=su||{};
-  var P=nbtxParts({donorNames:(su.donors||I.donorNames), acceptorNames:(su.acceptors||I.acceptorNames),
-                   ratios:(su.ratios||I.ratios), donorName:I.donorName, donor2Name:I.donor2Name,
-                   acceptorName:I.acceptorName, ratio:I.ratio, ratio2:I.ratio2});
-  var D=CALC_KINDS.nbtx.defaults||{};
-  function n(k){ var v=(I[k]!=null?I[k]:D[k]); v=+v; return isFinite(v)&&v>0?Math.round(v):0; }
-  var nPair=n('nPair'), nDonor=n('nDonor'), nAcc=n('nAcceptor'), nMock=n('nMock'), nCtrl=n('nPairCtrl'), nUntr=n('nUntr');
-  var cR=+I.ctrlRatio||P.ratios[0];
-  var multi=P.ratios.length>1;
-  function tag(R){ return multi?('NL 1:'+nfmt(R)+' · '):''; }
-  var bands=[];
-  // Controls first, because that is where they are read from. Half the control wells are the
-  // ligand-free pair and half the substrate-free one: they are the same transfection.
-  if(nCtrl>0||nMock>0||nUntr>0){
-    var band=[];
-    P.donors.forEach(function(Dn){ P.accs.forEach(function(A){
-      if(nCtrl>0){
-        band.push({n:Math.ceil(nCtrl/2), t:'p:'+Dn+'+'+A, label:Dn+' + '+A, flag:'noLig'});
-        band.push({n:Math.floor(nCtrl/2), t:'p:'+Dn+'+'+A, label:Dn+' + '+A, flag:'noSub'});
-      }
-    }); });
-    if(nMock>0) band.push({n:nMock, t:'mock', label:'Mock (carrier DNA)'});
-    if(nUntr>0) band.push({n:nUntr, t:'untr', label:'Untransfected'});
-    if(band.length) bands.push(band.filter(function(b){ return b.n>0; }));
-  }
-  P.ratios.forEach(function(R,ri){
-    var singles=[];
-    P.donors.forEach(function(Dn){ if(nDonor>0) singles.push({n:nDonor, t:'d:'+Dn, label:tag(R)+Dn}); });
-    // The acceptor-only well does not depend on the ratio, so it is drawn once, in the first band.
-    if(ri===0) P.accs.forEach(function(A){ if(nAcc>0) singles.push({n:nAcc, t:'a:'+A, label:A}); });
-    var pairs=[];
-    P.donors.forEach(function(Dn){ P.accs.forEach(function(A){
-      if(nPair>0) pairs.push({n:nPair, t:'p:'+Dn+'+'+A, label:tag(R)+Dn+' + '+A}); }); });
-    // The singles and the pairs of one ratio are one band and flow together. Forcing a row
-    // break between them reads better and costs a row per band, which is what pushed the second
-    // ratio's pairs off an 8-row plate — the blocks are labelled, so the break was decoration.
-    if(singles.length||pairs.length) bands.push(singles.concat(pairs));
+  // The setup wins over whatever the block was created with — this is what "rebuild from the
+  // setup" means — and everything else comes from the conditions themselves.
+  var I2=JSON.parse(JSON.stringify(I));
+  if(su.donors) I2.donorNames=su.donors;
+  if(su.acceptors) I2.acceptorNames=su.acceptors;
+  if(su.ratios) I2.ratios=su.ratios;
+  var conds=_nbtxConditions(I2);
+  if(!conds.length) return [];
+  var nCtrl=+I2.nPairCtrl||0, cR=+I2.ctrlRatio||nbtxParts(I2).ratios[0];
+  var multiR=nbtxParts(I2).ratios.length>1;
+  function ratioOf(tid){ var m=/@([\d.]+)$/.exec(tid||''); return m?+m[1]:null; }
+  var bands=[], band=[];
+  // The controls first, because that is where they are read from: the same pair mix with the
+  // ligand or the substrate left out at the read, so they carry its number and a flag.
+  conds.forEach(function(c){
+    if(c.key!=='pair'||!nCtrl) return;
+    if(multiR && ratioOf(c.tid)!==cR) return;
+    band.push({n:Math.ceil(nCtrl/2), t:c.tid, label:c.name, flag:'noLig'});
+    band.push({n:Math.floor(nCtrl/2), t:c.tid, label:c.name, flag:'noSub'});
+  });
+  conds.forEach(function(c){ if(c.key==='mock'||c.key==='untr') band.push({n:c.n, t:c.tid, label:c.name}); });
+  if(band.filter(function(b){ return b.n>0; }).length) bands.push(band.filter(function(b){ return b.n>0; }));
+  // Then one band per ratio: the single-plasmid wells, then the pairs.
+  var byR={};
+  conds.forEach(function(c){
+    if(c.key==='mock'||c.key==='untr') return;
+    var r=ratioOf(c.tid); var k=(r==null?'_':String(r));
+    (byR[k]||(byR[k]=[])).push(c);
+  });
+  Object.keys(byR).forEach(function(k){
+    var list=byR[k], out=[];
+    list.filter(function(c){ return c.key!=='pair'; }).forEach(function(c){ if(c.n>0) out.push({n:c.n, t:c.tid, label:c.name}); });
+    list.filter(function(c){ return c.key==='pair'; }).forEach(function(c){
+      var n=c.n-((nCtrl&&(!multiR||ratioOf(c.tid)===cR))?nCtrl:0);   // its control wells are drawn above
+      if(n>0) out.push({n:n, t:c.tid, label:c.name});
+    });
+    if(out.length) bands.push(out);
   });
   return bands;
 }
@@ -2789,19 +2827,18 @@ function nbPlateFromSetup(su,I,fmt,tight){
   if(!bands.length) return null;
   var p=newPlate(fmt);
   p.title='NanoBRET — '+fmt+'-well';
-  // The palette is the experiment's own conditions — the same ids expPlateTypes builds — so
-  // editing the map and reading counts back out of it work on a generated plate too.
-  var _P0=nbtxParts({donorNames:(su.donors||I.donorNames), acceptorNames:(su.acceptors||I.acceptorNames),
-                     donorName:I.donorName, donor2Name:I.donor2Name, acceptorName:I.acceptorName});
-  var ci=0; function _c(){ return PLATE_TYPE_COLORS[(ci++)%PLATE_TYPE_COLORS.length]; }
-  p.types=[];
-  _P0.donors.forEach(function(D){ _P0.accs.forEach(function(A){
-    p.types.push({id:'p:'+D+'+'+A, name:D+' + '+A, color:_c()}); }); });
-  _P0.donors.forEach(function(D){ p.types.push({id:'d:'+D, name:D+' only', color:_c()}); });
-  _P0.accs.forEach(function(A){ p.types.push({id:'a:'+A, name:A+' only', color:_c()}); });
-  p.types.push({id:'mock', name:'Mock (carrier DNA)', color:_c()});
-  p.types.push({id:'untr', name:'Untransfected', color:_c()});
-  p.types.push({id:'blank',name:'Unused', color:'#b9bcc6'});
+  // The palette is the experiment's own conditions, numbered: one type per mix, in the order
+  // the mix table lists them, so "condition 3" means the same thing on the plate, in the table
+  // and on the printed sheet.
+  var I3=JSON.parse(JSON.stringify(I||{}));
+  if(su.donors) I3.donorNames=su.donors;
+  if(su.acceptors) I3.acceptorNames=su.acceptors;
+  if(su.ratios) I3.ratios=su.ratios;
+  var ci=0;
+  p.types=_nbtxConditions(I3).map(function(c){
+    return {id:c.tid, name:c.name, no:++ci, color:PLATE_TYPE_COLORS[(ci-1)%PLATE_TYPE_COLORS.length]};
+  });
+  p.types.push({id:'blank', name:'Unused', color:'#b9bcc6'});
   p.groups={};
   var d=PLATE_FORMATS[fmt], r=0, c=0, gi=0, over=0;
   function nl(){ if(c>0){ r++; c=0; } }
@@ -2841,10 +2878,32 @@ function nbPlateFromSetup(su,I,fmt,tight){
 }
 // The experiment's own version: the setup says which constructs, the transfection block says
 // how many wells each condition gets.
-function nbPlateForExp(e){
+// The transfection block's inputs, wherever it sits in the experiment.
+function _nbCalcInputs(e){
   if(!e||e.type!=='NB') return null;
   var I=null;
   (e.blocks||[]).forEach(function(b){ if(!I&&b.calc&&b.calc.kind==='nbtx'&&b.calc.inputs) I=b.calc.inputs; });
+  return I;
+}
+// The plate's types carry the numbers, so they are stored, editable and printed. They are only
+// ever filled IN — a number you changed is yours, and a type the conditions no longer contain
+// keeps whatever it had rather than being silently renumbered.
+function nbNumberPlate(e){
+  if(!e||e.type!=='NB'||!e.plate) return false;
+  var I=_nbCalcInputs(e); if(!I) return false;
+  var order={}, i=0;
+  _nbtxConditions(I).forEach(function(c){ order[c.tid]=++i; });
+  var changed=false;
+  (e.plate.types||[]).forEach(function(t){
+    if(t.id==='blank') return;
+    if(t.no!=null) return;
+    if(order[t.id]){ t.no=order[t.id]; changed=true; }
+  });
+  return changed;
+}
+function nbPlateForExp(e){
+  if(!e||e.type!=='NB') return null;
+  var I=_nbCalcInputs(e);
   var su=e.setup||{};
   if(!I && !su.donors) return null;
   return nbPlateFromSetup(su, I||CALC_KINDS.nbtx.defaults, su.format||(e.plate&&e.plate.format)||'96');
@@ -2928,10 +2987,14 @@ var PLATE_LAYOUTS=[
      // the vocabulary the plate palette and plateConditionCounts speak. Drawn with plain names
      // instead, the map counted as zero transfected wells everywhere it was read.
      var _D1='NL-DELE1(CTD)', _D2='DELE1(CTD)-NL', _A='HT-HRI';
-     p.types=[{id:'p:'+_D1+'+'+_A, name:_D1+' + '+_A, color:'#cfe2f3'},
-              {id:'p:'+_D2+'+'+_A, name:_D2+' + '+_A, color:'#b7d3ea'},
-              {id:'d:'+_D1, name:_D1+' only',  color:'#d9ead3'},
-              {id:'d:'+_D2, name:_D2+' only',  color:'#c3ddba'},
+     p.types=[{id:'p:'+_D1+'+'+_A+'@10', name:_D1+' + '+_A+' (NL 1:10)', color:'#cfe2f3'},
+              {id:'d:'+_D1+'@10', name:_D1+' only (NL 1:10)',  color:'#d9ead3'},
+              {id:'p:'+_D2+'+'+_A+'@10', name:_D2+' + '+_A+' (NL 1:10)', color:'#b7d3ea'},
+              {id:'d:'+_D2+'@10', name:_D2+' only (NL 1:10)',  color:'#c3ddba'},
+              {id:'p:'+_D1+'+'+_A+'@50', name:_D1+' + '+_A+' (NL 1:50)', color:'#a9c6e6'},
+              {id:'d:'+_D1+'@50', name:_D1+' only (NL 1:50)',  color:'#bfe0b4'},
+              {id:'p:'+_D2+'+'+_A+'@50', name:_D2+' + '+_A+' (NL 1:50)', color:'#93b8de'},
+              {id:'d:'+_D2+'@50', name:_D2+' only (NL 1:50)',  color:'#a9d49c'},
               {id:'a:'+_A,  name:_A+' only',   color:'#fce5cd'},
               {id:'untr',   name:'Untransfected', color:'#fbdfe6'},
               {id:'blank',  name:'Unused',        color:'#b9bcc6'}];
@@ -2940,23 +3003,26 @@ var PLATE_LAYOUTS=[
      // A control well missing its ligand or its substrate is the *same* pair with something left
      // out, so it is that pair's type carrying the noLig/noSub flag the model already has for
      // NanoBRET — not a type of its own, which would say the well holds something different.
-     var _P1='p:'+_D1+'+'+_A, _P2='p:'+_D2+'+'+_A;
+     // The ids are the conditions' own, ratio included, so the numbers on this plate are the
+     // numbers in the mix table rather than a second numbering that has to be kept in step.
+     var _P1='p:'+_D1+'+'+_A+'@10', _P2='p:'+_D2+'+'+_A+'@10';
+     var _P1b='p:'+_D1+'+'+_A+'@50', _P2b='p:'+_D2+'+'+_A+'@50';
      var B=[
        [[0],    0, 3,_P1,      _D1+' + '+_A,'noLig'],
        [[1],    0, 3,_P2,      _D2+' + '+_A,'noLig'],
        [[0,1],  4, 7,'untr',   'Untransfected',null],
        [[0],    8,11,_P1,      _D1+' + '+_A,'noSub'],
        [[1],    8,11,_P2,      _D2+' + '+_A,'noSub'],
-       [[3],    0, 3,'d:'+_D1,'NL 1:10 · '+_D1,null],
-       [[3],    4, 7,'d:'+_D2,'NL 1:10 · '+_D2,null],
-       [[3],    8,11,'a:'+_A, 'NL 1:10 · '+_A,null],
+       [[3],    0, 3,'d:'+_D1+'@10','NL 1:10 · '+_D1,null],
+       [[3],    4, 7,'d:'+_D2+'@10','NL 1:10 · '+_D2,null],
+       [[3],    8,11,'a:'+_A,       _A+' only',null],
        [[4],    0, 3,_P1,     'NL 1:10 · '+_D1+' + '+_A,null],
        [[4],    4, 7,_P2,     'NL 1:10 · '+_D2+' + '+_A,null],
-       [[6],    0, 3,'d:'+_D1,'NL 1:50 · '+_D1,null],
-       [[6],    4, 7,'d:'+_D2,'NL 1:50 · '+_D2,null],
-       [[6],    8,11,'a:'+_A, 'NL 1:50 · '+_A,null],
-       [[7],    0, 3,_P1,     'NL 1:50 · '+_D1+' + '+_A,null],
-       [[7],    4, 7,_P2,     'NL 1:50 · '+_D2+' + '+_A,null]];
+       [[6],    0, 3,'d:'+_D1+'@50','NL 1:50 · '+_D1,null],
+       [[6],    4, 7,'d:'+_D2+'@50','NL 1:50 · '+_D2,null],
+       [[6],    8,11,'untr',        'Untransfected',null],
+       [[7],    0, 3,_P1b,    'NL 1:50 · '+_D1+' + '+_A,null],
+       [[7],    4, 7,_P2b,    'NL 1:50 · '+_D2+' + '+_A,null]];
      B.forEach(function(b,bi){
        var gid='gsp'+bi; p.groups[gid]={label:b[4]};
        b[0].forEach(function(r){ for(var c=b[1];c<=b[2];c++){
@@ -3047,6 +3113,16 @@ var PLATE_CONTROL_SETS={
 // the controls. Ligand and substrate are NOT conditions here — they are flags on a well, because
 // a "no ligand" well still contains the pair, and folding them in would double every row.
 function expPlateTypes(e){
+  // For a NanoBRET the well types are the transfection conditions themselves — the same list the
+  // mix table numbers — so the map is "which number goes where" rather than a second vocabulary
+  // to keep in step with the first.
+  var nb=_nbCalcInputs(e);
+  if(nb){
+    var ci=0;
+    return _nbtxConditions(nb).map(function(c){
+      return {id:c.tid, name:c.name, no:++ci, color:PLATE_TYPE_COLORS[(ci-1)%PLATE_TYPE_COLORS.length]};
+    });
+  }
   var cs=expConstructs(e), out=[], i=0;
   function col(){ return PLATE_TYPE_COLORS[(i++)%PLATE_TYPE_COLORS.length]; }
   var don=cs.filter(function(c){ return c.role==='donor'; });
@@ -3060,7 +3136,14 @@ function expPlateTypes(e){
 }
 // A dose series belongs to an experiment that doses something. A NanoBRET PPI plate has no
 // compounds at all, and offering it a dilution filler is offering the wrong experiment.
-function expUsesCompounds(e){ return !e || ['NB'].indexOf(e.type)<0; }
+// Whether this plate doses anything. It used to be decided by the experiment's type, which is
+// right by default and wrong as a rule — a NanoBRET can be run against a compound series, and a
+// plate that is only conditions should not be asked about concentrations. The setup answers it,
+// and the type is the fallback for everything created before the question existed.
+function expUsesCompounds(e){
+  if(e&&e.setup&&e.setup.doseSeries!=null) return !!e.setup.doseSeries;
+  return !e || ['NB'].indexOf(e.type)<0;
+}
 function plateTypeById(p,id){ var t=plateTypes(p).filter(function(x){return x.id===id;})[0]; return t||null; }
 // Optional per-well `shade` (0 = full strength, 1 = palest) draws a concentration gradient
 // without naming a concentration — the Echo case, where the numbers live in the picklist.
@@ -3092,6 +3175,11 @@ function wellRC(id){ var m=/^([A-P])(\d+)$/.exec(String(id||'')); return m?{r:PL
 // layout summary, the legend and the tooltip.
 function plateWellShort(w){ if(!w) return '';
   return w.label || w.conc || w.compound || w.cellLine || ''; }
+// A numbered condition writes its number in the well. It is the whole point of numbering them:
+// a 96-well map of names is unreadable at any size, and "3" is legible at 6pt on paper.
+function plateWellNo(p,w){ if(!w) return '';
+  var t=plateTypeById(p,w.typeId); return (t&&t.no)?String(t.no):''; }
+function plateHasNos(p){ return (plateTypes(p)||[]).some(function(t){ return !!t.no; }); }
 function plateWellTip(p,id,w){ if(!w) return id;
   var t=plateTypeById(p,w.typeId); var bits=[id]; if(t) bits.push(t.name);
   if(w.cellLine) bits.push(w.cellLine); if(w.compound) bits.push(w.compound);
@@ -3214,10 +3302,17 @@ function plateSummary(p){
       var out=String(x||''); var t=String(_tn).trim(); if(!t) return out.trim();
       // "X only" as a type and "X" in the label are the same construct said twice, so the bare
       // name is tried as well as the whole type name.
-      [t, t.replace(/\s+only$/i,'')].forEach(function(cand){
+      // A type can now carry its ratio — "X + Y (NL 1:10)" — while the block label carries the
+      // ratio differently, so the bare name is tried with those trimmings off as well.
+      [t, t.replace(/\s+only$/i,''), t.replace(/\s*\(NL 1:[^)]*\)\s*$/,''),
+       t.replace(/\s*\(NL 1:[^)]*\)\s*$/,'').replace(/\s+only$/i,'')].forEach(function(cand){
         if(!cand) return; var i=out.toLowerCase().indexOf(cand.toLowerCase());
         if(i>=0) out=out.slice(0,i)+out.slice(i+cand.length); });
-      return out.replace(/^[\s·,;+—-]+|[\s·,;+—-]+$/g,'').trim();
+      out=out.replace(/^[\s·,;+—-]+|[\s·,;+—-]+$/g,'').trim();
+      // What is left is sometimes just the ratio the type name already carries in brackets.
+      var m=/^NL 1:([\d.]+)$/.exec(out);
+      if(m && String(_tn).indexOf('1:'+m[1])>=0) return '';
+      return out;
     }
     function _new(x){ return !!_strip(x); }
     var _gl=(g.gid&&p.groups&&p.groups[g.gid])?(p.groups[g.gid].label||''):'';
@@ -3228,7 +3323,9 @@ function plateSummary(p){
     // condition like "pNL + pHT" is never redundant with a cell line, so a derived type
     // (an experiment's own condition) is always named, and first.
     var generic=PLATE_TYPES.some(function(x){ return x.id===w.typeId; });
-    if(t && (!bits.length || !generic)) bits.unshift(t.name);
+    // On a numbered plate the summary leads with the number, because that is what is written
+    // in the wells and what someone reading the sheet is looking the range up by.
+    if(t && (!bits.length || !generic)) bits.unshift((t.no?(t.no+' · '):'')+t.name);
     // A well missing its ligand or its substrate is a different well, and a sheet you take to
     // the bench is exactly where that must not be silently merged into the row above.
     PLATE_FLAGS.forEach(function(f){ if(w[f.k]) bits.push(f.lbl); });
@@ -3747,14 +3844,20 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
   // layout summary states them once, properly.
   var hasCL=plateHasColLabels(p)&&wpx>=16;
   var glOff=hasCL?2:1;
+  var _nos=plateHasNos(p);
   if(hasCL){ for(var ca=0;ca<d.c;ca++) grid+='<div class="pp-cl" style="grid-row:1;grid-column:'+(ca+1)+'">'+esc((p.colLabels||{})[ca]||'')+'</div>'; }
   for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){ var id=wellIdOf(r,c), w=(p.wells||{})[id];
     var col=plateWellColor(p,w);
     grid+='<div class="pp-w'+(w?'':' empty')+'" style="grid-row:'+(r+glOff)+';grid-column:'+(c+1)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w))+'">'
-      +((showText&&w&&!(w.groupId&&grouped[w.groupId]))?'<span>'+esc(plateWellShort(w))+'</span>':'')+'</div>'; }
+      +((w&&!(w.groupId&&grouped[w.groupId]))?('<span>'+esc(_nos?plateWellNo(p,w):(showText?plateWellShort(w):''))+'</span>'):'')+'</div>'; }
   // Block labels sit over the same grid cells, so a name spans its wells exactly as drawn.
-  boxes.forEach(function(b){ grid+='<div class="pp-gl" style="grid-row:'+(b.r1+glOff)+'/'+(b.r2+glOff+1)+';grid-column:'+(b.c1+1)+'/'+(b.c2+2)+'"><span>'+esc(b.label)+'</span></div>'; });
-  var leg=plateUsedTypes(p).map(function(t){ return '<span class="pp-leg-i"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</span>'; }).join('');
+  // With numbered conditions the block shows its number, big, and the legend underneath says
+  // what each number is — which is exactly how the sheet is read at the bench.
+  boxes.forEach(function(b){
+    var w0=(p.wells||{})[wellIdOf(b.r1,b.c1)], n=_nos?plateWellNo(p,w0):'';
+    grid+='<div class="pp-gl'+(n?' pp-gl-n':'')+'" style="grid-row:'+(b.r1+glOff)+'/'+(b.r2+glOff+1)+';grid-column:'+(b.c1+1)+'/'+(b.c2+2)+'" title="'+esc(b.label)+'"><span>'+esc(n||b.label)+'</span></div>'; });
+  var leg=plateUsedTypes(p).map(function(t){ return '<span class="pp-leg-i"><i style="background:'+t.color+'"></i>'
+    +(t.no?('<b>'+t.no+'</b> '):'')+esc(t.name)+'</span>'; }).join('');
   var _ow=_plateOwner(key), _nb=(_ow&&_ow.exp&&_ow.exp.type==='NB');
   // Seven small buttons is a desktop card header. On a phone the last three were off the edge,
   // so there is one ⋯ that opens them as a list — and Edit stays out, because it is the one you
@@ -6966,6 +7069,9 @@ function _timerBeep(){
 function renderExpEditor(host,e){
   (el('export-btn')||{style:{}}).style.display='';
   document.body.classList.add('lb-onexp');
+  // Numbers are filled in where they are missing, before anything is drawn: the map, the mix
+  // table and the printed sheet then agree by construction rather than by being kept in step.
+  if(nbNumberPlate(e)) queueSave();
   var fields='<div class="exh-fields">'
     +'<div class="exh-fld"><label>Type</label><select onchange="setField(\'type\',this.value)">'+EXP_TYPES.map(function(t){return '<option value="'+t.id+'"'+(t.id===e.type?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')+'</select></div>'
         +'<div class="exh-fld"><label>Status</label><select onchange="setExpStatus(\''+e.id+'\',this.value)">'+EXP_STATUSES.map(function(s){return '<option value="'+s+'"'+(s===e.status?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select>'
@@ -8991,6 +9097,9 @@ var PLATE_PRINT_CSS=
  +'.pk-g td{border:.5pt solid #bbb;padding:2px 3px;height:24px;text-align:center;vertical-align:middle;'
  +'font:600 8pt/1.15 sans-serif;color:#111;overflow:hidden;word-break:break-word}'
  +'.pk-g td.pk-gl{font-weight:700;font-size:9.5pt}'
+ +'.pk-g td.pk-no{font-weight:800;font-size:20pt;letter-spacing:0}'
+ +'.pk-g td.pk-no1{font-weight:700;font-size:10pt}'
+ +'.pk-leg b{font-family:ui-monospace,monospace;margin-right:3px}'
  +'.pk-leg{margin-top:7px;font:400 11pt/1.6 sans-serif;color:#222}'
  +'.pk-leg i{display:inline-block;width:9px;height:9px;border:.5pt solid #999;margin-right:4px;vertical-align:-1px}'
  +'.pk-leg span{display:inline-block;margin-right:14px;white-space:nowrap}'
@@ -9374,7 +9483,10 @@ function printPlateHtml(p,title,opts){
   var boxes=plateGroupBoxes(p), lblAt={}, skip={};
   boxes.forEach(function(b){ lblAt[b.r1+':'+b.c1]=b;
     for(var r=b.r1;r<=b.r2;r++) for(var c=b.c1;c<=b.c2;c++) if(!(r===b.r1&&c===b.c1)) skip[r+':'+c]=1; });
-  // 170mm across 24 columns is 7mm a cell — a colour, not a word. The names are in the summary.
+  // A numbered plate prints the number, large, in the middle of the merged block — which is the
+  // whole reason the conditions are numbered: a name does not survive being printed inside four
+  // wells, and "3" is legible across the room. The legend under it says what each number is.
+  var nos=plateHasNos(p);
   var withText=(d.c<=12);
   var head='<tr><th class="pk-rh"></th>';
   for(var c0=0;c0<d.c;c0++) head+='<th>'+(c0+1)+'</th>';
@@ -9387,11 +9499,17 @@ function printPlateHtml(p,title,opts){
     for(var c2=0;c2<d.c;c2++){ var key=r2+':'+c2; if(skip[key]) continue;
       var w=(p.wells||{})[wellIdOf(r2,c2)], col=plateWellColor(p,w), bx=lblAt[key];
       var span=bx?(' colspan="'+(bx.c2-bx.c1+1)+'" rowspan="'+(bx.r2-bx.r1+1)+'"'):'';
-      var txt=withText?(bx?bx.label:(plateWellShort(w)||'')):'';
-      tds+='<td'+span+(col?' style="background:'+col+'"':'')+(bx?' class="pk-gl"':'')+'>'+esc(txt)+'</td>'; }
+      var txt=nos?(bx?plateWellNo(p,w):(plateWellNo(p,w)||''))
+                 :(withText?(bx?bx.label:(plateWellShort(w)||'')):'');
+      var cls=bx?(nos?' class="pk-gl pk-no"':' class="pk-gl"'):(nos&&txt?' class="pk-no1"':'');
+      tds+='<td'+span+(col?' style="background:'+col+'"':'')+cls+'>'+esc(txt)+'</td>'; }
     rows+='<tr><th class="pk-rh">'+PLATE_ROWS.charAt(r2)+'</th>'+tds+'</tr>'; }
-  var leg=plateUsedTypes(p).map(function(t){
-    return '<span><i style="background:'+t.color+'"></i>'+esc(t.name)+'</span>'; }).join('');
+  // With numbers the legend is a numbered list, in condition order — the same order and the
+  // same numbers as the mix table above it.
+  var used=plateUsedTypes(p);
+  if(nos) used=used.slice().sort(function(a,b){ return (a.no||99)-(b.no||99); });
+  var leg=used.map(function(t){
+    return '<span><i style="background:'+t.color+'"></i>'+(t.no?('<b>'+t.no+'</b> '):'')+esc(t.name)+'</span>'; }).join('');
   var sum='';
   if(opts.summary!==false){
     var g=[]; try{ g=plateColSummary(p).concat(plateSummary(p)); }catch(_e){}
