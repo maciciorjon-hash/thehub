@@ -18,9 +18,8 @@ Every app declares the same names. Two scales, no loose values.
   /* type — nine steps, and nothing between them */
   --fs-1:10px; --fs-2:11px; --fs-3:12px; --fs-4:13px; --fs-5:15px;
   --fs-6:17px; --fs-7:20px; --fs-8:26px; --fs-9:38px;
-  /* radius */
+  /* radius — one scale, five steps */
   --r-1:4px; --r-2:6px; --r-3:9px; --r-4:13px; --r-full:999px;
-  --r2:12px; --r3:16px;                 /* the two card radii */
 
   /* light is the default; dark is the override */
   --bg:#f4f5f8; --surface:#ffffff; --surface2:#f0f1f5; --surface3:#e4e6ee;
@@ -59,6 +58,13 @@ opens in — is the special case, and every new rule gets written for the wrong 
 The radii were cut by about a third in 2026-08-26 (6/10/14/20 → 4/6/9/13). Rounder corners read
 as informal; this is a lab record, and the chrome should look like one. `--r-full` is unchanged —
 a pill or a dot is a shape, not a softened rectangle.
+
+There used to be **two** radius scales: this one and a legacy `--r1/--r2/--r3/--r4` at
+10/12/16/24px, left alive in 16 files by the token migration. Two scales that can disagree is a
+trap — a card and the card beside it could be rounded from different tables and nothing would
+say so — so the legacy names were merged into this one by role (`--r2` → `--r-2`, `--r3` →
+`--r-3`), 49 uses and 35 declarations, and deleted. **There is one radius scale. Do not add a
+second.**
 
 - No loose `px` for `font-size` or `border-radius` anywhere in a stylesheet. Two exceptions, both
   narrow: values inside JS strings, where rewriting them blind would be risky; and **text drawn
