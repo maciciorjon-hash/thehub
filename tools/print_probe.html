@@ -1,0 +1,46 @@
+<!doctype html><meta charset="utf-8"><title>print probe</title>
+<!-- Renders one of Labbook's print documents as a real page, so headless Chrome can turn it
+     into a PDF and the export can be checked without a printer:
+
+       python3 -m http.server 8781
+       "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+         --print-to-pdf=/tmp/out.pdf --no-pdf-header-footer \
+         "http://localhost:8781/tools/print_probe.html?doc=pdf&preset=NB_SPARK_RTX96"
+
+     doc=pdf | lab | methods. preset= creates a fresh experiment from that preset first; without
+     it the first experiment in the notebook is used. -->
+<style>html,body{margin:0;padding:0;background:#fff}#stage{padding:0}</style>
+<body><div id="stage">building…</div>
+<iframe id="f" src="../labbook-standalone.html" style="position:fixed;left:-99999px;width:1200px;height:900px;border:0"></iframe>
+<script>
+var Q=new URLSearchParams(location.search);
+document.getElementById('f').onload=function(){
+  var w=document.getElementById('f').contentWindow;
+  setTimeout(function(){
+    try{
+      var id=null, preset=Q.get('preset');
+      if(preset){
+        var pid=Object.keys(w.LB.data.projects)[0], proj=w.LB.data.projects[pid];
+        var fid=Object.keys(proj.folders||{})[0];
+        w.SEL.node={kind:'expsec',projectId:pid,folderId:fid};
+        w.openNew();
+        var t=w.document.getElementById('nm-type'); t.value=preset;
+        w.nmUpdateCode(); w.nmResetSetup(); w.nmProtos(); w.nmPreview(); w.createExperiment();
+        id=Object.keys(w.LB.data.experiments).pop();
+      } else { id=Object.keys(w.LB.data.experiments)[0]; }
+      w.openExp(id);
+      var e=w.LB.data.experiments[id];
+      var doc=Q.get('doc')||'pdf';
+      var html = doc==='lab' ? w.buildLabSheet(e)
+               : doc==='methods' ? w.buildMethodsDoc(e)
+               : w.buildPrintDoc();
+      // The print stylesheets are scoped to #print-root, so the stage has to be it.
+      document.getElementById('stage').outerHTML='<div id="print-root" style="display:block">'+html+'</div>';
+      // Headless Chrome defaults to Letter; the lab prints A4, and page size changes how much
+      // fits on a sheet — so the probe states it rather than letting the default decide.
+      document.head.insertAdjacentHTML('beforeend','<style>@page{size:'+(Q.get('paper')||'A4')+'}</style>');
+      document.title=(e.code||'experiment')+' — '+doc;
+    }catch(err){ document.body.textContent='probe failed: '+err.message; }
+  }, 1200);
+};
+</script>
