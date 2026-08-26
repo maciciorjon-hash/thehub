@@ -652,7 +652,15 @@ body.lb-rb-closed .rb-pane{display:none;}
 .spot-item .k{font-size:var(--fs-1);color:var(--text3);font-family:var(--sans);text-transform:uppercase;}
 .spot-empty{padding:26px;text-align:center;color:var(--text3);font-size:var(--fs-4);}
 
-@media print{ body>*{display:none!important;} #print-root{display:block!important;position:static;} }
+@media print{
+  /* html,body carry height:100% and overflow:hidden so the app itself never scrolls the page.
+     In print that clips the document to exactly one sheet — which is why every export came out
+     as page 1 of an experiment and nothing else. The printer needs a document that grows. */
+  html,body{height:auto!important;min-height:0!important;max-height:none!important;
+            overflow:visible!important;display:block!important;}
+  body>*{display:none!important;}
+  #print-root{display:block!important;position:static;overflow:visible!important;height:auto!important;}
+}
 #print-root{display:none;color:#111;background:#fff;font-family:'IBM Plex Sans',sans-serif;}
 
 /* ── Mobile ─────────────────────────────────────────────────────────────── */
@@ -8834,7 +8842,54 @@ function newPresetFromType(){ var items=EXP_TYPES.filter(function(t){return t.id
 }
 
 // ── PDF export ──
-var PRINT_CSS='<style>@page{margin:14mm}#print-root .pd-tbl{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:10.5pt}#print-root{font-size:11.5pt}#print-root .pd-tbl th,#print-root .pd-tbl td{border:1px solid #ccc;padding:3px 6px;text-align:left;vertical-align:top}#print-root .pd-tbl th{background:#f2f2f2;font-weight:600}#print-root .pd-res{margin-bottom:10px}#print-root .pd-res-hd{font-weight:600;margin-bottom:3px}#print-root .pd-res-when{float:right;font-weight:400;color:#666}#print-root .pd-exp{margin-top:18px}#print-root .pd-exp-hd{font-weight:700;border-bottom:2px solid #333;padding-bottom:3px;margin-bottom:8px}#print-root .pd-exp-hd span{font-weight:400;color:#444}#print-root{padding:0;color:#111}#print-root *{box-sizing:border-box}'
+// ── The plate map, on paper ────────────────────────────────────────────────────────────────
+// One drawing for both exports. It has to survive being printed: a 12- or 24-column grid on A4
+// only works with a fixed layout, and the block labels only fit while the cells are wide enough
+// to hold a word — below that the grid is a picture of the layout and the summary underneath is
+// what you read it back from.
+var PLATE_PRINT_CSS=
+  '.pk-p{margin:10px 0 14px;page-break-inside:avoid}'
+ +'.pk-t{font:700 12pt/1.3 sans-serif;margin-bottom:5px}'
+ +'.pk-n{font:400 10pt/1.45 sans-serif;color:#444;margin:0 0 6px}'
+ +'.pk-g{border-collapse:collapse;table-layout:fixed;width:100%;max-width:170mm}'
+ +'.pk-g th{font:700 7pt/1.1 sans-serif;color:#444;background:#f4f4f4;border:.5pt solid #bbb;padding:2px 0;text-align:center}'
+ +'.pk-g th.pk-rh{width:16px}'
+ +'.pk-g td{border:.5pt solid #bbb;padding:1px 2px;height:20px;text-align:center;vertical-align:middle;'
+ +'font:600 6.5pt/1.1 sans-serif;color:#111;overflow:hidden;word-break:break-word}'
+ +'.pk-g td.pk-gl{font-weight:700;font-size:7.5pt}'
+ +'.pk-leg{margin-top:6px;font:400 9.5pt/1.6 sans-serif;color:#222}'
+ +'.pk-leg i{display:inline-block;width:9px;height:9px;border:.5pt solid #999;margin-right:4px;vertical-align:-1px}'
+ +'.pk-leg span{display:inline-block;margin-right:14px;white-space:nowrap}'
+ +'.pk-sumt{border-collapse:collapse;width:100%;margin-top:7px;font:400 10pt/1.45 sans-serif}'
+ +'.pk-sumt td{border-bottom:.5pt solid #ddd;padding:3px 6px;vertical-align:top}'
+ +'.pk-sumt td.r{white-space:nowrap;font-family:ui-monospace,monospace;font-weight:600;width:22%}'
+ +'.pk-sumt td.n{white-space:nowrap;text-align:right;color:#555;width:12%}';
+var PRINT_CSS='<style>@page{margin:14mm}'+PLATE_PRINT_CSS
+ +'#print-root{padding:0;color:#111;font:400 12pt/1.55 ui-sans-serif,system-ui,sans-serif}'
+ +'#print-root *{font-size:inherit;font-family:inherit;color:inherit;background:none;box-sizing:border-box}'
+ // The app's own stylesheet reaches into the print root, and a table cell it turns into a flex
+ // box silently stops being a table cell — colspan is ignored and a block label collapses to one
+ // column. The print plate's classes are its own (pk-), and the display is stated outright.
+ +'#print-root table{display:table}#print-root tr{display:table-row}'
+ +'#print-root td{display:table-cell}#print-root th{display:table-cell}'
+ +'#print-root .pd-tbl{width:100%;border-collapse:collapse;margin:7px 0 13px}'
+ +'#print-root .pd-tbl th,#print-root .pd-tbl td{border:.5pt solid #bbb;padding:4px 7px;text-align:left;vertical-align:top;font-size:11pt}'
+ +'#print-root .pd-tbl th{background:#f2f2f2!important;font-weight:700}'
+ +'#print-root .pd-res{margin-bottom:10px}'
+ +'#print-root .pd-res-hd{font-weight:700;margin-bottom:3px;font-size:12.5pt}'
+ +'#print-root .pd-res-when{float:right;font-weight:400;color:#666}'
+ +'#print-root .pd-exp{margin-top:20px}'
+ +'#print-root .pd-exp-hd{font-weight:700;font-size:15pt;border-bottom:1.5pt solid #333;padding-bottom:3px;margin-bottom:9px}'
+ +'#print-root .pd-exp-hd span{font-weight:400;font-size:12pt;color:#444}'
+ +'#print-root h1{font-size:19pt}#print-root h2{font-size:15pt}#print-root h3{font-size:13pt}'
+ +'#print-root .lb-note{border-left:3pt solid #999;background:#f5f5f5!important;padding:5px 10px;margin:7px 0}'
+ +'#print-root .lb-note-warn{border-left-color:#c25a12;background:#fdf3ea!important}'
+ +'#print-root .lb-check{list-style:none;padding-left:0}'
+ +'#print-root .pk-g th{background:#f4f4f4!important}'
+ +'#print-root .pk-g td,#print-root .pk-g th{font-size:6.5pt}'
+ +'#print-root .pk-gl{font-size:7.5pt}'
+ +'#print-root .pk-t{font-size:12pt}#print-root .pk-n,#print-root .pk-leg{font-size:9.5pt}'
+ +'#print-root .pk-sumt td{font-size:10pt}'
  +'.pd-head{border-bottom:2px solid #5e87c5;padding:0 0 12px;margin-bottom:16px}'
  +'.pd-kicker{font:600 9pt/1 sans-serif;letter-spacing:1px;color:#5e87c5;text-transform:uppercase}'
  +'.pd-code{font:600 11pt/1.4 sans-serif;color:#5e87c5;margin-top:8px}'
@@ -8880,33 +8935,7 @@ var PRINT_CSS='<style>@page{margin:14mm}#print-root .pd-tbl{width:100%;border-co
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
 function pdRecipe(b){ var r=expCalcRecipe(b); return r?'<div class="pd-recipe">'+r+'</div>':''; }
 // Static plate grid for the PDF — same colours, no interaction.
-function pdPlate(p){ if(!p) return '';
-  var d=plateDims(p), rows='', boxes=plateGroupBoxes(p), lblAt={}, skip={};
-  // A labelled block prints its name once, in a cell spanning the block.
-  boxes.forEach(function(b){ lblAt[b.r1+':'+b.c1]=b;
-    for(var r=b.r1;r<=b.r2;r++) for(var c=b.c1;c<=b.c2;c++) if(!(r===b.r1&&c===b.c1)) skip[r+':'+c]=1; });
-  for(var r=0;r<d.r;r++){ var tds='';
-    for(var c=0;c<d.c;c++){ var key=r+':'+c; if(skip[key]) continue;
-      var w=(p.wells||{})[wellIdOf(r,c)], col=plateWellColor(p,w), b=lblAt[key];
-      var span=b?(' colspan="'+(b.c2-b.c1+1)+'" rowspan="'+(b.r2-b.r1+1)+'"'):'';
-      var txt=b?b.label:(plateWellShort(w)||'');
-      tds+='<td'+span+(col?' style="background:'+col+'"':'')+(b?' class="pd-pgl"':'')+'>'+esc(txt)+'</td>'; }
-    rows+='<tr><th>'+PLATE_ROWS.charAt(r)+'</th>'+tds+'</tr>'; }
-  var head='<tr><th></th>'; for(var c2=0;c2<d.c;c2++) head+='<th>'+(c2+1)+'</th>'; head+='</tr>';
-  if(plateHasColLabels(p)){ var ch='<tr><th>'+esc(p.colTitle||'')+'</th>';
-    for(var c3=0;c3<d.c;c3++) ch+='<th class="pd-pcl">'+esc((p.colLabels||{})[c3]||'')+'</th>';
-    head=ch+'</tr>'+head; }
-  var leg=plateUsedTypes(p).map(function(t){ return '<span class="pd-pleg-i"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</span>'; }).join('');
-  // The grid shows the shape; the summary underneath is what you actually read it back from.
-  var sum=plateSummary(p).map(function(g){
-    return '<tr><td class="pd-psum-r">'+(g.type?'<i style="background:'+g.type.color+'"></i>':'')+esc(g.range)+'</td><td>'+esc(g.desc)+'</td><td class="pd-psum-n">'+g.n+'</td></tr>'; }).join('');
-  return '<div class="pd-plate"><div class="pd-plate-t">'+esc(p.title||'Plate map')+' · '+(d.r*d.c)+'-well</div>'
-    +(p.note?'<div class="pd-pnote">'+esc(p.note)+'</div>':'')
-    +'<table class="pd-plate-g">'+head+rows+'</table>'
-    +(leg?'<div class="pd-pleg">'+leg+'</div>':'')
-    +(sum?'<table class="pd-psum">'+sum+'</table>':'')+'</div>'; }
-// Experiment blocks, grouped under a part header when blocks carry a sourcePid.
-// Export the experiment step-by-step, grouped under merged Day headers.
+function pdPlate(p){ return printPlateHtml(p,(p&&p.title)||'Plate map'); }
 function printExpByDay(e){ var groups=dayGroups(e); if(!groups.length) return '';
   return groups.map(function(g){
     var dh = g.key ? ('<div class="pd-dayhd"><span class="pd-day">Day '+g.day+'</span><span class="pd-bdate">'+fmtDate(g.key)+'</span></div>')
@@ -9133,8 +9162,14 @@ function _printName(){
 // much, in the order you do it, with boxes to tick — big enough to read at arm's length beside
 // a hood, and with everything that is only meaningful at a desk left out (publication prose,
 // deviations, results, file lists).
-var LAB_CSS='<style>@page{margin:12mm}'
- +'#print-root{color:#111;font:400 12pt/1.5 ui-sans-serif,system-ui,sans-serif}'
+var LAB_CSS='<style>@page{margin:11mm}'+PLATE_PRINT_CSS
+ // A bench sheet is read standing up, at arm's length, with gloves on. 13.5pt is the size that
+ // survives that; the app's own stylesheet still applies to anything pasted in from a block, so
+ // it is reset to inherit and the few things that differ are set again below.
+ +'#print-root{color:#111;font:400 13.5pt/1.5 ui-sans-serif,system-ui,sans-serif}'
+ +'#print-root *{font-size:inherit;font-family:inherit;color:inherit;background:none}'
+ +'#print-root table{display:table}#print-root tr{display:table-row}'
+ +'#print-root td{display:table-cell}#print-root th{display:table-cell}'
  +'.lb-h{border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:14px}'
  +'.lb-h1{font:800 22pt/1.15 sans-serif;margin:0}'
  +'.lb-h2{font:600 12pt/1.3 sans-serif;color:#444;margin-top:4px}'
@@ -9176,7 +9211,7 @@ function _labCalcHtml(b){
   return '<div class="lb-body">'+d.innerHTML+'</div>';
 }
 // The checklist is the reason this is a sheet and not a screen: it becomes real boxes.
-function _labBodyHtml(b){
+function _labBodyHtml(b,bench){
   var d=document.createElement('div'); d.innerHTML=b.html||'';
   var checks=[];
   Array.prototype.forEach.call(d.querySelectorAll('ul.lb-check'),function(ul){
@@ -9186,19 +9221,58 @@ function _labBodyHtml(b){
   Array.prototype.forEach.call(d.querySelectorAll('.pub-skip'),function(n){ n.remove(); });
   Array.prototype.forEach.call(d.querySelectorAll('.lb-note-warn'),function(n){ n.className='lb-note lb-warn'; });
   Array.prototype.forEach.call(d.querySelectorAll('.lb-note'),function(n){ if(n.className.indexOf('lb-warn')<0) n.className='lb-note'; });
+  // On the bench sheet the prose is dropped and only what you act on is kept: the warnings —
+  // which are there precisely to stop a mistake — and the checklist. Everything else is in the
+  // PDF, which is the record rather than the thing you carry.
+  if(bench){
+    var keep=[];
+    Array.prototype.forEach.call(d.querySelectorAll('.lb-warn'),function(n){ keep.push(n.outerHTML); });
+    d.innerHTML=keep.join('');
+  }
   var body=d.innerHTML.trim();
   return (body?'<div class="lb-body">'+body+'</div>':'')
     +(checks.length?('<ul class="lb-ck">'+checks.map(function(c){ return '<li>'+esc(c)+'</li>'; }).join('')+'</ul>'):'');
 }
-function _labPlateHtml(p,title){
+function printPlateHtml(p,title,opts){
   if(!p) return '';
-  var g=[]; try{ g=plateColSummary(p).concat(plateSummary(p)); }catch(e){}
-  if(!g.length) return '';
-  return '<div class="lb-plate"><div class="lb-ptitle">'+esc(title||('Plate map — '+String(p.format)+'-well'))+'</div>'
-    +'<table class="lb-psum">'+g.map(function(x){
-      return '<tr><td class="r">'+esc(x.range)+'</td><td>'+esc(x.desc)+'</td><td>'+esc(String(x.n))+' wells</td></tr>'; }).join('')
-    +'</table></div>';
+  opts=opts||{};
+  var d=plateDims(p); if(!d) return '';
+  var boxes=plateGroupBoxes(p), lblAt={}, skip={};
+  boxes.forEach(function(b){ lblAt[b.r1+':'+b.c1]=b;
+    for(var r=b.r1;r<=b.r2;r++) for(var c=b.c1;c<=b.c2;c++) if(!(r===b.r1&&c===b.c1)) skip[r+':'+c]=1; });
+  // 170mm across 24 columns is 7mm a cell — a colour, not a word. The names are in the summary.
+  var withText=(d.c<=12);
+  var head='<tr><th class="pk-rh"></th>';
+  for(var c0=0;c0<d.c;c0++) head+='<th>'+(c0+1)+'</th>';
+  head+='</tr>';
+  if(plateHasColLabels(p)){ var ch='<tr><th class="pk-rh">'+esc(p.colTitle||'')+'</th>';
+    for(var c1=0;c1<d.c;c1++) ch+='<th>'+esc((p.colLabels||{})[c1]||'')+'</th>';
+    head=ch+head; }
+  var rows='';
+  for(var r2=0;r2<d.r;r2++){ var tds='';
+    for(var c2=0;c2<d.c;c2++){ var key=r2+':'+c2; if(skip[key]) continue;
+      var w=(p.wells||{})[wellIdOf(r2,c2)], col=plateWellColor(p,w), bx=lblAt[key];
+      var span=bx?(' colspan="'+(bx.c2-bx.c1+1)+'" rowspan="'+(bx.r2-bx.r1+1)+'"'):'';
+      var txt=withText?(bx?bx.label:(plateWellShort(w)||'')):'';
+      tds+='<td'+span+(col?' style="background:'+col+'"':'')+(bx?' class="pk-gl"':'')+'>'+esc(txt)+'</td>'; }
+    rows+='<tr><th class="pk-rh">'+PLATE_ROWS.charAt(r2)+'</th>'+tds+'</tr>'; }
+  var leg=plateUsedTypes(p).map(function(t){
+    return '<span><i style="background:'+t.color+'"></i>'+esc(t.name)+'</span>'; }).join('');
+  var sum='';
+  if(opts.summary!==false){
+    var g=[]; try{ g=plateColSummary(p).concat(plateSummary(p)); }catch(_e){}
+    sum=g.length?('<table class="pk-sumt">'+g.map(function(x){
+      return '<tr><td class="r">'+esc(x.range)+'</td><td>'+esc(x.desc)+'</td><td class="n">'+esc(String(x.n))+'</td></tr>'; }).join('')+'</table>'):'';
+  }
+  return '<div class="pk-p"><div class="pk-t">'+esc(title||(p.title||'Plate map'))+' &middot; '+(d.r*d.c)+'-well</div>'
+    +((opts.note!==false&&p.note)?('<div class="pk-n">'+esc(p.note)+'</div>'):'')
+    +'<table class="pk-g">'+head+rows+'</table>'
+    +(leg?('<div class="pk-leg">'+leg+'</div>'):'')+sum+'</div>';
 }
+function _labPlateHtml(p,title){ return printPlateHtml(p,title,{note:false}); }
+// The bench sheet is not the record — the PDF is. This is the sheet you carry: the amounts to
+// pipette, the boxes to tick, the plate to fill, and the warnings that stop a run being wasted.
+// The prose stays behind, which is the whole reason it fits and can be read at arm's length.
 function buildLabSheet(e){
   var h=LAB_CSS;
   var proj=projById(e.projectId);
@@ -9216,7 +9290,7 @@ function buildLabSheet(e){
       +(g.key?(' &middot; '+esc(fmtDate(g.key))):'')+'</div>';
     g.blocks.forEach(function(b){
       h+='<div class="lb-step"><div class="lb-stept">'+esc(b.title||'Step')+'</div>'
-        +_labCalcHtml(b)+_labBodyHtml(b)+_labPlateHtml(b.plate,'Plate map for this step')+'</div>';
+        +_labCalcHtml(b)+_labBodyHtml(b,true)+_labPlateHtml(b.plate,'Plate map for this step')+'</div>';
     });
     h+='</div>';
   });
