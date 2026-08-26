@@ -1585,7 +1585,8 @@ var EXTRA_PRESET_SEED={
   'NB_SPARK_RTX96':{name:'NanoBRET_SPARK_Reverse_96',baseType:'NB',title:'NanoBRET — SPARK, reverse transfection (96-well)',
    // cellsPerWell is not one of NB's setup questions, so putting it here would be a key that
    // never reaches anything: the suspension calculator owns the 20,000.
-   setup:{format:'96',cellLine:'HeLa'}, setupHide:['nTransfect','mg132','ligand'], blocks:[
+   setup:{format:'96',cellLine:'HeLa'}, setupHide:['nTransfect','mg132','ligand'],
+   plateOn:true, layout:'nbspark96', blocks:[
     {d:0,title:'Transfection mixes (FuGENE HD)',
      calc:{kind:'nbtx',inputs:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
        donorStock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
@@ -2469,6 +2470,60 @@ var PLATE_LAYOUTS=[
          p.wells[wellIdOf(r,11)]={typeId:'dmso',compound:cmp,label:'DMSO'};
        }
      });
+     return p; }},
+  // Jon's SPARK plate, transcribed from the sheet he runs it from. Two things about it are the
+  // point: the same construct pair appears in both orientations (NanoLuc N- and C-terminal), and
+  // the donor:acceptor ratio is a band of rows rather than a column — D–E at 1:10, G–H at 1:50.
+  // The plate model has column headers but no row band, so the ratio rides on each block's own
+  // label, where plateSummary and Cmd+K can both read it.
+  // Jon's SPARK plate, transcribed from the sheet he runs it from. Two things about it are the
+  // point: the same construct pair appears in both orientations (NanoLuc N- and C-terminal), and
+  // the donor:acceptor ratio is a band of rows rather than a column — D–E at 1:10, G–H at 1:50.
+  // The plate model has column headers but no row band, so the ratio rides on each block's own
+  // label, where plateSummary and Cmd+K can both read it.
+  {id:'nbspark96', label:'NanoBRET SPARK 96 — orientation × NL ratio + controls', format:'96',
+   sub:'Rows A–B controls, D–E at NL 1:10, G–H at 1:50, C and F left empty',
+   build:function(){
+     var p=newPlate('96');
+     p.title='NanoBRET SPARK — 96-well';
+     p.note='Rows A and B are the controls: the pair with no HaloTag ligand, untransfected wells, and the pair with no substrate. '
+       +'Rows D–E are transfected at NL ratio 1:10 and G–H at 1:50 — two donor:acceptor mixes, so the transfection block\'s single '
+       +'ratio covers one of them. Rows C and F are empty spacers.';
+     p.types=[{id:'pair', name:'NL + HT pair',         color:'#cfe2f3'},
+              {id:'nl',   name:'NanoLuc donor only',   color:'#d9ead3'},
+              {id:'ht',   name:'HaloTag acceptor only',color:'#fce5cd'},
+              {id:'untr', name:'Untransfected',        color:'#fbdfe6'},
+              {id:'blank',name:'Unused',               color:'#b9bcc6'}];
+     p.groups={};
+     // rows · first col · last col · type · label · flag, written in the order the sheet reads.
+     // A control well missing its ligand or its substrate is the *same* pair with something left
+     // out, so it is that pair's type carrying the noLig/noSub flag the model already has for
+     // NanoBRET — not a type of its own, which would say the well holds something different.
+     var B=[
+       [[0],    0, 3,'pair','NL-DELE1(CTD) + HT-HRI','noLig'],
+       [[1],    0, 3,'pair','DELE1(CTD)-NL + HT-HRI','noLig'],
+       [[0,1],  4, 7,'untr','Untransfected',null],
+       [[0],    8,11,'pair','NL-DELE1(CTD) + HT-HRI','noSub'],
+       [[1],    8,11,'pair','DELE1(CTD)-NL + HT-HRI','noSub'],
+       [[3],    0, 3,'nl',  'NL 1:10 · NL-DELE1(CTD)',null],
+       [[3],    4, 7,'nl',  'NL 1:10 · DELE1-NL(CTD)',null],
+       [[3],    8,11,'ht',  'NL 1:10 · HT-HRI',null],
+       [[4],    0, 3,'pair','NL 1:10 · NL-DELE1(CTD) + HT-HRI',null],
+       [[4],    4, 7,'pair','NL 1:10 · DELE1-NL(CTD) + HT-HRI',null],
+       [[6],    0, 3,'nl',  'NL 1:50 · NL-DELE1(CTD)',null],
+       [[6],    4, 7,'nl',  'NL 1:50 · DELE1-NL(CTD)',null],
+       [[6],    8,11,'ht',  'NL 1:50 · HT-HRI',null],
+       [[7],    0, 3,'pair','NL 1:50 · NL-DELE1(CTD) + HT-HRI',null],
+       [[7],    4, 7,'pair','NL 1:50 · DELE1-NL(CTD) + HT-HRI',null]];
+     B.forEach(function(b,bi){
+       var gid='gsp'+bi; p.groups[gid]={label:b[4]};
+       b[0].forEach(function(r){ for(var c=b[1];c<=b[2];c++){
+         var w={typeId:b[3],groupId:gid}; if(b[5]) w[b[5]]=true; p.wells[wellIdOf(r,c)]=w; } });
+     });
+     // C and F are spacers, and the right-hand end of E and H holds nothing. Marking them says
+     // "nothing goes here", which an untouched well does not.
+     [2,5].forEach(function(r){ for(var c=0;c<12;c++) p.wells[wellIdOf(r,c)]={typeId:'blank'}; });
+     [4,7].forEach(function(r){ for(var c2=8;c2<12;c2++) p.wells[wellIdOf(r,c2)]={typeId:'blank'}; });
      return p; }},
   {id:'blocks384', label:'384 — 14 compound blocks (2 rows each) + DMSO', format:'384',
    sub:'11-point dose across the columns, one compound name per 2-row block',
