@@ -941,6 +941,27 @@ body.lb-rb-closed .rb-pane{display:none;}
    reads as one more control on the same line. */
 .ci-f.wide{grid-column:span 2;}
 /* A lab convention the numbers depend on, said once under the table that applies it. */
+/* Lean view. The app knows more than a OneNote page does, and showing all of it at once is
+   what makes it feel heavier than one. Nothing is removed — three things that are set once and
+   read rarely (the header form, a calculator's inputs, the plate's written summary) start
+   folded, each behind its own disclosure, and the switch is in the View ribbon. */
+body.lb-lean .exh-fields{display:none;}
+body.lb-lean .exh.open .exh-fields{display:grid;}
+body.lb-lean .blk-calc .cc-inputs{display:none;}
+body.lb-lean .blk-calc.open .cc-inputs{display:grid;}
+body.lb-lean .blk-plate .pp-sum{display:none;}
+body.lb-lean .blk-plate.open .pp-sum{display:block;}
+.lean-tog{display:none;background:none;border:1px solid var(--border2);color:var(--text3);border-radius:var(--r-1);
+  font-family:var(--sans);font-size:var(--fs-1);font-weight:600;padding:2px 7px;cursor:pointer;white-space:nowrap;}
+.lean-tog:hover{background:var(--surface2);color:var(--text);}
+body.lb-lean .lean-tog{display:inline-flex;align-items:center;gap:4px;}
+.lean-tog::before{content:'\25B8';font-size:var(--fs-1);line-height:1;}
+.open>.cc-hd .lean-tog::before,.exh.open .lean-tog::before,.blk-plate.open .cc-hd .lean-tog::before{content:'\25BE';}
+.exh-lean{display:none;}
+body.lb-lean .exh-lean{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:2px 0 4px;
+  font-size:var(--fs-3);color:var(--text2);}
+body.lb-lean .exh.open .exh-lean{display:none;}
+.exh-lean b{color:var(--text);font-weight:600;}
 .cc-rule{margin-top:9px;padding:8px 10px;border-radius:var(--r-2);background:var(--surface2);
   border-left:2px solid var(--accent);font-size:var(--fs-2);color:var(--text2);line-height:1.6;}
 .cc-rule b{color:var(--text);}
@@ -2404,9 +2425,27 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
     if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input data-k="'+f.k+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>'; }
     return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>';
   }).join('');
-  return '<div class="blk-calc" data-calc="'+b.id+'"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span><span class="grow"></span><button class="cc-x" title="Remove calculator" onclick="calcRemove(\''+b.id+'\')">&times;</button></div>'
+  return '<div class="blk-calc" data-calc="'+b.id+'"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span><span class="grow"></span>'
+    +'<button class="lean-tog" title="The numbers this recipe is calculated from" onclick="leanToggle(this,\'.blk-calc\')">Inputs</button>'
+    +'<button class="cc-x" title="Remove calculator" onclick="calcRemove(\''+b.id+'\')">&times;</button></div>'
     +'<div class="cc-inputs">'+fields+'</div><div class="cc-recipe" id="ccr-'+b.id+'">'
     +withSeedFix("calcSeedFix('"+b.id+"')", function(){ return expCalcRecipe(b); })+'</div></div>';
+}
+// The disclosure is a class on the card, so opening one costs no re-render and nothing is
+// stored: it is a way of looking at the page, not a fact about the experiment.
+function leanToggle(btn,sel){
+  var card=btn.closest(sel); if(!card) return;
+  card.classList.toggle('open');
+}
+function toggleLean(){
+  var on=!document.body.classList.contains('lb-lean');
+  document.body.classList.toggle('lb-lean',on);
+  try{ localStorage.setItem('lb_lean',on?'1':'0'); }catch(e){}
+  toast(on?'Lean view — the details are one click away':'Everything shown');
+}
+function _leanInit(){
+  var v=null; try{ v=localStorage.getItem('lb_lean'); }catch(e){}
+  document.body.classList.toggle('lb-lean', v!=='0');   // lean unless it was turned off
 }
 function _blkById(id){ var e=_curExp(); if(!e) return null; return (e.blocks||[]).filter(function(x){return x.id===id;})[0]||null; }
 function calcUpd(id){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=document.querySelector('.blk-calc[data-calc="'+id+'"]'); if(!wrap) return;
@@ -3587,12 +3626,13 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
   boxes.forEach(function(b){ grid+='<div class="pp-gl" style="grid-row:'+(b.r1+glOff)+'/'+(b.r2+glOff+1)+';grid-column:'+(b.c1+1)+'/'+(b.c2+2)+'"><span>'+esc(b.label)+'</span></div>'; });
   var leg=plateUsedTypes(p).map(function(t){ return '<span class="pp-leg-i"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</span>'; }).join('');
   var _ow=_plateOwner(key), _nb=(_ow&&_ow.exp&&_ow.exp.type==='NB');
-  var acts=readonly?'':((_nb?('<button class="cc-x plate-act" title="Draw this map again from the setup — donors, acceptors, ratios and the well counts in the transfection block" onclick="rebuildNbPlate(\''+key+'\')">Rebuild</button>'):'')
+  var acts=(readonly?'':'<button class="lean-tog" title="The layout written out, block by block" onclick="leanToggle(this,\'.blk-plate\')">Summary</button>')
+    +(readonly?'':((_nb?('<button class="cc-x plate-act" title="Draw this map again from the setup — donors, acceptors, ratios and the well counts in the transfection block" onclick="rebuildNbPlate(\''+key+'\')">Rebuild</button>'):'')
     +'<button class="cc-x plate-act" title="Edit this plate map" onclick="openPlateEditor(\''+key+'\')">Edit</button>'
     +'<button class="cc-x plate-act" title="Copy the layout as text" onclick="copyPlateSummary(\''+key+'\')">Copy</button>'
     +'<button class="cc-x plate-act" title="Download as CSV" onclick="exportPlateCSV(\''+key+'\')">CSV</button>'
     +'<button class="cc-x plate-act" title="Download as a picture — for a slide or a lab meeting" onclick="exportPlatePNG(\''+key+'\')">PNG</button>'
-    +'<button class="cc-x" title="Remove plate map" onclick="removePlateFrom(\''+key+'\')">&times;</button>');
+    +'<button class="cc-x" title="Remove plate map" onclick="removePlateFrom(\''+key+'\')">&times;</button>'));
   var sum=plateSummaryHtml(p);
   return '<div class="blk-plate">'
     +'<div class="cc-hd"><span class="cc-tag plate">'+tbIco(P_GRID,12)+' '+esc(p.title||'Plate map')+'</span><span class="cc-src">'+d.r*d.c+'-well</span>'
@@ -6719,7 +6759,18 @@ function renderExpEditor(host,e){
     +'<div class="exh-fld"><label>Start date</label><input type="date" value="'+esc(e.startDate||'')+'" onchange="setField(\'startDate\',this.value)"></div>'
     +'<div class="exh-fld"><label>Plasmids</label><input value="'+esc(e.plasmids||'')+'" placeholder="pJM26, pJM27" oninput="updChips(\'plasmids\',this.value)" onchange="setField(\'plasmids\',this.value)"><div class="exh-chips" id="chips-plasmids">'+_chipInner(e.plasmids,'plasmid')+'</div>'+constructRolesHtml(e)+'</div>'
     +'<div class="exh-fld"><label>Cell lines</label><input value="'+esc(e.cellLines||'')+'" placeholder="HEK293, HeLa" oninput="updChips(\'cellLines\',this.value)" onchange="setField(\'cellLines\',this.value)"><div class="exh-chips" id="chips-cell">'+_chipInner(e.cellLines,'cell')+'</div></div></div>';
-  var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
+  // What the form says, in one line — the same facts a OneNote page carries under its title.
+  // The setup chips below already name the cell line when the setup has one, and the same fact
+  // twice on two adjacent lines is exactly the noise this view is for.
+  var _cl=((e.setup&&e.setup.cellLine)?'':((e.cellLines||'').split(/[,;]+/)[0]||''));
+  var lean='<div class="exh-lean">'
+    +'<span><b>'+esc(semanticExperimentTitle(e.type))+'</b></span>'
+    +(e.startDate?('<span>'+esc(fmtDate(e.startDate))+'</span>'):'')
+    +'<span>'+esc(e.status||'planned')+'</span>'
+    +(_cl?('<span>'+esc(_cl.trim())+'</span>'):'')
+    +(e.plasmids?('<span>'+esc(e.plasmids)+'</span>'):'')
+    +'<button class="lean-tog" title="Type, status, date, plasmids and cell lines" onclick="leanToggle(this,\'.exh\')">Details</button></div>';
+  var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+lean+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
   var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res')?EXP_TAB:'dated';
   var nRes=((e.integration&&e.integration.results)||[]).length;
   var tabs='<div class="exp-tabs">'
@@ -7334,6 +7385,7 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="The numbers, as data — JSON or CSV" onmousedown="event.preventDefault();exportDataMenu()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>')+'</span><span class="rb-lbtn-lbl">Data</span></button>'
   +'<button class="rb-lbtn" title="The software named at the end of every Methods paragraph" onmousedown="event.preventDefault();setAnalysisSoftware()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 19V5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1z"/><path d="M8 15l3-4 2 2.5L16 9"/>')+'</span><span class="rb-lbtn-lbl">Analysis</span></button>'
   +'<button class="rb-lbtn" title="Restore a daily snapshot" onmousedown="event.preventDefault();restoreFromSnapshot()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Snapshots</span></button>'
+  +'<button class="rb-lbtn" title="Fold away the header form, the calculator inputs and the plate summary — each one click from where it was" onmousedown="event.preventDefault();toggleLean()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 6h16M4 12h10M4 18h7"/>')+'</span><span class="rb-lbtn-lbl">Lean</span></button>'
   +'<button class="rb-lbtn" title="Light / dark" onmousedown="event.preventDefault();toggleTheme()"><span class="rb-lbtn-ico">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>')+'</span><span class="rb-lbtn-lbl">Theme</span></button>'
   +'<button class="rb-lbtn" title="Restore from a backup file" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore</span></button>'
   +'</div>'; }
@@ -9561,7 +9613,7 @@ function renderAll(){ renderPages(); renderEditor(); }   // renderPages() calls 
 var _seedChanged=maybeSeed();
 var _semanticTitlesChanged=migrateSemanticExperimentTitles();
 if(_seedChanged||_semanticTitlesChanged) save();
-applyLayout(); renderPanels(); renderAll();
+_leanInit(); applyLayout(); renderPanels(); renderAll();
 lbInitSync();
 setTimeout(maybeAutoBackup,1500);
 setTimeout(gcAttachments,4000);
