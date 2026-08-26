@@ -571,9 +571,16 @@ body.lb-rb-closed .rb-pane{display:none;}
 /* The label is what you are choosing; the subtitle is why. The label had flex:1 and the
    subtitle no limit at all, so a long "why" pushed the "what" into an ellipsis — backwards.
    The subtitle shrinks first and truncates; the label keeps the room it needs. */
-.dlg-item .l{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.dlg-item .s{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+/* The name is what you are picking, so the subtitle is what gives way: capping it at 40% of the
+   row leaves the name more room than it needs at any width where it fits, and there is then no
+   deficit for flex to take out of the name. (Shrink factors were tried first — 1 against 100 —
+   and flex weights a deficit by base size, so the name still lost its last character. Making the
+   name unshrinkable instead overflowed the row on a phone.) */
+.dlg-item .l{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dlg-item .s{flex:0 1 auto;min-width:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   text-align:right;font-size:var(--fs-2);color:var(--text3);font-family:var(--sans);}
+/* A picker is a list of names, not a form: it gets the width a name needs. */
+.modal.pick{max-width:min(760px,94vw);}
 .dlg-empty{padding:20px;text-align:center;color:var(--text3);font-size:var(--fs-3);}
 /* Preset editor redesign */
 .ps-blk{border:1px solid var(--border2);border-radius:var(--r-2);margin-bottom:11px;background:var(--surface);overflow:hidden;}
@@ -7617,7 +7624,7 @@ function lbPrompt(label,value,opts){ opts=opts||{}; return new Promise(function(
 // onCancel is optional and matters when dropping the choice means losing something: a caller
 // that has data in hand needs to say so rather than let it disappear behind a closed dialog.
 function lbPicker(title,items,onPick,onCancel){
-  var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
+  var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal pick';
   card.innerHTML='<div class="modal-t">'+esc(title)+'</div><input id="lb-pick-q" class="dlg-search" placeholder="Search…" autocomplete="off"><div id="lb-pick-list" class="dlg-list"></div><div class="modal-act"><span class="grow"></span><button class="btn ghost" id="lb-dlg-cancel">Cancel</button></div>';
   var _cancelled=true;
   function _close(){ _lbDlgClose(); if(_cancelled && onCancel) try{ onCancel(); }catch(_e){} }
