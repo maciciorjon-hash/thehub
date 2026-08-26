@@ -684,7 +684,22 @@ body.lb-rb-closed .rb-pane{display:none;}
   /* (The closed state is now global — see .rb-pane below.) */
   /* Inside an experiment the tab strip IS the navigation, so it stays put while you scroll a
      long protocol, and clears the floating pane button rather than sitting under it. */
-  .exp-tabs{position:sticky;top:0;z-index:12;background:var(--bg);}
+  /* Five tabs do not fit 390px and never will: the last two were simply off the edge with no
+     hint they existed. The strip scrolls sideways instead of squeezing, keeps its labels on
+     one line, and hides the scrollbar because a thumb is the scrollbar here. */
+  .exp-tabs{position:sticky;top:0;z-index:12;background:var(--bg);
+    flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;scroll-snap-type:x proximity;}
+  .exp-tabs::-webkit-scrollbar{display:none;}
+  .exp-tab{flex:0 0 auto;white-space:nowrap;padding:9px 11px;scroll-snap-align:start;}
+  /* A card's actions are a row of small buttons made for a mouse. They wrap here rather than
+     run off the card — the last two were unreachable, which on the plate card is Copy and PNG. */
+  .cc-hd{flex-wrap:wrap;row-gap:5px;}
+  .cc-hd .cc-tag{flex:1 1 100%;}
+  .blk-plate .cc-hd .plate-act,.blk-plate .cc-hd .lean-tog{flex:0 0 auto;}
+  /* The ribbon's status text is the first thing to go: it is a reassurance, not a control. */
+  .rb-tabbar .backup-note{display:none;}
+  .rb-tabbar #lb-status-txt{display:none;}
   /* Closed by default on mobile (it used to always cover ~80% of the screen with no way to dismiss it) — slide-in overlay via body.mobile-dock-open, same toggle button as desktop. */
   #rightdock{position:fixed;right:0;top:0;bottom:0;z-index:46;width:82%;max-width:300px;box-shadow:var(--shadow-lg);transform:translateX(101%);transition:transform .22s var(--ease);}
   body.mobile-dock-open #rightdock{transform:translateX(0);}
@@ -7808,7 +7823,21 @@ function lbPhotoCapture(key){
   // capture= asks the phone for the camera rather than the gallery. A desktop browser ignores
   // it and shows the file picker, which is the right thing there.
   inp.setAttribute('capture','environment');
-  inp.onchange=function(){ var f=(inp.files||[])[0]; if(f) openPhotoEditor(f,key); };
+  // iOS opens nothing at all for a file input that is not in the document — the tap looked
+  // like it did nothing, which is exactly what was reported. It has to be in the page (and
+  // off-screen rather than display:none, which Safari also ignores) for the whole round trip.
+  inp.style.cssText='position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';
+  document.body.appendChild(inp);
+  var _gone=false;
+  function _drop(){ if(_gone) return; _gone=true; setTimeout(function(){ try{ inp.remove(); }catch(e){} },0); }
+  inp.onchange=function(){
+    var f=(inp.files||[])[0]; _drop();
+    if(f) openPhotoEditor(f,key);
+    else toast('No picture came back from the camera');
+  };
+  // Coming back from the camera with nothing selected fires no event at all on iOS; the input
+  // is cleaned up on the next focus so it cannot pile up one per tap.
+  window.addEventListener('focus',function _f(){ window.removeEventListener('focus',_f); setTimeout(_drop,1500); });
   inp.click();
 }
 var _PH=null;
@@ -7938,7 +7967,11 @@ function phSave(){
     var f=new File([blob],name,{type:'image/jpeg'});
     addFileTo(key,f,cap).then(function(ok){
       phClose();
-      if(ok){ toast('Photo added to Files'); renderEditor(); }
+      if(!ok) return;
+      // Open the tab it landed in. "Added to Files" is only useful if you know where Files is,
+      // and on a phone the answer has to be "there it is".
+      EXP_TAB='files'; renderEditor();
+      toast(cap?('Saved to Files — '+cap):'Saved to Files');
     });
   },'image/jpeg',0.86);
 }
@@ -9162,10 +9195,10 @@ function _printName(){
 // much, in the order you do it, with boxes to tick — big enough to read at arm's length beside
 // a hood, and with everything that is only meaningful at a desk left out (publication prose,
 // deviations, results, file lists).
+// A bench sheet is read standing up, at arm's length, with gloves on. 13.5pt is the size that
+// survives that; the app's own stylesheet still applies to anything pasted in from a block, so
+// it is reset to inherit and the few things that differ are set again below.
 var LAB_CSS='<style>@page{margin:11mm}'+PLATE_PRINT_CSS
- // A bench sheet is read standing up, at arm's length, with gloves on. 13.5pt is the size that
- // survives that; the app's own stylesheet still applies to anything pasted in from a block, so
- // it is reset to inherit and the few things that differ are set again below.
  +'#print-root{color:#111;font:400 13.5pt/1.5 ui-sans-serif,system-ui,sans-serif}'
  +'#print-root *{font-size:inherit;font-family:inherit;color:inherit;background:none}'
  +'#print-root table{display:table}#print-root tr{display:table-row}'

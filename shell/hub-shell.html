@@ -1065,6 +1065,35 @@ function _insertBeforeRealHeadClose(html, insertion) {
   return html.slice(0, idx) + insertion + html.slice(idx);
 }
 
+// ── Memory, on a phone ─────────────────────────────────────────────────────────────────────
+// Every app opened stays loaded for the session: twenty srcdoc iframes, each a whole
+// application, Labbook alone about a megabyte and the shell carrying SheetJS on top. On a
+// desktop that is a fast app switcher. On a phone it is how Safari runs out of memory and
+// discards the tab — which is what "after a few menus it crashes and nothing loads" is.
+// So on a small screen only the app you are in stays alive. The cost is a reload when you come
+// back to one; the alternative is losing the tab, which loses all of them.
+function _hubSmall(){ try{ return window.matchMedia('(max-width:760px)').matches; }catch(e){ return false; } }
+function _unloadApp(id){
+  var f = document.getElementById('frame-' + id);
+  if (!f) return;
+  try { f.removeAttribute('srcdoc'); f.src = 'about:blank'; } catch(e) {}
+  delete loaded[id];
+  try{ delete _hubPendingMessages[id]; }catch(e){}   // a retry into a torn-down frame is a leak
+}
+var _unloadT = null;
+function _unloadOthers(keepId){
+  if (!_hubSmall()) return;
+  clearTimeout(_unloadT);
+  // Deferred: an app's own save is debounced (Labbook's is 1.2 s), and tearing the frame down
+  // the instant you leave would drop the last thing typed into it.
+  _unloadT = setTimeout(function(){
+    Object.keys(loaded).forEach(function(id){
+      if (id === keepId) return;
+      if (currentApp === 'cells' && CELLS_TABS.some(function(t){ return t.id === id; })) return;
+      _unloadApp(id);
+    });
+  }, 1600);
+}
 function _loadApp(id) {
   if (loaded[id]) return;
   var frame = document.getElementById('frame-' + id);
@@ -1336,12 +1365,17 @@ function openCells(tab, item, context){
   if (!tabs.some(function(t){ return t.id===tab; })) tab = tabs[0].id;
   _cellsTab = tab;
   var host = document.getElementById('cells-host');
+  var small = _hubSmall();
   tabs.forEach(function(t){
-    _loadApp(t.id);
+    // Cells is three applications behind one tab bar. Loading all three to show one is what a
+    // desktop can afford; on a phone it is three times the memory for two screens nobody is
+    // looking at.
+    if (!small || t.id === tab) _loadApp(t.id);
     var f = document.getElementById('frame-' + t.id);
     if (f && f.parentNode !== host) host.appendChild(f);   // move it in once, keep its state
     if (f) f.style.display = (t.id === tab) ? '' : 'none';
   });
+  if (small) tabs.forEach(function(t){ if (t.id !== tab && loaded[t.id]) _unloadApp(t.id); });
   document.getElementById('cells-tabs').innerHTML = tabs.map(function(t){
     return '<button class="cells-tab' + (t.id===tab?' on':'') + '" onclick="openCells(\'' + t.id + '\')">' + t.label + '</button>';
   }).join('');
@@ -1398,9 +1432,16 @@ function openApp(id, tab, item, context) {
     if (context) { tabMsg.type='dhub:context'; tabMsg.version=1; tabMsg.source=context.source||'hub'; tabMsg.target=id; tabMsg.action='open'; tabMsg.context=context; }
     _hubQueueMessage(id,tabMsg);
   }
+  // An id with no view — an old bookmark, a renamed app, a link from another app that has
+  // moved — used to throw here, half-way through: currentApp was already set to it and every
+  // .app-view had been hidden, so the shell was left on a blank screen with no way back and
+  // nothing in the console but a TypeError. Nothing is touched until we know there is
+  // somewhere to go.
+  var view = document.getElementById('view-' + id);
+  if (!view) { try{ console.warn('openApp: no view for', id); }catch(e){} return; }
   var _wasIn = currentApp;
   currentApp = id;
-  var view = document.getElementById('view-' + id);
+  _unloadOthers(id);
   document.querySelectorAll('.app-view').forEach(function(v) {
     if (v !== view) { v.style.display = 'none'; v.style.opacity = ''; }
   });
@@ -1432,6 +1473,7 @@ function openApp(id, tab, item, context) {
 var _backPopping = false;
 function backToHub() {
   if (!currentApp) return;
+  _unloadOthers(null);
   var view = document.getElementById('view-' + currentApp);
   currentApp = null;
   exitAppNav();
