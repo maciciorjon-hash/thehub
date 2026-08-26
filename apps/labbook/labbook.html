@@ -1588,16 +1588,28 @@ var EXTRA_PRESET_SEED={
    setup:{format:'96',cellLine:'HeLa'}, setupHide:['nTransfect','mg132','ligand'],
    plateOn:true, layout:'nbspark96', blocks:[
     {d:0,title:'Transfection mixes (FuGENE HD)',
-     calc:{kind:'nbtx',inputs:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
-       donorStock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
-       nPair:24,nDonor:8,nAcceptor:8,nMock:8,ctrlMode:'same amount as in the pair',excess:1.2}},
-     html:'<p><b>Reverse transfection</b> — one master mix per DNA condition: <b>80 ng HaloTag construct per well</b> '
-       +'with the <b>NanoLuc construct at 1:50</b> of it (1.6 ng), <b>0.24 µL FuGENE HD</b> and <b>10 µL Opti-MEM</b> per well. '
+     // Three plasmids, four pair mixes: DELE1(CTD) tagged at either terminus is two donors, and
+     // each is transfected against HT-HRI at two donor:acceptor ratios. The well counts are the
+     // plate's, condition by condition — 4 per band, plus the 8 −ligand/−substrate control wells
+     // per donor, which are pair wells with something left out at the read, not another mix.
+     calc:{kind:'nbtx',inputs:{donorName:'NL-DELE1(CTD)',donor2Name:'DELE1(CTD)-NL',acceptorName:'HT-HRI',
+       acceptorNg:80,ratio:10,ratio2:50,
+       donorStock:100,donor2Stock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
+       nPair:4,nDonor:4,nAcceptor:8,nMock:8,nPairCtrl:8,ctrlRatio:10,
+       ctrlMode:'same amount as in the pair',excess:1.2}},
+     pub:'Cells were reverse-transfected with the HT-HRI acceptor and DELE1(CTD) tagged with NanoLuc at either the N or the C terminus, each at donor:acceptor mass ratios of 1:10 and 1:50.',
+     html:'<p><b>Reverse transfection</b> — one master mix per DNA condition. <b>Three plasmids</b>: two donors, '
+       +'<b>NL-DELE1(CTD)</b> and <b>DELE1(CTD)-NL</b>, against one acceptor, <b>HT-HRI</b>.</p>'
+       +'<p><b>80 ng HT-HRI per well</b>, with each donor at <b>1:10</b> (8 ng) and at <b>1:50</b> (1.6 ng) of it &mdash; '
+       +'four pair mixes &mdash; plus each donor alone at each ratio, HT-HRI alone, and a mock. '
+       +'<b>0.24 µL FuGENE HD</b> and <b>10 µL Opti-MEM</b> per well. '
        +'Add DNA to Opti-MEM, then FuGENE HD; mix gently (do not vortex) and leave 10–15 min at room temperature.</p>'
-       +'<p>Dispense <b>10 µL of mix per well</b> into the white 96-well plate <i>before</i> the cells.</p>'
+       +'<p>Dispense <b>10 µL of mix per well</b> into the white 96-well plate <i>before</i> the cells, following the plate map.</p>'
        +'<ul class="lb-check"><li>Mixes made per condition</li><li>10–15 min at room temperature</li><li>10 µL/well dispensed</li></ul>'},
     {d:0,title:'Cell suspension ± ligand 618 + seed',
-     calc:{kind:'nbsusp',inputs:{cellLine:'HeLa',cellsPerWell:20000,volPerWell:90,nPlus:32,nMinus:8,
+     // 64 of the 96 wells are used; the 8 no-ligand control wells take the − suspension and
+     // every other used well, the no-substrate controls included, takes the + one.
+     calc:{kind:'nbsusp',inputs:{cellLine:'HeLa',cellsPerWell:20000,volPerWell:90,nPlus:56,nMinus:8,
        ligName:'HaloTag ligand 618',stockUM:100,finalNM:100,excess:1.2}},
      html:'<p>Two suspensions of {{cellLine}}: one <b>with</b> HaloTag ligand 618 at <b>100 nM final</b> and one <b>without</b>. '
        +'The ligand goes into the suspension, not into each well — that is what keeps the concentration the same across every + well, '
@@ -1916,13 +1928,18 @@ var CALC_KINDS={
   // their own, and the controls only mean anything if every well receives the same total DNA.
   // So this computes one mix per condition and tops the short ones up with carrier.
   nbtx:{ label:'Reverse transfection — NanoBRET mixes', fields:[
-    {k:'donorName',t:'txt',lbl:'Plasmid 1 (NanoLuc)'},{k:'acceptorName',t:'txt',lbl:'Plasmid 2 (HaloTag)'},
-    {k:'acceptorNg',t:'num',lbl:'Plasmid 2 ng/well'},{k:'ratio',t:'num',lbl:'Plasmid 1 = 1/X of it',step:'1'},
-    {k:'donorStock',t:'num',lbl:'Plasmid 1 stock (ng/µL)'},{k:'acceptorStock',t:'num',lbl:'Plasmid 2 stock (ng/µL)'},
+    {k:'donorName',t:'txt',lbl:'Donor 1 (NanoLuc)'},{k:'donor2Name',t:'txt',lbl:'Donor 2 (optional)'},
+    {k:'acceptorName',t:'txt',lbl:'Acceptor (HaloTag)'},
+    {k:'acceptorNg',t:'num',lbl:'Acceptor ng/well'},
+    {k:'ratio',t:'num',lbl:'Donor = 1/X of it',step:'1'},{k:'ratio2',t:'num',lbl:'Second ratio 1/X (optional)',step:'1'},
+    {k:'donorStock',t:'num',lbl:'Donor 1 stock (ng/µL)'},{k:'donor2Stock',t:'num',lbl:'Donor 2 stock (ng/µL)'},
+    {k:'acceptorStock',t:'num',lbl:'Acceptor stock (ng/µL)'},
     {k:'carrierStock',t:'num',lbl:'Carrier DNA stock (ng/µL)'},
     {k:'fugenePerWell',t:'num',lbl:'FuGENE HD (µL/well)',step:'0.01'},{k:'optimemPerWell',t:'num',lbl:'Opti-MEM (µL/well)'},
-    {k:'nPair',t:'num',lbl:'Wells: 1 + 2'},{k:'nDonor',t:'num',lbl:'Wells: 1 only'},
-    {k:'nAcceptor',t:'num',lbl:'Wells: 2 only'},{k:'nMock',t:'num',lbl:'Wells: mock'},
+    {k:'nPair',t:'num',lbl:'Wells: pair (each donor × ratio)'},{k:'nDonor',t:'num',lbl:'Wells: donor only (each)'},
+    {k:'nAcceptor',t:'num',lbl:'Wells: acceptor only (total)'},{k:'nMock',t:'num',lbl:'Wells: mock (total)'},
+    {k:'nPairCtrl',t:'num',lbl:'Extra pair wells: − ligand / − substrate (per donor)'},
+    {k:'ctrlRatio',t:'num',lbl:'Those controls were made at 1/X',step:'1'},
     {k:'ctrlMode',t:'select',lbl:'Single-plasmid controls',opts:['same amount as in the pair','full DNA of that plasmid']},
     {k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
@@ -2013,20 +2030,48 @@ var CALC_KINDS={
 function _nbtxConditions(v){
   // acceptorNg replaced ngPerWell; an experiment created before that reads its old key, where
   // the number was the same 80 and meant the total.
-  var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0, R=+v.ratio||1;
-  var dNg=R?(aNg/R):0;
-  var ng=dNg+aNg;
+  var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0;
   var full=(String(v.ctrlMode||'').indexOf('full')===0);
-  return [
-    {key:'pair', name:(v.donorName||'Plasmid 1')+' + '+(v.acceptorName||'Plasmid 2'), n:+v.nPair||0, d:dNg, a:aNg},
-    {key:'donor', name:(v.donorName||'Plasmid 1')+' only',    n:+v.nDonor||0,    d:(full?ng:dNg), a:0},
-    {key:'acc',   name:(v.acceptorName||'Plasmid 2')+' only', n:+v.nAcceptor||0, a:(full?ng:aNg), d:0},
-    {key:'mock',  name:'Mock (carrier only)', n:+v.nMock||0, d:0, a:0}
-  ].map(function(c){
-    c.carrier=Math.max(0, ng-(c.d||0)-(c.a||0));
+  // One donor and one ratio is still one donor and one ratio: the second of each is optional,
+  // and an experiment that never had them produces exactly the conditions it did before.
+  var donors=[{name:(v.donorName||'Plasmid 1'), stock:+v.donorStock||0}];
+  if(String(v.donor2Name||'').trim())
+    donors.push({name:v.donor2Name, stock:+(v.donor2Stock||v.donorStock)||0});
+  var ratios=[+v.ratio||1];
+  if(+v.ratio2>0 && +v.ratio2!==ratios[0]) ratios.push(+v.ratio2);
+  var multi=(donors.length>1||ratios.length>1);
+  function tag(R){ return multi?(' (NL 1:'+nfmt(R)+')'):''; }
+  // The controls that only differ by what was left out at the read — no ligand, no substrate —
+  // are transfected like any pair well, so they are extra wells on one pair mix rather than a
+  // condition of their own. Which ratio they were made at is a decision, not a derivation.
+  var cR=+v.ctrlRatio||ratios[0], nCtrl=+v.nPairCtrl||0;
+  var out=[];
+  ratios.forEach(function(R){
+    var dNg=R?(aNg/R):0, ng=dNg+aNg;
+    donors.forEach(function(D){
+      var extra=(nCtrl&&R===cR)?nCtrl:0;
+      out.push({key:'pair', name:D.name+' + '+(v.acceptorName||'Plasmid 2')+tag(R),
+                n:(+v.nPair||0)+extra, d:dNg, a:aNg, dStock:D.stock, ng:ng});
+      out.push({key:'donor', name:D.name+' only'+tag(R),
+                n:+v.nDonor||0, d:(full?ng:dNg), a:0, dStock:D.stock, ng:ng});
+    });
+  });
+  // The acceptor-only well holds the same DNA whatever the donor ratio is, so it is one mix
+  // however many bands of the plate it is pipetted into. Splitting it per ratio would print two
+  // identical rows and have someone make the same tube twice.
+  var ngMax=Math.max.apply(null, ratios.map(function(R){ return aNg+(R?aNg/R:0); }));
+  out.push({key:'acc', name:(v.acceptorName||'Plasmid 2')+' only', n:+v.nAcceptor||0,
+            a:(full?ngMax:aNg), d:0, dStock:donors[0].stock, ng:ngMax});
+  out.push({key:'mock', name:'Mock (carrier only)', n:+v.nMock||0, d:0, a:0,
+            dStock:donors[0].stock, ng:ngMax});
+  return out.map(function(c){
+    // Every well should receive the same total DNA, and with two ratios the pair totals differ
+    // (80 + 8 against 80 + 1.6), so the target is the largest of them. With one ratio that is
+    // the only total, which is what it always was.
+    c.carrier=Math.max(0, ngMax-(c.d||0)-(c.a||0));
     // Below a tenth of the total the top-up is noise you would pipette badly; the acceptor-only
     // control is short by exactly the donor's 1.57 ng, and nobody adds that.
-    c.needsCarrier = ng>0 && (c.carrier/ng)>0.1;
+    c.needsCarrier = ngMax>0 && (c.carrier/ngMax)>0.1;
     return c;
   }).filter(function(c){ return c.n>0; });
 }
@@ -2049,25 +2094,34 @@ function nbtxRecipe(v){
   var dNg=R?(aNg/R):0, ng=dNg+aNg;
   var rows=cs.map(function(c){
     var W=c.n*ex;
-    var dV=_dnaVol(c.d*W,dS), aV=_dnaVol(c.a*W,aS), cV=c.needsCarrier?_dnaVol(c.carrier*W,cS):null;
+    // Each condition carries its own donor and its own stock: with two donors they are two
+    // preps, and a shared 100 ng/µL would be a number nobody checked.
+    var dV=_dnaVol(c.d*W,c.dStock||dS), aV=_dnaVol(c.a*W,aS), cV=c.needsCarrier?_dnaVol(c.carrier*W,cS):null;
     var dUL=dV?dV.ul:null, aUL=aV?aV.ul:null, cUL=cV?cV.ul:null;
     var fu=(+v.fugenePerWell||0)*W, om=(+v.optimemPerWell||0)*W;
     var dna=(dUL||0)+(aUL||0)+(cUL||0);
     var tot=om+fu+dna;
     var parts=[];
-    if(c.d>0) parts.push(nfmt(c.d*W)+' ng '+esc(v.donorName||'plasmid 1')+(dV?(' &middot; '+dV.txt):''));
+    if(c.d>0) parts.push(nfmt(c.d*W)+' ng '+esc(String(c.name).split(' only')[0].split(' + ')[0])+(dV?(' &middot; '+dV.txt):''));
     if(c.a>0) parts.push(nfmt(c.a*W)+' ng '+esc(v.acceptorName||'plasmid 2')+(aV?(' &middot; '+aV.txt):''));
     if(c.needsCarrier) parts.push(nfmt(c.carrier*W)+' ng carrier'+(cV?(' &middot; '+cV.txt):''));
     return '<tr><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'+c.n+' well'+(c.n===1?'':'s')+' × '+nfmt(ex)+' overage</span></td>'
       +'<td>'+(parts.join('<br>')||'—')+'</td>'
       +'<td>'+nfmt(fu)+' µL</td><td>'+nfmt(om)+' µL</td><td><b>'+nfmt(tot)+' µL</b></td></tr>';
   }).join('');
+  var Rs=[R]; if(+v.ratio2>0 && +v.ratio2!==R) Rs.push(+v.ratio2);
+  var ngMax=Math.max.apply(null, Rs.map(function(r){ return aNg+(r?aNg/r:0); }));
+  var donorTxt=Rs.map(function(r){ return '1:'+nfmt(r)+' → '+nfmt(r?aNg/r:0)+' ng ('+nfmt(aNg+(r?aNg/r:0))+' ng/well)'; }).join(' &middot; ');
+  var names=[v.donorName||'plasmid 1'].concat(String(v.donor2Name||'').trim()?[v.donor2Name]:[]);
   return '<b>Reverse transfection — one mix per condition</b>'
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Condition</th><th>DNA</th><th>FuGENE HD</th><th>Opti-MEM</th><th>Total</th></tr>'+rows+'</table></div>'
-    +'<div class="cc-note">'+nfmt(aNg)+' ng '+esc(v.acceptorName||'plasmid 2')+' per well with '
-    +esc(v.donorName||'plasmid 1')+' at 1:'+nfmt(R)+' of it → '+nfmt(dNg)+' ng, so each well receives <b>'+nfmt(ng)+' ng</b> in total. '
-    +'Every condition is topped up to that same '+nfmt(ng)+' ng, but only where the shortfall is more than 10% of it — the '
-    +esc(v.acceptorName||'plasmid 2')+'-only well is short by the '+nfmt(dNg)+' ng of '+esc(v.donorName||'plasmid 1')+' and gets none. '
+    +'<div class="cc-note">'+nfmt(aNg)+' ng '+esc(v.acceptorName||'plasmid 2')+' per well, with '
+    +esc(names.join(' and '))+' at '+donorTxt+'. '
+    +'Every condition is topped up with carrier to <b>'+nfmt(ngMax)+' ng</b> — the largest of those totals, so every well on the plate '
+    +'receives the same amount of DNA — but only where the shortfall is more than 10% of it, since the '
+    +esc(v.acceptorName||'plasmid 2')+'-only well is short by a donor\'s worth of nanograms that nobody pipettes. '
+    +(+v.nPairCtrl>0?('The '+nfmt(v.nPairCtrl)+' no-ligand / no-substrate control wells per donor are transfected like any pair well and are '
+      +'counted into the 1:'+nfmt(+v.ctrlRatio||R)+' pair mix. '):'')
     +'Incubate the mix 10–15 min at room temperature, then dispense '+nfmt(v.optimemPerWell)+' µL/well before the cells.</div>';
 }
 function nbsuspRecipe(v){
@@ -4801,17 +4855,23 @@ var CALC_PUB={
   // A recipe table is a bench artefact. Methods want the design: what went in a well and why
   // the controls exist — which is exactly what the inputs already say.
   nbtx:function(v){
-    var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0, R=+v.ratio||1, dNg=R?(aNg/R):0;
+    var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0, R=+v.ratio||1;
+    var Rs=[R]; if(+v.ratio2>0 && +v.ratio2!==R) Rs.push(+v.ratio2);
     var dn=esc(v.donorName||'the NanoLuc construct'), an=esc(v.acceptorName||'the HaloTag construct');
-    var s='Cells were reverse-transfected with <b>'+nfmt(aNg)+' ng</b> of '+an+' per well and '+dn
-      +' at a <b>1:'+nfmt(R)+'</b> mass ratio (<b>'+nfmt(dNg)+' ng</b>), complexed with <b>'+nfmt(v.fugenePerWell)
+    var d2=String(v.donor2Name||'').trim()?esc(v.donor2Name):'';
+    var donors=d2?(dn+' and '+d2):dn;
+    var ngMax=Math.max.apply(null, Rs.map(function(r){ return aNg+(r?aNg/r:0); }));
+    var ratioTxt=Rs.map(function(r){ return '<b>1:'+nfmt(r)+'</b> ('+nfmt(r?aNg/r:0)+' ng)'; }).join(' and ');
+    var s='Cells were reverse-transfected with <b>'+nfmt(aNg)+' ng</b> of '+an+' per well and '+donors
+      +' at '+(Rs.length>1?'donor:acceptor mass ratios of ':'a mass ratio of ')+ratioTxt
+      +', complexed with <b>'+nfmt(v.fugenePerWell)
       +' µL</b> FuGENE HD in <b>'+nfmt(v.optimemPerWell)+' µL</b> Opti-MEM per well and dispensed into the plate before the cells.';
     var ctrl=[];
-    if(+v.nDonor>0) ctrl.push(dn+' alone');
+    if(+v.nDonor>0) ctrl.push((d2?'each donor':dn)+' alone');
     if(+v.nAcceptor>0) ctrl.push(an+' alone');
     if(+v.nMock>0) ctrl.push('a mock transfection');
     if(ctrl.length) s+=' Control wells received '+_pubList(ctrl)+', made up with carrier DNA to the same <b>'
-      +nfmt(dNg+aNg)+' ng</b> per well so that every well received an equal amount of DNA.';
+      +nfmt(ngMax)+' ng</b> per well so that every well received an equal amount of DNA.';
     return s;
   },
   nbsusp:function(v){
