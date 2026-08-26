@@ -693,19 +693,12 @@ body.lb-rb-closed .rb-pane{display:none;}
   /* (The closed state is now global — see .rb-pane below.) */
   /* Inside an experiment the tab strip IS the navigation, so it stays put while you scroll a
      long protocol, and clears the floating pane button rather than sitting under it. */
-  /* Five tabs do not fit 390px and never will: the last two were simply off the edge with no
-     hint they existed. The strip scrolls sideways instead of squeezing, keeps its labels on
-     one line, and hides the scrollbar because a thumb is the scrollbar here. */
-  .exp-tabs{position:sticky;top:0;z-index:12;background:var(--bg);
-    flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
-    scrollbar-width:none;scroll-snap-type:x proximity;}
-  .exp-tabs::-webkit-scrollbar{display:none;}
-  .exp-tab{flex:0 0 auto;white-space:nowrap;padding:9px 11px;scroll-snap-align:start;}
-  /* A card's actions are a row of small buttons made for a mouse. They wrap here rather than
-     run off the card — the last two were unreachable, which on the plate card is Copy and PNG. */
+  /* Five tabs never fit 390px. Rather than a strip that scrolls — which still hides where you
+     can go behind a gesture nobody is told about — the phone gets the tab it is on and a menu
+     of the rest. Same for a card's actions: seven small buttons made for a mouse become one ⋯
+     and a list with words on it. */
   .cc-hd{flex-wrap:wrap;row-gap:5px;}
   .cc-hd .cc-tag{flex:1 1 100%;}
-  .blk-plate .cc-hd .plate-act,.blk-plate .cc-hd .lean-tog{flex:0 0 auto;}
   /* The ribbon's status text is the first thing to go: it is a reassurance, not a control. */
   .rb-tabbar .backup-note{display:none;}
   .rb-tabbar #lb-status-txt{display:none;}
@@ -1244,6 +1237,12 @@ body.lb-lean .exh.open .exh-lean{display:none;}
 .nm-proto-add:hover{background:var(--surface2);}
 /* Experiment tabs (Dated · Observations · Publication ready) */
 .exp-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:10px 0 0;}
+/* The phone's version of the tab strip: where you are, and a way to the rest. */
+.exp-tabs-m{display:none;align-items:center;gap:7px;width:100%;margin:10px 0 0;padding:10px 12px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);
+  font-family:var(--sans);font-size:var(--fs-5);font-weight:600;color:var(--text);cursor:pointer;}
+.exp-tabs-m svg{width:16px;height:16px;margin-left:auto;color:var(--text3);}
+.exh-acts .exh-more{display:none;}
 .exp-tab{position:relative;background:none;border:none;color:var(--text2);font-size:var(--fs-4);font-weight:600;padding:9px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:6px;}
 .exp-tab:hover{color:var(--text);}
 .exp-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
@@ -1463,6 +1462,22 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
     transition-duration:1ms!important;scroll-behavior:auto!important;}
+}
+
+/* ── Phone: menus instead of rows that do not fit ───────────────────────────────────────── */
+/* These live at the end on purpose. A @media block earlier in the sheet loses to a plain rule
+   further down at the same specificity — which is exactly what happened the first time. */
+@media(max-width:760px){
+  .exp-tabs{display:none;}
+  .exp-tabs-m{display:flex;position:sticky;top:0;z-index:12;}
+  .blk-plate .cc-hd .plate-act,.blk-plate .cc-hd .cc-x:not(.plate-more){display:none;}
+  /* .cc-x is a text button (a ×) and sizes from its font, so an svg inside it came out 8×0.
+     The ⋯ is given a real box. */
+  .blk-plate .cc-hd .plate-more{display:inline-flex;align-items:center;justify-content:center;
+    width:30px;height:26px;padding:0;}
+  .blk-plate .cc-hd .plate-more svg{width:17px;height:17px;}
+  .exh-acts .exh-act:not(.exh-more){display:none;}
+  .exh-acts .exh-more{display:inline-flex;}
 }
 </style>
 <style>
@@ -3286,6 +3301,20 @@ function rebuildNbPlate(key){
       o.exp.updated=Date.now(); save(); renderEditor();
     });
 }
+function plateMenu(ev,key){
+  var o=_plateOwner(key), nb=(o&&o.exp&&o.exp.type==='NB');
+  var items=[];
+  if(nb) items.push({label:'Rebuild from the setup', sub:'donors · ratios · wells', fn:function(){ rebuildNbPlate(key); }});
+  items.push({label:'Summary', sub:'block by block', fn:function(){
+      var card=document.querySelector('.blk-plate'); if(card) card.classList.toggle('open'); }});
+  items.push({sep:true});
+  items.push({label:'Copy as text', fn:function(){ copyPlateSummary(key); }});
+  items.push({label:'Download CSV', fn:function(){ exportPlateCSV(key); }});
+  items.push({label:'Download PNG', sub:'for a slide', fn:function(){ exportPlatePNG(key); }});
+  items.push({sep:true});
+  items.push({label:'Remove plate map', danger:true, fn:function(){ removePlateFrom(key); }});
+  popOpen('ctxmenu', items, ev.currentTarget.getBoundingClientRect());
+}
 function copyPlateSummary(key){ var p=plateOf(key); if(!p) return;
   var txt=(p.title?p.title+'\n':'')+plateDims(p).r*plateDims(p).c+'-well plate\n'+plateSummaryText(p);
   try{ navigator.clipboard.writeText(txt); toast('Plate layout copied'); }
@@ -3727,7 +3756,13 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
   boxes.forEach(function(b){ grid+='<div class="pp-gl" style="grid-row:'+(b.r1+glOff)+'/'+(b.r2+glOff+1)+';grid-column:'+(b.c1+1)+'/'+(b.c2+2)+'"><span>'+esc(b.label)+'</span></div>'; });
   var leg=plateUsedTypes(p).map(function(t){ return '<span class="pp-leg-i"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</span>'; }).join('');
   var _ow=_plateOwner(key), _nb=(_ow&&_ow.exp&&_ow.exp.type==='NB');
-  var acts=(readonly?'':'<button class="lean-tog" title="The layout written out, block by block" onclick="leanToggle(this,\'.blk-plate\')">Summary</button>')
+  // Seven small buttons is a desktop card header. On a phone the last three were off the edge,
+  // so there is one ⋯ that opens them as a list — and Edit stays out, because it is the one you
+  // are reaching for.
+  var moreBtn='<button class="cc-x plate-more" title="More" onclick="plateMenu(event,\''+key+'\')">'
+    +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="5" cy="12" r=".6"/><circle cx="12" cy="12" r=".6"/><circle cx="19" cy="12" r=".6"/></svg></button>';
+  var acts=(readonly?'':moreBtn)
+    +(readonly?'':'<button class="lean-tog" title="The layout written out, block by block" onclick="leanToggle(this,\'.blk-plate\')">Summary</button>')
     +(readonly?'':((_nb?('<button class="cc-x plate-act" title="Draw this map again from the setup — donors, acceptors, ratios and the well counts in the transfection block" onclick="rebuildNbPlate(\''+key+'\')">Rebuild</button>'):'')
     +'<button class="cc-x plate-act" title="Edit this plate map" onclick="openPlateEditor(\''+key+'\')">Edit</button>'
     +'<button class="cc-x plate-act" title="Copy the layout as text" onclick="copyPlateSummary(\''+key+'\')">Copy</button>'
@@ -6250,11 +6285,39 @@ function renderEditor(){
   host.innerHTML='<div class="ed-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 11h8M8 15h5"/></svg><div class="t">Nothing open</div><div>Pick an entry on the left, or create one with <b>+ Add</b>.</div></div>';
   renderDockPanels();
 }
+// One list, every tab, with the counts it carries. Reuses the same popup the context menus
+// use, so it clamps to the screen and arms itself against the tap that opened it.
+function expTabMenu(ev,id){
+  var defs=window._TABDEF||[];
+  popOpen('ctxmenu', defs.map(function(t){
+    return {label:t[1]+(t[2]?('  '+t[2]):''), fn:function(){ expTab(t[0]); }};
+  }), ev.currentTarget.getBoundingClientRect());
+}
+// Five icon buttons in a row is a desktop toolbar. On a phone they were pushed off the right
+// edge of the card — Delete first, which is the one you least want to hit blind — so they
+// become a labelled list behind one button. Labels, not icons: a menu can afford words.
+function expActsMenu(ev,id){
+  var e=LB.data.experiments[id]||{};
+  var arch=expArchived(e);
+  popOpen('ctxmenu', [
+    {label:'Bench sheet', sub:'print', fn:function(){ exportLab(id); }},
+    {label:'Export PDF', sub:'the record', fn:function(){ exportPDF(); }},
+    {sep:true},
+    arch?{label:'Unarchive', fn:function(){ setExpArchived(id,false); }}
+        :{label:'Close experiment', sub:'say how it ended', fn:function(){ closeExperiment(id); }},
+    {label:'Repeat as replicate', fn:function(){ repeatExperiment(id); }},
+    {label:'Duplicate', fn:function(){ dupExperiment(id); }},
+    {sep:true},
+    {label:'Delete', danger:true, fn:function(){ delExperiment(id); }}
+  ], ev.currentTarget.getBoundingClientRect());
+}
 function expActs(id){ var e=LB.data.experiments[id]||{};
   var close = expArchived(e)
     ? '<button class="exh-act" title="Unarchive — bring it back into Home and the planner" onclick="setExpArchived(\''+id+'\',false)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18v4H3z"/><path d="M5 11v9h14v-9"/><path d="M12 18V13"/><path d="M9.5 15.5L12 13l2.5 2.5"/></svg></button>'
     : '<button class="exh-act" title="Close this experiment — say how it ended and file it away" onclick="closeExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7h18v4H3z"/><path d="M5 11v9h14v-9"/><path d="M12 13v5"/><path d="M9.5 15.5L12 18l2.5-2.5"/></svg></button>';
   return '<div class="exh-acts">'
+    +'<button class="exh-act exh-more" title="Actions" onclick="expActsMenu(event,\''+id+'\')">'
+      +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="5" cy="12" r=".6"/><circle cx="12" cy="12" r=".6"/><circle cx="19" cy="12" r=".6"/></svg></button>'
     +'<button class="exh-act" title="Bench sheet — the amounts and the steps, to print and take to the lab" onclick="exportLab(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3h6v3H9z"/><path d="M9 4.5H6.5A1.5 1.5 0 005 6v14a1.5 1.5 0 001.5 1.5h11A1.5 1.5 0 0019 20V6a1.5 1.5 0 00-1.5-1.5H15"/><path d="M8.5 11h7M8.5 15h4"/></svg></button>'
     +close+'<button class="exh-act" title="Repeat as the next biological replicate" onclick="repeatExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></button><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
 // D / A next to each plasmid: which is the NanoLuc donor, which the HaloTag acceptor. Nothing
@@ -6924,12 +6987,23 @@ function renderExpEditor(host,e){
   var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+lean+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
   var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res')?EXP_TAB:'dated';
   var nRes=((e.integration&&e.integration.results)||[]).length;
-  var tabs='<div class="exp-tabs">'
+  // A phone gets the tab it is on and a menu of the rest. A strip that scrolls sideways is
+   // better than one that clips, but it still hides where you can go behind a gesture nobody
+   // is told about — the whole point of a menu is that the options are a list.
+  var TABDEF=[['dated','Dated sections',(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):'')],
+              ['obs','Observations',''],['res','Results',nRes?String(nRes):''],
+              ['pub','Publication ready',''],['files','Files',(e.files&&e.files.length)?String(e.files.length):'']];
+  var _cur=TABDEF.filter(function(x){ return x[0]===tab; })[0]||TABDEF[0];
+  var tabsM='<button class="exp-tabs-m" onclick="expTabMenu(event,\''+e.id+'\')">'
+    +'<span>'+esc(_cur[1])+'</span>'+(_cur[2]?('<span class="exp-tab-n">'+esc(_cur[2])+'</span>'):'')
+    +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>';
+  var tabs=tabsM+'<div class="exp-tabs">'
     +'<button class="exp-tab'+(tab==='dated'?' on':'')+'" onclick="expTab(\'dated\')">Dated sections<span class="exp-tab-n">'+(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):0)+'</span></button>'
     +'<button class="exp-tab'+(tab==='obs'?' on':'')+'" onclick="expTab(\'obs\')">Observations</button>'
     +'<button class="exp-tab'+(tab==='res'?' on':'')+'" onclick="expTab(\'res\')">Results'+(nRes?('<span class="exp-tab-n">'+nRes+'</span>'):'')+'</button>'
     +'<button class="exp-tab'+(tab==='pub'?' on':'')+'" onclick="expTab(\'pub\')">Publication ready</button>'
     +'<button class="exp-tab'+(tab==='files'?' on':'')+'" onclick="expTab(\'files\')">Files'+((e.files&&e.files.length)?('<span class="exp-tab-n">'+e.files.length+'</span>'):'')+'</button></div>';
+  window._TABDEF=TABDEF;
   var body;
   if(tab==='obs'){
     body='<div class="rt exp-canvas" contenteditable="true" data-ctx="expfree:'+e.id+'" data-ph="Observations — notes, thoughts, anything you want to jot down…" oninput="setField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div>';
