@@ -243,6 +243,9 @@ body.lb-rb-closed .rb-pane{display:none;}
 .exh-act svg{width:15px;height:15px;}
 .exh-title{font-size:var(--fs-8);font-weight:700;letter-spacing:-.4px;color:var(--text);border:none;background:none;outline:none;width:100%;padding:4px 0 2px;font-family:var(--sans);}
 .exh-title.code-big{font-family:var(--sans);color:var(--text);font-size:var(--fs-8);}
+.exh-title[contenteditable]{white-space:pre-wrap;word-break:break-word;line-height:1.2;}
+.exh-title[contenteditable]:empty::before{content:attr(data-ph);color:var(--text3);}
+.exh-title[contenteditable]:focus{outline:none;}
 .exh-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px 16px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
 .exh-fld{display:flex;flex-direction:column;gap:4px;}
 .exh-fld label{font-size:var(--fs-1);font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);}
@@ -729,7 +732,10 @@ body.lb-rb-closed .rb-pane{display:none;}
   .rb-tabbar{overflow-x:auto;}
   .ed-wrap{padding:16px 14px 80px;}
   .tb{width:32px;height:32px;}
-  .exh-title{font-size:var(--fs-7);}
+  /* An <input> cannot wrap, so a long title is simply cut at the edge with no sign that there
+     is more of it. At --fs-6 a real experiment title fits 390px, and the full text is on the
+     field itself for the ones that still do not. */
+  .exh-title{font-size:var(--fs-6);}
   .status-pill #lb-status-txt{display:none;}
 }
 /* ── Week planner ── */
@@ -6262,7 +6268,21 @@ function constructRolesHtml(e){
       +'<button class="rl'+(c.role==='acceptor'?' on a':'')+'" title="HaloTag acceptor" onclick="setConstructRole(\''+e.id+'\',\''+esc(c.name)+'\',\'acceptor\')">A</button></span>';
   }).join('')+'</div>';
 }
-function titleField(e){ var empty=!(e.title||'').trim(); return '<input class="exh-title'+(empty?' code-big':'')+'" value="'+esc(empty?(e.code||''):e.title)+'" placeholder="'+(empty?'':'Title')+'" onchange="setField(\'title\',this.value)" onblur="renderPages()">'; }
+function titleField(e){ var empty=!(e.title||'').trim(); var t=empty?(e.code||''):e.title;
+  // An <input> cannot wrap, and on a phone the 16px rule that stops iOS zooming pins it there
+  // — so a real experiment title was cut at the edge with no sign there was more of it. The
+  // experiment's own title is an editable block instead: it wraps, it is not a form control so
+  // the zoom rule leaves its size alone, and it still saves on blur.
+  return '<div class="exh-title'+(empty?' code-big':'')+'" contenteditable="true" spellcheck="false" '
+    +'data-ph="Title" data-was="'+esc(t)+'" onblur="titleBlur(this)">'+esc(t)+'</div>'; }
+function titleBlur(node){
+  var e=_curExp(); if(!e) return;
+  var v=String(node.textContent||'').replace(/\s+/g,' ').trim();
+  // Untouched is untouched: an experiment with no title shows its code, and blurring past it
+  // must not quietly make the code the title.
+  if(v===String(node.getAttribute('data-was')||'')) return;
+  setField('title',v); renderPages();
+}
 // One step card (day label now lives on the day-group header).
 function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.part)+'</span>'):'';
   var snooze=(expId&&b.date)?('<button class="blk-snooze" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+expId+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'snooze</button>'):'';
