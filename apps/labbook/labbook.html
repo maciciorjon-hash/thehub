@@ -940,6 +940,12 @@ body.lb-rb-closed .rb-pane{display:none;}
    inputs. It is pinned to the bottom of the cell instead, at the height of an input, so it
    reads as one more control on the same line. */
 .ci-f.wide{grid-column:span 2;}
+/* A field whose two options are a real choice carries the explanation with it — the label is
+   the tooltip, so it is one hover away instead of in a document nobody opens. */
+.ci-f .ci-hint{display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;
+  border-radius:var(--r-full);background:var(--surface3);color:var(--text3);font-size:var(--fs-1);
+  font-weight:700;line-height:1;cursor:help;vertical-align:1px;}
+.ci-f:hover .ci-hint{background:var(--accent-dim);color:var(--accent);}
 .ci-f.chk{flex-direction:row;align-items:flex-start;justify-content:flex-start;gap:7px;align-self:end;padding:7px 0;
   grid-column:span 2;}
 /* A checkbox's label is a sentence ("MG132 pre-treatment"), not a two-word caption over an
@@ -1947,7 +1953,11 @@ var CALC_KINDS={
     {k:'nAcceptor',t:'num',lbl:'Wells: acceptor only (total)'},{k:'nMock',t:'num',lbl:'Wells: mock (total)'},
     {k:'nPairCtrl',t:'num',lbl:'Extra pair wells: − ligand / − substrate (per donor)'},
     {k:'ctrlRatio',t:'num',lbl:'Those controls were made at 1/X',step:'1'},
-    {k:'ctrlMode',t:'select',lbl:'Single-plasmid controls',opts:['same amount as in the pair','full DNA of that plasmid']},
+    {k:'ctrlMode',t:'select',lbl:'Single-plasmid wells receive',opts:['same amount as in the pair','full DNA of that plasmid'],
+     hint:'How much of its own plasmid a donor-only or acceptor-only control well gets. "Same amount as in the pair" keeps that '
+       +'plasmid at exactly the dose it has in the pair well and makes the rest up with carrier DNA, so the only difference from '
+       +'the pair is the missing partner — that is the control for a BRET pair. "Full DNA of that plasmid" gives the well the whole '
+       +'per-well amount of it instead, which expresses far more of it than the pair well does.'},
     {k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
       donorStock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
@@ -2038,7 +2048,7 @@ function _nbtxConditions(v){
   // acceptorNg replaced ngPerWell; an experiment created before that reads its old key, where
   // the number was the same 80 and meant the total.
   var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0;
-  var full=(String(v.ctrlMode||'').indexOf('full')===0);
+  var full=/full/i.test(String(v.ctrlMode||''));
   // One donor and one ratio is still one donor and one ratio: the second of each is optional,
   // and an experiment that never had them produces exactly the conditions it did before.
   var donors=[{name:(v.donorName||'Plasmid 1'), stock:+v.donorStock||0}];
@@ -2291,7 +2301,8 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
     if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
       return '<label class="ci-f"><span>'+f.lbl+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+fo+'</select></label>'; }
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
-      return '<label class="'+ciWide(f.opts)+'"><span>'+f.lbl+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+so+'</select></label>'; }
+      return '<label class="'+ciWide(f.opts)+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+f.lbl
+        +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+so+'</select></label>'; }
     if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input data-k="'+f.k+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>'; }
     return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>';
   }).join('');
@@ -8184,7 +8195,8 @@ function peCalcInputs(b,i){ if(!b.calc||!CALC_KINDS[b.calc.kind]) return '<butto
     if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>';}).join(''); return '<label class="'+ciWide(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+opts+'</select></label>'; }
     if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>';}).join(''); return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+fo+'</select></label>'; }
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
-      return '<label class="'+ciWide(f.opts)+'"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+so+'</select></label>'; }
+      return '<label class="'+ciWide(f.opts)+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+f.lbl
+        +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+so+'</select></label>'; }
     if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input value="'+esc(v==null?'':v)+'" oninput="peCalcSet('+i+',\''+f.k+'\',this.value)"></label>'; }
     return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="peCalcSet('+i+',\''+f.k+'\',this.value)"></label>';
   }).join('');
