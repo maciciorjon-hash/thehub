@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8"><title>fit run</title>
+<!-- Runner for tools/audit_fit.js: serve the repo root over http and open /tools/audit_fit_run.html,
+     then call __run(1280,900) (or __run(375,800)) from the console. It loads every app into an
+     off-screen iframe of that size, evals the audit inside it and returns one entry per app with
+     a finding. Only what a first paint renders is covered — a calculator, a modal or a tab has to
+     be opened by a driver of its own before it can be audited. -->
+<body style="font:12px monospace"><div id="out">ready</div>
+<script>
+var APPS=['../shell/hub-shell.html','../apps/labbook/labbook.html','../apps/archive/archive.html','../apps/echo/echo.html',
+'../apps/dora/dora.html','../apps/blueprint/blueprint.html','../apps/helix/helix.html','../apps/protein-tools/protein-tools.html',
+'../apps/bca/bca.html','../apps/ldi/ldi.html','../apps/iceberg/iceberg.html','../apps/incubator/incubator.html',
+'../apps/cell-archive/cell-archive.html','../apps/beacon/beacon.html','../apps/lumina/lumina.html',
+'../apps/western-blot/western-blot.html','../apps/gantt/gantt.html','../apps/ribbon/ribbon.html','../apps/cuppa/cuppa.html',
+'../apps/fabricata/fabricata.html'];
+var SRC=null;
+async function load(){ if(!SRC) SRC=await (await fetch('audit_fit.js')).text(); }
+function one(url,w,h){ return new Promise(function(res){
+  var f=document.createElement('iframe'); f.style.cssText='width:'+w+'px;height:'+h+'px;border:0;position:absolute;left:-99999px';
+  f.src=url; document.body.appendChild(f);
+  f.onload=function(){ setTimeout(function(){
+    var out;
+    try{ f.contentWindow.eval(SRC); out=f.contentWindow.__fitAudit(); }
+    catch(e){ out=['ERROR '+e.message]; }
+    f.remove(); res({app:url.split('/').pop(),n:out.length,rows:out});
+  },900); };
+}); }
+window.__run=async function(w,h,list){ await load(); var all=[];
+  var apps=list||APPS;
+  for(var i=0;i<apps.length;i++){ all.push(await one(apps[i],w||1280,h||900)); }
+  return all.filter(function(x){return x.n;});
+};
+</script>

@@ -932,6 +932,7 @@ body.lb-rb-closed .rb-pane{display:none;}
    labelled field and the grid centred it — landing between its neighbours' label row and their
    inputs. It is pinned to the bottom of the cell instead, at the height of an input, so it
    reads as one more control on the same line. */
+.ci-f.wide{grid-column:span 2;}
 .ci-f.chk{flex-direction:row;align-items:flex-start;justify-content:flex-start;gap:7px;align-self:end;padding:7px 0;
   grid-column:span 2;}
 /* A checkbox's label is a sentence ("MG132 pre-treatment"), not a two-word caption over an
@@ -2209,16 +2210,26 @@ function peSeedFix(i){ var b=PE.work.blocks[i]; if(!b||!b.calc||!b.calc.inputs) 
 function expCalcRecipe(b){ if(!b||!b.calc) return '';
   if(b.calc.kind==='archive') return archiveComputeRecipe(b);
   if(!CALC_KINDS[b.calc.kind]) return ''; try{ return CALC_KINDS[b.calc.kind].compute(b.calc.inputs||{}); }catch(e){ return ''; } }
+// A select is only as honest as its widest option: the grid hands every field the same narrow
+// track, so a field whose choices are prose — a cell line with its modification, a control
+// scheme written as a sentence — is clipped to something nobody can read, and a select is the
+// one control whose text cannot be scrolled back into view. Those take two tracks. The length
+// is counted in characters because the markup is built as a string here, before there is
+// anything to measure; ~14 is what fits a 136px track at --fs-3.
+function ciWide(list){ var m=0; (list||[]).forEach(function(x){ m=Math.max(m,String(x==null?'':x).length); }); return m>14?' ci-f wide':' ci-f'; }
+// nmSetupField already has its own class string (it can be a lead field), so it needs the
+// modifier without the base class ciWide carries for the plain call sites.
+function _wideOnly(list){ return ciWide(list)===' ci-f wide'?' wide':''; }
 // Editable calculator widget shown inside an experiment block.
 function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b);
   var C=CALC_KINDS[b.calc.kind]; if(!C) return ''; var inp=b.calc.inputs||{};
   var fields=C.fields.map(function(f){ var v=inp[f.k];
     if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
-      return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="calcCellLine(\''+b.id+'\',this.value)">'+opts+'</select></label>'; }
+      return '<label class="'+ciWide(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+f.lbl+'</span><select onchange="calcCellLine(\''+b.id+'\',this.value)">'+opts+'</select></label>'; }
     if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
       return '<label class="ci-f"><span>'+f.lbl+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+fo+'</select></label>'; }
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
-      return '<label class="ci-f"><span>'+f.lbl+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+so+'</select></label>'; }
+      return '<label class="'+ciWide(f.opts)+'"><span>'+f.lbl+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+so+'</select></label>'; }
     if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input data-k="'+f.k+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>'; }
     return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>';
   }).join('');
@@ -2249,7 +2260,7 @@ function archiveCalcHtml(b){ var name=archiveName(b.calc.pid); var sch=archiveSc
   if(!sch){ return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+'<div class="cc-recipe" id="ccr-'+b.id+'">'+(b.calc.recipe||'<span class="cc-load">'+(archiveEmbedded()?'Loading the calculator…':'The Archive protocol library isn\'t available in this build, so this calculator can\'t be loaded.')+'</span>')+'</div></div>'; }
   var inp=b.calc.inputs||(b.calc.inputs={});
   var fieldHtml=function(f){ if(inp[f.id]==null) inp[f.id]=f.value; var v=inp[f.id];
-    if(f.type==='select'){ var opts=(f.options||[]).map(function(o){ return '<option value="'+esc(o.value)+'"'+(String(v)===String(o.value)?' selected':'')+'>'+esc(o.label)+'</option>'; }).join(''); return '<label class="ci-f"><span>'+esc(f.label)+'</span><select data-k="'+esc(f.id)+'" onchange="calcUpd(\''+b.id+'\')">'+opts+'</select></label>'; }
+    if(f.type==='select'){ var opts=(f.options||[]).map(function(o){ return '<option value="'+esc(o.value)+'"'+(String(v)===String(o.value)?' selected':'')+'>'+esc(o.label)+'</option>'; }).join(''); return '<label class="'+ciWide((f.options||[]).map(function(o){return o.label;}))+'"><span>'+esc(f.label)+'</span><select data-k="'+esc(f.id)+'" onchange="calcUpd(\''+b.id+'\')">'+opts+'</select></label>'; }
     var t=(f.type==='number')?'number':'text';
     return '<label class="ci-f"><span>'+esc(f.label)+'</span><input type="'+t+'" data-k="'+esc(f.id)+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>'; };
   var boxes=sch.map(function(box){ var groups=box.groups||[{label:'',fields:box.fields||[]}];
@@ -4982,9 +4993,9 @@ function nmSetupField(f,lead,src,upd){
   if(f.t==='format'){ var opts=(f.opts||['6','12','24','48','96','384']).map(function(x){ return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>'; }).join('');
     return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'()">'+opts+'</select></label>'; }
   if(f.t==='cellline'){ var co=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
-    return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'(true)">'+co+'</select></label>'; }
+    return '<label class="'+cls+_wideOnly(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'(true)">'+co+'</select></label>'; }
   if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
-    return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'()">'+so+'</select></label>'; }
+    return '<label class="'+cls+_wideOnly(f.opts)+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'()">'+so+'</select></label>'; }
   if(f.t==='check'){ return '<label class="ci-f chk"><input type="checkbox" data-sf="'+f.f+'"'+(v?' checked':'')+' onchange="'+upd+'()"><span>'+esc(f.lbl)+'</span></label>'; }
   if(f.t==='txt'){ return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input data-sf="'+f.f+'" value="'+esc(v==null?'':v)+'" oninput="'+upd+'()"></label>'; }
   return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input type="number" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="'+upd+'()"></label>';
@@ -8051,10 +8062,10 @@ function peLoad(){ var p=LB.data.presets[PE.type]||{name:PE.type,title:'',blocks
 function peCalcInputs(b,i){ if(!b.calc||!CALC_KINDS[b.calc.kind]) return '<button class="ps-calc-add" onmousedown="event.preventDefault();peAddCalc('+i+')">'+tbIco(P_SIGMA,13)+' add prep calculator</button>';
   var C=CALC_KINDS[b.calc.kind], inp=b.calc.inputs||{};
   var fields=C.fields.map(function(f){ var v=inp[f.k];
-    if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>';}).join(''); return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+opts+'</select></label>'; }
+    if(f.t==='cellline'){ var opts=CELL_LINES.map(function(cl){return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>';}).join(''); return '<label class="'+ciWide(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+opts+'</select></label>'; }
     if(f.t==='format'){ var fo=['6','12','24','48','96','384'].map(function(x){return '<option value="'+x+'"'+(String(v)===x?' selected':'')+'>'+x+'-well</option>';}).join(''); return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+fo+'</select></label>'; }
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
-      return '<label class="ci-f"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+so+'</select></label>'; }
+      return '<label class="'+ciWide(f.opts)+'"><span>'+f.lbl+'</span><select onchange="peCalcSet('+i+',\''+f.k+'\',this.value)">'+so+'</select></label>'; }
     if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input value="'+esc(v==null?'':v)+'" oninput="peCalcSet('+i+',\''+f.k+'\',this.value)"></label>'; }
     return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="peCalcSet('+i+',\''+f.k+'\',this.value)"></label>';
   }).join('');
