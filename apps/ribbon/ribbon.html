@@ -1480,11 +1480,17 @@ function putDesigns(d){ try{localStorage.setItem('ribbon_designs',JSON.stringify
 var _rbnAdopting=false,_rbnT=null,_rbnUpdated=0;
 function rbnFb(){ try{ if(window.parent && window.parent.firebase) return window.parent.firebase.database().ref('journal/ribbon'); }catch(e){} return null; }
 function rbnSyncPush(d){ if(_rbnAdopting) return; var r=rbnFb(); if(!r) return; _rbnUpdated=Date.now(); var ts=_rbnUpdated; clearTimeout(_rbnT); _rbnT=setTimeout(function(){ try{ r.set({designs:d,updated:ts}).catch(function(){}); }catch(e){} }, 1000); }
+// on(), not once(): a design saved on the laptop has to appear on the phone without a
+// reload, and a read refused at load must not end sync for the session. The library is
+// swapped, never the design being edited, so this cannot pull work out from under you.
+var _rbnFirst=true,_rbnTries=0,_rbnRetryT=null;
+function _rbnRetry(){ if(_rbnTries>=6) return; var w=Math.min(60000,4000*Math.pow(2,_rbnTries)); _rbnTries++; clearTimeout(_rbnRetryT); _rbnRetryT=setTimeout(rbnInitSync,w); }
 function rbnInitSync(){ var r=rbnFb(); if(!r) return;
-  try{ r.once('value').then(function(s){ var v=s.val();
+  try{ r.on('value', function(s){ var v=s.val(); _rbnTries=0;
     if(v && v.designs && (v.updated||0) > _rbnUpdated){ _rbnAdopting=true; try{ localStorage.setItem('ribbon_designs', JSON.stringify(v.designs)); }catch(e){} _rbnUpdated=v.updated||0; _rbnAdopting=false; try{ renderDesignList(); }catch(e){} }
-    else if(!v || !v.designs){ var loc=getDesigns(); if(Object.keys(loc).length) rbnSyncPush(loc); } // seed cloud from an existing local-only library
-  }).catch(function(){}); }catch(e){}
+    else if(_rbnFirst && (!v || !v.designs)){ var loc=getDesigns(); if(Object.keys(loc).length) rbnSyncPush(loc); } // seed cloud from an existing local-only library
+    _rbnFirst=false;
+  }, function(){ try{ r.off(); }catch(e){} _rbnRetry(); }); }catch(e){ _rbnRetry(); }
 }
 function _clone(o){ return JSON.parse(JSON.stringify(o)); }
 function collectDesign(){

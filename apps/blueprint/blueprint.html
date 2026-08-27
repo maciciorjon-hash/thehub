@@ -3343,7 +3343,37 @@ function ldHistGetList() {
 }
 function ldHistSaveList(list) {
   try { localStorage.setItem(LD_HIST_KEY, JSON.stringify(list)); } catch(e) {}
+  ldSyncPush(list);
 }
+
+// ── Cross-device sync (Firebase /journal/blueprint, admin-only; degrades to local) ──
+// This was the last app holding real work — thirty saved plate designs — with no route off
+// the machine that made them. Same shape as Blot, Cadence and Ribbon: the saved library is
+// replaced, never the plate on the canvas.
+var _ldAdopting=false,_ldT=null,_ldUpdated=0,_ldFirst=true,_ldTries=0,_ldRetryT=null;
+function ldFb(){ try{ if(window.parent && window.parent.firebase) return window.parent.firebase.database().ref('journal/blueprint'); }catch(e){} return null; }
+function ldSyncPush(list){
+  if(_ldAdopting) return; var r=ldFb(); if(!r) return;
+  _ldUpdated=Date.now(); var ts=_ldUpdated;
+  clearTimeout(_ldT); _ldT=setTimeout(function(){ try{ r.set({designs:list,updated:ts}).catch(function(){}); }catch(e){} }, 1000);
+}
+function _ldRetry(){ if(_ldTries>=6) return; var w=Math.min(60000,4000*Math.pow(2,_ldTries)); _ldTries++; clearTimeout(_ldRetryT); _ldRetryT=setTimeout(ldSyncInit,w); }
+function ldSyncInit(){
+  var r=ldFb(); if(!r) return;
+  try{ r.on('value', function(s){ var v=s.val(); _ldTries=0;
+    if(v && v.designs && (v.updated||0) > _ldUpdated){
+      _ldAdopting=true;
+      try{ localStorage.setItem(LD_HIST_KEY, JSON.stringify(v.designs)); }catch(e){}
+      _ldUpdated=v.updated||0; _ldAdopting=false;
+      var panel=document.getElementById('panel-history');
+      if(panel && panel.classList.contains('active')){ try{ renderHistoryPanel(); }catch(e){} }
+    } else if(_ldFirst && (!v || !v.designs)){
+      var loc=ldHistGetList(); if(loc.length) ldSyncPush(loc);   // seed the cloud from a local-only library
+    }
+    _ldFirst=false;
+  }, function(){ try{ r.off(); }catch(e){} _ldRetry(); }); }catch(e){ _ldRetry(); }
+}
+setTimeout(ldSyncInit, 400);   // once the parent Firebase is up
 function ldHistAdd(entry) {
   var list = ldHistGetList();
   list.unshift(entry);

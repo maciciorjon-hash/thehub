@@ -1977,6 +1977,85 @@ summary that makes a 384-well plate readable in five lines. It shows in the well
 own line under the summary, and in `plateSummaryText` — which is what puts it in the Cmd+K
 content index, because an annotation nobody can find later is not an annotation.
 
+## Sync: what was actually broken (2026-08-27)
+
+Jon's report was that **nothing** synced — Labbook included — and that everything only ever
+lived in the browser it was typed into. That rules out the per-app sync code, which is
+per-app by definition, and points at the one thing they share.
+
+**The server side is healthy and was never the problem.** Verified live: the `/journal` rules
+are deployed (see *Open items*), the authorized domains are `localhost`,
+`thehub-f80ae.firebaseapp.com`, `thehub-f80ae.web.app` and `maciciorjon-hash.github.io`, and
+the Pages build loads the SDK with `FB_OK` true and auth resolving cleanly.
+
+**The likeliest cause is the address the Hub is opened at, and it cannot be fixed from inside
+the page.** `CLAUDE.md` calls the local `Desktop › The_Hub › dHUB.html` the daily driver. That
+is a `file://` origin — origin `null` — and Firebase Auth does not work there: `file://` is not
+a domain, so it can never be an authorized one, and `signInWithPopup` throws
+`auth/operation-not-supported-in-this-environment`. No session ⇒ every `/journal` write is
+refused by the rules ⇒ every app falls back to `localStorage`. Two machines then hold two
+unrelated notebooks, and **the Hub said nothing about any of it** — it rendered as an ordinary
+home page. **The Hub must be opened at the Pages URL on every device.**
+
+So the first half of the work is making the Hub state the truth:
+
+- **`hubSyncEnv()`** classifies the situation — `file` · `sdk` · `auth` · `denied` · `pending` ·
+  `ok` — and carries the reason and the fix as prose. Every app already reported its own save
+  state honestly; none of them could see the *reason*, which always lives in the shell.
+- A **banner** appears only when the answer is "your work is not leaving this device", and
+  **Settings → Data leads with Sync** — the one place that answers "is this on my other
+  machine?", with a button that opens the Pages URL or signs in.
+- **`adminSignIn()` explains `file://`** instead of relaying
+  `auth/operation-not-supported-in-this-environment`, which tells nobody that the fix is to
+  open a different address.
+
+### A cancelled listener is permanent, and nothing retried
+
+Firebase **cancels** a listener when a read is refused, and reports it only through the error
+callback. Almost nothing here had one.
+
+- **`JournalStore.attach()`** assigned `_ref` *before* `.on()`, so after a cancellation `_ref`
+  stayed non-null and the `if (_ref || !fbReady()) return;` guard refused every later attempt.
+  One refused read and that device never synced again for the whole session, silently, serving
+  its stale cache. It now drops the ref, records why (`syncState()`), and retries.
+- **`lbInitSync`'s** failed first read ended sync for the session: no adoption, no `_cloudSeen`,
+  and `_cloudListen` never reached. It retries with backoff (~10 min, then waits for a reload),
+  and a cancelled child listener detaches **every** collection before re-init — re-listening
+  with the siblings still attached would double every handler.
+
+### Adopting once at load is an import, not sync
+
+Iceberg, Blot, Cadence, Ribbon and Archive's notes all did `once('value')` at load and then
+wrote the **whole blob** on a debounce. With two devices open neither ever saw the other until
+a reload — and whichever reloaded last then pushed its stale copy back over the top. All five
+listen with `on('value')` now, guarded by the `updated` timestamp so our own write coming back
+is not treated as news, with the same backoff retry.
+
+Two of them edit text, so they carry the caret rule `lbWatchCultures` already followed: **never
+repaint something being typed in.** Iceberg holds the incoming state while a modal is open,
+Archive's notes while an editable has focus, and a self-arming drain applies it the moment the
+coast is clear — armed only while something is waiting, and it stops itself. Hooking the five
+`close*` functions instead would leave the sixth one added later silently broken.
+
+### The two apps with no sync at all
+
+- **Blueprint** — thirty saved plate designs with no route off the machine that made them.
+  `ldHistSaveList` was already the single write point, so it is the seam: `journal/blueprint`,
+  same shape as the others.
+- **Echo** — the flagship, and the one app whose output *is* the result. `journal/echo` now
+  carries the analysis history: fitted values, flags and plate readings. **The raw input files
+  deliberately do not travel** — they are bytes, and bytes do not belong in a tree that is
+  re-`set()` on every change. `_ehFit` drops the oldest analyses until the payload is under
+  2.5 MB and says which ones stayed behind, so one oversized run cannot silently stop the whole
+  history from syncing.
+
+No rules change was needed: `journal/echo` and `journal/blueprint` are children of `journal`.
+
+**Still genuinely blocked on Jon:** attachments. `GET .../b/thehub-f80ae.firebasestorage.app/o`
+returns **404** — the bucket does not exist, so Firebase Storage has never been enabled.
+Labbook images and files stay on the device that added them and travel only in backups. The
+Sync panel says exactly that rather than implying otherwise.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
@@ -1984,8 +2063,10 @@ content index, because an annotation nobody can find later is not an annotation.
 ### Open items / not yet done
 - **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
   Labbook. Everything works device-local and survives backup/restore without it.
-- **Firebase `/journal` rules** still need pasting into the console (Realtime DB → Rules) for
-  full cross-device sync — until deployed, admin writes silently stay local-only.
+- ~~**Firebase `/journal` rules** still need pasting into the console.~~ **Wrong — they are
+  deployed** (verified 2026-08-27 by probing the RTDB anonymously: `labconfig` and
+  `announcement` return 200, `journal` and `journal/labbook` return `Permission denied` 401,
+  exactly matching `database.rules.json`). Don't re-raise this.
 - **IP ownership is unresolved.** As employee-created work, the University of Dundee very
   likely owns or co-owns this. Resolve with Research & Innovation Services before any sale
   conversation — it also opens the legitimate routes (spin-out, licence).

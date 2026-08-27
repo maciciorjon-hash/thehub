@@ -580,6 +580,14 @@ body.ws #hub-home .home-wrap{max-width:none;padding:22px 26px 40px;}
     </section>
 
     <section class="set-pane" data-pane="data" hidden>
+      <div class="opts-subtitle">Sync</div>
+      <div class="opts-row">
+        <span class="opts-label" id="set-sync-label">Checking…</span>
+        <button class="opts-action-btn" id="set-sync-btn" style="display:none"></button>
+      </div>
+      <div class="set-note" id="set-sync-note"></div>
+      <div class="opts-divider"></div>
+      <div class="opts-subtitle">Backup</div>
       <div class="opts-row">
         <span class="opts-label">Back up all my data now</span>
         <button class="opts-action-btn" onclick="backupJournal(true)">Export</button>
@@ -1622,6 +1630,68 @@ function _showOfflineNotice(){
   document.body.appendChild(b);
 }
 
+// ── Why this device is (not) syncing ───────────────────────────────────────
+// Everything below exists because the Hub could be in a state where NOTHING it saves
+// ever leaves the machine, and say nothing at all about it. The apps each report their
+// own save state honestly; none of them could see the reason, which always lives here.
+//
+// The reason that matters most is the one you cannot fix from inside the page: opened as
+// a local file, the origin is `null`, and Firebase Auth does not work from `file://` —
+// it is not a domain, so it can never be an authorized one. No sign-in means no session,
+// no session means every /journal write is denied by the rules, and every app falls back
+// to this browser's localStorage. Two machines then hold two unrelated notebooks.
+var HUB_PAGES_URL = 'https://maciciorjon-hash.github.io/thehub/';
+function hubSyncEnv(){
+  if (location.protocol === 'file:') {
+    return { ok:false, code:'file',
+      short:'Not syncing — opened as a local file',
+      why:'Firebase sign-in cannot work from a file:// address, so nothing is saved to the cloud. Everything stays in this browser, on this machine.',
+      fix:'Open the Hub at ' + HUB_PAGES_URL + ' and sign in there. Use the same address on every device.' };
+  }
+  if (!fbReady()) {
+    return { ok:false, code:'sdk',
+      short:'Not syncing — the Firebase SDK did not load',
+      why:'The connection to Google was blocked, so there is no cloud to save to.',
+      fix:'Check the network or any content blocker, then reload.' };
+  }
+  if (!isAdmin) {
+    return { ok:false, code:'auth',
+      short:'Not syncing — not signed in',
+      why:'The notebook, cultures and freezer are private to your account. Without a session every write is refused and stays in this browser.',
+      fix:'Settings → Admin login.' };
+  }
+  var st = { attached:false }; try { st = JournalStore.syncState(); } catch(e){}
+  if (st.error) {
+    return { ok:false, code:'denied',
+      short:'Not syncing — the cloud refused this device',
+      why:'Signed in, but the last read was rejected (' + st.error + '). Retrying automatically.',
+      fix:'If it persists, sign out and back in, and export a backup meanwhile.' };
+  }
+  if (!st.attached) {
+    return { ok:false, code:'pending', short:'Connecting…', why:'', fix:'' };
+  }
+  return { ok:true, code:'ok', short:'Syncing to your account', why:'', fix:'' };
+}
+// One banner, stated once, dismissible. It only ever appears when the answer is "your work
+// is not leaving this device" — the state the Hub used to render as an ordinary home page.
+var _syncNoticeShown = false;
+function _showSyncNotice(){
+  var e = hubSyncEnv();
+  if (e.ok || e.code === 'pending' || e.code === 'auth') return;   // 'auth' is the visitor's normal state
+  if (_syncNoticeShown || document.getElementById('hub-nosync')) return;
+  _syncNoticeShown = true;
+  var b = document.createElement('div');
+  b.id = 'hub-nosync';
+  b.innerHTML = '<strong>' + e.short + '.</strong> ' + e.why + ' ' + e.fix;
+  b.style.cssText = 'position:fixed;left:0;right:0;top:58px;z-index:61;padding:8px 16px;'
+    + 'font-size:var(--fs-2);line-height:1.45;text-align:center;background:var(--surface2);'
+    + 'color:var(--text2);border-bottom:1px solid var(--border);cursor:pointer';
+  b.title = 'Dismiss';
+  b.onclick = function(){ b.remove(); };
+  document.body.appendChild(b);
+}
+document.addEventListener('DOMContentLoaded', function(){ setTimeout(_showSyncNotice, 600); });
+
 // ── Labbook backup bridge ──────────────────────────────────────────────────
 // The Labbook app runs in a sandboxed iframe where the File System Access
 // picker is blocked. It calls window.parent.lbBackup.* so the picker/write run
@@ -1838,6 +1908,15 @@ function onAdminStateChanged() {
 }
 
 function adminSignIn() {
+  // Say the real thing rather than relaying auth/operation-not-supported-in-this-environment,
+  // which tells nobody that the fix is to open a different address.
+  if (location.protocol === 'file:') {
+    alert('Sign-in does not work when the Hub is opened as a local file.\n\n'
+        + 'file:// is not a domain, so Google sign-in cannot be authorised for it, and without a '
+        + 'session nothing is saved to the cloud — your work stays in this browser only.\n\n'
+        + 'Open the Hub here instead, on every device:\n' + HUB_PAGES_URL);
+    return;
+  }
   if (!fbReady()) { alert('Sign-in needs a connection — the Firebase SDK did not load.'); return; }
   var provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ login_hint: HUB_ADMIN_EMAIL });
@@ -2048,7 +2127,7 @@ var JournalStore = (function(){
   var CACHE_KEY = 'hub_journal_cache';
   var _data = { tasks:{}, incubator:{}, antibodies:{}, primers:{}, plasmids:{}, accent:null, note:null, theme:null, cellArchive:null };
   var _subs = [];
-  var _ref = null, _ready = false;
+  var _ref = null, _ready = false, _err = null, _retryT = null, _stopped = true;
   try { var c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && typeof c === 'object') _data = { tasks:c.tasks||{}, incubator:c.incubator||{}, antibodies:c.antibodies||{}, primers:c.primers||{}, plasmids:c.plasmids||{}, accent:c.accent||null, note:c.note||null, theme:c.theme||null, cellArchive:c.cellArchive||null }; } catch(e){}
   function _cache(){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(_data)); } catch(e){} }
   function _emit(){ _subs.slice().forEach(function(f){ try { f(_data); } catch(e){} }); }
@@ -2056,7 +2135,9 @@ var JournalStore = (function(){
   function _write(path, val){ try { return firebase.database().ref('journal/' + path).set(val).catch(function(){}); } catch(e){ return Promise.resolve(); } }
   function _seedKey(k){ try { firebase.database().ref('journal/' + k).set(_data[k]).catch(function(){}); } catch(e){} }
   function attach(){
+    _stopped = false;
     if (_ref || !fbReady()) return;
+    _err = null;
     try {
       _ref = firebase.database().ref('journal');
       _ref.on('value', function(snap){
@@ -2071,15 +2152,28 @@ var JournalStore = (function(){
         coll('tasks'); coll('incubator'); coll('antibodies'); coll('primers'); coll('plasmids'); scalar('accent'); scalar('note'); scalar('theme'); scalar('cellArchive');
         _data = out;
         _ready = true; _cache(); _emit();
-      }, function(){ /* denied until private /journal rules are deployed — keep cache */ });
+      }, function(err){
+        // A cancelled listener is PERMANENT until something re-attaches. Firebase cancels
+        // on('value') when a read is denied, and _ref stayed non-null afterwards — so the
+        // attach() guard below refused every later attempt and this device never synced
+        // again for the rest of the session, silently, showing its stale cache the whole time.
+        // Drop the ref so a retry is possible, record why, and tell the UI.
+        _ref = null;
+        _err = (err && err.code) ? String(err.code) : 'denied';
+        _emit();
+        if (!_retryT) _retryT = setTimeout(function(){ _retryT = null; attach(); }, 20000);
+      });
     } catch(e){}
   }
-  function detach(){ if (_ref){ try { _ref.off(); } catch(e){} _ref = null; } }
+  function detach(){ _stopped = true; if (_retryT){ clearTimeout(_retryT); _retryT = null; } if (_ref){ try { _ref.off(); } catch(e){} _ref = null; } }
   return {
     subscribe: function(cb){ _subs.push(cb); try { cb(_data); } catch(e){} return function(){ _subs = _subs.filter(function(f){ return f !== cb; }); }; },
     get: function(){ return _data; },
     attach: attach, detach: detach,
     isReady: function(){ return _ready; },
+    // Why this device is or is not talking to the cloud. The Hub had no way to ask,
+    // which is how "nothing syncs" stayed invisible behind a normal-looking home.
+    syncState: function(){ return { attached: !!_ref, ready: _ready, error: _err, stopped: _stopped }; },
     addTask:    function(t){ var id = _pushId(); _data.tasks[id] = t; _cache(); _emit(); return _write('tasks/' + id, t); },
     updateTask: function(id, patch){ _data.tasks[id] = Object.assign({}, _data.tasks[id], patch); _cache(); _emit(); return _write('tasks/' + id, _data.tasks[id]); },
     deleteTask: function(id){ delete _data.tasks[id]; _cache(); _emit(); return _write('tasks/' + id, null); },
@@ -2752,12 +2846,27 @@ function renderSetTabs(){
     pane.hidden = pane.dataset.pane !== _setTab;
   });
 }
-function setTab(id){ _setTab=id; if(id==='lab') buildLabPanel(); renderSetTabs(); }
+function setTab(id){ _setTab=id; if(id==='lab') buildLabPanel(); if(id==='data') renderSyncStatus(); renderSetTabs(); }
+// The one place that answers "is my work on my other machine?" — in words, with the reason.
+function renderSyncStatus(){
+  var lab=document.getElementById('set-sync-label'), note=document.getElementById('set-sync-note'), btn=document.getElementById('set-sync-btn');
+  if(!lab) return;
+  var e=hubSyncEnv();
+  lab.textContent=e.short;
+  lab.style.color = e.ok ? 'var(--text)' : 'var(--text2)';
+  note.textContent = e.ok
+    ? 'Every device signed in to this account sees the same notebook, cultures, freezer and library. Attachments are the exception until Firebase Storage is enabled — they stay on the device that added them, and travel in backups.'
+    : (e.why + ' ' + e.fix);
+  if(e.code==='file'){ btn.style.display=''; btn.textContent='Open the web Hub'; btn.onclick=function(){ window.open(HUB_PAGES_URL,'_blank','noopener'); }; }
+  else if(e.code==='auth'){ btn.style.display=''; btn.textContent='Sign in'; btn.onclick=function(){ adminSignIn(); }; }
+  else { btn.style.display='none'; btn.onclick=null; }
+}
 function openSettings(tab){
   if(tab) _setTab=tab;
   var chk=document.getElementById('rail-toggle-chk');
   if(chk) chk.checked=document.body.classList.contains('ws-collapsed');
   if(_setTab==='lab') buildLabPanel();
+  if(_setTab==='data') renderSyncStatus();
   renderSetTabs();
   document.getElementById('settings-back').classList.remove('hidden');
 }

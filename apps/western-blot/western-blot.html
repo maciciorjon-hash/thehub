@@ -3009,15 +3009,20 @@ function bSaveStore(){
   clearTimeout(_bSyncT);
   _bSyncT=setTimeout(function(){ var r=bFb(); if(r){ try{ r.set(BSTORE).catch(function(){}); }catch(e){} } }, 1200);
 }
+var _bTries=0,_bRetryT=null;
+function _bRetry(){ if(_bTries>=6) return; var w=Math.min(60000,4000*Math.pow(2,_bTries)); _bTries++; clearTimeout(_bRetryT); _bRetryT=setTimeout(bInitSync,w); }
 function bInitSync(){
   var r=bFb(); if(!r) return;
-  try{ r.once('value').then(function(s){ var v=s.val();
+  // on(), not once(): adopting once at load meant a figure saved on another machine only
+  // ever arrived after a reload, and a refused read killed sync for the whole session.
+  // Only the saved library is replaced — never the figure on the canvas.
+  try{ r.on('value', function(s){ var v=s.val(); _bTries=0;
     if(v&&typeof v==='object'&&(v.updated||0)>(BSTORE.updated||0)){
       _bAdopting=true; BSTORE={history:Array.isArray(v.history)?v.history:[],presets:Array.isArray(v.presets)?v.presets:[],updated:v.updated}; bSaveLocal(); _bAdopting=false;
       if(el('hist-back').classList.contains('open')) renderHistoryList();
       if(el('preset-back').classList.contains('open')) renderPresetsList();
     }
-  }).catch(function(){}); }catch(e){}
+  }, function(){ try{ r.off(); }catch(e){} _bRetry(); }); }catch(e){ _bRetry(); }
 }
 
 /* ── History (save/browse/load/delete past figures) ── */

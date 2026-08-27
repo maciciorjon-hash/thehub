@@ -946,9 +946,18 @@ var STORE=null,_fbRef=null;
 function loadStore(){try{STORE=JSON.parse(localStorage.getItem(SKEY));}catch(e){}if(!STORE||typeof STORE!=='object')STORE={charts:[],presets:[],updated:0};if(!Array.isArray(STORE.charts))STORE.charts=[];if(!Array.isArray(STORE.presets))STORE.presets=[];}
 function fbRef(){if(_fbRef!==null)return _fbRef;try{_fbRef=(window.parent&&window.parent.firebase)?window.parent.firebase.database().ref('journal/gantt'):undefined;}catch(e){_fbRef=undefined;}return _fbRef;}
 function saveStore(){STORE.updated=Date.now();try{localStorage.setItem(SKEY,JSON.stringify(STORE));}catch(e){/* trim oldest on quota */try{STORE.charts=STORE.charts.slice(-12);localStorage.setItem(SKEY,JSON.stringify(STORE));}catch(e2){}}var r=fbRef();if(r){try{var p=r.set(STORE);if(p&&p.catch)p.catch(function(){});}catch(e){}}}
+// on(), not once(): the saved-chart library has to converge between machines without a
+// reload, and a read refused at load must not end sync for the session. Only STORE (the
+// library) is replaced; CHART, the chart you are editing, is never touched from here.
+var _gsFirst=true,_gsTries=0,_gsRetryT=null;
+function _gsRetry(){if(_gsTries>=6)return;var w=Math.min(60000,4000*Math.pow(2,_gsTries));_gsTries++;clearTimeout(_gsRetryT);_gsRetryT=setTimeout(initStoreSync,w);}
 function initStoreSync(){
   var r=fbRef();if(!r)return;
-  try{r.once('value').then(function(snap){var remote=snap.val();if(remote&&(remote.updated||0)>(STORE.updated||0)){STORE=remote;if(!Array.isArray(STORE.charts))STORE.charts=[];if(!Array.isArray(STORE.presets))STORE.presets=[];try{localStorage.setItem(SKEY,JSON.stringify(STORE));}catch(e){}}else if(STORE.charts.length||STORE.presets.length){var p=r.set(STORE);if(p&&p.catch)p.catch(function(){});}}).catch(function(){/* not signed in / rules deny → stay local */});}catch(e){}
+  try{r.on('value',function(snap){var remote=snap.val();_gsTries=0;
+    if(remote&&(remote.updated||0)>(STORE.updated||0)){STORE=remote;if(!Array.isArray(STORE.charts))STORE.charts=[];if(!Array.isArray(STORE.presets))STORE.presets=[];try{localStorage.setItem(SKEY,JSON.stringify(STORE));}catch(e){}}
+    else if(_gsFirst&&(STORE.charts.length||STORE.presets.length)){var p=r.set(STORE);if(p&&p.catch)p.catch(function(){});}
+    _gsFirst=false;
+  },function(){try{r.off();}catch(e){}_gsRetry();});}catch(e){_gsRetry();}
 }
 
 function saveChart(){

@@ -7363,6 +7363,7 @@ function saveToHistory(data) {
     hist.unshift(entry);
     if(hist.length>10) hist=hist.slice(0,10);
     localStorage.setItem(HIST_KEY,JSON.stringify(hist));
+    ehSyncPush(hist);
     renderHistoryTab();
   } catch(e){console.warn('History save:',e);}
 }
@@ -7417,12 +7418,58 @@ function deleteHistEntry(idx) {
   try{hist=JSON.parse(localStorage.getItem(HIST_KEY)||'[]');}catch(e){}
   hist.splice(idx,1);
   localStorage.setItem(HIST_KEY,JSON.stringify(hist));
+  ehSyncPush(hist);
   renderHistoryTab();
 }
 function clearHistory() {
   localStorage.removeItem(HIST_KEY);
+  ehSyncPush([]);
   renderHistoryTab();
 }
+
+// ═══════════════════════════════════════════════════════
+// CROSS-DEVICE SYNC of the analysis history
+// (Firebase /journal/echo, admin-only; degrades to local)
+// ═══════════════════════════════════════════════════════
+// Echo held ten fitted analyses and had no route off the machine that ran them — the one
+// app in the Hub whose output is the result, and the only one that could not follow you to
+// another desk. What syncs is the history: fitted values, flags and plate readings. The
+// RAW input files stay where they were opened; they are bytes, and bytes do not belong in
+// a tree that is re-set on every change.
+var _ehAdopting=false,_ehT=null,_ehUpdated=0,_ehFirst=true,_ehTries=0,_ehRetryT=null;
+const EH_MAX_BYTES=2500000;   // a fitted analysis is big; send what fits, newest first
+function ehFb(){ try{ if(window.parent && window.parent.firebase) return window.parent.firebase.database().ref('journal/echo'); }catch(e){} return null; }
+// Never let one oversized analysis silently stop the whole history from syncing: drop the
+// oldest until it fits, and say in the console which ones did not travel.
+function _ehFit(hist){
+  var out=hist.slice();
+  while(out.length && JSON.stringify(out).length > EH_MAX_BYTES) out.pop();
+  if(out.length < hist.length) console.warn('Echo: '+(hist.length-out.length)+' older analyses are too large to sync and stay on this device.');
+  return out;
+}
+function ehSyncPush(hist){
+  if(_ehAdopting) return; var r=ehFb(); if(!r) return;
+  _ehUpdated=Date.now(); var ts=_ehUpdated;
+  clearTimeout(_ehT);
+  _ehT=setTimeout(function(){ try{ r.set({history:_ehFit(hist||[]),updated:ts}).catch(function(){}); }catch(e){} }, 1500);
+}
+function _ehRetry(){ if(_ehTries>=6) return; var w=Math.min(60000,4000*Math.pow(2,_ehTries)); _ehTries++; clearTimeout(_ehRetryT); _ehRetryT=setTimeout(ehSyncInit,w); }
+function ehSyncInit(){
+  var r=ehFb(); if(!r) return;
+  try{ r.on('value', function(s){ var v=s.val(); _ehTries=0;
+    if(v && Array.isArray(v.history) && (v.updated||0) > _ehUpdated){
+      _ehAdopting=true;
+      try{ localStorage.setItem(HIST_KEY,JSON.stringify(v.history)); }catch(e){}
+      _ehUpdated=v.updated||0; _ehAdopting=false;
+      try{ renderHistoryTab(); }catch(e){}
+    } else if(_ehFirst && (!v || !Array.isArray(v.history))){
+      var loc=[]; try{ loc=JSON.parse(localStorage.getItem(HIST_KEY)||'[]'); }catch(e){}
+      if(loc.length) ehSyncPush(loc);   // seed the cloud from a local-only history
+    }
+    _ehFirst=false;
+  }, function(){ try{ r.off(); }catch(e){} _ehRetry(); }); }catch(e){ _ehRetry(); }
+}
+setTimeout(ehSyncInit, 400);   // once the parent Firebase is up
 
 // ═══════════════════════════════════════════════════════════════
 // PLATE GRID TAB

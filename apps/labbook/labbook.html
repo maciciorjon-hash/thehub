@@ -4581,14 +4581,24 @@ function _cloudBanner(){
   b.textContent=_remoteNote||'';
   clearTimeout(b._t); b._t=setTimeout(function(){ if(b.parentNode) b.remove(); }, 9000);
 }
+// Firebase CANCELS a listener when a read is refused, and says so only through the error
+// callback. Without one the cancellation is silent and this tab stops hearing about other
+// devices for the rest of the session. One collection being cancelled means the token is
+// bad for all of them, so detach every collection and re-run the whole init — re-listening
+// while the siblings are still attached would double every handler.
+function _cloudUnlisten(r){
+  if(!_cloudOn) return; _cloudOn=false;
+  _CLOUD_MAPS.forEach(function(coll){ try{ r.child(coll).off(); }catch(e){} });
+}
 function _cloudListen(r){
   if(_cloudOn) return; _cloudOn=true;
+  function onCancel(){ _cloudUnlisten(r); setSync(true,false); _syncRetry(); }
   _CLOUD_MAPS.forEach(function(coll){
     var c=r.child(coll);
     try{
-      c.on('child_changed',function(s){ _applyRemote(coll,s.key,s.val()); });
-      c.on('child_added',  function(s){ _applyRemote(coll,s.key,s.val()); });
-      c.on('child_removed',function(s){ _applyRemote(coll,s.key,null); });
+      c.on('child_changed',function(s){ _applyRemote(coll,s.key,s.val()); }, onCancel);
+      c.on('child_added',  function(s){ _applyRemote(coll,s.key,s.val()); }, onCancel);
+      c.on('child_removed',function(s){ _applyRemote(coll,s.key,null); }, onCancel);
     }catch(e){}
   });
 }
@@ -4606,6 +4616,16 @@ function save(){
 // Never lose a pending local write if the tab is hidden/closed before the 150ms flush.
 window.addEventListener('pagehide',_flushLocal);
 document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') _flushLocal(); });
+// A failed first read used to end sync for the whole session: no adoption, no _cloudSeen,
+// and _cloudListen never reached — so this device kept saving locally and saying so quietly
+// for hours. The read fails for ordinary reasons (the token is not there yet, the network
+// blinked), so it must be retried rather than treated as a verdict.
+var _syncTries=0,_syncRetryT=null;
+function _syncRetry(){
+  if(_syncTries>=6) return;                    // ~10 min of trying, then wait for a reload
+  var wait=Math.min(60000, 4000*Math.pow(2,_syncTries)); _syncTries++;
+  clearTimeout(_syncRetryT); _syncRetryT=setTimeout(lbInitSync, wait);
+}
 function lbInitSync(){
   var r=lbFb(); if(!r) return;
   try{ r.once('value').then(function(s){
@@ -4632,9 +4652,10 @@ function lbInitSync(){
     // What we now believe the cloud holds. Without this the first push after load would send
     // the whole tree again and undo whatever arrived in between.
     _cloudSeen=_cloudFingerprint();
+    _syncTries=0;
     setSync(true,true);
     _cloudListen(r);
-  }).catch(function(){ setSync(true,false); }); }catch(e){}
+  }).catch(function(){ setSync(true,false); _syncRetry(); }); }catch(e){ _syncRetry(); }
 }
 
 // ── Layout ──

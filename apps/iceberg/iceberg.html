@@ -634,8 +634,52 @@ function cryoInitSync(cb){
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
       fin(true);
     } else fin(false);
-  }).catch(function(){ fin(false); }); }catch(e){ fin(false); }
+  }).catch(function(){ fin(false); _cryoRetry(); }); }catch(e){ fin(false); _cryoRetry(); }
   setTimeout(function(){ fin(false); }, 2500); // don't hang if Firebase is denied/offline
+  cryoListen(r);
+}
+// Adopting once at load is not sync, it is an import. With the freezer open on the bench
+// laptop and the phone, neither ever saw the other's vials until a reload — and because
+// saveState() writes the WHOLE state, whichever reloaded last then pushed its stale copy
+// back over the top. Listening closes that window.
+var _cryoOn=false,_cryoTries=0,_cryoRetryT=null;
+function _cryoRetry(){
+  if(_cryoTries>=6) return;
+  var w=Math.min(60000,4000*Math.pow(2,_cryoTries)); _cryoTries++;
+  clearTimeout(_cryoRetryT); _cryoRetryT=setTimeout(function(){ cryoInitSync(null); }, w);
+}
+// A vial half-typed into an open modal must not be yanked away underneath. Hold the
+// incoming state and apply it when the modal closes — the same caret rule Labbook follows.
+var _cryoPending=null;
+function _cryoModalOpen(){ return !!document.querySelector('.modal-overlay.open'); }
+function _cryoApply(v){
+  _cryoAdopting=true; state=Object.assign(state, v); state.view=state.view||'grid'; _cryoAdopting=false;
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+  try{ renderStorageTabs(); renderTab(currentTab); }catch(e){}
+}
+// Armed only while something is actually waiting, and it stops itself. Hooking five
+// separate close* functions would leave the sixth one added later silently broken.
+var _cryoDrainT=null;
+function cryoArmDrain(){
+  if(_cryoDrainT) return;
+  _cryoDrainT=setInterval(function(){
+    if(_cryoModalOpen()) return;
+    clearInterval(_cryoDrainT); _cryoDrainT=null;
+    var v=_cryoPending; if(!v) return; _cryoPending=null; _cryoApply(v);
+  }, 800);
+}
+function cryoListen(r){
+  if(_cryoOn) return; _cryoOn=true;
+  r.on('value', function(s){
+    var v=s.val(); if(!v || !v.storages) return;
+    // Our own write coming back, or an older copy. Neither is news.
+    if((v.updated||0) <= (state.updated||0)) return;
+    if(_cryoModalOpen()){ _cryoPending=v; cryoArmDrain(); return; }
+    _cryoApply(v);
+  }, function(){
+    _cryoOn=false; try{ r.off(); }catch(e){}
+    _cryoRetry();
+  });
 }
 function loadState(){
   try {

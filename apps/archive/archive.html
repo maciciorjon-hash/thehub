@@ -3470,16 +3470,42 @@ var _anAdopting=false,_anT=null,_anUpdated=0;
 function anFb(){ try{ if(window.parent && window.parent.firebase) return window.parent.firebase.database().ref('journal/archiveNotes'); }catch(e){} return null; }
 function _collectAllNotes(){ var notes={}; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && k.indexOf('proto_notes_')===0 && k!=='proto_notes_prefs'){ try{ notes[k.slice(12)]=JSON.parse(localStorage.getItem(k)); }catch(e){} } } var prefs={}; try{ prefs=JSON.parse(localStorage.getItem('proto_notes_prefs'))||{}; }catch(e){} return {notes:notes,prefs:prefs}; }
 function anSyncPush(){ if(_anAdopting) return; var r=anFb(); if(!r) return; _anUpdated=Date.now(); var ts=_anUpdated; clearTimeout(_anT); _anT=setTimeout(function(){ var agg=_collectAllNotes(); try{ r.set({notes:agg.notes,prefs:agg.prefs,updated:ts}).catch(function(){}); }catch(e){} }, 1000); }
+// A note written at the bench on the phone should reach the laptop while both are open.
+// once() meant it never did without a reload, and a refused first read ended sync for the
+// whole session with nothing said. Two guards come with listening: never repaint a note
+// somebody is typing in, and never treat our own write coming back as news.
+var _anFirst=true,_anTries=0,_anRetryT=null,_anPending=null,_anDrainT=null;
+function _anRetry(){ if(_anTries>=6) return; var w=Math.min(60000,4000*Math.pow(2,_anTries)); _anTries++; clearTimeout(_anRetryT); _anRetryT=setTimeout(anInitSync,w); }
+function _anEditing(){
+  var a=document.activeElement; if(!a) return false;
+  if(a.isContentEditable) return true;
+  var t=(a.tagName||'').toLowerCase();
+  return t==='textarea' || t==='input';
+}
+function _anApply(v){
+  _anAdopting=true;
+  try{ if(v.notes) Object.keys(v.notes).forEach(function(pid){ localStorage.setItem('proto_notes_'+pid, JSON.stringify(v.notes[pid])); }); }catch(e){}
+  try{ if(v.prefs) localStorage.setItem('proto_notes_prefs', JSON.stringify(v.prefs)); }catch(e){}
+  _anUpdated=v.updated||0; _anAdopting=false;
+  try{ applyStepNotesPref(); }catch(e){}
+  try{ if(_notesOpenPid){ assignStepNoteKeys(_notesOpenPid); renderStepNotes(_notesOpenPid); renderStickyNotes(); } }catch(e){}
+}
+function _anArmDrain(){
+  if(_anDrainT) return;
+  _anDrainT=setInterval(function(){
+    if(_anEditing()) return;
+    clearInterval(_anDrainT); _anDrainT=null;
+    var v=_anPending; if(!v) return; _anPending=null; _anApply(v);
+  }, 900);
+}
 function anInitSync(){ var r=anFb(); if(!r) return;
-  try{ r.once('value').then(function(s){ var v=s.val();
-    if(v && (v.notes||v.prefs) && (v.updated||0) > _anUpdated){ _anAdopting=true;
-      try{ if(v.notes) Object.keys(v.notes).forEach(function(pid){ localStorage.setItem('proto_notes_'+pid, JSON.stringify(v.notes[pid])); }); }catch(e){}
-      try{ if(v.prefs) localStorage.setItem('proto_notes_prefs', JSON.stringify(v.prefs)); }catch(e){}
-      _anUpdated=v.updated||0; _anAdopting=false;
-      try{ applyStepNotesPref(); }catch(e){}
-      try{ if(_notesOpenPid){ assignStepNoteKeys(_notesOpenPid); renderStepNotes(_notesOpenPid); renderStickyNotes(); } }catch(e){}
-    } else if(!v){ var loc=_collectAllNotes(); if(Object.keys(loc.notes).length || (loc.prefs && Object.keys(loc.prefs).length)) anSyncPush(); }
-  }).catch(function(){}); }catch(e){}
+  try{ r.on('value', function(s){ var v=s.val(); _anTries=0;
+    if(v && (v.notes||v.prefs) && (v.updated||0) > _anUpdated){
+      if(_anEditing()){ _anPending=v; _anArmDrain(); }
+      else _anApply(v);
+    } else if(_anFirst && !v){ var loc=_collectAllNotes(); if(Object.keys(loc.notes).length || (loc.prefs && Object.keys(loc.prefs).length)) anSyncPush(); }
+    _anFirst=false;
+  }, function(){ try{ r.off(); }catch(e){} _anRetry(); }); }catch(e){ _anRetry(); }
 }
 function debounce(fn, wait) {
   var t;
