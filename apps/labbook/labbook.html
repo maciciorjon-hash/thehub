@@ -1297,7 +1297,8 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 .xv-f.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-xs);}
 .xv-proj{flex:none;border:1px solid var(--border);border-radius:var(--r-3);background:var(--surface);overflow:hidden;}
 .xv-ph{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none;}
-.xv-px{font-family:var(--mono);font-size:var(--fs-1);letter-spacing:.5px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-1);padding:1px 5px;flex:none;}
+.xv-px{font-family:var(--mono);font-size:var(--fs-1);letter-spacing:.5px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-1);padding:1px 5px;flex:none;cursor:pointer;}
+.xv-px:hover{color:var(--text);border-color:var(--accent);}
 .xv-ph:hover{background:var(--surface2);}
 .xv-chev{display:inline-flex;color:var(--text3);transition:transform .15s;}
 .xv-proj.open .xv-chev{transform:rotate(90deg);}
@@ -4777,15 +4778,18 @@ function renderSections(){
 // It is derived, never demanded: a project created without touching the box still gets one, so
 // codes are prefixed from the first experiment rather than from whenever someone remembers.
 function _normPrefix(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4); }
-// The first two letters of the name, not its initials. "SPARK NS" is SP, which is what the
-// project is called — initials would make it SN, and a code nobody can expand is a code you have
-// to be told. It also means one rule with no branch: the prefix is visibly the start of the name
-// in every case (Multivalent Chemistry → MU, LRRC58 → LR, RTag → RT, Eisai → EI).
-// A one-letter first word is the only case that needs the next word, or "A Big Screen" is "A".
+// A second *word* earns an initial; a short trailing qualifier does not.
+//   Multivalent Chemistry → MC   (two words, so the initials are the name)
+//   SPARK NS              → SP   ("NS" is a qualifier, not a word — SP is what it is called)
+//   LRRC58 · RTag · Eisai → LR · RT · EI   (one word: its first two letters)
+// Both of Jon's stated cases come out of that one test rather than out of a table of his project
+// names, which is what a table of his project names would have been in a product other labs use.
+// Three letters is the cut: NS, KO, V2 are qualifiers; Glues, Chemistry, Screen are words.
 function _prefixDefault(name){
   var w=String(name||'').trim().split(/[\s_\-/]+/).filter(Boolean);
-  var first=_normPrefix(w[0]||'');
-  var px = (first.length>1) ? first.slice(0,2) : (first+_normPrefix(w[1]||'').charAt(0));
+  var a=_normPrefix(w[0]||''), b=_normPrefix(w[1]||'');
+  var px = (b.length>=3) ? (a.charAt(0)+b.charAt(0))
+         : (a.length>1 ? a.slice(0,2) : (a+b.charAt(0)));
   return _normPrefix(px) || 'PR';
 }
 function projPrefix(p){ return _normPrefix(p&&p.prefix) || _prefixDefault(p&&p.name); }
@@ -4816,16 +4820,16 @@ function _backfillPrefixes(){
     if(cur){ if(cur!==p.prefix){ p.prefix=cur; changed=true; } return; }
     p.prefix=_uniquePrefix(p.name,p.id); p.prefixAuto=true; changed=true;
   });
-  // The first build derived initials (SPARK NS → SN); this one derives the start of the name
-  // (→ SP). Re-derive the ones nobody chose, so a notebook does not keep a prefix from a rule
-  // that no longer exists — and leave every typed one exactly as it is.
-  if(!LB.data._prefixV2){
+  // The derivation has moved twice (initials → the start of the name → the rule above).
+  // Re-derive the ones nobody chose, so a notebook does not keep a prefix from a rule that no
+  // longer exists — and leave every typed one exactly as it is.
+  if(!LB.data._prefixV3){
     (LB.data.projects||[]).forEach(function(p){
       if(!p.prefixAuto) return;
       var want=_uniquePrefix(p.name,p.id);
       if(want!==p.prefix){ p.prefix=want; changed=true; }
     });
-    LB.data._prefixV2=true; changed=true;
+    LB.data._prefixV3=true; changed=true;
   }
   return changed;
 }
@@ -6443,7 +6447,7 @@ function renderExperiments(host, qOnly){
         // The prefix is on the header because it is the half of every code in this project you
         // cannot see from the codes themselves once they all carry it — and because you have to
         // be able to read the one that was derived for you before deciding to change it.
-        +'<span class="xv-px" title="Code prefix — experiments here are coded '+esc(projPrefix(p))+'_NB20260826. Right-click to change.">'+esc(projPrefix(p))+'</span>'
+        +'<span class="xv-px" onclick="event.stopPropagation();setProjectPrefix(\''+p.id+'\')" title="Code prefix — experiments here are coded '+esc(projPrefix(p))+'_NB20260826. Click to change it.">'+esc(projPrefix(p))+'</span>'
         // n counts what the filter shows; run counts what is actually running. Printing both
         // under a filter reads as one sentence about one set and is not — "1 experiment · 1
         // running" on the Archived tab meant one archived and one running, a different one.
