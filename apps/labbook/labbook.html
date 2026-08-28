@@ -853,7 +853,7 @@ body.lb-rb-closed .rb-pane{display:none;}
 .pl-count{font-size:var(--fs-2);font-weight:600;color:var(--text3);}
 .pl-hint{font-size:var(--fs-1);font-weight:400;color:var(--text3);}
 .pl-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,320px);gap:16px;align-items:start;}
-.pl-left{min-width:0;display:flex;flex-direction:column;max-height:66vh;max-height:66dvh;}
+.pl-left{min-width:0;display:flex;flex-direction:column;max-height:72vh;max-height:72dvh;}
 .pl-gridwrap{overflow:auto;padding:2px;flex:0 1 auto;width:max-content;max-width:100%;}
 .pl-grid{display:grid;gap:2px;user-select:none;line-height:1;}
 .pl-corner{width:26px;}
@@ -867,7 +867,9 @@ body.lb-rb-closed .rb-pane{display:none;}
 .pl-w.empty{background:transparent;}
 .pl-w.sel{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 1px var(--accent);}
 .pl-wt{padding:0 1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
-.pl-sum{margin-top:12px;border-top:1px solid var(--border);padding-top:9px;overflow-y:auto;flex:1 1 auto;min-height:88px;}
+/* The grid gets the room first and the summary scrolls in what is left. It used to be the other
+   way round — the summary grew and the plate you are painting was the thing cut off. */
+.pl-sum{margin-top:12px;border-top:1px solid var(--border);padding-top:9px;overflow-y:auto;flex:0 1 auto;max-height:36%;min-height:88px;}
 .pl-sum-empty{font-size:var(--fs-3);color:var(--text3);}
 .pl-side{width:290px;flex:none;max-height:64vh;max-height:64dvh;overflow-y:auto;}
 .pl-sec{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:9px 11px 11px;margin-bottom:10px;}
@@ -897,6 +899,30 @@ body.lb-rb-closed .rb-pane{display:none;}
   color:var(--text3);font:700 10px/1 var(--sans);cursor:pointer;}
 .exh-role .rl.on.d{background:#5e87c5;border-color:#5e87c5;color:#fff;}
 .exh-role .rl.on.a{background:#c47818;border-color:#c47818;color:#fff;}
+/* Numbered conditions: a vertical list, because the names are long and near-identical and a
+   wrapped row of chips has to be read to the end of. The number leads so the eye does not. */
+.pl-conds{flex-direction:column;gap:3px;}
+.pl-conds .pl-type-add{align-self:flex-start;}
+.pl-cond{width:100%;justify-content:flex-start;align-items:flex-start;text-align:left;padding:5px 9px;gap:8px;line-height:1.3;}
+.pl-cond-n{flex:none;min-width:19px;margin-top:1px;text-align:center;font-family:var(--mono);font-size:var(--fs-2);
+  font-weight:700;color:var(--text);background:var(--surface2);border:1px solid var(--border2);
+  border-radius:var(--r-1);padding:0 3px;}
+.pl-cond.on .pl-cond-n{background:var(--accent);border-color:var(--accent);color:#fff;}
+.pl-cond-nm{flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;}
+/* The count shrinks first: which condition it is matters more than how many wells it has. */
+.pl-cond-c{flex:none;font-size:var(--fs-1);color:var(--text3);font-variant-numeric:tabular-nums;padding-top:1px;}
+.pl-cond.none .pl-cond-c{color:var(--text3);}
+.pl-cond.none .pl-cond-nm{color:var(--text2);}
+.pl-cond i{margin-top:5px;}
+.pl-howto{font-size:var(--fs-2);color:var(--text2);line-height:1.45;margin:-2px 0 8px;}
+/* A number has to be legible in a 96-well cell at editing size, which the truncated names never
+   were. Bigger than the well's own font size and not clipped by it. */
+.pl-wn{font-family:var(--mono);font-weight:700;font-size:1.55em;color:#1a1d2e;line-height:1;}
+/* On a numbered plate the block label moves out of the middle so it stops sitting on the numbers. */
+/* On a numbered plate the block keeps its outline — which wells are one block is worth seeing —
+   and loses its caption, which was an opaque pill sitting on the numbers it is there to explain.
+   The name is in the condition list, the tooltip and the layout summary underneath. */
+.pl-gl-c span{display:none;}
 .pl-type-add{font-weight:700;color:var(--text3);padding:3px 11px;}
 .pl-type-add:hover{color:var(--accent);border-color:var(--accent);}
 .pl-row2{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap;}
@@ -3188,7 +3214,11 @@ function plateWellNo(p,w){ if(!w) return '';
   var t=plateTypeById(p,w.typeId); return (t&&t.no)?String(t.no):''; }
 function plateHasNos(p){ return (plateTypes(p)||[]).some(function(t){ return !!t.no; }); }
 function plateWellTip(p,id,w){ if(!w) return id;
-  var t=plateTypeById(p,w.typeId); var bits=[id]; if(t) bits.push(t.name);
+  var t=plateTypeById(p,w.typeId); var bits=[id];
+  // The number first, because on a numbered plate that is what the well says and this is where
+  // you find out what it means.
+  if(t) bits.push((t.no!=null?(t.no+' · '):'')+t.name);
+  var g=w.groupId&&(p.groups||{})[w.groupId]; if(g&&g.label&&(!t||g.label!==t.name)) bits.push(g.label);
   if(w.cellLine) bits.push(w.cellLine); if(w.compound) bits.push(w.compound);
   if(w.conc) bits.push(w.conc); if(w.label) bits.push(w.label); if(w.note) bits.push('— '+w.note);
   PLATE_FLAGS.forEach(function(f){ if(w[f.k]) bits.push(f.lbl); });
@@ -3917,19 +3947,29 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
   for(var c=0;c<d.c;c++) h+='<div class="pl-colh" style="'+at(hdrRow,c+2)+'" title="Select column '+(c+1)+'" onmousedown="plSelectCol('+c+',event)">'+(c+1)+'</div>';
   // Wells in a labelled block don't repeat the label — the block writes it once, on top.
   var grouped={}; plateGroupBoxes(p).forEach(function(b){ grouped[b.gid]=1; });
+  // A numbered plate prints the number in every well, block or not. It is the whole point of
+  // numbering the conditions: a grid of "NL-DELE1(CTD) + HT-H…" truncated across four wells says
+  // nothing at a glance, and "5" says which condition at any size — which is what you are
+  // checking while you paint.
+  var _nos=plateHasNos(p);
   for(var r=0;r<d.r;r++){
     h+='<div class="pl-rowh" style="'+at(r+base,1)+'" title="Select row '+PLATE_ROWS.charAt(r)+'" onmousedown="plSelectRow('+r+',event)">'+PLATE_ROWS.charAt(r)+'</div>';
     for(var c2=0;c2<d.c;c2++){ var id=wellIdOf(r,c2), w=(p.wells||{})[id];
-      var col=plValueColor(p,id)||plateWellColor(p,w), txt=(w&&w.groupId&&grouped[w.groupId])?'':plateWellShort(w);
+      var col=plValueColor(p,id)||plateWellColor(p,w);
+      var txt=_nos?plateWellNo(p,w):((w&&w.groupId&&grouped[w.groupId])?'':plateWellShort(w));
       var fl=plateWellFlags(w);
       h+='<div class="pl-w'+(PL.sel[id]?' sel':'')+(w?'':' empty')+(fl?(' '+fl):'')+'" data-w="'+id+'" style="'+at(r+base,c2+2)+(col?'background:'+col:'')+'"'
         +' title="'+esc(plateWellTip(p,id,w))+'" onmousedown="plWellDown(\''+id+'\',event)" onmouseenter="plWellEnter(\''+id+'\')">'
         +(function(){ var vv=(p.values&&p.values.data)?p.values.data[id]:null;
             if(vv!=null&&wpx>=22) return '<span class="pl-wt pl-wv">'+esc(_plTrim(vv))+'</span>';
+            // A number is one or two characters, so it survives a small well where a name cannot.
+            if(_nos) return (txt&&wpx>=14)?('<span class="pl-wt pl-wn">'+esc(txt)+'</span>'):'';
             return (txt&&wpx>=28)?('<span class="pl-wt">'+esc(txt)+'</span>'):''; })()+'</div>'; }
   }
   plateGroupBoxes(p).forEach(function(b){
-    h+='<div class="pl-gl" style="grid-row:'+(b.r1+base)+'/'+(b.r2+base+1)+';grid-column:'+(b.c1+2)+'/'+(b.c2+3)+'">'
+    // On a numbered plate the label rides in the block's top-left corner instead of across its
+    // middle — centred, its opaque pill sat exactly on the numbers it is there to explain.
+    h+='<div class="pl-gl'+(_nos?' pl-gl-c':'')+'" style="grid-row:'+(b.r1+base)+'/'+(b.r2+base+1)+';grid-column:'+(b.c1+2)+'/'+(b.c2+3)+'" title="'+esc(b.label)+'">'
       +'<span>'+esc(b.label)+'</span></div>'; });
   host.style.gridTemplateColumns='26px repeat('+d.c+','+wpx+'px)';
   host.style.fontSize=fs+'px';
@@ -3966,7 +4006,22 @@ function plUseExpTypes(){
 }
 function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return;
   var ids=plSelIds(), n=ids.length;
-  var pal=plateTypes(p).map(function(t){ return '<button class="pl-type'+(PL.type===t.id?' on':'')+'" onclick="plSetType(\''+t.id+'\')" oncontextmenu="ctxPlType(event,\''+t.id+'\')" title="'+esc(t.name)+' — right-click to rename, recolour or remove"><i style="background:'+t.color+'"></i>'+esc(t.name)+'</button>'; }).join('')
+  // How many wells each condition already holds. On a numbered plate this is the working list:
+  // you pick a condition, paint its wells, and the count tells you it landed — and which
+  // conditions are still on zero, which is the question "what have I not placed yet".
+  var _counts={}; Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k];
+    if(w&&w.typeId) _counts[w.typeId]=(_counts[w.typeId]||0)+1; });
+  var _nos=plateHasNos(p);
+  // Numbered, the conditions are a vertical list: the names are long and near-identical
+  // ("NL-DELE1(CTD) + HT-HRI (NL 1:10)" against "… (NL 1:50)"), so wrapped into chips they are a
+  // wall of text you have to read to the end of. Down a column, the number leads and the eye
+  // never has to.
+  var pal=plateTypes(p).map(function(t){
+    var c=_counts[t.id]||0;
+    return '<button class="pl-type'+(_nos?' pl-cond':'')+(PL.type===t.id?' on':'')+(_nos&&!c?' none':'')+'" onclick="plSetType(\''+t.id+'\')" oncontextmenu="ctxPlType(event,\''+t.id+'\')" title="'+esc(t.name)+' — right-click to rename, recolour or remove">'
+      +(_nos?('<b class="pl-cond-n">'+(t.no!=null?t.no:'&middot;')+'</b>'):'')
+      +'<i style="background:'+t.color+'"></i><span class="pl-cond-nm">'+esc(t.name)+'</span>'
+      +(_nos?('<span class="pl-cond-c">'+(c?(c+' well'+(c===1?'':'s')):'—')+'</span>'):'')+'</button>'; }).join('')
     +'<button class="pl-type pl-type-add" onclick="plAddType()" title="Add a well type">+</button>';
   var quickNames=['dmso','vehicle','control','compound','dose','blank'];
   var quick=plateTypes(p).filter(function(t){var id=String(t.id).toLowerCase(),nm=String(t.name).toLowerCase(); return quickNames.indexOf(id)>=0||/dmso|vehicle|control|compound|dose|blank/.test(nm);}).map(function(t){ return '<button class="pl-btn'+(PL.type===t.id?' on':'')+'" onclick="plSetType(\''+t.id+'\')">'+esc(t.name)+'</button>'; }).join('');
@@ -4013,7 +4068,14 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'<div class="pl-row2"><button class="pl-btn" onclick="plLayoutMenu()">'+tbIco(P_GRID,13)+' Start from a layout…</button>'
       +(_plExpTypes().length?'<button class="pl-btn" onclick="plUseExpTypes()" title="Replace the palette with the conditions this experiment is made of">Use this experiment\'s conditions</button>':'')
     +'</div></div>'
-    +'<div class="pl-sec"><div class="pl-sec-t">Edit mode</div><div class="pl-modes"><button class="pl-btn pl-mode'+(PL.mode==='paint'?' on':'')+'" onclick="plSetMode(\'paint\')">Paint</button><button class="pl-btn pl-mode'+(PL.mode==='select'?' on':'')+'" onclick="plSetMode(\'select\')">Select</button><button class="pl-btn pl-mode'+(PL.mode==='erase'?' on':'')+'" onclick="plSetMode(\'erase\')">Erase</button></div><div class="pl-sec-t">Quick types</div><div class="pl-quick">'+(quick||'<span class="pl-sum-empty">Choose a type below.</span>')+'</div><div class="pl-sec-t">Well type</div><div class="pl-types">'+pal+'</div></div>'
+    +'<div class="pl-sec"><div class="pl-sec-t">'+(_nos?'Conditions — pick one, then paint its wells':'Well type')+'</div>'
+      +(_nos?'<div class="pl-howto">Click a condition, then drag across the wells it goes in. Shift-click paints a rectangle. Then the next one.</div>':'')
+      +'<div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div></div>'
+    // Quick types is a shortcut into the same list, and on a numbered plate it is the same list
+    // one section higher up with the numbers taken off. Only shown where it still shortens
+    // anything.
+    +'<div class="pl-sec"><div class="pl-sec-t">Edit mode</div><div class="pl-modes"><button class="pl-btn pl-mode'+(PL.mode==='paint'?' on':'')+'" onclick="plSetMode(\'paint\')">Paint</button><button class="pl-btn pl-mode'+(PL.mode==='select'?' on':'')+'" onclick="plSetMode(\'select\')">Select</button><button class="pl-btn pl-mode'+(PL.mode==='erase'?' on':'')+'" onclick="plSetMode(\'erase\')">Erase</button></div>'
+      +((!_nos&&quick)?('<div class="pl-sec-t">Quick types</div><div class="pl-quick">'+quick+'</div>'):'')+'</div>'
     +'<div class="pl-sec"><div class="pl-sec-t">'+(n?(n+' well'+(n!==1?'s':'')+' selected'):'Select wells to edit')+'</div>'
     +'<div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')
       +(expUsesCompounds(_plExp())?(fld('compound','Compound')+fld('conc','Concentration')):'')
@@ -4031,11 +4093,18 @@ function plSetMode(mode){ PL.mode=mode||'paint'; PL.painted={}; plRenderSide(); 
 function plPaintWell(id){ var p=plCur(); if(!p||PL.painted[id]) return; PL.painted[id]=1; PL.sel[id]=1;
   if(PL.mode==='erase') delete p.wells[id]; else _plWell(p,id).typeId=PL.type;
   platePersist(PL.key); }
+// In Paint mode a shift-range paints the rectangle, which is what "Paint" means and what the
+// hint beside the conditions says. It used to only select it, so laying out a 4×2 block was a
+// drag you had to hold accurately instead of two clicks. Select mode still only selects — that
+// is the mode's whole job.
+function plPaintSel(){ var ids=plSelIds(); PL.painted={}; ids.forEach(plPaintWell); }
 function plWellDown(id,ev){ ev.preventDefault(); PL.painted={};
-  if(ev.shiftKey&&PL.anchor){ plSelectRange(PL.anchor,id,ev.ctrlKey||ev.metaKey); }
+  var range=(ev.shiftKey&&PL.anchor), painting=(PL.mode==='paint'||PL.mode==='erase');
+  if(range){ plSelectRange(PL.anchor,id,ev.ctrlKey||ev.metaKey); }
   else if(ev.ctrlKey||ev.metaKey){ if(PL.sel[id]) delete PL.sel[id]; else PL.sel[id]=1; PL.anchor=id; }
   else { PL.sel={}; PL.sel[id]=1; PL.anchor=id; }
-  if(!ev.shiftKey&&!ev.ctrlKey&&!ev.metaKey&&(PL.mode==='paint'||PL.mode==='erase')) plPaintWell(id);
+  if(range && painting) plPaintSel();
+  else if(!ev.shiftKey&&!ev.ctrlKey&&!ev.metaKey&&painting) plPaintWell(id);
   PL.painted[id]=1;
   PL.drag=true; PL.dragAdd=true; plRender(); }
 function plWellEnter(id){ if(!PL.drag) return; if(PL.mode==='paint'||PL.mode==='erase') plPaintWell(id); else PL.sel[id]=1; plRenderGrid(); }

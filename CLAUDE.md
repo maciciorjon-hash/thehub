@@ -2157,6 +2157,44 @@ search — but as a confirmation carrying the count and a worked example, becaus
 is written on the plate, the tube and the file names. A code that already carries some other
 prefix is left alone.
 
+## Painting a plate is picking a condition and saying where (2026-08-28)
+
+Jon, on drawing the SPARK map: the condition numbers have to be much clearer, and the loop should
+be *pick a condition, say which wells, next condition*. The loop already existed — Paint mode
+does exactly that — but nothing on screen made it findable, and the one thing that makes a
+NanoBRET plate readable was missing from the editor entirely.
+
+**The editor did not print the numbers.** `platePreviewHtml` had shown them since the numbering
+went in; `plRenderGrid` still printed `plateWellShort` — the label, concentration or compound —
+gated at `wpx>=28`. So while you painted, a 96-well SPARK plate was four wells of
+"NL-DELE1(CTD) + HT-H…" truncated under a block caption, and the number you are actually
+checking was nowhere. Every well prints its number now, at 1.55em and down to `wpx>=14`: one or
+two characters survive a well where a name never could. A plate-reader value still wins, because
+that is a different question being asked of the same grid.
+
+**The block caption moved off the wells.** On a numbered plate it was an opaque pill across the
+middle of the block, sitting on the numbers it exists to explain. The block keeps its outline —
+which wells are one block is worth seeing — and loses its caption; the name is in the condition
+list, the layout summary and now the well tooltip (`plateWellTip` leads with the number and adds
+the block label when it says something the type name does not).
+
+**The palette became the working list.** `pl-cond` rows are number · colour · full name · how
+many wells it already holds, down a column rather than wrapped into chips: these names are long
+and differ only at the end ("(NL 1:10)" against "(NL 1:50)"), which is exactly what an ellipsis
+eats, so the name wraps instead of truncating. The count is the part that answers "what have I
+not placed yet" — an unplaced condition reads "—". It sits at the top of the panel under a
+heading that says what to do, and **Quick types is dropped when the conditions are numbered**:
+there it was the same list one section lower with the numbers taken off.
+
+**Shift-click paints the rectangle.** In Paint mode it only *selected* one, so laying out a 4×2
+block was a drag you had to hold accurately instead of two clicks — while the hint said Paint
+assigns a type. Select mode still only selects; that is the mode's whole job.
+
+The grid also gets the vertical room before the summary does (`.pl-sum` is `flex:0 1 auto` with a
+cap, not `1 1 auto`) — the plate you are painting was the thing being cut off. And the instruction
+line is `.pl-howto`, not `.pl-hint`: that class already styles the hint in the modal title, and a
+second rule for it restyled the header.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
