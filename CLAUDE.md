@@ -962,9 +962,16 @@ metadata in `LB.data`, bytes in IndexedDB (`lb_att`), optional cloud copy in Fir
 - **Storage failures are loud.** `_attPut` resolves `false` and calls `_storageFailed`, which
   flips the status pill to "Not saved!" and shows `lbAlert` once. `_flushLocal` no longer
   swallows quota errors. `_storageRoom(bytes)` pre-checks via `navigator.storage.estimate()`.
-- **Firebase Storage must be enabled in the console** for cross-device sync. The SDK is loaded
-  and `lbStorage()` resolves, but uploads fail until the bucket exists — `_cloudUnavailable`
-  says so once, then falls back to device-local + backups.
+- **Firebase Storage is enabled** (2026-08-27). The bucket is
+  `thehub-f80ae.firebasestorage.app` in `europe-west1`, matching `storageBucket` in the shell,
+  with `storage.rules` published — `labbook/**` and `plasmids/**` for the admin email, all
+  else denied. Before that the bucket did not exist and every upload failed; `_cloudUnavailable`
+  said so once and fell back to device-local + backups, which is still the behaviour if a
+  write is ever refused.
+- **Attachments added before that date were never uploaded.** `_attUpload` runs only when you
+  attach, so anything older lives solely in the IndexedDB of the browser it was pasted into —
+  it reaches backups, not the other machine. A backfill (walk `_collectAttIds()`, upload the
+  ids with no `LB.data.attachments[id].url`) is the fix and is **not built**.
 
 ## Inventory says where things are (2026-08-20)
 
@@ -2051,18 +2058,23 @@ coast is clear — armed only while something is waiting, and it stops itself. H
 
 No rules change was needed: `journal/echo` and `journal/blueprint` are children of `journal`.
 
-**Still genuinely blocked on Jon:** attachments. `GET .../b/thehub-f80ae.firebasestorage.app/o`
-returns **404** — the bucket does not exist, so Firebase Storage has never been enabled.
-Labbook images and files stay on the device that added them and travel only in backups. The
-Sync panel says exactly that rather than implying otherwise.
+**Attachments were the one thing still blocked on Jon, and he unblocked it the same day.**
+`GET .../b/thehub-f80ae.firebasestorage.app/o` returned **404** — no bucket, so Storage had
+never been enabled and every Labbook image stayed on the device that added it. The bucket now
+exists (that probe returns **403**, which is what an unauthenticated read of a real bucket
+looks like). New attachments upload; **older ones do not migrate on their own** — see Open
+items. The Sync panel keeps saying what is true rather than implying more.
 
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
-- **Firebase Storage not enabled in the console** — blocks cross-device image/file sync for
-  Labbook. Everything works device-local and survives backup/restore without it.
+- ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in
+  `europe-west1` and `storage.rules` published; verified from outside (the bucket went from
+  `404 Not Found` to `403 Permission denied`, the correct answer for no session). Uploads
+  themselves need a signed-in session to confirm. **Old attachments still need a backfill** —
+  see the Attachments section.
 - ~~**Firebase `/journal` rules** still need pasting into the console.~~ **Wrong — they are
   deployed** (verified 2026-08-27 by probing the RTDB anonymously: `labconfig` and
   `announcement` return 200, `journal` and `journal/labbook` return `Permission denied` 401,
