@@ -2109,13 +2109,19 @@ you ticked yourself — a tick is evidence. `_checklistDoneSync` passes `fromChe
 boxes-to-step direction does not rewrite the html under the caret of whoever just clicked one.
 
 **A project has a code prefix.** `SP_NB20260826` says whose work it is; `NB20260826` only says
-what and when. Two letters by default, derived from the name by one test in `_prefixDefault`:
-**a second *word* earns an initial, a short trailing qualifier does not.** Multivalent Chemistry
-is MC; SPARK NS is SP, because "NS" is a qualifier and SP is what the project is called; a
-one-word name gives its first two letters (LRRC58 LR, RTag RT, Eisai EI). Three letters is the
-cut — NS, KO and V2 are qualifiers, Glues and Chemistry are words. Both of the cases Jon named
-fall out of that test rather than out of a table of his project names, which is what a table of
-his project names would have been in a product other labs use. So a project created without touching the box is
+what and when. Two letters by default, derived from the name by two tests in `_prefixDefault`:
+
+1. **An ALL-CAPS first word owns the prefix.** A lab names a project after a gene symbol or an
+   acronym — SMARCA, SPARK, LRRC58 — and that word *is* the project, so the prefix is its first
+   two letters (SM, SP, LR) and whatever follows is a qualifier, not half the name.
+2. Otherwise the name is an ordinary phrase and a second **word** earns an initial: Multivalent
+   Chemistry → MC. Three letters is the cut — NS, KO and V2 are qualifiers.
+3. One word, no acronym: its first two letters (RTag → RT, Eisai → EI).
+
+**Casing is the signal because it is the one the names already carry**, and it is what separates
+SMARCA Glues (SM) from Multivalent Chemistry (MC) — a distinction no word-counting rule can make.
+The alternative was a table of Jon's six project names, which is not a rule and would have
+shipped his lab's vocabulary inside a product other labs use. So a project created without touching the box is
 still prefixed from its first experiment rather than from whenever someone remembers. The box is
 beside the name in both project add-rows and its placeholder tracks what you type; a prefix you
 typed is never overwritten by the next keystroke in the name. `nmUpdateCode` builds the code with
@@ -2130,12 +2136,12 @@ leave two halves of one project's experiments carrying two different codes. And 
 both derive SP, and two projects sharing a prefix defeat the point of having one. The chip on
 each project header in Experiments is how you read the one that was derived for you.
 
-**`p.prefixAuto` marks a derived prefix, and that is what let the rule change twice.** `_prefixV3`
-re-derives every auto one under the current rule and leaves every typed one exactly as it is —
-the same line `protoDiff` and the calculator defaults draw between a value the app produced and a
-value somebody chose. Jon's six come out Multivalent Chemistry **MC** · LRRC58 **LR** · RTag
-**RT** · SPARK NS **SP** · SMARCA Glues **SG** · Eisai **EI**, all distinct with no fallback
-needed. The chip on the project header is a button — clicking it is the way to change one, since
+**`p.prefixAuto` marks a derived prefix, and that is what let the rule be pinned down against
+real names without ever touching a decision.** `_prefixV4` re-derives every auto one under the
+current rule and leaves every typed one exactly as it is — the same line `protoDiff` and the
+calculator defaults draw between a value the app produced and a value somebody chose. Jon's six
+come out Multivalent Chemistry **MC** · LRRC58 **LR** · RTag **RT** · SPARK NS **SP** ·
+SMARCA Glues **SM** · Eisai **EI**, all distinct with no fallback needed. The chip on the project header is a button — clicking it is the way to change one, since
 a right-click menu is not where you look for a two-letter label you can see.
 
 Two things this turned up. `addProject` called `renderSections`, which only redraws the tree —

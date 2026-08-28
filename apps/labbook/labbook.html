@@ -4778,18 +4778,26 @@ function renderSections(){
 // It is derived, never demanded: a project created without touching the box still gets one, so
 // codes are prefixed from the first experiment rather than from whenever someone remembers.
 function _normPrefix(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4); }
-// A second *word* earns an initial; a short trailing qualifier does not.
-//   Multivalent Chemistry → MC   (two words, so the initials are the name)
-//   SPARK NS              → SP   ("NS" is a qualifier, not a word — SP is what it is called)
-//   LRRC58 · RTag · Eisai → LR · RT · EI   (one word: its first two letters)
-// Both of Jon's stated cases come out of that one test rather than out of a table of his project
-// names, which is what a table of his project names would have been in a product other labs use.
-// Three letters is the cut: NS, KO, V2 are qualifiers; Glues, Chemistry, Screen are words.
+// Two tests, in order, and between them they explain every name in a real notebook.
+//
+// 1. **An ALL-CAPS first word owns the prefix.** A lab names a project after a gene symbol or an
+//    acronym — SMARCA, SPARK, LRRC58 — and that word *is* the project, so the prefix is its first
+//    two letters (SM, SP, LR) and whatever follows is a qualifier, not half the name.
+// 2. Otherwise the name is an ordinary phrase, so a second **word** earns an initial:
+//    Multivalent Chemistry → MC. Three letters is the cut — NS, KO and V2 are qualifiers.
+// 3. One word, no acronym: its first two letters (RTag → RT, Eisai → EI).
+//
+// Casing is the signal because it is the one the names already carry. The alternative was a table
+// of Jon's six project names, which is not a rule and would have shipped his lab's vocabulary
+// inside a product other labs use.
 function _prefixDefault(name){
   var w=String(name||'').trim().split(/[\s_\-/]+/).filter(Boolean);
-  var a=_normPrefix(w[0]||''), b=_normPrefix(w[1]||'');
-  var px = (b.length>=3) ? (a.charAt(0)+b.charAt(0))
-         : (a.length>1 ? a.slice(0,2) : (a+b.charAt(0)));
+  var w0=String(w[0]||''), a=_normPrefix(w0), b=_normPrefix(w[1]||'');
+  var acronym = a.length>1 && /^[A-Z0-9]+$/.test(w0) && /[A-Z]/.test(w0);
+  var px = acronym            ? a.slice(0,2)
+         : (b.length>=3)      ? (a.charAt(0)+b.charAt(0))
+         : (a.length>1)       ? a.slice(0,2)
+                              : (a+b.charAt(0));
   return _normPrefix(px) || 'PR';
 }
 function projPrefix(p){ return _normPrefix(p&&p.prefix) || _prefixDefault(p&&p.name); }
@@ -4820,16 +4828,16 @@ function _backfillPrefixes(){
     if(cur){ if(cur!==p.prefix){ p.prefix=cur; changed=true; } return; }
     p.prefix=_uniquePrefix(p.name,p.id); p.prefixAuto=true; changed=true;
   });
-  // The derivation has moved twice (initials → the start of the name → the rule above).
-  // Re-derive the ones nobody chose, so a notebook does not keep a prefix from a rule that no
-  // longer exists — and leave every typed one exactly as it is.
-  if(!LB.data._prefixV3){
+  // The derivation has moved as the rule was pinned down against real project names. Re-derive
+  // the ones nobody chose, so a notebook does not keep a prefix from a rule that no longer
+  // exists — and leave every typed one exactly as it is.
+  if(!LB.data._prefixV4){
     (LB.data.projects||[]).forEach(function(p){
       if(!p.prefixAuto) return;
       var want=_uniquePrefix(p.name,p.id);
       if(want!==p.prefix){ p.prefix=want; changed=true; }
     });
-    LB.data._prefixV3=true; changed=true;
+    LB.data._prefixV4=true; changed=true;
   }
   return changed;
 }
