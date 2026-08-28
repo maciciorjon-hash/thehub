@@ -2235,9 +2235,26 @@ the setup); what was missing was any route from that fix to an experiment alread
 `expPresetStale(e)` finds blocks whose words are still the preset's own — `fillSetup(b.tpl.html,
 e.setup) === b.html`, the same proof `_seedUnedited` uses — matched to the current preset **by
 the template's title, not by position**, since a snoozed or inserted step moves the indices.
-`refreshExpPreset` offers them by name and replaces only the prose. **Calculator inputs, ticks
+**Calculator inputs, ticks
 and notes are never touched**: those are the numbers this run used, and a recorded number is not
 rewritten.
+
+That banner alone was not enough, and Jon's own run is why. It only offers what it can *prove*
+you did not write, which is right for something that acts on its own — but a block that fails the
+proof can still carry wording that contradicts the experiment, and there was no route to it at
+all. Two things came out of that:
+
+- **Ticking a checkbox was reading as editing the text.** A tick writes `class="done"` into the
+  block's html, so any step you had started working through dropped out of the offer. `_proseOnly`
+  strips the list-item classes before comparing: what is being compared is the wording, not the
+  state of the run.
+- **`updateExpTextFromPreset(id)`** is the manual route, on the experiment menu and behind the
+  banner's button so there is one place the change happens. It lists every preset-built block
+  whose text differs from the preset today — **both versions side by side** — ticked by default
+  only where the proof holds, and labelled *you edited this* where it does not. Nothing is assumed
+  about which version is right, because at that point only Jon knows. It also matches a block
+  with no `b.tpl` at all (experiments created before the field existed) by title, which is the
+  case that was unreachable.
 
 Also, in the editor: shift-click paints the rectangle in Paint mode (it only selected one, so a
 4×2 block was an accurate drag instead of two clicks), and the grid gets the vertical room before

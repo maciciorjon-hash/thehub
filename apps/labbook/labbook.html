@@ -1311,6 +1311,20 @@ body.lb-lean .exh.open .exh-lean{display:none;}
 .pub-btn:hover{background:var(--surface2);}
 .pub-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
 .pub-btn.primary:hover{filter:brightness(1.06);}
+/* The text update, both versions side by side. Wide enough to compare two paragraphs, and it
+   scrolls inside itself — a dialog that grows past the viewport hides its own OK button. */
+.ptx{max-height:52vh;max-height:52dvh;overflow-y:auto;margin-top:4px;}
+.ptx-intro{font-size:var(--fs-3);color:var(--text2);line-height:1.5;margin-bottom:10px;}
+.ptx-row{border:1px solid var(--border);border-radius:var(--r-2);padding:9px 11px;margin-bottom:8px;background:var(--surface2);}
+.ptx-h{display:flex;align-items:center;gap:7px;font-size:var(--fs-3);cursor:pointer;}
+.ptx-h input{margin:0;}
+.ptx-tag{font-size:var(--fs-1);color:var(--text3);border:1px solid var(--border2);border-radius:var(--r-1);padding:0 5px;}
+.ptx-tag.warn{color:#b06a6a;border-color:#b06a6a;}
+.ptx-two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:7px;}
+.ptx-lbl{font-size:var(--fs-1);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin-bottom:3px;}
+.ptx-t{font-size:var(--fs-2);line-height:1.45;color:var(--text2);max-height:120px;overflow-y:auto;}
+.ptx-t.new{color:var(--text);}
+@media(max-width:640px){ .ptx-two{grid-template-columns:1fr;} }
 .pub-stale{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:9px 0 0;padding:8px 11px;
   border-radius:var(--r-1);background:rgba(217,158,79,.12);border:1px solid rgba(217,158,79,.35);
   font-size:var(--fs-2);color:var(--text2);line-height:1.5;}
@@ -7326,9 +7340,15 @@ function expDeviations(e){
 //
 // Calculator inputs are deliberately not touched. Those are the numbers this run used, and a
 // recorded number is never rewritten — see the deviation report, which exists to show them.
+// Ticking a checkbox writes `class="done"` into the block's own html, so a step you had started
+// working through no longer looked like the preset's words and dropped out of the offer. What is
+// being compared is the wording, not the state of the run.
+function _proseOnly(h){
+  return String(h||'').replace(/(<li)([^>]*)class="[^"]*"/g,'$1$2').replace(/\s+class=""/g,'');
+}
 function _expBlockUntouched(e,b){
   if(!b||b.proto||!b.tpl||!b.tpl.html) return false;
-  try{ return fillSetup(b.tpl.html, e.setup||{})===b.html; }catch(_e){ return false; }
+  try{ return _proseOnly(fillSetup(b.tpl.html, e.setup||{}))===_proseOnly(b.html); }catch(_e){ return false; }
 }
 function expPresetStale(e){
   if(!e||!e.presetKey) return null;
@@ -7345,31 +7365,58 @@ function expPresetStale(e){
   });
   return out.length?out:null;
 }
-function refreshExpPreset(id){
-  var e=LB.data.experiments[id]; if(!e) return;
-  var list=expPresetStale(e); if(!list){ toast('This experiment already has the current text.'); return; }
-  lbConfirm('<b>'+list.length+'</b> step'+(list.length===1?'':'s')+' still carry the wording this experiment was created with, and '
-    +(list.length===1?'it has':'they have')+' since been corrected:<br><br>'
-    +list.map(function(x){ return '<b>'+esc(x.b.title||x.t.title||'Step')+'</b>'; }).join('<br>')
-    +'<br><br>Replace their text with the current version?<br><br>'
-    +'<span class="cc-dim">Only steps whose words are still the preset’s own are listed — anything you wrote is untouched, and no calculator input, tick or note is changed.</span>',
-    {title:'Update the step text', ok:'Update '+list.length+' step'+(list.length===1?'':'s'), html:true}).then(function(ok){
+// The banner only offers blocks it can *prove* you did not write, which is right for something
+// that acts on its own. But a block that fails the proof can still be carrying wording that
+// contradicts the experiment — Jon's SPARK run named one of its two ratios — and there was no
+// route to it at all. This is that route: every preset-built block whose text differs from the
+// preset today, both versions on screen, and you choose. Nothing is assumed about which is
+// right, because at this point only you know.
+var _PTX={};
+function updateExpTextFromPreset(id){
+  var e=LB.data.experiments[id]; if(!e){ return; }
+  if(!e.presetKey){ lbAlert('This experiment was not built from a preset, so there is no newer wording to compare it with.',{title:'Nothing to compare'}); return; }
+  var tpl=LB.data.presets[e.presetKey];
+  if(!tpl||!(tpl.blocks||[]).length){ lbAlert('The preset this experiment came from is no longer in this notebook.',{title:'Preset not found'}); return; }
+  var rows=[];
+  (e.blocks||[]).forEach(function(b){
+    if(b.proto) return;                       // a protocol stage has its own update path
+    var t=(tpl.blocks||[]).filter(function(x){
+      return (b.tpl&&(x.title||'')===(b.tpl.title||'')) || (x.title||'')===(b.title||''); })[0];
+    if(!t) return;
+    var want=fillSetup(t.html, e.setup||{});
+    if(_proseOnly(want)===_proseOnly(b.html)) return;
+    rows.push({b:b,t:t,want:want,safe:_expBlockUntouched(e,b)});
+  });
+  if(!rows.length){ lbAlert('Every step already carries the current wording.',{title:'Nothing to update'}); return; }
+  _PTX={}; rows.forEach(function(r,i){ if(r.safe) _PTX[i]=1; });
+  var html=rows.map(function(r,i){
+    return '<div class="ptx-row">'
+      +'<label class="ptx-h"><input type="checkbox"'+(r.safe?' checked':'')+' onchange="_PTX['+i+']=this.checked?1:0"> <b>'+esc(r.b.title||r.t.title||'Step')+'</b>'
+      +(r.safe?'<span class="ptx-tag">preset wording</span>':'<span class="ptx-tag warn">you edited this</span>')+'</label>'
+      +'<div class="ptx-two"><div><div class="ptx-lbl">Now</div><div class="ptx-t">'+esc(_plain(r.b.html))+'</div></div>'
+      +'<div><div class="ptx-lbl">Preset</div><div class="ptx-t new">'+esc(_plain(r.want))+'</div></div></div></div>';
+  }).join('')+'</div>';
+  lbConfirm('<div class="ptx-intro">The preset has been corrected since this experiment was created. '
+    +'Pick the steps whose text should be replaced — <b>only the words change</b>: calculator inputs, ticks, notes and dates are left exactly as they are.</div>'
+    +html, {title:'Update step text from the preset', ok:'Replace the ticked steps', html:true, wide:true}).then(function(ok){
       if(!ok) return;
-      list.forEach(function(x){
-        x.b.tpl={title:x.t.title, html:x.t.html, pub:x.t.pub||''};
-        if(x.t.title) x.b.title=fillSetup(x.t.title, e.setup||{});
-        x.b.html=fillSetup(x.t.html, e.setup||{});
-        if(x.t.pub) x.b.pub=fillSetup(x.t.pub, e.setup||{}); else delete x.b.pub;
-      });
+      var n=0;
+      rows.forEach(function(r,i){ if(!_PTX[i]) return;
+        r.b.tpl={title:r.t.title, html:r.t.html, pub:r.t.pub||''};
+        if(r.t.title) r.b.title=fillSetup(r.t.title, e.setup||{});
+        r.b.html=r.want;
+        if(r.t.pub) r.b.pub=fillSetup(r.t.pub, e.setup||{}); else delete r.b.pub;
+        n++; });
+      if(!n){ toast('Nothing was ticked — no step was changed.'); return; }
       e.updated=Date.now(); save(); renderEditor();
-      toast(list.length+' step'+(list.length===1?'':'s')+' updated — the numbers and your notes are as they were.');
+      toast(n+' step'+(n===1?'':'s')+' updated.');
     });
 }
 function presetStaleHtml(e){
   var list=expPresetStale(e); if(!list) return '';
   return '<div class="pub-stale">The wording of '+list.length+' step'+(list.length===1?'':'s')
     +' has been corrected since this experiment was created. '
-    +'<button onclick="refreshExpPreset(\''+e.id+'\')">See what changed</button></div>';
+    +'<button onclick="updateExpTextFromPreset(\''+e.id+'\')">See what changed</button></div>';
 }
 function deviationsHtml(e){
   var d=expDeviations(e); if(!d.length) return '';
@@ -9118,6 +9165,7 @@ function ctxExp(ev,id){ var e=LB.data.experiments[id]; if(!e) return; var pr=exp
   (isCoded(e)?(expArchived(e)
     ? {label:'Unarchive',fn:function(){setExpArchived(id,false);}}
     : {label:'Close experiment…',fn:function(){closeExperiment(id);}}):{sep:true}),
+  (e.presetKey?{label:'Update step text from the preset…',fn:function(){openExp(id);setTimeout(function(){updateExpTextFromPreset(id);},120);}}:{sep:true}),
   {label:'Duplicate',fn:function(){dupExperiment(id);}},
   (isCoded(e)?{label:'Export PDF',fn:function(){openExp(id);setTimeout(exportPDF,120);}}:{sep:true}),
   (isCoded(e)?{label:'Copy for OneNote',fn:function(){openExp(id);setTimeout(copyForOneNote,140);}}:{sep:true}),
