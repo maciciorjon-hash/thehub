@@ -2116,6 +2116,22 @@ beside the name in both project add-rows and its placeholder tracks what you typ
 typed is never overwritten by the next keystroke in the name. `nmUpdateCode` builds the code with
 it and `createExperiment` puts it back on a code typed over by hand.
 
+**Every existing project has one already.** `_backfillPrefixes()` runs on load (and on a tree
+adopted from the cloud), stamping the derived default on any project without one — so a notebook
+that predates the field is fully prefixed rather than waiting to be asked project by project. It
+is *stored*, not re-derived each load: a prefix that moved when you renamed the project would
+leave two halves of one project's experiments carrying two different codes. And it is unique —
+`_uniquePrefix` tries later letters of the name before a digit, because "SPARK" and "SPARK NS"
+both derive SP, and two projects sharing a prefix defeat the point of having one. The chip on
+each project header in Experiments is how you read the one that was derived for you.
+
+Two things this turned up. `addProject` called `renderSections`, which only redraws the tree —
+so a project added from the adder that is actually on screen, the one in the Experiments view,
+was created and never appeared. And the New-experiment modal already had a field labelled
+**"Code prefix (optional)"** which is not a prefix and never was: `nm-poi` is appended
+(`SP_NB20260826_BRD4`), so with a real prefix beside it the label was two different things under
+one name. It says what it is now.
+
 Changing it later (`setProjectPrefix`, on the project context menu) **re-codes the experiments
 already in the project** — a project whose old and new codes both survive is a project you cannot
 search — but as a confirmation carrying the count and a worked example, because the code is what

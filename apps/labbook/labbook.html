@@ -1297,6 +1297,7 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 .xv-f.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-xs);}
 .xv-proj{flex:none;border:1px solid var(--border);border-radius:var(--r-3);background:var(--surface);overflow:hidden;}
 .xv-ph{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none;}
+.xv-px{font-family:var(--mono);font-size:var(--fs-1);letter-spacing:.5px;color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-1);padding:1px 5px;flex:none;}
 .xv-ph:hover{background:var(--surface2);}
 .xv-chev{display:inline-flex;color:var(--text3);transition:transform .15s;}
 .xv-proj.open .xv-chev{transform:rotate(90deg);}
@@ -1532,7 +1533,7 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
   <div class="modal">
     <div class="modal-t">New experiment</div>
     <div class="mrow"><label>Preset / type</label><select id="nm-type" onchange="nmUpdateCode();nmResetSetup();nmProtos();nmPreview()"></select></div>
-    <div class="mrow"><label>Code prefix (optional)</label><input id="nm-poi" placeholder="e.g. SM" autocomplete="off" oninput="nmUpdateCode()"></div>
+    <div class="mrow"><label>Target / tag for the code (optional)</label><input id="nm-poi" placeholder="e.g. BRD4" autocomplete="off" oninput="nmUpdateCode()" title="Appended to the code (SP_NB20260826_BRD4). The prefix itself belongs to the project."></div>
     <div class="mrow"><label>Start date</label><input id="nm-date" type="date" oninput="nmUpdateCode();nmPreview()"></div>
     <div class="mrow"><label>Title / plan (optional)</label><input id="nm-title" placeholder="Auto-filled from preset" autocomplete="off"></div>
     <div class="mrow"><label>Code (auto — editable)</label><input id="nm-code" class="mcode" autocomplete="off" spellcheck="false"></div>
@@ -4256,6 +4257,11 @@ if(!LB.data||typeof LB.data!=='object') LB.data=lbBlank();
 if(!LB.data.planner||typeof LB.data.planner!=='object') LB.data.planner={tasks:{}};
 if(!LB.data.planner.tasks||typeof LB.data.planner.tasks!=='object') LB.data.planner.tasks={};
 LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
+// Every project carries a two-letter code prefix, and a notebook that predates the field is
+// filled in on the first load rather than waiting to be asked project by project. It is stored,
+// not re-derived on each load: a prefix that changed when you renamed the project would leave
+// two halves of one project's experiments carrying two different codes.
+if(_backfillPrefixes()) setTimeout(function(){ try{ save(); }catch(e){} },0);
 Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
   if(e.projectId && !e.sectionId){ var p=LB.data.projects.filter(function(x){return x.id===e.projectId;})[0];
     if(p){ var u=(p.sections||[]).filter(function(s){return s.name==='Unclassified';})[0];
@@ -4650,6 +4656,7 @@ function lbInitSync(){
       Object.keys(v).forEach(function(k){ _carry[k]=v[k]; });
       LB.data=Object.assign(_carry,{projects:v.projects||[],generalSections:v.generalSections||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},protoDays:v.protoDays||{},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()});
       LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
+      _backfillPrefixes();   // a tree adopted from the cloud can predate the field too
       seedPresets();
       try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
       _adopting=false; maybeSeed(); renderAll();
@@ -4776,11 +4783,37 @@ function _prefixDefault(name){
   return _normPrefix(px) || 'PR';
 }
 function projPrefix(p){ return _normPrefix(p&&p.prefix) || _prefixDefault(p&&p.name); }
+// A distinct two letters, not just two letters. "SPARK" and "SPARK NS" both derive SP, and two
+// projects sharing a prefix would file their experiments under codes that no longer say which
+// project they came from — which is the whole reason the prefix exists. Later letters of the
+// name are tried before a digit, because SK still reads as a name and S2 reads as a fallback.
+function _prefixTaken(exceptId){
+  var t={}; (LB.data.projects||[]).forEach(function(p){
+    if(p.id!==exceptId && _normPrefix(p.prefix)) t[_normPrefix(p.prefix)]=1; });
+  return t;
+}
+function _uniquePrefix(name, exceptId){
+  var taken=_prefixTaken(exceptId), base=_prefixDefault(name), first=base.charAt(0);
+  if(!taken[base]) return base;
+  var rest=_normPrefix(name).slice(1);
+  for(var i=0;i<rest.length;i++){ var c=first+rest.charAt(i); if(!taken[c]) return c; }
+  for(var n=2;n<10;n++){ var d=first+n; if(!taken[d]) return d; }
+  return base;
+}
+function _backfillPrefixes(){
+  var changed=false;
+  (LB.data.projects||[]).forEach(function(p){
+    var cur=_normPrefix(p.prefix);
+    if(cur){ if(cur!==p.prefix){ p.prefix=cur; changed=true; } return; }
+    p.prefix=_uniquePrefix(p.name,p.id); changed=true;
+  });
+  return changed;
+}
 // Live hint while you type the name. It fills the placeholder, not the value: a prefix you typed
 // is yours and must not be overwritten by the next keystroke in the name field.
 function _projPxHint(){
   var n=el('new-proj'), x=el('new-proj-px'); if(!n||!x) return;
-  x.placeholder=_prefixDefault(n.value)||'PX';
+  x.placeholder=(n.value.trim()?_uniquePrefix(n.value):'')||'PX';
 }
 // A code carries its project's prefix once. Anything already prefixed keeps its own — a code you
 // typed by hand is a code you meant.
@@ -4789,10 +4822,13 @@ function _applyPrefix(code, px){
   return /^[A-Z0-9]{1,4}_/.test(c) ? c : (px+'_'+c);
 }
 function addProject(){ var i=el('new-proj'); var n=(i.value||'').trim(); if(!n) return;
-  var xi=el('new-proj-px'); var px=_normPrefix(xi&&xi.value)||_prefixDefault(n);
+  var xi=el('new-proj-px'); var px=_normPrefix(xi&&xi.value)||_uniquePrefix(n);
   var p={id:uid(),name:n,prefix:px,created:Date.now(),color:PROJ_COLORS[LB.data.projects.length%PROJ_COLORS.length],sections:[]};
-  LB.data.projects.push(p); EXPANDED[p.id]=true; if(xi){ xi.value=''; xi.placeholder='PX'; }
-  save(); renderSections(); }
+  LB.data.projects.push(p); EXPANDED[p.id]=true; XV.open[p.id]=true;
+  i.value=''; if(xi){ xi.value=''; xi.placeholder='PX'; }
+  // renderSections only redraws the tree, and the adder that is actually on screen lives in the
+  // Experiments view — so a project added from there was created and never appeared.
+  save(); renderAll(); }
 // Changing it re-codes the experiments already in the project — that is the point of asking for
 // it, and a project whose old and new codes both survive is a project you cannot search. It is
 // still a confirmation, with the count and a worked example, because a code is an identifier
@@ -6383,6 +6419,10 @@ function renderExperiments(host, qOnly){
         +'<span class="xv-chev">'+tbIco(P_CHEV_R,13)+'</span>'
         +'<span class="xv-pc" style="background:'+(p.color||'var(--accent)')+'"></span>'
         +'<span class="xv-pn">'+esc(p.name)+'</span>'
+        // The prefix is on the header because it is the half of every code in this project you
+        // cannot see from the codes themselves once they all carry it — and because you have to
+        // be able to read the one that was derived for you before deciding to change it.
+        +'<span class="xv-px" title="Code prefix — experiments here are coded '+esc(projPrefix(p))+'_NB20260826. Right-click to change.">'+esc(projPrefix(p))+'</span>'
         // n counts what the filter shows; run counts what is actually running. Printing both
         // under a filter reads as one sentence about one set and is not — "1 experiment · 1
         // running" on the Archived tab meant one archived and one running, a different one.
