@@ -161,6 +161,9 @@ body.lb-rb-closed .rb-pane{display:none;}
 .sec-item.sub .dot{width:6px;height:6px;border-radius:50%;background:var(--text3);}
 .sec-item.sub.active .dot{background:var(--accent);}
 .add-row.sub{margin-left:19px;}
+/* The code prefix is two or three characters, so it gets the width of two or three characters —
+   a full-width box beside the name would read as a second name field. */
+.add-row input.proj-px{flex:0 0 54px;width:54px;text-align:center;text-transform:uppercase;font-family:var(--mono);letter-spacing:.5px;}
 
 .splitter{width:6px;flex-shrink:0;cursor:col-resize;background:var(--border);opacity:.5;transition:opacity .15s,background .15s;touch-action:none;}
 .splitter:hover,.splitter.drag{opacity:1;background:var(--accent);}
@@ -1736,7 +1739,7 @@ var EXTRA_PRESET_SEED={
      calc:{kind:'nbtx',inputs:{donorNames:'NL-DELE1(CTD), DELE1(CTD)-NL',acceptorNames:'HT-HRI',
        acceptorNg:80,ratios:'10, 50',
        donorStock:'100',acceptorStock:'100',carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
-       nPair:4,nDonor:4,nAcceptor:8,nMock:0,nUntr:8,nPairCtrl:8,ctrlRatio:10,
+       nPair:4,nDonor:4,nAcceptor:8,nMock:0,nUntr:8,nPairCtrl:8,ctrlRatio:50,
        ctrlMode:'same amount as in the pair',excess:1.2}},
      // No `pub` here on purpose: nbtx is in CALC_PUB_FULL, so the calculator writes the Methods
      // sentence from the inputs, and the inputs follow the setup. A sentence recorded here would
@@ -2975,12 +2978,12 @@ var PLATE_LAYOUTS=[
   // The plate model has column headers but no row band, so the ratio rides on each block's own
   // label, where plateSummary and Cmd+K can both read it.
   {id:'nbspark96', label:'NanoBRET SPARK 96 — orientation × NL ratio + controls', format:'96',
-   sub:'Rows A–B controls, D–E at NL 1:10, G–H at 1:50, C and F left empty',
+   sub:'Rows A–B controls on the 1:50 mixes, D–E at NL 1:10, G–H at 1:50, C and F left empty',
    build:function(){
      var p=newPlate('96');
      p.title='NanoBRET SPARK — 96-well';
      p.note='Two donors: DELE1(CTD) tagged with NanoLuc at the N terminus (NL-DELE1(CTD)) and at the C terminus (DELE1(CTD)-NL), '
-       +'each read against the HT-HRI acceptor. Rows A and B are the controls: the pair with no HaloTag ligand, untransfected wells, and the pair with no substrate. '
+       +'each read against the HT-HRI acceptor. Rows A and B are the controls: the pair with no HaloTag ligand, untransfected wells, and the pair with no substrate — made at NL 1:50, so they are extra wells on the 1:50 pair mixes rather than conditions of their own (which is what ctrlRatio says). '
        +'Rows D–E are transfected at NL ratio 1:10 and G–H at 1:50 — two donor:acceptor mixes, so the transfection block\'s single '
        +'ratio covers one of them. Rows C and F are empty spacers.';
      // The ids are the experiment's own conditions (p:donor+acceptor, d:donor, a:acceptor) —
@@ -3008,11 +3011,11 @@ var PLATE_LAYOUTS=[
      var _P1='p:'+_D1+'+'+_A+'@10', _P2='p:'+_D2+'+'+_A+'@10';
      var _P1b='p:'+_D1+'+'+_A+'@50', _P2b='p:'+_D2+'+'+_A+'@50';
      var B=[
-       [[0],    0, 3,_P1,      _D1+' + '+_A,'noLig'],
-       [[1],    0, 3,_P2,      _D2+' + '+_A,'noLig'],
+       [[0],    0, 3,_P1b,     _D1+' + '+_A,'noLig'],
+       [[1],    0, 3,_P2b,     _D2+' + '+_A,'noLig'],
        [[0,1],  4, 7,'untr',   'Untransfected',null],
-       [[0],    8,11,_P1,      _D1+' + '+_A,'noSub'],
-       [[1],    8,11,_P2,      _D2+' + '+_A,'noSub'],
+       [[0],    8,11,_P1b,     _D1+' + '+_A,'noSub'],
+       [[1],    8,11,_P2b,     _D2+' + '+_A,'noSub'],
        [[3],    0, 3,'d:'+_D1+'@10','NL 1:10 · '+_D1,null],
        [[3],    4, 7,'d:'+_D2+'@10','NL 1:10 · '+_D2,null],
        [[3],    8,11,'a:'+_A,       _A+' only',null],
@@ -3020,7 +3023,7 @@ var PLATE_LAYOUTS=[
        [[4],    4, 7,_P2,     'NL 1:10 · '+_D2+' + '+_A,null],
        [[6],    0, 3,'d:'+_D1+'@50','NL 1:50 · '+_D1,null],
        [[6],    4, 7,'d:'+_D2+'@50','NL 1:50 · '+_D2,null],
-       [[6],    8,11,'untr',        'Untransfected',null],
+       [[6],    8,11,'a:'+_A,       _A+' only',null],
        [[7],    0, 3,_P1b,    'NL 1:50 · '+_D1+' + '+_A,null],
        [[7],    4, 7,_P2b,    'NL 1:50 · '+_D2+' + '+_A,null]];
      B.forEach(function(b,bi){
@@ -3028,6 +3031,8 @@ var PLATE_LAYOUTS=[
        b[0].forEach(function(r){ for(var c=b[1];c<=b[2];c++){
          var w={typeId:b[3],groupId:gid}; if(b[5]) w[b[5]]=true; p.wells[wellIdOf(r,c)]=w; } });
      });
+     // The acceptor-only control is 8 wells and sits at the right-hand end of both bands (D and G),
+     // which is why nAcceptor is 8 and untransfected appears once, as the 8 wells of A5–B8.
      // C and F are spacers, and the right-hand end of E and H holds nothing. Marking them says
      // "nothing goes here", which an untouched well does not.
      [2,5].forEach(function(r){ for(var c=0;c<12;c++) p.wells[wellIdOf(r,c)]={typeId:'blank'}; });
@@ -4293,7 +4298,7 @@ function seedPresets(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV6;
+  var upgrade=!LB.data._presetV7;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && cur._seedSig!==_presetSig(cur);
@@ -4307,7 +4312,7 @@ function seedPresets(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV6=true;
+  if(upgrade) LB.data._presetV7=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -4737,7 +4742,7 @@ function renderSections(){
       if(open){ (p.sections||[]).forEach(function(sc){ h+=secLeaf({kind:'expsec',projectId:p.id,sectionId:sc.id}, sc.name, null, "delSection('"+p.id+"','"+sc.id+"')", "ctxFolder(event,'"+p.id+"','"+sc.id+"')"); });
         h+='<div class="add-row sub"><input id="new-sec-'+p.id+'" placeholder="New folder…" autocomplete="off" onkeydown="if(event.key===\'Enter\')addSection(\''+p.id+'\')"><button onclick="addSection(\''+p.id+'\')">+</button></div>'; }
     });
-    h+='<div class="add-row"><input id="new-proj" placeholder="New project…" autocomplete="off" onkeydown="if(event.key===\'Enter\')addProject()"><button onclick="addProject()">+</button></div>';
+    h+='<div class="add-row"><input id="new-proj" placeholder="New project…" autocomplete="off" oninput="_projPxHint()" onkeydown="if(event.key===\'Enter\')addProject()"><input id="new-proj-px" class="proj-px" placeholder="PX" maxlength="4" autocomplete="off" spellcheck="false" title="Code prefix — experiments here are coded PX_NB20260824. Editable later." onkeydown="if(event.key===\'Enter\')addProject()"><button onclick="addProject()">+</button></div>';
   }
   if(surf==='journal'){
     // Standalone lists the three surfaces at the top, so the day is always one click away.
@@ -4756,7 +4761,72 @@ function renderSections(){
   host.innerHTML=h;
   return !!h;
 }
-function addProject(){ var i=el('new-proj'); var n=(i.value||'').trim(); if(!n) return; var p={id:uid(),name:n,created:Date.now(),color:PROJ_COLORS[LB.data.projects.length%PROJ_COLORS.length],sections:[]}; LB.data.projects.push(p); EXPANDED[p.id]=true; save(); renderSections(); }
+// ── The project prefix ─────────────────────────────────────────────────────────────────────
+// An experiment code says what it is and when (NB20260824); the prefix says whose work it is
+// (SP_NB20260824). Two letters by default because that is what a project acronym compresses to
+// and what fits in the margin of a printed sheet — but it is a field, not a rule, so a project
+// that needs three gets three.
+//
+// It is derived, never demanded: a project created without touching the box still gets one, so
+// codes are prefixed from the first experiment rather than from whenever someone remembers.
+function _normPrefix(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4); }
+function _prefixDefault(name){
+  var w=String(name||'').trim().split(/[\s_\-/]+/).filter(Boolean);
+  var px = (w.length>1) ? (w[0].charAt(0)+w[1].charAt(0)) : (w[0]||'').slice(0,2);
+  return _normPrefix(px) || 'PR';
+}
+function projPrefix(p){ return _normPrefix(p&&p.prefix) || _prefixDefault(p&&p.name); }
+// Live hint while you type the name. It fills the placeholder, not the value: a prefix you typed
+// is yours and must not be overwritten by the next keystroke in the name field.
+function _projPxHint(){
+  var n=el('new-proj'), x=el('new-proj-px'); if(!n||!x) return;
+  x.placeholder=_prefixDefault(n.value)||'PX';
+}
+// A code carries its project's prefix once. Anything already prefixed keeps its own — a code you
+// typed by hand is a code you meant.
+function _applyPrefix(code, px){
+  var c=String(code||'').trim(); if(!c||!px) return c;
+  return /^[A-Z0-9]{1,4}_/.test(c) ? c : (px+'_'+c);
+}
+function addProject(){ var i=el('new-proj'); var n=(i.value||'').trim(); if(!n) return;
+  var xi=el('new-proj-px'); var px=_normPrefix(xi&&xi.value)||_prefixDefault(n);
+  var p={id:uid(),name:n,prefix:px,created:Date.now(),color:PROJ_COLORS[LB.data.projects.length%PROJ_COLORS.length],sections:[]};
+  LB.data.projects.push(p); EXPANDED[p.id]=true; if(xi){ xi.value=''; xi.placeholder='PX'; }
+  save(); renderSections(); }
+// Changing it re-codes the experiments already in the project — that is the point of asking for
+// it, and a project whose old and new codes both survive is a project you cannot search. It is
+// still a confirmation, with the count and a worked example, because a code is an identifier
+// somebody has written on a plate, a tube and a file name.
+function setProjectPrefix(id){
+  var p=projById(id); if(!p) return;
+  var cur=projPrefix(p);
+  lbPrompt('Code prefix for '+(p.name||'this project'), cur).then(function(v){
+    if(v==null) return;
+    var px=_normPrefix(v);
+    if(!px){ toast('A prefix is letters and digits — nothing was changed.'); return; }
+    if(px===cur){ return; }
+    var exps=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
+      .filter(function(e){ return e.projectId===id && isCoded(e) && e.code; });
+    var re=new RegExp('^'+cur+'_');
+    var hits=exps.filter(function(e){ return re.test(e.code) || !/^[A-Z0-9]{1,4}_/.test(e.code); });
+    function commit(){
+      hits.forEach(function(e){
+        e.code = re.test(e.code) ? e.code.replace(re, px+'_') : (px+'_'+e.code);
+        e.updated=Date.now();
+      });
+      p.prefix=px; save(); renderAll();
+      toast(hits.length ? (hits.length+' code'+(hits.length===1?'':'s')+' renamed to '+px+'_…') : ('Prefix set to '+px));
+    }
+    if(!hits.length){ commit(); return; }
+    var ex=hits[0];
+    var before=ex.code, after=(re.test(before)?before.replace(re,px+'_'):(px+'_'+before));
+    lbConfirm('<b>'+hits.length+'</b> experiment'+(hits.length===1?'':'s')+' in <b>'+esc(p.name||'this project')
+      +'</b> will be re-coded — <code>'+esc(before)+'</code> becomes <code>'+esc(after)+'</code>.<br><br>'
+      +'<span class="cc-dim">The code is what is written on the plate and the file names, so change it knowing that the old one stops matching.</span>',
+      {title:'Change the prefix', ok:'Rename '+hits.length+' code'+(hits.length===1?'':'s'), html:true})
+      .then(function(ok){ if(ok) commit(); });
+  });
+}
 function delProject(id){ var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===id;});
   lbConfirm('Delete this project'+(exps.length?(' and its '+exps.length+' item(s)'):'')+'?',{danger:true,title:'Delete project'}).then(function(ok){ if(!ok) return;
     exps.forEach(function(k){ delete LB.data.experiments[k]; });
@@ -4796,9 +4866,78 @@ function blockFinder(expId,blockId){
   var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0];
   return b?{exp:e,block:b}:null;
 }
-function setBlockDone(expId,blockId,done,silent){
+// Ticking a whole step ticks what is inside it. A step you marked completed cannot contain a
+// sub-step you did not do, and leaving the little boxes and the protocol ticks empty made a
+// finished block read as half-finished everywhere either is shown — the block header's
+// "2/7 steps", the checklist, the PDF.
+//
+// Only the ones this filled in are recorded (b.autoTicked), so reopening the step undoes exactly
+// those and leaves the ones you ticked yourself alone. A tick is evidence of what you did; the
+// rule everywhere else in this file is that a recorded fact is never silently rewritten.
+function _blkChecklist(html, fn){
+  if(!html || html.indexOf('lb-check')<0) return null;
+  try{
+    var d=document.createElement('div'); d.innerHTML=html;
+    var lis=d.querySelectorAll('ul.lb-check > li, ul.lb-check ul > li');
+    if(!lis.length) return null;
+    return fn(lis) ? d.innerHTML : null;
+  }catch(e){ return null; }
+}
+function _protoStepIds(b){
+  var out=[];
+  ((b.proto&&b.proto.body)||[]).forEach(function(x){
+    if(x.t==='steps') (x.items||[]).forEach(function(it){ if(it&&it.id) out.push(it.id); }); });
+  return out;
+}
+// A protocol block's html is a cache refreshBuiltFromProto rebuilds, so its sub-steps are the
+// stepDone ticks and writing into the html would be thrown away on the next render. A preset
+// block is the other way round: its html IS the block, and its sub-steps are the checkboxes in
+// it. One branch each, never both.
+function _fillSubSteps(b,on){
+  if(on){
+    var auto=b.autoTicked||{}, touched=false;
+    if(b.proto){
+      auto.steps=auto.steps||{}; b.stepDone=b.stepDone||{};
+      _protoStepIds(b).forEach(function(sid){
+        if(!b.stepDone[sid]){ b.stepDone[sid]=true; auto.steps[sid]=1; touched=true; } });
+      if(touched) refreshProtoHtml(b);
+    } else {
+      var idx=[];
+      var h=_blkChecklist(b.html,function(lis){
+        var ch=false;
+        for(var i=0;i<lis.length;i++) if(!lis[i].classList.contains('done')){ lis[i].classList.add('done'); idx.push(i); ch=true; }
+        return ch;
+      });
+      if(h!=null){ b.html=h; auto.checks=(auto.checks||[]).concat(idx); touched=true; }
+    }
+    if(touched) b.autoTicked=auto;
+    return;
+  }
+  var A=b.autoTicked; if(!A) return;
+  if(b.proto){
+    Object.keys(A.steps||{}).forEach(function(sid){ if(b.stepDone) delete b.stepDone[sid]; });
+    refreshProtoHtml(b);
+  } else if((A.checks||[]).length){
+    var set={}; A.checks.forEach(function(i){ set[i]=1; });
+    var h2=_blkChecklist(b.html,function(lis){
+      var ch=false;
+      for(var i=0;i<lis.length;i++) if(set[i] && lis[i].classList.contains('done')){
+        lis[i].classList.remove('done');
+        if(!lis[i].className) lis[i].removeAttribute('class');   // an empty class= is noise in the stored html
+        ch=true; }
+      return ch;
+    });
+    if(h2!=null) b.html=h2;
+  }
+  delete b.autoTicked;
+}
+// fromChecklist: the boxes are already the source of the change, so filling them in from the
+// step would be the same edit twice — and it would rewrite the block's html under the caret of
+// whoever just clicked one.
+function setBlockDone(expId,blockId,done,silent,fromChecklist){
   var f=blockFinder(expId,blockId); if(!f) return;
   f.block.done=!!done; f.block.completedAt=done?Date.now():null;
+  if(!fromChecklist) _fillSubSteps(f.block,!!done);
   syncExpStatus(f.exp); f.exp.updated=Date.now(); save();
   if(!silent) renderAll();
   if(done && !silent) _offerSlip(expId,blockId);
@@ -4914,7 +5053,7 @@ function startWaitTimer(expId,blockId){
   _timerWake(true); renderTimers();
 }
 function expOverdue(e){
-  if(!e || expArchived(e) || e.status==='abandoned' || e.status==='paused') return null;
+  if(!e || expClosed(e)) return null;
   var T=todayStr(), late=(e.blocks||[]).filter(function(b){ return b.date && b.date<T && !b.done; });
   if(!late.length) return null;
   late.sort(function(a,b){ return (a.date||'').localeCompare(b.date||''); });
@@ -4939,6 +5078,12 @@ var EXP_DECIDED={paused:1,abandoned:1,done:1};
 // Archived is not a status: a finished experiment and an abandoned one are both worth filing
 // away, and both keep whatever they ended as. It only means "stop putting this in front of me".
 function expArchived(e){ return !!(e && e.archived); }
+// Closed = it has ended, however it ended. done/paused/abandoned are all decisions someone made
+// (EXP_DECIDED), and every one of them means "stop scheduling work for this". Archiving used to
+// be the only thing that stopped the nagging, so an experiment marked Completed from the status
+// dropdown — without archiving it — went on pushing its unticked steps into tomorrow's
+// carry-over for three weeks.
+function expClosed(e){ return !!(e && (e.archived || EXP_DECIDED[e.status])); }
 // Live = still expected to produce work. The single predicate every time-based view asks.
 function expLive(e){ return isCoded(e) && !expArchived(e) && e.status==='ongoing'; }
 function syncExpStatus(e){
@@ -4983,7 +5128,7 @@ var CARRY_LOOKBACK_DAYS=21;
 function carryoverForDate(D){
   var byExp={}, order=[], floor=addDays(D,-CARRY_LOOKBACK_DAYS);
   Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
-    if(expArchived(e)) return;   // a closed experiment stops nagging the moment you close it
+    if(expClosed(e)) return;     // a closed experiment stops nagging the moment you close it
     (e.blocks||[]).forEach(function(b){
       if(b.date && b.date<D && b.date>=floor && !b.done && !b.carryDismissed){
         if(!byExp[e.id]){ byExp[e.id]={exp:e,blocks:[]}; order.push(e.id); }
@@ -5819,7 +5964,11 @@ function nmProtoStages(p,i){
 }
 function nmProtoOff(p,i){ return (p.off!=null)?p.off:((PROTO_OFFSET[p.id]!=null)?PROTO_OFFSET[p.id]:i); }
 function nmUpdateCode(){ var key=el('nm-type').value, type=presetBase(key), poi=(el('nm-poi').value||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,''), d=dateCompact(el('nm-date').value);
-  el('nm-code').value = (poi && type==='D2B') ? (poi+'_'+type+'_'+d) : (type+d+(poi?('_'+poi):'')); }
+  var base = (poi && type==='D2B') ? (poi+'_'+type+'_'+d) : (type+d+(poi?('_'+poi):''));
+  // The project the entry is being created in owns the prefix, so the code is right before the
+  // field is ever looked at — and it stays editable, like the rest of it.
+  var pr=projById(SEL.node&&SEL.node.projectId);
+  el('nm-code').value = pr ? (projPrefix(pr)+'_'+base) : base; }
 // Live preview of the preset's own day-blocks (+ any extra protocols).
 function nmPreview(){ var host=el('nm-preview'); if(!host) return;
   var key=el('nm-type').value, tpl=LB.data.presets[key]||{blocks:[]}; var start=el('nm-date').value||todayStr();
@@ -5879,7 +6028,10 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   var startDate=el('nm-date').value||todayStr();
   var type=presetBase(key);
   var title=(el('nm-title').value||'').trim()||(isBuiltinPreset(key)?semanticExperimentTitle(type):(tpl.title||'').trim());
-  var code=(el('nm-code').value||'').trim();
+  // Typed over by hand, a code can come back without its project's prefix. Put it back rather
+  // than filing one experiment under a code the rest of the project does not share.
+  var _pr=projById(SEL.node.projectId);
+  var code=_applyPrefix((el('nm-code').value||'').trim(), _pr?projPrefix(_pr):'');
   var protos=NM_PROTOS.slice();
   // Instantiate the preset's own blocks (day structure + live calculators + text).
   var blocks=(tpl.blocks||[]).map(function(b){ var o={id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html, done:false, completedAt:null}; if(b.pub) o.pub=b.pub; if(b.waitMin) o.waitMin=b.waitMin; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; });
@@ -6250,7 +6402,7 @@ function renderExperiments(host, qOnly){
     +'<input class="xv-q" id="xv-q" placeholder="Search code, title or type…" value="'+esc(XV.q)+'" oninput="xvSetQ(this.value)" autocomplete="off">'
     +'<div class="xv-filters">'+f.map(function(x){ return '<button class="xv-f'+(XV.filter===x?' on':'')+'" onclick="xvSetFilter(\''+x+'\')">'+flbl[x]+'</button>'; }).join('')+'</div>'
     +'<button class="xv-f" title="Report across experiments — project or date range" onclick="openReport()">Report</button>'
-    +'<div class="add-row xv-newproj"><input id="new-proj" placeholder="New project…" autocomplete="off" onkeydown="if(event.key===\'Enter\')addProject()"><button onclick="addProject()">+</button></div>'
+    +'<div class="add-row xv-newproj"><input id="new-proj" placeholder="New project…" autocomplete="off" oninput="_projPxHint()" onkeydown="if(event.key===\'Enter\')addProject()"><input id="new-proj-px" class="proj-px" placeholder="PX" maxlength="4" autocomplete="off" spellcheck="false" title="Code prefix — experiments here are coded PX_NB20260824. Editable later." onkeydown="if(event.key===\'Enter\')addProject()"><button onclick="addProject()">+</button></div>'
     +'</div>'+body+'</div>';
   if(qOnly){ var i=el('xv-q'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } }
   renderDockPanels();
@@ -7286,6 +7438,7 @@ function wkAddKey(ev,D){ if(ev.key==='Enter'){ addPlannerTask(D, ev.target.value
 function wkOverdue(beforeD){
   var out=[], floor=addDays(beforeD,-CARRY_LOOKBACK_DAYS);
   Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
+    if(expClosed(e)) return;     // same rule as carry-over: an ended experiment owes nothing
     (e.blocks||[]).forEach(function(b){
       if(b.date && b.date<beforeD && b.date>=floor && !b.done && !b.carryDismissed) out.push({exp:e,block:b});
     });
@@ -7886,7 +8039,7 @@ function _checklistDoneSync(ed){
   var all=true; for(var i=0;i<lis.length;i++) if(!lis[i].classList.contains('done')){ all=false; break; }
   var f=blockFinder(expId,blkId); if(!f || !!f.block.done===all) return;
   // Re-render so the step leaves (or rejoins) the carry-over list immediately.
-  setBlockDone(expId,blkId,all);
+  setBlockDone(expId,blkId,all,false,true);
 }
 document.addEventListener('click',function(e){
   // Checklist: click the checkbox zone (left marker area) of a lb-check <li>
@@ -8612,6 +8765,7 @@ function ctxProject(ev,id){
   ctxAt(ev,[
   {label:'New folder',fn:function(){ EXPANDED[id]=true; XV.open[id]=true; renderAll(); var f=el('new-sec-'+id); if(f) f.focus(); }},
   {label:'Rename',fn:function(){renameProject(id);}},
+  {label:'Code prefix…',fn:function(){setProjectPrefix(id);}},
   {label:'Change colour',fn:function(){cycleProjColor(id);}},
   {sep:true},
   (i>0   ? {label:'Move up',fn:function(){moveProject(id,-1);}}   : {sep:true}),

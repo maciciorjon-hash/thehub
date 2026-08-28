@@ -375,9 +375,9 @@ blocks)` hook for structural changes — CTG uses it to drop the readout you did
 
 **Templates** live in `PRESET_SEED` and now carry `{{placeholders}}` plus `ul.lb-check`
 checklists (which is what drives the existing carry-over logic). The seed version flag was
-bumped `_presetV2` → `_presetV3` → `_presetV4` → `_presetV5` → **`_presetV6`** (2026-08-25, `pub` Methods sentences, the closing analysis clause and the `w` waits), so `seedPresets()` re-seeds all built-in presets once
+bumped `_presetV2` → `_presetV3` → `_presetV4` → `_presetV5` → `_presetV6` → **`_presetV7`** (2026-08-28, the SPARK preset's `ctrlRatio`), so `seedPresets()` re-seeds all built-in presets once
 per browser. Custom/user-added presets are untouched; hand-edits to built-in presets made
-before this change are overwritten. **Bump to `_presetV7` if you edit `PRESET_SEED` again.**
+before this change are overwritten. **Bump to `_presetV8` if you edit `PRESET_SEED` again.**
 
 **Snooze** — `snoozeBlock(expId, blockId, n)` pushes a step **and every later-dated step in the
 same experiment** forward n days, then `recomputeDayOffsets`. Buttons in `blkCardHtml` (needs
@@ -2064,6 +2064,63 @@ never been enabled and every Labbook image stayed on the device that added it. T
 exists (that probe returns **403**, which is what an unauthenticated read of a real bucket
 looks like). New attachments upload; **older ones do not migrate on their own** — see Open
 items. The Sync panel keeps saying what is true rather than implying more.
+
+## The SPARK plate, opening on Home, and the project prefix (2026-08-28)
+
+**`nbspark96` had the right shape and the wrong conditions.** Jon's photographed lid numbers the
+same fifteen blocks the layout draws, so the geometry was never in question — what it corrected
+was which mix is in three of them. The controls in rows A and B are the **1:50** pair mixes
+(conditions 5 and 7), not the 1:10 ones, and G9–12 is the **acceptor-only** control (9), not a
+second untransfected block. Two of those were provable from the calculator's own inputs rather
+than from the photo: `nAcceptor:8` only adds up if acceptor-only sits at the right-hand end of
+*both* bands, and `nUntr:8` only adds up if untransfected appears once, as A5–B8. `ctrlRatio`
+moved 10 → 50 to match, which is what puts the +8 control wells on the mixes that hold them.
+
+The numbering itself needed no work: `_nbtxConditions` already walks ratio → donor → pair →
+donor-only, then acceptor, then untransfected, which is exactly 1–10 as drawn.
+
+The layout is a template, so **an experiment already created keeps the plate it was created
+with** — re-apply it from *Start from a layout…* to take the correction.
+
+**dHUB opens on Home.** Two things were putting you back where you left off: `hub_ws_section` in
+`localStorage`, and the hash `openApp` writes. The section is simply gone (`_wsSection` starts at
+`'home'` and is tracked for the life of the page). The hash is the interesting one — it has to
+keep working for a real link (`dHUB.html#protocols` from a phone home screen) while not
+restoring the app you happened to close inside. `_markOwnHash()` records in **sessionStorage**
+that this tab wrote the hash itself; `_openFromHash` opens the app only when that mark is absent,
+which is true in a tab opened from a link or a bookmark and false in one that navigated here. It
+also learned `#cells`, which it had never handled.
+
+**A completed experiment stops asking for work.** `carryoverForDate` excluded only *archived*
+experiments, so one marked Completed from the status dropdown — without archiving — went on
+pushing its unticked steps into tomorrow's carry-over for the full 21 days. `expClosed(e)` is
+archived **or** any `EXP_DECIDED` status (done · paused · abandoned), and it is now the predicate
+in `carryoverForDate`, `expOverdue` and `wkOverdue` — the last of which filtered nothing at all,
+so the week planner and the day view disagreed about what was owed.
+
+**Ticking a step ticks what is inside it.** A step marked completed cannot contain a sub-step you
+did not do, and the empty boxes made a finished block read as half-finished in the block header's
+"2/7 steps", in the checklist and in the PDF. `_fillSubSteps(b,on)` has one branch per kind,
+never both: a protocol block's sub-steps are its `stepDone` ticks (its html is a cache
+`refreshProtoHtml` rebuilds, so writing into it would be discarded on the next render), and a
+preset block's are the `ul.lb-check` boxes in its html, which *is* the block. Only what it filled
+in is recorded in `b.autoTicked`, so reopening the step undoes exactly those and leaves the ones
+you ticked yourself — a tick is evidence. `_checklistDoneSync` passes `fromChecklist` so the
+boxes-to-step direction does not rewrite the html under the caret of whoever just clicked one.
+
+**A project has a code prefix.** `SP_NB20260826` says whose work it is; `NB20260826` only says
+what and when. Two letters by default, derived from the name (`_prefixDefault`: initials of the
+first two words, or the first two letters), so a project created without touching the box is
+still prefixed from its first experiment rather than from whenever someone remembers. The box is
+beside the name in both project add-rows and its placeholder tracks what you type; a prefix you
+typed is never overwritten by the next keystroke in the name. `nmUpdateCode` builds the code with
+it and `createExperiment` puts it back on a code typed over by hand.
+
+Changing it later (`setProjectPrefix`, on the project context menu) **re-codes the experiments
+already in the project** — a project whose old and new codes both survive is a project you cannot
+search — but as a confirmation carrying the count and a worked example, because the code is what
+is written on the plate, the tube and the file names. A code that already carries some other
+prefix is left alone.
 
 ## Current state
 

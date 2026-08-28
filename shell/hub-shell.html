@@ -1411,6 +1411,7 @@ function openCells(tab, item, context){
   requestAnimationFrame(function(){ requestAnimationFrame(function(){ view.style.opacity='1'; }); });
   setTimeout(function(){ if(currentApp==='cells') enterAppNav('cells'); }, 0);
   try {
+    _markOwnHash();
     if (entering) history.pushState({_hubApp:'cells'}, '', '#cells');
     else history.replaceState({_hubApp:'cells'}, '', '#cells');
   } catch(e){}
@@ -1479,6 +1480,7 @@ function openApp(id, tab, item, context) {
   // you are already in replaces rather than stacks, or backToHub's single history.back()
   // cannot get you out.
   try {
+    _markOwnHash();
     if (_wasIn === id) history.replaceState({_hubApp: id}, '', '#' + id);
     else history.pushState({_hubApp: id}, '', '#' + id);
   } catch(e) {}
@@ -1552,9 +1554,20 @@ function initHub() {
 // rather than the hub home. Deliberately not gated on the unlock words — those are a
 // discovery gimmick, not access control, and the link has to work on a phone that isn't
 // signed in as admin.
+// A hash this tab wrote itself is not a deep link — it is the app you happened to be in when
+// you closed the Hub, and landing back inside it is what stopped dHUB opening on Home. Loading
+// the Hub now always lands on Home; a link someone followed (dHUB.html#protocols from a
+// shortcut, a phone home screen, another page) still opens its app. sessionStorage is what
+// separates the two: it is empty in a tab opened from a link or a bookmark, and set in one that
+// navigated here itself — so a reload after opening an app goes Home too, deliberately.
+function _markOwnHash(){ try{ sessionStorage.setItem('hub_own_hash','1'); }catch(e){} }
+function _ownHash(){ try{ return sessionStorage.getItem('hub_own_hash')==='1'; }catch(e){ return false; } }
 function _openFromHash() {
   var id = (location.hash || '').replace(/^#/, '');
-  if (!id || !APP_INFO[id] || !document.getElementById('view-' + id)) return;
+  if (!id) return;
+  if (_ownHash()) { try { history.replaceState({}, '', location.pathname + location.search); } catch(e){} return; }
+  if (id === 'cells') { setTimeout(function(){ try { openCells(null); } catch(e) {} }, 60); return; }
+  if (!APP_INFO[id] || !document.getElementById('view-' + id)) return;
   setTimeout(function() { try { openApp(id); } catch(e) {} }, 60);
 }
 document.addEventListener('DOMContentLoaded', initHub);
@@ -2317,7 +2330,11 @@ function _wsIcon(name){
   return '';
 }
 var WS_TABS = ['home','exps','journal','archive','cells'];   // the phone's bottom bar
-var _wsSection = (function(){ try{ return localStorage.getItem('hub_ws_section') || 'home'; }catch(e){ return 'home'; } })();
+// dHUB opens on Home, every time. The first thing you want on opening the Hub is the summary
+// of what is running — not whichever landing you happened to leave behind last week, which is
+// what restoring this from localStorage did. The section is still tracked for the life of the
+// page so re-renders (auth resolving, a landing refreshing) stay where you are.
+var _wsSection = 'home';
 
 function renderRail(){
   var rail=document.getElementById('ws-rail'), tabs=document.getElementById('ws-tabs');
@@ -2349,7 +2366,6 @@ function wsGo(id){
   var n=WS_NAV.filter(function(x){ return x.id===id; })[0];
   if(!n){ if(id==='labbook'){ return wsGo('journal'); } n=WS_NAV.filter(function(x){ return x.id==='home'; })[0]; if(!n) return; id='home'; }
   _wsSection=id;
-  try{ localStorage.setItem('hub_ws_section', id); }catch(e){}
   renderRail();
   if(n.kind==='labbook'){
     openApp('labbook');
