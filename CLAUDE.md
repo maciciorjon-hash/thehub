@@ -2195,6 +2195,54 @@ cap, not `1 1 auto`) — the plate you are painting was the thing being cut off.
 line is `.pl-howto`, not `.pl-hint`: that class already styles the hint in the modal title, and a
 second rule for it restyled the header.
 
+## One block, one number — and the text that has to match the conditions (2026-08-28)
+
+Four reports from Jon on the SPARK map, and they share a root: the plate model knew things the
+renderers did not.
+
+**A number repeated per well is the same fact written twelve times.** The preview printed
+`5 5 5 5 10 10 10 10 5 5 5 5` across row A. **`plateNumberBoxes(p)`** derives maximal rectangles
+of identical condition *and flags* straight from the wells — not from a stored `groupId`, so a
+plate drawn by hand, from a layout, or by Rebuild all read the same; a map whose groups were
+never set used to get nothing merged at all. One number, once, over the wells that hold it, in
+tabular mono at **one size across the whole plate** (`_plNoFs`) so the map reads as one system
+rather than blocks competing by how many wells they span. The flags are part of the key on
+purpose: a −ligand well holds its pair's mix but is not the same condition, and merging them
+would draw one block over two.
+
+**The numbers were never centred at the size that needs them.** `.pp-w` only got its centring
+flex from `.pp-grid.txt`, added at `wpx>=26` — so on 96 and 384, exactly where numbering earns
+its keep, every figure sat wherever the box put it.
+
+**The PNG had no numbers at all.** `plateToPNG` printed well labels and block *names*: the
+picture you put on a slide was the one artefact that did not carry the numbering, while the
+app's own preview did. It now draws the same blocks, the same one number, the control caption
+under it, and a legend of `1 · name`.
+
+**A −ligand control could not be painted.** Flags are right as flags — the well holds the pair's
+mix with something left out at the read — but that also meant you picked a condition, painted
+the block, and then had to remember a different section to toggle the flag on a selection.
+`PL.flags` is a **brush**: switch −ligand on, paint the control wells, switch it off. The
+selection toggles stay, for fixing wells already painted. And the preview marks them at last —
+same hatch and ring the editor already used, plus the label under the block's number, because a
+control block is otherwise the same colour and the same number as its pair.
+
+**A preset's text is a snapshot, and presets get corrected.** Jon's run still said *"the NanoLuc
+construct at 1:50 of it (1.6 ng)"* — written when the preset assumed one ratio. His experiment
+has two, so the prose named one and silently dropped the other. The preset was fixed long ago by
+taking the number out of the prose entirely (the calculator owns it, and the calculator follows
+the setup); what was missing was any route from that fix to an experiment already created.
+`expPresetStale(e)` finds blocks whose words are still the preset's own — `fillSetup(b.tpl.html,
+e.setup) === b.html`, the same proof `_seedUnedited` uses — matched to the current preset **by
+the template's title, not by position**, since a snoozed or inserted step moves the indices.
+`refreshExpPreset` offers them by name and replaces only the prose. **Calculator inputs, ticks
+and notes are never touched**: those are the numbers this run used, and a recorded number is not
+rewritten.
+
+Also, in the editor: shift-click paints the rectangle in Paint mode (it only selected one, so a
+4×2 block was an accurate drag instead of two clicks), and the grid gets the vertical room before
+the layout summary does.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).

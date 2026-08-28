@@ -830,6 +830,10 @@ body.lb-rb-closed .rb-pane{display:none;}
 .pp-grid{display:grid;gap:1px;}
 .pp-w{aspect-ratio:1;border-radius:50%;background:var(--surface3);}
 .pp-w.empty{background:transparent;box-shadow:inset 0 0 0 1px var(--border);}
+/* A control well is its pair's mix with something left out, so it is the same colour and the
+   same number — which made it invisible here. Same two marks the editor already uses. */
+.pp-w.noLig{background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.16) 0 2px,transparent 2px 5px);}
+.pp-w.noSub{box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.3);}
 .pp-note{font-size:var(--fs-2);color:var(--text2);margin:2px 0 8px;line-height:1.45;}
 .pp-cl{font-size:var(--fs-1);font-weight:700;color:var(--text3);text-align:center;overflow:hidden;white-space:nowrap;}
 .pp-gl{display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2;box-shadow:inset 0 0 0 1px rgba(0,0,0,.28);border-radius:var(--r-1);}
@@ -1058,6 +1062,22 @@ body.lb-lean .exh-lean{display:flex;align-items:center;gap:9px;flex-wrap:wrap;ma
 body.lb-lean .exh.open .exh-lean{display:none;}
 .exh-lean b{color:var(--text);font-weight:600;}
 .pp-gl-n span{font-size:var(--fs-6);font-weight:800;letter-spacing:0;}
+/* One number over the block that holds it. No pill behind it: the block's own colour is what
+   says which condition it is, and a white box across the middle hides the wells being described.
+   Tabular figures, because a column of these is read down as much as across. */
+.pp-nb{display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;z-index:2;
+  box-shadow:inset 0 0 0 1.2px rgba(0,0,0,.22);border-radius:var(--r-2);}
+/* Which control it is, under the number it belongs to — the block is otherwise the same colour
+   and the same number as the pair it was made from. */
+.pp-nbf{font-style:normal;font-weight:600;color:#1a1d2e;line-height:1;margin-top:1px;
+  text-shadow:0 0 3px rgba(255,255,255,.85);white-space:nowrap;}
+.pp-nb span,.pp-no{font-family:var(--mono);font-weight:600;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;color:#1a1d2e;line-height:1;
+  text-shadow:0 0 3px rgba(255,255,255,.85),0 0 1px rgba(255,255,255,.95);}
+/* A numbered well centres its own figure. This used to depend on .pp-grid.txt, which is only
+   added at 26px and up — so on 96 and 384, the size where numbering earns its keep, every
+   number sat wherever the box put it. */
+.pp-w.pp-wn{display:flex;align-items:center;justify-content:center;overflow:hidden;}
 .pp-leg-i b{font-family:var(--mono);color:var(--text);margin-right:2px;}
 .cc-no{width:26px;text-align:center;font-family:var(--mono);font-weight:700;color:var(--text2);}
 .cc-mix td,.cc-mix th{vertical-align:top;}
@@ -3188,6 +3208,41 @@ function plateWellColor(p,w){ if(!w) return null; var t=plateTypeById(p,w.typeId
   return (w.shade>0)?_mixWhite(t.color,Math.min(0.85,+w.shade)):t.color; }
 // A block of wells sharing one label, written once in the middle (compound 125 across B2–C12)
 // rather than repeated in every well. `plate.groups[gid].label`, wells carry `groupId`.
+// Contiguous wells holding the same condition are one block, and one block gets one number.
+// Printing "5 5 5 5" across four wells is the same fact written four times — which is what made
+// a numbered 96-well map unreadable at preview size, and it only gets worse on 384.
+//
+// The rectangles are derived from the wells themselves, not from a stored groupId, so a plate
+// drawn by hand, from a layout, or by Rebuild all read the same — a map whose groups were never
+// set used to fall back to one number per well with nothing merged.
+//
+// The flags are part of the key: a −ligand well holds the same mix as its pair but is not the
+// same condition on the bench, and merging them would draw one block over two.
+function plateNumberBoxes(p){
+  if(!p||!plateHasNos(p)) return [];
+  var d=plateDims(p), seen={}, out=[];
+  function key(r,c){ var w=(p.wells||{})[wellIdOf(r,c)];
+    if(!w||!w.typeId) return null;
+    var t=plateTypeById(p,w.typeId); if(!t||t.no==null) return null;
+    return w.typeId+'|'+plateWellFlags(w); }
+  for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){
+    if(seen[r+':'+c]) continue;
+    var k=key(r,c); if(!k) continue;
+    // Widen along the row first, then take whole rows below it — the shape every plate is
+    // actually laid out in, and the one a person reads as a block.
+    var c2=c; while(c2+1<d.c && !seen[r+':'+(c2+1)] && key(r,c2+1)===k) c2++;
+    var r2=r, more=true;
+    while(more && r2+1<d.r){
+      for(var cc=c;cc<=c2;cc++){ if(seen[(r2+1)+':'+cc] || key(r2+1,cc)!==k){ more=false; break; } }
+      if(more) r2++;
+    }
+    for(var rr=r;rr<=r2;rr++) for(var c3=c;c3<=c2;c3++) seen[rr+':'+c3]=1;
+    var w0=(p.wells||{})[wellIdOf(r,c)], t0=plateTypeById(p,w0.typeId);
+    out.push({r1:r,r2:r2,c1:c,c2:c2,no:t0.no,name:t0.name,
+              flags:plateWellFlags(w0),n:(r2-r+1)*(c2-c+1)});
+  }
+  return out;
+}
 function plateGroupBoxes(p){
   if(!p||!p.groups) return [];
   var box={};
@@ -3223,6 +3278,17 @@ function plateWellTip(p,id,w){ if(!w) return id;
   if(w.conc) bits.push(w.conc); if(w.label) bits.push(w.label); if(w.note) bits.push('— '+w.note);
   PLATE_FLAGS.forEach(function(f){ if(w[f.k]) bits.push(f.lbl); });
   return bits.join(' · '); }
+// One size for every number on a plate, so the map reads as one system rather than as blocks
+// competing for attention by how many wells they happen to span. A block only smaller than that
+// shrinks to fit — never the other way round.
+// hasFlag: a control block writes "− ligand" under its number, so the number gives up the room
+// for it. Without that reserve the caption of a one-row block landed on the number of the row
+// below, which is exactly the two rows a NanoBRET plate puts its controls on.
+function _plNoFs(wpx,bw,bh,hasFlag){
+  var n=Math.min(Math.round(wpx*0.95), Math.round(bh*(hasFlag?0.5:0.8)), Math.round(bw*0.8));
+  return Math.max(hasFlag?8:9, n);
+}
+function _plFlagLbl(k){ var f=PLATE_FLAGS.filter(function(x){return x.k===k;})[0]; return f?f.lbl:k; }
 function plateWellFlags(w){ if(!w) return '';
   return PLATE_FLAGS.filter(function(f){ return w[f.k]; }).map(function(f){ return f.k; }).join(' '); }
 function plateUsedTypes(p){ var used={}; Object.keys(p.wells||{}).forEach(function(k){ if(p.wells[k]&&p.wells[k].typeId) used[p.wells[k].typeId]=1; });
@@ -3461,7 +3527,7 @@ function plateToPNG(p,name){
   var d=plateDims(p), W=Math.max(18,Math.round(760/d.c)), HDR=26, PAD=18, S=2;
   var hasCL=plateHasColLabels(p);
   var titleH=(p.title?26:0), clH=hasCL?18:0;
-  var used=plateUsedTypes(p), legH=used.length?30:0;
+  var used=plateUsedTypes(p), legH=used.length?30:0, _nos=plateHasNos(p);
   var cw=PAD*2+HDR+d.c*W, ch=PAD*2+titleH+clH+HDR+d.r*W+legH;
   var cv=document.createElement('canvas');
   cv.width=cw*S; cv.height=ch*S;
@@ -3491,13 +3557,31 @@ function plateToPNG(p,name){
       _plRoundRect(x,wx+1,wy+1,W-2,W-2,Math.min(4,W/6)); x.fill();
       x.strokeStyle=line; x.lineWidth=0.7; x.stroke();
       var vv=(p.values&&p.values.data)?p.values.data[id]:null;
+      // A numbered plate is drawn the way the screen draws it: one number over the block that
+      // holds it, below. The PNG used to print neither the numbers nor anything else useful —
+      // it printed the well labels and the block *names*, so the picture you put on a slide had
+      // no numbers on it at all while the app's own preview was numbered.
+      if(_nos){ if(vv!=null && W>=22){ x.fillStyle=ink; x.font='500 '+Math.max(6,Math.round(W/4.2))+'px ui-sans-serif,system-ui,sans-serif';
+          x.fillText(_plFit(x,String(_plTrim(vv)),W-4),wx+W/2,wy+W/2); } continue; }
       var txt=(vv!=null)?_plTrim(vv):((w&&w.groupId&&(p.groups||{})[w.groupId])?'':plateWellShort(w));
       if(txt && W>=22){ x.fillStyle=ink; x.font='500 '+Math.max(6,Math.round(W/4.2))+'px ui-sans-serif,system-ui,sans-serif';
         x.fillText(_plFit(x,String(txt),W-4),wx+W/2,wy+W/2); }
     }
   }
+  // Numbered conditions: the block outline and one number, centred, at one size across the whole
+  // plate. The legend underneath says what each number is, which is how the sheet is read.
+  if(_nos) plateNumberBoxes(p).forEach(function(b){
+    var bx=PAD+HDR+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
+    if(b.n>1){ x.strokeStyle='rgba(0,0,0,0.26)'; x.lineWidth=1.1;
+      _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke(); }
+    var fl=b.flags?b.flags.split(' ').map(_plFlagLbl).join(' '):'', nfs=_plNoFs(W,bw,bh,!!fl);
+    x.fillStyle=ink; x.font='600 '+nfs+'px ui-monospace,SFMono-Regular,Menlo,monospace';
+    x.fillText(String(b.no),bx+bw/2,by+bh/2-(fl?bh*0.13:0));
+    if(fl){ x.font='600 '+Math.max(6,Math.round(nfs*0.45))+'px ui-sans-serif,system-ui,sans-serif';
+      x.fillText(_plFit(x,fl,bw-6),bx+bw/2,by+bh/2+bh*0.28); }
+  });
   // Block labels are written once across their wells, exactly as the editor draws them.
-  plateGroupBoxes(p).forEach(function(b){
+  if(!_nos) plateGroupBoxes(p).forEach(function(b){
     var bx=PAD+HDR+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
     x.strokeStyle='rgba(0,0,0,0.28)'; x.lineWidth=1.1;
     _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke();
@@ -3510,8 +3594,9 @@ function plateToPNG(p,name){
     used.forEach(function(t){
       x.fillStyle=t.color; _plRoundRect(x,lx,ly-5,10,10,2); x.fill();
       x.strokeStyle=line; x.lineWidth=0.7; x.stroke();
-      x.fillStyle=faint; x.fillText(t.name,lx+15,ly);
-      lx+=15+x.measureText(t.name).width+14;
+      var lbl=(_nos&&t.no!=null)?(t.no+' · '+t.name):t.name;
+      x.fillStyle=faint; x.fillText(lbl,lx+15,ly);
+      lx+=15+x.measureText(lbl).width+14;
     });
   }
   cv.toBlob(function(bl){
@@ -3877,6 +3962,11 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
   var d=plateDims(p), n=plateCount(p), wpx=PLATE_PREV_WPX[String(p.format)]||21, grid='';
   var showText=wpx>=26, boxes=plateGroupBoxes(p), grouped={};
   boxes.forEach(function(b){ grouped[b.gid]=1; });
+  // A numbered plate draws its own blocks and its own numbers; the named block labels are then
+  // one caption too many across the same wells, and the names are in the legend underneath.
+  var nboxes=plateNumberBoxes(p), covered={};
+  nboxes.forEach(function(b){ if(b.n>1) for(var r=b.r1;r<=b.r2;r++) for(var c=b.c1;c<=b.c2;c++) covered[wellIdOf(r,c)]=1; });
+  if(nboxes.length){ boxes=[]; grouped={}; }
   // Only draw the column headers if they can actually be read at this scale — otherwise the
   // layout summary states them once, properly.
   var hasCL=plateHasColLabels(p)&&wpx>=16;
@@ -3885,8 +3975,24 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
   if(hasCL){ for(var ca=0;ca<d.c;ca++) grid+='<div class="pp-cl" style="grid-row:1;grid-column:'+(ca+1)+'">'+esc((p.colLabels||{})[ca]||'')+'</div>'; }
   for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){ var id=wellIdOf(r,c), w=(p.wells||{})[id];
     var col=plateWellColor(p,w);
-    grid+='<div class="pp-w'+(w?'':' empty')+'" style="grid-row:'+(r+glOff)+';grid-column:'+(c+1)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w))+'">'
-      +((w&&!(w.groupId&&grouped[w.groupId]))?('<span>'+esc(_nos?plateWellNo(p,w):(showText?plateWellShort(w):''))+'</span>'):'')+'</div>'; }
+    var inner=(function(){
+      if(_nos){ // one number per block; a well of its own still gets one, centred in it
+        if(covered[id]) return '';
+        var nn=plateWellNo(p,w); return nn?('<span class="pp-no" style="font-size:'+_plNoFs(wpx,wpx,wpx,false)+'px">'+esc(nn)+'</span>'):''; }
+      if(w&&w.groupId&&grouped[w.groupId]) return '';
+      return showText?('<span>'+esc(plateWellShort(w))+'</span>'):''; })();
+    var wfl=plateWellFlags(w);
+    grid+='<div class="pp-w'+(w?'':' empty')+(_nos?' pp-wn':'')+(wfl?(' '+wfl):'')+'" style="grid-row:'+(r+glOff)+';grid-column:'+(c+1)+';'+(col?'background:'+col:'')+'" title="'+esc(plateWellTip(p,id,w))+'">'
+      +inner+'</div>'; }
+  // One number, once, over the wells that hold it.
+  nboxes.forEach(function(b){ if(b.n<=1) return;
+    var bw=(b.c2-b.c1+1)*wpx, bh=(b.r2-b.r1+1)*wpx;
+    var fs=_plNoFs(wpx,bw,bh,!!b.flags), ffs=Math.max(6,Math.round(fs*0.45));
+    grid+='<div class="pp-nb" style="grid-row:'+(b.r1+glOff)+'/'+(b.r2+glOff+1)+';grid-column:'+(b.c1+1)+'/'+(b.c2+2)+'"'
+      +' title="'+esc(b.no+' · '+b.name+(b.flags?(' · '+b.flags.split(' ').map(_plFlagLbl).join(' · ')):''))+'">'
+      +'<span style="font-size:'+fs+'px">'+esc(String(b.no))+'</span>'
+      +(b.flags?('<em class="pp-nbf" style="font-size:'+ffs+'px">'+esc(b.flags.split(' ').map(_plFlagLbl).join(' '))+'</em>'):'')
+      +'</div>'; });
   // Block labels sit over the same grid cells, so a name spans its wells exactly as drawn.
   // With numbered conditions the block shows its number, big, and the legend underneath says
   // what each number is — which is exactly how the sheet is read at the bench.
@@ -3922,11 +4028,11 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
 
 // ── Plate map editor (modal) ──
 // Live-edits the real plate object; every change is saved as you go (no separate OK/Cancel).
-var PL={key:null,sel:{},anchor:null,type:'compound',mode:'paint',drag:false,dragAdd:true,painted:{}};
+var PL={key:null,sel:{},anchor:null,type:'compound',mode:'paint',drag:false,dragAdd:true,painted:{},flags:{}};
 function plCur(){ return plateOf(PL.key); }
 function plSelIds(){ return Object.keys(PL.sel); }
 function openPlateEditor(key){ var p=plateOf(key); if(!p){ toast('No plate map here yet'); return; }
-  PL.key=key; PL.sel={}; PL.anchor=null; PL.painted={}; PL.mode='paint'; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
+  PL.key=key; PL.sel={}; PL.anchor=null; PL.painted={}; PL.flags={}; PL.mode='paint'; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
   el('plate-modal').classList.add('open'); plRender(); }
 function closePlateEditor(){ el('plate-modal').classList.remove('open'); PL.key=null; PL.sel={}; renderEditor(); }
 function plRender(){ var p=plCur(); if(!p) return; plRenderGrid(); plRenderSide(); plRenderSum(); }
@@ -4025,6 +4131,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'<button class="pl-type pl-type-add" onclick="plAddType()" title="Add a well type">+</button>';
   var quickNames=['dmso','vehicle','control','compound','dose','blank'];
   var quick=plateTypes(p).filter(function(t){var id=String(t.id).toLowerCase(),nm=String(t.name).toLowerCase(); return quickNames.indexOf(id)>=0||/dmso|vehicle|control|compound|dose|blank/.test(nm);}).map(function(t){ return '<button class="pl-btn'+(PL.type===t.id?' on':'')+'" onclick="plSetType(\''+t.id+'\')">'+esc(t.name)+'</button>'; }).join('');
+  var _expFlags=PLATE_FLAGS.filter(function(f){ return (f.types||[]).indexOf((_plExp()||{}).type)>=0; });
   // A field shows its shared value, or "Mixed…" when the selection disagrees.
   function shared(k){ if(!n) return ''; var v=null; for(var i=0;i<n;i++){ var w=(p.wells||{})[ids[i]]||{}; var x=w[k]||'';
       if(v===null) v=x; else if(v!==x) return null; } return v||''; }
@@ -4033,7 +4140,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
   var d=plateDims(p);
   // Two flags rather than two more well types: a "no ligand" well still contains the pair, so
   // folding them into the type list would double every condition and lose which pair it was.
-  var flagsHtml=n?('<div class="pl-flags">'+PLATE_FLAGS.filter(function(f){ return (f.types||[]).indexOf((_plExp()||{}).type)>=0; })
+  var flagsHtml=(n&&_expFlags.length)?('<div class="pl-flags">'+_expFlags
     .map(function(f){ var st=_plFlagState(p,ids,f.k);
       return '<button class="pl-flag'+(st===true?' on':(st===null?' mixed':''))+'" onclick="plToggleFlag(\''+f.k+'\')" title="'+esc(f.title)+'">'+esc(f.lbl)+'</button>'; }).join('')
     +'</div>'):'';
@@ -4070,7 +4177,12 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'</div></div>'
     +'<div class="pl-sec"><div class="pl-sec-t">'+(_nos?'Conditions — pick one, then paint its wells':'Well type')+'</div>'
       +(_nos?'<div class="pl-howto">Click a condition, then drag across the wells it goes in. Shift-click paints a rectangle. Then the next one.</div>':'')
-      +'<div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div></div>'
+      +'<div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div>'
+      +(_expFlags.length?('<div class="pl-sec-t" style="margin-top:9px">Paint these wells as a control</div>'
+        +'<div class="pl-flags">'+_expFlags.map(function(f){
+            return '<button class="pl-flag'+(PL.flags[f.k]?' on':'')+'" onclick="plToggleBrushFlag(\''+f.k+'\')" title="'+esc(f.title)+'">'+esc(f.lbl)+'</button>'; }).join('')
+        +'</div><div class="pl-howto" style="margin:6px 0 0">The same mix with something left out at the read &mdash; it stays that condition\'s number.</div>'):'')
+      +'</div>'
     // Quick types is a shortcut into the same list, and on a numbered plate it is the same list
     // one section higher up with the numbers taken off. Only shown where it still shortens
     // anything.
@@ -4090,8 +4202,17 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
 
 // Selection
 function plSetMode(mode){ PL.mode=mode||'paint'; PL.painted={}; plRenderSide(); }
+// A −ligand well holds the same mix as its pair with something left out at the read, so it is a
+// flag on the condition rather than a condition of its own — which is right, and was also the
+// reason it could not be *painted*. You picked the condition, painted the block, and then had to
+// remember to go to another section and toggle the flag on a selection. It is a painting
+// modifier now: switch it on, paint the control wells, switch it off. Fixing wells already
+// painted still goes through the selection toggles, which is what they are for.
+function plToggleBrushFlag(k){ if(PL.flags[k]) delete PL.flags[k]; else PL.flags[k]=1; plRenderSide(); }
 function plPaintWell(id){ var p=plCur(); if(!p||PL.painted[id]) return; PL.painted[id]=1; PL.sel[id]=1;
-  if(PL.mode==='erase') delete p.wells[id]; else _plWell(p,id).typeId=PL.type;
+  if(PL.mode==='erase') delete p.wells[id];
+  else { var w=_plWell(p,id); w.typeId=PL.type;
+    PLATE_FLAGS.forEach(function(f){ if(PL.flags[f.k]) w[f.k]=true; else delete w[f.k]; }); }
   platePersist(PL.key); }
 // In Paint mode a shift-range paints the rectangle, which is what "Paint" means and what the
 // hint beside the conditions says. It used to only select it, so laying out a 4×2 block was a
@@ -7191,6 +7312,65 @@ function expDeviations(e){
   });
   return out;
 }
+// ── The preset moved on ────────────────────────────────────────────────────────────────────
+// A preset's text is a snapshot taken when the experiment was created, and presets get
+// corrected. Jon's SPARK run still said "the NanoLuc construct at 1:50 of it (1.6 ng)" — written
+// when the preset assumed one ratio. That experiment has two, so the prose named one of them and
+// silently omitted the other. The fix in the preset was to stop writing the number in the prose
+// at all: the calculator owns it and the calculator follows the setup.
+//
+// Only blocks you have not touched are offered. b.tpl is the template text before the setup was
+// substituted into it, so `fillSetup(b.tpl.html, e.setup) === b.html` proves the prose is still
+// the preset's own words and not yours. Same test `_seedUnedited` uses on the presets themselves,
+// and the same line this file draws everywhere: refresh what the app wrote, never what you did.
+//
+// Calculator inputs are deliberately not touched. Those are the numbers this run used, and a
+// recorded number is never rewritten — see the deviation report, which exists to show them.
+function _expBlockUntouched(e,b){
+  if(!b||b.proto||!b.tpl||!b.tpl.html) return false;
+  try{ return fillSetup(b.tpl.html, e.setup||{})===b.html; }catch(_e){ return false; }
+}
+function expPresetStale(e){
+  if(!e||!e.presetKey) return null;
+  var tpl=LB.data.presets[e.presetKey]; if(!tpl||!(tpl.blocks||[]).length) return null;
+  var out=[];
+  (e.blocks||[]).forEach(function(b){
+    if(!_expBlockUntouched(e,b)) return;
+    // Matched on the template's own title, not on position: a snoozed, inserted or deleted step
+    // moves the indices and would re-point a block at somebody else's text.
+    var t=(tpl.blocks||[]).filter(function(x){ return (x.title||'')===(b.tpl.title||''); })[0];
+    if(!t) return;
+    if((b.tpl.html||'')===(t.html||'') && (b.tpl.pub||'')===(t.pub||'')) return;
+    out.push({b:b,t:t});
+  });
+  return out.length?out:null;
+}
+function refreshExpPreset(id){
+  var e=LB.data.experiments[id]; if(!e) return;
+  var list=expPresetStale(e); if(!list){ toast('This experiment already has the current text.'); return; }
+  lbConfirm('<b>'+list.length+'</b> step'+(list.length===1?'':'s')+' still carry the wording this experiment was created with, and '
+    +(list.length===1?'it has':'they have')+' since been corrected:<br><br>'
+    +list.map(function(x){ return '<b>'+esc(x.b.title||x.t.title||'Step')+'</b>'; }).join('<br>')
+    +'<br><br>Replace their text with the current version?<br><br>'
+    +'<span class="cc-dim">Only steps whose words are still the preset’s own are listed — anything you wrote is untouched, and no calculator input, tick or note is changed.</span>',
+    {title:'Update the step text', ok:'Update '+list.length+' step'+(list.length===1?'':'s'), html:true}).then(function(ok){
+      if(!ok) return;
+      list.forEach(function(x){
+        x.b.tpl={title:x.t.title, html:x.t.html, pub:x.t.pub||''};
+        if(x.t.title) x.b.title=fillSetup(x.t.title, e.setup||{});
+        x.b.html=fillSetup(x.t.html, e.setup||{});
+        if(x.t.pub) x.b.pub=fillSetup(x.t.pub, e.setup||{}); else delete x.b.pub;
+      });
+      e.updated=Date.now(); save(); renderEditor();
+      toast(list.length+' step'+(list.length===1?'':'s')+' updated — the numbers and your notes are as they were.');
+    });
+}
+function presetStaleHtml(e){
+  var list=expPresetStale(e); if(!list) return '';
+  return '<div class="pub-stale">The wording of '+list.length+' step'+(list.length===1?'':'s')
+    +' has been corrected since this experiment was created. '
+    +'<button onclick="refreshExpPreset(\''+e.id+'\')">See what changed</button></div>';
+}
 function deviationsHtml(e){
   var d=expDeviations(e); if(!d.length) return '';
   var nAcc=d.filter(function(x){ return x.kind==='calc'; }).length;
@@ -7458,7 +7638,7 @@ function renderExpEditor(host,e){
     // The experiment-level plate map sits above everything — it's the layout for the whole run.
     var pk='exp:'+e.id;
     var topPlate=e.plate?platePreviewHtml(e.plate,pk):'';
-    body='<div class="exp-dated-body">'+deviationsHtml(e)+topPlate+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')
+    body='<div class="exp-dated-body">'+presetStaleHtml(e)+deviationsHtml(e)+topPlate+(blocks||'<div class="exp-dated-empty">No dated sections yet.</div>')
       +'<div class="blk-addrow" ondragover="blkEndOver(event)" ondragleave="blkDragLeave(event)" ondrop="blkDropEnd(event)"><button class="add-blk" onclick="addBlock()">+ Add day-block</button><button class="add-blk add-step" onclick="stepPalette()">'+tbIco(P_SEARCHPLUS,13)+' Add step from library / Archive…</button></div>'
       +stepPaletteStrip()+'</div>';
   }
