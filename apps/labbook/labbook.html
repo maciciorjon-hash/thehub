@@ -4777,9 +4777,15 @@ function renderSections(){
 // It is derived, never demanded: a project created without touching the box still gets one, so
 // codes are prefixed from the first experiment rather than from whenever someone remembers.
 function _normPrefix(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4); }
+// The first two letters of the name, not its initials. "SPARK NS" is SP, which is what the
+// project is called — initials would make it SN, and a code nobody can expand is a code you have
+// to be told. It also means one rule with no branch: the prefix is visibly the start of the name
+// in every case (Multivalent Chemistry → MU, LRRC58 → LR, RTag → RT, Eisai → EI).
+// A one-letter first word is the only case that needs the next word, or "A Big Screen" is "A".
 function _prefixDefault(name){
   var w=String(name||'').trim().split(/[\s_\-/]+/).filter(Boolean);
-  var px = (w.length>1) ? (w[0].charAt(0)+w[1].charAt(0)) : (w[0]||'').slice(0,2);
+  var first=_normPrefix(w[0]||'');
+  var px = (first.length>1) ? first.slice(0,2) : (first+_normPrefix(w[1]||'').charAt(0));
   return _normPrefix(px) || 'PR';
 }
 function projPrefix(p){ return _normPrefix(p&&p.prefix) || _prefixDefault(p&&p.name); }
@@ -4800,13 +4806,27 @@ function _uniquePrefix(name, exceptId){
   for(var n=2;n<10;n++){ var d=first+n; if(!taken[d]) return d; }
   return base;
 }
+// prefixAuto marks one this derived rather than one somebody typed. It is the difference that
+// lets the rule below change without touching a prefix that was a decision — the same line the
+// protocol diff and the calculator defaults already draw.
 function _backfillPrefixes(){
   var changed=false;
   (LB.data.projects||[]).forEach(function(p){
     var cur=_normPrefix(p.prefix);
     if(cur){ if(cur!==p.prefix){ p.prefix=cur; changed=true; } return; }
-    p.prefix=_uniquePrefix(p.name,p.id); changed=true;
+    p.prefix=_uniquePrefix(p.name,p.id); p.prefixAuto=true; changed=true;
   });
+  // The first build derived initials (SPARK NS → SN); this one derives the start of the name
+  // (→ SP). Re-derive the ones nobody chose, so a notebook does not keep a prefix from a rule
+  // that no longer exists — and leave every typed one exactly as it is.
+  if(!LB.data._prefixV2){
+    (LB.data.projects||[]).forEach(function(p){
+      if(!p.prefixAuto) return;
+      var want=_uniquePrefix(p.name,p.id);
+      if(want!==p.prefix){ p.prefix=want; changed=true; }
+    });
+    LB.data._prefixV2=true; changed=true;
+  }
   return changed;
 }
 // Live hint while you type the name. It fills the placeholder, not the value: a prefix you typed
@@ -4822,8 +4842,9 @@ function _applyPrefix(code, px){
   return /^[A-Z0-9]{1,4}_/.test(c) ? c : (px+'_'+c);
 }
 function addProject(){ var i=el('new-proj'); var n=(i.value||'').trim(); if(!n) return;
-  var xi=el('new-proj-px'); var px=_normPrefix(xi&&xi.value)||_uniquePrefix(n);
+  var xi=el('new-proj-px'); var typed=_normPrefix(xi&&xi.value); var px=typed||_uniquePrefix(n);
   var p={id:uid(),name:n,prefix:px,created:Date.now(),color:PROJ_COLORS[LB.data.projects.length%PROJ_COLORS.length],sections:[]};
+  if(!typed) p.prefixAuto=true;
   LB.data.projects.push(p); EXPANDED[p.id]=true; XV.open[p.id]=true;
   i.value=''; if(xi){ xi.value=''; xi.placeholder='PX'; }
   // renderSections only redraws the tree, and the adder that is actually on screen lives in the
@@ -4850,7 +4871,7 @@ function setProjectPrefix(id){
         e.code = re.test(e.code) ? e.code.replace(re, px+'_') : (px+'_'+e.code);
         e.updated=Date.now();
       });
-      p.prefix=px; save(); renderAll();
+      p.prefix=px; delete p.prefixAuto; save(); renderAll();
       toast(hits.length ? (hits.length+' code'+(hits.length===1?'':'s')+' renamed to '+px+'_…') : ('Prefix set to '+px));
     }
     if(!hits.length){ commit(); return; }

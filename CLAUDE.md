@@ -2109,8 +2109,9 @@ you ticked yourself — a tick is evidence. `_checklistDoneSync` passes `fromChe
 boxes-to-step direction does not rewrite the html under the caret of whoever just clicked one.
 
 **A project has a code prefix.** `SP_NB20260826` says whose work it is; `NB20260826` only says
-what and when. Two letters by default, derived from the name (`_prefixDefault`: initials of the
-first two words, or the first two letters), so a project created without touching the box is
+what and when. Two letters by default, derived from the name (`_prefixDefault`: **the first two
+letters of the name**, not its initials — "SPARK NS" is SP, which is what the project is called,
+where initials would make it SN and a code nobody can expand is a code you have to be told), so a project created without touching the box is
 still prefixed from its first experiment rather than from whenever someone remembers. The box is
 beside the name in both project add-rows and its placeholder tracks what you type; a prefix you
 typed is never overwritten by the next keystroke in the name. `nmUpdateCode` builds the code with
@@ -2124,6 +2125,13 @@ leave two halves of one project's experiments carrying two different codes. And 
 `_uniquePrefix` tries later letters of the name before a digit, because "SPARK" and "SPARK NS"
 both derive SP, and two projects sharing a prefix defeat the point of having one. The chip on
 each project header in Experiments is how you read the one that was derived for you.
+
+**`p.prefixAuto` marks a derived prefix, and that is what let the rule change once already.** The
+first build derived initials; `_prefixV2` re-derives every auto one under the current rule and
+leaves every typed one exactly as it is — the same line `protoDiff` and the calculator defaults
+draw between a value the app produced and a value somebody chose. Jon's six come out
+Multivalent Chemistry **MU** · LRRC58 **LR** · RTag **RT** · SPARK NS **SP** · SMARCA Glues
+**SM** · Eisai **EI**, all distinct with no fallback needed.
 
 Two things this turned up. `addProject` called `renderSections`, which only redraws the tree —
 so a project added from the adder that is actually on screen, the one in the Experiments view,
