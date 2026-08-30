@@ -860,6 +860,10 @@ body.lb-rb-closed .rb-pane{display:none;}
 .pl-left{min-width:0;display:flex;flex-direction:column;max-height:72vh;max-height:72dvh;}
 .pl-gridwrap{overflow:auto;padding:2px;flex:0 1 auto;width:max-content;max-width:100%;}
 .pl-grid{display:grid;gap:2px;user-select:none;line-height:1;}
+/* Outside the modal on purpose: .modal-back and .modal both carry a backdrop-filter, which makes
+   them the containing block for anything position:fixed inside them. */
+#pl-band{position:fixed;display:none;z-index:300;pointer-events:none;border:1.5px dashed var(--accent);
+  background:var(--accent-dim);border-radius:var(--r-1);}
 .pl-corner{width:26px;}
 .pl-cl{display:flex;align-items:flex-end;justify-content:center;font-size:var(--fs-1);font-weight:600;color:var(--text2);padding-bottom:2px;overflow:hidden;white-space:nowrap;}
 .pl-cltitle{display:flex;align-items:flex-end;justify-content:center;font-size:var(--fs-1);font-weight:700;color:var(--text3);padding-bottom:2px;}
@@ -879,8 +883,9 @@ body.lb-rb-closed .rb-pane{display:none;}
 .pl-sec{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:9px 11px 11px;margin-bottom:10px;}
 .pl-sec-t{font-size:var(--fs-1);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text2);margin-bottom:7px;}
 .pl-types{display:flex;flex-wrap:wrap;gap:5px;}
-.pl-modes,.pl-quick{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
-.pl-mode{flex:1 1 72px;}
+.pl-quick{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
+/* A count the plate supplied, rather than one typed into the box beside it. */
+.cc-plate{color:var(--accent);font-weight:600;}
 .pl-quick .pl-btn{min-width:0;flex:1 1 72px;}
 .pl-type{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-2);font-family:var(--sans);background:var(--surface);border:1px solid var(--border2);color:var(--text2);border-radius:var(--r-3);padding:3px 10px;cursor:pointer;}
 .pl-type:hover{color:var(--text);}
@@ -1639,7 +1644,7 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 <!-- Plate map editor -->
 <div class="modal-back" id="plate-modal">
   <div class="modal plate-modal">
-    <div class="modal-t">Plate map<span class="pl-count" id="pl-count"></span><span class="grow"></span><span class="pl-hint">Choose Paint to assign a type while dragging &middot; Select keeps a range &middot; Shift selects a rectangle</span></div>
+    <div class="modal-t">Plate map<span class="pl-count" id="pl-count"></span><span class="grow"></span><span class="pl-hint">Drag a rectangle, then click a condition &middot; &#8984;/Ctrl+C, V, Z</span></div>
     <div class="pl-body">
       <div class="pl-left">
         <div class="pl-gridwrap"><div id="pl-grid" class="pl-grid"></div></div>
@@ -1647,9 +1652,11 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
       </div>
       <div id="pl-side" class="pl-side"></div>
     </div>
-    <div class="modal-act"><button class="btn ghost sm" onclick="plPasteValues()" title="Paste the plate-reader grid over this map">Paste reader values</button><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><button class="btn ghost sm" onclick="exportPlatePNG(PL.key)" title="A picture of this map, at print resolution">Download PNG</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="lbUndo()" title="Undo the last change (&#8984;/Ctrl+Z)">Undo</button><button class="btn ghost sm" onclick="plPasteValues()" title="Paste the plate-reader grid over this map">Paste reader values</button><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><button class="btn ghost sm" onclick="exportPlatePNG(PL.key)" title="A picture of this map, at print resolution">Download PNG</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
   </div>
 </div>
+
+<div id="pl-band"></div>
 
 <!-- Cmd+K spotlight -->
 <div id="spot-back" onclick="if(event.target.id==='spot-back')closeSpot()">
@@ -2211,7 +2218,7 @@ var CALC_KINDS={
     defaults:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
       donorStock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
       nPair:24,nDonor:8,nAcceptor:8,nMock:8,ctrlMode:'same amount as in the pair',excess:1.2},
-    compute:function(v){ return nbtxRecipe(v); } },
+    compute:function(v,ctx){ return nbtxRecipe(v, ctx&&ctx.tidCounts); } },
   // The ligand goes into the cell suspension, not into each well: 2.6 µL pipetted once is a
   // concentration every + well shares, and 26 nL pipetted 32 times is not.
   nbsusp:{ label:'Cell suspension ± HaloTag ligand', fields:[
@@ -2316,7 +2323,7 @@ function nbtxParts(v){
     aStock:function(i){ return _csvNum(v.acceptorStock,i,+v.acceptorStock||0)||0; },
     donor2:(v.donor2Stock!=null?+v.donor2Stock:null)};
 }
-function _nbtxConditions(v){
+function _nbtxConditions(v,counts){
   // acceptorNg replaced ngPerWell; an experiment created before that reads its old key, where
   // the number was the same 80 and meant the total.
   var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0;
@@ -2354,8 +2361,14 @@ function _nbtxConditions(v){
               dStock:dStock(0), aStock:P.aStock(ai), ng:ngMax}); });
   out.push({key:'mock', tid:'mock', name:'Mock (carrier only)', n:+v.nMock||0, d:0, a:0,
             dStock:dStock(0), aStock:P.aStock(0), ng:ngMax});
-  if(+v.nUntr>0) out.push({key:'untr', tid:'untr', name:'Untransfected', n:+v.nUntr||0, d:0, a:0,
+  if(+v.nUntr>0||(counts&&counts.untr>0)) out.push({key:'untr', tid:'untr', name:'Untransfected', n:+v.nUntr||0, d:0, a:0,
             dStock:dStock(0), aStock:P.aStock(0), ng:ngMax, noMix:true});
+  // The plate overrides the count of any condition it actually contains, and only those: a map
+  // is often half-drawn, and a condition missing from it is not a condition you have decided
+  // against. So the drawing can add wells and correct wells, but it can never quietly delete a
+  // condition you declared in the boxes.
+  if(counts) out.forEach(function(c){
+    if(counts[c.tid]!=null && counts[c.tid]!==c.n){ c.n=counts[c.tid]; c.fromPlate=true; } });
   return out.map(function(c){
     // Every well should receive the same total DNA, and with two ratios the pair totals differ
     // (80 + 8 against 80 + 1.6), so the target is the largest of them. With one ratio that is
@@ -2383,8 +2396,9 @@ function _dnaVol(ng, stock, minUL){
   while(ul*f<Math.max(2,min*4) && f<10000) f*=10;
   return {ul:ul, dil:f, txt:nfmt(ul)+' µL — <b>dilute 1:'+f+'</b> and take '+nfmt(ul*f)+' µL'};
 }
-function nbtxRecipe(v){
-  var cs=_nbtxConditions(v);
+function nbtxRecipe(v,counts){
+  var cs=_nbtxConditions(v,counts);
+  var fromPlate=cs.filter(function(c){ return c.fromPlate; }).length;
   if(!cs.length) return '<b>Reverse transfection</b> — set how many wells each condition needs.';
   var ex=+v.excess||1, dS=+v.donorStock||0, aS=+v.acceptorStock||0, cS=+v.carrierStock||0;
   var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0, R=+v.ratio||1;
@@ -2419,10 +2433,11 @@ function nbtxRecipe(v){
       return '<span class="cc-dim">—</span>';
     }
     if(c.noMix) return '<tr><td class="cc-no">'+(ci+1)+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'
-      +c.n+' well'+(c.n===1?'':'s')+' — no complex</span></td>'
+      +c.n+' well'+(c.n===1?'':'s')+(c.fromPlate?' <span class="cc-plate">from the plate</span>':'')+' — no complex</span></td>'
       +cols.map(function(){ return '<td><span class="cc-dim">—</span></td>'; }).join('')
       +'<td><span class="cc-dim">—</span></td><td><span class="cc-dim">—</span></td><td><span class="cc-dim">—</span></td></tr>';
-    return '<tr><td class="cc-no">'+(ci+1)+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'+c.n+' well'+(c.n===1?'':'s')+' × '+nfmt(ex)+' overage</span></td>'
+    return '<tr><td class="cc-no">'+(ci+1)+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'+c.n+' well'+(c.n===1?'':'s')
+      +(c.fromPlate?' <span class="cc-plate">from the plate</span>':'')+' × '+nfmt(ex)+' overage</span></td>'
       +cols.map(function(n){ return '<td>'+cell(n)+'</td>'; }).join('')
       +'<td>'+nfmt(fu)+' µL</td><td>'+nfmt(om)+' µL</td><td><b>'+nfmt(tot)+' µL</b></td></tr>';
   }).join('');
@@ -2585,9 +2600,22 @@ function calcSeedFix(id){ var b=_blkById(id); if(!b||!b.calc||!b.calc.inputs) re
 function peSeedFix(i){ var b=PE.work.blocks[i]; if(!b||!b.calc||!b.calc.inputs) return;
   var n=seedCellsFor(b.calc.inputs.format); if(!n) return;
   b.calc.inputs.cellsPerWell=n; peDraw(); }
-function expCalcRecipe(b){ if(!b||!b.calc) return '';
+// `e` is the experiment the block belongs to, and it is what carries the plate map. Passing it
+// explicitly matters on the paths that render a block outside the open experiment (the day view,
+// the PDF); everywhere else it is found from the block.
+function expCalcRecipe(b,e){ if(!b||!b.calc) return '';
   if(b.calc.kind==='archive') return archiveComputeRecipe(b);
-  if(!CALC_KINDS[b.calc.kind]) return ''; try{ return CALC_KINDS[b.calc.kind].compute(b.calc.inputs||{}); }catch(e){ return ''; } }
+  var C=CALC_KINDS[b.calc.kind]; if(!C) return '';
+  if(e===undefined) e=_expOfBlock(b);
+  var ctx={exp:e, block:b, tidCounts:(e?plateTidCounts(e):null)};
+  try{ return C.compute(b.calc.inputs||{}, ctx); }catch(err){ return ''; } }
+// A table built out of the plate has to move when the plate does, not when the plate editor is
+// closed. Only the recipe bodies are repainted: re-rendering the experiment would pull the caret
+// out of whatever is being typed in.
+function refreshCalcRecipes(e){ if(!e) return;
+  (e.blocks||[]).forEach(function(b){ if(!b.calc) return;
+    var r=el('ccr-'+b.id); if(!r) return;
+    r.innerHTML=withSeedFix("calcSeedFix('"+b.id+"')", function(){ return expCalcRecipe(b,e); }); }); }
 // A select is only as honest as its widest option: the grid hands every field the same narrow
 // track, so a field whose choices are prose — a cell line with its modification, a control
 // scheme written as a sentence — is clipped to something nobody can read, and a select is the
@@ -2676,8 +2704,28 @@ function calcUpd(id){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=docum
     save(); renderEditor(); return;
   }
   wrap.querySelectorAll('[data-k]').forEach(function(n){ var k=n.getAttribute('data-k'); var val=n.value; b.calc.inputs[k]=(n.type==='number')?(val===''?'':parseFloat(val)):val; });
-  var r=el('ccr-'+id); if(r) r.innerHTML=withSeedFix("calcSeedFix('"+id+"')", function(){ return expCalcRecipe(b); });
-  var e=_curExp(); if(e) e.updated=Date.now(); queueSave(); }
+  var e=_curExp();
+  var r=el('ccr-'+id); if(r) r.innerHTML=withSeedFix("calcSeedFix('"+id+"')", function(){ return expCalcRecipe(b,e); });
+  // The join runs both ways: a condition renamed or added here has to reach the palette and the
+  // map's own summary, live, or the two drift apart between one keystroke and the next.
+  if(e&&b.calc.kind==='nbtx') _queueNbSync(e);
+  if(e) e.updated=Date.now(); queueSave(); }
+// Debounced, because calcUpd runs on every keystroke: a construct renamed letter by letter would
+// otherwise put one condition in the palette per letter typed.
+var _nbSyncT=null;
+function _queueNbSync(e){ clearTimeout(_nbSyncT);
+  _nbSyncT=setTimeout(function(){ if(nbNumberPlate(e)){ refreshPlateCards(e); queueSave(); } }, 900); }
+// Repaint the plate preview cards in place — the same rule as refreshCalcRecipes: the card is a
+// reading of data that just moved, and a full renderEditor would take the caret with it.
+function refreshPlateCards(e){
+  if(!e) return;
+  var keys=[]; if(e.plate) keys.push('exp:'+e.id);
+  (e.blocks||[]).forEach(function(b){ if(b.plate) keys.push('blk:'+e.id+':'+b.id); });
+  keys.forEach(function(k){
+    var host=document.querySelector('.blk-plate[data-plate="'+k+'"]');
+    if(host) host.outerHTML=platePreviewHtml(plateOf(k),k,host.getAttribute('data-ro')==='1');
+  });
+}
 function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; b.calc.inputs.cellLine=clid; var d=cellLineDef(clid); if(d&&d.cpw) b.calc.inputs.cellsPerWell=d.cpw; save(); renderEditor(); }
 function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove the prep calculator from this step? (Your written notes stay.)',{title:'Remove calculator'}).then(function(ok){ if(!ok) return; delete b.calc; save(); renderEditor(); }); }
 function addCalcToBlock(id,kind){ var b=_blkById(id); if(!b) return; b.calc={kind:kind,inputs:calcDefaults(kind)}; save(); renderEditor(); }
@@ -2956,14 +3004,45 @@ function _nbCalcInputs(e){
 function nbNumberPlate(e){
   if(!e||e.type!=='NB'||!e.plate) return false;
   var I=_nbCalcInputs(e); if(!I) return false;
-  var order={}, i=0;
-  _nbtxConditions(I).forEach(function(c){ order[c.tid]=++i; });
+  var order={}, i=0, conds=_nbtxConditions(I);
+  conds.forEach(function(c){ order[c.tid]=++i; });
   var changed=false;
+  var have={};
   (e.plate.types||[]).forEach(function(t){
     if(t.id==='blank') return;
-    if(t.no!=null) return;
-    if(order[t.id]){ t.no=order[t.id]; changed=true; }
+    have[t.id]=t;
+    if(t.no==null && order[t.id]){ t.no=order[t.id]; changed=true; }
   });
+  // The calculator's half of the join: add a condition the palette does not have yet, so a donor
+  // or a ratio added after the map was drawn is something you can immediately paint with. It is
+  // only ever additive — a type is never removed and a number never reassigned, because wells
+  // already carry both, and renumbering under them would rewrite what the plate says was run.
+  //
+  // Only on a palette that is already the experiment's conditions, though. A map drawn from a
+  // generic layout has types of its own ("Treatment", "DMSO"); appending eight numbered
+  // conditions to it would turn a plate nobody asked to number into a numbered one, and change
+  // how it draws.
+  var isCond=(e.plate.types||[]).some(function(t){ return order[t.id]||t.no!=null; });
+  if(!isCond) return changed;
+  var used={}; (e.plate.types||[]).forEach(function(t){ if(t.no!=null) used[t.no]=1; });
+  conds.forEach(function(c){
+    var t=have[c.tid];
+    if(t){ if(t.name!==c.name){ t.name=c.name; changed=true; } return; }
+    var no=order[c.tid]; while(used[no]) no++;
+    used[no]=1;
+    e.plate.types.push({id:c.tid, name:c.name, no:no,
+      color:PLATE_TYPE_COLORS[(e.plate.types.length)%PLATE_TYPE_COLORS.length]});
+    changed=true;
+  });
+  // And a condition the calculator no longer has, that no well is painted with, goes. Renaming
+  // a construct changes the id of every condition it is in, so without this the palette keeps
+  // both halves of the rename for ever. A type that wells still carry is never touched: those
+  // wells are the record of what was in them, and the palette is what gives them their name.
+  var inUse={}; Object.keys(e.plate.wells||{}).forEach(function(k){
+    var w=e.plate.wells[k]; if(w&&w.typeId) inUse[w.typeId]=1; });
+  var keep=(e.plate.types||[]).filter(function(t){
+    return t.id==='blank' || order[t.id] || inUse[t.id] || t.no==null; });
+  if(keep.length!==(e.plate.types||[]).length){ e.plate.types=keep; changed=true; }
   return changed;
 }
 function nbPlateForExp(e){
@@ -3650,6 +3729,35 @@ function plateOf(key){ var o=_plateOwner(key); return o?(o.obj.plate||null):null
 // Drawing the plate IS saying how many wells each condition gets, so the calculators take their
 // counts from it rather than asking you the same question twice. Only the counts: everything
 // you have set about amounts — ng per well, ratio, stocks, overage — is left exactly as it is.
+// How many wells each condition actually holds, by the id the plate paints with. This is the
+// join between the map and the mix table: a condition's tid is the same string in both, so the
+// drawing can say how many wells there are without anything having to be typed twice.
+//
+// It is the drawing that knows, and the calculator's own "wells per condition" boxes cannot: a
+// compound titration run on one of the pairs — a hemin gradient across three rows — is twelve
+// more wells of that condition and of no other, and there is one nPair for every pair. Painted
+// on the plate it is a fact; typed into a box it is a number that has to be kept in step by
+// hand, which is how a transfection mix comes to be made for a quarter of the wells it is
+// dispensed into.
+function plateTidCounts(e){
+  var p=e&&e.plate; if(!p||!p.wells) return null;
+  var c={}, any=false;
+  Object.keys(p.wells).forEach(function(k){ var w=p.wells[k];
+    if(!w||!w.typeId||w.typeId==='blank') return;
+    c[w.typeId]=(c[w.typeId]||0)+1; any=true; });
+  return any?c:null;
+}
+// Which experiment a block belongs to. The recipe needs it because the plate hangs off the
+// experiment, not off the block — and the preset editor renders blocks that belong to no
+// experiment at all, which is why this returns null rather than guessing.
+function _expOfBlock(b){
+  if(!b||!b.id) return null;
+  function has(e){ return e&&(e.blocks||[]).some(function(x){ return x.id===b.id; }); }
+  var cur=_curExp(); if(has(cur)) return cur;
+  var ex=(LB.data&&LB.data.experiments)||{};
+  for(var k in ex){ if(has(ex[k])) return ex[k]; }
+  return null;
+}
 function plateConditionCounts(e){
   var p=e&&e.plate; if(!p) return null;
   var c={pair:0,donor:0,acceptor:0,mock:0,untr:0,noLig:0,noSub:0,total:0,transfected:0};
@@ -3681,18 +3789,13 @@ function syncPlateToCalcs(e){
   (e.blocks||[]).forEach(function(b){
     var I=b.calc&&b.calc.inputs; if(!I) return;
     if(b.calc.kind==='nbtx'){
-      // nPair and nDonor are per donor × acceptor × ratio as soon as there is more than one of
-      // any of them, and the control wells are counted into a pair mix — so the plate's totals
-      // are not those numbers and must not be written into them. The simple case, one donor
-      // against one acceptor at one ratio with no extra control wells, still syncs.
-      var _P=nbtxParts(I);
-      if(_P.donors.length*_P.accs.length*_P.ratios.length>1 || +I.nPairCtrl>0) return;
-      if(I.nPair!==c.pair||I.nDonor!==c.donor||I.nAcceptor!==c.acceptor||I.nMock!==c.mock
-         ||(I.nUntr!=null&&+I.nUntr!==c.untr)){
-        I.nPair=c.pair; I.nDonor=c.donor; I.nAcceptor=c.acceptor; I.nMock=c.mock;
-        if(I.nUntr!=null) I.nUntr=c.untr;
-        hit.push('transfection mixes');
-      }
+      // Nothing is written back any more. The mix table reads the plate directly, condition by
+      // condition (`plateTidCounts` → `_nbtxConditions`), which is the only version that can be
+      // right: nPair is one number for every pair, and the plate routinely gives one pair more
+      // wells than another — a titration on one of them, a control band on the other. Copying
+      // the plate's totals into a single box flattened exactly the difference that mattered,
+      // and it could only ever run in the one-donor-one-ratio case anyway.
+      return;
     } else if(b.calc.kind==='nbsusp'){
       // A well with no ligand is still a transfected well: it belongs to the − ligand
       // suspension, not to a different DNA condition.
@@ -3708,6 +3811,9 @@ function syncPlateToCalcs(e){
 function platePersist(key){ var o=_plateOwner(key); if(!o) return;
   var changed=syncPlateToCalcs(o.exp);
   o.exp.updated=Date.now(); queueSave();
+  // The map and the mix table are one thing seen twice, so the table moves with the map — while
+  // the editor is still open, not when it is closed.
+  refreshCalcRecipes(o.exp);
   if(changed) toast('Well counts from the plate → '+changed.join(' and '));
   return changed; }
 function addPlateTo(key,fmt){ var o=_plateOwner(key); if(!o) return;
@@ -3715,7 +3821,7 @@ function addPlateTo(key,fmt){ var o=_plateOwner(key); if(!o) return;
   o.exp.updated=Date.now(); save(); renderEditor(); openPlateEditor(key); }
 function removePlateFrom(key){ var o=_plateOwner(key); if(!o||!o.obj.plate) return;
   lbConfirm('Remove this plate map? The wells you laid out will be lost.',{danger:true,title:'Remove plate map'}).then(function(ok){
-    if(!ok) return; delete o.obj.plate; o.exp.updated=Date.now(); save(); renderEditor(); }); }
+    if(!ok) return; undoMark('Remove plate map',['experiments.'+o.exp.id]); delete o.obj.plate; o.exp.updated=Date.now(); save(); renderEditor(); }); }
 // ── Echo picklist → plate map ───────────────────────────────────────────────────────────────
 // The picklist already records exactly what a plate map is for: which compound went into which
 // well, and at what concentration. Retyping it by hand is both tedious and the most likely
@@ -4030,7 +4136,7 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
     +'<button class="cc-x plate-act" title="Download as a picture — for a slide or a lab meeting" onclick="exportPlatePNG(\''+key+'\')">PNG</button>'
     +'<button class="cc-x" title="Remove plate map" onclick="removePlateFrom(\''+key+'\')">&times;</button>'));
   var sum=plateSummaryHtml(p);
-  return '<div class="blk-plate">'
+  return '<div class="blk-plate" data-plate="'+esc(key)+'"'+(readonly?' data-ro="1"':'')+'>'
     +'<div class="cc-hd"><span class="cc-tag plate">'+tbIco(P_GRID,12)+' '+esc(p.title||'Plate map')+'</span><span class="cc-src">'+d.r*d.c+'-well</span>'
     +'<span class="pp-n">'+n+' well'+(n!==1?'s':'')+' used</span><span class="grow"></span>'+acts+'</div>'
     +(p.note?'<div class="pp-note">'+esc(p.note)+'</div>':'')
@@ -4040,15 +4146,84 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
       +(sum?'<div class="pp-sum">'+sum+'</div>':'')
     +'</div></div>'; }
 
+// ── Undo / redo ──────────────────────────────────────────────────────────────────────────────
+// ⌘Z on a Mac, Ctrl+Z on Windows, and Ctrl+Y / ⌘⇧Z for redo. Typing inside a field or a
+// contenteditable is left to the browser, which is better at character-level undo than any
+// snapshot can be — this stack is for everything that is *not* typing: painting a plate,
+// deleting a step, changing a condition. The two never collide, because the handler hands the
+// key straight back whenever the caret is in something editable.
+//
+// A step stores the JSON of the *records* it touches, never the whole tree: LB.data is
+// megabytes and almost every action is one experiment.
+var UNDO={stack:[],redo:[],max:60,busy:false,last:0};
+function _upGet(path){ var ks=String(path).split('.'), o=LB.data;
+  for(var i=0;i<ks.length;i++){ if(o==null) return undefined; o=o[ks[i]]; } return o; }
+function _upSet(path,v){ var ks=String(path).split('.'), o=LB.data;
+  for(var i=0;i<ks.length-1;i++){ if(o[ks[i]]==null) o[ks[i]]={}; o=o[ks[i]]; }
+  var k=ks[ks.length-1];
+  if(v===undefined) delete o[k]; else o[k]=v; }
+function _upSnap(paths){ var s={};
+  paths.forEach(function(p){ var v=_upGet(p); s[p]=(v===undefined)?undefined:JSON.stringify(v); });
+  return s; }
+function _upRestore(s){ Object.keys(s).forEach(function(p){
+  _upSet(p, s[p]===undefined?undefined:JSON.parse(s[p])); }); }
+// Called *before* the change. The redo image is taken at undo time, so one line at the top of a
+// mutator is the whole wiring. `coalesce` folds a run of keystrokes in one field into one step.
+function undoMark(label,paths,coalesce){
+  if(UNDO.busy) return;
+  var top=UNDO.stack[UNDO.stack.length-1], now=Date.now();
+  if(coalesce&&top&&top.label===label&&(now-UNDO.last)<1200){ UNDO.last=now; return; }
+  UNDO.last=now;
+  UNDO.stack.push({label:label,paths:paths,snap:_upSnap(paths)});
+  if(UNDO.stack.length>UNDO.max) UNDO.stack.shift();
+  UNDO.redo.length=0;
+}
+function _upApply(e,verb){
+  UNDO.busy=true;
+  var now=_upSnap(e.paths);
+  _upRestore(e.snap);
+  UNDO.busy=false;
+  var back={label:e.label,paths:e.paths,snap:now};
+  save();
+  // With the plate editor open the modal is the screen you are looking at, so it is the thing
+  // that has to repaint. The selection is dropped: the wells it named may not exist any more.
+  if(PL.key&&el('plate-modal')&&el('plate-modal').classList.contains('open')){
+    if(!plCur()) closePlateEditor(); else { PL.sel={}; PL.anchor=null; plRender(); }
+  } else renderAll();
+  toast(verb+(e.label?(' · '+e.label):''));
+  return back;
+}
+function lbUndo(){ var e=UNDO.stack.pop(); if(!e){ toast('Nothing to undo'); return; }
+  UNDO.redo.push(_upApply(e,'Undone')); UNDO.last=0; }
+function lbRedo(){ var e=UNDO.redo.pop(); if(!e){ toast('Nothing to redo'); return; }
+  UNDO.stack.push(_upApply(e,'Redone')); UNDO.last=0; }
+function _upEditable(t){ return !!(t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName||'') || t.isContentEditable)); }
+document.addEventListener('keydown',function(e){
+  if(!(e.metaKey||e.ctrlKey)||e.altKey) return;
+  var k=(e.key||'').toLowerCase();
+  if(k!=='z'&&k!=='y') return;
+  if(_upEditable(e.target)) return;
+  e.preventDefault();
+  if(k==='y'||e.shiftKey) lbRedo(); else lbUndo();
+},true);
+
 // ── Plate map editor (modal) ──
 // Live-edits the real plate object; every change is saved as you go (no separate OK/Cancel).
-var PL={key:null,sel:{},anchor:null,type:'compound',mode:'paint',drag:false,dragAdd:true,painted:{},flags:{}};
+// There is one interaction now, and it is the one you would guess: drag a rectangle over the
+// wells, then click the condition — it is applied straight away and the selection stays put, so
+// the next thing you do is select the next block. Delete clears wells. The three-way Paint /
+// Select / Erase switch is gone: it made you say twice what a single gesture already said, and
+// the mode you were in was invisible from the plate itself.
+var PL={key:null,sel:{},anchor:null,type:'compound',drag:false,band:null,clip:null,flags:{}};
 function plCur(){ return plateOf(PL.key); }
 function plSelIds(){ return Object.keys(PL.sel); }
 function openPlateEditor(key){ var p=plateOf(key); if(!p){ toast('No plate map here yet'); return; }
-  PL.key=key; PL.sel={}; PL.anchor=null; PL.painted={}; PL.flags={}; PL.mode='paint'; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
+  PL.key=key; PL.sel={}; PL.anchor=null; PL.band=null; PL.flags={}; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
   el('plate-modal').classList.add('open'); plRender(); }
-function closePlateEditor(){ el('plate-modal').classList.remove('open'); PL.key=null; PL.sel={}; renderEditor(); }
+function closePlateEditor(){ el('plate-modal').classList.remove('open'); _plHideBand(); PL.key=null; PL.sel={}; PL.band=null; renderEditor(); }
+// Every plate mutation restores through the experiment that owns the map — a plate lives inside
+// a block or an experiment, so that record is the unit an undo has to put back.
+function plMark(label,coalesce){ var o=_plateOwner(PL.key); if(o&&o.exp) undoMark(label,['experiments.'+o.exp.id],coalesce); }
 function plRender(){ var p=plCur(); if(!p) return; plRenderGrid(); plRenderSide(); plRenderSum(); }
 function plRenderSum(){ var p=plCur(), host=el('pl-sum'); if(!p||!host) return;
   var lg=el('pl-vals-legend'); if(lg) lg.innerHTML=plValuesLegend(p);
@@ -4079,7 +4254,7 @@ function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return
       var txt=_nos?plateWellNo(p,w):((w&&w.groupId&&grouped[w.groupId])?'':plateWellShort(w));
       var fl=plateWellFlags(w);
       h+='<div class="pl-w'+(PL.sel[id]?' sel':'')+(w?'':' empty')+(fl?(' '+fl):'')+'" data-w="'+id+'" style="'+at(r+base,c2+2)+(col?'background:'+col:'')+'"'
-        +' title="'+esc(plateWellTip(p,id,w))+'" onmousedown="plWellDown(\''+id+'\',event)" onmouseenter="plWellEnter(\''+id+'\')">'
+        +' title="'+esc(plateWellTip(p,id,w))+'" onmousedown="plWellDown(\''+id+'\',event)">'
         +(function(){ var vv=(p.values&&p.values.data)?p.values.data[id]:null;
             if(vv!=null&&wpx>=22) return '<span class="pl-wt pl-wv">'+esc(_plTrim(vv))+'</span>';
             // A number is one or two characters, so it survives a small well where a name cannot.
@@ -4107,6 +4282,7 @@ function _plFlagState(p,ids,k){
 }
 function plToggleFlag(k){
   var p=plCur(); if(!p) return; var ids=plSelIds(); if(!ids.length) return;
+  plMark('Control flag');
   var st=_plFlagState(p,ids,k), want=(st!==true);
   ids.forEach(function(id){ var w=_plWell(p,id); if(want) w[k]=true; else delete w[k]; });
   platePersist(PL.key); plRender();
@@ -4119,6 +4295,7 @@ function plUseExpTypes(){
     +t.map(function(x){return x.name;}).join(', ')+')? Wells you have already painted keep their contents.',
     {title:'Use this experiment’s conditions',ok:'Replace palette'}).then(function(ok){
       if(!ok) return;
+      plMark('Replace palette');
       p.types=JSON.parse(JSON.stringify(t));
       PL.type=(p.types[0]||{}).id;
       platePersist(PL.key); plRender();
@@ -4174,10 +4351,14 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'<div class="pl-row2"><button class="pl-btn" onclick="plGroupLabel(el(\'pl-grp\').value)">Label block</button>'
     +'<button class="pl-btn" onclick="plUngroup()">Ungroup</button></div></div>'):'';
   // Shading — a visual gradient when the numbers live elsewhere (e.g. an Echo picklist).
+  // Four directions, not three: a series read up the plate is as ordinary as one read down it,
+  // and "dark at the bottom" had no button at all. Each one says where the *dark* end goes.
   var shade=(n>=2)?('<div class="pl-sec"><div class="pl-sec-t">Shading &mdash; visual gradient</div>'
-    +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyShade(\'right\')">Dark &#8594; light</button>'
-    +'<button class="pl-btn" onclick="plApplyShade(\'left\')">Light &#8594; dark</button>'
-    +'<button class="pl-btn" onclick="plApplyShade(\'down\')">Dark &#8595; light</button>'
+    +'<div class="pl-howto">Dark is the strong end. Applies to the '+n+' selected well'+(n===1?'':'s')+'.</div>'
+    +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyShade(\'right\')" title="Dark on the left, fading to the right">Dark &#8594; light</button>'
+    +'<button class="pl-btn" onclick="plApplyShade(\'left\')" title="Dark on the right, fading to the left">Light &#8592; dark</button></div>'
+    +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyShade(\'down\')" title="Dark at the top, fading downwards">Dark &#8595; light</button>'
+    +'<button class="pl-btn" onclick="plApplyShade(\'up\')" title="Dark at the bottom, fading upwards">Dark &#8593; light</button>'
     +'<button class="pl-btn" onclick="plApplyShade(null)">Clear</button></div></div>'):'';
   var cols=(n>=1)?('<div class="pl-sec"><div class="pl-sec-t">Column headers</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Units</span><input value="'+esc(p.colTitle||'')+'" placeholder="nM" onchange="plSetColTitle(this.value)"></label>'
@@ -4189,10 +4370,11 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'<div class="pl-row2"><button class="pl-btn" onclick="plLayoutMenu()">'+tbIco(P_GRID,13)+' Start from a layout…</button>'
       +(_plExpTypes().length?'<button class="pl-btn" onclick="plUseExpTypes()" title="Replace the palette with the conditions this experiment is made of">Use this experiment\'s conditions</button>':'')
     +'</div></div>'
-    +'<div class="pl-sec"><div class="pl-sec-t">'+(_nos?'Conditions — pick one, then paint its wells':'Well type')+'</div>'
-      +(_nos?'<div class="pl-howto">Click a condition, then drag across the wells it goes in. Shift-click paints a rectangle. Then the next one.</div>':'')
+    +'<div class="pl-sec"><div class="pl-sec-t">'+(_nos?'Conditions — select wells, then click one':'Well type')+'</div>'
+      +'<div class="pl-howto">Drag a rectangle over the wells, then click the '+(_nos?'condition':'type')+' &mdash; it goes on straight away. '
+       +'Shift extends the box, &#8984;/Ctrl-click adds. Delete clears wells; &#8984;/Ctrl+C and V copy a block; &#8984;/Ctrl+Z undoes.</div>'
       +'<div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div>'
-      +(_expFlags.length?('<div class="pl-sec-t" style="margin-top:9px">Paint these wells as a control</div>'
+      +(_expFlags.length?('<div class="pl-sec-t" style="margin-top:9px">Mark as a control while you apply</div>'
         +'<div class="pl-flags">'+_expFlags.map(function(f){
             return '<button class="pl-flag'+(PL.flags[f.k]?' on':'')+'" onclick="plToggleBrushFlag(\''+f.k+'\')" title="'+esc(f.title)+'">'+esc(f.lbl)+'</button>'; }).join('')
         +'</div><div class="pl-howto" style="margin:6px 0 0">The same mix with something left out at the read &mdash; it stays that condition\'s number.</div>'):'')
@@ -4200,8 +4382,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     // Quick types is a shortcut into the same list, and on a numbered plate it is the same list
     // one section higher up with the numbers taken off. Only shown where it still shortens
     // anything.
-    +'<div class="pl-sec"><div class="pl-sec-t">Edit mode</div><div class="pl-modes"><button class="pl-btn pl-mode'+(PL.mode==='paint'?' on':'')+'" onclick="plSetMode(\'paint\')">Paint</button><button class="pl-btn pl-mode'+(PL.mode==='select'?' on':'')+'" onclick="plSetMode(\'select\')">Select</button><button class="pl-btn pl-mode'+(PL.mode==='erase'?' on':'')+'" onclick="plSetMode(\'erase\')">Erase</button></div>'
-      +((!_nos&&quick)?('<div class="pl-sec-t">Quick types</div><div class="pl-quick">'+quick+'</div>'):'')+'</div>'
+    +((!_nos&&quick)?('<div class="pl-sec"><div class="pl-sec-t">Quick types</div><div class="pl-quick">'+quick+'</div></div>'):'')
     +'<div class="pl-sec"><div class="pl-sec-t">'+(n?(n+' well'+(n!==1?'s':'')+' selected'):'Select wells to edit')+'</div>'
     +'<div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')
       +(expUsesCompounds(_plExp())?(fld('compound','Compound')+fld('conc','Concentration')):'')
@@ -4215,34 +4396,46 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
   var t=el('pl-count'); if(t) t.textContent=plateCount(p)+' / '+(d.r*d.c)+' wells used'; }
 
 // Selection
-function plSetMode(mode){ PL.mode=mode||'paint'; PL.painted={}; plRenderSide(); }
 // A −ligand well holds the same mix as its pair with something left out at the read, so it is a
-// flag on the condition rather than a condition of its own — which is right, and was also the
-// reason it could not be *painted*. You picked the condition, painted the block, and then had to
-// remember to go to another section and toggle the flag on a selection. It is a painting
-// modifier now: switch it on, paint the control wells, switch it off. Fixing wells already
-// painted still goes through the selection toggles, which is what they are for.
+// flag on the condition rather than a condition of its own. As a brush it is additive: switch it
+// on, and the wells you apply a condition to are marked as that condition's control. Turning a
+// flag off on wells already drawn goes through the selection toggles, which is what they are for.
 function plToggleBrushFlag(k){ if(PL.flags[k]) delete PL.flags[k]; else PL.flags[k]=1; plRenderSide(); }
-function plPaintWell(id){ var p=plCur(); if(!p||PL.painted[id]) return; PL.painted[id]=1; PL.sel[id]=1;
-  if(PL.mode==='erase') delete p.wells[id];
-  else { var w=_plWell(p,id); w.typeId=PL.type;
-    PLATE_FLAGS.forEach(function(f){ if(PL.flags[f.k]) w[f.k]=true; else delete w[f.k]; }); }
-  platePersist(PL.key); }
-// In Paint mode a shift-range paints the rectangle, which is what "Paint" means and what the
-// hint beside the conditions says. It used to only select it, so laying out a 4×2 block was a
-// drag you had to hold accurately instead of two clicks. Select mode still only selects — that
-// is the mode's whole job.
-function plPaintSel(){ var ids=plSelIds(); PL.painted={}; ids.forEach(plPaintWell); }
-function plWellDown(id,ev){ ev.preventDefault(); PL.painted={};
-  var range=(ev.shiftKey&&PL.anchor), painting=(PL.mode==='paint'||PL.mode==='erase');
-  if(range){ plSelectRange(PL.anchor,id,ev.ctrlKey||ev.metaKey); }
-  else if(ev.ctrlKey||ev.metaKey){ if(PL.sel[id]) delete PL.sel[id]; else PL.sel[id]=1; PL.anchor=id; }
-  else { PL.sel={}; PL.sel[id]=1; PL.anchor=id; }
-  if(range && painting) plPaintSel();
-  else if(!ev.shiftKey&&!ev.ctrlKey&&!ev.metaKey&&painting) plPaintWell(id);
-  PL.painted[id]=1;
-  PL.drag=true; PL.dragAdd=true; plRender(); }
-function plWellEnter(id){ if(!PL.drag) return; if(PL.mode==='paint'||PL.mode==='erase') plPaintWell(id); else PL.sel[id]=1; plRenderGrid(); }
+// Repainting the whole grid on every mousemove would destroy the very nodes the band is
+// hit-testing, so a drag only moves the `sel` class about.
+function plSyncSelClasses(){ var g=el('pl-grid'); if(!g) return;
+  Array.prototype.forEach.call(g.querySelectorAll('.pl-w[data-w]'),function(n){
+    n.classList.toggle('sel', !!PL.sel[n.getAttribute('data-w')]); }); }
+function _plHideBand(){ var b=el('pl-band'); if(b) b.style.display='none'; }
+function plWellDown(id,ev){ if(ev.button&&ev.button!==0) return; ev.preventDefault();
+  var add=!!(ev.ctrlKey||ev.metaKey);
+  if(ev.shiftKey&&PL.anchor){ plSelectRange(PL.anchor,id,add); plRender(); return; }
+  if(add){ if(PL.sel[id]) delete PL.sel[id]; else PL.sel[id]=1; }
+  else { PL.sel={}; PL.sel[id]=1; }
+  PL.anchor=id;
+  // The rects are measured once, at the start of the gesture: 384 getBoundingClientRect calls
+  // per mousemove is a layout thrash, and the grid does not move while the button is down.
+  var rects=[], g=el('pl-grid');
+  if(g) Array.prototype.forEach.call(g.querySelectorAll('.pl-w[data-w]'),function(n){
+    var q=n.getBoundingClientRect(); rects.push({id:n.getAttribute('data-w'),l:q.left,t:q.top,r:q.right,b:q.bottom}); });
+  var base={}; if(add) Object.keys(PL.sel).forEach(function(k){ base[k]=1; });
+  PL.drag=true; PL.band={x0:ev.clientX,y0:ev.clientY,add:add,base:base,rects:rects,moved:false};
+  plRender(); }
+// Drag a rectangle, the way Blueprint does — the wells the box touches, not the ones the pointer
+// happened to trace. A path-drag cannot lay out a 4×2 block without an accurate hand; a box can.
+document.addEventListener('mousemove',function(e){
+  if(!PL.drag||!PL.band) return;
+  var b=PL.band, dx=e.clientX-b.x0, dy=e.clientY-b.y0;
+  if(!b.moved){ if(dx*dx+dy*dy<20) return; b.moved=true; }
+  var x1=Math.min(b.x0,e.clientX), y1=Math.min(b.y0,e.clientY), w=Math.abs(dx), h=Math.abs(dy);
+  var bd=el('pl-band');
+  if(bd){ bd.style.display='block'; bd.style.left=x1+'px'; bd.style.top=y1+'px';
+          bd.style.width=w+'px'; bd.style.height=h+'px'; }
+  var x2=x1+w, y2=y1+h, sel={};
+  if(b.add) Object.keys(b.base).forEach(function(k){ sel[k]=1; });
+  b.rects.forEach(function(q){ if(q.r>=x1&&q.l<=x2&&q.b>=y1&&q.t<=y2) sel[q.id]=1; });
+  PL.sel=sel; plSyncSelClasses();
+});
 function plSelectRange(a,b,add){ var A=wellRC(a), B=wellRC(b); if(!A||!B) return; if(!add) PL.sel={};
   var r1=Math.min(A.r,B.r), r2=Math.max(A.r,B.r), c1=Math.min(A.c,B.c), c2=Math.max(A.c,B.c);
   for(var r=r1;r<=r2;r++) for(var c=c1;c<=c2;c++) PL.sel[wellIdOf(r,c)]=1; }
@@ -4279,6 +4472,7 @@ function plAddType(){
   var p=plCur(); if(!p) return;
   lbPrompt('Name of the new well type','').then(function(v){
     if(v==null) return; v=(v||'').trim(); if(!v) return;
+    plMark('Add well type');
     var ts=_plOwnTypes(p);
     var id='t'+Date.now().toString(36)+Math.floor(Math.random()*1e3).toString(36);
     ts.push({id:id, name:v, color:PLATE_TYPE_COLORS[ts.length%PLATE_TYPE_COLORS.length]});
@@ -4289,11 +4483,13 @@ function plRenameType(id){
   var p=plCur(); if(!p) return; var ts=_plOwnTypes(p);
   var t=ts.filter(function(x){return x.id===id;})[0]; if(!t) return;
   lbPrompt('Well type name',t.name).then(function(v){ if(v==null) return;
+    plMark('Rename well type');
     t.name=(v||'').trim()||t.name; platePersist(PL.key); plRender(); });
 }
 function plCycleTypeColor(id){
   var p=plCur(); if(!p) return; var ts=_plOwnTypes(p);
   var t=ts.filter(function(x){return x.id===id;})[0]; if(!t) return;
+  plMark('Recolour well type',true);
   var i=PLATE_TYPE_COLORS.indexOf(t.color);
   t.color=PLATE_TYPE_COLORS[(i+1)%PLATE_TYPE_COLORS.length];
   platePersist(PL.key); plRender();
@@ -4308,6 +4504,7 @@ function plDelType(id){
               : ('Remove the well type “'+t.name+'”?'),
     {danger:true,title:'Remove well type',ok:'Remove'}).then(function(ok){
     if(!ok) return;
+    plMark('Remove well type');
     p.types=ts.filter(function(x){ return x.id!==id; });
     Object.keys(p.wells||{}).forEach(function(k){ if(p.wells[k] && p.wells[k].typeId===id) delete p.wells[k].typeId; });
     if(PL.type===id) PL.type=(plateTypes(p)[0]||{}).id;
@@ -4319,20 +4516,28 @@ function ctxPlType(ev,id){ ctxAt(ev,[
   {label:'Change colour',fn:function(){ plCycleTypeColor(id); }},
   {sep:true},{label:'Remove type',danger:true,fn:function(){ plDelType(id); }}
 ]); }
+// Select the wells, then click the condition — the whole loop. The selection is kept afterwards
+// so the fields underneath still describe what you just placed; the next drag replaces it.
 function plSetType(tid){ var p=plCur(); if(!p) return; PL.type=tid;
-  plSelIds().forEach(function(id){ _plWell(p,id).typeId=tid; });
-  platePersist(PL.key); plRender(); }
+  var ids=plSelIds();
+  if(ids.length){ plMark('Set condition');
+    ids.forEach(function(id){ var w=_plWell(p,id); w.typeId=tid;
+      PLATE_FLAGS.forEach(function(f){ if(PL.flags[f.k]) w[f.k]=true; }); });
+    platePersist(PL.key); }
+  plRender(); }
 function plApplyFields(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return;
   var ids=plSelIds(); if(!ids.length) return;
+  plMark('Edit wells',true);
   host.querySelectorAll('[data-pf]').forEach(function(n){ var k=n.getAttribute('data-pf'), v=n.value;
     // Blank + placeholder "Mixed…" means "leave each well's own value alone".
     if(v===''&&n.placeholder==='Mixed…') return;
     ids.forEach(function(id){ var w=_plWell(p,id); if(v==='') delete w[k]; else w[k]=v; }); });
   platePersist(PL.key); plRenderGrid(); plRenderSum();
   var t=el('pl-count'); if(t) t.textContent=plateCount(p)+' / '+(plateDims(p).r*plateDims(p).c)+' wells used'; }
-function plEraseSel(){ var p=plCur(); if(!p) return; plSelIds().forEach(function(id){ delete p.wells[id]; });
+function plEraseSel(){ var p=plCur(); if(!p) return; if(!plSelIds().length) return; plMark('Clear wells');
+  plSelIds().forEach(function(id){ delete p.wells[id]; });
   platePersist(PL.key); plRender(); }
-function plSetTitle(v){ var p=plCur(); if(!p) return; p.title=v; platePersist(PL.key); }
+function plSetTitle(v){ var p=plCur(); if(!p) return; plMark('Plate title',true); p.title=v; platePersist(PL.key); }
 // Block labels
 function plSelGroupLabel(){ var p=plCur(); if(!p) return ''; var ids=plSelIds(); if(!ids.length) return '';
   var v=null; for(var i=0;i<ids.length;i++){ var w=(p.wells||{})[ids[i]]||{};
@@ -4341,6 +4546,7 @@ function plSelGroupLabel(){ var p=plCur(); if(!p) return ''; var ids=plSelIds();
   return v||''; }
 function plGroupLabel(v){ var p=plCur(); if(!p) return; var ids=plSelIds(); if(ids.length<2) return;
   if(!String(v||'').trim()){ plUngroup(); return; }
+  plMark('Label block');
   if(!p.groups) p.groups={};
   // Reuse the group if the selection already is one, so re-labelling doesn't orphan it.
   var cur=null, single=true;
@@ -4349,7 +4555,7 @@ function plGroupLabel(v){ var p=plCur(); if(!p) return; var ids=plSelIds(); if(i
   ids.forEach(function(id){ _plWell(p,id).groupId=gid; });
   p.groups[gid]={label:String(v).trim()};
   _plGcGroups(p); platePersist(PL.key); plRender(); }
-function plUngroup(){ var p=plCur(); if(!p) return;
+function plUngroup(){ var p=plCur(); if(!p) return; plMark('Ungroup');
   plSelIds().forEach(function(id){ var w=(p.wells||{})[id]; if(w) delete w.groupId; });
   _plGcGroups(p); platePersist(PL.key); plRender(); }
 function _plGcGroups(p){ if(!p.groups) return; var live={};
@@ -4357,27 +4563,33 @@ function _plGcGroups(p){ if(!p.groups) return; var live={};
   Object.keys(p.groups).forEach(function(g){ if(!live[g]) delete p.groups[g]; }); }
 // Shading
 function plApplyShade(dir){ var p=plCur(); if(!p) return; var ids=plSelIds(); if(!ids.length) return;
-  if(!dir){ ids.forEach(function(id){ var w=(p.wells||{})[id]; if(w) delete w.shade; }); platePersist(PL.key); plRender(); return; }
+  if(!dir){ plMark('Clear shading'); ids.forEach(function(id){ var w=(p.wells||{})[id]; if(w) delete w.shade; }); platePersist(PL.key); plRender(); return; }
+  plMark('Shade wells');
   var rs=[], cs=[]; ids.forEach(function(id){ var x=wellRC(id); if(x){ rs.push(x.r); cs.push(x.c); } });
-  var lo, hi, byCol=(dir!=='down');
+  var lo, hi, byCol=(dir==='right'||dir==='left');
   if(byCol){ lo=Math.min.apply(null,cs); hi=Math.max.apply(null,cs); }
   else { lo=Math.min.apply(null,rs); hi=Math.max.apply(null,rs); }
   var span=Math.max(1,hi-lo);
+  // `right` and `down` put the dark end first; `left` and `up` reverse it. Reading the direction
+  // off "is it a column?" is what left the fourth one unreachable.
+  var flip=(dir==='left'||dir==='up');
   ids.forEach(function(id){ var x=wellRC(id); var pos=(byCol?x.c:x.r)-lo;
-    var t=(dir==='left')?(1-pos/span):(pos/span);
+    var t=flip?(1-pos/span):(pos/span);
     _plWell(p,id).shade=Math.round(t*0.8*1000)/1000; });
   platePersist(PL.key); plRender(); }
 // Column headers
-function plSetColTitle(v){ var p=plCur(); if(!p) return; p.colTitle=String(v||''); platePersist(PL.key); plRender(); }
+function plSetColTitle(v){ var p=plCur(); if(!p) return; plMark('Column units',true); p.colTitle=String(v||''); platePersist(PL.key); plRender(); }
 function plSetColLabel(v){ var p=plCur(); if(!p) return; var cols={};
   plSelIds().forEach(function(id){ var x=wellRC(id); if(x) cols[x.c]=1; });
   var ks=Object.keys(cols); if(!ks.length) return;
+  plMark('Column headers');
   if(!p.colLabels) p.colLabels={};
   ks.forEach(function(c){ if(String(v||'').trim()) p.colLabels[c]=String(v).trim(); else delete p.colLabels[c]; });
   platePersist(PL.key); plRender(); }
 // Write the dose series into the column headers instead of every well — the compact style
 // where the concentration is stated once per column.
 function plDoseToCols(dir){ var p=plCur(); if(!p) return; if(plSelAxis()!=='row') return;
+  plMark('Write column headers');
   var ids=plSelIds().slice().sort(function(a,b){ return wellRC(a).c-wellRC(b).c; });
   if(dir<0) ids.reverse();
   var fold=+((el('pl-dose-fold')||{}).value)||3;
@@ -4391,6 +4603,7 @@ function plDoseToCols(dir){ var p=plCur(); if(!p) return; if(plSelAxis()!=='row'
   toast(ids.length+' column headers written'); }
 // Switching format keeps every well that still fits the new grid (Blueprint wipes them — don't).
 function plSetFormat(f){ var p=plCur(); if(!p) return; var d=PLATE_FORMATS[String(f)]; if(!d) return;
+  plMark('Change plate format');
   var kept={}, lost=0;
   Object.keys(p.wells||{}).forEach(function(id){ var x=wellRC(id);
     if(x&&x.r<d.r&&x.c<d.c) kept[id]=p.wells[id]; else lost++; });
@@ -4410,6 +4623,7 @@ function _fmtConc(nM){ if(!isFinite(nM)||nM<=0) return '0';
   if(nM>=1e-3)return _cn(nM*1e3)+' pM';
   return _cn(nM*1e6)+' fM'; }
 function plApplyDose(dir){ var p=plCur(); if(!p) return; var axis=plSelAxis(); if(!axis) return;
+  plMark('Fill dose series');
   var ids=plSelIds().slice(); var fold=+((el('pl-dose-fold')||{}).value)||3;
   var top=_toNM((el('pl-dose-top')||{}).value,(el('pl-dose-unit')||{}).value||'nM');
   ids.sort(function(a,b){ var A=wellRC(a), B=wellRC(b); return axis==='row'?(A.c-B.c):(A.r-B.r); });
@@ -4421,36 +4635,117 @@ function plApplyDose(dir){ var p=plCur(); if(!p) return; var axis=plSelAxis(); i
   platePersist(PL.key); plRender();
   toast(ids.length+'-point series, '+fold+'-fold, from '+_fmtConc(top)); }
 // Drag-select ends wherever the mouse comes up, even outside the grid.
-document.addEventListener('mouseup',function(){ if(PL.drag){ PL.drag=false; plRenderSide(); } });
-// Touch: mouseenter never fires, and there is no shift/ctrl on a phone, so without this you
-// can only ever select one well at a time. Drag across the grid to paint a selection.
+document.addEventListener('mouseup',function(){ if(!PL.drag) return;
+  PL.drag=false; PL.band=null; _plHideBand(); plRenderSide(); });
+// Touch: mouseenter never fires and there is no shift or ctrl on a phone, so a finger dragged
+// across the grid draws the same rectangle the mouse does — corner to corner, not the path it
+// traced, which is impossible to keep straight with a thumb.
 (function(){
   function wellAt(t){ if(!t) return null; var n=document.elementFromPoint(t.clientX,t.clientY);
     n=n&&n.closest?n.closest('.pl-w[data-w]'):null; return n?n.getAttribute('data-w'):null; }
-  var grid=null;
+  var grid=null, base=null, from=null;
   document.addEventListener('touchstart',function(e){
     var g=e.target.closest&&e.target.closest('#pl-grid'); if(!g) return;
     var id=wellAt(e.touches[0]); if(!id) return;
     grid=g; e.preventDefault();
-    // A fresh touch starts a new selection unless "add" mode is on (the range toggle).
-    if(!PL.touchAdd) PL.sel={};
-    PL.sel[id]=1; PL.anchor=id; PL.painted={}; PL.drag=true;
-    if(PL.mode==='paint'||PL.mode==='erase') plPaintWell(id);
-    plRenderGrid();
+    // A fresh touch starts a new selection unless "Add mode" is on — the phone's ctrl key.
+    base={}; if(PL.touchAdd) Object.keys(PL.sel).forEach(function(k){ base[k]=1; });
+    PL.sel={}; Object.keys(base).forEach(function(k){ PL.sel[k]=1; });
+    PL.sel[id]=1; PL.anchor=id; from=id; PL.drag=true;
+    plSyncSelClasses();
   },{passive:false});
   document.addEventListener('touchmove',function(e){
-    if(!PL.drag||!grid) return; e.preventDefault();
-    var id=wellAt(e.touches[0]); if(id&&!PL.sel[id]){ if(PL.mode==='paint'||PL.mode==='erase') plPaintWell(id); else PL.sel[id]=1; plRenderGrid(); }
+    if(!PL.drag||!grid||!from) return; e.preventDefault();
+    var id=wellAt(e.touches[0]); if(!id) return;
+    PL.sel={}; Object.keys(base).forEach(function(k){ PL.sel[k]=1; });
+    plSelectRange(from,id,true);
+    plSyncSelClasses();
   },{passive:false});
   document.addEventListener('touchend',function(){
-    if(!PL.drag) return; PL.drag=false; grid=null; plRenderSide();
+    if(!PL.drag) return; PL.drag=false; grid=null; from=null; plRenderSide();
   });
 })();
 function plToggleTouchAdd(){ PL.touchAdd=!PL.touchAdd; plRenderSide(); }
+
+// ── The clipboard: a rectangle of wells ──────────────────────────────────────────────────────
+// "The same eight wells again, one column over" is the commonest thing anyone does twice on a
+// plate, and until now the only way to do it was to retype every field. ⌘C / ⌘V on a Mac and
+// Ctrl+C / Ctrl+V on Windows — the handler reads both modifiers, so there is one behaviour.
+function plSelBox(){ var ids=plSelIds(); if(!ids.length) return null;
+  var r1=1e9,c1=1e9,r2=-1,c2=-1;
+  ids.forEach(function(id){ var x=wellRC(id); if(!x) return;
+    r1=Math.min(r1,x.r); c1=Math.min(c1,x.c); r2=Math.max(r2,x.r); c2=Math.max(c2,x.c); });
+  return (r2<0)?null:{r1:r1,c1:c1,r2:r2,c2:c2}; }
+function _plWellTsv(p,w){ if(!w) return '';
+  var t=plateTypeById(p,w.typeId);
+  return [t?t.name:'', w.cellLine||'', w.compound||'', w.conc||'', w.label||'']
+    .filter(function(x){return x;}).join(' · '); }
+// The system clipboard gets the block as TSV so it can go into a spreadsheet or an email; the
+// full well objects stay here, because a paste back into a plate must carry the flags, the
+// shading and the block label, none of which survive a line of text.
+function _plClipToSystem(p,b){
+  var lines=[];
+  for(var r=b.r1;r<=b.r2;r++){ var row=[];
+    for(var c=b.c1;c<=b.c2;c++){ var id=wellIdOf(r,c);
+      row.push(PL.sel[id]?_plWellTsv(p,(p.wells||{})[id]):''); }
+    lines.push(row.join('\t')); }
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(lines.join('\n')); }catch(e){}
+}
+function plCopy(cut){ var p=plCur(); if(!p) return; var b=plSelBox(); if(!b){ toast('Select some wells first'); return; }
+  var cells=[];
+  for(var r=b.r1;r<=b.r2;r++) for(var c=b.c1;c<=b.c2;c++){ var id=wellIdOf(r,c);
+    if(!PL.sel[id]) continue; var w=(p.wells||{})[id];
+    cells.push({dr:r-b.r1, dc:c-b.c1, w:w?JSON.parse(JSON.stringify(w)):null}); }
+  PL.clip={rows:b.r2-b.r1+1, cols:b.c2-b.c1+1, cells:cells,
+           types:JSON.parse(JSON.stringify(plateTypes(p))),
+           groups:JSON.parse(JSON.stringify(p.groups||{}))};
+  _plClipToSystem(p,b);
+  if(cut) plEraseSel();
+  toast(cells.length+' well'+(cells.length===1?'':'s')+(cut?' cut':' copied')); }
+function _plClipUses(tid){ return (PL.clip&&PL.clip.cells||[]).some(function(x){ return x.w&&x.w.typeId===tid; }); }
+function plPaste(){ var p=plCur(); if(!p) return;
+  if(!PL.clip||!PL.clip.cells.length){ toast('Nothing copied yet'); return; }
+  var b=plSelBox(), a=b?{r:b.r1,c:b.c1}:(PL.anchor?wellRC(PL.anchor):{r:0,c:0});
+  if(!a) return;
+  plMark('Paste wells');
+  var d=plateDims(p), n=0, out=0, sel={}, gmap={};
+  if(!p.wells) p.wells={};
+  PL.clip.cells.forEach(function(x){ var r=a.r+x.dr, c=a.c+x.dc;
+    if(r>=d.r||c>=d.c){ out++; return; }
+    var id=wellIdOf(r,c);
+    if(!x.w){ delete p.wells[id]; return; }
+    var w=JSON.parse(JSON.stringify(x.w));
+    // A pasted block is a new block. Keeping the source group id would merge the copy into the
+    // original, so one label would stretch across both — which is not what was copied.
+    if(w.groupId){
+      if(!gmap[w.groupId]){ var gid='g'+Date.now().toString(36)+Object.keys(gmap).length;
+        gmap[w.groupId]=gid;
+        var src=(PL.clip.groups||{})[w.groupId];
+        if(src){ if(!p.groups) p.groups={}; p.groups[gid]={label:src.label}; } }
+      w.groupId=gmap[w.groupId]; }
+    p.wells[id]=w; sel[id]=1; n++; });
+  // The copy may come from a plate with a palette this one does not have — carry the types it
+  // actually used across, or the wells land colourless and unnamed.
+  var have={}; plateTypes(p).forEach(function(t){ have[t.id]=1; });
+  var add=(PL.clip.types||[]).filter(function(t){ return !have[t.id]&&_plClipUses(t.id); });
+  if(add.length){ var ts=_plOwnTypes(p); add.forEach(function(t){ ts.push(JSON.parse(JSON.stringify(t))); }); }
+  PL.sel=sel; PL.anchor=wellIdOf(a.r,a.c);
+  _plGcGroups(p); platePersist(PL.key); plRender();
+  toast(n+' well'+(n===1?'':'s')+' pasted'+(out?(' · '+out+' fell outside the plate'):'')); }
 document.addEventListener('keydown',function(ev){
   if(!PL.key||!el('plate-modal').classList.contains('open')) return;
-  if(ev.key==='Escape'){ if(plSelIds().length) plClearSel(); else closePlateEditor(); }
-  else if((ev.key==='Delete'||ev.key==='Backspace')&&plSelIds().length&&!/^(INPUT|SELECT|TEXTAREA)$/.test((ev.target.tagName||''))){ ev.preventDefault(); plEraseSel(); }
+  var inField=_upEditable(ev.target);
+  if(ev.key==='Escape'){ if(plSelIds().length) plClearSel(); else closePlateEditor(); return; }
+  if(inField) return;   // a field's own copy/paste/undo is the browser's, and it is right
+  var mod=(ev.metaKey||ev.ctrlKey), k=(ev.key||'').toLowerCase();
+  if(mod&&!ev.altKey){
+    if(k==='c'){ ev.preventDefault(); plCopy(false); return; }
+    if(k==='x'){ ev.preventDefault(); plCopy(true); return; }
+    if(k==='v'){ ev.preventDefault(); plPaste(); return; }
+    if(k==='a'){ ev.preventDefault(); plSelectAll(); return; }
+    return;
+  }
+  if((ev.key==='Delete'||ev.key==='Backspace')&&plSelIds().length){ ev.preventDefault(); plEraseSel(); }
 });
 
 // ── Store ──
@@ -5209,6 +5504,7 @@ function _fillSubSteps(b,on){
 // whoever just clicked one.
 function setBlockDone(expId,blockId,done,silent,fromChecklist){
   var f=blockFinder(expId,blockId); if(!f) return;
+  undoMark(done?'Tick step':'Untick step',['experiments.'+expId]);
   f.block.done=!!done; f.block.completedAt=done?Date.now():null;
   if(!fromChecklist) _fillSubSteps(f.block,!!done);
   syncExpStatus(f.exp); f.exp.updated=Date.now(); save();
@@ -5431,6 +5727,7 @@ function carryBlockToToday(expId,blockId,D){
 function snoozeBlock(expId,blockId,n){
   var e=LB.data.experiments[expId]; if(!e) return;
   var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0]; if(!b||!b.date) return;
+  undoMark('Snooze step',['experiments.'+expId]);
   var from=b.date, days=n||1, moved=0;
   (e.blocks||[]).forEach(function(x){ if(x.date && x.date>=from && x.id!==b.id){ x.date=addDays(x.date,days); moved++; } });
   b.date=addDays(b.date,days);
@@ -6391,7 +6688,7 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
 function newNote(kind){ var e={ id:uid(), kind:'note', noteType:kind, projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, title:'', date:todayStr(), html:'<p></p>', created:Date.now(), updated:Date.now() };
   LB.data.experiments[e.id]=e; save(); SEL.page=e.id; renderAll(); }
 function dupExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; var c=JSON.parse(JSON.stringify(e)); c.id=uid(); c.title=(e.title||'')+' (copy)'; if(e.code) c.code=e.code+'_copy'; if(c.blocks) c.blocks.forEach(function(b){b.id=uid();}); c.created=Date.now(); c.updated=Date.now(); LB.data.experiments[c.id]=c; save(); SEL.page=c.id; renderAll(); }
-function delExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Delete "'+(e.title||e.code||'this entry')+'"? This cannot be undone.',{danger:true,title:'Delete entry'}).then(function(ok){ if(!ok) return; delete LB.data.experiments[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
+function delExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Delete "'+(e.title||e.code||'this entry')+'"?',{danger:true,title:'Delete entry'}).then(function(ok){ if(!ok) return; undoMark('Delete entry',['experiments.'+id]); delete LB.data.experiments[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
 
 function newNotebookDay(){ var k=todayStr(); if(!LB.data.notebook[k]) LB.data.notebook[k]={date:k,html:'<p></p>'}; save(); SEL.page=k; renderAll(); }
 function newPage(){ if(SEL.node.kind!=='general') return; var pg={id:uid(),sectionId:SEL.node.sectionId,kind:'notes',title:'Untitled',html:'<p></p>',created:Date.now(),updated:Date.now()}; LB.data.pages[pg.id]=pg; save(); SEL.page=pg.id; renderAll(); }
@@ -7759,7 +8056,7 @@ function nbTasksHtml(D){
 }
 function delDay(D){ var hasBlocks=blocksForDate(D).length>0;
   if(hasBlocks){ lbConfirm('This day has experiment steps, so the day itself stays here — remove those steps from their experiment to clear it. Clear the day’s free note now?',{danger:true,title:'Clear daily note'}).then(function(ok){ if(!ok) return; delete LB.data.notebook[D]; save(); renderAll(); toast('Daily note cleared — the day stays (it still has experiment steps).'); }); return; }
-  lbConfirm('Delete this daily note? This cannot be undone.',{danger:true,title:'Delete daily note'}).then(function(ok){ if(!ok) return; delete LB.data.notebook[D]; if(SEL.page===D) SEL.page=null; save(); renderAll(); toast('Daily note deleted.'); }); }
+  lbConfirm('Delete this daily note?',{danger:true,title:'Delete daily note'}).then(function(ok){ if(!ok) return; undoMark('Delete daily note',['notebook.'+D]); delete LB.data.notebook[D]; if(SEL.page===D) SEL.page=null; save(); renderAll(); toast('Daily note deleted.'); }); }
 function renderPageEditor(host,pg){ (el('export-btn')||{style:{}}).style.display='';
   host.innerHTML='<div class="ed-wrap"><div class="exh"><input class="exh-title" value="'+esc(pg.title||'')+'" placeholder="Page title" onchange="setPage(\'title\',this.value)" onblur="renderPages()"></div>'
     +'<div class="rt pg-body" contenteditable="true" data-ctx="page:'+pg.id+'" oninput="setPage(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>';
@@ -8255,7 +8552,7 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" title="Outline, tags and info" onmousedown="event.preventDefault();toggleDock()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>')+'</span><span class="rb-lbtn-lbl">Panel</span></button>'
   +'<button class="rb-lbtn" id="export-btn" title="Export this entry as a PDF" onmousedown="event.preventDefault();exportPDF()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>')+'</span><span class="rb-lbtn-lbl">PDF</span></button>'
   +'<button class="rb-lbtn" title="Report across experiments" onmousedown="event.preventDefault();openReport()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>')+'</span><span>Report</span></button>'
-  +'<button class="rb-lbtn" title="Copy, formatted for OneNote" onmousedown="event.preventDefault();copyForOneNote()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="9" y="3" width="12" height="16" rx="2"/><path d="M15 21H5a2 2 0 01-2-2V7"/><path d="M12.5 15V8.5l5 6.5V8.5"/>')+'</span><span class="rb-lbtn-lbl">OneNote</span></button>'
+  +'<button class="rb-lbtn" title="Copy this entry the way selecting it in the page and pressing \u2318/Ctrl+C does \u2014 formatting kept, still editable wherever you paste it" onmousedown="event.preventDefault();copyRendered()"><span class="rb-lbtn-ico">'+tbSvg('<rect x="9" y="3" width="12" height="16" rx="2"/><path d="M15 21H5a2 2 0 01-2-2V7"/>')+'</span><span class="rb-lbtn-lbl">Copy</span></button>'
   +'<button class="rb-lbtn" title="Save as a Word file" onmousedown="event.preventDefault();exportOneNoteDoc()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v4h4"/><path d="M9 12l1.6 5 1.4-3.6L13.4 17 15 12"/>')+'</span><span class="rb-lbtn-lbl">Word</span></button>'
   +'<button class="rb-lbtn" id="backup-btn" title="'+esc(backupStatus().detail)+' Back up now \u00b7 right-click for the folder" onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
   +'<button class="rb-lbtn" title="The numbers, as data — JSON or CSV" onmousedown="event.preventDefault();exportDataMenu()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>')+'</span><span class="rb-lbtn-lbl">Data</span></button>'
@@ -8445,10 +8742,10 @@ function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).
   if(f==='date'){ recomputeDayOffsets(e); save(); renderPages(); renderEditor(); return; }
   save(); }
 function setExpBlockHtml(expId,blkId,html){ var e=LB.data.experiments[expId]; if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===blkId;})[0]; if(!b) return; b.html=_persistImgHtml(html); e.updated=Date.now(); queueSave(); }
-function addBlock(){ var e=_curExp(); if(!e) return; var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'<p></p>',done:false,completedAt:null}); save(); renderEditor(); }
-function delBlock(id){ var e=_curExp(); if(!e) return; e.blocks=e.blocks.filter(function(b){return b.id!==id;}); save(); renderEditor(); }
+function addBlock(){ var e=_curExp(); if(!e) return; undoMark('Add step',['experiments.'+e.id]); var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'<p></p>',done:false,completedAt:null}); save(); renderEditor(); }
+function delBlock(id){ var e=_curExp(); if(!e) return; undoMark('Delete step',['experiments.'+e.id]); e.blocks=e.blocks.filter(function(b){return b.id!==id;}); save(); renderEditor(); }
 function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
-function moveBlock(id,dir){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; save(); renderEditor(); }
+function moveBlock(id,dir){ var e=_curExp(); if(!e) return; undoMark('Move step',['experiments.'+e.id]); var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; save(); renderEditor(); }
 // Creates the day on first edit — renderDayView deliberately doesn't, so that merely
 // looking at a day never adds it to the Notebook list.
 function setNotebook(html,D){ D=D||SEL.page; if(!D) return;
@@ -9168,7 +9465,7 @@ function ctxExp(ev,id){ var e=LB.data.experiments[id]; if(!e) return; var pr=exp
   (e.presetKey?{label:'Update step text from the preset…',fn:function(){openExp(id);setTimeout(function(){updateExpTextFromPreset(id);},120);}}:{sep:true}),
   {label:'Duplicate',fn:function(){dupExperiment(id);}},
   (isCoded(e)?{label:'Export PDF',fn:function(){openExp(id);setTimeout(exportPDF,120);}}:{sep:true}),
-  (isCoded(e)?{label:'Copy for OneNote',fn:function(){openExp(id);setTimeout(copyForOneNote,140);}}:{sep:true}),
+  (isCoded(e)?{label:'Copy entry',fn:function(){openExp(id);setTimeout(copyRendered,140);}}:{sep:true}),
   {sep:true},{label:'Delete',danger:true,fn:function(){delExperiment(id);}}
 ]); }
 function ctxBlock(ev,id){ var e=_curExp(); ctxAt(ev,[
@@ -9188,7 +9485,7 @@ function ctxPage(ev,id){ var pg=LB.data.pages[id]; if(!pg) return; ctxAt(ev,[
   {label:'Rename',fn:function(){renamePage(id);}},
   {sep:true},{label:'Delete',danger:true,fn:function(){delPage(id);}}
 ]); }
-function delPage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbConfirm('Delete "'+(pg.title||'this page')+'"? This cannot be undone.',{danger:true,title:'Delete page'}).then(function(ok){ if(!ok) return; delete LB.data.pages[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
+function delPage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbConfirm('Delete "'+(pg.title||'this page')+'"?',{danger:true,title:'Delete page'}).then(function(ok){ if(!ok) return; undoMark('Delete page',['pages.'+id]); delete LB.data.pages[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
 function renamePage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbPrompt('Rename page', pg.title||'').then(function(v){ if(v==null) return; pg.title=(v.trim()||'Untitled'); pg.updated=Date.now(); save(); renderAll(); }); }
 
 // ── Autocomplete: @ # / + antibody + protocol ──
@@ -10415,28 +10712,38 @@ function buildOneNoteHtml(){
     }, 60); });
   });
 }
-function _onSafari(){ return !(navigator.clipboard && window.ClipboardItem); }
-function copyForOneNote(){
-  buildOneNoteHtml().then(function(doc){
-    function fallback(){
-      // execCommand('copy') over a selected node carries the HTML flavour, which
-      // writeText does not — and it is the only path Safari and older Firefox have.
-      var holder=document.createElement('div');
-      holder.setAttribute('contenteditable','true');
-      holder.style.cssText='position:fixed;left:-10000px;top:0;white-space:normal;';
-      holder.innerHTML=doc.html;
-      document.body.appendChild(holder);
-      var r=document.createRange(); r.selectNodeContents(holder);
+// Copying the payload we build ourselves turned out to be worse than the copy the browser
+// already does: select the rendered page, press ⌘C, and what lands in OneNote or Word keeps its
+// formatting *and* stays editable. So this does exactly that, on the same clean document the PDF
+// is built from rather than on the app's chrome — one selection over the laid-out entry, and the
+// browser's own copy. Nothing is inlined, rewritten or flattened on the way out.
+function copyRendered(){
+  var stage=document.createElement('div');
+  stage.id='copy-stage';
+  // Off-screen, never display:none — an unlaid-out tree has no formatting for a copy to carry.
+  stage.style.cssText='position:fixed;left:-10000px;top:0;width:820px;background:#fff;color:#111;'
+    +"font-family:'IBM Plex Sans',sans-serif;";
+  stage.innerHTML=buildPrintDoc().split('#print-root').join('#copy-stage');
+  document.body.appendChild(stage);
+  // The stylesheet has to keep applying — it is what the copy is carrying — but it must not be
+  // *inside* the selection, or the whole of PRINT_CSS arrives as a paragraph of literal CSS at
+  // the top of the paste. Its selectors are scoped to #copy-stage, so it works just as well
+  // from the head.
+  var moved=[];
+  Array.prototype.forEach.call(stage.querySelectorAll('style'), function(st){
+    moved.push(st); document.head.appendChild(st); });
+  Promise.all([hydrateAtt(stage), printFloatLayers(stage)]).then(function(){
+    setTimeout(function(){
+      // The checkbox squares are ::before, and a pseudo-element is not part of any selection —
+      // real ☐/☑ characters go in first or the ticks vanish on the way out.
+      _onCheckboxes(stage);
+      var r=document.createRange(); r.selectNodeContents(stage);
       var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
       var ok=false; try{ ok=document.execCommand('copy'); }catch(e){}
-      sel.removeAllRanges(); holder.remove();
-      toast(ok?'Copied — paste into OneNote':'Could not reach the clipboard');
-    }
-    if(_onSafari()){ fallback(); return; }
-    navigator.clipboard.write([new ClipboardItem({
-      'text/html': new Blob([doc.html], {type:'text/html'}),
-      'text/plain': new Blob([doc.text], {type:'text/plain'})
-    })]).then(function(){ toast('Copied — paste into OneNote'); }, fallback);
+      sel.removeAllRanges(); stage.remove();
+      moved.forEach(function(st){ st.remove(); });
+      toast(ok?'Copied — paste it anywhere; it stays formatted and editable':'Could not reach the clipboard');
+    }, 60);
   });
 }
 // The file route, for a long experiment with images: Word HTML, which OneNote takes through

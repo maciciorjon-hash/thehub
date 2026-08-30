@@ -116,6 +116,11 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 #plate-canvas-main{display:block;cursor:crosshair;}
 #plate-canvas-main:focus{outline:none;}
 #rubber-band{position:fixed;border:1.5px dashed var(--accent);background:rgba(94,135,197,.06);pointer-events:none;display:none;z-index:1000;}
+#pd-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(8px);z-index:3000;
+  background:var(--surface3);color:var(--text);border:1px solid var(--border2);border-radius:var(--r-2);
+  padding:8px 16px;font-size:var(--fs-3);box-shadow:0 6px 22px rgba(0,0,0,.18);
+  opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;}
+#pd-toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
 #well-inline-edit{position:fixed;display:none;z-index:2000;border:2px solid var(--accent);border-radius:var(--r-1);background:var(--surface);color:var(--text);font-family:var(--sans);font-weight:600;text-align:center;outline:none;padding:2px 5px;box-shadow:0 4px 18px rgba(0,0,0,.22);min-width:44px;}
 .pd-shape-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface2);cursor:pointer;padding:0;transition:background .13s,border-color .13s;}
 .pd-shape-btn:hover{background:var(--surface3);}
@@ -2243,9 +2248,147 @@ function sizeAndDrawCanvas() {
   drawPlateCanvas(canvas);
 }
 
+// ─── Undo / redo, and the plate clipboard ─────────────────────────────────────
+// ⌘Z on a Mac, Ctrl+Z on Windows, Ctrl+Y or ⌘⇧Z to redo. The whole plate is the undo unit — the
+// wells, the custom types, the annotations and the brackets — because instrumenting each of the
+// twenty things that can change it would leave the twenty-first out, and the twenty-first is
+// always the one you wanted back. It is a small object; a snapshot of it costs nothing.
+var PD_UNDO = {stack: [], redo: [], max: 60, last: 0, busy: false, base: null};
+function _pdState() {
+  return JSON.stringify({f: currentFormat, w: wellState, ct: customTypes,
+    ra: rowAnnotations, ca: colAnnotations, br: pdBrackets, sh: wellShape});
+}
+// Hooked into the one place every change already passes through: the redraw. Something that did
+// not alter the plate — resizing the wells, dragging the panel, switching theme — serialises
+// identically and is not a step.
+function pdUndoTrack() {
+  if (PD_UNDO.busy) return;
+  var now = _pdState();
+  if (PD_UNDO.base === null) { PD_UNDO.base = now; return; }
+  if (now === PD_UNDO.base) return;
+  var t = Date.now();
+  // Typing a label redraws on every keystroke; one word is one step, not eleven.
+  if (!(PD_UNDO.stack.length && t - PD_UNDO.last < 700)) {
+    PD_UNDO.stack.push(PD_UNDO.base);
+    if (PD_UNDO.stack.length > PD_UNDO.max) PD_UNDO.stack.shift();
+    PD_UNDO.redo.length = 0;
+  }
+  PD_UNDO.last = t; PD_UNDO.base = now;
+}
+function _pdRestore(js) {
+  PD_UNDO.busy = true;
+  var st = JSON.parse(js), fmtChanged = (st.f !== currentFormat);
+  currentFormat = st.f; wellState = st.w || {}; customTypes = st.ct || [];
+  rowAnnotations = st.ra || {}; colAnnotations = st.ca || {};
+  pdBrackets = st.br || []; wellShape = st.sh || wellShape;
+  selection.clear(); activeWell = null; selectionAnchor = null; lastClickedWell = null;
+  document.querySelectorAll('.fmt-pill').forEach(function(b) {
+    b.classList.toggle('active', b.textContent === currentFormat + '-well'); });
+  renderTypeList();
+  // A format change rebuilds the canvas, so restoring one has to take the same route.
+  if (fmtChanged) buildPlateArea();
+  else drawPlateCanvas(document.getElementById('plate-canvas-main'));
+  pdRenderBrackets(); renderLegend(); updateSelToolbar();
+  PD_UNDO.base = _pdState(); PD_UNDO.last = 0;
+  PD_UNDO.busy = false;
+}
+function pdUndo() {
+  if (!PD_UNDO.stack.length) { pdToast('Nothing to undo'); return; }
+  PD_UNDO.redo.push(_pdState()); _pdRestore(PD_UNDO.stack.pop()); pdToast('Undone');
+}
+function pdRedo() {
+  if (!PD_UNDO.redo.length) { pdToast('Nothing to redo'); return; }
+  PD_UNDO.stack.push(_pdState()); _pdRestore(PD_UNDO.redo.pop()); pdToast('Redone');
+}
+function pdToast(msg) {
+  var t = document.getElementById('pd-toast');
+  if (!t) { t = document.createElement('div'); t.id = 'pd-toast'; document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(t._h); t._h = setTimeout(function() { t.classList.remove('on'); }, 1800);
+}
+
+// The clipboard is a rectangle of wells — "the same eight wells again, one column over" is the
+// commonest thing anyone does twice on a plate, and retyping every label was the only way to it.
+var pdWellClip = null;
+function pdSelBox() {
+  var ids = Array.from(selection); if (!ids.length) return null;
+  var r1 = 99, c1 = 99, r2 = -1, c2 = -1;
+  ids.forEach(function(id) { var rc = wellRowCol(id); if (!rc) return;
+    var r = ROWS_ALL.indexOf(rc.row);
+    r1 = Math.min(r1, r); r2 = Math.max(r2, r);
+    c1 = Math.min(c1, rc.col); c2 = Math.max(c2, rc.col); });
+  return r2 < 0 ? null : {r1: r1, c1: c1, r2: r2, c2: c2};
+}
+function pdCopyWells(cut) {
+  var b = pdSelBox(); if (!b) { pdToast('Select some wells first'); return; }
+  var cells = [], lines = [];
+  for (var r = b.r1; r <= b.r2; r++) {
+    var row = [];
+    for (var c = b.c1; c <= b.c2; c++) {
+      var id = ROWS_ALL[r] + c, w = wellState[id];
+      if (selection.has(id)) {
+        cells.push({dr: r - b.r1, dc: c - b.c1, w: w ? JSON.parse(JSON.stringify(w)) : null});
+        var t = w ? typeById(w.typeId) : null;
+        row.push(w ? [t ? t.name : '', w.label || ''].filter(Boolean).join(' · ') : '');
+      } else row.push('');
+    }
+    lines.push(row.join('\t'));
+  }
+  // The full well objects stay here; the system clipboard gets the block as TSV, so it can also
+  // go into a spreadsheet or an email.
+  pdWellClip = {cells: cells, types: JSON.parse(JSON.stringify(customTypes))};
+  try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(lines.join('\n')); } catch (e) {}
+  if (cut) { selection.forEach(function(id) { delete wellState[id]; });
+    drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar(); }
+  pdToast(cells.length + ' well' + (cells.length === 1 ? '' : 's') + (cut ? ' cut' : ' copied'));
+}
+function pdPasteWells() {
+  if (!pdWellClip || !pdWellClip.cells.length) { pdToast('Nothing copied yet'); return; }
+  var b = pdSelBox(); if (!b) { pdToast('Click where it should go'); return; }
+  var fmt = FORMATS[currentFormat], n = 0, out = 0, sel = new Set();
+  // A custom type the copy used may not exist here — carry it across, or the wells land with no
+  // colour and no name.
+  var have = {}; allTypes().forEach(function(t) { have[t.id] = 1; });
+  (pdWellClip.types || []).forEach(function(t) {
+    if (have[t.id]) return;
+    if (!pdWellClip.cells.some(function(x) { return x.w && x.w.typeId === t.id; })) return;
+    customTypes.push(JSON.parse(JSON.stringify(t))); have[t.id] = 1;
+  });
+  pdWellClip.cells.forEach(function(x) {
+    var r = b.r1 + x.dr, c = b.c1 + x.dc;
+    if (r >= fmt.rows || c > fmt.cols) { out++; return; }
+    var id = ROWS_ALL[r] + c;
+    if (!x.w) delete wellState[id];
+    else { wellState[id] = JSON.parse(JSON.stringify(x.w)); sel.add(id); }
+    n++;
+  });
+  selection = sel;
+  renderTypeList();
+  drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
+  pdToast(n + ' well' + (n === 1 ? '' : 's') + ' pasted' + (out ? (' · ' + out + ' fell outside the plate') : ''));
+}
+// One handler for both platforms: Ctrl on Windows, ⌘ on a Mac, read as the same modifier. It
+// lives on the document rather than on the canvas because the canvas has to be focused first,
+// and nobody clicks a plate to press ⌘Z.
+document.addEventListener('keydown', function(e) {
+  var panel = document.getElementById('panel-designer');
+  if (!panel || !panel.classList.contains('active')) return;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  var t = e.target;
+  if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || '') || t.isContentEditable)) return;
+  var k = (e.key || '').toLowerCase();
+  if (k === 'z') { e.preventDefault(); if (e.shiftKey) pdRedo(); else pdUndo(); return; }
+  if (k === 'y') { e.preventDefault(); pdRedo(); return; }
+  if (k === 'c' && selection.size) { e.preventDefault(); pdCopyWells(false); return; }
+  if (k === 'x' && selection.size) { e.preventDefault(); pdCopyWells(true); return; }
+  if (k === 'v') { e.preventDefault(); pdPasteWells(); return; }
+});
+
 function drawPlateCanvas(canvas, opts) {
   if (!canvas || !canvas._meta) return;
   opts = opts || {};
+  // The main plate is the one being edited; the export canvases are renderings of it.
+  if (canvas.id === 'plate-canvas-main') pdUndoTrack();
   const {labelW, labelH, wellPx, gap, rows, cols, dpr} = canvas._meta;
   const ox = canvas._meta.ox || 0, oy = canvas._meta.oy || 0;
   const rightM = canvas._meta.rightM || 0, botM = canvas._meta.botM || 0;

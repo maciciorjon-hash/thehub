@@ -2260,6 +2260,92 @@ Also, in the editor: shift-click paints the rectangle in Paint mode (it only sel
 4×2 block was an accurate drag instead of two clicks), and the grid gets the vertical room before
 the layout summary does.
 
+## Undo, the clipboard, and one gesture on the plate (2026-08-30)
+
+Jon's list was seven things and they turn out to be three: the plate editor asked you to say
+twice what one gesture already says, nothing could be taken back, and the copy we built by hand
+was worse than the copy the browser already does.
+
+**⌘Z / Ctrl+Z, and Ctrl+Y or ⌘⇧Z to redo.** Typing inside a field or a contenteditable is left
+to the browser — it is better at character-level undo than any snapshot can be — so the two
+never collide: the handler hands the key straight back whenever the caret is in something
+editable. In **Labbook** a step stores the JSON of the *records* it touches (`undoMark(label,
+['experiments.<id>'])`), never the whole tree, because `LB.data` is megabytes and almost every
+action is one experiment; the redo image is taken at undo time, so one line at the top of a
+mutator is the whole wiring. Every plate mutation, every deletion, every tick, snooze and
+reorder carries one. In **Blueprint** the whole plate is the unit (`_pdState()` — wells, custom
+types, annotations, brackets, format) and it is tracked from the one place every change already
+passes through, the redraw: instrumenting each of the twenty things that can change a plate
+leaves the twenty-first out, and the twenty-first is always the one you wanted back. Undoing a
+format change brings the wiped plate back, which is the undo that matters most there.
+
+**The plate editor has one interaction.** Paint / Select / Erase is gone — three modes made you
+declare a gesture that the gesture already stated, and which one you were in was invisible from
+the plate. Now: **drag a rectangle, click the condition.** It applies straight away, the
+selection stays (so the fields underneath still describe what you just placed), and the next
+drag replaces it. Delete clears wells. Shift extends the box, ⌘/Ctrl-click adds.
+
+- **The drag draws a real rubber band**, like Blueprint: `#pl-band` is a fixed overlay *outside*
+  the modal, because `.modal-back` and `.modal` both carry a `backdrop-filter`, which makes them
+  the containing block for anything `position:fixed` inside them. The well rects are measured
+  once at mousedown — 384 `getBoundingClientRect` calls per mousemove is a layout thrash — and a
+  drag only moves the `sel` class about (`plSyncSelClasses`), never re-renders: a repaint would
+  destroy the very nodes the band is hit-testing.
+- **On touch the same rectangle**, corner to corner rather than the path traced. A wandering
+  thumb cannot keep a straight line, which is what made the old path-drag unusable on a phone.
+- **⌘/Ctrl+C, X, V copy a block of wells**, on both platforms from one handler. "The same eight
+  wells again, one column over" is the commonest thing anyone does twice on a plate and retyping
+  every field was the only route to it. The full well objects stay in `PL.clip` — a paste has to
+  carry the flags, the shading and the block label, none of which survive a line of text — and
+  the system clipboard gets the block as TSV so it can also go into a spreadsheet. A pasted block
+  gets **new group ids**: reusing the source's would merge the copy into the original and stretch
+  one label across both. A type the copy used that this plate does not have is carried across.
+- **Shading has four directions.** `plApplyShade` derived its axis from "is it a column?", which
+  left *dark at the bottom* with no button at all — the one Jon asked for. It is `right`/`down`
+  (dark end first) and `left`/`up` (reversed), and each button says where the dark end goes.
+
+**Copy is the browser's copy.** `copyForOneNote` built its own payload, inlined every computed
+style and replaced each SVG with "[diagram — see the PDF export]". Selecting the rendered page
+and pressing ⌘C beats it: the formatting survives *and* it stays editable where it lands. So
+`copyRendered()` does exactly that — one selection over the same clean document the PDF is built
+from, laid out off-screen, and `execCommand('copy')`. Two things it has to do: real ☐/☑ go in
+first (a `::before` square is not part of any selection), and the `<style>` is moved to the head
+before selecting — its selectors are scoped to `#copy-stage` so it keeps applying, and left
+inside the selection the whole of `PRINT_CSS` arrives as a paragraph of literal CSS at the top of
+the paste. The Word export still needs its own inlining and keeps it.
+
+### The plate map and the mix table are one thing seen twice
+
+Jon's NanoBRET has transfection conditions *and* a hemin titration run on the plasmid combination
+of condition 1 — which is twelve more wells of that condition and of no other. The transfection
+design was not counting them, so the mix was made for a quarter of the wells it is dispensed into.
+
+**The counts are read off the plate now, per condition** (`plateTidCounts` → `_nbtxConditions(v,
+counts)`). A condition's `tid` is the same string on the map and in the mix table, so the drawing
+can say how many wells there are without anything being typed twice — and it is the drawing that
+knows: there is one `nPair` for every pair, and a titration on one of them cannot be expressed in
+it. A count the plate supplied is marked *from the plate* in the table. The rule is that the plate
+**can add and correct, never delete**: a map is often half-drawn, and a condition missing from it
+is not a condition you decided against.
+
+`syncPlateToCalcs` no longer writes anything back for `nbtx`. Copying the plate's totals into a
+single box flattened exactly the difference that mattered, and its guard meant it could only ever
+run in the one-donor-one-ratio case anyway. `nbsusp` still takes the aggregate, which is right.
+
+**Live, both ways.** `platePersist` calls `refreshCalcRecipes(e)`, so the table moves while the
+plate editor is still open — not when it is closed. `calcUpd` calls `nbNumberPlate(e)` (debounced
+900 ms, or a construct renamed letter by letter puts one condition in the palette per letter) and
+repaints the plate cards in place. Only the recipe bodies and the plate cards are repainted; a
+full `renderEditor` would take the caret with it.
+
+`nbNumberPlate` grew the other half of the join: it **adds** a condition the palette does not have
+yet, so a donor or ratio added after the map was drawn can be painted immediately, and **removes**
+one the calculator no longer has *that no well carries* — without that, a rename leaves both halves
+in the palette for ever. A type wells still use is never touched: those wells are the record of
+what was in them. It only does any of this on a palette that is already the experiment's
+conditions; appending eight numbered conditions to a generic layout would turn a plate nobody
+asked to number into a numbered one.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
