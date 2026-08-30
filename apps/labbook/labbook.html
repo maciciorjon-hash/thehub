@@ -2025,6 +2025,27 @@ function _seedRound(n){ if(!(n>0)) return 0;
   var mag=Math.pow(10, Math.floor(Math.log10(n))-1);
   return Math.round(n/mag)*mag; }
 function seedCellsFor(fmt){ var a=PLATE_AREA[String(fmt)]; return a?_seedRound(a*SEED_PER_CM2):null; }
+// How many cells of this line go in one well of this plate.
+//
+// Two different questions wear the same label, and telling them apart is the whole of it. A 6-,
+// 12-, 24- or 48-well is **plated**: you seed a monolayer and use it the next day, and the right
+// density is the lab's own 800,000 per 6-well — the SEED_PER_CM2 anchor. A 96- or 384-well is an
+// **assay** well: you seed sparse and the cells grow through the assay, and the right density is
+// the line's own working figure at the format it was measured in.
+//
+// Applying the second to the first is how picking HeLa for a 6-well western put **3,000 cells**
+// into a dish that needs 800,000. A line's cpw was a 384-well number and said nothing whatever
+// about a plate you are going to lyse; it was written in regardless of the format, and it also
+// overwrote the number the format change had just rescaled correctly.
+var SEED_ASSAY_FMT={'96':1,'384':1};
+function lineCells(lineId,fmt){
+  fmt=String(fmt||'96');
+  var a=PLATE_AREA[fmt]; if(!a) return null;
+  if(!SEED_ASSAY_FMT[fmt]) return seedCellsFor(fmt);
+  var d=cellLineDef(lineId); if(!d||!d.cpw) return seedCellsFor(fmt);
+  var ref=PLATE_AREA[String(d.cpwFmt||'384')]; if(!ref) return seedCellsFor(fmt);
+  return _seedRound(d.cpw*(a/ref));
+}
 // Keep the density the user chose and move both numbers to the new plate.
 function rescaleSeedInputs(I, newFmt){
   if(!I || I.format==null) return;
@@ -2160,13 +2181,15 @@ function applySetupToBlocks(type,setup,blocks,prevSetup){
 var WELLSMAP={'6':6,'12':12,'24':24,'48':48,'96':96,'384':384};
 function wellsOf(f){ return WELLSMAP[String(f)]||96; }
 var CELL_LINES=[
-  {id:'HEK293',label:'HEK293',cpw:3000},
-  {id:'HEK293-HiBiT',label:'HEK293 (HiBiT reporter)',cpw:20000},
-  {id:'SUDHL5',label:'SU-DHL-5 (suspension)',cpw:30000},
-  {id:'HeLa',label:'HeLa',cpw:3000},
-  {id:'HCT116',label:'HCT-116',cpw:3000},
-  {id:'U2OS',label:'U2OS',cpw:2500},
-  {id:'',label:'Other / custom',cpw:3000}
+  // cpw is per well **in cpwFmt**, and it has to say which: on its own it is a number that means
+  // three different densities depending on the plate it lands in. See lineCells().
+  {id:'HEK293',label:'HEK293',cpw:3000,cpwFmt:'384'},
+  {id:'HEK293-HiBiT',label:'HEK293 (HiBiT reporter)',cpw:20000,cpwFmt:'96'},
+  {id:'SUDHL5',label:'SU-DHL-5 (suspension)',cpw:30000,cpwFmt:'96'},
+  {id:'HeLa',label:'HeLa',cpw:3000,cpwFmt:'384'},
+  {id:'HCT116',label:'HCT-116',cpw:3000,cpwFmt:'384'},
+  {id:'U2OS',label:'U2OS',cpw:2500,cpwFmt:'384'},
+  {id:'',label:'Other / custom',cpw:3000,cpwFmt:'384'}
 ];
 function cellLineDef(id){ for(var i=0;i<CELL_LINES.length;i++){ if(CELL_LINES[i].id===id) return CELL_LINES[i]; } return CELL_LINES[CELL_LINES.length-1]; }
 function nfmt(x){ x=+x; if(!isFinite(x)) return '—'; var a=Math.abs(x); if(a===0) return '0';
@@ -2726,7 +2749,9 @@ function refreshPlateCards(e){
     if(host) host.outerHTML=platePreviewHtml(plateOf(k),k,host.getAttribute('data-ro')==='1');
   });
 }
-function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; b.calc.inputs.cellLine=clid; var d=cellLineDef(clid); if(d&&d.cpw) b.calc.inputs.cellsPerWell=d.cpw; save(); renderEditor(); }
+function calcCellLine(id,clid){ var b=_blkById(id); if(!b||!b.calc) return; b.calc.inputs.cellLine=clid;
+  if(b.calc.inputs.cellsPerWell!=null){ var n=lineCells(clid,b.calc.inputs.format); if(n) b.calc.inputs.cellsPerWell=n; }
+  save(); renderEditor(); }
 function calcRemove(id){ var b=_blkById(id); if(!b) return; lbConfirm('Remove the prep calculator from this step? (Your written notes stay.)',{title:'Remove calculator'}).then(function(ok){ if(!ok) return; delete b.calc; save(); renderEditor(); }); }
 function addCalcToBlock(id,kind){ var b=_blkById(id); if(!b) return; b.calc={kind:kind,inputs:calcDefaults(kind)}; save(); renderEditor(); }
 function addArchiveCalcToBlock(id,pid){ var b=_blkById(id); if(!b) return; b.calc={kind:'archive',pid:pid,inputs:{},recipe:''}; save(); renderEditor(); }
@@ -2756,6 +2781,28 @@ var STEP_LIBRARY=[
   {id:'lib:ctg',label:'CellTiter-Glo readout (calc)',sub:'live prep calculator',calc:'ctg'},
   {id:'lib:reagent',label:'Reagent dilution (calc)',sub:'live prep calculator',calc:'reagent'},
   {id:'lib:compound',label:'Compound addition (Echo)',sub:'text step',html:'<p><b>Compound addition (Echo)</b>. Picklist: &lt;code&gt;_Picklist.csv.</p>'},
+  // Adding compound by hand is the other half of the Echo step and had no entry at all: the only
+  // way to it was to add a blank block and know that the calculator picker holds `spike`. The
+  // wording is the BET biosensor preset's, because that is the version that has been run — spike
+  // the 10× in without aspirating, and the concentrations you record are the ones in the well.
+  {id:'lib:compound-manual',label:'Compound addition (by hand)',sub:'live prep calculator',calc:'spike',
+   inputs:{name:'test compounds',wellVolUL:111.1,foldX:10,finalUM:0,stockUM:0,nWells:84,excess:1.1,diluent:'Opti-MEM'},
+   w:180,
+   html:'<p>Add the test compounds at the chosen concentrations. Prepare <b>10&times; dilutions of each concentration in Opti-MEM</b> '
+     +'and add the 10&times; to the wells &mdash; the concentrations you record are the ones <b>in the well</b>.</p>'
+     +'<p class="pub-skip"><b>Spike in, do not aspirate.</b> Replacing the medium would take the cells\' conditioned medium with it '
+     +'and risks lifting the monolayer; the 10&times; intermediate is designed to go on top of what is already there.</p>'
+     +'<p>Give the vehicle and control wells the same volume of matched vehicle, so every well carries the same diluent and DMSO.</p>'
+     +'<ul class="lb-check"><li>10&times; dilutions made</li><li>Added to the treated wells</li>'
+     +'<li>Vehicle added to the control wells</li><li>Incubated</li></ul>'},
+  // And the series itself, when the dilutions are the thing you are working out rather than a
+  // step everybody knows. It asks for the top concentration *in the well* and the strength the
+  // series is made at separately, because "10× serial dilutions at 1 µM" is ambiguous by a
+  // factor of ten.
+  {id:'lib:serial',label:'Serial dilution series (calc)',sub:'live prep calculator',calc:'serial',
+   html:'<p><b>Serial dilution series.</b> The table above is the plate\'s: the top concentration is the one '
+     +'<b>in the well</b>, and the series is made at the intermediate strength beside it.</p>'
+     +'<ul class="lb-check"><li>Series made</li><li>Checked against the plate map</li></ul>'},
   {id:'lib:transfection',label:'Transfection (FuGENE HD)',sub:'text step',html:'<p><b>Transfection</b>: DNA + carrier in OptiMEM + FuGENE HD (3:1), 10 min RT, dropwise. Incubate ~20 h.</p>'},
   {id:'lib:lysis',label:'Lysis',sub:'text step',html:'<p><b>Lysis</b>: 20 &micro;L/well, 2% SDS, 50 mM Tris&middot;HCl, 100&times; PI, 1000&times; benzonase. Store &minus;20 &deg;C.</p>'},
   {id:'lib:colony',label:'Colony pick',sub:'text step',html:'<p>Pick colonies &rarr; 5 mL LB + amp. Overnight 37 &deg;C.</p>'},
@@ -2774,7 +2821,15 @@ function insertStepBlock(spec, at){
   var d=(prev&&prev.date) || (n?e.blocks[0].date:'') || e.startDate || todayStr();
   var blk={id:uid(), date:d, dayOffset:daysBetween(expAnchorDate(e),d), title:spec.title||'', html:spec.html||'<p></p>', done:false, completedAt:null};
   if(spec.archivePid) blk.calc={kind:'archive',pid:spec.archivePid,inputs:{},recipe:''};
-  else if(spec.calc) blk.calc={kind:spec.calc,inputs:calcDefaults(spec.calc)};
+  else if(spec.calc){
+    var _in=calcDefaults(spec.calc);
+    // A library step may ship the numbers it is actually run with, not only the calculator's
+    // defaults — "add the 10× into 111.1 µL" is the step, and arriving on 100 µL would be wrong
+    // every time.
+    if(spec.inputs) Object.keys(spec.inputs).forEach(function(k){ _in[k]=spec.inputs[k]; });
+    blk.calc={kind:spec.calc,inputs:_in};
+  }
+  if(spec.w) blk.waitMin=spec.w;
   if(spec.part){ blk.part=spec.part; blk.sourcePid=spec.sourcePid; }
   e.blocks.splice(idx,0,blk);
   save(); renderEditor(); setTimeout(function(){ scrollBlk(blk.id); },80);
@@ -2794,7 +2849,8 @@ function stepPaletteStrip(){
 function libSpec(id){ return STEP_LIBRARY.filter(function(s){ return s.id===id; })[0]||null; }
 function _libInsert(id, at){
   var sp=libSpec(id); if(!sp) return;
-  insertStepBlock({title:sp.label.replace(/ \(calc\)$/,''), html:sp.html, calc:sp.calc}, at);
+  insertStepBlock({title:sp.label.replace(/ \(calc\)$/,''), html:sp.html, calc:sp.calc,
+    inputs:sp.inputs, w:sp.w}, at);
 }
 function palAdd(id){ _libInsert(id, null); }
 // One drag state for both kinds, because the drop target does the same thing either way.
@@ -2855,7 +2911,7 @@ function stepPalette(){ var e=_curExp(); if(!e) return;
     var arItems=idx.map(function(p){ return {id:'ar:'+p.id,label:p.name,sub:'Archive protocol'+(p.hasCalc?' · steps + calculator':' · full steps'),ic:'A',c:'#a56983'}; });
     var items=libItems.concat(arItems);
     lbPicker('Add a step — search library + Archive',items,function(it){
-      if(it.id.indexOf('lib:')===0){ var spec=STEP_LIBRARY.filter(function(s){return s.id===it.id;})[0]; if(spec) insertStepBlock({title:spec.label.replace(/ \(calc\)$/,''),html:spec.html,calc:spec.calc}); return; }
+      if(it.id.indexOf('lib:')===0){ _libInsert(it.id, null); return; }
       if(it.id.indexOf('ar:')===0){ var pid=it.id.slice(3); var steps=archiveSteps(pid); var name=it.label; var m=idx.filter(function(p){return p.id===pid;})[0];
         var html=(steps&&steps.length)?protocolStepsHtml({id:pid,label:name},steps):'<p></p>';
         insertStepBlock({title:name,html:html,part:name,sourcePid:pid,archivePid:(m&&m.hasCalc)?pid:null}); return; }
@@ -3288,7 +3344,17 @@ function expPlateTypes(e){
 // and the type is the fallback for everything created before the question existed.
 function expUsesCompounds(e){
   if(e&&e.setup&&e.setup.doseSeries!=null) return !!e.setup.doseSeries;
+  // A map with a compound or a concentration already written into it is not a question: whatever
+  // the setup box was never asked, this plate doses something. Without this an experiment
+  // created before the box existed — or one filled from an Echo picklist — silently loses the
+  // fields that hold the numbers already in it.
+  if(plateHasConc(e&&e.plate)) return true;
   return !e || ['NB'].indexOf(e.type)<0;
+}
+function plateHasConc(p){
+  if(!p||!p.wells) return false;
+  return Object.keys(p.wells).some(function(k){ var w=p.wells[k];
+    return w && (w.conc||w.compound); });
 }
 function plateTypeById(p,id){ var t=plateTypes(p).filter(function(x){return x.id===id;})[0]; return t||null; }
 // Optional per-well `shade` (0 = full strength, 1 = palest) draws a concentration gradient
@@ -4335,13 +4401,25 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     .map(function(f){ var st=_plFlagState(p,ids,f.k);
       return '<button class="pl-flag'+(st===true?' on':(st===null?' mixed':''))+'" onclick="plToggleFlag(\''+f.k+'\')" title="'+esc(f.title)+'">'+esc(f.lbl)+'</button>'; }).join('')
     +'</div>'):'';
-  var axis=plSelAxis();
-  var dose=(axis&&n>=2&&expUsesCompounds(_plExp()))?('<div class="pl-sec"><div class="pl-sec-t">Dose series &mdash; '+(axis==='row'?'across the row':'down the column')+'</div>'
+  var axis=plSelAxis(), _dosing=expUsesCompounds(_plExp());
+  // A block has both directions and is the ordinary shape of a titration in replicate, so it is
+  // offered both rather than refused. A single row or column keeps the one answer it has.
+  var _doseBtns=(axis==='block')
+    ? ('<div class="pl-row2"><button class="pl-btn" onclick="plApplyDose(1,\'row\')">Across &#8594;</button>'
+      +'<button class="pl-btn" onclick="plApplyDose(-1,\'row\')">Across &#8592;</button></div>'
+      +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyDose(1,\'col\')">Down &#8595;</button>'
+      +'<button class="pl-btn" onclick="plApplyDose(-1,\'col\')">Down &#8593;</button></div>')
+    : ('<div class="pl-row2"><button class="pl-btn" onclick="plApplyDose(1)">Fill wells '+(axis==='col'?'&#8595;':'&#8594;')+'</button>'
+      +'<button class="pl-btn" onclick="plApplyDose(-1)">Fill wells '+(axis==='col'?'&#8593;':'&#8592;')+'</button></div>');
+  var _doseWhere=(axis==='row')?'across the row':(axis==='col'?'down the column':'across the block');
+  var dose=(axis&&n>=2&&_dosing)?('<div class="pl-sec"><div class="pl-sec-t">Dose series &mdash; '+_doseWhere+'</div>'
+    +(axis==='block'?'<div class="pl-howto">Every row gets the same series across, or every column the same series down &mdash; the wells beside each other are the replicates.</div>':'')
     +'<div class="cc-inputs"><label class="ci-f"><span>Top conc</span><input type="number" id="pl-dose-top" value="1000"></label>'
     +'<label class="ci-f"><span>Unit</span><select id="pl-dose-unit"><option>nM</option><option>µM</option><option>mM</option></select></label>'
     +'<label class="ci-f"><span>Fold</span><input type="number" id="pl-dose-fold" value="3" step="0.5"></label></div>'
-    +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyDose(1)">Fill wells &#8594;</button><button class="pl-btn" onclick="plApplyDose(-1)">Fill wells &#8592;</button></div>'
-    +(axis==='row'?'<div class="pl-row2"><button class="pl-btn" onclick="plDoseToCols(1)">Write as column headers &#8594;</button></div>':'')
+    +_doseBtns
+    +((axis==='row'||axis==='block')?'<div class="pl-row2"><button class="pl-btn" onclick="plDoseToCols(1)">Write as column headers &#8594;</button></div>':'')
+    +'<div class="pl-howto" style="margin:9px 0 0">Or type into <b>Concentration</b> above to set the selected wells by hand.</div>'
     +'</div>'):'';
   // Block label — one name written across a group of wells, instead of in every well.
   var curGrp=plSelGroupLabel();
@@ -4369,7 +4447,17 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'</select></label><label class="ci-f"><span>Title</span><input value="'+esc(p.title||'')+'" placeholder="e.g. Dose–response" oninput="plSetTitle(this.value)"></label></div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plLayoutMenu()">'+tbIco(P_GRID,13)+' Start from a layout…</button>'
       +(_plExpTypes().length?'<button class="pl-btn" onclick="plUseExpTypes()" title="Replace the palette with the conditions this experiment is made of">Use this experiment\'s conditions</button>':'')
-    +'</div></div>'
+    +'</div>'
+    // The compound and concentration fields, and the dilution filler with them, are off for a
+    // NanoBRET by default — a PPI plate has conditions, not concentrations, and the extra fields
+    // are in the way while you draw it. But a titration run on one of those conditions is the
+    // ordinary next experiment, and until now the only way back to the numbers was a checkbox in
+    // the setup form that nobody would think to look for. It is here, where you notice you want
+    // it, and it is the same one field.
+    +(_plExp()?('<label class="ci-f chk pl-dosechk"><span>Concentrations on this plate</span>'
+      +'<input type="checkbox"'+(_dosing?' checked':'')+' onchange="plSetDosing(this.checked)"'
+      +' title="Turns on the compound and concentration fields, and the dilution filler"></label>'):'')
+    +'</div>'
     +'<div class="pl-sec"><div class="pl-sec-t">'+(_nos?'Conditions — select wells, then click one':'Well type')+'</div>'
       +'<div class="pl-howto">Drag a rectangle over the wells, then click the '+(_nos?'condition':'type')+' &mdash; it goes on straight away. '
        +'Shift extends the box, &#8984;/Ctrl-click adds. Delete clears wells; &#8984;/Ctrl+C and V copy a block; &#8984;/Ctrl+Z undoes.</div>'
@@ -4448,12 +4536,14 @@ function plSelectCol(c,ev){ var p=plCur(); if(!p) return; var d=plateDims(p);
 function plSelectAll(){ var p=plCur(); if(!p) return; var d=plateDims(p); PL.sel={};
   for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++) PL.sel[wellIdOf(r,c)]=1; plRender(); }
 function plClearSel(){ PL.sel={}; PL.anchor=null; plRender(); }
-// The selection is a single row or a single column (→ a dose series can run along it).
+// Which way a dose series could run through the selection. A single row or column has one
+// answer; a block has both, and that is the ordinary case rather than an ambiguity to refuse —
+// three rows of four wells is a four-point series in triplicate, which is how anyone runs one.
 function plSelAxis(){ var ids=plSelIds(); if(ids.length<2) return null;
   var rs={}, cs={}; ids.forEach(function(id){ var x=wellRC(id); if(x){ rs[x.r]=1; cs[x.c]=1; } });
   if(Object.keys(rs).length===1) return 'row';
   if(Object.keys(cs).length===1) return 'col';
-  return null; }
+  return 'block'; }
 
 // Writing into wells
 function _plWell(p,id){ if(!p.wells) p.wells={}; if(!p.wells[id]) p.wells[id]={typeId:PL.type}; return p.wells[id]; }
@@ -4538,6 +4628,14 @@ function plEraseSel(){ var p=plCur(); if(!p) return; if(!plSelIds().length) retu
   plSelIds().forEach(function(id){ delete p.wells[id]; });
   platePersist(PL.key); plRender(); }
 function plSetTitle(v){ var p=plCur(); if(!p) return; plMark('Plate title',true); p.title=v; platePersist(PL.key); }
+// Stored on the experiment's setup, not on the plate: it is the same answer the New-experiment
+// form asks for, and two places holding it would disagree the first time one was edited.
+function plSetDosing(on){ var e=_plExp(); if(!e) return;
+  undoMark(on?'Concentrations on':'Concentrations off',['experiments.'+e.id]);
+  if(!e.setup) e.setup={};
+  e.setup.doseSeries=!!on;
+  e.updated=Date.now(); save(); plRender();
+  toast(on?'Compound and concentration fields are on for this plate':'Concentration fields hidden — nothing already written was removed'); }
 // Block labels
 function plSelGroupLabel(){ var p=plCur(); if(!p) return ''; var ids=plSelIds(); if(!ids.length) return '';
   var v=null; for(var i=0;i<ids.length;i++){ var w=(p.wells||{})[ids[i]]||{};
@@ -4588,9 +4686,12 @@ function plSetColLabel(v){ var p=plCur(); if(!p) return; var cols={};
   platePersist(PL.key); plRender(); }
 // Write the dose series into the column headers instead of every well — the compact style
 // where the concentration is stated once per column.
-function plDoseToCols(dir){ var p=plCur(); if(!p) return; if(plSelAxis()!=='row') return;
+function plDoseToCols(dir){ var p=plCur(); if(!p) return;
+  var ax=plSelAxis(); if(ax!=='row'&&ax!=='block') return;
   plMark('Write column headers');
-  var ids=plSelIds().slice().sort(function(a,b){ return wellRC(a).c-wellRC(b).c; });
+  // One header per column, however many rows of the block sit under it.
+  var seen={}, ids=plSelIds().slice().sort(function(a,b){ return wellRC(a).c-wellRC(b).c; })
+    .filter(function(id){ var c=wellRC(id).c; if(seen[c]) return false; seen[c]=1; return true; });
   if(dir<0) ids.reverse();
   var fold=+((el('pl-dose-fold')||{}).value)||3;
   var top=_toNM((el('pl-dose-top')||{}).value,(el('pl-dose-unit')||{}).value||'nM');
@@ -4622,18 +4723,27 @@ function _fmtConc(nM){ if(!isFinite(nM)||nM<=0) return '0';
   if(nM>=1)   return _cn(nM)+' nM';
   if(nM>=1e-3)return _cn(nM*1e3)+' pM';
   return _cn(nM*1e6)+' fM'; }
-function plApplyDose(dir){ var p=plCur(); if(!p) return; var axis=plSelAxis(); if(!axis) return;
-  plMark('Fill dose series');
-  var ids=plSelIds().slice(); var fold=+((el('pl-dose-fold')||{}).value)||3;
+// `axis` is which way the series runs: 'row' across the columns, 'col' down the rows. Which
+// point a well is is its **position along that axis**, not its place in the list — so a 3×4 block
+// gets the same four concentrations in each of its three rows, which is what a replicate is. It
+// used to index the flat list, so a block came out as one twelve-point series read boustrophedon.
+function plApplyDose(dir,axis){ var p=plCur(); if(!p) return;
+  axis=axis||plSelAxis(); if(!axis||axis==='block') return;
+  var ids=plSelIds(); if(!ids.length) return;
+  var fold=+((el('pl-dose-fold')||{}).value)||3;
   var top=_toNM((el('pl-dose-top')||{}).value,(el('pl-dose-unit')||{}).value||'nM');
-  ids.sort(function(a,b){ var A=wellRC(a), B=wellRC(b); return axis==='row'?(A.c-B.c):(A.r-B.r); });
-  if(dir<0) ids.reverse();
-  ids.forEach(function(id,i){ var fresh=!(p.wells||{})[id]; var w=_plWell(p,id);
+  var pos=ids.map(function(id){ var x=wellRC(id); return axis==='row'?x.c:x.r; });
+  var lo=Math.min.apply(null,pos), hi=Math.max.apply(null,pos);
+  plMark('Fill dose series');
+  ids.forEach(function(id){ var x=wellRC(id), q=(axis==='row'?x.c:x.r);
+    var i=(dir<0)?(hi-q):(q-lo);
+    var fresh=!(p.wells||{})[id]; var w=_plWell(p,id);
     // Wells you hadn't touched become "Dose series"; ones you already typed keep their type.
     if(fresh||!w.typeId||w.typeId==='blank') w.typeId='dose';
     w.conc=_fmtConc(top/Math.pow(fold,i)); });
   platePersist(PL.key); plRender();
-  toast(ids.length+'-point series, '+fold+'-fold, from '+_fmtConc(top)); }
+  toast((hi-lo+1)+'-point series, '+fold+'-fold, from '+_fmtConc(top)
+    +(ids.length>(hi-lo+1)?(' · '+Math.round(ids.length/(hi-lo+1))+' replicates'):'')); }
 // Drag-select ends wherever the mouse comes up, even outside the grid.
 document.addEventListener('mouseup',function(){ if(!PL.drag) return;
   PL.drag=false; PL.band=null; _plHideBand(); plRenderSide(); });
@@ -6455,7 +6565,8 @@ function nmSetupUpd(reRender){ var host=el('nm-setup'); if(!host) return;
   // `reRender` is passed as true only by the cell-line select, which is also the only change
   // that may substitute its own default cell number. A format change must re-render WITHOUT
   // that, or it would immediately overwrite the number it just rescaled.
-  if(reRender===true && NM_SETUP.cellLine!=null){ var d=cellLineDef(NM_SETUP.cellLine); if(d&&d.cpw&&NM_SETUP.cellsPerWell!=null) NM_SETUP.cellsPerWell=d.cpw; }
+  if(reRender===true && NM_SETUP.cellLine!=null && NM_SETUP.cellsPerWell!=null){
+    var _n=lineCells(NM_SETUP.cellLine, NM_SETUP.format); if(_n) NM_SETUP.cellsPerWell=_n; }
   if(reRender) nmSetup();
   nmPreview();
 }
@@ -7292,9 +7403,19 @@ function esRender(){
 }
 function esSetupUpd(reRender){
   var host=el('es-fields'); if(!host) return;
+  var oldFmt=ES_SETUP.format;
   host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
     ES_SETUP[k]=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value); });
-  if(reRender&&ES_SETUP.cellLine!=null){ var d=cellLineDef(ES_SETUP.cellLine); if(d&&d.cpw&&ES_SETUP.cellsPerWell!=null) ES_SETUP.cellsPerWell=d.cpw; esRender(); return; }
+  // The edit form had no rescale at all, so changing the plate here left the cell number behind —
+  // the New-experiment modal has done this since the areas went in.
+  if(reRender!==true && oldFmt!=null && ES_SETUP.format!=null && String(oldFmt)!==String(ES_SETUP.format)
+     && ES_SETUP.cellsPerWell!=null){
+    var a1=PLATE_AREA[String(oldFmt)], a2=PLATE_AREA[String(ES_SETUP.format)];
+    if(a1&&a2){ ES_SETUP.cellsPerWell=_seedRound((+ES_SETUP.cellsPerWell)*(a2/a1)); esRender(); return; }
+  }
+  if(reRender===true&&ES_SETUP.cellLine!=null&&ES_SETUP.cellsPerWell!=null){
+    var _n=lineCells(ES_SETUP.cellLine, ES_SETUP.format); if(_n) ES_SETUP.cellsPerWell=_n; esRender(); return; }
+  if(reRender){ esRender(); return; }
   el('es-diff').innerHTML=esDiffHtml(LB.data.experiments[ES_EXP]);
 }
 // Dry-run against a clone: the diff is the real result of the real function, not a second
@@ -9894,7 +10015,8 @@ function pePubField(b,i){
     +'<div class="ps-pub-hint">'+(full?'This block\u2019s calculator writes the Methods sentence. Anything here replaces it.'
       :'{{setup}} placeholders work here too.')+'</div></div>'; }
 function peCalcSet(i,k,val){ var b=PE.work.blocks[i]; if(!b||!b.calc) return; var C=CALC_KINDS[b.calc.kind]; var f=C.fields.filter(function(x){return x.k===k;})[0];
-  if(k==='cellLine'){ b.calc.inputs.cellLine=val; var d=cellLineDef(val); if(d&&d.cpw){ b.calc.inputs.cellsPerWell=d.cpw; peDraw(); return; } }
+  if(k==='cellLine'){ b.calc.inputs.cellLine=val;
+    var n=lineCells(val,b.calc.inputs.format); if(n){ b.calc.inputs.cellsPerWell=n; peDraw(); return; } }
   else if(k==='format' && b.calc.inputs.format!=null){ rescaleSeedInputs(b.calc.inputs,val); peDraw(); return; }
   else b.calc.inputs[k]=(f&&f.t==='num')?(val===''?'':parseFloat(val)):val;
   var r=el('pecr-'+i); if(r) r.innerHTML=withSeedFix('peSeedFix('+i+')', function(){ return expCalcRecipe(b); }); }
@@ -9931,92 +10053,101 @@ function newPresetFromType(){ var items=EXP_TYPES.filter(function(t){return t.id
 // what you read it back from.
 var PLATE_PRINT_CSS=
   '.pk-p{margin:10px 0 14px;page-break-inside:avoid}'
- +'.pk-t{font:700 14pt/1.3 sans-serif;margin-bottom:6px}'
- +'.pk-n{font:400 11.5pt/1.45 sans-serif;color:#444;margin:0 0 7px}'
+ +'.pk-t{font:700 11pt/1.3 sans-serif;margin-bottom:6px}'
+ +'.pk-n{font:400 9pt/1.45 sans-serif;color:#333;margin:0 0 7px}'
  +'.pk-g{border-collapse:collapse;table-layout:fixed;width:100%;max-width:170mm}'
- +'.pk-g th{font:700 8.5pt/1.1 sans-serif;color:#444;background:#f4f4f4;border:.5pt solid #bbb;padding:3px 0;text-align:center}'
+ +'.pk-g th{font:700 8pt/1.1 sans-serif;color:#222;background:#ececec!important;border:.5pt solid #888;padding:3px 0;text-align:center}'
  +'.pk-g th.pk-rh{width:20px}'
- +'.pk-g td{border:.5pt solid #bbb;padding:2px 3px;height:24px;text-align:center;vertical-align:middle;'
+ +'.pk-g td{border:.5pt solid #888;padding:2px 3px;height:22px;text-align:center;vertical-align:middle;'
  +'font:600 8pt/1.15 sans-serif;color:#111;overflow:hidden;word-break:break-word}'
- +'.pk-g td.pk-gl{font-weight:700;font-size:9.5pt}'
- +'.pk-g td.pk-no{font-weight:800;font-size:20pt;letter-spacing:0}'
+ +'.pk-g td.pk-gl{font-weight:700;font-size:8.5pt;color:#000}'
+ +'.pk-g td.pk-no{font-weight:800;font-size:15pt;letter-spacing:0;color:#000}'
  +'.pk-g td.pk-no1{font-weight:700;font-size:10pt}'
  +'.pk-leg b{font-family:ui-monospace,monospace;margin-right:3px}'
- +'.pk-leg{margin-top:7px;font:400 11pt/1.6 sans-serif;color:#222}'
- +'.pk-leg i{display:inline-block;width:9px;height:9px;border:.5pt solid #999;margin-right:4px;vertical-align:-1px}'
+ +'.pk-leg{margin-top:7px;font:400 8.5pt/1.6 sans-serif;color:#111}'
+ +'.pk-leg i{display:inline-block;width:9px;height:9px;border:.5pt solid #555;margin-right:4px;vertical-align:-1px}'
  +'.pk-leg span{display:inline-block;margin-right:14px;white-space:nowrap}'
- +'.pk-sumt{border-collapse:collapse;width:100%;margin-top:8px;font:400 12pt/1.5 sans-serif}'
- +'.pk-sumt td{border-bottom:.5pt solid #ddd;padding:4px 7px;vertical-align:top}'
+ +'.pk-sumt{border-collapse:collapse;width:100%;margin-top:8px;font:400 9pt/1.5 sans-serif}'
+ +'.pk-sumt td{border-bottom:.5pt solid #999;padding:4px 7px;vertical-align:top}'
  +'.pk-sumt td.r{white-space:nowrap;font-family:ui-monospace,monospace;font-weight:600;width:22%}'
- +'.pk-sumt td.n{white-space:nowrap;text-align:right;color:#555;width:12%}';
-var PRINT_CSS='<style>@page{margin:14mm}'+PLATE_PRINT_CSS
- +'#print-root{padding:0;color:#111;font:400 14pt/1.55 ui-sans-serif,system-ui,sans-serif}'
+ +'.pk-sumt td.n{white-space:nowrap;text-align:right;color:#333;width:12%}';
+// `@page` had no `size`, so the sheet came from the machine: A4 on a Mac, **Letter** on Windows.
+// Chrome then scales the laid-out document to the printable area, and the two areas are
+// different — which is why the same export was readable on one and enormous on the other. The
+// paper is stated now, so both lay out to the same 182 mm and neither needs scaling to fit.
+//
+// The type came down with it. 14pt body only ever looked right *because* it was being shrunk by
+// that fit-to-page scaling; unscaled it is a large-print edition. 11pt is a bench sheet.
+var PRINT_CSS='<style>@page{size:A4;margin:14mm}'+PLATE_PRINT_CSS
+ +'#print-root{padding:0;color:#111;font:400 11pt/1.5 ui-sans-serif,system-ui,sans-serif;'
+ +'-webkit-print-color-adjust:exact;print-color-adjust:exact}'
  +'#print-root *{font-size:inherit;font-family:inherit;color:inherit;background:none;box-sizing:border-box}'
+ +'#print-root img{max-width:100%}'
  // The app's own stylesheet reaches into the print root, and a table cell it turns into a flex
  // box silently stops being a table cell — colspan is ignored and a block label collapses to one
  // column. The print plate's classes are its own (pk-), and the display is stated outright.
  +'#print-root table{display:table}#print-root tr{display:table-row}'
  +'#print-root td{display:table-cell}#print-root th{display:table-cell}'
  +'#print-root .pd-tbl{width:100%;border-collapse:collapse;margin:7px 0 13px}'
- +'#print-root .pd-tbl th,#print-root .pd-tbl td{border:.5pt solid #bbb;padding:4px 7px;text-align:left;vertical-align:top;font-size:12.5pt}'
- +'#print-root .pd-tbl th{background:#f2f2f2!important;font-weight:700}'
+ +'#print-root .pd-tbl th,#print-root .pd-tbl td{border:.5pt solid #777;padding:4px 7px;text-align:left;vertical-align:top;font-size:9.5pt}'
+ +'#print-root .pd-tbl th{background:#ebebeb!important;font-weight:700;color:#000}'
  +'#print-root .pd-res{margin-bottom:10px}'
- +'#print-root .pd-res-hd{font-weight:700;margin-bottom:4px;font-size:14.5pt}'
- +'#print-root .pd-res-when{float:right;font-weight:400;color:#666}'
+ +'#print-root .pd-res-hd{font-weight:700;margin-bottom:4px;font-size:11.5pt}'
+ +'#print-root .pd-res-when{float:right;font-weight:400;color:#444}'
  +'#print-root .pd-exp{margin-top:20px}'
- +'#print-root .pd-exp-hd{font-weight:700;font-size:18pt;border-bottom:1.5pt solid #333;padding-bottom:4px;margin-bottom:10px}'
- +'#print-root .pd-exp-hd span{font-weight:400;font-size:14pt;color:#444}'
- +'#print-root h1{font-size:22pt}#print-root h2{font-size:18pt}#print-root h3{font-size:15pt}'
- +'#print-root .lb-note{border-left:3pt solid #999;background:#f5f5f5!important;padding:5px 10px;margin:7px 0}'
+ +'#print-root .pd-exp-hd{font-weight:700;font-size:14pt;border-bottom:1.5pt solid #222;padding-bottom:4px;margin-bottom:10px}'
+ +'#print-root .pd-exp-hd span{font-weight:400;font-size:11pt;color:#333}'
+ +'#print-root h1{font-size:17pt}#print-root h2{font-size:14pt}#print-root h3{font-size:12pt}'
+ +'#print-root .lb-note{border-left:3pt solid #666;background:#f0f0f0!important;padding:5px 10px;margin:7px 0}'
  +'#print-root .lb-note-warn{border-left-color:#c25a12;background:#fdf3ea!important}'
  +'#print-root .lb-check{list-style:none;padding-left:0}'
- +'#print-root .pk-g th{background:#f4f4f4!important}'
+ +'#print-root .pk-g th{background:#ececec!important}'
  +'#print-root .pk-g td,#print-root .pk-g th{font-size:8pt}'
  +'#print-root .pk-gl{font-size:9.5pt}'
- +'#print-root .pk-t{font-size:14pt}#print-root .pk-n,#print-root .pk-leg{font-size:11pt}'
- +'#print-root .pk-sumt td{font-size:12pt}'
- +'.pd-head{border-bottom:2px solid #5e87c5;padding:0 0 12px;margin-bottom:16px}'
- +'.pd-kicker{font:600 9pt/1 sans-serif;letter-spacing:1px;color:#5e87c5;text-transform:uppercase}'
- +'.pd-code{font:600 11pt/1.4 sans-serif;color:#5e87c5;margin-top:8px}'
- +'.pd-title{font:700 20pt/1.2 sans-serif;margin:3px 0 8px}'
- +'.pd-crumb{font:500 10pt/1.4 sans-serif;color:#666}'
- +'.pd-chips{margin-top:9px;display:flex;flex-wrap:wrap;gap:6px}.pd-chip{font:600 9pt/1 sans-serif;background:#eef2f9;color:#356;border-radius:var(--r-4);padding:5px 10px}'
- +'.pd-block{margin-top:16px;page-break-inside:avoid}.pd-bhd{display:flex;gap:10px;align-items:baseline;border-bottom:1px solid #e2e2e2;padding-bottom:4px;margin-bottom:6px}'
- +'.pd-day{font:700 8pt/1 sans-serif;color:#fff;background:#5e87c5;border-radius:var(--r-1);padding:2px 6px;text-transform:uppercase}.pd-bdate{font:600 10pt/1 sans-serif;color:#777}.pd-btitle{font:700 12pt/1.3 sans-serif}'
- +'.pd-body{font:400 11.5pt/1.55 sans-serif;color:#222}.pd-body ul,.pd-body ol{margin:0 0 6px 20px}.pd-body h1,.pd-body h2,.pd-body h3{margin:8px 0 4px}.pd-body table{border-collapse:collapse;margin:6px 0}.pd-body td,.pd-body th{border:1px solid #bbb;padding:4px 8px}.pd-body hr{border:none;border-top:1px solid #ccc;margin:10px 0}.pd-body .lb-tag{color:#5e72c4;font-weight:600}.pd-body .lb-ab{color:#c47818;font-weight:600}.pd-body a.lb-link{color:#5e87c5;text-decoration:none}'
- +'.pd-body .lb-note{margin:6px 0;padding:5px 9px;border-left:3px solid #bbb;background:#f6f6f6;font-size:10.5pt}'
- +'.pd-body .lb-note-warn{border-left-color:#e0803a}.pd-body .lb-note-tip{border-left-color:#5e87c5}'
- +'.pd-body .lb-table{border-collapse:collapse;margin:6px 0;font-size:10pt}'
- +'.pd-body .lb-table th,.pd-body .lb-table td{border:1px solid #bbb;padding:3px 7px}'
- +'.pd-body .pstep-note{margin:4px 0 6px;padding:4px 8px;border-left:2px solid #5e87c5;background:#f6f6f6;font-size:10pt}'
- +'.pd-body .pblk-note{margin-top:7px;padding-top:6px;border-top:1px solid #ddd}'
- +'.pd-body .pparam{border-bottom:1px dotted #999}'
- +'.lb-todo{list-style:none}.lb-box{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:var(--r-1);margin-right:6px;vertical-align:middle}.lb-todo.done .lb-box{background:#5e87c5;border-color:#5e87c5}'
- +'ul.lb-check{list-style:none;margin-left:4px;padding-left:0}ul.lb-check li{position:relative;list-style:none;padding-left:20px;margin:2px 0}ul.lb-check li::before{content:"";position:absolute;left:0;top:2px;width:11px;height:11px;border:1px solid #888;border-radius:var(--r-1)}ul.lb-check li.done::before{background:#5e87c5;border-color:#5e87c5}ul.lb-check li.done{color:#888;text-decoration:line-through}'
- +'img.lb-att{max-width:100%;height:auto;border-radius:var(--r-1);margin:6px 0;display:block;page-break-inside:avoid}'
- +'.pd-sec-hd{font:700 9.5pt/1 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #e2e2e2}'
- +'.pd-part-hd{font:700 12pt/1.3 sans-serif;color:#2f5580;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:var(--r-1);padding:5px 10px;margin:16px 0 2px;page-break-after:avoid}'
- +'.pd-pub{font:400 11.5pt/1.6 sans-serif;color:#1a1a1a;background:#fafbfb;border:1px solid #e2e2e2;border-radius:var(--r-2);padding:12px 16px;margin-top:6px}'
- +'.pd-pub .pub-h{font:700 9.5pt/1.2 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:12px 0 3px}'
- +'.pd-pub .pub-h:first-child{margin-top:0}.pd-pub p{margin:0 0 7px}'
- +'.pd-recipe{font:400 11pt/1.5 sans-serif;color:#1a1a1a;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:0 4px 4px 0;padding:7px 11px;margin:0 0 7px}.pd-recipe b{color:#2f5580}'
- +'.pd-daygroup{margin-top:14px;page-break-inside:auto}.pd-dayhd{display:flex;align-items:center;gap:8px;margin:14px 0 6px;border-bottom:2px solid #5e87c5;padding-bottom:4px}.pd-dayhd .pd-day{font:700 8.5pt/1 sans-serif;color:#fff;background:#5e87c5;border-radius:var(--r-1);padding:3px 8px;text-transform:uppercase}.pd-dayhd .pd-bdate{font:600 10pt/1 sans-serif;color:#555}'
- +'.pd-foot{margin-top:26px;padding-top:10px;border-top:1px solid #e2e2e2;font:400 8.5pt/1.4 sans-serif;color:#999}'
- +'.pd-plate{margin:6px 0 10px;page-break-inside:avoid}.pd-plate-t{font:600 9pt/1.3 sans-serif;color:#555;margin-bottom:3px}'
- +'.pd-plate-g{border-collapse:collapse;table-layout:fixed;width:100%}.pd-plate-g td{border:1px solid #ccc;height:15px;font:400 5.5px/1.1 sans-serif;color:#222;text-align:center;overflow:hidden;word-break:break-all}'
- +'.pd-plate-g th{font:700 6px/1 sans-serif;color:#777;padding:1px}.pd-pleg{display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:4px}'
- +'.pd-pleg-i{font:400 8.5pt/1.2 sans-serif;color:#555}.pd-pleg-i i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px}'
- +'.pd-psum{border-collapse:collapse;width:100%;margin-top:6px}.pd-psum td{font:400 9pt/1.35 sans-serif;color:#333;padding:2px 8px 2px 0;border-bottom:1px solid #eee;vertical-align:top}'
- +'.pd-psum-r{white-space:nowrap;font-weight:700;font-family:ui-monospace,monospace}.pd-psum-r i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}'
- +'.pd-psum-n{text-align:right;color:#888;white-space:nowrap;padding-right:0}'
- +'.pd-pnote{font:400 8.5pt/1.35 sans-serif;color:#666;margin:0 0 4px}'
- +'.pd-file-fig{margin:8px 0;page-break-inside:avoid}.pd-file-fig img{max-width:100%;height:auto;border:1px solid #ddd;border-radius:var(--r-1);display:block}'
- +'.pd-file-fig figcaption{font:400 9pt/1.35 sans-serif;color:#555;margin-top:3px}'
- +'.pd-filelist{border-collapse:collapse;width:100%;margin-top:6px;page-break-inside:avoid}'
- +'.pd-filelist td{font:400 9pt/1.35 sans-serif;color:#333;padding:3px 8px 3px 0;border-bottom:1px solid #eee;vertical-align:top}'
- +'.pd-fl-n{font-weight:700}.pd-fl-c{color:#666}'
- +'.pd-plate-g td.pd-pgl{font:700 8px/1.1 sans-serif;text-align:center}.pd-plate-g th.pd-pcl{font:600 5px/1 sans-serif;color:#555}'
- +'.pd-body{position:relative}.pd-float-wrap{position:absolute;left:0;top:0;right:0;min-height:100%;pointer-events:none}.pd-float-fig{position:absolute;page-break-inside:avoid}.pd-float-fig img{width:100%;height:100%;object-fit:contain;border-radius:var(--r-1);border:1px solid #ddd}.pd-float-cap{font:400 9pt/1.3 sans-serif;color:#555;text-align:center;margin-top:2px}</style>';
+ +'#print-root .pk-t{font-size:11pt}#print-root .pk-n,#print-root .pk-leg{font-size:8.5pt}'
+ +'#print-root .pk-sumt td{font-size:9pt}'
+ +'#print-root .pd-head{border-bottom:2px solid #5e87c5;padding:0 0 12px;margin-bottom:16px}'
+ +'#print-root .pd-kicker{font:600 8pt/1 sans-serif;letter-spacing:1px;color:#3a5f96;text-transform:uppercase}'
+ +'#print-root .pd-code{font:600 9.5pt/1.4 sans-serif;color:#3a5f96;margin-top:8px}'
+ +'#print-root .pd-title{font:700 16pt/1.2 sans-serif;margin:3px 0 8px}'
+ +'#print-root .pd-crumb{font:500 9pt/1.4 sans-serif;color:#333}'
+ +'#print-root .pd-chips{margin-top:9px;display:flex;flex-wrap:wrap;gap:6px}#print-root .pd-chip{font:600 8pt/1 sans-serif;background:#e6ecf6!important;color:#1e3a5f;border:.5pt solid #b8c6dd;border-radius:9px;padding:4px 9px}'
+ +'#print-root .pd-block{margin-top:16px;page-break-inside:avoid}#print-root .pd-bhd{display:flex;gap:10px;align-items:baseline;border-bottom:.5pt solid #666;padding-bottom:4px;margin-bottom:6px}'
+ +'#print-root .pd-day{font:700 7.5pt/1 sans-serif;color:#fff!important;background:#3a5f96!important;border-radius:3px;padding:2px 6px;text-transform:uppercase}#print-root .pd-bdate{font:600 8.5pt/1 sans-serif;color:#444}#print-root .pd-btitle{font:700 10.5pt/1.3 sans-serif;color:#000}'
+ +'#print-root .pd-body{font:400 10pt/1.5 sans-serif;color:#111}#print-root .pd-body ul,#print-root .pd-body ol{margin:0 0 6px 20px}#print-root .pd-body h1,#print-root .pd-body h2,#print-root .pd-body h3{margin:8px 0 4px}#print-root .pd-body table{border-collapse:collapse;margin:6px 0}#print-root .pd-body td,#print-root .pd-body th{border:.5pt solid #777;padding:4px 8px}#print-root .pd-body hr{border:none;border-top:.5pt solid #888;margin:10px 0}#print-root .pd-body .lb-tag{color:#3d4e9c;font-weight:600}#print-root .pd-body .lb-ab{color:#96590f;font-weight:600}#print-root .pd-body a.lb-link{color:#2f5183;text-decoration:none}'
+ +'#print-root .pd-body .lb-note{margin:6px 0;padding:5px 9px;border-left:2.5pt solid #888;background:#f0f0f0!important;font-size:9pt}'
+ +'#print-root .pd-body .lb-note-warn{border-left-color:#e0803a}#print-root .pd-body .lb-note-tip{border-left-color:#5e87c5}'
+ +'#print-root .pd-body .lb-table{border-collapse:collapse;margin:6px 0;font-size:9pt}'
+ +'#print-root .pd-body .lb-table th,#print-root .pd-body .lb-table td{border:.5pt solid #777;padding:3px 7px}'
+ +'#print-root .pd-body .pstep-note{margin:4px 0 6px;padding:4px 8px;border-left:2pt solid #3a5f96;background:#f0f0f0!important;font-size:9pt}'
+ +'#print-root .pd-body .pblk-note{margin-top:7px;padding-top:6px;border-top:.5pt solid #666}'
+ +'#print-root .pd-body .pparam{border-bottom:1px dotted #666}'
+ +'#print-root .lb-todo{list-style:none}#print-root .lb-box{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:var(--r-1);margin-right:6px;vertical-align:middle}#print-root .lb-todo.done .lb-box{background:#5e87c5;border-color:#5e87c5}'
+ +'#print-root ul.lb-check{list-style:none;margin-left:4px;padding-left:0}#print-root ul.lb-check li{position:relative;list-style:none;padding-left:20px;margin:2px 0}#print-root ul.lb-check li::before{content:"";position:absolute;left:0;top:2px;width:11px;height:11px;border:1px solid #888;border-radius:var(--r-1)}#print-root ul.lb-check li.done::before{background:#5e87c5;border-color:#5e87c5}#print-root ul.lb-check li.done{color:#555;text-decoration:line-through}'
+ +'#print-root img.lb-att{max-width:100%;height:auto;border-radius:var(--r-1);margin:6px 0;display:block;page-break-inside:avoid}'
+ +'#print-root .pd-sec-hd{font:700 9.5pt/1 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #a8a8a8}'
+ +'#print-root .pd-part-hd{font:700 12pt/1.3 sans-serif;color:#2f5580;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:var(--r-1);padding:5px 10px;margin:16px 0 2px;page-break-after:avoid}'
+ +'#print-root .pd-pub{font:400 10pt/1.55 sans-serif;color:#1a1a1a;background:#fafbfb;border:1px solid #a8a8a8;border-radius:var(--r-2);padding:12px 16px;margin-top:6px}'
+ +'#print-root .pd-pub .pub-h{font:700 9.5pt/1.2 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:12px 0 3px}'
+ +'#print-root .pd-pub .pub-h:first-child{margin-top:0}#print-root .pd-pub p{margin:0 0 7px}'
+ +'#print-root .pd-recipe{font:400 9.5pt/1.45 sans-serif;color:#1a1a1a;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:0 4px 4px 0;padding:7px 11px;margin:0 0 7px}#print-root .pd-recipe b{color:#2f5580}'
+ +'#print-root .pd-daygroup{margin-top:14px;page-break-inside:auto}#print-root .pd-dayhd{display:flex;align-items:center;gap:8px;margin:14px 0 6px;border-bottom:2px solid #5e87c5;padding-bottom:4px}#print-root .pd-dayhd .pd-day{font:700 8.5pt/1 sans-serif;color:#fff;background:#5e87c5;border-radius:var(--r-1);padding:3px 8px;text-transform:uppercase}#print-root .pd-dayhd .pd-bdate{font:600 10pt/1 sans-serif;color:#333}'
+ +'#print-root .pd-foot{margin-top:26px;padding-top:10px;border-top:1px solid #a8a8a8;font:400 8.5pt/1.4 sans-serif;color:#555}'
+ +'#print-root .pd-plate{margin:6px 0 10px;page-break-inside:avoid}#print-root .pd-plate-t{font:600 9pt/1.3 sans-serif;color:#333;margin-bottom:3px}'
+ +'#print-root .pd-plate-g{border-collapse:collapse;table-layout:fixed;width:100%}#print-root .pd-plate-g td{border:1px solid #999;height:15px;font:400 5.5px/1.1 sans-serif;color:#222;text-align:center;overflow:hidden;word-break:break-all}'
+ +'#print-root .pd-plate-g th{font:700 6px/1 sans-serif;color:#444;padding:1px}#print-root .pd-pleg{display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:4px}'
+ +'#print-root .pd-pleg-i{font:400 8.5pt/1.2 sans-serif;color:#333}#print-root .pd-pleg-i i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px}'
+ +'#print-root .pd-psum{border-collapse:collapse;width:100%;margin-top:6px}#print-root .pd-psum td{font:400 9pt/1.35 sans-serif;color:#333;padding:2px 8px 2px 0;border-bottom:1px solid #b0b0b0;vertical-align:top}'
+ +'#print-root .pd-psum-r{white-space:nowrap;font-weight:700;font-family:ui-monospace,monospace}#print-root .pd-psum-r i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}'
+ +'#print-root .pd-psum-n{text-align:right;color:#555;white-space:nowrap;padding-right:0}'
+ +'#print-root .pd-pnote{font:400 8.5pt/1.35 sans-serif;color:#3a3a3a;margin:0 0 4px}'
+ +'#print-root .pd-file-fig{margin:8px 0;page-break-inside:avoid}#print-root .pd-file-fig img{max-width:100%;height:auto;border:1px solid #a8a8a8;border-radius:var(--r-1);display:block}'
+ +'#print-root .pd-file-fig figcaption{font:400 9pt/1.35 sans-serif;color:#333;margin-top:3px}'
+ +'#print-root .pd-filelist{border-collapse:collapse;width:100%;margin-top:6px;page-break-inside:avoid}'
+ +'#print-root .pd-filelist td{font:400 9pt/1.35 sans-serif;color:#333;padding:3px 8px 3px 0;border-bottom:1px solid #b0b0b0;vertical-align:top}'
+ +'#print-root .pd-fl-n{font-weight:700}#print-root .pd-fl-c{color:#3a3a3a}'
+ +'#print-root .pd-plate-g td.pd-pgl{font:700 8px/1.1 sans-serif;text-align:center}#print-root .pd-plate-g th.pd-pcl{font:600 5px/1 sans-serif;color:#333}'
+ +'#print-root .pd-body{position:relative}#print-root .pd-float-wrap{position:absolute;left:0;top:0;right:0;min-height:100%;pointer-events:none}#print-root .pd-float-fig{position:absolute;page-break-inside:avoid}#print-root .pd-float-fig img{width:100%;height:100%;object-fit:contain;border-radius:var(--r-1);border:1px solid #a8a8a8}#print-root .pd-float-cap{font:400 9pt/1.3 sans-serif;color:#333;text-align:center;margin-top:2px}</style>';
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
 function pdRecipe(b){ var r=expCalcRecipe(b); return r?'<div class="pd-recipe">'+r+'</div>':''; }
 // Static plate grid for the PDF — same colours, no interaction.
@@ -10250,37 +10381,52 @@ function _printName(){
 // A bench sheet is read standing up, at arm's length, with gloves on. 13.5pt is the size that
 // survives that; the app's own stylesheet still applies to anything pasted in from a block, so
 // it is reset to inherit and the few things that differ are set again below.
-var LAB_CSS='<style>@page{margin:11mm}'+PLATE_PRINT_CSS
- +'#print-root{color:#111;font:400 15pt/1.5 ui-sans-serif,system-ui,sans-serif}'
+// The bench sheet: printed, carried to the bench, read at arm's length — so it is deliberately
+// larger than the record PDF, but it was not 15pt-larger. Two things were wrong with it and they
+// compounded.
+//
+// `@page` named no size, so the sheet came from the machine — A4 on a Mac, **Letter** on Windows
+// — and Chrome scaled the laid-out document to whichever printable area it got. The same export
+// was therefore readable on one and enormous on the other, which is the difference Jon saw.
+//
+// And every rule below was being thrown away. `#print-root *{font-size:inherit;color:inherit}`
+// is (0,1,0,0) and `.lb-h1` is (0,0,1,0), so the reset won every one of them: nothing had its
+// own size, its own colour or its own background, and the whole sheet rendered at the root 15pt
+// in one flat grey — a heading, a table cell and a footnote all identical. The rules are scoped
+// to the print root now, so they outrank the reset and the sheet has typography again.
+var LAB_CSS='<style>@page{size:A4;margin:11mm}'+PLATE_PRINT_CSS
+ +'#print-root{color:#111;font:400 11.5pt/1.5 ui-sans-serif,system-ui,sans-serif;'
+ +'-webkit-print-color-adjust:exact;print-color-adjust:exact}'
  +'#print-root *{font-size:inherit;font-family:inherit;color:inherit;background:none}'
+ +'#print-root img{max-width:100%}'
  +'#print-root table{display:table}#print-root tr{display:table-row}'
  +'#print-root td{display:table-cell}#print-root th{display:table-cell}'
- +'.lb-h{border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:14px}'
- +'.lb-h1{font:800 26pt/1.15 sans-serif;margin:0}'
- +'.lb-h2{font:600 15pt/1.3 sans-serif;color:#444;margin-top:5px}'
- +'.lb-meta{margin-top:9px;font:600 13pt/1.5 sans-serif;color:#222}'
- +'.lb-meta span{display:inline-block;margin-right:18px}'
- +'.lb-day{margin-top:20px;page-break-inside:avoid}'
- +'.lb-dayhd{font:800 17pt/1.2 sans-serif;background:#111;color:#fff;padding:6px 11px;border-radius:3px}'
- +'.lb-step{margin-top:12px;page-break-inside:avoid}'
- +'.lb-stept{font:700 16pt/1.3 sans-serif;margin-bottom:6px}'
- +'.lb-body{font:400 15pt/1.55 sans-serif}'
- +'.lb-body p{margin:0 0 6px}.lb-body b{font-weight:700}'
- +'.lb-body ul,.lb-body ol{margin:4px 0 6px 22px}'
- +'.lb-tbl{border-collapse:collapse;width:100%;margin:7px 0 10px;font:400 13.5pt/1.45 sans-serif}'
- +'.lb-tbl th{background:#eee;font-weight:700;text-align:left;border:1px solid #999;padding:5px 8px}'
- +'.lb-tbl td{border:1px solid #999;padding:5px 8px;vertical-align:top}'
- +'.lb-note{font:400 13.5pt/1.45 sans-serif;color:#333;border-left:4px solid #999;padding:6px 11px;margin:8px 0;background:#f4f4f4}'
- +'.lb-warn{border-left-color:#c25a12;background:#fdf3ea}'
- +'.lb-ck{list-style:none;margin:6px 0 0;padding:0}'
- +'.lb-ck li{position:relative;padding-left:30px;margin:8px 0;font:400 15pt/1.5 sans-serif}'
- +'.lb-ck li::before{content:"";position:absolute;left:0;top:3px;width:18px;height:18px;border:2px solid #111}'
- +'.lb-plate{margin-top:10px;page-break-inside:avoid}'
- +'.lb-ptitle{font:700 12pt/1.3 sans-serif;margin-bottom:4px}'
- +'.lb-psum{border-collapse:collapse;width:100%;font:400 11pt/1.45 sans-serif}'
- +'.lb-psum td{border-bottom:1px solid #ddd;padding:4px 8px 4px 0;vertical-align:top}'
- +'.lb-psum .r{font-weight:700;white-space:nowrap;font-family:ui-monospace,monospace}'
- +'.lb-foot{margin-top:22px;border-top:1px solid #bbb;padding-top:8px;font:400 10pt/1.4 sans-serif;color:#666}'
+ +'#print-root .lb-h{border-bottom:2.5pt solid #111;padding-bottom:8px;margin-bottom:14px}'
+ +'#print-root .lb-h1{font:800 20pt/1.15 sans-serif;margin:0;color:#000}'
+ +'#print-root .lb-h2{font:600 12pt/1.3 sans-serif;color:#333;margin-top:5px}'
+ +'#print-root .lb-meta{margin-top:9px;font:600 10pt/1.5 sans-serif;color:#222}'
+ +'#print-root .lb-meta span{display:inline-block;margin-right:18px}'
+ +'#print-root .lb-day{margin-top:20px;page-break-inside:avoid}'
+ +'#print-root .lb-dayhd{font:800 13pt/1.2 sans-serif;background:#111!important;color:#fff!important;padding:5px 10px;border-radius:3px}'
+ +'#print-root .lb-step{margin-top:12px;page-break-inside:avoid}'
+ +'#print-root .lb-stept{font:700 12pt/1.3 sans-serif;margin-bottom:6px;color:#000}'
+ +'#print-root .lb-body{font:400 11.5pt/1.5 sans-serif;color:#111}'
+ +'#print-root .lb-body p{margin:0 0 6px}#print-root .lb-body b{font-weight:700}'
+ +'#print-root .lb-body ul,#print-root .lb-body ol{margin:4px 0 6px 22px}'
+ +'#print-root .lb-tbl{border-collapse:collapse;width:100%;margin:7px 0 10px;font:400 10pt/1.4 sans-serif}'
+ +'#print-root .lb-tbl th{background:#e8e8e8!important;font-weight:700;text-align:left;border:.5pt solid #666;padding:4px 7px;color:#000}'
+ +'#print-root .lb-tbl td{border:.5pt solid #666;padding:4px 7px;vertical-align:top;color:#111}'
+ +'#print-root .lb-note{font:400 10pt/1.45 sans-serif;color:#222;border-left:3pt solid #666;padding:6px 10px;margin:8px 0;background:#f0f0f0!important}'
+ +'#print-root .lb-warn{border-left-color:#b04f0d;background:#fbeade!important}'
+ +'#print-root .lb-ck{list-style:none;margin:6px 0 0;padding:0}'
+ +'#print-root .lb-ck li{position:relative;padding-left:24px;margin:6px 0;font:400 11.5pt/1.45 sans-serif}'
+ +'#print-root .lb-ck li::before{content:"";position:absolute;left:0;top:2px;width:14px;height:14px;border:1.5pt solid #111}'
+ +'#print-root .lb-plate{margin-top:10px;page-break-inside:avoid}'
+ +'#print-root .lb-ptitle{font:700 10pt/1.3 sans-serif;margin-bottom:4px;color:#000}'
+ +'#print-root .lb-psum{border-collapse:collapse;width:100%;font:400 9pt/1.4 sans-serif;color:#111}'
+ +'#print-root .lb-psum td{border-bottom:.5pt solid #999;padding:4px 8px 4px 0;vertical-align:top}'
+ +'#print-root .lb-psum .r{font-weight:700;white-space:nowrap;font-family:ui-monospace,monospace}'
+ +'#print-root .lb-foot{margin-top:22px;border-top:.5pt solid #888;padding-top:8px;font:400 8.5pt/1.4 sans-serif;color:#555}'
  +'</style>';
 // The recipe tables are the point of this sheet, so they are kept as tables rather than
 // flattened into a sentence the way the publication text does it.

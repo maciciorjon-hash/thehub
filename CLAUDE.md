@@ -2346,6 +2346,71 @@ what was in them. It only does any of this on a palette that is already the expe
 conditions; appending eight numbered conditions to a generic layout would turn a plate nobody
 asked to number into a numbered one.
 
+## The dose series, the manual compound step, and two print bugs (2026-08-30)
+
+**A NanoBRET plate could not carry a concentration.** `expUsesCompounds` is off by default for NB
+— a PPI plate has conditions, not concentrations, and the compound and concentration fields are
+in the way while you draw one. But a titration *run on one of those conditions* is the ordinary
+next experiment, and the only route back to the numbers was a checkbox in the setup form nobody
+would think to look for. It is a switch in the plate editor now, where you notice you want it,
+writing the same `e.setup.doseSeries`; and a plate that already has a compound or a concentration
+written into it (an Echo import, an experiment created before the box existed) is not asked at
+all — it plainly doses something.
+
+**The dilution filler refused a block.** `plSelAxis` returned a direction for a single row or
+column and `null` for anything else, so a 3×4 titration in triplicate — the ordinary shape — got
+no filler. It returns `'block'`, which is offered **both** ways (Across → ← / Down ↓ ↑), and
+`plApplyDose(dir, axis)` takes each well's **position along the axis** rather than its place in
+the flat list: three rows of four now get the same four concentrations, which is what a replicate
+is. It used to read the block boustrophedon and produce a twelve-point series.
+
+**Compound addition by hand had no step.** The library offered "Compound addition (Echo)" and
+nothing else; the `spike` and `serial` calculators existed but the only way to either was to add a
+blank block and know the calculator picker held them. Two library steps now — **Compound addition
+(by hand)**, carrying the BET biosensor preset's own wording and numbers (spike the 10× in, do not
+aspirate; the concentrations you record are the ones in the well) and its 3 h wait, and **Serial
+dilution series**. `insertStepBlock` gained `spec.inputs` and `spec.w` to carry them: a library
+step that ships real numbers cannot arrive on the calculator's defaults.
+
+### A cell number is meaningless without the plate it is in
+
+Picking HeLa for a 6-well western put **3,000 cells** in the dish. `cpw` was one number per line
+with no format attached — a 384-well figure — written in whenever a line was picked, and it also
+overwrote the number the format change had just rescaled correctly.
+
+`lineCells(line, fmt)` answers it properly, and the fix is that there were two questions wearing
+one label. A **6-, 12-, 24- or 48-well is plated**: you seed a monolayer and use it the next day,
+and the density is the lab's own 800,000 per 6-well — the `SEED_PER_CM2` anchor already in the
+file. A **96- or 384-well is an assay well**: you seed sparse and the cells grow through the
+assay, and the density is the line's own working figure at the format it was measured in
+(`cpwFmt`, now declared). HeLa comes out 6-well 800,000 · 96-well 17,000 · 384-well 3,000. The
+edit-setup form also had no rescale at all, so changing the plate there left the cell number
+behind; it has the one the New-experiment modal has had since the areas went in.
+
+### Why the PDF was a different document on Windows
+
+Two independent bugs, and they compounded.
+
+- **`@page` named no size.** The sheet came from the machine — A4 on a Mac, **Letter** on Windows
+  — and Chrome scales the laid-out document to whatever printable area it gets. Same export,
+  readable on one and enormous on the other. `size:A4` is stated now, in `PRINT_CSS` and
+  `LAB_CSS`; the week planner had always pinned it, which is why it never drifted.
+- **Every rule in the second half of both stylesheets was being thrown away.**
+  `#print-root *{font-size:inherit;font-family:inherit;color:inherit;background:none}` is
+  (0,1,0,0); `.pd-title` and `.lb-h1` are (0,0,1,0). The reset won all of them. Nothing had its
+  own size, colour or background: a heading, a table cell and a footnote all rendered at the root
+  size in one flat grey, every tinted box lost its fill, and a white-on-blue day badge became
+  white on white. That is the "todo más claro". Both tails are scoped to `#print-root` now, so
+  they outrank the reset — and this is the first time their greys have ever been seen, which is
+  why they also had to be darkened: paper is not a backlit screen, and a `#999` rule or a `#ccc`
+  border is legible on one and gone on the other.
+
+The type came down with the fix: 14pt body (record PDF) and 15pt (bench sheet) only ever looked
+right *because* fit-to-page scaling was shrinking them. Unscaled they are a large-print edition.
+11pt and 11.5pt, with the rest in proportion — the bench sheet stays the larger of the two on
+purpose, since it is read at arm's length beside a hood. `print-color-adjust:exact` so the
+backgrounds actually reach the page.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
