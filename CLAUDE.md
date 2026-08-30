@@ -2411,6 +2411,37 @@ right *because* fit-to-page scaling was shrinking them. Unscaled they are a larg
 purpose, since it is read at arm's length beside a hood. `print-color-adjust:exact` so the
 backgrounds actually reach the page.
 
+## Blank experiment — a page, not a form (2026-08-30)
+
+Not every experiment is one of the ten that are modelled, and the ones that are not still have to
+go somewhere. **Blank experiment** is a OneNote page: a title, a date, and somewhere to write.
+
+It is a preset (`EXTRA_PRESET_SEED.BLANK`, `baseType:'EXP'`), not an eleventh type — so nothing
+about the existing ten changes. `setupHide:['format']` empties its setup, and `nmSetup` already
+hides the whole panel when a preset has no fields, which takes the plate-map checkbox with it:
+creating one asks nothing at all. Its single block ships `html:''` rather than `'<p></p>'`,
+because `<p></p>` has a child node and is therefore not `:empty` — the placeholder that says
+what the page is for could never have shown.
+
+**`e.blank` rides on the record, not on the preset.** What this page is stays true however the
+preset is later renamed, edited or deleted. It drives one thing: `.exh-quiet` folds the
+type/status/date/plasmid/cell-line grid behind its own Details button, whether or not the app is
+in lean mode. Everything is still there — a page that turns out to be a real assay must not have
+to be recreated — and the one line above it reads *Blank experiment · 30/08/2026 · planned*.
+
+**Day-blocks were already the answer to the second half of the ask.** `+ Add day-block` dates the
+new block from the one it lands after, the step palette and the library are underneath it, and a
+plate map or a calculator is one click on any block. A blank experiment is a real experiment that
+has not decided yet, not a lesser kind of record — so nothing is taken away, only not asked for
+up front.
+
+Two routes in: last in the New-experiment preset list (last, not first — putting it at the top
+would make it the default the modal opens on), and **Blank experiment** in the `+` menu beside
+*Experiment (coded)*, which fills the modal in and creates it in one click.
+
+Every empty block now carries a placeholder, not just the blank preset's: `addBlock` also creates
+`html:''`.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).

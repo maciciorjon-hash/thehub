@@ -1794,6 +1794,15 @@ var PRESET_SEED={
 };
 // Extra ready-made presets (variants) seeded once; safe to delete/rename in-app.
 var EXTRA_PRESET_SEED={
+  // Not every experiment is one of the ten we have modelled, and the ones that are not still
+  // have to go somewhere. This is a OneNote page: a title, a date, and somewhere to write —
+  // no setup questions, no plate, no calculator, no prose put in your mouth. Everything the
+  // others have is still one click away (add a day-block, a step from the library, a plate map,
+  // a calculator), because a blank experiment is a real experiment that has not decided yet,
+  // not a lesser kind of record.
+  'BLANK':{name:'Blank experiment',baseType:'EXP',title:'',
+   blank:true, setupHide:['format'], plateOn:false,
+   blocks:[{d:0,title:'',html:''}]},
   'NB_SPARK_RTX96':{name:'NanoBRET_SPARK_Reverse_96',baseType:'NB',title:'NanoBRET — SPARK, reverse transfection (96-well)',
    // cellsPerWell is not one of NB's setup questions, so putting it here would be a key that
    // never reaches anything: the suspension calculator owns the 20,000.
@@ -4966,6 +4975,7 @@ function seedPresets(){
     if(s.setupHide) np.setupHide=s.setupHide.slice();
     if(s.plateOn!=null) np.plateOn=!!s.plateOn;
     if(s.layout) np.layout=s.layout;
+    if(s.blank) np.blank=true;
     np._seedSig=_presetSig(np);
     LB.data.presets[k]=np;
   });
@@ -4989,7 +4999,15 @@ function _seedUnedited(cur,seed){
 }
 // preset key helpers (built-in types + user-added custom presets)
 function isBuiltinPreset(k){ return EXP_TYPES.some(function(t){return t.id===k;}); }
-function allPresetKeys(){ var built=EXP_TYPES.map(function(t){return t.id;}).filter(function(k){return LB.data.presets[k];}); var custom=Object.keys(LB.data.presets).filter(function(k){return !isBuiltinPreset(k);}).sort(function(a,b){ return ((LB.data.presets[a].name||a)).localeCompare(LB.data.presets[b].name||b); }); return built.concat(custom); }
+function allPresetKeys(){ var built=EXP_TYPES.map(function(t){return t.id;}).filter(function(k){return LB.data.presets[k];});
+  var custom=Object.keys(LB.data.presets).filter(function(k){return !isBuiltinPreset(k)&&k!=='BLANK';}).sort(function(a,b){ return ((LB.data.presets[a].name||a)).localeCompare(LB.data.presets[b].name||b); });
+  // Blank goes last, not first: it is the one you pick when none of the others fit, and putting
+  // it at the top would make it the default the modal opens on.
+  return built.concat(custom).concat(LB.data.presets.BLANK?['BLANK']:[]); }
+// A blank sheet has no setup, no plate and no prose — the things that make an experiment a
+// *kind* of experiment. The flag rides on the record so the editor can be as quiet as the
+// preset was, years later, whatever happened to the preset in between.
+function expIsBlank(e){ return !!(e&&e.blank); }
 // A curated preset can declare its own plate map and the layout to start it from — the type's
 // default answers for the generic version of the assay, which is still the right default for it.
 function presetPlateOn(key,S){ var p=LB.data.presets[key], sd=EXTRA_PRESET_SEED[key];
@@ -5920,6 +5938,7 @@ function toggleDaySort(){ LAYOUT.daysDesc=!LAYOUT.daysDesc; saveLayout(); render
 function openAddMenu(ev){ ev.stopPropagation(); if(SEL.node.kind!=='expsec') return;
   popOpen('addmenu',[
     {label:'Experiment (coded)',ic:['E','#5e87c5'],fn:openNew},
+    {label:'Blank experiment',ic:['B','#8a93a6'],fn:newBlankExperiment},
     {sep:true},
     {label:'Meeting (no code)',ic:['M','#5e72c4'],fn:function(){newNote('meeting');}},
     {label:'Note (no code)',ic:['N','#c47818'],fn:function(){newNote('note');}}
@@ -5932,6 +5951,18 @@ function openNew(){ if(SEL.node.kind!=='expsec') return;
   // Preload Archive so protocol names + calculators resolve, then refresh the chips/preview.
   ensureArchive(function(){ nmProtos(); nmPreview(); }); }
 function closeNew(){ el('new-modal').classList.remove('open'); }
+// The modal with everything already answered: a blank sheet has nothing to ask. It still goes
+// through createExperiment so the code, the prefix, the project and the day-block are built the
+// one way they are built.
+function newBlankExperiment(){
+  if(SEL.node.kind!=='expsec') return;
+  if(!LB.data.presets.BLANK){ openNew(); return; }
+  openNew();
+  el('nm-type').value='BLANK';
+  nmUpdateCode(); nmResetSetup(); nmProtos(); nmPreview();
+  createExperiment();
+  setTimeout(function(){ var t=document.querySelector('.exh-title'); if(t) t.focus(); },160);
+}
 // ── Protocol-sourced experiments ─────────────────────────────────────────
 // __seq / __nanobret are synthetic parts (no dedicated Archive protocol) → reference blocks.
 // Default day-offset per protocol part (fallback = sequential index). Dates stay editable.
@@ -6727,6 +6758,9 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
       setup:setup,
       protocols:protoList||[], pubReady:buildPubReadyFromExp({blocks:all, startDate:startDate, setup:setup, type:type, protocols:protoList||[]}),
       blocks:all, created:Date.now(), updated:Date.now() };
+    // Carried onto the record, not looked up from the preset: what this page is stays true
+    // however the preset is renamed, edited or deleted afterwards.
+    if(tpl.blank) e.blank=true;
     // A 384-well Echo run gets the standard Echo layout straight away rather than a blank plate.
     if(NM_ECHO){
       // A real picklist beats any ready-made layout: it is what the machine actually did.
@@ -7321,7 +7355,7 @@ function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.pa
     +(b.calc?calcInputsHtml(b):'')
     +(b.plate&&pkey?platePreviewHtml(b.plate,pkey):'')
     +(b.proto ? protoBlockHtml(b,true)
-              : '<div class="rt" contenteditable="true" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>')
+              : '<div class="rt" contenteditable="true" data-ph="Write here \u2014 what you did, what you saw, anything at all\u2026" data-ctx="block:'+b.id+'" oninput="setBlock(\''+b.id+'\',\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>')
     +'</div>'; }
 // ── Files pane (the data dump) ──
 // Everything you generated for this experiment in one place: picklists, gel scans, Prism
@@ -8044,13 +8078,13 @@ function renderExpEditor(host,e){
   // twice on two adjacent lines is exactly the noise this view is for.
   var _cl=((e.setup&&e.setup.cellLine)?'':((e.cellLines||'').split(/[,;]+/)[0]||''));
   var lean='<div class="exh-lean">'
-    +'<span><b>'+esc(semanticExperimentTitle(e.type))+'</b></span>'
+    +'<span><b>'+esc(expIsBlank(e)?'Blank experiment':semanticExperimentTitle(e.type))+'</b></span>'
     +(e.startDate?('<span>'+esc(fmtDate(e.startDate))+'</span>'):'')
     +'<span>'+esc(e.status||'planned')+'</span>'
     +(_cl?('<span>'+esc(_cl.trim())+'</span>'):'')
     +(e.plasmids?('<span>'+esc(e.plasmids)+'</span>'):'')
     +'<button class="lean-tog" title="Type, status, date, plasmids and cell lines" onclick="leanToggle(this,\'.exh\')">Details</button></div>';
-  var header='<div class="exh"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+lean+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
+  var header='<div class="exh'+(expIsBlank(e)?' exh-quiet':'')+'"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+lean+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
   var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res')?EXP_TAB:'dated';
   var nRes=((e.integration&&e.integration.results)||[]).length;
   // A phone gets the tab it is on and a menu of the rest. A strip that scrolls sideways is
@@ -8863,7 +8897,9 @@ function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).
   if(f==='date'){ recomputeDayOffsets(e); save(); renderPages(); renderEditor(); return; }
   save(); }
 function setExpBlockHtml(expId,blkId,html){ var e=LB.data.experiments[expId]; if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===blkId;})[0]; if(!b) return; b.html=_persistImgHtml(html); e.updated=Date.now(); queueSave(); }
-function addBlock(){ var e=_curExp(); if(!e) return; undoMark('Add step',['experiments.'+e.id]); var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'<p></p>',done:false,completedAt:null}); save(); renderEditor(); }
+function addBlock(){ var e=_curExp(); if(!e) return; undoMark('Add step',['experiments.'+e.id]); var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); // Empty rather than an empty paragraph, so the placeholder can say what the block is for:
+  // `<p></p>` has a child node and is therefore not :empty.
+  e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'',done:false,completedAt:null}); save(); renderEditor(); }
 function delBlock(id){ var e=_curExp(); if(!e) return; undoMark('Delete step',['experiments.'+e.id]); e.blocks=e.blocks.filter(function(b){return b.id!==id;}); save(); renderEditor(); }
 function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
 function moveBlock(id,dir){ var e=_curExp(); if(!e) return; undoMark('Move step',['experiments.'+e.id]); var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; save(); renderEditor(); }
