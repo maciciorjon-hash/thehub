@@ -2496,6 +2496,39 @@ a titration has as many final concentrations as it has points, so the Methods se
 
 `CALC_KINDS` gained a `check` field type for it, which the block calculators did not have.
 
+## The selection bubble, made a real bar (2026-08-30)
+
+Jon: *"este menú es escaso… highlight funciona pero pulsando el mismo no desactivo el highlight."*
+Both true, and the second is the more interesting one.
+
+**A toggle has to toggle.** `bubbleCmd('hiliteColor')` only ever painted yellow, so the one thing
+everybody tries — press it again — did nothing at all. `_hiliteOn()` walks out from the selection
+to the editable looking for a real background (`queryCommandValue('backColor')` answers for the
+caret, not for the run), and the command paints or clears accordingly.
+
+**A button has to say whether it is on.** Bold text and unbold text offered the same unlit **B**,
+so the bar told you nothing about what you had selected. The bubble is rebuilt on every selection
+change now — it is markup with no state of its own and it lives outside the editable, so
+redrawing it cannot disturb the selection it is reporting on — and every button carries
+`queryCommandState`.
+
+**What it holds**: B I U S · **Font** · **Size** · text colour and highlight, each a button with
+a caret (the button does the obvious thing; the caret opens a swatch row inside the bubble — two
+clicks to highlight yellow would be one too many) · **X₂ / X²**, because a lab notebook writes
+formulae · bullet and numbered lists · link · clear formatting. 617px on a desktop, wrapping to
+two rows at 375px.
+
+Font and size go through `_wrapSel(prop,val)` rather than `execCommand`: `fontName` writes a
+`<font>` tag and `fontSize` writes 1–7, neither of which is a size anybody asked for. Sub- and
+superscript deliberately do *not* go through `styleWithCSS` — a chemical formula is plain text
+with two characters lowered, not a span with a CSS rule on it.
+
+**The icons.** Every glyph is one set at one size now: `•≡` standing in for a bullet list and a
+🔗 emoji for the link are gone (the emoji audit had missed this one file), replaced by 24-box
+SVGs at stroke 1.6 with `geometricPrecision`, and B/I/U/S are set in Plex Serif with the weight,
+slant, underline and strike they name — the convention, drawn properly rather than as four
+default-weight letters.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).

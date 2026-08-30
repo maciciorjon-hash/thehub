@@ -83,16 +83,46 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 body.lb-rb-closed .rb-pane{display:none;}
 /* The selection bubble — formatting where the text is, instead of a permanent strip at the top
    of the window. It is the reason the pane can default to closed. */
-#lb-bubble{position:fixed;z-index:960;display:none;align-items:center;gap:2px;padding:4px;
+#lb-bubble{position:fixed;z-index:960;display:none;flex-direction:column;gap:4px;padding:5px;
   border-radius:var(--r-2);background:var(--surface);border:1px solid var(--border2);
-  box-shadow:0 8px 26px rgba(0,0,0,.20);white-space:nowrap;}
+  box-shadow:0 10px 30px rgba(0,0,0,.22);max-width:calc(100vw - 16px);}
 #lb-bubble.on{display:flex;}
-#lb-bubble button{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;
-  border:1px solid transparent;background:none;color:var(--text2);border-radius:var(--r-1);cursor:pointer;
-  font-family:var(--sans);font-size:var(--fs-3);font-weight:700;padding:0;}
-#lb-bubble button:hover{background:var(--surface2);color:var(--text);}
-#lb-bubble button svg{width:17px;height:17px;}
-#lb-bubble .sep{width:1px;height:18px;background:var(--border2);margin:0 3px;flex:none;}
+.bub-row{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}
+/* One square, one glyph, optically centred. The buttons used to be a mixed bag of letters, an
+   emoji and a bullet-plus-identical-to standing in for a list — this is one set at one size. */
+.bub-b{width:30px;height:30px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid transparent;background:none;color:var(--text2);border-radius:var(--r-1);cursor:pointer;padding:0;}
+.bub-b:hover{background:var(--surface2);color:var(--text);}
+.bub-b.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+.bub-b svg{width:18px;height:18px;}
+.bub-t{font-family:'IBM Plex Serif',Georgia,serif;font-size:var(--fs-4);line-height:1;}
+.bub-b1{font-weight:700;}
+.bub-i{font-style:italic;font-weight:600;}
+.bub-u{text-decoration:underline;text-underline-offset:2px;font-weight:600;}
+.bub-s{text-decoration:line-through;font-weight:600;}
+.bub-a{font-weight:700;border-bottom:2.5px solid #c04040;padding-bottom:1px;line-height:1.1;}
+.bub-h{font-weight:700;background:#ffe08a;color:#3a2f00;border-radius:3px;padding:0 4px;}
+.bub-t sub,.bub-t sup{font-size:.62em;font-family:var(--sans);}
+/* The colour buttons are a button and a caret: the button does the obvious thing, the caret
+   opens the choices — two clicks to highlight yellow would be one too many. */
+.bub-pair{display:inline-flex;align-items:center;}
+.bub-car{width:16px;height:30px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid transparent;background:none;color:var(--text3);border-radius:var(--r-1);cursor:pointer;padding:0;}
+.bub-car svg{width:13px;height:13px;}
+.bub-car:hover{background:var(--surface2);color:var(--text);}
+.bub-car.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+.bub-sel{height:30px;flex:none;font-family:var(--sans);font-size:var(--fs-2);color:var(--text2);
+  background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-1);padding:0 4px;cursor:pointer;}
+.bub-sel:hover{color:var(--text);border-color:var(--accent);}
+.bub-font{max-width:104px;}
+.bub-size{max-width:66px;}
+.bub-sep{width:1px;height:18px;background:var(--border2);margin:0 4px;flex:none;}
+.bub-sw{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:4px 3px 2px;border-top:1px solid var(--border);}
+.bub-c{width:20px;height:20px;border-radius:var(--r-1);border:1px solid var(--border2);cursor:pointer;flex:none;}
+.bub-c:hover{outline:2px solid var(--accent);outline-offset:1px;}
+.bub-none{font:600 var(--fs-1)/1 var(--sans);color:var(--text3);background:none;border:1px solid var(--border2);
+  border-radius:var(--r-1);padding:4px 8px;cursor:pointer;}
+.bub-none:hover{color:var(--accent);border-color:var(--accent);}
 .rb-core{display:flex;align-items:center;gap:3px;flex-wrap:nowrap;}
 .tb-grouplbl{font-size:var(--fs-1);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin:0 6px 0 2px;flex-shrink:0;}
 .tb{width:34px;height:34px;border:none;background:none;border-radius:var(--r-2);color:var(--text2);cursor:pointer;font-size:var(--fs-5);display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s;font-family:var(--sans);flex-shrink:0;}
@@ -11263,34 +11293,153 @@ function setAnalysisSoftware(){
   });
 }
 // ── Selection bubble ───────────────────────────────────────────────────────────────────────
-// Everything here is also in the Home pane. The point is not new commands, it is that the eight
-// you actually use follow the text, so a 120px strip does not have to sit above every screen
-// waiting to be needed. Anything rarer is still a tab click away.
-var BUBBLE_ITEMS=[
-  ['bold','Bold','<b>B</b>'], ['italic','Italic','<i>I</i>'], ['underline','Underline','<u>U</u>'],
-  ['strikeThrough','Strikethrough','<s>S</s>'], ['sep'],
-  ['hiliteColor','Highlight','<span style="background:#ffe08a;padding:0 3px;border-radius:3px">H</span>'],
-  ['removeFormat','Clear formatting','<span style="font-weight:600">T&#215;</span>'], ['sep'],
-  ['insertUnorderedList','Bullets','&#8226;&#8801;'], ['link','Link','&#128279;']
+// Formatting where the text is, which is what lets the ribbon pane default to closed. It is the
+// bar you actually reach for, so it holds what a lab notebook needs — weight, the font and its
+// size, colour, sub/superscript for a formula, lists, a link — and everything rarer stays a tab
+// click away.
+//
+// Two rules it did not follow before. **A toggle has to toggle**: pressing Highlight on
+// highlighted text left it highlighted, because the command was only ever "paint it yellow".
+// And **a button has to say whether it is on**: bold text and unbold text offered the same
+// unlit B, so the bar told you nothing about what you had selected.
+var BUBBLE_FONTS=[
+  ['', 'Font'],
+  ["'IBM Plex Sans',system-ui,sans-serif", 'Plex Sans'],
+  ["'IBM Plex Serif',Georgia,serif",       'Plex Serif'],
+  ["'IBM Plex Mono',ui-monospace,monospace",'Plex Mono'],
+  ['Arial,Helvetica,sans-serif',           'Arial'],
+  ['Calibri,Candara,sans-serif',           'Calibri'],
+  ['Georgia,serif',                        'Georgia'],
+  ["'Times New Roman',Times,serif",        'Times'],
+  ['inherit',                              'Default']
 ];
+var BUBBLE_SIZES=[10,11,12,13,14,16,18,20,24,28,32];
+var HILITE_COLS=['#ffe08a','#ffd6d6','#d6f5df','#d6ecff','#e8d6ff','#ffe4c4'];
+var TEXT_COLS=['#1a1d2e','#c04040','#c47818','#2d9462','#5e87c5','#7c6fd4','#a56983','#5a5f7a'];
+var BUB={swatch:null};
+// The one place the bubble decides what it is editing. `_activeEd` is set on focus and is right
+// almost always, but the selection itself is the truth — and on the paths where focus never
+// moved (a click straight into a second block) it is the only truth.
+function _bubbleHost(){
+  var sel; try{ sel=window.getSelection(); }catch(e){ return null; }
+  if(!sel||!sel.rangeCount) return _activeEd||null;
+  var n=sel.anchorNode; n=n&&(n.nodeType===1?n:n.parentElement);
+  var h=n&&n.closest?n.closest('[contenteditable="true"]'):null;
+  return h||_activeEd||null;
+}
+function _bubState(cmd){ try{ return document.queryCommandState(cmd); }catch(e){ return false; } }
+// Is the selection sitting on a highlight? Walk out to the editable looking for a real
+// background — queryCommandValue('backColor') answers for the caret, not for the run.
+function _hiliteOn(){
+  var sel; try{ sel=window.getSelection(); }catch(e){ return false; }
+  if(!sel||!sel.rangeCount) return false;
+  var n=sel.anchorNode; n=n&&(n.nodeType===1?n:n.parentElement);
+  while(n&&n.nodeType===1&&!(n.getAttribute&&n.getAttribute('contenteditable')==='true')){
+    var bg=''; try{ bg=getComputedStyle(n).backgroundColor||''; }catch(e){}
+    if(bg&&bg!=='transparent'&&bg.replace(/\s/g,'')!=='rgba(0,0,0,0)') return true;
+    n=n.parentElement;
+  }
+  return false;
+}
+function _bubBtn(cmd,title,inner,on){
+  return '<button class="bub-b'+(on?' on':'')+'" title="'+esc(title)+'" data-cmd="'+cmd+'"'
+    +' onmousedown="event.preventDefault();bubbleCmd(\''+cmd+'\')">'+inner+'</button>';
+}
+function _bubSvg(p){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision">'+p+'</svg>'; }
+function bubbleHtml(){
+  var hi=_hiliteOn();
+  var row='<div class="bub-row">'
+    +_bubBtn('bold','Bold','<span class="bub-t bub-b1">B</span>',_bubState('bold'))
+    +_bubBtn('italic','Italic','<span class="bub-t bub-i">I</span>',_bubState('italic'))
+    +_bubBtn('underline','Underline','<span class="bub-t bub-u">U</span>',_bubState('underline'))
+    +_bubBtn('strikeThrough','Strikethrough','<span class="bub-t bub-s">S</span>',_bubState('strikeThrough'))
+    +'<span class="bub-sep"></span>'
+    +'<select class="bub-sel bub-font" title="Font" onmousedown="event.stopPropagation()" onchange="bubbleFont(this.value);this.selectedIndex=0">'
+      +BUBBLE_FONTS.map(function(f,i){ return '<option value="'+esc(f[0])+'"'+(i?(' style="font-family:'+f[0]+'"'):'')+'>'+esc(f[1])+'</option>'; }).join('')
+    +'</select>'
+    +'<select class="bub-sel bub-size" title="Font size" onmousedown="event.stopPropagation()" onchange="bubbleSize(this.value);this.selectedIndex=0">'
+      +'<option value="">Size</option>'+BUBBLE_SIZES.map(function(x){ return '<option value="'+x+'">'+x+'</option>'; }).join('')
+    +'</select>'
+    +'<span class="bub-sep"></span>'
+    // Each colour is a button and a caret: the button does the obvious thing, the caret opens
+    // the choices. Two clicks to highlight yellow would be one click too many.
+    +'<span class="bub-pair">'
+      +_bubBtn('foreColor','Text colour','<span class="bub-t bub-a">A</span>',false)
+      +'<button class="bub-car'+(BUB.swatch==='foreColor'?' on':'')+'" title="Text colours" onmousedown="event.preventDefault();bubbleSwatch(\'foreColor\')">'+_bubSvg('<path d="M7 10l5 5 5-5"/>')+'</button>'
+    +'</span>'
+    +'<span class="bub-pair">'
+      +_bubBtn('hiliteColor',hi?'Remove highlight':'Highlight','<span class="bub-t bub-h">H</span>',hi)
+      +'<button class="bub-car'+(BUB.swatch==='hiliteColor'?' on':'')+'" title="Highlight colours" onmousedown="event.preventDefault();bubbleSwatch(\'hiliteColor\')">'+_bubSvg('<path d="M7 10l5 5 5-5"/>')+'</button>'
+    +'</span>'
+    +'<span class="bub-sep"></span>'
+    +_bubBtn('subscript','Subscript — H₂O','<span class="bub-t">X<sub>2</sub></span>',_bubState('subscript'))
+    +_bubBtn('superscript','Superscript — cm²','<span class="bub-t">X<sup>2</sup></span>',_bubState('superscript'))
+    +'<span class="bub-sep"></span>'
+    +_bubBtn('insertUnorderedList','Bullet list',_bubSvg('<path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none"/>'),_bubState('insertUnorderedList'))
+    +_bubBtn('insertOrderedList','Numbered list',_bubSvg('<path d="M10 6h11M10 12h11M10 18h11"/><path d="M3.4 4.8l1.1-.6V8"/><path d="M3 11.4a1.2 1.2 0 111.9 1.4L3 15h2.2"/>'),_bubState('insertOrderedList'))
+    +'<span class="bub-sep"></span>'
+    +_bubBtn('link','Link',_bubSvg('<path d="M10 13a4 4 0 006 .5l2.5-2.5a4 4 0 00-5.7-5.7L11.5 6.6"/><path d="M14 11a4 4 0 00-6-.5L5.5 13a4 4 0 005.7 5.7l1.3-1.3"/>'),false)
+    +_bubBtn('removeFormat','Clear formatting',_bubSvg('<path d="M8 5h12M13 5l-3 14"/><path d="M4 19l6-6M10 19l-6-6"/>'),false)
+    +'</div>';
+  var sw='';
+  if(BUB.swatch){
+    var cols=(BUB.swatch==='hiliteColor')?HILITE_COLS:TEXT_COLS;
+    sw='<div class="bub-sw">'
+      +cols.map(function(c){ return '<span class="bub-c" style="background:'+c+'" title="'+c+'" onmousedown="event.preventDefault();bubbleColor(\''+BUB.swatch+'\',\''+c+'\')"></span>'; }).join('')
+      +'<button class="bub-none" onmousedown="event.preventDefault();bubbleColor(\''+BUB.swatch+'\',\''+(BUB.swatch==='hiliteColor'?'transparent':'inherit')+'\')">None</button>'
+      +'</div>';
+  }
+  return row+sw;
+}
 function _bubbleEl(){
   var b=el('lb-bubble');
-  if(!b){ b=document.createElement('div'); b.id='lb-bubble';
-    b.innerHTML=BUBBLE_ITEMS.map(function(x){
-      if(x[0]==='sep') return '<span class="sep"></span>';
-      return '<button title="'+esc(x[1])+'" data-cmd="'+x[0]+'" onmousedown="event.preventDefault();bubbleCmd(\''+x[0]+'\')">'+x[2]+'</button>';
-    }).join('');
-    document.body.appendChild(b); }
+  if(!b){ b=document.createElement('div'); b.id='lb-bubble'; document.body.appendChild(b); }
   return b;
 }
-function bubbleCmd(cmd){
-  if(cmd==='hiliteColor'){ try{ document.execCommand('hiliteColor',false,'#ffe08a'); }catch(e){} }
-  else if(cmd==='link'){ hideBubble(); if(typeof openLinkIns==='function') openLinkIns(); return; }
-  else { try{ document.execCommand(cmd,false,null); }catch(e){} }
-  // The command changed the document; the caller's oninput fires on its own.
+// Wrap the selection in a span carrying one property. execCommand('fontName') writes a <font>
+// tag and execCommand('fontSize') writes 1–7, neither of which is a size anybody asked for.
+function _wrapSel(prop,val){
+  var host=_bubbleHost(); if(!host) return;
+  var sel=window.getSelection(); if(!sel||!sel.rangeCount||sel.isCollapsed) return;
+  var r=sel.getRangeAt(0);
+  var span=document.createElement('span'); span.style[prop]=val;
+  try{ span.appendChild(r.extractContents()); r.insertNode(span);
+    sel.removeAllRanges(); var nr=document.createRange(); nr.selectNodeContents(span); sel.addRange(nr); }catch(e){ return; }
+  host.dispatchEvent(new Event('input',{bubbles:true}));
+}
+function bubbleFont(v){ if(!v) return; BUB.swatch=null; _wrapSel('fontFamily',v); positionBubble(); }
+function bubbleSize(v){ if(!v) return; BUB.swatch=null; _wrapSel('fontSize',(+v)+'px'); positionBubble(); }
+function bubbleSwatch(which){ BUB.swatch=(BUB.swatch===which)?null:which; positionBubble(); }
+function bubbleColor(cmd,c){
+  BUB.swatch=null;
+  var host=_bubbleHost(); if(host) host.focus();
+  try{ document.execCommand('styleWithCSS',false,true); document.execCommand(cmd,false,c); }catch(e){}
+  if(host) host.dispatchEvent(new Event('input',{bubbles:true}));
   positionBubble();
 }
-function hideBubble(){ var b=el('lb-bubble'); if(b) b.classList.remove('on'); }
+function bubbleCmd(cmd){
+  BUB.swatch=null;
+  if(cmd==='link'){ hideBubble(); if(typeof openLinkIns==='function') openLinkIns(); return; }
+  var host=_bubbleHost(); if(host) host.focus();
+  if(cmd==='hiliteColor'){
+    // Pressing it again takes the highlight off. It only ever painted before, so the one thing
+    // everybody tries — click it a second time — did nothing at all.
+    var off=_hiliteOn();
+    try{ document.execCommand('styleWithCSS',false,true);
+         document.execCommand('hiliteColor',false, off?'transparent':HILITE_COLS[0]); }catch(e){}
+  } else if(cmd==='foreColor'){
+    try{ document.execCommand('styleWithCSS',false,true); document.execCommand('foreColor',false,TEXT_COLS[1]); }catch(e){}
+  } else if(cmd==='subscript'||cmd==='superscript'){
+    // A chemical formula is a run of plain text with two characters lowered, so this must not
+    // be written as a CSS rule on a span the way the colours are.
+    try{ document.execCommand('styleWithCSS',false,false); document.execCommand(cmd,false,null); }catch(e){}
+  } else {
+    try{ document.execCommand(cmd,false,null); }catch(e){}
+  }
+  if(host) host.dispatchEvent(new Event('input',{bubbles:true}));
+  positionBubble();
+}
+function hideBubble(){ var b=el('lb-bubble'); if(b) b.classList.remove('on'); BUB.swatch=null; }
 function positionBubble(){
   var sel; try{ sel=window.getSelection(); }catch(e){ return hideBubble(); }
   if(!sel || sel.isCollapsed || !sel.rangeCount) return hideBubble();
@@ -11302,8 +11451,13 @@ function positionBubble(){
   if(!host) return hideBubble();
   var r; try{ r=sel.getRangeAt(0).getBoundingClientRect(); }catch(e){ return hideBubble(); }
   if(!r || (!r.width && !r.height)) return hideBubble();
-  var b=_bubbleEl(); b.classList.add('on');
-  var bw=b.offsetWidth||260, bh=b.offsetHeight||38;
+  var b=_bubbleEl();
+  // Rebuilt on every move so the lit buttons describe what is selected now. It is markup with
+  // no state of its own, and it lives outside the editable, so redrawing it cannot disturb the
+  // selection it is reporting on.
+  b.innerHTML=bubbleHtml();
+  b.classList.add('on');
+  var bw=b.offsetWidth||420, bh=b.offsetHeight||38;
   // Measured, then clamped by its real edges — pinning the centre says nothing about where the
   // box lands, which is the bug #lb-tip had.
   var left=Math.round(r.left+r.width/2-bw/2);
