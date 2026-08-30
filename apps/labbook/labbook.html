@@ -263,7 +263,12 @@ body.lb-rb-closed .rb-pane{display:none;}
 
 .blk{background:var(--glass);-webkit-backdrop-filter:blur(12px) saturate(1.4);backdrop-filter:blur(12px) saturate(1.4);border:1px solid var(--glass-brd);border-radius:var(--r-2);margin-bottom:12px;box-shadow:var(--glass-shadow),var(--glass-hi);overflow:hidden;transition:box-shadow .2s var(--ease),transform .18s var(--ease);}
 .blk:hover{box-shadow:var(--glass-shadow),0 4px 12px -4px rgba(32,44,84,.18),var(--glass-hi);}
+/* Seven controls and a title field on one line. The title is what gives when the pane is
+   narrow — a button squeezed out of the row is a button that does not exist, and a
+   truncated title still reads. */
 .blk-hd{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--surface2);border-bottom:1px solid var(--border);}
+.blk-hd .blk-title{flex:1 1 60px;min-width:0;}
+.blk-hd .blk-date{flex:0 0 auto;}
 .day-group{margin-bottom:16px;}
 .day-group-hd{display:flex;align-items:center;gap:9px;margin:2px 0 8px;padding:0 2px;}
 .day-group-hd::after{content:"";flex:1;height:1px;background:var(--border);order:9;}
@@ -886,6 +891,11 @@ body.lb-rb-closed .rb-pane{display:none;}
 .pl-quick{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
 /* A count the plate supplied, rather than one typed into the box beside it. */
 .cc-plate{color:var(--accent);font-weight:600;}
+/* Where a number came from. A value the app derived and one you chose must never look alike. */
+.ci-derived{font-size:var(--fs-1);font-weight:600;color:var(--accent);text-transform:none;letter-spacing:0;}
+.ci-relink{font:600 var(--fs-1)/1 var(--sans);color:var(--text3);background:none;border:1px solid var(--border2);
+  border-radius:var(--r-1);padding:2px 6px;cursor:pointer;text-transform:none;letter-spacing:0;}
+.ci-relink:hover{color:var(--accent);border-color:var(--accent);}
 .pl-quick .pl-btn{min-width:0;flex:1 1 72px;}
 .pl-type{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-2);font-family:var(--sans);background:var(--surface);border:1px solid var(--border2);color:var(--text2);border-radius:var(--r-3);padding:3px 10px;cursor:pointer;}
 .pl-type:hover{color:var(--text);}
@@ -997,6 +1007,8 @@ body.lb-rb-closed .rb-pane{display:none;}
 .es-note{font-size:var(--fs-2);color:var(--text2);line-height:1.55;}
 .nm-setup .ci-f.lead span{color:#5e87c5;}
 .nm-setup .ci-f.lead select{border-color:#5e87c5;font-weight:600;}
+/* The format question that comes with a plate on a preset that asks nothing else. */
+.nm-plate-fmt{max-width:180px;margin-top:8px;}
 .nm-setup-plate{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding-top:11px;border-top:1px dashed var(--border);font-size:var(--fs-3);line-height:1.5;color:var(--text2);cursor:pointer;}
 /* Two lines of label: centring the box puts it in the gap between them. It belongs on the
    first line, which is the one the sentence starts on. */
@@ -1892,7 +1904,7 @@ var EXTRA_PRESET_SEED={
        +'<p>Incubate <b>1 h</b> at 37 &deg;C before the compounds.</p>'
        +'<ul class="lb-check"><li>10&times; MG132 made fresh in Opti-MEM</li><li>Added to all 84 wells</li><li>1 h, 37 &deg;C</li></ul>'},
     {d:1,title:'Test compounds',w:180,
-     calc:{kind:'spike',inputs:{name:'test compounds',wellVolUL:111.1,foldX:10,finalUM:0,stockUM:0,
+     calc:{kind:'spike',inputs:{name:'test compounds',wellVolUL:111.1,foldX:10,series:true,finalUM:0,stockUM:0,
        nWells:84,excess:1.1,diluent:'Opti-MEM'}},
      html:'<p>Add the test compounds at the chosen concentrations. Prepare <b>10&times; dilutions of each concentration in Opti-MEM</b> '
        +'and add the 10&times; to the wells &mdash; the concentrations you record are the ones <b>in the well</b>.</p>'
@@ -2284,6 +2296,7 @@ var CALC_KINDS={
     {k:'name',t:'txt',lbl:'Reagent'},
     {k:'wellVolUL',t:'num',lbl:'Already in the well (µL)'},
     {k:'foldX',t:'num',lbl:'Intermediate strength (×)'},
+    {k:'series',t:'check',lbl:'A dose series — each well gets a different concentration'},
     {k:'finalUM',t:'num',lbl:'Final in well (µM)',step:'any'},
     {k:'stockUM',t:'num',lbl:'Source stock (µM)'},
     {k:'nWells',t:'num',lbl:'# wells'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'},
@@ -2558,20 +2571,34 @@ function spikeRecipe(v){
   var add=V/(X-1), newV=V+add, inter=fin*X, need=add*n*ex;
   var df=(inter>0&&stock>0)?(stock/inter):0;
   var vs=df>0?(need/df):0, vd=need-vs;
+  // A dose series is not one solution. Printing "10× intermediate — 24 wells × 1.1 overage →
+  // 326 µL" says make one tube of that much, and those 24 wells hold twenty-four different
+  // things: the total is real only as a sum across concentrations, and the dilution from the
+  // stock is different for every point. So the series case prints the two numbers that ARE
+  // true — the volume that goes into each well, and how much 10× to have in total — and says
+  // outright that it is split between the concentrations.
+  var ser=!!v.series;
   var out='<b>Add '+nfmt(add)+' µL per well</b> of a '+nfmt(X)+'× intermediate to the '+nfmt(V)+' µL already in the well → '
-    +nfmt(newV)+' µL/well'+(fin>0?(' at '+_fmtConc(fin*1000)+' '+name):(' of '+name))+'.'
+    +nfmt(newV)+' µL/well'+(ser?(' of '+name+', at each well\'s own concentration'):(fin>0?(' at '+_fmtConc(fin*1000)+' '+name):(' of '+name)))+'.'
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Step</th><th>Amount</th></tr>'
-    +'<tr><td>'+nfmt(X)+'× intermediate'+(inter>0?(' at '+_fmtConc(inter*1000)):'')+' — '+nfmt(n)+' well'+(n===1?'':'s')+_ovxL(ex)+'</td><td><b>'+nfmt(need)+' µL</b></td></tr>'
-    +(df>0?('<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', diluted 1:'+nfmt(df)+'</td><td><b>'+nfmt(vs)+' µL</b></td></tr>'
-           +'<tr><td>'+dl+'</td><td><b>'+nfmt(vd)+' µL</b></td></tr>'):'')
+    +(ser
+      ? ('<tr><td>'+nfmt(X)+'× of <b>each</b> concentration in '+dl+' — per well that receives it'+_ovxL(ex)+'</td><td><b>'+nfmt(add*ex)+' µL</b></td></tr>'
+        +'<tr><td>Across all '+nfmt(n)+' well'+(n===1?'':'s')+', split between the concentrations'+_ovxL(ex)+'</td><td><b>'+nfmt(need)+' µL</b></td></tr>')
+      : ('<tr><td>'+nfmt(X)+'× intermediate'+(inter>0?(' at '+_fmtConc(inter*1000)):'')+' — '+nfmt(n)+' well'+(n===1?'':'s')+_ovxL(ex)+'</td><td><b>'+nfmt(need)+' µL</b></td></tr>'
+        +(df>0?('<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', diluted 1:'+nfmt(df)+'</td><td><b>'+nfmt(vs)+' µL</b></td></tr>'
+               +'<tr><td>'+dl+'</td><td><b>'+nfmt(vd)+' µL</b></td></tr>'):'')))
     +'</table></div>'
+    +(ser?('<div class="cc-note">How much of each concentration depends on how many wells it goes in &mdash; the plate map is where that is decided, not here. '
+      +'Add a <b>Serial dilution series</b> step if you want the tubes worked out.</div>'):'')
     +'<div class="cc-note">V/(X−1), not V/X — the intermediate becomes part of the final volume. Adding a tenth of '+nfmt(V)
     +' µL instead would put '+nfmt(V/X)+' µL in and leave every well at '+nfmt(100*X/(X+1))+'% of the dose you meant'
     +(fin>0?(' — '+_fmtConc(fin*1000*X/(X+1))+' instead of '+_fmtConc(fin*1000)):'')+'.</div>';
-  if(df>0&&df<2) out+='<div class="cc-warn">The stock is only '+nfmt(df)+'× the intermediate — barely a dilution. '
-    +'Check the stock concentration or make the intermediate weaker.</div>';
-  else if(_pipHint(vs,v.minVolUL)) out+='<div class="cc-warn">'+nfmt(vs)+' µL of stock is not a volume to pipette directly — '
-    +_pipHint(vs,v.minVolUL).txt+' of it into the '+dl+'.</div>';
+  if(!ser){
+    if(df>0&&df<2) out+='<div class="cc-warn">The stock is only '+nfmt(df)+'× the intermediate — barely a dilution. '
+      +'Check the stock concentration or make the intermediate weaker.</div>';
+    else if(_pipHint(vs,v.minVolUL)) out+='<div class="cc-warn">'+nfmt(vs)+' µL of stock is not a volume to pipette directly — '
+      +_pipHint(vs,v.minVolUL).txt+' of it into the '+dl+'.</div>';
+  }
   return out;
 }
 function serialRecipe(v){
@@ -2689,8 +2716,16 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
     if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
       return '<label class="'+ciWide(f.opts)+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+f.lbl
         +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><select data-k="'+f.k+'" onchange="calcUpd(\''+b.id+'\')">'+so+'</select></label>'; }
-    if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input data-k="'+f.k+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>'; }
-    return '<label class="ci-f"><span>'+f.lbl+'</span><input type="number" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>';
+    if(f.t==='check'){ return '<label class="ci-f chk"><input type="checkbox" data-k="'+f.k+'"'+(v?' checked':'')+' onchange="calcUpd(\''+b.id+'\',\''+f.k+'\')"><span>'+f.lbl+'</span></label>'; }
+    if(f.t==='txt'){ return '<label class="ci-f"><span>'+f.lbl+'</span><input data-k="'+f.k+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\',\''+f.k+'\')"></label>'; }
+    // A derived input wears where it came from. Typing in it is allowed and makes it yours —
+    // the chip becomes the way back, because a number the app supplied and one you chose must
+    // never look the same.
+    var _ch=(CHAINED_INPUTS[b.calc.kind]||[]).indexOf(f.k)>=0, _own=!!(b.calc.own&&b.calc.own[f.k]);
+    var _tag=!_ch?'':(_own
+      ? (' <button class="ci-relink" title="Go back to the volume the steps above give" onclick="calcRelink(\''+b.id+'\',\''+f.k+'\')">yours &middot; re-link</button>')
+      : ' <span class="ci-derived" title="Taken from the steps above — what they put in the well">from the steps above</span>');
+    return '<label class="ci-f"><span>'+f.lbl+_tag+'</span><input type="number" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\',\''+f.k+'\')"></label>';
   }).join('');
   return '<div class="blk-calc" data-calc="'+b.id+'"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span><span class="grow"></span>'
     +'<button class="lean-tog" title="The numbers this recipe is calculated from" onclick="leanToggle(this,\'.blk-calc\')">Inputs</button>'
@@ -2726,7 +2761,7 @@ function _leanInit(){
   document.body.classList.toggle('lb-lean', v!=='0');   // lean unless it was turned off
 }
 function _blkById(id){ var e=_curExp(); if(!e) return null; return (e.blocks||[]).filter(function(x){return x.id===id;})[0]||null; }
-function calcUpd(id){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=document.querySelector('.blk-calc[data-calc="'+id+'"]'); if(!wrap) return;
+function calcUpd(id,key){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=document.querySelector('.blk-calc[data-calc="'+id+'"]'); if(!wrap) return;
   // The plate is read first: changing it rescales the per-well numbers, and the loop below must
   // not then write the stale values still sitting in the inputs back over them.
   var fmtSel=wrap.querySelector('select[data-k="format"]');
@@ -2735,13 +2770,30 @@ function calcUpd(id){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=docum
     var e0=_curExp(); if(e0) e0.updated=Date.now();
     save(); renderEditor(); return;
   }
-  wrap.querySelectorAll('[data-k]').forEach(function(n){ var k=n.getAttribute('data-k'); var val=n.value; b.calc.inputs[k]=(n.type==='number')?(val===''?'':parseFloat(val)):val; });
+  wrap.querySelectorAll('[data-k]').forEach(function(n){ var k=n.getAttribute('data-k'); var val=n.value;
+    b.calc.inputs[k]=(n.type==='checkbox')?n.checked:((n.type==='number')?(val===''?'':parseFloat(val)):val); });
+  // Typing into a derived field claims it. The whole panel is read back on every keystroke, so
+  // without knowing *which* box moved every derived value would be claimed the moment you edited
+  // anything else in the same calculator.
+  if(key && (CHAINED_INPUTS[b.calc.kind]||[]).indexOf(key)>=0){
+    if(!b.calc.own) b.calc.own={};
+    b.calc.own[key]=1;
+  }
   var e=_curExp();
+  // A volume changed here changes what every later step starts from. That is the join: a change
+  // in one section reaches the ones below it, live.
+  if(e&&VOL_ADD[b.calc.kind]&&syncChainedInputs(e)) refreshCalcRecipes(e);
   var r=el('ccr-'+id); if(r) r.innerHTML=withSeedFix("calcSeedFix('"+id+"')", function(){ return expCalcRecipe(b,e); });
   // The join runs both ways: a condition renamed or added here has to reach the palette and the
   // map's own summary, live, or the two drift apart between one keystroke and the next.
   if(e&&b.calc.kind==='nbtx') _queueNbSync(e);
   if(e) e.updated=Date.now(); queueSave(); }
+// Give a derived field back to the chain.
+function calcRelink(id,key){ var b=_blkById(id); if(!b||!b.calc||!b.calc.own) return;
+  delete b.calc.own[key];
+  var e=_curExp(); if(e) syncChainedInputs(e);
+  save(); renderEditor();
+  toast('Following the steps above again'); }
 // Debounced, because calcUpd runs on every keystroke: a construct renamed letter by letter would
 // otherwise put one condition in the palette per letter typed.
 var _nbSyncT=null;
@@ -2770,7 +2822,7 @@ function archiveCalcHtml(b){ var name=archiveName(b.calc.pid); var sch=archiveSc
   if(!sch){ return '<div class="blk-calc archive" data-calc="'+b.id+'">'+head+'<div class="cc-recipe" id="ccr-'+b.id+'">'+(b.calc.recipe||'<span class="cc-load">'+(archiveEmbedded()?'Loading the calculator…':'The Archive protocol library isn\'t available in this build, so this calculator can\'t be loaded.')+'</span>')+'</div></div>'; }
   var inp=b.calc.inputs||(b.calc.inputs={});
   var fieldHtml=function(f){ if(inp[f.id]==null) inp[f.id]=f.value; var v=inp[f.id];
-    if(f.type==='select'){ var opts=(f.options||[]).map(function(o){ return '<option value="'+esc(o.value)+'"'+(String(v)===String(o.value)?' selected':'')+'>'+esc(o.label)+'</option>'; }).join(''); return '<label class="'+ciWide((f.options||[]).map(function(o){return o.label;}))+'"><span>'+esc(f.label)+'</span><select data-k="'+esc(f.id)+'" onchange="calcUpd(\''+b.id+'\')">'+opts+'</select></label>'; }
+    if(f.type==='select'){ var opts=(f.options||[]).map(function(o){ return '<option value="'+esc(o.value)+'"'+(String(v)===String(o.value)?' selected':'')+'>'+esc(o.label)+'</option>'; }).join(''); return '<label class="'+ciWide((f.options||[]).map(function(o){return o.label;}))+'"><span>'+esc(f.label)+'</span><select data-k="'+esc(f.id)+'" onchange="calcUpd(\''+b.id+'\',\''+esc(f.id)+'\')">'+opts+'</select></label>'; }
     var t=(f.type==='number')?'number':'text';
     return '<label class="ci-f"><span>'+esc(f.label)+'</span><input type="'+t+'" data-k="'+esc(f.id)+'" value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\')"></label>'; };
   var boxes=sch.map(function(box){ var groups=box.groups||[{label:'',fields:box.fields||[]}];
@@ -2795,7 +2847,9 @@ var STEP_LIBRARY=[
   // wording is the BET biosensor preset's, because that is the version that has been run — spike
   // the 10× in without aspirating, and the concentrations you record are the ones in the well.
   {id:'lib:compound-manual',label:'Compound addition (by hand)',sub:'live prep calculator',calc:'spike',
-   inputs:{name:'test compounds',wellVolUL:111.1,foldX:10,finalUM:0,stockUM:0,nWells:84,excess:1.1,diluent:'Opti-MEM'},
+   // wellVolUL is a placeholder: syncChainedInputs replaces it with what the steps above this
+   // one actually put in the well, the moment the block lands in an experiment.
+   inputs:{name:'test compounds',wellVolUL:100,foldX:10,series:true,finalUM:0,stockUM:0,nWells:84,excess:1.1,diluent:'Opti-MEM'},
    w:180,
    html:'<p>Add the test compounds at the chosen concentrations. Prepare <b>10&times; dilutions of each concentration in Opti-MEM</b> '
      +'and add the 10&times; to the wells &mdash; the concentrations you record are the ones <b>in the well</b>.</p>'
@@ -2841,6 +2895,8 @@ function insertStepBlock(spec, at){
   if(spec.w) blk.waitMin=spec.w;
   if(spec.part){ blk.part=spec.part; blk.sourcePid=spec.sourcePid; }
   e.blocks.splice(idx,0,blk);
+  // A step's starting volume is a property of where it lands, not of the preset it came from.
+  syncChainedInputs(e);
   save(); renderEditor(); setTimeout(function(){ scrollBlk(blk.id); },80);
 }
 // ── The step palette you can drag from ────────────────────────────────────────────────────
@@ -5004,6 +5060,62 @@ function allPresetKeys(){ var built=EXP_TYPES.map(function(t){return t.id;}).fil
   // Blank goes last, not first: it is the one you pick when none of the others fit, and putting
   // it at the top would make it the default the modal opens on.
   return built.concat(custom).concat(LB.data.presets.BLANK?['BLANK']:[]); }
+// ── The well volume is a chain, not a number you retype ─────────────────────────────────────
+// Every step that puts liquid in a well decides what the next one starts from: 10 µL of complex
+// plus 90 µL of cell suspension is 100 µL, and a 10× spike into that adds 11.1 µL more. So a
+// step that asks "how much is already in the well" must be answered by the steps above it. A
+// default carried in from the preset a block came from is a number about somebody else's
+// experiment — which is how "Compound addition (by hand)" dropped into a NanoBRET arrived saying
+// 111.1 µL (the BET biosensor's well, after its MG132 spike) when this well holds 100.
+//
+// What each kind puts in a well, per well:
+var VOL_ADD={
+  rtxmix: function(I){ return +I.dispenseUL||0; },
+  // nbtx has no single "dispense" box — the mix is Opti-MEM plus FuGENE plus a fraction of a
+  // microlitre of DNA, and what reaches the well is the first two.
+  nbtx:   function(I){ return (+I.optimemPerWell||0)+(+I.fugenePerWell||0); },
+  nbsusp: function(I){ return +I.volPerWell||0; },
+  seed:   function(I){ return +I.volPerWell||0; },
+  ctg:    function(I){ return +I.volPerWell||0; },
+  lytic:  function(I){ return (+I.cellVolPerWell||0)/(+I.ratio||1); },
+  // A spike joins the volume it went into: V/(X−1), the same arithmetic the recipe prints.
+  spike:  function(I,v){ var X=+I.foldX||0; return (X>1&&v>0)?(v/(X-1)):0; },
+  serial: function(I,v){ var X=+I.foldX||0; return (X>1&&v>0)?(v/(X-1)):0; }
+};
+// The inputs that are answers to "what is already in the well", and therefore derived.
+var CHAINED_INPUTS={spike:['wellVolUL'], serial:['wellVolUL']};
+// False precision is its own kind of wrong. The NanoBRET mix is 10 µL of Opti-MEM with 0.24 µL
+// of FuGENE and eight nanolitres of DNA added into it, so the arithmetic says 100.24 µL — and
+// nobody has ever written that on a plate. Below 0.25 µL, the smallest volume this app will
+// print as pipettable at all, the difference is not a difference: it snaps to the round number.
+function _wellVolRound(v){
+  if(!(v>0)) return 0;
+  var r=Math.round(v*10)/10, w=Math.round(v);
+  return (Math.abs(v-w)<0.25) ? w : r;
+}
+// Write the derived volumes into the blocks that take one. Stored rather than computed at render
+// time, so the PDF, the Methods paragraph and the CSV export all read the same number without
+// any of them having to know about the chain.
+//
+// A value you typed is yours (`b.calc.own`) and is never rewritten — the rule the protocol diff
+// and the calculator defaults already follow. And a chain that comes to zero writes nothing: no
+// step above has said what is in the well, and 0 is worse than the block's own default.
+function syncChainedInputs(e){
+  if(!e||!e.blocks) return false;
+  var v=0, changed=false;
+  e.blocks.forEach(function(b){
+    var k=b.calc&&b.calc.kind; if(!k) return;
+    var I=b.calc.inputs||(b.calc.inputs={});
+    (CHAINED_INPUTS[k]||[]).forEach(function(key){
+      if(b.calc.own&&b.calc.own[key]) return;
+      if(!(v>0)) return;
+      var nv=_wellVolRound(v);
+      if(+I[key]!==nv){ I[key]=nv; changed=true; }
+    });
+    var f=VOL_ADD[k]; if(f) v+=f(I,v);
+  });
+  return changed;
+}
 // A blank sheet has no setup, no plate and no prose — the things that make an experiment a
 // *kind* of experiment. The flag rides on the record so the editor can be as quiet as the
 // preset was, years later, whatever happened to the preset in between.
@@ -6350,9 +6462,15 @@ var CALC_PUB={
     var V=+v.wellVolUL||0, X=+v.foldX||0, fin=+v.finalUM||0, add=(X>1&&V>0)?(V/(X-1)):0;
     var n=esc(v.name||'the compound'), dl=esc(v.diluent||'Opti-MEM');
     var were=/s$/i.test(n)&&!/ss$/i.test(n) ? ' were' : ' was';
-    return n.charAt(0).toUpperCase()+n.slice(1)+were+' added directly to the wells as a <b>'+nfmt(X)+'×</b> solution in '
+    var ser=!!v.series;
+    return n.charAt(0).toUpperCase()+n.slice(1)+were+' added directly to the wells as '
+      +(ser?('<b>'+nfmt(X)+'×</b> solutions in '):('a <b>'+nfmt(X)+'×</b> solution in '))
       +dl+' (<b>'+nfmt(add)+' µL</b> into <b>'+nfmt(V)+' µL</b> per well)'
-      +(fin>0?(' to a final concentration of <b>'+_fmtConc(fin*1000)+'</b>'):'')+', without aspirating the medium.'; }
+      // A titration has as many final concentrations as it has points, and the plate map is
+      // where they are recorded — naming one of them here would name the wrong one.
+      +(ser?' at the concentrations given in the plate layout'
+           :(fin>0?(' to a final concentration of <b>'+_fmtConc(fin*1000)+'</b>'):''))
+      +', without aspirating the medium.'; }
 };
 // Which writers speak for the whole block. A partial one (reagent: a single dilution) must not
 // silence the prose around it — that is how the NanoBRET read lost its list of controls.
@@ -6575,11 +6693,22 @@ function nmSetupField(f,lead,src,upd){
 function nmSetup(){ var host=el('nm-setup'); if(!host) return;
   var key=el('nm-type').value, type=presetBase(key); var S=setupSchema(type);
   var flds=setupFieldsFor(key);
-  if(!flds.length){ host.style.display='none'; host.innerHTML=''; return; }
+  // The plate offer was inside the early return, so a preset with no setup questions could not
+  // be given a plate map at all — which is exactly the blank experiment. It is not a setup
+  // question: it is "does this experiment have a plate", and that is worth asking whether or not
+  // anything else is.
+  var plate=S.plate?('<label class="nm-setup-plate"><input type="checkbox" id="nm-plate"'+(NM_PLATE?' checked':'')+' onchange="NM_PLATE=this.checked;if(NM_PLATE&&NM_SETUP.format==null)NM_SETUP.format=\'96\';nmSetup();nmPreview()"><span>Add a plate map &mdash; lay out wells now (you can also add one to any step later)</span></label>'
+    // With no Format question above it the plate would silently be 96-well, so the one question
+    // it does need is asked here, and only once it has been said yes to.
+    +((NM_PLATE&&!flds.some(function(f){return f.f==='format';}))
+      ? ('<label class="ci-f nm-plate-fmt"><span>Plate format</span><select data-sf="format" onchange="nmSetupUpd()">'
+        +['6','12','24','48','96','384'].map(function(x){ return '<option value="'+x+'"'+(String(NM_SETUP.format||'96')===x?' selected':'')+'>'+x+'-well</option>'; }).join('')
+        +'</select></label>') : '')):'';
+  if(!flds.length && !plate){ host.style.display='none'; host.innerHTML=''; return; }
   host.style.display='';
   var fields=flds.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format'); }).join('');
-  var plate=S.plate?('<label class="nm-setup-plate"><input type="checkbox" id="nm-plate"'+(NM_PLATE?' checked':'')+' onchange="NM_PLATE=this.checked;nmPreview()"><span>Add a plate map &mdash; lay out wells now (you can also add one to any step later)</span></label>'):'';
-  host.innerHTML='<div class="nm-setup-hd">Set up</div><div class="cc-inputs">'+fields+'</div>'+plate;
+  // "Set up" heads the questions. With none, it would head nothing.
+  host.innerHTML=(flds.length?('<div class="nm-setup-hd">Set up</div><div class="cc-inputs">'+fields+'</div>'):'')+plate;
 }
 // Read the panel back into NM_SETUP. reRender=true when a cell line changed, so its default
 // cells/well can follow (same behaviour as the seeding calculator's cell-line picker).
@@ -7351,7 +7480,11 @@ function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.pa
   var grip='<span class="blk-grip" draggable="true" title="Drag to reorder" ondragstart="blkDragStart(event,\''+b.id+'\')" ondragend="blkDragEnd()">'
     +tbIco('<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',13)+'</span>';
   return '<div class="blk'+(b.done?' blk-is-done':'')+'" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"'
-    +' ondragover="blkDragOver(event,\''+b.id+'\')" ondragleave="blkDragLeave(event)" ondrop="blkDrop(event,\''+b.id+'\')"><div class="blk-hd">'+grip+doneBtn+pl+'<input class="blk-date'+(_isWeekend(b.date)?' weekend':'')+'" type="date"'+(_isWeekend(b.date)?' title="This step falls on a weekend"':'')+' value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+blkWaitHtml(b,expId)+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a prep calculator" onclick="calcMenu(\''+b.id+'\')">'+tbSvg('<path d="M7 5h10l-6 7 6 7H7"/>')+'calc</button>')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
+    +' ondragover="blkDragOver(event,\''+b.id+'\')" ondragleave="blkDragLeave(event)" ondrop="blkDrop(event,\''+b.id+'\')"><div class="blk-hd">'+grip+doneBtn+pl+'<input class="blk-date'+(_isWeekend(b.date)?' weekend':'')+'" type="date"'+(_isWeekend(b.date)?' title="This step falls on a weekend"':'')+' value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+blkWaitHtml(b,expId)+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a prep calculator" onclick="calcMenu(\''+b.id+'\')">'+tbSvg('<path d="M7 5h10l-6 7 6 7H7"/>')+'calc</button>')
+    // The only route to a plate map was the ribbon's Insert tab, which is closed on an
+    // experiment — so on the surface where you are actually laying one out it was two clicks
+    // behind a tab. It belongs beside `calc`: both are "this step has one of these".
+    +((pkey&&!b.plate)?('<button class="blk-calcbtn" title="Add a plate map to this step" onclick="addPlateTo(\''+pkey+'\')">'+tbSvg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8" cy="10" r="1.3"/><circle cx="12" cy="10" r="1.3"/><circle cx="16" cy="10" r="1.3"/><circle cx="8" cy="14.5" r="1.3"/><circle cx="12" cy="14.5" r="1.3"/><circle cx="16" cy="14.5" r="1.3"/>')+'plate</button>'):'')+'<button class="blk-del" title="Delete block" onclick="delBlock(\''+b.id+'\')">&times;</button></div>'
     +(b.calc?calcInputsHtml(b):'')
     +(b.plate&&pkey?platePreviewHtml(b.plate,pkey):'')
     +(b.proto ? protoBlockHtml(b,true)
@@ -8066,6 +8199,10 @@ function renderExpEditor(host,e){
   // Numbers are filled in where they are missing, before anything is drawn: the map, the mix
   // table and the printed sheet then agree by construction rather than by being kept in step.
   if(nbNumberPlate(e)) queueSave();
+  // Same rule as the numbering above: the derived volumes are settled before the blocks are
+  // drawn, so the recipe, the Methods paragraph and the PDF cannot disagree about what was in
+  // the well.
+  if(syncChainedInputs(e)) queueSave();
   var fields='<div class="exh-fields">'
     +'<div class="exh-fld"><label>Type</label><select onchange="setField(\'type\',this.value)">'+EXP_TYPES.map(function(t){return '<option value="'+t.id+'"'+(t.id===e.type?' selected':'')+'>'+esc(t.name)+'</option>';}).join('')+'</select></div>'
         +'<div class="exh-fld"><label>Status</label><select onchange="setExpStatus(\''+e.id+'\',this.value)">'+EXP_STATUSES.map(function(s){return '<option value="'+s+'"'+(s===e.status?' selected':'')+'>'+esc(s)+'</option>';}).join('')+'</select>'
@@ -8900,9 +9037,9 @@ function setExpBlockHtml(expId,blkId,html){ var e=LB.data.experiments[expId]; if
 function addBlock(){ var e=_curExp(); if(!e) return; undoMark('Add step',['experiments.'+e.id]); var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); // Empty rather than an empty paragraph, so the placeholder can say what the block is for:
   // `<p></p>` has a child node and is therefore not :empty.
   e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'',done:false,completedAt:null}); save(); renderEditor(); }
-function delBlock(id){ var e=_curExp(); if(!e) return; undoMark('Delete step',['experiments.'+e.id]); e.blocks=e.blocks.filter(function(b){return b.id!==id;}); save(); renderEditor(); }
+function delBlock(id){ var e=_curExp(); if(!e) return; undoMark('Delete step',['experiments.'+e.id]); e.blocks=e.blocks.filter(function(b){return b.id!==id;}); syncChainedInputs(e); save(); renderEditor(); }
 function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
-function moveBlock(id,dir){ var e=_curExp(); if(!e) return; undoMark('Move step',['experiments.'+e.id]); var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; save(); renderEditor(); }
+function moveBlock(id,dir){ var e=_curExp(); if(!e) return; undoMark('Move step',['experiments.'+e.id]); var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; syncChainedInputs(e); save(); renderEditor(); }
 // Creates the day on first edit — renderDayView deliberately doesn't, so that merely
 // looking at a day never adds it to the Notebook list.
 function setNotebook(html,D){ D=D||SEL.page; if(!D) return;

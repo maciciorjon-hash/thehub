@@ -2442,6 +2442,60 @@ would make it the default the modal opens on), and **Blank experiment** in the `
 Every empty block now carries a placeholder, not just the blank preset's: `addBlock` also creates
 `html:''`.
 
+## What a step starts from is what the steps above it left (2026-08-30)
+
+Jon, on a **Compound addition (by hand)** block dropped into a NanoBRET: *"por qué dice que el
+volumen in well es 111? eso tiene que saberlo de los previos pasos"* — and then the general rule:
+**everything inside an experiment is joined, and a change in one section reaches the ones below
+it.** That is app-wide, not a fix for one block.
+
+**`wellVolUL` is derived now, not typed.** Every step that puts liquid in a well decides what the
+next one starts from: 10 µL of complex plus 90 µL of suspension is 100 µL, and a 10× spike into
+that adds 11.1 µL more. `VOL_ADD` says what each calculator kind contributes per well
+(`rtxmix.dispenseUL`, `nbtx.optimemPerWell + fugenePerWell`, `nbsusp/seed/ctg.volPerWell`,
+`lytic.cellVolPerWell / ratio`, and a spike's own `V/(X−1)`), and `syncChainedInputs(e)` walks the
+blocks in order writing the answer into every `CHAINED_INPUTS` field. It is **stored**, not
+computed at render time, so the PDF, the Methods paragraph and the CSV export all read the same
+number without any of them having to know a chain exists.
+
+The value a preset ships is a number about somebody else's experiment — 111.1 µL is the BET
+biosensor's well *after its MG132 spike*. That is why the library step now carries a placeholder
+that is replaced the moment the block lands somewhere.
+
+Three rules make it safe:
+- **A number you typed is yours.** `b.calc.own[key]` is set when *that* field is edited, which is
+  why `calcUpd` had to learn which box moved — the whole panel is read back on every keystroke,
+  so without it editing anything in the calculator would claim every derived value in it. The
+  field wears *from the steps above* or *yours · re-link*: a value the app supplied and one you
+  chose must never look the same.
+- **A chain that comes to zero writes nothing.** No step above has said what is in the well, and
+  0 is worse than the block's own default.
+- **No false precision.** The NanoBRET mix is 10 µL of Opti-MEM with 0.24 µL of FuGENE and eight
+  nanolitres of DNA added *into* it, so the arithmetic says 100.24 µL and nobody has ever written
+  that on a plate. `_wellVolRound` snaps to the whole number when the difference is under 0.25 µL
+  — the smallest volume this app will print as pipettable at all.
+
+It re-runs wherever the structure moves: `renderExpEditor` (beside `nbNumberPlate`),
+`insertStepBlock` (a step's starting volume is a property of where it *lands*, not of the preset
+it came from), `moveBlock`, `delBlock`, and `calcUpd` — which repaints the recipes below, live.
+
+### A dose series is not one tube
+
+*"si estoy añadiendo una dilución seriada no tiene sentido que me digas que prepare 10×
+intermediate — 24 wells × 1.1 overage → 326 µL. esos 24 wells no son los mismos."* Right: those
+wells hold twenty-four different things. One total for one tube is a lie about the experiment,
+and the dilution from the stock is different at every point.
+
+`spike` gained a **`series`** flag, and with it on the recipe prints only what is true — the
+volume that goes into each well, and how much 10× to have **in total, split between the
+concentrations** — plus a line saying that how much of *each* depends on how many wells it goes
+in, which is the plate map's business, not the calculator's. The stock-dilution rows and their
+warnings are suppressed: there is no single dilution to state. `CALC_PUB.spike` follows —
+a titration has as many final concentrations as it has points, so the Methods sentence says
+*"at the concentrations given in the plate layout"* rather than naming one of them.
+
+`CALC_KINDS` gained a `check` field type for it, which the block calculators did not have.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
