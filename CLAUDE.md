@@ -2529,6 +2529,51 @@ SVGs at stroke 1.6 with `geometricPrecision`, and B/I/U/S are set in Plex Serif 
 slant, underline and strike they name — the convention, drawn properly rather than as four
 default-weight letters.
 
+## The text corrects itself (2026-08-30)
+
+Three things happen as you type in any Labbook rich text, and all three are the same idea: the
+notation a keyboard produces is not the notation science uses.
+
+**The sum.** `9*9=` puts 81 after it, and a space after an `=` that did not fire finishes the job
+— the trigger is `=` *or* the separator that follows it, which is how anyone who has used OneNote
+expects it to work. `^` is a power now. `_safeMath` still refuses anything that is not arithmetic:
+an operator and a digit are required, the charset is `0-9.()+-*/` only, and it is `Function`, not
+`eval` on free text.
+
+**The micro sign**, which is on no keyboard anyone writes a protocol on. `u` in front of a unit
+becomes `µ` — but the unit's own case is left exactly as typed, because `um` and `uM` are a
+micrometre and a micromolar and only the writer knows which was meant. The one exception is the
+litre, which this lab and every Archive protocol write with a capital L, so `ul` → `µL` and
+`ml` → `mL`. Composites are split at the slash and each side corrected on its own
+(`2 ug/ml` → `2 µg/mL`). `oC` and `37oC` become `°C` and `37 °C` — with the space, because a
+degree sign takes one.
+
+**The compounds**, by case rather than by spelling: `naoh` → `NaOH`, `nacl` → `NaCl`,
+`dmso` → `DMSO`, `tris` → `Tris`, and about fifty more this lab actually writes. Plus the
+sequences nobody has a key for: `->` `<-` `<->` `+/-` `~=` `!=` `<=` `>=`.
+
+Four rules keep it from rewriting your prose:
+- **Whole tokens only.** A rule that fires on part of a word will one day rewrite the middle of
+  somebody's sentence.
+- **A unit is only a unit after a number.** `40 uM` is micromolar; "the uM" and "thank us" are
+  words, and `500 nm` is left alone entirely — nanometre against nanomolar is the writer's call.
+- **One character at a time.** The correction runs on a single-character `insertText`, so pasted
+  text arrives exactly as it was written elsewhere.
+- **⌘Z takes it back**, because the replacement goes through `execCommand('insertText')` and
+  lands in the browser's own undo stack.
+
+Two things had to be got right underneath, and both were wrong first:
+
+- **The separator is replaced along with the word.** Leaving it behind puts the caret in front of
+  it, and everything typed next lands on the wrong side of the space — `40uM naoh` came out as
+  `40µMnaoh`.
+- **The correction is deferred out of the input event.** Chrome refuses a nested `execCommand`
+  while one is being dispatched: it returns false and leaves the range *selected*, so the next
+  character typed overwrote the word instead of following it — `Add 40uM naoh and` came out as
+  `Add and`. A tick later it works, and it re-derives the run from the live selection rather than
+  holding the text node it was handed, because inserting a trailing space makes Chrome rebuild
+  that node.
+
 ## Current state
 
 **v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).

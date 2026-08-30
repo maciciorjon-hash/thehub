@@ -9550,22 +9550,163 @@ document.addEventListener('drop',function(e){ var ed=e.target && e.target.closes
   if(ctxInfo){ var lr=ctxInfo.layer.getBoundingClientRect(); var pt={x:Math.max(0,e.clientX-lr.left-40),y:Math.max(0,e.clientY-lr.top-30)}; imgs.forEach(function(f){ handleFloatImageFile(f,ctxInfo,pt); }); return; }
   var r=(document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null)||_saveSel(); imgs.forEach(function(f){ handleImageFile(f,r); }); });
 
-// ── Inline math (OneNote-style): type a simple sum ending in "=" and it appends the result. ──
+// ── Inline math and science autocorrect ─────────────────────────────────────────────────────
+// Type `9*9=` and the answer appears; a space after the `=` finishes it too, which is how anyone
+// who has used OneNote expects it to behave. And the two notations everybody types wrong get put
+// right on the way past: `uM` is not a unit, and `Naoh` is not a compound.
 function _fmtMath(x){ if(!isFinite(x)) return null; var r=parseFloat(x.toFixed(10)); return (Object.is(r,-0)?0:r).toString(); }
-function _safeMath(expr){ expr=expr.replace(/×/g,'*').replace(/÷/g,'/').replace(/\s+/g,''); if(!expr) return null;
+function _safeMath(expr){ expr=expr.replace(/×/g,'*').replace(/÷/g,'/').replace(/\^/g,'**').replace(/\s+/g,''); if(!expr) return null;
   if(!/^[0-9.()+\-*/]+$/.test(expr)) return null;              // arithmetic charset only — never eval free text
   if(!/[+\-*/]/.test(expr) || !/[0-9]/.test(expr)) return null;// need an operator and a digit
   if(/[+\-*/]{3,}/.test(expr)) return null;
   try{ var v=Function('"use strict";return('+expr+')')(); return (typeof v==='number')?_fmtMath(v):null; }catch(e){ return null; } }
+
+// ── What the lab writes, and what it means to write ──
+// Only ever exact whole tokens. A rule that fires on part of a word is a rule that will one day
+// rewrite the middle of somebody's sentence, and a notebook that edits your prose behind you is
+// worse than one that leaves "uM" alone.
+//
+// The micro sign is the one people cannot type, so `u` in front of a unit becomes `µ` — but the
+// unit's own case is left exactly as typed, because `um` and `uM` are a micrometre and a
+// micromolar and only the writer knows which was meant. The single exception is the litre, which
+// this lab (and every protocol in Archive) writes with a capital L.
+var _MICRO_UNITS=/^(m|M|l|L|g|s|S|mol|Mol|Ci|F|A|V|W|N|J|K|Pa|Hz|min|h)$/;
+function _fixUnitPart(u){
+  var m=/^[uµ]([A-Za-z]{1,3})$/.exec(u);
+  if(m){
+    var t=m[1];
+    if(!_MICRO_UNITS.test(t)) return null;
+    if(t==='l') t='L';
+    return 'µ'+t;
+  }
+  if(/^[uµ]mol$/.test(u)) return 'µmol';
+  if(u==='ml') return 'mL';
+  if(u==='nl') return 'nL';
+  if(u==='dl') return 'dL';
+  return null;
+}
+// `ug/mL`, `µL/well` — each side of the slash is its own unit, and only one of them may be wrong.
+function _fixUnit(u){
+  if(u.indexOf('/')<0) return _fixUnitPart(u);
+  var parts=u.split('/'), any=false;
+  var out=parts.map(function(p){ var f=_fixUnitPart(p); if(f){ any=true; return f; } return p; });
+  return any?out.join('/'):null;
+}
+// Case, not spelling. Every one of these is a compound this lab actually writes, and the map is
+// from what a keyboard produces (any case) to what it should say.
+var CHEM_FIX={};
+['NaOH','NaCl','KCl','KOH','HCl','MgCl2','CaCl2','ZnCl2','LiCl','NH4Cl','NaF','NaN3',
+ 'NaHCO3','Na2CO3','Na2HPO4','KH2PO4','MgSO4','CuSO4','H2O','H2O2','H2SO4','HNO3','NH3',
+ 'CO2','O2','N2','NaOAc','EtOH','MeOH','DMSO','DMF','EDTA','EGTA','SDS','DTT','TCEP','PMSF',
+ 'PBS','TBS','TBST','PBST','HEPES','MOPS','MES','Tris','Tween','Triton','BSA','PEG','PFA',
+ 'APS','TEMED','DAPI','ATP','ADP','GTP','NADH','NADPH','cAMP','IPTG','DTNB','TFA','ACN'
+].forEach(function(c){ CHEM_FIX[c.toLowerCase()]=c; });
+// Written as a sequence of keys nobody has on their keyboard.
+var SYM_FIX=[[/->$/,'→'],[/<-$/,'←'],[/<->$/,'↔'],[/=>$/,'⇒'],
+             [/\+\/-$/,'±'],[/~=$/,'≈'],[/!=$/,'≠'],[/<=$/,'≤'],[/>=$/,'≥']];
+// The degree sign, which is on no keyboard anyone types a protocol on. `oC` on its own is it,
+// and so is `37oC` — the number keeps its space, because a degree symbol takes one and a
+// per-cent sign does not.
+function _degFix(tok){
+  var m=/^([0-9][0-9.,]*)\s*(deg|o|º|°)C$/i.exec(tok);
+  if(m) return m[1]+' °C';
+  return /^(deg|o|º)C$/i.test(tok) ? '°C' : null;
+}
+// The correction for the word that has just been finished, or null to leave it alone.
+// `pre` is everything before the token — a unit is only a unit when a number is in front of it.
+function _sciFix(tok,pre){
+  if(!tok) return null;
+  var d=_degFix(tok); if(d&&d!==tok) return d;
+  var chem=CHEM_FIX[tok.toLowerCase()];
+  if(chem) return (chem===tok)?null:chem;
+  // 40uM — the number and the unit typed as one word.
+  var m=/^([0-9][0-9.,]*)(\s*)([A-Za-zµ/]+)$/.exec(tok);
+  if(m){ var f=_fixUnit(m[3]); return f?(m[1]+m[2]+f):null; }
+  if(!/[0-9][)\s]*$/.test(pre||'')) return null;     // a bare "um" in a sentence is a word
+  var u=_fixUnit(tok);
+  return (u&&u!==tok)?u:null;
+}
 var _mathBusy=false;
-document.addEventListener('input',function(e){ if(_mathBusy) return; var ed=e.target && e.target.closest && e.target.closest('.rt'); if(!ed) return;
-  if(e.inputType!=='insertText' || e.data!=='=') return;
-  var sel=window.getSelection(); if(!sel||!sel.rangeCount) return; var node=sel.anchorNode; if(!node||node.nodeType!==3) return;
-  var off=sel.anchorOffset; var before=node.textContent.slice(0,off); var m=before.match(/([0-9.\s()+\-*/×÷]{1,40})=$/); if(!m) return;
-  var res=_safeMath(m[1]); if(res==null) return;
+// Replace the run just typed, through execCommand so ⌘Z takes the correction back off — a
+// notebook that rewrites what you typed has to be one keystroke from undoing it.
+//
+// Deferred out of the input event on purpose. Chrome refuses a nested execCommand while one is
+// being dispatched: it returns false and leaves the range *selected*, so the next character
+// typed overwrote the word instead of following it — "40uM naoh and" came out as "Add and".
+//
+// And it re-derives everything from the live selection a tick later rather than holding the text
+// node it was given: inserting a trailing space makes Chrome rebuild that node, so the reference
+// captured during the event is often stale by the time it is used. What is checked is the only
+// thing that matters — that the run immediately behind the caret is still the one to correct.
+function _replaceRun(expect,text,ed){
+  setTimeout(function(){
+    try{
+      var sel=window.getSelection(); if(!sel||!sel.rangeCount||!sel.isCollapsed) return;
+      var node=sel.anchorNode, off=sel.anchorOffset;
+      if(!node||node.nodeType!==3) return;
+      var from=off-expect.length; if(from<0) return;
+      // A typed space is stored as a non-breaking one; e.data hands over the ordinary character.
+      var have=node.textContent.slice(from,off).replace(/ /g,' ');
+      if(have!==expect.replace(/ /g,' ')) return;
+      var r=document.createRange(); r.setStart(node,from); r.setEnd(node,off);
+      sel.removeAllRanges(); sel.addRange(r);
+      _mathBusy=true;
+      var ok=document.execCommand('insertText',false,text);
+      _mathBusy=false;
+      if(ok&&ed) ed.dispatchEvent(new Event('input',{bubbles:true}));
+    }catch(e){ _mathBusy=false; }
+  },0);
+}
+document.addEventListener('input',function(e){
+  if(_mathBusy) return;
+  var ed=e.target && e.target.closest && e.target.closest('.rt'); if(!ed) return;
+  if(e.inputType!=='insertText') return;
+  var ch=e.data; if(ch!=='=' && ch!==' ' && ch!==' ' && !/^[.,;:)\]]$/.test(ch||'')) return;
+  var sel=window.getSelection(); if(!sel||!sel.rangeCount) return;
+  var node=sel.anchorNode; if(!node||node.nodeType!==3) return;
+  var off=sel.anchorOffset, txt=node.textContent;
+  var before=txt.slice(0,off);
   _mathBusy=true;
-  try{ var r=sel.getRangeAt(0); var tn=document.createTextNode(res); r.insertNode(tn); r.setStartAfter(tn); r.setEndAfter(tn); sel.removeAllRanges(); sel.addRange(r); ed.dispatchEvent(new Event('input')); }catch(_e){}
-  _mathBusy=false; }, true);
+  try{
+    // 1. The sum. `=` computes at once; a space after one that did not (because the expression
+    //    only became valid with the space) finishes the job.
+    var tail=before.replace(/[\s ]+$/,'');
+    if(/=$/.test(tail)){
+      var mm=tail.match(/([0-9.\s()+\-*/×÷^]{1,40})=$/);
+      if(mm){
+        var res=_safeMath(mm[1]);
+        if(res!=null){
+          var r=sel.getRangeAt(0);
+          var tn=document.createTextNode(res);
+          r.insertNode(tn); r.setStartAfter(tn); r.setEndAfter(tn);
+          sel.removeAllRanges(); sel.addRange(r);
+          ed.dispatchEvent(new Event('input',{bubbles:true}));
+          return;
+        }
+      }
+    }
+    if(ch==='=') return;
+    // 2. The word just finished, which is everything before the separator that closed it.
+    var stem=before.slice(0,-1);
+    var sym=null;
+    for(var i=0;i<SYM_FIX.length;i++){
+      var mS=SYM_FIX[i][0].exec(stem);
+      if(mS){ sym={len:mS[0].length, to:mS[0].replace(SYM_FIX[i][0],SYM_FIX[i][1])}; break; }
+    }
+    // The character that closed the word is replaced along with it. Leaving it behind puts the
+    // caret in front of it, and everything typed next lands on the wrong side of the space —
+    // "40uM naoh" came out as "40µMnaoh".
+    if(sym){
+      _replaceRun(stem.slice(stem.length-sym.len)+ch, sym.to+ch, ed);
+      return;
+    }
+    var mT=/([0-9A-Za-zµ°][0-9A-Za-zµ°.,/]*)$/.exec(stem); if(!mT) return;
+    var tok=mT[1], startAt=stem.length-tok.length;
+    var fix=_sciFix(tok, stem.slice(0,startAt));
+    if(!fix) return;
+    _replaceRun(tok+ch, fix+ch, ed);
+  } finally { _mathBusy=false; }
+}, true);
 
 // ── Popup helper (autocomplete, ctx, add) ──
 function popOpen(id,items,rect){ var pop=el(id); pop.innerHTML=items.map(function(it,i){ if(it.sep) return '<div class="pop-sep"></div>';
