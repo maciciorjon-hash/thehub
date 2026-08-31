@@ -590,7 +590,24 @@ body.lb-rb-closed .rb-pane{display:none;}
   input::placeholder,textarea::placeholder{font-size:13px;}
 }
 @media (hover:none){ .nbt .wk-del{opacity:.55;} }
-.day-from-lbl{font-size:var(--fs-1);font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin:0 4px 8px;}
+/* The section label carries the fold-all control, so it is a row. It does not wrap — two
+   items, and the label ellipses — or the button would keep its auto margin on a second line. */
+.day-from-lbl{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;font-size:var(--fs-1);font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin:0 4px 8px;}
+.day-from-lbl>.lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.day-foldall{flex:none;margin-left:auto;background:none;border:1px solid var(--border2);color:var(--text3);
+  border-radius:var(--r-1);font-family:var(--sans);font-size:var(--fs-1);font-weight:700;letter-spacing:.6px;
+  text-transform:uppercase;padding:2px 8px;cursor:pointer;white-space:nowrap;}
+.day-foldall:hover{color:var(--text);border-color:var(--accent);}
+/* Fold a whole experiment out of the day. The triangle is drawn by the rule rather than
+   written into each header — same as the carried-over rows. */
+.dfx-fold{flex:none;width:20px;height:20px;padding:0;background:none;border:none;cursor:pointer;
+  color:var(--text3);display:inline-flex;align-items:center;justify-content:center;}
+.dfx-fold::before{content:'';width:6px;height:6px;border-right:1.7px solid currentColor;border-bottom:1.7px solid currentColor;
+  transform:rotate(45deg) translate(-1px,-1px);transition:transform var(--dur-1) var(--ease);}
+.day-exp-hd.folded .dfx-fold::before{transform:rotate(-45deg) translate(-1px,1px);}
+.dfx-fold:hover{color:var(--text);}
+.dfx-folded-n{flex:none;font-family:var(--mono);font-size:var(--fs-1);color:var(--text3);}
+.day-exp-hd.folded{border-bottom:none;}
 .day-exp{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);margin-bottom:12px;box-shadow:var(--shadow-xs);overflow:hidden;}
 .day-exp-hd{display:flex;align-items:center;gap:9px;padding:9px 13px;background:var(--surface2);border-bottom:1px solid var(--border);}
 .day-exp-hd .pdot{width:9px;height:9px;border-radius:var(--r-1);flex-shrink:0;}
@@ -8668,6 +8685,95 @@ document.addEventListener('click',function(ev){
   if(what==='more') return wkCtxRow(ev,row);
   if(what==='tog') return carryToggle(row);
 });
+// ── Fold a whole experiment out of the day ────────────────────────────────────────────────
+// The day is where the notebook is written, and an experiment with a plate map, a recipe and
+// four protocol steps is most of a screen. Folding one puts its header on a single line and
+// stops building its body at all — the same "render what was asked for" the carried-over list
+// already does one level down.
+//
+// Session state, deliberately, like CARRY_OPEN: a fold that outlived the tab could hide work
+// that is due, on a screen whose whole job is to say what is due. Reload and the day is whole
+// again. Keyed by experiment, so folding one folds it in both sections at once — it is the
+// experiment you are putting away, not one of its two appearances.
+var DAY_FOLD={};
+function dayDueBlocksHtml(g){
+  return g.blocks.map(function(b){ var rc=expCalcRecipe(b);
+    var hd='<div class="dfx-blk-hd'+(b.done?' dfx-done':'')+'" oncontextmenu="wkCtxBlock(event,\''+g.exp.id+'\',\''+b.id+'\')"><button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'+(b.title?'<span class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'<span class="dfx-blk-t dim">Step</span>')
+      +'<button class="dfx-snooze" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'Snooze</button></div>';
+    var pv=b.plate?('<div class="dfx-plate">'+platePreviewHtml(b.plate,'blk:'+g.exp.id+':'+b.id)+'</div>'):'';
+    return hd+(rc?'<div class="dfx-recipe">'+rc+'</div>':'')+pv
+      +(b.proto ? protoBlockHtml(b,true)
+                : '<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'); }).join('');
+}
+function dayCarryBlocksHtml(g,D){
+  // The two ids are written once, as data, instead of being re-quoted into four inline
+  // handlers — which on this row cost more than everything it displays. oncontextmenu stays
+  // an attribute on purpose: the long-press delegation matches [oncontextmenu], and a row
+  // that lost it would lose its menu on the phone.
+  return g.blocks.map(function(b){ var ck=g.exp.id+'-'+b.id, cop=!!CARRY_OPEN[ck];
+    return '<div class="day-carry-hd'+(cop?' open':'')+'" data-e="'+g.exp.id+'" data-b="'+b.id+'" data-d="'+D+'" oncontextmenu="wkCtxRow(event,this)">'
+    +'<button class="blk-done" data-cy="done" title="Mark this step done"></button>'
+    +'<span class="carry-from" title="Was due '+esc(fmtDate(b.date))+'">'+esc(fmtDate(b.date))+'</span>'
+    +'<span class="dfx-blk-t2" data-cy="tog" title="Show this step here"><span class="dfx-blk-tx">'+esc(b.title||'Step')+'</span>'
+      +'<a class="dfx-blk-link" data-cy="open" title="Open it in the experiment">&#8599;</a></span>'
+    +'<button class="carry-more" data-cy="more" title="Move, snooze or dismiss">'+ICON_MORE_H+'</button>'
+    +'</div><div class="carry-body">'+(cop?carryBodyHtml(g.exp.id,b):'')+'</div>'; }).join('');
+}
+// Folded, the header says what it is holding, or putting an experiment away would hide how
+// much of the day went with it.
+function dayExpHead(g,col,pname,withOpen){
+  var fold=!!DAY_FOLD[g.exp.id], n=g.blocks.length;
+  var done=g.blocks.filter(function(b){ return b.done; }).length;
+  return '<div class="day-exp-hd'+(fold?' folded':'')+'" oncontextmenu="ctxExp(event,\''+g.exp.id+'\')">'
+    +'<button class="dfx-fold" title="'+(fold?'Show this experiment again':'Fold this experiment away')+'" onclick="dayFoldExp(\''+g.exp.id+'\')"></button>'
+    +'<span class="pdot" style="background:'+col+'"></span>'
+    +(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')
+    +'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a>'
+    +'<span class="dfx-title">'+esc(g.exp.title||'')+'</span>'
+    +(fold?('<span class="dfx-folded-n">'+n+' step'+(n===1?'':'s')+(done?(' · '+done+' done'):'')+'</span>'):'')
+    +(withOpen?'<button class="dfx-open" onclick="openExp(\''+g.exp.id+'\')">Open &#8599;</button>':'')
+    +'</div>';
+}
+function dayFoldAllBtn(order,D){
+  if(order.length<2) return '';
+  var all=order.every(function(id){ return DAY_FOLD[id]; });
+  return '<button class="day-foldall" onclick="dayFoldAll(\''+D+'\','+(all?'0':'1')+')">'+(all?'Unfold all':'Fold all')+'</button>';
+}
+function _dayGroup(D,expId,kind){
+  if(kind==='carry') return carryoverForDate(D).byExp[expId]||null;
+  var g=null; blocksForDate(D).forEach(function(fb){ if(fb.exp.id!==expId) return;
+    if(!g) g={exp:fb.exp,blocks:[]}; g.blocks.push(fb.block); });
+  return g;
+}
+function dayFoldExp(expId){
+  DAY_FOLD[expId]=!DAY_FOLD[expId];
+  var fold=!!DAY_FOLD[expId];
+  Array.prototype.forEach.call(document.querySelectorAll('.day-exp-body[data-e="'+expId+'"]'),function(body){
+    var card=body.parentElement, hd=card?card.querySelector('.day-exp-hd'):null;
+    if(hd){ hd.classList.toggle('folded',fold);
+      var btn=hd.querySelector('.dfx-fold'); if(btn) btn.title=fold?'Show this experiment again':'Fold this experiment away';
+      var old=hd.querySelector('.dfx-folded-n'); if(old) old.parentNode.removeChild(old); }
+    var D=body.getAttribute('data-d'), kind=body.getAttribute('data-k');
+    var g=_dayGroup(D,expId,kind);
+    if(fold){ body.innerHTML='';
+      if(hd&&g){ var n=g.blocks.length, dn=g.blocks.filter(function(b){return b.done;}).length;
+        var s=document.createElement('span'); s.className='dfx-folded-n';
+        s.textContent=n+' step'+(n===1?'':'s')+(dn?(' · '+dn+' done'):'');
+        hd.insertBefore(s, hd.querySelector('.dfx-open')||null); }
+      return; }
+    if(!g){ body.innerHTML=''; return; }
+    body.innerHTML = kind==='carry' ? dayCarryBlocksHtml(g,D) : dayDueBlocksHtml(g);
+    // The day view runs these over the whole screen once; a body that arrives later needs
+    // them too, or its attachments render as broken images and its float layer never mounts.
+    hydrateAtt(body); hydrateFloatLayers(body);
+  });
+}
+function dayFoldAll(D,fold){
+  var ids=[]; blocksForDate(D).forEach(function(fb){ if(ids.indexOf(fb.exp.id)<0) ids.push(fb.exp.id); });
+  carryoverForDate(D).order.forEach(function(id){ if(ids.indexOf(id)<0) ids.push(id); });
+  ids.forEach(function(id){ if(+fold) DAY_FOLD[id]=1; else delete DAY_FOLD[id]; });
+  renderEditor();
+}
 function renderDayView(host,D){
   // Viewing a day must not create it — clicking through the week planner used to litter the
   // Notebook list with empty days. setNotebook() persists it on the first real edit.
@@ -8675,31 +8781,20 @@ function renderDayView(host,D){
   (el('export-btn')||{style:{}}).style.display='';
   // group blocks by experiment
   var byExp={}, order=[]; blocksForDate(D).forEach(function(fb){ if(!byExp[fb.exp.id]){ byExp[fb.exp.id]={exp:fb.exp,blocks:[]}; order.push(fb.exp.id); } byExp[fb.exp.id].blocks.push(fb.block); });
-  var from = order.length ? ('<div style="margin-top:14px"><div class="day-from-lbl">What to do today — from your experiments</div>'+order.map(function(id){ var g=byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
-    var blks=g.blocks.map(function(b){ var rc=expCalcRecipe(b);
-      var hd='<div class="dfx-blk-hd'+(b.done?' dfx-done':'')+'" oncontextmenu="wkCtxBlock(event,\''+g.exp.id+'\',\''+b.id+'\')"><button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'+(b.title?'<span class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'<span class="dfx-blk-t dim">Step</span>')
-        +'<button class="dfx-snooze" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'Snooze</button></div>';
-      var pv=b.plate?('<div class="dfx-plate">'+platePreviewHtml(b.plate,'blk:'+g.exp.id+':'+b.id)+'</div>'):'';
-      return hd+(rc?'<div class="dfx-recipe">'+rc+'</div>':'')+pv
-        +(b.proto ? protoBlockHtml(b,true)
-                  : '<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'); }).join('');
-    return '<div class="day-exp"><div class="day-exp-hd" oncontextmenu="ctxExp(event,\''+g.exp.id+'\')"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span><button class="dfx-open" onclick="openExp(\''+g.exp.id+'\')">Open &#8599;</button></div>'+blks+'</div>'; }).join('')+'</div>') : '';
+  var from = order.length ? ('<div style="margin-top:14px"><div class="day-from-lbl"><span class="lbl">What to do today — from your experiments</span>'+dayFoldAllBtn(order,D)+'</div>'+order.map(function(id){ var g=byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
+    var blks=DAY_FOLD[g.exp.id]?'':dayDueBlocksHtml(g);
+    return '<div class="day-exp">'+dayExpHead(g,col,pname,true)
+      +'<div class="day-exp-body" data-e="'+g.exp.id+'" data-k="due" data-d="'+D+'">'+blks+'</div></div>'; }).join('')+'</div>') : '';
   // Carried-over unfinished work from earlier days (unticked checklist items roll forward).
   var co=carryoverForDate(D);
-  var carried = co.order.length ? ('<div style="margin-top:16px"><div class="day-from-lbl day-carry-lbl">'+hdIcon('<path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 010 8h-1"/>')+'Carried over — unfinished from earlier days</div>'+co.order.map(function(id){ var g=co.byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
+  var carried = co.order.length ? ('<div style="margin-top:16px"><div class="day-from-lbl day-carry-lbl"><span class="lbl">'+hdIcon('<path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 010 8h-1"/>')+'Carried over — unfinished from earlier days</span></div>'+co.order.map(function(id){ var g=co.byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
     // The two ids are written once, as data, instead of being re-quoted into four inline
     // handlers — which on this row cost more than everything it displays. oncontextmenu stays
     // an attribute on purpose: the long-press delegation matches [oncontextmenu], and a row
     // that lost it would lose its menu on the phone.
-    var blks=g.blocks.map(function(b){ var ck=g.exp.id+'-'+b.id, cop=!!CARRY_OPEN[ck];
-      return '<div class="day-carry-hd'+(cop?' open':'')+'" data-e="'+g.exp.id+'" data-b="'+b.id+'" data-d="'+D+'" oncontextmenu="wkCtxRow(event,this)">'
-      +'<button class="blk-done" data-cy="done" title="Mark this step done"></button>'
-      +'<span class="carry-from" title="Was due '+esc(fmtDate(b.date))+'">'+esc(fmtDate(b.date))+'</span>'
-      +'<span class="dfx-blk-t2" data-cy="tog" title="Show this step here"><span class="dfx-blk-tx">'+esc(b.title||'Step')+'</span>'
-        +'<a class="dfx-blk-link" data-cy="open" title="Open it in the experiment">&#8599;</a></span>'
-      +'<button class="carry-more" data-cy="more" title="Move, snooze or dismiss">'+ICON_MORE_H+'</button>'
-      +'</div><div class="carry-body">'+(cop?carryBodyHtml(g.exp.id,b):'')+'</div>'; }).join('');
-    return '<div class="day-exp day-carry"><div class="day-exp-hd" oncontextmenu="ctxExp(event,\''+g.exp.id+'\')"><span class="pdot" style="background:'+col+'"></span>'+(pname?'<span class="dfx-proj" style="color:'+col+'">'+esc(pname)+'</span><span class="dfx-sep">·</span>':'')+'<a class="dfx-code dfx-codelink" onclick="openExp(\''+g.exp.id+'\')" title="Open experiment">'+esc(g.exp.code||g.exp.title||'')+'</a><span class="dfx-title">'+esc(g.exp.title||'')+'</span></div>'+blks+'</div>'; }).join('')+'</div>') : '';
+    var blks=DAY_FOLD[g.exp.id]?'':dayCarryBlocksHtml(g,D);
+    return '<div class="day-exp day-carry">'+dayExpHead(g,col,pname,false)
+      +'<div class="day-exp-body" data-e="'+g.exp.id+'" data-k="carry" data-d="'+D+'">'+blks+'</div></div>'; }).join('')+'</div>') : '';
   var isToday=(D===todayStr());
   var nav='<div class="day-nav">'
     +'<button class="day-arw" title="Previous day" onclick="dayGo(-1)">'+tbIco(P_CHEV_L,15)+'</button>'

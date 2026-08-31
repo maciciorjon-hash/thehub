@@ -2797,6 +2797,34 @@ and 33 px matters when the pane is narrow.
 leave the day view roughly 272 px — the content gets less room than any of the chrome. The rows
 truncate cleanly there rather than breaking, but the pane layout at that width is a real gap.
 
+### An experiment folds out of the day (2026-08-31)
+
+Jon: *"en el journal permite plegar todo el experimento, para limpiar la vista de día y poder ver
+las notas etc."* The day is where the notebook is actually written, and the daily note sits under
+everything else — on a four-experiment day with one plate map it starts **27,497 px** down. That
+is the whole complaint, and it is a number.
+
+A chevron on each experiment's header folds it. Folding does not hide the body, it **stops
+building it**: `dayDueBlocksHtml` / `dayCarryBlocksHtml` are only called for a group that is open,
+which is the same "render what was asked for" the carried-over list already does one level down.
+*Fold all* is in the section header, and turns into *Unfold all*.
+
+| | day view | nodes | daily note at |
+|---|---|---|---|
+| everything open | 31.1 KB | 452 | 27,497 px |
+| folded | **8.3 KB** | **137** | **880 px** |
+
+Three things make it the right kind of fold:
+
+- **It is keyed by experiment, not by card.** An experiment with steps due today *and* steps
+  carried over appears twice; folding it puts both away. It is the experiment you are setting
+  aside, not one of its two appearances.
+- **The header says what went with it** — "4 steps · 1 done". A fold that hides the amount of work
+  it is hiding is how you miss a day.
+- **Session state, like `CARRY_OPEN`, and deliberately not persisted.** A fold that outlived the
+  tab could hide work that is due, on the one screen whose job is to say what is due. Reload and
+  the day is whole again.
+
 **Verified**: every carry-over verb re-tested through the delegated handler — tick (and the row
 leaves the list), expand from the step text, the arrow that jumps without expanding, the `⋯`,
 right-click, and an expanded step still open after a re-render; `check_css` / `check_js` /
@@ -2904,7 +2932,7 @@ buttons clipped by 3px at 375; it is outside the product build.
 
 ## Current state
 
-**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-31. (This session: the motion and scrolling pass — one timing scale in all twenty surfaces, dialogs that arrive and leave, a screen that enters and remembers your scroll position, a sticky experiment tab bar, three `{passive:false}` listeners that were costing the whole app its compositor, and app opening warmed on hover: 67 ms → 4.5 ms; then the day view, which was rendering the full body of every carried-over step of the last three weeks — 67 KB → 30 KB on a realistic notebook, 672 KB → 335 KB when nothing has ever been ticked; then the pane layout at 1024, where the chrome had outgrown the content (272px → 580px), and a full runtime audit of all 19 apps in both themes at four widths that found nine real defects including a Beacon logo that had been invisible since it was written. See *"Sloppy" was not slow*, *The day view was 86% of something nobody reads* and *The chrome outgrew the content* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-31. (This session: the motion and scrolling pass — one timing scale in all twenty surfaces, dialogs that arrive and leave, a screen that enters and remembers your scroll position, a sticky experiment tab bar, three `{passive:false}` listeners that were costing the whole app its compositor, and app opening warmed on hover: 67 ms → 4.5 ms; then the day view, which was rendering the full body of every carried-over step of the last three weeks — 67 KB → 30 KB on a realistic notebook, 672 KB → 335 KB when nothing has ever been ticked; then the pane layout at 1024, where the chrome had outgrown the content (272px → 580px), and a full runtime audit of all 19 apps in both themes at four widths that found nine real defects including a Beacon logo that had been invisible since it was written. Then the day view learned to fold a whole experiment away — 31 KB → 8 KB, and the daily note from 27,497 px down to 880. See *"Sloppy" was not slow*, *The day view was 86% of something nobody reads* and *The chrome outgrew the content* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in
