@@ -2725,9 +2725,88 @@ alignment audit clean on all 19 apps at 1440 px and 375 px with no horizontal ov
 all 19 apps load standalone with the tokens resolving; the four build profiles rebuilt.
 
 
+## The day view was 86% of something nobody reads (2026-08-31)
+
+Jon, on the measurement above: *"esos 330 KB no me convencen."* Right — the honest answer was not
+"it is a design decision". Broken down, a day view on a notebook with 105 open experiments was
+411 KB of markup and 5,190 nodes, and **354 KB of it was the carried-over list**: for every
+unfinished step of the last three weeks, of every open experiment, the *whole step body* —
+protocol prose, calculators, notes — plus four buttons.
+
+**Carried over is a decision list, not a work surface.** What you do with a carried-over step is
+decide: tick it, move it here, snooze it, or dismiss it — and if you decide to do it, *Move to this
+day* puts it in the section above with its body and its calculators. So the body is built by the
+click that asks for it (`carryToggle`, `CARRY_OPEN`) and stays open for the session; opening one
+does not re-render the list and lose your place in it.
+
+The row lost its button wall too, to the `⋯` the row **already answered to on right-click and long
+press** — `wkCtxBlock` has carried Open / Done / Snooze 1 day / Snooze 1 week / Move since it was
+written, and then the row printed three of them inline anyway. It gains `Dismiss`, and "Move to
+today" becomes "Move to this day" when the day you are looking at is not today, which it was
+quietly lying about before.
+
+What was left after that was markup waste, and it measured: the row was **1,219 bytes** of which
+**896 was four buttons**, and the same two 15-character ids were re-quoted into four inline
+handlers. They are written once as `data-e`/`data-b`/`data-d` and one delegated listener reads
+them. `oncontextmenu` deliberately **stays an attribute**: the long-press delegation matches
+`[oncontextmenu]`, and a row that lost it would lose its menu on the phone.
+
+**An empty plate map drew 384 empty boxes** — 29 KB to say what its own header already says
+("0 wells used"). It says it in a line now, and keeps the card and its **Edit** button, which is
+the thing you actually want in front of you on a map you have not laid out yet.
+
+And the ⋯ drawing had been written out by hand in two places and was about to be a third, as three
+0.6-radius circles stroked at 2.2 — which is a dot drawn the hard way. One `ICON_MORE_H`, filled,
+a third the markup, in a list that can run to hundreds of rows.
+
+Measured on the same seed, before and after, at 1400 px:
+
+| | before | after |
+|---|---|---|
+| a realistic notebook (25 experiments, 8 running, 9 carried) | 67 KB · 916 nodes | **30 KB · 466 nodes** |
+| nothing ever ticked (105 experiments, 281 carried) | 672 KB · 8,916 nodes · 587 ms | **335 KB · 5,492 nodes · 341 ms** |
+
+What remains in the degenerate case is one group header per experiment, and that is not waste: 105
+stuck experiments is information the notebook has to show.
+
+### Two bugs on the home screen
+
+- **The week band showed one pill per step**, so an experiment with two steps on Monday appeared
+  twice under the same code — which is exactly the question a week band answers wrongly. One pill
+  per experiment; the steps are named in its tooltip, and how many are left is the experiment's own
+  question, which it answers when you open it. `+N` counts experiments now too, or it disagrees
+  with the pills above it.
+- **`.lh-x-code` was a fixed 78 px with nothing to stop overflow**, so in Running experiments the
+  code ran underneath the title beside it. Every code is now longer than that box was sized for:
+  the project prefix added two characters and an underscore, so `NB20260830` became
+  `SP_NB20260830`. It sizes to its content with 78 px as a floor rather than a ceiling.
+
+### `margin-left:auto` again, and this time no breakpoint could fix it
+
+Both day-view step rows (`.day-carry-hd`, `.dfx-blk-hd`) were `flex-wrap:wrap` with the last
+control on `margin-left:auto` — the idiom already recorded for Blueprint's toolbar. With a long
+step name the row wrapped and the control kept its auto margin, landing on the right of the
+*second* line under a left-aligned first row. Unlike the earlier cases this does not have a width:
+it happens whenever the title is long, so the media query that fixed Blueprint fixes nothing here.
+The rows do not wrap at all now — the title takes the slack and ellipses, which is what a dense
+list wants anyway — and everything that is not the title holds its size, because a ⋯ squeezed to
+5 px is not a button. The carried-over badge dropped the word "from": the section header says it,
+and 33 px matters when the pane is narrow.
+
+**Noted, not fixed:** between about 900 px and 1024 px the tree, the pages pane and the right dock
+leave the day view roughly 272 px — the content gets less room than any of the chrome. The rows
+truncate cleanly there rather than breaking, but the pane layout at that width is a real gap.
+
+**Verified**: every carry-over verb re-tested through the delegated handler — tick (and the row
+leaves the list), expand from the step text, the arrow that jumps without expanding, the `⋯`,
+right-click, and an expanded step still open after a re-render; `check_css` / `check_js` /
+`audit_app --xref` / `check_shared` clean; the alignment audit clean on all 19 apps at 1440 px and
+375 px, and on Labbook's Journal and Home at 375 / 600 / 760 / 900 / 1024 / 1180 / 1440 with no
+horizontal overflow at any of them; the four build profiles rebuilt.
+
 ## Current state
 
-**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-31. (This session: the motion and scrolling pass — one timing scale in all twenty surfaces, dialogs that arrive and leave, a screen that enters and remembers your scroll position, a sticky experiment tab bar, three `{passive:false}` listeners that were costing the whole app its compositor, and app opening warmed on hover: 67 ms → 4.5 ms. See *"Sloppy" was not slow* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-31. (This session: the motion and scrolling pass — one timing scale in all twenty surfaces, dialogs that arrive and leave, a screen that enters and remembers your scroll position, a sticky experiment tab bar, three `{passive:false}` listeners that were costing the whole app its compositor, and app opening warmed on hover: 67 ms → 4.5 ms; then the day view, which was rendering the full body of every carried-over step of the last three weeks — 67 KB → 30 KB on a realistic notebook, 672 KB → 335 KB when nothing has ever been ticked. See *"Sloppy" was not slow* and *The day view was 86% of something nobody reads* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in
