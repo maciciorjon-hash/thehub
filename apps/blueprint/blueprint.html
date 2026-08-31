@@ -167,6 +167,11 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
 .guide-section li{margin-bottom:4px;}
 
 .pinfo{cursor:pointer;color:var(--accent);font-size:0.75em;vertical-align:super;user-select:none;margin-left:3px;}
+/* On a primary button the background *is* --accent, so the marker was the same colour as
+   the thing behind it — invisible on the one button that carries it. It takes the
+   button's own ink there and keeps the accent everywhere else, where the accent is what
+   says there is something to read. */
+.btn-primary .pinfo{color:currentColor;opacity:.8;}
 #pinfo-tip{position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-1);padding:8px 10px;font-size:0.78rem;max-width:260px;box-shadow:0 2px 12px rgba(0,0,0,.15);z-index:9999;pointer-events:none;display:none;line-height:1.5;color:var(--text);}
 /* ── GEL DESIGNER ── */
 /* Top ribbon (Blot-style grouped toolbar) */
@@ -426,6 +431,13 @@ button,input,select{
 .gd-ribbon,.tabs{overscroll-behavior-x:contain;}
 .gd-preview,.gd-preview-wrap,.guide-panel,.panel,
 .plate-canvas-wrap,.plate-scroll-area{overscroll-behavior:contain;}
+
+/* A theme switch is not an animation. Every surface carries a background-color transition
+   now, so flipping data-theme would cross-fade the whole page — a full repaint per frame for
+   120 ms on a document with thousands of nodes, which is the smear the transitions exist to
+   avoid. The class is on for one frame; the observer below catches every call site, including
+   ones added later. */
+html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:none!important;}
 </style>
 </head>
 <body>
@@ -3741,5 +3753,12 @@ window.addEventListener('message',function(e){
     <button class="gdp-btn-apply" onclick="gdApplyPopup()">Apply</button>
   </div>
 </div>
+<script>
+(function(){var r=document.documentElement,t=null;
+  if(!window.MutationObserver) return;
+  new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
+    t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
+   .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
+</script>
 </body>
 </html>

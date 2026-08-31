@@ -2804,9 +2804,107 @@ right-click, and an expanded step still open after a re-render; `check_css` / `c
 375 px, and on Labbook's Journal and Home at 375 / 600 / 760 / 900 / 1024 / 1180 / 1440 with no
 horizontal overflow at any of them; the four build profiles rebuilt.
 
+## The chrome outgrew the content, and an audit that could see it (2026-08-31)
+
+Jon: *"arregla el layout de los paneles a 1024px. quiero audit completo de toda la app, verifica
+código y visuales. no quiero ni un solo error."*
+
+### The panes
+
+At 1024 the tree (210), the page list (280) and the right dock (250) are **740px of a 1024px
+window** — the day view got 272px, less than any one of the three things squeezing it. At 900 it
+got 157. The rows truncated cleanly, which is what had made it easy to keep calling it a gap
+rather than a bug.
+
+**The chrome yields before the content does, in the order it matters.**
+
+- **The dock is first**, because it is reference material (Outline · Tags · Info), it already has
+  a button, and it already knew how to be an overlay — it just only knew it below 760px. Below
+  `LB_DOCK_FLOAT_MAX` (1150) `body.lb-dock-float` gives it the slide-in treatment the phone
+  layout uses, and the threshold is written once, in JS, instead of in a media query and a
+  comparison that can drift apart.
+- **Then the two left panes are clamped** — at render time, not in the store. `_paneWidths()`
+  works out what the editor needs (`LB_ED_MIN`, 580: `.ed-wrap` is a prose column and below about
+  that it stops being one) and lends the rest, stopping at the width where a list stops being
+  readable. **The stored widths are never rewritten**, so widening the window brings the panes
+  back to exactly the size they were dragged to. `!important` was the alternative and would have
+  fought the splitter drag.
+
+| window | editor before | editor after |
+|---|---|---|
+| 1440 | 688 | 688 (untouched — everything fits) |
+| 1180 | 432 | 580 |
+| 1024 | 272 | 580 |
+| 900 | 157 | 558 |
+
+### The audit
+
+`tools/audit_runtime.js` is new and is the third leg: `audit_app.py` reads the source,
+`audit_align.js` measures a row, and this one loads the page and asks what only a loaded page
+knows — a handler naming a function that no longer exists, a duplicate id, text the same colour
+as what is behind it, content pushed outside a clipping box. Nineteen apps × four widths × both
+themes, plus every Labbook screen driven into place (Home, Experiments, Journal, an experiment,
+each tab, the plate editor, every dialog), plus the shell with all eighteen apps loaded in their
+real frames, plus the four build profiles.
+
+**The harness was wrong before the app was.** Its first run reported sixty invisible-text
+findings; two were real. `getComputedStyle` during a transition returns the tween, and in a tab
+that is not compositing the tween never finishes — so with the new `background-color`
+transitions on every surface, flipping `data-theme` made *every* themed card look like it had no
+dark value. Three more false-positive classes followed (a gradient behind the text, an element
+judged on its children's text, `scrollWidth` on a padded flex column). All four are written into
+the file as the reason each rule exists, and `docs/UI.md` carries them.
+
+That also turned up a real thing: **a theme switch was cross-fading the whole page**, because
+every surface now has a colour transition. `html.theme-swap` suppresses transitions for one
+frame, driven by a `MutationObserver` on `data-theme` so it catches all 49 call sites across the
+twenty files and any added later.
+
+### What it found
+
+- **Beacon's logo had been invisible since it was written.** `--brand` was declared in the dark
+  palette and nowhere else, so in the light theme — the one the Hub opens in — `var(--brand)`
+  resolved to nothing, the 32px box had no background, and the white "B" sat on white.
+  `check_css.py` passes it because the token *is* defined; the mirror check (a colour token with
+  no value in the theme that is actually open) is what catches it, and Beacon was the only one.
+- **Blueprint's ⓘ marker is `--accent` and sits on a `--primary` button**, whose background is
+  also `--accent`. Invisible on the one button that carries it.
+- **Labbook's day-view recipe panel had no dark value** — `#eef2f9`, a near-white, with the text
+  inheriting `--text`: light grey on light grey, unreadable, on the screen you open every
+  morning.
+- **On a phone you could not delete a step, snooze it, or add a calculator or a plate map.** The
+  step header is nine controls needing 481px in a 347px block that clips: the trailing four were
+  simply outside it, and the title input was squeezed to **0px** — a step you cannot name. They
+  are behind the `⋯` that `ctxBlock` has always answered to on right-click and long press, and
+  the menu gained the verbs those buttons carried.
+- **The same header gave the title 50px on a 1440px screen.** The collapse is keyed on the
+  *block's* width with a container query, because the block is only as wide as the editor pane
+  leaves it and no viewport query can see that. Above 660px of block width the buttons are back.
+- **Dora's tab bar pushed the whole document sideways** between 641 and ~880px — 65px of
+  horizontal overflow, which is what makes a phone zoom out to fit. The ≤640 block already made
+  the bar scroll; it just started too late. Its Template button was also two lines beside a
+  one-line settings circle, because `min-height` cannot hold a label that wraps.
+- **Ribbon's top bar, Labbook's calculator header and every dialog footer** were the
+  `margin-left:auto` / `flex:1` spacer idiom again — a hole under a left-aligned first row once
+  the bar wraps. Three more instances, one rule, now written into `docs/UI.md`.
+- **Cell Archive's list row is five columns whose minimums add up to 430px** before the gaps, in
+  a 289px row at phone width: the last two columns were outside the card. Lumina's setup dialog
+  clipped its own last tab. Fabricata's preview table lost two columns. All three now scroll or
+  drop to the columns that are the reason the list exists.
+
+**Verified**: `check_css` / `check_js` / `audit_app --xref` / `check_shared` clean; the runtime
+and alignment audits clean on all 19 apps at 1440 / 1024 / 375 in both themes and at 1180 / 960 /
+900 / 800 / 600 besides; every Labbook screen and dialog clean at four widths; the shell clean
+with all 18 apps loaded in their real frames; dHUB, the product build, the standalone Labbook and
+the Archive PWA all clean; the four profiles rebuilt.
+
+**Still open, and deliberately**: `.blk-title` is 90px at its floor on a narrow block — the step
+header is dense by nature and the ⋯ is what makes it work. Fabricata keeps two confirm-dialog
+buttons clipped by 3px at 375; it is outside the product build.
+
 ## Current state
 
-**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-31. (This session: the motion and scrolling pass — one timing scale in all twenty surfaces, dialogs that arrive and leave, a screen that enters and remembers your scroll position, a sticky experiment tab bar, three `{passive:false}` listeners that were costing the whole app its compositor, and app opening warmed on hover: 67 ms → 4.5 ms; then the day view, which was rendering the full body of every carried-over step of the last three weeks — 67 KB → 30 KB on a realistic notebook, 672 KB → 335 KB when nothing has ever been ticked. See *"Sloppy" was not slow* and *The day view was 86% of something nobody reads* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-31. (This session: the motion and scrolling pass — one timing scale in all twenty surfaces, dialogs that arrive and leave, a screen that enters and remembers your scroll position, a sticky experiment tab bar, three `{passive:false}` listeners that were costing the whole app its compositor, and app opening warmed on hover: 67 ms → 4.5 ms; then the day view, which was rendering the full body of every carried-over step of the last three weeks — 67 KB → 30 KB on a realistic notebook, 672 KB → 335 KB when nothing has ever been ticked; then the pane layout at 1024, where the chrome had outgrown the content (272px → 580px), and a full runtime audit of all 19 apps in both themes at four widths that found nine real defects including a Beacon logo that had been invisible since it was written. See *"Sloppy" was not slow*, *The day view was 86% of something nobody reads* and *The chrome outgrew the content* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in

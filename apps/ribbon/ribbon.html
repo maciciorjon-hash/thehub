@@ -131,6 +131,12 @@ select:focus{outline:none;border-color:var(--accent);}
 .tb-select:focus{border-color:var(--accent);}
 .tb-range{width:104px;accent-color:var(--accent);}
 .tb-spacer{flex:1;min-width:8px;}
+/* The spacer pushes the trailing controls right, which reads as "actions on the right" only
+   while the bar is one line. Once it wraps, the spacer can be the first thing on a row and
+   grows there instead — at 1024 that left a 530px hole under a left-aligned first row. Below
+   the width where the bar stops fitting, the bar is simply a left-aligned wrapping toolbar,
+   which is what it already is at phone width. Same idiom, same bug, as Blueprint's toolbar. */
+@media(max-width:1180px){ .tb-spacer{display:none;} }
 .tb-collapse{margin-right:4px;}
 .tb-collapse svg{transition:transform .2s;}
 .body.panel-collapsed .sidebar{display:none;}
@@ -329,6 +335,13 @@ button.btn,input[type=text],select{
    it takes over mid-gesture. The axis is named rather than blanket-contained, so a
    horizontal strip still lets a vertical wheel through to whatever is under it. */
 .sidebar{overscroll-behavior-y:contain;}
+
+/* A theme switch is not an animation. Every surface carries a background-color transition
+   now, so flipping data-theme would cross-fade the whole page — a full repaint per frame for
+   120 ms on a document with thousands of nodes, which is the smear the transitions exist to
+   avoid. The class is on for one frame; the observer below catches every call site, including
+   ones added later. */
+html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:none!important;}
 </style>
 </head>
 <body>
@@ -1778,6 +1791,13 @@ document.addEventListener('DOMContentLoaded',function(){
   if(document.readyState==='complete') setTimeout(warn,300);
   else window.addEventListener('load',function(){ setTimeout(warn,300); });
 })();
+</script>
+<script>
+(function(){var r=document.documentElement,t=null;
+  if(!window.MutationObserver) return;
+  new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
+    t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
+   .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
 </script>
 </body>
 </html>

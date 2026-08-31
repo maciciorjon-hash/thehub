@@ -116,9 +116,27 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 
 /* ── TABS ── */
 .tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 0 0 28px; }
+/* The bar scrolls sideways rather than pushing the page. Between 641 and about 880px the tabs
+   plus the 319px right-hand group are wider than the window and .tabs neither wrapped nor
+   scrolled, so the whole document overflowed horizontally — 65px at 760 — which is what makes
+   a phone zoom out to fit. The ≤640 block already did exactly this; it just started too late.
+   Below the group's own width the auto margin has nothing to push against, so it is dropped:
+   otherwise it would sit at the right of a scroll area nobody can see the left of. */
+@media(max-width:880px){
+  .tabs{overflow-x:auto;overscroll-behavior-x:contain;}
+  .tab{white-space:nowrap;flex-shrink:0;}
+  .tabs-right{margin-left:0;flex:none;}
+}
 .tabs-right { position:relative; margin-left:auto; display:flex; align-items:center; gap:14px; padding:0 14px; border-left:1px solid var(--border); }
-/* One control height per bar (docs/UI.md). The row had a 25px Template button beside the 30px settings circle. */
-.tabs-right .tab-tpl-btn{min-height:30px;}
+/* One control height per bar (docs/UI.md). The row had a 25px Template button beside the 30px
+   settings circle — and min-height alone did not hold it: the button is display:block with an
+   inline 12px icon before its label, so as soon as the bar narrowed the icon and the word fell
+   onto two lines and the button grew to 39px beside a 30px circle. It is a flex row that does
+   not wrap, and both controls take the bar's height. */
+.tabs-right{--tb-h:32px;}
+.tabs-right .tab-tpl-btn{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+  height:var(--tb-h);min-height:var(--tb-h);padding:0 10px;}
+.tabs-right .opts-btn{width:var(--tb-h);height:var(--tb-h);min-width:var(--tb-h);min-height:var(--tb-h);}
 .tab-stat { display:flex; flex-direction:column; align-items:center; line-height:1.2; }
 .tab-stat span:first-child { font-weight:700; font-size:var(--fs-4); color:var(--text); font-family:var(--mono); }
 .ts-lbl { font-size:var(--fs-1); color:var(--text3); }
@@ -362,6 +380,13 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
    horizontal strip still lets a vertical wheel through to whatever is under it. */
 .props-table-scroll,.table-container{overscroll-behavior-y:contain;}
 .props-table-scroll,.table-wrap,.tabs{overscroll-behavior-x:contain;}
+
+/* A theme switch is not an animation. Every surface carries a background-color transition
+   now, so flipping data-theme would cross-fade the whole page — a full repaint per frame for
+   120 ms on a document with thousands of nodes, which is the smear the transitions exist to
+   avoid. The class is on for one frame; the observer below catches every call site, including
+   ones added later. */
+html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:none!important;}
 </style>
 </head>
 <body>
@@ -1721,6 +1746,13 @@ window.addEventListener('message',function(e){
   if(document.readyState==='complete') setTimeout(warn,300);
   else window.addEventListener('load',function(){ setTimeout(warn,300); });
 })();
+</script>
+<script>
+(function(){var r=document.documentElement,t=null;
+  if(!window.MutationObserver) return;
+  new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
+    t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
+   .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
 </script>
 </body>
 </html>

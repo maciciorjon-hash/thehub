@@ -69,9 +69,12 @@ body{display:flex;flex-direction:column;overflow:hidden;}
 }
 .stat-val{font-size:var(--fs-7);font-weight:700;letter-spacing:-1px;color:var(--accent);}
 .stat-lbl{font-size:var(--fs-1);color:var(--text3);text-transform:uppercase;letter-spacing:.6px;}
+/* overflow-x:auto, not hidden: the preview table is 407px and the box is 319px at phone
+   width, so the last two columns were unreachable rather than merely off-screen. docs/UI.md —
+   a wide table scrolls inside its own container, never the page. */
 .preview-box{
   background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);
-  overflow:hidden;
+  overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
 }
 .preview-head{
   padding:10px 16px;border-bottom:1px solid var(--border);
@@ -187,6 +190,13 @@ body{display:flex;flex-direction:column;overflow:hidden;}
    it takes over mid-gesture. The axis is named rather than blanket-contained, so a
    horizontal strip still lets a vertical wheel through to whatever is under it. */
 .fab-panel,.fab-sidebar{overscroll-behavior-y:contain;}
+
+/* A theme switch is not an animation. Every surface carries a background-color transition
+   now, so flipping data-theme would cross-fade the whole page — a full repaint per frame for
+   120 ms on a document with thousands of nodes, which is the smear the transitions exist to
+   avoid. The class is on for one frame; the observer below catches every call site, including
+   ones added later. */
+html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:none!important;}
 </style>
 </head>
 <body>
@@ -359,6 +369,13 @@ document.addEventListener('DOMContentLoaded', function() {
     startDisappointment();
   }
 });
+</script>
+<script>
+(function(){var r=document.documentElement,t=null;
+  if(!window.MutationObserver) return;
+  new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
+    t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
+   .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
 </script>
 </body>
 </html>

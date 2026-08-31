@@ -106,7 +106,19 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
   border-radius:var(--r-1);padding:5px 12px;font-size:var(--fs-3);cursor:pointer;margin-bottom:12px;}
 .cell-close-btn:hover{color:var(--text);border-color:var(--border);}
 @media(max-width:480px){
-  .cell-grid{grid-template-columns:repeat(3,1fr);gap:8px;}
+  /* Two columns at phone width, not three, and minmax(0,·) so a track may be narrower than its
+     content. `1fr` is `minmax(auto,1fr)`: each track was at least as wide as the widest
+     unbreakable thing in it — a catalogue number like CRL-2505 — and three of those plus the
+     gaps ran 15px past a 375px screen, with the last column's text cut off and no way to
+     reach it. */
+  .cell-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+  /* The list row is five columns whose minimums add up to 430px before the gaps. At 375 the
+     row is 289px of content, so the last two columns were simply outside the card, with
+     overflow:hidden on .cell-grid.as-list and nothing to scroll. A phone gets the two columns
+     that are the reason the list exists — the line and what you have of it — and tissue and
+     catalogue number wait in the detail, where they already are. */
+  .cell-grid.as-list .cell-tile{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) auto;gap:10px;}
+  .cell-grid.as-list .cell-tile-tissue,.cell-grid.as-list .cell-tile-sub{display:none;}
   .cell-tile{padding:10px 6px;}
   .cell-tile-stats{font-size:var(--fs-1);}
   .cell-tile-name{font-size:var(--fs-4);}
@@ -203,6 +215,13 @@ textarea{
    it takes over mid-gesture. The axis is named rather than blanket-contained, so a
    horizontal strip still lets a vertical wheel through to whatever is under it. */
 .ca-modal-back,.panel{overscroll-behavior:contain;}
+
+/* A theme switch is not an animation. Every surface carries a background-color transition
+   now, so flipping data-theme would cross-fade the whole page — a full repaint per frame for
+   120 ms on a document with thousands of nodes, which is the smear the transitions exist to
+   avoid. The class is on for one frame; the observer below catches every call site, including
+   ones added later. */
+html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:none!important;}
 </style>
 </head>
 <body>
@@ -797,6 +816,13 @@ document.addEventListener('DOMContentLoaded', function(){
     }).observe(g, {childList:true});
   }
 });
+</script>
+<script>
+(function(){var r=document.documentElement,t=null;
+  if(!window.MutationObserver) return;
+  new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
+    t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
+   .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
 </script>
 </body>
 </html>

@@ -20,12 +20,17 @@
   --shadow-xs:0 1px 4px rgba(0,0,0,.04);--shadow-sm:0 2px 8px rgba(0,0,0,.06);
   --shadow-md:0 6px 24px rgba(0,0,0,.09);--shadow-lg:0 16px 48px rgba(0,0,0,.14);
   --shadow-xl:0 32px 80px rgba(0,0,0,.22);--modal-backdrop:rgba(0,0,0,.45);
+  /* Beacon's own colour, and the only thing that uses it is the 32px logo box. It was
+     declared in the dark palette and nowhere else, so in the light theme — the one the
+     Hub opens in — var(--brand) resolved to nothing and the box had no background at
+     all: a white B on white, since it was written. */
+  --brand:#5e72c4;
 }
 [data-theme="dark"]{
   --bg:#0d0f14;--surface:#13161e;--surface2:#1c2030;--surface3:#252a3a;
   --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
   --text:#e8eaf2;--text2:#8b90a8;--text3:#4e5368;
-  --brand:#5e87c5;--accent:#8aaee0;--accent-dim:rgba(138,174,224,0.16);--accent-soft:rgba(138,174,224,0.26);
+  --brand:#8a97dd;--accent:#8aaee0;--accent-dim:rgba(138,174,224,0.16);--accent-soft:rgba(138,174,224,0.26);
   --good:#6ddca8;--mid:#f8cc6d;--poor:#f89090;
   --shadow-xs:0 1px 4px rgba(0,0,0,.30);--shadow-sm:0 2px 8px rgba(0,0,0,.40);
   --shadow-md:0 6px 24px rgba(0,0,0,.50);--shadow-lg:0 16px 48px rgba(0,0,0,.55);
@@ -278,6 +283,13 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
    horizontal strip still lets a vertical wheel through to whatever is under it. */
 .content,.pm-dose-col,.setup-sbody{overscroll-behavior-y:contain;}
 .combined-table-wrap,.pm-grid-col,.tabs{overscroll-behavior-x:contain;}
+
+/* A theme switch is not an animation. Every surface carries a background-color transition
+   now, so flipping data-theme would cross-fade the whole page — a full repaint per frame for
+   120 ms on a document with thousands of nodes, which is the smear the transitions exist to
+   avoid. The class is on for one frame; the observer below catches every call site, including
+   ones added later. */
+html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:none!important;}
 </style>
 </head>
 <body>
@@ -2614,6 +2626,13 @@ function loadTestData(mode) {
 }
 
 openSetupModal();
+</script>
+<script>
+(function(){var r=document.documentElement,t=null;
+  if(!window.MutationObserver) return;
+  new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
+    t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
+   .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
 </script>
 </body>
 </html>

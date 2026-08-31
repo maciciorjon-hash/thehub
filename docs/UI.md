@@ -113,6 +113,67 @@ having its own idea of how fast a hover is, or none at all.
   main thread to serve one grid. Bind it to the element that needs it, or add it on drag start and
   remove it on drag end.
 
+**Bars, and the two ways they go wrong.** Both have now been fixed in six apps, which is what
+makes them rules rather than incidents.
+
+- **One height per bar.** A toolbar's controls take one height, set as `height` *and*
+  `min-height` from a `--tb-h` token on the bar — 32px, 40px under `(hover:none)`. `min-height`
+  alone is not enough: a label that wraps grows past it, so the control also needs
+  `white-space:nowrap`. A dialog footer is a bar too.
+- **`margin-left:auto` and a `flex:1` spacer are one-line idioms.** They read as "push right"
+  only while the bar is one line; the moment it wraps, the pushed element keeps its margin (or
+  the spacer grows on the new row) and lands on the right of the *second* line, leaving a hole
+  under a left-aligned first row. Drop the auto margin, or hide the spacer, at the width where
+  the bar wraps — and when the wrap depends on content rather than viewport width, make the row
+  `nowrap` and let one element ellipsis instead.
+- **When the bar's width comes from a pane rather than the window, use a container query.**
+  `@container` is the only thing that can see it. Labbook's step header is nine controls in a
+  block whose width is whatever the editor pane leaves it — 617px on a 1440px screen with the
+  panes open — so the collapse-to-`⋯` is keyed on `.blk`'s own inline size, not the viewport's.
+  A browser without container queries keeps the viewport rule, so it is additive.
+
+**Chrome yields before content does.** In a multi-pane layout the panes are chrome and the
+editor is the product. Labbook's tree + page list + right dock are 740px of a 1024px window; the
+content had 272px, less than any one of them. The dock becomes an overlay below
+`LB_DOCK_FLOAT_MAX`, and the two left panes are *clamped at render time* — the stored widths are
+never rewritten, so widening the window brings the panes back to exactly the size they were
+dragged to.
+
+---
+
+## The audits
+
+Three scripts, and each answers a question the other two cannot.
+
+| | what it can see |
+|---|---|
+| `tools/audit_app.py --xref` | dead CSS classes, unreachable functions, orphaned data tables |
+| `tools/audit_align.js` | whether the controls on one row actually line up, and wrapped rows |
+| `tools/audit_runtime.js` | what only a loaded page knows — see below |
+
+**`tools/audit_runtime.js`** loads an app in an iframe and reports: an inline handler naming a
+function that no longer exists (nothing throws until somebody clicks, so neither a grep nor a
+smoke test finds it); a duplicate element id (`el('x')` returns the first, so the second is
+silently inert); text whose colour matches what is behind it, in either theme; and content
+pushed outside a clipping box with no scroller between it and the edge.
+
+Four of its rules exist because each was a false positive first, and they are why its findings
+can be trusted:
+
+- **Kill transitions before reading a computed style.** A `getComputedStyle` during a transition
+  returns the tween, and in a tab that is not compositing the tween never finishes — so with
+  `background-color` transitions on every surface, flipping the theme made *every* themed card
+  look like it had no dark value. The first run reported 60 invisible-text findings; two were
+  real.
+- **A gradient has no single colour to compare against.** Walking past it to the page background
+  reported white text on a blue card as invisible — every line of Cuppa's welcome card.
+- **Judge an element on its own text, not its subtree's.** A wrapper whose first child is the
+  newline before a `<div>` was being judged on all of its children's text against its own colour.
+- **Clipping is a descendant's right edge past the content edge, not `scrollWidth`.** A padded
+  flex column reports 24px of overflow it does not have; `text-overflow:ellipsis` *is* deliberate
+  truncation; and content inside an intermediate scroller is reachable, so the container it
+  overflows is not at fault.
+
 ---
 
 ## Components
