@@ -37,7 +37,11 @@ Every app declares the same names. Two scales, no loose values.
 
   --shadow-xs:0 1px 4px rgba(0,0,0,.04);  --shadow-sm:0 2px 8px rgba(0,0,0,.06);
   --shadow-md:0 6px 24px rgba(0,0,0,.09); --shadow-lg:0 16px 48px rgba(0,0,0,.14);
-  --ease:cubic-bezier(.2,.8,.3,1);
+  --ease:cubic-bezier(.2,.8,.3,1);       /* everything the pointer touches */
+  --ease-out:cubic-bezier(.16,1,.3,1);   /* something arriving: a panel, a screen */
+  --dur-1:120ms;                         /* a control answering the pointer */
+  --dur-2:200ms;                         /* a panel, a popover, a dialog */
+  --dur-3:300ms;                         /* a screen */
 }
 [data-theme="dark"]{
   --bg:#0d0f14; --surface:#13161e; --surface2:#1c2030; --surface3:#252a3a;
@@ -76,6 +80,38 @@ second.**
   **print stylesheet** (`#print-root`, `@media print`): paper has one theme, so fixed values there
   are correct and theme tokens would be wrong.
 - Every colour has a dark value. If you cannot say what a rule does in dark mode, it is not done.
+
+**Motion** — three durations and two curves, the same in every app. The scale was declared in the
+shell in 2026 and shared with nobody until 2026-08-31, which is how twenty apps ended up each
+having its own idea of how fast a hover is, or none at all.
+
+- **Everything the pointer can act on transitions.** A control that changes colour, border or
+  shadow on hover, focus or press and does it instantly reads as unfinished — that, not slowness,
+  is what "sloppy" turned out to mean. Use `--dur-1` and `--ease`.
+- **The shared list is `background-color, color, border-color, box-shadow, opacity`.** Never
+  `all`, and never `transform` in a blanket rule: transform is what drags, pans and canvas zooms
+  are made of, and a transition on it makes them trail the pointer. Name it per element where the
+  element really moves.
+- **Nothing repeated in bulk gets one.** A plate well, a freezer slot and a table cell are
+  restyled hundreds at a time; a 120 ms colour fade on each is slower *and* harder to read.
+- **Something that appears arrives.** A dialog, popover or overlay that switches on one class can
+  be animated in CSS alone — `@starting-style` for the from-state, `transition-behavior:
+  allow-discrete` so `display` waits for the exit. A browser without either lands on exactly the
+  un-animated behaviour, so it is safe to add. Always pair it with `pointer-events:none` on the
+  closed state: a backgrounded tab does not advance a transition, and an overlay stuck mid-exit is
+  full-screen, invisible and still clickable.
+- **Every app carries the `prefers-reduced-motion` block** that clamps every duration to 1 ms.
+  That is what makes motion something you may add without asking.
+
+**Scrolling** is part of the same standard.
+
+- Every inner scroll pane gets `overscroll-behavior`, and the **axis is named**: `-y` on a
+  vertical pane, `-x` on a horizontal strip. A blanket `contain` on a horizontal-only scroller
+  swallows the vertical wheel that was meant for the page underneath it.
+- **No `{passive:false}` wheel or touch listener on `document`.** It tells the browser that every
+  scroll gesture anywhere in the app might be cancelled by JS, so the whole app scrolls off the
+  main thread to serve one grid. Bind it to the element that needs it, or add it on drag start and
+  remove it on drag end.
 
 ---
 

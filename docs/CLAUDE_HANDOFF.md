@@ -5,26 +5,46 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-08-24 · **v1.9.0** · branch `main`, everything pushed and deployed.
-- Latest work: the **mobile pass** (iOS zoom-on-focus, horizontal overflow in three apps, `dvh`,
-  a phone-reachable hub search, Labbook's ribbon and drawer button) and the **seeding linkage**
-  (cells per well follow the plate format, with an implausible-density warning).
-- This pass was the interaction block Jon asked for and the previous session deferred: the
-  verbs a card needs (rename, move, priority, delete), a menu reachable with a thumb, and a
-  Cmd+K that reads what you wrote rather than what you called it. Plus finishing yesterday's
-  plasmid map, which was mouse-only on the app that lives on a phone.
-- Nothing is queued that does not need Jon; see *Open ends*. Four commits on the interaction
-  block: `941571c` (map on touch) · `ac207a3` (card verbs +
-  one menu, three doorways) · `3c5b618` (Cmd+K content index) · `2f9b24b` (drag to a folder,
-  empty folders visible). Then an open-items pass: `66af667` (RDKit and jsPDF announced, and
-  Dora's silent hang) · `7df31b4` (plate PNG + editable well types) · `6ac2c6e` (the calculator
-  link opens the Calculate tab; the superseded home mockup retired) · `cd1307c` (the nine
-  "verify" calculators re-derived — every formula right, every overage now stated).
-- Full detail is the 2026-08-24 entry at the top of `docs/SESSION_HISTORY.md`. The
-  2026-08-23/24 work that ran on after v1.8.0 is written up there too, reconstructed from its
-  commits.
+- Date: 2026-08-31 · **v1.9.0** · branch `main`.
+- Latest work: **the motion and scrolling pass** — the answer to Jon's *"el uso de la app es un
+  poco sloppy… tiene que funcionar smooth, transiciones, desplazamientos."* It was measured
+  first, and the app was not slow: a screen switch renders in 1–13 ms, a keystroke costs
+  0.25 ms, a 384-well plate repaints in 1.9 ms. It was **abrupt**. See *"Sloppy" was not slow*
+  in `CLAUDE.md` for the full write-up.
+- The one thing that really was slow is **opening an app**: `_loadApp` froze the main thread for
+  67 ms on Echo (a 46 ms per-character byte loop over 3.4 MB of base64) before the fade could
+  start. Warmed on hover, the same call is 4.5 ms.
+- The checkpoint below this line had gone stale — it still described the 2026-08-24 pass while
+  five sessions of work (the SPARK plate, the plate gestures, undo, chained volumes, the
+  selection bubble, autocorrect) landed on top of it. Their detail is in `CLAUDE.md`; the
+  sections here from *What exists now* down are from 2026-08-24 and are marked as such.
 
 ## What changed this pass
+
+1. **One timing scale, in all twenty surfaces.** `--dur-1/2/3` + `--ease`/`--ease-out`, declared
+   in the shell years ago and shared with nobody. Every hover, focus and press state now
+   transitions; `docs/UI.md` carries the rules.
+2. **`transform` is never in the shared list** (it is what drags and canvas zooms are made of),
+   and **nothing repeated in bulk gets a transition** — a plate well, a freezer slot, a table
+   cell. Both exclusions are the design, not an oversight.
+3. **Dialogs, popovers and both Cmd+K overlays arrive and leave** — `@starting-style` +
+   `transition-behavior:allow-discrete`, no JS change, and every closed overlay is
+   `pointer-events:none` so one stuck mid-exit cannot eat clicks.
+4. **A screen enters, and remembers your scroll.** `_edScreenKey()` tells a navigation from a
+   re-render; `#pane-ed`'s scrollTop is filed per screen and restored.
+5. **An experiment's tab bar is sticky** on desktop as it already was on a phone.
+6. **`overscroll-behavior` on every inner pane, axis named**, so a list running out no longer
+   hands the gesture to the page behind it.
+7. **Three `{passive:false}` listeners on `document` are gone** — Labbook's plate grid and week
+   planner, and Echo's results-table wheel handler, which was also broken (it drove
+   `.tbl-wrap`, which has no overflow, so a wide table swallowed the wheel and moved nothing).
+8. **Apps are warmed on hover/focus**, on `requestIdleCallback`. `openApp`'s "nothing is touched
+   until we know there is somewhere to go" guard is now actually first — it used to sit below
+   `_loadApp`.
+9. **Beacon's header ran two control heights** (27 and 30). One 32 px height, scoped to the
+   header row.
+
+## What changed on 2026-08-24
 
 1. **Plasmid maps take touch.** Pointer Events + pinch. The rule: a **fitted** map gives a
    single finger back to the page (`touch-action:pan-y`); only a **zoomed** one takes it to
@@ -59,7 +79,7 @@ Compact coordination note. Read it before starting work; the full changelog is
    the word before it. And the step palette drags into position (`insertStepBlock(spec, at)`),
    with blocks reordering from a grip.
 
-## What exists now, in one pass
+## What exists now, in one pass (2026-08-24)
 
 1. **Protocols are data.** `PROTOCOL_DATA` in Archive: 153 stages, 512 steps, 561 typed params,
    111 callouts. The Protocol tab is generated from it. Round trip verified 33/33 including
@@ -119,6 +139,38 @@ Compact coordination note. Read it before starting work; the full changelog is
   in `embed.py`.
 
 ## Traps added this pass
+
+- **A backgrounded tab does not advance a transition.** Anything whose `display` is waiting on
+  one (`transition-behavior:allow-discrete`) can be left mid-exit: full-screen, invisible and
+  still clickable. Every closed overlay needs `pointer-events:none`. This is also why animation
+  cannot be verified in a hidden Browser pane — `document.hidden` is true, rAF never fires, and
+  every computed opacity reads as its from-state. Check the wiring with `getAnimations()`
+  instead; screenshots still force a paint, so layout can be checked.
+- **`allow-discrete` inside the `transition` shorthand is all-or-nothing.** A browser that does
+  not know the keyword drops the *whole* declaration, opacity included. That is fine — it lands
+  on the un-animated behaviour — but only if the open/closed states are still correct without
+  the transition. Always state them so they are.
+- **A margin above a sticky element is not painted with its background.** `.exp-tabs` had
+  `margin-top:10px`, so content scrolled up through the slot. Move it to `padding`.
+- **An animation class left on a parent replays on every new child.** `.pane-ed.screen-in > *`
+  plus an `innerHTML` swap on each render is a strobe. Take the class off — by timer, not
+  `animationend`, which never fires in a backgrounded tab.
+- **`overscroll-behavior: contain` is per axis, and the axis matters.** A blanket `contain` on a
+  horizontal-only strip swallows the vertical wheel that was meant for the page under it.
+- **A `{passive:false}` listener on `document` is charged to the whole app**, for the life of
+  the session, whether or not the screen it serves is open. Bind it to the element, or add it on
+  drag start and remove it on drag end.
+- **`scrollLeft` on a box with `overflow:visible` is a silent no-op.** Echo's wheel handler read
+  and wrote `.tbl-wrap`, whose scroller is the `.results-tbl-scroll` around it, so it called
+  `preventDefault` and then moved nothing.
+- **An inline `display` cannot be animated past.** The shell's Cmd+K wrote it in `cssText`, which
+  beats every stylesheet rule.
+- **A blocklist has to match the first token, not the whole compound.** `.well` was excluded from
+  the transition sweep and `.well.filled` walked straight through it.
+- **The Browser pane caches.** A rebuilt artifact served from `python3 -m http.server` came back
+  as the previous build with two `<style>` tags instead of three; add a query string.
+
+## Traps added on 2026-08-24
 
 - **A viewport meta tag does not make a page fit a phone.** Any horizontal overflow — 16px is
   enough — makes the browser zoom the whole document out. And iOS zooms *in*, permanently, the

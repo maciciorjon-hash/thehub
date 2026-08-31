@@ -523,6 +523,63 @@ body.ws #hub-home .home-wrap{max-width:none;padding:22px 26px 40px;}
   select, textarea { font-size:16px !important; }
 }
 </style>
+<style>
+/* ══ Motion ═══════════════════════════════════════════════════════════════════════════════
+   --dur-1/2/3 and --ease were declared here long ago and used by four rules. They are the
+   Hub's timing scale — a control, a panel, a screen — and every app now carries the same
+   three, so nothing in the product invents its own speed. The reduced-motion block above
+   clamps all of it to 1 ms.
+
+   transform is left out of the shared list on purpose: cards are not dragged, but .card and
+   .ld-card already animate their own lift and a second, broader declaration would silently
+   replace it. */
+:root{--ease-out:cubic-bezier(.16,1,.3,1);}
+
+a,button,input,select,textarea,
+.nav-chip,.ws-item,.cells-tab,.set-tab,.set-x,.sr-item,.accent-sw,.opts-action-btn,
+.wg-check,.wg-del,.wg-done-toggle,.wg-row,.hspot-i,
+#hub-search-btn,#lab-btn,#opts-btn,#egg-close,#hub-announce-close{
+  transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),
+             border-color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease),
+             opacity var(--dur-1) var(--ease);
+}
+.nav-chip:active,.cells-tab:active,.set-tab:active,#hub-search-btn:active,#lab-btn:active,
+#opts-btn:active{transform:scale(.96);}
+.nav-chip,.cells-tab,.set-tab,#hub-search-btn,#lab-btn,#opts-btn{
+  transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),
+             border-color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease),
+             opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease);
+}
+
+/* ── The settings modal and the spotlight arrive ───────────────────────────────────────────
+   Both are one class away from being animated — .set-back toggles `.hidden`, and the
+   spotlight now toggles `.open` instead of writing display inline, which no rule could beat.
+   @starting-style supplies the from-state; transition-behavior holds `display` back until the
+   exit has played. A browser without either lands on exactly the old behaviour. */
+.set-back{opacity:1;transition:opacity var(--dur-2) var(--ease),display var(--dur-2) allow-discrete;}
+.set-back.hidden{opacity:0;pointer-events:none;}
+@starting-style{ .set-back{opacity:0;} }
+.set-modal{transition:transform var(--dur-2) var(--ease-out);}
+.set-back.hidden .set-modal{transform:translateY(10px) scale(.99);}
+/* An overlay whose `display` is waiting on a transition can outlive the thing it was showing
+   — a backgrounded tab does not advance one — and it is fixed, full-screen and invisible.
+   It stops taking clicks the moment it stops being open, so the worst case is a wasted layer
+   rather than an app that no longer responds. */
+#hub-spot-back:not(.open){pointer-events:none;}
+#hub-spot-back{display:none;opacity:0;
+  transition:opacity var(--dur-2) var(--ease),display var(--dur-2) allow-discrete;}
+#hub-spot-back.open{display:flex;opacity:1;}
+@starting-style{ #hub-spot-back.open{opacity:0;} }
+#hub-spot-back>div{transition:transform var(--dur-2) var(--ease-out);transform:translateY(-10px);}
+#hub-spot-back.open>div{transform:none;}
+@starting-style{ #hub-spot-back.open>div{transform:translateY(-10px);} }
+
+/* ── Scrolling ─────────────────────────────────────────────────────────────────────────────
+   Run a list to its end and the page behind it should not take over the gesture. The axis is
+   named rather than blanket-contained, so a horizontal strip still passes a vertical wheel
+   through to whatever is under it. */
+#hub-home,.set-body,.wg-tasklist,#hub-search-results,#hub-spot-res{overscroll-behavior-y:contain;}
+</style>
 </head>
 <body>
 
@@ -1108,6 +1165,41 @@ function _unloadOthers(keepId){
     });
   }, 1600);
 }
+// ── Warm an app before it is asked for ────────────────────────────────────────────────────
+// _loadApp is the one genuinely expensive thing the shell does: Echo is 3.4 MB of base64, and
+// turning it back into text is a 46 ms byte loop before the iframe has parsed a character.
+// Measured on the real bundle — that is three dropped frames between the click and the fade,
+// which is the whole of "opening an app feels heavy".
+//
+// The fix is not to make the click faster but to have already done the work. A pointer resting
+// on a card, or a keyboard focus landing on one, is a reliable 100+ ms of warning; the decode
+// runs in that gap, on idle so it never competes with anything the user is doing, and by the
+// time the click lands _loadApp is a no-op. The delay is what stops a mouse crossing the grid
+// from decoding five apps on its way somewhere else.
+var _warmT = null, _warmed = {};
+function _warmApp(id) {
+  if (!id || loaded[id] || _warmed[id]) return;
+  // The raw predicate, not _adminOnlyBlocked: that one parks a deep link and clears the hash,
+  // and warming is not a request to open anything. In practice a visitor never reaches this —
+  // the cards are display:none for them — but decoding a megabyte of an app nobody can open is
+  // not something to leave to the markup.
+  if (ADMIN_ONLY_APPS[id] && !isAdmin) return;
+  if (!document.getElementById('frame-' + id)) return;
+  if (!(APP_B64[id] || APP_B64_NEW[id])) return;
+  _warmed[id] = 1;
+  var run = function(){ try { _loadApp(id); } catch(e) {} };
+  if (window.requestIdleCallback) requestIdleCallback(run, {timeout: 1500}); else setTimeout(run, 60);
+}
+function _warmFrom(node) {
+  if (!node || !node.closest) return;
+  var host = node.closest('[data-app-id]');
+  var id = host ? host.getAttribute('data-app-id') : null;
+  if (!id) return;
+  clearTimeout(_warmT); _warmT = setTimeout(function(){ _warmApp(id); }, 90);
+}
+document.addEventListener('pointerover', function(e){ _warmFrom(e.target); }, {passive:true});
+document.addEventListener('focusin', function(e){ _warmFrom(e.target); });
+
 function _loadApp(id) {
   if (loaded[id]) return;
   var frame = document.getElementById('frame-' + id);
@@ -1391,7 +1483,7 @@ function openCells(tab, item, context){
   });
   if (small) tabs.forEach(function(t){ if (t.id !== tab && loaded[t.id]) _unloadApp(t.id); });
   document.getElementById('cells-tabs').innerHTML = tabs.map(function(t){
-    return '<button class="cells-tab' + (t.id===tab?' on':'') + '" onclick="openCells(\'' + t.id + '\')">' + t.label + '</button>';
+    return '<button class="cells-tab' + (t.id===tab?' on':'') + '" data-app-id="' + t.id + '" onclick="openCells(\'' + t.id + '\')">' + t.label + '</button>';
   }).join('');
   if (item || context){
     var m = {type:'switchTab', tab:tab, requestId:'dhub'+Date.now().toString(36)};
@@ -1438,6 +1530,11 @@ function openApp(id, tab, item, context) {
   // Labbook's openIncubatorLink, saved #hashes and the app catalog keep working untouched.
   if (id==='cells') return openCells(null, item, context);
   if (id==='incubator'||id==='cellarchive'||id==='cryo') return openCells(id, item, context);
+  // Resolved first, and nothing is touched until it is. This guard used to sit below
+  // _loadApp, so a stale #hash decoded and parsed a megabyte of app before finding there was
+  // nowhere to put it.
+  var view0 = document.getElementById('view-' + id);
+  if (!view0) { try{ console.warn('openApp: no view for', id); }catch(e){} return; }
   var frame = document.getElementById('frame-' + id);
   _pushRecent(id);   // the Data Analysis peek leads with what you actually reach for
   _loadApp(id);
@@ -1450,10 +1547,9 @@ function openApp(id, tab, item, context) {
   // An id with no view — an old bookmark, a renamed app, a link from another app that has
   // moved — used to throw here, half-way through: currentApp was already set to it and every
   // .app-view had been hidden, so the shell was left on a blank screen with no way back and
-  // nothing in the console but a TypeError. Nothing is touched until we know there is
-  // somewhere to go.
-  var view = document.getElementById('view-' + id);
-  if (!view) { try{ console.warn('openApp: no view for', id); }catch(e){} return; }
+  // nothing in the console but a TypeError. That check has moved to the top of this function,
+  // where nothing has been touched yet and no app has been decoded.
+  var view = view0;
   var _wasIn = currentApp;
   currentApp = id;
   _unloadOthers(id);
@@ -2462,7 +2558,7 @@ function _appCardHtml(appId){
   var desc=src?(src.querySelector('.card-desc')||{}).textContent||'':'';
   var foot=src?((src.querySelector('.card-foot span')||{}).textContent||''):'';
   var ico=src?((src.querySelector('.card-logo svg')||{}).outerHTML||''):'';
-  return '<div class="ld-card" tabindex="0" onclick="openApp(\''+appId+'\')" onkeydown="if(event.key===\'Enter\')openApp(\''+appId+'\')">'
+  return '<div class="ld-card" tabindex="0" data-app-id="'+appId+'" onclick="openApp(\''+appId+'\')" onkeydown="if(event.key===\'Enter\')openApp(\''+appId+'\')">'
     +'<div class="ld-top"><span class="ld-ico" style="background:'+(info.color||'#888')+'">'+ico+'</span>'
     +'<span class="ld-name">'+_dashEsc(info.name||appId)+'</span></div>'
     +'<div class="ld-desc">'+_dashEsc(desc)+'</div>'
@@ -3044,14 +3140,16 @@ document.addEventListener('click',function(e){
 (function(){
   var back=document.createElement('div');
   back.id='hub-spot-back';
-  back.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:flex-start;justify-content:center;padding-top:14vh;';
+  // display lives in the stylesheet, not here: an inline `display:none` beats every rule and
+  // there is no way to animate past it. The class is what opens it now.
+  back.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:flex-start;justify-content:center;padding-top:14vh;';
   back.innerHTML='<div style="width:100%;max-width:560px;background:var(--surface);border:1px solid var(--border2);border-radius:9px;box-shadow:0 16px 48px rgba(0,0,0,.4);overflow:hidden"><input id="hub-spot-in" type="text" placeholder="Search apps, tools, assays…" autocomplete="off" style="width:100%;border:none;background:none;padding:16px 18px;font-size:16px;color:var(--text);outline:none;border-bottom:1px solid var(--border);font-family:var(--sans)"><div id="hub-spot-res" style="max-height:56vh;overflow-y:auto;padding:6px"></div></div>';
   function mount(){ if(!back.parentNode) document.body.appendChild(back); }
   if(document.body) mount(); else document.addEventListener('DOMContentLoaded',mount);
   var SELi=0, RES=[];
-  function isOpen(){ return back.style.display==='flex'; }
-  function open(){ mount(); back.style.display='flex'; var i=document.getElementById('hub-spot-in'); i.value=''; render(''); setTimeout(function(){i.focus();},20); }
-  function close(){ back.style.display='none'; }
+  function isOpen(){ return back.classList.contains('open'); }
+  function open(){ mount(); back.classList.add('open'); var i=document.getElementById('hub-spot-in'); i.value=''; render(''); setTimeout(function(){i.focus();},20); }
+  function close(){ back.classList.remove('open'); }
   function render(q){ var box=document.getElementById('hub-spot-res'); if(!box) return;
     var items = !q?[] : hubSearchResults(q,10).map(function(r){return r.item;});
     RES=items; SELi=0;

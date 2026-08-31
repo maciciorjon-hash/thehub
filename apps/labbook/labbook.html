@@ -1607,6 +1607,119 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
   select, textarea { font-size:16px !important; }
 }
 </style>
+<style>
+/* ══ Motion ═══════════════════════════════════════════════════════════════════════════════
+   Labbook was never slow — a screen switch renders in 1-13 ms, a keystroke costs 0.25 ms and
+   a 384-well plate repaints in 1.9 ms. What made it feel sloppy is that nothing ever
+   *arrives*: every state change was an instant swap, so a hover, a dialog and a whole screen
+   all appeared the same way, out of nowhere, and a list you came back to had lost your place.
+   This block is one timing scale and the list of things that use it.
+
+     --dur-1  a control answering the pointer
+     --dur-2  a panel, a popover, a dialog
+     --dur-3  a screen
+
+   The shell had already declared exactly these three and never shared them; docs/UI.md holds
+   the curve. Everything here is clamped to 1 ms by the prefers-reduced-motion block above —
+   which is why motion can be added at all without asking anybody.
+
+   `transform` is deliberately NOT in the shared transition list. Blocks, step chips, week
+   chips and floating images are dragged, and a transition on transform makes a drag trail
+   behind the pointer. It is named per element, only where the element really moves. `.pl-w`
+   is left out for the mirror-image reason: a rubber band restyles hundreds of wells per
+   drag, and a 120 ms colour fade on each is both slower and harder to read. */
+:root{--dur-1:120ms;--dur-2:200ms;--dur-3:300ms;--ease-out:cubic-bezier(.16,1,.3,1);}
+
+/* ── Anything the pointer can act on answers it ────────────────────────────────────────── */
+a,button,input,select,textarea,
+.blk,.card,.sec-item,.page-item,.proj-row,.dlg-item,.spot-item,.outline-item,.pop-item,
+.exp-tab,.rb-tab,.rb-lbtn,.tb,.tb-sel,.sw,.sw-none,.stepchip,.pchip,.exh-chip,.exh-act,
+.icon-btn,.rail-btn,.collapse-btn,.lb-mbtn,.lean-tog,.splitter,.backup-note,.ci-hint,
+.bub-b,.bub-c,.bub-car,.bub-sel,.bub-none,
+.blk-del,.blk-done,.blk-snooze,.blk-wait,.blk-calcbtn,.blk-grip,.add-blk,.add-step,.carry-move,
+.cc-fix,.cc-x,.ci-relink,.cul-row,.day-arw,.day-today,.dev-ok,.dev-row,
+.dfx-open,.dfx-snooze,.dfx-blk-t,.dfx-blk-t2,.dfx-code,
+.fx-drop,.lh-alert,.lh-date,.lh-day,.lh-lnk,.lh-prow,.lh-step,.lh-x-ti,
+.nm-proto-add,.nm-pv-reset,.ong-row,.page-del,.pblk-free,.ph-btn,
+.pl-btn,.pl-colh,.pl-rowh,.pl-type,.pl-type-add,.ps-calc-add,.ps-move,.pstep-noteb,.pstep-tick,
+.ptimer,.pub-btn,.pupd-b,.rep-l,.res-del,.tmr-x,
+.wk-blk,.wk-task,.wk-chd,.wk-cb,.wk-sn,.wk-del,
+.xv-add,.xv-ph,.xv-px,.xv-q,.xv-row{
+  transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),
+             border-color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease),
+             opacity var(--dur-1) var(--ease);
+}
+/* A press should be felt, not just registered. Only on things that are pressed and never
+   dragged — a scale on a drag handle fights the drag. */
+.btn,.icon-btn,.pub-btn,.exh-act,.pl-btn,.pl-type,.ph-btn,.rail-btn,.lb-mbtn{
+  transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),
+             border-color var(--dur-1) var(--ease),box-shadow var(--dur-1) var(--ease),
+             opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease);
+}
+.btn:active,.icon-btn:active,.pub-btn:active,.exh-act:active,.pl-btn:active:not(:disabled),
+.pl-type:active,.ph-btn:active,.rail-btn:active,.lb-mbtn:active{transform:scale(.97);}
+/* A row that reveals a delete cross on hover used to blink it into existence. */
+.sec-item .del,.proj-row .del,.page-del,.wk-del,.wk-sn,.ci-hint{
+  transition:opacity var(--dur-1) var(--ease),background-color var(--dur-1) var(--ease),
+             color var(--dur-1) var(--ease);
+}
+
+/* ── Dialogs and popovers arrive, and leave ────────────────────────────────────────────────
+   Every dialog in this file goes through _lbDlg()/popOpen() and switches on one `.open`
+   class, so animating `.modal-back` and `.pop` here reaches all of them — the plate editor,
+   the new-experiment modal, the pickers, the protocol diff, every context menu — with no JS
+   change at all. @starting-style gives the entry a from-state and transition-behavior lets
+   `display` wait for the exit to finish; a browser without them lands exactly on today's
+   behaviour, which is why this is safe to add rather than a rewrite. */
+.modal-back{opacity:0;transition:opacity var(--dur-2) var(--ease),display var(--dur-2) allow-discrete;}
+.modal-back.open{opacity:1;}
+@starting-style{ .modal-back.open{opacity:0;} }
+.modal{transform:translateY(8px) scale(.985);transition:transform var(--dur-2) var(--ease-out);}
+.modal-back.open .modal{transform:none;}
+@starting-style{ .modal-back.open .modal{transform:translateY(8px) scale(.985);} }
+/* A backgrounded tab does not advance a transition, so an overlay whose `display` is waiting
+   on one can be left lying over the app: invisible, and still catching clicks. It cannot,
+   because it stops taking them the moment it stops being open. */
+.modal-back:not(.open),#spot-back:not(.open),.pop:not(.open){pointer-events:none;}
+/* Cmd+K is the same overlay under another id. */
+#spot-back{opacity:0;transition:opacity var(--dur-2) var(--ease),display var(--dur-2) allow-discrete;}
+#spot-back.open{opacity:1;}
+@starting-style{ #spot-back.open{opacity:0;} }
+#spot{transform:translateY(-10px);transition:transform var(--dur-2) var(--ease-out);}
+#spot-back.open #spot{transform:none;}
+@starting-style{ #spot-back.open #spot{transform:translateY(-10px);} }
+.pop{opacity:0;transform:translateY(-4px);
+     transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease-out),
+                display var(--dur-1) allow-discrete;}
+.pop.open{opacity:1;transform:none;}
+@starting-style{ .pop.open{opacity:0;transform:translateY(-4px);} }
+
+/* ── A screen enters ───────────────────────────────────────────────────────────────────────
+   Only when the screen actually changed — renderEditor() runs on every tick, every calculator
+   keystroke and every save, and a fade on each of those would be a strobe. renderEditor
+   derives the key and adds the class; see _edScreenKey. */
+@keyframes lb-screen-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+.pane-ed.screen-in>*{animation:lb-screen-in var(--dur-3) var(--ease-out);}
+/* The toast rises rather than materialising in place. */
+#lb-toast{transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease-out)!important;}
+
+/* ── Scrolling ─────────────────────────────────────────────────────────────────────────────
+   Scroll chaining is what makes a pane feel loose: run a list to its end and the page behind
+   it takes over mid-gesture. `contain` stops that at the pane it belongs to. The axis is
+   named on purpose — a blanket `contain` on a horizontal-only scroller swallows the vertical
+   wheel that was meant for the page underneath it. */
+.pane-ed,.pane-pages,.pane-sec,#rightdock,.dlg-list,.modal,#spot-res,.wk-body,.pl-side,.pl-sum,
+.es-diffwrap,.pupd-diff,.ptx,.ptx-t,.nm-preview .nm-pv-list,.pop{overscroll-behavior-y:contain;}
+.rb-pane,.rb-tabbar,.cc-tblwrap,.res-scroll,.pp-grid-wrap,.pp-sum,.rt pre{overscroll-behavior-x:contain;}
+.wk-grid,.pl-gridwrap{overscroll-behavior:contain;}
+/* The tab bar of an experiment stays put. An experiment is 10,000 px tall; scrolling to the
+   Results tab and finding no way back to Steps without scrolling to the top is the sloppiest
+   thing in the app. It already did this on a phone (.exp-tabs-m) and nowhere else. */
+.exp-tabs{position:sticky;top:0;z-index:6;background:var(--bg);margin-top:0;padding-top:10px;}
+/* scrollBlk() scrolls a step to the top of the pane — under the sticky bar unless it is told
+   the bar is there. */
+.blk,.dfx-blk-wrap,[id^="blk-"]{scroll-margin-top:52px;}
+</style>
 </head>
 <body>
 
@@ -4845,30 +4958,42 @@ document.addEventListener('mouseup',function(){ if(!PL.drag) return;
 // Touch: mouseenter never fires and there is no shift or ctrl on a phone, so a finger dragged
 // across the grid draws the same rectangle the mouse does — corner to corner, not the path it
 // traced, which is impossible to keep straight with a thumb.
+// These two are bound to #pl-grid, not to document. A {passive:false} touch listener on
+// document tells the browser it may have to wait for JS before it is allowed to scroll —
+// anywhere in the app, for the whole session, whether or not a plate is open. That is the
+// difference between a phone that scrolls off the compositor and one that does not, and it
+// was costing it everywhere to serve one grid. #pl-grid is a static node (its innerHTML is
+// replaced, the element is not), so binding once at load is safe.
 (function(){
   function wellAt(t){ if(!t) return null; var n=document.elementFromPoint(t.clientX,t.clientY);
     n=n&&n.closest?n.closest('.pl-w[data-w]'):null; return n?n.getAttribute('data-w'):null; }
   var grid=null, base=null, from=null;
-  document.addEventListener('touchstart',function(e){
-    var g=e.target.closest&&e.target.closest('#pl-grid'); if(!g) return;
-    var id=wellAt(e.touches[0]); if(!id) return;
-    grid=g; e.preventDefault();
-    // A fresh touch starts a new selection unless "Add mode" is on — the phone's ctrl key.
-    base={}; if(PL.touchAdd) Object.keys(PL.sel).forEach(function(k){ base[k]=1; });
-    PL.sel={}; Object.keys(base).forEach(function(k){ PL.sel[k]=1; });
-    PL.sel[id]=1; PL.anchor=id; from=id; PL.drag=true;
-    plSyncSelClasses();
-  },{passive:false});
-  document.addEventListener('touchmove',function(e){
-    if(!PL.drag||!grid||!from) return; e.preventDefault();
-    var id=wellAt(e.touches[0]); if(!id) return;
-    PL.sel={}; Object.keys(base).forEach(function(k){ PL.sel[k]=1; });
-    plSelectRange(from,id,true);
-    plSyncSelClasses();
-  },{passive:false});
-  document.addEventListener('touchend',function(){
-    if(!PL.drag) return; PL.drag=false; grid=null; from=null; plRenderSide();
-  });
+  function bind(){
+    var g0=el('pl-grid'); if(!g0) return;
+    g0.addEventListener('touchstart',function(e){
+      var g=e.target.closest&&e.target.closest('#pl-grid'); if(!g) return;
+      var id=wellAt(e.touches[0]); if(!id) return;
+      grid=g; e.preventDefault();
+      // A fresh touch starts a new selection unless "Add mode" is on — the phone's ctrl key.
+      base={}; if(PL.touchAdd) Object.keys(PL.sel).forEach(function(k){ base[k]=1; });
+      PL.sel={}; Object.keys(base).forEach(function(k){ PL.sel[k]=1; });
+      PL.sel[id]=1; PL.anchor=id; from=id; PL.drag=true;
+      plSyncSelClasses();
+    },{passive:false});
+    g0.addEventListener('touchmove',function(e){
+      if(!PL.drag||!grid||!from) return; e.preventDefault();
+      var id=wellAt(e.touches[0]); if(!id) return;
+      PL.sel={}; Object.keys(base).forEach(function(k){ PL.sel[k]=1; });
+      plSelectRange(from,id,true);
+      plSyncSelClasses();
+    },{passive:false});
+    // touchend stays on document: a finger can leave the grid before it lifts, and the drag
+    // still has to end.
+    document.addEventListener('touchend',function(){
+      if(!PL.drag) return; PL.drag=false; grid=null; from=null; plRenderSide();
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',bind); else bind();
 })();
 function plToggleTouchAdd(){ PL.touchAdd=!PL.touchAdd; plRenderSide(); }
 
@@ -7420,7 +7545,42 @@ function homeCulturesCard(){
     +'<div class="lh-cb">'+body+'</div></div>';
 }
 
+// ── One screen at a time, and it remembers where you were ─────────────────────────────────
+// renderEditor() is called on every tick, every calculator keystroke, every save and every
+// sync — 62 call sites — so it cannot itself decide that a *screen* changed. _edScreenKey is
+// what actually identifies the screen: which surface, which record, which tab, which day.
+// Two things hang off it, and neither is possible without it:
+//   · the enter animation runs on a real navigation and never on a re-render, so ticking a
+//     step does not strobe the page;
+//   · the pane's scroll position is filed under the screen you are leaving and restored when
+//     you come back, so going into an experiment and back out returns you to the row you
+//     clicked instead of the top of the list.
+function _edScreenKey(){
+  var n=SEL.node||{}, k=n.kind||'';
+  if(k==='journal') return 'journal:'+(SEL.page||DAY_VIEW||todayStr());
+  if(k==='expsec')  return 'exp:'+(SEL.page||'')+':'+(typeof EXP_TAB==='string'?EXP_TAB:'');
+  if(k==='general') return 'page:'+(SEL.page||'');
+  return k+':'+(n.projectId||'')+':'+(n.sectionId||'');
+}
+var _edKey=null, _edScroll={}, _edAnimT=null;
 function renderEditor(){
+  var host=el('pane-ed'), key=_edScreenKey(), moved=(key!==_edKey);
+  if(host && _edKey!==null && moved) _edScroll[_edKey]=host.scrollTop;
+  _edKey=key;
+  _renderEditorBody();
+  if(host && moved){
+    host.scrollTop=_edScroll[key]||0;
+    // Re-adding a class an element already carries does not restart its animation, and the
+    // reflow is what commits the removal before the re-add.
+    host.classList.remove('screen-in'); void host.offsetWidth; host.classList.add('screen-in');
+    // And it has to come off again. The rule is `.pane-ed.screen-in>*`, so a class left on the
+    // pane would re-run the animation on the *new* child every re-render — every tick, every
+    // calculator keystroke — which is the strobe the screen key exists to prevent. A timer,
+    // not animationend: a backgrounded tab never fires the event and the class would stick.
+    clearTimeout(_edAnimT); _edAnimT=setTimeout(function(){ host.classList.remove('screen-in'); }, 360);
+  }
+}
+function _renderEditorBody(){
   // The pane's open/closed state follows the surface, and the surface changes here as often as
   // it does through selectNode — openExp() renders the editor without touching the tree. The
   // class has to be re-derived with the screen or it goes stale showing a 120px strip on a
@@ -8489,22 +8649,29 @@ function wkMoveTo(D){
   toast('Step moved to '+fmtDate(D));
 }
 // Touch equivalent — HTML5 drag events never fire from a finger.
+// The {passive:false} touchmove is attached only while a chip is actually being dragged, and
+// removed the moment the finger lifts. Left registered on document it would tell the browser,
+// for the life of the session, that every touch scroll anywhere in Labbook might be cancelled
+// by JS — the whole app paying for a gesture that exists on one screen. Same pattern Archive
+// already uses for its sticky notes.
 (function(){
   var src=null;
-  document.addEventListener('touchstart',function(e){
-    var chip=e.target.closest&&e.target.closest('.wk-blk,.wk-task'); if(!chip) return;
-    if(e.target.closest('.wk-cb,.wk-sn,.wk-del,.wk-lnk,[contenteditable]')) return;
-    src=chip;
-    if(chip.classList.contains('wk-task')) WK_DRAG={kind:'task',a:chip.getAttribute('data-id')};
-    else WK_DRAG={kind:'blk',a:chip.getAttribute('data-exp'),b:chip.getAttribute('data-blk')};
-  },{passive:true});
-  document.addEventListener('touchmove',function(e){
+  function onMove(e){
     if(!src||!WK_DRAG) return;
     var t=e.touches[0], n=document.elementFromPoint(t.clientX,t.clientY);
     var col=n&&n.closest?n.closest('.wk-col'):null;
     if(col){ e.preventDefault(); if(!col.classList.contains('wk-over')){ _wkClearOver(); col.classList.add('wk-over'); } }
-  },{passive:false});
+  }
+  document.addEventListener('touchstart',function(e){
+    var chip=e.target.closest&&e.target.closest('.wk-blk,.wk-task'); if(!chip) return;
+    if(e.target.closest('.wk-cb,.wk-sn,.wk-del,.wk-lnk,[contenteditable]')) return;
+    src=chip;
+    document.addEventListener('touchmove',onMove,{passive:false});
+    if(chip.classList.contains('wk-task')) WK_DRAG={kind:'task',a:chip.getAttribute('data-id')};
+    else WK_DRAG={kind:'blk',a:chip.getAttribute('data-exp'),b:chip.getAttribute('data-blk')};
+  },{passive:true});
   document.addEventListener('touchend',function(e){
+    document.removeEventListener('touchmove',onMove,{passive:false});
     if(!src){ return; }
     var over=document.querySelector('.wk-col.wk-over');
     src=null; _wkClearOver();
@@ -11636,7 +11803,7 @@ function restoreFromSnapshot(){
   }).catch(function(){ toast('Could not open local snapshots.'); });
 }
 
-var _toastT=null; function toast(msg){ var t=el('lb-toast'); if(!t){ t=document.createElement('div'); t.id='lb-toast'; t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--text);border:1px solid var(--border2);box-shadow:var(--shadow-md);border-radius:6px;padding:10px 16px;font-size:13px;z-index:400;opacity:0;transition:opacity .2s'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; clearTimeout(_toastT); _toastT=setTimeout(function(){t.style.opacity='0';},2600); }
+var _toastT=null; function toast(msg){ var t=el('lb-toast'); if(!t){ t=document.createElement('div'); t.id='lb-toast'; t.style.cssText='position:fixed;bottom:20px;left:50%;background:var(--surface);color:var(--text);border:1px solid var(--border2);box-shadow:var(--shadow-md);border-radius:6px;padding:10px 16px;font-size:13px;z-index:400;opacity:0;transform:translate(-50%,10px)'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; t.style.transform='translate(-50%,0)'; clearTimeout(_toastT); _toastT=setTimeout(function(){t.style.opacity='0'; t.style.transform='translate(-50%,10px)';},2600); }
 function toggleTheme(){
   var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
   var next=cur==='dark'?'light':'dark';

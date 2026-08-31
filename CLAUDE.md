@@ -2574,9 +2574,160 @@ Two things had to be got right underneath, and both were wrong first:
   holding the text node it was handed, because inserting a trailing space makes Chrome rebuild
   that node.
 
+## "Sloppy" was not slow (2026-08-31)
+
+Jon: *"el uso de la app es un poco sloppy… tiene que funcionar smooth, transiciones,
+desplazamientos."* The first thing to establish was whether that meant **slow** or **abrupt**,
+because the fixes are opposites. It was measured before anything was changed, on a seeded
+notebook of 45 experiments:
+
+| | |
+|---|---|
+| a screen switch | 1–13 ms |
+| a keystroke in a block | 0.25 ms (p95 0.5) |
+| a 384-well plate repaint | 1.9 ms |
+| 20 scroll steps of a 23,762 px experiment | 1.1 ms of layout |
+| `renderEditor` | 1.8 ms |
+
+Nothing here is slow. What the app never did was **arrive**: 127 hover rules in Labbook had no
+transition on the element they changed, every dialog and every context menu appeared and vanished
+between one frame and the next, a screen replaced the one before it with no acknowledgement, and
+coming back to a list put you at the top of it. Adding transitions is therefore the fix, not
+optimisation — and the one genuinely expensive thing in the product turned out to be somewhere
+else entirely (below).
+
+### One timing scale, in every app
+
+`--dur-1: 120ms` (a control) · `--dur-2: 200ms` (a panel) · `--dur-3: 300ms` (a screen) ·
+`--ease` · `--ease-out`. The shell **declared these years ago and shared them with nobody** — four
+rules used them and no app had ever seen them, which is how twenty apps each arrived at their own
+idea of how fast a hover is, or none at all. They are in all twenty now, alongside the type and
+radius scales, and `docs/UI.md` carries the rules. Every app already had the
+`prefers-reduced-motion` block that clamps them to 1 ms, which is what made this safe to add
+without asking.
+
+Two exclusions are the whole design, and both are deliberate:
+
+- **`transform` is never in the shared transition list.** It is what drags, panning and canvas
+  zooms are made of; a transition on it makes them trail behind the pointer. It is named per
+  element, only where the element really moves — a press scale on buttons, the rise on a dialog.
+- **Nothing repeated in bulk gets a transition.** A plate well, a freezer slot and a table cell are
+  restyled hundreds at a time (`plSyncSelClasses` restyles 384 of them per rubber-band drag); a
+  120 ms colour fade on each is both slower and harder to read. `.well.filled` slipped past the
+  first blocklist because it was matched whole — the rule judges the first token now.
+
+### Dialogs arrive and leave, with no JS change
+
+Every dialog in Labbook goes through `_lbDlg()`/`popOpen()` and switches on one `.open` class, so
+`@starting-style` (the from-state) plus `transition-behavior: allow-discrete` (hold `display`
+until the exit has played) reaches all of them at once — the plate editor, the new-experiment
+modal, every picker, the protocol diff, every context menu — and the same for the shell's settings
+modal and both Cmd+K overlays. A browser without either feature lands on exactly the old snap, so
+this is additive rather than a rewrite.
+
+**Every closed overlay is `pointer-events:none`, and that is not tidiness.** A backgrounded tab
+does not advance a transition, so an overlay whose `display` is waiting on one can be left lying
+over the app: full-screen, invisible, and still taking every click. Found by testing in a hidden
+tab, where it happens every time.
+
+The shell's Cmd+K wrote `display` **inline**, which no stylesheet rule can beat; it toggles a
+class now and the display lives in CSS.
+
+### A screen enters, and it remembers where you were
+
+`renderEditor()` runs on every tick, every calculator keystroke, every save and every incoming
+sync — 62 call sites — so it cannot itself tell that a *screen* changed. `_edScreenKey()` is what
+identifies one: which surface, which record, which tab, which day. Two things hang off it and
+neither is possible without it:
+
+- the 300 ms enter animation runs on a real navigation and never on a re-render, so ticking a step
+  does not strobe the page;
+- `#pane-ed`'s scroll position is filed under the screen you are leaving and restored when you come
+  back, so opening an experiment and closing it returns you to the row you clicked instead of the
+  top of the list.
+
+The class has to come **off** again: the rule is `.pane-ed.screen-in > *`, and `renderEditor`
+replaces that child every time, so a class left on the pane would re-run the animation on each new
+child — the exact strobe the key exists to prevent. By timer, not `animationend`: a backgrounded
+tab never fires the event and the class would stick, leaving `.ed-wrap` frozen at the from-state
+with a transform on it.
+
+### The tab bar of an experiment stays put
+
+An experiment is ten to twenty thousand pixels tall. Scrolling to Results and finding no way back
+to Steps without scrolling to the top was the sloppiest thing in the app, and it had already been
+fixed **on a phone** (`.exp-tabs-m` has been sticky for months) and nowhere else. `.exp-tabs` is
+sticky now, with its 10 px gap moved from `margin` to `padding` — a margin above a sticky element
+is not painted with its background, so content scrolled up through the slot. `scroll-margin-top`
+goes with it, or `scrollBlk()` parks the step it scrolled to underneath the bar.
+
+### Scrolling: chaining, and two listeners that cost the whole app
+
+Every inner pane in every app now has `overscroll-behavior`, so running a list to its end no longer
+hands the gesture to the page behind it mid-swipe. **The axis is named** — `-y` on a vertical pane,
+`-x` on a horizontal strip — because a blanket `contain` on a horizontal-only scroller swallows the
+vertical wheel that was meant for the page underneath it.
+
+Three listeners were making the *whole* app scroll on the main thread to serve one screen:
+
+- **Labbook's plate grid** registered `touchstart`/`touchmove` `{passive:false}` on `document`.
+  That tells the browser that every touch scroll anywhere in Labbook may have to wait for JS, for
+  the life of the session, whether or not a plate is open. `#pl-grid` is a static node — its
+  innerHTML is replaced, the element is not — so it binds there.
+- **Labbook's week planner** did the same for chip dragging. Its `touchmove` is added on
+  `touchstart` and removed on `touchend` now, the pattern Archive already used for sticky notes.
+- **Echo's results table** had a document-level `{passive:false}` wheel handler turning a vertical
+  wheel into sideways table scroll — in the flagship, whose primary screen is that table. It was
+  also **not working**: it read and wrote `scrollLeft` on `.tbl-wrap`, which has no overflow of its
+  own (the scroller is `.results-tbl-scroll` around it), so on a table wide enough to trigger it the
+  wheel was swallowed by `preventDefault` and neither the table nor the page moved. It is bound to
+  `#results-panel`, it drives the real scroller, and at either end it lets the page have the gesture
+  back.
+
+### Opening an app was the one thing that really was slow
+
+`_loadApp` is the only genuinely expensive operation in the shell: Echo is 3.4 MB of base64, and
+the per-character byte loop that turns it back into text costs **46 ms** before the iframe has
+parsed anything. Measured end to end on the real bundle: **67 ms of frozen main thread** between
+the click and the start of the fade.
+
+The fix is not a faster click but having already done the work. A pointer resting on a card, or a
+keyboard focus landing on one, is a reliable 100+ ms of warning; `_warmApp` spends it, on
+`requestIdleCallback` so it never competes with anything the user is doing. Same call, warmed:
+**4.5 ms**. The 90 ms delay is what stops a mouse crossing the grid from decoding five apps on its
+way somewhere else, and `ld-card` and the Cells tabs carry a `data-app-id` so there is one thing to
+look for rather than an `onclick` to parse.
+
+`openApp`'s "nothing is touched until we know there is somewhere to go" guard now actually is
+first: it used to sit *below* `_loadApp`, so a stale `#hash` decoded and parsed a megabyte of app
+before discovering there was nowhere to put it.
+
+### What was measured and deliberately not done
+
+- **`content-visibility:auto` on the day blocks.** Tested: layout was already 1.1 ms for twenty
+  scroll steps, so there was nothing to win, and it changed `scrollHeight` by 149 px — which is
+  scrollbar jitter, the opposite of what was asked for.
+- **The Journal day view costs ~38 ms**, and almost none of it is JS (2 ms across
+  `blocksForDate`/`carryoverForDate`/`ongoingHtml`). It is `innerHTML` parsing **330 KB** of markup:
+  carry-over renders every unticked step of every open experiment in full, for 21 days. Cutting that
+  means collapsing carried-over steps, which is a design decision, not an optimisation. The enter
+  animation now covers it, so it reads as a transition rather than a stall.
+
+### Also found while sweeping
+
+Beacon's header ran two heights in one row — `.btn` sizes from its padding (27 px) and `.opts-btn`
+is a 30 px circle. `docs/UI.md` has said 32 px for a toolbar control since it was written. Scoped to
+the header, because `.btn` is also used full-width inside panels where a fixed height would clip a
+label that wraps.
+
+**Verified**: `check_css` / `check_js` / `audit_app --xref` / `check_shared` all clean; the
+alignment audit clean on all 19 apps at 1440 px and 375 px with no horizontal overflow at either;
+all 19 apps load standalone with the tokens resolving; the four build profiles rebuilt.
+
+
 ## Current state
 
-**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-24. (This session: the card verbs, one context menu with three doorways, a Cmd+K that searches contents, the open-items pass, the seeding linkage, and the mobile pass — see above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-31. (This session: the motion and scrolling pass — one timing scale in all twenty surfaces, dialogs that arrive and leave, a screen that enters and remembers your scroll position, a sticky experiment tab bar, three `{passive:false}` listeners that were costing the whole app its compositor, and app opening warmed on hover: 67 ms → 4.5 ms. See *"Sloppy" was not slow* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in
