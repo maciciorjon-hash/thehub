@@ -2222,6 +2222,132 @@ var EXTRA_PRESET_SEED={
        +'<ul class="lb-check"><li>Substrate made fresh, kept dark</li><li>25 &micro;L/well added, no aspiration</li>'
        +'<li>Shaken + equilibrated</li><li>Plate read, data saved</li></ul>'
        +'<p><b>Results</b></p><p></p>'}]},
+  // A CellTiter-Glo viability dose response of TCIP compounds in a suspension line, read at two
+  // timepoints. Four compounds per plate, each owning a pair of rows, so every point of the
+  // series is a duplicate; three plates per readout, seeded and dosed on the same day.
+  // The four compound names are deliberately NOT here. Which compounds went on a plate is the
+  // run's, not the preset's — a preset that named them would go on naming them after the next
+  // set was put on the plate, which is the failure the plate map exists to prevent.
+  'CTG_TCIP96':{name:'Viability_CTG_TCIP_96',baseType:'CTG',
+   title:'Cell viability (CellTiter-Glo) — TCIP dose response (96-well)',
+   // Six plates: three per readout. The readout blocks carry three apiece, and that
+   // half-of-the-seed ratio is what applySetupToBlocks preserves if you change "# plates".
+   // Nothing is hidden: every question CTG asks is one this variant genuinely has an answer to.
+   setup:{format:'96',cellLine:'SUDHL5',cellsPerWell:30000,nPlates:6,topConc:1000,df:3,nPoints:11,timepoints:'24+72'},
+   plateOn:true, layout:'ctgdr96', blocks:[
+    {d:0,title:'Seeding',
+     calc:{kind:'seed',inputs:{cellLine:'SUDHL5',cellsPerWell:30000,volPerWell:90,format:'96',nPlates:6,excess:1.1}},
+     // No `pub` on purpose: seed is in CALC_PUB_FULL, so the calculator writes the Methods
+     // sentence from the inputs — which follow the setup — and the bench text below is dropped
+     // from the paragraph rather than published as an instruction.
+     html:'<p>Seed {{cellLine}} into white {{format}}-well plates — <b>{{nPlates}}</b> in total, one per set of four '
+       +'compounds at each readout. The density, the volume per well and how much suspension to make are in the table '
+       +'above; it follows the setup, so it is the one place they are written.</p>'
+       +'<ul class="lb-check"><li>Cells counted</li><li>Suspension diluted</li><li>Plates seeded</li></ul>'},
+    {d:0,title:'Compound addition — dose series',
+     // No calculator: the numbers that define this step are the setup's (top, fold, points) and
+     // the plate map's (which well holds which). Inventing a calculator here would ask for a
+     // stock concentration and a spike volume Jon has not fixed for this assay.
+     pub:'Compounds were added the same day, serially diluted from {{topConc}} nM in {{df}}-fold steps over {{nPoints}} points, each compound occupying a pair of rows of the {{format}}-well plate with a DMSO vehicle control in the last column.',
+     html:'<p><b>Serial dilution</b> — {{topConc}} nM top, DF={{df}}, {{nPoints}} points across columns 1–11. '
+       +'Column 12 is DMSO. Each compound takes a pair of rows, so every point is a duplicate.</p>'
+       +'<p>The four compounds on the plate map are placeholders — <b>rename them on the map to the ones you are '
+       +'running</b> before you dose, so the record says what was in the well.</p>'
+       +'<p>Add the compounds to every plate following the map, then straight back to 37 °C. Note the time: both '
+       +'readouts are timed from here, not from seeding.</p>'
+       +'<ul class="lb-check"><li>Dilution series prepared</li><li>Compounds named on the plate map</li>'
+       +'<li>Compounds added to all plates</li><li>Time noted, plates back at 37 °C</li></ul>'},
+    // Each readout has to be self-sufficient: SETUP_SCHEMA.CTG.apply drops whichever block you
+    // did not ask for, so a sentence that leaned on its sibling would publish half an assay.
+    // That is also why the reagent volume is repeated here — a `pub` replaces the calculator's
+    // sentence outright, and a Methods paragraph that does not say how much reagent went in
+    // cannot be repeated by anyone reading it.
+    {d:1,title:'CTG readout — 24 h',w:15,
+     calc:{kind:'ctg',inputs:{format:'96',nPlates:3,volPerWell:50,excess:1.1}},
+     pub:'Viability was measured 24 h after compound addition with CellTiter-Glo (Promega): 50 &micro;L of reagent was added per well and luminescence recorded after a 10&ndash;20 min equilibration at room temperature.',
+     html:'<p>Bring the three 24 h plates and the reagent to <b>room temperature</b> first — a cold plate reads low. '
+       +'Add <b>50 µL/well</b> (the volume to make is in the table above), shake, then leave <b>10–20 min</b> at room '
+       +'temperature before reading luminescence.</p>'
+       +'<ul class="lb-check"><li>Plates and reagent equilibrated to RT</li><li>50 µL/well added</li>'
+       +'<li>Shaken, 10–20 min at RT</li><li>Plates read, data saved</li></ul>'},
+    {d:3,title:'CTG readout — 72 h',w:15,
+     calc:{kind:'ctg',inputs:{format:'96',nPlates:3,volPerWell:50,excess:1.1}},
+     pub:'Viability was measured 72 h after compound addition with CellTiter-Glo in the same way. Luminescence was normalised to the DMSO vehicle control and fitted with a four-parameter logistic model to give IC&#8325;&#8320; values for each compound.',
+     html:'<p>The remaining three plates, read exactly as at 24 h: room temperature, <b>50 µL/well</b>, shake, '
+       +'<b>10–20 min</b>, read.</p>'
+       +'<ul class="lb-check"><li>Plates and reagent equilibrated to RT</li><li>50 µL/well added</li>'
+       +'<li>Shaken, 10–20 min at RT</li><li>Plates read, data saved</li></ul>'
+       +'<p><b>Results</b></p><p></p>'}]},
+  // Direct-to-biology as Jon runs it, and the order is the whole point: the chemistry is made on
+  // the assay plate overnight, dosed by Echo the next morning, and the cells go on **after** the
+  // compound. The name carries the ordering because the other order — seed first, dose the next
+  // day, read 20–24 h later — is a different experiment with the same reagents, and it is a
+  // second preset rather than a switch inside this one.
+  // Nothing here says "compound first" anywhere but in the day offsets and the block order, so
+  // the inverted variant is a new EXTRA_PRESET_SEED entry and nothing to undo.
+  'D2B_CHEM1':{name:'Degradation_D2B_1',baseType:'D2B',
+   title:'Direct-to-biology — plate chemistry, then Echo dose response (384-well)',
+   // 16 assay plates per reporter line. The lytic block reads 32, which is both lines in one
+   // prep; applySetupToBlocks keeps that 2× ratio to the seeding block if "# assay plates"
+   // moves, so the two numbers cannot drift apart.
+   // SETUP_SCHEMA.D2B asks for *a* cell line, from a closed list — it has no way to say "these
+   // two HiBiT reporters", and inventing one would be a schema change for one preset. So which
+   // lines these are stays where it belongs, on the record and the plate map, and only the
+   // structure (16 dosed per line, 32 lysed) is in the preset, as numbers, in the calculators.
+   setup:{format:'384',cellLine:'HEK293-HiBiT',cellsPerWell:3000,nPlates:16,dmsoMax:0.25,treatH:20},
+   // echo384 is already this plate — blank edge, two 10-point gradients with the shading standing
+   // in for concentrations that live in the picklist, DMSO in the last two columns — so there is
+   // no new layout to draw. Naming it makes the preset say so itself rather than leaning on
+   // createExperiment's 384-well HB/D2B rule.
+   plateOn:true, layout:'echo384', blocks:[
+    {d:0,title:'Reaction set-up',
+     pub:'Reactions were assembled on the assay plate by cherry-pick and plate reformat and left to react overnight at room temperature.',
+     // No `w`. The wait machinery is for sub-day waits; an overnight is already expressed by the
+     // next block being dated a day later, which is the same rule an Archive stage follows when
+     // its durationH reaches 24 h.
+     html:'<p><b>Cherry Pick</b> + <b>Plate Reformat</b> — assemble the reactions directly on the assay plate.</p>'
+       +'<p>Leave the plate on the bench <b>overnight at room temperature</b>. The chemistry is made on the plate the '
+       +'night before it is dosed, so nothing is transferred between plates and nothing is aspirated.</p>'
+       +'<ul class="lb-check"><li>Cherry Pick run</li><li>Plate Reformat run</li><li>Plate left to react overnight at RT</li></ul>'},
+    {d:1,title:'Compound addition (Echo)',w:180,
+     pub:'Compounds were dispensed acoustically onto the assay plates from an Echo picklist, with DMSO held at or below {{dmsoMax}}%.',
+     html:'<p><b>Echo transfer.</b> The picklist is the record of what was dispensed — attach the run\'s own CSV to this '
+       +'experiment on the <b>Files</b> tab, or build the experiment from it in the first place '
+       +'(<i>New experiment → from picklist</i>), and the destination plate becomes this plate map well by well.</p>'
+       +'<p>Keep DMSO at or below <b>{{dmsoMax}}%</b>. Pre-fill the intermediates and backfill the source wells with neat '
+       +'DMSO before the run.</p>'
+       +'<p>Allow about <b>3 h</b> for the dispense; the cells go on when it finishes.</p>'
+       +'<ul class="lb-check"><li>Picklist ready and checked</li><li>Backfill + intermediates loaded</li>'
+       +'<li>Echo run finished</li><li>Picklist CSV attached to this experiment</li></ul>'},
+    {d:1,title:'Cell seeding onto the dosed plates',w:1200,
+     calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:3000,volPerWell:20,format:'384',nPlates:16,excess:1.5}},
+     // A `pub` here rather than the seed calculator's own sentence, because the calculator does
+     // not know the two things this block exists to record: that the cells went on top of
+     // compound that was already in the well, and how long they then sat there. A pub replaces
+     // the calculator's sentence outright, so the volume is restated here — a Methods paragraph
+     // that does not say it cannot be repeated.
+     pub:'{{cellLine}} cells were seeded directly onto the dosed plates at {{cellsPerWell}} cells per well in 20 &micro;L and incubated for {{treatH}} h at 37 &deg;C, 5% CO&#8322;.',
+     html:'<p>Seed straight onto the dosed plates — do not aspirate, the compound is already in the well.</p>'
+       +'<p>The table above is <b>one reporter line</b>: {{nPlates}} plates at 20 µL/well. Make one suspension per line. '
+       +'The 1.5× overage is not the usual 1.1 — a 16-plate dispense loses real volume to the head and the reservoir.</p>'
+       +'<p>Incubate <b>{{treatH}} h</b> at 37 °C, 5% CO₂.</p>'
+       +'<ul class="lb-check"><li>Cells counted and diluted</li><li>Suspension made per reporter line</li>'
+       +'<li>All plates seeded</li><li>Plates back at 37 °C — note the time</li></ul>'},
+    {d:2,title:'HiBiT Lytic + read',w:10,
+     // 32 plates: 16 for each of the two reporter lines, both lysed in one prep. That is why
+     // this is not the seeding block's 16, and why the ratio is what applySetupToBlocks keeps.
+     calc:{kind:'lytic',inputs:{format:'384',nPlates:32,cellVolPerWell:20,ratio:2,lgbitDil:100,subDil:50,excess:1.2}},
+     // The reagent volume is stated as the ratio it is set by rather than as 10 µL, so the
+     // sentence follows the calculator instead of going stale beside it.
+     pub:'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): lytic reagent containing LgBiT at 1:100 and substrate at 1:50 was added at half the culture volume, the plates shaken at 300 rpm for 1 min and luminescence read on a BMG PHERAstar at 0.1 s per well after 10 min at room temperature. Luminescence was normalised to the vehicle control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>.',
+     html:'<p>Make up the reagent in the volume above — it covers <b>both reporter lines in one prep</b>. '
+       +'<b>Mix gently, do not vortex</b>: LgBiT is a protein and vortexing it costs signal you cannot get back.</p>'
+       +'<p>Add <b>10 µL per well</b> (1:2 reagent to the 20 µL of culture), shake at <b>300 rpm for 1 min</b>, then '
+       +'<b>10 min at room temperature</b> with gentle shaking.</p>'
+       +'<p><b>Read</b>: PHERAstar, integration time <b>0.1 s per well</b>.</p>'
+       +'<ul class="lb-check"><li>Reagent prepared — mixed gently, not vortexed</li><li>10 µL/well added</li>'
+       +'<li>Shaken 300 rpm × 1 min</li><li>10 min at RT, gentle shaking</li><li>Plates read, data saved</li></ul>'
+       +'<p><b>Results</b></p><p></p>'}]},
   'CLONE_HIFI':{name:'Cloning — Restriction + HiFi (PX458)',baseType:'CLONE',title:'Cloning — Restriction + HiFi (PX458)',
    setup:{method:'NEBuilder HiFi'}, blocks:[
     {d:0,title:'Vector linearization + HiFi assembly + transformation',pub:'PX458 was linearized with BbsI for 30 min at 37 &deg;C, gel-purified and quantified. 0.005 pmol of vector and a 200-fold molar excess of ssOligo were assembled with NEBuilder HiFi 2&times; master mix in 20 &micro;L for 60 min at 50 &deg;C, and 2 &micro;L transformed into NEB Stable competent cells before plating on LB agar with ampicillin.',html:'<p><b>Linearize</b>: digest 1 &micro;g PX458 with BbsI (NEB), 37 &deg;C 30 min. Confirm on 1% gel (~9.3 kb). Excise, NucleoSpin, NanoDrop.</p><p><b>HiFi assembly</b> (20 &micro;L, NEB E2621), on ice in order: 6.22 &micro;L H&#8322;O, 2.78 &micro;L linearized vector (~11 ng/&micro;L, 0.005 pmol), 1 &micro;L ssOligo (1 &micro;M, 200:1 insert:vector), 10 &micro;L NEBuilder HiFi 2&times; (last). 50 &deg;C 60 min.</p><p><b>Transform</b> (NEB Stable): 2 &micro;L product + 25 &micro;L cells; ice 2 min; 42 &deg;C 30 s; ice 2 min; +450 &micro;L SOC; 37 &deg;C 1 h. Plate LB+amp, overnight.</p>'},
@@ -2521,7 +2647,7 @@ var CALC_KINDS={
     {k:'nPlates',t:'num',lbl:'# plates'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{cellLine:'HEK293',cellsPerWell:3000,volPerWell:30,format:'384',nPlates:1,excess:1.5},
     compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*(+v.excess||1); var cells=dens*(totUL/1000);
-      return '<b>Prepare</b> '+nfmt(dens)+' M/mL &mdash; '+mlfmt(totUL)+' total ('+nfmt(cells)+' M cells). <b>Seed</b> '+nfmt(v.volPerWell)+' µL/well → '+nfmt(v.cellsPerWell)+' cells/well &middot; '+nfmt(v.nPlates)+'× '+esc(String(v.format))+'-well ('+wells+' wells).'
+      return '<b>Prepare</b> '+nfmt(dens)+' M/mL &mdash; '+mlfmt(totUL)+' total'+_ovxL(v.excess)+' ('+nfmt(cells)+' M cells). <b>Seed</b> '+nfmt(v.volPerWell)+' µL/well → '+nfmt(v.cellsPerWell)+' cells/well &middot; '+nfmt(v.nPlates)+'× '+esc(String(v.format))+'-well ('+wells+' wells).'
         +seedPlausibility(v, _SEED_FIX_CALL); } },
   // ── NanoBRET reverse transfection, per DNA condition ────────────────────────────────────
   // A NanoBRET run is not one master mix: the pair, each single construct and the mock each get
@@ -2622,13 +2748,13 @@ var CALC_KINDS={
     {k:'lgbitDil',t:'num',lbl:'LgBiT 1:X'},{k:'subDil',t:'num',lbl:'Substrate 1:X'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{format:'384',nPlates:1,cellVolPerWell:30,ratio:2,lgbitDil:100,subDil:50,excess:1.1},
     compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var rvol=(+v.cellVolPerWell)/(+v.ratio||2); var tot=rvol*wells*(+v.excess||1); var lg=tot/(+v.lgbitDil||100), su=tot/(+v.subDil||50);
-      return '<b>HiBiT Lytic reagent</b> &mdash; Buffer '+nfmt(tot)+' µL + LgBiT (1:'+nfmt(v.lgbitDil)+') '+nfmt(lg)+' µL + Substrate (1:'+nfmt(v.subDil)+') '+nfmt(su)+' µL. Mix gently, do not vortex.<br><b>Add</b> '+nfmt(rvol)+' µL/well (1:'+nfmt(v.ratio)+' reagent:cell) &middot; shake 300 rpm ×1 min &middot; RT 10 min &middot; read.'; } },
+      return '<b>HiBiT Lytic reagent</b> &mdash; Buffer '+nfmt(tot)+' µL'+_ovxL(v.excess)+' + LgBiT (1:'+nfmt(v.lgbitDil)+') '+nfmt(lg)+' µL + Substrate (1:'+nfmt(v.subDil)+') '+nfmt(su)+' µL. Mix gently, do not vortex.<br><b>Add</b> '+nfmt(rvol)+' µL/well (1:'+nfmt(v.ratio)+' reagent:cell) &middot; shake 300 rpm ×1 min &middot; RT 10 min &middot; read.'; } },
   ctg:{ label:'CellTiter-Glo reagent', fields:[
     {k:'format',t:'format',lbl:'Plate'},{k:'nPlates',t:'num',lbl:'# plates'},
     {k:'volPerWell',t:'num',lbl:'CTG µL/well'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{format:'96',nPlates:2,volPerWell:50,excess:1.1},
     compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var tot=(+v.volPerWell)*wells*(+v.excess||1);
-      return '<b>CellTiter-Glo</b> &mdash; add '+nfmt(v.volPerWell)+' µL/well &middot; '+mlfmt(tot)+' reagent needed &middot; equilibrate 10–20 min &middot; read luminescence.'; } },
+      return '<b>CellTiter-Glo</b> &mdash; add '+nfmt(v.volPerWell)+' µL/well &middot; '+mlfmt(tot)+' reagent needed'+_ovxL(v.excess)+' &middot; equilibrate 10–20 min &middot; read luminescence.'; } },
   reagent:{ label:'Reagent dilution', fields:[
     {k:'name',t:'txt',lbl:'Reagent'},{k:'diluent',t:'txt',lbl:'Diluent'},
     {k:'totalVol',t:'num',lbl:'Total (µL)'},{k:'dilution',t:'num',lbl:'Dilution 1:X'}],
@@ -3624,6 +3750,36 @@ var PLATE_LAYOUTS=[
      var dg='gdmso'; p.groups[dg]={label:'DMSO'}; delete p.groups['g6_1'];
      for(var rr2=13;rr2<=14;rr2++) for(var cc2=12;cc2<=22;cc2++)
        p.wells[wellIdOf(rr2,cc2)]={typeId:'dmso',groupId:dg};
+     return p; }},
+  // Jon's viability plate, drawn as he runs it: four compounds, each owning a pair of rows, the
+  // dose running left to right across columns 1-11 and the vehicle control in column 12. Same
+  // idiom as nb96bio - the concentrations go on the wells and not only in the column headers,
+  // so plateSummary reads it straight back as "A1-B11 - Compound 1 - 1 uM -> 16.9 pM (11 pts,
+  // 3-fold) x2 replicates" with nothing typed. The four names are deliberately generic: which
+  // compounds went on this plate is the run's, not the layout's, and is typed on the map.
+  {id:'ctgdr96', label:'Viability 96 — 4 compounds × 11 pts + DMSO', format:'96',
+   sub:'A+B, C+D, E+F, G+H one compound each; 11 points across columns 1–11, DMSO in column 12',
+   build:function(){
+     var p=newPlate('96');
+     p.title='Viability dose response — 96-well';
+     p.note='Four compounds, one per pair of rows: A+B, C+D, E+F, G+H. Columns 1–11 are the 11-point series, '
+       +'1000 nM in column 1 and 3-fold down to column 11; column 12 is the DMSO vehicle control. '
+       +'Rename the four compounds on the wells — the names are this run\'s, not the layout\'s.';
+     p.types=[{id:'dose', name:'Dose series', color:'#cfe2f3'},
+              {id:'dmso', name:'DMSO',        color:'#f4b98f'}];
+     var top=1000, fold=3, nPts=11;
+     p.colTitle='nM'; p.colLabels={};
+     for(var i=0;i<nPts;i++) p.colLabels[i]=_fmtConc(top/Math.pow(fold,i));
+     p.colLabels[11]='DMSO';
+     // No group label: it would be drawn across the wells it explains, and the compound is
+     // already on every well where the summary, the tooltip and Cmd+K can all read it.
+     ['Compound 1','Compound 2','Compound 3','Compound 4'].forEach(function(cmp,ci){
+       for(var r=ci*2;r<=ci*2+1;r++){
+         for(var c=0;c<nPts;c++)
+           p.wells[wellIdOf(r,c)]={typeId:'dose',compound:cmp,conc:_fmtConc(top/Math.pow(fold,c))};
+         p.wells[wellIdOf(r,11)]={typeId:'dmso',compound:cmp,label:'DMSO'};
+       }
+     });
      return p; }}
 ];
 function plLayoutMenu(){
@@ -5319,7 +5475,7 @@ function seedPresets(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV7;
+  var upgrade=!LB.data._presetV8;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && cur._seedSig!==_presetSig(cur);
@@ -5333,7 +5489,7 @@ function seedPresets(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV7=true;
+  if(upgrade) LB.data._presetV8=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
