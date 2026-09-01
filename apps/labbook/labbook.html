@@ -731,6 +731,9 @@ body.lb-rb-closed .rb-pane{display:none;}
   border-color var(--dur-1) var(--ease);}
 .rc-btn:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
 .rc-btn.danger:hover{background:var(--bad,#b06a6a);border-color:var(--bad,#b06a6a);}
+.rc-link{background:none;border:none;padding:0;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;}
+.lb-remote-b{background:var(--accent);border:none;color:#fff;border-radius:var(--r-1);padding:2px 9px;
+  margin-left:8px;font-family:var(--sans);font-size:var(--fs-2);font-weight:700;cursor:pointer;}
 @media (max-width:560px){
   .rc-row{flex-wrap:wrap;row-gap:8px;}
   .rc-l{flex:1 1 100%;order:2;min-width:0;}
@@ -5565,6 +5568,172 @@ function _flushLocal(){ if(!_lsDirty) return; _lsDirty=false; clearTimeout(_lsT)
   // Silently dropping this means the notebook stops persisting and nobody finds out until a
   // reload wipes the day's work. Always surface it.
   catch(e){ _storageFailed(e); } }
+// ══════════════════════════════════════════════════════════════════════════
+// VERSION HISTORY
+//
+// The third thing OneNote has that this did not. The trash answers "I deleted it"; this answers
+// "I overwrote it three days ago and only noticed now", which no confirm dialog and no undo
+// stack can reach — UNDO is sixty steps of memory and dies on reload.
+//
+// It is LOCAL, in its own IndexedDB, and it travels inside the backup file. Keeping it in the
+// RTDB tree would mean every version of every experiment re-downloading on every device, to
+// serve a question you ask twice a year.
+//
+// Each stored version is the content as it was BEFORE a change, not after. That is the state
+// you actually want back, and it means the newest version is never just a copy of what is on
+// screen.
+var VER_DB='lb_ver', VER_STORE='v', VER_IDX='__idx__';
+var VER_KEEP=20, VER_DAYS=60, VER_CAP=60*1024*1024, VER_EVERY=10*60000, VER_SCAN=150000;
+var _verDBPromise=null;
+function _verDBOpen(){
+  if(_verDBPromise) return _verDBPromise;
+  _verDBPromise=new Promise(function(res,rej){
+    var r=indexedDB.open(VER_DB,1);
+    r.onupgradeneeded=function(){ if(!r.result.objectStoreNames.contains(VER_STORE)) r.result.createObjectStore(VER_STORE); };
+    r.onsuccess=function(){ var db=r.result; db.onclose=function(){ _verDBPromise=null; }; res(db); };
+    r.onerror=function(){ _verDBPromise=null; rej(r.error); };
+  });
+  return _verDBPromise;
+}
+function _verOp(mode,fn){ return _verDBOpen().then(function(db){ return new Promise(function(res){
+  try{ var rq=fn(db.transaction(VER_STORE,mode).objectStore(VER_STORE));
+       if(!rq){ res(true); return; }
+       rq.onsuccess=function(){ res(rq.result===undefined?true:rq.result); }; rq.onerror=function(){ res(null); };
+  }catch(e){ res(null); } }); }).catch(function(){ return null; }); }
+function _verIdx(){ return _verOp('readonly',function(os){ return os.get(VER_IDX); })
+  .then(function(m){ return (m&&typeof m==='object')?m:{}; }); }
+function _verIdxSave(m){ return _verOp('readwrite',function(os){ return os.put(m,VER_IDX); }); }
+
+// What is worth versioning: the three record maps. Not the trash (it is already a copy of
+// something), and not the roots — a version of "presets" answers no question anyone asks.
+function _verFingerprint(){
+  var m={};
+  ['experiments','pages','notebook'].forEach(function(coll){
+    var o=LB.data[coll]||{};
+    Object.keys(o).forEach(function(id){ try{ m[coll+'/'+id]=JSON.stringify(o[id]); }catch(e){} });
+  });
+  return m;
+}
+var _verSeen=null, _verWhen={}, _verLastScan=0, _verBusy=false;
+// Called from save()'s existing 1.2 s timeout. It fingerprints the record maps, which is the
+// same work _cloudPush already does — so it is throttled to once every 2.5 minutes rather than
+// once per save, and it only ever writes a version every VER_EVERY per record anyway.
+function _verMaybe(force){
+  if(_localReadFailed||_adopting||_verBusy) return;
+  var now=Date.now();
+  if(!force && (now-_verLastScan)<VER_SCAN) return;
+  _verLastScan=now;
+  var fp=_verFingerprint();
+  // First pass after load is the baseline: it records what we started with, so the first change
+  // after opening the app produces a version of the state you opened.
+  if(!_verSeen){ _verSeen=fp; return; }
+  var writes=[];
+  Object.keys(fp).forEach(function(path){
+    var was=_verSeen[path];
+    if(was===undefined || was===fp[path]) return;                 // new record, or unchanged
+    if((now-(_verWhen[path]||0)) < VER_EVERY){ _verSeen[path]=fp[path]; return; }
+    _verWhen[path]=now; _verSeen[path]=fp[path];
+    writes.push({path:path, json:was, at:now});
+  });
+  // A record that disappeared has gone to the trash, which holds the whole thing. Versioning it
+  // again here would keep a second copy of the same bytes.
+  Object.keys(_verSeen).forEach(function(path){ if(fp[path]===undefined) delete _verSeen[path]; });
+  if(writes.length) _verWrite(writes);
+}
+function _verWrite(writes){
+  _verBusy=true;
+  return _verIdx().then(function(idx){
+    return Promise.all(writes.map(function(w){
+      var key=w.path+'@'+w.at;
+      idx[key]={p:w.path,t:w.at,n:w.json.length};
+      return _verOp('readwrite',function(os){ return os.put({p:w.path,t:w.at,json:w.json},key); });
+    })).then(function(){ return _verPrune(idx); });
+  }).then(function(){ _verBusy=false; }).catch(function(){ _verBusy=false; });
+}
+// Keep the last VER_KEEP per record whatever their age — a record edited once a year still
+// deserves its history — then one per day back to VER_DAYS, then evict oldest first if the
+// whole store is over the cap.
+function _verPrune(idx){
+  var byPath={};
+  Object.keys(idx).forEach(function(k){ var e=idx[k]; (byPath[e.p]||(byPath[e.p]=[])).push(k); });
+  var keep={}, cut=Date.now()-VER_DAYS*864e5;
+  Object.keys(byPath).forEach(function(p){
+    var ks=byPath[p].sort(function(a,b){ return idx[a].t-idx[b].t; });
+    ks.slice(-VER_KEEP).forEach(function(k){ keep[k]=1; });
+    var day={};
+    ks.forEach(function(k){ if(idx[k].t>=cut) day[new Date(idx[k].t).toISOString().slice(0,10)]=k; });
+    Object.keys(day).forEach(function(d){ keep[day[d]]=1; });
+  });
+  var doomed=Object.keys(idx).filter(function(k){ return !keep[k]; });
+  var live=Object.keys(idx).filter(function(k){ return keep[k]; })
+    .sort(function(a,b){ return idx[a].t-idx[b].t; });
+  var total=live.reduce(function(a,k){ return a+(idx[k].n||0); },0);
+  while(total>VER_CAP && live.length){ var k=live.shift(); total-=(idx[k].n||0); doomed.push(k); }
+  doomed.forEach(function(k){ delete idx[k]; });
+  return Promise.all(doomed.map(function(k){ return _verOp('readwrite',function(os){ return os.delete(k); }); }))
+    .then(function(){ return _verIdxSave(idx); });
+}
+// A version that arrived from another device rather than from this one's own history. Written
+// by _applyRemote when it would otherwise have thrown the incoming record away.
+function _verPutRemote(path,json){
+  var at=Date.now(), key=path+'@'+at;
+  return _verIdx().then(function(idx){
+    idx[key]={p:path,t:at,n:(json||'').length,r:1};
+    return _verOp('readwrite',function(os){ return os.put({p:path,t:at,json:json,r:1},key); })
+      .then(function(){ return _verIdxSave(idx); });
+  }).catch(function(){});
+}
+function _verList(path){
+  return _verIdx().then(function(idx){
+    return Object.keys(idx).filter(function(k){ return !path || idx[k].p===path; })
+      .map(function(k){ return {key:k,path:idx[k].p,at:idx[k].t,n:idx[k].n,remote:!!idx[k].r}; })
+      .sort(function(a,b){ return b.at-a.at; });
+  }).catch(function(){ return []; });
+}
+// What a version is OF, said the way the person reading it thinks about it.
+function _verLabel(path){
+  var i=path.indexOf('/'), coll=path.slice(0,i), id=path.slice(i+1);
+  if(coll==='experiments'){ var e=LB.data.experiments[id]; return e?((e.code?e.code+' · ':'')+(e.title||'Untitled')):'A deleted entry'; }
+  if(coll==='pages'){ var p=LB.data.pages[id]; return p?(p.title||'Untitled page'):'A deleted page'; }
+  if(coll==='notebook') return fmtDate(id)+' — daily note';
+  return path;
+}
+function _verRestore(key,asCopy){
+  return _verOp('readonly',function(os){ return os.get(key); }).then(function(rec){
+    if(!rec||!rec.json){ toast('That version could not be read.'); return; }
+    var path=rec.p, i=path.indexOf('/'), coll=path.slice(0,i), id=path.slice(i+1), val;
+    try{ val=JSON.parse(rec.json); }catch(e){ toast('That version could not be read.'); return; }
+    var what=_verLabel(path), when=fmtDate(new Date(rec.t).toISOString().slice(0,10))+' '+_clock(rec.t);
+    var q=asCopy
+      ? 'Add the version from '+when+' as a separate copy? Nothing you have now is touched.'
+      : 'Replace "'+what+'" with the version from '+when+'? What is there now is kept as a version, so this can be taken back.';
+    return lbConfirm(q,{title:asCopy?'Save as a copy':'Restore this version',ok:asCopy?'Add a copy':'Restore'}).then(function(ok){
+      if(!ok) return;
+      if(asCopy){
+        if(coll==='notebook'){ toast('A daily note cannot be copied — restore it instead.'); return; }
+        var nid=uid(); val.id=nid;
+        if(coll==='experiments'){ val.code=(val.code||'')+'-copy'; val.title=(val.title||'Untitled')+' (from '+when+')'; }
+        else val.title=(val.title||'Untitled')+' (from '+when+')';
+        LB.data[coll][nid]=val;
+      } else {
+        // The current content becomes a version first, so restoring is itself reversible.
+        var cur=LB.data[coll]&&LB.data[coll][id];
+        if(cur!==undefined){ try{ _verWrite([{path:path,json:JSON.stringify(cur),at:Date.now()}]); }catch(e){} }
+        undoMark('Restore version',[coll+'.'+id]);
+        LB.data[coll]=LB.data[coll]||{}; LB.data[coll][id]=val;
+        _verSeen=null;   // the baseline is stale now; re-take it rather than versioning our own restore
+      }
+      save(); renderAll();
+      if(_recoverOpen()) _recoverRender();
+      toast(asCopy?'Added as a copy':'Restored the version from '+when);
+    });
+  });
+}
+function _verDelete(key){
+  return _verIdx().then(function(idx){ delete idx[key];
+    return _verOp('readwrite',function(os){ return os.delete(key); }).then(function(){ return _verIdxSave(idx); }); })
+    .then(function(){ if(_recoverOpen()) _recoverRender(); });
+}
 // ── Cloud sync: per record, not the whole notebook ──────────────────────────────────────────
 // save() used to r.set(LB.data) — the entire tree, every 1.2 s. Two people, or two tabs, meant
 // last-writer-wins over everything: you did not lose the paragraph you were both editing, you
@@ -5652,8 +5821,12 @@ function _applyRemote(coll,id,val){
   var mine=LB.data[coll] && LB.data[coll][id]!==undefined ? JSON.stringify(LB.data[coll][id]) : undefined;
   var dirty=_cloudSeen ? (_cloudSeen[path]!==mine) : (mine!==undefined);
   if(dirty && incoming!==undefined){
-    _remoteNote='This record was changed elsewhere too. Your version is kept here; export a backup before merging.';
-    _cloudBanner();
+    // Keep BOTH. Theirs goes into the version history tagged as remote, which makes a conflict
+    // "a version that arrived from the other machine" — restorable, comparable, and saveable as
+    // a separate copy. That is OneNote's conflict page, built out of machinery we already have.
+    _verPutRemote(path,incoming);
+    _remoteNote='“'+esc(_verLabel(path))+'” was changed on another device too. Your version is the one here; theirs is kept in Recover → Versions.';
+    _cloudBanner(true);
     return;
   }
   if(val==null){ if(LB.data[coll]) delete LB.data[coll][id]; }
@@ -5667,12 +5840,16 @@ function _applyRemote(coll,id,val){
     renderAll();
   }
 }
-function _cloudBanner(){
+var _cbSticky=false;
+function _cloudBanner(sticky){
+  _cbSticky=!!sticky;
   var b=el('lb-remote');
   if(!b){ b=document.createElement('div'); b.id='lb-remote'; b.className='lb-remote';
     b.onclick=function(){ b.remove(); }; document.body.appendChild(b); }
-  b.textContent=_remoteNote||'';
-  clearTimeout(b._t); b._t=setTimeout(function(){ if(b.parentNode) b.remove(); }, 9000);
+  b.innerHTML=(_remoteNote||'')+(_cbSticky?' <button class="lb-remote-b" onclick="event.stopPropagation();openRecover(\'versions\')">Compare…</button>':'');
+  clearTimeout(b._t);
+  // A conflict stays until it is looked at. Everything else is a notice and can time out.
+  if(!_cbSticky) b._t=setTimeout(function(){ if(b.parentNode) b.remove(); }, 9000);
 }
 // Firebase CANCELS a listener when a read is refused, and says so only through the error
 // callback. Without one the cancellation is silent and this tab stops hearing about other
@@ -5704,10 +5881,10 @@ function save(){
   _lsDirty=true; clearTimeout(_lsT); _lsT=setTimeout(_flushLocal,150);
   setSync(false); clearTimeout(_syncT);
   // No cloud configured is not a cloud failure; hasCloud() renders that case.
-  _syncT=setTimeout(function(){ _flushLocal(); _cloudPush(); }, 1200);
+  _syncT=setTimeout(function(){ _flushLocal(); _cloudPush(); _verMaybe(); }, 1200);
 }
 // Never lose a pending local write if the tab is hidden/closed before the 150ms flush.
-window.addEventListener('pagehide',_flushLocal);
+window.addEventListener('pagehide',function(){ _flushLocal(); _verMaybe(true); });
 document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') _flushLocal(); });
 // A failed first read used to end sync for the whole session: no adoption, no _cloudSeen,
 // and _cloudListen never reached — so this device kept saving locally and saying so quietly
@@ -10710,6 +10887,7 @@ function ctxExp(ev,id){ var e=LB.data.experiments[id]; if(!e) return; var pr=exp
   {label:'Duplicate',fn:function(){dupExperiment(id);}},
   (isCoded(e)?{label:'Export PDF',fn:function(){openExp(id);setTimeout(exportPDF,120);}}:{sep:true}),
   (isCoded(e)?{label:'Copy entry',fn:function(){openExp(id);setTimeout(copyRendered,140);}}:{sep:true}),
+  {label:'History\u2026',fn:function(){openHistory('experiments',id);}},
   {sep:true},{label:'Delete',danger:true,fn:function(){delExperiment(id);}}
 ]); }
 // Everything the step's header row offers, and on a phone this is the only place it is
@@ -10737,6 +10915,7 @@ function ctxDay(ev,D){ ctxAt(ev,[{label:'Open',fn:function(){selectPage(D);}},{s
 function ctxPage(ev,id){ var pg=LB.data.pages[id]; if(!pg) return; ctxAt(ev,[
   {label:'Open',fn:function(){selectPage(id);}},
   {label:'Rename',fn:function(){renamePage(id);}},
+  {label:'History\u2026',fn:function(){openHistory('pages',id);}},
   {sep:true},{label:'Delete',danger:true,fn:function(){delPage(id);}}
 ]); }
 function delPage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbConfirm('Delete "'+(pg.title||'this page')+'"? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete page',ok:'Delete'}).then(function(ok){ if(!ok) return; undoMark('Delete page',['pages.'+id]); lbTrash('page',pg.title||'Untitled page',{page:pg}); delete LB.data.pages[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
@@ -12075,12 +12254,44 @@ function _buildBackupPayload(){
     .then(function(pairs){
       var blobs={}, bytes=0;
       pairs.forEach(function(p){ if(p){ blobs[p[0]]=p[1]; bytes+=p[1].length; } });
-      return {payload:{_lbBackup:2, savedAt:Date.now(), data:LB.data, blobs:blobs}, count:Object.keys(blobs).length, bytes:bytes};
+      // The version history is local, so a backup is the only way it survives this machine.
+      // The last five per record, not all of them: the full history would multiply the file.
+      return _verForBackup().then(function(versions){
+        return {payload:{_lbBackup:3, savedAt:Date.now(), data:LB.data, blobs:blobs, versions:versions},
+                count:Object.keys(blobs).length, bytes:bytes, versions:Object.keys(versions).length};
+      });
     });
+}
+var VER_IN_BACKUP=5;
+function _verForBackup(){
+  return _verIdx().then(function(idx){
+    var byPath={};
+    Object.keys(idx).forEach(function(k){ (byPath[idx[k].p]||(byPath[idx[k].p]=[])).push(k); });
+    var want=[];
+    Object.keys(byPath).forEach(function(pth){
+      byPath[pth].sort(function(a,b){ return idx[a].t-idx[b].t; }).slice(-VER_IN_BACKUP).forEach(function(k){ want.push(k); });
+    });
+    return Promise.all(want.map(function(k){ return _verOp('readonly',function(os){ return os.get(k); })
+      .then(function(rec){ return rec?[k,rec]:null; }); }))
+      .then(function(rows){ var out={}; rows.forEach(function(r){ if(r) out[r[0]]=r[1]; }); return out; });
+  }).catch(function(){ return {}; });
+}
+// Written back beside the blobs on restore, and merged rather than replacing — a history you
+// already have on this machine is not something a restore should throw away.
+function _verRestoreBackup(versions){
+  var keys=Object.keys(versions||{});
+  if(!keys.length) return Promise.resolve(0);
+  return _verIdx().then(function(idx){
+    return Promise.all(keys.map(function(k){
+      var rec=versions[k]; if(!rec||!rec.json) return null;
+      idx[k]={p:rec.p,t:rec.t,n:(rec.json||'').length}; if(rec.r) idx[k].r=1;
+      return _verOp('readwrite',function(os){ return os.put(rec,k); });
+    })).then(function(){ return _verIdxSave(idx); }).then(function(){ return keys.length; });
+  }).catch(function(){ return 0; });
 }
 function doBackup(manual){ var name='labbook-'+todayStr()+'.json'; var pb=_parentBackup();
   return _buildBackupPayload().then(function(r){ return _doBackupWrite(name,JSON.stringify(r.payload),manual,r,pb); })
-    .catch(function(){ return _doBackupWrite(name,JSON.stringify({_lbBackup:2,savedAt:Date.now(),data:LB.data,blobs:{}},null,2),manual,null,pb); });
+    .catch(function(){ return _doBackupWrite(name,JSON.stringify({_lbBackup:3,savedAt:Date.now(),data:LB.data,blobs:{},versions:{}},null,2),manual,null,pb); });
 }
 function _doBackupWrite(name,text,manual,info,pb){
   var note=info?(' ('+info.count+' attachment'+(info.count!==1?'s':'')+', '+_fmtBytes(text.length)+')'):'';
@@ -12117,14 +12328,17 @@ function restoreFromBackupFile(file){
              : (parsed && parsed.journal && parsed.journal.labbook) ? parsed.journal.labbook : parsed;
     if(!data || typeof data!=='object' || !('experiments' in data)){ toast('That file doesn\'t look like a Labbook backup.'); return; }
     var nBlob=blobs?Object.keys(blobs).length:0;
-    var warn=blobs
+    var nVer=(parsed&&parsed.versions)?Object.keys(parsed.versions).length:0;
+    var warn=(blobs
       ? ('It contains '+nBlob+' attachment'+(nBlob!==1?'s':'')+', which will be restored too.')
-      : 'This is an older backup with no attachment data — images and files will come back as empty placeholders.';
+      : 'This is an older backup with no attachment data — images and files will come back as empty placeholders.')
+      +(nVer?(' It also carries '+nVer+' saved version'+(nVer!==1?'s':'')+', which are added to this machine\u2019s history.'):'');
     lbConfirm('Restore this backup? This REPLACES your entire current notebook — anything added since this backup was made will be lost unless it\'s in another backup.\n\n'+warn,{danger:true,title:'Restore from backup',ok:'Replace everything'}).then(function(ok){
       if(!ok) return;
       // Write the attachment bytes back into IndexedDB before swapping the tree, so the
       // reload finds them already in place.
       var ids=blobs?Object.keys(blobs):[];
+      _verRestoreBackup(parsed&&parsed.versions);
       Promise.all(ids.map(function(id){ return _attPut(id,blobs[id]); })).then(function(results){
         var failed=results.filter(function(x){ return x===false; }).length;
         LB.data=data; save();
@@ -12459,6 +12673,7 @@ function restoreFromSnapshot(){
 var RECOVER={tab:'trash'};
 function openRecover(tab){
   RECOVER.tab=tab||RECOVER.tab||'trash';
+  if(RECOVER.tab!=='versions') RECOVER.path=null;
   var d=_lbDlg(); el('lb-dialog-card').className='modal wide';
   d._onCancel=_lbDlgClose;
   _recoverRender(); d.classList.add('open');
@@ -12467,15 +12682,43 @@ function recoverTab(t){ RECOVER.tab=t; _recoverRender(); }
 function _recoverOpen(){ var d=el('lb-dialog'); return !!(d&&d.classList.contains('open')&&el('rc-body')); }
 function _recoverRender(){
   var card=el('lb-dialog-card'); if(!card) return;
-  var tabs=[['trash','Deleted items',trashCount()],['snapshots','Snapshots',0],['file','Backup file',0]];
+  var tabs=[['trash','Deleted items',trashCount()],['versions','Versions',0],['snapshots','Snapshots',0],['file','Backup file',0]];
   card.innerHTML='<div class="modal-t">Recover</div>'
     +'<div class="rc-tabs">'+tabs.map(function(t){
         return '<button class="rc-tab'+(RECOVER.tab===t[0]?' on':'')+'" onclick="recoverTab(\''+t[0]+'\')">'+esc(t[1])
           +(t[2]?('<span class="rc-tab-n">'+t[2]+'</span>'):'')+'</button>'; }).join('')+'</div>'
     +'<div class="rc-body" id="rc-body">'+_recoverBody()+'</div>'
     +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" onclick="_lbDlgClose()">Close</button></div>';
+  if(RECOVER.tab==='versions') _recoverFillVersions();
 }
+// The versions list lives in IndexedDB, so it arrives after the card is on screen. RECOVER.path
+// filters it to one record — that is what "History…" on a menu opens.
+function _recoverFillVersions(){
+  var want=RECOVER.path||null;
+  _verList(want).then(function(vs){
+    var host=el('rc-body'); if(!host||RECOVER.tab!=='versions') return;
+    var head='<div class="rc-note">Every ten minutes of editing, Labbook keeps what a record looked like <b>before</b> the change. History is kept on this machine and travels inside a backup file — it is not synced.'
+      +(want?(' Showing “'+esc(_verLabel(want))+'” only. <button class="rc-link" onclick="recoverAllVersions()">Show every record</button>'):'')+'</div>';
+    if(!vs.length){ host.innerHTML=head+'<div class="rc-note">No versions yet'+(want?' for this record':'')+'. One is written the first time you change something after opening the app.</div>'; return; }
+    host.innerHTML=head+vs.slice(0,120).map(function(v){
+      var coll=v.path.slice(0,v.path.indexOf('/'));
+      var when=fmtDate(new Date(v.at).toISOString().slice(0,10))+' '+_clock(v.at);
+      return '<div class="rc-row">'
+        +'<span class="ic" style="background:'+(v.remote?'#c99a4e':'#5e87c5')+'">'+(v.remote?'R':'V')+'</span>'
+        +'<span class="rc-l"><b>'+esc(_verLabel(v.path))+'</b><i>'+esc(when)+' · '+_fmtBytes(v.n||0)
+          +(v.remote?' · from another device':'')+'</i></span>'
+        +'<button class="rc-btn" onclick="_verRestore(\''+v.key+'\')">Restore</button>'
+        +(coll==='notebook'?'':'<button class="rc-btn" onclick="_verRestore(\''+v.key+'\',true)" title="Add it alongside what you have, changing nothing">Copy</button>')
+        +'<button class="rc-btn danger" onclick="_verDelete(\''+v.key+'\')">Delete</button>'
+        +'</div>';
+    }).join('')+(vs.length>120?('<div class="rc-note">'+(vs.length-120)+' older versions not listed.</div>'):'');
+  });
+}
+function recoverAllVersions(){ RECOVER.path=null; _recoverRender(); }
+// "History…" on a record's own menu — where OneNote puts it.
+function openHistory(coll,id){ RECOVER.path=coll+'/'+id; openRecover('versions'); }
 function _recoverBody(){
+  if(RECOVER.tab==='versions') return '<div class="rc-note">Reading history…</div>';
   if(RECOVER.tab==='snapshots')
     return '<div class="rc-note">A rolling snapshot of the whole notebook — attachment bytes included — is kept in this browser for the last seven days. Restoring one <b>replaces everything</b>; it is the answer to “yesterday was better”, not to “I deleted one thing”.</div>'
       +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();restoreFromSnapshot()">Browse snapshots…</button></div>';
