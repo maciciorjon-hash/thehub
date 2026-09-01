@@ -731,6 +731,33 @@ body.lb-rb-closed .rb-pane{display:none;}
   border-color var(--dur-1) var(--ease);}
 .rc-btn:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
 .rc-btn.danger:hover{background:var(--bad,#b06a6a);border-color:var(--bad,#b06a6a);}
+/* Aim and outcome. The verdict is a colour and a mark, never a colour alone — a red dot is not
+   readable to everyone and is not readable at all in a printed report. */
+.exh-aim{font-size:var(--fs-4);color:var(--text2);line-height:1.5;padding:2px 0 6px;outline:none;
+  border:none;background:none;max-width:70ch;}
+.exh-aim[data-ph]:empty::before{content:attr(data-ph);color:var(--text3);pointer-events:none;}
+.exh-aim:focus{color:var(--text);}
+.oc-chip{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-2);font-weight:600;
+  color:var(--oc);background:color-mix(in srgb,var(--oc) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--oc) 34%,transparent);border-radius:var(--r-full);padding:1px 9px;}
+.oc-chip i{font-style:normal;font-weight:700;}
+.oc-chip b{font-weight:400;color:var(--text2);max-width:36ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.oc-band{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;margin-bottom:12px;
+  border-radius:var(--r-2);border:1px solid color-mix(in srgb,var(--oc) 34%,transparent);
+  background:color-mix(in srgb,var(--oc) 9%,transparent);}
+.oc-band.empty{--oc:var(--text3);background:var(--surface2);border-color:var(--border);}
+.oc-band .oc-v{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--oc);font-size:var(--fs-4);}
+.oc-band .oc-v i{font-style:normal;}
+.oc-band .oc-t{flex:1 1 220px;min-width:0;font-size:var(--fs-4);color:var(--text);outline:none;}
+.oc-band .oc-t[data-ph]:empty::before{content:attr(data-ph);color:var(--text3);pointer-events:none;}
+.oc-band>span:first-child{font-size:var(--fs-4);color:var(--text2);}
+/* The aim rides under the title on a wide row and drops out when there is no room for it —
+   the row's job is still "what is running and when is it due". */
+.lh-x-aim{display:block;font-style:normal;font-size:var(--fs-1);color:var(--text3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+@media (max-width:900px){ .lh-x-aim{display:none;} }
+.xv-oc{flex:0 0 auto;width:17px;height:17px;border-radius:var(--r-full);display:inline-flex;
+  align-items:center;justify-content:center;font-size:var(--fs-1);font-weight:700;color:#fff;background:var(--oc);}
 .rc-warn{color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-2);padding:10px 12px;}
 .rc-link{background:none;border:none;padding:0;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;}
 .lb-remote-b{background:var(--accent);border:none;color:#fff;border-radius:var(--r-1);padding:2px 9px;
@@ -1911,6 +1938,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="mrow"><label>Target / tag for the code (optional)</label><input id="nm-poi" placeholder="e.g. BRD4" autocomplete="off" oninput="nmUpdateCode()" title="Appended to the code (SP_NB20260826_BRD4). The prefix itself belongs to the project."></div>
     <div class="mrow"><label>Start date</label><input id="nm-date" type="date" oninput="nmUpdateCode();nmPreview()"></div>
     <div class="mrow"><label>Title / plan (optional)</label><input id="nm-title" placeholder="Auto-filled from preset" autocomplete="off"></div>
+    <div class="mrow"><label>What are you asking? (optional)</label><input id="nm-aim" placeholder="e.g. does the ligase swap keep DC50 under 100 nM?" autocomplete="off" title="One line. It is what the record cannot tell you six months later, and it goes on the report."></div>
     <div class="mrow"><label>Code (auto — editable)</label><input id="nm-code" class="mcode" autocomplete="off" spellcheck="false"></div>
     <div id="nm-setup" class="nm-setup"></div>
     <div id="nm-protocols" class="nm-protocols"></div>
@@ -6661,7 +6689,67 @@ function closeExperiment(id){
     // Steps are never auto-ticked here. A step you did not do must not become a step you did:
     // that is exactly the lie the record exists to prevent.
     setExpArchived(id,true);
+    // That question was only ever about the process. This one is about the science, and it is
+    // the one nobody can answer six months later from the steps alone.
+    setTimeout(function(){ askOutcome(id); },260);
   });
+}
+// ══════════════════════════════════════════════════════════════════════════
+// WHAT IT WAS FOR, AND WHAT IT SHOWED
+//
+// The notebook recorded what was done and when, and nowhere at all why you did it or how it
+// came out. So a report of ten experiments listed ten codes, ten dates and ten step counts and
+// said nothing about any result, and the Experiments list was an inventory rather than a
+// summary. Two fields fix that, and the wiring is most of the work.
+//
+// The rule underneath both: nothing is inferred and nothing is required. An experiment with no
+// outcome reads as "no verdict recorded", never as failed.
+var OUTCOMES=[
+  {id:'worked',      lbl:'It worked',       sub:'The result is what the experiment was for',       ic:'✓', c:'#3f9d76'},
+  {id:'partial',     lbl:'Partly',          sub:'Something usable, with a caveat',                 ic:'~',      c:'#c99a4e'},
+  {id:'failed',      lbl:'It did not work', sub:'The assay or the run failed',                     ic:'×', c:'#b06a6a'},
+  {id:'inconclusive',lbl:'Inconclusive',    sub:'It ran, and it does not answer the question',     ic:'?',      c:'#8b90a8'}
+];
+function outcomeDef(v){ return OUTCOMES.filter(function(x){ return x.id===v; })[0]||null; }
+function outcomeOf(e){ var o=e&&e.outcome; return (o&&outcomeDef(o.verdict))?o:null; }
+function setOutcome(id,verdict,text){
+  var e=LB.data.experiments[id]; if(!e) return;
+  undoMark('Set outcome',['experiments.'+id]);
+  if(!verdict && !text){ delete e.outcome; }
+  else e.outcome={verdict:verdict||'',text:text||'',at:Date.now()};
+  e.updated=Date.now(); save(); renderAll();
+}
+function setAim(id,v){
+  var e=LB.data.experiments[id]; if(!e) return;
+  v=(v||'').trim();
+  if(v===(e.aim||'')) return;
+  undoMark('Set aim',['experiments.'+id],true);
+  if(v) e.aim=v; else delete e.aim;
+  e.updated=Date.now(); save();
+}
+// Offered, never forced — the same rule as the protocol diff and the date slip. Skipping is a
+// first-class answer, because "I do not know yet" is the truth more often than any verdict.
+function askOutcome(id){
+  var e=LB.data.experiments[id]; if(!e) return;
+  var cur=outcomeOf(e);
+  var opts=OUTCOMES.map(function(o){
+    return {id:o.id,label:o.lbl,sub:o.sub,ic:o.ic,c:o.c,_sel:cur&&cur.verdict===o.id};
+  });
+  opts.push({id:'__skip',label:'Not yet',sub:'Leave it without a verdict — nothing is assumed',ic:'–',c:'var(--text3)'});
+  lbPicker('What did '+(e.code||e.title||'this experiment')+' show?',opts,function(it){
+    if(it.id==='__skip') return;
+    lbPrompt('In a line — what did it show?',(cur&&cur.text)||'').then(function(t){
+      if(t==null) return;                       // cancelled the note, keep the verdict alone
+      setOutcome(id,it.id,t.trim());
+    });
+  });
+}
+// The chip that carries a verdict everywhere it appears.
+function outcomeChip(e,withText){
+  var o=outcomeOf(e); if(!o) return '';
+  var d=outcomeDef(o.verdict);
+  return '<span class="oc-chip" style="--oc:'+d.c+'" title="'+esc(o.text||d.lbl)+'">'
+    +'<i>'+esc(d.ic)+'</i>'+esc(d.lbl)+(withText&&o.text?('<b>'+esc(o.text)+'</b>'):'')+'</span>';
 }
 // How far back carry-over looks. Without a bound it scans all history for ever.
 var CARRY_LOOKBACK_DAYS=21;
@@ -6790,7 +6878,8 @@ function openAddMenu(ev){ ev.stopPropagation(); if(SEL.node.kind!=='expsec') ret
 }
 function nmFillTypes(sel){ el('nm-type').innerHTML=allPresetKeys().map(function(k){ var p=LB.data.presets[k]; var lbl=(p&&p.name)||k; return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(lbl)+(isBuiltinPreset(k)?(' ('+k+')'):'')+'</option>'; }).join(''); }
 function openNew(){ if(SEL.node.kind!=='expsec') return;
-  nmFillTypes(); el('nm-poi').value=''; el('nm-date').value=todayStr(); el('nm-title').value=''; nmUpdateCode();
+  nmFillTypes(); el('nm-poi').value=''; el('nm-date').value=todayStr(); el('nm-title').value='';
+  (el('nm-aim')||{}).value=''; nmUpdateCode();
   nmResetSetup(); nmProtos(); nmPreview(); el('new-modal').classList.add('open');
   // Preload Archive so protocol names + calculators resolve, then refresh the chips/preview.
   ensureArchive(function(){ nmProtos(); nmPreview(); }); }
@@ -7341,9 +7430,12 @@ function pubSentence(b,e){
 // Sections and bold survive: the whole thing used to be escaped into flat paragraphs, so a
 // number the calculator had emphasised arrived as plain text with no headings around it.
 var PUB_SECTIONS=[{k:'setup',lbl:'Setup'},{k:'methods',lbl:'Methods'},{k:'plate',lbl:'Plate layout'},
-                  {k:'dev',lbl:'Deviations'},{k:'results',lbl:'Results'}];
+                  {k:'dev',lbl:'Deviations'},{k:'results',lbl:'Results'},{k:'outcome',lbl:'Outcome'}];
+// Outcome defaults OFF: a Methods section does not carry a verdict, and the paragraph this
+// builds is a Methods section. It is there for the drafts that are not.
+var PUB_DEFAULT_OFF={outcome:1};
 function pubOpts(e){ var o=(e&&e.pubOpts)||{}, out={};
-  PUB_SECTIONS.forEach(function(s){ out[s.k]=(o[s.k]===undefined)?true:!!o[s.k]; }); return out; }
+  PUB_SECTIONS.forEach(function(s){ out[s.k]=(o[s.k]===undefined)?!PUB_DEFAULT_OFF[s.k]:!!o[s.k]; }); return out; }
 // What the paragraph was built from. Not the whole experiment: typing in the paragraph itself
 // must not make it look out of date, and a tick or a note changes the record without changing
 // the method.
@@ -7352,7 +7444,10 @@ function _pubSourceSig(e){
     return JSON.stringify([e.setup||null, (e.protocols||[]).map(function(p){return p.id;}),
       (e.blocks||[]).map(function(b){ return [b.pub||'', b.noPub?1:0, b.html||'',
         (b.calc&&b.calc.inputs)||null, b.plate?plateSummaryText(b.plate):'']; }),
-      e.plate?plateSummaryText(e.plate):'']);
+      e.plate?plateSummaryText(e.plate):'',
+      // The outcome can be in the paragraph, so changing it has to be able to make the
+      // paragraph stale. Leaving it out is the silent drift this signature exists to catch.
+      (e.outcome&&e.outcome.verdict)?[e.outcome.verdict,e.outcome.text||'']:null]);
   }catch(_e){ return ''; }
 }
 function pubIsStale(e){ return !!(e && e.pubReady && e.pubSrcSig && e.pubSrcSig!==_pubSourceSig(e)); }
@@ -7380,6 +7475,10 @@ function buildPubReadyFromExp(e){
   }
   if(o.dev){ var d=deviationsSentence(e); if(d){ H('Deviations from the protocol'); P(esc(d)); } }
   if(o.results){ var r=pubResultsSentence(e); if(r){ H('Results'); P(esc(r)); } }
+  // The verdict, in your own words, when you have asked for it. It is not part of a Methods
+  // section, which is why it is off by default — but it is the sentence a draft opens with.
+  if(o.outcome){ var oc=outcomeOf(e);
+    if(oc && (oc.text||'').trim()){ H('Outcome'); P(esc(oc.text.trim())); } }
   var sw=analysisSoftware();
   if(sw && out.join(' ').indexOf(esc(sw))<0) P('Data were analysed in '+esc(sw)+'.');
   try{ e.pubSrcSig=_pubSourceSig(e); }catch(_e){}
@@ -7614,11 +7713,15 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
   var wantPlate=NM_PLATE;
   function finish(extra,protoList){
     var all=blocks.concat(extra||[]);
+    var _aim=((el('nm-aim')||{}).value||'').trim();
     var e={ id:uid(), projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, code:code, type:type, presetKey:key,
       title:title, status:'planned', startDate:startDate, plasmids:'', cellLines:(setup.cellLine?((cellLineDef(setup.cellLine)||{}).label||String(setup.cellLine)):''),
       setup:setup,
       protocols:protoList||[], pubReady:buildPubReadyFromExp({blocks:all, startDate:startDate, setup:setup, type:type, protocols:protoList||[]}),
       blocks:all, created:Date.now(), updated:Date.now() };
+    // An empty aim is deleted rather than stored, so "has an aim" stays a real question — the
+    // same rule the preset editor's Methods box follows.
+    if(_aim) e.aim=_aim;
     // Carried onto the record, not looked up from the preset: what this page is stays true
     // however the preset is renamed, edited or deleted afterwards.
     if(tpl.blank) e.blank=true;
@@ -7983,7 +8086,8 @@ function homeRunningCard(D){
     return '<div class="lh-exp" onclick="openExp(\''+x.e.id+'\')" oncontextmenu="ctxExp(event,\''+x.e.id+'\')">'
       +prioMark(x.e)
       +'<span class="lh-x-code" style="color:'+col+'">'+esc(x.e.code||'')+'</span>'
-      +'<span class="lh-x-ti">'+esc(x.e.title||'')+'</span>'
+      +'<span class="lh-x-ti"'+(x.e.aim?(' title="'+esc(x.e.aim)+'"'):'')+'>'+esc(x.e.title||'')
+        +(x.e.aim?('<i class="lh-x-aim">'+esc(x.e.aim)+'</i>'):'')+'</span>'
       +'<span class="lh-bar"><i style="width:'+pct+'%;background:'+col+'"></i></span>'
       +'<span class="lh-x-n">'+x.q.done+'/'+x.q.total+'</span>'
       +'<span class="lh-x-nx">'+when+'</span></div>';
@@ -8057,6 +8161,7 @@ function xvRow(e,p){
     +'<span class="xv-dot" style="background:'+((p&&p.color)||'var(--accent)')+'"></span>'
     +'<span class="xv-code">'+esc(e.code||'')+'</span>'
     +'<span class="xv-name">'+esc(e.title||(isCoded(e)?'':'Untitled'))+'</span>'
+    +(outcomeOf(e)?('<span class="xv-oc" style="--oc:'+outcomeDef(e.outcome.verdict).c+'" title="'+esc(outcomeDef(e.outcome.verdict).lbl+(e.outcome.text?(' — '+e.outcome.text):''))+'">'+esc(outcomeDef(e.outcome.verdict).ic)+'</span>'):'')
     +(e.type?'<span class="xv-type">'+esc(typeName(e.type))+'</span>':'')
     +(q.total?'<span class="xv-prog" title="'+q.done+' of '+q.total+' steps done"><span class="xv-bar"><i style="width:'+pct+'%"></i></span><b>'+q.done+'/'+q.total+'</b></span>':'')
     +'<span class="xv-when">'+when+'</span>'
@@ -8377,6 +8482,24 @@ function constructRolesHtml(e){
       +'<button class="rl'+(c.role==='acceptor'?' on a':'')+'" title="HaloTag acceptor" onclick="setConstructRole(\''+e.id+'\',\''+esc(c.name)+'\',\'acceptor\')">A</button></span>';
   }).join('')+'</div>';
 }
+// One line, under the title: what you are asking. It is the question the steps cannot answer
+// for you six months later, and it is optional — an empty one is deleted rather than stored, so
+// "has an aim" stays a real question.
+function aimField(e){
+  return '<div class="exh-aim" contenteditable="true" spellcheck="true" data-ph="What are you asking? (optional)" '
+    +'onblur="setAim(\''+e.id+'\',this.textContent)">'+esc(e.aim||'')+'</div>';
+}
+// The band at the top of Results. It is here rather than only in the header because this is the
+// screen you are on when you find out.
+function outcomeBandHtml(e){
+  var o=outcomeOf(e), d=o?outcomeDef(o.verdict):null;
+  if(!d) return '<div class="oc-band empty"><span>No verdict recorded.</span>'
+    +'<button class="rc-btn" onclick="askOutcome(\''+e.id+'\')">What did it show?</button></div>';
+  return '<div class="oc-band" style="--oc:'+d.c+'"><span class="oc-v"><i>'+esc(d.ic)+'</i>'+esc(d.lbl)+'</span>'
+    +'<span class="oc-t" contenteditable="true" spellcheck="true" data-ph="In a line — what did it show?" '
+    +'onblur="setOutcome(\''+e.id+'\',\''+esc(o.verdict)+'\',this.textContent)">'+esc(o.text||'')+'</span>'
+    +'<button class="rc-btn" onclick="askOutcome(\''+e.id+'\')">Change</button></div>';
+}
 function titleField(e){ var empty=!(e.title||'').trim(); var t=empty?(e.code||''):e.title;
   // An <input> cannot wrap, and on a phone the 16px rule that stops iOS zooming pins it there
   // — so a real experiment title was cut at the edge with no sign there was more of it. The
@@ -8615,8 +8738,9 @@ function resultsPaneHtml(e){
   var rs=(e.integration&&e.integration.results)||[];
   var L=resultLabels(e);
   var add='<button class="btn ghost" onclick="openResultsPaste(\''+e.id+'\')">Paste results…</button>';
+  var band=outcomeBandHtml(e);
   if(!rs.length){
-    return '<div class="res-empty"><div class="t">No results attached yet</div>'
+    return band+'<div class="res-empty"><div class="t">No results attached yet</div>'
       +'<div>'+esc(L.p)+', '+esc(L.e)+', Hill slope and R² belong here as data — each row with its own note '
       +'and its own exclusion — not as a screenshot of a curve.</div>'
       +'<div>'+(ECHO_FED_TYPES[e.type]
@@ -8624,7 +8748,7 @@ function resultsPaneHtml(e){
         : 'Paste a table from whatever you fitted in — Prism, R, Excel — one row per compound.')
       +'</div>'+add+'</div>';
   }
-  return '<div class="res-top">'+add+'</div>'+rs.map(function(r,i){
+  return band+'<div class="res-top">'+add+'</div>'+rs.map(function(r,i){
     var rows=(r.rows||[]);
     if(!rows.length) return '<div class="res-card"><div class="res-hd">'+esc(r.label||r.source||'result')+'</div>'
       +'<pre class="res-raw">'+esc(JSON.stringify(r.data||r,null,1)).slice(0,1200)+'</pre></div>';
@@ -9143,10 +9267,11 @@ function renderExpEditor(host,e){
     +'<span><b>'+esc(expIsBlank(e)?'Blank experiment':semanticExperimentTitle(e.type))+'</b></span>'
     +(e.startDate?('<span>'+esc(fmtDate(e.startDate))+'</span>'):'')
     +'<span>'+esc(e.status||'planned')+'</span>'
+    +(outcomeOf(e)?outcomeChip(e):'')
     +(_cl?('<span>'+esc(_cl.trim())+'</span>'):'')
     +(e.plasmids?('<span>'+esc(e.plasmids)+'</span>'):'')
     +'<button class="lean-tog" title="Type, status, date, plasmids and cell lines" onclick="leanToggle(this,\'.exh\')">Details</button></div>';
-  var header='<div class="exh'+(expIsBlank(e)?' exh-quiet':'')+'"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+lean+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
+  var header='<div class="exh'+(expIsBlank(e)?' exh-quiet':'')+'"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+aimField(e)+lean+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
   var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res')?EXP_TAB:'dated';
   var nRes=((e.integration&&e.integration.results)||[]).length;
   // A phone gets the tab it is on and a menu of the rest. A strip that scrolls sideways is
@@ -9984,7 +10109,10 @@ function tagsHtml(){ if(!LB.data.tags.length) return '<div class="dock-empty">No
 function metaHtml(){ var e=(SEL.node.kind==='expsec'&&SEL.page)?LB.data.experiments[SEL.page]:null;
   if(!e||e.kind==='note') return '<div class="dock-empty">Open an experiment to see its info.</div>';
   var L=function(k,v){ return v?('<div class="meta-line"><span>'+k+'</span><b>'+esc(v)+'</b></div>'):''; };
-  return L('Code',e.code)+L('Type',typeName(e.type))+L('Status',e.status)+L('Start',fmtDate(e.startDate))+L('Plasmids',e.plasmids)+L('Cell lines',e.cellLines)+L('Blocks',(e.blocks||[]).length); }
+  var o=outcomeOf(e), od=o?outcomeDef(o.verdict):null;
+  return L('Aim',e.aim)+L('Code',e.code)+L('Type',typeName(e.type))+L('Status',e.status)
+    +L('Outcome',od?(od.lbl+(o.text?(' — '+o.text):'')):'')
+    +L('Start',fmtDate(e.startDate))+L('Plasmids',e.plasmids)+L('Cell lines',e.cellLines)+L('Blocks',(e.blocks||[]).length); }
 
 // ── Formatting ──
 var _activeEd=null;
@@ -11097,6 +11225,7 @@ function ctxExp(ev,id){ var e=LB.data.experiments[id]; if(!e) return; var pr=exp
   {label:'Duplicate',fn:function(){dupExperiment(id);}},
   (isCoded(e)?{label:'Export PDF',fn:function(){openExp(id);setTimeout(exportPDF,120);}}:{sep:true}),
   (isCoded(e)?{label:'Copy entry',fn:function(){openExp(id);setTimeout(copyRendered,140);}}:{sep:true}),
+  {label:'What did it show\u2026',fn:function(){askOutcome(id);}},
   {label:'History\u2026',fn:function(){openHistory('experiments',id);}},
   {sep:true},{label:'Delete',danger:true,fn:function(){delExperiment(id);}}
 ]); }
@@ -11405,6 +11534,12 @@ function spotContent(){
     });
     if(e.plate) add('Plate · '+(e.plate.title||name), name, 'plate','P',pc,
         plateSummaryText(e.plate), function(){ openExp(e.id); });
+    // The aim and the outcome are one line each and are the sentences you go looking for by
+    // meaning rather than by name — "the one where the ligase swap didn't work".
+    if(e.aim) add(name+' · aim','what it was for','exp','A',pc,e.aim,function(){ openExp(e.id); });
+    if(outcomeOf(e)) add(name+' · outcome',outcomeDef(e.outcome.verdict).lbl,'exp','O',pc,
+        outcomeDef(e.outcome.verdict).lbl+' '+(e.outcome.text||''),
+        function(){ openExp(e.id); EXP_TAB='res'; renderEditor(); });
     add(name+' · observations','observations','exp','E',pc,_plain(e.html||''),function(){ openExp(e.id); });
     add(name+' · methods','publication-ready','exp','M',pc,_plain(e.pubReady||''),
         function(){ openExp(e.id); EXP_TAB='pub'; renderEditor(); });
@@ -11619,6 +11754,9 @@ var PRINT_CSS='<style>@page{size:A4;margin:14mm}'+PLATE_PRINT_CSS
  +'#print-root .pd-exp{margin-top:20px}'
  +'#print-root .pd-exp-hd{font-weight:700;font-size:14pt;border-bottom:1.5pt solid #222;padding-bottom:4px;margin-bottom:10px}'
  +'#print-root .pd-exp-hd span{font-weight:400;font-size:11pt;color:#333}'
+ // The two lines that make a report a report rather than a list of codes.
+ +'#print-root .pd-aim{font-size:11pt;color:#222;margin:0 0 4px}'
+ +'#print-root .pd-oc{font-size:11pt;color:#222;margin:0 0 10px}'
  +'#print-root h1{font-size:17pt}#print-root h2{font-size:14pt}#print-root h3{font-size:12pt}'
  +'#print-root .lb-note{border-left:3pt solid #666;background:#f0f0f0!important;padding:5px 10px;margin:7px 0}'
  +'#print-root .lb-note-warn{border-left-color:#c25a12;background:#fdf3ea!important}'
@@ -11794,20 +11932,26 @@ function buildReportDoc(){
   h+='<div class="pd-head"><div class="pd-kicker">'+(RP.scope==='project'?'Project report':'Date range report')+'</div>'
     +'<div class="pd-title">'+esc(title)+'</div><div class="pd-crumb">'+esc(rpDescribe())+'</div></div>';
   if(!xs.length) return h+foot();
+  // Outcome is a column here because a report of ten experiments that lists ten codes, ten
+  // dates and ten step counts tells you which ones ran and nothing about what any of them found.
   h+='<div class="pd-sec-hd">Experiments</div><table class="pd-tbl"><thead><tr>'
-    +'<th>Code</th><th>Title</th><th>Type</th><th>Start</th><th>Status</th><th>Steps done</th></tr></thead><tbody>'
-    + xs.map(function(e){ var q=expProgress(e);
+    +'<th>Code</th><th>Title</th><th>Type</th><th>Start</th><th>Status</th><th>Steps done</th><th>Outcome</th></tr></thead><tbody>'
+    + xs.map(function(e){ var q=expProgress(e), o=outcomeOf(e), od=o?outcomeDef(o.verdict):null;
         return '<tr><td>'+esc(e.code||'')+'</td><td>'+esc(e.title||'')+'</td><td>'+esc(typeName(e.type))+'</td>'
           +'<td>'+esc(fmtDate(e.startDate||''))+'</td><td>'+esc(e.status||'')+(expArchived(e)?' (archived)':'')+'</td>'
-          +'<td>'+q.done+'/'+q.total+'</td></tr>'; }).join('')
+          +'<td>'+q.done+'/'+q.total+'</td>'
+          +'<td>'+(od?esc(od.lbl):'<i>—</i>')+'</td></tr>'; }).join('')
     +'</tbody></table>';
   xs.forEach(function(e){
     var body='';
     if(RP.results) body+=pdResults(e);
     if(RP.devs)    body+=pdDeviations(e);
     if(RP.steps&&(e.blocks||[]).length) body+='<div class="pd-sec-hd">Protocol — step by step</div>'+printExpByDay(e);
-    if(!body) return;
-    h+='<div class="pd-exp"><div class="pd-exp-hd">'+esc(e.code||'')+' <span>'+esc(e.title||'')+'</span></div>'+body+'</div>';
+    if(!body && !e.aim && !outcomeOf(e)) return;
+    var _o=outcomeOf(e), _od=_o?outcomeDef(_o.verdict):null;
+    var _lead=(e.aim?('<div class="pd-aim"><b>Aim.</b> '+esc(e.aim)+'</div>'):'')
+      +(_od?('<div class="pd-oc"><b>'+esc(_od.lbl)+'.</b> '+esc(_o.text||'')+'</div>'):'');
+    h+='<div class="pd-exp"><div class="pd-exp-hd">'+esc(e.code||'')+' <span>'+esc(e.title||'')+'</span></div>'+_lead+body+'</div>';
   });
   return h+foot();
 }
@@ -11820,10 +11964,12 @@ function exportReportPDF(){
 // than in a PDF.
 function exportReportCSV(){
   var xs=rpExps();
-  var lines=[['Experiment','Title','Type','Start','Status','Archived','Kind','Compound/Step','Target/What','Value/Planned','Effect/Actual','Hill','R2','Flag'].join(',')];
+  var lines=[['Experiment','Title','Type','Start','Status','Archived','Aim','Outcome','Outcome note','Kind','Compound/Step','Target/What','Value/Planned','Effect/Actual','Hill','R2','Flag'].join(',')];
   function q(v){ var t=(v==null?'':String(v)); return /[",\n\r]/.test(t)?('"'+t.replace(/"/g,'""')+'"'):t; }
   xs.forEach(function(e){
-    var base=[e.code||'',e.title||'',typeName(e.type),e.startDate||'',e.status||'',expArchived(e)?'yes':'no'];
+    var _o=outcomeOf(e), _od=_o?outcomeDef(_o.verdict):null;
+    var base=[e.code||'',e.title||'',typeName(e.type),e.startDate||'',e.status||'',expArchived(e)?'yes':'no',
+              e.aim||'', _od?_od.lbl:'', (_o&&_o.text)||''];
     var any=false;
     if(RP.results) ((e.integration&&e.integration.results)||[]).forEach(function(r){
       (r.rows||[]).forEach(function(x){ any=true;
