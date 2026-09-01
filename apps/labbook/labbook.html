@@ -444,13 +444,26 @@ body.lb-rb-closed .rb-pane{display:none;}
 .rt .lb-todo.done .lb-box{background:var(--accent);border-color:var(--accent);}
 .rt .lb-todo.done{opacity:.6;text-decoration:line-through;}
 /* Checklist = real list, checkbox drawn on the marker */
+/* A checkbox belongs to a checklist's OWN items. These two selectors used to be descendant
+   ones — `ul.lb-check li` and `ul.lb-check ul` — so every list nested inside a checklist got a
+   checkbox it had not asked for and lost its bullet for good. The structure was always right:
+   Tab produces a plain nested <ul> with no class, which is a bullet list. The CSS was
+   overriding it. `> li` is the whole fix, and a nested ul.lb-check still matches on its own. */
 .rt ul.lb-check{list-style:none;margin:2px 0 6px 4px;padding-left:0;}
-.rt ul.lb-check ul{list-style:none;margin:2px 0 2px 10px;padding-left:0;}
-.rt ul.lb-check li{position:relative;list-style:none;padding-left:26px;margin:3px 0;}
-.rt ul.lb-check li::before{content:'';position:absolute;left:0;top:2px;width:15px;height:15px;border:1.6px solid var(--border2);border-radius:var(--r-1);background:var(--surface);cursor:pointer;}
-.rt ul.lb-check li.done::before{background:var(--accent);border-color:var(--accent);}
-.rt ul.lb-check li.done::after{content:'';position:absolute;left:5px;top:4px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);pointer-events:none;}
-.rt ul.lb-check li.done{opacity:.62;text-decoration:line-through;}
+.rt ul.lb-check ul:not(.lb-check),.rt ul.lb-check ol{margin:2px 0 2px 10px;padding-left:22px;}
+.rt ul.lb-check ul.lb-check{margin:2px 0 2px 10px;padding-left:0;}
+.rt ul.lb-check > li{position:relative;list-style:none;padding-left:26px;margin:3px 0;}
+.rt ul.lb-check > li::before{content:'';position:absolute;left:0;top:2px;width:15px;height:15px;border:1.6px solid var(--border2);border-radius:var(--r-1);background:var(--surface);cursor:pointer;}
+/* Chrome nests the sub-list as a sibling INSIDE the parent <ul>, not inside an <li>. At deeper
+   levels it can leave a wrapper li holding nothing but that list — which drew a checkbox with
+   no text beside it. An item that is only a container is not a step. */
+.rt ul.lb-check > li:has(> ul):not(:has(> :not(ul):not(ol))),
+.rt ul.lb-check > li:empty{padding-left:0;}
+.rt ul.lb-check > li:has(> ul):not(:has(> :not(ul):not(ol)))::before,
+.rt ul.lb-check > li:empty::before{content:none;}
+.rt ul.lb-check > li.done::before{background:var(--accent);border-color:var(--accent);}
+.rt ul.lb-check > li.done::after{content:'';position:absolute;left:5px;top:4px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);pointer-events:none;}
+.rt ul.lb-check > li.done{opacity:.62;text-decoration:line-through;}
 /* ── Floating images (OneNote-style picture objects) ── */
 .lb-canvas{position:relative;}
 .lb-float-layer{position:absolute;left:0;top:0;right:0;min-height:100%;pointer-events:none;z-index:5;}
@@ -5492,7 +5505,7 @@ if(!LB.data._doneV1){
 function _legacyHasUnchecked(html){
   if(!html || html.indexOf('lb-check')<0) return false;
   try{ var d=document.createElement('div'); d.innerHTML=html;
-    var lis=d.querySelectorAll('ul.lb-check > li, ul.lb-check ul > li');
+    var lis=d.querySelectorAll('ul.lb-check > li');
     for(var i=0;i<lis.length;i++){ if(!lis[i].classList.contains('done')) return true; }
   }catch(e){}
   return false;
@@ -6452,7 +6465,7 @@ function _blkChecklist(html, fn){
   if(!html || html.indexOf('lb-check')<0) return null;
   try{
     var d=document.createElement('div'); d.innerHTML=html;
-    var lis=d.querySelectorAll('ul.lb-check > li, ul.lb-check ul > li');
+    var lis=d.querySelectorAll('ul.lb-check > li');
     if(!lis.length) return null;
     return fn(lis) ? d.innerHTML : null;
   }catch(e){ return null; }
@@ -10251,7 +10264,7 @@ function _checklistDoneSync(ed){
   if(ctx[0]==='block'){ var ce=_curExp(); if(ce){ expId=ce.id; blkId=ctx[1]; } }
   else if(ctx[0]==='expblock'){ expId=ctx[1]; blkId=ctx[2]; }
   if(!expId||!blkId) return;
-  var lis=ed.querySelectorAll('ul.lb-check > li, ul.lb-check ul > li');
+  var lis=ed.querySelectorAll('ul.lb-check > li');
   if(!lis.length) return;
   var all=true; for(var i=0;i<lis.length;i++) if(!lis[i].classList.contains('done')){ all=false; break; }
   var f=blockFinder(expId,blkId); if(!f || !!f.block.done===all) return;
