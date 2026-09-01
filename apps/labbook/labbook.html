@@ -5197,8 +5197,34 @@ document.addEventListener('keydown',function(ev){
 // ── Store ──
 var LB={ data:null };
 function lbBlank(){ return {projects:[],generalSections:[],experiments:{},pages:{},notebook:{},tags:[],presets:{},antibodies:{},attachments:{},planner:{tasks:{}},protoDays:{},_seeded:false,updated:0}; }
-try{ LB.data=JSON.parse(localStorage.getItem('hub_labbook')||'null'); }catch(e){}
+// The local cache is the only copy of this notebook until a cloud read lands, so a read that
+// FAILS is the most important thing this app can say — and it used to go into an empty catch.
+// A blank tree here is indistinguishable from a genuinely empty notebook, and four seconds
+// later gcAttachments() treated every attachment on this machine as garbage.
+var _localReadFailed=false;
+try{
+  var _lbRaw=localStorage.getItem('hub_labbook');
+  LB.data=JSON.parse(_lbRaw||'null');
+  // It was there and did not parse. An empty slot is a new browser; garbage is a broken one,
+  // and the difference is what decides whether anything is allowed to delete today.
+  if(_lbRaw && (!LB.data || typeof LB.data!=='object')) _localReadFailed=true;
+}catch(e){ _localReadFailed=true; }
 if(!LB.data||typeof LB.data!=='object') LB.data=lbBlank();
+// ── The settle gate ─────────────────────────────────────────────────────────────────────────
+// Nothing that DESTROYS anything may run until we know which tree we are holding: the local
+// cache, or the cloud copy still on its way. lbInitSync's first read is network-bound and can
+// easily take longer than the four seconds the attachment GC used to wait, and the backup
+// snapshot used to be written 1.5 s in — from whatever was in memory at the time.
+var _bootSettled=false, _bootSettleQ=[];
+function _onBootSettled(fn){ if(_bootSettled){ fn(); return; } _bootSettleQ.push(fn); }
+function _markBootSettled(){
+  if(_bootSettled) return; _bootSettled=true;
+  var q=_bootSettleQ; _bootSettleQ=[];
+  q.forEach(function(fn){ try{ fn(); }catch(e){} });
+}
+// A read that never resolves must not park the safety net for ever — but 20 s of waiting costs
+// nothing, and it is far longer than a slow first read.
+setTimeout(_markBootSettled, 20000);
 ['projects','generalSections','experiments','pages','notebook','tags','presets','antibodies','attachments'].forEach(function(k){ if(!LB.data[k]) LB.data[k]=(k==='projects'||k==='generalSections'||k==='tags')?[]:{}; });
 if(!LB.data.planner||typeof LB.data.planner!=='object') LB.data.planner={tasks:{}};
 if(!LB.data.planner.tasks||typeof LB.data.planner.tasks!=='object') LB.data.planner.tasks={};
@@ -5472,6 +5498,10 @@ function updateStatus(){ var p=el('lb-status'); if(!p) return; var txt=el('lb-st
   var bn=el('lb-backup-note');
   if(bn){ var bs=backupStatus(); bn.textContent=bs.text; bn.title=bs.detail+' Back up now · right-click for the folder'; }
   p.classList.remove('online','offline','saving');
+  // Everything else on this pill is about writing. This one says the copy on screen may not be
+  // your notebook at all, which outranks it: it questions what you are looking at.
+  if(_localReadFailed){ p.classList.add('offline'); if(txt) txt.textContent='Cache unreadable';
+    p.title='This browser’s saved copy of the notebook could not be read at startup, so what you see may be incomplete. Nothing has been deleted — backups and the attachment cleanup are held off until it is sorted out. Sign in so the cloud copy can load, or restore from a backup.'; return; }
   // A storage failure outranks everything else — never show "Saved ✓" when it isn't true.
   if(_storageBroken){ p.classList.add('offline'); if(txt) txt.textContent='Not saved!'; p.title='Browser storage rejected a write — see the warning. Export a backup now.'; return; }
   if(!hasCloud()){
@@ -5649,7 +5679,9 @@ function _syncRetry(){
   clearTimeout(_syncRetryT); _syncRetryT=setTimeout(lbInitSync, wait);
 }
 function lbInitSync(){
-  var r=lbFb(); if(!r) return;
+  // No cloud at all — standalone, signed out, file:// — settles at once. There is no second
+  // copy of this notebook on its way, so waiting for one would only delay the safety net.
+  var r=lbFb(); if(!r){ _markBootSettled(); return; }
   try{ r.once('value').then(function(s){
     var v=s.val();
     var remoteHas = v && ((v.projects||[]).length || Object.keys(v.experiments||{}).length || (v.generalSections||[]).length || Object.keys(v.pages||{}).length || Object.keys(v.notebook||{}).length);
@@ -5678,6 +5710,10 @@ function lbInitSync(){
     _syncTries=0;
     setSync(true,true);
     _cloudListen(r);
+    // The tree in memory is now the one the cloud agrees with. Only from here is "this
+    // attachment is referenced by nothing" a statement about the notebook rather than about
+    // how far the network had got.
+    _markBootSettled();
   }).catch(function(){ setSync(true,false); _syncRetry(); }); }catch(e){ _syncRetry(); }
 }
 
@@ -9848,10 +9884,61 @@ function _collectAttIds(){ var ids={}; function scan(h){ if(!h||h.indexOf('lb-at
   Object.keys(LB.data.pages||{}).forEach(function(k){ scan(LB.data.pages[k].html); scanFloat(LB.data.pages[k].floatImgs); });
   Object.keys(LB.data.notebook||{}).forEach(function(k){ scan(LB.data.notebook[k].html); scanFloat(LB.data.notebook[k].floatImgs); });
   return ids; }
-function gcAttachments(){ try{ var live=_collectAttIds(); var atts=LB.data.attachments||{}; var changed=false;
-  Object.keys(atts).forEach(function(id){ if(!live[id]){ delete atts[id]; changed=true; } });
-  if(changed) save();
-  _attDB().then(function(db){ try{ var os=db.transaction('att','readwrite').objectStore('att'); if(!os.getAllKeys) return; var rq=os.getAllKeys(); rq.onsuccess=function(){ (rq.result||[]).forEach(function(k){ if(!live[k]){ try{ db.transaction('att','readwrite').objectStore('att').delete(k); }catch(e){} } }); }; }catch(e){} }).catch(function(){}); }catch(e){} }
+// ── Attachment garbage collection: mark first, delete a month later ─────────────────────────
+// "Unreferenced" is DERIVED from LB.data, and LB.data can be wrong for reasons that have
+// nothing to do with the notebook: a localStorage read that failed, a cloud adoption still in
+// flight, an undo about to put the record back. This used to hard-delete on that derivation,
+// four seconds after every load. A blob is bytes that exist nowhere else — everything attached
+// before Storage was enabled, and every upload that has failed since, lives only here — so the
+// answer is never to delete on first sighting. Mark it; delete it a month later if it is still
+// unreferenced. A mark costs nothing and buys thirty days.
+var ATT_GC_KEY='__gc__', ATT_GC_DAYS=30;
+// Why anything is allowed to delete at all. Each of these means "the tree in memory is not yet
+// a statement about the notebook".
+function _gcSafe(){ return _bootSettled && !_adopting && !_localReadFailed && !_storageBroken; }
+function _attGcMap(){ return _attGet(ATT_GC_KEY).then(function(m){ return (m&&typeof m==='object')?m:{}; }); }
+// Quiet on purpose: a mark that fails to write is simply re-made on the next pass, which only
+// ever errs towards keeping the file. Routing it through _attPut would raise "Attachment NOT
+// saved" at somebody who attached nothing.
+function _attGcSave(mk){ return _attDB().then(function(db){ return new Promise(function(res){
+  try{ var t=db.transaction('att','readwrite').objectStore('att').put(mk,ATT_GC_KEY);
+       t.onsuccess=function(){ res(true); }; t.onerror=function(){ res(false); };
+  }catch(e){ res(false); } }); }).catch(function(){ return false; }); }
+function _attKeys(){ return _attDB().then(function(db){ return new Promise(function(res){
+  try{ var os=db.transaction('att','readonly').objectStore('att');
+       if(!os.getAllKeys){ res([]); return; }
+       var rq=os.getAllKeys(); rq.onsuccess=function(){ res(rq.result||[]); }; rq.onerror=function(){ res([]); };
+  }catch(e){ res([]); } }); }).catch(function(){ return []; }); }
+function _attDel(id){ return _attDB().then(function(db){ return new Promise(function(res){
+  try{ var t=db.transaction('att','readwrite').objectStore('att').delete(id);
+       t.onsuccess=function(){ res(true); }; t.onerror=function(){ res(false); };
+  }catch(e){ res(false); } }); }).catch(function(){ return false; }); }
+function gcAttachments(){
+  if(!_gcSafe()) return Promise.resolve(0);
+  var live=_collectAttIds(), now=Date.now();
+  return Promise.all([_attGcMap(),_attKeys()]).then(function(r){
+    var mk=r[0], keys=r[1], atts=LB.data.attachments||{}, dirty=false, kill=[];
+    // Everything that could be garbage, from both sides: the synced {id:{url}} metadata map and
+    // the blob store itself. The two can disagree, and an id in either one has to be judged.
+    var seen={};
+    keys.forEach(function(k){ if(k!==ATT_GC_KEY) seen[k]=1; });
+    Object.keys(atts).forEach(function(id){ seen[id]=1; });
+    Object.keys(mk).forEach(function(id){ seen[id]=1; });
+    Object.keys(seen).forEach(function(id){
+      // Referenced again — an undo, a restore, a tree adopted from the cloud. The sentence is
+      // lifted rather than left standing: the clock must not carry over from a previous life.
+      if(live[id]){ if(mk[id]!==undefined){ delete mk[id]; dirty=true; } return; }
+      if(mk[id]===undefined){ mk[id]=now; dirty=true; return; }
+      if(now-mk[id] > ATT_GC_DAYS*864e5) kill.push(id);
+    });
+    var saveTree=false;
+    kill.forEach(function(id){ delete mk[id]; if(atts[id]!==undefined){ delete atts[id]; saveTree=true; } });
+    if(saveTree) save();
+    var work=kill.map(function(id){ return _attDel(id); });
+    if(dirty||kill.length) work.push(_attGcSave(mk));
+    return Promise.all(work).then(function(){ return kill.length; });
+  }).catch(function(){ return 0; });
+}
 function openImageIns(){ if(!_activeEd) return; var inp=el('lb-img-input'); if(!inp) return; inp._mode='inline'; inp._range=_saveSel(); inp.value=''; inp.click(); }
 function _imgInputChange(inp){ var mode=inp._mode||'inline';
   if(mode==='float'){ var ctxInfo=inp._floatCtx; Array.prototype.forEach.call(inp.files||[],function(f){ if(f.type && f.type.indexOf('image')===0) handleFloatImageFile(f,ctxInfo); }); inp.value=''; return; }
@@ -11833,6 +11920,9 @@ function restoreFromBackupFile(file){
 // action. Now: write to the folder if we have one, otherwise keep a rolling snapshot in
 // IndexedDB and ask (once) for somewhere real to put it.
 function maybeAutoBackup(){
+  // Backing up a tree we could not read is how a good backup file gets rotated out by a blank
+  // one. The snapshot has its own "never replaces a bigger one" rule; a written file does not.
+  if(_localReadFailed) return;
   var last=''; try{ last=localStorage.getItem('lb_last_backup')||''; }catch(e){}
   if(last===todayStr()) return;
   var pb=_parentBackup();
@@ -11848,23 +11938,45 @@ function maybeAutoBackup(){
 }
 // Rolling local snapshot: not a substitute for a real backup file, but it means a browser that
 // can't write to disk still has yesterday's notebook recoverable.
+// How much notebook a payload holds. This exists for one rule: a snapshot never replaces a
+// bigger one. The failure it guards is real — a boot whose local read came back empty wrote a
+// blank snapshot over today's good one and then rotated a third of the safety net out with it.
+function _snapRecords(d){
+  if(!d||typeof d!=='object') return 0;
+  return Object.keys(d.experiments||{}).length + Object.keys(d.pages||{}).length
+       + Object.keys(d.notebook||{}).length + ((d.projects||[]).length);
+}
 function _snapshotBackup(){
   return _buildBackupPayload().then(function(r){
     return _idb().then(function(db){
-      return new Promise(function(res){
+      var key='snapshot:'+todayStr(), mine=_snapRecords(r.payload&&r.payload.data);
+      // Read today's before writing over it. Bigger may replace smaller (the day fills up);
+      // smaller may not replace bigger (that is the accident this is here for).
+      return new Promise(function(ok){
+        try{ var g=db.transaction('h','readonly').objectStore('h').get(key);
+             g.onsuccess=function(){ ok(g.result||null); }; g.onerror=function(){ ok(null); };
+        }catch(e){ ok(null); }
+      }).then(function(prev){
+        if(prev){
+          var had=0; try{ had=_snapRecords(JSON.parse(prev.json||'{}').data); }catch(e){ had=0; }
+          if(mine<had) return false;
+        }
+        return new Promise(function(res){
         try{
           var tx=db.transaction('h','readwrite').objectStore('h');
-          tx.put({at:Date.now(),date:todayStr(),json:JSON.stringify(r.payload)},'snapshot:'+todayStr());
-          // Keep the last 3 days only — this data is large.
+          tx.put({at:Date.now(),date:todayStr(),json:JSON.stringify(r.payload)},key);
+          // A week, not three days. The rotation is what turned one bad snapshot into the loss
+          // of a good one, and seven days of this costs little next to what it protects.
           var all=tx.getAllKeys?tx.getAllKeys():null;
           if(all) all.onsuccess=function(){
             var keys=(all.result||[]).filter(function(k){ return String(k).indexOf('snapshot:')===0; }).sort();
-            var extra=keys.length-3;
+            var extra=keys.length-7;
             for(var i=0;i<extra;i++){ try{ db.transaction('h','readwrite').objectStore('h').delete(keys[i]); }catch(e){} }
           };
           tx.transaction.oncomplete=function(){ _markBackup('snapshot'); res(true); };
           tx.transaction.onerror=function(){ res(false); };
         }catch(e){ res(false); }
+        });
       });
     });
   }).catch(function(){ return false; });
@@ -12130,9 +12242,19 @@ var _seedChanged=maybeSeed();
 var _semanticTitlesChanged=migrateSemanticExperimentTitles();
 if(_seedChanged||_semanticTitlesChanged) save();
 _leanInit(); applyLayout(); renderPanels(); renderAll();
+// An empty slot is a new browser and says nothing. A value that was there and did not parse is
+// a broken one, and the person in front of it is about to see a notebook that is missing work.
+// That is worth interrupting for — it is the one situation where carrying on typing makes it
+// worse.
+if(_localReadFailed) setTimeout(function(){ try{ lbAlert(
+  'This browser’s saved copy of your notebook could not be read at startup, so what is on screen may be incomplete.\n\nNothing has been deleted: the daily backup and the attachment cleanup are both held off while this is true. If you are signed in, the cloud copy should load in a few seconds and replace this. If it does not, restore from a backup (View → Recover) before making changes — saving now would push this partial copy.',
+  {title:'Saved copy could not be read',danger:true,ok:'I understand'}); }catch(e){} }, 800);
 lbInitSync();
-setTimeout(maybeAutoBackup,1500);
-setTimeout(gcAttachments,4000);
+// Both of these can destroy something — the backup by writing a snapshot or a file over a good
+// one, the GC by marking every attachment on the machine — and both used to run against
+// whatever happened to be in memory 1.5 and 4 seconds in, which on a slow first read is the
+// local cache and not the notebook. They wait now.
+_onBootSettled(function(){ setTimeout(maybeAutoBackup,1500); setTimeout(gcAttachments,4000); });
 setTimeout(migrateAntibodiesToLibrary,2500);
 setTimeout(cleanupAntibodySection,2600);
 function _mergeDHubContext(ctx){
