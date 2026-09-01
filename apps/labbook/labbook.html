@@ -731,6 +731,7 @@ body.lb-rb-closed .rb-pane{display:none;}
   border-color var(--dur-1) var(--ease);}
 .rc-btn:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
 .rc-btn.danger:hover{background:var(--bad,#b06a6a);border-color:var(--bad,#b06a6a);}
+.rc-warn{color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-2);padding:10px 12px;}
 .rc-link{background:none;border:none;padding:0;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;}
 .lb-remote-b{background:var(--accent);border:none;color:#fff;border-radius:var(--r-1);padding:2px 9px;
   margin-left:8px;font-family:var(--sans);font-size:var(--fs-2);font-weight:700;cursor:pointer;}
@@ -10000,8 +10001,61 @@ function _compressImage(file){ return new Promise(function(res,rej){ var url=URL
 // {id:{url}} map in LB.data.attachments syncs cross-device via RTDB + appears in backups.
 var _lbStore=null,_lbStoreTried=false;
 function lbStorage(){ if(_lbStoreTried) return _lbStore; _lbStoreTried=true; try{ if(window.parent && window.parent.firebase && window.parent.firebase.storage){ _lbStore=window.parent.firebase.storage(); } }catch(e){ _lbStore=null; } return _lbStore; }
-function _attUpload(id,dataURL){ var st=lbStorage(); if(!st){ _cloudUnavailable('no storage configured'); return Promise.resolve(null); }
-  try{ var ref=st.ref('labbook/'+id); return ref.putString(dataURL,'data_url').then(function(){ return ref.getDownloadURL(); }).then(function(url){ (LB.data.attachments||(LB.data.attachments={}))[id]={url:url}; save(); _cloudWarned=true; return url; }).catch(function(err){ _cloudUnavailable(err); return null; }); }catch(e){ _cloudUnavailable(e); return Promise.resolve(null); } }
+function _attUpload(id,dataURL){
+  var st=lbStorage(); if(!st){ _attPending(id,'no storage configured'); _cloudUnavailable('no storage configured'); return Promise.resolve(null); }
+  try{ var ref=st.ref('labbook/'+id);
+    return ref.putString(dataURL,'data_url').then(function(){ return ref.getDownloadURL(); })
+      .then(function(url){ (LB.data.attachments||(LB.data.attachments={}))[id]={url:url}; save(); _cloudWarned=true; return url; })
+      .catch(function(err){ _attPending(id,(err&&(err.code||err.message))||'upload failed'); _cloudUnavailable(err); return null; });
+  }catch(e){ _attPending(id,'upload failed'); _cloudUnavailable(e); return Promise.resolve(null); } }
+// A failed upload used to leave nothing behind at all: the bytes stayed in one browser for
+// ever, nothing ever tried again, and the only trace was a toast you may not have been there
+// to read. Recording the attempt is what lets the sweep below find it later.
+function _attPending(id,why){
+  var atts=LB.data.attachments||(LB.data.attachments={});
+  var cur=atts[id]; if(cur&&cur.url) return;
+  atts[id]={pending:1,tries:((cur&&cur.tries)||0)+1,at:Date.now(),why:String(why||'').slice(0,90)};
+  save();
+}
+// ── The backfill, which is also the retry ───────────────────────────────────────────────────
+// Everything attached before Storage was enabled on 2026-08-27 was never uploaded, and every
+// upload that has failed since left its bytes on one machine. Both are the same question —
+// which live attachment has no cloud copy? — so they are the same sweep.
+function attNeedingUpload(){
+  var live=_collectAttIds(), atts=LB.data.attachments||{};
+  return Object.keys(live).filter(function(id){ return !(atts[id]&&atts[id].url); });
+}
+var _attSweepOn=false, _attSweepLast=null;
+function _attSweep(manual){
+  if(_attSweepOn){ if(manual) toast('Already uploading\u2026'); return Promise.resolve(null); }
+  if(!lbStorage()){ if(manual) toast('No cloud storage here — attachments stay on this device. Use Backup to move them.'); return Promise.resolve(null); }
+  if(!navigator.onLine){ if(manual) toast('Offline — try again when you have a connection.'); return Promise.resolve(null); }
+  var todo=attNeedingUpload();
+  if(!todo.length){ if(manual) toast('Every attachment already has a cloud copy.'); return Promise.resolve(null); }
+  _attSweepOn=true;
+  var st={done:0,failed:0,missing:0,total:todo.length}, i=0;
+  if(manual) toast('Uploading '+todo.length+' attachment'+(todo.length===1?'':'s')+'\u2026');
+  function next(){
+    if(i>=todo.length) return Promise.resolve();
+    var id=todo[i++];
+    return _attGet(id).then(function(d){
+      // The record references it but this machine does not hold the bytes. Not a failure to
+      // report as one — it means the file lives on the other machine, or in a backup.
+      if(!d){ st.missing++; return; }
+      return _attUpload(id,d).then(function(url){ if(url) st.done++; else st.failed++; });
+    }).then(next).catch(function(){ st.failed++; return next(); });
+  }
+  // Three at a time — enough to get through a backlog, few enough not to fight the app for the
+  // connection while somebody is typing.
+  return Promise.all([next(),next(),next()]).then(function(){
+    _attSweepOn=false; _attSweepLast=st; updateStatus();
+    if(_recoverOpen()) _recoverRender();
+    if(manual||st.done) toast(st.done+' uploaded'
+      +(st.failed?(' \u00b7 '+st.failed+' failed'):'')
+      +(st.missing?(' \u00b7 '+st.missing+' not on this device'):''));
+    return st;
+  });
+}
 // Cloud copy is a bonus on top of local IndexedDB + backups, so a failure is not fatal — but
 // say it once, otherwise "why are my images missing on my laptop?" is unanswerable.
 var _cloudWarned=false;
@@ -12722,10 +12776,19 @@ function _recoverBody(){
   if(RECOVER.tab==='snapshots')
     return '<div class="rc-note">A rolling snapshot of the whole notebook — attachment bytes included — is kept in this browser for the last seven days. Restoring one <b>replaces everything</b>; it is the answer to “yesterday was better”, not to “I deleted one thing”.</div>'
       +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();restoreFromSnapshot()">Browse snapshots…</button></div>';
-  if(RECOVER.tab==='file')
-    return '<div class="rc-note">A backup file is the only copy that leaves this machine on its own. Restoring one <b>replaces the entire notebook</b>, and a v2 backup brings its attachments back with it.</div>'
+  if(RECOVER.tab==='file'){
+    // The honest counter. Attachments added before Storage was enabled, and any whose upload
+    // failed, exist in exactly one browser — and until now nothing said so or offered to fix it.
+    var pend=0; try{ pend=attNeedingUpload().length; }catch(e){}
+    return '<div class="rc-note">A backup file is the only copy that leaves this machine on its own. Restoring one <b>replaces the entire notebook</b>; a v2 or v3 backup brings its attachments back with it, and v3 carries the version history too.</div>'
       +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();openRestoreBackup()">Choose a backup file…</button>'
-      +'<button class="btn ghost" onclick="_lbDlgClose();doBackup(true)">Back up now</button></div>';
+      +'<button class="btn ghost" onclick="_lbDlgClose();doBackup(true)">Back up now</button></div>'
+      +(pend
+        ? ('<div class="rc-note rc-warn"><b>'+pend+' attachment'+(pend===1?' is':'s are')+' on this device only.</b> '
+           +'They were added before cloud storage was switched on, or their upload failed. They are in your backups, but not on your other machine.'
+           +'</div><div class="rc-act"><button class="btn" onclick="_attSweep(true)">Upload them now</button></div>')
+        : '<div class="rc-note">Every attachment has a cloud copy.</div>');
+  }
   var tr=LB.data.trash||{};
   var ks=Object.keys(tr).sort(function(a,b){ return (tr[b].at||0)-(tr[a].at||0); });
   if(!ks.length) return '<div class="rc-note">Nothing deleted. Anything you delete lands here and can be restored for '+TRASH_DAYS+' days, on every machine you are signed in to.</div>';
@@ -12772,7 +12835,9 @@ lbInitSync();
 // one, the GC by marking every attachment on the machine — and both used to run against
 // whatever happened to be in memory 1.5 and 4 seconds in, which on a slow first read is the
 // local cache and not the notebook. They wait now.
-_onBootSettled(function(){ setTimeout(maybeAutoBackup,1500); setTimeout(function(){ trashPurge(); gcAttachments(); },4000); });
+_onBootSettled(function(){ setTimeout(maybeAutoBackup,1500); setTimeout(function(){ trashPurge(); gcAttachments(); },4000);
+  // After the GC, so _collectAttIds has settled. Quiet unless it actually uploads something.
+  setTimeout(function(){ _attSweep(false); },9000); });
 setTimeout(migrateAntibodiesToLibrary,2500);
 setTimeout(cleanupAntibodySection,2600);
 function _mergeDHubContext(ctx){
