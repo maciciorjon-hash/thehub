@@ -703,6 +703,41 @@ body.lb-rb-closed .rb-pane{display:none;}
   text-align:right;font-size:var(--fs-2);color:var(--text3);font-family:var(--sans);}
 /* A picker is a list of names, not a form: it gets the width a name needs. */
 .modal.pick{max-width:min(760px,94vw);}
+/* Recover — deleted items, snapshots, backup file. One dialog, three ways back. */
+.rc-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:0 0 14px;flex-wrap:wrap;}
+.rc-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);
+  font-family:var(--sans);font-size:var(--fs-3);font-weight:600;padding:7px 11px;cursor:pointer;
+  display:flex;align-items:center;gap:6px;margin-bottom:-1px;
+  transition:color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
+.rc-tab:hover{color:var(--text);}
+.rc-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+.rc-tab-n{font-size:var(--fs-1);background:var(--surface3);color:var(--text2);border-radius:var(--r-2);
+  padding:1px 6px;font-weight:700;}
+.rc-tab.on .rc-tab-n{background:var(--accent-dim);color:var(--accent);}
+.rc-body{max-height:52vh;max-height:52dvh;overflow-y:auto;overscroll-behavior-y:contain;}
+.rc-note{font-size:var(--fs-3);color:var(--text2);line-height:1.5;margin-bottom:12px;}
+.rc-act{display:flex;gap:9px;flex-wrap:wrap;}
+.rc-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid var(--border);}
+.rc-row .ic{width:22px;height:22px;border-radius:var(--r-1);flex:0 0 auto;display:flex;align-items:center;
+  justify-content:center;font-size:var(--fs-2);font-weight:700;color:#fff;}
+/* The label takes the slack and the buttons hold their size: a Restore squeezed to 5px is not
+   a button. Same rule as .dlg-item .l. */
+.rc-l{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}
+.rc-l b{font-size:var(--fs-4);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rc-l i{font-size:var(--fs-2);color:var(--text3);font-style:normal;}
+.rc-btn{flex:0 0 auto;background:var(--surface2);border:1px solid var(--border2);color:var(--text);
+  border-radius:var(--r-2);padding:5px 11px;font-family:var(--sans);font-size:var(--fs-3);font-weight:600;
+  cursor:pointer;transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease),
+  border-color var(--dur-1) var(--ease);}
+.rc-btn:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
+.rc-btn.danger:hover{background:var(--bad,#b06a6a);border-color:var(--bad,#b06a6a);}
+@media (max-width:560px){
+  .rc-row{flex-wrap:wrap;row-gap:8px;}
+  .rc-l{flex:1 1 100%;order:2;min-width:0;}
+  .rc-row .ic{order:1;}
+  .rc-btn{order:3;}
+  .rc-l b{white-space:normal;}
+}
 .dlg-empty{padding:20px;text-align:center;color:var(--text3);font-size:var(--fs-3);}
 /* Preset editor redesign */
 .ps-blk{border:1px solid var(--border2);border-radius:var(--r-2);margin-bottom:11px;background:var(--surface);overflow:hidden;}
@@ -1427,6 +1462,10 @@ body.lb-lean .exh.open .exh-lean{display:none;}
 .exp-tab:hover{color:var(--text);}
 .exp-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
 .exp-tab-n{font-size:var(--fs-1);background:var(--surface3);color:var(--text2);border-radius:var(--r-2);padding:1px 6px;font-weight:700;}
+/* How many things are in the bin, on the button that opens it. A safety net you cannot see
+   the size of is one you do not trust. */
+.rb-lbtn-n{font-size:var(--fs-1);background:var(--surface3);color:var(--text2);border-radius:var(--r-full);
+  padding:0 5px;min-width:15px;text-align:center;font-weight:700;margin-left:5px;}
 .exp-tab.on .exp-tab-n{background:var(--accent-dim);color:var(--accent);}
 .exp-tab-body{padding-top:14px;}
 .exp-tab-body .exp-canvas{margin-top:0;}
@@ -5196,7 +5235,7 @@ document.addEventListener('keydown',function(ev){
 
 // ── Store ──
 var LB={ data:null };
-function lbBlank(){ return {projects:[],generalSections:[],experiments:{},pages:{},notebook:{},tags:[],presets:{},antibodies:{},attachments:{},planner:{tasks:{}},protoDays:{},_seeded:false,updated:0}; }
+function lbBlank(){ return {projects:[],generalSections:[],experiments:{},pages:{},notebook:{},tags:[],presets:{},antibodies:{},attachments:{},trash:{},planner:{tasks:{}},protoDays:{},_seeded:false,updated:0}; }
 // The local cache is the only copy of this notebook until a cloud read lands, so a read that
 // FAILS is the most important thing this app can say — and it used to go into an empty catch.
 // A blank tree here is indistinguishable from a genuinely empty notebook, and four seconds
@@ -5225,7 +5264,7 @@ function _markBootSettled(){
 // A read that never resolves must not park the safety net for ever — but 20 s of waiting costs
 // nothing, and it is far longer than a slow first read.
 setTimeout(_markBootSettled, 20000);
-['projects','generalSections','experiments','pages','notebook','tags','presets','antibodies','attachments'].forEach(function(k){ if(!LB.data[k]) LB.data[k]=(k==='projects'||k==='generalSections'||k==='tags')?[]:{}; });
+['projects','generalSections','experiments','pages','notebook','tags','presets','antibodies','attachments','trash'].forEach(function(k){ if(!LB.data[k]) LB.data[k]=(k==='projects'||k==='generalSections'||k==='tags')?[]:{}; });
 if(!LB.data.planner||typeof LB.data.planner!=='object') LB.data.planner={tasks:{}};
 if(!LB.data.planner.tasks||typeof LB.data.planner.tasks!=='object') LB.data.planner.tasks={};
 LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
@@ -5543,7 +5582,9 @@ var _cloudOn=false;
 function _pathOk(k){ return !!k && !/[.#$\[\]\/]/.test(k); }
 
 var _CLOUD_ROOTS=['projects','generalSections','tags','presets','antibodies','attachments','planner','protoDays','_extraPresets','_seeded'];
-var _CLOUD_MAPS=['experiments','notebook','pages'];
+// `trash` is here on purpose: a delete on one machine has to be recoverable on the other, and a
+// deletion that syncs while the way back does not is the same permanent loss with extra steps.
+var _CLOUD_MAPS=['experiments','notebook','pages','trash'];
 var _cloudSkipWarned=false;
 function _cloudFingerprint(){
   var m={}, skipped=[];
@@ -5977,22 +6018,37 @@ function setProjectPrefix(id){
       .then(function(ok){ if(ok) commit(); });
   });
 }
-function delProject(id){ var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===id;});
-  lbConfirm('Delete this project'+(exps.length?(' and its '+exps.length+' item(s)'):'')+'?',{danger:true,title:'Delete project'}).then(function(ok){ if(!ok) return;
+function delProject(id){ var p=projById(id); if(!p) return;
+  var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===id;});
+  lbConfirm('Delete "'+(p.name||'this project')+'"'+(exps.length?(' and its '+exps.length+' item(s)'):'')+'? It goes to Deleted items as one piece, restorable for '+TRASH_DAYS+' days.',{title:'Delete project',ok:'Delete'}).then(function(ok){ if(!ok) return;
+    // The whole project in one entry, experiments included — what you deleted was the project,
+    // and restoring it one experiment at a time would be a different and worse feature.
+    undoMark('Delete project',['projects']);
+    lbTrash('project',(p.name||'Project')+(exps.length?(' · '+exps.length+' item'+(exps.length===1?'':'s')):''),
+      {project:p, experiments:_trashExpsOf(function(e){ return e.projectId===id; })},
+      {index:LB.data.projects.map(function(x){return x.id;}).indexOf(id)});
     exps.forEach(function(k){ delete LB.data.experiments[k]; });
-    LB.data.projects=LB.data.projects.filter(function(p){return p.id!==id;});
+    LB.data.projects=LB.data.projects.filter(function(x){return x.id!==id;});
     if(SEL.node.projectId===id){ SEL.node={kind:'exps'}; SEL.page=null; } save(); renderAll(); }); }
 function addSection(pid){ var i=el('new-sec-'+pid); var n=(i.value||'').trim(); if(!n) return; var p=projById(pid); if(!p) return; p.sections=p.sections||[]; var s={id:uid(),name:n,created:Date.now()}; p.sections.push(s); EXPANDED[pid]=true; save(); selectNode('expsec',pid,s.id); }
-function delSection(pid,sid){ var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===pid&&LB.data.experiments[k].sectionId===sid;});
-  lbConfirm('Delete this folder'+(exps.length?(' and its '+exps.length+' item(s)'):'')+'?',{danger:true,title:'Delete folder'}).then(function(ok){ if(!ok) return;
+function delSection(pid,sid){ var p=projById(pid); var sec=p&&(p.sections||[]).filter(function(s){return s.id===sid;})[0]; if(!sec) return;
+  var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===pid&&LB.data.experiments[k].sectionId===sid;});
+  lbConfirm('Delete "'+(sec.name||'this folder')+'"'+(exps.length?(' and its '+exps.length+' item(s)'):'')+'? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete folder',ok:'Delete'}).then(function(ok){ if(!ok) return;
+    undoMark('Delete folder',['projects']);
+    lbTrash('folder',(sec.name||'Folder')+(exps.length?(' · '+exps.length+' item'+(exps.length===1?'':'s')):''),
+      {projectId:pid, section:sec, experiments:_trashExpsOf(function(e){ return e.projectId===pid&&e.sectionId===sid; })});
     exps.forEach(function(k){ delete LB.data.experiments[k]; });
-    var p=projById(pid); if(p) p.sections=(p.sections||[]).filter(function(s){return s.id!==sid;});
+    p.sections=(p.sections||[]).filter(function(s){return s.id!==sid;});
     if(SEL.node.kind==='expsec'&&SEL.node.sectionId===sid){ SEL.node={kind:'exps'}; SEL.page=null; } save(); renderAll(); }); }
 function addGeneral(){ var i=el('new-gen'); var n=(i.value||'').trim(); if(!n) return; var s={id:uid(),name:n,kind:'notes',created:Date.now()}; LB.data.generalSections.push(s); save(); selectNode('general','',s.id); }
 function delGeneral(id){ var sec=genSecById(id);
   var pgs=Object.keys(LB.data.pages).filter(function(k){return LB.data.pages[k].sectionId===id;});
-  var msg=('Delete this section'+(pgs.length?(' and its '+pgs.length+' page(s)'):'')+'?');
-  lbConfirm(msg,{danger:true,title:'Delete section'}).then(function(ok){ if(!ok) return;
+  if(!sec) return;
+  var msg=('Delete "'+(sec.name||'this section')+'"'+(pgs.length?(' and its '+pgs.length+' page(s)'):'')+'? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.');
+  lbConfirm(msg,{title:'Delete section',ok:'Delete'}).then(function(ok){ if(!ok) return;
+    undoMark('Delete section',['generalSections']);
+    var keep={}; pgs.forEach(function(k){ keep[k]=LB.data.pages[k]; });
+    lbTrash('section',(sec.name||'Section')+(pgs.length?(' · '+pgs.length+' page'+(pgs.length===1?'':'s')):''),{section:sec,pages:keep});
     pgs.forEach(function(k){ delete LB.data.pages[k]; });
     LB.data.generalSections=LB.data.generalSections.filter(function(s){return s.id!==id;});
     if(SEL.node.kind==='general'&&SEL.node.sectionId===id){ SEL.node={kind:'journal'}; SEL.page=null; } save(); renderAll(); }); }
@@ -7304,7 +7360,152 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
 function newNote(kind){ var e={ id:uid(), kind:'note', noteType:kind, projectId:SEL.node.projectId, sectionId:SEL.node.sectionId, title:'', date:todayStr(), html:'<p></p>', created:Date.now(), updated:Date.now() };
   LB.data.experiments[e.id]=e; save(); SEL.page=e.id; renderAll(); }
 function dupExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; var c=JSON.parse(JSON.stringify(e)); c.id=uid(); c.title=(e.title||'')+' (copy)'; if(e.code) c.code=e.code+'_copy'; if(c.blocks) c.blocks.forEach(function(b){b.id=uid();}); c.created=Date.now(); c.updated=Date.now(); LB.data.experiments[c.id]=c; save(); SEL.page=c.id; renderAll(); }
-function delExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Delete "'+(e.title||e.code||'this entry')+'"?',{danger:true,title:'Delete entry'}).then(function(ok){ if(!ok) return; undoMark('Delete entry',['experiments.'+id]); delete LB.data.experiments[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
+// ══════════════════════════════════════════════════════════════════════════
+// THE RECYCLE BIN
+//
+// Delete used to be permanent. delProject removed the project AND every experiment in it
+// without even an undoMark; delSection and delGeneral did the same to their contents; and
+// save() pushed the deletion to the cloud 1.2 s later. UNDO is sixty steps of memory that dies
+// on reload. So the most destructive act in the app was one confirm dialog away from being
+// irreversible on every machine at once.
+//
+// Nothing is deleted now — it is moved here, and `trash` is in _CLOUD_MAPS, so a delete on one
+// machine is recoverable on both. OneNote keeps a deleted page for sixty days; so does this.
+//
+// The rule that must never be broken: _collectAttIds() has to see INSIDE these payloads. A
+// trashed experiment still owns its images, and a GC that cannot see them marks the bytes and
+// deletes them a month later — restoring would then hand back the record with empty boxes.
+var TRASH_DAYS=60;
+var TRASH_KINDS={
+  experiment:{lbl:'Entry',       ic:'E', c:'#5e87c5'},
+  project:   {lbl:'Project',     ic:'P', c:'#3f6fa8'},
+  folder:    {lbl:'Folder',      ic:'F', c:'#4a8fb5'},
+  section:   {lbl:'Section',     ic:'S', c:'#5e72c4'},
+  page:      {lbl:'Page',        ic:'N', c:'#5e72c4'},
+  day:       {lbl:'Daily note',  ic:'D', c:'#4f9d8f'},
+  block:     {lbl:'Step',        ic:'T', c:'#a56983'},
+  file:      {lbl:'File',        ic:'A', c:'#c99a4e'}
+};
+function lbTrash(kind,label,payload,meta){
+  var t={id:uid(),at:Date.now(),kind:kind,label:label||'',payload:payload||{}};
+  if(meta) t.meta=meta;
+  (LB.data.trash||(LB.data.trash={}))[t.id]=t;
+  return t.id;
+}
+function trashCount(){ return Object.keys(LB.data.trash||{}).length; }
+// Everything a project owns, lifted in one piece. Restoring a project one experiment at a time
+// would be a different feature and a worse one: what you deleted was the project.
+function _trashExpsOf(pred){
+  var out={};
+  Object.keys(LB.data.experiments||{}).forEach(function(k){
+    if(pred(LB.data.experiments[k])) out[k]=LB.data.experiments[k];
+  });
+  return out;
+}
+function _recoveredProject(){
+  var p=LB.data.projects.filter(function(x){ return x.name==='Recovered'; })[0];
+  if(p) return p;
+  p={id:uid(),name:'Recovered',sections:[],color:PROJ_COLORS[0],prefix:'RC',prefixAuto:true};
+  LB.data.projects.push(p); return p;
+}
+function _recoveredSection(){
+  var s=LB.data.generalSections.filter(function(x){ return x.name==='Recovered'; })[0];
+  if(s) return s;
+  s={id:uid(),name:'Recovered',kind:'notes',created:Date.now()};
+  LB.data.generalSections.push(s); return s;
+}
+// An experiment's address is projectId + sectionId. If the project is gone the record exists
+// and nothing in the Experiments tree can reach it, which from the outside is indistinguishable
+// from still being deleted. A missing folder is fine — xvProjectBody already draws an "Unfiled"
+// group for exactly this.
+function _trashRehome(e){
+  var p=projById(e.projectId);
+  if(!p){ p=_recoveredProject(); e.projectId=p.id; e.sectionId=null; }
+}
+function lbTrashRestore(tid){
+  var t=(LB.data.trash||{})[tid]; if(!t) return;
+  var p=t.payload||{}, note='';
+  switch(t.kind){
+    case 'experiment': {
+      var e=p.exp; if(!e) return;
+      _trashRehome(e); LB.data.experiments[e.id]=e; break; }
+    case 'project': {
+      var pr=p.project; if(!pr) return;
+      if(!projById(pr.id)){
+        var at=(t.meta&&t.meta.index!=null)?Math.min(t.meta.index,LB.data.projects.length):LB.data.projects.length;
+        LB.data.projects.splice(at,0,pr);
+      }
+      Object.keys(p.experiments||{}).forEach(function(k){ LB.data.experiments[k]=p.experiments[k]; });
+      break; }
+    case 'folder': {
+      var sec=p.section; if(!sec) return;
+      var host=projById(p.projectId);
+      if(!host){ host=_recoveredProject(); note='Its project was gone, so it came back under “Recovered”.'; }
+      host.sections=host.sections||[];
+      if(!host.sections.filter(function(s){ return s.id===sec.id; }).length) host.sections.push(sec);
+      Object.keys(p.experiments||{}).forEach(function(k){
+        var x=p.experiments[k]; x.projectId=host.id; x.sectionId=sec.id; LB.data.experiments[k]=x; });
+      break; }
+    case 'section': {
+      var s2=p.section; if(!s2) return;
+      if(!genSecById(s2.id)) LB.data.generalSections.push(s2);
+      Object.keys(p.pages||{}).forEach(function(k){ LB.data.pages[k]=p.pages[k]; });
+      break; }
+    case 'page': {
+      var pg=p.page; if(!pg) return;
+      if(!genSecById(pg.sectionId)){ pg.sectionId=_recoveredSection().id; note='Its section was gone, so it came back under “Recovered”.'; }
+      LB.data.pages[pg.id]=pg; break; }
+    case 'day': {
+      if(!p.date||!p.entry) return;
+      var cur=LB.data.notebook[p.date];
+      // The day has been written in since. Appending is the only answer that loses nothing —
+      // overwriting would trade one deleted note for another.
+      if(cur && _plain(cur.html||'').trim()){
+        cur.html=(cur.html||'')+'<hr><p><i>Restored from Deleted items:</i></p>'+(p.entry.html||'');
+        note='That day had been written in since, so the restored note was added underneath.';
+      } else LB.data.notebook[p.date]=p.entry;
+      break; }
+    case 'block': {
+      var ex=LB.data.experiments[p.expId];
+      if(!ex){ toast('The experiment that step belonged to is gone — restore that first.'); return; }
+      ex.blocks=ex.blocks||[];
+      if(!_findBlockIn(ex,p.block.id)) ex.blocks.splice(Math.min(p.index==null?ex.blocks.length:p.index,ex.blocks.length),0,p.block);
+      syncChainedInputs(ex); break; }
+    case 'file': {
+      var o=_plateOwner(p.ownerKey);
+      if(!o){ toast('What that file was attached to is gone — restore that first.'); return; }
+      o.obj.files=o.obj.files||[];
+      if(!o.obj.files.filter(function(f){ return f.id===p.file.id; }).length) o.obj.files.push(p.file);
+      o.exp.updated=Date.now(); break; }
+    default: return;
+  }
+  delete LB.data.trash[tid];
+  save(); renderAll();
+  if(_recoverOpen()) _recoverRender();
+  toast('Restored'+(t.label?(' · '+t.label):'')+(note?(' — '+note):''));
+  if(note) lbAlert(note,{title:'Restored'});
+}
+// The only place in the app where something really is destroyed on purpose. It says what it is
+// about to lose, and the attachments go to the 30-day GC stage rather than out with it.
+function lbTrashDelete(tid){
+  var t=(LB.data.trash||{})[tid]; if(!t) return;
+  lbConfirm('Permanently delete "'+(t.label||'this item')+'"? This is the one action in Labbook that cannot be taken back.',
+    {danger:true,title:'Delete permanently',ok:'Delete for ever'}).then(function(ok){
+    if(!ok) return;
+    delete LB.data.trash[tid]; save(); renderAll(); gcAttachments();
+    openRecover('trash');
+  });
+}
+// Sixty days, counted from when it was deleted. Runs behind the settle gate like everything
+// else that removes something.
+function trashPurge(){
+  if(!_gcSafe()) return 0;
+  var tr=LB.data.trash||{}, cut=Date.now()-TRASH_DAYS*864e5, n=0;
+  Object.keys(tr).forEach(function(k){ if((tr[k].at||0)<cut){ delete tr[k]; n++; } });
+  if(n){ save(); gcAttachments(); }
+  return n;
+}
+function delExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Delete "'+(e.title||e.code||'this entry')+'"? It goes to Deleted items, where it can be restored for '+TRASH_DAYS+' days.',{title:'Delete entry',ok:'Delete'}).then(function(ok){ if(!ok) return; undoMark('Delete entry',['experiments.'+id]); lbTrash('experiment',(e.code?e.code+' · ':'')+(e.title||'Untitled'),{exp:e}); delete LB.data.experiments[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
 
 function newNotebookDay(){ var k=todayStr(); if(!LB.data.notebook[k]) LB.data.notebook[k]={date:k,html:'<p></p>'}; save(); SEL.page=k; renderAll(); }
 function newPage(){ if(SEL.node.kind!=='general') return; var pg={id:uid(),sectionId:SEL.node.sectionId,kind:'notes',title:'Untitled',html:'<p></p>',created:Date.now(),updated:Date.now()}; LB.data.pages[pg.id]=pg; save(); SEL.page=pg.id; renderAll(); }
@@ -8861,8 +9062,9 @@ function nbTasksHtml(D){
     +'<div class="nbt-add"><input placeholder="+ add a task" autocomplete="off" onkeydown="wkAddKey(event,\''+D+'\')"></div></div></div>';
 }
 function delDay(D){ var hasBlocks=blocksForDate(D).length>0;
-  if(hasBlocks){ lbConfirm('This day has experiment steps, so the day itself stays here — remove those steps from their experiment to clear it. Clear the day’s free note now?',{danger:true,title:'Clear daily note'}).then(function(ok){ if(!ok) return; delete LB.data.notebook[D]; save(); renderAll(); toast('Daily note cleared — the day stays (it still has experiment steps).'); }); return; }
-  lbConfirm('Delete this daily note?',{danger:true,title:'Delete daily note'}).then(function(ok){ if(!ok) return; undoMark('Delete daily note',['notebook.'+D]); delete LB.data.notebook[D]; if(SEL.page===D) SEL.page=null; save(); renderAll(); toast('Daily note deleted.'); }); }
+  function bin(){ var entry=LB.data.notebook[D]; if(entry) lbTrash('day',fmtDate(D),{date:D,entry:entry}); }
+  if(hasBlocks){ lbConfirm('This day has experiment steps, so the day itself stays here — remove those steps from their experiment to clear it. Clear the day’s free note now? It goes to Deleted items.',{title:'Clear daily note',ok:'Clear'}).then(function(ok){ if(!ok) return; undoMark('Clear daily note',['notebook.'+D]); bin(); delete LB.data.notebook[D]; save(); renderAll(); toast('Daily note cleared — the day stays (it still has experiment steps).'); }); return; }
+  lbConfirm('Delete this daily note? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete daily note',ok:'Delete'}).then(function(ok){ if(!ok) return; undoMark('Delete daily note',['notebook.'+D]); bin(); delete LB.data.notebook[D]; if(SEL.page===D) SEL.page=null; save(); renderAll(); toast('Daily note deleted.'); }); }
 function renderPageEditor(host,pg){ (el('export-btn')||{style:{}}).style.display='';
   host.innerHTML='<div class="ed-wrap"><div class="exh"><input class="exh-title" value="'+esc(pg.title||'')+'" placeholder="Page title" onchange="setPage(\'title\',this.value)" onblur="renderPages()"></div>'
     +'<div class="rt pg-body" contenteditable="true" data-ctx="page:'+pg.id+'" oninput="setPage(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>';
@@ -9381,10 +9583,9 @@ function viewPane(){ return '<div class="rb-core rb-labelled">'
   +'<button class="rb-lbtn" id="backup-btn" title="'+esc(backupStatus().detail)+' Back up now \u00b7 right-click for the folder" onmousedown="event.preventDefault();doBackup(true)" oncontextmenu="event.preventDefault();chooseBackupDir()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/>')+'</span><span class="rb-lbtn-lbl">Backup</span></button>'
   +'<button class="rb-lbtn" title="The numbers, as data — JSON or CSV" onmousedown="event.preventDefault();exportDataMenu()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>')+'</span><span class="rb-lbtn-lbl">Data</span></button>'
   +'<button class="rb-lbtn" title="The software named at the end of every Methods paragraph" onmousedown="event.preventDefault();setAnalysisSoftware()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 19V5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1z"/><path d="M8 15l3-4 2 2.5L16 9"/>')+'</span><span class="rb-lbtn-lbl">Analysis</span></button>'
-  +'<button class="rb-lbtn" title="Restore a daily snapshot" onmousedown="event.preventDefault();restoreFromSnapshot()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Snapshots</span></button>'
+  +'<button class="rb-lbtn" title="Deleted items, snapshots and backup files" onmousedown="event.preventDefault();openRecover()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</span><span class="rb-lbtn-lbl">Recover</span>'+(trashCount()?('<span class="rb-lbtn-n">'+trashCount()+'</span>'):'')+'</button>'
   +'<button class="rb-lbtn" title="Fold away the header form, the calculator inputs and the plate summary — each one click from where it was" onmousedown="event.preventDefault();toggleLean()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M4 6h16M4 12h10M4 18h7"/>')+'</span><span class="rb-lbtn-lbl">Lean</span></button>'
   +'<button class="rb-lbtn" title="Light / dark" onmousedown="event.preventDefault();toggleTheme()"><span class="rb-lbtn-ico">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>')+'</span><span class="rb-lbtn-lbl">Theme</span></button>'
-  +'<button class="rb-lbtn" title="Restore from a backup file" onmousedown="event.preventDefault();openRestoreBackup()"><span class="rb-lbtn-ico">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')+'</span><span class="rb-lbtn-lbl">Restore</span></button>'
   +'</div>'; }
 var _rbTab='home';
 // A permanent 120px strip of formatting buttons is what a word processor looks like, and this
@@ -9569,7 +9770,12 @@ function setExpBlockHtml(expId,blkId,html){ var e=LB.data.experiments[expId]; if
 function addBlock(){ var e=_curExp(); if(!e) return; undoMark('Add step',['experiments.'+e.id]); var last=(e.blocks&&e.blocks.length)?e.blocks[e.blocks.length-1].date:''; var d=last||e.startDate||todayStr(); // Empty rather than an empty paragraph, so the placeholder can say what the block is for:
   // `<p></p>` has a child node and is therefore not :empty.
   e.blocks.push({id:uid(),date:d,dayOffset:daysBetween(expAnchorDate(e),d),title:'',html:'',done:false,completedAt:null}); save(); renderEditor(); }
-function delBlock(id){ var e=_curExp(); if(!e) return; undoMark('Delete step',['experiments.'+e.id]); e.blocks=e.blocks.filter(function(b){return b.id!==id;}); syncChainedInputs(e); save(); renderEditor(); }
+function delBlock(id){ var e=_curExp(); if(!e) return; undoMark('Delete step',['experiments.'+e.id]);
+  // A step carries its calculator inputs, its notes, its ticks and possibly a plate map. The
+  // index goes with it: a step put back at the end of the list is dated from the wrong day.
+  var i=e.blocks.map(function(b){return b.id;}).indexOf(id);
+  if(i>=0) lbTrash('block',(e.blocks[i].title||'Step')+' · '+(e.code||e.title||''),{expId:e.id,index:i,block:e.blocks[i]});
+  e.blocks=e.blocks.filter(function(b){return b.id!==id;}); syncChainedInputs(e); save(); renderEditor(); }
 function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
 function moveBlock(id,dir){ var e=_curExp(); if(!e) return; undoMark('Move step',['experiments.'+e.id]); var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; syncChainedInputs(e); save(); renderEditor(); }
 // Creates the day on first edit — renderDayView deliberately doesn't, so that merely
@@ -9859,8 +10065,9 @@ function addFilesTo(key,list){
 function _fileArr(key){ var o=_plateOwner(key); return o?(o.obj.files||[]):[]; }
 function removeFile(key,fid){ var o=_plateOwner(key); if(!o||!o.obj.files) return;
   var f=o.obj.files.filter(function(x){return x.id===fid;})[0]; if(!f) return;
-  lbConfirm('Remove "'+f.name+'" from this experiment?',{danger:true,title:'Remove file'}).then(function(ok){
+  lbConfirm('Remove "'+f.name+'" from this experiment? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Remove file',ok:'Remove'}).then(function(ok){
     if(!ok) return;
+    lbTrash('file',f.name||'File',{ownerKey:key,file:f});
     o.obj.files=o.obj.files.filter(function(x){return x.id!==fid;});
     o.exp.updated=Date.now(); save(); renderEditor(); gcAttachments(); });
 }
@@ -9875,15 +10082,34 @@ function downloadFile(key,fid){ var f=_fileArr(key).filter(function(x){return x.
     document.body.appendChild(a); a.click(); a.remove(); });
 }
 // Drop IndexedDB blobs + attachment-map entries no longer referenced anywhere in the notebook.
-function _collectAttIds(){ var ids={}; function scan(h){ if(!h||h.indexOf('lb-att')<0) return; var re=/data-att="([^"]+)"/g,m; while((m=re.exec(h))) ids[m[1]]=1; }
+// One scanner, used for the live tree AND for what is in the trash, so the two can never
+// disagree about which bytes are still owned by something.
+function _attScanInto(ids){
+  function scan(h){ if(!h||String(h).indexOf('lb-att')<0) return; var re=/data-att="([^"]+)"/g,m; while((m=re.exec(h))) ids[m[1]]=1; }
   function scanFloat(arr){ (arr||[]).forEach(function(o){ if(o&&o.attId) ids[o.attId]=1; }); }
-  // Data-dump files live here too. Miss them and gcAttachments() deletes every dropped file
-  // four seconds after the next load.
+  // Data-dump files live here too. Miss them and gcAttachments() marks every dropped file.
   function scanFiles(arr){ (arr||[]).forEach(function(f){ if(f&&f.attId) ids[f.attId]=1; if(f&&f.thumbAttId) ids[f.thumbAttId]=1; }); }
-  Object.keys(LB.data.experiments||{}).forEach(function(k){ var e=LB.data.experiments[k]; scan(e.html); scan(e.pubReady); scanFloat(e.floatImgs); scanFiles(e.files); (e.blocks||[]).forEach(function(b){ scan(b.html); scanFloat(b.floatImgs); scanFiles(b.files); }); });
-  Object.keys(LB.data.pages||{}).forEach(function(k){ scan(LB.data.pages[k].html); scanFloat(LB.data.pages[k].floatImgs); });
-  Object.keys(LB.data.notebook||{}).forEach(function(k){ scan(LB.data.notebook[k].html); scanFloat(LB.data.notebook[k].floatImgs); });
-  return ids; }
+  function rec(o){ if(!o||typeof o!=='object') return;
+    scan(o.html); scan(o.pubReady); scanFloat(o.floatImgs); scanFiles(o.files);
+    (o.blocks||[]).forEach(function(b){ scan(b.html); scanFloat(b.floatImgs); scanFiles(b.files); }); }
+  return { rec:rec,
+           map:function(m){ Object.keys(m||{}).forEach(function(k){ rec(m[k]); }); },
+           file:function(f){ scanFiles([f]); } };
+}
+function _collectAttIds(){
+  var ids={}, S=_attScanInto(ids);
+  S.map(LB.data.experiments); S.map(LB.data.pages); S.map(LB.data.notebook);
+  // The trash holds real records with real attachments. Miss it and the GC marks the bytes of
+  // everything you have deleted, and thirty days later a restore hands back empty boxes — the
+  // same trap already recorded above for files[], one level deeper.
+  Object.keys(LB.data.trash||{}).forEach(function(k){
+    var p=(LB.data.trash[k]||{}).payload||{};
+    S.rec(p.exp); S.rec(p.page); S.rec(p.entry); S.rec(p.block);
+    S.map(p.experiments); S.map(p.pages);
+    if(p.file) S.file(p.file);
+  });
+  return ids;
+}
 // ── Attachment garbage collection: mark first, delete a month later ─────────────────────────
 // "Unreferenced" is DERIVED from LB.data, and LB.data can be wrong for reasons that have
 // nothing to do with the notebook: a localStorage read that failed, a cloud adoption still in
@@ -10513,7 +10739,7 @@ function ctxPage(ev,id){ var pg=LB.data.pages[id]; if(!pg) return; ctxAt(ev,[
   {label:'Rename',fn:function(){renamePage(id);}},
   {sep:true},{label:'Delete',danger:true,fn:function(){delPage(id);}}
 ]); }
-function delPage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbConfirm('Delete "'+(pg.title||'this page')+'"?',{danger:true,title:'Delete page'}).then(function(ok){ if(!ok) return; undoMark('Delete page',['pages.'+id]); delete LB.data.pages[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
+function delPage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbConfirm('Delete "'+(pg.title||'this page')+'"? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete page',ok:'Delete'}).then(function(ok){ if(!ok) return; undoMark('Delete page',['pages.'+id]); lbTrash('page',pg.title||'Untitled page',{page:pg}); delete LB.data.pages[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
 function renamePage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbPrompt('Rename page', pg.title||'').then(function(v){ if(v==null) return; pg.title=(v.trim()||'Untitled'); pg.updated=Date.now(); save(); renderAll(); }); }
 
 // ── Autocomplete: @ # / + antibody + protocol ──
@@ -12224,6 +12450,55 @@ function restoreFromSnapshot(){
   }).catch(function(){ toast('Could not open local snapshots.'); });
 }
 
+// ── Recover: one door for every way back ────────────────────────────────────────────────────
+// The View ribbon already carried Backup, Snapshots and Restore, and the recycle bin would have
+// made a fourth and the version history a fifth. They answer one question — "how do I get
+// something back?" — so they are one dialog, the way the shell's Settings became one modal with
+// tabs. Re-housing, not rewriting: restoreFromSnapshot, openRestoreBackup and doBackup keep
+// their names and do exactly what they did.
+var RECOVER={tab:'trash'};
+function openRecover(tab){
+  RECOVER.tab=tab||RECOVER.tab||'trash';
+  var d=_lbDlg(); el('lb-dialog-card').className='modal wide';
+  d._onCancel=_lbDlgClose;
+  _recoverRender(); d.classList.add('open');
+}
+function recoverTab(t){ RECOVER.tab=t; _recoverRender(); }
+function _recoverOpen(){ var d=el('lb-dialog'); return !!(d&&d.classList.contains('open')&&el('rc-body')); }
+function _recoverRender(){
+  var card=el('lb-dialog-card'); if(!card) return;
+  var tabs=[['trash','Deleted items',trashCount()],['snapshots','Snapshots',0],['file','Backup file',0]];
+  card.innerHTML='<div class="modal-t">Recover</div>'
+    +'<div class="rc-tabs">'+tabs.map(function(t){
+        return '<button class="rc-tab'+(RECOVER.tab===t[0]?' on':'')+'" onclick="recoverTab(\''+t[0]+'\')">'+esc(t[1])
+          +(t[2]?('<span class="rc-tab-n">'+t[2]+'</span>'):'')+'</button>'; }).join('')+'</div>'
+    +'<div class="rc-body" id="rc-body">'+_recoverBody()+'</div>'
+    +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" onclick="_lbDlgClose()">Close</button></div>';
+}
+function _recoverBody(){
+  if(RECOVER.tab==='snapshots')
+    return '<div class="rc-note">A rolling snapshot of the whole notebook — attachment bytes included — is kept in this browser for the last seven days. Restoring one <b>replaces everything</b>; it is the answer to “yesterday was better”, not to “I deleted one thing”.</div>'
+      +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();restoreFromSnapshot()">Browse snapshots…</button></div>';
+  if(RECOVER.tab==='file')
+    return '<div class="rc-note">A backup file is the only copy that leaves this machine on its own. Restoring one <b>replaces the entire notebook</b>, and a v2 backup brings its attachments back with it.</div>'
+      +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();openRestoreBackup()">Choose a backup file…</button>'
+      +'<button class="btn ghost" onclick="_lbDlgClose();doBackup(true)">Back up now</button></div>';
+  var tr=LB.data.trash||{};
+  var ks=Object.keys(tr).sort(function(a,b){ return (tr[b].at||0)-(tr[a].at||0); });
+  if(!ks.length) return '<div class="rc-note">Nothing deleted. Anything you delete lands here and can be restored for '+TRASH_DAYS+' days, on every machine you are signed in to.</div>';
+  return '<div class="rc-note">Kept for '+TRASH_DAYS+' days, on every machine you are signed in to. A project or a folder comes back in one piece, with the experiments that were in it.</div>'
+    +ks.map(function(k){
+      var t=tr[k], kd=TRASH_KINDS[t.kind]||{lbl:t.kind,ic:'?',c:'var(--text3)'};
+      // Say when it goes. A recycle bin that does not is one you cannot plan around.
+      var left=Math.max(0,TRASH_DAYS-(_daysSince(t.at)||0));
+      return '<div class="rc-row">'
+        +'<span class="ic" style="background:'+kd.c+'">'+esc(kd.ic)+'</span>'
+        +'<span class="rc-l"><b>'+esc(t.label||kd.lbl)+'</b><i>'+esc(kd.lbl)+' · deleted '+esc(_homeAgo(t.at))+' ago · '+left+' day'+(left===1?'':'s')+' left</i></span>'
+        +'<button class="rc-btn" onclick="lbTrashRestore(\''+k+'\')">Restore</button>'
+        +'<button class="rc-btn danger" onclick="lbTrashDelete(\''+k+'\')" title="Delete permanently — the one action here that cannot be taken back">Delete</button>'
+        +'</div>';
+    }).join('');
+}
 var _toastT=null; function toast(msg){ var t=el('lb-toast'); if(!t){ t=document.createElement('div'); t.id='lb-toast'; t.style.cssText='position:fixed;bottom:20px;left:50%;background:var(--surface);color:var(--text);border:1px solid var(--border2);box-shadow:var(--shadow-md);border-radius:6px;padding:10px 16px;font-size:13px;z-index:400;opacity:0;transform:translate(-50%,10px)'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; t.style.transform='translate(-50%,0)'; clearTimeout(_toastT); _toastT=setTimeout(function(){t.style.opacity='0'; t.style.transform='translate(-50%,10px)';},2600); }
 function toggleTheme(){
   var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
@@ -12254,7 +12529,7 @@ lbInitSync();
 // one, the GC by marking every attachment on the machine — and both used to run against
 // whatever happened to be in memory 1.5 and 4 seconds in, which on a slow first read is the
 // local cache and not the notebook. They wait now.
-_onBootSettled(function(){ setTimeout(maybeAutoBackup,1500); setTimeout(gcAttachments,4000); });
+_onBootSettled(function(){ setTimeout(maybeAutoBackup,1500); setTimeout(function(){ trashPurge(); gcAttachments(); },4000); });
 setTimeout(migrateAntibodiesToLibrary,2500);
 setTimeout(cleanupAntibodySection,2600);
 function _mergeDHubContext(ctx){
