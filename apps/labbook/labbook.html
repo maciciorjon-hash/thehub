@@ -756,6 +756,12 @@ body.lb-rb-closed .rb-pane{display:none;}
 .lh-x-aim{display:block;font-style:normal;font-size:var(--fs-1);color:var(--text3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 @media (max-width:900px){ .lh-x-aim{display:none;} }
+.tmr-note{font-size:var(--fs-1);color:var(--text3);line-height:1.45;padding:6px 9px;max-width:260px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);margin-bottom:6px;}
+.tmr-note.off{color:var(--text2);}
+.tmr-note button{background:none;border:none;padding:0;color:var(--accent);font:inherit;font-weight:700;
+  cursor:pointer;text-decoration:underline;}
+.tmr-away{font-weight:600;color:var(--warn,#c99a4e);font-size:var(--fs-1);}
 .xv-oc{flex:0 0 auto;width:17px;height:17px;border-radius:var(--r-full);display:inline-flex;
   align-items:center;justify-content:center;font-size:var(--fs-1);font-weight:700;color:#fff;background:var(--oc);}
 .rc-warn{color:var(--text);background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-2);padding:10px 12px;}
@@ -6619,7 +6625,7 @@ function startWaitTimer(expId,blockId){
   if(left<=0){ toast('That wait is already over'); return; }
   LB_TIMERS.push({id:uid(), label:_waitTxt(m)+' after '+(b.title||'step'), sub:(f.exp.code||f.exp.title||''),
                   expId:expId, blkId:blockId, ends:Date.now()+left, total:Math.round(left/1000)});
-  _timerWake(true); renderTimers();
+  lbNotifyAsk(); _timerWake(true); _timersSave(); renderTimers();
 }
 function expOverdue(e){
   if(!e || expClosed(e)) return null;
@@ -9182,6 +9188,55 @@ function repChipHtml(e){
 // clock instead of you reaching for a phone. This is the payoff of typing the parameters, and
 // no rich-text ELN can do it: it does not know that "60 min" is a duration.
 var LB_TIMERS=[], _timerTick=null, _wakeLock=null;
+// ── Being told, when you are not looking at the tab ──────────────────────────────────────────
+// _timerBeep is WebAudio in a foreground tab, and a background tab throttles setInterval to a
+// minute or suspends it outright — so a three-hour compound incubation reached nobody the
+// moment you switched to something else, and the timer did not survive a reload either.
+//
+// The ceiling is stated in the UI rather than implied away: a notification arrives while the
+// browser is running. A srcdoc iframe cannot register a service worker, and one scheduled for a
+// closed browser needs a push server. This is not an alarm clock.
+function _hubWin(){ try{ return (window.parent&&window.parent!==window)?window.parent:null; }catch(e){ return null; } }
+function lbNotifyOk(){
+  var W=_hubWin(); if(W&&W.HUB_NOTIFY_OK) { try{ return !!W.HUB_NOTIFY_OK(); }catch(e){} }
+  try{ return typeof Notification!=='undefined' && Notification.permission==='granted'; }catch(e){ return false; }
+}
+// Asked on the first timer you start, which is a real user gesture. Never at load: a permission
+// prompt on opening a notebook is the thing everybody clicks Block on.
+function lbNotifyAsk(){
+  var W=_hubWin(); if(W&&W.HUB_NOTIFY_ASK){ try{ return W.HUB_NOTIFY_ASK(); }catch(e){} }
+  try{
+    if(typeof Notification==='undefined'||Notification.permission!=='default') return Promise.resolve(null);
+    var r=Notification.requestPermission(); return (r&&r.then)?r:Promise.resolve(null);
+  }catch(e){ return Promise.resolve(null); }
+}
+function lbNotify(title,body,tag){
+  var W=_hubWin(); if(W&&W.HUB_NOTIFY){ try{ if(W.HUB_NOTIFY(title,body,tag)) return true; }catch(e){} }
+  try{ if(typeof Notification!=='undefined'&&Notification.permission==='granted'){ new Notification(title,{body:body,tag:tag}); return true; } }catch(e){}
+  return false;
+}
+// A timer belongs to this device and this bench, not to the notebook: syncing it would ring on
+// the machine at home. localStorage, not LB.data.
+function _timersSave(){ try{ localStorage.setItem('lb_timers',JSON.stringify(LB_TIMERS)); }catch(e){} }
+function _timersLoad(){
+  var raw=null; try{ raw=localStorage.getItem('lb_timers'); }catch(e){}
+  if(!raw) return;
+  var arr=[]; try{ arr=JSON.parse(raw)||[]; }catch(e){ return; }
+  if(!arr.length) return;
+  var now=Date.now(), keep=[];
+  arr.forEach(function(t){
+    if(!t||!t.ends) return;
+    // Older than a day is not a timer any more, it is litter.
+    if(now-t.ends > 864e5) return;
+    // One that ran out while the tab was closed is shown as finished, with the time it finished
+    // at — silently dropping it is how you find out you missed the read by not finding out.
+    if(t.ends<=now){ t.rang=true; t.away=true; }
+    keep.push(t);
+  });
+  LB_TIMERS=keep;
+  if(LB_TIMERS.filter(function(t){ return !t.rang; }).length) _timerWake(true);
+  if(LB_TIMERS.length) renderTimers();
+}
 function _tsec(v,ov){
   var e=_pval(v,ov); var n=parseFloat(e.value); if(!isFinite(n)) return 0;
   var u=String(v.unit||'').toLowerCase();
@@ -9199,9 +9254,9 @@ function startTimer(bId,key,label){
   var secs=_tsec(def,(b.params||{})[key]); if(secs<=0) return;
   LB_TIMERS.push({id:uid(), label:(label||def.label||key), sub:(b.title||''), expId:f.exp.id, blkId:bId,
                   ends:Date.now()+secs*1000, total:secs});
-  _timerWake(true); renderTimers();
+  lbNotifyAsk(); _timerWake(true); _timersSave(); renderTimers();
 }
-function stopTimer(id){ LB_TIMERS=LB_TIMERS.filter(function(t){ return t.id!==id; }); if(!LB_TIMERS.length) _timerWake(false); renderTimers(); }
+function stopTimer(id){ LB_TIMERS=LB_TIMERS.filter(function(t){ return t.id!==id; }); if(!LB_TIMERS.length) _timerWake(false); _timersSave(); renderTimers(); }
 function _timerWake(on){
   try{
     if(on&&!_wakeLock&&navigator.wakeLock) navigator.wakeLock.request('screen').then(function(l){ _wakeLock=l; }).catch(function(){});
@@ -9218,17 +9273,26 @@ function renderTimers(){
   if(!host){ host=document.createElement('div'); host.id='lb-timers'; document.body.appendChild(host); }
   if(!LB_TIMERS.length){ host.innerHTML=''; host.style.display='none'; if(_timerTick){ clearInterval(_timerTick); _timerTick=null; } return; }
   host.style.display='';
-  host.innerHTML=LB_TIMERS.map(function(t){
+  // Say the ceiling rather than implying an alarm clock. Only while something is actually
+  // running, and only when it would otherwise be a surprise.
+  var note = lbNotifyOk()
+    ? '<div class="tmr-note">You will be notified even if this tab is in the background. Not if the browser is closed.</div>'
+    : '<div class="tmr-note off">This only beeps while Labbook is open in front of you. '
+      +'<button onclick="lbNotifyAsk().then(renderTimers)">Turn on notifications</button></div>';
+  host.innerHTML=note+LB_TIMERS.map(function(t){
     var left=t.ends-Date.now(), done=left<=0;
     var pct=Math.max(0,Math.min(100,100*(1-left/(t.total*1000))));
     return '<div class="tmr'+(done?' done':'')+'"><div class="tmr-bar" style="width:'+pct+'%"></div>'
-      +'<span class="tmr-time">'+(done?'done':_fmtLeft(left))+'</span>'
-      +'<span class="tmr-lbl">'+esc(t.label)+(t.sub?('<span class="tmr-sub">'+esc(t.sub)+'</span>'):'')+'</span>'
+      +'<span class="tmr-time">'+(done?(t.away?_clock(t.ends):'done'):_fmtLeft(left))+'</span>'
+      +'<span class="tmr-lbl">'+esc(t.label)+(t.away?' <b class="tmr-away">finished while you were away</b>':'')
+        +(t.sub?('<span class="tmr-sub">'+esc(t.sub)+'</span>'):'')+'</span>'
       +'<button class="tmr-x" title="Dismiss" onclick="stopTimer(\''+t.id+'\')">&times;</button></div>';
   }).join('');
   if(!_timerTick) _timerTick=setInterval(function(){
     var fired=LB_TIMERS.filter(function(t){ return !t.rang && t.ends<=Date.now(); });
-    fired.forEach(function(t){ t.rang=true; _timerBeep(); toast(t.label+' — done'); });
+    fired.forEach(function(t){ t.rang=true; _timerBeep(); toast(t.label+' — done');
+      lbNotify((t.sub||'Labbook')+' — done', t.label, t.id); });
+    if(fired.length) _timersSave();
     renderTimers();
   },1000);
 }
@@ -13124,7 +13188,7 @@ function renderAll(){ renderPages(); renderEditor(); }   // renderPages() calls 
 var _seedChanged=maybeSeed();
 var _semanticTitlesChanged=migrateSemanticExperimentTitles();
 if(_seedChanged||_semanticTitlesChanged) save();
-_leanInit(); applyLayout(); renderPanels(); renderAll();
+_leanInit(); applyLayout(); renderPanels(); renderAll(); _timersLoad();
 // An empty slot is a new browser and says nothing. A value that was there and did not parse is
 // a broken one, and the person in front of it is about to see a notebook that is missing work.
 // That is worth interrupting for — it is the one situation where carrying on typing makes it

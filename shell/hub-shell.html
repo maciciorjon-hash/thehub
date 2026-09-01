@@ -1254,6 +1254,38 @@ function _loadApp(id) {
 // demand instead of relying on the startup preload timing.
 window.hubEnsureApp = function(id){ try{ _loadApp(id); }catch(e){} return !!loaded[id]; };
 
+// Notifications belong to the shell for the same reason HUB_FREEZER_* does: an app inside a
+// srcdoc iframe should ask the host rather than each of nineteen apps working out permissions
+// for itself. Labbook's bench timers are the first caller — a three-hour incubation reached
+// nobody once the tab was in the background, because setInterval is throttled there and a
+// WebAudio beep goes to a tab nobody is looking at.
+//
+// The ceiling, stated because the UI states it too: this arrives while the browser is running.
+// Scheduling one for a closed browser needs a push server, and a srcdoc iframe cannot register
+// a service worker to hold it.
+window.HUB_NOTIFY_OK = function(){
+  try{ return typeof Notification!=='undefined' && Notification.permission==='granted'; }catch(e){ return false; }
+};
+// Must be called from a real user gesture — browsers refuse the prompt otherwise, and Chrome
+// holds it against the origin if you ask without one.
+window.HUB_NOTIFY_ASK = function(){
+  try{
+    if(typeof Notification==='undefined') return Promise.resolve('unsupported');
+    if(Notification.permission!=='default') return Promise.resolve(Notification.permission);
+    var r=Notification.requestPermission();
+    return (r&&r.then)?r:Promise.resolve(Notification.permission);
+  }catch(e){ return Promise.resolve('denied'); }
+};
+window.HUB_NOTIFY = function(title,body,tag){
+  try{
+    if(typeof Notification==='undefined'||Notification.permission!=='granted') return false;
+    // A tag replaces an earlier notification with the same one rather than stacking six copies
+    // of the same timer.
+    new Notification(String(title||'dHUB'),{body:String(body||''),tag:tag?String(tag):undefined});
+    return true;
+  }catch(e){ return false; }
+};
+
 var _hubPendingMessages={};
 function _hubQueueMessage(id,msg){
   var frame=document.getElementById('frame-'+id); if(!frame) return;
