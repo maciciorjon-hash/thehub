@@ -3263,9 +3263,46 @@ so a new kind of edit is structural until someone deliberately says otherwise.
   five, which are now `pdToast`. Inside dHUB a native alert is a browser dialog headed
   "localhost says", which reads as the page having broken.
 
+## Fourteen icons, and the two that were the same drawing (2026-09-02)
+
+Jon, on the Archive landing: *"CSS icons are a mess. re check all of them and create unique,
+logic icons."* Rendered as a contact sheet — every card logo, every `WS_ICONS` glyph and every
+`SUITE_ICONS` glyph, at 26px and at 88px — the mess is legible at once, and it is three kinds:
+
+**Two pairs were literally the same drawing.** `Incubator` and `Cell Archive` were both the
+concentric-circle dish, character for character; `SUITE_ICONS.incubator` was a house, which is
+`WS_ICONS.home`. The rail's **Cells** entry was drawing that house, so the Hub's Home button and
+its Cells button were the same glyph. The three-app lifecycle now reads as three things:
+Incubator a **T-flask** (canted neck, cap, medium — the drawing the Incubator app already uses
+for a culture), Lines a **microscope**, Freezer the snowflake it always was, and the rail's Cells
+its own **cell with a nucleus** (`WS_ICONS.cells`).
+
+**Three were drawn too small to survive their own size.** Protein Tools' peptide bonds were
+**0.4 px long** — `x1="6.8" x2="7.2"` — so it rendered as three blobs; BCA was a bare squiggle,
+its twin; Dora plotted a single dot on a curve. They are a chain with real bonds, a standard
+curve with three points on axes, and a dose–response with the points it fits. Beacon's two equal
+rings and a bar read as **spectacles**; BRET is directional, so it is a filled donor, radiating
+arcs, and a hollow acceptor. Cadence's three bars were all flush left — a hamburger menu, not a
+Gantt — and are staggered now. Blot's plain grid is a membrane with four **bands**. LDI's balance
+had two open hooks for pans and now has pans.
+
+**Three said nothing at all.** The antibody's two arms met at a point and read as a map pin (it
+is a Y with its two binding sites); the primer was an unreadable squiggle, then, drawn as a
+primer annealed to a template, read as a *table* — an oligo is one strand, its bases and a 3′
+arrow; the plasmid's ring with two stray ticks now carries a feature arc with an arrowhead, which
+is what stops a ring reading as a loading spinner. Journal was a second book, a twin of Labbook's
+own logo, and is the dated day page it actually is.
+
+`SUITE_ICONS.analysis` was Echo's bar chart with axes bolted on. The category is dose–response
+fitting, so it is a curve through scatter points and Echo keeps the bars.
+
+**Where an icon is shared, it is shared on purpose** — Archive's book is the same in the rail and
+on its card, because they are the same thing. The two app headers that carried a copy of their
+card logo (Incubator, Blot) were updated with it, or the app and its card would disagree.
+
 ## Current state
 
-**v1.11.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-02. (This session: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.11.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-02. (This session: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in
