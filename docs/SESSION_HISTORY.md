@@ -412,3 +412,52 @@ became one modal with four tabs and the View ribbon went from ten buttons to six
 runtime and alignment audits clean over Home, Experiments, Journal, Recover and Settings at
 1440/1024/375 in both themes with no horizontal overflow; the four `embed.py` profiles rebuilt;
 the shell bridge reachable from the real Labbook frame in the built dHUB.
+
+---
+
+## 2026-09-02 · v1.11.0 — Blueprint audited end to end
+
+Jon: *"audit a la app blueprint. completo de código, estética visual y funcionalidades… todo
+tiene que funcionar smooth, alinearse perfecto visualmente y funcionar flawless."*
+
+**Already right, and checked rather than assumed**: `audit_app --xref` clean; selection correct
+in every mode (row 12 · column 8 · all 96 · shift-rectangle 3×3 · ⌘-toggle); the dilution series
+right to the digit (1000 nM ÷3 → 1 µM · 333 · 111 · 37 · 12.3 · 4.12 · 1.37 · 0.46 nM) and
+auto-scaling its unit; undo restoring a format wipe through the real path; drag listeners
+unregistered by `_cleanupMouseUp`. One early "finding" was an artefact of a test that bypassed
+the confirm modal, and was withdrawn after re-testing the real path.
+
+**The plate-reader import corrupted data four ways, silently** — `split(/[\t,;]+/)` collapsed
+consecutive separators so an empty well vanished and shifted the row; comma in that class split
+a European decimal; `text.trim()` ate the leading tab of a first line whose A1 was empty; and an
+empty first cell was taken for a header. A fifth surfaced while fixing them: a first row reading
+1…n is indistinguishable from a header, settled by "a full-height grid has no room for one".
+**All five were in Labbook too** — `plParseValues` is a line-for-line port of `pdParseValues`.
+
+**Popups off the screen**: the Gel popup clamped `py` at both ends and `px` only on the right, so
+at 375px it landed at `left:-188px`; the well tooltip clamped `left` against a hardcoded 200 for
+a box with `max-width:none` (466px in practice) and never clamped `top`.
+
+**Three overlapping small-screen blocks** (700 · 640 · 720) in which thirteen selectors collided
+and file position decided the winner — how a 40px tap target was cancelled by a 36 written forty
+lines lower. Merged per property; a blind reorder would have undone the bottom-sheet fix, since
+`.sel-toolbar` was in both blocks. The bar's height is now token-driven for every control: 15
+controls, one height, at seven widths.
+
+**The mobile selection toolbar** was 640px tall on a 720px window and covered the plate entirely;
+CLAUDE.md claimed it "never covers the plate canvas". It is a bottom sheet at 46dvh.
+
+**The undo** coalesced on time alone and merged two deliberate actions 320 ms apart. Now the
+change must also be label-only, derived from the states rather than declared at the call site.
+
+**Five native `alert()`s** → `pdToast`.
+
+**CLAUDE.md audited against the code**: every backticked identifier it cites was checked for
+existence — 627 cited, 38 absent, of which 6 were false claims (`ECHO_RESULTS`/`ECHO_API_VERSION`
+never existed, `renderNotebookEditor` is `renderDayView`, `copyForOneNote` was replaced by
+`copyRendered`, `FLASK_BODY` is `.vsl-base`, `_presetV8` is now V9) and the rest are cited as
+removed or belong to ChemLib. The dead LabMate section and the wrong mobile-toolbar note are out.
+
+**Verified**: check_js · check_css (20 clean) · audit_app --xref · check_shared all clean; the
+runtime and alignment audits over both tabs at 1440/1180/1024/800/640/600/420/375 in both themes;
+the four profiles rebuilt.

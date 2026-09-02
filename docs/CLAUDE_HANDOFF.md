@@ -5,7 +5,7 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-01 · **v1.10.0** · branch `main`.
+- Date: 2026-09-02 · **v1.11.0** · branch `main`.
 - Latest work: **durability** — the answer to Jon's *"me preocupa la pérdida de datos, esto
   tiene que ser tan seguro como OneNote… tiene que haber sistemas que impidan la pérdida de
   datos de ningún tipo."* OneNote's safety is four things: a local cache, per-page version
@@ -170,7 +170,7 @@ Compact coordination note. Read it before starting work; the full changelog is
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** All three now read `v1.10.0`; check the shell
+- **Version drift is a recurring failure here.** All three now read `v1.11.0`; check the shell
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.

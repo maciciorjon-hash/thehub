@@ -32,7 +32,7 @@ Four things have to be excellent, and they are the four to invest in:
 | **Log** | a dated record of what was actually done, deviations included | Labbook day-blocks, `b.params`, `expDeviations` |
 | **Annotate** | notes on a step, on a block, on a day, on a well | `stepNotes`, `b.note`, plate maps, `e.files` |
 | **Analyse** | curves, potencies, plate readings — as data, not screenshots | Echo, `integration.results`, `plParseValues` |
-| **Export** | a document someone else can use: Methods sheet, PDF, OneNote, CSV, PNG | `exportMethods`, `exportPDF`, `copyForOneNote` |
+| **Export** | a document someone else can use: Methods sheet, PDF, Word, CSV, PNG | `exportMethods`, `exportPDF`, `copyRendered` |
 
 The **encoded domain knowledge** is still the moat under all four — 33 Archive protocols with
 working calculators, parameterised experiment templates, and a loop that understands what a
@@ -347,9 +347,7 @@ python3 embed.py
 
 **Same-origin srcdoc:** `srcdoc` iframes with `allow-same-origin` are same-origin as dHUB. `localStorage` and `window.parent` calls work.
 
-**LabMate active sections (v0.9.96):** Favourites · Calculators · Mol Biology · Cell Biology · CRISPR · Proteomics · Biophysics · Struct Bio · Genomics. PROTAC Tools and Reference removed.
-
-**Plate Designer mobile:** `.sel-toolbar` anchored to `top:58px` on mobile with `max-height:calc(100vh - 80px); overflow-y:auto` so it never covers the plate canvas.
+**Plate Designer mobile:** `.sel-toolbar` is a **bottom sheet** below 720px — `bottom:0`, `max-height:46dvh`. It used to be pinned at `top:58/64px` with `max-height:calc(100vh - 80px)`, and this note used to claim that "never covers the plate canvas": measured at 375×720 it was **640px tall and covered all of it**, so you could not see the wells you had selected while deciding what to do to them.
 
 **Favicon:** SVG data URI in `shell/hub-shell.html` `<head>` — dark rounded square with white "d", matches nav logo.
 
@@ -361,7 +359,7 @@ python3 embed.py
 
 The axis of Labbook is the **individual experiment**: you design one, it expands into dated
 day-blocks, and each day's blocks surface in that day's notebook (`blocksForDate` →
-`renderNotebookEditor`). Three systems support that:
+`renderDayView`). Three systems support that:
 
 **Setup parameters** — `SETUP_SCHEMA` (one entry per experiment type) declares the handful of
 decisions you make when planning. The plate assays (WB/HB/CTG/NB/KD/RTX/D2B) lead with
@@ -377,7 +375,7 @@ blocks)` hook for structural changes — CTG uses it to drop the readout you did
 checklists (which is what drives the existing carry-over logic). The seed version flag was
 bumped `_presetV2` → `_presetV3` → `_presetV4` → `_presetV5` → `_presetV6` → **`_presetV7`** (2026-08-28, the SPARK preset's `ctrlRatio`), so `seedPresets()` re-seeds all built-in presets once
 per browser. Custom/user-added presets are untouched; hand-edits to built-in presets made
-before this change are overwritten. **Bump to `_presetV8` if you edit `PRESET_SEED` again.**
+before this change are overwritten. The flag is at **`_presetV9`** as of 2026-09-02; **bump it if you edit `PRESET_SEED` or `EXTRA_PRESET_SEED` again.**
 
 **Snooze** — `snoozeBlock(expId, blockId, n)` pushes a step **and every later-dated step in the
 same experiment** forward n days, then `recomputeDayOffsets`. Buttons in `blkCardHtml` (needs
@@ -577,7 +575,7 @@ test picklist: 7 destination plates, 14 compounds, 308 wells, and `plateSummary`
 back as "EDA-099 · 10 concentrations ×2 replicates · B2–C11" with no typing at all.
 
 **Potencies → the experiment record.** Echo gained `sendResultsToLabbook()` and a *Send to
-Labbook* button next to Copy TSV, plus `ECHO_RESULTS`/`ECHO_API_VERSION` on the parent. It posts
+Labbook* button next to Copy TSV. It posts
 `dhub:context v1` with a `results[]` entry carrying compound, target, potency, effect, Hill, R²
 and Echo's own flag, labelled per assay type (`DC50`/`IC50`/`EC50`/Potency). Labbook renders them
 in a new **Results** tab (`resultsPaneHtml`), keeping the flag visible so a curve Echo was
@@ -663,7 +661,8 @@ in a sentence. None of it is possible in a rich-text notebook.
   (`HB20260504_BET.edr` → type HB) and the run date; the wells give the format; the destination
   plate becomes the plate map. One file, whole experiment.
 - **Reader values on the plate** (`plParseValues`, ported from Blueprint's `pdParseValues` —
-  translate its `{rows,cols}` to Labbook's `{r,c}`) — colours across the range present, numbers
+  translate its `{rows,cols}` to Labbook's `{r,c}`; **five parsing bugs came across with the
+  port and were fixed in both on 2026-09-02** — see *A port carries the bugs too*) — colours across the range present, numbers
   where the format has room. A dead column is obvious here and invisible in a fitted curve.
 - **Hub-wide Cmd+K** (`spotBeyondLabbook`) — protocols, antibodies and primers with their shelf,
   cultures, freezer vials with their box. Labbook's own antibody list drops out when the shared
@@ -1081,9 +1080,14 @@ culture/vial badges work in both. The Cells tabs read **Incubator · Lines · Fr
 OneNote's paste keeps inline style and discards stylesheets — which is why copying out of
 Labbook arrived as unstyled text. `buildPrintDoc()` already resolves whichever entry you are on,
 so `buildOneNoteHtml()` renders it off-screen and **inlines the computed styles**.
-`copyForOneNote()` writes `text/html` + `text/plain` via `ClipboardItem` with an
-`execCommand('copy')` fallback (Safari/older Firefox — `writeText` cannot carry the HTML
-flavour); `exportOneNoteDoc()` saves the same HTML in a Word envelope for Insert → File Printout.
+`exportOneNoteDoc()` saves that HTML in a Word envelope for Insert → File Printout, and it is
+the half of this that survives.
+
+**The copy half is gone**, and the section below (*Undo, the clipboard, and one gesture on the
+plate*) is the current answer: `copyForOneNote()` inlined every computed style and replaced each
+SVG with "[diagram — see the PDF export]", and selecting the rendered page and pressing ⌘C beats
+it outright. `copyRendered()` does that. Read this section for the inlining traps — they still
+apply to the Word export — not for how Copy works.
 
 Three traps, all found by looking at the output:
 - The stage is positioned off-screen, **never `display:none`** — `getComputedStyle` on a hidden
@@ -1143,7 +1147,7 @@ selectors, comparing the stylesheet against everything after `</style>`.
 
 The old drawing was a rectangle with a stub on its side, which is why it read as a blob. What
 makes a T-flask recognisable is the canted neck: the body is a rounded rectangle with the
-top-left corner cut at 45° (`FLASK_BODY`), and a real tube rises out of that cut in a rotated
+top-left corner cut at 45°, and a real tube rises out of that cut in a rotated
 frame, capped, with two vent ribs.
 
 **The body must be opaque** (`.vsl-base`). The neck is drawn behind it, and through a
@@ -3066,8 +3070,8 @@ browser needs a push server, so it is not an alarm clock and does not pretend to
 
 ## Two curated presets from Jon's own runs
 
-Both are `EXTRA_PRESET_SEED` entries with a `baseType` — data, not new code — and `_presetV8`
-ships them.
+Both are `EXTRA_PRESET_SEED` entries with a `baseType` — data, not new code, shipped by the
+`_presetV*` seed flag (at `_presetV9` since the second D2B preset landed).
 
 - **`Viability_CTG_TCIP_96`** (`CTG_TCIP96`, baseType `CTG`) — a TCIP dose-response viability
   screen: 1,000 nM top, 3-fold, 11 points plus DMSO in column 12, four compounds each on a pair
@@ -3171,9 +3175,97 @@ Data), safety (Backup · Recover), appearance (Lean · Theme · Panel) and one l
 
 Six buttons instead of ten, each a real category. `⌘/` opens it on Shortcuts, `⌘,` on Settings.
 
+## A port carries the bugs too (Blueprint audit, 2026-09-02)
+
+Jon asked for a full audit of Blueprint — code, geometry and behaviour, *"como se seleccionan las
+cosas, dónde sale el pop up… todo tiene que funcionar flawless"*. Most of it was already right:
+`audit_app --xref` clean, selection correct in every mode (row · column · all · shift-rectangle ·
+⌘-toggle), the dilution series right to the digit and auto-scaling its unit, undo restoring a
+format wipe through the real path, and the drag listeners properly unregistered
+(`_cleanupMouseUp`). What was wrong was worth the pass.
+
+### The plate-reader import corrupted data four ways, silently
+
+All four in about six lines, and all found by pasting the shapes a real export has:
+
+- **`l.split(/[\t,;]+/)`** — the `+` treats consecutive separators as one, so an **empty well
+  vanished and every value after it moved one column left**, into the wrong well. An unread or
+  masked well is normal in any export.
+- **Comma in that character class** — a European decimal (`0,1`) was split in two, read as 0, and
+  shifted the row.
+- **`text.trim()`** — a first line whose A1 is empty starts with a tab, and trimming the whole
+  string ate it, so the first row lost its first cell before anything was split.
+- **The header heuristic** took an empty first cell for a header and threw the plate up a row.
+
+And a fifth found while fixing them: a first row reading `1,2,3…n` is indistinguishable from a
+column header. The rule that settles it is arithmetic, not cleverness — **if the grid is already
+exactly as tall as the plate there is no room for a header, so it is data.**
+
+The delimiter is chosen now (tab, else semicolon, else comma) and never collapsed; a comma is a
+decimal mark wherever it is not the separator; blank *lines* are dropped without touching any
+line's own start. Verified in both apps over eight shapes: full 96 and full 384 whose first row
+really is 1…n, labelled export, partial labelled paste, blanks in every row, comma decimals over
+tab and over semicolon, plain CSV, titled export.
+
+**The same five were in Labbook**, because `plParseValues` is a line-for-line port of
+`pdParseValues` — which this file has recorded since the port was made. That is the lesson worth
+keeping: *a port carries the bugs too, and the note saying "ported from X" is the place to look
+when X turns out to be wrong.* In Labbook they mattered more, because those values land on a
+structured plate map that feeds Cmd+K, the Methods paragraph and every export.
+
+### Popups that came out off the screen
+
+- The Gel Designer popup clamped `py` at **both** ends and `px` only on the right. At 375px it
+  never fits right of the cursor, so it flipped left and landed at **`left:-188px`** — 84 of its
+  272 pixels on screen, text field off the edge. Measured now instead of guessed at 300×200, and
+  clamped at both ends of both axes.
+- The well tooltip clamped `left` against a hardcoded **200** for a box with `max-width:none` — a
+  real well label makes it **466px** — and never clamped `top` at all, so hovering a well near
+  the bottom put it below the fold. Both measured; capped at 260px.
+
+The family is the one `#lb-tip` was already in: **clamp by the element's real edges, measured, on
+both axes. A number written in the source is a guess about your own element that you never have
+to make.**
+
+### Three small-screen blocks, deciding the layout by file position
+
+`@media` at 700, 640 and 720, written at different times. Below 641 **all three applied at once**,
+so which rule won was decided by where it sat in the file rather than by what it meant —
+**thirteen selectors collided that way**. It is how a deliberate 40px tap target ended up
+cancelled by a `36` written forty lines lower, silently, for every button in the app.
+
+Merged into one block, per property, keeping whatever was winning on screen — so nothing below
+641 changed and the tap targets now reach 720 as well. **A blind reorder would have been wrong**:
+`.sel-toolbar` was in both blocks and the 640 copy was the old full-height panel, so sorting by
+width would have quietly undone the bottom-sheet fix.
+
+And the bar's height became a rule rather than a value repeated per breakpoint: `.fmt-pill` and
+`.tb-chk` join the existing token-driven `.top-bar … { height: var(--tb-h) }`. Verified: **15
+controls, one height**, at 375 / 640 / 641 / 720 / 800 / 1024 / 1440 — 40 below the breakpoint,
+32 above it, no horizontal overflow at any of them.
+
+### The undo merged unlike things
+
+`pdUndoTrack` coalesced on a 700 ms window alone, which cannot tell eleven keystrokes of one word
+from two deliberate actions done quickly — and it dropped whatever was between them. Verified:
+paint, then clear 320 ms later, and the painted state was unreachable.
+
+The window is necessary and no longer sufficient: inside it the change must **also** be nothing
+but well labels, which is the only continuous edit there is. **Derived from the two states rather
+than declared at the call site** — the failure mode of a flag is that somebody forgets to set it,
+so a new kind of edit is structural until someone deliberately says otherwise.
+
+### Also, and not fixed
+
+- **Right-click deletes the selected wells** with no menu and no warning. It is undoable, but
+  everywhere else in the Hub right-click opens a menu. Left as it is on Jon's call.
+- **`sendResultsToLabbook` in Echo still uses a native `alert()`** — the same smell as Blueprint's
+  five, which are now `pdToast`. Inside dHUB a native alert is a browser dialog headed
+  "localhost says", which reads as the page having broken.
+
 ## Current state
 
-**v1.10.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-01. (This session: **durability** — Labbook is now as safe as OneNote in the four ways that phrase means anything. The attachment GC hard-deleted on a derivation that could be wrong and did so four seconds after every load: reproduced against the committed build, both planted blobs gone at t=4 s with a corrupt cache. It marks now and deletes after 30 days, behind a settle gate, and a boot read that fails says so instead of pretending to be an empty notebook. Deleting stopped being permanent — a recycle bin that syncs, 60 days, with a project or folder restored in one piece. Version history, local and carried in backups, storing what a record was **before** each change. A conflict keeps both copies instead of discarding the other device's work behind a nine-second banner. And the attachment backfill that had been listed as "not built" since August is built. Then **aim and outcome**: an experiment can finally say what it was for and what it showed, which is what turns the report from a list of codes into a report. Then timers that survive a reload and reach a backgrounded tab. Plus two curated presets from Jon's own runs — a TCIP viability dose response and the plate-chem D2B — and, last, the writing surface: a checklist can hold a bullet sub-list again (two descendant selectors were overriding a structure that was always correct), there are 23 shortcuts declared in one table that the legend renders from, and the View ribbon's ten buttons became six real categories with settings and help behind one door. See *As safe as OneNote*, *An experiment can say what it was for and what it showed* and *A timer that survives a reload* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.11.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-02. (This session: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in
