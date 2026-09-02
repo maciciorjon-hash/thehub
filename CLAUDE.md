@@ -3075,14 +3075,38 @@ ships them.
   purpose; Jon's twelve real ones appear nowhere. **Jon's notes carried two impossible dates** —
   "31/06/2026" (June has 30 days) and a 72 h read dated *before* the 24 h one; the plot title
   `CTG20260731` settles it, so the offsets are day 0 · 1 · 3.
-- **`Degradation_D2B_1`** (`D2B_CHEM1`, baseType `D2B`) — plate chemistry made the night before,
-  then an Echo dose response: reaction overnight at RT → compound addition + seeding (16 × 384
-  per line, 20 µL/well, 3,000 cells, 1.5× overage → 184,320 µL) → 20 h → HiBiT Lytic (32 plates,
-  1.2× → 147,456 µL) and a PHERAstar read at 0.1 s/well. **`echo384` was already exactly this
-  plate**, so no new layout. The overnight reaction correctly carries **no** `w`: the next
-  block's date expresses a wait of ≥24 h, which is the existing rule.
-  The inverted variant (seed first, compound next morning) is a separate entry with nothing to
-  undo — nothing in this preset encodes the order but the day offsets and the block order.
+- **`Degradation_D2B_1`** (`D2B_CHEM1`) and **`Degradation_D2B_2`** (`D2B_SEED1`) — the same
+  screen with the order inverted, which is the only thing that differs. 1: reaction overnight at
+  RT → compound addition + seeding on top → 20 h → read. 2: reaction *and* seeding on day 0, so
+  the cells are attached when they are dosed the next morning → 20–24 h → read. Same density,
+  volume and lytic prep. The overnight reaction correctly carries **no** `w`: the next block's
+  date expresses a wait of ≥24 h.
+
+### The preset keeps the proportions; the setup supplies the absolutes
+
+Jon's rule, and it turned out to be half-built already. `applySetupToBlocks` takes the **seeding
+block's `nPlates` as the base** and rescales every other block by the same ratio — so 16 dosed
+per line and 32 lysed in one prep stays 2× whatever "# assay plates" becomes (verified at 8:
+92,160 µL seeding, 73,728 µL lytic). The overages (1.5 seeding, 1.2 lytic) and the 1:2 reagent
+ratio are proportions too, and they are what the preset carries.
+
+What was missing was the plate. A `PLATE_LAYOUTS` entry's `build` was **already a function**, so
+it can be one of the setup rather than a picture of one run. `SETUP_SCHEMA.D2B` now asks
+**# compounds / plate · # concentrations · technical replicates**, and **`d2b384`** derives its
+geometry from them: one compound per column from column 2, the dose running *down* each of
+`nReps` stacked bands, DMSO in the last two columns, blank edge. Jon's numbers (20 · 7 · 2) give
+280 treatment + 28 DMSO + 76 blank = 384.
+
+Three rules in it worth keeping: **when the bands do not fit** (7 × 3 = 21 rows in 14) the
+concentrations give way, not the replicates, and the plate's own title says what it drew —
+a replicate you asked for and silently did not get is the worse of the two lies. **DMSO stays at
+the right edge** whatever the compound count, because that is where it is on the bench. And the
+three fields are in D2B's **`pubSkip`**: the Plate layout section states all of them in its own
+words, so the Setup line printing "# concentrations 7; Technical replicates 2" is exactly the
+form dump `_pubSetupText` exists to stop.
+
+**`echo384` is not this plate**, though it fills the same wells: it describes a 10-point gradient
+running *across* the columns. Same geometry, different experiment.
 
 `CALC_KINDS.seed`, `.ctg` and `.lytic` gained `_ovxL(v.excess)`: all three printed the per-unit
 arithmetic beside a total that silently included the dead-volume overage, which is the exact
