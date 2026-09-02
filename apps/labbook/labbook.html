@@ -2355,12 +2355,14 @@ var EXTRA_PRESET_SEED={
    // two HiBiT reporters", and inventing one would be a schema change for one preset. So which
    // lines these are stays where it belongs, on the record and the plate map, and only the
    // structure (16 dosed per line, 32 lysed) is in the preset, as numbers, in the calculators.
-   setup:{format:'384',cellLine:'HEK293-HiBiT',cellsPerWell:3000,nPlates:16,dmsoMax:0.25,treatH:20},
-   // echo384 is already this plate — blank edge, two 10-point gradients with the shading standing
-   // in for concentrations that live in the picklist, DMSO in the last two columns — so there is
-   // no new layout to draw. Naming it makes the preset say so itself rather than leaning on
-   // createExperiment's 384-well HB/D2B rule.
-   plateOn:true, layout:'echo384', blocks:[
+   setup:{format:'384',cellLine:'HEK293-HiBiT',cellsPerWell:3000,nPlates:16,
+          nCompounds:20,nConc:7,nReps:2,dmsoMax:0.25,treatH:20},
+   // d2b384 draws itself from nCompounds / nConc / nReps above, so this is the shape of the
+   // screen rather than a picture of one run of it. echo384 was close — same 280 treatment
+   // wells, same DMSO columns — but it describes a 10-point gradient running across the
+   // columns, and this plate is 7 points running DOWN two stacked replicate bands with one
+   // compound per column. Those are different experiments that happen to fill the same wells.
+   plateOn:true, layout:'d2b384', blocks:[
     {d:0,title:'Reaction set-up',
      pub:'Reactions were assembled on the assay plate by cherry-pick and plate reformat and left to react overnight at room temperature.',
      // No `w`. The wait machinery is for sub-day waits; an overnight is already expressed by the
@@ -2400,6 +2402,57 @@ var EXTRA_PRESET_SEED={
      calc:{kind:'lytic',inputs:{format:'384',nPlates:32,cellVolPerWell:20,ratio:2,lgbitDil:100,subDil:50,excess:1.2}},
      // The reagent volume is stated as the ratio it is set by rather than as 10 µL, so the
      // sentence follows the calculator instead of going stale beside it.
+     pub:'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): lytic reagent containing LgBiT at 1:100 and substrate at 1:50 was added at half the culture volume, the plates shaken at 300 rpm for 1 min and luminescence read on a BMG PHERAstar at 0.1 s per well after 10 min at room temperature. Luminescence was normalised to the vehicle control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>.',
+     html:'<p>Make up the reagent in the volume above — it covers <b>both reporter lines in one prep</b>. '
+       +'<b>Mix gently, do not vortex</b>: LgBiT is a protein and vortexing it costs signal you cannot get back.</p>'
+       +'<p>Add <b>10 µL per well</b> (1:2 reagent to the 20 µL of culture), shake at <b>300 rpm for 1 min</b>, then '
+       +'<b>10 min at room temperature</b> with gentle shaking.</p>'
+       +'<p><b>Read</b>: PHERAstar, integration time <b>0.1 s per well</b>.</p>'
+       +'<ul class="lb-check"><li>Reagent prepared — mixed gently, not vortexed</li><li>10 µL/well added</li>'
+       +'<li>Shaken 300 rpm × 1 min</li><li>10 min at RT, gentle shaking</li><li>Plates read, data saved</li></ul>'
+       +'<p><b>Results</b></p><p></p>'}]},
+  // The same screen with the order inverted, which is the only thing that differs: the cells go
+  // down the day before and are attached by the time they are dosed, instead of being seeded on
+  // top of compound that is already in the well. Everything else — the plate, the density, the
+  // volume, the lytic prep — is preset 1's, because they are the same experiment.
+  'D2B_SEED1':{name:'Degradation_D2B_2',baseType:'D2B',
+   title:'Direct-to-biology — seed first, dose the next morning (384-well)',
+   setup:{format:'384',cellLine:'HEK293-HiBiT',cellsPerWell:3000,nPlates:16,
+          nCompounds:20,nConc:7,nReps:2,dmsoMax:0.25,treatH:22},
+   plateOn:true, layout:'d2b384', blocks:[
+    {d:0,title:'Reaction set-up',
+     pub:'Reactions were assembled on the assay plate by cherry-pick and plate reformat and left to react overnight at room temperature.',
+     html:'<p><b>Cherry Pick</b> + <b>Plate Reformat</b> — assemble the reactions on the source plate.</p>'
+       +'<p>Leave it on the bench <b>overnight at room temperature</b>. The chemistry is still made the night '
+       +'before it is dispensed; what moves in this version is when the cells go down.</p>'
+       +'<ul class="lb-check"><li>Cherry Pick run</li><li>Plate Reformat run</li><li>Plate left to react overnight at RT</li></ul>'},
+    // Same day as the reaction, so the monolayer has settled by the time the Echo runs. That is
+    // the whole reason for inverting the order, and it is why this block is d0 and not d1.
+    {d:0,title:'Cell seeding',
+     calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:3000,volPerWell:20,format:'384',nPlates:16,excess:1.5}},
+     pub:'{{cellLine}} cells were seeded at {{cellsPerWell}} cells per well in 20 &micro;L and left overnight at 37 &deg;C, 5% CO&#8322; before dosing.',
+     html:'<p>Seed the assay plates and leave them overnight at <b>37 °C, 5% CO₂</b> — the cells are dosed in the '
+       +'morning, attached, rather than being pipetted on top of compound.</p>'
+       +'<p>The table above is <b>one reporter line</b>: {{nPlates}} plates at 20 µL/well. Make one suspension per '
+       +'line. The 1.5× overage is not the usual 1.1 — a {{nPlates}}-plate dispense loses real volume to the head '
+       +'and the reservoir.</p>'
+       +'<ul class="lb-check"><li>Cells counted and diluted</li><li>Suspension made per reporter line</li>'
+       +'<li>All plates seeded</li><li>Plates at 37 °C overnight</li></ul>'},
+    {d:1,title:'Compound addition (Echo)',w:180,
+     pub:'Compounds were dispensed acoustically onto the seeded plates from an Echo picklist, with DMSO held at or below {{dmsoMax}}%, and the plates returned to 37 &deg;C for {{treatH}} h.',
+     html:'<p><b>Echo transfer onto the seeded plates</b>, first thing. The picklist is the record of what was '
+       +'dispensed — attach the run\'s own CSV on the <b>Files</b> tab, or build the experiment from it '
+       +'(<i>New experiment → from picklist</i>) and the destination plate becomes this plate map well by well.</p>'
+       +'<p>Keep DMSO at or below <b>{{dmsoMax}}%</b>. Pre-fill the intermediates and backfill the source wells with '
+       +'neat DMSO before the run. Allow about <b>3 h</b> for the dispense.</p>'
+       +'<p>Back to 37 °C for <b>{{treatH}} h</b> (20–24 h is the working window).</p>'
+       +'<ul class="lb-check"><li>Picklist ready and checked</li><li>Backfill + intermediates loaded</li>'
+       +'<li>Echo run finished</li><li>Plates back at 37 °C — note the time</li>'
+       +'<li>Picklist CSV attached to this experiment</li></ul>'},
+    {d:2,title:'HiBiT Lytic + read',w:10,
+     // 32 plates: both reporter lines lysed in one prep, twice the seeding block's 16. That 2×
+     // is what applySetupToBlocks keeps when "# assay plates" moves, so the two cannot drift.
+     calc:{kind:'lytic',inputs:{format:'384',nPlates:32,cellVolPerWell:20,ratio:2,lgbitDil:100,subDil:50,excess:1.2}},
      pub:'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): lytic reagent containing LgBiT at 1:100 and substrate at 1:50 was added at half the culture volume, the plates shaken at 300 rpm for 1 min and luminescence read on a BMG PHERAstar at 0.1 s per well after 10 min at room temperature. Luminescence was normalised to the vehicle control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>.',
      html:'<p>Make up the reagent in the volume above — it covers <b>both reporter lines in one prep</b>. '
        +'<b>Mix gently, do not vortex</b>: LgBiT is a protein and vortexing it costs signal you cannot get back.</p>'
@@ -2497,8 +2550,18 @@ var SETUP_SCHEMA={
     {f:'cellLine',t:'cellline',lbl:'Cell line',d:'HEK293'},
     {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:3000},
     {f:'nPlates',t:'num',lbl:'# assay plates',d:19},
+    // The plate map is drawn from these three rather than having a shape baked into it. The
+    // preset keeps the PROPORTIONS — plates dosed per line, plates lysed per prep, the overages
+    // — and the absolutes follow whatever is entered here.
+    {f:'nCompounds',t:'num',lbl:'# compounds / plate',d:20},
+    {f:'nConc',t:'num',lbl:'# concentrations',d:7},
+    {f:'nReps',t:'num',lbl:'Technical replicates',d:2},
     {f:'dmsoMax',t:'num',lbl:'Max DMSO (%)',d:0.25,step:'0.05'},
-    {f:'treatH',t:'num',lbl:'Treatment (h)',d:20}]},
+    {f:'treatH',t:'num',lbl:'Treatment (h)',d:20}],
+   // The Plate layout section says all three in its own words — "Treatment · gradient · 7
+   // levels" across the wells they occupy. Repeating them as "# concentrations 7; Technical
+   // replicates 2" is the form dump _pubSetupText exists to stop.
+   pubSkip:['nCompounds','nConc','nReps']},
   PR:{plate:false,fields:[
     {f:'nSamples',t:'num',lbl:'# samples',d:12},
     {f:'proteinUg',t:'num',lbl:'Protein / sample (µg)',d:50},
@@ -3677,6 +3740,42 @@ var PLATE_LAYOUTS=[
        p.wells[wellIdOf(r2,22)]={typeId:'dmso'};
      }
      return p; }},
+  // Jon's D2B screening plate, and the same one for both D2B presets. The interior is rows B–O
+  // and columns 2–23: two replicate bands of seven concentrations fill those fourteen rows
+  // exactly, one compound per column, DMSO in the last two, blank all the way round.
+  //
+  // The three numbers come from the SETUP rather than being drawn in, which is Jon's rule for
+  // the whole preset — "el número de placas etc lo pone el usuario, mantén en el preset los
+  // equivalentes". A screen with five points or three replicates is this same plate with
+  // different arithmetic, so it is the same layout.
+  {id:'d2b384', label:'D2B 384 — a compound per column, 7 pts × 2 replicates + DMSO', format:'384',
+   sub:'Blank edge · compounds from col 2 · concentrations down each band · DMSO in the last two',
+   build:function(o){
+     o=o||{};
+     var d=PLATE_FORMATS['384'], p=newPlate('384');
+     var nConc=Math.max(1,Math.round(+o.nConc||7));
+     var nReps=Math.max(1,Math.round(+o.nReps||2));
+     var rows=d.r-2, cols=d.c-2;                       // 14 usable rows, 22 usable columns
+     // They have to fit. If they do not it is the concentrations that give: a replicate you
+     // asked for and silently did not get is the worse of the two lies.
+     if(nConc*nReps>rows) nConc=Math.max(1,Math.floor(rows/nReps));
+     var nDmso=Math.min(2,cols-1);
+     var nCpd=Math.max(1,Math.min(Math.round(+o.nCompounds||20),cols-nDmso));
+     p.title='D2B 384 — '+nCpd+' compounds × '+nConc+' pts × '+nReps+' replicate'+(nReps===1?'':'s');
+     p.note='One compound per column, the dose running down each band, '+nReps+' technical replicate'
+       +(nReps===1?'':'s')+' stacked. Compound identities and the concentrations come from the Echo '
+       +'picklist — import it and every well is filled in. Shading is the gradient: dark = highest.';
+     p.types=[{id:'treatment',name:'Treatment',color:'#35b0bd'},
+              {id:'dmso',name:'DMSO',color:'#a8546f'},
+              {id:'blank',name:'Blank / media',color:'#cfd2d8'}];
+     for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++) p.wells[wellIdOf(r,c)]={typeId:'blank'};
+     for(var b=0;b<nReps;b++) for(var i=0;i<nConc;i++){
+       var rr=1+b*nConc+i;
+       var sh=Math.round((nConc>1?i/(nConc-1):0)*0.8*1000)/1000;
+       for(var k=0;k<nCpd;k++) p.wells[wellIdOf(rr,1+k)]={typeId:'treatment',shade:sh};
+       for(var m=0;m<nDmso;m++) p.wells[wellIdOf(rr,d.c-2-m)]={typeId:'dmso'};
+     }
+     return p; }},
   // Jon's curated NanoBRET biosensor plate, drawn exactly as it is on the bench: the controls
   // are a labelled band along row A, row B is left empty as the spacer it actually is, and each
   // compound owns two rows with the dose running across the columns. The concentrations go on
@@ -3848,7 +3947,7 @@ function plLayoutMenu(){
   lbPicker('Start from a layout',items,function(it){
     var L=PLATE_LAYOUTS.filter(function(x){return x.id===it.id;})[0]; if(!L) return;
     var cur=plCur();
-    function apply(){ var o=_plateOwner(PL.key); if(!o) return; o.obj.plate=L.build();
+    function apply(){ var o=_plateOwner(PL.key); if(!o) return; o.obj.plate=L.build(o.exp&&o.exp.setup);
       PL.sel={}; PL.anchor=null; PL.type=(plateTypes(o.obj.plate)[0]||{}).id;
       o.exp.updated=Date.now(); save(); plRender(); toast('Layout applied'); }
     if(cur&&plateCount(cur)) lbConfirm('Replace the current layout with "'+L.label+'"? The wells you laid out will be lost.',{danger:true,title:'Apply layout'}).then(function(ok){ if(ok) apply(); });
@@ -5536,7 +5635,7 @@ function seedPresets(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV8;
+  var upgrade=!LB.data._presetV9;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && cur._seedSig!==_presetSig(cur);
@@ -5550,7 +5649,7 @@ function seedPresets(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV8=true;
+  if(upgrade) LB.data._presetV9=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -7778,7 +7877,7 @@ function createExperiment(){ if(SEL.node.kind!=='expsec') return;
             ? PLATE_LAYOUTS.filter(function(x){return x.id==='echo384';})[0] : null);
       // A curated layout still wins — it was drawn for this exact experiment. Failing one, a
       // NanoBRET can draw its own from the conditions the setup already describes.
-      e.plate = L ? L.build() : (nbPlateForExp(e) || newPlate(setup.format||'96'));
+      e.plate = L ? L.build(setup) : (nbPlateForExp(e) || newPlate(setup.format||'96'));
     }
     e.pubReady=buildPubReadyFromExp(e);
     LB.data.experiments[e.id]=e; save(); closeNew(); SEL.page=e.id; EXP_TAB='dated'; renderAll();
@@ -13346,7 +13445,6 @@ function openSettings(tab){
   _settingsRender(); d.classList.add('open');
 }
 function settingsTab(t){ SETTINGS.tab=t; _settingsRender(); }
-function _settingsOpen(){ var d=el('lb-dialog'); return !!(d&&d.classList.contains('open')&&el('st-body')); }
 function _settingsRender(){
   var card=el('lb-dialog-card'); if(!card) return;
   var tabs=[['keys','Shortcuts'],['writing','Writing'],['look','Appearance'],['about','About']];
