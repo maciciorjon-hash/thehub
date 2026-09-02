@@ -332,7 +332,18 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
   .tab{white-space:nowrap;flex-shrink:0;padding:10px 12px;font-size:var(--fs-3);min-height:40px;}
   .top-bar{padding:8px 10px;gap:6px;flex-wrap:wrap;--tb-h:40px;}
   .btn,.pd-tb-btn,.btn-sec,.btn-primary{min-height:40px;font-size:var(--fs-4);padding:8px 14px;}
-  .fmt-pill{font-size:var(--fs-2);padding:6px 10px;min-height:36px;}
+  /* The buttons were raised to the tap target and the fields beside them were not, so a Gel
+     Designer row ran 30/36/36 with its centres 3px apart. docs/UI.md says one height per bar
+     and means every control in it — the same fix LDI's strip and Ribbon's top bar needed. */
+  .gd-input,.gd-select,.gd-fld .gd-input,.gd-fld .gd-select{min-height:40px;height:40px;}
+  .gd-step{height:40px;}
+  .gd-step .gd-input{height:auto;min-height:0;}
+  /* 41px against the buttons' 40 — the pills were given a min-height and then pushed past it
+     by their own padding. A bar has one height, so it is stated rather than approached. */
+  .fmt-pill{font-size:var(--fs-2);padding:6px 10px;min-height:40px;height:40px;}
+  /* "Transparent" is a clickable control, and it was 15px tall in a bar of 40px ones — a
+     15px tap target is exactly what the 40 exists to prevent. */
+  .tb-chk{min-height:40px;}
   .plate-scroll-area{padding:10px;}
   /* Toolbar docks to bottom on mobile */
   .sel-toolbar{left:8px!important;right:8px!important;top:58px!important;bottom:auto!important;width:auto!important;min-width:0!important;max-height:calc(100vh - 80px);max-height:calc(100dvh - 80px);overflow-y:auto;}
@@ -360,11 +371,18 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
   .gd-preview { padding: 12px; }
   .gd-row { flex-wrap: wrap; gap: 6px; }
   .gd-field { min-width: 100px; }
+  .gd-input,.gd-select,.gd-fld .gd-input,.gd-fld .gd-select{min-height:40px;height:40px;}
+  .gd-step{height:40px;}
+  .gd-step .gd-input{height:auto;min-height:0;}
   .sel-toolbar { left: 8px !important; right: 8px !important; top: 64px !important; width: auto !important; min-width: 0 !important; max-height: calc(100vh - 80px);max-height: calc(100dvh - 80px); overflow-y: auto; padding: 12px; }
   .hist-wrap { padding: 14px 12px; }
   .hist-card { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
   .guide-panel { padding: 14px 12px; }
-  .btn { min-height: 36px; padding: 7px 12px; }
+  /* This block (≤720) comes AFTER the ≤640 one, so below 641 both apply and this won: the
+     40px tap target deliberately set there was cancelled by a 36 written here, silently,
+     for every .btn in the app. docs/UI.md says 40 under the mobile breakpoint and this is
+     one, so the two now agree instead of one quietly undoing the other. */
+  .btn { min-height: 40px; padding: 7px 12px; }
   /* Allow horizontal panning for wide canvases */
   html, body { overflow: auto; -webkit-overflow-scrolling: touch; }
   .panel { overflow: auto; -webkit-overflow-scrolling: touch; }
@@ -480,7 +498,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   </div>
   <div class="tb-right">
     <button class="btn btn-sec pd-tb-btn" onclick="clearPlate()">Clear plate</button>
-    <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;"><input type="checkbox" id="export-transparent" style="cursor:pointer;"> Transparent</label>
+    <label class="tb-chk" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;"><input type="checkbox" id="export-transparent" style="cursor:pointer;"> Transparent</label>
     <button class="btn btn-primary pd-tb-btn" onclick="exportPNG()" style="padding:5px 12px;">&#8595; Export PNG <span class="pinfo" data-tip="Exports at 600 DPI. Text auto-fits inside wells.">ⓘ</span></button>
     <button id="btn-well-shape" class="pd-shape-btn" onclick="toggleWellShape()" title="Toggle circle / square wells">
       <svg id="shape-icon-circle" viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="9" r="6.5"/></svg>
@@ -1619,13 +1637,22 @@ function gdOpenPopup(hit, mouseEvent) {
     if (hintEl) hintEl.textContent = 'Enter to apply · Esc to cancel';
   }
 
-  var px = mouseEvent.clientX + 12, py = mouseEvent.clientY - 20;
-  var pw = 300, ph = 200;
-  if (px + pw > window.innerWidth - 8) px = mouseEvent.clientX - pw - 8;
-  if (py + ph > window.innerHeight - 8) py = window.innerHeight - ph - 8;
-  if (py < 8) py = 8;
-  popup.style.left = px + 'px'; popup.style.top = py + 'px';
+  // Measure it, do not guess it. 300×200 was close to the truth (it is 272×198) but a guess
+  // about your own element is a guess you never have to make — and the vertical axis was
+  // clamped at BOTH ends while the horizontal was clamped only on the right. At 375px the
+  // popup never fits to the right of the cursor, so it flipped left and landed at left:-188px:
+  // 84 of its 272 pixels on screen, with the text field off the edge.
   popup.classList.add('gdp-open');
+  popup.style.visibility = 'hidden';
+  popup.style.left = '0px'; popup.style.top = '0px';
+  var pr = popup.getBoundingClientRect();
+  var pw = pr.width || 300, ph = pr.height || 200;
+  var px = mouseEvent.clientX + 12, py = mouseEvent.clientY - 20;
+  if (px + pw > window.innerWidth - 8) px = mouseEvent.clientX - pw - 8;
+  px = Math.max(8, Math.min(px, window.innerWidth - pw - 8));
+  py = Math.max(8, Math.min(py, window.innerHeight - ph - 8));
+  popup.style.left = px + 'px'; popup.style.top = py + 'px';
+  popup.style.visibility = '';
   setTimeout(function(){ textEl.focus(); textEl.select(); }, 30);
 
   textEl.onkeydown = function(e) {
@@ -2092,7 +2119,7 @@ function hideCustomFormPanel() {
 function addCustomTypeFromPanel() {
   const name = (document.getElementById('cn-panel').value || '').trim();
   const color = document.getElementById('cp-panel').dataset.color || NATURE_COLORS[0];
-  if (!name) { alert('Enter a type name.'); return; }
+  if (!name) { pdToast('Enter a type name.'); return; }
   customTypes.push({id: 'custom_' + Date.now(), name, color});
   document.getElementById('cn-panel').value = '';
   hideCustomFormPanel();
@@ -2158,14 +2185,41 @@ function pdValsToGrid(){
 
 function pdParseValues(text){
   var fmt = FORMATS[currentFormat], cols=fmt.cols, rl=ROWS_ALL.slice(0,fmt.rows);
-  var lines = text.trim().split(/\r?\n/).filter(function(l){ return l.trim()!==''; });
-  var grid = lines.map(function(l){ return l.split(/[\t,;]+/).map(function(s){ return s.trim(); }); });
+  // NOT text.trim(). If A1 is empty the first line begins with a tab, and trimming the whole
+  // string eats it — so the first row loses its first cell and shifts one column left, before
+  // anything has even been split. Drop blank lines instead, and never touch a line's own start.
+  var lines = text.split(/\r?\n/);
+  while(lines.length && lines[0].trim()==='') lines.shift();
+  while(lines.length && lines[lines.length-1].trim()==='') lines.pop();
+  lines = lines.filter(function(l){ return l.trim()!==''; });
+  // The delimiter is chosen, not guessed at per cell, and it is NOT collapsed. This used to be
+  // one split on /[\t,;]+/, and the + is a data-corruption bug: consecutive separators are one
+  // separator to it, so an empty well — normal in any real export, a masked well or an edge left
+  // unread — vanished and every value after it moved one column left, silently, into the wrong
+  // well. And with comma in the class, a European decimal ("0,1") was split into two cells.
+  var hasTab = /\t/.test(text), hasSemi = /;/.test(text);
+  var sep = hasTab ? '\t' : (hasSemi ? ';' : ',');
+  // Where the comma is not the separator it is a decimal mark, which is what a Spanish or
+  // German export writes. parseFloat('0,1') is 0, so it has to be normalised before it is read.
+  var decComma = (sep !== ',');
+  var grid = lines.map(function(l){
+    return l.split(sep).map(function(s){
+      s = s.trim();
+      return decComma ? s.replace(/(\d),(\d)/g, '$1.$2') : s;
+    });
+  });
   function looksLikeColHeader(cells){
     var off = (/^[A-P]$/i.test(cells[0]||'') || (cells[0]||'')==='') ? 1 : 0;
     for(var c=0;c<cols;c++){ if(parseInt(cells[off+c],10) !== c+1) return false; }
     return true;
   }
-  if(grid.length && (looksLikeColHeader(grid[0]) || (isNaN(parseFloat(grid[0][0])) && !/^[A-P]$/i.test((grid[0][0]||''))))) grid = grid.slice(1);
+  // A row is a header if it READS like one — 1,2,3… across, or a word in the corner ("Well",
+  // the plate name). An EMPTY first cell is not evidence of anything: it is also exactly what an
+  // unread A1 looks like, and treating it as a header threw the whole plate up by one row.
+  // The labelled export's own header ("", 1, 2, … 12) is still caught, by looksLikeColHeader.
+  var _g0 = grid[0] || [], _f0 = (_g0[0] || '');
+  if(grid.length && (looksLikeColHeader(_g0) ||
+     (_f0 !== '' && isNaN(parseFloat(_f0)) && !/^[A-P]$/i.test(_f0)))) grid = grid.slice(1);
   var vals = {}, count = 0;
   grid.forEach(function(cells, ri){
     var start = /^[A-P]$/i.test((cells[0]||'')) ? 1 : 0;
@@ -2178,7 +2232,7 @@ function pdParseValues(text){
 
 function pdApplyValues(){
   var parsed = pdParseValues(document.getElementById('pd-values-text').value);
-  if(!parsed){ alert('Couldn’t read any numbers. Paste a grid of plate-reader values (rows × columns) — optional A–H row labels and a 1…n header row are handled automatically.'); return; }
+  if(!parsed){ pdToast('Couldn’t read any numbers — paste a grid of values, rows × columns.'); return; }
   pdVals = parsed;
   var vs = Object.keys(pdVals).map(function(k){ return pdVals[k]; });
   pdValRange = { min: Math.min.apply(null, vs), max: Math.max.apply(null, vs) };
@@ -2834,7 +2888,7 @@ function pdDeleteBracket(bi) {
 
 const _wellTip = (() => {
   const d = document.createElement('div');
-  d.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:5px;padding:4px 8px;font-size:11px;color:var(--text);pointer-events:none;display:none;z-index:9990;box-shadow:0 2px 8px rgba(0,0,0,.12);';
+  d.style.cssText = 'position:fixed;max-width:260px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;padding:4px 8px;font-size:11px;color:var(--text);pointer-events:none;display:none;z-index:9990;box-shadow:0 2px 8px rgba(0,0,0,.12);';
   document.body.appendChild(d);
   return d;
 })();
@@ -2892,8 +2946,13 @@ function wireCanvasEvents(canvas) {
       const ws = wellState[zone.id], t = ws ? typeById(ws.typeId) : null;
       _wellTip.textContent = zone.id + (ws && ws.label ? ': ' + ws.label : '') + (t ? ' — ' + t.name : ' — empty');
       _wellTip.style.display = 'block';
-      _wellTip.style.left = Math.min(e.clientX + 12, window.innerWidth - 200) + 'px';
-      _wellTip.style.top = (e.clientY + 14) + 'px';
+      // Measured, not assumed. The 200 here was a guess about a box with no max-width: a real
+      // well label ("P24: SU-DHL-5 + QZZ-055 at 1.00 µM — Treatment") makes it 466px, so it ran
+      // off the right edge. And `top` was never clamped at all, so hovering a well near the
+      // bottom of the window put the tooltip below the fold.
+      var _tr = _wellTip.getBoundingClientRect();
+      _wellTip.style.left = Math.max(4, Math.min(e.clientX + 12, window.innerWidth - _tr.width - 8)) + 'px';
+      _wellTip.style.top  = Math.max(4, Math.min(e.clientY + 14, window.innerHeight - _tr.height - 8)) + 'px';
     } else { _wellTip.style.display = 'none'; }
   });
 
@@ -3237,7 +3296,7 @@ function applyDilution(dir) {
   const start = parseFloat(document.getElementById('dil-start').value);
   const factor = parseFloat(document.getElementById('dil-factor').value);
   const unit = document.getElementById('dil-unit').value;
-  if (isNaN(start)||isNaN(factor)||factor<=1) { alert('Enter valid start concentration and fold factor > 1.'); return; }
+  if (isNaN(start)||isNaN(factor)||factor<=1) { pdToast('Enter a start concentration and a fold factor above 1.'); return; }
   const rls = ROWS_ALL.slice(0, FORMATS[currentFormat].rows);
   const selArr = Array.from(selection).filter(id => wellRowCol(id));
   if (dir === 'row') selArr.sort((a,b) => wellRowCol(a).col - wellRowCol(b).col);
@@ -3367,8 +3426,8 @@ function applyMergedLabel() {
   const lblInput = document.getElementById('sp-lbl-input');
   const val = ((lblInput && lblInput.value) || '').trim();
   const selArr = Array.from(selection).filter(id => wellRowCol(id));
-  if (selArr.length < 2) { alert('Select 2 or more wells first.'); return; }
-  if (!val) { alert('Enter a label first.'); return; }
+  if (selArr.length < 2) { pdToast('Select two or more wells first.'); return; }
+  if (!val) { pdToast('Enter a label first.'); return; }
   const gid = 'g' + Date.now();
   selArr.forEach(id => {
     if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: val};
