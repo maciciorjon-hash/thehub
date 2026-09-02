@@ -4736,14 +4736,37 @@ function nmEchoSummary(){
 function plParseValues(text,fmt){
   // Labbook's formats are {r,c}, not Blueprint's {rows,cols} — the port has to translate.
   var d=PLATE_FORMATS[String(fmt)]||PLATE_FORMATS['96'], cols=d.c, rl=PLATE_ROWS.slice(0,d.r);
-  var lines=String(text||'').trim().split(/\r?\n/).filter(function(l){ return l.trim()!==''; });
-  var grid=lines.map(function(l){ return l.split(/[\t,;]+/).map(function(x){ return x.trim(); }); });
+  // Four bugs came across with the port from Blueprint and were fixed there first; they are the
+  // same four here, and they matter more, because these values land on a structured plate that
+  // feeds Cmd+K, the Methods paragraph and the exports.
+  //  · NOT .trim() on the whole text: if A1 is empty the first line starts with a tab, and
+  //    trimming eats it, so the first row loses its first cell before anything is split.
+  //  · The delimiter is chosen, not a character class, and never collapsed — /[\t,;]+/ treats
+  //    consecutive separators as one, so an EMPTY WELL vanished and every value after it moved
+  //    one column left, into the wrong well.
+  //  · A comma is a decimal mark wherever it is not the separator ("0,1" read as 0).
+  var lines=String(text||'').split(/\r?\n/);
+  while(lines.length && lines[0].trim()==='') lines.shift();
+  while(lines.length && lines[lines.length-1].trim()==='') lines.pop();
+  lines=lines.filter(function(l){ return l.trim()!==''; });
+  var _txt=String(text||''), _sep=/\t/.test(_txt)?'\t':(/;/.test(_txt)?';':',');
+  var _decComma=(_sep!==',');
+  var grid=lines.map(function(l){ return l.split(_sep).map(function(x){
+    x=x.trim(); return _decComma?x.replace(/(\d),(\d)/g,'$1.$2'):x; }); });
   function isColHeader(c){
     var off=(/^[A-P]$/i.test(c[0]||'')||(c[0]||'')==='')?1:0;
     for(var i=0;i<cols;i++){ if(parseInt(c[off+i],10)!==i+1) return false; }
     return true;
   }
-  if(grid.length&&(isColHeader(grid[0])||(isNaN(parseFloat(grid[0][0]))&&!/^[A-P]$/i.test(grid[0][0]||'')))) grid=grid.slice(1);
+  //  · An EMPTY first cell is not evidence of a header — it is also exactly what an unread A1
+  //    looks like, and treating it as one threw the whole plate up by a row.
+  var _g0=grid[0]||[], _f0=(_g0[0]||'');
+  //  · A first row reading 1,2,3…n is indistinguishable from a column header. If the grid is
+  //    already exactly as tall as the plate, there is no room for a header and it is data —
+  //    dropping it would lose a whole row and shift every letter up by one.
+  var _hdr = isColHeader(_g0) ? (grid.length !== d.r)
+                              : (_f0!==''&&isNaN(parseFloat(_f0))&&!/^[A-P]$/i.test(_f0));
+  if(grid.length && _hdr) grid=grid.slice(1);
   var vals={}, n=0;
   grid.forEach(function(c,ri){
     var start=/^[A-P]$/i.test(c[0]||'')?1:0;

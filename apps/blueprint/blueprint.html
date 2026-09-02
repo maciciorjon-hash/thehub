@@ -2197,8 +2197,11 @@ function pdParseValues(text){
   // unread A1 looks like, and treating it as a header threw the whole plate up by one row.
   // The labelled export's own header ("", 1, 2, … 12) is still caught, by looksLikeColHeader.
   var _g0 = grid[0] || [], _f0 = (_g0[0] || '');
-  if(grid.length && (looksLikeColHeader(_g0) ||
-     (_f0 !== '' && isNaN(parseFloat(_f0)) && !/^[A-P]$/i.test(_f0)))) grid = grid.slice(1);
+  // A first row reading 1,2,3…n is indistinguishable from a column header. If the grid is
+  // already exactly as tall as the plate there is no room for a header and it is data.
+  var _hdr = looksLikeColHeader(_g0) ? (grid.length !== fmt.rows)
+                                     : (_f0 !== '' && isNaN(parseFloat(_f0)) && !/^[A-P]$/i.test(_f0));
+  if(grid.length && _hdr) grid = grid.slice(1);
   var vals = {}, count = 0;
   grid.forEach(function(cells, ri){
     var start = /^[A-P]$/i.test((cells[0]||'')) ? 1 : 0;
