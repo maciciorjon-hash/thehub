@@ -5,44 +5,89 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-08-31 · **v1.9.0** · branch `main`.
-- Latest work: **the motion and scrolling pass** — the answer to Jon's *"el uso de la app es un
-  poco sloppy… tiene que funcionar smooth, transiciones, desplazamientos."* It was measured
-  first, and the app was not slow: a screen switch renders in 1–13 ms, a keystroke costs
-  0.25 ms, a 384-well plate repaints in 1.9 ms. It was **abrupt**. See *"Sloppy" was not slow*
-  in `CLAUDE.md` for the full write-up.
-- The one thing that really was slow is **opening an app**: `_loadApp` froze the main thread for
-  67 ms on Echo (a 46 ms per-character byte loop over 3.4 MB of base64) before the fade could
-  start. Warmed on hover, the same call is 4.5 ms.
-- The checkpoint below this line had gone stale — it still described the 2026-08-24 pass while
-  five sessions of work (the SPARK plate, the plate gestures, undo, chained volumes, the
-  selection bubble, autocorrect) landed on top of it. Their detail is in `CLAUDE.md`; the
-  sections here from *What exists now* down are from 2026-08-24 and are marked as such.
+- Date: 2026-09-01 · **v1.10.0** · branch `main`.
+- Latest work: **durability** — the answer to Jon's *"me preocupa la pérdida de datos, esto
+  tiene que ser tan seguro como OneNote… tiene que haber sistemas que impidan la pérdida de
+  datos de ningún tipo."* OneNote's safety is four things: a local cache, per-page version
+  history, a recycle bin, and conflict pages that never silently overwrite. Labbook had the
+  cache and none of the other three, plus two active loss paths of its own. All four are in.
+  Then **aim & outcome** and **durable timers**. See *As safe as OneNote* in `CLAUDE.md`.
+- The worst of it was reproducible against the committed build: with a corrupt
+  `localStorage['hub_labbook']`, both planted attachment blobs are **gone at t=4 s**.
 
 ## What changed this pass
 
-1. **One timing scale, in all twenty surfaces.** `--dur-1/2/3` + `--ease`/`--ease-out`, declared
-   in the shell years ago and shared with nobody. Every hover, focus and press state now
-   transitions; `docs/UI.md` carries the rules.
-2. **`transform` is never in the shared list** (it is what drags and canvas zooms are made of),
-   and **nothing repeated in bulk gets a transition** — a plate well, a freezer slot, a table
-   cell. Both exclusions are the design, not an oversight.
-3. **Dialogs, popovers and both Cmd+K overlays arrive and leave** — `@starting-style` +
-   `transition-behavior:allow-discrete`, no JS change, and every closed overlay is
-   `pointer-events:none` so one stuck mid-exit cannot eat clicks.
-4. **A screen enters, and remembers your scroll.** `_edScreenKey()` tells a navigation from a
-   re-render; `#pane-ed`'s scrollTop is filed per screen and restored.
-5. **An experiment's tab bar is sticky** on desktop as it already was on a phone.
-6. **`overscroll-behavior` on every inner pane, axis named**, so a list running out no longer
-   hands the gesture to the page behind it.
-7. **Three `{passive:false}` listeners on `document` are gone** — Labbook's plate grid and week
-   planner, and Echo's results-table wheel handler, which was also broken (it drove
-   `.tbl-wrap`, which has no overflow, so a wide table swallowed the wheel and moved nothing).
-8. **Apps are warmed on hover/focus**, on `requestIdleCallback`. `openApp`'s "nothing is touched
-   until we know there is somewhere to go" guard is now actually first — it used to sit below
-   `_loadApp`.
-9. **Beacon's header ran two control heights** (27 and 30). One 32 px height, scoped to the
-   header row.
+1. **The attachment GC marks instead of hard-deleting.** `gcAttachments` deleted every blob
+   `_collectAttIds()` did not name, four seconds after every load — and "unreferenced" is
+   derived from `LB.data`, which can be wrong (a boot read that failed into an empty `catch`, a
+   cloud adoption still in flight). Now: a reserved `__gc__` key holds `{id:ts}` marks, deletion
+   is 30 days later, and an id that comes back has its mark **lifted**.
+2. **A settle gate.** `_bootSettled` / `_onBootSettled` — nothing destructive runs until
+   `lbInitSync`'s first read resolves, 20 s pass, or there is no cloud. `gcAttachments`,
+   `maybeAutoBackup` and `trashPurge` all wait on it.
+3. **`_localReadFailed`.** The boot read's empty `catch(e){}` is gone. A value that was there
+   and did not parse blocks the GC and the daily backup, shows *Cache unreadable* on the pill,
+   and interrupts once. An empty slot is a new browser and says nothing.
+4. **A snapshot never replaces a bigger one** (`_snapRecords`); retention 3 → 7 days.
+5. **A recycle bin.** `LB.data.trash`, **in `_CLOUD_MAPS`**, 60 days. Converted: `delExperiment`,
+   `delProject`, `delSection`, `delGeneral`, `delPage`, `delDay`, `delBlock`, `removeFile`.
+   `_collectAttIds` scans it — the scanner is shared with the live tree so they cannot disagree.
+6. **Version history** in its own `lb_ver` IndexedDB, carried in backups (`_lbBackup:3`, last 5
+   per record, merged on restore). Stores the record **before** each change. Rides the `save()`
+   debounce; 3.2 ms on a 1.4 MB notebook.
+7. **A conflict keeps both.** `_applyRemote` wrote ours and threw theirs away behind a 9 s
+   banner. Theirs goes into the history tagged `remote`; the banner is sticky and has Compare.
+8. **`_attSweep`** — the backfill *and* the retry. A failed upload records
+   `{pending,tries,at,why}` instead of nothing.
+9. **One Recover dialog** (Deleted items · Versions · Snapshots · Backup file) replacing the
+   Snapshots and Restore buttons.
+10. **`e.aim` and `e.outcome`.** Asked at creation and at close, wired into the list, the dock,
+   the header, Results, Home, the report + its CSV, Cmd+K and the publication paragraph (off by
+   default). Nothing is inferred: no outcome reads as *no verdict recorded*, never as failed.
+11. **Timers persist and notify.** `HUB_NOTIFY`/`_ASK`/`_OK` on the shell with a local fallback;
+   `LB_TIMERS` in `localStorage` (not `LB.data` — it would ring on the other machine).
+12. **Two curated presets** from Jon's own runs: `Viability_CTG_TCIP_96` (+ layout `ctgdr96`) and
+   `Degradation_D2B_1`. `_presetV7` → `_presetV8`. `CALC_KINDS.seed/.ctg/.lytic` gained
+   `_ovxL(v.excess)` — no maths moved, only what they say about their totals.
+13. **A checklist can hold a bullet sub-list.** `.rt ul.lb-check li` and `.rt ul.lb-check ul`
+   were descendant selectors, so everything nested in a checklist got a checkbox and lost its
+   bullet for good. `> li` is the fix; the three JS sites enumerating checkable items followed.
+14. **`SHORTCUTS`** — one declared table, 23 entries. The handler dispatches from it and the
+   `⌘/` legend renders from it, so neither can drift. **`⌘K` stays search** (Jon's call), so a
+   link is `⌘⇧L`. Digits match `e.code` (physical), letters `e.key` (character) — a Spanish
+   keyboard puts `/` and `7` somewhere else.
+15. **Settings and help are one modal**, four tabs (Shortcuts · Writing · Appearance · About),
+   and the View ribbon went ten buttons → six: four export buttons folded into one picker,
+   Backup was already inside Recover, and Analysis moved into Settings.
+
+## Traps added this pass
+
+- **A GC whose liveness set is derived can be wrong about the world, not just about the data.**
+  The tree in memory at t=4 s is a statement about how far the network got, not about the
+  notebook. Anything that deletes needs a gate saying which tree it is holding.
+- **`catch(e){}` on the boot read is the whole bug.** A blank tree and a broken tree are
+  indistinguishable afterwards, and every downstream job then behaves as if the notebook were
+  empty — including the ones that delete and the ones that back up.
+- **A deletion that syncs while the way back does not** is the same permanent loss with extra
+  steps. `trash` had to go in `_CLOUD_MAPS`.
+- **`.exp-tabs` is the experiment editor's, not a general tab row.** It is `display:none` under
+  the mobile breakpoint (`.exp-tabs-m` replaces it) and sticky with a `--bg` background. Reusing
+  it in a dialog left the phone unable to reach two of four sections.
+- **A subagent's `preview_start` steals `localhost:<port>`.** The pane rewrote my
+  `localhost:8899` navigations to the agent's 8901 and I spent three calls debugging "my
+  functions are undefined". Use `127.0.0.1` when another session has a preview open.
+- **An IndexedDB write is not done when the promise you awaited resolves** if you awaited the
+  wrong one. 150 ms was not enough for the version write and read back as "no versions"; the
+  logic was fine.
+- **A shortcut in a table is also a shortcut two handlers can claim.** `⌘K` was in the new
+  `SHORTCUTS` table *and* still in the spotlight's own listener. Both fired, so it opened and
+  closed inside one keypress — which reads as "the shortcut does nothing".
+- **`e.key` is not the key you pressed, it is the character it produced.** `⌘⇧8` arrives as `*`
+  and `⌘⇧7` as `/` on a US layout, and as something else again on a Spanish one. Digits have to
+  match `e.code`.
+- **A descendant selector on a list is almost always wrong.** `ul.lb-check li` reaches into every
+  nested list; `> li` is what "this list's own items" means. The structure was correct all along
+  and the CSS was overriding it, which is why it looked like an editor bug.
 
 ## What changed on 2026-08-24
 
@@ -125,7 +170,7 @@ Compact coordination note. Read it before starting work; the full changelog is
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** All three now read `v1.9.0`; check the shell
+- **Version drift is a recurring failure here.** All three now read `v1.10.0`; check the shell
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.

@@ -2930,16 +2930,235 @@ the Archive PWA all clean; the four profiles rebuilt.
 header is dense by nature and the ⋯ is what makes it work. Fabricata keeps two confirm-dialog
 buttons clipped by 3px at 375; it is outside the product build.
 
+## As safe as OneNote (2026-09-01)
+
+Jon's brief was three things — an experiment that says what it was for and what it showed,
+timers that reach you, and *"me preocupa la pérdida de datos, esto tiene que ser tan seguro como
+OneNote… tiene que haber sistemas que impidan la pérdida de datos de ningún tipo."*
+
+OneNote's safety is four things: a local cache, **per-page version history**, a **recycle bin**,
+and **conflict pages that never silently overwrite**. Labbook had the cache. It had none of the
+other three, and it had two active loss paths of its own.
+
+### The boot race that destroyed attachments
+
+`setTimeout(gcAttachments,4000)` at the foot of the file, against a `_collectAttIds()` derived
+from `LB.data` — and the boot read swallowed its own failure into an empty `catch(e){}`. So a
+`localStorage` value that would not parse gave a **blank tree**, and four seconds later every
+image and every dropped file on that machine was hard-deleted from IndexedDB — before the cloud
+copy landed at t≈6 s and repopulated the tree with `data-att` references pointing at nothing.
+Reproduced against the committed build: both planted attachments gone at t=4 s.
+
+- **Mark, never hard-delete.** An unreferenced blob is marked in a reserved `__gc__` key and
+  deleted 30 days later only if it is still unreferenced. An id that **comes back** — an undo, a
+  restore, an adopted tree — has the mark lifted rather than left standing.
+- **A settle gate.** `_bootSettled` / `_onBootSettled` — nothing destructive runs until
+  `lbInitSync`'s first read resolves, or 20 s pass, or there is no cloud to wait for.
+- **`_localReadFailed`** separates "a value was there and did not parse" from "this is a new
+  browser". The first blocks the GC and the daily backup, says *Cache unreadable* on the status
+  pill, and interrupts once — carrying on typing makes it worse.
+- **A snapshot never replaces a bigger one** (`_snapRecords`), and retention went 3 → 7 days. A
+  boot from a blank tree used to write a blank snapshot over the good one *and* rotate a third
+  of the safety net out with it.
+
+### A recycle bin
+
+`delProject` deleted the project **and every experiment in it** with no `undoMark` at all — same
+for `delSection` and `delGeneral` — and `save()` pushed it to RTDB 1.2 s later. `UNDO` is sixty
+steps of memory that dies on reload.
+
+`LB.data.trash`, and **`trash` is in `_CLOUD_MAPS`**: a deletion that syncs while the way back
+does not is the same permanent loss with extra steps. 60 days, which is OneNote's own number.
+
+- A **project or folder is one entry** carrying its experiments. Restoring one experiment at a
+  time would be a different and worse feature.
+- A **step remembers its index** — put back at the end of the list it is dated from the wrong day.
+- Restoring into a project that has since gone files it under **Recovered**. A missing *folder*
+  needs no such thing: `xvProjectBody` already draws an "Unfiled" group.
+- A **day written in since** gets the old note appended under a rule, never overwritten.
+- **`_collectAttIds` scans the trash.** Miss it and the GC marks the bytes of everything you
+  deleted and a restore hands back empty boxes. The scanner (`_attScanInto`) is now shared
+  between the live tree and the trash so the two cannot disagree.
+
+### Version history, and a conflict that keeps both
+
+Each stored version is the record **as it was before a change**, not after — that is the state
+you want back, and it means the newest version is never a copy of what is already on screen.
+
+It rides the `save()` debounce and reuses the same per-record fingerprint `_cloudPush` does, with
+its own `_verSeen` so it works with **no cloud at all**. One scan per 2.5 min, one version per
+record per 10 min; measured on a 1.4 MB notebook of 122 records: **3.2 ms**. Last 20 per record
+whatever their age, then one per day for 60 days, then oldest-first over a 60 MB cap. It is
+**local**, in its own `lb_ver` IndexedDB, and travels inside the backup file (last 5 per record;
+backups are `_lbBackup:3` and **merge** rather than replace on restore).
+
+`_applyRemote` used to keep ours, **discard theirs entirely**, and say so in a banner that removed
+itself after nine seconds — so the other machine's work went with our next push and you had to be
+at the screen to know. Theirs is now written into the history tagged `remote`, which makes a
+conflict *a version that arrived from the other device*: restorable, comparable, saveable as a
+separate copy. That is OneNote's conflict page built out of machinery that had to exist anyway.
+
+### Attachments that never reached the cloud
+
+`_attUpload` ran only from the attach path and never retried, and a failure left **nothing**
+behind — so the bytes stayed in one browser for ever. Everything attached before Storage was
+enabled on 2026-08-27 was never uploaded at all; that backfill had been listed as "not built"
+since. Both are the same question — which live attachment has no cloud copy? — so they are one
+sweep (`_attSweep`), three at a time, nine seconds after the settle gate and on demand.
+
+A failure records `{pending, tries, at, why}`, which is what lets the sweep find it again. An id
+whose **bytes are not on this machine** is reported as "not on this device", not as a failure —
+it means the file is on the other machine or in a backup, which is a different sentence.
+
+### One Recover dialog
+
+The View ribbon carried Backup, Snapshots and Restore and would have needed five. They answer one
+question, so: **Deleted items · Versions · Snapshots · Backup file**, replacing two buttons with
+one. Reusing `.exp-tabs` for its tab row was wrong twice — the experiment editor hides it under
+the mobile breakpoint (so the phone could reach neither Snapshots nor Backup file) and it is
+sticky with a `--bg` background inside a glass card. It has its own `.rc-tab`, and the row stacks
+below 560px instead of ellipsing a name to fourteen characters.
+
+## An experiment can say what it was for and what it showed
+
+`grep` for `conclusion|outcome|hypothesis|objective` returned **zero**. `buildReportDoc` listed
+ten codes, ten dates and ten step counts and said nothing about what any of them found.
+
+`e.aim` is one line, asked in the New-experiment modal and editable under the title. `e.outcome`
+is `{verdict, text, at}` over **worked · partial · failed · inconclusive**. `closeExperiment`
+already opened the right conversation and only ever asked about *process* state; it now asks
+about the science too, as a second, skippable step.
+
+**Nothing is inferred and nothing is required.** An experiment with no outcome reads as *no
+verdict recorded* — "—" in the report, no marker in the list, "No verdict recorded" in the band.
+
+Wired through what already existed: `xvRow`, `metaHtml`, the header lean line, `resultsPaneHtml`,
+`homeRunningCard`, `buildReportDoc` (a column **and** the two lead lines under each experiment),
+`exportReportCSV`, and `spotContent` — an aim and an outcome are one sentence each and are what
+you go looking for by meaning rather than by name. `buildExpJSON` carries them for free.
+
+Two things that had to be right rather than merely present:
+
+- **The paragraph section is off by default.** What `buildPubReadyFromExp` builds is a Methods
+  section and a Methods section carries no verdict. `PUB_DEFAULT_OFF` is the mechanism.
+- **`_pubSourceSig` includes the outcome.** It can be in the paragraph, so changing it has to be
+  able to make the paragraph stale — leaving it out is precisely the silent drift that signature
+  exists to catch.
+
+## A timer that survives a reload
+
+`LB_TIMERS` was an in-memory array and `_timerBeep` is WebAudio in a foreground tab; a background
+tab throttles `setInterval` to a minute or suspends it. A three-hour incubation reached nobody.
+
+**`HUB_NOTIFY` / `HUB_NOTIFY_ASK` / `HUB_NOTIFY_OK` on the shell**, for the same reason
+`HUB_FREEZER_*` is there — an app in a `srcdoc` iframe asks the host rather than nineteen apps
+each working out permissions — with a local fallback so the standalone build works. Permission is
+asked on the **first timer you start**, a real user gesture; never at load, which is the prompt
+everybody clicks Block on.
+
+Timers persist to `localStorage`, **not `LB.data`** — a timer belongs to this bench, and syncing
+it would ring on the machine at home. One that ran out while the tab was closed comes back
+showing the time it finished at and *finished while you were away*. Older than a day is litter.
+
+**The ceiling is stated where the timers are**: this arrives while the browser is running. A
+`srcdoc` iframe cannot register a service worker and a scheduled notification for a closed
+browser needs a push server, so it is not an alarm clock and does not pretend to be.
+
+## Two curated presets from Jon's own runs
+
+Both are `EXTRA_PRESET_SEED` entries with a `baseType` — data, not new code — and `_presetV8`
+ships them.
+
+- **`Viability_CTG_TCIP_96`** (`CTG_TCIP96`, baseType `CTG`) — a TCIP dose-response viability
+  screen: 1,000 nM top, 3-fold, 11 points plus DMSO in column 12, four compounds each on a pair
+  of rows, read at 24 h and 72 h. New layout `ctgdr96`. The four compound names are generic on
+  purpose; Jon's twelve real ones appear nowhere. **Jon's notes carried two impossible dates** —
+  "31/06/2026" (June has 30 days) and a 72 h read dated *before* the 24 h one; the plot title
+  `CTG20260731` settles it, so the offsets are day 0 · 1 · 3.
+- **`Degradation_D2B_1`** (`D2B_CHEM1`, baseType `D2B`) — plate chemistry made the night before,
+  then an Echo dose response: reaction overnight at RT → compound addition + seeding (16 × 384
+  per line, 20 µL/well, 3,000 cells, 1.5× overage → 184,320 µL) → 20 h → HiBiT Lytic (32 plates,
+  1.2× → 147,456 µL) and a PHERAstar read at 0.1 s/well. **`echo384` was already exactly this
+  plate**, so no new layout. The overnight reaction correctly carries **no** `w`: the next
+  block's date expresses a wait of ≥24 h, which is the existing rule.
+  The inverted variant (seed first, compound next morning) is a separate entry with nothing to
+  undo — nothing in this preset encodes the order but the day offsets and the block order.
+
+`CALC_KINDS.seed`, `.ctg` and `.lytic` gained `_ovxL(v.excess)`: all three printed the per-unit
+arithmetic beside a total that silently included the dead-volume overage, which is the exact
+defect *Calculators tell you their overage* fixed elsewhere. **No calculator maths moved.**
+
+**Flagged, not silently decided:** `lytic` derives LgBiT and substrate from the unrounded
+147,456 µL → 1,475 and 2,949 µL. Jon's sheet rounds to 147,000 first → 1,470 and 2,940. A 5 and
+9 µL difference, left as the calculator had it.
+
+## A checklist can hold a bullet list, and a set of shortcuts you can state
+
+Jon: *"no me deja combinar lista check y bullet point… debe ser posible y hacerlo más fácil"*,
+and then *"inserta también legend de atajos. hay que re organizar menús de settings y help."*
+
+**The structure was never the problem.** `Tab` inside a checklist produces a plain nested `<ul>`
+with no class — which *is* a bullet list. Two **descendant** selectors were overriding it:
+`.rt ul.lb-check li` painted a checkbox on everything inside a checklist, and
+`.rt ul.lb-check ul` stripped the bullet for good. `> li` is the whole fix; a nested
+`ul.lb-check` still matches it on its own, so a checklist inside a checklist keeps working, and
+an `li` holding nothing but a list draws no box (the orphan checkbox in Jon's screenshot). The
+three JS sites that enumerate checkable items had to follow, or a bullet sub-item keeps counting
+towards "2/7 steps" while being impossible to tick.
+
+### `SHORTCUTS` is one table, and the legend is rendered from it
+
+There were five shortcuts. **`⌘K` stays search** — Jon's call, and the right one: it is the key
+pressed here twenty times a day. So the set is organised around that rather than around
+OneNote's bindings, and it states its own rule, which is what makes a set learnable:
+
+> **⌘ acts on what you are writing · ⌘⇧ inserts a thing · the number keys choose a kind of list.**
+
+A link therefore joins the Insert family on `⌘⇧L`. The handler dispatches from `SHORTCUTS` and
+the legend renders from it, so a shortcut cannot exist without appearing in the legend and the
+legend cannot drift from what the keys do — 23 entries, 23 rows, no orphan, no duplicate combo.
+
+**Matching is by character for letters and by physical key (`e.code`) for digits.** A Spanish
+keyboard puts `/` and `7` somewhere else than a US one; digits are stable by position and
+letters by what they type.
+
+`⌘1` is the one the screenshot needed: it makes the list under the cursor a checklist, and again
+turns it back to plain bullets — with `Tab`, that is the whole gesture. `⌥↑`/`⌥↓` move a line by
+moving the **node**, not by cut-and-paste, so a ticked checkbox stays ticked.
+
+**A shortcut in a table is also a shortcut two handlers can claim.** `⌘K` was in the new table
+*and* still in the spotlight's own listener; both fired, so it opened and closed inside one
+keypress. That listener now keeps only the keys that mean something while the spotlight is open.
+
+### Settings and help: one modal, four tabs
+
+The View ribbon was **ten buttons mixing four unlike things** — export (PDF · Copy · Word ·
+Data), safety (Backup · Recover), appearance (Lean · Theme · Panel) and one lab-wide setting
+(Analysis). Help had nowhere to live at all.
+
+- **Export** is one picker whose rows say what each answer is *for* — the whole record, the
+  clipboard, a Word file, the Methods sheet, the numbers, a report. Four icons in a row never
+  said that.
+- **Backup** was already inside Recover.
+- **Settings** (`openSettings`) is Shortcuts · Writing · Appearance · About, the same shape as
+  the shell's *Settings: one modal, four tabs*, reusing the Recover dialog's `.rc-tab` markup.
+  About is where "where does this notebook live" and "what to do if something goes wrong" are
+  answered, which is the help half.
+
+Six buttons instead of ten, each a real category. `⌘/` opens it on Shortcuts, `⌘,` on Settings.
+
 ## Current state
 
-**v1.9.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-08-31. (This session: the motion and scrolling pass — one timing scale in all twenty surfaces, dialogs that arrive and leave, a screen that enters and remembers your scroll position, a sticky experiment tab bar, three `{passive:false}` listeners that were costing the whole app its compositor, and app opening warmed on hover: 67 ms → 4.5 ms; then the day view, which was rendering the full body of every carried-over step of the last three weeks — 67 KB → 30 KB on a realistic notebook, 672 KB → 335 KB when nothing has ever been ticked; then the pane layout at 1024, where the chrome had outgrown the content (272px → 580px), and a full runtime audit of all 19 apps in both themes at four widths that found nine real defects including a Beacon logo that had been invisible since it was written. Then the day view learned to fold a whole experiment away — 31 KB → 8 KB, and the daily note from 27,497 px down to 880. See *"Sloppy" was not slow*, *The day view was 86% of something nobody reads* and *The chrome outgrew the content* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.10.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-01. (This session: **durability** — Labbook is now as safe as OneNote in the four ways that phrase means anything. The attachment GC hard-deleted on a derivation that could be wrong and did so four seconds after every load: reproduced against the committed build, both planted blobs gone at t=4 s with a corrupt cache. It marks now and deletes after 30 days, behind a settle gate, and a boot read that fails says so instead of pretending to be an empty notebook. Deleting stopped being permanent — a recycle bin that syncs, 60 days, with a project or folder restored in one piece. Version history, local and carried in backups, storing what a record was **before** each change. A conflict keeps both copies instead of discarding the other device's work behind a nine-second banner. And the attachment backfill that had been listed as "not built" since August is built. Then **aim and outcome**: an experiment can finally say what it was for and what it showed, which is what turns the report from a list of codes into a report. Then timers that survive a reload and reach a backgrounded tab. Plus two curated presets from Jon's own runs — a TCIP viability dose response and the plate-chem D2B — and, last, the writing surface: a checklist can hold a bullet sub-list again (two descendant selectors were overriding a structure that was always correct), there are 23 shortcuts declared in one table that the legend renders from, and the View ribbon's ten buttons became six real categories with settings and help behind one door. See *As safe as OneNote*, *An experiment can say what it was for and what it showed* and *A timer that survives a reload* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in
   `europe-west1` and `storage.rules` published; verified from outside (the bucket went from
   `404 Not Found` to `403 Permission denied`, the correct answer for no session). Uploads
-  themselves need a signed-in session to confirm. **Old attachments still need a backfill** —
-  see the Attachments section.
+  themselves need a signed-in session to confirm. ~~**Old attachments still need a backfill**~~ —
+  **built 2026-09-01** (`_attSweep`), and it is the retry path for failed uploads too. It has
+  not yet been *run* against Jon's real notebook on a signed-in session; the counter in
+  Recover → Backup file is what will say how many there were.
 - ~~**Firebase `/journal` rules** still need pasting into the console.~~ **Wrong — they are
   deployed** (verified 2026-08-27 by probing the RTDB anonymously: `labconfig` and
   `announcement` return 200, `journal` and `journal/labbook` return `Permission denied` 401,

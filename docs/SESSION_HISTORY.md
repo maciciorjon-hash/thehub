@@ -364,3 +364,51 @@ Previous bundle: v1.1.0 → v1.2.2 (Rounds 83–93, 2026-06-18 to 2026-06-22)
 New app Iceberg/Cryostorage added (round 64) then seeded with Jon's real freezer/cryo-tank inventory + XLSX grid-template import/export (round 83). Echo: fixed a stray `</div>` collapsing the Plots tab's chart height (round 84). LabMate: unified 8 separate "grid→detail" navigations into one shared renderToolGrid() data-driven pattern, widened mobile/tablet breakpoint to 900px, fixed inconsistent back-button labels and a dead chip-render call (round 85); fixed an embedded-mode back-nav bug, widened mobile home grid to 2 columns, removed Pip mascot illustrations from always-visible UI (round 86); moved Cell Lines into its own sub-panel, replaced 9 mobile section icons with SVG (round 87). Suite-wide audit Phases A–C: mobile touch-target fixes across all apps + Hub logo SVG consistency (round 88); ~39 tab-navigation icons redesigned as line-pictograms across 9 apps (round 89); desktop density quick-fixes — max-width caps, sticky table headers, auto-fill grid fixes (Tier 1, round 90); desktop layout rework — Degradation Explorer empty-state CTA, Protein Tools chart divider, Spectra font bump (Tier 2, round 91); Guide-tab content icons added across 6 apps, Protein Tools Target Intel regrouped, Cuppa stat-card weight rebalanced (Tier 3, round 93). Firebase RTDB security fix (round 92): removed hardcoded legacy database secret from client JS in hub-shell.html and Cuppa, converted admin writes to Firebase Auth SDK, added version-controlled `database.rules.json`. Known accepted residual risk: the leaked legacy RTDB secret itself cannot be revoked (Firebase removed all console UI for this years ago) — see Firebase integration section above, don't re-flag without checking that note first.
 
 Previous bundle: v1.0.11 → v1.0.68 (Rounds 45–82, 2026-06-11 to 2026-06-18)
+
+---
+
+## 2026-09-01 · v1.10.0 — durability, aim & outcome, timers, shortcuts
+
+**Durability ("as safe as OneNote").** OneNote's safety is four things: a local cache, per-page
+version history, a recycle bin, and conflict pages that never silently overwrite. Labbook had
+the cache and none of the other three, plus two active loss paths.
+
+- `gcAttachments` hard-deleted every blob `_collectAttIds()` did not name, 4 s after every load,
+  on a derivation that can be wrong. Reproduced against the committed build: with a corrupt
+  `localStorage['hub_labbook']`, both planted attachments gone at t=4 s. Now marks in a reserved
+  `__gc__` key and deletes at 30 days, behind `_bootSettled`, with `_localReadFailed` blocking
+  it and the daily backup entirely. `_snapRecords` stops a snapshot replacing a bigger one;
+  retention 3 → 7 days.
+- `LB.data.trash`, in `_CLOUD_MAPS`, 60 days. Eight delete sites converted. A project or folder
+  is one entry carrying its experiments; a step remembers its index; a restore into a vanished
+  project files under "Recovered"; a day written in since gets the old note appended.
+  `_collectAttIds` scans the trash — verified a trashed experiment's blob is not marked.
+- Version history in its own `lb_ver` IndexedDB, storing the record **before** each change.
+  Rides the `save()` debounce (3.2 ms on a 1.4 MB notebook of 122 records). Carried in backups
+  (`_lbBackup:3`, last 5 per record, merged on restore).
+- `_applyRemote` kept ours and discarded theirs behind a 9 s banner. Theirs is now a version
+  tagged `remote`; the banner is sticky and offers Compare.
+- `_attSweep` — the backfill listed as "not built" since August, and the retry path.
+- One **Recover** dialog: Deleted items · Versions · Snapshots · Backup file.
+
+**Aim & outcome.** `e.aim` and `e.outcome` = `{verdict, text, at}` over worked · partial ·
+failed · inconclusive. Asked at creation and in `closeExperiment`'s existing conversation.
+Wired into `xvRow`, `metaHtml`, the header, `resultsPaneHtml`, `homeRunningCard`,
+`buildReportDoc` (column + lead lines), `exportReportCSV`, `spotContent` and `PUB_SECTIONS`
+(off by default). No outcome reads as *no verdict recorded*, never as failed.
+
+**Timers.** `HUB_NOTIFY`/`_ASK`/`_OK` on the shell with a local fallback; `LB_TIMERS` persisted
+to `localStorage`; one that expired while away says so. Ceiling stated in the UI.
+
+**Presets.** `Viability_CTG_TCIP_96` (+ layout `ctgdr96`) and `Degradation_D2B_1`, both
+`EXTRA_PRESET_SEED` entries, `_presetV8`. `CALC_KINDS.seed/.ctg/.lytic` state their overage.
+
+**Writing surface.** A checklist can hold a bullet sub-list again — two descendant selectors
+were overriding a structure that was always correct. `SHORTCUTS` is one declared table (23
+entries) that both the handler and the `⌘/` legend read; `⌘K` stays search. Settings and help
+became one modal with four tabs and the View ribbon went from ten buttons to six.
+
+**Verified**: `check_js` · `check_css` · `check_shared` · `audit_app --xref` all clean; the
+runtime and alignment audits clean over Home, Experiments, Journal, Recover and Settings at
+1440/1024/375 in both themes with no horizontal overflow; the four `embed.py` profiles rebuilt;
+the shell bridge reachable from the real Labbook frame in the built dHUB.
