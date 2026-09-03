@@ -5,8 +5,55 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-02 · **v1.11.0** · branch `main`.
-- Latest work: **durability** — the answer to Jon's *"me preocupa la pérdida de datos, esto
+- Date: 2026-09-03 · **v1.11.1** · branch `main`.
+- Latest work: one screenshot from Jon of the **This step slipped** dialog — a tooltip stuck over
+  it, and a Cancel button standing in for a real answer. Both fixed, and both swept for their
+  class: five more apps had the same mouseout-only tooltip, and all 27 other `lbConfirm` calls
+  were read (none converted — they are deletes, where Cancel means never mind).
+
+## What changed on 2026-09-03
+
+1. **`#lb-tip` dismisses itself.** One `hide()`, from `mouseout` plus `pointerdown` capture,
+   `keydown`, `scroll` capture, `blur`, `visibilitychange`, and a 400 ms liveness check on the
+   anchor — `setBlockDone` ticks, calls `renderAll()`, then opens the dialog, so the trigger is
+   removed and no input event ever fires. It also restores the swapped-away `title` on every exit.
+2. **One `.pinfo` tooltip for the five apps that had five.** Blueprint, Dora, Helix, LDI and
+   Protein Tools. Anchored to the icon instead of trailing the cursor, measured, clamped on both
+   axes — four of them used `innerWidth-270` and none clamped vertically.
+3. **`lbChoose(msg,{answers})`.** Rows, each carrying what it does to the record; Escape and the
+   backdrop resolve to the answer marked `safe`. No Cancel.
+4. **The slip is three answers**, the middle one writing `b.completedAt` to the planned date at
+   midday — ticking always stamped *now*, so a step recorded late claimed it was done today.
+5. **`slipRest`** is the extracted mover and finally has an `undoMark`; **`askSlip`** is on the
+   step's `⋯` menu as *Reschedule the steps after this…*, since `b.slipAsked` only ever fires once.
+6. **`_lbDlg()` closes any open `⋯` menu** — a menu is dismissed by a mousedown outside it, which
+   a menu item that opens a modal does not produce.
+7. **`.blk-calcbtn` is 26 px** like its five siblings; an earlier pass levelled the row and missed
+   the calc/plate pair. The round tick and the borderless title stay as they are, on purpose.
+
+## Traps added on 2026-09-03
+
+- **A tooltip hidden only on `mouseout` is hidden by the one event that cannot fire.** A removed
+  node dispatches nothing. Anything anchored to an element needs a liveness check as well as
+  input events — and Labbook re-renders under the pointer constantly, so this is the default case
+  rather than the corner.
+- **`window.innerWidth - 270` is a guess about an element you can measure.** Fourth instance of
+  this family in this codebase (`#lb-tip`, the Gel popup, the well tooltip, now `.pinfo` × 4).
+- **A Cancel button that needs a sentence explaining what it does is the wrong button.** If the
+  explanation is in grey type under the message, the answers are actions and the dialog is a
+  choice, not a confirm.
+- **`__alignAudit()` only sees what is rendered at the width you run it at.** Labbook's step
+  header collapses on the *block's* width via a container query, so at the pane's default width
+  its toolbar is `display:none` and the audit reports clean over a row it cannot see. Run it wide.
+- **`openApp` refuses admin-only apps**, so driving Labbook inside `dHUB.html` from a test needs
+  `_loadApp('labbook')`, not `openApp`.
+
+## What changed in the pass before (2026-09-02 and earlier)
+
+The pass before this one was **Blueprint's audit** and **the icon set** (see `CLAUDE.md`); before
+those, **durability**:
+
+- **durability** — the answer to Jon's *"me preocupa la pérdida de datos, esto
   tiene que ser tan seguro como OneNote… tiene que haber sistemas que impidan la pérdida de
   datos de ningún tipo."* OneNote's safety is four things: a local cache, per-page version
   history, a recycle bin, and conflict pages that never silently overwrite. Labbook had the
@@ -15,7 +62,6 @@ Compact coordination note. Read it before starting work; the full changelog is
 - The worst of it was reproducible against the committed build: with a corrupt
   `localStorage['hub_labbook']`, both planted attachment blobs are **gone at t=4 s**.
 
-## What changed this pass
 
 1. **The attachment GC marks instead of hard-deleting.** `gcAttachments` deleted every blob
    `_collectAttIds()` did not name, four seconds after every load — and "unreferenced" is
@@ -60,7 +106,7 @@ Compact coordination note. Read it before starting work; the full changelog is
    and the View ribbon went ten buttons → six: four export buttons folded into one picker,
    Backup was already inside Recover, and Analysis moved into Settings.
 
-## Traps added this pass
+## Traps added in the pass before
 
 - **A GC whose liveness set is derived can be wrong about the world, not just about the data.**
   The tree in memory at t=4 s is a statement about how far the network got, not about the
@@ -170,7 +216,7 @@ Compact coordination note. Read it before starting work; the full changelog is
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** All three now read `v1.11.0`; check the shell
+- **Version drift is a recurring failure here.** All three now read `v1.11.1`; check the shell
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.
@@ -183,7 +229,7 @@ Compact coordination note. Read it before starting work; the full changelog is
 - Blueprint, Blot and Helix are out of the product profile. If they should be in, it is one line
   in `embed.py`.
 
-## Traps added this pass
+## Traps added in the transitions pass (2026-08-31)
 
 - **A backgrounded tab does not advance a transition.** Anything whose `display` is waiting on
   one (`transition-behavior:allow-discrete`) can be left mid-exit: full-screen, invisible and

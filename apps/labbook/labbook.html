@@ -359,9 +359,11 @@ body.lb-rb-closed .rb-pane{display:none;}
   background:none;border:1px solid transparent;border-radius:var(--r-1);color:var(--text2);cursor:pointer;}
 .blk-more:hover{background:var(--surface3);color:var(--text);}
 .blk-more svg{width:16px;height:16px;}
-/* The date, the snooze pill and the delete sit on one line and were 26, 23 and 23 tall. The
-   round tick and the borderless title stay as they are on purpose: one is a checkbox, the
-   other is meant to read as text. */
+/* The date, the snooze pill, the delete and the two calc/plate buttons sit on one line and
+   were 26, 23, 23 and 23 tall — the calc pair was missed when the others were levelled, which
+   is what a height written per component rather than per bar looks like. The round tick and
+   the borderless title stay as they are on purpose: one is a checkbox, the other is meant to
+   read as text. */
 .blk-del{margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:var(--fs-5);padding:3px 6px;border-radius:var(--r-1);min-height:26px;}
 .blk-del:hover{color:var(--danger);background:var(--surface3);}
 .rt{padding:12px 16px;font-family:var(--sans);font-size:var(--fs-4);line-height:1.7;color:var(--text);outline:none;min-height:40px;}
@@ -511,7 +513,7 @@ body.lb-rb-closed .rb-pane{display:none;}
 .blk-drop-after{box-shadow:inset 0 -3px 0 0 var(--accent);}
 .add-step:hover{color:#a56983;border-color:#a56983;}
 /* Live prep calculators inside experiment steps */
-.blk-calcbtn{display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid var(--border2);color:var(--accent);cursor:pointer;font-size:var(--fs-2);font-weight:600;padding:3px 9px;border-radius:var(--r-1);font-family:var(--sans);margin-right:4px;}
+.blk-calcbtn{display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid var(--border2);color:var(--accent);cursor:pointer;font-size:var(--fs-2);font-weight:600;padding:3px 9px;border-radius:var(--r-1);font-family:var(--sans);margin-right:4px;min-height:26px;}
 .blk-calcbtn:hover{background:var(--surface3);}
 /* Step completion */
 .blk-done{width:20px;height:20px;flex-shrink:0;border:1.5px solid var(--border2);background:none;border-radius:50%;cursor:pointer;color:#fff;font-size:var(--fs-3);line-height:1;display:flex;align-items:center;justify-content:center;padding:0;margin-right:2px;}
@@ -716,6 +718,17 @@ body.lb-rb-closed .rb-pane{display:none;}
   text-align:right;font-size:var(--fs-2);color:var(--text3);font-family:var(--sans);}
 /* A picker is a list of names, not a form: it gets the width a name needs. */
 .modal.pick{max-width:min(760px,94vw);}
+/* An answer is not a list row. .dlg-item ellipses its subtitle because a picker's subtitle is
+   a hint; an answer's subtitle is what the button does to the record, so it stacks and wraps. */
+.dlg-answers{display:flex;flex-direction:column;gap:8px;margin-top:16px;}
+.dlg-ans{display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%;text-align:left;
+  padding:10px 12px;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface2);
+  color:var(--text);font:inherit;cursor:pointer;
+  transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
+.dlg-ans:hover,.dlg-ans:focus-visible{background:var(--surface3);border-color:var(--accent);}
+.dlg-ans.primary{border-color:var(--accent);}
+.dlg-ans .l{font-size:var(--fs-4);font-weight:600;line-height:1.35;}
+.dlg-ans .s{font-size:var(--fs-2);color:var(--text2);line-height:1.4;}
 /* Recover — deleted items, snapshots, backup file. One dialog, three ways back. */
 .rc-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:0 0 14px;flex-wrap:wrap;}
 .rc-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);
@@ -6687,21 +6700,52 @@ function _offerSlip(expId,blockId){
   var later=_laterUndone(e,b);
   if(!later.length) return;                      // it was the last step
   b.slipAsked=true; save();
+  askSlip(expId,blockId,slip);
+}
+// Every answer here writes something, so none of them is Cancel — and the third one is not the
+// no-op it looks like: ticking a step always stamps completedAt = now, so a step done on the
+// planned day and recorded late claims it was done today, which is what dayPlan anchors the
+// day's clock on and what the Steps CSV exports.
+function askSlip(expId,blockId,slip){
+  var e=LB.data.experiments[expId]; if(!e) return;
+  var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0]; if(!b||!b.date) return;
+  var later=_laterUndone(e,b); if(!later.length){ toast('Nothing after this step to move'); return; }
+  if(slip==null) slip=Math.max(1, daysBetween(b.date, todayStr()));
   var next=later.slice().sort(function(x,y){ return (x.date||'').localeCompare(y.date||''); })[0];
-  lbConfirm('<b>'+esc(b.title||'This step')+'</b> was planned for '+esc(fmtDate(b.date))
-    +' and ticked today — <b>'+slip+' day'+(slip===1?'':'s')+' later</b>.<br><br>'
-    +'The '+later.length+' step'+(later.length===1?'':'s')+' after it '+(later.length===1?'is':'are')
-    +' still dated from the original plan, so <b>'+esc(next.title||'the next step')+'</b> is due '
-    +esc(fmtDate(next.date))+'. Move them all forward by '+slip+' day'+(slip===1?'':'s')
-    +' to keep the intervals you designed?<br><br>'
-    +'<span class="cc-dim">Say no if you did the work on time and are only recording it now.</span>',
-    {title:'This step slipped', ok:'Move the rest', html:true}).then(function(ok){
-      if(!ok){ toast('Left as planned'); return; }
-      var moved=0;
-      (e.blocks||[]).forEach(function(x){ if(x.id!==b.id && x.date && x.date>=b.date && !x.done){ x.date=addDays(x.date,slip); moved++; } });
-      recomputeDayOffsets(e); e.updated=Date.now(); save(); renderAll();
-      toast(moved+' step'+(moved===1?'':'s')+' moved — next is '+fmtDate(_laterUndone(e,b).sort(function(x,y){return (x.date||'').localeCompare(y.date||'');})[0].date));
+  var dd=slip+' day'+(slip===1?'':'s');
+  lbChoose('<b>'+esc(b.title||'This step')+'</b> was planned for '+esc(fmtDate(b.date))
+    +' and ticked today — <b>'+dd+' later</b>. The '+later.length+' step'+(later.length===1?'':'s')
+    +' after it '+(later.length===1?'is':'are')+' still dated from the original plan, so <b>'
+    +esc(next.title||'the next step')+'</b> is due '+esc(fmtDate(next.date))+'.',
+    {title:'This step slipped', html:true, answers:[
+      {id:'move', primary:true, label:'Move the rest forward by '+dd,
+       sub:'Keeps the intervals you designed — '+(next.title||'the next step')+' becomes '+fmtDate(addDays(next.date,slip))+'.'},
+      {id:'ontime', label:'I did it on '+fmtDate(b.date)+' — I am only recording it now',
+       sub:'Records that day as when the step was done. No date moves.'},
+      {id:'keep', safe:true, label:'Done today, and the plan stands',
+       sub:'Leaves every later step on the date it already has.'}
+    ]}).then(function(a){
+      if(a==='move') slipRest(expId,blockId,slip);
+      else if(a==='ontime'){
+        undoMark('Record step as done on time',['experiments.'+expId]);
+        b.completedAt=new Date(b.date+'T12:00:00').getTime();   // midday: the day is the fact, the hour is not
+        e.updated=Date.now(); save(); renderAll();
+        toast('Recorded as done on '+fmtDate(b.date));
+      }
+      else toast('Left as planned');
     });
+}
+// The same move snoozeBlock makes, from the step that slipped: everything dated on or after it
+// and not yet done, by the same number of days, so the spacing survives.
+function slipRest(expId,blockId,days){
+  var e=LB.data.experiments[expId]; if(!e) return;
+  var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0]; if(!b||!b.date||!days) return;
+  undoMark('Move the later steps',['experiments.'+expId]);
+  var from=b.date, moved=0;
+  (e.blocks||[]).forEach(function(x){ if(x.id!==b.id && x.date && x.date>=from && !x.done){ x.date=addDays(x.date,days); moved++; } });
+  recomputeDayOffsets(e); e.updated=Date.now(); save(); renderAll();
+  var nx=_laterUndone(e,b).sort(function(x,y){return (x.date||'').localeCompare(y.date||'');})[0];
+  toast(moved+' step'+(moved===1?'':'s')+' moved'+(nx?(' — next is '+fmtDate(nx.date)):''));
 }
 function toggleDone(expId,blockId){
   var f=blockFinder(expId,blockId); if(!f) return;
@@ -11247,7 +11291,8 @@ function popOpen(id,items,rect){ var pop=el(id); pop.innerHTML=items.map(functio
 document.addEventListener('mousedown',function(e){ ['ctxmenu','addmenu','tbl-grid'].forEach(function(id){ var p=el(id); if(p&&p.classList.contains('open') && !p.contains(e.target)) p.classList.remove('open'); }); });
 
 // ── Custom dialogs (replace native confirm/prompt + searchable picker) ──
-function _lbDlg(){ var d=el('lb-dialog'); if(d) return d; d=document.createElement('div'); d.className='modal-back'; d.id='lb-dialog'; d.innerHTML='<div class="modal" id="lb-dialog-card"></div>'; document.body.appendChild(d); d.addEventListener('mousedown',function(e){ if(e.target===d && d._onCancel) d._onCancel(); }); return d; }
+function _closeMenus(){ ['ctxmenu','addmenu','tbl-grid'].forEach(function(id){ var p=el(id); if(p) p.classList.remove('open'); }); }
+function _lbDlg(){ _closeMenus(); var d=el('lb-dialog'); if(d) return d; d=document.createElement('div'); d.className='modal-back'; d.id='lb-dialog'; d.innerHTML='<div class="modal" id="lb-dialog-card"></div>'; document.body.appendChild(d); d.addEventListener('mousedown',function(e){ if(e.target===d && d._onCancel) d._onCancel(); }); return d; }
 function _lbDlgClose(){ var d=el('lb-dialog'); if(d){ d.classList.remove('open'); d._onCancel=null; } }
 function _saveSel(){ var s=window.getSelection(); return (s&&s.rangeCount)?s.getRangeAt(0).cloneRange():null; }
 function _restoreSel(r){ if(!r) return; try{ var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){} }
@@ -11260,6 +11305,28 @@ function lbConfirm(msg,opts){ opts=opts||{}; return new Promise(function(res){
   d.classList.add('open'); function done(v){ _lbDlgClose(); res(v); }
   d._onCancel=function(){ done(false); }; el('lb-dlg-cancel').onclick=function(){ done(false); }; el('lb-dlg-ok').onclick=function(){ done(true); };
   setTimeout(function(){ el('lb-dlg-ok').focus(); },30);
+}); }
+// A question whose answers are all actions is not a confirm. lbConfirm's second button means
+// "never mind"; when both outcomes write something, calling one of them Cancel says the wrong
+// thing about the answer you are most likely to want — and the explanation of what Cancel
+// really does then has to go in grey type under the message, which is the tell.
+//
+// opts.answers: [{id,label,sub,primary,safe}]. Each is a row, because an answer's subtitle is
+// what it does to the record and has to be readable in full. `safe` is what Escape and the
+// backdrop resolve to — a modal must always be dismissible without there being a Cancel.
+function lbChoose(msg,opts){ opts=opts||{}; var ans=opts.answers||[]; return new Promise(function(res){
+  var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
+  card.innerHTML='<div class="modal-t">'+esc(opts.title||'Choose')+'</div><div class="dlg-msg">'+(opts.html?msg:esc(msg))+'</div>'
+    +'<div class="dlg-answers">'+ans.map(function(a,i){ return '<button type="button" class="dlg-ans'+(a.primary?' primary':'')+'" data-i="'+i+'">'
+      +'<span class="l">'+esc(a.label)+'</span>'+(a.sub?'<span class="s">'+esc(a.sub)+'</span>':'')+'</button>'; }).join('')+'</div>';
+  d.classList.add('open');
+  function done(v){ d.onkeydown=null; _lbDlgClose(); res(v); }
+  var safe=(ans.filter(function(a){return a.safe;})[0]||ans[ans.length-1]||{}).id;
+  d._onCancel=function(){ done(safe); };
+  d.onkeydown=function(ev){ if(ev.key==='Escape'){ ev.preventDefault(); done(safe); } };
+  Array.prototype.forEach.call(card.querySelectorAll('.dlg-ans'),function(n){
+    n.onclick=function(){ var a=ans[+n.dataset.i]; done(a&&a.id); }; });
+  setTimeout(function(){ var p=card.querySelector('.dlg-ans.primary')||card.querySelector('.dlg-ans'); if(p) p.focus(); },30);
 }); }
 // Single-button notice — for things the user must be told, not asked.
 function lbAlert(msg,opts){ opts=opts||{}; return new Promise(function(res){
@@ -11473,7 +11540,10 @@ function ctxBlock(ev,id){ var e=_curExp();
     {label:(b&&+b.waitMin)?'Change the wait after this step':'Add a wait after this step',
      fn:function(){ if(e) setBlockWait(e.id,id); }},
     {label:'Snooze 1 day',fn:function(){ if(e) snoozeBlock(e.id,id,1); }},
-    {label:'Snooze 1 week',fn:function(){ if(e) snoozeBlock(e.id,id,7); }}
+    {label:'Snooze 1 week',fn:function(){ if(e) snoozeBlock(e.id,id,7); }},
+    // _offerSlip asks once per step for ever (b.slipAsked). That is right for something that
+    // interrupts, and useless if you answered it wrongly — so the question has a door.
+    {label:'Reschedule the steps after this\u2026',fn:function(){ if(e) askSlip(e.id,id,null); }}
   ];
   if(b&&!b.calc) items.push({sep:true},{label:'Add a prep calculator',fn:function(){ calcMenu(id); }});
   if(e&&b&&!b.plate) items.push({label:'Add a plate map',fn:function(){ addPlateTo('blk:'+e.id+':'+id); }});
@@ -13623,11 +13693,23 @@ window.addEventListener('message', function(e){
 });
 
 // Fast custom tooltips — native title= lags ~1.5s; show ours after 140ms.
-(function(){ var tip=null, showT=null;
+//
+// A floating layer dismissed only by `mouseout` is dismissed by the one event that is not
+// guaranteed to fire: `mouseout` never arrives on a node that has been *removed*. Half the
+// buttons here re-render under the pointer — setBlockDone ticks, calls renderAll(), then opens
+// the slip dialog — so the tooltip was orphaned by construction and sat over the dialog with
+// its trigger long gone. hide() is called from everything that means "the pointer has moved
+// on", the element ceasing to exist included, since no input event covers that one.
+(function(){ var tip=null, showT=null, cur=null, liveT=null;
   function ensure(){ if(!tip){ tip=document.createElement('div'); tip.id='lb-tip'; document.body.appendChild(tip); } return tip; }
+  function restore(b){ if(!b) return; var o=b.getAttribute('data-otitle'); if(o!=null){ b.setAttribute('title',o); b.removeAttribute('data-otitle'); } }
+  function hide(){ clearTimeout(showT); if(liveT){ clearInterval(liveT); liveT=null; }
+    if(tip) tip.classList.remove('on'); restore(cur); cur=null; }
   document.addEventListener('mouseover', function(e){ var b=e.target.closest && e.target.closest('[title]'); if(!b) return; var txt=b.getAttribute('title'); if(!txt) return;
-    b.setAttribute('data-otitle', txt); b.removeAttribute('title');
-    clearTimeout(showT); showT=setTimeout(function(){ var t=ensure(); t.textContent=b.getAttribute('data-otitle')||txt;
+    if(cur && cur!==b) hide();
+    cur=b; b.setAttribute('data-otitle', txt); b.removeAttribute('title');
+    clearTimeout(showT); showT=setTimeout(function(){ if(cur!==b || !b.isConnected){ hide(); return; }
+      var t=ensure(); t.textContent=b.getAttribute('data-otitle')||txt;
       // Place it off-screen first so we can measure the wrapped box, then clamp its real
       // edges to the viewport and flip above the trigger when there is no room below.
       t.style.left='0px'; t.style.top='-9999px'; t.classList.add('on');
@@ -13636,9 +13718,20 @@ window.addEventListener('message', function(e){
       left=Math.max(M, Math.min(left, window.innerWidth-tw-M));
       var top=r.bottom+7;
       if(top+th>window.innerHeight-M) top=Math.max(M, r.top-th-7);
-      t.style.left=left+'px'; t.style.top=top+'px'; }, 140);
+      t.style.left=left+'px'; t.style.top=top+'px';
+      // The trigger can be re-rendered away while the tooltip is up, and nothing fires when
+      // that happens — this is the only thing that notices.
+      if(liveT) clearInterval(liveT);
+      liveT=setInterval(function(){ if(!cur || !cur.isConnected) hide(); }, 400); }, 140);
   });
-  document.addEventListener('mouseout', function(e){ var b=e.target.closest && e.target.closest('[data-otitle]'); if(!b) return; clearTimeout(showT); if(tip) tip.classList.remove('on'); var o=b.getAttribute('data-otitle'); if(o!=null){ b.setAttribute('title',o); b.removeAttribute('data-otitle'); } });
+  document.addEventListener('mouseout', function(e){ var b=e.target.closest && e.target.closest('[data-otitle]'); if(!b) return;
+    if(b!==cur){ restore(b); return; }                 // a stale swap from a node we lost track of
+    hide(); });
+  document.addEventListener('pointerdown', hide, true);
+  document.addEventListener('keydown', hide, true);
+  window.addEventListener('scroll', hide, true);
+  window.addEventListener('blur', hide);
+  document.addEventListener('visibilitychange', hide);
 })();
 </script>
 <script>

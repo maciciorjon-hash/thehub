@@ -3300,9 +3300,53 @@ fitting, so it is a curve through scatter points and Echo keeps the bars.
 on its card, because they are the same thing. The two app headers that carried a copy of their
 card logo (Incubator, Blot) were updated with it, or the app and its card would disagree.
 
+## A tooltip leaves, and a question with two answers has no Cancel (2026-09-03)
+
+Jon's screenshot of the **This step slipped** dialog carried three things, and they are two bugs
+and a design error.
+
+**A floating layer dismissed only by `mouseout` is dismissed by the one event that is not
+guaranteed to fire.** `mouseout` never arrives on a node that has been *removed* — and that is
+not an edge case: `setBlockDone` ticks the step, calls `renderAll()`, and *then* opens the
+dialog, so the button under the pointer is destroyed and its tooltip is orphaned by
+construction, every time. `#lb-tip` has one `hide()` now, called from `mouseout` as before **and**
+from `pointerdown` capture, `keydown`, `scroll` capture, `blur` and `visibilitychange`, plus a
+400 ms liveness check on the remembered anchor — the only thing that notices a removal, since no
+input event covers it.
+
+**The same shape was in five more apps.** Blueprint, Dora, Helix, LDI and Protein Tools each had
+their own `.pinfo` tooltip, all mouseout-only, four of them clamping with
+`Math.min(e.clientX+12, window.innerWidth-270)` and none clamping vertically — the guessed-edge
+family already recorded for `#lb-tip` and Blueprint's Gel popup. One implementation now: anchored
+to the icon rather than trailing the cursor, measured off-screen, clamped on both axes.
+
+**A question whose answers are all actions is not a confirm.** `lbConfirm`'s second button means
+*never mind*. Here both outcomes write something, so calling one of them **Cancel** said the
+wrong thing about the answer you are most likely to want — and the explanation of what Cancel
+really did then had to sit in grey type under the message, which is the tell. `lbChoose(msg,
+{answers})` renders each answer as a row with what it does to the record underneath it; `.dlg-ans`
+stacks and wraps rather than ellipsing like `.dlg-item`'s hint, because an answer's subtitle has
+to be readable in full. Escape and the backdrop resolve to the answer marked `safe` — a modal
+must always be dismissible without there being a Cancel.
+
+The slip question is three answers: **Move the rest forward by N days** · **I did it on 02/09 —
+I am only recording it now** · **Done today, and the plan stands**. The middle one is not the
+no-op it looks like: ticking a step always stamps `completedAt = Date.now()`, so a step done on
+the planned day and recorded late claims it was done today — which is what `dayPlan` anchors the
+day's wall clock on, what the wait timers date from, and a column in the Steps CSV. It writes the
+planned date at midday: the day is the fact, the hour is not.
+
+**The question has a door.** `b.slipAsked` asks once per step for ever — right for something that
+interrupts, useless if you answered it wrongly — so `ctxBlock` carries *"Reschedule the steps
+after this…"* beside Snooze, calling the same `slipRest`, which also gained the `undoMark` it
+never had despite moving every remaining step of an experiment.
+
+The other 27 `lbConfirm` calls were swept and **none** converted: they are deletes, replaces,
+imports and restores, where Cancel genuinely means never mind.
+
 ## Current state
 
-**v1.11.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-02. (This session: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.11.1**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-03. (This session: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in

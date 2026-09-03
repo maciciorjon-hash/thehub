@@ -1718,7 +1718,37 @@ tryAutoLoad();
 <div id="pinfo-tip"></div>
 <div id="dg-tt" class="dg-tt"></div>
 <script>
-(function(){var tip=document.getElementById('pinfo-tip');document.addEventListener('mouseover',function(e){var t=e.target.closest('.pinfo');if(!t)return;tip.textContent=t.dataset.tip;tip.style.display='block';tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px';});document.addEventListener('mouseout',function(e){if(e.target.closest('.pinfo'))tip.style.display='none';});document.addEventListener('mousemove',function(e){if(tip.style.display==='block'){tip.style.left=Math.min(e.clientX+12,window.innerWidth-270)+'px';tip.style.top=(e.clientY+14)+'px';}});})();
+// ─── pinfo tooltips ───────────────────────────────────────────────────────────
+// One implementation, shared by every app with .pinfo icons. Two rules it exists to hold:
+//  · A tooltip dismissed only by `mouseout` is dismissed by the one event not guaranteed to
+//    fire. Nothing arrives when the trigger is re-rendered away or a dialog opens over it, and
+//    the tooltip is then painted over the app with its trigger long gone.
+//  · Clamp the box by its own measured edges. `innerWidth-270` is a guess about an element you
+//    can measure, and it is wrong the moment the text is shorter or longer than 270px.
+(function(){
+  var tip=null, cur=null, liveT=null;
+  function tipEl(){ return tip||(tip=document.getElementById('pinfo-tip')); }
+  function hide(){ var t=tipEl(); if(t) t.style.display='none';
+    cur=null; if(liveT){ clearInterval(liveT); liveT=null; } }
+  function place(a){ var t=tipEl(); if(!t) return; var r=a.getBoundingClientRect(), M=8;
+    t.style.left='0px'; t.style.top='-9999px'; t.style.display='block';
+    var tw=t.offsetWidth, th=t.offsetHeight;
+    var left=r.right+10; if(left+tw>window.innerWidth-M) left=r.left-tw-10;
+    left=Math.max(M, Math.min(left, window.innerWidth-tw-M));
+    var top=r.top-4; if(top+th>window.innerHeight-M) top=window.innerHeight-th-M;
+    t.style.left=left+'px'; t.style.top=Math.max(M,top)+'px'; }
+  document.addEventListener('mouseover',function(e){
+    var a=e.target.closest && e.target.closest('.pinfo'); if(!a) return;
+    var t=tipEl(); if(!t) return; cur=a; t.textContent=a.dataset.tip||''; place(a);
+    if(liveT) clearInterval(liveT);
+    liveT=setInterval(function(){ if(!cur||!cur.isConnected) hide(); },400); });
+  document.addEventListener('mouseout',function(e){ if(e.target.closest && e.target.closest('.pinfo')) hide(); });
+  document.addEventListener('pointerdown',hide,true);
+  document.addEventListener('keydown',hide,true);
+  window.addEventListener('scroll',hide,true);
+  window.addEventListener('blur',hide);
+  document.addEventListener('visibilitychange',hide);
+})();
 (function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});})();
 window.addEventListener('message',function(e){
   if(!e.data||e.data.type!=='switchTab'||!e.data.tab)return;
