@@ -5,8 +5,41 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-03 · **v1.11.1** · branch `main`.
-- Latest work: one screenshot from Jon of the **This step slipped** dialog — a tooltip stuck over
+- Date: 2026-09-03 · **v1.12.0** · branch `main`.
+- Latest work: **replicate statistics**. Jon chose four things for the coming rounds —
+  (2) replicate means when the experiment has numeric output, (3) the prep sheet, (4) Labbook as
+  an installable bench PWA, (5) the Echo audit + Phase 2 consolidation — and this is (2). **(3),
+  (4) and (5) are still to do, in that order.**
+
+## What changed in the replicate pass (2026-09-03)
+
+1. **`repResultStats(e)`** is the first reader `repSiblings` has ever had. Four rules: n is
+   biological replicates (technical replicates inside a run are averaged first); your exclusion
+   drops a row and the fitter's flag does not; a bounded value is counted and never averaged; and
+   **potencies are averaged in log space** — geometric mean, spread as a `×/÷` fold — while an
+   effect in % is an ordinary mean ± SD.
+2. **Four surfaces**: `repStatsHtml` (Results tab), `pdRepStats` (PDF + Methods sheet, plain
+   markup because the live one has inputs in it), `pubResultsSentence`, and `exportRepStatsCSV`
+   in the Data picker.
+3. **`_mSD` / `_gmSD` / `_gmOf` / `_sig` / `_resBounded`** are the shared helpers.
+4. A replicate set where only this run has numbers says so, rather than showing nothing.
+
+## Traps added in the replicate pass
+
+- **The arithmetic mean of 1, 10 and 100 nM is 37 nM.** Potencies are log-normal. Any average of
+  a potency in this codebase belongs in log space, and the spread is a fold factor.
+- **n is runs, not rows.** Grouping measurements without collapsing technical replicates inside
+  each run inflates n, and n is the number the reader trusts.
+- **`exp(mean(log))` reintroduces float noise.** `5.000000000000001` in a CSV, from three clean
+  inputs. Round on the way out; the screen was fine because it goes through `_rn`.
+- **A row with no mean must leave the prose but stay in the table.** "the most potent were …
+  (DC50 — nM)" is a sentence about a number that does not exist.
+- **Counting over the wrong set is invisible when the sets agree.** The sentence's compound count
+  came from the open run's rows and happened to match; it is counted over what is reported now.
+
+## What changed in the dialog and tooltip pass (2026-09-03)
+
+- One screenshot from Jon of the **This step slipped** dialog — a tooltip stuck over
   it, and a Cancel button standing in for a real answer. Both fixed, and both swept for their
   class: five more apps had the same mouseout-only tooltip, and all 27 other `lbConfirm` calls
   were read (none converted — they are deletes, where Cancel means never mind).
@@ -216,7 +249,7 @@ those, **durability**:
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** All three now read `v1.11.1`; check the shell
+- **Version drift is a recurring failure here.** All three now read `v1.12.0`; check the shell
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.

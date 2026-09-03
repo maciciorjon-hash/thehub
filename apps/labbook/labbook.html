@@ -1417,6 +1417,16 @@ body.lb-lean .exh.open .exh-lean{display:none;}
   .dev-row .dev-ok{margin-left:auto;}
 }
 /* ── Biological replicates ────────────────────────────────────────────────────────────── */
+.rep-stats .res-hd{background:var(--accent-soft);}
+.rep-wait{margin-bottom:12px;padding:9px 12px;border:1px dashed var(--border2);border-radius:var(--r-2);
+  font-size:var(--fs-2);color:var(--text3);line-height:1.5;}
+.rep-tbl th{white-space:nowrap;}
+.rep-vals{white-space:nowrap;}
+.rep-v{display:inline-block;min-width:34px;padding:1px 6px;margin-right:4px;border-radius:var(--r-1);
+  background:var(--surface2);border:1px solid var(--border);font-family:var(--mono);font-size:var(--fs-1);color:var(--text2);}
+.rep-v.flagged{border-color:var(--warn,#c9a227);color:var(--text);}
+.rep-b{font-size:var(--fs-1);color:var(--text3);}
+.rep-note{padding:8px 12px;font-size:var(--fs-1);color:var(--text3);line-height:1.5;border-top:1px solid var(--border);}
 .rep-chip{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:4px 10px;
   border:1px solid var(--border2);border-radius:var(--r-3);background:var(--surface2);font-size:var(--fs-2);}
 .rep-t{color:var(--text2);font-weight:600;}
@@ -8947,7 +8957,7 @@ function resultsPaneHtml(e){
         : 'Paste a table from whatever you fitted in — Prism, R, Excel — one row per compound.')
       +'</div>'+add+'</div>';
   }
-  return band+'<div class="res-top">'+add+'</div>'+rs.map(function(r,i){
+  return band+repStatsHtml(e)+'<div class="res-top">'+add+'</div>'+rs.map(function(r,i){
     var rows=(r.rows||[]);
     if(!rows.length) return '<div class="res-card"><div class="res-hd">'+esc(r.label||r.source||'result')+'</div>'
       +'<pre class="res-raw">'+esc(JSON.stringify(r.data||r,null,1)).slice(0,1200)+'</pre></div>';
@@ -9102,15 +9112,36 @@ function pubResultsSentence(e){
   var _hit={}, uniq=rows.filter(function(x){
     var k=String(x.compound||'')+'\u0000'+String(x.target||'');
     if(_hit[k]) return false; _hit[k]=1; return true; });
-  var best=uniq.slice(0,3).map(function(x){
-    return String(x.compound)+(x.target?(' against '+String(x.target)):'')
-      +' ('+pl+' '+_rn(x.potency)+' '+pu
-      +(isFinite(parseFloat(x.effect))?(', '+el2+' '+_rn(x.effect)+eu):'')+')'; });
+  // A potency measured three times is reported as the mean of the three, not as whichever run
+  // happens to be open. When the experiment is one of a replicate set, the summary is the
+  // result and the single run is not.
+  var S=repResultStats(e), nPhrase='';
+  var best;
+  // A pair whose potency was only ever bounded has no mean, and "the most potent were … (DC50 —)"
+  // is a sentence about a number that does not exist. It stays in the table and out of the prose.
+  var Sp=S? S.pairs.filter(function(p){ return p.pot; }) : [];
+  if(Sp.length){
+    nPhrase=' Values are geometric means of '+S.n+' biological replicates.';
+    // Counted over what is being reported, not over the rows of whichever run is open.
+    var sc={}, st={};
+    Sp.forEach(function(p){ sc[p.compound]=1; if(p.target) st[p.target]=1; });
+    nCpd=Object.keys(sc).length; targets=Object.keys(st);
+    best=Sp.slice(0,3).map(function(p){
+      return String(p.compound)+(p.target?(' against '+String(p.target)):'')
+        +' ('+pl+' '+(p.pot?_rn(p.pot.m):'—')+' '+pu
+        +(p.pot&&p.pot.fold!=null?(', '+_fold(p.pot.fold)):'')
+        +(p.eff?(', '+el2+' '+_rn(p.eff.m)+(p.eff.sd==null?'':(' ± '+_rn(p.eff.sd)))+eu):'')+')'; });
+  } else {
+    best=uniq.slice(0,3).map(function(x){
+      return String(x.compound)+(x.target?(' against '+String(x.target)):'')
+        +' ('+pl+' '+_rn(x.potency)+' '+pu
+        +(isFinite(parseFloat(x.effect))?(', '+el2+' '+_rn(x.effect)+eu):'')+')'; });
+  }
   return 'Dose–response curves were fitted with a four-parameter logistic model. '
     +nCpd+' compound'+(nCpd===1?'':'s')+' gave measurable '+pl+' values'
     +(targets.length>1?(' across '+targets.length+' targets ('+_pubList(targets)+')'):
       (targets.length===1?(' against '+targets[0]):''))
-    +'; the most potent were '+_pubList(best)+'.';
+    +'; the most potent were '+_pubList(best)+'.'+nPhrase;
 }
 // ── What you actually changed ───────────────────────────────────────────────────────────────
 // b.params holds overrides only, never a copy of the protocol's defaults, so the difference
@@ -9312,6 +9343,119 @@ function repSiblings(e){
   return Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
     .filter(function(x){ return x.repGroup===g; })
     .sort(function(a,b){ return (a.repIndex||0)-(b.repIndex||0); });
+}
+// -- What n = 3 actually means ------------------------------------------------------------
+// repSiblings has existed since replicates were added and nothing ever read it but the header
+// chip -- so the link the comment above calls "the thing statistics and a figure legend need"
+// was recorded and never used. This is the reader.
+//
+// Four rules, and each one is a way of getting the number wrong:
+//  * n is biological replicates, not rows. Two plates of the same compound inside one run are
+//    technical replicates; they are averaged first, or an experiment run once on two plates
+//    reports n=2 and a confidence it has not earned.
+//  * Your exclusion drops the row, the fitter's flag does not -- the rule the results sentence
+//    already follows. Only the exclusion is a decision about the science.
+//  * A bounded value never enters a mean. ">10000 nM" is a curve that never reached its
+//    bottom; averaged as 10000 it becomes a potency nobody measured. It is counted and named.
+//  * A potency is averaged in log space. Potencies are log-normal, and the arithmetic mean of
+//    1, 10 and 100 nM is 37 nM -- the middle of nothing. The geometric mean is 10, and the
+//    spread is a fold factor rather than a plus/minus in nM. An effect in % is bounded and
+//    linear, so that one is an ordinary mean and SD.
+function _resBounded(x){ return !!(x && (x.bound || /^Reported as\s*[<>≥≤]/.test(String(x.note||'')))); }
+function _mSD(a){ if(!a.length) return null;
+  var m=a.reduce(function(s,v){ return s+v; },0)/a.length;
+  if(a.length<2) return {m:m, sd:null, n:1};
+  var v=a.reduce(function(s,x){ return s+(x-m)*(x-m); },0)/(a.length-1);
+  return {m:m, sd:Math.sqrt(v), n:a.length}; }
+function _gmSD(a){ var p=a.filter(function(v){ return v>0; });
+  if(!p.length) return null;
+  var L=_mSD(p.map(function(v){ return Math.log10(v); }));
+  return {m:Math.pow(10,L.m), fold:(L.sd==null?null:Math.pow(10,L.sd)), n:L.n, nonPos:a.length-p.length}; }
+function _gmOf(a){ var p=(a||[]).filter(function(v){ return v>0; }); if(!p.length) return null;
+  return Math.pow(10, p.reduce(function(s,v){ return s+Math.log10(v); },0)/p.length); }
+function repResultStats(e){
+  var sib=repSiblings(e); if(sib.length<2) return null;
+  var L=resultLabels(e), lab={p:L.p, pu:L.pu, e:L.e, eu:L.eu};
+  var pairs={}, used=[];
+  sib.forEach(function(x){
+    var rs=(x.integration&&x.integration.results)||[], per={}, got=false;
+    rs.forEach(function(r){
+      if(r.potencyLabel) lab.p=String(r.potencyLabel).split(' ')[0];
+      if(r.potencyUnit)  lab.pu=String(r.potencyUnit);
+      if(r.effectLabel)  lab.e=String(r.effectLabel).split(' ')[0];
+      if(r.effectUnit)   lab.eu=String(r.effectUnit);
+      (r.rows||[]).forEach(function(row){
+        if(row.excluded) return;
+        var cpd=String(row.compound||'').trim(), tgt=String(row.target||'').trim();
+        if(!cpd) return;
+        var k=cpd+' → '+tgt;
+        var o=per[k]||(per[k]={compound:cpd,target:tgt,p:[],e:[],flag:false,bound:0});
+        var pv=parseFloat(row.potency), ev=parseFloat(row.effect);
+        if(isFinite(pv)){ if(_resBounded(row)) o.bound++; else o.p.push(pv); }
+        if(isFinite(ev)) o.e.push(ev);
+        if(row.flag) o.flag=true;
+        got=true;
+      });
+    });
+    if(!got) return;
+    used.push(x);
+    Object.keys(per).forEach(function(k){ var o=per[k];
+      var pr=pairs[k]||(pairs[k]={compound:o.compound, target:o.target, vals:[]});
+      pr.vals.push({code:x.code||'', repIndex:x.repIndex||1, expId:x.id,
+        potency:_gmOf(o.p),
+        effect:(o.e.length? o.e.reduce(function(s,v){ return s+v; },0)/o.e.length : null),
+        flag:o.flag, bounded:o.bound, tech:o.p.length});
+    });
+  });
+  if(used.length<2) return null;
+  var out=Object.keys(pairs).map(function(k){ var pr=pairs[k];
+    pr.pot=_gmSD(pr.vals.map(function(v){ return v.potency; }).filter(function(v){ return v!=null; }));
+    pr.eff=_mSD(pr.vals.map(function(v){ return v.effect; }).filter(function(v){ return v!=null; }));
+    pr.flag=pr.vals.some(function(v){ return v.flag; });
+    pr.bounded=pr.vals.reduce(function(s,v){ return s+(v.bounded||0); },0);
+    return pr; }).filter(function(p){ return p.pot||p.eff; });
+  if(!out.length) return null;
+  out.sort(function(a,b){ return ((a.pot&&a.pot.m)||Infinity)-((b.pot&&b.pot.m)||Infinity); });
+  used.sort(function(a,b){ return (a.repIndex||0)-(b.repIndex||0); });
+  return {reps:used, n:used.length, pairs:out, labels:lab};
+}
+function _fold(f){ return f==null?'—':('×/÷ '+(f>=10?f.toFixed(0):f.toFixed(2))); }
+function repStatsHtml(e){
+  var S=repResultStats(e);
+  if(!S){
+    // Silence here reads as "there is no such thing", not as "waiting for a second number".
+    var sib=repSiblings(e);
+    if(sib.length>1 && ((e.integration&&e.integration.results)||[]).length)
+      return '<div class="rep-wait">Biological replicate '+(e.repIndex||1)+' of '+sib.length
+        +'. The summary across replicates — means, spread and n — appears here as soon as a second '
+        +'replicate has numbers attached.</div>';
+    return '';
+  }
+  var L=S.labels;
+  return '<div class="res-card rep-stats"><div class="res-hd"><span class="res-src">n = '+S.n+'</span>'
+    +'Across '+S.n+' biological replicates'
+    +'<span class="res-when">'+esc(S.reps.map(function(x){ return x.code||('replicate '+(x.repIndex||1)); }).join(' · '))+'</span></div>'
+    +'<div class="res-scroll"><table class="res-tbl rep-tbl"><thead><tr>'
+    +'<th>Compound</th><th>Target</th><th>n</th>'
+    +'<th>'+esc(L.p)+' (geo. mean, '+esc(L.pu)+')</th><th>Spread</th>'
+    +'<th>'+esc(L.e)+' (mean ± SD, '+esc(L.eu)+')</th><th>Per replicate</th></tr></thead><tbody>'
+    +S.pairs.map(function(p){
+      var per=p.vals.map(function(v){
+        return '<span class="rep-v'+(v.flag?' flagged':'')+'" title="'+esc((v.code||('replicate '+v.repIndex))
+          +(v.tech>1?(' · '+v.tech+' technical replicates averaged'):''))+'">'
+          +(v.potency==null?'—':_rn(v.potency))+'</span>'; }).join('');
+      return '<tr'+(p.flag?' class="flagged"':'')+'>'
+        +'<td>'+esc(p.compound)+'</td><td>'+esc(p.target||'')+'</td>'
+        +'<td class="num">'+((p.pot&&p.pot.n)||(p.eff&&p.eff.n)||0)+'</td>'
+        +'<td class="num">'+(p.pot?_rn(p.pot.m):'—')+'</td>'
+        +'<td class="num">'+(p.pot?_fold(p.pot.fold):'—')+'</td>'
+        +'<td class="num">'+(p.eff?(_rn(p.eff.m)+(p.eff.sd==null?'':(' ± '+_rn(p.eff.sd)))):'—')+'</td>'
+        +'<td class="rep-vals">'+per+(p.bounded?('<span class="rep-b" title="Bounded values are counted but never averaged">'+p.bounded+' bounded</span>'):'')+'</td></tr>'; }).join('')
+    +'</tbody></table></div>'
+    +'<div class="rep-note">Potencies are averaged in log space — the geometric mean, with the spread as a '
+    +'×/÷ factor, because the arithmetic mean of 1, 10 and 100 '+esc(L.pu)+' is 37. '
+    +esc(L.e)+' is a plain mean ± SD. Rows you excluded are left out; a flagged fit is kept and marked; '
+    +'a bounded value is counted and never averaged.</div></div>';
 }
 function repeatExperiment(id){
   var e=LB.data.experiments[id]; if(!e||!isCoded(e)) return;
@@ -12170,6 +12314,7 @@ var PRINT_CSS='<style>@page{size:A4;margin:14mm}'+PLATE_PRINT_CSS
  +'#print-root .pd-res{margin-bottom:10px}'
  +'#print-root .pd-res-hd{font-weight:700;margin-bottom:4px;font-size:11.5pt}'
  +'#print-root .pd-res-when{float:right;font-weight:400;color:#444}'
+ +'#print-root .pd-note{font-size:9pt;color:#555;margin:3px 0 0}'
  +'#print-root .pd-exp{margin-top:20px}'
  +'#print-root .pd-exp-hd{font-weight:700;font-size:14pt;border-bottom:1.5pt solid #222;padding-bottom:4px;margin-bottom:10px}'
  +'#print-root .pd-exp-hd span{font-weight:400;font-size:11pt;color:#333}'
@@ -12263,10 +12408,31 @@ function foot(){ return '<div class="pd-foot">'+_brand()+' · exported '+fmtDate
 // Static print versions. resultsPaneHtml and deviationsHtml carry delete buttons and jump
 // handlers that mean nothing on paper, so the print forms are separate — but they read the same
 // data, so a PDF cannot disagree with the screen.
+function pdRepStats(e){
+  var S=null; try{ S=repResultStats(e); }catch(err){}
+  if(!S) return '';
+  var L=S.labels;
+  return '<div class="pd-res"><div class="pd-res-hd">Across '+S.n+' biological replicates'
+    +'<span class="pd-res-when">'+esc(S.reps.map(function(x){ return x.code||('replicate '+(x.repIndex||1)); }).join(' · '))+'</span></div>'
+    +'<table class="pd-tbl"><thead><tr><th>Compound</th><th>Target</th><th>n</th>'
+    +'<th>'+esc(L.p)+' geo. mean ('+esc(L.pu)+')</th><th>Spread</th>'
+    +'<th>'+esc(L.e)+' mean ± SD ('+esc(L.eu)+')</th><th>Per replicate</th></tr></thead><tbody>'
+    + S.pairs.map(function(p){
+        return '<tr><td>'+esc(p.compound)+'</td><td>'+esc(p.target||'')+'</td>'
+          +'<td>'+((p.pot&&p.pot.n)||(p.eff&&p.eff.n)||0)+'</td>'
+          +'<td>'+(p.pot?esc(_rn(p.pot.m)):'—')+'</td>'
+          +'<td>'+(p.pot?esc(_fold(p.pot.fold)):'—')+'</td>'
+          +'<td>'+(p.eff?esc(_rn(p.eff.m)+(p.eff.sd==null?'':(' ± '+_rn(p.eff.sd)))):'—')+'</td>'
+          +'<td>'+esc(p.vals.map(function(v){ return v.potency==null?'—':_rn(v.potency); }).join(', '))
+          +(p.bounded?(' ('+p.bounded+' bounded)'):'')+'</td></tr>'; }).join('')
+    +'</tbody></table>'
+    +'<div class="pd-note">Potencies are geometric means, the spread a ×/÷ factor; '+esc(L.e)
+    +' is mean ± SD. Excluded rows are left out and bounded values are never averaged.</div></div>';
+}
 function pdResults(e){
   var rs=(e.integration&&e.integration.results)||[];
   if(!rs.length) return '';
-  return '<div class="pd-sec-hd">Results</div>' + rs.map(function(r){
+  return '<div class="pd-sec-hd">Results</div>' + pdRepStats(e) + rs.map(function(r){
     var rows=(r.rows||[]); if(!rows.length) return '';
     var pu=r.potencyUnit?(' ('+r.potencyUnit+')'):'', eu=r.effectUnit?(' ('+r.effectUnit+')'):'';
     return '<div class="pd-res"><div class="pd-res-hd">'+esc(r.label||r.source||'result')
@@ -12663,6 +12829,33 @@ function exportResultsCSV(id){
   _dl(_expSlug(e)+'_results.csv', _csv([RESULT_COLS].concat(rows)), 'text/csv');
   toast(rows.length+' measurement'+(rows.length===1?'':'s')+' saved');
 }
+// The summary is a different table from the measurements: one row per compound-target pair,
+// the mean, the spread, n, and every individual value so the mean can be checked by hand.
+function _sig(v,n){ return (v==null||!isFinite(v))?'':Number(Number(v).toPrecision(n||6)); }
+function exportRepStatsCSV(id){
+  var e=(id&&LB.data.experiments[id])||_curExp(); if(!e) return;
+  var S=repResultStats(e);
+  if(!S){ lbAlert('This experiment is not part of a replicate set with numeric results in more than one run.',{title:'Nothing to summarise'}); return; }
+  var L=S.labels, maxN=S.reps.length;
+  var head=['Experiment','Compound','Target','n',
+            L.p+' geometric mean ('+L.pu+')', L.p+' spread (fold)',
+            L.e+' mean ('+L.eu+')', L.e+' SD', 'Flagged', 'Bounded'];
+  for(var i=0;i<maxN;i++) head.push((S.reps[i].code||('replicate '+(S.reps[i].repIndex||(i+1))))+' '+L.p);
+  var rows=[head];
+  S.pairs.forEach(function(p){
+    var r=[e.code||'', p.compound, p.target||'', ((p.pot&&p.pot.n)||(p.eff&&p.eff.n)||0),
+           p.pot?_sig(p.pot.m):'', (p.pot&&p.pot.fold!=null)?_sig(p.pot.fold):'',
+           p.eff?_sig(p.eff.m):'', (p.eff&&p.eff.sd!=null)?_sig(p.eff.sd):'',
+           p.flag?'yes':'', p.bounded||''];
+    for(var i=0;i<maxN;i++){
+      var v=p.vals.filter(function(x){ return x.expId===S.reps[i].id; })[0];
+      r.push(v&&v.potency!=null?_sig(v.potency):'');
+    }
+    rows.push(r);
+  });
+  _dl(_expSlug(e)+'_replicates.csv', _csv(rows), 'text/csv');
+  toast(S.pairs.length+' pair'+(S.pairs.length===1?'':'s')+' across '+S.n+' replicates saved');
+}
 function exportAllResultsCSV(){
   var rows=[];
   Object.keys(LB.data.experiments).forEach(function(k){ rows=rows.concat(_resultRowsOf(LB.data.experiments[k])); });
@@ -12795,6 +12988,10 @@ function exportDataMenu(){
     items.push({id:'steps', label:'Steps — CSV',
       sub:nSteps?(nSteps+' dated step'+(nSteps===1?'':'s')+' with dates, ticks and notes'):'no dated steps', ic:'S', c:'#4a8fb5'});
     if(e.plate) items.push({id:'plate', label:'Plate map — CSV', sub:'one row per well', ic:'P', c:'#6d7bd0'});
+    var _rst=repResultStats(e);
+    if(_rst) items.push({id:'reps', label:'Replicate summary — CSV',
+      sub:_rst.pairs.length+' compound–target pair'+(_rst.pairs.length===1?'':'s')+' across '+_rst.n+' biological replicates',
+      ic:'n', c:'#4a8fb5'});
   }
   items.push({id:'all', label:'All results in this notebook — CSV',
     sub:'every measurement, every experiment', ic:'∑', c:'#a56983'});
@@ -12805,6 +13002,7 @@ function exportDataMenu(){
     else if(it.id==='res') exportResultsCSV();
     else if(it.id==='steps') exportStepsCSV();
     else if(it.id==='plate') exportPlateCSV('exp:'+(_curExp()||{}).id);
+    else if(it.id==='reps') exportRepStatsCSV();
     else if(it.id==='all') exportAllResultsCSV();
     else if(it.id==='import') importExpJSON();
   });

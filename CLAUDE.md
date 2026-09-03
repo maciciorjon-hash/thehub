@@ -3344,9 +3344,50 @@ never had despite moving every remaining step of an experiment.
 The other 27 `lbConfirm` calls were swept and **none** converted: they are deletes, replaces,
 imports and restores, where Cancel genuinely means never mind.
 
+## What n = 3 actually means (2026-09-03)
+
+`repSiblings` has existed since biological replicates were added, and its own comment says the
+link between them is *"the thing statistics and a figure legend need"* — and **nothing ever read
+it** but the header chip. The promise was recorded and never kept. `repResultStats(e)` is the
+reader, and it only speaks when the experiment has numeric output, which is Jon's condition for
+it existing at all.
+
+Four rules, and each one is a way of getting the number wrong:
+
+- **n is biological replicates, not rows.** Two plates of the same compound *inside one run* are
+  technical replicates: they are averaged first, or an experiment run once on two plates reports
+  n=2 and a confidence it has not earned.
+- **Your exclusion drops the row; the fitter's flag does not.** The rule the results sentence
+  already followed — only the exclusion is a decision about the science, so a flagged fit is kept
+  and stays visibly flagged in the summary.
+- **A bounded value never enters a mean.** `>10000 nM` is a curve that never reached its bottom;
+  averaged as 10000 it becomes a potency nobody measured. It is counted, named, and left out.
+- **A potency is averaged in log space.** Potencies are log-normal, and the arithmetic mean of
+  1, 10 and 100 nM is **37 nM** — the middle of nothing. The geometric mean is 10, and the spread
+  is a `×/÷` fold factor rather than a ± in nM. An effect in % is bounded and linear, so *that*
+  one is an ordinary mean ± SD. This is the whole reason the feature is worth having in a
+  domain-aware notebook rather than in a spreadsheet.
+
+It surfaces in four places and adds no schema: a summary card at the top of the **Results** tab
+(with every individual value beside the mean, so it can be checked by hand), the **PDF and the
+Methods sheet** (`pdRepStats` — plain markup, because `repStatsHtml` carries live inputs), the
+**publication sentence** (*"Values are geometric means of 3 biological replicates"*), and
+**Replicate summary — CSV** in the Data picker.
+
+Two things it must not do, both fixed after reading the output rather than the code: a pair whose
+potency was only ever bounded **has no mean**, so it stays in the table and out of the prose —
+*"the most potent were … (DC50 — nM)"* is a sentence about a number that does not exist; and the
+compound and target counts in that sentence are counted **over the set being reported**, not over
+the rows of whichever run happens to be open. The CSV also rounds to six significant figures:
+`exp(mean(log))` reintroduces float noise, and the file said `5.000000000000001` where the screen
+said `5.00`.
+
+**Silence would have read as absence.** A replicate set where only this run has numbers shows a
+dashed line saying the summary appears as soon as a second replicate has some — not nothing.
+
 ## Current state
 
-**v1.11.1**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-03. (This session: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.12.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-03. (This session: **what n = 3 actually means** — `repSiblings` had been recorded since replicates were added and read by nothing but the header chip, so an experiment run three times reported three separate numbers and no result. `repResultStats` averages them, in log space for potencies, with technical replicates collapsed inside each run first, bounded values counted and never averaged, and your exclusions honoured over the fitter's flags. Summary card, PDF, Methods sentence and a CSV. See *What n = 3 actually means*. Before it: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in
