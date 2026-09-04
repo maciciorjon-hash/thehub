@@ -718,6 +718,24 @@ body.lb-rb-closed .rb-pane{display:none;}
   text-align:right;font-size:var(--fs-2);color:var(--text3);font-family:var(--sans);}
 /* A picker is a list of names, not a form: it gets the width a name needs. */
 .modal.pick{max-width:min(760px,94vw);}
+.modal.prep{max-width:min(820px,94vw);}
+.prep-body{max-height:56vh;max-height:56dvh;overflow:auto;margin-top:14px;}
+.prep-g{margin-bottom:14px;}
+.prep-gh{font-size:var(--fs-1);font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text3);padding-bottom:5px;border-bottom:1px solid var(--border);margin-bottom:4px;}
+.prep-row{display:flex;align-items:baseline;gap:12px;padding:5px 2px;border-bottom:1px solid var(--border);}
+.prep-row:last-child{border-bottom:none;}
+.prep-n{flex:1 1 auto;min-width:0;font-size:var(--fs-3);color:var(--text);}
+.prep-note{display:block;font-size:var(--fs-1);color:var(--text3);line-height:1.4;}
+.prep-q{flex:0 0 auto;font-family:var(--mono);font-size:var(--fs-2);color:var(--text2);white-space:nowrap;}
+.prep-w{flex:0 0 34%;min-width:0;font-size:var(--fs-1);color:var(--text2);text-align:right;}
+.prep-w.no{color:var(--danger);}
+.prep-nt{color:var(--text3);}
+.prep-empty{padding:18px 4px;font-size:var(--fs-3);color:var(--text3);line-height:1.6;}
+@media(max-width:640px){
+  .prep-row{flex-wrap:wrap;row-gap:2px;}
+  .prep-w{flex:1 1 100%;text-align:left;}
+}
 /* An answer is not a list row. .dlg-item ellipses its subtitle because a picker's subtitle is
    a hint; an answer's subtitle is what the button does to the record, so it stacks and wraps. */
 .dlg-answers{display:flex;flex-direction:column;gap:8px;margin-top:16px;}
@@ -1814,7 +1832,7 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
   .blk-plate .cc-hd .plate-more{display:inline-flex;align-items:center;justify-content:center;
     width:30px;height:26px;padding:0;}
   .blk-plate .cc-hd .plate-more svg{width:17px;height:17px;}
-  .exh-acts .exh-act:not(.exh-more){display:none;}
+  .exh-acts .exh-act:not(.exh-more):not(.exh-keep){display:none;}
   .exh-acts .exh-more{display:inline-flex;}
   /* The step header is nine controls that need 481px; the block is 347px here and clips, so
      snooze, calc, plate and Delete were outside it with nothing to scroll — and the title
@@ -1822,7 +1840,16 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
      the ⋯ that ctxBlock already answers to on right-click and long press. */
   .blk-hd .blk-wait,.blk-hd .blk-snooze,.blk-hd .blk-calcbtn,.blk-hd .blk-del{display:none;}
   .blk-more{display:inline-flex;}
-  .blk-title{flex:1 1 60px;min-width:40px;}
+  /* .blk-hd .blk-title above is a *descendant* selector — the comment sits between the two
+     selectors, which reads as two rules and is one. At (0,0,2,0) it beat this plain .blk-title
+     wherever they disagreed, so the phone kept the desktop's 90px floor: the row then needed
+     366px in a 345px block and pushed the ⋯ 21px off the screen, which is the one control the
+     mobile collapse puts everything else behind. Matched, so the later rule wins as intended. */
+  .blk-hd .blk-title{flex:1 1 60px;min-width:40px;}
+  /* The date input is 31px here (the 16px iOS rule beats its font-size) and the ⋯ was 26, so
+     the row ran two heights. Stretching rather than naming a number keeps them equal whatever
+     the platform makes of a native date input. */
+  .blk-hd .blk-more{align-self:stretch;height:auto;}
   .blk-date{font-size:var(--fs-2);padding:3px 5px;}
 }
 </style>
@@ -8678,6 +8705,7 @@ function expActs(id){ var e=LB.data.experiments[id]||{};
   return '<div class="exh-acts">'
     +'<button class="exh-act exh-more" title="Actions" onclick="expActsMenu(event,\''+id+'\')">'
       +ICON_MORE_H+'</button>'
+    +'<button class="exh-act" title="What you need — every material this experiment consumes, and where it is" onclick="openPrepSheet({expId:\''+id+'\'})">'+tbIco(P_BOX,17)+'</button>'
     +'<button class="exh-act" title="Bench sheet — the amounts and the steps, to print and take to the lab" onclick="exportLab(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 3h6v3H9z"/><path d="M9 4.5H6.5A1.5 1.5 0 005 6v14a1.5 1.5 0 001.5 1.5h11A1.5 1.5 0 0019 20V6a1.5 1.5 0 00-1.5-1.5H15"/><path d="M8.5 11h7M8.5 15h4"/></svg></button>'
     +close+'<button class="exh-act" title="Repeat as the next biological replicate" onclick="repeatExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></button><button class="exh-act" title="Duplicate" onclick="dupExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button><button class="exh-act danger" title="Delete" onclick="delExperiment(\''+id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div>'; }
 // D / A next to each plasmid: which is the NanoLuc donor, which the HaloTag acceptor. Nothing
@@ -9457,6 +9485,314 @@ function repStatsHtml(e){
     +esc(L.e)+' is a plain mean ± SD. Rows you excluded are left out; a flagged fit is kept and marked; '
     +'a bounded value is counted and never averaged.</div></div>';
 }
+// == What you need before you start ==========================================================
+// The night-before job, and the one thing in this app that no rich-text notebook can do: the
+// parameters are typed, so a planned experiment already knows every volume, plate format, cell
+// line and construct it is going to consume -- and the shell already knows where things
+// physically are. Nothing joined the two halves.
+//
+// CALC_NEEDS is deliberately a separate table from CALC_KINDS rather than a `needs` key inside
+// it. It is the shopping list, not the recipe: `compute` stays the single source for how to
+// make a thing, and this only says what to have on the bench. A kind with no entry here is
+// reported as such rather than silently contributing nothing -- an empty list and an
+// undeclared one are different sentences.
+//
+// Every amount below is the same one-line arithmetic its `compute` already does. Where the
+// amount is genuinely hard to attribute -- the per-plasmid ng of a NanoBRET run, which depends
+// on the condition -- the item is listed with no quantity instead of a guessed one. "Take these
+// three preps out of the freezer" is the useful half; the nanograms are in the block's own table.
+var CALC_NEEDS={
+  seed:function(v){
+    var wells=wellsOf(v.format)*(+v.nPlates||1);
+    var totUL=(+v.volPerWell||0)*wells*(+v.excess||1);
+    var cells=((+v.cellsPerWell||0)/(+v.volPerWell||1)/1000)*(totUL/1000);
+    return [{k:'cells', name:v.cellLine, qty:cells, unit:'M cells'},
+            {k:'reagent', name:'Cell suspension (medium)', qty:totUL, unit:'µL'},
+            {k:'plastic', name:v.format+'-well plate', qty:(+v.nPlates||1), unit:''}];
+  },
+  nbsusp:function(v){
+    var nP=+v.nPlus||0, nM=+v.nMinus||0, x=(+v.excess||1);
+    var volPlus=nP*(+v.volPerWell||0)*x, totUL=(nP+nM)*(+v.volPerWell||0)*x;
+    var lig=(+v.stockUM)>0 ? volPlus*((+v.finalNM||0)/1000)/(+v.stockUM) : null;
+    return [{k:'cells', name:v.cellLine, qty:((+v.cellsPerWell||0)*(nP+nM)*x)/1e6, unit:'M cells'},
+            {k:'reagent', name:'Cell suspension (medium)', qty:totUL, unit:'µL'},
+            {k:'compound', name:v.ligName, qty:lig, unit:'µL',
+             note:(+v.stockUM?('from a '+nfmt(v.stockUM)+' µM stock'):'')}];
+  },
+  nbtx:function(v){
+    var out=[], P=nbtxParts(v);
+    P.donors.forEach(function(d){ out.push({k:'plasmid', name:d, note:'donor (NanoLuc)'}); });
+    P.accs.forEach(function(a){ out.push({k:'plasmid', name:a, note:'acceptor (HaloTag)'}); });
+    out.push({k:'plasmid', name:'Carrier DNA', note:'tops the short mixes up to equal total DNA'});
+    var tx=0; try{ (_nbtxConditions(v)||[]).forEach(function(c){ if(!c.noMix) tx+=(+c.n||0); }); }catch(e){}
+    if(tx){ var x=(+v.excess||1);
+      out.push({k:'reagent', name:'FuGENE HD', qty:(+v.fugenePerWell||0)*tx*x, unit:'µL'});
+      out.push({k:'reagent', name:'Opti-MEM', qty:(+v.optimemPerWell||0)*tx*x, unit:'µL'}); }
+    return out;
+  },
+  rtxmix:function(v){
+    var n=+v.nWells||0, x=(+v.excess||1);
+    var ng=(+v.ngPerWell||0)*n*x;
+    var dnaUL=(+v.stockNgUl)>0 ? ng/(+v.stockNgUl) : null;
+    var fug=(ng/1000)*(+v.fugeneRatio||0);
+    var mix=(+v.dispenseUL||0)*n*x;
+    // The diluent is the remainder -- the same rule rtxMixRecipe exists to enforce.
+    var dil=mix-(dnaUL||0)-fug;
+    return [{k:'plasmid', name:v.plasmid, qty:ng, unit:'ng',
+             note:(dnaUL!=null?(nfmt(dnaUL)+' µL of a '+nfmt(v.stockNgUl)+' ng/µL prep'):'')},
+            {k:'reagent', name:'FuGENE HD', qty:fug, unit:'µL'},
+            {k:'reagent', name:v.diluent||'Opti-MEM', qty:(dil>0?dil:null), unit:'µL'}];
+  },
+  spike:function(v){
+    var n=+v.nWells||0, x=(+v.excess||1), f=+v.foldX||1;
+    var perWell=(f>1)?((+v.wellVolUL||0)/(f-1)):0;
+    var inter=perWell*n*x;
+    var out=[{k:'reagent', name:(v.diluent||'diluent'), qty:inter, unit:'µL',
+              note:'to make the '+nfmt(f)+'× intermediate'}];
+    // A dose series is not one tube, so there is no single stock volume to state -- the same
+    // reason spikeRecipe suppresses its stock rows when `series` is on.
+    if(v.series) out.unshift({k:'compound', name:v.name, note:'one intermediate per concentration'});
+    else {
+      var vs=((+v.stockUM)>0)? inter*((+v.finalUM||0)*f)/(+v.stockUM) : null;
+      out.unshift({k:'compound', name:v.name, qty:vs, unit:'µL',
+                   note:((+v.stockUM)?('from a '+nfmt(v.stockUM)+' µM stock'):'')});
+    }
+    return out;
+  },
+  serial:function(v){
+    var nc=+v.nCompounds||1, np=+v.nPoints||1;
+    return [{k:'compound', name:v.name, note:nc+' compound'+(nc===1?'':'s')+' · '+np+' points at 1:'+nfmt(v.df)
+             +((+v.stockUM)?(' · from a '+nfmt(v.stockUM)+' µM DMSO stock'):'')},
+            {k:'reagent', name:v.diluent||'diluent', qty:(+v.volPerPoint||0)*np*nc, unit:'µL'}];
+  },
+  lytic:function(v){
+    var wells=wellsOf(v.format)*(+v.nPlates||1);
+    var tot=((+v.cellVolPerWell||0)/(+v.ratio||2))*wells*(+v.excess||1);
+    return [{k:'reagent', name:'HiBiT Lytic buffer', qty:tot, unit:'µL'},
+            {k:'reagent', name:'LgBiT', qty:tot/(+v.lgbitDil||100), unit:'µL', note:'1:'+nfmt(v.lgbitDil)},
+            {k:'reagent', name:'HiBiT substrate', qty:tot/(+v.subDil||50), unit:'µL', note:'1:'+nfmt(v.subDil)}];
+  },
+  ctg:function(v){
+    var wells=wellsOf(v.format)*(+v.nPlates||1);
+    return [{k:'reagent', name:'CellTiter-Glo', qty:(+v.volPerWell||0)*wells*(+v.excess||1), unit:'µL'},
+            {k:'plastic', name:v.format+'-well plate', qty:(+v.nPlates||1), unit:''}];
+  },
+  reagent:function(v){
+    var tot=+v.totalVol||0, dil=+v.dilution||1;
+    return [{k:'reagent', name:v.name, qty:tot/dil, unit:'µL', note:'1:'+nfmt(dil)},
+            {k:'reagent', name:v.diluent||'diluent', qty:tot-(tot/dil), unit:'µL'}];
+  }
+};
+var PREP_GROUPS=[['cells','Cells'],['plasmid','Plasmids'],['compound','Compounds and ligands'],
+                 ['antibody','Antibodies'],['reagent','Reagents'],['plastic','Plasticware'],
+                 ['protocol','Protocols to have open'],['unknown','Not derived']];
+function _prepKey(k,n){ return k+''+String(n||'').trim().toLowerCase(); }
+// Reagent is consumed per step and plasticware is not: the plate you seed on is the plate you
+// read, so adding the seeding step's 2 plates to the CTG step's 2 says you need 5 when you need
+// 2. Within one experiment plasticware is the *maximum* any step asks for; across experiments
+// it adds, because those really are different plates.
+function _prepMerge(dst, order, it, plasticMax){
+  if(!it || !String(it.name||'').trim()) return;
+  var k=_prepKey(it.k||'reagent', it.name), cur=dst[k];
+  var q=(it.qty!=null&&isFinite(it.qty))?+it.qty:null;
+  if(!cur){ dst[k]={k:it.k||'reagent', name:String(it.name).trim(), qty:q, unit:it.unit||'',
+                    notes:(it.notes||(it.note?[it.note]:[])).slice(), nameOnly:!!it.nameOnly,
+                    partial:!!it.partial, from:1};
+    order.push(k); return; }
+  if(q!=null && cur.qty!=null && (it.unit||'')===cur.unit)
+    cur.qty=(plasticMax && cur.k==='plastic') ? Math.max(cur.qty,q) : cur.qty+q;
+  else if(q!=null && cur.qty==null){ cur.qty=q; cur.unit=it.unit||cur.unit; }
+  // A contributor that never had a quantity to give — a name on the plate map or in the header
+  // — does not make the total partial. Only a step that should have said and could not does.
+  else if(q==null && cur.qty!=null && !it.nameOnly) cur.partial=true;
+  if(it.partial) cur.partial=true;
+  if(!it.nameOnly) cur.nameOnly=false;
+  (it.notes||(it.note?[it.note]:[])).forEach(function(n){ if(n && cur.notes.indexOf(n)<0) cur.notes.push(n); });
+  cur.from++;
+}
+// One list from a set of {exp, block} pairs — the shape blocksForDate already returns. The unit
+// of derivation is the block, so the same function answers "this whole experiment" and
+// "everything due on Tuesday", which is the difference between a plan and a bench list.
+function prepNeeds(pairs){
+  var perExp={}, expOrder=[], exps={};
+  (pairs||[]).forEach(function(pr){
+    var e=pr.exp||{}, b=pr.block||{}, id=e.id||'_';
+    if(!perExp[id]){ perExp[id]={map:{}, order:[]}; expOrder.push(id); exps[id]=e; }
+    var A=perExp[id];
+    function add(it){ _prepMerge(A.map, A.order, it, true); }
+    if(b.calc && b.calc.kind){
+      var f=CALC_NEEDS[b.calc.kind];
+      if(f){ try{ (f(b.calc.inputs||{})||[]).forEach(add); }catch(err){} }
+      else if(b.calc.kind==='archive') add({k:'unknown', name:'An Archive protocol calculator', nameOnly:true,
+        note:'its numbers live in Archive, so the materials are not derived here'});
+      else add({k:'unknown', name:((CALC_KINDS[b.calc.kind]&&CALC_KINDS[b.calc.kind].label)||b.calc.kind),
+        nameOnly:true, note:'this calculator does not declare its materials'});
+    }
+    if(b.plate) prepFromPlate(b.plate).forEach(add);
+    if(b.proto && b.proto.protoName) add({k:'protocol', name:b.proto.protoName, nameOnly:true, note:b.proto.name||''});
+  });
+  // Everything an experiment states about itself, once per experiment rather than once per step.
+  expOrder.forEach(function(id){
+    var e=exps[id]||{}, A=perExp[id];
+    function add(it){ _prepMerge(A.map, A.order, it, true); }
+    if(e.plate) prepFromPlate(e.plate).forEach(add);
+    var st=e.setup||{};
+    if(st.cellLine) add({k:'cells', name:st.cellLine, nameOnly:true, note:'named in the setup'});
+    // The header fields are comma lists, and they are what somebody types when the calculators
+    // have not been filled in yet — which is exactly when this sheet is most useful.
+    String(e.cellLines||'').split(/[,;]+/).forEach(function(n){ if(n.trim()) add({k:'cells', name:n, nameOnly:true, note:'named on the experiment'}); });
+    String(e.plasmids||'').split(/[,;]+/).forEach(function(n){ if(n.trim()) add({k:'plasmid', name:n, nameOnly:true, note:'named on the experiment'}); });
+  });
+  var byKey={}, order=[];
+  expOrder.forEach(function(id){ var A=perExp[id];
+    A.order.forEach(function(k){ _prepMerge(byKey, order, A.map[k], false); }); });
+  return order.map(function(k){ return byKey[k]; });
+}
+// A plate map is the one place that says which compound and which line went where, so it is
+// read as a source of names -- never of amounts, which belong to the wells and not to a tube.
+function prepFromPlate(p){
+  var out=[], seenC={}, seenL={}, w=(p&&p.wells)||{};
+  Object.keys(w).forEach(function(id){ var x=w[id]||{};
+    var c=String(x.compound||'').trim(); if(c && !seenC[c]){ seenC[c]=1; out.push({k:'compound', name:c, nameOnly:true, note:'on the plate map'}); }
+    var l=String(x.cellLine||'').trim(); if(l && !seenL[l]){ seenL[l]=1; out.push({k:'cells', name:l, nameOnly:true, note:'on the plate map'}); }
+  });
+  if(p && p.format) out.push({k:'plastic', name:p.format+'-well plate', qty:1, unit:''});
+  return out;
+}
+// Where it is, asked of the things that actually track location. A line with no answer says
+// "not tracked" rather than "none" -- this notebook does not do stock control and must not
+// imply that it does.
+var PREP_LOCATABLE={cells:1, plasmid:1, antibody:1};
+function prepWhere(it){
+  var H=null, W=null;
+  try{ H=(window.parent&&window.parent!==window)?window.parent:null; }catch(e){}
+  try{ W=_arcWin(); }catch(e){}
+  if(it.k==='cells'){
+    try{ if(H&&H.cellsLineStats&&H.cellsBaseLine){
+      var st=H.cellsLineStats(), key=H.cellsBaseLine(it.name), v=st[key]||{cultures:0,vials:0,where:[]};
+      // A line the shell has never heard of is "you have none", not "we did not look". The
+      // second is what null means here, and it is only true when there is no shell to ask.
+      return {txt:(v.cultures?(v.cultures+' in culture'):'none in culture')
+              +' · '+(v.vials?(v.vials+' vial'+(v.vials===1?'':'s')+(v.where&&v.where.length?(' in '+v.where.join(', ')):'')):'no vials'),
+              ok:!!(v.cultures||v.vials)};
+    } }catch(e){}
+    return null;
+  }
+  if(it.k==='plasmid'||it.k==='antibody'){
+    try{ if(W&&W.ARCHIVE_LIB){
+      var kind=(it.k==='plasmid')?'plasmids':'antibodies';
+      var all=W.ARCHIVE_LIB(kind)||{}, want=String(it.name||'').toLowerCase();
+      var hit=Object.keys(all).map(function(id){ return all[id]; }).filter(function(r){
+        var nm=(kind==='antibodies')?abName(r):[r.code,r.name,r.insert].filter(Boolean).join(' ');
+        return String(nm||'').toLowerCase().indexOf(want)>=0 || want.indexOf(String(r.code||' ').toLowerCase())>=0;
+      })[0];
+      if(hit) return {txt:(hit.locText||hit.location||'in the Library, no location set'), ok:true};
+      return {txt:'not in the Library', ok:false};
+    } }catch(e){}
+    return null;
+  }
+  return null;
+}
+
+// The sheet itself. It is NOT the bench sheet (`buildLabSheet`), and the two must not be
+// merged: that one is the run, chronological, every step with its recipe, read *during* the
+// experiment. This is the deduplicated list of things, read *before* it, with where each one
+// is. The same reagent needed by three steps is three lines there and one line here.
+function _prepQty(it){
+  if(it.qty==null) return '';
+  var q=(it.unit==='µL'&&it.qty>=1000)?mlfmt(it.qty):(nfmt(it.qty)+(it.unit?(' '+it.unit):''));
+  return q+(it.partial?' +':'');
+}
+// Paper gets its own markup out of the classes PRINT_CSS already styles. Writing .prep-* rules
+// into the app stylesheet would not reach the print root, and adding them to PRINT_CSS means a
+// second copy of a layout that only exists on screen.
+function prepPrintHtml(items){
+  var by={}; items.forEach(function(it){ (by[it.k]||(by[it.k]=[])).push(it); });
+  return PREP_GROUPS.map(function(g){ var list=by[g[0]]; if(!list||!list.length) return '';
+    return '<div class="pd-sec-hd">'+esc(g[1])+'</div><table class="pd-tbl"><tbody>'
+      + list.map(function(it){ var w=prepWhere(it);
+          return '<tr><td>'+esc(it.name)+(it.notes.length?(' <i>'+esc(it.notes.filter(Boolean).join(' · '))+'</i>'):'')
+            +'</td><td>'+esc(_prepQty(it))+'</td><td>'+esc(w?w.txt:'')+'</td></tr>'; }).join('')
+      +'</tbody></table>'; }).join('');
+}
+function prepSheetHtml(items){
+  if(!items.length) return '<div class="prep-empty">Nothing to prepare here yet. Amounts come from the '
+    +'step calculators, and names from the plate map and the experiment header — fill any of those in and they appear.</div>';
+  var by={}; items.forEach(function(it){ (by[it.k]||(by[it.k]=[])).push(it); });
+  return PREP_GROUPS.map(function(g){
+    var list=by[g[0]]; if(!list||!list.length) return '';
+    return '<div class="prep-g"><div class="prep-gh">'+esc(g[1])+'</div>'
+      + list.map(function(it){
+          var w=prepWhere(it);
+          return '<div class="prep-row">'
+            +'<div class="prep-n">'+esc(it.name)
+              +(it.notes.length?('<span class="prep-note">'+esc(it.notes.filter(Boolean).join(' · '))+'</span>'):'')+'</div>'
+            +'<div class="prep-q">'+esc(_prepQty(it))+'</div>'
+            +'<div class="prep-w'+(w?(w.ok?' ok':' no'):'')+'">'
+              +(w?esc(w.txt):(PREP_LOCATABLE[it.k]?'<span class="prep-nt">not tracked here</span>':''))+'</div>'
+          +'</div>'; }).join('')
+      +'</div>';
+  }).join('');
+}
+function prepSheetText(items,title){
+  var by={}; items.forEach(function(it){ (by[it.k]||(by[it.k]=[])).push(it); });
+  var out=[title,''];
+  PREP_GROUPS.forEach(function(g){ var list=by[g[0]]; if(!list||!list.length) return;
+    out.push(g[1].toUpperCase());
+    list.forEach(function(it){ var w=prepWhere(it), q=_prepQty(it);
+      out.push('  ' + it.name + (q?('  —  '+q):'') + (w?('  ['+w.txt+']'):'')
+        + (it.notes.length?('  ('+it.notes.filter(Boolean).join(' · ')+')'):'')); });
+    out.push('');
+  });
+  return out.join('\n');
+}
+// scope: {expId} for the whole experiment, {date} for one day, {from,to} for a span.
+function openPrepSheet(scope){
+  scope=scope||{};
+  var items, title, sub;
+  if(scope.expId){
+    var e=LB.data.experiments[scope.expId]; if(!e) return;
+    items=prepNeeds((e.blocks||[]).map(function(b){ return {exp:e, block:b}; }).concat([{exp:e, block:{}}]));
+    title='What you need — '+(e.code||e.title||'this experiment');
+    sub='Everything this experiment consumes, from every step, added up.';
+  } else {
+    var from=scope.from||scope.date, to=scope.to||scope.date;
+    var pairs=[], d=from, guard=0;
+    while(d<=to && guard++<40){ pairs=pairs.concat(blocksForDate(d)); d=addDays(d,1); }
+    items=prepNeeds(pairs);
+    title='What you need — '+(from===to?fmtDate(from):(fmtDate(from)+' to '+fmtDate(to)));
+    sub=(from===to?'Every step due that day':'Every step due in that span')+', across every experiment.';
+  }
+  var d2=_lbDlg(), card=el('lb-dialog-card'); card.className='modal prep';
+  card.innerHTML='<div class="modal-t">'+esc(title)+'</div>'
+    +'<div class="dlg-msg">'+esc(sub)+' Amounts are the ones the step calculators already worked out, '
+    +'with the dead-volume excess each of them declares. Where something is comes from the Library and the freezer; '
+    +'this notebook does not count stock, so it never says how much is left.</div>'
+    +'<div class="prep-body">'+prepSheetHtml(items)+'</div>'
+    +'<div class="modal-act"><button class="btn ghost" id="prep-copy">Copy</button>'
+    +'<button class="btn ghost" id="prep-print">Print</button>'
+    +'<span class="grow"></span><button class="btn" id="lb-dlg-ok">Done</button></div>';
+  d2.classList.add('open');
+  function done(){ _lbDlgClose(); }
+  d2._onCancel=done; el('lb-dlg-ok').onclick=done;
+  el('prep-copy').onclick=function(){
+    var t=prepSheetText(items,title);
+    try{ navigator.clipboard.writeText(t).then(function(){ toast('Prep list copied'); },
+      function(){ _prepFallbackCopy(t); }); }catch(err){ _prepFallbackCopy(t); }
+  };
+  el('prep-print').onclick=function(){
+    var pr=el('print-root');
+    pr.innerHTML=PRINT_CSS+'<div class="pd-title">'+esc(title)+'</div>'+prepPrintHtml(items);
+    _printTitled(title);
+  };
+}
+function _prepFallbackCopy(t){
+  var ta=document.createElement('textarea'); ta.value=t; ta.style.cssText='position:fixed;left:-9999px';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); toast('Prep list copied'); }catch(e){ toast('Could not copy'); }
+  ta.remove();
+}
+
 function repeatExperiment(id){
   var e=LB.data.experiments[id]; if(!e||!isCoded(e)) return;
   var start=todayStr();
@@ -9898,7 +10234,7 @@ function renderDayView(host,D){
     +'<input class="day-pick" type="date" value="'+esc(D)+'" onchange="daySet(this.value)">'
     +'<button class="day-arw" title="Next day" onclick="dayGo(1)">'+tbIco(P_CHEV_R,15)+'</button>'
     +(isToday?'':'<button class="day-today" onclick="dayToday()">Today</button>')+'<div class="jr-seg"><button class="on">Day</button><button onclick="selectNode(\'week\')">Week</button></div>'+'</div>';
-  host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Daily notebook')+'</div></div>'
+  host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act exh-keep" title="What you need &mdash; every material the steps due today consume, and where it is" onclick="openPrepSheet({date:\''+D+'\'})">'+tbIco(P_BOX,17)+'</button><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Daily notebook')+'</div></div>'
     +from+carried+nbTasksHtml(D)+culturesHtml()+ongoingHtml(D)
     +'<div class="nb-free" style="margin-top:16px"><div class="day-from-lbl">Daily note</div><div class="rt nb-body" contenteditable="true" data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML,\''+D+'\')" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div></div>';
   hydrateAtt(host); hydrateFloatLayers(host); renderDockPanels(); lbWatchCultures();
@@ -10400,6 +10736,9 @@ var P_FLASK='<path d="M9 3h6M10 3v6.5L4.6 18A2 2 0 006.3 21h11.4a2 2 0 001.7-3L1
 var P_TIMER='<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/>';
 var P_PLAY='<path d="M8 5.5l10 6.5-10 6.5z"/>';
 var P_DISH='<circle cx="12" cy="12" r="8.5"/><path d="M8 10.5c1.4-1.2 3-1.2 4.4 0s3 1.2 4.4 0"/><circle cx="9.5" cy="14.5" r="1"/><circle cx="14" cy="14.8" r="1"/>';
+// A crate, for "what to take out before you start" — nothing else in the set is a box, so it
+// cannot be confused with the dish, the flask or the freezer's snowflake.
+var P_BOX='<path d="M12 3l8 3.6v9.8L12 20l-8-3.6V6.6z"/><path d="M4 6.6l8 3.6 8-3.6M12 10.2V20"/>';
 var P_SNOW='<path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/><path d="M9.5 4.6L12 6.9l2.5-2.3M9.5 19.4L12 17.1l2.5 2.3"/>';
 var P_SNOOZE='<path d="M20.5 12.5a8.5 8.5 0 11-2.7-6.2"/><path d="M20.9 3.6v4.2h-4.2"/><path d="M12 8v4.5l3 1.8"/>';
 var ICON_SNOOZE=tbSvg(P_SNOOZE);

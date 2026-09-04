@@ -5,11 +5,42 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-03 · **v1.12.0** · branch `main`.
-- Latest work: **replicate statistics**. Jon chose four things for the coming rounds —
-  (2) replicate means when the experiment has numeric output, (3) the prep sheet, (4) Labbook as
-  an installable bench PWA, (5) the Echo audit + Phase 2 consolidation — and this is (2). **(3),
-  (4) and (5) are still to do, in that order.**
+- Date: 2026-09-04 · **v1.13.0** · branch `main`.
+- Jon chose four things for these rounds — (2) replicate means, (3) the prep sheet, (4) Labbook
+  as an installable bench PWA, (5) the Echo audit + Phase 2 consolidation. **(2) and (3) are
+  done. (4) and (5) are still to do, in that order** — and (4) needs its offline-sync semantics
+  agreed before any code.
+
+## What changed in the prep-sheet pass (2026-09-04)
+
+1. **`openPrepSheet(scope)`** — `{expId}`, `{date}` or `{from,to}`, one derivation, because the
+   unit is the step. Doorways: the experiment header and the Journal day (`exh-keep`, so it
+   survives the mobile fold — a phone at the freezer is where it is read).
+2. **`CALC_NEEDS`** is a separate table from `CALC_KINDS` on purpose: the shopping list, not the
+   recipe. Nine kinds declared; an undeclared one is reported as such.
+3. **`prepWhere`** joins to `cellsLineStats`, `ARCHIVE_LIB` and the freezer — no new bridge, the
+   same ones `spotBeyondLabbook` uses.
+4. **Plasticware is max-within-experiment, sum-across.** The plate you seed on is the plate you
+   read.
+5. **`.blk-hd .blk-title` was a descendant selector** created by a comment between two selectors.
+   It beat the mobile rule, so the ⋯ sat 21px off a 375px screen. Pre-existing; fixed.
+
+## Traps added in the prep-sheet pass
+
+- **A comment between two selectors joins them.** `.blk-hd /* … */ .blk-title{…}` is
+  `.blk-hd .blk-title` at (0,0,2,0), and it silently outranks every later plain `.blk-title` —
+  including the whole mobile block. Second instance of the descendant-selector family here.
+- **Consumables and equipment do not aggregate the same way.** Summing anything reusable across
+  the steps that touch it overstates it by the number of steps.
+- **"Not tracked" is a claim about the lookup, not about the thing.** Say it only where a lookup
+  exists; where one ran and found nothing, say *that*.
+- **`__alignAudit` and `__runtimeAudit` only see the rendered width.** The step header collapses
+  on the *block's* width via a container query, so both were clean over a row they could not see
+  until the frame was resized to 375.
+- **Check a finding against the committed build before fixing it.** Both mobile findings here
+  were pre-existing; treating them as regressions would have sent me looking in the wrong diff.
+
+## What changed in the replicate pass (2026-09-03)
 
 ## What changed in the replicate pass (2026-09-03)
 
@@ -249,7 +280,7 @@ those, **durability**:
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** All three now read `v1.12.0`; check the shell
+- **Version drift is a recurring failure here.** All three now read `v1.13.0`; check the shell
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.
