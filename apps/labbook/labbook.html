@@ -313,11 +313,15 @@ body.lb-rb-closed .rb-pane{display:none;}
    narrow — a button squeezed out of the row is a button that does not exist, and a
    truncated title still reads. */
 .blk-hd{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--surface2);border-bottom:1px solid var(--border);}
-.blk-hd /* The step's name is the point of this row, and it was getting the leftovers of a nine-control
+/* The step's name is the point of this row, and it was getting the leftovers of a nine-control
    toolbar: 50px on a 1440px screen, about six characters. It takes the slack now — the .grow
    spacer beside it was competing for the same free space to push the buttons right that the
-   title pushes right anyway. */
-.blk-title{flex:1 1 auto;min-width:90px;}
+   title pushes right anyway.
+   The selector is written out on one line on purpose. It used to be `.blk-hd` and `.blk-title`
+   separated by this comment, which reads as two rules and is one descendant selector at
+   (0,0,2,0) — so it silently outranked the plain `.blk-title` in the mobile block, the phone
+   kept this 90px floor, and the step header pushed its ⋯ 21px off a 375px screen. */
+.blk-hd .blk-title{flex:1 1 auto;min-width:90px;}
 .blk-hd .grow{display:none;}
 /* ── The toolbar collapses on the block's width, not the window's ──────────────────────────
    The row carries nine controls — 430px of them before the gaps — and the block is only as
@@ -10762,7 +10766,25 @@ function colorBtn(label,cmd,cols){
   return '<span class="tb-color" id="col-'+cmd+'"><button class="tb" title="'+(cmd==='foreColor'?'Text color':'Highlight')+'" onmousedown="event.preventDefault();toggleSwatch(\''+cmd+'\')"><span style="border-bottom:2.5px solid '+(cmd==='foreColor'?'#c04040':'#f0b95f')+';padding-bottom:1px;font-weight:600">'+label+'</span></button>'
     +'<div class="tb-swatch"><div class="sw-lbl">'+(cmd==='foreColor'?'Text color':'Highlight')+'</div><div class="sw-grid">'+cols.map(function(c){return '<span class="sw" style="background:'+c+'" title="'+c+'" onmousedown="event.preventDefault();applyColor(\''+cmd+'\',\''+c+'\')"></span>';}).join('')+'</div><div class="sw-none" onmousedown="event.preventDefault();applyColor(\''+cmd+'\',\''+(cmd==='foreColor'?'inherit':'transparent')+'\')">None / clear</div></div></span>';
 }
-function toggleSwatch(cmd){ var w=el('col-'+cmd); document.querySelectorAll('.tb-color').forEach(function(x){ if(x!==w) x.classList.remove('open'); }); var willOpen=!w.classList.contains('open'); w.classList.toggle('open'); if(willOpen){ var sw=w.querySelector('.tb-swatch'); var r=w.getBoundingClientRect(); sw.style.left=Math.max(6,Math.min(r.left,window.innerWidth-192))+'px'; sw.style.top=Math.max(6,Math.min(r.bottom+4,window.innerHeight-sw.offsetHeight-6))+'px'; } }
+// Four places used to clamp a popover by a number written in the source: 190, 192, 250, 260.
+// Each is a guess about an element that is in the document and can be measured, and each is
+// wrong the moment its content changes — the family already fixed in #lb-tip, Blueprint's Gel
+// popup and every .pinfo tooltip. This measures, clamps both axes, and flips when it has to.
+function _placePop(pop, rect, opts){
+  opts=opts||{};
+  var M=opts.margin==null?8:opts.margin, gap=opts.gap==null?6:opts.gap;
+  var w=pop.offsetWidth, h=pop.offsetHeight;
+  var left=(opts.alignRight? rect.right-w : rect.left);
+  var top=rect.bottom+gap;
+  if(top+h > window.innerHeight-M){
+    var above=rect.top-h-gap;
+    top = (above >= M) ? above : Math.max(M, window.innerHeight-h-M);
+  }
+  left=Math.max(M, Math.min(left, window.innerWidth-w-M));
+  top =Math.max(M, Math.min(top,  window.innerHeight-h-M));
+  pop.style.left=left+'px'; pop.style.top=top+'px';
+}
+function toggleSwatch(cmd){ var w=el('col-'+cmd); document.querySelectorAll('.tb-color').forEach(function(x){ if(x!==w) x.classList.remove('open'); }); var willOpen=!w.classList.contains('open'); w.classList.toggle('open'); if(willOpen){ var sw=w.querySelector('.tb-swatch'); var r=w.getBoundingClientRect(); _placePop(sw, r, {gap:4, margin:6}); } }
 function applyColor(cmd,c){ el('col-'+cmd).classList.remove('open'); if(_activeEd){ _activeEd.focus(); try{ document.execCommand('styleWithCSS',true); document.execCommand(cmd,false,c); }catch(e){} _activeEd.dispatchEvent(new Event('input')); } }
 document.addEventListener('mousedown',function(e){ if(!e.target.closest('.tb-color')) document.querySelectorAll('.tb-color').forEach(function(x){x.classList.remove('open');}); });
 function ribbonStatus(){
@@ -10980,7 +11002,7 @@ function openTableGrid(range){ var pop=el('tbl-grid'); var cells='';
   pop.classList.add('open');
   var rect=range?range.getBoundingClientRect():_activeEd.getBoundingClientRect();
   if(!rect.width && !rect.height) rect={left:rect.left,bottom:rect.top+16};
-  pop.style.left=Math.min(rect.left,window.innerWidth-190)+'px'; pop.style.top=(rect.bottom+8)+'px';
+  _placePop(pop, rect, {gap:8});
   var grid=pop.querySelector('.tg-grid'), label=el('tg-label');
   function hi(rr,cc){ Array.prototype.forEach.call(grid.children,function(cell){ cell.classList.toggle('on',(+cell.dataset.r<=rr && +cell.dataset.c<=cc)); }); label.textContent=cc+' × '+rr; }
   grid.onmousemove=function(ev){ var t=ev.target.closest('.tg-cell'); if(t) hi(+t.dataset.r,+t.dataset.c); };
@@ -11839,8 +11861,7 @@ document.addEventListener('input',function(e){
 function popOpen(id,items,rect){ var pop=el(id); pop.innerHTML=items.map(function(it,i){ if(it.sep) return '<div class="pop-sep"></div>';
     var ic=it.ic?'<span class="ic" style="background:'+it.ic[1]+'">'+esc(it.ic[0])+'</span>':''; return '<div class="pop-item'+(it.danger?' danger':'')+'" data-i="'+i+'">'+ic+'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'+(it.sub?'<span class="sub">'+esc(it.sub)+'</span>':'')+'</div>'; }).join('');
   pop._items=items; pop.classList.add('open');
-  var x=rect.left, y=rect.bottom+4; if(x+250>window.innerWidth) x=window.innerWidth-256; if(y+pop.offsetHeight>window.innerHeight) y=Math.max(6,rect.top-pop.offsetHeight-4);
-  pop.style.left=x+'px'; pop.style.top=y+'px';
+  _placePop(pop, rect, {gap:4});
   // A long press opens this menu with the finger still down, and the release synthesises a
   // mousedown. Without an arming delay the item nearest the thumb fires itself.
   pop._armAt=Date.now();
@@ -12146,7 +12167,7 @@ function acScan(){ if(!_activeEd) return; var t=caretToken(); if(!t){ if(AC.open
   }
   if(!items.length){ acClose(); return; }
   AC.open=true; AC.items=items; AC.sel=0; acRender();
-  var rect=t.range.getBoundingClientRect(); var pop=el('acpop'); pop.style.left=Math.min(rect.left,window.innerWidth-260)+'px'; pop.style.top=(rect.bottom+6)+'px';
+  var rect=t.range.getBoundingClientRect(); var pop=el('acpop'); _placePop(pop, rect);
 }
 function acRender(){ var pop=el('acpop'); pop.innerHTML=AC.items.map(function(it,i){ return '<div class="pop-item'+(i===AC.sel?' sel':'')+'" onmousedown="event.preventDefault();acPick('+i+')"><span class="ic'+(it.svg?' ic-svg':'')+'" style="background:'+it.c+'">'+(it.svg||esc(it.ic))+'</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'+(it.sub?'<span class="sub">'+esc(it.sub)+'</span>':'')+'</div>'; }).join(''); pop.classList.add('open'); }
 function acDeleteToken(){ try{ var r=document.createRange(); r.setStart(AC.node, Math.max(0,AC.offset-AC.tokenLen)); r.setEnd(AC.node, AC.offset); var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('delete'); }catch(e){} }

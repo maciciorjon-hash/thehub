@@ -5,7 +5,31 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-04 · **v1.15.0** · branch `main`.
+- Date: 2026-09-04 · **v1.15.1** · branch `main`.
+
+## What changed in the bug hunt (2026-09-04)
+
+1. **Beacon's `parsePlateCSV` had Blueprint's four defects** — the third copy of that parser in
+   the Hub — **plus one of its own**: an unread well became `0`, and zero is a real number in a
+   BRET ratio. Blueprint's corrected rules ported across; unread wells are `null`.
+2. **Echo had a sixth `.pinfo` tooltip** the earlier sweep missed (`tw = 300, th = 120; // approx`,
+   mouseout-only). Canonical implementation now.
+3. **Eight guessed popover clamps measured instead** — Echo's column menu, Iceberg's storage
+   menu, Lumina's well popup, and Labbook's four behind one `_placePop`.
+4. **`.blk-hd .blk-title` written on one line**, so the comment cannot make it look like two rules.
+
+## Traps added in the bug hunt
+
+- **A parser that exists three times has its bugs three times.** Grep the *shape* across apps
+  (`split(/[\t,;]+/)` found Beacon), not the function name — the copies get renamed.
+- **`0` is not "missing".** In any ratio it is a value, and a denominator of 0 is Infinity rather
+  than a blank. Use `null` and let the reader guard.
+- **Measure after `appendChild`, never before.** An element outside the document has no box, so
+  `offsetWidth` is 0 and a clamp built on it silently does nothing.
+- **A number in the source next to `innerWidth`/`innerHeight` is a guess about your own element.**
+  Every one measured here was wrong, and Lumina's was 44px short in the axis that matters.
+- **A comment between two selectors joins them.** Fixed by matching specificity last round;
+  written out on one line this round, because the symptom and the cause are different jobs.
 - Jon's four rounds: (2) replicate means, (3) the prep sheet, (4) the bench PWA, (5) the Echo
   audit + Phase 2. **(2), (3), (4) and the audit half of (5) are done.**
 - **Still to do: Phase 2** — Lumina → an Echo mode, Beacon → an Echo assay type. The audit was
@@ -348,7 +372,7 @@ those, **durability**:
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** All three now read `v1.15.0`; check the shell
+- **Version drift is a recurring failure here.** All three now read `v1.15.1`; check the shell
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.

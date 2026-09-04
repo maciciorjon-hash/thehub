@@ -1390,38 +1390,36 @@ function _batHide(){
   const lbl=document.getElementById('bat-corner-lbl');
   if(lbl) lbl.textContent='';
 }
-// ── Floating ⓘ parameter tooltips ───────────────────────────────
+// ─── pinfo tooltips ───────────────────────────────────────────────────────────
+// One implementation, shared by every app with .pinfo icons. Two rules it exists to hold:
+//  · A tooltip dismissed only by `mouseout` is dismissed by the one event not guaranteed to
+//    fire. Nothing arrives when the trigger is re-rendered away or a dialog opens over it, and
+//    the tooltip is then painted over the app with its trigger long gone.
+//  · Clamp the box by its own measured edges. `innerWidth-270` is a guess about an element you
+//    can measure, and it is wrong the moment the text is shorter or longer than 270px.
 (function(){
-  let _pinfoTimer=null;
-  document.addEventListener('mouseover', function(e){
-    const el = e.target.closest('.pinfo');
-    if(!el) return;
-    const tip = document.getElementById('pinfo-tip');
-    if(!tip) return;
-    clearTimeout(_pinfoTimer);
-    tip.textContent = el.dataset.tip || '';
-    tip.style.display = 'block';
-    // Position: prefer right of icon, flip left if near right edge
-    const r = el.getBoundingClientRect();
-    const tw = 300, th = 120; // approx
-    let left = r.right + 10;
-    let top  = r.top - 4;
-    if (left + tw > window.innerWidth - 12) left = r.left - tw - 10;
-    if (top + th > window.innerHeight - 12) top = window.innerHeight - th - 12;
-    tip.style.left = Math.max(8, left) + 'px';
-    tip.style.top  = Math.max(8, top)  + 'px';
-    // reset animation
-    tip.style.animation = 'none';
-    tip.offsetHeight; // reflow
-    tip.style.animation = '';
-  });
-  document.addEventListener('mouseout', function(e){
-    const el = e.target.closest('.pinfo');
-    if(!el) return;
-    const tip = document.getElementById('pinfo-tip');
-    if(!tip) return;
-    _pinfoTimer = setTimeout(()=>{ tip.style.display='none'; }, 80);
-  });
+  var tip=null, cur=null, liveT=null;
+  function tipEl(){ return tip||(tip=document.getElementById('pinfo-tip')); }
+  function hide(){ var t=tipEl(); if(t) t.style.display='none';
+    cur=null; if(liveT){ clearInterval(liveT); liveT=null; } }
+  function place(a){ var t=tipEl(); if(!t) return; var r=a.getBoundingClientRect(), M=8;
+    t.style.left='0px'; t.style.top='-9999px'; t.style.display='block';
+    var tw=t.offsetWidth, th=t.offsetHeight;
+    var left=r.right+10; if(left+tw>window.innerWidth-M) left=r.left-tw-10;
+    left=Math.max(M, Math.min(left, window.innerWidth-tw-M));
+    var top=r.top-4; if(top+th>window.innerHeight-M) top=window.innerHeight-th-M;
+    t.style.left=left+'px'; t.style.top=Math.max(M,top)+'px'; }
+  document.addEventListener('mouseover',function(e){
+    var a=e.target.closest && e.target.closest('.pinfo'); if(!a) return;
+    var t=tipEl(); if(!t) return; cur=a; t.textContent=a.dataset.tip||''; place(a);
+    if(liveT) clearInterval(liveT);
+    liveT=setInterval(function(){ if(!cur||!cur.isConnected) hide(); },400); });
+  document.addEventListener('mouseout',function(e){ if(e.target.closest && e.target.closest('.pinfo')) hide(); });
+  document.addEventListener('pointerdown',hide,true);
+  document.addEventListener('keydown',hide,true);
+  window.addEventListener('scroll',hide,true);
+  window.addEventListener('blur',hide);
+  document.addEventListener('visibilitychange',hide);
 })();
 // ───────────────────────────────────────────────────────────────
 function setProgress(pct, spin, label) {
@@ -9093,9 +9091,16 @@ document.addEventListener('DOMContentLoaded',function(){
     _colMenu.innerHTML =
       `<div onclick="_hideResultsCol('${k}')" style="padding:7px 15px;cursor:pointer;color:var(--text);" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">Hide column</div>`+
       `<div onclick="_unhideAllResultsCols()" style="padding:7px 15px;cursor:pointer;color:var(--text);" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">Show all columns</div>`;
+    // Measure it, do not guess at it: the menu lists whichever columns are hidden, so 180x80 is
+    // a number about somebody else's menu. Place it off-screen first, read its real box, then
+    // clamp both axes — the family already fixed in #lb-tip, the Gel popup and .pinfo.
+    _colMenu.style.left = '0px'; _colMenu.style.top = '-9999px';
     _colMenu.style.display = 'block';
-    _colMenu.style.left = Math.min(e.clientX, window.innerWidth-180)+'px';
-    _colMenu.style.top  = Math.min(e.clientY, window.innerHeight-80)+'px';
+    var _mw = _colMenu.offsetWidth, _mh = _colMenu.offsetHeight, _M = 8;
+    var _mx = Math.max(_M, Math.min(e.clientX, window.innerWidth  - _mw - _M));
+    var _my = Math.max(_M, Math.min(e.clientY, window.innerHeight - _mh - _M));
+    _colMenu.style.left = _mx + 'px';
+    _colMenu.style.top  = _my + 'px';
   });
   document.addEventListener('click', function() { _colMenu.style.display='none'; });
 });

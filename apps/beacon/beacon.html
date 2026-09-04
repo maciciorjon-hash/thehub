@@ -742,28 +742,61 @@ function parseWellRange(s) {
   return wells;
 }
 
+// This is the third copy of a plate-reader parser in the Hub, and it carried the same four
+// silent defects Blueprint's did — the rules below are Blueprint's corrected ones
+// (pdParseValues), ported deliberately this time. Every one of them shifts real numbers into
+// the wrong wells without anything on screen changing.
 function parsePlateCSV(text, format) {
   var dims = format === '384' ? { rows: 16, cols: 24 } : { rows: 8, cols: 12 };
-  var lines = text.trim().split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+  // NOT text.trim(). If A1 is empty the first line begins with a tab, and trimming the whole
+  // string eats it — the first row then loses its first cell and shifts one column left before
+  // anything has been split. Drop blank lines instead, and never touch a line's own start.
+  var lines = text.split(/\r?\n/);
+  lines = lines.filter(function(l){ return l.trim() !== ''; });
   if (lines.length < dims.rows) return null;
-  var dataLines = lines;
-  var firstCells = lines[0].split(/[\t,;]+/);
-  var firstIsHeader = isNaN(parseFloat(firstCells[0])) ||
-    firstCells[0].trim().toLowerCase() === '1' ||
-    !!firstCells[0].trim().match(/^[a-z]/i);
-  if (firstIsHeader) dataLines = lines.slice(1);
+  // The delimiter is chosen once, and NOT collapsed. The old single split on /[\t,;]+/ treated
+  // consecutive separators as one, so an empty well — normal in any export: a masked well, an
+  // edge left unread — vanished and every value after it moved one column left. And with comma
+  // in the class, a European decimal ("0,1") was split into two cells.
+  var hasTab = /\t/.test(text), hasSemi = /;/.test(text);
+  var sep = hasTab ? '\t' : (hasSemi ? ';' : ',');
+  // Where the comma is not the separator it is a decimal mark. parseFloat('0,1') is 0.
+  var decComma = (sep !== ',');
+  var grid = lines.map(function(l){
+    return l.split(sep).map(function(c){
+      c = c.trim();
+      return decComma ? c.replace(/(\d),(\d)/g, '$1.$2') : c;
+    });
+  });
+  function looksLikeColHeader(cells) {
+    var off = (/^[A-P]$/i.test(cells[0] || '') || (cells[0] || '') === '') ? 1 : 0;
+    for (var c = 0; c < dims.cols; c++) { if (parseInt(cells[off + c], 10) !== c + 1) return false; }
+    return true;
+  }
+  // A row is a header if it READS like one. An EMPTY first cell is not evidence of anything —
+  // it is also exactly what an unread A1 looks like, and treating it as a header threw the whole
+  // plate up by one row. And a first row reading 1,2,3…n is indistinguishable from a column
+  // header, so if the grid is already exactly as tall as the plate there is no room for one.
+  var _g0 = grid[0] || [], _f0 = (_g0[0] || '');
+  var _hdr = looksLikeColHeader(_g0) ? (grid.length !== dims.rows)
+                                     : (_f0 !== '' && isNaN(parseFloat(_f0)) && !/^[A-P]$/i.test(_f0));
+  if (grid.length && _hdr) grid = grid.slice(1);
   var rowLabels = 'ABCDEFGHIJKLMNOP';
   var rows = [];
-  for (var i = 0; i < Math.min(dims.rows, dataLines.length); i++) {
-    var cells = dataLines[i].split(/[\t,;]+/);
-    var start = cells[0].trim().match(/^[A-P]$/i) ? 1 : 0;
+  for (var i = 0; i < Math.min(dims.rows, grid.length); i++) {
+    var cells = grid[i];
+    var start = /^[A-P]$/i.test(cells[0] || '') ? 1 : 0;
+    // The row's own letter wins when the export carries one: a plate written out of order is
+    // then still read into the right rows.
+    var letter = start === 1 ? cells[0].toUpperCase() : rowLabels[i];
     var vals = [];
-    for (var j = start; j < Math.min(start + dims.cols, cells.length); j++) {
-      var v = parseFloat(cells[j]);
-      vals.push(isNaN(v) ? 0 : v);
+    for (var c = 0; c < dims.cols; c++) {
+      var raw = cells[start + c], v = parseFloat(raw);
+      // A well with no reading is null, not 0. Zero is a real measurement in a BRET ratio and
+      // it entered the fit as one; getWellValue already treats null as "no reading".
+      vals.push((raw != null && raw !== '' && !isNaN(v)) ? v : null);
     }
-    while (vals.length < dims.cols) vals.push(0);
-    rows.push({ label: rowLabels[i], vals: vals.slice(0, dims.cols) });
+    rows.push({ label: letter, vals: vals });
   }
   if (rows.length < dims.rows) return null;
   return rows;
@@ -2417,8 +2450,10 @@ function parsePheraTableEndpoint(rows) {
 
   var donorGrid = [], acceptorGrid = [];
   for (var ri = 0; ri < dims.rows; ri++) {
-    donorGrid.push({ label: ROWS[ri], vals: new Array(dims.cols).fill(0) });
-    acceptorGrid.push({ label: ROWS[ri], vals: new Array(dims.cols).fill(0) });
+    // null, not 0: a well this file carried no reading for has no reading. As 0 it became a real
+    // measurement — and an acceptor over a donor of 0 is Infinity, not "no data".
+    donorGrid.push({ label: ROWS[ri], vals: new Array(dims.cols).fill(null) });
+    acceptorGrid.push({ label: ROWS[ri], vals: new Array(dims.cols).fill(null) });
   }
   wellRows.forEach(function(w) {
     var rc = wellToRowCol(w.well);

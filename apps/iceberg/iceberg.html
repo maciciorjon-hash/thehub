@@ -947,14 +947,24 @@ function renderStorageTabs(){
 // deleteStorage already refuses to remove the last unit and confirms the vial count first.
 function storageMenu(key, ev){
   var old=document.getElementById('storage-menu'); if(old) old.remove();
+  // Measured, then clamped on both axes, once the menu has its content and is in the document.
+  function _icePlaceMenu(el, ev){
+    var M=8, w=el.offsetWidth, h=el.offsetHeight;
+    el.style.left=Math.max(M, Math.min(ev.clientX, window.innerWidth  - w - M))+'px';
+    el.style.top =Math.max(M, Math.min(ev.clientY, window.innerHeight - h - M))+'px';
+  }
   var m=document.createElement('div'); m.id='storage-menu';
   m.style.cssText='position:fixed;z-index:200;min-width:150px;background:var(--surface);border:1px solid var(--border2);'
     +'border-radius:var(--r-2);box-shadow:var(--shadow-lg);padding:5px;';
-  m.style.left=Math.min(ev.clientX, innerWidth-170)+'px';
-  m.style.top=Math.min(ev.clientY, innerHeight-90)+'px';
+  // 170x90 is a guess about an element that is about to be in the document and can be measured.
+  // This menu is the only way to rename or delete a storage unit, so off the screen means gone.
+  m.style.left='0px'; m.style.top='-9999px';
   m.innerHTML='<button class="sm-item" onclick="closeStorageMenu();renameStorage(\''+esc(key)+'\')">Rename…</button>'
     +'<button class="sm-item danger" onclick="closeStorageMenu();deleteStorage(\''+esc(key)+'\')">Delete…</button>';
+  // Append first: an element that is not in the document has no box, so measuring it here
+  // returns 0 and the clamp does nothing at all. It is parked off-screen until then.
   document.body.appendChild(m);
+  _icePlaceMenu(m, ev);
   setTimeout(function(){ document.addEventListener('click', closeStorageMenu, {once:true}); },0);
 }
 function closeStorageMenu(){ var m=document.getElementById('storage-menu'); if(m) m.remove(); }
