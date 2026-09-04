@@ -1890,6 +1890,34 @@ function _parseCtrlRange(s) {
   return s.split(',').map(w => w.trim()).filter(Boolean).map(_stdWell);
 }
 
+// Native alert() inside dHUB is a browser dialog headed "localhost says", which reads as the
+// page having broken rather than as the app telling you something. Blueprint's five became
+// pdToast for the same reason; these are the last of them.
+var _echoToastT = null;
+function echoToast(msg, kind) {
+  var t = document.getElementById('echo-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'echo-toast';
+    t.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translate(-50%,10px);z-index:99999;'
+      + 'max-width:min(520px,92vw);padding:11px 16px;border-radius:var(--r-2, 8px);'
+      + 'background:var(--surface, #fff);color:var(--text, #111);border:1px solid var(--border2, rgba(0,0,0,.13));'
+      + 'box-shadow:var(--shadow-md, 0 4px 18px rgba(0,0,0,.18));font-size:13px;line-height:1.45;'
+      + 'opacity:0;pointer-events:none;transition:opacity var(--dur-1, 120ms) var(--ease, ease),'
+      + 'transform var(--dur-1, 120ms) var(--ease, ease);';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  // --accent is the shared blue every control wears, so an error bordered in it is not marked
+  // at all. --danger is the token that means this went wrong, and it is theme-aware.
+  t.style.borderColor = (kind === 'err') ? 'var(--danger, #c04040)' : 'var(--border2, rgba(0,0,0,.13))';
+  t.style.opacity = '1';
+  t.style.transform = 'translate(-50%,0)';
+  clearTimeout(_echoToastT);
+  // An error is read, not glanced at, so it stays up longer than a confirmation.
+  _echoToastT = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translate(-50%,10px)'; },
+                           kind === 'err' ? 5200 : 3000);
+}
 function _stdWell(w) {
   if (!w) return w;
   const m = String(w).match(/^([A-Za-z]+)(\d+)$/);
@@ -1923,6 +1951,11 @@ function _parseEchoCSV(text, skipRows) {
   const bi = hdrs.findIndex(h => /destination.plate.barcode/i.test(h));
   const wi = hdrs.findIndex(h => /destination.well/i.test(h));
   const ci = hdrs.findIndex(h => /destination.concentration/i.test(h));
+  // A transfer the Echo reports as failed never reached the plate. Reading its intended
+  // concentration as delivered puts a point on the curve at a dose the well never saw — and it
+  // reads like vehicle, so it drags the fit toward no effect. Labbook's own picklist reader has
+  // honoured this column since it was written; this one never looked at it.
+  const ti = hdrs.findIndex(h => /transfer.?status/i.test(h));
 
   // Diagnostic: report which columns were (not) found
   if (si < 0) log('  ⚠ Echo CSV: "Sample ID" column not found — expected a column matching /sample.?id/', 'warn');
@@ -1934,7 +1967,7 @@ function _parseEchoCSV(text, skipRows) {
   }
 
   const data = [];
-  let _skipNoSid=0, _skipNoBc=0, _skipNoWell=0, _skipNoConc=0;
+  let _skipNoSid=0, _skipNoBc=0, _skipNoWell=0, _skipNoConc=0, _skipFailed=0;
   for (let i = headerIdx + 1; i < allLines.length; i++) {
     const line = allLines[i].trim(); if (!line) continue;
     const cols = parseRow(line);
@@ -1942,21 +1975,49 @@ function _parseEchoCSV(text, skipRows) {
     const barcode  = bi >= 0 ? cols[bi] : '';
     const well     = _stdWell(wi >= 0 ? cols[wi] : '');
     const conc     = parseFloat(ci >= 0 ? cols[ci] : '');
+    const status   = ti >= 0 ? String(cols[ti] || '').trim() : '';
+    // Blank means the Echo had nothing to report, which is the normal case for a good run.
+    if (status && !/^ok$/i.test(status)) { _skipFailed++; continue; }
     if (!sampleId) { _skipNoSid++; continue; }
     if (!barcode)  { _skipNoBc++;  continue; }
     if (!well)     { _skipNoWell++; continue; }
     if (isNaN(conc) || conc <= 0) { _skipNoConc++; continue; }
     data.push({ sampleId, barcode, barcodeKey: barcode.toLowerCase(), well, conc, log10Conc: Math.log10(conc) });
   }
-  if (!data.length) {
+  if (_skipFailed) log('  ' + _skipFailed + ' transfer' + (_skipFailed===1?'':'s')
+    + ' skipped: Transfer Status is not OK — those wells did not receive the compound', 'warn');
+
+  // One destination well is one measurement. The Echo emits a row per *transfer*, and a dose
+  // built from several drops is several rows into the same well — which arrived here as several
+  // identical points, double-weighting that well in the least-squares fit and in the hook
+  // detection, and inflating the raw CSV. Collapse to the last row for the well, which is the
+  // rule Labbook's reader already follows; where the collapsed rows disagree about the
+  // concentration the well is a cumulative dose the fitter cannot represent, so say so.
+  const _seen = new Map();
+  let _dups = 0, _dupDiff = 0;
+  for (const r of data) {
+    const k = r.barcodeKey + '|' + r.well;
+    const prev = _seen.get(k);
+    if (prev) { _dups++; if (Math.abs(prev.log10Conc - r.log10Conc) > 1e-9) _dupDiff++; }
+    _seen.set(k, r);
+  }
+  if (_dups) {
+    log('  ' + _dups + ' repeated transfer' + (_dups===1?'':'s') + ' into a well already dosed — '
+      + 'collapsed to one point each', 'warn');
+    if (_dupDiff) log('  ⚠ ' + _dupDiff + ' of them carried a different concentration: that well received a '
+      + 'cumulative dose, and the last value in the file is what was used', 'warn');
+  }
+  const dedup = [..._seen.values()];
+  if (!dedup.length) {
+    if (_skipFailed) log('  ⚠ ' + _skipFailed + ' rows skipped: Transfer Status was not OK', 'warn');
     if (_skipNoSid)  log('  ⚠ ' + _skipNoSid + ' rows skipped: empty Sample ID (col ' + si + ')', 'warn');
     if (_skipNoBc)   log('  ⚠ ' + _skipNoBc + ' rows skipped: empty Destination Barcode (col ' + bi + ')', 'warn');
     if (_skipNoWell) log('  ⚠ ' + _skipNoWell + ' rows skipped: empty/invalid Destination Well (col ' + wi + ')', 'warn');
     if (_skipNoConc) log('  ⚠ ' + _skipNoConc + ' rows skipped: missing or zero Destination Concentration (col ' + ci + ')', 'warn');
-    if (_skipNoSid + _skipNoBc + _skipNoWell + _skipNoConc === 0)
+    if (_skipNoSid + _skipNoBc + _skipNoWell + _skipNoConc + _skipFailed === 0)
       log('  ⚠ Header row detected at line ' + headerIdx + ' but no data rows followed. Check "Echo header rows to skip" setting.', 'warn');
   }
-  return data;
+  return dedup;
 }
 
 function _parsePHERAstarXLS(ab, barcode, a1CellRef) {
@@ -2539,6 +2600,18 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         const flags = [];
         if (r2Enabled && r2 < minR2) flags.push('R2=' + r2.toFixed(2));
 
+        // An EC50 that landed on its bound is not a measurement: the curve never turned inside
+        // the doses actually tested, and the fitter says so in its own confidence interval —
+        // an off-scale run here reports a CI from 0 to 88 µM. Nothing looked at it. R² does not
+        // catch this (a half-curve fits its own half beautifully: 0.997 on the synthetic case),
+        // and neither does replicate SD or the hook test, so a number the data cannot support
+        // was reaching the results table, the publication sentence and the replicate means
+        // looking exactly like a real potency. It is a fact about the design, not a threshold,
+        // so it has no setting to switch it off.
+        const _ecLo = xMin - 1, _ecHi = xMax + 1, _ecEps = 1e-6;
+        if (logec50 <= _ecLo + _ecEps) flags.push('EC50<range');
+        else if (logec50 >= _ecHi - _ecEps) flags.push('EC50>range');
+
         const concGroups = {};
         for (const row of fitSdata) {
           const k = row.log10Conc.toFixed(4);
@@ -2670,7 +2743,7 @@ function echoResultRows(){
 }
 function sendResultsToLabbook(){
   var rows = echoResultRows();
-  if (!rows.length){ alert('No fitted results to send yet — run an analysis first.'); return; }
+  if (!rows.length){ echoToast('No fitted results to send yet — run an analysis first.'); return; }
   var t = window._lastAssayType || 'hibit';
   var lab = ECHO_ASSAY_LABELS[t] || ECHO_ASSAY_LABELS.hibit;
   var ctx = {
@@ -2693,8 +2766,8 @@ function sendResultsToLabbook(){
   };
   try{
     if (window.parent && window.parent.openApp){ window.parent.openApp('labbook', undefined, undefined, ctx); }
-    else { alert('Open Echo inside dHUB to send results to Labbook.'); }
-  }catch(e){ alert('Could not reach Labbook.'); }
+    else { echoToast('Open Echo inside dHUB to send results to Labbook.'); }
+  }catch(e){ echoToast('Could not reach Labbook.', 'err'); }
 }
 
 function renderResults(data) {
@@ -2930,13 +3003,13 @@ function renderMultiAssayResults(data) {
 }
 
 function downloadBlob(blob) {
-  if (!blob) { alert('No file available. Run analysis with Auto-generate enabled.'); return; }
+  if (!blob) { echoToast('No file available. Run analysis with Auto-generate enabled.'); return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([blob.bytes], {type: blob.type}));
   a.download = blob.name; a.click();
 }
 function copyResultsTSV() {
-  if (!_lastResultsData.length) { alert('No results to copy.'); return; }
+  if (!_lastResultsData.length) { echoToast('No results to copy.'); return; }
   const _selTsv = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
   const _tTsv = window._lastAssayType || 'hibit';
   const _noGainTsv = _tTsv==='displacement';
@@ -2948,7 +3021,7 @@ function copyResultsTSV() {
   navigator.clipboard.writeText(rows.join('\n')).then(()=>{
     const btn=document.querySelector('[onclick="copyResultsTSV()"]');
     if(btn){const t=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=t,1500);}
-  }).catch(()=>alert('Clipboard write failed — use CSV export instead.'));
+  }).catch(()=>echoToast('Clipboard write failed — use CSV export instead.', 'err'));
 }
 
 function _csvColMap(t){
@@ -3082,7 +3155,7 @@ function _sanitizeAoa(aoa) {
   return aoa.map(function(row) { return row.map(_xlsxSafeCell); });
 }
 function generateOutputXLSX() {
-  if (!scatterData.length) { alert('No data. Run analysis first.'); return; }
+  if (!scatterData.length) { echoToast('No data. Run analysis first.'); return; }
   var t = window._lastAssayType || 'hibit';
   var colMap = _csvColMap(t);
   var noGain = t === 'displacement';
@@ -3840,7 +3913,7 @@ function clearRectSelect(){
   if(scatterChart){scatterChart.data.datasets.forEach(ds=>ds.data.forEach(p=>p._selected=false));scatterChart.update('none');}
 }
 function copySelectedIDs(){
-  if(!_selectedIDs.size){alert('Nothing selected.');return;}
+  if(!_selectedIDs.size){echoToast('Nothing selected.');return;}
   navigator.clipboard.writeText([..._selectedIDs].join('\n')).then(()=>{
     const btn=document.querySelector('#sc-select-banner button');
     if(btn){const t=btn.textContent;btn.textContent='✓ Copied!';setTimeout(()=>btn.textContent=t,1500);}
@@ -3992,7 +4065,7 @@ function exportFilteredCSV() {
     if (yMax!=null && yv>yMax) return false;
     return true;
   });
-  if (!filtered.length) { alert('No compounds match current filters.'); return; }
+  if (!filtered.length) { echoToast('No compounds match current filters.'); return; }
 
   const cols=['Protein','Sample_ID','DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
   const available=cols.filter(c=>filtered[0][c]!==undefined);
@@ -5820,7 +5893,7 @@ function renderProperties(results, cdata) {
 // ===== RENDER DOWNLOADS =====
 // ===== PDF GENERATION =====
 async function generateAndDownloadCurvePDFs() {
-  if (!_lastResultsData || !_lastResultsData.length) { alert('No results yet. Run analysis first.'); return; }
+  if (!_lastResultsData || !_lastResultsData.length) { echoToast('No results yet. Run analysis first.'); return; }
   // Build distinct (assay, protein) groups so the user can pick which to export.
   const _isMulti = !!(window._lastAnalysisParams?.multiAssay);
   const _grps = [];
@@ -5892,7 +5965,7 @@ async function _pdfExportFiltered(results) {
     downloadBlobs.filter(b => b.kind === 'pdf').forEach(b => downloadBlob(b));
   } catch (e) {
     log('Curve PDF generation failed: ' + (e && e.message ? e.message : e), 'warn');
-    alert('PDF generation failed. See console.');
+    echoToast('PDF generation failed — see the log.', 'err');
   } finally {
     if (btn) { btn.innerHTML = orig || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg> Generate curve PDFs'; btn.disabled = false; }
     setProgress(0);
@@ -6621,7 +6694,7 @@ function cvDownloadPDF() {
   const canvas = document.getElementById('cv-canvas');
   if (!canvas) return;
   const jsPDFCls = window.jspdf && window.jspdf.jsPDF;
-  if (!jsPDFCls) { alert('PDF library not loaded yet — try again in a moment.'); return; }
+  if (!jsPDFCls) { echoToast('PDF library not loaded yet — try again in a moment.'); return; }
   const _fMulExp = 2.5, _lMulExp = 2.5, _legMulExp = 2.5;
   const { pL: PAD_L, pR: PAD_R, pT: PAD_T, pB: PAD_B } = _cvComputePads(11, _fMulExp, _lMulExp, _legMulExp);
   const cssW0 = parseInt(canvas.style.width) || canvas.offsetWidth || 700;
@@ -8783,7 +8856,7 @@ async function echoSnapshot(forFile) {
 // than a five-second wait.
 async function echoRestore(st, opts) {
   opts = opts || {};
-  if (!st || st.v !== ECHO_SESSION_V) { alert('This session was saved by a different version of Echo and cannot be restored.'); return false; }
+  if (!st || st.v !== ECHO_SESSION_V) { echoToast('This session was saved by a different version of Echo and cannot be restored.', 'err'); return false; }
   clearSetup();
 
   echoFiles = (st.files.echo || []).map(_esRecFile).filter(Boolean);
@@ -8923,7 +8996,7 @@ async function saveEchoProject() {
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     log('Project saved: ' + name + ' (' + (blob.size / 1048576).toFixed(1) + ' MB)', 'ok');
   } catch (e) {
-    alert('Could not save the project file: ' + e.message);
+    echoToast('Could not save the project file: ' + e.message, 'err');
   }
 }
 function openEchoProject() {
@@ -8934,7 +9007,7 @@ function openEchoProject() {
     try {
       const st = JSON.parse(await f.text());
       await echoRestore(st);
-    } catch (e) { alert('That file is not an Echo project: ' + e.message); }
+    } catch (e) { echoToast('That file is not an Echo project: ' + e.message, 'err'); }
   };
   inp.click();
 }

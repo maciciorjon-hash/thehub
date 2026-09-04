@@ -3494,9 +3494,68 @@ correctly, and no ref is handed out until a session exists.
 `--brand` blue, so the home-screen icon and the app agree. Archive's PNGs are byte-identical
 after the change.
 
+## Echo, audited (2026-09-04)
+
+The flagship, 2.6 MB, the one app whose output *is* the result — and it had never had the pass
+Blueprint got. Three silent defects, all in the path between a picklist and a published potency,
+and none of them visible on screen.
+
+**A failed transfer was read as delivered.** `_parseEchoCSV` never looked at the **Transfer
+Status** column. Labbook's own picklist reader has honoured it since it was written — *"a failed
+transfer never reached the plate; recording it would be a lie"* — and the flagship did not. The
+well got no compound, so it reads like vehicle, and its intended concentration then sits on the
+curve as a real point dragging the fit toward no effect. Same class as Blueprint's four, and the
+reverse direction of the port: here Labbook was right and Echo was wrong.
+
+**A well dosed by several transfers became several identical points.** The Echo emits one row per
+*transfer*, so a dose built from several drops is several rows into one well. Each became its own
+merged row, so that well was weighted N times in the least-squares fit **and** in the hook
+detection, and appeared N times in the raw CSV. One destination well is one measurement: they
+collapse to the last row for the well, which is the rule Labbook already follows, and where the
+collapsed rows disagree about the concentration the log says so — that well received a
+cumulative dose the fitter cannot represent.
+
+**Nothing flagged an EC50 that landed on its bound**, and this is the one that reaches paper. A
+curve whose midpoint is outside the doses tested still fits its own half beautifully: the
+synthetic case returns **R² = 0.9967** and `DC50 = 0.0032 nM`, past the R² threshold, with no
+replicate-SD flag and no hook. The fitter itself is not fooled — it reports a confidence interval
+from 0 to 88 µM — but nothing read it. So a number the data cannot support was reaching the
+results table, the publication sentence and, since the last pass, the replicate means, looking
+exactly like a measured potency. `EC50<range` / `EC50>range` is a fact about the design rather
+than a threshold, so it has no setting. Verified to fire on both sides and, importantly, **not**
+to fire on a real potency sitting at the lowest dose tested.
+
+**The 4PL engine is sound** — checked numerically rather than assumed, which also clears
+Beacon's and Lumina's byte-identical copies. On clean data it recovers bottom 5, logEC50 −8,
+hill 1, top 100 exactly at R² = 1; under ±4 noise it returns 9.5 nM with a CI of 8.4–14.2; hill 2
+is exact; and off-scale it pins the bound and says so in the interval. `_4plVal4` is the decay
+form `bot + (top−bot)/(1+10^(h(x−logEC50)))` and `_4plVal4_gain` the increasing one — reading
+that backwards makes every parameter hit a bound, which looks like a broken fitter and is a
+broken harness.
+
+**Fifteen native `alert()`s became a toast.** Inside dHUB a native alert is a browser dialog
+headed *"localhost says"*, which reads as the page having broken; this was already recorded as
+an open item next to Blueprint's five. `echoToast(msg, kind)` is theme-aware, and an error wears
+`--danger` rather than `--accent` — the shared blue every control already wears is not a mark.
+
+**Noted and deliberately not changed** in `_parsePHERAstarXLS`: `parseFloat` on a text-formatted
+cell truncates a European decimal (`1234,5` → 1234), and the reader always walks 16×24 whatever
+the plate format, so a sheet with a second block below the first would pick it up as rows I–P.
+Neither fires on the real PHERAstar exports this reads, both would need a real file to fix
+against, and inventing one is how a parser gets a bug rather than loses one.
+
+**Not verified: the full pipeline end to end.** It kills the renderer under browser automation —
+and the *committed* build dies identically, in the in-app pane and in real Chrome, so it is the
+environment and not the change. That smoke test is Jon's, on the bundled test data.
+
+**Phase 2 — Lumina → an Echo mode, Beacon → an Echo assay type — is deliberately not in this
+pass.** Auditing before consolidating is the whole reason the audit came first: two of the three
+defects above are in the parser, and merging on top of them would have copied them into the
+merged app exactly as the `pdParseValues` port did.
+
 ## Current state
 
-**v1.14.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-04. (This session: **Labbook as the bench app** — a fifth build profile packages the notebook as an installable, offline PWA. The thing that had to be fixed first was that `labbook-standalone` had no Firebase at all, so a phone build would have been an island; `lbFb()` is the one seam and every sync consumer is untouched. Verified in real Chrome with the server stopped: the app opens, writes persist, and all 33 protocols and 24 calculators are there. See *Labbook as the bench app*. Before it: **the prep sheet** — a planned experiment already knew every volume, plate and construct it would consume, and the shell already knew where things are; nothing joined them. `openPrepSheet` answers "what do I need" for a whole experiment or for a day, with the amounts the step calculators already worked out and the location from the Library and the freezer. Plasticware takes the max within an experiment and adds across them, because the plate you seed on is the plate you read. See *What you need before you start*. Before it: **what n = 3 actually means** — `repSiblings` had been recorded since replicates were added and read by nothing but the header chip, so an experiment run three times reported three separate numbers and no result. `repResultStats` averages them, in log space for potencies, with technical replicates collapsed inside each run first, bounded values counted and never averaged, and your exclusions honoured over the fitter's flags. Summary card, PDF, Methods sentence and a CSV. See *What n = 3 actually means*. Before it: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.15.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-04. (This session: **Echo audited** — three silent defects between a picklist and a published potency. A failed transfer was read as delivered; a well dosed by several transfers became several identical points, weighted that many times in the fit; and nothing flagged an EC50 that landed on its bound, which fits its own half at R²=0.997 and reaches the paper as a measured number. The 4PL engine itself checks out exactly. Phase 2 is deliberately still to do. See *Echo, audited*. Before it: **Labbook as the bench app** — a fifth build profile packages the notebook as an installable, offline PWA. The thing that had to be fixed first was that `labbook-standalone` had no Firebase at all, so a phone build would have been an island; `lbFb()` is the one seam and every sync consumer is untouched. Verified in real Chrome with the server stopped: the app opens, writes persist, and all 33 protocols and 24 calculators are there. See *Labbook as the bench app*. Before it: **the prep sheet** — a planned experiment already knew every volume, plate and construct it would consume, and the shell already knew where things are; nothing joined them. `openPrepSheet` answers "what do I need" for a whole experiment or for a day, with the amounts the step calculators already worked out and the location from the Library and the freezer. Plasticware takes the max within an experiment and adds across them, because the plate you seed on is the plate you read. See *What you need before you start*. Before it: **what n = 3 actually means** — `repSiblings` had been recorded since replicates were added and read by nothing but the header chip, so an experiment run three times reported three separate numbers and no result. `repResultStats` averages them, in log space for potencies, with technical replicates collapsed inside each run first, bounded values counted and never averaged, and your exclusions honoured over the fitter's flags. Summary card, PDF, Methods sentence and a CSV. See *What n = 3 actually means*. Before it: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in

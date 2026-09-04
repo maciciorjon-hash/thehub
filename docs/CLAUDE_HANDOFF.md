@@ -5,10 +5,45 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-04 · **v1.14.0** · branch `main`.
-- Jon chose four things for these rounds — (2) replicate means, (3) the prep sheet, (4) Labbook
-  as an installable bench PWA, (5) the Echo audit + Phase 2 consolidation. **(2), (3) and (4)
-  are done. (5) is next.**
+- Date: 2026-09-04 · **v1.15.0** · branch `main`.
+- Jon's four rounds: (2) replicate means, (3) the prep sheet, (4) the bench PWA, (5) the Echo
+  audit + Phase 2. **(2), (3), (4) and the audit half of (5) are done.**
+- **Still to do: Phase 2** — Lumina → an Echo mode, Beacon → an Echo assay type. The audit was
+  deliberately first: two of its three findings are in the parser, and consolidating on top of
+  them would have copied them into the merged app.
+- **Three things need Jon**: run Echo's own test data through the full pipeline once (it kills
+  the renderer under automation, committed build included, so it cannot be smoke-tested here);
+  sign in to the bench PWA once on the Pages URL; and the standing IP question.
+
+## What changed in the Echo audit (2026-09-04)
+
+1. **`_parseEchoCSV` reads Transfer Status.** A transfer the Echo reports as failed never reached
+   the plate; it was being read as delivered, putting a vehicle-like reading on the curve at a
+   dose the well never saw.
+2. **One destination well is one point.** Duplicate transfers into a well collapse to the last
+   row; the log says how many, and says separately when they disagreed on concentration.
+3. **`EC50<range` / `EC50>range`.** An EC50 pinned at `xMin-1` / `xMax+1` is not a measurement —
+   R² does not catch it (0.997 on the synthetic case) and neither does SD or the hook test. No
+   setting: it is a fact about the design.
+4. **`echoToast` replaces 15 native `alert()`s**; errors wear `--danger`, not `--accent`.
+
+## Traps added in the Echo audit
+
+- **The reverse-direction port.** `plParseValues` copied Blueprint's bugs into Labbook; here
+  Labbook's picklist reader was the *correct* one and Echo had never had the check. When two
+  apps read the same file format, diff the readers — in both directions.
+- **A half-curve fits its own half beautifully.** R² is not a check that the EC50 is inside the
+  doses tested, and it looks most convincing exactly when it is wrong. Read the fitter's own
+  confidence interval, or test the bounds.
+- **`_4plVal4` is the decay form; `_4plVal4_gain` is the increasing one.** Feeding the wrong one
+  an increasing curve pins every parameter to a bound, which reads as a broken fitter.
+- **The Echo emits one row per transfer, not per well.** Any code that treats a picklist row as a
+  measurement double-counts split deliveries.
+- **A full Echo analysis kills the renderer under automation**, in the in-app pane *and* in real
+  Chrome — the committed build does it too. Verify by driving the individual functions; do not
+  claim an end-to-end run that did not happen.
+
+## What changed in the bench-app pass (2026-09-04)
 - **Two things need Jon**, both on the bench app: sign in to it once on the Pages URL to confirm
   the Google flow (it cannot be tested from `127.0.0.1`, which is not an authorized domain), and
   the CI change that builds the new profile may not have pushed — `.github/workflows/` commits
@@ -313,7 +348,7 @@ those, **durability**:
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** All three now read `v1.14.0`; check the shell
+- **Version drift is a recurring failure here.** All three now read `v1.15.0`; check the shell
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.
