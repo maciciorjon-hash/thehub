@@ -1994,10 +1994,14 @@ function saveMember(){
 function deleteMember(){
   if (!isAdmin || !editingMemberId) return;
   var m = state.members.find(function(x){ return x.id === editingMemberId; }); if (!m) return;
-  if (!confirm('Delete "'+m.name+'" and all their payment history?')) return;
-  state.members = state.members.filter(function(x){ return x.id !== editingMemberId; });
-  Object.keys(state.payments).forEach(function(y){ if (state.payments[y]) delete state.payments[y][editingMemberId]; });
-  closeMemberModal(); render(); saveToFirebase('member delete'); toast('Removed');
+  var mid = editingMemberId;
+  cuppaAsk('Delete "'+m.name+'"?', 'All their payment history goes with them.',
+    {ok:'Delete', danger:true}, function(yes){
+      if (!yes) return;
+      state.members = state.members.filter(function(x){ return x.id !== mid; });
+      Object.keys(state.payments).forEach(function(y){ if (state.payments[y]) delete state.payments[y][mid]; });
+      closeMemberModal(); render(); saveToFirebase('member delete'); toast('Removed');
+    });
 }
 
 // ─── Settings ──────────────────────────────────────────────────────────────
@@ -2103,6 +2107,70 @@ function fallbackCopy(text){
 // ─── Utils ─────────────────────────────────────────────────────────────────
 function onSearchInput(v){ search = v; renderTable(); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ── Ask, without a browser dialog ────────────────────────────────────────────────────────────
+// Inside dHUB a native confirm()/prompt() is headed "localhost says" and blocks the whole frame
+// while it is up, which reads as the page having broken. Same contract everywhere in the Hub:
+// cuppaAsk(title, msg, opts, cb) resolves cb(true) only when the affirmative was pressed, and
+// Escape or the backdrop always resolve false — a modal must be dismissible without a Cancel.
+// With opts.input it is a prompt and hands back the text, or null.
+var _cuAskCb = null, _cuAskInput = false;
+function cuppaAskClose(ok){
+  var b = document.getElementById('cu-ask'); if (!b) return;
+  b.style.display = 'none';
+  var cb = _cuAskCb, inp = document.getElementById('cu-ask-in');
+  _cuAskCb = null;
+  if (!cb) return;
+  if (_cuAskInput) cb(ok ? String(inp.value) : null);
+  else cb(!!ok);
+}
+function cuppaAsk(title, msg, opts, cb){
+  opts = opts || {};
+  var b = document.getElementById('cu-ask');
+  if (!b){
+    b = document.createElement('div');
+    b.id = 'cu-ask';
+    b.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;'
+      + 'justify-content:center;padding:20px;background:rgba(16,20,34,.45);';
+    b.innerHTML = '<div style="width:100%;max-width:420px;background:var(--surface,#fff);color:var(--text,#111);'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-3,12px);'
+      + 'box-shadow:var(--shadow-lg,0 12px 40px rgba(0,0,0,.25));padding:18px 20px 16px;">'
+      + '<div id="cu-ask-t" style="font-size:var(--fs-5,15px);font-weight:600;margin-bottom:8px;"></div>'
+      + '<div id="cu-ask-m" style="font-size:var(--fs-3,13px);line-height:1.55;white-space:pre-wrap;color:var(--text2,#555);"></div>'
+      + '<input id="cu-ask-in" style="display:none;width:100%;margin-top:12px;font:inherit;font-size:var(--fs-3,13px);'
+      + 'padding:7px 10px;border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);'
+      + 'background:var(--surface,#fff);color:var(--text,#111);box-sizing:border-box;">'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;">'
+      + '<button id="cu-ask-no" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text2,#555);"></button>'
+      + '<button id="cu-ask-ok" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text,#111);"></button>'
+      + '</div></div>';
+    document.body.appendChild(b);
+    b.addEventListener('click', function(e){ if (e.target === b) cuppaAskClose(false); });
+    document.getElementById('cu-ask-no').onclick = function(){ cuppaAskClose(false); };
+    document.getElementById('cu-ask-ok').onclick = function(){ cuppaAskClose(true); };
+    document.getElementById('cu-ask-in').onkeydown = function(e){ if (e.key === 'Enter') cuppaAskClose(true); };
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && b.style.display === 'flex') cuppaAskClose(false);
+    });
+  }
+  document.getElementById('cu-ask-t').textContent = title || '';
+  document.getElementById('cu-ask-m').textContent = msg || '';
+  var inp = document.getElementById('cu-ask-in');
+  _cuAskInput = !!opts.input;
+  inp.style.display = _cuAskInput ? '' : 'none';
+  inp.value = opts.value == null ? '' : String(opts.value);
+  var no = document.getElementById('cu-ask-no'), ok = document.getElementById('cu-ask-ok');
+  no.textContent = opts.no || 'Cancel';
+  no.style.display = opts.only ? 'none' : '';
+  ok.textContent = opts.ok || 'OK';
+  ok.style.borderColor = opts.danger ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  ok.style.color = opts.danger ? 'var(--danger,#c04040)' : 'var(--text,#111)';
+  _cuAskCb = cb || null;
+  b.style.display = 'flex';
+  setTimeout(function(){ try { (_cuAskInput ? inp : ok).focus(); } catch(e){} }, 0);
+}
 function toast(msg){
   var t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');

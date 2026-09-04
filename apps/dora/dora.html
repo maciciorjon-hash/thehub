@@ -600,6 +600,35 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 </div>
 
 <script>
+// ── One in-app toast, so this app never opens a browser dialog ───────────────────────────────
+// Inside dHUB a native alert() is a browser dialog headed "localhost says", which reads as the
+// page having broken, and it blocks the frame while it is up. Same helper as Echo's.
+var _doraToastT = null;
+function doraToast(msg, kind){
+  var t = document.getElementById('dora-toast');
+  if (!t){
+    t = document.createElement('div');
+    t.id = 'dora-toast';
+    t.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translate(-50%,10px);z-index:99999;'
+      + 'max-width:min(520px,92vw);padding:11px 16px;border-radius:var(--r-2,8px);white-space:pre-wrap;'
+      + 'background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border2,rgba(0,0,0,.13));'
+      + 'box-shadow:var(--shadow-md,0 4px 18px rgba(0,0,0,.18));font-size:13px;line-height:1.45;'
+      + 'opacity:0;pointer-events:none;transition:opacity var(--dur-1,120ms) var(--ease,ease),'
+      + 'transform var(--dur-1,120ms) var(--ease,ease);';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  // --accent is the shared blue every control wears, so an error bordered in it is not marked
+  // at all. --danger is the token that means this went wrong, and it is theme-aware.
+  t.style.borderColor = (kind === 'err') ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  t.style.opacity = '1';
+  t.style.transform = 'translate(-50%,0)';
+  clearTimeout(_doraToastT);
+  // An error is read, not glanced at, so it stays up longer than a confirmation.
+  _doraToastT = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translate(-50%,10px)'; },
+                            kind === 'err' ? 5200 : 3000);
+}
+
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 const BASE_RAW     = /*DATA_START*/[]/*DATA_END*/;
 const BASE_TARGETS = /*TARGETS_START*/[]/*TARGETS_END*/;
@@ -1099,7 +1128,7 @@ function csvSafe(v){
 }
 function exportCSV() {
   const data = sortData(getFiltered());
-  if (!data.length) { alert('No data to export.'); return; }
+  if (!data.length) { doraToast('No data to export.', 'err'); return; }
   const cols = ['Compound', 'Quality', ...TARGETS.flatMap(t => [`${t} DC50 (nM)`, `${t} DC50 SD`, `${t} Dmax (%)`, `${t} Dmax SD`])];
   const rows = [cols.map(csvSafe).join(',')];
   data.forEach(c => {
@@ -1118,7 +1147,7 @@ function exportCSV() {
 
 function exportTable(bg) {
   const data = sortData(getFiltered());
-  if (!data.length) { alert('No data to export.'); return; }
+  if (!data.length) { doraToast('No data to export.', 'err'); return; }
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const useDark = bg === 'black' || (bg === 'transparent' && isDark);
   const P = useDark
@@ -1219,7 +1248,7 @@ function exportTable(bg) {
   a.click();
 }
 function exportScatter(bg) {
-  if (!chartInstance) { alert('Open the Scatter tab first.'); return; }
+  if (!chartInstance) { doraToast('Open the Scatter tab first.', 'err'); return; }
   const src = chartInstance.canvas;
   const out = document.createElement('canvas'); out.width = src.width; out.height = src.height;
   const ctx = out.getContext('2d');

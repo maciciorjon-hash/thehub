@@ -2351,6 +2351,70 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 function el(id){return document.getElementById(id);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 var _toastT=null;
+
+// ── Ask, without a browser dialog ────────────────────────────────────────────────────────────
+// Inside dHUB a native confirm()/prompt() is headed "localhost says" and blocks the whole frame
+// while it is up, which reads as the page having broken. Same contract everywhere in the Hub:
+// wbAsk(title, msg, opts, cb) resolves cb(true) only when the affirmative was pressed, and
+// Escape or the backdrop always resolve false — a modal must be dismissible without a Cancel.
+// With opts.input it is a prompt and hands back the text, or null.
+var _wbAskCb = null, _wbAskInput = false;
+function wbAskClose(ok){
+  var b = document.getElementById('wb-ask'); if (!b) return;
+  b.style.display = 'none';
+  var cb = _wbAskCb, inp = document.getElementById('wb-ask-in');
+  _wbAskCb = null;
+  if (!cb) return;
+  if (_wbAskInput) cb(ok ? String(inp.value) : null);
+  else cb(!!ok);
+}
+function wbAsk(title, msg, opts, cb){
+  opts = opts || {};
+  var b = document.getElementById('wb-ask');
+  if (!b){
+    b = document.createElement('div');
+    b.id = 'wb-ask';
+    b.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;'
+      + 'justify-content:center;padding:20px;background:rgba(16,20,34,.45);';
+    b.innerHTML = '<div style="width:100%;max-width:420px;background:var(--surface,#fff);color:var(--text,#111);'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-3,12px);'
+      + 'box-shadow:var(--shadow-lg,0 12px 40px rgba(0,0,0,.25));padding:18px 20px 16px;">'
+      + '<div id="wb-ask-t" style="font-size:var(--fs-5,15px);font-weight:600;margin-bottom:8px;"></div>'
+      + '<div id="wb-ask-m" style="font-size:var(--fs-3,13px);line-height:1.55;white-space:pre-wrap;color:var(--text2,#555);"></div>'
+      + '<input id="wb-ask-in" style="display:none;width:100%;margin-top:12px;font:inherit;font-size:var(--fs-3,13px);'
+      + 'padding:7px 10px;border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);'
+      + 'background:var(--surface,#fff);color:var(--text,#111);box-sizing:border-box;">'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;">'
+      + '<button id="wb-ask-no" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text2,#555);"></button>'
+      + '<button id="wb-ask-ok" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text,#111);"></button>'
+      + '</div></div>';
+    document.body.appendChild(b);
+    b.addEventListener('click', function(e){ if (e.target === b) wbAskClose(false); });
+    document.getElementById('wb-ask-no').onclick = function(){ wbAskClose(false); };
+    document.getElementById('wb-ask-ok').onclick = function(){ wbAskClose(true); };
+    document.getElementById('wb-ask-in').onkeydown = function(e){ if (e.key === 'Enter') wbAskClose(true); };
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && b.style.display === 'flex') wbAskClose(false);
+    });
+  }
+  document.getElementById('wb-ask-t').textContent = title || '';
+  document.getElementById('wb-ask-m').textContent = msg || '';
+  var inp = document.getElementById('wb-ask-in');
+  _wbAskInput = !!opts.input;
+  inp.style.display = _wbAskInput ? '' : 'none';
+  inp.value = opts.value == null ? '' : String(opts.value);
+  var no = document.getElementById('wb-ask-no'), ok = document.getElementById('wb-ask-ok');
+  no.textContent = opts.no || 'Cancel';
+  no.style.display = opts.only ? 'none' : '';
+  ok.textContent = opts.ok || 'OK';
+  ok.style.borderColor = opts.danger ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  ok.style.color = opts.danger ? 'var(--danger,#c04040)' : 'var(--text,#111)';
+  _wbAskCb = cb || null;
+  b.style.display = 'flex';
+  setTimeout(function(){ try { (_wbAskInput ? inp : ok).focus(); } catch(e){} }, 0);
+}
 function toast(m){var t=el('toast');t.textContent=m;t.classList.add('show');clearTimeout(_toastT);_toastT=setTimeout(function(){t.classList.remove('show');},2400);}
 
 /* ── Theme (mirror parent / localStorage) ── */
@@ -2744,7 +2808,13 @@ function setPanelGap(pi,v){ v=(v===''||v==null)?null:Math.max(0,Math.min(80,pars
 function reorderPanel(from,to){ if(from==null||to==null||from===to)return; if(from<0||from>=FIG.panels.length||to<0||to>=FIG.panels.length)return; var item=FIG.panels.splice(from,1)[0]; FIG.panels.splice(to,0,item); save(); render(); }
 function addGroup(){ FIG.groups.push({from:1,to:FIG.laneCount,label:'group'}); save(); render(); }
 function delGroup(gi){ FIG.groups.splice(gi,1); save(); render(); }
-function resetFigure(){ if(!confirm('Clear the whole figure and start over?'))return; FIG=defaultFig(); _pid=1; save(); render(); toast('Figure reset'); }
+function resetFigure(){
+  wbAsk('Clear the whole figure?', 'Panels, lanes and labels all go, and you start on a blank one.',
+    {ok:'Clear it', danger:true}, function(yes){
+      if (!yes) return;
+      FIG=defaultFig(); _pid=1; save(); render(); toast('Figure reset');
+    });
+}
 function togglePanelScale(pi){ FIG.panels[pi].scaleWithBox=FIG.panels[pi].scaleWithBox===false?true:false; save(); render(); }
 function clearPanelHeight(pi){ FIG.panels[pi].customHeightRatio=null; save(); render(); toast('Height reset to auto'); }
 

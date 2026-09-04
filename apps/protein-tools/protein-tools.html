@@ -403,6 +403,35 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 <div id="pinfo-tip"></div>
 <div id="hydro-tt"></div>
 <script>
+// ── One in-app toast, so this app never opens a browser dialog ───────────────────────────────
+// Inside dHUB a native alert() is a browser dialog headed "localhost says", which reads as the
+// page having broken, and it blocks the frame while it is up. Same helper as Echo's.
+var _ptToastT = null;
+function ptToast(msg, kind){
+  var t = document.getElementById('pt-toast');
+  if (!t){
+    t = document.createElement('div');
+    t.id = 'pt-toast';
+    t.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translate(-50%,10px);z-index:99999;'
+      + 'max-width:min(520px,92vw);padding:11px 16px;border-radius:var(--r-2,8px);white-space:pre-wrap;'
+      + 'background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border2,rgba(0,0,0,.13));'
+      + 'box-shadow:var(--shadow-md,0 4px 18px rgba(0,0,0,.18));font-size:13px;line-height:1.45;'
+      + 'opacity:0;pointer-events:none;transition:opacity var(--dur-1,120ms) var(--ease,ease),'
+      + 'transform var(--dur-1,120ms) var(--ease,ease);';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  // --accent is the shared blue every control wears, so an error bordered in it is not marked
+  // at all. --danger is the token that means this went wrong, and it is theme-aware.
+  t.style.borderColor = (kind === 'err') ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  t.style.opacity = '1';
+  t.style.transform = 'translate(-50%,0)';
+  clearTimeout(_ptToastT);
+  // An error is read, not glanced at, so it stays up longer than a confirmation.
+  _ptToastT = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translate(-50%,10px)'; },
+                            kind === 'err' ? 5200 : 3000);
+}
+
 // ─── Theme ────────────────────────────────────────────────────────────────
 function toggleOpts(){document.getElementById('opts-panel').classList.toggle('open');}
 function toggleTheme(){var html=document.documentElement;var next=html.getAttribute('data-theme')==='dark'?'light':'dark';html.setAttribute('data-theme',next);try{localStorage.setItem('hub_theme',next);}catch(e){}var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(next==='dark');}
@@ -937,7 +966,7 @@ function calcConc(){
 }
 
 function copyResults(){
-  if(!_lastResult){alert('No results to copy.');return;}
+  if(!_lastResult){ptToast('No results to copy.', 'err'); return;}
   const r=_lastResult;
   const lines=['Protein Tools — Results',`Sequence length: ${r.n} aa`,`MW (average): ${(r.mw_avg/1000).toFixed(3)} kDa`,`MW (monoisotopic): ${(r.mw_mono/1000).toFixed(3)} kDa`,`pI: ${r.pi.toFixed(2)}`,`ε280 (reduced): ${r.e280_reduced} M⁻¹cm⁻¹`,`ε280 (oxidised): ${r.e280_oxidized} M⁻¹cm⁻¹`,`GRAVY: ${r.gravy.toFixed(3)}`,`Instability index: ${r.instability.toFixed(1)}`,`Aliphatic index: ${r.aliphatic.toFixed(1)}`,`Est. half-life (N-end, mammalian): ${r.halflife?r.halflife.mam:'—'}`,'','AA composition:',...Object.entries(r.comp).map(([aa,cnt])=>`  ${aa}: ${cnt} (${r.n?(cnt/r.n*100).toFixed(1):'0'}%)`)];
   navigator.clipboard.writeText(lines.join('\n'));

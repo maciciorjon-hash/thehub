@@ -633,6 +633,99 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </div>
 
 <script>
+// ── One in-app toast, so this app never opens a browser dialog ───────────────────────────────
+// Inside dHUB a native alert() is a browser dialog headed "localhost says", which reads as the
+// page having broken, and it blocks the frame while it is up. Same helper as Echo's.
+var _beaconToastT = null;
+
+// ── Ask, without a browser dialog ────────────────────────────────────────────────────────────
+// Inside dHUB a native confirm()/prompt() is headed "localhost says" and blocks the whole frame
+// while it is up, which reads as the page having broken. Same contract everywhere in the Hub:
+// beaconAsk(title, msg, opts, cb) resolves cb(true) only when the affirmative was pressed, and
+// Escape or the backdrop always resolve false — a modal must be dismissible without a Cancel.
+// With opts.input it is a prompt and hands back the text, or null.
+var _beaAskCb = null, _beaAskInput = false;
+function beaconAskClose(ok){
+  var b = document.getElementById('bea-ask'); if (!b) return;
+  b.style.display = 'none';
+  var cb = _beaAskCb, inp = document.getElementById('bea-ask-in');
+  _beaAskCb = null;
+  if (!cb) return;
+  if (_beaAskInput) cb(ok ? String(inp.value) : null);
+  else cb(!!ok);
+}
+function beaconAsk(title, msg, opts, cb){
+  opts = opts || {};
+  var b = document.getElementById('bea-ask');
+  if (!b){
+    b = document.createElement('div');
+    b.id = 'bea-ask';
+    b.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;'
+      + 'justify-content:center;padding:20px;background:rgba(16,20,34,.45);';
+    b.innerHTML = '<div style="width:100%;max-width:420px;background:var(--surface,#fff);color:var(--text,#111);'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-3,12px);'
+      + 'box-shadow:var(--shadow-lg,0 12px 40px rgba(0,0,0,.25));padding:18px 20px 16px;">'
+      + '<div id="bea-ask-t" style="font-size:var(--fs-5,15px);font-weight:600;margin-bottom:8px;"></div>'
+      + '<div id="bea-ask-m" style="font-size:var(--fs-3,13px);line-height:1.55;white-space:pre-wrap;color:var(--text2,#555);"></div>'
+      + '<input id="bea-ask-in" style="display:none;width:100%;margin-top:12px;font:inherit;font-size:var(--fs-3,13px);'
+      + 'padding:7px 10px;border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);'
+      + 'background:var(--surface,#fff);color:var(--text,#111);box-sizing:border-box;">'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;">'
+      + '<button id="bea-ask-no" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text2,#555);"></button>'
+      + '<button id="bea-ask-ok" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text,#111);"></button>'
+      + '</div></div>';
+    document.body.appendChild(b);
+    b.addEventListener('click', function(e){ if (e.target === b) beaconAskClose(false); });
+    document.getElementById('bea-ask-no').onclick = function(){ beaconAskClose(false); };
+    document.getElementById('bea-ask-ok').onclick = function(){ beaconAskClose(true); };
+    document.getElementById('bea-ask-in').onkeydown = function(e){ if (e.key === 'Enter') beaconAskClose(true); };
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && b.style.display === 'flex') beaconAskClose(false);
+    });
+  }
+  document.getElementById('bea-ask-t').textContent = title || '';
+  document.getElementById('bea-ask-m').textContent = msg || '';
+  var inp = document.getElementById('bea-ask-in');
+  _beaAskInput = !!opts.input;
+  inp.style.display = _beaAskInput ? '' : 'none';
+  inp.value = opts.value == null ? '' : String(opts.value);
+  var no = document.getElementById('bea-ask-no'), ok = document.getElementById('bea-ask-ok');
+  no.textContent = opts.no || 'Cancel';
+  no.style.display = opts.only ? 'none' : '';
+  ok.textContent = opts.ok || 'OK';
+  ok.style.borderColor = opts.danger ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  ok.style.color = opts.danger ? 'var(--danger,#c04040)' : 'var(--text,#111)';
+  _beaAskCb = cb || null;
+  b.style.display = 'flex';
+  setTimeout(function(){ try { (_beaAskInput ? inp : ok).focus(); } catch(e){} }, 0);
+}
+function beaconToast(msg, kind){
+  var t = document.getElementById('beacon-toast');
+  if (!t){
+    t = document.createElement('div');
+    t.id = 'beacon-toast';
+    t.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translate(-50%,10px);z-index:99999;'
+      + 'max-width:min(520px,92vw);padding:11px 16px;border-radius:var(--r-2,8px);white-space:pre-wrap;'
+      + 'background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border2,rgba(0,0,0,.13));'
+      + 'box-shadow:var(--shadow-md,0 4px 18px rgba(0,0,0,.18));font-size:13px;line-height:1.45;'
+      + 'opacity:0;pointer-events:none;transition:opacity var(--dur-1,120ms) var(--ease,ease),'
+      + 'transform var(--dur-1,120ms) var(--ease,ease);';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  // --accent is the shared blue every control wears, so an error bordered in it is not marked
+  // at all. --danger is the token that means this went wrong, and it is theme-aware.
+  t.style.borderColor = (kind === 'err') ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  t.style.opacity = '1';
+  t.style.transform = 'translate(-50%,0)';
+  clearTimeout(_beaconToastT);
+  // An error is read, not glanced at, so it stays up longer than a confirmation.
+  _beaconToastT = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translate(-50%,10px)'; },
+                            kind === 'err' ? 5200 : 3000);
+}
+
 /* ---- shared state ---- */
 var state = {
   plateFormat: '96',
@@ -1045,7 +1138,14 @@ window.addEventListener('resize', updateIndicator);
 
 /* ---- PLATE DATA (fallback CSV import + manual grid helpers) ---- */
 function setPlateFormat(fmt){
-  if((state.donor || state.acceptor) && !confirm('Switching plate format clears loaded donor/acceptor data. Continue?')) return;
+  if(state.donor || state.acceptor){
+    beaconAsk('Switch to ' + fmt + '-well?', 'The loaded donor and acceptor plates are cleared — a reading belongs to the plate it was read on.',
+      {ok:'Switch', danger:true}, function(yes){ if (yes) _setPlateFormatGo(fmt); });
+    return;
+  }
+  _setPlateFormatGo(fmt);
+}
+function _setPlateFormatGo(fmt){
   state.plateFormat = fmt;
   state.donor = null;
   state.acceptor = null;
@@ -1091,7 +1191,7 @@ function loadChannelFile(file, channel){
   reader.onload = function(e){
     var parsed = parsePlateCSV(e.target.result, state.plateFormat);
     if(!parsed){
-      alert('Could not parse CSV for the ' + (state.plateFormat === '384' ? '384-well (16x24)' : '96-well (8x12)') + ' format.');
+      beaconToast('Could not parse CSV for the ' + (state.plateFormat === '384' ? '384-well (16x24)' : '96-well (8x12)') + ' format.', 'err');
       return;
     }
     state[channel] = parsed;
@@ -1180,7 +1280,7 @@ function setLiteMode(isLite){
 }
 
 function exportLiteRatiosXLSX(){
-  if (!state.donor || !state.acceptor) { alert('Load plate data first (Setup → Files).'); return; }
+  if (!state.donor || !state.acceptor) { beaconToast('Load plate data first (Setup → Files).', 'err'); return; }
   var dims = state.plateFormat === '384' ? { rows: 16, cols: 24 } : { rows: 8, cols: 12 };
   var ROWS = 'ABCDEFGHIJKLMNOP';
   var rows = [['Well', 'Donor', 'Acceptor', 'Raw ratio (acceptor/donor)']];
@@ -1357,18 +1457,18 @@ var lastFitResult = null;
 
 function computeDoseResponse(){
   if(!state.donor || !state.acceptor){
-    alert('Load donor and acceptor plate data first (Setup → Files).');
+    beaconToast('Load donor and acceptor plate data first (Setup → Files).', 'err');
     return;
   }
   var pm = state.plateMap;
   if(!pm.background.length){
-    alert('Paint Background wells in Setup → Plate Map first.');
+    beaconToast('Paint Background wells in Setup → Plate Map first.', 'err');
     return;
   }
 
   var baselineMBUs = computeConditionMBUs(state.donor, state.acceptor, pm.background);
   if(!baselineMBUs.length){
-    alert('No valid donor/acceptor data for the painted Background wells.');
+    beaconToast('No valid donor/acceptor data for the painted Background wells.', 'err');
     return;
   }
   var baselineMean = meanOf(baselineMBUs);
@@ -1384,7 +1484,7 @@ function computeDoseResponse(){
   });
 
   if(points.length < 4){
-    alert('Need at least 4 Compound dose groups with a concentration set and valid data to fit a curve.');
+    beaconToast('Need at least 4 Compound dose groups with a concentration set and valid data to fit a curve.', 'err');
     return;
   }
   points.sort(function(a, b){ return a.conc - b.conc; });
@@ -1605,12 +1705,12 @@ function renderTracerSummary() {
 
 function computeTracerTitration() {
   if (!state.donor || !state.acceptor) {
-    alert('Load donor and acceptor plate data first (Setup → Files).');
+    beaconToast('Load donor and acceptor plate data first (Setup → Files).', 'err');
     return;
   }
   var groups = state.plateMap.tracerGroups;
   if (groups.length < 4) {
-    alert('Need at least 4 Tracer dose groups with concentrations to fit a binding curve.');
+    beaconToast('Need at least 4 Tracer dose groups with concentrations to fit a binding curve.', 'err');
     return;
   }
   var pairs = [];
@@ -1621,7 +1721,7 @@ function computeTracerTitration() {
     pairs.push({ conc: g.conc, signal: meanOf(mbus) });
   });
   if (pairs.length < 4) {
-    alert('Need at least 4 valid Tracer dose groups with concentrations and data to fit a binding curve.');
+    beaconToast('Need at least 4 valid Tracer dose groups with concentrations and data to fit a binding curve.', 'err');
     return;
   }
   pairs.sort(function(a, b){ return a.conc - b.conc; });
@@ -2025,7 +2125,7 @@ function _buildPrismAoa() {
 }
 
 function generateOutputXLSX() {
-  if (!state.donor || !state.acceptor) { alert('Load plate data first (Setup → Files).'); return; }
+  if (!state.donor || !state.acceptor) { beaconToast('Load plate data first (Setup → Files).', 'err'); return; }
   var wb = XLSX.utils.book_new();
 
   var wsResults = XLSX.utils.aoa_to_sheet(_sanitizeAoa(_buildResultsAoa()));
@@ -2493,11 +2593,11 @@ function handlePheraFile(file) {
       var wb = XLSX.read(e.target.result, { type: 'array', cellDates: false, raw: true });
       var protSheetName = wb.SheetNames.find(function(n){ return /protocol/i.test(n); });
       var tableSheetName = wb.SheetNames.find(function(n){ return /table.*end.?point/i.test(n); });
-      if (!tableSheetName) { alert('Could not find a "Table End point" sheet in this file.'); return; }
+      if (!tableSheetName) { beaconToast('Could not find a "Table End point" sheet in this file.', 'err'); return; }
 
       var tableRows = XLSX.utils.sheet_to_json(wb.Sheets[tableSheetName], { header: 1, defval: '' });
       var parsed = parsePheraTableEndpoint(tableRows);
-      if (!parsed) { alert('Could not parse donor/acceptor channels from the Table End point sheet.'); return; }
+      if (!parsed) { beaconToast('Could not parse donor/acceptor channels from the Table End point sheet.', 'err'); return; }
 
       state.donor = parsed.donor;
       state.acceptor = parsed.acceptor;
@@ -2536,7 +2636,7 @@ function handlePheraFile(file) {
       renderLiteModeChoice();
       renderSetupTabGate();
     } catch (err) {
-      alert('Could not read this file as a PHERAstar .xlsx export: ' + err.message);
+      beaconToast('Could not read this file as a PHERAstar .xlsx export: ' + err.message, 'err');
     }
   };
   reader.readAsArrayBuffer(file);

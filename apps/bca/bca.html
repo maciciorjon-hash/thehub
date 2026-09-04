@@ -583,6 +583,35 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 </script>
 <script>
+// ── One in-app toast, so this app never opens a browser dialog ───────────────────────────────
+// Inside dHUB a native alert() is a browser dialog headed "localhost says", which reads as the
+// page having broken, and it blocks the frame while it is up. Same helper as Echo's.
+var _bcaToastT = null;
+function bcaToast(msg, kind){
+  var t = document.getElementById('bca-toast');
+  if (!t){
+    t = document.createElement('div');
+    t.id = 'bca-toast';
+    t.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translate(-50%,10px);z-index:99999;'
+      + 'max-width:min(520px,92vw);padding:11px 16px;border-radius:var(--r-2,8px);white-space:pre-wrap;'
+      + 'background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border2,rgba(0,0,0,.13));'
+      + 'box-shadow:var(--shadow-md,0 4px 18px rgba(0,0,0,.18));font-size:13px;line-height:1.45;'
+      + 'opacity:0;pointer-events:none;transition:opacity var(--dur-1,120ms) var(--ease,ease),'
+      + 'transform var(--dur-1,120ms) var(--ease,ease);';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  // --accent is the shared blue every control wears, so an error bordered in it is not marked
+  // at all. --danger is the token that means this went wrong, and it is theme-aware.
+  t.style.borderColor = (kind === 'err') ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  t.style.opacity = '1';
+  t.style.transform = 'translate(-50%,0)';
+  clearTimeout(_bcaToastT);
+  // An error is read, not glanced at, so it stays up longer than a confirmation.
+  _bcaToastT = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translate(-50%,10px)'; },
+                            kind === 'err' ? 5200 : 3000);
+}
+
 'use strict';
 
 /* ─── THEME ─── */
@@ -1552,8 +1581,8 @@ function exportSamplesCSV(){
 // to reproduce the BCA by hand — curve, raw reads, extrapolation, dilution, conc, target,
 // and the lysate+water volumes per sample).
 function exportWorkbook(){
-  if(typeof XLSX==='undefined'){ alert('Spreadsheet library not loaded.'); return; }
-  if(!state.plate && !(state.plateMap.sampleGroups||[]).length){ alert('Import a plate and paint standards/samples first.'); return; }
+  if(typeof XLSX==='undefined'){ bcaToast('Spreadsheet library not loaded.', 'err'); return; }
+  if(!state.plate && !(state.plateMap.sampleGroups||[]).length){ bcaToast('Import a plate and paint standards/samples first.', 'err'); return; }
   var wb = XLSX.utils.book_new();
 
   // 1) Calibration curve — fit + the standard points that drove it.

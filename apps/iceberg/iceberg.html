@@ -971,12 +971,17 @@ function closeStorageMenu(){ var m=document.getElementById('storage-menu'); if(m
 function addStorage(){
   var taken = storageKeys();
   var free = STORAGE_PRESETS.filter(function(p){ return taken.indexOf(p.key) < 0; });
-  var label = prompt('Name the storage unit'
-    + (free.length ? ' (e.g. ' + free.map(function(f){ return f.label; }).join(', ') + ')' : '') + ':',
-    free.length ? free[0].label : '');
-  if (label === null) return;
-  label = String(label).trim();
-  if (!label) return;
+  icebergAsk('Add a storage unit',
+    free.length ? ('For example: ' + free.map(function(f){ return f.label; }).join(', ')) : 'Name it.',
+    {input:true, value: free.length ? free[0].label : '', ok:'Add'},
+    function(label){
+      if (label === null) return;
+      label = String(label).trim();
+      if (!label) return;
+      _addStorageGo(label, free);
+    });
+}
+function _addStorageGo(label, free){
   var preset = free.filter(function(f){ return f.label === label; })[0];
   var key = preset ? preset.key : ('st' + Date.now().toString(36));
   state.storages[key] = { label: label, racks: [] };
@@ -986,18 +991,24 @@ function addStorage(){
   toast('Added ' + label);
 }
 function renameStorage(key){
-  var label = prompt('Rename this storage unit:', state.storages[key].label || key);
-  if (label === null) return;
-  label = String(label).trim(); if (!label) return;
-  state.storages[key].label = label; saveState(); renderStorageTabs(); switchTab(key);
+  icebergAsk('Rename this storage unit', '', {input:true, value: state.storages[key].label || key, ok:'Rename'},
+    function(label){
+      if (label === null) return;
+      label = String(label).trim(); if (!label) return;
+      state.storages[key].label = label; saveState(); renderStorageTabs(); switchTab(key);
+    });
 }
 function deleteStorage(key){
   var s = state.storages[key]; if (!s) return;
   var n = 0; (s.racks||[]).forEach(function(r){ (r.boxes||[]).forEach(function(b){ n += Object.keys(b.vials||{}).length; }); });
   if (storageKeys().length < 2){ toast('This is the only storage unit'); return; }
-  if (!confirm('Delete "' + (s.label||key) + '"' + (n ? ' and the ' + n + ' vial' + (n===1?'':'s') + ' recorded in it' : '') + '? This cannot be undone.')) return;
-  delete state.storages[key]; saveState();
-  currentTab = storageKeys()[0]; renderStorageTabs(); switchTab(currentTab);
+  icebergAsk('Delete "' + (s.label||key) + '"?',
+    (n ? ('The ' + n + ' vial' + (n===1?'':'s') + ' recorded in it go with it. ') : '') + 'This cannot be undone.',
+    {ok:'Delete', danger:true}, function(yes){
+      if (!yes) return;
+      delete state.storages[key]; saveState();
+      currentTab = storageKeys()[0]; renderStorageTabs(); switchTab(currentTab);
+    });
 }
 function switchTab(tab){
   if (!state.storages[tab]) tab = storageKeys()[0];
@@ -1427,12 +1438,15 @@ function wellClick(pos, ev){
     if (!src){ toast('Click a filled vial first, then shift-click to copy it across'); return; }
     var targets = _rangePositions(box, _lastWellPos, pos).filter(function(p2){ return !(box.vials||{})[p2]; });
     if (!targets.length){ toast('Those positions are already filled'); return; }
-    if (!confirm('Fill ' + targets.length + ' position' + (targets.length===1?'':'s') + ' with ' + vialLabel(src) + '?')) return;
-    box.vials = box.vials || {};
-    targets.forEach(function(p2){ box.vials[p2] = JSON.parse(JSON.stringify(src)); });
-    box._last = JSON.parse(JSON.stringify(src));
-    saveState(); renderBoxDetail();
-    toast(targets.length + ' vial' + (targets.length===1?'':'s') + ' added');
+    icebergAsk('Fill ' + targets.length + ' position' + (targets.length===1?'':'s') + '?',
+      'With ' + vialLabel(src) + '.', {ok:'Fill'}, function(yes){
+        if (!yes) return;
+        box.vials = box.vials || {};
+        targets.forEach(function(p2){ box.vials[p2] = JSON.parse(JSON.stringify(src)); });
+        box._last = JSON.parse(JSON.stringify(src));
+        saveState(); renderBoxDetail();
+        toast(targets.length + ' vial' + (targets.length===1?'':'s') + ' added');
+      });
     return;
   }
   _lastWellPos = pos;
@@ -1624,21 +1638,25 @@ function deleteVial(){
 function discardVial(){
   var box = getCurrentBox(); if (!box || !editingVialPos) return;
   var v = box.vials[editingVialPos]; if (!v) return;
-  var reason = prompt('Discard ' + vialLabel(v) + ' at ' + editingVialPos + '.\nWhy? (used up, failed, contaminated\u2026)', 'used up');
-  if (reason === null) return;
-  box.log = box.log || [];
-  box.log.push({ pos: editingVialPos, vial: JSON.parse(JSON.stringify(v)), ts: Date.now(), reason: String(reason).trim() || 'discarded' });
-  delete box.vials[editingVialPos];
-  saveState(); closeVialModal(); renderBoxDetail();
-  toast('Discarded \u2014 kept in this box\u2019s history');
+  var pos = editingVialPos;
+  icebergAsk('Discard ' + vialLabel(v) + ' at ' + pos,
+    'Why? (used up, failed, contaminated\u2026)', {input:true, value:'used up', ok:'Discard'},
+    function(reason){
+      if (reason === null) return;
+      box.log = box.log || [];
+      box.log.push({ pos: pos, vial: JSON.parse(JSON.stringify(v)), ts: Date.now(), reason: String(reason).trim() || 'discarded' });
+      delete box.vials[pos];
+      saveState(); closeVialModal(); renderBoxDetail();
+      toast('Discarded \u2014 kept in this box\u2019s history');
+    });
 }
 function showBoxLog(){
   var box = getCurrentBox(); if (!box) return;
   var log = (box.log || []).slice().reverse();
   if (!log.length){ toast('Nothing has been discarded from this box'); return; }
-  alert('Discarded from ' + box.name + '\n\n' + log.map(function(e){
+  icebergAsk('Discarded from ' + box.name, log.map(function(e){
     return new Date(e.ts).toLocaleDateString('en-GB') + '  ' + e.pos + '  ' + vialLabel(e.vial) + '  \u2014 ' + e.reason;
-  }).join('\n'));
+  }).join('\n'), {ok:'Close', only:true});
 }
 // A vial becoming a flask is the other half of the lifecycle. The Hub owns the one
 // implementation (it has to write the culture and decrement the freezer in that order);
@@ -1758,8 +1776,13 @@ function deleteRack(rackId){
   var r = state.storages[currentTab].racks.find(function(x){ return x.id === rackId; });
   if (!r) return;
   var nVials = r.boxes.reduce(function(s, b){ return s + Object.keys(b.vials || {}).length; }, 0);
-  if (nVials && !confirm('Delete "' + r.name + '" and all ' + nVials + ' vials in it?')) return;
-  if (!nVials && r.boxes.length && !confirm('Delete rack "' + r.name + '" and its ' + r.boxes.length + ' empty boxes?')) return;
+  var what = nVials ? ('All ' + nVials + ' vials in it go with it.')
+           : (r.boxes.length ? ('Its ' + r.boxes.length + ' empty box' + (r.boxes.length===1?'':'es') + ' go with it.') : '');
+  if (!what){ _deleteRackGo(rackId); return; }           // an empty rack is nothing to lose
+  icebergAsk('Delete "' + r.name + '"?', what, {ok:'Delete', danger:true},
+    function(yes){ if (yes) _deleteRackGo(rackId); });
+}
+function _deleteRackGo(rackId){
   state.storages[currentTab].racks = state.storages[currentTab].racks.filter(function(x){ return x.id !== rackId; });
   saveState();
   renderTab(currentTab);
@@ -1807,7 +1830,15 @@ function deleteBoxFromDetail(){
   if (!currentBoxDetail) return;
   var box = getCurrentBox(); if (!box) return;
   var n = Object.keys(box.vials || {}).length;
-  if (n && !confirm('Delete box "' + box.name + '" and all ' + n + ' vials in it?')) return;
+  if (n){
+    icebergAsk('Delete box "' + box.name + '"?', 'All ' + n + ' vial' + (n===1?'':'s') + ' in it go with it.',
+      {ok:'Delete', danger:true}, function(yes){ if (yes) _deleteBoxGo(); });
+    return;
+  }
+  _deleteBoxGo();
+}
+function _deleteBoxGo(){
+  if (!currentBoxDetail) return;
   var rack = state.storages[currentBoxDetail.storage].racks.find(function(r){ return r.id === currentBoxDetail.rackId; });
   rack.boxes = rack.boxes.filter(function(b){ return b.id !== currentBoxDetail.boxId; });
   saveState();
@@ -2059,8 +2090,13 @@ function importXLSX(file){
   document.getElementById('import-file').value = '';
 }
 function clearAllData(){
-  if (!confirm('Delete ALL cryostorage data on this device? This cannot be undone.')) return;
-  if (!confirm('Are you sure? Both -80°C and N₂ data will be wiped.')) return;
+  // Two natives in a row was the old way of saying "are you really sure". One dialog that names
+  // what goes says it better, and the affirmative is the one that has to be pressed on purpose.
+  icebergAsk('Delete every freezer record on this device?',
+    'Both \u221280\u00b0C and Liquid N\u2082 \u2014 every rack, box and vial. This cannot be undone.',
+    {ok:'Delete everything', danger:true}, function(yes){ if (yes) _clearAllDataGo(); });
+}
+function _clearAllDataGo(){
   state = {
     v: 1,
     storages: { minus80: { label: '−80°C', racks: [] }, n2: { label: 'Liquid N₂', racks: [] } },
@@ -2079,6 +2115,70 @@ function onSearch(v){ state.search = v; renderTab(currentTab); }
 
 // ─── UTILS ─────────────────────────────────────────────────────────────────
 function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// ── Ask, without a browser dialog ────────────────────────────────────────────────────────────
+// Inside dHUB a native confirm()/prompt() is headed "localhost says" and blocks the whole frame
+// while it is up, which reads as the page having broken. Same contract everywhere in the Hub:
+// icebergAsk(title, msg, opts, cb) resolves cb(true) only when the affirmative was pressed, and
+// Escape or the backdrop always resolve false — a modal must be dismissible without a Cancel.
+// With opts.input it is a prompt and hands back the text, or null.
+var _ibAskCb = null, _ibAskInput = false;
+function icebergAskClose(ok){
+  var b = document.getElementById('ib-ask'); if (!b) return;
+  b.style.display = 'none';
+  var cb = _ibAskCb, inp = document.getElementById('ib-ask-in');
+  _ibAskCb = null;
+  if (!cb) return;
+  if (_ibAskInput) cb(ok ? String(inp.value) : null);
+  else cb(!!ok);
+}
+function icebergAsk(title, msg, opts, cb){
+  opts = opts || {};
+  var b = document.getElementById('ib-ask');
+  if (!b){
+    b = document.createElement('div');
+    b.id = 'ib-ask';
+    b.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;'
+      + 'justify-content:center;padding:20px;background:rgba(16,20,34,.45);';
+    b.innerHTML = '<div style="width:100%;max-width:420px;background:var(--surface,#fff);color:var(--text,#111);'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-3,12px);'
+      + 'box-shadow:var(--shadow-lg,0 12px 40px rgba(0,0,0,.25));padding:18px 20px 16px;">'
+      + '<div id="ib-ask-t" style="font-size:var(--fs-5,15px);font-weight:600;margin-bottom:8px;"></div>'
+      + '<div id="ib-ask-m" style="font-size:var(--fs-3,13px);line-height:1.55;white-space:pre-wrap;color:var(--text2,#555);"></div>'
+      + '<input id="ib-ask-in" style="display:none;width:100%;margin-top:12px;font:inherit;font-size:var(--fs-3,13px);'
+      + 'padding:7px 10px;border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);'
+      + 'background:var(--surface,#fff);color:var(--text,#111);box-sizing:border-box;">'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;">'
+      + '<button id="ib-ask-no" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text2,#555);"></button>'
+      + '<button id="ib-ask-ok" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text,#111);"></button>'
+      + '</div></div>';
+    document.body.appendChild(b);
+    b.addEventListener('click', function(e){ if (e.target === b) icebergAskClose(false); });
+    document.getElementById('ib-ask-no').onclick = function(){ icebergAskClose(false); };
+    document.getElementById('ib-ask-ok').onclick = function(){ icebergAskClose(true); };
+    document.getElementById('ib-ask-in').onkeydown = function(e){ if (e.key === 'Enter') icebergAskClose(true); };
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && b.style.display === 'flex') icebergAskClose(false);
+    });
+  }
+  document.getElementById('ib-ask-t').textContent = title || '';
+  document.getElementById('ib-ask-m').textContent = msg || '';
+  var inp = document.getElementById('ib-ask-in');
+  _ibAskInput = !!opts.input;
+  inp.style.display = _ibAskInput ? '' : 'none';
+  inp.value = opts.value == null ? '' : String(opts.value);
+  var no = document.getElementById('ib-ask-no'), ok = document.getElementById('ib-ask-ok');
+  no.textContent = opts.no || 'Cancel';
+  no.style.display = opts.only ? 'none' : '';
+  ok.textContent = opts.ok || 'OK';
+  ok.style.borderColor = opts.danger ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  ok.style.color = opts.danger ? 'var(--danger,#c04040)' : 'var(--text,#111)';
+  _ibAskCb = cb || null;
+  b.style.display = 'flex';
+  setTimeout(function(){ try { (_ibAskInput ? inp : ok).focus(); } catch(e){} }, 0);
+}
 function toast(msg){
   var t = document.getElementById('toast');
   t.textContent = msg;

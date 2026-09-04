@@ -539,6 +539,35 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 </div><!-- end .content -->
 <div id="pinfo-tip"></div>
 <script>
+// ── One in-app toast, so this app never opens a browser dialog ───────────────────────────────
+// Inside dHUB a native alert() is a browser dialog headed "localhost says", which reads as the
+// page having broken, and it blocks the frame while it is up. Same helper as Echo's.
+var _helixToastT = null;
+function helixToast(msg, kind){
+  var t = document.getElementById('helix-toast');
+  if (!t){
+    t = document.createElement('div');
+    t.id = 'helix-toast';
+    t.style.cssText = 'position:fixed;bottom:22px;left:50%;transform:translate(-50%,10px);z-index:99999;'
+      + 'max-width:min(520px,92vw);padding:11px 16px;border-radius:var(--r-2,8px);white-space:pre-wrap;'
+      + 'background:var(--surface,#fff);color:var(--text,#111);border:1px solid var(--border2,rgba(0,0,0,.13));'
+      + 'box-shadow:var(--shadow-md,0 4px 18px rgba(0,0,0,.18));font-size:13px;line-height:1.45;'
+      + 'opacity:0;pointer-events:none;transition:opacity var(--dur-1,120ms) var(--ease,ease),'
+      + 'transform var(--dur-1,120ms) var(--ease,ease);';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  // --accent is the shared blue every control wears, so an error bordered in it is not marked
+  // at all. --danger is the token that means this went wrong, and it is theme-aware.
+  t.style.borderColor = (kind === 'err') ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  t.style.opacity = '1';
+  t.style.transform = 'translate(-50%,0)';
+  clearTimeout(_helixToastT);
+  // An error is read, not glanced at, so it stays up longer than a confirmation.
+  _helixToastT = setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translate(-50%,10px)'; },
+                            kind === 'err' ? 5200 : 3000);
+}
+
 // ─── Theme ────────────────────────────────────────────────────────────────────
 function toggleOpts(){document.getElementById('opts-panel').classList.toggle('open');}
 function toggleTheme(){var html=document.documentElement;var next=html.getAttribute('data-theme')==='dark'?'light':'dark';html.setAttribute('data-theme',next);try{localStorage.setItem('hub_theme',next);}catch(e){}var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(next==='dark');}
@@ -660,9 +689,9 @@ function reverseTranslate(aaSeq){
 }
 function runReverseTranslate(){
   const raw=document.getElementById('rt-seq').value.trim();
-  if(!raw){alert('Paste a protein sequence first.');return;}
+  if(!raw){helixToast('Paste a protein sequence first.', 'err'); return;}
   const seq=parseFASTA(raw);
-  if(!seq){alert('No sequence found.');return;}
+  if(!seq){helixToast('No sequence found.', 'err'); return;}
   const {nt,unknown}=reverseTranslate(seq);
   document.getElementById('rt-nt').textContent=nt;
   document.getElementById('rt-len-pill').textContent=`${nt.length} nt (${seq.length} aa)`;
@@ -747,9 +776,9 @@ function renderCodonLegend(){
 // ─── Translation ──────────────────────────────────────────────────────────────
 function runTranslate(){
   const raw=document.getElementById('tr-seq').value.trim();
-  if(!raw){alert('Paste a nucleotide sequence first.');return;}
+  if(!raw){helixToast('Paste a nucleotide sequence first.', 'err'); return;}
   const seq=parseFASTA(raw);
-  if(!seq){alert('No sequence found.');return;}
+  if(!seq){helixToast('No sequence found.', 'err'); return;}
   _runTranslateWith(seq);
 }
 
@@ -762,9 +791,9 @@ function clearTranslate(){
 // ─── Sequence Tools (Sequence Analysis + ORF Finder) ─────────────────────────
 function runSeqTools(){
   const raw=document.getElementById('tools-seq').value.trim();
-  if(!raw){alert('Paste a nucleotide sequence first.');return;}
+  if(!raw){helixToast('Paste a nucleotide sequence first.', 'err'); return;}
   const seq=parseFASTA(raw);
-  if(!seq){alert('No sequence found.');return;}
+  if(!seq){helixToast('No sequence found.', 'err'); return;}
   document.getElementById('tools-results').classList.add('visible');
   _runSeqToolsWith(seq);
   _runORFWith(seq);
@@ -980,7 +1009,7 @@ function needlemanWunsch(a,b,match,mismatch,gap){
 function runCompare(){
   const seqA=parseFASTA(document.getElementById('cmp-a').value.trim());
   const seqB=parseFASTA(document.getElementById('cmp-b').value.trim());
-  if(!seqA||!seqB){alert('Enter both sequences.');return;}
+  if(!seqA||!seqB){helixToast('Enter both sequences.', 'err'); return;}
   const warn=document.getElementById('cmp-warn');
   let a=seqA,b=seqB;
   if(a.length>1500||b.length>1500){warn.textContent='Sequences capped at 1500 nt for performance.';a=a.slice(0,1500);b=b.slice(0,1500);}

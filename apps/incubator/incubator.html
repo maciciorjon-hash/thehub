@@ -583,6 +583,70 @@ function pickArchLine(name){
 }
 function openCellArchiveApp(){ closeCellPicker(); try{ if(window.parent && window.parent.openApp) window.parent.openApp('cellarchive'); else showToast('Open the Cell Archive app to add a new line'); }catch(e){ showToast('Open the Cell Archive app to add a new line'); } }
 var _toastT=null;
+
+// ── Ask, without a browser dialog ────────────────────────────────────────────────────────────
+// Inside dHUB a native confirm()/prompt() is headed "localhost says" and blocks the whole frame
+// while it is up, which reads as the page having broken. Same contract everywhere in the Hub:
+// incAsk(title, msg, opts, cb) resolves cb(true) only when the affirmative was pressed, and
+// Escape or the backdrop always resolve false — a modal must be dismissible without a Cancel.
+// With opts.input it is a prompt and hands back the text, or null.
+var _incAskCb = null, _incAskInput = false;
+function incAskClose(ok){
+  var b = document.getElementById('inc-ask'); if (!b) return;
+  b.style.display = 'none';
+  var cb = _incAskCb, inp = document.getElementById('inc-ask-in');
+  _incAskCb = null;
+  if (!cb) return;
+  if (_incAskInput) cb(ok ? String(inp.value) : null);
+  else cb(!!ok);
+}
+function incAsk(title, msg, opts, cb){
+  opts = opts || {};
+  var b = document.getElementById('inc-ask');
+  if (!b){
+    b = document.createElement('div');
+    b.id = 'inc-ask';
+    b.style.cssText = 'position:fixed;inset:0;z-index:99998;display:none;align-items:center;'
+      + 'justify-content:center;padding:20px;background:rgba(16,20,34,.45);';
+    b.innerHTML = '<div style="width:100%;max-width:420px;background:var(--surface,#fff);color:var(--text,#111);'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-3,12px);'
+      + 'box-shadow:var(--shadow-lg,0 12px 40px rgba(0,0,0,.25));padding:18px 20px 16px;">'
+      + '<div id="inc-ask-t" style="font-size:var(--fs-5,15px);font-weight:600;margin-bottom:8px;"></div>'
+      + '<div id="inc-ask-m" style="font-size:var(--fs-3,13px);line-height:1.55;white-space:pre-wrap;color:var(--text2,#555);"></div>'
+      + '<input id="inc-ask-in" style="display:none;width:100%;margin-top:12px;font:inherit;font-size:var(--fs-3,13px);'
+      + 'padding:7px 10px;border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);'
+      + 'background:var(--surface,#fff);color:var(--text,#111);box-sizing:border-box;">'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;">'
+      + '<button id="inc-ask-no" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text2,#555);"></button>'
+      + '<button id="inc-ask-ok" style="font:inherit;font-size:var(--fs-3,13px);padding:7px 14px;cursor:pointer;'
+      + 'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:var(--r-1,5px);background:none;color:var(--text,#111);"></button>'
+      + '</div></div>';
+    document.body.appendChild(b);
+    b.addEventListener('click', function(e){ if (e.target === b) incAskClose(false); });
+    document.getElementById('inc-ask-no').onclick = function(){ incAskClose(false); };
+    document.getElementById('inc-ask-ok').onclick = function(){ incAskClose(true); };
+    document.getElementById('inc-ask-in').onkeydown = function(e){ if (e.key === 'Enter') incAskClose(true); };
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && b.style.display === 'flex') incAskClose(false);
+    });
+  }
+  document.getElementById('inc-ask-t').textContent = title || '';
+  document.getElementById('inc-ask-m').textContent = msg || '';
+  var inp = document.getElementById('inc-ask-in');
+  _incAskInput = !!opts.input;
+  inp.style.display = _incAskInput ? '' : 'none';
+  inp.value = opts.value == null ? '' : String(opts.value);
+  var no = document.getElementById('inc-ask-no'), ok = document.getElementById('inc-ask-ok');
+  no.textContent = opts.no || 'Cancel';
+  no.style.display = opts.only ? 'none' : '';
+  ok.textContent = opts.ok || 'OK';
+  ok.style.borderColor = opts.danger ? 'var(--danger,#c04040)' : 'var(--border2,rgba(0,0,0,.13))';
+  ok.style.color = opts.danger ? 'var(--danger,#c04040)' : 'var(--text,#111)';
+  _incAskCb = cb || null;
+  b.style.display = 'flex';
+  setTimeout(function(){ try { (_incAskInput ? inp : ok).focus(); } catch(e){} }, 0);
+}
 function showToast(msg){ var t=el('toast'); if(!t) return; t.textContent=msg; t.classList.add('show'); clearTimeout(_toastT); _toastT=setTimeout(function(){t.classList.remove('show');},2600); }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
@@ -1094,12 +1158,21 @@ function freezeCulture(id){
   var boxes=H.HUB_FREEZER_BOXES();
   if(!boxes.length){ showToast('No boxes in the freezer yet — add one in Freezer first'); return; }
   var listing=boxes.map(function(b,i){ return (i+1)+') '+b.storageLabel+' · '+b.rack+' · '+b.box+'  ('+b.filled+'/'+(b.rows*b.cols)+' full)'; }).join('\n');
-  var pick=prompt('Freeze '+c.line+' (P'+(c.passage!=null?c.passage:'?')+')\n\nWhich box?\n\n'+listing, '1');
-  if(pick===null) return;
-  var bi=parseInt(pick,10)-1; var box=boxes[bi];
-  if(!box){ showToast('No box '+pick); return; }
-  var n=parseInt(prompt('How many vials?','4'),10);
-  if(!n || n<1) return;
+  incAsk('Freeze '+c.line+' (P'+(c.passage!=null?c.passage:'?')+')', 'Which box?\n\n'+listing,
+    {input:true, value:'1', ok:'Next'}, function(pick){
+      if(pick===null) return;
+      var bi=parseInt(pick,10)-1; var box=boxes[bi];
+      if(!box){ showToast('No box '+pick); return; }
+      incAsk('How many vials?', 'They go into consecutive free positions in '+box.box+'.',
+        {input:true, value:'4', ok:'Freeze'}, function(nStr){
+          if(nStr===null) return;
+          var n=parseInt(nStr,10);
+          if(!n || n<1) return;
+          _freezeIntoBox(id, c, H, box, n);
+        });
+    });
+}
+function _freezeIntoBox(id, c, H, box, n){
   // Reading order, so the vials sit where they look like they sit.
   var free=[];
   for(var r=0;r<box.rows && free.length<n;r++)
@@ -1108,7 +1181,16 @@ function freezeCulture(id){
       if(!box.vials[pos]) free.push(pos);
     }
   if(!free.length){ showToast('That box is full'); return; }
-  if(free.length<n && !confirm('Only '+free.length+' free position'+(free.length===1?'':'s')+' in that box. Freeze '+free.length+'?')) return;
+  if(free.length<n){
+    incAsk('Only '+free.length+' free position'+(free.length===1?'':'s')+' in that box',
+      'Freeze '+free.length+' instead?', {ok:'Freeze '+free.length}, function(yes){
+        if (yes) _freezeVialsGo(id, c, H, box, free);
+      });
+    return;
+  }
+  _freezeVialsGo(id, c, H, box, free);
+}
+function _freezeVialsGo(id, c, H, box, free){
   var today=new Date().toISOString().slice(0,10);
   free.forEach(function(pos){
     H.HUB_FREEZER_PLACE({boxId:box.boxId, pos:pos}, {

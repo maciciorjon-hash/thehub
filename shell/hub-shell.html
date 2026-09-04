@@ -50,6 +50,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.13);
   --brand:#ff5760;--accent:#5e87c5;--accent-dim:rgba(94,135,197,0.12);--accent-soft:rgba(94,135,197,0.22); --accent2:#0079b9; --accent3:#51c3ce;
   --text:#1a1d2e; --text2:#5a5f7a; --text3:#9ca0b8;
+  /* The one token that means "this went wrong". The shared blue every control wears is not a
+     mark, so an error drawn in --accent is not marked at all. Same values as Labbook's. */
+  --danger:#c04040;
   --sans:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --shadow-xs:0 1px 4px rgba(0,0,0,.04);
   --shadow-sm:0 2px 8px rgba(0,0,0,.06);
@@ -78,6 +81,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   --bg:#0d0f14; --surface:#13161e; --surface2:#1c2030; --surface3:#252a3a;
   --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
   --text:#e8eaf2; --text2:#8b90a8; --text3:#4e5368;
+  --danger:#f08a84;
   --shadow-xs:0 1px 4px rgba(0,0,0,.30);
   --shadow-sm:0 2px 8px rgba(0,0,0,.40);
   --shadow-md:0 6px 24px rgba(0,0,0,.50);
@@ -178,10 +182,28 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .set-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
 .set-body{padding:18px 20px 20px;overflow-y:auto;}
 .set-note{font-size:var(--fs-1);color:var(--text3);line-height:1.55;margin:2px 0 10px;}
-.opts-action-btn.danger{color:var(--accent);border-color:var(--accent);}
+.opts-action-btn.danger{color:var(--danger);border-color:var(--danger);}
+/* One in-app dialog, so nothing in the Hub ever opens a browser alert. Inside dHUB a native
+   dialog is headed "localhost says", which reads as the page having broken. */
+.hub-dlg-msg{font-size:var(--fs-3);color:var(--text);line-height:1.55;white-space:pre-wrap;}
+.hub-dlg-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;flex-wrap:wrap;}
+.hub-dlg-acts .opts-action-btn{font-size:var(--fs-3);padding:7px 14px;}
+#hub-toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,10px);z-index:400;
+  max-width:min(520px,92vw);padding:11px 16px;border-radius:var(--r-2);background:var(--surface);
+  color:var(--text);border:1px solid var(--border2);box-shadow:var(--shadow-md,0 4px 18px rgba(0,0,0,.18));
+  font-size:var(--fs-3);line-height:1.45;opacity:0;pointer-events:none;white-space:pre-wrap;
+  transition:opacity var(--dur-1) var(--ease),transform var(--dur-1) var(--ease);}
+#hub-toast.on{opacity:1;transform:translate(-50%,0);}
+#hub-toast.err{border-color:var(--danger);}
 @media(max-width:640px){
   .set-back{padding:0;align-items:stretch;}
   .set-card{max-width:none;max-height:none;border-radius:0;border:none;}
+}
+/* Settings goes full-screen on a phone because it is a screen. A two-line question is not:
+   full-bleed, it reads as having navigated somewhere rather than as being asked something. */
+@media(max-width:640px){
+  #hub-dlg{padding:20px;align-items:center;}
+  #hub-dlg .set-card{max-width:420px;max-height:none;border-radius:var(--r-3);border:1px solid var(--glass-brd);}
 }
 
 .opts-section{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
@@ -613,6 +635,18 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 <!-- Settings was a 300px popover holding seven unlike things, with the destructive reset
      one click from the accent swatches, plus a second identical popover for Lab. One modal,
      four tabs; every handler below keeps its name and its element ids. -->
+<div id="hub-dlg" class="set-back hidden" onclick="if(event.target===this)hubDlgClose(false)">
+ <div class="set-card" style="max-width:440px" role="dialog" aria-modal="true" aria-labelledby="hub-dlg-title">
+  <div class="set-hd"><div class="set-title" id="hub-dlg-title"></div></div>
+  <div class="set-body">
+    <div class="hub-dlg-msg" id="hub-dlg-msg"></div>
+    <div class="hub-dlg-acts">
+      <button class="opts-action-btn" id="hub-dlg-no" onclick="hubDlgClose(false)"></button>
+      <button class="opts-action-btn" id="hub-dlg-ok" onclick="hubDlgClose(true)"></button>
+    </div>
+  </div>
+ </div>
+</div>
 <div id="settings-back" class="set-back hidden" onclick="if(event.target===this)closeSettings()">
  <div class="set-card" role="dialog" aria-label="Settings">
   <div class="set-hd">
@@ -1444,13 +1478,16 @@ function hubThawVial(loc){
   var v = loc && loc.boxId
     ? HUB_FREEZER_FIND(function(s){ return s.boxId === loc.boxId && s.pos === loc.pos; })[0]
     : loc;
-  if (!v || !v.vial){ alert('That vial is no longer in the freezer.'); return; }
+  if (!v || !v.vial){ hubToast('That vial is no longer in the freezer.', 'err'); return; }
   var line = v.vial.cellLine || '';
-  var msg = 'Thaw ' + line + '\n\n' + v.storageLabel + ' \u00b7 ' + (v.rack||'') + ' \u00b7 ' + v.box + ' \u00b7 position ' + v.pos
+  var msg = v.storageLabel + ' \u00b7 ' + (v.rack||'') + ' \u00b7 ' + v.box + ' \u00b7 position ' + v.pos
     + (v.vial.passage ? ('\npassage ' + v.vial.passage) : '')
     + (v.vial.freezeDate ? ('\nfrozen ' + v.vial.freezeDate) : '')
     + '\n\n' + v.count + ' vial' + (v.count===1?'':'s') + ' there. Take one, and start a culture?';
-  if (!confirm(msg)) return;
+  hubAsk('Thaw ' + line, msg, {ok:'Thaw one'}, function(yes){ if (yes) _hubThawGo(v, line); });
+}
+// The write half of hubThawVial, held back until the question has been answered.
+function _hubThawGo(v, line){
   // Decrement the freezer first: if the culture write fails, an over-counted freezer is a
   // smaller lie than a vial recorded twice.
   var n = v.count - 1;
@@ -1479,7 +1516,7 @@ function hubThawVial(loc){
 }
 function cellsThaw(name){
   var vs = cellsFindVials(name);
-  if (!vs.length){ alert('No vials of ' + name + ' in the freezer.'); return; }
+  if (!vs.length){ hubToast('No vials of ' + name + ' in the freezer.', 'err'); return; }
   hubThawVial(vs[0]);
 }
 
@@ -2059,23 +2096,23 @@ function adminSignIn() {
   // Say the real thing rather than relaying auth/operation-not-supported-in-this-environment,
   // which tells nobody that the fix is to open a different address.
   if (location.protocol === 'file:') {
-    alert('Sign-in does not work when the Hub is opened as a local file.\n\n'
-        + 'file:// is not a domain, so Google sign-in cannot be authorised for it, and without a '
-        + 'session nothing is saved to the cloud — your work stays in this browser only.\n\n'
-        + 'Open the Hub here instead, on every device:\n' + HUB_PAGES_URL);
+    hubNote('Sign-in needs a web address',
+        'file:// is not a domain, so Google sign-in cannot be authorised for it, and without a '
+      + 'session nothing is saved to the cloud — your work stays in this browser only.\n\n'
+      + 'Open the Hub here instead, on every device:\n' + HUB_PAGES_URL);
     return;
   }
-  if (!fbReady()) { alert('Sign-in needs a connection — the Firebase SDK did not load.'); return; }
+  if (!fbReady()) { hubToast('Sign-in needs a connection — the Firebase SDK did not load.', 'err'); return; }
   var provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ login_hint: HUB_ADMIN_EMAIL });
   firebase.auth().signInWithPopup(provider).then(function(result) {
     if (result.user.email !== HUB_ADMIN_EMAIL) {
       firebase.auth().signOut();
-      alert('Not authorised. Sign in with ' + HUB_ADMIN_EMAIL);
+      hubToast('Not authorised. Sign in with ' + HUB_ADMIN_EMAIL, 'err');
     }
   }).catch(function(err) {
     if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
-      alert('Sign-in failed: ' + err.message);
+      hubToast('Sign-in failed: ' + err.message, 'err');
     }
   });
 }
@@ -2348,24 +2385,24 @@ function backupJournal(manual){
   try {
     var today = new Date().toISOString().slice(0,10);
     if (!manual && localStorage.getItem('hub_journal_last_backup') === today) return;
-    if (!fbReady()) { if (manual) alert('Backup needs a connection — the Firebase SDK did not load.'); return; }
+    if (!fbReady()) { if (manual) hubToast('Backup needs a connection — the Firebase SDK did not load.', 'err'); return; }
     firebase.database().ref('journal').once('value').then(function(s){
       var data = s.val();
-      if (!data) { if (manual) alert('Nothing to back up yet.'); return; }
+      if (!data) { if (manual) hubToast('Nothing to back up yet.'); return; }
       var text = JSON.stringify({ app:'dHUB', exported:new Date().toISOString(), journal:data }, null, 2);
       var name = 'dhub-backup-' + today + '.json';
       function done(){ try { localStorage.setItem('hub_journal_last_backup', today); } catch(e){} }
       if (window.lbBackup && window.lbBackup.writeFile) {
-        window.lbBackup.writeFile(name, text).then(function(){ done(); rotateBackups('dhub-backup-', 5); if (manual) alert('Backup saved to your backup folder:\n' + name); })
+        window.lbBackup.writeFile(name, text).then(function(){ done(); rotateBackups('dhub-backup-', 5); if (manual) hubToast('Backup saved to your backup folder:\n' + name); })
           // The comment above this function has always said "never auto-downloads". It did:
           // with no folder chosen, writeFile rejects with 'nodir' and this catch fired a
           // download on the first load of every day. Only an Export you pressed may download.
           .catch(function(){ if (manual) { _dhubDownload(name, text); done(); } });
       } else if (manual) { _dhubDownload(name, text); done(); }
-    }).catch(function(){ if (manual) alert('Could not read your data to back up right now.'); });
+    }).catch(function(){ if (manual) hubToast('Could not read your data to back up right now.', 'err'); });
   } catch(e){}
 }
-function chooseBackupFolder(){ if (window.lbBackup && window.lbBackup.pickDir) { window.lbBackup.pickDir().then(function(n){ alert('Backups will be saved to: ' + n + '\nA daily backup runs automatically, and Labbook uses the same folder.'); backupJournal(true); }).catch(function(){ alert('Could not set a folder. A manual export will download instead.'); }); } else { alert('Folder backups are not supported in this browser — use Export to download instead.'); } }
+function chooseBackupFolder(){ if (window.lbBackup && window.lbBackup.pickDir) { window.lbBackup.pickDir().then(function(n){ hubToast('Backups will be saved to: ' + n + '\nA daily backup runs automatically, and Labbook uses the same folder.'); backupJournal(true); }).catch(function(){ hubToast('Could not set a folder. A manual export will download instead.', 'err'); }); } else { hubToast('Folder backups are not supported in this browser — use Export to download instead.', 'err'); } }
 
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2984,10 +3021,14 @@ function loadAccent(){
 }
 
 function resetAllData() {
-  if (confirm('Erase everything this browser holds — tasks, notes, cultures, freezer boxes, the library and the Labbook tree?\n\nCloud-synced data returns on the next sign-in. Anything device-only does not.')) {
-    localStorage.clear();
-    location.reload();
-  }
+  hubAsk('Erase everything this browser holds?',
+    'Tasks, notes, cultures, freezer boxes, the library and the Labbook tree.\n\n'
+  + 'Cloud-synced data returns on the next sign-in. Anything device-only does not.',
+    {ok:'Erase', danger:true}, function(yes){
+      if (!yes) return;
+      localStorage.clear();
+      location.reload();
+    });
 }
 
 var SET_TABS=[{id:'appearance',name:'Appearance'},{id:'data',name:'Data'},{id:'lab',name:'Lab',admin:true},{id:'about',name:'About'}];
@@ -3027,13 +3068,54 @@ function openSettings(tab){
   renderSetTabs();
   document.getElementById('settings-back').classList.remove('hidden');
 }
+// ── Nothing here opens a browser dialog ─────────────────────────────────────────────────────
+// A native alert() inside dHUB is a browser dialog headed "localhost says", which reads as the
+// page having broken — and confirm()/prompt() block the whole frame while they are up. Blueprint
+// and Echo were converted first; this is the host, so it had the most of them.
+var _hubToastT = null;
+function hubToast(msg, kind){
+  var t = document.getElementById('hub-toast');
+  if (!t){ t = document.createElement('div'); t.id = 'hub-toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.className = (kind === 'err') ? 'err on' : 'on';
+  clearTimeout(_hubToastT);
+  // An error is read, not glanced at, so it stays up longer than a confirmation.
+  _hubToastT = setTimeout(function(){ t.classList.remove('on'); }, kind === 'err' ? 5200 : 3000);
+}
+var _hubDlgCb = null;
+function hubDlgClose(ok){
+  var b = document.getElementById('hub-dlg'); if (!b) return;
+  b.classList.add('hidden');
+  var cb = _hubDlgCb; _hubDlgCb = null;
+  if (cb) cb(!!ok);
+}
+// hubAsk(title, msg, {ok, no, danger}, cb) — cb(true) only when the affirmative was pressed.
+// Escape and the backdrop always resolve false, so a modal is dismissible without a Cancel.
+function hubAsk(title, msg, opts, cb){
+  opts = opts || {};
+  var b = document.getElementById('hub-dlg');
+  if (!b){ if (cb) cb(false); return; }                 // no DOM to ask with: never assume yes
+  document.getElementById('hub-dlg-title').textContent = title || '';
+  document.getElementById('hub-dlg-msg').textContent = msg || '';
+  var no = document.getElementById('hub-dlg-no'), ok = document.getElementById('hub-dlg-ok');
+  no.textContent = opts.no || 'Cancel';
+  no.style.display = opts.only ? 'none' : '';
+  ok.textContent = opts.ok || 'OK';
+  ok.className = 'opts-action-btn' + (opts.danger ? ' danger' : '');
+  _hubDlgCb = cb || null;
+  b.classList.remove('hidden');
+  setTimeout(function(){ try { ok.focus(); } catch(e){} }, 0);
+}
+// A long explanation is not a toast: it has to stay on screen until it has been read.
+function hubNote(title, msg, cb){ hubAsk(title, msg, {ok:'Got it', only:true}, cb); }
 function closeSettings(){ document.getElementById('settings-back').classList.add('hidden'); }
 function toggleOpts(){
   var b=document.getElementById('settings-back');
   if(b.classList.contains('hidden')) openSettings(); else closeSettings();
 }
 document.addEventListener('keydown', function(e){
-  if(e.key==='Escape'){ var b=document.getElementById('settings-back'); if(b && !b.classList.contains('hidden')) closeSettings(); }
+  if(e.key==='Escape'){ var d=document.getElementById('hub-dlg'); if(d && !d.classList.contains('hidden')){ hubDlgClose(false); return; }
+    var b=document.getElementById('settings-back'); if(b && !b.classList.contains('hidden')) closeSettings(); }
 });
 
 // ── Hub Search ────────────────────────────────────────────────────────────

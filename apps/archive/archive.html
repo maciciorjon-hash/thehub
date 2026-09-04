@@ -628,6 +628,24 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     </div>
   </div>
 
+  <!-- ── Ask, and ask for one value. Nothing here opens a browser dialog: inside dHUB a native
+       confirm() is headed "localhost says" and blocks the frame, and on the phone PWA it is
+       the OS asking on behalf of a page that looks broken. ── -->
+  <div class="lp-back" id="arc-ask" onclick="if(event.target===this)arcAskClose(false)">
+    <div class="lp-card" style="max-width:min(420px,94vw)" role="dialog" aria-modal="true">
+      <div class="lp-hd"><span id="arc-ask-title"></span>
+        <button class="lp-x" onclick="arcAskClose(false)">&times;</button></div>
+      <div class="lp-body">
+        <div id="arc-ask-msg" style="font-size:var(--fs-3);line-height:1.55;white-space:pre-wrap;color:var(--text);"></div>
+        <input id="arc-ask-input" class="lp-sel" style="margin-top:12px;display:none" onkeydown="if(event.key==='Enter')arcAskClose(true)">
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;flex-wrap:wrap;">
+          <button class="btn" id="arc-ask-no" onclick="arcAskClose(false)">Cancel</button>
+          <button class="btn" id="arc-ask-ok" onclick="arcAskClose(true)">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── DETAIL: Gibson Assembly ── -->
   <div class="detail-wrap" id="detail-gibson" data-pid="gibson">
     <button class="back-btn" onclick="closeProtocol()">&larr; All protocols</button>
@@ -1976,6 +1994,39 @@ function showToast(msg) {
   setTimeout(function(){ t.remove(); }, 1800);
 }
 
+// ── ASK ──
+// arcAsk(title, msg, opts, cb) → cb(true) only when the affirmative was pressed; Escape and the
+// backdrop always resolve false. arcPrompt adds one input and hands back its text, or null.
+var _arcAskCb = null, _arcAskInput = false;
+function arcAskClose(ok){
+  var b = document.getElementById('arc-ask'); if (!b) return;
+  b.classList.remove('open');
+  var cb = _arcAskCb, inp = document.getElementById('arc-ask-input');
+  _arcAskCb = null;
+  if (!cb) return;
+  if (_arcAskInput) cb(ok ? String(inp.value) : null);
+  else cb(!!ok);
+}
+function arcAsk(title, msg, opts, cb){
+  opts = opts || {};
+  var b = document.getElementById('arc-ask');
+  if (!b){ if (cb) cb(false); return; }          // no DOM to ask with: never assume yes
+  document.getElementById('arc-ask-title').textContent = title || '';
+  document.getElementById('arc-ask-msg').textContent = msg || '';
+  var inp = document.getElementById('arc-ask-input');
+  _arcAskInput = !!opts.input;
+  inp.style.display = _arcAskInput ? '' : 'none';
+  inp.value = opts.value || '';
+  var no = document.getElementById('arc-ask-no'), ok = document.getElementById('arc-ask-ok');
+  no.textContent = opts.no || 'Cancel';
+  no.style.display = opts.only ? 'none' : '';
+  ok.textContent = opts.ok || 'OK';
+  _arcAskCb = cb || null;
+  b.classList.add('open');
+  setTimeout(function(){ try { (_arcAskInput ? inp : ok).focus(); } catch(e){} }, 0);
+}
+function arcPrompt(title, msg, value, cb){ arcAsk(title, msg, {input:true, value:value, ok:'Save'}, cb); }
+
 // ── PROTOCOL REGISTRY (metadata for the home grid; detail markup lives inline above) ──
 var CATEGORIES = [
   {id:'all',        name:'All'},
@@ -2656,7 +2707,7 @@ function pmapRead(id, file){
     rd.onload=function(){
       var buf=rd.result;
       var gb=parseSnapGene(buf);
-      if(!gb){ alert('That .dna file could not be read as a SnapGene map.\n\nIf SnapGene exported it in an older format, File → Export → GenBank (.gb) will work.'); return; }
+      if(!gb){ showToast('That .dna file could not be read as a SnapGene map.\n\nIf SnapGene exported it in an older format, File → Export → GenBank (.gb) will work.'); return; }
       // Keep the original bytes so the file is still downloadable and re-parseable later,
       // and so a future parser improvement is not blocked by having thrown them away.
       var u=new Uint8Array(buf), b='';
@@ -2668,13 +2719,16 @@ function pmapRead(id, file){
   rd.onload=function(){
     var txt=String(rd.result||'');
     var gb=parseGenBank(txt) || _parseFasta(txt);
-    if(!gb){ alert('Could not read that as GenBank or FASTA.'); return; }
+    if(!gb){ showToast('Could not read that as GenBank or FASTA.'); return; }
     store(gb.features.length ? 'genbank' : 'fasta', gb, '');
   };
   rd.readAsText(file);
 }
 function pmapRemove(id){
-  if(!confirm('Remove the map from this plasmid?')) return;
+  arcAsk('Remove the map?', 'The plasmid record stays; only its sequence map goes.',
+    {ok:'Remove map'}, function(yes){ if (yes) _pmapRemoveGo(id); });
+}
+function _pmapRemoveGo(id){
   delete _pmCache[id];
   pmapDel(id).then(function(){
     libSet('plasmids',id,{mapName:'',mapKind:'',mapLen:0,mapImage:'',mapGb:null});
@@ -2724,16 +2778,24 @@ function libAddFromForm(){
   // The generated code has to come *after* the fields, or the empty Code input wipes it —
   // which is how every plasmid added through this form ended up with no code at all.
   if (kind === 'plasmids' && !rec.code) rec.code = nextPlasmidCode();
-  if (kind === 'plasmids' && !rec.name && !rec.insert){ alert('Give it a name or an insert first.'); return; }
-  if (kind === 'antibodies' && !rec.target){ alert('Give it a target first — the name is α- plus that.'); return; }
-  if (kind === 'primers' && !rec.name){ alert('Give it a name first.'); return; }
+  if (kind === 'plasmids' && !rec.name && !rec.insert){ showToast('Give it a name or an insert first.'); return; }
+  if (kind === 'antibodies' && !rec.target){ showToast('Give it a target first — the name is α- plus that.'); return; }
+  if (kind === 'primers' && !rec.name){ showToast('Give it a name first.'); return; }
   // The form validated only that one identifying field was non-empty, so the same antibody
   // could be added five times and nothing said a word.
   var _k = libKey(kind, rec), _all = libAll(kind);
   if (_k){
     var _hit = Object.keys(_all).filter(function(id){ return libKey(kind, _all[id]) === _k; })[0];
-    if (_hit && !confirm('"' + libDisplayName(kind, _all[_hit]) + '" already looks like this one.\n\nAdd it anyway?')) return;
+    if (_hit){
+      arcAsk('That looks like a duplicate',
+        '"' + libDisplayName(kind, _all[_hit]) + '" already looks like this one.',
+        {ok:'Add anyway'}, function(yes){ if (yes) _libAddGo(kind, rec); });
+      return;
+    }
   }
+  _libAddGo(kind, rec);
+}
+function _libAddGo(kind, rec){
   libAdd(kind, rec);
   LIB_FIELDS[kind].forEach(function(f){ var el2=document.getElementById('libf-'+f.f); if(el2) el2.value=''; });
   renderLib(); renderLibKinds();
@@ -2834,7 +2896,7 @@ function libImportPick(){
 
 function libImportPrepare(kind, text){
   var rows = libParseCSV(text);
-  if (rows.length < 2){ alert('That file has no rows under its header.'); return; }
+  if (rows.length < 2){ showToast('That file has no rows under its header.'); return; }
   var fields = LIB_FIELDS[kind] || [];
   // Match columns by label first, then by field name, both case- and space-insensitive, so a
   // sheet exported from here re-imports and a hand-made one has a fair chance too.
@@ -2846,7 +2908,7 @@ function libImportPrepare(kind, text){
   });
   var notesIdx = head.indexOf('notes'), locIdx = head.indexOf('location');
   if (!Object.keys(map).length){
-    alert('None of the columns in that file match this catalogue.\n\nExpected one of: '
+    showToast('None of the columns in that file match this catalogue.\n\nExpected one of: '
       + fields.map(function(f){ return f.lbl; }).join(', '));
     return;
   }
@@ -2935,10 +2997,12 @@ function libRemove(kind, id, name){
   // usedIn is a list of experiments that reference this record. Deleting it leaves those
   // pointing at nothing, which is a worse record than a stale one.
   var _u = ((libAll(kind)[id]||{}).usedIn || []).length;
-  var _msg = 'Delete "' + (name||'this record') + '"? This cannot be undone.'
+  var _msg = 'This cannot be undone.'
     + (_u ? ('\n\nIt is recorded as used in ' + _u + ' experiment' + (_u===1?'':'s') + ', which will be left referring to a record that no longer exists.') : '');
-  if (!confirm(_msg)) return;
-  libDel(kind, id); renderLib(); renderLibKinds();
+  arcAsk('Delete "' + (name||'this record') + '"?', _msg, {ok:'Delete'}, function(yes){
+    if (!yes) return;
+    libDel(kind, id); renderLib(); renderLibKinds();
+  });
 }
 // ── Where a record physically lives ───────────────────────────────────────
 // A catalogue that cannot tell you where the tube is only saves you the walk to the shelf,
@@ -2972,12 +3036,16 @@ function libPickLoc(kind, id){
   var H=_frz();
   if (!H){
     var cur=(libAll(kind)[id]||{});
-    var v=prompt('Where does this live?\n\nThe freezer map lives in the Hub — without it this is\nplain text, and nothing checks it against a real box.', cur.location||'');
-    if (v===null) return;
-    libSet(kind, id, {location:String(v).trim(), loc:null, locText:''}); renderLib(); return;
+    arcPrompt('Where does this live?',
+      'The freezer map lives in the Hub — without it this is plain text, and nothing checks it against a real box.',
+      cur.location||'', function(v){
+        if (v===null) return;
+        libSet(kind, id, {location:String(v).trim(), loc:null, locText:''}); renderLib();
+      });
+    return;
   }
   var boxes=H.HUB_FREEZER_BOXES();
-  if (!boxes.length){ alert('No boxes in the freezer yet.\n\nAdd a rack and a box in Cells → Freezer first, then come back and this will offer them.'); return; }
+  if (!boxes.length){ showToast('No boxes in the freezer yet — add a rack and a box in Cells → Freezer first.'); return; }
   _locPick={kind:kind, id:id, boxes:boxes, boxIdx:0};
   var cur=(libAll(kind)[id]||{}).loc;
   if (cur && cur.boxId){ boxes.forEach(function(b,i){ if(b.boxId===cur.boxId) _locPick.boxIdx=i; }); }
@@ -3012,8 +3080,16 @@ function libRenderLocPick(){
   document.getElementById('lib-loc-modal').classList.add('open');
 }
 function libLocChoose(pos){
+  var P=_locPick, b=P.boxes[P.boxIdx];
+  if (b.vials[pos]){
+    arcAsk('Something is already at ' + pos, 'Replace it with this record?', {ok:'Replace'},
+      function(yes){ if (yes) _libLocChooseGo(pos); });
+    return;
+  }
+  _libLocChooseGo(pos);
+}
+function _libLocChooseGo(pos){
   var P=_locPick, b=P.boxes[P.boxIdx], r=(libAll(P.kind)[P.id]||{});
-  if (b.vials[pos] && !confirm('Something is already at '+pos+'.\n\nReplace it with this record?')) return;
   var loc={storage:b.storage, rackId:b.rackId, boxId:b.boxId, pos:pos};
   libSetLoc(P.kind, P.id, loc, {
     kind: LIB_VIAL_KIND[P.kind] || 'other',
@@ -3028,7 +3104,16 @@ function libLocChoose(pos){
 function libClearLoc(kind, id){
   var r=libAll(kind)[id]||{};
   var H=_frz();
-  if (r.loc && r.loc.boxId && H && confirm('Also empty that position in the freezer map?')) H.HUB_FREEZER_PLACE(r.loc, null);
+  if (r.loc && r.loc.boxId && H){
+    // Two different things: the record forgets where it lived, and the box gives the slot back.
+    // Clearing the record without asking about the slot would leave a vial the map still claims.
+    arcAsk('Clear the location', 'Also empty that position in the freezer map?',
+      {ok:'Empty it too', no:'Leave the map'}, function(yes){
+        if (yes) H.HUB_FREEZER_PLACE(r.loc, null);
+        libSet(kind, id, {loc:null, locText:''}); renderLib();
+      });
+    return;
+  }
   libSet(kind, id, {loc:null, locText:''});
   renderLib();
 }
