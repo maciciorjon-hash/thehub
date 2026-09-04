@@ -58,10 +58,18 @@ jobs:
       - name: Build the Archive PWA
         run: python embed.py --profile=archive dist/archive-14cadcd792a2
 
+      # Same lesson as the Archive PWA above: a profile CI does not build is a profile that
+      # exists only on one laptop, and its installed copies point at a 404 their own service
+      # worker hides until a cache miss. LABBOOK_SLUG must never change either.
+      - name: Build the Labbook bench PWA
+        run: python embed.py --profile=labbook-pwa dist/labbook-6b1d0c4f9a72
+
       - name: Verify the PWA is actually in the artifact
         run: |
-          for f in index.html manifest.webmanifest sw.js icons/icon-192.png; do
-            test -s "dist/archive-14cadcd792a2/$f" || { echo "MISSING dist/archive-14cadcd792a2/$f"; exit 1; }
+          for d in archive-14cadcd792a2 labbook-6b1d0c4f9a72; do
+            for f in index.html manifest.webmanifest sw.js icons/icon-192.png; do
+              test -s "dist/$d/$f" || { echo "MISSING dist/$d/$f"; exit 1; }
+            done
           done
           test -s dist/index.html
           echo "dist contents:"; find dist -type f | sort

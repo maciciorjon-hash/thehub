@@ -5912,7 +5912,84 @@ function projById(id){ return LB.data.projects.filter(function(p){return p.id===
 function projColor(id){ var p=projById(id); return p?(p.color||'#5e87c5'):'#9ca0b8'; }
 
 var _lbFbRef=null;
-function lbFb(){ if(_lbFbRef!==null) return _lbFbRef; try{ if(window.parent && window.parent.firebase){ _lbFbRef=window.parent.firebase.database().ref('journal/labbook'); } else _lbFbRef=undefined; }catch(e){ _lbFbRef=undefined; } return _lbFbRef; }
+// Inside dHUB the shell owns the Firebase app and this borrows it. Standalone there was no
+// second branch at all, so labbook-standalone was an island: everything typed into it stayed in
+// the browser that typed it. That is survivable for a file on a laptop and disqualifying for the
+// installable bench app, where the whole point is that what you tick at the hood is in the
+// notebook when you sit down.
+//
+// So this is the seam, and it is one function: give the standalone build its own Firebase app
+// and every consumer downstream — hasCloud, lbInitSync, _cloudPush, _applyRemote, the status
+// pill, _attUpload — is untouched, including the conflict rule that keeps both copies.
+//
+// LB_FB_CONFIG is injected by embed.py, never written into this file: the source stays free of
+// project credentials, and an app opened on its own with no config simply has no cloud and says
+// so, exactly as before.
+var _lbOwnFb=null;
+function _lbFbSelf(){
+  if(_lbOwnFb!==null) return _lbOwnFb;
+  _lbOwnFb=undefined;
+  try{
+    if(typeof firebase==='undefined' || !firebase || !firebase.initializeApp) return _lbOwnFb;
+    if(typeof LB_FB_CONFIG==='undefined' || !LB_FB_CONFIG) return _lbOwnFb;
+    // Losing sync is survivable; losing the app is not. Nothing below this may throw upward —
+    // the shell learned that when one unguarded initializeApp took the whole hub down.
+    if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(LB_FB_CONFIG);
+    _lbOwnFb=firebase;
+  }catch(e){ _lbOwnFb=undefined; }
+  return _lbOwnFb;
+}
+// Signed out, the rules refuse every read and write on /journal, so there is no cloud target
+// even though the SDK is up. Saying otherwise is the "Saved and synced" lie hasCloud() exists
+// to prevent.
+function lbSignedIn(){
+  try{ var F=_lbFbSelf(); return !!(F && F.auth && F.auth().currentUser); }catch(e){ return false; }
+}
+function lbFb(){
+  if(_lbFbRef!==null) return _lbFbRef;
+  try{
+    if(window.parent && window.parent!==window && window.parent.firebase){
+      _lbFbRef=window.parent.firebase.database().ref('journal/labbook');
+      return _lbFbRef;
+    }
+    var F=_lbFbSelf();
+    _lbFbRef=(F && lbSignedIn()) ? F.database().ref('journal/labbook') : undefined;
+  }catch(e){ _lbFbRef=undefined; }
+  return _lbFbRef;
+}
+// Sign-in exists only in the standalone build; inside dHUB the shell already owns it and this
+// returns the reason rather than a second button that would fight it.
+function lbAuthState(){
+  if(window.parent && window.parent!==window) return {kind:'host', txt:'The Hub signs you in.'};
+  if(location.protocol==='file:') return {kind:'file',
+    txt:'Opened as a local file. file:// is not a domain, so Google sign-in cannot be authorised for it '
+       +'and nothing can reach the cloud — your work stays in this browser. Open the installed app or the web address instead.'};
+  if(!_lbFbSelf()) return {kind:'nosdk',
+    txt:'No connection to the sync service. Everything is saved on this device and will not reach your other machines.'};
+  if(!lbSignedIn()) return {kind:'signedout', txt:'Signed out — saved on this device only.'};
+  var u=null; try{ u=firebase.auth().currentUser; }catch(e){}
+  return {kind:'ok', txt:'Signed in as '+((u&&u.email)||'you')+' — changes sync.'};
+}
+function lbSignIn(){
+  var st=lbAuthState();
+  if(st.kind==='host'||st.kind==='ok') return;
+  if(st.kind!=='signedout'){ lbAlert(st.txt,{title:'Cannot sign in here'}); return; }
+  try{
+    var provider=new firebase.auth.GoogleAuthProvider();
+    firebase.auth().signInWithPopup(provider).then(function(){
+      _lbFbRef=null;                       // the ref was cached as "no cloud"; re-derive it
+      // null, not {}: null means "not yet known" and lbInitSync's first read is what sets it.
+      // {} would claim the cloud is empty and push the whole tree over whatever is really there.
+      _cloudSeen=null; _verSeen=null;
+      lbInitSync(); updateStatus(); renderAll();
+      toast('Signed in — syncing');
+    }).catch(function(err){ lbAlert('Sign-in failed: '+(err&&err.message||'unknown error'),{title:'Sign in'}); });
+  }catch(e){ lbAlert('Sign-in is not available in this build.',{title:'Sign in'}); }
+}
+function lbSignOut(){
+  try{ firebase.auth().signOut().then(function(){ _lbFbRef=null; updateStatus(); toast('Signed out — saved on this device'); }); }catch(e){}
+}
+
 var _syncT=null,_adopting=false,_synced=true;
 // The local write and the cloud write are different promises and must be reported separately.
 // They were not: save()'s .catch() called setSync(true), so a rejected r.set() rendered as
@@ -14103,11 +14180,20 @@ function _settingsBody(){
       +'<div class="st-row"><span class="st-l"><b>Snap pictures to a grid</b><i>A picture you drag lands on a 16px grid instead of wherever the mouse stopped</i></span>'
       +'<button class="rc-btn" onclick="setPictureSnap('+(snap?'false':'true')+');_settingsRender()">'+(snap?'On':'Off')+'</button></div>';
   }
-  var host=hasCloud();
+  var host=hasCloud(), au=lbAuthState();
+  // "Where does this notebook live" is the question this tab exists to answer, and until the
+  // standalone build could sign in there was only one answer to give. Now it is the reason, in
+  // prose, with the one button that changes it — the shape hubSyncEnv() already uses in the
+  // shell, for the same reason: a device that is not syncing has to say why, not just that.
+  var syncRow='<div class="st-row"><span class="st-l"><b>Sync</b><i>'+esc(au.txt)+'</i></span>'
+    + (au.kind==='signedout' ? '<button class="rc-btn" onclick="lbSignIn()">Sign in</button>' : '')
+    + (au.kind==='ok' ? '<button class="rc-btn" onclick="lbSignOut();_settingsRender()">Sign out</button>' : '')
+    + '</div>';
   return '<div class="rc-note"><b>Labbook</b> — the notebook half of dHUB. An experiment is a dated plan that expands into steps, and each step is a thing you can annotate, calculate, lay out on a plate and export.</div>'
+    +syncRow
     +'<div class="st-row"><span class="st-l"><b>Where this notebook lives</b><i>'
       +(host?'This browser, and your Firebase account — every record syncs on its own.'
-            :'This browser only. There is no cloud in this build; use Recover → Backup file to move it.')
+            :'This browser only until you sign in. Recover → Backup file moves it either way.')
       +'</i></span></div>'
     +'<div class="st-row"><span class="st-l"><b>If something goes wrong</b><i>Deleted items are kept 60 days, every record keeps its own version history, and a daily snapshot covers the last week — all in <b>Recover</b>.</i></span>'
     +'<button class="rc-btn" onclick="_lbDlgClose();openRecover()">Open Recover</button></div>';

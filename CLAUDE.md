@@ -3435,9 +3435,68 @@ floor. The step header then needed 366px in a 345px block and pushed the `⋯` *
 screen** — the one control the mobile collapse puts every other verb behind. Confirmed against
 the committed build before touching it.
 
+## Labbook as the bench app (2026-09-04)
+
+`python3 embed.py --profile=labbook-pwa` packages the notebook for a phone the way
+`--profile=archive` packages the protocol library: manifest, icons, a service worker and an
+unguessable slug — **`labbook-6b1d0c4f9a72`, which must never change**, because every installed
+home-screen app is pinned to it. CI builds it, so it cannot repeat the Archive mistake of
+existing only on one laptop behind a 404 its own service worker hides.
+
+**The blocker was not the conflict rule — that was already decided.** `_applyRemote` keeps ours,
+writes theirs into the version history tagged `remote`, and says so in a sticky banner with
+Compare. A change made with no signal reconciles by exactly that rule; inventing a second one
+for the offline case would be two answers to one question.
+
+**The blocker was that `labbook-standalone` had no Firebase at all.** It reads `window.parent`
+for the shell's, and standalone there is no parent — so a PWA built from it would have been an
+island: everything ticked at the hood would stay on the phone. That is worse than no bench app.
+
+**One seam: `lbFb()`.** It takes the parent's Firebase inside dHUB, exactly as before, and
+otherwise initialises its own from `LB_FB_CONFIG`. Every consumer downstream — `hasCloud`,
+`lbInitSync`, `_cloudPush`, `_applyRemote`, the status pill, `_attUpload` — is untouched, so the
+two builds share one sync path, one conflict rule and one honest status pill.
+
+- **`LB_FB_CONFIG` is injected by `embed.py`, never written into `apps/labbook/labbook.html`.**
+  Same rule as the Archive PWA: the source file is not modified for a build. It also keeps the
+  Bucket A promise (no shell globals, no URLs of its own) and the credentials out of the app.
+- **`window.parent !== window` in that check is load-bearing.** In a top-level window
+  `window.parent === window`, so the old condition would now find *its own* `firebase` — the SDK
+  the build just added — and return a ref without ever checking sign-in. That is precisely the
+  "Saved and synced" lie `hasCloud()` exists to prevent.
+- **Signed out there is no cloud target**, because the `/journal` rules refuse every read and
+  write, so `lbFb()` returns nothing and the pill reads *Saved on this device*. `lbAuthState()`
+  names the reason — host · file · no SDK · signed out · signed in — and Settings → About leads
+  with it and the one button that changes it. Inside dHUB it says *"The Hub signs you in."*
+  rather than offering a second button that would fight the shell's.
+
+**The service worker caches the app and never the data.** Archive can cache everything because
+its content *is* the build; this holds a notebook that syncs, so anything reaching the RTDB,
+Firebase Auth or Storage is excluded and fails honestly when there is no signal — a cached
+answer to "what is in my notebook" is the one thing this app must not invent. Two mistakes were
+made writing that list and both are worth remembering: a blanket `googleapis.com` also swallows
+`fonts.googleapis.com`, which is how an offline launch silently loses its typography; and the
+versioned Firebase SDK on gstatic is *static code*, so excluding it stops the app reconnecting
+on a flaky connection. The local copy and IndexedDB are the offline store, exactly as in the Hub.
+
+**Verified in real Chrome, with the server stopped**: the service worker registers and activates,
+all seven shell entries precache, the app opens with the network unreachable, a step typed
+offline persists, and **all 33 Archive protocols with their 24 calculators are there** (Gibson
+still four stages, structured, not scraped). The in-app Browser pane cannot do this test — the
+*committed* Archive PWA fails to register there too, so it is the pane, not the build.
+
+**Not verified, and it needs Jon**: the Google sign-in flow itself. `127.0.0.1` is not an
+authorized domain (only `localhost` and the Pages host are), and signing in needs his
+credentials. What is verified is that the button is there, the state machine reports each case
+correctly, and no ref is handed out until a session exists.
+
+`tools/make_icons.py --app=labbook` renders the icons — Labbook's own notebook glyph on its
+`--brand` blue, so the home-screen icon and the app agree. Archive's PNGs are byte-identical
+after the change.
+
 ## Current state
 
-**v1.13.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-04. (This session: **the prep sheet** — a planned experiment already knew every volume, plate and construct it would consume, and the shell already knew where things are; nothing joined them. `openPrepSheet` answers "what do I need" for a whole experiment or for a day, with the amounts the step calculators already worked out and the location from the Library and the freezer. Plasticware takes the max within an experiment and adds across them, because the plate you seed on is the plate you read. See *What you need before you start*. Before it: **what n = 3 actually means** — `repSiblings` had been recorded since replicates were added and read by nothing but the header chip, so an experiment run three times reported three separate numbers and no result. `repResultStats` averages them, in log space for potencies, with technical replicates collapsed inside each run first, bounded values counted and never averaged, and your exclusions honoured over the fitter's flags. Summary card, PDF, Methods sentence and a CSV. See *What n = 3 actually means*. Before it: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.14.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-04. (This session: **Labbook as the bench app** — a fifth build profile packages the notebook as an installable, offline PWA. The thing that had to be fixed first was that `labbook-standalone` had no Firebase at all, so a phone build would have been an island; `lbFb()` is the one seam and every sync consumer is untouched. Verified in real Chrome with the server stopped: the app opens, writes persist, and all 33 protocols and 24 calculators are there. See *Labbook as the bench app*. Before it: **the prep sheet** — a planned experiment already knew every volume, plate and construct it would consume, and the shell already knew where things are; nothing joined them. `openPrepSheet` answers "what do I need" for a whole experiment or for a day, with the amounts the step calculators already worked out and the location from the Library and the freezer. Plasticware takes the max within an experiment and adds across them, because the plate you seed on is the plate you read. See *What you need before you start*. Before it: **what n = 3 actually means** — `repSiblings` had been recorded since replicates were added and read by nothing but the header chip, so an experiment run three times reported three separate numbers and no result. `repResultStats` averages them, in log space for potencies, with technical replicates collapsed inside each run first, bounded values counted and never averaged, and your exclusions honoured over the fitter's flags. Summary card, PDF, Methods sentence and a CSV. See *What n = 3 actually means*. Before it: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in

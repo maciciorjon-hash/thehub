@@ -5,11 +5,44 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-04 · **v1.13.0** · branch `main`.
+- Date: 2026-09-04 · **v1.14.0** · branch `main`.
 - Jon chose four things for these rounds — (2) replicate means, (3) the prep sheet, (4) Labbook
-  as an installable bench PWA, (5) the Echo audit + Phase 2 consolidation. **(2) and (3) are
-  done. (4) and (5) are still to do, in that order** — and (4) needs its offline-sync semantics
-  agreed before any code.
+  as an installable bench PWA, (5) the Echo audit + Phase 2 consolidation. **(2), (3) and (4)
+  are done. (5) is next.**
+- **Two things need Jon**, both on the bench app: sign in to it once on the Pages URL to confirm
+  the Google flow (it cannot be tested from `127.0.0.1`, which is not an authorized domain), and
+  the CI change that builds the new profile may not have pushed — `.github/workflows/` commits
+  have been refused before. If `dist/labbook-6b1d0c4f9a72/` is missing from the deployed site,
+  that is why.
+
+## What changed in the bench-app pass (2026-09-04)
+
+1. **`--profile=labbook-pwa`** — manifest, icons, service worker, slug
+   **`labbook-6b1d0c4f9a72` (never change it)**. Built by CI beside the Archive PWA.
+2. **`lbFb()` is the one seam**: the parent's Firebase inside dHUB, its own from `LB_FB_CONFIG`
+   otherwise. Every sync consumer untouched — one sync path, one conflict rule, one pill.
+3. **`LB_FB_CONFIG` is injected by `embed.py`**, never written into the source file.
+4. **`lbAuthState()` / `lbSignIn()` / `lbSignOut()`**, surfaced in Settings → About.
+5. **The service worker caches the app and never the data** — RTDB, Auth and Storage excluded.
+6. **`tools/make_icons.py --app=labbook`**; Archive's PNGs are byte-identical after the change.
+
+## Traps added in the bench-app pass
+
+- **`window.parent === window` in a top-level window**, so `window.parent.firebase` finds *your
+  own* SDK. Adding Firebase to the standalone build turned an old "am I hosted?" check into a
+  false yes that would have reported a cloud that refuses every write.
+- **A service worker must never cache the data.** Cache-first is right for a build and wrong for
+  a notebook; and the exclusion list is a place to be precise — `googleapis.com` also matches
+  `fonts.googleapis.com`, and the versioned SDK on gstatic is code, not data.
+- **The in-app Browser pane cannot register a service worker.** The committed Archive PWA fails
+  there identically, so PWA work must be verified in real Chrome. Check the committed build in
+  the same place before believing your own is broken.
+- **`selectNode` takes the node's *kind*.** Archive's is `'archive'`, not `'protocols'`; the
+  wrong string silently does nothing and reads as "the frame never loaded".
+- **A lazily created frame is not a missing one.** Archive's iframe is built on first use by
+  `ensureArchive`, so probing `_arcWin()` before anything asked for it proves nothing.
+
+## What changed in the prep-sheet pass (2026-09-04)
 
 ## What changed in the prep-sheet pass (2026-09-04)
 
@@ -280,7 +313,7 @@ those, **durability**:
 - **Echo loads jsPDF from a CDN** (`cdnjs.cloudflare.com`) and Echo and Dora load **RDKit from
   unpkg**. CLAUDE.md's offline section now names all three; none is fixed, and RDKit is the one
   with no page-level banner in either app that uses it.
-- **Version drift is a recurring failure here.** All three now read `v1.13.0`; check the shell
+- **Version drift is a recurring failure here.** All three now read `v1.14.0`; check the shell
   whenever you bump the docs. It has happened before (v1.3.16 vs v1.4.1). The
   version lives in exactly one place — `shell/hub-shell.html`, the `.opts-version` span — so
   bump it there when you bump it in the docs.

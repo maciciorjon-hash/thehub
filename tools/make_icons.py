@@ -1,15 +1,30 @@
 #!/usr/bin/env python3
-"""Render the Archive PWA icons (rounded square + the header book glyph).
+"""Render the PWA icons for the installable apps (rounded square + that app's own glyph).
 
-Run from anywhere: python3 tools/make_icons.py — writes the PNGs into apps/archive/icons/.
-Only needed if the icon or the accent colour changes; the PNGs are committed.
+    python3 tools/make_icons.py                 # Archive  -> apps/archive/icons/
+    python3 tools/make_icons.py --app=labbook   # Labbook  -> apps/labbook/icons/
+
+Each app's icon is its own header glyph on its own --brand colour, so the home-screen icon and
+the app agree. Only needed if a glyph or an accent changes; the PNGs are committed, because a
+build that generates them would fail on a machine without Pillow.
 Requires Pillow.
 """
-import os
+import os, sys
 from PIL import Image, ImageDraw
 
-ACCENT = (165, 105, 131, 255)          # #a56983
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'apps', 'archive', 'icons')
+APP = 'archive'
+for a in sys.argv[1:]:
+    if a.startswith('--app='):
+        APP = a.split('=', 1)[1]
+if APP not in ('archive', 'labbook'):
+    sys.stderr.write('unknown app %r (archive|labbook)\n' % APP)
+    sys.exit(1)
+
+ACCENTS = {'archive': (165, 105, 131, 255),   # #a56983
+           'labbook': (63, 111, 168, 255)}    # #3f6fa8, Labbook's own --brand
+ACCENT = ACCENTS[APP]
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.path.join(ROOT, 'apps', APP, 'icons')
 
 # The header glyph, 24x24 viewBox, as explicit segments.
 def cub(p0, c1, c2, p1, n=48):
@@ -32,6 +47,15 @@ COVER = (
 )
 SPINE = [(12, 6.2), (12, 18.6)]
 
+# Labbook's own header glyph: a notebook seen closed, with the spine and two ruled lines. The
+# app draws the cover with 2.5-radius arcs; Pillow has no arc-to-path, so the cover is a rounded
+# rectangle at the same radius and the shape is identical at every size these render at.
+NB_BOX = (5.0, 2.0, 19.0, 22.0)
+NB_R = 2.5
+NB_LINES = [[(8.2, 2.6), (8.2, 21.4)],
+            [(11.0, 7.4), (16.4, 7.4)],
+            [(11.0, 11.0), (16.4, 11.0)]]
+
 
 def render(size, glyph_frac=0.56, ss=4):
     """Supersampled so the 1.8px stroke stays smooth at every size."""
@@ -44,12 +68,25 @@ def render(size, glyph_frac=0.56, ss=4):
     off = (S - 24 * scale) / 2.0
     w = max(2, int(round(1.8 * scale)))
     xf = lambda p: (off + p[0] * scale, off + p[1] * scale)
-    d.line([xf(p) for p in COVER], fill=(255, 255, 255, 255), width=w, joint='curve')
-    d.line([xf(p) for p in SPINE], fill=(255, 255, 255, 255), width=w)
-    # round the stroke ends the way the SVG's stroke-linecap:round does
-    for p in (SPINE[0], SPINE[1]):
-        x, y = xf(p)
-        d.ellipse([x - w/2, y - w/2, x + w/2, y + w/2], fill=(255, 255, 255, 255))
+    ink = (255, 255, 255, 255)
+
+    def cap(pts):
+        # round the stroke ends the way the SVG's stroke-linecap:round does
+        for p in pts:
+            x, y = xf(p)
+            d.ellipse([x - w/2, y - w/2, x + w/2, y + w/2], fill=ink)
+
+    if APP == 'labbook':
+        x0, y0 = xf((NB_BOX[0], NB_BOX[1]))
+        x1, y1 = xf((NB_BOX[2], NB_BOX[3]))
+        d.rounded_rectangle([x0, y0, x1, y1], radius=NB_R * scale, outline=ink, width=w)
+        for seg in NB_LINES:
+            d.line([xf(p) for p in seg], fill=ink, width=w)
+            cap(seg)
+    else:
+        d.line([xf(p) for p in COVER], fill=ink, width=w, joint='curve')
+        d.line([xf(p) for p in SPINE], fill=ink, width=w)
+        cap(SPINE)
     return img.resize((size, size), Image.LANCZOS)
 
 
