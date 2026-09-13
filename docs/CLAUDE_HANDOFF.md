@@ -5,7 +5,37 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-13 · **v1.16.0** · branch `main`.
+- Date: 2026-09-13 · **v1.16.1** · branch `main`.
+
+## The phone had no session (2026-09-13, second half)
+
+Jon's iPhone showed no experiments. **Root cause:** the standalone build never listened for
+Firebase's asynchronously-restored session — `lbInitSync()` at boot saw `currentUser === null`,
+cached "no cloud" and settled; the PWA synced only in the session the sign-in button was pressed
+in. `_lbAuthWatch()` (onAuthStateChanged before the first init) fixes it; a pristine device adopts
+the cloud regardless of timestamps; `homeSyncBand()` says on Home which state the device is in.
+
+**Jon's part (once):** dHUB on the laptop → Labbook → Settings → About → **Set a password** (links
+email+password to his Google account; the provider is already enabled — verified). Then on the
+phone: Home → **Email & password**. Google's popup cannot return to an installed iOS app, and the
+redirect flow is documented to break under Safari's partitioning while `authDomain` is
+`firebaseapp.com` on a `github.io` app — hosting the PWA on Firebase Hosting would cure that; not
+done.
+
+Also: swipe between days in the Journal (and the arrows now move from the day shown, not from
+`DAY_VIEW` behind a picked `SEL.page`); hold **+** for a photo into today's note (armed on the hold,
+fired on the release — a file input needs a real gesture on iOS); overdue count as the app badge.
+
+## Traps added
+
+- **`currentUser` is null at boot even when signed in.** Anything that decides "no cloud" before
+  `onAuthStateChanged` has fired is deciding on nothing. Wait for it, and do not settle before it.
+- **A fresh device's seed has the newest `updated`.** Timestamp-based adoption keeps the seed and
+  drops the real projects. "Nothing but seed" adopts unconditionally.
+- **A file input opens only inside a user gesture on iOS.** A long-press timer is not one; arm on
+  the hold, open on the release.
+- **`touch-action:pan-y` on the pane is what makes a horizontal swipe deliverable**; without it the
+  browser takes the gesture as a pan and sends `pointercancel`.
 
 ## What changed in the phone pass (2026-09-13)
 

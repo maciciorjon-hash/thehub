@@ -814,6 +814,7 @@ body.lb-rb-closed .rb-pane{display:none;}
 /* Settings rows and the shortcut legend. Same family as .rc-row so the two dialogs read as one
    thing — they are one door with different tabs behind it. */
 .st-row{display:flex;align-items:center;gap:12px;padding:10px 4px;border-top:1px solid var(--border);}
+.st-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex:0 1 auto;}
 .st-l{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
 .st-l b{font-size:var(--fs-4);font-weight:600;}
 .st-l i{font-size:var(--fs-2);color:var(--text3);font-style:normal;line-height:1.45;}
@@ -1698,6 +1699,14 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 .lh-cb{padding:12px 16px 16px;}
 .lh-empty{font-size:var(--fs-3);color:var(--text3);padding:8px 0;}
 
+/* the sync band: where this notebook is, when that is not "here and in the cloud" */
+.lh-sync{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-3);padding:14px 16px;font-size:var(--fs-4);line-height:1.55;color:var(--text2);}
+.lh-sync b{color:var(--text);}
+.lh-sync.warn{border-color:var(--warn);background:rgba(201,154,78,.10);}
+.lh-sync-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.lh-sync-acts .rc-btn{min-height:36px;}
+.lh-sync-acts .rc-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+.lh-sync-note{margin-top:8px;font-size:var(--fs-2);color:var(--text3);line-height:1.5;}
 /* week strip */
 .lh-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;}
 .lh-day{border:1px solid var(--border);border-radius:var(--r-2);padding:8px 6px;min-height:112px;
@@ -2093,6 +2102,10 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 
   /* ── Surfaces that had no phone rule at all ────────────────────────────────────────────────
      The Journal day, the week planner and Home were laid out for a desktop and squeezed. */
+  /* A sideways swipe on the day is a day (see the swipe handler); the pane keeps vertical panning
+     and pinch-zoom for itself and leaves horizontal to the script. Scrollers inside it — a wide
+     table, the plate — own their own gesture and are not restricted by this. */
+  body:not(.lb-dash) .pane-ed{touch-action:pan-y pinch-zoom;}
   /* Journal header: the navigator was 470px in a 375px pane — Day/Week fell off the edge and
      the pane scrolled sideways. "‹ Fri 11 Sep ›" with the native date input laid transparently
      over the label (a tap still opens the picker), the Day/Week switch on its own row. */
@@ -6321,24 +6334,111 @@ function lbAuthState(){
   var u=null; try{ u=firebase.auth().currentUser; }catch(e){}
   return {kind:'ok', txt:'Signed in as '+((u&&u.email)||'you')+' — changes sync.'};
 }
+// ── The session arrives late, and nothing was waiting for it ─────────────────────────────
+// Firebase restores a signed-in session from IndexedDB *asynchronously*: for the first few
+// hundred milliseconds after load, `currentUser` is null even on a device that signed in
+// yesterday. lbInitSync() ran at boot, asked lbFb(), got "signed out", cached the answer as
+// "no cloud" and settled — and nothing ever asked again. So the installed PWA synced only in the
+// one session the sign-in button was pressed in, and every launch after that showed the
+// device's own copy: seed projects and no experiments, which is exactly what Jon saw on his
+// phone. onAuthStateChanged is the hook: it fires once at start-up with the restored user (or
+// null), and again on every sign-in and sign-out. Nothing settles until it has spoken.
+var _authKnown=false, _syncUid=null;
+function _lbAuthWatch(){
+  var F=_lbFbSelf(); if(!F || !F.auth) { _authKnown=true; return; }
+  try{
+    F.auth().onAuthStateChanged(function(user){
+      var was=_syncUid, uid=user?user.uid:null;
+      var oldRef=_lbFbRef;
+      _authKnown=true; _lbFbRef=null;
+      if(uid!==was){
+        _syncUid=uid;
+        // Leaving one account (or none) for another: the listeners belong to the old ref, and
+        // what we believe the cloud holds is about the old notebook. null, not {}: null means
+        // "not yet known" and lbInitSync's first read is what sets it — {} would claim the cloud
+        // is empty and push the whole tree over whatever is really there.
+        if(_cloudOn && oldRef){ try{ _cloudUnlisten(oldRef); }catch(e){} }
+        _cloudSeen=null; _verSeen=null; _syncTries=0; clearTimeout(_syncRetryT);
+        if(uid && was!==null) toast('Signed in — syncing');
+      }
+      lbInitSync(); updateStatus(); renderAll();
+    });
+    // A redirect sign-in (the standalone iOS app cannot open a popup) completes here on the
+    // way back; the state change above does the work, this only surfaces a failure.
+    F.auth().getRedirectResult().catch(function(err){
+      if(err && err.code && err.code!=='auth/no-auth-event') lbAlert('Sign-in did not complete: '+(err.message||err.code)+'\n\nIf Google sign-in keeps failing on this phone, use Email & password instead — Settings → About.',{title:'Sign in'});
+    });
+  }catch(e){ _authKnown=true; }
+}
+// The installed app is "standalone": there is no browser around it to open a popup in, so the
+// popup flow opens Safari and never comes back. Redirect is the flow for that display mode.
+function _lbStandalone(){ try{ return !!(navigator.standalone || (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)); }catch(e){ return false; } }
 function lbSignIn(){
   var st=lbAuthState();
   if(st.kind==='host'||st.kind==='ok') return;
   if(st.kind!=='signedout'){ lbAlert(st.txt,{title:'Cannot sign in here'}); return; }
   try{
     var provider=new firebase.auth.GoogleAuthProvider();
-    firebase.auth().signInWithPopup(provider).then(function(){
-      _lbFbRef=null;                       // the ref was cached as "no cloud"; re-derive it
-      // null, not {}: null means "not yet known" and lbInitSync's first read is what sets it.
-      // {} would claim the cloud is empty and push the whole tree over whatever is really there.
-      _cloudSeen=null; _verSeen=null;
-      lbInitSync(); updateStatus(); renderAll();
-      toast('Signed in — syncing');
-    }).catch(function(err){ lbAlert('Sign-in failed: '+(err&&err.message||'unknown error'),{title:'Sign in'}); });
+    if(_lbStandalone()){ firebase.auth().signInWithRedirect(provider).catch(function(err){ lbAlert('Sign-in failed: '+(err&&err.message||'unknown error'),{title:'Sign in'}); }); return; }
+    firebase.auth().signInWithPopup(provider).then(function(){ /* onAuthStateChanged takes it from here */ })
+      .catch(function(err){
+        var c=(err&&err.code)||'';
+        // A blocked popup is not a refusal: try the redirect before giving up.
+        if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment'){ firebase.auth().signInWithRedirect(provider).catch(function(e2){ lbAlert('Sign-in failed: '+(e2&&e2.message||c),{title:'Sign in'}); }); return; }
+        if(c==='auth/popup-closed-by-user'||c==='auth/cancelled-popup-request') return;
+        lbAlert('Sign-in failed: '+(err&&err.message||'unknown error'),{title:'Sign in'}); });
   }catch(e){ lbAlert('Sign-in is not available in this build.',{title:'Sign in'}); }
 }
+// Email & password: the one flow that needs no popup, no redirect and no third-party storage —
+// which is what a phone at the bench actually has. It is the same account: the password is
+// linked to the Google account from a signed-in machine (lbSetPhonePassword), so the token
+// carries the same email and the rules are untouched. Needs Email/Password enabled once in
+// the Firebase console (Authentication → Sign-in method); the error names that if it is not.
+function lbSignInEmail(){
+  var st=lbAuthState();
+  if(st.kind!=='signedout'){ if(st.kind!=='ok'&&st.kind!=='host') lbAlert(st.txt,{title:'Cannot sign in here'}); return; }
+  _lbCredDialog('Sign in with email & password', 'Sign in', function(email,pw){
+    firebase.auth().signInWithEmailAndPassword(email,pw).then(function(){ /* onAuthStateChanged syncs */ })
+      .catch(function(err){ var c=(err&&err.code)||'';
+        var msg = c==='auth/operation-not-allowed' ? 'Email & password sign-in is not switched on for this project yet. In the Firebase console: Authentication → Sign-in method → Email/Password → Enable. Then set a password from a signed-in laptop (Settings → About → Set a password for the phone).'
+                : (c==='auth/user-not-found'||c==='auth/invalid-credential'||c==='auth/wrong-password'||c==='auth/invalid-login-credentials') ? 'No password matches that email. Set one first from a machine that is signed in with Google: Settings → About → Set a password for the phone.'
+                : 'Sign-in failed: '+(err&&err.message||c);
+        lbAlert(msg,{title:'Sign in'}); });
+  });
+}
+function _lbAuthObj(){ try{ if(window.parent && window.parent!==window && window.parent.firebase) return window.parent.firebase.auth(); }catch(e){} try{ var F=_lbFbSelf(); return F?F.auth():null; }catch(e2){ return null; } }
+// From a signed-in machine: give the account a password the phone can use. linkWithCredential
+// adds the provider to the same user; if it is already linked, updatePassword changes it.
+function lbSetPhonePassword(){
+  var au=_lbAuthObj(), u=au&&au.currentUser; if(!u){ lbAlert('Sign in with Google first — the password is added to that account.',{title:'Set a password'}); return; }
+  var FB=null; try{ FB=(window.parent&&window.parent!==window&&window.parent.firebase)?window.parent.firebase:_lbFbSelf(); }catch(e){}
+  if(!FB){ lbAlert('No sync service here.',{title:'Set a password'}); return; }
+  _lbCredDialog('Set a password for the phone', 'Set password', function(email,pw){
+    if(pw.length<8){ lbAlert('Eight characters or more.',{title:'Set a password'}); return; }
+    var cred=FB.auth.EmailAuthProvider.credential(u.email,pw);
+    u.linkWithCredential(cred).then(function(){ toast('Password set — sign in on the phone with '+u.email); })
+      .catch(function(err){ var c=(err&&err.code)||'';
+        if(c==='auth/provider-already-linked'){ u.updatePassword(pw).then(function(){ toast('Password updated'); }).catch(function(e2){ lbAlert('Could not update the password: '+(e2&&e2.message||e2.code)+'\n\nSign out and in again first — changing a password needs a recent sign-in.',{title:'Set a password'}); }); return; }
+        if(c==='auth/operation-not-allowed'){ lbAlert('Email & password is not switched on for this project yet. In the Firebase console: Authentication → Sign-in method → Email/Password → Enable, then try again.',{title:'Set a password'}); return; }
+        if(c==='auth/requires-recent-login'){ lbAlert('Sign out and in again first — adding a password needs a recent sign-in.',{title:'Set a password'}); return; }
+        lbAlert('Could not set the password: '+(err&&err.message||c),{title:'Set a password'}); });
+  }, u.email);
+}
+function _lbCredDialog(title,ok,cb,fixedEmail){
+  var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
+  card.innerHTML='<div class="modal-t">'+esc(title)+'</div>'
+    +'<div class="mrow"><label>Email</label><input id="lb-cred-e" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" value="'+esc(fixedEmail||'')+'"'+(fixedEmail?' readonly':'')+'></div>'
+    +'<div class="mrow"><label>Password</label><input id="lb-cred-p" type="password" autocomplete="'+(fixedEmail?'new-password':'current-password')+'"></div>'
+    +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" id="lb-dlg-cancel">Cancel</button><button class="btn" id="lb-dlg-ok">'+esc(ok)+'</button></div>';
+  d.classList.add('open');
+  function done(go){ _lbDlgClose(); if(go) cb((el('lb-cred-e').value||'').trim(), el('lb-cred-p').value||''); }
+  d._onCancel=function(){ done(false); }; el('lb-dlg-cancel').onclick=function(){ done(false); };
+  el('lb-dlg-ok').onclick=function(){ var e=(el('lb-cred-e').value||'').trim(), pw=el('lb-cred-p').value||''; if(!e||!pw) return; done(true); };
+  el('lb-cred-p').onkeydown=function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); el('lb-dlg-ok').click(); } };
+  setTimeout(function(){ (fixedEmail?el('lb-cred-p'):el('lb-cred-e')).focus(); },30);
+}
 function lbSignOut(){
-  try{ firebase.auth().signOut().then(function(){ _lbFbRef=null; updateStatus(); toast('Signed out — saved on this device'); }); }catch(e){}
+  try{ firebase.auth().signOut().then(function(){ toast('Signed out — saved on this device'); }); }catch(e){}
 }
 
 var _syncT=null,_adopting=false,_synced=true;
@@ -6717,11 +6817,22 @@ function _syncRetry(){
 function lbInitSync(){
   // No cloud at all — standalone, signed out, file:// — settles at once. There is no second
   // copy of this notebook on its way, so waiting for one would only delay the safety net.
-  var r=lbFb(); if(!r){ _markBootSettled(); return; }
+  var r=lbFb(); if(!r){
+    // With an SDK present the session may simply not have been restored yet (see _lbAuthWatch);
+    // settling now would let the GC and the daily backup run against a tree the cloud is about
+    // to replace. Without one — file://, no SDK, embedded with no parent auth — settle at once.
+    if(_authKnown || !_lbFbSelf()) _markBootSettled();
+    return; }
   try{ r.once('value').then(function(s){
     var v=s.val();
     var remoteHas = v && ((v.projects||[]).length || Object.keys(v.experiments||{}).length || (v.generalSections||[]).length || Object.keys(v.pages||{}).length || Object.keys(v.notebook||{}).length);
-    if(v && typeof v==='object' && remoteHas && (v.updated||0) > (LB.data.updated||0)){
+    // A device that holds nothing but the seed adopts the cloud whatever the timestamps say.
+    // The seed is stamped at first launch, so a phone opened after the laptop's last save had
+    // the newer `updated` and kept its six empty projects — while the real experiments arrived
+    // one by one through the listeners, filed under project ids this device had never seen.
+    var pristine = !Object.keys(LB.data.experiments||{}).length && !Object.keys(LB.data.pages||{}).length
+                && !Object.keys(LB.data.notebook||{}).length && !Object.keys(LB.data.trash||{}).length;
+    if(v && typeof v==='object' && remoteHas && ((v.updated||0) > (LB.data.updated||0) || pristine)){
       // Adoption replaces the local tree wholesale, so anything done offline since the last
       // successful push is about to be overwritten. Take a snapshot first: it costs nothing
       // and it is the difference between "the cloud won" and "the work is gone".
@@ -6862,7 +6973,12 @@ function renderMobileTabs(){
   if(!on){ if(nav) nav.innerHTML=''; return; }
   if(!nav){ nav=document.createElement('nav'); nav.id='lb-tabs'; nav.setAttribute('aria-label','Labbook'); document.body.appendChild(nav); }
   var cur=_tabFor(SEL.node);
-  nav.innerHTML=LB_TABS.map(function(t){ return '<button class="lbt'+(t.id===cur?' on':'')+(t.id==='add'?' lbt-add':'')+'" data-tab="'+t.id+'" onclick="lbTabGo(event,\''+t.id+'\')" aria-label="'+esc(t.lbl)+'"'+(t.id===cur?' aria-current="page"':'')+'>'+t.ico()+'<span>'+esc(t.lbl)+'</span></button>'; }).join('');
+  nav.innerHTML=LB_TABS.map(function(t){ return '<button class="lbt'+(t.id===cur?' on':'')+(t.id==='add'?' lbt-add':'')+'" data-tab="'+t.id+'" onclick="lbTabGo(event,\''+t.id+'\')"'
+    // A long press on + is the camera. The 480 ms hold arms it (the [oncontextmenu] delegation
+    // fires this from a timer); the RELEASE opens it — a file input opens only inside a real
+    // user gesture on iOS, and a timer is not one.
+    +(t.id==='add'?' oncontextmenu="event.preventDefault();_qcArm()" onpointerup="_qcFire()" title="New experiment · hold for a photo into today\u2019s note"':'')
+    +' aria-label="'+esc(t.lbl)+'"'+(t.id===cur?' aria-current="page"':'')+'>'+t.ico()+'<span>'+esc(t.lbl)+'</span></button>'; }).join('');
 }
 function lbTabGo(ev,id){ var t=LB_TABS.filter(function(x){ return x.id===id; })[0]; if(t) t.go(ev); }
 // "+" from anywhere. createExperiment() needs a folder to file into, and only the expsec
@@ -6875,12 +6991,40 @@ function newExperimentFromAnywhere(){
   if(!items.length){ toast('Make a project first — Experiments › New project'); selectNode('exps'); return; }
   lbPicker('Where does it go?', items, function(it){ var pr=String(it.id).split('/'); selectNode('expsec',pr[0],pr[1]); setTimeout(openNew,60); });
 }
+// Quick capture: hold "+" and the camera opens; the picture lands in today's daily note, with
+// the time it was taken. No experiment to choose, no editor, no caption — the gel is on the
+// bench and the phone is in a gloved hand. It goes through the same storage contract as every
+// image (bytes in IndexedDB via _attPut, a data-att reference in the html), so backups, the GC
+// and the cloud copy all see it.
+var _qcArmedAt=0;
+function _qcArm(){ _qcArmedAt=Date.now(); }
+function _qcFire(){ if(_qcArmedAt && Date.now()-_qcArmedAt<1500){ _qcArmedAt=0; quickCapture(); } }
+function quickCapture(){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.setAttribute('capture','environment');
+  inp.style.cssText='position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';
+  document.body.appendChild(inp);
+  var gone=false; function drop(){ if(gone) return; gone=true; setTimeout(function(){ try{ inp.remove(); }catch(e){} },0); }
+  inp.onchange=function(){ var f=(inp.files||[])[0]; drop(); if(!f){ toast('No picture came back from the camera'); return; }
+    toast('Adding the photo to today…');
+    _compressImage(f).then(function(dataURL){ var id='att'+uid(); return _attPut(id,dataURL).then(function(ok){ if(!ok) return;
+      var D=todayStr(), pg=LB.data.notebook[D]||(LB.data.notebook[D]={date:D,html:''});
+      var when=_clock(Date.now());
+      pg.html=(pg.html||'')+'<p><img class="lb-att" data-att="'+id+'"></p><p><em>'+esc(when)+'</em></p>';
+      LB.data.updated=Date.now(); save(); _attUpload(id,dataURL);
+      if(SEL.node.kind==='journal'){ DAY_VIEW=D; SEL.page=null; renderEditor(); } else selectNode('journal');
+      toast('Photo added to today\u2019s note'); }); }).catch(function(){ toast('Could not add the photo.'); }); };
+  window.addEventListener('focus',function _f(){ window.removeEventListener('focus',_f); setTimeout(drop,1500); });
+  inp.click();
+}
 // Everything the tab bar does not name, as a list with words on it — the same rule as every
 // ⋯ in the app. Search is here because Labbook's own spotlight had no opener a phone can press.
 function lbMoreMenu(ev){
   var dark=document.documentElement.getAttribute('data-theme')==='dark';
   var t=ev&&ev.currentTarget&&ev.currentTarget.getBoundingClientRect?ev.currentTarget.getBoundingClientRect():null;
+  var au=lbAuthState();
   popOpen('ctxmenu',[
+    (au.kind==='signedout'?{label:'Sign in', sub:'this device shows only its own notes until you do', fn:function(){ lbSignIn(); }}:null),
+    (au.kind==='signedout'?{sep:true}:null),
     {label:'Search', sub:'experiments, steps, protocols, wells…', fn:function(){ openSpot(); }},
     {label:'Week planner', fn:function(){ selectNode('week'); }},
     {label:'Notes', sub:'pages that are not experiments', fn:function(){ var sc=(LB.data.generalSections||[])[0]; if(sc) selectNode('general',null,sc.id); else toast('No note sections yet'); }},
@@ -6890,7 +7034,7 @@ function lbMoreMenu(ev){
     {label:'Recover', sub:'deleted items, versions, backups', fn:function(){ openRecover('deleted'); }},
     {label:'Settings', sub:'shortcuts, writing, appearance', fn:function(){ openSettings(); }},
     {label:dark?'Light mode':'Dark mode', fn:function(){ toggleTheme(); }}
-  ], t||{left:innerWidth-64,right:innerWidth-8,top:innerHeight-64,bottom:innerHeight-60});
+  ].filter(Boolean), t||{left:innerWidth-64,right:innerWidth-8,top:innerHeight-64,bottom:innerHeight-60});
 }
 
 // ── Selection ──
@@ -8715,10 +8859,36 @@ var _saveT=null; function queueSave(){ clearTimeout(_saveT); _saveT=setTimeout(s
 // already exists — no schema was added for any of it. A card whose source cannot be read is
 // NOT DRAWN, rather than drawn as a zero.
 // ══════════════════════════════════════════════════════════════════════════
+// What a device that is not syncing has to say, where you will see it. The PWA opened on a
+// phone that had never signed in and showed six seed projects with nothing in them — and the
+// only word about it was a status pill inside a ribbon that Home hides. Four states, one card:
+//   signedout  — this device shows only what was written on it; sign in
+//   nosdk      — the sync service did not load (no signal on first launch): reload when online
+//   fetching   — signed in, first read not back yet
+//   empty      — signed in, cloud answered, and the notebook really is empty
+// Nothing when signed in and synced, and nothing inside dHUB, where the shell says it.
+function homeSyncBand(){
+  var au=lbAuthState(); if(au.kind==='host'||au.kind==='file') return '';
+  var nExp=Object.keys(LB.data.experiments||{}).length;
+  if(au.kind==='nosdk'){
+    if(nExp) return '';
+    return '<div class="lh-sync warn"><b>No connection to the sync service.</b> This device shows only what was written on it. Reload once you have signal to fetch your notebook.'
+      +'<div class="lh-sync-acts"><button class="rc-btn" onclick="location.reload()">Reload</button></div></div>';
+  }
+  if(au.kind==='signedout'){
+    return '<div class="lh-sync warn"><b>Signed out — this device shows only what was written on it.</b> Your experiments live in the notebook your laptop syncs to; sign in with the same Google account to see them here.'
+      +'<div class="lh-sync-acts"><button class="rc-btn primary" onclick="lbSignIn()">Sign in with Google</button><button class="rc-btn" onclick="lbSignInEmail()">Email &amp; password</button></div>'
+      +'<div class="lh-sync-note">On an installed app Google sign-in leaves and comes back; if it does not come back, Email &amp; password is the one that always works — set a password once from the laptop (Settings → About).</div></div>';
+  }
+  if(au.kind==='ok' && _cloudSeen===null) return '<div class="lh-sync"><b>Signed in</b> — fetching your notebook…</div>';
+  if(au.kind==='ok' && !nExp) return '<div class="lh-sync"><b>Signed in, and the notebook is empty.</b> Nothing has been written to this account yet — or the laptop is not signed in with '+esc(au.txt.replace(/^Signed in as /,'').replace(/ — changes sync\.$/,''))+'.</div>';
+  return '';
+}
 function renderHome(host){
   var D=todayStr();
   host.innerHTML =
     '<div class="lh-wrap">'
+      + homeSyncBand()
       + homeTodayBand(D)
       + '<div class="lh-grid">'
         + homeWeekCard(D)
@@ -10619,10 +10789,39 @@ function renderNoteEditor(host,e){ (el('export-btn')||{style:{}}).style.display=
 // One day view. "Today" and any Notebook date are the same screen with a different date —
 // three separate places to look at the same block was the thing that needed cutting.
 var DAY_VIEW=null;
-function dayGo(n){ DAY_VIEW=addDays(DAY_VIEW||todayStr(),n); renderEditor(); }
-function dayToday(){ DAY_VIEW=todayStr(); renderEditor(); }
+// The day on screen is SEL.page when it was picked from the list and DAY_VIEW otherwise; the
+// arrows moved DAY_VIEW and left SEL.page standing, so after picking a day from the drawer they
+// did nothing at all. Move from the day you are looking at, and release the pick.
+function dayGo(n){ var cur=SEL.page||DAY_VIEW||todayStr(); DAY_VIEW=addDays(cur,n); SEL.page=null; renderEditor(); }
+function dayToday(){ DAY_VIEW=todayStr(); SEL.page=null; renderEditor(); }
 // "Fri 11 Sep" — what the phone's navigator says instead of a date input.
 function _dayLbl(D){ try{ var d=new Date(D+'T12:00:00'); return d.toLocaleDateString([], {weekday:'short', day:'numeric', month:'short'}); }catch(e){ return fmtDate(D); } }
+// ── Swipe between days ─────────────────────────────────────────────────────────────────────
+// A horizontal swipe on the Journal's day is the previous or the next day — the gesture every
+// calendar on the phone already answers to. Touch only, on the pane, and only where the finger
+// is not on something that owns horizontal movement itself (a table that scrolls sideways, the
+// plate, an input, the ribbon strip). The phone block gives .pane-ed `touch-action:pan-y`, or
+// the browser would take the gesture as a pan and never deliver the pointerup.
+(function(){
+  var on=false, sx=0, sy=0, t0=0, pid=null;
+  var SKIP='[contenteditable],input,textarea,select,button,a,.pl-grid,.pp-grid-wrap,.cc-tblwrap,.res-scroll,.rb-pane,.wk-grid,.pp-sum,.rt pre';
+  function ed(){ return el('pane-ed'); }
+  document.addEventListener('pointerdown',function(e){
+    if(e.pointerType!=='touch' || !(SEL.node&&SEL.node.kind==='journal')) return;
+    var host=ed(); if(!host || !host.contains(e.target)) return;
+    if(e.target.closest && e.target.closest(SKIP)) return;
+    on=true; sx=e.clientX; sy=e.clientY; t0=Date.now(); pid=e.pointerId;
+  },{passive:true});
+  document.addEventListener('pointerup',function(e){
+    if(!on || e.pointerId!==pid) return; on=false;
+    var dx=e.clientX-sx, dy=e.clientY-sy, dt=Date.now()-t0;
+    if(dt>700 || Math.abs(dx)<70 || Math.abs(dy)>Math.abs(dx)*0.6) return;
+    try{ if(String(window.getSelection&&window.getSelection()||'')) return; }catch(_e){}   // a text selection, not a swipe
+    if(document.querySelector('.modal-back.open,.pop.open')) return;
+    dayGo(dx<0?1:-1);
+  },{passive:true});
+  document.addEventListener('pointercancel',function(){ on=false; },{passive:true});
+})();
 // The day header's ⋯ — on a phone the header hides every action but one, and "Delete day" was
 // reachable only from the drawer's list.
 function dayActsMenu(ev,D){
@@ -10636,7 +10835,7 @@ function dayActsMenu(ev,D){
     {label:'Delete day', sub:'the daily note and its tasks — the experiments stay', danger:true, fn:function(){ delDay(D); }}
   ].filter(Boolean), ev.currentTarget.getBoundingClientRect());
 }
-function daySet(v){ if(v){ DAY_VIEW=v; renderEditor(); } }
+function daySet(v){ if(v){ DAY_VIEW=v; SEL.page=null; renderEditor(); } }
 // ── Carried over is a decision list, not a work surface ───────────────────────────────────
 // A carried-over step is one you are *not* doing today. What you do with it is decide: tick it,
 // move it here, snooze it, or dismiss it — and if you decide to do it, "Move to this day" puts
@@ -14843,9 +15042,13 @@ function _settingsBody(){
   // prose, with the one button that changes it — the shape hubSyncEnv() already uses in the
   // shell, for the same reason: a device that is not syncing has to say why, not just that.
   var syncRow='<div class="st-row"><span class="st-l"><b>Sync</b><i>'+esc(au.txt)+'</i></span>'
-    + (au.kind==='signedout' ? '<button class="rc-btn" onclick="lbSignIn()">Sign in</button>' : '')
+    + (au.kind==='signedout' ? '<span class="st-acts"><button class="rc-btn" onclick="lbSignIn()">Sign in with Google</button><button class="rc-btn" onclick="lbSignInEmail()">Email &amp; password</button></span>' : '')
     + (au.kind==='ok' ? '<button class="rc-btn" onclick="lbSignOut();_settingsRender()">Sign out</button>' : '')
-    + '</div>';
+    + '</div>'
+    // The phone cannot always finish a Google sign-in (an installed app has no browser to come
+    // back to). A password on the same account is the route that always works, and it is set
+    // from a machine that IS signed in — this one.
+    + ((au.kind==='ok'||au.kind==='host') ? '<div class="st-row"><span class="st-l"><b>A password for the phone</b><i>Adds email &amp; password sign-in to this same Google account, for the installed app on the phone, where Google\u2019s sign-in window cannot come back. Set it here, type it once there.</i></span><button class="rc-btn" onclick="lbSetPhonePassword()">Set a password</button></div>' : '');
   return '<div class="rc-note"><b>Labbook</b> — the notebook half of dHUB. An experiment is a dated plan that expands into steps, and each step is a thing you can annotate, calculate, lay out on a plate and export.</div>'
     +syncRow
     +'<div class="st-row"><span class="st-l"><b>Where this notebook lives</b><i>'
@@ -14883,7 +15086,19 @@ function updateNet(){ updateStatus(); }
 window.addEventListener('online',updateNet); window.addEventListener('offline',updateNet);
 
 // ── Init ──
-function renderAll(){ renderPages(); renderEditor(); }   // renderPages() calls renderSections()
+function renderAll(){ renderPages(); renderEditor(); _badgeSoon(); }
+// The installed app's icon carries the number of overdue steps — the same count the experiment
+// header wears. setAppBadge exists on the home-screen app (iOS 16.4+, Android) and nowhere else,
+// so this is a no-op everywhere it cannot show; it is debounced because renderAll runs on every
+// tick, and a badge is a summary, not a keystroke.
+var _badgeT=null;
+function _badgeSoon(){ if(!navigator.setAppBadge) return; clearTimeout(_badgeT); _badgeT=setTimeout(_updateBadge,600); }
+function _updateBadge(){
+  try{
+    var n=0; Object.keys(LB.data.experiments||{}).forEach(function(k){ var o=expOverdue(LB.data.experiments[k]); if(o) n+=o.n; });
+    if(n>0) navigator.setAppBadge(n).catch(function(){}); else if(navigator.clearAppBadge) navigator.clearAppBadge().catch(function(){});
+  }catch(e){}
+}   // renderPages() calls renderSections()
 var _seedChanged=maybeSeed();
 var _semanticTitlesChanged=migrateSemanticExperimentTitles();
 if(_seedChanged||_semanticTitlesChanged) save();
@@ -14895,6 +15110,7 @@ _leanInit(); applyLayout(); renderPanels(); renderAll(); _timersLoad();
 if(_localReadFailed) setTimeout(function(){ try{ lbAlert(
   'This browser’s saved copy of your notebook could not be read at startup, so what is on screen may be incomplete.\n\nNothing has been deleted: the daily backup and the attachment cleanup are both held off while this is true. If you are signed in, the cloud copy should load in a few seconds and replace this. If it does not, restore from a backup (View → Recover) before making changes — saving now would push this partial copy.',
   {title:'Saved copy could not be read',danger:true,ok:'I understand'}); }catch(e){} }, 800);
+_lbAuthWatch();
 lbInitSync();
 // Both of these can destroy something — the backup by writing a snapshot or a file over a good
 // one, the GC by marking every attachment on the machine — and both used to run against
