@@ -5,7 +5,52 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-04 · **v1.15.1** · branch `main`.
+- Date: 2026-09-13 · **v1.16.0** · branch `main`.
+
+## What changed in the phone pass (2026-09-13)
+
+Labbook on an emulated iPhone went from **691 findings to 0** (`tools/mobile_sweep.mjs`, Chromium
+and WebKit, source and standalone, top-level and inside an iframe). Read *Labbook on a phone,
+second pass* in `CLAUDE.md` and *The phone* in `docs/UI.md`; the short version:
+
+1. **The PWA has its own bottom bar** (`#lb-tabs`, `renderMobileTabs`, only when `!lbHost()` at
+   phone width). Its Home had no navigation at all. `+` files a new experiment from anywhere;
+   `More` holds Search, Week planner, Notes, prep sheet, Export, Recover, Settings, Dark mode.
+2. **Every menu and dialog is a bottom sheet** at phone width, through `popOpen` (`.pop-sheet`) and
+   one `.modal` rule naming every variant. The plate editor is full-screen and fits the plate.
+3. **The Bench tab** (`EXP_TAB==='bench'`, `benchBodyHtml`, `benchRowHtml` shared with the Journal)
+   is the phone's default view of an experiment: the steps as they are run.
+4. **One phone block + one touch block** at the end of `labbook.html`'s CSS; the 720/640/560 rules
+   are nested inside it. Proven pixel-identical by `tools/snap_compare.mjs` before any new rule.
+5. Perf on the phone path: hidden panes are not rebuilt, glass is off per step card, attachments
+   load lazily, the search patches its list, the photo editor caches its rotation. Under 4×
+   throttling: open experiment 73 → 18 ms, tick 44 → 14, keystroke 45 → 12, plate 70 → 38.
+
+## Traps added in the phone pass
+
+- **A bottom sheet is never under the finger.** The long press's release synthesises a
+  `mousedown` where the finger is — outside the sheet — and the document closer shuts it. Skip the
+  closer inside the click-swallow's 700 ms window.
+- **Never `body:has(...)`.** Measured: every `innerHTML` replacement 6× slower. Watch the elements
+  with a `MutationObserver` and toggle a body class.
+- **Time layout, not just JS.** A render that flushes layout itself and one that leaves it dirty
+  cost the same frame; a harness that times only JS praised the wrong build. Force the read inside
+  the timed region.
+- **Widening a narrower breakpoint changes the tablet.** Nest 720/640/560 inside the phone block;
+  never merge them into it.
+- **Selects on WebKit ignore `min-height`.** A 16px select is 25px beside a 32px input — set
+  `height`.
+- **`display:contents` is how you add a wrapper without moving a pixel** (`.xv-list`).
+- **A `blk:` file key stores where nothing shows it.** The Files tab renders `e.files` only.
+- **The in-app Browser pane cannot advance a transition while hidden**; add `html.theme-swap` and
+  `*{animation:none}` before a screenshot, or measure with the sweep instead.
+
+## Still needs Jon (phone)
+
+- Open the PWA on the iPhone after the Pages rebuild (reopen once for the SW update toast): the
+  bar on Home; an experiment lands on the bench; a long press → the sheet stays; a step's camera →
+  the photo and back on the bench; the plate map full-screen; `‹ day ›` in the Journal; no zoom on
+  focusing a field; a running timer as a bar above the tabs.
 
 ## What changed in the bug hunt (2026-09-04)
 

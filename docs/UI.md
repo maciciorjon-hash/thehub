@@ -143,13 +143,15 @@ dragged to.
 
 ## The audits
 
-Three scripts, and each answers a question the other two cannot.
+Five scripts, and each answers a question the others cannot.
 
 | | what it can see |
 |---|---|
 | `tools/audit_app.py --xref` | dead CSS classes, unreachable functions, orphaned data tables |
 | `tools/audit_align.js` | whether the controls on one row actually line up, and wrapped rows |
 | `tools/audit_runtime.js` | what only a loaded page knows — see below |
+| `tools/mobile_sweep.mjs` | Labbook on an emulated iPhone: 51 screens, both engines, with the three above — see *The phone* |
+| `tools/snap_compare.mjs` | whether a CSS change changed any pixel, at any width, on any screen |
 
 **`tools/audit_runtime.js`** loads an app in an iframe and reports: an inline handler naming a
 function that no longer exists (nothing throws until somebody clicks, so neither a grep nor a
@@ -254,6 +256,93 @@ their warm glyphs on purpose.
 - Breakpoints: **1100** (three columns → two), **900** (two → one, cards go full width), **760**
   (the shell's rail becomes a bottom bar; touch targets ≥44px), **640** (phone padding).
 - Nothing scrolls the page horizontally. Ever. Wide things scroll inside their own container.
+
+---
+
+## The phone
+
+Everything that decides how an app lays itself out under 760px lives in **one `@media
+(max-width:760px)` block at the end of the last stylesheet**, with a `@media (hover:none)` block
+beside it for what a device with no hover needs at any width. Last on purpose: a `@media` rule
+earlier in the sheet loses to a plain rule further down at the same specificity, and that is how a
+phone rule was silently overruled twice in Labbook. Narrower thresholds (720 / 640 / 560) are
+**nested** inside the phone block, never widened to 760 — widening them re-lays-out tablet windows
+between 561 and 760px that nobody asked about. A move like this is proven with
+`tools/snap_compare.mjs` (identical pixels at 375 / 600 / 700 / 760 / 1024 / 1440) before a single
+new rule is written.
+
+**The type scale moves one step up on a phone** (`--fs-1` 11 · `--fs-2` 12 · `--fs-3` 13 · `--fs-4`
+14 · `--fs-5` 16; the two largest stay). 10px labels and 13px prose are a desktop read; a phone is
+held at arm's length under a hood. This is separate from the 16px rule for form controls, which is
+about iOS zoom, not legibility.
+
+**Navigation is a bottom bar the app owns when nothing else does.** Inside dHUB the shell's
+`#ws-tabs` is the bar; a standalone build on a phone draws its own (`_phoneTabs() = !lbHost() &&
+_rbNarrow()` in Labbook), and every fixed element at the foot of the screen — FAB, timers, toast,
+drawers — adds the bar's height from one token (`--lb-tabbar-h`) plus `env(safe-area-inset-bottom)`
+so nothing is drawn under it. The bar is exactly the token tall; its buttons fill it. Content wraps
+end above the bar (padding on the wrap, not on the scroll container).
+
+**Every menu is a bottom sheet; every dialog is a bottom sheet.** A 250px popover of 12px rows
+anchored to a fingertip clips its tenth item behind a scrollbar; a sheet is the same list at 16px
+in ≥44px rows, pinned to the foot of the screen above the bar, scrolling inside itself when it must.
+A dialog is full width from the bottom with its title and its footer sticky (negative margins over
+the padding, a solid background), **every variant named** in the rule — `.modal.wide` is (0,2,0)
+and a bare `.modal{max-width:none}` loses to it whatever the order. Four things a sheet meets that a
+popover never did:
+
+- **The long press's release closes it.** A popover opens under the finger, so the release's
+  synthesised `mousedown` lands inside it (hence the arming delay); a sheet is never under the
+  finger. The document closer must skip inside the same 700 ms window the click-swallow uses.
+- **The backdrop is a sibling, never a `::before`.** The sheet carries `backdrop-filter`, which
+  makes it the containing block for a fixed child — the `#pl-band` trap. And the backdrop's own
+  `click` still arrives after the closer has acted on `mousedown`, so the handler ignores a click
+  within 400 ms of a menu closing, or it shuts the drawer the menu was opened from.
+- **Inline `left/top` from a previous popover placement beat the stylesheet's `left:0;right:0`.**
+  Clear them when switching an element to sheet mode.
+- **`@starting-style` flips.** The popover's from-state is `translateY(-4px)`; the sheet's is
+  `translateY(100%)`, and the rule has to outrank `.pop.open{transform:none}`.
+
+**A row you tap is 44px, and it is whole.** `.pop-item`, `.dlg-item`, `.dlg-ans`, tabs. A row
+scrolled out of view inside its own sheet is reachable; a row the sheet shows but the screen cuts
+off is the finding. Selects on WebKit draw 25px tall at 16px and ignore `min-height`: give a row's
+controls `height` outright.
+
+**Never `body:has(...)`.** It is the obvious way to say "a dialog is open" and it made every
+`innerHTML` replacement in Labbook **6× slower** — a `:has()` on body makes the engine re-check the
+whole subtree on every mutation. Watch the eight elements for a class change with a
+`MutationObserver` and toggle a body class.
+
+**A touch drag needs a direction lock.** A `touchstart` that arms a drag on any chip cancels every
+scroll that begins on one, and on a phone a planner *is* chips. On the first move, `|dy|>|dx|` is
+the scroll it always was; only a sideways move becomes a drag. Not long-press-armed where the chips
+already carry `oncontextmenu` — the press is their menu.
+
+**Glass costs a compositor layer per element.** A blurred `.blk` per step is forty layers under a
+finger. Under `(hover:none)` the repeated surfaces go solid and keep their tint; one blur each on
+the ribbon, the sheet and the dialog is fine. The fixed gradients behind everything are off too.
+
+**Nothing hidden is rebuilt.** A list inside a closed drawer, panels inside a closed dock: skip the
+build and mark it stale; the thing that opens the drawer builds it. And a render that flushes layout
+itself costs the same frame as one that leaves it dirty — a perf harness that times only JS has to
+force the read inside the timed region, or it praises the wrong build.
+
+**Dense grids get staggered headers.** Column labels wider than the column ("12.3 nM" over a 21px
+well) overlap however small the font; under a 30px pitch each header spans two columns and the
+headers alternate between two rows, evens up aligned left, odds down aligned right, with the space
+before the unit dropped. Same rule in every renderer of the same grid, or they disagree.
+
+**The sweep.** `node tools/mobile_sweep.mjs` (with `python3 -m http.server 8899` running) emulates
+an iPhone — touch, DPR 3, mobile UA — plants a deterministic notebook, drives every screen at two
+sizes in both themes and asserts: no sideways scroll, no two fixed elements overlapping, every
+tappable row ≥44px and inside the viewport, no visible text under 11px outside the plate grids,
+`__runtimeAudit`/`__alignAudit`/`__fitAudit` empty, no console error, a long press that opens a menu
+still open 800 ms later, a tap on an item firing exactly once; then a perf table under 4× CPU
+throttling against a saved baseline (`--baseline`). `--engine=webkit` is Safari's engine;
+`--embedded` is Labbook inside an iframe as dHUB hosts it; `--url` takes the built standalone;
+`--only=` a subset; `--perf-only --reps=7` the numbers alone. The in-app Browser pane still cannot
+register a service worker and cannot advance a transition while hidden; the sweep does not have
+either problem.
 
 ---
 

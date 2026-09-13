@@ -147,6 +147,7 @@ The_Hub/
 ├── tools/                      ← not part of the build
 │   ├── check_shared.py         sync_fit_engine.py
 │   ├── migrate_protocols.py    make_icons.py
+│   ├── mobile_sweep.mjs        snap_compare.mjs        mobile_embed.html   (Playwright; see UI.md)
 ├── docs/
 │   ├── CLAUDE_HANDOFF.md       SESSION_HISTORY.md       UI.md
 │   └── PROTOCOL_MIGRATION_REVIEW.md
@@ -3676,9 +3677,140 @@ Cancel, Escape and the backdrop each resolving false; prompt mode returning its 
 cancel; `only` hiding the Cancel; the shell's dialog in dark mode at phone width; and a toast in
 each of the six apps that gained one.
 
+## Labbook on a phone, second pass (2026-09-13)
+
+Jon uses Labbook on his phone as the **installed PWA** — no dHUB around it — mostly at the bench:
+follow the day's steps, tick them, run the wait, photograph the gel, and look things up. His brief
+was *"nada se debe superponer, texto legible, navegación muy fluida, submenús completos"*, and a
+real-life test at the end. Measured at 375px before anything was touched, the phone build was a
+desktop laid out narrower, and one thing about it was structural.
+
+**The PWA's Home was a room with no doors.** `body.lb-on-home`/`body.lb-dash` hide the ribbon, the
+dock *and* the drawer button (the drawer would list nothing there), and the three surface leaves
+lived in the tree inside that drawer. Inside dHUB the shell's `#ws-tabs` is the navigation;
+standalone there was none. **`#lb-tabs` is Labbook's own bottom bar** — Home · Experiments ·
+Journal · **+** · More — drawn by `renderMobileTabs()` from `renderPages()` on one predicate,
+`_phoneTabs() = !lbHost() && _rbNarrow()`, so embedded Labbook never carries `body.lb-tabs` and is
+untouched. **+** is `newExperimentFromAnywhere()` (a folder picker first, since `createExperiment`
+needs one); **More** is a sheet with Search — Labbook's own spotlight had no opener a phone can
+press — Week planner, Notes, the prep sheet for today, Export, Recover, Settings, Dark mode. The
+drawer is one column (the tree on top as "where am I", the list below) instead of two 160px panes
+that truncated every project to "Degrade…"; the standalone header is hidden under the bar and the
+drawer carries the name; `--lb-tabbar-h` / `--lb-safe-b` / `--lb-timers-h` are the **bottom
+stack** every fixed element adds to, and the timers are a bar docked on the tab bar rather than
+246px cards at bottom-right. `viewport-fit=cover` is on the meta so the home-bar inset exists.
+
+**Every menu is a sheet, and every dialog.** `popOpen` is the one seam every menu goes through
+(`ctxAt` ×11, `plateMenu`, `openAddMenu`, `expTabMenu`, `expActsMenu`, `wkCtxBlock`); at phone
+width it adds `pop-sheet`, clears the inline `left/top` a popover leaves behind (or the
+stylesheet's `left:0;right:0` loses to them) and lets CSS pin it to the foot of the screen with
+46px rows — `ctxBlock`'s tenth item, "Delete block", used to be clipped behind a 300px scrollbar.
+`.modal` under 640 is a bottom sheet with a sticky title and footer, **every variant named**
+(`.modal.wide`, `.pick`, `.prep`, `.plate-modal` are (0,2,0) and a bare `.modal{max-width:none}`
+loses to them whatever the order), and the plate editor is the whole screen. Two things a sheet
+meets that a popover never did: **the long press's release closes it** — a popover opens under the
+finger, so the synthesised mousedown lands inside; a sheet is never under the finger, so it landed
+outside and the document closer shut the menu before anyone saw it (the closer now skips inside
+the same 700 ms window the click-swallow uses); and **the backdrop cannot be a `::before`** on the
+sheet, because `.pop` carries `backdrop-filter`, which makes it the containing block for fixed
+children (the `#pl-band` trap) — `#mobile-backdrop` is reused, with `_backdropTap()` ignoring the
+click WebKit still delivers after the closer has acted.
+
+**The bench tab.** What you do on a phone with an experiment is follow it, and the Dated sections
+tab is the *plan*: a header the size of the screen, editable dates and titles, calculator inputs.
+`EXP_TAB==='bench'` is the same blocks as they are run — grouped by day with the day's clock
+(`dayPlanLine`), one row per step with a 26px tick, the name, the wait chip and its timer, a
+camera and a ⋯, the recipe as computed, the plate, the text; past days that are finished start
+folded (`BENCH_FOLD`, session-only like `DAY_FOLD`), today is open and scrolled to once per open.
+`benchRowHtml(exp,b,opts)` is **one row builder shared with the Journal** — `dayDueBlocksHtml` is
+a call to it — so the two surfaces cannot disagree about what a step looks like. On a phone it is
+the default (`_defaultExpTab()`, in both `openExp` and `selectPage`, the two places an experiment
+is opened); on a desktop it is a sixth tab and `dated` stays the default. Three gates had to admit
+it: the `EXP_TAB` whitelist, the hand-written desktop strip, and `TABDEF`. Rows carry
+`id="blk-<id>"` and the recipe `id="ccr-<id>"`, so `scrollBlk`/`openBlk` and `refreshCalcRecipes`
+work there unchanged. **A step's photo is filed under the experiment, not the block**: `addFileTo`
+accepts a `blk:` key and pushes to `b.files`, but the Files tab renders `e.files` only — a block
+photo would have been stored where nothing shows it. The caption is prefilled with the step's name
+and `phSave` stays on the bench instead of jumping to Files.
+
+**The overlaps, each one rule.** The Journal navigator was 470px in a 375px pane (Day/Week fell
+off the edge and the pane scrolled sideways): it is `‹ Sun 13 Sep ›` with the native date input
+laid transparently over the label, and the Day/Week switch on its own row; the day header gained a
+⋯ (`dayActsMenu`) because "Delete day" was hidden on phones with no route to it. The step header's
+date input — 150px at the 16px iOS rule — squeezed the title to 55px; it is a label with the input
+over it (`.blk-datewrap`). **Plate column headers overlapped** — "12.3 nM4.12 nM1.37 nM" — in the
+preview *and* the editor, and on the desktop too: under a 30px pitch (40px in the editor) each
+header spans two columns and they alternate between two rows, evens up aligned left and odds down
+aligned right, with the space before the unit dropped (`_plHdrCell`, `_plHdrCompact`). The editor
+**fits the plate to the box** (`_plFitWpx`: a 96 at 24px, a 384 at 11px — floors a finger can still
+hit) instead of scrolling a 458px grid inside 291px; its panel is reordered on the phone (the
+conditions you paint with straight under the grid, the fields for the selection, then the layout
+summary, format and title last — `.pl-left{display:contents}` lets the sections be ordered) and its
+six-button footer is Done, Undo and a ⋯. Home's week strip is one row of seven with a dot per
+experiment — the pill's `border-left` *is* the dot. The type scale moves one step up under 760
+(`--fs-1` 11 … `--fs-5` 16): 10px labels and 13px prose are a desktop read.
+
+**Performance was three things that were not slow but were wasted.** `renderPages()` rebuilt the
+journal day list — one `blocksForDate` per notebook day and a regex strip of every day's html — on
+each `renderAll()` into a drawer that was closed; the list is `_renderPagesList()`, skipped while
+the drawer is closed and built by `toggleMobileNav(true)` (not by `renderPages`, which resets the
+ribbon's chosen pane). `renderDockPanels()` rebuilt three panels into an off-screen dock after
+every editor render; it returns early while the dock floats closed. And **glass costs a
+compositor layer per element**, and `.blk` is one per step: under `(hover:none)` `.blk`, `.exh`,
+`#rightdock` and `.modal-back` go solid and the two fixed radial gradients behind everything are
+off. Attachments load as they near the viewport (`hydrateAtt(root,{lazy:true})`, the seven
+on-screen sites; the print and copy stages are off-screen, never intersect, await the Promise, and
+keep the eager default), re-armed over the whole pane on each call because an observer keeps hold
+of every target it was given. The Experiments search patches `.xv-list` after 120 ms instead of
+re-rendering the surface per keystroke; `_phRotated` caches the rotated photo per angle (it was
+re-rasterised on every pointermove of a crop); the tooltip ignores the `mouseover` a tap
+synthesises; and the week planner's touch drag has a **direction lock** — a scroll that starts on
+a chip scrolls, a sideways move drags — where it used to cancel every scroll that began on one.
+Measured under 4× CPU throttling: open experiment 73 → 18 ms, tick a step 44 → 14, keystroke
+45 → 12, plate editor 70 → 38, drawer 32 → 19.
+
+**Two things found by measuring, not by reading.** A `body:has(.modal-back.open)` rule — the
+obvious way to hide the FAB under a dialog — made **every `innerHTML` replacement in the app 6×
+slower**: a `:has()` on body makes the engine re-check the whole subtree on every mutation. Eight
+elements are watched for a class change instead (`body.lb-modal-open`). And a perf harness that
+times only JS lies about layout: a render that flushes layout itself and one that leaves it dirty
+cost the user the same frame, so the forced read is inside the timed region.
+
+### The sweep is a script now: `tools/mobile_sweep.mjs`
+
+Playwright (already a devDependency; WebKit installed too) emulates an iPhone — touch, DPR 3,
+mobile UA — plants a deterministic notebook (8 experiments over 6 presets, two in the past, ticks,
+a wait), drives **51 screens** (every surface, every tab, the plate editor, every dialog and every
+⋯) at two sizes in both themes, and asserts what the eye would catch: nothing scrolls sideways, no
+two fixed elements overlap, every row you tap is ≥44px and inside the viewport (a row scrolled out
+of view inside its own sheet is reachable and does not count), no visible text under 11px outside
+the plate grids, the three in-page audits empty, no console error — plus **a long press opens a
+menu that is still open 800 ms later**, and **a tap on a menu item fires exactly once**. Then a perf
+table under 4× throttling against a saved baseline. `--engine=webkit` runs the same sweep on
+Safari's engine; `--embedded` loads Labbook inside an iframe (`tools/mobile_embed.html`) the way
+dHUB hosts it; `--only=`, `--perf-only --reps=`, `--url=` for the built standalone. Baseline before
+this pass: **691 findings** (78 clipped menu rows, 84 clipped placeholders, 5 sideways scrolls, 512
+of 10px text, the long press closing its own menu). After: **0**, on Chromium and WebKit, source
+and standalone, top-level and embedded. `tools/snap_compare.mjs` proved the breakpoint merge
+pixel-identical at six widths before a single new rule was written, and shows the desktop changed
+in exactly two places: the Bench tab in the strip, and the plate headers that overlapped there too.
+
+**One phone block, one touch block, at the end of the file.** Eleven `@media` blocks decided the
+phone from eleven places; the five 760 blocks were moved verbatim into one (they did not collide —
+the move is proven pixel-identical), and the 720/640/560 rules are **nested** inside it rather than
+widened: widening them would have re-laid-out tablet windows between 561 and 760px that nobody
+asked about. The duplicated viewport copy of the step header's collapse went; the `@container`
+rule on `.blk` is the one copy.
+
+**Not done, and deliberately**: the three full-tree `JSON.stringify` per save and the 83 KB of
+presets inside every save — per-record local persistence is a separate change; swipe between
+days; the `black-translucent` iOS status bar. **Needs Jon**: the PWA on his iPhone after the push
+(Home → the bar; an experiment → the bench; a long press → the sheet stays; a step's camera →
+back on the bench; the plate map full-screen; no zoom on focusing a field).
+
 ## Current state
 
-**v1.15.1**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-04. (This session: **the last of the browser dialogs** — 76 native `alert`/`confirm`/`prompt` calls across the shell and eleven apps became toasts, notes and in-app questions, so nothing in the Hub opens a dialog headed "localhost says" any more. Each `confirm` split its function into a question and a `_…Go` that does the work, with the callback as the only path to the write. `--danger` turned out never to have been defined in the shell, so *Reset app data* had been drawing its destructive colour from nothing. See *"localhost says"*. Before it: **the rail redrawn** — Journal was a calendar, Data Analysis a squiggle, Cells noise, More apps a wrench, and the antibody/primer/plasmid trio read as a node graph, a sort control and a loading spinner. Each was diagnosed on a contact sheet at the size the rail actually uses. See *The rail, redrawn*. Before it: **a hunt for the known failure families** — Beacon's plate reader turned out to be the third copy of the parser Blueprint and Labbook already had fixed, with the same four silent defects plus one of its own (an unread well became 0, and zero is a real number in a BRET ratio); Echo had a sixth `.pinfo` tooltip the earlier sweep missed; and eight popovers across five apps clamped themselves by a number written in the source rather than by measuring. See *The third copy of the same parser*. Before it: **Echo audited** — three silent defects between a picklist and a published potency. A failed transfer was read as delivered; a well dosed by several transfers became several identical points, weighted that many times in the fit; and nothing flagged an EC50 that landed on its bound, which fits its own half at R²=0.997 and reaches the paper as a measured number. The 4PL engine itself checks out exactly. Phase 2 is deliberately still to do. See *Echo, audited*. Before it: **Labbook as the bench app** — a fifth build profile packages the notebook as an installable, offline PWA. The thing that had to be fixed first was that `labbook-standalone` had no Firebase at all, so a phone build would have been an island; `lbFb()` is the one seam and every sync consumer is untouched. Verified in real Chrome with the server stopped: the app opens, writes persist, and all 33 protocols and 24 calculators are there. See *Labbook as the bench app*. Before it: **the prep sheet** — a planned experiment already knew every volume, plate and construct it would consume, and the shell already knew where things are; nothing joined them. `openPrepSheet` answers "what do I need" for a whole experiment or for a day, with the amounts the step calculators already worked out and the location from the Library and the freezer. Plasticware takes the max within an experiment and adds across them, because the plate you seed on is the plate you read. See *What you need before you start*. Before it: **what n = 3 actually means** — `repSiblings` had been recorded since replicates were added and read by nothing but the header chip, so an experiment run three times reported three separate numbers and no result. `repResultStats` averages them, in log space for potencies, with technical replicates collapsed inside each run first, bounded values counted and never averaged, and your exclusions honoured over the fitter's flags. Summary card, PDF, Methods sentence and a CSV. See *What n = 3 actually means*. Before it: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
+**v1.16.0**, 19 apps in the personal build / 11 in the product build, last worked 2026-09-13. (This session: **Labbook on a phone, second pass** — the PWA got its own bottom bar (its Home had no doors), every menu and dialog became a bottom sheet through the one `popOpen`/`.modal` seam, a **Bench tab** shows an experiment as it is run and is the phone's default, fifteen measured overlaps were fixed one rule each (the Journal navigator, plate headers that overlapped on the desktop too, the step header, the drawer), glass and hidden-pane rebuilds came off the phone's render path, and `tools/mobile_sweep.mjs` — Playwright on an emulated iPhone, Chromium and WebKit — drives 51 screens and went from 691 findings to 0. Two things only measuring found: `body:has()` made every innerHTML replacement 6× slower, and a long press's release closes a bottom sheet. See *Labbook on a phone, second pass*. Before it: **the last of the browser dialogs** — 76 native `alert`/`confirm`/`prompt` calls across the shell and eleven apps became toasts, notes and in-app questions, so nothing in the Hub opens a dialog headed "localhost says" any more. Each `confirm` split its function into a question and a `_…Go` that does the work, with the callback as the only path to the write. `--danger` turned out never to have been defined in the shell, so *Reset app data* had been drawing its destructive colour from nothing. See *"localhost says"*. Before it: **the rail redrawn** — Journal was a calendar, Data Analysis a squiggle, Cells noise, More apps a wrench, and the antibody/primer/plasmid trio read as a node graph, a sort control and a loading spinner. Each was diagnosed on a contact sheet at the size the rail actually uses. See *The rail, redrawn*. Before it: **a hunt for the known failure families** — Beacon's plate reader turned out to be the third copy of the parser Blueprint and Labbook already had fixed, with the same four silent defects plus one of its own (an unread well became 0, and zero is a real number in a BRET ratio); Echo had a sixth `.pinfo` tooltip the earlier sweep missed; and eight popovers across five apps clamped themselves by a number written in the source rather than by measuring. See *The third copy of the same parser*. Before it: **Echo audited** — three silent defects between a picklist and a published potency. A failed transfer was read as delivered; a well dosed by several transfers became several identical points, weighted that many times in the fit; and nothing flagged an EC50 that landed on its bound, which fits its own half at R²=0.997 and reaches the paper as a measured number. The 4PL engine itself checks out exactly. Phase 2 is deliberately still to do. See *Echo, audited*. Before it: **Labbook as the bench app** — a fifth build profile packages the notebook as an installable, offline PWA. The thing that had to be fixed first was that `labbook-standalone` had no Firebase at all, so a phone build would have been an island; `lbFb()` is the one seam and every sync consumer is untouched. Verified in real Chrome with the server stopped: the app opens, writes persist, and all 33 protocols and 24 calculators are there. See *Labbook as the bench app*. Before it: **the prep sheet** — a planned experiment already knew every volume, plate and construct it would consume, and the shell already knew where things are; nothing joined them. `openPrepSheet` answers "what do I need" for a whole experiment or for a day, with the amounts the step calculators already worked out and the location from the Library and the freezer. Plasticware takes the max within an experiment and adds across them, because the plate you seed on is the plate you read. See *What you need before you start*. Before it: **what n = 3 actually means** — `repSiblings` had been recorded since replicates were added and read by nothing but the header chip, so an experiment run three times reported three separate numbers and no result. `repResultStats` averages them, in log space for potencies, with technical replicates collapsed inside each run first, bounded values counted and never averaged, and your exclusions honoured over the fitter's flags. Summary card, PDF, Methods sentence and a CSV. See *What n = 3 actually means*. Before it: **the slip dialog and the stuck tooltip** — one screenshot from Jon, two bugs and a design error. A tooltip dismissed only by `mouseout` is dismissed by the one event that cannot fire when the trigger is re-rendered away, which is exactly what ticking a step does; the same shape was in five more apps' `.pinfo` tooltips, four of them clamping against a guessed 270 px. And a question whose answers are all actions is not a confirm — `lbChoose` gives the slip three real answers and no Cancel, one of which records that the step was done on the day it was planned for. See *A tooltip leaves, and a question with two answers has no Cancel*. Before it: **the icon set**, audited as a contact sheet at both sizes — two pairs were the same drawing (Incubator/Cell Archive, and Cells/Home), three were drawn too small to read (Protein Tools' bonds were 0.4 px long), and three said nothing at all; see *Fourteen icons, and the two that were the same drawing*. Before it: **Blueprint, audited end to end** at Jon's request — code, geometry and behaviour. Most of it was already right; what was not was worth the pass. The plate-reader import corrupted data **four** ways in six lines, all silently — an empty well vanished and shifted the row, a European decimal read as 0, `trim()` ate the first cell of a plate whose A1 was empty, and an empty first cell was taken for a header — plus a fifth found while fixing them. **All five were in Labbook too**, because `plParseValues` is a line-for-line port of `pdParseValues`, and there they land on a structured plate map that feeds Cmd+K, the Methods paragraph and every export. Then two popups that came out off the screen (the Gel one at `left:-188px` on a phone), three overlapping small-screen blocks in which thirteen selectors collided and file position decided the layout — that is how a 40px tap target got cancelled by a 36 written forty lines lower — and an undo that merged two deliberate actions into one step. Before it: **durability** (a recycle bin that syncs, version history, conflicts that keep both copies, the attachment backfill, and a GC that no longer hard-deletes on a derivation that can be wrong), **aim and outcome** on an experiment, timers that survive a reload, 23 declared keyboard shortcuts with a legend rendered from the same table, and four curated presets. See *A port carries the bugs too* and *As safe as OneNote* above.) Start with the compact [Claude handoff note](docs/CLAUDE_HANDOFF.md) for the current checkpoint, then use the full changelog/session history: [`docs/SESSION_HISTORY.md`](docs/SESSION_HISTORY.md) (not auto-loaded — open it directly for past-change detail; nothing was deleted, only moved there).
 
 ### Open items / not yet done
 - ~~**Firebase Storage not enabled in the console.**~~ **Done 2026-08-27** — bucket created in

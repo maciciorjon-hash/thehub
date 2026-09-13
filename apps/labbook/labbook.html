@@ -2,11 +2,15 @@
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
 <title>Labbook</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--fs-1:10px;--fs-2:11px;--fs-3:12px;--fs-4:13px;--fs-5:15px;--fs-6:17px;--fs-7:20px;--fs-8:26px;--fs-9:38px;--r-1:4px;--r-2:6px;--r-3:9px;--r-4:13px;--r-full:999px;}
+:root{--fs-1:10px;--fs-2:11px;--fs-3:12px;--fs-4:13px;--fs-5:15px;--fs-6:17px;--fs-7:20px;--fs-8:26px;--fs-9:38px;--r-1:4px;--r-2:6px;--r-3:9px;--r-4:13px;--r-full:999px;
+  /* The phone's bottom stack. --lb-tabbar-h is 0 until body.lb-tabs (the PWA's own bar, phone
+     width, no host frame) sets it; every fixed element that sits at the bottom adds it, so
+     embedded Labbook — where the shell's bar is outside the frame — is untouched. */
+  --lb-tabbar-h:0px;--lb-safe-b:env(safe-area-inset-bottom,0px);--lb-timers-h:0px;}
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -72,7 +76,6 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .logo svg{width:17px;height:17px;}
 .app-name{font-size:var(--fs-5);font-weight:600;letter-spacing:-0.2px;}
 .app-sub{font-size:var(--fs-2);color:var(--text2);}
-@media(max-width:760px){.app-sub{display:none;}}
 
 .backup-note{font-size:var(--fs-2);color:var(--text3);cursor:pointer;padding:3px 8px;border-radius:var(--r-full);white-space:nowrap;}
 .backup-note:hover{color:var(--text2);background:var(--surface2);}
@@ -327,15 +330,22 @@ body.lb-rb-closed .rb-pane{display:none;}
    The row carries nine controls — 430px of them before the gaps — and the block is only as
    wide as the editor pane leaves it: 617px on a 1440px screen with the panes open, which is
    not enough for the buttons AND a readable step name. A viewport media query cannot see
-   that; a container query can, and it is the same collapse the phone layout already does.
-   A browser without container queries keeps today's behaviour plus the @media rule below, so
-   this is additive. */
+   that; a container query can, and it is the same collapse the phone layout needs — so this
+   is the ONE copy of it. The phone block used to repeat these two declarations under
+   max-width:760px; a block is never wider than 660px there, so the copy was the same rule
+   written twice, and it went (2026-09-13). Every browser this app supports has container
+   queries. */
 .blk{container-type:inline-size;}
 @container (max-width:660px){
   .blk-hd .blk-wait,.blk-hd .blk-snooze,.blk-hd .blk-calcbtn,.blk-hd .blk-del{display:none;}
   .blk-hd .blk-more{display:inline-flex;}
 }
 .blk-hd .blk-date{flex:0 0 auto;}
+/* On a phone the date is a short label ("Sat 12 Sep") with the native date input laid over it,
+   transparent, so a tap still opens the picker; a 150px form control (the 16px iOS rule pins
+   it there) left the step's name 55px. Desktop keeps the input and never sees the label. */
+.blk-datewrap{position:relative;display:inline-flex;align-items:center;flex:0 0 auto;}
+.blk-datelbl{display:none;}
 .day-group{margin-bottom:16px;}
 .day-group-hd{display:flex;align-items:center;gap:9px;margin:2px 0 8px;padding:0 2px;}
 .day-group-hd::after{content:"";flex:1;height:1px;background:var(--border);order:9;}
@@ -602,13 +612,6 @@ body.lb-rb-closed .rb-pane{display:none;}
 .nbt-add{padding:3px 9px 4px;}
 .nbt-add input{width:100%;border:none;background:none;color:var(--text);font-family:var(--sans);font-size:var(--fs-3);padding:3px 0;}
 .nbt-add input:focus{outline:none;}
-@media (hover:none){
-  /* The 16px rule that stops iOS zooming applies to what you type, not to the hint: a
-     placeholder is a label, and at 16px the useful ones ("New project…", "Compound 1") are cut
-     off in exactly the narrow fields that need them. */
-  input::placeholder,textarea::placeholder{font-size:13px;}
-}
-@media (hover:none){ .nbt .wk-del{opacity:.55;} }
 /* The section label carries the fold-all control, so it is a row. It does not wrap — two
    items, and the label ellipses — or the button would keep its auto margin on a second line. */
 .day-from-lbl{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;font-size:var(--fs-1);font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin:0 4px 8px;}
@@ -736,10 +739,6 @@ body.lb-rb-closed .rb-pane{display:none;}
 .prep-w.no{color:var(--danger);}
 .prep-nt{color:var(--text3);}
 .prep-empty{padding:18px 4px;font-size:var(--fs-3);color:var(--text3);line-height:1.6;}
-@media(max-width:640px){
-  .prep-row{flex-wrap:wrap;row-gap:2px;}
-  .prep-w{flex:1 1 100%;text-align:left;}
-}
 /* An answer is not a list row. .dlg-item ellipses its subtitle because a picker's subtitle is
    a hint; an answer's subtitle is what the button does to the record, so it stacks and wraps. */
 .dlg-answers{display:flex;flex-direction:column;gap:8px;margin-top:16px;}
@@ -830,13 +829,6 @@ body.lb-rb-closed .rb-pane{display:none;}
 .rc-link{background:none;border:none;padding:0;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;}
 .lb-remote-b{background:var(--accent);border:none;color:#fff;border-radius:var(--r-1);padding:2px 9px;
   margin-left:8px;font-family:var(--sans);font-size:var(--fs-2);font-weight:700;cursor:pointer;}
-@media (max-width:560px){
-  .rc-row{flex-wrap:wrap;row-gap:8px;}
-  .rc-l{flex:1 1 100%;order:2;min-width:0;}
-  .rc-row .ic{order:1;}
-  .rc-btn{order:3;}
-  .rc-l b{white-space:normal;}
-}
 .dlg-empty{padding:20px;text-align:center;color:var(--text3);font-size:var(--fs-3);}
 /* Preset editor redesign */
 .ps-blk{border:1px solid var(--border2);border-radius:var(--r-2);margin-bottom:11px;background:var(--surface);overflow:hidden;}
@@ -876,6 +868,7 @@ body.lb-rb-closed .rb-pane{display:none;}
 .dlg-item .ic.ic-svg svg{width:100%;height:100%;display:block;stroke-width:2.2;}
 .pop-item .ic.ic-svg svg{width:100%;height:100%;display:block;stroke-width:2.2;}
 .pop-item .ic{width:18px;height:18px;border-radius:var(--r-1);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:var(--fs-2);color:#fff;font-weight:700;}
+.pop-item .pop-l{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pop-item .sub{font-size:var(--fs-1);color:var(--text3);margin-left:auto;font-family:var(--sans);}
 .pop-sep{height:1px;background:var(--border);margin:4px 0;}
 
@@ -920,68 +913,6 @@ body.lb-rb-closed .rb-pane{display:none;}
 #print-root{display:none;color:#111;background:#fff;font-family:'IBM Plex Sans',sans-serif;}
 
 /* ── Mobile ─────────────────────────────────────────────────────────────── */
-/* Touch devices: anything revealed only on hover is unreachable, and hover transforms stick. */
-@media (hover:none){
-  .page-del{opacity:.55!important;}
-  .wk-task .wk-del{opacity:.7!important;}
-  .sec-item .del{opacity:.7!important;}
-  .card:hover{transform:none!important;}
-}
-@media(max-width:760px){
-  header{padding:0 12px;min-height:44px;}
-  /* Docked into the ribbon's tab row, not floating over the document: as a FAB it sat on the
-     bottom-left of every screen for ever, covering whatever was under it — on an experiment,
-     its own tab strip. It stays OUTSIDE <header> (see the comment on the element): dHUB hides
-     the app's header when embedded, and display:none on the parent takes the button with it. */
-  #mobile-nav-btn{display:flex;position:fixed;left:6px;top:5px;bottom:auto;width:34px;height:34px;
-    border-radius:var(--r-2);box-shadow:none;background:var(--surface2);z-index:48;}
-  .rb-tabbar{padding-left:44px;}
-  #ribbon{padding:4px 8px;gap:3px;}
-  /* (The closed state is now global — see .rb-pane below.) */
-  /* Inside an experiment the tab strip IS the navigation, so it stays put while you scroll a
-     long protocol, and clears the floating pane button rather than sitting under it. */
-  /* Five tabs never fit 390px. Rather than a strip that scrolls — which still hides where you
-     can go behind a gesture nobody is told about — the phone gets the tab it is on and a menu
-     of the rest. Same for a card's actions: seven small buttons made for a mouse become one ⋯
-     and a list with words on it. */
-    .cc-hd{flex-wrap:wrap;row-gap:5px;}
-  /* Once the header wraps, the .grow spacer can be the first thing on the second row and
-     grows there — 228px of hole under a left-aligned first row. Same idiom, same bug, as
-     Blueprint's toolbar and Ribbon's top bar. */
-  .cc-hd .grow{display:none;}
-  .cc-hd .cc-tag{flex:1 1 100%;}
-  /* The ribbon's status text is the first thing to go: it is a reassurance, not a control. */
-  .rb-tabbar .backup-note{display:none;}
-  .rb-tabbar #lb-status-txt{display:none;}
-  /* Closed by default on mobile (it used to always cover ~80% of the screen with no way to dismiss it) — slide-in overlay via body.mobile-dock-open, same toggle button as desktop. */
-  #rightdock{position:fixed;right:0;top:0;bottom:0;z-index:46;width:82%;max-width:300px;box-shadow:var(--shadow-lg);transform:translateX(101%);transition:transform .22s var(--ease);}
-  body.mobile-dock-open #rightdock{transform:translateX(0);}
-  /* Tree + page-list collapse into one slide-out drawer; editor becomes the full-width primary view. */
-  .mobile-drawer{display:flex!important;position:fixed;left:0;top:0;bottom:0;z-index:45;width:86%;max-width:320px;background:var(--surface);box-shadow:var(--shadow-lg);transform:translateX(-101%);transition:transform .22s var(--ease);}
-  body.mobile-drawer-open .mobile-drawer{transform:translateX(0);}
-  body.mobile-drawer-open #mobile-backdrop,body.mobile-dock-open #mobile-backdrop{display:block;position:fixed;inset:0;z-index:44;background:rgba(0,0,0,.35);}
-  .pane-sec,.pane-pages{width:auto!important;flex:1 1 0;min-width:0;}
-  /* A pane collapsed on desktop persists in lb_layout. Without this it stays a 34px sliver
-     inside the drawer forever, because .pane.collapsed is more specific than .pane-sec. */
-  .pane.collapsed{width:auto!important;flex:1 1 0!important;}
-  .pane.collapsed .pane-inner{display:flex!important;}
-  .pane.collapsed .rail{display:none!important;}
-  .splitter{display:none;}
-  .pane-ed{width:100%;flex:1;}
-  /* Same trap for the right dock: applyLayout() sets display:none, which beats the slide-in
-     transform, so Outline/Tags/Info become permanently unreachable on a phone. */
-  #rightdock.hidden{display:block!important;}
-  /* The Insert ribbon wraps to ~4 rows and eats the editor — scroll it instead. */
-  .rb-labelled{flex-wrap:nowrap!important;}
-  .rb-tabbar{overflow-x:auto;}
-  .ed-wrap{padding:16px 14px 80px;}
-  .tb{width:32px;height:32px;}
-  /* An <input> cannot wrap, so a long title is simply cut at the edge with no sign that there
-     is more of it. At --fs-6 a real experiment title fits 390px, and the full text is on the
-     field itself for the ones that still do not. */
-  .exh-title{font-size:var(--fs-6);}
-  .status-pill #lb-status-txt{display:none;}
-}
 /* ── Week planner ── */
 .wk-wrap{display:flex;flex-direction:column;height:100%;min-height:0;}
 .wk-top{display:flex;align-items:center;gap:12px;padding:14px 20px 10px;flex-wrap:wrap;}
@@ -1027,7 +958,6 @@ body.lb-rb-closed .rb-pane{display:none;}
 .wk-od-t{font-size:var(--fs-1);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--accent);margin-bottom:8px;}
 .wk-od-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;}
 .wk-hint{font-size:var(--fs-1);color:var(--text3);margin-top:10px;text-align:center;}
-@media (hover:none){ .wk-sn{opacity:.7;} }
 .wk-blk:hover{background:var(--surface3);}
 /* The experiment code is the identifier — let it wrap rather than truncate in a narrow column. */
 .wk-blk .wk-code{font-weight:700;color:var(--text);display:block;font-size:var(--fs-1);overflow-wrap:anywhere;}
@@ -1085,6 +1015,11 @@ body.lb-rb-closed .rb-pane{display:none;}
 .pp-empty{padding:10px 12px;font-size:var(--fs-3);color:var(--text3);}
 .pp-note{font-size:var(--fs-2);color:var(--text2);margin:2px 0 8px;line-height:1.45;}
 .pp-cl{font-size:var(--fs-1);font-weight:700;color:var(--text3);text-align:center;overflow:hidden;white-space:nowrap;}
+/* Staggered headers (a dense plate): each spans two columns and sits against its own column's
+   edge — evens on the upper row aligned left, odds on the lower row aligned right. */
+.pp-cl.l,.pl-cl.l{text-align:left;padding-left:1px;}
+.pp-cl.r,.pl-cl.r{text-align:right;padding-right:1px;}
+.pl-foot-more{display:none;}
 .pp-gl{display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2;box-shadow:inset 0 0 0 1px rgba(0,0,0,.28);border-radius:var(--r-1);}
 .pp-gl span{font-size:var(--fs-1);font-weight:700;color:#1a1d2e;background:rgba(255,255,255,.72);border-radius:var(--r-1);padding:0 4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pp-grid.txt{gap:2px;}
@@ -1159,7 +1094,7 @@ body.lb-rb-closed .rb-pane{display:none;}
 .exh-role{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-2);color:var(--text2);
   background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-3);padding:2px 4px 2px 9px;}
 .exh-role .rl{width:20px;height:20px;border-radius:var(--r-1);border:1px solid var(--border2);background:var(--surface);
-  color:var(--text3);font:700 10px/1 var(--sans);cursor:pointer;}
+  color:var(--text3);font:700 var(--fs-1)/1 var(--sans);cursor:pointer;}
 .exh-role .rl.on.d{background:#5e87c5;border-color:#5e87c5;color:#fff;}
 .exh-role .rl.on.a{background:#c47818;border-color:#c47818;color:#fff;}
 /* Numbered conditions: a vertical list, because the names are long and near-identical and a
@@ -1218,7 +1153,6 @@ body.lb-rb-closed .rb-pane{display:none;}
 .fx-acts{display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex:none;}
 .fx-inc{display:flex;align-items:center;gap:5px;font-size:var(--fs-1);color:var(--text2);cursor:pointer;white-space:nowrap;}
 .fx-inc input{width:14px;height:14px;accent-color:#5e87c5;cursor:pointer;}
-@media(max-width:640px){ .fx-row{flex-wrap:wrap;} .fx-acts{flex-direction:row;width:100%;justify-content:flex-end;} }
 /* Experiment header — setup summary chips */
 .exh-setup{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
 .exh-setup-i{font-size:var(--fs-2);color:var(--text2);background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-3);padding:3px 10px;}
@@ -1302,7 +1236,6 @@ body.lb-lean .blk-calc.open .cc-inputs{display:grid;}
   width:52px;height:52px;border-radius:var(--r-full);border:none;background:var(--accent);color:#fff;
   box-shadow:var(--shadow-md);cursor:pointer;align-items:center;justify-content:center;}
 #lb-photo-fab svg{width:24px;height:24px;}
-@media (hover:none){ body.lb-onexp #lb-photo-fab{display:flex;} }
 body.lb-lean .dev-pane .dev-list{display:none;}
 body.lb-lean .dev-pane.open .dev-list{display:block;}
 .dev-hd .grow{flex:1;}
@@ -1431,13 +1364,6 @@ body.lb-lean .exh.open .exh-lean{display:none;}
 /* On a phone the five columns of a deviation do not fit on one line, and squeezing them turns
    a plasmid name into four lines of two characters. Stack them: what changed, then the change,
    with Accept where a thumb is. */
-@media (max-width:720px){
-  .dev-row{flex-wrap:wrap;row-gap:3px;}
-  .dev-step{flex:1 1 100%;min-width:0;}
-  .dev-lbl{flex:1 1 100%;color:var(--text);}
-  .dev-from,.dev-to{white-space:normal;word-break:break-word;}
-  .dev-row .dev-ok{margin-left:auto;}
-}
 /* ── Biological replicates ────────────────────────────────────────────────────────────── */
 .rep-stats .res-hd{background:var(--accent-soft);}
 .rep-wait{margin-bottom:12px;padding:9px 12px;border:1px dashed var(--border2);border-radius:var(--r-2);
@@ -1486,8 +1412,44 @@ body.lb-lean .exh.open .exh-lean{display:none;}
 .tmr-sub{display:block;font-size:var(--fs-1);color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .tmr-x{position:relative;background:none;border:none;color:var(--text3);font-size:var(--fs-6);cursor:pointer;line-height:1;}
 .tmr-x:hover{color:var(--danger);}
+
+/* ── The Bench tab ── the experiment as it is run (see benchBodyHtml) */
+.bench-top{display:flex;align-items:center;gap:10px;margin:0 0 10px;font-size:var(--fs-3);color:var(--text2);}
+.bench-prog b{font-size:var(--fs-6);color:var(--text);font-weight:700;margin-right:1px;}
+.bench-group{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-3);margin-bottom:10px;overflow:hidden;}
+.bench-group.today{border-color:var(--accent-soft);box-shadow:0 0 0 2px var(--accent-dim);}
+.bench-day{display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--surface2);cursor:pointer;user-select:none;flex-wrap:wrap;row-gap:4px;}
+.bench-day .dfx-fold{flex:none;}
+.bench-day .dg-date{font-size:var(--fs-4);font-weight:600;color:var(--text);}
+.bench-n{margin-left:auto;font-family:var(--mono);font-size:var(--fs-2);color:var(--text3);font-variant-numeric:tabular-nums;}
+.bench-n.all{color:var(--good);}
+.bench-day .dg-plan{flex:1 1 100%;margin:0;}
+.bench-day.folded{border-bottom:none;}
+.bench-body{padding:0 0 8px;}
+.bench-row{border-top:1px solid var(--border);padding-bottom:6px;}
+.bench-row:first-child{border-top:none;}
+.bench-row.is-done{opacity:.72;}
+.bench-row .dfx-blk-hd{padding:10px 12px 0;}
+.bench-row .dfx-blk-t{font-size:var(--fs-4);color:var(--text);white-space:normal;}
+.bench-row .dfx-blk-hd .blk-done{width:26px;height:26px;font-size:var(--fs-4);}
+.bench-row .dfx-recipe,.bench-row .dfx-plate{margin-left:12px;margin-right:12px;}
+.bench-row .rt.dfx-blk{border-top:none;padding:6px 12px 0;}
+.bench-row .pblk{margin:6px 12px 0;}
+.bench-hd .bench-photo,.bench-hd .bench-more{margin-left:0;padding:0;width:34px;height:34px;justify-content:center;background:none;}
+.bench-hd .bench-photo svg,.bench-hd .bench-more svg{width:18px;height:18px;}
+.bench-hd .blk-wait{margin-left:auto;}
+.bench-hd .blk-wait+.bench-photo,.bench-hd .blk-wait.timer+.bench-photo{margin-left:0;}
+/* Tick and name on one line; the wait, the camera and the ⋯ on the next, right-aligned, all one height. */
+.bench-acts{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:4px 12px 0;}
+.bench-acts .blk-wait,.bench-acts .bench-photo,.bench-acts .bench-more{min-height:34px;height:34px;margin:0;}
+.bench-acts .blk-wait{padding:0 10px;}
+/* On the bench the header is the record's, folded: the setup chips and the fields are the plan */
+body.lb-bench .exh-setup,body.lb-bench .exh-fields,body.lb-bench .exh-aim:empty{display:none;}
+body.lb-bench #lb-photo-fab{display:none!important;}
 /* ── Day view: date nav, live cultures, running experiments ───────────────────────────── */
 .day-nav{display:flex;align-items:center;gap:5px;margin-left:14px;}
+.day-lblwrap{position:relative;display:inline-flex;align-items:center;}
+.day-lbl{display:none;}
 .day-arw{width:24px;height:24px;border-radius:var(--r-1);border:1px solid var(--border);background:var(--surface2);
   color:var(--text2);cursor:pointer;font-size:var(--fs-5);line-height:1;padding:0;}
 .day-arw:hover{color:var(--text);border-color:var(--border2);}
@@ -1560,7 +1522,10 @@ body.lb-lean .exh.open .exh-lean{display:none;}
 .nm-proto-add{font-size:var(--fs-3);background:transparent;border:1px dashed var(--border2);color:var(--accent);border-radius:var(--r-3);padding:4px 12px;cursor:pointer;}
 .nm-proto-add:hover{background:var(--surface2);}
 /* Experiment tabs (Dated · Observations · Publication ready) */
-.exp-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:10px 0 0;}
+.exp-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin:10px 0 0;overflow-x:auto;scrollbar-width:none;}
+.exp-tabs::-webkit-scrollbar{display:none;}
+/* Six tabs in a 620px pane: a label that wraps makes the strip two heights; one that scrolls does not. */
+.exp-tab{white-space:nowrap;flex:none;}
 /* The phone's version of the tab strip: where you are, and a way to the rest. */
 .exp-tabs-m{display:none;align-items:center;gap:7px;width:100%;margin:10px 0 0;padding:10px 12px;
   background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);
@@ -1599,7 +1564,6 @@ body.lb-lean .exh.open .exh-lean{display:none;}
 .ptx-lbl{font-size:var(--fs-1);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--text3);margin-bottom:3px;}
 .ptx-t{font-size:var(--fs-2);line-height:1.45;color:var(--text2);max-height:120px;overflow-y:auto;}
 .ptx-t.new{color:var(--text);}
-@media(max-width:640px){ .ptx-two{grid-template-columns:1fr;} }
 .pub-stale{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:9px 0 0;padding:8px 11px;
   border-radius:var(--r-1);background:rgba(217,158,79,.12);border:1px solid rgba(217,158,79,.35);
   font-size:var(--fs-2);color:var(--text2);line-height:1.5;}
@@ -1620,7 +1584,6 @@ body.lb-lean .exh.open .exh-lean{display:none;}
 .modal-act .btn,.pl-btn{min-height:35px;}
 .modal-act{flex-wrap:wrap;row-gap:8px;}
 .modal-act .btn{white-space:nowrap;}
-@media(max-width:760px){ .modal-act .grow{display:none;} }
 .pl-btn{min-width:88px;}
 .lb-float-img.selected.snap-active::after{content:'';position:absolute;inset:-8px;border:1px dashed var(--accent);border-radius:var(--r-2);pointer-events:none;}
 body.lb-on-home #ribbon,body.lb-on-home #rightdock,body.lb-dash #ribbon,body.lb-dash #rightdock{display:none;}
@@ -1678,7 +1641,6 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
   border:0;background:none;color:var(--text3);border-radius:var(--r-1);cursor:pointer;padding:0;opacity:.55;}
 .lb-mbtn:hover{opacity:1;color:var(--accent);background:var(--surface3);}
 /* A thumb is not a cursor: 26px is a comfortable click and a miss on a phone. */
-@media (hover:none){ .lb-mbtn{width:36px;height:36px;opacity:.7;} }
 .xv-prio{display:inline-flex;color:#d9534f;flex:none;}
 .xv-row.xv-lowp .xv-code,.xv-row.xv-lowp .xv-name{color:var(--text3);}
 /* iOS pops its own selection callout on a long press, which lands on top of the menu the
@@ -1689,16 +1651,14 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 .xv-row.xv-arch .xv-code{text-decoration:line-through;}
 .xv-empty{padding:16px;font-size:var(--fs-3);color:var(--text3);}
 .xv-newproj{flex:none;width:190px;margin:0;}
+/* The list is a wrapper so a search keystroke can patch it alone; display:contents keeps the
+   project cards as direct flex children of .xv-wrap, exactly as they were laid out before. */
+.xv-list{display:contents;}
 .xv-newsec{margin:8px 16px 12px;width:220px;}
 /* Day / Week toggle — Journal is one surface with two zooms, not two destinations. */
 .jr-seg{display:flex;gap:2px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);padding:2px;margin-left:8px;}
 .jr-seg button{background:none;border:none;color:var(--text2);font-family:var(--sans);font-size:var(--fs-2);font-weight:600;padding:4px 11px;border-radius:var(--r-1);cursor:pointer;}
 .jr-seg button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-xs);}
-@media(max-width:760px){
-  .xv-wrap{padding:14px 12px 40px;}
-  .xv-type,.xv-when{display:none;}
-  .xv-bar{width:40px;}
-}
 
 .lh-wrap{padding:20px clamp(16px,2.2vw,40px) 40px;display:flex;flex-direction:column;gap:16px;}
 .lh-band{display:flex;align-items:center;gap:22px;background:var(--surface);border:1px solid var(--border);
@@ -1827,46 +1787,6 @@ body.lb-on-home #mobile-nav-btn,body.lb-dash #mobile-nav-btn{display:none!import
 /* ── Phone: menus instead of rows that do not fit ───────────────────────────────────────── */
 /* These live at the end on purpose. A @media block earlier in the sheet loses to a plain rule
    further down at the same specificity — which is exactly what happened the first time. */
-@media(max-width:760px){
-  .exp-tabs{display:none;}
-  .exp-tabs-m{display:flex;position:sticky;top:0;z-index:12;}
-  .blk-plate .cc-hd .plate-act,.blk-plate .cc-hd .cc-x:not(.plate-more){display:none;}
-  /* .cc-x is a text button (a ×) and sizes from its font, so an svg inside it came out 8×0.
-     The ⋯ is given a real box. */
-  .blk-plate .cc-hd .plate-more{display:inline-flex;align-items:center;justify-content:center;
-    width:30px;height:26px;padding:0;}
-  .blk-plate .cc-hd .plate-more svg{width:17px;height:17px;}
-  .exh-acts .exh-act:not(.exh-more):not(.exh-keep){display:none;}
-  .exh-acts .exh-more{display:inline-flex;}
-  /* The step header is nine controls that need 481px; the block is 347px here and clips, so
-     snooze, calc, plate and Delete were outside it with nothing to scroll — and the title
-     input was squeezed to 0px, which is a step you cannot name. The trailing actions become
-     the ⋯ that ctxBlock already answers to on right-click and long press. */
-  .blk-hd .blk-wait,.blk-hd .blk-snooze,.blk-hd .blk-calcbtn,.blk-hd .blk-del{display:none;}
-  .blk-more{display:inline-flex;}
-  /* .blk-hd .blk-title above is a *descendant* selector — the comment sits between the two
-     selectors, which reads as two rules and is one. At (0,0,2,0) it beat this plain .blk-title
-     wherever they disagreed, so the phone kept the desktop's 90px floor: the row then needed
-     366px in a 345px block and pushed the ⋯ 21px off the screen, which is the one control the
-     mobile collapse puts everything else behind. Matched, so the later rule wins as intended. */
-  .blk-hd .blk-title{flex:1 1 60px;min-width:40px;}
-  /* The date input is 31px here (the 16px iOS rule beats its font-size) and the ⋯ was 26, so
-     the row ran two heights. Stretching rather than naming a number keeps them equal whatever
-     the platform makes of a native date input. */
-  .blk-hd .blk-more{align-self:stretch;height:auto;}
-  .blk-date{font-size:var(--fs-2);padding:3px 5px;}
-}
-</style>
-<style>
-/* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
-   Safari zooms in whenever a focused control's text is under 16px, and it does not zoom back
-   out — which is why the Hub "opens zoomed" on a phone with the header and the menu cut off.
-   Every control in this app was 11-13px. !important on purpose: this has to beat every
-   per-component font-size, and it is a device rule, not a design choice. */
-@media (hover:none){
-  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
-  select, textarea { font-size:16px !important; }
-}
 </style>
 <style>
 /* ══ Motion ═══════════════════════════════════════════════════════════════════════════════
@@ -1988,6 +1908,389 @@ a,button,input,select,textarea,
    ones added later. */
 html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:none!important;}
 </style>
+<style>
+/* ══ The phone ═══════════════════════════════════════════════════════════════════════════════
+   Everything that decides how Labbook lays itself out under 760px lives in this one block, at
+   the end of the last stylesheet on purpose: a @media block earlier in the sheet loses to a
+   plain rule further down at the same specificity, which is how a phone rule got silently
+   overruled twice before. The narrower thresholds (720 / 640 / 560) are NESTED rather than
+   widened — widening them to 760 would have re-laid-out tablet windows between 561 and 760px
+   that nobody asked about. The touch block below it is the other half: what a device with no
+   hover needs, whatever its width. */
+@media(max-width:760px){
+  /* The type scale, one step up. 10px labels and 13px prose are a desktop read; a phone is held
+     at arm's length under a hood. The scale keeps its shape — every step moves, so nothing
+     that was smaller than something else swaps places — and the two largest are left alone.
+     (The 16px rule for controls in the touch block is a different thing: iOS zoom.) */
+  :root{--fs-1:11px;--fs-2:12px;--fs-3:13px;--fs-4:14px;--fs-5:16px;}
+  .app-sub{display:none;}
+  header{padding:0 12px;min-height:44px;}
+  /* Docked into the ribbon's tab row, not floating over the document: as a FAB it sat on the
+     bottom-left of every screen for ever, covering whatever was under it — on an experiment,
+     its own tab strip. It stays OUTSIDE <header> (see the comment on the element): dHUB hides
+     the app's header when embedded, and display:none on the parent takes the button with it. */
+  #mobile-nav-btn{display:flex;position:fixed;left:6px;top:5px;bottom:auto;width:34px;height:34px;
+    border-radius:var(--r-2);box-shadow:none;background:var(--surface2);z-index:48;}
+  .rb-tabbar{padding-left:44px;}
+  #ribbon{padding:4px 8px;gap:3px;}
+  /* (The closed state is now global — see .rb-pane below.) */
+  /* Inside an experiment the tab strip IS the navigation, so it stays put while you scroll a
+     long protocol, and clears the floating pane button rather than sitting under it. */
+  /* Five tabs never fit 390px. Rather than a strip that scrolls — which still hides where you
+     can go behind a gesture nobody is told about — the phone gets the tab it is on and a menu
+     of the rest. Same for a card's actions: seven small buttons made for a mouse become one ⋯
+     and a list with words on it. */
+    .cc-hd{flex-wrap:wrap;row-gap:5px;}
+  /* Once the header wraps, the .grow spacer can be the first thing on the second row and
+     grows there — 228px of hole under a left-aligned first row. Same idiom, same bug, as
+     Blueprint's toolbar and Ribbon's top bar. */
+  .cc-hd .grow{display:none;}
+  .cc-hd .cc-tag{flex:1 1 100%;}
+  /* The ribbon's status text is the first thing to go: it is a reassurance, not a control. */
+  .rb-tabbar .backup-note{display:none;}
+  .rb-tabbar #lb-status-txt{display:none;}
+  /* Closed by default on mobile (it used to always cover ~80% of the screen with no way to dismiss it) — slide-in overlay via body.mobile-dock-open, same toggle button as desktop. */
+  #rightdock{position:fixed;right:0;top:0;bottom:0;z-index:46;width:82%;max-width:300px;box-shadow:var(--shadow-lg);transform:translateX(101%);transition:transform .22s var(--ease);}
+  body.mobile-dock-open #rightdock{transform:translateX(0);}
+  /* Tree + page-list collapse into one slide-out drawer; editor becomes the full-width primary view. */
+  .mobile-drawer{display:flex!important;position:fixed;left:0;top:0;bottom:0;z-index:45;width:86%;max-width:320px;background:var(--surface);box-shadow:var(--shadow-lg);transform:translateX(-101%);transition:transform .22s var(--ease);}
+  body.mobile-drawer-open .mobile-drawer{transform:translateX(0);}
+  body.mobile-drawer-open #mobile-backdrop,body.mobile-dock-open #mobile-backdrop{display:block;position:fixed;inset:0;z-index:44;background:rgba(0,0,0,.35);}
+  .pane-sec,.pane-pages{width:auto!important;flex:1 1 0;min-width:0;}
+  /* A pane collapsed on desktop persists in lb_layout. Without this it stays a 34px sliver
+     inside the drawer forever, because .pane.collapsed is more specific than .pane-sec. */
+  .pane.collapsed{width:auto!important;flex:1 1 0!important;}
+  .pane.collapsed .pane-inner{display:flex!important;}
+  .pane.collapsed .rail{display:none!important;}
+  .splitter{display:none;}
+  .pane-ed{width:100%;flex:1;}
+  /* Same trap for the right dock: applyLayout() sets display:none, which beats the slide-in
+     transform, so Outline/Tags/Info become permanently unreachable on a phone. */
+  #rightdock.hidden{display:block!important;}
+  /* The Insert ribbon wraps to ~4 rows and eats the editor — scroll it instead. */
+  .rb-labelled{flex-wrap:nowrap!important;}
+  .rb-tabbar{overflow-x:auto;}
+  .ed-wrap{padding:16px 14px 80px;}
+  .tb{width:32px;height:32px;}
+  /* An <input> cannot wrap, so a long title is simply cut at the edge with no sign that there
+     is more of it. At --fs-6 a real experiment title fits 390px, and the full text is on the
+     field itself for the ones that still do not. */
+  .exh-title{font-size:var(--fs-6);}
+  .status-pill #lb-status-txt{display:none;}
+ .modal-act .grow{display:none;} 
+  .xv-wrap{padding:14px 12px 40px;}
+  .xv-type,.xv-when{display:none;}
+  .xv-bar{width:40px;}
+  .exp-tabs{display:none;}
+  .exp-tabs-m{display:flex;position:sticky;top:0;z-index:12;}
+  .blk-plate .cc-hd .plate-act,.blk-plate .cc-hd .cc-x:not(.plate-more){display:none;}
+  /* .cc-x is a text button (a ×) and sizes from its font, so an svg inside it came out 8×0.
+     The ⋯ is given a real box. */
+  .blk-plate .cc-hd .plate-more{display:inline-flex;align-items:center;justify-content:center;
+    width:30px;height:26px;padding:0;}
+  .blk-plate .cc-hd .plate-more svg{width:17px;height:17px;}
+  .exh-acts .exh-act:not(.exh-more):not(.exh-keep){display:none;}
+  .exh-acts .exh-more{display:inline-flex;}
+  /* The step header's collapse to a ⋯ is the @container rule on .blk (see .blk{container-type})
+     — a block is never wider than 660px on a phone, so the viewport copy of those two
+     declarations that used to sit here was the same rule written twice. */
+  /* .blk-hd .blk-title above is a *descendant* selector — the comment sits between the two
+     selectors, which reads as two rules and is one. At (0,0,2,0) it beat this plain .blk-title
+     wherever they disagreed, so the phone kept the desktop's 90px floor: the row then needed
+     366px in a 345px block and pushed the ⋯ 21px off the screen, which is the one control the
+     mobile collapse puts everything else behind. Matched, so the later rule wins as intended. */
+  .blk-hd .blk-title{flex:1 1 60px;min-width:40px;}
+  /* The date input is 31px here (the 16px iOS rule beats its font-size) and the ⋯ was 26, so
+     the row ran two heights. Stretching rather than naming a number keeps them equal whatever
+     the platform makes of a native date input. */
+  .blk-hd .blk-more{align-self:stretch;height:auto;}
+  .blk-date{font-size:var(--fs-2);padding:3px 5px;}
+
+  /* The two fixed radial gradients behind everything are a full-screen repaint on every scroll
+     of a phone that has no GPU to spare for them. */
+  body::before{display:none;}
+  /* ── The PWA's own bar, the drawer as a list, and the bottom stack ─────────────────────── */
+  body.lb-tabs{--lb-tabbar-h:56px;}
+  #lb-tabs{display:none;}
+  body.lb-tabs #lb-tabs{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;
+    height:calc(var(--lb-tabbar-h) + var(--lb-safe-b));
+    background:var(--glass-solid);-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);
+    border-top:1px solid var(--border);padding-bottom:var(--lb-safe-b);}
+  .lbt{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    height:100%;padding:4px 2px 2px;border:none;background:none;color:var(--text3);cursor:pointer;
+    font-family:var(--sans);font-size:var(--fs-1);font-weight:600;letter-spacing:.2px;-webkit-tap-highlight-color:transparent;}
+  .lbt svg{width:22px;height:22px;flex:none;}
+  .lbt span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .lbt.on{color:var(--accent);}
+  .lbt:active{opacity:.7;}
+  /* "+" is the one tab that does something rather than going somewhere, so it looks like one. */
+  .lbt-add svg{width:30px;height:30px;padding:6px;border-radius:50%;background:var(--accent);color:#fff;}
+  .lbt-add{color:var(--accent);}
+  /* The content ends above the bar, not under it. On the wraps rather than the scroll pane. */
+  body.lb-tabs .ed-wrap,body.lb-tabs .xv-wrap,body.lb-tabs .lh-wrap{padding-bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b) + 32px);}
+  body.lb-tabs .wk-grid{padding-bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b) + 20px);}
+  /* Standalone, the app's own header is 44px the phone does not need — the bar says where you
+     are, and the drawer gets the name instead. (Embedded, the shell already hides it.) */
+  body.lb-tabs header{display:none;}
+  body.lb-tabs .mobile-drawer::before{content:"Labbook";display:block;flex:none;padding:calc(14px + env(safe-area-inset-top,0px)) 16px 10px;
+    font-size:var(--fs-5);font-weight:700;letter-spacing:-.2px;color:var(--text);border-bottom:1px solid var(--border);}
+  /* One column. Two 160px panes side by side truncated every name to "Degrade…" and the
+     New-project field to "Ne"; the tree is a short "where am I" on top and the list gets the rest. */
+  .mobile-drawer{flex-direction:column;bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b));width:88%;max-width:340px;}
+  .mobile-drawer .pane-sec{flex:0 0 auto!important;max-height:46%;border-right:none;border-bottom:1px solid var(--border);}
+  .mobile-drawer .pane-pages{flex:1 1 0!important;min-height:0;border-right:none;}
+  .mobile-drawer .add-row input{font-size:var(--fs-4);}
+  body.lb-tabs #rightdock{bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b));}
+  /* The bottom stack: everything fixed at the foot of the screen sits above the bar and above
+     the timers, in that order. #lb-toast writes its bottom inline, hence the !important. */
+  #lb-photo-fab{bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b) + var(--lb-timers-h) + 16px);}
+  #lb-toast{bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b) + var(--lb-timers-h) + 16px)!important;}
+  .lb-remote{bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b) + var(--lb-timers-h) + 16px);}
+
+  /* ── Every menu is a sheet ─────────────────────────────────────────────────────────────────
+     popOpen adds .pop-sheet at phone width and clears the inline left/top a popover would have.
+     The rules sit after the motion block on purpose: `.pop.open{transform:none}` there is
+     (0,2,0), and a sheet has to be allowed to slide up from the bottom instead. */
+  .pop.pop-sheet{left:0;right:0;top:auto;bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b));width:auto;max-width:none;
+    max-height:calc(100dvh - var(--lb-tabbar-h) - var(--lb-safe-b) - 56px);border-radius:var(--r-4) var(--r-4) 0 0;border-left:none;border-right:none;border-bottom:none;
+    padding:6px 8px calc(10px + var(--lb-safe-b));box-shadow:0 -12px 40px rgba(0,0,0,.18);
+    -webkit-backdrop-filter:blur(12px) saturate(1.4);backdrop-filter:blur(12px) saturate(1.4);}
+  .pop.pop-sheet::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--border2);margin:4px auto 8px;}
+  .pop.pop-sheet .pop-item{min-height:46px;padding:11px 14px;font-size:var(--fs-5);color:var(--text);flex-wrap:wrap;gap:2px 10px;border-radius:var(--r-2);}
+  .pop.pop-sheet .pop-item .pop-l{flex:1 1 auto;white-space:normal;overflow:visible;text-overflow:clip;}
+  .pop.pop-sheet .pop-item .sub{flex:0 0 100%;margin-left:0;font-size:var(--fs-3);white-space:normal;text-align:left;line-height:1.35;}
+  .pop.pop-sheet .pop-item .ic{width:22px;height:22px;}
+  .pop.pop-sheet .pop-item.danger{color:var(--danger);}
+  .pop.pop-sheet .pop-sep{margin:6px 4px;}
+  .pop.pop-sheet{transform:translateY(100%);transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease-out),display var(--dur-2) allow-discrete;}
+  .pop.pop-sheet.open{transform:none;}
+  @starting-style{ .pop.pop-sheet.open{opacity:1;transform:translateY(100%);} }
+  /* The drawer's backdrop dims the content under a sheet too (never a ::before on the sheet:
+     its backdrop-filter would make it the containing block for a fixed child). */
+  body.lb-sheet-open #mobile-backdrop{display:block;position:fixed;inset:0;z-index:44;background:rgba(0,0,0,.35);}
+
+  /* ── The plate editor on a phone ────────────────────────────────────────────────────────────
+     Full screen (the dialog rule above), the plate fitted to the width (plRenderGrid), and the
+     panel reordered: the conditions you paint with come straight under the grid, then the
+     fields for the selection, then the layout summary; format/title/layout last. .pl-left
+     dissolves so its two children can be ordered with the panel's sections. */
+  .pl-hint{display:none;}
+  .plate-modal .modal-t{flex-wrap:wrap;gap:4px 10px;}
+  .pl-body{display:flex;flex-direction:column;gap:10px;}
+  .pl-left{display:contents;}
+  .pl-gridwrap{order:1;max-height:none;width:100%;padding:2px 0;}
+  .pl-grid{margin:0 auto;}
+  #pl-side{order:2;display:flex;flex-direction:column;width:100%;max-height:none;overflow:visible;}
+  .pl-sum{order:3;max-height:none;min-height:0;margin-top:4px;}
+  .pl-sec-types{order:1;} .pl-sec-sel{order:2;} .pl-sec-block{order:3;} .pl-sec-dose{order:4;} .pl-sec-shade{order:5;} .pl-sec-cols{order:6;} .pl-sec-quick{order:7;} .pl-sec-plate{order:8;}
+  .pl-type,.pl-cond{min-height:44px;}
+  .pl-conds .pl-cond{padding:8px 10px;}
+  .pl-btn{min-height:40px;}
+  /* Footer: Done, Undo and a ⋯ — six buttons were two rows. */
+  .plate-modal .modal-act .btn.sm:not(.pl-foot-more){display:none;}
+  .plate-modal .modal-act .btn.sm[onclick="lbUndo()"],.plate-modal .modal-act .pl-foot-more{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-width:56px;}
+  .plate-modal .modal-act .btn:not(.sm){flex:1 1 auto;}
+
+  /* ── Surfaces that had no phone rule at all ────────────────────────────────────────────────
+     The Journal day, the week planner and Home were laid out for a desktop and squeezed. */
+  /* Journal header: the navigator was 470px in a 375px pane — Day/Week fell off the edge and
+     the pane scrolled sideways. "‹ Fri 11 Sep ›" with the native date input laid transparently
+     over the label (a tap still opens the picker), the Day/Week switch on its own row. */
+  .exh-day .exh-top{flex-wrap:wrap;row-gap:8px;}
+  .exh-day .exh-title{width:auto;flex:1 1 auto;font-size:var(--fs-7);}
+  .day-nav{margin-left:0;flex:1 1 100%;flex-wrap:wrap;gap:6px;}
+  .day-lbl{display:inline-flex;align-items:center;min-height:34px;padding:0 10px;font-size:var(--fs-4);font-weight:600;color:var(--text);
+    background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);}
+  .day-lblwrap .day-pick{position:absolute;inset:0;width:100%;height:100%;opacity:0;padding:0;margin:0;}
+  .day-arw{width:34px;height:34px;}
+  .day-today{min-height:34px;}
+  .jr-seg{flex:1 1 100%;margin-left:0;}
+  .jr-seg button{flex:1 1 0;min-height:34px;}
+  .exh-day .exh-acts{margin-left:auto;}
+  .exh-day .exh-code{flex:1 1 100%;}
+  /* Day rows: the title ellipses, "Open ↗" is one word, and the project name gives way first. */
+  .dfx-open{white-space:nowrap;flex:none;}
+  .dfx-proj{max-width:96px;}
+  .day-exp-hd{gap:7px;padding:9px 10px;}
+  .dfx-blk-hd{padding:8px 10px 0;}
+  .cul-row,.ong-row{flex-wrap:wrap;row-gap:4px;}
+  .ong-next{min-width:0;}
+  /* Week planner: seven 40px columns are unreadable; two are the tablet's answer. A phone gets
+     one day per row — the week is a list. */
+  .wk-grid{grid-template-columns:1fr;grid-auto-flow:row;padding:4px 12px 20px;}
+  .wk-top{padding:12px 12px 8px;}
+  .wk-nav{margin-left:0;flex:1 1 100%;}
+  /* Home: the band stacks under its ring; the week strip is one row of seven with a dot per
+     experiment (the pill's coloured edge IS the dot — border-left carries the project colour);
+     the running rows lose their desktop column widths. */
+  .lh-wrap{padding:14px 12px 40px;gap:12px;}
+  .lh-band{gap:12px 16px;padding:14px;}
+  .lh-bmain{flex:1 1 100%;}
+  .lh-bside{flex:1 1 100%;border-left:none;padding-left:0;border-top:1px solid var(--border);padding-top:10px;}
+  .lh-step{width:100%;min-height:40px;}
+  .lh-week{grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;}
+  .lh-day{min-height:0;padding:6px 1px 7px;display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .lh-dnum{margin-bottom:2px;}
+  .lh-pill{width:7px;height:7px;padding:0;margin:0;border-radius:50%;border-left-width:7px;color:transparent;font-size:0;background:none;overflow:hidden;}
+  .lh-more{font-size:var(--fs-1);}
+  .lh-x-code{min-width:0;}
+  .lh-bar{width:54px;}
+  .lh-x-n{width:auto;}
+  .lh-x-nx{width:auto;flex:1 1 auto;text-align:right;}
+  .lh-card{padding:12px;}
+  .lh-res .cmp{width:auto;}
+  /* Experiments: one line per row — the name ellipses, the count is a badge, the header's name
+     gives way before its chip and its count do. */
+  .xv-top{gap:8px;}
+  .xv-top .xv-q{min-width:0;max-width:none;flex:1 1 100%;order:2;}
+  .xv-top .xv-filters{order:3;flex:1 1 auto;}
+  .xv-top .xv-filters .xv-f{flex:1 1 0;padding:5px 6px;}
+  .xv-top > .xv-f{order:4;}
+  .xv-newproj{order:5;width:100%;}
+  .xv-ph{gap:8px;padding:12px 12px;}
+  .xv-pn{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .xv-pm{flex:none;white-space:nowrap;font-size:var(--fs-2);}
+  .xv-row{padding:10px 12px;gap:8px;}
+  .xv-code{font-size:var(--fs-1);max-width:38%;overflow:hidden;text-overflow:ellipsis;}
+  .xv-fold{padding:8px 12px 4px;}
+  .xv-newsec{width:auto;margin:8px 12px 12px;}
+  /* The experiment's mobile tab strip: the gap was a margin above a sticky element, which is
+     never painted, so the prose scrolled through it. */
+  .exp-tabs-m{margin:0;padding:10px 12px;border-radius:0;border-left:none;border-right:none;}
+  .exp-tab-body{padding-top:10px;}
+  /* Setup chips: six rows of the form under the title. One line, and a tap for the rest. */
+  .exh-setup{max-height:34px;overflow:hidden;position:relative;padding-right:26px;cursor:pointer;}
+  .exh-setup::after{content:"";position:absolute;right:0;top:0;bottom:0;width:26px;
+    background:linear-gradient(90deg,transparent,var(--surface) 55%) no-repeat;}
+  .exh-setup::before{content:"";position:absolute;right:6px;top:11px;width:7px;height:7px;border-right:1.6px solid var(--text3);border-bottom:1.6px solid var(--text3);transform:rotate(45deg);z-index:1;}
+  .exh-setup.open{max-height:none;padding-right:0;}
+  .exh-setup.open::after,.exh-setup.open::before{display:none;}
+  /* The Insert strip scrolls sideways; the scrollbar under it does not need to be a bar. */
+  .rb-pane{scrollbar-width:none;}
+  .rb-pane::-webkit-scrollbar{display:none;}
+  .rb-pane.rb-labelled{-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent);}
+
+  /* Step header: the date is a label with the picker laid over it (see .blk-datewrap). */
+  .blk-hd .blk-datelbl{display:inline-flex;align-items:center;min-height:30px;padding:0 8px;font-size:var(--fs-3);font-weight:600;color:var(--text2);
+    background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-1);white-space:nowrap;}
+  .blk-hd .blk-datelbl.weekend{color:var(--warn);}
+  .blk-datewrap .blk-date{position:absolute;inset:0;width:100%;height:100%;opacity:0;padding:0;margin:0;}
+  .blk-hd .blk-title{font-size:var(--fs-4);}
+  /* Search: the overlay starts under the notch, not 14% of the way down a short screen. */
+  #spot-back{padding-top:max(8dvh, env(safe-area-inset-top,0px));padding-left:8px;padding-right:8px;}
+  #spot{max-width:none;}
+  #spot-res{max-height:calc(100dvh - 140px);}
+
+  /* The day header's actions share the title's row; the navigator takes the next one. */
+  .exh-day .exh-title{order:1;}
+  .exh-day .exh-acts{order:2;}
+  .exh-day .day-nav{order:3;}
+  /* Publication bar: the section toggles take a row, the buttons the next. */
+  .exp-pub-bar .grow{display:none;}
+  .exp-pub-bar .pub-secs{flex:1 1 100%;margin-left:0;}
+  .exp-pub-bar .pub-btn{flex:1 1 auto;min-height:36px;}
+  /* Preset editor: Day · title · ↑ ↓ × was 412px of controls in a 348px sheet. */
+  .ps-blk-hd{flex-wrap:wrap;row-gap:6px;}
+  .ps-blk-hd .ps-day{width:auto!important;display:inline-flex;align-items:center;gap:6px;}
+  .ps-blk-hd .ps-day input{min-height:34px;}
+  .ps-blk-hd .ps-title{flex:1 1 100%;order:5;min-height:34px;}
+  .ps-move{min-width:34px;min-height:34px;}
+  /* A dialog title with a select beside it: the select takes the next row rather than the edge. */
+  .modal-t{flex-wrap:wrap;row-gap:8px;}
+  .modal-t .tb-sel{flex:1 1 100%;max-width:100%;height:36px;}
+  .modal-t .grow{display:none;}
+  .plate-modal .modal-t .pl-count{margin-left:auto;}
+
+  /* The dated tab's day header: the clock line ("09:00 → 13:05 · 4 h of waits") takes its own
+     row instead of running past the edge of a 375px screen. */
+  .day-group-hd{flex-wrap:wrap;row-gap:4px;}
+  .day-group-hd .dg-plan{flex:1 1 100%;order:10;margin-left:0;}
+  .day-group-hd::after{order:9;flex:1 1 40px;}
+  /* Timers are a bar, not cards: full width, one 44px row each, docked on the tab bar. At
+     z-index 900 the cards painted over every sheet and dialog, so the bar steps aside for them. */
+  #lb-timers{left:0;right:0;width:auto;bottom:calc(var(--lb-tabbar-h) + var(--lb-safe-b));gap:0;z-index:65;}
+  #lb-timers .tmr{border-radius:0;border-left:none;border-right:none;border-bottom:none;min-height:44px;padding:8px 14px;box-shadow:0 -6px 20px rgba(0,0,0,.08);}
+  #lb-timers .tmr+.tmr{border-top:1px solid var(--border);}
+  body.lb-sheet-open #lb-timers,body.mobile-drawer-open #lb-timers,body.mobile-dock-open #lb-timers,body.lb-modal-open #lb-timers{display:none;}
+  @media (max-width:720px){
+    .dev-row{flex-wrap:wrap;row-gap:3px;}
+    .dev-step{flex:1 1 100%;min-width:0;}
+    .dev-lbl{flex:1 1 100%;color:var(--text);}
+    .dev-from,.dev-to{white-space:normal;word-break:break-word;}
+    .dev-row .dev-ok{margin-left:auto;}
+  }
+  @media (max-width:640px){
+    /* ── Every dialog is a sheet ───────────────────────────────────────────────────────────
+       A 335px card with 22px of padding in a 375px screen left 291px for a plate. The card
+       becomes a sheet from the bottom, full width, with its title and its footer pinned so the
+       OK is never below the fold. Every variant is named: `.modal.wide` etc. are (0,2,0) and
+       a bare `.modal{max-width:none}` would lose to them whatever the order. */
+    .modal-back{align-items:flex-end;justify-content:stretch;padding:0;}
+    .modal,.modal.wide,.modal.pick,.modal.prep,.modal.plate-modal{max-width:none;width:100%;max-height:92dvh;
+      border-radius:var(--r-4) var(--r-4) 0 0;border-left:none;border-right:none;border-bottom:none;
+      padding:14px 16px calc(14px + var(--lb-safe-b));}
+    .modal-t{position:sticky;top:-14px;z-index:3;margin:-14px -16px 12px;padding:16px 16px 10px;background:var(--glass-solid);
+      -webkit-backdrop-filter:blur(12px) saturate(1.4);backdrop-filter:blur(12px) saturate(1.4);}
+    .modal-act{position:sticky;bottom:calc(-14px - var(--lb-safe-b));z-index:3;margin:16px -16px calc(-14px - var(--lb-safe-b));
+      padding:10px 16px calc(12px + var(--lb-safe-b));background:var(--glass-solid);border-top:1px solid var(--border);
+      -webkit-backdrop-filter:blur(12px) saturate(1.4);backdrop-filter:blur(12px) saturate(1.4);}
+    .modal-act .btn{min-height:44px;flex:1 1 auto;}
+    .modal-act .btn.ghost{flex:0 1 auto;}
+    .dlg-item,.dlg-ans{min-height:44px;}
+    .dlg-item{padding:10px 12px;font-size:var(--fs-5);}
+    .dlg-list{max-height:none;}
+    /* The sheet slides up rather than nudging into place. */
+    .modal{transform:translateY(40px);}
+    .modal-back.open .modal{transform:none;}
+    @starting-style{ .modal-back.open .modal{transform:translateY(40px);} }
+    /* The plate editor is the whole screen: a plate needs every pixel of it. */
+    .modal.plate-modal{height:100dvh;max-height:100dvh;border-radius:0;padding-top:calc(10px + env(safe-area-inset-top,0px));}
+    .prep-row{flex-wrap:wrap;row-gap:2px;}
+    .prep-w{flex:1 1 100%;text-align:left;}
+   .fx-row{flex-wrap:wrap;} .fx-acts{flex-direction:row;width:100%;justify-content:flex-end;} 
+   .ptx-two{grid-template-columns:1fr;} 
+  }
+  @media (max-width:560px){
+    .rc-row{flex-wrap:wrap;row-gap:8px;}
+    .rc-l{flex:1 1 100%;order:2;min-width:0;}
+    .rc-row .ic{order:1;}
+    .rc-btn{order:3;}
+    .rc-l b{white-space:normal;}
+  }
+}
+/* ══ Touch ═══════════════════════════════════════════════════════════════════════════════════
+   A device with no hover: nothing may be revealed only on hover, a thumb needs more than 26px,
+   and iOS zooms the page — and never zooms back — when a focused control's text is under 16px.
+   The 16px rule is !important on purpose: it has to beat every per-component font-size, and it
+   is a device rule, not a design choice. */
+@media (hover:none){
+  /* The 16px rule that stops iOS zooming applies to what you type, not to the hint: a
+     placeholder is a label, and at 16px the useful ones ("New project…", "Compound 1") are cut
+     off in exactly the narrow fields that need them. */
+  input::placeholder,textarea::placeholder{font-size:13px;}
+  .page-del{opacity:.55!important;}
+  .wk-task .wk-del{opacity:.7!important;}
+  .sec-item .del{opacity:.7!important;}
+  .nbt .wk-del{opacity:.55;}
+  .wk-sn{opacity:.7;}
+  /* A thumb is not a cursor: 26px is a comfortable click and a miss on a phone. */
+  .lb-mbtn{width:36px;height:36px;opacity:.7;}
+  .xv-add{min-height:36px;}
+  /* Glass costs a compositor layer per element, and .blk is one per step: forty blurred layers
+     under a finger is what made a long experiment scroll like wet paper. The surfaces go solid;
+     the ribbon, the sheets and the dialogs — one each, on top — keep theirs. */
+  .blk,.exh,#rightdock{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--surface);}
+  .modal-back{-webkit-backdrop-filter:none;backdrop-filter:none;}
+  body.lb-onexp #lb-photo-fab{display:flex;}
+  /* …but never over a drawer, a dock, a sheet or a dialog you have just opened. */
+  body.mobile-drawer-open #lb-photo-fab,body.mobile-dock-open #lb-photo-fab,body.lb-sheet-open #lb-photo-fab,body.lb-modal-open #lb-photo-fab{display:none;}
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),
+  select, textarea { font-size:16px !important; }
+  /* WebKit draws a 16px select 25px tall beside a 32px input and ignores min-height on it; a row
+     is one height, so both are told the height outright. */
+  .ci-f input:not([type=checkbox]):not([type=radio]),.ci-f select,.mrow input:not([type=checkbox]),.mrow select{height:32px;min-height:32px;}
+}
+</style>
 </head>
 <body>
 
@@ -2006,7 +2309,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 <div id="ribbon"></div>
 
 <div class="body">
-  <div id="mobile-backdrop" onclick="toggleMobileNav(false);document.body.classList.remove('mobile-dock-open');"></div>
+  <div id="mobile-backdrop" onclick="_backdropTap()"></div>
   <div class="mobile-drawer" id="mobile-drawer">
     <div class="pane pane-sec" id="pane-sec-wrap"><div class="rail"><button class="rail-btn" onclick="toggleCollapse('sec')">SECTIONS &rsaquo;</button></div><div class="pane-inner" id="pane-sec"></div></div>
     <div class="splitter" id="split-sec" onpointerdown="startResize(event,'sec')" ondblclick="resetPane('sec')"></div>
@@ -2025,7 +2328,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="mrow"><label>Target / tag for the code (optional)</label><input id="nm-poi" placeholder="e.g. BRD4" autocomplete="off" oninput="nmUpdateCode()" title="Appended to the code (SP_NB20260826_BRD4). The prefix itself belongs to the project."></div>
     <div class="mrow"><label>Start date</label><input id="nm-date" type="date" oninput="nmUpdateCode();nmPreview()"></div>
     <div class="mrow"><label>Title / plan (optional)</label><input id="nm-title" placeholder="Auto-filled from preset" autocomplete="off"></div>
-    <div class="mrow"><label>What are you asking? (optional)</label><input id="nm-aim" placeholder="e.g. does the ligase swap keep DC50 under 100 nM?" autocomplete="off" title="One line. It is what the record cannot tell you six months later, and it goes on the report."></div>
+    <div class="mrow"><label>What are you asking? (optional)</label><input id="nm-aim" placeholder="e.g. does the ligase swap keep DC50 under 100 nM?" data-ph-short="e.g. does the swap keep DC50 < 100 nM?" autocomplete="off" title="One line. It is what the record cannot tell you six months later, and it goes on the report."></div>
     <div class="mrow"><label>Code (auto — editable)</label><input id="nm-code" class="mcode" autocomplete="off" spellcheck="false"></div>
     <div id="nm-setup" class="nm-setup"></div>
     <div id="nm-protocols" class="nm-protocols"></div>
@@ -2076,7 +2379,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       </div>
       <div id="pl-side" class="pl-side"></div>
     </div>
-    <div class="modal-act"><button class="btn ghost sm" onclick="lbUndo()" title="Undo the last change (&#8984;/Ctrl+Z)">Undo</button><button class="btn ghost sm" onclick="plPasteValues()" title="Paste the plate-reader grid over this map">Paste reader values</button><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><button class="btn ghost sm" onclick="exportPlatePNG(PL.key)" title="A picture of this map, at print resolution">Download PNG</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
+    <div class="modal-act"><button class="btn ghost sm" onclick="lbUndo()" title="Undo the last change (&#8984;/Ctrl+Z)">Undo</button><button class="btn ghost sm" onclick="plPasteValues()" title="Paste the plate-reader grid over this map">Paste reader values</button><button class="btn ghost sm" onclick="plImportEcho()" title="Fill wells from an Echo transfer picklist (.csv)">Import Echo picklist</button><button class="btn ghost sm" onclick="exportPlateCSV(PL.key)">Download CSV</button><button class="btn ghost sm" onclick="exportPlatePNG(PL.key)" title="A picture of this map, at print resolution">Download PNG</button><button class="btn ghost sm pl-foot-more" onclick="plFooterMenu(event)" title="Paste values, import, download">&#8943;</button><span class="grow"></span><button class="btn" onclick="closePlateEditor()">Done</button></div>
   </div>
 </div>
 
@@ -2084,7 +2387,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 
 <!-- Cmd+K spotlight -->
 <div id="spot-back" onclick="if(event.target.id==='spot-back')closeSpot()">
-  <div id="spot"><input id="spot-in" type="text" placeholder="Search experiments, protocols, antibodies, primers, cultures, vials…" autocomplete="off" oninput="spotRender()"><div id="spot-res"></div></div>
+  <div id="spot"><input id="spot-in" type="text" placeholder="Search experiments, protocols, antibodies, primers, cultures, vials…" data-ph-short="Search the notebook…" autocomplete="off" oninput="spotRender()"><div id="spot-res"></div></div>
 </div>
 
 <div class="pop" id="acpop"></div>
@@ -4899,6 +5202,20 @@ function exportPlateCSV(key){ var p=plateOf(key); if(!p) return;
 // Compact, read-only card shown inline in the experiment / step / notebook.
 // Preview well size — big formats get room for the text, dense ones stay a compact overview.
 var PLATE_PREV_WPX={'6':56,'12':44,'24':34,'48':26,'96':21,'384':12};
+// Column headers on a dense plate. At a 21px pitch "12.3 nM" is 40px wide, so twelve of them
+// printed over each other ("12.3 nM4.12 nM1.37 nM"). Under 30px a header takes two columns'
+// width and the headers alternate between two rows — evens up, odds down — each one aligned to
+// the edge of its own column, and the space before the unit goes ("12.3nM"). Same rule in the
+// preview and the editor, so the two never disagree about what a header says.
+function _plHdrCompact(t){ return String(t||'').replace(/\s+(?=[µunpmkM]?M$|%$)/,''); }
+function _plHdrCell(ca, ncols, stag, rowBase){
+  // returns {row, col:'a/b', align} for column index ca (0-based); rowBase is the first header row
+  if(!stag) return {row:rowBase, col:String(ca+1), cls:''};
+  var even=(ca%2===0);
+  var start=even?ca:ca-1, end=even?ca+2:ca+1;   // 0-based, end exclusive
+  if(end>ncols) end=ncols; if(start<0) start=0;
+  return {row:rowBase+(even?0:1), col:(start+1)+' / '+(end+1), cls:even?' l':' r'};
+}
 function platePreviewHtml(p,key,readonly){ if(!p) return '';
   var d=plateDims(p), n=plateCount(p), wpx=PLATE_PREV_WPX[String(p.format)]||21, grid='';
   var showText=wpx>=26, boxes=plateGroupBoxes(p), grouped={};
@@ -4911,9 +5228,11 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
   // Only draw the column headers if they can actually be read at this scale — otherwise the
   // layout summary states them once, properly.
   var hasCL=plateHasColLabels(p)&&wpx>=16;
-  var glOff=hasCL?2:1;
+  var stag=hasCL&&wpx<30;
+  var glOff=hasCL?(stag?3:2):1;
   var _nos=plateHasNos(p);
-  if(hasCL){ for(var ca=0;ca<d.c;ca++) grid+='<div class="pp-cl" style="grid-row:1;grid-column:'+(ca+1)+'">'+esc((p.colLabels||{})[ca]||'')+'</div>'; }
+  if(hasCL){ for(var ca=0;ca<d.c;ca++){ var hc=_plHdrCell(ca,d.c,stag,1);
+    grid+='<div class="pp-cl'+hc.cls+'" style="grid-row:'+hc.row+';grid-column:'+hc.col+'">'+esc(stag?_plHdrCompact((p.colLabels||{})[ca]):((p.colLabels||{})[ca]||''))+'</div>'; } }
   for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){ var id=wellIdOf(r,c), w=(p.wells||{})[id];
     var col=plateWellColor(p,w);
     var inner=(function(){
@@ -5046,6 +5365,16 @@ function plSelIds(){ return Object.keys(PL.sel); }
 function openPlateEditor(key){ var p=plateOf(key); if(!p){ toast('No plate map here yet'); return; }
   PL.key=key; PL.sel={}; PL.anchor=null; PL.band=null; PL.flags={}; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
   el('plate-modal').classList.add('open'); plRender(); }
+// The footer's six buttons are two rows on a phone; there it is Done, Undo and this list.
+function plFooterMenu(ev){
+  popOpen('ctxmenu',[
+    {label:'Paste reader values', sub:'the plate-reader grid over this map', fn:function(){ plPasteValues(); }},
+    {label:'Import Echo picklist', sub:'fill wells from a transfer .csv', fn:function(){ plImportEcho(); }},
+    {sep:true},
+    {label:'Download CSV', fn:function(){ exportPlateCSV(PL.key); }},
+    {label:'Download PNG', sub:'a picture of this map, at print resolution', fn:function(){ exportPlatePNG(PL.key); }}
+  ], ev.currentTarget.getBoundingClientRect());
+}
 function closePlateEditor(){ el('plate-modal').classList.remove('open'); _plHideBand(); PL.key=null; PL.sel={}; PL.band=null; renderEditor(); }
 // Every plate mutation restores through the experiment that owns the map — a plate lives inside
 // a block or an experiment, so that record is the unit an undo has to put back.
@@ -5054,16 +5383,32 @@ function plRender(){ var p=plCur(); if(!p) return; plRenderGrid(); plRenderSide(
 function plRenderSum(){ var p=plCur(), host=el('pl-sum'); if(!p||!host) return;
   var lg=el('pl-vals-legend'); if(lg) lg.innerHTML=plValuesLegend(p);
   host.innerHTML=plateSummaryHtml(p)||'<div class="pl-sum-empty">Nothing filled in yet — select wells and type what is in them.</div>'; }
+// The well pitch is a constant per format on a desktop. On a phone the plate is fitted to the
+// box it is drawn in — a 96 at 34px is 458px wide, a 384 at 21px is 578px, and the editor's box
+// on a 375px screen is about 340px, so both scrolled sideways and the plate you were painting was
+// never all on the screen. The floors keep a well a thing a finger can still hit.
+var PLATE_WPX_FLOOR={'96':22,'384':11};
+function _plFitWpx(p,host){
+  var wpx=PLATE_WPX[String(p.format)]||34;
+  if(!_rbNarrow()) return wpx;
+  var wrap=host&&host.parentElement; if(!wrap) return wpx;
+  var d=plateDims(p), avail=wrap.clientWidth-4-26-2*d.c;   // padding, the row-header column, the gaps
+  if(avail<=0) return wpx;
+  var fit=Math.floor(avail/d.c), floor=PLATE_WPX_FLOOR[String(p.format)]||14;
+  return Math.max(floor, Math.min(wpx, fit));
+}
 function plRenderGrid(){ var p=plCur(), host=el('pl-grid'); if(!p||!host) return;
-  var d=plateDims(p), wpx=PLATE_WPX[String(p.format)]||34, fs=Math.max(6,Math.round(wpx/4.2));
+  var d=plateDims(p), wpx=_plFitWpx(p,host), fs=Math.max(6,Math.round(wpx/4.2));
   var hasCL=plateHasColLabels(p), h='';
+  var stag=hasCL&&wpx<40;
   // Block labels are grid items placed over the wells they span. Once anything is placed
   // explicitly, auto-placed items would flow around it — so every cell states its own position.
-  var base=hasCL?3:2, hdrRow=hasCL?2:1;
+  var base=hasCL?(stag?4:3):2, hdrRow=hasCL?(stag?3:2):1;
   function at(r,c){ return 'grid-row:'+r+';grid-column:'+c+';'; }
   // Optional annotation row above the column numbers (e.g. the nM of each dose column).
-  if(hasCL){ h+='<div class="pl-cltitle" style="'+at(1,1)+'" title="Column header units">'+esc(p.colTitle||'')+'</div>';
-    for(var ca=0;ca<d.c;ca++) h+='<div class="pl-cl" style="'+at(1,ca+2)+'">'+esc((p.colLabels||{})[ca]||'')+'</div>'; }
+  if(hasCL){ h+='<div class="pl-cltitle" style="grid-row:1'+(stag?' / 3':'')+';grid-column:1;" title="Column header units">'+esc(p.colTitle||'')+'</div>';
+    for(var ca=0;ca<d.c;ca++){ var hc=_plHdrCell(ca,d.c,stag,1); var cols=stag?hc.col.split(' / ').map(function(x){ return String(+x+1); }).join(' / '):String(ca+2);
+      h+='<div class="pl-cl'+hc.cls+'" style="grid-row:'+hc.row+';grid-column:'+cols+'">'+esc(stag?_plHdrCompact((p.colLabels||{})[ca]):((p.colLabels||{})[ca]||''))+'</div>'; } }
   h+='<div class="pl-corner" style="'+at(hdrRow,1)+'" title="Select every well" onclick="plSelectAll()"></div>';
   for(var c=0;c<d.c;c++) h+='<div class="pl-colh" style="'+at(hdrRow,c+2)+'" title="Select column '+(c+1)+'" onmousedown="plSelectCol('+c+',event)">'+(c+1)+'</div>';
   // Wells in a labelled block don't repeat the label — the block writes it once, on top.
@@ -5172,7 +5517,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     : ('<div class="pl-row2"><button class="pl-btn" onclick="plApplyDose(1)">Fill wells '+(axis==='col'?'&#8595;':'&#8594;')+'</button>'
       +'<button class="pl-btn" onclick="plApplyDose(-1)">Fill wells '+(axis==='col'?'&#8593;':'&#8592;')+'</button></div>');
   var _doseWhere=(axis==='row')?'across the row':(axis==='col'?'down the column':'across the block');
-  var dose=(axis&&n>=2&&_dosing)?('<div class="pl-sec"><div class="pl-sec-t">Dose series &mdash; '+_doseWhere+'</div>'
+  var dose=(axis&&n>=2&&_dosing)?('<div class="pl-sec pl-sec-dose"><div class="pl-sec-t">Dose series &mdash; '+_doseWhere+'</div>'
     +(axis==='block'?'<div class="pl-howto">Every row gets the same series across, or every column the same series down &mdash; the wells beside each other are the replicates.</div>':'')
     +'<div class="cc-inputs"><label class="ci-f"><span>Top conc</span><input type="number" id="pl-dose-top" value="1000"></label>'
     +'<label class="ci-f"><span>Unit</span><select id="pl-dose-unit"><option>nM</option><option>µM</option><option>mM</option></select></label>'
@@ -5183,7 +5528,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'</div>'):'';
   // Block label — one name written across a group of wells, instead of in every well.
   var curGrp=plSelGroupLabel();
-  var block=(n>=2)?('<div class="pl-sec"><div class="pl-sec-t">Block label</div>'
+  var block=(n>=2)?('<div class="pl-sec pl-sec-block"><div class="pl-sec-t">Block label</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Name shown across these wells</span>'
     +'<input id="pl-grp" value="'+esc(curGrp===null?'':curGrp)+'" placeholder="'+(curGrp===null?'Mixed…':'e.g. 125')+'" onchange="plGroupLabel(this.value)"></label></div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plGroupLabel(el(\'pl-grp\').value)">Label block</button>'
@@ -5191,17 +5536,17 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
   // Shading — a visual gradient when the numbers live elsewhere (e.g. an Echo picklist).
   // Four directions, not three: a series read up the plate is as ordinary as one read down it,
   // and "dark at the bottom" had no button at all. Each one says where the *dark* end goes.
-  var shade=(n>=2)?('<div class="pl-sec"><div class="pl-sec-t">Shading &mdash; visual gradient</div>'
+  var shade=(n>=2)?('<div class="pl-sec pl-sec-shade"><div class="pl-sec-t">Shading &mdash; visual gradient</div>'
     +'<div class="pl-howto">Dark is the strong end. Applies to the '+n+' selected well'+(n===1?'':'s')+'.</div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyShade(\'right\')" title="Dark on the left, fading to the right">Dark &#8594; light</button>'
     +'<button class="pl-btn" onclick="plApplyShade(\'left\')" title="Dark on the right, fading to the left">Light &#8592; dark</button></div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyShade(\'down\')" title="Dark at the top, fading downwards">Dark &#8595; light</button>'
     +'<button class="pl-btn" onclick="plApplyShade(\'up\')" title="Dark at the bottom, fading upwards">Dark &#8593; light</button>'
     +'<button class="pl-btn" onclick="plApplyShade(null)">Clear</button></div></div>'):'';
-  var cols=(n>=1)?('<div class="pl-sec"><div class="pl-sec-t">Column headers</div>'
+  var cols=(n>=1)?('<div class="pl-sec pl-sec-cols"><div class="pl-sec-t">Column headers</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Units</span><input value="'+esc(p.colTitle||'')+'" placeholder="nM" onchange="plSetColTitle(this.value)"></label>'
     +'<label class="ci-f"><span>Header for selected columns</span><input placeholder="e.g. 1000" onchange="plSetColLabel(this.value)"></label></div></div>'):'';
-  host.innerHTML='<div class="pl-sec"><div class="pl-sec-t">Plate</div>'
+  host.innerHTML='<div class="pl-sec pl-sec-plate"><div class="pl-sec-t">Plate</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Format</span><select onchange="plSetFormat(this.value)">'
       +Object.keys(PLATE_FORMATS).sort(function(a,b){return a-b;}).map(function(k){ return '<option value="'+k+'"'+(String(p.format)===k?' selected':'')+'>'+k+'-well</option>'; }).join('')
     +'</select></label><label class="ci-f"><span>Title</span><input value="'+esc(p.title||'')+'" placeholder="e.g. Dose–response" oninput="plSetTitle(this.value)"></label></div>'
@@ -5218,9 +5563,11 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
       +'<input type="checkbox"'+(_dosing?' checked':'')+' onchange="plSetDosing(this.checked)"'
       +' title="Turns on the compound and concentration fields, and the dilution filler"></label>'):'')
     +'</div>'
-    +'<div class="pl-sec"><div class="pl-sec-t">'+(_nos?'Conditions — select wells, then click one':'Well type')+'</div>'
-      +'<div class="pl-howto">Drag a rectangle over the wells, then click the '+(_nos?'condition':'type')+' &mdash; it goes on straight away. '
-       +'Shift extends the box, &#8984;/Ctrl-click adds. Delete clears wells; &#8984;/Ctrl+C and V copy a block; &#8984;/Ctrl+Z undoes.</div>'
+    +'<div class="pl-sec pl-sec-types"><div class="pl-sec-t">'+(_nos?'Conditions — select wells, then click one':'Well type')+'</div>'
+      +(_lbTouch()
+        ?('<div class="pl-howto">Drag a finger over the wells, then tap the '+(_nos?'condition':'type')+' &mdash; it goes on straight away. <b>Add mode</b> keeps adding to the selection.</div>')
+        :('<div class="pl-howto">Drag a rectangle over the wells, then click the '+(_nos?'condition':'type')+' &mdash; it goes on straight away. '
+          +'Shift extends the box, &#8984;/Ctrl-click adds. Delete clears wells; &#8984;/Ctrl+C and V copy a block; &#8984;/Ctrl+Z undoes.</div>'))
       +'<div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div>'
       +(_expFlags.length?('<div class="pl-sec-t" style="margin-top:9px">Mark as a control while you apply</div>'
         +'<div class="pl-flags">'+_expFlags.map(function(f){
@@ -5230,8 +5577,8 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     // Quick types is a shortcut into the same list, and on a numbered plate it is the same list
     // one section higher up with the numbers taken off. Only shown where it still shortens
     // anything.
-    +((!_nos&&quick)?('<div class="pl-sec"><div class="pl-sec-t">Quick types</div><div class="pl-quick">'+quick+'</div></div>'):'')
-    +'<div class="pl-sec"><div class="pl-sec-t">'+(n?(n+' well'+(n!==1?'s':'')+' selected'):'Select wells to edit')+'</div>'
+    +((!_nos&&quick)?('<div class="pl-sec pl-sec-quick"><div class="pl-sec-t">Quick types</div><div class="pl-quick">'+quick+'</div></div>'):'')
+    +'<div class="pl-sec pl-sec-sel"><div class="pl-sec-t">'+(n?(n+' well'+(n!==1?'s':'')+' selected'):'Select wells to edit')+'</div>'
     +'<div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')
       +(expUsesCompounds(_plExp())?(fld('compound','Compound')+fld('conc','Concentration')):'')
       +fld('label','Label (override)')+fld('note','Note')+'</div>'
@@ -6454,12 +6801,24 @@ function applyLayout(){
 }
 // The layout is a function of the window, so it has to be recomputed when the window changes.
 var _lbRzT=null;
-window.addEventListener('resize',function(){ clearTimeout(_lbRzT); _lbRzT=setTimeout(applyLayout,120); });
+var _wasNarrow=null;
+window.addEventListener('resize',function(){ clearTimeout(_lbRzT); _lbRzT=setTimeout(function(){ applyLayout();
+  // Crossing 760 changes which navigation exists (the tab bar, the tree's surface leaves), and
+  // that is rendered, not styled — so the surfaces are redrawn once, on the crossing only.
+  var n=_rbNarrow(); if(_wasNarrow!==null && n!==_wasNarrow) renderAll(); _wasNarrow=n; },120); });
 function toggleCollapse(which){ if(which==='sec') LAYOUT.colSec=!LAYOUT.colSec; else LAYOUT.colPages=!LAYOUT.colPages; saveLayout(); applyLayout(); }
-function toggleMobileNav(force){ var open=(force===undefined)?!document.body.classList.contains('mobile-drawer-open'):!!force; document.body.classList.toggle('mobile-drawer-open',open); }
+function toggleMobileNav(force){ var open=(force===undefined)?!document.body.classList.contains('mobile-drawer-open'):!!force; document.body.classList.toggle('mobile-drawer-open',open);
+  // The page list is not built while the drawer is closed on a phone (see renderPages); the
+  // drawer opening is what asks for it. _renderPagesList, not renderPages: that one also resets
+  // the ribbon's chosen pane, which opening a drawer must not do.
+  if(open){ var h=el('pane-pages'); if(h&&h._stale){ h._stale=0; _renderPagesList(h,SEL.node); } }
+}
 // 760 to match the drawer's own breakpoint — at 641-760px the drawer opened but never
 // auto-closed, so it sat on top of the editor.
-document.addEventListener('click',function(e){ if(window.innerWidth>760) return; var inSec=e.target.closest&&(e.target.closest('#pane-sec')||e.target.closest('#pane-pages')); if(inSec && !e.target.closest('.rail-btn')) setTimeout(function(){ toggleMobileNav(false); },0); });
+document.addEventListener('click',function(e){ if(window.innerWidth>760) return; var inSec=e.target.closest&&(e.target.closest('#pane-sec')||e.target.closest('#pane-pages'));
+  // Expanding a project, typing a new folder name or pressing its + are not "I have chosen
+  // somewhere to go" — the drawer stays for those.
+  if(inSec && !e.target.closest('.rail-btn,.proj-row,.add-row,input,button.collapse-btn,.pages-hd,.chev')) setTimeout(function(){ toggleMobileNav(false); },0); });
 function resetPane(which){ if(which==='sec') LAYOUT.wSec=210; else LAYOUT.wPages=280; saveLayout(); applyLayout(); }
 var _rz=null;
 function startResize(ev,which){ ev.preventDefault(); _rz={which:which,x:ev.clientX,w:(which==='sec'?LAYOUT.wSec:LAYOUT.wPages)}; var sp=el('split-'+which); sp.classList.add('drag'); try{sp.setPointerCapture(ev.pointerId);}catch(e){} document.body.classList.add('lb-rz'); document.body.style.cursor='col-resize'; document.body.style.userSelect='none'; }
@@ -6467,6 +6826,72 @@ var _rzRaf=0;
 document.addEventListener('pointermove',function(ev){ if(!_rz) return; var dx=ev.clientX-_rz.x; var nw=Math.max(120,Math.min(560,_rz.w+dx)); if(_rz.which==='sec') LAYOUT.wSec=nw; else LAYOUT.wPages=nw; if(_rzRaf) return; _rzRaf=requestAnimationFrame(function(){ _rzRaf=0; applyLayout(); }); });
 document.addEventListener('pointerup',function(){ if(!_rz) return; var sp=el('split-'+_rz.which); sp.classList.remove('drag'); document.body.classList.remove('lb-rz'); document.body.style.cursor=''; document.body.style.userSelect=''; _rz=null; saveLayout(); });
 function toggleDock(){ if(_dockFloats()){ document.body.classList.toggle('mobile-dock-open'); renderPanels(); return; } LAYOUT.dockOpen=!LAYOUT.dockOpen; saveLayout(); applyLayout(); renderPanels(); }
+
+// ── The phone's own navigation ─────────────────────────────────────────────────────────────
+// Inside dHUB the shell's bottom bar (#ws-tabs) is the navigation. Standalone — the installed
+// PWA — there was none: Home, Experiments and Week hide the ribbon, the dock AND the drawer
+// button (the drawer would list nothing there), and the three surface leaves lived in the tree
+// inside that drawer. The PWA's Home was a room with no doors. This bar is Labbook's own, and
+// it exists only where the shell's does not (no host frame) and only at phone width; embedded
+// Labbook never carries body.lb-tabs, so nothing there changes by a pixel.
+function _phoneTabs(){ return !lbHost() && _rbNarrow(); }
+var ICON_TAB_PLUS='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+var LB_TABS=[
+  {id:'home',    lbl:'Home',        ico:function(){ return HOME_ICON; }, go:function(){ selectNode('home'); }},
+  {id:'exps',    lbl:'Experiments', ico:function(){ return EXPS_ICON; }, go:function(){ selectNode('exps'); }},
+  {id:'journal', lbl:'Journal',     ico:function(){ return NB_ICON; },   go:function(){ selectNode('journal'); }},
+  {id:'add',     lbl:'New',         ico:function(){ return ICON_TAB_PLUS; }, go:function(){ newExperimentFromAnywhere(); }},
+  {id:'more',    lbl:'More',        ico:function(){ return ICON_MORE_H; }, go:function(ev){ lbMoreMenu(ev); }}
+];
+function _tabFor(node){ var k=node.kind, surf=lbSurface();
+  if(k==='home') return 'home';
+  if(surf==='exps'||k==='expsec') return 'exps';
+  if(surf==='journal'||k==='week'||k==='general'||k==='journal') return 'journal';
+  return ''; }
+function _shortPlaceholders(){
+  // A hint written for a 560px field is cut at "Search experiments, protocols, a" in a 340px one.
+  var narrow=_rbNarrow();
+  Array.prototype.forEach.call(document.querySelectorAll('input[data-ph-short]'),function(i){
+    if(!i.dataset.phLong) i.dataset.phLong=i.getAttribute('placeholder')||'';
+    i.setAttribute('placeholder', narrow?i.dataset.phShort:i.dataset.phLong); });
+}
+function renderMobileTabs(){
+  _shortPlaceholders();
+  var on=_phoneTabs(); document.body.classList.toggle('lb-tabs',on);
+  var nav=el('lb-tabs');
+  if(!on){ if(nav) nav.innerHTML=''; return; }
+  if(!nav){ nav=document.createElement('nav'); nav.id='lb-tabs'; nav.setAttribute('aria-label','Labbook'); document.body.appendChild(nav); }
+  var cur=_tabFor(SEL.node);
+  nav.innerHTML=LB_TABS.map(function(t){ return '<button class="lbt'+(t.id===cur?' on':'')+(t.id==='add'?' lbt-add':'')+'" data-tab="'+t.id+'" onclick="lbTabGo(event,\''+t.id+'\')" aria-label="'+esc(t.lbl)+'"'+(t.id===cur?' aria-current="page"':'')+'>'+t.ico()+'<span>'+esc(t.lbl)+'</span></button>'; }).join('');
+}
+function lbTabGo(ev,id){ var t=LB_TABS.filter(function(x){ return x.id===id; })[0]; if(t) t.go(ev); }
+// "+" from anywhere. createExperiment() needs a folder to file into, and only the expsec
+// surface has one selected — so from Home or the Journal the first question is where.
+function newExperimentFromAnywhere(){
+  if(SEL.node.kind==='expsec' && SEL.node.projectId && SEL.node.sectionId){ openNew(); return; }
+  var items=[];
+  (LB.data.projects||[]).forEach(function(p){ (p.sections||[]).forEach(function(sc){
+    items.push({id:p.id+'/'+sc.id, label:p.name+' · '+sc.name, sub:(p.prefix||''), c:p.color||'#5e87c5', ic:(p.name||'?').charAt(0)}); }); });
+  if(!items.length){ toast('Make a project first — Experiments › New project'); selectNode('exps'); return; }
+  lbPicker('Where does it go?', items, function(it){ var pr=String(it.id).split('/'); selectNode('expsec',pr[0],pr[1]); setTimeout(openNew,60); });
+}
+// Everything the tab bar does not name, as a list with words on it — the same rule as every
+// ⋯ in the app. Search is here because Labbook's own spotlight had no opener a phone can press.
+function lbMoreMenu(ev){
+  var dark=document.documentElement.getAttribute('data-theme')==='dark';
+  var t=ev&&ev.currentTarget&&ev.currentTarget.getBoundingClientRect?ev.currentTarget.getBoundingClientRect():null;
+  popOpen('ctxmenu',[
+    {label:'Search', sub:'experiments, steps, protocols, wells…', fn:function(){ openSpot(); }},
+    {label:'Week planner', fn:function(){ selectNode('week'); }},
+    {label:'Notes', sub:'pages that are not experiments', fn:function(){ var sc=(LB.data.generalSections||[])[0]; if(sc) selectNode('general',null,sc.id); else toast('No note sections yet'); }},
+    {label:'What you need today', sub:'every material the steps due today consume', fn:function(){ openPrepSheet({date:todayStr()}); }},
+    {sep:true},
+    {label:'Export', sub:'PDF, Word, methods sheet, data', fn:function(){ exportMenu(); }},
+    {label:'Recover', sub:'deleted items, versions, backups', fn:function(){ openRecover('deleted'); }},
+    {label:'Settings', sub:'shortcuts, writing, appearance', fn:function(){ openSettings(); }},
+    {label:dark?'Light mode':'Dark mode', fn:function(){ toggleTheme(); }}
+  ], t||{left:innerWidth-64,right:innerWidth-8,top:innerHeight-64,bottom:innerHeight-60});
+}
 
 // ── Selection ──
 // Home is where you land: the old default was 'notebook', which meant the first thing a
@@ -6480,7 +6905,7 @@ function selectNode(kind,projectId,sectionId){ kind=NODE_ALIAS[kind]||kind; SEL.
 function journalSurface(k){ return k==='journal'||k==='week'||k==='general'; }
 function expsSurface(k){ return k==='exps'||k==='expsec'; }
 function lbSurface(){ var k=SEL.node.kind; return k==='home'?'home':expsSurface(k)?'exps':journalSurface(k)?'journal':k; }
-function selectPage(id){ if(id!==SEL.page) EXP_TAB='dated'; SEL.page=id; renderAll(); }
+function selectPage(id){ if(id!==SEL.page) EXP_TAB=_defaultExpTab(); SEL.page=id; renderAll(); }
 function toggleProj(id){ EXPANDED[id]=!EXPANDED[id]; renderSections(); }
 function genSecById(id){ return LB.data.generalSections.filter(function(s){return s.id===id;})[0]; }
 
@@ -6503,7 +6928,10 @@ function secLeaf(node,label,icon,delCall,ctx,forceActive){
 }
 function renderSections(){
   var host=el('pane-sec'); var h=''; var k=SEL.node.kind, surf=lbSurface(), embedded=!!lbHost();
-  if(!embedded){
+  // Standalone on a desktop the tree is the only navigation, so the three surfaces head it.
+  // On a phone they are the tab bar's (renderMobileTabs), and listing them here as well was
+  // the duplicate Home button one level down.
+  if(!embedded && !_phoneTabs()){
     h+='<div class="pane-lbl" style="display:flex;align-items:center;">Labbook<button class="collapse-btn" onclick="toggleCollapse(\'sec\')" title="Collapse">'+tbIco(P_CHEV_L,13)+'</button></div>';
     h+=secLeaf({kind:'home'},'Home',HOME_ICON,null);
     h+=secLeaf({kind:'exps'},'Experiments',EXPS_ICON,null,null,surf==='exps');
@@ -6527,7 +6955,7 @@ function renderSections(){
     // Embedded they are the rail's, and the rail is ALREADY lit on Journal while you are
     // inside one of your own sections — so it does not read as somewhere to click, and the
     // tree offered nothing but the sections themselves. Opening a note was a dead end.
-    if(embedded){
+    if(embedded || _phoneTabs()){
       h+='<div class="pane-lbl">Journal</div>';
       h+=secLeaf({kind:'journal'},'Day',TODAY_ICON,null,null,k==='journal');
       h+=secLeaf({kind:'week'},'Week planner',NB_ICON,null,null,k==='week');
@@ -7121,9 +7549,10 @@ function renderPages(){
   var host=el('pane-pages'); var node=SEL.node;
   var ppw=el('pane-pages-wrap'), spg=el('split-pages'); if(ppw) ppw.style.display=''; if(spg) spg.style.display='';
   var psw=el('pane-sec-wrap'), ssec=el('split-sec');
-  document.body.classList.remove('lb-onexp');   // renderExpEditor puts it back when one opens
+  document.body.classList.remove('lb-onexp','lb-bench');   // renderExpEditor puts them back when one opens
   document.body.classList.toggle('lb-on-home', node.kind==='home');
   document.body.classList.toggle('lb-dash', node.kind==='home'||node.kind==='exps'||node.kind==='week');
+  renderMobileTabs();
   _rbOpen=null;   // each surface gets its own answer; a choice made on one does not follow you
   // Home is full width inside the workspace, where the shell's rail is the navigation. In the
   // standalone build there is no rail, so the tree stays — otherwise the home would be a room
@@ -7132,6 +7561,13 @@ function renderPages(){
   if(psw) psw.style.display = hasTree ? '' : 'none';
   if(ssec) ssec.style.display = hasTree ? '' : 'none';
   if(node.kind==='home'||node.kind==='week'||node.kind==='archive'||node.kind==='exps'){ if(ppw) ppw.style.display='none'; if(spg) spg.style.display='none'; host.innerHTML=''; return; }
+  // On a phone the list sits inside a closed drawer. Building it there — one blocksForDate per
+  // notebook day and a regex strip of every day's html — on each renderAll (every tick, every
+  // wait edit, every sync) was work nobody could see. toggleMobileNav(true) builds it.
+  if(_rbNarrow() && !document.body.classList.contains('mobile-drawer-open')){ host._stale=1; return; }
+  host._stale=0; _renderPagesList(host,node);
+}
+function _renderPagesList(host,node){
   if(node.kind==='journal'){
     var dset=allBlockDates(); Object.keys(LB.data.notebook).forEach(function(k){dset[k]=1;});
     var days=Object.keys(dset).sort(); if(LAYOUT.daysDesc) days.reverse();
@@ -8448,7 +8884,12 @@ function xvDrop(ev,pid,sid){
   var p=projById(pid), sc=p&&(p.sections||[]).filter(function(x){return x.id===sid;})[0];
   toast('Moved to '+((p?p.name:'')+' › '+(sc?sc.name:'')));
 }
-function xvSetQ(v){ XV.q=v||''; var host=el('pane-ed'); if(host) renderExperiments(host, true); }
+// A keystroke in the search box re-rendered the whole surface — header, filters, the box
+// itself — and then had to put the caret back. It patches the list, 120 ms after the last key.
+var _xvQT=null;
+function xvSetQ(v){ XV.q=v||''; clearTimeout(_xvQT); _xvQT=setTimeout(function(){
+  var list=document.querySelector('.xv-list'); if(list){ list.innerHTML=xvListHtml(); return; }
+  var host=el('pane-ed'); if(host) renderExperiments(host, true); },120); }
 function xvSetFilter(f){ XV.filter=f; renderEditor(); }
 function xvMatch(e,q){
   if(!q) return true;
@@ -8519,7 +8960,8 @@ function xvProjectBody(p,q){
   return out;
 }
 function xvAddTo(pid,sid){ selectNode('expsec',pid,sid); setTimeout(function(){ openNew(); },0); }
-function renderExperiments(host, qOnly){
+// The list on its own, so a search keystroke can patch it (xvSetQ) without rebuilding the bar.
+function xvListHtml(){
   var q=(XV.q||'').toLowerCase();
   var body=LB.data.projects.map(function(p){
     // A search already forces projects open, and a filter is the same act: you asked to see a
@@ -8550,6 +8992,10 @@ function renderExperiments(host, qOnly){
       +(open?'<div class="xv-pb">'+xvProjectBody(p,q)+'</div>':'')+'</div>';
   }).join('');
   if(!LB.data.projects.length) body='<div class="xv-empty">No projects yet. Name one above to start.</div>';
+  return body;
+}
+function renderExperiments(host, qOnly){
+  var body='<div class="xv-list">'+xvListHtml()+'</div>';
   var f=['all','running','done','archived'], flbl={all:'All',running:'Running',done:'Done',archived:'Archived'};
   // Count it in the tab: an archive you cannot see the size of is a place things go missing.
   var nArch=Object.keys(LB.data.experiments).filter(function(k){ return expArchived(LB.data.experiments[k]); }).length;
@@ -8768,16 +9214,19 @@ function expActsMenu(ev,id){
   var e=LB.data.experiments[id]||{};
   var arch=expArchived(e);
   popOpen('ctxmenu', [
+    {label:'What you need', sub:'every material this experiment consumes, and where it is', fn:function(){ openPrepSheet({expId:id}); }},
     {label:'Bench sheet', sub:'print', fn:function(){ exportLab(id); }},
     {label:'Export PDF', sub:'the record', fn:function(){ exportPDF(); }},
     {sep:true},
+    (e.setup?{label:'Edit setup', sub:'format, cell line, counts — re-applied to the steps', fn:function(){ openSetupEditor(id); }}:null),
+    (e.presetKey?{label:'Update text from the preset', sub:'where the preset has been corrected since', fn:function(){ updateExpTextFromPreset(id); }}:null),
     arch?{label:'Unarchive', fn:function(){ setExpArchived(id,false); }}
         :{label:'Close experiment', sub:'say how it ended', fn:function(){ closeExperiment(id); }},
     {label:'Repeat as replicate', fn:function(){ repeatExperiment(id); }},
     {label:'Duplicate', fn:function(){ dupExperiment(id); }},
     {sep:true},
     {label:'Delete', danger:true, fn:function(){ delExperiment(id); }}
-  ], ev.currentTarget.getBoundingClientRect());
+  ].filter(Boolean), ev.currentTarget.getBoundingClientRect());
 }
 function expActs(id){ var e=LB.data.experiments[id]||{};
   var close = expArchived(e)
@@ -8843,7 +9292,7 @@ function blkCardHtml(b,expId){ var pl=b.part?('<span class="blk-part">'+esc(b.pa
   var grip='<span class="blk-grip" draggable="true" title="Drag to reorder" ondragstart="blkDragStart(event,\''+b.id+'\')" ondragend="blkDragEnd()">'
     +tbIco('<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>',13)+'</span>';
   return '<div class="blk'+(b.done?' blk-is-done':'')+'" data-blk="'+b.id+'" id="blk-'+b.id+'" oncontextmenu="ctxBlock(event,\''+b.id+'\')"'
-    +' ondragover="blkDragOver(event,\''+b.id+'\')" ondragleave="blkDragLeave(event)" ondrop="blkDrop(event,\''+b.id+'\')"><div class="blk-hd">'+grip+doneBtn+pl+'<input class="blk-date'+(_isWeekend(b.date)?' weekend':'')+'" type="date"'+(_isWeekend(b.date)?' title="This step falls on a weekend"':'')+' value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+blkWaitHtml(b,expId)+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a prep calculator" onclick="calcMenu(\''+b.id+'\')">'+tbSvg('<path d="M7 5h10l-6 7 6 7H7"/>')+'calc</button>')
+    +' ondragover="blkDragOver(event,\''+b.id+'\')" ondragleave="blkDragLeave(event)" ondrop="blkDrop(event,\''+b.id+'\')"><div class="blk-hd">'+grip+doneBtn+pl+'<span class="blk-datewrap"><span class="blk-datelbl'+(_isWeekend(b.date)?' weekend':'')+'">'+esc(b.date?_dayLbl(b.date):'date')+'</span><input class="blk-date'+(_isWeekend(b.date)?' weekend':'')+'" type="date"'+(_isWeekend(b.date)?' title="This step falls on a weekend"':'')+' value="'+esc(b.date||'')+'" onchange="setBlock(\''+b.id+'\',\'date\',this.value)"></span><input class="blk-title" value="'+esc(b.title||'')+'" placeholder="Step / stage" onchange="setBlock(\''+b.id+'\',\'title\',this.value)"><span class="grow"></span>'+blkWaitHtml(b,expId)+snooze+(b.calc?'':'<button class="blk-calcbtn" title="Add a prep calculator" onclick="calcMenu(\''+b.id+'\')">'+tbSvg('<path d="M7 5h10l-6 7 6 7H7"/>')+'calc</button>')
     // The only route to a plate map was the ribbon's Insert tab, which is closed on an
     // experiment — so on the surface where you are actually laying one out it was two clicks
     // behind a tab. It belongs beside `calc`: both are "this step has one of these".
@@ -9029,7 +9478,9 @@ function setupSummaryHtml(e){
   var imp=e.imported?('<span class="exh-imported" title="Imported '+esc(new Date(e.imported.at).toISOString().slice(0,10))
     +(e.imported.originalId?(' · original id '+esc(e.imported.originalId)):'')+'">Imported'
     +(e.imported.project?(' from '+esc(e.imported.project)+(e.imported.folder?(' › '+esc(e.imported.folder)):'')):'')+'</span>'):'';
-  return (parts||imp||over)?('<div class="exh-setup">'+over+imp+parts+edit+'</div>'):'';
+  // On a phone the chips are one line that opens on a tap (the phone block caps the height);
+  // six chips on six lines were most of the first screen of every experiment.
+  return (parts||imp||over)?('<div class="exh-setup" onclick="if(_rbNarrow()&&!event.target.closest(\'button\')) this.classList.toggle(\'open\')">'+over+imp+parts+edit+'</div>'):'';
 }
 // ── Results handed over by an analysis app ─────────────────────────────────────────────────
 // A DC50 typed by hand into a notebook is where a published number stops being traceable to
@@ -10025,7 +10476,7 @@ function _fmtLeft(ms){
 function renderTimers(){
   var host=el('lb-timers');
   if(!host){ host=document.createElement('div'); host.id='lb-timers'; document.body.appendChild(host); }
-  if(!LB_TIMERS.length){ host.innerHTML=''; host.style.display='none'; if(_timerTick){ clearInterval(_timerTick); _timerTick=null; } return; }
+  if(!LB_TIMERS.length){ host.innerHTML=''; host.style.display='none'; document.body.style.setProperty('--lb-timers-h','0px'); if(_timerTick){ clearInterval(_timerTick); _timerTick=null; } return; }
   host.style.display='';
   // Say the ceiling rather than implying an alarm clock. Only while something is actually
   // running, and only when it would otherwise be a surprise.
@@ -10042,6 +10493,9 @@ function renderTimers(){
         +(t.sub?('<span class="tmr-sub">'+esc(t.sub)+'</span>'):'')+'</span>'
       +'<button class="tmr-x" title="Dismiss" onclick="stopTimer(\''+t.id+'\')">&times;</button></div>';
   }).join('');
+  // On a phone the timers are a bar docked on the tab bar, and the FAB and the toast sit on top
+  // of it — they read its height from this token rather than guessing it.
+  document.body.style.setProperty('--lb-timers-h', (_rbNarrow()?host.offsetHeight:0)+'px');
   if(!_timerTick) _timerTick=setInterval(function(){
     var fired=LB_TIMERS.filter(function(t){ return !t.rang && t.ends<=Date.now(); });
     fired.forEach(function(t){ t.rang=true; _timerBeep(); toast(t.label+' — done');
@@ -10090,12 +10544,14 @@ function renderExpEditor(host,e){
     +(e.plasmids?('<span>'+esc(e.plasmids)+'</span>'):'')
     +'<button class="lean-tog" title="Type, status, date, plasmids and cell lines" onclick="leanToggle(this,\'.exh\')">Details</button></div>';
   var header='<div class="exh'+(expIsBlank(e)?' exh-quiet':'')+'"><div class="exh-top"><input class="exh-code" value="'+esc(e.code||'')+'" onchange="setField(\'code\',this.value)" spellcheck="false">'+expActs(e.id)+'</div>'+titleField(e)+aimField(e)+lean+fields+repChipHtml(e)+setupSummaryHtml(e)+'</div>';
-  var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res')?EXP_TAB:'dated';
+  var tab=(EXP_TAB==='obs'||EXP_TAB==='pub'||EXP_TAB==='files'||EXP_TAB==='res'||EXP_TAB==='bench')?EXP_TAB:'dated';
+  document.body.classList.toggle('lb-bench', tab==='bench');
   var nRes=((e.integration&&e.integration.results)||[]).length;
   // A phone gets the tab it is on and a menu of the rest. A strip that scrolls sideways is
    // better than one that clips, but it still hides where you can go behind a gesture nobody
    // is told about — the whole point of a menu is that the options are a list.
-  var TABDEF=[['dated','Dated sections',(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):'')],
+  var TABDEF=[['bench','Bench',(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):'')],
+              ['dated','Dated sections',(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):'')],
               ['obs','Observations',''],['res','Results',nRes?String(nRes):''],
               ['pub','Publication ready',''],['files','Files',(e.files&&e.files.length)?String(e.files.length):'']];
   var _cur=TABDEF.filter(function(x){ return x[0]===tab; })[0]||TABDEF[0];
@@ -10103,6 +10559,7 @@ function renderExpEditor(host,e){
     +'<span>'+esc(_cur[1])+'</span>'+(_cur[2]?('<span class="exp-tab-n">'+esc(_cur[2])+'</span>'):'')
     +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>';
   var tabs=tabsM+'<div class="exp-tabs">'
+    +'<button class="exp-tab'+(tab==='bench'?' on':'')+'" onclick="expTab(\'bench\')" title="The steps as they are run — tick, wait, photograph">Bench</button>'
     +'<button class="exp-tab'+(tab==='dated'?' on':'')+'" onclick="expTab(\'dated\')">Dated sections<span class="exp-tab-n">'+(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):0)+'</span></button>'
     +'<button class="exp-tab'+(tab==='obs'?' on':'')+'" onclick="expTab(\'obs\')">Observations</button>'
     +'<button class="exp-tab'+(tab==='res'?' on':'')+'" onclick="expTab(\'res\')">Results'+(nRes?('<span class="exp-tab-n">'+nRes+'</span>'):'')+'</button>'
@@ -10110,7 +10567,9 @@ function renderExpEditor(host,e){
     +'<button class="exp-tab'+(tab==='files'?' on':'')+'" onclick="expTab(\'files\')">Files'+((e.files&&e.files.length)?('<span class="exp-tab-n">'+e.files.length+'</span>'):'')+'</button></div>';
   window._TABDEF=TABDEF;
   var body;
-  if(tab==='obs'){
+  if(tab==='bench'){
+    body=benchBodyHtml(e);
+  } else if(tab==='obs'){
     body='<div class="rt exp-canvas" contenteditable="true" data-ctx="expfree:'+e.id+'" data-ph="Observations — notes, thoughts, anything you want to jot down…" oninput="setField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div>';
   } else if(tab==='files'){
     body=filesPaneHtml('exp:'+e.id, e.files||[]);
@@ -10147,20 +10606,36 @@ function renderExpEditor(host,e){
       +stepPaletteStrip()+'</div>';
   }
   host.innerHTML='<div class="ed-wrap">'+header+tabs+'<div class="exp-tab-body">'+body+'</div></div>';
-  hydrateAtt(host); hydrateFloatLayers(host); wireFileDrop(host); renderDockPanels();
+  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); wireFileDrop(host); renderDockPanels();
+  if(tab==='bench') _benchScrollToday();
 }
 var EXP_TAB='dated';
 function expTab(name){ EXP_TAB=name; renderEditor(); }
 function renderNoteEditor(host,e){ (el('export-btn')||{style:{}}).style.display='';
   var header='<div class="exh"><div class="exh-top"><div class="exh-code">'+esc((e.noteType||'note').toUpperCase())+'</div>'+expActs(e.id)+'</div><input class="exh-title" value="'+esc(e.title||'')+'" placeholder="'+(e.noteType==='meeting'?'Meeting title':'Note title')+'" onchange="setNoteField(\'title\',this.value)" onblur="renderPages()"><div class="exh-fields"><div class="exh-fld"><label>Date</label><input type="date" value="'+esc(e.date||'')+'" onchange="setNoteField(\'date\',this.value)"></div></div></div>';
   host.innerHTML='<div class="ed-wrap">'+header+'<div class="rt pg-body" contenteditable="true" data-ctx="note:'+e.id+'" oninput="setNoteField(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(e.html||'')+'</div></div>';
-  hydrateAtt(host); hydrateFloatLayers(host); renderDockPanels();
+  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); renderDockPanels();
 }
 // One day view. "Today" and any Notebook date are the same screen with a different date —
 // three separate places to look at the same block was the thing that needed cutting.
 var DAY_VIEW=null;
 function dayGo(n){ DAY_VIEW=addDays(DAY_VIEW||todayStr(),n); renderEditor(); }
 function dayToday(){ DAY_VIEW=todayStr(); renderEditor(); }
+// "Fri 11 Sep" — what the phone's navigator says instead of a date input.
+function _dayLbl(D){ try{ var d=new Date(D+'T12:00:00'); return d.toLocaleDateString([], {weekday:'short', day:'numeric', month:'short'}); }catch(e){ return fmtDate(D); } }
+// The day header's ⋯ — on a phone the header hides every action but one, and "Delete day" was
+// reachable only from the drawer's list.
+function dayActsMenu(ev,D){
+  var ids=[]; blocksForDate(D).forEach(function(fb){ if(ids.indexOf(fb.exp.id)<0) ids.push(fb.exp.id); });
+  var allFolded=ids.length&&ids.every(function(id){ return DAY_FOLD[id]; });
+  popOpen('ctxmenu',[
+    {label:'What you need today', sub:'every material the steps due consume, and where it is', fn:function(){ openPrepSheet({date:D}); }},
+    {label:'Week planner', fn:function(){ selectNode('week'); }},
+    (ids.length>1?{label:allFolded?'Unfold all experiments':'Fold all experiments', fn:function(){ dayFoldAll(D,allFolded?0:1); }}:null),
+    {sep:true},
+    {label:'Delete day', sub:'the daily note and its tasks — the experiments stay', danger:true, fn:function(){ delDay(D); }}
+  ].filter(Boolean), ev.currentTarget.getBoundingClientRect());
+}
 function daySet(v){ if(v){ DAY_VIEW=v; renderEditor(); } }
 // ── Carried over is a decision list, not a work surface ───────────────────────────────────
 // A carried-over step is one you are *not* doing today. What you do with it is decide: tick it,
@@ -10186,7 +10661,7 @@ function carryToggle(row){
   CARRY_OPEN[k]=1; host.innerHTML=carryBodyHtml(expId,f.block); row.classList.add('open');
   // The day view runs these over the whole screen once; a body that arrives later needs them
   // too, or its attachments render as broken images and its float layer never mounts.
-  hydrateAtt(host); hydrateFloatLayers(host);
+  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host);
 }
 // One listener for every carried-over row there will ever be.
 function wkCtxRow(ev,row){ wkCtxBlock(ev,row.getAttribute('data-e'),row.getAttribute('data-b'),row.getAttribute('data-d')); }
@@ -10210,15 +10685,87 @@ document.addEventListener('click',function(ev){
 // again. Keyed by experiment, so folding one folds it in both sections at once — it is the
 // experiment you are putting away, not one of its two appearances.
 var DAY_FOLD={};
-function dayDueBlocksHtml(g){
-  return g.blocks.map(function(b){ var rc=expCalcRecipe(b);
-    var hd='<div class="dfx-blk-hd'+(b.done?' dfx-done':'')+'" oncontextmenu="wkCtxBlock(event,\''+g.exp.id+'\',\''+b.id+'\')"><button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+g.exp.id+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'+(b.title?'<span class="dfx-blk-t" onclick="openBlk(\''+g.exp.id+'\',\''+b.id+'\')" title="Jump to this step in the experiment">'+esc(b.title)+' <span class="dfx-blk-link">&#8599;</span></span>':'<span class="dfx-blk-t dim">Step</span>')
-      +'<button class="dfx-snooze" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+g.exp.id+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'Snooze</button></div>';
-    var pv=b.plate?('<div class="dfx-plate">'+platePreviewHtml(b.plate,'blk:'+g.exp.id+':'+b.id)+'</div>'):'';
-    return hd+(rc?'<div class="dfx-recipe">'+rc+'</div>':'')+pv
-      +(b.proto ? protoBlockHtml(b,true)
-                : '<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+g.exp.id+':'+b.id+'" oninput="setExpBlockHtml(\''+g.exp.id+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>'); }).join('');
+// One step as it is read at the bench: a tick, the name, what to wait, the recipe as computed,
+// the plate, the text. The Journal day and the experiment's Bench tab are this one function with
+// different options, so the two surfaces cannot disagree about what a step looks like.
+//   jump   — the title opens the step in the experiment (the Journal's row)
+//   snooze — a Snooze button (the Journal's row); more — a ⋯ that opens ctxBlock (the bench's)
+//   wait   — the wait chip and its timer button
+//   photo  — a camera button that files a photo under the experiment, captioned with the step
+//   anchor — the row is wrapped and carries id="blk-<id>" (scrollBlk) and the recipe id="ccr-<id>"
+//            (refreshCalcRecipes keeps the plate→table link live), so the bench tab answers to
+//            the same routes the step cards do
+function benchRowHtml(exp,b,opts){ opts=opts||{}; var eid=exp.id, rc=expCalcRecipe(b);
+  var title=b.title?('<span class="dfx-blk-t"'+(opts.jump?(' onclick="openBlk(\''+eid+'\',\''+b.id+'\')" title="Jump to this step in the experiment"'):'')+'>'+esc(b.title)+(opts.jump?' <span class="dfx-blk-link">&#8599;</span>':'')+'</span>')
+                    :'<span class="dfx-blk-t dim">Step</span>';
+  var acts=(opts.wait?blkWaitHtml(b,eid):'')
+    +(opts.photo?('<button class="dfx-snooze bench-photo" title="Photo of this step — filed under the experiment" onclick="benchPhoto(\''+eid+'\',\''+b.id+'\')">'+ICON_CAMERA+'</button>'):'')
+    +(opts.more?('<button class="dfx-snooze bench-more" title="Step actions" onclick="ctxBlock(event,\''+b.id+'\')">'+ICON_MORE_H+'</button>'):'')
+    +(opts.snooze?('<button class="dfx-snooze" title="Snooze a day — later steps move too" onclick="snoozeBlock(\''+eid+'\',\''+b.id+'\',1)">'+ICON_SNOOZE+'Snooze</button>'):'');
+  // The bench row is two rows by structure — tick and name, then the actions right-aligned —
+  // rather than one that wraps: a wrapped flex row with a margin-left:auto child is the idiom
+  // this file keeps finding (the actions land at the right of the second line under a
+  // left-aligned first). The Journal's row keeps the one line it always had.
+  var hd='<div class="dfx-blk-hd'+(b.done?' dfx-done':'')+(opts.more?' bench-hd':'')+'" oncontextmenu="'+(opts.more?('ctxBlock(event,\''+b.id+'\')'):('wkCtxBlock(event,\''+eid+'\',\''+b.id+'\')'))+'">'
+    +'<button class="blk-done'+(b.done?' on':'')+'" title="'+(b.done?'Done — click to reopen':'Mark this step done')+'" onclick="toggleDone(\''+eid+'\',\''+b.id+'\')">'+(b.done?'&#10003;':'')+'</button>'
+    +title+(opts.more?'':acts)+'</div>'
+    +(opts.more?('<div class="bench-acts">'+acts+'</div>'):'');
+  var pv=b.plate?('<div class="dfx-plate">'+platePreviewHtml(b.plate,'blk:'+eid+':'+b.id)+'</div>'):'';
+  var row=hd+(rc?'<div class="dfx-recipe"'+(opts.anchor?(' id="ccr-'+b.id+'"'):'')+'>'+rc+'</div>':'')+pv
+    +(b.proto ? protoBlockHtml(b,true)
+              : '<div class="rt dfx-blk" contenteditable="true" data-ctx="expblock:'+eid+':'+b.id+'" oninput="setExpBlockHtml(\''+eid+'\',\''+b.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+(b.html||'')+'</div>');
+  return opts.anchor?('<div class="bench-row'+(b.done?' is-done':'')+'" id="blk-'+b.id+'">'+row+'</div>'):row;
 }
+function dayDueBlocksHtml(g){
+  return g.blocks.map(function(b){ return benchRowHtml(g.exp,b,{jump:true,snooze:true}); }).join('');
+}
+var ICON_CAMERA='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.6"/></svg>';
+// ── The Bench tab ──────────────────────────────────────────────────────────────────────────
+// What you do on a phone with an experiment is follow it: tick steps, read the recipe, start
+// the wait, photograph the gel. The Dated sections tab is the *plan* — a header the size of the
+// screen, editable dates and titles, calculator inputs — and it is the right screen on a desk.
+// The bench tab is the same blocks as they are run: grouped by day, the day's clock on the
+// header, one row per step, past days that are finished folded away, today open. Nothing is
+// stored: it is a way of looking at the record, like DAY_FOLD.
+function _defaultExpTab(){ return _rbNarrow()?'bench':'dated'; }
+var BENCH_FOLD={};
+function _benchFolded(e,g){ var k=e.id+':'+(g.key||''); if(BENCH_FOLD[k]!==undefined) return BENCH_FOLD[k];
+  var T=todayStr(); return !!(g.key && g.key<T && g.blocks.every(function(b){ return b.done; })); }
+function benchBodyHtml(e){
+  var groups=(e.blocks&&e.blocks.length)?dayGroups(e):[], T=todayStr();
+  if(!groups.length) return '<div class="exp-dated-empty">No dated steps yet &mdash; <b>Dated sections</b> is where they are added.</div>';
+  var pr=expProgress(e);
+  var top='<div class="bench-top"><span class="bench-prog"><b>'+pr.done+'</b>/'+pr.total+' steps</span>'
+    +(expOverdue(e)?('<span class="exh-overdue">'+expOverdue(e).n+' overdue</span>'):'')
+    +'<span class="grow"></span><button class="lean-tog" onclick="benchFoldAll(\''+e.id+'\')">Fold done days</button></div>';
+  return top+'<div class="bench">'+groups.map(function(g){
+    var done=g.blocks.filter(function(b){ return b.done; }).length, isT=(g.key===T), folded=_benchFolded(e,g);
+    var hd='<div class="bench-day'+(isT?' today':'')+(folded?' folded':'')+'" onclick="benchFold(\''+e.id+'\',\''+esc(g.key||'')+'\')">'
+      +'<button class="dfx-fold" title="'+(folded?'Show this day':'Fold this day away')+'"></button>'
+      +(g.key?('<span class="dg-day">Day '+g.day+'</span><span class="dg-date">'+esc(_dayLbl(g.key))+(_isWeekend(g.key)?(' <span class="dg-we">'+esc(_dayShort(g.key))+'</span>'):'')+'</span>'):'<span class="dg-day dg-nodate">No date</span>')
+      +'<span class="bench-n'+(done===g.blocks.length?' all':'')+'">'+done+'/'+g.blocks.length+'</span>'
+      +(g.key?dayPlanLine(e,g.key):'')+'</div>';
+    var body=folded?'':('<div class="bench-body">'+g.blocks.map(function(b){ return benchRowHtml(e,b,{anchor:true,wait:true,photo:true,more:true}); }).join('')+'</div>');
+    return '<div class="bench-group'+(isT?' today':'')+'" data-k="'+esc(g.key||'')+'">'+hd+body+'</div>';
+  }).join('')+'</div>';
+}
+function benchFold(eid,key){ var e=LB.data.experiments[eid]; if(!e) return;
+  var g=dayGroups(e).filter(function(x){ return (x.key||'')===key; })[0]; if(!g) return;
+  BENCH_FOLD[eid+':'+key]=!_benchFolded(e,g); renderEditor(); }
+function benchFoldAll(eid){ var e=LB.data.experiments[eid]; if(!e) return;
+  dayGroups(e).forEach(function(g){ if(g.blocks.every(function(b){ return b.done; })) BENCH_FOLD[eid+':'+(g.key||'')]=true; });
+  renderEditor(); }
+// A photo taken from a step is filed under the experiment (the Files tab is the only place a
+// photo is shown), captioned with the step's name, and it leaves you on the bench.
+function benchPhoto(eid,bid){ var f=blockFinder(eid,bid); if(!f) return;
+  _PH_NEXT={hint:f.block.title||'', stay:true};
+  lbPhotoCapture('exp:'+eid); }
+var _PH_NEXT=null;
+// Once per open: the bench scrolls to today's day, so the step you came for is on the screen.
+var _benchScrolledFor=null;
+function _benchScrollToday(){ var k=_edScreenKey(); if(_benchScrolledFor===k) return; _benchScrolledFor=k;
+  var n=document.querySelector('.bench-group.today'); if(!n) return;
+  var host=el('pane-ed'); if(host && n.getBoundingClientRect().top>host.clientHeight*0.6) n.scrollIntoView({block:'start',behavior:'auto'}); }
 function dayCarryBlocksHtml(g,D){
   // The two ids are written once, as data, instead of being re-quoted into four inline
   // handlers — which on this row cost more than everything it displays. oncontextmenu stays
@@ -10279,7 +10826,7 @@ function dayFoldExp(expId){
     body.innerHTML = kind==='carry' ? dayCarryBlocksHtml(g,D) : dayDueBlocksHtml(g);
     // The day view runs these over the whole screen once; a body that arrives later needs
     // them too, or its attachments render as broken images and its float layer never mounts.
-    hydrateAtt(body); hydrateFloatLayers(body);
+    hydrateAtt(body,{lazy:true}); hydrateFloatLayers(body);
   });
 }
 function dayFoldAll(D,fold){
@@ -10310,15 +10857,18 @@ function renderDayView(host,D){
     return '<div class="day-exp day-carry">'+dayExpHead(g,col,pname,false)
       +'<div class="day-exp-body" data-e="'+g.exp.id+'" data-k="carry" data-d="'+D+'">'+blks+'</div></div>'; }).join('')+'</div>') : '';
   var isToday=(D===todayStr());
+  // The date input is wrapped with a label that only a phone shows: there the native picker is
+  // under a readable "Fri 11 Sep" instead of a 150px form control, and the Day/Week switch gets
+  // a row of its own. On a desktop nothing changes — the label is display:none.
   var nav='<div class="day-nav">'
     +'<button class="day-arw" title="Previous day" onclick="dayGo(-1)">'+tbIco(P_CHEV_L,15)+'</button>'
-    +'<input class="day-pick" type="date" value="'+esc(D)+'" onchange="daySet(this.value)">'
+    +'<span class="day-lblwrap"><span class="day-lbl">'+esc(_dayLbl(D))+'</span><input class="day-pick" type="date" value="'+esc(D)+'" onchange="daySet(this.value)"></span>'
     +'<button class="day-arw" title="Next day" onclick="dayGo(1)">'+tbIco(P_CHEV_R,15)+'</button>'
     +(isToday?'':'<button class="day-today" onclick="dayToday()">Today</button>')+'<div class="jr-seg"><button class="on">Day</button><button onclick="selectNode(\'week\')">Week</button></div>'+'</div>';
-  host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act exh-keep" title="What you need &mdash; every material the steps due today consume, and where it is" onclick="openPrepSheet({date:\''+D+'\'})">'+tbIco(P_BOX,17)+'</button><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Daily notebook')+'</div></div>'
+  host.innerHTML='<div class="ed-wrap"><div class="exh exh-day"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act exh-more" title="This day" onclick="dayActsMenu(event,\''+D+'\')">'+ICON_MORE_H+'</button><button class="exh-act exh-keep" title="What you need &mdash; every material the steps due today consume, and where it is" onclick="openPrepSheet({date:\''+D+'\'})">'+tbIco(P_BOX,17)+'</button><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Daily notebook')+'</div></div>'
     +from+carried+nbTasksHtml(D)+culturesHtml()+ongoingHtml(D)
     +'<div class="nb-free" style="margin-top:16px"><div class="day-from-lbl">Daily note</div><div class="rt nb-body" contenteditable="true" data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML,\''+D+'\')" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div></div>';
-  hydrateAtt(host); hydrateFloatLayers(host); renderDockPanels(); lbWatchCultures();
+  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); renderDockPanels(); lbWatchCultures();
 }
 // Planner tasks for this day. They used to live only in the week view, so you could plan
 // Tuesday and then open Tuesday's notebook to find your plan missing.
@@ -10345,13 +10895,13 @@ function delDay(D){ var hasBlocks=blocksForDate(D).length>0;
 function renderPageEditor(host,pg){ (el('export-btn')||{style:{}}).style.display='';
   host.innerHTML='<div class="ed-wrap"><div class="exh"><input class="exh-title" value="'+esc(pg.title||'')+'" placeholder="Page title" onchange="setPage(\'title\',this.value)" onblur="renderPages()"></div>'
     +'<div class="rt pg-body" contenteditable="true" data-ctx="page:'+pg.id+'" oninput="setPage(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>';
-  hydrateAtt(host); hydrateFloatLayers(host); renderDockPanels(); }
+  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); renderDockPanels(); }
 function renderSeminarEditor(host,pg){ (el('export-btn')||{style:{}}).style.display='';
   var fields='<div class="exh-fields"><div class="exh-fld"><label>Speaker</label><input value="'+esc(pg.speaker||'')+'" placeholder="Speaker name" onchange="setPage(\'speaker\',this.value)"></div><div class="exh-fld"><label>Date</label><input type="date" value="'+esc(pg.date||'')+'" onchange="setPage(\'date\',this.value)"></div></div>';
   host.innerHTML='<div class="ed-wrap"><div class="exh"><div class="exh-code">Seminar</div><input class="exh-title" value="'+esc(pg.title||'')+'" placeholder="Seminar title" onchange="setPage(\'title\',this.value)" onblur="renderPages()">'+fields+'</div>'
     +'<div class="rt pg-body" contenteditable="true" data-ctx="page:'+pg.id+'" oninput="setPage(\'html\',this.innerHTML)" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div>';
-  hydrateAtt(host); hydrateFloatLayers(host); renderDockPanels(); }
-function openExp(id){ var e=LB.data.experiments[id]; if(!e) return; EXP_TAB='dated'; selectNode('expsec',e.projectId,e.sectionId); SEL.page=id; renderAll(); }
+  hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); renderDockPanels(); }
+function openExp(id){ var e=LB.data.experiments[id]; if(!e) return; EXP_TAB=_defaultExpTab(); selectNode('expsec',e.projectId,e.sectionId); SEL.page=id; renderAll(); }
 function openBlk(expId,blkId){ openExp(expId); setTimeout(function(){ scrollBlk(blkId); },90); }
 
 // ── Week planner ──
@@ -10463,26 +11013,36 @@ function wkMoveTo(D){
 // by JS — the whole app paying for a gesture that exists on one screen. Same pattern Archive
 // already uses for its sticky notes.
 (function(){
-  var src=null;
+  var src=null, x0=0, y0=0, locked=null;   // locked: 'drag' once the finger has moved sideways, 'scroll' once it has moved down
+  function stop(){ document.removeEventListener('touchmove',onMove,{passive:false}); src=null; locked=null; WK_DRAG=null; _wkClearOver(); }
   function onMove(e){
     if(!src||!WK_DRAG) return;
-    var t=e.touches[0], n=document.elementFromPoint(t.clientX,t.clientY);
+    var t=e.touches[0];
+    // Direction lock. The drag used to arm on any touchstart on a chip and cancel every scroll
+    // that began on one — and on a phone the planner is a list of chips, so it could not be
+    // scrolled at all. The columns are days, side by side: a sideways move is a drag, a
+    // vertical one is the scroll it always was. (Not long-press-armed: the chips already carry
+    // oncontextmenu, so the 480 ms press is their menu.)
+    if(!locked){ var dx=Math.abs(t.clientX-x0), dy=Math.abs(t.clientY-y0); if(dx<8&&dy<8) return;
+      if(dy>dx){ stop(); return; } locked='drag'; }
+    var n=document.elementFromPoint(t.clientX,t.clientY);
     var col=n&&n.closest?n.closest('.wk-col'):null;
     if(col){ e.preventDefault(); if(!col.classList.contains('wk-over')){ _wkClearOver(); col.classList.add('wk-over'); } }
   }
   document.addEventListener('touchstart',function(e){
     var chip=e.target.closest&&e.target.closest('.wk-blk,.wk-task'); if(!chip) return;
     if(e.target.closest('.wk-cb,.wk-sn,.wk-del,.wk-lnk,[contenteditable]')) return;
-    src=chip;
+    src=chip; locked=null; x0=e.touches[0].clientX; y0=e.touches[0].clientY;
     document.addEventListener('touchmove',onMove,{passive:false});
     if(chip.classList.contains('wk-task')) WK_DRAG={kind:'task',a:chip.getAttribute('data-id')};
     else WK_DRAG={kind:'blk',a:chip.getAttribute('data-exp'),b:chip.getAttribute('data-blk')};
   },{passive:true});
+  document.addEventListener('touchcancel',function(){ if(src) stop(); });
   document.addEventListener('touchend',function(e){
     document.removeEventListener('touchmove',onMove,{passive:false});
     if(!src){ return; }
-    var over=document.querySelector('.wk-col.wk-over');
-    src=null; _wkClearOver();
+    var over=(locked==='drag')?document.querySelector('.wk-col.wk-over'):null;
+    src=null; locked=null; _wkClearOver();
     if(over&&WK_DRAG) wkMoveTo(over.getAttribute('data-date')); else WK_DRAG=null;
   });
 })();
@@ -10770,18 +11330,24 @@ function colorBtn(label,cmd,cols){
 // Each is a guess about an element that is in the document and can be measured, and each is
 // wrong the moment its content changes — the family already fixed in #lb-tip, Blueprint's Gel
 // popup and every .pinfo tooltip. This measures, clamps both axes, and flips when it has to.
+// The visual viewport is what the keyboard leaves. window.innerHeight does not shrink for the
+// iOS keyboard, so a popover clamped against it landed under the keys — the autocomplete you
+// were typing into, exactly then. visualViewport reports the part you can see.
+function _vvH(){ try{ return (window.visualViewport&&window.visualViewport.height)||window.innerHeight; }catch(e){ return window.innerHeight; } }
+function _vvTop(){ try{ return (window.visualViewport&&window.visualViewport.offsetTop)||0; }catch(e){ return 0; } }
 function _placePop(pop, rect, opts){
   opts=opts||{};
   var M=opts.margin==null?8:opts.margin, gap=opts.gap==null?6:opts.gap;
   var w=pop.offsetWidth, h=pop.offsetHeight;
+  var vT=_vvTop(), vB=vT+_vvH();
   var left=(opts.alignRight? rect.right-w : rect.left);
   var top=rect.bottom+gap;
-  if(top+h > window.innerHeight-M){
+  if(top+h > vB-M){
     var above=rect.top-h-gap;
-    top = (above >= M) ? above : Math.max(M, window.innerHeight-h-M);
+    top = (above >= vT+M) ? above : Math.max(vT+M, vB-h-M);
   }
   left=Math.max(M, Math.min(left, window.innerWidth-w-M));
-  top =Math.max(M, Math.min(top,  window.innerHeight-h-M));
+  top =Math.max(vT+M, Math.min(top, vB-h-M));
   pop.style.left=left+'px'; pop.style.top=top+'px';
 }
 function toggleSwatch(cmd){ var w=el('col-'+cmd); document.querySelectorAll('.tb-color').forEach(function(x){ if(x!==w) x.classList.remove('open'); }); var willOpen=!w.classList.contains('open'); w.classList.toggle('open'); if(willOpen){ var sw=w.querySelector('.tb-swatch'); var r=w.getBoundingClientRect(); _placePop(sw, r, {gap:4, margin:6}); } }
@@ -10953,7 +11519,12 @@ function renderPanels(){
   dock.innerHTML=DOCK_PANELS.map(panelDom).join('');
 }
 // Refresh the bodies in place — for when a tag or heading changed but the dock itself has not.
-function renderDockPanels(){ DOCK_PANELS.forEach(function(id){ var node=document.querySelector('#rightdock [data-panel="'+id+'"] .panel-body'); if(node) node.innerHTML=PANEL_DEFS[id].build(true); }); }
+function renderDockPanels(){
+  // On a phone the dock is a slide-in drawer, and while it is closed nothing it holds can be
+  // seen; it used to be rebuilt after every editor render anyway. toggleDock() rebuilds it on
+  // opening (renderPanels), so a closed dock costs nothing.
+  if(_dockFloats() && !document.body.classList.contains('mobile-dock-open')) return;
+  DOCK_PANELS.forEach(function(id){ var node=document.querySelector('#rightdock [data-panel="'+id+'"] .panel-body'); if(node) node.innerHTML=PANEL_DEFS[id].build(true); }); }
 function outlineHtml(){ var e=(SEL.node.kind==='expsec'&&SEL.page)?LB.data.experiments[SEL.page]:null;
   if(e&&e.blocks){ return e.blocks.map(function(b){ return '<div class="outline-item" onclick="scrollBlk(\''+b.id+'\')">'+(b.dayOffset!=null?('D'+b.dayOffset+' · '):'')+esc(b.title||'(untitled)')+'</div>'; }).join('')||'<div class="dock-empty">No blocks.</div>'; }
   if(_activeEd){ var hs=_activeEd.querySelectorAll('h1,h2,h3'); if(hs.length){ var o=''; hs.forEach(function(h){ o+='<div class="outline-item">'+esc(h.textContent.slice(0,40))+'</div>'; }); return o; } }
@@ -10995,7 +11566,12 @@ function openPlateIns(){
   if(plateOf(key)){ openPlateEditor(key); return; }
   addPlateTo(key);
 }
-function insertTable(){ if(!_activeEd) return; _activeEd.focus(); openTableGrid(_saveSel()); }
+function insertTable(){ if(!_activeEd) return; _activeEd.focus(); var range=_saveSel();
+  // The 8×8 hover grid needs a hover. A phone gets the same choice as a list.
+  if(_lbTouch()&&_rbNarrow()){ var sizes=[[2,2],[3,2],[3,3],[4,3],[5,3],[6,4],[8,4]];
+    lbPicker('Table size', sizes.map(function(x){ return {id:x[0]+'x'+x[1], label:x[0]+' columns × '+x[1]+' rows'}; }),
+      function(it){ var p=it.id.split('x'); insertTableRC(+p[1],+p[0],range); }); return; }
+  openTableGrid(range); }
 function openTableGrid(range){ var pop=el('tbl-grid'); var cells='';
   for(var r=1;r<=8;r++){ for(var c=1;c<=8;c++){ cells+='<span class="tg-cell" data-r="'+r+'" data-c="'+c+'"></span>'; } }
   pop.innerHTML='<div class="tg-grid">'+cells+'</div><div class="tg-label" id="tg-label">Pick size</div>';
@@ -11203,7 +11779,25 @@ function _cloudUnavailable(err){ if(_cloudWarned) return; _cloudWarned=true;
   toast('Images are saved on this device only (cloud storage unavailable). Use Backup to move them.'); }
 function handleImageFile(file,range){ if(!_activeEd || !file) return; toast('Adding image…'); _compressImage(file).then(function(dataURL){ var id='att'+uid(); return _attPut(id,dataURL).then(function(ok){ if(!ok) return; insertHtmlAtCaret('<img class="lb-att" data-att="'+id+'" src="'+dataURL+'">',range); _attUpload(id,dataURL); }); }).catch(function(){ toast('Could not add image.'); }); }
 function _warmAtt(id,url){ try{ fetch(url).then(function(r){return r.blob();}).then(function(b){ var fr=new FileReader(); fr.onload=function(){ _attPut(id,fr.result); }; fr.readAsDataURL(b); }).catch(function(){}); }catch(e){} }
-function hydrateAtt(root){ if(!root) return Promise.resolve(); var imgs=root.querySelectorAll('img.lb-att[data-att]'); if(!imgs.length) return Promise.resolve(); var atts=LB.data.attachments||{}; var ps=[]; Array.prototype.forEach.call(imgs,function(im){ if(im.getAttribute('src')) return; var id=im.dataset.att; ps.push(_attGet(id).then(function(d){ if(d){ im.src=d; im.classList.remove('att-missing'); return; } var meta=atts[id]; if(meta&&meta.url){ im.src=meta.url; im.classList.remove('att-missing'); _warmAtt(id,meta.url); } else im.classList.add('att-missing'); })); }); return Promise.all(ps); }
+// opts.lazy — the seven on-screen renders pass it: an image is fetched from IndexedDB as it
+// nears the viewport rather than every image of every block at once (each is a base64 string
+// the size of a photo). Print and copy stages are off-screen, never intersect, and await the
+// Promise — so the default stays eager and a future call site cannot silently break them.
+var _attIO=null;
+function _attLoad(im,atts){ var id=im.dataset.att; return _attGet(id).then(function(d){ if(d){ im.src=d; im.classList.remove('att-missing'); return; } var meta=atts[id]; if(meta&&meta.url){ im.src=meta.url; im.classList.remove('att-missing'); _warmAtt(id,meta.url); } else im.classList.add('att-missing'); }); }
+function hydrateAtt(root,opts){ if(!root) return Promise.resolve(); var imgs=root.querySelectorAll('img.lb-att[data-att]'); if(!imgs.length) return Promise.resolve(); var atts=LB.data.attachments||{}; var ps=[];
+  var lazy=!!(opts&&opts.lazy) && typeof IntersectionObserver==='function';
+  if(lazy && !_attIO){ _attIO=new IntersectionObserver(function(entries){ entries.forEach(function(en){ if(!en.isIntersecting) return; _attIO.unobserve(en.target); if(!en.target.getAttribute('src')) _attLoad(en.target,LB.data.attachments||{}); }); },{root:el('pane-ed')||null, rootMargin:'600px 0px'}); }
+  if(lazy){
+    // Re-armed over the whole pane each time: an observer keeps hold of every target it was
+    // given, and a render replaces the pane's nodes, so observing only the new ones would pile
+    // up detached images render after render. disconnect + observe what is actually there now.
+    _attIO.disconnect();
+    Array.prototype.forEach.call(document.querySelectorAll('#pane-ed img.lb-att[data-att]:not([src])'),function(im){ im.setAttribute('decoding','async'); _attIO.observe(im); });
+    return Promise.resolve();
+  }
+  Array.prototype.forEach.call(imgs,function(im){ if(im.getAttribute('src')) return; ps.push(_attLoad(im,atts)); });
+  return Promise.all(ps); }
 // ── Data dump: arbitrary files attached to an experiment ──
 // Excel picklists, gel scans, cropped figures, Prism exports. Same storage contract as images:
 // metadata in LB.data (small, syncs + backs up), bytes in IndexedDB (never in the RTDB tree,
@@ -11298,7 +11892,7 @@ function openPhotoEditor(file,key){
       +'<input type="range" class="ph-rot" id="ph-slider" min="-45" max="45" step="0.5" value="0" oninput="phRotSet(this.value)">'
       +'<span class="ph-deg" id="ph-deg">0&deg;</span>'
       +'<button class="ph-btn" onclick="phRot(90)" title="Rotate right">90&deg; &#8635;</button></div>'
-      +'<div class="ph-row"><input class="ph-cap" id="ph-cap" placeholder="Title (optional) — e.g. BRD4 blot, 24 h" autocomplete="off">'
+      +'<div class="ph-row"><input class="ph-cap" id="ph-cap" placeholder="Title (optional) — e.g. BRD4 blot, 24 h" autocomplete="off" value="'+esc((_PH_NEXT&&_PH_NEXT.hint)||'')+'">'
       +'</div>'
       +'<div class="ph-row acts"><span class="ph-hint" id="ph-hint">Drag inside the picture to crop</span>'
       +'<button class="ph-btn" onclick="phReset()">Reset</button>'
@@ -11308,7 +11902,7 @@ function openPhotoEditor(file,key){
   var url=URL.createObjectURL(file), img=new Image();
   img.onload=function(){
     URL.revokeObjectURL(url);
-    _PH={img:img, key:key, name:file.name||'photo.jpg', rot:0, crop:null, drag:null, rc:null};
+    _PH={img:img, key:key, name:file.name||'photo.jpg', rot:0, crop:null, drag:null, rc:null, next:_PH_NEXT}; _PH_NEXT=null;
     back.classList.add('open');
     phDraw();
     window.addEventListener('resize',phDraw);
@@ -11330,12 +11924,16 @@ function phReset(){ if(!_PH) return; _PH.rot=0; _PH.fine=0; _PH.crop=null;
 // transform to get wrong.
 function _phRotated(){
   var P=_PH, a=((P.rot||0)+(P.fine||0))*Math.PI/180;
+  // Cached per angle: phDraw runs on every pointermove of a crop, and re-rasterising a
+  // 12-megapixel photo for each of them is what made the crop handles lag on a phone.
+  if(P._rotC && P._rotA===a) return P._rotC;
   var w=P.img.naturalWidth, h=P.img.naturalHeight;
   var c=Math.abs(Math.cos(a)), s=Math.abs(Math.sin(a));
   var W=Math.round(w*c+h*s), H=Math.round(w*s+h*c);
   var cv=document.createElement('canvas'); cv.width=W; cv.height=H;
   var x=cv.getContext('2d');
   x.translate(W/2,H/2); x.rotate(a); x.drawImage(P.img,-w/2,-h/2);
+  P._rotC=cv; P._rotA=a;
   return cv;
 }
 function phDraw(){
@@ -11418,8 +12016,10 @@ function phSave(){
       phClose();
       if(!ok) return;
       // Open the tab it landed in. "Added to Files" is only useful if you know where Files is,
-      // and on a phone the answer has to be "there it is".
-      EXP_TAB='files'; renderEditor();
+      // and on a phone the answer has to be "there it is" — unless the photo was taken from a
+      // step on the bench, where leaving the bench for the Files tab is the wrong answer.
+      var stay=!!(P.next&&P.next.stay);
+      if(stay){ renderEditor(); } else { EXP_TAB='files'; renderEditor(); }
       toast(cap?('Saved to Files — '+cap):'Saved to Files');
     });
   },'image/jpeg',0.86);
@@ -11859,21 +12459,55 @@ document.addEventListener('input',function(e){
 
 // ── Popup helper (autocomplete, ctx, add) ──
 function popOpen(id,items,rect){ var pop=el(id); pop.innerHTML=items.map(function(it,i){ if(it.sep) return '<div class="pop-sep"></div>';
-    var ic=it.ic?'<span class="ic" style="background:'+it.ic[1]+'">'+esc(it.ic[0])+'</span>':''; return '<div class="pop-item'+(it.danger?' danger':'')+'" data-i="'+i+'">'+ic+'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.label)+'</span>'+(it.sub?'<span class="sub">'+esc(it.sub)+'</span>':'')+'</div>'; }).join('');
-  pop._items=items; pop.classList.add('open');
-  _placePop(pop, rect, {gap:4});
+    var ic=it.ic?'<span class="ic" style="background:'+it.ic[1]+'">'+esc(it.ic[0])+'</span>':''; return '<div class="pop-item'+(it.danger?' danger':'')+'" data-i="'+i+'">'+ic+'<span class="pop-l">'+esc(it.label)+'</span>'+(it.sub?'<span class="sub">'+esc(it.sub)+'</span>':'')+'</div>'; }).join('');
+  pop._items=items;
+  // On a phone every menu is a sheet at the foot of the screen: 250px of 12px rows anchored to
+  // a fingertip clipped its tenth item behind a scrollbar. The sheet is the same list, sized for
+  // a thumb, and it is placed by CSS — so the inline left/top a popover left behind must go, or
+  // the stylesheet's left:0/right:0 loses to them.
+  var sheet=_rbNarrow();
+  pop.classList.toggle('pop-sheet',sheet);
+  if(sheet){ pop.style.left=''; pop.style.top=''; document.body.classList.add('lb-sheet-open'); }
+  pop.classList.add('open');
+  if(!sheet) _placePop(pop, rect, {gap:4});
   // A long press opens this menu with the finger still down, and the release synthesises a
   // mousedown. Without an arming delay the item nearest the thumb fires itself.
   pop._armAt=Date.now();
   pop.onmousedown=function(ev){ var d=ev.target.closest('.pop-item'); if(!d) return; ev.preventDefault();
     if(Date.now()-pop._armAt<260) return;
-    var it=items[+d.dataset.i]; pop.classList.remove('open'); if(it&&it.fn) it.fn(); };
+    var it=items[+d.dataset.i]; _popClose(pop); if(it&&it.fn) it.fn(); };
 }
-document.addEventListener('mousedown',function(e){ ['ctxmenu','addmenu','tbl-grid'].forEach(function(id){ var p=el(id); if(p&&p.classList.contains('open') && !p.contains(e.target)) p.classList.remove('open'); }); });
+// body.lb-modal-open — "a dialog is up". The FAB and the timer bar hide under it. It was written
+// first as body:has(.modal-back.open), which is the obvious way and cost 6× on every
+// innerHTML replacement in the app: a :has() on body makes the engine re-check the whole
+// subtree on every mutation. Eight elements can be watched for a class change instead.
+(function(){
+  var mo=new MutationObserver(function(){ var open=!!document.querySelector('.modal-back.open, #spot-back.open');
+    document.body.classList.toggle('lb-modal-open',open); });
+  function watch(n){ if(!n||n._lbmo) return; n._lbmo=1; mo.observe(n,{attributes:true,attributeFilter:['class']}); }
+  window._lbWatchModal=watch;
+  function all(){ Array.prototype.forEach.call(document.querySelectorAll('.modal-back, #spot-back'),watch); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',all); else all();
+})();
+// One way out for every menu, so the body class that shows the sheet's backdrop and hides the
+// FAB and the timers cannot be left on.
+var _lastPopClose=0;
+function _popClose(pop){ if(!pop) return; pop.classList.remove('open'); _lastPopClose=Date.now();
+  if(!document.querySelector('.pop.open')) document.body.classList.remove('lb-sheet-open'); }
+document.addEventListener('mousedown',function(e){
+  // A popover opens under the finger, so the long press's release lands inside it. A sheet
+  // opens at the foot of the screen, so the same release lands OUTSIDE it — and closed it
+  // before anyone saw it. The click-swallow uses the same 700 ms window.
+  if(window._lpFired && Date.now()-_lpFired<700) return;
+  ['ctxmenu','addmenu','tbl-grid'].forEach(function(id){ var p=el(id); if(p&&p.classList.contains('open') && !p.contains(e.target)) _popClose(p); }); });
+// The drawer's and the dock's backdrop doubles as the sheet's. A sheet closes on the mousedown
+// that lands on it; WebKit still delivers the click that follows to the same node, which would
+// then shut the drawer the sheet was opened from.
+function _backdropTap(){ if(Date.now()-_lastPopClose<400) return; toggleMobileNav(false); document.body.classList.remove('mobile-dock-open'); }
 
 // ── Custom dialogs (replace native confirm/prompt + searchable picker) ──
-function _closeMenus(){ ['ctxmenu','addmenu','tbl-grid'].forEach(function(id){ var p=el(id); if(p) p.classList.remove('open'); }); }
-function _lbDlg(){ _closeMenus(); var d=el('lb-dialog'); if(d) return d; d=document.createElement('div'); d.className='modal-back'; d.id='lb-dialog'; d.innerHTML='<div class="modal" id="lb-dialog-card"></div>'; document.body.appendChild(d); d.addEventListener('mousedown',function(e){ if(e.target===d && d._onCancel) d._onCancel(); }); return d; }
+function _closeMenus(){ ['ctxmenu','addmenu','tbl-grid'].forEach(function(id){ var p=el(id); if(p) _popClose(p); }); }
+function _lbDlg(){ _closeMenus(); var d=el('lb-dialog'); if(d) return d; d=document.createElement('div'); d.className='modal-back'; d.id='lb-dialog'; d.innerHTML='<div class="modal" id="lb-dialog-card"></div>'; document.body.appendChild(d); if(window._lbWatchModal) _lbWatchModal(d); d.addEventListener('mousedown',function(e){ if(e.target===d && d._onCancel) d._onCancel(); }); return d; }
 function _lbDlgClose(){ var d=el('lb-dialog'); if(d){ d.classList.remove('open'); d._onCancel=null; } }
 function _saveSel(){ var s=window.getSelection(); return (s&&s.rangeCount)?s.getRangeAt(0).cloneRange():null; }
 function _restoreSel(r){ if(!r) return; try{ var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){} }
@@ -12916,7 +13550,7 @@ function rpRender(){
       +'<option value="project"'+(RP.scope==='project'?' selected':'')+'>A project</option>'
       +'<option value="range"'+(RP.scope==='range'?' selected':'')+'>A date range</option></select></label>'
     +(RP.scope==='project'
-       ? '<label class="ci-f"><span>Project</span><select onchange="rpSet(\'projectId\',this.value)">'+projs+'</select></label>'
+       ? '<label class="'+ciWide(LB.data.projects.map(function(p){ return p.name; }))+'"><span>Project</span><select onchange="rpSet(\'projectId\',this.value)">'+projs+'</select></label>'
        : '<label class="ci-f"><span>From</span><input type="date" value="'+esc(RP.from)+'" onchange="rpSet(\'from\',this.value)"></label>'
         +'<label class="ci-f"><span>To</span><input type="date" value="'+esc(RP.to)+'" onchange="rpSet(\'to\',this.value)"></label>')
     +'</div>'
@@ -13718,7 +14352,7 @@ function _doBackupWrite(name,text,manual,info,pb){
       // backup you pressed the button for may download; the automatic one keeps a local
       // snapshot instead and says so once.
       if(manual){ _download(name,text); _markBackup('download');
-        toast('Backup downloaded ✓'+note+' (right-click Backup to choose a folder)'); return; }
+        toast('Backup downloaded ✓'+note+' (Recover → Backup file to choose a folder)'); return; }
       _snapshotBackup().then(function(ok){ if(ok) _nudgeBackupFolder(); });
     });
 }
@@ -13854,8 +14488,8 @@ function _nudgeBackupFolder(){
   try{ if(localStorage.getItem('lb_backup_nudged')==='1') return; localStorage.setItem('lb_backup_nudged','1'); }catch(e){}
   var canPick=(typeof window.showDirectoryPicker==='function');
   lbAlert(canPick
-    ? 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, so it does not survive a wiped browser or a lost laptop. To get real backup files, right-click Backup in the View tab and pick a folder once. After that it writes there quietly, every day, with no dialogs.'
-    : 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, and this browser cannot write files to a folder on its own. Press Backup in the View tab now and then to download one you can keep.',
+    ? 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, so it does not survive a wiped browser or a lost laptop. To get real backup files, open Recover → Backup file (the View tab, or More on a phone) and pick a folder once. After that it writes there quietly, every day, with no dialogs.'
+    : 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, and this browser cannot write files to a folder on its own. Open Recover → Backup file (the View tab, or More on a phone) now and then to download one you can keep.',
     {title:'Your notebook is backed up here only'});
 }
 // Recover from the rolling snapshot when there is no backup file to hand.
@@ -14041,8 +14675,10 @@ function positionBubble(){
   // box lands, which is the bug #lb-tip had.
   var left=Math.round(r.left+r.width/2-bw/2);
   left=Math.max(8, Math.min(left, window.innerWidth-bw-8));
+  var vT=_vvTop(), vB=vT+_vvH();
   var top=Math.round(r.top-bh-8);
-  if(top<8) top=Math.round(r.bottom+8);          // no room above: flip below the selection
+  if(top<vT+8) top=Math.round(r.bottom+8);       // no room above: flip below the selection
+  top=Math.min(top, vB-bh-8);                    // and never under the keyboard
   b.style.left=left+'px'; b.style.top=top+'px';
 }
 (function initBubble(){
@@ -14349,7 +14985,8 @@ window.addEventListener('message', function(e){
   function restore(b){ if(!b) return; var o=b.getAttribute('data-otitle'); if(o!=null){ b.setAttribute('title',o); b.removeAttribute('data-otitle'); } }
   function hide(){ clearTimeout(showT); if(liveT){ clearInterval(liveT); liveT=null; }
     if(tip) tip.classList.remove('on'); restore(cur); cur=null; }
-  document.addEventListener('mouseover', function(e){ var b=e.target.closest && e.target.closest('[title]'); if(!b) return; var txt=b.getAttribute('title'); if(!txt) return;
+  document.addEventListener('mouseover', function(e){ if(_lbTouch()) return;   // a tap synthesises mouseover; there is nothing to hover with
+    var b=e.target.closest && e.target.closest('[title]'); if(!b) return; var txt=b.getAttribute('title'); if(!txt) return;
     if(cur && cur!==b) hide();
     cur=b; b.setAttribute('data-otitle', txt); b.removeAttribute('title');
     clearTimeout(showT); showT=setTimeout(function(){ if(cur!==b || !b.isConnected){ hide(); return; }
