@@ -31,6 +31,7 @@ Every app declares the same names. Two scales, no loose values.
   --brand:<the app's own colour>;        /* its logo box and its card tint — nothing else */
 
   --good:#2d9462; --warn:#c47818; --danger:#c04040;
+  --paper:#fbfaf6;                       /* Labbook only: a Notebook page. Warm, not --surface */
 
   --sans:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -49,10 +50,18 @@ Every app declares the same names. Two scales, no loose values.
   --text:#e8eaf2; --text2:#8b90a8; --text3:#4e5368;
   --accent:#8aaee0; --accent-dim:rgba(138,174,224,0.16); --accent-soft:rgba(138,174,224,0.26);
   --good:#6ddca8; --warn:#f0b060; --danger:#f08a84;
+  --paper:#1a1917;
   --shadow-xs:0 1px 4px rgba(0,0,0,.30);  --shadow-sm:0 2px 8px rgba(0,0,0,.40);
   --shadow-md:0 6px 24px rgba(0,0,0,.50); --shadow-lg:0 16px 48px rgba(0,0,0,.55);
 }
 ```
+
+**Section colours are data, not tokens.** Labbook's Notebook paints each section in one of eight
+muted colours (`NB_COLORS`, keyed `blue … slate`, the key is what the record stores). They reach
+CSS as a single custom property, `--nb-c`, set inline on the row, the pages header and the page,
+so one property paints the tab, the active tint (`color-mix` with `transparent`) and the rule
+under the title. They are the one place a colour other than `--accent` is interactive, and they
+are what tell two sections apart at a glance — the reason OneNote has them.
 
 **Light is the default and dark is the override.** An app written dark-first (`:root` dark,
 `[data-theme="light"]` light) still works, but it means the light palette — the one the Hub actually
@@ -150,7 +159,7 @@ Five scripts, and each answers a question the others cannot.
 | `tools/audit_app.py --xref` | dead CSS classes, unreachable functions, orphaned data tables |
 | `tools/audit_align.js` | whether the controls on one row actually line up, and wrapped rows |
 | `tools/audit_runtime.js` | what only a loaded page knows — see below |
-| `tools/mobile_sweep.mjs` | Labbook on an emulated iPhone: 51 screens, both engines, with the three above — see *The phone* |
+| `tools/mobile_sweep.mjs` | Labbook on an emulated iPhone: 62 screens, both engines, with the three above — see *The phone* |
 | `tools/snap_compare.mjs` | whether a CSS change changed any pixel, at any width, on any screen |
 
 **`tools/audit_runtime.js`** loads an app in an iframe and reports: an inline handler naming a

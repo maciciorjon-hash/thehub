@@ -74,6 +74,9 @@ window.__ms = {
   fixedOverlaps(){ var els=[]; document.querySelectorAll('body *').forEach(function(n){
       var cs=getComputedStyle(n); if(cs.position!=='fixed') return; if(!__ms.shown(n)) return;
       if(cs.pointerEvents==='none') return; if(n.id==='mobile-backdrop'||n.classList.contains('modal-back')||n.id==='spot-back'||n.id==='pl-band') return;
+      // A sheet is modal by design (it has a backdrop): opened from a row inside the drawer it
+      // covers the drawer the way an iOS action sheet covers the list it came from.
+      if(n.classList.contains('pop-sheet')) return;
       var r=n.getBoundingClientRect(); if(r.width<8||r.height<8) return; els.push({n:n,r:r}); });
     var out=[]; for(var i=0;i<els.length;i++) for(var j=i+1;j<els.length;j++){ var a=els[i],b=els[j];
       if(a.n.contains(b.n)||b.n.contains(a.n)) continue;
@@ -134,6 +137,12 @@ const SEED = `(function(){
   [ids[0],ids[1]].forEach(function(id){ var e=LB.data.experiments[id]; if(e&&e.blocks&&e.blocks[0]) setBlockDone(id,e.blocks[0].id,true,true); });
   // a wait on the first NB step, so the wait chip and the timer button exist
   var nb=LB.data.experiments[ids[0]]; if(nb&&nb.blocks[1]) nb.blocks[1].waitMin=45;
+  // the Notebook: a page with a subpage in the first Lab section, and today's Journal page
+  var sc=LB.data.generalSections[0]; openSection('nb_general',sc.id);
+  newPage(); var pg1=_curPage(); pg1.title='Gel photos, with a title long enough to wrap on a phone'; pg1.html='<p>Bands at 60 and 120 kDa. <b>Lane 3</b> is the control.</p>';
+  newPage(); var pg2=_curPage(); pg2.title='Second attempt'; pageIndent(pg2.id,1);
+  LB.data.notebook[d(0)]={date:d(0),html:'<p>Ran the SPARK gel; bands look right.</p><p>Talked to Rub\u00e9n about ChemLib.</p>'};
+  ids.push(pg1.id);
   save(); selectNode('home');
   return ids;
 })()`;
@@ -161,9 +170,20 @@ function screens(ids) {
     S('exp-long-title',  `openExp('${e3}')`),
     S('drawer',          `openExp('${e0}'); toggleMobileNav(true)`),
     S('drawer-journal',  `selectNode('journal'); toggleMobileNav(true)`),
+    S('notebook',        `openNotebookWs()`),
+    S('notebook-page',   `openPage('${ids[8]}')`),
+    S('notebook-section',`var sc=LB.data.generalSections[1]; openSection('nb_general',sc.id)`),
+    S('notebook-journal',`openDayPage(todayStr())`),
+    S('notebook-project',`var p=LB.data.projects[0]; openSection('proj:'+p.id,null)`),
+    S('drawer-notebook', `openPage('${ids[8]}'); toggleMobileNav(true)`),
+    S('menu-nb-picker',  `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('.nb-pick'); nbPickerMenu({currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}})`, { menu: true }),
+    S('menu-nb-acts',    `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('.nb-pick-row .lb-mbtn'); nbActsMenu({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, 'nb_general')`, { menu: true }),
+    S('menu-page',       `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('#pane-pages .page-item'); ctxPage({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, '${ids[8]}')`, { menu: true }),
+    S('menu-section',    `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('.sec-item.nb-sec'); ctxGeneral({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, LB.data.generalSections[0].id)`, { menu: true }),
+    S('menu-day-page',   `openDayPage(todayStr()); toggleMobileNav(true); var t=document.querySelector('#pane-pages .page-item'); ctxDay({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, todayStr())`, { menu: true }),
     S('dock',            `openExp('${e0}'); if(document.body.classList.contains('lb-dock-float')||innerWidth<=760) toggleDock(); else throw new Error('n/a')`, { optional: true }),
     S('ribbon-insert',   `openExp('${e0}'); setRbTab('insert')`),
-    S('ribbon-home',     `selectNode('journal'); setRbTab('home')`),
+    S('ribbon-home',     `openPage('${ids[8]}'); setRbTab('home')`),
     S('ribbon-view',     `openExp('${e0}'); setRbTab('view')`),
     S('menu-step',       `openExp('${e0}'); expTab('dated'); var b=LB.data.experiments['${e0}'].blocks[0]; var t=document.querySelector('.blk-more, [onclick*="ctxBlock"]'); ctxBlock({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, b.id)`, { menu: true }),
     S('menu-exp-acts',   `openExp('${e0}'); var t=document.querySelector('.exh-more'); expActsMenu({currentTarget:t,preventDefault:function(){},stopPropagation:function(){}}, '${e0}')`, { menu: true }),
@@ -343,6 +363,8 @@ async function sweep() {
       await t('keystroke in a block (ms)', `openExp('${ids[3]}'); var ed=document.querySelector('.blk .rt[contenteditable]'); if(ed){ ed.focus(); ed.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'a'})); }`);
       await t('plate editor open (ms)', `openExp('${ids[0]}'); openPlateEditor('exp:${ids[0]}'); closePlateEditor()`);
       await t('drawer open (ms)', `openExp('${ids[0]}'); toggleMobileNav(true); toggleMobileNav(false)`);
+      await t('notebook page (ms)', `selectNode('home'); openPage('${ids[8]}')`);
+      await t('keystroke in a page (ms)', `openPage('${ids[8]}'); var ed=document.querySelector('.nb-page .rt[contenteditable]'); if(ed){ ed.focus(); ed.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:'a'})); }`);
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       perf.done = true;
     }

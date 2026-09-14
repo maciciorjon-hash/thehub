@@ -5,7 +5,36 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-13 · **v1.16.1** · branch `main`.
+- Date: 2026-09-14 · **v1.17.0** · branch `main`.
+
+## Two workspaces, one file (2026-09-14)
+
+Labbook is now the **Planner** (Home · Today · Week · Experiments) and the **Notebook**
+(OneNote's columns: notebook picker + sections · pages with subpages · a page on paper), in one
+file on one engine. The shell rail says **Planner · Notebook**; Labbook's own left column names
+the surface inside each, in both builds. Every project is a notebook (derived, `'proj:'+id`);
+general notebooks live in `LB.data.notebooks[]` (a new `_CLOUD_ROOTS` key; the migrated one is
+`nb_general`, "Lab"); **Journal** is derived from the day notes (months → days, today always
+listed). Sections stay in `generalSections` with `nb`/`color`/`order`; pages gain `order`/`level`
+(0–2, OneNote's flat-list model). `_nbMigrate()` is idempotent per record, never flag-gated, and
+runs at boot, after the seed and on cloud adoption. Today lost its note editor and gained a
+**Journal — today** card. Full account: CLAUDE.md → *Two workspaces, one file*.
+
+## Traps added
+
+- **`lb-nb-nopage`, never `lb-dash`, for a Notebook list**: `lb-dash` hides the phone's drawer
+  button, and the drawer is how a phone reaches the pages. `lb-nonav` hides the button when there
+  is nothing to open.
+- **`setPage('title')` re-renders the pages pane per keystroke** — titles go through
+  `setPageTitle`, which patches the row in place.
+- **A restored page goes to the end of its section at level 0.** Its old `order` has been
+  renumbered; dropped mid-list it would adopt a neighbour's subpages.
+- **The node's `projectId` slot holds the notebook id** in `{kind:'nb'}`; read it through
+  `_nbId()`. `selectNode('general',…)` is aliased into `openSection`, so old callers still land.
+- **The sweep exempts `.pop-sheet` from the fixed-overlap rule**: a sheet opened from a row in
+  the drawer covers the drawer by design (iOS convention), with a backdrop.
+- **Roots (`generalSections`, `notebooks`) have no live cloud listener** — a new section reaches
+  the other device on reload. Pre-existing; now stated.
 
 ## The phone had no session (2026-09-13, second half)
 

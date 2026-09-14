@@ -1140,8 +1140,8 @@ function enterAppNav(id) {
       requestAnimationFrame(function() { crumb.style.opacity = '1'; });
     });
   }
-  // Home, Experiments and Journal are the same frame at three views, so the app's own name
-  // would overwrite which of the three you asked for. A landing's app keeps its name.
+  // Planner and Notebook are the same frame at two workspaces, so the app's own name would
+  // overwrite which of the two you asked for. A landing's app keeps its name.
   if (isAdmin) {
     var sec=WS_NAV.filter(function(x){ return x.id===_wsSection && x.kind==='labbook'; })[0];
     wsSetWhere(sec ? sec.name : (info.name || id));
@@ -1152,7 +1152,7 @@ function exitAppNav() {
   document.body.classList.remove('in-app');
   if (isAdmin) {
     var n = (WS_NAV.filter(function(x){ return x.id===_wsSection; })[0]||{}).name;
-    wsSetWhere(_wsSection==='home' ? 'Home' : (n||''));
+    wsSetWhere(n||'');
   }
   document.getElementById('hub-logo').classList.add('pulsing');
   document.getElementById('hub-logo').title = '';
@@ -2474,10 +2474,13 @@ function _replayDeepLink(){
 // labbook-standalone. Rendering a second copy here from Labbook's localStorage snapshot is
 // exactly the duplication this rework exists to remove.
 // ══════════════════════════════════════════════════════════════════════════
+// Labbook is two workspaces in one frame — the Planner (Home · Today · Week · Experiments)
+// and the Notebook (notebooks → sections → pages) — so the rail names the WORKSPACE and
+// Labbook's own left column names the surface inside it. The three entries this used to
+// carry (Home · Experiments · Journal) are one level down now.
 var WS_NAV = [
-  { id:'home',     name:'Home',          icon:'home',    kind:'labbook', view:'home' },
-  { id:'exps',     name:'Experiments',   icon:'flask',   kind:'labbook', view:'exps' },
-  { id:'journal',  name:'Journal',       icon:'notebook',kind:'labbook', view:'journal' },
+  { id:'planner',  name:'Planner',       icon:'planner', kind:'labbook', view:'planner' },
+  { id:'notebook', name:'Notebook',      icon:'notebook',kind:'labbook', view:'notebook' },
   { sep:true },
   { id:'analysis', name:'Data Analysis', icon:'analysis',kind:'landing' },
   { id:'archive',  name:'Archive',       icon:'archive', kind:'landing' },
@@ -2487,6 +2490,9 @@ var WS_NAV = [
 ];
 var WS_ICONS = {
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
+  // A calendar with a tick: the planner is dated work being done. Distinct from the notebook's
+  // spine-and-rules at 19px, which is the size the rail draws them at.
+  planner:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 2.5v4M16 2.5v4"/><path d="M8.5 15l2.5 2.5 4.5-4.5"/></svg>',
   fold:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   flask:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6.5L4.6 18A2 2 0 006.3 21h11.4a2 2 0 001.7-3L14 9.5V3"/><path d="M7.5 15h9"/></svg>',
   antibody:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.8v-6.6"/><path d="M12 14.2 7.2 7.4M12 14.2l4.8-6.8"/><path d="M5.7 8.45 8.7 6.35M15.3 6.35 18.3 8.45"/></svg>',
@@ -2507,12 +2513,12 @@ function _wsIcon(name){
   }catch(e){}
   return '';
 }
-var WS_TABS = ['home','exps','journal','archive','cells'];   // the phone's bottom bar
+var WS_TABS = ['planner','notebook','analysis','archive','cells'];   // the phone's bottom bar
 // dHUB opens on Home, every time. The first thing you want on opening the Hub is the summary
 // of what is running — not whichever landing you happened to leave behind last week, which is
 // what restoring this from localStorage did. The section is still tracked for the life of the
 // page so re-renders (auth resolving, a landing refreshing) stay where you are.
-var _wsSection = 'home';
+var _wsSection = 'planner';
 
 function renderRail(){
   var rail=document.getElementById('ws-rail'), tabs=document.getElementById('ws-tabs');
@@ -2542,14 +2548,18 @@ function _wsRestoreRail(){ try{ if(localStorage.getItem('hub_rail')==='collapsed
 // landings rendered here.
 function wsGo(id){
   var n=WS_NAV.filter(function(x){ return x.id===id; })[0];
-  if(!n){ if(id==='labbook'){ return wsGo('journal'); } n=WS_NAV.filter(function(x){ return x.id==='home'; })[0]; if(!n) return; id='home'; }
+  // The old ids (home · exps · journal · labbook) still arrive from saved state and old
+  // links: the first three are the Planner's surfaces now, 'labbook' meant the notebook.
+  if(!n){ var alias={home:'planner',exps:'planner',journal:'planner',labbook:'notebook'}[id];
+    if(alias) return wsGo(alias);
+    n=WS_NAV.filter(function(x){ return x.id==='planner'; })[0]; if(!n) return; id='planner'; }
   _wsSection=id;
   renderRail();
   if(n.kind==='labbook'){
     openApp('labbook');
     _hubQueueMessage('labbook', {type:'lb:go', view:n.view, requestId:'dhub'+Date.now().toString(36)});
-    // Home, Experiments and Journal are the same frame at three views, so the header must
-    // name the one you asked for rather than the app.
+    // Planner and Notebook are the same frame at two workspaces, so the header must name
+    // the one you asked for rather than the app.
     wsSetWhere(n.name);
     return;
   }
@@ -2714,7 +2724,7 @@ function renderSuites(){
   }
   _wsRestoreRail();
   renderRail();
-  wsGo(_wsSection || 'home');
+  wsGo(_wsSection || 'planner');
 }
 // Tasks and the quick note keep their exact bodies and handlers — they live in a header
 // popover now instead of a dashboard tile.
@@ -2910,7 +2920,7 @@ document.getElementById('hub-back-lbl').addEventListener('click', function(){ if
 document.getElementById('hub-logo').addEventListener('click', function() {
   // In the workspace the home is itself an app (Labbook), so "back out of the app" is not a
   // thing you can mean here — the logo goes home instead.
-  if (isAdmin) { wsGo('home'); return; }
+  if (isAdmin) { wsGo('planner'); return; }
   if (currentApp) backToHub();
 });
 
