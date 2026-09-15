@@ -3938,6 +3938,18 @@ light), and the same shape on a 384 in eights. The calculator counts follow (76 
 4 mock · 8 controls); every calculator in the preset and the `nbtx`/`nbsusp` defaults carry
 **1.1×** overage.
 
+**And the wording reaches the experiments that already exist.** Jon: *"aplica los cambios de
+diseño a los experimentos que están en marcha o completados. No cambies fechas y setups, solo el
+wording."* `_rewordFromPresets(before)` runs from `seedPresets` on every load (not flag-gated —
+adoption carries this device's flags over a tree that has not had it; a block already reworded
+compares equal and costs a string compare). It rewrites a block only when it can be **proved**
+to be the preset's own text — its stored `b.tpl` filled with the setup still equals it, or, for
+a block from before templates were stored, the *old* preset's block of the same title does
+(`before` is the presets as they were before the refresh) — and touches nothing but `html`,
+`tpl` and `pub`: no date, no setup, no calculator input, no tick, no note. A block you wrote
+into is counted and left; the experiment's banner still offers it side by side. One alert says
+how many, only when something changed.
+
 Also: `.modal.nm` is 760px with a two-column field grid and one label style throughout (labels
 in sentence case — uppercase turned *µL* into *ML*); `body.lb-lean .exh.open .exh-lean` kept its
 Details button so the header collapses again, and `leanToggle` relabels Details/Hide details;

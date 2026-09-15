@@ -6285,6 +6285,63 @@ function _legacyHasUnchecked(html){
 // preset instantiation from a seed (carries live calculators)
 function presetFromSeed(seed,name,baseType){ return {name:name,baseType:baseType,title:seed.title,blocks:(seed.blocks||[]).map(function(b){ var o={dayOffset:b.d,title:b.title,html:b.html}; if(b.pub) o.pub=b.pub; if(b.w) o.waitMin=b.w; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; })}; }
 function seedPresets(){
+  // What the presets said before this refresh: the wording pass below needs it to prove that
+  // an older block (one with no b.tpl) still carries the preset's own words.
+  var _before={}; try{ _before=JSON.parse(JSON.stringify(LB.data.presets||{})); }catch(e){}
+  _seedPresetsInner();
+  _rewordFromPresets(_before);
+}
+// ── The wording pass (2026-09-15) ───────────────────────────────────────────────────────────
+// Jon: "aplica los cambios de diseño a los experimentos que están en marcha o completados. No
+// cambies fechas y setups, solo el wording y lo que hemos cambiado de forma." Every preset
+// block became a numbered list of actions with footnotes; this carries that into experiments
+// that already exist — running, completed, archived alike — and touches NOTHING but the words:
+// not a date, not a setup answer, not a calculator input, not a tick, not a note.
+//
+// A block is rewritten only when it can be PROVED to be the preset's own text: its stored
+// template filled with the experiment's setup still equals what is in it (ticks stripped), or,
+// for a block from before templates were stored, the old preset's block of the same title does.
+// A block you wrote into is left exactly as it is and counted; the experiment's own banner
+// still offers it, both versions side by side, so nothing is decided for you.
+// Not flag-gated (the _nbMigrate lesson): adoption carries this device's flags over a cloud
+// tree that has not had the pass, so the only honest test is the block itself — and a block
+// already reworded compares equal and costs a string compare per load.
+function _rewordFromPresets(before){
+  if(!LB.data) return;
+  var nBlk=0, nExp=0, nLeft=0;
+  Object.keys(LB.data.experiments||{}).forEach(function(id){
+    var e=LB.data.experiments[id]; if(!e||!e.presetKey) return;
+    var tpl=LB.data.presets[e.presetKey], old=(before||{})[e.presetKey];
+    if(!tpl||!(tpl.blocks||[]).length) return;
+    var changed=0, su=e.setup||{};
+    (e.blocks||[]).forEach(function(b){
+      if(b.proto) return;
+      var t=(tpl.blocks||[]).filter(function(x){ return (b.tpl&&(x.title||'')===(b.tpl.title||'')) || (x.title||'')===(b.title||''); })[0];
+      if(!t) return;
+      var want=fillSetup(t.html, su);
+      if(_proseOnly(want)===_proseOnly(b.html)) return;
+      var safe=_expBlockUntouched(e,b);
+      if(!safe && !b.tpl && old){
+        var ot=(old.blocks||[]).filter(function(x){ return (x.title||'')===(b.title||''); })[0];
+        try{ if(ot && _proseOnly(fillSetup(ot.html, su))===_proseOnly(b.html)) safe=true; }catch(_e){}
+      }
+      if(!safe){ nLeft++; return; }
+      b.tpl={title:t.title, html:t.html, pub:t.pub||''};
+      b.html=want;
+      if(t.pub) b.pub=fillSetup(t.pub, su); else delete b.pub;
+      changed++;
+    });
+    if(changed){ e.updated=Date.now(); nBlk+=changed; nExp++; }
+  });
+  if(nBlk){
+    setTimeout(function(){ try{ save(); }catch(e){} },0);
+    var msg=(nBlk?('The wording of <b>'+nBlk+' step'+(nBlk===1?'':'s')+'</b> in '+nExp+' experiment'+(nExp===1?'':'s')
+        +' was brought up to the presets — numbered actions, footnotes, no tick lists. Dates, setups, calculator inputs, ticks and notes are untouched.'):'')
+      +(nLeft?(' <b>'+nLeft+' step'+(nLeft===1?'':'s')+'</b> carr'+(nLeft===1?'ies':'y')+' your own edits and '+(nLeft===1?'was':'were')+' left as written; the banner on each experiment offers them side by side.'):'');
+    setTimeout(function(){ try{ lbAlert(msg,{title:'Steps reworded',html:true}); }catch(e){} },600);
+  }
+}
+function _seedPresetsInner(){
   // One-time upgrade: refresh built-in presets to the calc-enabled, correctly-dated versions.
   // (Only rewrites the built-in type presets; user-added custom presets are never touched.)
   // A version bump used to overwrite every built-in preset unconditionally, edits included.
@@ -13391,7 +13448,7 @@ function lbChoose(msg,opts){ opts=opts||{}; var ans=opts.answers||[]; return new
 // Single-button notice — for things the user must be told, not asked.
 function lbAlert(msg,opts){ opts=opts||{}; return new Promise(function(res){
   var d=_lbDlg(), card=el('lb-dialog-card'); card.className='modal';
-  card.innerHTML='<div class="modal-t">'+esc(opts.title||'Notice')+'</div><div class="dlg-msg">'+esc(msg)+'</div>'
+  card.innerHTML='<div class="modal-t">'+esc(opts.title||'Notice')+'</div><div class="dlg-msg">'+(opts.html?msg:esc(msg))+'</div>'
     +'<div class="modal-act"><span class="grow"></span><button class="btn'+(opts.danger?' danger':'')+'" id="lb-dlg-ok">'+esc(opts.ok||'OK')+'</button></div>';
   d.classList.add('open'); function done(){ _lbDlgClose(); res(true); }
   d._onCancel=done; el('lb-dlg-ok').onclick=done;
