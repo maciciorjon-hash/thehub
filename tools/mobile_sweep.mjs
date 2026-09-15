@@ -160,8 +160,8 @@ function screens(ids) {
     S('journal-day',     `selectNode('journal'); if(window.DAY_VIEW!==undefined) DAY_VIEW=null; renderEditor()`),
     S('journal-week',    `selectNode('week')`),
     S('exp-default',     `openExp('${e0}')`),
-    S('exp-dated',       `openExp('${e0}'); expTab('dated')`),
-    S('exp-bench',       `openExp('${e0}'); if(window._TABDEF&&_TABDEF.some(function(t){return t[0]==='bench';})) expTab('bench'); else throw new Error('n/a');`, { optional: true }),
+    S('exp-steps',       `openExp('${e0}'); expTab('steps')`),
+    S('exp-steps-inputs',`openExp('${e0}'); expTab('steps'); var b=document.querySelector('.bench .blk-calc .lean-tog'); if(b) b.click(); else throw new Error('n/a');`, { optional: true }),
     S('exp-obs',         `openExp('${e0}'); expTab('obs')`),
     S('exp-results',     `openExp('${e0}'); expTab('res')`),
     S('exp-pub',         `openExp('${e0}'); expTab('pub')`),
@@ -185,7 +185,7 @@ function screens(ids) {
     S('ribbon-insert',   `openExp('${e0}'); setRbTab('insert')`),
     S('ribbon-home',     `openPage('${ids[8]}'); setRbTab('home')`),
     S('ribbon-view',     `openExp('${e0}'); setRbTab('view')`),
-    S('menu-step',       `openExp('${e0}'); expTab('dated'); var b=LB.data.experiments['${e0}'].blocks[0]; var t=document.querySelector('.blk-more, [onclick*="ctxBlock"]'); ctxBlock({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, b.id)`, { menu: true }),
+    S('menu-step',       `openExp('${e0}'); expTab('steps'); var b=LB.data.experiments['${e0}'].blocks[0]; var t=document.querySelector('.blk-more, [onclick*="ctxBlock"]'); ctxBlock({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, b.id)`, { menu: true }),
     S('menu-exp-acts',   `openExp('${e0}'); var t=document.querySelector('.exh-more'); expActsMenu({currentTarget:t,preventDefault:function(){},stopPropagation:function(){}}, '${e0}')`, { menu: true }),
     S('menu-exp-tabs',   `openExp('${e0}'); var t=document.querySelector('.exp-tabs-m')||document.body; expTabMenu({currentTarget:t,preventDefault:function(){},stopPropagation:function(){}}, '${e0}')`, { menu: true }),
     S('menu-exp-row',    `selectNode('exps'); var t=document.querySelector('.xv-row'); ctxExp({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, '${e0}')`, { menu: true }),
@@ -224,8 +224,8 @@ function screens(ids) {
 // A real long press: pointerdown(touch) → hold → pointerup, then the compat mousedown/click a
 // browser synthesises at the finger. The menu must be open at +800 ms.
 const LONG_PRESS = `(async function(){
-  var e=LB.data.experiments[arguments[0]]; openExp(e.id); expTab('dated'); await new Promise(r=>setTimeout(r,300));
-  var row=document.querySelector('.blk[oncontextmenu], .bench-row[oncontextmenu]'); if(!row) return 'no row with oncontextmenu';
+  var e=LB.data.experiments[arguments[0]]; openExp(e.id); expTab('steps'); await new Promise(r=>setTimeout(r,300));
+  var row=document.querySelector('.bench-row .bench-hd[oncontextmenu]'); if(!row) return 'no row with oncontextmenu';
   var r=row.getBoundingClientRect(); var x=Math.round(r.left+r.width/2), y=Math.round(Math.max(r.top+20, Math.min(r.bottom-10, innerHeight/2)));
   var target=document.elementFromPoint(x,y)||row;
   var mk=function(type,extra){ var ev=new PointerEvent(type,Object.assign({bubbles:true,cancelable:true,clientX:x,clientY:y,pointerType:'touch',pointerId:1,isPrimary:true},extra||{})); return ev; };
@@ -355,7 +355,7 @@ async function sweep() {
         perf[label] = Math.round(ms[Math.floor(ms.length / 2)] * 10) / 10;   // the median: a warm-up run or a GC pause is not the number
       };
       await t('open experiment (ms)', `openExp('${ids[0]}')`);
-      await t('bench tab (ms)', `openExp('${ids[0]}'); if(window._TABDEF&&_TABDEF.some(function(x){return x[0]==='bench';})) expTab('bench')`);
+      await t('steps tab (ms)', `openExp('${ids[0]}'); expTab('steps')`);
       await t('tick a step (ms)', `var e=LB.data.experiments['${ids[2]}']; var b=e.blocks[e.blocks.length-1]; b.date=todayStr(); openExp(e.id); setBlockDone(e.id,b.id,!b.done,true)`);
       await t('day view (ms)', `selectNode('journal'); DAY_VIEW=null; renderEditor()`);
       await t('week view (ms)', `selectNode('week')`);

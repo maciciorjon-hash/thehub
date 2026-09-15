@@ -7,7 +7,26 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 - Date: 2026-09-15 · **v1.17.2** · branch `main`.
 
-## The PDF and the bench sheet (2026-09-15, last)
+## One Steps tab (2026-09-15, last)
+
+The experiment has **Steps · Observations · Results · Publication ready · Files**. Steps is the
+old Bench view with the plate, the banners, the calculator inputs (folded), reorder, rename and
+date in the ⋯. Every preset block is now `<ol>` actions + `<p class="lb-fn">` footnotes, no
+`ul.lb-check`; the bench sheet's boxes come from the `<ol>`. `nmPreview` deep-copies the
+preset blocks (it was writing into the stored preset). `nbscreen96` is Jon's control rows +
+compound blocks. Photo editor: full-picture crop to start, 8 handles, aspect presets,
+`editFilePhoto` replaces in place. Full account: CLAUDE.md → *One Steps tab*.
+
+## Traps added
+
+- **`EXP_TAB` 'dated'/'bench' alias to 'steps'** — `expTab` maps them; nothing else knows.
+- **`.modal.nm` must be in the phone block's variant list** — a named variant outranks the
+  bare `.modal{max-width:none}` and the sheet scrolled sideways at 375px until it was.
+- **Never hand a stored preset's blocks to `S.apply`** — clone first, or the preset looks edited
+  and never refreshes.
+- **Uppercase labels mangle units** (`µL` → `ML`) — sentence case where a unit can appear.
+
+## The PDF and the bench sheet (2026-09-15)
 
 `PRINT_CSS`/`LAB_CSS` set as documents: `break-inside:avoid` only on rows, checklist items
 and the plate grid; `break-after:avoid` on headings; 10pt / 11pt; `@page` margin boxes print
