@@ -1360,6 +1360,11 @@ body.lb-lean .exh.open .exh-lean{display:none;}
    added at 26px and up — so on 96 and 384, the size where numbering earns its keep, every
    number sat wherever the box put it. */
 .pp-w.pp-wn{display:flex;align-items:center;justify-content:center;overflow:hidden;}
+/* The wells keep their pastel fills in the dark theme, but the gaps between them are the dark
+   ground, and a figure that straddles a gap loses its dark ink there: light ink with a dark halo
+   reads on both. Measured at contrast 1.03 against the ground before this rule existed. */
+[data-theme="dark"] .pp-nb span,[data-theme="dark"] .pp-no,[data-theme="dark"] .pp-nbf{color:#f4f5f8;
+  text-shadow:0 0 3px rgba(0,0,0,.9),0 0 1px rgba(0,0,0,.95);}
 .pp-leg-i b{font-family:var(--mono);color:var(--text);margin-right:2px;}
 .cc-no{width:26px;text-align:center;font-family:var(--mono);font-weight:700;color:var(--text2);}
 .cc-mix td,.cc-mix th{vertical-align:top;}
@@ -1372,15 +1377,20 @@ body.lb-lean .exh.open .exh-lean{display:none;}
   border-radius:var(--r-full);background:var(--surface3);color:var(--text3);font-size:var(--fs-1);
   font-weight:700;line-height:1;cursor:help;vertical-align:1px;}
 .ci-f:hover .ci-hint{background:var(--accent-dim);color:var(--accent);}
-.ci-f.chk{flex-direction:row;align-items:flex-start;justify-content:flex-start;gap:7px;align-self:end;padding:7px 0;
-  grid-column:span 2;}
+/* The row is the height of an input and sits on the neighbours' input line (align-self:end).
+   The sentence starts 7px down, which puts a one-line sentence — and its box — on the centre of
+   that line, whether the field beside it took one line of label or two; a sentence that wraps
+   grows downward and the box stays on the line it starts on. It used to be 7px of padding on
+   both sides of a 30px box, a 44px row whose tick sat 7px above every neighbouring input. */
+.ci-f.chk{flex-direction:row;align-items:flex-start;justify-content:flex-start;gap:7px;align-self:end;padding:7px 0 0;
+  min-height:30px;box-sizing:border-box;grid-column:span 2;}
 /* A checkbox's label is a sentence ("MG132 pre-treatment"), not a two-word caption over an
    input, so it needs the width of two fields. In a single-column grid the span is clamped and
    nothing changes. */
 /* padding, not min-height: a one-line label comes to the height of an input and centres against
    it, and a label that wraps grows downward with the box staying on the line the sentence
    starts on rather than drifting into the gap between the two lines. */
-.ci-f.chk input{width:15px;height:15px;flex:none;margin-top:1px;accent-color:#5e87c5;}
+.ci-f.chk input{width:15px;height:15px;min-height:0;flex:none;margin:1px 0 0;accent-color:#5e87c5;}
 .ci-f.chk span{font-size:var(--fs-2);font-weight:600;line-height:1.45;color:var(--text);}
 /* New-experiment source-protocol chips */
 .nm-protocols{margin:4px 0 2px;}
@@ -2670,7 +2680,7 @@ var EXTRA_PRESET_SEED={
      // per donor, which are pair wells with something left out at the read, not another mix.
      calc:{kind:'nbtx',inputs:{donorNames:'NL-DELE1(CTD), DELE1(CTD)-NL',acceptorNames:'HT-HRI',
        acceptorNg:80,ratios:'10, 50',
-       donorStock:'100',acceptorStock:'100',carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
+       donorStock:'100',acceptorStock:'100',carrierStock:1000,fugeneRatio:3,optimemPerWell:10,
        nPair:4,nDonor:4,nAcceptor:8,nMock:0,nUntr:8,nPairCtrl:8,ctrlRatio:50,
        ctrlMode:'same amount as in the pair',excess:1.2}},
      // No `pub` here on purpose: nbtx is in CALC_PUB_FULL, so the calculator writes the Methods
@@ -2704,6 +2714,71 @@ var EXTRA_PRESET_SEED={
        +'<p><b>Controls to include</b></p><ul><li>NanoLuc + HaloTag <b>+ ligand 618</b></li><li>NanoLuc + HaloTag <b>− ligand 618</b></li>'
        +'<li>NanoLuc only and HaloTag only, as the assay design needs</li><li>Mock (carrier DNA only)</li></ul>'
        +'<p>The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the matched − ligand wells.</p>'
+       +'<p><b>Results</b></p><p></p>'}]},
+  // The SPARK plate as a compound screen. One pair (NL-DELE1(CTD) + HT-HRI at 1:10), every
+  // well transfected with it and carrying the HaloTag ligand, and the plate filled with as many
+  // compounds as it holds — each a block of technical replicates × a short dilution series —
+  // with the NanoBRET controls (−ligand, −substrate, mock) plus DMSO in the last block. The
+  // series is the setup's (setupAdd): 100 µM top, 3-fold, 4 points, duplicates by default.
+  // Reverse transfection on day 0 with the ligand in the suspension; compounds on day 1, 4 h,
+  // then the read. The counts in the calculators are for 4 × 2 on a 96; the plate map corrects
+  // them for anything else, condition by condition, as it does for every NanoBRET.
+  'NB_SPARK_SCREEN96':{name:'NanoBRET SPARK - Screen',baseType:'NB',title:'NanoBRET — SPARK compound screen (96-well)',
+   setup:{format:'96',cellLine:'HeLa',donors:'NL-DELE1(CTD)',acceptors:'HT-HRI',ratios:'10',doseSeries:true,
+          topUM:100,df:3,nConc:4,nReps:2},
+   setupHide:['nTransfect','mg132','ligand'],
+   setupAdd:[{f:'topUM',t:'num',lbl:'Top concentration (µM)',d:100},
+             {f:'df',t:'num',lbl:'Dilution factor',d:3,step:'0.5'},
+             {f:'nConc',t:'num',lbl:'# concentrations',d:4},
+             {f:'nReps',t:'num',lbl:'Technical replicates',d:2}],
+   plateOn:true, layout:'nbscreen96', blocks:[
+    {d:0,title:'Transfection mix (FuGENE HD)',
+     // One pair mix for every transfected well — the compounds, the DMSO and the −ligand /
+     // −substrate controls are the same transfection — and a mock. 90 pair wells + 4 controls
+     // + 2 mock is the 96 of the default plate; the map overrides these per condition.
+     calc:{kind:'nbtx',inputs:{donorNames:'NL-DELE1(CTD)',acceptorNames:'HT-HRI',
+       acceptorNg:80,ratios:'10',
+       donorStock:'100',acceptorStock:'100',carrierStock:1000,fugeneRatio:3,optimemPerWell:10,
+       nPair:90,nDonor:0,nAcceptor:0,nMock:2,nUntr:0,nPairCtrl:4,ctrlRatio:10,
+       ctrlMode:'same amount as in the pair',excess:1.2}},
+     html:'<p><b>Reverse transfection</b> — one master mix for the pair, <b>{{donors}} + {{acceptors}}</b> at NL 1:{{ratios}}, '
+       +'and a mock with carrier DNA only. Every well that receives a compound, the DMSO wells and the &minus;ligand / &minus;substrate '
+       +'controls are all the same transfection, so the pair mix is made for all of them at once.</p>'
+       +'<p>The amounts are in the table above and follow the setup. Add the DNA to the Opti-MEM, then the FuGENE HD '
+       +'<b>straight into the liquid</b>, not down the tube wall; mix gently (do not vortex) and leave 10&ndash;15 min at room temperature.</p>'
+       +'<p>Dispense the mix into the white {{format}}-well plate <i>before</i> the cells, following the plate map.</p>'
+       +'<ul class="lb-check"><li>Pair mix and mock made</li><li>10&ndash;15 min at room temperature</li><li>Dispensed into the plate</li></ul>'},
+    {d:0,title:'Cell suspension + HaloTag ligand + seed',
+     // Only the −ligand controls take the − suspension; every other well, mock included, is +.
+     calc:{kind:'nbsusp',inputs:{cellLine:'HeLa',cellsPerWell:20000,volPerWell:90,nPlus:94,nMinus:2,
+       ligName:'HaloTag ligand 618',stockUM:100,finalNM:100,excess:1.2}},
+     html:'<p>Two suspensions of {{cellLine}}: one <b>with</b> the HaloTag ligand for every well but the &minus;ligand controls, '
+       +'and one <b>without</b> for those. The ligand goes into the suspension, not into each well &mdash; that is what keeps the '
+       +'concentration the same across every + well, and it must be present through the whole expression period.</p>'
+       +'<p>Seed straight onto the transfection mix. Incubate overnight under standard conditions.</p>'
+       +'<ul class="lb-check"><li>+ ligand suspension made</li><li>&minus; ligand suspension made</li><li>Seeded onto the mixes</li><li>Overnight, 37 &deg;C</li></ul>'},
+    {d:1,title:'Compound addition',w:240,
+     calc:{kind:'spike',inputs:{name:'test compounds',wellVolUL:100,foldX:10,series:true,finalUM:0,stockUM:0,
+       nWells:88,excess:1.1,diluent:'Opti-MEM'}},
+     pub:'Compounds were added directly onto the cells as 10&times; solutions in Opti-MEM at {{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M, each in {{nReps}} technical replicates, with matched DMSO in the vehicle and control wells, and the plates incubated for 4 h at 37 &deg;C.',
+     html:'<p><b>{{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M</b>, each in {{nReps}} technical replicates &mdash; one block per compound, '
+       +'as on the plate map; the map is where the compound names go. Prepare <b>10&times; dilutions of each concentration in Opti-MEM</b> '
+       +'and add the 10&times; to the wells <b>without aspirating</b> &mdash; the concentrations you record are the ones <b>in the well</b>.</p>'
+       +'<p>Give the DMSO wells and the &minus;ligand / &minus;substrate / mock controls the same volume of matched vehicle, so every well '
+       +'carries the same Opti-MEM and DMSO. <i class="pub-skip">At {{topUM}} &micro;M from a 10 mM DMSO stock the top well carries 1% DMSO; '
+       +'match that in the vehicle wells rather than the lowest point.</i></p>'
+       +'<p>Incubate <b>4 h</b> at 37 &deg;C.</p>'
+       +'<ul class="lb-check"><li>10&times; dilutions made</li><li>Added to the compound wells</li>'
+       +'<li>Vehicle added to the control wells</li><li>4 h, 37 &deg;C</li></ul>'},
+    {d:1,title:'NanoBRET substrate + read',w:5,
+     calc:{kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:'assay medium',totalVol:2520,dilution:100}},
+     pub:'NanoBRET substrate was added and the plate read at ~460 nm (donor) and ~618 nm (acceptor). The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the &minus; ligand wells, expressed relative to the DMSO control.',
+     html:'<p>Read per the established NanoBRET protocol: add substrate, equilibrate, then read donor (~460 nm) and acceptor (~618 nm) channels. '
+       +'<i class="pub-skip">The 1:100 substrate dilution here is a placeholder from the existing NanoBRET preset — set it to whatever your kit lot says.</i></p>'
+       +'<p><b>Controls on the plate</b></p><ul><li>Pair <b>&minus; HaloTag ligand</b> (background)</li><li>Pair <b>&minus; substrate</b></li>'
+       +'<li>Mock (carrier DNA only)</li><li>Pair + ligand + <b>DMSO</b> &mdash; the vehicle every compound is compared with</li></ul>'
+       +'<p>The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the &minus; ligand wells, '
+       +'and each compound well is expressed relative to the DMSO wells.</p>'
        +'<p><b>Results</b></p><p></p>'}]},
   // ── Curated by Jon, run on the bench ────────────────────────────────────────────────────
   // A NanoBRET BET biosensor read in 96-well, reverse-transfected: no 6-well transfection and
@@ -3015,6 +3090,9 @@ var SETUP_SCHEMA={
     {f:'nTransfect',t:'num',lbl:'# 6-well transfections',d:3},
     {f:'ligand',t:'txt',lbl:'HaloTag ligand',d:'HT618'},
     {f:'mg132',t:'check',lbl:'MG132 pre-treatment',d:true}],
+    // A pipetting threshold is a property of the bench, not of the experiment — "Smallest volume
+    // you will pipette (µL) 0.25" on the setup line is the form dump _pubSetupText exists to stop.
+    pubSkip:['minVol'],
     apply:function(su,blocks){ return applyNbtxSetup(su,blocks); }},
   KD:{plate:true,plateOn:true,fields:[
     {f:'format',t:'format',lbl:'Format',d:'96',opts:['96','384']},
@@ -3136,9 +3214,20 @@ function presetSetupHide(presetKey){
   var h=(p&&p.setupHide)||(sd&&sd.setupHide)||[];
   return Array.isArray(h)?h:[];
 }
+// A curated preset can also ASK a question its base type does not — the SPARK screen wants a top
+// concentration, a dilution factor, points and replicates that no other NanoBRET run has a use
+// for. They come after the type's own, reach the blocks and the layout through e.setup like any
+// other answer, and never appear on the setup line: _pubSetupText walks the type's fields only,
+// and the preset's own Methods sentence is where these belong.
+function presetSetupAdd(presetKey){
+  var p=LB.data.presets[presetKey], sd=EXTRA_PRESET_SEED[presetKey];
+  var a=(p&&p.setupAdd)||(sd&&sd.setupAdd)||[];
+  return Array.isArray(a)?a:[];
+}
 function setupFieldsFor(presetKey){
   var hide=presetSetupHide(presetKey);
-  return (setupSchema(presetBase(presetKey)).fields||[]).filter(function(f){ return hide.indexOf(f.f)<0; });
+  return (setupSchema(presetBase(presetKey)).fields||[]).filter(function(f){ return hide.indexOf(f.f)<0; })
+    .concat(presetSetupAdd(presetKey));
 }
 function setupDefaultsFor(presetKey){
   var o={}; setupFieldsFor(presetKey).forEach(function(f){ o[f.f]=f.d; });
@@ -3275,7 +3364,9 @@ var CALC_KINDS={
     {k:'carrierStock',t:'num',lbl:'Carrier DNA stock (ng/µL)'},
     {k:'minVolUL',t:'num',lbl:'Min. volume to pipette (µL)',step:'0.05',
      hint:'Anything smaller is reported as a dilution to make, not as a volume to take.'},
-    {k:'fugenePerWell',t:'num',lbl:'FuGENE HD (µL/well)',step:'0.01'},{k:'optimemPerWell',t:'num',lbl:'Opti-MEM (µL/well)'},
+    {k:'fugeneRatio',t:'num',lbl:'FuGENE HD : DNA (µL : µg)',step:'0.5',
+     hint:'The reagent is given as a ratio, as in every other transfection here — 3:1 is the standard. The volume per well follows from the DNA each well receives: the acceptor plus the donor, or the acceptor alone when the donor adds 10% or less to it, since a top-up that small is not pipetted. The table prints the µL per well it worked out.'},
+    {k:'optimemPerWell',t:'num',lbl:'Opti-MEM (µL/well)'},
     {k:'nPair',t:'num',lbl:'Wells: pair (each donor × ratio)'},{k:'nDonor',t:'num',lbl:'Wells: donor only (each)'},
     {k:'nAcceptor',t:'num',lbl:'Wells: acceptor only (total)'},
     {k:'nMock',t:'num',lbl:'Wells: mock (total)',
@@ -3291,7 +3382,7 @@ var CALC_KINDS={
        +'per-well amount of it instead, which expresses far more of it than the pair well does.'},
     {k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
-      donorStock:100,acceptorStock:100,carrierStock:100,fugenePerWell:0.24,optimemPerWell:10,
+      donorStock:100,acceptorStock:100,carrierStock:1000,fugeneRatio:3,optimemPerWell:10,
       nPair:24,nDonor:8,nAcceptor:8,nMock:8,ctrlMode:'same amount as in the pair',excess:1.2},
     compute:function(v,ctx){ return nbtxRecipe(v, ctx&&ctx.tidCounts); } },
   // The ligand goes into the cell suspension, not into each well: 2.6 µL pipetted once is a
@@ -3445,17 +3536,37 @@ function _nbtxConditions(v,counts){
   // condition you declared in the boxes.
   if(counts) out.forEach(function(c){
     if(counts[c.tid]!=null && counts[c.tid]!==c.n){ c.n=counts[c.tid]; c.fromPlate=true; } });
+  // Every well should receive the same total DNA. The target is the acceptor's own amount when
+  // the donor adds 10% or less to it — 80 + 8 is 80 in the tube, since nobody tops a pair well
+  // down and nobody adds 1.6 ng — and otherwise the largest pair total. Jon's rule, and the one
+  // the FuGENE follows too (_nbtxDnaNg).
+  var ngT=_nbtxDnaNg(v);
   return out.map(function(c){
-    // Every well should receive the same total DNA, and with two ratios the pair totals differ
-    // (80 + 8 against 80 + 1.6), so the target is the largest of them. With one ratio that is
-    // the only total, which is what it always was.
-    c.carrier=Math.max(0, ngMax-(c.d||0)-(c.a||0));
-    c.pct = ngMax>0 ? (c.carrier/ngMax) : 0;
+    c.carrier=Math.max(0, ngT-(c.d||0)-(c.a||0));
+    c.pct = ngT>0 ? (c.carrier/ngT) : 0;
     // Below a tenth of the total the top-up is noise you would pipette badly; the acceptor-only
     // control is short by exactly the donor's 1.57 ng, and nobody adds that.
-    c.needsCarrier = ngMax>0 && c.pct>0.1;
+    c.needsCarrier = ngT>0 && c.pct>0.1;
     return c;
   }).filter(function(c){ return c.n>0; });
+}
+// The DNA a well receives, for the FuGENE. The target every mix is topped up to is the largest
+// pair total (acceptor + donor); but when the donor adds 10% or less to the acceptor the pair is
+// not topped up and the single-plasmid wells are not either — so the amount actually complexed
+// is the acceptor's own. 80 ng at 1:10 is 88 ng on paper and 80 ng in the tube, and the FuGENE
+// follows the tube. Same rule, same 10%, as the carrier top-up in _nbtxConditions.
+function _nbtxDnaNg(v){
+  var aNg=+(v.acceptorNg!=null?v.acceptorNg:v.ngPerWell)||0;
+  var Rs=nbtxParts(v).ratios;
+  var ngMax=Math.max.apply(null, Rs.map(function(r){ return aNg+(r?aNg/r:0); }));
+  if(!(aNg>0)) return ngMax>0?ngMax:0;
+  return ((ngMax-aNg)<=aNg*0.1+1e-9) ? aNg : ngMax;
+}
+// µL of FuGENE HD per well: the ratio (µL per µg) on the DNA the well gets. A block saved before
+// the ratio existed carries fugenePerWell, and that recorded volume is what it keeps using.
+function _nbtxFugeneUL(v){
+  if(+v.fugeneRatio>0) return (+v.fugeneRatio)*_nbtxDnaNg(v)/1000;
+  return +v.fugenePerWell||0;
 }
 // 1.57 ng of donor per well is 0.45 µL of a 100 ng/µL prep across a whole 24-well condition —
 // a volume no one pipettes accurately. Say which working dilution makes it a real volume rather
@@ -3490,7 +3601,7 @@ function nbtxRecipe(v,counts){
     // and a shared 100 ng/µL would be a number nobody checked.
     var dV=_dnaVol(c.d*W,c.dStock||dS,_mv), aV=_dnaVol(c.a*W,c.aStock||aS,_mv), cV=c.needsCarrier?_dnaVol(c.carrier*W,cS,_mv):null;
     var dUL=dV?dV.ul:null, aUL=aV?aV.ul:null, cUL=cV?cV.ul:null;
-    var fu=(+v.fugenePerWell||0)*W, om=(+v.optimemPerWell||0)*W;
+    var fu=_nbtxFugeneUL(v)*W, om=(+v.optimemPerWell||0)*W;
     var tot=om+fu+(dUL||0)+(aUL||0)+(cUL||0);
     var nm=String(c.name).replace(/\s*\(NL 1:[^)]*\)\s*$/,'');
     var dNm=nm.split(' only')[0].split(' + ')[0], aNm=(nm.indexOf(' + ')>=0?nm.split(' + ')[1]:nm.split(' only')[0]);
@@ -3521,14 +3632,16 @@ function nbtxRecipe(v,counts){
     +cols.map(function(n){ return '<th>'+esc(n)+'</th>'; }).join('')
     +'<th>FuGENE HD</th><th>Opti-MEM</th><th>Total</th></tr>';
   var _P=nbtxParts(v), Rs=_P.ratios, names=_P.donors;
-  var ngMax=Math.max.apply(null, Rs.map(function(r){ return aNg+(r?aNg/r:0); }));
+  var ngMax=_nbtxDnaNg(v);
   var donorTxt=Rs.map(function(r){ return '1:'+nfmt(r)+' → '+nfmt(r?aNg/r:0)+' ng ('+nfmt(aNg+(r?aNg/r:0))+' ng/well)'; }).join(' &middot; ');
   return '<b>Reverse transfection — one mix per condition</b>'
     +'<div class="cc-tblwrap"><table class="cc-tbl cc-mix">'+head+rows+'</table></div>'
     +'<div class="cc-note">'+nfmt(aNg)+' ng '+esc(_P.accs.join(' or '))+' per well, with '
     +esc(names.join(' and '))+' at '+donorTxt+'. '
-    +'Every condition is topped up with carrier to <b>'+nfmt(ngMax)+' ng</b> — the largest of those totals, so every well on the plate '
-    +'receives the same amount of DNA — but only where the shortfall is more than 10% of it. '
+    +'Every condition is topped up with carrier to <b>'+nfmt(ngMax)+' ng</b> — the acceptor\'s own amount when the donor adds 10% or less to it, '
+    +'otherwise the largest pair total — so every well on the plate receives the same amount of DNA; but only where the shortfall is more than 10% of it. '
+    +(+v.fugeneRatio>0?('FuGENE HD at <b>'+nfmt(v.fugeneRatio)+':1</b> (µL:µg) on the <b>'+nfmt(_nbtxDnaNg(v))+' ng</b> a well receives → <b>'
+      +nfmt(_nbtxFugeneUL(v))+' µL/well</b>. '):('FuGENE HD <b>'+nfmt(_nbtxFugeneUL(v))+' µL/well</b>. '))
     +(+v.nPairCtrl>0?('The '+nfmt(v.nPairCtrl)+' no-ligand / no-substrate control wells per donor are transfected like any pair well and are '
       +'counted into the 1:'+nfmt(+v.ctrlRatio||R)+' pair mix. '):'')
     +'Incubate the mix 10–15 min at room temperature, then dispense '+nfmt(v.optimemPerWell)+' µL/well before the cells.</div>'
@@ -3723,6 +3836,16 @@ function _wideOnly(list){ return ciWide(list)===' ci-f wide'?' wide':''; }
 // and a migration that invented six deviations would be worse than the problem it solves.
 function _nbtxMigrate(b){
   var I=b&&b.calc&&b.calc.inputs; if(!I||b.calc.kind!=='nbtx') return;
+  // FuGENE moved from a volume per well to a ratio on the DNA (2026-09-15). The ratio is
+  // derived from the volume the block recorded, so the µL it prints do not move — and the
+  // volume itself is dropped only once the ratio reproduces it, or the editor would show an
+  // empty ratio box over a block still computing from a key it no longer offers.
+  function foldFu(o){
+    if(!o || o.fugeneRatio!=null || o.fugenePerWell==null) return;
+    var dna=_nbtxDnaNg(Object.assign({},I,o));
+    if(dna>0 && +o.fugenePerWell>0){ o.fugeneRatio=Math.round((+o.fugenePerWell)*1000/dna*1000)/1000; delete o.fugenePerWell; }
+  }
+  foldFu(I); foldFu(b.calcSeed);
   if(I.donorNames!=null&&I.acceptorNames!=null&&I.ratios!=null) return;
   function fold(o){
     if(!o) return;
@@ -4394,6 +4517,72 @@ var PLATE_LAYOUTS=[
      var dg='gdmso'; p.groups[dg]={label:'DMSO'}; delete p.groups['g6_1'];
      for(var rr2=13;rr2<=14;rr2++) for(var cc2=12;cc2<=22;cc2++)
        p.wells[wellIdOf(rr2,cc2)]={typeId:'dmso',groupId:dg};
+     return p; }},
+  // Jon's SPARK compound screen. One pair, one ratio, and as many compounds as the plate holds:
+  // each compound is a block of nReps rows × nConc columns with the dose running left to right,
+  // and the LAST block is the controls — the same pair with no ligand and with no substrate, a
+  // mock, and DMSO — each in the same technical replicates. Everything else is the pair with
+  // the HaloTag ligand. The four numbers come from the setup, so five points or triplicates is
+  // this same layout with different arithmetic, and it draws itself for a 96 or a 384.
+  {id:'nbscreen96', label:'NanoBRET SPARK screen — compound blocks + controls', formats:['96','384'], format:'96',
+   sub:'Blocks of replicates × concentrations, dose across; the last block is −ligand · −substrate · mock · DMSO',
+   build:function(o){
+     o=o||{};
+     var fmt=String(o.format||'96'); if(!PLATE_FORMATS[fmt]) fmt='96';
+     var d=PLATE_FORMATS[fmt], p=newPlate(fmt);
+     var nConc=Math.max(1,Math.min(d.c,Math.round(+o.nConc||4)));
+     var nReps=Math.max(1,Math.min(d.r,Math.round(+o.nReps||2)));
+     var top=(+o.topUM>0?+o.topUM:100)*1000, df=(+o.df>1?+o.df:3);
+     var across=Math.floor(d.c/nConc), down=Math.floor(d.r/nReps), nBlocks=across*down;
+     // The controls are four conditions in nReps each — however many blocks that takes.
+     var ctrlBlocks=Math.max(1,Math.ceil(4*nReps/(nReps*nConc)));
+     var nCpd=Math.max(0,nBlocks-ctrlBlocks);
+     // The conditions are the experiment's own, named from the setup so the ids match the mix
+     // table's — the plate then counts its wells into the pair mix and the mock on its own.
+     var cs=_nbtxConditions({donorNames:String(o.donors||'NL-DELE1(CTD)'),acceptorNames:String(o.acceptors||'HT-HRI'),
+       ratios:String(o.ratios||'10'),acceptorNg:80,nPair:1,nMock:1});
+     var pair=cs.filter(function(c){ return c.key==='pair'; })[0], mock=cs.filter(function(c){ return c.key==='mock'; })[0];
+     var pt=pair?pair.tid:'p:pair', mt=mock?mock.tid:'mock';
+     p.title='NanoBRET SPARK screen — '+nCpd+' compounds × '+nConc+' pts × '+nReps+' replicate'+(nReps===1?'':'s')+' ('+fmt+'-well)';
+     p.note='Every well but the mock is transfected with the pair and carries the HaloTag ligand except the −ligand controls. '
+       +'Each compound is a block of '+nReps+' row'+(nReps===1?'':'s')+' × '+nConc+' concentration'+(nConc===1?'':'s')+', '
+       +_fmtConc(top)+' at the left and '+nfmt(df)+'-fold to the right; the last block holds the controls. '
+       +'Rename the compounds on the wells — the names are this run\'s, not the layout\'s.';
+     p.types=[{id:pt, name:pair?pair.name:'Pair', no:1, color:PLATE_TYPE_COLORS[0]},
+              {id:mt, name:mock?mock.name:'Mock (carrier only)', no:2, color:PLATE_TYPE_COLORS[1]},
+              {id:'blank', name:'Unused', color:'#b9bcc6'}];
+     p.groups={};
+     for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++) p.wells[wellIdOf(r,c)]={typeId:'blank'};
+     var concs=[]; for(var i=0;i<nConc;i++) concs.push(_fmtConc(top/Math.pow(df,i)));
+     var bi=0;
+     for(var by=0;by<down;by++) for(var bx=0;bx<across;bx++){
+       var r0=by*nReps, c0=bx*nConc, k=bi++;
+       if(k<nCpd){
+         // A group outlines the block in the editor; no label, because the compound is already
+         // on every well, where the summary, the tooltip and Cmd+K all read it.
+         var gid='gsc'+k; p.groups[gid]={};
+         for(var rr=0;rr<nReps;rr++) for(var cc=0;cc<nConc;cc++)
+           p.wells[wellIdOf(r0+rr,c0+cc)]={typeId:pt,groupId:gid,compound:'Compound '+(k+1),conc:concs[cc]};
+       }
+     }
+     // The controls fill the remaining blocks cell by cell, in reading order: with duplicates
+     // and four points that is one block — −ligand, −ligand, −substrate, −substrate over
+     // mock, mock, DMSO, DMSO.
+     var cells=[]; bi=0;
+     for(var by2=0;by2<down;by2++) for(var bx2=0;bx2<across;bx2++){
+       var k2=bi++; if(k2<nCpd) continue;
+       for(var r2=0;r2<nReps;r2++) for(var c2=0;c2<nConc;c2++) cells.push([by2*nReps+r2, bx2*nConc+c2]);
+     }
+     // The flag names the −ligand and −substrate wells and the type names the mock, so none of
+     // them carries a label as well; the DMSO wells are the pair with DMSO as their compound.
+     var ctrl=[{t:pt,flag:'noLig'},{t:pt,flag:'noSub'},{t:mt},{t:pt,compound:'DMSO'}];
+     var ci=0;
+     ctrl.forEach(function(x,xi){
+       var gid='gsctl'+xi; p.groups[gid]={};
+       for(var n=0;n<nReps;n++){ var at=cells[ci++]; if(!at) return;
+         var w={typeId:x.t,groupId:gid}; if(x.flag) w[x.flag]=true; if(x.compound) w.compound=x.compound;
+         p.wells[wellIdOf(at[0],at[1])]=w; }
+     });
      return p; }},
   // Jon's viability plate, drawn as he runs it: four compounds, each owning a pair of rows, the
   // dose running left to right across columns 1-11 and the vehicle control in column 12. Same
@@ -6317,6 +6506,7 @@ function seedPresets(){
     // They are copied onto the stored preset so nothing has to consult the seed table at
     // creation time — presetSetupHide already falls back to the seed, and these follow it.
     if(s.setupHide) np.setupHide=s.setupHide.slice();
+    if(s.setupAdd) np.setupAdd=JSON.parse(JSON.stringify(s.setupAdd));
     if(s.plateOn!=null) np.plateOn=!!s.plateOn;
     if(s.layout) np.layout=s.layout;
     if(s.blank) np.blank=true;
@@ -6361,7 +6551,7 @@ var VOL_ADD={
   rtxmix: function(I){ return +I.dispenseUL||0; },
   // nbtx has no single "dispense" box — the mix is Opti-MEM plus FuGENE plus a fraction of a
   // microlitre of DNA, and what reaches the well is the first two.
-  nbtx:   function(I){ return (+I.optimemPerWell||0)+(+I.fugenePerWell||0); },
+  nbtx:   function(I){ return (+I.optimemPerWell||0)+_nbtxFugeneUL(I); },
   nbsusp: function(I){ return +I.volPerWell||0; },
   seed:   function(I){ return +I.volPerWell||0; },
   ctg:    function(I){ return +I.volPerWell||0; },
@@ -6417,8 +6607,11 @@ function presetLayout(key,fmt){ var p=LB.data.presets[key], sd=EXTRA_PRESET_SEED
   var id=(p&&p.layout)||(sd&&sd.layout); if(!id) return null;
   var L=PLATE_LAYOUTS.filter(function(x){ return x.id===id; })[0]||null;
   // A layout drawn for a 96-well plate is not a starting point for a 384 one: if the setup
-  // moved the format, a blank plate of the right size is the honest answer.
-  if(L&&fmt!=null&&String(L.format)!==String(fmt)) return null;
+  // moved the format, a blank plate of the right size is the honest answer. A layout that
+  // draws itself from the format (`formats`) is a starting point for each one it names.
+  if(L&&fmt!=null){
+    var ok=L.formats ? L.formats.indexOf(String(fmt))>=0 : String(L.format)===String(fmt);
+    if(!ok) return null; }
   return L; }
 function presetBase(k){ var p=LB.data.presets[k]; return (p&&p.baseType)||k; }
 // presets seed / refresh (adds RTX for existing users)
@@ -6868,14 +7061,38 @@ var _CLOUD_ROOTS=['projects','generalSections','notebooks','tags','presets','ant
 // deletion that syncs while the way back does not is the same permanent loss with extra steps.
 var _CLOUD_MAPS=['experiments','notebook','pages','trash'];
 var _cloudSkipWarned=false;
+// The fingerprint is the record AS THE CLOUD WOULD HAND IT BACK, not as it sits in memory.
+// Firebase returns an object's keys in key order, drops every null, and stores an empty array or
+// object as nothing at all — so JSON.stringify of a local record (insertion order, `files:[]`
+// intact) and of the same record read back differ for identical content. Compared raw, every
+// echo of our own write looked like a change from another device: `_cloudSeen` is only updated
+// once the write is acknowledged, the SDK raises the local event before that, and the record
+// was by then "dirty" against its own previous value — a conflict banner on every push, with
+// a spurious remote version filed each time. Canonical on both sides, the two strings agree.
+function _cnorm(v){
+  if(v===null||v===undefined) return undefined;
+  if(Array.isArray(v)){
+    var a=v.map(_cnorm);
+    while(a.length && a[a.length-1]===undefined) a.pop();
+    if(!a.length) return undefined;
+    return a.map(function(x){ return x===undefined?null:x; });
+  }
+  if(typeof v==='object'){
+    var o={}, any=false;
+    Object.keys(v).sort().forEach(function(k){ var x=_cnorm(v[k]); if(x!==undefined){ o[k]=x; any=true; } });
+    return any?o:undefined;
+  }
+  return v;
+}
+function _cjson(v){ var n=_cnorm(v); return n===undefined?undefined:JSON.stringify(n); }
 function _cloudFingerprint(){
   var m={}, skipped=[];
-  _CLOUD_ROOTS.forEach(function(k){ if(LB.data[k]!==undefined) m[k]=JSON.stringify(LB.data[k]); });
+  _CLOUD_ROOTS.forEach(function(k){ var s=_cjson(LB.data[k]); if(s!==undefined) m[k]=s; });
   _CLOUD_MAPS.forEach(function(coll){
     var o=LB.data[coll]||{};
     Object.keys(o).forEach(function(id){
-      if(_pathOk(id)) m[coll+'/'+id]=JSON.stringify(o[id]);
-      else skipped.push(coll+'/'+id);
+      if(!_pathOk(id)){ skipped.push(coll+'/'+id); return; }
+      var s=_cjson(o[id]); if(s!==undefined) m[coll+'/'+id]=s;
     });
   });
   // A record whose id cannot be a Firebase path can never sync. Saying nothing would make it
@@ -6904,8 +7121,8 @@ function _cloudDelta(now){
 // The same shape as _cloudFingerprint, over a tree read from the cloud — what the cloud holds.
 function _cloudFingerprintOf(v){
   var m={}; v=v||{};
-  _CLOUD_ROOTS.forEach(function(k){ if(v[k]!==undefined) m[k]=JSON.stringify(v[k]); });
-  _CLOUD_MAPS.forEach(function(coll){ var o=v[coll]||{}; Object.keys(o).forEach(function(id){ if(_pathOk(id)) m[coll+'/'+id]=JSON.stringify(o[id]); }); });
+  _CLOUD_ROOTS.forEach(function(k){ var s=_cjson(v[k]); if(s!==undefined) m[k]=s; });
+  _CLOUD_MAPS.forEach(function(coll){ var o=v[coll]||{}; Object.keys(o).forEach(function(id){ if(!_pathOk(id)) return; var s=_cjson(o[id]); if(s!==undefined) m[coll+'/'+id]=s; }); });
   return m;
 }
 // Nothing is pushed until the first read has said what the cloud holds. Before that the
@@ -6948,12 +7165,18 @@ function _openRecordPath(){
 }
 function _applyRemote(coll,id,val){
   var path=coll+'/'+id;
-  var incoming=val==null?undefined:JSON.stringify(val);
+  var incoming=val==null?undefined:_cjson(val);
   // Our own write coming back. Nothing to do, and re-rendering on it would make every
   // keystroke's round trip repaint the screen.
   if(_cloudSeen && _cloudSeen[path]===incoming) return;
+  var mine=LB.data[coll] && LB.data[coll][id]!==undefined ? _cjson(LB.data[coll][id]) : undefined;
+  // What arrived is what this device already holds. That is our own write raised locally
+  // before the server has acknowledged it (Firebase fires the event first and resolves the
+  // promise after), or another device having written the same thing — either way there is
+  // nothing to apply and nothing to dispute. _cloudSeen is left to the push's own `.then`, so
+  // a write that then fails is still retried.
+  if(incoming!==undefined && incoming===mine) return;
   // A record we have edited since our last successful push. Theirs must not silently win.
-  var mine=LB.data[coll] && LB.data[coll][id]!==undefined ? JSON.stringify(LB.data[coll][id]) : undefined;
   var dirty=_cloudSeen ? (_cloudSeen[path]!==mine) : (mine!==undefined);
   if(dirty && incoming!==undefined){
     // Keep BOTH. Theirs goes into the version history tagged as remote, which makes a conflict
@@ -8494,12 +8717,12 @@ var CALC_PUB={
     var dn=esc(P.donors[0]||'the NanoLuc construct'), an=esc(P.accs.join(' or ')||'the HaloTag construct');
     var d2=P.donors.length>1;
     var donors=esc(_pubList(P.donors));
-    var ngMax=Math.max.apply(null, Rs.map(function(r){ return aNg+(r?aNg/r:0); }));
+    var ngMax=_nbtxDnaNg(v);
     var ratioTxt=Rs.map(function(r){ return '<b>1:'+nfmt(r)+'</b> ('+nfmt(r?aNg/r:0)+' ng)'; }).join(' and ');
     var s='Cells were reverse-transfected with <b>'+nfmt(aNg)+' ng</b> of '+an+' per well and '+donors
       +' at '+(Rs.length>1?'donor:acceptor mass ratios of ':'a mass ratio of ')+ratioTxt
-      +', complexed with <b>'+nfmt(v.fugenePerWell)
-      +' µL</b> FuGENE HD in <b>'+nfmt(v.optimemPerWell)+' µL</b> Opti-MEM per well and dispensed into the plate before the cells.';
+      +', complexed with FuGENE HD'+(+v.fugeneRatio>0?(' at a <b>'+nfmt(v.fugeneRatio)+':1</b> ratio (µL:µg DNA; '+nfmt(_nbtxFugeneUL(v))+' µL per well)'):(' (<b>'+nfmt(_nbtxFugeneUL(v))+' µL</b> per well)'))
+      +' in <b>'+nfmt(v.optimemPerWell)+' µL</b> Opti-MEM per well and dispensed into the plate before the cells.';
     var ctrl=[];
     if(+v.nDonor>0) ctrl.push((d2?'each donor':dn)+' alone');
     if(P.accs.length>1) an=esc(_pubList(P.accs));
@@ -10101,7 +10324,8 @@ function applySetupEdit(){
 }
 function setupSummaryHtml(e){
   if(!e.setup) return '';
-  var S=setupSchema(e.type); var parts=(S.fields||[]).map(function(f){
+  // The preset's own questions (setupAdd) are answers on the record too, so they are chips.
+  var S=setupSchema(e.type); var parts=((S.fields||[]).concat(e.presetKey?presetSetupAdd(e.presetKey):[])).map(function(f){
     var v=e.setup[f.f]; if(v==null||v==='') return '';
     if(f.t==='cellline'){ var d=cellLineDef(v); v=(d&&d.label)||v; }
     else if(f.t==='format') v=v+'-well';
@@ -10699,7 +10923,7 @@ var CALC_NEEDS={
     out.push({k:'plasmid', name:'Carrier DNA', note:'tops the short mixes up to equal total DNA'});
     var tx=0; try{ (_nbtxConditions(v)||[]).forEach(function(c){ if(!c.noMix) tx+=(+c.n||0); }); }catch(e){}
     if(tx){ var x=(+v.excess||1);
-      out.push({k:'reagent', name:'FuGENE HD', qty:(+v.fugenePerWell||0)*tx*x, unit:'µL'});
+      out.push({k:'reagent', name:'FuGENE HD', qty:_nbtxFugeneUL(v)*tx*x, unit:'µL'});
       out.push({k:'reagent', name:'Opti-MEM', qty:(+v.optimemPerWell||0)*tx*x, unit:'µL'}); }
     return out;
   },

@@ -5,7 +5,30 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-14 · **v1.17.0** · branch `main`.
+- Date: 2026-09-15 · **v1.17.2** · branch `main`.
+
+## FuGENE, the screen preset, the banner (2026-09-15)
+
+`nbtx` takes FuGENE as a **ratio** (`fugeneRatio`, 3:1) on the DNA a well receives, and that
+DNA follows Jon's 10% rule (`_nbtxDnaNg`: the acceptor alone when the donor adds ≤10%) — one
+target for the carrier top-up, the FuGENE and the Methods. `NB_SPARK_SCREEN96` is a compound
+screen on the SPARK pair with `setupAdd` questions (top µM · DF · points · replicates) and the
+`nbscreen96` layout that draws itself for a 96 or a 384 (`formats:[…]`). The "changed on another
+device too" banner fired on every push: the local echo of our own write arrives before the
+promise resolves, and fingerprints were not canonical (`_cjson`). Full account: CLAUDE.md →
+*FuGENE follows the DNA*.
+
+## Traps added
+
+- **Never compare a local `JSON.stringify` against the cloud's.** Keys come back sorted, nulls
+  and empties are gone. `_cjson` on both sides, always.
+- **Firebase raises the local event before the write's promise resolves**, so `_cloudSeen`
+  is still the old value when our own echo arrives; `incoming===mine` is the test for it.
+- **`setupAdd` fields never reach `_pubSetupText`** — by design; give the block a `pub`.
+- **`presetLayout` refuses a layout for a format it does not name** — a format-aware layout
+  must list `formats`.
+- **The runtime audit strips string literals before the dead-handler scan** — a plasmid name
+  with a parenthesis is not a call.
 
 ## Two workspaces, one file (2026-09-14)
 

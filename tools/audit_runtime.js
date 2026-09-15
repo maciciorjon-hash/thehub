@@ -36,6 +36,10 @@ window.__runtimeAudit = function(opts){
     for (var a = 0; a < ATTR.length; a++) {
       var v = nodes[i].getAttribute && nodes[i].getAttribute(ATTR[a]);
       if (!v) continue;
+      // A name inside a string literal is data, not a call: `openX('p:NL-DELE1(CTD)+HT-HRI')`
+      // names a plasmid, and `DELE1(` is not a function this page is missing. Strip the
+      // quoted parts (with their escapes) before looking for calls.
+      v = v.replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|&quot;(?:(?!&quot;).)*&quot;/g, '""');
       var m, re = /(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g;
       while ((m = re.exec(v))) {
         var name = m[2];
