@@ -42,6 +42,17 @@ PUB = {
    'Cells were freshly trypsinized and resuspended in complete growth medium.',
    'Transfection complexes were formed by adding plasmid DNA to Opti-MEM followed by FuGENE HD, left 5–15 min at room temperature and dispensed into the wells, and the cells overlaid on top immediately.',
  ],
+ 'trex': [
+   'HEK293 T-REx cells were seeded at 0.8 × 10⁶ cells per well of a 6-well plate in 2 mL of complete medium containing 5 µg/mL blasticidin and grown overnight to 50–60% confluence.',
+   'The next day the cells were co-transfected with 4 µg of plasmid DNA per well at a 9:1 ratio of pOG44 to pcDNA5/FRT/TO (3.6 µg and 0.4 µg) using FuGENE HD at 3:1 (µL:µg) in 200 µL Opti-MEM, with an empty pcDNA5/FRT/TO well as control.',
+   'Twenty-four hours after transfection the medium was replaced with fresh complete medium without hygromycin.',
+   'At 48 h the cells were expanded into 10 cm dishes and allowed to attach overnight.',
+   'Before selection the dishes were held at 30 °C for 24 h to favour Flp-mediated integration.',
+   'Selection was started with 150 µg/mL hygromycin B in complete medium.',
+   'The cells were kept under selection for two weeks, with half to two-thirds of the medium replaced by fresh selective medium every 2–3 days.',
+   'Surviving cells were expanded and expression of the construct was confirmed by inducing with 1 µg/mL tetracycline for 24 h.',
+   'The confirmed line was expanded without hygromycin and frozen for long-term storage.',
+ ],
  'ctg2': [
    '',   # reagent thawing
    'Plates were equilibrated to room temperature for ~30 min, CellTiter-Glo 2.0 reagent added at a volume equal to the culture medium, mixed on an orbital shaker for 2 min and luminescence recorded after a 10 min incubation.',

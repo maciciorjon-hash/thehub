@@ -614,7 +614,7 @@ down the microscope is the reason the tab exists.
 
 ## Archive Library — the reagents this lab makes or buys
 
-Archive is no longer only protocols. A kind switcher (`LIB_KINDS`) sits above the search:
+Archive is no longer only protocols (34 of them since the T-REx line joined on 2026-09-15). A kind switcher (`LIB_KINDS`) sits above the search:
 **Protocols · Antibodies · Primers**. Protocols are shared, universal and read-only; antibodies
 and primers are *yours* and change, so they live in the same store the rest of dHUB uses
 (`journal/antibodies`, `journal/primers` via `JournalStore.libAdd/libSet/libDel`) rather than
@@ -3866,6 +3866,35 @@ gesture on iOS and a timer is not one); and the **app icon carries the overdue c
 local persistence (a data-safety change for ~2 ms on this notebook), Web Share of the bench sheet
 (needs a PDF blob the app does not make), and the `black-translucent` status bar (cannot be
 verified without the device).
+
+## A new protocol is data plus a calculator pane (T-REx stable line, 2026-09-15)
+
+Jon's first protocol added since the migration to `PROTOCOL_DATA`: **Stable Cell Line —
+Flp-In T-REx (HEK293)** (`trex`), from Alejandro Correa Sáez's sheet with the lab's own
+changes written in as the protocol, not as notes on the side — **FuGENE HD, forward
+transfection, 0.8 × 10⁶ cells per 6-well in 2 mL the day before.** The original's
+Lipofectamine 3000 is mentioned once, in the preamble, as what it replaced.
+
+What adding one takes, so the next one is the same shape: the entry in `PROTOCOL_DATA`
+(injected through Python with `json.dumps(…, separators=(',',':'), ensure_ascii=False)`, which
+round-trips the existing line byte-for-byte — verified before touching it), the `PROTOCOLS`
+index row, a `detail-<pid>` pane with the three tabs and one `calc-box` per calculator (the
+schema scanner reads the boxes, so a box title is what Labbook shows), the calculator
+functions and a `generate<Pid>Steps()` that returns `[{label,bullets}]`, one line in the init
+list, and the Methods sentences in `tools/protocol_pub.py` (re-run it; it re-injects). Day
+offsets: day 0 is the first dated thing you do (seeding), not the thaw — the cells being in
+culture is a precondition in the preamble, and a negative day is not something Labbook dates.
+
+Four calculators, every total wearing `_ovx`: **seeding** from the user's own count
+(suspension per well, medium to top up, and a warning when the suspension is too dilute to
+fit the well); **the 9:1 co-transfection mix** by parts, with the plasmid volumes from their
+stock concentrations — pOG44, Opti-MEM and FuGENE pool across wells, pcDNA5 does not, since it
+differs per construct; **hygromycin B** as selection medium and as the 50–400 µg/mL kill-curve
+series from one stock; **tetracycline** for induction. Checked by hand: 0.8 M ÷ 1 M/mL = 800
+µL; 3.6 µg at 500 ng/µL = 7.2 µL; 12 µL FuGENE at 3:1; 150 µL of 50 mg/mL into 50 mL. Verified
+through the bridge in the standalone build — `ARCHIVE_PROTOCOL` returns nine dated stages,
+`ARCHIVE_CALC_SCHEMA` the four boxes, `ARCHIVE_COMPUTE` recomputes with overrides — and the
+runtime + alignment audits are clean on the new pane at 1280 and 375 in both themes.
 
 ## The first push, and the six generic names (2026-09-15)
 
