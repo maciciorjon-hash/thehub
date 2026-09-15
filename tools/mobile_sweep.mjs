@@ -137,11 +137,11 @@ const SEED = `(function(){
   [ids[0],ids[1]].forEach(function(id){ var e=LB.data.experiments[id]; if(e&&e.blocks&&e.blocks[0]) setBlockDone(id,e.blocks[0].id,true,true); });
   // a wait on the first NB step, so the wait chip and the timer button exist
   var nb=LB.data.experiments[ids[0]]; if(nb&&nb.blocks[1]) nb.blocks[1].waitMin=45;
-  // the Notebook: a page with a subpage in the first Lab section, and today's Journal page
-  var sc=LB.data.generalSections[0]; openSection('nb_general',sc.id);
+  // the Journal: two flat notes, today's day note, and a step ticked today so "Done that day" draws
   newPage(); var pg1=_curPage(); pg1.title='Gel photos, with a title long enough to wrap on a phone'; pg1.html='<p>Bands at 60 and 120 kDa. <b>Lane 3</b> is the control.</p>';
-  newPage(); var pg2=_curPage(); pg2.title='Second attempt'; pageIndent(pg2.id,1);
+  newPage(); var pg2=_curPage(); pg2.title='Second attempt';
   LB.data.notebook[d(0)]={date:d(0),html:'<p>Ran the SPARK gel; bands look right.</p><p>Talked to Rub\u00e9n about ChemLib.</p>'};
+  if(nb&&nb.blocks[0]){ nb.blocks[0].done=true; nb.blocks[0].completedAt=Date.now()-3600e3; nb.blocks[0].log='bubbles in B7, re-read'; }
   ids.push(pg1.id);
   save(); selectNode('home');
   return ids;
@@ -170,17 +170,13 @@ function screens(ids) {
     S('exp-long-title',  `openExp('${e3}')`),
     S('drawer',          `openExp('${e0}'); toggleMobileNav(true)`),
     S('drawer-journal',  `selectNode('journal'); toggleMobileNav(true)`),
-    S('notebook',        `openNotebookWs()`),
-    S('notebook-page',   `openPage('${ids[8]}')`),
-    S('notebook-section',`var sc=LB.data.generalSections[1]; openSection('nb_general',sc.id)`),
-    S('notebook-journal',`openDayPage(todayStr())`),
-    S('notebook-project',`var p=LB.data.projects[0]; openSection('proj:'+p.id,null)`),
-    S('drawer-notebook', `openPage('${ids[8]}'); toggleMobileNav(true)`),
-    S('menu-nb-picker',  `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('.nb-pick'); nbPickerMenu({currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}})`, { menu: true }),
-    S('menu-nb-acts',    `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('.nb-pick-row .lb-mbtn'); nbActsMenu({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, 'nb_general')`, { menu: true }),
-    S('menu-page',       `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('#pane-pages .page-item'); ctxPage({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, '${ids[8]}')`, { menu: true }),
-    S('menu-section',    `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('.sec-item.nb-sec'); ctxGeneral({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, LB.data.generalSections[0].id)`, { menu: true }),
-    S('menu-day-page',   `openDayPage(todayStr()); toggleMobileNav(true); var t=document.querySelector('#pane-pages .page-item'); ctxDay({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, todayStr())`, { menu: true }),
+    S('journal',         `openJournalWs()`),
+    S('journal-note',    `openPage('${ids[8]}')`),
+    S('journal-page',    `openDayPage(todayStr())`),
+    S('journal-empty',   `openDayPage(todayStr()); SEL.page=null; renderAll()`),
+    S('drawer-journal-ws',`openPage('${ids[8]}'); toggleMobileNav(true)`),
+    S('menu-note',       `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('.jr-note'); ctxPage({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, '${ids[8]}')`, { menu: true }),
+    S('menu-day-page',   `openDayPage(todayStr()); toggleMobileNav(true); var t=document.querySelector('.jr-day'); ctxDay({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, todayStr())`, { menu: true }),
     S('dock',            `openExp('${e0}'); if(document.body.classList.contains('lb-dock-float')||innerWidth<=760) toggleDock(); else throw new Error('n/a')`, { optional: true }),
     S('ribbon-insert',   `openExp('${e0}'); setRbTab('insert')`),
     S('ribbon-home',     `openPage('${ids[8]}'); setRbTab('home')`),
