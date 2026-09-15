@@ -6880,23 +6880,43 @@ function _cloudFingerprint(){
 }
 // Records that changed since the last successful write. A record that disappeared is sent as
 // null, which is how Firebase spells "delete this child" in a multi-path update.
+// Keys this device has held locally at some point. A deletion is only ever sent for one of
+// these: a record the cloud has and this device has never seen is one that has not arrived
+// yet, not one that was removed here.
+var _cloudHeld={};
 function _cloudDelta(now){
   var out={}, n=0;
-  Object.keys(now).forEach(function(p){ if(!_cloudSeen || _cloudSeen[p]!==now[p]){ out[p]=JSON.parse(now[p]); n++; } });
-  if(_cloudSeen) Object.keys(_cloudSeen).forEach(function(p){ if(now[p]===undefined){ out[p]=null; n++; } });
+  Object.keys(now).forEach(function(p){ _cloudHeld[p]=1; if(_cloudSeen[p]!==now[p]){ out[p]=JSON.parse(now[p]); n++; } });
+  Object.keys(_cloudSeen).forEach(function(p){ if(now[p]===undefined && _cloudHeld[p]){ out[p]=null; n++; } });
   return n?out:null;
 }
+// The same shape as _cloudFingerprint, over a tree read from the cloud — what the cloud holds.
+function _cloudFingerprintOf(v){
+  var m={}; v=v||{};
+  _CLOUD_ROOTS.forEach(function(k){ if(v[k]!==undefined) m[k]=JSON.stringify(v[k]); });
+  _CLOUD_MAPS.forEach(function(coll){ var o=v[coll]||{}; Object.keys(o).forEach(function(id){ if(_pathOk(id)) m[coll+'/'+id]=JSON.stringify(o[id]); }); });
+  return m;
+}
+// Nothing is pushed until the first read has said what the cloud holds. Before that the
+// diff has nothing to diff against, and the old code sent the WHOLE local tree — which on a
+// device holding nothing but the seed replaced every real project in the cloud with six
+// placeholder names, and every other device then adopted them. The pending push is made the
+// moment the read lands (lbInitSync), and from then on it is a diff.
+var _pushWanted=false;
 function _cloudPush(){
   var r=lbFb(); if(!r){ setSync(true,true); return; }
+  if(_cloudSeen===null){ _pushWanted=true; setSync(false); return; }
   var now=_cloudFingerprint();
   var delta=_cloudDelta(now);
-  if(!delta){ setSync(true,true); return; }
+  if(!delta){ _pushWanted=false; setSync(true,true); return; }
   delta.updated=LB.data.updated||Date.now();
   try{
     r.update(delta).then(function(){
       // Only now is this what the cloud holds. Recording it before the write lands would make
       // a failed write invisible to the next diff, and the record would never be retried.
-      _cloudSeen=now; setSync(true,true);
+      _pushWanted=false;
+      Object.keys(delta).forEach(function(p){ if(p==='updated') return; if(delta[p]===null) delete _cloudSeen[p]; else _cloudSeen[p]=now[p]; });
+      setSync(true,true);
     }).catch(function(){ setSync(true,false); });
   }catch(e){ setSync(true,false); }
 }
@@ -7023,6 +7043,7 @@ function lbInitSync(){
       // successful push is about to be overwritten. Take a snapshot first: it costs nothing
       // and it is the difference between "the cloud won" and "the work is gone".
       try{ _snapshotBackup(); }catch(e){}
+      var _projBefore=(LB.data.projects||[]).slice();
       _adopting=true;
       // The reconstruction below names every key it keeps, so anything not on that list —
       // one-time migration flags like _abMigrated and _abSecCleaned, and any key a newer build
@@ -7032,15 +7053,24 @@ function lbInitSync(){
       Object.keys(v).forEach(function(k){ _carry[k]=v[k]; });
       LB.data=Object.assign(_carry,{projects:v.projects||[],generalSections:v.generalSections||[],notebooks:v.notebooks||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},protoDays:v.protoDays||{},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()});
       LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
+      _reconcileProjects(_projBefore);   // a projects root that orphans the cloud's own experiments is wrong, whatever its timestamp
       _backfillPrefixes();   // a tree adopted from the cloud can predate the field too
       _nbMigrate();          // and the notebook fields; both are idempotent per record
       seedPresets();
       try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
       _adopting=false; maybeSeed(); renderAll();
     }
-    // What we now believe the cloud holds. Without this the first push after load would send
-    // the whole tree again and undo whatever arrived in between.
-    _cloudSeen=_cloudFingerprint();
+    // What the cloud holds — read from the cloud, not assumed from this device. The first push
+    // is then a real diff: what this device changed offline goes up, what only the cloud has is
+    // left alone (it arrives through the listeners below), and a device that adopted has
+    // nothing to send but the migrations it just ran.
+    // Restricted to the keys this device holds: a record only the cloud has must stay out of
+    // _cloudSeen, or _applyRemote would take its child_added for our own write coming back and
+    // never apply it. A record only this device has is absent too, so the first diff sends it.
+    var _remote=_cloudFingerprintOf(v), _local=_cloudFingerprint(), _seen={};
+    Object.keys(_local).forEach(function(k){ if(_remote[k]!==undefined) _seen[k]=_remote[k]; });
+    _cloudSeen=_seen;
+    if(_pushWanted || _cloudDelta(_local)) _cloudPush();
     _syncTries=0;
     setSync(true,true);
     _cloudListen(r);
@@ -9037,6 +9067,49 @@ function _trashExpsOf(pred){
   });
   return out;
 }
+// An experiment's projectId must name a project. When an incoming projects root leaves the
+// cloud's own experiments pointing at ids it does not contain, the root is corrupt or older
+// than the records, and the projects this device held a moment ago are put back — by id, so
+// every experiment re-attaches on its own. Nothing is rewritten on the experiments.
+function _orphanProjectIds(){ var ids={}, have={}; (LB.data.projects||[]).forEach(function(p){ have[p.id]=1; });
+  Object.keys(LB.data.experiments||{}).forEach(function(k){ var e=LB.data.experiments[k]; if(e&&e.projectId&&!have[e.projectId]) ids[e.projectId]=(ids[e.projectId]||0)+1; });
+  return ids; }
+function _reconcileProjects(before){
+  var orphan=_orphanProjectIds(), back=[];
+  (before||[]).forEach(function(p){ if(orphan[p.id] && !projById(p.id)){ LB.data.projects.push(p); back.push(p.name||p.id); } });
+  if(back.length){ _remoteNote='The cloud\u2019s project list had lost '+back.length+' project'+(back.length===1?'':'s')+' that still own experiments ('+esc(back.join(', '))+'). They were kept from this device and sent back.'; setTimeout(function(){ try{ _cloudBanner(false); lbAlert(_remoteNote,{title:'Projects put back'}); }catch(e){} },0); }
+  return back.length; }
+// Put the projects from a snapshot or backup back WITHOUT replacing the notebook: by id, so
+// every experiment that names one re-attaches. Placeholder projects the seed made — the six
+// generic names — are dropped only when nothing at all is filed under them.
+function restoreProjectsFrom(data,label){
+  var src=(data&&data.projects)||[]; if(!src.length){ toast('That '+(label||'file')+' has no projects in it.'); return; }
+  var have={}; (LB.data.projects||[]).forEach(function(p){ have[p.id]=p; });
+  var added=[]; src.forEach(function(p){ if(!have[p.id]){ LB.data.projects.push(JSON.parse(JSON.stringify(p))); added.push(p.name||p.id); } });
+  var seedNames={}; SEED_PROJECTS.forEach(function(sp){ seedNames[sp.name]=1; });
+  var used={}; Object.keys(LB.data.experiments||{}).forEach(function(k){ used[LB.data.experiments[k].projectId]=1; });
+  (LB.data.generalSections||[]).forEach(function(sc){ if((sc.nb||'').indexOf('proj:')===0) used[sc.nb.slice(5)]=1; });
+  var dropped=[]; LB.data.projects=LB.data.projects.filter(function(p){ var empty=seedNames[p.name] && !used[p.id] && !(added.indexOf(p.name)>=0); if(empty) dropped.push(p.name); return !empty; });
+  if(!added.length && !dropped.length){ toast('Every project in that '+(label||'file')+' is already here.'); return; }
+  undoMark('Restore projects',['projects']);
+  _backfillPrefixes(); save(); renderAll();
+  lbAlert((added.length?('Restored '+added.length+' project'+(added.length===1?'':'s')+': '+added.join(', ')+'.'):'')
+    +(dropped.length?(' Removed '+dropped.length+' empty placeholder'+(dropped.length===1?'':'s')+' ('+dropped.join(', ')+').'):''),{title:'Projects restored'});
+}
+function restoreProjectsFromSnapshot(){
+  _idb().then(function(db){
+    var os=db.transaction('h','readonly').objectStore('h'); if(!os.getAllKeys){ toast('No snapshots available in this browser.'); return; }
+    var rq=os.getAllKeys(); rq.onsuccess=function(){
+      var keys=(rq.result||[]).filter(function(k){ return String(k).indexOf('snapshot:')===0; }).sort().reverse();
+      if(!keys.length){ toast('No local snapshots yet.'); return; }
+      lbPicker('Projects from which snapshot?',keys.map(function(k){ return {id:k,label:fmtDate(String(k).slice(9)),sub:'projects only — the notebook stays as it is',ic:'P',c:'#3f6fa8'}; }),function(it){
+        db.transaction('h','readonly').objectStore('h').get(it.id).onsuccess=function(ev){ var rec=ev.target.result; if(!rec||!rec.json){ toast('That snapshot could not be read.'); return; }
+          var parsed; try{ parsed=JSON.parse(rec.json); }catch(e){ toast('That snapshot could not be read.'); return; }
+          restoreProjectsFrom((parsed&&parsed.data)||parsed,'snapshot'); }; });
+    }; }).catch(function(){ toast('Could not open local snapshots.'); });
+}
+var _restoreProjectsOnly=false;
+function openRestoreProjectsFile(){ _restoreProjectsOnly=true; openRestoreBackup(); }
 function _recoveredProject(){
   var p=LB.data.projects.filter(function(x){ return x.name==='Recovered'; })[0];
   if(p) return p;
@@ -9531,7 +9604,16 @@ function xvListHtml(){
         +'<span class="xv-parw">'+tbIco(P_CHEV_D,13)+'</span></div>'
       +(open?'<div class="xv-pb">'+xvProjectBody(p,q)+'</div>':'')+'</div>';
   }).join('');
-  if(!LB.data.projects.length) body='<div class="xv-empty">No projects yet. Name one above to start.</div>';
+  // An experiment whose project is gone is still an experiment. Listed under the id it names,
+  // with the way back — restore the project list — instead of vanishing from the only list.
+  var orphan=_orphanProjectIds();
+  Object.keys(orphan).forEach(function(pid){
+    var p={id:pid,name:'Project missing',sections:[],color:'#c04040'};
+    body+='<div class="xv-proj open xv-orphan"><div class="xv-ph"><span class="xv-chev">'+tbIco(P_CHEV_R,13)+'</span><span class="xv-pc" style="background:#c04040"></span>'
+      +'<span class="xv-pn">Project missing</span><span class="xv-pm">'+orphan[pid]+' experiment'+(orphan[pid]===1?'':'s')+' · the project record is gone — Recover \u2192 Snapshots \u2192 Projects only puts it back</span></div>'
+      +'<div class="xv-pb">'+xvProjectBody(p,q)+'</div></div>';
+  });
+  if(!LB.data.projects.length && !Object.keys(orphan).length) body='<div class="xv-empty">No projects yet. Name one above to start.</div>';
   return body;
 }
 function renderExperiments(host, qOnly){
@@ -15049,7 +15131,12 @@ function _fmtBytes(n){ if(n<1024) return n+' B'; if(n<1048576) return (n/1024).t
   return (n/1048576).toFixed(n<10485760?1:0)+' MB'; }
 // ── Restore from a backup JSON (labbook-YYYY-MM-DD.json / dhub-backup-*.json) — REPLACES everything ──
 function openRestoreBackup(){ var inp=el('lb-restore-input'); if(!inp) return; inp.value=''; inp.click(); }
-function _restoreInputChange(inp){ var f=(inp.files||[])[0]; inp.value=''; if(f) restoreFromBackupFile(f); }
+function _restoreInputChange(inp){ var f=(inp.files||[])[0]; inp.value=''; var po=_restoreProjectsOnly; _restoreProjectsOnly=false; if(!f) return;
+  if(!po) return restoreFromBackupFile(f);
+  var reader=new FileReader(); reader.onload=function(){ var parsed; try{ parsed=JSON.parse(reader.result); }catch(e){ toast('Could not parse that file — not valid JSON.'); return; }
+    var data=(parsed&&parsed._lbBackup&&parsed.data)?parsed.data:(parsed&&parsed.journal&&parsed.journal.labbook)?parsed.journal.labbook:parsed;
+    if(!data||typeof data!=='object'||!('projects' in data)){ toast('That file doesn\u2019t look like a Labbook backup.'); return; }
+    restoreProjectsFrom(data,'backup'); }; reader.readAsText(f); }
 function restoreFromBackupFile(file){
   var reader=new FileReader();
   reader.onload=function(){
@@ -15456,13 +15543,15 @@ function _recoverBody(){
   if(RECOVER.tab==='versions') return '<div class="rc-note">Reading history…</div>';
   if(RECOVER.tab==='snapshots')
     return '<div class="rc-note">A rolling snapshot of the whole notebook — attachment bytes included — is kept in this browser for the last seven days. Restoring one <b>replaces everything</b>; it is the answer to “yesterday was better”, not to “I deleted one thing”.</div>'
-      +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();restoreFromSnapshot()">Browse snapshots…</button></div>';
+      +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();restoreFromSnapshot()">Browse snapshots…</button>'
+      +'<button class="btn ghost" onclick="_lbDlgClose();restoreProjectsFromSnapshot()" title="Put the project list from a snapshot back, by id, without touching experiments, pages or notes">Projects only…</button></div>';
   if(RECOVER.tab==='file'){
     // The honest counter. Attachments added before Storage was enabled, and any whose upload
     // failed, exist in exactly one browser — and until now nothing said so or offered to fix it.
     var pend=0; try{ pend=attNeedingUpload().length; }catch(e){}
     return '<div class="rc-note">A backup file is the only copy that leaves this machine on its own. Restoring one <b>replaces the entire notebook</b>; a v2 or v3 backup brings its attachments back with it, and v3 carries the version history too.</div>'
       +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();openRestoreBackup()">Choose a backup file…</button>'
+      +'<button class="btn ghost" onclick="_lbDlgClose();openRestoreProjectsFile()" title="Put the project list from a backup back, by id, without touching experiments, pages or notes">Projects only…</button>'
       +'<button class="btn ghost" onclick="_lbDlgClose();doBackup(true)">Back up now</button></div>'
       +(pend
         ? ('<div class="rc-note rc-warn"><b>'+pend+' attachment'+(pend===1?' is':'s are')+' on this device only.</b> '
