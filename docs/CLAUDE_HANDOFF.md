@@ -7,6 +7,14 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 - Date: 2026-09-15 · **v1.17.2** · branch `main`.
 
+## The PDF and the bench sheet (2026-09-15, last)
+
+`PRINT_CSS`/`LAB_CSS` set as documents: `break-inside:avoid` only on rows, checklist items
+and the plate grid; `break-after:avoid` on headings; 10pt / 11pt; `@page` margin boxes print
+page numbers on Chrome 131+. `tools/pdf_probe.mjs <outdir>` renders record + bench PDFs of
+three seeded experiments — look at the pages before touching either stylesheet. Floating
+pictures are scaled to the page in `printFloatLayers`.
+
 ## FuGENE, the screen preset, the banner (2026-09-15)
 
 `nbtx` takes FuGENE as a **ratio** (`fugeneRatio`, 3:1) on the DNA a well receives, and that

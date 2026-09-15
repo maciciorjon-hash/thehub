@@ -14371,7 +14371,7 @@ var PLATE_PRINT_CSS=
  +'.pk-leg span{display:inline-block;margin-right:14px;white-space:nowrap}'
  +'.pk-sumt{border-collapse:collapse;width:100%;margin-top:8px;font:400 9pt/1.5 sans-serif}'
  +'.pk-sumt td{border-bottom:.5pt solid #999;padding:4px 7px;vertical-align:top}'
- +'.pk-sumt td.r{white-space:nowrap;font-family:ui-monospace,monospace;font-weight:600;width:22%}'
+ +'.pk-sumt td.r{white-space:nowrap;font-family:ui-monospace,monospace;font-weight:600;width:1%;padding-right:14px}'
  +'.pk-sumt td.n{white-space:nowrap;text-align:right;color:#333;width:12%}';
 // `@page` had no `size`, so the sheet came from the machine: A4 on a Mac, **Letter** on Windows.
 // Chrome then scales the laid-out document to the printable area, and the two areas are
@@ -14380,80 +14380,102 @@ var PLATE_PRINT_CSS=
 //
 // The type came down with it. 14pt body only ever looked right *because* it was being shrunk by
 // that fit-to-page scaling; unscaled it is a large-print edition. 11pt is a bench sheet.
-var PRINT_CSS='<style>@page{size:A4;margin:14mm}'+PLATE_PRINT_CSS
- +'#print-root{padding:0;color:#111;font:400 11pt/1.5 ui-sans-serif,system-ui,sans-serif;'
- +'-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+// The record PDF. Two things made the old one read as "too big": every block, day and plate
+// carried page-break-inside:avoid, so anything taller than the room left on a page jumped to the
+// next one whole — a title page with nothing under it, a day header alone at the foot of a page,
+// a last page holding one line of footer — and the type was set for the screen (11pt body, pill
+// chips, boxed cards). A document is set at 10pt, breaks are avoided only after a heading and
+// inside a table row, and the chrome is rules and small caps rather than cards and pills.
+// Chrome 131+ prints the page numbers from the @page margin boxes; older engines print none.
+var PRINT_CSS='<style>@page{size:A4;margin:16mm 15mm 17mm}'
+ +'@page{@bottom-left{content:"'+_brand().replace(/"/g,'')+'";font:400 7.5pt/1 ui-sans-serif,system-ui,sans-serif;color:#666;vertical-align:top;padding-top:5mm}'
+ +'@bottom-right{content:"Page " counter(page) " of " counter(pages);font:400 7.5pt/1 ui-sans-serif,system-ui,sans-serif;color:#666;vertical-align:top;padding-top:5mm}}'
+ +PLATE_PRINT_CSS
+ +'#print-root{padding:0;color:#111;font:400 10pt/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;'
+ +'-webkit-print-color-adjust:exact;print-color-adjust:exact;orphans:3;widows:3}'
  +'#print-root *{font-size:inherit;font-family:inherit;color:inherit;background:none;box-sizing:border-box}'
  +'#print-root img{max-width:100%}'
  // The app's own stylesheet reaches into the print root, and a table cell it turns into a flex
  // box silently stops being a table cell — colspan is ignored and a block label collapses to one
  // column. The print plate's classes are its own (pk-), and the display is stated outright.
- +'#print-root table{display:table}#print-root tr{display:table-row}'
+ +'#print-root table{display:table;max-width:100%}#print-root tr{display:table-row;break-inside:avoid}'
  +'#print-root td{display:table-cell}#print-root th{display:table-cell}'
- +'#print-root .pd-tbl{width:100%;border-collapse:collapse;margin:7px 0 13px}'
- +'#print-root .pd-tbl th,#print-root .pd-tbl td{border:.5pt solid #777;padding:4px 7px;text-align:left;vertical-align:top;font-size:9.5pt}'
- +'#print-root .pd-tbl th{background:#ebebeb!important;font-weight:700;color:#000}'
- +'#print-root .pd-res{margin-bottom:10px}'
- +'#print-root .pd-res-hd{font-weight:700;margin-bottom:4px;font-size:11.5pt}'
- +'#print-root .pd-res-when{float:right;font-weight:400;color:#444}'
- +'#print-root .pd-note{font-size:9pt;color:#555;margin:3px 0 0}'
- +'#print-root .pd-exp{margin-top:20px}'
- +'#print-root .pd-exp-hd{font-weight:700;font-size:14pt;border-bottom:1.5pt solid #222;padding-bottom:4px;margin-bottom:10px}'
- +'#print-root .pd-exp-hd span{font-weight:400;font-size:11pt;color:#333}'
+ +'#print-root h1,#print-root h2,#print-root h3,#print-root h4{break-after:avoid}'
+ +'#print-root .pd-tbl{width:100%;border-collapse:collapse;margin:5px 0 10px}'
+ +'#print-root .pd-tbl th,#print-root .pd-tbl td{border-bottom:.5pt solid #bbb;padding:3px 6px;text-align:left;vertical-align:top;font-size:8.5pt}'
+ +'#print-root .pd-tbl th{border-bottom:1pt solid #333;font-weight:700;color:#000;font-size:7.5pt;text-transform:uppercase;letter-spacing:.4px}'
+ +'#print-root .pd-res{margin-bottom:8px}'
+ +'#print-root .pd-res-hd{font-weight:700;margin-bottom:2px;font-size:10pt;break-after:avoid}'
+ +'#print-root .pd-res-when{float:right;font-weight:400;color:#555;font-size:8.5pt}'
+ +'#print-root .pd-note{font-size:8.5pt;color:#555;margin:2px 0 0}'
+ +'#print-root .pd-exp{margin-top:18px}'
+ +'#print-root .pd-exp-hd{font-weight:700;font-size:12.5pt;border-bottom:1pt solid #222;padding-bottom:3px;margin-bottom:8px;break-after:avoid}'
+ +'#print-root .pd-exp-hd span{font-weight:400;font-size:10pt;color:#333}'
  // The two lines that make a report a report rather than a list of codes.
- +'#print-root .pd-aim{font-size:11pt;color:#222;margin:0 0 4px}'
- +'#print-root .pd-oc{font-size:11pt;color:#222;margin:0 0 10px}'
- +'#print-root h1{font-size:17pt}#print-root h2{font-size:14pt}#print-root h3{font-size:12pt}'
- +'#print-root .lb-note{border-left:3pt solid #666;background:#f0f0f0!important;padding:5px 10px;margin:7px 0}'
+ +'#print-root .pd-aim{font-size:10pt;color:#222;margin:0 0 3px}'
+ +'#print-root .pd-oc{font-size:10pt;color:#222;margin:0 0 8px}'
+ +'#print-root h1{font-size:15pt}#print-root h2{font-size:12.5pt}#print-root h3{font-size:11pt}'
+ +'#print-root .lb-note{border-left:2pt solid #666;background:#f3f3f3!important;padding:4px 9px;margin:6px 0}'
  +'#print-root .lb-note-warn{border-left-color:#c25a12;background:#fdf3ea!important}'
  +'#print-root .lb-check{list-style:none;padding-left:0}'
- +'#print-root .pk-g th{background:#ececec!important}'
- +'#print-root .pk-g td,#print-root .pk-g th{font-size:8pt}'
- +'#print-root .pk-gl{font-size:9.5pt}'
- +'#print-root .pk-t{font-size:11pt}#print-root .pk-n,#print-root .pk-leg{font-size:8.5pt}'
- +'#print-root .pk-sumt td{font-size:9pt}'
- +'#print-root .pd-head{border-bottom:2px solid #5e87c5;padding:0 0 12px;margin-bottom:16px}'
- +'#print-root .pd-kicker{font:600 8pt/1 sans-serif;letter-spacing:1px;color:#3a5f96;text-transform:uppercase}'
- +'#print-root .pd-code{font:600 9.5pt/1.4 sans-serif;color:#3a5f96;margin-top:8px}'
- +'#print-root .pd-title{font:700 16pt/1.2 sans-serif;margin:3px 0 8px}'
- +'#print-root .pd-crumb{font:500 9pt/1.4 sans-serif;color:#333}'
- +'#print-root .pd-chips{margin-top:9px;display:flex;flex-wrap:wrap;gap:6px}#print-root .pd-chip{font:600 8pt/1 sans-serif;background:#e6ecf6!important;color:#1e3a5f;border:.5pt solid #b8c6dd;border-radius:9px;padding:4px 9px}'
- +'#print-root .pd-block{margin-top:16px;page-break-inside:avoid}#print-root .pd-bhd{display:flex;gap:10px;align-items:baseline;border-bottom:.5pt solid #666;padding-bottom:4px;margin-bottom:6px}'
- +'#print-root .pd-day{font:700 7.5pt/1 sans-serif;color:#fff!important;background:#3a5f96!important;border-radius:3px;padding:2px 6px;text-transform:uppercase}#print-root .pd-bdate{font:600 8.5pt/1 sans-serif;color:#444}#print-root .pd-btitle{font:700 10.5pt/1.3 sans-serif;color:#000}'
- +'#print-root .pd-body{font:400 10pt/1.5 sans-serif;color:#111}#print-root .pd-body ul,#print-root .pd-body ol{margin:0 0 6px 20px}#print-root .pd-body h1,#print-root .pd-body h2,#print-root .pd-body h3{margin:8px 0 4px}#print-root .pd-body table{border-collapse:collapse;margin:6px 0}#print-root .pd-body td,#print-root .pd-body th{border:.5pt solid #777;padding:4px 8px}#print-root .pd-body hr{border:none;border-top:.5pt solid #888;margin:10px 0}#print-root .pd-body .lb-tag{color:#3d4e9c;font-weight:600}#print-root .pd-body .lb-ab{color:#96590f;font-weight:600}#print-root .pd-body a.lb-link{color:#2f5183;text-decoration:none}'
- +'#print-root .pd-body .lb-note{margin:6px 0;padding:5px 9px;border-left:2.5pt solid #888;background:#f0f0f0!important;font-size:9pt}'
+ +'#print-root .pk-p{break-inside:auto;margin:6px 0 10px}#print-root .pk-g{break-inside:avoid}'
+ +'#print-root .pk-g th{background:#f0f0f0!important;font-size:7pt;padding:2px 0}'
+ +'#print-root .pk-g td{font-size:7pt;height:17px;padding:1px 2px}'
+ +'#print-root .pk-g td.pk-no{font-size:12pt}#print-root .pk-g td.pk-no1{font-size:8.5pt}'
+ +'#print-root .pk-gl{font-size:8pt}'
+ +'#print-root .pk-t{font:700 10pt/1.3 sans-serif;margin-bottom:3px;break-after:avoid}#print-root .pk-n{font-size:8.5pt;margin:0 0 5px}#print-root .pk-leg{font-size:8pt;margin-top:5px;line-height:1.5}'
+ +'#print-root .pk-sumt{margin-top:5px}#print-root .pk-sumt td{font-size:8.5pt;padding:2px 6px 2px 0;border-bottom:.5pt solid #ccc}'
+ // Header: where it is filed, the code, the title, then one line of facts. Pills are a screen idiom.
+ +'#print-root .pd-head{border-bottom:1.5pt solid #111;padding:0 0 9px;margin-bottom:12px}'
+ +'#print-root .pd-kicker{font:600 7.5pt/1 sans-serif;letter-spacing:1.2px;color:#555;text-transform:uppercase}'
+ +'#print-root .pd-crumb{font:600 7.5pt/1.4 sans-serif;letter-spacing:1px;color:#555;text-transform:uppercase}'
+ +'#print-root .pd-code{font:600 9pt/1.3 ui-monospace,Menlo,monospace;color:#3a5f96;margin-top:6px}'
+ +'#print-root .pd-title{font:700 17pt/1.15 sans-serif;color:#000;margin:2px 0 5px;letter-spacing:-.2px}'
+ +'#print-root .pd-chips{margin-top:4px;display:block;font:400 9pt/1.5 sans-serif;color:#333}'
+ +'#print-root .pd-chip{display:inline;font:inherit;background:none!important;border:0;padding:0;color:#333}'
+ +'#print-root .pd-chip+.pd-chip::before{content:"\\00a0\\00b7\\00a0";color:#999}'
+ +'#print-root .pd-aimline{margin-top:6px;font:400 9.5pt/1.4 sans-serif;color:#222}#print-root .pd-aimline b{font-weight:700;color:#000}'
+ // Blocks break where they must — only a heading refuses to be the last thing on a page.
+ +'#print-root .pd-block{margin-top:10px;break-inside:auto}#print-root .pd-bhd{display:flex;gap:8px;align-items:baseline;border-bottom:.5pt solid #999;padding-bottom:2px;margin-bottom:5px;break-after:avoid}'
+ +'#print-root .pd-day{font:700 7pt/1 sans-serif;color:#fff!important;background:#3a5f96!important;border-radius:2px;padding:2px 5px;text-transform:uppercase}#print-root .pd-bdate{font:600 8pt/1 sans-serif;color:#444}#print-root .pd-btitle{font:700 10pt/1.3 sans-serif;color:#000}'
+ +'#print-root .pd-body{font:400 9.5pt/1.45 sans-serif;color:#111}#print-root .pd-body p{margin:0 0 5px}#print-root .pd-body ul,#print-root .pd-body ol{margin:0 0 5px 18px}#print-root .pd-body h1,#print-root .pd-body h2,#print-root .pd-body h3{margin:7px 0 3px}#print-root .pd-body table{border-collapse:collapse;margin:5px 0}#print-root .pd-body td,#print-root .pd-body th{border:.5pt solid #999;padding:3px 6px}#print-root .pd-body hr{border:none;border-top:.5pt solid #999;margin:8px 0}#print-root .pd-body .lb-tag{color:#3d4e9c;font-weight:600}#print-root .pd-body .lb-ab{color:#96590f;font-weight:600}#print-root .pd-body a.lb-link{color:#2f5183;text-decoration:none}'
+ +'#print-root .pd-body .lb-note{margin:5px 0;padding:4px 8px;border-left:2pt solid #888;background:#f3f3f3!important;font-size:8.5pt}'
  +'#print-root .pd-body .lb-note-warn{border-left-color:#e0803a}#print-root .pd-body .lb-note-tip{border-left-color:#5e87c5}'
- +'#print-root .pd-body .lb-table{border-collapse:collapse;margin:6px 0;font-size:9pt}'
- +'#print-root .pd-body .lb-table th,#print-root .pd-body .lb-table td{border:.5pt solid #777;padding:3px 7px}'
- +'#print-root .pd-body .pstep-note{margin:4px 0 6px;padding:4px 8px;border-left:2pt solid #3a5f96;background:#f0f0f0!important;font-size:9pt}'
- +'#print-root .pd-body .pblk-note{margin-top:7px;padding-top:6px;border-top:.5pt solid #666}'
+ +'#print-root .pd-body .lb-table{border-collapse:collapse;margin:5px 0;font-size:8.5pt}'
+ +'#print-root .pd-body .lb-table th,#print-root .pd-body .lb-table td{border:.5pt solid #999;padding:2px 6px}'
+ +'#print-root .pd-body .pstep-note{margin:3px 0 5px;padding:3px 7px;border-left:2pt solid #3a5f96;background:#f3f3f3!important;font-size:8.5pt}'
+ +'#print-root .pd-body .pblk-note{margin-top:6px;padding-top:5px;border-top:.5pt solid #999}'
  +'#print-root .pd-body .pparam{border-bottom:1px dotted #666}'
- +'#print-root .lb-todo{list-style:none}#print-root .lb-box{display:inline-block;width:11px;height:11px;border:1px solid #888;border-radius:var(--r-1);margin-right:6px;vertical-align:middle}#print-root .lb-todo.done .lb-box{background:#5e87c5;border-color:#5e87c5}'
- +'#print-root ul.lb-check{list-style:none;margin-left:4px;padding-left:0}#print-root ul.lb-check li{position:relative;list-style:none;padding-left:20px;margin:2px 0}#print-root ul.lb-check li::before{content:"";position:absolute;left:0;top:2px;width:11px;height:11px;border:1px solid #888;border-radius:var(--r-1)}#print-root ul.lb-check li.done::before{background:#5e87c5;border-color:#5e87c5}#print-root ul.lb-check li.done{color:#555;text-decoration:line-through}'
- +'#print-root img.lb-att{max-width:100%;height:auto;border-radius:var(--r-1);margin:6px 0;display:block;page-break-inside:avoid}'
- +'#print-root .pd-sec-hd{font:700 9.5pt/1 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:20px 0 6px;padding-bottom:4px;border-bottom:1px solid #a8a8a8}'
- +'#print-root .pd-part-hd{font:700 12pt/1.3 sans-serif;color:#2f5580;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:var(--r-1);padding:5px 10px;margin:16px 0 2px;page-break-after:avoid}'
- +'#print-root .pd-pub{font:400 10pt/1.55 sans-serif;color:#1a1a1a;background:#fafbfb;border:1px solid #a8a8a8;border-radius:var(--r-2);padding:12px 16px;margin-top:6px}'
- +'#print-root .pd-pub .pub-h{font:700 9.5pt/1.2 sans-serif;letter-spacing:.6px;text-transform:uppercase;color:#5e87c5;margin:12px 0 3px}'
- +'#print-root .pd-pub .pub-h:first-child{margin-top:0}#print-root .pd-pub p{margin:0 0 7px}'
- +'#print-root .pd-recipe{font:400 9.5pt/1.45 sans-serif;color:#1a1a1a;background:#eef2f9;border-left:3px solid #5e87c5;border-radius:0 4px 4px 0;padding:7px 11px;margin:0 0 7px}#print-root .pd-recipe b{color:#2f5580}'
- +'#print-root .pd-daygroup{margin-top:14px;page-break-inside:auto}#print-root .pd-dayhd{display:flex;align-items:center;gap:8px;margin:14px 0 6px;border-bottom:2px solid #5e87c5;padding-bottom:4px}#print-root .pd-dayhd .pd-day{font:700 8.5pt/1 sans-serif;color:#fff;background:#5e87c5;border-radius:var(--r-1);padding:3px 8px;text-transform:uppercase}#print-root .pd-dayhd .pd-bdate{font:600 10pt/1 sans-serif;color:#333}'
- +'#print-root .pd-foot{margin-top:26px;padding-top:10px;border-top:1px solid #a8a8a8;font:400 8.5pt/1.4 sans-serif;color:#555}'
- +'#print-root .pd-plate{margin:6px 0 10px;page-break-inside:avoid}#print-root .pd-plate-t{font:600 9pt/1.3 sans-serif;color:#333;margin-bottom:3px}'
- +'#print-root .pd-plate-g{border-collapse:collapse;table-layout:fixed;width:100%}#print-root .pd-plate-g td{border:1px solid #999;height:15px;font:400 5.5px/1.1 sans-serif;color:#222;text-align:center;overflow:hidden;word-break:break-all}'
- +'#print-root .pd-plate-g th{font:700 6px/1 sans-serif;color:#444;padding:1px}#print-root .pd-pleg{display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:4px}'
- +'#print-root .pd-pleg-i{font:400 8.5pt/1.2 sans-serif;color:#333}#print-root .pd-pleg-i i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px}'
- +'#print-root .pd-psum{border-collapse:collapse;width:100%;margin-top:6px}#print-root .pd-psum td{font:400 9pt/1.35 sans-serif;color:#333;padding:2px 8px 2px 0;border-bottom:1px solid #b0b0b0;vertical-align:top}'
+ +'#print-root .pd-body i.pub-skip,#print-root .pd-body .pub-skip{color:#555}'
+ +'#print-root .lb-todo{list-style:none}#print-root .lb-box{display:inline-block;width:9px;height:9px;border:1px solid #777;border-radius:1px;margin-right:5px;vertical-align:middle}#print-root .lb-todo.done .lb-box{background:#5e87c5;border-color:#5e87c5}'
+ +'#print-root ul.lb-check{list-style:none;margin-left:2px;padding-left:0}#print-root ul.lb-check li{position:relative;list-style:none;padding-left:16px;margin:1px 0}#print-root ul.lb-check li::before{content:"";position:absolute;left:0;top:3px;width:9px;height:9px;border:1px solid #777;border-radius:1px}#print-root ul.lb-check li.done::before{background:#5e87c5;border-color:#5e87c5}#print-root ul.lb-check li.done{color:#555;text-decoration:line-through}'
+ +'#print-root img.lb-att{max-width:100%;height:auto;border-radius:2px;margin:5px 0;display:block;break-inside:avoid}'
+ +'#print-root .pd-sec-hd{font:700 8pt/1 sans-serif;letter-spacing:1.2px;text-transform:uppercase;color:#3a5f96;margin:16px 0 6px;padding-bottom:3px;border-bottom:.5pt solid #3a5f96;break-after:avoid}'
+ +'#print-root .pd-part-hd{font:700 10.5pt/1.3 sans-serif;color:#2f5580;border-left:2.5pt solid #5e87c5;padding:2px 8px;margin:12px 0 2px;break-after:avoid}'
+ +'#print-root .pd-pub{font:400 9.5pt/1.5 sans-serif;color:#1a1a1a;padding:0 0 0 10px;border-left:2pt solid #ddd;margin-top:4px}'
+ +'#print-root .pd-pub .pub-h{font:700 7.5pt/1.2 sans-serif;letter-spacing:1px;text-transform:uppercase;color:#3a5f96;margin:9px 0 2px;break-after:avoid}'
+ +'#print-root .pd-pub .pub-h:first-child{margin-top:0}#print-root .pd-pub p{margin:0 0 6px}'
+ // The computed recipe is a table with a lead line: a thin blue rule, not a tinted card.
+ +'#print-root .pd-recipe{font:400 8.5pt/1.4 sans-serif;color:#1a1a1a;border-left:2pt solid #5e87c5;padding:2px 0 2px 9px;margin:2px 0 6px}#print-root .pd-recipe b{color:#2f5580}'
+ +'#print-root .pd-recipe .cc-tbl{border-collapse:collapse;margin:4px 0;width:100%}#print-root .pd-recipe .cc-tbl th{font-size:7pt;text-transform:uppercase;letter-spacing:.4px;color:#333;border:0;border-bottom:1pt solid #333;padding:2px 6px 2px 0;text-align:left;background:none!important}#print-root .pd-recipe .cc-tbl td{border:0;border-bottom:.5pt solid #ccc;padding:2px 6px 2px 0;vertical-align:top;background:none!important}'
+ +'#print-root .pd-recipe .cc-tblwrap{overflow:visible}#print-root .pd-recipe .cc-note{margin-top:4px;color:#333;padding:0;border:0;background:none!important}#print-root .pd-recipe .cc-rule{margin:4px 0 0;padding:0;border:0;background:none!important;font-size:8pt;color:#444}#print-root .pd-recipe .cc-dim{color:#666}#print-root .pd-recipe .cc-fix{display:none}#print-root .pd-recipe .cc-no{color:#666;padding-right:4px}'
+ +'#print-root .pd-daygroup{margin-top:10px}#print-root .pd-dayhd{display:flex;align-items:center;gap:7px;margin:12px 0 4px;border-bottom:1pt solid #3a5f96;padding-bottom:3px;break-after:avoid}#print-root .pd-dayhd .pd-day{font:700 7.5pt/1 sans-serif;color:#fff;background:#3a5f96;border-radius:2px;padding:2px 6px;text-transform:uppercase}#print-root .pd-dayhd .pd-bdate{font:600 9pt/1 sans-serif;color:#333}'
+ +'#print-root .pd-foot{margin-top:18px;padding-top:6px;border-top:.5pt solid #bbb;font:400 7.5pt/1.4 sans-serif;color:#666;break-before:avoid;break-inside:avoid}'
+ +'#print-root .pd-plate{margin:4px 0 8px;break-inside:avoid}#print-root .pd-plate-t{font:600 8.5pt/1.3 sans-serif;color:#333;margin-bottom:2px}'
+ +'#print-root .pd-plate-g{border-collapse:collapse;table-layout:fixed;width:100%}#print-root .pd-plate-g td{border:1px solid #aaa;height:13px;font:400 5.5px/1.1 sans-serif;color:#222;text-align:center;overflow:hidden;word-break:break-all}'
+ +'#print-root .pd-plate-g th{font:700 6px/1 sans-serif;color:#444;padding:1px}#print-root .pd-pleg{display:flex;flex-wrap:wrap;gap:2px 9px;margin-top:3px}'
+ +'#print-root .pd-pleg-i{font:400 8pt/1.2 sans-serif;color:#333}#print-root .pd-pleg-i i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px}'
+ +'#print-root .pd-psum{border-collapse:collapse;width:100%;margin-top:5px}#print-root .pd-psum td{font:400 8.5pt/1.35 sans-serif;color:#333;padding:2px 7px 2px 0;border-bottom:.5pt solid #ccc;vertical-align:top}'
  +'#print-root .pd-psum-r{white-space:nowrap;font-weight:700;font-family:ui-monospace,monospace}#print-root .pd-psum-r i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}'
  +'#print-root .pd-psum-n{text-align:right;color:#555;white-space:nowrap;padding-right:0}'
- +'#print-root .pd-pnote{font:400 8.5pt/1.35 sans-serif;color:#3a3a3a;margin:0 0 4px}'
- +'#print-root .pd-file-fig{margin:8px 0;page-break-inside:avoid}#print-root .pd-file-fig img{max-width:100%;height:auto;border:1px solid #a8a8a8;border-radius:var(--r-1);display:block}'
- +'#print-root .pd-file-fig figcaption{font:400 9pt/1.35 sans-serif;color:#333;margin-top:3px}'
- +'#print-root .pd-filelist{border-collapse:collapse;width:100%;margin-top:6px;page-break-inside:avoid}'
- +'#print-root .pd-filelist td{font:400 9pt/1.35 sans-serif;color:#333;padding:3px 8px 3px 0;border-bottom:1px solid #b0b0b0;vertical-align:top}'
+ +'#print-root .pd-pnote{font:400 8pt/1.35 sans-serif;color:#3a3a3a;margin:0 0 3px}'
+ +'#print-root .pd-file-fig{margin:6px 0;break-inside:avoid}#print-root .pd-file-fig img{max-width:100%;max-height:120mm;height:auto;border:.5pt solid #bbb;border-radius:2px;display:block}'
+ +'#print-root .pd-file-fig figcaption{font:400 8.5pt/1.35 sans-serif;color:#333;margin-top:2px}'
+ +'#print-root .pd-filelist{border-collapse:collapse;width:100%;margin-top:5px}'
+ +'#print-root .pd-filelist td{font:400 8.5pt/1.35 sans-serif;color:#333;padding:2px 7px 2px 0;border-bottom:.5pt solid #ccc;vertical-align:top}'
  +'#print-root .pd-fl-n{font-weight:700}#print-root .pd-fl-c{color:#3a3a3a}'
  +'#print-root .pd-plate-g td.pd-pgl{font:700 8px/1.1 sans-serif;text-align:center}#print-root .pd-plate-g th.pd-pcl{font:600 5px/1 sans-serif;color:#333}'
- +'#print-root .pd-body{position:relative}#print-root .pd-float-wrap{position:absolute;left:0;top:0;right:0;min-height:100%;pointer-events:none}#print-root .pd-float-fig{position:absolute;page-break-inside:avoid}#print-root .pd-float-fig img{width:100%;height:100%;object-fit:contain;border-radius:var(--r-1);border:1px solid #a8a8a8}#print-root .pd-float-cap{font:400 9pt/1.3 sans-serif;color:#333;text-align:center;margin-top:2px}</style>';
+ +'#print-root .pd-body{position:relative}#print-root .pd-float-wrap{position:absolute;left:0;top:0;right:0;min-height:100%;pointer-events:none}#print-root .pd-float-fig{position:absolute;break-inside:avoid}#print-root .pd-float-fig img{width:100%;height:100%;object-fit:contain;border-radius:2px;border:.5pt solid #bbb}#print-root .pd-float-cap{font:400 8.5pt/1.3 sans-serif;color:#333;text-align:center;margin-top:2px}</style>';
 function projCrumb(e){ var p=projById(e.projectId); var s=p?(p.sections||[]).filter(function(x){return x.id===e.sectionId;})[0]:null; return (p?p.name:'')+(s?' › '+s.name:''); }
 function pdRecipe(b){ var r=expCalcRecipe(b); return r?'<div class="pd-recipe">'+r+'</div>':''; }
 // Static plate grid for the PDF — same colours, no interaction.
@@ -14676,8 +14698,14 @@ function buildPrintDoc(){
   }
   var e=_curExp(); if(!e) return h;
   if(e.kind==='note'){ h+='<div class="pd-head"><div class="pd-kicker">'+esc(e.noteType||'note')+'</div><div class="pd-title">'+esc(e.title||'')+'</div><div class="pd-crumb">'+esc(fmtDate(e.date||''))+'</div></div>'; return h+'<div class="pd-body" data-ctx="note:'+e.id+'">'+(e.html||'')+'</div>'+foot(); }
-  var chips=[]; if(e.startDate)chips.push('Start '+fmtDate(e.startDate)); if(e.status)chips.push(e.status); if(e.plasmids)chips.push(e.plasmids); if(e.cellLines)chips.push(e.cellLines);
-  h+='<div class="pd-head"><div class="pd-code">'+esc(e.code||'')+'</div><div class="pd-title">'+esc(e.title||e.code||'')+'</div><div class="pd-crumb">'+esc(projCrumb(e))+'</div><div class="pd-chips">'+chips.map(function(x){return '<span class="pd-chip">'+esc(x)+'</span>';}).join('')+'</div></div>';
+  var chips=[]; if(e.startDate)chips.push('Start '+fmtDate(e.startDate)); if(e.status)chips.push(e.status); if(e.cellLines)chips.push(e.cellLines); if(e.plasmids)chips.push(e.plasmids);
+  var typeName=((EXP_TYPES.filter(function(t){ return t.id===e.type; })[0]||{}).name)||'';
+  if(typeName) chips.unshift(typeName);
+  // Where it is filed, then the code, the title, one line of facts, and the aim if there is one.
+  h+='<div class="pd-head"><div class="pd-crumb">'+esc(projCrumb(e))+'</div><div class="pd-code">'+esc(e.code||'')+'</div><div class="pd-title">'+esc(e.title||e.code||'')+'</div>'
+    +'<div class="pd-chips">'+chips.map(function(x){return '<span class="pd-chip">'+esc(x)+'</span>';}).join('')+'</div>'
+    +(e.aim?('<div class="pd-aimline"><b>Aim</b> '+esc(e.aim)+'</div>'):'')
+    +(e.outcome&&e.outcome.verdict?('<div class="pd-aimline"><b>Outcome</b> '+esc(e.outcome.verdict)+(e.outcome.text?(' — '+esc(e.outcome.text)):'')+'</div>'):'')+'</div>';
   var obs=(e.html&&e.html.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Observations</div><div class="pd-body" data-ctx="expfree:'+e.id+'">'+e.html+'</div>'):'';
   var expPlate=e.plate?('<div class="pd-sec-hd">Plate layout</div>'+pdPlate(e.plate)):'';
   var steps=expPlate+((e.blocks&&e.blocks.length)?('<div class="pd-sec-hd">Protocol — step by step</div>'+printExpByDay(e)):'');
@@ -14689,14 +14717,22 @@ function buildPrintDoc(){
 function printFloatLayers(root){ var nodes=root.querySelectorAll('.pd-body[data-ctx]'); var ps=[];
   Array.prototype.forEach.call(nodes,function(body){ var obj=_ctxObj(body.dataset.ctx); if(!obj) return; var arr=_floatArr(obj); if(!arr.length) return;
     var wrap=document.createElement('div'); wrap.className='pd-float-wrap';
+    // The positions are editor pixels on a column up to 1400px wide; the page is ~680px. A
+    // picture placed at x=900 was simply off the paper. Scale by the column it was placed on
+    // (the live editable if it is on screen, else the prose measure), never up.
+    var ref=null; try{ var live=document.querySelector('.rt[data-ctx="'+body.dataset.ctx+'"]'); ref=live&&live.clientWidth; }catch(e){}
+    var k=Math.min(1, 680/Math.max(320, ref||900)), maxB=0;
     arr.slice().sort(function(a,b){return (a.z||0)-(b.z||0);}).forEach(function(im){
       var fig=document.createElement('div'); fig.className='pd-float-fig';
-      fig.style.cssText='left:'+im.x+'px;top:'+im.y+'px;width:'+im.w+'px;height:'+im.h+'px;transform:rotate('+(im.rot||0)+'deg);';
+      fig.style.cssText='left:'+(im.x*k)+'px;top:'+(im.y*k)+'px;width:'+(im.w*k)+'px;height:'+(im.h*k)+'px;transform:rotate('+(im.rot||0)+'deg);';
+      maxB=Math.max(maxB,(im.y+im.h)*k+(im.caption?16:0));
       var img=document.createElement('img'); fig.appendChild(img);
       if(im.caption){ var cap=document.createElement('div'); cap.className='pd-float-cap'; cap.textContent=im.caption; fig.appendChild(cap); }
       wrap.appendChild(fig);
       ps.push(_attGet(im.attId).then(function(d){ if(d){ img.src=d; return; } var meta=(LB.data.attachments||{})[im.attId]; if(meta&&meta.url) img.src=meta.url; }));
     });
+    // The body has to be at least as tall as the lowest picture, or the next block prints over it.
+    if(maxB) body.style.minHeight=Math.ceil(maxB)+'px';
     body.appendChild(wrap); });
   return Promise.all(ps); }
 // Every browser names the PDF after document.title, so "Labbook.pdf" is what came out of here
@@ -14730,39 +14766,47 @@ function _printName(){
 // own size, its own colour or its own background, and the whole sheet rendered at the root 15pt
 // in one flat grey — a heading, a table cell and a footnote all identical. The rules are scoped
 // to the print root now, so they outrank the reset and the sheet has typography again.
-var LAB_CSS='<style>@page{size:A4;margin:11mm}'+PLATE_PRINT_CSS
- +'#print-root{color:#111;font:400 11.5pt/1.5 ui-sans-serif,system-ui,sans-serif;'
- +'-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+var LAB_CSS='<style>@page{size:A4;margin:14mm 13mm 16mm}'
+ +'@page{@bottom-right{content:"Page " counter(page) " of " counter(pages);font:400 8pt/1 ui-sans-serif,system-ui,sans-serif;color:#666;vertical-align:top;padding-top:5mm}}'
+ +PLATE_PRINT_CSS
+ +'#print-root{color:#111;font:400 11pt/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;'
+ +'-webkit-print-color-adjust:exact;print-color-adjust:exact;orphans:3;widows:3}'
  +'#print-root *{font-size:inherit;font-family:inherit;color:inherit;background:none}'
  +'#print-root img{max-width:100%}'
- +'#print-root table{display:table}#print-root tr{display:table-row}'
+ +'#print-root table{display:table;max-width:100%}#print-root tr{display:table-row;break-inside:avoid}'
  +'#print-root td{display:table-cell}#print-root th{display:table-cell}'
- +'#print-root .lb-h{border-bottom:2.5pt solid #111;padding-bottom:8px;margin-bottom:14px}'
- +'#print-root .lb-h1{font:800 20pt/1.15 sans-serif;margin:0;color:#000}'
- +'#print-root .lb-h2{font:600 12pt/1.3 sans-serif;color:#333;margin-top:5px}'
- +'#print-root .lb-meta{margin-top:9px;font:600 10pt/1.5 sans-serif;color:#222}'
- +'#print-root .lb-meta span{display:inline-block;margin-right:18px}'
- +'#print-root .lb-day{margin-top:20px;page-break-inside:avoid}'
- +'#print-root .lb-dayhd{font:800 13pt/1.2 sans-serif;background:#111!important;color:#fff!important;padding:5px 10px;border-radius:3px}'
- +'#print-root .lb-step{margin-top:12px;page-break-inside:avoid}'
- +'#print-root .lb-stept{font:700 12pt/1.3 sans-serif;margin-bottom:6px;color:#000}'
- +'#print-root .lb-body{font:400 11.5pt/1.5 sans-serif;color:#111}'
- +'#print-root .lb-body p{margin:0 0 6px}#print-root .lb-body b{font-weight:700}'
- +'#print-root .lb-body ul,#print-root .lb-body ol{margin:4px 0 6px 22px}'
- +'#print-root .lb-tbl{border-collapse:collapse;width:100%;margin:7px 0 10px;font:400 10pt/1.4 sans-serif}'
- +'#print-root .lb-tbl th{background:#e8e8e8!important;font-weight:700;text-align:left;border:.5pt solid #666;padding:4px 7px;color:#000}'
- +'#print-root .lb-tbl td{border:.5pt solid #666;padding:4px 7px;vertical-align:top;color:#111}'
- +'#print-root .lb-note{font:400 10pt/1.45 sans-serif;color:#222;border-left:3pt solid #666;padding:6px 10px;margin:8px 0;background:#f0f0f0!important}'
+ // The head is one ruled band: code large, title under it, the facts in one line.
+ +'#print-root .lb-h{border-bottom:2pt solid #111;padding-bottom:7px;margin-bottom:10px}'
+ +'#print-root .lb-h1{font:800 19pt/1.15 ui-monospace,Menlo,monospace;margin:0;color:#000;letter-spacing:-.3px}'
+ +'#print-root .lb-h2{font:600 12pt/1.3 sans-serif;color:#222;margin-top:3px}'
+ +'#print-root .lb-meta{margin-top:6px;font:500 9.5pt/1.5 sans-serif;color:#333}'
+ +'#print-root .lb-meta span{display:inline-block;margin-right:14px}'
+ // A day is a black bar and can run over pages — only the bar refuses to end a page.
+ +'#print-root .lb-day{margin-top:14px;break-inside:auto}'
+ +'#print-root .lb-dayhd{font:800 12pt/1.2 sans-serif;background:#111!important;color:#fff!important;padding:4px 9px;border-radius:2px;break-after:avoid}'
+ +'#print-root .lb-step{margin-top:10px;break-inside:auto}'
+ +'#print-root .lb-stept{font:700 11.5pt/1.3 sans-serif;margin:0 0 4px;color:#000;border-bottom:.5pt solid #999;padding-bottom:2px;break-after:avoid}'
+ +'#print-root .lb-body{font:400 10.5pt/1.45 sans-serif;color:#111}'
+ +'#print-root .lb-body p{margin:0 0 5px}#print-root .lb-body b{font-weight:700}'
+ +'#print-root .lb-body ul,#print-root .lb-body ol{margin:3px 0 5px 20px}'
+ +'#print-root .lb-tbl{border-collapse:collapse;width:100%;margin:5px 0 8px;font:400 9.5pt/1.35 sans-serif}'
+ +'#print-root .lb-tbl th{background:#efefef!important;font-weight:700;text-align:left;border:.5pt solid #777;padding:3px 6px;color:#000;font-size:8pt;text-transform:uppercase;letter-spacing:.4px}'
+ +'#print-root .lb-tbl td{border:.5pt solid #777;border-left:0;border-right:0;padding:3px 6px;vertical-align:top;color:#111}'
+ +'#print-root .lb-tbl th{border-left:0;border-right:0}'
+ +'#print-root .lb-note{font:400 9.5pt/1.4 sans-serif;color:#222;border-left:2.5pt solid #666;padding:4px 9px;margin:6px 0;background:#f3f3f3!important}'
  +'#print-root .lb-warn{border-left-color:#b04f0d;background:#fbeade!important}'
- +'#print-root .lb-ck{list-style:none;margin:6px 0 0;padding:0}'
- +'#print-root .lb-ck li{position:relative;padding-left:24px;margin:6px 0;font:400 11.5pt/1.45 sans-serif}'
- +'#print-root .lb-ck li::before{content:"";position:absolute;left:0;top:2px;width:14px;height:14px;border:1.5pt solid #111}'
- +'#print-root .lb-plate{margin-top:10px;page-break-inside:avoid}'
- +'#print-root .lb-ptitle{font:700 10pt/1.3 sans-serif;margin-bottom:4px;color:#000}'
+ // The boxes are the sheet: 12pt squares, room for a pen, and a row never splits over a page.
+ +'#print-root .lb-ck{list-style:none;margin:5px 0 0;padding:0}'
+ +'#print-root .lb-ck li{position:relative;padding-left:22px;margin:4px 0;font:400 11pt/1.4 sans-serif;break-inside:avoid}'
+ +'#print-root .lb-ck li::before{content:"";position:absolute;left:0;top:2px;width:12px;height:12px;border:1.2pt solid #111;border-radius:1px}'
+ +'#print-root .lb-plate{margin-top:8px;break-inside:auto}#print-root .pk-p{break-inside:auto}'
+ +'#print-root .lb-ptitle{font:700 10pt/1.3 sans-serif;margin-bottom:3px;color:#000;break-after:avoid}'
+ +'#print-root .pk-g{break-inside:avoid}#print-root .pk-g th{font-size:7.5pt;padding:2px 0}#print-root .pk-g td{font-size:7.5pt;height:19px}'
+ +'#print-root .pk-g td.pk-no{font-size:13pt}#print-root .pk-g td.pk-no1{font-size:9pt}#print-root .pk-leg{font-size:8.5pt}#print-root .pk-sumt td{font-size:9pt;padding:3px 6px 3px 0}'
  +'#print-root .lb-psum{border-collapse:collapse;width:100%;font:400 9pt/1.4 sans-serif;color:#111}'
- +'#print-root .lb-psum td{border-bottom:.5pt solid #999;padding:4px 8px 4px 0;vertical-align:top}'
+ +'#print-root .lb-psum td{border-bottom:.5pt solid #999;padding:3px 8px 3px 0;vertical-align:top}'
  +'#print-root .lb-psum .r{font-weight:700;white-space:nowrap;font-family:ui-monospace,monospace}'
- +'#print-root .lb-foot{margin-top:22px;border-top:.5pt solid #888;padding-top:8px;font:400 8.5pt/1.4 sans-serif;color:#555}'
+ +'#print-root .lb-foot{margin-top:16px;border-top:.5pt solid #999;padding-top:5px;font:400 8pt/1.4 sans-serif;color:#666;break-before:avoid;break-inside:avoid}'
  +'</style>';
 // The recipe tables are the point of this sheet, so they are kept as tables rather than
 // flattened into a sentence the way the publication text does it.
@@ -14840,7 +14884,10 @@ function printPlateHtml(p,title,opts){
     sum=g.length?('<table class="pk-sumt">'+g.map(function(x){
       return '<tr><td class="r">'+esc(x.range)+'</td><td>'+esc(x.desc)+'</td><td class="n">'+esc(String(x.n))+'</td></tr>'; }).join('')+'</table>'):'';
   }
-  return '<div class="pk-p"><div class="pk-t">'+esc(title||(p.title||'Plate map'))+' &middot; '+(d.r*d.c)+'-well</div>'
+  var ttl=String(title||(p.title||'Plate map'));
+  // A title that already says the format is not told it twice.
+  var fmtTxt=(ttl.indexOf((d.r*d.c)+'-well')>=0)?'':(' &middot; '+(d.r*d.c)+'-well');
+  return '<div class="pk-p"><div class="pk-t">'+esc(ttl)+fmtTxt+'</div>'
     +((opts.note!==false&&p.note)?('<div class="pk-n">'+esc(p.note)+'</div>'):'')
     +'<table class="pk-g">'+head+rows+'</table>'
     +(leg?('<div class="pk-leg">'+leg+'</div>'):'')+sum+'</div>';
