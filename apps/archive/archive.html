@@ -1556,8 +1556,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
             <select id="tx-fugene" onchange="calcTrex()"><option value="2">2 : 1</option><option value="3" selected>3 : 1</option><option value="4">4 : 1</option></select>
           </div>
           <div class="field"><label>Opti-MEM per well (&micro;L)</label><input type="number" id="tx-opti" value="200" min="20" step="10" oninput="calcTrex()"></div>
-          <div class="field"><label>pOG44 stock (ng/&micro;L)</label><input type="number" id="tx-pog44" value="500" min="1" step="10" oninput="calcTrex()"></div>
-          <div class="field"><label>pcDNA5/FRT/TO stock (ng/&micro;L)</label><input type="number" id="tx-pcdna5" value="200" min="1" step="10" oninput="calcTrex()"></div>
+          <div class="field"><label>pOG44 stock (ng/&micro;L) &mdash; from NanoDrop</label><input type="number" id="tx-pog44" value="500" placeholder="e.g. 500" min="1" step="10" oninput="calcTrex()"></div>
+          <div class="field"><label>pcDNA5/FRT/TO stock(s) (ng/&micro;L) &mdash; one number, or one per construct, comma-separated</label><input type="text" id="tx-pcdna5" value="200" placeholder="e.g. 210, 180, 350" oninput="calcTrex()"></div>
+          <div class="field"><label>Construct names (optional, comma-separated, in the same order)</label><input type="text" id="tx-names" value="" placeholder="e.g. BRD4-GFP, DCAF15-GFP, empty vector" oninput="calcTrex()"></div>
         </div>
         <div id="tx-mix-result"></div>
       </div>
@@ -5415,9 +5416,11 @@ function generateTransfectionSteps() {
 // Every total says its overage (_ovx), so the number on screen can be checked by hand.
 function _txN(){ return {
   wells:gdn('tx-wells')||1, cpw:gdn('tx-cpw')||0.8, mediaVol:gdn('tx-mediavol')||2, count:gdn('tx-count')||1, ex:gdn('tx-excess')||1,
-  txWells:gdn('tx-txwells')||1, dna:gdn('tx-dna')||4, ratio:gdn('tx-ratio'), fug:gdn('tx-fugene')||3, opti:gdn('tx-opti')||200, pog44:gdn('tx-pog44')||500, pcdna5:gdn('tx-pcdna5')||200,
+  txWells:gdn('tx-txwells')||1, dna:gdn('tx-dna')||4, ratio:gdn('tx-ratio'), fug:gdn('tx-fugene')||3, opti:gdn('tx-opti')||200, pog44:gdn('tx-pog44')||500,
+  pcdna5:_txList(gdv('tx-pcdna5')).map(function(x){ return +x||0; }), names:_txList(gdv('tx-names')),
   hstock:gdn('tx-hstock')||50, htarget:gdn('tx-htarget')||150, hvol:gdn('tx-hvol')||50, kvol:gdn('tx-kvol')||2, kfrom:gdn('tx-kfrom')||50, kto:gdn('tx-kto')||400, kstep:gdn('tx-kstep')||50,
   tstock:gdn('tx-tstock')||1, ttarget:gdn('tx-ttarget')||1, tvol:gdn('tx-tvol')||10 }; }
+function _txList(str){ return String(str||'').split(/[,;\n]+/).map(function(x){ return x.trim(); }).filter(Boolean); }
 function _txCalc(v){
   var o={};
   // seeding: cells/well ÷ count = mL of suspension per well; the rest of the well is medium
@@ -5429,10 +5432,15 @@ function _txCalc(v){
   // co-transfection: DNA split by parts, volumes from the stocks
   var parts = v.ratio + 1;
   o.pog44UG = v.dna * (v.ratio/parts); o.pcdna5UG = v.dna * (1/parts);
-  o.pog44UL = o.pog44UG*1000 / v.pog44; o.pcdna5UL = o.pcdna5UG*1000 / v.pcdna5;
+  o.pog44UL = o.pog44UG*1000 / v.pog44;
+  // One pcDNA5 prep per construct: the first stock stands in for any construct without one.
+  var stocks=v.pcdna5.filter(function(x){ return x>0; }); if(!stocks.length) stocks=[200];
+  var n=Math.max(v.txWells, stocks.length, v.names.length, 1);
+  o.constructs=[]; for(var i=0;i<n;i++){ var st=stocks[i]!=null?stocks[i]:stocks[0]; o.constructs.push({name:v.names[i]||('Construct '+(i+1)), stock:st, ul:o.pcdna5UG*1000/st}); }
+  o.pcdna5UL = o.constructs[0].ul;
   o.fugUL = v.dna * v.fug;
   o.optiUL = v.opti;
-  o.dnaVolUL = o.pog44UL + o.pcdna5UL;
+  o.dnaVolUL = o.pog44UL + Math.max.apply(null,o.constructs.map(function(c){ return c.ul; }));
   o.txN = v.txWells * v.ex;
   // hygromycin: stock mg/mL is numerically µg/µL
   o.hSelUL = v.htarget * v.hvol / v.hstock;
@@ -5455,7 +5463,7 @@ function calcTrex(){
   var pool=function(x){ return _txUL(x*o.txN); };
   mixEl.innerHTML='<table class="proto-table" style="margin-top:10px"><tr><th>Component</th><th>Per well</th><th>For '+v.txWells+' well'+(v.txWells===1?'':'s')+'</th></tr>'
     +'<tr><td>pOG44 ('+_nd(o.pog44UG,2)+' µg)</td><td style="color:var(--accent)">'+_txUL(o.pog44UL)+' µL</td><td>'+pool(o.pog44UL)+' µL'+_ovx(v.ex)+'</td></tr>'
-    +'<tr><td>pcDNA5/FRT/TO + insert ('+_nd(o.pcdna5UG,2)+' µg)</td><td style="color:var(--accent)">'+_txUL(o.pcdna5UL)+' µL</td><td>per construct — one well each</td></tr>'
+    +o.constructs.map(function(c){ return '<tr><td>pcDNA5/FRT/TO · '+c.name+' ('+_nd(o.pcdna5UG,2)+' µg at '+_nd(c.stock,0)+' ng/µL)</td><td style="color:var(--accent)">'+_txUL(c.ul)+' µL</td><td>its own well</td></tr>'; }).join('')
     +'<tr><td>Opti-MEM</td><td style="color:var(--accent2)">'+_txUL(o.optiUL)+' µL</td><td>'+pool(o.optiUL)+' µL'+_ovx(v.ex)+'</td></tr>'
     +'<tr><td>FuGENE HD ('+v.fug+' : 1)</td><td style="color:var(--accent)">'+_txUL(o.fugUL)+' µL</td><td>'+pool(o.fugUL)+' µL'+_ovx(v.ex)+' — added last, per tube</td></tr></table>'
     +'<div class="proto-note" style="margin-top:8px;margin-bottom:0">'+_nd(v.dna,1)+' µg DNA per well at '+v.ratio+' : 1. Dilute the DNA in the Opti-MEM, add the FuGENE HD directly into the diluted DNA, 15 min at RT, then dropwise onto the cells.'
@@ -5473,11 +5481,11 @@ function calcTrex(){
     ['Cell suspension (uL)', _txUL(o.seedPerWellUL), _txUL(o.seedTotalUL)],
     ['Medium to add (uL)', _txUL(o.mediaPerWellUL), ''],
     ['pOG44 (uL)', _txUL(o.pog44UL), pool(o.pog44UL)],
-    ['pcDNA5/FRT/TO (uL)', _txUL(o.pcdna5UL), 'per construct'],
+  ].concat(o.constructs.map(function(c){ return ['pcDNA5/FRT/TO — '+c.name+' (uL, '+_nd(c.stock,0)+' ng/uL)', _txUL(c.ul), 'its own well']; })).concat([
     ['Opti-MEM (uL)', _txUL(o.optiUL), pool(o.optiUL)],
     ['FuGENE HD (uL)', _txUL(o.fugUL), pool(o.fugUL)],
     ['Hygromycin B stock for selection medium (uL)', '', _txUL(o.hSelUL)],
-    ['Tetracycline stock for induction (uL)', '', _txUL(o.tetUL)]]};
+    ['Tetracycline stock for induction (uL)', '', _txUL(o.tetUL)]])};
   refreshExportPanel('trex');
 }
 function generateTrexSteps(){
@@ -5487,7 +5495,7 @@ function generateTrexSteps(){
       'Seed '+_txUL(o.seedPerWellUL)+' µL of a '+_nd(v.count,2)+' M/mL suspension per well plus '+_txUL(o.mediaPerWellUL)+' µL medium → '+_nd(v.cpw,2)+' M cells in '+_nd(v.mediaVol,1)+' mL.',
       'Prepare '+_txUL(o.seedTotalUL)+' µL of suspension in total ('+_nd(o.cellsTotal,2)+' M cells)'+_ovx(v.ex)+'.']},
     {label:'Day 1 — Co-transfection, per well (FuGENE HD '+v.fug+' : 1)', bullets:[
-      'pOG44 '+_nd(o.pog44UG,2)+' µg = '+_txUL(o.pog44UL)+' µL; pcDNA5/FRT/TO '+_nd(o.pcdna5UG,2)+' µg = '+_txUL(o.pcdna5UL)+' µL; in '+_txUL(o.optiUL)+' µL Opti-MEM.',
+      'pOG44 '+_nd(o.pog44UG,2)+' µg = '+_txUL(o.pog44UL)+' µL ('+_nd(v.pog44,0)+' ng/µL) in '+_txUL(o.optiUL)+' µL Opti-MEM, plus '+_nd(o.pcdna5UG,2)+' µg pcDNA5/FRT/TO: '+o.constructs.map(function(c){ return c.name+' '+_txUL(c.ul)+' µL ('+_nd(c.stock,0)+' ng/µL)'; }).join(' · ')+'.',
       'Add '+_txUL(o.fugUL)+' µL FuGENE HD directly into the diluted DNA, 15 min at RT, then dropwise onto the cells.',
       'For '+v.txWells+' wells pool pOG44 '+_txUL(o.pog44UL*o.txN)+' µL, Opti-MEM '+_txUL(o.optiUL*o.txN)+' µL, FuGENE HD '+_txUL(o.fugUL*o.txN)+' µL'+_ovx(v.ex)+' — pcDNA5 is per construct.']},
     {label:'Hygromycin B', bullets:[
