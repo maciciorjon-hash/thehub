@@ -186,7 +186,18 @@ body.lb-rb-closed .rb-pane{display:none;}
 #rightdock .panel-body{display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:8px;}
 
 .body{flex:1;display:flex;min-height:0;position:relative;}
-.pane-sec{width:210px;flex-shrink:0;background:var(--surface);overflow-y:auto;padding:10px 9px;}
+.pane-sec{width:210px;flex-shrink:0;background:var(--surface);display:flex;flex-direction:column;}
+.pane-sec .pane-inner{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 9px;}
+/* The app-wide controls — Export · Recover · Settings · Theme — at the foot of the column, which
+   is on every desktop screen. They used to live only in the View ribbon, and the ribbon is
+   hidden on Home, Experiments, Week, Today and every Notebook list: a control that affects the
+   whole app was reachable from a page and nowhere else. */
+.col-foot{flex:none;display:flex;justify-content:space-around;align-items:center;gap:2px;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface);}
+.col-foot:empty{display:none;}
+.col-foot button{width:34px;height:32px;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--text2);border-radius:var(--r-2);cursor:pointer;padding:0;transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease);}
+.col-foot button:hover{background:var(--surface2);color:var(--text);}
+.col-foot button svg{width:18px;height:18px;}
+.pane.collapsed .col-foot{display:none;}
 .pane-lbl{font-size:var(--fs-1);font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--text3);margin:10px 8px 6px;}
 .sec-item{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:var(--r-2);cursor:pointer;font-size:var(--fs-4);color:var(--text2);transition:background .12s;position:relative;}
 .sec-item:hover{background:var(--surface2);color:var(--text);}
@@ -2421,7 +2432,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 <div class="body">
   <div id="mobile-backdrop" onclick="_backdropTap()"></div>
   <div class="mobile-drawer" id="mobile-drawer">
-    <div class="pane pane-sec" id="pane-sec-wrap"><div class="rail"><button class="rail-btn" onclick="toggleCollapse('sec')">SECTIONS &rsaquo;</button></div><div class="pane-inner" id="pane-sec"></div></div>
+    <div class="pane pane-sec" id="pane-sec-wrap"><div class="rail"><button class="rail-btn" onclick="toggleCollapse('sec')">SECTIONS &rsaquo;</button></div><div class="pane-inner" id="pane-sec"></div><div class="col-foot" id="col-foot"></div></div>
     <div class="splitter" id="split-sec" onpointerdown="startResize(event,'sec')" ondblclick="resetPane('sec')"></div>
     <div class="pane pane-pages" id="pane-pages-wrap"><div class="rail"><button class="rail-btn" onclick="toggleCollapse('pages')">PAGES &rsaquo;</button></div><div class="pane-inner" id="pane-pages" style="flex:1;display:flex;flex-direction:column;min-height:0;"></div></div>
     <div class="splitter" id="split-pages" onpointerdown="startResize(event,'pages')" ondblclick="resetPane('pages')"></div>
@@ -7341,7 +7352,13 @@ function secLeaf(node,label,icon,delCall,ctx,forceActive,opts){
 var PLANNER_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 2.5v4M16 2.5v4"/><path d="M8.5 15l2.5 2.5 4.5-4.5"/></svg>';
 function _wsSwitchHtml(cur){ if(lbHost()||_phoneTabs()) return '';   // the rail, or the tab bar, is the switch
   return '<div class="ws-seg jr-seg"><button class="'+(cur==='planner'?'on':'')+'" onclick="selectNode(\'home\')">'+PLANNER_ICON+'<span>Planner</span></button><button class="'+(cur==='notebook'?'on':'')+'" onclick="openNotebookWs()">'+NB_ICON+'<span>Notebook</span></button></div>'; }
+function _colFootRender(){ var f=el('col-foot'); if(!f) return; if(_phoneTabs()){ f.innerHTML=''; return; }   // the phone's More menu holds these
+  f.innerHTML='<button title="Export — PDF, Word, the clipboard, the numbers, a report" onmousedown="event.preventDefault();exportMenu()">'+tbSvg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>')+'</button>'
+    +'<button title="Recover — deleted items, versions, snapshots and backup files" onmousedown="event.preventDefault();openRecover()">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</button>'
+    +'<button title="Settings — shortcuts, writing, appearance" onmousedown="event.preventDefault();openSettings()">'+tbSvg('<circle cx="12" cy="12" r="3.2"/><path d="M4.5 12a7.5 7.5 0 01.1-1.2l-2-1.5 2-3.5 2.3 1a7.5 7.5 0 012-1.2l.4-2.5h4l.4 2.5a7.5 7.5 0 012 1.2l2.3-1 2 3.5-2 1.5a7.5 7.5 0 010 2.4l2 1.5-2 3.5-2.3-1a7.5 7.5 0 01-2 1.2l-.4 2.5h-4l-.4-2.5a7.5 7.5 0 01-2-1.2l-2.3 1-2-3.5 2-1.5a7.5 7.5 0 01-.1-1.2z"/>')+'</button>'
+    +'<button title="Light / dark" onmousedown="event.preventDefault();toggleTheme();_colFootRender()">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a7 7 0 1010.5 10.5z"/>')+'</button>'; }
 function renderSections(){
+  _colFootRender();
   if(SEL.node.kind==='nb') return renderNbColumn();
   var host=el('pane-sec'); var h=''; var k=SEL.node.kind, surf=lbSurface();
   // The rail (dHUB) or the switch above (standalone) names the WORKSPACE; this column names the
