@@ -140,18 +140,23 @@ table.pg-grid th{width:60px;}
 .pg-grid input{width:100%;height:26px;border:none;background:transparent;text-align:center;
   font-family:var(--mono);font-size:var(--fs-2);color:var(--text);outline:none;box-sizing:border-box;}
 .pg-grid input:focus{background:var(--accent-dim);box-shadow:inset 0 0 0 1.5px var(--accent);}
-.dose-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r-2);background:var(--surface2);margin-bottom:8px;}
+/* One grid: swatch · name · dilution · ×, all on one line, the wells caption under the name.
+   As a flex row the name+caption stack was 45px beside a 28px input and nothing lined up. */
+.dose-chip{display:grid;grid-template-columns:14px minmax(0,1fr) 76px 28px;grid-template-rows:auto auto;align-items:center;column-gap:8px;row-gap:2px;padding:8px 10px;border-radius:var(--r-2);background:var(--surface2);margin-bottom:8px;}
+.dose-chip-main{display:contents;}
+.dose-chip>input{grid-row:1;}
+.dose-chip-remove{grid-row:1;}
+.dose-chip-swatch{grid-row:1;}
 .dose-chip-swatch{width:14px;height:14px;border-radius:var(--r-1);flex-shrink:0;border:1px solid var(--border2);}
-.dose-chip-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
-.dose-chip-label{font-size:var(--fs-2);font-weight:600;color:var(--text);}
-.dose-chip-wells{font-size:var(--fs-1);color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.dose-chip>input{width:76px;height:28px;padding:0 7px;border-radius:var(--r-1);border:1px solid var(--border2);
+.dose-chip-label{font-size:var(--fs-2);font-weight:600;color:var(--text);grid-column:2;grid-row:1;}
+.dose-chip-wells{font-size:var(--fs-1);color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;grid-column:2/-1;grid-row:2;}
+.dose-chip>input{width:76px;height:28px;padding:0 7px;grid-column:3;border-radius:var(--r-1);border:1px solid var(--border2);
   background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;flex-shrink:0;}
 .dose-chip>input:focus{border-color:var(--accent);}
-.dose-chip-name-input{width:100%;padding:2px 0;border:none;background:transparent;
+.dose-chip-name-input{width:100%;height:28px;padding:0;grid-column:2;grid-row:1;border:none;background:transparent;
   font-size:var(--fs-2);font-weight:600;color:var(--text);outline:none;}
 .dose-chip-remove{background:none;border:none;color:var(--text3);font-size:var(--fs-5);line-height:1;
-  cursor:pointer;width:28px;align-self:stretch;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-1);flex-shrink:0;transition:color .15s,background .15s;}
+  cursor:pointer;width:28px;height:28px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-1);flex-shrink:0;transition:color .15s,background .15s;}
 .dose-chip-remove:hover{color:var(--poor);background:rgba(184,69,69,.1);}
 .pm-doselist-empty{font-size:var(--fs-3);color:var(--text3);padding:14px;text-align:center;}
 
@@ -271,6 +276,7 @@ canvas{display:block;border-radius:var(--r-2);}
     transition-duration:1ms!important;scroll-behavior:auto!important;}
 }
 .logo svg{width:20px;height:20px;}
+@media (hover:none){ .dose-chip>input,.dose-chip-remove{height:36px;} }
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -499,6 +505,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" onclick="exportWorkbook()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" style="vertical-align:-.15em"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg> Export workbook (.xlsx)</button>
           <button class="btn btn-sec btn-sm" onclick="exportSamplesCSV()">Export CSV</button>
+          <button class="btn btn-primary btn-sm" onclick="sendSamplesToLabbook()" title="The sample table — concentration and loading volumes — onto an experiment's Results tab">Send to Labbook</button>
         </div>
       </div>
     </div>
@@ -1553,6 +1560,27 @@ function renderSamplesTable(){
   tbl.innerHTML = html;
 }
 
+// The sample sheet is the number the Western Blot step needs (how much protein, how much water
+// per lane), and it used to be copied by hand. Same bridge Echo uses (dhub:context v1); Labbook
+// asks which experiment when none is open and files it under Results.
+function sendSamplesToLabbook(){
+  var results = computeSampleResults();
+  if(!results.length){ bcaToast('No samples to send yet.'); return; }
+  var targetConc = parseFloat(document.getElementById('norm-target-conc').value);
+  var targetVol = parseFloat(document.getElementById('norm-target-vol').value);
+  var validTargets = targetConc > 0 && targetVol > 0;
+  var cols=['Sample','Wells','Avg abs','Assay conc (µg/µL)','Dilution ×','Final conc (µg/µL)'].concat(validTargets?['Protein (µL)','Water (µL)']:[]).concat(['Note']);
+  var rows=results.map(function(r){
+    var norm = validTargets ? calcNormalizeRow(r.finalConc, targetConc, targetVol) : null;
+    var note=[]; if(r.extrapolated) note.push('extrapolated'); if(r.lowReplicates && !r.invalid) note.push('only 1 well'); if(norm && norm.status==='infeasible') note.push('too dilute'); if(r.invalid) note.push('no valid concentration');
+    var row=[r.group.name, r.group.wells.join(' '), isNaN(r.avgAbs)?'':r.avgAbs.toFixed(3), isNaN(r.assayConc)?'':r.assayConc.toFixed(3), r.dilutionFactor, isNaN(r.finalConc)?'':r.finalConc.toFixed(3)];
+    if(validTargets) row=row.concat([norm&&norm.status==='ok'?norm.proteinVol.toFixed(2):'', norm&&norm.status==='ok'?norm.waterVol.toFixed(2):'']);
+    return row.concat([note.join(', ')]); });
+  var ctx={ source:'bca', experiment:null,
+    tables:[{ id:'bca-'+Date.now(), source:'BCA', label:'BCA — '+results.length+' sample'+(results.length===1?'':'s')+(validTargets?(' · '+targetConc+' µg/µL in '+targetVol+' µL'):''), columns:cols, rows:rows, createdAt:new Date().toISOString() }] };
+  try{ if(window.parent && window.parent.openApp){ window.parent.openApp('labbook', undefined, undefined, ctx); } else bcaToast('Open BCA inside dHUB to send the table to Labbook.'); }
+  catch(e){ bcaToast('Could not reach Labbook.','err'); }
+}
 function exportSamplesCSV(){
   var results = computeSampleResults();
   var targetConc = parseFloat(document.getElementById('norm-target-conc').value);

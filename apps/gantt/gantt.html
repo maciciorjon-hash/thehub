@@ -196,6 +196,7 @@ body.dragging-lock .wp-name,body.dragging-lock .task-name,body.dragging-lock .ba
 .lib-item .li-meta{font-size:var(--fs-1);color:var(--text3);margin-top:2px;}
 .lib-item .li-act{display:flex;gap:4px;}
 .tmpl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.tmpl.tmpl-blank{border-style:dashed;}
 .tmpl{border:1px solid var(--border);border-radius:var(--r-2);padding:13px;cursor:pointer;background:var(--surface2);transition:border-color .12s,transform .07s;}
 .tmpl:hover{border-color:var(--accent);transform:translateY(-2px);}
 .tmpl:active{transform:translateY(0);}
@@ -1047,12 +1048,16 @@ function delChart(id){STORE.charts=STORE.charts.filter(function(x){return x.id!=
 function normalizeChart(c){var b=blankChart();for(var k in b){if(!(k in c))c[k]=b[k];}c.wps=c.wps||[];c.markers=c.markers||[];return c;}
 
 /* ══════════════ TEMPLATES ══════════════ */
-function openTemplates(){
+function openTemplates(first){
   var g=$('tmpl-grid');
-  g.innerHTML=TEMPLATES.map(function(t,i){
+  // A blank chart is the first choice: a template is something you pick, not something you
+  // dismantle task by task before you can start (Jon, 2026-09-16).
+  g.innerHTML='<div class="tmpl tmpl-blank" onclick="newBlank();closeModal(\'tmpl-modal\')"><div class="tmpl-name">Blank chart</div><div class="tmpl-desc">Your own work packages and tasks, from an empty timeline.</div><div class="tmpl-bars"><i style="width:0"></i></div></div>'
+    +TEMPLATES.map(function(t,i){
     var bars=t.preview.map(function(p){return '<i style="margin-left:'+(p[0]*8)+'%;width:'+(p[1]*8)+'%;background:'+p[2]+'"></i>';}).join('');
     return '<div class="tmpl" onclick="useTemplate('+i+')"><div class="tmpl-name">'+esc(t.name)+'</div><div class="tmpl-desc">'+esc(t.desc)+'</div><div class="tmpl-bars">'+bars+'</div></div>';
   }).join('');
+  var h=document.querySelector('#tmpl-modal .modal-h h3'); if(h) h.textContent=first?'New chart':'Start from a template';
   openModal('tmpl-modal');
 }
 function useTemplate(i){CHART=normalizeChart(TEMPLATES[i].build());closeModal('tmpl-modal');CHART.monthW=0;render();saveLocal();toast('Loaded “'+TEMPLATES[i].name+'”');}
@@ -1138,8 +1143,11 @@ var TEMPLATES=[
 function boot(){
   loadStore();initStoreSync();
   var saved=loadLocal();
-  CHART = saved ? normalizeChart(saved) : normalizeChart(TEMPLATES[0].build());
+  // First open: an empty chart under the chooser, not the example loaded as if it were yours.
+  CHART = saved ? normalizeChart(saved) : normalizeChart(blankChart());
+  if(!saved){ CHART.title='Untitled project'; }
   render();
+  if(!saved) setTimeout(function(){ openTemplates(true); },150);
 }
 boot();
 

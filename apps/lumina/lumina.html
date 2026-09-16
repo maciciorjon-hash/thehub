@@ -178,7 +178,15 @@ tr:hover td{background:var(--surface2);}
 .setup-reopen-btn:hover{background:var(--surface3);}
 .setup-overlay{position:fixed;inset:0;z-index:2000;background:var(--modal-backdrop,rgba(0,0,0,.45));display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
 html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
-.setup-overlay.hidden{display:none;}
+.setup-overlay.inline{position:static;inset:auto;z-index:auto;background:none;display:block;backdrop-filter:none;padding:0;}
+.setup-overlay.inline .setup-card{width:auto;max-width:none;min-height:0;max-height:none;box-shadow:none;border:1px solid var(--border);border-radius:var(--r-2);}
+.setup-overlay.inline .setup-hclose,.setup-overlay.inline .setup-foot{display:none;}
+.setup-overlay.inline .setup-hdr{padding:16px 18px 0;}
+.setup-overlay.inline .setup-stabs{padding:10px 18px 0;}
+.setup-overlay.inline .setup-sbody{padding:16px 18px;overflow:visible;}
+.input-two{display:grid;grid-template-columns:minmax(340px,460px) minmax(0,1fr);gap:16px;align-items:start;}
+@media (max-width:1040px){ .input-two{grid-template-columns:1fr;} }
+#paint-return-badge{margin-top:10px;}
 .setup-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);width:680px;min-height:420px;max-width:calc(100vw - 20px);max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden;}
 .setup-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:22px 26px 0;gap:12px;flex-shrink:0;}
 .setup-htitle{font-size:var(--fs-5);font-weight:700;color:var(--text);letter-spacing:-0.2px;}
@@ -199,12 +207,14 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
 .setup-pane.active{display:block;}
 .setup-sbody{flex:1;overflow-y:auto;padding:22px 26px;}
 .setup-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 26px;border-top:1px solid var(--border);flex-shrink:0;}
-#paint-return-badge{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:2500;}
+
 .setup-section-lbl{font-size:var(--fs-1);font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;}
 .setup-group{margin-bottom:20px;}
 .setup-group:last-child{margin-bottom:0;}
 .cpd-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 14px;}
-.cpd-grid .field{min-width:0;}
+/* A label that wraps to two lines keeps the control on the row's baseline (the .ci-f rule). */
+.cpd-grid .field{min-width:0;justify-content:flex-end;}
+@media (max-width:1040px){ .cpd-grid{grid-template-columns:repeat(2,1fr);} }
 .qc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;}
 .csv-lbl{display:flex;align-items:center;gap:6px;font-size:var(--fs-3);color:var(--text);cursor:pointer;white-space:nowrap;}
 .csv-lbl input{min-height:auto;width:auto;}
@@ -335,36 +345,13 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 
   <!-- ══════════════════ INPUT TAB ══════════════════ -->
   <div class="tabpane active" id="pane-input">
+    <div class="input-two">
 
-    <div class="card">
-      <div class="row" style="align-items:center;justify-content:space-between;">
-        <div class="row" style="gap:18px;align-items:center;">
-          <button class="setup-reopen-btn" onclick="openSetupModal()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" style="vertical-align:-.15em"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.7 1.6 2.7-2.6 1.5-.5 3-3-.4L12 21.4l-1.5-2.6-3 .4-.5-3L4.4 14.7 6 12 4.4 9.3l2.6-1.5.5-3 3 .4z"/></svg> Setup</button>
-          <span id="setup-summary" class="pill">96-well · HiBiT · 0 compounds · 0 ctrl wells</span>
-        </div>
-        <div id="paint-return-badge" style="display:none;">
-          <button class="btn accent small" onclick="exitPaintModeReturnToSetup()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" style="vertical-align:-.15em"><path d="M14.5 5l-7 7 7 7"/></svg> Done marking — back to Setup</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Plate grid</h3>
-      <div class="subtabs">
-        <div class="subtab active" data-sub="conc" onclick="switchSubtab('conc')">Concentrations</div>
-        <div class="subtab" data-sub="signal" onclick="switchSubtab('signal')">Signal</div>
-      </div>
-      <div class="well-grid-wrap"><div id="well-grid" class="well-grid"></div></div>
-      <div class="row" style="margin-top:14px;">
-        <button class="btn" onclick="clearGrid()">Clear grid</button>
-        <button class="btn primary" onclick="runLuminaAnalysis()">Run analysis →</button>
-      </div>
-    </div>
-
-  </div>
-
+    <!-- The setup is a card on the page, not a dialog over it: Files · Layout · Analysis ·
+         Output are the sections of the Input tab, and the plate sits beside them (Jon, 2026-09-16).
+         The markup keeps its ids; the dialog functions became no-ops. -->
   <!-- ══════════════════ SETUP MODAL (structure copied from Echo's #setup-modal) ══ -->
-  <div id="setup-modal" class="setup-overlay hidden">
+  <div id="setup-modal" class="setup-overlay inline">
     <div class="setup-card">
       <div class="setup-hdr">
         <div>
@@ -428,7 +415,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
               <button class="btn" id="paint-ctrl-btn" onclick="togglePaintMode('ctrl')">⊞ Mark control wells (0)</button>
               <button class="btn" id="paint-zero-btn" onclick="togglePaintMode('zero')" style="display:none;">⊞ Mark 0% wells (0)</button>
             </div>
-            <div class="setup-hsub" style="margin-top:10px;">Clicking "Mark" closes this dialog so you can click wells directly on the plate grid — click the floating button that appears to come back here.</div>
+            <div class="setup-hsub" style="margin-top:10px;">Press Mark, then click wells on the plate grid; press Done marking wells when you have them.</div>
           </div>
 
           <div class="setup-group">
@@ -507,6 +494,25 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <button class="btn primary" onclick="closeSetupModal()">Done</button>
       </div>
     </div>
+  </div>
+
+    <div id="paint-return-badge" style="display:none;">
+      <button class="btn accent small" onclick="exitPaintModeReturnToSetup()">Done marking wells</button>
+    </div>
+    <div class="card">
+      <h3>Plate grid</h3>
+      <div class="subtabs">
+        <div class="subtab active" data-sub="conc" onclick="switchSubtab('conc')">Concentrations</div>
+        <div class="subtab" data-sub="signal" onclick="switchSubtab('signal')">Signal</div>
+      </div>
+      <div class="well-grid-wrap"><div id="well-grid" class="well-grid"></div></div>
+      <div class="row" style="margin-top:14px;">
+        <button class="btn" onclick="clearGrid()">Clear grid</button>
+        <button class="btn primary" onclick="runLuminaAnalysis()">Run analysis →</button>
+      </div>
+    </div>
+    </div>
+
   </div>
 
   <!-- ══════════════════ VISUALIZATION TAB (Plots + Curves + Plate merged) ══ -->
@@ -729,12 +735,8 @@ function updateFitConstraintAvailability(assayType){
 // Setup modal (structure/behavior copied from Echo's #setup-modal:
 // .setup-overlay/.setup-card/.setup-stabs soft-hide-on-need pattern)
 // ══════════════════════════════════════════════════════════════
-function openSetupModal(){
-  document.getElementById('setup-modal').classList.remove('hidden');
-}
-function closeSetupModal(){
-  document.getElementById('setup-modal').classList.add('hidden');
-}
+// The setup is inline now; "closing" it is nothing (loadLuminaTestData still calls this).
+function closeSetupModal(){}
 function switchSetupTab(name){
   document.querySelectorAll('.setup-stab').forEach(function(t){ t.classList.toggle('active', t.dataset.tab===name); });
   document.querySelectorAll('.setup-pane').forEach(function(p){ p.classList.toggle('active', p.id==='setup-pane-'+name); });
@@ -742,7 +744,8 @@ function switchSetupTab(name){
 function updateSetupSummary(){
   var assayLabels = {hibit:'HiBiT', ctg:'CTG', displacement:'Displacement', gain:'Gain of signal'};
   var assayType = document.getElementById('assay-type').value;
-  document.getElementById('setup-summary').textContent =
+  var _ss=document.getElementById('setup-hsub'); if(!_ss) return;
+  _ss.textContent =
     state.format + '-well · ' + assayLabels[assayType] + ' · ' + state.compounds.length + ' compound' + (state.compounds.length===1?'':'s') +
     ' · ' + state.ctrlWells.size + ' ctrl wells';
 }
@@ -760,8 +763,8 @@ function togglePaintMode(mode){
   document.getElementById('paint-zero-btn').classList.toggle('accent', state.paintMode === 'zero');
   var badge = document.getElementById('paint-return-badge');
   if (state.paintMode) {
-    closeSetupModal();
     badge.style.display = 'block';
+    var g=document.getElementById('well-grid'); if(g&&g.scrollIntoView) g.scrollIntoView({block:'nearest',behavior:'smooth'});
   } else {
     badge.style.display = 'none';
   }
@@ -773,7 +776,6 @@ function exitPaintModeReturnToSetup(){
   document.getElementById('paint-zero-btn').classList.remove('accent');
   document.getElementById('paint-return-badge').style.display = 'none';
   renderGrid();
-  openSetupModal();
   switchSetupTab('layout');
 }
 function updatePaintButtonLabels(){
@@ -1926,7 +1928,6 @@ renderGrid();
 renderCompoundList();
 updateSetupSummary();
 updateFitConstraintAvailability(document.getElementById('assay-type').value);
-openSetupModal();
 </script>
 
 <script>

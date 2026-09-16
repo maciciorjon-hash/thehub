@@ -50,7 +50,6 @@ APPS = [
     ('ldi',     'apps/ldi/ldi.html'),
     ('cryo',    'apps/iceberg/iceberg.html'),
     ('cuppa',      'apps/cuppa/cuppa.html'),
-    ('fabricata',  'apps/fabricata/fabricata.html'),
     ('beacon',     'apps/beacon/beacon.html'),
     ('lumina',     'apps/lumina/lumina.html'),
     ('ribbon',     'apps/ribbon/ribbon.html'),

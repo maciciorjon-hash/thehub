@@ -1883,6 +1883,8 @@ header{border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-i
 .tb-field input[type=number]{width:52px;text-align:center;-moz-appearance:textfield;}
 .tb-field input[type=number]::-webkit-outer-spin-button,.tb-field input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 .tb-group{display:flex;align-items:center;gap:7px;padding-left:9px;margin-left:2px;border-left:1px solid var(--border2);flex-wrap:wrap;}
+.tb-group.tb-text{display:none;}
+.tb-group.tb-text.on{display:flex;}
 /* The toolbar wraps, but each group inside it did not — so one 509px group set the page's
    minimum width and a phone zoomed the whole document out to fit it. Wrapping only takes
    effect when there is no room, so nothing changes on a desktop. */
@@ -2178,7 +2180,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <label class="tb-field" title="How each on/off condition cell is drawn"><select id="tb-condstyle" onchange="setCondStyle(this.value)"><option value="circle">&#9679;/&#9675; Circle</option><option value="plusminus">+ / &minus;</option><option value="dot">&bull; Dot size</option></select></label>
     <label class="tb-field" title="Place the condition matrix above or below the blot panels"><select id="tb-condpos" onchange="setCondPos(this.value)"><option value="top">Above blot</option><option value="bottom">Below blot</option></select></label>
   </div>
-  <div class="tb-group">
+  <div class="tb-group tb-text" id="tb-text">
     <span class="tb-group-lbl">Text</span>
     <button class="btn ghost sm tb-fmt" onmousedown="event.preventDefault();blotFmt('bold')" title="Bold"><b>B</b></button>
     <button class="btn ghost sm tb-fmt" onmousedown="event.preventDefault();blotFmt('italic')" title="Italic"><i>I</i></button>
@@ -2936,6 +2938,19 @@ document.addEventListener('selectionchange',function(){
   var host=a.nodeType===3?a.parentNode:a;
   if(host&&host.closest&&host.closest('.lbl-in,.grp-lbl')) _blotSavedRange=sel.getRangeAt(0).cloneRange();
 });
+// The Text group (B · I · U · size · colours) acts on a label's text and on nothing else, so it
+// is shown while a label has the caret and put away otherwise — twenty controls in two rows
+// before a figure exists was the bar's own weight (Jon, 2026-09-16). It stays open while the
+// pointer is on it, or the click on B would blur the label and close the group under it.
+(function(){
+  var g=document.getElementById('tb-text'); if(!g) return;
+  var t=null;
+  function show(){ clearTimeout(t); g.classList.add('on'); }
+  function hide(){ clearTimeout(t); t=setTimeout(function(){ var ae=document.activeElement; if(ae&&ae.closest&&ae.closest('.lbl-in,.grp-lbl,#tb-text')) return; g.classList.remove('on'); },180); }
+  document.addEventListener('focusin',function(e){ if(e.target.closest&&e.target.closest('.lbl-in,.grp-lbl')) show(); else if(!e.target.closest('#tb-text')) hide(); });
+  document.addEventListener('focusout',function(){ hide(); });
+  g.addEventListener('mousedown',function(){ show(); });
+})();
 function _blotRestoreSel(){ if(!_blotSavedRange) return; try{ var sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(_blotSavedRange); }catch(e){} }
 function blotColorSwatches(){ return BRB_COLORS.map(function(c){return '<button class="brb-swatch" style="background:'+c+'" onmousedown="event.preventDefault();blotFmtColor(\''+c+'\')" title="'+c+'"></button>';}).join(''); }
 function blotFmt(cmd){ if(!_blotActiveEd) return; _blotActiveEd.focus(); try{ document.execCommand(cmd,false,null); }catch(e){} _blotActiveEd.dispatchEvent(new Event('input')); }

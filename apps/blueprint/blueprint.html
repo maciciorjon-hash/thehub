@@ -388,7 +388,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:#fff;
   *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
     transition-duration:1ms!important;scroll-behavior:auto!important;}
 }
-header>.opts-btn{margin-left:auto;} /* the gear sits at the right edge, as in every other app */
+header>#guide-btn{margin-left:auto;} /* the gear sits at the right edge, as in every other app */
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -452,6 +452,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="app-name">Blueprint</div>
     <div class="app-sub">Plate &amp; gel design tools · Layout builder · PNG export <span style="opacity:.45;font-size:10px;">· v1.3 · Jul 2026</span></div>
   </div>
+  <button class="opts-btn" id="guide-btn" onclick="pdOpenGuide()" title="How to use Blueprint" aria-label="Guide" style="font-weight:700;font-family:var(--sans);">?</button>
   <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.7 1.6 2.7-2.6 1.5-.5 3-3-.4L12 21.4l-1.5-2.6-3 .4-.5-3L4.4 14.7 6 12 4.4 9.3l2.6-1.5.5-3 3 .4z"/></svg></button>
 <div class="opts-panel" id="opts-panel">
   <div class="opts-row">
@@ -468,7 +469,6 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   <button class="tab active" onclick="switchTab('designer',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>Plate Designer</button>
   <button class="tab" onclick="switchTab('gel',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="M7 5v14M11 5v14M15 5v14"/></svg>Gel Designer</button>
   <button class="tab" onclick="switchTab('history',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>History</button>
-  <button class="tab" onclick="switchTab('guide',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A2.5 2.5 0 016.5 2H20v17H6.5A2.5 2.5 0 014 16.5v-12z"/><path d="M4 16.5A2.5 2.5 0 016.5 19H20"/></svg>Guide</button>
   <div class="tab-indicator"></div>
 </div>
 
@@ -486,6 +486,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   <div class="tb-right">
     <button class="btn btn-sec pd-tb-btn" onclick="clearPlate()">Clear plate</button>
     <label class="tb-chk" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;user-select:none;"><input type="checkbox" id="export-transparent" style="cursor:pointer;"> Transparent</label>
+    <button class="btn btn-sec pd-tb-btn" onclick="sendPlateToLabbook()" title="Open this layout in Labbook as an experiment's plate map — the same wells, types and labels, drawn once">&rarr; Labbook</button>
     <button class="btn btn-primary pd-tb-btn" onclick="exportPNG()" style="padding:5px 12px;">&#8595; Export PNG <span class="pinfo" data-tip="Exports at 600 DPI. Text auto-fits inside wells.">ⓘ</span></button>
     <button id="btn-well-shape" class="pd-shape-btn" onclick="toggleWellShape()" title="Toggle circle / square wells">
       <svg id="shape-icon-circle" viewBox="0 0 18 18" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="9" r="6.5"/></svg>
@@ -699,8 +700,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   </div>
 </div>
 
-<div class="panel" id="panel-guide">
-  <div class="guide-panel">
+<div id="pd-guide-modal" style="display:none;position:fixed;inset:0;background:var(--modal-backdrop);z-index:9999;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)pdCloseGuide()">
+  <div class="guide-panel" style="background:var(--surface);border:1px solid var(--border2);border-radius:9px;width:min(760px,94vw);max-height:88vh;max-height:88dvh;overflow:auto;box-shadow:var(--shadow-lg);">
+
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:18px;">
       <div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:14px;">Guide</div>
       <div class="guide-section">
@@ -2155,6 +2157,19 @@ var pdVals = {};          // wellId -> number
 var pdHeatOn = false;
 var pdValRange = null;    // {min, max}
 
+// The plate you designed here is the plate an experiment records. Until there is one plate
+// engine (the plan's phase 2) this hands the design to Labbook in its own shape — format,
+// types, wells with their labels — so the map is drawn once, not twice.
+function sendPlateToLabbook(){
+  var ids=Object.keys(wellState); if(!ids.length){ pdToast('Nothing on the plate yet.'); return; }
+  var used={}; ids.forEach(function(id){ var w=wellState[id]; if(w&&w.typeId) used[w.typeId]=1; });
+  var types=allTypes().filter(function(t){ return used[t.id]; }).map(function(t){ return {id:t.id,name:t.name,color:t.color}; });
+  var wells={}; ids.forEach(function(id){ var w=wellState[id]; if(!w||!w.typeId) return; var o={typeId:w.typeId}; if(w.label) o.label=w.label; wells[id.replace(/^([A-P])0+(\d)/,'$1$2')]=o; });
+  var plate={format:String(currentFormat), title:'Blueprint — '+currentFormat+'-well', types:types, wells:wells, groups:{}};
+  var ctx={source:'blueprint', experiment:null, plate:plate};
+  try{ if(window.parent && window.parent.openApp){ window.parent.openApp('labbook', undefined, undefined, ctx); } else pdToast('Open Blueprint inside dHUB to send the plate to Labbook.'); }
+  catch(e){ pdToast('Could not reach Labbook.'); }
+}
 function pdOpenValues(){
   var ta = document.getElementById('pd-values-text');
   if(ta && !ta.value.trim()) ta.value = pdValsToGrid();
@@ -2162,6 +2177,8 @@ function pdOpenValues(){
   document.getElementById('pd-values-modal').style.display = 'flex';
 }
 function pdCloseValues(){ document.getElementById('pd-values-modal').style.display = 'none'; }
+function pdOpenGuide(){ document.getElementById('pd-guide-modal').style.display='flex'; }
+function pdCloseGuide(){ document.getElementById('pd-guide-modal').style.display='none'; }
 
 function pdValsToGrid(){
   if(!Object.keys(pdVals).length) return '';

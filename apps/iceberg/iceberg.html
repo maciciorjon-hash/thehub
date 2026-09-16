@@ -443,6 +443,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <button class="bvseg-btn" data-view="group" onclick="setBoxView('group')">By contents</button>
       </span>
       <button class="tb-btn" id="boxlog-btn" onclick="showBoxLog()" style="display:none;" title="What has been used up or discarded from this box">History</button>
+      <button class="tb-btn" onclick="printBoxMap()" title="The grid with every vial's label, one sheet, for the lid and the freezer door">Print map</button>
       <span style="flex:1;"></span>
       <span class="detail-sub" id="detail-box-fill"></span>
     </div>
@@ -1283,6 +1284,39 @@ function _closeBoxDetailUI(){
 }
 function closeBoxDetail(){
   if (!popNavLevel()) _closeBoxDetailUI();
+}
+// ── The sheet that goes on the lid ─────────────────────────────────────────────────────
+// The only copy of a box map used to live on the screen, which does not go into the cold room.
+// This prints the grid at A4 landscape: rack › box, one cell per position with the vial's
+// label, passage and date, and a legend of the lines by colour.
+function printBoxMap(){
+  var box=getCurrentBox(); if(!box) return;
+  var st=state.storages[currentBoxDetail.storage]||{}; var rack=(st.racks||[]).find(function(r){ return r.id===currentBoxDetail.rackId; })||{};
+  var lines={};
+  var rows='';
+  for(var r=0;r<box.rows;r++){ var tds='';
+    for(var c=0;c<box.cols;c++){ var pos=String.fromCharCode(65+r)+(c+1), v=(box.vials||{})[pos];
+      var nm=v?vialLabel(v):''; if(nm) lines[nm]=1;
+      var bg=v?cellLineColor(nm):'#fff';
+      var sub=v?[v.passage?(/^P/i.test(String(v.passage))?v.passage:('P'+v.passage)):'', v.freezeDate||'', v.conc||''].filter(Boolean).join(' · '):'';
+      tds+='<td style="background:'+(v?bg:'#fff')+'"><div class="pm-pos">'+pos+'</div>'+(nm?('<div class="pm-nm">'+esc(nm)+'</div>'):'')+(sub?('<div class="pm-sub">'+esc(sub)+'</div>'):'')+'</td>'; }
+    rows+='<tr><th>'+String.fromCharCode(65+r)+'</th>'+tds+'</tr>'; }
+  var head='<tr><th></th>'; for(var c2=0;c2<box.cols;c2++) head+='<th>'+(c2+1)+'</th>'; head+='</tr>';
+  var leg=Object.keys(lines).sort().map(function(n){ return '<span><i style="background:'+cellLineColor(n)+'"></i>'+esc(n)+'</span>'; }).join('');
+  var nFilled=Object.keys(box.vials||{}).length;
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(box.name||'Box')+'</title><style>'
+    +'@page{size:A4 landscape;margin:12mm}body{font:10pt/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;margin:0}'
+    +'h1{font-size:15pt;margin:0 0 2px}.crumb{font-size:9pt;color:#555;margin-bottom:8px}'
+    +'table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:8pt;color:#444;background:#eee;border:.5pt solid #999;padding:2px}'
+    +'td{border:.5pt solid #999;height:'+Math.max(34,Math.floor(150/box.rows))+'mm;vertical-align:top;padding:2px 3px;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    +'.pm-pos{font-size:6.5pt;color:#666}.pm-nm{font-weight:700;font-size:8.5pt;line-height:1.15;word-break:break-word}.pm-sub{font-size:7pt;color:#333}'
+    +'.leg{margin-top:6px;font-size:8.5pt}.leg span{display:inline-block;margin-right:12px}.leg i{display:inline-block;width:9px;height:9px;border:.5pt solid #555;margin-right:4px;vertical-align:-1px}'
+    +'</style></head><body><h1>'+esc(box.name||'Box')+'</h1><div class="crumb">'+esc(st.label||currentBoxDetail.storage)+' › '+esc(rack.name||'')+' · '+box.rows+' × '+box.cols+' · '+nFilled+' / '+(box.rows*box.cols)+' filled · printed '+new Date().toISOString().slice(0,10)+'</div>'
+    +'<table>'+head+rows+'</table>'+(leg?('<div class="leg">'+leg+'</div>'):'')+'</body></html>';
+  var w=null; try{ w=window.open('','_blank'); }catch(e){}
+  if(!w){ toast('The browser blocked the print window — allow pop-ups for this page.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} },300);
 }
 function getCurrentBox(){
   if (!currentBoxDetail) return null;

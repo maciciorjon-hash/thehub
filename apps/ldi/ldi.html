@@ -204,7 +204,8 @@ input:focus,select:focus{border-color:var(--accent);}
 
 /* Curves pane */
 .compound-sel-row{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
-.compound-sel-row select{font-size:var(--fs-4);padding:7px 12px;min-width:180px;}
+.compound-sel-row select{font-size:var(--fs-4);padding:0 12px;height:32px;min-width:180px;}
+.compound-sel-row .btn{height:32px;padding-top:0;padding-bottom:0;display:inline-flex;align-items:center;}
 .chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);padding:16px;position:relative;height:calc(100vh - 340px);height:calc(100dvh - 340px);min-height:260px;}
 .ldi-badge-overlay{
   position:absolute;top:14px;right:14px;
@@ -307,6 +308,13 @@ input:focus,select:focus{border-color:var(--accent);}
 .opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
 .opts-row+.opts-row{margin-top:10px;}
 .opts-label{font-size:var(--fs-4);color:var(--text2);}
+.eh-back{position:fixed;inset:0;background:rgba(10,12,18,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:20px;}
+.eh-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);width:520px;max-width:100%;display:flex;flex-direction:column;gap:10px;padding:16px 18px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
+.eh-t{font-size:var(--fs-5);font-weight:600;}
+.eh-sub{font-size:var(--fs-2);color:var(--text3);}
+.eh-f{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-2);color:var(--text2);}
+.eh-f select{width:100%;}
+.eh-act{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -434,6 +442,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div style="flex:1"></div>
       <label class="btn" for="csv-file-in" style="cursor:pointer">Load CSV</label>
       <input type="file" id="csv-file-in" accept=".csv,.txt" style="display:none" onchange="ldiLoadCSV(this)">
+      <button class="btn" onclick="ldiOpenFromEcho()" title="Pair two Echo analyses — the CRBN-KO line and the VHL-KO line — by compound">From Echo</button>
       <button class="btn" onclick="ldiLoadExample()">Example</button>
       <button class="btn" onclick="ldiDownloadTemplate()">Template</button>
     </div>
@@ -1126,6 +1135,42 @@ function ldiLoadCSV(input) {
   reader.readAsText(file);
 }
 
+// ── From Echo ──────────────────────────────────────────────────────────────────────────
+// The DC50 and Dmax per compound in the CRBN-KO and VHL-KO lines are what LDI asks for in a
+// CSV, and they are what Echo fits and keeps (journal/echo, and this origin's localStorage).
+// Pick the analysis run on each line; compounds are matched by name.
+function readEchoHistory(cb){
+  var local=[]; try{ local=JSON.parse(localStorage.getItem('eda_history_v1')||'[]'); }catch(e){}
+  try{ if(window.parent && window.parent!==window && window.parent.firebase){
+    window.parent.firebase.database().ref('journal/echo').once('value').then(function(s){ var v=s.val(); cb((v&&Array.isArray(v.history)&&v.history.length)?v.history:local); }).catch(function(){ cb(local); }); return; } }catch(e){}
+  cb(local);
+}
+function ldiOpenFromEcho(){
+  readEchoHistory(function(hist){
+    if(!hist.length){ ldiToast('Echo has no fitted analyses yet — run one there first.'); return; }
+    window._echoHist=hist;
+    var opts=hist.map(function(h,i){ return '<option value="'+i+'">'+esc((h.assayId||'Analysis')+' · '+(h.groups||'')+' · '+(h.ts||''))+'</option>'; }).join('');
+    var back=document.createElement('div'); back.className='eh-back'; back.onclick=function(e){ if(e.target===back) back.remove(); };
+    back.innerHTML='<div class="eh-card"><div class="eh-t">From Echo</div><div class="eh-sub">One Echo analysis per line; compounds are paired by name. Values arrive as fitted, in nM and % — set the Y axis to match what Echo reported.</div>'
+      +'<label class="eh-f"><span>CRBN-KO line</span><select id="eh-crbn">'+opts+'</select></label>'
+      +'<label class="eh-f"><span>VHL-KO line</span><select id="eh-vhl">'+opts+'</select></label>'
+      +'<div class="eh-act"><button class="btn" onclick="this.closest(\'.eh-back\').remove()">Cancel</button><button class="btn btn-primary" onclick="ldiLoadFromEcho()">Load</button></div></div>';
+    document.body.appendChild(back);
+    var v=document.getElementById('eh-vhl'); if(hist.length>1) v.selectedIndex=1;
+  });
+}
+function ldiLoadFromEcho(){
+  var H=window._echoHist||[]; var a=H[+document.getElementById('eh-crbn').value], b=H[+document.getElementById('eh-vhl').value];
+  if(!a||!b) return;
+  function byCpd(h){ var m={}; (h.data||[]).forEach(function(r){ var c=r.Sample_ID||''; if(!c||m[c]) return; m[c]={dc:r.DC50_nM, dm:r.Dmax_pct}; }); return m; }
+  var A=byCpd(a), B=byCpd(b); var names=Object.keys(A).filter(function(k){ return B[k]; });
+  if(!names.length){ ldiToast('No compound appears in both analyses.', 'err'); return; }
+  _rows=[];
+  names.forEach(function(n){ addRow({name:n, crbn_dc50:String(A[n].dc==null?'':A[n].dc), crbn_dmax:String(A[n].dm==null?'':A[n].dm), vhl_dc50:String(B[n].dc==null?'':B[n].dc), vhl_dmax:String(B[n].dm==null?'':B[n].dm)}); });
+  renderTable();
+  var bk=document.querySelector('.eh-back'); if(bk) bk.remove();
+  ldiToast('Loaded '+names.length+' compounds from Echo');
+}
 function ldiLoadExample() {
   // Values are in % degradation — switch Y-mode to 'deg' so runCalc() does not invert them
   ldiSetYMode('deg');

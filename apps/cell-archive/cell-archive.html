@@ -118,7 +118,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
      that are the reason the list exists — the line and what you have of it — and tissue and
      catalogue number wait in the detail, where they already are. */
   .cell-grid.as-list .cell-tile{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) auto;gap:10px;}
-  .cell-grid.as-list .cell-tile-tissue,.cell-grid.as-list .cell-tile-sub{display:none;}
+  .cell-grid.as-list .cell-tile-tissue,.cell-grid.as-list .cell-tile-sub,.cell-grid.as-list .cell-tile-med,.cell-grid.as-list .cell-tile-dt{display:none;}
   .cell-tile{padding:10px 6px;}
   .cell-tile-stats{font-size:var(--fs-1);}
   .cell-tile-name{font-size:var(--fs-4);}
@@ -142,14 +142,19 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 /* List layout: same tiles, laid down instead of stacked. */
 .cell-grid.as-list{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);
   border-radius:var(--r-2);overflow:hidden;background:var(--surface);}
-.cell-grid.as-list .cell-tile{display:grid;grid-template-columns:minmax(120px,1.4fr) minmax(90px,1fr) minmax(80px,.8fr) minmax(140px,1.3fr) auto;
+.cell-grid.as-list .cell-tile{display:grid;grid-template-columns:minmax(110px,1.2fr) minmax(70px,.7fr) minmax(76px,.7fr) minmax(170px,1.8fr) minmax(70px,.7fr) minmax(120px,1.1fr) auto;
   gap:14px;align-items:center;text-align:left;border:none;border-bottom:1px solid var(--border);
   border-radius:0;padding:10px 14px;min-height:44px;}
 .cell-grid.as-list .cell-tile:last-child{border-bottom:none;}
 .cell-grid.as-list .cell-tile-name{order:1;font-size:var(--fs-4);}
 .cell-grid.as-list .cell-tile-tissue{order:2;margin:0;}
 .cell-grid.as-list .cell-tile-sub{order:3;margin:0;}
-.cell-grid.as-list .cell-tile-stats{order:4;margin:0;}
+.cell-grid.as-list .cell-tile-med{order:4;margin:0;}
+.cell-grid.as-list .cell-tile-dt{order:5;margin:0;}
+.cell-grid.as-list .cell-tile-stats{order:6;margin:0;}
+/* The two facts a line is opened for, as columns in the list; in the grid they are in the card. */
+.cell-tile-med,.cell-tile-dt{display:none;font-size:var(--fs-2);color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cell-grid.as-list .cell-tile-med,.cell-grid.as-list .cell-tile-dt{display:block;}
 .cell-grid.as-list .cell-thaw{order:5;position:static;margin-left:auto;}
 /* In the list the tile is a 44px row, and stacking the "+" above its label needs 70. Laid out
    side by side it is one row, which is what every other row in the list is. */
@@ -636,6 +641,21 @@ function switchTab(name){
 }
 
 /* ─── CELL LINES ─── */
+// Medium and doubling time, read from the line's own card so the list and the detail cannot
+// disagree; the list shows them as columns, the grid hides them (the card has them).
+function _caFactCols(){
+  document.querySelectorAll('.cell-tile[data-cell]').forEach(function(t){
+    if(t.querySelector('.cell-tile-med')) return;
+    var card=document.getElementById('cell-full-'+t.getAttribute('data-cell')); if(!card) return;
+    var med='', dt='';
+    card.querySelectorAll('tr').forEach(function(tr){ var th=tr.querySelector('th'), td=tr.querySelector('td'); if(!th||!td) return;
+      var k=th.textContent.trim().toLowerCase(); if(k==='complete medium') med=td.textContent.trim(); if(k==='doubling time') dt=td.textContent.trim(); });
+    var m=document.createElement('div'); m.className='cell-tile-med'; m.textContent=med.replace(/\s*\(ATCC [^)]*\)/,''); m.title=med;
+    var d=document.createElement('div'); d.className='cell-tile-dt'; d.textContent=dt.replace(/\s*\(.*\)$/,''); d.title=dt;
+    var sub=t.querySelector('.cell-tile-sub'); if(sub){ sub.insertAdjacentElement('afterend',m); m.insertAdjacentElement('afterend',d); } else { t.appendChild(m); t.appendChild(d); }
+  });
+}
+document.addEventListener('DOMContentLoaded',_caFactCols);
 function showCellLine(id, btn){
   document.querySelectorAll('.cell-tile').forEach(function(t){ t.classList.remove('active'); });
   if(btn) btn.classList.add('active');

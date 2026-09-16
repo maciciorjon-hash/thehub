@@ -352,6 +352,17 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
   *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
     transition-duration:1ms!important;scroll-behavior:auto!important;}
 }
+.eh-back{position:fixed;inset:0;background:rgba(10,12,18,.45);z-index:900;display:flex;align-items:center;justify-content:center;padding:20px;}
+.eh-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);width:520px;max-width:100%;max-height:80vh;max-height:80dvh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.25);}
+.eh-t{font-size:var(--fs-5);font-weight:600;padding:16px 18px 2px;}
+.eh-sub{font-size:var(--fs-2);color:var(--text3);padding:0 18px 12px;}
+.eh-list{overflow:auto;padding:0 10px;display:flex;flex-direction:column;gap:4px;}
+.eh-row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);padding:9px 12px;cursor:pointer;font-family:var(--sans);color:var(--text);min-height:44px;}
+.eh-row:hover{border-color:var(--accent);}
+.eh-row b{font-weight:600;font-size:var(--fs-3);}
+.eh-row span{font-size:var(--fs-2);color:var(--text2);grid-column:1/-1;}
+.eh-row small{font-size:var(--fs-1);color:var(--text3);grid-column:1/-1;}
+.eh-act{display:flex;justify-content:flex-end;padding:12px 18px 16px;}
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -505,7 +516,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div class="dz-sub">Targets, cell line and time point are detected automatically</div>
         <input type="file" id="load-input" accept=".xlsx,.xls,.xlsm" onchange="loadFileSelect(event)">
       </div>
-      <div style="margin-top:10px;">
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button class="btn-load-test" onclick="openFromEcho()" title="The analyses Echo has fitted — synced across your devices"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect x="2" y="15" width="4" height="7" rx="1"/><rect x="10" y="9" width="4" height="13" rx="1"/><rect x="18" y="4" width="4" height="18" rx="1"/></svg> Open from Echo</button>
         <button class="btn-load-test" onclick="loadTestData()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M10 3h4M10.5 3v6.2L5.6 18a2 2 0 0 0 1.7 3h9.4a2 2 0 0 0 1.7-3l-4.9-8.8V3"/><path d="M8 15h8"/></svg> Load test data</button>
       </div>
       <div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;font-size:12px;color:var(--text2);">
@@ -1719,6 +1731,47 @@ function downloadTemplate() {
   XLSX.writeFile(wb, 'degradation_template.xlsx');
 }
 
+// ── Open from Echo ──────────────────────────────────────────────────────────────────────
+// Dora reads the Excel that Echo writes; Echo already keeps its last ten fitted analyses in
+// journal/echo (and in this origin's localStorage). Reading them here removes the .xlsx round
+// trip — and it is the first step of the Dora + LDI consolidation on the plan.
+function readEchoHistory(cb){
+  var local=[]; try{ local=JSON.parse(localStorage.getItem('eda_history_v1')||'[]'); }catch(e){}
+  try{
+    if(window.parent && window.parent!==window && window.parent.firebase){
+      window.parent.firebase.database().ref('journal/echo').once('value').then(function(s){ var v=s.val(); cb((v&&Array.isArray(v.history)&&v.history.length)?v.history:local); }).catch(function(){ cb(local); });
+      return;
+    }
+  }catch(e){}
+  cb(local);
+}
+function openFromEcho(){
+  readEchoHistory(function(hist){
+    if(!hist.length){ doraToast('Echo has no fitted analyses yet — run one there first.'); return; }
+    var back=document.createElement('div'); back.className='eh-back'; back.onclick=function(e){ if(e.target===back) back.remove(); };
+    back.innerHTML='<div class="eh-card"><div class="eh-t">Open from Echo</div><div class="eh-sub">The analyses Echo has fitted, newest first. Potencies and effects arrive as they were fitted; there is no SD — those are single fits.</div>'
+      +'<div class="eh-list">'+hist.map(function(h,i){ return '<button class="eh-row" onclick="loadFromEcho('+i+')"><b>'+esc(h.assayId||'Analysis')+'</b><span>'+esc(h.groups||'')+'</span><small>'+esc(h.ts||'')+' · '+(h.n||0)+' rows'+(h.nFlag?(' · '+h.nFlag+' flagged'):'')+'</small></button>'; }).join('')+'</div>'
+      +'<div class="eh-act"><button class="btn-load-test" onclick="this.closest(\'.eh-back\').remove()">Cancel</button></div></div>';
+    document.body.appendChild(back); window._echoHist=hist;
+  });
+}
+function loadFromEcho(i){
+  var h=(window._echoHist||[])[i]; if(!h) return;
+  var by={}, targets={};
+  (h.data||[]).forEach(function(r){ var c=r.Sample_ID||'', t=r.Protein||''; if(!c) return;
+    if(!by[c]) by[c]={compound:c,targets:{}};
+    var dc=parseFloat(r.DC50_nM), dm=parseFloat(r.Dmax_pct);
+    by[c].targets[t||'Target']={dc50:isFinite(dc)?dc:null, dc50_sd:null, dmax:isFinite(dm)?dm:null, dmax_sd:null, flag:r.Flag==='Yes'};
+    targets[t||'Target']=1; });
+  RAW=Object.keys(by).map(function(k){ return by[k]; }); TARGETS=Object.keys(targets);
+  META={assay:h.assayId||'Echo', cellLine:'', timePoint:''};
+  if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+  selectedCompound = null;
+  updateDC50SliderMax(); updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
+  var b=document.querySelector('.eh-back'); if(b) b.remove();
+  setTimeout(function(){ switchTab('table'); }, 100);
+  doraToast('Loaded '+RAW.length+' compounds from Echo');
+}
 function loadTestData() {
   const compounds = [
     {compound:'MZ1',    targets:{'BRD4':{dc50:12,  dc50_sd:2.1, dmax:94, dmax_sd:3.2},'BRD2':{dc50:28,  dc50_sd:4.5, dmax:88, dmax_sd:4.1}}},

@@ -2672,12 +2672,18 @@ function _buildTestPheraWorkbook(mode) {
   var ROWS = 'ABCDEFGH';
   var rows = [['Well', 'Type', '665 (LUM)', '620 (LUM) LP']];
   var donor = 5000;
+  // Real replicates scatter; a plate of identical wells gives SD 0 and Z' = n/a, which taught
+  // the opposite of what a demo is for. 3% CV, deterministic so the demo is the same twice.
+  var _seed = 7; function _noise(){ _seed = (_seed * 9301 + 49297) % 233280; return 1 + ((_seed / 233280) - 0.5) * 0.06; }
   function pushWell(wellId, mbu) {
-    rows.push([wellId, 'Sample', donor, mbu * donor / 1000]);
+    rows.push([wellId, 'Sample', donor, mbu * donor / 1000 * _noise()]);
   }
-  var baseline = 500;
+  // Column 1 is the background — donor alone, only bleed-through into the acceptor channel;
+  // column 2 is the pair with vehicle at its basal BRET. That is the assay window the QC tab
+  // measures (Z' between them), and it is what a real plate looks like.
+  var background = 50, baseline = 500;
   for (var r = 0; r < 8; r++) {
-    pushWell(ROWS[r] + '01', baseline);
+    pushWell(ROWS[r] + '01', background);
     pushWell(ROWS[r] + '02', baseline);
   }
   var concs = [1, 10, 100, 1000, 10000];

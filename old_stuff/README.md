@@ -16,3 +16,8 @@ porque haga falta para nada del producto. **Si algo de aquí vuelve, vuelve como
 
 Lo que **no** está aquí y no debe acabar aquí: `Backup/` (tus copias reales de datos, en la raíz y
 fuera de git) y `docs/SESSION_HISTORY.md` (el registro de cambios, que sí es documentación viva).
+
+## fabricata/ (retired 2026-09-16)
+Fabricata™, the data-fabrication parody. Out of the product build since 2026-07-30 and reachable
+only through a code word; retired at Jon's instruction because it sat in the personal build and on
+the public Pages site, where a visitor who found it would remember nothing else about the Hub.

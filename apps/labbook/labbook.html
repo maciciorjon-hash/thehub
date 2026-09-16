@@ -10503,11 +10503,25 @@ function resultLabels(e){ return RESULT_LABELS[e&&e.type]||{p:'Potency',pu:'nM',
 // Echo fits the plate assays it was built for. Naming it above a NanoBRET tells the user the
 // notebook does not know what experiment it is holding.
 var ECHO_FED_TYPES={HB:1,KD:1,D2B:1,CTG:1};
+// A table another app handed over — BCA's sample sheet (concentration, loading volumes), with
+// no potency semantics. `e.integration.tables[] = {id, source, label, columns[], rows[][],
+// createdAt}`; drawn as it came, on screen and on paper.
+function tablesHtml(e,print){
+  var ts=(e.integration&&e.integration.tables)||[];
+  return ts.map(function(t,i){
+    var cols=t.columns||[], rows=t.rows||[];
+    return '<div class="'+(print?'pd-res':'res-card')+'"><div class="'+(print?'pd-res-hd':'res-hd')+'">'+esc(t.label||t.source||'Table')
+      +'<span class="'+(print?'pd-res-when':'res-when')+'">'+esc(String(t.createdAt||'').slice(0,10))+(t.source?(' · '+esc(t.source)):'')+'</span>'
+      +(print?'':('<button class="cc-x" title="Remove this table" onclick="removeTable(\''+e.id+'\','+i+')">&times;</button>'))+'</div>'
+      +'<div class="res-scroll"><table class="'+(print?'pd-tbl':'res-tbl')+'"><thead><tr>'+cols.map(function(c){ return '<th>'+esc(c)+'</th>'; }).join('')+'</tr></thead><tbody>'
+      +rows.map(function(r){ return '<tr>'+cols.map(function(_,ci){ return '<td>'+esc(r[ci]==null?'':String(r[ci]))+'</td>'; }).join('')+'</tr>'; }).join('')+'</tbody></table></div></div>'; }).join('');
+}
+function removeTable(expId,i){ var e=LB.data.experiments[expId]; if(!e||!e.integration||!e.integration.tables) return; undoMark('Remove table',['experiments.'+expId]); e.integration.tables.splice(i,1); e.updated=Date.now(); save(); renderEditor(); }
 function resultsPaneHtml(e){
   var rs=(e.integration&&e.integration.results)||[];
   var L=resultLabels(e);
   var add='<button class="btn ghost" onclick="openResultsPaste(\''+e.id+'\')">Paste results…</button>';
-  var band=outcomeBandHtml(e);
+  var band=outcomeBandHtml(e)+tablesHtml(e,false);
   if(!rs.length){
     return band+'<div class="res-empty"><div class="t">No results attached yet</div>'
       +'<div>'+esc(L.p)+', '+esc(L.e)+', Hill slope and R² belong here as data — each row with its own note '
@@ -14816,8 +14830,9 @@ function pdRepStats(e){
 }
 function pdResults(e){
   var rs=(e.integration&&e.integration.results)||[];
-  if(!rs.length) return '';
-  return '<div class="pd-sec-hd">Results</div>' + pdRepStats(e) + rs.map(function(r){
+  var tb=tablesHtml(e,true);
+  if(!rs.length&&!tb) return '';
+  return '<div class="pd-sec-hd">Results</div>' + tb + pdRepStats(e) + rs.map(function(r){
     var rows=(r.rows||[]); if(!rows.length) return '';
     var pu=r.potencyUnit?(' ('+r.potencyUnit+')'):'', eu=r.effectUnit?(' ('+r.effectUnit+')'):'';
     return '<div class="pd-res"><div class="pd-res-hd">'+esc(r.label||r.source||'result')
@@ -16395,16 +16410,25 @@ function _mergeDHubContext(ctx){
   // Labbook on the dashboard. Ask which experiment instead.
   if(!e){ _pickExpForContext(ctx); return; }
   e.integration=e.integration||{sources:[],cellLines:[],compounds:[],plateMaps:[],protocols:[],results:[]};
-  ['cellLines','compounds','plateMaps','protocols','results'].forEach(function(k){ var incoming=Array.isArray(ctx[k])?ctx[k]:[]; e.integration[k]=e.integration[k]||[]; incoming.forEach(function(item){ var sig=JSON.stringify(item); if(!e.integration[k].some(function(old){return JSON.stringify(old)===sig;})) e.integration[k].push(item); }); });
+  ['cellLines','compounds','plateMaps','protocols','results','tables'].forEach(function(k){ var incoming=Array.isArray(ctx[k])?ctx[k]:[]; e.integration[k]=e.integration[k]||[]; incoming.forEach(function(item){ var sig=JSON.stringify(item); if(!e.integration[k].some(function(old){return JSON.stringify(old)===sig;})) e.integration[k].push(item); }); });
   if(ctx.source){ e.integration.sources=e.integration.sources||[]; if(e.integration.sources.indexOf(ctx.source)<0) e.integration.sources.push(ctx.source); }
+  // A plate designed elsewhere (Blueprint) becomes this experiment's own map — the one the
+  // steps, the exports and Cmd+K read — not a copy filed under integration. An existing map is
+  // never replaced silently.
+  if(ctx.plate && ctx.plate.wells){
+    var pl=JSON.parse(JSON.stringify(ctx.plate)); pl.format=String(pl.format||'96'); pl.types=pl.types||[]; pl.groups=pl.groups||{};
+    var put=function(){ undoMark('Plate map from '+(ctx.source||'another app'),['experiments.'+e.id]); e.plate=pl; e.updated=Date.now(); save(); renderEditor(); toast('Plate map set on '+(e.code||e.title||'experiment')); };
+    if(e.plate && plateCount(e.plate)>0){ lbConfirm('This experiment already has a plate map with '+plateCount(e.plate)+' wells. Replace it with the one from '+esc(ctx.source||'the other app')+'?',{title:'Replace the plate map?',ok:'Replace'}).then(function(ok){ if(ok) put(); }); }
+    else put();
+  }
   e.updated=Date.now(); save(); renderEditor(); toast('Context attached to '+(e.code||e.title||'experiment'));
 }
 // Newest first, because the run you just analysed is the one you just worked on. Closed and
 // archived entries are still offered — reanalysing an old plate is a real thing — but they sort
 // below the live ones.
 function _pickExpForContext(ctx){
-  var n=((ctx.results||[]).reduce(function(a,r){ return a+((r.rows||[]).length||0); },0));
-  var what=n?(n+' result row'+(n===1?'':'s')):'this data';
+  var n=((ctx.results||[]).concat(ctx.tables||[]).reduce(function(a,r){ return a+((r.rows||[]).length||0); },0));
+  var what=n?(n+' row'+(n===1?'':'s')):(ctx.plate?'this plate map':'this data');
   var items=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
     .filter(function(x){ return x && x.kind!=='note'; })
     .sort(function(a,b){
