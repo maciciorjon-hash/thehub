@@ -1198,7 +1198,7 @@ _allTabs.forEach(t => t.addEventListener('click', () => {
   t.classList.add('active');
   document.getElementById('tab-' + id).classList.add('active');
   requestAnimationFrame(function(){
-    if (id === 'scatter' && scatterChart) scatterChart.resize();
+    if (id === 'scatter' && scatterChart) { fitScatterCanvas(); setTimeout(fitScatterCanvas, 220); }
     if (id === 'curves' && scatterData.length) renderCurvesTab(scatterData);
     if (id === 'results' && scatterData.length) renderResults(scatterData);
     if (id === 'plate') renderPlateTab();
@@ -9810,17 +9810,24 @@ function _unhideAllResultsCols() {
   </script>
 <script>
 // Canvas resize: re-render when window resizes while Scatter or Curves tab is active
+// The chart is built while the Plots pane is display:none, so it is sized against a box that
+// is 0 × 0 — and inside dHUB that left it 200px tall until a second click on the tab resized it
+// (Jon, 2026-09-16). The height is a fact about the viewport, not the pane: work it out from
+// the wrap's position and the window, and do it whenever the pane is shown, not only on resize.
+function fitScatterCanvas(){
+  const cv = document.getElementById('scatter-canvas');
+  const wrap = cv?.parentElement;
+  if (!cv || !wrap || !scatterChart) return;
+  if (!document.getElementById('tab-scatter')?.classList.contains('active')) return;
+  const rect = wrap.getBoundingClientRect();
+  const h = Math.max(280, window.innerHeight - rect.top - 58);
+  cv.style.width = wrap.clientWidth + 'px';
+  cv.style.height = h + 'px';
+  scatterChart.resize(wrap.clientWidth, h);
+}
 window.addEventListener('resize', function() {
   if (document.getElementById('tab-scatter')?.classList.contains('active') && scatterChart) {
-    requestAnimationFrame(function() {
-      const _cv2 = document.getElementById('scatter-canvas');
-      const _wrap2 = _cv2?.parentElement;
-      if (!_cv2 || !_wrap2) return;
-      const _rect2 = _wrap2.getBoundingClientRect();
-      const _h2 = Math.max(280, window.innerHeight - _rect2.top - 58);
-      _cv2.style.height = _h2 + 'px';
-      scatterChart.resize(_wrap2.clientWidth, _h2);
-    });
+    requestAnimationFrame(fitScatterCanvas);
   }
   if (document.getElementById('tab-curves')?.classList.contains('active')) {
     requestAnimationFrame(function() { if(typeof renderCvCurve==='function') renderCvCurve(); });
