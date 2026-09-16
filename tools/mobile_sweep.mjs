@@ -182,7 +182,8 @@ function screens(ids) {
     S('ribbon-home',     `openPage('${ids[8]}'); setRbTab('home')`),
     S('ribbon-view',     `openExp('${e0}'); setRbTab('view')`),
     S('menu-step',       `openExp('${e0}'); expTab('steps'); var b=LB.data.experiments['${e0}'].blocks[0]; var t=document.querySelector('.blk-more, [onclick*="ctxBlock"]'); ctxBlock({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, b.id)`, { menu: true }),
-    S('menu-exp-acts',   `openExp('${e0}'); var t=document.querySelector('.exh-more'); expActsMenu({currentTarget:t,preventDefault:function(){},stopPropagation:function(){}}, '${e0}')`, { menu: true }),
+    // The experiment banner has no ⋯ any more — every action is a button in it (2026-09-16).
+    S('exp-acts',        `openExp('${e0}'); document.querySelector('.exh-acts').scrollIntoView()`),
     S('menu-exp-tabs',   `openExp('${e0}'); var t=document.querySelector('.exp-tabs-m')||document.body; expTabMenu({currentTarget:t,preventDefault:function(){},stopPropagation:function(){}}, '${e0}')`, { menu: true }),
     S('menu-exp-row',    `selectNode('exps'); var t=document.querySelector('.xv-row'); ctxExp({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, '${e0}')`, { menu: true }),
     S('menu-project',    `selectNode('exps'); ctxProject({clientX:200,clientY:300,preventDefault:function(){},stopPropagation:function(){}}, LB.data.projects[0].id)`, { menu: true }),
