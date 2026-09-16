@@ -146,10 +146,10 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .setup-pane{display:none;}
 .setup-pane.active{display:block;}
 .setup-foot{display:flex;align-items:center;gap:10px;padding:14px 26px;border-top:1px solid var(--border);flex-shrink:0;}
-.setup-fstatus{flex:1;font-size:var(--fs-2);color:var(--text3);min-width:0;}
-.setup-cancel-btn{padding:8px 18px;border-radius:var(--r-2);border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:var(--fs-4);font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s;}
+.setup-fstatus{flex:1;font-size:var(--fs-2);color:var(--text3);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.setup-cancel-btn{padding:0 18px;height:36px;border-radius:var(--r-2);border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:var(--fs-4);font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s;}
 .setup-cancel-btn:hover{background:var(--surface3);}
-.setup-run-btn{padding:10px 28px;border-radius:var(--r-2);border:none;background:var(--accent);color:#fff;font-size:var(--fs-4);font-weight:600;cursor:pointer;font-family:var(--sans);transition:opacity .15s;}
+.setup-run-btn{padding:0 28px;height:36px;border-radius:var(--r-2);border:none;background:var(--accent);color:#fff;font-size:var(--fs-4);font-weight:600;cursor:pointer;font-family:var(--sans);transition:opacity .15s;}
 .setup-run-btn:disabled{opacity:.35;cursor:not-allowed;}
 .setup-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .setup-section-lbl{font-size:var(--fs-1);font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;}
@@ -325,7 +325,7 @@ tr:hover td{background:var(--surface2);}
 .ov-wrap{padding:32px 40px;flex:1;overflow-y:auto;}
 .ov-title{font-size:var(--fs-7);font-weight:700;letter-spacing:-0.5px;margin-bottom:4px;}
 .ov-sub{font-size:var(--fs-4);color:var(--text2);margin-bottom:28px;}
-.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:28px;}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-bottom:28px;max-width:1080px;} /* six cards: 3+3 at any desktop width, never 5+1 */
 .ov-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:18px;}
 .ov-card-title{font-size:var(--fs-4);font-weight:600;margin-bottom:6px;}
 .ov-card-desc{font-size:var(--fs-3);color:var(--text2);line-height:1.6;margin-bottom:12px;}
@@ -394,6 +394,14 @@ tr:hover td{background:var(--surface2);}
   .setup-stabs { overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 14px 12px 0; }
   .setup-stab { flex-shrink: 0; padding: 8px 14px; min-height: 40px; }
   .setup-sbody { padding: 14px; }
+  /* The footer held five buttons in one row and put Run Analysis 109px past the right edge —
+     the one button the modal exists for, unreachable on a phone. It wraps now: the run button
+     takes a full row on top, the rest share the row under it, and the status line goes (the
+     run button's own disabled state says the same thing). */
+  .setup-foot { flex-wrap: wrap; padding: 10px 12px; gap: 8px; }
+  .setup-fstatus { display: none; }
+  .setup-run-btn { order: -1; flex: 1 0 100%; min-height: 44px; }
+  .setup-cancel-btn { flex: 1 1 auto; min-height: 40px; padding: 8px 10px; }
 
   /* DROPZONES */
   .dropzone { padding: 16px 12px; height: auto; min-height: 88px; }
@@ -507,13 +515,15 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   </div>
 </header>
 <nav class="outer-tabs">
-  <button class="outer-tab active" onclick="switchPanel('overview',this)">Overview</button>
+  <!-- Data Analysis first and open by default: the app is opened to fit curves, and it used to
+       open on a six-card brochure about the instrument. The instrument page is still here, last. -->
+  <button class="outer-tab active" onclick="switchPanel('analysis',this)">Data Analysis</button>
   <button class="outer-tab" onclick="switchPanel('gradient',this)">Gradient Planner</button>
-  <button class="outer-tab" onclick="switchPanel('analysis',this)">Data Analysis</button>
+  <button class="outer-tab" onclick="switchPanel('overview',this)">About the Echo</button>
   <div class="tab-indicator"></div>
 </nav>
 <div class="content-area">
-<div id="panel-overview" class="app-panel active">
+<div id="panel-overview" class="app-panel">
 <div class="ov-wrap">
   <div class="ov-title">Echo 550</div>
   <div class="ov-sub">Beckman Coulter (formerly Labcyte) · Acoustic Droplet Ejection · 2.5 nL resolution · Tip-free, contact-free · DMSO and aqueous liquid classes</div>
@@ -793,7 +803,7 @@ document.addEventListener('click', function(ev){
   </div></div>
 
 </div>
-<div id="panel-analysis" class="app-panel">
+<div id="panel-analysis" class="app-panel active">
 <main>
 <div class="left" style="display:none"></div>
 
@@ -819,7 +829,7 @@ document.addEventListener('click', function(ev){
       <div class="setup-pane active" id="setup-pane-files">
         <div class="setup-2col" style="margin-bottom:16px;">
           <div>
-            <div class="setup-section-lbl">Echo transfer file(s) <span style="color:var(--accent);font-size:9px;">required</span></div>
+            <div class="setup-section-lbl">Echo transfer file(s) <span style="color:var(--accent);font-size:var(--fs-1);">required</span></div>
             <div class="dropzone" id="echo-zone">
               <input type="file" id="echo-input" accept=".csv" multiple>
               <span class="dz-icon" id="echo-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg></span>
@@ -829,7 +839,7 @@ document.addEventListener('click', function(ev){
             <div class="rlist" id="echo-list" style="margin-top:4px;"></div>
           </div>
           <div>
-            <div class="setup-section-lbl">PHERAstar reader files <span style="color:var(--accent);font-size:9px;">required</span></div>
+            <div class="setup-section-lbl">PHERAstar reader files <span style="color:var(--accent);font-size:var(--fs-1);">required</span></div>
             <div class="dropzone" id="reader-zone">
               <input type="file" id="reader-input" accept=".xls,.xlsx" multiple>
               <span class="dz-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg></span>
@@ -840,7 +850,7 @@ document.addEventListener('click', function(ev){
           </div>
         </div>
         <div class="setup-group">
-          <div class="setup-section-lbl">Compound info <span style="color:var(--text3);font-size:9px;font-weight:400;">optional</span></div>
+          <div class="setup-section-lbl">Compound info <span style="color:var(--text3);font-size:var(--fs-1);font-weight:400;">optional</span></div>
           <div class="dropzone" id="smiles-zone">
             <input type="file" id="smiles-input" accept=".csv">
             <span class="dz-icon" id="smiles-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><circle cx="5.5" cy="17" r="2.4"/><circle cx="18.5" cy="17" r="2.4"/><path d="M10.7 8.1L6.8 14.9M13.3 8.1l3.9 6.8M8 17h8"/></svg></span>
@@ -5855,7 +5865,7 @@ function renderProperties(results, cdata) {
     + '<div style="overflow-x:auto;"><table class="props-table"><thead><tr>'
     + '<th>Structure</th><th>Sample ID</th><th>SMILES</th>'
     + propCols.map(p=>'<th>'+(propLabels[p]||p)+'</th>').join('')
-    + _affinityCols.map(c=>'<th>'+c.label+(_isMultiProp&&_orderedPropTypes.length>1?' <span style="font-size:9px;opacity:.6;">['+esc(c.at)+']</span>':'')+'</th>').join('')
+    + _affinityCols.map(c=>'<th>'+c.label+(_isMultiProp&&_orderedPropTypes.length>1?' <span style="font-size:var(--fs-1);opacity:.6;">['+esc(c.at)+']</span>':'')+'</th>').join('')
     + '<th>Ro5</th></tr></thead><tbody>';
 
   matched.forEach(({ sid, cd }) => {
@@ -9077,6 +9087,8 @@ function switchPanel(id, btn) {
 document.addEventListener('DOMContentLoaded',function(){
   var a=document.querySelector('.outer-tab.active');
   if(a)updateTabIndicator(a);
+  // Data Analysis is the opening screen, and entering it opens the setup dialog.
+  openSetupModal();
 
   window._hiddenResultsCols = new Set();
   const _colMenu = document.createElement('div');

@@ -146,7 +146,8 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .tab svg{width:15px;height:15px;flex-shrink:0;}
 .tab:hover { color: var(--text2); }
 .tab.active { color: var(--text); border-bottom-color: var(--accent); }
-.pinfo{cursor:pointer;color:var(--accent);font-size:0.75em;vertical-align:super;user-select:none;}
+.pinfo{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--surface3);border:1px solid var(--border2);color:var(--text3);font-size:var(--fs-1);cursor:help;flex-shrink:0;margin-left:4px;vertical-align:middle;user-select:none;transition:border-color .15s,color .15s;} /* one ⓘ across the Hub: the 0.75em superscript was 8px */
+.pinfo:hover{border-color:var(--accent);color:var(--accent);}
 #pinfo-tip{position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-1);padding:8px 10px;font-size:0.78rem;max-width:260px;box-shadow:0 2px 12px rgba(0,0,0,.15);z-index:9999;pointer-events:none;display:none;color:var(--text);}
 .guide-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-2);padding:18px 20px;margin-bottom:12px;}
 .guide-card h3{font-size:var(--fs-4);font-weight:700;color:var(--accent);margin-bottom:6px;display:flex;align-items:center;gap:7px;}
@@ -300,8 +301,17 @@ td.dmax-cell { padding: 6px 6px; min-width: 90px; }
   .tabs{padding:0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .tab{white-space:nowrap;flex-shrink:0;padding:10px 12px;font-size:var(--fs-3);}
   .panel{padding:12px 10px;}
-  .controls{flex-direction:column;gap:6px;}
+  /* Stacked, not centred: `flex-direction:column` alone kept `align-items:center`, so twelve
+     controls landed on twelve rows each starting at a different x. One rule per row, the
+     separators go, the pills share a row, and the export group loses its auto margin (the
+     Blueprint toolbar idiom — an auto margin on a wrapped row is a hole, not an alignment). */
+  .controls{flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px;}
+  .controls>.sep{display:none;}
+  .controls>.filter-group{flex:1 1 45%;}
+  .controls>[style*="margin-left:auto"]{margin-left:0!important;flex-basis:100%;}
+  .bg-chip{width:32px;height:32px;}
   .search-box{width:100%!important;}
+  .tab-stat{display:none;} /* the three counts are in the table; on a phone they only push the settings button off the end of the scrolling bar */
   .opts-btn{min-width:40px;min-height:40px;}
   .opts-panel{min-width:unset!important;width:90vw;right:5vw;}
   .pt-btn{min-height:40px;padding:8px 16px;}
@@ -1436,7 +1446,6 @@ function loadImmediate(f) {
     try {
       const {compounds, targets: ts, meta} = parseXLSXBuf(new Uint8Array(ev.target.result));
       RAW = compounds; TARGETS = ts; META = meta;
-      localStorage.setItem('dv_lastfile', './' + f.name);
       if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
       selectedCompound = null;
       document.getElementById('detail-card').classList.remove('visible');
@@ -1724,25 +1733,10 @@ function loadTestData() {
   setTimeout(() => switchTab('table'), 100);
 }
 
-async function tryAutoLoad() {
-  const candidates = [];
-  const last = localStorage.getItem('dv_lastfile');
-  if (last) candidates.push(last);
-  candidates.push('./degradation_summary.xlsx', './hibit_summary.xlsx', './degradation_summary.xls', './hibit_summary.xls', './degradation_summary.xlsm');
-  for (const url of candidates) {
-    try {
-      const resp = await fetch(url);
-      if (!resp.ok) continue;
-      const {compounds, targets: detectedTargets, meta} = parseXLSXBuf(new Uint8Array(await resp.arrayBuffer()));
-      if (!compounds.length) continue;
-      RAW = compounds; TARGETS = detectedTargets; META = meta;
-      updateDC50SliderMax(); updateMeta(); renderHeader(); renderProteinToggles(); updateStats(); renderTable();
-      return;
-    } catch(e) { continue; }
-  }
-  switchTab('load');
-}
-tryAutoLoad();
+// Dora used to probe five sibling files (./degradation_summary.xlsx …) on every open. Inside
+// dHUB the app is a srcdoc frame, so those resolved against the Pages site and produced five
+// 404s per open, for a file that could never be there. A file arrives by drop or by picker.
+switchTab('load');
 </script>
 <div id="pinfo-tip"></div>
 <div id="dg-tt" class="dg-tt"></div>

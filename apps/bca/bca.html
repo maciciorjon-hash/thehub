@@ -145,13 +145,13 @@ table.pg-grid th{width:60px;}
 .dose-chip-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
 .dose-chip-label{font-size:var(--fs-2);font-weight:600;color:var(--text);}
 .dose-chip-wells{font-size:var(--fs-1);color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.dose-chip>input{width:76px;padding:5px 7px;border-radius:var(--r-1);border:1px solid var(--border2);
+.dose-chip>input{width:76px;height:28px;padding:0 7px;border-radius:var(--r-1);border:1px solid var(--border2);
   background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;flex-shrink:0;}
 .dose-chip>input:focus{border-color:var(--accent);}
 .dose-chip-name-input{width:100%;padding:2px 0;border:none;background:transparent;
   font-size:var(--fs-2);font-weight:600;color:var(--text);outline:none;}
 .dose-chip-remove{background:none;border:none;color:var(--text3);font-size:var(--fs-5);line-height:1;
-  cursor:pointer;padding:2px 4px;border-radius:var(--r-1);flex-shrink:0;transition:color .15s,background .15s;}
+  cursor:pointer;width:28px;align-self:stretch;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-1);flex-shrink:0;transition:color .15s,background .15s;}
 .dose-chip-remove:hover{color:var(--poor);background:rgba(184,69,69,.1);}
 .pm-doselist-empty{font-size:var(--fs-3);color:var(--text3);padding:14px;text-align:center;}
 
@@ -270,6 +270,7 @@ canvas{display:block;border-radius:var(--r-2);}
   *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
     transition-duration:1ms!important;scroll-behavior:auto!important;}
 }
+.logo svg{width:20px;height:20px;}
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -319,7 +320,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 </head>
 <body>
 <header>
-  <div class="logo">BC</div>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 3.5v17h16.5" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/><path d="M6 18.2c5.5 0 9-3.4 13.2-11.4" stroke="white" stroke-width="1.9" stroke-linecap="round"/><circle cx="8.6" cy="17.6" r="1.7" fill="white"/><circle cx="13.4" cy="14.4" r="1.7" fill="white"/><circle cx="17.6" cy="9.6" r="1.7" fill="white"/></svg></div>
   <div>
     <div class="app-name">BCA</div>
     <div class="app-sub">Plate-based protein quantification &amp; dilution planning</div>
@@ -367,10 +368,10 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 
   <div id="import-results" style="display:none;flex-direction:column;gap:16px;margin-top:16px;">
     <div class="card">
-      <div class="row" style="align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;">
+      <div class="row" style="align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;flex-wrap:wrap;">
         <div class="card-hdr" style="margin:0;">Imported plate</div>
         <span style="font-size:11px;color:var(--text3);" id="import-filename"></span>
-        <div style="margin-left:auto;display:flex;gap:8px;">
+        <div class="row-actions" style="display:flex;gap:8px;">
           <button class="btn btn-sec btn-sm" onclick="exportPlateCSV()">Export CSV</button>
           <button class="btn btn-sec btn-sm" onclick="clearPlate()">Clear</button>
         </div>
@@ -378,8 +379,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div class="plate-wrap" style="margin-top:12px;">
         <div>
           <canvas id="plate-canvas" width="600" height="320"
-            style="width:600px;height:320px;max-width:100%;border-radius:6px;"></canvas>
-          <div class="heatmap-legend">
+            style="width:100%;max-width:880px;aspect-ratio:600/320;height:auto;display:block;margin:0 auto;border-radius:6px;"></canvas>
+          <div class="heatmap-legend" style="justify-content:center;">
             <span id="legend-min">0</span>
             <div class="legend-bar" id="legend-bar"></div>
             <span id="legend-max">2</span>
@@ -936,6 +937,10 @@ function drawHeatmap(){
   var rx = cellW * 0.12;
 
   var text3 = getCSSVar('--text3');
+  // The low end of the scale used to be a fixed near-white, which on the dark theme drew a
+  // white panel in the middle of the app. The scale starts from the theme's own surface.
+  var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var lowRGB = dark ? [37,52,58] : [240,250,249];
   ctx.font = '10px ' + getCSSVar('--mono');
   ctx.fillStyle = text3;
   ctx.textAlign = 'center';
@@ -951,7 +956,7 @@ function drawHeatmap(){
   data.forEach(function(row, ri){
     row.vals.forEach(function(v, ci){
       var t = maxV > minV ? (v - minV) / (maxV - minV) : 0;
-      var rgb = interpolateColor([240,250,249],[81,195,206], t);
+      var rgb = interpolateColor(lowRGB,[81,195,206], t);
       var x = padL + ci*cellW;
       var y = padT + ri*cellH;
       var gap = 1.5;
@@ -1668,7 +1673,7 @@ window.addEventListener('message', function(e){
 (function(){var r=document.documentElement,t=null;
   if(!window.MutationObserver) return;
   new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
-    t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
+    t=setTimeout(function(){ r.classList.remove('theme-swap'); try{ if(window.state&&state.plate) drawHeatmap(); }catch(_){} },60); })
    .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
 </script>
 </body>

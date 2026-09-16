@@ -182,7 +182,7 @@ tr:hover td{background:var(--surface2);}
 .setup-overlay{position:fixed;inset:0;z-index:2000;background:var(--modal-backdrop,rgba(0,0,0,.45));display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
 html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
 .setup-overlay.hidden{display:none;}
-.setup-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);width:680px;height:640px;max-width:calc(100vw - 20px);max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden;}
+.setup-card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-3);width:680px;min-height:420px;max-width:calc(100vw - 20px);max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);display:flex;flex-direction:column;box-shadow:var(--shadow-lg);overflow:hidden;}
 .setup-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:22px 26px 0;gap:12px;flex-shrink:0;}
 .setup-htitle{font-size:var(--fs-5);font-weight:700;color:var(--text);letter-spacing:-0.2px;}
 .setup-hsub{font-size:var(--fs-3);color:var(--text3);margin-top:3px;}
@@ -963,7 +963,9 @@ function fmtConc(conc){
   if (conc === undefined || conc === null || isNaN(conc)) return '';
   if (conc <= 0) return '0';
   var units = [['M',1],['mM',1e-3],['µM',1e-6],['nM',1e-9],['pM',1e-12]];
-  for (var i=0;i<units.length;i++){ if (conc >= units[i][1]) return (conc/units[i][1]).toFixed(2).replace(/\.00$/,'') + units[i][0]; }
+  // Three significant figures, the way a concentration is spoken: 333 nM, 37.0 nM, 12.3 nM —
+  // not 333.33nM squeezed into an 8px well.
+  for (var i=0;i<units.length;i++){ if (conc >= units[i][1]) { var v=conc/units[i][1]; var t=v>=100?v.toFixed(0):v>=10?v.toFixed(1):v.toFixed(2); return t.replace(/\.0+$/,'') + ' ' + units[i][0]; } }
   return conc.toExponential(1) + 'M';
 }
 
@@ -1238,7 +1240,8 @@ function loadLuminaTestData(){
   updatePaintButtonLabels();
   renderCompoundList();
   renderGrid();
-  switchSetupTab('layout');
+  // The plate is the thing to look at now, not the form that describes it.
+  closeSetupModal();
   toast('Test plate loaded: 4 compounds in technical duplicate (11-pt 3x dilution, 1000nM top) + column 12 DMSO controls.');
 }
 
