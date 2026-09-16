@@ -137,6 +137,12 @@ const SEED = `(function(){
   [ids[0],ids[1]].forEach(function(id){ var e=LB.data.experiments[id]; if(e&&e.blocks&&e.blocks[0]) setBlockDone(id,e.blocks[0].id,true,true); });
   // a wait on the first NB step, so the wait chip and the timer button exist
   var nb=LB.data.experiments[ids[0]]; if(nb&&nb.blocks[1]) nb.blocks[1].waitMin=45;
+  // results and a verdict, so Visualize has a potency landscape and a success rate to draw
+  var comps=['EDA-099','JQ1','dBET6'], tg=['BRD4','BRD2'];
+  [ids[1],ids[5]].forEach(function(id,k){ var e=LB.data.experiments[id]; var rows=[]; comps.forEach(function(c,ci){ tg.forEach(function(t,ti){ rows.push({compound:c,target:t,potency:Math.pow(10,ci*0.7+ti*0.3),effect:80,hill:1,r2:0.98,flag:ci===2&&ti===1}); }); }); rows[1].excluded=true;
+    e.integration=e.integration||{sources:[],cellLines:[],compounds:[],plateMaps:[],protocols:[],results:[],tables:[]};
+    e.integration.results=[{id:'r'+k,source:'Echo',label:'Echo fit',assay:'HB',potencyLabel:'DC50',effectLabel:'Dmax',potencyUnit:'nM',effectUnit:'%',rows:rows,createdAt:new Date().toISOString()}]; });
+  var wb=LB.data.experiments[ids[3]]; wb.status='done'; wb.statusLocked=true; wb.outcome={verdict:'worked',text:'',at:Date.now()};
   // the Journal: two flat notes, today's day note, and a step ticked today so "Done that day" draws
   newPage(); var pg1=_curPage(); pg1.title='Gel photos, with a title long enough to wrap on a phone'; pg1.html='<p>Bands at 60 and 120 kDa. <b>Lane 3</b> is the control.</p>';
   newPage(); var pg2=_curPage(); pg2.title='Second attempt';
@@ -159,6 +165,8 @@ function screens(ids) {
     S('experiments-search', `selectNode('exps'); var q=document.querySelector('.xv-q'); if(q){ q.value='BRD'; q.dispatchEvent(new Event('input',{bubbles:true})); }`),
     S('journal-day',     `selectNode('journal'); if(window.DAY_VIEW!==undefined) DAY_VIEW=null; renderEditor()`),
     S('journal-week',    `selectNode('week')`),
+    S('visualize',       `selectNode('viz')`, { settle: 600 }),
+    S('visualize-drill', `selectNode('viz'); var m=document.querySelector('.vz-seg[data-go]'); if(!m) throw new Error('n/a'); vizGo(m.getAttribute('data-go'))`, { optional: true, settle: 600 }),
     S('exp-default',     `openExp('${e0}')`),
     S('exp-steps',       `openExp('${e0}'); expTab('steps')`),
     S('exp-steps-inputs',`openExp('${e0}'); expTab('steps'); var b=document.querySelector('.bench .blk-calc .lean-tog'); if(b) b.click(); else throw new Error('n/a');`, { optional: true }),
@@ -201,6 +209,8 @@ function screens(ids) {
     S('dialog-settings', `openSettings()`, { dialog: true }),
     S('dialog-prep',     `openExp('${e0}'); openPrepSheet({expId:'${e0}'})`, { dialog: true, settle: 900 }),
     S('dialog-export',   `openExp('${e0}'); exportMenu()`, { dialog: true }),
+    S('dialog-pdf',      `openExp('${e0}'); openPdfExport()`, { dialog: true, settle: 1200 }),
+    S('dialog-pdf-day',  `openDayPage(todayStr()); openPdfExport()`, { dialog: true, settle: 1200 }),
     S('dialog-confirm',  `lbConfirm('Delete this experiment and its 5 steps? This cannot be undone from here.',{title:'Delete',danger:true})`, { dialog: true }),
     S('dialog-choose',   `lbChoose('This step was planned for Tuesday and you are ticking it on Thursday.',{title:'This step slipped',answers:[{id:'a',label:'Move the rest forward by 2 days',sub:'The intervals between the remaining steps are kept',primary:true},{id:'b',label:'I did it on Tuesday — I am only recording it now',sub:'Records the planned date as the completion date'},{id:'c',label:'Done today, and the plan stands',sub:'Nothing else moves',safe:true}]})`, { dialog: true }),
     S('dialog-prompt',   `lbPrompt('Minutes to wait after this step before the next one. Leave empty for none.','45',{title:'Wait after "Transfection"',ok:'Save'})`, { dialog: true }),

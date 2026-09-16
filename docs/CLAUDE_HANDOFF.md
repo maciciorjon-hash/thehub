@@ -57,6 +57,17 @@ promise resolves, and fingerprints were not canonical (`_cjson`). Full account: 
 - **The runtime audit strips string literals before the dead-handler scan** — a plasmid name
   with a parenthesis is not a call.
 
+## Three workspaces (2026-09-16)
+
+The rail is **Planner · Journal · Visualize**. Visualize (`kind:'viz'`, `renderVisualize`) is the
+notebook as SVG charts — tiles, activity heatmap, rhythm, portfolio, verdicts, timeline, potency
+landscape, and a drill-down list — with no chart library. The Export PDF dialog has a **scope**
+(experiment · folder · project · all · one day · a month · the whole Journal; `pdfScopeDefault`,
+`pdfScopeExps`, `pdfScopeDays`, `_pdBulkHtml`, `_pdJournalHtml`), a Journal day prints what its
+page shows (`_pdDayHtml`), the Data picker exports and imports JSON bundles, and the bench sheet
+(`buildLabSheet`) is one day per page with a clock derived from the waits and a needs box from
+`prepNeeds`. See CLAUDE.md *Export by scope, Visualize, and a bench sheet with a clock*.
+
 ## Two workspaces, one file (2026-09-14)
 
 Labbook is now the **Planner** (Home · Today · Week · Experiments) and the **Notebook**
