@@ -224,6 +224,19 @@ body.dragging-lock .wp-name,body.dragging-lock .task-name,body.dragging-lock .ba
   *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
     transition-duration:1ms!important;scroll-behavior:auto!important;}
 }
+/* One gear in every app's header (2026-09-16): the panel behind it holds the theme switch. */
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-panel{display:none;position:fixed;top:58px;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 0 6px;padding:14px 18px;z-index:200;min-width:190px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
+.opts-panel.open{display:block;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.opts-row+.opts-row{margin-top:10px;}
+.opts-label{font-size:var(--fs-4);color:var(--text2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:var(--r-4);transition:.2s;border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
+input:checked+.theme-slider{background:var(--accent);}
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -303,7 +316,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="app-sub">Grant &amp; fellowship Gantt charts</div>
   </div>
   <div class="hdr-right">
-    <button class="iconbtn" id="theme-btn" title="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg></button>
+    <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options" aria-label="Options"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.7 1.6 2.7-2.6 1.5-.5 3-3-.4L12 21.4l-1.5-2.6-3 .4-.5-3L4.4 14.7 6 12 4.4 9.3l2.6-1.5.5-3 3 .4z"/></svg></button><div class="opts-panel" id="opts-panel"><div class="opts-row"><span class="opts-label">Dark mode</span><label class="theme-switch"><input type="checkbox" id="theme-chk" onchange="toggleTheme()"><span class="theme-slider"></span></label></div></div>
   </div>
 </header>
 
@@ -471,7 +484,7 @@ function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 
 /* ── Theme (mirror parent / localStorage) ── */
 (function(){var s=null;try{s=localStorage.getItem('hub_theme');}catch(e){}if(s==='dark')document.documentElement.setAttribute('data-theme','dark');})();
-$('theme-btn').addEventListener('click',function(){var d=document.documentElement.getAttribute('data-theme')==='dark';document.documentElement.setAttribute('data-theme',d?'light':'dark');try{localStorage.setItem('hub_theme',d?'light':'dark');}catch(e){}render();});
+function toggleTheme(){var d=document.getElementById('theme-chk').checked;document.documentElement.setAttribute('data-theme',d?'dark':'light');try{localStorage.setItem('hub_theme',d?'dark':'light');}catch(e){}render();}
 
 /* ── Colour schemes (all pastel) ── */
 var SCHEMES={
@@ -1142,6 +1155,13 @@ window.addEventListener('message',function(e){
   new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
     t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
    .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
+</script>
+<script>
+// One gear, one panel, the same in every app.
+function toggleOpts(){ var p=document.getElementById('opts-panel'); if(p) p.classList.toggle('open'); }
+document.addEventListener('click',function(e){ var p=document.getElementById('opts-panel'); if(p&&p.classList.contains('open')&&!p.contains(e.target)&&!e.target.closest('#opts-btn')) p.classList.remove('open'); });
+(function(){ var c=document.getElementById('theme-chk'); if(c) c.checked=document.documentElement.getAttribute('data-theme')==='dark';
+  if(window.MutationObserver) new MutationObserver(function(){ var k=document.getElementById('theme-chk'); if(k) k.checked=document.documentElement.getAttribute('data-theme')==='dark'; }).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']}); })();
 </script>
 </body>
 </html>

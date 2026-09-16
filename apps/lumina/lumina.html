@@ -70,9 +70,6 @@ header{min-height:48px;display:flex;align-items:center;gap:14px;padding:0 18px;b
 .app-sub{font-size:var(--fs-2);color:var(--text2);}
 @media(max-width:480px){header .app-sub{display:none;}}
 .hdr-spacer{flex:1;}
-.theme-toggle{width:40px;height:22px;border-radius:var(--r-2);background:var(--surface3);border:1px solid var(--border2);position:relative;cursor:pointer;}
-.theme-toggle .thumb{position:absolute;top:1px;left:1px;width:18px;height:18px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-sm);transition:transform .18s;}
-html[data-theme="dark"] .theme-toggle .thumb{transform:translateX(18px);}
 
 /* ── Tabs ───────────────────────────────────────── */
 .tabbar{display:flex;gap:4px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto;}
@@ -245,6 +242,19 @@ html[data-theme="dark"] .setup-overlay{background:rgba(0,0,0,.65);}
   *,*::before,*::after{animation-duration:1ms!important;animation-iteration-count:1!important;
     transition-duration:1ms!important;scroll-behavior:auto!important;}
 }
+/* One gear in every app's header (2026-09-16): the panel behind it holds the theme switch. */
+.opts-btn{background:none;border:1px solid var(--border2);color:var(--text2);width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;transition:background .15s,color .15s;}
+.opts-btn:hover{background:var(--surface2);color:var(--text);}
+.opts-panel{display:none;position:fixed;top:58px;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:0 0 0 6px;padding:14px 18px;z-index:200;min-width:190px;box-shadow:0 4px 20px rgba(0,0,0,.15);}
+.opts-panel.open{display:block;}
+.opts-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
+.opts-row+.opts-row{margin-top:10px;}
+.opts-label{font-size:var(--fs-4);color:var(--text2);}
+.theme-switch{position:relative;display:inline-block;width:40px;height:22px;}
+.theme-switch input{opacity:0;width:0;height:0;}
+.theme-slider{position:absolute;cursor:pointer;inset:0;background:var(--surface3);border-radius:var(--r-4);transition:.2s;border:1px solid var(--border2);}
+.theme-slider:before{position:absolute;content:'';height:16px;width:16px;left:2px;top:2px;background:var(--text2);border-radius:50%;transition:.2s;}
+input:checked+.theme-slider{background:var(--accent);}
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -303,7 +313,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="app-sub">Dose-response curve fitting · plate-grid input</div>
   </div>
   <div class="hdr-spacer"></div>
-  <div class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"><div class="thumb"></div></div>
+  <button class="opts-btn" id="opts-btn" onclick="toggleOpts()" title="Options" aria-label="Options"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6l1.5 2.6 3-.4.5 3 2.6 1.5-1.6 2.7 1.6 2.7-2.6 1.5-.5 3-3-.4L12 21.4l-1.5-2.6-3 .4-.5-3L4.4 14.7 6 12 4.4 9.3l2.6-1.5.5-3 3 .4z"/></svg></button><div class="opts-panel" id="opts-panel"><div class="opts-row"><span class="opts-label">Dark mode</span><label class="theme-switch"><input type="checkbox" id="theme-chk" onchange="toggleTheme()"><span class="theme-slider"></span></label></div></div>
 </header>
 
 <div class="tabbar">
@@ -608,8 +618,7 @@ function assayFitLabels(t){
   if (saved) document.documentElement.setAttribute('data-theme', saved);
 })();
 function toggleTheme(){
-  var cur = document.documentElement.getAttribute('data-theme');
-  var next = cur === 'dark' ? 'light' : 'dark';
+  var next = document.getElementById('theme-chk').checked ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('lumina_theme', next);
   if (state.fitResults.length) { drawScatter(); drawPlateCanvas(); if(state.selectedSample) drawCurve(state.selectedSample); }
@@ -1947,6 +1956,13 @@ openSetupModal();
   new MutationObserver(function(){ r.classList.add('theme-swap'); clearTimeout(t);
     t=setTimeout(function(){ r.classList.remove('theme-swap'); },60); })
    .observe(r,{attributes:true,attributeFilter:['data-theme']});})();
+</script>
+<script>
+// One gear, one panel, the same in every app.
+function toggleOpts(){ var p=document.getElementById('opts-panel'); if(p) p.classList.toggle('open'); }
+document.addEventListener('click',function(e){ var p=document.getElementById('opts-panel'); if(p&&p.classList.contains('open')&&!p.contains(e.target)&&!e.target.closest('#opts-btn')) p.classList.remove('open'); });
+(function(){ var c=document.getElementById('theme-chk'); if(c) c.checked=document.documentElement.getAttribute('data-theme')==='dark';
+  if(window.MutationObserver) new MutationObserver(function(){ var k=document.getElementById('theme-chk'); if(k) k.checked=document.documentElement.getAttribute('data-theme')==='dark'; }).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']}); })();
 </script>
 </body>
 </html>
