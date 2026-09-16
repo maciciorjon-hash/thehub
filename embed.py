@@ -58,12 +58,11 @@ APPS = [
     ('incubator',   'apps/incubator/incubator.html'),
     ('labbook',     'apps/labbook/labbook.html'),
     ('blot',        'apps/western-blot/western-blot.html'),
-    ('gantt',       'apps/gantt/gantt.html'),
 ]
 
 # Which apps ship in which build. 'all' is the personal Hub; 'product' is the sellable
 # story — the notebook, the analysis that feeds it, the protocol library and the modules
-# they depend on. Cuppa/Fabricata/Cadence and the off-path tools stay out.
+# they depend on. Cuppa and the off-path tools stay out (Fabricata and Cadence are retired to old_stuff/).
 # The sellable build is the spine plus what feeds it: Labbook (the notebook), Archive (protocols
 # AND the reagent Library, which now holds plasmids too), Cells (the three frames the merged app
 # hosts), Echo, and the analysis apps Echo hands off to. Blueprint, Blot and Helix are useful in

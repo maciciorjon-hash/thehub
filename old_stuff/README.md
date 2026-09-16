@@ -21,3 +21,7 @@ fuera de git) y `docs/SESSION_HISTORY.md` (el registro de cambios, que sí es do
 Fabricata™, the data-fabrication parody. Out of the product build since 2026-07-30 and reachable
 only through a code word; retired at Jon's instruction because it sat in the personal build and on
 the public Pages site, where a visitor who found it would remember nothing else about the Hub.
+
+## gantt/ (retired 2026-09-16)
+Cadence, the grant/fellowship Gantt chart builder. Jon: "no lo uso para nada." Out of the product
+build since 2026-07-30; removed from the personal build and the shell at his instruction.
