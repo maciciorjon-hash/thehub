@@ -4093,7 +4093,17 @@ function calcUpd(id,key){ var b=_blkById(id); if(!b||!b.calc) return; var wrap=d
   refreshCalcSpans(b,e);
   // The join runs both ways: a condition renamed or added here has to reach the palette and the
   // map's own summary, live, or the two drift apart between one keystroke and the next.
-  if(e&&b.calc.kind==='nbtx') _queueNbSync(e);
+  if(e&&b.calc.kind==='nbtx'){
+    // And the setup, which is what Edit setup and Rebuild read: the constructs are the same
+    // strings in both places, so a plasmid renamed here is renamed there — otherwise the next
+    // Edit setup save would write the old name straight back over the table and the map.
+    var back={donorNames:'donors', acceptorNames:'acceptors', ratios:'ratios', minVolUL:'minVol'};
+    if(key && back[key] && e.setup && e.setup[back[key]]!=null && String(e.setup[back[key]])!==String(b.calc.inputs[key])){
+      e.setup[back[key]]=b.calc.inputs[key];
+      var sg=document.querySelector('.exh-setup'); if(sg){ var d0=document.createElement('div'); d0.innerHTML=setupSummaryHtml(e); if(d0.firstElementChild) sg.replaceWith(d0.firstElementChild); }
+    }
+    _queueNbSync(e);
+  }
   if(e) e.updated=Date.now(); queueSave(); }
 // Give a derived field back to the chain.
 function calcRelink(id,key){ var b=_blkById(id); if(!b||!b.calc||!b.calc.own) return;

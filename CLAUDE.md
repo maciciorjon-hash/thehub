@@ -4514,15 +4514,20 @@ plasmid meant redrawing the whole map. Three things, one root — the plate knew
   order for a plate from before slots existed), and **the wells follow**: same wells, same number,
   new name; group labels renamed with it. It runs from `calcUpd`, so typing the new name in the
   calculator is the whole edit. A type wells still carry that matches nothing is left alone.
+  **The rename also reaches `e.setup`** (`donors`/`acceptors`/`ratios`/`minVol`, the same strings)
+  and the setup table repaints in place — the setup is what Edit setup and Rebuild read, so
+  without it the next Edit setup save wrote the old name straight back over table and map.
 - **The mix table numbers its rows as the plate does** (`plateTidNos` → `nbtxRecipe(v,counts,nos)`,
   rows sorted by that number): a condition added later takes the next free number instead of
   shifting every row below it, so the number on a well and the number beside its mix are one number.
 - **Rebuild asks** (`lbChoose`): *Keep the map, update the conditions* (default, and the subtitle
   says what would change — renamed · new to paint · no longer in the table) · *Redraw from the
   setup* (says what it throws away) · *Leave it*. An empty map still redraws without asking.
-- **⌘Z in a field takes our step when ours is the newer thing.** Safari does not move focus to a
-  button you click, so after Rebuild the caret was still in the last field typed in and the key
-  went to the browser's text undo. `UNDO.at` (last mark) against `UNDO.typedAt` (last input in an
+- **⌘Z in a field takes our step when ours is the newer thing.** With the caret left in a field
+  (Safari never focuses a clicked button; any browser after a programmatic re-render) the key went
+  to the browser's text undo. Rebuild → ⌘Z is verified in Chromium standalone, embedded in an
+  iframe, and with the plate editor open — a report that it "still" fails after a push is most
+  likely the Pages cache (`max-age=600`): hard-reload before re-testing. `UNDO.at` (last mark) against `UNDO.typedAt` (last input in an
   editable, captured at document level) decides; typing since the mark keeps the field's undo.
 - Dragging a step onto another day in Steps now **re-dates it** (`_blkPlace`); the array-only
   reorder snapped it back because `dayGroups` sorts by date first. A day group is a drop target.
