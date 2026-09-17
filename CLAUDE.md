@@ -4480,12 +4480,15 @@ compound — which is how a hand-drawn plate gets its numbers. `plateSummary` no
 the label and the compound when they are the same name, nor "gradient · 3 levels" once the
 concentrations are on the wells.
 
-**"Dispense 10.2 µL per well" was a number no tube held.** `CALC_VALUES.nbtx.dispense` was
-Opti-MEM + FuGENE + the DNA *at 1000 ng/µL*; the table's own arithmetic puts 7.49 µL of a
-100 ng/µL donor into 936 µL, so the pair mix is 11.1 µL a well and the mock 10.3. `_nbtxPerWell`
-is that arithmetic per condition; the table has a **Per well** column, the step says *"each mix
-at its per-well volume (10.3–11.1 µL, the last column of the table)"*, and the recipe note no
-longer says "dispense 10 µL".
+**"Dispense 10.2 µL per well" — Jon's rule is that exactly 10 µL goes into every well.** The
+`nbtx` table made 10 µL of Opti-MEM per well and added the plasmids and the FuGENE on top, so
+the pair mix was 11.1 µL a well and the mock 10.3, and the prose summed Opti-MEM + FuGENE +
+DNA-at-1000-ng/µL to 10.2 — a number no tube held. Now **the Opti-MEM is the remainder**
+(`rtxmix`'s rule): a mix is `optimemPerWell` (relabelled *Mix dispensed per well*) × wells ×
+overage, the plasmids at their stocks and the FuGENE come out of it, and a mix whose DNA and
+FuGENE alone exceed that says *short by N µL* in the Opti-MEM cell and in a warning. `VOL_ADD.nbtx`
+is exactly the dispense; the step reads *"each made to 10 µL per well … Dispense 10 µL of the
+mix into every well"*.
 
 **The selection bubble had two native `<select>`s.** Focusing one fired `mouseup` → `positionBubble`
 → `innerHTML` rebuilt the bubble under the open list, which vanished. The font, the size and the
