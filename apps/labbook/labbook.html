@@ -1566,7 +1566,28 @@ body.lb-lean .exh.open .exh-lean>span{display:none;}
   border:1px solid var(--border2);color:var(--text2);cursor:pointer;}
 .rep-l:hover{border-color:#5e87c5;color:#5e87c5;}
 .rep-l.on{background:#5e87c5;border-color:#5e87c5;color:#fff;font-weight:700;}
-/* Publication-ready: sections and the toggles that decide which of them exist. */
+/* Report: sections and the toggles that decide which of them exist, and the exports strip. */
+.rep-exports{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 12px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);}
+.rep-x{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;font-family:var(--sans);font-size:var(--fs-2);font-weight:600;color:var(--text);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-1);cursor:pointer;white-space:nowrap;}
+.rep-x:hover{background:var(--surface3);}
+.rep-x.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.rep-x.primary:hover{filter:brightness(1.06);background:var(--accent);}
+.rep-x svg{width:15px;height:15px;flex:none;}
+.rep-x-sep{width:1px;height:20px;background:var(--border2);margin:0 4px;}
+.exp-pub .pub-log,.exp-pub .pub-files{margin:0 0 12px;padding-left:20px;max-width:92ch;}
+.exp-pub .pub-log li,.exp-pub .pub-files li{margin:0 0 4px;}
+.exp-pub .pub-obs{margin:0 0 12px;max-width:92ch;}
+.exp-pub .pub-plate{margin:0 0 10px;}
+.exp-pub .pub-plate .blk-plate{margin:0;}
+.exp-pub .pub-wells{margin:0 0 12px;padding-left:20px;max-width:92ch;font-size:var(--fs-2);columns:2;column-gap:28px;}
+.exp-pub .pub-wells li{margin:0 0 3px;break-inside:avoid;}
+.exp-pub .pub-wells b{font-family:var(--mono);font-weight:600;}
+.exp-pub .pub-wells .pub-n{color:var(--text3);}
+@media (max-width:640px){ .exp-pub .pub-wells{columns:1;} .rep-x-sep{display:none;} .rep-x{height:36px;} }
+.exp-pub .pub-tbl{border-collapse:collapse;font-size:var(--fs-2);margin:0 0 12px;}
+.exp-pub .pub-tbl th,.exp-pub .pub-tbl td{padding:4px 10px 4px 0;text-align:left;border-bottom:1px solid var(--border);vertical-align:top;}
+.exp-pub .pub-tbl th{font-size:var(--fs-1);text-transform:uppercase;letter-spacing:.4px;color:var(--text3);font-weight:600;}
+.exp-pub .pub-tbl tr.pub-x td{text-decoration:line-through;color:var(--text3);}
 .exp-pub .pub-h{font-size:var(--fs-2);font-weight:700;letter-spacing:.6px;text-transform:uppercase;
   color:var(--accent,#5e87c5);margin:14px 0 4px;}
 .exp-pub .pub-h:first-child{margin-top:0;}
@@ -5308,8 +5329,27 @@ function plateToPNG(p,name){
   var d=plateDims(p), W=Math.max(18,Math.round(760/d.c)), HDR=26, PAD=18, S=2;
   var hasCL=plateHasColLabels(p);
   var titleH=(p.title?26:0), clH=hasCL?18:0;
-  var used=plateUsedTypes(p), legH=used.length?30:0, _nos=plateHasNos(p);
-  var cw=PAD*2+HDR+d.c*W, ch=PAD*2+titleH+clH+HDR+d.r*W+legH;
+  var used=plateUsedTypes(p), _nos=plateHasNos(p);
+  if(_nos) used=used.slice().sort(function(a,b){ return (a.no||99)-(b.no||99); });
+  // The outlined blocks — a compound and its series — named: the name rarely fits in a well,
+  // so the picture carries the outline, the concentrations, and this line says which is which.
+  // Jon (2026-09-17): "el PNG no pone qué compuesto va en cada sitio".
+  var boxes=plateGroupBoxes(p), dose=boxes.filter(function(b){ return _plateBlockIsDose(p,b); });
+  dose.forEach(function(b){ var w0=(p.wells||{})[wellIdOf(b.r1,b.c1)]; b.name=b.label||(w0&&w0.compound)||''; });
+  var cw=PAD*2+HDR+d.c*W;
+  // Measure the legend before the canvas exists: wrapped onto as many lines as it needs, or a
+  // 384 with fourteen conditions ran its key off the right edge.
+  var mx=document.createElement('canvas').getContext('2d'); mx.font='500 10px ui-sans-serif,system-ui,sans-serif';
+  var legLines=[], cur=[], lw=0, maxW=cw-PAD*2;
+  used.forEach(function(t){ var lbl=(_nos&&t.no!=null)?(t.no+' \u00b7 '+t.name):t.name; var iw=15+mx.measureText(lbl).width+14;
+    if(cur.length && lw+iw>maxW){ legLines.push(cur); cur=[]; lw=0; } cur.push({t:t,lbl:lbl,w:iw}); lw+=iw; });
+  if(cur.length) legLines.push(cur);
+  var keyLines=[]; cur=[]; lw=0;
+  dose.filter(function(b){ return b.name; }).forEach(function(b){ var lbl=wellIdOf(b.r1,b.c1)+'\u2013'+wellIdOf(b.r2,b.c2)+'  '+b.name; var iw=mx.measureText(lbl).width+18;
+    if(cur.length && lw+iw>maxW){ keyLines.push(cur); cur=[]; lw=0; } cur.push({lbl:lbl,w:iw}); lw+=iw; });
+  if(cur.length) keyLines.push(cur);
+  var legH=(legLines.length+keyLines.length)?(10+16*(legLines.length+keyLines.length)):0;
+  var ch=PAD*2+titleH+clH+HDR+d.r*W+legH;
   var cv=document.createElement('canvas');
   cv.width=cw*S; cv.height=ch*S;
   var x=cv.getContext('2d'); x.scale(S,S);
@@ -5342,8 +5382,9 @@ function plateToPNG(p,name){
       // holds it, below. The PNG used to print neither the numbers nor anything else useful —
       // it printed the well labels and the block *names*, so the picture you put on a slide had
       // no numbers on it at all while the app's own preview was numbered.
-      if(_nos){ if(vv!=null && W>=22){ x.fillStyle=ink; x.font='500 '+Math.max(6,Math.round(W/4.2))+'px ui-sans-serif,system-ui,sans-serif';
-          x.fillText(_plFit(x,String(_plTrim(vv)),W-4),wx+W/2,wy+W/2); } continue; }
+      if(_nos){ var dtxt=(vv!=null)?_plTrim(vv):((w&&w.conc)?_plHdrCompact(w.conc):'');
+        if(dtxt && W>=18){ x.fillStyle=ink; x.font='500 '+Math.max(6,Math.round(W/4.2))+'px ui-sans-serif,system-ui,sans-serif';
+          x.fillText(_plFit(x,String(dtxt),W-3),wx+W/2,wy+W/2); } continue; }
       var txt=(vv!=null)?_plTrim(vv):((w&&w.groupId&&(p.groups||{})[w.groupId])?'':plateWellShort(w));
       if(txt && W>=22){ x.fillStyle=ink; x.font='500 '+Math.max(6,Math.round(W/4.2))+'px ui-sans-serif,system-ui,sans-serif';
         x.fillText(_plFit(x,String(txt),W-4),wx+W/2,wy+W/2); }
@@ -5362,24 +5403,36 @@ function plateToPNG(p,name){
     if(fl){ x.font='600 '+Math.max(6,Math.round(nfs*0.45))+'px ui-sans-serif,system-ui,sans-serif';
       x.fillText(_plFit(x,fl,bw-6),bx+bw/2,by+bh/2+bh*0.28); }
   });
+  // A compound block: outlined, and its name written once along its top edge with a halo so it
+  // reads over the wells. The concentrations are already in the wells.
+  dose.forEach(function(b){
+    var bx=PAD+HDR+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
+    x.strokeStyle='rgba(0,0,0,0.55)'; x.lineWidth=1.6; _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke();
+    if(!b.name) return;
+    var fs=Math.max(8,Math.min(13,Math.round(W/3.4))); x.font='700 '+fs+'px ui-sans-serif,system-ui,sans-serif';
+    var lbl=_plFit(x,b.name,bw-10), tw=x.measureText(lbl).width;
+    x.fillStyle='rgba(255,255,255,0.88)'; _plRoundRect(x,bx+bw/2-tw/2-4,by+2,tw+8,fs+5,3); x.fill();
+    x.fillStyle=ink; x.fillText(lbl,bx+bw/2,by+2+(fs+5)/2);
+  });
   // Block labels are written once across their wells, exactly as the editor draws them.
-  if(!_nos) plateGroupBoxes(p).forEach(function(b){
+  if(!_nos) plateGroupBoxes(p).filter(function(b){ return !dose.some(function(z){ return z.gid===b.gid; }); }).forEach(function(b){
     var bx=PAD+HDR+b.c1*W, by=top+b.r1*W, bw=(b.c2-b.c1+1)*W, bh=(b.r2-b.r1+1)*W;
     x.strokeStyle='rgba(0,0,0,0.28)'; x.lineWidth=1.1;
     _plRoundRect(x,bx+1,by+1,bw-2,bh-2,4); x.stroke();
     x.fillStyle=ink; x.font='600 '+Math.max(9,Math.min(15,Math.round(bw/6)))+'px ui-sans-serif,system-ui,sans-serif';
     x.fillText(_plFit(x,b.label,bw-8),bx+bw/2,by+bh/2);
   });
-  if(used.length){
-    var lx=PAD, ly=top+d.r*W+16;
+  if(legLines.length||keyLines.length){
+    var ly=top+d.r*W+16;
     x.textAlign='left'; x.font='500 10px ui-sans-serif,system-ui,sans-serif';
-    used.forEach(function(t){
-      x.fillStyle=t.color; _plRoundRect(x,lx,ly-5,10,10,2); x.fill();
-      x.strokeStyle=line; x.lineWidth=0.7; x.stroke();
-      var lbl=(_nos&&t.no!=null)?(t.no+' · '+t.name):t.name;
-      x.fillStyle=faint; x.fillText(lbl,lx+15,ly);
-      lx+=15+x.measureText(lbl).width+14;
-    });
+    legLines.forEach(function(ln){ var lx=PAD;
+      ln.forEach(function(it){ x.fillStyle=it.t.color; _plRoundRect(x,lx,ly-5,10,10,2); x.fill();
+        x.strokeStyle=line; x.lineWidth=0.7; x.stroke();
+        x.fillStyle=ink; x.fillText(it.lbl,lx+15,ly); lx+=it.w; });
+      ly+=16; });
+    keyLines.forEach(function(ln){ var lx=PAD;
+      ln.forEach(function(it){ x.fillStyle=ink; x.font='600 10px ui-sans-serif,system-ui,sans-serif'; x.fillText(it.lbl,lx,ly); lx+=it.w; });
+      ly+=16; });
   }
   cv.toBlob(function(bl){
     if(!bl){ toast('Could not draw the plate'); return; }
@@ -9367,13 +9420,17 @@ function pubSentence(b,e){
 // Publication-ready prose from every dated block, its live calculators, setup and plate maps.
 // Sections and bold survive: the whole thing used to be escaped into flat paragraphs, so a
 // number the calculator had emphasised arrived as plain text with no headings around it.
-var PUB_SECTIONS=[{k:'setup',lbl:'Setup'},{k:'methods',lbl:'Methods'},{k:'plate',lbl:'Plate layout'},
-                  {k:'dev',lbl:'Deviations'},{k:'results',lbl:'Results'},{k:'outcome',lbl:'Outcome'}];
-// Outcome defaults OFF: a Methods section does not carry a verdict, and the paragraph this
-// builds is a Methods section. It is there for the drafts that are not.
-var PUB_DEFAULT_OFF={outcome:1};
-function pubOpts(e){ var o=(e&&e.pubOpts)||{}, out={};
-  PUB_SECTIONS.forEach(function(s){ out[s.k]=(o[s.k]===undefined)?!PUB_DEFAULT_OFF[s.k]:!!o[s.k]; }); return out; }
+// The Report is the whole experiment on one page (Jon, 2026-09-17: "contiene toda la info del
+// experimento; esta página es muy importante"): what it was for, how it was run, what was seen,
+// what came out. Each part can be left out; the Methods sheet export prints the manuscript
+// subset (METHODS_ONLY) whatever the toggles say.
+var PUB_SECTIONS=[{k:'aim',lbl:'Aim'},{k:'run',lbl:'Run'},{k:'setup',lbl:'Setup'},{k:'methods',lbl:'Methods'},
+                  {k:'plate',lbl:'Plate layout'},{k:'dev',lbl:'Deviations'},{k:'log',lbl:'What happened'},
+                  {k:'results',lbl:'Results'},{k:'obs',lbl:'Observations'},{k:'outcome',lbl:'Outcome'},{k:'files',lbl:'Files'}];
+var PUB_DEFAULT_OFF={};
+var METHODS_ONLY={setup:1,methods:1,plate:1,results:1};
+function pubOpts(e,only){ var o=(e&&e.pubOpts)||{}, out={};
+  PUB_SECTIONS.forEach(function(s){ out[s.k]=only?!!only[s.k]:((o[s.k]===undefined)?!PUB_DEFAULT_OFF[s.k]:!!o[s.k]); }); return out; }
 // What the paragraph was built from. Not the whole experiment: typing in the paragraph itself
 // must not make it look out of date, and a tick or a note changes the record without changing
 // the method.
@@ -9385,10 +9442,57 @@ function _pubSourceSig(e){
       e.plate?plateSummaryText(e.plate):'',
       // The outcome can be in the paragraph, so changing it has to be able to make the
       // paragraph stale. Leaving it out is the silent drift this signature exists to catch.
-      (e.outcome&&e.outcome.verdict)?[e.outcome.verdict,e.outcome.text||'']:null]);
+      (e.outcome&&e.outcome.verdict)?[e.outcome.verdict,e.outcome.text||'']:null,
+      e.aim||'', e.status||'', e.html||'',
+      (e.blocks||[]).map(function(b){ return [b.done?1:0, b.completedAt||0, b.log||'']; }),
+      (e.files||[]).map(function(f){ return [f.name||'', f.caption||'', f.include===false?0:1]; }),
+      ((e.integration&&e.integration.results)||[]).map(function(r){ return (r.rows||[]).map(function(x){ return [x.compound,x.target,x.potency,x.effect,x.flag?1:0,x.excluded?1:0,x.note||'']; }); })]);
   }catch(_e){ return ''; }
 }
 function pubIsStale(e){ return !!(e && e.pubEdited && e.pubReady && e.pubSrcSig && e.pubSrcSig!==_pubSourceSig(e)); }
+// One line on the run itself: when, how long, how far, and where it stands.
+function _pubRunLine(e){
+  var bs=(e.blocks||[]).filter(function(b){ return b.date; }), ds=bs.map(function(b){ return b.date; }).sort();
+  var bits=[];
+  if(e.code) bits.push(e.code);
+  if(ds.length){ var span=daysBetween(ds[0],ds[ds.length-1])+1;
+    bits.push(ds[0]===ds[ds.length-1]?('on '+fmtDate(ds[0])):(fmtDate(ds[0])+' \u2013 '+fmtDate(ds[ds.length-1])+' ('+span+' day'+(span===1?'':'s')+')')); }
+  else if(e.startDate) bits.push('from '+fmtDate(e.startDate));
+  var pr=expProgress(e); if(pr.total) bits.push(pr.done+' of '+pr.total+' steps done');
+  var st=e.status?String(e.status):''; if(st) bits.push(st.charAt(0).toUpperCase()+st.slice(1));
+  if(e.repGroup&&e.repIndex){ var n=repSiblings(e).length; if(n>1) bits.push('biological replicate '+e.repIndex+' of '+n); }
+  return bits.length?bits.join(' \u00b7 ')+'.':'';
+}
+// The ticks, in order, with the one-line log each step carries — the record of what was done
+// as against what was planned. Only ticked steps: a plan is the Methods' business.
+function _pubLogHtml(e){
+  var rows=(e.blocks||[]).filter(function(b){ return b.done; })
+    .sort(function(a,b){ return (a.completedAt||0)-(b.completedAt||0); });
+  if(!rows.length) return '';
+  var byDay={}, order=[];
+  rows.forEach(function(b){ var k=b.completedAt?_localDay(b.completedAt):(b.date||''); if(!byDay[k]){ byDay[k]=[]; order.push(k); } byDay[k].push(b); });
+  return '<ul class="pub-log">'+order.map(function(k){
+    return '<li><b>'+esc(k?fmtDate(k):'Undated')+'</b>: '+byDay[k].map(function(b){
+      var t=b.completedAt?_clock(b.completedAt):'';
+      return esc(b.title||'Step')+(t?(' ('+t+')'):'')+((b.log||'').trim()?(' \u2014 '+esc(b.log.trim())):''); }).join('; ')+'.</li>'; }).join('')+'</ul>';
+}
+function _localDay(ms){ var d=new Date(ms); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+// The measurements as a table, exclusions struck and flags kept — the same rows the Results tab
+// shows, so the Report cannot disagree with it.
+function _pubResultsTable(e){
+  var rs=(e.integration&&e.integration.results)||[]; if(!rs.length) return '';
+  return rs.map(function(r){ var rows=r.rows||[]; if(!rows.length) return '';
+    var pl=String(r.potencyLabel||'Potency').split(' ')[0]+(r.potencyUnit?(' ('+r.potencyUnit+')'):''), el2=String(r.effectLabel||'Effect').split(' ')[0]+(r.effectUnit?(' ('+r.effectUnit+')'):'');
+    return '<table class="pub-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(pl)+'</th><th>'+esc(el2)+'</th><th>R\u00b2</th><th></th></tr></thead><tbody>'
+      +rows.map(function(x){ return '<tr'+(x.excluded?' class="pub-x"':'')+'><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rn(x.potency))+'</td><td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.r2))+'</td><td>'+(x.excluded?'excluded':(x.flag?'flagged':''))+((x.note||'').trim()?(' \u2014 '+esc(x.note.trim())):'')+'</td></tr>'; }).join('')
+      +'</tbody></table>'; }).join('');
+}
+// What is attached, by name and caption. The bytes are in the Files tab and the record PDF;
+// here a list says what exists.
+function _pubFilesHtml(e){
+  var fs=(e.files||[]).filter(function(f){ return f.include!==false; }); if(!fs.length) return '';
+  return '<ul class="pub-files">'+fs.map(function(f){ return '<li>'+esc(f.name||'file')+((f.caption||'').trim()?(' \u2014 '+esc(f.caption.trim())):'')+'</li>'; }).join('')+'</ul>';
+}
 // The paragraph is built from the experiment every time it is read — Jon (2026-09-17):
 // "publication ready sigue sin coger los datos live… todo tiene que estar sync". It becomes a
 // stored text only when someone writes in it (pubEdited); then their wording is kept, the
@@ -9409,10 +9513,12 @@ function _pubMigrate(){ var n=0; Object.keys((LB.data&&LB.data.experiments)||{})
   var edited=false;
   try{ if(e.pubReady && e.pubSrcSig && e.pubSrcSig===_pubSourceSig(e) && _plain(e.pubReady)!==_plain(buildPubReadyFromExp(e))) edited=true; }catch(_e){}
   e.pubEdited=edited; n++; }); return n; }
-function buildPubReadyFromExp(e){
-  var o=pubOpts(e), out=[];
+function buildPubReadyFromExp(e,only){
+  var o=pubOpts(e,only), out=[];
   function H(t){ out.push('<h4 class="pub-h">'+esc(t)+'</h4>'); }
   function P(html){ if(html&&String(html).trim()) out.push('<p>'+html+'</p>'); }
+  if(o.aim && (e.aim||'').trim()){ H('Aim'); P(esc(e.aim.trim())); }
+  if(o.run){ var rl=_pubRunLine(e); if(rl){ H('Run'); P(esc(rl)); } }
   var methods=[];
   if(o.methods){
     var protos=(e.protocols||[]).map(function(p){return p.name||p.id;}).filter(Boolean);
@@ -9426,20 +9532,49 @@ function buildPubReadyFromExp(e){
   methods=methods.filter(function(s,i){ return s&&s!==methods[i-1]; });
   if(methods.length){ H('Methods'); methods.forEach(P); }
   if(o.plate){
-    var pl=[]; if(e.plate) pl.push(_pubPlateText(e.plate,''));
-    dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ if(b.plate) pl.push(_pubPlateText(b.plate,'')); }); });
-    pl=pl.filter(Boolean);
-    if(pl.length){ H('Plate layout'); pl.forEach(function(x){ P(esc(x)); }); }
+    var plates=[]; if(e.plate) plates.push({p:e.plate,key:'exp:'+e.id});
+    dayGroups(e).forEach(function(g){ g.blocks.forEach(function(b){ if(b.plate) plates.push({p:b.plate,key:'blk:'+e.id+':'+b.id}); }); });
+    plates=plates.filter(function(x){ return Object.keys(x.p.wells||{}).some(function(k){ var w=x.p.wells[k]; return w&&w.typeId&&w.typeId!=='blank'; }); });
+    if(plates.length){ H('Plate layout');
+      plates.forEach(function(x){
+        if(only){ var t=_pubPlateText(x.p,''); if(t) P(esc(t)); return; }   // the manuscript wants the sentence
+        // The Report wants the map itself — the same drawing the Steps tab shows, read-only —
+        // and the layout as a list, one line per block, rather than a paragraph of well ranges.
+        out.push('<div class="pub-plate" contenteditable="false">'+platePreviewHtml(x.p,x.key,true)+'</div>');
+        var g=[]; try{ g=plateColSummary(x.p).concat(plateSummary(x.p)); }catch(_e){}
+        if(g.length) out.push('<ul class="pub-wells">'+g.map(function(r){ return '<li><b>'+esc(r.range)+'</b> '+esc(r.desc)+' <span class="pub-n">('+esc(String(r.n))+')</span></li>'; }).join('')+'</ul>');
+      });
+    }
   }
   if(o.dev){ var d=deviationsSentence(e); if(d){ H('Deviations from the protocol'); P(esc(d)); } }
-  if(o.results){ var r=pubResultsSentence(e); if(r){ H('Results'); P(esc(r)); } }
+  if(o.log){ var lg=_pubLogHtml(e); if(lg){ H('What happened'); out.push(lg); } }
+  if(o.results){ var r=pubResultsSentence(e), rt=_pubResultsTable(e); if(r||rt){ H('Results'); P(esc(r)); if(rt) out.push(rt); } }
+  if(o.obs && (e.html||'').replace(/<[^>]+>/g,'').trim()){ H('Observations'); out.push('<div class="pub-obs">'+e.html+'</div>'); }
   // The verdict, in your own words, when you have asked for it. It is not part of a Methods
   // section, which is why it is off by default — but it is the sentence a draft opens with.
   if(o.outcome){ var oc=outcomeOf(e);
-    if(oc && (oc.text||'').trim()){ H('Outcome'); P(esc(oc.text.trim())); } }
+    if(oc){ var od=outcomeDef(oc.verdict); H('Outcome'); P('<b>'+esc((od&&od.lbl)||oc.verdict)+'</b>'+((oc.text||'').trim()?(' — '+esc(oc.text.trim())):'')); } }
+  if(o.files){ var fl=_pubFilesHtml(e); if(fl){ H('Files'); out.push(fl); } }
   var sw=analysisSoftware();
   if(sw && out.join(' ').indexOf(esc(sw))<0) P('Data were analysed in '+esc(sw)+'.');
   return out.length?out.join(''):'<p></p>';
+}
+// Every way this experiment leaves the notebook, in one row on the page that holds all of it.
+// Each says what it is for; the same functions the ribbon's Export and the banner call.
+function reportExportsHtml(e){
+  var id=e.id, hasPlate=!!(e.plate||(e.blocks||[]).some(function(b){ return b.plate; }));
+  function B(ico,lbl,title,onclick,cls){ return '<button class="rep-x'+(cls?' '+cls:'')+'" title="'+esc(title)+'" onclick="'+onclick+'">'+ico+'<span>'+esc(lbl)+'</span></button>'; }
+  return '<div class="rep-exports">'
+    +B(tbIco(P_FILE,15),'Record PDF','The whole record \u2014 every step, tick, plate and attachment \u2014 with a dialog to choose what goes in','openPdfExport()','primary')
+    +B(tbIco(P_SHEET,15),'Methods sheet','The Methods paragraph, its plate layouts and the results \u2014 nothing else, for a manuscript','exportMethods(\''+id+'\')')
+    +B(tbIco(P_SHEET,15),'Bench sheet','The steps with their amounts, one day after another, to print and take to the hood','exportLab(\''+id+'\')')
+    +B(tbIco(P_BOX,15),'What you need','Every material this experiment consumes, and where it is','openPrepSheet({expId:\''+id+'\'})')
+    +'<span class="rep-x-sep"></span>'
+    +B(tbIco(P_COPY,15),'Copy','This report to the clipboard \u2014 formatting survives and it stays editable where you paste it','copyPubReady(\''+id+'\')')
+    +B(tbIco(P_FILE,15),'Word','A .doc of the record, for OneNote\'s Insert \u2192 File Printout or anyone who wants Word','exportOneNoteDoc()')
+    +B(tbIco(P_SIGMA,15),'Data\u2026','JSON or CSV \u2014 the results, the steps, or the whole experiment as data','exportDataMenu()')
+    +(hasPlate?B(tbIco(P_GRID,15),'Plate PNG','The plate map as a picture, with the compounds and the concentrations on it','exportPlatePNG(\'exp:'+id+'\')'):'')
+    +'</div>';
 }
 function pubToggle(id,k){
   var e=LB.data.experiments[id]; if(!e) return;
@@ -9450,7 +9585,10 @@ function rebuildPub(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm
 // Copy helpers
 function _copyFallback(str){ try{ var ta=document.createElement('textarea'); ta.value=str; ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied'); }catch(e){ toast('Copy failed'); } }
 function lbCopyText(str){ try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(str).then(function(){toast('Copied');},function(){_copyFallback(str);}); return; } }catch(e){} _copyFallback(str); }
-function copyPubReady(id){ var e=LB.data.experiments[id]; if(!e) return; var t=document.createElement('div'); t.innerHTML=pubText(e); lbCopyText((t.textContent||'').replace(/\s+/g,' ').trim()); }
+function copyPubReady(id){ var e=LB.data.experiments[id]; if(!e) return; var t=document.createElement('div'); t.innerHTML=pubText(e);
+  // Rich where the clipboard takes it (Word, OneNote, mail), plain text everywhere else.
+  try{ if(navigator.clipboard&&window.ClipboardItem){ var html=t.innerHTML, txt=(t.textContent||'').replace(/[ \t]+/g,' ').trim();
+    navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([txt],{type:'text/plain'})})]).then(function(){ toast('Report copied'); },function(){ lbCopyText(txt); }); return; } }catch(_e){} lbCopyText((t.textContent||'').replace(/\s+/g,' ').trim()); }
 // New-experiment source-protocol picker state
 var NM_PROTOS=[];
 // Setup answers for the experiment being created (reset whenever the preset changes).
@@ -12252,7 +12390,7 @@ function renderExpEditor(host,e){
    // is told about — the whole point of a menu is that the options are a list.
   var TABDEF=[['steps','Steps',(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):'')],
               ['obs','Observations',''],['res','Results',nRes?String(nRes):''],
-              ['pub','Publication ready',''],['files','Files',(e.files&&e.files.length)?String(e.files.length):'']];
+              ['files','Files',(e.files&&e.files.length)?String(e.files.length):''],['pub','Report','']];
   var _cur=TABDEF.filter(function(x){ return x[0]===tab; })[0]||TABDEF[0];
   var tabsM='<button class="exp-tabs-m" onclick="expTabMenu(event,\''+e.id+'\')">'
     +'<span>'+esc(_cur[1])+'</span>'+(_cur[2]?('<span class="exp-tab-n">'+esc(_cur[2])+'</span>'):'')
@@ -12261,8 +12399,8 @@ function renderExpEditor(host,e){
     +'<button class="exp-tab'+(tab==='steps'?' on':'')+'" onclick="expTab(\'steps\')" title="The steps as they are run — the plate, the recipes, tick, wait, photograph">Steps<span class="exp-tab-n">'+(e.blocks?(expProgress(e).done+'/'+expProgress(e).total):0)+'</span></button>'
     +'<button class="exp-tab'+(tab==='obs'?' on':'')+'" onclick="expTab(\'obs\')">Observations</button>'
     +'<button class="exp-tab'+(tab==='res'?' on':'')+'" onclick="expTab(\'res\')">Results'+(nRes?('<span class="exp-tab-n">'+nRes+'</span>'):'')+'</button>'
-    +'<button class="exp-tab'+(tab==='pub'?' on':'')+'" onclick="expTab(\'pub\')">Publication ready</button>'
-    +'<button class="exp-tab'+(tab==='files'?' on':'')+'" onclick="expTab(\'files\')">Files'+((e.files&&e.files.length)?('<span class="exp-tab-n">'+e.files.length+'</span>'):'')+'</button></div>';
+    +'<button class="exp-tab'+(tab==='files'?' on':'')+'" onclick="expTab(\'files\')">Files'+((e.files&&e.files.length)?('<span class="exp-tab-n">'+e.files.length+'</span>'):'')+'</button>'
+    +'<button class="exp-tab'+(tab==='pub'?' on':'')+'" onclick="expTab(\'pub\')" title="The whole experiment on one page \u2014 aim, methods, plate, what happened, results, outcome \u2014 and every export">Report</button></div>';
   window._TABDEF=TABDEF;
   var body;
   if(tab==='steps'){
@@ -12280,12 +12418,11 @@ function renderExpEditor(host,e){
       return '<button class="pub-sec'+(_po[sx.k]?' on':'')+'" onclick="pubToggle(\''+e.id+'\',\''+sx.k+'\')"'
         +' title="'+(_po[sx.k]?'In the text — click to leave it out':'Left out — click to include it')+'">'+esc(sx.lbl)+'</button>';
     }).join('');
-    body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods</span>'
-      +'<span class="pub-secs">'+_toggles+'</span><span class="grow"></span>'
-      +(e.pubEdited?('<button class="pub-btn" onclick="pubBackToLive(\''+e.id+'\')" title="Drop your wording and build the paragraph from the steps, calculators and plate again — and keep it following them">'+tbIco(P_REFRESH,13)+' Back to live</button>')
-                    :('<span class="pub-live" title="Built from the steps, the calculators, the waits and the plate every time you open it. Write in it and your wording is kept instead.">live</span>'))
-      +'<button class="pub-btn" onclick="exportMethods(\''+e.id+'\')" title="The paragraph, the plate layout and the numbers — on their own, to send or to paste into a manuscript">'+tbIco(P_FILE,13)+' Methods sheet</button>'
-      +'<button class="pub-btn primary" onclick="copyPubReady(\''+e.id+'\')">Copy</button></div>'
+    body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Report</span>'
+      +(e.pubEdited?('<button class="pub-btn" onclick="pubBackToLive(\''+e.id+'\')" title="Drop your wording and build the report from the record again — and keep it following it">'+tbIco(P_REFRESH,13)+' Back to live</button>')
+                    :('<span class="pub-live" title="Built from the steps, the calculators, the waits, the plate, the ticks and the results every time you open it. Write in it and your wording is kept instead.">live</span>'))
+      +'<span class="pub-secs">'+_toggles+'</span></div>'
+      +reportExportsHtml(e)
       +(pubIsStale(e)?('<div class="pub-stale">This is your wording, and the steps or their numbers have changed since you wrote it. '
         +'<button onclick="pubBackToLive(\''+e.id+'\')">Back to the live text</button> &mdash; or leave it.</div>'):'')
       +(srcChips?'<div class="exp-pub-src">Sources: '+srcChips+'</div>':'')
@@ -15837,7 +15974,9 @@ function _pdExpHtml(e,o){ o=o||pdfOpts(); var h='';
   var pl=(o.plate&&e.plate)?pdPlate(e.plate,o):'';
   var expPlate=pl?('<div class="pd-sec-hd">Plate layout</div>'+pl):'';
   var steps=expPlate+((o.steps&&e.blocks&&e.blocks.length)?('<div class="pd-sec-hd">Protocol — step by step</div>'+printExpByDay(e,o)):'');
-  var _pt=pubText(e); var pub=(o.methods&&_pt&&_pt.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Publication ready</div><div class="pd-pub">'+_ptdy+'</div>'):'';
+  // The record PDF already prints the aim, the steps, the results and the files in full, so the
+  // paragraph it carries is the Methods subset — not the whole Report over again.
+  var _pt=(e.pubEdited&&e.pubReady)?e.pubReady:buildPubReadyFromExp(e,{setup:1,methods:1,plate:1}); var pub=(o.methods&&_pt&&_pt.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Methods</div><div class="pd-pub">'+_pt+'</div>'):'';
   // The exported record used to omit both the measured data and how the run departed from the
   // protocol — the two things a reviewer, or you in a year, actually asks for.
   return _pdPost(h+obs+steps+(o.results?pdResults(e):'')+(o.deviations?pdDeviations(e):'')+pub+(o.files?pdFiles(e.files):''), o);
@@ -16601,7 +16740,7 @@ function buildMethodsDoc(e){
     +(e.code?('<div class="pd-code">'+esc(e.code)+'</div>'):'')
     +'<div class="pd-title">'+esc(e.title||e.code||'Experiment')+'</div>'
     +'<div class="pd-crumb">'+esc(projCrumb(e))+(e.startDate?(' · '+esc(fmtDate(e.startDate))):'')+'</div></div>';
-  var body=pubText(e);
+  var body=(e.pubEdited&&e.pubReady)?e.pubReady:buildPubReadyFromExp(e,METHODS_ONLY);
   h+='<div class="pd-body">'+body+'</div>';
   if(e.plate) h+='<div class="pd-sec-hd">Plate layout</div>'+pdPlate(e.plate);
   (e.blocks||[]).forEach(function(b){ if(b.plate) h+=pdPlate(b.plate); });
