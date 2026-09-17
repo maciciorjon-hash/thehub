@@ -1631,6 +1631,8 @@ body.lb-lean .exh.open .exh-lean>span{display:none;}
 .bench-hd .blk-wait{padding:0 10px;}
 .bench-row.blk-drop-before{box-shadow:inset 0 2px 0 var(--accent);}
 .bench-row.blk-drop-after{box-shadow:inset 0 -2px 0 var(--accent);}
+.bench-group.drop{outline:2px dashed var(--accent);outline-offset:2px;border-radius:var(--r-2);}
+.bench-group.drop .bench-day{background:var(--accent-dim);}
 /* The calculator under the step: the recipe first, the inputs folded under a button. */
 .bench-row .dfx-calc{margin:6px 12px 0;}
 .bench-row .dfx-calc .blk-calc{margin:0;}
@@ -4202,7 +4204,7 @@ function blkDragStart(ev,id){ BLK_DRAG={kind:'block',id:id};
   if(card){ card.classList.add('blk-dragging'); try{ ev.dataTransfer.setDragImage(card,20,20); }catch(e){} } }
 function blkDragEnd(){ BLK_DRAG=null; _blkClearMarks(); }
 function _blkClearMarks(){
-  Array.prototype.forEach.call(document.querySelectorAll('.blk-drop-before,.blk-drop-after,.blk-dragging,.blk-addrow.drop'),
+  Array.prototype.forEach.call(document.querySelectorAll('.blk-drop-before,.blk-drop-after,.blk-dragging,.blk-addrow.drop,.bench-group.drop'),
     function(n){ n.classList.remove('blk-drop-before','blk-drop-after','blk-dragging','drop'); }); }
 function blkDragOver(ev,id){
   if(!BLK_DRAG) return;
@@ -4217,6 +4219,23 @@ function blkDragOver(ev,id){
 function blkDragLeave(ev){ ev.currentTarget.classList.remove('blk-drop-before','blk-drop-after','drop'); }
 function blkEndOver(ev){ if(!BLK_DRAG) return; ev.preventDefault(); _blkClearMarks(); ev.currentTarget.classList.add('drop'); }
 function _blkIndex(e,id){ return (e.blocks||[]).map(function(b){return b.id;}).indexOf(id); }
+// A dropped step takes the day it lands in. The Steps tab groups by date before it looks at
+// the array, so reordering the array alone left a step dragged onto another day snapping back
+// to its own — Jon: "quiero pasar el compound treatment al día anterior… no me deja." Same rule
+// as insertStepBlock: the date comes from the block it lands beside.
+function _blkPlace(e, id, at, date){
+  var from=_blkIndex(e,id); if(from<0) return false;
+  var moved=e.blocks[from], moving=(date!=null && (moved.date||'')!==date);
+  if(!moving && (from===at || from+1===at)) return false;
+  undoMark('Move step',['experiments.'+e.id]);
+  e.blocks.splice(from,1);
+  // Splicing out shifts everything after it down by one.
+  e.blocks.splice(from<at?at-1:at, 0, moved);
+  if(moving){ moved.date=date; recomputeDayOffsets(e); }
+  // A step's starting volume is a property of where it sits in the run.
+  syncChainedInputs(e);
+  e.updated=Date.now(); save(); renderPages(); renderEditor(); return true;
+}
 function blkDrop(ev,id){
   if(!BLK_DRAG) return;
   ev.preventDefault(); ev.stopPropagation();
@@ -4224,22 +4243,30 @@ function blkDrop(ev,id){
   var before=(ev.clientY-r.top) < r.height/2;
   var e=_curExp(); if(!e) { blkDragEnd(); return; }
   var target=_blkIndex(e,id); if(target<0){ blkDragEnd(); return; }
-  var at=before?target:target+1;
   var d=BLK_DRAG; blkDragEnd();
-  var from=_blkIndex(e,d.id); if(from<0||from===at) return;
-  var moved=e.blocks.splice(from,1)[0];
-  // Splicing out shifts everything after it down by one.
-  e.blocks.splice(from<at?at-1:at, 0, moved);
-  e.updated=Date.now(); save(); renderEditor();
+  _blkPlace(e, d.id, before?target:target+1, e.blocks[target].date||'');
 }
 function blkDropEnd(ev){
   if(!BLK_DRAG) return;
   ev.preventDefault();
   var e=_curExp(); var d=BLK_DRAG; blkDragEnd();
   if(!e) return;
-  var from=_blkIndex(e,d.id); if(from<0) return;
-  var moved=e.blocks.splice(from,1)[0];
-  e.blocks.push(moved); e.updated=Date.now(); save(); renderEditor();
+  var n=e.blocks.length, last=n?e.blocks[n-1]:null;
+  _blkPlace(e, d.id, n, last?(last.date||''):null);
+}
+// The day itself is a target: dropping on its header (a folded day has nothing else to drop
+// on) or in the gaps between its rows files the step at the end of that day.
+function blkDayOver(ev){ if(!BLK_DRAG) return; ev.preventDefault(); _blkClearMarks(); ev.currentTarget.classList.add('drop'); }
+function blkDayDrop(ev,key){
+  if(!BLK_DRAG) return;
+  ev.preventDefault(); ev.stopPropagation();
+  var e=_curExp(); var d=BLK_DRAG; blkDragEnd();
+  if(!e) return;
+  var g=dayGroups(e).filter(function(x){ return (x.key||'')===key; })[0]; if(!g) return;
+  var lastOfDay=g.blocks[g.blocks.length-1];
+  var at=_blkIndex(e,lastOfDay.id)+1;
+  if(lastOfDay.id===d.id){ at=_blkIndex(e,d.id); }
+  _blkPlace(e, d.id, at, key);
 }
 function stepPalette(){ var e=_curExp(); if(!e) return;
   toast('Loading step library…');
@@ -12315,7 +12342,7 @@ function stepsBodyHtml(e){
       +'<span class="bench-n'+(done===g.blocks.length?' all':'')+'">'+done+'/'+g.blocks.length+'</span>'
       +(g.key?dayPlanLine(e,g.key):'')+'</div>';
     var body=folded?'':('<div class="bench-body">'+g.blocks.map(function(b){ return benchRowHtml(e,b,{anchor:true,wait:true,photo:true,more:true,edit:true}); }).join('')+'</div>');
-    return '<div class="bench-group'+(isT?' today':'')+'" data-k="'+esc(g.key||'')+'">'+hd+body+'</div>';
+    return '<div class="bench-group'+(isT?' today':'')+'" data-k="'+esc(g.key||'')+'" ondragover="blkDayOver(event)" ondragleave="blkDragLeave(event)" ondrop="blkDayDrop(event,\''+esc(g.key||'')+'\')">'+hd+body+'</div>';
   }).join('');
   var add='<div class="blk-addrow" ondragover="blkEndOver(event)" ondragleave="blkDragLeave(event)" ondrop="blkDropEnd(event)"><button class="add-blk" onclick="addBlock()">+ Add step</button><button class="add-blk add-step" onclick="stepPalette()">'+tbIco(P_SEARCHPLUS,13)+' Add step from library / Archive…</button></div>';
   return top+lead+'<div class="bench">'+(days||'<div class="exp-dated-empty">No steps yet.</div>')+'</div>'+add;
