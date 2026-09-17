@@ -1632,6 +1632,7 @@ body.lb-lean .exh.open .exh-lean>span{display:none;}
 .bench-row.blk-drop-before{box-shadow:inset 0 2px 0 var(--accent);}
 .bench-row.blk-drop-after{box-shadow:inset 0 -2px 0 var(--accent);}
 .blk-wait.implied{color:var(--text2);font-weight:500;}
+.pub-live{font-size:var(--fs-1);font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--good,#2d9462);padding:3px 8px;border:1px solid currentColor;border-radius:var(--r-full);opacity:.85;}
 .bench-group.drop{outline:2px dashed var(--accent);outline-offset:2px;border-radius:var(--r-2);}
 .bench-group.drop .bench-day{background:var(--accent-dim);}
 /* The calculator under the step: the recipe first, the inputs folded under a button. */
@@ -2920,8 +2921,8 @@ var EXTRA_PRESET_SEED={
     {d:1,title:'Compound addition',w:240,
      calc:{kind:'spike',inputs:{name:'test compounds',wellVolUL:100,foldX:10,series:true,finalUM:0,stockUM:0,
        nWells:72,excess:1.1,diluent:'Opti-MEM'}},
-     pub:'Compounds were added directly onto the cells as 10&times; solutions in Opti-MEM at {{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M, each in {{nReps}} technical replicates, with matched DMSO in the vehicle and control wells, and the plates incubated for 4 h at 37 &deg;C.',
-     html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}: {{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M, one tube per compound and concentration, as on the plate map.</li><li>Add {{c.addUL}} of the {{c.fold}} to each compound well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the DMSO wells and to the &minus;ligand, &minus;substrate, mock and single-plasmid controls.</li><li>Incubate 4 h at 37 &deg;C.</li></ol><p class="lb-fn">Record the concentrations in the well; the compound names are on the plate map. <span class="pub-skip">At {{topUM}} &micro;M from a 10 mM DMSO stock the top well carries 1% DMSO &mdash; match that in the vehicle wells, not the lowest point.</span></p>'},
+     pub:'Compounds were added directly onto the cells as 10&times; solutions in Opti-MEM at {{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M, each in {{nReps}} technical replicates, with matched DMSO in the vehicle and control wells, and the plates incubated for {{c.wait}} at 37 &deg;C.',
+     html:'<ol><li>Prepare each concentration at {{c.fold}} in {{c.diluent}}: {{nConc}} concentrations, {{df}}-fold from {{topUM}} &micro;M, one tube per compound and concentration, as on the plate map.</li><li>Add {{c.addUL}} of the {{c.fold}} to each compound well ({{c.wellVol}} already in the well &rarr; {{c.newVol}}); do not aspirate.</li><li>Add {{c.addUL}} of vehicle ({{c.diluent}} with matched DMSO) to the DMSO wells and to the &minus;ligand, &minus;substrate, mock and single-plasmid controls.</li><li>Incubate {{c.wait}} at 37 &deg;C.</li></ol><p class="lb-fn">Record the concentrations in the well; the compound names are on the plate map. <span class="pub-skip">At {{topUM}} &micro;M from a 10 mM DMSO stock the top well carries 1% DMSO &mdash; match that in the vehicle wells, not the lowest point.</span></p>'},
     {d:1,title:'NanoBRET substrate + read',w:5,
      calc:{kind:'reagent',inputs:{name:'NanoBRET Nano-Glo substrate',diluent:'assay medium',totalVol:2520,dilution:100}},
      pub:'NanoBRET substrate was added and the plate read at ~460 nm (donor) and ~618 nm (acceptor). The corrected BRET ratio is the acceptor/donor ratio of the + ligand wells minus the same ratio in the &minus; ligand wells, expressed relative to the DMSO control.',
@@ -3563,12 +3564,12 @@ function calcValuesOf(b,e){ if(!b||!b.calc||!CALC_VALUES[b.calc.kind]) return nu
   try{ return CALC_VALUES[b.calc.kind](v, {exp:e, block:b, tidCounts:(e?plateTidCounts(e):null), tidNos:(e?plateTidNos(e):null)}); }catch(err){ return null; } }
 // {{c.key}} → a value from the step's own calculator, drawn as a span that cannot be edited.
 function fillCalc(html,b,e){ if(!html||html.indexOf('{{c.')<0) return html||'';
-  var vals=calcValuesOf(b,e)||{};
+  var vals=calcValuesOf(b,e)||{}; if(html.indexOf('{{c.wait}}')>=0) vals.wait=_waitVal(b,e);
   return String(html).replace(/\{\{c\.(\w+)\}\}/g,function(m,k){ var v=vals[k];
     return '<span class="cv'+(v==null?' cv-none':'')+'" contenteditable="false" data-c="'+k+'">'+(v==null?'—':v)+'</span>'; }); }
 // Plain text of the same, for the Methods paragraph, the index and any text export.
 function fillCalcText(html,b,e){ if(!html||html.indexOf('{{c.')<0) return html||'';
-  var vals=calcValuesOf(b,e)||{}; return String(html).replace(/\{\{c\.(\w+)\}\}/g,function(m,k){ var v=vals[k]; return v==null?'—':v; }); }
+  var vals=calcValuesOf(b,e)||{}; if(html.indexOf('{{c.wait}}')>=0) vals.wait=_waitVal(b,e); return String(html).replace(/\{\{c\.(\w+)\}\}/g,function(m,k){ var v=vals[k]; return v==null?'—':v; }); }
 // The span goes back to being the token before anything is stored.
 function _unfillCalc(html){ if(!html||html.indexOf('data-c=')<0) return html||'';
   return String(html).replace(/<span class="cv(?: cv-none)?"[^>]*data-c="(\w+)"[^>]*>[\s\S]*?<\/span>/g,'{{c.$1}}'); }
@@ -4203,7 +4204,7 @@ function insertStepBlock(spec, at){
     if(spec.inputs) Object.keys(spec.inputs).forEach(function(k){ _in[k]=spec.inputs[k]; });
     blk.calc={kind:spec.calc,inputs:_in};
   }
-  if(spec.w) blk.waitMin=spec.w;
+  if(spec.w){ blk.waitMin=spec.w; blk.waitSameDay=true; }
   if(spec.part){ blk.part=spec.part; blk.sourcePid=spec.sourcePid; }
   e.blocks.splice(idx,0,blk);
   // A step's starting volume is a property of where it lands, not of the preset it came from.
@@ -6721,6 +6722,7 @@ function _journalMigrate(){
   return changed;
 }
 if(_journalMigrate()) setTimeout(function(){ try{ save(); }catch(e){} },0);
+if(_pubMigrate()) setTimeout(function(){ try{ save(); }catch(e){} },0);
 // The flat list, newest edit first.
 function notesList(){ return Object.keys(LB.data.pages||{}).map(function(k){ return LB.data.pages[k]; }).filter(Boolean)
   .sort(function(a,b){ return (b.updated||b.created||0)-(a.updated||a.created||0); }); }
@@ -6839,7 +6841,7 @@ function _seedPresetsInner(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV12;
+  var upgrade=!LB.data._presetV13;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && cur._seedSig!==_presetSig(cur);
@@ -6853,7 +6855,7 @@ function _seedPresetsInner(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV12=true;
+  if(upgrade) LB.data._presetV13=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -7690,7 +7692,7 @@ function lbInitSync(){
       LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
       _reconcileProjects(_projBefore);   // a projects root that orphans the cloud's own experiments is wrong, whatever its timestamp
       _backfillPrefixes();   // a tree adopted from the cloud can predate the field too
-      _nbMigrate(); _journalMigrate();   // and the notebook fields; all idempotent per record
+      _nbMigrate(); _journalMigrate(); _pubMigrate();   // and the notebook fields; all idempotent per record
       seedPresets();
       try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
       _adopting=false; maybeSeed(); renderAll();
@@ -8446,9 +8448,26 @@ function blkWait(e,b){
   var g=gs[gi]; if(g.blocks[g.blocks.length-1]!==b) return out;
   var nx=gs[gi+1]; if(!nx||!nx.key) return out;
   out.next=nx.blocks[0];   // the step this wait bridges to, on the next day
+  // A preset's wait was written for the plan the preset shipped: "4 h, then the read" is a
+  // same-day wait. Move the read to tomorrow and the 4 h is not a fact about this run any more
+  // — the day is. A wait you typed (waitOwn) is yours and stands; a preset wait that was
+  // already cross-day (the D2B 20 h reaction) stands too.
+  if(m>0 && !b.waitOwn && _waitSeedSameDay(e,b)){ m=0; out.min=0; out.voided=true; }
   if(!m && daysBetween(b.date,nx.key)===1){ out.min=OVERNIGHT_MIN; out.implied=true; }
   return out;
 }
+// Was this block's seeded wait written for a next step on the same day? Stamped at creation
+// (waitSameDay); for an experiment from before the stamp, read off the preset it came from.
+function _waitSeedSameDay(e,b){
+  if(b.waitSameDay!=null) return !!b.waitSameDay;
+  var pre=e&&e.presetKey&&LB.data.presets&&LB.data.presets[e.presetKey]; if(!pre||!pre.blocks) return false;
+  var i=-1; pre.blocks.forEach(function(x,k){ if(i<0 && x.title===b.title && +x.waitMin===+b.waitMin) i=k; });
+  if(i<0) return false; var nx=pre.blocks[i+1]; if(!nx) return false;
+  return (+nx.dayOffset||0)===(+pre.blocks[i].dayOffset||0);
+}
+// The wait as the text quotes it — "4 h", "16 h" — for {{c.wait}} in a step and its sentence.
+function _waitVal(b,e){ if(!b) return null; if(e===undefined) e=_expOfBlock(b); if(!e) return (+b.waitMin>0)?_waitTxt(+b.waitMin):null;
+  var w=blkWait(e,b); return w.min?_waitTxt(w.min):null; }
 // A wait on the last step of a day whose next step is on a later day bridges to that day: it
 // belongs on the chip and in the timer, not in the day's clock.
 function _waitBridges(e,b){ if(!e||!b.date) return false;
@@ -8495,7 +8514,7 @@ function setBlockWait(expId,blockId){
     if(v==null) return;
     var m=_parseWait(v);
     undoMark('Wait after a step',['experiments.'+f.exp.id]);
-    if(!(m>0)) delete b.waitMin; else b.waitMin=m;
+    if(!(m>0)){ delete b.waitMin; delete b.waitOwn; } else { b.waitMin=m; b.waitOwn=1; }
     f.exp.updated=Date.now(); save(); renderAll();
   });
 }
@@ -9317,7 +9336,7 @@ function pubSentence(b,e){
   // A curated preset can state its own Methods sentence. It is the one place the past-tense,
   // no-rationale version of a prose-only step can live, and it beats everything else: the bench
   // text is written to be followed, not to be published.
-  if(b.pub && String(b.pub).trim()) return String(b.pub).trim();
+  if(b.pub && String(b.pub).trim()) return fillCalcText(String(b.pub).trim(),b,e);
   // A reference stage — how to read a PAE plot, which PyMOL selections are useful — is not a
   // step anybody performed. It belongs on the bench page and nowhere in a Methods section.
   if(b.noPub) return '';
@@ -9361,7 +9380,7 @@ function pubOpts(e){ var o=(e&&e.pubOpts)||{}, out={};
 function _pubSourceSig(e){
   try{
     return JSON.stringify([e.setup||null, (e.protocols||[]).map(function(p){return p.id;}),
-      (e.blocks||[]).map(function(b){ return [b.pub||'', b.noPub?1:0, b.html||'',
+      (e.blocks||[]).map(function(b){ return [b.pub||'', b.noPub?1:0, b.html||'', b.date||'', blkWait(e,b).min,
         (b.calc&&b.calc.inputs)||null, b.plate?plateSummaryText(b.plate):'']; }),
       e.plate?plateSummaryText(e.plate):'',
       // The outcome can be in the paragraph, so changing it has to be able to make the
@@ -9369,7 +9388,27 @@ function _pubSourceSig(e){
       (e.outcome&&e.outcome.verdict)?[e.outcome.verdict,e.outcome.text||'']:null]);
   }catch(_e){ return ''; }
 }
-function pubIsStale(e){ return !!(e && e.pubReady && e.pubSrcSig && e.pubSrcSig!==_pubSourceSig(e)); }
+function pubIsStale(e){ return !!(e && e.pubEdited && e.pubReady && e.pubSrcSig && e.pubSrcSig!==_pubSourceSig(e)); }
+// The paragraph is built from the experiment every time it is read — Jon (2026-09-17):
+// "publication ready sigue sin coger los datos live… todo tiene que estar sync". It becomes a
+// stored text only when someone writes in it (pubEdited); then their wording is kept, the
+// stale banner says when the steps have moved on, and "Back to live" hands it back.
+function pubText(e){ if(!e) return ''; return (e.pubEdited && e.pubReady) ? e.pubReady : buildPubReadyFromExp(e); }
+function pubEdit(id,html){ var e=LB.data.experiments[id]; if(!e) return;
+  if(!e.pubEdited){ e.pubEdited=true; e.pubSrcSig=_pubSourceSig(e); }
+  e.pubReady=_persistImgHtml(html); e.updated=Date.now(); queueSave(); }
+function pubBackToLive(id){ var e=LB.data.experiments[id]; if(!e) return;
+  lbConfirm('Go back to the paragraph built live from the steps, calculators and plate? Your wording is replaced (⌘Z brings it back).',{title:'Back to the live text',ok:'Back to live'}).then(function(ok){ if(!ok) return;
+    undoMark('Back to the live Methods text',['experiments.'+e.id]);
+    e.pubEdited=false; delete e.pubSrcSig; e.updated=Date.now(); save(); renderEditor(); }); }
+// Experiments from before the live paragraph: one whose stored text is what the build gives
+// today, or whose source has moved since it was built, is live; one whose source is unchanged
+// but whose text differs was written in by hand and is kept as such.
+function _pubMigrate(){ var n=0; Object.keys((LB.data&&LB.data.experiments)||{}).forEach(function(k){ var e=LB.data.experiments[k];
+  if(!e||e.pubEdited!=null) return;
+  var edited=false;
+  try{ if(e.pubReady && e.pubSrcSig && e.pubSrcSig===_pubSourceSig(e) && _plain(e.pubReady)!==_plain(buildPubReadyFromExp(e))) edited=true; }catch(_e){}
+  e.pubEdited=edited; n++; }); return n; }
 function buildPubReadyFromExp(e){
   var o=pubOpts(e), out=[];
   function H(t){ out.push('<h4 class="pub-h">'+esc(t)+'</h4>'); }
@@ -9400,19 +9439,18 @@ function buildPubReadyFromExp(e){
     if(oc && (oc.text||'').trim()){ H('Outcome'); P(esc(oc.text.trim())); } }
   var sw=analysisSoftware();
   if(sw && out.join(' ').indexOf(esc(sw))<0) P('Data were analysed in '+esc(sw)+'.');
-  try{ e.pubSrcSig=_pubSourceSig(e); }catch(_e){}
   return out.length?out.join(''):'<p></p>';
 }
 function pubToggle(id,k){
   var e=LB.data.experiments[id]; if(!e) return;
   var o=pubOpts(e); o[k]=!o[k]; e.pubOpts=o;
-  e.pubReady=buildPubReadyFromExp(e); e.updated=Date.now(); save(); renderEditor();
+  e.pubEdited=false; delete e.pubSrcSig; e.updated=Date.now(); save(); renderEditor();
 }
-function rebuildPub(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Rebuild the publication-ready text from this experiment’s steps and calculators? Your current edits will be replaced.',{title:'Rebuild publication text'}).then(function(ok){ if(!ok) return; undoMark('Rebuild Methods text',['experiments.'+e.id]); e.pubReady=buildPubReadyFromExp(e); e.updated=Date.now(); save(); renderEditor(); }); }
+function rebuildPub(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Rebuild the publication-ready text from this experiment’s steps and calculators? Your current edits will be replaced.',{title:'Rebuild publication text'}).then(function(ok){ if(!ok) return; undoMark('Rebuild Methods text',['experiments.'+e.id]); e.pubEdited=false; delete e.pubSrcSig; e.updated=Date.now(); save(); renderEditor(); }); }
 // Copy helpers
 function _copyFallback(str){ try{ var ta=document.createElement('textarea'); ta.value=str; ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied'); }catch(e){ toast('Copy failed'); } }
 function lbCopyText(str){ try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(str).then(function(){toast('Copied');},function(){_copyFallback(str);}); return; } }catch(e){} _copyFallback(str); }
-function copyPubReady(id){ var e=LB.data.experiments[id]; if(!e) return; var t=document.createElement('div'); t.innerHTML=e.pubReady||''; lbCopyText((t.textContent||'').replace(/\s+/g,' ').trim()); }
+function copyPubReady(id){ var e=LB.data.experiments[id]; if(!e) return; var t=document.createElement('div'); t.innerHTML=pubText(e); lbCopyText((t.textContent||'').replace(/\s+/g,' ').trim()); }
 // New-experiment source-protocol picker state
 var NM_PROTOS=[];
 // Setup answers for the experiment being created (reset whenever the preset changes).
@@ -9643,7 +9681,9 @@ function createExperiment(){ if(!NM_TARGET) return;
   var code=_applyPrefix((el('nm-code').value||'').trim(), _pr?projPrefix(_pr):'');
   var protos=NM_PROTOS.slice();
   // Instantiate the preset's own blocks (day structure + live calculators + text).
-  var blocks=(tpl.blocks||[]).map(function(b){ var o={id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html, done:false, completedAt:null}; if(b.pub) o.pub=b.pub; if(b.waitMin) o.waitMin=b.waitMin; if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; });
+  var blocks=(tpl.blocks||[]).map(function(b,i,arr){ var o={id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html, done:false, completedAt:null}; if(b.pub) o.pub=b.pub;
+    if(b.waitMin){ o.waitMin=b.waitMin; var nx=arr[i+1]; o.waitSameDay=!!(nx && (+nx.dayOffset||0)===(+b.dayOffset||0)); }
+    if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; });
   // Rewrite the instantiated blocks with the setup answers before anything else sees them.
   var setup=JSON.parse(JSON.stringify(NM_SETUP||{}));
   blocks=applySetupToBlocks(type,setup,blocks);
@@ -9686,7 +9726,7 @@ function createExperiment(){ if(!NM_TARGET) return;
       // NanoBRET can draw its own from the conditions the setup already describes.
       e.plate = L ? L.build(setup) : (nbPlateForExp(e) || newPlate(setup.format||'96'));
     }
-    e.pubReady=buildPubReadyFromExp(e);
+    e.pubReady=buildPubReadyFromExp(e); e.pubEdited=false;   // live from the start
     LB.data.experiments[e.id]=e; save(); closeNew();
     // Navigate now, not when the modal opened: Cancel leaves you where you were.
     selectNode('expsec',_pid,_sid); SEL.page=e.id; EXP_TAB='steps'; renderAll();
@@ -11996,7 +12036,7 @@ function repeatExperiment(id){
     c.repGroup=e.repGroup;
     c.repIndex=(repSiblings(e).reduce(function(m,x){ return Math.max(m,x.repIndex||1); },1))+1;
     c.status='planned'; c.startDate=start;
-    c.pubReady=e.pubReady;
+    c.pubReady=e.pubReady; c.pubEdited=false; delete c.pubSrcSig;   // a replicate's paragraph is live
     // What belongs to the run that happened stays with it: its verdict, its results, its
     // files and its observations are not this replicate's. Steps, params and step notes are.
     _freshRecord(c);
@@ -12242,13 +12282,14 @@ function renderExpEditor(host,e){
     }).join('');
     body='<div class="exp-pub-bar"><span class="exp-pub-lbl">Publication-ready methods</span>'
       +'<span class="pub-secs">'+_toggles+'</span><span class="grow"></span>'
-      +'<button class="pub-btn" onclick="rebuildPub(\''+e.id+'\')" title="Regenerate the prose from this experiment\'s steps + calculators">'+tbIco(P_REFRESH,13)+' Rebuild</button>'
+      +(e.pubEdited?('<button class="pub-btn" onclick="pubBackToLive(\''+e.id+'\')" title="Drop your wording and build the paragraph from the steps, calculators and plate again — and keep it following them">'+tbIco(P_REFRESH,13)+' Back to live</button>')
+                    :('<span class="pub-live" title="Built from the steps, the calculators, the waits and the plate every time you open it. Write in it and your wording is kept instead.">live</span>'))
       +'<button class="pub-btn" onclick="exportMethods(\''+e.id+'\')" title="The paragraph, the plate layout and the numbers — on their own, to send or to paste into a manuscript">'+tbIco(P_FILE,13)+' Methods sheet</button>'
       +'<button class="pub-btn primary" onclick="copyPubReady(\''+e.id+'\')">Copy</button></div>'
-      +(pubIsStale(e)?('<div class="pub-stale">The steps or their numbers have changed since this paragraph was written. '
-        +'<button onclick="rebuildPub(\''+e.id+'\')">Rebuild it</button> &mdash; or leave it, if the wording is yours.</div>'):'')
+      +(pubIsStale(e)?('<div class="pub-stale">This is your wording, and the steps or their numbers have changed since you wrote it. '
+        +'<button onclick="pubBackToLive(\''+e.id+'\')">Back to the live text</button> &mdash; or leave it.</div>'):'')
       +(srcChips?'<div class="exp-pub-src">Sources: '+srcChips+'</div>':'')
-      +'<div class="rt exp-pub" contenteditable="true" data-ctx="pub:'+e.id+'" data-ph="Write the methods paragraph here…" oninput="setField(\'pubReady\',this.innerHTML)" onfocus="_activeEd=this">'+(e.pubReady||'')+'</div>';
+      +'<div class="rt exp-pub" contenteditable="true" data-ctx="pub:'+e.id+'" data-ph="Write the methods paragraph here…" oninput="pubEdit(\''+e.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+pubText(e)+'</div>';
   }
   host.innerHTML='<div class="ed-wrap">'+header+tabs+'<div class="exp-tab-body">'+body+'</div></div>';
   hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); wireFileDrop(host); renderDockPanels();
@@ -15112,7 +15153,7 @@ function spotContent(){
         outcomeDef(e.outcome.verdict).lbl+' '+(e.outcome.text||''),
         function(){ openExp(e.id); EXP_TAB='res'; renderEditor(); });
     add(name+' · observations','observations','exp','E',pc,_plain(e.html||''),function(){ openExp(e.id); });
-    add(name+' · methods','publication-ready','exp','M',pc,_plain(e.pubReady||''),
+    add(name+' · methods','publication-ready','exp','M',pc,_plain(pubText(e)),
         function(){ openExp(e.id); EXP_TAB='pub'; renderEditor(); });
     (e.files||[]).forEach(function(f){
       add(f.name||'file', name+' · file', 'file','F',pc, (f.name||'')+' '+(f.caption||''),
@@ -15796,7 +15837,7 @@ function _pdExpHtml(e,o){ o=o||pdfOpts(); var h='';
   var pl=(o.plate&&e.plate)?pdPlate(e.plate,o):'';
   var expPlate=pl?('<div class="pd-sec-hd">Plate layout</div>'+pl):'';
   var steps=expPlate+((o.steps&&e.blocks&&e.blocks.length)?('<div class="pd-sec-hd">Protocol — step by step</div>'+printExpByDay(e,o)):'');
-  var pub=(o.methods&&e.pubReady&&e.pubReady.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Publication ready</div><div class="pd-pub">'+e.pubReady+'</div>'):'';
+  var _pt=pubText(e); var pub=(o.methods&&_pt&&_pt.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Publication ready</div><div class="pd-pub">'+_ptdy+'</div>'):'';
   // The exported record used to omit both the measured data and how the run departed from the
   // protocol — the two things a reviewer, or you in a year, actually asks for.
   return _pdPost(h+obs+steps+(o.results?pdResults(e):'')+(o.deviations?pdDeviations(e):'')+pub+(o.files?pdFiles(e.files):''), o);
@@ -16560,7 +16601,7 @@ function buildMethodsDoc(e){
     +(e.code?('<div class="pd-code">'+esc(e.code)+'</div>'):'')
     +'<div class="pd-title">'+esc(e.title||e.code||'Experiment')+'</div>'
     +'<div class="pd-crumb">'+esc(projCrumb(e))+(e.startDate?(' · '+esc(fmtDate(e.startDate))):'')+'</div></div>';
-  var body=(e.pubReady&&e.pubReady.replace(/<[^>]+>/g,'').trim())?e.pubReady:buildPubReadyFromExp(e);
+  var body=pubText(e);
   h+='<div class="pd-body">'+body+'</div>';
   if(e.plate) h+='<div class="pd-sec-hd">Plate layout</div>'+pdPlate(e.plate);
   (e.blocks||[]).forEach(function(b){ if(b.plate) h+=pdPlate(b.plate); });
