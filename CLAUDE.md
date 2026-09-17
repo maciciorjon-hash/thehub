@@ -4480,6 +4480,21 @@ compound — which is how a hand-drawn plate gets its numbers. `plateSummary` no
 the label and the compound when they are the same name, nor "gradient · 3 levels" once the
 concentrations are on the wells.
 
+**"Dispense 10.2 µL per well" was a number no tube held.** `CALC_VALUES.nbtx.dispense` was
+Opti-MEM + FuGENE + the DNA *at 1000 ng/µL*; the table's own arithmetic puts 7.49 µL of a
+100 ng/µL donor into 936 µL, so the pair mix is 11.1 µL a well and the mock 10.3. `_nbtxPerWell`
+is that arithmetic per condition; the table has a **Per well** column, the step says *"each mix
+at its per-well volume (10.3–11.1 µL, the last column of the table)"*, and the recipe note no
+longer says "dispense 10 µL".
+
+**The selection bubble had two native `<select>`s.** Focusing one fired `mouseup` → `positionBubble`
+→ `innerHTML` rebuilt the bubble under the open list, which vanished. The font, the size and the
+colours are now lists drawn *inside* the bubble (`BUB.menu`), every control prevents its
+mousedown so the selection never moves, and the bubble is redrawn only when the selection
+signature changes (`_bubSelSig`) or a control asks for it — never on a click inside itself. The
+pills name the font and size the selection is set in (`_bubCur`); the last colour picked is what
+the A and the highlighter paint. 28px controls, one sans, no serif letters.
+
 **A rebuilt plate could not be taken back** (Jon, same afternoon): `rebuildNbPlate`, the
 *Start from a layout…* apply and `rebuildPub` had no `undoMark`. They do.
 
