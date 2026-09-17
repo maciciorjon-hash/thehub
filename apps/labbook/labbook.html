@@ -1631,6 +1631,7 @@ body.lb-lean .exh.open .exh-lean>span{display:none;}
 .bench-hd .blk-wait{padding:0 10px;}
 .bench-row.blk-drop-before{box-shadow:inset 0 2px 0 var(--accent);}
 .bench-row.blk-drop-after{box-shadow:inset 0 -2px 0 var(--accent);}
+.blk-wait.implied{color:var(--text2);font-weight:500;}
 .bench-group.drop{outline:2px dashed var(--accent);outline-offset:2px;border-radius:var(--r-2);}
 .bench-group.drop .bench-day{background:var(--accent-dim);}
 /* The calculator under the step: the recipe first, the inputs folded under a button. */
@@ -8422,11 +8423,42 @@ function _waitTxt(m){ m=Math.round(+m||0); if(m<=0) return '';
   if(m<60) return m+' min';
   var h=Math.floor(m/60), r=m%60; return h+' h'+(r?(' '+r+' min'):''); }
 function _clock(ms){ try{ return new Date(ms).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+// "16 h", "1.5h", "1 h 30", "90", "90 min", "overnight" → minutes. A bare number is minutes, as
+// the field always was; hours need the letter. "o/n" / "overnight" is the lab's 16 h.
+var OVERNIGHT_MIN=16*60;
+function _parseWait(v){ var t=String(v==null?'':v).trim().toLowerCase().replace(',','.');
+  if(!t) return 0;
+  if(/^o\/?n$|^overnight$/.test(t)) return OVERNIGHT_MIN;
+  var m=0, any=false;
+  t.replace(/(\d+(?:\.\d+)?)\s*(h(?:ours?|rs?)?|min(?:s|utes?)?|m)?\b/g,function(_,n,u){ any=true; n=parseFloat(n);
+    if(u&&u.charAt(0)==='h') m+=n*60; else m+=n; return ''; });
+  return any?Math.round(m):0; }
+// The wait after a step: the one written on it, or — with nothing written and the experiment's
+// next step dated tomorrow — the overnight incubation that gap implies. Jon (2026-09-17): "si
+// añado compuestos un día y la lectura es el día siguiente, se da por hecho que es overnight
+// (16 h)". It is derived, never stored: writing 16 h onto every such step would make a typed
+// value and an assumed one look the same, and a step moved to another day would keep it.
+function blkWait(e,b){
+  var m=+b.waitMin||0, out={min:m, implied:false};
+  if(!e||!b.date) return out;
+  var gs=dayGroups(e), gi=-1; gs.forEach(function(g,i){ if(g.key===b.date) gi=i; });
+  if(gi<0) return out;
+  var g=gs[gi]; if(g.blocks[g.blocks.length-1]!==b) return out;
+  var nx=gs[gi+1]; if(!nx||!nx.key) return out;
+  out.next=nx.blocks[0];   // the step this wait bridges to, on the next day
+  if(!m && daysBetween(b.date,nx.key)===1){ out.min=OVERNIGHT_MIN; out.implied=true; }
+  return out;
+}
+// A wait on the last step of a day whose next step is on a later day bridges to that day: it
+// belongs on the chip and in the timer, not in the day's clock.
+function _waitBridges(e,b){ if(!e||!b.date) return false;
+  var gs=dayGroups(e), gi=-1; gs.forEach(function(g,i){ if(g.key===b.date) gi=i; });
+  if(gi<0) return false; var g=gs[gi]; return g.blocks[g.blocks.length-1]===b && !!gs[gi+1]; }
 // One day of one experiment, in order, with the offset of each step from the day's start.
 function dayPlan(e,key){
   var bs=(e.blocks||[]).filter(function(b){ return b.date===key; });
   if(!bs.length) return null;
-  var t=0, rows=bs.map(function(b){ var r={b:b, offMin:t}; t+=Math.max(0,+b.waitMin||0); return r; });
+  var t=0, rows=bs.map(function(b){ var r={b:b, offMin:t}; if(!_waitBridges(e,b)) t+=Math.max(0,+b.waitMin||0); return r; });
   // Anchor on the first step actually completed today; failing that, on now if it is today.
   var anchor=null;
   rows.forEach(function(r){ if(anchor===null && r.b.completedAt) anchor=r.b.completedAt-r.offMin*60000; });
@@ -8446,21 +8478,23 @@ function dayPlanLine(e,key){
 }
 // The wait after this step, shown on the step and editable there.
 function blkWaitHtml(b,expId){
-  var m=+b.waitMin||0;
+  var e=expId?LB.data.experiments[expId]:null, w=blkWait(e,b), m=w.min;
   if(!m) return expId?('<button class="blk-wait add" title="How long after this step before the next one?" onclick="setBlockWait(\''+expId+'\',\''+b.id+'\')">+ wait</button>'):'';
   var due=null;
   if(b.completedAt) due=b.completedAt+m*60000;
-  return '<button class="blk-wait'+(due?' live':'')+'" title="Wait after this step — click to change"'
-    +' onclick="setBlockWait(\''+esc(expId||'')+'\',\''+b.id+'\')">'+esc(_waitTxt(m))
+  return '<button class="blk-wait'+(due?' live':'')+(w.implied?' implied':'')+'" title="'+(w.implied?'The next step is tomorrow, so this is an overnight incubation — 16 h unless you set it. Click to change':'Wait after this step — click to change')+'"'
+    +' onclick="setBlockWait(\''+esc(expId||'')+'\',\''+b.id+'\')">'+esc(_waitTxt(m))+(w.implied?' · overnight':'')
     +(due?(' · next '+esc(_clock(due))):'')+'</button>'
     +(due?('<button class="blk-wait timer" title="Count this wait down" onclick="startWaitTimer(\''+esc(expId||'')+'\',\''+b.id+'\')">'+ICON_SNOOZE+'</button>'):'');
 }
 function setBlockWait(expId,blockId){
-  var f=blockFinder(expId,blockId); if(!f) return; var b=f.block;
-  lbPrompt('Minutes to wait after this step before the next one. Leave empty for none.',
-    (b.waitMin||''), {title:'Wait after "'+(b.title||'this step')+'"', ok:'Save'}).then(function(v){
+  var f=blockFinder(expId,blockId); if(!f) return; var b=f.block, w=blkWait(f.exp,b);
+  lbPrompt('How long after this step before the next one — 45 min, 3 h, 1 h 30, or "overnight" (16 h).'
+    +(w.implied?' The next step is tomorrow, so 16 h is assumed unless you say otherwise.':' Leave empty for none.'),
+    (w.min?_waitTxt(w.min):''), {title:'Wait after "'+(b.title||'this step')+'"', ok:'Save'}).then(function(v){
     if(v==null) return;
-    var m=parseInt(String(v).trim(),10);
+    var m=_parseWait(v);
+    undoMark('Wait after a step',['experiments.'+f.exp.id]);
     if(!(m>0)) delete b.waitMin; else b.waitMin=m;
     f.exp.updated=Date.now(); save(); renderAll();
   });
@@ -8468,7 +8502,7 @@ function setBlockWait(expId,blockId){
 // The timers already exist and already hold a wake lock; this just gives them the wait.
 function startWaitTimer(expId,blockId){
   var f=blockFinder(expId,blockId); if(!f) return; var b=f.block;
-  var m=+b.waitMin||0; if(!(m>0)) return;
+  var m=blkWait(f.exp,b).min; if(!(m>0)) return;
   var left=b.completedAt ? Math.max(0,(b.completedAt+m*60000)-Date.now()) : m*60000;
   if(left<=0){ toast('That wait is already over'); return; }
   LB_TIMERS.push({id:uid(), label:_waitTxt(m)+' after '+(b.title||'step'), sub:(f.exp.code||f.exp.title||''),
@@ -14616,7 +14650,7 @@ function ctxBlock(ev,id){ var e=_curExp();
     {label:'Move down',fn:function(){moveBlock(id,1);}},
     {sep:true},
     {label:(b&&b.done)?'Reopen step':'Mark step done',fn:function(){ if(e) toggleDone(e.id,id); }},
-    {label:(b&&+b.waitMin)?'Change the wait after this step':'Add a wait after this step',
+    {label:(b&&e&&blkWait(e,b).min)?'Change the wait after this step':'Add a wait after this step',
      fn:function(){ if(e) setBlockWait(e.id,id); }},
     {label:'Snooze 1 day',fn:function(){ if(e) snoozeBlock(e.id,id,1); }},
     {label:'Snooze 1 week',fn:function(){ if(e) snoozeBlock(e.id,id,7); }},
@@ -14910,7 +14944,7 @@ function tickStepAtCursor(){ var t=_stepAtCursor(); if(!t){ toast('No step under
   setBlockDone(t.expId,b.id,true); toast('Ticked: '+(b.title||'step')); }
 function startWaitAtCursor(){ var t=_stepAtCursor(); if(!t){ toast('No step under the cursor'); return; }
   var f=blockFinder(t.expId,t.blockId); if(!f) return;
-  if(+f.block.waitMin) startWaitTimer(t.expId,t.blockId); else setBlockWait(t.expId,t.blockId); }
+  if(blkWait(f.exp,f.block).min) startWaitTimer(t.expId,t.blockId); else setBlockWait(t.expId,t.blockId); }
 function _scMatch(sc,e){
   if(sc.native||sc.raw) return false;
   if(!(e.metaKey||e.ctrlKey) || e.altKey) return false;
@@ -16195,7 +16229,7 @@ function buildLabSheet(e){
   dayGroups(e).forEach(function(g){
     // Jon (2026-09-17): no start time on the sheet. The day says how many steps and how much
     // waiting it holds; the waits themselves sit between the steps they separate.
-    var waits=g.blocks.reduce(function(a,b){ return a+(+b.waitMin||0); },0);
+    var waits=g.blocks.reduce(function(a,b){ return a+(_waitBridges(e,b)?0:(+b.waitMin||0)); },0);
     var right=g.blocks.length+' step'+(g.blocks.length===1?'':'s')+(waits>0?(' · '+esc(_waitTxt(waits))+' of waits'):'');
     h+='<div class="lb-day"><div class="lb-daybar"><span class="lb-dayl">Day '+(g.day==null?'—':g.day)
       +(g.key?(' · '+esc(_dayShort(g.key))+' '+esc(fmtDate(g.key))):'')+(g.key&&_isWeekend(g.key)?'<span class="lb-wkend">weekend</span>':'')+'</span>'
@@ -16206,9 +16240,9 @@ function buildLabSheet(e){
       h+='<div class="lb-step"><div class="lb-sn"><span class="lb-no">'+no+'</span></div><div class="lb-sb">'
         +'<div class="lb-stt"><span class="lb-stept">'+esc(b.title||'Step')+'</span></div>'
         +_labBodyHtml(b,true,no)+_labCalcHtml(b)+_labPlateHtml(b.plate,'Plate map for this step')+'</div></div>';
-      var w=+b.waitMin||0;
-      if(w>0){ var nx=g.blocks[i+1];
-        h+='<div class="lb-wait">wait <b>'+esc(_waitTxt(w))+'</b>'+(nx?(' &rarr; '+esc(nx.title||'next step')):'')+'</div>'; }
+      var bw=blkWait(e,b), w=bw.min;
+      if(w>0){ var nx=g.blocks[i+1]||bw.next;
+        h+='<div class="lb-wait">'+(bw.implied?'overnight':'wait')+' <b>'+esc(_waitTxt(w))+'</b>'+(nx?(' &rarr; '+esc(nx.title||'next step')+(g.blocks[i+1]?'':(' ('+esc(_dayShort(nx.date))+' '+esc(fmtDate(nx.date))+')'))):'')+'</div>'; }
     });
     h+='</div>';
   });
