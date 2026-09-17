@@ -4459,6 +4459,27 @@ the recipe table they refer to, 9.5pt. **A recipe that is one sentence with no t
 step that already quotes its numbers, is dropped on both sheets** (`_recipeRedundant`); a
 table or a warning always prints. The page behind the print root is white under `@media print`.
 
+**And a setup changed after creation failed the proof too.** Jon's run had a second donor added
+in Edit setup, so the template filled with *today's* setup ("NL-DELE1(CTD), VHL-NL + HT-HRI")
+never equalled prose written from the setup of the day it was made. `_tplMatches` compares
+against the template with every `{{placeholder}}` as a wildcard: the words are the template's,
+the values in the gaps are the setup's, whichever setup that was. A block somebody typed into
+still fails (verified both ways).
+
+**The plate preview merged ten compound blocks into one "1".** `plateNumberBoxes` keyed on type,
+flags and the well's compound — and Jon's blocks were drawn by hand: the name on the *group
+label*, shading for the series, no concentration on the wells, so nothing separated them. A
+group is a block boundary now; a number box carries the group's label or compound under the
+number (`b.cap`: "1 · DMSO"); a **dose block** is a group with a concentration *or a shade* on
+any well (`_plateBlockIsDose`), outlined and captioned, and no number is drawn over it. Every
+figure on the map — numbers, concentrations, legend, editor wells, PNG — is sans, tabular
+(Jon: *"fuente sans legible"*). And **Concentrations onto the compound blocks** (plate ⋯ menu,
+`plFillDoseBlocks`) writes the setup's series left to right onto every shaded / named block,
+skipping the controls, the flagged wells and DMSO, and copies the label onto the wells as the
+compound — which is how a hand-drawn plate gets its numbers. `plateSummary` no longer prints
+the label and the compound when they are the same name, nor "gradient · 3 levels" once the
+concentrations are on the wells.
+
 **A rebuilt plate could not be taken back** (Jon, same afternoon): `rebuildNbPlate`, the
 *Start from a layout…* apply and `rebuildPub` had no `undoMark`. They do.
 
