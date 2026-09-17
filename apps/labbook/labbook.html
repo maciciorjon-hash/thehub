@@ -3434,7 +3434,7 @@ var CALC_KINDS={
     defaults:{donorName:'NanoLuc construct',acceptorName:'HaloTag construct',acceptorNg:80,ratio:50,
       donorStock:100,acceptorStock:100,carrierStock:1000,fugeneRatio:3,optimemPerWell:10,
       nPair:24,nDonor:8,nAcceptor:8,nMock:8,ctrlMode:'same amount as in the pair',excess:1.1},
-    compute:function(v,ctx){ return nbtxRecipe(v, ctx&&ctx.tidCounts); } },
+    compute:function(v,ctx){ return nbtxRecipe(v, ctx&&ctx.tidCounts, ctx&&ctx.tidNos); } },
   // The ligand goes into the cell suspension, not into each well: 2.6 µL pipetted once is a
   // concentration every + well shares, and 26 nL pipetted 32 times is not.
   nbsusp:{ label:'Cell suspension ± HaloTag ligand', fields:[
@@ -3559,7 +3559,7 @@ var CALC_VALUES={
 function calcValuesOf(b,e){ if(!b||!b.calc||!CALC_VALUES[b.calc.kind]) return null;
   var C=CALC_KINDS[b.calc.kind]; var v=Object.assign({}, C?C.defaults:{}, b.calc.inputs||{});
   if(e===undefined) e=_expOfBlock(b);
-  try{ return CALC_VALUES[b.calc.kind](v, {exp:e, block:b, tidCounts:(e?plateTidCounts(e):null)}); }catch(err){ return null; } }
+  try{ return CALC_VALUES[b.calc.kind](v, {exp:e, block:b, tidCounts:(e?plateTidCounts(e):null), tidNos:(e?plateTidNos(e):null)}); }catch(err){ return null; } }
 // {{c.key}} → a value from the step's own calculator, drawn as a span that cannot be edited.
 function fillCalc(html,b,e){ if(!html||html.indexOf('{{c.')<0) return html||'';
   var vals=calcValuesOf(b,e)||{};
@@ -3606,7 +3606,7 @@ function _nbtxConditions(v,counts){
   // condition of their own. Which ratio they were made at is a decision, not a derivation.
   var cR=+v.ctrlRatio||ratios[0], nCtrl=+v.nPairCtrl||0;
   var out=[];
-  ratios.forEach(function(R){
+  ratios.forEach(function(R,ri){
     var dNg=R?(aNg/R):0, ng=dNg+aNg;
     donors.forEach(function(D,di){
       var rt=(ratios.length>1)?('@'+R):'';
@@ -3614,10 +3614,12 @@ function _nbtxConditions(v,counts){
         var extra=(nCtrl&&R===cR)?nCtrl:0;
         // tid is what the plate paints with: a condition and a well type are the same thing, and
         // two ratios of the same pair are two conditions, so the ratio belongs in the id.
-        out.push({key:'pair', tid:'p:'+D+'+'+A+rt, name:D+' + '+A+tag(R), n:(+v.nPair||0)+extra,
+        // slot is the condition's place in the design — which donor, acceptor and ratio by
+        // position — and survives a rename, which the tid (built from the names) does not.
+        out.push({key:'pair', tid:'p:'+D+'+'+A+rt, slot:'pair:'+ri+':'+di+':'+ai, name:D+' + '+A+tag(R), n:(+v.nPair||0)+extra,
                   d:dNg, a:aNg, dStock:dStock(di), aStock:P.aStock(ai), ng:ng});
       });
-      out.push({key:'donor', tid:'d:'+D+rt, name:D+' only'+tag(R), n:+v.nDonor||0,
+      out.push({key:'donor', tid:'d:'+D+rt, slot:'donor:'+ri+':'+di, name:D+' only'+tag(R), n:+v.nDonor||0,
                 d:(full?ng:dNg), a:0, dStock:dStock(di), aStock:P.aStock(0), ng:ng});
     });
   });
@@ -3626,11 +3628,11 @@ function _nbtxConditions(v,counts){
   // identical rows and have someone make the same tube twice.
   var ngMax=Math.max.apply(null, ratios.map(function(R){ return aNg+(R?aNg/R:0); }));
   accs.forEach(function(A,ai){
-    out.push({key:'acc', tid:'a:'+A, name:A+' only', n:+v.nAcceptor||0, a:(full?ngMax:aNg), d:0,
+    out.push({key:'acc', tid:'a:'+A, slot:'acc:'+ai, name:A+' only', n:+v.nAcceptor||0, a:(full?ngMax:aNg), d:0,
               dStock:dStock(0), aStock:P.aStock(ai), ng:ngMax}); });
-  out.push({key:'mock', tid:'mock', name:'Mock (carrier only)', n:+v.nMock||0, d:0, a:0,
+  out.push({key:'mock', tid:'mock', slot:'mock', name:'Mock (carrier only)', n:+v.nMock||0, d:0, a:0,
             dStock:dStock(0), aStock:P.aStock(0), ng:ngMax});
-  if(+v.nUntr>0||(counts&&counts.untr>0)) out.push({key:'untr', tid:'untr', name:'Untransfected', n:+v.nUntr||0, d:0, a:0,
+  if(+v.nUntr>0||(counts&&counts.untr>0)) out.push({key:'untr', tid:'untr', slot:'untr', name:'Untransfected', n:+v.nUntr||0, d:0, a:0,
             dStock:dStock(0), aStock:P.aStock(0), ng:ngMax, noMix:true});
   // The plate overrides the count of any condition it actually contains, and only those: a map
   // is often half-drawn, and a condition missing from it is not a condition you have decided
@@ -3691,8 +3693,17 @@ function _dnaVol(ng, stock, minUL){
 // Opti-MEM per well and added the DNA and the FuGENE on top, so the pair mix was 11.1 µL a well
 // and the mock 10.3 — a different volume from each tube, and none of them the 10 on the sheet.
 function _nbtxDispenseTxt(v){ return nfmt(+v.optimemPerWell||0)+' µL'; }
-function nbtxRecipe(v,counts){
+function nbtxRecipe(v,counts,nos){
   var cs=_nbtxConditions(v,counts);
+  // The row numbers are the plate's where the plate has them, so the number on a well and the
+  // number beside its mix are one number — a condition added later keeps the number the palette
+  // gave it rather than shifting every row below it.
+  if(nos && cs.some(function(c){ return nos[c.tid]; })){
+    cs.forEach(function(c,i){ c.no=nos[c.tid]||null; c._i=i; });
+    cs.sort(function(a,b){ return (a.no||99)-(b.no||99) || (a._i-b._i); });
+    var nxt=cs.reduce(function(m,c){ return Math.max(m,c.no||0); },0);
+    cs.forEach(function(c){ if(!c.no) c.no=++nxt; });
+  } else cs.forEach(function(c,i){ c.no=i+1; });
   var fromPlate=cs.filter(function(c){ return c.fromPlate; }).length;
   if(!cs.length) return '<b>Reverse transfection</b> — set how many wells each condition needs.';
   var ex=+v.excess||1, dS=+v.donorStock||0, aS=+v.acceptorStock||0, cS=+v.carrierStock||0;
@@ -3729,11 +3740,11 @@ function nbtxRecipe(v,counts){
         +(aV&&aV.dil?(' · dilute 1:'+aV.dil+' → '+nfmt(aV.ul*aV.dil)+' µL'):'')+'</span>';
       return '<span class="cc-dim">—</span>';
     }
-    if(c.noMix) return '<tr><td class="cc-no">'+(ci+1)+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'
+    if(c.noMix) return '<tr><td class="cc-no">'+c.no+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'
       +c.n+' well'+(c.n===1?'':'s')+(c.fromPlate?' <span class="cc-plate">from the plate</span>':'')+' — no complex</span></td>'
       +cols.map(function(){ return '<td><span class="cc-dim">—</span></td>'; }).join('')
       +'<td><span class="cc-dim">—</span></td><td><span class="cc-dim">—</span></td><td><span class="cc-dim">—</span></td></tr>';
-    return '<tr><td class="cc-no">'+(ci+1)+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'+c.n+' well'+(c.n===1?'':'s')
+    return '<tr><td class="cc-no">'+c.no+'</td><td><b>'+esc(c.name)+'</b><br><span class="cc-dim">'+c.n+' well'+(c.n===1?'':'s')
       +(c.fromPlate?' <span class="cc-plate">from the plate</span>':'')+' × '+nfmt(ex)+' overage</span></td>'
       +cols.map(function(n){ return '<td>'+cell(n)+'</td>'; }).join('')
       +'<td>'+nfmt(fu)+' µL</td><td>'+(om<0?('<span class="cc-warn-in">short by '+nfmt(-om)+' µL</span>'):(nfmt(om)+' µL'))+'</td><td><b>'+nfmt(tot)+' µL</b><br><span class="cc-dim">'+nfmt(+v.optimemPerWell||0)+' µL × '+nfmt(W)+'</span></td></tr>';
@@ -3923,7 +3934,7 @@ function expCalcRecipe(b,e){ if(!b||!b.calc) return '';
   if(b.calc.kind==='archive') return archiveComputeRecipe(b);
   var C=CALC_KINDS[b.calc.kind]; if(!C) return '';
   if(e===undefined) e=_expOfBlock(b);
-  var ctx={exp:e, block:b, tidCounts:(e?plateTidCounts(e):null)};
+  var ctx={exp:e, block:b, tidCounts:(e?plateTidCounts(e):null), tidNos:(e?plateTidNos(e):null)};
   var h=''; try{ h=C.compute(b.calc.inputs||{}, ctx)||''; }catch(err){ return ''; }
   // The amounts are the recipe; the paragraph under them explaining the arithmetic is folded
   // behind "Why these numbers" on screen (Jon: too much text under every step) and is a box in
@@ -4424,15 +4435,42 @@ function _nbCalcInputs(e){
 function nbNumberPlate(e){
   if(!e||e.type!=='NB'||!e.plate) return false;
   var I=_nbCalcInputs(e); if(!I) return false;
-  var order={}, i=0, conds=_nbtxConditions(I);
-  conds.forEach(function(c){ order[c.tid]=++i; });
+  var order={}, i=0, conds=_nbtxConditions(I), bySlot={};
+  conds.forEach(function(c){ order[c.tid]=++i; bySlot[c.slot]=c; });
   var changed=false;
   var have={};
   (e.plate.types||[]).forEach(function(t){
     if(t.id==='blank') return;
     have[t.id]=t;
     if(t.no==null && order[t.id]){ t.no=order[t.id]; changed=true; }
+    if(order[t.id]){ var c0=conds[order[t.id]-1]; if(t.slot!==c0.slot){ t.slot=c0.slot; changed=true; } }
   });
+  // A renamed plasmid or ratio is the same condition with a new tid. Jon (2026-09-17): "si
+  // quiero cambiar un plásmido concreto debería poder cambiar solo eso sin rehacer el mapa."
+  // So a numbered type the conditions no longer contain is matched to the condition that took
+  // its place in the design — by slot where the type has one, else by kind in number order —
+  // and the wells painted with it follow: same wells, same number, new name. Nothing is
+  // redrawn.
+  var stale=(e.plate.types||[]).filter(function(t){ return t.id!=='blank' && t.no!=null && !order[t.id]; })
+    .sort(function(a,b){ return (a.no||99)-(b.no||99); });
+  var fresh=conds.filter(function(c){ return !have[c.tid]; });
+  if(stale.length && fresh.length){
+    var taken={};
+    function kind(id){ return /^(p|d|a):/.test(id)?id.charAt(0):id; }
+    function kindOf(c){ return {pair:'p',donor:'d',acc:'a'}[c.key]||c.key; }
+    stale.forEach(function(t){
+      var c=null;
+      if(t.slot && bySlot[t.slot] && !have[bySlot[t.slot].tid] && !taken[bySlot[t.slot].tid]) c=bySlot[t.slot];
+      if(!c) c=fresh.filter(function(x){ return !taken[x.tid] && kindOf(x)===kind(t.id); })[0];
+      if(!c) return;
+      taken[c.tid]=1;
+      var old=t.id, oldName=t.name;
+      t.id=c.tid; t.name=c.name; t.slot=c.slot; have[c.tid]=t; delete have[old];
+      Object.keys(e.plate.wells||{}).forEach(function(k){ var w=e.plate.wells[k]; if(w&&w.typeId===old) w.typeId=c.tid; });
+      Object.keys(e.plate.groups||{}).forEach(function(g){ var gr=e.plate.groups[g]; if(gr&&gr.label===oldName) gr.label=c.name; });
+      changed=true;
+    });
+  }
   // The calculator's half of the join: add a condition the palette does not have yet, so a donor
   // or a ratio added after the map was drawn is something you can immediately paint with. It is
   // only ever additive — a type is never removed and a number never reassigned, because wells
@@ -4450,7 +4488,7 @@ function nbNumberPlate(e){
     if(t){ if(t.name!==c.name){ t.name=c.name; changed=true; } return; }
     var no=order[c.tid]; while(used[no]) no++;
     used[no]=1;
-    e.plate.types.push({id:c.tid, name:c.name, no:no,
+    e.plate.types.push({id:c.tid, name:c.name, no:no, slot:c.slot,
       color:PLATE_TYPE_COLORS[(e.plate.types.length)%PLATE_TYPE_COLORS.length]});
     changed=true;
   });
@@ -5157,17 +5195,51 @@ function rebuildNbPlate(key){
     {title:'Nothing to draw from'}); return; }
   var cur=plateOf(key);
   var n=0; if(cur) Object.keys(cur.wells).forEach(function(w){ if(cur.wells[w].typeId!=='blank') n++; });
-  lbConfirm('The map is redrawn from the setup: '+Object.keys(np.groups||{}).length+' blocks, '
-    +Object.keys(np.wells).filter(function(w){ return np.wells[w].typeId!=='blank'; }).length+' wells used.'
-    +(n?(' It replaces the '+n+'-well map that is there now, including anything you typed into it — '
-      +'well notes and hand edits included.'):''),
-    {title:'Rebuild the plate from the setup?', ok:'Rebuild', danger:!!n}).then(function(go){
-      if(!go) return;
-      undoMark('Rebuild plate from the setup',['experiments.'+o.exp.id]);
-      o.obj.plate=np;
-      if(np._over) lbAlert(np._over+' well'+(np._over===1?'':'s')+' did not fit a '+np.format
-        +'-well plate and are not in this map.',{title:'Larger than the plate'});
+  var drawn=Object.keys(np.groups||{}).length+' blocks, '
+    +Object.keys(np.wells).filter(function(w){ return np.wells[w].typeId!=='blank'; }).length+' wells used';
+  function redraw(){
+    undoMark('Rebuild plate from the setup',['experiments.'+o.exp.id]);
+    o.obj.plate=np;
+    if(np._over) lbAlert(np._over+' well'+(np._over===1?'':'s')+' did not fit a '+np.format
+      +'-well plate and are not in this map.',{title:'Larger than the plate'});
+    o.exp.updated=Date.now(); save(); renderEditor();
+  }
+  // A map with nothing on it has nothing to keep.
+  if(!n || !cur){ redraw(); return; }
+  // Jon (2026-09-17): "rehace absolutamente todo, debería intentar mantener el diseño presente."
+  // A map someone has drawn is kept by default: the conditions are brought in line with the
+  // table — a renamed plasmid reaches the wells that carry it, a new condition joins the palette
+  // to be painted, one nobody uses any more goes — and every well stays where it is. Redrawing
+  // is the second answer, and says what it throws away.
+  var I=_nbCalcInputs(o.exp), conds=I?_nbtxConditions(I):[];
+  var have={}; (cur.types||[]).forEach(function(t){ have[t.id]=t; });
+  var inUse={}; Object.keys(cur.wells||{}).forEach(function(k){ var w=cur.wells[k]; if(w&&w.typeId) inUse[w.typeId]=1; });
+  var isCond=(cur.types||[]).some(function(t){ return t.no!=null; });
+  var ord={}; conds.forEach(function(c){ ord[c.tid]=1; });
+  var stale=(cur.types||[]).filter(function(t){ return t.id!=='blank' && t.no!=null && !ord[t.id]; }).length;
+  var fresh=conds.filter(function(c){ return !have[c.tid]; }).length;
+  var unplaced=conds.filter(function(c){ return !inUse[c.tid]; }).length;
+  var what=[];
+  if(stale&&fresh) what.push(Math.min(stale,fresh)+' condition'+(Math.min(stale,fresh)===1?'':'s')+' renamed on the wells that carry '+(Math.min(stale,fresh)===1?'it':'them'));
+  if(fresh>stale) what.push((fresh-stale)+' new in the palette, to paint');
+  if(stale>fresh) what.push((stale-fresh)+' no longer in the table');
+  var keepSub=isCond ? (what.length?what.join(' · '):('Already in line with the table'+(unplaced?(' — '+unplaced+' condition'+(unplaced===1?' has':'s have')+' no wells yet'):'')))
+                     : 'This map was not drawn from the conditions; only a redraw numbers it';
+  lbChoose('The table says '+drawn+'. The map has '+n+' wells painted'+(isCond?'':' from a layout of its own')+'.', {
+    title:'Bring the plate in line with the table',
+    answers:[
+      {id:'keep', label:'Keep the map, update the conditions', sub:keepSub, primary:isCond},
+      {id:'redraw', label:'Redraw from the setup', sub:'Replaces the '+n+'-well map, including anything you typed into it — well notes and hand edits included'},
+      {id:'leave', label:'Leave it', sub:'Nothing changes', safe:true}
+    ]}).then(function(a){
+      if(a==='redraw'){ redraw(); return; }
+      if(a!=='keep') return;
+      if(!isCond){ toast('Nothing to update on this map'); return; }
+      undoMark('Update the conditions on the plate',['experiments.'+o.exp.id]);
+      var ch=nbNumberPlate(o.exp);
+      if(!ch){ UNDO.stack.pop(); toast('Already in line with the table'); return; }
       o.exp.updated=Date.now(); save(); renderEditor();
+      toast('Conditions updated — every well kept');
     });
 }
 // Jon's SPARK plate (2026-09-17): the compound blocks were drawn and shaded by hand, so the
@@ -5344,6 +5416,13 @@ function plateOf(key){ var o=_plateOwner(key); return o?(o.obj.plate||null):null
 // on the plate it is a fact; typed into a box it is a number that has to be kept in step by
 // hand, which is how a transfection mix comes to be made for a quarter of the wells it is
 // dispensed into.
+// The number the palette gave each condition, by tid — what the mix table prints beside a row.
+function plateTidNos(e){
+  var p=e&&e.plate; if(!p||!p.types) return null;
+  var m={}, any=false;
+  p.types.forEach(function(t){ if(t.id!=='blank' && t.no!=null){ m[t.id]=t.no; any=true; } });
+  return any?m:null;
+}
 function plateTidCounts(e){
   var p=e&&e.plate; if(!p||!p.wells) return null;
   var c={}, any=false;
@@ -5818,7 +5897,8 @@ function platePreviewHtml(p,key,readonly){ if(!p) return '';
 //
 // A step stores the JSON of the *records* it touches, never the whole tree: LB.data is
 // megabytes and almost every action is one experiment.
-var UNDO={stack:[],redo:[],max:60,busy:false,last:0};
+var UNDO={stack:[],redo:[],max:60,busy:false,last:0,at:0,typedAt:0};
+document.addEventListener('input',function(e){ if(_upEditable(e.target)) UNDO.typedAt=Date.now(); },true);
 function _upGet(path){ var ks=String(path).split('.'), o=LB.data;
   for(var i=0;i<ks.length;i++){ if(o==null) return undefined; o=o[ks[i]]; } return o; }
 function _upSet(path,v){ var ks=String(path).split('.'), o=LB.data;
@@ -5836,7 +5916,7 @@ function undoMark(label,paths,coalesce){
   if(UNDO.busy) return;
   var top=UNDO.stack[UNDO.stack.length-1], now=Date.now();
   if(coalesce&&top&&top.label===label&&(now-UNDO.last)<1200){ UNDO.last=now; return; }
-  UNDO.last=now;
+  UNDO.last=now; UNDO.at=now;
   UNDO.stack.push({label:label,paths:paths,snap:_upSnap(paths)});
   if(UNDO.stack.length>UNDO.max) UNDO.stack.shift();
   UNDO.redo.length=0;
@@ -5865,7 +5945,11 @@ document.addEventListener('keydown',function(e){
   if(!(e.metaKey||e.ctrlKey)||e.altKey) return;
   var k=(e.key||'').toLowerCase();
   if(k!=='z'&&k!=='y') return;
-  if(_upEditable(e.target)) return;
+  // In a field the browser's own undo is right — unless the newest thing that happened is one of
+  // ours (a plate rebuilt, a step deleted) and the caret merely never left the field it was in
+  // before the click: Safari does not move focus to a button you press, so ⌘Z after Rebuild was
+  // going to the last thing typed instead of to the rebuild.
+  if(_upEditable(e.target) && !(UNDO.at && UNDO.at>UNDO.typedAt)) return;
   e.preventDefault();
   if(k==='y'||e.shiftKey) lbRedo(); else lbUndo();
 },true);
