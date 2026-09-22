@@ -1169,9 +1169,9 @@ and label, collapsing to 52px — `localStorage['hub_rail']`), the section you a
 the header (`#ws-where`), and Labbook's own dashboard as the home. `renderSuites()` is still
 the dispatcher; it toggles `body.ws` and everything follows from that class.
 
-*(Superseded 2026-09-14 — the rail is **Planner · Notebook** · Data Analysis · Archive · Cells ·
-More apps, and Labbook's own left column names the surface inside each workspace. See *Two
-workspaces, one file*.)*
+*(Superseded 2026-09-14, and again 2026-09-22 — the rail is **Planner · Journal · Visualize ·
+Designer** · Data Analysis · Archive · Cells · More apps, and Labbook's own left column names the
+surface inside each workspace. See *Two workspaces, one file* and *The Experiment Designer*.)*
 
 **The rail is categories only** — Home · Labbook · Data Analysis · Archive · Cells · More apps
 (`WS_NAV`). Labbook's own tree stays inside Labbook, one level down. `wsGo(id)` routes: the two
@@ -4918,7 +4918,19 @@ a module you can add but cannot find is not a module. The step palette gained al
 
 ### The Designer surface
 
-A Planner entry beside Experiments: every design as a card with its modules, days and
+A **fourth rail entry** in the shell (`WS_NAV`, `view:'designer'` → Labbook's `lb:go` →
+`selectNode('design')`) and a Planner entry in Labbook's own column. It is last of the four
+Labbook surfaces on purpose: you author a design occasionally and plan, record and analyse
+against it every day, so it must not push the daily three down. The phone's bottom bar
+(`WS_TABS`) is a separate list and stays at five tabs.
+
+**Pressing Planner must not land on the Designer.** `lb:go planner` restores the Planner's last
+node, and with the Designer now among them the rail would have said Planner while the screen
+said Designer — two buttons doing the same thing, one of them lying. It skips `design`; boot
+still restores it, because there the rail is not making a claim about which of the two you asked
+for.
+
+Every design as a card with its modules, days and
 calculators, and *Use it · Edit · Duplicate · Delete*. Built-ins are marked and cannot be
 deleted — the shipped version has to stay reachable for a refresh. Section 2B of the brief is
 a new lab setting up its four or five routine experiments once; this is where that happens.

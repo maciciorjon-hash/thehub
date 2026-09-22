@@ -11,7 +11,8 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 A wizard that composes an experiment out of **modules** — type → parameters → modules →
 configure each in turn → review. Entry: `+ Add` asks *design it step by step* / *start from a
-design* / *quick create*; a **Designer** surface in the Planner manages the lab's designs.
+design* / *quick create*; a **Designer** surface manages the lab's designs, reached from the
+shell rail (Planner · Journal · Visualize · **Designer**) and from Labbook's own column.
 CLAUDE.md → *The Experiment Designer*.
 
 ## Traps added (2026-09-22, designer)
@@ -33,6 +34,8 @@ CLAUDE.md → *The Experiment Designer*.
   editable box that `applySetupToBlocks` will overwrite.
 - **`setupFieldsFor(key, su)` with no `su` returns every field** — defaults and the Methods walk
   depend on it. Only a renderer that has the answers passes them.
+- **`lb:go planner` skips `design`.** The Designer has its own rail button; restoring it under
+  Planner would light one button and show the other's screen.
 - **The sweep's long-press test presses the row now.** It used to press a point that could be
   off-screen and fall back to dispatching on the row, so it passed without pressing anything.
 
