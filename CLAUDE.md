@@ -4697,6 +4697,13 @@ Verified round trip in the browser: tick on Today → the experiment's row and i
 1/6 and the chip gone, the Journal's *Done that day* with the time; untick on the experiment →
 Today's row, the Journal's row and its done list all back.
 
+**Lean mode is gone, and had to be.** `.lean-tog` was `display:none` except under
+`body.lb-lean`, so once the header's form folded behind *Details* by default, turning Lean
+**off** hid the Details button while the fields stayed folded — type, status, start date,
+plasmids and cell lines unreachable. Everything Lean governed (the header form, the bench
+calculator inputs, the deviations list) is the default fold now, the toggles are always
+visible, and the Settings → Appearance row, `toggleLean` and `lb_lean` are deleted.
+
 Found on the way: cutting the Insert block took the icon definitions (`tbIco`, `P_*`,
 `ICON_*`, `SLASH_ITEMS`) with it, and cutting the Home cards' CSS took `.lh-exp`/`.lh-x-*` —
 both restored from git. **A cut between two comment markers is a claim about what lies
