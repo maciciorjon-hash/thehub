@@ -1132,10 +1132,10 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .pp-leg-i{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-1);color:var(--text2);}
 .pp-leg-i i{width:9px;height:9px;border-radius:50%;display:inline-block;}
 /* Editor modal */
-.modal.plate-modal{max-width:min(1060px,96vw);}
+.modal.plate-modal{max-width:min(1240px,96vw);}
 .pl-count{font-size:var(--fs-2);font-weight:600;color:var(--text3);}
 .pl-hint{font-size:var(--fs-1);font-weight:400;color:var(--text3);}
-.pl-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,320px);gap:16px;align-items:start;}
+.pl-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,384px);gap:16px;align-items:start;}
 .pl-left{min-width:0;display:flex;flex-direction:column;max-height:72vh;max-height:72dvh;}
 .pl-gridwrap{overflow:auto;padding:2px;flex:0 1 auto;width:max-content;max-width:100%;}
 .pl-grid{display:grid;gap:2px;user-select:none;line-height:1;}
@@ -1154,11 +1154,27 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .pl-w.empty{background:transparent;}
 .pl-w.sel{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 1px var(--accent);}
 .pl-wt{padding:0 1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
-/* The grid gets the room first and the summary scrolls in what is left. It used to be the other
-   way round — the summary grew and the plate you are painting was the thing cut off. */
-.pl-sum{margin-top:12px;border-top:1px solid var(--border);padding-top:9px;overflow-y:auto;flex:0 1 auto;max-height:36%;min-height:88px;}
+/* The grid gets the room first and the list scrolls in what is left. It is off by default: it
+   is a read of the map rather than a tool for drawing one, and it grew a line per condition
+   until it was taller than the plate it describes. */
+.pl-sumbar{margin-top:10px;display:flex;}
+.pl-sumtog{font-size:var(--fs-2);}
+.pl-sum{display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:9px;overflow-y:auto;flex:0 1 auto;max-height:34%;min-height:88px;}
+.pl-sum.on{display:block;}
+/* One section per kind of job; the tools that fill a selected block are sub-blocks of one. */
+.pl-sub{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}
+.pl-sub:first-of-type{margin-top:0;padding-top:0;border-top:none;}
+.pl-sub-t{font-size:var(--fs-2);font-weight:600;color:var(--text2);margin-bottom:6px;}
+details.pl-sec{padding:0;}
+details.pl-sec>summary{list-style:none;cursor:pointer;padding:9px 11px;margin:0;user-select:none;}
+details.pl-sec>summary::-webkit-details-marker{display:none;}
+details.pl-sec>summary::after{content:'\\203A';float:right;transition:transform var(--dur-1) var(--ease);display:inline-block;}
+details.pl-sec[open]>summary::after{transform:rotate(90deg);}
+details.pl-sec[open]>summary{border-bottom:1px solid var(--border);margin-bottom:9px;}
+details.pl-sec>*:not(summary){padding:0 11px;}
+details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .pl-sum-empty{font-size:var(--fs-3);color:var(--text3);}
-.pl-side{width:290px;flex:none;max-height:64vh;max-height:64dvh;overflow-y:auto;}
+.pl-side{width:auto;flex:none;max-height:72vh;max-height:72dvh;overflow-y:auto;}
 .pl-sec{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:9px 11px 11px;margin-bottom:10px;}
 .pl-sec-t{font-size:var(--fs-3);font-weight:600;color:var(--text2);margin-bottom:7px;}
 .pl-types{display:flex;flex-wrap:wrap;gap:5px;}
@@ -2315,8 +2331,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   .pl-gridwrap{order:1;max-height:none;width:100%;padding:2px 0;}
   .pl-grid{margin:0 auto;}
   #pl-side{order:2;display:flex;flex-direction:column;width:100%;max-height:none;overflow:visible;}
-  .pl-sum{order:3;max-height:none;min-height:0;margin-top:4px;}
-  .pl-sec-types{order:1;} .pl-sec-sel{order:2;} .pl-sec-block{order:3;} .pl-sec-dose{order:4;} .pl-sec-shade{order:5;} .pl-sec-cols{order:6;} .pl-sec-quick{order:7;} .pl-sec-plate{order:8;}
+  .pl-sumbar{order:3;margin-top:4px;}
+  .pl-sum{order:4;max-height:none;min-height:0;margin-top:4px;}
+  .pl-sec-types{order:1;} .pl-sec-sel{order:2;} .pl-sec-fill{order:3;} .pl-sec-cols{order:4;} .pl-sec-plate{order:5;}
   .pl-type,.pl-cond{min-height:44px;}
   .pl-conds .pl-cond{padding:8px 10px;}
   .pl-btn{min-height:40px;}
@@ -2607,7 +2624,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="pl-body">
       <div class="pl-left">
         <div class="pl-gridwrap"><div id="pl-grid" class="pl-grid"></div></div>
-        <div class="pl-sum"><div id="pl-vals-legend"></div><div class="pl-sec-t">Layout &mdash; what goes where</div><div id="pl-sum"></div></div>
+        <div class="pl-sumbar"><button class="pl-btn pl-sumtog" id="pl-sumtog" aria-expanded="false" onclick="plToggleSum()">Layout list</button></div>
+        <div class="pl-sum" id="pl-sumwrap"><div id="pl-vals-legend"></div><div id="pl-sum"></div></div>
       </div>
       <div id="pl-side" class="pl-side"></div>
     </div>
@@ -3462,7 +3480,11 @@ var CALC_VALUES={
   spike:function(v){ var V=+v.wellVolUL||0, X=+v.foldX||0, fin=+v.finalUM||0, stock=+v.stockUM||0, n=+v.nWells||0, ex=+v.excess||1;
     var add=(X>1)?V/(X-1):0, newV=V+add, inter=fin*X, need=add*n*ex, df=(inter>0&&stock>0)?(stock/inter):0, vs=df>0?(need/df):0, vd=need-vs;
     return {name:String(v.name||'reagent'), addUL:nfmt(add)+' µL', wellVol:nfmt(V)+' µL', newVol:nfmt(newV)+' µL', fold:nfmt(X)+'×', interConc:inter>0?_fmtConc(inter*1000):'—', finalConc:fin>0?_fmtConc(fin*1000):'—', totalUL:nfmt(need)+' µL', stockUL:nfmt(vs)+' µL', stockConc:stock>0?_fmtConc(stock*1000):'—', diluentUL:nfmt(vd)+' µL', diluent:String(v.diluent||'medium'), nWells:nfmt(n)+' wells', dilution:df>0?('1:'+nfmt(df)):'—'}; },
-  serial:function(v){ var topF=+v.topFinalNM||0, X=+v.foldX||1, df=+v.df||0, np=Math.max(1,Math.round(+v.nPoints||0)), keep=+v.volPerPoint||0, stockNM=(+v.stockUM||0)*1000, nc=Math.max(1,Math.round(+v.nCompounds||1));
+  serial:function(v){ var topF=+v.topFinalNM||0, X=+v.foldX||1, df=+v.df||0,
+    // Bounded: these come from number fields with no max, and an extra zero in "# points"
+    // built a row per point until the browser gave up.
+    np=Math.min(40,Math.max(1,Math.round(+v.nPoints||0))), keep=+v.volPerPoint||0,
+    stockNM=(+v.stockUM||0)*1000, nc=Math.min(384,Math.max(1,Math.round(+v.nCompounds||1)));
     var topI=topF*X, T=df>1?keep/(df-1):0, first=keep+T, d1=stockNM>0?(stockNM/topI):0, vs=d1>0?(first/d1):0, wv=+v.wellVolUL||0, addUL=(X>1&&wv>0)?(wv/(X-1)):0;
     var pts=[]; for(var i=0;i<np;i++) pts.push(_fmtConc(topF/Math.pow(df,i)));
     return {name:String(v.name||'compounds'), nPoints:nfmt(np), df:nfmt(df)+'-fold', top:_fmtConc(topF), bottom:pts[np-1], topTube:_fmtConc(topI), fold:nfmt(X)+'×', stockUL:nfmt(vs)+' µL', firstDiluentUL:nfmt(first-vs)+' µL', firstVol:nfmt(first)+' µL', keepUL:nfmt(keep)+' µL', transferUL:nfmt(T)+' µL', diluent:String(v.diluent||'medium'), series:pts.join(' · '), addUL:nfmt(addUL)+' µL', wellVol:nfmt(wv)+' µL', newVol:nfmt(wv+addUL)+' µL', nCompounds:nfmt(nc), stockConc:stockNM>0?_fmtConc(stockNM):'—', dilution:d1>0?('1:'+nfmt(d1)):'—'}; },
@@ -3783,8 +3805,10 @@ function spikeRecipe(v){
   return out;
 }
 function serialRecipe(v){
-  var topF=+v.topFinalNM||0, X=+v.foldX||1, df=+v.df||0, np=Math.max(1,Math.round(+v.nPoints||0));
-  var keep=+v.volPerPoint||0, stockNM=(+v.stockUM||0)*1000, nc=Math.max(1,Math.round(+v.nCompounds||1));
+  // Bounded, like CALC_VALUES.serial: both come from number fields with no max, and this one
+  // builds a table row per point \u2014 an extra zero in "# points" ran until the browser gave up.
+  var topF=+v.topFinalNM||0, X=+v.foldX||1, df=+v.df||0, np=Math.min(40,Math.max(1,Math.round(+v.nPoints||0)));
+  var keep=+v.volPerPoint||0, stockNM=(+v.stockUM||0)*1000, nc=Math.min(384,Math.max(1,Math.round(+v.nCompounds||1)));
   var dl=esc(v.diluent||'medium'), name=esc(v.name||'compounds');
   if(!(topF>0)||!(df>1)||!(keep>0)) return '<b>Serial dilution</b> — set a top concentration, a dilution factor above 1 and a volume per point.';
   var topI=topF*X;                       // top of the series as it is actually made
@@ -5901,12 +5925,17 @@ document.addEventListener('keydown',function(e){
 // the next thing you do is select the next block. Delete clears wells. The three-way Paint /
 // Select / Erase switch is gone: it made you say twice what a single gesture already said, and
 // the mode you were in was invisible from the plate itself.
-var PL={key:null,sel:{},anchor:null,type:'compound',drag:false,band:null,clip:null,flags:{}};
+var PL={key:null,sel:{},anchor:null,type:'compound',drag:false,band:null,clip:null,flags:{},
+  sumOpen:(function(){ try{ return localStorage.getItem('lb_pl_sum')==='1'; }catch(e){ return false; } })(),
+  setupOpen:false};
 function plCur(){ return plateOf(PL.key); }
 function plSelIds(){ return Object.keys(PL.sel); }
 function openPlateEditor(key){ var p=plateOf(key); if(!p){ toast('No plate map here yet'); return; }
   PL.key=key; PL.sel={}; PL.anchor=null; PL.band=null; PL.flags={}; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
-  el('plate-modal').classList.add('open'); plRender(); }
+  // Open the plate's own settings for a map with nothing on it yet: on a blank plate the format
+  // and the starting layout are the first thing you want, and on a drawn one they are not.
+  PL.setupOpen=!plateCount(p);
+  el('plate-modal').classList.add('open'); plRender(); plApplySumState(); }
 // The footer's six buttons are two rows on a phone; there it is Done, Undo and this list.
 function plFooterMenu(ev){
   popOpen('ctxmenu',[
@@ -5921,7 +5950,7 @@ function closePlateEditor(){ el('plate-modal').classList.remove('open'); _plHide
 // Every plate mutation restores through the experiment that owns the map — a plate lives inside
 // a block or an experiment, so that record is the unit an undo has to put back.
 function plMark(label,coalesce){ var o=_plateOwner(PL.key); if(o&&o.exp) undoMark(label,['experiments.'+o.exp.id],coalesce); }
-function plRender(){ var p=plCur(); if(!p) return; plRenderGrid(); plRenderSide(); plRenderSum(); }
+function plRender(){ var p=plCur(); if(!p) return; plRenderGrid(); plRenderSide(); plRenderSum(); plApplySumState(); }
 function plRenderSum(){ var p=plCur(), host=el('pl-sum'); if(!p||!host) return;
   var lg=el('pl-vals-legend'); if(lg) lg.innerHTML=plValuesLegend(p);
   host.innerHTML=plateSummaryHtml(p)||'<div class="pl-sum-empty">Nothing filled in yet — select wells and type what is in them.</div>'; }
@@ -6059,7 +6088,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     : ('<div class="pl-row2"><button class="pl-btn" onclick="plApplyDose(1)">Fill wells '+(axis==='col'?'&#8595;':'&#8594;')+'</button>'
       +'<button class="pl-btn" onclick="plApplyDose(-1)">Fill wells '+(axis==='col'?'&#8593;':'&#8592;')+'</button></div>');
   var _doseWhere=(axis==='row')?'across the row':(axis==='col'?'down the column':'across the block');
-  var dose=(axis&&n>=2&&_dosing)?('<div class="pl-sec pl-sec-dose"><div class="pl-sec-t">Dose series &mdash; '+_doseWhere+'</div>'
+  var dose=(axis&&n>=2&&_dosing)?('<div class="pl-sub pl-sec-dose"><div class="pl-sub-t">Dose series &mdash; '+_doseWhere+'</div>'
     +(axis==='block'?'<div class="pl-howto">Every row gets the same series across, or every column the same series down &mdash; the wells beside each other are the replicates.</div>':'')
     +'<div class="cc-inputs"><label class="ci-f"><span>Top conc</span><input type="number" id="pl-dose-top" value="1000"></label>'
     +'<label class="ci-f"><span>Unit</span><select id="pl-dose-unit"><option>nM</option><option>µM</option><option>mM</option></select></label>'
@@ -6070,7 +6099,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'</div>'):'';
   // Block label — one name written across a group of wells, instead of in every well.
   var curGrp=plSelGroupLabel();
-  var block=(n>=2)?('<div class="pl-sec pl-sec-block"><div class="pl-sec-t">Block label</div>'
+  var block=(n>=2)?('<div class="pl-sub pl-sec-block"><div class="pl-sub-t">Block label</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Name shown across these wells</span>'
     +'<input id="pl-grp" value="'+esc(curGrp===null?'':curGrp)+'" placeholder="'+(curGrp===null?'Mixed…':'e.g. 125')+'" onchange="plGroupLabel(this.value)"></label></div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plGroupLabel(el(\'pl-grp\').value)">Label block</button>'
@@ -6078,17 +6107,30 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
   // Shading — a visual gradient when the numbers live elsewhere (e.g. an Echo picklist).
   // Four directions, not three: a series read up the plate is as ordinary as one read down it,
   // and "dark at the bottom" had no button at all. Each one says where the *dark* end goes.
-  var shade=(n>=2)?('<div class="pl-sec pl-sec-shade"><div class="pl-sec-t">Shading &mdash; visual gradient</div>'
+  var shade=(n>=2)?('<div class="pl-sub pl-sec-shade"><div class="pl-sub-t">Shading &mdash; visual gradient</div>'
     +'<div class="pl-howto">Dark is the strong end. Applies to the '+n+' selected well'+(n===1?'':'s')+'.</div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyShade(\'right\')" title="Dark on the left, fading to the right">Dark &#8594; light</button>'
     +'<button class="pl-btn" onclick="plApplyShade(\'left\')" title="Dark on the right, fading to the left">Light &#8592; dark</button></div>'
     +'<div class="pl-row2"><button class="pl-btn" onclick="plApplyShade(\'down\')" title="Dark at the top, fading downwards">Dark &#8595; light</button>'
     +'<button class="pl-btn" onclick="plApplyShade(\'up\')" title="Dark at the bottom, fading upwards">Dark &#8593; light</button>'
     +'<button class="pl-btn" onclick="plApplyShade(null)">Clear</button></div></div>'):'';
-  var cols=(n>=1)?('<div class="pl-sec pl-sec-cols"><div class="pl-sec-t">Column headers</div>'
+  // The header a column already carries, so the field can be emptied to take it off. It used to
+  // render blank behind a placeholder, and an onchange on an untouched empty input never fires \u2014
+  // which is why a header could be written and then never removed.
+  var _colsSel={}; plSelIds().forEach(function(id){ var x=wellRC(id); if(x) _colsSel[x.c]=1; });
+  var _colShared=null;
+  Object.keys(_colsSel).forEach(function(c,i){ var v=(p.colLabels||{})[c]||'';
+    if(i===0) _colShared=v; else if(_colShared!==v) _colShared=null; });
+  var _anyCols=plateHasColLabels(p);
+  var cols=(n>=1||_anyCols)?('<div class="pl-sec pl-sec-cols"><div class="pl-sec-t">Column headers</div>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Units</span><input value="'+esc(p.colTitle||'')+'" placeholder="nM" onchange="plSetColTitle(this.value)"></label>'
-    +'<label class="ci-f"><span>Header for selected columns</span><input placeholder="e.g. 1000" onchange="plSetColLabel(this.value)"></label></div></div>'):'';
-  host.innerHTML='<div class="pl-sec pl-sec-plate"><div class="pl-sec-t">Plate</div>'
+    +'<label class="ci-f"><span>Header for selected columns</span><input value="'+esc(_colShared===null?'':_colShared)+'" placeholder="'+(_colShared===null?'Mixed\u2026':'e.g. 1000')+'"'+(n?'':' disabled')+' onchange="plSetColLabel(this.value)"></label></div>'
+    +'<div class="pl-row2"><button class="pl-btn"'+(n?'':' disabled')+' onclick="plClearColLabels(0)">Clear these columns</button>'
+    +'<button class="pl-btn"'+(_anyCols?'':' disabled')+' onclick="plClearColLabels(1)">Clear all headers</button></div></div>'):'';
+  // Order is how often you reach for it: the conditions you paint with, the fields for what you
+  // just painted, the tools that fill a block, the headers, and the plate's own setup last \u2014
+  // format and title are answered once and then in the way for the rest of the session.
+  var plateSec='<details class="pl-sec pl-sec-plate"'+(PL.setupOpen?' open':'')+' ontoggle="PL.setupOpen=this.open"><summary class="pl-sec-t">Plate \u2014 format, title, layout</summary>'
     +'<div class="cc-inputs"><label class="ci-f"><span>Format</span><select onchange="plSetFormat(this.value)">'
       +Object.keys(PLATE_FORMATS).sort(function(a,b){return a-b;}).map(function(k){ return '<option value="'+k+'"'+(String(p.format)===k?' selected':'')+'>'+k+'-well</option>'; }).join('')
     +'</select></label><label class="ci-f"><span>Title</span><input value="'+esc(p.title||'')+'" placeholder="e.g. Dose–response" oninput="plSetTitle(this.value)"></label></div>'
@@ -6105,7 +6147,8 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
       +'<input type="checkbox"'+(_dosing?' checked':'')+' onchange="plSetDosing(this.checked)"'
       +' title="Turns on the compound and concentration fields, and the dilution filler"></label>'):'')
     +'</div>'
-    +'<div class="pl-sec pl-sec-types"><div class="pl-sec-t">'+(_nos?'Conditions — select wells, then click one':'Well type')+'</div>'
+    +'</details>';
+  host.innerHTML='<div class="pl-sec pl-sec-types"><div class="pl-sec-t">'+(_nos?'Conditions — select wells, then click one':'Well type')+'</div>'
       +(_lbTouch()
         ?('<div class="pl-howto">Drag a finger over the wells, then tap the '+(_nos?'condition':'type')+' &mdash; it goes on straight away. <b>Add mode</b> keeps adding to the selection.</div>')
         :('<div class="pl-howto">Drag a rectangle over the wells, then click the '+(_nos?'condition':'type')+' &mdash; it goes on straight away. '
@@ -6115,11 +6158,11 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
         +'<div class="pl-flags">'+_expFlags.map(function(f){
             return '<button class="pl-flag'+(PL.flags[f.k]?' on':'')+'" onclick="plToggleBrushFlag(\''+f.k+'\')" title="'+esc(f.title)+'">'+esc(f.lbl)+'</button>'; }).join('')
         +'</div><div class="pl-howto" style="margin:6px 0 0">The same mix with something left out at the read &mdash; it stays that condition\'s number.</div>'):'')
+    // Quick types is a shortcut into the list right above it, so it belongs in the same card \u2014
+    // as its own section it was a second copy of the palette with a heading of its own. On a
+    // numbered plate it is that list with the numbers taken off, so it is not shown at all.
+      +((!_nos&&quick)?('<div class="pl-sub pl-sec-quick"><div class="pl-sub-t">Quick types</div><div class="pl-quick">'+quick+'</div></div>'):'')
       +'</div>'
-    // Quick types is a shortcut into the same list, and on a numbered plate it is the same list
-    // one section higher up with the numbers taken off. Only shown where it still shortens
-    // anything.
-    +((!_nos&&quick)?('<div class="pl-sec pl-sec-quick"><div class="pl-sec-t">Quick types</div><div class="pl-quick">'+quick+'</div></div>'):'')
     +'<div class="pl-sec pl-sec-sel"><div class="pl-sec-t">'+(n?(n+' well'+(n!==1?'s':'')+' selected'):'Select wells to edit')+'</div>'
     +'<div class="cc-inputs">'+fld('cellLine','Cell line','pl-cl')
       +(expUsesCompounds(_plExp())?(fld('compound','Compound')+fld('conc','Concentration')):'')
@@ -6128,7 +6171,8 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
     +'<div class="pl-row2"><button class="pl-btn" onclick="plSelectAll()">Select all</button><button class="pl-btn" onclick="plClearSel()">Deselect</button>'
     +'<button class="pl-btn'+(PL.touchAdd?' on':'')+'" onclick="plToggleTouchAdd()" title="Keep adding to the selection (like holding ctrl)">'+(PL.touchAdd?'✓ Add mode':'Add mode')+'</button>'
     +'<button class="pl-btn danger"'+(n?'':' disabled')+' onclick="plEraseSel()">Clear wells</button></div></div>'
-    +block+dose+shade+cols
+    +((dose||shade||block)?('<div class="pl-sec pl-sec-fill"><div class="pl-sec-t">Fill the selection</div>'+dose+shade+block+'</div>'):'')
+    +cols+plateSec
     +'<datalist id="pl-cl">'+CELL_LINES.filter(function(c){return c.id;}).map(function(c){ return '<option value="'+esc(c.id)+'">'; }).join('')+'</datalist>';
   var t=el('pl-count'); if(t) t.textContent=plateCount(p)+' / '+(d.r*d.c)+' wells used'; }
 
@@ -6325,6 +6369,23 @@ function plApplyShade(dir){ var p=plCur(); if(!p) return; var ids=plSelIds(); if
     _plWell(p,id).shade=Math.round(t*0.8*1000)/1000; });
   platePersist(PL.key); plRender(); }
 // Column headers
+// Taking headers off: the selected columns, or the whole row. Writing one was always possible
+// and removing one was not.
+function plClearColLabels(all){ var p=plCur(); if(!p||!p.colLabels) return;
+  plMark('Clear column headers');
+  if(all) p.colLabels={};
+  else { var cs={}; plSelIds().forEach(function(id){ var x=wellRC(id); if(x) cs[x.c]=1; });
+    Object.keys(cs).forEach(function(c){ delete p.colLabels[c]; }); }
+  if(!Object.keys(p.colLabels).length){ delete p.colLabels; delete p.colTitle; }
+  platePersist(PL.key); plRender(); }
+// The layout list is a read of the map, not a tool for drawing it, and it grows a line per
+// condition until it is taller than the plate. Off by default, remembered per device.
+function plToggleSum(){ PL.sumOpen=!PL.sumOpen;
+  try{ localStorage.setItem('lb_pl_sum',PL.sumOpen?'1':'0'); }catch(e){}
+  plApplySumState(); }
+function plApplySumState(){ var w=el('pl-sumwrap'), b=el('pl-sumtog'); if(!w) return;
+  w.classList.toggle('on',!!PL.sumOpen);
+  if(b){ b.classList.toggle('on',!!PL.sumOpen); b.setAttribute('aria-expanded',PL.sumOpen?'true':'false'); } }
 function plSetColTitle(v){ var p=plCur(); if(!p) return; plMark('Column units',true); p.colTitle=String(v||''); platePersist(PL.key); plRender(); }
 function plSetColLabel(v){ var p=plCur(); if(!p) return; var cols={};
   plSelIds().forEach(function(id){ var x=wellRC(id); if(x) cols[x.c]=1; });
@@ -8358,8 +8419,13 @@ function _parseWait(v){ var t=String(v==null?'':v).trim().toLowerCase().replace(
   if(!t) return 0;
   if(/^o\/?n$|^overnight$/.test(t)) return OVERNIGHT_MIN;
   var m=0, any=false;
-  t.replace(/(\d+(?:\.\d+)?)\s*(h(?:ours?|rs?)?|min(?:s|utes?)?|m)?\b/g,function(_,n,u){ any=true; n=parseFloat(n);
-    if(u&&u.charAt(0)==='h') m+=n*60; else m+=n; return ''; });
+  // No \b after the unit. It is optional, so in "2h15" the h is followed by a digit, the
+  // boundary fails, the whole "2h" backtracks away and only the 15 is read \u2014 a 2 h 15
+  // incubation silently became a 15 min one, in the chip, the clock, the timer and the
+  // Methods sentence. Longest alternative first, or "min" leaves "utes" behind.
+  t.replace(/(\d+(?:\.\d+)?)\s*(days?|hours?|hrs?|minutes?|mins?|[dhm])?/g,function(_,n,u){
+    any=true; n=parseFloat(n); var c=u?u.charAt(0):'';
+    if(c==='d') m+=n*1440; else if(c==='h') m+=n*60; else m+=n; return ''; });
   return any?Math.round(m):0; }
 // The wait after a step: the one written on it, or — with nothing written and the experiment's
 // next step dated tomorrow — the overnight incubation that gap implies. Jon (2026-09-17): "si
@@ -9973,6 +10039,13 @@ function lbTrashRestore(tid){
       ex.blocks=ex.blocks||[];
       if(!_findBlockIn(ex,p.block.id)) ex.blocks.splice(Math.min(p.index==null?ex.blocks.length:p.index,ex.blocks.length),0,p.block);
       syncChainedInputs(ex); break; }
+    case 'result': {
+      var re=LB.data.experiments[p.expId];
+      if(!re){ toast('The experiment those results belonged to is gone \u2014 restore that first.'); return; }
+      re.integration=re.integration||{}; re.integration.results=re.integration.results||[];
+      if(!re.integration.results.filter(function(r){ return String(r.id)===String(p.set.id); }).length)
+        re.integration.results.push(p.set);
+      re.updated=Date.now(); break; }
     case 'file': {
       var o=_plateOwner(p.ownerKey);
       if(!o){ toast('What that file was attached to is gone — restore that first.'); return; }
@@ -11178,10 +11251,23 @@ function toggleResultExcluded(expId,rid,i){
   var f=_resRow(expId,rid,i); if(!f) return;
   f.row.excluded=!f.row.excluded; f.e.updated=Date.now(); save(); renderEditor();
 }
+// A result set is an instrument's output plus every exclusion and note somebody put on it.
+// Re-sending from Echo would bring the numbers back and not the annotation, so this goes
+// through the same confirm + trash every other delete in the app does.
 function delResult(expId,rid){
   var e=LB.data.experiments[expId]; if(!e||!e.integration) return;
-  e.integration.results=(e.integration.results||[]).filter(function(r){ return String(r.id)!==String(rid); });
-  e.updated=Date.now(); save(); renderEditor();
+  var set=(e.integration.results||[]).filter(function(r){ return String(r.id)===String(rid); })[0];
+  if(!set) return;
+  var n=(set.rows||[]).length, src=set.source?(' from '+set.source):'';
+  lbConfirm('Remove '+(n===1?'this measurement':(n+' measurements'))+src+'? The exclusions and '
+    +'notes on them go too. It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',
+    {title:'Remove results',ok:'Remove'}).then(function(ok){
+    if(!ok) return;
+    undoMark('Remove results',['experiments.'+expId]);
+    lbTrash('result',(e.code?e.code+' \u00b7 ':'')+n+' measurement'+(n===1?'':'s')+src,{expId:expId,set:set});
+    e.integration.results=(e.integration.results||[]).filter(function(r){ return String(r.id)!==String(rid); });
+    e.updated=Date.now(); save(); renderEditor();
+  });
 }
 // One sentence of methods prose from the potencies, so the numbers reach the paragraph the
 // same way the protocol steps do.
@@ -11488,11 +11574,11 @@ function _mSD(a){ if(!a.length) return null;
   if(a.length<2) return {m:m, sd:null, n:1};
   var v=a.reduce(function(s,x){ return s+(x-m)*(x-m); },0)/(a.length-1);
   return {m:m, sd:Math.sqrt(v), n:a.length}; }
-function _gmSD(a){ var p=a.filter(function(v){ return v>0; });
+function _gmSD(a){ var p=a.filter(function(v){ return isFinite(v)&&v>0; });
   if(!p.length) return null;
   var L=_mSD(p.map(function(v){ return Math.log10(v); }));
   return {m:Math.pow(10,L.m), fold:(L.sd==null?null:Math.pow(10,L.sd)), n:L.n, nonPos:a.length-p.length}; }
-function _gmOf(a){ var p=(a||[]).filter(function(v){ return v>0; }); if(!p.length) return null;
+function _gmOf(a){ var p=(a||[]).filter(function(v){ return isFinite(v)&&v>0; }); if(!p.length) return null;
   return Math.pow(10, p.reduce(function(s,v){ return s+Math.log10(v); },0)/p.length); }
 function repResultStats(e){
   var sib=repSiblings(e); if(sib.length<2) return null;
@@ -12623,8 +12709,19 @@ function wkNext(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),7); renderE
 function wkToday(){ WK_ANCHOR=null; renderEditor(); }
 function addPlannerTask(D,text){ text=(text||'').trim(); if(!text) return; var id=uid(); plannerTasks()[id]={id:id,date:D,text:text,done:false,expId:null,blockId:null,created:Date.now(),updated:Date.now()}; save(); renderEditor(); }
 function togglePlannerTask(id){ var t=plannerTasks()[id]; if(!t) return; t.done=!t.done; t.updated=Date.now(); save(); renderEditor(); }
-function delPlannerTask(id){ if(plannerTasks()[id]){ delete plannerTasks()[id]; save(); renderEditor(); } }
-function editPlannerTask(id,text){ var t=plannerTasks()[id]; if(!t) return; text=(text||'').trim(); if(!text){ return delPlannerTask(id); } t.text=text; t.updated=Date.now(); save(); }
+function delPlannerTask(id){ var t=plannerTasks()[id]; if(!t) return;
+  lbConfirm('Delete \u201c'+(t.text||'this task')+'\u201d?',{title:'Delete task',ok:'Delete'}).then(function(ok){
+    if(!ok) return;
+    undoMark('Delete task',['planner']);
+    delete plannerTasks()[id]; save(); renderEditor(); });
+}
+// Clearing the field used to delete the task outright, so rethinking the wording with
+// select-all lost it \u2014 no confirm, no undo, no trash. An empty field keeps what was there;
+// deleting is what the \u00d7 and the menu are for.
+function editPlannerTask(id,text){ var t=plannerTasks()[id]; if(!t) return; text=(text||'').trim();
+  if(!text){ renderEditor(); return; }
+  if(text===t.text) return;
+  undoMark('Edit task',['planner'],true); t.text=text; t.updated=Date.now(); save(); }
 function linkPlannerTask(id){ var t=plannerTasks()[id]; if(!t) return;
   var items=Object.keys(LB.data.experiments).map(function(k){return LB.data.experiments[k];}).filter(function(e){return isCoded(e);})
     .map(function(e){ var p=projById(e.projectId); return {id:e.id,label:e.code||e.title||'Untitled',sub:(p?p.name:'')+(e.title?(' · '+e.title):''),ic:(e.type||'E').slice(0,2).toUpperCase(),c:(p&&p.color)||'#5e87c5'}; });
@@ -15236,14 +15333,28 @@ function spotVocab(){
 // The nearest real words to what was typed. Ranked by distance first, then by how central the
 // word is (a name beats prose, common beats rare) — of two words one edit away, the one that
 // names something is the one meant.
+// Same letters in a different order \u2014 "blto" for "blot". A transposition is a typo; a
+// substitution of the same length on a short word lands on an unrelated real word.
+function _spotAnagram(a,b){ return a.split('').sort().join('')===b.split('').sort().join(''); }
 function _spotCorrWord(qn){
   if(qn.length<3) return [];
-  var tol=_spotTol(qn.length); if(!tol) tol=1;
+  // _spotTol says 0 under four letters on purpose \u2014 at three letters almost every word is
+  // one edit from another \u2014 and overriding it with 1 is how "pcr" was answered with "per".
+  var tol=_spotTol(qn.length); if(!tol) return [];
   var v=spotVocab(), out=[];
   for(var i=0;i<v.length;i++){
     var w=v[i].w;
     if(w===qn) return [];                       // it is a real word; nothing to correct
+    // A word that begins something the notebook contains is a prefix query, not a typo: the
+    // scorer already ranks prefixes at 84. Without this "mini" becomes "min".
+    if(w.indexOf(qn)===0) return [];
     if(Math.abs(w.length-qn.length)>tol) continue;
+    // Typos cluster in the middle and the end; nobody mistypes the first letter. This is what
+    // separates "blto"\u2192"blot" from "hook"\u2192"look" and "blocking"\u2192"lacking".
+    if(w.charAt(0)!==qn.charAt(0)) continue;
+    // On a short word a same-length substitution is a different word, not a slip \u2014
+    // "thaw" is not "than". Longer words are pinned by the letters that do match.
+    if(qn.length<6 && w.length===qn.length && !_spotAnagram(qn,w)) continue;
     var d=_spotLev(qn,w,tol);
     if(d<=tol) out.push({w:w,d:d,rank:v[i].best*100+Math.min(v[i].n,50)});
   }

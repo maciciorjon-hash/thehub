@@ -169,7 +169,7 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 .vsl{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6px 4px 10px;border-radius:var(--r-3);border:1px solid transparent;transition:background .18s,border-color .18s,box-shadow .25s;}
 .vsl:hover{background:var(--glass);border-color:var(--glass-brd);}
 .vsl-face{position:relative;background:none;border:none;cursor:pointer;padding:0;width:100%;display:flex;align-items:center;justify-content:center;}
-.vsl-svg{width:100%;max-width:190px;height:auto;aspect-ratio:232/108;filter:drop-shadow(0 8px 14px rgba(30,40,70,.14));transition:transform .2s var(--ease);}
+.vsl-svg{width:100%;max-width:190px;height:auto;aspect-ratio:248/128;filter:drop-shadow(0 8px 14px rgba(30,40,70,.14));transition:transform .2s var(--ease);}
 /* The medium drifts red -> orange -> yellow as the culture grows. Transitioning the gradient
    stops means the change is a drift, not a jump, wherever the SVG survives a re-render. */
 .vsl-s1,.vsl-s2{transition:stop-color 1.2s var(--ease);}
@@ -191,21 +191,22 @@ textarea.inp{resize:vertical;min-height:52px;line-height:1.5;}
 .vsl-cap-hi{fill:rgba(255,255,255,.32);}
 .vsl-neck-ring{fill:#dfe5ef;stroke:rgba(28,38,66,.22);stroke-width:1.2;}
 [data-theme="dark"] .vsl-neck-ring{fill:#2a3145;stroke:rgba(255,255,255,.18);}
-.vsl-surface{stroke:none;}
+.vsl-surface{stroke:none;}\n.vsl-liq{stroke:none;}
+.vsl-lit{fill:rgba(255,255,255,.2);stroke:none;}\n.vsl-mould{fill:none;stroke:rgba(28,38,66,.10);stroke-width:1.2;}\n[data-theme="dark"] .vsl-mould{stroke:rgba(255,255,255,.10);}
 .vsl-gloss{opacity:.5;}
 .vsl-face:hover .vsl-svg{transform:translateY(-4px);}
 .vsl-glass{fill:rgba(255,255,255,.14);stroke:var(--border2);stroke-width:1.6;}
 [data-theme="dark"] .vsl-glass{fill:rgba(255,255,255,.06);stroke:rgba(255,255,255,.18);}
 /* The flask body is opaque: the neck is drawn behind it, and through a translucent fill it
    showed as a diagonal line straight across the medium. */
-.vsl-base{fill:#fbfcfe;}
-[data-theme="dark"] .vsl-base{fill:#252b3b;}
+.vsl-base{fill:rgba(247,250,253,.62);}
+[data-theme="dark"] .vsl-base{fill:rgba(40,47,64,.62);}
 .vsl-cap{fill:#6f8fc9;stroke:#4c6ba6;stroke-width:1.1;}
 .vsl-capline{stroke:rgba(0,0,0,.18);stroke-width:1;stroke-linecap:round;}
 [data-theme="dark"] .vsl-capline{stroke:rgba(0,0,0,.3);}
 .vsl-neck{fill:#eef1f7;stroke:rgba(28,38,66,.22);stroke-width:1.6;}
 [data-theme="dark"] .vsl-neck{fill:#232838;stroke:rgba(255,255,255,.2);}
-.vsl-men{fill:none;stroke:rgba(255,255,255,.62);stroke-width:1.5;}
+.vsl-men{fill:none;stroke:rgba(255,255,255,.78);stroke-width:1.8;}
 .vsl-line{stroke:rgba(255,255,255,.5);stroke-width:1.2;}
 .vsl-rim{fill:none;stroke:rgba(28,38,66,.26);stroke-width:1.7;}
 [data-theme="dark"] .vsl-rim{stroke:rgba(255,255,255,.26);}
@@ -764,52 +765,66 @@ function _vslStops(frac){
 //   front  the face we look at, including the shoulder chamfer
 //   top    the same upper silhouette pushed up-right, so the chamfer stays visible in plan
 //   end    the short right-hand face that gives it depth
-var FLASK_FRONT = 'M62 64 L92 28 L196 28 L196 92 L62 92 Z';
-var FLASK_TOP   = 'M62 64 L92 28 L196 28 L216 10 L112 10 L82 46 Z';
-var FLASK_END   = 'M196 28 L216 10 L216 74 L196 92 Z';
+// Geometry, in an oblique projection: the back of the box is one depth vector d=(26,-20) from
+// the front, so every face is the front silhouette plus that offset. The neck is at the LOWER
+// RIGHT, which is what makes a lying T-flask read as one \u2014 the shoulder cants down from the
+// top edge to meet it, and the cap screws on in front of the body.
+//   front  the wall we look through, with the shoulder chamfer at its right
+//   top    the same upper silhouette pushed back, so the chamfer stays visible in plan
+//   end    the short left face that gives the box its depth
+var FLASK_FRONT = 'M24 104 L24 56 L150 56 L182 90 L182 104 Z';
+var FLASK_TOP   = 'M24 56 L150 56 L182 90 L208 70 L176 36 L50 36 Z';
+var FLASK_END   = 'M24 104 L24 56 L50 36 L50 84 Z';
+// The medium is a shallow pool on the growth surface, not a block filling the wall. What sells
+// it is the floor seen in perspective \u2014 a big parallelogram you look down onto through the
+// clear top \u2014 with only a thin band of liquid standing against the front wall.
+var LIQ_H = 12;
+var FLASK_LIQ_TOP   = 'M24 92 L182 92 L208 72 L50 72 Z';
+var FLASK_LIQ_FRONT = 'M24 104 L182 104 L182 92 L24 92 Z';
+var FLASK_LIQ_END   = 'M24 104 L50 84 L50 72 L24 92 Z';
 function flaskSvg(id, st){
-  var s = _vslStops(st), g='vg_'+id, cp='cvg_'+id, hl='vh_'+id, tp='vt_'+id;
-  var LEVEL = 58;                    // where the medium sits — how full, not how confluent
-  return '<svg class="vsl-svg" viewBox="0 0 232 108" aria-hidden="true">'
+  var s = _vslStops(st), g='vg_'+id, hl='vh_'+id, tp='vt_'+id;
+  return '<svg class="vsl-svg" viewBox="0 0 248 128" aria-hidden="true">'
     + '<defs>'
       + '<linearGradient id="'+g+'" x1="0" y1="1" x2="0" y2="0">'
         + '<stop class="vsl-s1" offset="0" stop-color="'+s[1]+'"/>'
         + '<stop class="vsl-s2" offset="1" stop-color="'+s[0]+'"/></linearGradient>'
-      + '<linearGradient id="'+tp+'" x1="0" y1="0" x2="1" y2="0">'
+      + '<linearGradient id="'+tp+'" x1="0" y1="1" x2="1" y2="0">'
         + '<stop class="vsl-s2" offset="0" stop-color="'+s[0]+'"/>'
         + '<stop class="vsl-s1" offset="1" stop-color="'+s[1]+'"/></linearGradient>'
       + '<linearGradient id="'+hl+'" x1="0" y1="0" x2="1" y2="1">'
-        + '<stop offset="0" stop-color="rgba(255,255,255,.8)"/>'
+        + '<stop offset="0" stop-color="rgba(255,255,255,.85)"/>'
         + '<stop offset="1" stop-color="rgba(255,255,255,0)"/></linearGradient>'
-      + '<clipPath id="'+cp+'"><path d="'+FLASK_FRONT+'"/></clipPath>'
     + '</defs>'
-    + '<g transform="translate(4 6) rotate(-6 116 54)">'
-      // Neck and cap first: the neck join then disappears under the opaque front face.
-      + '<rect class="vsl-neck" x="34" y="62" width="34" height="26" rx="4"/>'
-      + '<rect class="vsl-neck-ring" x="30" y="59" width="8" height="32" rx="3"/>'
-      + '<g class="vsl-capg">'
-        + '<rect class="vsl-cap" x="2" y="55" width="32" height="40" rx="8"/>'
-        + '<rect class="vsl-cap-hi" x="6" y="60" width="7" height="30" rx="3.5"/>'
-        + '<line class="vsl-capline" x1="17" y1="59" x2="17" y2="91"/>'
-        + '<line class="vsl-capline" x1="22" y1="60" x2="22" y2="90"/>'
-        + '<line class="vsl-capline" x1="27" y1="62" x2="27" y2="88"/>'
-      + '</g>'
-      // The box, back faces first.
+    + '<g transform="translate(4 4) rotate(-4 120 70)">'
+      // Glass first, all three faces, so the pool is laid inside it.
       + '<path class="vsl-face-end" d="'+FLASK_END+'"/>'
       + '<path class="vsl-face-top" d="'+FLASK_TOP+'"/>'
       + '<path class="vsl-base" d="'+FLASK_FRONT+'"/>'
-      // Medium. The surface is drawn as a receding plane so it reads as a volume rather than
-      // a coloured rectangle, and the meniscus sits on its front edge.
-      + '<g clip-path="url(#'+cp+')">'
-        + '<rect x="55" y="'+LEVEL+'" width="150" height="46" fill="url(#'+g+')"/>'
-        + '<path class="vsl-surface" d="M62 '+LEVEL+' L196 '+LEVEL+' L216 '+(LEVEL-18)+' L82 '+(LEVEL-18)+' Z" fill="url(#'+tp+')" opacity=".45"/>'
-        + '<path class="vsl-men" d="M62 '+LEVEL+' L196 '+LEVEL+'"/>'
-      + '</g>'
-      // One long streak of gloss across the front face, angled with the box.
-      + '<path class="vsl-gloss" d="M104 34 L136 34 L112 86 L82 86 Z" fill="url(#'+hl+')"/>'
+      // The pool: the floor in perspective, then the band standing against the front and left
+      // walls, then the meniscus along the front edge of the surface.
+      + '<path class="vsl-surface" d="'+FLASK_LIQ_TOP+'" fill="url(#'+tp+')"/>'
+      + '<path class="vsl-lit" d="'+FLASK_LIQ_TOP+'"/>'
+      + '<path class="vsl-liq" d="'+FLASK_LIQ_FRONT+'" fill="url(#'+g+')"/>'
+      + '<path class="vsl-liq" d="'+FLASK_LIQ_END+'" fill="url(#'+g+')" opacity=".7"/>'
+      + '<path class="vsl-men" d="M24 92 L182 92"/>'
+      // The mould line down the front wall, and one streak of gloss across the glass.
+      + '<path class="vsl-mould" d="M103 56 L103 104"/>'
+      + '<path class="vsl-gloss" d="M60 56 L92 56 L64 104 L34 104 Z" fill="url(#'+hl+')"/>'
       + '<path class="vsl-rim" d="'+FLASK_FRONT+'"/>'
       + '<path class="vsl-rim2" d="'+FLASK_TOP+'"/>'
       + '<path class="vsl-rim2" d="'+FLASK_END+'"/>'
+      // Neck and cap last: they stand in front of the body, which is what gives the flask its
+      // depth at the shoulder end.
+      + '<rect class="vsl-neck" x="178" y="88" width="22" height="18" rx="3"/>'
+      + '<rect class="vsl-neck-ring" x="194" y="85" width="8" height="24" rx="3"/>'
+      + '<g class="vsl-capg">'
+        + '<rect class="vsl-cap" x="200" y="77" width="38" height="36" rx="10"/>'
+        + '<rect class="vsl-cap-hi" x="205" y="82" width="6" height="26" rx="3"/>'
+        + '<line class="vsl-capline" x1="216" y1="81" x2="216" y2="109"/>'
+        + '<line class="vsl-capline" x1="223" y1="82" x2="223" y2="108"/>'
+        + '<line class="vsl-capline" x1="230" y1="84" x2="230" y2="106"/>'
+      + '</g>'
     + '</g>'
   + '</svg>';
 }
