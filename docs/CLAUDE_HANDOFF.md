@@ -5,9 +5,38 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-22 · **v1.18.0** · branch `main`.
+- Date: 2026-09-22 · **v1.19.0** · branch `main`.
 
-## Labbook set like OneNote (2026-09-22, last)
+## The Experiment Designer (2026-09-22, last)
+
+A wizard that composes an experiment out of **modules** — type → parameters → modules →
+configure each in turn → review. Entry: `+ Add` asks *design it step by step* / *start from a
+design* / *quick create*; a **Designer** surface in the Planner manages the lab's designs.
+CLAUDE.md → *The Experiment Designer*.
+
+## Traps added (2026-09-22, designer)
+
+- **`buildExperimentFrom(sp)` is the only creation path.** `createExperiment` reads its form and
+  calls it; `dsCreate` hands it a template it built. Add nothing that creates an experiment
+  another way.
+- **A module carries `gap`, never a day.** Absolute days are `dsDays(D)`, derived per render —
+  that is what makes a reorder recompute the calendar. Do not store a day on a module.
+- **`dsPseudo(D)` must stay the real thing.** It instantiates the draft exactly as
+  `buildExperimentFrom` does, then `applySetupToBlocks` + `syncChainedInputs`. Anything drawn
+  from a shortcut is a second implementation that will disagree with what gets created.
+- **A setup hook may GENERATE blocks, and `_normBlocks` is what makes them real.** It runs after
+  `S.apply` in `applySetupToBlocks` and in `nmPreview`. A generated block with no id cannot be
+  ticked, noted or scrolled to and sorts to the front of every run order.
+- **The chain is the plan.** `syncChainedInputs` updates `calcSeed` alongside the input, or a
+  derived volume reads as a deviation on a run where nothing has happened.
+- **A field the setup owns is shown, disabled, with its effective value** — never offered as an
+  editable box that `applySetupToBlocks` will overwrite.
+- **`setupFieldsFor(key, su)` with no `su` returns every field** — defaults and the Methods walk
+  depend on it. Only a renderer that has the answers passes them.
+- **The sweep's long-press test presses the row now.** It used to press a point that could be
+  off-screen and fall back to dispatching on the row, so it passed without pressing anything.
+
+## Labbook set like OneNote (2026-09-22)
 
 No ribbon (a top bar with a breadcrumb; the bubble carries formatting, with a ¶ menu), no
 right dock (On this page popover · tag chips in Experiments · Linked from at the page foot),

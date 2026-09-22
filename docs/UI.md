@@ -135,6 +135,16 @@ makes them rules rather than incidents.
   under a left-aligned first row. Drop the auto margin, or hide the spacer, at the width where
   the bar wraps — and when the wrap depends on content rather than viewport width, make the row
   `nowrap` and let one element ellipsis instead.
+- **A note about a field belongs with its label, not after its control.** A labelled field is
+  `justify-content:space-between` — label at the top of the cell, control at the bottom — so a row
+  lines up however long its labels are. Put a caption *after* the input ("from the steps above",
+  "from the plate format") and it takes part in that: the control lifts off the line its
+  neighbours sit on, by as much as 19px. Put it inside the label.
+- **A checkbox whose label is a sentence needs its own row in a narrow panel.** `.ci-f.chk` asks
+  for the width of two fields for exactly that reason; where the panel is narrower than the one it
+  was sized for the sentence still wraps, the cell grows, and the box — correctly staying on the
+  line the sentence starts on — ends up above everything beside it. Give it `grid-column:1/-1`
+  there rather than letting it share a row it cannot fit in.
 - **When the bar's width comes from a pane rather than the window, use a container query.**
   `@container` is the only thing that can see it. Labbook's step header is nine controls in a
   block whose width is whatever the editor pane leaves it — 617px on a 1440px screen with the

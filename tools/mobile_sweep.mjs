@@ -167,6 +167,15 @@ function screens(ids) {
     S('journal-day',     `selectNode('journal'); if(window.DAY_VIEW!==undefined) DAY_VIEW=null; renderEditor()`),
     S('journal-week',    `selectNode('week')`),
     S('visualize',       `selectNode('viz')`, { settle: 600 }),
+    // The Experiment Designer: the surface that lists the lab's designs, then each step of the
+    // wizard, then the module picker (a dialog with its own list, so its rows are menu rows).
+    S('designer',        `selectNode('design')`),
+    S('designer-type',   `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id})`, { menu: false }),
+    S('designer-params', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); DS.step=1; dsDraw()`),
+    S('designer-modules',`var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.mods[1].gap=1; DS.mods[2].gap=1; DS.step=2; dsDraw()`),
+    S('designer-config', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.step=3; DS.cur=1; dsDraw()`),
+    S('designer-review', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.step=4; dsDraw()`),
+    S('designer-picker', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); DS.step=2; dsDraw(); dsPick()`, { menu: true }),
     S('visualize-drill', `selectNode('viz'); var m=document.querySelector('.vz-seg[data-go]'); if(!m) throw new Error('n/a'); vizGo(m.getAttribute('data-go'))`, { optional: true, settle: 600 }),
     S('exp-default',     `openExp('${e0}')`),
     S('exp-steps',       `openExp('${e0}'); expTab('steps')`),
@@ -235,8 +244,18 @@ function screens(ids) {
 const LONG_PRESS = `(async function(){
   var e=LB.data.experiments[arguments[0]]; openExp(e.id); expTab('steps'); await new Promise(r=>setTimeout(r,300));
   var row=document.querySelector('.bench-row .bench-hd[oncontextmenu]'); if(!row) return 'no row with oncontextmenu';
-  var r=row.getBoundingClientRect(); var x=Math.round(r.left+r.width/2), y=Math.round(Math.max(r.top+20, Math.min(r.bottom-10, innerHeight/2)));
-  var target=document.elementFromPoint(x,y)||row;
+  // Scroll it into view first, which is what anyone pressing it would do. The point used to be
+  // derived from wherever the row happened to sit and clamped toward the middle of the viewport,
+  // so on a page whose steps start below the fold it landed OFF-SCREEN -- and the
+  // fallback to the row itself then dispatched on the row anyway, so the test passed without ever pressing anything. The moment
+  // the content above the steps got 78 px shorter the same point landed on the fixed bottom tab
+  // bar instead: a real element, with no oncontextmenu, and an accidental pass became a failure
+  // that was never about the product. Press the middle of the row, and say so when it is covered.
+  row.scrollIntoView({block:'center'});
+  await new Promise(r=>setTimeout(r,140));
+  var r=row.getBoundingClientRect(); var x=Math.round(r.left+r.width/2), y=Math.round(r.top+r.height/2);
+  var target=document.elementFromPoint(x,y);
+  if(!target||!target.closest('[oncontextmenu]')) return 'the press point is not on the row - it lands on '+(target?(target.tagName+'.'+target.className):'nothing');
   var mk=function(type,extra){ var ev=new PointerEvent(type,Object.assign({bubbles:true,cancelable:true,clientX:x,clientY:y,pointerType:'touch',pointerId:1,isPrimary:true},extra||{})); return ev; };
   target.dispatchEvent(mk('pointerdown'));
   await new Promise(r=>setTimeout(r,560));
