@@ -2745,7 +2745,8 @@ var PRESET_SEED={
     {d:1,title:'HiBiT Lytic + read',w:10,calc:{kind:'lytic',inputs:{format:'384',nPlates:1,cellVolPerWell:30,ratio:2,lgbitDil:100,subDil:50,excess:1.1}},pub:'Luminescence was read on a BMG PHERAstar at 0.2 s per well, normalised to the DMSO control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>.',html:'<ol><li>Make the lytic reagent: {{c.bufferUL}} buffer + {{c.lgbitUL}} LgBiT ({{c.lgbitDil}}) + {{c.substrateUL}} substrate ({{c.substrateDil}}). Mix gently &mdash; do not vortex.</li><li>Add {{c.addPerWell}} per well ({{c.ratio}} reagent : cells).</li><li>Shake at 300 rpm for 1 min, then 10 min at room temperature.</li><li>Read on the PHERAstar, 0.2 s per well; save the data.</li></ol>'},
     {d:1,title:'Results',html:'<p><b>Results</b></p><p></p>'}]},
   CTG:{title:'Cell viability',blocks:[
-    {d:0,title:'Seed + compounds',calc:{kind:'seed',inputs:{cellLine:'SUDHL5',cellsPerWell:30000,volPerWell:90,format:'96',nPlates:4,excess:1.1}},pub:'{{cellLine}} cells were seeded in {{format}}-well plates, one plate per readout, and treated with compound serially diluted from {{topConc}} nM in {{df}}-fold steps over {{nPoints}} points alongside a DMSO control.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Seed {{c.volPerWell}} per well ({{c.cellsPerWell}}) into {{format}}-well plates &mdash; one copy per readout.</li><li>Serial dilution: {{topConc}} nM top, DF {{df}}, {{nPoints}} points + DMSO control.</li><li>Add the compounds; straight back to 37 &deg;C &mdash; note the time.</li></ol>'},
+    {d:0,title:'Seed',calc:{kind:'seed',inputs:{cellLine:'SUDHL5',cellsPerWell:30000,volPerWell:90,format:'96',nPlates:4,excess:1.1}},pub:'{{cellLine}} cells were seeded in {{format}}-well plates, one plate per readout.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Seed {{c.volPerWell}} per well ({{c.cellsPerWell}}) into {{format}}-well plates &mdash; one copy per readout.</li></ol>'},
+    {d:0,title:'Compound addition',pub:'Cells were treated with compound serially diluted from {{topConc}} nM in {{df}}-fold steps over {{nPoints}} points alongside a DMSO control.',html:'<ol><li>Serial dilution: {{topConc}} nM top, DF {{df}}, {{nPoints}} points + DMSO control.</li><li>Add the compounds; straight back to 37 &deg;C &mdash; note the time.</li></ol>'},
     {d:1,title:'CTG — 24 h readout',w:40,calc:{kind:'ctg',inputs:{format:'96',nPlates:2,volPerWell:50,excess:1.1}},pub:'Viability was measured 24 h after compound addition.',html:'<ol><li>Bring the 24 h plates and the reagent to room temperature.</li><li>Add {{c.addPerWell}} CellTiter-Glo per well &mdash; {{c.total}} for {{c.wells}}.</li><li>Shake; 10&ndash;20 min at room temperature.</li><li>Read luminescence; save the data (24 h).</li></ol>'},
     {d:3,title:'CTG — 72 h readout',w:40,calc:{kind:'ctg',inputs:{format:'96',nPlates:2,volPerWell:50,excess:1.1}},pub:'Viability was measured 72 h after compound addition. Luminescence was normalised to the vehicle control and fitted with a four-parameter logistic model.',html:'<ol><li>Bring the 72 h plates and the reagent to room temperature.</li><li>Add {{c.addPerWell}} CellTiter-Glo per well &mdash; {{c.total}} for {{c.wells}}.</li><li>Shake; 10&ndash;20 min at room temperature.</li><li>Read luminescence; save the data (72 h).</li></ol>'}]},
   NB:{title:'NanoBRET target engagement',blocks:[
@@ -3043,14 +3044,26 @@ var SETUP_SCHEMA={
     {f:'topConc',t:'num',lbl:'Top conc (nM)',d:1000},
     {f:'df',t:'num',lbl:'Dilution factor',d:4},
     {f:'nPoints',t:'num',lbl:'# dose points',d:11},
-    {f:'timepoints',t:'select',lbl:'Readouts',d:'24+72',opts:['24','72','24+72']}],
+    {f:'timepoints',t:'txt',lbl:'Readouts (h)',d:'24+72',hint:'Hours after compound addition \u2014 e.g. 24+72, or 24, 48, 72. Each one becomes its own dated readout.'}],
     // The readout blocks say when they were read, so the setup line does not have to.
     pubSkip:['timepoints'],
-    // Only build the readout blocks you actually asked for.
+    // One readout block per hour you asked for, dated from that hour. It used to be a choice of
+    // three, filtered by looking for "24" or "72" in the block's own title, with the days fixed
+    // at 1 and 3 in the preset \u2014 so nothing you typed could move a readout, which is what Jon
+    // hit. The day is floor(h/24): 36 h is the next morning, 12 h is the same evening.
     apply:function(su,blocks){
-      if(su.timepoints==='24') return blocks.filter(function(b){ return (b.title||'').indexOf('72')<0; });
-      if(su.timepoints==='72') return blocks.filter(function(b){ return (b.title||'').indexOf('24')<0; });
-      return blocks; }},
+      var hrs=_ctgHours(su.timepoints);
+      if(!hrs.length) return blocks;
+      var pre=blocks.filter(function(b){ return !/readout/i.test(b.title||''); });
+      var had=blocks.filter(function(b){ return /readout/i.test(b.title||''); });
+      // A curated preset writes better readout blocks than this can \u2014 its own reagent volumes,
+      // its own Methods sentence. So a requested hour that the preset already has a block for
+      // keeps that block and is only re-dated; only an hour it has no block for is generated.
+      return pre.concat(hrs.map(function(h,i){
+        var t=_hrTxt(h), own=null;
+        had.forEach(function(b){ if(own==null&&_ctgHours(b.title||'').indexOf(h)>=0) own=b; });
+        if(!own) return _ctgReadout(h,i===hrs.length-1);
+        var c=JSON.parse(JSON.stringify(own)); c.d=Math.floor(h/24); return c; })); }},
   // What a NanoBRET run is, is which constructs are paired and at what ratio — so that is a
   // setup question, not something buried in a calculator. Lists, comma-separated: a single pair
   // is one name in each box, and two donors against one acceptor at two ratios is the same three
@@ -6830,7 +6843,7 @@ function _seedPresetsInner(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV13;
+  var upgrade=!LB.data._presetV14;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && cur._seedSig!==_presetSig(cur);
@@ -6844,7 +6857,7 @@ function _seedPresetsInner(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV13=true;
+  if(upgrade) LB.data._presetV14=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -8414,6 +8427,22 @@ function _waitTxt(m){ m=Math.round(+m||0); if(m<=0) return '';
 function _clock(ms){ try{ return new Date(ms).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
 // "16 h", "1.5h", "1 h 30", "90", "90 min", "overnight" → minutes. A bare number is minutes, as
 // the field always was; hours need the letter. "o/n" / "overnight" is the lab's 16 h.
+// "24+72", "24, 48, 72", "48" \u2014 the hours a CTG plate is read at, in the order given.
+function _ctgHours(v){ var out=[], seen={};
+  String(v==null?'':v).split(/[^0-9.]+/).forEach(function(x){ var h=parseFloat(x);
+    if(isFinite(h)&&h>0&&!seen[h]){ seen[h]=1; out.push(h); } });
+  return out.sort(function(a,b){ return a-b; }); }
+function _hrTxt(h){ return (Math.round(h*10)/10)+''; }
+// The last readout closes the paragraph, the way every preset's last block does.
+function _ctgReadout(h,last){ var t=_hrTxt(h);
+  return {d:Math.floor(h/24), w:40, title:'CTG \u2014 '+t+' h readout',
+    calc:{kind:'ctg',inputs:{format:'96',nPlates:2,volPerWell:50,excess:1.1}},
+    pub:'Viability was measured '+t+' h after compound addition.'
+      +(last?' Luminescence was normalised to the vehicle control and fitted with a four-parameter logistic model.':''),
+    html:'<ol><li>Bring the '+t+' h plates and the reagent to room temperature.</li>'
+      +'<li>Add {{c.addPerWell}} CellTiter-Glo per well &mdash; {{c.total}} for {{c.wells}}.</li>'
+      +'<li>Shake; 10&ndash;20 min at room temperature.</li>'
+      +'<li>Read luminescence; save the data ('+t+' h).</li></ol>'}; }
 var OVERNIGHT_MIN=16*60;
 function _parseWait(v){ var t=String(v==null?'':v).trim().toLowerCase().replace(',','.');
   if(!t) return 0;
