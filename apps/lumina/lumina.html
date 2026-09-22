@@ -571,6 +571,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <button class="btn" onclick="copyResultsTSV()" title="Copy as TSV for Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy TSV</button>
         <button class="btn primary" onclick="exportXLSX()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg> Results XLSX</button>
         <button class="btn" onclick="exportRawCSV()">Export raw CSV</button>
+        <button class="btn" onclick="sendResultsToLabbook()" title="Attach these potencies to an experiment — they land on its Results tab and in its Methods paragraph">Send to Labbook</button>
       </div>
       <div id="results-table-wrap"><div class="empty-state">Run an analysis from the Input tab to see results here.</div></div>
     </div>
@@ -606,6 +607,63 @@ var state = {
 // Assay-aware naming (mirrors Echo's _csvColMap / _assayMeta convention,
 // so DC50/IC50/EC50/Dmax/Span/Emax naming matches assay biology).
 // ══════════════════════════════════════════════════════════════
+
+// ── Send to Labbook ────────────────────────────────────────────────────────────────────────
+// Echo has posted its potencies into the experiment record since the loop was built; a plate
+// pipetted by hand is exactly as publishable, so Lumina posts the same `dhub:context v1`
+// shape. The flag travels with the row on purpose — a curve this app was unhappy about stays
+// visibly unhappy in the notebook, and Labbook's results sentence already excludes what you
+// exclude rather than what was flagged.
+var LUM_ASSAY_LABELS = {
+  hibit:        {potency:'DC50 (nM)', effect:'Dmax (%)'},
+  ctg:          {potency:'IC50 (nM)', effect:'Span (%)'},
+  displacement: {potency:'IC50 (nM)', effect:'Span (%)'},
+  gain:         {potency:'EC50 (nM)', effect:'Emax'}
+};
+function luminaResultRows(){
+  var d = (state.fitResults || []), t = state.assayType || 'hibit';
+  var L = assayFitLabels(t), lab = LUM_ASSAY_LABELS[t] || LUM_ASSAY_LABELS.hibit;
+  return d.map(function(r){
+    return {
+      compound: r.sampleId || '',
+      target:   '',
+      potency:  +(r.ec50M * 1e9).toFixed(1),
+      effect:   Math.round(t === 'gain' ? r.top : (100 - r.bottom)),
+      hill:     +r.hill.toFixed(2),
+      r2:       +r.r2.toFixed(3),
+      flag:     !!r.flagged,
+      note:     _flagReason(r) || '',
+      assay:    t,
+      potencyLabel: lab.potency,
+      effectLabel:  lab.effect
+    };
+  }).filter(function(x){ return x.compound; });
+}
+function sendResultsToLabbook(){
+  var rows = luminaResultRows();
+  if (!rows.length){ toast('No fitted results to send yet — run an analysis first.'); return; }
+  var t = state.assayType || 'hibit', lab = LUM_ASSAY_LABELS[t] || LUM_ASSAY_LABELS.hibit;
+  var ctx = {
+    source:'lumina', experiment:null, cellLines:[], plateMaps:[], protocols:[],
+    compounds: rows.map(function(r){ return {name:r.compound}; }),
+    results: [{
+      id: 'lumina-' + Date.now(),
+      source: 'Lumina',
+      label: lab.potency.split(' ')[0] + ' · ' + rows.length + ' compound' + (rows.length===1?'':'s') + ' · by hand',
+      assay: t,
+      potencyLabel: lab.potency,
+      effectLabel: lab.effect,
+      potencyUnit: 'nM',
+      effectUnit: '%',
+      rows: rows,
+      createdAt: new Date().toISOString()
+    }]
+  };
+  try{
+    if (window.parent && window.parent !== window && window.parent.openApp){ window.parent.openApp('labbook', undefined, undefined, ctx); }
+    else { toast('Open Lumina inside dHUB to send results to Labbook.'); }
+  }catch(e){ toast('Could not reach Labbook.'); }
+}
 function assayFitLabels(t){
   var m = {
     hibit:        { ec50Name:'DC50', ec50Col:'DC50_nM',  logCol:'LogDC50_M', pCol:'pDC50', dmaxName:'Dmax', hasDmax:true,  yAxis:'% Signal (norm. to ctrl)' },
@@ -1541,13 +1599,26 @@ function runLuminaAnalysis(){
 
     var flagR2 = r2Enabled && fit.r2 < minR2;
     var flagSD = sdEnabled && maxSdAtConc > maxSd;
-    var flagged = flagR2 || flagSD || isHook;
+    // A midpoint outside the doses actually tested is not a measurement: the curve never
+    // turned inside the range, so the number is an extrapolation the data cannot support. R²
+    // does not catch it — a half-curve fits its own half beautifully (R²=1 on the synthetic
+    // case) — and neither does the replicate SD or the hook test, so it reaches the table, the
+    // export and Labbook looking exactly like a real potency.
+    //
+    // The test is the fitted midpoint against the range, NOT against the optimiser's bound.
+    // Echo's version asked whether logEC50 had landed on `xMin-1`/`xMax+1`, and an LM that
+    // stops just short of its bound slips through: a curve still climbing at the top dose fit
+    // at 9.1 µM from doses reaching 1 µM, R²=1, unflagged. Strictly outside, so a real potency
+    // sitting exactly at the lowest or highest dose tested is not flagged.
+    var _ecEps = 1e-9, flagRangeLo = (logEC50 < xMin - _ecEps), flagRangeHi = (logEC50 > xMax + _ecEps);
+    var flagged = flagR2 || flagSD || isHook || flagRangeLo || flagRangeHi;
 
     summary.push({
       sampleId: sid, n: sdata.length, top: top, bottom: bottom, hill: hill,
       logEC50: logEC50, ec50M: ec50M, r2: fit.r2, maxSD: maxSdAtConc,
       ciEc50LowerNM: ciEc50LowerNM, ciEc50UpperNM: ciEc50UpperNM,
-      flagR2: flagR2, flagSD: flagSD, isHook: isHook, hookCount: hookConcs.size, flagged: flagged,
+      flagR2: flagR2, flagSD: flagSD, isHook: isHook, hookCount: hookConcs.size,
+      flagRangeLo: flagRangeLo, flagRangeHi: flagRangeHi, flagged: flagged,
       xArr: sdata.map(function(r){ return r.log10Conc; }), yArr: sdata.map(function(r){ return r.measurement; }),
       yArrRaw: sdata.map(function(r){ return r.measurementRaw; })
     });
@@ -1786,6 +1857,9 @@ function _flagReason(r){
   if (r.flagR2) f.push('R2=' + r.r2.toFixed(2));
   if (r.flagSD) f.push('SD=' + r.maxSD.toFixed(1));
   if (r.isHook) f.push('Hookx' + r.hookCount);
+  var L = assayFitLabels(state.assayType);
+  if (r.flagRangeLo) f.push(L.ec50Name + '<range');
+  if (r.flagRangeHi) f.push(L.ec50Name + '>range');
   return f.join('; ');
 }
 function getResultColumns(){

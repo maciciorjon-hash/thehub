@@ -4742,8 +4742,31 @@ and the fitter in sync with Echo's. What it does **not** have, measured against 
   like a measured number. Lumina has no equivalent.
 - Thinner QC and confidence-interval reporting (36 vs 111 QC references, 5 vs 43 for CI).
 
-So the work, when it is done, is **parity in the two directions that leave the app** — results
-into Labbook, and the flags that stop a number nobody measured getting out — not a merge.
+So the work is **parity in the two directions that leave the app** — results into Labbook, and
+the flags that stop a number nobody measured getting out — not a merge. **Both are done
+(2026-09-22):**
+
+- **`sendResultsToLabbook`** posts the same `dhub:context v1` shape Echo does, labelled
+  *"DC50 · 2 compounds · by hand"* and sourced `Lumina`, with the flag **and its reason** on
+  every row (`note`). Verified end to end inside dHUB: fit → Send → the experiment opens on
+  Results with a LUMINA chip, 1 flagged, and `DC50>range` in the Note column.
+- **The out-of-range flag** — and correcting it exposed that **Echo's version never fired**.
+
+### The range flag asked the wrong question
+
+Echo's 2026-09-04 flag tested whether `logec50` had landed on the *optimiser's bound*
+(`xMin-1` / `xMax+1`). An LM that converges just short of its bound slips straight through,
+and that is the ordinary case: a synthetic curve still climbing at the top dose fits
+**9.1 µM from doses reaching 1 µM, R² = 1, unflagged** — reproduced in the browser against the
+committed build before changing anything.
+
+The question is not what the optimiser touched; it is whether the fitted midpoint lies outside
+the doses actually tested. Both apps now ask that, **strictly** outside, so a real potency
+sitting exactly at the lowest or highest dose is a measurement and is not flagged. Verified on
+three synthetic curves: midpoint above the range → flagged; midpoint exactly at the lowest
+dose → not flagged; midpoint inside → not flagged. This is QC, not the fit maths, so
+`check_shared.py` is unaffected — but it was changed in both files in the same pass on purpose,
+because a flag that fires in one and not the other is worse than no flag.
 
 ## Current state
 

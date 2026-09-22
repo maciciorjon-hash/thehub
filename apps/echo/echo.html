@@ -2464,9 +2464,16 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         // was reaching the results table, the publication sentence and the replicate means
         // looking exactly like a real potency. It is a fact about the design, not a threshold,
         // so it has no setting to switch it off.
-        const _ecLo = xMin - 1, _ecHi = xMax + 1, _ecEps = 1e-6;
-        if (logec50 <= _ecLo + _ecEps) flags.push('EC50<range');
-        else if (logec50 >= _ecHi - _ecEps) flags.push('EC50>range');
+        //
+        // Corrected 2026-09-22: this used to test the OPTIMISER'S BOUND (xMin-1 / xMax+1), and
+        // an LM that converges just short of its bound slips straight through — a curve still
+        // climbing at the top dose fits 9.1 µM from doses reaching 1 µM, R²=1, and was not
+        // flagged. The question is whether the midpoint is outside the doses tested, so that
+        // is what is asked. Strictly outside: a potency sitting exactly at the lowest or
+        // highest dose tested is a measurement and is not flagged.
+        const _ecEps = 1e-9;
+        if (logec50 < xMin - _ecEps) flags.push('EC50<range');
+        else if (logec50 > xMax + _ecEps) flags.push('EC50>range');
 
         const concGroups = {};
         for (const row of fitSdata) {
