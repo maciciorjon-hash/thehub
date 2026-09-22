@@ -34,8 +34,16 @@ CLAUDE.md → *The Experiment Designer*.
   editable box that `applySetupToBlocks` will overwrite.
 - **`setupFieldsFor(key, su)` with no `su` returns every field** — defaults and the Methods walk
   depend on it. Only a renderer that has the answers passes them.
-- **`lb:go planner` skips `design`.** The Designer has its own rail button; restoring it under
-  Planner would light one button and show the other's screen.
+- **The Designer is a workspace, not a Planner surface.** `lbWorkspace()` answers `designer`;
+  the rail owns it inside dHUB and Labbook's column lists it only standalone. Listing it in both
+  lit two rows for one screen.
+- **Labbook tells the shell where it went** (`{type:'lb:ws'}` from `renderPages`). The rail is
+  set by the button you pressed and Labbook navigates itself; without this it goes stale.
+- **A class name is not its rule.** `.nm-pv-*` is scoped to `.nm-preview`, `.nm-lbl-sub` to
+  `.modal.nm`. Reusing either outside its scope renders unstyled — rescope, never duplicate.
+- **A library module carries no plate ratio.** `applySetupToBlocks` scales plate counts by the
+  ratio to the seeding block; two unrelated library defaults are not a designed ratio.
+- **A library step with no `pub` publishes its bench text.** `CALC_PUB` covers eight kinds only.
 - **The sweep's long-press test presses the row now.** It used to press a point that could be
   off-screen and fall back to dispatching on the row, so it passed without pressing anything.
 
