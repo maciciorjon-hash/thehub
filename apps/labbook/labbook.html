@@ -316,7 +316,13 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .blk-log input:focus{border-bottom-color:var(--accent);border-bottom-style:solid;color:var(--text);}
 @media (max-width:640px){ .jr-row{flex-wrap:wrap;} .jr-step{max-width:none;} .jr-log{flex-basis:100%;} .jr-days{max-height:none;} }
 .nb-page .exh-fields{margin-top:10px;}
-.nb-page .rt.pg-body,.nb-page .rt.nb-body{background:transparent;border:none;box-shadow:none;border-radius:0;padding:0;min-height:320px;}
+/* The page and the field were both flat --surface, so a Journal page was one white sheet with
+   no sign of where you write. A shade and a hairline is enough \u2014 it reads as a field on a
+   page rather than a card on a dashboard, which is what the rest of this app removed. */
+.nb-page .rt.pg-body,.nb-page .rt.nb-body{background:var(--surface2);border:1px solid var(--border);
+  box-shadow:none;border-radius:var(--r-3);padding:20px 22px;min-height:340px;
+  transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
+.nb-page .rt.pg-body:focus,.nb-page .rt.nb-body:focus{background:var(--surface);border-color:var(--border2);outline:none;}
 /* Today's link to the day's page in the Notebook — what it says, and a way in. */
 .day-jr-card{display:flex;align-items:flex-start;gap:14px;background:var(--paper);border:1px solid var(--border);border-radius:var(--r-3);padding:14px 16px;cursor:pointer;box-shadow:var(--shadow-xs);transition:border-color var(--dur-1) var(--ease);}
 .day-jr-card:hover{border-color:var(--border2);}
@@ -1157,6 +1163,13 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 /* The grid gets the room first and the list scrolls in what is left. It is off by default: it
    is a read of the map rather than a tool for drawing one, and it grew a line per condition
    until it was taller than the plate it describes. */
+.ps-addblk{display:block;width:100%;margin:10px 0 2px;padding:11px;background:none;cursor:pointer;
+  border:1px dashed var(--border2);border-radius:var(--r-2);color:var(--text2);font:inherit;
+  font-size:var(--fs-3);font-weight:600;transition:border-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease);}
+.ps-addblk:hover{border-color:var(--accent);color:var(--accent);}
+.ps-setup{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);padding:9px 11px 11px;margin:10px 0;}
+.ps-setup-t{font-size:var(--fs-3);font-weight:600;color:var(--text2);margin-bottom:3px;}
+.ps-setup-h{font-size:var(--fs-2);color:var(--text3);margin-bottom:8px;}
 .pl-sumbar{margin-top:10px;display:flex;}
 .pl-sumtog{font-size:var(--fs-2);}
 .pl-sum{display:none;margin-top:8px;border-top:1px solid var(--border);padding-top:9px;overflow-y:auto;flex:0 1 auto;max-height:34%;min-height:88px;}
@@ -2592,6 +2605,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="modal-t">Experiment presets<span class="grow"></span><select id="pe-type" class="tb-sel" onchange="peRender()"></select></div>
     <div class="mrow"><label>Preset name</label><input id="pe-name"></div>
     <div class="mrow"><label>Default title</label><input id="pe-title"></div>
+    <div id="pe-setup"></div>
     <div id="pe-body"></div>
     <div class="modal-act"><button class="btn ghost sm" onclick="peAddBlock()">+ Add day-block</button><button class="btn ghost sm" id="pe-del" onclick="peDelete()" style="color:var(--danger)">Delete preset</button><span class="grow"></span><button class="btn ghost" onclick="closePresetEditor()">Close</button><button class="btn" onclick="peSave()">Save preset</button></div>
   </div>
@@ -3026,7 +3040,7 @@ var SETUP_SCHEMA={
     {f:'cellLine',t:'cellline',lbl:'Cell line',d:'HEK293'},
     {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:20000},
     {f:'nPlates',t:'num',lbl:'# plates',d:4},
-    {f:'treatH',t:'num',lbl:'Treatment (h)',d:6},
+    {f:'treatH',t:'num',lbl:'Treatment (h)',d:6,wait:1},
     {f:'targets',t:'txt',lbl:'Targets',d:'BRD4, BRD3, BRD2'},
     {f:'loadCtrl',t:'txt',lbl:'Loading control',d:'α-Tubulin'}]},
   HB:{plate:true,plateOn:true,fields:[
@@ -3034,7 +3048,7 @@ var SETUP_SCHEMA={
     {f:'cellLine',t:'cellline',lbl:'Cell line',d:'HEK293'},
     {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:3000},
     {f:'nPlates',t:'num',lbl:'# plates',d:1},
-    {f:'treatH',t:'num',lbl:'Treatment (h)',d:6},
+    {f:'treatH',t:'num',lbl:'Treatment (h)',d:6,wait:1},
     {f:'dosing',t:'select',lbl:'Compound addition',d:'Echo',opts:['Echo','Manual (serial dilution)']}]},
   CTG:{plate:true,plateOn:true,fields:[
     {f:'format',t:'format',lbl:'Format',d:'96',opts:['96','384']},
@@ -3116,7 +3130,7 @@ var SETUP_SCHEMA={
     {f:'nConc',t:'num',lbl:'# concentrations',d:7},
     {f:'nReps',t:'num',lbl:'Technical replicates',d:2},
     {f:'dmsoMax',t:'num',lbl:'Max DMSO (%)',d:0.25,step:'0.05'},
-    {f:'treatH',t:'num',lbl:'Treatment (h)',d:20}],
+    {f:'treatH',t:'num',lbl:'Treatment (h)',d:20,wait:1}],
    // The Plate layout section says all three in its own words — "Treatment · gradient · 7
    // levels" across the wells they occupy. Repeating them as "# concentrations 7; Technical
    // replicates 2" is the form dump _pubSetupText exists to stop.
@@ -3271,6 +3285,21 @@ function applyNbtxSetup(su,blocks){
 }
 function applySetupToBlocks(type,setup,blocks,prevSetup){
   var S=setupSchema(type); if(!S||!setup) return blocks;
+  // A setup field marked `wait` is a duration, not just a word for the prose. "Treatment (h)"
+  // filled {{treatH}} in the sentence and nothing else, so the wait chip, the day's clock and
+  // the bench timer never learned it \u2014 you could set 20 h and the schedule stayed at whatever
+  // the preset shipped. The block it belongs to is the one whose own text quotes it; a wait you
+  // typed yourself (waitOwn) is never overwritten.
+  (S.fields||[]).filter(function(f){ return f.wait; }).forEach(function(f){
+    var h=parseFloat(setup[f.f]); if(!isFinite(h)||h<=0) return;
+    var tok='{{'+f.f+'}}';
+    blocks.forEach(function(b){
+      if(b.waitOwn) return;
+      var src=String((b.tpl&&b.tpl.html)||b.html||'')+String((b.tpl&&b.tpl.pub)||b.pub||'');
+      if(src.indexOf(tok)<0) return;
+      b.waitMin=Math.round(h*60);
+    });
+  });
   var fmt=(setup.format!=null&&setup.format!=='')?String(setup.format):null;
   // The seeding block's own plate count is the reference: readout blocks that originally used
   // a multiple of it (e.g. D2B lyses 2 plates per assay plate) keep that ratio.
@@ -14644,6 +14673,7 @@ function ctxExp(ev,id){ var e=LB.data.experiments[id]; if(!e) return; var pr=exp
   // an experiment already open. Both sit here now, where you are choosing what to run.
   (isCoded(e)?{label:'Repeat as replicate',sub:'n+1, dated from a day you pick',fn:function(){repeatExperiment(id);}}:null),
   {label:'Duplicate',sub:'same design, dated from today, nothing ticked',fn:function(){dupExperiment(id);}},
+  {label:'Save as a preset\u2026',sub:'this design, to start the next one from',fn:function(){saveExpAsPreset(id);}},
   (isCoded(e)?{label:'Export PDF',fn:function(){openExp(id);setTimeout(exportPDF,120);}}:{sep:true}),
   (isCoded(e)?{label:'Copy entry',fn:function(){openExp(id);setTimeout(copyRendered,140);}}:{sep:true}),
   {label:'What did it show\u2026',fn:function(){askOutcome(id);}},
@@ -15505,7 +15535,7 @@ function openPresetEditor(){ var pre=(el('nm-type')&&el('nm-type').value)||null;
 function openPresetEditorFor(key){ peFillTypes(key); if(key) el('pe-type').value=key; PE.type=el('pe-type').value; peLoad(); el('preset-modal').classList.add('open'); }
 function closePresetEditor(){ el('preset-modal').classList.remove('open'); }
 function peRender(){ peSync(); PE.type=el('pe-type').value; peLoad(); }
-function peLoad(){ var p=LB.data.presets[PE.type]||{name:PE.type,title:'',blocks:[]}; PE.work=JSON.parse(JSON.stringify(p));
+function peLoad(){ var p=LB.data.presets[PE.type]||{name:PE.type,title:'',blocks:[]}; PE.work=JSON.parse(JSON.stringify(p)); peSetupDraw();
   var nm=el('pe-name'); if(nm) nm.value=PE.work.name||PE.type; el('pe-title').value=PE.work.title||'';
   var del=el('pe-del'); if(del) del.style.display=isBuiltinPreset(PE.type)?'none':''; peDraw(); }
 function peCalcInputs(b,i){ if(!b.calc||!CALC_KINDS[b.calc.kind]) return '<button class="ps-calc-add" onmousedown="event.preventDefault();peAddCalc('+i+')">'+tbIco(P_SIGMA,13)+' add prep calculator</button>';
@@ -15521,8 +15551,38 @@ function peCalcInputs(b,i){ if(!b.calc||!CALC_KINDS[b.calc.kind]) return '<butto
   }).join('');
   return '<div class="blk-calc ps-calc"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span><span class="grow"></span><button class="cc-x" onmousedown="event.preventDefault();peDelCalc('+i+')">&times;</button></div><div class="cc-inputs">'+fields+'</div><div class="cc-recipe" id="pecr-'+i+'">'
     +withSeedFix('peSeedFix('+i+')', function(){ return expCalcRecipe(b); })+'</div></div>'; }
+// The numbers the setup owns. A preset's seeding was editable in the calculator below and then
+// silently overwritten at creation by applySetupToBlocks, which takes cellLine / cellsPerWell /
+// nPlates / format from the setup \u2014 so changing the calculator looked like it worked and never
+// did. These are the values that actually decide it, and this is the only place to change them.
+function peSetupDraw(){
+  var host=el('pe-setup'); if(!host) return;
+  var flds=setupFieldsFor(PE.type)||[];
+  if(!flds.length){ host.innerHTML=''; return; }
+  var cur=Object.assign({}, setupDefaultsFor(PE.type), PE.work.setup||{});
+  host.innerHTML='<div class="ps-setup"><div class="ps-setup-t">Setup defaults</div>'
+    +'<div class="ps-setup-h">What the New-experiment window offers, and what the calculators below '
+    +'are built from. A value here beats the block\u2019s own.</div>'
+    +'<div class="cc-inputs">'+flds.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format',cur,'peSetupUpd'); }).join('')
+    +'</div></div>';
+}
+// Only what was actually changed is stored: writing every default onto the preset would make an
+// untouched built-in look edited, and _seedUnedited would stop refreshing it.
+function peSetupUpd(){
+  var host=el('pe-setup'); if(!host) return;
+  var base=setupDefaultsFor(PE.type), out=PE.work.setup||{};
+  host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
+    var v=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value);
+    if(String(v)===String(base[k])) delete out[k]; else out[k]=v; });
+  if(Object.keys(out).length) PE.work.setup=out; else delete PE.work.setup;
+  peDraw();
+}
 function peDraw(){ var w=PE.work;
-  el('pe-body').innerHTML=w.blocks.map(function(b,i){ return '<div class="ps-blk"><div class="ps-blk-hd"><span class="ps-day"><span class="ps-day-lbl">Day</span> <input type="number" min="0" value="'+(b.dayOffset||0)+'" oninput="PE.work.blocks['+i+'].dayOffset=parseInt(this.value)||0"></span><input class="ps-title" placeholder="Block title" value="'+esc(b.title||'')+'" oninput="PE.work.blocks['+i+'].title=this.value"><button class="ps-move" title="Up" onmousedown="event.preventDefault();peMove('+i+',-1)">'+tbIco(P_CHEV_U,13)+'</button><button class="ps-move" title="Down" onmousedown="event.preventDefault();peMove('+i+',1)">'+tbIco(P_CHEV_D,13)+'</button><button class="ps-move" title="Remove" onmousedown="event.preventDefault();peDelBlock('+i+')" style="color:var(--danger)">&times;</button></div>'+peCalcInputs(b,i)+'<div class="rt ps-rt" contenteditable="true" data-i="'+i+'" oninput="PE.work.blocks['+i+'].html=this.innerHTML" onfocus="_activeEd=this">'+(b.html||'')+'</div>'+pePubField(b,i)+'</div>'; }).join('');
+  el('pe-body').innerHTML=w.blocks.map(function(b,i){ return '<div class="ps-blk"><div class="ps-blk-hd"><span class="ps-day"><span class="ps-day-lbl">Day</span> <input type="number" min="0" value="'+(b.dayOffset||0)+'" oninput="PE.work.blocks['+i+'].dayOffset=parseInt(this.value)||0"></span><input class="ps-title" placeholder="Block title" value="'+esc(b.title||'')+'" oninput="PE.work.blocks['+i+'].title=this.value"><button class="ps-move" title="Up" onmousedown="event.preventDefault();peMove('+i+',-1)">'+tbIco(P_CHEV_U,13)+'</button><button class="ps-move" title="Down" onmousedown="event.preventDefault();peMove('+i+',1)">'+tbIco(P_CHEV_D,13)+'</button><button class="ps-move" title="Remove" onmousedown="event.preventDefault();peDelBlock('+i+')" style="color:var(--danger)">&times;</button></div>'+peCalcInputs(b,i)+'<div class="rt ps-rt" contenteditable="true" data-i="'+i+'" oninput="PE.work.blocks['+i+'].html=this.innerHTML" onfocus="_activeEd=this">'+(b.html||'')+'</div>'+pePubField(b,i)+'</div>'; }).join('')
+    // Also at the end of the list. The one in the footer sits under however many blocks the
+    // preset has, so on anything longer than a screen there was no visible way to add a day.
+    +'<button class="ps-addblk" onmousedown="event.preventDefault();peAddBlock()">+ Add day-block</button>';
+  peSetupDraw();
 }
 // The bench text above is written to be followed; this is the sentence that gets published.
 // Leave it empty and the Methods fall back to the calculator, then to the bench text — which is
@@ -15550,9 +15610,51 @@ function peDelBlock(i){ PE.work.blocks.splice(i,1); peDraw(); }
 function peMove(i,dir){ var j=i+dir; if(j<0||j>=PE.work.blocks.length) return; var t=PE.work.blocks[i]; PE.work.blocks[i]=PE.work.blocks[j]; PE.work.blocks[j]=t; peDraw(); }
 function peSave(){ peSync(); if(!PE.work.baseType) PE.work.baseType=presetBase(PE.type);
   (PE.work.blocks||[]).forEach(function(b){ if(b.pub!=null && !String(b.pub).trim()) delete b.pub; });
-  LB.data.presets[PE.type]=PE.work; save(); closePresetEditor(); toast('Preset saved'); }
+  LB.data.presets[PE.type]=PE.work; save(); closePresetEditor();
+  // The New-experiment window is still open behind this one, showing the preview it built from
+  // the *old* preset \u2014 so days edited here looked as though they had not changed. peDelete has
+  // always refreshed it; saving never did.
+  if(el('nm-type')){ nmFillTypes(); nmUpdateCode(); nmPreview(); }
+  toast('Preset saved'); }
 function peDelete(){ if(isBuiltinPreset(PE.type)){ toast('Built-in presets cannot be deleted'); return; }
   lbConfirm('Delete the preset "'+esc(PE.work.name||PE.type)+'"? (Experiments already created from it are unaffected.)',{danger:true,title:'Delete preset'}).then(function(ok){ if(!ok) return; delete LB.data.presets[PE.type]; save(); closePresetEditor(); if(el('nm-type')){ nmFillTypes(); nmUpdateCode(); nmPreview(); } toast('Preset deleted'); }); }
+// The design you end up with after adjusting an experiment is the one worth keeping, and until
+// now the only way to a new preset was to build it again by hand in the preset editor. This takes
+// the experiment as it stands \u2014 its steps, their day offsets, their waits, their calculators and
+// their Methods sentences, plus the setup it was created with \u2014 and nothing about the run: no
+// ticks, no notes, no dates, no results. A preset is a plan, not a record.
+function saveExpAsPreset(id){
+  var e=LB.data.experiments[id]; if(!e) return;
+  if(!(e.blocks||[]).length){ toast('This experiment has no steps to save'); return; }
+  lbPrompt('Name for the preset \u2014 it appears in the New-experiment list.',
+    (e.title||e.code||'My preset'),{title:'Save as a preset',ok:'Save'}).then(function(nm){
+    nm=String(nm||'').trim(); if(!nm) return;
+    var key=_presetKeyFor(nm);
+    var anc=expAnchorDate(e);
+    var blocks=(e.blocks||[]).map(function(b){
+      var o={dayOffset:(b.dayOffset!=null?+b.dayOffset:(b.date?daysBetween(anc,b.date):0)),
+             title:b.title||'', html:(b.tpl&&b.tpl.html)||b.html||'<p></p>'};
+      var pub=(b.tpl&&b.tpl.pub)||b.pub; if(pub) o.pub=pub;
+      // A wait you typed is part of the design; one that was only implied by the next step's
+      // date is not, and re-dating the new experiment would make it a lie.
+      if(b.waitOwn&&b.waitMin) o.waitMin=b.waitMin;
+      if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc));
+      return o; }).sort(function(a,b){ return (a.dayOffset||0)-(b.dayOffset||0); });
+    var p={name:nm,baseType:e.type||presetBase(e.presetKey)||'EXP',title:e.title||'',blocks:blocks};
+    if(e.setup&&Object.keys(e.setup).length) p.setup=JSON.parse(JSON.stringify(e.setup));
+    if(e.plate&&Object.keys(e.plate.wells||{}).length) p.plateOn=true;
+    undoMark('Save as a preset',['presets']);
+    LB.data.presets[key]=p; save();
+    toast('Saved as \u201c'+nm+'\u201d \u2014 it is in the New-experiment list');
+    if(el('nm-type')){ nmFillTypes(); nmUpdateCode(); nmPreview(); }
+  });
+}
+// A key that is stable, readable and not already taken.
+function _presetKeyFor(nm){
+  var base=String(nm).toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_+|_+$/g,'').slice(0,24)||'PRESET';
+  var k=base, i=2; while(LB.data.presets[k]){ k=base+'_'+i; i++; }
+  return k;
+}
 // Create a new custom preset based on a built-in type, then open it for editing.
 function newPresetFromType(){ var items=EXP_TYPES.filter(function(t){return t.id!=='EXP';}).map(function(t){ return {id:t.id,label:LB.data.presets[t.id]?LB.data.presets[t.id].name:t.name,sub:'base it on '+t.id,ic:t.id.slice(0,2),c:'#5e87c5'}; });
   lbPicker('New preset — base it on…',items,function(it){
