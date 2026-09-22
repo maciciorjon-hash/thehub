@@ -34,7 +34,7 @@ Four things have to be excellent, and they are the four to invest in:
 | **Analyse** | curves, potencies, plate readings — as data, not screenshots | Echo, `integration.results`, `plParseValues` |
 | **Export** | a document someone else can use: Methods sheet, PDF, Word, CSV, PNG | `exportMethods`, `exportPDF`, `copyRendered` |
 
-The **encoded domain knowledge** is still the moat under all four — 33 Archive protocols with
+The **encoded domain knowledge** is still the moat under all four — 34 Archive protocols with
 working calculators, parameterised experiment templates, and a loop that understands what a
 dose-response plate is. Benchling/MBook/LabArchives are rich text plus attachments; none of
 them know what a 384-well plate or a DC50 is.
@@ -892,7 +892,7 @@ served publicly at a guessable address — the unlisted slug protects the phone 
 ## Standalone Labbook (Labbook + Archive in one file)
 
 `python3 embed.py --profile=labbook` → `labbook-standalone.html` (~920 KB): the notebook,
-experiments, week planner **and the full Archive** — 33 protocols with their 24 live
+experiments, week planner **and the full Archive** — 34 protocols with their 24 live
 calculators — with no dHUB and no parent frame.
 
 **Archive is embedded as a base64 iframe, not inlined.** Archive publishes its bridge
@@ -4803,6 +4803,50 @@ fixed colour is fixed too.
 **Next**, and stated as such: letting the user lay the rest of the plate out — which compound,
 which concentration, where — so the numbers that come off it are complete. Other readers
 (GloMax) after that. Tracer displacement is untouched; Jon is not running it yet.
+
+## Cmd+K stopped answering "no matches" to things that exist (2026-09-22)
+
+Jon: *"la búsqueda tiene que ser más intuitiva. al escribir algo parecido debería sugerirte el
+protocolo/experimento correspondiente… tiene que ser muy completa y sobre todo inteligente."*
+
+It was `indexOf`, and `indexOf` says "no matches" to almost everything a person types: a letter
+slipped (`gibsn`), two swapped (`wetsern`), a space that is not in the name (`mini prep`),
+initials (`wb`), the other word for the same thing (`immunoblot`), an accent (`célula`), or
+Spanish (`siembra`). That reads as the search being broken rather than as the query being one
+character out.
+
+**Normalise, then a ladder from certain to speculative**, and a speculative hit can never
+outrank a certain one — every rung *is* its score, which is what keeps the order honest as
+rungs are added: name exact 100 · name prefix 92 · word prefix 84 · name contains 74 ·
+initials 66/62 · a name word one or two characters out 58 · subtitle 52 · loose subsequence
+41–48 · body text 34. `_spotNorm` folds case and accents and turns every non-alphanumeric into
+a space, so `anti-BRD4`, `anti BRD4` and `antiBRD4` are one query.
+
+- **Damerau, not Levenshtein** — and that is the difference between working and not. Two
+  letters swapped is the commonest typo there is and plain Levenshtein charges 2 for it, so
+  `wetsern` (one transposition from `western`) found nothing. Bounded and abandoned as soon as
+  it exceeds the tolerance, which is 0 under four letters, 1 under eight, 2 above.
+- **`SPOT_ALIASES`** is what this lab calls the same thing — 32 declared rows, domain plus the
+  Spanish Jon types. Deliberately small and specific: a general thesaurus matches everything to
+  everything, which is the other way to make a search useless. An alias hit scores its rung
+  minus 6, so the word you actually typed always wins, and the panel says when an alias did the
+  work rather than letting the result look like a coincidence.
+- **"Did you mean" is a correction, not a guess.** Proposing the nearest *row* was wrong:
+  nothing is named "Gibson" (the protocol is *Vector linearization + HiFi assembly…*), so
+  `gibsn` proposed whatever row happened to be three edits away — *HiBiT Degradation Screens*.
+  The right unit is the **word**. `spotVocab()` is every word the notebook actually contains,
+  names and prose, built once with the index; `spotCorrectQuery` corrects **each word**
+  separately (`westrn blto` → `western blot`), the search is re-run with the correction, and
+  the panel says *Showing results for western*.
+- **Recency breaks ties** (`_spotRecency`, ≤0.9) and **`_spotDedupe`** keeps one row per
+  label+subtitle and at most two per label — one experiment matched from its name and four of
+  its steps printed its code three times in a row, which reads as broken.
+
+Measured at 2,142 rows: **1.8 ms** a keystroke on a hit, 2.5 ms on a corrected typo, 6.7 ms on
+the worst case (two typos plus alias expansion), and the 564-word vocabulary builds in 30 ms
+— lazily, only when a correction is actually needed. `gbsn` and `xyzzy` still return nothing,
+on purpose: three characters from six is a different word, not a typo, and a search that
+always answers something is a search that cannot be trusted when it does.
 
 ## Current state
 

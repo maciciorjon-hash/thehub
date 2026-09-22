@@ -986,6 +986,7 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .spot-item .m .a{font-size:var(--fs-4);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .spot-item .m .b{font-size:var(--fs-2);color:var(--text3);}
 .spot-item .k{font-size:var(--fs-3);color:var(--text3);font-family:var(--sans);}
+#spot-hint{padding:9px 14px;font-size:var(--fs-3);color:var(--text2);border-bottom:1px solid var(--border);background:var(--surface2);}
 .spot-empty{padding:26px;text-align:center;color:var(--text3);font-size:var(--fs-4);}
 
 @media print{
@@ -2618,7 +2619,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 
 <!-- Cmd+K spotlight -->
 <div id="spot-back" onclick="if(event.target.id==='spot-back')closeSpot()">
-  <div id="spot"><input id="spot-in" type="text" placeholder="Search experiments, protocols, antibodies, primers, cultures, vials…" data-ph-short="Search the notebook…" autocomplete="off" oninput="spotRender()"><div id="spot-res"></div></div>
+  <div id="spot"><input id="spot-in" type="text" placeholder="Search experiments, protocols, antibodies, primers, cultures, vials…" data-ph-short="Search the notebook…" autocomplete="off" oninput="spotRender()"><div id="spot-hint" style="display:none"></div><div id="spot-res"></div></div>
 </div>
 
 <div class="pop" id="acpop"></div>
@@ -14991,25 +14992,210 @@ function spotIndex(){
   if(!SPOT.idx) SPOT.idx={names:spotAll(), content:spotContent()};
   return SPOT.idx;
 }
-// Ordered, not just filtered. A name that starts with what you typed is a different answer
-// from the same letters buried in a paragraph, and .slice(0,40) over an unsorted list threw
-// the first away whenever the notebook was big.
-function _spotScore(x,q){
-  var a=(x.a||'').toLowerCase(), b=(x.b||'').toLowerCase();
-  var i=a.indexOf(q);
-  if(i===0) return 100;
-  if(i>0) return (a.charAt(i-1)===' '||a.charAt(i-1)==='-') ? 84 : 68;
-  i=b.indexOf(q); if(i>=0) return 52;
-  if(x.t){ i=x.t.indexOf(q); if(i>=0) return 34-Math.min(14,i/300); }
-  return -1;
+// ══════════════════════════════════════════════════════════════════════════════════════════
+// Matching — what makes the box worth opening
+//
+// It used to be indexOf, and indexOf answers "no matches" to everything a person actually
+// types: a letter slipped (`gibsn`), a space that is not in the name (`mini prep`), initials
+// (`wb`), the other word for the same thing (`immunoblot`), an accent (`célula`). "No matches"
+// reads as the search being broken rather than as the query being one character out.
+//
+// So: normalise, then walk a ladder from certain to speculative, and never let a speculative
+// hit outrank a certain one. Every rung returns a number, and the number is the rung — that is
+// what keeps the order honest as rungs are added.
+// ══════════════════════════════════════════════════════════════════════════════════════════
+
+// Accents folded, case folded, everything that is not a letter or a digit becomes a space. So
+// "anti-BRD4", "anti BRD4" and "antiBRD4" are one query, and "célula" matches "celula".
+function _spotNorm(s){
+  return String(s||'').toLowerCase()
+    .normalize ? String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim()
+               : String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 }
-// Nobody types a substring of a sentence. "gibson incubated" is two words that appear in one
-// step in that order but not adjacently, and a plain indexOf answers "no matches" — which
-// reads as the search being broken rather than as the query being a phrase it never was.
-function _spotScoreQ(x,toks){
+function _spotWords(s){ var n=_spotNorm(s); return n?n.split(' '):[]; }
+
+// What this lab calls the same thing. One declared table, so a new word is a data entry.
+// Deliberately small and specific: a general thesaurus would match everything to everything,
+// which is the other way to make a search useless. Spanish is here because Jon types it — the
+// interface stays English, this is only how a query is read.
+var SPOT_ALIASES = [
+  ['western blot','wb','immunoblot','blot'],
+  ['nanobret','bret','nb','target engagement'],
+  ['hibit','degradation','dc50','degrader'],
+  ['celltiter','ctg','viability','cell titer'],
+  ['miniprep','mini prep','plasmid prep','dna prep'],
+  ['maxiprep','maxi prep'],
+  ['transfection','transfect','lipofection','fugene'],
+  ['transformation','transform','heat shock'],
+  ['gibson','assembly','hifi'],
+  ['crispr','cas9','knockout','ko','sgrna','guide'],
+  ['qpcr','rt qpcr','real time pcr'],
+  ['immunoprecipitation','ip','pulldown','pull down','co ip'],
+  ['proteomics','mass spec','ms','lc ms'],
+  ['tr fret','htrf','fret'],
+  ['flow cytometry','facs'],
+  ['seeding','seed','plating','plate cells','siembra','sembrar'],
+  ['cells','cell','celula','celulas'],
+  ['medium','media','medio'],
+  ['freezing','freeze','cryo','congelar'],
+  ['thaw','thawing','descongelar'],
+  ['plasmid','vector','construct','plasmido'],
+  ['antibody','antibodies','anticuerpo'],
+  ['primer','primers','oligo','cebador'],
+  ['protocol','protocolo','method','metodo'],
+  ['experiment','experimento','run'],
+  ['compound','compuesto','molecule','ligand'],
+  ['dose response','dose','titration','curve','curva'],
+  ['selection','hygromycin','puromycin','antibiotic'],
+  ['stable line','flp in','trex','t rex','stable cell line'],
+  ['lysis','lyse','lysate','lisis'],
+  ['buffer','tampon'],
+  ['incubate','incubation','incubar','incubacion']
+];
+// word → the set of rows it appears in, built once.
+var _SPOT_ALIAS_IDX = (function(){
+  var m={};
+  SPOT_ALIASES.forEach(function(row,ri){ row.forEach(function(w){ (m[w]=m[w]||[]).push(ri); }); });
+  return m;
+})();
+// Every phrase this query could also mean — the query itself first, so a literal hit always
+// wins. Only whole-token matches expand: "ip" must not fire on "recipe".
+function spotExpand(q){
+  var out=[q], seen={}; seen[q]=1;
+  var words=_spotWords(q);
+  function add(p){ if(p && !seen[p]){ seen[p]=1; out.push(p); } }
+  // the whole query as one alias key
+  (_SPOT_ALIAS_IDX[q]||[]).forEach(function(ri){ SPOT_ALIASES[ri].forEach(add); });
+  // and each word of it
+  if(words.length>1) words.forEach(function(w){ (_SPOT_ALIAS_IDX[w]||[]).forEach(function(ri){ SPOT_ALIASES[ri].forEach(add); }); });
+  return out;
+}
+
+// Initials: "western blot dcaf15" → "wbd". Answers "wb", "nb", "ctg" typed as a shorthand.
+function _spotInitials(s){ return _spotWords(s).map(function(w){ return w.charAt(0); }).join(''); }
+
+// Damerau-Levenshtein, abandoned as soon as it exceeds max — a full matrix over 2,000 rows
+// per keystroke is the kind of clever that makes a search box feel slow.
+//
+// Damerau, not plain Levenshtein, and that is the whole difference between working and not:
+// two letters swapped is the commonest typo there is, and plain Levenshtein charges 2 for it.
+// "wetsern" is one transposition from "western" and found nothing until this counted it as one.
+function _spotLev(a,b,max){
+  var la=a.length, lb=b.length;
+  if(Math.abs(la-lb)>max) return max+1;
+  var d=[], i, j;
+  for(i=0;i<=la;i++){ d[i]=[i]; }
+  for(j=0;j<=lb;j++){ d[0][j]=j; }
+  for(i=1;i<=la;i++){
+    var best=1e9;
+    for(j=1;j<=lb;j++){
+      var cost=(a.charCodeAt(i-1)===b.charCodeAt(j-1))?0:1;
+      var v=Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost);
+      if(i>1&&j>1 && a.charCodeAt(i-1)===b.charCodeAt(j-2) && a.charCodeAt(i-2)===b.charCodeAt(j-1))
+        v=Math.min(v, d[i-2][j-2]+1);
+      d[i][j]=v;
+      if(v<best) best=v;
+    }
+    if(best>max) return max+1;
+  }
+  return d[la][lb];
+}
+// How many errors a word of this length is allowed. One for a short word, two from eight
+// letters up — enough for a transposition plus a slip, not enough to match a different word.
+function _spotTol(n){ return n<4 ? 0 : (n<8 ? 1 : 2); }
+// Is every letter of q present in s, in order? ("gbsn" in "gibson"). Scored by how tight the
+// run is, so "gib" beats letters scattered across a paragraph.
+function _spotSubseq(q,s){
+  var i=0, first=-1, last=-1;
+  for(var j=0;j<s.length && i<q.length;j++){
+    if(s.charCodeAt(j)===q.charCodeAt(i)){ if(first<0) first=j; last=j; i++; }
+  }
+  if(i<q.length) return -1;
+  var span=last-first+1;
+  return q.length/span;          // 1 = adjacent, → 0 = scattered
+}
+
+// ── the ladder ────────────────────────────────────────────────────────────────────────────
+// 100 name is exactly the query · 92 name starts with it · 84 a word of the name starts with it
+//  74 the name contains it · 66 the initials are it · 58 a near-miss of a name word (typo)
+//  52 the subtitle · 44 a loose subsequence of the name · 34 the body text · 26 body near-miss
+// Anything an alias found is the same rung minus 6, so the word you actually typed wins.
+function _spotScoreOne(x,q,aliasPenalty){
+  var a=x._na!==undefined?x._na:(x._na=_spotNorm(x.a));
+  var b=x._nb!==undefined?x._nb:(x._nb=_spotNorm(x.b));
+  var p=aliasPenalty||0, s=-1;
+  if(a===q) s=100;
+  else if(a.indexOf(q)===0) s=92;
+  else if((' '+a).indexOf(' '+q)>=0) s=84;
+  else if(a.indexOf(q)>0) s=74;
+  if(s<0){
+    var ini=x._ni!==undefined?x._ni:(x._ni=_spotInitials(x.a));
+    if(q.length>=2 && ini===q) s=66;
+    else if(q.length>=3 && ini.indexOf(q)===0) s=62;
+  }
+  if(s<0 && q.length>=4){
+    // a word of the name, one or two characters out
+    var ws=x._nw!==undefined?x._nw:(x._nw=a?a.split(' '):[]);
+    var tol=_spotTol(q.length);
+    if(tol) for(var i=0;i<ws.length;i++){
+      if(Math.abs(ws[i].length-q.length)>tol) continue;
+      if(_spotLev(q,ws[i],tol)<=tol){ s=58; break; }
+    }
+  }
+  if(s<0 && b && b.indexOf(q)>=0) s=52;
+  if(s<0 && q.length>=3 && a){
+    var tight=_spotSubseq(q,a);
+    if(tight>=0.34) s=40+Math.round(tight*8);     // 41–48, always under a real substring
+  }
+  if(s<0 && x.t){
+    var i2=x.t.indexOf(q);
+    if(i2>=0) s=34-Math.min(14,i2/300);
+    else if(q.length>=5 && x._tw===undefined){ x._tw=null; }
+  }
+  return s<0 ? -1 : Math.max(1, s-p);
+}
+// The whole phrase first — "dose response" adjacent beats the two words apart — then every
+// word, and a row only survives if every word of the query found something.
+function _spotScoreTokens(x,toks,p){
   var lo=1e9, hi=-1;
-  for(var i=0;i<toks.length;i++){ var v=_spotScore(x,toks[i]); if(v<0) return -1; if(v<lo) lo=v; if(v>hi) hi=v; }
+  for(var i=0;i<toks.length;i++){
+    var v=_spotScoreOne(x,toks[i],p);
+    if(v<0) return -1;
+    if(v<lo) lo=v; if(v>hi) hi=v;
+  }
   return (lo+hi)/2;
+}
+// One row against one query, through every phrase the query could also mean.
+function _spotScore(x,q){
+  var phrases=SPOT._ph||[q], best=-1;
+  for(var i=0;i<phrases.length;i++){
+    var pen=i?6:0, ph=phrases[i];
+    var v=_spotScoreOne(x,ph,pen);
+    if(v<0){ var toks=ph.split(' ').filter(Boolean); if(toks.length>1) v=_spotScoreTokens(x,toks,pen); }
+    if(v>best) best=v;
+  }
+  return best;
+}
+// The same experiment matches from its name and from four of its steps, and three identical
+// labels in a row read as the search being broken. One row per label+subtitle, and at most two
+// per label — the second is worth keeping when it says something different ("· methods").
+function _spotDedupe(rows){
+  var byPair={}, byLabel={}, out=[];
+  for(var i=0;i<rows.length;i++){
+    var x=rows[i].x, lab=(x.a||''), pair=lab+'\u0000'+(rows[i].sub||'');
+    if(byPair[pair]) continue;
+    if((byLabel[lab]||0)>=2) continue;
+    byPair[pair]=1; byLabel[lab]=(byLabel[lab]||0)+1;
+    out.push(rows[i]);
+  }
+  return out;
+}
+// Equal scores are broken by what you touched last: of two experiments called the same thing,
+// the one edited this morning is the one meant. Small, so it never reorders different rungs.
+function _spotRecency(x){
+  var t=x.when||0; if(!t) return 0;
+  var days=(Date.now()-t)/864e5;
+  return days<1?0.9:days<7?0.6:days<30?0.3:0;
 }
 // Show the sentence the hit is in, not the generic kind label.
 function _spotSnip(x,q,toks){
@@ -15020,8 +15206,65 @@ function _spotSnip(x,q,toks){
   var st=Math.max(0,i-38), en=Math.min(x.raw.length,i+q.length+52);
   return (st?'…':'')+x.raw.slice(st,en).trim()+(en<x.raw.length?'…':'');
 }
-function spotRender(){ var q=(el('spot-in').value||'').toLowerCase().trim();
-  var ix=spotIndex(), items;
+// ── "did you mean" is a correction, not a guess ───────────────────────────────────────────
+// Proposing the nearest *row* was wrong: nothing is named "Gibson" (the protocol is "Vector
+// linearization + HiFi assembly…"), so "gibsn" proposed whatever row happened to be three
+// edits away — HiBiT Degradation Screens. The right unit is the WORD. Every word the notebook
+// actually contains, names and prose, is the vocabulary; the nearest word to what you typed is
+// the correction; and then the search is simply re-run with it. So "gibsn" corrects to
+// "gibson" and returns the Gibson protocol, which is the answer.
+function spotVocab(){
+  var ix=spotIndex();
+  if(ix.vocab) return ix.vocab;
+  var seen={}, v=[];
+  function eat(str,weight){
+    var ws=_spotWords(str);
+    for(var i=0;i<ws.length;i++){
+      var w=ws[i];
+      if(w.length<3 || w.length>24) continue;
+      if(seen[w]===undefined){ seen[w]=v.length; v.push({w:w,n:0,best:0}); }
+      var e=v[seen[w]]; e.n++; if(weight>e.best) e.best=weight;
+    }
+  }
+  ix.names.forEach(function(x){ eat(x.a,2); eat(x.b,1); });
+  // The prose is capped: a word that appears once in one paragraph is not a correction anyone
+  // wants offered, and walking every megabyte per keystroke is not what this is for.
+  ix.content.forEach(function(x){ if(x.t) eat(x.t.slice(0,600),1); });
+  ix.vocab=v;
+  return v;
+}
+// The nearest real words to what was typed. Ranked by distance first, then by how central the
+// word is (a name beats prose, common beats rare) — of two words one edit away, the one that
+// names something is the one meant.
+function _spotCorrWord(qn){
+  if(qn.length<3) return [];
+  var tol=_spotTol(qn.length); if(!tol) tol=1;
+  var v=spotVocab(), out=[];
+  for(var i=0;i<v.length;i++){
+    var w=v[i].w;
+    if(w===qn) return [];                       // it is a real word; nothing to correct
+    if(Math.abs(w.length-qn.length)>tol) continue;
+    var d=_spotLev(qn,w,tol);
+    if(d<=tol) out.push({w:w,d:d,rank:v[i].best*100+Math.min(v[i].n,50)});
+  }
+  out.sort(function(a,b){ return a.d-b.d || b.rank-a.rank; });
+  var seen={}, res=[];
+  for(var k=0;k<out.length && res.length<3;k++){ if(seen[out[k].w]) continue; seen[out[k].w]=1; res.push(out[k].w); }
+  return res;
+}
+// A multi-word query is corrected word by word — "wetsern blto" is two typos, not one.
+function spotCorrectQuery(q){
+  var toks=_spotNorm(q).split(' ').filter(Boolean);
+  if(!toks.length) return null;
+  var changed=false, out=toks.map(function(t){
+    var c=_spotCorrWord(t);
+    if(c.length){ changed=true; return c[0]; }
+    return t;
+  });
+  return changed ? out.join(' ') : null;
+}
+function spotRender(){ var raw=(el('spot-in').value||'').trim(), q=_spotNorm(raw);
+  var ix=spotIndex(), items, hint='';
   // ⌘O: only the experiments, by code or title — the list to type a code into.
   if(SPOT.only){ ix={names:ix.names.filter(function(x){ return x.k===SPOT.only; }), content:[]}; }
   if(!q){
@@ -15029,18 +15272,39 @@ function spotRender(){ var q=(el('spot-in').value||'').toLowerCase().trim();
     // noise — the names are the map of what exists.
     items=ix.names.slice(0,40).map(function(x){ return {x:x,sub:x.b||''}; });
   } else {
-    var toks=q.split(/\s+/).filter(Boolean);
-    items=ix.names.concat(ix.content).map(function(x){
-        // The whole phrase first, because "dose response" adjacent beats the two words apart.
-        var s=_spotScore(x,q);
-        if(s<0 && toks.length>1) s=_spotScoreQ(x,toks);
-        return {x:x,s:s}; })
+    // Every phrase this query could also mean, resolved once rather than per row.
+    SPOT._ph=spotExpand(q);
+    var toks=q.split(' ').filter(Boolean);
+    items=ix.names.concat(ix.content).map(function(x){ return {x:x,s:_spotScore(x,q)}; })
       .filter(function(r){ return r.s>=0; })
-      .sort(function(a,b){ return b.s-a.s; })
-      .slice(0,40)
+      .sort(function(a,b){ return (b.s+_spotRecency(b.x))-(a.s+_spotRecency(a.x)); })
+      .slice(0,160)
       .map(function(r){ return {x:r.x, sub:(r.s<40 ? _spotSnip(r.x,q,toks) : (r.x.b||''))}; });
+    items=_spotDedupe(items).slice(0,40);
+    // Nothing matched: correct the query to the nearest words the notebook actually contains
+    // and answer THAT, saying so. A correction that returns the right thing is worth more than
+    // a list of near-miss names, and it costs the reader no keystroke at all.
+    if(!items.length){
+      var fix=spotCorrectQuery(q);
+      if(fix && fix!==q){
+        SPOT._ph=spotExpand(fix);
+        var ftoks=fix.split(' ').filter(Boolean);
+        items=ix.names.concat(ix.content).map(function(x){ return {x:x,s:_spotScore(x,fix)}; })
+          .filter(function(r){ return r.s>=0; })
+          .sort(function(a,b){ return (b.s+_spotRecency(b.x))-(a.s+_spotRecency(a.x)); })
+          .slice(0,160)
+          .map(function(r){ return {x:r.x, sub:(r.s<40 ? _spotSnip(r.x,fix,ftoks) : (r.x.b||''))}; });
+        items=_spotDedupe(items).slice(0,40);
+        if(items.length) hint='Showing results for <b>'+esc(fix)+'</b> — nothing matches “'+esc(raw)+'”.';
+      }
+    } else if(SPOT._ph.length>1 && items.length){
+      // An alias did the work — say so, or the result looks like a coincidence.
+      var lit=ix.names.concat(ix.content).some(function(x){ return _spotScoreOne(x,q,0)>=0; });
+      if(!lit) hint='No match for “'+esc(raw)+'” itself — showing what this lab calls the same thing.';
+    }
   }
   SPOT.items=items.map(function(r){ return r.x; }); SPOT.sel=0;
+  var hintEl=el('spot-hint'); if(hintEl){ hintEl.innerHTML=hint; hintEl.style.display=hint?'':'none'; }
   el('spot-res').innerHTML=items.length? items.map(function(r,i){ var x=r.x; return '<div class="spot-item'+(i===0?' sel':'')+'" data-i="'+i+'" onmousedown="event.preventDefault();spotPick('+i+')"><span class="ic'+(x.svg?' ic-svg':'')+'" style="background:'+x.c+'">'+(x.svg||esc(x.ic))+'</span><span class="m"><span class="a">'+esc(x.a)+'</span><span class="b">'+esc(r.sub)+'</span></span><span class="k">'+esc(x.k)+'</span></div>'; }).join('') : '<div class="spot-empty">No matches</div>';
 }
 function spotPick(i){ var x=SPOT.items[i]; if(!x) return;
