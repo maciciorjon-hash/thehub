@@ -168,15 +168,18 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .add-row input{flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-2);padding:6px 9px;font-family:var(--sans);font-size:var(--fs-3);color:var(--text);outline:none;}
 .add-row input:focus{border-color:var(--accent);}
 .add-row button{background:var(--accent);border:none;color:#fff;border-radius:var(--r-2);width:30px;font-size:var(--fs-5);cursor:pointer;flex-shrink:0;}
-.proj-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r-2);cursor:pointer;font-size:var(--fs-4);color:var(--text);font-weight:600;transition:background .12s;}
+/* A project is a coloured tab, the way a OneNote notebook is: the colour is a bar down its
+   left edge, and a folder underneath carries the same colour as its dot. */
+.proj-row{display:flex;align-items:center;gap:8px;padding:7px 10px 7px 12px;border-radius:var(--r-2);cursor:pointer;font-size:var(--fs-4);color:var(--text);font-weight:600;transition:background .12s;position:relative;}
+.proj-row::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:2px;background:var(--pc,var(--accent));}
+.proj-row.here{background:var(--surface2);}
+.sec-item.quiet{color:var(--text3);font-weight:500;}
+.sec-item.quiet .dot{background:transparent;border:1px dashed var(--text3);}
+.sec-item.quiet:hover{color:var(--text);}
 .proj-row:hover{background:var(--surface2);}
 .proj-row .chev{color:var(--text3);transition:transform .15s;display:inline-flex;align-items:center;justify-content:center;width:12px;flex-shrink:0;}
 .proj-row .chev.open{transform:rotate(90deg);}
-.proj-row .pcolor{width:9px;height:9px;border-radius:var(--r-1);flex-shrink:0;}
 .proj-row .proj-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.proj-row .del{opacity:.5;color:var(--text3);font-size:var(--fs-6);line-height:1;padding:2px 5px;border-radius:var(--r-1);cursor:pointer;flex-shrink:0;}
-.proj-row:hover .del{opacity:.85;}
-.proj-row .del:hover{color:var(--danger);opacity:1;background:var(--surface3);}
 .sec-item.sub{margin-left:15px;padding-left:12px;font-size:var(--fs-3);border-left:1px solid var(--border);border-radius:0 6px 6px 0;}
 .sec-item.sub .dot{width:6px;height:6px;border-radius:50%;background:var(--text3);}
 .sec-item.sub.active .dot{background:var(--accent);}
@@ -236,12 +239,6 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
    left (notebook picker + sections · pages · page) and a page on paper. A section's colour is
    --nb-c, set inline from NB_COLORS, so one custom property paints the row, the header and the
    rule under the title. */
-.ws-seg{margin:8px 8px 6px;display:flex;}
-.ws-seg button{flex:1 1 0;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 8px;min-height:32px;}
-.ws-seg button span{white-space:nowrap;}
-.ws-seg button:not(.on) span{display:none;}
-.ws-seg button.on{flex:2 1 0;}
-.ws-seg button svg{width:15px;height:15px;flex:none;}
 .pane-note{padding:10px 12px;color:var(--text3);font-size:var(--fs-2);line-height:1.5;}
 .sec-item.nb-sec{position:relative;padding-left:17px;}
 .sec-item.nb-sec::before{content:'';position:absolute;left:5px;top:7px;bottom:7px;width:3px;border-radius:2px;background:var(--nb-c);}
@@ -2129,7 +2126,7 @@ a,button,input,select,textarea,
 .btn:active,.icon-btn:active,.pub-btn:active,.exh-act:active,.pl-btn:active:not(:disabled),
 .pl-type:active,.ph-btn:active,.rail-btn:active,.lb-mbtn:active{transform:scale(.97);}
 /* A row that reveals a delete cross on hover used to blink it into existence. */
-.sec-item .del,.proj-row .del,.page-del,.wk-del,.wk-sn,.ci-hint{
+.sec-item .del,.page-del,.wk-del,.wk-sn,.ci-hint{
   transition:opacity var(--dur-1) var(--ease),background-color var(--dur-1) var(--ease),
              color var(--dur-1) var(--ease);
 }
@@ -7768,7 +7765,7 @@ document.addEventListener('click',function(e){ if(window.innerWidth>760) return;
   // somewhere to go" — the drawer stays for those.
   // In the Notebook, the picker and a section row refresh the pages list underneath; only a
   // page is "somewhere to go".
-  if(inSec && !e.target.closest('.rail-btn,.proj-row,.add-row,input,button.collapse-btn,.pages-hd,.chev,.nb-pick-row,.nb-sec,.pg-chev,.lb-mbtn,.ws-seg')) setTimeout(function(){ toggleMobileNav(false); },0); });
+  if(inSec && !e.target.closest('.rail-btn,.proj-row,.add-row,.sec-item.quiet,input,button.collapse-btn,.pages-hd,.chev,.jr-today,.jr-month,.pg-chev,.lb-mbtn')) setTimeout(function(){ toggleMobileNav(false); },0); });
 function resetPane(which){ if(which==='sec') LAYOUT.wSec=210; else LAYOUT.wPages=280; saveLayout(); applyLayout(); }
 var _rz=null;
 function startResize(ev,which){ ev.preventDefault(); _rz={which:which,x:ev.clientX,w:(which==='sec'?LAYOUT.wSec:LAYOUT.wPages)}; var sp=el('split-'+which); sp.classList.add('drag'); try{sp.setPointerCapture(ev.pointerId);}catch(e){} document.body.classList.add('lb-rz'); document.body.style.cursor='col-resize'; document.body.style.userSelect='none'; }
@@ -7950,10 +7947,6 @@ function secLeaf(node,label,icon,delCall,ctx,forceActive,opts){
   var meta = opts.meta ? '<span class="sec-meta">'+esc(opts.meta)+'</span>' : '';
   return '<div class="sec-item'+sub+active+(opts.cls?' '+opts.cls:'')+'" onclick="'+onclick+'"'+(ctx?' oncontextmenu="'+ctx+'"':'')+(opts.style?' style="'+opts.style+'"':'')+'>'+ic+'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(label)+'</span>'+meta+del+'</div>';
 }
-// The Planner | Notebook switch. Inside dHUB the rail is the switch, so this draws nothing.
-var PLANNER_ICON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 2.5v4M16 2.5v4"/><path d="M8.5 15l2.5 2.5 4.5-4.5"/></svg>';
-function _wsSwitchHtml(cur){ if(lbHost()||_phoneTabs()) return '';   // the rail, or the tab bar, is the switch
-  return '<div class="ws-seg jr-seg"><button class="'+(cur==='planner'?'on':'')+'" onclick="selectNode(\'home\')">'+PLANNER_ICON+'<span>Planner</span></button><button class="'+(cur==='notebook'?'on':'')+'" onclick="openJournalWs()">'+NB_ICON+'<span>Journal</span></button><button class="'+(cur==='visualize'?'on':'')+'" onclick="selectNode(\'viz\')">'+VIZ_ICON+'<span>Visualize</span></button></div>'; }
 function _colFootRender(){ var f=el('col-foot'); if(!f) return; if(_phoneTabs()){ f.innerHTML=''; return; }   // the phone's More menu holds these
   f.innerHTML='<button title="Export — PDF, Word, the clipboard, the numbers, a report" onmousedown="event.preventDefault();exportMenu()">'+tbSvg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>')+'</button>'
     +'<button title="Recover — deleted items, versions, snapshots and backup files" onmousedown="event.preventDefault();openRecover()">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</button>'
@@ -7961,18 +7954,13 @@ function _colFootRender(){ var f=el('col-foot'); if(!f) return; if(_phoneTabs())
     +'<button title="Light / dark" onmousedown="event.preventDefault();toggleTheme();_colFootRender()">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a7 7 0 1010.5 10.5z"/>')+'</button>'; }
 function renderSections(){
   _colFootRender();
-  if(SEL.node.kind==='nb') return renderNbColumn();
-  var host=el('pane-sec'); var h=''; var k=SEL.node.kind, surf=lbSurface();
-  // Visualize is the whole screen: no surfaces under it, so no column — except standalone,
-  // where the switch at its top is the only way back to the Planner.
-  if(k==='viz'){ h=_wsSwitchHtml('visualize'); host.innerHTML=h; return !!h; }
-  // The rail (dHUB) or the switch above (standalone) names the WORKSPACE; this column names the
-  // surface inside it — one level each, in both builds. It used to hide these leaves when a
-  // host frame existed, because the rail listed the surfaces itself; now the rail says
-  // Planner · Notebook and the surfaces live here. On a phone they are the tab bar's
-  // (renderMobileTabs), and listing them here as well was the duplicate Home button.
+  var host=el('pane-sec'); var h=''; var k=SEL.node.kind, surf=lbSurface(), ws=lbWorkspace();
+  // One column, the same on every surface and in both builds — OneNote's list of notebooks.
+  // The Planner's four surfaces, then every project as a coloured tab with its folders under
+  // it, then (standalone only — inside dHUB the rail owns the workspaces) Journal and
+  // Visualize. On a phone the tab bar carries the surfaces and the workspaces, so the drawer
+  // holds the projects alone.
   if(!_phoneTabs()){
-    h+=_wsSwitchHtml('planner');
     h+='<div class="pane-lbl" style="display:flex;align-items:center;">Planner<button class="collapse-btn" onclick="toggleCollapse(\'sec\')" title="Collapse">'+tbIco(P_CHEV_L,13)+'</button></div>';
     h+=secLeaf({kind:'home'},'Home',HOME_ICON,null);
     h+=secLeaf({kind:'journal'},'Today',TODAY_ICON,null,null,k==='journal');
@@ -7980,36 +7968,41 @@ function renderSections(){
     h+=secLeaf({kind:'exps'},'Experiments',EXPS_ICON,null,null,surf==='exps');
     if(archiveEmbedded()) h+=secLeaf({kind:'archive'},'Archive',ARC_ICON,null);
   }
-  // Projects only matter once you are inside an experiment — the Experiments surface itself
-  // IS the project list, so listing them again beside it would be the same thing twice.
-  if(k==='expsec'){
-    h+='<div class="pane-lbl">Projects</div>';
-    LB.data.projects.forEach(function(p){
-      var open=!!EXPANDED[p.id];
-      h+='<div class="proj-row" onclick="toggleProj(\''+p.id+'\')" oncontextmenu="ctxProject(event,\''+p.id+'\')"><span class="chev'+(open?' open':'')+'">'+tbIco(P_CHEV_R,11)+'</span><span class="pcolor" style="background:'+p.color+'"></span><span class="proj-name">'+esc(p.name)+'</span><span class="del" title="Delete project" onclick="event.stopPropagation();delProject(\''+p.id+'\')">&times;</span></div>';
-      if(open){ (p.sections||[]).forEach(function(sc){ h+=secLeaf({kind:'expsec',projectId:p.id,sectionId:sc.id}, sc.name, null, "delSection('"+p.id+"','"+sc.id+"')", "ctxFolder(event,'"+p.id+"','"+sc.id+"')"); });
-        h+='<div class="add-row sub"><input id="new-sec-'+p.id+'" placeholder="New folder…" autocomplete="off" onkeydown="if(event.key===\'Enter\')addSection(\''+p.id+'\')"><button onclick="addSection(\''+p.id+'\')">+</button></div>'; }
-    });
-    h+='<div class="add-row"><input id="new-proj" placeholder="New project…" autocomplete="off" oninput="_projPxHint()" onkeydown="if(event.key===\'Enter\')addProject()"><input id="new-proj-px" class="proj-px" placeholder="PX" maxlength="4" autocomplete="off" spellcheck="false" title="Code prefix — experiments here are coded PX_NB20260824. Editable later." onkeydown="if(event.key===\'Enter\')addProject()"><button onclick="addProject()">+</button></div>';
+  h+='<div class="pane-lbl">Projects</div>';
+  LB.data.projects.forEach(function(p){
+    var open=!!EXPANDED[p.id], here=(k==='expsec'&&SEL.node.projectId===p.id);
+    // Rename, prefix, colour, move and delete are on the row's menu (right-click, long press):
+    // a × on every row was a delete button beside the thing you came to open.
+    h+='<div class="proj-row'+(here?' here':'')+'" style="--pc:'+esc(p.color)+'" onclick="toggleProj(\''+p.id+'\')" oncontextmenu="ctxProject(event,\''+p.id+'\')">'
+      +'<span class="chev'+(open?' open':'')+'">'+tbIco(P_CHEV_R,11)+'</span><span class="proj-name">'+esc(p.name)+'</span></div>';
+    if(open){
+      (p.sections||[]).forEach(function(sc){ h+=secLeaf({kind:'expsec',projectId:p.id,sectionId:sc.id}, sc.name, null, null, "ctxFolder(event,'"+p.id+"','"+sc.id+"')"); });
+      h+='<div class="sec-item sub quiet" onclick="addSectionPrompt(\''+p.id+'\')"><span class="dot"></span><span>+ Folder</span></div>';
+    }
+  });
+  h+='<div class="sec-item quiet" onclick="addProjectPrompt()"><span class="dot"></span><span>+ Project</span></div>';
+  if(!lbHost() && !_phoneTabs()){
+    h+='<div class="pane-lbl">Journal</div>';
+    h+=secLeaf({kind:'nb'},'Journal',NB_ICON,null,null,ws==='notebook',{onclick:'openJournalWs()'});
+    h+=secLeaf({kind:'viz'},'Visualize',VIZ_ICON,null,null,k==='viz',{onclick:"selectNode('viz')"});
   }
   host.innerHTML=h;
-  return !!h;
+  return true;
 }
-// The Notebook's first column: which notebook (a picker — projects, general ones, Journal),
-// then its sections, each wearing its colour. Journal's sections are months and cannot be
-// added to or deleted; a day is deleted from its own page.
-function renderNbColumn(){
-  var host=el('pane-sec'), h='';
-  h+=_wsSwitchHtml('notebook');
+// The Journal's list — the days (today first, then every day with a note or a ticked step,
+// under month headers), then the flat Notes. It is the second pane's content when the Journal
+// is the workspace, the way a folder's experiments are when a folder is.
+function _journalListHtml(){
+  var h='';
   var days=journalDays(), T=todayStr(), lastM=null;
-  h+='<div class="pane-lbl jr-lbl"><span>Journal</span><button class="jr-today" onclick="openDayPage(\''+T+'\')" title="Open today">Today</button><button class="collapse-btn" onclick="toggleCollapse(\'sec\')" title="Collapse">'+tbIco(P_CHEV_L,13)+'</button></div>';
+  h+='<div class="pane-lbl jr-lbl"><span>Journal</span><button class="jr-today" onclick="openDayPage(\''+T+'\')" title="Open today">Today</button></div>';
   h+='<div class="jr-days">';
   days.forEach(function(D){
     var m=D.slice(0,7);
     if(m!==lastM){ lastM=m; h+='<div class="jr-month">'+esc(_monthLabel(m))+'</div>'; }
     var pg=LB.data.notebook[D], n=doneOnDay(D).reduce(function(a,g){ return a+g.rows.length; },0);
     var prev=pg?_plain(pg.html||'').slice(0,44):'';
-    var meta=(n?(n+' step'+(n===1?'':'s')+' done'):'')+(prev?((n?' \u00b7 ':'')+prev):'');
+    var meta=(n?(n+' step'+(n===1?'':'s')+' done'):'')+(prev?((n?' · ':'')+prev):'');
     h+='<div class="jr-day'+(SEL.page===D?' active':'')+(D===T?' today':'')+'" onclick="openDayPage(\''+D+'\')" oncontextmenu="ctxDay(event,\''+D+'\')">'
       +'<span class="jr-d">'+esc(_dayLbl(D))+(D===T?' <i>today</i>':'')+'</span>'+(meta?('<span class="jr-m">'+esc(meta)+'</span>'):'')+'</div>';
   });
@@ -8020,8 +8013,7 @@ function renderNbColumn(){
     return '<div class="jr-day jr-note'+(SEL.page===pg.id?' active':'')+'" onclick="openPage(\''+pg.id+'\')" oncontextmenu="ctxPage(event,\''+pg.id+'\')">'
       +'<span class="jr-d">'+esc(pgTitle(pg))+'</span><span class="jr-m">'+esc(_homeAgo(pg.updated||pg.created||0))+'</span></div>'; }).join('')
     :'<div class="pane-note">For what has no date — an idea, a method, a reference.</div>')+'</div>';
-  host.innerHTML=h;
-  return true;
+  return h;
 }
 // ── The project prefix ─────────────────────────────────────────────────────────────────────
 // An experiment code says what it is and when (NB20260824); the prefix says whose work it is
@@ -8107,8 +8099,10 @@ function _applyPrefix(code, px){
   var c=String(code||'').trim(); if(!c||!px) return c;
   return /^[A-Z0-9]{1,4}_/.test(c) ? c : (px+'_'+c);
 }
-function addProject(){ var i=el('new-proj'); var n=(i.value||'').trim(); if(!n) return;
-  var xi=el('new-proj-px'); var typed=_normPrefix(xi&&xi.value); var px=typed||_uniquePrefix(n);
+function addProjectPrompt(){ lbPrompt('New project','',{title:'New project',ok:'Create'}).then(function(n){ if(n&&n.trim()) addProject(n.trim()); }); }
+function addSectionPrompt(pid){ lbPrompt('New folder','',{title:'New folder',ok:'Create'}).then(function(n){ if(n&&n.trim()) addSection(pid,n.trim()); }); }
+function addProject(name){ var i=el('new-proj')||{value:''}; var n=(name!=null?String(name):(i.value||'')).trim(); if(!n) return;
+  var xi=name!=null?null:el('new-proj-px'); var typed=_normPrefix(xi&&xi.value); var px=typed||_uniquePrefix(n);
   var p={id:uid(),name:n,prefix:px,created:Date.now(),color:PROJ_COLORS[LB.data.projects.length%PROJ_COLORS.length],sections:[]};
   if(!typed) p.prefixAuto=true;
   LB.data.projects.push(p); EXPANDED[p.id]=true; XV.open[p.id]=true;
@@ -8168,7 +8162,7 @@ function delProject(id){ var p=projById(id); if(!p) return;
     LB.data.generalSections=(LB.data.generalSections||[]).filter(function(s){ return s.nb!=='proj:'+id; });
     LB.data.projects=LB.data.projects.filter(function(x){return x.id!==id;});
     if(SEL.node.projectId===id||SEL.node.projectId==='proj:'+id){ SEL.node={kind:'exps'}; SEL.page=null; } save(); renderAll(); }); }
-function addSection(pid){ var i=el('new-sec-'+pid); var n=(i.value||'').trim(); if(!n) return; var p=projById(pid); if(!p) return; p.sections=p.sections||[]; var s={id:uid(),name:n,created:Date.now()}; p.sections.push(s); EXPANDED[pid]=true; save(); selectNode('expsec',pid,s.id); }
+function addSection(pid,name){ var i=el('new-sec-'+pid)||{value:''}; var n=(name!=null?String(name):(i.value||'')).trim(); if(!n) return; var p=projById(pid); if(!p) return; p.sections=p.sections||[]; var s={id:uid(),name:n,created:Date.now()}; p.sections.push(s); EXPANDED[pid]=true; save(); selectNode('expsec',pid,s.id); }
 function delSection(pid,sid){ var p=projById(pid); var sec=p&&(p.sections||[]).filter(function(s){return s.id===sid;})[0]; if(!sec) return;
   var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===pid&&LB.data.experiments[k].sectionId===sid;});
   lbConfirm('Delete "'+(sec.name||'this folder')+'"'+(exps.length?(' and its '+exps.length+' item(s)'):'')+'? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete folder',ok:'Delete'}).then(function(ok){ if(!ok) return;
@@ -8714,7 +8708,7 @@ function renderPages(){
   if(ssec) ssec.style.display = hasTree ? '' : 'none';
   // Today has a date navigator and Journal lists the days, so the day list that used to sit
   // between them is gone; the Planner's dashboards never had a list.
-  var noList = node.kind==='home'||node.kind==='week'||node.kind==='archive'||node.kind==='exps'||node.kind==='journal'||node.kind==='nb'||node.kind==='viz';
+  var noList = node.kind==='home'||node.kind==='week'||node.kind==='archive'||node.kind==='exps'||node.kind==='journal'||node.kind==='viz';
   document.body.classList.toggle('lb-nonav', !hasTree && noList);
   if(noList){ if(ppw) ppw.style.display='none'; if(spg) spg.style.display='none'; host.innerHTML=''; return; }
   // On a phone the list sits inside a closed drawer. Building it there — one blocksForDate per
@@ -8724,6 +8718,7 @@ function renderPages(){
   host._stale=0; _renderPagesList(host,node);
 }
 function _renderPagesList(host,node){
+  if(node.kind==='nb'){ host.innerHTML=_journalListHtml(); return; }
   if(node.kind==='expsec'){
     var p=projById(node.projectId);
     var sec2=p?(p.sections||[]).filter(function(s){return s.id===node.sectionId;})[0]:null;
@@ -13321,7 +13316,7 @@ function crumbHtml(){
     else if(k==='exps') S('Experiments',null,true);
     else if(k==='archive') S('Archive',null,true);
     else if(k==='expsec'){
-      var p=_projById(SEL.node.projectId), sc=p&&(p.sections||[]).filter(function(x){ return x.id===SEL.node.sectionId; })[0];
+      var p=projById(SEL.node.projectId), sc=p&&(p.sections||[]).filter(function(x){ return x.id===SEL.node.sectionId; })[0];
       var e=SEL.page?LB.data.experiments[SEL.page]:null;
       if(p) S(p.name,"selectNode('exps')",false);
       if(sc) S(sc.name,"selectNode('expsec','"+p.id+"','"+sc.id+"')",!e);
@@ -13333,7 +13328,6 @@ function crumbHtml(){
       +'<button class="crumb-s'+(x.cur?' cur':'')+'" title="'+esc(x.lbl)+'"'+(x.fn&&!x.cur?(' onclick="'+x.fn+'"'):'')+'>'+esc(x.lbl)+'</button>';
   }).join('')+'</div>';
 }
-function _projById(id){ return (LB.data.projects||[]).filter(function(p){ return p.id===id; })[0]||null; }
 function _onThisPageAvailable(){
   var k=(SEL.node&&SEL.node.kind)||'';
   return (k==='expsec'&&!!SEL.page) || (k==='nb'&&!!SEL.page);
@@ -14620,7 +14614,7 @@ function ctxAt(ev,items){
 function ctxProject(ev,id){
   var i=LB.data.projects.map(function(p){return p.id;}).indexOf(id), n=LB.data.projects.length;
   ctxAt(ev,[
-  {label:'New folder',fn:function(){ EXPANDED[id]=true; XV.open[id]=true; renderAll(); var f=el('new-sec-'+id); if(f) f.focus(); }},
+  {label:'New folder',fn:function(){ EXPANDED[id]=true; XV.open[id]=true; addSectionPrompt(id); }},
   {label:'Rename',fn:function(){renameProject(id);}},
   {label:'Code prefix…',fn:function(){setProjectPrefix(id);}},
   {label:'Change colour',fn:function(){cycleProjColor(id);}},
