@@ -5,9 +5,28 @@ Compact coordination note. Read it before starting work; the full changelog is
 
 ## Current checkpoint
 
-- Date: 2026-09-15 · **v1.17.2** · branch `main`.
+- Date: 2026-09-22 · **v1.18.0** · branch `main`.
 
-## One Steps tab (2026-09-15, last)
+## Labbook set like OneNote (2026-09-22, last)
+
+No ribbon (a top bar with a breadcrumb; the bubble carries formatting, with a ¶ menu), no
+right dock (On this page popover · tag chips in Experiments · Linked from at the page foot),
+one left column with projects as coloured tabs (adders are `lbPrompt`s), the experiment as
+one scrolling page (`REPORT_OPEN` folds Report; `EXP_TAB` is consumed as a scroll target),
+flat paper everywhere with per-object controls on hover, Home = Today + Running + Recent, and
+`WS_LAST` persisted in `lb_last` so the app opens where you left off. CLAUDE.md → *Labbook,
+set like OneNote*.
+
+## Traps added (2026-09-22)
+
+- **`renderPanels()` draws the top bar** — the name stayed because boot and the tree call it.
+- **`EXP_TAB` is consumed on render** — set it, then `renderEditor()`, and it scrolls once.
+- **Hover chrome is `opacity`, under `(hover:hover)` only** — `display:none` breaks the sweep
+  and the keyboard; `(hover:none)` must keep every control visible.
+- **A cut between two comment markers takes whatever sits between them** — `tbIco` and the
+  `.lh-exp` rules both went that way and came back from git. Diff the deletion.
+
+## One Steps tab (2026-09-15)
 
 The experiment has **Steps · Observations · Results · Publication ready · Files**. Steps is the
 old Bench view with the plate, the banners, the calculator inputs (folded), reorder, rename and
