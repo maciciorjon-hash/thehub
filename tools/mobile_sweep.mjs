@@ -98,7 +98,7 @@ window.__ms = {
     return out; },
   smallText(min){ var out={}, n=0; var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
     var t; while((t=walker.nextNode())){ if(!t.nodeValue||!t.nodeValue.trim()) continue; var el=t.parentElement; if(!el) continue;
-      if(el.closest('.pl-grid,.pp-grid,svg,script,style,#print-root,#copy-stage,#onenote-stage,.pp-w,.pl-w,.pp-col,.pl-colh,.pl-rowh,.pp-rowh')) continue;
+      if(el.closest('.pl-grid,.pp-grid,svg,script,style,#print-root,#copy-stage,#onenote-stage,.pp-w,.pl-w,.pp-col,.pl-colh,.pl-rowh,.pp-rowh,#lb-bubble sub,#lb-bubble sup')) continue;   /* X₂ / X² on the bubble are glyphs, not text */
       if(!__ms.shown(el)) continue; var r=el.getBoundingClientRect(); if(r.bottom<0||r.top>innerHeight) continue;
       var fs=parseFloat(getComputedStyle(el).fontSize); if(fs>0 && fs<min-0.01){ /* font-size:0 hides text on purpose (the week-strip dots) */ var k=__ms.name(el)+' '+fs+'px'; out[k]=(out[k]||0)+1; n++; } }
     return Object.keys(out).map(function(k){ return k+' ×'+out[k]; }); },
@@ -108,7 +108,8 @@ window.__ms = {
     return out; },
   size(){ var ed=document.getElementById('pane-ed'); return {kb:Math.round((ed?ed.innerHTML.length:0)/1024), nodes:ed?ed.querySelectorAll('*').length:0}; },
   closeAll(){ try{ document.querySelectorAll('.pop.open').forEach(function(p){ p.classList.remove('open'); }); }catch(e){}
-    try{ document.body.classList.remove('lb-sheet-open','mobile-drawer-open','mobile-dock-open'); }catch(e){}
+    try{ if(window.hideBubble) hideBubble(); }catch(e){}
+    try{ document.body.classList.remove('lb-sheet-open','mobile-drawer-open'); }catch(e){}
     try{ document.querySelectorAll('.modal-back.open').forEach(function(m){ m.classList.remove('open'); }); }catch(e){}
     try{ var d=document.getElementById('lb-dialog'); if(d&&d._onCancel){ d._onCancel(); } }catch(e){}
     try{ var s=document.getElementById('spot-back'); if(s) s.classList.remove('open'); if(window.SPOT) SPOT.open=false; }catch(e){}
@@ -185,10 +186,11 @@ function screens(ids) {
     S('drawer-journal-ws',`openPage('${ids[8]}'); toggleMobileNav(true)`),
     S('menu-note',       `openPage('${ids[8]}'); toggleMobileNav(true); var t=document.querySelector('.jr-note'); ctxPage({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, '${ids[8]}')`, { menu: true }),
     S('menu-day-page',   `openDayPage(todayStr()); toggleMobileNav(true); var t=document.querySelector('.jr-day'); ctxDay({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, todayStr())`, { menu: true }),
-    S('dock',            `openExp('${e0}'); if(document.body.classList.contains('lb-dock-float')||innerWidth<=760) toggleDock(); else throw new Error('n/a')`, { optional: true }),
-    S('ribbon-insert',   `openExp('${e0}'); setRbTab('insert')`),
-    S('ribbon-home',     `openPage('${ids[8]}'); setRbTab('home')`),
-    S('ribbon-view',     `openExp('${e0}'); setRbTab('view')`),
+    // The ribbon and the dock are gone (2026-09-22): one top bar with a breadcrumb, On this page
+    // as a sheet, and the bubble carries the formatting.
+    S('topbar-crumb',    `openExp('${e0}'); document.getElementById('topbar').scrollIntoView()`),
+    S('on-this-page',    `openExp('${e0}'); var t=document.querySelector('#topbar .tp-btn'); openOnThisPage({currentTarget:t,preventDefault:function(){},stopPropagation:function(){}})`, { menu: true }),
+    S('bubble-para',     `openPage('${ids[8]}'); var h=document.querySelector('#pane-ed [contenteditable="true"]'); h.focus(); var r=document.createRange(); r.selectNodeContents(h); var sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); BUB.menu='para'; positionBubble(true)`),
     S('menu-step',       `openExp('${e0}'); expTab('steps'); var b=LB.data.experiments['${e0}'].blocks[0]; var t=document.querySelector('.blk-more, [onclick*="ctxBlock"]'); ctxBlock({clientX:200,clientY:300,currentTarget:t,target:t,preventDefault:function(){},stopPropagation:function(){}}, b.id)`, { menu: true }),
     // The experiment banner has no ⋯ any more — every action is a button in it (2026-09-16).
     S('exp-acts',        `openExp('${e0}'); document.querySelector('.exh-acts').scrollIntoView()`),
