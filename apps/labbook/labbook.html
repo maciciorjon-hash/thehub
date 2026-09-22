@@ -12486,19 +12486,21 @@ function dayFoldAll(D,fold){
   ids.forEach(function(id){ if(+fold) DAY_FOLD[id]=1; else delete DAY_FOLD[id]; });
   renderEditor();
 }
-function renderDayView(host,D){
-  // Viewing a day must not create it — clicking through the week planner used to litter the
-  // Notebook list with empty days. setNotebook() persists it on the first real edit.
-  var pg=LB.data.notebook[D]||{date:D,html:''};
+// The day's work, from the experiments: steps due that day grouped project › code · title,
+// then what is carried over. One builder for Today (the Planner) and for the Journal's day
+// page, so the two can never disagree about what the day asks for — and a tick on either
+// writes the same b.done the experiment page reads. `carried` is only meaningful looking
+// forward: a past day's page shows what was due that day, ticked or not.
+function dayWorkHtml(D,opts){ opts=opts||{}; var from='', carried='';
   // group blocks by experiment
   var byExp={}, order=[]; blocksForDate(D).forEach(function(fb){ if(!byExp[fb.exp.id]){ byExp[fb.exp.id]={exp:fb.exp,blocks:[]}; order.push(fb.exp.id); } byExp[fb.exp.id].blocks.push(fb.block); });
-  var from = order.length ? ('<div style="margin-top:14px"><div class="day-from-lbl"><span class="lbl">What to do today — from your experiments</span>'+dayFoldAllBtn(order,D)+'</div>'+order.map(function(id){ var g=byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
+  from = order.length ? ('<div style="margin-top:14px"><div class="day-from-lbl"><span class="lbl">'+(D===todayStr()?'What to do today':(D<todayStr()?'What was due that day':'What is due that day'))+' — from your experiments</span>'+dayFoldAllBtn(order,D)+'</div>'+order.map(function(id){ var g=byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
     var blks=DAY_FOLD[g.exp.id]?'':dayDueBlocksHtml(g);
     return '<div class="day-exp">'+dayExpHead(g,col,pname,true)
       +'<div class="day-exp-body" data-e="'+g.exp.id+'" data-k="due" data-d="'+D+'">'+blks+'</div></div>'; }).join('')+'</div>') : '';
   // Carried-over unfinished work from earlier days (unticked checklist items roll forward).
-  var co=carryoverForDate(D);
-  var carried = co.order.length ? ('<div style="margin-top:16px"><div class="day-from-lbl day-carry-lbl"><span class="lbl">'+hdIcon('<path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 010 8h-1"/>')+'Carried over — unfinished from earlier days</span></div>'+co.order.map(function(id){ var g=co.byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
+  var co=opts.noCarry?{order:[],byExp:{}}:carryoverForDate(D);
+  carried = (co.order.length && !opts.noCarry) ? ('<div style="margin-top:16px"><div class="day-from-lbl day-carry-lbl"><span class="lbl">'+hdIcon('<path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 010 8h-1"/>')+'Carried over — unfinished from earlier days</span></div>'+co.order.map(function(id){ var g=co.byExp[id]; var col=projColor(g.exp.projectId); var proj=projById(g.exp.projectId); var pname=proj?proj.name:'';
     // The two ids are written once, as data, instead of being re-quoted into four inline
     // handlers — which on this row cost more than everything it displays. oncontextmenu stays
     // an attribute on purpose: the long-press delegation matches [oncontextmenu], and a row
@@ -12506,6 +12508,13 @@ function renderDayView(host,D){
     var blks=DAY_FOLD[g.exp.id]?'':dayCarryBlocksHtml(g,D);
     return '<div class="day-exp day-carry">'+dayExpHead(g,col,pname,false)
       +'<div class="day-exp-body" data-e="'+g.exp.id+'" data-k="carry" data-d="'+D+'">'+blks+'</div></div>'; }).join('')+'</div>') : '';
+  return from+carried;
+}
+function renderDayView(host,D){
+  // Viewing a day must not create it — clicking through the week planner used to litter the
+  // Notebook list with empty days. setNotebook() persists it on the first real edit.
+  var pg=LB.data.notebook[D]||{date:D,html:''};
+  var work=dayWorkHtml(D);
   var isToday=(D===todayStr());
   // The date input is wrapped with a label that only a phone shows: there the native picker is
   // under a readable "Fri 11 Sep" instead of a 150px form control, and the Day/Week switch gets
@@ -12516,7 +12525,7 @@ function renderDayView(host,D){
     +'<button class="day-arw" title="Next day" onclick="dayGo(1)">'+tbIco(P_CHEV_R,15)+'</button>'
     +(isToday?'':'<button class="day-today" onclick="dayToday()">Today</button>')+'<div class="jr-seg"><button class="on">Day</button><button onclick="selectNode(\'week\')">Week</button></div>'+'</div>';
   host.innerHTML='<div class="ed-wrap"><div class="exh exh-day"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act exh-more" title="This day" onclick="dayActsMenu(event,\''+D+'\')">'+ICON_MORE_H+'</button><button class="exh-act exh-keep" title="Journal page &mdash; the day&rsquo;s free note, in the Notebook" onclick="openDayPage(\''+D+'\')">'+tbIco('<rect x="4.6" y="3.2" width="14.8" height="17.6" rx="2.2"/><path d="M8.4 3.2v17.6"/><path d="M11.4 8.2h5M11.4 11.8h5M11.4 15.4h3.2"/>',17)+'</button><button class="exh-act exh-keep" title="What you need &mdash; every material the steps due today consume, and where it is" onclick="openPrepSheet({date:\''+D+'\'})">'+tbIco(P_BOX,17)+'</button><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Planner \u00b7 day')+'</div></div>'
-    +from+carried+nbTasksHtml(D)+culturesHtml()+ongoingHtml(D)
+    +work+nbTasksHtml(D)+culturesHtml()+ongoingHtml(D)
     +dayJournalCard(D)+'</div>';
   hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); lbWatchCultures();
 }
@@ -12587,6 +12596,7 @@ function renderDayPage(host,D){
   var nav='<span class="jr-nav"><button class="exh-act" title="Previous day" onclick="openDayPage(\''+addDays(D,-1)+'\')">&lsaquo;</button><button class="exh-act" title="Next day" onclick="openDayPage(\''+addDays(D,1)+'\')">&rsaquo;</button></span>';
   host.innerHTML='<div class="nb-wrap"><div class="nb-page nb-day" style="--nb-c:'+NB_COLORS.teal+'">'
     +'<div class="nb-crumb">'+(isToday?'Today':esc(_dayShort(D)))+nav+'</div><div class="exh-title nb-title" style="cursor:default;">'+esc(title)+'</div><div class="nb-meta">'+meta+'</div><div class="nb-rule"></div>'
+    +(function(){ var w=dayWorkHtml(D,{noCarry:D<todayStr()}); return w?('<div class="jr-work">'+w+'</div>'):''; })()
     +doneTodayHtml(D)
     +'<div class="jr-sec-t">Notes</div>'
     +'<div class="rt nb-body" contenteditable="true" data-ph="Anything about the day \u2014 @ links an experiment, a protocol or an antibody; # tags it." data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML,\''+D+'\')" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div></div>';

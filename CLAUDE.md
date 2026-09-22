@@ -4684,6 +4684,19 @@ Results in from Echo, Deviations and Cell cultures went (`homeWeekCard`, `homePr
 record still exists — else Home; the rail's `lb:go view:'planner'` does the same. dHUB's own
 "opens on Home" still holds for the shell; Labbook restores inside it.
 
+**The day's work is one builder, on both day pages.** Jon: *"desde la página de hoy tengo
+acceso a todo lo que tengo que hacer hoy en diferentes experimentos… cuando se tache un paso
+se tiene que reflejar en todos los sitios."* Today (the Planner) already grouped the day's
+steps project › code · title with a tick per step and the carry-over under it; the Journal's
+day page showed only *Done that day* and the note. `dayWorkHtml(D,{noCarry})` is what
+`renderDayView` built inline, extracted, and the Journal page draws it above *Done that day*
+(a past day says *What was due that day*, with no carry-over — carry-over only means
+something looking forward). The tick handlers are document-level, so a tick on the Journal
+page, on Today, on Home's band or on the experiment writes the one `b.done` the others read.
+Verified round trip in the browser: tick on Today → the experiment's row and its 2/4, Home's
+1/6 and the chip gone, the Journal's *Done that day* with the time; untick on the experiment →
+Today's row, the Journal's row and its done list all back.
+
 Found on the way: cutting the Insert block took the icon definitions (`tbIco`, `P_*`,
 `ICON_*`, `SLASH_ITEMS`) with it, and cutting the Home cards' CSS took `.lh-exp`/`.lh-x-*` —
 both restored from git. **A cut between two comment markers is a claim about what lies
