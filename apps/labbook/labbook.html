@@ -4901,6 +4901,37 @@ function plateNumberBoxes(p){
 function _plateBlockIsDose(p,b){
   for(var r=b.r1;r<=b.r2;r++) for(var c=b.c1;c<=b.c2;c++){ var w=(p.wells||{})[wellIdOf(r,c)]; if(w&&(w.conc||w.shade>0)) return true; }
   return false; }
+// The compound a run of wells holds, as maximal rectangles, derived from the wells themselves.
+// A layout built by PLATE_LAYOUTS carries the compound on every well and no `groups` at all, so
+// plateGroupBoxes answered nothing and the exports drew no block and named no compound \u2014 the
+// one fact the picture was there to carry. Concentration is deliberately not part of the key:
+// it is what varies *along* a series, and splitting on it would put one box round every well.
+function plateCompoundBoxes(p){
+  var d=plateDims(p), seen={}, out=[];
+  function cmp(r,c){ var w=(p.wells||{})[wellIdOf(r,c)]; return (w&&w.compound)?String(w.compound):''; }
+  for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){
+    var k=r+','+c; if(seen[k]) continue;
+    var name=cmp(r,c); if(!name){ seen[k]=1; continue; }
+    var c2=c; while(c2+1<d.c && cmp(r,c2+1)===name && !seen[r+','+(c2+1)]) c2++;
+    var r2=r;
+    for(;;){ var nr=r2+1, ok=(nr<d.r);
+      if(ok) for(var cc=c;cc<=c2;cc++){ if(cmp(nr,cc)!==name||seen[nr+','+cc]){ ok=false; break; } }
+      if(!ok) break; r2=nr; }
+    for(var rr=r;rr<=r2;rr++) for(var cc2=c;cc2<=c2;cc2++) seen[rr+','+cc2]=1;
+    out.push({gid:null,label:name,r1:r,r2:r2,c1:c,c2:c2});
+  }
+  return out;
+}
+// True when this column's header already states exactly what the well would print, so putting
+// it in the well too is the same fact twice \u2014 97 times over on a 96-well dose plate, while the
+// thing the picture is actually for (which compound is where) went unsaid.
+function _plHdrSaysWell(p,c,w){
+  if(!w) return false;
+  var h=(p.colLabels||{})[c]; if(h==null||h==='') return false;
+  var t=plateWellShort(w); if(!t) return false;
+  function n(v){ return String(v).replace(/\s+/g,'').toLowerCase(); }
+  return n(h)===n(t);
+}
 function plateGroupBoxes(p){
   if(!p||!p.groups) return [];
   var box={};
@@ -5255,7 +5286,8 @@ function plateToPNG(p,name){
   // The outlined blocks — a compound and its series — named: the name rarely fits in a well,
   // so the picture carries the outline, the concentrations, and this line says which is which.
   // Jon (2026-09-17): "el PNG no pone qué compuesto va en cada sitio".
-  var boxes=plateGroupBoxes(p), dose=boxes.filter(function(b){ return _plateBlockIsDose(p,b); });
+  var boxes=plateGroupBoxes(p); if(!boxes.length) boxes=plateCompoundBoxes(p);
+  var dose=boxes.filter(function(b){ return _plateBlockIsDose(p,b); });
   dose.forEach(function(b){ var w0=(p.wells||{})[wellIdOf(b.r1,b.c1)]; b.name=b.label||(w0&&w0.compound)||''; });
   var cw=PAD*2+HDR+d.c*W;
   // Measure the legend before the canvas exists: wrapped onto as many lines as it needs, or a
@@ -5306,7 +5338,10 @@ function plateToPNG(p,name){
       if(_nos){ var dtxt=(vv!=null)?_plTrim(vv):((w&&w.conc)?_plHdrCompact(w.conc):'');
         if(dtxt && W>=18){ x.fillStyle=ink; x.font='500 '+Math.max(6,Math.round(W/4.2))+'px ui-sans-serif,system-ui,sans-serif';
           x.fillText(_plFit(x,String(dtxt),W-3),wx+W/2,wy+W/2); } continue; }
-      var txt=(vv!=null)?_plTrim(vv):((w&&w.groupId&&(p.groups||{})[w.groupId])?'':plateWellShort(w));
+      // The column header already says it, so the well says nothing: the block outline and its
+      // name carry what the picture is for.
+      var txt=(vv!=null)?_plTrim(vv):((w&&w.groupId&&(p.groups||{})[w.groupId])?''
+        :(_plHdrSaysWell(p,c2,w)?'':plateWellShort(w)));
       if(txt && W>=22){ x.fillStyle=ink; x.font='500 '+Math.max(6,Math.round(W/4.2))+'px ui-sans-serif,system-ui,sans-serif';
         x.fillText(_plFit(x,String(txt),W-4),wx+W/2,wy+W/2); }
     }
@@ -16358,18 +16393,23 @@ function printPlateHtml(p,title,opts){
   //    concentration, the compound written once in the block's first well, and the block
   //    outlined so it reads as one thing;
   //  · a well outside any block prints what it holds.
-  var boxes=plateGroupBoxes(p), gAt={}, first={};
+  // Same fallback as the PNG: a layout-built plate carries its compound on every well and no
+  // groups, so without this there is no block, no compound named, and every cell repeats the
+  // concentration its own column header already states.
+  var boxes=plateGroupBoxes(p); if(!boxes.length) boxes=plateCompoundBoxes(p);
+  var gAt={}, first={};
   boxes.forEach(function(bx){ for(var r=bx.r1;r<=bx.r2;r++) for(var c=bx.c1;c<=bx.c2;c++) gAt[r+':'+c]=bx; first[bx.r1+':'+bx.c1]=bx; });
   var nos=plateHasNos(p);
   function flagTxt(w){ return w?(w.noLig?'− ligand':w.noSub?'− substrate':''):''; }
-  function cellTxt(w){ if(!w) return ''; var no=nos?plateWellNo(p,w):'';
+  function cellTxt(w,c){ if(!w) return ''; var no=nos?plateWellNo(p,w):'';
+    if(c!=null&&_plHdrSaysWell(p,c,w)) return '';   // the column header already states it
     var v=w.conc||w.label||w.compound||w.cellLine||'';
     if(no&&!w.conc&&!w.label&&!w.compound) return no;   // a plain numbered control
     return v||no; }
   // Uniform block: every well prints the same text → one merged cell.
   var merged={};
   boxes.forEach(function(bx){ var t0=null, same=true, cpd=null, sameCpd=true;
-    for(var r=bx.r1;r<=bx.r2&&same;r++) for(var c=bx.c1;c<=bx.c2;c++){ var w=(p.wells||{})[wellIdOf(r,c)]; var t=cellTxt(w)+'|'+flagTxt(w);
+    for(var r=bx.r1;r<=bx.r2&&same;r++) for(var c=bx.c1;c<=bx.c2;c++){ var w=(p.wells||{})[wellIdOf(r,c)]; var t=cellTxt(w,c)+'|'+flagTxt(w);
       if(t0===null) t0=t; else if(t!==t0){ same=false; break; }
       var cp=w&&w.compound||''; if(cpd===null) cpd=cp; else if(cp!==cpd) sameCpd=false; }
     bx.uniform=same; bx.compound=sameCpd?cpd:''; if(same) merged[bx.gid]=1; });
@@ -16388,14 +16428,14 @@ function printPlateHtml(p,title,opts){
       var cls=[], inner='';
       if(bx&&bx.uniform){
         var span=' colspan="'+(bx.c2-bx.c1+1)+'" rowspan="'+(bx.r2-bx.r1+1)+'"';
-        var t=cellTxt(w), fl=flagTxt(w), isNo=nos&&/^\d+$/.test(t);
+        var t=cellTxt(w,c2), fl=flagTxt(w), isNo=nos&&/^\d+$/.test(t);
         var lbl=bx.label&&bx.label!==t?bx.label:'';
         inner=(isNo?'<b class="pk-big">'+esc(t)+'</b>':'<span class="pk-v">'+esc(t)+'</span>')
           +(lbl?'<span class="pk-cap">'+esc(lbl)+'</span>':'')+(fl?'<span class="pk-cap">'+esc(fl)+'</span>':'');
         cls.push('pk-gl');
         tds+='<td'+span+(col?' style="background:'+col+'"':'')+' class="'+cls.join(' ')+'">'+inner+'</td>'; continue; }
       if(bx){ if(r2===bx.r1) cls.push('pk-bt'); if(r2===bx.r2) cls.push('pk-bb'); if(c2===bx.c1) cls.push('pk-bl'); if(c2===bx.c2) cls.push('pk-br'); }
-      var txt=withText?cellTxt(w):'', fl2=flagTxt(w);
+      var txt=withText?cellTxt(w,c2):'', fl2=flagTxt(w);
       if(w&&w.conc&&txt===w.conc) txt=_plHdrCompact(txt);
       // The block's name goes in the key under the map, not in a 14 mm cell where it ellipses.
       var cap='';
