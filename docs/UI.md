@@ -187,6 +187,24 @@ can be trusted:
 
 ---
 
+## Paper, not dashboard (Labbook, 2026-09-22)
+
+The notebook is a sheet of paper, not a wall of cards. In Labbook the editor pane is the
+sheet (`--surface`), the columns beside it are the desk (`--bg`), and nothing inside the sheet
+is boxed: a section is a sentence-case heading (`--fs-4`, 600, `--text2`) over one hairline,
+content flush left; a step is a row with a hairline above it; a calculator is a 2px left rule.
+No `backdrop-filter` anywhere (the `--glass-*` tokens survive as names and resolve to the
+flat surface), no shadow except on floating layers (popovers, dialogs, tooltips), no
+uppercase micro-label — 76 of them were the thing that read as "dashboard". Uppercase stays
+only where the text is a code (a project prefix, `DD_NB20260920`, a well id, a unit).
+
+**Controls appear when you reach for them.** Under `@media (hover:hover)` the tools on a row
+or an object (a step's grip · camera · ⋯, a plate card's Edit · ⋯, a calculator's Inputs ·
+×, "Why these numbers", a file's actions) sit at `opacity:0` and come up on `:hover` or
+`:focus-within` — `opacity`, never `display:none`, so they stay laid out for the keyboard and
+the audits. Under `(hover:none)` nothing is hidden: hover would hide them on exactly the
+devices that cannot hover. The experiment banner's actions are always visible on purpose.
+
 ## Components
 
 **Header** (each app keeps its own — it is what makes the file usable on its own, and the shell
