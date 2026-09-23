@@ -16449,6 +16449,58 @@ function dsMod(spec){
   }
   return m;
 }
+// A module lands carrying the library's own defaults — 3,000 cells in 30 µL of a 384-well — and
+// applySetupToBlocks rescales them onto the design's plate when the experiment is built. That is
+// right for the defaults and wrong for anything typed over them: the configure screen shows the
+// EFFECTIVE value (post-rescale) and writes back the module's RAW one, so 20,000 cells typed into
+// a 96-well design was stored in 384-well terms and came out of the calculator as 110,000. Read
+// and write have to be in the same frame, so the module is moved onto the design's plate once,
+// here, and the rescale in applySetupToBlocks is then a no-op. It is idempotent: rescaleSeedInputs
+// returns early once the formats match, so calling it on every draw costs nothing and makes a
+// stale frame impossible.
+//
+// `fresh` is a module that has just been added and has never been configured. Only then are the
+// plate-derived defaults seeded — # wells is a number somebody may deliberately have made smaller
+// than the plate (84 of 96, the wells that get the spike), and overwriting a chosen one would be
+// the defect this whole pass is about, in the other direction.
+function _dsPlasmidText(su){
+  var a=[];
+  [su&&su.donors, su&&su.acceptors, su&&su.plasmid, su&&su.plasmids].forEach(function(v){
+    if(v!=null&&String(v).trim()) a.push(String(v).trim()); });
+  return a.join(' + ');
+}
+function dsSyncMod(m,su,fresh){
+  su=su||{};
+  if(!m||!m.calc||!m.calc.inputs) return m;
+  var I=m.calc.inputs, kind=m.calc.kind;
+  // Order matters and is applySetupToBlocks': the format moves the numbers, then the setup's own
+  // answers overwrite the ones it owns.
+  if(su.format!=null&&su.format!==''&&I.format!=null) rescaleSeedInputs(I,String(su.format));
+  if(su.cellLine!=null&&su.cellLine!==''&&I.cellLine!=null) I.cellLine=su.cellLine;
+  if(su.cellsPerWell!=null&&su.cellsPerWell!==''&&I.cellsPerWell!=null) I.cellsPerWell=+su.cellsPerWell;
+  var pl=_dsPlasmidText(su);
+  if(pl&&kind==='rtxmix'&&I.plasmid!=null) I.plasmid=pl;
+  if(fresh&&I.nWells!=null&&su.format!=null&&su.format!==''){
+    var w=wellsOf(String(su.format))*(+su.nPlates>0?+su.nPlates:1);
+    if(w>0) I.nWells=w;
+  }
+  return m;
+}
+function dsSyncMods(D,fresh){ if(!D) return; (D.mods||[]).forEach(function(m){ dsSyncMod(m,D.setup,fresh); }); }
+// Replace a module's calculator and its prose with another library module's, keeping where it
+// sits in the run and what it is called. Swapping the calculator alone would leave prose quoting
+// {{c.*}} keys the new calculator does not have.
+function dsUseMod(i,libId){
+  var D=DS, m=D&&D.mods[i], sp=libSpec(libId);
+  if(!m||!sp) return;
+  var fresh=dsMod(sp);
+  m.calc=fresh.calc; m.html=fresh.html; m.pub=fresh.pub||''; m.noPub=!!fresh.noPub;
+  if(!m.w&&fresh.w) m.w=fresh.w;
+  m.mid=sp.id; m.label=String(sp.label||m.label).replace(/ \(calc\)$/,'');
+  dsSyncMod(m,D.setup,true);
+  dsDraw();
+  toast('Swapped to '+m.label);
+}
 // A preset's block is richer than any library module — its own prose, its own Methods sentence,
 // its own numbers — so starting from one carries the block across rather than hunting for a
 // library module that resembles it. The day offsets become gaps, and that is the whole reason
@@ -16599,6 +16651,7 @@ function dsPickPreset(cb){
 function dsDraw(){
   var D=DS; if(!D) return;
   var host=el('ds-body'); if(!host) return;
+  dsSyncMods(D);
   el('ds-t').textContent=(D.mode==='preset')?(D.editKey?'Edit design':'New design'):'Experiment Designer';
   var where=el('ds-where');
   if(where){
@@ -16823,7 +16876,8 @@ function dsPick(){
     // Added in the order the list offers them, which is the order they are usually run in; the
     // list on the previous screen is where that gets corrected.
     var order=[]; cats.forEach(function(c){ c.ids.forEach(function(id){ if(ids.indexOf(id)>=0) order.push(id); }); });
-    order.forEach(function(id){ var sp=libSpec(id); if(sp) DS.mods.push(dsMod(sp)); });
+    order.forEach(function(id){ var sp=libSpec(id); if(!sp) return;
+      DS.mods.push(dsSyncMod(dsMod(sp),DS.setup,true)); });
     close(); DS.step=2; dsDraw();
     toast(order.length+' module'+(order.length===1?'':'s')+' added');
   };
@@ -16839,6 +16893,11 @@ function dsOwned(kind,su){
   if(su.format!=null&&su.format!=='') o.format='the plate format';
   if(su.cellLine!=null&&su.cellLine!=='') o.cellLine='the cell line';
   if(su.cellsPerWell!=null&&su.cellsPerWell!=='') o.cellsPerWell='cells / well';
+  // Another box whose read and write were in different frames: applySetupToBlocks scales every
+  // block's plate count by its ratio to the seeding block's, so a number typed here was recomputed
+  // into the setup's the moment it was read back. Answered once, in the parameters.
+  if(su.nPlates!=null&&su.nPlates!=='') o.nPlates='# plates';
+  if(kind==='rtxmix'&&_dsPlasmidText(su)) o.plasmid='the plasmids';
   if(kind==='nbtx'){
     if(su.donors) o.donorNames='the donor plasmids';
     if(su.acceptors) o.acceptorNames='the acceptor plasmids';
@@ -16932,7 +16991,25 @@ function dsCalcHtml(m,i){
   return '<div class="blk-calc ds-calc open"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span>'
     +'<span class="grow"></span><button class="cc-x" title="Remove the calculator" onclick="dsDelCalc('+i+')">&times;</button></div>'
     +'<div class="cc-inputs">'+fields+'</div>'
+    +dsCalcMismatch(m,i,D.setup||{})
     +'<div class="cc-recipe" id="ds-recipe">'+(live?expCalcRecipe(live,ps):'')+'</div></div>';
+}
+// A calculator that cannot express what the parameters already say. Feeding it the plasmid names
+// is only half an answer: a single master mix gives every well the same DNA, so a donor:acceptor
+// ratio has nowhere to go in it and the wells the ratio is the whole point of — donor only,
+// acceptor only, mock — have no mix at all. Say so, and offer the module that does express it,
+// rather than quietly computing one mix and letting the recipe look complete.
+function dsCalcMismatch(m,i,su){
+  if(!m||!m.calc||m.calc.kind!=='rtxmix') return '';
+  var don=String(su.donors||'').trim(), acc=String(su.acceptors||'').trim(), rat=String(su.ratios||'').trim();
+  if(!don||!acc) return '';
+  var rt=rat?rat.split(',').map(function(x){ return '1:'+String(x).trim(); }).filter(function(x){ return x!=='1:'; }).join(' and '):'';
+  return '<div class="cc-warn ds-swap">The parameters set a donor and an acceptor'
+    +(rt?(' at '+esc(rt)):'')+'. One master mix gives every well the same DNA, so '
+    +(rt?'the ratio has nowhere to go in it and ':'')
+    +'the donor-only, acceptor-only and mock wells get no mix. '
+    +'<b>NanoBRET transfection mixes</b> makes one per condition and reads the plasmids, the ratios and the control wells from the parameters. '
+    +'<button type="button" class="cc-fix" onclick="dsUseMod('+i+',\'lib:nbtx\')">Use the NanoBRET mixes module</button></div>';
 }
 function dsCalcSet(i,k,val){
   var D=DS, m=D.mods[i]; if(!m||!m.calc) return;
