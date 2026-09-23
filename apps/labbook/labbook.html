@@ -3884,6 +3884,19 @@ function fillCalc(html,b,e){ if(!html||html.indexOf('{{c.')<0) return html||'';
 // Plain text of the same, for the Methods paragraph, the index and any text export.
 function fillCalcText(html,b,e){ if(!html||html.indexOf('{{c.')<0) return html||'';
   var vals=calcValuesChained(b,e)||{}; if(html.indexOf('{{c.wait}}')>=0) vals.wait=_waitVal(b,e); return String(html).replace(/\{\{c\.(\w+)\}\}/g,function(m,k){ var v=vals[k]; return v==null?'—':v; }); }
+// The same treatment for a {{setupField}}. The Designer showed the calculator's numbers rendered
+// and the setup's answers as raw "{{dmsoMax}}" in the same sentence, which is half a step: the
+// one box where you read the prose to decide whether it is right was the one that did not show
+// what it would say. fillSetup's own semantics are kept exactly — an unanswered field is empty —
+// so the chip reads as an em-dash there rather than inventing a value.
+function _fillSetupSpans(html,setup){
+  if(!html||html.indexOf('{{')<0) return html||'';
+  return String(html).replace(/\{\{(\w+)\}\}/g,function(m,k){
+    var v=fillSetup(m,setup||{});
+    return '<span class="cv cv-s'+(v===''?' cv-none':'')+'" contenteditable="false" data-s="'+k+'">'+(v===''?'&mdash;':v)+'</span>'; });
+}
+function _unfillSetup(html){ if(!html||html.indexOf('data-s=')<0) return html||'';
+  return String(html).replace(/<span class="cv cv-s(?: cv-none)?"[^>]*data-s="(\w+)"[^>]*>[\s\S]*?<\/span>/g,'{{$1}}'); }
 // The span goes back to being the token before anything is stored.
 function _unfillCalc(html){ if(!html||html.indexOf('data-c=')<0) return html||'';
   return String(html).replace(/<span class="cv(?: cv-none)?"[^>]*data-c="(\w+)"[^>]*>[\s\S]*?<\/span>/g,'{{c.$1}}'); }
@@ -7580,6 +7593,8 @@ function expIsBlank(e){ return !!(e&&e.blank); }
 function presetPlateOn(key,S){ var p=LB.data.presets[key], sd=EXTRA_PRESET_SEED[key];
   var v=(p&&p.plateOn!=null)?p.plateOn:((sd&&sd.plateOn!=null)?sd.plateOn:null);
   return v!=null?!!v:!!(S&&S.plateOn); }
+function _presetLayoutId(key){ var p=LB.data.presets[key], sd=EXTRA_PRESET_SEED[key];
+  return (p&&p.layout)||(sd&&sd.layout)||null; }
 function presetLayout(key,fmt){ var p=LB.data.presets[key], sd=EXTRA_PRESET_SEED[key];
   var id=(p&&p.layout)||(sd&&sd.layout); if(!id) return null;
   var L=PLATE_LAYOUTS.filter(function(x){ return x.id===id; })[0]||null;
@@ -10560,6 +10575,7 @@ function buildExperimentFrom(sp){
   // Instantiate the preset's own blocks (day structure + live calculators + text).
   var blocks=(tpl.blocks||[]).map(function(b,i,arr){ var o={id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html, done:false, completedAt:null}; if(b.pub) o.pub=b.pub; if(b.noPub) o.noPub=true;
     if(b.waitMin){ o.waitMin=b.waitMin; var nx=arr[i+1]; o.waitSameDay=!!(nx && (+nx.dayOffset||0)===(+b.dayOffset||0)); }
+    if(b.waitOwn) o.waitOwn=true;
     if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; });
   // Rewrite the instantiated blocks with the setup answers before anything else sees them.
   var setup=JSON.parse(JSON.stringify(sp.setup||{}));
@@ -16527,11 +16543,20 @@ function dsTemplate(D){
            baseType:D.type, title:(D.title||'').trim(),
            setup:JSON.parse(JSON.stringify(D.setup||{})),
            plateOn:!!D.plate,
+           // What a curated preset declares about its OWN parameters, carried so a design saved
+           // from one can still reproduce it. Saving the SPARK screen used to drop `layout`
+           // (the plate map that is the experiment), `setupAdd` (the four questions the layout
+           // draws its geometry from) and `setupHide` (the questions the variant has no use
+           // for) — so the copy asked the wrong questions and created a blank plate.
+           layout:D.layout||undefined,
+           setupHide:(D.setupHide&&D.setupHide.length)?D.setupHide.slice():undefined,
+           setupAdd:(D.setupAdd&&D.setupAdd.length)?JSON.parse(JSON.stringify(D.setupAdd)):undefined,
            blocks:(D.mods||[]).map(function(m,i){
              var b={dayOffset:days[i], title:m.label||'', html:m.html||'<p></p>'};
              if(m.pub&&String(m.pub).trim()) b.pub=m.pub;
              if(m.noPub) b.noPub=true;
              if(m.w>0) b.waitMin=m.w;
+             if(m.waitOwn) b.waitOwn=true;
              if(m.calc) b.calc=JSON.parse(JSON.stringify(m.calc));
              return b; }) };
 }
@@ -16548,6 +16573,7 @@ function dsPseudo(D){
     if(b.noPub) o.noPub=true;
     if(b.waitMin){ o.waitMin=b.waitMin; var nx=arr[i+1];
       o.waitSameDay=!!(nx&&(+nx.dayOffset||0)===(+b.dayOffset||0)); }
+    if(b.waitOwn) o.waitOwn=true;
     if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc));
     return o; });
   var setup=JSON.parse(JSON.stringify(D.setup||{}));
@@ -16597,6 +16623,10 @@ function dsOpen(o){
        startDate:todayStr(), skipWe:false,
        setup:setupDefaultsFor(key||type),
        plate:key?presetPlateOn(key,setupSchema(type)):!!setupSchema(type).plateOn,
+       layout:key?_presetLayoutId(key):null,
+       setupHide:key?presetSetupHide(key).slice():null,
+       setupAdd:key?JSON.parse(JSON.stringify(presetSetupAdd(key))):null,
+       setupTouched:{},
        mods:key?dsModsFromPreset(key):[],
        step:0, cur:0 };
   if(src&&src.setup) Object.keys(src.setup).forEach(function(k){ DS.setup[k]=src.setup[k]; });
@@ -16636,6 +16666,11 @@ function dsFromQuick(){
   dsOpen({mode:'exp',pid:NM_TARGET.pid,sid:NM_TARGET.sid,presetKey:key});
   if(!DS) return;
   DS.setup=setup; DS.plate=plate; DS.startDate=start; DS.poi=poi; DS.aim=aim;
+  // Which of them the user actually answered, inferred the only way it can be: by what differs
+  // from what the window opened on. Marking them all would carry this preset's defaults into
+  // whatever type you switch to next, which is the substitution dsSetType exists to avoid.
+  var d0=setupDefaultsFor(key); DS.setupTouched={};
+  Object.keys(setup).forEach(function(k){ if(String(setup[k])!==String(d0[k])) DS.setupTouched[k]=1; });
   if(title) DS.title=title;
   DS.step=1; dsDraw();
 }
@@ -16722,13 +16757,30 @@ function dsFilter(q,sel){
   Array.prototype.forEach.call(document.querySelectorAll('#ds-body '+sel),function(n){
     n.style.display=(!q||(n.getAttribute('data-q')||'').indexOf(q)>=0)?'':'none'; });
 }
+// Changing the type threw the parameters away wholesale — and then said "the modules you had
+// are kept", which draws the eye to the half that survived. Most types ask several of the same
+// questions in the same words (the plate, the cell line, the cells per well, the plates), so an
+// answer to one of those is an answer to the other. Only an answer somebody actually gave is
+// carried: `setupTouched` records that, because carrying a value that merely equals the old
+// type's default would silently overwrite the new type's own — which is the same class of quiet
+// substitution this whole pass is about.
 function dsSetType(t){
   var D=DS; if(!D||D.type===t) { if(D) dsNext(); return; }
-  var hadWork=D.mods.length&&D.presetKey;
-  D.type=t; D.presetKey=null;
-  D.setup=setupDefaultsFor(t);
+  var hadMods=!!D.mods.length;
+  var old=D.setup||{}, touched=D.setupTouched||{};
+  D.type=t; D.presetKey=null; D.layout=null; D.setupHide=null; D.setupAdd=null;
+  var next=setupDefaultsFor(t), kept=0;
+  Object.keys(next).forEach(function(k){
+    if(!touched[k]) return;
+    if(old[k]==null||old[k]==='') return;
+    next[k]=old[k]; kept++;
+  });
+  D.setup=next;
+  D.setupTouched={}; Object.keys(next).forEach(function(k){ if(touched[k]) D.setupTouched[k]=1; });
   D.plate=!!setupSchema(t).plateOn;
-  if(hadWork) toast('Type changed — the modules you had are kept');
+  var msg=[]; if(hadMods) msg.push('the modules you had are kept');
+  if(kept) msg.push(kept+' of your answer'+(kept===1?' is':'s are')+' carried over');
+  if(msg.length) toast('Type changed — '+msg.join(', '));
   dsDraw();
 }
 function dsLoadPreset(k){
@@ -16737,7 +16789,11 @@ function dsLoadPreset(k){
   var p=LB.data.presets[k]||{};
   D.name=p.name||''; D.title=p.title||'';
   D.setup=setupDefaultsFor(k);
+  D.setupTouched={};
   D.plate=presetPlateOn(k,setupSchema(D.type));
+  D.layout=_presetLayoutId(k);
+  D.setupHide=presetSetupHide(k).slice();
+  D.setupAdd=JSON.parse(JSON.stringify(presetSetupAdd(k)));
   D.mods=dsModsFromPreset(k);
   D.cur=0; D.step=1; dsDraw();
 }
@@ -16763,15 +16819,18 @@ function dsParamsHtml(){
 function dsSetupUpd(reRender){
   var D=DS, host=el('ds-body'); if(!D||!host) return;
   var oldFmt=D.setup.format;
+  D.setupTouched=D.setupTouched||{};
   host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
-    D.setup[k]=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value); });
+    var nv=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value);
+    if(String(nv)!==String(D.setup[k])) D.setupTouched[k]=1;
+    D.setup[k]=nv; });
   // The plate and the cell number move together — the rule rescaleSeedInputs exists for.
   if(oldFmt!=null&&D.setup.format!=null&&String(oldFmt)!==String(D.setup.format)&&D.setup.cellsPerWell!=null){
     var a1=PLATE_AREA[String(oldFmt)], a2=PLATE_AREA[String(D.setup.format)];
-    if(a1&&a2){ D.setup.cellsPerWell=_seedRound((+D.setup.cellsPerWell)*(a2/a1)); if(reRender!==true) reRender='format'; }
+    if(a1&&a2){ D.setup.cellsPerWell=_seedRound((+D.setup.cellsPerWell)*(a2/a1)); D.setupTouched.cellsPerWell=1; if(reRender!==true) reRender='format'; }
   }
   if(reRender===true&&D.setup.cellLine!=null&&D.setup.cellsPerWell!=null){
-    var n2=lineCells(D.setup.cellLine,D.setup.format); if(n2) D.setup.cellsPerWell=n2; }
+    var n2=lineCells(D.setup.cellLine,D.setup.format); if(n2){ D.setup.cellsPerWell=n2; D.setupTouched.cellsPerWell=1; } }
   if(reRender) dsDraw();
 }
 
@@ -16779,10 +16838,14 @@ function dsSetupUpd(reRender){
 function dsModsHtml(){
   var D=DS, days=dsDays(D), ps=dsPseudo(D), ch=dsChain(ps), byIdx={};
   ch.forEach(function(x){ if(x.b.dsIdx!=null) byIdx[x.b.dsIdx]=x; });
+  (ps.blocks||[]).forEach(function(b){ if(b.dsIdx!=null&&!byIdx[b.dsIdx]) byIdx[b.dsIdx]={b:b,add:0}; });
   var rows=D.mods.map(function(m,i){
     // Same rule on the row: a step that does not change the volume was printing the running
     // total beside its name, which is the row above's number said twice.
     var c=byIdx[i], vol=(c&&c.add>0)?('+'+nfmt(c.add)+' µL → '+nfmt(c.after)+' µL'):'';
+    // The effective wait, not the module's own: a setup field marked `wait` writes over it, so
+    // the list said "45 min" beside a step that waits 20 h.
+    var wEff=(c&&c.b&&c.b.waitMin>0)?c.b.waitMin:(+m.w||0);
     return '<div class="ds-mod" draggable="true" ondragstart="dsDragStart(event,'+i+')" ondragover="dsDragOver(event,'+i+')" ondrop="dsDrop(event,'+i+')" ondragend="dsDragEnd()">'
       +'<span class="ds-grip" title="Drag to reorder">'+tbIco(DS_GRIP,12)+'</span>'
       +'<span class="ds-day">Day '+days[i]+'</span>'
@@ -16790,7 +16853,7 @@ function dsModsHtml(){
       +(function(){ if(!m.calc) return '';
           var lbl=(CALC_KINDS[m.calc.kind]||{}).label||m.calc.kind;
           return _sameName(lbl,m.label)?'':'<span class="ds-tag">'+esc(lbl)+'</span>'; })()
-      +(m.w>0?('<span class="ds-tag wait">'+esc(_waitTxt(m.w))+'</span>'):'')
+      +(wEff>0?('<span class="ds-tag wait">'+esc(_waitTxt(wEff))+'</span>'):'')
       +(vol?('<span class="ds-vol">'+esc(vol)+'</span>'):'')
       +'<span class="grow"></span>'
       +'<button class="ds-mb" title="Configure" onclick="DS.step=3;DS.cur='+i+';dsDraw()">'+tbIco(P_SIGMA,12)+'</button>'
@@ -16823,6 +16886,13 @@ function dsMove(i,dir){ var D=DS, j=i+dir; if(!D||j<0||j>=D.mods.length) return;
   dsDraw(); }
 function dsDel(i){ var D=DS; if(!D) return;
   var m=D.mods[i]; if(!m) return;
+  // A gap is "days after the previous step", so throwing one away pulls every later module
+  // forward by it: delete a 2-day incubation and the readout silently moved from day 3 to day 1.
+  // The days of the steps you are keeping are not the deleted one's to change, so its gap is
+  // handed to the module that inherits its place. Pulling the schedule in is then one visible
+  // number on the next step rather than something that happened behind you.
+  var nx=D.mods[i+1];
+  if(nx) nx.gap=Math.max(0,(+nx.gap||0)+(+m.gap||0));
   D.mods.splice(i,1);
   if(D.cur>=D.mods.length) D.cur=Math.max(0,D.mods.length-1);
   if(D.step===3&&!D.mods.length) D.step=2;
@@ -16924,31 +16994,39 @@ function dsConfHtml(){
     +'</div>';
   var adds=(here&&here.add>0)
     ? '<div class="ds-adds">This step puts <b>'+nfmt(here.add)+' µL</b> into each well — the next one starts from <b>'+nfmt(here.after)+' µL</b>.</div>' : '';
+  // The wait the step will really have. A setup field marked `wait` writes over a module's own
+  // whenever the module's prose quotes it, so the box showed "45 min" on a step that waits 20 h.
+  var _wEff=(live&&live.waitMin>0)?live.waitMin:(+m.w||0);
   var gap='<div class="ds-grid">'
     +'<div class="mrow"><label>Step name</label><input value="'+esc(m.label)+'" placeholder="What you are doing" oninput="DS.mods['+i+'].label=this.value;dsRailName()"></div>'
     +'<div class="mrow"><label>Days after <span class="nm-lbl-sub">'+(prev?esc(prev.label||'the previous step'):'the start of the experiment')+'</span></label>'
       +'<input type="number" min="0" value="'+(+m.gap||0)+'" oninput="DS.mods['+i+'].gap=Math.max(0,parseInt(this.value,10)||0);dsDraw()"></div>'
-    +'<div class="mrow"><label>Wait after this step <span class="nm-lbl-sub">e.g. 45 min, 3 h, overnight</span></label>'
-      +'<input value="'+esc(m.w>0?_waitTxt(m.w):'')+'" placeholder="none" onchange="dsSetWait('+i+',this.value)"></div>'
+    +'<div class="mrow"><label>Wait after this step <span class="nm-lbl-sub">'
+      +((_wEff>0&&!m.waitOwn&&_wEff!==(+m.w||0))?'answered in the parameters':'e.g. 45 min, 3 h, overnight')+'</span></label>'
+      +'<input value="'+esc(_wEff>0?_waitTxt(_wEff):'')+'" placeholder="none" onchange="dsSetWait('+i+',this.value)"></div>'
     +'</div>';
   return '<div class="ds-step-hd">'+esc(m.label||'Step '+(i+1))+' <span class="ds-of">module '+(i+1)+' of '+D.mods.length+'</span></div>'
     +state+gap+adds
     +dsCalcHtml(m,i)
     +'<div class="ds-fld"><div class="ds-flbl">What you do</div>'
       +'<div class="rt ds-rt" contenteditable="true" oninput="dsSetHtml('+i+',this.innerHTML)" onfocus="_activeEd=this">'
-      +fillCalc(m.html||'<p></p>', live||{calc:m.calc}, ps)+'</div></div>'
-    +'<div class="ds-fld"><div class="ds-flbl">Methods sentence <span class="nm-lbl-sub">past tense, no rationale — what gets published</span></div>'
+      +_fillSetupSpans(fillCalc(m.html||'<p></p>', live||{calc:m.calc}, ps), D.setup)+'</div></div>'
+    +'<div class="ds-fld"><div class="ds-flbl">Methods sentence <span class="nm-lbl-sub">past tense, no rationale — what gets published'
+      +(/\{\{/.test(String(m.pub||''))?' · {{…}} are filled from the parameters':'')+'</span></div>'
       +'<textarea class="ds-ta" placeholder="'+(m.calc&&CALC_PUB_FULL[m.calc.kind]?'The calculator already writes this step — leave it empty unless you want different wording.':'e.g. “Cells were treated with compound for 6 h.”')
       +'" oninput="DS.mods['+i+'].pub=this.value">'+esc(m.pub||'')+'</textarea></div>';
 }
 // The stored html always carries the token, never the rendered span — every "is this still the
 // preset's own text" proof depends on it, in the designer exactly as in an experiment.
-function dsSetHtml(i,html){ var D=DS; if(!D||!D.mods[i]) return; D.mods[i].html=_unfillCalc(html); }
+function dsSetHtml(i,html){ var D=DS; if(!D||!D.mods[i]) return; D.mods[i].html=_unfillSetup(_unfillCalc(html)); }
 function dsRailName(){ var D=DS; if(!D) return;
   var h=el('ds-body').querySelector('.ds-step-hd'); if(h) h.firstChild.nodeValue=(D.mods[D.cur].label||('Step '+(D.cur+1)))+' '; }
+// A wait you typed is never overwritten by the setup — the rule applySetupToBlocks already
+// follows for `waitOwn` in a running experiment. Clearing it to none is a decision too, so any
+// change made here marks it yours.
 function dsSetWait(i,v){ var D=DS; if(!D||!D.mods[i]) return;
   var n=_parseWait(v);
-  D.mods[i].w=(n>0)?n:0; dsDraw(); }
+  D.mods[i].w=(n>0)?n:0; D.mods[i].waitOwn=true; dsDraw(); }
 function dsCalcHtml(m,i){
   if(!m.calc||!CALC_KINDS[m.calc.kind])
     return '<div class="ds-fld"><button type="button" class="ps-calc-add" onclick="dsAddCalc('+i+')">'+tbIco(P_SIGMA,13)+' add a prep calculator</button></div>';
@@ -16980,10 +17058,18 @@ function dsCalcHtml(m,i){
       return '<label class="'+ciWide(f.opts)+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')+'</span><select onchange="dsCalcSet('+i+',\''+f.k+'\',this.value)">'+so+'</select></label>'; }
     if(f.t==='check'){ return '<label class="ci-f chk"><input type="checkbox"'+(v?' checked':'')+' onchange="dsCalcSet('+i+',\''+f.k+'\',this.checked)"><span>'+esc(f.lbl)+'</span></label>'; }
     if(f.t==='txt'){ return '<label class="ci-f"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input value="'+esc(v==null?'':v)+'" oninput="dsCalcSet('+i+',\''+f.k+'\',this.value)"></label>'; }
+    // A derived input wears where it came from, and typing in it makes it yours — the same
+    // contract calcInputsHtml gives it in a running experiment. Without the `own` half the box
+    // invited a number and syncChainedInputs threw it away on the next render: 250 µL typed,
+    // 90 µL used, nothing on screen saying so.
     var chained=(CHAINED_INPUTS[m.calc.kind]||[]).indexOf(f.k)>=0;
+    var cown=!!(m.calc.own&&m.calc.own[f.k]);
+    var ctag=!chained?'':(cown
+      ? ' <button type="button" class="ci-relink" title="Go back to the volume the steps above give" onclick="dsRelink('+i+',\''+f.k+'\')">yours &middot; re-link</button>'
+      : ' <span class="ci-derived" title="Taken from the steps above — what they put in the well">from the steps above</span>');
     return '<label class="ci-f'+(chained?' ds-chained':'')+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')
-      +(chained?'<i class="ds-from">from the steps above</i>':'')+'</span>'
-      +'<input type="number"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="dsCalcSet('+i+',\''+f.k+'\',this.value)"></label>';
+      +ctag+'</span>'
+      +'<input type="number" min="0"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="dsCalcSet('+i+',\''+f.k+'\',this.value)"></label>';
   }).join('');
   // `.open` because `.blk-calc .cc-inputs` is hidden by default — folded away under the recipe
   // is right in a running experiment, where the numbers are settled and the recipe is what you
@@ -17017,18 +17103,36 @@ function dsCalcSet(i,k,val){
   if(k==='cellLine'){ m.calc.inputs.cellLine=val;
     var n=lineCells(val,m.calc.inputs.format); if(n){ m.calc.inputs.cellsPerWell=n; dsDraw(); return; } }
   else if(k==='format'&&m.calc.inputs.format!=null){ rescaleSeedInputs(m.calc.inputs,val); dsDraw(); return; }
-  else m.calc.inputs[k]=(f&&f.t==='num')?(val===''?'':parseFloat(val)):val;
+  else {
+    m.calc.inputs[k]=(f&&f.t==='num')?(val===''?'':parseFloat(val)):val;
+    if((CHAINED_INPUTS[m.calc.kind]||[]).indexOf(k)>=0){ m.calc.own=m.calc.own||{}; m.calc.own[k]=true; }
+  }
   // Only the recipe and the chain are repainted: a full redraw would take the caret out of the
   // box being typed in — the rule refreshCalcRecipes already follows in the experiment.
   var ps=dsPseudo(D), live=null;
   (ps.blocks||[]).forEach(function(b){ if(b.dsIdx===i) live=b; });
   var r=el('ds-recipe'); if(r&&live) r.innerHTML=expCalcRecipe(live,ps);
 }
+function dsRelink(i,key){
+  var m=DS&&DS.mods[i]; if(!m||!m.calc||!m.calc.own) return;
+  delete m.calc.own[key]; dsDraw(); toast('Following the steps above again');
+}
 function dsAddCalc(i){
   var items=Object.keys(CALC_KINDS).map(function(k){ return {id:k,label:CALC_KINDS[k].label,sub:'live prep calculator',ic:'∑',c:'#5e87c5'}; });
   lbPicker('Add a prep calculator',items,function(it){ DS.mods[i].calc={kind:it.id,inputs:calcDefaults(it.id)}; dsDraw(); });
 }
-function dsDelCalc(i){ delete DS.mods[i].calc; dsDraw(); }
+// A step whose prose quotes {{c.*}} keeps quoting them with the calculator gone: the text reads
+// "dilute the suspension to — for —", and where the calculator spoke for the whole block that
+// sentence is also what gets published. Say so before, not after.
+function dsDelCalc(i){
+  var m=DS&&DS.mods[i]; if(!m) return;
+  var n=(String(m.html||'').match(/\{\{c\.\w+\}\}/g)||[]).length;
+  function go(){ delete m.calc; dsDraw(); }
+  if(!n){ go(); return; }
+  lbConfirm('This step quotes '+n+' number'+(n===1?'':'s')+' from the calculator. '
+    +'Without it '+(n===1?'it reads':'they read')+' as an em-dash, here and in the Methods sentence — rewrite the step after removing it.',
+    {title:'Remove the calculator',ok:'Remove'}).then(function(y){ if(y) go(); });
+}
 
 // ── Step 5 — the whole thing ────────────────────────────────────────────────────────────────
 // Only a step that puts liquid in a well belongs here. It listed every step from the first one
