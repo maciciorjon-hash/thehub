@@ -599,6 +599,22 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .cc-load{color:var(--text3);font-style:italic;font-size:var(--fs-3);}
 .cc-x{background:none;border:none;color:var(--text3);cursor:pointer;font-size:var(--fs-5);line-height:1;padding:0 4px;border-radius:var(--r-1);}.cc-x:hover{color:var(--danger);background:var(--surface3);}
 .cc-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:7px 10px;}
+/* A compound list is a column of names, not a caption over a box: it takes the whole row. */
+.ci-f.sf-list{grid-column:1/-1;}
+.ci-f.sf-list textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:62px;
+  font:var(--fs-2)/1.5 var(--mono);background:var(--surface2);color:var(--text);
+  border:1px solid var(--border2);border-radius:var(--r-1);padding:6px 8px;}
+.sf-n{display:inline-block;min-width:16px;padding:0 4px;border-radius:var(--r-full);
+  background:var(--surface3);color:var(--text2);font:600 var(--fs-1)/16px var(--mono);text-align:center;}
+.sf-n:empty{display:none;}
+.sf-derived{margin-top:5px;font-size:var(--fs-1);color:var(--text2);display:flex;flex-wrap:wrap;
+  align-items:center;gap:6px;}
+.sf-derived b{color:var(--text);}
+.sf-apply{border:1px solid var(--border2);background:var(--surface2);color:var(--text);
+  border-radius:var(--r-1);padding:1px 7px;font-size:var(--fs-1);cursor:pointer;
+  transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
+.sf-apply:hover{background:var(--surface3);border-color:var(--accent);}
+.sf-dim{color:var(--text3);}
 /* The label sits at the top of the cell and the control at the bottom, so a row of fields whose
    labels are different lengths still lines its controls up: "FuGENE HD : DNA (µL:µg)" wrapping
    to two lines used to push its input a line below every other input beside it. */
@@ -3259,8 +3275,8 @@ var SETUP_SCHEMA={
     {f:'nPlates',t:'num',lbl:'# plates',d:4},
     {f:'doseResp',t:'check',lbl:'Dose\u2013response series',d:true,
      hint:'Off for a fixed-concentration run. The four questions below only exist because this is on; with it off they are not asked, and nothing about the series reaches the Methods.'},
-    {f:'compounds',t:'txt',lbl:'Compounds',d:'',ph:'comma-separated',when:_whenCtgDose,
-     hint:'What is being dosed \u2014 used by the plate map and the prep sheet. Leave it empty if the plate map is where the names live.'},
+    {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel',when:_whenCtgDose,
+     hint:'What is being dosed, one per line. How many there are is what decides how many plates the run needs: a plate holds as many compounds as its rows and points allow, and each readout is its own copy of every plate. The names go onto the wells, so the plate map, the layout summary, the prep sheet and Cmd+K all read them.'},
     {f:'topConc',t:'num',lbl:'Top conc (nM)',d:1000,when:_whenCtgDose},
     {f:'df',t:'num',lbl:'Dilution factor',d:4,when:_whenCtgDose},
     {f:'nPoints',t:'num',lbl:'# dose points',d:11,when:_whenCtgDose},
@@ -5110,27 +5126,42 @@ var PLATE_LAYOUTS=[
   // so plateSummary reads it straight back as "A1-B11 - Compound 1 - 1 uM -> 16.9 pM (11 pts,
   // 3-fold) x2 replicates" with nothing typed. The four names are deliberately generic: which
   // compounds went on this plate is the run's, not the layout's, and is typed on the map.
-  {id:'ctgdr96', label:'Viability 96 — 4 compounds × 11 pts + DMSO', format:'96',
-   sub:'A+B, C+D, E+F, G+H one compound each; 11 points across columns 1–11, DMSO in column 12',
-   build:function(){
-     var p=newPlate('96');
-     p.title='Viability dose response — 96-well';
-     p.note='Four compounds, one per pair of rows: A+B, C+D, E+F, G+H. Columns 1–11 are the 11-point series, '
-       +'1000 nM in column 1 and 3-fold down to column 11; column 12 is the DMSO vehicle control. '
-       +'Rename the four compounds on the wells — the names are this run\'s, not the layout\'s.';
+  {id:'ctgdr96', label:'Viability 96 \u2014 one compound per pair of rows + DMSO', format:'96',
+   sub:'A+B, C+D, E+F, G+H one compound each; the series across the columns, DMSO in the last one',
+   build:function(o){
+     o=o||{};
+     var p=newPlate('96'), d=PLATE_FORMATS['96'];
+     // Every number here is the setup's. It used to be hardcoded at 1000 nM / 3-fold / 11 points
+     // and "Compound 1..4", so a run dosed from 10 \u00b5M got a map that said 1000 nM \u2014 the same
+     // two-sources-for-one-fact the Methods sentence had.
+     var top=+o.topConc||1000, fold=+o.df||3;
+     var nPts=Math.max(1,Math.min(Math.round(+o.nPoints||11), d.c-1));
+     var nReps=Math.max(1,Math.min(Math.round(+o.nReps||2), d.r));
+     var per=compoundsPerPlate({format:'96',nPoints:nPts,nReps:nReps});
+     var all=_setupList(o.compounds), names=all.slice(0,per);
+     while(names.length<per) names.push('Compound '+(names.length+1));
+     // More compounds than a plate holds is the ordinary case — this builds ONE plate, and a map
+     // silently showing the first four of nine is the kind of quiet half-truth this notebook
+     // exists not to tell. Say which plate this is and what is still to be laid out.
+     var spill=Math.max(0, all.length-per);
+     p.title='Viability dose response \u2014 96-well';
+     p.note=names.length+' compound'+(names.length===1?'':'s')+', '+nReps+' row'+(nReps===1?'':'s')+' each. '
+       +'Columns 1\u2013'+nPts+' are the '+nPts+'-point series, '+_fmtConc(top)+' in column 1 and '
+       +fold+'-fold down to column '+nPts+'; column '+(nPts+1)+' is the DMSO vehicle control.'
+       +(spill?(' This is plate 1 of '+Math.ceil(all.length/per)+' \u2014 '+spill+' more compound'
+         +(spill===1?'':'s')+' ('+all.slice(per).join(', ')+') need their own plate'+(spill>per?'s':'')+'.'):'');
      p.types=[{id:'dose', name:'Dose series', color:'#cfe2f3'},
               {id:'dmso', name:'DMSO',        color:'#f4b98f'}];
-     var top=1000, fold=3, nPts=11;
      p.colTitle='nM'; p.colLabels={};
      for(var i=0;i<nPts;i++) p.colLabels[i]=_fmtConc(top/Math.pow(fold,i));
-     p.colLabels[11]='DMSO';
+     p.colLabels[nPts]='DMSO';
      // No group label: it would be drawn across the wells it explains, and the compound is
      // already on every well where the summary, the tooltip and Cmd+K can all read it.
-     ['Compound 1','Compound 2','Compound 3','Compound 4'].forEach(function(cmp,ci){
-       for(var r=ci*2;r<=ci*2+1;r++){
+     names.forEach(function(cmp,ci){
+       for(var r=ci*nReps;r<Math.min(d.r,(ci+1)*nReps);r++){
          for(var c=0;c<nPts;c++)
            p.wells[wellIdOf(r,c)]={typeId:'dose',compound:cmp,conc:_fmtConc(top/Math.pow(fold,c))};
-         p.wells[wellIdOf(r,11)]={typeId:'dmso',compound:cmp,label:'DMSO'};
+         p.wells[wellIdOf(r,nPts)]={typeId:'dmso',compound:cmp,label:'DMSO'};
        }
      });
      return p; }}
@@ -5904,13 +5935,63 @@ function syncPlateToCalcs(e){
   });
   return hit.length?hit:null;
 }
+// ── The plate is the truth about what went into the wells ───────────────────────────────────
+// The dosing sentence is built from e.setup.topConc/df/nPoints, and nothing ever moved them
+// when the map was redrawn: a plate relaid at 10 µM went on publishing "dosed from 1,000 nM"
+// while the Plate layout sentence beside it — which reads the wells — correctly said 10 µM.
+// Two sources for one fact, and the stale one is the one that reaches the manuscript. The
+// wells win: they are what was actually pipetted, so the setup follows them.
+function plateDoseSeries(p){
+  if(!p||!p.wells) return null;
+  var vals=[];
+  Object.keys(p.wells).forEach(function(id){
+    var w=p.wells[id]; if(!w||!w.conc) return;
+    var v=_parseConcNM(w.conc); if(isFinite(v)&&v>0) vals.push(v); });
+  if(vals.length<3) return null;
+  // Distinct points, high to low. Replicates of the same concentration are one point.
+  var seen={}; vals.forEach(function(v){ seen[v]=1; });
+  var uniq=Object.keys(seen).map(Number).sort(function(a,b){ return b-a; });
+  if(uniq.length<3) return null;
+  // Fit the fold from the endpoints and require every point to sit on it — the same test
+  // _seriesText uses, so a plate it reads as a 3-fold series is read as one here too.
+  var fold=Math.pow(uniq[0]/uniq[uniq.length-1], 1/(uniq.length-1));
+  if(!(fold>1)) return null;
+  var band=Math.log(1.35);
+  var ok=uniq.every(function(v,i){ return Math.abs(Math.log(v/(uniq[0]/Math.pow(fold,i))))<band; });
+  if(!ok) return null;
+  // Nearest standard dilution, chosen once. Reassigning `fold` inside the loop lets the next
+  // candidate match the value just written (a real 3-fold snapped to 3 and then to 3.16).
+  var best=null,bestE=1;
+  [1.5,2,2.5,3,3.16,4,5,6,8,10].forEach(function(c){ var er=Math.abs(fold-c)/c; if(er<bestE){ bestE=er; best=c; } });
+  if(best!==null&&bestE<0.06) fold=best;
+  return {topConc:uniq[0], df:Math.round(fold*100)/100, nPoints:uniq.length};
+}
+// Only the three fields a plate can actually answer, and only when they disagree. A field the
+// experiment never asked (null/'') stays null: a plate must not invent a setup question, and a
+// map with no series says nothing rather than blanking numbers somebody typed.
+var _PLATE_SETUP_FIELDS=[['topConc','Top conc'],['df','Dilution factor'],['nPoints','# dose points']];
+function syncSetupFromPlate(e){
+  if(!e||!e.setup||!e.plate) return null;
+  var S=plateDoseSeries(e.plate); if(!S) return null;
+  var changed=[];
+  _PLATE_SETUP_FIELDS.forEach(function(f){
+    var cur=e.setup[f[0]]; if(cur==null||cur==='') return;
+    if(Math.abs((+cur||0)-S[f[0]])<1e-9) return;
+    e.setup[f[0]]=S[f[0]]; changed.push(f[1]);
+  });
+  return changed.length?changed:null;
+}
 function platePersist(key){ var o=_plateOwner(key); if(!o) return;
   var changed=syncPlateToCalcs(o.exp);
+  // The concentrations on the map are what the Methods quote, so the setup follows them here —
+  // while the editor is still open, not the next time somebody remembers to look.
+  var setupFrom=syncSetupFromPlate(o.exp);
   o.exp.updated=Date.now(); queueSave();
   // The map and the mix table are one thing seen twice, so the table moves with the map — while
   // the editor is still open, not when it is closed.
   refreshCalcRecipes(o.exp);
   if(changed) toast('Well counts from the plate → '+changed.join(' and '));
+  else if(setupFrom) toast('Setup follows the plate → '+setupFrom.join(', ').toLowerCase());
   return changed; }
 function addPlateTo(key,fmt){ var o=_plateOwner(key); if(!o) return;
   if(!o.obj.plate) o.obj.plate=newPlate(fmt||(o.exp.setup&&o.exp.setup.format)||'96');
@@ -9929,6 +10010,40 @@ function pubText(e){ if(!e) return ''; return (e.pubEdited && e.pubReady) ? e.pu
 function pubEdit(id,html){ var e=LB.data.experiments[id]; if(!e) return;
   if(!e.pubEdited){ e.pubEdited=true; e.pubSrcSig=_pubSourceSig(e); }
   e.pubReady=_persistImgHtml(html); e.updated=Date.now(); queueSave(); }
+// ── Refresh report ──────────────────────────────────────────────────────────────────────────
+// Jon (2026-09-23): "al cambiar el plate map las concentraciones se cambian bien en plate map
+// pero el texto sigue diciendo 1000 nM… pon un botón de refresh methods que actualice los
+// methods con TODOS los datos actuales del experimento."
+//
+// The paragraph has been live since 2026-09-17, but live only means "rebuilt from the record" —
+// it cannot fix a record that disagrees with itself. This is the one place that makes every
+// derived number agree with what is actually on the experiment now: the setup from the plate,
+// the volume each step starts from, the numbers the prose quotes — and then hands the paragraph
+// back to the live build. A report about to leave the lab should not be the only thing that did
+// not follow.
+function refreshMethods(id){
+  var e=LB.data.experiments[id]||_curExp(); if(!e) return;
+  // Wording someone wrote is theirs. Everything else refreshes without asking.
+  if(e.pubEdited){
+    lbConfirm('This report carries your own wording. Refreshing rebuilds it from the record as it stands now — the setup, the steps, the calculators, the plate and the results — and your wording is replaced.',
+      {title:'Refresh the report',ok:'Refresh'}).then(function(ok){ if(ok) _refreshMethodsGo(e,true); });
+    return;
+  }
+  _refreshMethodsGo(e,false);
+}
+function _refreshMethodsGo(e,dropWording){
+  undoMark('Refresh report',['experiments.'+e.id]);
+  var notes=[];
+  var fromPlate=syncSetupFromPlate(e);
+  if(fromPlate) notes.push(fromPlate.join(', ').toLowerCase()+' from the plate');
+  try{ if(typeof syncChainedInputs==='function' && syncChainedInputs(e)) notes.push('well volumes re-chained'); }catch(_e){}
+  if(dropWording && e.pubEdited){ e.pubEdited=false; delete e.pubSrcSig; notes.push('rebuilt from the record'); }
+  e.pubReady=buildPubReadyFromExp(e);
+  if(!e.pubEdited) e.pubSrcSig=_pubSourceSig(e);
+  e.updated=Date.now(); save(); renderEditor();
+  toast(notes.length ? ('Report refreshed \u2014 '+notes.join(' \u00b7 '))
+                     : 'Report refreshed \u2014 everything already matched.');
+}
 function pubBackToLive(id){ var e=LB.data.experiments[id]; if(!e) return;
   lbConfirm('Go back to the paragraph built live from the steps, calculators and plate? Your wording is replaced (⌘Z brings it back).',{title:'Back to the live text',ok:'Back to live'}).then(function(ok){ if(!ok) return;
     undoMark('Back to the live Methods text',['experiments.'+e.id]);
@@ -10028,6 +10143,82 @@ function nmResetSetup(){
 // One setup field. Deliberately reuses the calculators' .ci-f markup so the two look identical.
 // src/upd default to the New-experiment modal's globals; the setup editor passes its own,
 // so there is one field renderer rather than two that drift.
+// ── The compounds this run tests ────────────────────────────────────────────────────────────
+// Jon (2026-09-23): the compounds belong in the setup, one per row like a spreadsheet column,
+// and how many there are is what decides how many plates the run needs — a 96-well viability
+// plate holds four of them, and reading at 24 h and 72 h means two copies of every plate.
+//
+// Stored as ONE STRING, newline-separated, not as an array: it then travels through the
+// existing [data-sf] read, the setup diff, applySetupToBlocks, the JSON/CSV exports and
+// {{compounds}} with no new plumbing anywhere. _setupList is the only reader, and it still
+// accepts the comma-separated form this field held before.
+function _setupList(v){
+  if(v==null) return [];
+  if(Array.isArray(v)) v=v.join('\n');
+  return String(v).split(/[\n;,\t]+/).map(function(x){ return x.trim(); }).filter(Boolean);
+}
+// How many compounds one plate holds, derived from the geometry the setup already describes:
+// each compound occupies nReps rows, and its series plus a vehicle column occupies nPoints+1
+// columns. Derived rather than declared, so changing the format or the number of points moves
+// it — a table of per-format constants would be a second place to be wrong.
+function compoundsPerPlate(su){
+  su=su||{};
+  var d=PLATE_FORMATS[String(su.format||'96')]||PLATE_FORMATS['96'];
+  var nPts=Math.max(1,Math.min(Math.round(+su.nPoints||11), d.c-1));
+  var nReps=Math.max(1,Math.round(+su.nReps||1));
+  var across=Math.max(1,Math.floor(d.c/(nPts+1)));
+  var down=Math.max(1,Math.floor(d.r/nReps));
+  return Math.max(1, across*down);
+}
+// "24+72" is two readouts and therefore two plates: the 24 h plate is read — and consumed, CTG
+// is an endpoint assay — before the 72 h one is due, so they cannot be the same wells.
+// _ctgHours is the canonical reader of that field — it is what builds the readout blocks, and
+// it splits on anything non-numeric, so "24+72" is two where _setupList (which must not split
+// on "+", a real character in a compound name) sees one. A second parser here would be a second
+// answer to "how many readouts is this".
+function readoutCount(su){ var n=_ctgHours((su||{}).timepoints).length; return n>0?n:1; }
+function platesSuggested(su){
+  su=su||{};
+  var n=_setupList(su.compounds).length; if(!n) return null;
+  var per=compoundsPerPlate(su), reads=readoutCount(su);
+  return {compounds:n, perPlate:per, readouts:reads, plates:Math.ceil(n/per)*reads};
+}
+// A suggestion with a button, never a silent write: # plates is a number somebody may have
+// chosen, and the rule this notebook is built on is that a recorded number is not rewritten.
+function _setupPlatesNote(su,upd){
+  var S=platesSuggested(su); if(!S) return '';
+  var cur=+((su||{}).nPlates)||0;
+  return '<div class="sf-derived">'+S.compounds+' compound'+(S.compounds===1?'':'s')
+    +' &middot; '+S.perPlate+' per '+esc(String(su.format||'96'))+'-well plate'
+    +(S.readouts>1?(' &middot; '+S.readouts+' readouts'):'')
+    +' &rarr; <b>'+S.plates+' plate'+(S.plates===1?'':'s')+'</b>'
+    +((cur&&cur!==S.plates)
+      ? (' <button type="button" class="sf-apply" onclick="_setupApplyPlates(\''+upd+'\')">Use '+S.plates+'</button>'
+        +'<span class="sf-dim">set to '+cur+'</span>')
+      : '')+'</div>';
+}
+function _setupApplyPlates(upd){
+  var su=(upd==='esSetupUpd')?ES_SETUP:NM_SETUP; if(!su) return;
+  var S=platesSuggested(su); if(!S) return;
+  su.nPlates=S.plates;
+  if(upd==='esSetupUpd') esRender(); else { nmSetup(); nmPreview(); }
+}
+// Typing a compound must not re-render the panel — that would take the caret out of the box
+// being typed in, the rule lbWatchCultures set. Read the value, repaint the derived line only.
+function _setupListUpd(node,upd){
+  var su=(upd==='esSetupUpd')?ES_SETUP:NM_SETUP; if(!su||!node) return;
+  su[node.getAttribute('data-sf')]=node.value;
+  var lab=node.closest('.sf-list');
+  if(lab){
+    var html=_setupPlatesNote(su,upd), note=lab.querySelector('.sf-derived');
+    if(note) note.outerHTML=html||'<div class="sf-derived"></div>';
+    else if(html) lab.insertAdjacentHTML('beforeend',html);
+    var n=lab.querySelector('.sf-n'), c=_setupList(node.value).length;
+    if(n) n.textContent=c?c:'';
+  }
+  if(upd==='esSetupUpd'){ var d=el('es-diff'); if(d&&LB.data.experiments[ES_EXP]) d.innerHTML=esDiffHtml(LB.data.experiments[ES_EXP]); }
+  else if(typeof nmPreview==='function') nmPreview();
+}
 function nmSetupField(f,lead,src,upd){
   src=src||NM_SETUP; upd=upd||'nmSetupUpd';
   var v=src[f.f], cls='ci-f'+(lead?' lead':'');
@@ -10040,6 +10231,13 @@ function nmSetupField(f,lead,src,upd){
   // 'cond' re-renders the panel without the cell-line substitution `true` carries: a tick is
   // what a conditional question hangs off, and the fields it reveals have to appear at once.
   if(f.t==='check'){ return '<label class="ci-f chk"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><input type="checkbox" data-sf="'+f.f+'"'+(v?' checked':'')+' onchange="'+upd+'(\'cond\')"><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')+'</span></label>'; }
+  if(f.t==='list'){ var items=_setupList(v);
+    return '<label class="'+cls+' sf-list"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)
+      +' <span class="sf-n">'+(items.length||'')+'</span>'+(f.hint?' <span class="ci-hint">?</span>':'')+'</span>'
+      +'<textarea data-sf="'+f.f+'" rows="'+Math.min(12,Math.max(3,items.length+1))+'" spellcheck="false"'
+      +' placeholder="'+esc(f.ph||'One per line \u2014 paste a column straight from Excel')+'"'
+      +' oninput="_setupListUpd(this,\''+upd+'\')">'+esc(items.join('\n'))+'</textarea>'
+      +_setupPlatesNote(src,upd)+'</label>'; }
   if(f.t==='txt'){ return '<label class="'+cls+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)
     +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input data-sf="'+f.f+'" value="'+esc(v==null?'':v)+'"'
     +(f.ph?(' placeholder="'+esc(f.ph)+'"'):'')+' oninput="'+upd+'()"></label>'; }
@@ -12746,6 +12944,7 @@ function renderExpEditor(host,e){
     body+='<div class="exp-pub-bar">'
       +(e.pubEdited?('<button class="pub-btn" onclick="pubBackToLive(\''+e.id+'\')" title="Drop your wording and build the report from the record again — and keep it following it">'+tbIco(P_REFRESH,13)+' Back to live</button>')
                     :('<span class="pub-live" title="Built from the steps, the calculators, the waits, the plate, the ticks and the results every time you open it. Write in it and your wording is kept instead.">live</span>'))
+      +'<button class="pub-btn" onclick="refreshMethods(\''+e.id+'\')" title="Make every number in this report agree with the experiment as it stands now — the setup follows the plate, the volumes re-chain, and the text is rebuilt">'+tbIco(P_REFRESH,13)+' Refresh</button>'
       +'<span class="pub-secs">'+_toggles+'</span></div>'
       +reportExportsHtml(e)
       +(pubIsStale(e)?('<div class="pub-stale">This is your wording, and the steps or their numbers have changed since you wrote it. '
