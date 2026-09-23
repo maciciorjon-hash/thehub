@@ -799,6 +799,10 @@ function getWellValue(grid, wellId) {
 function rawRatio(donorVal, acceptorVal) {
   return acceptorVal / donorVal;
 }
+// A background-subtracted reader can emit a negative count, and a negative donor or acceptor is
+// not a measurement — the ratio it produces has the wrong sign and no meaning. Treated like a
+// zero: no reading, rather than a BRET value nobody could have observed.
+function _bretUsable(v){ return typeof v === 'number' && isFinite(v) && v > 0; }
 
 function mBU(ratio) {
   return ratio * 1000;
@@ -819,7 +823,7 @@ function computeConditionMBUs(donorGrid, acceptorGrid, wellIds) {
   return wellIds.map(function(w){
     var d = getWellValue(donorGrid, w);
     var a = getWellValue(acceptorGrid, w);
-    if (d === null || a === null || d === 0 || a === 0) return null;
+    if (!_bretUsable(d) || !_bretUsable(a)) return null;
     return mBU(rawRatio(d, a));
   }).filter(function(v){ return v !== null; });
 }
@@ -1179,7 +1183,7 @@ function beaconWellId(r, c){ return BEACON_ROWS[r] + (c < 10 ? '0' + c : String(
 function wellMBret(wellId){
   if (!state.donor || !state.acceptor) return null;
   var d = getWellValue(state.donor, wellId), a = getWellValue(state.acceptor, wellId);
-  if (d === null || a === null || d === 0 || a === 0) return null;
+  if (!_bretUsable(d) || !_bretUsable(a)) return null;
   return mBU(rawRatio(d, a));
 }
 function ctrlWells(key){ return (state.plateMap && state.plateMap[key]) || []; }

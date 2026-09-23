@@ -4425,7 +4425,35 @@ function calcGibson(){
   renderGibsonExport();
 }
 function gdv(id) { var e = document.getElementById(id); return e ? e.value : ''; }
-function gdn(id) { return +gdv(id) || 0; }
+// Each numeric input declares its own floor (min="0", min="0.1", …) and 160 of the 161 here
+// carry one — but nothing ever read it, so a typed minus sign flowed straight into the
+// arithmetic and 110 of these calculators would print a negative volume or mass as if it were a
+// step to carry out. The field's own min is the right floor: it is already the author's
+// statement of what the number can be.
+// Not every calculator reads its inputs through gdn — several do parseFloat(el.value) directly,
+// so clamping in gdn alone left a typed minus sign flowing into TR-FRET, the transfection mix and
+// the western blot lysis buffer. Clamp at the INPUT instead, in the capture phase, so the value is
+// already legal by the time the field's own oninput handler recomputes: one rule that covers every
+// calculator here and every one added later. Only negatives are touched — an empty box, or a
+// half-typed number, is left exactly as the person is typing it.
+document.addEventListener('input', function(ev){
+  var el=ev.target;
+  if(!el || el.tagName!=='INPUT' || el.type!=='number') return;
+  var v=el.value; if(v==='' || v==null) return;
+  var n=parseFloat(v); if(!isFinite(n)) return;
+  var mn=el.getAttribute('min'); var floor=(mn!==null&&mn!==''&&isFinite(+mn))?+mn:0;
+  if(n<floor) el.value=String(floor);
+}, true);
+function gdn(id) {
+  var n = +gdv(id) || 0;
+  var el = document.getElementById(id);
+  var mn = el && el.getAttribute && el.getAttribute('min');
+  if (mn !== null && mn !== undefined && mn !== '' && isFinite(+mn)) return n < +mn ? +mn : n;
+  // No declared floor: zero. Every number these calculators take is a volume, a count, a mass, a
+  // concentration or a dilution — none of them is meaningful below zero, and there is no
+  // temperature field here that would want one.
+  return n < 0 ? 0 : n;
+}
 function generateGibsonSteps() {
   var steps = [];
   var polKey = (document.getElementById('pcr-pol')||{}).value || 'q5';
@@ -4725,13 +4753,22 @@ function calcHiBiTBlot() {
     '<div class="proto-note" style="margin-top:8px;margin-bottom:0">Incubate membrane 5 min with gentle rocking; image with chemiluminescence imager.</div>';
   renderExportPanel('hibit', generateHiBiTBlotSteps());
 }
+// A diluent that is the REMAINDER goes negative as soon as the components exceed the total,
+// and every one of these printed it as a volume to pipette ("Water: -70 uL"). Say what is
+// actually wrong instead: the recipe does not fit.
+function _remainderTxt(rem, name, unit){
+  return (rem < 0)
+    ? (name + ': does not fit — the components already exceed the total by ' + Math.abs(rem).toFixed(0) + ' ' + (unit||'uL')
+       + '. Use a weaker dilution, or make more.')
+    : (name + ': ' + rem.toFixed(0) + ' ' + (unit||'uL'));
+}
 function generateHiBiTBlotSteps() {
   var totalMl = gdn('hb-vol') || 10, bufferDil = gdn('hb-buffer') || 10, lgbitDil = gdn('hb-lgbit') || 200, subsDil = gdn('hb-substrate') || 500;
   var total = totalMl * 1000;
   var bufferVol = total / bufferDil, lgbitVol = total / lgbitDil, subsVol = total / subsDil;
   var waterVol = total - bufferVol - lgbitVol - subsVol;
   return [{ label: 'Nano-Glo® HiBiT reagent (' + totalMl + ' mL total)', bullets: [
-    'Water: ' + waterVol.toFixed(0) + ' uL',
+    _remainderTxt(waterVol, 'Water'),
     'Nano-Glo® Blotting Buffer (10×): ' + bufferVol.toFixed(0) + ' uL',
     'LgBiT: ' + lgbitVol.toFixed(2) + ' uL (1:' + lgbitDil + ')',
     'Nano-Glo® Luciferase Substrate: ' + subsVol.toFixed(2) + ' uL (1:' + subsDil + ')',
@@ -4813,7 +4850,7 @@ function generateWesternBlotSteps() {
   var abVol=gdn('wb-ab-vol')||10, abN=gdn('wb-ab-n')||1, abPri=gdn('wb-ab-pri')||1000, abSec=gdn('wb-ab-sec')||5000;
   var abVolUL=abVol*1000;
   return [{ label: 'Lysis buffer master mix (' + n + ' wells)', bullets: [
-    'RIPA buffer: ' + ripa.toFixed(1) + ' uL',
+    _remainderTxt(ripa, 'RIPA buffer'),
     'Protease Inhibitor: ' + pi.toFixed(2) + ' uL (1:' + piDil + ')',
     'Benzonase: ' + benz.toFixed(2) + ' uL (1:' + benzDil + ')',
     'Total: ' + total.toFixed(1) + ' uL (' + volPerWell + ' uL/well × ' + n + ' wells' + _ovx(excess) + ')',
@@ -5309,7 +5346,7 @@ function generateHiBiTLyticSteps() {
   var lgbitVol = totalReagent / lgbitDil, subsVol = totalReagent / subsDil, bufferVol = totalReagent - lgbitVol - subsVol;
   return [
     { label:'Prepare Nano-Glo® HiBiT Lytic reagent', bullets:[
-      'Nano-Glo® HiBiT Lytic Buffer: '+fmt(bufferVol,3)+' µL',
+      _remainderTxt(bufferVol, 'Nano-Glo® HiBiT Lytic Buffer', 'µL'),
       'LgBiT (1:'+lgbitDil+'): '+fmt(lgbitVol,3)+' µL',
       'Nano-Glo® Substrate (1:'+subsDil+'): '+fmt(subsVol,3)+' µL',
       'Total: '+fmt(totalReagent,3)+' µL ('+fmt(totalReagent/1000,2)+' mL) for '+(wells*nPlates)+' wells'
@@ -5448,7 +5485,9 @@ function generateTransfectionSteps() {
 // Every total says its overage (_ovx), so the number on screen can be checked by hand.
 function _txN(){ return {
   wells:gdn('tx-wells')||1, cpw:gdn('tx-cpw')||0.8, mediaVol:gdn('tx-mediavol')||2, count:gdn('tx-count')||1, ex:gdn('tx-excess')||1,
-  txWells:gdn('tx-txwells')||1, dna:gdn('tx-dna')||4, ratio:gdn('tx-ratio'), fug:gdn('tx-fugene')||3, opti:gdn('tx-opti')||200, pog44:gdn('tx-pog44')||500,
+  // The ratio is parts pOG44 per 1 part pcDNA5, so the split is ratio/(1+ratio): a ratio of -1
+  // makes that denominator zero and printed "-Infinity µg" and "∞ µL" straight into the steps.
+  txWells:gdn('tx-txwells')||1, dna:gdn('tx-dna')||4, ratio:Math.max(0,gdn('tx-ratio')), fug:gdn('tx-fugene')||3, opti:gdn('tx-opti')||200, pog44:gdn('tx-pog44')||500,
   pcdna5:_txList(gdv('tx-pcdna5')).map(function(x){ return +x||0; }), names:_txList(gdv('tx-names')),
   hstock:gdn('tx-hstock')||50, htarget:gdn('tx-htarget')||150, hvol:gdn('tx-hvol')||50, kvol:gdn('tx-kvol')||2, kfrom:gdn('tx-kfrom')||50, kto:gdn('tx-kto')||400, kstep:gdn('tx-kstep')||50,
   tstock:gdn('tx-tstock')||1, ttarget:gdn('tx-ttarget')||1, tvol:gdn('tx-tvol')||10 }; }

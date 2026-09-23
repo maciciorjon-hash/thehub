@@ -604,6 +604,9 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .ci-f.sf-list textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:62px;
   font:var(--fs-2)/1.5 var(--mono);background:var(--surface2);color:var(--text);
   border:1px solid var(--border2);border-radius:var(--r-1);padding:6px 8px;}
+/* A name with no spaces cannot wrap, so it pushed the row's ⋯ (the only route to rename, move
+   or set a prefix) outside a container that does not scroll. */
+.xv-pn,.proj-row .proj-name,.nb-crumb{min-width:0;overflow-wrap:anywhere;word-break:break-word;}
 .sf-n{display:inline-block;min-width:16px;padding:0 4px;border-radius:var(--r-full);
   background:var(--surface3);color:var(--text2);font:600 var(--fs-1)/16px var(--mono);text-align:center;}
 .sf-n:empty{display:none;}
@@ -3580,9 +3583,15 @@ function applySetupToBlocks(type,setup,blocks,prevSetup){
       // half the medium volume at 96-well is still half of it at 384-well.
       // rescaleSeedInputs moves the volumes AND the cell number, and sets I.format itself.
       if(fmt&&I.format!=null) rescaleSeedInputs(I,fmt);
-      if(setup.cellLine!=null&&I.cellLine!=null) I.cellLine=setup.cellLine;
-      if(setup.cellsPerWell!=null&&I.cellsPerWell!=null) I.cellsPerWell=+setup.cellsPerWell;
-      if(setup.nPlates!=null&&I.nPlates!=null){
+      // A value typed over the setup is the number that run used, and the UI says so in as many
+      // words ("yours · setup says 3000 — this step only"). It used to be overwritten by the next
+      // setup save whatever it said, which is the one thing this notebook promises never to do.
+      // b.calcSeed holds what the setup last planted, so "you changed it" is already knowable.
+      var _own=function(k){ return b.calcSeed && b.calcSeed[k]!==undefined
+        && String(b.calcSeed[k])!==String(I[k]); };
+      if(setup.cellLine!=null&&I.cellLine!=null&&!_own('cellLine')) I.cellLine=setup.cellLine;
+      if(setup.cellsPerWell!=null&&I.cellsPerWell!=null&&!_own('cellsPerWell')) I.cellsPerWell=+setup.cellsPerWell;
+      if(setup.nPlates!=null&&I.nPlates!=null&&!_own('nPlates')){
         I.nPlates = base ? Math.max(1,Math.round((+I.nPlates/base)*(+setup.nPlates||1))) : (+setup.nPlates||1);
       }
     }
@@ -3635,15 +3644,42 @@ function nfmt(x){ x=+x; if(!isFinite(x)) return '—'; var a=Math.abs(x); if(a==
   if(a>=1000) return Math.round(x).toLocaleString('en-GB'); if(a>=100) return String(Math.round(x));
   if(a>=1) return String(Math.round(x*100)/100); return String(Math.round(x*1000)/1000); }
 function mlfmt(ul){ return nfmt(ul)+' µL ('+nfmt(ul/1000)+' mL)'; }
+// ── A field you cleared must not be a number you never saw ──────────────────────────
+// Every `compute` fell back to a hidden default for a blank or zero field — (+v.ratio||2) — while
+// printing the RAW value beside it, so clearing "Reagent 1:X cell" produced "Add 15 µL/well
+// (1:0 reagent:cell)": the 15 µL was worked out at 1:2 and nothing on screen said so. It reached
+// the Methods sentence too ("LgBiT 1:0"). Some were invisible: 0 plates silently gave you one
+// plate's reagent.
+//
+// _calcEff resolves the fallbacks ONCE, so the arithmetic and the printing are the same number,
+// and records which fields it had to fill in so the recipe can say so out loud.
+function _calcEff(v,defs){
+  var o={}, sub=[];
+  for(var k in v) if(Object.prototype.hasOwnProperty.call(v,k)) o[k]=v[k];
+  Object.keys(defs||{}).forEach(function(k){
+    var n=+o[k];
+    if(!isFinite(n)||n===0){ o[k]=defs[k]; if(v[k]!==undefined&&v[k]!=='') sub.push(k); else if(v[k]==='') sub.push(k); }
+    else o[k]=n;
+  });
+  o.__sub=sub;
+  return o;
+}
+function _subNote(v,labels){
+  var sub=(v&&v.__sub)||[]; if(!sub.length) return '';
+  return '<div class="cc-warn">Using the default for '
+    +sub.map(function(k){ return '<b>'+esc((labels&&labels[k])||k)+' = '+nfmt(v[k])+'</b>'; }).join(' and ')
+    +' &mdash; '+(sub.length===1?'that box is':'those boxes are')+' empty or zero, and the numbers above were worked out with '
+    +(sub.length===1?'it':'them')+'. Type the value you actually used.</div>';
+}
 var CALC_KINDS={
   seed:{ label:'Cell seeding', fields:[
     {k:'cellLine',t:'cellline',lbl:'Cell line'},{k:'cellsPerWell',t:'num',lbl:'Cells / well'},
     {k:'volPerWell',t:'num',lbl:'Vol / well (µL)'},{k:'format',t:'format',lbl:'Plate'},
     {k:'nPlates',t:'num',lbl:'# plates'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{cellLine:'HEK293',cellsPerWell:3000,volPerWell:30,format:'384',nPlates:1,excess:1.5},
-    compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*(+v.excess||1); var cells=dens*(totUL/1000);
+    compute:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*v.excess; var cells=dens*(totUL/1000);
       return '<b>Prepare</b> '+nfmt(dens)+' M/mL &mdash; '+mlfmt(totUL)+' total'+_ovxL(v.excess)+' ('+nfmt(cells)+' M cells). <b>Seed</b> '+nfmt(v.volPerWell)+' µL/well → '+nfmt(v.cellsPerWell)+' cells/well &middot; '+nfmt(v.nPlates)+'× '+esc(String(v.format))+'-well ('+wells+' wells).'
-        +seedPlausibility(v, _SEED_FIX_CALL); } },
+        +seedPlausibility(v, _SEED_FIX_CALL)+_subNote(v,{nPlates:'# plates',excess:'Excess ×'}); } },
   // ── NanoBRET reverse transfection, per DNA condition ────────────────────────────────────
   // A NanoBRET run is not one master mix: the pair, each single construct and the mock each get
   // their own, and the controls only mean anything if every well receives the same total DNA.
@@ -3745,20 +3781,26 @@ var CALC_KINDS={
     {k:'cellVolPerWell',t:'num',lbl:'Cell vol/well (µL)'},{k:'ratio',t:'num',lbl:'Reagent 1:X cell'},
     {k:'lgbitDil',t:'num',lbl:'LgBiT 1:X'},{k:'subDil',t:'num',lbl:'Substrate 1:X'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{format:'384',nPlates:1,cellVolPerWell:30,ratio:2,lgbitDil:100,subDil:50,excess:1.1},
-    compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var rvol=(+v.cellVolPerWell)/(+v.ratio||2); var tot=rvol*wells*(+v.excess||1); var lg=tot/(+v.lgbitDil||100), su=tot/(+v.subDil||50);
-      return '<b>HiBiT Lytic reagent</b> &mdash; Buffer '+nfmt(tot)+' µL'+_ovxL(v.excess)+' + LgBiT (1:'+nfmt(v.lgbitDil)+') '+nfmt(lg)+' µL + Substrate (1:'+nfmt(v.subDil)+') '+nfmt(su)+' µL. Mix gently, do not vortex.<br><b>Add</b> '+nfmt(rvol)+' µL/well (1:'+nfmt(v.ratio)+' reagent:cell) &middot; shake 300 rpm ×1 min &middot; RT 10 min &middot; read.'; } },
+    compute:function(v){ v=_calcEff(v,{nPlates:1,ratio:2,lgbitDil:100,subDil:50,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var rvol=(+v.cellVolPerWell)/v.ratio; var tot=rvol*wells*v.excess; var lg=tot/v.lgbitDil, su=tot/v.subDil;
+      return '<b>HiBiT Lytic reagent</b> &mdash; Buffer '+nfmt(tot)+' µL'+_ovxL(v.excess)+' + LgBiT (1:'+nfmt(v.lgbitDil)+') '+nfmt(lg)+' µL + Substrate (1:'+nfmt(v.subDil)+') '+nfmt(su)+' µL. Mix gently, do not vortex.<br><b>Add</b> '+nfmt(rvol)+' µL/well (1:'+nfmt(v.ratio)+' reagent:cell) &middot; shake 300 rpm ×1 min &middot; RT 10 min &middot; read.'+_subNote(v,{nPlates:'# plates',ratio:'Reagent 1:X cell',lgbitDil:'LgBiT 1:X',subDil:'Substrate 1:X',excess:'Excess ×'}); } },
   ctg:{ label:'CellTiter-Glo reagent', fields:[
     {k:'format',t:'format',lbl:'Plate'},{k:'nPlates',t:'num',lbl:'# plates'},
     {k:'volPerWell',t:'num',lbl:'CTG µL/well'},{k:'excess',t:'num',lbl:'Excess ×',step:'0.05'}],
     defaults:{format:'96',nPlates:2,volPerWell:50,excess:1.1},
-    compute:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var tot=(+v.volPerWell)*wells*(+v.excess||1);
-      return '<b>CellTiter-Glo</b> &mdash; add '+nfmt(v.volPerWell)+' µL/well &middot; '+mlfmt(tot)+' reagent needed'+_ovxL(v.excess)+' &middot; equilibrate 10–20 min &middot; read luminescence.'; } },
+    compute:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var tot=(+v.volPerWell)*wells*v.excess;
+      return '<b>CellTiter-Glo</b> &mdash; add '+nfmt(v.volPerWell)+' µL/well &middot; '+mlfmt(tot)+' reagent needed'+_ovxL(v.excess)+' &middot; equilibrate 10–20 min &middot; read luminescence.'+_subNote(v,{nPlates:'# plates',excess:'Excess ×'}); } },
   reagent:{ label:'Reagent dilution', fields:[
     {k:'name',t:'txt',lbl:'Reagent'},{k:'diluent',t:'txt',lbl:'Diluent'},
     {k:'totalVol',t:'num',lbl:'Total (µL)'},{k:'dilution',t:'num',lbl:'Dilution 1:X'}],
     defaults:{name:'Substrate',diluent:'OptiMEM',totalVol:2520,dilution:100},
-    compute:function(v){ var tot=+v.totalVol||0, dil=+v.dilution||1; var r=tot/dil, d=tot-r;
-      return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; '+nfmt(r)+' µL '+esc(v.name||'reagent')+' (1:'+nfmt(dil)+') + '+nfmt(d)+' µL '+esc(v.diluent||'diluent')+' = '+nfmt(tot)+' µL total.'; } }
+    compute:function(v){ v=_calcEff(v,{dilution:1}); var tot=+v.totalVol||0, dil=v.dilution; var r=tot/dil, d=tot-r;
+      if(!(tot>0)) return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; set a total volume.';
+      // 1:0.5 is not a dilution, and the row used to print a NEGATIVE diluent volume beside a
+      // total that read as if the recipe were fine.
+      if(dil<1) return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; a 1:'+nfmt(dil)+' &ldquo;dilution&rdquo; is more concentrated '
+        +'than the stock, so it cannot be made by adding '+esc(v.diluent||'diluent')+'. A dilution factor is 1 or more.';
+      return '<b>Prepare '+esc(v.name||'reagent')+'</b> &mdash; '+nfmt(r)+' µL '+esc(v.name||'reagent')+' (1:'+nfmt(dil)+') + '+nfmt(d)+' µL '+esc(v.diluent||'diluent')+' = '+nfmt(tot)+' µL total.'
+        +_subNote(v,{dilution:'Dilution 1:X'}); } }
 };
 // ── NanoBRET reverse transfection ───────────────────────────────────────────────────────────
 // The two numbers you decide are the acceptor amount and how dilute the donor is relative to
@@ -3780,7 +3822,7 @@ var CALC_KINDS={
 // number never freezes into the prose and a corrected calculator reaches every step at once.
 // A kind with no entry here has no numbers a step may quote; a token it cannot answer prints —.
 var CALC_VALUES={
-  seed:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*(+v.excess||1);
+  seed:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*v.excess;
     return {density:nfmt(dens)+' M cells/mL', totalVol:mlfmt(totUL), cells:nfmt(dens*totUL/1000)+' M cells', volPerWell:nfmt(v.volPerWell)+' µL', cellsPerWell:nfmt(v.cellsPerWell)+' cells', nPlates:nfmt(v.nPlates), format:String(v.format||'')+'-well', wells:nfmt(wells)+' wells', cellLine:((cellLineDef(v.cellLine)||{}).label||String(v.cellLine||'cells')).replace(/\s*\(.*\)$/,'')}; },
   rtxmix:function(v){ var n=+v.nWells||0, ex=+v.excess||1, W=n*ex, disp=+v.dispenseUL||0, tot=disp*W, ngw=+v.ngPerWell||0, dnaNg=ngw*W, stock=+v.stockNgUl||0;
     var dnaUL=stock>0?(dnaNg/stock):0, fug=(+v.fugeneRatio||0)*(dnaNg/1000), dil=tot-dnaUL-fug;
@@ -3802,9 +3844,9 @@ var CALC_VALUES={
     var topI=topF*X, T=df>1?keep/(df-1):0, first=keep+T, d1=stockNM>0?(stockNM/topI):0, vs=d1>0?(first/d1):0, wv=+v.wellVolUL||0, addUL=(X>1&&wv>0)?(wv/(X-1)):0;
     var pts=[]; for(var i=0;i<np;i++) pts.push(_fmtConc(topF/Math.pow(df,i)));
     return {name:String(v.name||'compounds'), nPoints:nfmt(np), df:nfmt(df)+'-fold', top:_fmtConc(topF), bottom:pts[np-1], topTube:_fmtConc(topI), fold:nfmt(X)+'×', stockUL:nfmt(vs)+' µL', firstDiluentUL:nfmt(first-vs)+' µL', firstVol:nfmt(first)+' µL', keepUL:nfmt(keep)+' µL', transferUL:nfmt(T)+' µL', diluent:String(v.diluent||'medium'), series:pts.join(' · '), addUL:nfmt(addUL)+' µL', wellVol:nfmt(wv)+' µL', newVol:nfmt(wv+addUL)+' µL', nCompounds:nfmt(nc), stockConc:stockNM>0?_fmtConc(stockNM):'—', dilution:d1>0?('1:'+nfmt(d1)):'—'}; },
-  lytic:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var rvol=(+v.cellVolPerWell)/(+v.ratio||2); var tot=rvol*wells*(+v.excess||1); var lg=tot/(+v.lgbitDil||100), su=tot/(+v.subDil||50);
+  lytic:function(v){ v=_calcEff(v,{nPlates:1,ratio:2,lgbitDil:100,subDil:50,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var rvol=(+v.cellVolPerWell)/v.ratio; var tot=rvol*wells*v.excess; var lg=tot/v.lgbitDil, su=tot/v.subDil;
     return {bufferUL:nfmt(tot)+' µL', lgbitUL:nfmt(lg)+' µL', lgbitDil:'1:'+nfmt(v.lgbitDil), substrateUL:nfmt(su)+' µL', substrateDil:'1:'+nfmt(v.subDil), addPerWell:nfmt(rvol)+' µL', ratio:'1:'+nfmt(v.ratio), wells:nfmt(wells)+' wells', nPlates:nfmt(v.nPlates), format:String(v.format||'')+'-well'}; },
-  ctg:function(v){ var wells=wellsOf(v.format)*(+v.nPlates||1); var tot=(+v.volPerWell)*wells*(+v.excess||1);
+  ctg:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var tot=(+v.volPerWell)*wells*v.excess;
     return {addPerWell:nfmt(v.volPerWell)+' µL', total:mlfmt(tot), wells:nfmt(wells)+' wells', nPlates:nfmt(v.nPlates), format:String(v.format||'')+'-well'}; },
   reagent:function(v){ var tot=+v.totalVol||0, dil=+v.dilution||1; var r=tot/dil, d=tot-r;
     return {name:String(v.name||'reagent'), reagentUL:nfmt(r)+' µL', diluentUL:nfmt(d)+' µL', diluent:String(v.diluent||'diluent'), total:nfmt(tot)+' µL', dilution:'1:'+nfmt(dil)}; }
@@ -4125,14 +4167,17 @@ function spikeRecipe(v){
       ? ('<div class="cc-note">Each concentration is prepared separately at '+nfmt(X)+'× in '+dl+'; the plate map says which wells receive which.</div>')
       : ('<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Step</th><th>Amount</th></tr>'
         +'<tr><td>'+nfmt(X)+'× intermediate'+(inter>0?(' at '+_fmtConc(inter*1000)):'')+' — '+nfmt(n)+' well'+(n===1?'':'s')+_ovxL(ex)+'</td><td><b>'+nfmt(need)+' µL</b></td></tr>'
-        +(df>0?('<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', diluted 1:'+nfmt(df)+'</td><td><b>'+nfmt(vs)+' µL</b></td></tr>'
+        +(df>=1?('<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', diluted 1:'+nfmt(df)+'</td><td><b>'+nfmt(vs)+' µL</b></td></tr>'
                +'<tr><td>'+dl+'</td><td><b>'+nfmt(vd)+' µL</b></td></tr>'):'')
         +'</table></div>'))
     +'<div class="cc-note">V/(X−1), not V/X — the intermediate becomes part of the final volume. Adding a tenth of '+nfmt(V)
     +' µL instead would put '+nfmt(V/X)+' µL in and leave every well at '+nfmt(100*X/(X+1))+'% of the dose you meant'
     +(fin>0?(' — '+_fmtConc(fin*1000*X/(X+1))+' instead of '+_fmtConc(fin*1000)):'')+'.</div>';
   if(!ser){
-    if(df>0&&df<2) out+='<div class="cc-warn">The stock is only '+nfmt(df)+'× the intermediate — barely a dilution. '
+    if(df>0&&df<1) out+='<div class="cc-warn">The stock ('+_fmtConc(stock*1000)+') is <b>weaker</b> than the '
+      +nfmt(X)+'× intermediate it has to make ('+_fmtConc(inter*1000)+'), so this cannot be prepared from it — '
+      +'concentrating a solution is not a pipetting step. Use a more concentrated stock, or lower the final concentration.</div>';
+    else if(df>=1&&df<2) out+='<div class="cc-warn">The stock is only '+nfmt(df)+'× the intermediate — barely a dilution. '
       +'Check the stock concentration or make the intermediate weaker.</div>';
     else if(_pipHint(vs,v.minVolUL)) out+='<div class="cc-warn">'+nfmt(vs)+' µL of stock is not a volume to pipette directly — '
       +_pipHint(vs,v.minVolUL).txt+' of it into the '+dl+'.</div>';
@@ -4154,6 +4199,19 @@ function serialRecipe(v){
   var dmso=(d1>0)?(100/(d1*X)):null;     // DMSO carried into the well, as a %
   var wv=+v.wellVolUL||0, addUL=(X>1&&wv>0)?(wv/(X-1)):0;   // V/(X−1) — the intermediate joins the volume
   var pts=[]; for(var i=0;i<np;i++) pts.push(_fmtConc(topF/Math.pow(df,i)));
+  // Three recipes that cannot be made were printed as if they could: no stock at all (tube 1 was
+  // "0 µL stock + 90 µL diluent" while claiming to be at the top concentration), a stock weaker
+  // than the tube it has to make (a negative diluent volume), and a 1× series, which says to add
+  // 0 µL and therefore delivers no compound at all while the heading claims a concentration.
+  var _imp='';
+  if(!(stockNM>0)) _imp='<div class="cc-warn">No stock concentration, so there is no recipe for tube 1: '
+    +'what is written below would be '+nfmt(first)+' µL of '+dl+' and nothing else. Enter the DMSO stock.</div>';
+  else if(stockNM<topI) _imp='<div class="cc-warn">The stock ('+_fmtConc(stockNM)+') is weaker than the top tube it has to make ('
+    +_fmtConc(topI)+'), so this series cannot be prepared from it — the volumes below go negative. '
+    +'Use a more concentrated stock, or lower the top concentration.</div>';
+  else if(wv>0&&!(X>1)) _imp='<div class="cc-warn">A 1× series is added by replacing the medium, not by spiking: '
+    +'at 1× there is no volume to add to a well that already holds '+nfmt(wv)+' µL, so nothing would reach the cells. '
+    +'Make the series at 10× (or whatever fits), or say the well starts empty.</div>';
   var out='<b>'+nfmt(np)+'-point '+nfmt(df)+'-fold series</b> — '+_fmtConc(topF)+' down to '+pts[np-1]+' <b>in the well</b>, '
     +'made at '+nfmt(X)+'× so the top tube is '+_fmtConc(topI)+'.'
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Step</th><th>Amount</th></tr>'
@@ -4166,7 +4224,7 @@ function serialRecipe(v){
     +'<div class="cc-note">Every tube ends holding '+nfmt(keep)+' µL except the last, which keeps '+nfmt(first)+' µL because nothing is taken out of it. '
     +'Series in the well: '+pts.join(' · ')+'.'
     +(dmso!=null?('<br>DMSO reaching the cells at the top point: <b>'+nfmt(dmso)+'%</b>'+(dmso>0.5?' — above the 0.5% most lines tolerate.':'')):'')
-    +'</div>';
+    +'</div>'+_imp;
   // The advice has to keep the vehicle honest. Pre-diluting the DMSO stock in DMSO and then
   // under-diluting *that* into medium is the obvious-looking fix and it multiplies the DMSO
   // reaching the cells by exactly the factor you pre-diluted by.
@@ -4304,7 +4362,9 @@ function calcInputsHtml(b){ if(b.calc.kind==='archive') return archiveCalcHtml(b
     // setup, and nothing said which was the plan and which the record: the chip is the plan's
     // door, and a value typed over it reads "yours" instead.
     if(!_tag){ var _st=_setupTag(b,f.k); if(_st) _tag=_st; }
-    return '<label class="ci-f"><span>'+f.lbl+_tag+'</span><input type="number" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\',\''+f.k+'\')"></label>';
+    // A volume, a count and a dilution are all non-negative. Archive's inputs have carried min
+    // since they were written; these never did, so a minus sign propagated into every recipe.
+    return '<label class="ci-f"><span>'+f.lbl+_tag+'</span><input type="number" min="0" data-k="'+f.k+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="calcUpd(\''+b.id+'\',\''+f.k+'\')"></label>';
   }).join('');
   return '<div class="blk-calc" data-calc="'+b.id+'"><div class="cc-hd"><span class="cc-tag">'+tbIco(P_SIGMA,12)+' '+esc(C.label)+'</span><span class="grow"></span>'
     +'<button class="lean-tog" title="The numbers this recipe is calculated from" onclick="leanToggle(this,\'.blk-calc\')">Inputs</button>'
@@ -5368,7 +5428,11 @@ function plateGroupBoxes(p){
 function plateHasColLabels(p){ return !!(p&&p.colLabels&&Object.keys(p.colLabels).length); }
 function wellIdOf(r,c){ return PLATE_ROWS.charAt(r)+(c+1); }
 // Well ids are unpadded ("A1", "A10") — always resolve through this, never sort them as strings.
-function wellRC(id){ var m=/^([A-P])(\d+)$/.exec(String(id||'')); return m?{r:PLATE_ROWS.indexOf(m[1]),c:(+m[2])-1}:null; }
+// Columns are 1-based, so 'A0' is not a well — it used to come back as column -1, an index that
+// writes outside the grid. 24 is the widest plate here.
+function wellRC(id){ var m=/^([A-P])(\d+)$/.exec(String(id||'')); if(!m) return null;
+  var c=(+m[2])-1; if(c<0||c>23) return null;
+  return {r:PLATE_ROWS.indexOf(m[1]),c:c}; }
 // What to print inside the well itself. Wells are small, so show the thing that varies
 // well-to-well (the concentration); the compound is constant along a series and is in the
 // layout summary, the legend and the tooltip.
@@ -6948,6 +7012,10 @@ function _cn(x){ var v=+x; if(!isFinite(v)) return '0';
   return s.indexOf('.')<0?s:s.replace(/0+$/,'').replace(/\.$/,''); }
 // Steps right down to fM so a long series never collapses to "0 nM".
 function _fmtConc(nM){ if(!isFinite(nM)||nM<=0) return '0';
+  // _cn renders below 10 with toFixed(2), so anything under 0.005 fM came out as a bare "0" —
+  // a real point in a long series shown as nothing at all. Only those switch notation; 0.5 fM
+  // still reads as 0.5 fM.
+  if(nM<5e-9) return (+nM.toPrecision(3)).toExponential()+' nM';
   if(nM>=1e6) return _cn(nM/1e6)+' mM';
   if(nM>=1e3) return _cn(nM/1e3)+' µM';
   if(nM>=1)   return _cn(nM)+' nM';
@@ -7786,7 +7854,7 @@ function _flushLocal(){ if(!_lsDirty) return; _lsDirty=false; clearTimeout(_lsT)
   try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data)); }
   // Silently dropping this means the notebook stops persisting and nobody finds out until a
   // reload wipes the day's work. Always surface it.
-  catch(e){ _storageFailed(e); } }
+  catch(e){ _storageFailed(e,'tree'); } }
 // ══════════════════════════════════════════════════════════════════════════
 // VERSION HISTORY
 //
@@ -8580,7 +8648,10 @@ function _journalListHtml(){
 //
 // It is derived, never demanded: a project created without touching the box still gets one, so
 // codes are prefixed from the first experiment rather than from whenever someone remembers.
-function _normPrefix(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4); }
+// Accents are folded, not dropped: ÁCIDO is an acronym and used to fail the ALL-CAPS test
+// because the Á was deleted before the test could see it. Jon names things in Spanish.
+function _deaccent(v){ try{ return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,''); }catch(e){ return String(v||''); } }
+function _normPrefix(v){ return _deaccent(v).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4); }
 // Two tests, in order, and between them they explain every name in a real notebook.
 //
 // 1. **An ALL-CAPS first word owns the prefix.** A lab names a project after a gene symbol or an
@@ -8594,14 +8665,20 @@ function _normPrefix(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g
 // of Jon's six project names, which is not a rule and would have shipped his lab's vocabulary
 // inside a product other labs use.
 function _prefixDefault(name){
-  var w=String(name||'').trim().split(/[\s_\-/]+/).filter(Boolean);
+  // Words that carry no letters or digits at all (an emoji) are not words for this purpose:
+  // they used to be taken as the first word and yield a one-character prefix.
+  var w=_deaccent(name).trim().split(/[\s_\-/]+/).filter(function(x){ return /[A-Za-z0-9]/.test(x); });
   var w0=String(w[0]||''), a=_normPrefix(w0), b=_normPrefix(w[1]||'');
   var acronym = a.length>1 && /^[A-Z0-9]+$/.test(w0) && /[A-Z]/.test(w0);
   var px = acronym            ? a.slice(0,2)
          : (b.length>=3)      ? (a.charAt(0)+b.charAt(0))
          : (a.length>1)       ? a.slice(0,2)
                               : (a+b.charAt(0));
-  return _normPrefix(px) || 'PR';
+  px=_normPrefix(px);
+  // Two letters is the contract every code is built on, so a one-character result is padded
+  // from the rest of the name rather than shipped short.
+  if(px.length===1){ var rest=_normPrefix(w.join('')).replace(px.charAt(0),''); px=px+(rest.charAt(0)||'1'); }
+  return px || 'PR';
 }
 function projPrefix(p){ return _normPrefix(p&&p.prefix) || _prefixDefault(p&&p.name); }
 // A distinct two letters, not just two letters. "SPARK" and "SPARK NS" both derive SP, and two
@@ -8710,10 +8787,15 @@ function delProject(id){ var p=projById(id); if(!p) return;
     // restoring the project brings back everything that was filed under its name.
     var nbSecs=(LB.data.generalSections||[]).filter(function(s){ return s.nb==='proj:'+id; });
     var nbPages={}; nbSecs.forEach(function(s){ Object.keys(LB.data.pages).forEach(function(k){ if(LB.data.pages[k].sectionId===s.id) nbPages[k]=LB.data.pages[k]; }); });
-    undoMark('Delete project',['projects','generalSections','pages']);
+    // Every path this actually touches. It used to declare only projects/generalSections/pages
+    // while also deleting LB.data.experiments[k] and writing a trash entry — so Ctrl+Z gave the
+    // project back EMPTY, left the deletion in Deleted items, and said "Undone" either way.
+    var _tid=uid();
+    undoMark('Delete project',['projects','generalSections','pages','trash.'+_tid]
+      .concat(exps.map(function(k){ return 'experiments.'+k; })));
     lbTrash('project',(p.name||'Project')+(exps.length?(' · '+exps.length+' item'+(exps.length===1?'':'s')):''),
       {project:p, experiments:_trashExpsOf(function(e){ return e.projectId===id; }), nbSections:nbSecs, pages:nbPages},
-      {index:LB.data.projects.map(function(x){return x.id;}).indexOf(id)});
+      {index:LB.data.projects.map(function(x){return x.id;}).indexOf(id)}, _tid);
     exps.forEach(function(k){ delete LB.data.experiments[k]; });
     Object.keys(nbPages).forEach(function(k){ delete LB.data.pages[k]; });
     LB.data.generalSections=(LB.data.generalSections||[]).filter(function(s){ return s.nb!=='proj:'+id; });
@@ -8723,9 +8805,12 @@ function addSection(pid,name){ var i=el('new-sec-'+pid)||{value:''}; var n=(name
 function delSection(pid,sid){ var p=projById(pid); var sec=p&&(p.sections||[]).filter(function(s){return s.id===sid;})[0]; if(!sec) return;
   var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===pid&&LB.data.experiments[k].sectionId===sid;});
   lbConfirm('Delete "'+(sec.name||'this folder')+'"'+(exps.length?(' and its '+exps.length+' item(s)'):'')+'? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete folder',ok:'Delete'}).then(function(ok){ if(!ok) return;
-    undoMark('Delete folder',['projects']);
+    var _tid=uid();
+    undoMark('Delete folder',['projects','trash.'+_tid]
+      .concat(exps.map(function(k){ return 'experiments.'+k; })));
     lbTrash('folder',(sec.name||'Folder')+(exps.length?(' · '+exps.length+' item'+(exps.length===1?'':'s')):''),
-      {projectId:pid, section:sec, experiments:_trashExpsOf(function(e){ return e.projectId===pid&&e.sectionId===sid; })});
+      {projectId:pid, section:sec, experiments:_trashExpsOf(function(e){ return e.projectId===pid&&e.sectionId===sid; })},
+      null, _tid);
     exps.forEach(function(k){ delete LB.data.experiments[k]; });
     p.sections=(p.sections||[]).filter(function(s){return s.id!==sid;});
     if(SEL.node.kind==='expsec'&&SEL.node.sectionId===sid){ SEL.node={kind:'exps'}; SEL.page=null; } save(); renderAll(); }); }
@@ -8979,6 +9064,9 @@ function _ctgReadout(h,last){ var t=_hrTxt(h);
 var OVERNIGHT_MIN=16*60;
 function _parseWait(v){ var t=String(v==null?'':v).trim().toLowerCase().replace(',','.');
   if(!t) return 0;
+  // A negative duration is not a duration. '-5' used to come back as 5, the sign simply dropped
+  // by the digit match.
+  if(t.charAt(0)==='-') return 0;
   if(/^o\/?n$|^overnight$/.test(t)) return OVERNIGHT_MIN;
   var m=0, any=false;
   // No \b after the unit. It is optional, so in "2h15" the h is followed by a digit, the
@@ -9738,8 +9826,14 @@ function _htmlLines(html,forPub){
 function _plain(html){ return _htmlLines(html).join(' '); }
 // Past-tense Nature-methods sentence per native calculator kind.
 var CALC_PUB={
-  seed:function(v){ var line=((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,''); var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; return line+' cells were seeded at '+nfmt(v.cellsPerWell)+' cells/well ('+nfmt(dens)+' M/mL) in '+nfmt(v.volPerWell)+' µL/well in '+String(v.format)+'-well plates.'; },
-  lytic:function(v){ var rvol=(+v.cellVolPerWell)/(+v.ratio||2); return 'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): '+nfmt(rvol)+' µL of lytic reagent (LgBiT 1:'+nfmt(v.lgbitDil)+', substrate 1:'+nfmt(v.subDil)+') was added per well and luminescence recorded after a 10 min room-temperature incubation.'; },
+  seed:function(v){ var line=((cellLineDef(v.cellLine)||{}).label||'Cells').replace(/\s*\(.*\)$/,''); var vol=+v.volPerWell, cpw=+v.cellsPerWell, dens=(isFinite(vol)&&vol>0)?(cpw/vol/1000):null;
+    // A Methods sentence must not carry an em-dash where a number belongs: with no volume
+    // there is no density, so the clause is dropped rather than published as "(— M/mL) in 0 µL/well".
+    var out=line+' cells were seeded';
+    if(isFinite(cpw)&&cpw>0) out+=' at '+nfmt(cpw)+' cells/well'+(dens?(' ('+nfmt(dens)+' M/mL)'):'');
+    if(dens) out+=' in '+nfmt(vol)+' µL/well';
+    return out+' in '+String(v.format)+'-well plates.'; },
+  lytic:function(v){ v=_calcEff(v,{ratio:2,lgbitDil:100,subDil:50}); var rvol=(+v.cellVolPerWell)/v.ratio; return 'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): '+nfmt(rvol)+' µL of lytic reagent (LgBiT 1:'+nfmt(v.lgbitDil)+', substrate 1:'+nfmt(v.subDil)+') was added per well and luminescence recorded after a 10 min room-temperature incubation.'; },
   ctg:function(v){ return 'Cell viability was measured with CellTiter-Glo (Promega; '+nfmt(v.volPerWell)+' µL/well), luminescence being recorded after a 10–20 min equilibration and normalised to vehicle controls.'; },
   reagent:function(v){ return (v.name||'The reagent')+' was prepared at a 1:'+nfmt(v.dilution)+' dilution in '+(v.diluent||'buffer')+'.'; },
   // A recipe table is a bench artefact. Methods want the design: what went in a well and why
@@ -10241,7 +10335,7 @@ function nmSetupField(f,lead,src,upd){
   if(f.t==='txt'){ return '<label class="'+cls+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)
     +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input data-sf="'+f.f+'" value="'+esc(v==null?'':v)+'"'
     +(f.ph?(' placeholder="'+esc(f.ph)+'"'):'')+' oninput="'+upd+'()"></label>'; }
-  return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input type="number" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="'+upd+'()"></label>';
+  return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input type="number" min="0" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="'+upd+'()"></label>';
 }
 function nmSetup(){ var host=el('nm-setup'); if(!host) return;
   var key=el('nm-type').value, type=presetBase(key); var S=setupSchema(type);
@@ -10482,7 +10576,9 @@ function buildExperimentFrom(sp){
     // was built from that. It costs one walk of the blocks.
     syncChainedInputs({blocks:all});
     var _aim=sp.aim||'';
-    var e={ id:uid(), projectId:_pid, sectionId:_sid, code:code, type:type, presetKey:key,
+    // One creation path, one place the code is made unique. Two records carrying the same code
+    // is a project you cannot search, and it happens on any day two runs of one type are set up.
+    var e={ id:uid(), projectId:_pid, sectionId:_sid, code:_uniqueCode(code), type:type, presetKey:key,
       title:title, status:'planned', startDate:startDate, plasmids:'', cellLines:(setup.cellLine?((cellLineDef(setup.cellLine)||{}).label||String(setup.cellLine)):''),
       setup:setup,
       protocols:protoList||[], pubReady:buildPubReadyFromExp({blocks:all, startDate:startDate, setup:setup, type:type, protocols:protoList||[]}),
@@ -10581,9 +10677,20 @@ function dupExperiment(id){ var e=LB.data.experiments[id]; if(!e) return;
 function _dupCode(code, startDate){
   var d=dateCompact(startDate);
   var out = (d && /\d{8}/.test(code)) ? code.replace(/\d{8}/, d) : (d ? code+'_'+d : code);
-  var taken={}; Object.keys(LB.data.experiments).forEach(function(k){ var x=LB.data.experiments[k]; if(x.code) taken[x.code]=1; });
-  if(!taken[out]) return out;
-  var n=2; while(taken[out+'_'+n]) n++; return out+'_'+n;
+  return _uniqueCode(out);
+}
+// The code is what goes on the plate, the tube and the file names, so two records must never
+// carry the same one. nmUpdateCode builds PREFIX_TYPE+YYYYMMDD with no collision check, so two
+// HiBiT runs in one project on one day — an ordinary Tuesday — were created with identical
+// codes. The uniquing existed and only Duplicate ever called it.
+function _uniqueCode(code, exceptId){
+  if(!code) return code;
+  var taken={};
+  Object.keys(LB.data.experiments||{}).forEach(function(k){
+    if(exceptId && k===exceptId) return;
+    var x=LB.data.experiments[k]; if(x&&x.code) taken[x.code]=1; });
+  if(!taken[code]) return code;
+  var n=2; while(taken[code+'_'+n]) n++; return code+'_'+n;
 }
 function _freshRecord(c){
   delete c.outcome; delete c.outcomeAsked; delete c.html; delete c.files; delete c.floatImgs;
@@ -10617,8 +10724,11 @@ var TRASH_KINDS={
   block:     {lbl:'Step',        ic:'T', c:'#a56983'},
   file:      {lbl:'File',        ic:'A', c:'#c99a4e'}
 };
-function lbTrash(kind,label,payload,meta){
-  var t={id:uid(),at:Date.now(),kind:kind,label:label||'',payload:payload||{}};
+// `id` is optional and exists for one reason: a deleter has to name the trash entry in its
+// undoMark BEFORE the entry is created, or undo puts the record back and leaves a copy sitting
+// in Deleted items — the tree and the recycle bin then disagree about what was deleted.
+function lbTrash(kind,label,payload,meta,id){
+  var t={id:id||uid(),at:Date.now(),kind:kind,label:label||'',payload:payload||{}};
   if(meta) t.meta=meta;
   (LB.data.trash||(LB.data.trash={}))[t.id]=t;
   return t.id;
@@ -11759,6 +11869,10 @@ function esDiffHtml(e){
 function applySetupEdit(){
   var e=LB.data.experiments[ES_EXP]; if(!e||!ES_SETUP) return;
   var prev=e.setup||setupDefaults(e.type);
+  // It rewrites every block's calculator inputs and prose. That has to be one step you can take
+  // back — it had no undoMark at all, so a setup saved by mistake was recoverable only from the
+  // version history, which is written at most once per record per 10 minutes.
+  undoMark('Edit setup',['experiments.'+e.id]);
   e.blocks=applySetupToBlocks(e.type,ES_SETUP,e.blocks||[],prev);
   e.setup=JSON.parse(JSON.stringify(ES_SETUP));
   if(ES_SETUP.cellLine!=null){ var d=cellLineDef(ES_SETUP.cellLine); e.cellLines=(d&&d.label)||String(ES_SETUP.cellLine); }
@@ -11877,7 +11991,12 @@ function resultsPaneHtml(e){
 function _resNum(v){
   // ">10000" and "<0.1" are real entries in a potency column and parseFloat returns NaN for
   // both. The comparison is dropped rather than the row: a bounded value is still a value.
-  var t=String(v==null?'':v).replace(/[<>~≥≤]/g,'').replace(/,/g,'').trim();
+  // A comma is a DECIMAL MARK unless it is separating thousands. Stripping every comma turned
+  // the European "1234,5" into 12345 — a potency ten times too large, silently, on the number
+  // that reaches the results table and the manuscript. Same rule the plate readers already use.
+  var t=String(v==null?'':v).replace(/[<>~\u2265\u2264]/g,'').trim();
+  if(/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)) t=t.replace(/,/g,'');   // 1,234,567.8
+  else t=t.replace(/,(\d+)$/, '.$1').replace(/,/g,'');                  // 1234,5 -> 1234.5
   var m=t.match(/-?\d*\.?\d+(?:[eE][-+]?\d+)?/); if(!m) return null;
   var n=parseFloat(m[0]); return isFinite(n)?n:null;
 }
@@ -11990,7 +12109,10 @@ function delResult(expId,rid){
 function pubResultsSentence(e){
   var rs=(e.integration&&e.integration.results)||[];
   var rows=[]; var pl='DC50', el2='Dmax', pu='nM', eu='%';
-  rs.forEach(function(r){ (r.rows||[]).forEach(function(x){ if(!x.flag&&!x.excluded&&isFinite(parseFloat(x.potency))) rows.push(x); });
+  // A potency of 0 or below is not a measurement, and the ranking is ascending — so -5 nM and
+  // 0 nM both came out as "the most potent". Impossible values are not ranked.
+  rs.forEach(function(r){ (r.rows||[]).forEach(function(x){ var pv=parseFloat(x.potency);
+    if(!x.flag&&!x.excluded&&isFinite(pv)&&pv>0) rows.push(x); });
     if(r.potencyLabel) pl=String(r.potencyLabel).split(' ')[0];
     if(r.effectLabel) el2=String(r.effectLabel).split(' ')[0];
     // The unit used to be the literal 'nM', which happens to be right for Echo's DC50_nM and
@@ -12018,9 +12140,23 @@ function pubResultsSentence(e){
   var best;
   // A pair whose potency was only ever bounded has no mean, and "the most potent were … (DC50 —)"
   // is a sentence about a number that does not exist. It stays in the table and out of the prose.
-  var Sp=S? S.pairs.filter(function(p){ return p.pot; }) : [];
+  // A flagged fit is kept in the table and marked, but it does not lead the prose — that is the
+  // rule the single-run path has always followed, and the two disagreeing meant the same curve
+  // was excluded at n=1 and became the headline result at n=2. A pair whose potency was only
+  // ever bounded has no mean and stays out either way.
+  var _SpAll=S? S.pairs.filter(function(p){ return p.pot&&p.pot.m>0; }) : [];
+  var Sp=_SpAll.filter(function(p){ return !p.flag; });
+  var _SpFlagged=_SpAll.length-Sp.length;
   if(Sp.length){
-    nPhrase=' Values are geometric means of '+S.n+' biological replicates.';
+    // n is the number of replicates THIS value was measured in, which is not the number of
+    // replicate experiments: a compound run once inside a set of three is n=1, and saying
+    // "geometric means of 3 biological replicates" over it is a claim the data does not make.
+    var _ns=Sp.map(function(p){ return (p.pot&&p.pot.n)||1; });
+    var _lo=Math.min.apply(null,_ns), _hi=Math.max.apply(null,_ns);
+    nPhrase=' Values are geometric means of '+(_lo===_hi?_lo:(_lo+'\u2013'+_hi))
+      +' biological replicate'+((_lo===_hi&&_lo===1)?'':'s')+'.';
+    if(_SpFlagged) nPhrase+=' '+_SpFlagged+' further compound-target pair'+(_SpFlagged===1?'':'s')
+      +' '+(_SpFlagged===1?'was':'were')+' fitted but flagged, and '+(_SpFlagged===1?'is':'are')+' reported in the results table only.';
     // Counted over what is being reported, not over the rows of whichever run is open.
     var sc={}, st={};
     Sp.forEach(function(p){ sc[p.compound]=1; if(p.target) st[p.target]=1; });
@@ -12284,7 +12420,18 @@ function repSiblings(e){
 //    1, 10 and 100 nM is 37 nM -- the middle of nothing. The geometric mean is 10, and the
 //    spread is a fold factor rather than a plus/minus in nM. An effect in % is bounded and
 //    linear, so that one is an ordinary mean and SD.
-function _resBounded(x){ return !!(x && (x.bound || /^Reported as\s*[<>≥≤]/.test(String(x.note||'')))); }
+// A bounded value is one the data does not actually locate: ">10000" typed into a pasted table,
+// and — the case that never fired — a fit whose midpoint sits outside the doses tested, which is
+// exactly what Echo's and Lumina's "EC50<range"/"DC50>range" says. Reading only x.bound and the
+// pasted "Reported as >…" meant this safeguard was dead for both apps that actually send results,
+// so an unmeasurable potency went into the geometric mean and into the published sentence.
+function _resBounded(x){
+  if(!x) return false;
+  if(x.bound) return true;
+  var txt=String(x.flagReason||'')+' '+String(x.note||'');
+  return /^Reported as\s*[<>\u2265\u2264]/.test(String(x.note||''))
+      || /[<>]\s*range/i.test(txt);
+}
 function _mSD(a){ if(!a.length) return null;
   var m=a.reduce(function(s,v){ return s+v; },0)/a.length;
   if(a.length<2) return {m:m, sd:null, n:1};
@@ -12398,12 +12545,13 @@ function repStatsHtml(e){
 // three preps out of the freezer" is the useful half; the nanograms are in the block's own table.
 var CALC_NEEDS={
   seed:function(v){
-    var wells=wellsOf(v.format)*(+v.nPlates||1);
-    var totUL=(+v.volPerWell||0)*wells*(+v.excess||1);
+    v=_calcEff(v,{nPlates:1,excess:1});
+    var wells=wellsOf(v.format)*v.nPlates;
+    var totUL=(+v.volPerWell||0)*wells*v.excess;
     var cells=((+v.cellsPerWell||0)/(+v.volPerWell||1)/1000)*(totUL/1000);
     return [{k:'cells', name:v.cellLine, qty:cells, unit:'M cells'},
             {k:'reagent', name:'Cell suspension (medium)', qty:totUL, unit:'µL'},
-            {k:'plastic', name:v.format+'-well plate', qty:(+v.nPlates||1), unit:''}];
+            {k:'plastic', name:v.format+'-well plate', qty:v.nPlates, unit:''}];
   },
   nbsusp:function(v){
     var nP=+v.nPlus||0, nM=+v.nMinus||0, x=(+v.excess||1);
@@ -12464,13 +12612,14 @@ var CALC_NEEDS={
     var wells=wellsOf(v.format)*(+v.nPlates||1);
     var tot=((+v.cellVolPerWell||0)/(+v.ratio||2))*wells*(+v.excess||1);
     return [{k:'reagent', name:'HiBiT Lytic buffer', qty:tot, unit:'µL'},
-            {k:'reagent', name:'LgBiT', qty:tot/(+v.lgbitDil||100), unit:'µL', note:'1:'+nfmt(v.lgbitDil)},
-            {k:'reagent', name:'HiBiT substrate', qty:tot/(+v.subDil||50), unit:'µL', note:'1:'+nfmt(v.subDil)}];
+            {k:'reagent', name:'LgBiT', qty:tot/v.lgbitDil, unit:'µL', note:'1:'+nfmt(v.lgbitDil)},
+            {k:'reagent', name:'HiBiT substrate', qty:tot/v.subDil, unit:'µL', note:'1:'+nfmt(v.subDil)}];
   },
   ctg:function(v){
-    var wells=wellsOf(v.format)*(+v.nPlates||1);
-    return [{k:'reagent', name:'CellTiter-Glo', qty:(+v.volPerWell||0)*wells*(+v.excess||1), unit:'µL'},
-            {k:'plastic', name:v.format+'-well plate', qty:(+v.nPlates||1), unit:''}];
+    v=_calcEff(v,{nPlates:1,excess:1});
+    var wells=wellsOf(v.format)*v.nPlates;
+    return [{k:'reagent', name:'CellTiter-Glo', qty:(+v.volPerWell||0)*wells*v.excess, unit:'µL'},
+            {k:'plastic', name:v.format+'-well plate', qty:v.nPlates, unit:''}];
   },
   reagent:function(v){
     var tot=+v.totalVol||0, dil=+v.dilution||1;
@@ -14229,15 +14378,26 @@ function _attPut(id,dataURL){ return _attDB().then(function(db){ return new Prom
   t.onerror=function(){ _storageFailed(t.error); res(false); };
 }); }).catch(function(err){ _storageFailed(err); return false; }); }
 var _storageWarned=false, _storageBroken=false;
-function _storageFailed(err){
+// `what` says which write failed. It used to be written entirely in the language of
+// attachments — "Attachment NOT saved … Nothing you already had is lost … delete attachments you
+// no longer need" — and _flushLocal, whose own comment insists the notebook silently not
+// persisting must be surfaced, called the very same function. So at the one moment the notebook
+// stopped saving, the user was told it was an image problem and reassured nothing was lost.
+function _storageFailed(err,what){
   var quota=err&&(err.name==='QuotaExceededError'||/quota/i.test(err.name||err.message||''));
+  var tree=(what==='tree');
   _storageBroken=true; updateStatus();
-  if(_storageWarned){ toast(quota?'Storage full — that file was not saved':'That file was not saved'); return; }
+  if(_storageWarned){ toast(tree?(quota?'Storage full — the notebook was NOT saved':'The notebook was NOT saved')
+                                :(quota?'Storage full — that file was not saved':'That file was not saved')); return; }
   _storageWarned=true;
-  lbAlert(quota
-    ? 'Your browser storage is full, so that file could NOT be saved. Nothing you already had is lost, but new images and files will not stick until you free space — export a backup, then delete attachments you no longer need.'
-    : 'That file could not be saved to this browser ('+((err&&(err.name||err.message))||'unknown error')+'). Do not rely on it being kept.',
-    {title:'Attachment NOT saved',danger:true,ok:'I understand'});
+  lbAlert(tree
+    ? (quota
+      ? 'Your browser storage is full, so this notebook could NOT be saved. Anything you have typed since the last successful save is at risk — it is still on screen, but it will not survive a reload. Export a backup now (Recover → Backup file), then free space by deleting attachments you no longer need.'
+      : 'This notebook could not be saved to this browser ('+((err&&(err.name||err.message))||'unknown error')+'). Anything typed since the last successful save exists only on screen. Export a backup now, from Recover → Backup file.')
+    : (quota
+      ? 'Your browser storage is full, so that file could NOT be saved. The notebook text itself is fine, but new images and files will not stick until you free space — export a backup, then delete attachments you no longer need.'
+      : 'That file could not be saved to this browser ('+((err&&(err.name||err.message))||'unknown error')+'). Do not rely on it being kept.'),
+    {title:tree?'Notebook NOT saved':'Attachment NOT saved',danger:true,ok:'I understand'});
 }
 // Rough space check before accepting a large file.
 function _storageRoom(bytes){
@@ -18803,8 +18963,8 @@ function _nudgeBackupFolder(){
   try{ if(localStorage.getItem('lb_backup_nudged')==='1') return; localStorage.setItem('lb_backup_nudged','1'); }catch(e){}
   var canPick=(typeof window.showDirectoryPicker==='function');
   lbAlert(canPick
-    ? 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, so it does not survive a wiped browser or a lost laptop. To get real backup files, open Recover → Backup file (the View tab, or More on a phone) and pick a folder once. After that it writes there quietly, every day, with no dialogs.'
-    : 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, and this browser cannot write files to a folder on its own. Open Recover → Backup file (the View tab, or More on a phone) now and then to download one you can keep.',
+    ? 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, so it does not survive a wiped browser or a lost laptop. To get real backup files, open Recover → Backup file (at the foot of the left column, or More on a phone) and pick a folder once. After that it writes there quietly, every day, with no dialogs.'
+    : 'Nothing was downloaded — a daily snapshot is kept inside this browser instead.\n\nThat snapshot lives on this one device, and this browser cannot write files to a folder on its own. Open Recover → Backup file (at the foot of the left column, or More on a phone) now and then to download one you can keep.',
     {title:'Your notebook is backed up here only'});
 }
 // Recover from the rolling snapshot when there is no backup file to hand.
