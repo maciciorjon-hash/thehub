@@ -3312,10 +3312,24 @@ var SETUP_SCHEMA={
       // A curated preset writes better readout blocks than this can \u2014 its own reagent volumes,
       // its own Methods sentence. So a requested hour that the preset already has a block for
       // keeps that block and is only re-dated; only an hour it has no block for is generated.
+      // A readout that names no hour — the one you added and configured in the Designer — is
+      // the template for every hour generated here. It used to be thrown away: whatever you
+      // typed into its calculator and its wait was replaced by the generic block, and the
+      // experiment read 50 µL/well after you had set 157. The hour-specific wording is still
+      // the generator's; the numbers and the wait are yours. (tools/invariants.mjs, I4)
+      var tmpl=had.filter(function(b){ return !_ctgHours(b.title||'').length; })[0]||null;
       return pre.concat(hrs.map(function(h,i){
         var t=_hrTxt(h), own=null;
         had.forEach(function(b){ if(own==null&&_ctgHours(b.title||'').indexOf(h)>=0) own=b; });
-        if(!own) return _ctgReadout(h,i===hrs.length-1);
+        if(!own){
+          var g=_ctgReadout(h,i===hrs.length-1);
+          if(tmpl){
+            if(tmpl.calc&&tmpl.calc.kind===g.calc.kind) g.calc=JSON.parse(JSON.stringify(tmpl.calc));
+            var tw=(tmpl.waitMin!=null)?tmpl.waitMin:tmpl.w;
+            if(tmpl.waitOwn||tw>0){ g.w=+tw||0; if(tmpl.waitOwn) g.waitOwn=true; }
+          }
+          return g;
+        }
         var c=JSON.parse(JSON.stringify(own)); c.d=Math.floor(h/24); return c; })); }},
   // What a NanoBRET run is, is which constructs are paired and at what ratio — so that is a
   // setup question, not something buried in a calculator. Lists, comma-separated: a single pair
@@ -10618,7 +10632,13 @@ function experimentPlateFor(key,type,setup,e,echo,onOutside){
     || ((String(setup.format)==='384'&&(type==='HB'||type==='D2B')&&setup.dosing!=='Manual (serial dilution)')
         ? PLATE_LAYOUTS.filter(function(x){return x.id==='echo384';})[0] : null);
   // Failing one, a NanoBRET can draw its own from the conditions the setup already describes.
-  return L ? L.build(setup) : (nbPlateForExp(e) || newPlate(setup.format||'96'));
+  var pl2=L ? L.build(setup) : (nbPlateForExp(e) || newPlate(setup.format||'96'));
+  // The condition numbers are what a NanoBRET plate is read by, and they were assigned by the
+  // record's first render — so the Designer's review drew the SPARK map without a single number
+  // on it, and the record came out numbered a moment later. Numbered here, once, the review and
+  // the record are the same plate. (Found by tools/invariants.mjs, I1.)
+  if(type==='NB'&&pl2&&e) try{ nbNumberPlate({type:'NB', plate:pl2, blocks:e.blocks||[], setup:setup}); }catch(_e){}
+  return pl2;
 }
 function buildExperimentFrom(sp){
   var _pid=sp.pid, _sid=sp.sid, key=sp.key||'', tpl=sp.tpl||{blocks:[]};
@@ -10636,7 +10656,11 @@ function buildExperimentFrom(sp){
   // Rewrite the instantiated blocks with the setup answers before anything else sees them.
   var setup=JSON.parse(JSON.stringify(sp.setup||{}));
   blocks=applySetupToBlocks(type,setup,blocks);
-  if(sp.skipWe) _skipWeekends(blocks);
+  // With protocols, the shift is made once in finish() over modules and stages together:
+  // _skipWeekends accumulates, so shifting the modules here and then everything again there
+  // moved the modules twice — the record landed two days after the plan the preview showed.
+  // (Found by tools/invariants.mjs, I1.)
+  if(sp.skipWe && !protos.length) _skipWeekends(blocks);
   var wantPlate=!!sp.plate;
   function finish(extra,protoList){
     var all=blocks.concat(extra||[]);
@@ -16510,7 +16534,9 @@ function dsMod(spec){
   var m={uid:uid(), mid:spec.id||null, src:spec.src||'lib',
          label:String(spec.title||spec.label||'').replace(/ \(calc\)$/,''),
          gap:(spec.gap!=null?Math.max(0,+spec.gap||0):0), w:+spec.w||0,
-         html:spec.html||'<p></p>', pub:spec.pub||'', noPub:!!spec.noPub, calc:null};
+         // An empty page is '' on purpose — `<p></p>` is not :empty, so the Blank experiment's
+         // placeholder never showed when it came through the designer. (invariants.mjs, I2)
+         html:(spec.html!=null?spec.html:'<p></p>'), pub:spec.pub||'', noPub:!!spec.noPub, calc:null};
   if(spec.calcObj) m.calc=JSON.parse(JSON.stringify(spec.calcObj));
   else if(spec.calc){
     var I=calcDefaults(spec.calc);
@@ -16610,7 +16636,7 @@ function dsTemplate(D){
            setupHide:(D.setupHide&&D.setupHide.length)?D.setupHide.slice():undefined,
            setupAdd:(D.setupAdd&&D.setupAdd.length)?JSON.parse(JSON.stringify(D.setupAdd)):undefined,
            blocks:(D.mods||[]).map(function(m,i){
-             var b={dayOffset:days[i], title:m.label||'', html:m.html||'<p></p>'};
+             var b={dayOffset:days[i], title:m.label||'', html:(m.html!=null?m.html:'<p></p>')};
              if(m.pub&&String(m.pub).trim()) b.pub=m.pub;
              if(m.noPub) b.noPub=true;
              if(m.w>0) b.waitMin=m.w;
@@ -16651,6 +16677,9 @@ function dsPseudo(D){
       var d=off+((mine&&mine[x.id]!=null)?mine[x.id]:(x.day||0));
       blocks.push({id:'dsp'+i+'_'+si, dayOffset:d, date:addDays(start,d),
                    title:x.name||pr.name, done:false,
+                   // The wait the stage ends with, as buildExperimentFrom gives it — only a
+                   // sub-day one; a longer wait is already the next stage's date.
+                   waitMin:(x.durationH>0&&x.durationH<24)?Math.round(x.durationH*60):undefined,
                    dsProto:{pr:pr, pi:i, first:si===0, stage:x, own:!!(mine&&mine[x.id]!=null), mine:!!mine}});
     });
   });

@@ -41,6 +41,23 @@ jobs:
       - name: Check the shared fit engine for drift
         run: python tools/check_shared.py
 
+      # The classes of bug the Designer and the quick window kept producing — a value typed in
+      # one place and a different one stored, a preview that disagrees with the record, a key
+      # dropped on the way — checked over every preset and every library module. A finding
+      # stops the deploy, which is the point: each of these used to reach Pages and be found
+      # by hand a day later. Run against the standalone build too, since only that one embeds
+      # Archive and so only there do the protocol cases run.
+      - name: Install Playwright (Chromium) for the invariants
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Build the standalone Labbook (Archive embedded)
+        run: python embed.py --profile=labbook
+
+      - name: Labbook invariants
+        run: node tools/invariants.mjs
+
       # Smoke test only — the sellable subset is not what Pages serves (see below), but a
       # broken product build should fail here rather than the day someone asks for it.
       - name: Build the product profile (smoke test)
