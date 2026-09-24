@@ -10591,7 +10591,20 @@ function createExperiment(){ if(!NM_TARGET) return;
 // is about to create rather than asserting "with a plate map" and leaving you to find out: the
 // plate is the part of a run people hand-draw, so it is the last thing that should be a promise.
 // One implementation, so the preview and the record cannot disagree about it.
-function experimentPlateFor(key,type,setup,e){
+function experimentPlateFor(key,type,setup,e,echo,onOutside){
+  // A real picklist beats any ready-made layout: it is what the machine actually did. This
+  // branch has to live here and not only in buildExperimentFrom, or the review draws a blank
+  // plate for a run whose record gets a dosed one — which is the disagreement this function was
+  // extracted to make impossible.
+  if(echo&&echo.dest){
+    var pl=newPlate(echo.format);
+    var eo=applyEchoToPlate(pl,echo.dest);
+    pl.title=echo.dest.name;
+    // echoGuessFormat caps at 384, so a denser picklist loses its overflow here too. The
+    // experiment is still worth creating; it just must not pretend the plate is complete.
+    if(eo.outside&&onOutside) try{ onOutside(eo.outside,pl.format); }catch(_e){}
+    return pl;
+  }
   // A preset that names its own layout wins: it was drawn for this exact experiment.
   var L=presetLayout(key,setup.format)
     || ((String(setup.format)==='384'&&(type==='HB'||type==='D2B')&&setup.dosing!=='Manual (serial dilution)')
@@ -10649,17 +10662,14 @@ function buildExperimentFrom(sp){
     if(sp.blank) e.blank=true;
     // A 384-well Echo run gets the standard Echo layout straight away rather than a blank plate.
     if(_echo){
-      // A real picklist beats any ready-made layout: it is what the machine actually did.
-      e.plate=newPlate(_echo.format);
-      var _eo=applyEchoToPlate(e.plate,_echo.dest);
-      e.plate.title=_echo.dest.name;
-      // echoGuessFormat caps at 384, so a denser picklist loses its overflow here too. The
-      // experiment is still worth creating; it just must not pretend the plate is complete.
-      if(_eo.outside) setTimeout(function(){ lbAlert(_eo.outside+' well'+(_eo.outside===1?'':'s')
-        +' in the picklist do not fit a '+e.plate.format+'-well plate and are not in this plate map.',
-        {title:'Wells outside the plate'}); },300);
+      e.plate=experimentPlateFor(key,type,setup,e,_echo,function(n,fmt){
+        setTimeout(function(){ lbAlert(n+' well'+(n===1?'':'s')
+          +' in the picklist do not fit a '+fmt+'-well plate and are not in this plate map.',
+          {title:'Wells outside the plate'}); },300); });
+      // Defensive only because losing the whole experiment is the alternative: every path that
+      // builds an echo object fills `compounds`, and one that forgot to would throw here.
       e.echoRun={protocol:(_echo.meta||{}).protocol||'', runDate:(_echo.meta||{}).runDate||'',
-                 compounds:_echo.compounds.slice()};
+                 compounds:(_echo.compounds||[]).slice()};
     } else if(wantPlate){
       e.plate = experimentPlateFor(key,type,setup,e);
     }
@@ -16587,6 +16597,7 @@ function dsTemplate(D){
            // (the plate map that is the experiment), `setupAdd` (the four questions the layout
            // draws its geometry from) and `setupHide` (the questions the variant has no use
            // for) — so the copy asked the wrong questions and created a blank plate.
+           blank:D.blank?true:undefined,
            layout:D.layout||undefined,
            setupHide:(D.setupHide&&D.setupHide.length)?D.setupHide.slice():undefined,
            setupAdd:(D.setupAdd&&D.setupAdd.length)?JSON.parse(JSON.stringify(D.setupAdd)):undefined,
@@ -16617,6 +16628,24 @@ function dsPseudo(D){
     return o; });
   var setup=JSON.parse(JSON.stringify(D.setup||{}));
   try{ blocks=applySetupToBlocks(D.type,setup,blocks)||blocks; }catch(e){}
+  // A protocol's stages are real dated steps of this run and belong in the plan BEFORE the
+  // weekend shift: _skipWeekends accumulates over the whole list, so working them out separately
+  // gives a different answer from the one buildExperimentFrom produces — it shifts modules and
+  // protocol stages together. Added after applySetupToBlocks, as they are there: a stage is a
+  // snapshot and the setup does not rewrite it.
+  (D.protos||[]).forEach(function(pr,i){
+    var off=nmProtoOff(pr,i), st=nmProtoStages(pr,i), mine=protoDays(pr.id);
+    if(!st||!st.length){
+      blocks.push({id:'dsp'+i, dsProto:{pr:pr,pi:i,first:true}, dayOffset:off,
+                   date:addDays(start,off), title:pr.name||pr.id, done:false});
+      return; }
+    st.forEach(function(x,si){
+      var d=off+((mine&&mine[x.id]!=null)?mine[x.id]:(x.day||0));
+      blocks.push({id:'dsp'+i+'_'+si, dayOffset:d, date:addDays(start,d),
+                   title:x.name||pr.name, done:false,
+                   dsProto:{pr:pr, pi:i, first:si===0, stage:x, own:!!(mine&&mine[x.id]!=null), mine:!!mine}});
+    });
+  });
   if(D.skipWe) try{ _skipWeekends(blocks); }catch(e){}
   var pseudo={id:'__design__', blocks:blocks, startDate:start, setup:setup, type:D.type, code:''};
   try{ syncChainedInputs(pseudo); }catch(e){}
@@ -16662,6 +16691,11 @@ function dsOpen(o){
        startDate:todayStr(), skipWe:false,
        setup:setupDefaultsFor(key||type),
        plate:key?presetPlateOn(key,setupSchema(type)):!!setupSchema(type).plateOn,
+       // `e.blank` is what folds the type/status/date grid behind a Details button: this page is
+       // a title, a date and somewhere to write. dsCreate passed `blank:false` hard-coded, so a
+       // Blank experiment opened in the designer came out as an ordinary one, and dsTemplate
+       // emitted nothing, so saving it as a design lost what it was for good.
+       blank:key?!!((LB.data.presets[key]||{}).blank||(EXTRA_PRESET_SEED[key]||{}).blank):false,
        layout:key?_presetLayoutId(key):null,
        setupHide:key?presetSetupHide(key).slice():null,
        setupAdd:key?JSON.parse(JSON.stringify(presetSetupAdd(key))):null,
@@ -16817,7 +16851,7 @@ function dsSetType(t){
   var D=DS; if(!D||D.type===t) { if(D) dsNext(); return; }
   var hadMods=!!D.mods.length;
   var old=D.setup||{}, touched=D.setupTouched||{};
-  D.type=t; D.presetKey=null; D.layout=null; D.setupHide=null; D.setupAdd=null;
+  D.type=t; D.presetKey=null; D.layout=null; D.setupHide=null; D.setupAdd=null; D.blank=false;
   var next=setupDefaultsFor(t), kept=0;
   Object.keys(next).forEach(function(k){
     if(!touched[k]) return;
@@ -16840,6 +16874,7 @@ function dsLoadPreset(k){
   D.setup=setupDefaultsFor(k);
   D.setupTouched={};
   D.plate=presetPlateOn(k,setupSchema(D.type));
+  D.blank=!!((LB.data.presets[k]||{}).blank||(EXTRA_PRESET_SEED[k]||{}).blank);
   D.layout=_presetLayoutId(k);
   D.setupHide=presetSetupHide(k).slice();
   D.setupAdd=JSON.parse(JSON.stringify(presetSetupAdd(k)));
@@ -16887,7 +16922,7 @@ function dsSetupUpd(reRender){
 function dsModsHtml(){
   var D=DS, days=dsDays(D), ps=dsPseudo(D), ch=dsChain(ps), byIdx={};
   ch.forEach(function(x){ if(x.b.dsIdx!=null) byIdx[x.b.dsIdx]=x; });
-  (ps.blocks||[]).forEach(function(b){ if(b.dsIdx!=null&&!byIdx[b.dsIdx]) byIdx[b.dsIdx]={b:b,add:0}; });
+  (ps.blocks||[]).forEach(function(b){ if(b.dsIdx!=null&&!b.dsProto&&!byIdx[b.dsIdx]) byIdx[b.dsIdx]={b:b,add:0}; });
   var rows=D.mods.map(function(m,i){
     // Same rule on the row: a step that does not change the volume was printing the running
     // total beside its name, which is the row above's number said twice.
@@ -16910,7 +16945,7 @@ function dsModsHtml(){
       +'<button class="ds-mb" title="Down" onclick="dsMove('+i+',1)">'+tbIco(P_CHEV_D,12)+'</button>'
       +'<button class="ds-mb x" title="Remove" onclick="dsDel('+i+')">&times;</button>'
       +'</div>'; }).join('');
-  var gen=(ps.blocks||[]).filter(function(b){ return b.dsIdx==null; }).length;
+  var gen=(ps.blocks||[]).filter(function(b){ return b.dsIdx==null && !b.dsProto; }).length;
   return '<div class="ds-step-hd">Which procedures make up this experiment?</div>'
     +'<div class="ds-step-sub">Add them in the order they happen. Each one carries how many days after the previous step it falls, so moving a module moves its day with it — and everything that depends on it.</div>'
     +'<div class="ds-mods">'+(rows||'<div class="ds-none">No modules yet. <b>+ Add modules</b> is the whole of step 3.</div>')+'</div>'
@@ -17241,21 +17276,10 @@ function dsReviewHtml(){
   var D=DS, ps=dsPseudo(D), ch=dsChain(ps);
   var byDay={}, days=[];
   (ps.blocks||[]).slice().sort(function(a,b){ return (a.dayOffset||0)-(b.dayOffset||0); }).forEach(function(b){
-    var d=b.dayOffset||0; if(!byDay[d]){ byDay[d]=[]; days.push(d); } byDay[d].push(b); });
-  // A protocol's stages are real dated steps of this experiment and belong in the plan you are
-  // approving, on the days they land on — the same rule the quick window's preview follows, and
-  // the day box edits your cadence for that stage rather than only this run.
-  var nProto=0;
-  (D.protos||[]).forEach(function(pr,i){
-    var off=nmProtoOff(pr,i), st=nmProtoStages(pr,i), mine=protoDays(pr.id);
-    if(!st||!st.length){ nProto++;
-      if(!byDay[off]){ byDay[off]=[]; days.push(off); }
-      byDay[off].push({title:pr.name||pr.id, _proto:pr, _first:true}); return; }
-    st.forEach(function(x,si){ var d=off+(x.day||0); nProto++;
-      if(!byDay[d]){ byDay[d]=[]; days.push(d); }
-      byDay[d].push({title:x.name||pr.name, _proto:pr, _pi:i, _stage:x, _first:si===0,
-        _own:!!(mine&&mine[x.id]!=null), _mine:!!mine}); });
-  });
+    var d=b.dayOffset||0; if(!byDay[d]){ byDay[d]=[]; days.push(d); }
+    byDay[d].push(b.dsProto ? {title:b.title, _proto:b.dsProto.pr, _pi:b.dsProto.pi, _stage:b.dsProto.stage,
+                               _first:b.dsProto.first, _own:b.dsProto.own, _mine:b.dsProto.mine} : b); });
+  var nProto=(ps.blocks||[]).filter(function(b){ return b.dsProto; }).length;
   days.sort(function(a,b){ return a-b; });
   var start=D.startDate||todayStr();
   var plan=days.map(function(d){
@@ -17296,11 +17320,13 @@ function dsReviewHtml(){
       +'</div></div>';
   // The plate, drawn exactly as buildExperimentFrom will draw it.
   var plateHtml='';
-  if(D.plate){
+  if(D.plate||D.echo){
     try{
-      var _pl=experimentPlateFor(D.presetKey||'', D.type, ps.setup||D.setup||{}, ps);
+      var _pl=experimentPlateFor(D.presetKey||'', D.type, ps.setup||D.setup||{}, ps, D.echo||null);
       if(_pl) plateHtml='<div class="ds-fld"><div class="ds-flbl">Plate map <span class="nm-lbl-sub">'
-        +esc(_pl.title||((_pl.format||'')+'-well'))+' · you can change it on any step afterwards</span></div>'
+        +esc(_pl.title||((_pl.format||'')+'-well'))
+        +(D.echo?' · read from the Echo picklist':'')
+        +' · you can change it on any step afterwards</span></div>'
         +'<div class="ds-plate">'+platePreviewHtml(_pl,null)+'</div></div>';
     }catch(_e){}
   }
@@ -17330,7 +17356,7 @@ function dsCreate(){
     aim:(D.aim||'').trim(),
     setup:JSON.parse(JSON.stringify(D.setup||{})),
     plate:!!D.plate, skipWe:!!D.skipWe,
-    protos:(D.protos||[]).slice(), echo:D.echo||null, blank:false,
+    protos:(D.protos||[]).slice(), echo:D.echo||null, blank:!!D.blank,
     onDone:dsClose });
 }
 function dsSavePreset(andClose){
