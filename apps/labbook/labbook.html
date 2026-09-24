@@ -10444,20 +10444,24 @@ function nmLoadStages(p){
 // in the abstract, they get set here against a real experiment and are remembered per protocol,
 // so the layout converges over the first few runs. Protocol content is Archive's; cadence is yours.
 function protoDays(pid){ LB.data.protoDays=LB.data.protoDays||{}; return LB.data.protoDays[pid]||null; }
-function nmSetStageDay(i,stageId,v){
-  var p=NM_PROTOS[i]; if(!p) return;
+// Your lab's cadence for a protocol's stages is a property of the protocol, not of the window
+// you happen to be setting it from — so it is one implementation and both creation paths call it.
+function _protoSetStageDay(p,stageId,v){
+  if(!p) return;
   var n=parseInt(v,10); if(isNaN(n)||n<0) n=0;
   LB.data.protoDays=LB.data.protoDays||{};
   var m=LB.data.protoDays[p.id]=LB.data.protoDays[p.id]||{};
   m[stageId]=n;
   (p.stages||[]).forEach(function(st){ if(st.id===stageId) st.day=n; });
-  save(); nmPreview();
+  save();
 }
-function nmResetDays(i){
-  var p=NM_PROTOS[i]; if(!p) return;
+function _protoResetDays(p){
+  if(!p) return;
   if(LB.data.protoDays) delete LB.data.protoDays[p.id];
-  nmLoadStages(p); save(); nmProtos(); nmPreview();
+  nmLoadStages(p); save();
 }
+function nmSetStageDay(i,stageId,v){ _protoSetStageDay(NM_PROTOS[i],stageId,v); nmPreview(); }
+function nmResetDays(i){ _protoResetDays(NM_PROTOS[i]); nmProtos(); nmPreview(); }
 function nmSetVariant(i,v){ if(!NM_PROTOS[i]) return; NM_PROTOS[i].variant=v; nmPreview(); }
 function nmSetOffset(i,v){ if(!NM_PROTOS[i]) return; var n=parseInt(v,10); NM_PROTOS[i].off=isNaN(n)?null:n; nmPreview(); }
 function nmProtoStages(p,i){
@@ -10655,9 +10659,15 @@ function buildExperimentFrom(sp){
       var stages=(P.stages||[]).filter(function(st){ return !st.variant||st.variant===variant; });
       var pre=(P.preamble||[]).filter(function(x){ return x.t!=='variantPicker'; })
         .map(function(x){ var c=JSON.parse(JSON.stringify(x)); c.fromPreamble=true; return c; });
+      // Your lab's own cadence for this protocol's stages, which is the only thing that makes
+      // the day boxes in the preview mean anything. They were read by nmLoadStages and nmPreview
+      // and by nothing else: you set Gibson to run over four days, the preview said four days,
+      // and every stage was created on day 0. Archive states a day for 3 of 153 stages, so
+      // without this the feature was preview-only for essentially every protocol there is.
+      var mine=protoDays(p.id);
       stages.forEach(function(st,si){
         var body=(si===0&&pre.length)?pre.concat(st.body||[]):(st.body||[]);
-        var d=off+(st.day||0);
+        var d=off+((mine&&mine[st.id]!=null)?mine[st.id]:(st.day||0));
         var b={id:uid(), date:addDays(startDate,d), dayOffset:d,
                title:_deEnt(st.name)||p.name||p.id, part:_deEnt(st.part)||p.name||p.id, sourcePid:p.id,
                proto:{pid:p.id, protoName:P.name, stageId:st.id, v:P.version,
@@ -16627,6 +16637,12 @@ function dsOpen(o){
        setupHide:key?presetSetupHide(key).slice():null,
        setupAdd:key?JSON.parse(JSON.stringify(presetSetupAdd(key))):null,
        setupTouched:{},
+       // The 34 Archive protocols with their live calculators are the thing this notebook has
+       // that a rich-text one does not, and the wizard that composes an experiment could not
+       // reach a single one of them: dsCreate passed `protos:[]`, hard-coded. They are per-run,
+       // like the picklist — a design stores its modules and its parameters, not the protocols
+       // one run of it happened to follow.
+       protos:[], echo:null,
        mods:key?dsModsFromPreset(key):[],
        step:0, cur:0 };
   if(src&&src.setup) Object.keys(src.setup).forEach(function(k){ DS.setup[k]=src.setup[k]; });
@@ -16666,6 +16682,10 @@ function dsFromQuick(){
   dsOpen({mode:'exp',pid:NM_TARGET.pid,sid:NM_TARGET.sid,presetKey:key});
   if(!DS) return;
   DS.setup=setup; DS.plate=plate; DS.startDate=start; DS.poi=poi; DS.aim=aim;
+  // Everything else the quick window had already been told. Deciding half-way through that a run
+  // needs designing is not a reason to re-answer what has been answered — and an Echo picklist
+  // dropped here takes the plate map, the compounds and the run's own metadata with it.
+  DS.protos=NM_PROTOS.slice(); DS.echo=NM_ECHO; DS.skipWe=!!NM_SKIPWE;
   // Which of them the user actually answered, inferred the only way it can be: by what differs
   // from what the window opened on. Marking them all would carry this preset's defaults into
   // whatever type you switch to next, which is the substitution dsSetType exists to avoid.
@@ -16867,8 +16887,48 @@ function dsModsHtml(){
     +'<div class="ds-mods">'+(rows||'<div class="ds-none">No modules yet. <b>+ Add modules</b> is the whole of step 3.</div>')+'</div>'
     +'<button type="button" class="ds-addmod" onclick="dsPick()">+ Add modules</button>'
     +(gen?('<div class="ds-note">The parameters you answered add '+gen+' more step'+(gen===1?'':'s')+' — they are in the review.</div>'):'')
+    +dsProtosHtml(D)
     +dsChainHtml(D,ps,ch);
 }
+// A module is a procedure you assemble; an Archive protocol is one somebody wrote down, and it
+// arrives as its own dated stages with their own calculators. The quick window has had this
+// since protocols became data; the designer offered no route to any of the 34, which is the
+// notebook's whole moat missing from the screen that composes an experiment.
+function dsProtosHtml(D){
+  var rows=(D.protos||[]).map(function(pr,i){
+    var st=nmProtoStages(pr,i);
+    var vs=(pr.variants&&pr.variants.length>1)
+      ? '<select class="nm-proto-var" title="Delivery method" onchange="dsSetProtoVariant('+i+',this.value)">'
+        +pr.variants.map(function(v){ return '<option value="'+esc(v.id)+'"'+(pr.variant===v.id?' selected':'')+'>'+esc(v.label)+'</option>'; }).join('')
+        +'</select>' : '';
+    return '<span class="nm-proto-chip">'+esc(pr.name||pr.id)
+      +(st?('<span class="nm-proto-n">'+st.length+' stage'+(st.length===1?'':'s')+'</span>'):'')
+      +vs
+      +'<label class="nm-proto-off" title="Start this protocol this many days into the experiment">day '
+      +'<input type="number" min="0" value="'+nmProtoOff(pr,i)+'" onchange="dsSetProtoOff('+i+',this.value)"></label>'
+      +'<span class="x" title="Remove" onclick="dsDelProto('+i+')">&times;</span></span>'; }).join('');
+  return '<div class="ds-protos"><div class="ds-flbl">Archive protocols <span class="nm-lbl-sub">'
+    +'each one adds its own dated stages, with its calculators · added to this run, not stored in the design</span></div>'
+    +'<div class="nm-proto-chips">'+rows
+    +'<button type="button" class="nm-proto-add" onclick="dsAddProto()">+ protocol</button></div></div>';
+}
+function dsAddProto(){
+  ensureArchive(function(){
+    var D=DS; if(!D) return;
+    var items=archiveIndex().filter(function(p){ return !(D.protos||[]).some(function(x){ return x.id===p.id; }); })
+      .map(function(p){ return {id:p.id,label:p.name+(p.hasCalc?' · calc':''),sub:p.category||'protocol',ic:'A',c:'#a56983'}; });
+    if(!items.length){ toast('No more protocols to add'); return; }
+    lbPicker('Add source protocol',items,function(it){
+      var e={id:it.id,name:it.label.replace(/ · calc$/,'')};
+      nmLoadStages(e); D.protos=D.protos||[]; D.protos.push(e); dsDraw(); });
+  });
+}
+function dsDelProto(i){ var D=DS; if(!D||!D.protos) return; D.protos.splice(i,1); dsDraw(); }
+function dsSetProtoVariant(i,v){ var D=DS; if(!D||!D.protos[i]) return; D.protos[i].variant=v; dsDraw(); }
+function dsSetProtoOff(i,v){ var D=DS; if(!D||!D.protos[i]) return;
+  var n=parseInt(v,10); D.protos[i].off=isNaN(n)?null:Math.max(0,n); dsDraw(); }
+function dsSetStageDay(i,stageId,v){ var D=DS; if(!D) return; _protoSetStageDay(D.protos[i],stageId,v); dsDraw(); }
+function dsResetProtoDays(i){ var D=DS; if(!D) return; _protoResetDays(D.protos[i]); dsDraw(); }
 // Two names for one thing, ignoring the wording that distinguishes a reagent from the step that
 // uses it: "Cell seeding · Cell seeding" and "CellTiter-Glo readout · CellTiter-Glo reagent" are
 // each one fact twice — the rule plateSummary already follows for a block label that only
@@ -17153,6 +17213,20 @@ function dsReviewHtml(){
   var byDay={}, days=[];
   (ps.blocks||[]).slice().sort(function(a,b){ return (a.dayOffset||0)-(b.dayOffset||0); }).forEach(function(b){
     var d=b.dayOffset||0; if(!byDay[d]){ byDay[d]=[]; days.push(d); } byDay[d].push(b); });
+  // A protocol's stages are real dated steps of this experiment and belong in the plan you are
+  // approving, on the days they land on — the same rule the quick window's preview follows, and
+  // the day box edits your cadence for that stage rather than only this run.
+  var nProto=0;
+  (D.protos||[]).forEach(function(pr,i){
+    var off=nmProtoOff(pr,i), st=nmProtoStages(pr,i), mine=protoDays(pr.id);
+    if(!st||!st.length){ nProto++;
+      if(!byDay[off]){ byDay[off]=[]; days.push(off); }
+      byDay[off].push({title:pr.name||pr.id, _proto:pr, _first:true}); return; }
+    st.forEach(function(x,si){ var d=off+(x.day||0); nProto++;
+      if(!byDay[d]){ byDay[d]=[]; days.push(d); }
+      byDay[d].push({title:x.name||pr.name, _proto:pr, _pi:i, _stage:x, _first:si===0,
+        _own:!!(mine&&mine[x.id]!=null), _mine:!!mine}); });
+  });
   days.sort(function(a,b){ return a-b; });
   var start=D.startDate||todayStr();
   var plan=days.map(function(d){
@@ -17160,6 +17234,15 @@ function dsReviewHtml(){
     return '<div class="nm-pv-row'+(we?' weekend':'')+'"><span class="nm-pv-day">Day '+d
       +(D.mode==='exp'?(' · '+fmtDate(dd)+' <span class="nm-pv-dow">'+esc(_dayShort(dd))+'</span>'):'')+'</span>'
       +'<span class="nm-pv-steps">'+byDay[d].map(function(b){
+        if(b._proto) return '<span class="nm-pv-t">'
+          +(b._stage?('<input class="nm-pv-dayin'+(b._own?' own':'')+'" type="number" min="0" value="'+(b._stage.day||0)+'"'
+            +' title="'+(b._own?'Your cadence for this stage':'From the protocol')+'"'
+            +' onchange="dsSetStageDay('+b._pi+',\''+esc(b._stage.id)+'\',this.value)"> '):'')
+          +esc(b.title||'—')
+          +(b._stage&&b._stage.durationH?(' <span class="nm-pv-dur" title="This stage ends with a wait of about this long">'+esc(_durTxt(b._stage.durationH))+'</span>'):'')
+          +(b._first?(' <span class="nm-pv-ref">'+esc(b._proto.name||b._proto.id)+'</span>'):'')
+          +(b._first&&b._mine?(' <button type="button" class="nm-pv-reset" onclick="dsResetProtoDays('+b._pi+')">reset days</button>'):'')
+          +'</span>';
         return '<span class="nm-pv-t">'+esc(b.title||'—')
           +(b.calc?' <span class="nm-pv-ref">calc</span>':'')
           +(b.dsIdx==null?' <span class="nm-pv-ref">from the parameters</span>':'')
@@ -17182,7 +17265,7 @@ function dsReviewHtml(){
       +'<div class="mrow"><label>Name</label><input value="'+esc(D.name)+'" placeholder="e.g. Cell viability — standard" oninput="DS.name=this.value"></div>'
       +'<div class="mrow"><label>Default title</label><input value="'+esc(D.title)+'" oninput="DS.title=this.value"></div>'
       +'</div></div>';
-  var n=(ps.blocks||[]).length;
+  var n=(ps.blocks||[]).length+nProto;
   return '<div class="ds-step-hd">The experiment, as it will be created</div>'
     +'<div class="ds-step-sub">'+n+' step'+(n===1?'':'s')+' over '+days.length+' day'+(days.length===1?'':'s')
     +(D.plate?', with a plate map':'')+'. Everything below is derived from the modules and the parameters — change either and this changes with it.</div>'
@@ -17207,7 +17290,8 @@ function dsCreate(){
     code:_applyPrefix(dsCode(D).trim(), pr?projPrefix(pr):''),
     aim:(D.aim||'').trim(),
     setup:JSON.parse(JSON.stringify(D.setup||{})),
-    plate:!!D.plate, skipWe:!!D.skipWe, protos:[], echo:null, blank:false,
+    plate:!!D.plate, skipWe:!!D.skipWe,
+    protos:(D.protos||[]).slice(), echo:D.echo||null, blank:false,
     onDone:dsClose });
 }
 function dsSavePreset(andClose){
