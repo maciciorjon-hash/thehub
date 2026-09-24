@@ -86,7 +86,9 @@ window.__alignAudit=function(){
     var cs=getComputedStyle(P);
     if(cs.display.indexOf('flex')<0 || cs.flexWrap==='nowrap') return;
     if(/center|around|evenly/.test(cs.justifyContent)) return;   /* centred by choice */
-    var kids=[].filter.call(P.children,function(c){ return c.nodeType===1 && vis(c); });
+    // An absolutely positioned child is not on any line of the wrap — a tab bar's sliding
+    // underline sits under whichever tab is active and would read as a row of its own.
+    var kids=[].filter.call(P.children,function(c){ return c.nodeType===1 && vis(c) && !/^(absolute|fixed)$/.test(getComputedStyle(c).position); });
     if(kids.length<2) return;
     /* Same line means the vertical ranges overlap, not that the tops match: a 20px separator
        beside a 33px group starts 7px lower and is emphatically on the same line. */

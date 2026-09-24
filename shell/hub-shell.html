@@ -181,6 +181,21 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 .set-tab:hover{color:var(--text);}
 .set-tab.on{color:var(--accent);border-bottom-color:var(--accent);}
 .set-body{padding:18px 20px 20px;overflow-y:auto;}
+/* Settings keeps ONE height. Centred and sized to the tab on show, it re-centred on every tab
+   and the title and the tabs jumped under the pointer. Only Settings: the question dialog shares
+   .set-card and must stay the size of its question. */
+#settings-back .set-card{height:min(640px,86vh);height:min(640px,86dvh);}
+#settings-back .set-body{flex:1 1 auto;min-height:0;}
+/* The underline slides to the tab you picked; the pane you picked arrives. */
+.set-tabs,.cells-tabs{position:relative;}
+.hub-ink{position:absolute;left:0;top:0;height:2px;border-radius:1px;background:var(--accent);pointer-events:none;
+  transition:transform var(--dur-2) var(--ease-out),width var(--dur-2) var(--ease-out);}
+.cells-tabs .hub-ink{background:#5e87c5;}
+.inked>.set-tab.on,.inked>.cells-tab.on{border-bottom-color:transparent;}
+@keyframes hub-tab-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+@keyframes hub-frame-in{from{opacity:0;}to{opacity:1;}}
+.tab-in{animation:hub-tab-in var(--dur-2) var(--ease-out);}
+iframe.tab-in{animation:hub-frame-in var(--dur-2) var(--ease);}
 .set-note{font-size:var(--fs-1);color:var(--text3);line-height:1.55;margin:2px 0 10px;}
 .opts-action-btn.danger{color:var(--danger);border-color:var(--danger);}
 /* One in-app dialog, so nothing in the Hub ever opens a browser alert. Inside dHUB a native
@@ -198,6 +213,7 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 @media(max-width:640px){
   .set-back{padding:0;align-items:stretch;}
   .set-card{max-width:none;max-height:none;border-radius:0;border:none;}
+  #settings-back .set-card{height:auto;}
 }
 /* Settings goes full-screen on a phone because it is a screen. A two-line question is not:
    full-bleed, it reads as having navigated somewhere rather than as being asked something. */
@@ -1515,6 +1531,7 @@ function openCells(tab, item, context){
   if (!tabs.length) { if (!_authResolved) _pendingDeepLink = 'cells'; else { try { location.hash=''; } catch(e){} } return; }
   tab = tab || _cellsTab || tabs[0].id;
   if (!tabs.some(function(t){ return t.id===tab; })) tab = tabs[0].id;
+  var switching = (currentApp === 'cells' && _cellsTab !== tab);
   _cellsTab = tab;
   var host = document.getElementById('cells-host');
   var small = _hubSmall();
@@ -1526,11 +1543,13 @@ function openCells(tab, item, context){
     var f = document.getElementById('frame-' + t.id);
     if (f && f.parentNode !== host) host.appendChild(f);   // move it in once, keep its state
     if (f) f.style.display = (t.id === tab) ? '' : 'none';
+    if (f && switching && t.id === tab) _hubTabAnim(f);
   });
   if (small) tabs.forEach(function(t){ if (t.id !== tab && loaded[t.id]) _unloadApp(t.id); });
   document.getElementById('cells-tabs').innerHTML = tabs.map(function(t){
     return '<button class="cells-tab' + (t.id===tab?' on':'') + '" data-app-id="' + t.id + '" onclick="openCells(\'' + t.id + '\')">' + t.label + '</button>';
   }).join('');
+  requestAnimationFrame(function(){ _hubInk(document.getElementById('cells-tabs')); });
   if (item || context){
     var m = {type:'switchTab', tab:tab, requestId:'dhub'+Date.now().toString(36)};
     if (item) m.item = item;
@@ -1545,8 +1564,13 @@ function openCells(tab, item, context){
   currentApp = 'cells';
   var view = document.getElementById('view-cells');
   document.querySelectorAll('.app-view').forEach(function(v){ if (v!==view){ v.style.display='none'; v.style.opacity=''; } });
-  view.style.opacity='0'; view.style.display='flex';
-  requestAnimationFrame(function(){ requestAnimationFrame(function(){ view.style.opacity='1'; }); });
+  // Fading the whole view in from nothing is right on the way in. On a tab switch it faded the
+  // tab bar you had just clicked as well — the whole screen blinked — so there only the frame
+  // that changed arrives.
+  if (entering) {
+    view.style.opacity='0'; view.style.display='flex';
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ view.style.opacity='1'; }); });
+  } else { view.style.display='flex'; view.style.opacity='1'; }
   setTimeout(function(){ if(currentApp==='cells') enterAppNav('cells'); }, 0);
   try {
     _markOwnHash();
@@ -3018,6 +3042,23 @@ function resetAllData() {
 
 var SET_TABS=[{id:'appearance',name:'Appearance'},{id:'data',name:'Data'},{id:'lab',name:'Lab',admin:true},{id:'about',name:'About'}];
 var _setTab='appearance';
+// A tab bar's underline, carried across a rebuild of the bar: the bar's buttons are redrawn on
+// every switch, so the line is put back where it was and then moved, which is what reads as a
+// slide rather than as one line vanishing and another appearing.
+function _hubInk(host){
+  if(!host) return;
+  var on=host.querySelector('.on'); if(!on||!on.offsetWidth) return;
+  var ink=host.querySelector('.hub-ink'), prev=host._ink;
+  if(!ink){ ink=document.createElement('i'); ink.className='hub-ink'; host.appendChild(ink); host.classList.add('inked');
+    ink.style.transition='none';
+    if(prev){ ink.style.width=prev.w; ink.style.transform=prev.t; }
+    void ink.offsetWidth; if(prev) ink.style.transition=''; }
+  var w=on.offsetWidth+'px', t='translate('+on.offsetLeft+'px,'+(on.offsetTop+on.offsetHeight-2)+'px)';
+  ink.style.width=w; ink.style.transform=t; host._ink={w:w,t:t};
+  if(ink.style.transition==='none') requestAnimationFrame(function(){ ink.style.transition=''; });
+}
+function _hubTabAnim(n){ if(!n) return; n.classList.remove('tab-in'); void n.offsetWidth; n.classList.add('tab-in');
+  clearTimeout(n._tabT); n._tabT=setTimeout(function(){ n.classList.remove('tab-in'); },320); }
 function renderSetTabs(){
   var host=document.getElementById('set-tabs'); if(!host) return;
   var tabs=SET_TABS.filter(function(t){ return !t.admin || isAdmin; });
@@ -3028,8 +3069,14 @@ function renderSetTabs(){
   Array.prototype.forEach.call(document.querySelectorAll('.set-pane'), function(pane){
     pane.hidden = pane.dataset.pane !== _setTab;
   });
+  _hubInk(host);
 }
-function setTab(id){ _setTab=id; if(id==='lab') buildLabPanel(); if(id==='data') renderSyncStatus(); renderSetTabs(); }
+function setTab(id){
+  var moved=(_setTab!==id);
+  _setTab=id; if(id==='lab') buildLabPanel(); if(id==='data') renderSyncStatus(); renderSetTabs();
+  if(moved){ var bd=document.querySelector('#settings-back .set-body'); if(bd) bd.scrollTop=0;
+    _hubTabAnim(document.querySelector('.set-pane[data-pane="'+id+'"]')); }
+}
 // The one place that answers "is my work on my other machine?" — in words, with the reason.
 function renderSyncStatus(){
   var lab=document.getElementById('set-sync-label'), note=document.getElementById('set-sync-note'), btn=document.getElementById('set-sync-btn');
@@ -3052,6 +3099,7 @@ function openSettings(tab){
   if(_setTab==='data') renderSyncStatus();
   renderSetTabs();
   document.getElementById('settings-back').classList.remove('hidden');
+  requestAnimationFrame(function(){ _hubInk(document.getElementById('set-tabs')); });
 }
 // ── Nothing here opens a browser dialog ─────────────────────────────────────────────────────
 // A native alert() inside dHUB is a browser dialog headed "localhost says", which reads as the

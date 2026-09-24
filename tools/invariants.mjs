@@ -24,6 +24,24 @@
 //                            value in the record.
 //   I9 quick preview dates   The dates the quick window promises are the dates it creates.
 //
+//   Report and exports — one experiment per preset, dressed with marked content:
+//   R1 Report = record, live  Every section carries what the record holds, a change reaches it
+//                            with nothing pressed, each toggle removes what it names, and hand-
+//                            written wording is kept and goes stale when the record moves.
+//   R2 nothing leaks         No {{token}}, undefined, NaN or double-escaped entity in the Report,
+//                            Methods sheet, record PDF, bench sheet, JSON or What you need.
+//   R3 every export runs     Through its own function, with no error, naming the experiment;
+//                            every button on the Report calls a function that exists. (the
+//                            record PDF that threw for every experiment)
+//   R4 PDF = record          Every step and every marker is in the record PDF, and each box in
+//                            the export dialog removes what it names.
+//   R5 JSON round-trip       Export → import is the same experiment and prints the same; a
+//                            folder bundle carries every experiment in the folder.
+//   R6 CSV = record          Results and steps CSVs parse back to the record's rows, quotes and
+//                            commas included.
+//   R7 scopes                A folder/project/all PDF carries every experiment in it; a Journal
+//                            day, month and the whole Journal carry each step done that day.
+//
 // Usage (repo root):  node tools/invariants.mjs [--url=URL,URL] [--only=I1,I4] [--verbose]
 // Defaults to the source app AND labbook-standalone.html when it exists (the build that embeds
 // Archive, so the protocol cases run). Serves the repo itself on a free port. Exit 1 on any
@@ -58,6 +76,8 @@ async function suite(opts) {
   function run(inv) { return !ONLY || ONLY.includes(inv); }
   function bad(inv, cs, msg) { out.push({ inv, case: cs, msg }); }
   function tick(inv) { counts[inv] = (counts[inv] || 0) + 1; }
+  // One case that throws is a finding for that case, not the end of the run.
+  async function guard(inv, cs, fn) { try { await fn(); } catch (x) { bad(inv, cs, 'threw: ' + String(x && x.message || x)); } }
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // Quiet the app: nothing here should block on a dialog or a toast.
@@ -205,7 +225,7 @@ async function suite(opts) {
       }
       if (run('I6')) {
         tick('I6');
-        const UI = ['mode', 'step', 'cur', 'editKey', 'setupTouched', 'pid', 'sid'];   // navigation, not content
+        const UI = ['mode', 'step', 'cur', 'editKey', 'setupTouched', 'pid', 'sid', '_at'];   // navigation, not content
         Object.keys(raw).filter(k => !UI.includes(k) && !readDS.has(k))
           .forEach(k => bad('I6', cs, `draft key DS.${k} is never read on the way to the record (value ${String(J(raw[k])).slice(0, 80)})`));
         spKeys.filter(k => !readSP.has(k)).forEach(k => bad('I6', cs, `buildExperimentFrom is handed "${k}" and never reads it`));
@@ -454,6 +474,248 @@ async function suite(opts) {
     }
   }
 
+  // ══ Report and exports ═════════════════════════════════════════════════════════════════════
+  // One experiment per preset, dressed with content no seed has — a ticked step with a log, a
+  // result table with a flagged row, an excluded row and a compound whose name carries a comma
+  // and quotes, an observation, an outcome, a file, a plate well, a deviation — each carrying a
+  // marker. Then every way the experiment leaves the notebook is asked whether it says so.
+  const RUN_R = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7'].some(run);
+  if (RUN_R) {
+    const DL = [];                                      // everything _dl was handed
+    const origDl = window._dl, origPrint = window.print;
+    window._dl = function (name, text, mime) { DL.push({ name, text: String(text), mime }); };
+    window.print = function () {};
+    window.lbChoose = function (m, o) { const a = ((o && o.answers) || []).find(x => x.safe) || ((o && o.answers) || [])[0]; return Promise.resolve(a ? a.id : null); };
+    const pageErrs = []; const onErr = ev => pageErrs.push(String(ev && (ev.message || ev.reason) || ev));
+    window.addEventListener('error', onErr); window.addEventListener('unhandledrejection', onErr);
+    function text(html) {
+      const d = document.createElement('div'); d.innerHTML = String(html || '');
+      d.querySelectorAll('style,script').forEach(n => n.remove());
+      return (d.textContent || '').replace(/\s+/g, ' ');
+    }
+    // What must never reach anything that leaves the notebook.
+    const LEAKS = [[/\{\{/, 'a raw {{token}}'], [/\bundefined\b/, '"undefined"'], [/\bNaN\b/, '"NaN"'], [/\[object /, '"[object …]"'],
+      [/&(amp|lt|gt|quot|nbsp|ndash|mdash|minus|deg|times);/, 'a double-escaped entity'], [/\bInfinity\b/, '"Infinity"']];
+    function leaks(inv, cs, where, t) { LEAKS.forEach(([re, what]) => { const m = t.match(re); if (m) bad(inv, cs, `${where} contains ${what}: …${t.slice(Math.max(0, m.index - 50), m.index + 40)}…`); }); }
+    function parseCSV(t) {
+      t = t.replace(/^﻿/, ''); const rows = []; let row = [], f = '', q = false;
+      for (let i = 0; i < t.length; i++) { const c = t[i];
+        if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+        else if (c === '"') q = true; else if (c === ',') { row.push(f); f = ''; }
+        else if (c === '\r') {} else if (c === '\n') { row.push(f); rows.push(row); row = []; f = ''; } else f += c; }
+      row.push(f); rows.push(row); return rows;
+    }
+    const RES = [
+      { compound: 'INV-CPD-1', target: 'BRD4', potency: 12.3, effect: 85, hill: 1.1, r2: 0.99 },
+      { compound: 'INV "Q", 2', target: 'BRD4', potency: 45, effect: 60, hill: 0.9, r2: 0.95, flag: 'R2<0.97', note: 'INV-NOTE' },
+      { compound: 'INV-X', target: 'BRD4', potency: 999, effect: 10, hill: 1, r2: 0.5, excluded: true, note: 'INV-EXCL' }];
+    function dress(e) {
+      e.aim = 'INV-AIM does it work';
+      e.html = '<p>INV-OBS seen</p>';
+      e.outcome = { verdict: 'partial', text: 'INV-OUTCOME', at: Date.now() };
+      e.integration = { results: [{ id: 'r_inv', source: 'Echo', label: 'INV run', assay: e.type, potencyLabel: 'DC50', potencyUnit: 'nM',
+        effectLabel: 'Dmax', effectUnit: '%', createdAt: new Date().toISOString(), rows: JSON.parse(JSON.stringify(RES)) }] };
+      e.files = [{ id: 'f_inv', attId: 'att_inv', name: 'INV-FILE.csv', mime: 'text/csv', size: 12, kind: 'data', added: Date.now(), caption: 'INV-CAP', include: true }];
+      const bs = (e.blocks || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const t = bs[0];
+      if (t) { t.done = true; t.completedAt = new Date((t.date || START) + 'T10:15:00').getTime(); t.log = 'INV-LOG happened'; }
+      if (!e.plate) e.plate = newPlate('96');
+      const ty = (e.plate.types || []).find(x => x.id !== 'blank') || { id: 'dose' };
+      e.plate.wells = e.plate.wells || {};
+      e.plate.wells.H12 = { typeId: ty.id, compound: 'INV-PL', conc: '1 µM' };
+      // A deviation: one planned calculator number changed.
+      const cb = (e.blocks || []).find(b => b.calc && b.calcSeed && Object.keys(b.calcSeed).some(k => typeof b.calcSeed[k] === 'number' && b.calc.inputs[k] === b.calcSeed[k]));
+      if (cb) { const k = Object.keys(cb.calcSeed).find(k => typeof cb.calcSeed[k] === 'number' && cb.calc.inputs[k] === cb.calcSeed[k]); cb.calc.inputs[k] = cb.calcSeed[k] * 2 + 1; e._invDev = cb.title; }
+      e.updated = Date.now();
+      return { ticked: t };
+    }
+    const made = [];
+    for (const key of KEYS) await guard('R3', key + ' (creating it)', async () => {
+      openQuick(key, {});
+      const e = await created(() => createExperiment()); closeNew();
+      if (!e) { bad('R3', key, 'could not create an experiment to dress'); return; }
+      const d = dress(e); made.push({ key, e, d });
+    });
+    // And one whose steps are Archive protocol stages, where Archive is there to give them.
+    if (PROTOS) { openQuick(KEYS[0], { protos: PROTOS }); const e = await created(() => createExperiment()); closeNew();
+      if (e) made.push({ key: KEYS[0] + ' + protocols', e, d: dress(e) }); }
+    const ALLON = Object.assign({}, PDF_DEFAULTS); Object.keys(ALLON).forEach(k => ALLON[k] = 1);
+    const pdfTxt = (o, sc) => text(buildPrintDoc(o, sc));
+
+    // ── R1 the Report is the record, live ──
+    if (run('R1')) for (const { key, e, d } of made) await guard('R1', key, async () => {
+      tick('R1');
+      e.pubEdited = false; delete e.pubOpts;
+      let t = text(pubText(e));
+      const want = [['aim', 'INV-AIM'], ['log', 'INV-LOG'], ['obs', 'INV-OBS'], ['outcome', 'INV-OUTCOME'], ['results', 'INV-CPD-1'], ['files', 'INV-FILE.csv'], ['results', 'INV-EXCL']];
+      want.forEach(([k, m]) => { if (t.indexOf(m) < 0) bad('R1', key, `the Report does not carry ${m} (${k})`); });
+      if (e._invDev && !deviationsSentence(e)) bad('R1', key, `a changed number on "${e._invDev}" is not reported as a deviation`);
+      if (e._invDev && t.indexOf('Deviations') < 0) bad('R1', key, 'the Report has no Deviations section though the run deviated');
+      const rs = text(pubResultsSentence(e) || '');
+      if (rs.indexOf('INV-X') >= 0) bad('R1', key, 'an excluded measurement is quoted in the results sentence');
+      // Live: a change to the record reaches the Report with nothing pressed.
+      if (d.ticked) { d.ticked.log = 'INV-LIVE-2'; if (text(pubText(e)).indexOf('INV-LIVE-2') < 0) bad('R1', key, 'a changed step log does not reach the live Report'); }
+      e.aim = 'INV-AIM-2'; if (text(pubText(e)).indexOf('INV-AIM-2') < 0) bad('R1', key, 'a changed aim does not reach the live Report');
+      // Every section toggle does what it says: off removes it, on brings it back.
+      const markers = { aim: 'INV-AIM-2', obs: 'INV-OBS', outcome: 'INV-OUTCOME', files: 'INV-FILE.csv', log: 'INV-LIVE-2', results: 'INV-CPD-1' };
+      PUB_SECTIONS.forEach(sec => { const m = markers[sec.k]; if (!m) return;
+        const o = pubOpts(e); o[sec.k] = false; e.pubOpts = o;
+        if (text(pubText(e)).indexOf(m) >= 0) bad('R1', key, `turning "${sec.lbl}" off leaves ${m} in the Report`);
+        delete e.pubOpts; });
+      // Your wording is kept, and the Report says when the record has moved on under it.
+      pubEdit(e.id, pubText(e) + '<p>INV-MINE</p>');
+      if (pubIsStale(e)) bad('R1', key, 'writing in the Report makes it look stale by itself');
+      if (d.ticked) { d.ticked.log = 'INV-LIVE-3'; if (!pubIsStale(e)) bad('R1', key, 'the record changed under hand-written wording and the Report does not say it is stale'); }
+      if (text(pubText(e)).indexOf('INV-MINE') < 0) bad('R1', key, 'hand-written wording was not kept');
+      e.pubEdited = false; delete e.pubSrcSig; if (d.ticked) d.ticked.log = 'INV-LOG happened'; e.aim = 'INV-AIM does it work';
+    });
+
+    // ── R2 nothing leaks: tokens, undefined, NaN, double escapes ──
+    if (run('R2')) for (const { key, e } of made) await guard('R2', key, async () => {
+      tick('R2');
+      leaks('R2', key, 'the Report', text(pubText(e)));
+      leaks('R2', key, 'the Methods sheet', text(buildMethodsDoc(e)));
+      leaks('R2', key, 'the record PDF', pdfTxt(ALLON, { kind: 'exp', id: e.id }));
+      leaks('R2', key, 'the bench sheet', text(buildLabSheet(e)));
+      // The JSON is the record, and the record's prose is stored with its tokens on purpose —
+      // it is checked by parsing instead: it must be valid and name the experiment.
+      try { const j = JSON.parse(buildExpJSON(e)); if (!j.experiment || j.experiment.id !== e.id) bad('R2', key, 'the JSON does not carry the experiment'); }
+      catch (x) { bad('R2', key, 'the JSON does not parse: ' + x.message); }
+      try { openPrepSheet({ expId: e.id }); const c = el('lb-dialog-card'); if (c) leaks('R2', key, 'What you need', (c.textContent || '').replace(/\s+/g, ' ')); } catch (x) { bad('R2', key, 'What you need threw: ' + x.message); }
+      try { _lbDlgClose(); } catch (x) {}
+    });
+
+    // ── R3 every export runs, through its own button ──
+    if (run('R3')) for (const { key, e } of made) await guard('R3', key, async () => {
+      tick('R3');
+      selectNode('expsec', e.projectId, e.sectionId); SEL.page = e.id; REPORT_OPEN[e.id] = true; renderAll();
+      await sleep(30);
+      // Every handler on the Report names a function that exists.
+      const host = document.querySelector('#sec-pub') || document.getElementById('pane-ed');
+      (host ? [...host.querySelectorAll('[onclick]')] : []).forEach(n => {
+        const m = String(n.getAttribute('onclick')).match(/^\s*([A-Za-z_$][\w$]*)\s*\(/);
+        if (m && typeof window[m[1]] !== 'function') bad('R3', key, `a Report button calls ${m[1]}(), which does not exist`);
+      });
+      const exp = [...(reportExportsHtml(e).matchAll(/onclick="([A-Za-z_$][\w$]*)\(/g))].map(x => x[1]);
+      exp.forEach(fn => { if (typeof window[fn] !== 'function') bad('R3', key, `export button calls ${fn}(), which does not exist`); });
+      const calls = [
+        ['record PDF', () => exportPDF(ALLON, { kind: 'exp', id: e.id }), () => el('print-root').textContent],
+        ['Methods sheet', () => exportMethods(e.id), () => el('print-root').textContent],
+        ['bench sheet', () => exportLab(e.id), () => el('print-root').textContent],
+        ['results CSV', () => exportResultsCSV(e.id), null], ['steps CSV', () => exportStepsCSV(e.id), null],
+        ['JSON', () => exportExpJSON(e.id), null], ['plate PNG', () => exportPlatePNG('exp:' + e.id), null],
+        ['copy', () => copyPubReady(e.id), null], ['copy rendered', () => copyRendered(), null],
+      ];
+      for (const [nm, fn, after] of calls) {
+        const n0 = DL.length, e0 = pageErrs.length;
+        try { fn(); } catch (x) { bad('R3', key, `${nm} threw: ${x.message}`); continue; }
+        await sleep(nm === 'plate PNG' ? 250 : 40);
+        if (pageErrs.length > e0) bad('R3', key, `${nm} raised: ${pageErrs.slice(e0).join(' | ')}`);
+        if (after) { const t = after() || ''; if (t.indexOf(e.code) < 0 && t.indexOf(e.title) < 0) bad('R3', key, `${nm} printed a page that does not name the experiment`); }
+        if (/CSV|JSON/.test(nm) && DL.length === n0) bad('R3', key, `${nm} produced no file`);
+      }
+      try { await buildOneNoteHtml(); } catch (x) { bad('R3', key, 'Word export threw: ' + x.message); }
+    });
+
+    // ── R4 the record PDF is the record, and every box does what it says ──
+    if (run('R4')) for (const { key, e } of made) await guard('R4', key, async () => {
+      tick('R4');
+      const sc = { kind: 'exp', id: e.id }, all = pdfTxt(ALLON, sc);
+      (e.blocks || []).forEach(b => { if (b.title && all.indexOf(text(b.title).trim()) < 0) bad('R4', key, `the record PDF has no step "${b.title}"`); });
+      ['INV-AIM', 'INV-OUTCOME', 'INV-OBS', 'INV-LOG', 'INV-CPD-1', 'INV-FILE.csv', 'INV-PL'].forEach(m => { if (all.indexOf(m) < 0) bad('R4', key, `the record PDF (everything on) does not carry ${m}`); });
+      const marks = { aim: 'INV-AIM', obs: 'INV-OBS', log: 'INV-LOG', results: 'INV-CPD-1', files: 'INV-FILE.csv', plateText: 'H12' };   // the grid draws the name too; the well list is what names H12
+      if (e._invDev) marks.deviations = 'Deviations from plan';
+      // The well list is a table of its own; the grid's dose key also names ranges, so the
+      // box is checked by the element it adds, not by a well id.
+      { const on = buildPrintDoc(ALLON, sc), o = Object.assign({}, ALLON); o.plateText = 0;
+        if (e.plate && /class="pk-sumt"/.test(on) === false) bad('R4', key, 'with "Plate maps as text" on there is no well list under the map');
+        if (/class="pk-sumt"/.test(buildPrintDoc(o, sc))) bad('R4', key, 'with "Plate maps as text" off the well list is still printed'); }
+      delete marks.plateText;
+      Object.keys(marks).forEach(k => { const o = Object.assign({}, ALLON); o[k] = 0;
+        const t = pdfTxt(o, sc);
+        if (t.indexOf(marks[k]) >= 0) bad('R4', key, `with "${(PDF_FIELDS.find(f => f[0] === k) || [k, k])[1]}" off the PDF still carries ${marks[k]}`); });
+    });
+
+    // ── R5 JSON out and back in is the same experiment ──
+    if (run('R5')) {
+      const STRIP = ['id', 'created', 'updated', 'imported', 'code', 'projectId', 'sectionId'];
+      const norm = x => { const c = JSON.parse(JSON.stringify(x)); STRIP.forEach(k => delete c[k]); (c.blocks || []).forEach(b => delete b.id); return canon(c); };
+      for (const { key, e } of made) await guard('R5', key, async () => {
+        tick('R5');
+        const env = JSON.parse(buildExpJSON(e));
+        const e2 = _reidExperiment(env.experiment); _landImported(e2, env, e.projectId, e.sectionId);
+        if (J(norm(e)) !== J(norm(e2))) {
+          const a = norm(e), b = norm(e2); const ks = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => J(a[k]) !== J(b[k]));
+          bad('R5', key, `the imported copy differs in ${ks.join(', ')}`);
+        }
+        if (!e2.imported || !e2.imported.originalId) bad('R5', key, 'the imported copy does not say where it came from');
+        const p1 = pdfTxt(ALLON, { kind: 'exp', id: e.id }).split(e.code).join('#'), p2 = pdfTxt(ALLON, { kind: 'exp', id: e2.id }).split(e2.code).join('#');
+        if (p1 !== p2) bad('R5', key, 'the imported copy prints differently from the original');
+        delete LB.data.experiments[e2.id];
+      });
+      tick('R5');
+      const sc = { kind: 'folder', id: PID, sectionId: SID }, n0 = DL.length;
+      exportBundleJSON(sc);
+      const f = DL[n0]; if (!f) bad('R5', 'bundle', 'the folder bundle produced no file');
+      else { const B = JSON.parse(f.text), want = pdfScopeExps(sc).length;
+        if ((B.experiments || []).length !== want) bad('R5', 'bundle', `the folder holds ${want} experiments, the bundle ${(B.experiments || []).length}`); }
+    }
+
+    // ── R6 the CSVs are the record, and parse back ──
+    if (run('R6')) for (const { key, e } of made) await guard('R6', key, async () => {
+      tick('R6');
+      let n0 = DL.length; exportResultsCSV(e.id);
+      const rc = DL[n0]; if (!rc) { bad('R6', key, 'no results CSV'); return; }
+      const rows = parseCSV(rc.text).filter(r => r.length > 1), H = rows[0] || [], body = rows.slice(1);
+      const ci = n => H.indexOf(n);
+      if (body.length !== RES.length) bad('R6', key, `results CSV has ${body.length} rows, the record ${RES.length}`);
+      RES.forEach((x, i) => { const r = body[i] || [];
+        const cc = ci('Compound'); if (cc < 0) { if (i === 0) bad('R6', key, 'results CSV has no Compound column: ' + H.join('|')); return; }
+        if (r[cc] !== x.compound) bad('R6', key, `results CSV row ${i + 1}: compound ${J(r[cc])}, record ${J(x.compound)}`);
+        const ex = H.findIndex(h => /^excluded$/i.test(h)); if (ex >= 0 && (r[ex] === 'yes') !== !!x.excluded) bad('R6', key, `results CSV row ${i + 1}: excluded "${r[ex]}", record ${!!x.excluded}`);
+        const pc = H.findIndex(h => /potency|dc50|value/i.test(h)); if (pc >= 0 && Math.abs(parseFloat(r[pc]) - x.potency) > 1e-9) bad('R6', key, `results CSV row ${i + 1}: potency ${r[pc]}, record ${x.potency}`);
+      });
+      n0 = DL.length; exportStepsCSV(e.id);
+      const sc2 = DL[n0]; if (!sc2) { bad('R6', key, 'no steps CSV'); return; }
+      const sr = parseCSV(sc2.text).filter(r => r.length > 1), SH = sr[0], sb = sr.slice(1);
+      if (sb.length !== (e.blocks || []).length) bad('R6', key, `steps CSV has ${sb.length} rows, the record ${(e.blocks || []).length} steps`);
+      const dn = SH.indexOf('Done'), st = SH.indexOf('Step');
+      const doneWant = (e.blocks || []).filter(b => b.done).length, doneGot = sb.filter(r => r[dn] === 'yes').length;
+      if (doneWant !== doneGot) bad('R6', key, `steps CSV marks ${doneGot} done, the record ${doneWant}`);
+      (e.blocks || []).forEach(b => { if (!sb.some(r => r[st] === (b.title || ''))) bad('R6', key, `steps CSV has no row for "${b.title}"`); });
+    });
+
+    // ── R7 a scope prints everything in it ──
+    if (run('R7')) {
+      const scopes = [{ kind: 'folder', id: PID, sectionId: SID }, { kind: 'project', id: PID }, { kind: 'allexps' }];
+      for (const sc of scopes) await guard('R7', sc.kind, async () => {
+        tick('R7');
+        const t = pdfTxt(ALLON, sc), exps = pdfScopeExps(sc);
+        exps.forEach(x => { if (x.code && t.indexOf(x.code) < 0) bad('R7', sc.kind, `${x.code} is in the ${sc.kind} but not in its PDF`); });
+        const want = Object.keys(LB.data.experiments).map(k => LB.data.experiments[k]).filter(isCoded)
+          .filter(x => sc.kind === 'allexps' || (x.projectId === PID && (sc.kind === 'project' || x.sectionId === SID)));
+        if (want.length !== exps.length) bad('R7', sc.kind, `the ${sc.kind} holds ${want.length} coded experiments, the export takes ${exps.length}`);
+      });
+      // The Journal: a day prints what its page shows, and the month and the whole Journal take the day.
+      const withTick = made.find(m => m.d.ticked);
+      if (withTick) {
+        const D = _dateKey(withTick.d.ticked.completedAt);
+        const groups = doneOnDay(D);
+        for (const sc of [{ kind: 'day', date: D }, { kind: 'month', month: D.slice(0, 7) }, { kind: 'journal' }]) await guard('R7', sc.kind, async () => {
+          tick('R7');
+          const t = pdfTxt(ALLON, sc);
+          groups.forEach(g => g.rows.forEach(r => { const nm = text(r.block.title || 'Step').trim();
+            if (t.indexOf(nm) < 0) bad('R7', sc.kind, `a step done on ${D} ("${nm}", ${g.exp.code}) is not in the ${sc.kind} PDF`); }));
+          if (t.indexOf('INV-LOG') < 0) bad('R7', sc.kind, `the ${sc.kind} PDF does not carry the step's log`);
+        });
+      }
+    }
+
+    made.forEach(m => cleanup(m.e));
+    window._dl = origDl; window.print = origPrint;
+    window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onErr);
+  }
+
   return { out, counts, archive, presets: KEYS.length };
 }
 
@@ -470,7 +732,7 @@ try {
   for (const u of urls) {
     const url = /^https?:/.test(u) ? u : base + u;
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await ctx.addInitScript(() => { try { localStorage.setItem('lb_backup_nudged', '1'); } catch (e) {} });
+    await ctx.addInitScript(() => { try { localStorage.setItem('lb_backup_nudged', '1'); localStorage.setItem('lb_tour_done', '1'); } catch (e) {} });
     const pg = await ctx.newPage();
     const errs = [];
     pg.on('pageerror', e => errs.push(String(e && e.message || e)));

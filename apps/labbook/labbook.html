@@ -877,6 +877,29 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
   padding:1px 6px;font-weight:700;}
 .rc-tab.on .rc-tab-n{background:var(--accent-dim);color:var(--accent);}
 .rc-body{max-height:52vh;max-height:52dvh;overflow-y:auto;overscroll-behavior-y:contain;}
+/* A dialog with tabs keeps ONE height. Centred and sized to its content, it re-centred on every
+   tab — the title and the tabs jumped up and down under the pointer that had just clicked one.
+   Fixed, the only thing that changes is the body, which scrolls. */
+.hp-tour{display:flex;align-items:center;gap:14px;padding:14px;margin-bottom:14px;border:1px solid var(--border);border-radius:var(--r-3);background:var(--surface2);}
+.hp-tour>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+.hp-tour b{font-size:var(--fs-4);color:var(--text);}
+.hp-tour i{font-style:normal;font-size:var(--fs-2);color:var(--text2);line-height:1.45;}
+.modal.tabbed{height:min(640px,86vh);height:min(640px,86dvh);display:flex;flex-direction:column;overflow:hidden;}
+.modal.tabbed>.modal-t,.modal.tabbed>.rc-tabs,.modal.tabbed>.modal-act{flex:none;}
+.modal.tabbed>.rc-body{flex:1 1 auto;min-height:0;max-height:none;}
+/* The line under the active tab slides to the next one instead of blinking out and in. */
+.rc-tabs{position:relative;}
+.rc-ink{position:absolute;left:0;top:0;height:2px;background:var(--accent);border-radius:1px;pointer-events:none;
+  transition:transform var(--dur-2) var(--ease-out),width var(--dur-2) var(--ease-out);}
+.rc-tabs.inked .rc-tab.on{border-bottom-color:transparent;}
+/* What a tab shows arrives rather than appears. Opacity and a 4px rise only — a transform on a
+   container is harmless here: nothing inside a tab body is dragged. */
+@keyframes lb-tab-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+.tab-in{animation:lb-tab-in var(--dur-2) var(--ease-out);}
+/* The screen you are leaving, as a picture that fades while the new one comes in. */
+.lb-ghost{position:fixed;overflow:hidden;pointer-events:none;z-index:5;background:var(--surface);
+  opacity:1;transition:opacity 180ms var(--ease);}
+.lb-ghost.go{opacity:0;}
 .rc-note{font-size:var(--fs-3);color:var(--text2);line-height:1.5;margin-bottom:12px;}
 .rc-act{display:flex;gap:9px;flex-wrap:wrap;}
 .rc-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid var(--border);}
@@ -2681,6 +2704,11 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       padding:10px 16px calc(12px + var(--lb-safe-b));background:var(--glass-solid);border-top:1px solid var(--border);}
     .modal-act .btn{min-height:44px;flex:1 1 auto;}
     .modal-act .btn.ghost{flex:0 1 auto;}
+    /* A tabbed sheet does not scroll as one — its body does — so its title and footer are
+       ordinary rows, not the sticky edge-to-edge ones a scrolling sheet pins (under the tabbed
+       sheet's overflow:hidden those were cut 16px at the edge). */
+    .modal.tabbed>.modal-t{position:static;margin:0 0 10px;padding:2px 0 0;background:none;}
+    .modal.tabbed>.modal-act{position:static;margin:12px 0 0;padding:10px 0 0;background:none;}
     /* The sheet scrolls as one and pins its own title and footer; the desktop's flex column
        with an inner scroller ran 16px past the bottom edge here. */
     .modal.nm{display:block;overflow:auto;padding-bottom:calc(14px + var(--lb-safe-b));}
@@ -8536,6 +8564,7 @@ function lbMoreMenu(ev){
     {sep:true},
     {label:'Export', sub:'PDF, Word, methods sheet, data', fn:function(){ exportMenu(); }},
     {label:'Recover', sub:'deleted items, versions, backups', fn:function(){ openRecover('deleted'); }},
+    {label:'Help', sub:'the tour, the parts of Labbook, shortcuts', fn:function(){ openSettings('help'); }},
     {label:'Settings', sub:'shortcuts, writing, appearance', fn:function(){ openSettings(); }},
     {label:dark?'Light mode':'Dark mode', fn:function(){ toggleTheme(); }}
   ].filter(Boolean), t||{left:innerWidth-64,right:innerWidth-8,top:innerHeight-64,bottom:innerHeight-60});
@@ -8630,6 +8659,7 @@ function secLeaf(node,label,icon,delCall,ctx,forceActive,opts){
 function _colFootRender(){ var f=el('col-foot'); if(!f) return; if(_phoneTabs()){ f.innerHTML=''; return; }   // the phone's More menu holds these
   f.innerHTML='<button title="Export — PDF, Word, the clipboard, the numbers, a report" onmousedown="event.preventDefault();exportMenu()">'+tbSvg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>')+'</button>'
     +'<button title="Recover — deleted items, versions, snapshots and backup files" onmousedown="event.preventDefault();openRecover()">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</button>'
+    +'<button data-help title="Help — the tour, the parts of Labbook, every shortcut" onmousedown="event.preventDefault();openSettings(\'help\')">'+tbSvg('<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 014.8.9c0 1.7-2.4 2.2-2.4 3.7"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/>')+'</button>'
     +'<button title="Settings — shortcuts, writing, appearance" onmousedown="event.preventDefault();openSettings()">'+tbSvg('<circle cx="12" cy="12" r="3.2"/><path d="M4.5 12a7.5 7.5 0 01.1-1.2l-2-1.5 2-3.5 2.3 1a7.5 7.5 0 012-1.2l.4-2.5h4l.4 2.5a7.5 7.5 0 012 1.2l2.3-1 2 3.5-2 1.5a7.5 7.5 0 010 2.4l2 1.5-2 3.5-2.3-1a7.5 7.5 0 01-2 1.2l-.4 2.5h-4l-.4-2.5a7.5 7.5 0 01-2-1.2l-2.3 1-2-3.5 2-1.5a7.5 7.5 0 01-.1-1.2z"/>')+'</button>'
     +'<button title="Light / dark" onmousedown="event.preventDefault();toggleTheme();_colFootRender()">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a7 7 0 1010.5 10.5z"/>')+'</button>'; }
 function renderSections(){
@@ -9405,6 +9435,7 @@ function pageItemExp(e){ var code=isCoded(e)?('<div class="page-code">'+esc(e.co
   var pgp=isCoded(e)?expProgress(e):null;
   var meta=isCoded(e)?('<span class="pg-status '+(e.status||'planned')+'">'+esc(e.status||'planned')+'</span>'+(pgp&&pgp.total?('<span class="pg-prog">'+pgp.done+'/'+pgp.total+'</span>'):'')+'<span>'+esc(fmtDate(e.startDate||''))+'</span>'):('<span>'+esc(fmtDate(e.date||e.startDate||''))+'</span>');
   return '<div class="page-item'+(SEL.page===e.id?' active':'')+'" onclick="selectPage(\''+e.id+'\')" oncontextmenu="ctxExp(event,\''+e.id+'\')"><div class="page-body">'+code+'<div class="page-title">'+esc(e.title||(isCoded(e)?e.code:'Untitled'))+'</div><div class="page-meta">'+meta+'</div></div></div>'; }
+var _colWs=null, _ppShown=null;
 function renderPages(){
   var host=el('pane-pages'); var node=SEL.node;
   var ppw=el('pane-pages-wrap'), spg=el('split-pages'); if(ppw) ppw.style.display=''; if(spg) spg.style.display='';
@@ -9433,12 +9464,19 @@ function renderPages(){
   _wsTellHost(ws);
   renderMobileTabs();
   var hasTree = renderSections();
+  // A change of workspace changes what the columns list; the new list arrives the way a tab's
+  // body does rather than being swapped in one frame.
+  if(_colWs!==null && _colWs!==ws){ _tabAnim(el('pane-sec')); _tabAnim(host); }
+  _colWs=ws;
   if(psw) psw.style.display = hasTree ? '' : 'none';
   if(ssec) ssec.style.display = hasTree ? '' : 'none';
   // Today has a date navigator and Journal lists the days, so the day list that used to sit
   // between them is gone; the Planner's dashboards never had a list.
   var noList = node.kind==='home'||node.kind==='week'||node.kind==='archive'||node.kind==='exps'||node.kind==='journal'||node.kind==='viz'||node.kind==='design';
   document.body.classList.toggle('lb-nonav', !hasTree && noList);
+  // The list pane coming back slides in with its contents instead of popping into place.
+  if(!noList && _ppShown===false) _tabAnim(ppw);
+  _ppShown=!noList;
   if(noList){ if(ppw) ppw.style.display='none'; if(spg) spg.style.display='none'; host.innerHTML=''; return; }
   // On a phone the list sits inside a closed drawer. Building it there — one blocksForDate per
   // notebook day and a regex strip of every day's html — on each renderAll (every tick, every
@@ -11701,11 +11739,40 @@ function _edScreenKey(){
   return k+':'+(n.projectId||'')+':'+(n.sectionId||'');
 }
 var _edKey=null, _edScroll={}, _edAnimT=null;
+// The screen being left fades out over the new one arriving — a crossfade, where before the
+// old screen vanished in one frame and only the new one moved. It is a copy of what is on
+// screen, placed where it was, so nothing about the render itself changes: callers that act on
+// the new DOM straight after renderAll() still find it there. Skipped for a very large screen,
+// where copying it would cost more than the fade is worth, and when motion is reduced.
+var _GHOST_MAX=3500;
+function _screenGhost(host){
+  try{
+    if(!host||!host.firstElementChild||_reducedMotion()) return null;
+    if(host.getElementsByTagName('*').length>_GHOST_MAX) return null;
+    var r=host.getBoundingClientRect(); if(r.width<40||r.height<40) return null;
+    var g=document.createElement('div'); g.className='lb-ghost'; g.setAttribute('aria-hidden','true');
+    g.style.left=r.left+'px'; g.style.top=r.top+'px'; g.style.width=r.width+'px'; g.style.height=r.height+'px';
+    var inner=document.createElement('div');
+    inner.style.cssText='position:absolute;left:0;top:0;width:'+host.clientWidth+'px;transform:translateY('+(-host.scrollTop)+'px);';
+    Array.prototype.forEach.call(host.children,function(c){ var k=c.cloneNode(true);
+      Array.prototype.forEach.call(k.querySelectorAll('[id]'),function(n){ n.removeAttribute('id'); });
+      k.removeAttribute('id'); inner.appendChild(k); });
+    // The pane's own padding, so the copy sits where the original sat.
+    var cs=getComputedStyle(host); inner.style.padding=cs.padding; inner.style.boxSizing='border-box';
+    g.appendChild(inner);
+    return g;
+  }catch(e){ return null; }
+}
+function _reducedMotion(){ try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } }
 function renderEditor(){
   var host=el('pane-ed'), key=_edScreenKey(), moved=(key!==_edKey);
   if(host && _edKey!==null && moved) _edScroll[_edKey]=host.scrollTop;
+  var ghost=(host && _edKey!==null && moved) ? _screenGhost(host) : null;
   _edKey=key;
   _renderEditorBody();
+  if(ghost){ document.body.appendChild(ghost);
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ ghost.classList.add('go'); }); });
+    setTimeout(function(){ if(ghost.parentNode) ghost.parentNode.removeChild(ghost); },260); }
   if(host && moved){
     host.scrollTop=_edScroll[key]||0;
     // Re-adding a class an element already carries does not restart its animation, and the
@@ -12485,11 +12552,19 @@ function acceptDeviation(expId,blkId,key){
   e.updated=Date.now(); save(); renderEditor();
   toast(n+' change'+(n===1?'':'s')+' accepted as the plan');
 }
+// Every kind expDeviations knows, not only an Archive parameter. It filtered to `param`, so a
+// changed calculator number — cells per well, a volume, the thing people actually change, and
+// the kind expDeviations was taught to find on 2026-08-22 — was in the record PDF's table and
+// never in the Report, which said the run had gone to plan. (tools/invariants.mjs, R1)
 function deviationsSentence(e){
-  var d=expDeviations(e).filter(function(x){ return x.kind==='param'; });
+  var d=expDeviations(e);
   if(!d.length) return '';
-  return 'Deviations from the published protocol: '
-    + d.map(function(x){ return String(x.label).replace(/\s*\(.*\)$/,'')+' '+x.from+' → '+x.to; }).join('; ') + '.';
+  function lbl(x){ return String(x.label||x.key||'').replace(/\s*\(.*\)$/,''); }
+  return 'Changed from the plan: '
+    + d.map(function(x){
+        if(x.kind==='unlocked') return (x.block.title||'a step')+' written by hand instead of following the protocol';
+        if(x.kind==='calc') return (x.block.title?(x.block.title+', '):'')+lbl(x).toLowerCase()+' '+x.from+' → '+x.to;
+        return lbl(x)+' '+x.from+' → '+x.to; }).join('; ') + '.';
 }
 
 // ── Biological replicates ───────────────────────────────────────────────────────────────────
@@ -16822,6 +16897,11 @@ function dsDraw(){
   host.innerHTML = f==='type'?dsTypeHtml() : f==='params'?dsParamsHtml() : f==='mods'?dsModsHtml()
                  : f==='conf'?dsConfHtml() : dsReviewHtml();
   host.scrollTop=0;
+  // A new step (or the next module) arrives; a redraw of the same one — every answer typed —
+  // must not strobe.
+  var at=D.step+':'+(f==='conf'?D.cur:'');
+  if(D._at!=null && D._at!==at) _tabAnim(host);
+  D._at=at;
   dsFoot();
 }
 function dsGo(n){ var D=DS; if(!D) return;
@@ -19606,21 +19686,29 @@ var RECOVER={tab:'trash'};
 function openRecover(tab){
   RECOVER.tab=tab||RECOVER.tab||'trash';
   if(RECOVER.tab!=='versions') RECOVER.path=null;
-  var d=_lbDlg(); el('lb-dialog-card').className='modal wide';
+  var d=_lbDlg(); el('lb-dialog-card').className='modal wide tabbed';
   d._onCancel=_lbDlgClose;
-  _recoverRender(); d.classList.add('open');
+  _recoverRender(); d.classList.add('open'); _tabsOpened();
 }
-function recoverTab(t){ RECOVER.tab=t; _recoverRender(); }
+function recoverTab(t){
+  if(RECOVER.tab===t) return;
+  RECOVER.tab=t;
+  var tabs=document.querySelector('#lb-dialog-card .rc-tabs'), body=el('rc-body');
+  if(!tabs||!body){ _recoverRender(); return; }
+  _tabMark(tabs,t); _tabSwap(body,_recoverBody());
+  if(t==='versions') _recoverFillVersions();
+}
 function _recoverOpen(){ var d=el('lb-dialog'); return !!(d&&d.classList.contains('open')&&el('rc-body')); }
 function _recoverRender(){
   var card=el('lb-dialog-card'); if(!card) return;
   var tabs=[['trash','Deleted items',trashCount()],['versions','Versions',0],['snapshots','Snapshots',0],['file','Backup file',0]];
   card.innerHTML='<div class="modal-t">Recover</div>'
     +'<div class="rc-tabs">'+tabs.map(function(t){
-        return '<button class="rc-tab'+(RECOVER.tab===t[0]?' on':'')+'" onclick="recoverTab(\''+t[0]+'\')">'+esc(t[1])
+        return '<button class="rc-tab'+(RECOVER.tab===t[0]?' on':'')+'" data-t="'+t[0]+'" onclick="recoverTab(\''+t[0]+'\')">'+esc(t[1])
           +(t[2]?('<span class="rc-tab-n">'+t[2]+'</span>'):'')+'</button>'; }).join('')+'</div>'
     +'<div class="rc-body" id="rc-body">'+_recoverBody()+'</div>'
     +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" onclick="_lbDlgClose()">Close</button></div>';
+  _tabInk(card.querySelector('.rc-tabs'));
   if(RECOVER.tab==='versions') _recoverFillVersions();
 }
 // The versions list lives in IndexedDB, so it arrives after the card is on screen. RECOVER.path
@@ -19690,24 +19778,54 @@ function _recoverBody(){
 // lab-wide setting, ten buttons deep — which is the same shape the shell's Settings had before
 // it became one modal with tabs. Help had nowhere to live at all.
 var SETTINGS={tab:'keys'};
+// ── Tabs that do not jump ───────────────────────────────────────────────────────────────────
+// Jon (2026-09-24): "el menú settings se mueve demasiado al cambiar de pestañas". Two causes:
+// the dialog was centred and sized to its content, so each tab re-centred it; and a tab switch
+// rebuilt the whole card. A tabbed dialog is one fixed height now (.modal.tabbed), a switch
+// replaces only the body, the underline slides, and the new body fades in.
+function _tabInk(tabs){
+  if(!tabs) return;
+  var ink=tabs.querySelector('.rc-ink'), on=tabs.querySelector('.rc-tab.on');
+  if(!ink){ ink=document.createElement('i'); ink.className='rc-ink'; ink.style.transition='none'; tabs.appendChild(ink);
+    tabs.classList.add('inked'); requestAnimationFrame(function(){ requestAnimationFrame(function(){ ink.style.transition=''; }); }); }
+  if(!on||!on.offsetWidth){ ink.style.width='0px'; return; }
+  ink.style.width=on.offsetWidth+'px';
+  ink.style.transform='translate('+on.offsetLeft+'px,'+(on.offsetTop+on.offsetHeight-2)+'px)';
+}
+// Restart the arrival animation on a node — re-adding a class it already carries restarts
+// nothing, and the reflow is what commits the removal. Taken off by a timer, not animationend:
+// a background tab never fires the event (the rule renderEditor's screen-in already follows).
+function _tabAnim(n){ if(!n) return; n.classList.remove('tab-in'); void n.offsetWidth; n.classList.add('tab-in');
+  clearTimeout(n._tabT); n._tabT=setTimeout(function(){ n.classList.remove('tab-in'); },320); }
+function _tabSwap(body,html){ if(!body) return; body.innerHTML=html; body.scrollTop=0; _tabAnim(body); }
+function _tabMark(tabs,id){ if(!tabs) return; Array.prototype.forEach.call(tabs.querySelectorAll('.rc-tab'),function(b){ b.classList.toggle('on',b.getAttribute('data-t')===id); }); _tabInk(tabs); }
+function _tabsOpened(){ requestAnimationFrame(function(){ _tabInk(document.querySelector('#lb-dialog-card .rc-tabs')); }); }
 function openSettings(tab){
   SETTINGS.tab=tab||SETTINGS.tab||'keys';
-  var d=_lbDlg(); el('lb-dialog-card').className='modal wide';
+  var d=_lbDlg(); el('lb-dialog-card').className='modal wide tabbed';
   d._onCancel=_lbDlgClose;
-  _settingsRender(); d.classList.add('open');
+  _settingsRender(); d.classList.add('open'); _tabsOpened();
 }
-function settingsTab(t){ SETTINGS.tab=t; _settingsRender(); }
+function settingsTab(t){
+  if(SETTINGS.tab===t) return;
+  SETTINGS.tab=t;
+  var tabs=document.querySelector('#lb-dialog-card .rc-tabs'), body=el('st-body');
+  if(!tabs||!body){ _settingsRender(); return; }
+  _tabMark(tabs,t); _tabSwap(body,_settingsBody());
+}
+var SETTINGS_TABS=[['help','Help'],['keys','Shortcuts'],['writing','Writing'],['look','Appearance'],['about','About']];
 function _settingsRender(){
   var card=el('lb-dialog-card'); if(!card) return;
-  var tabs=[['keys','Shortcuts'],['writing','Writing'],['look','Appearance'],['about','About']];
   card.innerHTML='<div class="modal-t">Settings</div>'
-    +'<div class="rc-tabs">'+tabs.map(function(t){
-        return '<button class="rc-tab'+(SETTINGS.tab===t[0]?' on':'')+'" onclick="settingsTab(\''+t[0]+'\')">'+esc(t[1])+'</button>';
+    +'<div class="rc-tabs">'+SETTINGS_TABS.map(function(t){
+        return '<button class="rc-tab'+(SETTINGS.tab===t[0]?' on':'')+'" data-t="'+t[0]+'" onclick="settingsTab(\''+t[0]+'\')">'+esc(t[1])+'</button>';
       }).join('')+'</div>'
     +'<div class="rc-body" id="st-body">'+_settingsBody()+'</div>'
     +'<div class="modal-act"><span class="grow"></span><button class="btn ghost" onclick="_lbDlgClose()">Close</button></div>';
+  _tabInk(card.querySelector('.rc-tabs'));
 }
 function _settingsBody(){
+  if(SETTINGS.tab==='help') return helpHtml();
   if(SETTINGS.tab==='keys') return shortcutsLegendHtml();
   if(SETTINGS.tab==='writing'){
     var sw=analysisSoftware();
@@ -19744,6 +19862,207 @@ function _settingsBody(){
       +'</i></span></div>'
     +'<div class="st-row"><span class="st-l"><b>If something goes wrong</b><i>Deleted items are kept 60 days, every record keeps its own version history, and a daily snapshot covers the last week — all in <b>Recover</b>.</i></span>'
     +'<button class="rc-btn" onclick="_lbDlgClose();openRecover()">Open Recover</button></div>';
+}
+// ── Help, and the tour ──────────────────────────────────────────────────────────────────────
+// Jon (2026-09-24): a guide the first time the app is used, through its parts, and reachable
+// again from Help. The tour MOVES you through the app — Home, Today, Experiments, an experiment,
+// the Journal — and points at the real thing on screen, rather than describing screenshots of
+// it. Inside dHUB it draws over the whole window (the shell is the same origin), so it can
+// point at the rail as well as at Labbook.
+var HELP_PARTS=[
+  ['Planner', 'Home, Today, Week and Experiments — what there is to do.', function(){ selectNode('home'); }],
+  ['Today', 'Every step due today from every experiment; a tick here is a tick everywhere.', function(){ selectNode('journal'); }],
+  ['Experiments', 'Projects, folders and the experiments in them. New experiment (⌘E) is quick from a preset, or designed step by step.', function(){ selectNode('exps'); }],
+  ['An experiment', 'One page: setup, the steps by day with ticks, waits, photos and a line on what happened, then Observations, Results, Files and the Report.', null],
+  ['Report and exports', 'At the foot of every experiment: the Methods written live from the record, and every way out — PDF, Methods sheet, bench sheet, Word, CSV, JSON, plate PNG.', null],
+  ['Journal', 'A page per day that writes itself from what you ticked, plus your notes. @ links an experiment, # tags.', function(){ openJournalWs(); }],
+  ['Visualize', 'The notebook as charts — activity, outcomes, a timeline, every potency. Click through to what is behind a mark.', function(){ selectNode('viz'); }],
+  ['Designer', 'The experiments you run again and again, built once from modules; the days and volumes follow.', function(){ selectNode('design'); }],
+  ['Recover', 'Deleted things wait 60 days, every record keeps its history, and a snapshot covers the last week.', function(){ openRecover(); }]];
+function helpHtml(){
+  return '<div class="hp-tour"><div><b>A tour of Labbook</b><i>About a minute. It moves you through the app and points at each part; Esc leaves it at any point.</i></div>'
+      +'<button class="btn" onclick="_lbDlgClose();startTour()">Take the tour</button></div>'
+    +'<div class="st-h">The parts, and what each is for</div>'
+    +HELP_PARTS.map(function(h,i){
+      return '<div class="st-row"><span class="st-l"><b>'+esc(h[0])+'</b><i>'+esc(h[1])+'</i></span>'
+        +(h[2]?('<button class="rc-btn" onclick="_lbDlgClose();HELP_PARTS['+i+'][2]()">Show me</button>'):'')+'</div>'; }).join('')
+    +'<div class="rc-note" style="margin-top:14px">Every keyboard shortcut is on the <a href="#" onclick="event.preventDefault();settingsTab(\'keys\')">Shortcuts</a> tab. '
+    +'<b>'+esc(_scLbl({key:'k'}))+'</b> searches everything — experiments, steps, notes, protocols, antibodies, freezer boxes — and still finds them with a letter wrong.</div>';
+}
+var TOUR=null;
+var TOUR_CSS='#lb-tour{position:fixed;inset:0;z-index:2147483000;font-family:var(--sans,"IBM Plex Sans",system-ui,sans-serif);}'
+  +'#lb-tour .lbt-hole{position:fixed;border-radius:10px;box-shadow:0 0 0 200vmax rgba(12,16,28,.52);pointer-events:none;'
+    +'transition:left .34s cubic-bezier(.2,.8,.2,1),top .34s cubic-bezier(.2,.8,.2,1),width .34s cubic-bezier(.2,.8,.2,1),height .34s cubic-bezier(.2,.8,.2,1);}'
+  +'#lb-tour .lbt-hole.on{outline:2px solid var(--accent,#5e87c5);outline-offset:3px;}'
+  +'#lb-tour .lbt-card{position:fixed;width:348px;max-width:calc(100vw - 24px);box-sizing:border-box;background:var(--surface,#fff);color:var(--text,#1a1d2e);'
+    +'border:1px solid var(--border2,rgba(0,0,0,.13));border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.3);padding:18px 18px 14px;'
+    +'transition:left .34s cubic-bezier(.2,.8,.2,1),top .34s cubic-bezier(.2,.8,.2,1),opacity .18s ease;}'
+  +'#lb-tour .lbt-card.fade{opacity:0;}'
+  +'#lb-tour .lbt-k{font-size:11px;font-weight:600;letter-spacing:.2px;color:var(--text3,#9ca0b8);margin-bottom:6px;}'
+  +'#lb-tour .lbt-t{font-size:17px;font-weight:700;letter-spacing:-.2px;margin-bottom:6px;}'
+  +'#lb-tour .lbt-b{font-size:14px;line-height:1.55;color:var(--text2,#5a5f7a);}'
+  +'#lb-tour .lbt-b b{color:var(--text,#1a1d2e);font-weight:600;}'
+  +'#lb-tour .lbt-f{display:flex;align-items:center;gap:8px;margin-top:16px;}'
+  +'#lb-tour .lbt-dots{display:flex;gap:5px;flex:1;min-width:0;}'
+  +'#lb-tour .lbt-dots i{width:6px;height:6px;border-radius:50%;background:var(--surface3,#e4e6ee);transition:background .2s,width .2s;}'
+  +'#lb-tour .lbt-dots i.on{background:var(--accent,#5e87c5);width:16px;border-radius:3px;}'
+  +'#lb-tour button{font:inherit;font-size:13px;font-weight:600;border-radius:7px;padding:0 13px;height:32px;cursor:pointer;border:1px solid var(--border2,rgba(0,0,0,.13));background:none;color:var(--text2,#5a5f7a);}'
+  +'#lb-tour button:hover{color:var(--text,#1a1d2e);background:var(--surface2,#f0f1f5);}'
+  +'#lb-tour button.go{background:var(--accent,#5e87c5);border-color:var(--accent,#5e87c5);color:#fff;}'
+  +'#lb-tour button.go:hover{filter:brightness(1.06);}'
+  +'#lb-tour .lbt-skip{border:none;padding:0 6px;}'
+  +'@media (prefers-reduced-motion:reduce){#lb-tour .lbt-hole,#lb-tour .lbt-card,#lb-tour .lbt-dots i{transition:none!important;}}';
+// The document the tour draws in: dHUB's, when Labbook is one of its frames — only there can it
+// point at the rail — else our own.
+function _tourDoc(){ try{ var h=lbHost(); if(h&&h.document&&window.frameElement&&h.document.body) return h.document; }catch(e){} return document; }
+function _tourOff(){ var d=_tourDoc(); if(d===document) return {x:0,y:0}; var r=window.frameElement.getBoundingClientRect(); return {x:r.left,y:r.top}; }
+function _tourTarget(st){
+  var d=_tourDoc(), n=null, off={x:0,y:0};
+  if(st.host&&d!==document) n=d.querySelector(st.host);
+  if(!n&&st.sel){ n=(typeof st.sel==='function')?st.sel():document.querySelector(st.sel); off=_tourOff(); }
+  if(!n) return null;
+  var r=n.getBoundingClientRect(); if(r.width<4||r.height<4) return null;
+  var vw=d.defaultView.innerWidth, vh=d.defaultView.innerHeight;
+  // A target taller than the window (a whole page) is framed by the part you can see.
+  var l=Math.max(6,r.left+off.x), t=Math.max(6,r.top+off.y), R=Math.min(vw-6,r.right+off.x), B=Math.min(vh-6,r.bottom+off.y);
+  return (R-l<4||B-t<4)?null:{l:l,t:t,w:R-l,h:B-t};
+}
+function tourSteps(){
+  var hosted=_tourDoc()!==document, phone=_phoneTabs();
+  var newest=Object.keys(LB.data.experiments||{}).map(function(k){ return LB.data.experiments[k]; })
+    .filter(function(e){ return isCoded(e)&&!expArchived(e); })
+    .sort(function(a,b){ return (b.updated||0)-(a.updated||0); })[0]||null;
+  var S=[];
+  S.push({t:'Welcome to Labbook',
+    b:'A notebook built around experiments: <b>plan</b> them, <b>log</b> what happened, <b>annotate</b>, <b>analyse</b> and <b>export</b>. This takes about a minute — leave at any point with Esc, and come back to it from <b>Settings → Help</b>.'});
+  S.push({t:'Four workspaces', host:hosted?'#ws-rail':null, sel:phone?'#lb-tabs':(hosted?null:'#pane-sec-wrap'),
+    b:'<b>Planner</b> — what there is to do. <b>Journal</b> — what was done, written from your ticks. <b>Visualize</b> — how it is going. <b>Designer</b> — the experiments you run again and again, built once.'
+      +(hosted?' Below them sit <b>Data Analysis</b> (Echo and the plate readers), <b>Archive</b> (protocols, antibodies, primers, plasmids) and <b>Cells</b>.':'')});
+  S.push({t:'Home', go:function(){ selectNode('home'); }, sel:'#pane-ed',
+    b:'Today’s steps with a real tick, the experiments that are running, and what you edited last. Labbook opens where you left off.'});
+  S.push({t:'Today', go:function(){ selectNode('journal'); }, sel:'#pane-ed',
+    b:'Every step due today, from every experiment, grouped by project. <b>Tick it here and it is ticked everywhere</b> — on the experiment, on Home, in the Journal. Anything that slipped from earlier days is listed underneath.'});
+  S.push({t:'Experiments', go:function(){ selectNode('exps'); }, sel:function(){ return document.querySelector('#pane-ed .xv-new')||el('pane-ed'); },
+    b:'<b>New experiment</b> ('+esc(_scLbl({key:'e'}))+') asks how: quick from a preset, or <b>designed step by step</b> — seeding, compound addition, readout — with the days and the volumes worked out for you.'});
+  if(!phone) S.push({t:'Projects and folders', sel:'#pane-sec-wrap',
+    b:'Each project is a coloured tab with its folders under it. Right-click any row to rename, recolour, move or delete it — and nothing deleted is gone: it waits 60 days in <b>Recover</b>.'});
+  if(newest){
+    S.push({t:'An experiment is one page', go:function(){ openExp(newest.id); },
+      sel:function(){ return el('sec-steps')||document.querySelector('#pane-ed .bench-row')||el('pane-ed'); },
+      b:'The setup, then the steps by day: tick them, start the wait timer, attach a photo, write one line on what happened. Observations, Results and Files follow.'});
+    S.push({t:'The Report', go:function(){ openExp(newest.id); setTimeout(function(){ var n=el('sec-pub'); if(n) n.scrollIntoView({block:'center'}); },40); },
+      sel:function(){ return el('sec-pub')||el('pane-ed'); },
+      b:'At the foot of every experiment. It writes the <b>Methods</b> live from the record — change a step and it follows — and holds every export: record PDF, Methods sheet, bench sheet, Word, CSV, JSON and the plate map as a picture.'});
+  }
+  S.push({t:'Journal', go:function(){ openJournalWs(); }, sel:function(){ return el('pane-pages-wrap')&&el('pane-pages-wrap').offsetWidth?el('pane-pages-wrap'):el('pane-ed'); },
+    b:'A page per day that <b>writes itself from what you ticked</b>, with room for your own notes — and a flat list of Notes for anything without a date. Type <b>@</b> to link an experiment, <b>#</b> to tag.'});
+  S.push({t:'Visualize', go:function(){ selectNode('viz'); }, sel:'#pane-ed',
+    b:'The whole notebook as charts: activity, how experiments turned out, a timeline, every potency sent from Echo. Click any mark to open what is behind it.'});
+  S.push({t:'Search everything', host:hosted?'#hub-search-wrap':null,
+    sel:hosted?null:function(){ return document.querySelector('#topbar .tp-btn kbd')?document.querySelector('#topbar .tp-btn kbd').parentNode:null; },
+    b:'<b>'+esc(_scLbl({key:'k'}))+'</b> finds experiments, steps, notes, protocols, antibodies and freezer boxes — and still finds them with a letter wrong.'});
+  S.push({t:'Help is always here', sel:phone?function(){ return document.querySelector('#lb-tabs [data-tab="more"]')||el('lb-tabs'); }:function(){ return document.querySelector('#col-foot [data-help]')||el('col-foot'); },
+    b:'<b>'+(phone?'More → Help':'Help')+'</b> brings this tour back, explains each part, and lists every keyboard shortcut. That is the whole of it — the rest is your experiments.'});
+  return S;
+}
+function startTour(){
+  if(TOUR) endTour(true);
+  var d=_tourDoc();
+  if(!d.getElementById('lb-tour-css')){ var st=d.createElement('style'); st.id='lb-tour-css'; st.textContent=TOUR_CSS; d.head.appendChild(st); }
+  var root=d.createElement('div'); root.id='lb-tour'; root.setAttribute('role','dialog'); root.setAttribute('aria-label','Tour of Labbook');
+  root.innerHTML='<div class="lbt-hole"></div><div class="lbt-card fade"></div>';
+  d.body.appendChild(root);
+  TOUR={i:0, steps:tourSteps(), doc:d, root:root,
+        back:{node:JSON.parse(JSON.stringify(SEL.node||{kind:'home'})), page:SEL.page||null}};
+  TOUR.onKey=function(ev){ if(!TOUR) return;
+    if(ev.key==='Escape'){ ev.preventDefault(); endTour(); }
+    else if(ev.key==='ArrowRight'||ev.key==='Enter'){ ev.preventDefault(); tourGo(1); }
+    else if(ev.key==='ArrowLeft'){ ev.preventDefault(); tourGo(-1); } };
+  TOUR.onResize=function(){ _tourPlace(); };
+  document.addEventListener('keydown',TOUR.onKey,true);
+  if(d!==document) d.addEventListener('keydown',TOUR.onKey,true);
+  d.defaultView.addEventListener('resize',TOUR.onResize);
+  root.addEventListener('click',function(ev){ var b=ev.target.closest&&ev.target.closest('[data-tour]'); if(!b) return;
+    var a=b.getAttribute('data-tour'); if(a==='next') tourGo(1); else if(a==='back') tourGo(-1); else endTour(); });
+  _tourShow();
+}
+function tourGo(dir){ if(!TOUR) return; var n=TOUR.i+dir;
+  if(n>=TOUR.steps.length){ endTour(); return; } if(n<0) return;
+  TOUR.i=n; _tourShow(); }
+function _tourShow(){
+  var T=TOUR; if(!T) return;
+  var st=T.steps[T.i], card=T.root.querySelector('.lbt-card');
+  card.classList.add('fade');
+  _closeMenus&&_closeMenus();
+  try{ if(st.go) st.go(); }catch(e){}
+  var last=T.i===T.steps.length-1;
+  // Wait for the screen the step moved to: the crossfade and the enter animation take ~300 ms,
+  // and a rect measured before them points at where the thing is going to be, not where it is.
+  clearTimeout(T.t); T.t=setTimeout(function(){
+    if(TOUR!==T) return;
+    card.innerHTML='<div class="lbt-k">'+(T.i+1)+' of '+T.steps.length+'</div>'
+      +'<div class="lbt-t">'+esc(st.t)+'</div><div class="lbt-b">'+st.b+'</div>'
+      +'<div class="lbt-f"><span class="lbt-dots">'+T.steps.map(function(_,j){ return '<i'+(j===T.i?' class="on"':'')+'></i>'; }).join('')+'</span>'
+      +(last?'':'<button class="lbt-skip" data-tour="end">Skip</button>')
+      +(T.i?'<button data-tour="back">Back</button>':'')
+      +'<button class="go" data-tour="next">'+(last?'Done':(T.i?'Next':'Start'))+'</button></div>';
+    _tourPlace();
+    card.classList.remove('fade');
+    var go=card.querySelector('.go'); if(go) try{ go.focus({preventScroll:true}); }catch(e){}
+  }, st.go?380:(T.i?160:40));
+}
+function _tourPlace(){
+  var T=TOUR; if(!T) return;
+  var st=T.steps[T.i], hole=T.root.querySelector('.lbt-hole'), card=T.root.querySelector('.lbt-card');
+  var W=T.doc.defaultView, vw=W.innerWidth, vh=W.innerHeight, pad=6;
+  var r=(st.sel||st.host)?_tourTarget(st):null;
+  if(r){ hole.classList.add('on');
+    hole.style.left=(r.l-pad)+'px'; hole.style.top=(r.t-pad)+'px'; hole.style.width=(r.w+pad*2)+'px'; hole.style.height=(r.h+pad*2)+'px'; }
+  // Nothing to point at: a hole too small to see, because a box of zero size draws no shadow
+  // and the page behind the card would not be dimmed at all.
+  else { hole.classList.remove('on'); hole.style.left=(vw/2-1)+'px'; hole.style.top=(vh/2-1)+'px'; hole.style.width='2px'; hole.style.height='2px'; }
+  // Measured, then placed beside the target where there is room, clamped by its real edges —
+  // the rule every popover in this app follows.
+  var cw=card.offsetWidth||348, ch=card.offsetHeight||180, g=16, x, y;
+  if(!r){ x=(vw-cw)/2; y=(vh-ch)/2; }
+  else if(vw-(r.l+r.w)-pad>=cw+g*2){ x=r.l+r.w+pad+g; y=r.t; }
+  else if(r.l-pad>=cw+g*2){ x=r.l-pad-g-cw; y=r.t; }
+  else if(vh-(r.t+r.h)-pad>=ch+g*2){ x=r.l; y=r.t+r.h+pad+g; }
+  else if(r.t-pad>=ch+g*2){ x=r.l; y=r.t-pad-g-ch; }
+  else { x=r.l+r.w-cw-g; y=r.t+r.h-ch-g; }          // a target the size of the window: the card sits inside it, bottom right
+  x=Math.max(12,Math.min(vw-cw-12,x)); y=Math.max(12,Math.min(vh-ch-12,y));
+  // The first placement is a placement, not a journey from the corner.
+  if(!T.placed){ card.style.transition='none'; hole.style.transition='none'; }
+  card.style.left=x+'px'; card.style.top=y+'px';
+  if(!T.placed){ void card.offsetWidth; card.style.transition=''; hole.style.transition=''; T.placed=true; }
+}
+function endTour(silent){
+  var T=TOUR; if(!T) return; TOUR=null; clearTimeout(T.t);
+  try{ localStorage.setItem('lb_tour_done','1'); }catch(e){}
+  document.removeEventListener('keydown',T.onKey,true);
+  if(T.doc!==document) T.doc.removeEventListener('keydown',T.onKey,true);
+  T.doc.defaultView.removeEventListener('resize',T.onResize);
+  if(T.root.parentNode) T.root.parentNode.removeChild(T.root);
+  if(silent) return;
+  // Back where you were when it started.
+  if(T.back&&T.back.node){ SEL.node=T.back.node; SEL.page=T.back.page; renderAll(); }
+}
+// The first time, on a notebook with nothing in it yet. A notebook that already holds
+// experiments or pages is somebody who has used Labbook, on this device or on another one the
+// cloud just brought in — they are told nothing, and the tour waits under Help.
+function maybeStartTour(){
+  try{ if(localStorage.getItem('lb_tour_done')) return; }catch(e){ return; }
+  var used=Object.keys(LB.data.experiments||{}).length||Object.keys(LB.data.notebook||{}).length||Object.keys(LB.data.pages||{}).length;
+  if(used) return;
+  var tries=0;
+  (function when(){
+    tries++;
+    // Inside dHUB, only once the Labbook frame is actually on screen.
+    var shown=true; try{ if(window.frameElement){ var r=window.frameElement.getBoundingClientRect(); shown=r.width>0&&r.height>0&&window.frameElement.ownerDocument.visibilityState!=='hidden'; } }catch(e){}
+    var busy=!!document.querySelector('.modal-back.open');
+    if(shown&&!busy){ startTour(); return; }
+    if(tries<40) setTimeout(when,1500);
+  })();
 }
 function setPictureSnap(on){ try{ localStorage.setItem('lb_picture_snap',on?'1':'0'); }catch(e){} }
 // The legend is rendered FROM the same table the handler dispatches from, so it cannot describe
@@ -19818,6 +20137,8 @@ lbInitSync();
 // whatever happened to be in memory 1.5 and 4 seconds in, which on a slow first read is the
 // local cache and not the notebook. They wait now.
 _onBootSettled(function(){ setTimeout(maybeAutoBackup,1500); setTimeout(function(){ trashPurge(); gcAttachments(); },4000);
+  // After the one-time backup note (1.5 s): the tour waits for any dialog to be closed first.
+  setTimeout(maybeStartTour,2600);
   // After the GC, so _collectAttIds has settled. Quiet unless it actually uploads something.
   setTimeout(function(){ _attSweep(false); },9000); });
 setTimeout(migrateAntibodiesToLibrary,2500);

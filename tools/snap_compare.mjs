@@ -43,7 +43,7 @@ async function snap(dir) {
     const H = W <= 760 ? 780 : 900;
     const ctx = await browser.newContext({ viewport: { width: W, height: H }, hasTouch: W <= 760, isMobile: W <= 760, deviceScaleFactor: 1 });
     await ctx.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
-    await ctx.addInitScript(() => { try { localStorage.setItem('lb_backup_nudged', '1'); localStorage.setItem('lb_lean', '1'); } catch (e) {} });
+    await ctx.addInitScript(() => { try { localStorage.setItem('lb_backup_nudged', '1'); localStorage.setItem('lb_lean', '1'); localStorage.setItem('lb_tour_done', '1'); } catch (e) {} });
     const page = await ctx.newPage();
     // A fixed clock: the day plan prints wall-clock times and a timer counts down, and two
     // runs a minute apart must not differ because of it.

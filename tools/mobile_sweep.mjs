@@ -218,6 +218,7 @@ function screens(ids) {
     S('dialog-recover',  `openRecover('deleted')`, { dialog: true }),
     S('dialog-recover-backup', `openRecover('backup')`, { dialog: true }),
     S('dialog-settings', `openSettings()`, { dialog: true }),
+    S('dialog-help',     `openSettings('help')`, { dialog: true }),
     S('dialog-prep',     `openExp('${e0}'); openPrepSheet({expId:'${e0}'})`, { dialog: true, settle: 900 }),
     S('dialog-export',   `openExp('${e0}'); exportMenu()`, { dialog: true }),
     S('dialog-pdf',      `openExp('${e0}'); openPdfExport()`, { dialog: true, settle: 1200 }),
@@ -301,7 +302,7 @@ async function sweep() {
     const tag = `${W}x${H}/${theme}`;
     const ctx = await browser.newContext({ ...dev, viewport: { width: W, height: H }, colorScheme: theme === 'dark' ? 'dark' : 'light' });
     await ctx.addInitScript((t) => {
-      try { localStorage.setItem('lb_backup_nudged', '1'); localStorage.setItem('hub_theme', t); localStorage.setItem('lb_lean', '1'); } catch (e) {}
+      try { localStorage.setItem('lb_backup_nudged', '1'); localStorage.setItem('hub_theme', t); localStorage.setItem('lb_lean', '1'); localStorage.setItem('lb_tour_done', '1'); } catch (e) {}
     }, theme);
     const pg = await ctx.newPage();
     const errors = [];
