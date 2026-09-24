@@ -654,7 +654,7 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .dfx-recipe b{color:var(--good);}
 .ps-calc{margin:4px 0 6px;}.ps-calc-add{background:none;border:1px dashed var(--border2);color:#5e87c5;cursor:pointer;font-size:var(--fs-2);padding:5px 10px;border-radius:var(--r-2);font-family:var(--sans);margin:4px 0;}.ps-calc-add:hover{border-color:#5e87c5;}
 /* Experiment free canvas + collapsible dated sections */
-.exp-canvas{padding:8px 0;min-height:180px;margin:6px 0 14px;}
+.exp-canvas{padding:6px 0;min-height:52px;margin:4px 0 12px;}
 .rt[data-ph]:empty::before{content:attr(data-ph);color:var(--text3);pointer-events:none;}
 
 .nb-body,.pg-body{padding:8px 0;min-height:200px;}
@@ -1683,6 +1683,7 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .bench-row{border-top:1px solid var(--border);padding-bottom:6px;}
 .bench-row:first-child{border-top:none;}
 .bench-row.is-done{opacity:.72;}
+.bench.closed .bench-row.is-done{opacity:1;}
 .bench-row .dfx-blk-hd{padding:8px 0 0;}
 .bench-row .dfx-blk-t{font-size:var(--fs-4);color:var(--text);white-space:normal;}
 .bench-row .dfx-blk-hd .blk-done{width:28px;height:28px;font-size:var(--fs-4);}
@@ -13489,10 +13490,13 @@ var ICON_CAMERA='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 // (the same blocks as they are run). What the card had and the row did not — the calculator
 // inputs, reorder, rename, the date, delete — is under the recipe, on the grip and in the ⋯.
 // Past days that are finished start folded (BENCH_FOLD, session-only like DAY_FOLD); today is
-// open and scrolled to once per open.
+// open and scrolled to once per open. A closed experiment (done, paused, abandoned, archived)
+// folds nothing and dims nothing: it is read as a record — what was done and with what
+// numbers — and every one of its days is finished, so the fold would leave an empty page.
 function _defaultExpTab(){ return 'steps'; }
 var BENCH_FOLD={};
 function _benchFolded(e,g){ var k=e.id+':'+(g.key||''); if(BENCH_FOLD[k]!==undefined) return BENCH_FOLD[k];
+  if(expClosed(e)) return false;
   var T=todayStr(); return !!(g.key && g.key<T && g.blocks.every(function(b){ return b.done; })); }
 function stepsBodyHtml(e){
   var groups=(e.blocks&&e.blocks.length)?dayGroups(e):[], T=todayStr();
@@ -13520,7 +13524,7 @@ function stepsBodyHtml(e){
     return grp+(g.key?('<div class="bench-gap" ondragover="blkGapOver(event)" ondragleave="blkDragLeave(event)" ondrop="blkGapDrop(event,\''+esc(g.key)+'\')"><span>new day</span></div>'):'');
   }).join('');
   var add='<div class="blk-addrow" ondragover="blkEndOver(event)" ondragleave="blkDragLeave(event)" ondrop="blkDropEnd(event)"><button class="add-blk" onclick="addBlock()">+ Add step</button><button class="add-blk add-step" onclick="stepPalette()">'+tbIco(P_SEARCHPLUS,13)+' Add step from library / Archive…</button></div>';
-  return top+lead+'<div class="bench">'+(days||'<div class="exp-dated-empty">No steps yet.</div>')+'</div>'+add;
+  return top+lead+'<div class="bench'+(expClosed(e)?' closed':'')+'">'+(days||'<div class="exp-dated-empty">No steps yet.</div>')+'</div>'+add;
 }
 function benchFold(eid,key){ var e=LB.data.experiments[eid]; if(!e) return;
   var g=dayGroups(e).filter(function(x){ return (x.key||'')===key; })[0]; if(!g) return;
