@@ -10942,6 +10942,11 @@ function buildExperimentFrom(sp){
     var _hide=('setupHide' in tpl)?(tpl.setupHide||[]):(key?presetSetupHide(key):[]);
     if(_add.length) e.setupAdd=JSON.parse(JSON.stringify(_add));
     if(_hide.length) e.setupHide=_hide.slice();
+    // Which layout the plate was drawn from, so "Save as a preset" can hand it on — the plate map
+    // is the part of a run people hand-draw, and a copy that starts from a different one is not
+    // the same design.
+    var _lid=(_layout!=null&&_layout!=='')?_layout:_presetLayoutId(key);
+    if(_lid&&(wantPlate||_echo)) e.layout=_lid;
     // A 384-well Echo run gets the standard Echo layout straight away rather than a blank plate.
     if(_echo){
       e.plate=experimentPlateFor(key,type,setup,e,_echo,function(n,fmt){
@@ -18484,14 +18489,24 @@ function saveExpAsPreset(id){
       var o={dayOffset:(b.dayOffset!=null?+b.dayOffset:(b.date?daysBetween(anc,b.date):0)),
              title:b.title||'', html:(b.tpl&&b.tpl.html)||b.html||'<p></p>'};
       var pub=(b.tpl&&b.tpl.pub)||b.pub; if(pub) o.pub=pub;
-      // A wait you typed is part of the design; one that was only implied by the next step's
-      // date is not, and re-dating the new experiment would make it a lie.
-      if(b.waitOwn&&b.waitMin) o.waitMin=b.waitMin;
+      // A stored wait is part of the design — the preset's own as much as one you typed. An
+      // implied overnight is never stored (blkWait derives it from the next step's date), so it
+      // cannot leak in; only typed waits were kept, which dropped every wait a preset shipped.
+      if(b.waitMin>0){ o.waitMin=b.waitMin; if(b.waitOwn) o.waitOwn=true; }
       if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc));
       return o; }).sort(function(a,b){ return (a.dayOffset||0)-(b.dayOffset||0); });
     var p={name:nm,baseType:e.type||presetBase(e.presetKey)||'EXP',title:e.title||'',blocks:blocks};
     if(e.setup&&Object.keys(e.setup).length) p.setup=JSON.parse(JSON.stringify(e.setup));
-    if(e.plate&&Object.keys(e.plate.wells||{}).length) p.plateOn=true;
+    // What the run was asked and what it is: the questions its design added or hid, the layout
+    // its plate came from, whether it has a plate, whether it is a blank page.
+    var add=Array.isArray(e.setupAdd)?e.setupAdd:(e.presetKey?presetSetupAdd(e.presetKey):[]);
+    var hide=Array.isArray(e.setupHide)?e.setupHide:(e.presetKey?presetSetupHide(e.presetKey):[]);
+    if(add.length) p.setupAdd=JSON.parse(JSON.stringify(add));
+    if(hide.length) p.setupHide=hide.slice();
+    var lay=e.layout||(e.presetKey?_presetLayoutId(e.presetKey):null);
+    if(lay) p.layout=lay;
+    p.plateOn=!!e.plate;
+    if(e.blank) p.blank=true;
     undoMark('Save as a preset',['presets']);
     LB.data.presets[key]=p; save();
     toast('Saved as \u201c'+nm+'\u201d \u2014 it is in the New-experiment list');

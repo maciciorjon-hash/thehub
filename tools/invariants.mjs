@@ -42,6 +42,9 @@
 //                            typing keeps the focus, and what was typed is what the form holds.
 //                            (the preset editor redrew on every keystroke; its lists went to
 //                            the quick window)
+//   I19 record → preset      Save an experiment as a preset, create from that preset: the same
+//       → record             steps, setup, questions and plate. (its own parameters and "blank"
+//                            were dropped on the way)
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
 //                            dialog, the Journal, Visualize, the Designer — keeps the caret
@@ -745,6 +748,38 @@ async function suite(opts) {
       if (e) { openSetupEditor(e.id);
         if (el('es-modal').classList.contains('open')) await typeInto('#es-fields', key, 'Edit setup', () => ES_SETUP || {});
         closeSetupEditor(); cleanup(e); }
+    });
+  }
+
+  // ── I19 experiment → preset → experiment ──
+  if (run('I19')) {
+    for (const key of KEYS) await guard('I19', key, async () => {
+      tick('I19');
+      designFrom(key, {});
+      DS.setupAdd = (DS.setupAdd || []).concat([{ f: 'invOwn', t: 'txt', lbl: 'INV own', d: 'INV-DEF', custom: true }]);
+      DS.setup.invOwn = 'INV-19';
+      if (DS.mods[0]) dsSetHtml(0, (DS.mods[0].html || '') + '<p>Own: {{invOwn}}</p>');
+      const A = await created(() => dsCreate()); dsClose();
+      if (!A) { bad('I19', key, 'creation failed'); return; }
+      const pr0 = window.lbPrompt, before = new Set(Object.keys(LB.data.presets));
+      window.lbPrompt = () => Promise.resolve('INV19 ' + key);
+      try { saveExpAsPreset(A.id); await sleep(40); } finally { window.lbPrompt = pr0; }
+      const nk = Object.keys(LB.data.presets).find(k => !before.has(k));
+      if (!nk) { bad('I19', key, 'saveExpAsPreset made no preset'); cleanup(A); return; }
+      try {
+        const qa = expSetupFields(A).map(f => f.f).sort().join(','), qb = setupFieldsFor(nk).map(f => f.f).sort().join(',');
+        if (qa !== qb) bad('I19', key, `the preset asks [${qb}], the experiment was asked [${qa}]`);
+        if (!!A.blank !== !!LB.data.presets[nk].blank) bad('I19', key, 'the preset lost what kind of page it is (blank)');
+        designFrom(nk, {});
+        const B = await created(() => dsCreate()); dsClose();
+        if (!B) bad('I19', key, 'creation from the saved preset failed');
+        else {
+          diffBlocks('I19', key, A.blocks, B.blocks, 'experiment', 'from its preset');
+          if (J(A.setup) !== J(B.setup)) bad('I19', key, `setup: ${String(J(A.setup)).slice(0, 140)} vs ${String(J(B.setup)).slice(0, 140)}`);
+          if (plateSig(A.plate) !== plateSig(B.plate)) bad('I19', key, `plate differs — ${plateDiff(A.plate, B.plate)}`);
+          cleanup(B);
+        }
+      } finally { delete LB.data.presets[nk]; cleanup(A); }
     });
   }
 
