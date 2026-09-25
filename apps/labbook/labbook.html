@@ -17355,25 +17355,23 @@ function dsTypeHtml(){
 // The designs a run can start from, right on the first screen. It used to be one underlined
 // link to a flat picker with no way to tell the app's defaults from the lab's own.
 function dsDesignsHtml(){
+  return '<div class="ds-dsgs"><div class="ds-dsgs-hd"><span class="ds-flbl">…or start from a design</span>'
+    +'<span id="ds-pfc">'+presetFilterChips(DS_PF,'dsSetPF')+'</span></div>'
+    +'<input class="ds-search" id="ds-dq" placeholder="Search designs — name, type or a step…" autocomplete="off" value="'+esc(DS_PQ)+'" oninput="DS_PQ=this.value;dsDesignsRefresh()">'
+    +'<div class="ds-dsg-list" id="ds-dsg-list">'+_dsDesignRows()+'</div></div>';
+}
+function _dsDesignRows(){
   var D=DS, keys=presetFilterKeys(DS_PF, DS_PQ);
   var rows=keys.map(function(k){ var p=LB.data.presets[k]||{}, bl=p.blocks||[];
     var dd=bl.reduce(function(a,b){ return Math.max(a,+b.dayOffset||0); },0);
     return '<button type="button" class="ds-dsg'+(D.presetKey===k?' on':'')+'" onclick="dsLoadPreset(\''+esc(k)+'\')">'
       +'<span class="k">'+esc(presetBase(k))+'</span><span class="n">'+esc(p.name||k)+'</span>'
       +'<span class="m">'+bl.length+' step'+(bl.length===1?'':'s')+' · '+(dd+1)+' day'+(dd?'s':'')+'</span>'+presetBadge(k)+'</button>'; }).join('');
-  return '<div class="ds-dsgs"><div class="ds-dsgs-hd"><span class="ds-flbl">…or start from a design</span>'
-    +presetFilterChips(DS_PF,'dsSetPF')+'</div>'
-    +'<input class="ds-search" id="ds-pq" placeholder="Search designs — name, type or a step…" autocomplete="off" value="'+esc(DS_PQ)+'" oninput="DS_PQ=this.value;dsDesignsRefresh()">'
-    +'<div class="ds-dsg-list" id="ds-dsg-list">'+(rows||'<div class="ds-none">'+(DS_PF==='user'?'No designs of your own yet — build one here and press <b>Save as a design</b>.':'Nothing matches.')+'</div>')+'</div></div>';
+  return rows||'<div class="ds-none">'+(DS_PF==='user'?'No designs of your own yet — build one here and press <b>Save as a design</b>.':'Nothing matches.')+'</div>';
 }
-function dsSetPF(f){ _setPF(f); dsDesignsRefresh(); }
-function dsDesignsRefresh(){
-  var host=el('ds-body'); if(!host||!DS) return;
-  var box=host.querySelector('.ds-dsgs'); if(!box) return;
-  var q=el('ds-pq'), had=q&&document.activeElement===q, pos=had?q.selectionStart:0;
-  box.outerHTML=dsDesignsHtml();
-  if(had){ var n=el('ds-pq'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(e){} } }
-}
+function dsSetPF(f){ _setPF(f); var c=el('ds-pfc'); if(c) c.innerHTML=presetFilterChips(DS_PF,'dsSetPF'); dsDesignsRefresh(); }
+// The list, never the box being typed in.
+function dsDesignsRefresh(){ var l=el('ds-dsg-list'); if(l&&DS) l.innerHTML=_dsDesignRows(); }
 function dsFilter(q,sel){
   q=String(q||'').toLowerCase().trim();
   Array.prototype.forEach.call(document.querySelectorAll('#ds-body '+sel),function(n){
@@ -17523,7 +17521,7 @@ function dsParamDlg(idx){
   var kind=cur?cur.t:'num';
   card.innerHTML='<div class="modal-t">'+(cur?'Edit the parameter':'Add a parameter')+'</div>'
     +'<div class="mrow"><label>Question <span class="nm-lbl-sub">what the form asks — put the unit in brackets</span></label>'
-    +'<input id="dsp-l" placeholder="e.g. Primary antibody dilution, Incubation (°C)" value="'+esc(cur?cur.lbl:'')+'"></div>'
+    +'<input id="dsp-l" placeholder="e.g. Antibody dilution" value="'+esc(cur?cur.lbl:'')+'"></div>'
     +'<div class="ds-grid">'
     +'<div class="mrow"><label>Kind of answer</label><select id="dsp-t">'+DS_PARAM_KINDS.map(function(x){ return '<option value="'+x[0]+'"'+(x[0]===kind?' selected':'')+'>'+x[1]+'</option>'; }).join('')+'</select></div>'
     +'<div class="mrow" id="dsp-d-row"><label>Default answer <span class="nm-lbl-sub">optional</span></label><input id="dsp-d"></div>'

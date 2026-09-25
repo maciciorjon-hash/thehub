@@ -557,7 +557,7 @@ async function suite(opts) {
       && !n.disabled && n.offsetParent !== null && !n.closest('.cv');
     for (const key of KEYS) await guard('I12', key, async () => {
       designFrom(key, {});
-      const screens = [[1, 0]].concat(DS.mods.map((m, i) => [3, i])).concat([[4, 0]]);
+      const screens = [[0, 0], [1, 0]].concat(DS.mods.map((m, i) => [3, i])).concat([[4, 0]]);
       for (const [step, cur] of screens) {
         DS.step = step; DS.cur = cur; dsDraw();
         const boxes = [...document.querySelectorAll('#ds-body input, #ds-body textarea, #ds-body [contenteditable="true"]')].filter(isBox);

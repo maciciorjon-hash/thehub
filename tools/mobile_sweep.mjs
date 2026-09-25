@@ -176,6 +176,16 @@ function screens(ids) {
     S('designer-config', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.step=3; DS.cur=1; dsDraw()`),
     S('designer-review', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.step=4; dsDraw()`),
     S('designer-picker', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); DS.step=2; dsDraw(); dsPick()`, { menu: true }),
+    // What the 2026-09-25 pass added: the designs on the first screen, your own parameters, the
+    // plate options, the module menu and the two dialogs, the filters on the surface.
+    S('designer-designs', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); var n=document.querySelector('.ds-dsgs'); if(n) n.scrollIntoView()`),
+    S('designer-own-params', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.setupAdd.push({f:'abDil',t:'txt',lbl:'Antibody dilution',d:'1:1000',custom:true}); DS.setup.abDil='1:1000'; DS.plate=true; DS.step=1; dsDraw()`),
+    S('designer-param-dlg', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.step=1; dsDraw(); dsParamDlg()`),
+    S('designer-repeat-dlg', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.step=2; dsDraw(); dsRepeat(0)`),
+    S('designer-mod-menu', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.step=2; dsDraw(); dsModMenu({clientX:200,clientY:300,preventDefault:function(){},stopPropagation:function(){}},1)`, { menu: true }),
+    S('designer-config-own', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.setupAdd.push({f:'abDil',t:'txt',lbl:'Antibody dilution',d:'1:1000',custom:true}); DS.step=3; DS.cur=0; dsDraw()`),
+    S('designer-review-reps', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.reps=3; DS.step=4; dsDraw()`),
+    S('designer-filtered', `selectNode('design'); _setPF('default'); renderAll()`),
     S('visualize-drill', `selectNode('viz'); var m=document.querySelector('.vz-seg[data-go]'); if(!m) throw new Error('n/a'); vizGo(m.getAttribute('data-go'))`, { optional: true, settle: 600 }),
     S('exp-default',     `openExp('${e0}')`),
     S('exp-steps',       `openExp('${e0}'); expTab('steps')`),
