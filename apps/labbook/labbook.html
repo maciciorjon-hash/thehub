@@ -16970,10 +16970,22 @@ function _dsModOwnText(m){
 }
 function dsTemplate(D,forRun){
   var days=dsDays(D);
+  // Only the answers that differ from the defaults are the design's: storing every default froze
+  // today's values into it, so a corrected default never reached a design saved before — the rule
+  // the preset editor has followed since it had a setup panel. The run itself is built from
+  // D.setup, whole; this is only what a saved design remembers.
+  // An answer the design it came from pinned, or one you touched, is kept even when it equals
+  // today's default — that is a decision, and it must not move if the default does.
+  var base={}; dsFields(D).forEach(function(f){ base[f.f]=f.d; });
+  var srcP=D.presetKey?(LB.data.presets[D.presetKey]||{}):{}, pinned=srcP.setup||{}, touched=D.setupTouched||{};
+  var own={}; Object.keys(D.setup||{}).forEach(function(k){
+    if(!(k in base)) return;
+    if(String(D.setup[k])!==String(base[k]==null?'':base[k]) || (k in pinned) || touched[k]) own[k]=JSON.parse(JSON.stringify(D.setup[k])); });
+  var plPinned=(srcP.plateOn!=null);
   return { name:(D.name||'').trim()||(D.title||'').trim()||semanticExperimentTitle(D.type),
            baseType:D.type, title:(D.title||'').trim(),
-           setup:JSON.parse(JSON.stringify(D.setup||{})),
-           plateOn:!!D.plate,
+           setup:Object.keys(own).length?own:undefined,
+           plateOn:(plPinned||!!D.plate!==!!setupSchema(D.type).plateOn)?!!D.plate:undefined,
            // What a curated preset declares about its OWN parameters, carried so a design saved
            // from one can still reproduce it. Saving the SPARK screen used to drop `layout`
            // (the plate map that is the experiment), `setupAdd` (the four questions the layout

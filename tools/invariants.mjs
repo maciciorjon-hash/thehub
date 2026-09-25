@@ -45,6 +45,9 @@
 //   I19 record → preset      Save an experiment as a preset, create from that preset: the same
 //       → record             steps, setup, questions and plate. (its own parameters and "blank"
 //                            were dropped on the way)
+//   I20 open + save = same  Opening a design and saving it untouched changes nothing, in the
+//                            Designer and in the preset editor. (the Designer froze every
+//                            default answer into the design)
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
 //                            dialog, the Journal, Visualize, the Designer — keeps the caret
@@ -780,6 +783,26 @@ async function suite(opts) {
           cleanup(B);
         }
       } finally { delete LB.data.presets[nk]; cleanup(A); }
+    });
+  }
+
+  // ── I20 open a design, save it untouched: nothing changes ──
+  if (run('I20')) {
+    const pdiff = (a, b, path, out) => { if (J(a) === J(b)) return out;
+      if (a && b && typeof a === 'object' && typeof b === 'object') { new Set([...Object.keys(a), ...Object.keys(b)]).forEach(k => pdiff(a[k], b[k], path + '.' + k, out)); return out; }
+      out.push(`${path}: ${String(J(a)).slice(0, 80)} → ${String(J(b)).slice(0, 80)}`); return out; };
+    for (const k of KEYS) await guard('I20', k, async () => {
+      const key = '__INV20_' + k.replace(/\W/g, '_'), orig = JSON.parse(JSON.stringify(LB.data.presets[k])); delete orig._seedSig;
+      try {
+        tick('I20');
+        LB.data.presets[key] = JSON.parse(JSON.stringify(orig));
+        openPresetEditorFor(key); peSave(); await sleep(10);
+        pdiff(orig, LB.data.presets[key], 'preset', []).forEach(d => bad('I20', k, `preset editor, saved untouched: ${d}`));
+        tick('I20');
+        LB.data.presets[key] = JSON.parse(JSON.stringify(orig));
+        dsOpen({ mode: 'preset', presetKey: key }); dsSavePreset(true); await sleep(10);
+        pdiff(orig, JSON.parse(JSON.stringify(LB.data.presets[key])), 'preset', []).forEach(d => bad('I20', k, `Designer, saved untouched: ${d}`));
+      } finally { delete LB.data.presets[key]; try { dsClose(); closePresetEditor(); } catch (x) {} }
     });
   }
 
