@@ -38,6 +38,10 @@
 //   I16 answers = stored     Every parameter typed on the Designer's parameters screen, through
 //                            its own event, is the value the record's setup carries. (the
 //                            Compounds list went into the quick window's state)
+//   I17 every setup form     The same, for the quick window, Edit setup and the preset editor:
+//                            typing keeps the focus, and what was typed is what the form holds.
+//                            (the preset editor redrew on every keystroke; its lists went to
+//                            the quick window)
 //
 //   Report and exports — one experiment per preset, dressed with marked content:
 //   R1 Report = record, live  Every section carries what the record holds, a change reaches it
@@ -663,6 +667,7 @@ async function suite(opts) {
         else if (n.tagName === 'TEXTAREA') { n.value = 'INV-A\nINV-B'; want[k] = n.value; n.dispatchEvent(new Event('input', { bubbles: true })); }
         else if (n.type === 'number') { const v = 7 + done.size; n.value = String(v); want[k] = v; n.dispatchEvent(new Event('input', { bubbles: true })); }
         else { n.value = 'INV-' + k; want[k] = n.value; n.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (String(DS.setup[k]) !== String(want[k])) bad('I16', key, `parameter "${k}" typed as ${J(want[k])}, the draft holds ${J(DS.setup[k])} until something else is touched`);
       }
       const e = await created(() => dsCreate()); dsClose();
       if (!e) { bad('I16', key, 'creation failed'); return; }
@@ -671,6 +676,48 @@ async function suite(opts) {
         if (String(e.setup[k]) !== String(want[k])) bad('I16', key, `parameter "${k}" typed as ${J(want[k])}, stored as ${J(e.setup[k])}`);
       });
       cleanup(e);
+    });
+  }
+
+  // ── I17 every setup form: focus kept, typed = held ──
+  if (run('I17')) {
+    async function typeInto(hostSel, cs, tag, hold) {
+      const want = {}, done = new Set();
+      for (let g = 0; g < 60; g++) {
+        const host = document.querySelector(hostSel); if (!host) { bad('I17', cs, `${tag}: no form`); return; }
+        const n = [...host.querySelectorAll('[data-sf]')].find(x => !done.has(x.getAttribute('data-sf')) && x.offsetParent !== null);
+        if (!n) break;
+        const k = n.getAttribute('data-sf'); done.add(k);
+        if (k === 'format' || k === 'cellLine') continue;
+        tick('I17');
+        if (n.type === 'checkbox') { n.checked = !n.checked; want[k] = n.checked; n.dispatchEvent(new Event('change', { bubbles: true })); continue; }
+        if (n.tagName === 'SELECT') { const o = n.options[n.options.length - 1]; n.value = o.value; want[k] = o.value; n.dispatchEvent(new Event('change', { bubbles: true })); continue; }
+        n.focus();
+        if (n.tagName === 'TEXTAREA') { n.value = 'INV-A\nINV-B'; want[k] = n.value; }
+        else if (n.type === 'number') { const v = 5 + done.size; n.value = String(v); want[k] = v; }
+        else { n.value = 'INV-' + k; want[k] = n.value; }
+        n.dispatchEvent(new Event('input', { bubbles: true }));
+        if (!n.isConnected || document.activeElement !== n) bad('I17', cs, `${tag}: typing into "${k}" took the focus away`);
+        // Checked at once, not only at the end: a later box re-reading the whole form hides a box
+        // that never stored itself — which is exactly what hid the preset editor's list fields.
+        const now = hold();
+        if (String(now[k]) !== String(want[k])) bad('I17', cs, `${tag}: "${k}" typed as ${J(want[k])}, the form holds ${J(now[k])} until something else is touched`);
+      }
+      const st = hold();
+      Object.keys(want).forEach(k => { if (!document.querySelector(`${hostSel} [data-sf="${k}"]`)) return;
+        if (String(st[k]) !== String(want[k])) bad('I17', cs, `${tag}: "${k}" typed as ${J(want[k])}, the form holds ${J(st[k])}`); });
+    }
+    for (const key of KEYS) await guard('I17', key, async () => {
+      openQuick(key, {}); nmSetup();
+      await typeInto('#nm-setup', key, 'quick window', () => NM_SETUP || {});
+      closeNew();
+      openPresetEditorFor(key);
+      await typeInto('#pe-setup', key, 'preset editor', () => Object.assign({}, setupDefaultsFor(key), PE.work.setup || {}));
+      closePresetEditor();
+      openQuick(key, {}); const e = await created(() => createExperiment()); closeNew();
+      if (e) { openSetupEditor(e.id);
+        if (el('es-modal').classList.contains('open')) await typeInto('#es-fields', key, 'Edit setup', () => ES_SETUP || {});
+        closeSetupEditor(); cleanup(e); }
     });
   }
 

@@ -3053,7 +3053,7 @@ var PRESET_SEED={
     {d:4,title:'Image',pub:'Band intensities were quantified and normalised to {{loadCtrl}}.',html:'<ol><li>Image.</li></ol><p><b>Results</b></p><p></p>'}]},
   HB:{title:'HiBiT degradation',blocks:[
     {d:0,title:'Seeding',calc:{kind:'seed',inputs:{cellLine:'HEK293',cellsPerWell:3000,volPerWell:30,format:'384',nPlates:1,excess:1.5}},pub:'{{cellLine}} cells were seeded in {{format}}-well plates and left overnight.',html:'<ol><li>Count the cells and dilute the suspension to {{c.density}} &mdash; {{c.totalVol}} for {{c.wells}}.</li><li>Add {{c.volPerWell}} of the suspension to each well ({{c.cellsPerWell}}) into the {{format}}-well plate(s).</li><li>Incubate overnight at 37 &deg;C.</li></ol>'},
-    {d:1,title:'Compound addition',pub:'Compounds were added by {{dosing}}, keeping DMSO at or below 0.25%, and cells were treated for {{treatH}} h.',html:'<ol><li>Compound addition &mdash; {{dosing}}.</li><li>Echo: picklist <code>&lt;code&gt;_Picklist.csv</code>, DMSO &le; 0.25%. Manual: 1000&times; DMSO stocks &rarr; 10&times; in medium &rarr; add 1/10 volume.</li><li>Incubate {{treatH}} h &mdash; note the start time.</li></ol>'},
+    {d:1,title:'Compound addition',pub:'Compounds were added keeping DMSO at or below 0.25%, and cells were treated for {{treatH}} h.',html:'<ol><li>Compound addition &mdash; {{dosing}}.</li><li>Echo: picklist <code>&lt;code&gt;_Picklist.csv</code>, DMSO &le; 0.25%. Manual: 1000&times; DMSO stocks &rarr; 10&times; in medium &rarr; add 1/10 volume.</li><li>Incubate {{treatH}} h &mdash; note the start time.</li></ol>'},
     {d:1,title:'HiBiT Lytic + read',w:10,calc:{kind:'lytic',inputs:{format:'384',nPlates:1,cellVolPerWell:30,ratio:2,lgbitDil:100,subDil:50,excess:1.1}},pub:'Luminescence was read on a BMG PHERAstar at 0.2 s per well, normalised to the DMSO control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>.',html:'<ol><li>Make the lytic reagent: {{c.bufferUL}} buffer + {{c.lgbitUL}} LgBiT ({{c.lgbitDil}}) + {{c.substrateUL}} substrate ({{c.substrateDil}}). Mix gently &mdash; do not vortex.</li><li>Add {{c.addPerWell}} per well ({{c.ratio}} reagent : cells).</li><li>Shake at 300 rpm for 1 min, then 10 min at room temperature.</li><li>Read on the PHERAstar, 0.2 s per well; save the data.</li></ol>'},
     {d:1,title:'Results',html:'<p><b>Results</b></p><p></p>'}]},
   CTG:{title:'Cell viability',blocks:[
@@ -3359,6 +3359,7 @@ var EXTRA_PRESET_SEED={
 // The plate assays lead with Format so 96 vs 384 is the very first thing you pick.
 // Undefined is yes: every CTG experiment created before this question existed was one.
 function _whenCtgDose(su){ return su.doseResp!==false; }
+function _whenManual(su){ return su.dosing==='Manual (serial dilution)'; }
 var SETUP_SCHEMA={
   WB:{plate:true,plateOn:false,fields:[
     {f:'format',t:'format',lbl:'Format',d:'96',opts:['96','12','6']},
@@ -3366,15 +3367,32 @@ var SETUP_SCHEMA={
     {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:20000},
     {f:'nPlates',t:'num',lbl:'# plates',d:4},
     {f:'treatH',t:'num',lbl:'Treatment (h)',d:6,wait:1},
+    {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel'},
+    {f:'concs',t:'txt',lbl:'Concentrations (nM)',d:'',ph:'e.g. 1, 10, 100, 1000'},
+    {f:'vehicle',t:'txt',lbl:'Vehicle',d:'DMSO',hint:'What the compounds are dissolved in, and what the control wells get instead of compound.'},
+    {f:'vehiclePct',t:'num',lbl:'Vehicle, final (%)',d:'',step:'0.05',hint:'The final concentration in the well \u2014 e.g. 0.1 for a 1000\u00d7 stock. Leave empty if it varies.'},
     {f:'targets',t:'txt',lbl:'Targets',d:'BRD4, BRD3, BRD2'},
-    {f:'loadCtrl',t:'txt',lbl:'Loading control',d:'α-Tubulin'}]},
+    {f:'loadCtrl',t:'txt',lbl:'Loading control',d:'α-Tubulin'},
+    {f:'abDil',t:'txt',lbl:'Primary antibody dilutions',d:'',ph:'e.g. BRD4 1:1000, α-Tubulin 1:5000'}],
+    // The plate layout names the compounds; a Methods paragraph does not list twenty codes.
+    pubSkip:['compounds']},
   HB:{plate:true,plateOn:true,fields:[
     {f:'format',t:'format',lbl:'Format',d:'384',opts:['384','96']},
     {f:'cellLine',t:'cellline',lbl:'Cell line',d:'HEK293'},
     {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:3000},
     {f:'nPlates',t:'num',lbl:'# plates',d:1},
     {f:'treatH',t:'num',lbl:'Treatment (h)',d:6,wait:1},
-    {f:'dosing',t:'select',lbl:'Compound addition',d:'Echo',opts:['Echo','Manual (serial dilution)']}]},
+    {f:'dosing',t:'select',lbl:'Compound addition',d:'Echo',opts:['Echo','Manual (serial dilution)']},
+    // By hand there is no picklist to say what the series was, so the series is asked. With
+    // the Echo the gradient is the picklist's and these would be a second, disagreeing copy.
+    {f:'topConc',t:'num',lbl:'Top conc (nM)',d:1000,when:_whenManual},
+    {f:'df',t:'num',lbl:'Dilution factor',d:3,when:_whenManual},
+    {f:'nPoints',t:'num',lbl:'# dose points',d:10,when:_whenManual},
+    {f:'nReps',t:'num',lbl:'Technical replicates',d:2,when:_whenManual},
+    {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel'},
+    {f:'vehicle',t:'txt',lbl:'Vehicle',d:'DMSO',hint:'What the compounds are dissolved in, and what the control wells get instead of compound.'},
+    {f:'vehiclePct',t:'num',lbl:'Vehicle, final (%)',d:'',step:'0.05',hint:'The final concentration in the well \u2014 e.g. 0.1 for a 1000\u00d7 stock. Leave empty if it varies.'},],
+    pubSkip:['compounds','nReps']},
   CTG:{plate:true,plateOn:true,fields:[
     {f:'format',t:'format',lbl:'Format',d:'96',opts:['96','384']},
     {f:'cellLine',t:'cellline',lbl:'Cell line',d:'SUDHL5'},
@@ -3382,12 +3400,14 @@ var SETUP_SCHEMA={
     {f:'nPlates',t:'num',lbl:'# plates',d:4},
     {f:'doseResp',t:'check',lbl:'Dose\u2013response series',d:true,
      hint:'Off for a fixed-concentration run. The four questions below only exist because this is on; with it off they are not asked, and nothing about the series reaches the Methods.'},
-    {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel',when:_whenCtgDose,
+    {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel',when:_whenCtgDose,plates:true,
      hint:'What is being dosed, one per line. How many there are is what decides how many plates the run needs: a plate holds as many compounds as its rows and points allow, and each readout is its own copy of every plate. The names go onto the wells, so the plate map, the layout summary, the prep sheet and Cmd+K all read them.'},
     {f:'topConc',t:'num',lbl:'Top conc (nM)',d:1000,when:_whenCtgDose},
     {f:'df',t:'num',lbl:'Dilution factor',d:4,when:_whenCtgDose},
     {f:'nPoints',t:'num',lbl:'# dose points',d:11,when:_whenCtgDose},
     {f:'nReps',t:'num',lbl:'Technical replicates',d:2,when:_whenCtgDose},
+    {f:'vehicle',t:'txt',lbl:'Vehicle',d:'DMSO',hint:'What the compounds are dissolved in, and what the control wells get instead of compound.'},
+    {f:'vehiclePct',t:'num',lbl:'Vehicle, final (%)',d:'',step:'0.05',hint:'The final concentration in the well \u2014 e.g. 0.1 for a 1000\u00d7 stock. Leave empty if it varies.'},
     {f:'timepoints',t:'txt',lbl:'Readouts (h)',d:'24+72',hint:'Hours after compound addition \u2014 e.g. 24+72, or 24, 48, 72. Each one becomes its own dated readout.'}],
     // The readout blocks say when they were read, so the setup line does not have to.
     pubSkip:['timepoints','nReps'],
@@ -3455,10 +3475,17 @@ var SETUP_SCHEMA={
     {f:'cellsPerWell',t:'num',lbl:'Cells / well',d:20000},
     {f:'nPlates',t:'num',lbl:'# plates',d:2},
     {f:'runMin',t:'num',lbl:'Kinetic run (min)',d:900},
-    {f:'intervalMin',t:'num',lbl:'Read interval (min)',d:5}]},
+    {f:'intervalMin',t:'num',lbl:'Read interval (min)',d:5},
+    {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel'},
+    {f:'vehicle',t:'txt',lbl:'Vehicle',d:'DMSO',hint:'What the compounds are dissolved in, and what the control wells get instead of compound.'},
+    {f:'vehiclePct',t:'num',lbl:'Vehicle, final (%)',d:'',step:'0.05',hint:'The final concentration in the well \u2014 e.g. 0.1 for a 1000\u00d7 stock. Leave empty if it varies.'},],
+    pubSkip:['compounds']},
   RTX:{plate:true,plateOn:false,fields:[
     {f:'format',t:'format',lbl:'Format',d:'12',opts:['12','6','24','96']},
     {f:'cellLine',t:'cellline',lbl:'Cell line',d:'HEK293'},
+    // setupPlasmids reads `plasmid`, so the record's plasmids, the header, Cmd+K and the prep
+    // sheet's freezer lookup all get it — and nothing had asked for it.
+    {f:'plasmid',t:'txt',lbl:'Plasmid',d:'',ph:'the construct you transfect'},
     {f:'dnaNg',t:'num',lbl:'DNA / well (ng)',d:800},
     {f:'fugeneRatio',t:'num',lbl:'FuGENE : DNA',d:3},
     {f:'endpointD',t:'num',lbl:'Endpoint (days)',d:2}]},
@@ -3479,7 +3506,8 @@ var SETUP_SCHEMA={
    // levels" across the wells they occupy. Repeating them as "# concentrations 7; Technical
    // replicates 2" is the form dump _pubSetupText exists to stop.
    pubSkip:['nCompounds','nConc','nReps']},
-  PR:{plate:false,fields:[
+  PR:{plate:false,pubSkip:['samples'],fields:[
+    {f:'samples',t:'list',lbl:'Samples',d:'',ph:'One per line \u2014 condition, replicate, what the tube says'},
     {f:'nSamples',t:'num',lbl:'# samples',d:12},
     {f:'proteinUg',t:'num',lbl:'Protein / sample (µg)',d:50},
     {f:'trypsinRatio',t:'num',lbl:'Trypsin 1:X',d:20},
@@ -7609,7 +7637,7 @@ function _seedPresetsInner(){
   // you have changed is left alone. (This upgrade itself is still a blunt refresh — no built-in
   // can have been edited through the new field before the field existed — and it is what stamps
   // the signatures that make every later bump safe.)
-  var upgrade=!LB.data._presetV17;
+  var upgrade=!LB.data._presetV18;
   EXP_TYPES.forEach(function(t){
     var cur=LB.data.presets[t.id];
     var edited = cur && cur._seedSig && cur._seedSig!==_presetSig(cur);
@@ -7623,7 +7651,7 @@ function _seedPresetsInner(){
       if(!cur._seedSig) cur._seedSig=_presetSig(cur);   // stamp what is there, whatever it is
     }
   });
-  if(upgrade) LB.data._presetV17=true;
+  if(upgrade) LB.data._presetV18=true;
   // The one-time flag meant a preset added later could never reach an existing notebook. The
   // inner check is what makes this safe to run every load: it only fills in what is missing and
   // never touches a preset you have edited.
@@ -10136,6 +10164,9 @@ function _pubText(html){
 // not a Methods section. The keys are the same across every experiment type in SETUP_SCHEMA,
 // so the common ones get a real sentence and anything else still appears — a setup value that
 // silently vanishes from the Methods is worse than a clumsy clause.
+// A menu option is not a phrase: "added by Manual (serial dilution)" is the select pasted into a
+// sentence.
+function _dosingSpoken(v){ return ({'Echo':'acoustic dispensing (Labcyte Echo)','Manual (serial dilution)':'manual serial dilution'})[v]||String(v); }
 function _pubSetupText(e, said){
   if(!e||!e.setup) return '';
   said=String(said||'');
@@ -10177,15 +10208,26 @@ function _pubSetupText(e, said){
     var d='Compounds were dosed from '+nfmt(take('topConc'))+' nM';
     if(has('df')) d+=' in '+nfmt(take('df'))+'-fold steps';
     if(has('nPoints')) d+=' over '+nfmt(take('nPoints'))+' points';
-    if(has('dosing')) d+=' ('+take('dosing')+')';
+    if(has('dosing')) d+=' by '+_dosingSpoken(take('dosing'));
     out.push(d+'.');
   } else if(has('topConc')){ used.topConc=1; used.df=1; used.nPoints=1; used.dosing=1;
-  } else if(has('dosing')){ if(said_(v.dosing)) used.dosing=1;
-    else out.push('Compound was added by '+take('dosing')+'.'); }
+  } else if(has('dosing')){ if(said_(v.dosing)||said_(_dosingSpoken(v.dosing))) used.dosing=1;
+    else out.push('Compounds were added by '+_dosingSpoken(take('dosing'))+'.'); }
   if(has('targets') && !said_(v.targets)) out.push('Membranes were probed for '+take('targets')
     +(has('loadCtrl')?(', with '+take('loadCtrl')+' as loading control'):'')+'.');
   else if(has('loadCtrl') && !said_(v.loadCtrl)) out.push(take('loadCtrl')+' was used as loading control.');
   if(has('targets')) used.targets=1; if(has('loadCtrl')) used.loadCtrl=1;
+  if(has('abDil')){ used.abDil=1; if(!said_(v.abDil)) out.push('Primary antibodies were used at '+v.abDil+'.'); }
+  if(has('concs')){ used.concs=1; if(!said_(v.concs)) out.push('Compounds were tested at '+String(v.concs).replace(/\s*nM\s*$/i,'')+' nM.'); }
+  if(has('plasmid')){ used.plasmid=1; if(!said_(v.plasmid)) out.push('Cells were transfected with '+v.plasmid+'.'); }
+  if(has('vehicle')||has('vehiclePct')){
+    used.vehicle=1; used.vehiclePct=1;
+    var vn=has('vehicle')?String(v.vehicle):'Vehicle', vp=has('vehiclePct')?(nfmt(+v.vehiclePct)+'%'):'';
+    // DMSO is named in half the Methods sentences already; the sentence is only worth its
+    // place when it adds the percentage, or names a vehicle nothing else did.
+    if(!(said_(vn)&&(!vp||said_(vp))))
+      out.push(vn+(vp?(' ('+vp+' final)'):'')+' was used as the vehicle control.');
+  }
   var rest=[];
   (S.fields||[]).forEach(function(f){
     // A tick adds nothing: the step it switches on is either in the Methods or it is not.
@@ -10526,6 +10568,8 @@ function _setupPlatesNote(su,upd){
       : '')+'</div>';
 }
 function _setupApplyPlates(upd){
+  if(upd==='peSetupUpd'){ var cur=Object.assign({}, setupDefaultsFor(PE.type), PE.work.setup||{}), S0=platesSuggested(cur);
+    if(S0){ PE.work.setup=PE.work.setup||{}; PE.work.setup.nPlates=S0.plates; peDraw(); } return; }
   var su=_setupSrc(upd); if(!su) return;
   var S=platesSuggested(su); if(!S) return;
   su.nPlates=S.plates;
@@ -10541,13 +10585,18 @@ function _setupApplyPlates(upd){
 // window had been used earlier in the session they landed in its stale state instead.
 function _setupSrc(upd){ return upd==='esSetupUpd'?ES_SETUP:(upd==='dsSetupUpd'?(DS&&DS.setup):NM_SETUP); }
 function _setupListUpd(node,upd){
+  // The preset editor keeps only what differs from the defaults, and its reader does that.
+  if(upd==='peSetupUpd'){ peSetupUpd(); var ln=node.closest('.sf-list'), cn=ln&&ln.querySelector('.sf-n');
+    if(cn){ var c0=_setupList(node.value).length; cn.textContent=c0?c0:''; } return; }
   var su=_setupSrc(upd); if(!su||!node) return;
   var k=node.getAttribute('data-sf');
   su[k]=node.value;
   if(upd==='dsSetupUpd'&&DS){ DS.setupTouched=DS.setupTouched||{}; DS.setupTouched[k]=1; dsDirty(); }
   var lab=node.closest('.sf-list');
   if(lab){
-    var html=_setupPlatesNote(su,upd), note=lab.querySelector('.sf-derived');
+    // Only the list that decides the plate count says how many plates it needs — a custom list
+    // on the same form, or a Western blot's compounds, printed CTG's plate arithmetic under it.
+    var html=node.getAttribute('data-plates')?_setupPlatesNote(su,upd):'', note=lab.querySelector('.sf-derived');
     if(note) note.outerHTML=html||'<div class="sf-derived"></div>';
     else if(html) lab.insertAdjacentHTML('beforeend',html);
     var n=lab.querySelector('.sf-n'), c=_setupList(node.value).length;
@@ -10565,7 +10614,8 @@ function nmSetupField(f,lead,src,upd){
   if(f.t==='cellline'){ var co=CELL_LINES.map(function(cl){ return '<option value="'+esc(cl.id)+'"'+(cl.id===v?' selected':'')+'>'+esc(cl.label)+'</option>'; }).join('');
     return '<label class="'+cls+_wideOnly(CELL_LINES.map(function(cl){return cl.label;}))+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'(true)">'+co+'</select></label>'; }
   if(f.t==='select'){ var so=(f.opts||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(String(v)===String(x)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
-    return '<label class="'+cls+_wideOnly(f.opts)+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'()">'+so+'</select></label>'; }
+    // 'cond': a choice can be what a later question hangs off (HiBiT's manual series).
+    return '<label class="'+cls+_wideOnly(f.opts)+'"><span>'+esc(f.lbl)+'</span><select data-sf="'+f.f+'" onchange="'+upd+'(\'cond\')">'+so+'</select></label>'; }
   // 'cond' re-renders the panel without the cell-line substitution `true` carries: a tick is
   // what a conditional question hangs off, and the fields it reveals have to appear at once.
   if(f.t==='check'){ return '<label class="ci-f chk"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><input type="checkbox" data-sf="'+f.f+'"'+(v?' checked':'')+' onchange="'+upd+'(\'cond\')"><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')+'</span></label>'; }
@@ -10574,8 +10624,8 @@ function nmSetupField(f,lead,src,upd){
       +' <span class="sf-n">'+(items.length||'')+'</span>'+(f.hint?' <span class="ci-hint">?</span>':'')+'</span>'
       +'<textarea data-sf="'+f.f+'" rows="'+Math.min(12,Math.max(3,items.length+1))+'" spellcheck="false"'
       +' placeholder="'+esc(f.ph||'One per line \u2014 paste a column straight from Excel')+'"'
-      +' oninput="_setupListUpd(this,\''+upd+'\')">'+esc(items.join('\n'))+'</textarea>'
-      +_setupPlatesNote(src,upd)+'</label>'; }
+      +(f.plates?' data-plates="1"':'')+' oninput="_setupListUpd(this,\''+upd+'\')">'+esc(items.join('\n'))+'</textarea>'
+      +(f.plates?_setupPlatesNote(src,upd):'')+'</label>'; }
   if(f.t==='txt'){ return '<label class="'+cls+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)
     +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input data-sf="'+f.f+'" value="'+esc(v==null?'':v)+'"'
     +(f.ph?(' placeholder="'+esc(f.ph)+'"'):'')+' oninput="'+upd+'()"></label>'; }
@@ -18339,14 +18389,17 @@ function peSetupDraw(){
 }
 // Only what was actually changed is stored: writing every default onto the preset would make an
 // untouched built-in look edited, and _seedUnedited would stop refreshing it.
-function peSetupUpd(){
+// Read the panel into the preset. It redrew the whole editor on every keystroke, so a number
+// typed into the setup defaults kept its first digit and lost the caret; it redraws only when an
+// answer changes which questions are asked.
+function peSetupUpd(reRender){
   var host=el('pe-setup'); if(!host) return;
   var base=setupDefaultsFor(PE.type), out=PE.work.setup||{};
   host.querySelectorAll('[data-sf]').forEach(function(n){ var k=n.getAttribute('data-sf');
     var v=(n.type==='checkbox')?n.checked:((n.type==='number')?(n.value===''?'':parseFloat(n.value)):n.value);
     if(String(v)===String(base[k])) delete out[k]; else out[k]=v; });
   if(Object.keys(out).length) PE.work.setup=out; else delete PE.work.setup;
-  peDraw();
+  if(reRender) peDraw();
 }
 function peDraw(){ var w=PE.work;
   el('pe-body').innerHTML=w.blocks.map(function(b,i){ return '<div class="ps-blk"><div class="ps-blk-hd"><span class="ps-day"><span class="ps-day-lbl">Day</span> <input type="number" min="0" value="'+(b.dayOffset||0)+'" oninput="PE.work.blocks['+i+'].dayOffset=parseInt(this.value)||0"></span><input class="ps-title" placeholder="Block title" value="'+esc(b.title||'')+'" oninput="PE.work.blocks['+i+'].title=this.value"><button class="ps-move" title="Up" onmousedown="event.preventDefault();peMove('+i+',-1)">'+tbIco(P_CHEV_U,13)+'</button><button class="ps-move" title="Down" onmousedown="event.preventDefault();peMove('+i+',1)">'+tbIco(P_CHEV_D,13)+'</button><button class="ps-move" title="Remove" onmousedown="event.preventDefault();peDelBlock('+i+')" style="color:var(--danger)">&times;</button></div>'+peCalcInputs(b,i)+'<div class="rt ps-rt" contenteditable="true" data-i="'+i+'" oninput="PE.work.blocks['+i+'].html=this.innerHTML" onfocus="_activeEd=this">'+(b.html||'')+'</div>'+pePubField(b,i)+'</div>'; }).join('')
@@ -18387,7 +18440,7 @@ function peSave(){ peSync(); if(!PE.work.baseType) PE.work.baseType=presetBase(P
   // always refreshed it; saving never did.
   if(el('nm-type')){ nmFillTypes(); nmUpdateCode(); nmPreview(); }
   toast('Preset saved'); }
-function peDelete(){ if(isBuiltinPreset(PE.type)){ toast('Built-in presets cannot be deleted'); return; }
+function peDelete(){ if(isDefaultPreset(PE.type)){ toast('Default presets cannot be deleted — they come back on the next load'); return; }
   lbConfirm('Delete the preset "'+esc(PE.work.name||PE.type)+'"? (Experiments already created from it are unaffected.)',{danger:true,title:'Delete preset'}).then(function(ok){ if(!ok) return; delete LB.data.presets[PE.type]; save(); closePresetEditor(); if(el('nm-type')){ nmFillTypes(); nmUpdateCode(); nmPreview(); } toast('Preset deleted'); }); }
 // The design you end up with after adjusting an experiment is the one worth keeping, and until
 // now the only way to a new preset was to build it again by hand in the preset editor. This takes
