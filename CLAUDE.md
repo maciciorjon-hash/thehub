@@ -4769,6 +4769,34 @@ dose → not flagged; midpoint inside → not flagged. This is QC, not the fit m
 `check_shared.py` is unaffected — but it was changed in both files in the same pass on purpose,
 because a flag that fires in one and not the other is worse than no flag.
 
+### Lumina's plate is drawn, not described (2026-09-25)
+
+Jon: *"los controles de lumina son malos y poco intuitivos, no deja drag cells ni seleccionar en
+bulk para un compuesto."* A compound went in through a form asking for a start well, a
+direction, a point count and a replicate count — four numbers describing a rectangle you can
+simply draw — and controls went in through a separate paint mode, one click per well.
+
+It is Labbook's plate gesture now. **Drag a rectangle** (Shift extends from the anchor, ⌘/Ctrl
+adds or removes, a row or column label takes the whole line, the corner takes the plate, or type
+`B2:C11` in the range box), then the panel under the plate says what the selection is: a
+compound (name · top · unit · dilution · which end is highest, ← → ↑ ↓), a 100% or 0% control,
+or nothing. **Points and replicates are read off the selection's shape** (`_lmSeries`: a well's
+point is its place along the axis, so a non-rectangular selection still dilutes correctly), and
+the preview says *11 points × 2 replicates · 1 µM → 16.9 pM* — and *replaces X in 4 wells*
+before it does. Enter applies and the name advances (Compound A → B, EDA-099 → EDA-100), so a
+plate is drag · Enter · drag · Enter. Delete clears, ⌘C/⌘X/⌘V move a block, ⌘Z/⌘⇧Z undo
+(`lmMark` before every mutation, including the reader-less single-well edit). Double-click edits
+one well alone.
+
+Each compound has a colour, shaded dark at its top concentration, so the series direction reads
+without a number; the well prints the concentration and the legend names the compound (a ninth
+compound repeats a colour, so from there the well prints the name too). A legend chip selects
+that compound and loads its numbers into the panel, which makes *adjust* the same as *apply*.
+`state.compounds` is one entry per apply and is pruned to the wells that still carry its name
+(`_syncCompounds`); the analysis reads `wellData`, unchanged. Verified: the test plate fits
+50 / 184 / 614 / 2932 nM against 50 / 200 / 800 / 3000 planted, the runtime and alignment
+audits clean at 1440 in both themes and at 390, no horizontal overflow.
+
 ## Beacon reads the plate: mBRET, and the controls it was read against (2026-09-22)
 
 Jon: *"beacon es el data analysis de nanobret. de momento solo estoy haciendo entre PPIs (dos
