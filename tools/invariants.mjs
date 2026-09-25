@@ -23,6 +23,21 @@
 //   I8 owned = setup         A calculator field the parameters own carries the parameter's
 //                            value in the record.
 //   I9 quick preview dates   The dates the quick window promises are the dates it creates.
+//   I10 your words stay      Prose changed in the Designer on a preset-based run survives the
+//                            load-time wording pass and is never offered as a "preset update".
+//   I11 questions outlive    Delete the design a run was made from: the run still asks the same
+//       the design           setup questions. (a deleted design fell back to Custom — 1 of 11)
+//   I12 typing keeps focus   Every text and number box in the Designer, typed into, is still the
+//                            focused box afterwards. ("Days after": 12 was stored as 1)
+//   I13 defaults stay        A default preset (the ten types and the curated ones) offers no
+//                            Delete, survives dgDel, and a copy of it is the lab's own.
+//   I14 own parameters       A parameter added in the Designer is asked, quoted, stored and
+//                            still asked after the run exists and after save-as-a-design.
+//   I15 replicates           N biological replicates from the Designer are N linked runs with
+//                            distinct codes, each dated from its own start.
+//   I16 answers = stored     Every parameter typed on the Designer's parameters screen, through
+//                            its own event, is the value the record's setup carries. (the
+//                            Compounds list went into the quick window's state)
 //
 //   Report and exports — one experiment per preset, dressed with marked content:
 //   R1 Report = record, live  Every section carries what the record holds, a change reaches it
@@ -175,10 +190,12 @@ async function suite(opts) {
     if (o.protos) { DS.protos = o.protos.map(p => { const e = { id: p.id, name: p.name || p.id }; nmLoadStages(e); if (p.off != null) e.off = p.off; return e; }); }
     if (o.echo) { DS.echo = o.echo; DS.plate = true; }
     if (o.skipWe) DS.skipWe = true;
+    if (o.layout !== undefined) { DS.layout = o.layout; DS.plate = true; }
     dsSyncMods(DS);
   }
   function previewPlate(D, ps) {
     if (!(D.plate || D.echo)) return null;
+    if (typeof dsPlateFor === 'function') return dsPlateFor(D, ps);
     return experimentPlateFor(D.presetKey || '', D.type, ps.setup || D.setup || {}, ps, D.echo || null);
   }
   function echoFixture() {
@@ -199,7 +216,7 @@ async function suite(opts) {
 
   // ── I1 preview = record, and I6 (half) nothing dropped on the way ──
   if (run('I1') || run('I6')) {
-    const variants = [{ n: 'defaults', o: {} }, { n: 'skip weekends', o: { skipWe: true } }];
+    const variants = [{ n: 'defaults', o: {} }, { n: 'skip weekends', o: { skipWe: true } }, { n: 'empty plate', o: { layout: 'none' } }];
     if (PROTOS) variants.push({ n: 'protocols + skip weekends', o: { skipWe: true, protos: PROTOS } });
     for (const key of KEYS) for (const v of variants) {
       const cs = `${key} · ${v.n}`;
@@ -279,6 +296,19 @@ async function suite(opts) {
         if (su.cellLine && !String(A.cellLines || '').trim()) bad('I8', cs, `the parameters name cell line ${su.cellLine}, the record has none`);
         (A.blocks || []).forEach(b => {
           const I = b.calc && b.calc.inputs; if (!I) return;
+          // A step marked as on its own plate (the 6-well a NanoBRET is transfected in) is exempt
+          // from the plate's format and density — but NOT from the cell line — and it must still be
+          // on the plate it was authored on: an own-plate step rescaled to the run's format is the
+          // bug (800,000 cells in 2 mL → 4,700 in 30 µL) that flag exists to stop.
+          if (b.calc.fmtOwn) {
+            const src = (LB.data.presets[key] || {}).blocks || [];
+            const t = src.find(x => x.calc && x.calc.fmtOwn && (x.title || '') === (b.tpl && b.tpl.title || b.title || ''));
+            if (t && String(t.calc.inputs.format) !== String(I.format))
+              bad('I8', cs, `own-plate step "${b.title}" was moved to a ${I.format}-well plate; it was authored on ${t.calc.inputs.format}`);
+            if (su.cellLine && I.cellLine != null && I.cellLine !== su.cellLine)
+              bad('I8', cs, `step "${b.title}" uses ${I.cellLine}, the parameters say ${su.cellLine}`);
+            return;
+          }
           if (su.format != null && su.format !== '' && I.format != null && String(I.format) !== String(su.format))
             bad('I8', cs, `step "${b.title}" is on a ${I.format}-well plate, the parameters say ${su.format}`);
           if (su.cellLine && I.cellLine != null && I.cellLine !== su.cellLine)
@@ -472,6 +502,176 @@ async function suite(opts) {
         cleanup(A); cleanup(B);
       } finally { delete LB.data.presets[tmp]; }
     }
+  }
+
+
+  // ── I10 your words stay ──
+  if (run('I10')) {
+    for (const key of KEYS) await guard('I10', key, async () => {
+      tick('I10');
+      designFrom(key, {});
+      const marks = [];
+      DS.mods.forEach((m, i) => { if (!m.html && m.html !== '') return; const mk = 'INV-OWN-' + i; marks.push(mk); dsSetHtml(i, (m.html || '') + '<p>' + mk + '</p>'); });
+      const e = await created(() => dsCreate()); dsClose();
+      if (!e) { bad('I10', key, 'dsCreate made no experiment'); return; }
+      const before = JSON.parse(JSON.stringify(LB.data.presets));
+      _rewordFromPresets(before);
+      const all = (e.blocks || []).map(b => b.html || '').join(' ');
+      marks.forEach(mk => { if (all.indexOf(mk) < 0) bad('I10', key, `prose written in the Designer (${mk}) was replaced by the preset's wording`); });
+      const st = expPresetStale(e);
+      (st || []).forEach(x => { if (/INV-OWN-/.test(x.b.html || '')) bad('I10', key, `step "${x.b.title}" carries your words and is offered as a preset update`); });
+      cleanup(e);
+    });
+  }
+
+  // ── I11 questions outlive the design ──
+  if (run('I11')) {
+    for (const key of KEYS) await guard('I11', key, async () => {
+      tick('I11');
+      designFrom(key, {});
+      const tmp = '__INV11_' + key.replace(/\W/g, '_');
+      const tpl = dsTemplate(DS); tpl.name = 'I11 ' + key; dsClose();
+      LB.data.presets[tmp] = tpl;
+      designFrom(tmp, {});
+      const e = await created(() => dsCreate()); dsClose();
+      if (!e) { delete LB.data.presets[tmp]; bad('I11', key, 'creation failed'); return; }
+      const qa = expSetupFields(e).map(f => f.f).join(',');
+      delete LB.data.presets[tmp];
+      const qb = expSetupFields(e).map(f => f.f).join(',');
+      if (qa !== qb) bad('I11', key, `after the design is deleted the run asks [${qb}], it was made with [${qa}]`);
+      cleanup(e);
+    });
+  }
+
+  // ── I12 typing keeps focus ──
+  if (run('I12')) {
+    const isBox = n => (n.tagName === 'TEXTAREA' || (n.tagName === 'INPUT' && !/^(checkbox|radio|file|button|date)$/.test(n.type)) || n.isContentEditable)
+      && !n.disabled && n.offsetParent !== null && !n.closest('.cv');
+    for (const key of KEYS) await guard('I12', key, async () => {
+      designFrom(key, {});
+      const screens = [[1, 0]].concat(DS.mods.map((m, i) => [3, i])).concat([[4, 0]]);
+      for (const [step, cur] of screens) {
+        DS.step = step; DS.cur = cur; dsDraw();
+        const boxes = [...document.querySelectorAll('#ds-body input, #ds-body textarea, #ds-body [contenteditable="true"]')].filter(isBox);
+        for (let bi = 0; bi < boxes.length; bi++) {
+          const all = [...document.querySelectorAll('#ds-body input, #ds-body textarea, #ds-body [contenteditable="true"]')].filter(isBox);
+          const n = all[bi]; if (!n) break;
+          tick('I12');
+          n.focus();
+          if (n.isContentEditable) { n.dispatchEvent(new InputEvent('input', { bubbles: true })); }
+          else { const v = n.value; n.value = (n.type === 'number') ? String((parseFloat(v) || 0) + 1) : (v + 'x'); n.dispatchEvent(new Event('input', { bubbles: true })); }
+          if (!n.isConnected || document.activeElement !== n)
+            bad('I12', `${key} · step ${step + 1}${step === 3 ? ' module ' + (cur + 1) : ''}`, `typing into "${(n.closest('label,.mrow,.ds-fld') || n).textContent.trim().slice(0, 40) || n.placeholder || n.tagName}" took the focus away`);
+        }
+      }
+      dsClose();
+    });
+  }
+
+  // ── I13 defaults stay ──
+  if (run('I13')) {
+    const defs = EXP_TYPES.map(t => t.id).concat(Object.keys(EXTRA_PRESET_SEED)).filter(k => LB.data.presets[k]);
+    for (const k of defs) await guard('I13', k, async () => {
+      tick('I13');
+      if (!isDefaultPreset(k)) bad('I13', k, 'a shipped preset is not recognised as a default');
+      const origConfirm = window.lbConfirm; window.lbConfirm = () => Promise.resolve(true);
+      try { dgDel(k); await sleep(20); } finally { window.lbConfirm = origConfirm; }
+      if (!LB.data.presets[k]) { bad('I13', k, 'dgDel deleted a default preset (it would come back on the next load)'); restoreDefaultPreset(k); }
+      const host = document.createElement('div'); DS_PF = 'all'; DG_Q = ''; renderDesigner(host);
+      const card = [...host.querySelectorAll('.dg-card')].find(c => (c.getAttribute('oncontextmenu') || '').indexOf("'" + k + "'") >= 0);
+      if (card && [...card.querySelectorAll('button')].some(b => /^Delete$/.test(b.textContent.trim()))) bad('I13', k, 'the Designer offers Delete on a default');
+    });
+    await guard('I13', 'duplicate', async () => {
+      tick('I13');
+      const origPrompt = window.lbPrompt; window.lbPrompt = () => Promise.resolve('INV13 copy');
+      const before = new Set(Object.keys(LB.data.presets));
+      try { dgDup('NB'); await sleep(30); } finally { window.lbPrompt = origPrompt; }
+      const nk = Object.keys(LB.data.presets).filter(k => !before.has(k));
+      if (nk.length !== 1) bad('I13', 'duplicate', `dgDup made ${nk.length} presets`);
+      nk.forEach(k => { if (isDefaultPreset(k)) bad('I13', 'duplicate', 'the copy of a default is itself a default');
+        if (LB.data.presets[k]._seedSig) bad('I13', 'duplicate', 'the copy carries the shipped signature'); delete LB.data.presets[k]; });
+    });
+  }
+
+  // ── I14 own parameters ──
+  if (run('I14')) {
+    for (const key of KEYS) await guard('I14', key, async () => {
+      tick('I14');
+      designFrom(key, {});
+      DS.setupAdd = (DS.setupAdd || []).concat([{ f: 'invOwn', t: 'txt', lbl: 'INV own', d: 'INV-DEF', custom: true }]);
+      DS.setup.invOwn = 'INV-VAL, "q"';
+      if (!dsFields(DS, DS.setup).some(f => f.f === 'invOwn')) bad('I14', key, 'an added parameter is not asked on the parameters screen');
+      DS.step = 1; dsDraw();
+      if (!document.querySelector('#ds-body [data-sf="invOwn"]')) bad('I14', key, 'the parameters screen draws no box for an added parameter');
+      const quoted = !!DS.mods[0];
+      if (quoted) dsSetHtml(0, (DS.mods[0].html || '') + '<p>Own: {{invOwn}}</p>');
+      const tpl = dsTemplate(DS);
+      const e = await created(() => dsCreate()); dsClose();
+      if (!e) { bad('I14', key, 'creation failed'); return; }
+      if (e.setup.invOwn !== 'INV-VAL, "q"') bad('I14', key, `the record stores ${J(e.setup.invOwn)}`);
+      if (!expSetupFields(e).some(f => f.f === 'invOwn')) bad('I14', key, 'Edit setup on the record does not ask the added parameter');
+      const tdiv = document.createElement('div'); tdiv.innerHTML = (e.blocks || []).map(b => b.html || '').join(' ');
+      const txt = tdiv.textContent;
+      if (quoted && txt.indexOf('Own: INV-VAL') < 0) bad('I14', key, 'a step quoting the parameter does not show its value in the record');
+      if (/\{\{invOwn\}\}/.test((e.blocks || []).map(b => b.html || '').join(' '))) bad('I14', key, 'the token leaks into the record unfilled');
+      const tmp = '__INV14_' + key.replace(/\W/g, '_'); tpl.name = 'I14 ' + key; LB.data.presets[tmp] = tpl;
+      try { if (!setupFieldsFor(tmp).some(f => f.f === 'invOwn')) bad('I14', key, 'a design saved with the parameter does not ask it'); }
+      finally { delete LB.data.presets[tmp]; }
+      cleanup(e);
+    });
+  }
+
+  // ── I15 replicates ──
+  if (run('I15')) {
+    for (const key of ['HB', 'CTG', 'NB', 'BLANK'].filter(k => LB.data.presets[k])) await guard('I15', key, async () => {
+      tick('I15');
+      designFrom(key, {}); DS.reps = 3; DS.repGap = 7;
+      const before = new Set(Object.keys(LB.data.experiments));
+      dsCreate();
+      let got = [];
+      for (let t = 0; t < 120 && got.length < 3; t++) { await sleep(40); got = Object.keys(LB.data.experiments).filter(k => !before.has(k)).map(k => LB.data.experiments[k]); }
+      if (got.length !== 3) { bad('I15', key, `asked for 3 replicates, made ${got.length}`); got.forEach(cleanup); return; }
+      got.sort((a, b) => (a.repIndex || 0) - (b.repIndex || 0));
+      const g = got[0].repGroup;
+      if (!g || got.some(x => x.repGroup !== g)) bad('I15', key, 'the replicates are not one linked set');
+      if (J(got.map(x => x.repIndex)) !== J([1, 2, 3])) bad('I15', key, `replicate indices ${J(got.map(x => x.repIndex))}`);
+      if (new Set(got.map(x => x.code)).size !== 3) bad('I15', key, `codes are not distinct: ${got.map(x => x.code)}`);
+      got.forEach((x, i) => { if (x.startDate !== addDays(START, 7 * i)) bad('I15', key, `replicate ${i + 1} starts ${x.startDate}, expected ${addDays(START, 7 * i)}`);
+        const first = [...(x.blocks || [])].map(b => b.date).sort()[0];
+        if (first && first < x.startDate) bad('I15', key, `replicate ${i + 1} has a step before its own start`); });
+      if (DS) { bad('I15', key, 'the Designer is still open after the set was made'); dsClose(); }
+      got.forEach(cleanup);
+    });
+  }
+
+  // ── I16 answers typed on the parameters screen are the answers stored ──
+  if (run('I16')) {
+    for (const key of KEYS) await guard('I16', key, async () => {
+      designFrom(key, {});
+      DS.setupAdd = (DS.setupAdd || []).concat([{ f: 'invList', t: 'list', lbl: 'INV list', d: '', custom: true }]);
+      DS.step = 1; dsDraw();
+      const want = {}, done = new Set();
+      for (let guardN = 0; guardN < 60; guardN++) {
+        const n = [...document.querySelectorAll('#ds-body [data-sf]')].find(x => !done.has(x.getAttribute('data-sf')));
+        if (!n) break;
+        const k = n.getAttribute('data-sf'); done.add(k);
+        const f = dsFields(DS).find(x => x.f === k);
+        if (!f || f.t === 'format' || f.t === 'cellline') continue;   // side effects are the point of those two
+        tick('I16');
+        if (n.type === 'checkbox') { n.checked = !n.checked; want[k] = n.checked; n.dispatchEvent(new Event('change', { bubbles: true })); }
+        else if (n.tagName === 'SELECT') { const o = n.options[n.options.length - 1]; n.value = o.value; want[k] = o.value; n.dispatchEvent(new Event('change', { bubbles: true })); }
+        else if (n.tagName === 'TEXTAREA') { n.value = 'INV-A\nINV-B'; want[k] = n.value; n.dispatchEvent(new Event('input', { bubbles: true })); }
+        else if (n.type === 'number') { const v = 7 + done.size; n.value = String(v); want[k] = v; n.dispatchEvent(new Event('input', { bubbles: true })); }
+        else { n.value = 'INV-' + k; want[k] = n.value; n.dispatchEvent(new Event('input', { bubbles: true })); }
+      }
+      const e = await created(() => dsCreate()); dsClose();
+      if (!e) { bad('I16', key, 'creation failed'); return; }
+      Object.keys(want).forEach(k => {
+        if (!expSetupFields(e, e.setup).some(f => f.f === k)) return;   // a later answer made it not asked
+        if (String(e.setup[k]) !== String(want[k])) bad('I16', key, `parameter "${k}" typed as ${J(want[k])}, stored as ${J(e.setup[k])}`);
+      });
+      cleanup(e);
+    });
   }
 
   // ══ Report and exports ═════════════════════════════════════════════════════════════════════
