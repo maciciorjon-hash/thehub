@@ -5437,13 +5437,51 @@ replicates are N linked runs · I16 every parameter typed is the value stored. I
 *empty plate* variant; I8 learned *own plate* (and fails if an own-plate step is moved off the
 plate it was authored on).
 
-**What is still missing, as parameters** (Jon's question — none of these need code now that a
-design can add its own, but they are the obvious ones to add to the types themselves): HiBiT
-has *Manual (serial dilution)* with no top concentration / dilution factor / points /
-replicates (CTG has them); Western blot has no compounds or concentrations and no dilution
-per antibody; no type records the vehicle and its %; KD has no compound list; RTX names no
-plasmid; Proteomics has no sample list. A NanoBRET target-engagement preset (tracer, tracer
-concentration, Kd) does not exist yet.
+### The second round: building, checking, fixing (2026-09-25, later)
+
+**The parameters the types were missing are built in.** Western blot: compounds, concentrations,
+vehicle, primary antibody dilutions. HiBiT: a manual dilution series (top, DF, points,
+replicates — asked only when dosing is by hand; a select can now reveal questions, `'cond'`),
+compounds, vehicle. Cell viability and KD: vehicle (KD: compounds). RTX: the plasmid (it reaches
+`e.plasmids` through `setupPlasmids`). Proteomics: a sample list. Each has its own Methods
+sentence in `_pubSetupText` or is in `pubSkip`; none prints as "Label value". HiBiT's Methods no
+longer says "added by Manual (serial dilution)" (`_dosingSpoken`, `_presetV18`). Only a list field
+flagged `plates:true` (CTG's compounds) shows the plate arithmetic.
+
+**A dose-response plate for any series** — `drbands` (96/384, from compounds · top · DF · points
+· replicates · vehicle; the compounds you listed and only those, placeholders when none) is the
+automatic plate for a manual HiBiT run and for the generic Cell viability preset, which both
+started from an empty plate. `_autoLayout(type,su)` is the one rule, read by the plate and by the
+Designer's "Automatic — …" label.
+
+**A read ends a well** (`VOL_TERMINAL = {ctg, lytic}`): the chain said the 72 h CellTiter-Glo read
+started from 140 µL, as if it went into the wells read at 24 h. Each readout is its own copy of
+the plate.
+
+**Found by the same families, in the rest of the notebook:**
+- the preset editor redrew on every keystroke in its setup panel, and its list fields — like the
+  Designer's — wrote into the quick window's `NM_SETUP` (`_setupSrc(upd)` knows all four panels);
+- the Insert-a-parameter chip stored the *value* it showed, not `{{token}}` (`insertHTML` strips
+  the span); it inserts a node now, spaced, inside the nearest block;
+- the Designer's own two search boxes redrew themselves per keystroke; the fading copy of the
+  previous screen was editable (`inert` now);
+- **Save as a preset** from an experiment dropped the run's own parameters and hidden questions,
+  every wait the preset shipped, the layout its plate came from, whether it had a plate, and
+  "blank" — runs now record `e.layout`, the save carries all of it;
+- **saving a design untouched from the Designer** wrote every default into it, freezing today's
+  values; only answers that differ, were pinned by the source design, or were touched are stored.
+
+**Invariants I17–I21**: I17 every setup form (quick, Edit setup, preset editor) keeps focus and
+holds each answer *the moment it is typed* — checking only at the end was masked by the next box
+re-reading the whole form; I18 no text box on any reachable screen loses the caret; I19
+experiment → preset → experiment is the same run (53 findings before the fix); I20 open + save
+changes nothing, in both editors; I21 every readout starts from the same volume. I14 goes
+through the chip and through Edit setup; I15 builds replicates with Archive protocols; I1 has a
+manual-series case. Each proven by putting its bug back.
+
+**What is still missing, as parameters** (Jon's question): the list from the first round is built
+in (above). Still to come: a NanoBRET target-engagement preset (tracer, tracer concentration,
+Kd).
 
 ## Current state
 

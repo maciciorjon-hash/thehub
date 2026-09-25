@@ -48,6 +48,8 @@
 //   I20 open + save = same  Opening a design and saving it untouched changes nothing, in the
 //                            Designer and in the preset editor. (the Designer froze every
 //                            default answer into the design)
+//   I21 a read ends a well   Every readout of a run starts from the same volume — each reads its
+//                            own copy of the plate. (the 72 h CTG read "started from 140 µL")
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
 //                            dialog, the Journal, Visualize, the Designer — keeps the caret
@@ -232,10 +234,14 @@ async function suite(opts) {
   if (run('I1') || run('I6')) {
     const variants = [{ n: 'defaults', o: {} }, { n: 'skip weekends', o: { skipWe: true } }, { n: 'empty plate', o: { layout: 'none' } }];
     if (PROTOS) variants.push({ n: 'protocols + skip weekends', o: { skipWe: true, protos: PROTOS } });
-    for (const key of KEYS) for (const v of variants) {
+    const manual = { n: 'manual series', o: { setup: { dosing: 'Manual (serial dilution)', compounds: 'INV-A\nINV-B\nINV-C', format: '384' } } };
+    const runs1 = [];
+    for (const key of KEYS) { for (const v of variants) runs1.push([key, v]); if (presetBase(key) === 'HB') runs1.push([key, manual]); }
+    for (const [key, v] of runs1) {
       const cs = `${key} · ${v.n}`;
       designFrom(key, v.o);
       const ps = dsPseudo(DS), pv = previewPlate(DS, ps);
+      if (v === manual && !(pv && Object.keys(pv.wells || {}).length)) bad('I1', cs, 'a manual HiBiT series with compounds listed previews an empty plate');
       // I6: wrap the draft and the call so any key nobody reads shows up.
       const readDS = new Set(), readSP = new Set(); let spKeys = [];
       const raw = DS;
@@ -803,6 +809,18 @@ async function suite(opts) {
         dsOpen({ mode: 'preset', presetKey: key }); dsSavePreset(true); await sleep(10);
         pdiff(orig, JSON.parse(JSON.stringify(LB.data.presets[key])), 'preset', []).forEach(d => bad('I20', k, `Designer, saved untouched: ${d}`));
       } finally { delete LB.data.presets[key]; try { dsClose(); closePresetEditor(); } catch (x) {} }
+    });
+  }
+
+  // ── I21 a lytic read ends the well: every readout starts from the same volume ──
+  if (run('I21')) {
+    for (const key of KEYS) await guard('I21', key, async () => {
+      tick('I21');
+      designFrom(key, {});
+      const reads = dsChain(dsPseudo(DS)).filter(x => x.b.calc && VOL_TERMINAL[x.b.calc.kind]);
+      dsClose();
+      const b0 = reads.length ? reads[0].before : null;
+      reads.forEach(x => { if (x.before !== b0) bad('I21', key, `readout "${x.b.title}" starts from ${x.before} µL; the first readout started from ${b0} µL — a read went into wells another read had already lysed`); });
     });
   }
 

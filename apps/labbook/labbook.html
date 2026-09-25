@@ -3368,12 +3368,12 @@ var SETUP_SCHEMA={
     {f:'nPlates',t:'num',lbl:'# plates',d:4},
     {f:'treatH',t:'num',lbl:'Treatment (h)',d:6,wait:1},
     {f:'compounds',t:'list',lbl:'Compounds',d:'',ph:'One per line \u2014 paste a column straight from Excel'},
-    {f:'concs',t:'txt',lbl:'Concentrations (nM)',d:'',ph:'e.g. 1, 10, 100, 1000'},
+    {f:'concs',t:'txt',lbl:'Concentrations (nM)',d:'',ph:'e.g. 1, 10, 100'},
     {f:'vehicle',t:'txt',lbl:'Vehicle',d:'DMSO',hint:'What the compounds are dissolved in, and what the control wells get instead of compound.'},
     {f:'vehiclePct',t:'num',lbl:'Vehicle, final (%)',d:'',step:'0.05',hint:'The final concentration in the well \u2014 e.g. 0.1 for a 1000\u00d7 stock. Leave empty if it varies.'},
     {f:'targets',t:'txt',lbl:'Targets',d:'BRD4, BRD3, BRD2'},
     {f:'loadCtrl',t:'txt',lbl:'Loading control',d:'α-Tubulin'},
-    {f:'abDil',t:'txt',lbl:'Primary antibody dilutions',d:'',ph:'e.g. BRD4 1:1000, α-Tubulin 1:5000'}],
+    {f:'abDil',t:'txt',lbl:'Primary antibody dilutions',d:'',ph:'e.g. BRD4 1:1000'}],
     // The plate layout names the compounds; a Methods paragraph does not list twenty codes.
     pubSkip:['compounds']},
   HB:{plate:true,plateOn:true,fields:[
@@ -5420,6 +5420,40 @@ var PLATE_LAYOUTS=[
          for(var c=0;c<nPts;c++)
            p.wells[wellIdOf(r,c)]={typeId:'dose',compound:cmp,conc:_fmtConc(top/Math.pow(fold,c))};
          p.wells[wellIdOf(r,nPts)]={typeId:'dmso',compound:cmp,label:'DMSO'};
+       }
+     });
+     return p; }},
+  // The same idea at any size, and for any assay that asks for a series: a manual HiBiT run and
+  // the generic Cell viability preset both started from an empty plate although their setup
+  // already says compounds × points × replicates. Everything drawn here is an answer.
+  {id:'drbands', label:'Dose response \u2014 one compound per band of replicate rows + vehicle', formats:['96','384'], format:'96',
+   sub:'each compound on its own band of rows, the series across the columns from the top, the vehicle in the next column',
+   build:function(o){
+     o=o||{};
+     var fmt=(String(o.format)==='384')?'384':'96', p=newPlate(fmt), d=PLATE_FORMATS[fmt];
+     var top=+o.topConc||1000, fold=+o.df||3;
+     var nPts=Math.max(1,Math.min(Math.round(+o.nPoints||10), d.c-1));
+     var nReps=Math.max(1,Math.min(Math.round(+o.nReps||2), d.r));
+     var veh=String(o.vehicle||'DMSO').trim()||'DMSO';
+     var per=compoundsPerPlate({format:fmt,nPoints:nPts,nReps:nReps});
+     // The compounds you listed, and only those; with none listed the plate is a template and
+     // every band gets a placeholder you rename on the map.
+     var all=_setupList(o.compounds), names=all.slice(0,per);
+     if(!all.length) while(names.length<per) names.push('Compound '+(names.length+1));
+     var spill=Math.max(0, all.length-per), across=Math.max(1,Math.floor(d.c/(nPts+1)));
+     p.title='Dose response \u2014 '+names.length+' compound'+(names.length===1?'':'s')+' \u00d7 '+nPts+' pts \u00d7 '+nReps+' (' +fmt+'-well)';
+     p.note=names.length+' compound'+(names.length===1?'':'s')+', '+nReps+' row'+(nReps===1?'':'s')+' each; '
+       +nPts+'-point series from '+_fmtConc(top)+', '+fold+'-fold; the '+veh+' control after each series.'
+       +(spill?(' This is plate 1 of '+Math.ceil(all.length/per)+' \u2014 '+spill+' more compound'+(spill===1?'':'s')
+         +' ('+all.slice(per).join(', ')+') need their own plate'+(spill>per?'s':'')+'.'):'');
+     p.types=[{id:'dose', name:'Dose series', color:'#cfe2f3'},
+              {id:'dmso', name:veh,           color:'#f4b98f'}];
+     names.forEach(function(cmp,ci){
+       var band=Math.floor(ci/across), slot=ci%across, c0=slot*(nPts+1);
+       for(var r=band*nReps;r<Math.min(d.r,(band+1)*nReps);r++){
+         for(var c=0;c<nPts;c++)
+           p.wells[wellIdOf(r,c0+c)]={typeId:'dose',compound:cmp,conc:_fmtConc(top/Math.pow(fold,c))};
+         p.wells[wellIdOf(r,c0+nPts)]={typeId:'dmso',compound:cmp,label:veh};
        }
      });
      return p; }}
@@ -7764,6 +7798,11 @@ var VOL_ADD={
   spike:  function(I,v){ var X=+I.foldX||0; return (X>1&&v>0)?(v/(X-1)):0; },
   serial: function(I,v){ var X=+I.foldX||0; return (X>1&&v>0)?(v/(X-1)):0; }
 };
+// A read that lyses the well ends it. Two readouts are two copies of the plate — the CellTiter-Glo
+// at 72 h does not go into the wells already read at 24 h — so a terminal read adds its volume to
+// its own well and leaves the running total where it was for whatever comes after. It said the
+// 72 h readout started from 140 µL and ended at 190.
+var VOL_TERMINAL={ctg:1, lytic:1};
 // The inputs that are answers to "what is already in the well", and therefore derived.
 var CHAINED_INPUTS={spike:['wellVolUL'], serial:['wellVolUL']};
 // False precision is its own kind of wrong. The NanoBRET mix is 10 µL of Opti-MEM with 0.24 µL
@@ -7810,7 +7849,7 @@ function syncChainedInputs(e){
       // typed is skipped above, so a real override still shows.
       if(b.calcSeed && b.calcSeed[key]!==undefined) b.calcSeed[key]=nv;
     });
-    var f=VOL_ADD[k]; if(f) v+=f(I,v);
+    var f=VOL_ADD[k]; if(f&&!VOL_TERMINAL[k]) v+=f(I,v);
   });
   return changed;
 }
@@ -10851,6 +10890,16 @@ function createExperiment(){ if(!NM_TARGET) return;
 // is about to create rather than asserting "with a plate map" and leaving you to find out: the
 // plate is the part of a run people hand-draw, so it is the last thing that should be a promise.
 // One implementation, so the preview and the record cannot disagree about it.
+// The layout a type starts from when neither you nor its design named one. One rule, read by the
+// plate itself and by the Designer's "Automatic — …" label, so the two cannot disagree.
+function _autoLayout(type,su){
+  su=su||{}; var fmt=String(su.format||'96');
+  function L(id){ return _layoutFor(id,fmt); }
+  if(fmt==='384'&&(type==='HB'||type==='D2B')&&su.dosing!=='Manual (serial dilution)') return L('echo384');
+  if(type==='HB'&&su.dosing==='Manual (serial dilution)') return L('drbands');
+  if(type==='CTG'&&su.doseResp!==false) return L('drbands');
+  return null;
+}
 function experimentPlateFor(key,type,setup,e,echo,onOutside,layoutId){
   // A real picklist beats any ready-made layout: it is what the machine actually did. This
   // branch has to live here and not only in buildExperimentFrom, or the review draws a blank
@@ -10869,9 +10918,7 @@ function experimentPlateFor(key,type,setup,e,echo,onOutside,layoutId){
   // exact experiment — else the type's own rule. 'none' is a choice too: an empty plate.
   var lid=(layoutId!=null&&layoutId!=='')?layoutId:_presetLayoutId(key);
   if(lid==='none') return newPlate(setup.format||'96');
-  var L=(lid?_layoutFor(lid,setup.format):null)
-    || ((String(setup.format)==='384'&&(type==='HB'||type==='D2B')&&setup.dosing!=='Manual (serial dilution)')
-        ? PLATE_LAYOUTS.filter(function(x){return x.id==='echo384';})[0] : null);
+  var L=(lid?_layoutFor(lid,setup.format):null) || _autoLayout(type,setup);
   // Failing one, a NanoBRET can draw its own from the conditions the setup already describes.
   var pl2=L ? L.build(setup) : (nbPlateForExp(e) || newPlate(setup.format||'96'));
   // The condition numbers are what a NanoBRET plate is read by, and they were assigned by the
@@ -17058,7 +17105,7 @@ function dsChain(pseudo){
     var k=b.calc&&b.calc.kind, add=0;
     if(k&&VOL_ADD[k]){ try{ add=VOL_ADD[k](b.calc.inputs||{},v)||0; }catch(e){ add=0; } }
     out.push({b:b, before:_wellVolRound(v), add:add, after:_wellVolRound(v+add)});
-    v+=add; });
+    if(!(k&&VOL_TERMINAL[k])) v+=add; });
   return out;
 }
 // The plates and wells the steps above have committed to. Read off the blocks rather than off
@@ -17502,9 +17549,9 @@ function dsPlateOptsHtml(D,hasFmt){
   var fmt=String(D.setup.format||'96');
   var auto=_presetLayoutId(D.presetKey||'');
   var autoL=auto&&auto!=='none'?(PLATE_LAYOUTS.filter(function(x){ return x.id===auto; })[0]||null):null;
-  var echoAuto=!autoL&&fmt==='384'&&(D.type==='HB'||D.type==='D2B')&&D.setup.dosing!=='Manual (serial dilution)';
+  var autoT=autoL?null:_autoLayout(D.type,D.setup);
   var autoTxt=autoL?('the design\u2019s own — '+autoL.label)
-    :echoAuto?'the Echo 384 gradient'
+    :autoT?String(autoT.label).split(' \u2014 ')[0]
     :(D.type==='NB'?'drawn from the NanoBRET conditions':'an empty plate');
   var cur=D.layout||'';
   // On a phone the closed select is as wide as the screen and the long names were cut off in it;
