@@ -11965,6 +11965,9 @@ function _screenGhost(host){
     if(host.getElementsByTagName('*').length>_GHOST_MAX) return null;
     var r=host.getBoundingClientRect(); if(r.width<40||r.height<40) return null;
     var g=document.createElement('div'); g.className='lb-ghost'; g.setAttribute('aria-hidden','true');
+    // A picture of the screen you left, not the screen: a copied editor could take the caret
+    // (Tab reached it) for the 300 ms it fades.
+    g.setAttribute('inert','');
     g.style.left=r.left+'px'; g.style.top=r.top+'px'; g.style.width=r.width+'px'; g.style.height=r.height+'px';
     var inner=document.createElement('div');
     inner.style.cssText='position:absolute;left:0;top:0;width:'+host.clientWidth+'px;transform:translateY('+(-host.scrollTop)+'px);';
@@ -17545,6 +17548,7 @@ function dsParamDlg(idx){
   }
   function key(){ el('dsp-k').innerHTML=L.value.trim()?('Quoted in a step as <code>{{'+esc(cur?cur.f:_dsParamKey(L.value))+'}}</code> — the <b>Insert a parameter</b> chips on each module put it in for you.'):''; }
   T.onchange=defCtl; L.oninput=key; defCtl();
+  card.addEventListener('keydown',function(ev){ if(ev.key==='Enter'&&ev.target.tagName==='INPUT'){ ev.preventDefault(); el('dsp-ok').click(); } });
   setTimeout(function(){ L.focus(); },40);
   el('dsp-ok').onclick=function(){
     var lbl=L.value.trim(); if(!lbl){ L.focus(); return; }
@@ -17915,18 +17919,38 @@ function dsInsTok(i,k){
   var tok='{{'+k+'}}';
   var ta=el('ds-pub');
   if(DS_LASTED==='pub'&&ta){
-    var a=ta.selectionStart||0, b=ta.selectionEnd||a;
-    ta.value=ta.value.slice(0,a)+tok+ta.value.slice(b); D.mods[i].pub=ta.value;
-    ta.focus(); try{ ta.setSelectionRange(a+tok.length,a+tok.length); }catch(e){}
+    var a=ta.selectionStart||0, b=ta.selectionEnd||a, v=ta.value;
+    var ins=((a>0&&!/\s/.test(v.charAt(a-1)))?' ':'')+tok+((b<v.length&&!/\s/.test(v.charAt(b)))?' ':'');
+    ta.value=v.slice(0,a)+ins+v.slice(b); D.mods[i].pub=ta.value;
+    ta.focus(); try{ ta.setSelectionRange(a+ins.length,a+ins.length); }catch(e){}
     dsDirty(); return;
   }
   var rt=el('ds-rt'); if(!rt) return;
   var sel=window.getSelection();
   if(!(sel&&sel.rangeCount&&rt.contains(sel.anchorNode))){
     rt.focus(); var r=document.createRange(); var last=rt.lastElementChild||rt;
+    while(last.lastElementChild&&!/^(SPAN|B|I|EM|STRONG|CODE)$/.test(last.lastElementChild.tagName)) last=last.lastElementChild;
     r.selectNodeContents(last); r.collapse(false); sel.removeAllRanges(); sel.addRange(r);
   }
-  document.execCommand('insertHTML',false,_fillSetupSpans(tok,D.setup)+'&nbsp;');
+  // As a node, not through execCommand('insertHTML'): the browser strips the span's markup on
+  // the way in, so the step stored the value "1:1000" as plain text instead of {{abDil}} — the
+  // chip looked right, and a later change to the parameter never reached the step.
+  var rng=sel.getRangeAt(0); rng.deleteContents();
+  // A caret between two blocks (after the list, at the very end) would put the token outside
+  // any paragraph; it goes at the end of the block just before it instead.
+  if(rng.startContainer===rt){
+    var prevB=rt.childNodes[rng.startOffset-1]||rt.firstChild;
+    while(prevB&&prevB.nodeType===1&&prevB.lastChild&&/^(OL|UL|LI|P|DIV|BLOCKQUOTE|H\d)$/.test(prevB.tagName)) prevB=prevB.lastChild;
+    if(prevB){ rng=document.createRange();
+      if(prevB.nodeType===3){ rng.setStart(prevB,prevB.length); } else { rng.selectNodeContents(prevB); rng.collapse(false); } }
+  }
+  var hold=document.createElement('div'); hold.innerHTML=_fillSetupSpans(tok,D.setup);
+  var node=hold.firstChild;
+  var before=rng.startContainer.nodeType===3?rng.startContainer.data.slice(0,rng.startOffset):'';
+  if(before&&!/\s$/.test(before)) rng.insertNode(document.createTextNode(' ')), rng.collapse(false);
+  rng.insertNode(node);
+  var sp=document.createTextNode('\u00a0'); node.parentNode.insertBefore(sp,node.nextSibling);
+  rng=document.createRange(); rng.setStartAfter(sp); rng.collapse(true); sel.removeAllRanges(); sel.addRange(rng);
   dsSetHtml(i,rt.innerHTML); dsDirty();
 }
 // The stored html always carries the token, never the rendered span — every "is this still the
@@ -18225,6 +18249,19 @@ function dsSavePreset(andClose){
 // Section 2B of the brief: a new lab sets up its four or five routine experiments once, and
 // everybody after that starts from one and changes what differs.
 function renderDesigner(host){
+  var dft=dsDraft();
+  host.innerHTML='<div class="dg-wrap">'
+    +'<div class="dg-top"><div><div class="dg-t">Designer</div>'
+      +'<div class="dg-sub">The experiments this lab runs, designed once. Each is a list of modules with their parameters; starting an experiment from one copies it and leaves the design alone. The defaults ship with the app and cannot be deleted — duplicate one to make it yours.</div></div>'
+      +'<span class="grow"></span><button class="btn ghost" onclick="dgImport()">Import…</button><button class="btn" onclick="dsOpen({mode:\'preset\'})">+ New design</button></div>'
+    +(dft?('<div class="dg-draft"><span><b>Unfinished design</b> — '+esc(dsDraftLabel(dft))+'</span><span class="grow"></span>'
+      +'<button class="btn sm" onclick="dsResume()">Resume</button><button class="btn ghost sm" onclick="dsDraftClear();renderAll()">Discard</button></div>'):'')
+    +'<div class="dg-filters">'+presetFilterChips(DS_PF,'dgSetPF')
+      +'<input class="ds-search dg-q" id="dg-q" placeholder="Search designs — name, type or a step…" autocomplete="off" value="'+esc(DG_Q)+'" oninput="dgSearch(this.value)"></div>'
+    +'<div class="dg-cards" id="dg-cards">'+_dgCardsHtml()+'</div></div>';
+}
+// The cards alone, so a search redraws the list and never the box being typed in.
+function _dgCardsHtml(){
   var keys=presetFilterKeys(DS_PF, DG_Q);
   var cards=keys.map(function(k){
     var p=LB.data.presets[k]||{}, blocks=p.blocks||[];
@@ -18249,24 +18286,14 @@ function renderDesigner(host){
         +(presetEdited(k)?'<button class="btn ghost sm" onclick="dgRestore(\''+esc(k)+'\')" title="Put back the version this app ships">Restore default</button>':'')
         +(isDefaultPreset(k)?'':'<button class="btn ghost sm" style="color:var(--danger)" onclick="dgDel(\''+esc(k)+'\')">Delete</button>')
       +'</div></div>'; }).join('');
-  var dft=dsDraft();
   var empty=(DS_PF==='user'&&!DG_Q)
     ? '<div class="ds-none">No designs of your own yet. <b>+ New design</b> builds one from modules; <b>Duplicate</b> on a default makes an editable copy; <b>Import</b> reads one a colleague exported.</div>'
     : '<div class="ds-none">Nothing matches.</div>';
-  host.innerHTML='<div class="dg-wrap">'
-    +'<div class="dg-top"><div><div class="dg-t">Designer</div>'
-      +'<div class="dg-sub">The experiments this lab runs, designed once. Each is a list of modules with their parameters; starting an experiment from one copies it and leaves the design alone. The defaults ship with the app and cannot be deleted — duplicate one to make it yours.</div></div>'
-      +'<span class="grow"></span><button class="btn ghost" onclick="dgImport()">Import…</button><button class="btn" onclick="dsOpen({mode:\'preset\'})">+ New design</button></div>'
-    +(dft?('<div class="dg-draft"><span><b>Unfinished design</b> — '+esc(dsDraftLabel(dft))+'</span><span class="grow"></span>'
-      +'<button class="btn sm" onclick="dsResume()">Resume</button><button class="btn ghost sm" onclick="dsDraftClear();renderAll()">Discard</button></div>'):'')
-    +'<div class="dg-filters">'+presetFilterChips(DS_PF,'dgSetPF')
-      +'<input class="ds-search dg-q" id="dg-q" placeholder="Search designs — name, type or a step…" autocomplete="off" value="'+esc(DG_Q)+'" oninput="dgSearch(this.value)"></div>'
-    +'<div class="dg-cards">'+(cards||empty)+'</div></div>';
+  return cards||empty;
 }
 var DG_Q='';
 function dgSetPF(f){ _setPF(f); renderAll(); }
-function dgSearch(v){ DG_Q=v; var n=el('dg-q'), pos=n?n.selectionStart:0; renderAll();
-  var m=el('dg-q'); if(m){ m.focus(); try{ m.setSelectionRange(pos,pos); }catch(e){} } }
+function dgSearch(v){ DG_Q=v; var c=el('dg-cards'); if(c) c.innerHTML=_dgCardsHtml(); else renderAll(); }
 function dgRestore(k){
   var p=LB.data.presets[k]||{};
   lbConfirm('Put back “'+(p.name||k)+'” as it ships? Your changes to it are replaced. Experiments already made from it are not touched. To keep your version as well, Duplicate it first.',

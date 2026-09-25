@@ -42,6 +42,10 @@
 //                            typing keeps the focus, and what was typed is what the form holds.
 //                            (the preset editor redrew on every keystroke; its lists went to
 //                            the quick window)
+//   I18 no box loses focus   Every text box, number box and editor on every screen reachable
+//                            — experiments with the Report open, the plate editor, every
+//                            dialog, the Journal, Visualize, the Designer — keeps the caret
+//                            when typed into. (the Designer's own search box)
 //
 //   Report and exports — one experiment per preset, dressed with marked content:
 //   R1 Report = record, live  Every section carries what the record holds, a change reaches it
@@ -608,7 +612,16 @@ async function suite(opts) {
       DS.step = 1; dsDraw();
       if (!document.querySelector('#ds-body [data-sf="invOwn"]')) bad('I14', key, 'the parameters screen draws no box for an added parameter');
       const quoted = !!DS.mods[0];
-      if (quoted) dsSetHtml(0, (DS.mods[0].html || '') + '<p>Own: {{invOwn}}</p>');
+      if (quoted) {
+        // Through the "Insert a parameter" chip, as a person would: the token has to be stored,
+        // not the value it showed. (insertHTML stripped the span, so "1:1000" was stored.)
+        DS.step = 3; DS.cur = 0; dsDraw();
+        const rt = el('ds-rt');
+        if (rt) { rt.focus(); const r = document.createRange(); r.selectNodeContents(rt); r.collapse(false);
+          getSelection().removeAllRanges(); getSelection().addRange(r); DS_LASTED = 'rt'; dsInsTok(0, 'invOwn');
+          if (String(DS.mods[0].html || '').indexOf('{{invOwn}}') < 0) bad('I14', key, 'the Insert-a-parameter chip stored the value, not the {{token}}'); }
+        dsSetHtml(0, (DS.mods[0].html || '') + '<p>Own: {{invOwn}}</p>');
+      }
       const tpl = dsTemplate(DS);
       const e = await created(() => dsCreate()); dsClose();
       if (!e) { bad('I14', key, 'creation failed'); return; }
@@ -618,6 +631,18 @@ async function suite(opts) {
       const txt = tdiv.textContent;
       if (quoted && txt.indexOf('Own: INV-VAL') < 0) bad('I14', key, 'a step quoting the parameter does not show its value in the record');
       if (/\{\{invOwn\}\}/.test((e.blocks || []).map(b => b.html || '').join(' '))) bad('I14', key, 'the token leaks into the record unfilled');
+      // Changed later through Edit setup, the steps that quote it follow.
+      if (quoted) {
+        const cf0 = window.lbConfirm; window.lbConfirm = () => Promise.resolve(true);
+        try {
+          SEL.page = e.id; openSetupEditor(e.id);
+          const box = document.querySelector('#es-fields [data-sf="invOwn"]');
+          if (!box) bad('I14', key, 'Edit setup draws no box for the added parameter');
+          else { box.value = 'INV-NEW'; box.dispatchEvent(new Event('input', { bubbles: true })); applySetupEdit(); await sleep(60);
+            const t2 = document.createElement('div'); t2.innerHTML = (e.blocks || []).map(b => b.html || '').join(' ');
+            if (t2.textContent.indexOf('Own: INV-NEW') < 0) bad('I14', key, 'changing the parameter in Edit setup does not reach the step that quotes it'); }
+        } finally { window.lbConfirm = cf0; try { closeSetupEditor(); } catch (x) {} }
+      }
       const tmp = '__INV14_' + key.replace(/\W/g, '_'); tpl.name = 'I14 ' + key; LB.data.presets[tmp] = tpl;
       try { if (!setupFieldsFor(tmp).some(f => f.f === 'invOwn')) bad('I14', key, 'a design saved with the parameter does not ask it'); }
       finally { delete LB.data.presets[tmp]; }
@@ -627,13 +652,15 @@ async function suite(opts) {
 
   // ── I15 replicates ──
   if (run('I15')) {
-    for (const key of ['HB', 'CTG', 'NB', 'BLANK'].filter(k => LB.data.presets[k])) await guard('I15', key, async () => {
+    const cases15 = ['HB', 'CTG', 'NB', 'BLANK'].filter(k => LB.data.presets[k]).map(k => [k, {}]);
+    if (PROTOS) cases15.push(['HB', { protos: PROTOS }]);   // each run is built asynchronously
+    for (const [key, o15] of cases15) await guard('I15', key + (o15.protos ? ' + protocols' : ''), async () => {
       tick('I15');
-      designFrom(key, {}); DS.reps = 3; DS.repGap = 7;
+      designFrom(key, o15); DS.reps = 3; DS.repGap = 7;
       const before = new Set(Object.keys(LB.data.experiments));
       dsCreate();
       let got = [];
-      for (let t = 0; t < 120 && got.length < 3; t++) { await sleep(40); got = Object.keys(LB.data.experiments).filter(k => !before.has(k)).map(k => LB.data.experiments[k]); }
+      for (let t = 0; t < 300 && got.length < 3; t++) { await sleep(40); got = Object.keys(LB.data.experiments).filter(k => !before.has(k)).map(k => LB.data.experiments[k]); }
       if (got.length !== 3) { bad('I15', key, `asked for 3 replicates, made ${got.length}`); got.forEach(cleanup); return; }
       got.sort((a, b) => (a.repIndex || 0) - (b.repIndex || 0));
       const g = got[0].repGroup;
@@ -719,6 +746,50 @@ async function suite(opts) {
         if (el('es-modal').classList.contains('open')) await typeInto('#es-fields', key, 'Edit setup', () => ES_SETUP || {});
         closeSetupEditor(); cleanup(e); }
     });
+  }
+
+  // ── I18 no box anywhere loses the caret ──
+  if (run('I18')) {
+    const lbAlert0 = window.lbAlert, lbConfirm0 = window.lbConfirm;
+    window.lbConfirm = () => Promise.resolve(false);
+    const vis = root => [...(root || document).querySelectorAll('input,textarea,[contenteditable="true"]')].filter(n => {
+      if (n.disabled || n.readOnly || n.offsetParent === null || n.closest('[inert]')) return false;
+      if (n.tagName === 'INPUT' && /^(checkbox|radio|file|button|date|color|range|submit|time)$/.test(n.type)) return false;
+      const r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+    const desc = n => ((n.id ? '#' + n.id : '') + (typeof n.className === 'string' && n.className ? '.' + n.className.split(' ')[0] : '') + ' ' + (n.getAttribute('placeholder') || '').slice(0, 30)).trim();
+    const shut = () => { document.querySelectorAll('.modal-back.open').forEach(m => m.classList.remove('open')); try { dsClose(); } catch (e) {} };
+    const made18 = [];
+    for (const k of ['NB_SPARK_RTX96', 'CTG', 'WB']) { openQuick(k, {}); const e = await created(() => createExperiment()); closeNew(); if (e) made18.push(e); }
+    const [eA, eB, eC] = made18;
+    const screens = [
+      ['experiment + Report', () => { selectNode('expsec', PID, SID); SEL.page = eA.id; REPORT_OPEN = true; renderAll(); }],
+      ['experiment (CTG)', () => { SEL.page = eB.id; renderAll(); }],
+      ['experiment (WB)', () => { SEL.page = eC.id; renderAll(); }],
+      ['plate editor', () => { SEL.page = eA.id; renderAll(); openPlateEditor('exp:' + eA.id); }],
+      ['new experiment', () => openNew(PID, SID)],
+      ['edit setup', () => openSetupEditor(eA.id)],
+      ['preset editor', () => openPresetEditorFor('NB_SPARK_RTX96')],
+      ['experiments list', () => { selectNode('exps'); renderAll(); }],
+      ['today', () => { selectNode('today'); renderAll(); }],
+      ['journal', () => { openJournalWs(); renderAll(); }],
+      ['visualize', () => { selectNode('viz'); renderAll(); }],
+      ['designer surface', () => { selectNode('design'); renderAll(); }],
+      ['settings', () => openSettings()],
+    ];
+    for (const [nm, go] of screens) await guard('I18', nm, async () => {
+      shut(); go(); await sleep(420);   // past the screen cross-fade
+      const n0 = vis().length;
+      for (let i = 0; i < n0; i++) {
+        const n = vis()[i]; if (!n) break;
+        n.focus(); if (document.activeElement !== n) continue;
+        tick('I18');
+        if (n.isContentEditable) document.execCommand('insertText', false, 'x');
+        else { const v = n.value; n.value = (n.type === 'number') ? String((parseFloat(v) || 0) + 1) : (v + 'x'); n.dispatchEvent(new Event('input', { bubbles: true })); }
+        await sleep(20);
+        if (!n.isConnected || document.activeElement !== n) bad('I18', nm, `typing into ${desc(n) || n.tagName} took the caret away`);
+      }
+    });
+    shut(); made18.forEach(cleanup); window.lbAlert = lbAlert0; window.lbConfirm = lbConfirm0;
   }
 
   // ══ Report and exports ═════════════════════════════════════════════════════════════════════
