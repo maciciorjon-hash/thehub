@@ -4797,23 +4797,41 @@ that compound and loads its numbers into the panel, which makes *adjust* the sam
 50 / 184 / 614 / 2932 nM against 50 / 200 / 800 / 3000 planted, the runtime and alignment
 audits clean at 1440 in both themes and at 390, no horizontal overflow.
 
-**Then the gradient became the plate's, not the compound's** (same day). Jon: *"el set up es
-siempre el mismo: mismo gradiente en toda la placa y luego divisiones de compuestos,
-normalmente duplicado técnico."* So the concentration is a property of the **position**:
-`state.grad = {top, unitMul, fac, dir, a, b}` — one gradient for the plate, along columns
-(→/←) or rows (↓/↑), over lines a..b (default 1 to N−1, leaving the last line for controls).
-It is written **once, on the headers** of the axis it runs along, and set in the strip above
-the plate. A compound is then only a **name on a zone**: drag both replicate rows (or click
-their row labels), type the name, Enter. Wells outside the gradient — the control column a
-whole-row drag takes with it — are left alone and the preview says so. The name is drawn
-once across the zone (`.w-zone`, a grid item spanning its wells, which is why every cell is
-placed explicitly), and a well prints a concentration only when it is *not* the gradient's.
+**Then the layout became one object shared by plates** (same day, third pass — supersedes a
+second pass that fixed one gradient across the whole plate). Jon: the gradient must be
+user-drawn, the plate divisible any way, compound names are not serial, and more compounds
+than fit must continue onto Plate 2, 3… with the same layout. The model:
 
-Changing the gradient re-concentrates every compound that follows it (`_lmRegrade`); one
-that was given **its own concentrations** (the fold under the name: `entry.own`) or a well
-whose concentration was typed by hand (`d.concOwn`) is left alone. A pasted block takes the
-gradient where it lands, not where it came from. Each gradient edit is one undo step (marked
-on its first keystroke, closed by `change`, not by focus events, which do not always fire).
+- **`state.layout = {grads, zones}` is shared by every plate**; a plate (`state.plates[p]`)
+  owns only its reader values (`signal`, `file`). Controls (`ctrlWells`/`zeroCtrlWells`) are
+  layout. `state.wellData` is now a **materialised view** of the plate on screen
+  (`lmPlateWellData(p)` → `lmMaterialize`), so the popup and plate viz read the old shape.
+- **A gradient is drawn**: select wells → *Gradient* → top · dilution · direction → *Set
+  gradient*. It stores `idx:{pos:pointIndex}` from the selection's geometry, so any shape and
+  any number of gradients work. Direction defaults to across (and to the last one used) unless
+  the area is plainly a column — an 8×6 half-plate is not a vertical series.
+- **Compounds are zones, numbered by position**: select the area → *Compounds* → replicates
+  (1–4) · rows/columns → *Make N compounds* (`_lmCpdPlan`). Bands of N lines across the
+  gradient, **never straddling two gradients** — that is what makes any division work (two
+  half-plate gradients dragged as one area give compounds per half). Controls and wells with
+  no gradient are left out. Making compounds takes wells from other zones only, **never from
+  the gradient** (a bug caught in testing: it wiped the gradient under the zone).
+- **Zone z on plate p is compound p·S+z+1**; `state.names[n-1]` is its name, empty =
+  "Compound n". The **Compounds** view is the 1 = XXX list, grouped by plate; a multi-line
+  paste fills downwards and adds plates as needed (`_lmEnsurePlatesFor`). Names attach to
+  numbers and numbers to positions, so the plate never depends on what a compound is called.
+- **Plates are tabs of one experiment** ("Same layout, compounds continue", each tab showing
+  its compound range and a dot when it has readings). Several reader files dropped at once
+  fill Plate 1, 2, 3… in name order. **Analysis normalises each plate to its own controls**
+  before pooling — dividing plate 2 by plate 1's 100% would be a plate effect reported as
+  potency — and wells are reported as `P2:C3` when there is more than one plate.
+- The three steps sit above the plate (Gradient · Compounds · Names), each stating what is
+  done and each a click that selects that part of the layout. Column/row headers carry a
+  concentration when every gradient well under them shares it; otherwise the well prints it.
+
+Verified: the demo (6 compounds on 2 plates, non-serial names) fits 48 / 196 / 926 / 2949 /
+10 / 512 nM against 50 / 200 / 800 / 3000 / 10 / 500 planted; runtime and alignment audits
+clean in all three views, both themes, 96 and 384, and at 390 px.
 
 ## Beacon reads the plate: mBRET, and the controls it was read against (2026-09-22)
 
