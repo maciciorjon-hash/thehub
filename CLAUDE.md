@@ -4797,6 +4797,24 @@ that compound and loads its numbers into the panel, which makes *adjust* the sam
 50 / 184 / 614 / 2932 nM against 50 / 200 / 800 / 3000 planted, the runtime and alignment
 audits clean at 1440 in both themes and at 390, no horizontal overflow.
 
+**Then the gradient became the plate's, not the compound's** (same day). Jon: *"el set up es
+siempre el mismo: mismo gradiente en toda la placa y luego divisiones de compuestos,
+normalmente duplicado técnico."* So the concentration is a property of the **position**:
+`state.grad = {top, unitMul, fac, dir, a, b}` — one gradient for the plate, along columns
+(→/←) or rows (↓/↑), over lines a..b (default 1 to N−1, leaving the last line for controls).
+It is written **once, on the headers** of the axis it runs along, and set in the strip above
+the plate. A compound is then only a **name on a zone**: drag both replicate rows (or click
+their row labels), type the name, Enter. Wells outside the gradient — the control column a
+whole-row drag takes with it — are left alone and the preview says so. The name is drawn
+once across the zone (`.w-zone`, a grid item spanning its wells, which is why every cell is
+placed explicitly), and a well prints a concentration only when it is *not* the gradient's.
+
+Changing the gradient re-concentrates every compound that follows it (`_lmRegrade`); one
+that was given **its own concentrations** (the fold under the name: `entry.own`) or a well
+whose concentration was typed by hand (`d.concOwn`) is left alone. A pasted block takes the
+gradient where it lands, not where it came from. Each gradient edit is one undo step (marked
+on its first keystroke, closed by `change`, not by focus events, which do not always fire).
+
 ## Beacon reads the plate: mBRET, and the controls it was read against (2026-09-22)
 
 Jon: *"beacon es el data analysis de nanobret. de momento solo estoy haciendo entre PPIs (dos
