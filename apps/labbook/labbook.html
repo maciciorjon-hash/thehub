@@ -146,7 +146,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .body{flex:1;display:flex;min-height:0;position:relative;}
 .pane-sec{width:210px;flex-shrink:0;background:var(--bg);display:flex;flex-direction:column;}
 .pane-sec .pane-inner{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 9px;}
-/* The app-wide controls — Export · Recover · Settings · Theme — at the foot of the column, which
+/* The two controls that act on the notebook's data — Export · Recover — at the foot of the
+   column (Settings, Help and the theme are the top bar's one gear), which
    is on every desktop screen. They used to live only in the View ribbon, and the ribbon is
    hidden on Home, Experiments, Week, Today and every Notebook list: a control that affects the
    whole app was reachable from a page and nowhere else. */
@@ -8749,7 +8750,6 @@ function quickCapture(){
 // Everything the tab bar does not name, as a list with words on it — the same rule as every
 // ⋯ in the app. Search is here because Labbook's own spotlight had no opener a phone can press.
 function lbMoreMenu(ev){
-  var dark=document.documentElement.getAttribute('data-theme')==='dark';
   var t=ev&&ev.currentTarget&&ev.currentTarget.getBoundingClientRect?ev.currentTarget.getBoundingClientRect():null;
   var au=lbAuthState();
   popOpen('ctxmenu',[
@@ -8763,9 +8763,7 @@ function lbMoreMenu(ev){
     {sep:true},
     {label:'Export', sub:'PDF, Word, methods sheet, data', fn:function(){ exportMenu(); }},
     {label:'Recover', sub:'deleted items, versions, backups', fn:function(){ openRecover('deleted'); }},
-    {label:'Help', sub:'the tour, the parts of Labbook, shortcuts', fn:function(){ openSettings('help'); }},
-    {label:'Settings', sub:'shortcuts, writing, appearance', fn:function(){ openSettings(); }},
-    {label:dark?'Light mode':'Dark mode', fn:function(){ toggleTheme(); }}
+    {label:'Settings & help', sub:'the tour, shortcuts, writing, appearance', fn:function(){ openSettings(); }}
   ].filter(Boolean), t||{left:innerWidth-64,right:innerWidth-8,top:innerHeight-64,bottom:innerHeight-60});
 }
 
@@ -8855,12 +8853,11 @@ function secLeaf(node,label,icon,delCall,ctx,forceActive,opts){
   var meta = opts.meta ? '<span class="sec-meta">'+esc(opts.meta)+'</span>' : '';
   return '<div class="sec-item'+sub+active+(opts.cls?' '+opts.cls:'')+'" onclick="'+onclick+'"'+(ctx?' oncontextmenu="'+ctx+'"':'')+(opts.style?' style="'+opts.style+'"':'')+'>'+ic+'<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(label)+'</span>'+meta+del+'</div>';
 }
-function _colFootRender(){ var f=el('col-foot'); if(!f) return; if(_phoneTabs()){ f.innerHTML=''; return; }   // the phone's More menu holds these
+function _colFootRender(){ var f=el('col-foot'); if(!f) return; if(_phoneTabs()){ f.innerHTML=''; return; }   // the phone's More menu holds these.
+  // Two things that act on the notebook's data. Settings, Help and the theme are one gear in
+  // the top bar — this foot used to repeat all three.
   f.innerHTML='<button title="Export — PDF, Word, the clipboard, the numbers, a report" onmousedown="event.preventDefault();exportMenu()">'+tbSvg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>')+'</button>'
-    +'<button title="Recover — deleted items, versions, snapshots and backup files" onmousedown="event.preventDefault();openRecover()">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</button>'
-    +'<button data-help title="Help — the tour, the parts of Labbook, every shortcut" onmousedown="event.preventDefault();openSettings(\'help\')">'+tbSvg('<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 014.8.9c0 1.7-2.4 2.2-2.4 3.7"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/>')+'</button>'
-    +'<button title="Settings — shortcuts, writing, appearance" onmousedown="event.preventDefault();openSettings()">'+tbSvg('<circle cx="12" cy="12" r="3.2"/><path d="M4.5 12a7.5 7.5 0 01.1-1.2l-2-1.5 2-3.5 2.3 1a7.5 7.5 0 012-1.2l.4-2.5h4l.4 2.5a7.5 7.5 0 012 1.2l2.3-1 2 3.5-2 1.5a7.5 7.5 0 010 2.4l2 1.5-2 3.5-2.3-1a7.5 7.5 0 01-2 1.2l-.4 2.5h-4l-.4-2.5a7.5 7.5 0 01-2-1.2l-2.3 1-2-3.5 2-1.5a7.5 7.5 0 01-.1-1.2z"/>')+'</button>'
-    +'<button title="Light / dark" onmousedown="event.preventDefault();toggleTheme();_colFootRender()">'+tbSvg(_themeIsDark()?'<circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>':'<path d="M20 14.5A8.5 8.5 0 019.5 4a7 7 0 1010.5 10.5z"/>')+'</button>'; }
+    +'<button title="Recover — deleted items, versions, snapshots and backup files" onmousedown="event.preventDefault();openRecover()">'+tbSvg('<path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/><circle cx="12" cy="12" r="2.5"/>')+'</button>'; }
 function renderSections(){
   _colFootRender();
   var host=el('pane-sec'); var h=''; var k=SEL.node.kind, surf=lbSurface(), ws=lbWorkspace();
@@ -14593,7 +14590,12 @@ function renderTopbar(){
     // Inside dHUB the shell's own search box sits in the header above; a second magnifier under it would be the same door twice.
     +(lbHost()?'':'<button class="tp-btn" title="Search everything ('+_scLbl({key:'k'})+')" onclick="openSpot()">'+tbSvg('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>')+'<kbd>'+_scLbl({key:'k'})+'</kbd></button>')
     +ribbonStatus()
-    +'<button class="tp-btn" title="Settings — shortcuts, writing, appearance" onclick="openSettings()">'+tbSvg('<circle cx="12" cy="12" r="3.2"/><path d="M4.5 12a7.5 7.5 0 01.1-1.2l-2-1.5 2-3.5 2.3 1a7.5 7.5 0 012-1.2l.4-2.5h4l.4 2.5a7.5 7.5 0 012 1.2l2.3-1 2 3.5-2 1.5a7.5 7.5 0 010 2.4l2 1.5-2 3.5-2.3-1a7.5 7.5 0 01-2 1.2l-.4 2.5h-4l-.4-2.5a7.5 7.5 0 01-2-1.2l-2.3 1-2-3.5 2-1.5a7.5 7.5 0 01-.1-1.2z"/>')+'</button>';
+    // Inside dHUB the Hub's gear is Settings — theme, sync, backups — and a second gear here was
+    // the same door twice. What is Labbook's own (the tour, shortcuts, writing, the phone's
+    // password) sits behind a ? instead; standalone there is no other gear, so this one is it.
+    +(lbHost()
+      ? '<button class="tp-btn" data-help title="Labbook help — the tour, shortcuts, writing" onclick="openSettings()">'+tbSvg('<circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 014.8.9c0 1.7-2.4 2.2-2.4 3.7"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/>')+'</button>'
+      : '<button class="tp-btn" data-help title="Settings & help — the tour, shortcuts, writing, appearance" onclick="openSettings()">'+tbSvg('<circle cx="12" cy="12" r="3.2"/><path d="M4.5 12a7.5 7.5 0 01.1-1.2l-2-1.5 2-3.5 2.3 1a7.5 7.5 0 012-1.2l.4-2.5h4l.4 2.5a7.5 7.5 0 012 1.2l2.3-1 2 3.5-2 1.5a7.5 7.5 0 010 2.4l2 1.5-2 3.5-2.3-1a7.5 7.5 0 01-2 1.2l-.4 2.5h-4l-.4-2.5a7.5 7.5 0 01-2-1.2l-2.3 1-2-3.5 2-1.5a7.5 7.5 0 01-.1-1.2z"/>')+'</button>');
   updateNet();
 }
 // The outline the dock used to hold, as a popover from the top bar (a sheet on the phone).
@@ -20676,6 +20678,7 @@ function _tabMark(tabs,id){ if(!tabs) return; Array.prototype.forEach.call(tabs.
 function _tabsOpened(){ requestAnimationFrame(function(){ _tabInk(document.querySelector('#lb-dialog-card .rc-tabs')); }); }
 function openSettings(tab){
   SETTINGS.tab=tab||SETTINGS.tab||'keys';
+  if(!_settingsTabs().some(function(t){ return t[0]===SETTINGS.tab; })) SETTINGS.tab='writing';
   var d=_lbDlg(); el('lb-dialog-card').className='modal wide tabbed';
   d._onCancel=_lbDlgClose;
   _settingsRender(); d.classList.add('open'); _tabsOpened();
@@ -20688,10 +20691,16 @@ function settingsTab(t){
   _tabMark(tabs,t); _tabSwap(body,_settingsBody());
 }
 var SETTINGS_TABS=[['help','Help'],['keys','Shortcuts'],['writing','Writing'],['look','Appearance'],['about','About']];
+// Inside dHUB the theme is the Hub's and lives in its Settings, so Appearance is not offered
+// twice; the one other thing on it (snapping pictures) is an editing behaviour and moves to Writing.
+function _snapRowHtml(){ var snap=_imgSnapDefault();
+  return '<div class="st-row"><span class="st-l"><b>Snap pictures to a grid</b><i>A picture you drag lands on a 16px grid instead of wherever the mouse stopped</i></span>'
+      +'<button class="rc-btn" onclick="setPictureSnap('+(snap?'false':'true')+');_settingsRender()">'+(snap?'On':'Off')+'</button></div>'; }
+function _settingsTabs(){ return lbHost()?SETTINGS_TABS.filter(function(t){ return t[0]!=='look'; }):SETTINGS_TABS; }
 function _settingsRender(){
   var card=el('lb-dialog-card'); if(!card) return;
-  card.innerHTML='<div class="modal-t">Settings</div>'
-    +'<div class="rc-tabs">'+SETTINGS_TABS.map(function(t){
+  card.innerHTML='<div class="modal-t">'+(lbHost()?'Labbook':'Settings')+'</div>'
+    +'<div class="rc-tabs">'+_settingsTabs().map(function(t){
         return '<button class="rc-tab'+(SETTINGS.tab===t[0]?' on':'')+'" data-t="'+t[0]+'" onclick="settingsTab(\''+t[0]+'\')">'+esc(t[1])+'</button>';
       }).join('')+'</div>'
     +'<div class="rc-body" id="st-body">'+_settingsBody()+'</div>'
@@ -20706,14 +20715,13 @@ function _settingsBody(){
     return '<div class="rc-note">The last sentence of every Methods paragraph names the software the data were analysed in. It is one setting rather than a line in each of the fifteen presets.</div>'
       +'<div class="st-row"><span class="st-l"><b>Analysis software</b><i>'+(sw?esc(sw):'Not set — no sentence is added')+'</i></span>'
       +'<button class="rc-btn" onclick="_lbDlgClose();setAnalysisSoftware()">Change…</button></div>'
-      +'<div class="rc-note">As you type, Labbook fixes the notation a keyboard cannot produce: <b>u</b> before a unit becomes µ, <code>oC</code> becomes °C, <code>naoh</code> becomes NaOH, and <code>9*9=</code> answers itself. It runs one character at a time, so pasted text arrives exactly as it was written, and ⌘Z takes any of it back.</div>';
+      +'<div class="rc-note">As you type, Labbook fixes the notation a keyboard cannot produce: <b>u</b> before a unit becomes µ, <code>oC</code> becomes °C, <code>naoh</code> becomes NaOH, and <code>9*9=</code> answers itself. It runs one character at a time, so pasted text arrives exactly as it was written, and ⌘Z takes any of it back.</div>'
+      +(lbHost()?_snapRowHtml():'');
   }
   if(SETTINGS.tab==='look'){
-    var snap=_imgSnapDefault();
-    return '<div class="st-row"><span class="st-l"><b>Dark mode</b><i>Follows what you set here, on this device</i></span>'
+    return '<div class="st-row"><span class="st-l"><b>Dark mode</b><i>On this device</i></span>'
       +'<button class="rc-btn" onclick="toggleTheme();_settingsRender()">'+(_themeIsDark()?'Turn off':'Turn on')+'</button></div>'
-      +'<div class="st-row"><span class="st-l"><b>Snap pictures to a grid</b><i>A picture you drag lands on a 16px grid instead of wherever the mouse stopped</i></span>'
-      +'<button class="rc-btn" onclick="setPictureSnap('+(snap?'false':'true')+');_settingsRender()">'+(snap?'On':'Off')+'</button></div>';
+      +_snapRowHtml();
   }
   var host=hasCloud(), au=lbAuthState();
   // "Where does this notebook live" is the question this tab exists to answer, and until the
@@ -20835,8 +20843,8 @@ function tourSteps(){
   S.push({t:'Search everything', host:hosted?'#hub-search-wrap':null,
     sel:hosted?null:function(){ return document.querySelector('#topbar .tp-btn kbd')?document.querySelector('#topbar .tp-btn kbd').parentNode:null; },
     b:'<b>'+esc(_scLbl({key:'k'}))+'</b> finds experiments, steps, notes, protocols, antibodies and freezer boxes — and still finds them with a letter wrong.'});
-  S.push({t:'Help is always here', sel:phone?function(){ return document.querySelector('#lb-tabs [data-tab="more"]')||el('lb-tabs'); }:function(){ return document.querySelector('#col-foot [data-help]')||el('col-foot'); },
-    b:'<b>'+(phone?'More → Help':'Help')+'</b> brings this tour back, explains each part, and lists every keyboard shortcut. That is the whole of it — the rest is your experiments.'});
+  S.push({t:'Help is always here', sel:phone?function(){ return document.querySelector('#lb-tabs [data-tab="more"]')||el('lb-tabs'); }:function(){ return document.querySelector('#topbar [data-help]')||el('topbar'); },
+    b:'<b>'+(phone?'More → Settings & help':(hosted?'The ? → Help':'The gear → Help'))+'</b> brings this tour back, explains each part, and lists every keyboard shortcut. That is the whole of it — the rest is your experiments.'});
   return S;
 }
 function startTour(){
@@ -20960,6 +20968,10 @@ function shortcutsLegendHtml(){
 }
 var _toastT=null; function toast(msg){ var t=el('lb-toast'); if(!t){ t=document.createElement('div'); t.id='lb-toast'; t.style.cssText='position:fixed;bottom:20px;left:50%;background:var(--surface);color:var(--text);border:1px solid var(--border2);box-shadow:var(--shadow-md);border-radius:6px;padding:10px 16px;font-size:13px;z-index:400;opacity:0;transform:translate(-50%,10px)'; document.body.appendChild(t); } t.textContent=msg; t.style.opacity='1'; t.style.transform='translate(-50%,0)'; clearTimeout(_toastT); _toastT=setTimeout(function(){t.style.opacity='0'; t.style.transform='translate(-50%,10px)';},2600); }
 function toggleTheme(){
+  // Inside dHUB the theme is the Hub's: one switch for the shell and every app. Flipping only
+  // this frame left Labbook dark under a light Hub, with the Hub's own switch saying otherwise.
+  var H=lbHost();
+  if(H&&typeof H.toggleTheme==='function'){ try{ H.toggleTheme(); }catch(e){} renderTopbar(); _colFootRender(); return; }
   var cur=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
   var next=cur==='dark'?'light':'dark';
   document.documentElement.setAttribute('data-theme',next);
