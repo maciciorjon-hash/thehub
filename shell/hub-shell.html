@@ -120,10 +120,6 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 #hub-search-wrap{margin-left:auto;max-width:320px;width:220px;position:relative;}
 #hub-search{width:100%;height:var(--nav-h);min-height:var(--nav-h);box-sizing:border-box;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-4);padding:0 14px;color:var(--text);font-family:var(--sans);font-size:var(--fs-4);outline:none;transition:border-color .15s,width .2s;}
 #hub-search:focus{border-color:var(--accent2);width:100%;}
-#hub-search-results{display:none;position:absolute;top:36px;right:0;left:auto;min-width:280px;background:var(--glass-solid);-webkit-backdrop-filter:blur(24px) saturate(1.6);backdrop-filter:blur(24px) saturate(1.6);border:1px solid var(--glass-brd);border-radius:var(--r-2);box-shadow:var(--glass-shadow-lg),var(--glass-hi);z-index:30;max-height:280px;overflow-y:auto;padding:4px 0;}
-.sr-item{padding:9px 14px;cursor:pointer;font-size:var(--fs-4);color:var(--text2);display:flex;align-items:center;justify-content:space-between;}
-.sr-item:hover{background:var(--surface2);color:var(--text);}
-.sr-app{font-size:var(--fs-1);font-family:var(--mono);color:var(--text3);letter-spacing:.4px;}
 /* VIEWS */
 #hub-home{margin-top:58px;flex:1;min-height:calc(100vh - 58px);min-height:calc(100dvh - 58px);overflow-y:auto;position:relative;z-index:1;opacity:0;transition:opacity var(--dur-3) var(--ease);}
 .cells-tabs{display:flex;align-items:center;gap:2px;padding:0 18px;height:44px;flex:0 0 auto;
@@ -539,7 +535,7 @@ body.ws #hub-home .home-wrap{max-width:none;padding:22px 26px 40px;}
 :root{--ease-out:cubic-bezier(.16,1,.3,1);}
 
 a,button,input,select,textarea,
-.nav-chip,.ws-item,.cells-tab,.set-tab,.set-x,.sr-item,.opts-action-btn,
+.nav-chip,.ws-item,.cells-tab,.set-tab,.set-x,.opts-action-btn,
 .hspot-i,
 #hub-search-btn,#opts-btn,#egg-close,#hub-announce-close{
   transition:background-color var(--dur-1) var(--ease),color var(--dur-1) var(--ease),
@@ -581,7 +577,7 @@ a,button,input,select,textarea,
    Run a list to its end and the page behind it should not take over the gesture. The axis is
    named rather than blanket-contained, so a horizontal strip still passes a vertical wheel
    through to whatever is under it. */
-#hub-home,.set-body,#hub-search-results,#hub-spot-res{overscroll-behavior-y:contain;}
+#hub-home,.set-body,#hub-spot-res{overscroll-behavior-y:contain;}
 
 /* A theme switch is not an animation. Every surface carries a background-color transition
    now, so flipping data-theme would cross-fade the whole page — a full repaint per frame for
@@ -603,8 +599,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   </div>
   <span id="ws-where"></span>
   <div id="hub-search-wrap">
-    <input id="hub-search" type="text" placeholder="Search apps, tools, assays…" autocomplete="off" oninput="hubSearch(this.value)" onkeydown="hubSearchKey(event)">
-    <div id="hub-search-results"></div>
+    <input id="hub-search" type="text" placeholder="Search everything…" autocomplete="off" readonly onfocus="this.blur();window.hubSpot&&window.hubSpot.open()" onmousedown="event.preventDefault();window.hubSpot&&window.hubSpot.open()">
   </div>
   <button id="hub-search-btn" title="Search" onclick="window.hubSpot&&window.hubSpot.open()"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
   <div id="nav-chips" style="display:flex;align-items:center;gap:8px;"></div>
@@ -2839,11 +2834,6 @@ var REGG_PANEL_COUNT = 4;
     buf = (buf + k).slice(-target.length);
     if (buf === target) {
       buf = '';
-      // Clear hub-search if that was where it was typed, hide its dropdown.
-      var inp = document.getElementById('hub-search');
-      if (inp) inp.value = '';
-      var box = document.getElementById('hub-search-results');
-      if (box) box.style.display = 'none';
       return;
     }
   });
@@ -3119,55 +3109,51 @@ function hubSearchResults(q, limit){
     .sort(function(a,b){ return b.score-a.score; })
     .slice(0, limit||10);
 }
-function hubSearch(q){
-  var box=document.getElementById('hub-search-results');
-  if(!q||!q.trim()){box.style.display='none';return;}
-  var res=hubSearchResults(q,7);
-  if(!res.length){box.style.display='none';return;}
-  box.innerHTML=res.map(function(r,i){
-    return '<div class="sr-item" onmousedown="hubSearchGo('+i+')"><span>'+r.item.t+'</span><span class="sr-app">'+r.item.app+'</span></div>';
-  }).join('');
-  box._res=res;
-  box.style.display='block';
-}
-function hubSearchKey(e){
-  if(e.key==='Enter'){var box=document.getElementById('hub-search-results');if(box._res&&box._res.length)hubSearchGo(0);}
-  if(e.key==='Escape'){document.getElementById('hub-search-results').style.display='none';document.getElementById('hub-search').value='';}
-}
-function hubSearchGo(i){
-  var box=document.getElementById('hub-search-results');
-  var r=box._res[i];
-  box.style.display='none';
-  document.getElementById('hub-search').value='';
-  if(!r)return;
-  openApp(r.item.id,r.item.tab,r.item.item);
-}
-document.addEventListener('click',function(e){
-  var box=document.getElementById('hub-search-results');
-  var inp=document.getElementById('hub-search');
-  if(box&&inp&&!box.contains(e.target)&&e.target!==inp)box.style.display='none';
-});
-// ── Cmd/Ctrl+K spotlight (dHUB apps/tools) ──
+// ── The one search: the header box, the magnifier and ⌘K, here and inside Labbook ──
+// Signed in, it carries Labbook's whole index (experiments, steps, notes, protocols, the
+// Library, cultures, the freezer) beside the apps and tools; it used to be a box that found
+// apps while ⌘K inside Labbook found everything else. Visitors get the apps and tools.
 (function(){
   var back=document.createElement('div');
   back.id='hub-spot-back';
   // display lives in the stylesheet, not here: an inline `display:none` beats every rule and
   // there is no way to animate past it. The class is what opens it now.
   back.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:flex-start;justify-content:center;padding-top:14vh;';
-  back.innerHTML='<div style="width:100%;max-width:560px;background:var(--surface);border:1px solid var(--border2);border-radius:9px;box-shadow:0 16px 48px rgba(0,0,0,.4);overflow:hidden"><input id="hub-spot-in" type="text" placeholder="Search apps, tools, assays…" autocomplete="off" style="width:100%;border:none;background:none;padding:16px 18px;font-size:16px;color:var(--text);outline:none;border-bottom:1px solid var(--border);font-family:var(--sans)"><div id="hub-spot-res" style="max-height:56vh;overflow-y:auto;padding:6px"></div></div>';
+  back.innerHTML='<div style="width:100%;max-width:560px;background:var(--surface);border:1px solid var(--border2);border-radius:9px;box-shadow:0 16px 48px rgba(0,0,0,.4);overflow:hidden"><input id="hub-spot-in" type="text" placeholder="Search experiments, notes, protocols, apps…" autocomplete="off" style="width:100%;border:none;background:none;padding:16px 18px;font-size:16px;color:var(--text);outline:none;border-bottom:1px solid var(--border);font-family:var(--sans)"><div id="hub-spot-hint" style="display:none;padding:8px 16px 0;font-size:12px;color:var(--text3)"></div><div id="hub-spot-res" style="max-height:56vh;overflow-y:auto;padding:6px"></div></div>';
   function mount(){ if(!back.parentNode) document.body.appendChild(back); }
   if(document.body) mount(); else document.addEventListener('DOMContentLoaded',mount);
   var SELi=0, RES=[];
   function isOpen(){ return back.classList.contains('open'); }
-  function open(){ mount(); back.classList.add('open'); var i=document.getElementById('hub-spot-in'); i.value=''; render(''); setTimeout(function(){i.focus();},20); }
+  function lb(){ if(!isAdmin) return null; var w=_lbWin(); return (w&&w.lbSpotSearch)?w:null; }
+  function open(){ mount(); back.classList.add('open'); var w=lb(); if(w) try{ w.lbSpotReset(); }catch(e){}
+    var i=document.getElementById('hub-spot-in'); i.value=''; render(''); setTimeout(function(){i.focus();},20); }
   function close(){ back.classList.remove('open'); }
+  function esc(t){ return String(t==null?'':t).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function render(q){ var box=document.getElementById('hub-spot-res'); if(!box) return;
-    var items = !q?[] : hubSearchResults(q,10).map(function(r){return r.item;});
-    RES=items; SELi=0;
-    box.innerHTML = items.length? items.map(function(it,i){ return '<div class="hspot-i" data-i="'+i+'" onmousedown="event.preventDefault();window.__hubSpotPick('+i+')" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;cursor:pointer;'+(i===0?'background:var(--surface2)':'')+'"><span style="flex:1;font-size:13px;font-weight:600;color:var(--text)">'+it.t+'</span><span style="font-size:11px;color:var(--text3)">'+it.app+'</span></div>'; }).join('') : '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">'+(q?'No matches':'Type to search dHUB…')+'</div>';
+    var w=lb(), L={items:[],hint:''}; if(q&&w){ try{ L=w.lbSpotSearch(q)||L; }catch(e){} }
+    var A = !q?[] : hubSearchResults(q,8).filter(function(r){ return !(w && r.item.id==='protocols'); });
+    var notebook=L.items.map(function(x){ return {lb:x}; }), apps=A.map(function(r){ return {app:r.item, s:r.score}; });
+    // A query that names an app leads with the app; anything else leads with the notebook.
+    var appsFirst=apps.length&&apps[0].s>=600;
+    RES=appsFirst?apps.concat(notebook):notebook.concat(apps); SELi=0;
+    var hint=document.getElementById('hub-spot-hint'); if(hint){ hint.innerHTML=L.hint||''; hint.style.display=L.hint?'':'none'; }
+    function row(r,i){ var on=i===0?'background:var(--surface2);':'';
+      if(r.lb){ var x=r.lb;
+        return '<div class="hspot-i" data-i="'+i+'" onmousedown="event.preventDefault();window.__hubSpotPick('+i+')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;cursor:pointer;'+on+'">'
+          +'<span style="width:22px;height:22px;border-radius:5px;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;background:'+esc(x.c)+'">'+(x.svg||esc(x.ic))+'</span>'
+          +'<span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.a)+'</span>'
+          +(x.b?'<span style="display:block;font-size:11.5px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.b)+'</span>':'')+'</span>'
+          +'<span style="font-size:11px;color:var(--text3)">'+esc(x.k)+'</span></div>'; }
+      var it=r.app;
+      return '<div class="hspot-i" data-i="'+i+'" onmousedown="event.preventDefault();window.__hubSpotPick('+i+')" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:6px;cursor:pointer;'+on+'"><span style="flex:1;font-size:13px;font-weight:600;color:var(--text)">'+it.t+'</span><span style="font-size:11px;color:var(--text3)">'+it.app+'</span></div>'; }
+    box.innerHTML = RES.length? RES.map(row).join('') : '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">'+(q?'No matches':(w?'Type to search experiments, notes, protocols and apps…':'Type to search dHUB…'))+'</div>';
   }
   function hi(){ var ns=document.querySelectorAll('#hub-spot-res .hspot-i'); ns.forEach(function(n,i){ n.style.background=(i===SELi)?'var(--surface2)':''; if(i===SELi)n.scrollIntoView({block:'nearest'}); }); }
-  window.__hubSpotPick=function(i){ var it=RES[i]; close(); if(!it)return; openApp(it.id,it.tab,it.item); };
+  window.__hubSpotPick=function(i){ var r=RES[i]; close(); if(!r) return;
+    if(r.lb){ // a notebook result runs inside Labbook, so Labbook has to be what is on screen
+      if(currentApp!=='labbook'){ _wsSection='planner'; renderRail(); openApp('labbook'); wsSetWhere('Planner'); }
+      try{ r.lb.run(); }catch(e){} return; }
+    openApp(r.app.id,r.app.tab,r.app.item); };
   document.addEventListener('input',function(e){ if(e.target&&e.target.id==='hub-spot-in') render(e.target.value); });
   document.addEventListener('keydown',function(e){
     if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); if(isOpen())close(); else open(); return; }

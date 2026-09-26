@@ -5610,11 +5610,31 @@ and Labbook's second Settings, Help and theme buttons in the column foot (the to
 the one; the foot keeps Export and Recover). **Inside dHUB Labbook's gear is a ?** — Help,
 Shortcuts, Writing, About, titled *Labbook* — because the Hub's gear is Settings, and
 Appearance is the Hub's: `toggleTheme` delegates to `parent.toggleTheme`, which fixed Labbook
-going dark under a light shell. Open questions put to Jon (not changed): two task lists
-(shell chip vs Planner tasks), two note systems (shell quick note vs Journal), header search vs
-Labbook's ⌘K reaching different things inside dHUB, the column-foot Export picker vs the Report's
-export row, the cross-experiment Report modal vs the scoped PDF export, the old preset editor vs
-the Designer, and the shell's accent picker in a one-blue system.
+going dark under a light shell.
+
+Then the merges Jon ticked, each now one system:
+- **Tasks** — Labbook's Planner tasks are the list. A task with no date sits on Today until done
+  (`tasksUndated`, urgent first, `t.urgent`/`t.doneAt`); `migrateHubTasks` copies each old
+  header task in once by id (`LB.data._hubTasksSeen`) and leaves `JournalStore.tasks` as it was.
+  The header chip counts through `lbTaskCount()` and opens Today (`hubOpenToday`); Labbook's
+  `save()` pokes `parent.renderNavChips` so the count follows.
+- **Note** — the header Note writes a line into today's Journal (`lbQuickNote`); the old scratch
+  note was appended there once (`migrateHubNote`, `LB.data._hubNoteDone`).
+- **Search** — in dHUB the header box, the magnifier, ⌘K and Labbook's own ⌘K all open the
+  Hub's spotlight, which asks Labbook for its full ranking (`spotResults` → `lbSpotSearch`,
+  `lbSpotReset` once per opening) beside the apps; a notebook row runs inside Labbook after
+  showing it, an app-name query leads with the app. The header dropdown (`hubSearch*`) is gone.
+  ⌘O (experiments by code) stays Labbook's own; standalone Labbook keeps its spotlight.
+- **Export** — on an experiment the column's Export scrolls to and flashes the Report's export
+  row; elsewhere it is a four-item picker (PDF · Copy · Word · Data). The cross-experiment
+  Report modal (`openReport`, `RP`, `buildReportDoc`) is folded into Export PDF: a **date range**
+  scope and a per-export **"A summary, not the full records"** box (`o.summary`,
+  `_pdSummaryHtml`, never persisted — `_pdfPersisted`); its CSV is the Data picker's *summary
+  CSV* (`exportSummaryCSV(scope)`). Experiments' *Report* button opens the dialog with it ticked.
+- **Designs** — the old preset editor (`#preset-modal`, `PE`, `pe*`, `newPresetFromType`) is
+  retired; the quick window's *Edit this preset…* opens the Designer (`nmEditPreset`). I17/I18/I20
+  and the phone sweep drive the Designer instead.
+- **Accent** — the picker is gone (it recoloured only the shell); a stored `hub_accent` is cleared.
 
 **The Designer, connected.** Three bugs from one screenshot: editing a calculator field repainted
 the recipe only (`dsLiveRefresh` now repaints the quoted `{{c.*}}` numbers in *What you do* and

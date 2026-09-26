@@ -38,7 +38,7 @@
 //   I16 answers = stored     Every parameter typed on the Designer's parameters screen, through
 //                            its own event, is the value the record's setup carries. (the
 //                            Compounds list went into the quick window's state)
-//   I17 every setup form     The same, for the quick window, Edit setup and the preset editor:
+//   I17 every setup form     The same, for the quick window, Edit setup and the Designer's design editing:
 //                            typing keeps the focus, and what was typed is what the form holds.
 //                            (the preset editor redrew on every keystroke; its lists went to
 //                            the quick window)
@@ -46,7 +46,7 @@
 //       → record             steps, setup, questions and plate. (its own parameters and "blank"
 //                            were dropped on the way)
 //   I20 open + save = same  Opening a design and saving it untouched changes nothing, in the
-//                            Designer and in the preset editor. (the Designer froze every
+//                            Designer. (the Designer froze every
 //                            default answer into the design)
 //   I21 a read ends a well   Every readout of a run starts from the same volume — each reads its
 //                            own copy of the plate. (the 72 h CTG read "started from 140 µL")
@@ -760,9 +760,10 @@ async function suite(opts) {
       openQuick(key, {}); nmSetup();
       await typeInto('#nm-setup', key, 'quick window', () => NM_SETUP || {});
       closeNew();
-      openPresetEditorFor(key);
-      await typeInto('#pe-setup', key, 'preset editor', () => Object.assign({}, setupDefaultsFor(key), PE.work.setup || {}));
-      closePresetEditor();
+      // Designs are edited in the Designer only (the older preset editor was retired 2026-09-26).
+      dsOpen({ mode: 'preset', presetKey: key }); DS.step = 1; dsDraw();
+      await typeInto('#ds-body', key, 'Designer (editing the design)', () => (DS && DS.setup) || {});
+      dsClose();
       openQuick(key, {}); const e = await created(() => createExperiment()); closeNew();
       if (e) { openSetupEditor(e.id);
         if (el('es-modal').classList.contains('open')) await typeInto('#es-fields', key, 'Edit setup', () => ES_SETUP || {});
@@ -810,10 +811,6 @@ async function suite(opts) {
     for (const k of KEYS) await guard('I20', k, async () => {
       const key = '__INV20_' + k.replace(/\W/g, '_'), orig = JSON.parse(JSON.stringify(LB.data.presets[k])); delete orig._seedSig;
       try {
-        tick('I20');
-        LB.data.presets[key] = JSON.parse(JSON.stringify(orig));
-        openPresetEditorFor(key); peSave(); await sleep(10);
-        pdiff(orig, LB.data.presets[key], 'preset', []).forEach(d => bad('I20', k, `preset editor, saved untouched: ${d}`));
         tick('I20');
         LB.data.presets[key] = JSON.parse(JSON.stringify(orig));
         dsOpen({ mode: 'preset', presetKey: key }); dsSavePreset(true); await sleep(10);
@@ -931,7 +928,7 @@ async function suite(opts) {
       ['plate editor', () => { SEL.page = eA.id; renderAll(); openPlateEditor('exp:' + eA.id); }],
       ['new experiment', () => openNew(PID, SID)],
       ['edit setup', () => openSetupEditor(eA.id)],
-      ['preset editor', () => openPresetEditorFor('NB_SPARK_RTX96')],
+      ['design editor', () => { dsOpen({ mode: 'preset', presetKey: 'NB_SPARK_RTX96' }); DS.step = 1; dsDraw(); }],
       ['experiments list', () => { selectNode('exps'); renderAll(); }],
       ['today', () => { selectNode('today'); renderAll(); }],
       ['journal', () => { openJournalWs(); renderAll(); }],
