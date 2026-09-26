@@ -673,6 +673,7 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .nbt.done{opacity:.5;}
 .nbt.done .nbt-tx>span[contenteditable]{text-decoration:line-through;}
 .nbt-tx{flex:1;min-width:0;}
+.nbt-urg{flex:none;width:16px;height:16px;margin-top:1px;border-radius:50%;background:var(--danger);color:#fff;font-weight:700;font-size:var(--fs-1);display:inline-flex;align-items:center;justify-content:center;}
 .nbt-tx>span[contenteditable]:focus{outline:none;}
 .nbt .wk-cb{flex:none;width:15px;height:15px;margin-top:1px;border:1.5px solid var(--border2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:var(--fs-1);color:#fff;cursor:pointer;}
 .nbt.done .wk-cb{background:#5e87c5;border-color:#5e87c5;}
@@ -8549,8 +8550,12 @@ function _cloudListen(r){
   });
 }
 
+// dHUB's header counts today's open tasks from here; it is told when something may have moved.
+var _hubChipT=null;
+function _hubChipsSoon(){ clearTimeout(_hubChipT); _hubChipT=setTimeout(function(){ try{ var H=lbHost(); if(H&&H.renderNavChips) H.renderNavChips(); }catch(e){} },400); }
 function save(){
   if(_adopting) return;
+  _hubChipsSoon();
   LB.data.updated=Date.now();
   // Coalesce the (potentially large) full-tree stringify: a burst of save() calls from a
   // multi-step structural op serialises once. Keystrokes already arrive via queueSave (600ms).
@@ -13991,8 +13996,51 @@ function tasksCarriedTo(D){
     .filter(function(x){ return x && !x.done && !x.dismissed && x.date && x.date<D && x.date>=floor; })
     .sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
 }
+// A task with no date is "to do, some time" — the kind dHUB's header used to keep in a list of
+// its own. It sits on Today until it is done (and on the day it was done, so a tick does not
+// make it vanish under the pointer), urgent ones first.
+function tasksUndated(D){
+  var t=plannerTasks(), today=todayStr();
+  return Object.keys(t).map(function(k){return t[k];})
+    .filter(function(x){ if(!x||x.date||x.dismissed) return false;
+      if(!x.done) return D===today;
+      if(!x.doneAt) return false; var d=new Date(x.doneAt); return (d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2))===D; })
+    .sort(function(a,b){ return (a.done?1:0)-(b.done?1:0) || (b.urgent?1:0)-(a.urgent?1:0) || (a.created||0)-(b.created||0); });
+}
+// dHUB's header kept its own task list (JournalStore.tasks) beside this one. Copied in once per
+// task — remembered by id, so a task added there later still arrives — and the old list is left
+// exactly as it was, the same rule migrateAntibodiesToLibrary follows.
+function migrateHubTasks(){
+  var H=lbHost(), S=null; try{ S=H&&H.JournalStore; }catch(e){}
+  if(!S||!S.get) return 0;
+  var src=(S.get()||{}).tasks||{}, seen=LB.data._hubTasksSeen||(LB.data._hubTasksSeen={}), n=0, T=plannerTasks();
+  Object.keys(src).forEach(function(id){ if(seen[id]) return; var x=src[id]; seen[id]=1; if(!x||!String(x.text||'').trim()) return;
+    var nid='hub_'+id; if(T[nid]) return;
+    T[nid]={id:nid,date:null,text:String(x.text),done:!!x.done,expId:null,blockId:null,created:x.created||Date.now(),updated:Date.now()};
+    if(x.priority==='urgent') T[nid].urgent=true;
+    if(x.done) T[nid].doneAt=x.completed||x.created||Date.now();
+    n++; });
+  if(n){ save(); try{ renderAll(); }catch(e){} }
+  return n; }
+// dHUB's header "Note" was a scratch textarea of its own; it writes into today's Journal page now.
+// Its old text is appended there once, marked so a second device does not append it again.
+function migrateHubNote(){
+  var H=lbHost(), S=null; try{ S=H&&H.JournalStore; }catch(e){}
+  if(!S||!S.get||LB.data._hubNoteDone) return false;
+  var txt=String((S.get()||{}).note||'').trim(); LB.data._hubNoteDone=true;
+  if(txt) lbQuickNote(txt,{title:'Quick note (from the dHUB header)'});
+  else save();
+  return !!txt; }
+// The shell's header asks through these rather than keeping a copy of anything.
+function lbQuickNote(text,o){ o=o||{}; text=String(text||'').trim(); if(!text) return false;
+  var D=todayStr(), pg=LB.data.notebook[D]||(LB.data.notebook[D]={date:D,html:''});
+  var body=text.split(/\n/).map(function(l){ return '<p>'+esc(l)+'</p>'; }).join('');
+  pg.html=(pg.html||'')+(o.title?('<p><b>'+esc(o.title)+'</b></p>'):'')+body; pg.updated=Date.now();
+  save(); try{ if(lbWorkspace()==='notebook'&&SEL.page===D) renderEditor(); else if(SEL.node&&SEL.node.kind==='journal') renderEditor(); }catch(e){}
+  return true; }
+function lbTaskCount(){ var D=todayStr(); return tasksUndated(D).concat(tasksForDate(D)).concat(tasksCarriedTo(D)).filter(function(t){ return !t.done; }).length; }
 function nbTasksHtml(D){
-  var ts=tasksForDate(D).concat(tasksCarriedTo(D));
+  var ts=tasksUndated(D).concat(tasksForDate(D)).concat(tasksCarriedTo(D));
   var rows=ts.map(function(t){
     var late=(t.date&&t.date<D)?('<span class="carry-from" title="Set for '+esc(fmtDate(t.date))+'">'+esc(fmtDate(t.date))+'</span>'):'';
     var chip='';
@@ -14002,7 +14050,7 @@ function nbTasksHtml(D){
         chip='<span class="nbt-lnk" onclick="'+(t.blockId?('openBlk(\''+t.expId+'\',\''+t.blockId+'\')'):('openExp(\''+t.expId+'\')'))+'" title="Open">'+esc((le.code||le.title||'exp')+stepName)+' &#8599;</span>'; } }
     return '<div class="nbt'+(t.done?' done':'')+(late?' late':'')+'" oncontextmenu="ctxTask(event,\''+t.id+'\',\''+D+'\')">'
       +'<span class="wk-cb" onclick="togglePlannerTask(\''+t.id+'\')" title="Toggle done">'+(t.done?'&#10003;':'')+'</span>'
-      +late+'<span class="nbt-tx"><span contenteditable="true" spellcheck="false" onblur="editPlannerTask(\''+t.id+'\',this.textContent)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'+esc(t.text)+'</span>'+chip+'</span>'
+      +(t.urgent?'<span class="nbt-urg" title="Urgent">!</span>':'')+late+'<span class="nbt-tx"><span contenteditable="true" spellcheck="false" onblur="editPlannerTask(\''+t.id+'\',this.textContent)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'+esc(t.text)+'</span>'+chip+'</span>'
       +'<span class="wk-del" onclick="delPlannerTask(\''+t.id+'\')" title="Delete">&times;</span></div>';
   }).join('');
   return '<div style="margin-top:14px"><div class="day-from-lbl">Tasks for this day</div><div class="nbt-list">'+rows
@@ -14077,7 +14125,7 @@ function wkPrev(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),-7); render
 function wkNext(){ WK_ANCHOR=addDays(wkMonday(WK_ANCHOR||todayStr()),7); renderEditor(); }
 function wkToday(){ WK_ANCHOR=null; renderEditor(); }
 function addPlannerTask(D,text){ text=(text||'').trim(); if(!text) return; var id=uid(); plannerTasks()[id]={id:id,date:D,text:text,done:false,expId:null,blockId:null,created:Date.now(),updated:Date.now()}; save(); renderEditor(); }
-function togglePlannerTask(id){ var t=plannerTasks()[id]; if(!t) return; t.done=!t.done; t.updated=Date.now(); save(); renderEditor(); }
+function togglePlannerTask(id){ var t=plannerTasks()[id]; if(!t) return; t.done=!t.done; if(t.done) t.doneAt=Date.now(); else delete t.doneAt; t.updated=Date.now(); save(); renderEditor(); }
 function delPlannerTask(id){ var t=plannerTasks()[id]; if(!t) return;
   lbConfirm('Delete \u201c'+(t.text||'this task')+'\u201d?',{title:'Delete task',ok:'Delete'}).then(function(ok){
     if(!ok) return;
@@ -14144,6 +14192,8 @@ function ctxTask(ev,id,D){
     {label:t.done?'Mark not done':'Mark done',fn:function(){ togglePlannerTask(id); }},
     (late?{label:'Move to this day',sub:'set for '+fmtDate(t.date),fn:function(){ t.date=D; t.updated=Date.now(); save(); renderEditor(); }}:null),
     (late?{label:'Dismiss',sub:'stop carrying it, without calling it done',fn:function(){ t.dismissed=true; t.updated=Date.now(); save(); renderEditor(); }}:null),
+    {label:t.urgent?'Not urgent':'Mark urgent',fn:function(){ if(t.urgent) delete t.urgent; else t.urgent=true; t.updated=Date.now(); save(); renderEditor(); }},
+    (!t.date?{label:'Give it a date…',sub:'it moves from Today to that day',fn:function(){ lbPrompt('Which day?',todayStr(),{title:'Task date',ok:'Set',type:'date'}).then(function(v){ if(!v) return; t.date=v; t.updated=Date.now(); save(); renderEditor(); }); }}:null),
     {label:t.expId?'Change link…':'Link to an experiment…',fn:function(){ linkPlannerTask(id); }},
     (t.expId?{label:'Open what it links to',fn:function(){ if(t.blockId) openBlk(t.expId,t.blockId); else openExp(t.expId); }}:{sep:true}),
     {sep:true},{label:'Delete task',danger:true,fn:function(){ delPlannerTask(id); }}
@@ -21110,7 +21160,8 @@ lbInitSync();
 // one, the GC by marking every attachment on the machine — and both used to run against
 // whatever happened to be in memory 1.5 and 4 seconds in, which on a slow first read is the
 // local cache and not the notebook. They wait now.
-_onBootSettled(function(){ setTimeout(maybeAutoBackup,1500); setTimeout(function(){ trashPurge(); gcAttachments(); },4000);
+_onBootSettled(function(){ try{ migrateHubTasks(); migrateHubNote(); }catch(e){} try{ var H=lbHost(); if(H&&H.renderNavChips) H.renderNavChips(); }catch(e){}
+  setTimeout(maybeAutoBackup,1500); setTimeout(function(){ trashPurge(); gcAttachments(); },4000);
   // After the one-time backup note (1.5 s): the tour waits for any dialog to be closed first.
   setTimeout(maybeStartTour,2600);
   // After the GC, so _collectAttIds has settled. Quiet unless it actually uploads something.
