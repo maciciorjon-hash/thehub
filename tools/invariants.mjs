@@ -50,6 +50,16 @@
 //                            default answer into the design)
 //   I21 a read ends a well   Every readout of a run starts from the same volume — each reads its
 //                            own copy of the plate. (the 72 h CTG read "started from 140 µL")
+//   I22 text follows numbers In the Designer, every number a step's text quotes from its
+//                            calculator is the calculator's current value the moment a box is
+//                            typed in. (changing "already in the well" repainted the recipe and
+//                            left the sentence under it saying 11.11 µL into 100)
+//   I23 the chain carries     What each step leaves in the well is what the next one starts
+//       every step           from — in the Review and in the created record alike, for a step
+//                            with no volume calculator that says what it adds too. (a step that
+//                            added liquid was invisible; the read started from 111, not 123)
+//   I24 the Review's plate   Edit on the Review's plate map opens it, and what is changed there
+//       is editable          is the plate the experiment is created with. ("no plate map here")
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
 //                            dialog, the Journal, Visualize, the Designer — keeps the caret
@@ -821,6 +831,83 @@ async function suite(opts) {
       dsClose();
       const b0 = reads.length ? reads[0].before : null;
       reads.forEach(x => { if (x.before !== b0) bad('I21', key, `readout "${x.b.title}" starts from ${x.before} µL; the first readout started from ${b0} µL — a read went into wells another read had already lysed`); });
+    });
+  }
+
+  // ── I22 the Designer's step text follows its calculator as it is typed ──
+  if (run('I22')) {
+    for (const key of KEYS) await guard('I22', key, async () => {
+      designFrom(key, {});
+      DS.step = 3;
+      for (let i = 0; i < DS.mods.length; i++) {
+        const m = DS.mods[i]; if (!m.calc || !CALC_KINDS[m.calc.kind] || !/\{\{c\./.test(m.html || '')) continue;
+        DS.cur = i; dsDraw();
+        const inputs = [...document.querySelectorAll('.ds-calc .cc-inputs input[type="number"]:not([disabled])')];
+        for (const inp of inputs) {
+          tick('I22');
+          const v0 = +inp.value || 0; inp.value = String(Math.round((v0 || 10) * 1.7 + 3)); inp.dispatchEvent(new Event('input', { bubbles: true }));
+          const ps = dsPseudo(DS); const live = ps.blocks.find(b => b.dsIdx === i);
+          const vals = calcValuesChained(live, ps) || {};
+          [...document.querySelectorAll('#ds-rt span.cv[data-c]')].forEach(sp => {
+            const k = sp.getAttribute('data-c'); if (k === 'wait') return;
+            const want = vals[k] == null ? '—' : String(vals[k]).replace(/<[^>]+>/g, '');
+            if (sp.textContent !== want) bad('I22', key, `"${m.label}": typed into "${inp.closest('label') && inp.closest('label').innerText.split('\n')[0]}", the text still says ${k}=${sp.textContent}, the calculator says ${want}`);
+          });
+        }
+      }
+      dsClose();
+    });
+  }
+
+  // ── I23 what each step leaves is what the next starts from, Review and record alike ──
+  if (run('I23')) {
+    for (const key of KEYS) await guard('I23', key, async () => {
+      designFrom(key, {});
+      // A step with no volume calculator that says it adds 7 µL, dropped in after the first step
+      // that puts liquid in the well.
+      const ch0 = dsChain(dsPseudo(DS)); const first = ch0.findIndex(x => x.add > 0);
+      if (first < 0) { dsClose(); return; }
+      tick('I23');
+      const at = ch0[first].b.dsIdx + 1;
+      const extra = dsMod({ title: 'INV adds 7', html: '<p>add 7 µL</p>' }); extra.addUL = 7; DS.mods.splice(at, 0, extra);
+      const ps = dsPseudo(DS), ch = dsChain(ps);
+      const ix = ch.findIndex(x => x.b.title === 'INV adds 7');
+      if (ix < 0 || Math.abs(ch[ix].add - 7) > 1e-9) bad('I23', key, `a step that says it adds 7 µL adds ${ix < 0 ? 'nothing (not in the chain)' : ch[ix].add} in the Review`);
+      for (let j = 1; j < ch.length; j++) {
+        const prev = ch[j - 1], cur = ch[j];
+        const expect = (prev.b.calc && VOL_TERMINAL[prev.b.calc.kind]) ? prev.before : prev.after;
+        const k = cur.b.calc && cur.b.calc.kind;
+        if (k && (CHAINED_INPUTS[k] || []).length && !(cur.b.calc.own || {})[CHAINED_INPUTS[k][0]] && expect > 0 && cur.before !== expect)
+          bad('I23', key, `"${cur.b.title}" starts from ${cur.before} µL; the step above leaves ${expect} µL`);
+      }
+      const review = ch.map(x => x.b.title + ':' + x.after);
+      const e = await created(() => dsCreate());
+      if (!e) { bad('I23', key, 'the design did not create an experiment'); return; }
+      const rec = dsChain(e).map(x => x.b.title + ':' + x.after);
+      if (JSON.stringify(rec) !== JSON.stringify(review)) bad('I23', key, `the record's well volumes are not the Review's: record ${rec.join(' · ')} / review ${review.join(' · ')}`);
+    });
+  }
+
+  // ── I24 the Review's plate map can be edited, and the edit is the plate created ──
+  if (run('I24')) {
+    for (const key of KEYS) await guard('I24', key, async () => {
+      designFrom(key, {});
+      if (!DS.plate) { dsClose(); return; }
+      DS.step = 4; dsDraw();
+      const pl0 = dsPlateFor(DS, dsPseudo(DS)); if (!pl0) { dsClose(); return; }
+      tick('I24');
+      const btn = [...document.querySelectorAll('.ds-plate button')].find(b => /openPlateEditor/.test(b.getAttribute('onclick') || ''));
+      if (!btn) { bad('I24', key, 'the Review draws a plate with no Edit button'); dsClose(); return; }
+      const lbToast0 = window.toast; let said = ''; window.toast = t => { said = String(t); };
+      btn.click(); window.toast = lbToast0;
+      const open = document.getElementById('plate-modal').classList.contains('open');
+      if (!open) { bad('I24', key, `Edit on the Review's plate did not open the editor${said ? ` ("${said}")` : ''}`); dsClose(); return; }
+      const p = plCur(); p.title = 'INV edited on the Review'; platePersist(PL.key); closePlateEditor();
+      const shown = dsPlateFor(DS, dsPseudo(DS));
+      if (!shown || shown.title !== 'INV edited on the Review') bad('I24', key, 'an edit made on the Review is not the plate the Review then shows');
+      const e = await created(() => dsCreate());
+      if (!e) { bad('I24', key, 'the design did not create an experiment'); return; }
+      if (!e.plate || e.plate.title !== 'INV edited on the Review') bad('I24', key, `the experiment was created with ${e.plate ? 'a different plate' : 'no plate'} than the one edited on the Review`);
     });
   }
 

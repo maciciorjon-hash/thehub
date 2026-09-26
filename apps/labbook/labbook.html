@@ -4793,6 +4793,7 @@ function insertStepBlock(spec, at){
   if(spec.pub) blk.pub=spec.pub;
   if(spec.noPub) blk.noPub=true;
   if(spec.w){ blk.waitMin=spec.w; blk.waitSameDay=true; }
+  if(spec.addUL>0) blk.addUL=+spec.addUL;
   if(spec.part){ blk.part=spec.part; blk.sourcePid=spec.sourcePid; }
   e.blocks.splice(idx,0,blk);
   // A step's starting volume is a property of where it lands, not of the preset it came from.
@@ -5466,7 +5467,7 @@ function plLayoutMenu(){
     var cur=plCur();
     function apply(){ var o=_plateOwner(PL.key); if(!o) return;
       // Jon (2026-09-17): a rebuilt plate could not be taken back. The map you had is the record.
-      undoMark('Layout: '+L.label,['experiments.'+o.exp.id]);
+      if(o.ds) dsUndoMark(); else undoMark('Layout: '+L.label,['experiments.'+o.exp.id]);
       o.obj.plate=L.build(o.exp&&o.exp.setup);
       PL.sel={}; PL.anchor=null; PL.type=(plateTypes(o.obj.plate)[0]||{}).id;
       o.exp.updated=Date.now(); save(); plRender(); toast('Layout applied'); }
@@ -6137,7 +6138,15 @@ function _plDownload(name,text,mime){ try{
 // Owner routing — same shape as the editors' data-ctx strings.
 //   exp:<expId>            → the experiment-level plate map
 //   blk:<expId>:<blockId>  → a day-block's plate map
+// Kept off DS on purpose: the draft is serialised for undo and for the saved draft.
+var DS_PLEXP=null, DS_PLHOLD={get plate(){ return (DS&&DS.plateMap)||null; }, set plate(v){ if(DS) DS.plateMap=v||null; }};
 function _plateOwner(key){ var p=String(key||'').split(':');
+  // The Designer's plate, before the experiment exists: the map the Review draws, editable there.
+  // `obj` is a holder whose .plate is DS.plateMap; `exp` a stand-in run (the draft as it will be
+  // created), cached while the editor is open so every read of the plate does not rebuild it.
+  if(p[0]==='ds'){ if(!DS) return null;
+    if(!DS_PLEXP){ var ps=dsPseudo(DS); ps.plate=DS.plateMap||null; DS_PLEXP=ps; }
+    return {obj:DS_PLHOLD, exp:DS_PLEXP, ds:true}; }
   if(p[0]==='exp'){ var e=LB.data.experiments[p[1]]; return e?{obj:e,exp:e}:null; }
   if(p[0]==='blk'){ var e2=LB.data.experiments[p[1]]; if(!e2) return null;
     var b=(e2.blocks||[]).filter(function(x){return x.id===p[2];})[0]; return b?{obj:b,exp:e2}:null; }
@@ -6279,6 +6288,7 @@ function syncSetupFromPlate(e){
   return changed.length?changed:null;
 }
 function platePersist(key){ var o=_plateOwner(key); if(!o) return;
+  if(o.ds){ dsDirty(); return; }   // the draft holds it; the experiment reads it when created
   var changed=syncPlateToCalcs(o.exp);
   // The concentrations on the map are what the Methods quote, so the setup follows them here —
   // while the editor is still open, not the next time somebody remembers to look.
@@ -6747,7 +6757,11 @@ var PL={key:null,sel:{},anchor:null,type:'compound',drag:false,band:null,clip:nu
   setupOpen:false};
 function plCur(){ return plateOf(PL.key); }
 function plSelIds(){ return Object.keys(PL.sel); }
-function openPlateEditor(key){ var p=plateOf(key); if(!p){ toast('No plate map here yet'); return; }
+function openPlateEditor(key){
+  // The Review draws the plate the draft will get; editing it starts from exactly that map.
+  if(/^ds:/.test(String(key||''))&&DS){ DS_PLEXP=null;
+    if(!DS.plateMap){ var _dp=dsPlateFor(DS,dsPseudo(DS)); if(_dp) DS.plateMap=JSON.parse(JSON.stringify(_dp)); } }
+  var p=plateOf(key); if(!p){ toast('No plate map here yet'); return; }
   PL.key=key; PL.sel={}; PL.anchor=null; PL.band=null; PL.flags={}; PL.type=(plateTypes(p)[1]||plateTypes(p)[0]).id;
   // Open the plate's own settings for a map with nothing on it yet: on a blank plate the format
   // and the starting layout are the first thing you want, and on a drawn one they are not.
@@ -6763,10 +6777,11 @@ function plFooterMenu(ev){
     {label:'Download PNG', sub:'a picture of this map, at print resolution', fn:function(){ exportPlatePNG(PL.key); }}
   ], ev.currentTarget.getBoundingClientRect());
 }
-function closePlateEditor(){ el('plate-modal').classList.remove('open'); _plHideBand(); PL.key=null; PL.sel={}; PL.band=null; renderEditor(); }
+function closePlateEditor(){ var wasDs=/^ds:/.test(String(PL.key||'')); el('plate-modal').classList.remove('open'); _plHideBand(); PL.key=null; PL.sel={}; PL.band=null;
+  if(wasDs&&DS){ DS_PLEXP=null; dsDraw(); } else renderEditor(); }
 // Every plate mutation restores through the experiment that owns the map — a plate lives inside
 // a block or an experiment, so that record is the unit an undo has to put back.
-function plMark(label,coalesce){ var o=_plateOwner(PL.key); if(o&&o.exp) undoMark(label,['experiments.'+o.exp.id],coalesce); }
+function plMark(label,coalesce){ var o=_plateOwner(PL.key); if(o&&o.ds){ if(!coalesce) dsUndoMark(); return; } if(o&&o.exp) undoMark(label,['experiments.'+o.exp.id],coalesce); }
 function plRender(){ var p=plCur(); if(!p) return; plRenderGrid(); plRenderSide(); plRenderSum(); plApplySumState(); }
 function plRenderSum(){ var p=plCur(), host=el('pl-sum'); if(!p||!host) return;
   var lg=el('pl-vals-legend'); if(lg) lg.innerHTML=plValuesLegend(p);
@@ -7831,11 +7846,33 @@ function blocksInRunOrder(e){
     .sort(function(x,y){ return String(x.b.date||'').localeCompare(String(y.b.date||'')) || (x.i-y.i); })
     .map(function(x){ return x.b; });
 }
+// The volume a step says is already in the well is what the chain carries on from — whether the
+// steps above gave it (rounded, as the step prints it) or you typed it. Otherwise the step said
+// "12.33 µL into 111 µL" while the chain added 12.35 to 111.11, or ignored the 111 you typed and
+// told the next step a volume nobody had written down.
+function _chainStart(b,v){ var k=b.calc&&b.calc.kind, I=b.calc&&b.calc.inputs;
+  if(!k||!I) return v;
+  (CHAINED_INPUTS[k]||[]).forEach(function(key){ if(+I[key]>0) v=+I[key]; });
+  return v; }
+// What a step puts into each well. A calculator that knows (VOL_ADD) speaks for it; any other
+// step — a free text step, a reagent dilution, a module with no calculator — says so in
+// `addUL`, "adds to each well (µL)". Without that a step that plainly adds liquid was invisible
+// to the chain: a digitonin spike after the compounds left the read starting from 111 µL.
+function _blkAdds(b,v){ var k=b.calc&&b.calc.kind;
+  if(k&&VOL_ADD[k]){ try{ return VOL_ADD[k](b.calc.inputs||{},v)||0; }catch(e){ return 0; } }
+  return +b.addUL>0?+b.addUL:0; }
+function _blkAddsKnown(b){ var k=b&&b.calc&&b.calc.kind; return !!(k&&VOL_ADD[k]); }
+function setBlockAdds(expId,blkId){ var e=LB.data.experiments[expId]; if(!e) return; var b=(e.blocks||[]).filter(function(x){ return x.id===blkId; })[0]; if(!b) return;
+  lbPrompt('How many µL does this step put into each well? The steps below start from the volume it leaves. Empty for nothing.',+b.addUL>0?String(+b.addUL):'',{title:'Adds to each well',ok:'Save'}).then(function(v){
+    if(v==null) return; undoMark('Volume a step adds',['experiments.'+expId]);
+    var n=parseFloat(v); if(n>0) b.addUL=n; else delete b.addUL;
+    syncChainedInputs(e); e.updated=Date.now(); save(); renderEditor(); }); }
 function syncChainedInputs(e){
   if(!e||!e.blocks) return false;
   var v=0, changed=false;
   blocksInRunOrder(e).forEach(function(b){
-    var k=b.calc&&b.calc.kind; if(!k) return;
+    var k=b.calc&&b.calc.kind;
+    if(!k){ v+=_blkAdds(b,v); return; }
     var I=b.calc.inputs||(b.calc.inputs={});
     (CHAINED_INPUTS[k]||[]).forEach(function(key){
       if(b.calc.own&&b.calc.own[key]) return;
@@ -7850,7 +7887,8 @@ function syncChainedInputs(e){
       // typed is skipped above, so a real override still shows.
       if(b.calcSeed && b.calcSeed[key]!==undefined) b.calcSeed[key]=nv;
     });
-    var f=VOL_ADD[k]; if(f&&!VOL_TERMINAL[k]) v+=f(I,v);
+    v=_chainStart(b,v);
+    if(!VOL_TERMINAL[k]) v+=_blkAdds(b,v);
   });
   return changed;
 }
@@ -10934,10 +10972,12 @@ function buildExperimentFrom(sp){
   var protos=(sp.protos||[]).slice();
   var _echo=sp.echo||null;   // the picklist, when the run came from one
   var _layout=sp.layout, _onMade=sp.onMade;   // the Designer's layout choice; a replicate set's hook
+  var _plateMap=sp.plateMap||null;   // a map drawn on the Designer's Review, used as it is
   // Instantiate the preset's own blocks (day structure + live calculators + text).
   var blocks=(tpl.blocks||[]).map(function(b,i,arr){ var o={id:uid(), date:addDays(startDate,b.dayOffset||0), dayOffset:(b.dayOffset||0), title:b.title, html:b.html, done:false, completedAt:null}; if(b.pub) o.pub=b.pub; if(b.noPub) o.noPub=true;
     if(b.waitMin){ o.waitMin=b.waitMin; var nx=arr[i+1]; o.waitSameDay=!!(nx && (+nx.dayOffset||0)===(+b.dayOffset||0)); }
     if(b.waitOwn) o.waitOwn=true;
+    if(b.addUL>0) o.addUL=+b.addUL;
     if(b.tplOwn) o.tplOwn=true;
     if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc)); return o; });
   // Rewrite the instantiated blocks with the setup answers before anything else sees them.
@@ -11002,7 +11042,8 @@ function buildExperimentFrom(sp){
       e.echoRun={protocol:(_echo.meta||{}).protocol||'', runDate:(_echo.meta||{}).runDate||'',
                  compounds:(_echo.compounds||[]).slice()};
     } else if(wantPlate){
-      e.plate = experimentPlateFor(key,type,setup,e,null,null,_layout);
+      e.plate = _plateMap ? JSON.parse(JSON.stringify(_plateMap))
+                            : experimentPlateFor(key,type,setup,e,null,null,_layout);
     }
     e.pubReady=buildPubReadyFromExp(e); e.pubEdited=false;   // live from the start
     LB.data.experiments[e.id]=e;
@@ -16003,6 +16044,8 @@ function ctxBlock(ev,id){ var e=_curExp();
     {label:(b&&b.done)?'Reopen step':'Mark step done',fn:function(){ if(e) toggleDone(e.id,id); }},
     {label:(b&&e&&blkWait(e,b).min)?'Change the wait after this step':'Add a wait after this step',
      fn:function(){ if(e) setBlockWait(e.id,id); }},
+    (b&&e&&!_blkAddsKnown(b))?{label:(+b.addUL>0)?('Adds '+nfmt(+b.addUL)+' µL to each well\u2026'):'Adds liquid to each well\u2026',
+     sub:'so the steps below start from the right volume', fn:function(){ setBlockAdds(e.id,id); }}:null,
     {label:'Snooze 1 day',fn:function(){ if(e) snoozeBlock(e.id,id,1); }},
     {label:'Snooze 1 week',fn:function(){ if(e) snoozeBlock(e.id,id,7); }},
     // _offerSlip asks once per step for ever (b.slipAsked). That is right for something that
@@ -16888,7 +16931,7 @@ function _myModSpec(id){
   var m=(LB.data.myModules||{})[id]; if(!m) return null;
   var kl=m.calc?((CALC_KINDS[m.calc]||{}).label||m.calc):'';
   return {id:id, label:m.label||'Untitled step', sub:'your module'+(kl?(' · '+kl):' · text step'), mine:true,
-          html:m.html, pub:m.pub, noPub:m.noPub, calc:m.calc||undefined, inputs:m.inputs||undefined, w:m.w||0, fmtOwn:!!m.fmtOwn};
+          html:m.html, pub:m.pub, noPub:m.noPub, calc:m.calc||undefined, inputs:m.inputs||undefined, w:m.w||0, addUL:m.addUL||0, fmtOwn:!!m.fmtOwn};
 }
 function dsSaveMyMod(i){
   var D=DS, m=D&&D.mods[i]; if(!m) return;
@@ -16896,7 +16939,7 @@ function dsSaveMyMod(i){
   function write(id,nm){
     undoMark(ex?'Update a module':'Save a module',['myModules']);
     LB.data.myModules=LB.data.myModules||{};
-    LB.data.myModules[id]={label:nm, html:m.html||'', pub:m.pub||'', noPub:!!m.noPub, w:+m.w||0,
+    LB.data.myModules[id]={label:nm, html:m.html||'', pub:m.pub||'', noPub:!!m.noPub, w:+m.w||0, addUL:+m.addUL||0,
       calc:(m.calc&&m.calc.kind)||null, inputs:m.calc?JSON.parse(JSON.stringify(m.calc.inputs||{})):null,
       fmtOwn:!!(m.calc&&m.calc.fmtOwn), updated:Date.now()};
     m.mid=id; save();
@@ -16917,7 +16960,7 @@ function dsMod(spec){
   spec=spec||{};
   var m={uid:uid(), mid:spec.id||null, src:spec.src||'lib',
          label:String(spec.title||spec.label||'').replace(/ \(calc\)$/,''),
-         gap:(spec.gap!=null?Math.max(0,+spec.gap||0):0), w:+spec.w||0,
+         gap:(spec.gap!=null?Math.max(0,+spec.gap||0):0), w:+spec.w||0, addUL:+spec.addUL||0,
          // An empty page is '' on purpose — `<p></p>` is not :empty, so the Blank experiment's
          // placeholder never showed when it came through the designer. (invariants.mjs, I2)
          html:(spec.html!=null?spec.html:'<p></p>'), pub:spec.pub||'', noPub:!!spec.noPub, calc:null};
@@ -17003,7 +17046,7 @@ function dsModsFromPreset(key){
     .sort(function(a,b){ return (+a.dayOffset||0)-(+b.dayOffset||0); })
     .map(function(b,i){
       var d=+b.dayOffset||0;
-      var m=dsMod({title:b.title,html:b.html,pub:b.pub,noPub:b.noPub,gap:(i===0?d:d-prev),w:b.waitMin,
+      var m=dsMod({title:b.title,html:b.html,pub:b.pub,noPub:b.noPub,gap:(i===0?d:d-prev),w:b.waitMin,addUL:b.addUL,
                    calcObj:b.calc,src:'preset',orig:{title:b.title,html:b.html,pub:b.pub}});
       if(b.waitOwn) m.waitOwn=true;
       prev=d; return m; });
@@ -17050,6 +17093,7 @@ function dsTemplate(D,forRun){
              if(m.noPub) b.noPub=true;
              if(m.w>0) b.waitMin=m.w;
              if(m.waitOwn) b.waitOwn=true;
+             if(m.addUL>0) b.addUL=+m.addUL;
              if(m.calc) b.calc=JSON.parse(JSON.stringify(m.calc));
              if(forRun&&D.presetKey&&_dsModOwnText(m)) b.tplOwn=true;
              return b; }) };
@@ -17068,6 +17112,7 @@ function dsPseudo(D){
     if(b.waitMin){ o.waitMin=b.waitMin; var nx=arr[i+1];
       o.waitSameDay=!!(nx&&(+nx.dayOffset||0)===(+b.dayOffset||0)); }
     if(b.waitOwn) o.waitOwn=true;
+    if(b.addUL>0) o.addUL=+b.addUL;
     if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc));
     return o; });
   var setup=JSON.parse(JSON.stringify(D.setup||{}));
@@ -17105,7 +17150,8 @@ function dsChain(pseudo){
   var v=0, out=[];
   blocksInRunOrder(pseudo).forEach(function(b){
     var k=b.calc&&b.calc.kind, add=0;
-    if(k&&VOL_ADD[k]){ try{ add=VOL_ADD[k](b.calc.inputs||{},v)||0; }catch(e){ add=0; } }
+    v=_chainStart(b,v);
+    add=_blkAdds(b,v);
     out.push({b:b, before:_wellVolRound(v), add:add, after:_wellVolRound(v+add)});
     if(!(k&&VOL_TERMINAL[k])) v+=add; });
   return out;
@@ -17565,7 +17611,7 @@ function dsPlateOptsHtml(D,hasFmt){
   return '<div class="cc-inputs ds-plate-f">'
     +(hasFmt?'':('<label class="ci-f"><span>Plate format</span><select data-sf="format" onchange="dsSetupUpd(\'format\')">'
       +['6','12','24','48','96','384'].map(function(x){ return '<option value="'+x+'"'+(fmt===x?' selected':'')+'>'+x+'-well</option>'; }).join('')+'</select></label>'))
-    +'<label class="ci-f ds-wide2"><span>Start the map from</span><select onchange="DS.layout=this.value||null;dsDirty()">'+opts+'</select></label>'
+    +'<label class="ci-f ds-wide2"><span>Start the map from</span><select onchange="DS.layout=this.value||null;DS.plateMap=null;dsDirty()">'+opts+'</select></label>'
     +'</div>';
 }
 // ── Your own parameters ─────────────────────────────────────────────────────────────────────
@@ -17747,8 +17793,17 @@ function _sameName(a,b){
     .replace(/\b(reagent|readout|read|calculator|mix|mixes|step)\b/g,'').replace(/[^a-z0-9]+/g,''); }
   var A=k(a), B=k(b); return !!A && A===B;
 }
+// A starting volume typed for one order of the steps is about the well in that order. Moving the
+// steps changes what the ones above have put in, so every module from the first one that moved
+// follows the chain again — and the toast says so, since Undo is the way back to the typed one.
+function _dsRelinkFrom(D,from){ var n=0;
+  for(var x=Math.max(0,from);x<D.mods.length;x++){ var c=D.mods[x]&&D.mods[x].calc;
+    if(!c||!c.own) continue;
+    (CHAINED_INPUTS[c.kind]||[]).forEach(function(key){ if(c.own[key]){ delete c.own[key]; n++; } }); }
+  if(n) toast('Starting volumes follow the new order — '+n+' typed value'+(n===1?'':'s')+' re-linked (⌘Z to undo)'); }
 function dsMove(i,dir){ var D=DS, j=i+dir; if(!D||j<0||j>=D.mods.length) return;
   dsUndoMark();
+  _dsRelinkFrom(D,Math.min(i,j));
   // The gap is "days after the previous step", so two modules swapping keeps each one's own
   // interval and the calendar recomputes. Nothing carries a date it was given in another order.
   var t=D.mods[i]; D.mods[i]=D.mods[j]; D.mods[j]=t;
@@ -17835,7 +17890,7 @@ function dsDrop(ev,i){ if(DS_DRAG==null) return; ev.preventDefault();
   var D=DS, from=DS_DRAG; DS_DRAG=null;
   if(!D||from===i) return;
   dsUndoMark();
-  var m=D.mods.splice(from,1)[0]; D.mods.splice(i,0,m); D.cur=i; dsDraw(); }
+  var m=D.mods.splice(from,1)[0]; D.mods.splice(i,0,m); D.cur=i; _dsRelinkFrom(D,Math.min(from,i)); dsDraw(); }
 function dsDragEnd(){ DS_DRAG=null; }
 // The multi-select the spec asks for: categories, search, checkboxes, add them all at once.
 function dsPick(at){
@@ -17935,8 +17990,9 @@ function dsConfHtml(){
     +(pl.format?('<span class="v">'+(pl.nPlates?(nfmt(pl.nPlates)+' × '):'')+esc(pl.format)+'-well'+(pl.wells?(' · '+nfmt(pl.wells)+' wells'):'')+'</span>'):'')
     +(D.setup.cellLine?('<span class="v">'+esc(((cellLineDef(D.setup.cellLine)||{}).label)||D.setup.cellLine)+'</span>'):'')
     +'</div>';
-  var adds=(here&&here.add>0)
-    ? '<div class="ds-adds">This step puts <b>'+nfmt(here.add)+' µL</b> into each well — the next one starts from <b>'+nfmt(here.after)+' µL</b>.</div>' : '';
+  // Always drawn, empty when the step adds nothing, so a number typed below can fill it in place.
+  var adds='<div class="ds-adds" id="ds-adds"'+((here&&here.add>0)?'':' hidden')+'>'+((here&&here.add>0)
+    ? 'This step puts <b>'+nfmt(here.add)+' µL</b> into each well — the next one starts from <b>'+nfmt(here.after)+' µL</b>.' : '')+'</div>';
   // The wait the step will really have. A setup field marked `wait` writes over a module's own
   // whenever the module's prose quotes it, so the box showed "45 min" on a step that waits 20 h.
   var _wEff=(live&&live.waitMin>0)?live.waitMin:(+m.w||0);
@@ -17950,6 +18006,10 @@ function dsConfHtml(){
     +'<div class="mrow"><label>Wait after this step <span class="nm-lbl-sub">'
       +((_wEff>0&&!m.waitOwn&&_wEff!==(+m.w||0))?'answered in the parameters':'e.g. 45 min, 3 h, overnight')+'</span></label>'
       +'<input value="'+esc(_wEff>0?_waitTxt(_wEff):'')+'" placeholder="none" onchange="dsSetWait('+i+',this.value)"></div>'
+    // A step whose calculator does not say what it puts in the well — or that has none — says
+    // it here, and the chain below reads it like any calculator's volume.
+    +(_blkAddsKnown(m)?'':('<div class="mrow"><label>Adds to each well <span class="nm-lbl-sub">µL — what the next step starts from</span></label>'
+      +'<input type="number" min="0" step="any" value="'+(+m.addUL>0?+m.addUL:'')+'" placeholder="nothing" oninput="dsSetAdd('+i+',this.value)"></div>'))
     +'</div>';
   return '<div class="ds-step-hd">'+esc(m.label||'Step '+(i+1))+' <span class="ds-of">module '+(i+1)+' of '+D.mods.length+'</span></div>'
     +state+gap+adds
@@ -18069,7 +18129,7 @@ function dsCalcHtml(m,i){
     var ctag=!chained?'':(cown
       ? ' <button type="button" class="ci-relink" title="Go back to the volume the steps above give" onclick="dsRelink('+i+',\''+f.k+'\')">yours &middot; re-link</button>'
       : ' <span class="ci-derived" title="Taken from the steps above — what they put in the well">from the steps above</span>');
-    return '<label class="ci-f'+(chained?' ds-chained':'')+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')
+    return '<label class="ci-f'+(chained?' ds-chained':'')+'"'+(chained?(' data-ck="'+f.k+'"'):'')+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')
       +ctag+'</span>'
       +'<input type="number" min="0"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="dsCalcSet('+i+',\''+f.k+'\',this.value)"></label>';
   }).join('');
@@ -18110,13 +18170,36 @@ function dsCalcSet(i,k,val){
   else if(k==='format'&&m.calc.inputs.format!=null){ rescaleSeedInputs(m.calc.inputs,val); dsDraw(); return; }
   else {
     m.calc.inputs[k]=(f&&f.t==='num')?(val===''?'':parseFloat(val)):val;
-    if((CHAINED_INPUTS[m.calc.kind]||[]).indexOf(k)>=0){ m.calc.own=m.calc.own||{}; m.calc.own[k]=true; }
+    if((CHAINED_INPUTS[m.calc.kind]||[]).indexOf(k)>=0){ m.calc.own=m.calc.own||{};
+      if(!m.calc.own[k]){ m.calc.own[k]=true;
+        // Say at once that the number is now yours — the tag kept reading "from the steps
+        // above" until the next full redraw, over a value that no longer followed them.
+        var lb=document.querySelector('.ds-calc [data-ck="'+k+'"] .ci-derived');
+        if(lb) lb.outerHTML='<button type="button" class="ci-relink" title="Go back to the volume the steps above give" onclick="dsRelink('+i+',\''+k+'\')">yours &middot; re-link</button>'; } }
   }
-  // Only the recipe and the chain are repainted: a full redraw would take the caret out of the
-  // box being typed in — the rule refreshCalcRecipes already follows in the experiment.
-  var ps=dsPseudo(D), live=null;
+  dsLiveRefresh(i);
+}
+// Everything on the configure screen that reads the calculator, repainted in place: the recipe,
+// the numbers quoted in "What you do", and the line saying what this step leaves in the well.
+// Only these — a full redraw would take the caret out of the box being typed in, the rule
+// refreshCalcRecipes already follows in the experiment. The step text used to be left as it
+// was drawn: change the volume already in the well and the recipe said 12.33 µL while the
+// sentence under it still said 11.11.
+function dsSetAdd(i,val){ var m=DS&&DS.mods[i]; if(!m) return;
+  var n=parseFloat(val); if(n>0) m.addUL=n; else delete m.addUL; dsLiveRefresh(i); }
+function dsLiveRefresh(i){
+  var D=DS, ps=dsPseudo(D), live=null;
   (ps.blocks||[]).forEach(function(b){ if(b.dsIdx===i) live=b; });
   var r=el('ds-recipe'); if(r&&live) r.innerHTML=expCalcRecipe(live,ps);
+  var rt=el('ds-rt');
+  if(rt&&live){ var vals=calcValuesChained(live,ps)||{};
+    if(rt.querySelector('[data-c="wait"]')) vals.wait=_waitVal(live,ps);
+    Array.prototype.forEach.call(rt.querySelectorAll('span.cv[data-c]'),function(sp){
+      var v=vals[sp.getAttribute('data-c')]; sp.innerHTML=(v==null?'—':v); sp.classList.toggle('cv-none',v==null); }); }
+  var ad=el('ds-adds'), here=null;
+  if(ad){ dsChain(ps).forEach(function(x){ if(x.b.dsIdx===i) here=x; });
+    ad.hidden=!(here&&here.add>0);
+    if(here&&here.add>0) ad.innerHTML='This step puts <b>'+nfmt(here.add)+' µL</b> into each well — the next one starts from <b>'+nfmt(here.after)+' µL</b>.'; }
 }
 function dsSetOwnPlate(i,on){
   var D=DS, m=D&&D.mods[i]; if(!m||!m.calc) return;
@@ -18221,7 +18304,7 @@ function dsReviewHtml(){
         +esc(_pl.title||((_pl.format||'')+'-well'))
         +(D.echo?' · read from the Echo picklist':'')
         +' · you can change it on any step afterwards</span></div>'
-        +'<div class="ds-plate">'+platePreviewHtml(_pl,null)+'</div></div>';
+        +'<div class="ds-plate">'+platePreviewHtml(_pl,'ds:plate')+'</div></div>';
     }catch(_e){}
   }
   var n=(ps.blocks||[]).length+nProto;
@@ -18237,6 +18320,9 @@ function dsRepStarts(D){ var n=Math.max(1,+D.reps||1), g=Math.max(0,+D.repGap||0
 // The plate the review draws is the plate dsCreate makes — one call, used by both.
 function dsPlateFor(D,ps){
   if(!(D.plate||D.echo)) return null;
+  // A map you edited on the Review is the plate — as long as the run is still that format.
+  var fmt=String(((ps&&ps.setup)||D.setup||{}).format||'');
+  if(D.plateMap&&(!fmt||String(D.plateMap.format)===fmt)) return D.plateMap;
   return experimentPlateFor(D.presetKey||'', D.type, (ps&&ps.setup)||D.setup||{}, ps, D.echo||null, null, D.layout||null);
 }
 
@@ -18259,6 +18345,7 @@ function dsCreate(){
     plate:!!D.plate, skipWe:!!D.skipWe,
     protos:(D.protos||[]).slice(), echo:D.echo||null, blank:!!D.blank,
     layout:D.layout||null,
+    plateMap:(D.plateMap&&dsPlateFor(D,dsPseudo(D))===D.plateMap)?D.plateMap:null,
     onDone:function(){ dsDraftClear(); dsClose(); } };
   var n=Math.max(1,Math.min(12,+D.reps||1)), starts=dsRepStarts(D);
   if(n===1){ buildExperimentFrom(sp); return; }
@@ -18554,6 +18641,7 @@ function saveExpAsPreset(id){
       // implied overnight is never stored (blkWait derives it from the next step's date), so it
       // cannot leak in; only typed waits were kept, which dropped every wait a preset shipped.
       if(b.waitMin>0){ o.waitMin=b.waitMin; if(b.waitOwn) o.waitOwn=true; }
+      if(b.addUL>0) o.addUL=+b.addUL;
       if(b.calc) o.calc=JSON.parse(JSON.stringify(b.calc));
       return o; }).sort(function(a,b){ return (a.dayOffset||0)-(b.dayOffset||0); });
     var p={name:nm,baseType:e.type||presetBase(e.presetKey)||'EXP',title:e.title||'',blocks:blocks};
