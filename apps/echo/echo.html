@@ -2145,11 +2145,29 @@ function _matInv(A) {
   }
   return M.map(row=>row.slice(n));
 }
+// Two-sided 95% Student-t quantile, computed — not looked up. The old table returned the value
+// at the top of each bin (df 6 → 2.36, exact 2.447; df 16 → 2.09, exact 2.120; df 31 → 1.96,
+// exact 2.040), so every confidence interval came out a few per cent too narrow. Bisection on
+// the regularised incomplete beta, P(|T| > t) = I_{df/(df+t²)}(df/2, 1/2), to 1e-9.
 function _tQ95(df){
-  if(df<=1)return 12.71;if(df<=2)return 4.30;if(df<=3)return 3.18;
-  if(df<=4)return 2.78;if(df<=5)return 2.57;if(df<=7)return 2.36;
-  if(df<=10)return 2.23;if(df<=15)return 2.13;if(df<=20)return 2.09;
-  if(df<=30)return 2.04;return 1.96;
+  df = Math.max(1, +df || 1);
+  if (df > 1e7) return 1.959963985;
+  const lnG = z => { const c = [676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+    if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lnG(1 - z);
+    z -= 1; let x = 0.99999999999980993; for (let i = 0; i < 8; i++) x += c[i] / (z + i + 1);
+    const t = z + 7.5; return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x); };
+  const cf = (x, a, b) => { let c = 1, d = 1 - (a + b) * x / (a + 1); if (Math.abs(d) < 1e-300) d = 1e-300; d = 1 / d; let h = d;
+    for (let m = 1; m <= 300; m++) { const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((a + m2 - 1) * (a + m2)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d; h *= d * c;
+      aa = -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1)); d = 1 + aa * d; if (Math.abs(d) < 1e-300) d = 1e-300; c = 1 + aa / c; if (Math.abs(c) < 1e-300) c = 1e-300; d = 1 / d;
+      const del = d * c; h *= del; if (Math.abs(del - 1) < 1e-15) break; }
+    return h; };
+  const betaI = (x, a, b) => { if (x <= 0) return 0; if (x >= 1) return 1;
+    const bt = Math.exp(lnG(a + b) - lnG(a) - lnG(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * cf(x, a, b) / a : 1 - bt * cf(1 - x, b, a) / b; };
+  let lo = 0, hi = 64;
+  for (let i = 0; i < 100 && hi - lo > 1e-10; i++) { const m = (lo + hi) / 2; if (betaI(df / (df + m * m), df / 2, 0.5) > 0.05) lo = m; else hi = m; }
+  return (lo + hi) / 2;
 }
 
 function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
@@ -2170,13 +2188,19 @@ function _lmFit(xArr, yArr, pInit, loBound, hiBound, valFn, jacFn, maxIter) {
         for (let b = 0; b < np; b++) JtJ[a][b] += jac[a] * jac[b];
       }
     }
-    // Gradient-norm convergence: ||Jᵀr||∞ scaled by 1+|SSR|. Catches the case where
-    // |Δp| has fallen below 1e-8 in a flat valley while the gradient is still meaningful.
-    const _gradNorm = Math.max(...Jtr.map(Math.abs));
+    // Active set: a parameter sitting on its bound whose gradient still pushes outward is held
+    // there, and the step is solved for the others. Clamping the full step instead truncated
+    // the direction every iteration, and a fit whose bottom rested on 0 % stopped short of its
+    // minimum — 2 % off in DC50 against scipy's bounded least squares on the test plates.
+    const _held = p.map((v, i) => (v <= loBound[i] + 1e-12 && Jtr[i] < 0) || (v >= hiBound[i] - 1e-12 && Jtr[i] > 0));
+    const _fr = []; for (let i = 0; i < np; i++) if (!_held[i]) _fr.push(i);
+    // Gradient-norm convergence on the free parameters: ||Jᵀr||∞ scaled by 1+|SSR|.
+    const _gradNorm = _fr.length ? Math.max(..._fr.map(i => Math.abs(Jtr[i]))) : 0;
     if (_gradNorm < 1e-8 * (1 + Math.abs(bestSS))) break;
-    const A = JtJ.map((row, i) => row.map((v, j) => i === j ? v * (1 + lam) : v));
-    const delta = _solveLin(A, Jtr);
-    if (!delta) { lam = Math.min(lam * 10, 1e8); continue; }
+    const A = _fr.map(i => _fr.map(j => i === j ? JtJ[i][j] * (1 + lam) : JtJ[i][j]));
+    const _dF = _solveLin(A, _fr.map(i => Jtr[i]));
+    if (!_dF) { lam = Math.min(lam * 10, 1e8); continue; }
+    const delta = new Array(np).fill(0); _fr.forEach((i, k) => { delta[i] = _dF[k]; });
     const pNew = p.map((v, i) => cl(v + delta[i], i));
     const newSS = ssq(pNew);
     const curSS = ssq(p);
