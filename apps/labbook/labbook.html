@@ -15030,8 +15030,16 @@ document.addEventListener('click',function(e){
 function _curExp(){ return (SEL.node.kind==='expsec'&&SEL.page)?LB.data.experiments[SEL.page]:null; }
 function _curPage(){ return (SEL.node.kind==='nb'&&SEL.page&&!_isDateKey(SEL.page))?(LB.data.pages[SEL.page]||null):null; }
 function setField(f,v){ var e=_curExp(); if(!e) return;
-  if(f==='startDate'){ var old=e.startDate; e.startDate=v; if(old&&v){ var delta=daysBetween(old,v); if(delta) (e.blocks||[]).forEach(function(b){ if(b.date) b.date=addDays(b.date,delta); }); } recomputeDayOffsets(e); e.updated=Date.now(); save(); renderPages(); renderEditor(); return; }
-  e[f]=(f==='html'||f==='pubReady')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html'||f==='pubReady'){ queueSave(); return; } save(); if(f==='status') if(f==='code'||f==='status') renderPages(); }
+  // The code is what is written on the plate and the tube, so it is trimmed, never empty, and
+  // never another record's: typed by hand it could be all three, and the list kept showing the
+  // old one because the refresh below only ever fired for status.
+  if(f==='code'){ v=String(v==null?'':v).trim();
+    if(!v){ toast('An experiment needs a code — kept '+(e.code||'the old one')); renderEditor(); return; }
+    if(v===e.code) return;
+    var u=_uniqueCode(v,e.id); if(u!==v) toast(v+' is already another experiment’s code — saved as '+u);
+    undoMark('Change the code',['experiments.'+e.id]); v=u; }
+  if(f==='startDate'){ var old=e.startDate; undoMark('Change the start date',['experiments.'+e.id]); e.startDate=v; if(old&&v){ var delta=daysBetween(old,v); if(delta) (e.blocks||[]).forEach(function(b){ if(b.date) b.date=addDays(b.date,delta); }); } recomputeDayOffsets(e); e.updated=Date.now(); save(); renderPages(); renderEditor(); return; }
+  e[f]=(f==='html'||f==='pubReady')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html'||f==='pubReady'){ queueSave(); return; } save(); if(f==='code'||f==='status'){ renderPages(); if(f==='code') renderEditor(); } }
 function setNoteField(f,v){ var e=_curExp(); if(!e) return; e[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now(); if(f==='html') queueSave(); else { save(); renderPages(); } }
 function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===id;})[0]; if(!b) return; b[f]=(f==='html')?_persistImgHtml(v):v; e.updated=Date.now();
   if(f==='html'){ queueSave(); return; }
