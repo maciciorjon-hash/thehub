@@ -86,6 +86,32 @@
 //   R7 scopes                A folder/project/all PDF carries every experiment in it; a Journal
 //                            day, month and the whole Journal carry each step done that day.
 //
+//   Beta test 2026-09-28 — the classes found by breaking Labbook on purpose (docs/BETA_TEST_REPORT.md):
+//   B1 undo takes the trash   ⌘Z after a delete also removes it from Deleted items. (LB-4)
+//   B2 one step per action    Move, archive, status, exclude, start date, code, duplicate and
+//                            replicate are each one undo step that restores the record. (LB-6, LB-27)
+//   B3 snooze keeps ticks     Snoozing never re-dates a step already ticked. (LB-5)
+//   B4 reader grids           Tab, spaces, row letters, semicolons with comma decimals, CSV and a
+//                            header row all fill every well of a 96 and a 384. (LB-1)
+//   B5 no live formulas       No CSV cell starts with = + - @ unless it is a number. (LB-2)
+//   B6 no script from text    Names, codes, notes, targets and an imported file never run. (LB-3, LB-19)
+//   B7 payloads               Malformed results/tables/plates from another app, and a non-finite
+//                            potency, break no screen. (LB-17, LB-20)
+//   B8 tree shapes            A tree in the wrong shape still draws every screen. (LB-8)
+//   B9 restore                Restore never offers an export as a notebook backup. (LB-21)
+//   B10 mixes close           Every transfection/spike table's parts add up to its total, however
+//                            small the stocks make the DNA. (LB-23, LB-24)
+//   B11 imported replicate    An imported copy does not join the set it came from. (LB-9)
+//   B12 concentrations        _fmtConc → _parseConcNM round-trips; a series reads as one either
+//                            way. (LB-10, LB-28)
+//   B13 picklists             Padded wells, a BOM and European Excel all read. (LB-22)
+//   B14 inline sum            Only whole expressions are answered. (LB-12)
+//   B15 message origin        Only the Hub's own origin can post into Labbook. (LB-18)
+//   B16 typed code            Trimmed, never empty, never another experiment's. (LB-6)
+//   B17 format change         Values, headers and labels of dropped wells go with them. (LB-11)
+//   B18 one timer             Pressing a step's timer twice starts one. (LB-16)
+//   B19 keyboard reach        Every clickable navigation element is reachable with Tab. (LB-15)
+//
 // Usage (repo root):  node tools/invariants.mjs [--url=URL,URL] [--only=I1,I4] [--verbose]
 // Defaults to the source app AND labbook-standalone.html when it exists (the build that embeds
 // Archive, so the protocol cases run). Serves the repo itself on a free port. Exit 1 on any
@@ -1232,6 +1258,283 @@ async function suite(opts) {
     made.forEach(m => cleanup(m.e));
     window._dl = origDl; window.print = origPrint;
     window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onErr);
+  }
+
+  // ── Beta test 2026-09-28 — every class found by breaking Labbook on purpose ─────────────────
+  // Each of these was a bug that shipped; each check was proven by putting its bug back.
+  {
+    const lbAlert0 = window.lbAlert, lbPrompt0 = window.lbPrompt, lbChoose0 = window.lbChoose, lbPicker0 = window.lbPicker, toast0 = window.toast, dl0 = window._dl;
+    window.toast = () => {};
+    const mkB = async (key) => { openQuick(key || 'HB', {}); const e = await created(() => createExperiment()); closeNew(); return e; };
+    const nTrash = k => Object.keys(LB.data.trash || {}).filter(t => LB.data.trash[t].kind === k).length;
+    const clean = [];
+
+    // B1 — undo takes the trash entry with it (a later restore wrote a stale copy over live edits).
+    if (run('B1')) await guard('B1', 'deletes', async () => {
+      const e = await mkB(); clean.push(e); openExp(e.id);
+      const cases = [
+        ['experiment', () => delExperiment(e.id)],
+        ['block', () => { openExp(e.id); delBlock(LB.data.experiments[e.id].blocks[1].id); }],
+        ['file', () => { const x = LB.data.experiments[e.id]; x.files = [{ id: 'invf', attId: 'inva', name: 'f.txt', mime: 'text/plain', size: 1, kind: 'other', added: 1 }]; removeFile('exp:' + e.id, 'invf'); }],
+        ['result', () => { const x = LB.data.experiments[e.id]; x.integration = { results: [{ id: 'invr', rows: [{ compound: 'A', potency: 1 }] }] }; delResult(e.id, 'invr'); }],
+        ['day', () => { LB.data.notebook['2031-01-02'] = { date: '2031-01-02', html: '<p>x</p>' }; delDay('2031-01-02'); }],
+        ['page', () => { newPage(); const pg = _curPage(); pg.title = 'INV'; delPage(pg.id); }],
+      ];
+      for (const [k, fn] of cases) { tick('B1');
+        const t0 = nTrash(k); fn(); await sleep(60);
+        if (nTrash(k) !== t0 + 1) { bad('B1', k, `deleting a ${k} did not put it in Deleted items`); continue; }
+        lbUndo(); await sleep(30);
+        if (nTrash(k) !== t0) bad('B1', k, `⌘Z brought the ${k} back and left it in Deleted items too`);
+      }
+      delete LB.data.notebook['2031-01-02'];
+    });
+
+    // B2 — an action that changes the record is one undo step, and undoing it restores the record.
+    if (run('B2')) await guard('B2', 'actions', async () => {
+      const e = await mkB(); clean.push(e); openExp(e.id);
+      window.lbPrompt = (m, v) => Promise.resolve(v); window.lbPicker = (t, items, cb) => cb(items[items.length - 1]);
+      LB.data.experiments[e.id].integration = { results: [{ id: 'r', rows: [{ compound: 'A', potency: 1 }] }] };
+      const acts = [
+        ['snooze', () => snoozeBlock(e.id, LB.data.experiments[e.id].blocks[1].id, 1)],
+        ['move', () => moveExpTo(e.id)], ['archive', () => setExpArchived(e.id, true)], ['status', () => setExpStatus(e.id, 'paused')],
+        ['exclude', () => toggleResultExcluded(e.id, 'r', 0)], ['start date', () => { openExp(e.id); setField('startDate', '2031-03-03'); }],
+        ['code', () => { openExp(e.id); setField('code', 'INV_CODE_B2'); }],
+      ];
+      for (const [k, fn] of acts) { tick('B2');
+        const before = JSON.stringify(LB.data.experiments[e.id]), n0 = UNDO.stack.length;
+        fn(); await sleep(60);
+        if (JSON.stringify(LB.data.experiments[e.id]) === before) { bad('B2', k, 'the action changed nothing (harness)'); continue; }
+        if (UNDO.stack.length <= n0) { bad('B2', k, `"${k}" changed the experiment with no undo step`); continue; }
+        lbUndo(); await sleep(30);
+        if (JSON.stringify(LB.data.experiments[e.id]) !== before) bad('B2', k, `⌘Z after "${k}" did not give the experiment back as it was`);
+      }
+      for (const [k, fn, cnt] of [['duplicate', () => dupExperiment(e.id)], ['replicate', () => repeatExperiment(e.id)]]) { tick('B2');
+        const n = Object.keys(LB.data.experiments).length; fn(); await sleep(80); lbUndo(); await sleep(30);
+        if (Object.keys(LB.data.experiments).length !== n) bad('B2', k, `⌘Z after "${k}" left the new experiment behind`); }
+      window.lbPrompt = lbPrompt0; window.lbPicker = lbPicker0;
+    });
+
+    // B3 — snoozing a step never re-dates a ticked one.
+    if (run('B3')) for (const key of KEYS) await guard('B3', key, async () => {
+      openQuick(key, {}); const e = await created(() => createExperiment()); closeNew(); if (!e) return; clean.push(e);
+      const bs = blocksInRunOrder(e).filter(b => b.date); if (bs.length < 2) return; tick('B3');
+      setBlockDone(e.id, bs[0].id, true, true); const d0 = bs[0].date;
+      snoozeBlock(e.id, bs[bs.length - 1] === bs[0] ? bs[1].id : bs[1].id, 2);
+      if (LB.data.experiments[e.id].blocks.find(b => b.id === bs[0].id).date !== d0) bad('B3', key, 'snoozing a later step moved a step that was already ticked');
+    });
+
+    // B4 — a plate-reader grid is read whatever separates its numbers.
+    if (run('B4')) await guard('B4', 'shapes', async () => {
+      for (const fmt of ['96', '384']) { const d = PLATE_FORMATS[fmt], R = String(PLATE_ROWS).slice(0, d.r).split('');
+        const g = R.map((r, i) => Array.from({ length: d.c }, (_, j) => i * 100 + j + 1));
+        const shapes = { tab: g.map(r => r.join('\t')), spaces: g.map(r => r.join(' ')), wide: g.map(r => r.join('    ')),
+          lettered: g.map((r, i) => R[i] + '  ' + r.join(' ')), semi: g.map(r => r.map(x => x + ',5').join(';')), csv: g.map(r => r.join(',')),
+          header: [Array.from({ length: d.c }, (_, j) => j + 1).join('\t')].concat(g.map((r, i) => R[i] + '\t' + r.join('\t'))) };
+        for (const [n, lines] of Object.entries(shapes)) { tick('B4');
+          const v = plParseValues(lines.join('\n'), fmt), want = d.r * d.c, got = v ? Object.keys(v).length : 0;
+          if (got !== want) { bad('B4', fmt + ' ' + n, `read ${got} of ${want} wells`); continue; }
+          const last = R[d.r - 1] + d.c, exp = (d.r - 1) * 100 + d.c + (n === 'semi' ? 0.5 : 0);
+          if (v[last] !== exp) bad('B4', fmt + ' ' + n, `${last} read as ${v[last]}, not ${exp}`); }
+      }
+    });
+
+    // B5 — no CSV cell a spreadsheet would run as a formula.
+    if (run('B5')) await guard('B5', 'csv', async () => {
+      const e = await mkB(); clean.push(e); tick('B5');
+      e.integration = { results: [{ id: 'r', source: '=cmd', rows: [{ compound: '=HYPERLINK("x")', target: '@SUM(A1)', potency: -5, effect: '+1', note: '-note' }] }] };
+      e.blocks[0].note = '<p>=2+2</p>'; e.blocks[0].title = '+step';
+      const got = []; window._dl = (n, t) => { got.push(String(t)); };
+      try { exportResultsCSV(e.id); } catch (x) {} try { exportStepsCSV(e.id); } catch (x) {}
+      window._dl = dl0;
+      if (!got.length) { bad('B5', 'csv', 'no CSV was produced (harness)'); return; }
+      got.join('\n').split(/\r?\n/).forEach(line => { const cells = []; let cur = '', q = false;
+        for (let i = 0; i < line.length; i++) { const ch = line[i]; if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; } else if (ch === '"') q = true; else if (ch === ',') { cells.push(cur); cur = ''; } else cur += ch; }
+        cells.push(cur);
+        cells.forEach(c => { if (/^[=+\-@]/.test(c) && !/^[+\-]?(\d+\.?\d*|\.\d+)(e[+\-]?\d+)?$/i.test(c)) bad('B5', 'csv', `a cell starts a formula: ${c.slice(0, 40)}`); }); });
+    });
+
+    // B6 — text somebody else wrote never runs as script: names, codes, notes, targets, imports.
+    if (run('B6')) await guard('B6', 'injection', async () => {
+      window.__invX = 0; tick('B6');
+      const X = t => `<img src=x onerror="__invX++">${t}');__invX++;//"'`;
+      const e = await mkB(); clean.push(e);
+      e.title = X('t'); e.aim = X('a'); e.code = 'C' + X('c'); e.plasmids = X('p'); e.outcome = { verdict: 'worked', text: X('o'), at: Date.now() };
+      e.blocks[0].title = X('s'); e.blocks[0].log = X('l'); e.blocks[0].done = true; e.blocks[0].completedAt = Date.now();
+      e.integration = { results: [{ id: 'r', source: X('src'), potencyUnit: 'nM', rows: [{ compound: X('cmp'), target: X('tg1'), potency: 5 }, { compound: 'B', target: X('tg2'), potency: 7, note: X('n') }] }] };
+      e.startDate = todayStr(); e.blocks.forEach(b => { b.date = todayStr(); });   // Visualize counts up to today
+      e.plate = { format: '96', title: X('pt'), types: [{ id: 'ty', name: X('ty'), color: '#f00' }], wells: { A1: { typeId: 'ty', compound: X('w'), label: X('wl'), note: X('wn') } } };
+      save();
+      const screens = [() => selectNode('home'), () => selectNode('exps'), () => selectNode('today'), () => selectNode('week'), () => openJournalWs(),
+        () => selectNode('viz'), () => { selectNode('viz'); try { VZ.range = 'all'; VZ.proj = ''; VZ.type = ''; } catch (x) {} renderAll(); if (!document.querySelector('.vz-tchips')) bad('B6', 'chips', 'Visualize drew no target chips (harness)'); document.querySelectorAll('.vz-tchips .vz-chip').forEach(c => c.click()); }, () => openExp(e.id),
+        () => { openExp(e.id); expTab('pub'); }, () => { openPlateEditor('exp:' + e.id); }, () => { try { closePlateEditor(); } catch (x) {} openPdfExport(); }];
+      for (const s of screens) { try { s(); } catch (x) {} await sleep(60); }
+      // and through an import, where rich text is expected
+      const src = JSON.parse(buildExpJSON(e)); src.experiment.blocks[0].note = '<p>ok</p><img src=x onerror="__invX++"><a href="javascript:__invX++">l</a>';
+      importExpFile(new File([JSON.stringify(src)], 'x.json')); await sleep(400);
+      document.querySelectorAll('.modal-back.open .btn.primary').forEach(b => b.click()); await sleep(300);
+      const imp = Object.keys(LB.data.experiments).map(k => LB.data.experiments[k]).find(x => x.imported && x.imported.originalId === e.id);
+      if (imp) { clean.push(imp); openExp(imp.id); await sleep(200);
+        // Absolute, not only what happens to be drawn: nothing executable survives an import.
+        const bad6 = []; (function walk(o, at) { if (typeof o === 'string') { if (/\son[a-z]+\s*=|javascript:|<script/i.test(o)) bad6.push(at); }
+          else if (o && typeof o === 'object') Object.keys(o).forEach(k => walk(o[k], at + '.' + k)); })(imp, 'e');
+        if (bad6.length) bad('B6', 'import', 'an imported record still carries executable markup at ' + bad6.slice(0, 3).join(', ')); }
+      else bad('B6', 'import', 'the import did not land (harness)');
+      try { closePdfExport && closePdfExport(); } catch (x) {} document.querySelectorAll('.modal-back.open').forEach(m => m.classList.remove('open'));
+      await sleep(150);
+      if (window.__invX) bad('B6', 'injection', `text from a record ran as script ${window.__invX} time(s)`);
+    });
+
+    // B7 — a malformed payload from another app, or a potency that is not finite, breaks nothing.
+    if (run('B7')) await guard('B7', 'payloads', async () => {
+      const e = await mkB(); clean.push(e); openExp(e.id);
+      const cases = { nullResult: { results: [null] }, rowsNotList: { results: [{ rows: 'x' }] }, nullRow: { results: [{ rows: [null, { compound: 'A', potency: 'abc' }] }] },
+        tableBad: { tables: [{ cols: 'x', rows: 5 }] }, plateBad: { plate: { wells: 'x' } }, infinite: { results: [{ id: 'i', potencyUnit: 'nM', rows: [{ compound: 'I', target: 'T', potency: 'Infinity' }, { compound: 'J', target: 'T', potency: 1e12 }] }] } };
+      for (const [n, ctx] of Object.entries(cases)) { tick('B7');
+        try { _mergeDHubContext(Object.assign({ experiment: { id: e.id } }, ctx)); openExp(e.id); expTab('res'); renderEditor(); selectNode('home'); selectNode('viz'); }
+        catch (x) { bad('B7', n, 'threw: ' + x.message); }
+        LB.data.experiments[e.id].integration = { results: [], tables: [] }; delete LB.data.experiments[e.id].plate; }
+    });
+
+    // B8 — a tree in the wrong shape still draws every screen.
+    if (run('B8')) await guard('B8', 'shapes', async () => {
+      const keep = LB.data;
+      const shapes = { projectsObject: { projects: { 0: { id: 'p', name: 'P', sections: { 0: { id: 's', name: 'S' } } } }, experiments: {} },
+        nullRecords: { projects: [null, { id: 'p', name: 'P' }], experiments: { x: null }, pages: { y: null }, notebook: { '2030-01-01': null } },
+        blocksNotList: { projects: [], experiments: { e: { id: 'e', projectId: 'p', blocks: 'oops' } } } };
+      for (const [n, d] of Object.entries(shapes)) { tick('B8');
+        try { LB.data = Object.assign(lbBlank(), JSON.parse(JSON.stringify(d))); _lbNormTree(LB.data);
+          ['home', 'exps', 'today', 'week', 'viz'].forEach(k => selectNode(k)); openJournalWs(); }
+        catch (x) { bad('B8', n, 'threw: ' + x.message); }
+      }
+      LB.data = keep; selectNode('home');
+    });
+
+    // B9 — Restore never takes an export for a backup.
+    if (run('B9')) await guard('B9', 'restore', async () => {
+      const asked = []; const c0 = window.lbConfirm; window.lbConfirm = (m) => { asked.push(m); return Promise.resolve(false); }; window.lbAlert = () => Promise.resolve();
+      for (const [n, obj] of [['bundle', { _lbBundle: 1, experiments: [] }], ['experiment', { _lbExperiment: 1, experiment: { id: 'x' }, experiments: {} }], ['list', { experiments: [] }]]) { tick('B9');
+        asked.length = 0; restoreFromBackupFile(new File([JSON.stringify(obj)], n + '.json')); await sleep(200);
+        if (asked.length) bad('B9', n, `a ${n} file was offered as a backup to replace the notebook with`); }
+      window.lbConfirm = c0; window.lbAlert = lbAlert0;
+    });
+
+    // B10 — a mix comes to the volume it says, however small the stocks make the DNA.
+    if (run('B10')) await guard('B10', 'mixes', async () => {
+      const num = s => parseFloat(String(s).replace(/,/g, ''));
+      const rowsOf = h => { const d = document.createElement('div'); d.innerHTML = h; return [...d.querySelectorAll('table.cc-tbl tr')].slice(1); };
+      for (const st of [1e6, 1e4, 1000, 100, 10]) {
+        tick('B10');
+        const v = Object.assign({}, CALC_KINDS.nbtx.defaults, { donorNames: 'NL', acceptorNames: 'HT', ratios: '50', donorStock: st, acceptorStock: st, carrierStock: st, nPair: 24, nDonor: 8, nAcceptor: 8, nMock: 8 });
+        rowsOf(CALC_KINDS.nbtx.compute(v, {})).forEach(tr => { const td = [...tr.children]; if (/no complex|short by/.test(tr.textContent)) return;
+          const n = td.length, tot = num(td[n - 1].querySelector('b').textContent), om = num(td[n - 2].textContent), fu = num(td[n - 3].textContent);
+          let dna = 0; td.slice(2, n - 3).forEach(c => { const m = /→\s*([\d.,]+)\s*µL/.exec(c.textContent); const b = c.querySelector('b'); dna += m ? num(m[1]) : (b ? num(b.textContent) : 0); });
+          if (Math.abs(dna + fu + om - tot) > Math.max(0.05, tot * 0.002)) bad('B10', `nbtx stock ${st} · ${td[1].textContent.slice(0, 20)}`, `${dna.toFixed(2)} DNA + ${fu} FuGENE + ${om} Opti-MEM ≠ ${tot} µL`); });
+        // The single master mix and the spike-in: the parts in the table add up to its total.
+        const tbl = h => { const d = document.createElement('div'); d.innerHTML = h; return [...d.querySelectorAll('table.cc-tbl tr')].slice(1).map(tr => [...tr.children].map(c => c.textContent)); };
+        const r = Object.assign({}, CALC_KINDS.rtxmix.defaults, { stockNgUl: st * 10, nWells: 3 }), rt = tbl(CALC_KINDS.rtxmix.compute(r));
+        if (rt.length >= 4) { const parts = rt.slice(0, 3).map(x => num(x[1])), total = num(rt[3][1]);
+          if (Math.abs(parts.reduce((a, b) => a + b, 0) - total) > Math.max(0.05, total * 0.002)) bad('B10', 'rtxmix stock ' + st * 10, `${parts.join(' + ')} ≠ ${total} µL`); }
+        const sp = Object.assign({}, CALC_KINDS.spike.defaults, { stockUM: st, nWells: 4 }), sr = tbl(CALC_KINDS.spike.compute(sp));
+        if (sr.length === 3) { const need = num(sr[0][1]), stk = num(sr[1][1]), dil = num(sr[2][1]);
+          if (Math.abs(stk + dil - need) > Math.max(0.05, need * 0.002)) bad('B10', 'spike stock ' + st, `${stk} + ${dil} ≠ ${need} µL`); }
+      }
+    });
+
+    // B11 — an imported copy of a replicate does not join the set it was copied from.
+    if (run('B11')) await guard('B11', 'replicates', async () => {
+      tick('B11'); const e = await mkB(); clean.push(e);
+      window.lbPrompt = (m, v) => Promise.resolve(v); repeatExperiment(e.id); await sleep(200); window.lbPrompt = lbPrompt0;
+      const n = repSiblings(LB.data.experiments[e.id]).length;
+      importExpFile(new File([buildExpJSON(LB.data.experiments[e.id])], 'x.json')); await sleep(400);
+      document.querySelectorAll('.modal-back.open .btn.primary').forEach(b => b.click()); await sleep(300);
+      Object.keys(LB.data.experiments).map(k => LB.data.experiments[k]).filter(x => x.imported || (x.repGroup && x.repGroup === LB.data.experiments[e.id].repGroup && x.id !== e.id)).forEach(x => clean.push(x));
+      if (repSiblings(LB.data.experiments[e.id]).length !== n) bad('B11', 'import', `importing a copy made it replicate ${n + 1} of the original's set`);
+    });
+
+    // B12 — concentrations read back as written; a series is a series in either direction.
+    if (run('B12')) await guard('B12', 'concentrations', async () => {
+      for (let lg = -12; lg <= 9; lg += 0.37) { tick('B12'); const x = Math.pow(10, lg), s = _fmtConc(x), y = _parseConcNM(s);
+        if (!(Math.abs(y - x) / x < 0.006)) bad('B12', s, `${x} nM prints as "${s}" and reads back as ${y}`);
+        if (/^1000 /.test(s)) bad('B12', s, `${x} nM prints as "${s}" — a unit boundary not taken`); }
+      for (const df of [2, 3, 3.16, 10]) { const desc = Array.from({ length: 8 }, (_, i) => _fmtConc(1000 / Math.pow(df, i)));
+        for (const [n, seq] of [['falling', desc], ['rising', desc.slice().reverse()]]) { tick('B12');
+          const t = _seriesText(seq).text; if (!/8 pts, [\d.]+-fold/.test(t)) bad('B12', n + ' ' + df, `a ${df}-fold ${n} series reads as "${t}"`); } }
+    });
+
+    // B13 — an Echo picklist reads the same however it was saved.
+    if (run('B13')) await guard('B13', 'picklist', async () => {
+      const head = ['[DETAILS]', 'Protocol Name,HB_INV.edr', '', 'Source Plate Name,Source Well,Destination Plate Name,Destination Well,Sample Name,Destination Concentration,Destination Concentration Units,Transfer Volume,Transfer Status'];
+      const rows = ['S,A1,D,B02,CPD-1,2.001E-05,M,25,', 'S,A2,D,C10,CPD-2,1E-06,M,25,OK'];
+      const csv = head.concat(rows).join('\r\n');
+      for (const [n, t] of [['csv', csv], ['bom', '﻿' + csv], ['semicolon', csv.replace(/,/g, ';').replace('2.001E-05', '2,001E-05')]]) { tick('B13');
+        const r = parseEchoPicklist(t); if (r.error) { bad('B13', n, r.error); continue; }
+        const w = r.plates[0].wells; if (!w.B2 || !w.C10) { bad('B13', n, 'wells read as ' + Object.keys(w).join(',')); continue; }
+        if (w.B2.conc !== '20.01 µM') bad('B13', n, 'B2 concentration read as ' + w.B2.conc); }
+    });
+
+    // B14 — the inline sum answers whole expressions only.
+    if (run('B14')) await guard('B14', 'sum', async () => {
+      const host = document.createElement('div'); host.className = 'rt'; host.contentEditable = 'true'; host.style.cssText = 'position:fixed;left:-9999px;top:0;width:400px'; document.body.appendChild(host);
+      for (const [typed, want] of [['9*9=', '9*9=81'], ['3.5e3*2=', '3.5e3*2='], ['B12*2=', 'B12*2='], ['x 10/4=', 'x 10/4=2.5'], ['(2+3)*4=', '(2+3)*4=20']]) { tick('B14');
+        host.innerHTML = ''; host.focus(); const r = document.createRange(); r.selectNodeContents(host); r.collapse(false); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(r);
+        for (const ch of typed) { document.execCommand('insertText', false, ch); await sleep(5); }
+        await sleep(30); const got = host.textContent.replace(/ /g, ' ').trim();
+        if (got !== want) bad('B14', typed, `typing "${typed}" gave "${got}", not "${want}"`); }
+      host.remove();
+    });
+
+    // B15 — only the Hub's own frames can post into Labbook.
+    if (run('B15')) await guard('B15', 'origin', async () => {
+      const e = await mkB(); clean.push(e); openExp(e.id);
+      for (const [origin, want] of [['https://attacker.example', false], [self.origin, true]]) { tick('B15');
+        LB.data.experiments[e.id].integration = { results: [] };
+        window.dispatchEvent(new MessageEvent('message', { origin, data: { type: 'dhub:context', version: 1, context: { experiment: { id: e.id }, results: [{ id: 'm', rows: [{ compound: 'X', potency: 1 }] }] } } }));
+        await sleep(60);
+        const got = ((LB.data.experiments[e.id].integration || {}).results || []).length > 0;
+        if (got !== want) bad('B15', origin, want ? 'a message from the Hub\'s own origin was refused' : 'a message from another origin wrote into the experiment'); }
+    });
+
+    // B16 — a typed code is trimmed, never empty, never another experiment's.
+    if (run('B16')) await guard('B16', 'code', async () => {
+      const a = await mkB(), b = await mkB(); clean.push(a, b); openExp(b.id); tick('B16');
+      setField('code', a.code); if (LB.data.experiments[b.id].code === a.code) bad('B16', 'dup', 'two experiments carry one code');
+      setField('code', '   '); if (!String(LB.data.experiments[b.id].code || '').trim()) bad('B16', 'blank', 'a blank code was stored');
+      setField('code', '  INV_TRIM  '); if (LB.data.experiments[b.id].code !== 'INV_TRIM') bad('B16', 'trim', `stored as "${LB.data.experiments[b.id].code}"`);
+    });
+
+    // B17 — changing the plate format drops what hung off the wells it drops.
+    if (run('B17')) await guard('B17', 'format', async () => {
+      const e = await mkB(); clean.push(e); tick('B17');
+      e.plate = { format: '384', title: '', types: [], wells: { A1: { typeId: 'dose', conc: '1 µM' }, P24: { typeId: 'dose', conc: '2 µM', groupId: 'g' } }, groups: { g: { label: 'gone' } }, colLabels: { 23: 'x' }, values: { data: { A1: 1, P24: 999 }, min: 1, max: 999 } };
+      openExp(e.id); openPlateEditor('exp:' + e.id); plSetFormat('96'); closePlateEditor();
+      const p = LB.data.experiments[e.id].plate;
+      if (p.values && p.values.data && p.values.data.P24 != null) bad('B17', 'values', 'a dropped well\'s reader value survived');
+      if (p.values && p.values.max === 999) bad('B17', 'values', 'the colour range still includes a dropped well');
+      if (p.colLabels && p.colLabels[23]) bad('B17', 'headers', 'a header past the last column survived');
+      if (p.groups && p.groups.g) bad('B17', 'groups', 'a block label with no wells survived');
+    });
+
+    // B18 — one press, one timer.
+    if (run('B18')) await guard('B18', 'timer', async () => {
+      const e = await mkB(); clean.push(e); tick('B18'); const b = LB.data.experiments[e.id].blocks[0]; b.waitMin = 30;
+      const n = LB_TIMERS.length; startWaitTimer(e.id, b.id); startWaitTimer(e.id, b.id);
+      if (LB_TIMERS.length !== n + 1) bad('B18', 'twice', `pressing twice started ${LB_TIMERS.length - n} timers`);
+      LB_TIMERS.filter(t => t.expId === e.id).forEach(t => stopTimer(t.id));
+    });
+
+    // B19 — everything you can click to navigate, you can reach with Tab.
+    if (run('B19')) await guard('B19', 'keyboard', async () => {
+      const e = await mkB(); clean.push(e);
+      for (const [n, fn] of [['home', () => selectNode('home')], ['exps', () => selectNode('exps')], ['folder', () => openExp(e.id)], ['journal', () => openJournalWs()], ['today', () => selectNode('today')]]) {
+        tick('B19'); fn(); await sleep(80);
+        const miss = [...document.querySelectorAll('[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(label):not(option)')]
+          .filter(x => x.offsetParent && x.tabIndex < 0 && !x.closest('[contenteditable]:not([contenteditable="false"])'));
+        if (miss.length) bad('B19', n, `${miss.length} clickable element(s) Tab cannot reach, e.g. ${miss[0].className || miss[0].tagName}`); }
+    });
+
+    clean.forEach(cleanup);
+    window.lbAlert = lbAlert0; window.lbPrompt = lbPrompt0; window.lbChoose = lbChoose0; window.lbPicker = lbPicker0; window.toast = toast0; window._dl = dl0;
+    try { selectNode('home'); } catch (x) {}
   }
 
   return { out, counts, archive, presets: KEYS.length };
