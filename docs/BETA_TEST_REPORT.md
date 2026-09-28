@@ -4,6 +4,99 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## Echo Data Analysis (Curves, Plots, exports) — 2026-09-28
+
+### Scope & environment
+- **App:** `apps/echo/echo.html`, Data Analysis: the Curves tab (Single and Compare, the style
+  panel, zoom, Fix Y, the pinned reference, right-click exclusions), the Plots tab (scatter, box
+  plot, selectivity, point names), every export of a chart (curve PNG/PDF, batch curve PDFs,
+  scatter/box/selectivity PNG, CSV (filtered), Raw Data and Summary CSV, Copy TSV, Results XLSX),
+  and the fitting mathematics behind them. Also Echo embedded in dHUB.
+- **Base commit:** `921cf61`. Worked on `main`; one commit per bug or per tightly coupled group.
+- **Reported by Jon during the run:** PDF exports overlap, charts look low quality, names overlap
+  when comparing and exporting, Compare looks wrong and the UI moves while adding; then: an
+  excluded concentration cannot be re-included, and ⌘Z does nothing.
+- **Tools:** Playwright (Chromium) on the bundled test plates (1 picklist, 6 PHERAstar plates,
+  63 fits); PyMuPDF to rasterise every exported PDF and read it; scipy 1.18 `least_squares` and
+  `scipy.stats.t` as the reference for the fits and confidence intervals; numpy type-7 quantiles
+  for the box plot; `check_js`, `check_css`, `check_shared`, `audit_app --xref`, `embed.py`.
+- **Viewports:** 1440×900, 768, 390×780/844, 320; light and dark.
+
+### Coverage matrix
+| Area | Functional | Edge | Math | UI | Mobile | Stress | Persistence | Errors | A11y | Perf |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Curves — Single | ✅ | ✅ zoom, Fix Y, ref, no-fit | ✅ | ✅ | ✅ | — | — | ✅ | ⚠️ keyboard nav only | ✅ |
+| Curves — Compare | ✅ | ✅ quotes, 60-char, α/emoji, 63 curves | — | ✅ | ✅ | ✅ 40 rapid toggles | ⚠️ selection is per session | — | ✅ checkboxes | ✅ 63 curves ≈ 70 ms |
+| Curve edits (exclude, re-include, resolve, undo) | ✅ | ✅ | ✅ refit vs fit | — | — | ✅ | — | — | ✅ ⌘Z/Ctrl+Z | — |
+| Curve PNG / PDF / batch PDF | ✅ | ✅ Unicode, long names, 63-entry legend | — | ✅ read page by page | — | ✅ double click | — | ✅ | — | ✅ |
+| Fit engine (LM, CI) | ✅ | ✅ bound-hitting fits, flat curves | ✅ vs scipy, all 63 | — | — | — | — | — | — | — |
+| Plots — scatter | ✅ | ✅ unfitted rows | — | ✅ | ✅ | — | — | — | — | — |
+| Plots — box plot | ✅ | ✅ even n, outliers, 0 limit | ✅ vs numpy | ✅ | ✅ | — | — | — | — | — |
+| Plots — selectivity | ✅ | ✅ log DC50, manual limits | ✅ direction | ✅ | ✅ | — | — | — | — | — |
+| CSV / TSV / XLSX | ✅ | ✅ commas, quotes, formulas | ✅ values vs results | — | — | — | — | — | — | — |
+| Plate / Properties / History tabs | ⚠️ looked at, not tested in depth | | | | | | | | | |
+| Multi-assay runs | ❌ no multi-assay test data | | | | | | | | | |
+
+### Bugs
+Every bug in this table is fixed and pushed to `main`.
+
+| ID | Sev | Area | Summary | Root cause |
+|---|---|---|---|---|
+| EC-1 | High | Compare export | The legend was drawn over the x-axis title, and every row after the first fell off the image: 5 of 24 names shown | Legend placed at a fixed offset, canvas height never grew for it |
+| EC-5 | High | Compare | One click put a compound on all three proteins: 8 clicks, 24 curves | Selection keyed by Sample_ID |
+| EC-9 | High | Box plot | The median of [1,2,3,4] was 3; whiskers ended at the fence, where no point lies | `sorted[floor(n·p)]` quartiles |
+| EC-10 | High | Selectivity | With log DC50 on both axes every selective compound was painted on the wrong protein | Bands assumed higher = more potent |
+| EC-14 | High | Curve edits | A concentration excluded as a whole could not be re-included by right-click (Jon) | Its crosses were drawn but not in the hit map |
+| EC-15 | High | Undo | ⌘Z did nothing on a Mac anywhere; curve edits had no undo at all (Jon) | Only `e.ctrlKey` was checked; no snapshot of edits |
+| EC-17 | High | Fitting | Six fits stopped short of their minimum, all with the bottom on 0 %: EDA-139·BRD2 23.5 nM vs 23.0 | `_lmFit` clamped the whole step at the bound |
+| EC-2 | Med | Curve export | Title overlapped the plot; 100 % label, EC50 line, error bars and grid ignored the export scale | Hand-set pads and multipliers not applied everywhere |
+| EC-3 | Med | PDF | Every PDF was a JPEG/PNG raster on an A4 page | No vector path; now `_pdfCtx`, a Canvas-2D front for jsPDF |
+| EC-4 | Med | Batch PDF | "⚠ Hookx1" printed as "& H o o k x 1"; DC50/Dmax labels regardless of assay; the title twice | Non-WinAnsi glyph in a standard font; labels hard-coded |
+| EC-6 | Med | Compare | A chip's colour and its curve's colour disagreed | List position vs chart position |
+| EC-7 | Med | Compare | Adding a compound moved the list under the pointer and shrank the plot (Jon) | Table grew above the list; legend drawn in the canvas |
+| EC-8 | Med | Curves | Data not clipped (Fix Y drew over the axes); hover/pan/popup used hard-coded pads; duplicate zoomed ticks; sparklines ignored gain mode; CTG said DC50; "pDC50" uppercased to "PDC50" | Several |
+| EC-11 | Med | Selectivity | Black grid and labels, bands outside the plot, "&amp;" in titles, a "600 DPI" PNG that was the screen canvas, a dead "Only shared" box | `var(--x)` handed to a canvas; no clip |
+| EC-12 | Med | Point names | Names drawn on top of each other (scatter, selectivity) | No placement |
+| EC-16 | Med | Curve edits | Re-including a point refit EDA-013 to 7.54 nM instead of 7.53 | Replicates stored rounded |
+| EC-18 | Med | CIs | 95 % CIs 1–6 % too narrow | `_tQ95` returned the top of each df bin |
+| EC-19 | Med | Fitting | Abs EC50 of a rising curve on the mirror side; CTG span 100 − bottom with a free top | Falling-curve formula for every assay |
+| EC-20 | Med | Scatter | Unfitted compounds plotted at x = 0 (1 M); side panel drew a gain curve falling | `parseFloat(null)||0`; a copy of the row |
+| EC-21 | Med | Names | A quote in a compound or group name broke its compare row; file names rendered as HTML; "Mike's plate" could not be removed | `esc()` left quotes; inline JS strings |
+| EC-22 | Med | CSV | Unquoted cells, formula injection, "CSV (filtered)" not what the chart showed, 50 fM printed 0 nM | Values joined raw; filter re-derived from inputs |
+| EC-24 | Med | Selectivity | The chart collapsed to nothing on a phone; stretched to 16° on a desktop | `min-height:0`; no aspect |
+| EC-13 | Low | Scatter PNG | 100 % line, its label and names ignored the 5× scale; hulls doubled on Retina | Unscaled constants |
+| EC-23 | Low | Batch PDF | Double click: two pickers or every PDF twice; no Escape | No guard |
+| EC-25 | Low | Style panel | Controls reset to their first option while the chart kept the style | No `selected` state |
+| EC-26 | Low | Curves | Fix Y placeholder read "Bottor" | 60 px field |
+
+**Totals:** 26 bugs found (0 Critical, 7 High, 15 Medium, 4 Low), 26 fixed, 0 open.
+
+### Not fixed — recommendations
+- **"pDC50 (M)" column headers.** A p-value is dimensionless; the "(M)" is a convention for "of a
+  molar value". Left alone because the headers are what Jon's downstream sheets read.
+- **The scatter's hi-res PNG follows the theme** — dark in dark mode. Curve, box and selectivity
+  exports are white. Whether a published scatter should ever be dark is Jon's call.
+- **Plate tab cards** leave ~40 % of each card empty below the legend. Cosmetic, outside this pass.
+- **Flag text "Hookx1"** would read better as "Hook ×1"; it is matched by prefix elsewhere, so it
+  was left.
+
+### Regression results
+`tools/echo_invariants.mjs` (E1–E10, now in CI) passes; against `921cf61` it reports 15 findings
+and against `7105f71` the E6 refit drift — each check proven by the bug it guards. All 63 fits
+match scipy's bounded optimum (no larger SSE; DC50s agree to three significant figures); CIs
+match scipy within rounding; `_tQ95` matches `scipy.stats.t` to five decimals. `check_shared`:
+Beacon and Lumina in sync, Lumina's example plate refits. Every exported PDF rasterised and read;
+no raster in vector PDFs for plain names. No horizontal overflow at 390, 320 or 768 px on any
+Plots or Curves view. Echo embedded in dHUB runs the pipeline and exports a compare PDF.
+
+### Residual risk
+- No multi-assay test data: the assay-type labels and per-assay PDF split were read, not run.
+- The PDF raster fallback (Greek, emoji) is drawn in Plex while the rest of the PDF is
+  Helvetica — correct glyphs, visibly a different face.
+- Curve-edit undo is per session; it does not survive a reload (the edits themselves do).
+
+---
+
 ## Labbook — 2026-09-28
 
 ### Scope & environment
