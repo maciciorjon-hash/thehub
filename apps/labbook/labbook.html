@@ -7629,9 +7629,26 @@ try{
   LB.data=JSON.parse(_lbRaw||'null');
   // It was there and did not parse. An empty slot is a new browser; garbage is a broken one,
   // and the difference is what decides whether anything is allowed to delete today.
-  if(_lbRaw && (!LB.data || typeof LB.data!=='object')) _localReadFailed=true;
+  if(_lbRaw && (!LB.data || typeof LB.data!=='object' || Array.isArray(LB.data))) _localReadFailed=true;
 }catch(e){ _localReadFailed=true; }
-if(!LB.data||typeof LB.data!=='object') LB.data=lbBlank();
+// An array is JSON too, and it was taken for a tree: every key set on it afterwards was dropped by
+// the next JSON.stringify, so the notebook saved as "[]" on every keystroke.
+if(!LB.data||typeof LB.data!=='object'||Array.isArray(LB.data)) LB.data=lbBlank();
+// Valid JSON in the wrong shape stopped the app before it drew anything: `projects` as an object
+// (which is how the RTDB hands back an array with a gap in it), a null record, `blocks` that is
+// not a list. Lists come back as lists, a record that is not an object is not a record, and
+// nothing else is touched.
+function _lbList(v,objs){ var a=Array.isArray(v)?v:((v&&typeof v==='object')?Object.keys(v).map(function(k){ return v[k]; }):[]);
+  return objs?a.filter(function(x){ return x&&typeof x==='object'&&!Array.isArray(x); }):a.filter(function(x){ return x!=null; }); }
+function _lbMap(v){ var o={}; if(v&&typeof v==='object'&&!Array.isArray(v)) Object.keys(v).forEach(function(k){ var x=v[k]; if(x&&typeof x==='object'&&!Array.isArray(x)) o[k]=x; }); return o; }
+function _lbNormTree(d){
+  ['projects','generalSections','notebooks'].forEach(function(k){ if(d[k]!=null) d[k]=_lbList(d[k],true); });
+  if(d.tags!=null) d.tags=_lbList(d.tags,false);
+  ['experiments','pages','notebook','trash'].forEach(function(k){ if(d[k]!=null) d[k]=_lbMap(d[k]); });
+  (d.projects||[]).forEach(function(p){ if(p.sections!=null) p.sections=_lbList(p.sections,true); });
+  Object.keys(d.experiments||{}).forEach(function(k){ var e=d.experiments[k]; if(e.blocks!=null) e.blocks=_lbList(e.blocks,true); });
+  return d; }
+_lbNormTree(LB.data);
 // ── The settle gate ─────────────────────────────────────────────────────────────────────────
 // Nothing that DESTROYS anything may run until we know which tree we are holding: the local
 // cache, or the cloud copy still on its way. lbInitSync's first read is network-bound and can
@@ -8824,6 +8841,7 @@ function lbInitSync(){
       var _carry={}; Object.keys(LB.data).forEach(function(k){ _carry[k]=LB.data[k]; });
       Object.keys(v).forEach(function(k){ _carry[k]=v[k]; });
       LB.data=Object.assign(_carry,{projects:v.projects||[],generalSections:v.generalSections||[],notebooks:v.notebooks||[],experiments:v.experiments||{},pages:v.pages||{},notebook:v.notebook||{},tags:v.tags||[],presets:v.presets||LB.data.presets,antibodies:v.antibodies||{},attachments:v.attachments||{},planner:(v.planner&&typeof v.planner==='object'&&v.planner.tasks)?v.planner:{tasks:{}},protoDays:v.protoDays||{},_seeded:(v._seeded===undefined?true:v._seeded),_extraPresets:v._extraPresets,updated:v.updated||Date.now()});
+      _lbNormTree(LB.data);
       LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
       _reconcileProjects(_projBefore);   // a projects root that orphans the cloud's own experiments is wrong, whatever its timestamp
       _backfillPrefixes();   // a tree adopted from the cloud can predate the field too
