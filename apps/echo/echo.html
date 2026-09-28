@@ -4555,9 +4555,11 @@ function buildScatterChart() {
   proteins.forEach(p=>{if(!window._scPalMap[p])window._scPalMap[p]=SCATTER_PALETTE[_spi++%SCATTER_PALETTE.length];});
   const datasets = proteins.map(prot => {
     const fg=window._scPalMap[prot];
+    // A compound with no value on either axis has no place on the chart: parseFloat(null)||0
+    // used to put every unfitted compound at x = 0 (1 M on a log axis), stretching the axis.
     const pts = rows.filter(r=>r.Protein===prot).filter(r=>{
       const _xv=parseFloat(r[xKey]), _yv=parseFloat(r[yKey2]);
-      return _usePivot ? (isFinite(_xv)&&isFinite(_yv)) : true;
+      return isFinite(_xv)&&isFinite(_yv);
     }).map(r => ({
       x: ((parseFloat(r[xKey])||0)+xOffset)*xConcScale,
       y: (()=>{const _ry=parseFloat(r[yKey2]);return isFinite(_ry)?(_ry+yOffset2)*yConcScale:r[yKey2];})(),
@@ -5608,7 +5610,7 @@ async function downloadScatterHiRes() {
   const dotSize = parseInt(document.getElementById('sc-dotsize')?.value || '3');
   const datasets = proteins.map(prot => {
     const fg = (window._scPalMap&&window._scPalMap[prot]) || pcolor(prot).fg;
-    const pts = rows.filter(r=>r.Protein===prot).map(r => ({
+    const pts = rows.filter(r=>r.Protein===prot && isFinite(parseFloat(r[xKey])) && isFinite(parseFloat(r[yKey]))).map(r => ({
       x: ((parseFloat(r[xKey])||0)+xOffset)*xCScaleDL,
       y: (()=>{const _ry=parseFloat(r[yKey]);return isFinite(_ry)?(_ry+yOffset2DL)*yCScaleDL:r[yKey];})(),
       label: r.Sample_ID, flag: r.Flag,
@@ -7734,6 +7736,12 @@ function openCurvePanel(pt) {
     const assay = _cpXAssay || _cpYAssay;
     const row = _allData2.find(x=>x.Sample_ID===pt.label&&x._assayType===assay);
     if (row) curveRows = [row];
+  }
+  if (!curveRows.length) {
+    // The result row itself — the chart point is a copy without the assay type or gain flag,
+    // so the panel drew a rising curve as a falling one.
+    const _real = _allData2.find(x=>x.Sample_ID===pt.label&&x.Protein===pt.protein);
+    if (_real) curveRows = [_real];
   }
   if (!curveRows.length) {
     const _origPt = (pt._xmin==null) ? (_allData2.find(x=>x.Sample_ID===pt.label)||{}) : {};
