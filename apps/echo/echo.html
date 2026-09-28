@@ -2572,7 +2572,9 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         // lower confidence limit with it ("0–14888").
         const _nM3 = v => (isFinite(v) ? +(+v).toPrecision(3) : null);
         const dc50 = _nM3(Math.pow(10, logec50) * 1e9);
-        const dmax = Math.round(gainMode ? tc : (100 - bot));
+        // Span is the drop the curve itself makes (top − bottom): with a free top, 100 − bottom
+        // reported a span the fitted curve does not have. Dmax stays relative to DMSO (100 %).
+        const dmax = Math.round(gainMode ? tc : assayType === 'ctg' ? (tc - bot) : (100 - bot));
         const pdc50 = +(-logec50).toFixed(3);
 
         const _seArr = fitResult.se || null;
@@ -2587,8 +2589,11 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         const CI_Top_upper  = (_seArr && _seArr[3]!=null) ? +(tc + _t95*_seArr[3]).toFixed(2) : null;
 
         let absDc50 = null;
-        if (absdc50Enabled && bot < 50 && tc > 50 && Math.abs(hill) > 1e-6) {
-          try { absDc50 = _nM3(Math.pow(10, logec50 + Math.log10((tc - 50) / (50 - bot)) / hill) * 1e9); } catch (e) {}
+        // Where the curve crosses 50 % of control — defined only on a normalised scale, and on the
+        // other side of the midpoint for a rising (gain) curve than for a falling one.
+        if (absdc50Enabled && !skipNorm && bot < 50 && tc > 50 && Math.abs(hill) > 1e-6) {
+          const _sh = Math.log10((tc - 50) / (50 - bot)) / hill;
+          try { absDc50 = _nM3(Math.pow(10, gainMode ? logec50 - _sh : logec50 + _sh) * 1e9); } catch (e) {}
         }
 
         const flags = [];
