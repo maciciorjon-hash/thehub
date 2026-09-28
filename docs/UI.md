@@ -111,6 +111,13 @@ having its own idea of how fast a hover is, or none at all.
   full-screen, invisible and still clickable.
 - **Every app carries the `prefers-reduced-motion` block** that clamps every duration to 1 ms.
   That is what makes motion something you may add without asking.
+- **An icon moves while you point at it, once — never in a loop.** A motif is a 400–900 ms
+  animation on the icon's own parts, under `@media (hover:hover)`, keyed on a root class
+  (`svg.mo-<app>`) so it travels with the SVG wherever it is copied. A 24px glyph cycling
+  forever beside the thing you are reading is decoration you cannot turn off.
+- **Motion that crosses screens must start from where you clicked.** An app grows out of the card
+  that opened it (a `clip-path` from the card's rect); anything opened from elsewhere fades. A
+  grow with no origin is the generic kind, and that is what the Hub stopped being.
 
 **Scrolling** is part of the same standard.
 

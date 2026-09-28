@@ -284,37 +284,11 @@ body.hub-announcing #hub-home{margin-top:98px;min-height:calc(100vh - 98px);min-
 .grid .card:nth-child(5){animation-delay:.25s;}
 .grid .card:nth-child(6){animation-delay:.31s;}
 /* ── Hub logo pulse ──────────────────────────────────────────────── */
-@keyframes logoPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,87,96,0);}50%{box-shadow:0 0 0 8px rgba(255,87,96,0.13);}}
+@keyframes logoPulse{0%,100%{box-shadow:0 0 0 0 transparent;}50%{box-shadow:0 0 0 8px var(--accent-dim);}}
 #hub-logo.pulsing{animation:logoPulse 2.8s ease-in-out infinite;}
 /* ── SVG icon size in card-logo + crumb icon ─────────────────────── */
 .card-logo svg{width:26px;height:26px;flex-shrink:0;display:block;}
 #crumb-icon svg{width:14px;height:14px;flex-shrink:0;display:block;}
-/* ── Card logo animated icons ────────────────────────────────────── */
-/* Echo: bars pulse */
-@keyframes echoBars{0%,100%{transform:scaleY(1);}50%{transform:scaleY(0.82);}}
-.echo-bar{transform-box:fill-box;transform-origin:50% 100%;animation:echoBars 2.2s ease-in-out infinite;}
-.echo-bar:nth-child(2){animation-delay:.28s;}
-.echo-bar:nth-child(3){animation-delay:.55s;}
-/* LabMate: bubbles float up */
-/* Degradation: dot pulses */
-@keyframes degDot{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(0.5);opacity:.3;}}
-.deg-dot{transform-box:fill-box;transform-origin:50% 50%;animation:degDot 2.2s ease-in-out infinite;}
-/* Plate Designer: one well blinks */
-@keyframes wellBlink{0%,100%{opacity:1;}45%,55%{opacity:.25;}}
-.pd-well-anim{animation:wellBlink 2.6s ease-in-out infinite;}
-.pd-well-anim:nth-child(5){animation-delay:.65s;}
-/* Helix: opacity cycling simulates strand rotation (front↔back) */
-@keyframes helixBack{0%,100%{opacity:0.35;}50%{opacity:0.88;}}
-@keyframes helixFront{0%,100%{opacity:1;}50%{opacity:0.38;}}
-@keyframes rungFade{0%,100%{opacity:.72;}50%{opacity:.18;}}
-.helix-sb{animation:helixBack 2.8s ease-in-out infinite;}
-.helix-sa{animation:helixFront 2.8s ease-in-out infinite;}
-.helix-rg{animation:rungFade 2.8s ease-in-out infinite;}
-/* Protein Tools: chain sways */
-@keyframes ptSway{0%,100%{transform:translateY(0);}50%{transform:translateY(-1.8px);}}
-.pt-atom{transform-box:fill-box;transform-origin:50% 50%;animation:ptSway 2s ease-in-out infinite;}
-.pt-atom:nth-child(2){animation-delay:.35s;}
-.pt-atom:nth-child(3){animation-delay:.7s;}
 
 /* Edit-grid mode */
 
@@ -585,9 +559,188 @@ a,button,input,select,textarea,
    avoid. The class is on for one frame; the observer below catches every call site, including
    ones added later. */
 html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:none!important;}
+
+/* ══ Motion graphics ═════════════════════════════════════════════════════
+   Four things move, and each one says something: the boot intro covers the wait while the
+   session resolves; the rail's ink says where you went; an app grows out of the card you
+   pressed; a card's icon moves while you are pointing at it. None of it loops (the header
+   logo's older pulse is the one exception, on Home only), and only transform, opacity, stroke-dashoffset and clip-path are animated. */
+
+/* ── Boot intro. A dose-response curve draws itself and resolves into the mark, which then
+   flies to the header. Once per tab; see _introWanted() for when it does not play. It never
+   takes a click (pointer-events:none from the first frame) and is removed from the DOM when
+   it is done. */
+#hub-intro{display:none;position:fixed;inset:0;z-index:300;background:var(--bg);pointer-events:none;
+  align-items:center;justify-content:center;transition:background-color 420ms var(--ease);}
+html.hub-intro #hub-intro{display:flex;}
+html.hub-intro #hub-logo,html.hub-intro #nav-title{visibility:hidden;}
+.hi-stage{position:relative;width:340px;height:222px;max-width:80vw;}
+.hi-plot{position:absolute;inset:0;width:100%;height:100%;overflow:visible;
+  transition:opacity 300ms var(--ease),transform 380ms var(--ease);transform-origin:50% 50%;}
+.hi-axis{fill:none;stroke:var(--border2);stroke-width:1.5;stroke-linecap:round;}
+.hi-pt{fill:var(--text2);opacity:0;}
+#hub-intro.p1 .hi-pt{animation:hiDrop 420ms var(--ease-out) both;}
+#hub-intro.p1 .hi-pt:nth-child(2){animation-delay:35ms}  #hub-intro.p1 .hi-pt:nth-child(3){animation-delay:70ms}
+#hub-intro.p1 .hi-pt:nth-child(4){animation-delay:105ms} #hub-intro.p1 .hi-pt:nth-child(5){animation-delay:140ms}
+#hub-intro.p1 .hi-pt:nth-child(6){animation-delay:175ms} #hub-intro.p1 .hi-pt:nth-child(7){animation-delay:210ms}
+#hub-intro.p1 .hi-pt:nth-child(8){animation-delay:245ms}
+@keyframes hiDrop{from{opacity:0;transform:translateY(-14px);}to{opacity:1;transform:none;}}
+.hi-curve{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:1;stroke-dashoffset:1;}
+#hub-intro.p2 .hi-curve{stroke-dashoffset:0;transition:stroke-dashoffset 600ms cubic-bezier(.55,.05,.3,1);}
+#hub-intro.p3 .hi-plot{opacity:0;transform:scale(.3);}
+.hi-brand{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px;}
+.hi-mark{width:64px;height:64px;border-radius:8px;background:#2c2f45;color:#fff;font-family:var(--mono);
+  font-weight:700;font-size:34px;display:flex;align-items:center;justify-content:center;flex:none;
+  opacity:0;transform:scale(.6);transform-origin:0 0;
+  transition:opacity 260ms var(--ease),transform 420ms var(--ease-out);}
+.hi-word{font-size:var(--fs-9);font-weight:700;letter-spacing:-1.2px;color:var(--text);white-space:nowrap;
+  opacity:0;transform:translateX(-10px);transform-origin:0 0;
+  transition:opacity 300ms var(--ease) 90ms,transform 420ms var(--ease-out) 90ms;}
+/* scale(.6) from the top-left corner would not grow from the centre, so the mark's resting
+   state sits it back by the difference; the flight then only ever sets translate+scale. */
+#hub-intro.p3 .hi-mark{opacity:1;transform:none;}
+#hub-intro.p3 .hi-word{opacity:1;transform:none;}
+#hub-intro.p4{background-color:transparent;}
+#hub-intro.p4 .hi-mark,#hub-intro.p4 .hi-word{transition:transform 460ms var(--ease-out),opacity 200ms var(--ease) 300ms;}
+
+/* ── The rail's ink: one highlight that slides to the section you picked, rather than one
+   switching off and another switching on. Left and right follow the rail's padding, so a
+   collapse needs no measuring. */
+.ws-item{position:relative;z-index:1;}
+.ws-ink{position:absolute;left:8px;right:8px;top:0;z-index:0;border-radius:var(--r-2);background:var(--accent-dim);
+  pointer-events:none;transition:transform var(--dur-2) var(--ease-out),height var(--dur-2) var(--ease-out),opacity var(--dur-1) var(--ease);}
+#ws-rail.inked .ws-item.on{background:transparent;}
+#ws-tabs .hub-ink{border-radius:0 0 2px 2px;}
+
+/* ── An app grows out of the card you pressed. The view is clipped to the card's rect and
+   opened to the full frame; for its first frames it wears the card's colour. */
+.app-view.opening::before{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:var(--open-tint,var(--accent));opacity:.14;animation:hubOpenTint 280ms var(--ease) forwards;}
+@keyframes hubOpenTint{to{opacity:0;}}
+
+/* ── Icons move while you point at them, once — never in a loop. Each motif is on the card
+   icon's own parts (svg.mo-<app>), so it travels with the SVG into the landings. */
+svg[class*="mo-"] > *{transform-box:fill-box;transform-origin:50% 50%;}
+svg[class*="mo-"]{transform-origin:50% 50%;overflow:visible;}
+@keyframes moBar{0%,100%{transform:scaleY(1);}45%{transform:scaleY(.5);}}
+@keyframes moPop{0%,100%{transform:scale(1);}45%{transform:scale(1.35);}}
+@keyframes moFill{0%{opacity:.25;}100%{opacity:1;}}
+@keyframes moIn{from{opacity:0;transform:translateX(-4px);}}
+@keyframes moDraw{from{stroke-dashoffset:1;}to{stroke-dashoffset:0;}}
+@keyframes moFade{0%,100%{opacity:1;}50%{opacity:.25;}}
+@keyframes moSway{0%,100%{transform:translateY(0);}45%{transform:translateY(-2.2px);}}
+@keyframes moSpin60{from{transform:rotate(0);}to{transform:rotate(60deg);}}
+@keyframes moSpin45{from{transform:rotate(0);}to{transform:rotate(45deg);}}
+@keyframes moDown{0%,100%{transform:translateY(0);}45%{transform:translateY(1.8px);}}
+@keyframes moUp{0%,100%{transform:translateY(0);}45%{transform:translateY(-1.8px);}}
+@keyframes moSteam{0%{transform:translateY(0);opacity:1;}50%{transform:translateY(-3px);opacity:0;}51%{transform:translateY(2px);opacity:0;}100%{transform:none;opacity:1;}}
+@keyframes moWave{0%,100%{transform:translateX(0);}50%{transform:translateX(2.5px);}}
+@keyframes moTilt{0%,100%{transform:rotate(0);}40%{transform:rotate(-9deg);}75%{transform:rotate(4deg);}}
+@keyframes moLift{0%,100%{transform:translateY(0);}40%{transform:translateY(-2px) scale(1.04);}}
+@keyframes moSquash{0%,100%{transform:scaleY(1);}45%{transform:scaleY(.72);}}
+@keyframes moPulse{0%{transform:scale(.7);opacity:0;}60%{opacity:1;}100%{transform:none;opacity:1;}}
+@keyframes moRays{0%{transform:rotate(0) scale(1);}50%{transform:rotate(22deg) scale(1.12);}100%{transform:rotate(45deg) scale(1);}}
+@keyframes moPartA{0%,100%{transform:translate(0,0);}45%{transform:translate(-1.6px,-1.6px);}}
+@keyframes moPartB{0%,100%{transform:translate(0,0);}45%{transform:translate(1.6px,1.6px);}}
+@keyframes moShift{0%,100%{transform:translateX(0);}45%{transform:translateX(3px);}}
+@keyframes moGrow{from{transform:scaleY(0);}}
+@keyframes moSpin360{from{transform:rotate(0);}to{transform:rotate(360deg);}}
+
+/* Pointer devices only: on a touch screen :hover sticks after a tap, and the tap is already
+   opening the app. */
+@media (hover:hover){
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-echo > rect{animation:moBar 700ms var(--ease) both;transform-origin:50% 100%;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-echo > rect:nth-child(2){animation-delay:90ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-echo > rect:nth-child(3){animation-delay:180ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-deg > path:nth-child(2),
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-spectra > path:nth-child(2),
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-labbook > path:nth-child(3){stroke-dasharray:1;animation:moDraw 650ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) :is(svg.mo-deg,svg.mo-spectra) > circle{animation:moPop 520ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) :is(svg.mo-deg,svg.mo-spectra) > circle:nth-of-type(2){animation-delay:140ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) :is(svg.mo-deg,svg.mo-spectra) > circle:nth-of-type(3){animation-delay:280ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pd > circle{animation:moFill 520ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pd > circle:is(:nth-child(2),:nth-child(4)){animation-delay:70ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pd > circle:is(:nth-child(3),:nth-child(5),:nth-child(7)){animation-delay:140ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pd > circle:is(:nth-child(6),:nth-child(8)){animation-delay:210ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pd > circle:nth-child(9){animation-delay:280ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-blot > rect:not(:first-child){animation:moIn 460ms var(--ease-out) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-blot > rect:nth-child(3){animation-delay:90ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-blot > rect:nth-child(4){animation-delay:180ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-blot > rect:nth-child(5){animation-delay:270ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-dna > path:nth-of-type(1){animation:moFade 800ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-dna > path:nth-of-type(2){animation:moFade 800ms var(--ease) 400ms both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-dna > line{animation:moFade 800ms var(--ease) 200ms both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pt > circle{animation:moSway 620ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pt > circle:nth-of-type(2){animation-delay:110ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pt > circle:nth-of-type(3){animation-delay:220ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-pt > circle:nth-of-type(4){animation-delay:330ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-ldi > path:nth-of-type(2){animation:moDown 700ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-ldi > path:nth-of-type(3){animation:moUp 700ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-cryo{animation:moSpin60 700ms var(--ease-out) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-lumina > path{animation:moRays 700ms var(--ease-out) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-lumina > circle{animation:moPop 600ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-cuppa > path:nth-child(3){animation:moSteam 800ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-beacon > path{animation:moPulse 520ms var(--ease-out) 120ms both;transform-origin:0% 50%;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-beacon > circle:first-child{animation:moPop 420ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-beacon > circle:nth-child(2){animation:moPop 420ms var(--ease) 380ms both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-ribbon > path{animation:moWave 700ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-ribbon > path:nth-child(2){animation-delay:100ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-ribbon > path:nth-child(3){animation-delay:200ms}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-protocols,
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-archive{animation:moLift 600ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-incubator{animation:moTilt 800ms var(--ease) both;transform-origin:50% 90%;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-incubator > path:first-child{animation:moSquash 800ms var(--ease) both;transform-origin:50% 100%;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-cellarchive > path:nth-child(5){animation:moDown 650ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-cuppa > line{animation:none;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-antibody > path:nth-child(3){animation:moPop 520ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-primer > path:not(:first-child){animation:moShift 560ms var(--ease) both;}
+:is(.card,.ld-card):is(:hover,:focus-visible) svg.mo-plasmid{animation:moSpin360 900ms var(--ease) both;}
+}
+
+/* ── The rail's icons: the same idea at 19px, on hover and once when a section becomes
+   yours (.ws-pop, set by wsGo). */
+.ws-ico svg > *{transform-box:fill-box;transform-origin:50% 50%;}
+@media (hover:hover){
+  .ws-item:hover[data-ws="planner"] svg > path:nth-child(3),
+  .ws-item:hover[data-ws="notebook"] svg > path:nth-child(3),
+  .ws-item:hover[data-ws="analysis"] svg > path:nth-child(2){stroke-dasharray:1;animation:moDraw 420ms var(--ease) both;}
+  .ws-item:hover[data-ws="visualize"] svg > path:nth-child(2){animation:moGrow 420ms var(--ease-out) both;transform-origin:50% 100%;}
+  .ws-item:hover[data-ws="visualize"] svg > circle{animation:moSway 420ms var(--ease) 120ms both;}
+  .ws-item:hover[data-ws="designer"] svg > rect{animation:moShift 420ms var(--ease) both;}
+  .ws-item:hover[data-ws="designer"] svg > rect:nth-child(2){animation-delay:60ms}
+  .ws-item:hover[data-ws="designer"] svg > rect:nth-child(3){animation-delay:120ms}
+  .ws-item:hover[data-ws="archive"] svg{animation:moLift 420ms var(--ease) both;}
+  .ws-item:hover[data-ws="cells"] svg > circle:is(:nth-child(1),:nth-child(3)){animation:moPartA 420ms var(--ease) both;}
+  .ws-item:hover[data-ws="cells"] svg > circle:is(:nth-child(2),:nth-child(4)){animation:moPartB 420ms var(--ease) both;}
+  .ws-item:hover[data-ws="more"] svg > rect{animation:moPop 380ms var(--ease) both;}
+  .ws-item:hover[data-ws="more"] svg > rect:nth-child(2){animation-delay:50ms}
+  .ws-item:hover[data-ws="more"] svg > rect:nth-child(3){animation-delay:100ms}
+  .ws-item:hover[data-ws="more"] svg > rect:nth-child(4){animation-delay:150ms}
+}
+.ws-item.ws-pop .ws-ico svg{animation:moPop 360ms var(--ease) both;}
 </style>
 </head>
 <body>
+
+<!-- Boot intro: a dose-response curve draws itself and resolves into the mark, which flies to
+     the header. Decided here, before the page paints, so it never flashes; run by _introStart. -->
+<div id="hub-intro" aria-hidden="true"><div class="hi-stage">
+  <svg class="hi-plot" viewBox="0 0 260 170"><path class="hi-axis" d="M18 10V152H250"/><g><circle class="hi-pt" cx="34" cy="32.6" r="4.6"/><circle class="hi-pt" cx="62" cy="29.6" r="4.6"/><circle class="hi-pt" cx="90" cy="43.7" r="4.6"/><circle class="hi-pt" cx="118" cy="63.0" r="4.6"/><circle class="hi-pt" cx="146" cy="107.0" r="4.6"/><circle class="hi-pt" cx="174" cy="124.3" r="4.6"/><circle class="hi-pt" cx="202" cy="137.4" r="4.6"/><circle class="hi-pt" cx="232" cy="135.4" r="4.6"/></g><path class="hi-curve" pathLength="1" d="M28.0 30.5 L34.0 30.6 L40.0 30.8 L46.0 31.2 L52.0 31.6 L58.0 32.2 L64.0 32.9 L70.0 34.0 L76.0 35.4 L82.0 37.3 L88.0 39.7 L94.0 42.9 L100.0 46.9 L106.0 51.9 L112.0 57.9 L118.0 65.0 L124.0 72.8 L130.0 81.2 L136.0 89.7 L142.0 97.9 L148.0 105.5 L154.0 112.2 L160.0 117.9 L166.0 122.5 L172.0 126.3 L178.0 129.2 L184.0 131.4 L190.0 133.1 L196.0 134.4 L202.0 135.4 L208.0 136.1 L214.0 136.6 L220.0 137.0 L226.0 137.2 L232.0 137.4 L238.0 137.6"/></svg>
+  <div class="hi-brand"><div class="hi-mark">d</div><div class="hi-word">dHUB</div></div>
+</div></div>
+<script>
+(function(){ try{
+  var r=document.documentElement, t=localStorage.getItem('hub_theme');
+  if(t) r.setAttribute('data-theme',t);          // the intro is the first thing painted: in your theme
+  var forced=/[?&]intro=1(&|$)/.test(location.search);
+  var ok=forced || (!navigator.webdriver && window.top===window
+    && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)
+    && sessionStorage.getItem('hub_intro_seen')!=='1'
+    && !(location.hash.length>1 && sessionStorage.getItem('hub_own_hash')!=='1'));   // a deep link goes straight in
+  if(ok) r.classList.add('hub-intro');
+}catch(e){} })();
+</script>
 
 <div id="hub-nav">
   <div id="hub-logo" title="">d</div><span id="hub-back-lbl">Back</span>
@@ -698,7 +851,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('labbook')"
            onkeydown="if(event.key==='Enter')openApp('labbook')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#3f6fa8;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 4.5A2.5 2.5 0 017.5 2H19v16H7.5A2.5 2.5 0 005 20.5v-16z" stroke="white" stroke-width="1.7" stroke-linejoin="round"/><path d="M5 20.5A2.5 2.5 0 017.5 18H19v4H7.5A2.5 2.5 0 015 19.5" stroke="white" stroke-width="1.7"/><path d="M9 7h7M9 10.5h7" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+          <div class="card-logo" style="background:#3f6fa8;"><svg class="mo-labbook" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 4.5A2.5 2.5 0 017.5 2H19v16H7.5A2.5 2.5 0 005 20.5v-16z" stroke="white" stroke-width="1.7" stroke-linejoin="round"/><path d="M5 20.5A2.5 2.5 0 017.5 18H19v4H7.5A2.5 2.5 0 015 19.5" stroke="white" stroke-width="1.7"/><path pathLength="1" d="M9 7h7M9 10.5h7" stroke="white" stroke-width="1.5" stroke-linecap="round"/></svg></div>
           <div class="card-name">Labbook</div>
         </div>
         <div class="card-desc">Your electronic lab notebook &mdash; dated experiments from unified templates, daily journal by project, and one-click PDF export.</div>
@@ -712,7 +865,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('incubator')"
            onkeydown="if(event.key==='Enter')openApp('incubator')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#4a8fb5;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 15.6h11.4v2.8a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z" fill="white" opacity=".8"/><path d="M8.41 10.99 4.91 7.49 6.89 5.51 10.39 9.01" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.7 7.7 7.1 5.3" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M8 11.4 10.8 8.6H17.4a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z" stroke="white" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
+          <div class="card-logo" style="background:#4a8fb5;"><svg class="mo-incubator" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 15.6h11.4v2.8a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z" fill="white" opacity=".8"/><path d="M8.41 10.99 4.91 7.49 6.89 5.51 10.39 9.01" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.7 7.7 7.1 5.3" stroke="white" stroke-width="2" stroke-linecap="round"/><path d="M8 11.4 10.8 8.6H17.4a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z" stroke="white" stroke-width="1.7" stroke-linejoin="round"/></svg></div>
           <div class="card-name">Incubator</div>
         </div>
         <div class="card-desc">A live cell-culture tracker &mdash; passage, splits, mycoplasma checks and culture alerts. Just for you. (Tasks live on your home dashboard.)</div>
@@ -726,7 +879,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('echo')"
            onkeydown="if(event.key==='Enter')openApp('echo')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#ff5760;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect class="echo-bar" x="2" y="15" width="4" height="7" rx="1" fill="white"/><rect class="echo-bar" x="10" y="9" width="4" height="13" rx="1" fill="white"/><rect class="echo-bar" x="18" y="4" width="4" height="18" rx="1" fill="white"/><line x1="1" y1="22.5" x2="23" y2="22.5" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg></div>
+          <div class="card-logo" style="background:#ff5760;"><svg class="mo-echo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="15" width="4" height="7" rx="1" fill="white"/><rect x="10" y="9" width="4" height="13" rx="1" fill="white"/><rect x="18" y="4" width="4" height="18" rx="1" fill="white"/><line x1="1" y1="22.5" x2="23" y2="22.5" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg></div>
           <div class="card-name">Echo</div>
         </div>
         <div class="card-desc">Upload Echo + PHERAstar files for 4PL curve fitting (HiBiT, FP, TR-FRET). DC50, Dmax &amp; Hill per compound. Interactive curve editor. XLSX &amp; Prism export.</div>
@@ -740,7 +893,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('cellarchive')"
            onkeydown="if(event.key==='Enter')openApp('cellarchive')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#d17a4a;"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21.2h18"/><path d="M7 17.6h7"/><path d="M13.5 17.6a6.4 6.4 0 0 0 0-12.8h-1.2"/><path d="M9.4 14.4h2.6"/><path d="M9.7 12.1a2 2 0 0 1-2-2V5.3a2 2 0 0 1 2-2h1.1a2 2 0 0 1 2 2v4.8a2 2 0 0 1-2 2z"/></svg></div>
+          <div class="card-logo" style="background:#d17a4a;"><svg class="mo-cellarchive" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21.2h18"/><path d="M7 17.6h7"/><path d="M13.5 17.6a6.4 6.4 0 0 0 0-12.8h-1.2"/><path d="M9.4 14.4h2.6"/><path d="M9.7 12.1a2 2 0 0 1-2-2V5.3a2 2 0 0 1 2-2h1.1a2 2 0 0 1 2 2v4.8a2 2 0 0 1-2 2z"/></svg></div>
           <div class="card-name">Cell Archive</div>
         </div>
         <div class="card-desc">Culture conditions &amp; handling notes for 10 common lab cell lines — medium, doubling time, subculture ratio, and PROTAC/degrader-relevant context per line.</div>
@@ -754,7 +907,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('deg')"
            onkeydown="if(event.key==='Enter')openApp('deg')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#7c6fd4;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 21h18M3.5 3v18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/><path d="M5 5.4c3 0 4 1 6 6.2s3.2 6.2 6.2 6.2h3" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/><circle class="deg-dot" cx="6.4" cy="5.5" r="1.9" fill="white"/><circle cx="11.4" cy="11.9" r="1.9" fill="white"/><circle cx="17.4" cy="17.8" r="1.9" fill="white"/></svg></div>
+          <div class="card-logo" style="background:#7c6fd4;"><svg class="mo-deg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 21h18M3.5 3v18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/><path pathLength="1" d="M5 5.4c3 0 4 1 6 6.2s3.2 6.2 6.2 6.2h3" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="6.4" cy="5.5" r="1.9" fill="white"/><circle cx="11.4" cy="11.9" r="1.9" fill="white"/><circle cx="17.4" cy="17.8" r="1.9" fill="white"/></svg></div>
           <div class="card-name">Dora</div>
         </div>
         <div class="card-desc">Paste Excel data to explore DC50 vs Dmax by target &amp; series. Filter compounds, hover for details, browse the full table.</div>
@@ -768,7 +921,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('pd')"
            onkeydown="if(event.key==='Enter')openApp('pd')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#0079b9;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="5" cy="5" r="2.8" fill="white"/><circle cx="12" cy="5" r="2.8" fill="white"/><circle cx="19" cy="5" r="2.8" fill="white"/><circle cx="5" cy="12" r="2.8" fill="white"/><circle class="pd-well-anim" cx="12" cy="12" r="2.8" fill="white"/><circle cx="19" cy="12" r="2.8" fill="white"/><circle cx="5" cy="19" r="2.8" fill="white"/><circle cx="12" cy="19" r="2.8" fill="white"/><circle class="pd-well-anim" cx="19" cy="19" r="2.8" fill="white"/></svg></div>
+          <div class="card-logo" style="background:#0079b9;"><svg class="mo-pd" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="5" cy="5" r="2.8" fill="white"/><circle cx="12" cy="5" r="2.8" fill="white"/><circle cx="19" cy="5" r="2.8" fill="white"/><circle cx="5" cy="12" r="2.8" fill="white"/><circle cx="12" cy="12" r="2.8" fill="white"/><circle cx="19" cy="12" r="2.8" fill="white"/><circle cx="5" cy="19" r="2.8" fill="white"/><circle cx="12" cy="19" r="2.8" fill="white"/><circle cx="19" cy="19" r="2.8" fill="white"/></svg></div>
           <div class="card-name">Blueprint</div>
         </div>
         <div class="card-desc">Design 96/384-well plates with dilution series, compound labels &amp; colour-coded types. Gel lane designer with marker reference.</div>
@@ -782,7 +935,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('blot')"
            onkeydown="if(event.key==='Enter')openApp('blot')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#5b6b7a;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.4" y="3.4" width="17.2" height="17.2" rx="2" stroke="white" stroke-width="1.7"/><rect x="6" y="7" width="5.2" height="2.7" rx="1.35" fill="white"/><rect x="12.8" y="7" width="5.2" height="2.7" rx="1.35" fill="white" opacity="0.5"/><rect x="6" y="14.3" width="5.2" height="2.7" rx="1.35" fill="white" opacity="0.6"/><rect x="12.8" y="14.3" width="5.2" height="2.7" rx="1.35" fill="white"/></svg></div>
+          <div class="card-logo" style="background:#5b6b7a;"><svg class="mo-blot" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3.4" y="3.4" width="17.2" height="17.2" rx="2" stroke="white" stroke-width="1.7"/><rect x="6" y="7" width="5.2" height="2.7" rx="1.35" fill="white"/><rect x="12.8" y="7" width="5.2" height="2.7" rx="1.35" fill="white" opacity="0.5"/><rect x="6" y="14.3" width="5.2" height="2.7" rx="1.35" fill="white" opacity="0.6"/><rect x="12.8" y="14.3" width="5.2" height="2.7" rx="1.35" fill="white"/></svg></div>
           <div class="card-name">Blot</div>
         </div>
         <div class="card-desc">Turn raw western blot images (TIFF/PNG/JPEG) into a clean, publication-style figure &mdash; crop, assemble, label &amp; export in minutes.</div>
@@ -796,7 +949,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('dna')"
            onkeydown="if(event.key==='Enter')openApp('dna')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#43a047;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line class="helix-rg" x1="7" y1="3" x2="17" y2="3" stroke="white" stroke-width="1.2" stroke-linecap="round"/><line class="helix-rg" x1="7" y1="12" x2="17" y2="12" stroke="white" stroke-width="1.2" stroke-linecap="round"/><line class="helix-rg" x1="7" y1="21" x2="17" y2="21" stroke="white" stroke-width="1.2" stroke-linecap="round"/><path class="helix-sb" d="M7 3 C7 6 17 9 17 12 C17 15 7 18 7 21" stroke="white" stroke-width="1.9" stroke-linecap="round" fill="none"/><path class="helix-sa" d="M17 3 C17 6 7 9 7 12 C7 15 17 18 17 21" stroke="white" stroke-width="1.9" stroke-linecap="round" fill="none"/></svg></div>
+          <div class="card-logo" style="background:#43a047;"><svg class="mo-dna" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="7" y1="3" x2="17" y2="3" stroke="white" stroke-width="1.2" stroke-linecap="round"/><line x1="7" y1="12" x2="17" y2="12" stroke="white" stroke-width="1.2" stroke-linecap="round"/><line x1="7" y1="21" x2="17" y2="21" stroke="white" stroke-width="1.2" stroke-linecap="round"/><path d="M7 3 C7 6 17 9 17 12 C17 15 7 18 7 21" stroke="white" stroke-width="1.9" stroke-linecap="round" fill="none"/><path d="M17 3 C17 6 7 9 7 12 C7 15 17 18 17 21" stroke="white" stroke-width="1.9" stroke-linecap="round" fill="none"/></svg></div>
           <div class="card-name">Helix</div>
         </div>
         <div class="card-desc">Translate DNA/RNA, find ORFs, reverse complement, calculate Tm, align sequences with mismatch highlighting &amp; browse the lab vector library.</div>
@@ -810,7 +963,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('pt')"
            onkeydown="if(event.key==='Enter')openApp('pt')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#9c6fd4;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.4 13.4 8.6 9.1M11.9 8.9l3.2 4.3M17.4 12.9l2.2-3" stroke="white" stroke-width="1.9" stroke-linecap="round"/><circle class="pt-atom" cx="3.6" cy="15.6" r="2.7" fill="white"/><circle class="pt-atom" cx="10.2" cy="6.9" r="2.7" fill="white"/><circle class="pt-atom" cx="16.4" cy="15.2" r="2.7" fill="white"/><circle cx="21" cy="8.4" r="2" fill="white" opacity="0.65"/></svg></div>
+          <div class="card-logo" style="background:#9c6fd4;"><svg class="mo-pt" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.4 13.4 8.6 9.1M11.9 8.9l3.2 4.3M17.4 12.9l2.2-3" stroke="white" stroke-width="1.9" stroke-linecap="round"/><circle cx="3.6" cy="15.6" r="2.7" fill="white"/><circle cx="10.2" cy="6.9" r="2.7" fill="white"/><circle cx="16.4" cy="15.2" r="2.7" fill="white"/><circle cx="21" cy="8.4" r="2" fill="white" opacity="0.65"/></svg></div>
           <div class="card-name">Protein Tools</div>
         </div>
         <div class="card-desc">Paste a protein sequence to get MW, extinction coefficient (&epsilon;280), pI, GRAVY score, instability index &amp; amino acid composition.</div>
@@ -824,7 +977,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('spectra')"
            onkeydown="if(event.key==='Enter')openApp('spectra')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#26a69a;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 3.5v17h16.5" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/><path d="M6 18.2c5.5 0 9-3.4 13.2-11.4" stroke="white" stroke-width="1.9" stroke-linecap="round"/><circle cx="8.6" cy="17.6" r="1.7" fill="white"/><circle cx="13.4" cy="14.4" r="1.7" fill="white"/><circle cx="17.6" cy="9.6" r="1.7" fill="white"/></svg></div>
+          <div class="card-logo" style="background:#26a69a;"><svg class="mo-spectra" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 3.5v17h16.5" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.45"/><path pathLength="1" d="M6 18.2c5.5 0 9-3.4 13.2-11.4" stroke="white" stroke-width="1.9" stroke-linecap="round"/><circle cx="8.6" cy="17.6" r="1.7" fill="white"/><circle cx="13.4" cy="14.4" r="1.7" fill="white"/><circle cx="17.6" cy="9.6" r="1.7" fill="white"/></svg></div>
           <div class="card-name">BCA</div>
         </div>
         <div class="card-desc">Import PHERAstar plate reads, fit a BSA standard curve with QC exclusion, quantify samples with per-sample dilution correction, and normalize to a target concentration.</div>
@@ -838,7 +991,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('ldi')"
            onkeydown="if(event.key==='Enter')openApp('ldi')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#e91e63;"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.6V20M7.2 20h9.6M4.6 7.4h14.8"/><circle cx="12" cy="4.2" r="1.5" fill="white" stroke="none"/><path d="M1.6 12.2 4.6 7.4l3 4.8a3 3 0 0 1-6 0z" stroke-width="1.5"/><path d="M16.4 12.2l3-4.8 3 4.8a3 3 0 0 1-6 0z" stroke-width="1.5"/></svg></div>
+          <div class="card-logo" style="background:#e91e63;"><svg class="mo-ldi" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.6V20M7.2 20h9.6M4.6 7.4h14.8"/><circle cx="12" cy="4.2" r="1.5" fill="white" stroke="none"/><path d="M1.6 12.2 4.6 7.4l3 4.8a3 3 0 0 1-6 0z" stroke-width="1.5"/><path d="M16.4 12.2l3-4.8 3 4.8a3 3 0 0 1-6 0z" stroke-width="1.5"/></svg></div>
           <div class="card-name">LDI</div>
         </div>
         <div class="card-desc">Score degrader ligase dependency from CRBN-KO &amp; VHL-KO curves. AUC-based LDI from 4PL parameters &mdash; +1 = CRBN, &minus;1 = VHL.</div>
@@ -852,7 +1005,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('cryo')"
            onkeydown="if(event.key==='Enter')openApp('cryo')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#00acc1;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19M12 2l-2 3M12 2l2 3M12 22l-2-3M12 22l2-3M2 12l3-2M2 12l3 2M22 12l-3-2M22 12l-3 2" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <div class="card-logo" style="background:#00acc1;"><svg class="mo-cryo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19M12 2l-2 3M12 2l2 3M12 22l-2-3M12 22l2-3M2 12l3-2M2 12l3 2M22 12l-3-2M22 12l-3 2" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg></div>
           <div class="card-name">Iceberg</div>
         </div>
         <div class="card-desc">Cryostorage inventory for &minus;80&deg;C &amp; liquid N&#8322;. Rack/box hierarchy, 96-well box grids with per-vial hover info, Excel-style table view, cell-line colouring, bulk paste, XLSX export.</div>
@@ -866,7 +1019,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('cuppa')"
            onkeydown="if(event.key==='Enter')openApp('cuppa')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#8d6e63;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 9h13v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V9z" stroke="white" stroke-width="1.8" stroke-linejoin="round"/><path d="M18 10h1.4a2 2 0 0 1 0 4H18" stroke="white" stroke-width="1.6"/><path d="M8 4c0 1-1 1-1 2s1 1 1 2M12 4c0 1-1 1-1 2s1 1 1 2" stroke="white" stroke-width="1.3" stroke-linecap="round"/><line x1="3" y1="21" x2="17" y2="21" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.6"/></svg></div>
+          <div class="card-logo" style="background:#8d6e63;"><svg class="mo-cuppa" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 9h13v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V9z" stroke="white" stroke-width="1.8" stroke-linejoin="round"/><path d="M18 10h1.4a2 2 0 0 1 0 4H18" stroke="white" stroke-width="1.6"/><path d="M8 4c0 1-1 1-1 2s1 1 1 2M12 4c0 1-1 1-1 2s1 1 1 2" stroke="white" stroke-width="1.3" stroke-linecap="round"/><line x1="3" y1="21" x2="17" y2="21" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.6"/></svg></div>
           <div class="card-name">Cuppa</div>
         </div>
         <div class="card-desc">CeTPD Hot Drinks ledger. Track who paid for coffee/tea/matcha each month, copy a Slack-formatted Wall of Shame, see fun stats. Viewer-mode for everyone &middot; admin sign-in to edit.</div>
@@ -880,7 +1033,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('beacon')"
            onkeydown="if(event.key==='Enter')openApp('beacon')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#5e72c4;"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="5.6" cy="12" r="3.4" fill="white"/><circle cx="18.6" cy="12" r="3" stroke="white" stroke-width="1.8"/><path d="M10 9.4a4.6 4.6 0 0 1 0 5.2M12.8 7.9a7.6 7.6 0 0 1 0 8.2" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.9"/></svg></div>
+          <div class="card-logo" style="background:#5e72c4;"><svg class="mo-beacon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="5.6" cy="12" r="3.4" fill="white"/><circle cx="18.6" cy="12" r="3" stroke="white" stroke-width="1.8"/><path d="M10 9.4a4.6 4.6 0 0 1 0 5.2M12.8 7.9a7.6 7.6 0 0 1 0 8.2" stroke="white" stroke-width="1.6" stroke-linecap="round" opacity="0.9"/></svg></div>
           <div class="card-name">Beacon</div>
         </div>
         <div class="card-desc">NanoBRET assay analysis for tracer titration, endpoint QC, plate maps and publication-ready report export.</div>
@@ -894,7 +1047,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('lumina')"
            onkeydown="if(event.key==='Enter')openApp('lumina')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#f5c518;"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></div>
+          <div class="card-logo" style="background:#f5c518;"><svg class="mo-lumina" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></div>
           <div class="card-name">Lumina</div>
         </div>
         <div class="card-desc">Manual dose-response curve fitting with a plate-grid input &mdash; same 4PL analysis as Echo, no instrument required.</div>
@@ -908,7 +1061,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('ribbon')"
            onkeydown="if(event.key==='Enter')openApp('ribbon')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#e36c69;"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4c4 0 4 4 8 4s4-4 8-4"/><path d="M4 10c4 0 4 4 8 4s4-4 8-4"/><path d="M4 16c4 0 4 4 8 4s4-4 8-4"/></svg></div>
+          <div class="card-logo" style="background:#e36c69;"><svg class="mo-ribbon" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4c4 0 4 4 8 4s4-4 8-4"/><path d="M4 10c4 0 4 4 8 4s4-4 8-4"/><path d="M4 16c4 0 4 4 8 4s4-4 8-4"/></svg></div>
           <div class="card-name">Ribbon</div>
         </div>
         <div class="card-desc">PDB structure renderer for presentations &mdash; cartoon/surface styles, chain coloring, borders, and hi-res transparent PNG export.</div>
@@ -922,7 +1075,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
            onclick="openApp('protocols')"
            onkeydown="if(event.key==='Enter')openApp('protocols')">
         <div class="card-header-row">
-          <div class="card-logo" style="background:#a56983;"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2c-1.6-1.1-4.2-1.6-6.8-1.1v12.4c2.6-.5 5.2 0 6.8 1.1c1.6-1.1 4.2-1.6 6.8-1.1V5.1c-2.6-.5-5.2 0-6.8 1.1Z"/><path d="M12 6.2v12.4"/></svg></div>
+          <div class="card-logo" style="background:#a56983;"><svg class="mo-protocols" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2c-1.6-1.1-4.2-1.6-6.8-1.1v12.4c2.6-.5 5.2 0 6.8 1.1c1.6-1.1 4.2-1.6 6.8-1.1V5.1c-2.6-.5-5.2 0-6.8 1.1Z"/><path d="M12 6.2v12.4"/></svg></div>
           <div class="card-name">Archive</div>
         </div>
         <div class="card-desc">Assay &amp; experiment library &mdash; protocol steps, calculators and PDF/CSV export in one place per experiment type.</div>
@@ -1510,8 +1663,12 @@ function openCells(tab, item, context){
   // tab bar you had just clicked as well — the whole screen blinked — so there only the frame
   // that changed arrives.
   if (entering) {
-    view.style.opacity='0'; view.style.display='flex';
-    requestAnimationFrame(function(){ requestAnimationFrame(function(){ view.style.opacity='1'; }); });
+    var _org=_takeOrigin();
+    if (_org) { view.style.display='flex'; _expandFrom(view,_org); }
+    else {
+      view.style.opacity='0'; view.style.display='flex';
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){ view.style.opacity='1'; }); });
+    }
   } else { view.style.display='flex'; view.style.opacity='1'; }
   setTimeout(function(){ if(currentApp==='cells') enterAppNav('cells'); }, 0);
   try {
@@ -1568,7 +1725,8 @@ function openApp(id, tab, item, context) {
   document.querySelectorAll('.app-view').forEach(function(v) {
     if (v !== view) { v.style.display = 'none'; v.style.opacity = ''; }
   });
-  view.style.opacity = '0';
+  var _org = (_wasIn !== id) ? _takeOrigin() : null;
+  view.style.opacity = _org ? '1' : '0';
   view.style.display = 'flex';
   // Fade the home out as the app comes in. .app-view has an opaque background, so once it
   // lands it covers — but for the length of the fade you were looking through a half-
@@ -1580,8 +1738,8 @@ function openApp(id, tab, item, context) {
   // when the tab is not compositing — and then opacity never reached 1 and the app stayed
   // invisible for good. That was survivable only because the home was still lit underneath;
   // fading the home out turned it into a blank screen, which is how I found it.
-  void view.offsetWidth;
-  view.style.opacity = '1';
+  if (_org) _expandFrom(view, _org);
+  else { void view.offsetWidth; view.style.opacity = '1'; }
   setTimeout(function() { if(currentApp===id) enterAppNav(id); }, 0);
   // Push a history entry so the phone hardware back returns to the hub home
   // instead of leaving the page. _backPopping guards against re-entry. Re-opening the app
@@ -1595,13 +1753,15 @@ function openApp(id, tab, item, context) {
 }
 
 var _backPopping = false;
-function backToHub() {
+function backToHub(opts) {
   if (!currentApp) return;
   _unloadOthers(null);
+  var _id = currentApp;
   var view = document.getElementById('view-' + currentApp);
   currentApp = null;
   exitAppNav();
-  view.style.opacity = '0';
+  var _shrunk = !(opts && opts.plain) && _shrinkTo(view, _id);
+  if (!_shrunk) view.style.opacity = '0';
   var _home = document.getElementById('hub-home');
   if (_home) _home.style.opacity = '1';
   setTimeout(function() {
@@ -1633,7 +1793,115 @@ window.addEventListener('popstate', function(){
 // section-visibility bookkeeping — all of it driving #hub-packages, an element the current
 // home never builds. Nothing called into it. Removed.
 
+// ── Boot intro ────────────────────────────────────────────────────────────
+// Plays while the session resolves, which is the time the page used to spend blank. It is
+// never the reason anything waits: the hand-off starts when both the drawing and _showHub are
+// done, a slow sign-in is not waited for past 1.9 s, and at 3.2 s it is removed whatever state
+// it is in. Once per tab (sessionStorage), never under reduced motion, a deep link or webdriver.
+var _intro={el:null,ready:false,drawn:false,flying:false,done:false};
+function _introStart(){
+  var el=document.getElementById('hub-intro'); if(!el) return;
+  if(!document.documentElement.classList.contains('hub-intro')){ el.parentNode.removeChild(el); return; }
+  _intro.el=el; _intro.ready=_hubShown;
+  try{ sessionStorage.setItem('hub_intro_seen','1'); }catch(e){}
+  void el.offsetWidth; el.classList.add('p1');
+  setTimeout(function(){ el.classList.add('p2'); }, 200);
+  setTimeout(function(){ el.classList.add('p3'); }, 800);
+  setTimeout(function(){ _intro.drawn=true; _introGo(); }, 1300);
+  setTimeout(function(){ _intro.ready=true; _introGo(); }, 1900);
+  setTimeout(_introEnd, 3200);
+}
+function _introReady(){ _intro.ready=true; _introGo(); }
+function _introGo(){
+  var el=_intro.el; if(!el||_intro.done||_intro.flying||!_intro.drawn||!_intro.ready) return;
+  _intro.flying=true;
+  var pairs=[[el.querySelector('.hi-mark'),document.getElementById('hub-logo')],
+             [el.querySelector('.hi-word'),document.getElementById('nav-title')]];
+  var from=pairs.map(function(p){ return p[0] ? p[0].getBoundingClientRect() : null; });
+  el.classList.add('p4');
+  pairs.forEach(function(p,i){
+    var a=p[0], b=p[1], ra=from[i]; if(!a||!ra) return;
+    var rb=b && b.getBoundingClientRect();
+    if(!rb || !rb.width){ a.style.opacity='0'; return; }       // the phone header has no title
+    var k=rb.height/ra.height;
+    a.style.transform='translate('+(rb.left-ra.left)+'px,'+((rb.top+rb.height/2)-(ra.top+ra.height*k/2))+'px) scale('+k+')';
+  });
+  setTimeout(_introEnd, 480);
+}
+function _introEnd(){
+  if(_intro.done) return; _intro.done=true;
+  document.documentElement.classList.remove('hub-intro');
+  var el=_intro.el||document.getElementById('hub-intro');
+  if(el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+// ── An app grows out of the card you pressed ──────────────────────────────
+// The press is remembered for under a second: openApp is reached from the card's click, and
+// from the rail, a deep link or another app it is not — those keep the plain fade.
+var _openOrigin=null;
+function _noteOrigin(t){ var c=t && t.closest && t.closest('.card,.ld-card'); _openOrigin=c?{el:c,t:Date.now()}:null; }
+document.addEventListener('pointerdown',function(e){ _noteOrigin(e.target); },true);
+document.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' ') _noteOrigin(document.activeElement); },true);
+function _reducedMotion(){ try{ return matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } }
+function _takeOrigin(){
+  var o=_openOrigin; _openOrigin=null;
+  if(!o || Date.now()-o.t>900 || !o.el.isConnected || _reducedMotion()) return null;
+  var r=o.el.getBoundingClientRect(); if(!r.width||!r.height) return null;
+  var ico=o.el.querySelector('.ld-ico,.card-logo');
+  return {el:o.el, rect:r, tint:ico?getComputedStyle(ico).backgroundColor:''};
+}
+function _clipRect(view,r){
+  var v=view.getBoundingClientRect(), f=function(n){ return Math.max(0,Math.round(n))+'px'; };
+  return 'inset('+f(r.top-v.top)+' '+f(v.right-r.right)+' '+f(v.bottom-r.bottom)+' '+f(r.left-v.left)+' round 12px)';
+}
+function _setClip(view,c){ view.style.clipPath=c; view.style.webkitClipPath=c; }
+var _CLIP_T='clip-path var(--dur-3) var(--ease-out),-webkit-clip-path var(--dur-3) var(--ease-out)';
+// The view must already be display:flex. Cleared by a timer, not transitionend: a backgrounded
+// tab never fires the event and the view would stay clipped to a card-sized hole.
+function _expandFrom(view,o){
+  view._originEl=o.el;
+  clearTimeout(view._clipT);
+  view.style.transition='none'; view.style.opacity='1';
+  _setClip(view,_clipRect(view,o.rect));
+  if(o.tint) view.style.setProperty('--open-tint',o.tint);
+  view.classList.remove('opening'); void view.offsetWidth; view.classList.add('opening');
+  view.style.transition=_CLIP_T;
+  _setClip(view,'inset(0px 0px 0px 0px round 0px)');
+  view._clipT=setTimeout(function(){ _setClip(view,''); view.style.transition=''; view.classList.remove('opening'); },420);
+}
+// The way back: into the card if it is still on screen, otherwise the caller fades.
+function _shrinkTo(view,id){
+  var el=view._originEl; view._originEl=null;
+  if(_reducedMotion()) return false;
+  if(!el || !el.isConnected) el=document.querySelector('#hub-home [data-app-id="'+id+'"]');
+  if(!el || !el.offsetWidth) return false;
+  var r=el.getBoundingClientRect();
+  if(r.bottom<=0 || r.top>=innerHeight) return false;
+  clearTimeout(view._clipT);
+  view.style.transition='none'; _setClip(view,'inset(0px 0px 0px 0px round 0px)'); void view.offsetWidth;
+  view.style.transition=_CLIP_T+',opacity var(--dur-2) var(--ease) 120ms';
+  _setClip(view,_clipRect(view,r)); view.style.opacity='0';
+  view._clipT=setTimeout(function(){ _setClip(view,''); view.style.transition=''; },360);
+  return true;
+}
+
+// ── The rail's ink ────────────────────────────────────────────────────────
+// renderRail rebuilds the rail's markup, so the ink's last position is kept on the rail and
+// the new one starts there: it slides instead of reappearing.
+function _railInk(){
+  var rail=document.getElementById('ws-rail'); if(!rail) return;
+  var on=rail.querySelector('.ws-item.on'), ink=rail.querySelector('.ws-ink'), prev=rail._ink;
+  if(!on || !on.offsetHeight){ if(ink) ink.style.opacity='0'; return; }
+  if(!ink){ ink=document.createElement('i'); ink.className='ws-ink'; rail.insertBefore(ink,rail.firstChild); rail.classList.add('inked');
+    ink.style.transition='none'; if(prev){ ink.style.transform=prev.t; ink.style.height=prev.h; } void ink.offsetWidth; if(prev) ink.style.transition=''; }
+  var t='translateY('+on.offsetTop+'px)', h=on.offsetHeight+'px';
+  ink.style.opacity='1'; ink.style.transform=t; ink.style.height=h; rail._ink={t:t,h:h};
+  if(ink.style.transition==='none') requestAnimationFrame(function(){ ink.style.transition=''; });
+}
+window.addEventListener('resize',function(){ _railInk(); _hubInk(document.getElementById('ws-tabs'),'top'); });
+
 function initHub() {
+  _introStart();
   renderSuites();
 
   document.getElementById('hub-logo').classList.add('pulsing');
@@ -1691,6 +1959,7 @@ function _showHub() {
   _hubShown = true;
   var h = document.getElementById('hub-home');
   if (h) h.style.opacity = '1';
+  _introReady();
 }
 
 // The Firebase SDK comes from four gstatic <script> tags. If any of them is blocked —
@@ -2320,14 +2589,14 @@ function chooseBackupFolder(){ if (window.lbBackup && window.lbBackup.pickDir) {
 var SUITE_ICONS = {
   // Dose response: axes and one clean sigmoid. The three fitted points that used to sit on the
   // curve made it read as a squiggle at 19px — the shape IS the meaning, so the dots went.
-  analysis: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 3.8v14.6a1.6 1.6 0 0 0 1.6 1.6h14.2"/><path d="M7.4 16.8c3.4 0 3-8.4 6.4-8.4h4.6"/></svg>',
-  archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2c-1.7-1.1-4.3-1.6-7-1.1v12.6c2.7-.5 5.3 0 7 1.1c1.7-1.1 4.3-1.6 7-1.1V5.1c-2.7-.5-5.3 0-7 1.1z"/><path d="M12 6.2V19"/></svg>',
+  analysis: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.6 3.8v14.6a1.6 1.6 0 0 0 1.6 1.6h14.2"/><path pathLength="1" d="M7.4 16.8c3.4 0 3-8.4 6.4-8.4h4.6"/></svg>',
+  archive: '<svg class="mo-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.2c-1.7-1.1-4.3-1.6-7-1.1v12.6c2.7-.5 5.3 0 7 1.1c1.7-1.1 4.3-1.6 7-1.1V5.1c-2.7-.5-5.3 0-7 1.1z"/><path d="M12 6.2V19"/></svg>',
   // A grid of tiles is what "more apps" looks like everywhere. The wrench it replaced said
   // "settings", which is not what is behind that rail entry.
   apps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.8" y="3.8" width="6.8" height="6.8" rx="1.9"/><rect x="13.4" y="3.8" width="6.8" height="6.8" rx="1.9"/><rect x="3.8" y="13.4" width="6.8" height="6.8" rx="1.9"/><rect x="13.4" y="13.4" width="6.8" height="6.8" rx="1.9"/></svg>',
   // T-flask: body with the canted corner, medium at the bottom, and the neck drawn as a real
   // outlined tube rather than a thick stub with a floating tick, which read as a spout.
-  incubator: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 15.6h11.4v2.8a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z" fill="currentColor" stroke="none" opacity=".75"/><path d="M8 11.4 10.8 8.6H17.4a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z"/><path d="M8.41 10.99 4.91 7.49 6.89 5.51 10.39 9.01"/><path d="M4.7 7.7 7.1 5.3" stroke-width="2"/></svg>'
+  incubator: '<svg class="mo-incubator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 15.6h11.4v2.8a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z" fill="currentColor" stroke="none" opacity=".75"/><path d="M8 11.4 10.8 8.6H17.4a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z"/><path d="M8.41 10.99 4.91 7.49 6.89 5.51 10.39 9.01"/><path d="M4.7 7.7 7.1 5.3" stroke-width="2"/></svg>'
 };
 // Admin's private grouping. Visitors still get the individual-app discovery flow.
 var EXTRA_GROUPS = [
@@ -2402,13 +2671,13 @@ var WS_ICONS = {
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   // A calendar with a tick: the planner is dated work being done. Distinct from the notebook's
   // spine-and-rules at 19px, which is the size the rail draws them at.
-  planner:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 2.5v4M16 2.5v4"/><path d="M8.5 15l2.5 2.5 4.5-4.5"/></svg>',
+  planner:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="16" rx="2"/><path d="M3.5 9.5h17M8 2.5v4M16 2.5v4"/><path pathLength="1" d="M8.5 15l2.5 2.5 4.5-4.5"/></svg>',
   fold:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   flask:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6.5L4.6 18A2 2 0 006.3 21h11.4a2 2 0 001.7-3L14 9.5V3"/><path d="M7.5 15h9"/></svg>',
-  antibody:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.8v-6.6"/><path d="M12 14.2 7.2 7.4M12 14.2l4.8-6.8"/><path d="M5.7 8.45 8.7 6.35M15.3 6.35 18.3 8.45"/></svg>',
-  primer:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 17.6h17.2"/><path d="M5.6 11.4h8.8"/><path d="m12.6 9 2.4 2.4-2.4 2.4"/></svg>',
-  plasmid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.7"/><path d="M14.8 4.8a7.7 7.7 0 0 1 4.4 4.4" stroke-width="3"/></svg>',
-  notebook:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="3.2" width="14.8" height="17.6" rx="2.2"/><path d="M8.4 3.2v17.6"/><path d="M11.4 8.2h5M11.4 11.8h5M11.4 15.4h3.2"/></svg>',
+  antibody:'<svg class="mo-antibody" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20.8v-6.6"/><path d="M12 14.2 7.2 7.4M12 14.2l4.8-6.8"/><path d="M5.7 8.45 8.7 6.35M15.3 6.35 18.3 8.45"/></svg>',
+  primer:'<svg class="mo-primer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 17.6h17.2"/><path d="M5.6 11.4h8.8"/><path d="m12.6 9 2.4 2.4-2.4 2.4"/></svg>',
+  plasmid:'<svg class="mo-plasmid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.7"/><path d="M14.8 4.8a7.7 7.7 0 0 1 4.4 4.4" stroke-width="3"/></svg>',
+  notebook:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="3.2" width="14.8" height="17.6" rx="2.2"/><path d="M8.4 3.2v17.6"/><path pathLength="1" d="M11.4 8.2h5M11.4 11.8h5M11.4 15.4h3.2"/></svg>',
   // Three columns rising to a point: a chart, not the analysis suite's sigmoid and not the
   // notebook's spine. The dot on the tallest bar is what stops it reading as a signal-strength
   // glyph at 19px.
@@ -2452,6 +2721,9 @@ function renderRail(){
     return '<button class="ws-tab'+(_wsSection===id?' on':'')+'" onclick="wsGo(\''+id+'\')">'
       +_wsIcon(n.icon)+'<span>'+_dashEsc(short)+'</span></button>';
   }).join('');
+  _railInk(); _hubInk(tabs,'top');
+  // the rail is often drawn in the same turn body.ws is set, before it has a box
+  requestAnimationFrame(function(){ _railInk(); _hubInk(tabs,'top'); });
 }
 function wsToggleRail(){
   var c=document.body.classList.toggle('ws-collapsed');
@@ -2468,8 +2740,11 @@ function wsGo(id){
   if(!n){ var alias={home:'planner',exps:'planner',journal:'planner',labbook:'notebook'}[id];
     if(alias) return wsGo(alias);
     n=WS_NAV.filter(function(x){ return x.id==='planner'; })[0]; if(!n) return; id='planner'; }
+  var _was=_wsSection;
   _wsSection=id;
   renderRail();
+  if(_was!==id){ var _b=document.querySelector('#ws-rail .ws-item[data-ws="'+id+'"]');
+    if(_b){ _b.classList.add('ws-pop'); setTimeout(function(){ _b.classList.remove('ws-pop'); },450); } }
   if(n.kind==='labbook'){
     openApp('labbook');
     _hubQueueMessage('labbook', {type:'lb:go', view:n.view, requestId:'dhub'+Date.now().toString(36)});
@@ -2478,7 +2753,7 @@ function wsGo(id){
     wsSetWhere(n.name);
     return;
   }
-  if(currentApp) backToHub();      // leave whatever app is open; the section is already set
+  if(currentApp) backToHub({plain:true});   // leave whatever app is open; the section is already set — and its card is not on the next landing
   renderLanding(id);
   wsSetWhere(n.name);
 }
@@ -2896,7 +3171,7 @@ var _setTab='appearance';
 // A tab bar's underline, carried across a rebuild of the bar: the bar's buttons are redrawn on
 // every switch, so the line is put back where it was and then moved, which is what reads as a
 // slide rather than as one line vanishing and another appearing.
-function _hubInk(host){
+function _hubInk(host, edge){
   if(!host) return;
   var on=host.querySelector('.on'); if(!on||!on.offsetWidth) return;
   var ink=host.querySelector('.hub-ink'), prev=host._ink;
@@ -2904,7 +3179,7 @@ function _hubInk(host){
     ink.style.transition='none';
     if(prev){ ink.style.width=prev.w; ink.style.transform=prev.t; }
     void ink.offsetWidth; if(prev) ink.style.transition=''; }
-  var w=on.offsetWidth+'px', t='translate('+on.offsetLeft+'px,'+(on.offsetTop+on.offsetHeight-2)+'px)';
+  var w=on.offsetWidth+'px', t='translate('+on.offsetLeft+'px,'+(edge==='top'?on.offsetTop:on.offsetTop+on.offsetHeight-2)+'px)';
   ink.style.width=w; ink.style.transform=t; host._ink={w:w,t:t};
   if(ink.style.transition==='none') requestAnimationFrame(function(){ ink.style.transition=''; });
 }
