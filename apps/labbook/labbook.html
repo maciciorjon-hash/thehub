@@ -5695,7 +5695,7 @@ function plateToCSV(p){ var d=plateDims(p), out=['Well,Type,Cell line,Compound,C
   for(var r=0;r<d.r;r++) for(var c=0;c<d.c;c++){ var id=wellIdOf(r,c), w=(p.wells||{})[id]; if(!w) continue;
     var t=plateTypeById(p,w.typeId);
     out.push([id,(t?t.name:''),(w.cellLine||''),(w.compound||''),(w.conc||''),(w.label||'')]
-      .map(function(x){ return /[",\n]/.test(x)?('"'+String(x).replace(/"/g,'""')+'"'):x; }).join(',')); }
+      .map(_csvCell).join(',')); }
   return out.join('\n'); }
 // ── Layout summary ──
 // The point of a plate map is being able to read back what was where. Coloured wells are for
@@ -19111,7 +19111,7 @@ function pdDeviations(e){
 function exportSummaryCSV(sc){
   var xs=pdfScopeExps(sc);
   var lines=[['Experiment','Title','Type','Start','Status','Archived','Aim','Outcome','Outcome note','Kind','Compound/Step','Target/What','Value/Planned','Effect/Actual','Hill','R2','Flag'].join(',')];
-  function q(v){ var t=(v==null?'':String(v)); return /[",\n\r]/.test(t)?('"'+t.replace(/"/g,'""')+'"'):t; }
+  function q(v){ return _csvCell(v); }
   xs.forEach(function(e){
     var _o=outcomeOf(e), _od=_o?outcomeDef(_o.verdict):null;
     var base=[e.code||'',e.title||'',typeName(e.type),e.startDate||'',e.status||'',expArchived(e)?'yes':'no',
@@ -19782,7 +19782,12 @@ function exportLab(id){
 // The PDF and the methods sheet are documents; these are the numbers. Someone who wants to
 // analyse this outside needs a table, and someone moving an experiment somewhere else needs
 // the record as data.
+// A cell that starts with = + - @ is a formula to Excel and Sheets, and these cells hold text
+// other people wrote — a compound name, a note, a file name. `=HYPERLINK(...)` in a note ran as
+// a formula the moment the CSV was opened. A leading apostrophe makes it text; a number (−5,
+// +1e3) is left alone, or every negative effect would arrive as a string.
 function _csvCell(v){ v=(v==null?'':String(v));
+  if(/^[=+\-@\t\r]/.test(v) && !/^[+\-]?(\d+\.?\d*|\.\d+)(e[+\-]?\d+)?$/i.test(v)) v="'"+v;
   return /[",\n\r]/.test(v) ? ('"'+v.replace(/"/g,'""')+'"') : v; }
 function _csv(rows){ return rows.map(function(r){ return r.map(_csvCell).join(','); }).join('\r\n'); }
 function _expSlug(e){ return String(e.code||e.title||'experiment').replace(/[\\/:*?"<>|]/g,'-').replace(/\s+/g,'_').slice(0,60); }
