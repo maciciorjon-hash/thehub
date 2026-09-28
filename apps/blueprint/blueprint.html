@@ -592,7 +592,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div class="gd-tbg-lbl">Gel</div>
       <div class="gd-tbg-row">
         <label class="gd-fld"><span>Format</span>
-          <select class="gd-select" id="gd-gel" onchange="gdInit()"><option value="12">12-well</option><option value="15">15-well</option><option value="20" selected>20-well</option><option value="26">26-well</option></select></label>
+          <select class="gd-select" id="gd-gel" onchange="gdInit(true)"><option value="12">12-well</option><option value="15">15-well</option><option value="20" selected>20-well</option><option value="26">26-well</option></select></label>
         <label class="gd-fld"><span>Well size</span>
           <select class="gd-select" id="gd-wsz" onchange="gdDraw()"><option value="S" selected>S</option><option value="M">M</option></select></label>
         <label class="gd-fld"><span>Lane numbers</span>
@@ -843,12 +843,18 @@ function gdNudge(id, delta){ var el=document.getElementById(id); if(!el) return;
   var min=el.min!==''?parseInt(el.min,10):-Infinity, max=el.max!==''?parseInt(el.max,10):Infinity;
   el.value=Math.max(min,Math.min(max,v+delta)); gdDraw(); }
 function gdToggle(id, btn){ var cb=document.getElementById(id); if(!cb) return; cb.checked=!cb.checked; if(btn) btn.classList.toggle('on', cb.checked); gdDraw(); }
-function gdInit() {
+// keep: a change of comb keeps the lanes you have already filled in (up to the new count). It
+// used to rebuild all of them, so 20 → 15 wells erased every label on the gel.
+function gdInit(keep) {
   var n = +document.getElementById('gd-gel').value || 20;
+  var old = keep ? gdWells : [];
   gdWells = [];
   for (var i = 0; i < n; i++) {
-    gdWells.push({type: i === 0 ? 'mw' : 'sample', label: i === 0 ? 'MW' : '', w: 1});
+    gdWells.push(old[i] ? {type: old[i].type, label: old[i].label, w: old[i].w || 1}
+                        : {type: i === 0 ? 'mw' : 'sample', label: i === 0 ? 'MW' : '', w: 1});
   }
+  if (gdSelected) gdSelected = new Set(Array.from(gdSelected).filter(function(i){ return i < n; }));
+  if (gdCursor != null && gdCursor >= n) gdCursor = null;
   gdBrackets = gdBrackets.filter(function(b){ return b.from <= n && b.to <= n; });
   gdRenderWells();
   gdRenderBrackets();
@@ -904,7 +910,7 @@ function gdRenderWells() {
       h += '<option value="' + o.v + '"' + (w.type === o.v ? ' selected' : '') + '>' + o.l + '</option>';
     });
     h += '</select></td>';
-    h += '<td><input type="text" value="' + w.label + '" class="gd-wlabel-input" '
+    h += '<td><input type="text" value="' + esc(w.label || '') + '" class="gd-wlabel-input" '
        + 'placeholder="' + (w.type === 'mw' ? 'MW' : w.type === 'dmso' ? 'DMSO' : '') + '" '
        + 'oninput="gdWells[' + idx + '].label=this.value;gdDraw()" '
        + 'onkeydown="gdLabelKey(' + idx + ',event)" onfocus="gdSetCursor(' + idx + ')">'
@@ -931,7 +937,7 @@ function gdRenderBrackets() {
     h += '<div class="gd-field" style="flex:0 0 56px"><label>To</label>'
        + '<input type="number" class="gd-input" min="1" max="' + n + '" value="' + b.to + '" oninput="gdBrackets[' + bi + '].to=Math.max(1,Math.min(' + n + ',+this.value||1));gdDraw()"></div>';
     h += '<div class="gd-field" style="flex:1;min-width:66px"><label>Label</label>'
-       + '<input type="text" class="gd-input" value="' + b.label + '" placeholder="e.g. HEC-1B" oninput="gdBrackets[' + bi + '].label=this.value;gdDraw()"></div>';
+       + '<input type="text" class="gd-input" value="' + esc(b.label || '') + '" placeholder="e.g. HEC-1B" oninput="gdBrackets[' + bi + '].label=this.value;gdDraw()"></div>';
     h += '<div class="gd-field" style="flex:0 0 64px"><label>Level</label>'
        + '<select class="gd-select" onchange="gdBrackets[' + bi + '].level=+this.value;gdDraw()">'
        + '<option value="1"' + (b.level === 1 ? ' selected' : '') + '>Outer</option>'
@@ -959,11 +965,64 @@ function gdAddBracket() {
   var det = document.querySelector('#gd-brackets'); if (det) { var d = det.closest('details'); if (d) d.open = true; }
 }
 
+// ─── Gel undo ────────────────────────────────────────────────────────────────
+// The plate has had undo since August; the gel had none, and it has four one-click ways to lose
+// work — Clear, Cut, Fill lanes and a change of comb. Same design as the plate's: the lanes and
+// brackets are the unit, tracked from the one place every change passes through (the redraw),
+// and a burst of typing in one label is one step.
+var GD_UNDO = {stack: [], redo: [], base: null, last: 0, busy: false, max: 60};
+function _gdState() {
+  return JSON.stringify({n: (document.getElementById('gd-gel') || {}).value,
+    w: gdWells.map(function(w){ return [w.type, w.label, w.w || 1]; }), b: gdBrackets});
+}
+function _gdLabelOnly(aj, bj) {
+  var a = JSON.parse(aj), b = JSON.parse(bj);
+  if (a.n !== b.n || a.w.length !== b.w.length || JSON.stringify(a.b) !== JSON.stringify(b.b)) return false;
+  var diff = 0;
+  for (var i = 0; i < a.w.length; i++) {
+    if (a.w[i][0] !== b.w[i][0] || a.w[i][2] !== b.w[i][2]) return false;
+    if (a.w[i][1] !== b.w[i][1]) diff++;
+  }
+  return diff <= 1;
+}
+function gdUndoTrack() {
+  if (GD_UNDO.busy) return;
+  var now = _gdState();
+  if (GD_UNDO.base === null) { GD_UNDO.base = now; return; }
+  if (now === GD_UNDO.base) return;
+  var t = Date.now();
+  if (!(GD_UNDO.stack.length && t - GD_UNDO.last < 700 && _gdLabelOnly(GD_UNDO.base, now))) {
+    GD_UNDO.stack.push(GD_UNDO.base);
+    if (GD_UNDO.stack.length > GD_UNDO.max) GD_UNDO.stack.shift();
+    GD_UNDO.redo.length = 0;
+  }
+  GD_UNDO.last = t; GD_UNDO.base = now;
+}
+function _gdRestore(js) {
+  GD_UNDO.busy = true;
+  var st = JSON.parse(js), sel = document.getElementById('gd-gel');
+  if (sel && st.n) sel.value = st.n;
+  gdWells = st.w.map(function(x){ return {type: x[0], label: x[1], w: x[2]}; });
+  gdBrackets = st.b || [];
+  gdSelected = new Set(); gdCursor = null;
+  gdRenderWells(); gdRenderBrackets(); gdDraw(); gdUpdateSelUI();
+  GD_UNDO.base = _gdState(); GD_UNDO.last = 0; GD_UNDO.busy = false;
+}
+function gdUndo() {
+  if (!GD_UNDO.stack.length) { pdToast('Nothing to undo'); return; }
+  GD_UNDO.redo.push(_gdState()); _gdRestore(GD_UNDO.stack.pop()); pdToast('Undone');
+}
+function gdRedo() {
+  if (!GD_UNDO.redo.length) { pdToast('Nothing to redo'); return; }
+  GD_UNDO.stack.push(_gdState()); _gdRestore(GD_UNDO.redo.pop()); pdToast('Redone');
+}
+
 function gdDraw() {
   var canvas = document.getElementById('gd-canvas');
   if (!canvas) return;
   var n = gdWells.length;
   if (n === 0) return;
+  gdUndoTrack();
   _gdHitZones = [];
 
   var transparent = !!(document.getElementById('gd-transparent') || {}).checked;
@@ -1456,13 +1515,17 @@ document.addEventListener('keydown', function(e) {
   // the idiom every editor uses for "move this line", and up/down have no caret work to do.
   if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && gdSelected.size) {
     gdMoveSel(e.key === 'ArrowUp' ? -1 : 1); e.preventDefault(); return; }
+  // Everything below acts on whole lanes, so it must never fire while someone is typing a label:
+  // in a field the arrows belong to the caret, Backspace to the text, and ⌘C / ⌘X / ⌘V to the
+  // text too. The clipboard keys used to sit above this line, so pasting a word into a label
+  // with some lanes selected pasted LANES over them instead.
+  var inField = e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+  if (inField) { if (e.key === 'Escape') gdClosePopup(); return; }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
+    if (e.key === 'y' || e.shiftKey) gdRedo(); else gdUndo(); e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'c' && gdSelected.size) { gdCopyRows(); e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'x' && gdSelected.size) { gdCutRows(); e.preventDefault(); return; }
   if ((e.ctrlKey || e.metaKey) && e.key === 'v' && gdClipboard.length) { gdPasteRows(); e.preventDefault(); return; }
-  // Everything below moves a cursor or empties a lane, so it must never fire while someone is
-  // typing a label: in a field the arrows belong to the caret and Backspace to the text.
-  var inField = e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
-  if (inField) { if (e.key === 'Escape') gdClosePopup(); return; }
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
     var d = e.key === 'ArrowUp' ? -1 : 1;
     var at = gdCursor == null ? (d > 0 ? -1 : gdWells.length) : gdCursor;
