@@ -2139,7 +2139,15 @@ function showFmtModal(f) { _pendingFormat = f; var m = document.getElementById('
 function hideFmtModal() { document.getElementById('fmt-modal').style.display = 'none'; _pendingFormat = null; }
 function confirmFmtChange() { var f = _pendingFormat; hideFmtModal(); if (f) _doSetFormat(f); }
 
+// Reader values are a reading OF a plate. Carried onto a plate of another format they colour
+// A1–H12 of a 384 with a 96's numbers, so they go when the format changes.
+function _pdDropValues() {
+  pdVals = {}; pdValRange = null; pdHeatOn = false;
+  var ta = document.getElementById('pd-values-text'); if (ta) ta.value = '';
+  pdRenderLegend();
+}
 function _doSetFormat(f) {
+  if (f !== currentFormat) _pdDropValues();
   currentFormat = f;
   wellState = {}; selection.clear(); lastClickedWell = null; activeWell = null; selectionAnchor = null;
   _userScaledManually = false;
@@ -2223,12 +2231,17 @@ function pdParseValues(text){
   // unread — vanished and every value after it moved one column left, silently, into the wrong
   // well. And with comma in the class, a European decimal ("0,1") was split into two cells.
   var hasTab = /\t/.test(text), hasSemi = /;/.test(text);
-  var sep = hasTab ? '\t' : (hasSemi ? ';' : ',');
+  // Numbers separated by spaces — what the dialog itself offers, and what a reader's text view
+  // copies as — are a grid too. Read with ',' as the separator each line was one cell, so
+  // parseFloat took its first number and only column 1 got a value, silently. A run of spaces
+  // is one separator here; an empty well cannot be written with spaces, so nothing is lost.
+  var spaced = !hasTab && !hasSemi && lines.some(function(l){ return /[\d.]\s+[-+.\d]/.test(l.trim()); });
+  var sep = hasTab ? '\t' : (hasSemi ? ';' : (spaced ? /\s+/ : ','));
   // Where the comma is not the separator it is a decimal mark, which is what a Spanish or
   // German export writes. parseFloat('0,1') is 0, so it has to be normalised before it is read.
   var decComma = (sep !== ',');
   var grid = lines.map(function(l){
-    return l.split(sep).map(function(s){
+    return (spaced ? l.trim() : l).split(sep).map(function(s){
       s = s.trim();
       return decComma ? s.replace(/(\d),(\d)/g, '$1.$2') : s;
     });
@@ -3740,6 +3753,7 @@ function ldHistLoadEntry(id) {
   var entry = ldHistGetList().find(function(e){ return e.id === id; });
   if (!entry) return;
   if (entry.type === 'plate') {
+    if ((entry.data.format || '96') !== currentFormat) _pdDropValues();
     currentFormat = entry.data.format || '96';
     wellState = entry.data.wellState ? JSON.parse(JSON.stringify(entry.data.wellState)) : {};
     rowAnnotations = entry.data.rowAnnotations ? JSON.parse(JSON.stringify(entry.data.rowAnnotations)) : {};
