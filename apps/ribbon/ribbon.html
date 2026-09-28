@@ -691,18 +691,22 @@ function fetchPdb(id){
   $('fetchBtn').disabled=true;
   var myReq=++_reqSeq;                       // token: only the newest fetch may render
   var base='https://files.rcsb.org/download/'+id;
+  // A refused connection and a missing entry are different sentences. Offline, this used to say
+  // the entry does not exist — a real code, reported as a typo.
+  var offline=false;
   function attempt(url,fmt,onFail){
     fetch(url)
       .then(function(r){ if(!r.ok)throw new Error('not found'); return r.text(); })
       .then(function(text){ if(myReq===_reqSeq)renderStructure(text,fmt,id); })
-      .catch(onFail);
+      .catch(function(err){ if(!(err && err.message==='not found')) offline=true; onFail(); });
   }
   attempt(base+'.pdb','pdb',function(){
     if(myReq!==_reqSeq)return;
     // Large or newer entries have no legacy .pdb file — fall back to mmCIF.
     attempt(base+'.cif','cif',function(){
       if(myReq!==_reqSeq)return;
-      setError('Could not find PDB entry "'+id+'". Check the code and try again.');
+      setError(offline ? 'Could not reach the Protein Data Bank. Check your connection and try again.'
+                       : 'Could not find PDB entry "'+id+'". Check the code and try again.');
       if(_pendingDesign && _pendingDesign._pdb===id) _pendingDesign=null;
       // The structure on screen is still the previous one. Leaving the failed code as the
       // current id labelled it wrong — the status chip, a saved design and the export file name
