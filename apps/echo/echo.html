@@ -533,7 +533,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   <div class="tab-indicator"></div>
 </nav>
 <div class="content-area">
-<div id="panel-gradient" class="app-panel"><div class="grad-wrap"><div class="grad-inner"><div class="grad-head">Dose Response Gradient Planner</div><div class="grad-sub">Echo 550 · 2.5 nL drops · <span id="eg-sub-chain">source → inter 1</span> · DMSO backfill auto-calculated <span class="pinfo" data-tip="Echo 550: acoustic droplet ejection in 2.5 nL increments; one transfer is 2.5 nL to 10,000 nL (10 µL); survey ~26 s per 384-well plate; viscosity 0.3–10 cP; coupling fluid at 22 °C. DMSO and aqueous liquid classes.">ⓘ</span></div>
+<div id="panel-gradient" class="app-panel"><div class="grad-wrap"><div class="grad-inner"><div class="grad-head">Dose Response Gradient Planner</div><div class="grad-sub">Echo 550 · 2.5 nL drops · <span id="eg-sub-chain">source only</span> · DMSO backfill auto-calculated <span class="pinfo" data-tip="Echo 550: acoustic droplet ejection in 2.5 nL increments; one transfer is 2.5 nL to 10,000 nL (10 µL); survey ~26 s per 384-well plate; viscosity 0.3–10 cP; coupling fluid at 22 °C. DMSO and aqueous liquid classes.">ⓘ</span></div>
 
     <!-- PARAMS + STOCKS — responsive side-by-side on wide screens -->
     <div class="grad-top-row">
@@ -586,8 +586,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div style="flex:1 1 360px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:600;color:var(--text2)">Stock concentrations</span>
-          <button class="btn btn-sm" onclick="_egAddStock()" title="Add intermediate" style="padding:1px 9px;font-size:15px;line-height:1.3">+</button>
-          <button class="btn btn-sm" onclick="_egSuggest()" style="font-size:11px;background:var(--accent);color:#fff;border:none;padding:3px 10px" title="Suggest optimal intermediate concentrations">✦ Suggest</button>
+          <button class="btn btn-sm" onclick="_egAddStock()" title="Add an intermediate by hand (made from Source)" style="padding:1px 9px;font-size:15px;line-height:1.3">+</button>
+          <button class="btn btn-sm" onclick="_egSuggest()" style="font-size:11px;background:var(--accent);color:#fff;border:none;padding:3px 10px" title="Let the planner choose the intermediates again — added only where Source cannot reach a point, each made from Source">✦ Suggest</button>
+          <span id="eg-auto-lbl" style="font-size:11px;color:var(--text3)">intermediates automatic</span>
         </div>
         <div id="eg-stocks-container" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3)">
@@ -599,7 +600,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
             µL
           </label>
           <span style="color:var(--border2)">·</span>
-          <span id="eg-chain">source → inter 1</span>
+          <span id="eg-chain">source only</span>
         </div>
       </div>
 
@@ -638,7 +639,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div id="eg-bf-card" style="margin-top:16px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
         <span style="font-size:12px;font-weight:600;color:var(--text2)">Intermediate plate: prep &amp; backfill calculator</span>
-        <span class="pinfo" data-tip="Two things: (1) how much DMSO to pre-fill each intermediate well with, and how much to transfer in from the parent stock via Echo to hit each Inter concentration above. (2) Unused intermediate wells can be filled with neat DMSO and used as the destination-plate backfill source instead of a separate backfill plate — this works out how much DMSO that needs and the minimum number of wells to hold it.">ⓘ</span>
+        <span class="pinfo" data-tip="Two things: (1) how much DMSO to pre-fill each intermediate well with, and how much to transfer in from the Source well via Echo (every intermediate is made from Source, never from another intermediate) to hit each Inter concentration above. (2) Unused intermediate wells can be filled with neat DMSO and used as the destination-plate backfill source instead of a separate backfill plate — this works out how much DMSO that needs and the minimum number of wells to hold it.">ⓘ</span>
       </div>
       <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
         <div class="field">
@@ -647,7 +648,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         </div>
         <div class="field">
           <label>Intermediate wells used per compound <span class="pinfo" data-tip="How many intermediate-plate wells each compound occupies — i.e. the number of intermediate concentrations in its dilution chain (the Inter 1, Inter 2… stocks above).">ⓘ</span></label>
-          <input type="number" id="eg-bf-perCompound" value="1" min="1" step="1" oninput="this.dataset.user=1;_egBfTrigger()" style="width:70px">
+          <input type="number" id="eg-bf-perCompound" value="0" min="0" step="1" oninput="this.dataset.user=1;_egBfTrigger()" style="width:70px">
         </div>
         <div class="field">
           <label># Sets / copies <span class="pinfo" data-tip="How many full copies of the compound set are being run — e.g. 2 if every compound is plated in duplicate as a separate set. Both sets dispense from the same intermediate wells (no extra prep), but they double the destination wells needing backfill.">ⓘ</span></label>
@@ -9157,44 +9158,39 @@ function _unhideAllResultsCols() {
   // ── Echo Gradient Designer ─────────────────────────────────────────────
   (function(){
   var DROP = 2.5, _egTimer = null;
+  // Automatic until a stock is edited by hand: the planner adds the intermediates
+  // the plan needs and removes the ones it does not. Suggest turns it back on.
+  var _egAuto = true;
 
-  // Stocks: index 0 = Source (most concentrated), 1 = Inter 1, 2 = Inter 2, ...
-  // Auto-selection tries LEAST concentrated first (Inter N → … → Source) to maximise volume
-  // Opens on the HiBiT plan (the default fields are HiBiT's), so the first thing
-  // anyone sees is a plan that works rather than seven red crosses.
-  window._egS = [
-    {label:'Source',  val:10,   unit:'1e-3'},
-    {label:'Inter 1', val:890,  unit:'1e-6'},
-    {label:'Inter 2', val:25,   unit:'1e-6'},
-    {label:'Inter 3', val:3.66, unit:'1e-6'},
-    {label:'Inter 4', val:400,  unit:'1e-9'}
-  ];
+  // Stocks: index 0 = Source, then Inter 1…N — each intermediate made FROM SOURCE,
+  // never from another intermediate. The planner opens on Source alone and adds an
+  // intermediate only when Source cannot reach a point (_egAuto, via Suggest's rule).
+  window._egS = [ {label:'Source', val:10, unit:'1e-3'} ];
   var _egS = window._egS;
-  var _egN = 4; // inter count
+  var _egN = 0; // inter count
 
-  window._egSVal  = function(i,v){ window._egS[i].val  = parseFloat(v)||0; window._egSetCustom(); window._egTrigger(); };
-  window._egSUnit = function(i,u){ window._egS[i].unit = u;                  window._egSetCustom(); window._egTrigger(); };
+  // Source is not a choice the planner makes, so editing it keeps the planner in charge
+  // of the intermediates; editing an intermediate takes them over.
+  window._egSVal  = function(i,v){ if(i>0) _egManual(); window._egS[i].val  = parseFloat(v)||0; window._egSetCustom(); window._egTrigger(); };
+  window._egSUnit = function(i,u){ if(i>0) _egManual(); window._egS[i].unit = u;                  window._egSetCustom(); window._egTrigger(); };
+  function _egManual(){ if(_egAuto){ _egAuto=false; _egAutoLbl(); } }
+  function _egAutoLbl(){
+    var el=document.getElementById('eg-auto-lbl'); if(!el) return;
+    el.textContent=_egAuto?'intermediates automatic':'intermediates set by hand';
+    el.title=_egAuto?'Added only when Source alone cannot reach a point; changes with the plan':'Press ✦ Suggest to let the planner choose them again';
+  }
 
-  // Every preset below puts all its points within 5% of plan as loaded. Until
-  // 2026-09-28 four of the five did not (HiBiT loaded with 7 of 10 points out of
-  // range); their intermediates are what ✦ Suggest now finds, rounded to values
-  // someone would make up. D2B is a real run's ladder and is exact.
+  // Presets carry the assay and the Source only; the intermediates are worked out for
+  // the plan, the same way as for any other set of numbers.
   var _EGP = {
-    hibit: {vol:20,dmso:0.2,topVal:1000,topUnit:'1e-9',pts:10,df:3,
-            stocks:[{label:'Source',val:10,unit:'1e-3'},{label:'Inter 1',val:890,unit:'1e-6'},{label:'Inter 2',val:25,unit:'1e-6'},
-                    {label:'Inter 3',val:3.66,unit:'1e-6'},{label:'Inter 4',val:400,unit:'1e-9'}]},
-    fp:    {vol:15,dmso:2,  topVal:10,  topUnit:'1e-6',pts:10,df:3,
-            stocks:[{label:'Source',val:1,unit:'1e-3'},{label:'Inter 1',val:80,unit:'1e-6'},{label:'Inter 2',val:300,unit:'1e-9'}]},
-    trf:   {vol:20,dmso:1,  topVal:10,  topUnit:'1e-6',pts:10,df:3,
-            stocks:[{label:'Source',val:10,unit:'1e-3'},{label:'Inter 1',val:1,unit:'1e-3'},{label:'Inter 2',val:4.15,unit:'1e-6'}]},
-    alpha: {vol:25,dmso:1,  topVal:30,  topUnit:'1e-6',pts:10,df:3,
-            stocks:[{label:'Source',val:10,unit:'1e-3'},{label:'Inter 1',val:400,unit:'1e-6'},{label:'Inter 2',val:1.5,unit:'1e-6'}]},
+    hibit: {vol:20,dmso:0.2,topVal:1000,topUnit:'1e-9',pts:10,df:3, src:{val:10,unit:'1e-3'}},
+    fp:    {vol:15,dmso:2,  topVal:10,  topUnit:'1e-6',pts:10,df:3, src:{val:1, unit:'1e-3'}},
+    trf:   {vol:20,dmso:1,  topVal:10,  topUnit:'1e-6',pts:10,df:3, src:{val:10,unit:'1e-3'}},
+    alpha: {vol:25,dmso:1,  topVal:30,  topUnit:'1e-6',pts:10,df:3, src:{val:10,unit:'1e-3'}},
     // Custom mixed-fold ladder (not a single constant dilution factor — the fold
-    // between points varies: 4x/5x from Source, then 4x/2x/2x/5x from Inter 1).
-    // explicitM pins the exact target concentration (M) at each point so the
-    // 2.5 nL-quantised table reproduces the requested nL volumes exactly.
-    d2b:   {vol:20,dmso:0.25,topVal:1000,topUnit:'1e-9',pts:7,df:2,
-            stocks:[{label:'Source',val:400,unit:'1e-6'},{label:'Inter 1',val:6,unit:'1e-6'}],
+    // between points varies). explicitM pins the exact target concentration (M) at
+    // each point, bypassing the topVal/df geometric formula.
+    d2b:   {vol:20,dmso:0.25,topVal:1000,topUnit:'1e-9',pts:7,df:2, src:{val:400,unit:'1e-6'},
             explicitM:[1e-6,2.5e-7,5e-8,1.5e-8,7.5e-9,3.75e-9,7.5e-10]}
   };
 
@@ -9256,18 +9252,16 @@ function _unhideAllResultsCols() {
         var lbl=u==='1e-3'?'mM':u==='1e-6'?'µM':'nM';
         return '<option value="'+u+'"'+(s.unit===u?' selected':'')+'>'+lbl+'</option>';
       }).join('');
-      // The arrow travels with the stock it points at, so a wrapped row starts
-      // "› Inter 1" instead of leaving a stray "›" at the end of the line above.
       wrap.innerHTML=
         // One label width for every stock (Source carries a hidden arrow), so when the
         // card stacks them the inputs form a column instead of Source's sitting 36px left.
         '<span style="display:inline-flex;align-items:center;width:66px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap">'+
-          '<span style="color:var(--text3);font-size:16px;width:12px;'+(i>0?'':'visibility:hidden')+'" aria-hidden="true">›</span>'+s.label+'</span>'+
+          s.label+'</span>'+
         '<input type="number" value="'+s.val+'" min="0" step="any" '+
           'oninput="_egSVal('+i+',this.value)" '+
           'style="width:72px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;'+
           'background:var(--surface);color:var(--text);font-size:13px">'+
-        '<select onchange="_egS['+i+'].unit=this.value;_egSetCustom();_egTrigger()" '+
+        '<select onchange="_egSUnit('+i+',this.value)" '+
           'style="padding:5px 4px;border:1px solid var(--border);border-radius:4px;'+
           'background:var(--surface);color:var(--text);font-size:13px">'+unitOpts+'</select>'+
         (!isSource
@@ -9279,7 +9273,8 @@ function _unhideAllResultsCols() {
     });
     // The chain under the stocks and in the page subtitle is the chain that exists,
     // not a fixed "source → inter 1 → inter 2" whatever was set up.
-    var chain=_egS.map(function(s){return s.label.toLowerCase();}).join(' → ');
+    var nI=_egS.length-1;
+    var chain=nI?'source → inter 1'+(nI>1?'–'+nI:'')+', each from source':'source only';
     var ce=document.getElementById('eg-chain'); if(ce) ce.textContent=chain;
     var se=document.getElementById('eg-sub-chain'); if(se) se.textContent=chain;
   }
@@ -9289,7 +9284,7 @@ function _unhideAllResultsCols() {
   };
   window._egTrigger=function(){
     if(_egTimer) clearTimeout(_egTimer);
-    _egTimer=setTimeout(_egUpdate,220);
+    _egTimer=setTimeout(function(){ if(_egAuto) _egSuggest(true); else _egUpdate(); },220);
   };
   window._egLoadPreset=function(id){
     if(!id) return;
@@ -9298,16 +9293,18 @@ function _unhideAllResultsCols() {
     sv('eg-vol',p.vol); sv('eg-dmso',p.dmso);
     sv('eg-top-val',p.topVal); sv('eg-top-unit',p.topUnit);
     sv('eg-pts',p.pts); sv('eg-df',p.df);
-    window._egS=p.stocks.map(function(s){return Object.assign({},s);});
+    window._egS=[{label:'Source',val:p.src.val,unit:p.src.unit}];
     _egS=window._egS;
-    _egN=_egS.length-1;
+    _egN=0;
+    _egAuto=true; _egAutoLbl();
     // Explicit per-point concentration ladder (M), for presets whose fold isn't
     // a single constant factor — bypasses the topVal/df geometric formula.
     window._egExplicitPlanM = p.explicitM ? p.explicitM.slice() : null;
     renderStocks();
-    _egUpdate();
+    _egSuggest(true);
   };
   window._egAddStock=function(){
+    _egManual();
     _egN++;
     _egS.push({label:'Inter '+_egN,val:0.1,unit:'1e-3'});
     window._egS=_egS;
@@ -9315,6 +9312,7 @@ function _unhideAllResultsCols() {
   };
   window._egRemoveStock=function(i){
     if(i===0||_egS.length<=1) return;
+    _egManual();
     _egS.splice(i,1);
     // Relabel inters
     var n=0;
@@ -9358,6 +9356,19 @@ function _unhideAllResultsCols() {
          :['rgba(94,135,197,.08)','var(--accent)','var(--text2)'];
     return '<div style="background:'+c[0]+';border:1px solid '+c[1]+';border-radius:4px;padding:6px 10px;font-size:12px;color:'+c[2]+';margin-bottom:8px">'+html+'</div>';
   }
+  // Why a point is out of reach, in the terms that fix it. Every stock is Source or
+  // made from Source, so the range is two numbers: the most concentrated stock is
+  // Source (top point ≤ Source × max transfer), and the most dilute is one 2.5 nL
+  // drop of Source into the pre-fill (bottom point ≥ that × one drop).
+  function egReachText(cSrc,Vpre,vol,maxT,planM){
+    var u=window._egTopUnitMult?1/window._egTopUnitMult:1e-9, us=window._egTopUnitStr||'nM';
+    function fc(c){ return c>=1e-3?+((c*1e3).toPrecision(3))+' mM':c>=1e-6?+((c*1e6).toPrecision(3))+' µM':+((c*1e9).toPrecision(3))+' nM'; }
+    var lowC=cSrc*DROP/(Vpre+DROP), lowP=lowC*DROP/(vol*1000), highP=cSrc*maxT/(vol*1000);
+    var out=[];
+    if(planM[0]>highP*1.0001) out.push('The top point needs more than '+fmtTbl(highP/u)+' '+us+', the most a full '+fmtVol(maxT)+' nL of Source gives — a more concentrated Source, more DMSO % or a larger assay volume reaches higher.');
+    if(planM[planM.length-1]<lowP*0.9999) out.push('The most dilute intermediate one drop of Source makes in '+(Vpre/1000)+' µL is '+fc(lowC)+', so the lowest point reachable is '+fmtTbl(lowP/u)+' '+us+' — a larger intermediate-plate volume or a more dilute Source reaches lower.');
+    return out.length?out.join(' '):'More DMSO % or a larger assay volume widens the range each stock covers.';
+  }
   var ICON_NO='<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" style="vertical-align:-.15em"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>';
 
   // What Suggest found stays on screen until something is changed; it used to be
@@ -9366,7 +9377,11 @@ function _unhideAllResultsCols() {
   var _egNote=null;
 
   // ── Suggest intermediates (coordinate descent on the table's own rule) ────
-  window._egSuggest=function(){
+  // auto: run by the planner itself (open, preset, a changed parameter) rather than
+  // by pressing Suggest — it adds the intermediates the plan needs and says less.
+  window._egSuggest=function(auto){
+    auto=(auto===true);
+    if(!auto){ _egAuto=true; _egAutoLbl(); }   // pressing Suggest hands the intermediates back to the planner
     var v=egInputs();
     var interVolEl=document.getElementById('eg-inter-vol');
     var interVol=(interVolEl?parseFloat(interVolEl.value)||0:0);
@@ -9394,22 +9409,29 @@ function _unhideAllResultsCols() {
     }
     var base=evalInters([]);
     if(!base.infeas&&!base.off){
-      _egNote=egBox('info','Source alone puts every point within '+(EG_TOL*100)+'% of plan — no intermediates needed.');
-      _egUpdate(true); return;
+      // Source alone covers the plan, so there are no intermediates at all — including
+      // any left over from a previous plan.
+      var hadInters=_egS.length>1;
+      _egS.length=1; _egN=0; window._egS=_egS;
+      _egNote=auto?null:egBox('info','Source alone puts every point within '+(EG_TOL*100)+'% of plan — no intermediates needed.'+(hadInters?' The intermediates were removed.':''));
+      renderStocks(); _egUpdate(true); return;
     }
-    // An intermediate is made on the inter plate: a transfer from its parent on top
-    // of interVol of DMSO. ≥ 1 drop sets how dilute it can be; a single Echo transfer
-    // of at most 10 µL sets how close to its parent it can be.
+    // An intermediate is made on the inter plate: a transfer FROM SOURCE on top of
+    // interVol of DMSO — never from another intermediate. ≥ 1 drop sets how dilute it
+    // can be; a single Echo transfer of at most 10 µL sets how close to Source it can be.
     var Vpre=interVol*1000;
+    var srcLo=cSrc*DROP/(Vpre+DROP), srcHi=cSrc*10000/(Vpre+10000);
     var cFloor=planM[pts-1]*vol*1000/maxT*0.999;  // below this even the lowest point needs > maxT
+    // prevC/nextC only keep the intermediates in order and distinct; what one can be
+    // is set by Source alone.
     function bounds(prevC,nextC){
-      return {lo:Math.max(prevC*DROP/(Vpre+DROP),nextC>0?nextC*1.000001:0,cFloor),
-              hi:prevC*10000/(Vpre+10000)};
+      return {lo:Math.max(srcLo,nextC>0?nextC*1.000001:0,cFloor),
+              hi:Math.min(srcHi,prevC<cSrc?prevC*0.999999:srcHi)};
     }
     function optimise(n){
       // Start each intermediate one "stock span" (maxT/5 nL) below the last.
       var cur=[], span=Math.max(2,maxT/(2*DROP)), c=cSrc;
-      for(var k=0;k<n;k++){ c=Math.max(c/span,cFloor*1.01); cur.push(c); }
+      for(var k=0;k<n;k++){ c=Math.min(srcHi,Math.max(c/span,cFloor*1.01,srcLo*Math.pow(1.5,n-1-k))); cur.push(c); }
       for(var k=1;k<n;k++) if(cur[k]>=cur[k-1]) cur[k]=cur[k-1]*0.5;
       var S=240, best=evalInters(cur);
       for(var iter=0;iter<8;iter++){
@@ -9462,8 +9484,8 @@ function _unhideAllResultsCols() {
       var st=[{i:0,cM:cSrc}].concat(pick.inters.map(function(c,k){return {i:k+1,cM:c};}));
       var used={}; planM.forEach(function(P){var c=egPick(P,st,vol,maxT); if(c) used[c.origIdx]=1;});
       var keep=pick.inters.filter(function(c,k){return used[k+1];});
-      // …as long as each remaining step can still be made on the inter plate (≥ 1 drop).
-      var makeable=keep.every(function(c,k){ var par=k?keep[k-1]:cSrc; return c>=par*DROP/(Vpre+DROP); });
+      // …as long as each remaining one can still be made from Source (≥ 1 drop).
+      var makeable=keep.every(function(c){ return c>=srcLo; });
       if(makeable&&keep.length&&keep.length<pick.inters.length){
         var r2=evalInters(keep);
         if(r2.score<=pick.res.score+1e-12){ pick={inters:keep,res:r2}; added=keep.length-(_egS.length-1); }
@@ -9476,14 +9498,15 @@ function _unhideAllResultsCols() {
     });
     _egN=_egS.length-1; window._egS=_egS;
     var r=pick.res;
-    var head='<strong>Suggested:</strong> '+pick.inters.map(function(c,k){return 'Inter '+(k+1)+' = '+fmtC(c);}).join(' › ');
-    if(added) head+=' <span style="color:var(--text3)">('+(added>0?'added ':'removed ')+Math.abs(added)+' intermediate'+(Math.abs(added)===1?'':'s')+')</span>';
+    var head='<strong>'+(auto?'Intermediates needed':'Suggested')+':</strong> '+pick.inters.map(function(c,k){return 'Inter '+(k+1)+' = '+fmtC(c);}).join(' · ')+
+      ' <span style="color:var(--text3)">— each made from Source</span>';
+    if(added&&!auto) head+=' <span style="color:var(--text3)">('+(added>0?'added ':'removed ')+Math.abs(added)+' intermediate'+(Math.abs(added)===1?'':'s')+')</span>';
     var tail=(!r.infeas&&!r.off)
       ?'<br><span style="color:#16a34a">✓ All '+pts+' points within '+(EG_TOL*100)+'% of plan · worst '+(r.maxErr*100).toFixed(1)+'%</span>'
       :'<br><span style="color:#d97706">⚠ Best with up to '+EG_MAX_INTERS+' intermediates: '+
         (r.infeas?r.infeas+' point'+(r.infeas===1?'':'s')+' out of range':'')+(r.infeas&&r.off?', ':'')+
         (r.off?r.off+' more than '+(EG_TOL*100)+'% off':'')+
-        '. More DMSO % or a larger assay volume widens the range each stock covers.</span>';
+        '. '+egReachText(cSrc,Vpre,vol,maxT,planM)+'</span>';
     _egNote=egBox('info',head+tail);
     renderStocks(); _egSetCustom(); _egUpdate(true);
   };
@@ -9546,10 +9569,15 @@ function _unhideAllResultsCols() {
     sb.style.display='';
 
     var warn='';
-    if(infeas) warn+='<strong>'+infeas+' point'+(infeas===1?'':'s')+' out of range</strong> — no stock gives a volume between '+fmtVol(DROP)+' and '+fmtVol(maxT)+' nL. ';
-    if(off) warn+='<strong>'+off+' point'+(off===1?'':'s')+' more than '+(EG_TOL*100)+'% off plan</strong> after the 2.5 nL snap. ';
+    // The planner's own note already counts what is out of range and says why.
+    if(infeas&&!_egNote) warn+='<strong>'+infeas+' point'+(infeas===1?'':'s')+' out of range</strong> — no stock gives a volume between '+fmtVol(DROP)+' and '+fmtVol(maxT)+' nL. ';
+    if(off&&!_egNote) warn+='<strong>'+off+' point'+(off===1?'':'s')+' more than '+(EG_TOL*100)+'% off plan</strong> after the 2.5 nL snap. ';
     if(maxT>10000) warn+='The DMSO budget ('+fmtVol(maxT)+' nL) is more than one Echo transfer (10 µL) — the top points would need several transfers. ';
-    wb.innerHTML=(_egNote||'')+(warn?egBox('warn','⚠ '+warn+((infeas||off)&&!_egNote?'Try ✦ Suggest.':'')):'');
+    if(infeas&&!_egNote){
+      var _iv=parseFloat((document.getElementById('eg-inter-vol')||{}).value)||0;
+      warn+=egReachText(toM(_egS[0].val,_egS[0].unit),_iv*1000,vol,maxT,v.planM)+' ';
+    }
+    wb.innerHTML=(_egNote||'')+(warn?egBox('warn','⚠ '+warn+((infeas||off)&&!_egNote&&!_egAuto?'Try ✦ Suggest.':'')):'');
 
     window._egRows=rows; window._egVol=vol; window._egMaxT=maxT; window._egSorted=sorted;
 
@@ -9610,8 +9638,9 @@ function _unhideAllResultsCols() {
   // run starts. That pre-fill is constant; it is never reduced to "make room"
   // for anything.
   //  (1) PREP — for a well that will become an intermediate concentration,
-  //      Echo adds a transfer from the parent stock (Source→Inter1,
-  //      Inter1→Inter2, …) ON TOP of that pre-fill. So:
+  //      Echo adds a transfer from the Source well (Source→Inter1,
+  //      Source→Inter2, … — never one intermediate from another) ON TOP of
+  //      that pre-fill. So:
   //        C_target = C_parent * V_transfer / (V_prefill + V_transfer)
   //      Solving for the transfer:
   //        V_transfer = C_target * V_prefill / (C_parent − C_target)
@@ -9628,7 +9657,7 @@ function _unhideAllResultsCols() {
   // when Suggest added a second and a third. It follows the chain until it is typed in.
   function _egBfSyncPerComp(){
     var el=document.getElementById('eg-bf-perCompound');
-    if(el&&!el.dataset.user) el.value=Math.max(1,_egS.length-1);
+    if(el&&!el.dataset.user) el.value=_egS.length-1;   // 0 when Source reaches every point
   }
   window._egBfTrigger=function(){
     if(_egBfTimer) clearTimeout(_egBfTimer);
@@ -9658,7 +9687,9 @@ function _unhideAllResultsCols() {
     var r={wellMax:wellMax,plateName:ldv?'an LDV':'a 384PP',interVol:interVol,nComp:nComp,perComp:perComp,nSets:nSets,nReps:nReps,nVehicle:nVehicle,deadVol:deadVol,
            prepRows:null,prepOk:true,backfill:{status:'no-gradient'}};
 
-    // ── Part 1: intermediate plate prep (source → inter1 → inter2 → …) ──
+    // ── Part 1: intermediate plate prep — every intermediate straight from Source ──
+    // Never from another intermediate (Jon, 2026-09-28): a chain carries each step's
+    // pipetting error into the next, and the lab does not make them that way.
     var cSrc0=toM(_egS[0].val,_egS[0].unit);
     if(interVol>0 && _egS.length>1 && cSrc0>0){
       var parentC=cSrc0, parentLabel=_egS[0].label||'Source';
@@ -9673,7 +9704,6 @@ function _unhideAllResultsCols() {
         if(!ok) r.prepOk=false;
         prepRows.push({label:s.label,parent:parentLabel,adjNL:adjNL,ok:ok,
                        split:ok&&adjNL>10000, over:ok&&(interVol+adjNL/1000)>wellMax});
-        parentC=Ctarget; parentLabel=s.label;
       }
       r.prepRows=prepRows;
     }
@@ -9681,7 +9711,7 @@ function _unhideAllResultsCols() {
     // ── Part 2: destination-plate backfill ──
     var rows=window._egRows, maxT=window._egMaxT;
     if(!rows||!rows.length||!maxT){ return r; }
-    if(!nComp||!perComp||!nSets||!nReps||!interVol){ r.backfill={status:'missing-inputs'}; return r; }
+    if(!nComp||!nSets||!nReps||!interVol){ r.backfill={status:'missing-inputs'}; return r; }
 
     // Backfill needed per destination well = DMSO budget not already used by compound transfer.
     // Sum across all dose points to get the total per single compound run once, then scale by
@@ -9747,12 +9777,12 @@ function _unhideAllResultsCols() {
       html+='</table>';
       var _split=bf.prepRows.filter(function(r){return r.split;}), _over=bf.prepRows.filter(function(r){return r.over;});
       if(_split.length) html+='<div style="color:#d97706;font-size:11px;margin-bottom:6px">⚠ '+_split.map(function(r){return r.label;}).join(', ')+' need'+(_split.length===1?'s':'')+' more than 10 µL, the largest single Echo transfer — it will run as several transfers.</div>';
-      if(_over.length) html+='<div style="color:#ef4444;font-size:11px;margin-bottom:6px">⚠ '+_over.map(function(r){return r.label;}).join(', ')+': the pre-fill plus the transfer is more than '+bf.plateName+' well holds (~'+bf.wellMax+' µL). Lower the pre-fill or use a less concentrated parent.</div>';
+      if(_over.length) html+='<div style="color:#ef4444;font-size:11px;margin-bottom:6px">⚠ '+_over.map(function(r){return r.label;}).join(', ')+': the pre-fill plus the transfer is more than '+bf.plateName+' well holds (~'+bf.wellMax+' µL). Lower the pre-fill or use a less concentrated Source.</div>';
       if(!bf.prepOk){
-        html+='<div style="color:#ef4444;font-size:11px;margin-bottom:12px">⚠ One or more steps are infeasible — either the target isn\'t below its parent concentration, or the resulting transfer would be under Echo\'s 2.5 nL minimum drop. Increase the intermediate volume, add another intermediate step, or adjust the target concentration.</div>';
+        html+='<div style="color:#ef4444;font-size:11px;margin-bottom:12px">⚠ One or more intermediates cannot be made from Source — either the target isn\'t below the Source concentration, or the transfer would be under Echo\'s 2.5 nL minimum drop. A larger intermediate-plate volume or a less concentrated Source makes more dilute intermediates reachable.</div>';
       }
     } else {
-      html+='<div style="color:var(--text3);font-size:12.5px;margin-bottom:12px">Add at least one intermediate stock (with a Source concentration set) to see the prep transfer volumes.</div>';
+      html+='<div style="color:var(--text3);font-size:12.5px;margin-bottom:12px">'+(_egS.length>1?'Set a Source concentration and a pre-fill volume to see the prep transfer volumes.':'None — Source reaches every point, so the intermediate plate only holds backfill DMSO.')+'</div>';
     }
 
     // ── Part 2 render ──
@@ -9789,7 +9819,7 @@ function _unhideAllResultsCols() {
       var th='text-align:right;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;white-space:nowrap';
       html+='<div style="font-weight:600;color:var(--text);margin:16px 0 6px">3. Stock volumes per compound <span style="font-weight:400;color:var(--text3)">(spare = left above the '+bf.deadVol+' µL dead volume · × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' replicate'+(bf.nReps===1?'':'s')+')</span></div>'+
         '<div style="overflow-x:auto"><table style="width:100%;max-width:520px;border-collapse:collapse;font-size:12.5px;margin-bottom:6px">'+
-        '<tr><th style="'+th+';text-align:left">µL</th><th style="'+th+'" title="Pre-fill plus the transfer that made it">Holds</th><th style="'+th+'" title="Every point dispensed from it, × sets × replicates">To assay</th><th style="'+th+'" title="Drawn to make the next intermediate">To next</th><th style="'+th+'" title="Left above the Echo dead volume">Spare</th></tr>';
+        '<tr><th style="'+th+';text-align:left">µL</th><th style="'+th+'" title="Pre-fill plus the transfer that made it">Holds</th><th style="'+th+'" title="Every point dispensed from it, × sets × replicates">To assay</th><th style="'+th+'" title="Drawn from Source to make the intermediates">To intermediates</th><th style="'+th+'" title="Left above the Echo dead volume">Spare</th></tr>';
       var short=[];
       use.forEach(function(x){
         var tdR='padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums';
@@ -9923,7 +9953,12 @@ function _unhideAllResultsCols() {
       var dest=0, pts=[];
       plan.forEach(function(r){ if(r.stockIdx===idx&&r.vA){ dest+=r.vA; pts.push(r.pt); } });
       dest*=reps;
-      var nx=prep[idx], toNext=(nx&&nx.ok)?nx.adjNL:0, nextLbl=nx?nx.label:null;
+      // Only Source is drawn to make intermediates — all of them, each once.
+      var toNext=0, nextLbl=null;
+      if(idx===0&&prep.length){
+        prep.forEach(function(p){ if(p.ok) toNext+=p.adjNL; });
+        nextLbl=prep.length===1?prep[0].label:'Inter 1–'+prep.length;
+      }
       var u={label:s.label, pts:pts, dest:dest, toNext:toNext, nextLbl:nextLbl, draw:dest+toNext};
       if(idx===0){ u.source=true; return u; }
       var inn=prep[idx-1];
@@ -10066,7 +10101,7 @@ function _unhideAllResultsCols() {
     }
     var use=egStockUse(bf);
     if(use){
-      var uh=['Well','Holds (µL)','Drawn by the assay (µL)','Drawn to make the next (µL)','Left above dead vol. (µL)'];
+      var uh=['Well','Holds (µL)','Drawn by the assay (µL)','Drawn to make the intermediates (µL)','Left above dead vol. (µL)'];
       var ur=use.map(function(x){ return [x.label, x.source?'yours':egNum(x.holds/1000), egNum(x.dest/1000),
         x.nextLbl?egNum(x.toNext/1000):'—', x.source?'—':(x.ok?egNum(x.left/1000):'short by '+egNum(-x.left/1000))]; });
       lines.push(''); lines.push('Stock volumes per compound'); lines.push(uh.join('\t'));
@@ -10108,8 +10143,8 @@ function _unhideAllResultsCols() {
   }
 
   // ── Init ──────────────────────────────────────────────────────────────
-  renderStocks();
-  setTimeout(_egUpdate,150);
+  renderStocks(); _egAutoLbl();
+  setTimeout(function(){ _egSuggest(true); },150);
 
   })();
   </script>
