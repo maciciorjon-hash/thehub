@@ -21378,8 +21378,21 @@ _onBootSettled(function(){ try{ migrateHubTasks(); migrateHubNote(); }catch(e){}
   setTimeout(function(){ _attSweep(false); },9000); });
 setTimeout(migrateAntibodiesToLibrary,2500);
 setTimeout(cleanupAntibodySection,2600);
+// What another app sends is saved into the record and read by every renderer afterwards, so a
+// payload in the wrong shape — a null result, rows that are not a list, a table whose rows are a
+// number — broke that experiment's Results, Home and Visualize on every render from then on.
+function _cleanCtx(ctx){
+  var o=Object.assign({},ctx);
+  if(Array.isArray(o.results)) o.results=o.results.filter(function(r){ return r&&typeof r==='object'; }).map(function(r){
+    var c=Object.assign({},r); c.rows=_lbList(c.rows,true); return c; });
+  if(Array.isArray(o.tables)) o.tables=o.tables.filter(function(t){ return t&&typeof t==='object'; }).map(function(t){
+    var c=Object.assign({},t); c.cols=_lbList(c.cols,false).map(String);
+    c.rows=_lbList(c.rows,false).map(function(r){ return Array.isArray(r)?r:[r]; }); return c; });
+  if(o.plate && (typeof o.plate!=='object' || !o.plate.wells || typeof o.plate.wells!=='object' || Array.isArray(o.plate.wells))) delete o.plate;
+  else if(o.plate){ o.plate=Object.assign({},o.plate); o.plate.wells=_lbMap(o.plate.wells); }
+  return o; }
 function _mergeDHubContext(ctx){
-  ctx=ctx||{}; var e=(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
+  ctx=_cleanCtx(ctx||{}); var e=(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
   // Nothing open to attach to. Telling the user to go back and press Send again *after* opening
   // the right experiment throws away a whole analysis for a reason they could not have known
   // about — and this is the path most people are on, because you fit curves in Echo with
