@@ -1728,6 +1728,15 @@ const WELL_TYPES = [
   {id:'control', name:'Control',      color:'#f2a3a1'},
   {id:'blank',   name:'Blank/Media',  color:'#d2d5dd'},
 ];
+// A built-in type can be renamed ("Compound" → "PROTAC"), and that name belongs to the plate it
+// was typed on: it is part of the undo state and of a saved design. Only the names that differ
+// from these defaults are stored, so an old design with no names loads with the defaults.
+const WELL_TYPE_NAMES0 = WELL_TYPES.map(t => t.name);
+function _typeNames() {
+  const m = {}; WELL_TYPES.forEach((t, i) => { if (t.name !== WELL_TYPE_NAMES0[i]) m[t.id] = t.name; });
+  return m;
+}
+function _applyTypeNames(m) { WELL_TYPES.forEach((t, i) => { t.name = (m && m[t.id]) || WELL_TYPE_NAMES0[i]; }); }
 const MAX_WP = {'6':160,'12':120,'24':88,'48':64,'96':52,'384':20};
 const LABEL_W = 24, LABEL_H = 20;
 
@@ -2375,7 +2384,7 @@ function sizeAndDrawCanvas() {
 var PD_UNDO = {stack: [], redo: [], max: 60, last: 0, busy: false, base: null};
 function _pdState() {
   return JSON.stringify({f: currentFormat, w: wellState, ct: customTypes,
-    ra: rowAnnotations, ca: colAnnotations, br: pdBrackets, sh: wellShape});
+    ra: rowAnnotations, ca: colAnnotations, br: pdBrackets, sh: wellShape, tn: _typeNames()});
 }
 // Hooked into the one place every change already passes through: the redraw. Something that did
 // not alter the plate — resizing the wells, dragging the panel, switching theme — serialises
@@ -2396,6 +2405,7 @@ function _pdLabelOnlyChange(aj, bj) {
   try { a = JSON.parse(aj); b = JSON.parse(bj); } catch (e) { return false; }
   if (a.f !== b.f || a.sh !== b.sh) return false;
   if (JSON.stringify(a.ct) !== JSON.stringify(b.ct)) return false;
+  if (JSON.stringify(a.tn) !== JSON.stringify(b.tn)) return false;
   if (JSON.stringify(a.ra) !== JSON.stringify(b.ra)) return false;
   if (JSON.stringify(a.ca) !== JSON.stringify(b.ca)) return false;
   if (JSON.stringify(a.br) !== JSON.stringify(b.br)) return false;
@@ -2434,7 +2444,7 @@ function _pdRestore(js) {
   var st = JSON.parse(js), fmtChanged = (st.f !== currentFormat);
   currentFormat = st.f; wellState = st.w || {}; customTypes = st.ct || [];
   rowAnnotations = st.ra || {}; colAnnotations = st.ca || {};
-  pdBrackets = st.br || []; wellShape = st.sh || wellShape;
+  pdBrackets = st.br || []; wellShape = st.sh || wellShape; _applyTypeNames(st.tn);
   selection.clear(); activeWell = null; selectionAnchor = null; lastClickedWell = null;
   document.querySelectorAll('.fmt-pill').forEach(function(b) {
     b.classList.toggle('active', b.textContent === currentFormat + '-well'); });
@@ -3584,6 +3594,7 @@ async function exportPNG() {
       format: currentFormat,
       wellState: JSON.parse(JSON.stringify(wellState)),
       customTypes: JSON.parse(JSON.stringify(customTypes)),
+      typeNames: _typeNames(),
       rowAnnotations: JSON.parse(JSON.stringify(rowAnnotations)),
       colAnnotations: JSON.parse(JSON.stringify(colAnnotations))
     }
@@ -3734,6 +3745,7 @@ function ldHistLoadEntry(id) {
     customTypes = (entry.data.customTypes || []).filter(function(ct){
       return !WELL_TYPES.find(function(bt){ return bt.id === ct.id; });
     });
+    _applyTypeNames(entry.data.typeNames);
     selection.clear(); lastClickedWell = null;
     _userScaledManually = false; userScale = 1.0;
     var sl = document.getElementById('well-size-slider'); if (sl) sl.value = 1.0;
