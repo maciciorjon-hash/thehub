@@ -3614,6 +3614,7 @@ async function exportPNG() {
       wellState: JSON.parse(JSON.stringify(wellState)),
       customTypes: JSON.parse(JSON.stringify(customTypes)),
       typeNames: _typeNames(),
+      brackets: JSON.parse(JSON.stringify(pdBrackets)),
       rowAnnotations: JSON.parse(JSON.stringify(rowAnnotations)),
       colAnnotations: JSON.parse(JSON.stringify(colAnnotations))
     }
@@ -3726,6 +3727,8 @@ function ldSyncInit(){
 setTimeout(ldSyncInit, 400);   // once the parent Firebase is up
 function ldHistAdd(entry) {
   var list = ldHistGetList();
+  // Exporting the same design twice is one design. Keep the newer date; do not list it twice.
+  if (list[0] && list[0].type === entry.type && JSON.stringify(list[0].data) === JSON.stringify(entry.data)) list.shift();
   list.unshift(entry);
   if (list.length > LD_HIST_MAX) list = list.slice(0, LD_HIST_MAX);
   ldHistSaveList(list);
@@ -3766,6 +3769,10 @@ function ldHistLoadEntry(id) {
       return !WELL_TYPES.find(function(bt){ return bt.id === ct.id; });
     });
     _applyTypeNames(entry.data.typeNames);
+    // The brackets are part of the design. They were never saved, so a loaded plate kept the
+    // brackets of whatever plate was on screen before it.
+    pdBrackets = entry.data.brackets ? JSON.parse(JSON.stringify(entry.data.brackets)) : [];
+    pdRenderBrackets();
     selection.clear(); lastClickedWell = null;
     _userScaledManually = false; userScale = 1.0;
     var sl = document.getElementById('well-size-slider'); if (sl) sl.value = 1.0;
@@ -3779,12 +3786,16 @@ function ldHistLoadEntry(id) {
     var $v = function(id, v){ var el=document.getElementById(id); if(el) el.value=v; };
     var $c = function(id, v){ var el=document.getElementById(id); if(el) el.checked=v; };
     $v('gd-gel', d.gelFormat || '20'); gdInit();
-    (d.wells || []).forEach(function(w, i){ if(gdWells[i]){ gdWells[i].label=w.label; gdWells[i].type=w.type; } });
+    (d.wells || []).forEach(function(w, i){ if(gdWells[i]){ gdWells[i].label=w.label; gdWells[i].type=w.type; gdWells[i].w=w.w||1; } });
     gdBrackets = d.brackets ? JSON.parse(JSON.stringify(d.brackets)) : [];
     $v('gd-title', d.title||''); $v('gd-lpos', d.lpos||'inside'); $v('gd-orient', d.orient||'0');
     $v('gd-wsz', d.wsz||'S'); $v('gd-lanepos', d.lanepos||'inside'); $v('gd-fsize', d.fsize||'12');
     $c('gd-bold', !!d.bold); $c('gd-italic', !!d.italic); $v('gd-context', d.context||'');
     $v('gd-title-fsize', d.titleFsize||'12'); $c('gd-title-bold', !!d.titleBold); $c('gd-title-italic', d.titleItalic!==undefined ? !!d.titleItalic : true);
+    // The B / I buttons draw the hidden checkboxes' state; setting the boxes alone left them lit
+    // or dark from the previous gel.
+    document.querySelectorAll('.gd-tgl[data-for]').forEach(function(b){
+      var cb = document.getElementById(b.getAttribute('data-for')); if (cb) b.classList.toggle('on', cb.checked); });
     gdRenderWells(); gdRenderBrackets(); gdDraw();
     var btn = document.querySelector('.tab[onclick*="\'gel\'"]');
     if (btn) switchTab('gel', btn);
