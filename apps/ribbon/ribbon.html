@@ -678,7 +678,8 @@ function fetchPdb(id){
   // On a phone the input lives in the controls sheet; loading a structure is the moment to
   // put the sheet away and show it.
   if(window.matchMedia&&matchMedia('(max-width:760px)').matches) closeControls();
-  clearResults();
+  clearResults(); _searchSeq++;   // a search still in flight must not reopen its list over this structure
+  var prevId=currentPdbId;
   currentPdbId=id;
   setLoading(true);
   $('fetchBtn').disabled=true;
@@ -696,6 +697,11 @@ function fetchPdb(id){
     attempt(base+'.cif','cif',function(){
       if(myReq!==_reqSeq)return;
       setError('Could not find PDB entry "'+id+'". Check the code and try again.');
+      if(_pendingDesign && _pendingDesign._pdb===id) _pendingDesign=null;
+      // The structure on screen is still the previous one. Leaving the failed code as the
+      // current id labelled it wrong — the status chip, a saved design and the export file name
+      // all said 9ZZ9 over haemoglobin.
+      currentPdbId=currentModel?prevId:'';
       setLoading(false);
       $('fetchBtn').disabled=false;
     });
@@ -732,9 +738,13 @@ function renderStructure(text,fmt,id){
   }
 }
 
+var _searchSeq=0;
 function searchByName(query){
   query=(query||'').trim();
   if(!query){return;}
+  // Only the newest search may write the list: a slow first query used to land after a quick
+  // second one and replace its results with the wrong protein's.
+  var mySearch=++_searchSeq;
   setError('');
   clearResults();
   $('fetchBtn').disabled=true;
@@ -757,6 +767,7 @@ function searchByName(query){
       return r.json();
     })
     .then(function(data){
+      if(mySearch!==_searchSeq)return;
       var ids=(data.result_set||[]).map(function(r){return r.identifier;});
       if(!ids.length){
         resultsEl.innerHTML='';
@@ -773,11 +784,13 @@ function searchByName(query){
           })
           .catch(function(){return {id:id,title:''};});
       })).then(function(entries){
+        if(mySearch!==_searchSeq)return;
         renderSearchResults(entries);
         $('fetchBtn').disabled=false;
       });
     })
     .catch(function(){
+      if(mySearch!==_searchSeq)return;
       resultsEl.innerHTML='';
       setError('Search failed. Check your connection and try again.');
       $('fetchBtn').disabled=false;
@@ -1564,7 +1577,10 @@ function collectDesign(){
     surfaceOpacity:state.surfaceOpacity,showLines:state.showLines,exportLabels:state.exportLabels,
     hsl:_clone(state.hsl),labelStyle:_clone(state.labelStyle),
     chainColors:_clone(state.chainColors),chainLabels:_clone(state.chainLabels),
-    labelOffsets:_clone(state.labelOffsets),labelAnchors:_clone(state.labelAnchors)
+    labelOffsets:_clone(state.labelOffsets),labelAnchors:_clone(state.labelAnchors),
+    // applyPendingDesign has always read these back; nothing ever wrote them, so every residue
+    // label was lost the moment a design was saved.
+    residueLabels:_clone(state.residueLabels||[])
   }};
 }
 function saveDesign(){
@@ -1576,7 +1592,9 @@ function saveDesign(){
 function deleteDesign(name){ var all=getDesigns(); delete all[name]; putDesigns(all); renderDesignList(); }
 function loadDesign(name){
   var d=getDesigns()[name]; if(!d)return;
-  _pendingDesign=d.state;
+  // The design belongs to ITS structure. Tagged with the id, so if that fetch fails the colours
+  // and labels do not ride along onto whatever structure is loaded next.
+  _pendingDesign=Object.assign({_pdb:(d.pdbId||'').toUpperCase()}, d.state);
   $('pdbInput').value=d.pdbId;
   fetchPdb(d.pdbId);
   showToast('Loaded "'+name+'"');
@@ -1584,6 +1602,7 @@ function loadDesign(name){
 function applyPendingDesign(){
   if(!_pendingDesign)return;
   var ps=_pendingDesign; _pendingDesign=null;
+  if(ps._pdb && ps._pdb!==currentPdbId) return;
   ['style','color','uniformColor','border','bg','surfaceOpacity','showLines','exportLabels'].forEach(function(k){ if(ps[k]!=null)state[k]=ps[k]; });
   if(ps.hsl)state.hsl=_clone(ps.hsl);
   if(ps.labelStyle)state.labelStyle=Object.assign(state.labelStyle,ps.labelStyle);
