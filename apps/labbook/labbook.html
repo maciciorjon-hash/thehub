@@ -4001,7 +4001,7 @@ var CALC_VALUES={
   seed:function(v){ v=_calcEff(v,{nPlates:1,excess:1}); var wells=wellsOf(v.format)*v.nPlates; var dens=(+v.cellsPerWell)/(+v.volPerWell)/1000; var totUL=(+v.volPerWell)*wells*v.excess;
     return {density:nfmt(dens)+' M cells/mL', totalVol:mlfmt(totUL), cells:nfmt(dens*totUL/1000)+' M cells', volPerWell:nfmt(v.volPerWell)+' µL', cellsPerWell:nfmt(v.cellsPerWell)+' cells', nPlates:nfmt(v.nPlates), format:String(v.format||'')+'-well', wells:nfmt(wells)+' wells', cellLine:((cellLineDef(v.cellLine)||{}).label||String(v.cellLine||'cells')).replace(/\s*\(.*\)$/,'')}; },
   rtxmix:function(v){ var n=+v.nWells||0, ex=+v.excess||1, W=n*ex, disp=+v.dispenseUL||0, tot=disp*W, ngw=+v.ngPerWell||0, dnaNg=ngw*W, stock=+v.stockNgUl||0;
-    var dnaUL=stock>0?(dnaNg/stock):0, fug=(+v.fugeneRatio||0)*(dnaNg/1000), dil=tot-dnaUL-fug;
+    var dnaUL=stock>0?(dnaNg/stock):0, fug=(+v.fugeneRatio||0)*(dnaNg/1000), _ph=_pipHint(dnaUL,v.minVolUL), dil=tot-(_ph?_ph.ul:dnaUL)-fug;
     return {nWells:nfmt(n)+' wells', dispense:nfmt(disp)+' µL', total:nfmt(tot)+' µL', dnaUL:nfmt(dnaUL)+' µL', dnaUg:nfmt(dnaNg/1000)+' µg', ngPerWell:nfmt(ngw)+' ng', stock:nfmt(stock)+' ng/µL', fugeneUL:nfmt(fug)+' µL', ratio:nfmt(v.fugeneRatio)+':1', diluentUL:nfmt(dil)+' µL', diluent:String(v.diluent||'Opti-MEM'), plasmid:String(v.plasmid||'plasmid')}; },
   nbtx:function(v,ctx){ var cs=_nbtxConditions(v, ctx&&ctx.tidCounts); var ex=+v.excess||1; var ng=_nbtxDnaNg(v), fu=_nbtxFugeneUL(v), om=+v.optimemPerWell||0;
     var mixes=cs.filter(function(c){ return !c.noMix; }); var wells=mixes.reduce(function(a,c){ return a+c.n; },0);
@@ -4227,7 +4227,12 @@ function nbtxRecipe(v,counts,nos){
     var dV=_dnaVol(c.d*W,c.dStock||dS,_mv), aV=_dnaVol(c.a*W,c.aStock||aS,_mv), cV=c.needsCarrier?_dnaVol(c.carrier*W,cS,_mv):null;
     var dUL=dV?dV.ul:null, aUL=aV?aV.ul:null, cUL=cV?cV.ul:null;
     var fu=_nbtxFugeneUL(v)*W, tot=(+v.optimemPerWell||0)*W;
-    var om=tot-fu-(dUL||0)-(aUL||0)-(cUL||0);
+    // A plasmid too small to pipette is taken as a dilution — 14.08 µL of a 1:100 instead of
+    // 0.141 µL of stock — and that is the volume that goes into the tube. The remainder took off
+    // the undiluted 0.141, so the tube came to 101.9 µL instead of 88 and every 10 µL well got
+    // 86% of the DNA and the FuGENE the table promised.
+    var _in=function(V){ return V?(V.dil?V.ul*V.dil:V.ul):0; };
+    var om=tot-fu-_in(dV)-_in(aV)-_in(cV);
     if(om<0) over.push({name:c.name, by:-om, W:W});
     var nm=String(c.name).replace(/\s*\(NL 1:[^)]*\)\s*$/,'');
     var dNm=nm.split(' only')[0].split(' + ')[0], aNm=(nm.indexOf(' + ')>=0?nm.split(' + ')[1]:nm.split(' only')[0]);
@@ -4315,19 +4320,22 @@ function rtxMixRecipe(v){
   var ngw=+v.ngPerWell||0, dnaNg=ngw*W, stock=+v.stockNgUl||0;
   var dnaUL=stock>0?(dnaNg/stock):0;
   var fug=(+v.fugeneRatio||0)*(dnaNg/1000);
-  var dil=tot-dnaUL-fug;
+  // Too little plasmid to pipette is taken as a dilution, and the diluted volume is what goes in;
+  // the remainder has to leave room for it, or the tube is bigger than the table says.
+  var _ph=_pipHint(dnaUL,v.minVolUL), dnaIn=_ph?_ph.ul:dnaUL;
+  var dil=tot-dnaIn-fug;
   var name=esc(v.plasmid||'plasmid'), dl=esc(v.diluent||'Opti-MEM');
   var naive=tot+dnaUL+fug;
   var out='<b>Master mix</b> — '+nfmt(n)+' well'+(n===1?'':'s')+_ovxL(ex)+', '+nfmt(disp)+' µL of complex per well'
     +'<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Component</th><th>Amount</th></tr>'
     +'<tr><td>'+dl+'</td><td><b>'+nfmt(dil)+' µL</b></td></tr>'
-    +'<tr><td>'+name+' — '+nfmt(dnaNg/1000)+' µg at '+nfmt(stock)+' ng/µL</td><td><b>'+nfmt(dnaUL)+' µL</b></td></tr>'
+    +'<tr><td>'+name+' — '+nfmt(dnaNg/1000)+' µg at '+nfmt(stock)+' ng/µL</td><td><b>'+nfmt(dnaIn)+' µL</b>'+(_ph?('<br><span class="cc-dim">of a 1:'+nfmt(_ph.f)+' dilution ('+nfmt(dnaUL)+' µL of stock)</span>'):'')+'</td></tr>'
     +'<tr><td>FuGENE HD — '+nfmt(v.fugeneRatio)+':1 (µL per µg DNA)</td><td><b>'+nfmt(fug)+' µL</b></td></tr>'
     +'<tr><td><b>Total</b></td><td><b>'+nfmt(tot)+' µL</b></td></tr></table></div>'
     +'<div class="cc-note">The '+dl+' is the <b>remainder</b>, which is what makes the well receive '+nfmt(ngw)+' ng. Making up '+nfmt(tot)+' µL of '
     +dl+' and adding the DNA and FuGENE on top gives '+nfmt(naive)+' µL, and '+nfmt(disp)+' µL of that is only '
     +nfmt(dnaNg/naive*disp)+' ng.</div>';
-  if(dil<=0) out+='<div class="cc-warn">The DNA and FuGENE alone come to '+nfmt(dnaUL+fug)+' µL — more than the '+nfmt(tot)
+  if(dil<=0) out+='<div class="cc-warn">The DNA and FuGENE alone come to '+nfmt(dnaIn+fug)+' µL — more than the '+nfmt(tot)
     +' µL the mix is meant to be. Use a more concentrated plasmid prep, or dispense more per well.</div>';
   else if(_pipHint(dnaUL,v.minVolUL)) out+='<div class="cc-warn">'+nfmt(dnaUL)+' µL of plasmid is not a volume to pipette directly — '
     +_pipHint(dnaUL,v.minVolUL).txt+'.</div>';
