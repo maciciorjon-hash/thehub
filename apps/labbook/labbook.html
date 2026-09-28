@@ -4010,7 +4010,7 @@ var CALC_VALUES={
     var ligUL=(stockUM>0)?(vP*(finalNM/1000)/stockUM):0, dens=vw?(cpw/vw*1000):0;
     return {cellLine:((cellLineDef(v.cellLine)||{}).label||'cells').replace(/\s*\(.*\)$/,''), density:nfmt(dens/1e6)+' M cells/mL', volPlus:mlfmt(vP), volMinus:mlfmt(vM), volTotal:mlfmt(vP+vM), cellsTotal:nfmt(cpw*(nP+nM)*ex/1e6)+' M cells', cellsPlus:nfmt(cpw*nP*ex/1e6)+' M cells', cellsMinus:nfmt(cpw*nM*ex/1e6)+' M cells', ligUL:nfmt(ligUL)+' µL', ligStock:nfmt(stockUM)+' µM', ligFinal:nfmt(finalNM)+' nM', ligand:String(v.ligName||'ligand'), volPerWell:nfmt(vw)+' µL', cellsPerWell:nfmt(cpw)+' cells', nPlus:nfmt(nP)+' wells', nMinus:nfmt(nM)+' wells'}; },
   spike:function(v){ var V=+v.wellVolUL||0, X=+v.foldX||0, fin=+v.finalUM||0, stock=+v.stockUM||0, n=+v.nWells||0, ex=+v.excess||1;
-    var add=(X>1)?V/(X-1):0, newV=V+add, inter=fin*X, need=add*n*ex, df=(inter>0&&stock>0)?(stock/inter):0, vs=df>0?(need/df):0, vd=need-vs;
+    var add=(X>1)?V/(X-1):0, newV=V+add, inter=fin*X, need=add*n*ex, df=(inter>0&&stock>0)?(stock/inter):0, vs=df>0?(need/df):0, _ph=(df>=2)?_pipHint(vs,v.minVolUL):null, vd=need-(_ph?_ph.ul:vs);
     return {name:String(v.name||'reagent'), addUL:nfmt(add)+' µL', wellVol:nfmt(V)+' µL', newVol:nfmt(newV)+' µL', fold:nfmt(X)+'×', interConc:inter>0?_fmtConc(inter*1000):'—', finalConc:fin>0?_fmtConc(fin*1000):'—', totalUL:nfmt(need)+' µL', stockUL:nfmt(vs)+' µL', stockConc:stock>0?_fmtConc(stock*1000):'—', diluentUL:nfmt(vd)+' µL', diluent:String(v.diluent||'medium'), nWells:nfmt(n)+' wells', dilution:df>0?('1:'+nfmt(df)):'—'}; },
   serial:function(v){ var topF=+v.topFinalNM||0, X=+v.foldX||1, df=+v.df||0,
     // Bounded: these come from number fields with no max, and an extra zero in "# points"
@@ -4347,7 +4347,11 @@ function spikeRecipe(v){
   if(!(V>0)||!(X>1)) return '<b>Spike-in</b> — the well has to hold something and the intermediate has to be stronger than 1×.';
   var add=V/(X-1), newV=V+add, inter=fin*X, need=add*n*ex;
   var df=(inter>0&&stock>0)?(stock/inter):0;
-  var vs=df>0?(need/df):0, vd=need-vs;
+  var vs=df>0?(need/df):0;
+  // A stock volume too small to pipette is taken as a dilution, and the remainder has to leave
+  // room for the diluted volume that actually goes in — the table said 48.88 µL of Opti-MEM
+  // beside a warning saying to add 5 µL of a 1:1,000 stock dilution, a 48.9 µL tube for 53.9.
+  var _ph=(df>=2)?_pipHint(vs,v.minVolUL):null, vIn=_ph?_ph.ul:vs, vd=need-vIn;
   // A dose series is not one solution. Printing "10× intermediate — 24 wells × 1.1 overage →
   // 326 µL" says make one tube of that much, and those 24 wells hold twenty-four different
   // things: the total is real only as a sum across concentrations, and the dilution from the
@@ -4364,7 +4368,7 @@ function spikeRecipe(v){
       ? ('<div class="cc-note">Each concentration is prepared separately at '+nfmt(X)+'× in '+dl+'; the plate map says which wells receive which.</div>')
       : ('<div class="cc-tblwrap"><table class="cc-tbl"><tr><th>Step</th><th>Amount</th></tr>'
         +'<tr><td>'+nfmt(X)+'× intermediate'+(inter>0?(' at '+_fmtConc(inter*1000)):'')+' — '+nfmt(n)+' well'+(n===1?'':'s')+_ovxL(ex)+'</td><td><b>'+nfmt(need)+' µL</b></td></tr>'
-        +(df>=1?('<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', diluted 1:'+nfmt(df)+'</td><td><b>'+nfmt(vs)+' µL</b></td></tr>'
+        +(df>=1?('<tr><td>'+name+' stock '+_fmtConc(stock*1000)+', diluted 1:'+nfmt(df)+'</td><td><b>'+nfmt(vIn)+' µL</b>'+(_ph?('<br><span class="cc-dim">of a 1:'+nfmt(_ph.f)+' dilution ('+nfmt(vs)+' µL of stock)</span>'):'')+'</td></tr>'
                +'<tr><td>'+dl+'</td><td><b>'+nfmt(vd)+' µL</b></td></tr>'):'')
         +'</table></div>'))
     +'<div class="cc-note">V/(X−1), not V/X — the intermediate becomes part of the final volume. Adding a tenth of '+nfmt(V)
