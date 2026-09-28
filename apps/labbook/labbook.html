@@ -21441,7 +21441,20 @@ function _pickExpForContext(ctx){
 }
 function _dhubAck(e){ try{ if(e&&e.data&&e.data.requestId&&window.parent&&window.parent!==window) window.parent.postMessage({type:'dhub:ack',requestId:e.data.requestId,app:'labbook'},'*'); }catch(err){} }
 // Deep-link: another app (e.g. Plasmids "Used in") can open a specific experiment/page.
+// Only the Hub's own frames speak to Labbook. The standalone build can be framed or opened by any
+// page, and without this a stranger's postMessage could write results or a plate map into the
+// experiment on screen — which then syncs. A sender is trusted when its window is scriptable from
+// here (same origin: the shell and every srcdoc app in dHUB) or when its origin is this frame's
+// real origin. self.origin, not location.origin: inside dHUB this frame is about:srcdoc, whose
+// location.origin reads "null" while the shell's messages carry the Hub's origin. "null" is
+// accepted only when this frame's own origin is "null" too — a file:// Hub.
+function _trustedMsg(e){
+  if(e.source===window) return true;
+  try{ if(e.source && e.source.document) return true; }catch(x){}
+  var me=(typeof self.origin==='string')?self.origin:location.origin;
+  return e.origin===me; }
 window.addEventListener('message', function(e){
+  if(!_trustedMsg(e)) return;
   // The workspace rail drives Labbook from outside: Home is this app's dashboard and Labbook
   // is the notebook, so the shell needs a way to say which one without knowing our internals.
   if(e.data && e.data.type==='lb:go'){
