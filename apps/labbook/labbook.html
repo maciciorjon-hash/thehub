@@ -9862,7 +9862,10 @@ function snoozeBlock(expId,blockId,n){
   var b=(e.blocks||[]).filter(function(x){return x.id===blockId;})[0]; if(!b||!b.date) return;
   undoMark('Snooze step',['experiments.'+expId]);
   var from=b.date, days=n||1, moved=0;
-  (e.blocks||[]).forEach(function(x){ if(x.date && x.date>=from && x.id!==b.id){ x.date=addDays(x.date,days); moved++; } });
+  // A ticked step is a record of when it was done, so it stays where it is — the same rule
+  // slipRest follows. Snoozing the second step of a day used to re-date the first one with it,
+  // after it had been done.
+  (e.blocks||[]).forEach(function(x){ if(x.date && x.date>=from && x.id!==b.id && !x.done){ x.date=addDays(x.date,days); moved++; } });
   b.date=addDays(b.date,days);
   recomputeDayOffsets(e); e.updated=Date.now(); save(); renderAll();
   toast('Snoozed to '+fmtDate(b.date)+(moved?(' — '+moved+' later step'+(moved!==1?'s':'')+' moved too'):''));
