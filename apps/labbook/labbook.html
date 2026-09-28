@@ -11545,7 +11545,7 @@ function trashPurge(){
   if(n){ save(); gcAttachments(); }
   return n;
 }
-function delExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Delete "'+(e.title||e.code||'this entry')+'"? It goes to Deleted items, where it can be restored for '+TRASH_DAYS+' days.',{title:'Delete entry',ok:'Delete'}).then(function(ok){ if(!ok) return; undoMark('Delete entry',['experiments.'+id]); lbTrash('experiment',(e.code?e.code+' · ':'')+(e.title||'Untitled'),{exp:e}); delete LB.data.experiments[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
+function delExperiment(id){ var e=LB.data.experiments[id]; if(!e) return; lbConfirm('Delete "'+(e.title||e.code||'this entry')+'"? It goes to Deleted items, where it can be restored for '+TRASH_DAYS+' days.',{title:'Delete entry',ok:'Delete'}).then(function(ok){ if(!ok) return; var _tid=uid(); undoMark('Delete entry',['experiments.'+id,'trash.'+_tid]); lbTrash('experiment',(e.code?e.code+' · ':'')+(e.title||'Untitled'),{exp:e},null,_tid); delete LB.data.experiments[id]; if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
 
 function newPage(){
   var pg=_newPageRecord(NOTES_SEC,'notes');
@@ -12771,8 +12771,9 @@ function delResult(expId,rid){
     +'notes on them go too. It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',
     {title:'Remove results',ok:'Remove'}).then(function(ok){
     if(!ok) return;
-    undoMark('Remove results',['experiments.'+expId]);
-    lbTrash('result',(e.code?e.code+' \u00b7 ':'')+n+' measurement'+(n===1?'':'s')+src,{expId:expId,set:set});
+    var _tid=uid();
+    undoMark('Remove results',['experiments.'+expId,'trash.'+_tid]);
+    lbTrash('result',(e.code?e.code+' \u00b7 ':'')+n+' measurement'+(n===1?'':'s')+src,{expId:expId,set:set},null,_tid);
     e.integration.results=(e.integration.results||[]).filter(function(r){ return String(r.id)!==String(rid); });
     e.updated=Date.now(); save(); renderEditor();
   });
@@ -14250,10 +14251,12 @@ function nbTasksHtml(D){
   return '<div style="margin-top:14px"><div class="day-from-lbl">Tasks for this day</div><div class="nbt-list">'+rows
     +'<div class="nbt-add"><input placeholder="+ add a task" autocomplete="off" onkeydown="wkAddKey(event,\''+D+'\')"></div></div></div>';
 }
-function delDay(D){ var hasBlocks=blocksForDate(D).length>0;
-  function bin(){ var entry=LB.data.notebook[D]; if(entry) lbTrash('day',fmtDate(D),{date:D,entry:entry}); }
-  if(hasBlocks){ lbConfirm('This day has experiment steps, so the day itself stays here — remove those steps from their experiment to clear it. Clear the day’s free note now? It goes to Deleted items.',{title:'Clear daily note',ok:'Clear'}).then(function(ok){ if(!ok) return; undoMark('Clear daily note',['notebook.'+D]); bin(); delete LB.data.notebook[D]; save(); renderAll(); toast('Daily note cleared — the day stays (it still has experiment steps).'); }); return; }
-  lbConfirm('Delete this daily note? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete daily note',ok:'Delete'}).then(function(ok){ if(!ok) return; undoMark('Delete daily note',['notebook.'+D]); bin(); delete LB.data.notebook[D]; if(SEL.page===D) SEL.page=null; save(); renderAll(); toast('Daily note deleted.'); }); }
+function delDay(D){ var hasBlocks=blocksForDate(D).length>0, _tid=uid();
+  // The trash entry is part of the undo step: ⌘Z that left it in Deleted items meant a later
+  // restore wrote the old note back over whatever had been written since.
+  function bin(){ var entry=LB.data.notebook[D]; if(entry) lbTrash('day',fmtDate(D),{date:D,entry:entry},null,_tid); }
+  if(hasBlocks){ lbConfirm('This day has experiment steps, so the day itself stays here — remove those steps from their experiment to clear it. Clear the day’s free note now? It goes to Deleted items.',{title:'Clear daily note',ok:'Clear'}).then(function(ok){ if(!ok) return; undoMark('Clear daily note',['notebook.'+D,'trash.'+_tid]); bin(); delete LB.data.notebook[D]; save(); renderAll(); toast('Daily note cleared — the day stays (it still has experiment steps).'); }); return; }
+  lbConfirm('Delete this daily note? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete daily note',ok:'Delete'}).then(function(ok){ if(!ok) return; undoMark('Delete daily note',['notebook.'+D,'trash.'+_tid]); bin(); delete LB.data.notebook[D]; if(SEL.page===D) SEL.page=null; save(); renderAll(); toast('Daily note deleted.'); }); }
 // A Notebook page: the title, then the line OneNote puts under every title (when it was made,
 // when it was last touched), a rule in the section's colour, and the same rich text as
 // everywhere else. The title is a contenteditable rather than an input so it wraps and so the
@@ -15098,11 +15101,11 @@ function addBlock(date){
     if(t){ t.title=v; save(); renderEditor(); scrollBlk(nb.id); }
   });
 }
-function delBlock(id){ var e=_curExp(); if(!e) return; undoMark('Delete step',['experiments.'+e.id]);
+function delBlock(id){ var e=_curExp(); if(!e) return; var _tid=uid(); undoMark('Delete step',['experiments.'+e.id,'trash.'+_tid]);
   // A step carries its calculator inputs, its notes, its ticks and possibly a plate map. The
   // index goes with it: a step put back at the end of the list is dated from the wrong day.
   var i=e.blocks.map(function(b){return b.id;}).indexOf(id);
-  if(i>=0) lbTrash('block',(e.blocks[i].title||'Step')+' · '+(e.code||e.title||''),{expId:e.id,index:i,block:e.blocks[i]});
+  if(i>=0) lbTrash('block',(e.blocks[i].title||'Step')+' · '+(e.code||e.title||''),{expId:e.id,index:i,block:e.blocks[i]},null,_tid);
   e.blocks=e.blocks.filter(function(b){return b.id!==id;}); syncChainedInputs(e); save(); renderEditor(); }
 function dupBlock(id){ var e=_curExp(); if(!e) return; var i=e.blocks.map(function(b){return b.id;}).indexOf(id); if(i<0) return; var c=JSON.parse(JSON.stringify(e.blocks[i])); c.id=uid(); e.blocks.splice(i+1,0,c); save(); renderEditor(); }
 function moveBlock(id,dir){ var e=_curExp(); if(!e) return; undoMark('Move step',['experiments.'+e.id]); var i=e.blocks.map(function(b){return b.id;}).indexOf(id); var j=i+dir; if(i<0||j<0||j>=e.blocks.length) return; var t=e.blocks[i]; e.blocks[i]=e.blocks[j]; e.blocks[j]=t; syncChainedInputs(e); save(); renderEditor(); }
@@ -15567,7 +15570,9 @@ function removeFile(key,fid){ var o=_plateOwner(key); if(!o||!o.obj.files) retur
   var f=o.obj.files.filter(function(x){return x.id===fid;})[0]; if(!f) return;
   lbConfirm('Remove "'+f.name+'" from this experiment? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Remove file',ok:'Remove'}).then(function(ok){
     if(!ok) return;
-    lbTrash('file',f.name||'File',{ownerKey:key,file:f});
+    var _tid=uid();
+    undoMark('Remove file',['experiments.'+o.exp.id,'trash.'+_tid]);
+    lbTrash('file',f.name||'File',{ownerKey:key,file:f},null,_tid);
     o.obj.files=o.obj.files.filter(function(x){return x.id!==fid;});
     o.exp.updated=Date.now(); save(); renderEditor(); gcAttachments(); });
 }
@@ -16319,8 +16324,9 @@ function ctxPage(ev,id){ var pg=LB.data.pages[id]; if(!pg) return;
 ]); }
 function delPage(id){ var pg=LB.data.pages[id]; if(!pg) return;
   lbConfirm('Delete "'+pgTitle(pg)+'"? It goes to Deleted items, restorable for '+TRASH_DAYS+' days.',{title:'Delete note',ok:'Delete'}).then(function(ok){ if(!ok) return;
-    undoMark('Delete note',['pages']);
-    lbTrash('page',pgTitle(pg),{page:pg}); delete LB.data.pages[id];
+    var _tid=uid();
+    undoMark('Delete note',['pages.'+id,'trash.'+_tid]);
+    lbTrash('page',pgTitle(pg),{page:pg},null,_tid); delete LB.data.pages[id];
     if(SEL.page===id) SEL.page=null; save(); renderAll(); }); }
 function renamePage(id){ var pg=LB.data.pages[id]; if(!pg) return; lbPrompt('Rename page', pg.title||'').then(function(v){ if(v==null) return; undoMark('Rename page',['pages.'+id]); pg.title=v.trim(); pg.updated=Date.now(); save(); renderAll(); }); }
 
