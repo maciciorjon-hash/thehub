@@ -5353,6 +5353,16 @@ verbs as the card; every key on `DS` is consumed by `dsTemplate` or `dsCreate`. 
 guard added — `(_echo.compounds||[])`, because every path that builds an echo object fills it and
 one that forgot to would throw away the whole experiment.
 
+## Moving a day moves the whole day (2026-09-28)
+
+Jon: *"cuando cambio en un experimento el día, no se pasan todas las tareas de ese día al nuevo
+día. Los demás días se pasan bien."* The day header's date button (`setDayDate`) handed the
+day's **first** step to `setBlockDate`, whose "move the rest too?" counts only steps on
+**later** days — so the later days moved and the rest of that day's own steps stayed where they
+were. `setBlockDate(id, v, day, expId)` now takes `day`: every step dated that day moves, then
+the later days follow if asked ("Only this day" otherwise). One step moved from its ⋯ still
+moves alone. **I25** checks both over every preset, and caught the old build with 40 findings.
+
 ## A bug hunt samples; the invariants enumerate (2026-09-24)
 
 Jon: *"¿por qué cada vez que digo que busques bugs encuentras fallos nuevos? ¿No puedes

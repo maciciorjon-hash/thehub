@@ -15031,26 +15031,33 @@ function setBlock(id,f,v){ var e=_curExp(); if(!e) return; var b=(e.blocks||[]).
 // everything after it: the plan did not move, only the labels on it. A reschedule almost always
 // means "and everything after it", which is what slipRest already does for a step ticked late \u2014
 // so it is offered here too, with the intervals between the later steps preserved.
-function setBlockDate(id,v){
-  var e=_curExp(); if(!e) return;
+// `day` moves every step dated that day, not just this one: from the day header that is what
+// "move this day" means. It used to hand the first step of the day to this function alone, and
+// the question below only counts LATER days — so the days after it moved and the rest of that
+// day's own steps stayed behind (Jon, 2026-09-28).
+function setBlockDate(id,v,day,expId){
+  var e=(expId&&LB.data.experiments[expId])||_curExp(); if(!e) return;
   var b=(e.blocks||[]).filter(function(x){ return x.id===id; })[0]; if(!b) return;
   var old=b.date||'', nd=String(v||''); if(!nd||nd===old) return;
   var delta=old?daysBetween(old,nd):0;
-  var later=blocksInRunOrder(e).filter(function(x){ return x!==b && x.date && x.date>old; });
+  var moving=day&&old?(e.blocks||[]).filter(function(x){ return x.date===old; }):[b];
+  var later=blocksInRunOrder(e).filter(function(x){ return moving.indexOf(x)<0 && x.date && x.date>old; });
   function place(all){
-    undoMark(all?'Reschedule from this step':'Change the date',['experiments.'+e.id]);
-    b.date=nd;
+    undoMark(all?'Reschedule from this '+(day?'day':'step'):(day?'Move the day':'Change the date'),['experiments.'+e.id]);
+    moving.forEach(function(x){ x.date=nd; });
     if(all) later.forEach(function(x){ x.date=addDays(x.date,delta); });
     recomputeDayOffsets(e); syncChainedInputs(e); e.updated=Date.now();
     save(); renderPages(); renderEditor();
   }
   if(!later.length||!delta) return place(false);
   var n=Math.abs(delta);
-  lbChoose('<b>'+esc(b.title||'This step')+'</b> moves from '+esc(fmtDate(old))+' to '+esc(fmtDate(nd))+'.',
+  var what=day?('The '+(moving.length===1?'step':moving.length+' steps')+' of '+esc(fmtDate(old))+' move'+(moving.length===1?'s':'')+' to '+esc(fmtDate(nd))+'.')
+              :('<b>'+esc(b.title||'This step')+'</b> moves from '+esc(fmtDate(old))+' to '+esc(fmtDate(nd))+'.');
+  lbChoose(what,
     {title:'Move the rest too?',html:true,answers:[
       {id:'all',safe:true,primary:true,label:'Move the '+later.length+' later step'+(later.length===1?'':'s')+' by '+n+' day'+(n===1?'':'s'),
        sub:'the gaps between them stay as they are'},
-      {id:'one',label:'Only this step',sub:'the later steps keep the dates they have'}
+      {id:'one',label:day?'Only this day':'Only this step',sub:'the later steps keep the dates they have'}
     ]}).then(function(a){ place(a==='all'); });
 }
 // The whole day, from its header: every step on it moves together, and the days after it follow.
@@ -15059,7 +15066,7 @@ function setDayDate(expId,key){
   lbPrompt('Date',key,{title:'Move this day',type:'date'}).then(function(v){
     if(!v||v===key) return;
     var first=blocksInRunOrder(e).filter(function(x){ return x.date===key; })[0];
-    if(first) setBlockDate(first.id,v);
+    if(first) setBlockDate(first.id,v,true,e.id);
   });
 }
 function setExpBlockHtml(expId,blkId,html){ var e=LB.data.experiments[expId]; if(!e) return; var b=(e.blocks||[]).filter(function(x){return x.id===blkId;})[0]; if(!b) return; b.html=_unfillCalc(_persistImgHtml(html)); e.updated=Date.now(); queueSave(); }

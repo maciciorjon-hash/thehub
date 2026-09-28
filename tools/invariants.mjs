@@ -60,6 +60,9 @@
 //                            added liquid was invisible; the read started from 111, not 123)
 //   I24 the Review's plate   Edit on the Review's plate map opens it, and what is changed there
 //       is editable          is the plate the experiment is created with. ("no plate map here")
+//   I25 a moved day moves    Moving a day from its header moves every step dated that day, and
+//       all of it            the later days follow only when asked; moving one step moves that
+//                            step alone. (the day's first step moved and its siblings stayed)
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
 //                            dialog, the Journal, Visualize, the Designer — keeps the caret
@@ -905,6 +908,43 @@ async function suite(opts) {
       const e = await created(() => dsCreate());
       if (!e) { bad('I24', key, 'the design did not create an experiment'); return; }
       if (!e.plate || e.plate.title !== 'INV edited on the Review') bad('I24', key, `the experiment was created with ${e.plate ? 'a different plate' : 'no plate'} than the one edited on the Review`);
+    });
+  }
+
+  // ── I25 moving a day moves every step on it ──
+  if (run('I25')) {
+    const lbPrompt0 = window.lbPrompt, lbChoose0 = window.lbChoose;
+    for (const key of KEYS) for (const ans of ['all', 'one']) await guard('I25', key + ' / ' + ans, async () => {
+      openQuick(key, {});
+      const e = await created(() => createExperiment()); closeNew();
+      if (!e) { bad('I25', key, 'the quick window did not create an experiment'); return; }
+      const dates = [...new Set((e.blocks || []).map(b => b.date).filter(Boolean))].sort();
+      // A day with company, so there are siblings to leave behind; else any day.
+      const day = dates.find(d => e.blocks.filter(b => b.date === d).length > 1) || dates[0];
+      if (!day) return;
+      tick('I25');
+      const before = {}; e.blocks.forEach(b => { before[b.id] = b.date; });
+      const nd = addDays(day, 2);
+      window.lbPrompt = () => Promise.resolve(nd);
+      window.lbChoose = () => Promise.resolve(ans);
+      setDayDate(e.id, day);
+      await sleep(80);
+      window.lbPrompt = lbPrompt0; window.lbChoose = lbChoose0;
+      e.blocks.forEach(b => {
+        const was = before[b.id];
+        const want = was === day ? nd : (was > day && ans === 'all') ? addDays(was, 2) : was;
+        if (b.date !== want) bad('I25', key + ' / ' + ans, `"${b.title}" was on ${was}; moving ${day} to ${nd} (${ans === 'all' ? 'and the rest' : 'this day only'}) left it on ${b.date}, not ${want}`);
+      });
+      // And one step on its own moves alone.
+      const one = e.blocks.find(b => b.date === nd), sib = e.blocks.filter(b => b.date === nd && b !== one);
+      if (one) {
+        window.lbChoose = () => Promise.resolve('one');
+        setBlockDate(one.id, addDays(nd, 1), false, e.id);
+        await sleep(50);
+        window.lbChoose = lbChoose0;
+        if (one.date !== addDays(nd, 1)) bad('I25', key, `"Change the date" on one step did not move it`);
+        sib.forEach(b => { if (b.date !== nd) bad('I25', key, `moving one step also moved "${b.title}"`); });
+      }
     });
   }
 
