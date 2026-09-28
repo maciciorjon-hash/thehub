@@ -9835,12 +9835,14 @@ function syncExpStatus(e){
 function setExpStatus(id,st){
   var e=LB.data.experiments[id]; if(!e) return;
   if(EXP_STATUSES.indexOf(st)<0) return;
+  undoMark('Change status',['experiments.'+id]);
   e.status=st;
   e.statusLocked = !!EXP_DECIDED[st];
   e.updated=Date.now(); save(); renderAll();
 }
 function setExpArchived(id,on){
   var e=LB.data.experiments[id]; if(!e) return;
+  undoMark(on?'Archive':'Unarchive',['experiments.'+id]);
   e.archived=!!on; e.updated=Date.now(); save(); renderAll();
   toast(on ? 'Archived — out of Home, the planner and the counters. Still in Experiments and in reports.'
            : 'Unarchived.');
@@ -10378,6 +10380,7 @@ function showProtoDiff(bId){
 function applyProtoUpdate(bId){
   var f=_findBlk(bId); if(!f) return; var b=f.blk;
   var d=protoDiff(b); if(!d) return;
+  undoMark('Update the step to the new protocol',['experiments.'+f.exp.id]);
   var newP=_paramKeys(d.u.stage.body), newS=_stepIds(d.u.stage.body);
   // Anything you wrote against a step that is gone is moved into the block note. Losing typed
   // text to a protocol edit would be unforgivable; losing a numeric override is recoverable
@@ -11409,6 +11412,7 @@ function dupExperiment(id){ var e=LB.data.experiments[id]; if(!e) return;
   (c.blocks||[]).forEach(function(b){ b.id=uid(); if(b.date&&anchor) b.date=addDays(start, daysBetween(anchor,b.date));
     b.done=false; b.completedAt=null; b.stepDone={}; delete b._openNote; delete b.slipAsked; delete b.carryDismissed; });
   if(e.code) c.code=_dupCode(e.code, start);
+  undoMark('Duplicate',['experiments.'+c.id]);
   c.created=Date.now(); c.updated=Date.now(); LB.data.experiments[c.id]=c; save(); SEL.page=c.id; EXP_TAB='steps'; renderAll();
   toast('Duplicated as '+(c.code||'a new experiment')+' — dated from today, nothing ticked'); }
 // Same date swap as a replicate's code, but a copy is not a replicate: a free code keeps its
@@ -12857,6 +12861,7 @@ function setResultNote(expId,rid,i,v){
 }
 function toggleResultExcluded(expId,rid,i){
   var f=_resRow(expId,rid,i); if(!f) return;
+  undoMark(f.row.excluded?'Include result':'Exclude result',['experiments.'+expId]);
   f.row.excluded=!f.row.excluded; f.e.updated=Date.now(); save(); renderEditor();
 }
 // A result set is an instrument's output plus every exclusion and note somebody put on it.
@@ -13633,6 +13638,7 @@ function repeatExperiment(id){
     var anchor=expAnchorDate(e);
     var c=JSON.parse(JSON.stringify(e));
     c.id=uid();
+    undoMark('Repeat as a replicate',['experiments.'+e.id,'experiments.'+c.id]);
     if(!e.repGroup){ e.repGroup=e.id; e.repIndex=1; }
     c.repGroup=e.repGroup;
     c.repIndex=(repSiblings(e).reduce(function(m,x){ return Math.max(m,x.repIndex||1); },1))+1;
@@ -16275,6 +16281,7 @@ function moveExpTo(id){
   lbPicker('Move '+(e.code||e.title||'entry')+' to…', items, function(it){
     var q=String(it.id).split('/');
     if(e.projectId===q[0] && e.sectionId===q[1]) return;
+    undoMark('Move experiment',['experiments.'+id]);
     e.projectId=q[0]; e.sectionId=q[1]; e.updated=Date.now();
     save(); renderAll(); toast('Moved to '+it.sub+' › '+it.label);
   });
@@ -16282,12 +16289,14 @@ function moveExpTo(id){
 function moveProject(id,dir){
   var a=LB.data.projects, i=a.map(function(p){return p.id;}).indexOf(id), j=i+dir;
   if(i<0 || j<0 || j>=a.length) return;
+  undoMark('Move project',['projects']);
   a.splice(j,0,a.splice(i,1)[0]); save(); renderAll();
 }
 function moveFolder(pid,sid,dir){
   var p=projById(pid); if(!p||!p.sections) return;
   var a=p.sections, i=a.map(function(sc){return sc.id;}).indexOf(sid), j=i+dir;
   if(i<0 || j<0 || j>=a.length) return;
+  undoMark('Move folder',['projects']);
   a.splice(j,0,a.splice(i,1)[0]); save(); renderAll();
 }
 function moveFolderTo(pid,sid){
@@ -16298,6 +16307,8 @@ function moveFolderTo(pid,sid){
   if(!items.length){ lbAlert('There is no other project to move this folder into.'); return; }
   lbPicker('Move folder '+sc.name+' to…', items, function(it){
     var dst=projById(it.id); if(!dst) return;
+    undoMark('Move folder',['projects'].concat(Object.keys(LB.data.experiments).filter(function(k){
+      var e=LB.data.experiments[k]; return e.projectId===pid && e.sectionId===sid; }).map(function(k){ return 'experiments.'+k; })));
     p.sections=p.sections.filter(function(x){ return x.id!==sid; });
     dst.sections=dst.sections||[]; dst.sections.push(sc);
     // The folder is the address. Leaving its experiments pointing at the old project would
