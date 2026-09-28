@@ -242,7 +242,9 @@ select:focus{outline:none;border-color:var(--accent);}
   font-family:var(--sans);font-size:var(--fs-4);font-weight:600;line-height:1;white-space:nowrap;
   padding:5px 10px;border-radius:var(--r-1);border:1.5px solid rgba(0,0,0,0.35);
   box-shadow:0 2px 9px rgba(0,0,0,0.24);user-select:none;-webkit-user-select:none;touch-action:none;
-  transition:box-shadow .12s;max-width:200px;overflow:hidden;text-overflow:ellipsis;}
+  transition:box-shadow .12s;}
+/* No max-width and no ellipsis: a tag is an annotation on the figure, and the export draws the
+   whole text. Cut to "β-globin chain C with a long…" on screen, the view and the PNG disagreed. */
 .chain-tag:hover{box-shadow:0 3px 13px rgba(0,0,0,0.3);}
 .chain-tag.dragging{cursor:grabbing;box-shadow:0 7px 20px rgba(0,0,0,0.36);}
 
@@ -291,6 +293,10 @@ select:focus{outline:none;border-color:var(--accent);}
   #chain-popup .cp-body{padding:14px 15px 16px;}
   .cp-sw,.cp-sw-custom{width:30px;height:30px;}
   .cp-label-input{font-size:var(--fs-6);}
+  /* The load toast sat exactly on the Controls button for 2 s after every structure. */
+  .toast{bottom:82px;}
+  .cp-close,.ov-close{min-width:40px;min-height:40px;}
+  #hslReset{padding:10px 8px!important;margin:-10px -8px;}
 }
 
 /* Motion here is decoration: nothing it conveys is lost when it is switched off, and a
@@ -1510,10 +1516,15 @@ function doExport(){
   var prevBg=state.bg;
   var cssW=canvas.clientWidth, cssH=canvas.clientHeight;
   var off=document.createElement('canvas'), ctx;
+  // Residue labels are 3Dmol sprites drawn INTO the WebGL canvas, so "Include labels" off still
+  // exported them — only the chain tags (HTML, drawn separately) obeyed the box.
+  var hideRes=!state.exportLabels && _resLabelObjs.length;
+  if(hideRes){ _resLabelObjs.forEach(function(l){ try{ viewer.removeLabel(l); }catch(_){} }); _resLabelObjs=[]; }
   var restore=function(){
     vp.style.flex=''; vp.style.width=''; vp.style.height='';
     try{viewer.resize();}catch(e){}
     _setViewerBg(prevBg);
+    if(hideRes) renderResidueLabels();
     try{viewer.render();}catch(e){}
   };
   try{
@@ -1749,8 +1760,10 @@ document.addEventListener('DOMContentLoaded',function(){
     setTimeout(function(){ if(viewer){viewer.resize();viewer.render();} },60);
   });
 
-  try{ var _t=localStorage.getItem('ribbon_theme'); if(_t)document.documentElement.setAttribute('data-theme',_t); }catch(e){}
-  window.toggleTheme=function(){ var d=$('theme-chk').checked; document.documentElement.setAttribute('data-theme',d?'dark':'light'); try{localStorage.setItem('ribbon_theme',d?'dark':'light');}catch(e){} };
+  // hub_theme is the key every other app reads; Ribbon alone kept its own, so opened on its own
+  // it ignored the theme chosen everywhere else. The old key is still read once as a fallback.
+  try{ var _t=localStorage.getItem('hub_theme')||localStorage.getItem('ribbon_theme'); if(_t)document.documentElement.setAttribute('data-theme',_t); }catch(e){}
+  window.toggleTheme=function(){ var d=$('theme-chk').checked; document.documentElement.setAttribute('data-theme',d?'dark':'light'); try{localStorage.setItem('hub_theme',d?'dark':'light');}catch(e){} };
 
   var spinning=false;
   $('spinBtn').addEventListener('click',function(){
