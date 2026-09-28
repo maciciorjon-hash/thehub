@@ -111,6 +111,9 @@
 //   B17 format change         Values, headers and labels of dropped wells go with them. (LB-11)
 //   B18 one timer             Pressing a step's timer twice starts one. (LB-16)
 //   B19 keyboard reach        Every clickable navigation element is reachable with Tab. (LB-15)
+//   S1 IndexedDB              A notebook bigger than localStorage's ~5 MB saves and survives a
+//                            reload; an older build's localStorage tree is carried over; of two
+//                            copies the newer wins. (the ~5.2 MB ceiling)
 //
 // Usage (repo root):  node tools/invariants.mjs [--url=URL,URL] [--only=I1,I4] [--verbose]
 // Defaults to the source app AND labbook-standalone.html when it exists (the build that embeds
@@ -1566,6 +1569,49 @@ try {
     let r;
     try { r = await pg.evaluate(suite, { only: ONLY }); }
     catch (e) { r = { out: [{ inv: 'harness', case: '-', msg: 'the suite itself threw: ' + String(e && e.message || e).split('\n')[0] }], counts: {}, archive: false, presets: 0 }; }
+    // S1 — the notebook lives in IndexedDB: bigger than localStorage can hold, it saves and comes
+    // back after a reload; a tree an older build left in localStorage is carried over; of the
+    // two copies the newer wins. Needs reloads, so it runs here rather than inside the suite.
+    if (!ONLY || ONLY.includes('S1')) {
+      const s1 = (c, m) => { r.out.push({ inv: 'S1', case: c, msg: m }); };
+      const ready = () => pg.waitForFunction(() => window.LB && !(typeof _localLoading !== 'undefined' && _localLoading) && (LB.data.projects || []).length, null, { timeout: 20000 });
+      try {
+        r.counts.S1 = 0;
+        await pg.goto(url + (url.includes('?') ? '&' : '?') + '_s1=1', { waitUntil: 'load' }); await ready();
+        const big = await pg.evaluate(async () => {
+          if (typeof _treeOK === 'undefined' || !_treeOK) return { skip: 'the notebook is not stored in IndexedDB' };
+          const P = LB.data.projects[0], S = (P.sections || [])[0];
+          for (let i = 0; i < 40; i++) LB.data.experiments['s1_' + i] = { id: 's1_' + i, code: 'S1_' + i, title: 'S1 big ' + i, projectId: P.id, sectionId: S && S.id,
+            blocks: [{ id: 's1b' + i, title: 'x', date: todayStr(), html: '<p>' + 'y'.repeat(200000) + '</p>' }] };
+          save(); await _flushLocal(); await _treeLast;
+          return { mb: JSON.stringify(LB.data).length / 1e6, broken: _storageBroken };
+        });
+        if (big.skip) s1('big', big.skip);
+        else { r.counts.S1++;
+          if (big.broken) s1('big', `a ${big.mb.toFixed(1)} MB notebook was reported as not saved`);
+          await pg.reload({ waitUntil: 'load' }); await ready();
+          const n = await pg.evaluate(() => Object.keys(LB.data.experiments).filter(k => /^s1_/.test(k)).length);
+          if (n !== 40) s1('big', `after a reload ${n} of the 40 experiments of a ${big.mb.toFixed(1)} MB notebook came back`);
+          // An older build's localStorage tree, newer than IndexedDB, is taken and moved over.
+          r.counts.S1++;
+          await pg.evaluate(() => { const d = JSON.parse(JSON.stringify(LB.data)); Object.keys(d.experiments).filter(k => /^s1_/.test(k)).forEach(k => delete d.experiments[k]);
+            d.experiments.S1_OLD = { id: 'S1_OLD', code: 'S1_OLD', title: 'old build', projectId: d.projects[0].id, blocks: [] }; d.updated = Date.now() + 5;
+            window._lsEmergency = function () {}; localStorage.setItem('hub_labbook', JSON.stringify(d)); localStorage.removeItem('hub_labbook_at'); });
+          await pg.reload({ waitUntil: 'load' }); await ready(); await pg.waitForTimeout(500);
+          const m = await pg.evaluate(async () => ({ has: !!LB.data.experiments.S1_OLD, big: Object.keys(LB.data.experiments).some(k => /^s1_/.test(k)),
+            idb: await _treeGet().then(x => !!JSON.parse(x.json).experiments.S1_OLD), ls: localStorage.getItem('hub_labbook') != null }));
+          if (!m.has || m.big) s1('migrate', 'a newer tree in localStorage was not the one loaded');
+          if (!m.idb) s1('migrate', 'the tree from localStorage was not written to IndexedDB');
+          if (m.ls) s1('migrate', 'the localStorage copy was left behind after IndexedDB took it');
+          // And an older localStorage copy loses to IndexedDB.
+          r.counts.S1++;
+          await pg.evaluate(() => { const d = JSON.parse(JSON.stringify(LB.data)); d.experiments = {}; d.updated = 1; window._lsEmergency = function () {};
+            localStorage.setItem('hub_labbook', JSON.stringify(d)); localStorage.setItem('hub_labbook_at', '1'); });
+          await pg.reload({ waitUntil: 'load' }); await ready();
+          if (!(await pg.evaluate(() => !!LB.data.experiments.S1_OLD))) s1('older', 'an older localStorage copy replaced the IndexedDB notebook');
+        }
+      } catch (e) { s1('harness', String(e && e.message || e).split('\n')[0]); }
+    }
     const name = path.basename(u);
     console.log(`\n${name} — ${r.presets} presets, Archive ${r.archive ? 'embedded (protocol cases run)' : 'absent (protocol cases skipped)'}, ${((Date.now() - t0) / 1000).toFixed(1)} s`);
     const invs = [...new Set([...Object.keys(r.counts), ...r.out.map(x => x.inv)])].sort();

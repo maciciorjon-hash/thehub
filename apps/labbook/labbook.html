@@ -864,6 +864,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
   color:var(--text);font:inherit;cursor:pointer;
   transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
 .dlg-ans:hover,.dlg-ans:focus-visible{background:var(--surface3);border-color:var(--accent);}
+/* The notebook is being read from IndexedDB: nothing to draw yet, and a flash of an empty one would lie. */
+html.lb-loading body > *{visibility:hidden;}
 /* Rows made keyboard-reachable by _kbArm: the focus has to be visible, or Tab moves nothing you can see. */
 [role=button][tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-1);}
 .dlg-ans.primary{border-color:var(--accent);}
@@ -7669,10 +7671,11 @@ function lbBlank(){ return {projects:[],generalSections:[],notebooks:[],experime
 // FAILS is the most important thing this app can say — and it used to go into an empty catch.
 // A blank tree here is indistinguishable from a genuinely empty notebook, and four seconds
 // later gcAttachments() treated every attachment on this machine as garbage.
-var _localReadFailed=false;
+var _localReadFailed=false, _lsTree=false;
 try{
   var _lbRaw=localStorage.getItem('hub_labbook');
   LB.data=JSON.parse(_lbRaw||'null');
+  _lsTree=!!(LB.data&&typeof LB.data==='object'&&!Array.isArray(LB.data));
   // It was there and did not parse. An empty slot is a new browser; garbage is a broken one,
   // and the difference is what decides whether anything is allowed to delete today.
   if(_lbRaw && (!LB.data || typeof LB.data!=='object' || Array.isArray(LB.data))) _localReadFailed=true;
@@ -7709,37 +7712,42 @@ function _markBootSettled(){
 }
 // A read that never resolves must not park the safety net for ever — but 20 s of waiting costs
 // nothing, and it is far longer than a slow first read.
-setTimeout(_markBootSettled, 20000);
-['projects','generalSections','notebooks','experiments','pages','notebook','tags','presets','antibodies','attachments','trash'].forEach(function(k){ if(!LB.data[k]) LB.data[k]=(k==='projects'||k==='generalSections'||k==='notebooks'||k==='tags')?[]:{}; });
-if(!LB.data.planner||typeof LB.data.planner!=='object') LB.data.planner={tasks:{}};
-if(!LB.data.planner.tasks||typeof LB.data.planner.tasks!=='object') LB.data.planner.tasks={};
-LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
-// Every project carries a two-letter code prefix, and a notebook that predates the field is
-// filled in on the first load rather than waiting to be asked project by project. It is stored,
-// not re-derived on each load: a prefix that changed when you renamed the project would leave
-// two halves of one project's experiments carrying two different codes.
-if(_backfillPrefixes()) setTimeout(function(){ try{ save(); }catch(e){} },0);
-Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
-  if(e.projectId && !e.sectionId){ var p=LB.data.projects.filter(function(x){return x.id===e.projectId;})[0];
-    if(p){ var u=(p.sections||[]).filter(function(s){return s.name==='Unclassified';})[0];
-      if(!u){ u={id:uid(),name:'Unclassified',created:Date.now()}; p.sections.push(u); } e.sectionId=u.id; } } });
-// One-time backfill of the explicit `done` flag. Carry-over used to be inferred from unticked
-// checkboxes; every template block ships with a checklist, so without this every historical
-// step in an existing notebook would land in carry-over on the first load after the upgrade.
-// Anything already past the lookback window is treated as settled.
-if(!LB.data._doneV1){
-  var _cutoff=addDays(todayStr(),-CARRY_LOOKBACK_DAYS);
+setTimeout(function(){ _onLocalLoaded(_markBootSettled); }, 20000);
+// What every tree gets before anything reads it — the one this browser loaded at boot and one
+// adopted from IndexedDB a moment later alike.
+function _lbBootFix(){
+  ['projects','generalSections','notebooks','experiments','pages','notebook','tags','presets','antibodies','attachments','trash'].forEach(function(k){ if(!LB.data[k]) LB.data[k]=(k==='projects'||k==='generalSections'||k==='notebooks'||k==='tags')?[]:{}; });
+  if(!LB.data.planner||typeof LB.data.planner!=='object') LB.data.planner={tasks:{}};
+  if(!LB.data.planner.tasks||typeof LB.data.planner.tasks!=='object') LB.data.planner.tasks={};
+  LB.data.projects.forEach(function(p,i){ p.sections=p.sections||[]; if(!p.color) p.color=PROJ_COLORS[i%PROJ_COLORS.length]; });
+  // Every project carries a two-letter code prefix, and a notebook that predates the field is
+  // filled in on the first load rather than waiting to be asked project by project. It is stored,
+  // not re-derived on each load: a prefix that changed when you renamed the project would leave
+  // two halves of one project's experiments carrying two different codes.
+  if(_backfillPrefixes()) setTimeout(function(){ try{ save(); }catch(e){} },0);
   Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
-    (e.blocks||[]).forEach(function(b){
-      if(b.done!==undefined) return;
-      // Old enough to be history, or its checklist is fully ticked → done.
-      b.done = (!b.date || b.date<_cutoff) ? true : !_legacyHasUnchecked(b.html);
-      b.completedAt = b.done?(e.updated||Date.now()):null;
+    if(e.projectId && !e.sectionId){ var p=LB.data.projects.filter(function(x){return x.id===e.projectId;})[0];
+      if(p){ var u=(p.sections||[]).filter(function(s){return s.name==='Unclassified';})[0];
+        if(!u){ u={id:uid(),name:'Unclassified',created:Date.now()}; p.sections.push(u); } e.sectionId=u.id; } } });
+  // One-time backfill of the explicit `done` flag. Carry-over used to be inferred from unticked
+  // checkboxes; every template block ships with a checklist, so without this every historical
+  // step in an existing notebook would land in carry-over on the first load after the upgrade.
+  // Anything already past the lookback window is treated as settled.
+  if(!LB.data._doneV1){
+    var _cutoff=addDays(todayStr(),-CARRY_LOOKBACK_DAYS);
+    Object.keys(LB.data.experiments).forEach(function(k){ var e=LB.data.experiments[k];
+      (e.blocks||[]).forEach(function(b){
+        if(b.done!==undefined) return;
+        // Old enough to be history, or its checklist is fully ticked → done.
+        b.done = (!b.date || b.date<_cutoff) ? true : !_legacyHasUnchecked(b.html);
+        b.completedAt = b.done?(e.updated||Date.now()):null;
+      });
+      if(e.status==='done') (e.blocks||[]).forEach(function(b){ if(b.done===false){ b.done=true; b.completedAt=e.updated||Date.now(); } });
     });
-    if(e.status==='done') (e.blocks||[]).forEach(function(b){ if(b.done===false){ b.done=true; b.completedAt=e.updated||Date.now(); } });
-  });
-  LB.data._doneV1=true;
+    LB.data._doneV1=true;
+  }
 }
+_lbBootFix();
 // ── The Notebook: notebooks → sections → pages → subpages ──────────────────────────────────
 // Every Planner project is a notebook (the same record, seen from the other side), general
 // notebooks live in LB.data.notebooks[], and Journal is derived from the day notes. Sections
@@ -8449,17 +8457,104 @@ function _keepUnreadable(){
     .then(function(ok){ _rawKept=true; if(_lsDirty) _flushLocal(); return ok; });
   return _rawKeepQ; }
 function downloadUnreadableCopy(){ if(typeof _lbRaw==='string'&&_lbRaw) _dl('labbook-unreadable-'+todayStr()+'.txt',_lbRaw,'text/plain'); }
-function _flushLocal(){ if(!_lsDirty) return;
-  if(!_rawKept){ _keepUnreadable(); return; }
-  _lsDirty=false; clearTimeout(_lsT); _lsT=null;
-  try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data));
-    // A failure is loud and a recovery has to be as well: once space was freed the notebook was
-    // saving again while the pill went on saying "Not saved!" for the rest of the session.
-    if(_storageBrokenTree){ _storageBrokenTree=false; _storageBroken=_storageBrokenAtt; _storageWarned=false;
-      updateStatus(); toast('The notebook is saving to this browser again'); } }
+// ── Where the notebook lives on this device: IndexedDB ────────────────────────────────────────
+// It used to be one localStorage key, and localStorage stops at ~5.2 MB — about 130 NanoBRET-
+// sized experiments — after which every save failed. IndexedDB ('lb_tree', one record holding
+// the tree as JSON) has no such ceiling. localStorage keeps two jobs: the tree an older build
+// left there, adopted once and then removed; and an emergency copy written synchronously when
+// the tab is hidden or closed, because an IndexedDB write started while a page is closing can
+// be lost and a localStorage write cannot. Boot takes whichever of the two is newer. If
+// IndexedDB is unavailable at all, everything falls back to localStorage as it was.
+var _localLoading=true, _treeOK=false, _treeLast=Promise.resolve(true), _localQ=[];
+var _treeDBP=null;
+function _treeDB(){ if(_treeDBP) return _treeDBP;
+  _treeDBP=new Promise(function(res,rej){ try{ var r=indexedDB.open('lb_tree',1);
+    r.onupgradeneeded=function(){ if(!r.result.objectStoreNames.contains('t')) r.result.createObjectStore('t'); };
+    r.onsuccess=function(){ var db=r.result; db.onclose=function(){ _treeDBP=null; }; res(db); };
+    r.onerror=function(){ _treeDBP=null; rej(r.error); }; r.onblocked=function(){ rej(new Error('blocked')); };
+  }catch(e){ rej(e); } });
+  return _treeDBP; }
+function _treeGet(){ return _treeDB().then(function(db){ return new Promise(function(res,rej){
+  try{ var g=db.transaction('t','readonly').objectStore('t').get('tree'); g.onsuccess=function(){ res(g.result||null); }; g.onerror=function(){ rej(g.error); }; }catch(e){ rej(e); } }); }); }
+function _treePut(json,updated){ return _treeDB().then(function(db){ return new Promise(function(res){
+  try{ var t=db.transaction('t','readwrite'); t.objectStore('t').put({json:json,updated:updated||0,at:Date.now()},'tree');
+       t.oncomplete=function(){ res(true); }; t.onerror=function(){ res(t.error||false); }; t.onabort=function(){ res(t.error||false); }; }catch(e){ res(e); } }); }); }
+// Run once the notebook this device holds is known — before that, the tree in memory may be a
+// placeholder, and syncing, cleaning up or backing it up would be acting on nothing.
+function _onLocalLoaded(fn){ if(!_localLoading){ fn(); return; } _localQ.push(fn); }
+function _storageOkAgain(){
+  // A failure is loud and a recovery has to be as well: once space was freed the notebook was
+  // saving again while the pill went on saying "Not saved!" for the rest of the session.
+  if(_storageBrokenTree){ _storageBrokenTree=false; _storageBroken=_storageBrokenAtt; _storageWarned=false;
+    updateStatus(); toast('The notebook is saving to this browser again'); } }
+function _lsWriteTree(json){
+  try{ localStorage.setItem('hub_labbook', json); _storageOkAgain(); }
   // Silently dropping this means the notebook stops persisting and nobody finds out until a
   // reload wipes the day's work. Always surface it.
   catch(e){ _storageFailed(e,'tree'); } }
+function _flushLocal(){ if(!_lsDirty) return;
+  if(!_rawKept){ _keepUnreadable(); return; }
+  if(_localLoading) return;            // stays dirty; flushed the moment the notebook is known
+  _lsDirty=false; clearTimeout(_lsT); _lsT=null;
+  var json; try{ json=JSON.stringify(LB.data); }catch(e){ _storageFailed(e,'tree'); return; }
+  if(!_treeOK){ _lsWriteTree(json); return; }
+  var upd=LB.data.updated||0;
+  _treeLast=_treePut(json,upd).then(function(r){
+    if(r===true){ _storageOkAgain();
+      // A localStorage copy no newer than this one (an older build's tree, an emergency copy) is
+      // redundant now, and it is the thing with the 5 MB ceiling. One written after this flush
+      // began is newer, and stays until a write that covers it lands.
+      try{ if(localStorage.getItem('hub_labbook')!=null && (+localStorage.getItem('hub_labbook_at')||0)<=upd){
+        localStorage.removeItem('hub_labbook'); localStorage.removeItem('hub_labbook_at'); } }catch(e){}
+      return true; }
+    // IndexedDB refused the write. localStorage is the next best place, and says so if it fails.
+    _lsWriteTree(json); return false; });
+  return _treeLast; }
+// The synchronous copy for a page that is going away. It may not fit — that is what IndexedDB
+// is for — and a copy that did not fit must not leave an older one behind looking current.
+function _lsEmergency(){
+  if(_localLoading||!_treeOK) return;
+  try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data)); localStorage.setItem('hub_labbook_at', String(LB.data.updated||0)); }
+  catch(e){ try{ localStorage.removeItem('hub_labbook'); localStorage.removeItem('hub_labbook_at'); }catch(e2){} } }
+// Put a tree in place after boot: the same fixes and migrations the boot tree and a tree adopted
+// from the cloud get, then the screen redrawn where you were.
+function _adoptLocalTree(d){
+  LB.data=d; _lbNormTree(LB.data); _lbBootFix();
+  try{ _nbMigrate(); _journalMigrate(); _pubMigrate(); }catch(e){}
+  seedPresets(); maybeSeed(); migrateSemanticExperimentTitles();
+  _restoreWhereLeft(); }
+function _localLoad(){
+  var done=false;
+  function finish(){ if(done) return; done=true;
+    _localLoading=false;
+    document.documentElement.classList.remove('lb-loading');
+    // A tree that came from localStorage (an older build's, or the copy written as the tab
+    // closed) goes into IndexedDB now; so do the fixes the adopted one just received.
+    if(_treeOK && _lsTree) _lsDirty=true;
+    if(!_lsTree && !LB.data._seeded){ if(maybeSeed()) _lsDirty=true; migrateSemanticExperimentTitles(); _restoreWhereLeft(); }
+    if(_lsDirty) _flushLocal();
+    renderAll();
+    var q=_localQ; _localQ=[]; q.forEach(function(fn){ try{ fn(); }catch(e){} }); }
+  // A read that never answers must not leave the notebook invisible: after 4 s this browser is
+  // treated as one without IndexedDB, and localStorage carries on as it always did.
+  setTimeout(function(){ if(!done){ _treeOK=false; finish(); } }, 4000);
+  var t0=_lsTree?(LB.data.updated||0):-1;
+  _treeGet().then(function(rec){
+    if(done) return;
+    _treeOK=true;
+    var d=null;
+    if(rec&&typeof rec.json==='string'){ try{ d=JSON.parse(rec.json); }catch(e){ d=null; } }
+    if(d&&(typeof d!=='object'||Array.isArray(d))) d=null;
+    if(d && (d.updated||0)>t0){
+      _adoptLocalTree(d); _lsTree=false;
+      // What localStorage held is older than this: nothing to keep it for.
+      try{ localStorage.removeItem('hub_labbook'); localStorage.removeItem('hub_labbook_at'); }catch(e){}
+      // The copy this browser could not read was set aside at boot; the notebook is the one here.
+      if(_localReadFailed){ _localReadFailed=false; updateStatus(); }
+    }
+    finish();
+  }, function(){ if(!done){ _treeOK=false; finish(); } });
+}
 // ══════════════════════════════════════════════════════════════════════════
 // VERSION HISTORY
 //
@@ -8511,7 +8606,7 @@ var _verSeen=null, _verWhen={}, _verLastScan=0, _verBusy=false;
 // same work _cloudPush already does — so it is throttled to once every 2.5 minutes rather than
 // once per save, and it only ever writes a version every VER_EVERY per record anyway.
 function _verMaybe(force){
-  if(_localReadFailed||_adopting||_verBusy) return;
+  if(_localLoading||_localReadFailed||_adopting||_verBusy) return;
   var now=Date.now();
   if(!force && (now-_verLastScan)<VER_SCAN) return;
   _verLastScan=now;
@@ -8847,8 +8942,8 @@ function save(){
   _syncT=setTimeout(function(){ _flushLocal(); _cloudPush(); _verMaybe(); }, 1200);
 }
 // Never lose a pending local write if the tab is hidden/closed before the 150ms flush.
-window.addEventListener('pagehide',function(){ _flushLocal(); _verMaybe(true); });
-document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') _flushLocal(); });
+window.addEventListener('pagehide',function(){ _flushLocal(); _lsEmergency(); _verMaybe(true); });
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden'){ _flushLocal(); _lsEmergency(); } });
 // A failed first read used to end sync for the whole session: no adoption, no _cloudSeen,
 // and _cloudListen never reached — so this device kept saving locally and saying so quietly
 // for hours. The read fails for ordinary reasons (the token is not there yet, the network
@@ -8897,7 +8992,7 @@ function lbInitSync(){
       _backfillPrefixes();   // a tree adopted from the cloud can predate the field too
       _nbMigrate(); _journalMigrate(); _pubMigrate();   // and the notebook fields; all idempotent per record
       seedPresets();
-      try{ localStorage.setItem('hub_labbook',JSON.stringify(LB.data)); }catch(e){}
+      _lsDirty=true; _flushLocal();
       _adopting=false; maybeSeed(); renderAll();
     }
     // What the cloud holds — read from the cloud, not assumed from this device. The first push
@@ -15747,7 +15842,7 @@ function _collectAttIds(){
 var ATT_GC_KEY='__gc__', ATT_GC_DAYS=30;
 // Why anything is allowed to delete at all. Each of these means "the tree in memory is not yet
 // a statement about the notebook".
-function _gcSafe(){ return _bootSettled && !_adopting && !_localReadFailed && !_storageBroken; }
+function _gcSafe(){ return _bootSettled && !_localLoading && !_adopting && !_localReadFailed && !_storageBroken; }
 function _attGcMap(){ return _attGet(ATT_GC_KEY).then(function(m){ return (m&&typeof m==='object')?m:{}; }); }
 // Quiet on purpose: a mark that fails to write is simply re-made on the next pass, which only
 // ever errs towards keeping the file. Routing it through _attPut would raise "Attachment NOT
@@ -20563,9 +20658,11 @@ function restoreFromBackupFile(file){
       Promise.all(ids.map(function(id){ return _attPut(id,blobs[id]); })).then(function(results){
         var failed=results.filter(function(x){ return x===false; }).length;
         LB.data=data; save();
-        if(failed){ lbAlert(failed+' of '+ids.length+' attachments could not be written to this browser\'s storage — the notebook text restored fine, but those images will be missing. Free up space and restore again.',{title:'Some attachments not restored',danger:true}).then(function(){ location.reload(); }); return; }
+        // The write is asynchronous now; reloading before it lands would bring back the old tree.
+        var _written=Promise.resolve(_flushLocal()).then(function(){ return _treeLast; });
+        if(failed){ lbAlert(failed+' of '+ids.length+' attachments could not be written to this browser\'s storage — the notebook text restored fine, but those images will be missing. Free up space and restore again.',{title:'Some attachments not restored',danger:true}).then(function(){ return _written; }).then(function(){ location.reload(); }); return; }
         toast('Restored'+(ids.length?(' with '+ids.length+' attachment'+(ids.length!==1?'s':'')):'')+' — reloading…');
-        setTimeout(function(){ location.reload(); },600);
+        _written.then(function(){ setTimeout(function(){ location.reload(); },300); });
       });
     });
   };
@@ -20583,7 +20680,7 @@ function restoreFromBackupFile(file){
 function maybeAutoBackup(){
   // Backing up a tree we could not read is how a good backup file gets rotated out by a blank
   // one. The snapshot has its own "never replaces a bigger one" rule; a written file does not.
-  if(_localReadFailed) return;
+  if(_localReadFailed||_localLoading) return;
   var last=''; try{ last=localStorage.getItem('lb_last_backup')||''; }catch(e){}
   if(last===todayStr()) return;
   var pb=_parentBackup();
@@ -21375,18 +21472,22 @@ function _updateBadge(){
     if(n>0) navigator.setAppBadge(n).catch(function(){}); else if(navigator.clearAppBadge) navigator.clearAppBadge().catch(function(){});
   }catch(e){}
 }   // renderPages() calls renderSections()
-var _seedChanged=maybeSeed();
-var _semanticTitlesChanged=migrateSemanticExperimentTitles();
-if(_seedChanged||_semanticTitlesChanged) save();
+// With no tree in localStorage the notebook may still be in IndexedDB, so the seed waits for
+// that answer (_localLoad): seeding a notebook that is about to arrive would draw six sample
+// projects for a moment, then replace them.
+if(_lsTree||_localReadFailed){ var _seedChanged=maybeSeed(); var _semanticTitlesChanged=migrateSemanticExperimentTitles();
+  if(_seedChanged||_semanticTitlesChanged) save(); }
+else document.documentElement.classList.add('lb-loading');
 _leanInit(); applyLayout(); renderPanels();
-(function(){
+function _restoreWhereLeft(){
   // Open where you left off: the Journal page you were on, Visualize, or the Planner's last node.
   var nb=WS_LAST.notebook;
   if(WS_LAST.ws==='notebook' && nb && nb.page && (_isDateKey(nb.page)||LB.data.pages[nb.page])){ SEL.node=_jrNode(); SEL.page=nb.page; return; }
   if(WS_LAST.ws==='visualize'){ SEL.node={kind:'viz'}; return; }
   if(WS_LAST.ws==='designer'){ SEL.node={kind:'design'}; return; }
   var r=_wsRestoreNode(); if(r){ SEL.node=r.node; SEL.page=r.page; }
-})();
+}
+_restoreWhereLeft();
 // ── Keyboard reach ──────────────────────────────────────────────────────────────────────────
 // The rows you navigate by — Home, Today, Week, Experiments, every project and folder, the
 // experiments in a folder, the Journal's days, Home's cards — are divs with an onclick and no
@@ -21412,14 +21513,14 @@ renderAll(); _timersLoad();
 // a broken one, and the person in front of it is about to see a notebook that is missing work.
 // That is worth interrupting for — it is the one situation where carrying on typing makes it
 // worse.
-if(_localReadFailed){ _keepUnreadable(); setTimeout(function(){ try{ lbChoose(
+if(_localReadFailed){ _keepUnreadable(); _onLocalLoaded(function(){ if(!_localReadFailed) return; setTimeout(function(){ try{ lbChoose(
   'This browser’s saved copy of your notebook could not be read at startup, so what is on screen may be incomplete.<br><br>Nothing has been deleted: the unreadable copy has been set aside in this browser, and the daily backup and the attachment cleanup are held off. If you are signed in, the cloud copy should load in a few seconds and replace this. If it does not, restore from a backup (Recover) before making changes.',
   {title:'Saved copy could not be read',html:true,answers:[
     {id:'ok',primary:true,safe:true,label:'I understand'},
     {id:'dl',label:'Download the unreadable copy',sub:'The saved text exactly as it was found, to recover by hand'}]})
-  .then(function(a){ if(a==='dl') downloadUnreadableCopy(); }); }catch(e){} }, 800); }
-_lbAuthWatch();
-lbInitSync();
+  .then(function(a){ if(a==='dl') downloadUnreadableCopy(); }); }catch(e){} }, 800); }); }
+_localLoad();
+_onLocalLoaded(function(){ _lbAuthWatch(); lbInitSync(); });
 // Both of these can destroy something — the backup by writing a snapshot or a file over a good
 // one, the GC by marking every attachment on the machine — and both used to run against
 // whatever happened to be in memory 1.5 and 4 seconds in, which on a slow first read is the

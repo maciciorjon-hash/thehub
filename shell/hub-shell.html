@@ -2610,19 +2610,25 @@ function _bandCells(){
     +'<div class="ld-rows">'+list+'</div></div>';
 }
 // Echo posts its potencies into Labbook, so the most recent ones live in Labbook's own store.
+// That store is IndexedDB now (it outgrew localStorage), so this asks the Labbook frame for its
+// tree rather than reading a key — and reads integration.results, where results actually are:
+// the `results` field it used to read was never written, so this band had never shown anything.
 function _bandAnalysis(){
   var d=null;
-  try{ d=JSON.parse(localStorage.getItem('hub_labbook')||'null'); }catch(e){ return ''; }
+  try{ var f=document.getElementById('frame-labbook'), w=f&&f.contentWindow; d=w&&w.LB&&w.LB.data; }catch(e){ return ''; }
   var exps=d&&d.experiments; if(!exps) return '';
   var rows=[];
   Object.keys(exps).forEach(function(k){
-    (exps[k].results||[]).forEach(function(r){ rows.push({r:r, code:exps[k].code||''}); });
+    var e=exps[k]; ((e.integration&&e.integration.results)||[]).forEach(function(set){
+      (set.rows||[]).forEach(function(r){ if(r&&!r.excluded) rows.push({r:r, set:set, code:e.code||'', at:set.createdAt||''}); }); });
   });
   if(!rows.length) return '';
+  rows.sort(function(a,b){ return String(a.at).localeCompare(String(b.at)); });
   var list=rows.slice(-3).reverse().map(function(x){
+    var lbl=x.r.potencyLabel||x.set.potencyLabel||'Potency', u=x.set.potencyUnit||'';
     return '<div class="ld-row"><span class="t">'+_dashEsc(x.r.compound||'—')+'</span>'
-      +'<span class="s">'+_dashEsc((x.r.target||'')+' · '+(x.r.label||'Potency')+' '+(x.r.potency||''))+'</span>'
-      +(x.r.flag?'<span class="ld-badge warn">'+_dashEsc(x.r.flag)+'</span>':'')+'</div>';
+      +'<span class="s">'+_dashEsc((x.r.target||'')+' · '+lbl+' '+(x.r.potency!=null?x.r.potency:'')+(u?' '+u:''))+'</span>'
+      +(x.r.flag?'<span class="ld-badge warn">'+_dashEsc(typeof x.r.flag==='string'?x.r.flag:'flagged')+'</span>':'')+'</div>';
   }).join('');
   return '<div class="ld-band">'+_stat(rows.length,'results in')+'<div class="ld-rows">'+list+'</div></div>';
 }
