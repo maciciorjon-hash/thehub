@@ -6035,8 +6035,11 @@ function renderProperties(results, cdata) {
 
 // ===== RENDER DOWNLOADS =====
 // ===== PDF GENERATION =====
+let _pdfBusy = false;
 async function generateAndDownloadCurvePDFs() {
   if (!_lastResultsData || !_lastResultsData.length) { echoToast('No results yet. Run analysis first.'); return; }
+  // One export at a time: a double click opened two pickers, or generated every PDF twice.
+  if (_pdfBusy || document.getElementById('pdf-picker-modal')) return;
   // Build distinct (assay, protein) groups so the user can pick which to export.
   const _isMulti = !!(window._lastAnalysisParams?.multiAssay);
   const _grps = [];
@@ -6083,10 +6086,15 @@ async function generateAndDownloadCurvePDFs() {
       </div>
     `;
     document.body.appendChild(modal);
-    modal.querySelector('#pdf-pick-cancel').onclick = () => { modal.remove(); resolve(); };
+    const _cancel = () => { modal.remove(); document.removeEventListener('keydown', _esc, true); resolve(); };
+    const _esc = e => { if (e.key === 'Escape') { e.preventDefault(); _cancel(); } };
+    document.addEventListener('keydown', _esc, true);
+    modal.addEventListener('mousedown', e => { if (e.target === modal) _cancel(); });
+    modal.querySelector('#pdf-pick-go').focus();
+    modal.querySelector('#pdf-pick-cancel').onclick = _cancel;
     modal.querySelector('#pdf-pick-go').onclick = async () => {
       const picked = [...modal.querySelectorAll('input[type=checkbox]:checked')].map(cb => _grps[+cb.dataset.idx]);
-      modal.remove();
+      modal.remove(); document.removeEventListener('keydown', _esc, true);
       if (!picked.length) { resolve(); return; }
       const pickedKeys = new Set(picked.map(g => g.key));
       const _grpKey = r => (_isMulti ? (r._assayType || '') : '') + '||' + (r.Protein || '');
@@ -6097,6 +6105,8 @@ async function generateAndDownloadCurvePDFs() {
   });
 }
 async function _pdfExportFiltered(results) {
+  if (_pdfBusy) return;
+  _pdfBusy = true;
   for (let i = downloadBlobs.length - 1; i >= 0; i--) {
     if (downloadBlobs[i].kind === 'pdf') downloadBlobs.splice(i, 1);
   }
@@ -6111,7 +6121,7 @@ async function _pdfExportFiltered(results) {
     echoToast('PDF generation failed — see the log.', 'err');
   } finally {
     if (btn) { btn.innerHTML = orig || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg> Generate curve PDFs'; btn.disabled = false; }
-    setProgress(0);
+    setProgress(0); _pdfBusy = false;
   }
 }
 
