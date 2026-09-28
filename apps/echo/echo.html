@@ -339,9 +339,11 @@ tr:hover td{background:var(--surface2);}
 .grad-param-row .gp-divider{width:1px;background:var(--border);height:32px;align-self:flex-end;margin:0 2px;flex-shrink:0;}
 /* A divider marks a group boundary on one line; once the row wraps it dangles at a line end. */
 @media(max-width:1180px){.grad-param-row .gp-divider{display:none;}}
+/* On the row, not the <tr>: the table cells carry their own colour, so a red row read as grey. */
+#eg-bf-out tr.eg-bad td{color:#ef4444;}
 /* On a phone the unsnapped volume is the column you can lose: the status that says a
    point is off plan was the one pushed out of view. */
-@media(max-width:640px){#eg-table .eg-ideal,#eg-table .eg-dmso{display:none;}#eg-table td,#eg-table th{padding-left:5px!important;padding-right:5px!important;}}
+@media(max-width:640px){#eg-table .eg-ideal,#eg-table .eg-dmso,#eg-table .eg-bfc{display:none;}#eg-table td,#eg-table th{padding-left:5px!important;padding-right:5px!important;}}
 .grad-inner{max-width:1300px;margin:0 auto;width:100%;}
 .grad-top-row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px;align-items:flex-start;}
 .grad-top-row>*{min-width:0;}
@@ -596,6 +598,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
               <th style="padding:6px 8px;text-align:center;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;letter-spacing:0">Stock</th>
               <th class="eg-ideal" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Ideal (nL)</th>
               <th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Transfer (nL)</th>
+              <th class="eg-bfc" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0" title="Neat DMSO added to this well so every well ends at the same DMSO total">Backfill (nL)</th>
               <th id="eg-th-final" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Final (nM)</th>
               <th id="eg-th-plan" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Plan (nM)</th>
               <th class="eg-dmso" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0" title="DMSO % of this point (assumes neat-DMSO stocks)">DMSO %</th>
@@ -607,6 +610,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       </div>
       <div id="eg-copy-row" style="display:none;margin-top:10px;gap:8px;align-items:center;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="_egCopy()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy summary</button>
+        <button class="btn btn-sm" onclick="_egExportPlan()" title="One row per point: stock, transfer, DMSO backfill, final concentration — what the Echo method is set up from"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg> Export CSV</button>
         <span id="eg-copy-toast" style="font-size:12px;color:var(--accent);display:none">✓ Copied!</span>
       </div>
     </div>
@@ -9466,6 +9470,7 @@ function _unhideAllResultsCols() {
             'style="width:68px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;'+
             'background:var(--surface);color:var(--text);font-size:13px;text-align:right;'+
             'font-variant-numeric:tabular-nums"></td>'+
+        '<td id="eg-b'+row.pt+'" class="eg-bfc" style="padding:5px 8px;text-align:right;color:var(--text3);font-variant-numeric:tabular-nums">'+fmtVol(Math.max(0,maxT-vA))+'</td>'+
         '<td id="eg-f'+row.pt+'" style="padding:5px 8px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums">'+fmtTbl(finalDisp)+'</td>'+
         '<td style="padding:5px 8px;text-align:right;color:var(--text3);font-variant-numeric:tabular-nums">'+fmtTbl(planDisp)+'</td>'+
         '<td id="eg-d'+row.pt+'" class="eg-dmso" style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums'+(overDmso?';color:#ef4444;font-weight:600':';color:var(--text3)')+'">'+(dmsoPct!=null?dmsoPct.toFixed(2)+'%':'—')+'</td>'+
@@ -9565,13 +9570,7 @@ function _unhideAllResultsCols() {
     // wells drawing off the same intermediate well, so they add backfill demand but no extra
     // intermediate-plate wells).
     var backfillPerCompoundNL=0;
-    rows.forEach(function(row){
-      // Use the effective transfer shown in the table (may be a manual edit), not just vAdj.
-      var vA=row.chosen?row.chosen.vAdj:0;
-      var inp=document.querySelector('#eg-tbody tr[data-pt="'+row.pt+'"] input[type=number]');
-      if(inp){ var dv=parseFloat(inp.value); if(!isNaN(dv)&&dv>=0) vA=dv; }
-      backfillPerCompoundNL += Math.max(0, maxT - vA);
-    });
+    (egPlanRows()||[]).forEach(function(r){ backfillPerCompoundNL+=r.backfill; });
     var compoundBackfillNL=backfillPerCompoundNL*nComp*nSets*nReps;
     // DMSO-only (vehicle) wells get zero compound transfer, so the ENTIRE max-transfer volume
     // for that well comes from backfill DMSO — one per vehicle well per set.
@@ -9620,7 +9619,7 @@ function _unhideAllResultsCols() {
         '<th style="text-align:left;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0">From</th>'+
         '<th style="text-align:right;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;white-space:nowrap">Echo transfer (nL)</th></tr>';
       bf.prepRows.forEach(function(r){
-        html+='<tr style="border-bottom:1px solid var(--border)'+(r.ok?'':';color:#ef4444')+'">'+
+        html+='<tr class="'+(r.ok?'':'eg-bad')+'" style="border-bottom:1px solid var(--border)">'+
           '<td style="padding:5px 8px">'+r.label+'</td>'+
           '<td style="padding:5px 8px">'+r.parent+'</td>'+
           '<td style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums">'+(r.ok?fmtVol(r.adjNL):'infeasible ⚠')+'</td>'+
@@ -9663,6 +9662,39 @@ function _unhideAllResultsCols() {
           '✦ Reserve at least <strong>'+b.minWells+' free well'+(b.minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
         '</div>'+
         '<div style="margin-top:8px;font-size:12.5px">Total wells to pre-fill with '+bf.interVol+' µL DMSO before the run (intermediates + backfill): <strong>'+b.totalWells+'</strong> ('+b.wellsUsedByCompounds+' + '+b.minWells+')</div>';
+    }
+
+    // ── Part 3: does each stock well hold what the run draws from it? ──
+    var use=egStockUse(bf);
+    if(use){
+      var th='text-align:right;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;white-space:nowrap';
+      html+='<div style="font-weight:600;color:var(--text);margin:16px 0 6px">3. Stock volumes per compound <span style="font-weight:400;color:var(--text3)">(spare = left above the '+bf.deadVol+' µL dead volume · × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' replicate'+(bf.nReps===1?'':'s')+')</span></div>'+
+        '<div style="overflow-x:auto"><table style="width:100%;max-width:520px;border-collapse:collapse;font-size:12.5px;margin-bottom:6px">'+
+        '<tr><th style="'+th+';text-align:left">µL</th><th style="'+th+'" title="Pre-fill plus the transfer that made it">Holds</th><th style="'+th+'" title="Every point dispensed from it, × sets × replicates">To assay</th><th style="'+th+'" title="Drawn to make the next intermediate">To next</th><th style="'+th+'" title="Left above the Echo dead volume">Spare</th></tr>';
+      var short=[];
+      use.forEach(function(x){
+        var tdR='padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums';
+        var bad=!x.source&&!x.ok;
+        if(bad) short.push(x);
+        html+='<tr class="'+(bad?'eg-bad':'')+'" style="border-bottom:1px solid var(--border)">'+
+          '<td style="padding:5px 8px" title="'+esc(egPtsText(x.pts))+'">'+x.label+'</td>'+
+          '<td style="'+tdR+'">'+(x.source?'yours':egNum(x.holds/1000))+'</td>'+
+          '<td style="'+tdR+'">'+egNum(x.dest/1000)+'</td>'+
+          '<td style="'+tdR+'">'+(x.nextLbl?egNum(x.toNext/1000):'—')+'</td>'+
+          '<td style="'+tdR+(bad?';font-weight:600':'')+'">'+(x.source?'—':(x.ok?egNum(x.left/1000):'short by '+egNum(-x.left/1000)))+'</td>'+
+        '</tr>';
+      });
+      html+='</table></div>';
+      var src=use[0];
+      html+='<div style="font-size:12px;margin-bottom:4px">Each compound\'s <strong>Source</strong> well gives up <strong>'+egNum(src.draw/1000)+' µL</strong>'+
+        (src.nextLbl&&src.dest?' ('+egNum(src.dest/1000)+' to the assay, '+egNum(src.toNext/1000)+' to make '+src.nextLbl+')':src.nextLbl?' to make '+src.nextLbl:'')+
+        ' — keep at least that plus the source plate\'s dead volume in it.</div>';
+      if(short.length){
+        html+='<div style="color:#ef4444;font-size:12px">⚠ '+short.map(function(x){return x.label;}).join(', ')+
+          ' cannot supply '+(short.length===1?'its':'their')+' transfers above the '+bf.deadVol+' µL dead volume. Raise the pre-fill, or split the sets across a second intermediate well.</div>';
+      } else {
+        html+='<div style="color:#16a34a;font-size:12px">✓ Every intermediate well holds what the run draws from it.</div>';
+      }
     }
     out.innerHTML=html;
   }
@@ -9710,6 +9742,7 @@ function _unhideAllResultsCols() {
     var se=document.getElementById('eg-st'+pt);
     var row=(window._egRows||[]).find(function(r){return r.pt===pt;});
     if(fe) fe.textContent=fmtTbl(finalDisp);
+    var be=document.getElementById('eg-b'+pt); if(be) be.textContent=fmtVol(Math.max(0,maxT-(vA||0)));
     if(de){
       de.textContent=(dmsoPct!=null?dmsoPct.toFixed(2)+'%':'—');
       de.style.color=overDmso?'#ef4444':'var(--text3)';
@@ -9726,6 +9759,99 @@ function _unhideAllResultsCols() {
     // Keep the intermediate-plate / backfill card in sync with manual transfer edits.
     if(typeof _egBfCalc==='function') _egBfCalc();
   }
+
+  // ── The plan as it will be run ────────────────────────────────────────────
+  // One reader for "what goes into each well": the stock chosen in the row's menu and
+  // the volume in its box, manual edits included. Copy, the CSV export, the backfill
+  // total and the stock-volume check all go through it, so none of them can describe
+  // a different plan from the table. A volume with no stock behind it dispenses
+  // nothing anyone can name, so it counts as no transfer.
+  function egNum(x){ return (x==null||!isFinite(x))?'—':String(+x.toPrecision(4)); }
+  function egPlanRows(){
+    var rows=window._egRows; if(!rows||!rows.length) return null;
+    var vol=window._egVol||0, maxT=window._egMaxT||0, mult=window._egTopUnitMult||1e9, sorted=window._egSorted||[];
+    return rows.map(function(row){
+      var tr=document.querySelector('#eg-tbody tr[data-pt="'+row.pt+'"]');
+      var sel=tr&&tr.querySelector('select'), inp=tr&&tr.querySelector('input[type=number]');
+      var si=sel?(sel.value===''?null:parseInt(sel.value)):(row.chosen?row.chosen.origIdx:null);
+      var st=si==null?null:sorted.find(function(x){return x.i===si;})||null;
+      var vA=inp?parseFloat(inp.value):(row.chosen?row.chosen.vAdj:0);
+      if(!(vA>0)||!st) vA=0;
+      var finalM=vA?vA*st.cM/(vol*1000):null;
+      var relErr=finalM!=null?Math.abs(finalM-row.planM)/row.planM:null;
+      var inRange=vA>=DROP&&vA<=maxT;
+      var statusText=(!vA||!inRange)?'out of range':relErr<EG_EXACT?'exact':relErr<=EG_TOL?'within '+(EG_TOL*100)+'%':Math.round(relErr*100)+'% off';
+      return {pt:row.pt, stockIdx:st?st.i:null, stock:st?st.label:null, cM:st?st.cM:0,
+              vA:vA, backfill:Math.max(0,maxT-vA), finalM:finalM, finalDisp:finalM!=null?finalM*mult:null,
+              planM:row.planM, planDisp:row.planM*mult, dmsoPct:vol?vA/(vol*1000)*100:0,
+              relErr:relErr, statusText:statusText};
+    });
+  }
+
+  // ── Does each stock well hold what the run takes out of it? ───────────────
+  // Per compound (every compound has its own Source well and its own intermediate
+  // wells). An intermediate well holds its pre-fill plus the transfer that made it;
+  // the Echo can draw it down to the dead volume, and it is drawn by every point
+  // dispensed from it (× sets × replicates) and by the transfer that makes the next
+  // intermediate. The Source well's size is not something the planner knows, so for
+  // it the answer is how much the run takes — plus whatever the source plate's dead
+  // volume is.
+  function egStockUse(bf){
+    var plan=egPlanRows(); if(!plan) return null;
+    var reps=(bf.nSets||0)*(bf.nReps||0); if(!reps||!(bf.interVol>0)) return null;
+    var prep=bf.prepRows||[], dead=bf.deadVol*1000, pre=bf.interVol*1000;
+    return _egS.map(function(s,idx){
+      var dest=0, pts=[];
+      plan.forEach(function(r){ if(r.stockIdx===idx&&r.vA){ dest+=r.vA; pts.push(r.pt); } });
+      dest*=reps;
+      var nx=prep[idx], toNext=(nx&&nx.ok)?nx.adjNL:0, nextLbl=nx?nx.label:null;
+      var u={label:s.label, pts:pts, dest:dest, toNext:toNext, nextLbl:nextLbl, draw:dest+toNext};
+      if(idx===0){ u.source=true; return u; }
+      var inn=prep[idx-1];
+      u.holds=pre+((inn&&inn.ok)?inn.adjNL:0);
+      u.left=u.holds-dead-u.draw;
+      u.ok=u.left>=0;
+      return u;
+    });
+  }
+  function egPtsText(pts){
+    if(!pts.length) return 'no points';
+    return 'point'+(pts.length===1?' ':'s ')+(pts.length>2&&pts[pts.length-1]-pts[0]===pts.length-1?pts[0]+'–'+pts[pts.length-1]:pts.join(', '));
+  }
+
+  // ── Export: the transfer plan the Echo method is built from ───────────────
+  // Not a well-by-well picklist: where each compound sits on the assay plate is laid
+  // out in the Echo software. What the method needs from here is, per point, which
+  // stock to draw from, how much, and how much DMSO backfill — one row per point, a
+  // plain table that opens in a spreadsheet and reads back without a preamble.
+  window._egExportPlan=function(){
+    var plan=egPlanRows();
+    if(!plan){ echoToast('Set up a valid gradient first.'); return; }
+    var bf=_egBfCompute();
+    var vol=window._egVol||0, maxT=window._egMaxT||0, u=window._egTopUnitStr||'nM';
+    var nVeh=bf.nVehicle||0;
+    function cell(v){ v=(v==null?'':String(v)); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+    var hdr=['Point','Stock','Stock concentration (M)','Transfer volume (nL)','DMSO backfill (nL)','Total DMSO (nL)',
+             'Final concentration ('+u+')','Planned concentration ('+u+')','Off plan (%)','Status','Assay volume (µL)'];
+    var out=[hdr.map(cell).join(',')];
+    plan.forEach(function(r){
+      out.push([r.pt, r.stock||'', r.cM?r.cM.toExponential(4):'', r.vA||0, egNum(r.backfill), egNum(r.vA+r.backfill),
+                r.finalDisp!=null?egNum(r.finalDisp):'', egNum(r.planDisp),
+                r.relErr!=null?(r.relErr*100).toFixed(2):'', r.statusText, vol].map(cell).join(','));
+    });
+    // Vehicle wells take no compound and the whole DMSO budget as backfill.
+    if(nVeh>0) out.push(['Vehicle','DMSO','',0,egNum(maxT),egNum(maxT),0,0,'','vehicle ×'+nVeh+' per set',vol].map(cell).join(','));
+    var bad=plan.filter(function(r){return r.statusText==='out of range';}).length;
+    var presetEl=document.getElementById('eg-preset');
+    var name=(presetEl&&presetEl.value)||'custom';
+    var d=new Date(), ds=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+    var fn='echo-gradient_'+name+'_'+egNum(plan[0].planDisp)+u.replace('µ','u')+'_'+plan.length+'pt_'+ds+'.csv';
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob(['﻿'+out.join('\r\n')+'\r\n'],{type:'text/csv;charset=utf-8'}));
+    a.download=fn; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(a.href);},4000);
+    echoToast(bad?'Exported — '+bad+' point'+(bad===1?' is':'s are')+' out of range and exported with no transfer.':'Exported '+fn, bad?'err':undefined);
+  };
 
   // ── Copy ──────────────────────────────────────────────────────────────
   // Builds a bordered HTML <table> so rich-paste targets (OneNote, Word, Google
@@ -9766,39 +9892,18 @@ function _unhideAllResultsCols() {
     var html='<div style="font-family:sans-serif;font-size:13px;color:#111">'+
       metaLines.map(function(l){return '<p style="margin:0 0 3px">'+esc(l)+'</p>';}).join('');
 
-    // TSV header — column order matches table: #, Stock, Ideal, Transfer, Final, Plan, DMSO %, Status
+    // Read through egPlanRows, not the table cells by position: adding the Backfill
+    // column would otherwise have shifted Final into the Backfill slot silently.
     var _uStr=window._egTopUnitStr||'nM';
-    var mainHeaders=['#','Stock','Ideal (nL)','Transfer (nL)','Final ('+_uStr+')','Plan ('+_uStr+')','DMSO %','Status'];
+    var mainHeaders=['#','Stock','Transfer (nL)','Backfill (nL)','Final ('+_uStr+')','Plan ('+_uStr+')','DMSO %','Status'];
     var mainAligns=['center','center','right','right','right','right','right','center'];
     lines.push(mainHeaders.join('\t'));
-    var mainRows=[];
-    // TSV data rows — strip locale commas from numbers for clean paste into Excel. Every field
-    // falls back to '—' rather than '' — a genuinely empty cell (two tabs back to back) gets
-    // silently collapsed by some paste targets (Notion, Slack, plain textareas), which shifts
-    // every following column left by one. A placeholder character keeps the column count honest
-    // everywhere, not just in spreadsheet apps that happen to preserve empty cells.
-    document.querySelectorAll('#eg-tbody tr').forEach(function(tr){
-      var tds=tr.querySelectorAll('td');
-      var sel=tr.querySelector('select');
-      var inp=tr.querySelector('input[type=number]');
-      var stEl=tds[7]?tds[7].querySelector('span'):null;
-      var stTxt=stEl?stEl.textContent.trim():'';
-      // Map HTML glyphs to readable text
-      stTxt=stTxt==='✓'?'exact':stTxt==='~'?'within 5%':stTxt==='✗'?'out of range':/off$/.test(stTxt)?stTxt:'—';
-      // td[0]=#, td[1]=Stock(select), td[2]=Ideal, td[3]=Transfer(input), td[4]=Final, td[5]=Plan, td[6]=DMSO %, td[7]=Status
-      var row=[
-        tds[0]?tds[0].textContent.trim():'—',
-        (sel&&sel.value!=='')?sel.options[sel.selectedIndex].text:'—',
-        tds[2]?tds[2].textContent.trim():'—',
-        (inp&&inp.value)?inp.value:'—',
-        tds[4]?tds[4].textContent.trim().replace(/,/g,''):'—',
-        tds[5]?tds[5].textContent.trim().replace(/,/g,''):'—',
-        tds[6]?tds[6].textContent.trim():'—',
-        stTxt
-      ];
-      mainRows.push(row);
-      lines.push(row.join('\t'));
+    var mainRows=(egPlanRows()||[]).map(function(r){
+      return [String(r.pt), r.stock||'—', r.vA?fmtVol(r.vA):'—', fmtVol(r.backfill),
+              r.finalDisp!=null?egNum(r.finalDisp):'—', egNum(r.planDisp),
+              r.vA?r.dmsoPct.toFixed(2)+'%':'—', r.statusText];
     });
+    mainRows.forEach(function(row){ lines.push(row.join('\t')); });
     html+=_egHtmlTable(mainHeaders,mainAligns,mainRows);
 
     // ── Intermediate plate: prep & backfill ──
@@ -9839,6 +9944,15 @@ function _unhideAllResultsCols() {
       lines.push('');
       bfLines.forEach(function(l){ lines.push(l); });
       html+=bfLines.map(function(l){return '<p style="margin:0 0 3px'+(l.indexOf('Reserve at least')===0?';font-weight:700':'')+'">'+esc(l)+'</p>';}).join('');
+    }
+    var use=egStockUse(bf);
+    if(use){
+      var uh=['Well','Holds (µL)','Drawn by the assay (µL)','Drawn to make the next (µL)','Left above dead vol. (µL)'];
+      var ur=use.map(function(x){ return [x.label, x.source?'yours':egNum(x.holds/1000), egNum(x.dest/1000),
+        x.nextLbl?egNum(x.toNext/1000):'—', x.source?'—':(x.ok?egNum(x.left/1000):'short by '+egNum(-x.left/1000))]; });
+      lines.push(''); lines.push('Stock volumes per compound'); lines.push(uh.join('\t'));
+      ur.forEach(function(r){ lines.push(r.join('\t')); });
+      html+='<p style="font-weight:700;margin:8px 0 4px">Stock volumes per compound</p>'+_egHtmlTable(uh,['left','right','right','right','right'],ur);
     }
     html+='</div>';
 
