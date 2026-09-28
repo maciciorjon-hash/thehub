@@ -20495,14 +20495,21 @@ function restoreFromBackupFile(file){
     var blobs=(parsed && parsed._lbBackup && parsed.blobs) ? parsed.blobs : null;
     var data = (parsed && parsed._lbBackup && parsed.data) ? parsed.data
              : (parsed && parsed.journal && parsed.journal.labbook) ? parsed.journal.labbook : parsed;
-    if(!data || typeof data!=='object' || !('experiments' in data)){ toast('That file doesn\'t look like a Labbook backup.'); return; }
+    // A folder export also has an `experiments` key — a list — and passed this check: restoring
+    // one replaced the whole notebook with nothing, behind a dialog that did not say what the file
+    // held. Exports go through Import; a backup's experiments are a map and its projects a list.
+    if(parsed && (parsed._lbBundle || parsed._lbExperiment)){ lbAlert('That is an experiment export, not a backup. Use <b>Import</b> (Export → Data) to add it as new experiments — nothing already here is replaced that way.',{title:'Not a backup',html:true}); return; }
+    if(!data || typeof data!=='object' || Array.isArray(data) || !data.experiments || typeof data.experiments!=='object' || Array.isArray(data.experiments)
+       || (data.projects!=null && typeof data.projects!=='object')){ toast('That file doesn\'t look like a Labbook backup.'); return; }
+    var nExp=Object.keys(data.experiments).length, nProj=_lbList(data.projects,true).length, nDays=Object.keys(data.notebook||{}).length;
     var nBlob=blobs?Object.keys(blobs).length:0;
     var nVer=(parsed&&parsed.versions)?Object.keys(parsed.versions).length:0;
     var warn=(blobs
       ? ('It contains '+nBlob+' attachment'+(nBlob!==1?'s':'')+', which will be restored too.')
       : 'This is an older backup with no attachment data — images and files will come back as empty placeholders.')
       +(nVer?(' It also carries '+nVer+' saved version'+(nVer!==1?'s':'')+', which are added to this machine\u2019s history.'):'');
-    lbConfirm('Restore this backup? This REPLACES your entire current notebook — anything added since this backup was made will be lost unless it\'s in another backup.\n\n'+warn,{danger:true,title:'Restore from backup',ok:'Replace everything'}).then(function(ok){
+    lbConfirm('Restore this backup? This REPLACES your entire current notebook — anything added since this backup was made will be lost unless it\'s in another backup.\n\n'
+      +'The file holds '+nExp+' experiment'+(nExp===1?'':'s')+' in '+nProj+' project'+(nProj===1?'':'s')+(nDays?(' and '+nDays+' Journal day'+(nDays===1?'':'s')):'')+'. '+warn,{danger:true,title:'Restore from backup',ok:'Replace everything'}).then(function(ok){
       if(!ok) return;
       // Write the attachment bytes back into IndexedDB before swapping the tree, so the
       // reload finds them already in place.
