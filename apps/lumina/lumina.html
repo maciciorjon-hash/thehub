@@ -78,7 +78,7 @@ header{min-height:48px;display:flex;align-items:center;gap:14px;padding:0 18px;b
 .tab.active{color:var(--accent2);border-bottom-color:var(--accent2);}
 .tab:hover{color:var(--text);}
 
-.main{max-width:1600px;margin:0 auto;padding:20px clamp(16px,2.5vw,40px) 60px;}
+.main{max-width:2000px;margin:0 auto;padding:20px clamp(16px,2.5vw,40px) 60px;}
 .tabpane{display:none;}
 .tabpane.active{display:block;}
 
@@ -121,7 +121,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)
 .well-grid.vconc .well-rowlbl{width:auto;justify-content:space-between;padding:0 6px 0 4px;}
 .well-rowlbl{width:20px;}
 .well{
-  width:38px;height:38px;border-radius:var(--r-1);border:1px solid var(--border2);
+  width:var(--wpx,38px);height:var(--wpx,38px);border-radius:var(--r-1);border:1px solid var(--border2);
   background:var(--surface2);display:flex;flex-direction:column;align-items:center;justify-content:center;
   font-size:8.5px;/* sized to the well, not the type scale — see docs/UI.md */line-height:1.15;cursor:cell;overflow:hidden;text-align:center;padding:1px;
 }
@@ -129,13 +129,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)
    under the pointer moves the target the drag is aiming at. */
 .well:hover{border-color:var(--accent2);}
 .well.sel{border-color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent);}
-.well .w-conc{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;font-size:9.5px;line-height:1.1;}
-.well-grid.x384 .well .w-conc{font-size:8px;}
+.well .w-conc{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;font-size:clamp(8px,calc(var(--wpx,38px)*.25),13px);line-height:1.1;}
 .well .w-ctl{font-weight:700;color:var(--text2);letter-spacing:.2px;}
 .well.has-ctrl{border-color:var(--accent3);border-width:2px;}
 .well.has-zero{border-color:var(--accent2);border-width:2px;border-style:dashed;}
-.well .w-val{font-size:11px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;}
-.well-grid.x384 .well .w-val{font-size:8px;}
+.well .w-val{font-size:clamp(8px,calc(var(--wpx,38px)*.29),15px);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;}
 
 .lm-sel-count{font-size:var(--fs-4);font-weight:600;color:var(--text);}
 .lm-sel-count .sub{color:var(--text3);font-weight:500;}
@@ -495,7 +493,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <span class="lm-ready" id="lm-ready"></span>
         <button class="btn primary" id="lm-fit" onclick="lmFit()">Fit curves &#8594;</button>
       </div>
-      <input id="reader-file" type="file" accept=".xlsx,.xls" multiple hidden>
+      <input id="reader-file" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple hidden>
       <div class="lm-veil" id="lm-veil"><div>Drop the reader files<span>one per plate — several fill Plate 1, 2, 3… in name order</span></div></div>
     </div>
   </div>
@@ -748,6 +746,128 @@ function updateFitConstraintAvailability(assayType){
 // The layout (gradients, zones, controls) is ONE object every plate shares; a plate owns only
 // its reader values. Compound n lives on plate floor((n-1)/S), zone (n-1) mod S.
 // ══════════════════════════════════════════════════════════════
+// ═══ PLATE ENGINE — BEGIN ═══════════════════════════════════════════════════════════════════
+// The mechanics every dHUB plate shares: which wells a drag covers, what "B2:C11" means, how a
+// dilution series runs through any selection, how an area divides into compound blocks, how a
+// column pasted from Excel becomes a list of names. Pure — wells in, plans out; each app keeps
+// its own model and draws its own plate on top. Lumina is the reference implementation and this
+// copy is canonical: tools/sync_plate_engine.py copies it into Labbook, tools/check_shared.py
+// reports drift. Edit it here only.
+var PlateEngine = (function(){
+  var ROWS = 'ABCDEFGHIJKLMNOP';
+  function id(r, c){ return ROWS.charAt(r) + (c + 1); }
+  function rc(w){ var m = /^([A-P])(\d+)$/.exec(String(w || '')); return m ? { r: m[1].charCodeAt(0) - 65, c: +m[2] - 1 } : null; }
+  function list(ws){ return Array.isArray(ws) ? ws.slice() : Array.from(ws || []); }
+  function uniq(a){ return a.filter(function(v, i){ return a.indexOf(v) === i; }); }
+  function byReading(a, b){ var p = rc(a), q = rc(b); return p.r - q.r || p.c - q.c; }
+  // Every well between two corners, inside the plate.
+  function rect(a, b, dims){
+    var out = [], r0 = Math.min(a.r, b.r), r1 = Math.max(a.r, b.r), c0 = Math.min(a.c, b.c), c1 = Math.max(a.c, b.c);
+    for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) if (r >= 0 && c >= 0 && r < dims.r && c < dims.c) out.push(id(r, c));
+    return out;
+  }
+  function line(kind, i, dims){ return kind === 'row' ? rect({ r: i, c: 0 }, { r: i, c: dims.c - 1 }, dims) : rect({ r: 0, c: i }, { r: dims.r - 1, c: i }, dims); }
+  function box(ws){
+    var b = { r0: 1e9, r1: -1, c0: 1e9, c1: -1 };
+    list(ws).forEach(function(w){ var q = rc(w); if (!q) return; b.r0 = Math.min(b.r0, q.r); b.r1 = Math.max(b.r1, q.r); b.c0 = Math.min(b.c0, q.c); b.c1 = Math.max(b.c1, q.c); });
+    return b;
+  }
+  function isRect(ws){ var a = uniq(list(ws)), b = box(a); return a.length > 0 && (b.r1 - b.r0 + 1) * (b.c1 - b.c0 + 1) === a.length; }
+  // "B2–C11" when the wells are a rectangle, otherwise how many there are.
+  function rangeText(ws){
+    var a = uniq(list(ws)); if (!a.length) return '';
+    var b = box(a);
+    if (isRect(a)) return a.length === 1 ? id(b.r0, b.c0) : id(b.r0, b.c0) + '–' + id(b.r1, b.c1);
+    return a.length + ' wells';
+  }
+  // "B2:C11, E1" → those wells; null when nothing in it names a well on this plate.
+  function parseRange(txt, dims){
+    var out = [], ok = false;
+    String(txt || '').toUpperCase().split(/[\s,;]+/).forEach(function(part){
+      if (!part) return;
+      var m = part.match(/^([A-P])(\d{1,2})(?:[:\-–]([A-P])(\d{1,2}))?$/);
+      if (!m) return;
+      var a = { r: m[1].charCodeAt(0) - 65, c: +m[2] - 1 };
+      var b = m[3] ? { r: m[3].charCodeAt(0) - 65, c: +m[4] - 1 } : a;
+      if (a.r >= dims.r || a.c >= dims.c || a.c < 0) return;
+      rect(a, b, dims).forEach(function(w){ if (out.indexOf(w) < 0) out.push(w); }); ok = true;
+    });
+    return ok ? out : null;
+  }
+  // A dilution series through any selection. Its points run along a direction and the other
+  // axis is replicates; a well's point is its place along that axis, not its place in the list,
+  // so any shape dilutes correctly. With no direction given it runs across unless the area is
+  // plainly a column.
+  function seriesDir(ws){
+    var a = list(ws), rs = uniq(a.map(function(w){ return rc(w).r; })), cs = uniq(a.map(function(w){ return rc(w).c; }));
+    return cs.length >= Math.ceil(rs.length / 2) ? 'right' : 'down';
+  }
+  function seriesPlan(ws, dir){
+    var a = uniq(list(ws)); if (!a.length) return null;
+    var cells = a.map(function(w){ var q = rc(w); return { w: w, r: q.r, c: q.c }; });
+    var rs = uniq(cells.map(function(x){ return x.r; })), cs = uniq(cells.map(function(x){ return x.c; }));
+    dir = dir || seriesDir(a);
+    var along = (dir === 'right' || dir === 'left') ? 'c' : 'r';
+    var vals = (along === 'c' ? cs : rs).slice().sort(function(x, y){ return x - y; });
+    if (dir === 'left' || dir === 'up') vals.reverse();
+    var idx = {}; cells.forEach(function(x){ idx[x.w] = vals.indexOf(x[along]); });
+    return { idx: idx, n: vals.length, dir: dir, lines: (along === 'c' ? rs : cs).length };
+  }
+  function seriesConc(top, fac, i){ return top / Math.pow(fac > 0 ? fac : 1, i); }
+  // Rows or columns: which lines of an area are the replicates when no series decides it.
+  function splitOfShape(ws){ var b = box(ws); return (b.c1 - b.c0) >= (b.r1 - b.r0) ? 'rows' : 'cols'; }
+  // An area divided into compound blocks: bands of `reps` lines (rows when split is 'rows'),
+  // counted separately inside each group (a series, a half-plate) so a block never straddles
+  // two. pointOf(w) gives a well's place in its series, for counting points; zones come back in
+  // reading order.
+  function bandPlan(ws, o){
+    o = o || {};
+    var a = uniq(list(ws)); if (!a.length) return null;
+    var split = o.split || splitOfShape(a), key = split === 'rows' ? 'r' : 'c', R = Math.max(1, o.reps || 1);
+    var groupOf = o.groupOf || function(){ return '-'; };
+    var byG = {}, gOrder = [];
+    a.forEach(function(w){ var g = String(groupOf(w)); if (!byG[g]) { byG[g] = []; gOrder.push(g); } byG[g].push(w); });
+    var groups = {}, order = [], uneven = false;
+    gOrder.forEach(function(g){
+      var ps = byG[g], lines = uniq(ps.map(function(w){ return rc(w)[key]; })).sort(function(x, y){ return x - y; });
+      if (lines.length % R) uneven = true;
+      ps.forEach(function(w){
+        var band = Math.floor(lines.indexOf(rc(w)[key]) / R), k = g + '|' + band;
+        if (!groups[k]) { groups[k] = []; order.push(k); }
+        groups[k].push(w);
+      });
+    });
+    var zones = sortZones(order.map(function(k){ return groups[k]; }));
+    var pointOf = o.pointOf || function(w){ return rc(w)[key === 'r' ? 'c' : 'r']; };
+    var pts = zones.map(function(z){ return uniq(z.map(function(w){ var p = pointOf(w); return p === undefined ? rc(w)[key === 'r' ? 'c' : 'r'] : p; })).length; });
+    return { zones: zones, split: split, uneven: uneven, pts: pts };
+  }
+  // Blocks are numbered in reading order, so block 1 is the top-left one on every plate.
+  function sortZones(zones){
+    var zs = zones.filter(function(z){ return z && z.length; }).map(function(z){ return z.slice().sort(byReading); });
+    zs.sort(function(x, y){ var A = box(x), B = box(y); return A.r0 - B.r0 || A.c0 - B.c0; });
+    return zs;
+  }
+  // A column pasted from Excel: one name per line, the first cell of each, trailing blanks off.
+  function pasteList(txt){
+    var lines = String(txt || '').replace(/\r/g, '').split('\n').map(function(l){ return l.split('\t')[0].trim(); });
+    while (lines.length && !lines[lines.length - 1]) lines.pop();
+    return lines;
+  }
+  // The next name in a run: EDA-099 → EDA-100, Compound A → Compound B, anything else → "… 2".
+  function nextName(s){
+    s = String(s || '').trim(); if (!s) return '';
+    var m = /^(.*?)(\d+)(\D*)$/.exec(s);
+    if (m) { var n = String(+m[2] + 1); while (n.length < m[2].length) n = '0' + n; return m[1] + n + m[3]; }
+    var l = /^(.*\s)([A-Y])$/.exec(s); if (l) return l[1] + String.fromCharCode(l[2].charCodeAt(0) + 1);
+    return s + ' 2';
+  }
+  return { id: id, rc: rc, uniq: uniq, rect: rect, line: line, box: box, isRect: isRect, rangeText: rangeText,
+           parseRange: parseRange, seriesDir: seriesDir, seriesPlan: seriesPlan, seriesConc: seriesConc,
+           splitOfShape: splitOfShape, bandPlan: bandPlan, sortZones: sortZones, pasteList: pasteList, nextName: nextName };
+})();
+// ═══ PLATE ENGINE — END ═════════════════════════════════════════════════════════════════════
+
 var LM_SEL = new Set();        // selected well positions
 var _lmAnchor = null;          // {r,c} — where the last selection started; Shift extends from it
 var _lmDrag = null;            // live drag: {kind, a, base, off}
@@ -765,39 +885,15 @@ var LM_PAL = [[78,121,167],[242,142,43],[89,161,79],[225,87,89],[118,183,178],[2
 var LM_GREY = [128,136,156];
 
 function _rc(pos){ return { r: pos.charCodeAt(0) - 65, c: parseInt(pos.slice(1), 10) - 1 }; }
-function _lmRect(a, b){
-  var s = new Set(), r0 = Math.min(a.r, b.r), r1 = Math.max(a.r, b.r), c0 = Math.min(a.c, b.c), c1 = Math.max(a.c, b.c);
-  for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) if (r < state.rows && c < state.cols) s.add(wellPos(r, c));
-  return s;
-}
-function _lmBox(set){
-  var b = { r0: 1e9, r1: -1, c0: 1e9, c1: -1 };
-  set.forEach(function(p){ var q = _rc(p); b.r0 = Math.min(b.r0, q.r); b.r1 = Math.max(b.r1, q.r); b.c0 = Math.min(b.c0, q.c); b.c1 = Math.max(b.c1, q.c); });
-  return b;
-}
-function _lmIsRect(set){ var b = _lmBox(set); return (b.r1 - b.r0 + 1) * (b.c1 - b.c0 + 1) === set.size; }
+// Lumina's model keeps selections as Sets; the geometry is the shared engine's.
+function _lmDims(){ return { r: state.rows, c: state.cols }; }
+function _lmRect(a, b){ return new Set(PlateEngine.rect(a, b, _lmDims())); }
+function _lmBox(set){ return PlateEngine.box(set); }
+function _lmIsRect(set){ return PlateEngine.isRect(set); }
 // "B2–C11" when the wells are a rectangle, otherwise how many there are.
-function _lmRange(wells){
-  var set = wells instanceof Set ? wells : new Set(wells);
-  if (!set.size) return '';
-  var b = _lmBox(set);
-  if (_lmIsRect(set)) return set.size === 1 ? wellPos(b.r0, b.c0) : wellPos(b.r0, b.c0) + '–' + wellPos(b.r1, b.c1);
-  return set.size + ' wells';
-}
-function _lmParseRange(txt){
-  var out = new Set(), ok = false;
-  String(txt || '').toUpperCase().split(/[\s,;]+/).forEach(function(part){
-    if (!part) return;
-    var m = part.match(/^([A-P])(\d{1,2})(?:[:\-–]([A-P])(\d{1,2}))?$/);
-    if (!m) return;
-    var a = { r: m[1].charCodeAt(0) - 65, c: +m[2] - 1 };
-    var b = m[3] ? { r: m[3].charCodeAt(0) - 65, c: +m[4] - 1 } : a;
-    if (a.r >= state.rows || a.c >= state.cols || a.c < 0) return;
-    _lmRect(a, b).forEach(function(p){ out.add(p); }); ok = true;
-  });
-  return ok ? out : null;
-}
-function _uniq(a){ return a.filter(function(v, i){ return a.indexOf(v) === i; }); }
+function _lmRange(wells){ return PlateEngine.rangeText(wells); }
+function _lmParseRange(txt){ var r = PlateEngine.parseRange(txt, _lmDims()); return r ? new Set(r) : null; }
+function _uniq(a){ return PlateEngine.uniq(a); }
 
 // ── The layout, read ─────────────────────────────────────────
 function _lmGradAt(pos){
@@ -827,14 +923,7 @@ function lmPlateWellData(p){
 function lmMaterialize(){ state.wellData = lmPlateWellData(state.plate); }
 
 // Zones are numbered in reading order, so compound 1 is the top-left one on every plate.
-function _lmSortZones(){
-  state.layout.zones = state.layout.zones.filter(function(z){ return z.length; });
-  state.layout.zones.forEach(function(z){ z.sort(function(a, b){ var p = _rc(a), q = _rc(b); return p.r - q.r || p.c - q.c; }); });
-  state.layout.zones.sort(function(a, b){
-    var A = _lmBox(new Set(a)), B = _lmBox(new Set(b));
-    return A.r0 - B.r0 || A.c0 - B.c0;
-  });
-}
+function _lmSortZones(){ state.layout.zones = PlateEngine.sortZones(state.layout.zones); }
 function _lmPruneGrads(){ state.layout.grads = state.layout.grads.filter(function(g){ return Object.keys(g.idx).length; }); }
 // Take wells out of every part of the layout — a well is one thing at a time.
 function _lmTakeWells(set, what){
@@ -852,6 +941,8 @@ function lmMark(){
   _lmRedo = [];
   lmSyncUndoBtn();
 }
+// A mark taken for an edit that then did not happen (a paste that did not fit).
+function lmDropMark(){ _lmUndo.pop(); lmSyncUndoBtn(); }
 function lmSyncUndoBtn(){ var b = document.getElementById('lm-undo'); if (b) b.style.display = _lmUndo.length ? '' : 'none'; }
 function lmUndo(){
   if (!_lmUndo.length){ toast('Nothing to undo.'); return; }
@@ -891,7 +982,7 @@ function _lmPrefill(){
     document.getElementById('lm-fac').value = g.fac;
   }
 }
-function _lmLine(kind, i){ return kind === 'row' ? _lmRect({ r: i, c: 0 }, { r: i, c: state.cols - 1 }) : _lmRect({ r: 0, c: i }, { r: state.rows - 1, c: i }); }
+function _lmLine(kind, i){ return new Set(PlateEngine.line(kind, i, _lmDims())); }
 function _lmHit(x, y){
   // Through the compound labels: they sit over the wells, and a drag must not stall on one.
   var els = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)];
@@ -977,17 +1068,8 @@ document.addEventListener('pointerdown', function(e){
 // A gradient's points run along its direction; the other axis is replicates. A well's point is
 // its place along the axis, not its place in the list, so any shape dilutes correctly.
 function _lmGradPlan(){
-  var cells = Array.from(LM_SEL).map(function(p){ var q = _rc(p); return { pos: p, r: q.r, c: q.c }; });
-  if (!cells.length) return null;
-  var rs = _uniq(cells.map(function(x){ return x.r; })), cs = _uniq(cells.map(function(x){ return x.c; }));
-  // A dose-response plate runs across unless the area is plainly a column; and a plate
-  // divided into several gradients almost always runs them all the same way.
-  var dir = LM_DIR || _lmLastDir || (cs.length >= Math.ceil(rs.length / 2) ? 'right' : 'down');
-  var along = (dir === 'right' || dir === 'left') ? 'c' : 'r';
-  var vals = (along === 'c' ? cs : rs).slice().sort(function(a, b){ return a - b; });
-  if (dir === 'left' || dir === 'up') vals.reverse();
-  var idx = {}; cells.forEach(function(x){ idx[x.pos] = vals.indexOf(x[along]); });
-  return { idx: idx, n: vals.length, dir: dir, lines: (along === 'c' ? rs : cs).length };
+  // A plate divided into several gradients almost always runs them all the same way.
+  return PlateEngine.seriesPlan(LM_SEL, LM_DIR || _lmLastDir);
 }
 // Compounds are bands of N lines across the gradient — a series running along a row takes
 // rows — and never straddle two gradients, which is what lets a plate be divided any way:
@@ -1005,23 +1087,11 @@ function _lmCpdPlan(){
   if (h || v) split = h >= v ? 'rows' : 'cols';
   else if (LM_SPLIT) split = LM_SPLIT;
   else { var b = _lmBox(new Set(cells)); split = (b.c1 - b.c0) >= (b.r1 - b.r0) ? 'rows' : 'cols'; }
-  var key = split === 'rows' ? 'r' : 'c', R = Math.max(1, LM_REPS);
-  var groups = {}, order = [];
-  // Band lines within each gradient separately, so each gradient's own lines are counted in Rs.
-  var byGrad = {};
-  cells.forEach(function(p){ var a = _lmGradAt(p), gid = a ? a.g.id : '-'; (byGrad[gid] = byGrad[gid] || []).push(p); });
-  var uneven = false;
-  Object.keys(byGrad).forEach(function(gid){
-    var ps = byGrad[gid], lines = _uniq(ps.map(function(p){ return _rc(p)[key]; })).sort(function(a, b){ return a - b; });
-    if (lines.length % R) uneven = true;
-    ps.forEach(function(p){
-      var band = Math.floor(lines.indexOf(_rc(p)[key]) / R), k = gid + '|' + band;
-      if (!groups[k]) { groups[k] = []; order.push(k); }
-      groups[k].push(p);
-    });
-  });
-  var zones = order.map(function(k){ return groups[k]; });
-  var pts = zones.map(function(z){ return _uniq(z.map(function(p){ var a = _lmGradAt(p); return a ? a.i : _rc(p)[key === 'r' ? 'c' : 'r']; })).length; });
+  // Bands counted inside each gradient separately, so a compound never straddles two.
+  var bp = PlateEngine.bandPlan(cells, { reps: LM_REPS, split: split,
+    groupOf: function(p){ var a = _lmGradAt(p); return a ? a.g.id : '-'; },
+    pointOf: function(p){ var a = _lmGradAt(p); return a ? a.i : undefined; } });
+  var zones = bp.zones, uneven = bp.uneven, pts = bp.pts;
   return { zones: zones, split: split, onGrad: !!(h || v), uneven: uneven, skipped: all.length - cells.length, pts: pts, used: new Set(cells) };
 }
 
@@ -1181,7 +1251,7 @@ function lmRenderSteps(){
   var cTxt = !S ? 'Zones of replicates' : S + ' per plate' + (P > 1 ? ' × ' + P + ' plates' : '');
   var kTxt = !c1 && !c0 ? (disp ? '100% and 0% wells' : 'Recommended') : c1 + ' × 100%' + (disp ? ' · ' + (c0 ? c0 + ' × 0%' : '0% missing') : '');
   var nTxt = !S ? '—' : named === N ? 'All ' + N + ' named' : named + ' of ' + N + ' named';
-  var rTxt = !nRead ? 'Drop the reader file' + (P > 1 ? 's' : '') : P === 1 ? Object.keys(state.plates[0].signal).length + ' wells read' : nRead + ' of ' + P + ' plates read';
+  var rTxt = !nRead ? 'Drop a file or paste from Excel' : P === 1 ? Object.keys(state.plates[0].signal).length + ' wells read' : nRead + ' of ' + P + ' plates read';
   var v = state.activeSubtab, cur;
   if (v === 'cpds') cur = 4; else if (v === 'signal') cur = 5;
   else if (LM_SEL.size || LM_MODE) cur = { grad: 1, cpd: 2, ctl: 3 }[_lmMode()];
@@ -1344,7 +1414,7 @@ function lmPaste(){
 
 // ── Keys, when the plate is what you last touched ────────────
 document.addEventListener('keydown', function(e){
-  var t = e.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  var t = e.target, typing = t && t.id !== 'lm-pb' && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
   var mod = e.metaKey || e.ctrlKey, k = (e.key || '').toLowerCase();
   if (!document.getElementById('pane-input').classList.contains('active')) return;
   // Enter in a field of the panel applies what the panel is set to.
@@ -1357,10 +1427,43 @@ document.addEventListener('keydown', function(e){
   else if (e.key === 'Delete' || e.key === 'Backspace') { if (LM_SEL.size) { e.preventDefault(); lmClearWells(); } }
   else if (e.key === 'Enter') { if (LM_SEL.size && state.activeSubtab === 'layout') { e.preventDefault(); lmApply(); } }
   else if (mod && k === 'a') { e.preventDefault(); lmSetSel(_lmRect({ r: 0, c: 0 }, { r: state.rows - 1, c: state.cols - 1 })); }
-  else if (mod && k === 'c') { if (LM_SEL.size) { e.preventDefault(); lmCopy(false); } }
-  else if (mod && k === 'x') { if (LM_SEL.size) { e.preventDefault(); lmCopy(true); } }
-  else if (mod && k === 'v') { e.preventDefault(); lmPaste(); }
+  else if (mod && k === 'c') { if (LM_SEL.size) { lmCopy(false); _lmClipOut(); } }
+  else if (mod && k === 'x') { if (LM_SEL.size) { lmCopy(true); _lmClipOut(); } }
 });
+// ⌘V is one gesture with two meanings: a block of layout copied here, or values copied from a
+// spreadsheet. Both reach the plate through the browser's own paste, caught in an off-screen
+// box — a paste event is only delivered to something editable in Safari, and a keydown that
+// preventDefaults ⌘V (as this used to) stops the paste from happening at all. What was copied
+// here is marked on the clipboard, so a later copy in Excel is what gets pasted, not the older
+// layout.
+var LM_CLIP_MARK = '\u2063lumina-layout\u2063';
+var _lmPB = (function(){
+  var t = document.createElement('textarea');
+  t.id = 'lm-pb'; t.setAttribute('aria-hidden', 'true'); t.tabIndex = -1;
+  t.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
+  document.body.appendChild(t);
+  t.addEventListener('paste', function(e){
+    var txt = (e.clipboardData || window.clipboardData).getData('text') || '';
+    e.preventDefault(); t.blur();
+    if (txt.indexOf(LM_CLIP_MARK) === 0) { if (_lmClip) lmPaste(); return; }
+    if (lmPasteReadings(txt)) return;
+    if (_lmClip && LM_SEL.size) { lmPaste(); return; }
+    toast('Nothing to paste — copy a block of values in Excel, or select wells and press ⌘C.');
+  });
+  return t;
+})();
+function _lmClipOut(){
+  _lmPB.value = LM_CLIP_MARK + LM_SEL.size + ' wells of Lumina layout';
+  _lmPB.focus(); _lmPB.select();
+  setTimeout(function(){ _lmPB.blur(); }, 0);
+}
+document.addEventListener('keydown', function(e){
+  var t = e.target, typing = t && t !== _lmPB && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+  if (typing || !(e.metaKey || e.ctrlKey) || (e.key || '').toLowerCase() !== 'v') return;
+  if (!document.getElementById('pane-input').classList.contains('active')) return;
+  _lmPB.value = ''; _lmPB.focus();   // the paste lands in the box, and its handler decides
+  setTimeout(function(){ if (document.activeElement === _lmPB) _lmPB.blur(); }, 500);   // an empty clipboard sends no paste
+}, true);
 (function wirePanel(){
   var rg = document.getElementById('lm-sel-range');
   rg.addEventListener('keydown', function(e){
@@ -1434,8 +1537,7 @@ function lmRenderList(){
   el.addEventListener('paste', function(e){
     var t = e.target; if (!t.classList.contains('lm-nm')) return;
     var txt = (e.clipboardData || window.clipboardData).getData('text') || '';
-    var lines = txt.replace(/\r/g, '').split('\n').map(function(l){ return l.split('\t')[0].trim(); });
-    while (lines.length && !lines[lines.length - 1]) lines.pop();
+    var lines = PlateEngine.pasteList(txt);
     if (lines.length < 2) return;             // one name: an ordinary paste into this box
     e.preventDefault();
     lmMark(); _lmNameEditing = null;
@@ -1482,7 +1584,7 @@ function wellPos(r, c){ return String.fromCharCode(65 + r) + (c + 1); }
 function renderGrid(){
   var grid = document.getElementById('well-grid');
   var rows = state.rows, cols = state.cols;
-  var cellPx = cols > 12 ? 28 : 38;
+  var cellPx = _lmCellPx(cols, rows);
   var sig = state.activeSubtab === 'signal';
   var P = state.plate, zm = _lmZoneMap(), sgl = (state.plates[P] || { signal: {} }).signal;
   // In the Readings view the colour is the reading, one hue scaled to this plate's range — which
@@ -1504,10 +1606,12 @@ function renderGrid(){
   for (var c0 = 0; c0 < cols; c0++) { colHdr[c0] = one(colC[c0]); if (colHdr[c0] !== undefined) anyCol = true; }
   // Row headers only where the columns did not already say it (a vertical gradient).
   for (var r0 = 0; r0 < rows; r0++) { rowHdr[r0] = anyCol ? undefined : one(rowC[r0]); if (rowHdr[r0] !== undefined) anyRow = true; }
-  grid.style.gridTemplateColumns = (anyRow ? 58 : 24) + 'px repeat(' + cols + ', ' + cellPx + 'px)';
+  grid.dataset.cols = cols; grid.dataset.rows = rows; grid.dataset.lbl = anyRow ? 58 : 24;
   grid.classList.toggle('x384', cols > 12);
   grid.classList.toggle('hconc', anyCol);
   grid.classList.toggle('vconc', anyRow);
+  cellPx = _lmCellPx(cols, rows);   // again, now the header it has to leave room for is known
+  grid.style.gridTemplateColumns = (anyRow ? 58 : 24) + 'px repeat(' + cols + ', ' + cellPx + 'px)';
   // Shade by point index: the highest concentration darkest, so each series' direction is
   // visible without a number.
   function alphaFor(pos){
@@ -1557,8 +1661,50 @@ function renderGrid(){
     var n = lmCpdNo(P, i), nm = lmCpdNamed(n) ? esc(lmCpdName(n)) : '';
     html += '<div class="w-zone" style="grid-row:' + ((rect ? b.r0 : q.r) + 2) + ' / span ' + h + ';grid-column:' + ((rect ? b.c0 : q.c) + 2) + ' / span ' + w + ';"><span data-z="' + i + '" title="Select compound ' + n + '">' + (nm ? '<span class="zn">' + n + '</span>' + nm : 'Compound ' + n) + '</span></div>';
   });
+  grid.style.setProperty('--wpx', cellPx + 'px');
   grid.innerHTML = html;
 }
+// The plate takes the room it has (Jon, 2026-09-28: "hay márgenes vacíos"). It used to be a fixed
+// 38 px a well — a 470 px plate with the rest of a wide screen empty beside the panel. The well
+// is now the largest that fits both the width left beside the panel and the height of the
+// window below the steps, so the whole plate is on screen without scrolling, within a floor a
+// finger can hit and a ceiling past which a well is just a bigger box.
+function _lmCellPx(cols, rows){
+  var x384 = cols > 12, lo = x384 ? 26 : 36, hi = x384 ? 54 : 108, gap = 3;
+  var body = document.getElementById('lm-body'), grid = document.getElementById('well-grid');
+  var bw = body ? body.clientWidth : 0;
+  if (!bw || !grid) return x384 ? 28 : 38;
+  var lbl = +(grid.dataset.lbl || 24);
+  var stacked = getComputedStyle(body).gridTemplateColumns.trim().split(/\s+/).length < 2;
+  // The panel keeps its 420 px beside the plate (the grid gives it its maximum first), and
+  // below the breakpoint it goes under the plate. On a phone a 96-well plate fits the screen at
+  // a smaller well rather than scrolling sideways; a 384 cannot, and scrolls.
+  if (stacked && !x384 && bw < 600) lo = 24;
+  var w = Math.floor((bw - (stacked ? 0 : 420 + 24) - lbl - gap * (cols + 1)) / cols);
+  var top = grid.getBoundingClientRect().top + window.scrollY;
+  var hdr = grid.classList.contains('hconc') ? (x384 ? 58 : 40) : 24;
+  // The whole plate on screen, its last row included; the toolbar under it may scroll.
+  var h = Math.floor((window.innerHeight - top - hdr - 28 - gap * (rows + 1)) / rows);
+  return Math.max(lo, Math.min(hi, w, Math.max(h, lo)));
+}
+// A window resized, or a tab coming back into view, re-fits the plate. Only the size is
+// recomputed — the wells keep their content, so a resize never rebuilds what is on the plate.
+(function(){
+  var last = 0, raf = 0;
+  function refit(){
+    raf = 0;
+    var grid = document.getElementById('well-grid'); if (!grid || !grid.dataset.cols) return;
+    var cols = +grid.dataset.cols, rows = +grid.dataset.rows, px = _lmCellPx(cols, rows);
+    if (px === last && grid.style.getPropertyValue('--wpx') === px + 'px') return;
+    last = px;
+    grid.style.setProperty('--wpx', px + 'px');
+    grid.style.gridTemplateColumns = grid.dataset.lbl + 'px repeat(' + cols + ', ' + px + 'px)';
+    grid.querySelectorAll('.well').forEach(function(w){ w.style.width = px + 'px'; w.style.height = px + 'px'; });
+  }
+  function soon(){ if (!raf) raf = requestAnimationFrame(refit); }
+  window.addEventListener('resize', soon);
+  if (window.ResizeObserver) { var b = document.getElementById('lm-body'); if (b) new ResizeObserver(soon).observe(b); }
+})();
 
 function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 // Escape a value for embedding inside a single-quoted JS string in an inline
@@ -1714,6 +1860,114 @@ function parsePHERAstarSheet(raw, rows, cols){
   }
   return wells;
 }
+// ── Readings from any spreadsheet: a grid of numbers (2026-09-28) ─────────────────────────
+// Lumina used to read only the PHERAstar export. Now a block of values copied in Excel (⌘V on
+// the plate), a CSV, or an .xlsx with no PHERAstar grid in it goes through here. The rules are
+// Blueprint's corrected pdParseValues, which were learnt the hard way: the delimiter is chosen
+// and never collapsed (a run of tabs is several empty wells, not one separator); a comma is a
+// decimal mark wherever it is not the separator; the text is never trimmed as a whole (an empty
+// A1 starts the first line with a tab); an empty first cell is not a header.
+// Returns {labelled:true, vals:{A1:…}} when the rows carry their letters, {labelled:false,
+// block:[[v|null,…],…]} when it is bare numbers, or null when there is no number in it.
+function lmParseGrid(text, rows, cols){
+  var lines = String(text || '').split(/\r?\n/).filter(function(l){ return l.trim() !== ''; });
+  if (!lines.length) return null;
+  var joined = lines.join('\n');
+  var hasTab = /\t/.test(joined), hasSemi = /;/.test(joined);
+  var spaced = !hasTab && !hasSemi && lines.some(function(l){ return /[\d.]\s+[-+.\d]/.test(l.trim()); });
+  var sep = hasTab ? '\t' : (hasSemi ? ';' : (spaced ? /\s+/ : ','));
+  var decComma = sep !== ',';
+  var grid = lines.map(function(l){
+    return (spaced ? l.trim() : l).split(sep).map(function(x){
+      x = x.trim().replace(/^"(.*)"$/, '$1');
+      return decComma ? x.replace(/(\d),(\d)/g, '$1.$2') : x;
+    });
+  });
+  function num(x){ if (x === undefined || x === '') return null; var v = Number(x); return isFinite(v) ? v : null; }
+  var LET = 'ABCDEFGHIJKLMNOP'.slice(0, rows);
+  // Labelled: a row that starts with its letter. Anything else around it — a title, the
+  // reader's metadata, the 1…12 header — is not a row of the plate and is left behind.
+  var labelled = grid.filter(function(g){ return g.length > 1 && /^[A-P]$/i.test(g[0]) && LET.indexOf(g[0].toUpperCase()) >= 0; });
+  if (labelled.length) {
+    var vals = {}, n = 0;
+    labelled.forEach(function(g){
+      var L = g[0].toUpperCase();
+      for (var c = 0; c < cols; c++) { var v = num(g[1 + c]); if (v !== null) { vals[L + (c + 1)] = v; n++; } }
+    });
+    return n ? { labelled: true, vals: vals, n: n } : null;
+  }
+  // Bare numbers: the block is the run of lines that hold numbers. A title or a unit line above
+  // or below it is not part of it; a word inside it (OVER, a masked well) is an empty well.
+  function numeric(g){ return g.some(function(x){ return num(x) !== null; }); }
+  while (grid.length && !numeric(grid[0])) grid.shift();
+  while (grid.length && !numeric(grid[grid.length - 1])) grid.pop();
+  if (!grid.length) return null;
+  // A first line reading 1, 2, 3… across the whole plate is the column header — unless the block
+  // is exactly as tall as the plate, in which case there is no room for one and it is data. A
+  // short run (a 2 × 2 block whose first row is 1, 2) is values, not a header.
+  var g0 = grid[0], off0 = g0[0] === '' ? 1 : 0, isHdr = g0.length - off0 === cols;
+  for (var i = off0; i < g0.length && isHdr; i++) if (g0[i] !== '' && num(g0[i]) !== i - off0 + 1) isHdr = false;
+  if (isHdr && grid.length !== rows) grid = grid.slice(1);
+  var block = grid.map(function(g){
+    var r = g.map(num);
+    while (r.length && r[r.length - 1] === null) r.pop();
+    return r;
+  });
+  var n2 = 0; block.forEach(function(r){ r.forEach(function(v){ if (v !== null) n2++; }); });
+  return n2 ? { labelled: false, block: block, n: n2 } : null;
+}
+// Put parsed readings onto a plate. A labelled grid lands where its letters say; a bare block
+// lands with its top-left at `at` (the selected well) — Excel's own rule. The block owns every
+// well it covers, so an empty cell in it clears that well; wells outside it are kept.
+function lmApplyGrid(parsed, plateIdx, at, source){
+  var rows = state.rows, cols = state.cols, set = {}, clear = [], r0 = 0, c0 = 0;
+  if (parsed.labelled) {
+    Object.keys(parsed.vals).forEach(function(w){ set[w] = parsed.vals[w]; });
+  } else {
+    var h = parsed.block.length, w = Math.max.apply(null, parsed.block.map(function(r){ return r.length; }));
+    if (h === rows && w === cols) at = { r: 0, c: 0 };   // a whole plate is a whole plate
+    r0 = at ? at.r : 0; c0 = at ? at.c : 0;
+    if (r0 + h > rows || c0 + w > cols) {
+      return { error: 'That block is ' + h + ' × ' + w + (r0 || c0 ? ' and starts at ' + wellPos(r0, c0) : '') + ' — it does not fit a ' + state.format + '-well plate (' + rows + ' × ' + cols + ').' + (r0 || c0 ? ' Select the well its top-left corner goes in.' : '') };
+    }
+    parsed.block.forEach(function(row, ri){
+      for (var ci = 0; ci < w; ci++) {
+        var pos = wellPos(r0 + ri, c0 + ci), v = row[ci];
+        if (v === null || v === undefined) clear.push(pos); else set[pos] = v;
+      }
+    });
+  }
+  while (state.plates.length <= plateIdx) state.plates.push({ signal: {}, file: '' });
+  var pl = state.plates[plateIdx], sig = Object.assign({}, pl.signal);
+  clear.forEach(function(p){ delete sig[p]; });
+  Object.keys(set).forEach(function(p){ sig[p] = set[p]; });
+  pl.signal = sig; pl.file = source;
+  return { n: Object.keys(set).length, at: parsed.labelled ? null : wellPos(r0, c0) };
+}
+// ⌘V with values copied from a spreadsheet: onto the plate on screen.
+function lmPasteReadings(text){
+  var parsed = lmParseGrid(text, state.rows, state.cols);
+  if (!parsed) return false;
+  var at = null;
+  if (LM_SEL.size) { var b = _lmBox(LM_SEL); at = { r: b.r0, c: b.c0 }; }
+  lmMark();
+  var res = lmApplyGrid(parsed, state.plate, at, 'pasted from a spreadsheet');
+  if (res.error) { lmDropMark(); toast(res.error); return true; }
+  state.activeSubtab = 'signal';
+  lmAfterChange();
+  var P = state.plates.length;
+  toast((P > 1 ? 'Plate ' + (state.plate + 1) + ': ' : '') + res.n + ' readings pasted' +
+    (parsed.labelled ? ', placed by their row letters.' : res.at && res.at !== 'A1' ? ' from ' + res.at + '.' : '.') + ' ⌘Z undoes it.');
+  return true;
+}
+// The Paste button: the clipboard API where the browser allows it, otherwise the keys.
+function lmPasteButton(){
+  if (!navigator.clipboard || !navigator.clipboard.readText) { toast('Copy the values in Excel, click the plate, then press ⌘V (Ctrl+V).'); return; }
+  navigator.clipboard.readText().then(function(t){
+    if (!lmPasteReadings(t)) toast('The clipboard has no numbers in it — copy the block of values in Excel first.');
+  }).catch(function(){ toast('The browser did not allow reading the clipboard — click the plate and press ⌘V (Ctrl+V).'); });
+}
+
 // There was a Reader format menu here offering PHERAstar and GloMax. Only PHERAstar was ever
 // implemented — choosing GloMax refused the file — so the menu asked a question with one answer.
 // The parser finds the lettered grid wherever the export puts it; a GloMax parser goes here, and
@@ -1723,11 +1977,35 @@ async function handleReaderFile(file, plateIdx, quiet){
   if (!file) return false;
   if (!window.XLSX) { toast('The Excel reader did not load — reconnect and reload to read a reader file.'); return false; }
   try {
+    // A text export (CSV, TXT) is a grid of numbers — read like a paste.
+    if (/\.(csv|tsv|txt)$/i.test(file.name)) {
+      var parsedT = lmParseGrid(await file.text(), state.rows, state.cols);
+      if (!parsedT) { toast('No readings found in ' + file.name + '.'); return false; }
+      if (!quiet) lmMark();
+      var resT = lmApplyGrid(parsedT, target, null, file.name);
+      if (resT.error) { if (!quiet) lmDropMark(); toast(file.name + ': ' + resT.error); return false; }
+      if (!quiet) { state.plate = target; state.activeSubtab = 'signal'; lmAfterChange(); toast('Plate ' + (target + 1) + ': ' + resT.n + ' readings from ' + file.name + '.'); }
+      return true;
+    }
     var buf = await file.arrayBuffer();
     var wb = XLSX.read(buf, { type: 'array', cellDates: false, raw: true });
     var ws = wb.Sheets[wb.SheetNames[0]];
     var raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
     var wells = parsePHERAstarSheet(raw, state.rows, state.cols);
+    // No lettered grid: before guessing PHERAstar's fixed offsets, see whether the sheet is
+    // simply the values — what a spreadsheet saved by hand, or another reader's export, holds.
+    if (_lmReadByPos) {
+      var parsedX = lmParseGrid(XLSX.utils.sheet_to_csv(ws, { FS: '\t' }), state.rows, state.cols);
+      if (parsedX) {
+        if (!quiet) lmMark();
+        var resX = lmApplyGrid(parsedX, target, null, file.name);
+        if (!resX.error) {
+          if (!quiet) { state.plate = target; state.activeSubtab = 'signal'; lmAfterChange(); toast('Plate ' + (target + 1) + ': ' + resX.n + ' readings from ' + file.name + '.'); }
+          return true;
+        }
+        if (!quiet) lmDropMark();
+      }
+    }
     var sig = {}, matched = 0;
     Object.keys(wells).forEach(function(well){ if (wells[well] === null) return; sig[well] = wells[well]; matched++; });
     if (!matched) { toast('No readings found in ' + file.name + ' — is it the reader export for a ' + state.format + '-well plate?'); return false; }
@@ -1758,14 +2036,16 @@ function lmRenderRead(){
     el.onclick = function(){ lmPickFiles(); };
     el.onkeydown = function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); lmPickFiles(); } };
     el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>' +
-      '<span><b>Drop the reader export' + (P > 1 ? ' for Plate ' + (state.plate + 1) : '') + '</b> here or anywhere on this card, or click to choose it' + (P > 1 ? ' — several files fill Plate 1, 2, 3… in name order' : '') + '.</span>';
+      '<span><b>Drop the reader export' + (P > 1 ? ' for Plate ' + (state.plate + 1) : '') + '</b> here or anywhere on this card, or click to choose it' + (P > 1 ? ' — several files fill Plate 1, 2, 3… in name order' : '') + '. Any reader works: copy its values in Excel and press ⌘V.</span>' +
+      '<button class="btn small" onclick="event.stopPropagation();lmPasteButton()" title="Paste a block of values copied from Excel — with or without the row letters">Paste values</button>';
     return;
   }
   el.className = 'lm-read'; el.onclick = null; el.onkeydown = null; el.removeAttribute('role'); el.removeAttribute('tabindex');
   el.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M14 3v6h6"/></svg>' +
     '<span><b>' + (P > 1 ? 'Plate ' + (state.plate + 1) + ' · ' : '') + n + ' readings</b></span>' +
     '<span class="fn" title="' + esc(pl.file || '') + '">' + (pl.file ? esc(pl.file) : 'typed by hand') + '</span>' +
-    '<button class="lm-link" onclick="lmPickFiles(' + state.plate + ')">Replace</button>';
+    '<button class="lm-link" onclick="lmPickFiles(' + state.plate + ')">Replace</button>' +
+    '<button class="lm-link" onclick="lmPasteButton()" title="Paste values copied from Excel over these readings — select a well first to paste a block from there">Paste values</button>';
 }
 (function wireReaderFiles(){
   var input = document.getElementById('reader-file'), card = document.getElementById('lm-card'), depth = 0;
@@ -1781,8 +2061,8 @@ function lmRenderRead(){
 // One file is the plate on screen. Several fill Plate 1, 2, 3… in name order, adding plates as
 // needed — one reading per plate is how a multi-plate run comes off the reader.
 async function handleReaderFiles(list, plateIdx){
-  var files = Array.from(list).filter(function(f){ return /\.xlsx?$/i.test(f.name); });
-  if (!files.length) { toast('That is not a reader export — Lumina reads the .xlsx or .xls the reader writes.'); return; }
+  var files = Array.from(list).filter(function(f){ return /\.(xlsx?|csv|tsv|txt)$/i.test(f.name); });
+  if (!files.length) { toast('That is not a reader export — Lumina reads .xlsx, .xls, .csv or .txt, or paste the values copied from Excel (⌘V).'); return; }
   if (files.length === 1) { await handleReaderFile(files[0], plateIdx); return; }
   files.sort(function(a, b){ return a.name.localeCompare(b.name, undefined, { numeric: true }); });
   lmMark();

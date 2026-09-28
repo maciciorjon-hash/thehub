@@ -92,6 +92,41 @@ def main():
               'before/after numerical verification, since outputs can shift.)')
         return 1
     print(f'All present copies match {CANONICAL}. No drift.')
+    return plate_engine()
+
+
+# The shared plate engine (selection geometry, ranges, dilution series, compound blocks, pasted
+# name lists) — canonical in Lumina, copied into the apps below by tools/sync_plate_engine.py.
+PE_CANON = 'apps/lumina/lumina.html'
+PE_COPIES = ['apps/labbook/labbook.html']
+PE_BEGIN = '// ═══ PLATE ENGINE — BEGIN'
+PE_END = '// ═══ PLATE ENGINE — END'
+
+
+def pe_block(src):
+    i = src.find(PE_BEGIN)
+    j = src.find(PE_END)
+    if i < 0 or j < 0:
+        return None
+    return src[i:src.index('\n', j)]
+
+
+def plate_engine():
+    ref = pe_block(open(os.path.join(BASE, PE_CANON), encoding='utf-8').read())
+    print('\nPlate engine vs Lumina (canonical):')
+    if ref is None:
+        print('  Lumina has no PLATE ENGINE block'); return 2
+    bad = 0
+    for rel in PE_COPIES:
+        x = pe_block(open(os.path.join(BASE, rel), encoding='utf-8').read())
+        tag = 'absent' if x is None else ('MATCH' if x == ref else 'DIFF')
+        if tag != 'MATCH':
+            bad += 1
+        print(f'  {rel:32} {tag}')
+    if bad:
+        print('DRIFT: run python3 tools/sync_plate_engine.py after editing the engine in Lumina.')
+        return 1
+    print('  No drift.')
     return 0
 
 
