@@ -898,11 +898,15 @@ function parsePlateCSV(text, format) {
   // edge left unread — vanished and every value after it moved one column left. And with comma
   // in the class, a European decimal ("0,1") was split into two cells.
   var hasTab = /\t/.test(text), hasSemi = /;/.test(text);
-  var sep = hasTab ? '\t' : (hasSemi ? ';' : ',');
+  // Numbers separated by spaces are a grid too — what a reader's text view copies as. With ','
+  // as the separator each line was one cell, so only column 1 was read. The fourth copy of this
+  // parser; Blueprint (BP-5) and Labbook (LB-1) were fixed first.
+  var spaced = !hasTab && !hasSemi && lines.some(function(l){ return /[\d.]\s+[-+.\d]/.test(l.trim()); });
+  var sep = hasTab ? '\t' : (hasSemi ? ';' : (spaced ? /\s+/ : ','));
   // Where the comma is not the separator it is a decimal mark. parseFloat('0,1') is 0.
   var decComma = (sep !== ',');
   var grid = lines.map(function(l){
-    return l.split(sep).map(function(c){
+    return (spaced ? l.trim() : l).split(sep).map(function(c){
       c = c.trim();
       return decComma ? c.replace(/(\d),(\d)/g, '$1.$2') : c;
     });

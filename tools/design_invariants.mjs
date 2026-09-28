@@ -20,6 +20,9 @@
 //                             plate when no well is active.
 //   B9 destructive = undoable A change of comb keeps the lanes, and Clear / comb changes on the
 //                             gel are undone by ⌘Z.
+//   N1 Beacon paste shapes    Beacon's plate-reader parser (the fourth copy) reads tab, space,
+//                             lettered, semicolon/decimal-comma and comma grids, and a blank A1
+//                             stays in column 1. (It read a space-separated grid as one column.)
 //   R1 save = load            Every field a Ribbon design is read back with is written when it
 //                             is saved (residue labels were read, never written).
 //   R2 a failure leaks        A design whose structure fails to load applies nothing to the next
@@ -199,6 +202,20 @@ function syntheticPdb() {
   }
   return lines.join('\n') + '\nEND\n';
 }
+// ── Beacon ───────────────────────────────────────────────────────────────────────────────────
+async function beacon(pg) {
+  if (!run('N1')) return;
+  const r = await pg.evaluate(() => { const out = [];
+    for (const fmt of ['96', '384']) { const R = fmt === '96' ? 8 : 16, C = fmt === '96' ? 12 : 24, L = 'ABCDEFGHIJKLMNOP';
+      const g = [...Array(R)].map((_, i) => [...Array(C)].map((_, j) => i * 100 + j + 1));
+      const shapes = { tab: g.map(r => r.join('\t')), spaces: g.map(r => r.join(' ')), lettered: g.map((r, i) => L[i] + '  ' + r.join('   ')),
+        semi: g.map(r => r.map(x => x + ',5').join(';')), csv: g.map(r => r.join(',')), blankA1: g.map((r, i) => (i === 0 ? '' : r[0]) + '\t' + r.slice(1).join('\t')) };
+      for (const [n, l] of Object.entries(shapes)) { const x = parsePlateCSV(l.join('\n'), fmt), add = n === 'semi' ? 0.5 : 0;
+        const okAll = !!x && x.length === R && x.every((row, i) => row.vals.length === C && row.vals.every((v, j) => (n === 'blankA1' && i === 0 && j === 0) ? v == null : v === i * 100 + j + 1 + add));
+        out.push([fmt + ' ' + n, okAll, x ? x.map(row => row.vals.slice(0, 3)).slice(0, 2) : null]); } }
+    return out; });
+  r.forEach(([n, ok, d]) => check('N1', n, ok, d));
+}
 async function ribbon(pg) {
   if (!(await pg.evaluate(() => !!window.$3Dmol))) { skipped.push('Ribbon (3Dmol could not load from its CDN)'); return; }
   const E = (f, a) => pg.evaluate(f, a);
@@ -251,6 +268,7 @@ try {
   const browser = await chromium.launch();
   for (const [app, suite, prep] of [
     ['apps/blueprint/blueprint.html', blueprint, null],
+    ['apps/beacon/beacon.html', beacon, null],
     ['apps/ribbon/ribbon.html', ribbon, async ctx => {
       await ctx.route('**/files.rcsb.org/download/**', r => /1XYZ\.pdb$/.test(r.request().url())
         ? r.fulfill({ status: 200, contentType: 'text/plain', body: syntheticPdb() }) : r.fulfill({ status: 404, body: '' }));
@@ -259,7 +277,7 @@ try {
         r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ result_set: [{ identifier: body.includes('slowquery') ? '1AAA' : '2BBB' }] }) }); });
       await ctx.route('**/data.rcsb.org/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"struct":{"title":"stub"}}' }));
     }]]) {
-    if (ONLY && !ONLY.some(o => o[0] === (suite === blueprint ? 'B' : 'R'))) continue;
+    if (ONLY && !ONLY.some(o => o[0] === (suite === blueprint ? 'B' : suite === beacon ? 'N' : 'R'))) continue;
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await ctx.addInitScript(() => { try { localStorage.removeItem('ribbon_last'); } catch (e) {} });
     if (prep) await prep(ctx);
