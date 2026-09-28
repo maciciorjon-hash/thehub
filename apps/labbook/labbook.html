@@ -9363,13 +9363,25 @@ function setProjectPrefix(id){
     var px=_normPrefix(v);
     if(!px){ toast('A prefix is letters and digits — nothing was changed.'); return; }
     if(px===cur){ return; }
+    // Derived prefixes are kept unique (_uniquePrefix); a typed one was not, and two projects
+    // sharing one make their codes indistinguishable. It is your call, so it asks.
+    var other=(LB.data.projects||[]).filter(function(q){ return q.id!==id && projPrefix(q)===px; })[0];
+    if(other){ lbConfirm('<b>'+esc(px)+'</b> is already the prefix of <b>'+esc(other.name||'another project')+'</b>. Two projects with one prefix give their experiments codes that cannot be told apart.',
+        {title:'Prefix already used',ok:'Use it anyway',html:true}).then(function(ok){ if(ok) _setPrefixGo(p,id,cur,px); });
+      return; }
+    _setPrefixGo(p,id,cur,px);
+  });
+}
+function _setPrefixGo(p,id,cur,px){
     var exps=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
       .filter(function(e){ return e.projectId===id && isCoded(e) && e.code; });
     var re=new RegExp('^'+cur+'_');
     var hits=exps.filter(function(e){ return re.test(e.code) || !/^[A-Z0-9]{1,4}_/.test(e.code); });
     function commit(){
+      undoMark('Change the prefix',['projects'].concat(hits.map(function(e){ return 'experiments.'+e.id; })));
       hits.forEach(function(e){
-        e.code = re.test(e.code) ? e.code.replace(re, px+'_') : (px+'_'+e.code);
+        // Re-coding can land on a code another experiment already has; never two with one.
+        e.code = _uniqueCode(re.test(e.code) ? e.code.replace(re, px+'_') : (px+'_'+e.code), e.id);
         e.updated=Date.now();
       });
       p.prefix=px; delete p.prefixAuto; save(); renderAll();
@@ -9383,7 +9395,6 @@ function setProjectPrefix(id){
       +'<span class="cc-dim">The code is what is written on the plate and the file names, so change it knowing that the old one stops matching.</span>',
       {title:'Change the prefix', ok:'Rename '+hits.length+' code'+(hits.length===1?'':'s'), html:true})
       .then(function(ok){ if(ok) commit(); });
-  });
 }
 function delProject(id){ var p=projById(id); if(!p) return;
   var exps=Object.keys(LB.data.experiments).filter(function(k){return LB.data.experiments[k].projectId===id;});
