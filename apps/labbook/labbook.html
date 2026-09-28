@@ -19990,7 +19990,29 @@ function importExpFile(file){
 }
 // One record lands: filed where you said, provenance on it, its code kept unique. `parsed` is
 // the single-record envelope or, for a bundle, the per-experiment entry inside it.
+// Rich text is HTML by design, and an imported file is HTML somebody else wrote. Rendered into a
+// frame that shares the Hub's origin — where the shell holds the Firebase session — an
+// `<img onerror>` in a colleague's step note ran as the person who opened it. Parsing happens in
+// a <template>, which neither runs nor loads anything; a string is re-serialised ONLY when
+// something was taken out, so plain text such as "a < b" comes back exactly as it went in.
+var _DEFANG_TAGS=/^(script|iframe|object|embed|frame|frameset|link|meta|base|form|style|noscript)$/;
+function _defangHtml(s){
+  if(typeof s!=='string'||s.indexOf('<')<0) return s;
+  var t=document.createElement('template'); t.innerHTML=s; var bad=false;
+  [].slice.call(t.content.querySelectorAll('*')).forEach(function(n){
+    if(_DEFANG_TAGS.test(n.tagName.toLowerCase())){ n.remove(); bad=true; return; }
+    [].slice.call(n.attributes).forEach(function(a){ var nm=a.name.toLowerCase(),
+      v=String(a.value||'').replace(/[\s\u0000-\u001f]/g,'').toLowerCase();
+      if(nm.indexOf('on')===0 || (/^(href|src|xlink:href|action|formaction|srcdoc)$/.test(nm) &&
+         (nm==='srcdoc' || /^(javascript|vbscript|data:text\/html)/.test(v)))){ n.removeAttribute(a.name); bad=true; } }); });
+  return bad?t.innerHTML:s; }
+function _defangDeep(o){
+  if(typeof o==='string') return _defangHtml(o);
+  if(Array.isArray(o)){ for(var i=0;i<o.length;i++) o[i]=_defangDeep(o[i]); return o; }
+  if(o&&typeof o==='object'){ Object.keys(o).forEach(function(k){ o[k]=_defangDeep(o[k]); }); }
+  return o; }
 function _landImported(e,parsed,pid,sid){
+  _defangDeep(e);
   e.projectId=pid; e.sectionId=sid;
   e.imported={at:Date.now(), from:(parsed.app||'Labbook'), exported:parsed.exported||'',
               project:parsed.project||'', folder:parsed.folder||'', originalId:(parsed.experiment||{}).id||''};
