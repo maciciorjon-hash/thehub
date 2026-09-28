@@ -5701,8 +5701,11 @@ function plateToCSV(p){ var d=plateDims(p), out=['Well,Type,Cell line,Compound,C
 // The point of a plate map is being able to read back what was where. Coloured wells are for
 // spotting the shape at a glance; these lines are the actual record — "A1–A12 · JQ1 · 1 µM →
 // 5.65 pM (12 pts, 3-fold)" — readable, copyable, and enough to repeat the experiment from.
-function _parseConcNM(s){ var m=/^\s*([\d.]+)\s*(fM|pM|nM|µM|uM|mM|M)?\s*$/i.exec(String(s||'')); if(!m) return NaN;
-  var v=parseFloat(m[1]), u=(m[2]||'nM').toLowerCase();
+// Reads what _fmtConc writes — including the exponent form it uses below 5e-9 nM, which this
+// could not parse, so the far end of a long series broke the series description — and a comma
+// decimal, which is how half of Europe types a concentration into a well.
+function _parseConcNM(s){ var m=/^\s*(\d*[.,]?\d+(?:e[+\-]?\d+)?)\s*(fM|pM|nM|µM|uM|mM|M)?\s*$/i.exec(String(s||'')); if(!m) return NaN;
+  var v=parseFloat(m[1].replace(',','.')), u=(m[2]||'nM').toLowerCase();
   return v*(u==='fm'?1e-6:(u==='pm'?1e-3:(u==='nm'?1:(u==='mm'?1e6:(u==='m'?1e9:1e3)))))  ; }
 // Collapse a set of well ids into as few readable ranges as possible ("C1–E12, H1–H6").
 function _compactRanges(ids){
@@ -5732,6 +5735,12 @@ function _seriesText(seq){
   if(keys.length<=1) return {text:seq[0]||'',varies:false};
   var nm=seq.map(_parseConcNM), ok=nm.length>2&&nm.every(function(v){ return v>0; });
   var fold=null;
+  // A series laid out low → high (the ← and ↑ directions in the plate editor) is as much a series
+  // as one laid out high → low. It was read only one way, so it came out as "12 concentrations".
+  if(ok && nm[0]<nm[nm.length-1]){ var rv=_seriesText(seq.slice().reverse());
+    return rv.varies&&/pts,/.test(rv.text)
+      ? {text:seq[0]+' → '+seq[seq.length-1]+' ('+seq.length+' pts, '+rv.text.replace(/^.*pts, /,'').replace(/\)$/,'')+', rising)',varies:true}
+      : {text:rv.text,varies:true}; }
   if(ok){
     // Fit the fold from the two endpoints and check every point sits on that series. Displayed
     // values are rounded hard at the low end (0.0169 → "0.02"), so compare in log space with a
@@ -7480,6 +7489,9 @@ function _fmtConc(nM){ if(!isFinite(nM)||nM<=0) return '0';
   // a real point in a long series shown as nothing at all. Only those switch notation; 0.5 fM
   // still reads as 0.5 fM.
   if(nM<5e-9) return (+nM.toPrecision(3)).toExponential()+' nM';
+  // Rounding can carry a value over a unit boundary: 999.95 nM printed as "1000 nM", 0.9999 nM
+  // as "1000 pM". Round to what will be shown first, then choose the unit.
+  nM=+nM.toPrecision(3);
   if(nM>=1e6) return _cn(nM/1e6)+' mM';
   if(nM>=1e3) return _cn(nM/1e3)+' µM';
   if(nM>=1)   return _cn(nM)+' nM';
