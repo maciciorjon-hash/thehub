@@ -4,6 +4,124 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## Labbook — 2026-09-28
+
+### Scope & environment
+- **App:** `apps/labbook/labbook.html` — Planner (Home, Today, Week, Experiments), experiments and
+  their steps, calculators and plate maps, Journal and Notes, Visualize, the Designer, the Report
+  and every export, import/backup/restore, boot and persistence, cross-app messages, search,
+  timers, the tour. Also `labbook-standalone.html` and Labbook embedded in dHUB (file:// and http).
+- **Base commit:** `c30f5d0`. Worked directly on `main` (the tree was clean); one commit per bug.
+- **Tools:** Playwright (Chromium and WebKit) driving the real page; `tools/invariants.mjs`,
+  `tools/mobile_sweep.mjs`, the in-page runtime/alignment/fit audits, `check_css`, `check_js`,
+  `check_shared`, `audit_app --xref`, `embed.py` (all five profiles). Session scratch scripts for
+  probes: injection sweep, typing, boot with corrupted storage, quota, cross-origin framing.
+- **Viewports:** 1920×1080, 1366×768, 1024×768, 768×1024, 390×780/844, 375×640, 320×568, light and
+  dark. Touch emulation below 768 px.
+- **Baseline:** every invariant held, the phone sweep was clean and the static checks were clean
+  before anything was changed. So all 29 bugs below lay outside what the existing checks covered.
+
+### Coverage matrix
+| Area | Functional | Edge | Math | UI | Mobile | Stress | Persistence | Errors | A11y | Perf |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Home / Today / Week | ✅ | ✅ | — | ✅ | ✅ | ✅ drag | ✅ undo | ✅ | ✅ keyboard | ✅ |
+| Experiments: create, code, prefix, duplicate, replicate, move, delete | ✅ | ✅ dup codes, blanks | — | ✅ | ✅ | ✅ double-click | ✅ undo + trash | ✅ | ✅ | ✅ 600 exps |
+| Steps, snooze, slip, waits, timers | ✅ | ✅ | ✅ `_parseWait` | ✅ | ✅ | ✅ rapid tick | ✅ reload | ✅ | — | ✅ |
+| Calculators | ✅ | ✅ 0/blank/neg/huge/text | ✅ hand-checked | ✅ | ✅ | — | — | ✅ | — | — |
+| Plate editor & reader values | ✅ | ✅ 7 grid shapes | ✅ series, units | ✅ | ✅ | — | ✅ undo | ✅ | — | ✅ |
+| Echo picklist → plate | ✅ | ✅ BOM, `;`, padded wells, failed | ✅ concentrations | — | — | — | — | ✅ | — | — |
+| Journal & Notes | ✅ | ✅ switch day mid-typing | — | ✅ | ✅ | — | ✅ | — | ✅ | ✅ 365 days |
+| Visualize | ✅ | ✅ 0, neg, NaN, Infinity, 1e12 | ✅ | ✅ | ✅ | — | — | ✅ | — | ✅ |
+| Designer | ⚠️ via invariants I1–I25 | ✅ | ✅ | ✅ | ✅ | — | ✅ | — | — | — |
+| Report & exports (PDF, CSV, JSON, bundle) | ✅ | ✅ formulas, quotes | — | ✅ | ✅ | — | ✅ round trip | ✅ | — | — |
+| Import / backup / restore | ✅ | ✅ wrong file kinds, script | ✅ replicate stats | — | — | — | ✅ | ✅ | — | — |
+| Boot & storage | ✅ | ✅ corrupt, wrong shapes, `[]` | — | ✅ pill | — | ✅ quota | ✅ | ✅ | — | — |
+| Cross-app messages (`dhub:context`, `lb:go`) | ✅ | ✅ malformed, cross-origin | — | — | — | — | ✅ | ✅ | — | — |
+| Search (⌘K, Experiments filter) | ✅ | ✅ regex chars, 500 chars | — | — | ✅ | — | — | ✅ | — | ✅ |
+| Inline sum & autocorrect | ✅ | ✅ | ✅ | — | — | — | ✅ ⌘Z | — | — | — |
+| Tour | ✅ | — | — | ✅ on screen | ✅ | — | ✅ returns | — | — | — |
+| Firebase sync, attachment upload | ❌ needs a signed-in session | | | | | | | | | |
+
+### Bugs
+Every bug in this table is fixed. Commits are on `main`, one per bug, with the ID in the message.
+
+| ID | Sev | Area | Summary | Root cause |
+|---|---|---|---|---|
+| LB-1 | High | Plate values | A space-separated reader grid filled only column 1 (8 of 96 values); with row letters, nothing | The separator was tab / `;` / `,` only — report item N1 from the Blueprint run, now fixed here |
+| LB-3 | High | Import | An imported experiment's rich text could run script inside the Hub's origin, where the Firebase session lives | Imported HTML was rendered as-is |
+| LB-4 | High | Undo / trash | ⌘Z after a delete left the item in Deleted items; restoring it later wrote the old copy over everything edited since | Six delete paths snapshotted the record but not the trash entry |
+| LB-7 | High | Boot | When the saved copy could not be parsed, the first save (seeding runs at boot) overwrote it within a second, while the warning said nothing had been deleted | Nothing set the unreadable text aside |
+| LB-8 | High | Boot | `projects` as an object, a null record or a non-list `blocks` gave a blank page; a stored `[]` was taken for a tree and saved back as `[]` on every change | No shape normalisation at boot or cloud adoption |
+| LB-9 | High | Replicates | Importing a copy of your own replicate added it to the set: n 2 → 3, geometric mean 10 → 4.6 nM | `repGroup` survived the import |
+| LB-17 | High | Messages | A malformed result, table or plate from another app broke that experiment's Results, Home and Visualize on every render | The payload was saved unchecked |
+| LB-19 | High | Visualize | A target name could run script from the target chips | `esc(t).replace(/'/g,"\\'")` — `&#39;` decodes back to `'` inside the attribute |
+| LB-21 | High | Restore | Restoring a folder export replaced the whole notebook with nothing, behind a confirm that did not say what the file held | The check was `'experiments' in data`, which a bundle passes |
+| LB-23 | High | Calculators | With a plasmid too small to pipette, the NanoBRET mix table made the tube 101.9 µL instead of 88: each well got 86% of the DNA and FuGENE | The Opti-MEM remainder subtracted the undiluted volume, not the diluted one it told you to add |
+| LB-24 | High | Calculators | Same for the spike-in intermediate | Same |
+| LB-2 | Med | Exports | Notes, compounds and labels starting with `= + - @` ran as formulas in Excel/Sheets | No CSV formula guard |
+| LB-5 | Med | Steps | Snoozing a step re-dated the steps already ticked on that day | `snoozeBlock` did not skip done steps (`slipRest` did) |
+| LB-6 | Med | Experiment | A typed code could be blank or another run's; the list never refreshed; the start date had no undo | A malformed guard (`if(f==='status') if(f==='code'…`) and no checks |
+| LB-10 | Med | Plate summary | A rising series read as "12 concentrations"; 0.9999 nM printed "1000 pM"; the exponent form was unreadable | `_seriesText` read one direction; rounding after choosing the unit |
+| LB-11 | Med | Plate editor | After 384 → 96, dropped wells' values still set the colour range and their headers still printed | `plSetFormat` only filtered the wells (the Labbook twin of BP-6) |
+| LB-12 | Med | Inline sum | `3.5e3*2=` wrote 6; `B12*2=` multiplied a well name | The run was cut out of the middle of a token |
+| LB-14 | Med | Status | After a full disk was freed, the pill said "Not saved!" for the rest of the session | The failure flag was never cleared |
+| LB-15 | Med | A11y | Navigation rows, experiments in a folder, Journal days and Home's cards could not be reached with Tab | Clickable `div`s with no `tabindex` |
+| LB-18 | Med | Security | Any page that framed or opened the standalone build could post results or a plate into the open experiment | No origin check on the message listener |
+| LB-20 | Med | Visualize | A non-finite potency crashed Visualize ("Invalid string length") | The axis tick loop ran to infinity |
+| LB-22 | Med | Picklist | Zero-padded wells (`B05`) were counted and drawn nowhere; European-Excel picklists read as empty | No unpadding; comma-only CSV reader |
+| LB-26 | Med | Projects | A typed prefix already used by another project was accepted; re-coding could duplicate codes and had no undo | No uniqueness check on the typed path |
+| LB-27 | Med | Undo | Protocol update, move, archive, status, exclude, duplicate and replicate had no undo step | `undoMark` missing |
+| LB-29 | Med | Week | Dragging a step had no undo, never offered to move the later steps, and skipped the volume chain | `wkMoveTo` set the date directly |
+| LB-13 | Low | Mobile | At 320 px the Designer's cards scrolled the page sideways | 310 px grid floor |
+| LB-16 | Low | Timers | Pressing a step's timer twice started two alarms | No duplicate check |
+| LB-25 | Low | Calculators | The ligand-in-suspension recipe printed 0.004 µL as a step | No pipetting hint there |
+| LB-28 | Low | Concentrations | Below 1 fM only two decimals: 0.00501 fM printed "0.01 fM" | `_cn` in the fM branch |
+
+**Totals:** 29 bugs found (0 Critical, 11 High, 14 Medium, 4 Low), 29 fixed, 0 open in this
+table. Items that need a decision are below.
+
+### Not fixed — recommendations
+- **D1. The local cache has a ~5.2 MB ceiling (Needs decision; critical on trajectory).**
+  `localStorage` rejects writes past ~5.2 MB, and a NanoBRET-sized experiment is ~35 KB, so the
+  notebook stops saving locally at roughly 130–140 experiments. Jon's notebook is 0.36 MB with 10.
+  When it happens the app says so loudly ("Not saved!", an alert, and since LB-14 it recovers), and
+  a signed-in device still syncs per record. But the standalone PWA, signed out, loses what was
+  typed after the last good save on reload. **Fix:** move the tree to IndexedDB, per record, with
+  a one-time migration. It is a storage-format change, so it was not made without asking.
+- **D2. Replicate means do not convert units.** `repResultStats` averages potencies as reported,
+  while Visualize converts µM/pM to nM. Echo and Lumina both always send nM, so no live data is
+  affected. Fix: the same conversion `vizPotencyRows` does.
+- **D3. At 320 px a few placeholders are clipped** (Designer search, two New-experiment fields)
+  and the Visualize legend wraps with a hanging indent. Cosmetic, on the narrowest phones only.
+- **D4. Beacon's `parsePlateCSV` still reads a space-separated grid as one column** (the Blueprint
+  report's N1, third copy). Out of scope for a Labbook run; the two-line fix is Labbook's LB-1.
+
+### Regression results
+- **`tools/invariants.mjs`:** every invariant holds on both builds — I1–I25, R1–R7 and the new
+  **B1–B19**, one per class found here. Each B check was proven against the pre-test build
+  (`c30f5d0`), where every one reports its bug.
+- **Phone sweep:** clean on Chromium at 390 and 375 in both themes, on WebKit, embedded in an
+  iframe, and at 320×568 apart from D3.
+- **Desktop and tablet audits** (runtime, alignment, fit, sideways scroll) are clean over 20
+  screens at 1920, 1366, 1024 and 768 in both themes.
+- **Perf** under 4× CPU throttling is unchanged versus the pre-test build: open experiment 53 vs
+  52 ms, keystroke 31 vs 32 ms, plate editor 92 vs 90 ms.
+- **Messages:** Echo → Labbook still lands in the file:// Hub and the http Hub; a same-origin
+  embed is accepted and a cross-origin framer is rejected.
+- **Static:** `check_css`, `check_js`, `check_shared` and `audit_app --xref` are clean, and all
+  five `embed.py` profiles build.
+
+### Residual risk
+- **Firebase sync and attachment uploads were not exercised.** They need a signed-in session.
+  LB-8's normalisation runs on cloud adoption, but it was tested only with local trees.
+- **Archive-embedded protocol steps** were covered through the invariants on the standalone
+  build. They were not explored by hand.
+- **Touch** was emulated, not tested on a real iPhone.
+- **Rich text pasted from the web** relies on the browser's paste sanitiser. Only imports are
+  defanged (LB-3).
+
+---
+
 ## Blueprint + Ribbon — 2026-09-28
 
 ### Scope & environment
