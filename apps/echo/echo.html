@@ -1546,6 +1546,22 @@ function loadTestData() {
 
 // Builds a CSV Uint8Array in 5 000-row chunks to avoid RangeError from
 // joining millions of rows into one giant JS string.
+// One CSV cell: quoted when it holds a comma, a quote or a line break (quotes doubled), and a
+// text value that Excel would run as a formula (= + - @) carries a leading apostrophe. The CSVs
+// joined raw values with commas, so a sample name with a comma shifted every column after it.
+function _csvCell(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') return isFinite(v) ? String(v) : '';
+  let s = String(v);
+  if (/^[=+\-@\t\r]/.test(s) && !/^[+-]?(\d|\.\d)/.test(s)) s = "'" + s;
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function _tsvCell(v) {
+  if (v === null || v === undefined) return '';
+  let s = String(v).replace(/[\t\r\n]+/g, ' ');
+  if (typeof v !== 'number' && /^[=+\-@]/.test(s) && !/^[+-]?(\d|\.\d)/.test(s)) s = "'" + s;
+  return s;
+}
 function _buildCsvBytes(header, rows) {
   var enc = new TextEncoder();
   var CHUNK = 5000;
@@ -2456,10 +2472,11 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   const rawCsvName = 'Results_' + assayId + '_Raw_Data.csv';
   const rawHeader = 'Protein,Sample_ID,Plate_Barcode,Well,Log10_Conc,Measurement,Concentration_nM\r\n';
   const rawRows = merged.map(r => {
-    const concNM = +(Math.pow(10, r.log10Conc) * 1e9).toFixed(4);
+    // Six significant figures: toFixed(4) printed a 50 fM point as 0 nM.
+    const concNM = +(Math.pow(10, r.log10Conc) * 1e9).toPrecision(6);
     return [r.protein || '', r.sampleId || '', r.barcode || '', r.well || '',
       r.log10Conc.toFixed(4), r.measurement !== null && isFinite(r.measurement) ? r.measurement.toFixed(4) : '', concNM
-    ].join(',');
+    ].map(_csvCell).join(',');
   });
   downloadBlobs.push({ name: rawCsvName, bytes: _buildCsvBytes(rawHeader, rawRows), type: 'text/csv', kind: 'csv' });
   log('Raw data CSV: ' + rawRows.length + ' rows', 'ok');
@@ -2738,7 +2755,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   const headerCols2 = outputCols.map(c => colMap2[c] || c);
   const sumCsvName = 'Results_' + assayId + '_Consolidated_Summary.csv';
   const sumHeader = headerCols2.join(',') + '\r\n';
-  const sumRows = summary.map(r => outputCols.map(c => r[c] !== undefined && r[c] !== null ? r[c] : '').join(','));
+  const sumRows = summary.map(r => outputCols.map(c => _csvCell(r[c])).join(','));
   downloadBlobs.push({ name: sumCsvName, bytes: _buildCsvBytes(sumHeader, sumRows), type: 'text/csv', kind: 'csv' });
   log('CSV: ' + summary.length + ' rows', 'ok');
   log('Pipeline complete.', 'ok');
@@ -3091,7 +3108,7 @@ function copyResultsTSV() {
   const _allK = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
   const _lbl = {Protein:'Group',Sample_ID:'Sample ID',DC50_nM:_vlT['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vlT['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vlT['Dmax_pct']||'Dmax (%)',LogIC50_M:_vlT['LogIC50_M']||'LogIC50 (M)',pDC50:_vlT['pDC50']||'pDC50 (M)',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
   const cols = _allK.filter(k=>(k==='Protein'||k==='Sample_ID'||_selTsv.has(k))&&!(k==='AbsDC50_nM'&&_tTsv!=='hibit')&&!(k==='Dmax_pct'&&_noGainTsv));
-  const rows = [cols.map(k=>_lbl[k]||k).join('\t'), ..._lastResultsData.map(r=>cols.map(c=>r[c]??'').join('\t'))];
+  const rows = [cols.map(k=>_lbl[k]||k).join('\t'), ..._lastResultsData.map(r=>cols.map(c=>_tsvCell(r[c])).join('\t'))];
   navigator.clipboard.writeText(rows.join('\n')).then(()=>{
     const btn=document.querySelector('[onclick="copyResultsTSV()"]');
     if(btn){const t=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=t,1500);}
@@ -4161,40 +4178,30 @@ function _scGroupStats(proteinName) {
 // ─── DC50 Histogram ──────────────────────────────────────────────
 let _histChart=null, _histVisible=false;
 // ─── Export filtered scatter data as CSV ───────────────────────
+// "CSV (filtered)" is the points on the chart — group, flags, hit filters and axis limits as
+// applied there, in the chart's own units — not a second reading of the controls that ignored
+// the hit filters, compared nM limits against molar values and counted a missing value as 0.
 function exportFilteredCSV() {
-  const rows = window._scatterRows || window._resultsData || [];
-  const prot = document.getElementById('sc-prot')?.value||'all';
-  const showFlags = document.getElementById('sc-flags')?.checked!==false;
+  if (!scatterChart) { echoToast('No chart to export.'); return; }
+  const xs = scatterChart.scales.x, ys = scatterChart.scales.y;
+  const all = window._resultsData || [];
   const searchQ = (document.getElementById('sc-search')?.value||'').trim().toLowerCase();
-  const xKey = document.getElementById('sc-x')?.value||'DC50_nM';
-  const yKey = document.getElementById('sc-y')?.value||'Dmax_pct';
-  const xMin = parseFloat(document.getElementById('sc-xmin')?.value)||null;
-  const xMax = parseFloat(document.getElementById('sc-xmax')?.value)||null;
-  const yMin = parseFloat(document.getElementById('sc-ymin')?.value)||null;
-  const yMax = parseFloat(document.getElementById('sc-ymax')?.value)||null;
-
-  let filtered = rows.filter(r => {
-    if (prot!=='all' && r.Protein!==prot) return false;
-    if (!showFlags && r.Flag==='Yes') return false;
-    if (searchQ && !r.Sample_ID.toLowerCase().includes(searchQ) && !r.Protein.toLowerCase().includes(searchQ)) return false;
-    const xv=parseFloat(r[xKey])||0, yv=parseFloat(r[yKey])||0;
-    if (xMin!=null && xv<xMin) return false;
-    if (xMax!=null && xv>xMax) return false;
-    if (yMin!=null && yv<yMin) return false;
-    if (yMax!=null && yv>yMax) return false;
-    return true;
-  });
+  const seen = new Set(), filtered = [];
+  scatterChart.data.datasets.forEach(ds => (ds.data||[]).forEach(p => {
+    if (!isFinite(p.x) || !isFinite(p.y) || p.x < xs.min || p.x > xs.max || p.y < ys.min || p.y > ys.max) return;
+    if (searchQ && !String(p.label).toLowerCase().includes(searchQ)) return;
+    const r = all.find(x => x.Sample_ID === p.label && x.Protein === p.protein);
+    const k = (r && _cvKey(r)) || (p.protein + '||' + p.label);
+    if (r && !seen.has(k)) { seen.add(k); filtered.push(r); }
+  }));
   if (!filtered.length) { echoToast('No compounds match current filters.'); return; }
-
-  const cols=['Protein','Sample_ID','DC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
-  const available=cols.filter(c=>filtered[0][c]!==undefined);
-  const header=available.join(',');
-  const csvLines=[header,...filtered.map(r=>available.map(c=>{
-    const v=r[c]??''; return typeof v==='string'&&v.includes(',')?'"'+v+'"':v;
-  }).join(','))];
-  const blob=new Blob([csvLines.join('\n')],{type:'text/csv'});
+  const cols=['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','CI_DC50_lower','CI_DC50_upper','Flag','Flag_Reason'];
+  const available=cols.filter(c=>filtered.some(r=>r[c]!==undefined&&r[c]!==null));
+  const csvLines=[available.join(','),...filtered.map(r=>available.map(c=>_csvCell(r[c])).join(','))];
+  const blob=new Blob(['\ufeff'+csvLines.join('\r\n')],{type:'text/csv'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download='Filtered_'+filtered.length+'_compounds.csv'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
 
 function renderScatter(data) {
