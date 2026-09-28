@@ -8427,7 +8427,11 @@ function downloadUnreadableCopy(){ if(typeof _lbRaw==='string'&&_lbRaw) _dl('lab
 function _flushLocal(){ if(!_lsDirty) return;
   if(!_rawKept){ _keepUnreadable(); return; }
   _lsDirty=false; clearTimeout(_lsT); _lsT=null;
-  try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data)); }
+  try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data));
+    // A failure is loud and a recovery has to be as well: once space was freed the notebook was
+    // saving again while the pill went on saying "Not saved!" for the rest of the session.
+    if(_storageBrokenTree){ _storageBrokenTree=false; _storageBroken=_storageBrokenAtt; _storageWarned=false;
+      updateStatus(); toast('The notebook is saving to this browser again'); } }
   // Silently dropping this means the notebook stops persisting and nobody finds out until a
   // reload wipes the day's work. Always surface it.
   catch(e){ _storageFailed(e,'tree'); } }
@@ -15192,7 +15196,7 @@ function _attPut(id,dataURL){ return _attDB().then(function(db){ return new Prom
   t.onsuccess=function(){ res(true); };
   t.onerror=function(){ _storageFailed(t.error); res(false); };
 }); }).catch(function(err){ _storageFailed(err); return false; }); }
-var _storageWarned=false, _storageBroken=false;
+var _storageWarned=false, _storageBroken=false, _storageBrokenTree=false, _storageBrokenAtt=false;
 // `what` says which write failed. It used to be written entirely in the language of
 // attachments — "Attachment NOT saved … Nothing you already had is lost … delete attachments you
 // no longer need" — and _flushLocal, whose own comment insists the notebook silently not
@@ -15201,7 +15205,7 @@ var _storageWarned=false, _storageBroken=false;
 function _storageFailed(err,what){
   var quota=err&&(err.name==='QuotaExceededError'||/quota/i.test(err.name||err.message||''));
   var tree=(what==='tree');
-  _storageBroken=true; updateStatus();
+  _storageBroken=true; if(tree) _storageBrokenTree=true; else _storageBrokenAtt=true; updateStatus();
   if(_storageWarned){ toast(tree?(quota?'Storage full — the notebook was NOT saved':'The notebook was NOT saved')
                                 :(quota?'Storage full — that file was not saved':'That file was not saved')); return; }
   _storageWarned=true;
