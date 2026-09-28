@@ -7476,6 +7476,14 @@ function plSetFormat(f){ var p=plCur(); if(!p) return; var d=PLATE_FORMATS[Strin
   Object.keys(p.wells||{}).forEach(function(id){ var x=wellRC(id);
     if(x&&x.r<d.r&&x.c<d.c) kept[id]=p.wells[id]; else lost++; });
   p.format=String(f); p.wells=kept; PL.sel={}; PL.anchor=null;
+  // What hung off the wells that were dropped goes with them: their reader values still set the
+  // colour range of the smaller plate, a column header past its last column still printed in
+  // the layout summary, and a block label with no wells left sat in the groups for ever.
+  if(p.values&&p.values.data){ var vd={}; Object.keys(p.values.data).forEach(function(id){ if(kept[id]) vd[id]=p.values.data[id]; });
+    var vs=Object.keys(vd).map(function(k){ return vd[k]; });
+    if(vs.length){ p.values.data=vd; p.values.min=Math.min.apply(null,vs); p.values.max=Math.max.apply(null,vs); } else delete p.values; }
+  if(p.colLabels) Object.keys(p.colLabels).forEach(function(k){ if(+k>=d.c) delete p.colLabels[k]; });
+  _plGcGroups(p);
   platePersist(PL.key); plRender();
   if(lost) toast(lost+' well'+(lost!==1?'s':'')+' fell outside the '+f+'-well grid and '+(lost!==1?'were':'was')+' dropped'); }
 // Concentration formatting — nM/µM/mM chosen automatically as the series steps down.
