@@ -9751,6 +9751,7 @@ function startWaitTimer(expId,blockId){
   var m=blkWait(f.exp,b).min; if(!(m>0)) return;
   var left=b.completedAt ? Math.max(0,(b.completedAt+m*60000)-Date.now()) : m*60000;
   if(left<=0){ toast('That wait is already over'); return; }
+  if(_timerRunning(blockId,_waitTxt(m)+' after '+(b.title||'step'))) return;
   LB_TIMERS.push({id:uid(), label:_waitTxt(m)+' after '+(b.title||'step'), sub:(f.exp.code||f.exp.title||''),
                   expId:expId, blkId:blockId, ends:Date.now()+left, total:Math.round(left/1000)});
   lbNotifyAsk(); _timerWake(true); _timersSave(); renderTimers();
@@ -13722,10 +13723,15 @@ function startTimer(bId,key,label){
     (x.items||[]).forEach(function(it){ if(it.params&&it.params[key]) def=it.params[key]; }); });
   if(!def) return;
   var secs=_tsec(def,(b.params||{})[key]); if(secs<=0) return;
+  if(_timerRunning(bId,(label||def.label||key))) return;
   LB_TIMERS.push({id:uid(), label:(label||def.label||key), sub:(b.title||''), expId:f.exp.id, blkId:bId,
                   ends:Date.now()+secs*1000, total:secs});
   lbNotifyAsk(); _timerWake(true); _timersSave(); renderTimers();
 }
+// The play button pressed twice stacked two identical countdowns, and two alarms at the end.
+function _timerRunning(blkId,label){
+  var on=LB_TIMERS.filter(function(t){ return !t.rang && t.blkId===blkId && t.label===label; })[0];
+  if(on){ toast('That timer is already running'); return true; } return false; }
 function stopTimer(id){ LB_TIMERS=LB_TIMERS.filter(function(t){ return t.id!==id; }); if(!LB_TIMERS.length) _timerWake(false); _timersSave(); renderTimers(); }
 function _timerWake(on){
   try{
