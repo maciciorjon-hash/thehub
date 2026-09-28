@@ -4452,7 +4452,7 @@ function renderScatter(data) {
           <button class="scatter-dl-btn" style="height:28px;margin-left:8px;" onclick="['sel-xmin','sel-xmax','sel-ymin','sel-ymax'].forEach(function(i){document.getElementById(i).value='';});buildSelectivityChart();">Reset axes</button>
         </div>
       </div>
-      <div class="scatter-wrap" id="sel-wrap" style="position:relative;flex:1;min-height:0;"><canvas id="sel-canvas"></canvas></div>
+      <div class="scatter-wrap" id="sel-wrap" style="position:relative;flex:1;min-height:300px;"><canvas id="sel-canvas"></canvas></div>
       <div id="sel-legend" style="padding:4px 12px;font-size:10.5px;font-family:var(--sans);color:var(--text2);display:flex;gap:14px;flex-wrap:wrap;align-items:center;flex-shrink:0;"></div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-shrink:0;">
         <button class="scatter-dl-btn" onclick="downloadSelHiRes()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" style="vertical-align:-.15em"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg> PNG 600 DPI</button>
@@ -5424,6 +5424,19 @@ function buildSelectivityChart() {
     }
   };
 
+  // One unit on X is one unit on Y, so the diagonal is at 45° and a tenfold band is as wide as
+  // it is tall. Stretched to the full panel width the bands read as a fraction of their fold.
+  const _selWrap = document.getElementById('sel-wrap');
+  if (_selWrap) {
+    _selWrap._square = (xMax - xMin) > 0 && Math.abs((xMax - xMin) - (yMax - yMin)) < 1e-9;
+    const fit = () => {
+      const h = _selWrap.clientHeight;   // flex:1 in a column: the height never depends on the width
+      if (_selWrap._square && h > 150) { _selWrap.style.maxWidth = Math.round(h - 25) + "px"; _selWrap.style.width = '100%'; _selWrap.style.margin = '0 auto'; }
+      else { _selWrap.style.maxWidth = ''; _selWrap.style.margin = ''; }
+    };
+    fit();
+    if (!_selWrap._ro && window.ResizeObserver) { _selWrap._ro = new ResizeObserver(fit); _selWrap._ro.observe(_selWrap.parentElement); }
+  }
   selChart = new Chart(canvas, {
     type: 'scatter',
     data: {
@@ -6624,7 +6637,7 @@ function renderCvCurve() {
     // On screen the legend is the table under the chart: drawing it into the canvas as well
     // made the plot shrink with every compound added.
     const cfg=Object.assign({},window._cvCfg,{_singleMode:window._cvMode==='single', legend:false,
-      _emptyMsg: window._cvMode==='compare' ? 'Pick compounds on the left to overlay their curves' : undefined});
+      _emptyMsg: window._cvMode==='compare' ? 'Pick compounds in the list to overlay their curves' : undefined});
     if (palette) { cfg.palette=palette.map(p=>p.col); cfg.dashes=palette.map(p=>p.dash); }
     canvas._cvPalette=cfg.palette; canvas._cvDashes=cfg.dashes;
     // Capture the auto range, so a drag-to-pan starts from what is on screen
