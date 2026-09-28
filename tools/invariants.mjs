@@ -1299,7 +1299,9 @@ async function suite(opts) {
         ['move', () => moveExpTo(e.id)], ['archive', () => setExpArchived(e.id, true)], ['status', () => setExpStatus(e.id, 'paused')],
         ['exclude', () => toggleResultExcluded(e.id, 'r', 0)], ['start date', () => { openExp(e.id); setField('startDate', '2031-03-03'); }],
         ['code', () => { openExp(e.id); setField('code', 'INV_CODE_B2'); }],
+        ['week drag', () => { selectNode('week'); const bk = LB.data.experiments[e.id].blocks[0]; WK_DRAG = { kind: 'block', a: e.id, b: bk.id }; wkMoveTo(addDays(bk.date, 1)); }],
       ];
+      window.lbChoose = () => Promise.resolve('one');
       for (const [k, fn] of acts) { tick('B2');
         const before = JSON.stringify(LB.data.experiments[e.id]), n0 = UNDO.stack.length;
         fn(); await sleep(60);
@@ -1311,7 +1313,7 @@ async function suite(opts) {
       for (const [k, fn, cnt] of [['duplicate', () => dupExperiment(e.id)], ['replicate', () => repeatExperiment(e.id)]]) { tick('B2');
         const n = Object.keys(LB.data.experiments).length; fn(); await sleep(80); lbUndo(); await sleep(30);
         if (Object.keys(LB.data.experiments).length !== n) bad('B2', k, `⌘Z after "${k}" left the new experiment behind`); }
-      window.lbPrompt = lbPrompt0; window.lbPicker = lbPicker0;
+      window.lbPrompt = lbPrompt0; window.lbPicker = lbPicker0; window.lbChoose = lbChoose0;
     });
 
     // B3 — snoozing a step never re-dates a ticked one.
