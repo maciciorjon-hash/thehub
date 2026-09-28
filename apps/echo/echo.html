@@ -1307,7 +1307,10 @@ function log(msg, type) {
   p.appendChild(d);
   p.scrollTop = p.scrollHeight;
 }
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// Quotes too: esc() is used inside attribute values (data-key, value, title), and a compound or
+// group name with a " in it cut the attribute short — the compare row for 'BRD2 "x"' put a key
+// on the chart that matched no curve, and the group filter could not select it.
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // ===== JS ENGINE — no runtime loading needed =====
 
@@ -1396,7 +1399,9 @@ function renderReaderList() {
   Object.keys(readerFiles).forEach(name => {
     const d = document.createElement('div');
     d.className = 'ritem';
-    d.innerHTML = '<div class="rdot"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + esc(name) + '</span><button class="rrm" onclick="rmReader(\'' + esc(name) + '\')">×</button>';
+    // The name travels as data, not inside an inline JS string: "Mike's plate.xlsx" could not be removed.
+    d.innerHTML = '<div class="rdot"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + esc(name) + '</span><button class="rrm" aria-label="Remove ' + esc(name) + '">×</button>';
+    d.querySelector('.rrm').onclick = () => rmReader(name);
     list.appendChild(d);
   });
 }
@@ -1408,7 +1413,9 @@ function renderEchoList() {
   echoFiles.forEach(f => {
     const d = document.createElement('div');
     d.className = 'ritem';
-    d.innerHTML = '<div class="rdot" style="background:var(--accent);"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + f.name + '</span><button class="rrm" onclick="rmEchoFile(\'' + f.name.replace(/'/g,"\\'") + '\')">×</button>';
+    // A file name is text: it went into innerHTML raw, so a name with markup in it was markup.
+    d.innerHTML = '<div class="rdot" style="background:var(--accent);"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name) + '</span><button class="rrm" aria-label="Remove ' + esc(f.name) + '">×</button>';
+    d.querySelector('.rrm').onclick = () => rmEchoFile(f.name);
     list.appendChild(d);
   });
 }
