@@ -8372,7 +8372,23 @@ function updateStatus(){ var p=el('lb-status'); if(!p) return; var txt=el('lb-st
   else { p.classList.add('saving'); if(txt) txt.textContent='Saving…'; p.title='Saving changes…'; }
 }
 var _lsT=null,_lsDirty=false;
-function _flushLocal(){ if(!_lsDirty) return; _lsDirty=false; clearTimeout(_lsT); _lsT=null;
+// A cache that could not be read is still the only copy of what it held, and the first save of
+// the session — seeding runs at boot — wrote a fresh tree over it within a second, while the
+// warning on screen said nothing had been deleted. The raw text is put aside in IndexedDB first
+// (localStorage would need room for two copies), and nothing is written over it until it is.
+var _rawKept=!_localReadFailed, _rawKeepQ=null;
+function _keepUnreadable(){
+  if(_rawKept||_rawKeepQ) return _rawKeepQ;
+  _rawKeepQ=_idb().then(function(db){ return new Promise(function(res){
+    try{ var t=db.transaction('h','readwrite'); t.objectStore('h').put({at:Date.now(),raw:_lbRaw},'unreadable:'+Date.now());
+         t.oncomplete=function(){ res(true); }; t.onerror=function(){ res(false); }; }catch(e){ res(false); } }); })
+    .catch(function(){ return false; })
+    .then(function(ok){ _rawKept=true; if(_lsDirty) _flushLocal(); return ok; });
+  return _rawKeepQ; }
+function downloadUnreadableCopy(){ if(typeof _lbRaw==='string'&&_lbRaw) _dl('labbook-unreadable-'+todayStr()+'.txt',_lbRaw,'text/plain'); }
+function _flushLocal(){ if(!_lsDirty) return;
+  if(!_rawKept){ _keepUnreadable(); return; }
+  _lsDirty=false; clearTimeout(_lsT); _lsT=null;
   try{ localStorage.setItem('hub_labbook', JSON.stringify(LB.data)); }
   // Silently dropping this means the notebook stops persisting and nobody finds out until a
   // reload wipes the day's work. Always surface it.
@@ -21259,9 +21275,12 @@ renderAll(); _timersLoad();
 // a broken one, and the person in front of it is about to see a notebook that is missing work.
 // That is worth interrupting for — it is the one situation where carrying on typing makes it
 // worse.
-if(_localReadFailed) setTimeout(function(){ try{ lbAlert(
-  'This browser’s saved copy of your notebook could not be read at startup, so what is on screen may be incomplete.\n\nNothing has been deleted: the daily backup and the attachment cleanup are both held off while this is true. If you are signed in, the cloud copy should load in a few seconds and replace this. If it does not, restore from a backup (View → Recover) before making changes — saving now would push this partial copy.',
-  {title:'Saved copy could not be read',danger:true,ok:'I understand'}); }catch(e){} }, 800);
+if(_localReadFailed){ _keepUnreadable(); setTimeout(function(){ try{ lbChoose(
+  'This browser’s saved copy of your notebook could not be read at startup, so what is on screen may be incomplete.<br><br>Nothing has been deleted: the unreadable copy has been set aside in this browser, and the daily backup and the attachment cleanup are held off. If you are signed in, the cloud copy should load in a few seconds and replace this. If it does not, restore from a backup (Recover) before making changes.',
+  {title:'Saved copy could not be read',html:true,answers:[
+    {id:'ok',primary:true,safe:true,label:'I understand'},
+    {id:'dl',label:'Download the unreadable copy',sub:'The saved text exactly as it was found, to recover by hand'}]})
+  .then(function(a){ if(a==='dl') downloadUnreadableCopy(); }); }catch(e){} }, 800); }
 _lbAuthWatch();
 lbInitSync();
 // Both of these can destroy something — the backup by writing a snapshot or a file over a good
