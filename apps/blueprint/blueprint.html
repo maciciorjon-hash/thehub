@@ -2064,7 +2064,15 @@ function renderTypeList() {
 function setActiveTypeById(id) {
   activeTypeId = id;
   if (selection.size > 0) {
-    selection.forEach(sid => { wellState[sid] = {typeId: id, label: wellState[sid] ? wellState[sid].label || '' : ''}; });
+    // Change the type and nothing else. Rebuilding the well from {typeId,label} threw away a
+    // merged label's group, so a block called "Compound X" split into loose wells the moment it
+    // was given a type. A gradient shade is a shade OF the old type's colour, so that one goes.
+    selection.forEach(sid => {
+      const w = Object.assign({}, wellState[sid] || {label: ''});
+      if (w.typeId !== id) delete w.color;
+      w.typeId = id; if (w.label == null) w.label = '';
+      wellState[sid] = w;
+    });
     drawPlateCanvas(document.getElementById('plate-canvas-main'));
     renderLegend();
   }
