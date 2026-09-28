@@ -864,6 +864,8 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
   color:var(--text);font:inherit;cursor:pointer;
   transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
 .dlg-ans:hover,.dlg-ans:focus-visible{background:var(--surface3);border-color:var(--accent);}
+/* Rows made keyboard-reachable by _kbArm: the focus has to be visible, or Tab moves nothing you can see. */
+[role=button][tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:var(--r-1);}
 .dlg-ans.primary{border-color:var(--accent);}
 .dlg-ans .l{font-size:var(--fs-4);font-weight:600;line-height:1.35;}
 .dlg-ans .s{font-size:var(--fs-2);color:var(--text2);line-height:1.4;}
@@ -2877,7 +2879,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     <div class="nm-body">
     <div class="nm-grid">
       <div class="mrow"><label>Preset / type</label><select id="nm-type" onchange="nmUpdateCode();nmResetSetup();nmProtos();nmPreview()"></select></div>
-      <div class="mrow"><label>Start date</label><input id="nm-date" type="date" oninput="nmUpdateCode();nmPreview()"></div>
+      <div class="mrow"><label for="nm-date">Start date</label><input id="nm-date" type="date" oninput="nmUpdateCode();nmPreview()"></div>
     </div>
     <div id="nm-setup" class="nm-setup"></div>
     <!-- The routine experiment changes the preset and the date and nothing else; the rest is
@@ -14225,7 +14227,7 @@ function renderDayView(host,D){
   // a row of its own. On a desktop nothing changes — the label is display:none.
   var nav='<div class="day-nav">'
     +'<button class="day-arw" title="Previous day" onclick="dayGo(-1)">'+tbIco(P_CHEV_L,15)+'</button>'
-    +'<span class="day-lblwrap"><span class="day-lbl">'+esc(_dayLbl(D))+'</span><input class="day-pick" type="date" value="'+esc(D)+'" onchange="daySet(this.value)"></span>'
+    +'<span class="day-lblwrap"><span class="day-lbl">'+esc(_dayLbl(D))+'</span><input class="day-pick" type="date" aria-label="Go to a day" value="'+esc(D)+'" onchange="daySet(this.value)"></span>'
     +'<button class="day-arw" title="Next day" onclick="dayGo(1)">'+tbIco(P_CHEV_R,15)+'</button>'
     +(isToday?'':'<button class="day-today" onclick="dayToday()">Today</button>')+'<div class="jr-seg"><button class="on">Day</button><button onclick="selectNode(\'week\')">Week</button></div>'+'</div>';
   host.innerHTML='<div class="ed-wrap"><div class="exh exh-day"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act exh-more" title="This day" onclick="dayActsMenu(event,\''+D+'\')">'+ICON_MORE_H+'</button><button class="exh-act exh-keep" title="Journal page &mdash; the day&rsquo;s free note, in the Notebook" onclick="openDayPage(\''+D+'\')">'+tbIco('<rect x="4.6" y="3.2" width="14.8" height="17.6" rx="2.2"/><path d="M8.4 3.2v17.6"/><path d="M11.4 8.2h5M11.4 11.8h5M11.4 15.4h3.2"/>',17)+'</button><button class="exh-act exh-keep" title="What you need &mdash; every material the steps due today consume, and where it is" onclick="openPrepSheet({date:\''+D+'\'})">'+tbIco(P_BOX,17)+'</button><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Planner \u00b7 day')+'</div></div>'
@@ -17910,7 +17912,7 @@ function dsParamsHtml(){
     ? '<div class="cc-inputs">'+flds.map(function(f,i){ return nmSetupField(f,i===0&&f.t==='format',D.setup,'dsSetupUpd'); }).join('')+'</div>'
     : '<div class="ds-none">This type asks no parameters of its own. Add the ones your run needs below — every module can quote them.</div>';
   var when=(D.mode==='exp')
-    ? '<div class="ds-grid"><div class="mrow"><label>Start date</label><input type="date" value="'+esc(D.startDate)+'" oninput="DS.startDate=this.value||todayStr();dsFoot()"></div></div>'
+    ? '<div class="ds-grid"><div class="mrow"><label for="ds-start">Start date</label><input id="ds-start" type="date" value="'+esc(D.startDate)+'" oninput="DS.startDate=this.value||todayStr();dsFoot()"></div></div>'
     : '';
   var hasFmt=all.some(function(f){ return f.t==='format'; });
   var plate=S.plate?('<div class="ds-plateopt"><label class="nm-setup-plate"><input type="checkbox"'+(D.plate?' checked':'')
@@ -21325,6 +21327,26 @@ _leanInit(); applyLayout(); renderPanels();
   if(WS_LAST.ws==='designer'){ SEL.node={kind:'design'}; return; }
   var r=_wsRestoreNode(); if(r){ SEL.node=r.node; SEL.page=r.page; }
 })();
+// ── Keyboard reach ──────────────────────────────────────────────────────────────────────────
+// The rows you navigate by — Home, Today, Week, Experiments, every project and folder, the
+// experiments in a folder, the Journal's days, Home's cards — are divs with an onclick and no
+// tabindex, so Tab went straight past them and a keyboard alone could not open anything. Rather
+// than remembering it in forty templates, anything clickable that is not already a control is
+// made focusable as it is drawn, and Enter or Space presses it.
+var _KB_SEL='[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(label):not(option):not([tabindex])';
+function _kbArm(root){ if(!root||root.nodeType!==1) return;
+  var list=(root.matches&&root.matches(_KB_SEL))?[root]:[];
+  list=list.concat([].slice.call(root.querySelectorAll(_KB_SEL)));
+  list.forEach(function(n){ if(n.closest('[contenteditable]:not([contenteditable="false"])')) return;
+    n.tabIndex=0; if(!n.getAttribute('role')) n.setAttribute('role','button'); }); }
+_kbArm(document.body);
+try{ new MutationObserver(function(ms){ ms.forEach(function(m){ m.addedNodes.forEach(_kbArm); }); })
+  .observe(document.body,{childList:true,subtree:true}); }catch(e){}
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Enter'&&e.key!==' ') return; var t=e.target;
+  if(!t||!t.hasAttribute||!t.hasAttribute('onclick')||t.getAttribute('role')!=='button'||t.isContentEditable) return;
+  if(/^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+  e.preventDefault(); t.click(); });
 renderAll(); _timersLoad();
 // An empty slot is a new browser and says nothing. A value that was there and did not parse is
 // a broken one, and the person in front of it is about to see a notebook that is missing work.
