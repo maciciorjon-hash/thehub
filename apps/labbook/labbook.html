@@ -19991,9 +19991,17 @@ function exportScopeStepsCSV(sc){
 // Provenance travels on the record so "where did this come from" has an answer later.
 function _impExpInputChange(inp){ var f=(inp.files||[])[0]; inp.value=''; if(f) importExpFile(f); }
 function importExpJSON(){ var i=el('lb-impexp-input'); if(i) i.click(); }
-function _reidExperiment(src){
+function _reidExperiment(src,gmap){
   var e=JSON.parse(JSON.stringify(src));
   e.id=uid();
+  // A file is not always shaped like an export; a step list that is not a list stopped the import
+  // with an uncaught error.
+  e.blocks=_lbList(e.blocks,true);
+  // The replicate group is an id, and importing your own export back — or a colleague's copy of
+  // a run you also hold — kept it: the copy joined the set as one more biological replicate, so
+  // n went up by one and the same number was averaged in twice. It gets a group of its own; a
+  // bundle shares one map, so a replicate set sent together stays linked to itself.
+  if(e.repGroup){ gmap=gmap||{}; e.repGroup=gmap[e.repGroup]||(gmap[e.repGroup]=uid()); }
   var map={};
   (e.blocks||[]).forEach(function(b){ var old=b.id; b.id=uid(); if(old) map[old]=b.id; });
   // A block's own plate map is keyed by block id in PL/owner lookups, not stored by id, so
@@ -20092,7 +20100,7 @@ function _placeImported(e,parsed){
 function _importBundle(parsed){
   var list=parsed.experiments.filter(function(x){ return x&&x.experiment&&typeof x.experiment==='object'; });
   if(!list.length){ lbAlert('That bundle holds no experiments.',{title:'Nothing to import'}); return; }
-  var recs=list.map(function(x){ return {e:_reidExperiment(x.experiment), env:Object.assign({app:parsed.app, exported:parsed.exported}, x)}; });
+  var _gmap={}, recs=list.map(function(x){ return {e:_reidExperiment(x.experiment,_gmap), env:Object.assign({app:parsed.app, exported:parsed.exported}, x)}; });
   var nAtt=0; recs.forEach(function(r){ nAtt+=_countAtt(r.e); });
   var lines=['<b>'+recs.length+' experiment'+(recs.length===1?'':'s')+'</b>'+(parsed.scope?(' <span class="cc-dim">from '+esc(parsed.scope)+'</span>'):'')];
   lines.push(recs.slice(0,8).map(function(r){ return esc(r.e.code||r.e.title||'Untitled'); }).join(' · ')+(recs.length>8?(' · and '+(recs.length-8)+' more'):''));
