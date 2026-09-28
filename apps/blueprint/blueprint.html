@@ -546,7 +546,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Dilution series</div>
       <div class="dil-fields" style="display:flex;flex-direction:column;gap:5px;">
         <div style="display:flex;align-items:center;gap:5px;">
-          <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Start conc <span class="pinfo" data-tip="Starting concentration for the dilution series (row: left→right, col: top→down).">ⓘ</span>:</label>
+          <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Start conc <span class="pinfo" data-tip="Highest concentration. Across → gives each column the next dilution, left to right; Down ↓ each row, top to bottom. In a block, the other direction is replicates.">ⓘ</span>:</label>
           <input type="number" id="dil-start" step="any" placeholder="10000" class="dil-input">
           <select id="dil-unit" style="background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:4px 6px;color:var(--text2);font-family:var(--sans);font-size:11px;outline:none;"><option>nM</option><option>µM</option><option>mM</option></select>
           <label style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap;"><input type="checkbox" id="dil-auto-unit" onchange="pdDilAutoUnit=this.checked" style="cursor:pointer;accent-color:var(--accent2);"> Auto unit</label>
@@ -554,7 +554,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div style="display:flex;align-items:center;gap:5px;">
           <label style="font-size:11px;color:var(--text3);white-space:nowrap;min-width:72px;">Fold dilution:</label>
           <input type="number" id="dil-factor" value="3" step="any" min="1.001" class="dil-input">
-          <button class="btn btn-primary" id="dil-btn" onclick="applyDilution('row')" style="font-size:11px;padding:4px 10px;">Apply &#8594;</button>
+          <button class="btn btn-primary" id="dil-btn" onclick="applyDilution('row')" style="font-size:11px;padding:4px 10px;" title="Each column gets the next concentration, left to right">Across &#8594;</button>
+          <button class="btn btn-primary" id="dil-btn-col" onclick="applyDilution('col')" style="font-size:11px;padding:4px 10px;" title="Each row gets the next concentration, top to bottom">Down &#8595;</button>
         </div>
       </div>
     </div>
@@ -3334,17 +3335,16 @@ function updateSelToolbar() {
   const lblInput = document.getElementById('sp-lbl-input');
   if (lblInput) { lblInput.placeholder = allSameLabel ? 'e.g. DMSO' : 'Mixed…'; lblInput.value = allSameLabel ? labels[0] : ''; }
 
-  const showDil = (sameRow || sameCol) && selArr.length >= 2;
-  document.getElementById('dil-sep').style.display = showDil ? '' : 'none';
-  document.getElementById('dil-wrap').style.display = showDil ? '' : 'none';
-  if (showDil) {
-    const btn = document.getElementById('dil-btn');
-    if (sameRow) { btn.textContent = 'Apply →'; btn.onclick = () => applyDilution('row'); }
-    else { btn.textContent = 'Apply ↓'; btn.onclick = () => applyDilution('col'); }
-  }
-
   const canRow = new Set(prs.map(p => p.col)).size >= 2;
   const canCol = new Set(prs.map(p => p.row)).size >= 2;
+  // A dilution needs two positions along one axis — a single row, a single column, or a block
+  // whose other axis is replicates (the ordinary shape of a titration in triplicate). It was
+  // offered only for a single row or column, so a block got no series at all.
+  const showDil = selArr.length >= 2 && (canRow || canCol);
+  document.getElementById('dil-sep').style.display = showDil ? '' : 'none';
+  document.getElementById('dil-wrap').style.display = showDil ? '' : 'none';
+  document.getElementById('dil-btn').style.display = canRow ? '' : 'none';
+  document.getElementById('dil-btn-col').style.display = canCol ? '' : 'none';
   const showGrad = prs.length >= 2 && (canRow || canCol);
   document.getElementById('grad-sep').style.display = showGrad ? '' : 'none';
   document.getElementById('grad-wrap').style.display = showGrad ? '' : 'none';
@@ -3376,14 +3376,15 @@ function applyDilution(dir) {
   if (isNaN(start)||isNaN(factor)||factor<=1) { pdToast('Enter a start concentration and a fold factor above 1.'); return; }
   const rls = ROWS_ALL.slice(0, FORMATS[currentFormat].rows);
   const selArr = Array.from(selection).filter(id => wellRowCol(id));
-  if (dir === 'row') selArr.sort((a,b) => wellRowCol(a).col - wellRowCol(b).col);
-  else selArr.sort((a,b) => rls.indexOf(wellRowCol(a).row) - rls.indexOf(wellRowCol(b).row));
-  let conc = start;
+  // Each well's concentration is set by its POSITION along the axis, not by its place in the
+  // list: three rows of four get the same four concentrations, which is what a replicate is.
+  const pos = id => dir === 'row' ? wellRowCol(id).col : rls.indexOf(wellRowCol(id).row);
+  const steps = [...new Set(selArr.map(pos))].sort((a, b) => a - b);
   selArr.forEach(id => {
+    const conc = start / Math.pow(factor, steps.indexOf(pos(id)));
     const lbl = pdDilAutoUnit ? fmtConcAuto(toNM(conc, unit)) : fmtConc(conc, unit);
     if (!wellState[id]) wellState[id] = {typeId: activeTypeId, label: lbl};
     else wellState[id].label = lbl;
-    conc /= factor;
   });
   drawPlateCanvas(document.getElementById('plate-canvas-main')); renderLegend(); updateSelToolbar();
 }
