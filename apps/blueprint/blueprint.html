@@ -3646,8 +3646,19 @@ async function exportPNG() {
   const usedIds = new Set(Object.values(wellState).map(ws => ws.typeId));
   const usedTypes = allTypes().filter(t => usedIds.has(t.id));
 
-  const PAD = 16, TITLE_H = 26, LEGEND_H = usedTypes.length ? 40 : 0;
+  const PAD = 16, TITLE_H = 26;
   const cW = meta.canvasW + PAD*2;
+  // The legend wraps onto as many lines as it needs. It was one line whatever its length, so on
+  // a narrow plate (a 6-well is 550 px) the types past the edge were simply not in the figure.
+  const _mc = document.createElement('canvas').getContext('2d');
+  _mc.font = '11px "IBM Plex Sans",Arial,sans-serif';
+  const legendRows = [[]]; let _lx = PAD;
+  usedTypes.forEach(t => {
+    const w = 17 + _mc.measureText(t.name).width;
+    if (_lx > PAD && _lx + w > cW - PAD) { legendRows.push([]); _lx = PAD; }
+    legendRows[legendRows.length - 1].push({t, x: _lx}); _lx += w + 19;
+  });
+  const LEGEND_LINE = 19, LEGEND_H = usedTypes.length ? 22 + legendRows.length * LEGEND_LINE : 0;
   const cH = PAD + TITLE_H + meta.canvasH + LEGEND_H + PAD;
   const dpr = 600 / 96;
 
@@ -3672,13 +3683,13 @@ async function exportPNG() {
 
   if (usedTypes.length) {
     const plateBottomY = meta.oy + PAD + TITLE_H + meta.labelH + meta.rows*(meta.wellPx+meta.gap) - meta.gap + meta.botM;
-    let lx = PAD;
-    const ly = plateBottomY + 18;
-    usedTypes.forEach(t => {
-      ctx.fillStyle = t.color; ctx.fillRect(lx, ly, 13, 13);
-      ctx.fillStyle = legendTextColor; ctx.font = '11px "IBM Plex Sans",Arial,sans-serif'; ctx.textAlign = 'left';
-      ctx.fillText(t.name, lx + 17, ly + 10);
-      lx += ctx.measureText(t.name).width + 36;
+    ctx.font = '11px "IBM Plex Sans",Arial,sans-serif'; ctx.textAlign = 'left';
+    legendRows.forEach((row, ri) => {
+      const ly = plateBottomY + 18 + ri * LEGEND_LINE;
+      row.forEach(({t, x}) => {
+        ctx.fillStyle = t.color; ctx.fillRect(x, ly, 13, 13);
+        ctx.fillStyle = legendTextColor; ctx.fillText(t.name, x + 17, ly + 10);
+      });
     });
   }
 
