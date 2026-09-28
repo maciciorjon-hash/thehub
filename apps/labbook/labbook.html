@@ -6477,9 +6477,14 @@ function plParseValues(text,fmt){
   while(lines.length && lines[0].trim()==='') lines.shift();
   while(lines.length && lines[lines.length-1].trim()==='') lines.pop();
   lines=lines.filter(function(l){ return l.trim()!==''; });
-  var _txt=String(text||''), _sep=/\t/.test(_txt)?'\t':(/;/.test(_txt)?';':',');
+  //  · Numbers separated by spaces are a grid too — it is what a reader's text view copies as.
+  //    With ',' as the separator each line was one cell, so only column 1 was filled (and with
+  //    row letters, nothing at all). Blueprint fixed this first (BP-5); a port carries the bugs.
+  var _txt=String(text||''), _hasTab=/\t/.test(_txt), _hasSemi=/;/.test(_txt);
+  var _spaced=!_hasTab&&!_hasSemi&&lines.some(function(l){ return /[\d.]\s+[-+.\d]/.test(l.trim()); });
+  var _sep=_hasTab?'\t':(_hasSemi?';':(_spaced?/\s+/:','));
   var _decComma=(_sep!==',');
-  var grid=lines.map(function(l){ return l.split(_sep).map(function(x){
+  var grid=lines.map(function(l){ return (_spaced?l.trim():l).split(_sep).map(function(x){
     x=x.trim(); return _decComma?x.replace(/(\d),(\d)/g,'$1.$2'):x; }); });
   function isColHeader(c){
     var off=(/^[A-P]$/i.test(c[0]||'')||(c[0]||'')==='')?1:0;
