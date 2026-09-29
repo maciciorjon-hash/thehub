@@ -63,6 +63,10 @@
 //   I25 a moved day moves    Moving a day from its header moves every step dated that day, and
 //       all of it            the later days follow only when asked; moving one step moves that
 //                            step alone. (the day's first step moved and its siblings stayed)
+//   I26 the proposed code    The code the New-experiment window proposes has one shape per type:
+//                            PREFIX_TYPEDATE[_POI], and for D2B PREFIX_[POI_]D2B_DATE — with or
+//                            without a POI. (a D2B with no POI came out D2B20260929, the only
+//                            code of its type with no underscore)
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
 //                            dialog, the Journal, Visualize, the Designer — keeps the caret
@@ -976,6 +980,19 @@ async function suite(opts) {
         if (one.date !== addDays(nd, 1)) bad('I25', key, `"Change the date" on one step did not move it`);
         sib.forEach(b => { if (b.date !== nd) bad('I25', key, `moving one step also moved "${b.title}"`); });
       }
+    });
+  }
+
+  // ── I26 the code the window proposes ──
+  if (run('I26')) {
+    for (const key of KEYS) for (const poi of ['', 'BRD4']) await guard('I26', key + ' / poi=' + (poi || 'none'), async () => {
+      openQuick(key, {});
+      const type = presetBase(key); el('nm-poi').value = poi; nmUpdateCode();
+      const code = el('nm-code').value, d = dateCompact(el('nm-date').value), pr = projPrefix(projById(NM_TARGET.pid));
+      closeNew();
+      tick('I26');
+      const want = pr + '_' + (type === 'D2B' ? ((poi ? poi + '_' : '') + 'D2B_' + d) : (type + d + (poi ? '_' + poi : '')));
+      if (code !== want) bad('I26', key + ' / poi=' + (poi || 'none'), `proposed "${code}", expected "${want}"`);
     });
   }
 
