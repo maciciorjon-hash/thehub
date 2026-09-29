@@ -112,13 +112,6 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
      gaps ran 15px past a 375px screen, with the last column's text cut off and no way to
      reach it. */
   .cell-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
-  /* The list row is five columns whose minimums add up to 430px before the gaps. At 375 the
-     row is 289px of content, so the last two columns were simply outside the card, with
-     overflow:hidden on .cell-grid.as-list and nothing to scroll. A phone gets the two columns
-     that are the reason the list exists — the line and what you have of it — and tissue and
-     catalogue number wait in the detail, where they already are. */
-  .cell-grid.as-list .cell-tile{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) auto;gap:10px;}
-  .cell-grid.as-list .cell-tile-tissue,.cell-grid.as-list .cell-tile-sub,.cell-grid.as-list .cell-tile-med,.cell-grid.as-list .cell-tile-dt{display:none;}
   .cell-tile{padding:10px 6px;}
   .cell-tile-stats{font-size:var(--fs-1);}
   .cell-tile-name{font-size:var(--fs-4);}
@@ -140,7 +133,7 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 .ca-vt.on{background:var(--accent);color:#fff;}
 .cell-tile.ca-hide,.cell-add-tile.ca-hide{display:none;}
 /* List layout: same tiles, laid down instead of stacked. */
-.cell-grid.as-list{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);
+.cell-grid.as-list{container:cg/inline-size;flex-shrink:0;display:flex;flex-direction:column;gap:0;border:1px solid var(--border);
   border-radius:var(--r-2);overflow:hidden;background:var(--surface);}
 .cell-grid.as-list .cell-tile{display:grid;grid-template-columns:minmax(110px,1.2fr) minmax(70px,.7fr) minmax(76px,.7fr) minmax(170px,1.8fr) minmax(70px,.7fr) minmax(120px,1.1fr) auto;
   gap:14px;align-items:center;text-align:left;border:none;border-bottom:1px solid var(--border);
@@ -159,6 +152,23 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 /* In the list the tile is a 44px row, and stacking the "+" above its label needs 70. Laid out
    side by side it is one row, which is what every other row in the list is. */
 .cell-grid.as-list .cell-add-tile{grid-template-columns:auto 1fr;align-items:center;justify-items:start;gap:8px;}
+/* Narrow lists (a phone, or a landscape one beside the rail — the seven columns need ~800px) get the list as two-line rows: the line and what you have of it on the first, the
+   medium and the doubling time on the second. It is written AFTER the seven-column rule above on
+   purpose — both are (0,3,0), so the later one wins, and the phone version used to sit before it
+   and never applied. It is a container query, not a media query, because what decides it is the
+   width the list has, which the rail and the window both change: on a phone the row was 234px wider than the card, with the vial badge, the
+   medium and "Add cell line" outside it and nothing to scroll them back. Tissue and the catalogue
+   number wait in the detail, where they already are. */
+@container cg (max-width:800px){
+  .cell-grid.as-list .cell-tile{flex:0 0 auto;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name stats" "med med" "dt dt" "thaw thaw";gap:3px 12px;align-items:start;padding:10px 12px;}   /* flex:0 0 auto — in a column with a height of its own the rows were shrunk below their content and printed over each other */
+  .cell-grid.as-list .cell-tile-name{grid-area:name;min-width:0;overflow-wrap:anywhere;white-space:normal;}
+  .cell-grid.as-list .cell-tile-stats{grid-area:stats;justify-self:end;text-align:right;}
+  .cell-grid.as-list .cell-tile-med{grid-area:med;white-space:normal;overflow:visible;min-width:0;}
+  .cell-grid.as-list .cell-tile-dt{grid-area:dt;white-space:normal;overflow:visible;color:var(--text3);}
+  .cell-grid.as-list .cell-tile-tissue,.cell-grid.as-list .cell-tile-sub{display:none;}
+  .cell-grid.as-list .cell-thaw{grid-area:thaw;justify-self:start;margin:4px 0 0;}
+  .cell-grid.as-list .cell-add-tile{grid-template-areas:none;grid-template-columns:auto 1fr;align-items:center;}
+}
 .cell-add-tile:hover{border-color:var(--accent);background:var(--accent-dim);}
 /* Add / edit modal */
 .ca-modal-back{display:none;position:fixed;inset:0;background:var(--modal-backdrop);z-index:300;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;}
@@ -198,6 +208,13 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 :root[data-theme="dark"] .ic-tile.ic-tile{--ic-ac:color-mix(in oklab,var(--hue,#888) 60%,#fff);background:color-mix(in oklab,var(--hue,#888) 13%,var(--surface));}
 :root .ic-tile.ic-tile svg{width:58%;height:58%;display:block;flex:none;}
 /* ic-tile:end */
+
+/* phone type scale (docs/UI.md): a 10px label is a desktop read. Portrait phones by width, landscape phones by height. */
+@media (max-width:760px), (hover:none) and (pointer:coarse) and (max-height:520px){
+  :root{--fs-1:11px;--fs-2:12px;--fs-3:13px;--fs-4:14px;--fs-5:16px;}
+  /* Markup built in JS strings carries its size inline, where no token reaches it. On a phone nothing HTML is set under 11px. (SVG text scales with its viewBox and is left alone.) */
+  [style*="font-size:10px"]:not(svg *),[style*="font-size: 10px"]:not(svg *),[style*="font-size:10.5px"]:not(svg *),[style*="font-size:9.5px"]:not(svg *),[style*="font-size:9px"]:not(svg *),[style*="font-size:8.5px"]:not(svg *){font-size:var(--fs-1)!important;}
+}
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
