@@ -6333,9 +6333,13 @@ the day lands on 07:00 → 16:00 by itself: 10 h after the last step of day 0 (2
   `addUL:5` (25 µL at the Echo, which is true for both setups); Setup A's does not, or the same
   5 µL would be counted twice for anything downstream. `_presetFromExtra` now carries `addUL`
   from a seed onto the stored preset — it used to drop it.
-- **The lytic block reads on 25 µL** (20 cells + 5 OA, Echo nanolitres ignored) at the lab's 1:2
-  reagent:cells → 12.5 µL/well. The protocol only says "the established assay protocol"; Promega's
-  own 1:1 would be 25 µL. Flagged to Jon, not decided.
+- **The lytic block reads on 25 µL** (20 cells + 5 OA, Echo nanolitres ignored) at **1:1**
+  reagent:cells → 25 µL/well — Jon: the DELE1-HiBiT signal is low, so not the lab's usual 1:2.
+  Cell line HeLa (DELE1-HiBiT), OA diluent DMEM.
+- **The plate map is `d2b384`** (20 compounds × 7 points × 2 stacked bands, DMSO in columns
+  22–23, blank edge) and the Echo block is the D2B presets' own. 96 compounds at 20 a plate is 5
+  plates *per setup*: `setupAdd` `nSetups` (2) makes `platesSuggested` multiply, so the note under
+  "Total compounds" says 5 × 2 setups → 10 instead of offering 5 and halving the run.
 
 **A D2B code always has its underscores** (`nmUpdateCode`): `PREFIX_[POI_]D2B_DATE`, with or
 without a POI. With none it fell through to the generic `TYPE+DATE` form and came out

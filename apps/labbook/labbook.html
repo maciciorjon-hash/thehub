@@ -3412,40 +3412,41 @@ var EXTRA_PRESET_SEED={
   // "# assay plates" is BOTH setups together (10 = 5 + 5); the per-setup halves are said as "half",
   // so the number in the prose never disagrees with the setup.
   'D2B_OA_TIMING':{name:'Degradation_OA_timing',baseType:'D2B',
-   title:'Degradation screen — OA before the PROTAC: Setup A (3 h) vs Setup B (13 h), 384-well',
-   setup:{format:'384',cellLine:'HEK293-HiBiT',cellsPerWell:4000,nPlates:10,
-          nCompounds:20,nConc:7,nReps:2,dmsoMax:0.25,treatH:6},
-   // The plate count is fixed by the design (half and half), so "Total compounds" and the plate
-   // suggestion it draws would only contradict it.
-   setupHide:['nTotal'],
+   title:'Degradation screen — OA before the compound: Setup A (3 h) vs Setup B (13 h), 384-well',
+   setup:{format:'384',cellLine:'HeLa',cellsPerWell:4000,nPlates:10,
+          nCompounds:20,nTotal:96,nConc:7,nReps:2,dmsoMax:0.25,treatH:6},
+   // 96 compounds at 20 a plate is 5 plates — for EACH setup, since both run the whole screen. So
+   // "# assay plates" stays both setups together (10) and the plate arithmetic under "Total
+   // compounds" multiplies by the number of setups instead of offering 5 and halving the run.
+   setupAdd:[{f:'nSetups',t:'num',lbl:'# setups (each on its own plates)',d:2}],
    plateOn:true, layout:'d2b384', blocks:[
     {d:0,title:'Prepare 5× OA',
      // No `pub`: the calculator writes this sentence from its own components, so it follows them.
-     calc:{kind:'mixparts',inputs:{name:'5× OA',parts:'Oligomycin 0.8, Antimycin A 1.0',diluent:'diluent',volPerWell:5,format:'384',nPlates:10,excess:1.1}},
+     calc:{kind:'mixparts',inputs:{name:'5× OA',parts:'Oligomycin 0.8, Antimycin A 1.0',diluent:'DMEM',volPerWell:5,format:'384',nPlates:10,excess:1.1}},
      html:'<ol><li>Make {{c.total}} of {{c.name}} for both setups ({{c.wells}} at {{c.perWell}} per well): combine {{c.partsText}} with {{c.diluentUL}} of {{c.diluent}}.</li><li>Mix thoroughly but gently.</li><li>Keep it as you keep your OA working solution &mdash; Setup B gets it tonight, Setup A tomorrow morning.</li></ol><p class="lb-fn">This is the 10&times; recipe halved (oligomycin 0.8 &micro;L/mL, antimycin A 1.0 &micro;L/mL). 5 &micro;L into 20 &micro;L of cells makes 25 &micro;L with OA at 1&times;. The stock concentrations are not in the protocol, so the final concentration in &micro;M is not worked out here.</p>'},
     {d:0,title:'Cell seeding',
-     calc:{kind:'seed',inputs:{cellLine:'HEK293-HiBiT',cellsPerWell:4000,volPerWell:20,format:'384',nPlates:10,excess:1.1}},
-     pub:'DELE1-HiBiT cells were seeded in white {{c.format}} assay plates at {{c.cellsPerWell}} per well in {{c.volPerWell}} ({{c.density}}).',
+     calc:{kind:'seed',inputs:{cellLine:'HeLa',cellsPerWell:4000,volPerWell:20,format:'384',nPlates:10,excess:1.1}},
+     pub:'DELE1-HiBiT HeLa cells were seeded in white {{c.format}} assay plates at {{c.cellsPerWell}} per well in {{c.volPerWell}} ({{c.density}}).',
      html:'<ol><li>Count the cells and make one suspension at {{c.density}} &mdash; {{c.totalVol}} ({{c.cells}}) for both setups.</li><li>Dispense {{c.volPerWell}} per well ({{c.cellsPerWell}}) into {{nPlates}} white {{c.format}} plates &mdash; half are Setup A, half Setup B. Label them.</li><li>Planned for 21:00. Setup B goes straight on to the OA step below; Setup A is left as it is &mdash; no OA yet &mdash; to attach overnight at 37 &deg;C, 5% CO&#8322;.</li></ol><p class="lb-fn">Seeding is the one step both setups share, so it is one suspension and the cells are identical at the start. The 1.1&times; overage covers the reservoir and dispensing losses.</p>'},
     // The only step that puts liquid in a well before the Echo on this day, so it is the one
     // that says so to the volume chain (25 µL at the Echo, for both setups). Setup A's addition
     // is the same 5 µL into its own wells, not into these — declaring it too would count it twice.
     {d:0,title:'OA addition — Setup B (straight after seeding)',w:600,addUL:5,
-     pub:'For Setup B, 5 &micro;L of 5&times; OA was added to each well immediately after seeding (Multidrop Combi), giving 25 &micro;L per well and oligomycin and antimycin A at 1&times;; the cells were held in OA for 13 h before the PROTACs were added.',
-     html:'<ol><li>Straight after seeding, load the 5&times; OA into the Multidrop Combi reservoir.</li><li>Dispense 5 &micro;L per well onto the Setup B plates only &mdash; 25 &micro;L per well, OA at 1&times;. Do not aspirate.</li><li>Back to 37 &deg;C &mdash; note the time. Setup B is now on OA alone: 13 h until the PROTAC goes on.</li></ol><p class="lb-fn">This is the whole difference between the setups: when the cells first meet OA.</p>'},
-    {d:1,title:'OA addition — Setup A (3 h before the PROTAC)',w:180,
-     pub:'For Setup A, 5 &micro;L of 5&times; OA was added to each well 10 h after seeding (Multidrop Combi), giving 25 &micro;L per well and oligomycin and antimycin A at 1&times;; the cells were held in OA for 3 h before the PROTACs were added.',
-     html:'<ol><li>Planned for 07:00, 10 h after seeding: take out the Setup A plates &mdash; 20 &micro;L of cells and no OA yet.</li><li>Load the 5&times; OA into the Multidrop Combi reservoir and dispense 5 &micro;L per well onto the Setup A plates &mdash; 25 &micro;L per well, OA at 1&times;. Do not aspirate.</li><li>Back to 37 &deg;C &mdash; note the time. OA alone for 3 h before the PROTAC.</li></ol>'},
-    {d:1,title:'Compound addition (Echo) — PROTAC dose response',w:360,
-     pub:'PROTAC dose-response series were dispensed acoustically onto all assay plates from an Echo picklist, with DMSO held at or below {{dmsoMax}}%, without removing the OA-containing medium, and the plates incubated for {{treatH}} h at 37 &deg;C, 5% CO&#8322;. Cells had therefore been in OA alone for 3 h (Setup A) or 13 h (Setup B) before the PROTACs were added.',
-     html:'<ol><li>Check the picklist: the PROTAC dose-response series, DMSO at or below {{dmsoMax}}%.</li><li>Planned for 10:00. Run the Echo onto all plates, Setup A and Setup B alike &mdash; do not remove or replace the OA-containing medium; OA stays in the well throughout.</li><li>Incubate {{treatH}} h at 37 &deg;C, 5% CO&#8322; &mdash; note the time.</li><li>Attach the run\'s CSV to this experiment on the Files tab.</li></ol><p class="lb-fn">The two setups meet here: every well is 1&times; OA + PROTAC for {{treatH}} h. What differs is how long OA was there first &mdash; 3 h on Setup A, 13 h on Setup B. The volume before the Echo is 25 &micro;L per well; the final volume depends on the transfer volume programmed.</p>'},
+     pub:'For Setup B, 5 &micro;L of 5&times; OA was added to each well immediately after seeding (Multidrop Combi), giving 25 &micro;L per well and oligomycin and antimycin A at 1&times;; the cells were held in OA for 13 h before the compounds were added.',
+     html:'<ol><li>Straight after seeding, load the 5&times; OA into the Multidrop Combi reservoir.</li><li>Dispense 5 &micro;L per well onto the Setup B plates only &mdash; 25 &micro;L per well, OA at 1&times;. Do not aspirate.</li><li>Back to 37 &deg;C &mdash; note the time. Setup B is now on OA alone: 13 h until the compound goes on.</li></ol><p class="lb-fn">This is the whole difference between the setups: when the cells first meet OA.</p>'},
+    {d:1,title:'OA addition — Setup A (3 h before the compound)',w:180,
+     pub:'For Setup A, 5 &micro;L of 5&times; OA was added to each well 10 h after seeding (Multidrop Combi), giving 25 &micro;L per well and oligomycin and antimycin A at 1&times;; the cells were held in OA for 3 h before the compounds were added.',
+     html:'<ol><li>Planned for 07:00, 10 h after seeding: take out the Setup A plates &mdash; 20 &micro;L of cells and no OA yet.</li><li>Load the 5&times; OA into the Multidrop Combi reservoir and dispense 5 &micro;L per well onto the Setup A plates &mdash; 25 &micro;L per well, OA at 1&times;. Do not aspirate.</li><li>Back to 37 &deg;C &mdash; note the time. OA alone for 3 h before the compound.</li></ol>'},
+    {d:1,title:'Compound addition (Echo)',w:360,
+     pub:'Compounds were dispensed acoustically onto all assay plates from an Echo picklist, with DMSO held at or below {{dmsoMax}}%, without removing the OA-containing medium, and the plates incubated for {{treatH}} h at 37 &deg;C, 5% CO&#8322;. Cells had therefore been in OA alone for 3 h (Setup A) or 13 h (Setup B) before the compounds were added.',
+     html:'<ol><li>Check the picklist.</li><li>Load the backfill and the intermediates; keep DMSO at or below {{dmsoMax}}%.</li><li>Planned for 10:00. Run the Echo onto all plates, Setup A and Setup B alike &mdash; do not remove or replace the OA-containing medium; OA stays in the well throughout.</li><li>Incubate {{treatH}} h at 37 &deg;C, 5% CO&#8322; &mdash; note the time.</li><li>Attach the run\'s CSV to this experiment on the Files tab.</li></ol><p class="lb-fn">The picklist is the record of what was dispensed. Build the experiment from it (<i>New experiment &rarr; from picklist</i>) and the destination plate becomes this plate map well by well. The two setups meet here: every well is 1&times; OA + compound for {{treatH}} h, and what differs is how long OA was there first &mdash; 3 h on Setup A, 13 h on Setup B. The volume before the Echo is 25 &micro;L per well; the final volume depends on the transfer volume programmed.</p>'},
     {d:1,title:'HiBiT Lytic + read',w:10,
      // 25 µL is what the well holds before the Echo (20 cells + 5 OA); the nanolitres the Echo adds
-     // are ignored. Ratio 2 is the lab's own half-reagent convention (Promega's is 1:1), and the
-     // protocol only says "according to the established protocol" — check it.
-     calc:{kind:'lytic',inputs:{format:'384',nPlates:10,cellVolPerWell:25,ratio:2,lgbitDil:100,subDil:50,excess:1.2}},
-     pub:'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): lytic reagent containing LgBiT at 1:100 and substrate at 1:50 was added at half the culture volume, the plates shaken at 300 rpm for 1 min and luminescence read on a BMG PHERAstar at 0.1 s per well after 10 min at room temperature. Luminescence was normalised to the vehicle control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>; the two setups were compared at equal PROTAC exposure.',
-     html:'<ol><li>Make up the reagent &mdash; one prep for every plate of both setups: {{c.bufferUL}} buffer + {{c.lgbitUL}} LgBiT ({{c.lgbitDil}}) + {{c.substrateUL}} substrate ({{c.substrateDil}}). Mix gently &mdash; do not vortex.</li><li>Planned for 16:00. Add {{c.addPerWell}} per well ({{c.ratio}} reagent : cells).</li><li>Shake at 300 rpm for 1 min, then 10 min at room temperature with gentle shaking.</li><li>Read on the PHERAstar, integration time 0.1 s per well; save the data. Vehicle and assay controls are as on the plate map.</li></ol><p class="lb-fn">The reagent is worked out on the 25 &micro;L each well holds before the Echo; the nanolitres it adds are ignored. LgBiT is a protein, and vortexing it costs signal you cannot get back.</p><p><b>Results</b></p><p></p>'}]},
+     // are ignored. Ratio 1 (Promega's own), not the lab's usual 1:2: the DELE1-HiBiT signal is low
+     // and half the reagent would leave it near the background (Jon, 2026-09-29).
+     calc:{kind:'lytic',inputs:{format:'384',nPlates:10,cellVolPerWell:25,ratio:1,lgbitDil:100,subDil:50,excess:1.2}},
+     pub:'HiBiT-tagged protein levels were quantified with the Nano-Glo HiBiT Lytic assay (Promega): lytic reagent containing LgBiT at 1:100 and substrate at 1:50 was added at a 1:1 ratio to the culture volume, the plates shaken at 300 rpm for 1 min and luminescence read on a BMG PHERAstar at 0.1 s per well after 10 min at room temperature. Luminescence was normalised to the vehicle control and fitted with a four-parameter logistic model to give DC&#8325;&#8320; and D<sub>max</sub>; the two setups were compared at equal compound exposure.',
+     html:'<ol><li>Make up the reagent &mdash; one prep for every plate of both setups: {{c.bufferUL}} buffer + {{c.lgbitUL}} LgBiT ({{c.lgbitDil}}) + {{c.substrateUL}} substrate ({{c.substrateDil}}). Mix gently &mdash; do not vortex.</li><li>Planned for 16:00. Add {{c.addPerWell}} per well ({{c.ratio}} reagent : cells).</li><li>Shake at 300 rpm for 1 min, then 10 min at room temperature with gentle shaking.</li><li>Read on the PHERAstar, integration time 0.1 s per well; save the data. Vehicle and assay controls are as on the plate map.</li></ol><p class="lb-fn">The reagent goes in at 1:1 with the cells, not the usual 1:2 &mdash; the DELE1-HiBiT signal is low. It is worked out on the 25 &micro;L each well holds before the Echo; the nanolitres the Echo adds are ignored. LgBiT is a protein, and vortexing it costs signal you cannot get back.</p><p><b>Results</b></p><p></p>'}]},
   'CLONE_HIFI':{name:'Cloning — Restriction + HiFi (PX458)',baseType:'CLONE',title:'Cloning — Restriction + HiFi (PX458)',
    setup:{method:'NEBuilder HiFi'}, blocks:[
     {d:0,title:'Vector linearization',w:30,pub:'PX458 was linearized with BbsI for 30 min at 37 &deg;C, gel-purified and quantified.',html:'<ol><li>Linearize: digest 1 &micro;g PX458 with BbsI (NEB), 37 &deg;C for 30 min.</li><li>Confirm on a 1% gel (~9.3 kb); excise, NucleoSpin, NanoDrop.</li></ol>'},
@@ -11233,7 +11234,10 @@ function platesSuggested(su){
   if(su.nCompounds!=null&&su.nTotal!=null&&su.nTotal!==''){
     var t=Math.round(+su.nTotal); if(!(t>0)) return null;
     var pp=d2bPerPlate(su);
-    return {compounds:t, perPlate:pp, readouts:1, plates:Math.ceil(t/pp), capped:pp<Math.round(+su.nCompounds||20)};
+    // A preset may run the whole screen more than once on separate plates — two setups that differ
+    // in one condition — and says so in `nSetups`; the plates are then per setup, times that.
+    var ns=Math.max(1,Math.round(+su.nSetups)||1);
+    return {compounds:t, perPlate:pp, readouts:1, setups:ns, plates:Math.ceil(t/pp)*ns, capped:pp<Math.round(+su.nCompounds||20)};
   }
   var n=_setupList(su.compounds).length; if(!n) return null;
   var per=compoundsPerPlate(su), reads=readoutCount(su);
@@ -11247,6 +11251,7 @@ function _setupPlatesNote(su,upd){
   return '<div class="sf-derived">'+S.compounds+' compound'+(S.compounds===1?'':'s')
     +' &middot; '+S.perPlate+' per '+esc(String(su.format||'96'))+'-well plate'+(S.capped?' (the most it holds)':'')
     +(S.readouts>1?(' &middot; '+S.readouts+' readouts'):'')
+    +(S.setups>1?(' &times; '+S.setups+' setups'):'')
     +' &rarr; <b>'+S.plates+' plate'+(S.plates===1?'':'s')+'</b>'
     +((cur&&cur!==S.plates)
       ? (' <button type="button" class="sf-apply" onclick="_setupApplyPlates(\''+upd+'\')">Use '+S.plates+'</button>'
