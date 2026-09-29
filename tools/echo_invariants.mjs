@@ -22,6 +22,13 @@
 //   E9 selectivity direction  With log DC50 on both axes, a compound more potent on X is
 //                             classed X-selective.
 //   E10 text is data          esc() escapes both quotes; CSV cells are quoted and formula-safe.
+//   E11 names sort as people    A2 comes before A12 in Results, Curves (Single and Compare), the QC list, the
+//       read them             PDF picker and the plate list — digit runs compare as numbers everywhere.
+//   E12 the Plate tab tells   Raw luminescence has a scale in its legend and a value in the tooltip, a compound
+//       you what it holds     can be found (typed loosely, across every plate) and named in full, a 96-well
+//                             plate is drawn as 96, the plates fill their cards, and the view survives a tab switch.
+//   E13 the tabs are in the   Results first and open on load, the analysis views together, the housekeeping
+//       order you use them    tabs after them; exactly one pane is showing.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -227,6 +234,124 @@ if (run('E10')) await guard('E10', async () => {
   const r = await E(() => ({ esc: esc(`a"b'c<d>`), cell: typeof _csvCell === 'function' ? [_csvCell('=SUM(A1),x'), _csvCell('say "hi"'), _csvCell(-8.12), _csvCell('-8.12')] : null }));
   check('E10', 'esc escapes both quotes', !/["']/.test(r.esc), r.esc);
   check('E10', 'CSV cells', !!r.cell && r.cell[0] === `"'=SUM(A1),x"` && r.cell[1] === '"say ""hi"""' && r.cell[2] === '-8.12' && r.cell[3] === '-8.12', r.cell);
+});
+
+if (run('E11')) await guard('E11', async () => {
+  const r = await E(() => {
+    const want = ['A1','A2','a3','A9','A10','A11','A12','A20','A100','B1','B3','B12'];
+    const shuffled = ['A12','A2','B12','A10','A1','B3','A100','a3','A9','B1','A20','A11'];
+    const d = _lastResultsData, grp = d[0].Protein;
+    const rows = d.filter(x => x.Protein === grp).slice(0, 12).map((x, i) => Object.assign({}, x, { Sample_ID: shuffled[i] }));
+    const out = { cmp: ['A12','A2','A1','a10'].sort(natCmp), suffix: ['1234-B','1234-A'].sort(natCmp) };
+    _natOrder(rows);
+    out.order = rows.map(x => x.Sample_ID);
+    // Results table, default order and sorted by the compound column
+    _sortState = { col: null, asc: true };
+    renderResults(rows);
+    const names = new Set(want);
+    const cells = () => [...document.querySelectorAll('#results-panel td')].map(t => t.textContent.trim()).filter(t => names.has(t));
+    out.table = cells();
+    _sortState = { col: 'Sample_ID', asc: true };
+    renderResults(rows.slice().reverse());
+    out.tableSorted = cells();
+    _sortState = { col: null, asc: true };
+    const sfx = rows.slice(0, 2).map((x, i) => Object.assign({}, x, { Sample_ID: ['1234-B', '1234-A'][i] }));
+    _sortState = { col: 'Sample_ID', asc: true }; renderResults(sfx);
+    out.sfx = [...document.querySelectorAll('#results-panel td')].map(t => t.textContent.trim()).filter(t => /^1234-/.test(t));
+    _sortState = { col: null, asc: true };
+    // Curves: the compound select and the Compare list
+    renderCurvesTab(rows);
+    out.select = [...document.querySelectorAll('#cv-compound option')].map(o => o.textContent.trim()).filter(t => names.has(t.split(/\s/)[0]) || names.has(t)).map(t => t.split(/\s/)[0]);
+    setCvMode('compare');
+    out.compare = [...document.querySelectorAll('#cv-compare-list .cv-cmp-name')].map(n => (n.firstChild ? n.firstChild.textContent : n.textContent).trim());
+    setCvMode('single');
+    return out;
+  });
+  const asWord = (a) => JSON.stringify(a);
+  const want = ['A1','A2','a3','A9','A10','A11','A12','A20','A100','B1','B3','B12'];
+  check('E11', 'natCmp', asWord(r.cmp) === asWord(['A1','A2','a10','A12']), r.cmp);
+  check('E11', 'suffix decides between equal numbers', asWord(r.suffix) === asWord(['1234-A','1234-B']), r.suffix);
+  check('E11', '_natOrder', asWord(r.order) === asWord(want), r.order);
+  check('E11', 'Results table, default', asWord(r.table) === asWord(want), r.table);
+  check('E11', 'Results table, sorted by compound', asWord(r.tableSorted) === asWord(want), r.tableSorted);
+  check('E11', 'Results table, 1234-A before 1234-B', asWord(r.sfx) === asWord(['1234-A','1234-B']), r.sfx);
+  check('E11', 'Curves compound select', asWord(r.select) === asWord(want), r.select);
+  check('E11', 'Curves compare list', asWord(r.compare) === asWord(want), r.compare);
+});
+
+if (run('E12')) await guard('E12', async () => {
+  await E(() => { window._plateUI = { mode: 'raw_lum', scale: 'assay', labels: false, clip: false, q: '' }; window._plateFit = true; document.querySelector('[data-tab="plate"]').click(); });
+  await pg.waitForTimeout(500);
+  const r = await E(() => {
+    const out = {};
+    const first = _plateStats.barcodes[0], id = first.replace(/[^a-z0-9]/gi, '_');
+    out.legend = document.getElementById('pl-' + id).textContent;
+    // tooltip on a well that holds a compound
+    const cv = document.getElementById('pc-' + id), D = cv._dims, wells = _plateData[first];
+    let ri = -1, ci = -1;
+    outer: for (let r = 0; r < D.nR; r++) for (let c = 0; c < D.nC; c++) { const w = _plWell(wells, PLATE_ROWS[r], c + 1); if (w && _plIsCpd(w)) { ri = r; ci = c; break outer; } }
+    const rect = cv.getBoundingClientRect();
+    const ev = { currentTarget: cv, clientX: rect.left + (D.padL + (ci + .5) * D.cw) / D.W * rect.width, clientY: rect.top + (D.padT + (ri + .5) * D.ch) / D.H * rect.height };
+    plateMouseMove(ev);
+    out.tip = document.getElementById('tt').textContent;
+    document.getElementById('tt').style.display = 'none';
+    out.cardW = cv.parentElement.clientWidth - 32; out.cvW = cv.getBoundingClientRect().width;
+    // a loose query finds one compound on every plate that holds it
+    const st = _plateStats, cpd = st.compounds.find(c => /13$/.test(c)) || st.compounds[0];
+    plateFind(cpd.replace(/([A-Za-z]+)-?0*/, '$1-'));
+    const M = _plMatcher(window._plateUI.q); let n = 0, other = 0;
+    st.barcodes.forEach(bc => Object.keys(_plateData[bc]).forEach(k => { const w = _plateData[bc][k]; if (M.pred(bc, k, w)) { if (w.s === cpd) n++; else other++; } }));
+    out.find = { q: window._plateUI.q, cpd, n, other, expect: st.cpd.get(cpd).n, bar: document.getElementById('plate-found').textContent, shown: getComputedStyle(document.getElementById('plate-found')).display };
+    out.keys = [_plKey('EDA-013'), _plKey('eda13'), _plKey('EDA 13')];
+    plateFind('zzzz-nothing');
+    out.none = document.getElementById('plate-found').textContent;
+    plateFind('');
+    // the choices survive leaving the tab
+    document.getElementById('plate-mode').value = 'compound'; plateUIChanged(); plateFind(cpd);
+    document.querySelector('[data-tab="results"]').click();
+    return out;
+  });
+  await pg.waitForTimeout(300);
+  const r2 = await E(() => {
+    document.querySelector('[data-tab="plate"]').click();
+    return new Promise(res => setTimeout(() => {
+      const out = { mode: document.getElementById('plate-mode').value, q: document.getElementById('plate-find').value };
+      // full names in the compound legend (a long name used to be cut at nine characters)
+      const long = 'EDA-013-a-very-long-compound-identifier-HCl';
+      const bc = _plateStats.barcodes[0], w = Object.values(_plateData[bc]).find(_plIsCpd); w.s = long;
+      plateFind('');
+      out.chip = [...document.querySelectorAll('#pl-' + bc.replace(/[^a-z0-9]/gi, '_') + ' .pl-chip')].some(b => b.textContent.includes(long));
+      // a 96-well plate is drawn as 96
+      const keep = window._plateData, small = {};
+      Object.keys(keep).slice(0, 1).forEach(b => { small[b] = {}; Object.keys(keep[b]).forEach(k => { const m = /^([A-P])0*(\d+)$/.exec(k); if (m && m[1] <= 'H' && +m[2] <= 12) small[b][k] = keep[b][k]; }); });
+      window._plateData = small; renderPlateTab();
+      setTimeout(() => {
+        const cv = document.querySelector('.plate-canvas'), rc = cv.getBoundingClientRect();
+        out.grid = [cv._dims.nR, cv._dims.nC]; out.aspect = rc.height / rc.width;
+        window._plateData = keep; renderPlateTab();
+        res(out);
+      }, 120);
+    }, 400));
+  });
+  check('E12', 'raw luminescence has a scale in the legend', /RLU/.test(r.legend) && /\d/.test(r.legend), r.legend);
+  check('E12', 'tooltip carries the raw reading', /Raw luminescence[\s\S]*RLU/.test(r.tip) && /Compound/.test(r.tip) && /Concentration/.test(r.tip), r.tip);
+  check('E12', 'plates fill their cards', r.cvW >= r.cardW * 0.9, { cvW: r.cvW, cardW: r.cardW });
+  check('E12', 'a loose query finds exactly that compound, on every plate', r.find.n === r.find.expect && r.find.other === 0 && r.find.n > 0, r.find);
+  check('E12', 'the result bar names it', r.find.shown !== 'none' && r.find.bar.includes(r.find.cpd), r.find);
+  check('E12', 'EDA-013, eda13 and EDA 13 are one name', new Set(r.keys).size === 1, r.keys);
+  check('E12', 'no match says so', /Nothing on any plate/.test(r.none), r.none);
+  check('E12', 'colour mode and search survive a tab switch', r2.mode === 'compound' && r2.q.length > 0, r2);
+  check('E12', 'compound legend carries the full name', r2.chip, r2);
+  check('E12', '96-well plate is drawn as 96', r2.grid[0] === 8 && r2.grid[1] === 12 && r2.aspect < 0.75, r2);
+  await E(() => { window._plateUI = { mode: 'raw_lum', scale: 'assay', labels: false, clip: false, q: '' }; });
+});
+
+if (run('E13')) await guard('E13', async () => {
+  const r = await E(() => ({ order: [...document.querySelectorAll('.tabs .tab')].map(t => t.dataset.tab), panes: document.querySelectorAll('.tabpane.active').length }));
+  const o = r.order, first5 = o.slice(0, 5);
+  check('E13', 'the analysis views come first, in the order you use them', JSON.stringify(first5) === JSON.stringify(['results', 'curves', 'scatter', 'plate', 'props']), first5);
+  check('E13', 'housekeeping tabs come after', ['log', 'history', 'protocol', 'survey', 'guide'].every(t => o.indexOf(t) > 4), o);
+  check('E13', 'one pane is showing', r.panes === 1, r.panes);
 });
 
 await browser.close();
