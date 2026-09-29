@@ -87,6 +87,19 @@ jobs:
       - name: Build dHUB
         run: python embed.py dist/index.html
 
+      # dHUB on a phone (2026-09-29): the shell and all 17 apps in their real frames, in an emulated
+      # iPhone held upright and sideways — a signed-in (stubbed) Hub, every app seeded with its demo
+      # data and crawled tab by tab. Fails on text that overlaps other text, text with something
+      # painted over it, anything cut by an overflow or the screen edge with nothing to scroll it
+      # back, a tab sliced by a scrolling row, a page that scrolls sideways, text under 11px, and a
+      # 384-well plate drawn in portrait instead of the "turn your phone" note. A finding stops the
+      # deploy. (--strict is off: an ellipsis on a long name in a list is a design choice.)
+      - name: dHUB on a phone
+        run: |
+          python3 -m http.server 8899 --directory dist > /dev/null 2>&1 &
+          sleep 2
+          node tools/mobile_hub_sweep.mjs --url=http://127.0.0.1:8899/index.html --sizes=390x844,844x390 --themes=light
+
       # This was never built in CI, and dist/ is gitignored — so the Archive PWA has only
       # ever existed on Jon's laptop while every installed home-screen copy pointed at a 404
       # that its own service worker hid. ARCHIVE_SLUG must never change: each installed app

@@ -393,6 +393,76 @@ throttling against a saved baseline (`--baseline`). `--engine=webkit` is Safari'
 register a service worker and cannot advance a transition while hidden; the sweep does not have
 either problem.
 
+### The whole Hub on a phone (2026-09-29)
+
+Jon's rule, in his words: *everything on screen can be seen, nothing overlaps, and a screen that
+cannot fit says so instead of drawing something nobody can read.* `tools/mobile_hub_sweep.mjs`
+enforces it over the shell and all 17 apps in their real frames (below). What it changed:
+
+- **One phone type scale in every file**, not only Labbook: `--fs-1…5` step up under 760px **and on a
+  phone held sideways** (`(hover:none) and (pointer:coarse) and (max-height:520px)`; 844px wide is
+  "desktop" to a width query). Markup built in JS strings carries its size inline where no token
+  reaches it, so the same block has an attribute net (`[style*="font-size:10px"]:not(svg *)`) — HTML
+  only; SVG text scales with its viewBox. **10px is the floor for a plate's axis labels and nothing
+  else.**
+- **A phone held sideways is 844×390 — wide and short.** The shell keys on height: `--top` 44px (not
+  58), the rail of icons at 52px instead of the bottom bar, no labels. A 58px header plus a 56px tab
+  bar left an app 276px of a 390px screen. Anything with a fixed header or tab row must budget for
+  height the same way.
+- **A banner takes space; it never covers it.** The sync notice sits in the layout
+  (`--hub-notice-h`, measured, updated on resize/rotation) and `#hub-home`, `.app-view` and the
+  announcement bar start below it. It used to be two fixed strips stacked on the first 41–65px of
+  every app. It has a visible ✕.
+- **Rows of tabs and filter pills wrap; they do not scroll.** A strip that scrolls slices a label in
+  half at the edge and says nothing about what is behind it. (Data tables still scroll inside their
+  own container — that is what a table is.) Setup tabs in a 300px dialog share the width.
+- **A screen that cannot be drawn honestly in portrait carries a note.** `.rotate-note` (icon +
+  "Turn your phone sideways" + why) is shown by `@media (max-width:640px) and (orientation:portrait)`
+  while the thing it stands in for is hidden, keyed on a body/modal class the app sets from the one
+  place the state changes (Lumina `lm-needs-landscape`, Blueprint `pd-needs-landscape` in
+  `buildPlateArea`, Labbook `#plate-modal.pl-384`). **The controls that undo the cause stay** (the
+  96/384 switch) — the note must never be a dead end. Today the case is a 384-well plate: 24 columns
+  cannot be read or tapped at 390px. `GATES` in `tools/mobile_hub_scenarios.mjs` checks the whole
+  contract in both orientations: the note is on screen and the plate is not, and the reverse.
+- **File order decides between equal specificities, and the phone rule was first.** Cell Archive's
+  two-line list row was written before the seven-column rule it was meant to override, so on a phone
+  the list was 234px wider than its card — the vial badge, the medium and "Add cell line" outside
+  it, nothing to scroll. The phone rule goes **after** the rule it overrides. A list whose layout
+  depends on the width *it* has (the rail comes and goes) is a container query, not a media query.
+- **An `overflow:hidden` flex child shrinks instead of letting its parent scroll.** Cell Archive's
+  list and Echo's plot panel were squeezed to the room left and clipped their own rows and buttons.
+  `flex:none` on the child, `overflow-y:auto` on the panel.
+- **A flex `<input>` needs `min-width:0`.** It keeps its intrinsic width otherwise: Ribbon's "Go"
+  sat 16px under the viewer.
+- **A full-screen sheet is opaque.** Settings drew at 86% over the page, and the text behind showed
+  through as a ghost. Glass is for things that do not cover text.
+- **A menu anchored to a button is measured after it opens** and shifted inside the screen on both
+  axes (Blot's ⋯ was 21px off the left edge and its last items 56px below the fold).
+- **Plate concentration headers stand up** (`writing-mode:vertical-rl`) when the column is narrower
+  than the text ("12.3 nM" over a 22px well), and a control well prints "100", not "100%", below 30px.
+- **Wrapped rows start at the same edge**: `justify-content:space-between`, not `margin-left:auto`
+  (Lumina's header, Dora's controls between 641 and 1000px — the ≤640 fix did not reach a phone
+  held sideways).
+
+**The hub sweep.** `python3 embed.py && python3 -m http.server 8899` then
+`node tools/mobile_hub_sweep.mjs [--sizes=390x844,375x667,320x568,844x390,667x375] [--themes=light,dark]
+[--engine=webkit] [--only=echo,pd,rotate] [--shots=DIR] [--offline] [--verbose] [--strict]`. It signs
+in a stubbed Firebase (or blocks it with `--offline`), opens each screen the way a person would
+(rail, cards, Cmd+K, Settings), seeds every app with its demo data, and **crawls** — every tab-like
+control and every button that opens a dialog is pressed once, the screen measured, the dialog put
+away. At each screen it reports: `overlap` (two painted lines of text intersect), `covered` (text
+with something else painted over it), `clipped` (cut by an `overflow:hidden` ancestor or the screen
+edge with nothing to scroll), `offscreen` (a control cut by an edge), `strip` (a tab or chip sliced by
+a scrolling row), `spill` (text sticking out of its own bordered box), `sideways` (the page scrolls
+horizontally), `fixed` (two fixed layers overlapping), `tiny` (under 11px), `unfit` (the rotate-note
+contract), `truncated` (an ellipsis — advisory, `--strict` fails on it), plus the runtime and
+alignment audits. Each screen is measured at the top and again with every scroller at its end, so
+what can never be scrolled clear (the last row under the tab bar) is a finding. It ignores what is
+by design: whatever a dialog, sheet or toast covers; a sticky header over the rows that scroll under
+it; a closed `<details>`; `pointer-events:none` overlays; and clipping that does not apply to a fixed
+or absolute element (the clip chain is the containing-block chain, which is why Echo's fixed setup
+dialog inside a 137px `<main>` is not "cut").
+
 ---
 
 ## The audit

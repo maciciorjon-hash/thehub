@@ -4,6 +4,137 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## dHUB on a phone — 2026-09-29
+
+### Scope & environment
+- **What:** the whole Hub as a phone user meets it — the shell (visitor home, the signed-in workspace,
+  the four landings, Settings, Cmd+K search, the boot intro), and each of the 17 apps opened the way
+  a person opens them: through the shell, inside its `srcdoc` frame, under the shell's own header and
+  bottom tab bar. Portrait **and** landscape.
+- **Brief (Jon):** *"beta test dhub entero en el móvil. Break it, flag it, fix it. Muy importante el
+  aspecto visual: absolutamente todo se tiene que poder ver, sin solapamientos de letras. Si algo no
+  cabe en vertical, un mensaje al usuario en ese apartado diciendo que lo ponga en horizontal, pero
+  que no aparezcan cosas que no se ven."*
+- **Base commit:** `3b13b28`. Worked on `main`, one commit per area.
+- **Tools:** Playwright — Chromium and WebKit (Safari's engine), touch, DPR 2, iPhone user agent —
+  driving the built `dHUB.html`. New: `tools/mobile_hub_sweep.mjs` + `tools/mobile_hub_scenarios.mjs`
+  (below). Existing: `mobile_sweep.mjs` (Labbook, embedded and top-level), `audit_runtime.js`,
+  `audit_align.js`, `check_css`, `check_js`, `check_shared`, `audit_app --xref`, `embed.py`.
+- **Viewports:** 390×844 · 375×667 · 320×568 (portrait) · 844×390 · 667×375 (landscape) · light and
+  dark at 390×844 · WebKit at 390×844 and 844×390 · `--offline` (Firebase blocked) at 390×844 and 844×390.
+- **Firebase** is stubbed (admin signed in, nothing in the cloud) so the healthy state is what is
+  measured; `--offline` measures the state a phone at the bench with no signal is in.
+
+### How it tests (new harness)
+`tools/mobile_hub_sweep.mjs` is an eye in code. At every screen, in the shell and in the app frame, it
+measures **painted text**, not markup: `overlap` (two painted lines intersect), `covered` (something
+else is on top — `elementFromPoint`), `clipped` (cut by an `overflow:hidden` ancestor or the screen
+edge with nothing to scroll it back), `offscreen`, `strip` (a tab sliced by a scrolling row), `spill`
+(text sticking out of its own bordered box), `sideways`, `fixed` (two fixed layers overlapping),
+`tiny` (<11px; 10px for plate axis labels), `unfit` (the rotate-note contract), `truncated`
+(advisory). Every screen is measured at the top **and** with every scroller at its end, so what can
+never be scrolled clear is a finding. Each app is opened, **seeded with its own demo data** (Echo runs
+the whole pipeline on its bundled plates; Dora/BCA/Beacon/Lumina/Helix/Protein Tools their examples; a
+synthetic blot; Ribbon loads 1CRN from RCSB) and **crawled** — every tab-like control and every button
+that opens a dialog is pressed once, the screen measured, the dialog put away. 143 screens per
+size/theme, about 4–5 minutes.
+
+The first version reported ~1,300 findings; most were the detector being wrong, and each false
+positive taught it a rule it now states in its own source: a fixed element is clipped only by its
+containing-block chain (Echo's fixed dialog inside a 137px `<main>`), a closed `<details>` paints
+nothing, `elementFromPoint` cannot see through `pointer-events:none` (a toast reads as "covered"), a
+sticky header over rows that scroll under it is what sticky is for, the page's own scroll makes a line
+cut by the screen edge reachable, and a transparent file input over a drop zone is a hit layer.
+
+### Coverage matrix
+| Area | Functional | Edge | Math | UI | Mobile | Stress | Persistence | Errors | A11y | Perf |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Shell — visitor home, unlock | ✅ | ✅ | — | ✅ | ✅ | — | — | ✅ offline | — | — |
+| Shell — workspace, rail/tab bar, 4 landings | ✅ | ✅ landscape | — | ✅ | ✅ | — | — | ✅ | — | — |
+| Shell — Settings (4 tabs), Cmd+K, boot intro | ✅ | ✅ | — | ✅ | ✅ | — | — | — | — | — |
+| Echo (analysis run, all result tabs, Gradient Planner, setup) | ✅ | ✅ | — | ✅ | ✅ | — | — | — | — | — |
+| Dora · BCA · LDI · Beacon · Lumina | ✅ seeded | ✅ | — | ✅ | ✅ | — | — | — | — | — |
+| Blueprint (plate, 384, gel, history) | ✅ | ✅ | — | ✅ | ✅ | — | — | — | — | — |
+| Helix · Protein Tools · Ribbon · Blot (crop, figure) | ✅ seeded | ✅ | — | ✅ | ✅ | — | — | — | — | — |
+| Archive (protocol, library kinds) · Cell Archive · Incubator · Iceberg | ✅ | ✅ | — | ✅ | ✅ | — | — | — | — | — |
+| Labbook embedded (portrait) | ✅ `mobile_sweep.mjs` | ✅ | — | ✅ | ✅ | — | — | — | — | ⚠️ not re-measured |
+| Labbook embedded (landscape) | ✅ | ✅ | — | ✅ | ⚠️ tap targets, see below | — | — | — | — | — |
+| Touch gestures on plates (drag select, pinch) | ❌ | | | | ❌ | | | | | | 
+| iOS keyboard covering an input | ❌ not emulable | | | | | | | | | |
+
+### Bugs
+Every bug in this table is fixed and committed on `main`. Commits are in the order they landed.
+
+| ID | Sev | Area | Summary | Root cause |
+|---|---|---|---|---|
+| MB-1 | High | Cell Archive | On a phone the list was 234px wider than its card: the vial/culture badge, the medium and **Add cell line** were outside it with nothing to scroll; rows overprinted each other | The phone rule sat before the seven-column list rule at the same specificity and never applied; the list (`overflow:hidden`) was also shrunk by its flex parent instead of letting the panel scroll |
+| MB-2 | High | Shell | Two fixed banners ("Offline…" and "Not syncing…", same message) stacked on each other and over the first 41–65px of **every** app, hiding the Cells tabs and the top of Echo/Dora | `position:fixed;top:58px` above the app views; a duplicate notice |
+| MB-3 | Med | Shell | Landscape phone (844×390): a 58px header + 56px tab bar left an app 276px of a 390px screen | width query says "desktop", height says no room; nothing keyed on height |
+| MB-4 | High | Echo Plots | The plot panel clipped what did not fit; the chart was a strip with **PNG / CSV / Select drawn over it** and no way to scroll to the rest | `#scatter-panel{overflow:hidden}` with stacked controls |
+| MB-5 | Med | All 17 files | 10px text across the Hub on a phone (tab-bar labels, landing tags, Echo/Dora/LDI/Iceberg labels, 65 inline `font-size:10px`) | Labbook alone had the phone type step; the rest did not |
+| MB-6 | High | Lumina | The 96-well plate's column 12 (and the 100 % controls) ran 11px out of its card at 390px | a 24px well floor against 23px of room |
+| MB-7 | Med | Lumina | Concentration headers overprinted each other ("1 µM333 nM…"); `100%` cut in a 22px well | horizontal headers wider than the column; fixed label |
+| MB-8 | Med | Lumina | The five steps scrolled sideways; the fifth was cut to "Readin" | a strip instead of a wrapping grid |
+| MB-9 | Med | Lumina · Blueprint · Labbook | A 384-well plate in portrait is 24 columns of 14px wells: unreadable, untappable | no portrait treatment → **"Turn your phone sideways" note**, plate hidden, the 96/384 switch kept |
+| MB-10 | Med | Dora · Helix · Beacon · Blueprint · Echo · Archive · Ribbon | Tab rows and filter pills scrolled sideways with a label sliced in half ("Proper" for Properties, "Proteomics" cut 63px) and no sign of what was behind | scrolling strips |
+| MB-11 | Med | Blot | The ⋯ menu was 21px off the left edge; its last items 12–56px below the fold | anchored `right:0` to a button that is mid-screen on a phone |
+| MB-12 | Med | Beacon · Echo | The drop-zone's last hint line was cut; the setup dialog's last tab ("Plate Map", "Output") cut by the card at 320px | fixed 88px height + `overflow:hidden`; padded tabs |
+| MB-13 | Med | Echo | "COMPOUNDS" stuck out of its tile; the Plate tab's second card cut in half | 110px tiles ×3 in 350px; three fixed grid columns |
+| MB-14 | Med | Blueprint | Toolbar + plate + note clipped by the panel; the plate got a strip | `#panel-designer` is `overflow:hidden` inline |
+| MB-15 | Med | Shell | The Settings sheet (full screen on a phone) let the page behind ghost through its text | 86 %-opaque glass on a full-screen surface |
+| MB-16 | Low | Dora | Header counts cut between 641 and 880px; a long file name stuck out of the drop zone at 320px; a wrapped controls row started on the right | auto margins and fixed widths |
+| MB-17 | Med | Ribbon | **Go** sat 16px under the 3D viewer in the 290px sidebar | a flex `<input>` without `min-width:0` |
+| MB-18 | Low | Iceberg | A rack name stood five lines tall beside its counts | no wrap in the header row |
+| MB-19 | Low | Cuppa | 36px search box beside a 33px button | no shared control height |
+| MB-20 | Low | Lumina | Wrapped header rows started at different left edges | `margin-left:auto` |
+| MB-21 | Med | Labbook (landscape) | 96-well editor cut at column 9; search/new-project placeholders cut; day arrows 24px beside a 30px date field; the PDF scope select clipped its widest option; selection bar 28/35px | the fit-to-width ran only in the phone layout; desktop widths on a touch screen |
+| MB-22 | Med | WebKit | Selects drawn 25px beside 34px inputs (Ribbon label panel, Lumina assay row); Blot's *Confirm crop* wrapped and stood 50px tall; Echo's "last session" offer floated over the tabs until answered | Safari ignores padding on `select`; nowrap; fixed position |
+| MB-23 | Low | Labbook | The folded Setup card on a phone (two rows and a fade) cut its second row in half | a regression of MB-5 itself: `max-height:118px` held two rows at the 10px scale, not at 11px; caught by the stricter detector. Folded by counting items now (the first four), not by height |
+
+**Totals:** 23 found (0 Critical, 4 High, 14 Medium, 5 Low), 23 fixed, 0 open.
+
+### Not fixed — recommendations
+- **Tap targets in Labbook's landscape layout.** At 844×390 Labbook uses the desktop layout, whose menus and dialog rows are 34–36px (the phone sheets are 46px). `mobile_sweep.mjs --sizes=844x390` reports ~190 of them. They are readable and complete; a touch user has to be a little more careful. Proposed: enable the sheet/44px rules for `(hover:none) and (pointer:coarse)` at any width. Not done: it changes the interaction model of every menu on tablets (768–1024) too and needs Jon's call.
+- **Ellipsised names** (a project name in Labbook's narrow column, Echo's `LogDC50 (M)` header, Lumina's "Drop a file or paste from Excel" hint) are reported as advisory `truncated`. They are a design choice in a dense list and carry a tooltip; `--strict` counts them.
+- **Canvas text is not measured.** Curve axes, the 3D viewer and plate images are drawn to a canvas; the harness sees the DOM. Echo's scatter axes were checked by eye.
+- **Gel Designer** is usable in portrait (preview under the lane list) but the preview is small; a sticky preview would be better. Design decision.
+- **Touch gestures** (rectangle-drag on a plate, pinch on the 3D view) were not driven.
+
+### Regression results
+Final pass, on the commit that carries the last fix (`0 failing` = no finding other than the advisory `truncated`):
+
+| Run | Result |
+|---|---|
+| Chromium · 390×844 · 375×667 · 320×568 · 844×390 · 667×375, light — 143 screens each | **0 failing** |
+| Chromium · 390×844 dark | **0 failing** |
+| WebKit · 390×844 · 844×390 | **0 failing** |
+| `--offline` (Firebase blocked) · 390×844 · 844×390 · Chromium and WebKit | **0 failing** — one sync notice, in the layout, rail below it |
+| `tools/mobile_sweep.mjs --embedded` (Labbook in dHUB, two sizes, both themes) | all screens clean |
+| `tools/mobile_sweep.mjs` top-level (Labbook standalone) | all screens clean |
+| `tools/invariants.mjs` (Labbook) · `design_invariants.mjs` (Blueprint + Ribbon) · `echo_invariants.mjs` | all hold |
+| `check_js` · `check_css` · `check_shared` · `audit_app --xref` · `sync_icons --check` | clean (`check_css` still lists Echo's one undefined `--x`, which predates this run) |
+
+**The harness catches what it is for.** Eleven of the defects above were put back one at a time in a
+temporary build (the file restored afterwards) and the sweep had to find each. The first pass caught 7
+of 11. The four it missed were four blind spots, and each is closed:
+
+| Put back | Was missed because | Now |
+|---|---|---|
+| Lumina 96-well floor at 36px (plate wider than its card) | the plate sits in a scrolling box, so nothing was "cut" | `unfit: a plate is Npx wider than its box` |
+| Echo result tabs as a scrolling strip | the tabs are `div.tab` with a JS listener, not `[onclick]`, so they were not controls | tab-like classes are controls |
+| Beacon drop zone fixed at 88px | a page that scrolls counted as a scroller for text clipped by an inner `overflow:hidden` box | a scroller rescues text only between it and the box that cuts it |
+| Settings card at 86% opacity | a modal covering the page is "by design"; its own translucency was not looked at | `see-through: N lines of the page show through it` |
+
+The other seven: the phone type scale, Cell Archive's dead phone rule, the Lumina and Blueprint
+rotate notes, Blot's unclamped menu, the banner covering the app, and Dora's scrolling tabs.
+
+### Residual risk
+- A real iPhone: Safari's dynamic toolbar, the on-screen keyboard and the notch in landscape (the shell has no `viewport-fit=cover`, so Safari pads the safe area itself) were emulated, not measured.
+- The CDN-loaded libraries (RDKit, jsPDF, 3Dmol) are reached from the test browser; offline they are already announced by their apps.
+- Third-party overlays (the OS share sheet, file pickers) cannot be tested.
+
+---
+
 ## Echo Data Analysis (Curves, Plots, exports) — 2026-09-28
 
 ### Scope & environment
