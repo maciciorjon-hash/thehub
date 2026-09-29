@@ -3130,6 +3130,23 @@ Both are `EXTRA_PRESET_SEED` entries with a `baseType` — data, not new code, s
   `_platesNoteRefresh` keeps the line current in the quick window, Edit setup and the Designer
   without re-rendering (the caret rule).
 
+### One amount style in every recipe table (2026-09-29)
+
+Jon, on the NanoBRET mix table: a plasmid too weak to pipette showed **0.11 µL** in large green
+bold with "dilute 1:100 → 11 µL" in small grey underneath, which reads as *add 0.11 µL* when the
+instruction is *add 11 µL of a 1:100 dilution*. `_amt(v, sub, dil, neat, unit)` is now the one way
+a recipe table writes an amount: **the volume that goes in, large; what it is made of, small and
+grey below.** For a dilution the headline is the diluted volume tagged `of 1:100`, and the neat
+volume moves into the detail ("11 ng · 0.11 µL of stock, diluted 1:100"). Used by `nbtxRecipe`
+(plasmids, carrier, FuGENE, Opti-MEM, total), `nbsuspRecipe`, `rtxMixRecipe`, `spikeRecipe` and
+`serialRecipe` (`b.cc-amt`), so the biosensor's master mix and the SPARK per-condition table
+read alike. The amount stays a `<b>`: print, Copy and the bench sheet still treat it as one. The
+table type went up a step (`.cc-tbl` 13px, amounts 15px, detail 11px) because the columns were
+mostly white space; under the phone breakpoint it comes back one step so a six-column mix does not
+become three screens wide. Nothing about timings, order or numbers changed. **Not converted**: the
+prose recipes (`seed`, `lytic`, `ctg`, `reagent`) — they are sentences, and a table would make
+`_recipeRedundant` print them under steps that already quote the same numbers.
+
 ### The preset keeps the proportions; the setup supplies the absolutes
 
 Jon's rule, and it turned out to be half-built already. `applySetupToBlocks` takes the **seeding
