@@ -566,45 +566,48 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 /* ══ Motion graphics ═════════════════════════════════════════════════════
    Four things move, and each one says something: the boot intro covers the wait while the
    session resolves; the rail's ink says where you went; an app grows out of the card you
-   pressed; a card's icon moves while you are pointing at it. Nothing loops, and only transform, opacity, stroke-dashoffset and clip-path are animated. */
+   pressed; a card's icon moves while you are pointing at it. Nothing loops, and only transform
+   and opacity are animated: those are the two a browser can run off the main thread, so they
+   stay smooth while an app is still being parsed. The first version also animated clip-path,
+   stroke-dashoffset and a full-screen background colour, and those stuttered on every open. */
 
 /* ── Boot intro. A dose-response curve draws itself and resolves into the mark, which then
    flies to the header. Once per tab; see _introWanted() for when it does not play. It never
    takes a click (pointer-events:none from the first frame) and is removed from the DOM when
    it is done. */
-#hub-intro{display:none;position:fixed;inset:0;z-index:300;background:var(--bg);pointer-events:none;
-  align-items:center;justify-content:center;transition:background-color 420ms var(--ease);}
+#hub-intro{display:none;position:fixed;inset:0;z-index:300;pointer-events:none;align-items:center;justify-content:center;}
 html.hub-intro #hub-intro{display:flex;}
 html.hub-intro #hub-logo,html.hub-intro #nav-title{visibility:hidden;}
+/* the ground is its own layer, so leaving is an opacity fade and not a repaint of the screen */
+.hi-bg{position:absolute;inset:0;background:var(--bg);will-change:opacity;transition:opacity 420ms var(--ease);}
 .hi-stage{position:relative;width:340px;height:222px;max-width:80vw;}
-.hi-plot{position:absolute;inset:0;width:100%;height:100%;overflow:visible;
+.hi-plotwrap{position:absolute;inset:0;will-change:transform,opacity;
   transition:opacity 300ms var(--ease),transform 380ms var(--ease);transform-origin:50% 50%;}
+.hi-plot{display:block;width:100%;height:100%;overflow:visible;}
 .hi-axis{fill:none;stroke:var(--border2);stroke-width:1.5;stroke-linecap:round;}
-.hi-pt{fill:var(--text2);opacity:0;}
-#hub-intro.p1 .hi-pt{animation:hiDrop 420ms var(--ease-out) both;}
-#hub-intro.p1 .hi-pt:nth-child(2){animation-delay:35ms}  #hub-intro.p1 .hi-pt:nth-child(3){animation-delay:70ms}
-#hub-intro.p1 .hi-pt:nth-child(4){animation-delay:105ms} #hub-intro.p1 .hi-pt:nth-child(5){animation-delay:140ms}
-#hub-intro.p1 .hi-pt:nth-child(6){animation-delay:175ms} #hub-intro.p1 .hi-pt:nth-child(7){animation-delay:210ms}
-#hub-intro.p1 .hi-pt:nth-child(8){animation-delay:245ms}
-@keyframes hiDrop{from{opacity:0;transform:translateY(-14px);}to{opacity:1;transform:none;}}
-.hi-curve{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;
-  stroke-dasharray:1;stroke-dashoffset:1;}
-#hub-intro.p2 .hi-curve{stroke-dashoffset:0;transition:stroke-dashoffset 600ms cubic-bezier(.55,.05,.3,1);}
-#hub-intro.p3 .hi-plot{opacity:0;transform:scale(.3);}
+.hi-pt{fill:var(--text2);}
+.hi-curve{fill:none;stroke:var(--accent);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;}
+/* The curve is plotted by a sheet of ground sliding off it left to right: a transform on an
+   HTML layer, which runs on the compositor however busy the page is loading itself. */
+.hi-wipe{position:absolute;top:-8px;bottom:-8px;left:-8px;right:-8px;background:var(--bg);
+  transform-origin:100% 50%;will-change:transform;}
+#hub-intro.p1 .hi-wipe{transform:scaleX(0);transition:transform 760ms cubic-bezier(.4,0,.2,1);}
+#hub-intro.p3 .hi-plotwrap{opacity:0;transform:scale(.3);}
 .hi-brand{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px;}
 .hi-mark{width:64px;height:64px;border-radius:8px;background:#2c2f45;color:#fff;font-family:var(--mono);
   font-weight:700;font-size:34px;display:flex;align-items:center;justify-content:center;flex:none;
-  opacity:0;transform:scale(.6);transform-origin:0 0;
+  opacity:0;transform:scale(.6);transform-origin:50% 50%;will-change:transform,opacity;
   transition:opacity 260ms var(--ease),transform 420ms var(--ease-out);}
 .hi-word{font-size:var(--fs-9);font-weight:700;letter-spacing:-1.2px;color:var(--text);white-space:nowrap;
-  opacity:0;transform:translateX(-10px);transform-origin:0 0;
+  opacity:0;transform:translateX(-10px);transform-origin:0 0;will-change:transform,opacity;
   transition:opacity 300ms var(--ease) 90ms,transform 420ms var(--ease-out) 90ms;}
-/* scale(.6) from the top-left corner would not grow from the centre, so the mark's resting
-   state sits it back by the difference; the flight then only ever sets translate+scale. */
 #hub-intro.p3 .hi-mark{opacity:1;transform:none;}
 #hub-intro.p3 .hi-word{opacity:1;transform:none;}
-#hub-intro.p4{background-color:transparent;}
-#hub-intro.p4 .hi-mark,#hub-intro.p4 .hi-word{transition:transform 460ms var(--ease-out),opacity 200ms var(--ease) 300ms;}
+/* the flight measures from the top-left corner; switching the origin while the mark is at rest
+   (transform:none) moves nothing */
+#hub-intro.p4 .hi-mark{transform-origin:0 0;}
+#hub-intro.p4 .hi-bg{opacity:0;}
+#hub-intro.p4 .hi-mark,#hub-intro.p4 .hi-word{transition:transform 480ms cubic-bezier(.22,1,.36,1),opacity 200ms var(--ease) 300ms;}
 
 /* ── The rail's ink: one highlight that slides to the section you picked, rather than one
    switching off and another switching on. Left and right follow the rail's padding, so a
@@ -615,83 +618,86 @@ html.hub-intro #hub-logo,html.hub-intro #nav-title{visibility:hidden;}
 #ws-rail.inked .ws-item.on{background:transparent;}
 #ws-tabs .hub-ink{border-radius:0 0 2px 2px;}
 
-/* ── An app grows out of the card you pressed. The view is clipped to the card's rect and
-   opened to the full frame; for its first frames it wears the card's colour. */
-.app-view.opening::before{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;
-  background:var(--open-tint,var(--accent));opacity:.14;animation:hubOpenTint 280ms var(--ease) forwards;}
-@keyframes hubOpenTint{to{opacity:0;}}
+/* ── An app grows out of the card you pressed: a panel wearing the card's hue scales from the
+   card to the view (_expandFrom), and the app fades in over it. */
+.app-ghost{position:fixed;z-index:9;pointer-events:none;transform-origin:0 0;will-change:transform,opacity;
+  background:color-mix(in oklab,var(--open-tint,var(--accent)) 8%,var(--surface));
+  border:1px solid color-mix(in oklab,var(--open-tint,var(--accent)) 22%,var(--border));}
+.app-ghost.go{transition:transform 340ms cubic-bezier(.22,1,.36,1),border-radius 340ms cubic-bezier(.22,1,.36,1);}
+.app-ghost.go.back{transition:transform 320ms cubic-bezier(.4,0,.2,1),border-radius 320ms cubic-bezier(.4,0,.2,1),
+  opacity 140ms var(--ease) 220ms;opacity:0;}
 
 /* ── Icons move while you point at them, once — never in a loop. The drawings come from
-   tools/sync_icons.py, which marks the parts that move m1/m2/m3; each motif shows what the app
-   does (the droplet lands, the target band fades, the curve shifts). Pointer devices only: on a
-   touch screen :hover sticks after a tap, and the tap is already opening the app. */
-svg.ic *{transform-box:fill-box;transform-origin:50% 50%;}
-@keyframes icDrop{0%{transform:translateY(-4px);opacity:0;}55%{opacity:1;}100%{transform:none;opacity:1;}}
-@keyframes icPop{0%,100%{transform:scale(1);}45%{transform:scale(1.3);}}
-@keyframes icIn{from{opacity:0;}}
-@keyframes icSlideL{from{transform:translateX(-3.5px);}}
-@keyframes icSlideR{from{transform:translateX(3px);opacity:0;}}
-@keyframes icDraw{from{stroke-dashoffset:1;}to{stroke-dashoffset:0;}}
-@keyframes icTurn{from{transform:rotate(0);}to{transform:rotate(60deg);}}
-@keyframes icRise{from{transform:scaleY(.45);}}
-@keyframes icSteam{0%{transform:translateY(0);opacity:1;}50%{transform:translateY(-3px);opacity:0;}51%{transform:translateY(2px);opacity:0;}100%{transform:none;opacity:1;}}
-@keyframes icGlow{0%{opacity:.35;}100%{opacity:1;}}
-@keyframes icPartA{0%,100%{transform:translate(0,0);}45%{transform:translate(-1.4px,-1.4px);}}
-@keyframes icPartB{0%,100%{transform:translate(0,0);}45%{transform:translate(1.4px,1.4px);}}
-@keyframes icShift{0%,100%{transform:translateX(0);}45%{transform:translateX(2.5px);}}
-@keyframes icTip{0%,100%{transform:translateY(0);}45%{transform:translateY(-2px);}}
-@media (hover:hover){
-  :is(.card,.ld-card):hover svg.mo-echo .m1{animation:icDrop 520ms var(--ease-out) both;}
-  :is(.card,.ld-card):hover svg.mo-echo .m2{animation:icIn 420ms var(--ease) 300ms both;}
-  :is(.card,.ld-card):hover :is(svg.mo-deg,svg.mo-pt,svg.mo-spectra) .m1{animation:icPop 520ms var(--ease) both;}
-  :is(.card,.ld-card):hover svg.mo-pd .m1{animation:icIn 460ms var(--ease) both;}
-  :is(.card,.ld-card):hover svg.mo-dna .m1{animation:icIn 520ms var(--ease) both;}
-  :is(.card,.ld-card):hover svg.mo-ldi .m1{animation:icSlideL 620ms var(--ease-out) both;}
-  :is(.card,.ld-card):hover svg.mo-cryo .m1{animation:icTurn 700ms var(--ease-out) both;}
-  :is(.card,.ld-card):hover svg.mo-incubator .m1{animation:icRise 620ms var(--ease-out) both;transform-origin:50% 100%;}
-  :is(.card,.ld-card):hover svg.mo-cellarchive .m1{animation:icSlideR 520ms var(--ease-out) both;}
-  :is(.card,.ld-card):hover svg.mo-blot .m1{animation:icIn 420ms var(--ease) both;}
-  :is(.card,.ld-card):hover svg.mo-blot .m2{animation:icIn 420ms var(--ease) 110ms both;}
-  :is(.card,.ld-card):hover svg.mo-blot .m3{animation:icIn 420ms var(--ease) 220ms both;}
-  :is(.card,.ld-card):hover svg.mo-cuppa .m1{animation:icSteam 800ms var(--ease) both;}
-  :is(.card,.ld-card):hover svg.mo-beacon .m1{animation:icPop 420ms var(--ease) both;}
-  :is(.card,.ld-card):hover svg.mo-beacon .m2{animation:icIn 300ms var(--ease) 200ms both;}
-  :is(.card,.ld-card):hover svg.mo-beacon .m3{animation:icIn 300ms var(--ease) 420ms both;}
-  :is(.card,.ld-card):hover svg.mo-lumina .m1{animation:icGlow 520ms var(--ease) both;}
-  :is(.card,.ld-card):hover svg.mo-lumina .m2{animation:icTip 520ms var(--ease) 120ms both;}
-  :is(.card,.ld-card):hover svg.mo-ribbon .m1{animation:icSlideR 520ms var(--ease-out) both;}
-  :is(.card,.ld-card):hover svg.mo-protocols .m1{animation:icDrop 480ms var(--ease-out) both;}
-  :is(.card,.ld-card):hover svg.mo-labbook .m1{stroke-dasharray:1;animation:icDraw 460ms var(--ease) both;}
-  /* the rail: the same idea at 19px */
-  .ws-item:hover[data-ws="planner"] svg .m1,.ws-item:hover[data-ws="notebook"] svg .m1,
-  .ws-item:hover[data-ws="analysis"] svg .m1{stroke-dasharray:1;animation:icDraw 420ms var(--ease) both;}
-  .ws-item:hover[data-ws="visualize"] svg .m1{animation:icRise 420ms var(--ease-out) both;transform-origin:50% 100%;}
-  .ws-item:hover[data-ws="visualize"] svg .m1:nth-of-type(2){animation-delay:60ms}
-  .ws-item:hover[data-ws="visualize"] svg .m1:nth-of-type(3){animation-delay:120ms}
-  .ws-item:hover[data-ws="designer"] svg .m1{animation:icShift 420ms var(--ease) both;}
-  .ws-item:hover[data-ws="designer"] svg .m1:nth-of-type(2){animation-delay:60ms}
-  .ws-item:hover[data-ws="designer"] svg .m1:nth-of-type(3){animation-delay:120ms}
-  .ws-item:hover[data-ws="archive"] svg .m1{animation:icDrop 420ms var(--ease-out) both;}
-  .ws-item:hover[data-ws="cells"] svg .m1{animation:icPartA 420ms var(--ease) both;}
-  .ws-item:hover[data-ws="cells"] svg .m2{animation:icPartB 420ms var(--ease) both;}
-  .ws-item:hover[data-ws="more"] svg .m1{animation:icPop 380ms var(--ease) both;}
-  .ws-item:hover[data-ws="more"] svg .m1:nth-of-type(2){animation-delay:50ms}
-  .ws-item:hover[data-ws="more"] svg .m1:nth-of-type(3){animation-delay:100ms}
-  .ws-item:hover[data-ws="more"] svg .m1:nth-of-type(4){animation-delay:150ms}
-  .ld-card:hover svg.ui-antibody .m1{animation:icIn 420ms var(--ease) both;}
-  .ld-card:hover svg.ui-primer .m1{animation:icSlideR 460ms var(--ease-out) both;}
-  .ld-card:hover svg.ui-plasmid{animation:icTurn 700ms var(--ease-out) both;}
-  .ld-card:hover svg.ui-archive .m1{animation:icDrop 480ms var(--ease-out) both;}
-}
-.ws-item.ws-pop .ws-ico svg{animation:icPop 360ms var(--ease) both;}
+   tools/sync_icons.py, which marks the parts that move m1/m2/m3.
+   Every motif starts and ends at rest: nothing jumps to a start pose or vanishes to reappear,
+   which is what made the first set stutter. And a motif is started by a class (.ic-play, set on
+   pointer entry and cleared by a timer after it has finished) rather than by :hover, so a
+   pointer crossing a card does not cut an animation off half-way and snap it back. Pointer
+   devices only: on a touch screen the tap is already opening the app. */
+:root{--ease-io:cubic-bezier(.45,0,.25,1);}
+svg.ic *,.ws-ico svg > *{transform-box:fill-box;transform-origin:50% 50%;}
+@keyframes icBob{0%,100%{transform:none;}40%{transform:translateY(-2.2px);}72%{transform:translateY(.5px);}}
+@keyframes icDrip{0%,100%{transform:none;}38%{transform:translateY(1.8px);}70%{transform:translateY(-.4px);}}
+@keyframes icPop{0%,100%{transform:scale(1);}42%{transform:scale(1.2);}}
+@keyframes icNudge{0%,100%{transform:none;}45%{transform:translateX(2px);}}
+@keyframes icSquash{0%,100%{transform:scaleY(1);}45%{transform:scaleY(.72);}}
+@keyframes icBreath{0%,100%{transform:scaleX(1);}45%{transform:scaleX(.6);}}
+@keyframes icTurn60{from{transform:rotate(0);}to{transform:rotate(60deg);}}
+@keyframes icTurn360{from{transform:rotate(0);}to{transform:rotate(360deg);}}
+@keyframes icSteam{0%,100%{transform:none;opacity:1;}50%{transform:translateY(-2.4px);opacity:.3;}}
+@keyframes icPartA{0%,100%{transform:none;}45%{transform:translate(-1.4px,-1.4px);}}
+@keyframes icPartB{0%,100%{transform:none;}45%{transform:translate(1.4px,1.4px);}}
+@keyframes icCoil{0%,100%{transform:none;}45%{transform:translate(.9px,-.9px) scale(1.04);}}
+.ic-play svg *,.ic-play .ws-ico svg *{animation-duration:760ms;animation-timing-function:var(--ease-io);animation-fill-mode:both;}
+.ic-play svg.mo-echo .m1{animation-name:icDrip;}
+.ic-play svg.mo-echo .m2{animation-name:icPop;animation-delay:220ms;}
+.ic-play svg.mo-echo .m2:nth-of-type(2){animation-delay:280ms} .ic-play svg.mo-echo .m2:nth-of-type(3){animation-delay:340ms}
+.ic-play svg.mo-echo .m2:nth-of-type(4){animation-delay:400ms}
+.ic-play :is(svg.mo-deg,svg.mo-pt,svg.mo-spectra,svg.mo-labbook,svg.mo-beacon) .m1{animation-name:icPop;}
+.ic-play svg.mo-pd .m1 *{animation-name:icPop;}
+.ic-play svg.mo-pd .m1 :nth-child(2){animation-delay:60ms} .ic-play svg.mo-pd .m1 :nth-child(3){animation-delay:120ms}
+.ic-play svg.mo-pd .m1 :nth-child(4){animation-delay:180ms}
+.ic-play svg.mo-dna .m1{animation-name:icBreath;}
+.ic-play :is(svg.mo-ldi,svg.mo-cellarchive,svg.mo-beacon) :is(.m1,.m2):not(circle){animation-name:icNudge;}
+.ic-play svg.mo-beacon .m2{animation-delay:120ms;}
+.ic-play svg.mo-beacon .m3,.ic-play svg.mo-lumina .m2{animation-name:icBob;animation-delay:200ms;}
+.ic-play svg.mo-cryo .m1{animation-name:icTurn60;animation-duration:900ms;}
+.ic-play svg.mo-incubator .m1{animation-name:icSquash;transform-origin:50% 100%;}
+.ic-play svg.mo-blot :is(.m1,.m2,.m3){animation-name:icBreath;}
+.ic-play svg.mo-blot .m2{animation-delay:90ms} .ic-play svg.mo-blot .m3{animation-delay:180ms}
+.ic-play svg.mo-cuppa .m1{animation-name:icSteam;animation-duration:900ms;}
+.ic-play svg.mo-lumina .m1{animation-name:icPop;}
+.ic-play svg.mo-ribbon :is(.m1,.m2){animation-name:icCoil;}
+.ic-play svg.mo-ribbon .m1{animation-delay:70ms;}
+.ic-play :is(svg.mo-protocols,svg.ui-archive) .m1{animation-name:icDrip;}
+.ic-play svg.ui-antibody .m1{animation-name:icPop;}
+.ic-play svg.ui-primer .m1{animation-name:icNudge;}
+.ic-play svg.ui-plasmid{animation:icTurn360 1s var(--ease-io) both;}
+/* the rail: the same idea at 19px */
+.ws-item.ic-play:is([data-ws="planner"],[data-ws="notebook"]) svg .m1{animation-name:icPop;}
+.ws-item.ic-play[data-ws="visualize"] svg .m1{animation-name:icSquash;transform-origin:50% 100%;}
+.ws-item.ic-play[data-ws="visualize"] svg .m1:nth-of-type(2){animation-delay:70ms}
+.ws-item.ic-play[data-ws="visualize"] svg .m1:nth-of-type(3){animation-delay:140ms}
+.ws-item.ic-play[data-ws="designer"] svg .m1{animation-name:icNudge;}
+.ws-item.ic-play[data-ws="designer"] svg .m1:nth-of-type(2){animation-delay:70ms}
+.ws-item.ic-play[data-ws="designer"] svg .m1:nth-of-type(3){animation-delay:140ms}
+.ws-item.ic-play[data-ws="analysis"] svg .m1{animation-name:icNudge;}
+.ws-item.ic-play[data-ws="archive"] svg .m1{animation-name:icDrip;}
+.ws-item.ic-play[data-ws="cells"] svg .m1{animation-name:icPartA;}
+.ws-item.ic-play[data-ws="cells"] svg .m2{animation-name:icPartB;}
+.ws-item.ic-play[data-ws="more"] svg .m1{animation-name:icPop;}
+.ws-item.ic-play[data-ws="more"] svg .m1:nth-of-type(2){animation-delay:60ms}
+.ws-item.ic-play[data-ws="more"] svg .m1:nth-of-type(3){animation-delay:120ms}
+.ws-item.ic-play[data-ws="more"] svg .m1:nth-of-type(4){animation-delay:180ms}
+.ws-item.ws-pop .ws-ico svg{animation:icPop 460ms var(--ease-io) both;}
 </style>
 </head>
 <body>
 
 <!-- Boot intro: a dose-response curve draws itself and resolves into the mark, which flies to
      the header. Decided here, before the page paints, so it never flashes; run by _introStart. -->
-<div id="hub-intro" aria-hidden="true"><div class="hi-stage">
-  <svg class="hi-plot" viewBox="0 0 260 170"><path class="hi-axis" d="M18 10V152H250"/><g><circle class="hi-pt" cx="34" cy="32.6" r="4.6"/><circle class="hi-pt" cx="62" cy="29.6" r="4.6"/><circle class="hi-pt" cx="90" cy="43.7" r="4.6"/><circle class="hi-pt" cx="118" cy="63.0" r="4.6"/><circle class="hi-pt" cx="146" cy="107.0" r="4.6"/><circle class="hi-pt" cx="174" cy="124.3" r="4.6"/><circle class="hi-pt" cx="202" cy="137.4" r="4.6"/><circle class="hi-pt" cx="232" cy="135.4" r="4.6"/></g><path class="hi-curve" pathLength="1" d="M28.0 30.5 L34.0 30.6 L40.0 30.8 L46.0 31.2 L52.0 31.6 L58.0 32.2 L64.0 32.9 L70.0 34.0 L76.0 35.4 L82.0 37.3 L88.0 39.7 L94.0 42.9 L100.0 46.9 L106.0 51.9 L112.0 57.9 L118.0 65.0 L124.0 72.8 L130.0 81.2 L136.0 89.7 L142.0 97.9 L148.0 105.5 L154.0 112.2 L160.0 117.9 L166.0 122.5 L172.0 126.3 L178.0 129.2 L184.0 131.4 L190.0 133.1 L196.0 134.4 L202.0 135.4 L208.0 136.1 L214.0 136.6 L220.0 137.0 L226.0 137.2 L232.0 137.4 L238.0 137.6"/></svg>
+<div id="hub-intro" aria-hidden="true"><div class="hi-bg"></div><div class="hi-stage">
+  <div class="hi-plotwrap"><svg class="hi-plot" viewBox="0 0 260 170"><path class="hi-axis" d="M18 10V152H250"/><g><circle class="hi-pt" cx="34" cy="32.6" r="4.6"/><circle class="hi-pt" cx="62" cy="29.6" r="4.6"/><circle class="hi-pt" cx="90" cy="43.7" r="4.6"/><circle class="hi-pt" cx="118" cy="63.0" r="4.6"/><circle class="hi-pt" cx="146" cy="107.0" r="4.6"/><circle class="hi-pt" cx="174" cy="124.3" r="4.6"/><circle class="hi-pt" cx="202" cy="137.4" r="4.6"/><circle class="hi-pt" cx="232" cy="135.4" r="4.6"/></g><path class="hi-curve" d="M28.0 30.5 L34.0 30.6 L40.0 30.8 L46.0 31.2 L52.0 31.6 L58.0 32.2 L64.0 32.9 L70.0 34.0 L76.0 35.4 L82.0 37.3 L88.0 39.7 L94.0 42.9 L100.0 46.9 L106.0 51.9 L112.0 57.9 L118.0 65.0 L124.0 72.8 L130.0 81.2 L136.0 89.7 L142.0 97.9 L148.0 105.5 L154.0 112.2 L160.0 117.9 L166.0 122.5 L172.0 126.3 L178.0 129.2 L184.0 131.4 L190.0 133.1 L196.0 134.4 L202.0 135.4 L208.0 136.1 L214.0 136.6 L220.0 137.0 L226.0 137.2 L232.0 137.4 L238.0 137.6"/></svg><div class="hi-wipe"></div></div>
   <div class="hi-brand"><div class="hi-mark">d</div><div class="hi-word">dHUB</div></div>
 </div></div>
 <script>
@@ -1026,7 +1032,7 @@ svg.ic *{transform-box:fill-box;transform-origin:50% 50%;}
            onclick="openApp('ribbon')"
            onkeydown="if(event.key==='Enter')openApp('ribbon')">
         <div class="card-header-row">
-          <div class="card-logo ic-tile" style="--hue:#bb6c66"><svg class="ic mo-ribbon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path d="M3.60 8.50 L3.23 8.64 L2.89 9.04 L2.62 9.67 L2.44 10.50 L2.39 11.46 L2.46 12.50 L2.68 13.54 L3.02 14.50 L3.48 15.33 L4.04 15.96 L4.67 16.36 L5.33 16.50 L5.99 16.36 L6.62 15.96 L7.17 15.33 L7.64 14.50 L7.98 13.54 L8.19 12.50 L8.27 11.46 L8.21 10.50 L8.04 9.67 L7.77 9.04 L7.43 8.64 L7.06 8.50 L6.68 8.64 L6.34 9.04 L6.07 9.67 L5.90 10.50 L5.84 11.46 L5.92 12.50 L6.13 13.54 L6.48 14.50 L6.94 15.33 L7.50 15.96 L8.12 16.36 L8.78 16.50 L9.45 16.36 L10.07 15.96 L10.63 15.33 L11.09 14.50 L11.44 13.54 L11.65 12.50 L11.72 11.46 L11.67 10.50 L11.49 9.67 L11.22 9.04 L10.89 8.64 L10.51 8.50 L10.14 8.64 L9.80 9.04 L9.53 9.67 L9.36 10.50 L9.30 11.46 L9.38 12.50 L9.59 13.54 L9.93 14.50 L10.39 15.33 L10.95 15.96 L11.58 16.36 L12.24 16.50"/><path class="ac m1" d="M13.2 16.1 17.6 9.9" stroke-width="2.4" style="stroke:var(--ic-ac,currentColor)"/><path class="m1" d="M15.4 8.5l5.2-2.3-1 5.6z" class="ac" style="fill:var(--ic-ac,currentColor)" stroke="none"/></svg></div>
+          <div class="card-logo ic-tile" style="--hue:#bb6c66"><svg class="ic mo-ribbon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><g class="ac m1" style="stroke:var(--ic-ac,currentColor)" stroke-width="1.6"><path d="M9.35 21.40 L9.40 21.30 L9.41 21.11 L9.37 20.86 L9.27 20.56 L9.12 20.21 L8.91 19.82 L8.67 19.39 L8.39 18.94 L8.08 18.45 L7.75 17.96 L7.41 17.45 L7.07 16.94 L6.73 16.43 L6.42 15.94 L6.12 15.47 L5.86 15.03 L5.64 14.62 L5.46 14.26 L5.33 13.94 L5.26 13.66 L5.26 13.44 L5.31 13.28 L5.38 13.20"/><path d="M14.01 16.09 L14.06 15.99 L14.08 15.80 L14.05 15.56 L13.95 15.26 L13.80 14.92 L13.60 14.53 L13.36 14.11 L13.08 13.66 L12.78 13.18 L12.45 12.68 L12.11 12.17 L11.77 11.66 L11.44 11.15 L11.12 10.66 L10.82 10.19 L10.55 9.74 L10.33 9.33 L10.14 8.96 L10.01 8.64 L9.94 8.36 L9.92 8.13 L9.97 7.96 L10.03 7.88"/><path d="M18.69 10.72 L18.73 10.62 L18.75 10.42 L18.70 10.16 L18.59 9.86 L18.43 9.50 L18.22 9.11 L17.97 8.68 L17.69 8.22 L17.37 7.73 L17.04 7.23 L16.70 6.72 L16.36 6.21 L16.03 5.71 L15.71 5.22 L15.42 4.75 L15.17 4.32 L14.95 3.91 L14.78 3.55 L14.66 3.24 L14.59 2.97 L14.59 2.76 L14.65 2.60 L14.68 2.55"/></g><g class="m2" stroke-width="2.6"><path d="M5.00 20.00 L5.55 20.27 L6.09 20.53 L6.62 20.78 L7.11 21.00 L7.58 21.20 L8.00 21.35 L8.38 21.47 L8.70 21.54 L8.97 21.56 L9.17 21.53 L9.32 21.45 L9.35 21.40"/><path d="M5.38 13.20 L5.48 13.14 L5.67 13.10 L5.93 13.12 L6.25 13.18 L6.62 13.30 L7.04 13.45 L7.50 13.64 L7.99 13.86 L8.52 14.11 L9.06 14.37 L9.61 14.64 L10.16 14.91 L10.70 15.17 L11.23 15.42 L11.73 15.65 L12.19 15.84 L12.62 16.01 L13.00 16.13 L13.33 16.20 L13.61 16.23 L13.82 16.20 L13.97 16.12 L14.01 16.09"/><path d="M10.03 7.88 L10.12 7.82 L10.32 7.77 L10.57 7.78 L10.88 7.84 L11.24 7.95 L11.66 8.10 L12.11 8.29 L12.60 8.50 L13.12 8.75 L13.66 9.00 L14.21 9.27 L14.76 9.54 L15.31 9.81 L15.83 10.06 L16.34 10.29 L16.81 10.49 L17.24 10.66 L17.63 10.78 L17.97 10.86 L18.25 10.90 L18.46 10.88 L18.62 10.80 L18.69 10.72"/><path d="M14.68 2.55 L14.77 2.49 L14.96 2.44 L15.20 2.44 L15.51 2.50 L15.87 2.60 L16.28 2.75 L16.73 2.93 L17.22 3.14 L17.73 3.38 L18.27 3.64 L18.82 3.91 L19.00 4.00"/></g></svg></div>
           <div class="card-name">Ribbon</div>
         </div>
         <div class="card-desc">PDB structure renderer for presentations &mdash; cartoon/surface styles, chain coloring, borders, and hi-res transparent PNG export.</div>
@@ -1768,9 +1774,8 @@ function _introStart(){
   _intro.el=el; _intro.ready=_hubShown;
   try{ sessionStorage.setItem('hub_intro_seen','1'); }catch(e){}
   void el.offsetWidth; el.classList.add('p1');
-  setTimeout(function(){ el.classList.add('p2'); }, 200);
-  setTimeout(function(){ el.classList.add('p3'); }, 800);
-  setTimeout(function(){ _intro.drawn=true; _introGo(); }, 1300);
+  setTimeout(function(){ el.classList.add('p3'); }, 780);
+  setTimeout(function(){ _intro.drawn=true; _introGo(); }, 1240);
   setTimeout(function(){ _intro.ready=true; _introGo(); }, 1900);
   setTimeout(_introEnd, 3200);
 }
@@ -1806,6 +1811,23 @@ function _noteOrigin(t){ var c=t && t.closest && t.closest('.card,.ld-card'); _o
 document.addEventListener('pointerdown',function(e){ _noteOrigin(e.target); },true);
 document.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' ') _noteOrigin(document.activeElement); },true);
 function _reducedMotion(){ try{ return matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){ return false; } }
+// An icon's motif, played once to its end. Entering a card, a landing card or a rail entry
+// starts it; leaving does not stop it; a timer clears the class after the longest motif, so
+// the next entry plays it again from rest.
+(function(){
+  var fine=false; try{ fine=matchMedia('(hover:hover)').matches; }catch(e){}
+  function play(el){ if(!el || el._icT || _reducedMotion()) return;
+    el.classList.add('ic-play'); el._icT=setTimeout(function(){ el.classList.remove('ic-play'); el._icT=0; },1150); }
+  if(fine) document.addEventListener('pointerover',function(e){
+    if(e.pointerType==='touch') return;
+    var el=e.target.closest && e.target.closest('.card,.ld-card,.ws-item');
+    if(el && !(e.relatedTarget && el.contains(e.relatedTarget))) play(el);
+  },true);
+  document.addEventListener('focusin',function(e){
+    var el=e.target.closest && e.target.closest('.card,.ld-card,.ws-item');
+    try{ if(el && el===e.target && el.matches(':focus-visible')) play(el); }catch(x){}
+  },true);
+})();
 function _takeOrigin(){
   var o=_openOrigin; _openOrigin=null;
   if(!o || Date.now()-o.t>900 || !o.el.isConnected || _reducedMotion()) return null;
@@ -1813,24 +1835,30 @@ function _takeOrigin(){
   var ico=o.el.querySelector('.ld-ico,.card-logo');
   return {el:o.el, rect:r, tint:ico?(getComputedStyle(ico).getPropertyValue('--hue')||'').trim():''};
 }
-function _clipRect(view,r){
-  var v=view.getBoundingClientRect(), f=function(n){ return Math.max(0,Math.round(n))+'px'; };
-  return 'inset('+f(r.top-v.top)+' '+f(v.right-r.right)+' '+f(v.bottom-r.bottom)+' '+f(r.left-v.left)+' round 12px)';
+// A panel in the card's place grows to fill the view — transform only, so it runs on the
+// compositor while the app underneath is still being parsed; the app fades in over it at the
+// end. The first version clipped the iframe itself, which repaints the app on every frame and
+// is what stuttered. Timers, not transitionend: a backgrounded tab never fires the event.
+function _ghost(view,rect,tint){
+  var v=view.getBoundingClientRect();
+  var g=document.createElement('div'); g.className='app-ghost';
+  g.style.cssText='left:'+v.left+'px;top:'+v.top+'px;width:'+v.width+'px;height:'+v.height+'px;';
+  if(tint) g.style.setProperty('--open-tint',tint);
+  var sx=Math.max(.02,rect.width/v.width), sy=Math.max(.02,rect.height/v.height);
+  g._card='translate('+(rect.left-v.left)+'px,'+(rect.top-v.top)+'px) scale('+sx+','+sy+')';
+  g._r=(12/sx).toFixed(1)+'px / '+(12/sy).toFixed(1)+'px';   // a 12px corner once scaled down
+  document.body.appendChild(g);
+  return g;
 }
-function _setClip(view,c){ view.style.clipPath=c; view.style.webkitClipPath=c; }
-var _CLIP_T='clip-path var(--dur-3) var(--ease-out),-webkit-clip-path var(--dur-3) var(--ease-out)';
-// The view must already be display:flex. Cleared by a timer, not transitionend: a backgrounded
-// tab never fires the event and the view would stay clipped to a card-sized hole.
 function _expandFrom(view,o){
-  view._originEl=o.el;
-  clearTimeout(view._clipT);
-  view.style.transition='none'; view.style.opacity='1';
-  _setClip(view,_clipRect(view,o.rect));
-  if(o.tint) view.style.setProperty('--open-tint',o.tint);
-  view.classList.remove('opening'); void view.offsetWidth; view.classList.add('opening');
-  view.style.transition=_CLIP_T;
-  _setClip(view,'inset(0px 0px 0px 0px round 0px)');
-  view._clipT=setTimeout(function(){ _setClip(view,''); view.style.transition=''; view.classList.remove('opening'); },420);
+  view._originEl=o.el; view._tint=o.tint;
+  var g=_ghost(view,o.rect,o.tint);
+  g.style.transform=g._card; g.style.borderRadius=g._r;
+  view.style.transition='none'; view.style.opacity='0'; void g.offsetWidth;
+  g.classList.add('go'); g.style.transform='none'; g.style.borderRadius='0px';
+  view.style.transition='opacity 160ms var(--ease) 200ms'; view.style.opacity='1';
+  clearTimeout(view._ghT);
+  view._ghT=setTimeout(function(){ g.remove(); view.style.transition=''; },420);
 }
 // The way back: into the card if it is still on screen, otherwise the caller fades.
 function _shrinkTo(view,id){
@@ -1840,11 +1868,13 @@ function _shrinkTo(view,id){
   if(!el || !el.offsetWidth) return false;
   var r=el.getBoundingClientRect();
   if(r.bottom<=0 || r.top>=innerHeight) return false;
-  clearTimeout(view._clipT);
-  view.style.transition='none'; _setClip(view,'inset(0px 0px 0px 0px round 0px)'); void view.offsetWidth;
-  view.style.transition=_CLIP_T+',opacity var(--dur-2) var(--ease) 120ms';
-  _setClip(view,_clipRect(view,r)); view.style.opacity='0';
-  view._clipT=setTimeout(function(){ _setClip(view,''); view.style.transition=''; },360);
+  var ico=el.querySelector('.ld-ico,.card-logo');
+  var g=_ghost(view,r,view._tint||(ico?(getComputedStyle(ico).getPropertyValue('--hue')||'').trim():''));
+  g.style.transform='none'; void g.offsetWidth;
+  g.classList.add('go','back'); g.style.transform=g._card; g.style.borderRadius=g._r;
+  view.style.transition='opacity 110ms var(--ease)'; view.style.opacity='0';
+  clearTimeout(view._ghT);
+  view._ghT=setTimeout(function(){ g.remove(); view.style.transition=''; },440);
   return true;
 }
 
@@ -2656,6 +2686,14 @@ var _wsSection = 'planner';
 function renderRail(){
   var rail=document.getElementById('ws-rail'), tabs=document.getElementById('ws-tabs');
   if(!rail || !tabs) return;
+  // Only the section moved: switch the classes and slide the ink. Rebuilding the markup on
+  // every click restarted the icon animation you had just set off, which read as a stutter.
+  var items=rail.querySelectorAll('.ws-item[data-ws]'), nav=WS_NAV.filter(function(n){ return !n.sep; });
+  if(items.length===nav.length && nav.every(function(n,i){ return items[i].dataset.ws===n.id; })){
+    items.forEach(function(b){ b.classList.toggle('on', b.dataset.ws===_wsSection); });
+    tabs.querySelectorAll('.ws-tab').forEach(function(b){ b.classList.toggle('on', b.dataset.ws===_wsSection); });
+    _railInk(); _hubInk(tabs,'top'); return;
+  }
   rail.innerHTML = WS_NAV.map(function(n){
       if(n.sep) return '<div class="ws-sep"></div>';
       return '<button class="ws-item'+(_wsSection===n.id?' on':'')+'" data-ws="'+n.id+'" onclick="wsGo(\''+n.id+'\')" title="'+_dashEsc(n.name)+'">'
@@ -2667,7 +2705,7 @@ function renderRail(){
   tabs.innerHTML = WS_TABS.map(function(id){
     var n=WS_NAV.filter(function(x){ return x.id===id; })[0]; if(!n) return '';
     var short = n.id==='analysis' ? 'Analysis' : n.name;
-    return '<button class="ws-tab'+(_wsSection===id?' on':'')+'" onclick="wsGo(\''+id+'\')">'
+    return '<button class="ws-tab'+(_wsSection===id?' on':'')+'" data-ws="'+id+'" onclick="wsGo(\''+id+'\')">'
       +_wsIcon(n.icon)+'<span>'+_dashEsc(short)+'</span></button>';
   }).join('');
   _railInk(); _hubInk(tabs,'top');

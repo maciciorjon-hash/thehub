@@ -115,6 +115,11 @@ having its own idea of how fast a hover is, or none at all.
   animation on the icon's own parts, under `@media (hover:hover)`, keyed on a root class
   (`svg.mo-<app>`) so it travels with the SVG wherever it is copied. A 24px glyph cycling
   forever beside the thing you are reading is decoration you cannot turn off.
+- **Animate `transform` and `opacity`, nothing else, for anything that moves across the
+  screen.** The browser can run those two off the main thread. `clip-path`, `stroke-dashoffset`,
+  `background-color` and sizes are painted on the main thread, and they stutter exactly when
+  something is loading, which is when they are most likely to run. A motif starts and ends at
+  rest and plays to its end once started (`.ic-play`); it is never cut off by `:hover` ending.
 - **Motion that crosses screens must start from where you clicked.** An app grows out of the card
   that opened it (a `clip-path` from the card's rect); anything opened from elsewhere fades. A
   grow with no origin is the generic kind, and that is what the Hub stopped being.

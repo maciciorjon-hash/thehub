@@ -36,12 +36,23 @@ def acf(m=''): return ACF.format(m=(' '+m) if m else '')
 def acs(m=''): return ACS.format(m=(' '+m) if m else '')
 DIM = 'opacity=".45"'
 
-def _trochoid():
-    pts = []
-    for i in range(0, 121, 2):
-        t = i/120*2.5*2*math.pi
-        pts.append((3.6+0.55*t-2.0*math.sin(t), 12.5-4*math.cos(t)))
-    return 'M' + ' L'.join('%.2f %.2f' % p for p in pts)
+def _helix(a0=(5, 20), a1=(19, 4), R=4.2, turns=3, n=400):
+    """An alpha helix seen side-on, the way a ribbon diagram draws one: the coil's front turns
+    and its back turns as separate strokes, so the depth reads without shading."""
+    ax, ay = a1[0]-a0[0], a1[1]-a0[1]; L = math.hypot(ax, ay); px, py = -ay/L, ax/L
+    segs, cur, curz = [], None, None
+    for i in range(n+1):
+        th = 2*math.pi*turns*i/n; s_ = i/n
+        q = (a0[0]+ax*s_+px*R*math.sin(th), a0[1]+ay*s_+py*R*math.sin(th)); z = math.cos(th) > 0
+        if curz is None or z != curz:
+            if cur: cur.append(q); segs.append((curz, cur))
+            cur = [q] if cur is None else [cur[-1], q]; curz = z
+        else:
+            cur.append(q)
+    segs.append((curz, cur))
+    d = lambda pts: 'M' + ' L'.join('%.2f %.2f' % q for q in pts[::3] + [pts[-1]])
+    return (''.join('<path d="%s"/>' % d(p) for z, p in segs if not z),
+            ''.join('<path d="%s"/>' % d(p) for z, p in segs if z))
 
 def _flake(cx, cy, r):
     out = []
@@ -133,10 +144,9 @@ APP_ICONS = {
                '<path d="M6.8 13v2.4a5.2 5.2 0 0 0 10.4 0V13"/>'
                '<path d="M8 15.5h8a4 4 0 0 1-8 0z" '+acf('m1')+'/>'
                '<path class="m2" d="M12 3.5v4M6.4 5.8l2.1 2.6M17.6 5.8l-2.1 2.6" '+DIM+'/>'),
-    # a cartoon: helix, then strand
-    'ribbon': ('<path d="' + _trochoid() + '"/>'
-               '<path class="ac m1" d="M13.2 16.1 17.6 9.9" stroke-width="2.4" style="stroke:var(--ic-ac,currentColor)"/>'
-               '<path class="m1" d="M15.4 8.5l5.2-2.3-1 5.6z" '+acf()+'/>'),
+    # an alpha helix: front turns in ink, the turns behind in the accent
+    'ribbon': ('<g class="ac m1" style="stroke:var(--ic-ac,currentColor)" stroke-width="1.6">' + _helix()[0] + '</g>'
+               '<g class="m2" stroke-width="2.6">' + _helix()[1] + '</g>'),
     # the protocol book, bookmarked
     'protocols': ('<path d="M12 6.5c-1.8-1.3-4.6-1.8-7.5-1.3v12.8c2.9-.5 5.7 0 7.5 1.3 1.8-1.3 4.6-1.8 7.5-1.3V5.2c-2.9-.5-5.7 0-7.5 1.3z"/>'
                   '<path d="M12 6.5v12.8"/>'

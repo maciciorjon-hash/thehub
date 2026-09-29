@@ -9248,6 +9248,8 @@ function openDayPage(D){ D=D||todayStr();
 // every answer is the Journal now.
 function openSection(nbId,secId){ openJournalWs(); }
 // The Journal opens where you left it this session, else on today.
+// Back to the Planner where you left it — the rail's Planner and the standalone column's.
+function openPlannerWs(){ var r=_wsRestoreNode(); if(r&&r.node.kind!=='home'){ SEL.node=r.node; SEL.page=r.page; renderAll(); } else selectNode('home'); }
 function openJournalWs(){
   var last=WS_LAST.notebook;
   if(last && last.page){ if(_isDateKey(last.page)) return openDayPage(last.page); if(LB.data.pages[last.page]) return openPage(last.page); }
@@ -9287,6 +9289,19 @@ function _colFootRender(){ var f=el('col-foot'); if(!f) return; if(_phoneTabs())
 function renderSections(){
   _colFootRender();
   var host=el('pane-sec'); var h=''; var k=SEL.node.kind, surf=lbSurface(), ws=lbWorkspace();
+  // This column is the Planner's navigation. Drawn beside the Journal it read as the Planner
+  // still being where you were (Jon, 2026-09-29). Inside dHUB the rail names the workspace, so
+  // outside the Planner the column goes; on a phone the tab bar does that job. Standalone it is
+  // the only way between workspaces, so it shrinks to the four of them with yours lit.
+  if(ws!=='planner'){
+    if(lbHost()||_phoneTabs()){ host.innerHTML=''; return false; }
+    h+='<div class="pane-lbl">Workspaces</div>';
+    h+=secLeaf({kind:'home'},'Planner',HOME_ICON,null,null,false,{onclick:'openPlannerWs()'});
+    h+=secLeaf({kind:'nb'},'Journal',NB_ICON,null,null,ws==='notebook',{onclick:'openJournalWs()'});
+    h+=secLeaf({kind:'viz'},'Visualize',VIZ_ICON,null,null,ws==='visualize',{onclick:"selectNode('viz')"});
+    h+=secLeaf({kind:'design'},'Designer',DESIGN_ICON,null,null,ws==='designer');
+    host.innerHTML=h; return true;
+  }
   // One column, the same on every surface and in both builds — OneNote's list of notebooks.
   // The Planner's four surfaces, then every project as a coloured tab with its folders under
   // it, then (standalone only — inside dHUB the rail owns the workspaces) Journal and
@@ -21621,7 +21636,7 @@ window.addEventListener('message', function(e){
     var v=e.data.view;
     // The rail says Planner (→ Home) or Notebook (→ where you left it, else today's page).
     // The older views stay answered so a saved link or an old shell keeps working.
-    if(v==='planner'){ var r=_wsRestoreNode(); if(r&&r.node.kind!=='home'){ SEL.node=r.node; SEL.page=r.page; renderAll(); } else selectNode('home'); }
+    if(v==='planner') openPlannerWs();
     else if(v==='notebook'){ if(lbWorkspace()!=='notebook') openJournalWs(); }
   else if(v==='visualize') selectNode('viz');
     else if(v==='designer') selectNode('design');
