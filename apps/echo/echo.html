@@ -855,7 +855,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
               <button onclick="openCtrlPicker()" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text2);font-size:11px;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:all .2s;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)'">⊞ Grid</button>
             </div>
             <div class="hint">DMSO/vehicle reference wells used for plate-by-plate normalisation (sets the 100% reference). Formats: B22:O23 (block), B12-O12 (row range).</div>
-            <div style="margin-top:8px;padding:8px 10px;border-radius:4px;background:var(--surface3);border:1px solid var(--border);"><label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--text2);cursor:pointer;"><input type="checkbox" id="p-skip-norm" style="margin-top:1px;flex-shrink:0;" onchange="var e=document.getElementById('p-ctrl');e.disabled=this.checked;e.style.opacity=this.checked?'0.35':'1';"> <span><b style="color:var(--text);">No normalisation</b> — use raw signal values as-is. Tick this if your data is already normalised, if you have no DMSO controls, or if you are using an endpoint that does not require a reference (e.g. raw luminescence). The Y-axis will show raw signal units.</span></label></div>
+            <div style="margin-top:8px;padding:8px 10px;border-radius:4px;background:var(--surface3);border:1px solid var(--border);"><label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--text2);cursor:pointer;"><input type="checkbox" id="p-row-norm" style="margin-top:1px;flex-shrink:0;"> <span><b style="color:var(--text);">Smart DMSO control (per row)</b> — normalise each row to the control wells <i>in that same row</i> (e.g. the two DMSO wells at the right edge) instead of the average of all of them. Use it when one channel of a multi-channel dispenser (Multidrop Combi) delivers a different volume: rows can differ, wells within a row do not. A row with no control readings falls back to the plate average.</span></label></div>
+            <div style="margin-top:8px;padding:8px 10px;border-radius:4px;background:var(--surface3);border:1px solid var(--border);"><label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--text2);cursor:pointer;"><input type="checkbox" id="p-skip-norm" style="margin-top:1px;flex-shrink:0;" onchange="var e=document.getElementById('p-ctrl');e.disabled=this.checked;e.style.opacity=this.checked?'0.35':'1';var r=document.getElementById('p-row-norm');r.disabled=this.checked;if(this.checked)r.checked=false;"> <span><b style="color:var(--text);">No normalisation</b> — use raw signal values as-is. Tick this if your data is already normalised, if you have no DMSO controls, or if you are using an endpoint that does not require a reference (e.g. raw luminescence). The Y-axis will show raw signal units.</span></label></div>
           </div>
         </div>
 
@@ -1672,6 +1673,7 @@ async function runPipeline() {
   const dmaxCapVal = Math.min(99, Math.max(10, parseFloat(document.getElementById('p-dmax-cap-val')?.value) || 99));
   const absdc50Enabled = !!document.querySelector('.csv-col-cb[data-col="AbsDC50_nM"]')?.checked;
   const skipNorm = document.getElementById('p-skip-norm')?.checked || false;
+  const rowNorm = !skipNorm && (document.getElementById('p-row-norm')?.checked || false);
   const qcOverridesJSON = window._pendingQcOverrides || '{}';
   window._pendingQcOverrides = null;
   const assayType = document.getElementById('p-assay-type')?.value || 'hibit';
@@ -1680,7 +1682,7 @@ async function runPipeline() {
   const _now = new Date();
   const _tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const _tsLocal = _now.toLocaleString('en-GB', { timeZone: _tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '') + ' (' + _tz + ')';
-  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, minBotEnabled, minBotVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: _now.toISOString(), timestampLocal: _tsLocal };
+  window._lastAnalysisParams = { assayId, assayType, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, minBotEnabled, minBotVal, dmaxCapEnabled, dmaxCapVal, absdc50Enabled, skipNorm, rowNorm, echoFileName: echoFile?.name, readerFileNames: Object.keys(readerFiles), timestamp: _now.toISOString(), timestampLocal: _tsLocal };
   const csvCols = [...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col);
 
     // Pre-flight: check barcodes in Echo CSV match reader filenames
@@ -1735,7 +1737,7 @@ async function runPipeline() {
             mc.fixBot, mc.botVal, mc.fixHill, mc.hillVal,
             absdc50Enabled, mc.skipNorm, csvCols, mc.type, mc.zero||'',
             mc.dmaxCapEnabled, mc.dmaxCapVal, qcOverridesJSON,
-            mc.minBotEnabled, mc.minBotVal, mc.a1Loc||''
+            mc.minBotEnabled, mc.minBotVal, mc.a1Loc||'', !!mc.rowNorm && !mc.skipNorm
           );
           mergedResults.push(...typeResults);
           Object.assign(allPlateData, window._plateData || {});
@@ -1748,7 +1750,7 @@ async function runPipeline() {
       window._lastAssayType = 'multi';
       window._lastAnalysisParams = {...window._lastAnalysisParams, assayType:'multi', multiAssay:true, matConfigs};
     } else {
-      results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, (document.getElementById('p-a1-loc')?.value||'').trim());
+      results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, (document.getElementById('p-a1-loc')?.value||'').trim(), rowNorm);
     }
 
     setProgress(100);
@@ -2329,7 +2331,7 @@ function _fitBest(xArr, yArr, pBase, loBound, hiBound, valFn, jacFn, maxIter) {
   return best;
 }
 
-async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, a1Loc) {
+async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, a1Loc, rowNorm) {
   minBotEnabled = minBotEnabled !== false;
   minBotVal = isNaN(minBotVal) ? 0 : minBotVal;
   let qcOverrides = {};
@@ -2378,28 +2380,44 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
 
   if (doNormalize) {
     log('Normalizing…');
-    const ctrlSums = {}, zeroPctSums = {};
+    const ctrlSums = {}, zeroPctSums = {}, rowSums = {};
+    const _rowOf = well => (String(well).match(/^[A-Za-z]+/) || [''])[0].toUpperCase();
     for (const w of readerRaw) {
       if (!ctrlSums[w.barcodeKey]) ctrlSums[w.barcodeKey] = { sum: 0, n: 0 };
-      if (ctrlWells.has(w.well) && w.measurement !== null) { ctrlSums[w.barcodeKey].sum += w.measurement; ctrlSums[w.barcodeKey].n++; }
+      if (ctrlWells.has(w.well) && w.measurement !== null) {
+        ctrlSums[w.barcodeKey].sum += w.measurement; ctrlSums[w.barcodeKey].n++;
+        if (rowNorm) {
+          const rk = w.barcodeKey + '|' + _rowOf(w.well);
+          if (!rowSums[rk]) rowSums[rk] = { sum: 0, n: 0 };
+          rowSums[rk].sum += w.measurement; rowSums[rk].n++;
+        }
+      }
       if (zeroPctWells.size && zeroPctWells.has(w.well) && w.measurement !== null) {
         if (!zeroPctSums[w.barcodeKey]) zeroPctSums[w.barcodeKey] = { sum: 0, n: 0 };
         zeroPctSums[w.barcodeKey].sum += w.measurement; zeroPctSums[w.barcodeKey].n++;
       }
     }
-    const ctrlMean = {}, zeroPctMean = {};
+    const ctrlMean = {}, zeroPctMean = {}, rowMean = {};
     for (const [bk, v] of Object.entries(ctrlSums)) ctrlMean[bk] = v.n > 0 ? v.sum / v.n : NaN;
     for (const [bk, v] of Object.entries(zeroPctSums)) zeroPctMean[bk] = v.n > 0 ? v.sum / v.n : NaN;
+    for (const [rk, v] of Object.entries(rowSums)) if (v.n > 0 && isFinite(v.sum / v.n) && v.sum / v.n) rowMean[rk] = v.sum / v.n;
 
     // A plate whose control wells hold no reading cannot be normalised. It used to pass its RAW
-    // counts through (~100,000) into curves built from every other plate's percentages. It is
-    // left out, and said so.
+    // counts (~100,000) into curves built from every other plate's percentages. It is left out,
+    // and said so.
     const _noCtrl = Object.keys(ctrlMean).filter(bk => !isFinite(ctrlMean[bk]) || !ctrlMean[bk]);
     if (_noCtrl.length) log('⚠ No readings in the control wells (' + ctrlRange + ') on ' + _noCtrl.join(', ') + ' — plate' + (_noCtrl.length>1?'s':'') + ' left out of the analysis.', 'warn');
+    const _rowFallback = new Set();
     for (const w of readerRaw) {
-      const ctrl = ctrlMean[w.barcodeKey];
+      let ctrl = ctrlMean[w.barcodeKey];
       if (!ctrl || isNaN(ctrl)) { w.measurementNorm = null; continue; }
       if (w.measurement === null) { w.measurementNorm = null; continue; }
+      if (rowNorm) {
+        // Smart DMSO control: this well's own row is the reference. A row with no control
+        // readings falls back to the plate mean rather than being dropped.
+        const rc = rowMean[w.barcodeKey + '|' + _rowOf(w.well)];
+        if (rc) ctrl = rc; else _rowFallback.add(w.barcodeKey + ' ' + _rowOf(w.well));
+      }
       if (assayType === 'gain') {
         w.measurementNorm = w.measurement - ctrl;
       } else if (assayType === 'displacement' && zeroPctMean[w.barcodeKey] && !isNaN(zeroPctMean[w.barcodeKey])) {
@@ -2409,6 +2427,16 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       } else {
         w.measurementNorm = (w.measurement / ctrl) * 100;
       }
+    }
+    if (rowNorm) {
+      const _rn = Object.entries(rowSums).filter(([, v]) => v.n > 0);
+      const _thin = _rn.filter(([, v]) => v.n < 2).length;
+      const _rel = [];
+      for (const [rk, v] of _rn) { const pm = ctrlMean[rk.split('|')[0]]; if (pm && isFinite(pm)) _rel.push(v.sum / v.n / pm); }
+      log('Smart DMSO control: ' + _rn.length + ' row' + (_rn.length === 1 ? '' : 's') + ' normalised to their own control wells' +
+        (_rel.length ? ' (row control means span ' + Math.min(..._rel).toFixed(2) + '–' + Math.max(..._rel).toFixed(2) + '× the plate mean)' : ''), 'ok');
+      if (_thin) log('⚠ ' + _thin + ' row' + (_thin === 1 ? ' has' : 's have') + ' a single control reading — that row is normalised to one well.', 'warn');
+      if (_rowFallback.size) log('⚠ No control readings in row' + (_rowFallback.size > 1 ? 's' : '') + ' ' + [...new Set([..._rowFallback].map(x => x.split(' ').pop()))].join(', ') + ' — normalised to the plate mean instead.', 'warn');
     }
     const ctrlVals = Object.values(ctrlMean).filter(v => isFinite(v));
     if (ctrlVals.length) log('Norm done. Ctrl mean range: ' + Math.min(...ctrlVals).toFixed(0) + '–' + Math.max(...ctrlVals).toFixed(0), 'ok');
@@ -3392,7 +3420,7 @@ function generateOutputXLSX() {
     [],
     ['─── CURVE FITTING ───────────────────────────', ''],
     ['Model', '4-Parameter Logistic (4PL)'],
-    ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? 'DMSO mean per plate — controls: ' + params.ctrlRange : 'No control wells')],
+    ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? (params.rowNorm ? 'DMSO mean per row (smart control) — controls: ' : 'DMSO mean per plate — controls: ') + '' + params.ctrlRange : 'No control wells')],
     ['Top constraint (%)', params.topEnabled !== false ? params.topConstrain : 'Free (unconstrained)'],
     ['Bottom (%)', params.fixBot ? ('Fixed at ' + params.botVal) : ('Free' + (params.minBotEnabled !== false ? ' (≥ ' + (params.minBotVal ?? 0) + '%)' : ''))],
     ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free'],
@@ -3500,7 +3528,7 @@ function renderProtocol() {
   html += row('Assay ID', params.assayId || '—');
   html += row('Assay type', atLabels[params.assayType] || params.assayType || '—');
   html += row('Curve fitting', '4-Parameter Logistic (4PL)');
-  html += row('Normalisation', params.skipNorm ? '<span style="color:var(--text3)">None — raw signal</span>' : (params.ctrlRange ? 'DMSO mean per plate · control wells: <strong>' + params.ctrlRange + '</strong>' : '<span style="color:var(--text3)">No control wells defined</span>'));
+  html += row('Normalisation', params.skipNorm ? '<span style="color:var(--text3)">None — raw signal</span>' : (params.ctrlRange ? (params.rowNorm ? 'DMSO mean per row (smart control) · control wells: <strong>' : 'DMSO mean per plate · control wells: <strong>') + params.ctrlRange + '</strong>' : '<span style="color:var(--text3)">No control wells defined</span>'));
   html += row('Hook effect threshold', on(params.hookEnabled, params.hookThr, '%'));
   html += row('Min R²', on(params.r2Enabled, params.minR2, ''));
   html += row('Max replicate SD', on(params.sdEnabled, params.maxSd, '%'));
@@ -9092,6 +9120,7 @@ function syncMatAnalysisParams() {
         <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-fhill-en-${idx}" onchange="var el=document.getElementById('mat-fhill-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix Hill slope</span></div><input type="number" id="mat-fhill-${idx}" value="1" min="0.1" max="5" step="0.1" disabled style="${_fs}opacity:0.35;"></div>
         <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="mat-minbot-en-${idx}" checked onchange="var el=document.getElementById('mat-minbot-${idx}');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">${lbl.minbot}</span></div><input type="number" id="mat-minbot-${idx}" value="0" min="-100" max="50" step="1" style="${_fs}"></div>
         <div class="field" style="margin-bottom:0;display:flex;align-items:center;padding-top:14px;"><label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="mat-skipnorm-${idx}"> Skip normalisation</label></div>
+        <div class="field" style="margin-bottom:0;display:flex;align-items:center;padding-top:14px;"><label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;" title="Normalise each row to the control wells in that row"><input type="checkbox" id="mat-rownorm-${idx}"> Smart DMSO (per row)</label></div>
       </div>
     </div>`;
   }).join('');
@@ -9122,7 +9151,7 @@ function collectMultiAssayConfigs() {
       fixBot:gc('fbot-en'), botVal:gn('fbot',0),
       fixHill:gc('fhill-en'), hillVal:gn('fhill',1),
       minBotEnabled:gc('minbot-en'), minBotVal:gn('minbot',0),
-      skipNorm:gc('skipnorm'),
+      skipNorm:gc('skipnorm'), rowNorm:gc('rownorm'),
       tracerConc:gv('tracer-conc'), tracerUnit:gv('tracer-unit')||'nM',
       tracerKd:gv('tracer-kd'), kdUnit:gv('kd-unit')||'nM'
     });
@@ -10619,7 +10648,7 @@ function clearSetup() {
   var pa = document.getElementById('p-assay'); if(pa) pa.value='';
   var al = document.getElementById('p-a1-loc'); if(al) al.value='';
   var pc = document.getElementById('p-ctrl'); if(pc){pc.value='B22:O23';pc.disabled=false;pc.style.opacity='1';}
-  var sn2 = document.getElementById('p-skip-norm'); if(sn2) sn2.checked=false;
+  var sn2 = document.getElementById('p-skip-norm'); if(sn2) sn2.checked=false; var rn2 = document.getElementById('p-row-norm'); if(rn2){rn2.checked=false;rn2.disabled=false;}
   var zp = document.getElementById('p-zero-pct'); if(zp) zp.value='';
   // Reset test-data button so it can be loaded again after a clear
   var tb = document.getElementById('test-btn');
