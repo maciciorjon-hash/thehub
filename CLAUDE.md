@@ -3115,12 +3115,20 @@ Both are `EXTRA_PRESET_SEED` entries with a `baseType` — data, not new code, s
   volume and lytic prep. The overnight reaction correctly carries **no** `w`: the next block's
   date expresses a wait of ≥24 h.
 - **`Degradation_Screen`** (`D2B_SCREEN384`, 2026-09-29) — the same screen with no chemistry at all:
-  compound addition (Echo) → cell seeding on top the same morning → 20 h → HiBiT Lytic + read the
-  next day. It is `D2B_CHEM1` minus its reaction block, so days are 0 · 0 · 1, and the map is
+  compound addition (Echo) → cell seeding on top the same morning → 20 h → HiBiT Lytic + read
+  the next day. It is `D2B_CHEM1` minus its reaction block, so the offsets are day 0 · 0 · 1 (only
+  the *shape* matters; the dates and the plate count of any one run are that run's). The map is
   `d2b384` (20 compounds × 7 points × 2 stacked technical-replicate bands, DMSO in columns 22–23,
-  blank edge — 280 + 28 + 76). 16 plates per line seeded at 0.15 M/mL (184,320 µL), 32 lysed in
-  one prep at the 1:2 reagent:cells ratio (147,456 µL buffer). A new `EXTRA_PRESET_SEED` entry
-  seeds itself on the next load, so no `_presetV*` bump was needed.
+  blank edge — 280 + 28 + 76). Seeding is one suspension per line at 0.15 M/mL; the lytic prep
+  covers both lines at the 1:2 reagent:cells ratio, so it stays 2× the seeding block's plates.
+  A new `EXTRA_PRESET_SEED` entry seeds itself on the next load, so no `_presetV*` bump.
+  **The plate count is derived, not typed:** `SETUP_SCHEMA.D2B` gained *Total compounds to test*
+  (`nTotal`, empty on the older D2B presets, 320 here). With *# compounds / plate* it draws the
+  usual "N compounds · 20 per 384-well plate → 16 plates" line with a *Use N* button — a
+  suggestion, never a silent write, the same rule as CTG's. `d2bPerPlate` is the one answer to
+  "how many compounds fit", capped by the map's columns, and `d2b384` draws with it too.
+  `_platesNoteRefresh` keeps the line current in the quick window, Edit setup and the Designer
+  without re-rendering (the caret rule).
 
 ### The preset keeps the proportions; the setup supplies the absolutes
 

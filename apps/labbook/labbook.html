@@ -3370,7 +3370,7 @@ var EXTRA_PRESET_SEED={
   'D2B_SCREEN384':{name:'Degradation_Screen',baseType:'D2B',
    title:'Degradation screen — Echo dose, seed on top, read next day (384-well)',
    setup:{format:'384',cellLine:'HEK293-HiBiT',cellsPerWell:3000,nPlates:16,
-          nCompounds:20,nConc:7,nReps:2,dmsoMax:0.25,treatH:20},
+          nCompounds:20,nTotal:320,nConc:7,nReps:2,dmsoMax:0.25,treatH:20},
    // Jon's map: blank edge, 20 compounds one per column from column 2, 7 concentrations down each
    // of two technical-replicate bands (B–H, I–O), DMSO in columns 22–23. d2b384 draws exactly
    // that from nCompounds / nConc / nReps above.
@@ -3546,6 +3546,12 @@ var SETUP_SCHEMA={
     // preset keeps the PROPORTIONS — plates dosed per line, plates lysed per prep, the overages
     // — and the absolutes follow whatever is entered here.
     {f:'nCompounds',t:'num',lbl:'# compounds / plate',d:20},
+    // Asked as a total, and the plate count follows from it — how many plates a screen needs is
+    // arithmetic on how many compounds it has and how many one plate holds, and it is the
+    // number people plan the week around. Empty on the presets that predate it: no total, no
+    // suggestion, nothing changes for them.
+    {f:'nTotal',t:'num',lbl:'Total compounds to test',d:'',plates:true,
+     hint:'Every compound in the screen, over all its plates. With the compounds per plate above, this is what says how many assay plates it takes (per cell line).'},
     {f:'nConc',t:'num',lbl:'# concentrations',d:7},
     {f:'nReps',t:'num',lbl:'Technical replicates',d:2},
     {f:'dmsoMax',t:'num',lbl:'Max DMSO (%)',d:0.25,step:'0.05'},
@@ -3553,7 +3559,7 @@ var SETUP_SCHEMA={
    // The Plate layout section says all three in its own words — "Treatment · gradient · 7
    // levels" across the wells they occupy. Repeating them as "# concentrations 7; Technical
    // replicates 2" is the form dump _pubSetupText exists to stop.
-   pubSkip:['nCompounds','nConc','nReps']},
+   pubSkip:['nCompounds','nTotal','nConc','nReps']},
   PR:{plate:false,pubSkip:['samples'],fields:[
     {f:'samples',t:'list',lbl:'Samples',d:'',ph:'One per line \u2014 condition, replicate, what the tube says'},
     {f:'nSamples',t:'num',lbl:'# samples',d:12},
@@ -5230,7 +5236,7 @@ var PLATE_LAYOUTS=[
      // asked for and silently did not get is the worse of the two lies.
      if(nConc*nReps>rows) nConc=Math.max(1,Math.floor(rows/nReps));
      var nDmso=Math.min(2,cols-1);
-     var nCpd=Math.max(1,Math.min(Math.round(+o.nCompounds||20),cols-nDmso));
+     var nCpd=d2bPerPlate({format:'384',nCompounds:o.nCompounds});
      p.title='D2B 384 — '+nCpd+' compounds × '+nConc+' pts × '+nReps+' replicate'+(nReps===1?'':'s');
      p.note='One compound per column, the dose running down each band, '+nReps+' technical replicate'
        +(nReps===1?'':'s')+' stacked. Compound identities and the concentrations come from the Echo '
@@ -11088,8 +11094,24 @@ function compoundsPerPlate(su){
 // on "+", a real character in a compound name) sees one. A second parser here would be a second
 // answer to "how many readouts is this".
 function readoutCount(su){ var n=_ctgHours((su||{}).timepoints).length; return n>0?n:1; }
+// How many compounds a D2B plate really holds: what was asked for, capped by the columns the map
+// has once the blank edge and the DMSO columns are taken out. d2b384 draws with this same
+// function, so the map and the plate count cannot disagree about it.
+function d2bPerPlate(su){
+  su=su||{};
+  var d=PLATE_FORMATS[String(su.format||'384')]||PLATE_FORMATS['384'];
+  var cols=d.c-2, nDmso=Math.min(2,cols-1);
+  return Math.max(1,Math.min(Math.round(+su.nCompounds||20),cols-nDmso));
+}
 function platesSuggested(su){
   su=su||{};
+  // D2B: a total and a per-plate figure. Plates are per cell line (the seeding block is one
+  // suspension per line; the lytic block keeps its 2x ratio to it).
+  if(su.nCompounds!=null&&su.nTotal!=null&&su.nTotal!==''){
+    var t=Math.round(+su.nTotal); if(!(t>0)) return null;
+    var pp=d2bPerPlate(su);
+    return {compounds:t, perPlate:pp, readouts:1, plates:Math.ceil(t/pp), capped:pp<Math.round(+su.nCompounds||20)};
+  }
   var n=_setupList(su.compounds).length; if(!n) return null;
   var per=compoundsPerPlate(su), reads=readoutCount(su);
   return {compounds:n, perPlate:per, readouts:reads, plates:Math.ceil(n/per)*reads};
@@ -11100,7 +11122,7 @@ function _setupPlatesNote(su,upd){
   var S=platesSuggested(su); if(!S) return '';
   var cur=+((su||{}).nPlates)||0;
   return '<div class="sf-derived">'+S.compounds+' compound'+(S.compounds===1?'':'s')
-    +' &middot; '+S.perPlate+' per '+esc(String(su.format||'96'))+'-well plate'
+    +' &middot; '+S.perPlate+' per '+esc(String(su.format||'96'))+'-well plate'+(S.capped?' (the most it holds)':'')
     +(S.readouts>1?(' &middot; '+S.readouts+' readouts'):'')
     +' &rarr; <b>'+S.plates+' plate'+(S.plates===1?'':'s')+'</b>'
     +((cur&&cur!==S.plates)
@@ -11165,7 +11187,18 @@ function nmSetupField(f,lead,src,upd){
   if(f.t==='txt'){ return '<label class="'+cls+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)
     +(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input data-sf="'+f.f+'" value="'+esc(v==null?'':v)+'"'
     +(f.ph?(' placeholder="'+esc(f.ph)+'"'):'')+' oninput="'+upd+'()"></label>'; }
-  return '<label class="'+cls+'"><span>'+esc(f.lbl)+'</span><input type="number" min="0" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+' value="'+esc(v==null?'':v)+'" oninput="'+upd+'()"></label>';
+  return '<label class="'+cls+'"'+(f.hint?(' title="'+esc(f.hint)+'"'):'')+'><span>'+esc(f.lbl)+(f.hint?' <span class="ci-hint">?</span>':'')+'</span><input type="number" min="0" data-sf="'+f.f+'"'+(f.step?' step="'+f.step+'"':'')+(f.plates?' data-plates-num="1"':'')+' value="'+esc(v==null?'':v)+'" oninput="'+upd+'()">'
+    +(f.plates?_setupPlatesNote(src,upd):'')+'</label>';
+}
+// The plate line under a number field has to follow what is typed anywhere in the form — the
+// total, the per-plate figure and the format all move it — without re-rendering the panel, which
+// would take the caret out of the box being typed in.
+function _platesNoteRefresh(host,su,upd){
+  var n=host&&host.querySelector('[data-plates-num]'); if(!n||!su) return;
+  var lab=n.closest('label'); if(!lab) return;
+  var html=_setupPlatesNote(su,upd), note=lab.querySelector('.sf-derived');
+  if(note) note.outerHTML=html||'<div class="sf-derived"></div>';
+  else if(html) lab.insertAdjacentHTML('beforeend',html);
 }
 function nmSetup(){ var host=el('nm-setup'); if(!host) return;
   var key=el('nm-type').value, type=presetBase(key); var S=setupSchema(type);
@@ -11204,7 +11237,7 @@ function nmSetupUpd(reRender){ var host=el('nm-setup'); if(!host) return;
   // that, or it would immediately overwrite the number it just rescaled.
   if(reRender===true && NM_SETUP.cellLine!=null && NM_SETUP.cellsPerWell!=null){
     var _n=lineCells(NM_SETUP.cellLine, NM_SETUP.format); if(_n) NM_SETUP.cellsPerWell=_n; }
-  if(reRender) nmSetup();
+  if(reRender) nmSetup(); else _platesNoteRefresh(host,NM_SETUP,'nmSetupUpd');
   nmPreview();
 }
 function nmProtos(){ var host=el('nm-protocols'); if(!host) return;
@@ -12754,6 +12787,7 @@ function esSetupUpd(reRender){
   if(reRender===true&&ES_SETUP.cellLine!=null&&ES_SETUP.cellsPerWell!=null){
     var _n=lineCells(ES_SETUP.cellLine, ES_SETUP.format); if(_n) ES_SETUP.cellsPerWell=_n; esRender(); return; }
   if(reRender){ esRender(); return; }
+  _platesNoteRefresh(host,ES_SETUP,'esSetupUpd');
   el('es-diff').innerHTML=esDiffHtml(LB.data.experiments[ES_EXP]);
 }
 // Dry-run against a clone: the diff is the real result of the real function, not a second
@@ -18269,7 +18303,7 @@ function dsSetupUpd(reRender){
   }
   if(reRender===true&&D.setup.cellLine!=null&&D.setup.cellsPerWell!=null){
     var n2=lineCells(D.setup.cellLine,D.setup.format); if(n2){ D.setup.cellsPerWell=n2; D.setupTouched.cellsPerWell=1; } }
-  if(reRender) dsDraw();
+  if(reRender) dsDraw(); else _platesNoteRefresh(host,D.setup,'dsSetupUpd');
 }
 
 // ── Step 3 — which modules ──────────────────────────────────────────────────────────────────
