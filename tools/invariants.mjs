@@ -111,6 +111,8 @@
 //   B17 format change         Values, headers and labels of dropped wells go with them. (LB-11)
 //   B18 one timer             Pressing a step's timer twice starts one. (LB-16)
 //   B19 keyboard reach        Every clickable navigation element is reachable with Tab. (LB-15)
+//   B20 pictures from Echo    Plate maps sent by another app land in the experiment's Files with their caption;
+//                            a payload that is not an image data URL is dropped.
 //   S1 IndexedDB              A notebook bigger than localStorage's ~5 MB saves and survives a
 //                            reload; an older build's localStorage tree is carried over; of two
 //                            copies the newer wins. (the ~5.2 MB ceiling)
@@ -1398,6 +1400,19 @@ async function suite(opts) {
         try { _mergeDHubContext(Object.assign({ experiment: { id: e.id } }, ctx)); openExp(e.id); expTab('res'); renderEditor(); selectNode('home'); selectNode('viz'); }
         catch (x) { bad('B7', n, 'threw: ' + x.message); }
         LB.data.experiments[e.id].integration = { results: [], tables: [] }; delete LB.data.experiments[e.id].plate; }
+    });
+
+    // B20 — pictures sent by another app (Echo's plate maps) land in the experiment's Files, and only real images do.
+    if (run('B20')) await guard('B20', 'pictures', async () => {
+      const e = await mkB(); clean.push(e); openExp(e.id); tick('B20');
+      const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      const n0 = (LB.data.experiments[e.id].files || []).length;
+      _mergeDHubContext({ experiment: { id: e.id }, images: [{ name: 'BRD2-01_raw.png', dataUrl: png, caption: 'BRD2-01 — Raw luminescence' }, { name: 'evil.html', dataUrl: 'data:text/html;base64,PHNjcmlwdD4=' }] });
+      await sleep(1500);
+      const files = LB.data.experiments[e.id].files || [], last = files[files.length - 1] || {};
+      if (files.length !== n0 + 1) bad('B20', 'count', 'expected one new file, got ' + (files.length - n0));
+      else if (last.kind !== 'image' || last.caption !== 'BRD2-01 — Raw luminescence' || last.name !== 'BRD2-01_raw.png') bad('B20', 'shape', JSON.stringify(last));
+      if (files.some(f => /evil/.test(f.name))) bad('B20', 'html', 'a non-image was attached');
     });
 
     // B8 — a tree in the wrong shape still draws every screen.

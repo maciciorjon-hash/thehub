@@ -29,6 +29,16 @@
 //                             plate is drawn as 96, the plates fill their cards, and the view survives a tab switch.
 //   E13 the tabs are in the   Results first and open on load, the analysis views together, the housekeeping
 //       order you use them    tabs after them; exactly one pane is showing.
+//   E14 plate QC is arithmetic  Z′, S/B, CV and control drift match the formulas on plates built to known values.
+//   E15 comparing plates      Two identical plates agree perfectly (r = 1, ratio 1, 100% within tolerance); one at
+//                             twice the other reads 2× with r = 1; both match modes and the diff map draw.
+//   E16 the plate edits fits  Right-click a well: it is left out of its curve (and drawn crossed), the DC50 refits,
+//                             the same click puts it back to the digit, and ⌘Z in Curves undoes it and redraws the plate.
+//   E17 failed transfers show The Echo's failed rows are kept (not just counted) and the Plate tab counts them and
+//                             says so in its legend, meta line and QC table.
+//   E18 wells as data         The wells CSV carries exactly the wells a search matches, with role, dose and exclusion,
+//                             quoted and formula-safe.
+//   E19 pictures from Echo    Labbook keeps only real image data URLs from another app, at most 12, with safe names.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -352,6 +362,162 @@ if (run('E13')) await guard('E13', async () => {
   check('E13', 'the analysis views come first, in the order you use them', JSON.stringify(first5) === JSON.stringify(['results', 'curves', 'scatter', 'plate', 'props']), first5);
   check('E13', 'housekeeping tabs come after', ['log', 'history', 'protocol', 'survey', 'guide'].every(t => o.indexOf(t) > 4), o);
   check('E13', 'one pane is showing', r.panes === 1, r.panes);
+});
+
+// A plate built to known numbers, shared by E14/E15: wells are [row 0-15, col 1-24] → value.
+const SYN = `window.__syn = function (name, spec) {
+  const w = {}; const id = (r, c) => String.fromCharCode(65 + r) + (c < 10 ? '0' + c : c);
+  spec.forEach(s => { w[id(s.r, s.c)] = Object.assign({m: s.m == null ? null : s.m, raw: s.raw, ctrl: !!s.ctrl, s: s.s || (s.ctrl ? 'CTRL' : ''), c: s.cc == null ? null : s.cc, p: s.p || 'G1'}, s.z ? {z: true} : {}); });
+  return w; };`;
+
+if (run('E14')) await guard('E14', async () => {
+  await E(SYN);
+  const r = await E(() => {
+    const keep = window._plateData, spec = [];
+    // 100% controls: mean 100000, alternating ±1000. 0% controls: mean 5000, alternating ±200.
+    for (let i = 0; i < 14; i++) { spec.push({r: i + 1, c: 12, ctrl: true, raw: 100000 + (i % 2 ? 1000 : -1000)}); spec.push({r: i + 1, c: 24, z: true, ctrl: false, raw: 5000 + (i % 2 ? 200 : -200)}); }
+    window._plateData = {'Q-01': __syn('Q-01', spec)};
+    const sd = (a) => { const m = a.reduce((s, v) => s + v, 0) / a.length; return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / (a.length - 1)); };
+    const c = spec.filter(s => s.ctrl).map(s => s.raw), z = spec.filter(s => s.z).map(s => s.raw);
+    const mc = c.reduce((s, v) => s + v, 0) / c.length, mz = z.reduce((s, v) => s + v, 0) / z.length;
+    _plateComputeStats(); window._plateGrid = {nR: 16, nC: 24};
+    const q = _plQCStats('Q-01');
+    const out = {got: {z: q.zprime, sb: q.sb, cv: q.c.cv, n: q.c.n, verdict: q.verdict}, want: {z: 1 - 3 * (sd(c) + sd(z)) / Math.abs(mc - mz), sb: mc / mz, cv: sd(c) / mc * 100}};
+    // drift: control climbs 1000 per row down the plate
+    const spec2 = []; for (let i = 0; i < 14; i++) spec2.push({r: i + 1, c: 12, ctrl: true, raw: 100000 + 1000 * i});
+    window._plateData = {'D-01': __syn('D-01', spec2)}; _plateComputeStats();
+    const d = _plQCStats('D-01'); out.drift = {got: d.driftRow, want: 13000 / 106500 * 100, col: d.driftCol};
+    // and the view draws
+    window._plateData = {'Q-01': __syn('Q-01', spec)}; _plateComputeStats(); window._plateUI.view = 'qc';
+    renderPlateTab(); out.table = document.querySelector('.pq-table')?.textContent || '';
+    window._plateUI.view = 'maps'; window._plateData = keep; _plateComputeStats(); renderPlateTab();
+    return out;
+  });
+  const near = (a, b, t) => a != null && Math.abs(a - b) <= t;
+  check('E14', "Z′", near(r.got.z, r.want.z, 1e-9), r);
+  check('E14', 'S/B', near(r.got.sb, r.want.sb, 1e-9), r);
+  check('E14', 'control CV', near(r.got.cv, r.want.cv, 1e-9) && r.got.n === 14, r);
+  check('E14', 'verdict from Z′', r.got.verdict === 'good', r.got);
+  check('E14', 'drift down the rows', near(r.drift.got, r.drift.want, 0.01) && r.drift.col == null, r.drift);
+  check('E14', 'the QC table names the plate', /Q-01/.test(r.table) && /Good/.test(r.table), r.table.slice(0, 120));
+});
+
+if (run('E15')) await guard('E15', async () => {
+  await E(SYN);
+  const r = await E(() => {
+    const keep = window._plateData, mk = (f) => { const spec = []; for (let i = 0; i < 40; i++) { const raw = 20000 + i * 3000 + (i % 7) * 500; spec.push({r: 2 + (i >> 3), c: 2 + (i % 8), raw: f(raw), m: f(raw) / 1000, s: 'CPD-' + (i % 5 + 1), cc: -7 + (i % 8) * 0.3}); } return __syn('x', spec); };
+    const out = {};
+    const run = (a, b, match, val) => { const P = _plCmpPairs(a, b, match, val); return {P, S: _plCmpStats(P, val)}; };
+    window._plateData = {A: mk(v => v), B: mk(v => v)}; _plateComputeStats(); window._plateGrid = {nR: 16, nC: 24};
+    let x = run('A', 'B', 'well', 'raw'); out.same = {n: x.S.n, r: x.S.r, ratio: x.S.medRatio, within: x.S.within, worst: x.S.worst[0].d};
+    window._plateData = {A: mk(v => v), B: mk(v => v * 2)}; _plateComputeStats();
+    x = run('A', 'B', 'well', 'raw'); out.double = {r: x.S.r, ratio: x.S.medRatio, within: x.S.within};
+    x = run('A', 'B', 'dose', 'raw'); out.dose = {n: x.S.n, ratio: x.S.medRatio};
+    // signal % difference, and the two views draw
+    window._plateUI.cmp = {a: 'A', b: 'B', match: 'well', val: 'm'}; window._plateUI.view = 'compare';
+    let err = null; try { renderPlateTab(); out.hasDiff = !!document.getElementById('pcm-diff'); out.hasScatter = !!document.getElementById('pcm-cv'); out.stats = document.querySelector('.pcm-stats')?.textContent || '';
+      window._plateUI.cmp.match = 'dose'; plateCmpChanged(); out.doseView = document.querySelector('.pcm-stats')?.textContent || ''; } catch (e) { err = String(e.message); }
+    out.err = err;
+    window._plateUI.view = 'maps'; window._plateData = keep; _plateComputeStats(); renderPlateTab();
+    return out;
+  });
+  check('E15', 'identical plates agree', r.same.n === 40 && Math.abs(r.same.r - 1) < 1e-9 && Math.abs(r.same.ratio - 1) < 1e-9 && r.same.within === 1 && r.same.worst === 0, r.same);
+  check('E15', 'twice the reading is 2×, r = 1, none within tolerance', Math.abs(r.double.ratio - 2) < 1e-9 && Math.abs(r.double.r - 1) < 1e-9 && r.double.within === 0, r.double);
+  check('E15', 'matching by compound and dose pairs them', r.dose.n > 0 && Math.abs(r.dose.ratio - 2) < 1e-9, r.dose);
+  check('E15', 'both views draw', !r.err && r.hasDiff && r.hasScatter && /Pairs/.test(r.stats) && /Pairs/.test(r.doseView), r);
+});
+
+if (run('E16')) await guard('E16', async () => {
+  await E(() => { window._plateUI.view = 'maps'; document.querySelector('[data-tab="plate"]').click(); });
+  await pg.waitForTimeout(500);
+  const r = await E(() => {
+    const bc = 'BRD3-01', wells = _plateData[bc];
+    const wid = Object.keys(wells).find(k => { const w = wells[k]; return _plIsCpd(w) && w.c != null && w.m != null && _plFit(w.s, w.p, bc); });
+    const w = wells[wid], fit = _plFit(w.s, w.p, bc), row = wid[0], col = +wid.slice(1);
+    const before = {dc: fit.DC50_nM, r2: fit.R2}, cv = document.getElementById('pc-BRD3_01'), D = cv._dims, rc = cv.getBoundingClientRect();
+    const click = () => cv.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: rc.left + (D.padL + (col - .5) * D.cw) / D.W * rc.width, clientY: rc.top + (D.padT + (row.charCodeAt(0) - 64 - .5) * D.ch) / D.H * rc.height}));
+    const out = {well: wid, before};
+    click(); out.afterExclude = {ex: _plExcluded(bc, w), dc: fit.DC50_nM, undo: _CV_UNDO.length, legend: document.getElementById('pl-BRD3_01').textContent, meta: document.getElementById('pm-BRD3_01').textContent};
+    click(); out.afterBack = {ex: _plExcluded(bc, w), dc: fit.DC50_nM, r2: fit.R2};
+    click(); cvUndo(); out.afterUndo = {ex: _plExcluded(bc, w), dc: fit.DC50_nM, meta: document.getElementById('pm-BRD3_01').textContent};
+    return out;
+  });
+  check('E16', 'a well right-clicked is left out and drawn crossed', r.afterExclude.ex && /Excluded from fit/.test(r.afterExclude.legend) && /excluded/.test(r.afterExclude.meta) && r.afterExclude.undo >= 1, r.afterExclude);
+  check('E16', 'the curve refits without it', r.afterExclude.dc !== r.before.dc, { before: r.before, after: r.afterExclude.dc });
+  check('E16', 'the same click puts it back to the digit', !r.afterBack.ex && r.afterBack.dc === r.before.dc && r.afterBack.r2 === r.before.r2, r);
+  check('E16', '⌘Z undoes it and the plate redraws', !r.afterUndo.ex && r.afterUndo.dc === r.before.dc && !/excluded/.test(r.afterUndo.meta), r.afterUndo);
+});
+
+if (run('E17')) await guard('E17', async () => {
+  const r = await E(async () => {
+    const csv = ['Sample ID,Destination Plate Barcode,Destination Well,Destination Concentration,Transfer Status', 'EDA-1,BRD9-01,A1,1e-6,', 'EDA-1,BRD9-01,A2,1e-7,Fault: no droplet detected', 'EDA-2,BRD9-01,A3,1e-7,OK'].join('\n');
+    const d = _parseEchoCSV(csv, 0), out = {n: d.length, failed: (d.failed || []).map(f => [f.sampleId, f.well, f.status])};
+    const keep = window._plateData, bc = Object.keys(keep)[0], id = Object.keys(keep[bc]).find(k => _plIsCpd(keep[bc][k]));
+    const saved = JSON.stringify(keep[bc][id]); keep[bc][id].f = 'Fault: no droplet'; keep[bc][id].fs = keep[bc][id].s;
+    window._plateUI.view = 'maps'; window._plateUI.mode = 'transfer'; renderPlateTab();
+    await new Promise(res => setTimeout(res, 250));
+    const sid = bc.replace(/[^a-z0-9]/gi, '_');
+    out.legend = document.getElementById('pl-' + sid).textContent; out.meta = document.getElementById('pm-' + sid).textContent;
+    window._plateUI.view = 'qc'; renderPlateTab(); out.qc = document.querySelector('.pq-table')?.textContent || ''; out.cards = document.querySelector('.pq-fl')?.textContent || '';
+    keep[bc][id] = JSON.parse(saved); window._plateUI.view = 'maps'; window._plateUI.mode = 'raw_lum'; renderPlateTab();
+    return out;
+  });
+  check('E17', 'failed rows are kept, good ones parsed', r.n === 2 && r.failed.length === 1 && /^A0?2$/.test(r.failed[0][1]) && /Fault/.test(r.failed[0][2]), r);
+  check('E17', 'legend and meta count the failure', /Transfer failed\s*1/.test(r.legend) && /1 failed transfer/.test(r.meta), { legend: r.legend, meta: r.meta });
+  check('E17', 'the QC table and card say so', /1 failed/.test(r.qc) && /Fault/.test(r.cards), { qc: r.qc.slice(-160), cards: r.cards });
+});
+
+if (run('E18')) await guard('E18', async () => {
+  const r = await E(() => {
+    window._plateUI.view = 'maps'; renderPlateTab();
+    const st = _plateStats, cpd = st.compounds[0], keep = window._plateUI.q;
+    window._plateUI.q = cpd; const some = _plWellRows(true); const all = _plWellRows(false);
+    window._plateUI.q = keep;
+    const weird = _csvCell('=HYPERLINK("x")');
+    return {cpd, n: some.length, expect: st.cpd.get(cpd).n, only: some.every(x => x.Compound === cpd), cols: Object.keys(some[0]), total: all.length, wells: Object.values(_plateData).reduce((s, p) => s + Object.keys(p).length, 0), roles: [...new Set(all.map(x => x.Role))], conc: some[0].Concentration_nM, weird};
+  });
+  check('E18', 'a search exports exactly its wells', r.n === r.expect && r.only, { n: r.n, expect: r.expect });
+  check('E18', 'no query exports every well', r.total === r.wells, { total: r.total, wells: r.wells });
+  check('E18', 'columns and roles', ['Plate', 'Well', 'Compound', 'Concentration_nM', 'Raw_RLU', 'Signal_pct', 'Role', 'Excluded_from_fit', 'Echo_transfer'].every(c => r.cols.includes(c)) && r.roles.includes('compound') && r.roles.includes('control'), r);
+  check('E18', 'a dose is in nM, a formula is inert', typeof r.conc === 'number' && r.conc > 0 && /^"?'=/.test(r.weird), { conc: r.conc, weird: r.weird });
+});
+
+if (run('E19')) await guard('E19', async () => {
+  const lb = path.join(ROOT, 'apps/labbook/labbook.html');
+  if (!fs.existsSync(lb)) { skipped.push('E19 — Labbook source not found'); return; }
+  // What Echo actually sends: every plate as drawn, and the QC table.
+  const sent = await E(() => {
+    window._plateUI.view = 'maps'; renderPlateTab();
+    return new Promise(res => setTimeout(() => {
+      const keep = window._plToLabbook, got = [];
+      window._plToLabbook = (c) => { got.push(c); return true; };
+      plateSendImages(); plateSendQC(); window._plToLabbook = keep;
+      res({images: got[0] && got[0].images, tables: got[1] && got[1].tables, nPlates: Object.keys(_plateData).length});
+    }, 300));
+  });
+  check('E19', 'Echo sends one picture per plate, each a PNG data URL with a caption', !!sent.images && sent.images.length === sent.nPlates && sent.images.every(i => /^data:image\/png;base64,.{200,}/.test(i.dataUrl) && /—/.test(i.caption) && /\.png$/.test(i.name)), sent.images && sent.images.map(i => [i.name, i.dataUrl.length]));
+  check('E19', 'and the QC table, one row per plate', !!sent.tables && sent.tables[0].rows.length === sent.nPlates && sent.tables[0].cols.length === sent.tables[0].rows[0].length, sent.tables);
+  const p2 = await ctx.newPage(); const errs2 = [];
+  p2.on('pageerror', e => errs2.push(String(e && e.message || e)));
+  await p2.goto('file://' + lb); await p2.waitForTimeout(1500);
+  const r = await p2.evaluate((images) => {
+    if (typeof _cleanCtx !== 'function') return {missing: true};
+    const echoKept = _cleanCtx({images}).images.length;
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    const good = _cleanCtx({images: [{name: 'a/b:c.png', dataUrl: png, caption: 'x'.repeat(500)}]}).images;
+    const bad = _cleanCtx({images: [{name: 'h', dataUrl: 'data:text/html;base64,PHNjcmlwdD4='}, {name: 'j', dataUrl: 'javascript:alert(1)'}, {name: 'n'}, null, 'str']}).images;
+    const many = _cleanCtx({images: Array.from({length: 30}, (_, i) => ({name: 'p' + i + '.png', dataUrl: png}))}).images;
+    const none = _cleanCtx({images: 'nope'}).images;
+    return {good, bad, many: many.length, none: none === undefined, echoKept};
+  }, sent.images || []);
+  await p2.close();
+  if (r.missing) { check('E19', 'Labbook cleans pictures', false, 'no _cleanCtx'); return; }
+  check('E19', 'a real image is kept, with a safe name and a short caption', r.good.length === 1 && !/[\\/:]/.test(r.good[0].name) && r.good[0].caption.length === 300, r.good);
+  check('E19', 'anything that is not an image data URL is dropped', r.bad.length === 0, r.bad);
+  check('E19', 'everything Echo sends, Labbook keeps', r.echoKept === (sent.images || []).length && r.echoKept > 0, { kept: r.echoKept, sent: (sent.images || []).length });
+  check('E19', 'at most 12', r.many === 12, r.many);
+  check('E19', 'not a list → no images', r.none, r);
+  if (errs2.length) check('E19', 'no page error in Labbook', false, errs2);
 });
 
 await browser.close();

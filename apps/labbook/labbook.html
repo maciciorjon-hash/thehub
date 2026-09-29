@@ -21581,6 +21581,15 @@ function _cleanCtx(ctx){
   if(Array.isArray(o.tables)) o.tables=o.tables.filter(function(t){ return t&&typeof t==='object'; }).map(function(t){
     var c=Object.assign({},t); c.cols=_lbList(c.cols,false).map(String);
     c.rows=_lbList(c.rows,false).map(function(r){ return Array.isArray(r)?r:[r]; }); return c; });
+  // Pictures from another app (Echo's plate maps). Only real image data URLs, a handful, of a size
+  // the browser store will take — anything else is dropped rather than half-attached.
+  if(Array.isArray(o.images)){
+    var room=14000000;
+    o.images=o.images.filter(function(im){
+      if(!im||typeof im!=='object'||typeof im.dataUrl!=='string'||!/^data:image\/(png|jpeg|webp);base64,/i.test(im.dataUrl)) return false;
+      room-=im.dataUrl.length; return room>=0; }).slice(0,12).map(function(im){
+      return {name:String(im.name||'image.png').replace(/[\\/:*?"<>|]+/g,'_').slice(0,120), dataUrl:im.dataUrl, caption:String(im.caption||'').slice(0,300)}; });
+  } else delete o.images;
   if(o.plate && (typeof o.plate!=='object' || !o.plate.wells || typeof o.plate.wells!=='object' || Array.isArray(o.plate.wells))) delete o.plate;
   else if(o.plate){ o.plate=Object.assign({},o.plate); o.plate.wells=_lbMap(o.plate.wells); }
   return o; }
@@ -21603,6 +21612,15 @@ function _mergeDHubContext(ctx){
     if(e.plate && plateCount(e.plate)>0){ lbConfirm('This experiment already has a plate map with '+plateCount(e.plate)+' wells. Replace it with the one from '+esc(ctx.source||'the other app')+'?',{title:'Replace the plate map?',ok:'Replace'}).then(function(ok){ if(ok) put(); }); }
     else put();
   }
+  var imgs=Array.isArray(ctx.images)?ctx.images:[];
+  if(imgs.length){
+    // Each goes to the experiment's Files tab like a picture you had added there yourself.
+    var ok=0; Promise.all(imgs.map(function(im){
+      var bin=atob(im.dataUrl.split(',')[1]||''), u8=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+      var mime=(im.dataUrl.match(/^data:([^;]+)/)||[])[1]||'image/png';
+      return addFileTo('exp:'+e.id, new File([u8],im.name,{type:mime}), im.caption).then(function(r){ if(r) ok++; }); }))
+    .then(function(){ if(ok){ EXP_TAB='files'; renderEditor(); } toast(ok+' picture'+(ok===1?'':'s')+' added to Files on '+(e.code||e.title||'the experiment')); });
+  }
   e.updated=Date.now(); save(); renderEditor(); toast('Context attached to '+(e.code||e.title||'experiment'));
 }
 // Newest first, because the run you just analysed is the one you just worked on. Closed and
@@ -21610,7 +21628,7 @@ function _mergeDHubContext(ctx){
 // below the live ones.
 function _pickExpForContext(ctx){
   var n=((ctx.results||[]).concat(ctx.tables||[]).reduce(function(a,r){ return a+((r.rows||[]).length||0); },0));
-  var what=n?(n+' row'+(n===1?'':'s')):(ctx.plate?'this plate map':'this data');
+  var ni=(ctx.images||[]).length, what=n?(n+' row'+(n===1?'':'s')):(ctx.plate?'this plate map':(ni?(ni+' plate picture'+(ni===1?'':'s')):'this data'));
   var items=Object.keys(LB.data.experiments).map(function(k){ return LB.data.experiments[k]; })
     .filter(function(x){ return x && x.kind!=='note'; })
     .sort(function(a,b){
