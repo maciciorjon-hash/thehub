@@ -408,8 +408,20 @@ tr:hover td{background:var(--surface2);}
   header{padding:0 12px;}
   .outer-tabs{padding:0 6px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .outer-tab{white-space:nowrap;flex-shrink:0;padding:0 10px;font-size:var(--fs-3);}
-  .tabs{padding:0 6px;}
+  /* Seven result tabs and a Setup button do not fit one line of a phone: a strip that scrolls showed
+     "Proper" for "Properties" and said nothing about Results and History behind it. They wrap. */
+  .tabs{padding:0 6px;flex-wrap:wrap;align-items:flex-start;}
+  .tabs-scroll{flex-wrap:wrap;overflow-x:visible;}
+  /* Four setup tabs in a 300px dialog share the width; "Output" was cut 47px by the card at 320px. */
+  .setup-stabs{padding-left:12px;padding-right:12px;}
+  .setup-stab{flex:1 1 0;min-width:0;justify-content:center;padding-left:4px;padding-right:4px;white-space:normal;text-align:center;line-height:1.2;}
+  .setup-stab svg{display:none;}
+  /* three metric tiles share one row: 110px each did not fit 350px, so "COMPOUNDS" stuck out of its own tile */
+  .meta-row{gap:8px;}
+  .mcard{flex:1 1 0;min-width:0;padding:10px 9px;}
+  .mc-lbl{letter-spacing:.3px;overflow-wrap:anywhere;}
   .tab{white-space:nowrap;flex-shrink:0;font-size:var(--fs-2);padding:8px 8px;}
+  .setup-reopen-btn{margin:4px 0 4px 6px;}
   .grad-wrap{padding:10px!important;}
   .guide-panel{padding:12px!important;}
   .param-row{flex-wrap:wrap;}
@@ -503,6 +515,19 @@ tr:hover td{background:var(--surface2);}
 :root[data-theme="dark"] .ic-tile.ic-tile{--ic-ac:color-mix(in oklab,var(--hue,#888) 60%,#fff);background:color-mix(in oklab,var(--hue,#888) 13%,var(--surface));}
 :root .ic-tile.ic-tile svg{width:58%;height:58%;display:block;flex:none;}
 /* ic-tile:end */
+
+@media (max-width:640px), (hover:none) and (pointer:coarse) and (max-height:520px){
+  /* The plot panel clipped what did not fit (overflow:hidden) and squeezed the chart to a strip with its own buttons drawn over it. On a phone — held either way — it scrolls and the chart has a height of its own. */
+  #scatter-panel{overflow-y:auto;}
+  #scatter-panel .sc-stage{flex:none!important;min-height:0!important;}
+  #scatter-panel .scatter-wrap{flex:none;height:min(58vh,440px);min-height:min(260px,80vh);}
+}
+/* phone type scale (docs/UI.md): a 10px label is a desktop read. Portrait phones by width, landscape phones by height. */
+@media (max-width:760px), (hover:none) and (pointer:coarse) and (max-height:520px){
+  :root{--fs-1:11px;--fs-2:12px;--fs-3:13px;--fs-4:14px;--fs-5:16px;}
+  /* Markup built in JS strings carries its size inline, where no token reaches it. On a phone nothing HTML is set under 11px. (SVG text scales with its viewBox and is left alone.) */
+  [style*="font-size:10px"]:not(svg *),[style*="font-size: 10px"]:not(svg *),[style*="font-size:10.5px"]:not(svg *),[style*="font-size:9.5px"]:not(svg *),[style*="font-size:9px"]:not(svg *),[style*="font-size:8.5px"]:not(svg *){font-size:var(--fs-1)!important;}
+}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 <style>
@@ -4375,7 +4400,7 @@ function renderScatter(data) {
         </div>
       </div>
     </div>
-    <div style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0;">
+    <div class="sc-stage" style="position:relative;display:flex;flex-direction:column;flex:1;min-height:0;">
       <div class="scatter-wrap" id="scatter-wrap-outer" style="position:relative;"><canvas id="scatter-canvas"></canvas>
         <canvas id="sc-select-overlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:none;"></canvas>
       </div>
@@ -8094,7 +8119,8 @@ function _updatePlateWrapLayout() {
   const W = padL + 24 * cw + padR;
   if (window._plateFit) {
     wrap.style.display = 'grid';
-    wrap.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    // as many plates across as the width holds (3 at most on a desk, one on a phone); a fixed 3 left the second card cut in half at 390px
+    wrap.style.gridTemplateColumns = 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))';
     wrap.style.gap = '10px';
     wrap.style.padding = '10px';
   } else {
