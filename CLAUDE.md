@@ -1155,19 +1155,33 @@ selectors, comparing the stylesheet against everything after `</style>`.
 
 ## The Incubator flask, and phenol red
 
-The old drawing was a rectangle with a stub on its side, which is why it read as a blob. What
-makes a T-flask recognisable is the canted neck: the body is a rounded rectangle with the
-top-left corner cut at 45°, and a real tube rises out of that cut in a rotated
-frame, capped, with two vent ribs.
+*(Redrawn 2026-09-29. It used to be an oblique 3D box with gloss, a mould line and a drop shadow —
+the one glossy thing in an app family drawn in hairline outline. The colour logic below is
+unchanged; the drawing and its motion are new.)*
 
-**The body must be opaque** (`.vsl-base`). The neck is drawn behind it, and through a
-translucent glass fill it showed as a diagonal line straight across the medium.
+**Flat, outline-first, one accent** — the Hub's icon language. `flaskSvg`/`plateSvg` draw in a
+shared 160×100 frame (so Flasks ↔ Plates does not move the grid): a rounded wall in `--text2`, a
+canted shoulder, an open neck, graduation ticks, and a screw cap in `--accent` (the only blue).
+The passage number is an HTML overlay in `.vsl-vs`, positioned against the drawing, on the medium
+in dark ink so it reads on red, orange and yellow alike.
 
-**The fill colours are phenol red, not a traffic light.** Fresh medium is red-pink and
-acidifies through orange to yellow as the culture grows out — so a healthy flask is red and an
-overdue one is yellow. It reads as inverted status colour until you know that, which is why
-`_vslStops` now says so. The passage number is dark ink: the fills went pastel, and white
-needed a heavy shadow to survive on the yellow.
+**The medium is the only saturated thing on the tile, and its colour is untouched**:
+`_vslFrac` (cell number as doublings ÷ doublings needed for the split ratio) → `_vslStops` →
+`_PHENOL` (red-pink → orange → yellow). Fresh medium is red and a spent one yellow; it reads as
+an inverted status colour until you know it is the medium.
+
+**Motion is arrival, hover and "due" — never a loop at rest** (only `transform`/`opacity`):
+the liquid rises once per vessel per session, staggered along the grid (`_vslSeen`, so a
+re-render never replays it); while hovered the surface drifts (a 40-unit-period wave translated
+by exactly one period, so it is seamless) and bubbles rise, and the animations are *paused*, not
+removed, on leave, so the surface freezes where it is instead of snapping; a flask that needs
+splitting breathes a soft `--warn` halo. Reduced motion clamps all of it. The old
+`vslPulse` drop-shadow glow is gone.
+
+Traps: the body wall is filled first and its stroke drawn *after* the liquid, or the stroke is
+painted over by the wall fill; the neck is painted over the wall where it passes so it reads as
+open to the body; a `clipPath` needs an id per vessel (`vc_<id>`), the same as the gradient.
+
 
 ## The workspace: one file, two faces
 
