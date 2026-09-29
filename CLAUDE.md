@@ -3114,6 +3114,13 @@ Both are `EXTRA_PRESET_SEED` entries with a `baseType` — data, not new code, s
   the cells are attached when they are dosed the next morning → 20–24 h → read. Same density,
   volume and lytic prep. The overnight reaction correctly carries **no** `w`: the next block's
   date expresses a wait of ≥24 h.
+- **`Degradation_Screen`** (`D2B_SCREEN384`, 2026-09-29) — the same screen with no chemistry at all:
+  compound addition (Echo) → cell seeding on top the same morning → 20 h → HiBiT Lytic + read the
+  next day. It is `D2B_CHEM1` minus its reaction block, so days are 0 · 0 · 1, and the map is
+  `d2b384` (20 compounds × 7 points × 2 stacked technical-replicate bands, DMSO in columns 22–23,
+  blank edge — 280 + 28 + 76). 16 plates per line seeded at 0.15 M/mL (184,320 µL), 32 lysed in
+  one prep at the 1:2 reagent:cells ratio (147,456 µL buffer). A new `EXTRA_PRESET_SEED` entry
+  seeds itself on the next load, so no `_presetV*` bump was needed.
 
 ### The preset keeps the proportions; the setup supplies the absolutes
 
