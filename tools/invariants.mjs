@@ -1021,7 +1021,7 @@ async function suite(opts) {
     for (const k of ['NB_SPARK_RTX96', 'CTG', 'WB']) { openQuick(k, {}); const e = await created(() => createExperiment()); closeNew(); if (e) made18.push(e); }
     const [eA, eB, eC] = made18;
     const screens = [
-      ['experiment + Report', () => { selectNode('expsec', PID, SID); SEL.page = eA.id; REPORT_OPEN = true; renderAll(); }],
+      ['experiment + Report', () => { selectNode('expsec', PID, SID); SEL.page = eA.id; REPORT_OPEN[eA.id] = true; renderAll(); }],
       ['experiment (CTG)', () => { SEL.page = eB.id; renderAll(); }],
       ['experiment (WB)', () => { SEL.page = eC.id; renderAll(); }],
       ['plate editor', () => { SEL.page = eA.id; renderAll(); openPlateEditor('exp:' + eA.id); }],
