@@ -117,6 +117,10 @@
 //   B19 keyboard reach        Every clickable navigation element is reachable with Tab. (LB-15)
 //   B20 pictures from Echo    Plate maps sent by another app land in the experiment's Files with their caption;
 //                            a payload that is not an image data URL is dropped.
+//   B21 the picklist stays    A picklist dropped on an Echo experiment is stored whole — every destination plate in
+//                            natural order, failed transfers kept apart from the wells that were dosed — with the
+//                            CSV on the Files tab; Check plates draws each plate with one label per compound block,
+//                            a selector 1…X, an All view, and the failed wells crossed.
 //   S1 IndexedDB              A notebook bigger than localStorage's ~5 MB saves and survives a
 //                            reload; an older build's localStorage tree is carried over; of two
 //                            copies the newer wins. (the ~5.2 MB ceiling)
@@ -1430,6 +1434,70 @@ async function suite(opts) {
       if (files.length !== n0 + 1) bad('B20', 'count', 'expected one new file, got ' + (files.length - n0));
       else if (last.kind !== 'image' || last.caption !== 'BRD2-01 — Raw luminescence' || last.name !== 'BRD2-01_raw.png') bad('B20', 'shape', JSON.stringify(last));
       if (files.some(f => /evil/.test(f.name))) bad('B20', 'html', 'a non-image was attached');
+    });
+
+    // B21 — an Echo picklist is stored in the experiment, all of it, and every plate can be checked.
+    if (run('B21')) await guard('B21', 'picklist', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'D2B_OA_TIMING', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B21', 'setup', 'the OA timing preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'D2B', title: 'INV picklist', code: 'INV_B21', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B21');
+      // Three destination plates named so that a plain sort would put P10 before P2.
+      const rows = 'ABCDEFGHIJKLMNOP', L = ['Protocol Name,D2B_INV.edr', 'Run Date/Time,2026-10-01 10:00', '', '[DETAILS]',
+        'Source Plate Name,Source Well,Destination Plate Name,Destination Well,Transfer Volume,Actual Volume,Sample Name,Fluid Type,Destination Concentration,Destination Concentration Units,Transfer Status'];
+      const names = { P10: 'C', P2: 'B', P1: 'A' };
+      for (const [pl, tag] of Object.entries(names)) for (let k = 0; k < 4; k++) for (let i = 0; i < 3; i++)
+        L.push(`S,A1,${pl},${rows[1 + i]}${k + 2},25,25,${tag}-${k + 1},DMSO,${(1e-5 / Math.pow(3, i)).toExponential(3).toUpperCase().replace('E-', 'E-0')},M,${(pl === 'P2' && k === 1 && i === 1) ? 'Fail: no flight' : ''}`);
+      L.push('S,A1,P1,B12,25,25,DMSO,DMSO,,,');
+      const csv = L.join('\n');
+      // the real gesture: a file dropped on the square
+      const zone = document.querySelector('.echo-drop');
+      if (!zone) { bad('B21', 'square', 'no drop square on an experiment with an Echo step'); return; }
+      const dt = new DataTransfer(); dt.items.add(new File([csv], 'INV_picklist.csv', { type: 'text/csv' }));
+      zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+      await sleep(1200);
+      const R = LB.data.experiments[e.id].echoRun;
+      if (!R) { bad('B21', 'stored', 'nothing was stored after the drop'); return; }
+      if (R.plates.map(p => p.name).join() !== 'P1,P2,P10') bad('B21', 'order', 'plates came out as ' + R.plates.map(p => p.name).join());
+      if (R.skipped !== 1) bad('B21', 'failed', 'expected 1 failed transfer, got ' + R.skipped);
+      const p2 = R.plates.find(p => p.name === 'P2');
+      if (!p2 || !p2.failed || !p2.failed.C3) bad('B21', 'failed well', 'the failed transfer is not kept on its well: ' + JSON.stringify(p2 && p2.failed));
+      if (p2 && p2.wells.C3) bad('B21', 'failed well', 'a failed transfer was recorded as dosed');
+      if (R.compounds.length !== 12) bad('B21', 'compounds', 'expected 12 compounds, got ' + R.compounds.length);
+      const ex = LB.data.experiments[e.id];
+      if (!(ex.files || []).some(f => f.name === 'INV_picklist.csv' && f.caption === 'Echo picklist')) bad('B21', 'file', 'the CSV is not on the Files tab');
+      if (!ex.plate.wells.B2 || ex.plate.wells.B2.compound !== 'A-1') bad('B21', 'plate map', 'plate 1 was not folded into the plate map: ' + JSON.stringify(ex.plate.wells.B2));
+      // Check plates
+      openCheckPlates(e.id); await sleep(200);
+      const card = () => document.getElementById('lb-dialog-card');
+      if (!card() || !/Check plates/.test(card().textContent)) { bad('B21', 'dialog', 'Check plates did not open'); return; }
+      if (card().querySelectorAll('.ck-pill:not(.all)').length !== 3) bad('B21', 'selector', 'expected 3 plate buttons');
+      for (let i = 0; i < 3; i++) { ckGo(i); await sleep(60);
+        const lbls = [...card().querySelectorAll('.ck-lbl span')].map(x => x.textContent);
+        const want = R.plates[i].name === 'P1' ? ['A-1', 'A-2', 'A-3', 'A-4'] : R.plates[i].name === 'P2' ? ['B-1', 'B-2', 'B-3', 'B-4'] : ['C-1', 'C-2', 'C-3', 'C-4'];
+        const cmp = want.concat(i === 0 ? ['DMSO'] : []);
+        if (cmp.some(n => !lbls.includes(n)) || lbls.length !== cmp.length) bad('B21', 'labels plate ' + (i + 1), `labels ${JSON.stringify(lbls)}, expected ${JSON.stringify(cmp)} (one per block, a failed well must not split its compound's block)`);
+        if (!new RegExp('Plate ' + (i + 1) + ' of 3').test(card().textContent)) bad('B21', 'selector', 'plate ' + (i + 1) + ' is not the one shown');
+        const nw = card().querySelectorAll('.ck-w:not(.empty):not(.fail)').length;
+        if (nw !== Object.keys(R.plates[i].wells).length) bad('B21', 'wells plate ' + (i + 1), `drew ${nw} wells, the picklist has ${Object.keys(R.plates[i].wells).length}`); }
+      ckGo(1); await sleep(60);
+      if (card().querySelectorAll('.ck-w.fail').length !== 1) bad('B21', 'failed mark', 'the failed well is not crossed on plate 2');
+      ckGo('all'); await sleep(60);
+      if (card().querySelectorAll('.ck-mini').length !== 3) bad('B21', 'all plates', 'the All view does not show 3 plates');
+      ckStep(1); await sleep(60);
+      if (!/Plate 1 of 3/.test(card().textContent)) bad('B21', 'arrows', 'stepping from All did not land on plate 1');
+      ckClose();
+      // replacing keeps one picklist, not two; removing takes only the picklist
+      const c0 = window.lbConfirm; window.lbConfirm = () => Promise.resolve(true);
+      echoImportText(e.id, csv, new File([csv], 'INV_picklist.csv'), false); await sleep(300);
+      if (LB.data.experiments[e.id].echoRun.plates.length !== 3) bad('B21', 'replace', 'a replaced picklist has ' + LB.data.experiments[e.id].echoRun.plates.length + ' plates');
+      echoRemove(e.id); await sleep(200); window.lbConfirm = c0;
+      if (LB.data.experiments[e.id].echoRun) bad('B21', 'remove', 'the picklist is still there after Remove');
+      if (!LB.data.experiments[e.id].plate.wells.B2 || LB.data.experiments[e.id].plate.wells.B2.compound !== 'A-1') bad('B21', 'remove', 'removing the picklist emptied the plate map');
+      if (!(LB.data.experiments[e.id].files || []).some(f => f.name === 'INV_picklist.csv')) bad('B21', 'remove', 'removing the picklist deleted the CSV from Files');
     });
 
     // B8 — a tree in the wrong shape still draws every screen.

@@ -143,6 +143,12 @@ const SEED = `(function(){
   [ids[1],ids[5]].forEach(function(id,k){ var e=LB.data.experiments[id]; var rows=[]; comps.forEach(function(c,ci){ tg.forEach(function(t,ti){ rows.push({compound:c,target:t,potency:Math.pow(10,ci*0.7+ti*0.3),effect:80,hill:1,r2:0.98,flag:ci===2&&ti===1}); }); }); rows[1].excluded=true;
     e.integration=e.integration||{sources:[],cellLines:[],compounds:[],plateMaps:[],protocols:[],results:[],tables:[]};
     e.integration.results=[{id:'r'+k,source:'Echo',label:'Echo fit',assay:'HB',potencyLabel:'DC50',effectLabel:'Dmax',potencyUnit:'nM',effectUnit:'%',rows:rows,createdAt:new Date().toISOString()}]; });
+  // an Echo picklist stored in the D2B experiment: the square becomes a card, and Check plates has plates to draw
+  (function(){ var e=LB.data.experiments[ids[5]], R='ABCDEFGHIJKLMNOP', L=['Protocol Name,SWEEP.edr','Run Date/Time,2026-09-01 10:00','','[DETAILS]',
+    'Source Plate Name,Source Well,Destination Plate Name,Destination Well,Transfer Volume,Actual Volume,Sample Name,Fluid Type,Destination Concentration,Destination Concentration Units,Transfer Status'];
+    for(var p=1;p<=3;p++){ for(var k=0;k<20;k++) for(var i=0;i<7;i++) for(var b=0;b<2;b++) L.push(['S','A1','Plate'+p,R.charAt(1+b*7+i)+(k+2),25,25,'EDA-'+p+(k<9?'0':'')+(k+1),'DMSO',(1e-5/Math.pow(3,i)).toExponential(3),'M',''].join(','));
+      for(var i2=0;i2<14;i2++) [22,23].forEach(function(c){ L.push(['S','A1','Plate'+p,R.charAt(1+i2)+c,25,25,'DMSO','DMSO','','',''].join(',')); }); }
+    echoImportText(e.id,L.join('\\n'),null,true); })();
   var wb=LB.data.experiments[ids[3]]; wb.status='done'; wb.statusLocked=true; wb.outcome={verdict:'worked',text:'',at:Date.now()};
   // the Journal: two flat notes, today's day note, and a step ticked today so "Done that day" draws
   newPage(); var pg1=_curPage(); pg1.title='Gel photos, with a title long enough to wrap on a phone'; pg1.html='<p>Bands at 60 and 120 kDa. <b>Lane 3</b> is the control.</p>';
@@ -231,6 +237,9 @@ function screens(ids) {
     S('dialog-help',     `openSettings('help')`, { dialog: true }),
     S('dialog-prep',     `openExp('${e0}'); openPrepSheet({expId:'${e0}'})`, { dialog: true, settle: 900 }),
     S('dialog-export',   `selectNode('exps'); exportMenu()`, { dialog: true }),
+    S('echo-card',       `openExp('${ids[5]}'); var z=document.querySelector('.echo-drop'); if(z) z.scrollIntoView({block:'center'})`),
+    S('check-plates',    `openExp('${ids[5]}'); openCheckPlates('${ids[5]}')`, { dialog: true, settle: 600 }),
+    S('check-plates-all',`openExp('${ids[5]}'); openCheckPlates('${ids[5]}','all')`, { dialog: true, settle: 600 }),
     S('dialog-pdf',      `openExp('${e0}'); openPdfExport()`, { dialog: true, settle: 1200 }),
     S('dialog-pdf-day',  `openDayPage(todayStr()); openPdfExport()`, { dialog: true, settle: 1200 }),
     S('dialog-confirm',  `lbConfirm('Delete this experiment and its 5 steps? This cannot be undone from here.',{title:'Delete',danger:true})`, { dialog: true }),
