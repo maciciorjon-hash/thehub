@@ -87,6 +87,9 @@
 //                            folder bundle carries every experiment in the folder.
 //   R6 CSV = record          Results and steps CSVs parse back to the record's rows, quotes and
 //                            commas included.
+//   R8 curves                Only an experiment that holds a fitted dose response has curves (a Western blot or an MS run with a
+//                            results table gets none — no heading, switch or export box); one that does gets them in the Report and
+//                            the PDF once per non-excluded measurement, in grey ink, as pictures for Word, never in the Methods sheet.
 //   R7 scopes                A folder/project/all PDF carries every experiment in it; a Journal
 //                            day, month and the whole Journal carry each step done that day.
 //
@@ -121,6 +124,10 @@
 //                            natural order, failed transfers kept apart from the wells that were dosed — with the
 //                            CSV on the Files tab; Check plates draws each plate with one label per compound block,
 //                            a selector 1…X, an All view, and the failed wells crossed.
+//   B22 a compound list      A source-plate list (plate · well · compound · stock, no destination wells) dropped on an
+//                            experiment is laid onto the compound blocks of the user's plate map in reading order,
+//                            overflowing onto further plates with the same layout; controls, concentrations and the
+//                            vehicle are untouched; headers may be named anything, or absent.
 //   S1 IndexedDB              A notebook bigger than localStorage's ~5 MB saves and survives a
 //                            reload; an older build's localStorage tree is carried over; of two
 //                            copies the newer wins. (the ~5.2 MB ceiling)
@@ -1049,7 +1056,7 @@ async function suite(opts) {
   // result table with a flagged row, an excluded row and a compound whose name carries a comma
   // and quotes, an observation, an outcome, a file, a plate well, a deviation — each carrying a
   // marker. Then every way the experiment leaves the notebook is asked whether it says so.
-  const RUN_R = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7'].some(run);
+  const RUN_R = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8'].some(run);
   if (RUN_R) {
     const DL = [];                                      // everything _dl was handed
     const origDl = window._dl, origPrint = window.print;
@@ -1281,6 +1288,87 @@ async function suite(opts) {
       }
     }
 
+    // ── R8 curves only where there is a fitted dose response ──
+    // Every experiment above holds a results table and no curve, which is what a Western blot, a
+    // co-IP ending in MS, a cloning or a pasted Prism table looks like: nothing about curves may
+    // appear anywhere — no heading, no switch, no box in the export dialog, no marker in the text.
+    // Then a fitted curve is attached to each, whatever its type, and it must appear everywhere
+    // the Report and the PDF go, once per measurement that was not excluded.
+    if (run('R8')) {
+      const xs = [-5, -5.5, -6, -6.5, -7, -7.5, -8, -8.5, -9, -9.5];
+      const mkCurve = (ec50, left) => { const x = [], y = []; xs.forEach(v => [0, 1].forEach(k => { x.push(v); y.push(+(5 + 95 / (1 + Math.pow(10, 1.1 * (v - Math.log10(ec50)))) + (k ? 2 : -2)).toFixed(2)); }));
+        return { x, y, ex: left ? [[-7, 60]] : [], p: [5, Math.log10(ec50), 1.1, 100], gain: false, n: x.length, ci: [ec50 * 8e8, ec50 * 1.2e9], yl: 'Protein (% of DMSO)' }; };
+      const paneOf = (e) => { REPORT_OPEN[e.id] = true; openExp(e.id); renderEditor(); return { secs: (document.querySelector('.pub-secs') || {}).textContent || '', pane: document.querySelector('.exp-pub') }; };
+      const nHead = h => { const d = document.createElement('div'); d.innerHTML = String(h || ''); return Array.from(d.querySelectorAll('h4.pub-h, .pd-sec-hd')).filter(n => /^Dose–response curves$/.test(n.textContent.trim())).length; };
+      // A — no curves anywhere
+      for (const { key, e } of made) await guard('R8', key + ' (no curve)', async () => {
+        tick('R8');
+        if (expHasCurves(e)) bad('R8', key, 'an experiment with a results table and no curve claims to have curves');
+        const raw = pubText(e), live = _pubCurvesFill(raw, e, 'screen');
+        if (/pub-curves/.test(raw) || /rcv-svg/.test(live) || nHead(live)) bad('R8', key, 'the Report carries a curves section though nothing was fitted');
+        const pdf = buildPrintDoc(ALLON, { kind: 'exp', id: e.id });
+        const pd0 = document.createElement('div'); pd0.innerHTML = pdf; pd0.querySelectorAll('style').forEach(n => n.remove());
+        if (pd0.querySelector('.pd-cvset, figure.pd-cv, svg.rcv-svg') || nHead(pdf)) bad('R8', key, 'the record PDF carries curves though nothing was fitted');
+        if (_pdfxScopeHasCurves({ kind: 'exp', id: e.id })) bad('R8', key, 'the export dialog would offer a curves box for an experiment with no curve');
+        const pn = paneOf(e);
+        if (/Curves/.test(pn.secs)) bad('R8', key, 'the Report offers a Curves switch for an experiment with no curve');
+        if (pn.pane && pn.pane.querySelector('figure.pub-cv, .pub-curves')) bad('R8', key, 'the Report pane has curve panels for an experiment with no curve');
+      });
+      // B — a fitted dose response is attached, to every type
+      for (const { key, e } of made) await guard('R8', key + ' (fitted)', async () => {
+        tick('R8');
+        const rows = e.integration.results[0].rows; rows[0].curve = mkCurve(1.2e-8, false); rows[1].curve = mkCurve(4.5e-8, true); rows[2].curve = mkCurve(1e-6, false);   // rows[2] is the excluded one
+        if (!expHasCurves(e)) { bad('R8', key, 'a fitted curve is attached and the experiment does not see it'); return; }
+        e.pubEdited = false; delete e.pubOpts;
+        const live = _pubCurvesFill(pubText(e), e, 'screen'), d = document.createElement('div'); d.innerHTML = live;
+        const panels = d.querySelectorAll('figure.pub-cv');
+        if (nHead(live) !== 1) bad('R8', key, `the Report has ${nHead(live)} curve headings, expected 1`);
+        if (panels.length !== 2) bad('R8', key, `the Report draws ${panels.length} panels, expected 2 (the excluded measurement is not a figure)`);
+        if (d.querySelectorAll('.rcv-x').length !== 1) bad('R8', key, 'the point left out of the fit is not crossed');
+        if (text(d.querySelector('.pub-curves').innerHTML).indexOf('INV-X') >= 0) bad('R8', key, 'an excluded measurement is drawn');
+        leaks('R8', key, 'the curves', text(d.querySelector('.pub-curves').innerHTML));
+        // the switch and the pane
+        const pn = paneOf(e);
+        if (!/Curves/.test(pn.secs)) bad('R8', key, 'no Curves switch on a Report that has curves');
+        if (!pn.pane || pn.pane.querySelectorAll('figure.pub-cv').length !== 2) bad('R8', key, 'the Report pane does not show the curves');
+        const o = pubOpts(e); o.curves = false; e.pubOpts = o;
+        if (/pub-curves/.test(pubText(e)) || nHead(_pubCurvesFill(pubText(e), e)) ) bad('R8', key, 'turning Curves off leaves them in the Report');
+        delete e.pubOpts;
+        // hand-written wording keeps the curves live and stores no drawing
+        e.pubEdited = false; const before = pubText(e); pubEdit(e.id, _pubCurvesFill(before, e, 'screen'));
+        if (/rcv-svg/.test(e.pubReady || '')) bad('R8', key, 'a drawing was stored inside the hand-written Report');
+        rows[1].curve = mkCurve(4.5e-8, false);
+        if ((_pubCurvesFill(pubText(e), e).match(/rcv-x/g) || []).length !== 0) bad('R8', key, 'a hand-written Report shows curves as they were, not as they are');
+        e.pubEdited = false; delete e.pubReady; delete e.pubSrcSig; rows[1].curve = mkCurve(4.5e-8, true);
+        // the PDF
+        const pdf = buildPrintDoc(ALLON, { kind: 'exp', id: e.id }), dd = document.createElement('div'); dd.innerHTML = pdf;
+        if (dd.querySelectorAll('figure.pd-cv').length !== 2) bad('R8', key, `the record PDF draws ${dd.querySelectorAll('figure.pd-cv').length} panels, expected 2`);
+        if (dd.querySelectorAll('svg.rcv-svg').length !== 2 || dd.querySelector('svg.rcv-svg[class*=rcv-] [class^=rcv-]')) bad('R8', key, 'the PDF panels lean on the app stylesheet instead of carrying their own ink');
+        if (!/stroke="#000"/.test(pdf)) bad('R8', key, 'the fitted line on paper is not black');
+        if (/var\(--/.test(dd.querySelector('.pd-cvset') ? dd.querySelector('.pd-cvset').innerHTML : '')) bad('R8', key, 'the printed curves use a theme variable');
+        if (nHead(buildPrintDoc(Object.assign({}, ALLON, { curves: 0 }), { kind: 'exp', id: e.id }))) bad('R8', key, 'the curves box does nothing');
+        if (!_pdfxScopeHasCurves({ kind: 'exp', id: e.id })) bad('R8', key, 'the export dialog would hide the curves box for an experiment that has curves');
+        if (/figure class="pd-cv|>Dose–response curves</.test(buildMethodsDoc(e))) bad('R8', key, 'the Methods sheet, the manuscript subset, carries curves');
+        // Word and OneNote get pictures
+        const cp = document.createElement('div'); cp.innerHTML = _pubCurvesFill(pubText(e), e, 'copy'); await _rasterCurves(cp);
+        if (cp.querySelectorAll('svg.rcv-svg').length || cp.querySelectorAll('img[src^="data:image/png"]').length !== 2) bad('R8', key, `a copy for Word has ${cp.querySelectorAll('svg.rcv-svg').length} curve svg and ${cp.querySelectorAll('img[src^="data:image/png"]').length} pictures, expected 0 and 2`);
+        // and again as data only where there is data: strip them and everything is gone again
+        rows.forEach(r => delete r.curve);
+        if (expHasCurves(e) || nHead(_pubCurvesFill(pubText(e), e))) bad('R8', key, 'curves remain after the fits were removed');
+      });
+      // A folder or project export draws curves only for the experiments that have them.
+      await guard('R8', 'bulk', async () => {
+        tick('R8');
+        const two = made.slice(0, 3); two.forEach(m => { m.e.integration.results[0].rows.forEach(r => delete r.curve); });
+        two[0].e.integration.results[0].rows[0].curve = mkCurve(2e-8, false);
+        const sc = { kind: 'allexps' }; const t = buildPrintDoc(Object.assign({}, ALLON, { summary: 0 }), sc);   // a summary is a table, not the records
+        if (nHead(t) !== 1) bad('R8', 'bulk', `an export of every experiment has ${nHead(t)} curve headings, expected 1 (only one experiment has a fit)`);
+        if (!_pdfxScopeHasCurves(sc)) bad('R8', 'bulk', 'the dialog hides the curves box though one experiment in scope has curves');
+        two[0].e.integration.results[0].rows.forEach(r => delete r.curve);
+        if (_pdfxScopeHasCurves(sc)) bad('R8', 'bulk', 'the dialog offers the curves box though nothing in scope has a curve');
+      });
+    }
+
     made.forEach(m => cleanup(m.e));
     window._dl = origDl; window.print = origPrint;
     window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onErr);
@@ -1498,6 +1586,74 @@ async function suite(opts) {
       if (LB.data.experiments[e.id].echoRun) bad('B21', 'remove', 'the picklist is still there after Remove');
       if (!LB.data.experiments[e.id].plate.wells.B2 || LB.data.experiments[e.id].plate.wells.B2.compound !== 'A-1') bad('B21', 'remove', 'removing the picklist emptied the plate map');
       if (!(LB.data.experiments[e.id].files || []).some(f => f.name === 'INV_picklist.csv')) bad('B21', 'remove', 'removing the picklist deleted the CSV from Files');
+    });
+
+
+    // B22 — a compound LIST (source plate, well, compound code, stock) lands on the user's compound blocks.
+    if (run('B22')) await guard('B22', 'compound list', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = Object.keys(LB.data.presets).find(k => k === 'NB_SPARK_SCREEN96');
+      if (!key) { bad('B22', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV list', code: 'INV_B22', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B22');
+      const rows = 'ABCDEFGH';
+      const mk = (hdr, sep = ',') => { const L = hdr ? [hdr] : []; for (let r = 0; r < 8; r++) for (let c = 1; c <= 12; c++) L.push(['SPARK1', rows[r] + c, `SPARK1_${rows[r]}${c}`, '5'].join(sep)); return L.join('\r\n') + '\r\n'; };
+      const slots0 = plateCompoundSlots(e.plate);
+      const per = slots0.length;
+      if (per < 2) { bad('B22', 'slots', 'the layout has ' + per + ' compound blocks'); return; }
+      const ctlBefore = JSON.stringify(['A1', 'B1', 'A12'].map(w => e.plate.wells[w]));
+      const concBefore = JSON.stringify(slots0.map(sl => sl.ids.map(i => e.plate.wells[i].conc)));
+      // header spellings that differ from the file we were given, a headerless file, a European export
+      const variants = {
+        'as given': mk('Source plate Barcode,Source Well,Compound Code,Concentration (mM)'),
+        'other names': mk('Plate ID,Well,Sample Name,Stock (mM)'),
+        'no header': mk(''),
+        'semicolons': mk('Barcode;Source Well;Compound;Conc (mM)', ';'),
+      };
+      const c0 = window.lbConfirm; window.lbConfirm = () => Promise.resolve(true);
+      for (const [n, csv] of Object.entries(variants)) {
+        const r = parseEchoPicklist(csv);
+        if (r.error || !r.source) { bad('B22', n, 'not read as a compound list: ' + (r.error || JSON.stringify(Object.keys(r)))); continue; }
+        if (r.list.length !== 96 || r.list[0].name !== 'SPARK1_A1' || r.list[95].name !== 'SPARK1_H12') bad('B22', n, 'read ' + r.list.length + ' compounds, first ' + r.list[0].name + ', last ' + r.list[r.list.length - 1].name);
+        if (n !== 'no header' && r.list[0].mM !== 5) bad('B22', n, 'stock concentration read as ' + r.list[0].mM);
+      }
+      const csv = variants['as given'];
+      echoImportText(e.id, csv, new File([csv], 'SPARK1_Picklist.csv'), false); await sleep(600);
+      window.lbConfirm = c0;
+      const ex = LB.data.experiments[e.id], R = ex.echoRun;
+      if (!R || !R.source) { bad('B22', 'stored', 'nothing stored'); return; }
+      const nP = Math.ceil(96 / per);
+      if (R.plates.length !== nP || R.perPlate !== per) bad('B22', 'plates', `expected ${nP} plates of ${per}, got ${R.plates.length} of ${R.perPlate}`);
+      if (R.compounds.length !== 96) bad('B22', 'compounds', 'stored ' + R.compounds.length);
+      // plate 1 = the first `per` compounds, one per block, in reading order
+      const slots1 = plateCompoundSlots(ex.plate);
+      const got = slots1.map(sl => sl.name);
+      const want = R.compounds.slice(0, per);
+      if (JSON.stringify(got) !== JSON.stringify(want)) bad('B22', 'plate 1 order', `blocks hold ${got.slice(0, 4)}…, expected ${want.slice(0, 4)}…`);
+      // every well of a block carries its block's compound, and nothing else changed
+      slots1.forEach((sl, j) => sl.ids.forEach(id => { if (ex.plate.wells[id].compound !== want[j]) bad('B22', 'wells', id + ' holds ' + ex.plate.wells[id].compound + ', block ' + (j + 1) + ' is ' + want[j]); }));
+      if (JSON.stringify(['A1', 'B1', 'A12'].map(w => ex.plate.wells[w])) !== ctlBefore) bad('B22', 'controls', 'the control wells changed');
+      if (JSON.stringify(slots1.map(sl => sl.ids.map(i => ex.plate.wells[i].conc))) !== concBefore) bad('B22', 'concentrations', 'the concentrations on the blocks changed');
+      // later plates continue the list with the same geometry
+      R.plates.forEach((pl, k) => {
+        const ids = Object.keys(pl.wells).filter(i => !pl.wells[i].dmsoOnly), names = [...new Set(ids.map(i => pl.wells[i].compound))];
+        const w = R.compounds.slice(k * per, (k + 1) * per);
+        if (JSON.stringify(names) !== JSON.stringify(w)) bad('B22', 'plate ' + (k + 1), `holds ${names.slice(0, 3)}…, expected ${w.slice(0, 3)}…`);
+        slots1.forEach((sl, j) => { if (k * per + j < 96) sl.ids.forEach(id => { if (!pl.wells[id] || pl.wells[id].compound !== R.compounds[k * per + j]) bad('B22', 'plate ' + (k + 1) + ' geometry', id + ' does not follow the layout'); }); });
+      });
+      if (!(ex.files || []).some(f => f.name === 'SPARK1_Picklist.csv' && f.caption === 'Compound list')) bad('B22', 'file', 'the list is not on the Files tab');
+      // the square says what it holds and Check plates works from it
+      if (!/Compound list/.test(document.querySelector('.echo-drop')?.textContent || '')) bad('B22', 'square', 'the drop square does not say it holds a compound list');
+      openCheckPlates(e.id); await sleep(200);
+      const card = document.getElementById('lb-dialog-card');
+      if (!card || card.querySelectorAll('.ck-pill:not(.all)').length !== nP) bad('B22', 'check plates', 'Check plates does not offer ' + nP + ' plates');
+      ckClose();
+      // a file that is neither is refused, not laid onto the plate
+      const junk = parseEchoPicklist('a,b\r\n1,2\r\n');
+      if (!junk.error) bad('B22', 'junk', 'an unrelated CSV was accepted');
     });
 
     // B8 — a tree in the wrong shape still draws every screen.

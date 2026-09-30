@@ -1658,6 +1658,16 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .rcv-side em{font-style:normal;color:var(--text3);font-weight:400;}
 .rcv-flag{color:#c8752f;font-size:var(--fs-2);}
 .rcv-side .res-edit{align-self:flex-start;margin-top:6px;}
+/* The Report's curves: small panels on shared axes, as many across as the page has room for. */
+.pub-cvset{margin:4px 0 14px;}
+.pub-cvset-hd{font-size:var(--fs-3);font-weight:600;color:var(--text2);margin-bottom:6px;}
+.pub-cvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 12px;}
+.pub-cv{margin:0;min-width:0;}
+.pub-cv figcaption{font-size:var(--fs-2);line-height:1.3;margin-bottom:2px;min-height:2.6em;}   /* two lines, so a long caption does not push its plot below its neighbours' */
+.pub-cv figcaption i{font-style:normal;color:var(--text3);margin-left:4px;}
+.pub-cv figcaption span{display:block;color:var(--text3);font-family:var(--mono);}
+.pub-cv .rcv-svg{display:block;}
+.pub-cvcap{font-size:var(--fs-2);color:var(--text3);margin-top:6px;}
 .res-tbl{width:100%;min-width:560px;border-collapse:collapse;font-size:var(--fs-3);}
 .res-tbl th{text-align:left;font-weight:600;color:var(--text3);font-size:var(--fs-3);
   letter-spacing:.4px;padding:7px 13px;border-bottom:1px solid var(--border);}
@@ -11351,7 +11361,7 @@ function pubSentence(b,e){
 // subset (METHODS_ONLY) whatever the toggles say.
 var PUB_SECTIONS=[{k:'aim',lbl:'Aim'},{k:'run',lbl:'Run'},{k:'setup',lbl:'Setup'},{k:'methods',lbl:'Methods'},
                   {k:'plate',lbl:'Plate layout'},{k:'dev',lbl:'Deviations'},{k:'log',lbl:'What happened'},
-                  {k:'results',lbl:'Results'},{k:'obs',lbl:'Observations'},{k:'outcome',lbl:'Outcome'},{k:'files',lbl:'Files'}];
+                  {k:'results',lbl:'Results'},{k:'curves',lbl:'Curves'},{k:'obs',lbl:'Observations'},{k:'outcome',lbl:'Outcome'},{k:'files',lbl:'Files'}];
 var PUB_DEFAULT_OFF={};
 var METHODS_ONLY={setup:1,methods:1,plate:1,results:1};
 function pubOpts(e,only){ var o=(e&&e.pubOpts)||{}, out={};
@@ -11425,7 +11435,7 @@ function _pubFilesHtml(e){
 function pubText(e){ if(!e) return ''; return (e.pubEdited && e.pubReady) ? e.pubReady : buildPubReadyFromExp(e); }
 function pubEdit(id,html){ var e=LB.data.experiments[id]; if(!e) return;
   if(!e.pubEdited){ e.pubEdited=true; e.pubSrcSig=_pubSourceSig(e); }
-  e.pubReady=_persistImgHtml(html); e.updated=Date.now(); queueSave(); }
+  e.pubReady=_persistImgHtml(_pubStripCurves(html)); e.updated=Date.now(); queueSave(); }
 // ── Refresh report ──────────────────────────────────────────────────────────────────────────
 // Jon (2026-09-23): "al cambiar el plate map las concentraciones se cambian bien en plate map
 // pero el texto sigue diciendo 1000 nM… pon un botón de refresh methods que actualice los
@@ -11508,6 +11518,8 @@ function buildPubReadyFromExp(e,only){
   if(o.dev){ var d=deviationsSentence(e); if(d){ H('Deviations from the protocol'); P(esc(d)); } }
   if(o.log){ var lg=_pubLogHtml(e); if(lg){ H('What happened'); out.push(lg); } }
   if(o.results){ var r=pubResultsSentence(e), rt=_pubResultsTable(e); if(r||rt){ H('Results'); P(esc(r)); if(rt) out.push(rt); } }
+  // A marker, not the drawing: curves are drawn from the record each time the report is read.
+  if(o.curves && expHasCurves(e)){ H('Dose\u2013response curves'); out.push('<div class="pub-curves" contenteditable="false"></div>'); }
   if(o.obs && (e.html||'').replace(/<[^>]+>/g,'').trim()){ H('Observations'); out.push('<div class="pub-obs">'+e.html+'</div>'); }
   // The verdict, in your own words, when you have asked for it. It is not part of a Methods
   // section, which is why it is off by default — but it is the sentence a draft opens with.
@@ -11543,10 +11555,14 @@ function pubToggle(id,k){
 // Copy helpers
 function _copyFallback(str){ try{ var ta=document.createElement('textarea'); ta.value=str; ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Copied'); }catch(e){ toast('Copy failed'); } }
 function lbCopyText(str){ try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(str).then(function(){toast('Copied');},function(){_copyFallback(str);}); return; } }catch(e){} _copyFallback(str); }
-function copyPubReady(id){ var e=LB.data.experiments[id]; if(!e) return; var t=document.createElement('div'); t.innerHTML=pubText(e);
-  // Rich where the clipboard takes it (Word, OneNote, mail), plain text everywhere else.
-  try{ if(navigator.clipboard&&window.ClipboardItem){ var html=t.innerHTML, txt=(t.textContent||'').replace(/[ \t]+/g,' ').trim();
-    navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([txt],{type:'text/plain'})})]).then(function(){ toast('Report copied'); },function(){ lbCopyText(txt); }); return; } }catch(_e){} lbCopyText((t.textContent||'').replace(/\s+/g,' ').trim()); }
+function copyPubReady(id){ var e=LB.data.experiments[id]; if(!e) return; var t=document.createElement('div'); t.innerHTML=_pubCurvesFill(pubText(e),e,'copy');
+  // Rich where the clipboard takes it (Word, OneNote, mail), plain text everywhere else. The curves
+  // go as pictures — Word does not draw inline SVG — and the clipboard is handed a promise for the
+  // HTML so the write still happens inside the click that asked for it.
+  var txt=(t.textContent||'').replace(/[ \t]+/g,' ').trim();
+  try{ if(navigator.clipboard&&window.ClipboardItem){
+    var htmlP=_rasterCurves(t).then(function(){ return new Blob([t.innerHTML],{type:'text/html'}); });
+    navigator.clipboard.write([new ClipboardItem({'text/html':htmlP,'text/plain':new Blob([txt],{type:'text/plain'})})]).then(function(){ toast('Report copied'); },function(){ lbCopyText(txt); }); return; } }catch(_e){} lbCopyText((t.textContent||'').replace(/\s+/g,' ').trim()); }
 // New-experiment source-protocol picker state
 var NM_PROTOS=[];
 // Setup answers for the experiment being created (reset whenever the preset changes).
@@ -13440,32 +13456,126 @@ function _rcvConc(lg){
   return v.toExponential(1)+' M'; }
 function _rcv4(x,p,gain){ return p[0]+(p[3]-p[0])/(1+Math.pow(10,p[2]*(gain?(p[1]-x):(x-p[1])))); }
 function rcvSvg(c,o){
-  o=o||{}; var mini=!!o.mini; if(!c||!c.x||!c.x.length) return '';
-  var W=o.w||(mini?64:520), H=o.h||(mini?26:250), P=mini?{l:2,r:2,t:2,b:2}:{l:46,r:14,t:12,b:38};
+  o=o||{}; var mini=!!o.mini, mono=!!o.mono, small=!!o.small; if(!c||!c.x||!c.x.length) return '';
+  var W=o.w||(mini?64:(small?260:520)), H=o.h||(mini?26:(small?170:250));
+  var P=mini?{l:2,r:2,t:2,b:2}:(small?{l:34,r:8,t:8,b:26}:{l:46,r:14,t:12,b:38});
   var ex=c.ex||[], xs=c.x.concat(ex.map(function(q){ return q[0]; })), ys=c.y.concat(ex.map(function(q){ return q[1]; }));
   var fit=(c.p&&c.p.length===4&&c.p.every(isFinite))?c.p:null;
-  var x0=Math.min.apply(null,xs)-0.35, x1=Math.max.apply(null,xs)+0.35;
-  var norm=/%|control|DMSO|viab|displac/i.test(c.yl||'');
-  var yLo=Math.min(0,Math.min.apply(null,ys.concat(fit?[fit[0]]:[]))), yHi=Math.max.apply(null,ys.concat(fit?[fit[0],fit[3]]:[]));
-  yHi=norm?Math.max(110,yHi*1.03):yHi*1.06; if(!(yHi>yLo)) yHi=yLo+1;
+  var R=_rcvRange([c]), x0=o.xr?o.xr[0]:R.xr[0], x1=o.xr?o.xr[1]:R.xr[1], yLo=o.yr?o.yr[0]:R.yr[0], yHi=o.yr?o.yr[1]:R.yr[1];
+  var norm=_rcvNorm(c);
   var px=function(v){ return P.l+(v-x0)/(x1-x0)*(W-P.l-P.r); }, py=function(v){ return H-P.b-(v-yLo)/(yHi-yLo)*(H-P.t-P.b); };
+  // Two inks. On screen every mark is a class, so the theme decides. On paper (and in anything that
+  // is rasterised for Word) every mark carries its own grey, because a stylesheet does not travel
+  // into a print root that resets colour, nor into an image, and the page has to read in black and white.
+  var INK={g:'stroke="#d6d6d6" stroke-width=".6"',t:'fill="#444" font-family="Arial,Helvetica,sans-serif" font-size="11"',f:'fill="none" stroke="#888" stroke-width=".8"',
+    fit:'fill="none" stroke="#000" stroke-width="1.5"',mid:'stroke="#777" stroke-width=".9" stroke-dasharray="3 3"',pt:'fill="#222" stroke="#fff" stroke-width=".6"',
+    x:'fill="none" stroke="#777" stroke-width="1.5" stroke-linecap="round"'};
+  var CLS={g:'class="rcv-g"',t:'class="rcv-t"',f:'class="rcv-f"',fit:'class="rcv-fit"',mid:'class="rcv-mid"',pt:'class="rcv-pt"',x:'class="rcv-x"'};
+  var K=function(r){ return mono?INK[r]:CLS[r]; };
   var g='';
   if(!mini){
-    var step=(x1-x0)>8?2:1;
-    for(var t=Math.ceil(x0/step)*step;t<=x1;t+=step){ g+='<line x1="'+px(t)+'" x2="'+px(t)+'" y1="'+P.t+'" y2="'+(H-P.b)+'" class="rcv-g"/><text x="'+px(t)+'" y="'+(H-P.b+15)+'" class="rcv-t" text-anchor="middle">'+esc(_rcvConc(t))+'</text>'; }
-    var ystep=norm?25:(function(){ var r=(yHi-yLo)/4, m=Math.pow(10,Math.floor(Math.log10(r))); return [1,2,5,10].map(function(k){ return k*m; }).filter(function(k){ return k>=r; })[0]; })();
-    for(var yv=Math.ceil(yLo/ystep)*ystep;yv<=yHi;yv+=ystep){ g+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+py(yv)+'" y2="'+py(yv)+'" class="rcv-g"/><text x="'+(P.l-6)+'" y="'+(py(yv)+4)+'" class="rcv-t" text-anchor="end">'+(Math.abs(yv)>=1000?_rn(yv):(+yv.toPrecision(3)))+'</text>'; }
-    g+='<text x="'+((P.l+W-P.r)/2)+'" y="'+(H-3)+'" class="rcv-t" text-anchor="middle">Dose</text>'
-      +'<text transform="translate(11,'+((P.t+H-P.b)/2)+') rotate(-90)" class="rcv-t" text-anchor="middle">'+esc((c.yl||'Signal').slice(0,34))+'</text>';
+    var span=x1-x0, step=span>(small?5.5:8)?2:1;
+    for(var t=Math.ceil(x0/step)*step;t<=x1;t+=step){ g+='<line x1="'+px(t)+'" x2="'+px(t)+'" y1="'+P.t+'" y2="'+(H-P.b)+'" '+K('g')+'/><text x="'+px(t)+'" y="'+(H-P.b+(small?13:15))+'" '+K('t')+' text-anchor="middle">'+esc(_rcvConc(t))+'</text>'; }
+    var ystep=norm?(small?50:25):(function(){ var r=(yHi-yLo)/(small?3:4), m=Math.pow(10,Math.floor(Math.log10(r))); return [1,2,5,10].map(function(k){ return k*m; }).filter(function(k){ return k>=r; })[0]; })();
+    for(var yv=Math.ceil(yLo/ystep)*ystep;yv<=yHi;yv+=ystep){ g+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+py(yv)+'" y2="'+py(yv)+'" '+K('g')+'/><text x="'+(P.l-5)+'" y="'+(py(yv)+4)+'" '+K('t')+' text-anchor="end">'+(Math.abs(yv)>=1000?_rn(yv):(+yv.toPrecision(3)))+'</text>'; }
+    if(!small) g+='<text x="'+((P.l+W-P.r)/2)+'" y="'+(H-3)+'" '+K('t')+' text-anchor="middle">Dose</text>'
+      +'<text transform="translate(11,'+((P.t+H-P.b)/2)+') rotate(-90)" '+K('t')+' text-anchor="middle">'+esc((c.yl||'Signal').slice(0,34))+'</text>';
   }
   var line='';
-  if(fit){ var pts=[]; for(var k=0;k<=70;k++){ var xv=x0+(x1-x0)*k/70; pts.push(px(xv).toFixed(1)+','+py(_rcv4(xv,fit,c.gain)).toFixed(1)); }
-    line='<polyline points="'+pts.join(' ')+'" class="rcv-fit"/>';
-    if(!mini) line+='<line x1="'+px(fit[1])+'" x2="'+px(fit[1])+'" y1="'+P.t+'" y2="'+(H-P.b)+'" class="rcv-mid"/><text x="'+(px(fit[1])+4)+'" y="'+(P.t+9)+'" class="rcv-t">'+esc(_rcvConc(fit[1]))+'</text>'; }
-  var dots=c.x.map(function(xv,i){ return '<circle cx="'+px(xv).toFixed(1)+'" cy="'+py(c.y[i]).toFixed(1)+'" r="'+(mini?1.6:3.6)+'" class="rcv-pt">'+(mini?'':'<title>'+esc(_rcvConc(xv))+' \u00b7 '+_rn(c.y[i])+'</title>')+'</circle>'; }).join('');
-  var crosses=mini?'':ex.map(function(q){ var cx=px(q[0]),cy=py(q[1]),d=4.2; return '<g class="rcv-x"><path d="M'+(cx-d)+' '+(cy-d)+'L'+(cx+d)+' '+(cy+d)+'M'+(cx-d)+' '+(cy+d)+'L'+(cx+d)+' '+(cy-d)+'"/><title>Left out of the fit \u00b7 '+esc(_rcvConc(q[0]))+' \u00b7 '+_rn(q[1])+'</title></g>'; }).join('');
-  var frame=mini?'':'<rect x="'+P.l+'" y="'+P.t+'" width="'+(W-P.l-P.r)+'" height="'+(H-P.t-P.b)+'" class="rcv-f"/>';
-  return '<svg class="'+(mini?'rcv-mini':'rcv-svg')+'" viewBox="0 0 '+W+' '+H+'" width="'+(mini?W:'100%')+'" '+(mini?'height="'+H+'" ':'')+'role="img" aria-label="Dose-response curve">'+frame+g+line+dots+crosses+'</svg>'; }
+  if(fit){ var pts=[]; for(var k=0;k<=70;k++){ var xv=x0+(x1-x0)*k/70; pts.push(px(xv).toFixed(1)+','+py(Math.max(yLo,Math.min(yHi,_rcv4(xv,fit,c.gain)))).toFixed(1)); }
+    line='<polyline points="'+pts.join(' ')+'" '+K('fit')+'/>';
+    if(!mini&&fit[1]>=x0&&fit[1]<=x1){ line+='<line x1="'+px(fit[1])+'" x2="'+px(fit[1])+'" y1="'+P.t+'" y2="'+(H-P.b)+'" '+K('mid')+'/>';
+      if(!small) line+='<text x="'+(px(fit[1])+4)+'" y="'+(P.t+9)+'" '+K('t')+'>'+esc(_rcvConc(fit[1]))+'</text>'; } }
+  var rr=mini?1.6:(small?2.6:3.6);
+  var dots=c.x.map(function(xv,i){ return '<circle cx="'+px(xv).toFixed(1)+'" cy="'+py(c.y[i]).toFixed(1)+'" r="'+rr+'" '+K('pt')+'>'+((mini||mono)?'':'<title>'+esc(_rcvConc(xv))+' \u00b7 '+_rn(c.y[i])+'</title>')+'</circle>'; }).join('');
+  var crosses=mini?'':ex.map(function(q){ var cx=px(q[0]),cy=py(q[1]),d=small?3.4:4.2; return '<g '+(mono?'':'class="rcv-x"')+'><path d="M'+(cx-d)+' '+(cy-d)+'L'+(cx+d)+' '+(cy+d)+'M'+(cx-d)+' '+(cy+d)+'L'+(cx+d)+' '+(cy-d)+'"'+(mono?' '+INK.x:'')+'/>'+(mono?'':'<title>Left out of the fit \u00b7 '+esc(_rcvConc(q[0]))+' \u00b7 '+_rn(q[1])+'</title>')+'</g>'; }).join('');
+  var frame=mini?'':'<rect x="'+P.l+'" y="'+P.t+'" width="'+(W-P.l-P.r)+'" height="'+(H-P.t-P.b)+'" '+K('f')+'/>';
+  return '<svg class="'+(mini?'rcv-mini':'rcv-svg')+'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+(mini?W:'100%')+'" '+(mini?'height="'+H+'" ':'')+'role="img" aria-label="Dose-response curve">'+frame+g+line+dots+crosses+'</svg>'; }
+// Whether the y axis is a percentage of a control (0–110 is then the honest frame) or a raw signal.
+function _rcvNorm(c){ return /%|control|DMSO|viab|displac/i.test((c&&c.yl)||''); }
+// One frame for a set of curves: panels that are compared side by side have to share their axes,
+// or a compound that barely moves looks as steep as one that kills the signal.
+function _rcvRange(list){
+  var xs=[], ys=[], norm=true;
+  list.forEach(function(c){ if(!_rcvNorm(c)) norm=false;
+    c.x.concat((c.ex||[]).map(function(q){ return q[0]; })).forEach(function(v){ xs.push(v); });
+    c.y.concat((c.ex||[]).map(function(q){ return q[1]; })).forEach(function(v){ ys.push(v); });
+    if(c.p&&c.p.length===4&&c.p.every(isFinite)){ ys.push(c.p[0]); ys.push(c.p[3]); } });
+  var yLo=Math.min(0,Math.min.apply(null,ys)), yHi=Math.max.apply(null,ys);
+  yHi=norm?Math.max(110,yHi*1.03):yHi*1.06; if(!(yHi>yLo)) yHi=yLo+1;
+  return {xr:[Math.min.apply(null,xs)-0.35,Math.max.apply(null,xs)+0.35], yr:[yLo,yHi]}; }
+
+// ── Curves in the Report and on paper ──────────────────────────────────────────────────────
+// Only an experiment that holds a fitted dose response has curves. That is decided by the data and
+// not by the experiment type: a Western blot, a co-IP ending in MS, a cloning or a proteomics run
+// has no curve to draw and gets no heading, no toggle and no box in the export — and one that does
+// carry a fit (a HiBiT screen, a viability plate, a NanoBRET titration) gets it whatever it is called.
+// Nothing is ever drawn from a pasted table: a potency alone is not a curve, and inventing one from
+// a Hill slope would put a line on the page that no measurement made.
+function expCurveGroups(e){
+  var out=[]; if(!e||e.kind==='note') return out;
+  ((e.integration&&e.integration.results)||[]).forEach(function(set){
+    var by={}, order=[], skipped=0;
+    (set.rows||[]).forEach(function(x){
+      if(!x||!x.curve||!x.curve.x||!x.curve.x.length) return;
+      if(x.excluded){ skipped++; return; }   // excluded from the results sentence is excluded from the figure
+      var k=x.curve.yl||''; if(!by[k]){ by[k]=[]; order.push(k); } by[k].push(x); });
+    order.forEach(function(k){ out.push({set:set,yl:k,rows:by[k],skipped:skipped}); }); });
+  return out; }
+function expHasCurves(e){ return expCurveGroups(e).length>0; }
+// mode: 'screen' (themed, a responsive grid), 'print' and 'copy' (grey marks, inline-block panels so
+// a Word paste keeps the grid; 'print' also breaks nowhere inside a panel).
+function curvesHtml(e,mode){
+  mode=mode||'screen'; var mono=mode!=='screen', groups=expCurveGroups(e); if(!groups.length) return '';
+  var C=mode==='screen'?{cv:'pub-cv',set:'pub-cvset',hd:'pub-cvset-hd',grid:'pub-cvgrid',cap:'pub-cvcap'}:{cv:'pd-cv',set:'pd-cvset',hd:'pd-cvset-hd',grid:'pd-cvgrid',cap:'pd-cvcap'};
+  return groups.map(function(gr){
+    var set=gr.set, rows=gr.rows, R=_rcvRange(rows.map(function(x){ return x.curve; })), cols=rows.length>24?4:3;
+    var L=resultLabels(e), pot=String(set.potencyLabel||L.p).split(' ')[0], pu=set.potencyUnit||'nM';
+    var panels=rows.map(function(x){
+      var c=x.curve, nEx=(c.ex||[]).length, bits=[];
+      if(isFinite(parseFloat(x.potency))) bits.push(pot+' '+_rn(x.potency)+' '+pu+(c.ci?(' ('+_rn(c.ci[0])+'\u2013'+_rn(c.ci[1])+')'):''));
+      bits.push('n\u00a0'+c.n+(nEx?(' (+'+nEx+' left out)'):''));
+      if(x.flag) bits.push('flagged'+((x.flagReason||'').trim()?(': '+x.flagReason.trim()):''));
+      return '<figure class="'+C.cv+'"'+(mode==='screen'?'':' style="display:inline-block;vertical-align:top;width:'+(cols===4?'24':'32.3')+'%;margin:0 .4% 8px;padding:0"')+'>'
+        +'<figcaption><b>'+esc(x.compound||'')+'</b>'+(x.target?' <i>'+esc(x.target)+'</i>':'')+'<span>'+esc(bits.join(' \u00b7 '))+'</span></figcaption>'
+        +rcvSvg(c,{small:true,mono:mono,xr:R.xr,yr:R.yr})+'</figure>'; }).join('');
+    var head=[set.source?(String(set.source).replace(/^./,function(m){ return m.toUpperCase(); })):'',set.label||'',(set.createdAt||'').slice(0,10)].filter(Boolean).join(' \u00b7 ');
+    return '<div class="'+C.set+'"><div class="'+C.hd+'">'+esc(head)+'</div>'
+      +'<div class="'+C.grid+'">'+panels+'</div>'
+      +'<div class="'+C.cap+'">Each point is one well; a cross is a well left out of the fit. The line is the four-parameter logistic fit and the dashed line its midpoint. Dose in molar, log scale; y is '
+      +esc(gr.yl||'the signal')+'.'+(gr.skipped?(' '+gr.skipped+' measurement'+(gr.skipped===1?'':'s')+' excluded in the notebook '+(gr.skipped===1?'is':'are')+' not shown.'):'')+'</div></div>'; }).join('');
+}
+// The Report holds a marker and the curves are drawn from the record every time it is read, so a
+// paragraph you have written in still shows the curves as they stand now, and no drawing is stored
+// inside it. A marker whose curves have gone takes its own heading with it.
+function _pubCurvesFill(html,e,mode){
+  if(!html||String(html).indexOf('pub-curves')<0) return html;
+  var d=document.createElement('div'); d.innerHTML=html; var ph=d.querySelectorAll('.pub-curves'); if(!ph.length) return html;
+  var inner=curvesHtml(e,mode||'screen');
+  Array.prototype.forEach.call(ph,function(n,i){
+    if(i===0&&inner){ n.innerHTML=inner; return; }
+    var h=n.previousElementSibling; if(h&&/^H4$/.test(h.tagName)&&/curves/i.test(h.textContent)) h.remove(); n.remove(); });
+  return d.innerHTML; }
+function _pubStripCurves(html){
+  if(!html||String(html).indexOf('pub-curves')<0) return html;
+  var d=document.createElement('div'); d.innerHTML=html;
+  Array.prototype.forEach.call(d.querySelectorAll('.pub-curves'),function(n){ n.innerHTML=''; });
+  return d.innerHTML; }
+// Word does not draw inline SVG, and a clipboard paste into it is worse. Anything that leaves the
+// notebook for Word or OneNote gets each curve as a picture instead.
+function _rasterCurves(root){
+  var svgs=Array.prototype.slice.call(root.querySelectorAll('svg.rcv-svg'));
+  return Promise.all(svgs.map(function(sv){ return new Promise(function(done){
+    try{
+      var vb=(sv.getAttribute('viewBox')||'0 0 260 170').split(' ').map(Number), W=vb[2], H=vb[3], k=3, c=sv.cloneNode(true);
+      c.setAttribute('width',W*k); c.setAttribute('height',H*k); c.setAttribute('xmlns','http://www.w3.org/2000/svg');
+      var img=new Image();
+      img.onload=function(){ try{ var cv=document.createElement('canvas'); cv.width=W*k; cv.height=H*k; var x=cv.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,cv.width,cv.height); x.drawImage(img,0,0);
+        var im=document.createElement('img'); im.src=cv.toDataURL('image/png'); im.setAttribute('width',String(Math.round(W*.9))); im.setAttribute('alt','Dose-response curve'); im.style.cssText='width:100%;height:auto;display:block';
+        sv.parentNode.replaceChild(im,sv); }catch(e){} done(); };
+      img.onerror=function(){ done(); };
+      img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(new XMLSerializer().serializeToString(c));
+    }catch(e){ done(); } }); })); }
 function _rcvRowHtml(e,set,x,ri){
   var c=x.curve, L=resultLabels(e), nEx=(c.ex||[]).length;
   var stat=function(k,v){ return '<div><span>'+esc(k)+'</span><b>'+v+'</b></div>'; };
@@ -14672,7 +14782,10 @@ function renderExpEditor(host,e){
   if(ropen){
     var srcChips=(e.protocols||[]).map(function(p){ return '<a class="lb-link proto" data-app="protocols" data-pid="'+esc(p.id)+'" contenteditable="false">'+esc(p.name||p.id)+' &#8599;</a>'; }).join(' ');
     var _po=pubOpts(e);
-    var _toggles=PUB_SECTIONS.map(function(sx){
+    // The Curves switch exists only where there is a fitted dose response to draw: an experiment
+    // without one is not offered a section it could never fill.
+    var _hasCv=expHasCurves(e);
+    var _toggles=PUB_SECTIONS.filter(function(sx){ return sx.k!=='curves'||_hasCv; }).map(function(sx){
       return '<button class="pub-sec'+(_po[sx.k]?' on':'')+'" onclick="pubToggle(\''+e.id+'\',\''+sx.k+'\')"'
         +' title="'+(_po[sx.k]?'In the text — click to leave it out':'Left out — click to include it')+'">'+esc(sx.lbl)+'</button>';
     }).join('');
@@ -14685,7 +14798,7 @@ function renderExpEditor(host,e){
       +(pubIsStale(e)?('<div class="pub-stale">This is your wording, and the steps or their numbers have changed since you wrote it. '
         +'<button onclick="pubBackToLive(\''+e.id+'\')">Back to the live text</button> &mdash; or leave it.</div>'):'')
       +(srcChips?'<div class="exp-pub-src">Sources: '+srcChips+'</div>':'')
-      +'<div class="rt exp-pub" contenteditable="true" data-ctx="pub:'+e.id+'" data-ph="Write the methods paragraph here…" oninput="pubEdit(\''+e.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+pubText(e)+'</div>';
+      +'<div class="rt exp-pub" contenteditable="true" data-ctx="pub:'+e.id+'" data-ph="Write the methods paragraph here…" oninput="pubEdit(\''+e.id+'\',this.innerHTML)" onfocus="_activeEd=this">'+_pubCurvesFill(pubText(e),e,'screen')+'</div>';
   } else {
     body+='<div class="exp-sec-folded">Aim, methods, plate, what happened, results, outcome — and every export. '+reportExportsHtml(e)+'</div>';
   }
@@ -19843,6 +19956,14 @@ var PRINT_CSS='<style>@page{size:A4;margin:16mm 15mm 17mm}'
  +'#print-root .pd-res-hd{font-weight:700;margin-bottom:2px;font-size:10pt;break-after:avoid}'
  +'#print-root .pd-res-when{float:right;font-weight:400;color:#555;font-size:8.5pt}'
  +'#print-root .pd-note{font-size:8.5pt;color:#555;margin:2px 0 0}'
+ // Curves: small panels on shared axes, grey marks, never split across a page. The universal reset
+ // above sets font-size:inherit, which beats a presentation attribute, so the axis text is stated here.
+ +'#print-root .pd-cvset{margin:4px 0 10px}#print-root .pd-cvset-hd{font-weight:700;font-size:9pt;margin:0 0 4px;break-after:avoid}'
+ +'#print-root .pd-cvgrid{font-size:0}#print-root .pd-cv{break-inside:avoid;page-break-inside:avoid}'
+ +'#print-root .pd-cv figcaption{font-size:7.5pt;line-height:1.25;margin:0 0 1px;min-height:2.5em}#print-root .pd-cv figcaption b{font-size:8.5pt}'
+ +'#print-root .pd-cv figcaption i{font-style:normal;color:#555;margin-left:3px}#print-root .pd-cv figcaption span{display:block;color:#444}'
+ +'#print-root svg.rcv-svg{display:block;width:100%;height:auto}#print-root svg.rcv-svg text{font-size:11px;font-family:Arial,Helvetica,sans-serif}'
+ +'#print-root .pd-cvcap{font-size:7.5pt;color:#555;margin:2px 0 0}'
  +'#print-root .pd-exp{margin-top:18px}'
  +'#print-root .pd-exp-hd{font-weight:700;font-size:12.5pt;border-bottom:1pt solid #222;padding-bottom:3px;margin-bottom:8px;break-after:avoid}'
  +'#print-root .pd-exp-hd span{font-weight:400;font-size:10pt;color:#333}'
@@ -20015,6 +20136,9 @@ function pdResults(e){
       +'</tbody></table></div>';
   }).join('');
 }
+// The curves behind the results table, one small panel per fitted compound on shared axes. Nothing at
+// all — no heading — when the experiment holds no fitted dose response.
+function pdCurves(e){ var h=curvesHtml(e,'print'); return h?('<div class="pd-sec-hd">Dose\u2013response curves</div>'+h):''; }
 function pdDeviations(e){
   var d=[]; try{ d=expDeviations(e)||[]; }catch(err){}
   if(!d.length) return '';
@@ -20230,7 +20354,7 @@ function _pdExpHtml(e,o){ o=o||pdfOpts(); var h='';
   var _pt=(e.pubEdited&&e.pubReady)?e.pubReady:buildPubReadyFromExp(e,{setup:1,methods:1,plate:1}); var pub=(o.methods&&_pt&&_pt.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Methods</div><div class="pd-pub">'+_pt+'</div>'):'';
   // The exported record used to omit both the measured data and how the run departed from the
   // protocol — the two things a reviewer, or you in a year, actually asks for.
-  return _pdPost(h+obs+steps+(o.results?pdResults(e):'')+(o.deviations?pdDeviations(e):'')+pub+(o.files?pdFiles(e.files):''), o);
+  return _pdPost(h+obs+steps+(o.results?pdResults(e):'')+((o.curves&&expHasCurves(e))?pdCurves(e):'')+(o.deviations?pdDeviations(e):'')+pub+(o.files?pdFiles(e.files):''), o);
 }
 function buildPrintDoc(o,scope,opts){
   o=o||pdfOpts(); scope=scope||pdfScopeDefault(); opts=opts||{};
@@ -20250,7 +20374,7 @@ function buildPrintDoc(o,scope,opts){
 // someone to repeat the experiment. Not a to-do list (no ticks), not the rationale under every
 // recipe, not the well-by-well list under a map that already shows the wells. Each of those is a
 // box in the export dialog, off by default; the dialog previews the page as the boxes change.
-var PDF_DEFAULTS={summary:0,aim:1,obs:1,plate:1,plateText:0,plateNote:0,steps:1,recipes:1,why:0,ticks:0,log:1,results:1,deviations:1,methods:1,files:1};
+var PDF_DEFAULTS={summary:0,aim:1,obs:1,plate:1,plateText:0,plateNote:0,steps:1,recipes:1,why:0,ticks:0,log:1,results:1,curves:1,deviations:1,methods:1,files:1};
 // The fourth entry says which scopes the box applies to: an experiment's sections mean nothing
 // on a Journal day, so the dialog hides them there rather than offering a box that does nothing.
 var PDF_FIELDS=[
@@ -20261,7 +20385,8 @@ var PDF_FIELDS=[
   ['steps','Protocol, step by step','','exp'],['recipes','Recipe tables','the calculator\u2019s amounts under each step','exp'],
   ['why','Rationale','the notes under recipes and the footnotes under steps','both'],['ticks','Checklists','tick lists left in older steps','both'],
   ['log','What happened','the one-line log written on a ticked step','both'],
-  ['results','Results','the table from Echo, with flags and exclusions','exp'],['deviations','Deviations from the protocol','','exp'],
+  ['results','Results','the table from Echo, with flags and exclusions','exp'],
+  ['curves','Dose\u2013response curves','one panel per fitted compound, the points left out of the fit crossed','exp'],['deviations','Deviations from the protocol','','exp'],
   ['methods','Methods paragraph','','exp'],['files','Attached data','images in full, other files listed','exp']];
 // "A summary" is a choice about this export, not a habit: remembered, it would silently turn the
 // next folder's full records into a summary. The content boxes are remembered; it is not.
@@ -20335,13 +20460,20 @@ function _pdfxScope(){
   if(q[0]==='range') return {kind:'range', from:(el('pdfx-from')||{}).value||addDays(todayStr(),-30), to:(el('pdfx-to')||{}).value||todayStr()};
   return {kind:'allexps'};
 }
+// The curves box is offered only where the export can carry curves: an experiment that holds a fitted
+// dose response, or a folder / project / range with at least one such experiment in it.
+function _pdfxScopeHasCurves(sc){
+  if(sc.kind==='exp'){ var e=LB.data.experiments[sc.id]; return !!e&&expHasCurves(e); }
+  if(_pdfScopeIsBulk(sc)) return pdfScopeExps(sc).some(expHasCurves);
+  return false; }
 function _pdfxScopeChange(first){
   var sc=_pdfxScope(), jr=_pdfScopeIsJournal(sc);
   var dI=el('pdfx-date'), mI=el('pdfx-month');
   if(dI) dI.style.display=sc.kind==='day'?'':'none';
   if(mI) mI.style.display=sc.kind==='month'?'':'none';
+  var _cv=_pdfxScopeHasCurves(sc);
   Array.prototype.forEach.call(document.querySelectorAll('#lb-dialog-card .pdfx-row[data-for]'),function(r){
-    var f=r.getAttribute('data-for'); r.style.display=((jr&&f==='exp')||(f==='bulk'&&!_pdfScopeIsBulk(sc)))?'none':''; });
+    var f=r.getAttribute('data-for'); r.style.display=((jr&&f==='exp')||(f==='bulk'&&!_pdfScopeIsBulk(sc))||(!_cv&&r.querySelector('input[data-k=curves]')))?'none':''; });
   var rg=el('pdfx-range'); if(rg) rg.style.display=sc.kind==='range'?'':'none';
   if(first===true) _pdfxRender(); else _pdfxChange();
 }
@@ -21155,7 +21287,7 @@ function buildOneNoteHtml(){
     +"font-family:'IBM Plex Sans',sans-serif;";
   stage.innerHTML=buildPrintDoc().split('#print-root').join('#onenote-stage');
   document.body.appendChild(stage);
-  return Promise.all([hydrateAtt(stage), printFloatLayers(stage)]).then(function(){
+  return Promise.all([hydrateAtt(stage), printFloatLayers(stage), _rasterCurves(stage)]).then(function(){
     return new Promise(function(res){ setTimeout(function(){
       var body=stage;
       _onCheckboxes(body);
@@ -21187,7 +21319,7 @@ function copyRendered(){
   var moved=[];
   Array.prototype.forEach.call(stage.querySelectorAll('style'), function(st){
     moved.push(st); document.head.appendChild(st); });
-  Promise.all([hydrateAtt(stage), printFloatLayers(stage)]).then(function(){
+  Promise.all([hydrateAtt(stage), printFloatLayers(stage), _rasterCurves(stage)]).then(function(){
     setTimeout(function(){
       // The checkbox squares are ::before, and a pseudo-element is not part of any selection —
       // real ☐/☑ characters go in first or the ticks vanish on the way out.
