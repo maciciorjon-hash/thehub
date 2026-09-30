@@ -149,6 +149,8 @@ The_Hub/
 │   ├── invariants.mjs          (Playwright; runs in CI — see *A bug hunt samples*)
 │   ├── design_invariants.mjs   (Playwright; Blueprint + Ribbon, runs in CI — see *Blueprint and Ribbon, beta-tested*)
 │   ├── echo_invariants.mjs     (Playwright; Echo curves, plots, exports and fits, runs in CI — see *Echo's charts and exports, beta-tested*)
+│   ├── lumina_invariants.mjs   (Playwright; Lumina plates, units, keys, menus, Plot, runs in CI — see *Lumina, polished*)
+│   └── sync_ctxkit.py + ctxkit/ the right-click menu, written into Lumina and the shell
 ├── docs/
 │   ├── CLAUDE_HANDOFF.md       SESSION_HISTORY.md       UI.md
 │   └── PROTOCOL_MIGRATION_REVIEW.md
@@ -6378,6 +6380,72 @@ the compound names as block labels, all plates at once, and a 1…X selector.
   checks order, failure kept apart, one label per block on each plate, the failed well crossed, the
   All view, the arrows, replace-keeps-one and remove-keeps-the-map-and-the-file — proven by putting
   four bugs back. `tools/mobile_sweep.mjs` draws `echo-card`, `check-plates` and `check-plates-all`.
+
+## Lumina, polished — plate names, units, keys, Plot, and a right-click that is one component (2026-09-30)
+
+Jon, with a real PHERAstar export (`CTG20260923_144h_A.xlsx`) in hand: the Fit settings controls were
+badly laid out, a click moved other boxes, plates could not be named, several files should load, exports
+needed a unit and a log option, the Results needed keys and a two-dimensional Plot like Echo's, and
+right-click should work "in all of dHUB".
+
+**Fit settings.** The old panel was an auto-fill grid of 380px cells with the number pushed to the far
+edge, so a label and its box were half a screen apart, and ticking "Fix the bottom" set the *floor* row to
+`display:none` — the grid re-flowed under the pointer. It is two groups (*Flag a curve when* · *Constrain
+the fit*) of rows `[box] [sentence] [number] [unit]`, placed in the left column above the table so the
+chart stays visible while a setting refits it. A row that is off is **dimmed and disabled, never hidden**;
+the floor row greys and says why when the bottom is fixed. Only a row that cannot apply to the assay at all
+(hook on displacement) leaves, and that changes on the other tab.
+
+**Plates have names.** `state.plates[p].name` (+ `nameSrc` `'file'|'user'`): a plate loaded from a reader
+file is called after the file, without the extension; a name the user typed is never overwritten by
+loading another file into the plate. Rename by double-click on the tab, F2, the name field in the
+readings strip or the Names list, or the right-click menu. It is in the tab, the Plate column of the
+results and every export, the Plot legend and the export file name. `lmPlateName(p)` is the one reader.
+
+**Several files.** `handleReaderFiles` sorts by name (numeric), *replaces* a plate that already holds a
+file of the same name (dropping a run twice does not duplicate it), fills empty plates first, then adds
+plates; one undo step. A file whose grid is not the plate's size (a 96-well export on a 384 plate, or the
+reverse) says so instead of silently reading A1–H12. Readings are written short (`3.24M`, `214k`) when
+they would run out of the well — one style per plate, the tooltip keeps the whole number.
+
+**Units** (`state.units`, persisted): *Auto* (each value in the unit that reads best; files in nM, or M for
+logs) or M · mM · µM · nM · pM, *Linear* or *Log₁₀*. One setting drives the table, the Plot, Copy table, the
+results CSV, the raw CSV and the workbook (`_concNum`/`_concHdr` are the only two places a file's potency
+is written). CSV cells are quoted and formula-safe (`_csvCell`) — the raw CSV used to write a compound
+called `Cpd, 2` as two columns.
+
+**A run with no control is raw counts.** It printed `Span −235958%` and flagged every curve for a replicate
+SD of 381519 "%". `state.normalised` is false without a control: the effect is the span in counts, the
+%-based settings (fixed top/bottom, replicate SD, hook) stand aside, and a note above the table says so
+with a button to mark a control.
+
+**Results.** ↑ ↓ (and j k, Home End, PageUp/PageDown) move through the compounds in table order and keep the
+row in view below the sticky header; ← → switch Fit and Raw; P and C switch Plot and Curve. Keys are left
+alone while a field, a menu or a prompt has the keyboard. The table scrolls in its own box with its header
+held. **Plot** (`plotDraw`) is SVG so the PNG is the picture: any fitted quantity against any other,
+default potency (log axis, labelled in the chosen unit) against Dmax/Span; hollow red = flagged, colour by
+plate, a search that dims the rest, names placed greedily where they fit (the rest are counted, never
+stacked), hover for numbers, click to select, double-click for the curve, Save PNG (always on a light
+ground — it is going on a slide).
+
+**Right-click is one component.** `tools/ctxkit/` (`ctxkit.css`, `ctxkit.js`) is the source;
+`python3 tools/sync_ctxkit.py` writes it into every target between `ctx-kit:begin/end` markers (`--check` in
+CI). `ctxBind(resolve)` leaves fields and selected text on the browser's menu; `ctxOpen(items, x, y)` measures
+and clamps the menu, and ↑ ↓ Enter Esc drive it. **Built into Lumina** (wells, row/column headers, compound
+labels, plate tabs, the readings strip, result rows, the curve, the plot, blank areas) **and the shell**
+(app cards, rail, everywhere else in the Hub's own chrome). The other apps do not have it yet: add a target to
+`TARGETS` in the script and give the app a `ctxBind` that says what it offers. The sync script anchors on the
+*real* `</head>`/`</body>` (a line of its own) — the shell has both strings inside JS, and the first version
+inserted its stylesheet into a template literal.
+
+**`tools/lumina_invariants.mjs`** (L1–L9, in CI): plate naming and re-drop, settings that hold still, every unit ×
+scale round-tripped through the CSV/Excel/copy, arrow keys, the menus, every Plot pair, no-control runs,
+readings that fit their wells, wrong-size grids. Builds its own PHERAstar-shaped workbook in the page. Proven
+by putting six bugs back. `--xlsx=PATH` serves SheetJS locally for an offline run.
+
+**Not verified:** the real export was read and loaded (96 readings, named `CTG20260923_144h_A`), but the
+compound layout of Jon's actual plate was not known, so the fit was checked on a planted layout. The other
+17 apps still have the browser's own right-click.
 
 ## Current state
 
