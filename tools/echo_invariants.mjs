@@ -42,6 +42,8 @@
 //   E20 the planner keeps       Typing a decimal into Source, a pre-fill or a volume at a human pace keeps the box, the caret and every
 //       what you type          digit (the planner re-drew the stock boxes 220 ms after each key, so "0.5" became 5); an intermediate you
 //                              are typing in survives the re-plan; restoring an analysis session never writes into the planner.
+//   E21 Dmax is the span       Dmax / Span is top − bottom of the fitted curve, not 100 − bottom: a curve that starts at 80 %
+//                             and falls to 20 % has Dmax 60 in the pipeline's rows and in the local refit.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -521,6 +523,32 @@ if (run('E19')) await guard('E19', async () => {
   check('E19', 'at most 12', r.many === 12, r.many);
   check('E19', 'not a list → no images', r.none, r);
   if (errs2.length) check('E19', 'no page error in Labbook', false, errs2);
+});
+
+if (run('E21')) await guard('E21', async () => {
+  const res = await E(() => {
+    // every row the pipeline produced: Dmax = round(top − bottom) of its own fit
+    const rows = _lastResultsData.filter(r => !r._gainMode && r.Top_val != null && r.Bot_val != null && r.Dmax_pct != null);
+    const badRows = rows.filter(r => r.Dmax_pct !== Math.round(r.Top_val - r.Bot_val)).map(r => `${r.Sample_ID}·${r.Protein} ${r.Dmax_pct} vs ${(r.Top_val - r.Bot_val).toFixed(1)}`);
+    // a curve that starts at 80 % and ends at 20 %, top left free: span 60, not 100 − 20 = 80
+    const xs = [-9, -8.5, -8, -7.5, -7, -6.5, -6, -5.5, -5], pts = [];
+    for (const x of xs) for (let k = 0; k < 2; k++) pts.push({ x, y: 20 + 60 / (1 + Math.pow(10, 1 * (x - -7))) });
+    const f = fit4PL_JS(pts, false, 100, false, null, false, null);
+    return { n: rows.length, badRows, local: f && f.dmax, top: f && f.top, bot: f && f.bot };
+  });
+  check('E21', 'rows from the pipeline: Dmax = top − bottom', res.n > 0 && !res.badRows.length, res);
+  check('E21', 'local refit with a free top: Dmax = 60, not 100 − bottom', res.local != null && Math.abs(res.local - 60) <= 1, res);
+  // the whole pipeline again with the top left free: Dmax must still be top − bottom of each fit
+  await E(() => { document.getElementById('p-top-en').checked = false; runPipeline(); });
+  await pg.waitForTimeout(1500);
+  await pg.waitForFunction(() => !window._pipelineRunning && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }).catch(() => {});
+  const free = await E(() => {
+    const rows = _lastResultsData.filter(r => !r._gainMode && r.Top_val != null && r.Bot_val != null && r.Dmax_pct != null);
+    const moved = rows.filter(r => Math.abs(r.Top_val - 100) > 1).length;
+    return { n: rows.length, moved, bad: rows.filter(r => Math.abs(r.Dmax_pct - (r.Top_val - r.Bot_val)) > 1).map(r => `${r.Sample_ID}·${r.Protein} ${r.Dmax_pct} vs ${(r.Top_val - r.Bot_val).toFixed(1)}`).slice(0, 5) };
+  });
+  check('E21', 'free top, whole pipeline: Dmax = top − bottom', free.n > 0 && !free.bad.length, free);
+  await E(() => { document.getElementById('p-top-en').checked = true; });
 });
 
 if (run('E20')) await guard('E20', async () => {

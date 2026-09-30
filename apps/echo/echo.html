@@ -1313,7 +1313,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div class="guide-section">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>Output values</h3>
           <div class="guide-row"><div class="guide-key">DC50 (nM)</div><div class="guide-val">Concentration achieving 50% of maximal degradation — derived from the EC50 of the 4PL fit, converted to nM.</div></div>
-          <div class="guide-row"><div class="guide-key">Dmax (%)</div><div class="guide-val">Maximum degradation at plateau = <b>100% − bottom asymptote</b> of the 4PL fit. A Dmax of 80% means 20% of target remains at saturating compound.</div></div>
+          <div class="guide-row"><div class="guide-key">Dmax (%)</div><div class="guide-val">Maximum degradation at plateau = <b>top − bottom</b> of the 4PL fit (the span of the curve). With the top fixed at 100% this is 100% − bottom; with a free top it follows where the curve actually starts.</div></div>
           <div class="guide-row"><div class="guide-key">LogIC50 (M)</div><div class="guide-val">Log₁₀ of the inflection point (EC50 in molar units) from the 4PL fit. Useful for comparing potency across orders of magnitude on the scatter plot X-axis.</div></div>
           <div class="guide-row"><div class="guide-key">Hill slope</div><div class="guide-val">Cooperativity / steepness of the sigmoidal curve. Values near 1 are typical; values &gt;2 may indicate steep cooperativity or data artefacts.</div></div>
           <div class="guide-row"><div class="guide-key">R²</div><div class="guide-val">Goodness of fit for the 4PL curve. Values below the Min R² threshold are highlighted in red in the results table.</div></div>
@@ -2933,9 +2933,10 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         // lower confidence limit with it ("0–14888").
         const _nM3 = v => (isFinite(v) ? +(+v).toPrecision(3) : null);
         const dc50 = _nM3(Math.pow(10, logec50) * 1e9);
-        // Span is the drop the curve itself makes (top − bottom): with a free top, 100 − bottom
-        // reported a span the fitted curve does not have. Dmax stays relative to DMSO (100 %).
-        const dmax = Math.round(gainMode ? tc : assayType === 'ctg' ? (tc - bot) : (100 - bot));
+        // Dmax / Span is the drop the curve itself makes (top − bottom), not 100 − bottom: curves
+        // that start higher or lower than the control would otherwise report a span they do not
+        // have. With the top fixed at 100 % the two are identical.
+        const dmax = Math.round(gainMode ? tc : (tc - bot));
         const pdc50 = +(-logec50).toFixed(3);
 
         const _seArr = fitResult.se || null;
@@ -7833,7 +7834,7 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
   const ssTot=ys.reduce((s,v)=>s+(v-ymean)**2,0);
   const ssRes=xs.reduce((s,x,i)=>s+(ys[i]-(topFixed&&!botFixed&&!hillFixed?_4plVal3(x,bot,logec50,hill,top):_4plVal4(x,bot,logec50,hill,top)))**2,0);
   const r2=ssTot>0?Math.max(0,1-ssRes/ssTot):0;
-  return {logec50, hill, bot, top, r2, dmax:Math.round(100-bot),
+  return {logec50, hill, bot, top, r2, dmax:Math.round(top-bot),
           dc50_nM:+Math.pow(10,logec50+9).toPrecision(3),
           logIC50_M:Math.round(logec50*10000)/10000,
           pDC50:Math.round(-logec50*100)/100};
