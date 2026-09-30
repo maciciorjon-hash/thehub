@@ -6559,11 +6559,17 @@ PDF, on by default and **hidden in the dialog unless something in the chosen sco
 (`_pdfxScopeHasCurves`); in a folder / project / everything export each experiment prints its own or none.
 The one-table summary and the Methods sheet (the manuscript subset) carry none.
 
-**One panel per fitted compound, on shared axes.** Panels that sit side by side share their x and y
-ranges per set (`_rcvRange`) — otherwise a compound that barely moves looks as steep as one that kills the
-signal. Three across, four when there are more than 24. Each carries compound · target, the potency with
-its 95 % CI, n, points left out and any flag; a figure legend under the grid says what a point, a cross,
-the line and the dashed line are. Points are individual wells, not means — the transparent way to show n.
+**The layout follows the count of curves that share a readout.** One curve alone: one panel. **Two to six:
+one overlay on a single dose axis** (`rcvOverlaySvg`) — the classic manuscript figure. **More than six: one
+small panel each, on shared axes** (`_rcvRange`), three across (four above 24), because seven series are a
+tangle and sixty are unreadable. Each series has its own colour, marker shape **and** dash (`RCV_SER`), so the
+six stay apart in black and white; each fit's midpoint is a tick on the dose axis; a point left out is a cross in
+its series' colour; and the key — name, potency with its 95 % CI, n, points left out, flag — is drawn **inside
+the same SVG**, so the picture that goes to Word or a slide carries its own legend. **Curves apart** (a Report
+switch, off by default, and a PDF box) keeps two to six as one panel each; both are offered only where they would
+change something (`expOverlayable`, `_pdfxScopeHasOverlay`). The 1–6 / 7+ limits are `RCV_OVERLAY_MIN/MAX`.
+Points are individual wells, not means — the transparent way to show n. A figure legend under the grid says
+what a point, a cross, the line and the tick are.
 
 **On paper the marks carry their own grey** (`rcvSvg(c,{mono:true})`: black fit, dark points, grey
 crosses and midpoint, no theme variable), because the print root resets colour and font size with
@@ -6579,9 +6585,9 @@ Methods sheet has none, a Word copy has pictures and no curve SVG, and a bulk ex
 the experiments that have them. (The heading counter reads headings, not prose: the results sentence itself
 begins "Dose–response curves were fitted".)
 
-**Not done:** an overlay of several compounds on one axis (the classic manuscript figure) — small
-multiples were chosen because a 60-compound screen is unreadable overlaid; it would be the natural
-next step for runs of two to six compounds against one target.
+**R8 also pins the layout**: one curve is a panel, two/three/six are one overlay with that many series and
+legend entries, seven are seven panels, and six overlaid series all have a distinct line style and more than
+one marker shape on paper.
 
 ## A help assistant with no model behind it (2026-09-30)
 

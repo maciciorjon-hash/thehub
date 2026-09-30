@@ -1323,14 +1323,20 @@ async function suite(opts) {
         const live = _pubCurvesFill(pubText(e), e, 'screen'), d = document.createElement('div'); d.innerHTML = live;
         const panels = d.querySelectorAll('figure.pub-cv');
         if (nHead(live) !== 1) bad('R8', key, `the Report has ${nHead(live)} curve headings, expected 1`);
-        if (panels.length !== 2) bad('R8', key, `the Report draws ${panels.length} panels, expected 2 (the excluded measurement is not a figure)`);
+        // two curves share a readout, so they are ONE figure on one axis, keyed inside the picture (the excluded measurement is not a series)
+        if (panels.length !== 1 || !panels[0].classList.contains('pub-cvov') || d.querySelectorAll('svg.rcv-ov').length !== 1) bad('R8', key, `two curves are ${panels.length} figure(s), expected one overlay`);
+        if (panels.length && (panels[0].querySelectorAll('polyline').length !== 2 || /INV-X/.test(panels[0].textContent))) bad('R8', key, 'the overlay does not draw exactly the two fitted, non-excluded curves with their names');
         if (d.querySelectorAll('.rcv-x').length !== 1) bad('R8', key, 'the point left out of the fit is not crossed');
         if (text(d.querySelector('.pub-curves').innerHTML).indexOf('INV-X') >= 0) bad('R8', key, 'an excluded measurement is drawn');
         leaks('R8', key, 'the curves', text(d.querySelector('.pub-curves').innerHTML));
         // the switch and the pane
         const pn = paneOf(e);
         if (!/Curves/.test(pn.secs)) bad('R8', key, 'no Curves switch on a Report that has curves');
-        if (!pn.pane || pn.pane.querySelectorAll('figure.pub-cv').length !== 2) bad('R8', key, 'the Report pane does not show the curves');
+        if (!pn.pane || pn.pane.querySelectorAll('figure.pub-cvov').length !== 1) bad('R8', key, 'the Report pane does not show the overlaid curves');
+        if (!/Curves apart/.test(pn.secs)) bad('R8', key, 'no "Curves apart" switch though two curves are overlaid');
+        // ...and apart, one panel each
+        { const o2 = pubOpts(e); o2.curvesSplit = true; e.pubOpts = o2; const dsp = document.createElement('div'); dsp.innerHTML = _pubCurvesFill(pubText(e), e, 'screen');
+          if (dsp.querySelectorAll('figure.pub-cv:not(.pub-cvov)').length !== 2 || dsp.querySelector('svg.rcv-ov')) bad('R8', key, 'Curves apart does not give one panel per compound'); delete e.pubOpts; }
         const o = pubOpts(e); o.curves = false; e.pubOpts = o;
         if (/pub-curves/.test(pubText(e)) || nHead(_pubCurvesFill(pubText(e), e)) ) bad('R8', key, 'turning Curves off leaves them in the Report');
         delete e.pubOpts;
@@ -1341,20 +1347,38 @@ async function suite(opts) {
         if ((_pubCurvesFill(pubText(e), e).match(/rcv-x/g) || []).length !== 0) bad('R8', key, 'a hand-written Report shows curves as they were, not as they are');
         e.pubEdited = false; delete e.pubReady; delete e.pubSrcSig; rows[1].curve = mkCurve(4.5e-8, true);
         // the PDF
-        const pdf = buildPrintDoc(ALLON, { kind: 'exp', id: e.id }), dd = document.createElement('div'); dd.innerHTML = pdf;
-        if (dd.querySelectorAll('figure.pd-cv').length !== 2) bad('R8', key, `the record PDF draws ${dd.querySelectorAll('figure.pd-cv').length} panels, expected 2`);
-        if (dd.querySelectorAll('svg.rcv-svg').length !== 2 || dd.querySelector('svg.rcv-svg[class*=rcv-] [class^=rcv-]')) bad('R8', key, 'the PDF panels lean on the app stylesheet instead of carrying their own ink');
+        const pdf = buildPrintDoc(ALLON, { kind: 'exp', id: e.id }), dd = document.createElement('div'); dd.innerHTML = pdf;   // ALLON has "Curves apart" on
+        if (dd.querySelectorAll('figure.pd-cv').length !== 2) bad('R8', key, `the record PDF with Curves apart draws ${dd.querySelectorAll('figure.pd-cv').length} panels, expected 2`);
+        const pdo = document.createElement('div'); pdo.innerHTML = buildPrintDoc(Object.assign({}, ALLON, { curvesSplit: 0 }), { kind: 'exp', id: e.id });
+        if (pdo.querySelectorAll('figure.pd-cvov').length !== 1 || pdo.querySelectorAll('svg.rcv-ov').length !== 1) bad('R8', key, 'the record PDF does not overlay two curves by default');
+        if (dd.querySelectorAll('svg.rcv-svg').length !== 2 || dd.querySelector('svg.rcv-svg [class*="rcv-"]') || pdo.querySelector('svg.rcv-svg [class*="rcv-"]')) bad('R8', key, 'the PDF panels lean on the app stylesheet instead of carrying their own ink');
         if (!/stroke="#000"/.test(pdf)) bad('R8', key, 'the fitted line on paper is not black');
         if (/var\(--/.test(dd.querySelector('.pd-cvset') ? dd.querySelector('.pd-cvset').innerHTML : '')) bad('R8', key, 'the printed curves use a theme variable');
         if (nHead(buildPrintDoc(Object.assign({}, ALLON, { curves: 0 }), { kind: 'exp', id: e.id }))) bad('R8', key, 'the curves box does nothing');
         if (!_pdfxScopeHasCurves({ kind: 'exp', id: e.id })) bad('R8', key, 'the export dialog would hide the curves box for an experiment that has curves');
         if (/figure class="pd-cv|>Dose–response curves</.test(buildMethodsDoc(e))) bad('R8', key, 'the Methods sheet, the manuscript subset, carries curves');
         // Word and OneNote get pictures
-        const cp = document.createElement('div'); cp.innerHTML = _pubCurvesFill(pubText(e), e, 'copy'); await _rasterCurves(cp);
-        if (cp.querySelectorAll('svg.rcv-svg').length || cp.querySelectorAll('img[src^="data:image/png"]').length !== 2) bad('R8', key, `a copy for Word has ${cp.querySelectorAll('svg.rcv-svg').length} curve svg and ${cp.querySelectorAll('img[src^="data:image/png"]').length} pictures, expected 0 and 2`);
+        const cp = document.createElement('div'); cp.innerHTML = _pubCurvesFill(pubText(e), e, 'copy'); const nSvg = cp.querySelectorAll('svg.rcv-svg').length; await _rasterCurves(cp);
+        if (!nSvg || cp.querySelectorAll('svg.rcv-svg').length || cp.querySelectorAll('img[src^="data:image/png"]').length !== nSvg) bad('R8', key, `a copy for Word has ${cp.querySelectorAll('svg.rcv-svg').length} curve svg and ${cp.querySelectorAll('img[src^="data:image/png"]').length} pictures, expected 0 and ${nSvg}`);
         // and again as data only where there is data: strip them and everything is gone again
         rows.forEach(r => delete r.curve);
         if (expHasCurves(e) || nHead(_pubCurvesFill(pubText(e), e))) bad('R8', key, 'curves remain after the fits were removed');
+      });
+      // The layout follows the count: one curve alone, two to six overlaid, more than six one panel each.
+      await guard('R8', 'layout', async () => {
+        const m = made[0], e = m.e, rows = e.integration.results[0].rows;
+        const fig = n => { rows.length = 0; for (let i = 0; i < n; i++) rows.push({ compound: 'INV-L' + i, target: 'T', potency: 10 + i, effect: 90, hill: 1, r2: .99, curve: mkCurve(1e-8 * (i + 1), i === 1) });
+          const d = document.createElement('div'); d.innerHTML = _pubCurvesFill(pubText(e), e, 'screen'); return { ov: d.querySelectorAll('svg.rcv-ov').length, panels: d.querySelectorAll('figure.pub-cv:not(.pub-cvov)').length, lines: d.querySelectorAll('svg.rcv-ov polyline').length, keys: d.querySelectorAll('svg.rcv-ov tspan[font-weight]').length }; };
+        tick('R8');
+        const one = fig(1); if (one.ov !== 0 || one.panels !== 1) bad('R8', 'layout', `one curve should be one panel, got ${JSON.stringify(one)}`);
+        for (const n of [2, 3, 6]) { const r = fig(n); if (r.ov !== 1 || r.panels !== 0 || r.lines !== n || r.keys !== n) bad('R8', 'layout', `${n} curves should be one overlay with ${n} series and ${n} legend entries, got ${JSON.stringify(r)}`); }
+        const seven = fig(7); if (seven.ov !== 0 || seven.panels !== 7) bad('R8', 'layout', `seven curves should be seven panels, got ${JSON.stringify(seven)}`);
+        // six series stay apart in black and white: every dash/marker pair is different
+        fig(6); const d6 = document.createElement('div'); d6.innerHTML = curvesHtml(e, 'print', {});
+        const sigs = new Set(Array.from(d6.querySelectorAll('svg.rcv-ov polyline')).map(p => p.getAttribute('stroke') + '|' + (p.getAttribute('stroke-dasharray') || '')));
+        if (sigs.size !== 6) bad('R8', 'layout', `six overlaid series are not all told apart on paper (${sigs.size} distinct line styles)`);
+        const mk6 = new Set(Array.from(d6.querySelectorAll('svg.rcv-ov > circle, svg.rcv-ov > rect, svg.rcv-ov > polygon')).map(n => n.tagName)); if (mk6.size < 3) bad('R8', 'layout', 'the overlaid series share one marker shape');
+        rows.length = 0; RES.forEach(r => rows.push(JSON.parse(JSON.stringify(r))));
       });
       // A folder or project export draws curves only for the experiments that have them.
       await guard('R8', 'bulk', async () => {

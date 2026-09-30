@@ -1668,6 +1668,8 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .pub-cv figcaption span{display:block;color:var(--text3);font-family:var(--mono);}
 .pub-cv .rcv-svg{display:block;}
 .pub-cvcap{font-size:var(--fs-2);color:var(--text3);margin-top:6px;}
+.pub-cvov{max-width:640px;}
+.rcv-tt{fill:var(--text);}
 .res-tbl{width:100%;min-width:560px;border-collapse:collapse;font-size:var(--fs-3);}
 .res-tbl th{text-align:left;font-weight:600;color:var(--text3);font-size:var(--fs-3);
   letter-spacing:.4px;padding:7px 13px;border-bottom:1px solid var(--border);}
@@ -11445,8 +11447,8 @@ function pubSentence(b,e){
 // subset (METHODS_ONLY) whatever the toggles say.
 var PUB_SECTIONS=[{k:'aim',lbl:'Aim'},{k:'run',lbl:'Run'},{k:'setup',lbl:'Setup'},{k:'methods',lbl:'Methods'},
                   {k:'plate',lbl:'Plate layout'},{k:'dev',lbl:'Deviations'},{k:'log',lbl:'What happened'},
-                  {k:'results',lbl:'Results'},{k:'curves',lbl:'Curves'},{k:'obs',lbl:'Observations'},{k:'outcome',lbl:'Outcome'},{k:'files',lbl:'Files'}];
-var PUB_DEFAULT_OFF={};
+                  {k:'results',lbl:'Results'},{k:'curves',lbl:'Curves'},{k:'curvesSplit',lbl:'Curves apart'},{k:'obs',lbl:'Observations'},{k:'outcome',lbl:'Outcome'},{k:'files',lbl:'Files'}];
+var PUB_DEFAULT_OFF={curvesSplit:1};   // two to six compounds are overlaid unless asked to be kept apart
 var METHODS_ONLY={setup:1,methods:1,plate:1,results:1};
 function pubOpts(e,only){ var o=(e&&e.pubOpts)||{}, out={};
   PUB_SECTIONS.forEach(function(s){ out[s.k]=only?!!only[s.k]:((o[s.k]===undefined)?!PUB_DEFAULT_OFF[s.k]:!!o[s.k]); }); return out; }
@@ -13589,6 +13591,51 @@ function _rcvRange(list){
   yHi=norm?Math.max(110,yHi*1.03):yHi*1.06; if(!(yHi>yLo)) yHi=yLo+1;
   return {xr:[Math.min.apply(null,xs)-0.35,Math.max.apply(null,xs)+0.35], yr:[yLo,yHi]}; }
 
+// ── Several compounds on one axis ──────────────────────────────────────────────────────────
+// The classic figure: two to six compounds against the same readout, on one dose axis. Six series have
+// to stay apart in colour AND in black and white, so each has its own marker shape and its own dash as
+// well as its own colour (a grey stands in for the colour on paper). The legend is drawn inside the same
+// SVG, so the picture that goes to Word or a slide carries its own key.
+var RCV_SER=[{c:'#5e87c5',g:'#000',d:'',m:'circle'},{c:'#d98a2b',g:'#555',d:'7 3',m:'square'},{c:'#3f9d6b',g:'#777',d:'2 2.5',m:'tri'},
+  {c:'#b5546b',g:'#333',d:'9 3 2 3',m:'diamond'},{c:'#8a6bbd',g:'#777',d:'1 3',m:'tridown'},{c:'#5f6b7a',g:'#888',d:'12 4',m:'hex'}];
+function _rcvMark(m,cx,cy,r,a){
+  var f=function(n){ return +n.toFixed(1); };
+  if(m==='square') return '<rect x="'+f(cx-r)+'" y="'+f(cy-r)+'" width="'+f(2*r)+'" height="'+f(2*r)+'" '+a+'/>';
+  var pts={tri:[[0,-1.25],[1.15,.95],[-1.15,.95]],tridown:[[0,1.25],[1.15,-.95],[-1.15,-.95]],diamond:[[0,-1.3],[1.1,0],[0,1.3],[-1.1,0]],
+    hex:[[1.1,0],[.55,.95],[-.55,.95],[-1.1,0],[-.55,-.95],[.55,-.95]]}[m];
+  if(!pts) return '<circle cx="'+f(cx)+'" cy="'+f(cy)+'" r="'+f(r)+'" '+a+'/>';
+  return '<polygon points="'+pts.map(function(q){ return f(cx+q[0]*r)+','+f(cy+q[1]*r); }).join(' ')+'" '+a+'/>'; }
+// items: [{name, detail, curve}] — 2 to 6 of them, sharing y's meaning.
+function rcvOverlaySvg(items,o){
+  o=o||{}; var mono=!!o.mono, n=items.length, W=560, PH=250, P={l:50,r:14,t:12,b:36}, LH=16;
+  var R=_rcvRange(items.map(function(it){ return it.curve; })), x0=R.xr[0], x1=R.xr[1], yLo=R.yr[0], yHi=R.yr[1], norm=items.every(function(it){ return _rcvNorm(it.curve); });
+  var H=P.t+PH+P.b+8+n*LH+4;
+  var px=function(v){ return P.l+(v-x0)/(x1-x0)*(W-P.l-P.r); }, py=function(v){ return P.t+PH-(v-yLo)/(yHi-yLo)*PH; };
+  var INK={g:'stroke="#d6d6d6" stroke-width=".6"',t:'fill="#444" font-family="Arial,Helvetica,sans-serif" font-size="11"',tt:'fill="#111" font-family="Arial,Helvetica,sans-serif" font-size="11"',f:'fill="none" stroke="#888" stroke-width=".8"'};
+  var CLS={g:'class="rcv-g"',t:'class="rcv-t"',tt:'class="rcv-tt"',f:'class="rcv-f"'};
+  var K=function(r){ return mono?INK[r]:CLS[r]; };
+  var g='', span=x1-x0, step=span>8?2:1;
+  for(var t=Math.ceil(x0/step)*step;t<=x1;t+=step) g+='<line x1="'+px(t)+'" x2="'+px(t)+'" y1="'+P.t+'" y2="'+(P.t+PH)+'" '+K('g')+'/><text x="'+px(t)+'" y="'+(P.t+PH+15)+'" '+K('t')+' text-anchor="middle">'+esc(_rcvConc(t))+'</text>';
+  var ystep=norm?25:(function(){ var r=(yHi-yLo)/4, m=Math.pow(10,Math.floor(Math.log10(r))); return [1,2,5,10].map(function(k){ return k*m; }).filter(function(k){ return k>=r; })[0]; })();
+  for(var yv=Math.ceil(yLo/ystep)*ystep;yv<=yHi;yv+=ystep) g+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+py(yv)+'" y2="'+py(yv)+'" '+K('g')+'/><text x="'+(P.l-6)+'" y="'+(py(yv)+4)+'" '+K('t')+' text-anchor="end">'+(Math.abs(yv)>=1000?_rn(yv):(+yv.toPrecision(3)))+'</text>';
+  g+='<text x="'+((P.l+W-P.r)/2)+'" y="'+(P.t+PH+31)+'" '+K('t')+' text-anchor="middle">Dose</text>'
+    +'<text transform="translate(12,'+(P.t+PH/2)+') rotate(-90)" '+K('t')+' text-anchor="middle">'+esc((items[0].curve.yl||'Signal').slice(0,40))+'</text>';
+  var body='', key='';
+  items.forEach(function(it,i){
+    var S=RCV_SER[i%RCV_SER.length], col=mono?S.g:S.c, c=it.curve, fit=(c.p&&c.p.length===4&&c.p.every(isFinite))?c.p:null;
+    var dash=S.d?(' stroke-dasharray="'+S.d+'"'):'', ink='fill="none" stroke="'+col+'" stroke-width="'+(mono?1.4:1.8)+'"'+dash+' stroke-linejoin="round"';
+    if(fit){ var pts=[]; for(var k=0;k<=80;k++){ var xv=x0+(x1-x0)*k/80; pts.push(px(xv).toFixed(1)+','+py(Math.max(yLo,Math.min(yHi,_rcv4(xv,fit,c.gain)))).toFixed(1)); }
+      body+='<polyline points="'+pts.join(' ')+'" '+ink+'/>';
+      // where the fit crosses its own midpoint, marked on the dose axis so it can be read off
+      if(fit[1]>=x0&&fit[1]<=x1) body+='<path d="M'+px(fit[1]).toFixed(1)+' '+(P.t+PH)+'v-8" fill="none" stroke="'+col+'" stroke-width="2.2"/>'; }
+    var pa='fill="'+col+'" fill-opacity=".85" stroke="#fff" stroke-width=".6"';
+    c.x.forEach(function(xv,j){ body+=_rcvMark(S.m,px(xv),py(c.y[j]),2.9,pa); });
+    (c.ex||[]).forEach(function(q){ var cx=px(q[0]),cy=py(q[1]),d=3.6; body+='<path '+(mono?'':'class="rcv-x" ')+'d="M'+(cx-d)+' '+(cy-d)+'L'+(cx+d)+' '+(cy+d)+'M'+(cx-d)+' '+(cy+d)+'L'+(cx+d)+' '+(cy-d)+'" fill="none" stroke="'+col+'" stroke-width="1.5" stroke-linecap="round"/>'; });
+    var ly=P.t+PH+P.b+8+i*LH+11;
+    key+='<line x1="'+P.l+'" x2="'+(P.l+32)+'" y1="'+(ly-4)+'" y2="'+(ly-4)+'" '+ink+'/>'+_rcvMark(S.m,P.l+16,ly-4,3.3,pa)
+      +'<text x="'+(P.l+40)+'" y="'+ly+'" '+K('t')+'><tspan '+K('tt')+' font-weight="700">'+esc(it.name)+'</tspan><tspan> \u00b7 '+esc(it.detail)+'</tspan></text>'; });
+  return '<svg class="rcv-svg rcv-ov" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Dose-response curves, '+n+' compounds on one axis"><rect x="'+P.l+'" y="'+P.t+'" width="'+(W-P.l-P.r)+'" height="'+PH+'" '+K('f')+'/>'+g+body+key+'</svg>'; }
+
 // ── Curves in the Report and on paper ──────────────────────────────────────────────────────
 // Only an experiment that holds a fitted dose response has curves. That is decided by the data and
 // not by the experiment type: a Western blot, a co-IP ending in MS, a cloning or a proteomics run
@@ -13607,27 +13654,43 @@ function expCurveGroups(e){
     order.forEach(function(k){ out.push({set:set,yl:k,rows:by[k],skipped:skipped}); }); });
   return out; }
 function expHasCurves(e){ return expCurveGroups(e).length>0; }
+// Two to six curves that share a readout are drawn on one axis; more than that (or a lone curve) is
+// small multiples, because seven series are a tangle and sixty are unreadable.
+var RCV_OVERLAY_MIN=2, RCV_OVERLAY_MAX=6;
+function expOverlayable(e){ return expCurveGroups(e).some(function(g){ return g.rows.length>=RCV_OVERLAY_MIN&&g.rows.length<=RCV_OVERLAY_MAX; }); }
 // mode: 'screen' (themed, a responsive grid), 'print' and 'copy' (grey marks, inline-block panels so
 // a Word paste keeps the grid; 'print' also breaks nowhere inside a panel).
-function curvesHtml(e,mode){
-  mode=mode||'screen'; var mono=mode!=='screen', groups=expCurveGroups(e); if(!groups.length) return '';
-  var C=mode==='screen'?{cv:'pub-cv',set:'pub-cvset',hd:'pub-cvset-hd',grid:'pub-cvgrid',cap:'pub-cvcap'}:{cv:'pd-cv',set:'pd-cvset',hd:'pd-cvset-hd',grid:'pd-cvgrid',cap:'pd-cvcap'};
+function curvesHtml(e,mode,opt){
+  mode=mode||'screen'; opt=opt||{}; var mono=mode!=='screen', groups=expCurveGroups(e); if(!groups.length) return '';
+  var C=mode==='screen'?{cv:'pub-cv',ov:'pub-cvov',set:'pub-cvset',hd:'pub-cvset-hd',grid:'pub-cvgrid',cap:'pub-cvcap'}:{cv:'pd-cv',ov:'pd-cvov',set:'pd-cvset',hd:'pd-cvset-hd',grid:'pd-cvgrid',cap:'pd-cvcap'};
   return groups.map(function(gr){
     var set=gr.set, rows=gr.rows, R=_rcvRange(rows.map(function(x){ return x.curve; })), cols=rows.length>24?4:3;
     var L=resultLabels(e), pot=String(set.potencyLabel||L.p).split(' ')[0], pu=set.potencyUnit||'nM';
-    var panels=rows.map(function(x){
-      var c=x.curve, nEx=(c.ex||[]).length, bits=[];
+    var bitsOf=function(x){ var c=x.curve, nEx=(c.ex||[]).length, bits=[];
       if(isFinite(parseFloat(x.potency))) bits.push(pot+' '+_rn(x.potency)+' '+pu+(c.ci?(' ('+_rn(c.ci[0])+'\u2013'+_rn(c.ci[1])+')'):''));
       bits.push('n\u00a0'+c.n+(nEx?(' (+'+nEx+' left out)'):''));
       if(x.flag) bits.push('flagged'+((x.flagReason||'').trim()?(': '+x.flagReason.trim()):''));
+      return bits; };
+    var head=[set.source?(String(set.source).replace(/^./,function(m){ return m.toUpperCase(); })):'',set.label||'',(set.createdAt||'').slice(0,10)].filter(Boolean).join(' \u00b7 ');
+    var skipTxt=gr.skipped?(' '+gr.skipped+' measurement'+(gr.skipped===1?'':'s')+' excluded in the notebook '+(gr.skipped===1?'is':'are')+' not shown.'):'';
+    // Two to six on one axis, unless asked to keep them apart.
+    if(!opt.split&&rows.length>=RCV_OVERLAY_MIN&&rows.length<=RCV_OVERLAY_MAX){
+      // A name is the compound; the target joins it only where the compound alone would not tell two series apart.
+      var names=rows.map(function(x){ return String(x.compound||''); }), dupe=names.some(function(nm,i){ return names.indexOf(nm)!==i; });
+      var items=rows.map(function(x){ return {name:(dupe&&x.target)?(x.compound+' \u00b7 '+x.target):String(x.compound||''), detail:bitsOf(x).join(' \u00b7 '), curve:x.curve}; });
+      return '<div class="'+C.set+'"><div class="'+C.hd+'">'+esc(head)+'</div>'
+        +'<figure class="'+C.cv+' '+C.ov+'"'+(mode==='screen'?'':' style="margin:0;width:78%"')+'>'+rcvOverlaySvg(items,{mono:mono})+'</figure>'
+        +'<div class="'+C.cap+'">Each symbol is one well; a cross is a well left out of the fit. Lines are the four-parameter logistic fits and the tick on the dose axis marks each fit\u2019s midpoint. Dose in molar, log scale; y is '
+        +esc(gr.yl||'the signal')+'.'+skipTxt+'</div></div>'; }
+    var panels=rows.map(function(x){
+      var c=x.curve, bits=bitsOf(x);
       return '<figure class="'+C.cv+'"'+(mode==='screen'?'':' style="display:inline-block;vertical-align:top;width:'+(cols===4?'24':'32.3')+'%;margin:0 .4% 8px;padding:0"')+'>'
         +'<figcaption><b>'+esc(x.compound||'')+'</b>'+(x.target?' <i>'+esc(x.target)+'</i>':'')+'<span>'+esc(bits.join(' \u00b7 '))+'</span></figcaption>'
         +rcvSvg(c,{small:true,mono:mono,xr:R.xr,yr:R.yr})+'</figure>'; }).join('');
-    var head=[set.source?(String(set.source).replace(/^./,function(m){ return m.toUpperCase(); })):'',set.label||'',(set.createdAt||'').slice(0,10)].filter(Boolean).join(' \u00b7 ');
     return '<div class="'+C.set+'"><div class="'+C.hd+'">'+esc(head)+'</div>'
       +'<div class="'+C.grid+'">'+panels+'</div>'
       +'<div class="'+C.cap+'">Each point is one well; a cross is a well left out of the fit. The line is the four-parameter logistic fit and the dashed line its midpoint. Dose in molar, log scale; y is '
-      +esc(gr.yl||'the signal')+'.'+(gr.skipped?(' '+gr.skipped+' measurement'+(gr.skipped===1?'':'s')+' excluded in the notebook '+(gr.skipped===1?'is':'are')+' not shown.'):'')+'</div></div>'; }).join('');
+      +esc(gr.yl||'the signal')+'.'+skipTxt+'</div></div>'; }).join('');
 }
 // The Report holds a marker and the curves are drawn from the record every time it is read, so a
 // paragraph you have written in still shows the curves as they stand now, and no drawing is stored
@@ -13635,7 +13698,7 @@ function curvesHtml(e,mode){
 function _pubCurvesFill(html,e,mode){
   if(!html||String(html).indexOf('pub-curves')<0) return html;
   var d=document.createElement('div'); d.innerHTML=html; var ph=d.querySelectorAll('.pub-curves'); if(!ph.length) return html;
-  var inner=curvesHtml(e,mode||'screen');
+  var inner=curvesHtml(e,mode||'screen',{split:!!pubOpts(e).curvesSplit});
   Array.prototype.forEach.call(ph,function(n,i){
     if(i===0&&inner){ n.innerHTML=inner; return; }
     var h=n.previousElementSibling; if(h&&/^H4$/.test(h.tagName)&&/curves/i.test(h.textContent)) h.remove(); n.remove(); });
@@ -14869,7 +14932,7 @@ function renderExpEditor(host,e){
     // The Curves switch exists only where there is a fitted dose response to draw: an experiment
     // without one is not offered a section it could never fill.
     var _hasCv=expHasCurves(e);
-    var _toggles=PUB_SECTIONS.filter(function(sx){ return sx.k!=='curves'||_hasCv; }).map(function(sx){
+    var _toggles=PUB_SECTIONS.filter(function(sx){ return (sx.k!=='curves'||_hasCv)&&(sx.k!=='curvesSplit'||expOverlayable(e)); }).map(function(sx){
       return '<button class="pub-sec'+(_po[sx.k]?' on':'')+'" onclick="pubToggle(\''+e.id+'\',\''+sx.k+'\')"'
         +' title="'+(_po[sx.k]?'In the text — click to leave it out':'Left out — click to include it')+'">'+esc(sx.lbl)+'</button>';
     }).join('');
@@ -20047,7 +20110,7 @@ var PRINT_CSS='<style>@page{size:A4;margin:16mm 15mm 17mm}'
  +'#print-root .pd-cv figcaption{font-size:7.5pt;line-height:1.25;margin:0 0 1px;min-height:2.5em}#print-root .pd-cv figcaption b{font-size:8.5pt}'
  +'#print-root .pd-cv figcaption i{font-style:normal;color:#555;margin-left:3px}#print-root .pd-cv figcaption span{display:block;color:#444}'
  +'#print-root svg.rcv-svg{display:block;width:100%;height:auto}#print-root svg.rcv-svg text{font-size:11px;font-family:Arial,Helvetica,sans-serif}'
- +'#print-root .pd-cvcap{font-size:7.5pt;color:#555;margin:2px 0 0}'
+ +'#print-root .pd-cvcap{font-size:7.5pt;color:#555;margin:2px 0 0}#print-root .pd-cvov{break-inside:avoid;page-break-inside:avoid}'
  +'#print-root .pd-exp{margin-top:18px}'
  +'#print-root .pd-exp-hd{font-weight:700;font-size:12.5pt;border-bottom:1pt solid #222;padding-bottom:3px;margin-bottom:8px;break-after:avoid}'
  +'#print-root .pd-exp-hd span{font-weight:400;font-size:10pt;color:#333}'
@@ -20222,7 +20285,7 @@ function pdResults(e){
 }
 // The curves behind the results table, one small panel per fitted compound on shared axes. Nothing at
 // all — no heading — when the experiment holds no fitted dose response.
-function pdCurves(e){ var h=curvesHtml(e,'print'); return h?('<div class="pd-sec-hd">Dose\u2013response curves</div>'+h):''; }
+function pdCurves(e,o){ var h=curvesHtml(e,'print',{split:!!(o&&o.curvesSplit)}); return h?('<div class="pd-sec-hd">Dose\u2013response curves</div>'+h):''; }
 function pdDeviations(e){
   var d=[]; try{ d=expDeviations(e)||[]; }catch(err){}
   if(!d.length) return '';
@@ -20438,7 +20501,7 @@ function _pdExpHtml(e,o){ o=o||pdfOpts(); var h='';
   var _pt=(e.pubEdited&&e.pubReady)?e.pubReady:buildPubReadyFromExp(e,{setup:1,methods:1,plate:1}); var pub=(o.methods&&_pt&&_pt.replace(/<[^>]+>/g,'').trim())?('<div class="pd-sec-hd">Methods</div><div class="pd-pub">'+_pt+'</div>'):'';
   // The exported record used to omit both the measured data and how the run departed from the
   // protocol — the two things a reviewer, or you in a year, actually asks for.
-  return _pdPost(h+obs+steps+(o.results?pdResults(e):'')+((o.curves&&expHasCurves(e))?pdCurves(e):'')+(o.deviations?pdDeviations(e):'')+pub+(o.files?pdFiles(e.files):''), o);
+  return _pdPost(h+obs+steps+(o.results?pdResults(e):'')+((o.curves&&expHasCurves(e))?pdCurves(e,o):'')+(o.deviations?pdDeviations(e):'')+pub+(o.files?pdFiles(e.files):''), o);
 }
 function buildPrintDoc(o,scope,opts){
   o=o||pdfOpts(); scope=scope||pdfScopeDefault(); opts=opts||{};
@@ -20458,7 +20521,7 @@ function buildPrintDoc(o,scope,opts){
 // someone to repeat the experiment. Not a to-do list (no ticks), not the rationale under every
 // recipe, not the well-by-well list under a map that already shows the wells. Each of those is a
 // box in the export dialog, off by default; the dialog previews the page as the boxes change.
-var PDF_DEFAULTS={summary:0,aim:1,obs:1,plate:1,plateText:0,plateNote:0,steps:1,recipes:1,why:0,ticks:0,log:1,results:1,curves:1,deviations:1,methods:1,files:1};
+var PDF_DEFAULTS={summary:0,aim:1,obs:1,plate:1,plateText:0,plateNote:0,steps:1,recipes:1,why:0,ticks:0,log:1,results:1,curves:1,curvesSplit:0,deviations:1,methods:1,files:1};
 // The fourth entry says which scopes the box applies to: an experiment's sections mean nothing
 // on a Journal day, so the dialog hides them there rather than offering a box that does nothing.
 var PDF_FIELDS=[
@@ -20470,7 +20533,8 @@ var PDF_FIELDS=[
   ['why','Rationale','the notes under recipes and the footnotes under steps','both'],['ticks','Checklists','tick lists left in older steps','both'],
   ['log','What happened','the one-line log written on a ticked step','both'],
   ['results','Results','the table from Echo, with flags and exclusions','exp'],
-  ['curves','Dose\u2013response curves','one panel per fitted compound, the points left out of the fit crossed','exp'],['deviations','Deviations from the protocol','','exp'],
+  ['curves','Dose\u2013response curves','two to six compounds on one axis, more than that one panel each; points left out of the fit crossed','exp'],
+  ['curvesSplit','Curves apart','one panel per compound even when there are only two to six','exp'],['deviations','Deviations from the protocol','','exp'],
   ['methods','Methods paragraph','','exp'],['files','Attached data','images in full, other files listed','exp']];
 // "A summary" is a choice about this export, not a habit: remembered, it would silently turn the
 // next folder's full records into a summary. The content boxes are remembered; it is not.
@@ -20550,6 +20614,11 @@ function _pdfxScopeHasCurves(sc){
   if(sc.kind==='exp'){ var e=LB.data.experiments[sc.id]; return !!e&&expHasCurves(e); }
   if(_pdfScopeIsBulk(sc)) return pdfScopeExps(sc).some(expHasCurves);
   return false; }
+// "Curves apart" changes something only where two to six curves would otherwise be overlaid.
+function _pdfxScopeHasOverlay(sc){
+  if(sc.kind==='exp'){ var e=LB.data.experiments[sc.id]; return !!e&&expOverlayable(e); }
+  if(_pdfScopeIsBulk(sc)) return pdfScopeExps(sc).some(expOverlayable);
+  return false; }
 function _pdfxScopeChange(first){
   var sc=_pdfxScope(), jr=_pdfScopeIsJournal(sc);
   var dI=el('pdfx-date'), mI=el('pdfx-month');
@@ -20557,7 +20626,7 @@ function _pdfxScopeChange(first){
   if(mI) mI.style.display=sc.kind==='month'?'':'none';
   var _cv=_pdfxScopeHasCurves(sc);
   Array.prototype.forEach.call(document.querySelectorAll('#lb-dialog-card .pdfx-row[data-for]'),function(r){
-    var f=r.getAttribute('data-for'); r.style.display=((jr&&f==='exp')||(f==='bulk'&&!_pdfScopeIsBulk(sc))||(!_cv&&r.querySelector('input[data-k=curves]')))?'none':''; });
+    var f=r.getAttribute('data-for'); r.style.display=((jr&&f==='exp')||(f==='bulk'&&!_pdfScopeIsBulk(sc))||(!_cv&&r.querySelector('input[data-k=curves]'))||(!_pdfxScopeHasOverlay(sc)&&r.querySelector('input[data-k=curvesSplit]')))?'none':''; });
   var rg=el('pdfx-range'); if(rg) rg.style.display=sc.kind==='range'?'':'none';
   if(first===true) _pdfxRender(); else _pdfxChange();
 }
