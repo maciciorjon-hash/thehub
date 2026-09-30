@@ -15,6 +15,8 @@
 //   L7  a run with no control is raw counts: no "%" on the effect, no replicate-SD flags in % of control
 //   L8  a reading is never written wider than its well
 //   L9  a reader file whose grid is not the size of the plate on screen says so
+//   L10 the potency and the effect are called what the selected assay calls them — DC50/Dmax, IC50/Span,
+//       IC50, EC50/Emax — in the table, the curve, the Plot, every export and what goes to Labbook
 //
 //   node tools/lumina_invariants.mjs [--url=URL] [--xlsx=PATH]      exit 1 on any finding
 // SheetJS comes from the page's own CDN tag; --xlsx serves a local copy for an offline run.
@@ -252,6 +254,43 @@ try { if (hasX) {
   await ev(() => switchSubtab('signal')); await page.waitForTimeout(150);
   const over = await ev(() => Array.from(document.querySelectorAll('.well .w-val')).filter(e => e.scrollWidth > e.parentElement.clientWidth - 2).length);
   check('L8 no reading is wider than its well', over === 0, over + ' wells');
+
+  // ── L10 names follow the assay ────────────────────────────────────────────────────────
+  const ALL = ['DC50', 'IC50', 'EC50', 'Dmax', 'Span', 'Emax'];
+  const EXPECT = { hibit: ['DC50', 'Dmax'], ctg: ['IC50', 'Span'], displacement: ['IC50', null], gain: ['EC50', 'Emax'] };
+  await ev(() => { window.__wb = null; if (!window.__wbHook) { window.__wbHook = 1; XLSX.writeFile = (wb, name) => { window.__wb = { name, sheets: wb.SheetNames.map(n => ({ n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1 }) })) }; }; } });
+  let l10 = [];
+  for (const [assay, [pot, eff]] of Object.entries(EXPECT)) {
+    await ev(a => { document.getElementById('assay-type').value = a; onAssayTypeChange(); switchTab('input'); switchTab('results'); }, assay);
+    await page.waitForTimeout(500);
+    if (assay === 'displacement') { await ev(() => { switchTab('input'); lmSetSel(new Set(['H1'])); lmMarkCtrl('zero'); lmSetSel(new Set()); switchTab('results'); }); await page.waitForTimeout(500); }
+    const texts = {};
+    texts.table = await ev(() => document.querySelector('#results-table-wrap thead').textContent);
+    texts.stats = await ev(() => document.getElementById('curve-stats').textContent + document.getElementById('curve-title').textContent);
+    texts.units = await ev(() => document.getElementById('ru-eg').textContent + (document.querySelector('#ru-scale [data-s=log]').title || ''));
+    await ev(() => rsSetTab('plot')); await page.waitForTimeout(150);
+    texts.plotSelect = await ev(() => Array.from(document.getElementById('pl-x').options).map(o => o.textContent).join(' ') + ' ' + Array.from(document.getElementById('pl-y').options).map(o => o.textContent).join(' '));
+    texts.plotSvg = await ev(() => document.getElementById('pl-svg').textContent);
+    await ev(() => rsSetTab('curve'));
+    texts.csv = csv((await capture(() => exportResultsCSV())).text)[0].join(' ');
+    texts.raw = csv((await capture(() => exportRawCSV())).text)[0].join(' ');
+    texts.copy = await ev(async () => { let t = ''; Object.defineProperty(navigator, 'clipboard', { value: { writeText: x => { t = x; return Promise.resolve(); } }, configurable: true }); copyResultsTSV(); await new Promise(r => setTimeout(r, 50)); return t.split('\n')[0]; });
+    await ev(() => exportXLSX()); const wb = await ev(() => window.__wb);
+    texts.xlsxResults = wb ? wb.sheets[0].rows[0].join(' ') : '';
+    texts.xlsxProtocol = wb ? wb.sheets.find(x => /Protocol/.test(x.n)).rows.slice(0, 3).map(r => r.join(' ')).join(' ') : '';
+    texts.labbook = await ev(() => { const r = luminaResultRows()[0]; return r.potencyLabel + ' ' + r.effectLabel; });
+    const fname = (await download(() => plotSavePNG())).name; texts.pngName = fname;
+    for (const [where, t] of Object.entries(texts)) {
+      if (!t.includes(pot) && where !== 'raw' && where !== 'pngName' && where !== 'plotSvg') l10.push(assay + '/' + where + ' lacks ' + pot);
+      if (eff && !t.includes(eff) && ['table', 'csv', 'copy', 'xlsxResults', 'labbook', 'plotSelect', 'stats'].includes(where)) l10.push(assay + '/' + where + ' lacks ' + eff);
+      const wrong = ALL.filter(n => n !== pot && n !== eff && new RegExp(n).test(t));
+      if (wrong.length) l10.push(assay + '/' + where + ' says ' + wrong.join(','));
+    }
+    if (!eff && /Span|Dmax|Emax/.test(texts.table + texts.csv)) l10.push(assay + ' shows an effect column');
+    await ev(() => { switchTab('input'); });
+  }
+  check('L10 potency and effect are named after the selected assay everywhere', l10.length === 0, l10.slice(0, 5).join(' · '));
+  await ev(() => { document.getElementById('assay-type').value = 'ctg'; onAssayTypeChange(); });
 
   // ── L9 a 96-well export on a 384-well plate ──────────────────────────────────────────
   await ev(() => setPlateFormat(384)); await drop(['CTG20260923_144h_Z.xlsx']);

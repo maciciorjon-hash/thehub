@@ -6443,6 +6443,27 @@ scale round-tripped through the CSV/Excel/copy, arrow keys, the menus, every Plo
 readings that fit their wells, wrong-size grids. Builds its own PHERAstar-shaped workbook in the page. Proven
 by putting six bugs back. `--xlsx=PATH` serves SheetJS locally for an offline run.
 
+**Right-click, then in every app (same day).** `ctxApp(resolve, opts)` in the kit builds the whole menu: the app's
+own items for what is under the pointer (`resolve`), then what any page can offer — Copy cell / row / column /
+table on any `<table>`, Copy image / Save image on any chart or picture (composited on the surface colour,
+because a canvas is transparent) — then the app's actions (`opts.acts`: `{l, f, args, when, danger}`, shown
+only when the function `f` exists), then Search everything… / Dark mode / Back to the Hub. Per-app definitions
+are `tools/ctxkit/apps/<app>.js`, written by `sync_ctxkit.py` into every app but **Labbook** (its own 30-menu
+system stays). Element-aware: Iceberg (a vial: edit, duplicate, thaw, discard, remove; an empty position: add
+here), Incubator (a culture: details, split, freeze, edit, mycoplasma, Labbook, remove), Cell Archive (a line),
+Archive (a protocol card or the open protocol: copy as text, PDF, CSV, Labbook). The rest offer their actions
+(Echo, Dora, Blueprint, LDI, Helix — by active tab —, Protein Tools, BCA, Beacon, Blot, Cuppa, Ribbon). A page
+that already answered the event (`defaultPrevented`: Blueprint's plate, Echo's column headers, Iceberg's
+storage tiles) keeps its own. Fields and selected text keep the browser's menu. Ribbon skips the image items
+(WebGL cannot be read back).
+
+**Names follow the assay.** DC50/Dmax (HiBiT degradation), IC50/Span (CTG viability), IC50 (displacement, no
+effect column; Labbook gets "Max displacement"), EC50/Emax (gain of signal) — `assayFitLabels`, read through
+`lmAssayNow()` so nothing falls back to a hard-coded name. Invariant **L10** checks the table, the curve, the
+Plot's selectors and axes, the units popover, the results CSV, the raw CSV, Copy table, the workbook (results
+sheet and protocol sheet), the PNG file name and the Labbook rows for each of the four assays, and fails on
+any name from another assay.
+
 **Not verified:** the real export was read and loaded (96 readings, named `CTG20260923_144h_A`), but the
 compound layout of Jon's actual plate was not known, so the fit was checked on a planted layout. The other
 17 apps still have the browser's own right-click.

@@ -644,7 +644,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
               <div class="ru-row"><span class="ru-l">Unit</span>
                 <div class="seg" id="ru-unit"><button data-u="auto" onclick="rsSetUnits({u:'auto'})" title="Each value in the unit that reads best on screen; exports in nM (M for logs)">Auto</button><button data-u="M" onclick="rsSetUnits({u:'M'})">M</button><button data-u="mM" onclick="rsSetUnits({u:'mM'})">mM</button><button data-u="uM" onclick="rsSetUnits({u:'uM'})">&micro;M</button><button data-u="nM" onclick="rsSetUnits({u:'nM'})">nM</button><button data-u="pM" onclick="rsSetUnits({u:'pM'})">pM</button></div></div>
               <div class="ru-row"><span class="ru-l">Scale</span>
-                <div class="seg" id="ru-scale"><button data-s="lin" onclick="rsSetUnits({log:false})">Linear</button><button data-s="log" onclick="rsSetUnits({log:true})" title="log&#8321;&#8320; of the concentration in the unit chosen — in molar, the usual way to quote a pDC50">Log&#8321;&#8320;</button></div></div>
+                <div class="seg" id="ru-scale"><button data-s="lin" onclick="rsSetUnits({log:false})">Linear</button><button data-s="log" onclick="rsSetUnits({log:true})" title="log&#8321;&#8320; of the concentration in the unit chosen">Log&#8321;&#8320;</button></div></div>
               <div class="ru-eg" id="ru-eg"></div>
               <div class="ru-note">Applies to the table, the Plot, Copy table and every export. Auto exports in nM, or in M for logs.</div>
             </div>
@@ -784,7 +784,7 @@ function lmRenamePlate(p, name, quiet){
 var LUM_ASSAY_LABELS = {
   hibit:        {potency:'DC50 (nM)', effect:'Dmax (%)'},
   ctg:          {potency:'IC50 (nM)', effect:'Span (%)'},
-  displacement: {potency:'IC50 (nM)', effect:'Span (%)'},
+  displacement: {potency:'IC50 (nM)', effect:'Max displacement (%)'},
   gain:         {potency:'EC50 (nM)', effect:'Emax'}
 };
 function luminaResultRows(){
@@ -851,6 +851,12 @@ function assayFitLabels(t){
   return m[t] || m.hibit;
 }
 
+// The assay the labels follow: the one the results on screen were fitted with, else the one selected.
+// DC50 and Dmax for a degradation assay, IC50 and Span for viability, IC50 for displacement, EC50 and
+// Emax for gain of signal — in the table, the curve, the Plot, every file and what goes to Labbook.
+var ASSAY_NAMES = { hibit: 'HiBiT degradation', ctg: 'CTG viability', displacement: 'Displacement', gain: 'Gain of signal' };
+function lmAssayNow(){ var el = document.getElementById('assay-type'); return (state.fitResults.length && state.assayType) || (el && el.value) || 'hibit'; }
+function lmAssayText(t){ var L = assayFitLabels(t); return (ASSAY_NAMES[t] || t) + ' (' + L.ec50Name + (L.hasDmax ? ', ' + (t === 'gain' ? 'Emax' : L.dmaxName) : '') + ')'; }
 // ══════════════════════════════════════════════════════════════
 // Theme
 // ══════════════════════════════════════════════════════════════
@@ -2837,7 +2843,8 @@ function rsSyncUnitsUI(){
   document.querySelectorAll('#ru-unit button').forEach(function(b){ b.classList.toggle('active', b.dataset.u === u.u); });
   document.querySelectorAll('#ru-scale button').forEach(function(b){ b.classList.toggle('active', (b.dataset.s === 'log') === u.log); });
   var ex = state.fitResults[0], eg = document.getElementById('ru-eg');
-  var M = ex ? ex.ec50M : 2.46e-6, name = ex ? assayFitLabels(state.assayType).ec50Name : 'IC50';
+  var M = ex ? ex.ec50M : 2.46e-6, name = assayFitLabels(lmAssayNow()).ec50Name;
+  var lg = document.querySelector('#ru-scale [data-s=log]'); if (lg) lg.title = 'log\u2081\u2080 of the concentration in the unit chosen \u2014 in molar, the usual way to quote a ' + assayFitLabels(lmAssayNow()).pCol;
   eg.innerHTML = '<div><span>On screen</span> &nbsp;' + name + ' ' + fmtPot(M) + (u.log ? ' <span>log ' + UNITS[lmUnit()].lbl + '</span>' : (u.u === 'auto' ? '' : ' ' + UNITS[u.u].lbl)) + '</div><div><span>In a file</span> &nbsp;' + _concHdr(name) + ' = ' + _concNum(M) + '</div>';
   var eh = document.getElementById('rs-exp-units'); if (eh) eh.innerHTML = 'Potencies as <b>' + _unitsText() + '</b> · <button class="lm-link" style="min-height:0;display:inline;" onclick="rsCloseExport();rsTogglePop(event,\'rs-units\')">change</button>';
 }
@@ -2938,10 +2945,9 @@ function drawCurve(sid){
 
   var statsEl = document.getElementById('curve-stats');
   var items = [
-    [curveL.ec50Name, _potWithUnit(r.ec50M)], ['95% CI', _lmCIwithUnit(r) || '—'], ['Hill', r.hill.toFixed(2)],
+    [curveL.ec50Name, _potWithUnit(r.ec50M)], ['95% CI', _lmCIwithUnit(r) || '—']].concat(curveL.hasDmax ? [[state.assayType === 'gain' ? 'Emax' : curveL.dmaxName, _lmEffText(r)]] : [], [['Hill', r.hill.toFixed(2)],
     ['Top', _statNum(r.top)], ['Bottom', _statNum(r.bottom)],
-    ['R²', r.r2.toFixed(3)], ['n', r.n]
-  ];
+    ['R²', r.r2.toFixed(3)], ['n', r.n]]);
   statsEl.innerHTML = (isRaw ? '<span class="cs-item">The fit is made on the normalised data</span>' : '') + items.map(function(it){ return '<span class="cs-item">'+it[0]+' <b>'+it[1]+'</b></span>'; }).join('');
 }
 function _statNum(v){ return Math.abs(v) >= 1000 ? _lmReadFmt(v, 6) : v.toFixed(1); }
@@ -3154,7 +3160,7 @@ function exportXLSX(){
   (state.rawRows||[]).forEach(function(r){ rawAoA.push(_rawRow(r)); });
   var protoAoA = [
     ['Lumina — Analysis Protocol'],
-    ['Assay type', state.assayType],
+    ['Assay type', lmAssayText(state.assayType)],
     ['Plate format', state.format + '-well'],
     ['Plates', state.plates.map(function(pl, i){ return lmPlateName(i) + (pl.file ? ' (' + pl.file + ')' : ''); }).join('; ')],
     ['Potency units', _unitsText()],
@@ -3349,6 +3355,7 @@ function plotDraw(){
   foot += '<button class="lm-link sp" onclick="plotSavePNG()" title="Save this plot as a PNG image">Save PNG</button>';
   document.getElementById('pl-foot').innerHTML = foot;
 }
+function _plotFileName(id){ var p = plotParams().filter(function(q){ return q.id === id; })[0]; return (p ? p.name : id).replace(/\s*\((%|counts)\)/, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
 function plotSavePNG(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
   if (!PLOT.x) plotFillSelects();
@@ -3360,7 +3367,7 @@ function plotSavePNG(){
     c.toBlob(function(b){
       if (!b) { toast('Could not make the image.'); return; }
       var a = document.createElement('a'); a.href = URL.createObjectURL(b);
-      a.download = _lmFileStem() + '_' + PLOT.y + '_vs_' + PLOT.x + '.png'; document.body.appendChild(a); a.click(); a.remove();
+      a.download = _lmFileStem() + '_' + _plotFileName(PLOT.y) + '_vs_' + _plotFileName(PLOT.x) + '.png'; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
     }, 'image/png');
   };
@@ -3405,12 +3412,18 @@ function plotSavePNG(){
 //   ctxBind(resolve)     resolve(event) returns the items for what is under the pointer, or null to
 //                        leave the browser's own menu alone. Fields keep their native menu (paste,
 //                        spelling) and so does any selected text — the kit never takes those.
+//   ctxApp(resolve, opts) the whole menu for an app: resolve(event, target) returns the items for what the
+//                        pointer is on (or null); the kit then adds what any page can offer — copy a
+//                        cell / row / column / table, copy or save a chart as an image — then opts.acts
+//                        (the app's own actions: [{l, f, args, k, danger, when}], shown only if function
+//                        f exists), then Search / Dark mode / Back to the Hub. opts.canvas:false skips
+//                        the image items (a WebGL viewer cannot be read back).
 //   ctxOpen(items, x, y) items: {label, k:'⌘C', act, disabled, danger, check} | {sep:true} | {hd:'title'}
 //   ctxClose(), ctxIsOpen(), CTX_MOD ('⌘' or 'Ctrl+')
 // The menu is measured, then kept fully on screen; ↑ ↓ Enter Esc work; a press outside, a scroll,
 // a resize or a blur puts it away. It needs the page's tokens (--surface, --border2, --text…).
 var CTX_MOD = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘' : 'Ctrl+';
-var ctxClose, ctxIsOpen, ctxOpen, ctxBind;
+var ctxClose, ctxIsOpen, ctxOpen, ctxBind, ctxApp;
 (function(){
   var el = null, on = -1;
   function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -3469,6 +3482,7 @@ var ctxClose, ctxIsOpen, ctxOpen, ctxBind;
     document.addEventListener('contextmenu', function(e){
       var t = e.target; if (!t || !t.closest) return;
       if (t.closest('.ctx')) { e.preventDefault(); return; }
+      if (e.defaultPrevented) return;   // the page already answered (its own menu on a canvas, a column header…)
       // Fields keep the browser's menu (paste, spelling), and so does any selected text.
       if (t.closest('input,textarea,select,[contenteditable="true"]')) return;
       var sel = window.getSelection && window.getSelection(); if (sel && String(sel).trim()) return;
@@ -3477,6 +3491,88 @@ var ctxClose, ctxIsOpen, ctxOpen, ctxBind;
       ctxOpen(items, e.clientX, e.clientY);
     });
   };
+  // ── what any page can offer ────────────────────────────────────────────────────────────────
+  function say(m){ (window.hubToast || window.toast || window.showToast || console.log)(m); }
+  function copyText(txt, msg){
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(function(){ say(msg); }).catch(function(){ say('The browser did not allow copying.'); });
+    else say('The browser did not allow copying.');
+  }
+  function bgColour(){
+    var v = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || getComputedStyle(document.body).backgroundColor;
+    return v || '#fff';
+  }
+  function imageBlob(el, cb){
+    var w = el.naturalWidth || el.width, h = el.naturalHeight || el.height;
+    if (!w || !h) { say('Nothing to copy yet.'); return; }
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    var x = c.getContext('2d'); x.fillStyle = bgColour(); x.fillRect(0, 0, w, h);
+    try { x.drawImage(el, 0, 0, w, h); c.toBlob(function(b){ if (b) cb(b); else say('Could not make the image.'); }, 'image/png'); }
+    catch(err){ say('That image cannot be read back.'); }
+  }
+  function download(name, blob){
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }
+  function imageItems(el, name){
+    return [
+      { label: 'Copy image', act: function(){
+          if (!window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) { say('This browser cannot copy images — use Save image.'); return; }
+          imageBlob(el, function(b){ navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(function(){ say('Image copied.'); }).catch(function(){ say('The browser did not allow copying the image.'); }); });
+        } },
+      { label: 'Save image (.png)', act: function(){ imageBlob(el, function(b){ download((name || document.title || 'image').replace(/[\\/:*?"<>|\s]+/g, '_') + '.png', b); }); } }
+    ];
+  }
+  function cellText(c){ return (c.innerText || c.textContent || '').replace(/\s+/g, ' ').trim(); }
+  function tableItems(cell){
+    var tb = cell.closest('table'); if (!tb) return [];
+    var row = cell.closest('tr'), rows = Array.prototype.slice.call(tb.rows), ci = Array.prototype.indexOf.call(row.cells, cell);
+    var tsv = function(rs){ return rs.map(function(r){ return Array.prototype.map.call(r.cells, cellText).join('\t'); }).join('\n'); };
+    return [
+      { label: 'Copy cell', act: function(){ copyText(cellText(cell), 'Copied.'); } },
+      { label: 'Copy row', act: function(){ copyText(tsv([row]), 'Row copied.'); } },
+      { label: 'Copy column', act: function(){ copyText(rows.map(function(r){ return r.cells[ci] ? cellText(r.cells[ci]) : ''; }).join('\n'), 'Column copied.'); } },
+      { label: 'Copy table', act: function(){ copyText(tsv(rows), 'Table copied — paste it into Excel.'); } }
+    ];
+  }
+  // the first argument of an inline handler on the element or an ancestor: onclick="openDrawer('c7')" → 'c7'
+  function argOf(t, fn){
+    var re = new RegExp(fn + "\\(\\s*\\\\?'([^'\\\\]+)");
+    for (var n = t; n && n.nodeType === 1; n = n.parentElement) { var m = re.exec(n.getAttribute('onclick') || ''); if (m) return { id: m[1], el: n }; }
+    return null;
+  }
+  function hosted(){ try { return window.parent && window.parent !== window; } catch(e){ return false; } }
+  function toggleTheme(){
+    var root = document.documentElement, was = root.getAttribute('data-theme'), chk = document.getElementById('theme-chk');
+    if (chk) { chk.checked = was !== 'dark'; chk.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (root.getAttribute('data-theme') === was && typeof window.toggleTheme === 'function') window.toggleTheme();
+    if (root.getAttribute('data-theme') === was) {   // neither wired: set it, and keep the Hub's choice
+      var nx = was === 'dark' ? 'light' : 'dark'; root.setAttribute('data-theme', nx); try { localStorage.setItem('hub_theme', nx); } catch(e){}
+    }
+  }
+  function tail(){
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark', P = hosted() ? window.parent : null, items = [];
+    if (P && P.hubSpot && P.hubSpot.open) items.push({ label: 'Search everything…', k: CTX_MOD + 'K', act: function(){ P.hubSpot.open(); } });
+    items.push({ label: dark ? 'Light mode' : 'Dark mode', act: toggleTheme });
+    if (P && typeof P.backToHub === 'function') items.push({ label: 'Back to the Hub', act: function(){ P.backToHub(); } });
+    return items;
+  }
+  ctxApp = function(resolve, opts){
+    opts = opts || {};
+    ctxBind(function(e){
+      var t = e.target, items = [], own = resolve ? resolve(e, t) : null;
+      if (own) items = items.concat(own);
+      var img = t.closest('canvas,img');
+      if (opts.canvas !== false && img && (img.width || img.naturalWidth) > 60 && !img.closest('button,[role=button]')) items = items.concat(items.length ? [{ sep: true }] : [], imageItems(img, opts.name));
+      var cell = t.closest('td,th');
+      if (cell && cell.closest('table')) items = items.concat(items.length ? [{ sep: true }] : [], tableItems(cell));
+      var acts = (opts.acts || []).filter(function(a){ return typeof window[a.f] === 'function' && (!a.when || a.when()); }).map(function(a){
+        return { label: a.l, k: a.k, danger: a.danger, act: function(){ window[a.f].apply(null, a.args || []); } };
+      });
+      if (acts.length) items = items.concat(items.length ? [{ sep: true }] : [], acts);
+      return items.concat(items.length ? [{ sep: true }] : [], tail());
+    });
+  };
+  ctxApp.arg = argOf; ctxApp.copy = copyText; ctxApp.say = say; ctxApp.imageItems = imageItems;
   document.addEventListener('pointerdown', function(e){ if (el && !el.contains(e.target)) ctxClose(); }, true);
   window.addEventListener('blur', ctxClose);
   window.addEventListener('resize', ctxClose);
