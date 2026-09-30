@@ -144,6 +144,7 @@ The_Hub/
 │   └── beacon/  lumina/  western-blot/  ribbon/  cuppa/
 ├── tools/                      ← not part of the build
 │   ├── check_shared.py         sync_fit_engine.py      sync_icons.py (the icon set)
+│   ├── sync_assist.py + assist/ the help assistant (kit + notes per app)   assist_invariants.mjs (CI)
 │   ├── migrate_protocols.py    make_icons.py
 │   ├── mobile_sweep.mjs        snap_compare.mjs        mobile_embed.html   (Playwright; see UI.md)
 │   ├── invariants.mjs          (Playwright; runs in CI — see *A bug hunt samples*)
@@ -6581,6 +6582,53 @@ begins "Dose–response curves were fitted".)
 **Not done:** an overlay of several compounds on one axis (the classic manuscript figure) — small
 multiples were chosen because a 60-compound screen is unreadable overlaid; it would be the natural
 next step for runs of two to six compounds against one target.
+
+## A help assistant with no model behind it (2026-09-30)
+
+Jon: a bubble bottom-right that opens a chat and helps a new user with dHUB **and with each app on
+its own**, visitors included. It is not connected to an AI: it is written notes, searched the way
+Cmd+K searches, plus a way to point at the real control. `tools/assist/` is the one source;
+`python3 tools/sync_assist.py` writes it in (`--check` is in CI).
+
+- **The kit** (`assist.js` / `assist.css`) is the engine, the bubble, the panel and the spotlight.
+  Search is normalised words → a small synonym table (English and Spanish) → exact / prefix / one-or-two
+  letters out (Damerau) → words in the answer; a topic must match a word of its title or phrases to be
+  a real answer, and below the threshold it says it does not know instead of guessing. Unanswered
+  questions are kept in `localStorage['assist_miss']` on that device (nothing is sent anywhere).
+- **A topic** (`tools/assist/kb/<folder>.js`, one file per app, `hub.js` for the shell) has a title,
+  phrases people type (`q`), an answer (`a`, `steps`, `tip`, `warn`), optionally `show` (an element to
+  point at, with `say` and `miss` — what to say when it is not on screen yet), `prep` (brings the screen
+  up first), `go` (buttons that call a function), `on` (which screens it belongs to), `needs` (another
+  app it depends on) and `admin`. Answers may be functions, so the shortcut list is read off Labbook's own
+  `SHORTCUTS` table and cannot drift from what the keys do.
+- **`screen(w)` and `diag(w)`** make it state-aware: the panel opens with *On this screen* and a
+  **Right now** line read from the app (Lumina's `_lmNextStep`, BCA's visible sections, Labbook's
+  empty notebook, the Hub's sync state).
+- **Where it lives.** Inside dHUB the **shell** carries every app's notes and draws the one bubble; an
+  app that finds `parent.ASSIST_HOST` registers nothing and draws nothing. On its own an app draws its
+  own bubble with only its own notes (that includes the Labbook and Archive PWAs); Archive inside the
+  standalone Labbook registers into its parent instead of drawing a second bubble.
+- **A person is only answered about what they can open.** `ASSIST_HOST.can(id)` (the shell's
+  `_isAppAccessible`) decides which notes a visitor can search; `admin:true` and `needs:'labbook'` topics
+  disappear for anyone who cannot use them; the "which tools" answer lists only what they can open. **No
+  answer may say an unlock code word** — the words are ordinary ("protein", "coffee"), so the test asks the
+  questions a visitor would and checks the answers, rather than searching the notes.
+- **Layout.** The panel is a bottom sheet on a phone (16px field, no zoom), sits above the Hub's tab bar
+  (`--as-b`), and lifts itself clear of Labbook's timers (`avoid: ['#lb-timers']`). Nothing moves at rest.
+- **Written so far:** the Hub (14 topics), Lumina (22), BCA (13), Labbook (40), each app also with a generated “What is X?”. The other 14 apps have
+  none yet, so they carry no kit at all — adding `kb/<folder>.js` and running the sync is the whole job.
+  A kb `id` is the shell's app id (`spectra` for `bca`, `protocols` for `archive`).
+- **`tools/assist_invariants.mjs` (A1–A8, in CI after the Hub is built)** is what stops the notes rotting:
+  every topic well-formed and found by its own title and phrases; every *Show me* selector visible on the
+  screen it names (in a fresh app or one with data, and a step missing in a fresh app must say why);
+  every button calls a function that exists; visitors are never answered about locked apps; one bubble;
+  the panel fits upright and sideways and clears the tab bar; the spotlight stays on screen and Esc puts it
+  away; nonsense gets no answer. Five of six bugs put back were caught; the sixth (a title changed while its
+  phrases still find it) is not a bug. **When a note goes stale, the fix is not finished until the test would
+  have caught it.**
+- **What it cannot do, on purpose:** understand a question it has no note for, reason over your data, or
+  hold a conversation. If a model is ever added it goes behind the same interface, with these notes as
+  the verified context.
 
 ## Current state
 
