@@ -107,6 +107,31 @@ await app('lumina', '/apps/lumina/lumina.html', async (page, m) => {
   await m('lumina-assistant');
 });
 
+// Every other app: its opening screen, then each of its top-level tabs in turn. No data is loaded, so
+// this is the empty state and the navigation — the demo-data screens are the phone sweep's job.
+const GENERIC = ['dora/dora', 'blueprint/blueprint', 'helix/helix', 'protein-tools/protein-tools', 'bca/bca', 'ldi/ldi',
+  'iceberg/iceberg', 'cuppa/cuppa', 'beacon/beacon', 'ribbon/ribbon', 'archive/archive', 'cell-archive/cell-archive',
+  'incubator/incubator', 'labbook/labbook', 'western-blot/western-blot'];
+for (const g of GENERIC) {
+  const name = g.split('/')[0];
+  await app(name, `/apps/${g}.html`, async (page, m) => {
+    await m(name + '-open');
+    const n = await page.evaluate(() => {
+      const seen = new Set(), out = [];
+      document.querySelectorAll('.tab,.dtab,.outer-tab,[role=tab],.nav-tab,.seg-btn,.mode-btn,.sub-tab,.tb-tab').forEach((e, i) => {
+        const r = e.getBoundingClientRect(); const t = (e.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30);
+        if (!(r.width > 0 && r.height > 0) || !t || seen.has(t)) return; seen.add(t); e.setAttribute('data-sw', String(out.length)); out.push(t);
+      });
+      return out.slice(0, 9);
+    });
+    for (let i = 0; i < n.length; i++) {
+      await page.evaluate(k => { const e = document.querySelector(`[data-sw="${k}"]`); e && e.click(); }, i);
+      await page.waitForTimeout(300);
+      await m(`${name}-tab-${n[i].replace(/\W+/g, '_')}`);
+    }
+  });
+}
+
 await browser.close();
 const uniq = [...new Set(findings)];
 console.log(`${screens} screens measured · ${uniq.length} findings`);
