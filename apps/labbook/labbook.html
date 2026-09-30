@@ -1630,6 +1630,34 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .pl-notes-h{font-size:var(--fs-3);font-weight:600;color:var(--text3);}
 .pl-note b{font-family:var(--mono);color:var(--text);font-weight:600;margin-right:3px;}
 .res-scroll{overflow-x:auto;}
+.res-edit{min-height:26px;padding:3px 10px;border-radius:var(--r-1);border:1px solid var(--accent);background:none;color:var(--accent);font-family:var(--sans);font-size:var(--fs-2);font-weight:600;cursor:pointer;white-space:nowrap;}
+.res-edit:hover{background:var(--accent-soft);}
+.res-cvc{width:74px;padding-top:2px;padding-bottom:2px;}
+.res-cvb{display:block;background:none;border:1px solid transparent;border-radius:var(--r-1);padding:2px;cursor:pointer;color:var(--text2);line-height:0;}
+.res-cvb:hover,.res-cvb.on{border-color:var(--border2);background:var(--surface2);}
+.rcv-mini .rcv-fit{stroke-width:1.4;}
+.rcv-fit{fill:none;stroke:#d98a2b;stroke-width:2;}
+.rcv-pt{fill:var(--accent);stroke:var(--surface);stroke-width:1;}
+.rcv-mini .rcv-pt{stroke:none;}
+.rcv-x path{stroke:var(--text3);stroke-width:2;fill:none;stroke-linecap:round;}
+.rcv-g{stroke:var(--border);stroke-width:1;}
+.rcv-f{fill:none;stroke:var(--border2);}
+.rcv-mid{stroke:var(--text3);stroke-width:1;stroke-dasharray:3 3;}
+.rcv-t{fill:var(--text3);font-family:var(--sans);font-size:11px;}
+.res-tbl tr.res-cv-row td{padding:0;background:var(--surface2);border-bottom:1px solid var(--border);}
+/* The table is wider than its card (the note column), so it scrolls sideways: the opened curve sticks to the left edge and is as wide as the card, not as wide as the table. */
+.res-scroll{container-type:inline-size;}
+.rcv{display:flex;gap:16px;padding:12px 14px;align-items:flex-start;flex-wrap:wrap;position:sticky;left:0;width:100%;width:100cqw;box-sizing:border-box;}
+.rcv-plot{flex:1 1 300px;min-width:240px;max-width:640px;}
+.rcv-side{flex:0 0 190px;display:flex;flex-direction:column;gap:5px;font-size:var(--fs-3);}
+.rcv-name{font-weight:600;font-size:var(--fs-4);margin-bottom:3px;}
+.rcv-name i{font-style:normal;color:var(--text3);font-weight:400;}
+.rcv-side>div:not(.rcv-name):not(.rcv-flag){display:flex;justify-content:space-between;gap:10px;}
+.rcv-side>div span{color:var(--text3);}
+.rcv-side>div b{font-family:var(--mono);font-weight:600;}
+.rcv-side em{font-style:normal;color:var(--text3);font-weight:400;}
+.rcv-flag{color:#c8752f;font-size:var(--fs-2);}
+.rcv-side .res-edit{align-self:flex-start;margin-top:6px;}
 .res-tbl{width:100%;min-width:560px;border-collapse:collapse;font-size:var(--fs-3);}
 .res-tbl th{text-align:left;font-weight:600;color:var(--text3);font-size:var(--fs-3);
   letter-spacing:.4px;padding:7px 13px;border-bottom:1px solid var(--border);}
@@ -13397,6 +13425,81 @@ function tablesHtml(e,print){
       +rows.map(function(r){ return '<tr>'+cols.map(function(_,ci){ return '<td>'+esc(r[ci]==null?'':String(r[ci]))+'</td>'; }).join('')+'</tr>'; }).join('')+'</tbody></table></div></div>'; }).join('');
 }
 function removeTable(expId,i){ var e=LB.data.experiments[expId]; if(!e||!e.integration||!e.integration.tables) return; undoMark('Remove table',['experiments.'+expId]); e.integration.tables.splice(i,1); e.updated=Date.now(); save(); renderEditor(); }
+// ── Curves in the notebook ─────────────────────────────────────────────────────────────────
+// A potency is a number that came from a curve; the curve is what a reviewer asks to see. The analysis
+// apps send each row's points, the ones the person left out, and the four fitted parameters, and this
+// draws them — as SVG, so it prints, copies and scales, and with no library. It is a view: to change
+// the fit the analysis is opened again in the app that made it (Edit in Lumina / Echo), and sending it
+// back replaces this set. The fit is not redone here — a second fitter in the notebook would disagree
+// with the first in the fourth decimal and that is a number that gets published.
+var RCV_OPEN={};
+function _rcvKey(expId,rid,ri){ return expId+'|'+rid+'|'+ri; }
+function _rcvConc(lg){
+  var v=Math.pow(10,lg), U=[['M',1],['mM',1e-3],['\u00b5M',1e-6],['nM',1e-9],['pM',1e-12],['fM',1e-15]];
+  for(var i=0;i<U.length;i++) if(v>=U[i][1]*0.9995) return +(v/U[i][1]).toPrecision(3)+' '+U[i][0];
+  return v.toExponential(1)+' M'; }
+function _rcv4(x,p,gain){ return p[0]+(p[3]-p[0])/(1+Math.pow(10,p[2]*(gain?(p[1]-x):(x-p[1])))); }
+function rcvSvg(c,o){
+  o=o||{}; var mini=!!o.mini; if(!c||!c.x||!c.x.length) return '';
+  var W=o.w||(mini?64:520), H=o.h||(mini?26:250), P=mini?{l:2,r:2,t:2,b:2}:{l:46,r:14,t:12,b:38};
+  var ex=c.ex||[], xs=c.x.concat(ex.map(function(q){ return q[0]; })), ys=c.y.concat(ex.map(function(q){ return q[1]; }));
+  var fit=(c.p&&c.p.length===4&&c.p.every(isFinite))?c.p:null;
+  var x0=Math.min.apply(null,xs)-0.35, x1=Math.max.apply(null,xs)+0.35;
+  var norm=/%|control|DMSO|viab|displac/i.test(c.yl||'');
+  var yLo=Math.min(0,Math.min.apply(null,ys.concat(fit?[fit[0]]:[]))), yHi=Math.max.apply(null,ys.concat(fit?[fit[0],fit[3]]:[]));
+  yHi=norm?Math.max(110,yHi*1.03):yHi*1.06; if(!(yHi>yLo)) yHi=yLo+1;
+  var px=function(v){ return P.l+(v-x0)/(x1-x0)*(W-P.l-P.r); }, py=function(v){ return H-P.b-(v-yLo)/(yHi-yLo)*(H-P.t-P.b); };
+  var g='';
+  if(!mini){
+    var step=(x1-x0)>8?2:1;
+    for(var t=Math.ceil(x0/step)*step;t<=x1;t+=step){ g+='<line x1="'+px(t)+'" x2="'+px(t)+'" y1="'+P.t+'" y2="'+(H-P.b)+'" class="rcv-g"/><text x="'+px(t)+'" y="'+(H-P.b+15)+'" class="rcv-t" text-anchor="middle">'+esc(_rcvConc(t))+'</text>'; }
+    var ystep=norm?25:(function(){ var r=(yHi-yLo)/4, m=Math.pow(10,Math.floor(Math.log10(r))); return [1,2,5,10].map(function(k){ return k*m; }).filter(function(k){ return k>=r; })[0]; })();
+    for(var yv=Math.ceil(yLo/ystep)*ystep;yv<=yHi;yv+=ystep){ g+='<line x1="'+P.l+'" x2="'+(W-P.r)+'" y1="'+py(yv)+'" y2="'+py(yv)+'" class="rcv-g"/><text x="'+(P.l-6)+'" y="'+(py(yv)+4)+'" class="rcv-t" text-anchor="end">'+(Math.abs(yv)>=1000?_rn(yv):(+yv.toPrecision(3)))+'</text>'; }
+    g+='<text x="'+((P.l+W-P.r)/2)+'" y="'+(H-3)+'" class="rcv-t" text-anchor="middle">Dose</text>'
+      +'<text transform="translate(11,'+((P.t+H-P.b)/2)+') rotate(-90)" class="rcv-t" text-anchor="middle">'+esc((c.yl||'Signal').slice(0,34))+'</text>';
+  }
+  var line='';
+  if(fit){ var pts=[]; for(var k=0;k<=70;k++){ var xv=x0+(x1-x0)*k/70; pts.push(px(xv).toFixed(1)+','+py(_rcv4(xv,fit,c.gain)).toFixed(1)); }
+    line='<polyline points="'+pts.join(' ')+'" class="rcv-fit"/>';
+    if(!mini) line+='<line x1="'+px(fit[1])+'" x2="'+px(fit[1])+'" y1="'+P.t+'" y2="'+(H-P.b)+'" class="rcv-mid"/><text x="'+(px(fit[1])+4)+'" y="'+(P.t+9)+'" class="rcv-t">'+esc(_rcvConc(fit[1]))+'</text>'; }
+  var dots=c.x.map(function(xv,i){ return '<circle cx="'+px(xv).toFixed(1)+'" cy="'+py(c.y[i]).toFixed(1)+'" r="'+(mini?1.6:3.6)+'" class="rcv-pt">'+(mini?'':'<title>'+esc(_rcvConc(xv))+' \u00b7 '+_rn(c.y[i])+'</title>')+'</circle>'; }).join('');
+  var crosses=mini?'':ex.map(function(q){ var cx=px(q[0]),cy=py(q[1]),d=4.2; return '<g class="rcv-x"><path d="M'+(cx-d)+' '+(cy-d)+'L'+(cx+d)+' '+(cy+d)+'M'+(cx-d)+' '+(cy+d)+'L'+(cx+d)+' '+(cy-d)+'"/><title>Left out of the fit \u00b7 '+esc(_rcvConc(q[0]))+' \u00b7 '+_rn(q[1])+'</title></g>'; }).join('');
+  var frame=mini?'':'<rect x="'+P.l+'" y="'+P.t+'" width="'+(W-P.l-P.r)+'" height="'+(H-P.t-P.b)+'" class="rcv-f"/>';
+  return '<svg class="'+(mini?'rcv-mini':'rcv-svg')+'" viewBox="0 0 '+W+' '+H+'" width="'+(mini?W:'100%')+'" '+(mini?'height="'+H+'" ':'')+'role="img" aria-label="Dose-response curve">'+frame+g+line+dots+crosses+'</svg>'; }
+function _rcvRowHtml(e,set,x,ri){
+  var c=x.curve, L=resultLabels(e), nEx=(c.ex||[]).length;
+  var stat=function(k,v){ return '<div><span>'+esc(k)+'</span><b>'+v+'</b></div>'; };
+  return '<tr class="res-cv-row"><td colspan="9"><div class="rcv"><div class="rcv-plot">'+rcvSvg(c)+'</div><div class="rcv-side">'
+    +'<div class="rcv-name">'+esc(x.compound||'')+(x.target?' <i>'+esc(x.target)+'</i>':'')+'</div>'
+    +stat(esc((set.potencyLabel||L.p).split(' ')[0]),_rn(x.potency)+' '+esc(set.potencyUnit||'nM'))
+    +(c.ci?stat('95% CI',_rn(c.ci[0])+' \u2013 '+_rn(c.ci[1])):'')
+    +stat(esc((set.effectLabel||L.e).split(' ')[0]),_rn(x.effect))
+    +stat('Hill',_rn(x.hill))+stat('R\u00b2',_rn(x.r2))
+    +stat('Points',c.n+(nEx?' <em>('+nEx+' left out)</em>':''))
+    +(x.flag&&(x.flagReason||x.note)?'<div class="rcv-flag">'+esc(x.flagReason||x.note)+'</div>':'')
+    +_resEditBtn(e.id,set,x.compound||'')+'</div></div></td></tr>'; }
+function toggleResultCurve(expId,rid,ri,btn){
+  var k=_rcvKey(expId,rid,ri), tr=btn&&btn.closest('tr'); RCV_OPEN[k]=!RCV_OPEN[k];
+  var e=LB.data.experiments[expId], set=e&&((e.integration&&e.integration.results)||[]).filter(function(r){ return String(r.id)===String(rid); })[0], x=set&&set.rows&&set.rows[ri];
+  if(!tr||!x||!x.curve) return;
+  var nxt=tr.nextElementSibling;
+  if(nxt&&nxt.classList.contains('res-cv-row')) nxt.remove();
+  if(RCV_OPEN[k]) tr.insertAdjacentHTML('afterend',_rcvRowHtml(e,set,x,ri));
+  btn.classList.toggle('on',!!RCV_OPEN[k]); btn.setAttribute('aria-expanded',RCV_OPEN[k]?'true':'false'); }
+// The button that reopens the analysis in the app that made it. Only inside the Hub (there is no
+// app to open standalone) and only when the set carries the analysis.
+function _resAppName(set){ return set&&set.origin==='echo'?'Echo':(set&&set.origin==='lumina'?'Lumina':''); }
+function _resEditBtn(expId,set,compound){
+  var nm=_resAppName(set), H=lbHost();
+  if(!nm||!set.session||!H||!H.openApp) return '';
+  return '<button class="res-edit" title="Open this analysis in '+nm+', change it, and send it back — the curves here are replaced"'
+    +' onclick="openResultInApp(\''+esc(expId)+'\',\''+esc(set.id||'')+'\',this.dataset.c)" data-c="'+esc(compound)+'">Edit in '+nm+'</button>'; }
+function openResultInApp(expId,rid,compound){
+  var e=LB.data.experiments[expId], set=e&&((e.integration&&e.integration.results)||[]).filter(function(r){ return String(r.id)===String(rid); })[0];
+  var H=lbHost(); if(!set||!set.session||!H||!H.openApp){ toast('That analysis cannot be opened from here.'); return; }
+  var app=set.origin==='echo'?'echo':'lumina';
+  try{ H.openApp(app,undefined,undefined,{source:'labbook',open:{app:app,session:set.session,setId:set.id,expId:expId,compound:compound||'',label:(e.code||e.title||'')}}); }
+  catch(err){ toast('Could not open '+_resAppName(set)+'.'); } }
 function resultsPaneHtml(e){
   var rs=(e.integration&&e.integration.results)||[];
   var L=resultLabels(e);
@@ -13420,22 +13523,26 @@ function resultsPaneHtml(e){
       +'<div class="res-hd"><span class="res-src">'+esc(r.source||'')+'</span>'+esc(r.label||'')
       +'<span class="res-when">'+esc((r.createdAt||'').slice(0,10))+'</span>'
       +(flagged?('<span class="res-flag">'+flagged+' flagged</span>'):'')
+      +_resEditBtn(e.id,r,'')
       +'<button class="res-del" title="Remove this result" onclick="delResult(\''+e.id+'\',\''+esc(r.id||'')+'\')">&times;</button></div>'
       +'<div class="res-scroll"><table class="res-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(r.potencyLabel||'Potency')
-      +'</th><th>'+esc(r.effectLabel||'Effect')+'</th><th>Hill</th><th>R²</th><th>Note</th><th></th></tr></thead><tbody>'
+      +'</th><th>'+esc(r.effectLabel||'Effect')+'</th><th>Hill</th><th>R²</th>'+(rows.some(function(x){ return x.curve; })?'<th>Curve</th>':'')+'<th>Note</th><th></th></tr></thead><tbody>'
       +rows.map(function(x,ri){
         // Echo's flag is the fitter's opinion; excluded is yours. They are kept apart because a
         // flagged curve you have checked and kept is a different thing from one you threw out,
         // and only the second may leave the numbers out of the paragraph.
         var xid="'"+esc(e.id)+"','"+esc(r.id||'')+"',"+ri;
-        return '<tr class="'+(x.flag?'flagged ':'')+(x.excluded?'excluded':'')+'">'
+        var anyCv=rows.some(function(q){ return q.curve; }), open=x.curve&&RCV_OPEN[_rcvKey(e.id,r.id,ri)];
+        return '<tr class="'+(x.flag?'flagged ':'')+(x.excluded?'excluded':'')+'" data-ri="'+ri+'">'
         +'<td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td>'
         +'<td class="num">'+_rn(x.potency)+'</td><td class="num">'+_rn(x.effect)+'</td>'
         +'<td class="num">'+_rn(x.hill)+'</td><td class="num">'+_rn(x.r2)+'</td>'
+        +(anyCv?('<td class="res-cvc">'+(x.curve?('<button class="res-cvb'+(open?' on':'')+'" title="Show the curve" aria-label="Show the curve of '+esc(x.compound||'')+'" aria-expanded="'+(open?'true':'false')+'" onclick="toggleResultCurve(\''+esc(e.id)+'\',\''+esc(r.id||'')+'\','+ri+',this)">'+rcvSvg(x.curve,{mini:true})+'</button>'):'')+'</td>'):'')
         +'<td class="res-note"><input value="'+esc(x.note||'')+'" placeholder="'+(x.flag?'Why it is flagged, or why you kept it':'Note…')
           +'" oninput="setResultNote('+xid+',this.value)"></td>'
         +'<td class="res-x"><button title="'+(x.excluded?'Excluded from the results sentence — click to put it back':'Exclude this measurement from the results sentence')
-          +'" onclick="toggleResultExcluded('+xid+')">'+(x.excluded?'excluded':'exclude')+'</button></td></tr>'; }).join('')
+          +'" onclick="toggleResultExcluded('+xid+')">'+(x.excluded?'excluded':'exclude')+'</button></td></tr>'
+        +(open?_rcvRowHtml(e,r,x,ri):''); }).join('')
       +'</tbody></table></div></div>';
   }).join('');
 }
@@ -22122,10 +22229,29 @@ setTimeout(cleanupAntibodySection,2600);
 // What another app sends is saved into the record and read by every renderer afterwards, so a
 // payload in the wrong shape — a null result, rows that are not a list, a table whose rows are a
 // number — broke that experiment's Results, Home and Visualize on every render from then on.
+// A curve from an analysis app: the points that were fitted, the ones left out, and the four
+// parameters of the fit. Anything that is not a finite number is dropped rather than drawn.
+function _cleanCurve(c){
+  if(!c||typeof c!=='object') return null;
+  var nums=function(v,max){ return _lbList(v,false).map(Number).filter(isFinite).slice(0,max||400); };
+  var x=nums(c.x), y=nums(c.y); var n=Math.min(x.length,y.length); if(!n) return null;
+  var o={x:x.slice(0,n), y:y.slice(0,n), gain:!!c.gain, n:isFinite(+c.n)?+c.n:n, yl:String(c.yl||'').slice(0,60)};
+  o.ex=_lbList(c.ex,false).map(function(q){ q=_lbList(q,false).map(Number); return (q.length>=2&&isFinite(q[0])&&isFinite(q[1]))?[q[0],q[1]]:null; }).filter(Boolean).slice(0,200);
+  var pp=nums(c.p,4); o.p=(pp.length===4)?pp:null;
+  var ci=nums(c.ci,2); o.ci=(ci.length===2)?ci:null;
+  return o; }
 function _cleanCtx(ctx){
   var o=Object.assign({},ctx);
   if(Array.isArray(o.results)) o.results=o.results.filter(function(r){ return r&&typeof r==='object'; }).map(function(r){
-    var c=Object.assign({},r); c.rows=_lbList(c.rows,true); return c; });
+    var c=Object.assign({},r); c.rows=_lbList(c.rows,true).map(function(x){
+      var cv=x.curve?_cleanCurve(x.curve):null, y=Object.assign({},x); if(cv) y.curve=cv; else delete y.curve; return y; });
+    // The analysis itself, so it can be opened again in the app that made it. Bounded: a session
+    // is the readings of every plate and Firebase re-sends the whole experiment record on a change.
+    // Firebase refuses NaN and Infinity anywhere in a record, so a stray one in a session would stop
+    // the whole experiment from syncing: they become null on the way in.
+    if(c.session){ var big=true; try{ var js=JSON.stringify(c.session,function(k,v){ return (typeof v==='number'&&!isFinite(v))?null:v; }); big=js.length>700000; if(!big) c.session=JSON.parse(js); }catch(e2){} if(big||!c.session||typeof c.session!=='object') delete c.session; }
+    if(c.origin) c.origin=String(c.origin).replace(/[^a-z]/g,'').slice(0,12);
+    return c; });
   if(Array.isArray(o.tables)) o.tables=o.tables.filter(function(t){ return t&&typeof t==='object'; }).map(function(t){
     var c=Object.assign({},t); c.cols=_lbList(c.cols,false).map(String);
     c.rows=_lbList(c.rows,false).map(function(r){ return Array.isArray(r)?r:[r]; }); return c; });
@@ -22141,15 +22267,38 @@ function _cleanCtx(ctx){
   if(o.plate && (typeof o.plate!=='object' || !o.plate.wells || typeof o.plate.wells!=='object' || Array.isArray(o.plate.wells))) delete o.plate;
   else if(o.plate){ o.plate=Object.assign({},o.plate); o.plate.wells=_lbMap(o.plate.wells); }
   return o; }
+// Which experiment already holds this result set — the same analysis sent again updates its set
+// where it lives, instead of adding a second copy or asking again which experiment it belongs to.
+function _findSetOwner(id){
+  var ks=Object.keys(LB.data.experiments||{});
+  for(var i=0;i<ks.length;i++){ var x=LB.data.experiments[ks[i]], rs=x&&x.integration&&x.integration.results;
+    if(rs&&rs.some(function(r){ return r&&String(r.id)===String(id); })) return x; }
+  return null; }
+// Annotations survive an update: a row you excluded stays excluded, and a note you wrote (as
+// opposed to the reason the fitter gave) stays yours.
+function _carryRowNotes(old,now){
+  var key=function(x){ return [x.compound,x.target||'',x.plate||''].join('\u0000'); }, m={};
+  (old.rows||[]).forEach(function(x){ m[key(x)]=x; });
+  (now.rows||[]).forEach(function(x){ var o=m[key(x)]; if(!o) return;
+    if(o.excluded) x.excluded=true;
+    if(o.note&&o.note!==o.flagReason&&o.note!==x.note) x.note=o.note; }); }
 function _mergeDHubContext(ctx){
-  ctx=_cleanCtx(ctx||{}); var e=(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
+  ctx=_cleanCtx(ctx||{});
+  var owner=null; (ctx.results||[]).some(function(r){ return r&&r.id&&(owner=_findSetOwner(r.id)); });
+  var e=owner||(ctx.experiment&&LB.data.experiments[ctx.experiment.id])||_curExp();
   // Nothing open to attach to. Telling the user to go back and press Send again *after* opening
   // the right experiment throws away a whole analysis for a reason they could not have known
   // about — and this is the path most people are on, because you fit curves in Echo with
   // Labbook on the dashboard. Ask which experiment instead.
   if(!e){ _pickExpForContext(ctx); return; }
+  undoMark('Results from '+(ctx.source||'another app'),['experiments.'+e.id]);
   e.integration=e.integration||{sources:[],cellLines:[],compounds:[],plateMaps:[],protocols:[],results:[]};
-  ['cellLines','compounds','plateMaps','protocols','results','tables'].forEach(function(k){ var incoming=Array.isArray(ctx[k])?ctx[k]:[]; e.integration[k]=e.integration[k]||[]; incoming.forEach(function(item){ var sig=JSON.stringify(item); if(!e.integration[k].some(function(old){return JSON.stringify(old)===sig;})) e.integration[k].push(item); }); });
+  var replaced=0;
+  ['cellLines','compounds','plateMaps','protocols','results','tables'].forEach(function(k){ var incoming=Array.isArray(ctx[k])?ctx[k]:[]; e.integration[k]=e.integration[k]||[];
+    incoming.forEach(function(item){
+      if(k==='results'&&item&&item.id){ var at=-1; e.integration.results.forEach(function(o,i){ if(o&&String(o.id)===String(item.id)) at=i; });
+        if(at>=0){ _carryRowNotes(e.integration.results[at],item); e.integration.results[at]=item; replaced++; return; } }
+      var sig=JSON.stringify(item); if(!e.integration[k].some(function(old){return JSON.stringify(old)===sig;})) e.integration[k].push(item); }); });
   if(ctx.source){ e.integration.sources=e.integration.sources||[]; if(e.integration.sources.indexOf(ctx.source)<0) e.integration.sources.push(ctx.source); }
   // A plate designed elsewhere (Blueprint) becomes this experiment's own map — the one the
   // steps, the exports and Cmd+K read — not a copy filed under integration. An existing map is
@@ -22169,7 +22318,10 @@ function _mergeDHubContext(ctx){
       return addFileTo('exp:'+e.id, new File([u8],im.name,{type:mime}), im.caption).then(function(r){ if(r) ok++; }); }))
     .then(function(){ if(ok){ EXP_TAB='files'; renderEditor(); } toast(ok+' picture'+(ok===1?'':'s')+' added to Files on '+(e.code||e.title||'the experiment')); });
   }
-  e.updated=Date.now(); save(); renderEditor(); toast('Context attached to '+(e.code||e.title||'experiment'));
+  // What came was results: land on the experiment's Results, wherever Labbook was.
+  if((ctx.results||[]).length){ if(_curExp()!==e) openExp(e.id); EXP_TAB='res'; }
+  e.updated=Date.now(); save(); renderEditor();
+  toast(replaced?('Results updated on '+(e.code||e.title||'the experiment')):(((ctx.results||[]).length?'Results attached to ':'Context attached to ')+(e.code||e.title||'experiment')));
 }
 // Newest first, because the run you just analysed is the one you just worked on. Closed and
 // archived entries are still offered — reanalysing an old plate is a real thing — but they sort

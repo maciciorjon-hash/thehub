@@ -1784,6 +1784,7 @@ async function runPipeline() {
   try {
   const assayId = document.getElementById('p-assay').value.trim() || 'HB_ANALYSIS';
   window._lastAssayId = assayId;
+  window._lbSetId = null; window._lbLink = null;   // a new run is a new analysis, not an edit of the one sent before
   const ctrlRange = document.getElementById('p-ctrl').value.trim();
   const skipRows = parseInt(document.getElementById('p-skip').value);
   const hookThr = parseFloat(document.getElementById('p-hook').value);
@@ -3021,6 +3022,7 @@ function echoResultRows(){
     return {
       compound: r.Sample_ID || '',
       target:   r.Protein || '',
+      curve:    _echoCurveOf(r),
       potency:  r.DC50_nM,
       potencyAbs: r.AbsDC50_nM,
       effect:   r.Dmax_pct,
@@ -3040,16 +3042,48 @@ function echoResultRows(){
   }).filter(function(x){ return x.compound; })
     .concat([]).map(function(x){ x.assay=t; x.potencyLabel=lab.potency; x.effectLabel=lab.effect; return x; });
 }
+// The curve as data, so Labbook can draw the points, the ones left out and the fitted line. x is
+// log10 of the molar dose. What was left out comes from the original replicates (_repsOrig) minus
+// the ones still in the fit, compared by value — a result opened from History has lost object identity.
+function _echoCurveOf(r){
+  var t = r._assayType || window._lastAssayType || 'hibit', gain = !!r._gainMode || t === 'gain';
+  var ok = function(p){ return p && p.y !== null && p.y !== undefined && isFinite(p.y) && isFinite(p.x); };
+  var act = (r._reps || []).filter(ok), key = function(p){ return (+p.x).toFixed(4) + '|' + (+p.y).toFixed(3); };
+  var have = {}; act.forEach(function(p){ have[key(p)] = 1; });
+  var ex = (r._repsOrig || []).filter(ok).filter(function(p){ return !have[key(p)]; });
+  var rd = function(v, d){ return +(+v).toFixed(d); };
+  var fit = [r._bot, r._logec50, r._hill, r._tc].every(function(v){ return v !== null && v !== undefined && isFinite(v); }) ? [r._bot, r._logec50, r._hill, r._tc].map(function(v){ return rd(v, 4); }) : null;
+  var yl = gain ? 'Signal (a.u.)' : t === 'ctg' ? 'Viability (%)' : t === 'displacement' ? 'Signal (% DMSO)' : 'Protein (% of DMSO)';
+  return { x: act.map(function(p){ return rd(p.x, 4); }), y: act.map(function(p){ return rd(p.y, 2); }),
+    ex: ex.map(function(p){ return [rd(p.x, 4), rd(p.y, 2)]; }), p: fit, gain: gain, n: act.length,
+    ci: (r.CI_DC50_lower != null && r.CI_DC50_upper != null) ? [r.CI_DC50_lower, r.CI_DC50_upper] : null, yl: yl };
+}
+// The analysis itself, for "Edit in Echo" from the notebook: the fitted rows with their replicate
+// points. The raw input files are bytes and stay where they were opened — an analysis reopened from
+// here edits its curves (points in and out, refit on the replicates), it does not re-run the pipeline.
+function _echoSession(){
+  var data = ((typeof _lastResultsData !== 'undefined' && _lastResultsData) || []).map(function(r){
+    var c = JSON.parse(JSON.stringify(r));
+    if (!(c._deletedPts || []).length && !(c._excludedRepXYs || []).length) delete c._repsOrig;
+    return c; });
+  return { v: 1, kind: 'echo', assayType: window._lastAssayType || 'hibit', assayId: window._lastAssayId || '', data: data };
+}
 function sendResultsToLabbook(){
   var rows = echoResultRows();
   if (!rows.length){ echoToast('No fitted results to send yet — run an analysis first.'); return; }
   var t = window._lastAssayType || 'hibit';
   var lab = ECHO_ASSAY_LABELS[t] || ECHO_ASSAY_LABELS.hibit;
+  // One id per analysis: pressing Send again after editing a curve updates the set in the
+  // experiment that holds it, rather than adding a second copy.
+  var lk = window._lbLink || null;
+  var setId = (lk && lk.setId) || window._lbSetId || (window._lbSetId = 'echo-' + Date.now().toString(36));
   var ctx = {
-    source:'echo', experiment:null, cellLines:[], plateMaps:[], protocols:[],
+    source:'echo', experiment: lk && lk.expId ? { id: lk.expId } : null, cellLines:[], plateMaps:[], protocols:[],
     compounds: rows.map(function(r){ return {name:r.compound}; }),
     results: [{
-      id: 'echo-' + Date.now(),
+      id: setId,
+      origin: 'echo',
+      session: _echoSession(),
       source: 'echo',
       label: (lab.potency.split(' ')[0]) + ' · ' + rows.length + ' compound' + (rows.length===1?'':'s'),
       assay: t,
@@ -3064,7 +3098,12 @@ function sendResultsToLabbook(){
     }]
   };
   try{
-    if (window.parent && window.parent.openApp){ window.parent.openApp('labbook', undefined, undefined, ctx); }
+    if (window.parent && window.parent.openApp){
+      window._lbLink = { expId: lk ? lk.expId : null, setId: setId, label: lk ? lk.label : '' };
+      // The button says what the next press does, without redrawing the results under the reader.
+      document.querySelectorAll('button[onclick="sendResultsToLabbook()"]').forEach(function(b){ if (b.lastChild && b.lastChild.nodeType === 3) b.lastChild.textContent = ' Update in Labbook'; });
+      window.parent.openApp('labbook', undefined, undefined, ctx);
+    }
     else { echoToast('Open Echo inside dHUB to send results to Labbook.'); }
   }catch(e){ echoToast('Could not reach Labbook.', 'err'); }
 }
@@ -3151,7 +3190,7 @@ function renderResults(data) {
   const _dlBtnHover='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
   let _dlSection = '<div class="res-dl" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy TSV</button>'
-    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="sendResultsToLabbook()" title="Attach these potencies to the Labbook experiment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><circle cx="5.5" cy="17" r="2.4"/><circle cx="18.5" cy="17" r="2.4"/><path d="M10.7 8.1L6.8 14.9M13.3 8.1l3.9 6.8M8 17h8"/></svg> Send to Labbook</button>'
+    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="sendResultsToLabbook()" title="'+(window._lbLink&&window._lbLink.setId?'Send this analysis back — it replaces the result set it came from':'Attach these potencies, with their curves, to the Labbook experiment')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><circle cx="5.5" cy="17" r="2.4"/><circle cx="18.5" cy="17" r="2.4"/><path d="M10.7 8.1L6.8 14.9M13.3 8.1l3.9 6.8M8 17h8"/></svg> '+(window._lbLink&&window._lbLink.setId?'Update in Labbook':'Send to Labbook')+'</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputXLSX()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg> Results XLSX</button>';
   if (_rawBlob) {
     _dlSection += '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg> Raw Data CSV</button>';
@@ -10120,7 +10159,40 @@ function openEchoProject() {
 }
 
 (function(){try{var t=localStorage.getItem('hub_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');var chk=document.getElementById('theme-toggle-chk');if(chk)chk.checked=(document.documentElement.getAttribute('data-theme')==='dark');}catch(e){}document.addEventListener('click',function(e){var p=document.getElementById('opts-panel');if(p&&p.classList.contains('open')&&!p.contains(e.target)&&e.target.id!=='opts-btn')p.classList.remove('open');});onAssayTypeChange();try{_esWatchQc();_esOfferRestore();}catch(e){}})();
+// Labbook opening one of its analyses here: "Edit in Echo". Only the Hub's own frame may do it.
+var _echoLastOpenReq=null;
+function echoOpenFromLabbook(o){
+  const S=o.session, data=S&&Array.isArray(S.data)?S.data:null;
+  if(!data||!data.length){ echoToast('That analysis could not be opened.','err'); return; }
+  window._loadingFromHistory=true;
+  _natOrder(data);
+  scatterData=data; window._bpData=data; _lastResultsData=data;
+  window._lastAssayType=S.assayType||window._lastAssayType||'hibit'; if(S.assayId) window._lastAssayId=S.assayId;
+  window._lbSetId=o.setId||null; window._lbLink={expId:o.expId||null,setId:o.setId||null,label:o.label||''};
+  renderResults(data);
+  ['rc','sc','dc'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=data.length;});
+  try{ renderCurvesTab(data); }catch(err){ console.error(err); }
+  document.querySelector('[data-tab="curves"]')?.click();
+  // The Curves tab finishes drawing itself a frame later (it resets to Single mode); choose the
+  // compound after that, or the choice is undone by the tab's own set-up.
+  const pick=()=>{
+    const sel=document.getElementById('cv-compound');
+    if(sel&&sel._filtered&&o.compound){
+      const i=sel._filtered.findIndex(r=>r.Sample_ID===o.compound);
+      if(i>=0&&sel.selectedIndex!==i){ sel.selectedIndex=i; window._cvZoom=null; renderCvCurve(); }
+    }
+  };
+  pick(); requestAnimationFrame(()=>requestAnimationFrame(pick)); setTimeout(pick,250);
+  setTimeout(()=>{ try{ renderScatter(data); }catch(err){} window._loadingFromHistory=false; },0);
+  echoToast('Opened from Labbook'+(o.label?' — '+o.label:'')+'. Leave points out or put them back, then press Update in Labbook.');
+}
 window.addEventListener('message',function(e){
+  if(e.data&&e.data.type==='dhub:context'&&e.data.version===1&&e.source===window.parent){
+    const o=e.data.context&&e.data.context.open;
+    try{ if(e.data.requestId) window.parent.postMessage({type:'dhub:ack',requestId:e.data.requestId,app:'echo'},'*'); }catch(x){}
+    if(o&&o.app==='echo'&&o.session&&e.data.requestId!==_echoLastOpenReq){ _echoLastOpenReq=e.data.requestId; echoOpenFromLabbook(o); }
+    return;
+  }
   if(!e.data||e.data.type!=='switchTab'||!e.data.tab)return;
   var id=e.data.tab;
   var btn=document.querySelector('.outer-tab[onclick*="\''+id+'\'"]');

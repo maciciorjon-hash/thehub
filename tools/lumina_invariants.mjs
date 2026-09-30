@@ -15,6 +15,8 @@
 //   L7  a run with no control is raw counts: no "%" on the effect, no replicate-SD flags in % of control
 //   L8  a reading is never written wider than its well
 //   L9  a reader file whose grid is not the size of the plate on screen says so
+//   L11 a point left out of its curve: the fit is remade without it, the raw export marks it, the Prism tables omit it,
+//       the plate crosses it, and ⌘Z brings the fit back exactly (the click / right-click / undo gestures are in tools/transfer_invariants.mjs)
 //   L10 the potency and the effect are called what the selected assay calls them — DC50/Dmax, IC50/Span,
 //       IC50, EC50/Emax — in the table, the curve, the Plot, every export and what goes to Labbook
 //
@@ -291,6 +293,24 @@ try { if (hasX) {
   }
   check('L10 potency and effect are named after the selected assay everywhere', l10.length === 0, l10.slice(0, 5).join(' · '));
   await ev(() => { document.getElementById('assay-type').value = 'ctg'; onAssayTypeChange(); });
+
+  // ── L11 leaving a point out ──────────────────────────────────────────────────────────
+  await ev(() => { document.getElementById('assay-type').value = 'ctg'; onAssayTypeChange(); switchTab('input'); switchTab('results'); }); await page.waitForTimeout(500);
+  const l11 = await ev(() => {
+    const cells = () => _buildLuminaPrismAOA(false).reduce((n, r) => n + r.filter(v => typeof v === 'number').length, 0);
+    const r0 = _lmSel(), k = r0.keys[2], well = k.split(':')[1], ec0 = r0.ec50M, n0 = r0.n, p0 = cells();
+    lmSetExcluded([k], true);
+    const r1 = _lmSel(), out = { n: [n0, r1.n], ex: r1.exPts.length, moved: r1.ec50M !== ec0 };
+    const row = state.rawRows.find(x => (x.plate - 1) + ':' + x.well === k);
+    out.rawCol = _rawRow(row).slice(-1)[0]; out.rawHdr = _rawHeader().slice(-1)[0]; out.prism = [p0, cells()];
+    switchTab('input'); state.activeSubtab = 'signal'; lmAfterChange(); out.marked = !!document.querySelector('.well.has-ex[data-pos="' + well + '"]');
+    state.activeSubtab = 'layout'; lmAfterChange(); switchTab('results');
+    lmUndo(); const r2 = _lmSel(); out.back = [r2.n, r2.exPts.length, Math.abs(r2.ec50M / ec0 - 1) < 1e-9];
+    return out;
+  });
+  check('L11 leaving a point out refits without it', l11.n[1] === l11.n[0] - 1 && l11.ex === 1 && l11.moved, JSON.stringify(l11));
+  check('L11 the raw export marks it and the Prism tables omit it', l11.rawHdr === 'Excluded_from_fit' && l11.rawCol === 'Yes' && l11.prism[1] === l11.prism[0] - 1, JSON.stringify(l11));
+  check('L11 the plate marks the well and ⌘Z brings the fit back', l11.marked && l11.back[0] === l11.n[0] && l11.back[1] === 0 && l11.back[2], JSON.stringify(l11));
 
   // ── L9 a 96-well export on a 384-well plate ──────────────────────────────────────────
   await ev(() => setPlateFormat(384)); await drop(['CTG20260923_144h_Z.xlsx']);

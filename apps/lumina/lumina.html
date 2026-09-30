@@ -132,6 +132,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)
 .well .w-conc{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;font-size:clamp(10px,calc(var(--wpx,38px)*.25),13px);line-height:1.1;}
 .well .w-ctl{font-weight:700;color:var(--text2);letter-spacing:.2px;}
 .well.has-ctrl{border-color:var(--accent3);border-width:2px;}
+.well.has-ex{position:relative;opacity:.55;}
+.well.has-ex::after{content:'';position:absolute;inset:18%;background:linear-gradient(to top right,transparent calc(50% - 1px),var(--text2) calc(50% - 1px),var(--text2) calc(50% + 1px),transparent calc(50% + 1px)),linear-gradient(to top left,transparent calc(50% - 1px),var(--text2) calc(50% - 1px),var(--text2) calc(50% + 1px),transparent calc(50% + 1px));pointer-events:none;}
 .well.has-zero{border-color:var(--accent2);border-width:2px;border-style:dashed;}
 .well .w-val{font-size:clamp(9px,calc(var(--wpx,38px)*.24),15px);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.01em;white-space:nowrap;}
 
@@ -339,6 +341,9 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)
 .ru-eg{font-size:var(--fs-3);color:var(--text);padding:8px 10px;border-radius:var(--r-1);background:var(--surface2);font-variant-numeric:tabular-nums;margin-bottom:8px;}
 .ru-eg span{color:var(--text3);}
 .ru-note{font-size:var(--fs-2);color:var(--text3);line-height:1.45;}
+.ex-chip{display:inline-block;padding:1px 7px;border-radius:var(--r-4);font-size:var(--fs-2);font-weight:600;background:var(--surface3);color:var(--text2);white-space:nowrap;}
+.cs-ex{color:var(--text3);font-weight:400;}
+.cv-hint{font-size:var(--fs-2);color:var(--text3);padding:2px 2px 0;}
 .qc-chip{display:inline-block;padding:1px 8px;border-radius:var(--r-4);font-size:var(--fs-2);font-weight:600;background:var(--error-soft);color:var(--error);white-space:nowrap;}
 .rs-empty{text-align:center;padding:56px 20px;color:var(--text2);font-size:var(--fs-4);line-height:1.6;}
 .rs-empty b{display:block;color:var(--text);font-size:var(--fs-5);margin-bottom:4px;}
@@ -700,6 +705,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
             </div></div>
             <div class="chart-wrap"><canvas id="curve-canvas"></canvas></div>
             <div class="curve-stats" id="curve-stats"></div>
+            <div class="cv-hint" id="curve-hint">Click a point to leave it out and refit &middot; a cross is a point left out: click or right-click it to put it back &middot; <kbd>&#8984;Z</kbd> undoes</div>
           </div>
           <div id="plot-pane" hidden>
             <div class="pl-bar">
@@ -741,6 +747,7 @@ var state = {
   names: [],                // names[n-1] = what compound n is called; empty = "Compound n"
   ctrlWells: new Set(),     // pos set — 100% control, same wells on every plate
   zeroCtrlWells: new Set(), // pos set, for displacement assay 0% control
+  excluded: new Set(),      // 'plateIndex:pos' — readings left out of their curve. The wells stay on the plate and in every raw export (flagged); only the fit stops using them.
   activeSubtab: 'layout',   // the plate view: 'layout' | 'signal' (readings) | 'cpds' (names)
   fitResults: [],        // per-sample fit output
   fitSig: null,          // what the fit on screen was made from — anything else and it refits
@@ -803,20 +810,89 @@ function luminaResultRows(){
       flagReason: _flagReason(r) || '',
       assay:    t,
       potencyLabel: lab.potency,
-      effectLabel:  lab.effect
+      effectLabel:  lab.effect,
+      plate:    (r.plates || []).join(' + '),
+      curve:    _lmCurveOf(r)
     };
   }).filter(function(x){ return x.compound; });
 }
+// The curve as data: enough for Labbook to draw the points, the crosses and the fitted line, so the
+// analysis is looked at in the notebook rather than only quoted there. x is log10 of the molar dose.
+function _lmR(v, d){ return isFinite(v) ? +(+v).toFixed(d) : 0; }
+function _lmCurveOf(r){
+  var L = assayFitLabels(state.assayType), gain = state.assayType === 'gain';
+  return {
+    x: r.xArr.map(function(v){ return _lmR(v, 4); }), y: r.yArr.map(function(v){ return _lmR(v, 2); }),
+    ex: (r.exPts || []).map(function(e){ return [_lmR(e.x, 4), _lmR(e.y, 2)]; }),
+    p: [r.bottom, r.logEC50, r.hill, r.top].map(function(v){ return _lmR(v, 4); }),
+    gain: gain, n: r.n,
+    ci: r.ciEc50LowerNM != null ? [_lmR(r.ciEc50LowerNM, 3), _lmR(r.ciEc50UpperNM, 3)] : null,
+    yl: (_lmNorm() || gain) ? L.yAxis : 'Signal (raw counts)'
+  };
+}
+// Everything needed to open this analysis again in Lumina: the layout, every plate's readings, the
+// names, the controls, what was left out and the fit settings. It travels with the result set, so
+// "Edit in Lumina" works from any device — the notebook holds the analysis, not just its numbers.
+function lmSession(){
+  return {
+    v: 1, assay: document.getElementById('assay-type').value, format: state.format,
+    layout: JSON.parse(JSON.stringify(state.layout)),
+    plates: state.plates.map(function(p){ return { signal: Object.assign({}, p.signal), file: p.file || '', name: p.name || '', nameSrc: p.nameSrc || '' }; }),
+    names: state.names.map(function(n){ return n == null ? '' : String(n); }),
+    ctrl: Array.from(state.ctrlWells), zero: Array.from(state.zeroCtrlWells), excluded: Array.from(state.excluded),
+    settings: _rsVals(), units: { u: state.units.u, log: !!state.units.log }
+  };
+}
+// What identifies an analysis is its plates: the layout and the readings. Leaving a point out or
+// moving a fit setting is still the same analysis, so sending again updates it in Labbook instead of
+// adding a second copy; a different plate is a different result.
+function lmDataId(){
+  var str = JSON.stringify([state.format, state.layout, state.plates.map(function(p){ var k = Object.keys(p.signal).sort(); return k.map(function(q){ return q + '=' + p.signal[q]; }); }), Array.from(state.ctrlWells).sort(), Array.from(state.zeroCtrlWells).sort()]);
+  var h = 5381; for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return 'lumina-' + (h >>> 0).toString(36);
+}
+function _lmArr(v){ if (Array.isArray(v)) return v; if (v && typeof v === 'object') return Object.keys(v).sort(function(a, b){ return a - b; }).map(function(k){ return v[k]; }); return []; }
+function lmLoadSession(sess, link){
+  if (!sess || typeof sess !== 'object') return false;
+  lmMark();
+  var fmt = sess.format === 384 ? 384 : 96;
+  state.format = fmt; state.rows = fmt === 96 ? 8 : 16; state.cols = fmt === 96 ? 12 : 24;
+  var lay = sess.layout || {};
+  state.layout = {
+    grads: _lmArr(lay.grads).map(function(g){ g = Object.assign({}, g); g.idx = g.idx || {}; return g; }),
+    zones: _lmArr(lay.zones).map(function(z){ return _lmArr(z).map(String); })
+  };
+  var pls = _lmArr(sess.plates).map(function(p){ return { signal: Object.assign({}, p && p.signal), file: (p && p.file) || '', name: (p && p.name) || '', nameSrc: (p && p.nameSrc) || undefined }; });
+  state.plates = pls.length ? pls : [_lmNewPlate()];
+  state.plate = 0;
+  state.names = _lmArr(sess.names).map(function(n){ return n == null ? '' : String(n); });
+  state.ctrlWells = new Set(_lmArr(sess.ctrl).map(String)); state.zeroCtrlWells = new Set(_lmArr(sess.zero).map(String));
+  state.excluded = new Set(_lmArr(sess.excluded).map(String));
+  LM_SEL = new Set(); LM_MODE = null;
+  if (sess.assay) document.getElementById('assay-type').value = sess.assay;
+  onAssayTypeChange();
+  var inputs = document.querySelectorAll('#rs-set input'), vals = _lmArr(sess.settings);
+  if (vals.length === inputs.length) Array.prototype.forEach.call(inputs, function(el, i){ if (el.type === 'checkbox') el.checked = !!vals[i]; else el.value = vals[i]; });
+  rsSyncOpts();
+  if (sess.units && (sess.units.u === 'auto' || UNITS[sess.units.u])) { state.units = { u: sess.units.u, log: !!sess.units.log }; try { localStorage.setItem('lumina_units', JSON.stringify(state.units)); } catch(e){} rsSyncUnitsUI(); }
+  document.querySelectorAll('#format-seg button').forEach(function(b, i){ b.classList.toggle('active', (i === 0 && fmt === 96) || (i === 1 && fmt === 384)); });
+  state.fitResults = []; state.fitSig = null; state.selectedSample = null; state.lbLink = link || null;
+  lmAfterChange();
+  return true;
+}
 function sendResultsToLabbook(){
+  if (!_lmEnsureFit(true) && !state.fitResults.length) { toast('No fitted results to send yet — run an analysis first.'); return; }
   var rows = luminaResultRows();
   if (!rows.length){ toast('No fitted results to send yet — run an analysis first.'); return; }
   var t = state.assayType || 'hibit', lab = LUM_ASSAY_LABELS[t] || LUM_ASSAY_LABELS.hibit;
   var ctx = {
-    source:'lumina', experiment:null, cellLines:[], plateMaps:[], protocols:[],
+    source:'lumina', experiment: state.lbLink ? { id: state.lbLink.expId } : null, cellLines:[], plateMaps:[], protocols:[],
     compounds: rows.map(function(r){ return {name:r.compound}; }),
     results: [{
-      id: 'lumina-' + Date.now(),
+      id: (state.lbLink && state.lbLink.setId) || lmDataId(),   // the same analysis sent again updates its set
       source: 'Lumina',
+      origin: 'lumina',
+      session: lmSession(),
       label: lab.potency.split(' ')[0] + ' · ' + rows.length + ' compound' + (rows.length===1?'':'s') + ' · by hand',
       assay: t,
       potencyLabel: lab.potency,
@@ -828,7 +904,13 @@ function sendResultsToLabbook(){
     }]
   };
   try{
-    if (window.parent && window.parent !== window && window.parent.openApp){ window.parent.openApp('labbook', undefined, undefined, ctx); }
+    if (window.parent && window.parent !== window && window.parent.openApp){
+      var sid = ctx.results[0].id;
+      // Once it has been sent, this analysis belongs to that set: the next Send updates it.
+      state.lbLink = { expId: state.lbLink ? state.lbLink.expId : null, setId: sid, label: state.lbLink ? state.lbLink.label : '' };
+      lmSyncLbBar();
+      window.parent.openApp('labbook', undefined, undefined, ctx);
+    }
     else { toast('Open Lumina inside dHUB to send results to Labbook.'); }
   }catch(e){ toast('Could not reach Labbook.'); }
 }
@@ -872,7 +954,28 @@ function toggleTheme(){
 }
 window.addEventListener('message', function(e){
   if (e.data && e.data.theme) { document.documentElement.setAttribute('data-theme', e.data.theme); setTimeout(rsRefreshCharts, 80); }
+  // Labbook opening one of its analyses here: "Edit in Lumina". Only the Hub's own frame may do it.
+  if (e.data && e.data.type === 'dhub:context' && e.data.version === 1 && e.source === window.parent) {
+    var o = e.data.context && e.data.context.open;
+    try { if (e.data.requestId) window.parent.postMessage({ type: 'dhub:ack', requestId: e.data.requestId, app: 'lumina' }, '*'); } catch(x){}
+    if (o && o.app === 'lumina' && o.session && e.data.requestId !== _lmLastOpenReq) { _lmLastOpenReq = e.data.requestId; lmOpenFromLabbook(o); }
+  }
 });
+var _lmLastOpenReq = null;
+function lmOpenFromLabbook(o){
+  if (!lmLoadSession(o.session, { expId: o.expId || null, setId: o.setId || null, label: o.label || '' })) { toast('That analysis could not be opened.'); return; }
+  switchTab('results');
+  var want = o.compound && state.fitResults.filter(function(r){ return r.sampleId === o.compound; })[0];
+  if (want) selectSample(want.sampleId, { scroll: true });
+  toastUndo('Opened from Labbook' + (o.label ? ' — ' + o.label : '') + '. Change it, then press Update in Labbook.', function(){ lmUndo(); });
+  lmSyncLbBar();
+}
+// The Send button says what it will do: add a new result set, or update the one this analysis came from.
+function lmSyncLbBar(){
+  var b = document.getElementById('rs-lb'); if (!b) return;
+  b.textContent = state.lbLink && state.lbLink.setId ? 'Update in Labbook' : 'Send to Labbook';
+  b.title = state.lbLink && state.lbLink.setId ? 'Send this analysis back — it replaces the result set it came from' : 'Attach these potencies, with their curves, to an experiment';
+}
 
 var _toastTimer = null;
 function toast(msg){
@@ -906,7 +1009,8 @@ function _snapshotState(){
     plates: JSON.parse(JSON.stringify(state.plates)),
     names: state.names.slice(), plate: state.plate,
     ctrlWells: new Set(state.ctrlWells),
-    zeroCtrlWells: new Set(state.zeroCtrlWells)
+    zeroCtrlWells: new Set(state.zeroCtrlWells),
+    excluded: new Set(state.excluded)
   };
 }
 function _restoreSnapshot(snap){
@@ -914,9 +1018,12 @@ function _restoreSnapshot(snap){
   state.layout = snap.layout; state.plates = snap.plates; state.names = snap.names; state.plate = snap.plate;
   state.ctrlWells = snap.ctrlWells;
   state.zeroCtrlWells = snap.zeroCtrlWells;
+  state.excluded = snap.excluded || new Set();
   var keep = new Set(); LM_SEL.forEach(function(p){ var q = _rc(p); if (q.r < state.rows && q.c < state.cols) keep.add(p); }); LM_SEL = keep;
   document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && state.format===96) || (i===1 && state.format===384)); });
   lmAfterChange();
+  // A curve edit undone from Results must show: the fit is remade from what the plate now says.
+  if (document.getElementById('pane-results').classList.contains('active')) { _lmEnsureFit(true); renderResults(); }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1145,25 +1252,30 @@ function _lmTakeWells(set, what){
 }
 
 // ── Undo ─────────────────────────────────────────────────────
-function lmMark(){
-  _lmUndo.push(_snapshotState());
+function lmMark(kind){
+  var sn = _snapshotState(); sn.k = kind || 'layout';   // 'excl' marks a curve edit, so ⌘Z on Results undoes only those
+  _lmUndo.push(sn);
   if (_lmUndo.length > 80) _lmUndo.shift();
   _lmRedo = [];
   lmSyncUndoBtn();
 }
+// Readings left out of a curve belong to the reading, not to the layout: a new reading in that well is a new question.
+function _lmExclDrop(plate, pos){ state.excluded.forEach(function(k){ var a = k.split(':'); if (+a[0] === plate && (pos === undefined || a[1] === pos)) state.excluded.delete(k); }); }
 // A mark taken for an edit that then did not happen (a paste that did not fit).
 function lmDropMark(){ _lmUndo.pop(); lmSyncUndoBtn(); }
 function lmSyncUndoBtn(){ var b = document.getElementById('lm-undo'); if (b) b.style.display = _lmUndo.length ? '' : 'none'; }
 function lmUndo(){
   if (!_lmUndo.length){ toast('Nothing to undo.'); return; }
-  _lmRedo.push(_snapshotState());
-  _restoreSnapshot(_lmUndo.pop());
+  var top = _lmUndo.pop(), now = _snapshotState(); now.k = top.k;
+  _lmRedo.push(now);
+  _restoreSnapshot(top);
   lmSyncUndoBtn();
 }
 function lmRedo(){
   if (!_lmRedo.length) return;
-  _lmUndo.push(_snapshotState());
-  _restoreSnapshot(_lmRedo.pop());
+  var top = _lmRedo.pop(), now = _snapshotState(); now.k = top.k;
+  _lmUndo.push(now);
+  _restoreSnapshot(top);
   lmSyncUndoBtn();
 }
 
@@ -1419,6 +1531,7 @@ function lmDelPlate(p){
   if (state.plates.length < 2) return;
   var S = _lmS(), snap = _snapshotState(); lmMark();
   state.plates.splice(p, 1);
+  var ex2 = new Set(); state.excluded.forEach(function(k){ var a = k.split(':'), q = +a[0]; if (q === p) return; ex2.add((q > p ? q - 1 : q) + ':' + a[1]); }); state.excluded = ex2;
   // Its compounds go with it; the ones after it move up a plate, keeping their names.
   if (S) state.names.splice(p * S, S);
   state.plate = Math.min(state.plate, state.plates.length - 1);
@@ -1783,6 +1896,7 @@ function setPlateFormat(fmt){
   state.plates = state.plates.map(function(pl){ var np = _lmNewPlate(); np.name = pl.name || ''; if (pl.nameSrc) np.nameSrc = pl.nameSrc; return np; });
   state.ctrlWells = new Set();
   state.zeroCtrlWells = new Set();
+  state.excluded = new Set(); state.lbLink = null;
   resetAnalysisOutputs();
   document.querySelectorAll('#format-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && fmt===96) || (i===1 && fmt===384)); });
   lmAfterChange();
@@ -1879,7 +1993,9 @@ function renderGrid(){
       }
       var n = zi !== undefined ? lmCpdNo(P, zi) : 0;
       var tip = pos + (n ? ' · #' + n + ' ' + lmCpdName(n) : '') + (conc !== undefined ? ' · ' + fmtConc(conc) : '') + (isCtrl ? ' · 100% control' : '') + (isZero ? ' · 0% control' : '') + (hasM ? ' · signal ' + m : '');
-      var wellClass = 'well' + (isCtrl ? ' has-ctrl' : '') + (isZero ? ' has-zero' : '') + (LM_SEL.has(pos) ? ' sel' : '');
+      var isEx = sig && state.excluded.has(P + ':' + pos);
+      if (isEx) tip += ' · left out of its curve';
+      var wellClass = 'well' + (isCtrl ? ' has-ctrl' : '') + (isZero ? ' has-zero' : '') + (isEx ? ' has-ex' : '') + (LM_SEL.has(pos) ? ' sel' : '');
       html += '<div class="' + wellClass + '" data-pos="' + pos + '" title="' + esc(tip) + '" style="' + at(r + 2, c2 + 2) + 'width:' + cellPx + 'px;height:' + cellPx + 'px;' + bg + '">' + cellHtml + '</div>';
     }
   }
@@ -2026,6 +2142,7 @@ function clearGrid(){
   state.layout = { grads: [], zones: [] };
   state.ctrlWells = new Set();
   state.zeroCtrlWells = new Set();
+  state.excluded = new Set(); state.lbLink = null;
   LM_MODE = null;
   resetAnalysisOutputs();
   lmAfterChange();
@@ -2186,8 +2303,8 @@ function lmApplyGrid(parsed, plateIdx, at, source){
   }
   while (state.plates.length <= plateIdx) state.plates.push(_lmNewPlate());
   var pl = state.plates[plateIdx], sig = Object.assign({}, pl.signal);
-  clear.forEach(function(p){ delete sig[p]; });
-  Object.keys(set).forEach(function(p){ sig[p] = set[p]; });
+  clear.forEach(function(p){ delete sig[p]; _lmExclDrop(plateIdx, p); });
+  Object.keys(set).forEach(function(p){ sig[p] = set[p]; _lmExclDrop(plateIdx, p); });
   pl.signal = sig; pl.file = source;
   return { n: Object.keys(set).length, at: parsed.labelled ? null : wellPos(r0, c0) };
 }
@@ -2262,7 +2379,7 @@ async function handleReaderFile(file, plateIdx, quiet){
     if (!matched) { toast('No readings found in ' + file.name + ' — is it the reader export for a ' + state.format + '-well plate?'); return false; }
     while (state.plates.length <= target) state.plates.push(_lmNewPlate());
     if (!quiet) lmMark();
-    state.plates[target].signal = sig;
+    state.plates[target].signal = sig; _lmExclDrop(target);
     state.plates[target].file = file.name;
     _lmNameFromFile(state.plates[target], file.name);
     if (!quiet) {
@@ -2381,7 +2498,7 @@ function loadLuminaTestData(){
     { ec50: 8e-7, hill: 1.2, top: 90, bot: 8 }, { ec50: 3e-6, hill: 1.0, top: 96, bot: 3 },
     { ec50: 1e-8, hill: 1.3, top: 97, bot: 4 }, { ec50: 5e-7, hill: 1.0, top: 92, bot: 6 }
   ];
-  state.plates = [_lmNewPlate(), _lmNewPlate()];
+  state.plates = [_lmNewPlate(), _lmNewPlate()]; state.excluded = new Set(); state.lbLink = null;
   state.plates.forEach(function(pl, p){
     state.layout.zones.forEach(function(zw, zi){
       var cv = curves[p * 4 + zi]; if (!cv) return;
@@ -2583,7 +2700,7 @@ function _numFieldOr(id, fallback){
 function _lmFitSig(){
   var qc = Array.prototype.map.call(document.querySelectorAll('#rs-set input'), function(el){ return el.type === 'checkbox' ? el.checked : el.value; });
   return JSON.stringify([document.getElementById('assay-type').value, state.format, state.layout, state.plates.map(function(p, i){ return [lmPlateName(i), p.signal]; }),
-    state.names, Array.from(state.ctrlWells), Array.from(state.zeroCtrlWells), qc]);
+    state.names, Array.from(state.ctrlWells), Array.from(state.zeroCtrlWells), Array.from(state.excluded).sort(), qc]);
 }
 function _lmFitFail(msg, quiet){
   resetAnalysisOutputs();
@@ -2624,7 +2741,7 @@ function runLuminaAnalysis(opts){
       var d = wd[pos];
       if (!d.sampleId || d.conc === undefined || d.conc === null || isNaN(d.conc) || d.conc <= 0) return;
       if (d.measurement === undefined || d.measurement === null || isNaN(d.measurement)) return;
-      prow.push({ plate: p + 1, plateName: lmPlateName(p), well: pos, sampleId: d.sampleId, conc: d.conc, log10Conc: Math.log10(d.conc), measurement: d.measurement, measurementRaw: d.measurement, isCtrl: ctrlWells.has(pos) });
+      prow.push({ plate: p + 1, plateName: lmPlateName(p), well: pos, sampleId: d.sampleId, conc: d.conc, log10Conc: Math.log10(d.conc), measurement: d.measurement, measurementRaw: d.measurement, isCtrl: ctrlWells.has(pos), excl: state.excluded.has(p + ':' + pos) });
     });
     // 2. Control normalization (mirrors Echo's runAnalysisJS control-normalization branch)
     var ctrlSum=0, ctrlN=0, zpSum=0, zpN=0;
@@ -2673,7 +2790,9 @@ function runLuminaAnalysis(opts){
   var disableHook = assayType === 'gain' || assayType === 'displacement';
 
   var summary = [];
-  sampleMap.forEach(function(sdata, sid){
+  sampleMap.forEach(function(sall, sid){
+    // A reading you left out is still on the plate and still drawn (as a cross) — the fit just does not use it.
+    var sdata = sall.filter(function(r){ return !r.excl; });
     if (sdata.length < 3) { return; } // need at least 3 points to fit a 4-param curve meaningfully
 
     // Hook-point detection (mirrors Echo's logic)
@@ -2751,7 +2870,10 @@ function runLuminaAnalysis(opts){
       flagR2: flagR2, flagSD: flagSD, isHook: isHook, hookCount: hookConcs.size,
       flagRangeLo: flagRangeLo, flagRangeHi: flagRangeHi, flagged: flagged,
       xArr: sdata.map(function(r){ return r.log10Conc; }), yArr: sdata.map(function(r){ return r.measurement; }),
-      yArrRaw: sdata.map(function(r){ return r.measurementRaw; })
+      yArrRaw: sdata.map(function(r){ return r.measurementRaw; }),
+      // Which well each point is, parallel to xArr — what a click on the curve needs to leave it out.
+      keys: sdata.map(function(r){ return (r.plate - 1) + ':' + r.well; }),
+      exPts: sall.filter(function(r){ return r.excl; }).map(function(r){ return { key: (r.plate - 1) + ':' + r.well, well: r.well, plate: r.plateName, x: r.log10Conc, y: r.measurement, yRaw: r.measurementRaw }; })
     });
   });
 
@@ -2880,7 +3002,7 @@ function rsSetTab(t){
   if (state.fitResults.length) { if (state.rsTab === 'plot') plotDraw(); else if (state.selectedSample) drawCurve(state.selectedSample); }
 }
 state.rsTab = (function(){ try { return localStorage.getItem('lumina_rstab') === 'plot' ? 'plot' : 'curve'; } catch(e){ return 'curve'; } })();
-var curveChart = null;
+var curveChart = null, _lmCurvePts = null;
 function drawCurve(sid){
   var r = state.fitResults.find(function(x){ return x.sampleId===sid; });
   if (!r) return;
@@ -2910,11 +3032,24 @@ function drawCurve(sid){
   var dataPts = r.xArr.map(function(x,i){ return { x:x, y:yData[i] }; });
   datasets.push({ type:'scatter', label: isRaw?'Raw signal':'Data', data: dataPts, backgroundColor:'#5e87c5', borderColor: c.isDark?'#0d0f14':'#fff', borderWidth:1, pointRadius:4, pointHoverRadius:6, order:0 });
   var dataDatasetIdx = datasets.length - 1;
+  // Readings you left out stay on the curve as crosses — that is what makes them findable, so a click or a
+  // right-click can put one back. They are not in the fit and not in `n`.
+  var exPts = (r.exPts || []).map(function(e){ return { x:e.x, y:isRaw ? e.yRaw : e.y }; });
+  var exDatasetIdx = -1;
+  if (exPts.length) {
+    datasets.push({ type:'scatter', label:'Left out', data: exPts, pointStyle:'crossRot', backgroundColor:'transparent', borderColor: c.isDark ? '#aab0c8' : '#7d829c', borderWidth:2, pointRadius:6, pointHoverRadius:8, order:0 });
+    exDatasetIdx = datasets.length - 1;
+  }
+  // What a click on the canvas can hit, in the chart's own coordinates.
+  _lmCurvePts = {
+    inc: r.xArr.map(function(x,i){ return { key:r.keys[i], x:x, y:yData[i] }; }),
+    ex: (r.exPts || []).map(function(e){ return { key:e.key, x:e.x, y:isRaw ? e.yRaw : e.y, well:e.well, plate:e.plate }; })
+  };
 
   // Y axis is pinned to a 0-120 baseline (matches the typical 0-100% signal
   // range with headroom) — bottom always 0, top only stretched past 120
   // when the data/fit genuinely exceeds it (e.g. gain-of-signal assays).
-  var allY = yData.slice();
+  var allY = yData.slice().concat(exPts.map(function(p){ return p.y; }));
   if (!isRaw) curvePts.forEach(function(p){ allY.push(p.y); });
   var yAxisMax = Math.max(120, Math.max.apply(null, allY) * 1.05);
   if (yAxisMax > 120) { var yst = _niceTicks(0, yAxisMax, 6).step; yAxisMax = Math.ceil(yAxisMax / yst) * yst; }   // raw counts: a top that is a round number, not 3,775,947
@@ -2932,11 +3067,11 @@ function drawCurve(sid){
       plugins: {
         legend: { display: false },
         tooltip: {
-          filter: function(item){ return item.datasetIndex === dataDatasetIdx; },
+          filter: function(item){ return item.datasetIndex === dataDatasetIdx || item.datasetIndex === exDatasetIdx; },
           backgroundColor: c.surface2, titleColor: c.isDark?'#e8eaf2':'#1a1d2e', bodyColor: c.text, borderColor: c.border2, borderWidth: 1, padding: 9,
           callbacks: {
             title: function(){ return sid; },
-            label: function(item){ return ['Log10[Conc]: '+item.raw.x.toFixed(3), (isRaw?'Raw: ':'Signal: ')+item.raw.y.toFixed(2)]; }
+            label: function(item){ return ['Log10[Conc]: '+item.raw.x.toFixed(3), (isRaw?'Raw: ':'Signal: ')+item.raw.y.toFixed(2)].concat(item.datasetIndex === exDatasetIdx ? ['Left out of the fit — right-click to put it back'] : []); }
           }
         }
       }
@@ -2947,7 +3082,7 @@ function drawCurve(sid){
   var items = [
     [curveL.ec50Name, _potWithUnit(r.ec50M)], ['95% CI', _lmCIwithUnit(r) || '—']].concat(curveL.hasDmax ? [[state.assayType === 'gain' ? 'Emax' : curveL.dmaxName, _lmEffText(r)]] : [], [['Hill', r.hill.toFixed(2)],
     ['Top', _statNum(r.top)], ['Bottom', _statNum(r.bottom)],
-    ['R²', r.r2.toFixed(3)], ['n', r.n]]);
+    ['R²', r.r2.toFixed(3)], ['n', r.n + ((r.exPts || []).length ? ' <span class="cs-ex">(' + r.exPts.length + ' left out)</span>' : '')]]);
   statsEl.innerHTML = (isRaw ? '<span class="cs-item">The fit is made on the normalised data</span>' : '') + items.map(function(it){ return '<span class="cs-item">'+it[0]+' <b>'+it[1]+'</b></span>'; }).join('');
 }
 function _statNum(v){ return Math.abs(v) >= 1000 ? _lmReadFmt(v, 6) : v.toFixed(1); }
@@ -2956,6 +3091,56 @@ function setCurveView(mode){
   document.querySelectorAll('#curve-view-seg button').forEach(function(b,i){ b.classList.toggle('active', (i===0 && mode==='norm') || (i===1 && mode==='raw')); });
   if (state.selectedSample) drawCurve(state.selectedSample);
 }
+// ── Leaving a reading out of its curve ─────────────────────────────────────────────────────
+// Click a point on the curve to leave it out; the fit is remade at once from the rest and the table,
+// the potency and the Plot follow. A left-out reading stays drawn as a cross: click it again, or
+// right-click it, to put it back. ⌘Z undoes it (only curve edits, on Results). The wells stay on the
+// plate and in every raw export, marked Excluded_from_fit — nothing is deleted.
+function _lmSel(){ return state.fitResults.filter(function(x){ return x.sampleId === state.selectedSample; })[0] || null; }
+function _lmCurvePick(ev){
+  if (!curveChart || !_lmCurvePts || state.rsTab !== 'curve') return null;
+  var rc = curveChart.canvas.getBoundingClientRect(), mx = ev.clientX - rc.left, my = ev.clientY - rc.top;
+  var xs = curveChart.scales.x, ys = curveChart.scales.y, best = null, bd = 16 * 16;
+  function scan(arr, ex){ arr.forEach(function(p){
+    var dx = xs.getPixelForValue(p.x) - mx, dy = ys.getPixelForValue(p.y) - my, d = dx * dx + dy * dy;
+    if (d < bd) { bd = d; best = { key: p.key, x: p.x, y: p.y, ex: ex, well: p.well, plate: p.plate }; }
+  }); }
+  scan(_lmCurvePts.inc, false); scan(_lmCurvePts.ex, true);
+  return best;
+}
+function _lmWellOf(r, key){
+  var a = String(key).split(':'), p = +a[0], multi = state.plates.length > 1;
+  return (multi ? lmPlateName(p) + ' · ' : '') + a[1];
+}
+function lmSetExcluded(keys, on){
+  var r = _lmSel(); if (!r) return false;
+  var mine = keys.filter(function(k){ return on ? r.keys.indexOf(k) >= 0 : (r.exPts || []).some(function(e){ return e.key === k; }); });
+  if (!mine.length) return false;
+  if (on && r.keys.length - mine.length < 3) { toast('A curve needs at least 3 points — ' + r.sampleId + ' has ' + r.keys.length + '.'); return false; }
+  lmMark('excl');
+  mine.forEach(function(k){ if (on) state.excluded.add(k); else state.excluded.delete(k); });
+  var sid = r.sampleId;
+  runLuminaAnalysis({ quiet: true });
+  var nr = _lmSel(), L = assayFitLabels(state.assayType);
+  var what = mine.length === 1 ? _lmWellOf(r, mine[0]) : mine.length + ' readings';
+  toastUndo((on ? 'Left out ' : 'Put back ') + what + ' — ' + sid + (nr ? ', ' + L.ec50Name + ' now ' + _potWithUnit(nr.ec50M).replace(/<[^>]+>/g, '') : ''), function(){ lmUndo(); });
+  return true;
+}
+// A whole dose: every replicate at that concentration, in or out together.
+function lmExcludeDose(x, on){
+  var r = _lmSel(); if (!r) return;
+  var ks = on ? r.keys.filter(function(k, i){ return Math.abs(r.xArr[i] - x) < 0.002; }) : (r.exPts || []).filter(function(e){ return Math.abs(e.x - x) < 0.002; }).map(function(e){ return e.key; });
+  lmSetExcluded(ks, on);
+}
+function lmRestoreAll(){ var r = _lmSel(); if (r) lmSetExcluded((r.exPts || []).map(function(e){ return e.key; }), false); }
+(function wireCurvePoints(){
+  var cv = document.getElementById('curve-canvas'); if (!cv) return;
+  cv.addEventListener('click', function(e){
+    var pk = _lmCurvePick(e); if (!pk) return;
+    lmSetExcluded([pk.key], !pk.ex);
+  });
+  cv.addEventListener('mousemove', function(e){ cv.style.cursor = _lmCurvePick(e) ? 'pointer' : ''; });
+})();
 function rsRefreshCharts(){ if (!state.fitResults.length) return; if (state.rsTab === 'plot') plotDraw(); else if (state.selectedSample) drawCurve(state.selectedSample); }
 
 // ══════════════════════════════════════════════════════════════
@@ -3025,7 +3210,7 @@ function renderResultsTable(){
       '<td class="num">' + fmtPot(r.ec50M) + '</td><td class="num ci">' + (_lmCI(r) || '—') + '</td>' +
       (eff ? '<td class="num">' + _lmEffText(r) + '</td>' : '') +
       '<td class="num">' + r.hill.toFixed(2) + '</td><td class="num' + (r.flagR2 ? ' flag-bad' : '') + '">' + r.r2.toFixed(3) + '</td>' +
-      '<td>' + (r.flagged ? '<span class="qc-chip">' + esc(_flagReason(r)) + '</span>' : '') + '</td></tr>';
+      '<td>' + (r.flagged ? '<span class="qc-chip">' + esc(_flagReason(r)) + '</span>' : '') + ((r.exPts || []).length ? ' <span class="ex-chip" title="' + r.exPts.length + ' reading' + (r.exPts.length === 1 ? '' : 's') + ' left out of this curve — select it and right-click a cross to put one back">&#10005; ' + r.exPts.length + '</span>' : '') + '</td></tr>';
   });
   wrap.innerHTML = html + '</tbody></table>';
 }
@@ -3056,6 +3241,7 @@ function renderResults(){
   document.getElementById('rs-keys').style.display = '';
   plotFillSelects();
   rsSyncUnitsUI();
+  lmSyncLbBar();
   renderResultsTable();
   rsSetTab(state.rsTab);
   selectSample(state.selectedSample || R[0].sampleId);
@@ -3068,7 +3254,7 @@ function renderResults(){
 // ══════════════════════════════════════════════════════════════
 function _buildLuminaPrismAOA(asFraction){
   var bySample = {}, order = [];
-  (state.rawRows||[]).filter(function(r){ return !r.isCtrl; }).forEach(function(r){
+  (state.rawRows||[]).filter(function(r){ return !r.isCtrl && !r.excl; }).forEach(function(r){   // a reading left out of the fit is left out of the Prism table too
     if (!bySample[r.sampleId]) { bySample[r.sampleId] = []; order.push(r.sampleId); }
     bySample[r.sampleId].push(r);
   });
@@ -3144,11 +3330,11 @@ function exportResultsCSV(){
 // ══════════════════════════════════════════════════════════════
 function _rawHeader(){
   var u = state.units, hu = UNITS[lmUnit()].hdr;
-  return ['Sample_ID', 'Plate', 'Well', u.log ? 'Log10_Conc_' + hu : 'Concentration_' + hu].concat(u.log ? [] : ['Log10_Conc_M']).concat(['Measurement_normalised', 'Measurement_raw', 'Is_Control']);
+  return ['Sample_ID', 'Plate', 'Well', u.log ? 'Log10_Conc_' + hu : 'Concentration_' + hu].concat(u.log ? [] : ['Log10_Conc_M']).concat(['Measurement_normalised', 'Measurement_raw', 'Is_Control', 'Excluded_from_fit']);
 }
 function _rawRow(r){
   var u = state.units;
-  return [r.sampleId, r.plateName, r.well, _concNum(r.conc)].concat(u.log ? [] : [+r.log10Conc.toFixed(4)]).concat([r.measurement, r.measurementRaw, r.isCtrl ? 'Yes' : 'No']);
+  return [r.sampleId, r.plateName, r.well, _concNum(r.conc)].concat(u.log ? [] : [+r.log10Conc.toFixed(4)]).concat([r.measurement, r.measurementRaw, r.isCtrl ? 'Yes' : 'No', r.excl ? 'Yes' : '']);
 }
 function exportXLSX(){
   if (!state.fitResults.length) { toast('Run an analysis first.'); return; }
@@ -3684,7 +3870,7 @@ function _ctxPlateItems(p, e){
     { label: n ? 'Replace the reader file…' : 'Load a reader file…', act: function(){ lmPickFiles(p); } },
     { label: 'Paste values into this plate', act: function(){ state.plate = p; lmAfterChange(); lmPasteButton(); } },
     n && { label: 'Copy its readings', act: function(){ state.plate = p; lmCopyReadings(true); } },
-    n && { label: 'Clear its readings', act: function(){ lmMark(); pl.signal = {}; pl.file = ''; if (pl.nameSrc === 'file') { pl.name = ''; pl.nameSrc = undefined; } lmAfterChange(); } },
+    n && { label: 'Clear its readings', act: function(){ lmMark(); pl.signal = {}; _lmExclDrop(state.plates.indexOf(pl)); pl.file = ''; if (pl.nameSrc === 'file') { pl.name = ''; pl.nameSrc = undefined; } lmAfterChange(); } },
     P > 1 && { sep: true },
     P > 1 && { label: 'Remove plate', danger: true, act: function(){ lmDelPlate(p); } }
   ];
@@ -3720,7 +3906,23 @@ function curveCopyPNG(){
   if (!window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) { toast('This browser cannot copy images — use Save image instead.'); return; }
   curveImage(function(b){ navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(function(){ toast('Curve copied — paste it into a slide or a notebook.'); }).catch(function(){ toast('The browser did not allow copying the image.'); }); });
 }
-function _ctxChartItems(){
+function _ctxChartItems(ev){
+  var pk = ev && state.rsTab === 'curve' ? _lmCurvePick(ev) : null, sel = _lmSel();
+  var pts = [];
+  if (sel && state.rsTab === 'curve') {
+    if (pk && !pk.ex) {
+      var reps = sel.xArr.filter(function(x){ return Math.abs(x - pk.x) < 0.002; }).length;
+      pts.push({ label: 'Leave this point out (' + _lmWellOf(sel, pk.key) + ')', act: function(){ lmSetExcluded([pk.key], true); } });
+      if (reps > 1) pts.push({ label: 'Leave out all ' + reps + ' readings at this dose', act: function(){ lmExcludeDose(pk.x, true); } });
+    } else if (pk && pk.ex) {
+      pts.push({ label: 'Put this point back (' + _lmWellOf(sel, pk.key) + ')', act: function(){ lmSetExcluded([pk.key], false); } });
+      var exAt = (sel.exPts || []).filter(function(e){ return Math.abs(e.x - pk.x) < 0.002; }).length;
+      if (exAt > 1) pts.push({ label: 'Put back all ' + exAt + ' at this dose', act: function(){ lmExcludeDose(pk.x, false); } });
+    }
+    if ((sel.exPts || []).length > (pk && pk.ex ? 1 : 0)) pts.push({ label: 'Put back all ' + sel.exPts.length + ' left out of ' + sel.sampleId, act: lmRestoreAll });
+    if (pts.length) pts.unshift({ hd: pk ? (pk.ex ? 'A point left out' : 'A point on the curve') : 'Readings left out' });
+    if (pts.length) pts.push({ sep: true });
+  }
   if (state.rsTab === 'plot') return [
     { hd: 'Plot' },
     { label: 'Names on the points', check: document.getElementById('pl-names').checked, act: function(){ var c = document.getElementById('pl-names'); c.checked = !c.checked; plotDraw(); } },
@@ -3729,7 +3931,7 @@ function _ctxChartItems(){
     { label: 'Save as PNG', act: plotSavePNG },
     { label: 'Show the curve', k: 'C', act: function(){ rsSetTab('curve'); } }
   ];
-  return [
+  return pts.concat([
     { hd: state.selectedSample || 'Curve' },
     { label: 'Fitted data', check: state.curveView === 'norm', k: '←', act: function(){ setCurveView('norm'); } },
     { label: 'Raw signal', check: state.curveView === 'raw', k: '→', act: function(){ setCurveView('raw'); } },
@@ -3737,7 +3939,7 @@ function _ctxChartItems(){
     { label: 'Copy image', act: curveCopyPNG },
     { label: 'Save image (.png)', act: curveSavePNG },
     { label: 'Show it in the Plot', k: 'P', act: function(){ rsSetTab('plot'); } }
-  ];
+  ]);
 }
 // Anywhere else on the page: the few things that are true everywhere.
 function _ctxGeneral(){
@@ -3768,7 +3970,7 @@ ctxBind(function(e){
   if (t.closest('#lm-read') || (t.closest('#lm-platewrap'))) return _ctxPlateItems(state.plate, e);
   var row = t.closest('#results-table-wrap tbody tr[data-i]');
   if (row) return _ctxRowItems(row);
-  if (t.closest('#rs-curve')) return _ctxChartItems();
+  if (t.closest('#rs-curve')) return _ctxChartItems(e);
   return _ctxGeneral();
 });
 // F2 renames the plate on screen, the way it renames a file.
@@ -3840,6 +4042,15 @@ document.getElementById('results-table-wrap').addEventListener('dblclick', funct
 document.addEventListener('keydown', function(e){
   if (e.key === 'Escape') { rsCloseExport(); ctxClose(); lmClosePrompt(); }
   if (!document.getElementById('pane-results').classList.contains('active')) return;
+  // ⌘Z here undoes curve edits — the readings you left out — and nothing else; layout edits are undone on the plate.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key || '').toLowerCase() === 'z' && !e.defaultPrevented) {
+    var tg = e.target, tn = tg && tg.tagName; if (tn === 'INPUT' || tn === 'TEXTAREA' || tn === 'SELECT' || (tg && tg.isContentEditable)) return;
+    var top = e.shiftKey ? _lmRedo[_lmRedo.length - 1] : _lmUndo[_lmUndo.length - 1];
+    e.preventDefault();
+    if (top && top.k === 'excl') { if (e.shiftKey) lmRedo(); else lmUndo(); }
+    else toast('Nothing to undo here — layout edits are undone on the plate.');
+    return;
+  }
   if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
   var t = e.target, tag = t && t.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
