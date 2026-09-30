@@ -188,6 +188,8 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .tbl-frozen{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--border2);}
 th.tbl-frozen{z-index:3;width:110px;}
 .results-tbl-scroll table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:var(--fs-2);}
+/* Between a phone and a laptop the fixed layout cut the headers ("DC50 (…", "LogDC…"): the table keeps its natural width and scrolls inside its own box, as it does on a phone. */
+@media (max-width:1180px){.results-tbl-scroll table{table-layout:auto;width:max-content;min-width:100%;}.results-tbl-scroll th,.results-tbl-scroll td{white-space:nowrap;}}
 thead tr{border-bottom:1px solid var(--border2);}
 /* Sentence case, not uppercase: the headers carry units, and uppercase turned nM into "NM"
    (newtons-metre to anyone reading it cold) and µM into "ΜM". */
@@ -353,6 +355,8 @@ rect.pq-ok{fill:var(--accent);opacity:.55;}rect.pq-warn{fill:var(--warn);opacity
 .pcm-stats b{font-size:var(--fs-5);font-weight:600;color:var(--text);}
 .pcm-stats b.pq-good{color:var(--accent3);}.pcm-stats b.pq-marginal{color:var(--warn);}.pcm-stats b.pq-poor{color:var(--accent);}
 .pcm-row{cursor:pointer;}.pcm-row:hover td{background:var(--surface2);}
+/* Compare: the plot and its numbers stack while the numbers column would still be under ~380px */
+@media (max-width:1040px){.pcm{grid-template-columns:minmax(0,1fr);}.pcm-stats{grid-template-columns:repeat(4,minmax(0,1fr));}}
 @media (max-width:760px){.plate-toolbar .pl-tsep{display:none;}.pcm{grid-template-columns:minmax(0,1fr);}.pcm-stats{grid-template-columns:repeat(2,minmax(0,1fr));}.plate-page{padding:12px;}.pq-head{flex-direction:column;}.plate-views{padding:6px 10px 0;}}
 /* CONTROL PICKER MODAL */
 #ctrl-picker-modal,#zero-picker-modal{display:none;position:fixed;inset:0;background:var(--modal-backdrop,rgba(0,0,0,.55));z-index:3000;align-items:center;justify-content:center;}
@@ -472,25 +476,127 @@ rect.pq-ok{fill:var(--accent);opacity:.55;}rect.pq-warn{fill:var(--warn);opacity
 .grad-wrap .grad-sub{font-size:var(--fs-3);color:var(--text2);margin-bottom:20px;}
 
 /* Gradient designer — LabMate class aliases for this app */
-.grad-wrap .field{display:flex;flex-direction:column;gap:4px;}
-.grad-wrap .field label{font-size:var(--fs-2);color:var(--text2);font-family:var(--sans);letter-spacing:0;font-weight:500;}
-.grad-wrap .field input,.grad-wrap .field select{background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r-2);color:var(--text);padding:6px 10px;font-family:var(--sans);font-size:var(--fs-4);transition:border-color 0.15s;width:100%;}
-.grad-wrap .field input:focus,.grad-wrap .field select:focus{outline:none;border-color:var(--accent);}
-.grad-param-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);}
-.grad-param-row .field{margin:0;min-width:0;}
-.grad-param-row .field label{white-space:nowrap;}
-.grad-param-row .field input{width:72px;}
-.grad-param-row .gp-divider{width:1px;background:var(--border);height:32px;align-self:flex-end;margin:0 2px;flex-shrink:0;}
-/* A divider marks a group boundary on one line; once the row wraps it dangles at a line end. */
-@media(max-width:1180px){.grad-param-row .gp-divider{display:none;}}
-/* On the row, not the <tr>: the table cells carry their own colour, so a red row read as grey. */
-#eg-bf-out tr.eg-bad td{color:#ef4444;}
+.grad-wrap .field{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.grad-wrap .field label{font-size:var(--fs-2);color:var(--text2);font-family:var(--sans);letter-spacing:0;font-weight:500;line-height:1.3;}
+.grad-wrap .field input,.grad-wrap .field select,.eg-srow input,.eg-srow select{background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r-2);color:var(--text);height:32px;box-sizing:border-box;padding:0 10px;font-family:var(--sans);font-size:var(--fs-4);transition:border-color var(--dur-1) var(--ease);width:100%;min-width:0;}
+.grad-wrap .field input:focus,.grad-wrap .field select:focus,.eg-srow input:focus,.eg-srow select:focus{outline:none;border-color:var(--accent);}
+.grad-inner{max-width:1300px;margin:0 auto;width:100%;}
+/* Steps 1–3 are what you are planning; 4 and 5 are what comes out of it. */
+.eg-cfg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr);gap:14px;margin-bottom:14px;align-items:start;}
+.eg-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-3);padding:14px 16px 16px;display:flex;flex-direction:column;gap:12px;min-width:0;box-shadow:var(--shadow-xs);}
+#eg-results,#eg-bf-card{margin-bottom:14px;}
+.eg-h{display:flex;align-items:center;gap:8px;margin:0;min-height:28px;font-size:var(--fs-4);font-weight:600;letter-spacing:0;text-transform:none;color:var(--text);font-family:var(--sans);}
+.eg-n{flex:none;width:20px;height:20px;border-radius:var(--r-full);background:var(--accent-dim);color:var(--accent);font-size:var(--fs-2);font-weight:600;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;}
+.eg-acts{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;}
+.eg-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.eg-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-content:start;}
+.eg-span2{grid-column:1/-1;}
+.eg-unit{display:flex;min-width:0;}
+.eg-unit input{flex:1 1 auto;min-width:0;border-top-right-radius:0!important;border-bottom-right-radius:0!important;}
+.eg-unit select{flex:none;width:68px!important;border-left:0!important;border-top-left-radius:0!important;border-bottom-left-radius:0!important;padding:0 6px!important;}
+.eg-u{flex:none;display:flex;align-items:center;justify-content:center;min-width:38px;height:32px;box-sizing:border-box;padding:0 8px;border:1.5px solid var(--border);border-left:0;border-radius:0 var(--r-2) var(--r-2) 0;background:var(--surface3);color:var(--text2);font-size:var(--fs-3);}
+.eg-unit input:focus{position:relative;z-index:1;}
+.eg-help{font-size:var(--fs-3);color:var(--text2);line-height:1.5;min-height:18px;}
+.eg-help b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;}
+.eg-ladder svg{display:block;width:100%;height:auto;overflow:visible;}
+.eg-ladder:empty{display:none;}
+.eg-ladder .ax{stroke:var(--border2);stroke-width:1;}
+.eg-ladder .pl{stroke:var(--text3);stroke-width:1.5;stroke-linecap:round;}
+.eg-ladder .dv{stroke-width:1.5;fill:var(--surface);}
+.eg-ladder .dv.ok{stroke:var(--good);} .eg-ladder .dv.near{stroke:var(--warn);} .eg-ladder .dv.bad{stroke:var(--danger);}
+.eg-ladder text{font-family:var(--sans);font-size:9px;fill:var(--text3);}
+.eg-btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);font-weight:500;line-height:1;cursor:pointer;white-space:nowrap;transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease),transform var(--dur-1) var(--ease);}
+.eg-btn:hover{background:var(--surface2);}
+.eg-btn:active{transform:scale(.97);}
+.eg-btn svg{width:13px;height:13px;flex:none;}
+.eg-btn.pri{background:var(--accent);border-color:transparent;color:#fff;}
+.eg-btn.pri:hover{background:var(--accent);opacity:.88;}
+[data-theme="dark"] .eg-btn.pri{color:#0d0f14;}
+.eg-toast{font-size:var(--fs-3);color:var(--good);}
+/* stocks: one grid, so every value box and every unit box share a column */
+.eg-stocks{display:flex;flex-direction:column;gap:8px;}
+.eg-srow{display:grid;grid-template-columns:54px minmax(0,1fr) 68px 30px;gap:6px;align-items:center;}
+.eg-srow .eg-sl{font-size:var(--fs-3);font-weight:600;color:var(--text2);white-space:nowrap;}
+.eg-srow select{padding:0 6px;}
+.eg-srow .eg-x{width:30px;height:32px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);color:var(--text2);font-size:var(--fs-3);line-height:1;cursor:pointer;padding:0;transition:color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
+.eg-srow .eg-x:hover{color:var(--danger);border-color:var(--danger);}
+.eg-srow.src{padding-bottom:10px;border-bottom:1px solid var(--border);}
+.eg-pre{padding-top:2px;}
+/* the plan */
+.eg-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.eg-chip{display:inline-flex;align-items:baseline;gap:6px;padding:3px 10px;border-radius:var(--r-full);background:var(--surface2);border:1px solid var(--border);font-size:var(--fs-3);color:var(--text2);}
+.eg-chip b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;}
+.eg-note{border:1px solid;border-radius:var(--r-2);padding:8px 12px;font-size:var(--fs-3);line-height:1.55;color:var(--text2);}
+.eg-note strong{color:var(--text);}
+.eg-note.info{background:var(--accent-dim);border-color:var(--accent-soft);}
+.eg-note.warn{background:color-mix(in srgb,var(--warn) 11%,transparent);border-color:color-mix(in srgb,var(--warn) 45%,transparent);}
+.eg-note.err{background:color-mix(in srgb,var(--danger) 10%,transparent);border-color:color-mix(in srgb,var(--danger) 45%,transparent);color:var(--text);}
+.eg-note .eg-ok{color:var(--good);}
+.eg-note .eg-wr{color:var(--warn);}
+#eg-warn-box:empty{display:none;}
+#eg-warn-box .eg-note{margin-bottom:0;}
+#eg-warn-box .eg-note+.eg-note{margin-top:8px;}
+.eg-tblwrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-2);}
+#eg-table{width:100%;border-collapse:collapse;font-size:var(--fs-4);font-variant-numeric:tabular-nums;}
+#eg-table th{padding:7px 12px;text-align:right;white-space:nowrap;font-size:var(--fs-2);font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0;background:var(--surface2);border-bottom:1px solid var(--border);}
+#eg-table thead tr.eg-grp th{padding:6px 12px 4px;font-size:var(--fs-2);font-weight:600;color:var(--text2);text-align:center;border-bottom:0;}
+#eg-table thead tr.eg-grp th.eg-c-l{text-align:left;}
+#eg-table td{padding:0 12px;height:40px;text-align:right;border-top:1px solid var(--border);color:var(--text);}
+#eg-table .eg-c-c{text-align:center;}
+#eg-table .eg-gs{border-left:1px solid var(--border);}
+#eg-table td.eg-mut{color:var(--text3);}
+#eg-table td.eg-fin{font-weight:600;}
+#eg-table tbody tr.eg-off td{background:color-mix(in srgb,var(--danger) 6%,transparent);}
+#eg-table .eg-sel{height:28px;box-sizing:border-box;padding:0 6px;border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);}
+#eg-table .eg-tin{width:78px;height:28px;box-sizing:border-box;padding:0 8px;border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface);color:var(--text);font-family:var(--sans);font-size:var(--fs-4);text-align:right;font-variant-numeric:tabular-nums;}
+#eg-table .eg-sel:focus,#eg-table .eg-tin:focus{outline:none;border-color:var(--accent);}
+.eg-st{display:inline-block;min-width:24px;padding:2px 9px;border-radius:var(--r-full);font-size:var(--fs-2);font-weight:600;line-height:1.4;white-space:nowrap;text-align:center;}
+.eg-st.ok{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent);}
+.eg-st.near{color:var(--warn);background:color-mix(in srgb,var(--warn) 16%,transparent);}
+.eg-st.bad{color:var(--danger);background:color-mix(in srgb,var(--danger) 13%,transparent);}
+/* the intermediate plate */
+.eg-runrow{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:flex-start;}
+.eg-grp5{flex:1 1 520px;min-width:0;}
+.eg-grp5-plate{flex:0 1 300px;}
+.eg-sublbl{font-size:var(--fs-2);font-weight:600;color:var(--text2);margin-bottom:8px;}
+.eg-grid5{grid-template-columns:repeat(5,minmax(0,1fr));}
+.eg-out{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.eg-out:empty{display:none;}
+.eg-sub{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);padding:12px 14px;min-width:0;font-size:var(--fs-3);color:var(--text2);line-height:1.6;}
+.eg-sub.wide{grid-column:1/-1;}
+.eg-sub h4{margin:0 0 8px;font-size:var(--fs-4);font-weight:600;color:var(--text);letter-spacing:0;text-transform:none;font-family:var(--sans);}
+.eg-sub h4 small{font-size:var(--fs-3);font-weight:400;color:var(--text3);}
+.eg-msg{font-size:var(--fs-3);margin:8px 0 0;line-height:1.5;}
+.eg-msg.warn{color:var(--warn);} .eg-msg.err{color:var(--danger);} .eg-msg.ok{color:var(--good);}
+.eg-msg.mut{color:var(--text3);}
+.eg-scroll{overflow-x:auto;}
+.eg-mini{width:100%;border-collapse:collapse;font-size:var(--fs-3);font-variant-numeric:tabular-nums;}
+.eg-mini th{padding:5px 8px;text-align:right;white-space:nowrap;font-size:var(--fs-2);font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0;border-bottom:1px solid var(--border2);}
+.eg-mini td{padding:6px 8px;text-align:right;border-top:1px solid var(--border);color:var(--text);}
+.eg-mini th:first-child,.eg-mini td:first-child{text-align:left;}
+.eg-mini tr.eg-bad td{color:var(--danger);}
+.eg-kv{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:6px 0;border-top:1px solid var(--border);}
+.eg-kv:first-of-type{border-top:0;padding-top:0;}
+.eg-kv>span:first-child{color:var(--text2);}
+.eg-kv>b{color:var(--text);font-weight:600;text-align:right;font-variant-numeric:tabular-nums;}
+.eg-kv.sub{padding-left:14px;color:var(--text3);}
+.eg-call{margin-top:10px;padding:9px 12px;border-radius:var(--r-2);background:color-mix(in srgb,var(--good) 10%,transparent);border:1px solid color-mix(in srgb,var(--good) 40%,transparent);color:var(--text);}
+@media(max-width:1100px){
+  .eg-cfg{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .eg-cfg>.eg-card:nth-child(3){grid-column:1/-1;}
+  .eg-grid5{grid-template-columns:repeat(3,minmax(0,1fr));}
+}
+@media(max-width:900px){.eg-out{grid-template-columns:minmax(0,1fr);}}
+@media(max-width:700px){
+  .eg-cfg{grid-template-columns:minmax(0,1fr);}
+  .eg-h{flex-wrap:wrap;}
+  .eg-h .eg-acts,.eg-bar .eg-acts{flex:1 1 100%;margin-left:0;justify-content:flex-start;flex-wrap:nowrap;}
+  .eg-grid5{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .eg-grp5-plate{flex:1 1 100%;}
+}
 /* On a phone the unsnapped volume is the column you can lose: the status that says a
    point is off plan was the one pushed out of view. */
-@media(max-width:640px){#eg-table .eg-ideal,#eg-table .eg-dmso,#eg-table .eg-bfc{display:none;}#eg-table td,#eg-table th{padding-left:5px!important;padding-right:5px!important;}}
-.grad-inner{max-width:1300px;margin:0 auto;width:100%;}
-.grad-top-row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px;align-items:flex-start;}
-.grad-top-row>*{min-width:0;}
+@media(max-width:640px){#eg-table .eg-ideal,#eg-table .eg-dmso,#eg-table .eg-bfc{display:none;}#eg-table td,#eg-table th{padding-left:6px!important;padding-right:6px!important;}#eg-table thead tr.eg-grp{display:none;}.eg-card{padding:12px;}}
 .btn{background:var(--accent);color:#fff;border:none;border-radius:var(--r-4);padding:8px 18px;font-family:var(--sans);font-size:var(--fs-3);font-weight:600;cursor:pointer;transition:opacity .15s;}
 .btn:hover{opacity:.87;}
 .btn-sm{padding:5px 12px;font-size:var(--fs-3);}
@@ -728,147 +834,166 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 <div class="content-area">
 <div id="panel-gradient" class="app-panel"><div class="grad-wrap"><div class="grad-inner"><div class="grad-head">Dose Response Gradient Planner</div><div class="grad-sub">Echo 550 · 2.5 nL drops · <span id="eg-sub-chain">source only</span> · DMSO backfill auto-calculated <span class="pinfo" data-tip="Echo 550: acoustic droplet ejection in 2.5 nL increments; one transfer is 2.5 nL to 10,000 nL (10 µL); survey ~26 s per 384-well plate; viscosity 0.3–10 cP; coupling fluid at 22 °C. DMSO and aqueous liquid classes.">ⓘ</span></div>
 
-    <!-- PARAMS + STOCKS — responsive side-by-side on wide screens -->
-    <div class="grad-top-row">
+    <!-- 1–3 · WHAT YOU ARE PLANNING: the assay, the dose series, and the stocks it is dispensed from -->
+    <div class="eg-cfg">
 
-      <!-- COMPACT PARAMS -->
-      <div class="grad-param-row" style="flex:2 1 520px">
-        <div class="field">
-          <label>Preset</label>
-          <select id="eg-preset" onchange="_egLoadPreset(this.value)" style="min-width:128px;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px;transition:border-color .15s">
-            <option value="">— Custom —</option>
-            <option value="hibit">HiBiT</option>
-            <option value="fp">FP</option>
-            <option value="trf">TR-FRET</option>
-            <option value="alpha">AlphaScreen</option>
-            <option value="d2b">D2B</option>
-          </select>
-        </div>
-        <div class="gp-divider"></div>
-        <div class="field">
-          <label>Assay vol (µL) <span class="pinfo" data-tip="Total assay volume per well. The Echo transfers compound in 2.5 nL steps; this sets the maximum DMSO contribution.">ⓘ</span></label>
-          <input type="number" id="eg-vol" value="20" min="1" step="1" oninput="_egTrigger()">
-        </div>
-        <div class="field">
-          <label>Max DMSO (%) <span class="pinfo" data-tip="Maximum acceptable final DMSO concentration. Echo transfers compounds dissolved in DMSO — keep below 1% for most biochemical assays.">ⓘ</span></label>
-          <input type="number" id="eg-dmso" value="0.2" min="0.1" max="10" step="0.1" oninput="_egTrigger()">
-        </div>
-        <div class="field">
-          <label># Points</label>
-          <input type="number" id="eg-pts" value="10" min="2" max="40" step="1" oninput="window._egExplicitPlanM=null;_egTrigger()">
-        </div>
-        <div class="field">
-          <label>Dilution factor</label>
-          <input type="number" id="eg-df" value="3" min="1.1" step="any" oninput="window._egExplicitPlanM=null;_egTrigger()">
-        </div>
-        <div class="gp-divider"></div>
-        <div class="field">
-          <label>Top concentration</label>
-          <div style="display:flex;gap:4px">
-            <input type="number" id="eg-top-val" value="1000" min="0" step="1" oninput="window._egExplicitPlanM=null;_egTrigger()" style="width:88px">
-            <select id="eg-top-unit" onchange="window._egExplicitPlanM=null;_egTrigger()" style="width:58px;padding:6px 4px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px;transition:border-color .15s">
-              <option value="1e-3">mM</option>
-              <option value="1e-6">µM</option>
-              <option value="1e-9" selected>nM</option>
+      <section class="eg-card">
+        <h3 class="eg-h"><span class="eg-n">1</span>Assay</h3>
+        <div class="eg-grid">
+          <div class="field eg-span2">
+            <label for="eg-preset">Preset</label>
+            <select id="eg-preset" onchange="_egLoadPreset(this.value)">
+              <option value="">— Custom —</option>
+              <option value="hibit">HiBiT</option>
+              <option value="fp">FP</option>
+              <option value="trf">TR-FRET</option>
+              <option value="alpha">AlphaScreen</option>
+              <option value="d2b">D2B</option>
             </select>
           </div>
+          <div class="field">
+            <label for="eg-vol">Assay volume <span class="pinfo" data-tip="Total assay volume per well. The Echo transfers compound in 2.5 nL steps; this sets the maximum DMSO contribution.">ⓘ</span></label>
+            <div class="eg-unit"><input type="number" id="eg-vol" value="20" min="0" step="any" oninput="_egTrigger()"><span class="eg-u">µL</span></div>
+          </div>
+          <div class="field">
+            <label for="eg-dmso">Max DMSO <span class="pinfo" data-tip="Maximum acceptable final DMSO concentration. Echo transfers compounds dissolved in DMSO — keep below 1% for most biochemical assays.">ⓘ</span></label>
+            <div class="eg-unit"><input type="number" id="eg-dmso" value="0.2" min="0" max="100" step="any" oninput="_egTrigger()"><span class="eg-u">%</span></div>
+          </div>
         </div>
-      </div>
+        <div class="eg-help" id="eg-h-assay"></div>
+      </section>
 
-      <!-- STOCK CONCENTRATIONS -->
-      <div style="flex:1 1 360px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-          <span style="font-size:12px;font-weight:600;color:var(--text2)">Stock concentrations</span>
-          <button class="btn btn-sm" onclick="_egAddStock()" title="Add an intermediate by hand (made from Source)" style="padding:1px 9px;font-size:15px;line-height:1.3">+</button>
-          <button class="btn btn-sm" onclick="_egSuggest()" style="font-size:11px;background:var(--accent);color:#fff;border:none;padding:3px 10px" title="Let the planner choose the intermediates again — added only where Source cannot reach a point, each made from Source">✦ Suggest</button>
-          <span id="eg-auto-lbl" style="font-size:11px;color:var(--text3)">intermediates automatic</span>
+      <section class="eg-card">
+        <h3 class="eg-h"><span class="eg-n">2</span>Dose series</h3>
+        <div class="eg-grid">
+          <div class="field eg-span2">
+            <label for="eg-top-val">Top concentration</label>
+            <div class="eg-unit">
+              <input type="number" id="eg-top-val" value="1000" min="0" step="any" oninput="window._egExplicitPlanM=null;_egTrigger()">
+              <select id="eg-top-unit" aria-label="Top concentration unit" onchange="window._egExplicitPlanM=null;_egTrigger()">
+                <option value="1e-3">mM</option>
+                <option value="1e-6">µM</option>
+                <option value="1e-9" selected>nM</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="eg-pts">Points</label>
+            <input type="number" id="eg-pts" value="10" min="2" max="40" step="1" oninput="window._egExplicitPlanM=null;_egTrigger()">
+          </div>
+          <div class="field">
+            <label for="eg-df">Dilution factor</label>
+            <input type="number" id="eg-df" value="3" min="1.1" step="any" oninput="window._egExplicitPlanM=null;_egTrigger()">
+          </div>
         </div>
-        <div id="eg-stocks-container" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3)">
-          <label style="display:flex;align-items:center;gap:4px;margin:0">
-            Inter plate
-            <input id="eg-inter-vol" type="number" value="30" min="1" step="1" oninput="_egTrigger()"
-              style="width:44px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);font-size:12px;text-align:right;font-family:var(--sans)"
-              title="Volume of each well in the intermediate dilution plate (µL)">
-            µL
-          </label>
-          <span style="color:var(--border2)">·</span>
-          <span id="eg-chain">source only</span>
+        <div class="eg-help" id="eg-h-series"></div>
+        <div id="eg-ladder" class="eg-ladder" aria-hidden="true"></div>
+      </section>
+
+      <section class="eg-card">
+        <h3 class="eg-h"><span class="eg-n">3</span>Source &amp; intermediates
+          <span class="eg-acts">
+            <button type="button" class="eg-btn" onclick="_egAddStock()" title="Add an intermediate by hand (made from Source)">+ Add</button>
+            <button type="button" class="eg-btn pri" onclick="_egSuggest()" title="Let the planner choose the intermediates again — added only where Source cannot reach a point, each made from Source">✦ Suggest</button>
+          </span>
+        </h3>
+        <div id="eg-stocks-container" class="eg-stocks"></div>
+        <div class="field eg-pre">
+          <label for="eg-inter-vol">Pre-fill per intermediate well <span class="pinfo" data-tip="Volume of neat DMSO in each well of the intermediate plate before the Echo adds Source to it (µL). Every intermediate is one transfer from Source on top of this.">ⓘ</span></label>
+          <div class="eg-unit"><input id="eg-inter-vol" type="number" value="30" min="0" step="any" oninput="_egTrigger()" title="Volume of each well in the intermediate dilution plate (µL)"><span class="eg-u">µL</span></div>
         </div>
-      </div>
+        <div class="eg-help"><span id="eg-auto-lbl">intermediates automatic</span> · <span id="eg-chain">source only</span></div>
+      </section>
 
     </div>
 
-    <!-- LIVE RESULTS -->
-    <div id="eg-results">
-      <div id="eg-summary-bar" style="display:none;font-size:12px;color:var(--text2);margin-bottom:8px;padding:6px 10px;background:var(--surface2);border-radius:4px;border:1px solid var(--border)"></div>
+    <!-- 4 · THE PLAN: what the Echo dispenses for each point -->
+    <section class="eg-card" id="eg-results">
+      <div class="eg-bar">
+        <h3 class="eg-h"><span class="eg-n">4</span>Transfer plan</h3>
+        <div id="eg-copy-row" class="eg-acts" style="display:none">
+          <span id="eg-copy-toast" class="eg-toast" style="display:none">✓ Copied</span>
+          <button type="button" class="eg-btn" onclick="_egCopy()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy summary</button>
+          <button type="button" class="eg-btn" onclick="_egExportPlan()" title="One row per point: stock, transfer, DMSO backfill, final concentration — what the Echo method is set up from"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>Export CSV</button>
+        </div>
+      </div>
+      <div id="eg-summary-bar" class="eg-chips" style="display:none"></div>
       <div id="eg-warn-box"></div>
-      <div style="overflow-x:auto">
-        <table id="eg-table" style="width:100%;border-collapse:collapse;font-size:13px;display:none">
+      <div class="eg-tblwrap">
+        <table id="eg-table" style="display:none">
           <thead>
-            <tr style="background:var(--surface2)">
-              <th style="padding:6px 8px;text-align:center;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;letter-spacing:0">#</th>
-              <th style="padding:6px 8px;text-align:center;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;letter-spacing:0">Stock</th>
-              <th class="eg-ideal" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Ideal (nL)</th>
-              <th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Transfer (nL)</th>
-              <th class="eg-bfc" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0" title="Neat DMSO added to this well so every well ends at the same DMSO total">Backfill (nL)</th>
-              <th id="eg-th-final" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Final (nM)</th>
-              <th id="eg-th-plan" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0">Plan (nM)</th>
-              <th class="eg-dmso" style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border);white-space:nowrap;text-transform:none;font-size:11px;letter-spacing:0" title="DMSO % of this point (assumes neat-DMSO stocks)">DMSO %</th>
-              <th style="padding:6px 8px;text-align:center;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;letter-spacing:0"></th>
+            <tr class="eg-grp">
+              <th colspan="2" class="eg-c-l">Target</th>
+              <th colspan="4" class="eg-gs">Dispense</th>
+              <th colspan="3" class="eg-gs">Result</th>
+            </tr>
+            <tr>
+              <th class="eg-c-c">#</th>
+              <th id="eg-th-plan">Plan (nM)</th>
+              <th class="eg-c-c eg-gs">Stock</th>
+              <th class="eg-ideal" title="The volume the plan asks for, before the 2.5 nL snap">Ideal (nL)</th>
+              <th>Transfer (nL)</th>
+              <th class="eg-bfc" title="Neat DMSO added to this well so every well ends at the same DMSO total">Backfill (nL)</th>
+              <th id="eg-th-final" class="eg-gs">Final (nM)</th>
+              <th class="eg-dmso" title="DMSO % of this point (assumes neat-DMSO stocks)">DMSO %</th>
+              <th class="eg-c-c">Status</th>
             </tr>
           </thead>
           <tbody id="eg-tbody"></tbody>
         </table>
       </div>
-      <div id="eg-copy-row" style="display:none;margin-top:10px;gap:8px;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-sm" onclick="_egCopy()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy summary</button>
-        <button class="btn btn-sm" onclick="_egExportPlan()" title="One row per point: stock, transfer, DMSO backfill, final concentration — what the Echo method is set up from"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg> Export CSV</button>
-        <span id="eg-copy-toast" style="font-size:12px;color:var(--accent);display:none">✓ Copied!</span>
-      </div>
-    </div>
+    </section>
 
-    <!-- INTERMEDIATE PLATE BACKFILL CALCULATOR -->
-    <div id="eg-bf-card" style="margin-top:16px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:6px">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-        <span style="font-size:12px;font-weight:600;color:var(--text2)">Intermediate plate: prep &amp; backfill calculator</span>
+    <!-- 5 · THE INTERMEDIATE PLATE: how much to prepare, and how much DMSO to keep for backfill -->
+    <section class="eg-card" id="eg-bf-card">
+      <h3 class="eg-h"><span class="eg-n">5</span>Intermediate plate
         <span class="pinfo" data-tip="Two things: (1) how much DMSO to pre-fill each intermediate well with, and how much to transfer in from the Source well via Echo (every intermediate is made from Source, never from another intermediate) to hit each Inter concentration above. (2) Unused intermediate wells can be filled with neat DMSO and used as the destination-plate backfill source instead of a separate backfill plate — this works out how much DMSO that needs and the minimum number of wells to hold it.">ⓘ</span>
+      </h3>
+      <div class="eg-runrow">
+        <div class="eg-grp5">
+          <div class="eg-sublbl">Run size</div>
+          <div class="eg-grid eg-grid5">
+            <div class="field">
+              <label for="eg-bf-ncompounds">Compounds</label>
+              <input type="number" id="eg-bf-ncompounds" value="10" min="1" step="1" oninput="_egBfTrigger()">
+            </div>
+            <div class="field">
+              <label for="eg-bf-perCompound">Inter wells / compound <span class="pinfo" data-tip="How many intermediate-plate wells each compound occupies — i.e. the number of intermediate concentrations in its dilution chain (the Inter 1, Inter 2… stocks above). It follows the chain until you type here.">ⓘ</span></label>
+              <input type="number" id="eg-bf-perCompound" value="0" min="0" step="1" oninput="this.dataset.user=1;_egBfTrigger()">
+            </div>
+            <div class="field">
+              <label for="eg-bf-nsets">Sets <span class="pinfo" data-tip="How many full copies of the compound set are being run — e.g. 2 if every compound is plated in duplicate as a separate set. Both sets dispense from the same intermediate wells (no extra prep), but they double the destination wells needing backfill.">ⓘ</span></label>
+              <input type="number" id="eg-bf-nsets" value="1" min="1" step="1" oninput="_egBfTrigger()">
+            </div>
+            <div class="field">
+              <label for="eg-bf-nreps">Replicates <span class="pinfo" data-tip="Replicate destination wells per compound per condition (e.g. n=2 or n=3). These reuse the same intermediate well, so they add destination wells needing backfill but don't use extra intermediate-plate wells.">ⓘ</span></label>
+              <input type="number" id="eg-bf-nreps" value="1" min="1" step="1" oninput="_egBfTrigger()">
+            </div>
+            <div class="field">
+              <label for="eg-bf-nvehicle">DMSO-only wells <span class="pinfo" data-tip="Wells per set filled with only DMSO — no compound — at the same total volume as the highest-dose well, so every destination well ends up at the same final DMSO% (homogenization / vehicle controls). Each one needs the FULL max-transfer volume as backfill (it gets zero compound transfer), so this adds to the total DMSO backfill needed.">ⓘ</span></label>
+              <input type="number" id="eg-bf-nvehicle" value="0" min="0" step="1" oninput="_egBfTrigger()">
+            </div>
+          </div>
+        </div>
+        <div class="eg-grp5 eg-grp5-plate">
+          <div class="eg-sublbl">Source plate</div>
+          <div class="eg-grid">
+            <div class="field">
+              <label for="eg-bf-plateType">Plate type</label>
+              <select id="eg-bf-plateType" onchange="_egBfPlateType();_egBfTrigger()">
+                <option value="pp">PP (384/1536)</option>
+                <option value="ldv">LDV</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="eg-bf-dead">Dead volume <span class="pinfo" data-tip="Minimum residual volume Echo needs left in a source well to keep dispensing reliably. Standard PP plates need ≥20 µL; low-dead-volume (LDV) plates can go down to ~2.5 µL.">ⓘ</span></label>
+              <div class="eg-unit"><input type="number" id="eg-bf-dead" value="20" min="0" step="any" oninput="_egBfTrigger()"><span class="eg-u">µL</span></div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
-        <div class="field">
-          <label># Compounds tested</label>
-          <input type="number" id="eg-bf-ncompounds" value="10" min="1" step="1" oninput="_egBfTrigger()" style="width:90px">
-        </div>
-        <div class="field">
-          <label>Intermediate wells used per compound <span class="pinfo" data-tip="How many intermediate-plate wells each compound occupies — i.e. the number of intermediate concentrations in its dilution chain (the Inter 1, Inter 2… stocks above).">ⓘ</span></label>
-          <input type="number" id="eg-bf-perCompound" value="0" min="0" step="1" oninput="this.dataset.user=1;_egBfTrigger()" style="width:70px">
-        </div>
-        <div class="field">
-          <label># Sets / copies <span class="pinfo" data-tip="How many full copies of the compound set are being run — e.g. 2 if every compound is plated in duplicate as a separate set. Both sets dispense from the same intermediate wells (no extra prep), but they double the destination wells needing backfill.">ⓘ</span></label>
-          <input type="number" id="eg-bf-nsets" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:60px">
-        </div>
-        <div class="field">
-          <label>Technical replicates <span class="pinfo" data-tip="Replicate destination wells per compound per condition (e.g. n=2 or n=3). These reuse the same intermediate well, so they add destination wells needing backfill but don't use extra intermediate-plate wells.">ⓘ</span></label>
-          <input type="number" id="eg-bf-nreps" value="1" min="1" step="1" oninput="_egBfTrigger()" style="width:60px">
-        </div>
-        <div class="field">
-          <label>DMSO-only (vehicle) wells <span class="pinfo" data-tip="Wells per set filled with only DMSO — no compound — at the same total volume as the highest-dose well, so every destination well ends up at the same final DMSO% (homogenization / vehicle controls). Each one needs the FULL max-transfer volume as backfill (it gets zero compound transfer), so this adds to the total DMSO backfill needed.">ⓘ</span></label>
-          <input type="number" id="eg-bf-nvehicle" value="0" min="0" step="1" oninput="_egBfTrigger()" style="width:70px">
-        </div>
-        <div class="field">
-          <label>Plate type</label>
-          <select id="eg-bf-plateType" onchange="_egBfPlateType();_egBfTrigger()" style="width:150px">
-            <option value="pp">PP (384/1536)</option>
-            <option value="ldv">LDV</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Echo dead volume (µL) <span class="pinfo" data-tip="Minimum residual volume Echo needs left in a source well to keep dispensing reliably. Standard PP plates need ≥20 µL; low-dead-volume (LDV) plates can go down to ~2.5 µL.">ⓘ</span></label>
-          <input type="number" id="eg-bf-dead" value="20" min="0" step="0.5" oninput="_egBfTrigger()" style="width:70px">
-        </div>
-      </div>
-      <div id="eg-bf-out" style="font-size:12px;color:var(--text2);line-height:1.7"></div>
-    </div>
+      <div id="eg-bf-out" class="eg-out"></div>
+    </section>
 
   </div></div>
 
@@ -9931,11 +10056,15 @@ function _esRecFile(r) {
 // this screen, not of this experiment: opening a colleague's project must not repaint your app,
 // and the blanket change-event dispatch below would call toggleTheme() and do exactly that.
 // (Caught by diffing the form before and after a restore — it was the only key that moved.)
+// The Gradient Planner (every id starting eg-) is a separate tool, not part of an analysis: restoring
+// a session used to write an old experiment's assay volume, pre-fill and dead volume back into it
+// and fire their input events, so the planner changed under whoever was typing in it.
 const _ES_SKIP = { 'theme-toggle-chk': 1 };
+function _esSkipId(id) { return !!_ES_SKIP[id] || id.slice(0, 3) === 'eg-'; }
 function _esFormState() {
   const out = {};
   document.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
-    if (_ES_SKIP[el.id]) return;
+    if (_esSkipId(el.id)) return;
     if (el.type === 'file' || el.type === 'button' || el.type === 'submit') return;
     out[el.id] = (el.type === 'checkbox' || el.type === 'radio') ? !!el.checked : el.value;
   });
@@ -9946,7 +10075,7 @@ function _esFormState() {
 function _esApplyForm(state) {
   if (!state) return;
   Object.keys(state).forEach(id => {
-    if (id.slice(0, 2) === '__' || _ES_SKIP[id]) return;
+    if (id.slice(0, 2) === '__' || _esSkipId(id)) return;
     const el = document.getElementById(id);
     if (!el || el.type === 'file') return;
     const v = state[id];
@@ -10385,42 +10514,52 @@ function _unhideAllResultsCols() {
     return best;
   }
   function egStatus(relErr){
-    var pct=relErr*100, s=(pct<10?pct.toFixed(1):Math.round(pct))+'%';
-    if(relErr<EG_EXACT) return '<span style="color:#22c55e" title="Final matches plan">✓</span>';
-    if(relErr<=EG_TOL) return '<span style="color:#f59e0b" title="Within '+s+' of plan (2.5 nL snap)">~</span>';
-    return '<span style="color:#ef4444;font-weight:600;font-size:11px;white-space:nowrap" title="'+s+' away from the planned concentration">'+s+' off</span>';
+    var pct=relErr*100, t=(pct<10?pct.toFixed(1):Math.round(pct))+'%';
+    if(relErr<EG_EXACT) return '<span class="eg-st ok" title="Final matches plan">✓</span>';
+    if(relErr<=EG_TOL) return '<span class="eg-st near" title="Within '+t+' of plan (2.5 nL snap)">~</span>';
+    return '<span class="eg-st bad" title="'+t+' away from the planned concentration">'+t+' off</span>';
   }
 
-  // ── Render stock inputs (horizontal) ────────────────────────────────────
+  // ── Render stock inputs ─────────────────────────────────────────────────
+  // Reconciled in place. It used to wipe the container and rebuild every box, and the
+  // planner re-renders 220 ms after each keystroke — so typing "0.5" into Source lost the
+  // box after the "0", the "." never arrived and the value became 5. A row that exists is
+  // patched, never replaced, and a box being typed in is never written to.
   function renderStocks(){
     var c=document.getElementById('eg-stocks-container'); if(!c) return;
-    c.innerHTML='';
+    var rows=c.children;
+    while(rows.length>_egS.length) c.removeChild(c.lastChild);
     _egS.forEach(function(s,i){
-      var isSource=(i===0);
-      var wrap=document.createElement('div');
-      wrap.style.cssText='display:flex;align-items:center;gap:4px;flex-shrink:0';
-      var unitOpts=['1e-3','1e-6','1e-9'].map(function(u){
-        var lbl=u==='1e-3'?'mM':u==='1e-6'?'µM':'nM';
-        return '<option value="'+u+'"'+(s.unit===u?' selected':'')+'>'+lbl+'</option>';
-      }).join('');
-      wrap.innerHTML=
-        // One label width for every stock (Source carries a hidden arrow), so when the
-        // card stacks them the inputs form a column instead of Source's sitting 36px left.
-        '<span style="display:inline-flex;align-items:center;width:66px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap">'+
-          s.label+'</span>'+
-        '<input type="number" value="'+s.val+'" min="0" step="any" '+
-          'oninput="_egSVal('+i+',this.value)" '+
-          'style="width:72px;padding:5px 6px;border:1px solid var(--border);border-radius:4px;'+
-          'background:var(--surface);color:var(--text);font-size:13px">'+
-        '<select onchange="_egSUnit('+i+',this.value)" '+
-          'style="padding:5px 4px;border:1px solid var(--border);border-radius:4px;'+
-          'background:var(--surface);color:var(--text);font-size:13px">'+unitOpts+'</select>'+
-        (!isSource
-          ? '<button onclick="_egRemoveStock('+i+')" title="Remove" '+
-              'style="padding:1px 7px;font-size:13px;border:1px solid var(--border);'+
-              'border-radius:4px;background:var(--surface2);color:var(--text2);cursor:pointer">✕</button>'
-          : '');
-      c.appendChild(wrap);
+      var row=rows[i];
+      if(!row){
+        row=document.createElement('div');
+        row.className='eg-srow';
+        var unitOpts=['1e-3','1e-6','1e-9'].map(function(u){ return '<option value="'+u+'">'+unitLbl(u)+'</option>'; }).join('');
+        row.innerHTML=
+          '<span class="eg-sl"></span>'+
+          '<input type="number" min="0" step="any" inputmode="decimal">'+
+          '<select>'+unitOpts+'</select>'+
+          '<span></span>';
+        var inp=row.querySelector('input'), sel=row.querySelector('select');
+        inp.setAttribute('oninput','_egSVal('+i+',this.value)');
+        sel.setAttribute('onchange','_egSUnit('+i+',this.value)');
+        c.appendChild(row);
+      }
+      row.classList.toggle('src',i===0);
+      row.querySelector('.eg-sl').textContent=s.label;
+      var inp2=row.querySelector('input'), sel2=row.querySelector('select');
+      inp2.setAttribute('aria-label',s.label+' concentration'); sel2.setAttribute('aria-label',s.label+' unit');
+      // Patch a value only when it differs as a number, so "0." or "1e" mid-typing is left alone.
+      if(document.activeElement!==inp2 && parseFloat(inp2.value)!==s.val) inp2.value=s.val;
+      if(document.activeElement!==sel2) sel2.value=s.unit;
+      var last=row.lastElementChild;
+      if(i>0){
+        if(last.tagName!=='BUTTON'){
+          var b=document.createElement('button'); b.type='button'; b.className='eg-x'; b.title='Remove'; b.setAttribute('aria-label','Remove');
+          b.textContent='✕'; row.replaceChild(b,last); last=b;
+        }
+        last.setAttribute('onclick','_egRemoveStock('+i+')');
+      }
     });
     // The chain under the stocks and in the page subtitle is the chain that exists,
     // not a fixed "source → inter 1 → inter 2" whatever was set up.
@@ -10502,10 +10641,7 @@ function _unhideAllResultsCols() {
     return v;
   }
   function egBox(kind,html){
-    var c=kind==='err'?['rgba(239,68,68,.1)','#ef4444','var(--text)']
-         :kind==='warn'?['rgba(245,158,11,.1)','#f59e0b','var(--text2)']
-         :['rgba(94,135,197,.08)','var(--accent)','var(--text2)'];
-    return '<div style="background:'+c[0]+';border:1px solid '+c[1]+';border-radius:4px;padding:6px 10px;font-size:12px;color:'+c[2]+';margin-bottom:8px">'+html+'</div>';
+    return '<div class="eg-note '+(kind==='err'?'err':kind==='warn'?'warn':'info')+'">'+html+'</div>';
   }
   // Why a point is out of reach, in the terms that fix it. Every stock is Source or
   // made from Source, so the range is two numbers: the most concentrated stock is
@@ -10653,8 +10789,8 @@ function _unhideAllResultsCols() {
       ' <span style="color:var(--text3)">— each made from Source</span>';
     if(added&&!auto) head+=' <span style="color:var(--text3)">('+(added>0?'added ':'removed ')+Math.abs(added)+' intermediate'+(Math.abs(added)===1?'':'s')+')</span>';
     var tail=(!r.infeas&&!r.off)
-      ?'<br><span style="color:#16a34a">✓ All '+pts+' points within '+(EG_TOL*100)+'% of plan · worst '+(r.maxErr*100).toFixed(1)+'%</span>'
-      :'<br><span style="color:#d97706">⚠ Best with up to '+EG_MAX_INTERS+' intermediates: '+
+      ?'<br><span class="eg-ok">✓ All '+pts+' points within '+(EG_TOL*100)+'% of plan · worst '+(r.maxErr*100).toFixed(1)+'%</span>'
+      :'<br><span class="eg-wr">⚠ Best with up to '+EG_MAX_INTERS+' intermediates: '+
         (r.infeas?r.infeas+' point'+(r.infeas===1?'':'s')+' out of range':'')+(r.infeas&&r.off?', ':'')+
         (r.off?r.off+' more than '+(EG_TOL*100)+'% off':'')+
         '. '+egReachText(cSrc,Vpre,vol,maxT,planM)+'</span>';
@@ -10663,10 +10799,54 @@ function _unhideAllResultsCols() {
   };
 
   // ── Main calculation (live) ───────────────────────────────────────────────
+  // The two lines under steps 1 and 2: what the numbers above add up to, so nobody has to
+  // work out the DMSO budget or the span of the series by hand.
+  function _egHelp(v){
+    var a=document.getElementById('eg-h-assay'), b=document.getElementById('eg-h-series');
+    if(!a||!b) return;
+    if(!v.ok){ a.textContent=''; b.textContent=''; return; }
+    var drops=Math.floor(v.maxT/DROP+1e-9);
+    a.innerHTML=v.maxT>=DROP
+      ?'Up to <b>'+fmtVol(v.maxT)+' nL</b> of DMSO per well ('+drops+' drop'+(drops===1?'':'s')+') — the most one point can be dispensed.'
+      :'<span class="eg-wr" style="color:var(--danger)">'+fmtVol(v.maxT)+' nL of DMSO is less than one 2.5 nL drop.</span>';
+    var last=v.planM[v.planM.length-1], top=v.planM[0];
+    var u=v.topU?1/v.topU:1e9, us={'0.001':'mM','0.000001':'µM','1e-9':'nM'}[String(v.topU)]||'nM';
+    var fold=top/last;
+    b.innerHTML='<b>'+fmtTbl(top*u)+' → '+fmtTbl(last*u)+' '+us+'</b> · '+(fold>=100?Math.round(fold).toLocaleString('en-GB'):(+fold.toPrecision(3)))+'-fold across '+v.pts+' points'+(v.explicit?' · custom ladder':'');
+  }
+  // A log-axis strip of the series: a tick for each concentration asked for, a ring under it
+  // for what the Echo will actually put in the well. A ring that has slid away from its tick
+  // is a point that is off plan, visible before the table is read.
+  function _egLadder(){
+    var el=document.getElementById('eg-ladder'); if(!el) return;
+    var plan=egPlanRows();
+    if(!plan||!plan.length){ el.innerHTML=''; return; }
+    var lg=function(m){ return Math.log10(m); };
+    var vals=plan.map(function(r){return r.planM;}).concat(plan.filter(function(r){return r.finalM>0;}).map(function(r){return r.finalM;}));
+    var lo=Math.min.apply(null,vals.map(lg)), hi=Math.max.apply(null,vals.map(lg));
+    if(!(hi>lo)){ hi=lo+1; }
+    var W=300, L=10, R=290, xa=function(m){ return L+(lg(m)-lo)/(hi-lo)*(R-L); };
+    var mult=window._egTopUnitMult||1e9, us=window._egTopUnitStr||'nM';
+    var g='<line class="ax" x1="'+L+'" x2="'+R+'" y1="30" y2="30"/>';
+    plan.forEach(function(r){
+      var x=xa(r.planM).toFixed(1);
+      g+='<line class="pl" x1="'+x+'" x2="'+x+'" y1="16" y2="26"><title>Point '+r.pt+' · plan '+fmtTbl(r.planDisp)+' '+us+'</title></line>';
+      if(r.finalM>0){
+        var cls=r.relErr<EG_EXACT?'ok':r.relErr<=EG_TOL?'near':'bad';
+        g+='<circle class="dv '+cls+'" cx="'+xa(r.finalM).toFixed(1)+'" cy="36" r="3.4"><title>Point '+r.pt+' · dispensed '+fmtTbl(r.finalDisp)+' '+us+'</title></circle>';
+      } else {
+        g+='<path class="dv bad" d="M'+(+x-3)+' 33l6 6m0-6l-6 6" fill="none"><title>Point '+r.pt+' · nothing dispensed</title></path>';
+      }
+    });
+    g+='<text x="'+L+'" y="10">'+fmtTbl(Math.pow(10,lo)*mult)+' '+us+'</text><text x="'+R+'" y="10" text-anchor="end">'+fmtTbl(Math.pow(10,hi)*mult)+' '+us+'</text>';
+    g+='<text x="'+L+'" y="50">ticks: plan · rings: dispensed</text>';
+    el.innerHTML='<svg viewBox="0 0 '+W+' 56" role="img" aria-label="Planned and dispensed concentrations on a log axis">'+g+'</svg>';
+  }
   function _egHide(){
     ['eg-table','eg-summary-bar','eg-copy-row'].forEach(function(id){var e=document.getElementById(id); if(e) e.style.display='none';});
     // Nothing for the backfill card to read, or it keeps describing the last valid plan.
     window._egRows=null; window._egMaxT=0;
+    var _lad=document.getElementById('eg-ladder'); if(_lad) _lad.innerHTML='';
     _egBfCalc();
   }
   function _egUpdate(keepNote){
@@ -10676,6 +10856,7 @@ function _unhideAllResultsCols() {
     var cr =document.getElementById('eg-copy-row');
     var wb =document.getElementById('eg-warn-box');
     var v=egInputs();
+    _egHelp(v);
     if(!v.ok){
       wb.innerHTML=(_egNote||'')+egBox('info','To plan the gradient, enter '+v.why.join(', ')+'.');
       _egHide(); return;
@@ -10712,11 +10893,11 @@ function _unhideAllResultsCols() {
     // A preset with its own ladder has no single dilution factor; printing the DF box
     // beside it described a series the table does not contain.
     var ladder=v.explicit?'custom ladder':('DF '+df);
-    sb.innerHTML='<strong>'+presetName+'</strong> &nbsp;·&nbsp; '+
-      vol+' µL &nbsp;·&nbsp; DMSO ≤ '+dmso+'% &nbsp;·&nbsp; '+
-      'Max transfer <strong>'+fmtVol(maxT)+' nL</strong> &nbsp;·&nbsp; '+
-      'Top '+fmtTbl(v.planM[0]*topUnitMult)+' '+topUnitStr+' &nbsp;·&nbsp; '+ladder+' &nbsp;·&nbsp; '+
-      'Stocks '+_egS.map(function(s){ return s.label+': '+s.val+' '+unitLbl(s.unit); }).join(' › ');
+    var onPlan=rows.filter(function(r){return r.chosen&&r.chosen.relErr<=EG_TOL;}).length;
+    function chip(k,val){ return '<span class="eg-chip">'+k+' <b>'+val+'</b></span>'; }
+    sb.innerHTML=(presetEl&&presetEl.value?chip('Preset',esc(presetName)):'')+chip('Max transfer',fmtVol(maxT)+' nL')+chip('Series',ladder)+
+      chip('On plan',onPlan+' / '+rows.length)+
+      chip('Stocks',_egS.map(function(s){ return esc(s.label)+' '+s.val+' '+unitLbl(s.unit); }).join(' › '));
     sb.style.display='';
 
     var warn='';
@@ -10744,7 +10925,7 @@ function _unhideAllResultsCols() {
       var finalDisp=(vA&&cS)?(vA*cS/(vol*1000))*topUnitMult:null;
       var dmsoPct=vA?(vA/(vol*1000))*100:null;
       var overDmso=dmsoPct!=null&&dmsoPct>dmso+1e-9;
-      var statusHtml=!c?'<span style="color:#ef4444" title="No stock gives a volume in range">✗</span>':egStatus(c.relErr);
+      var statusHtml=!c?'<span class="eg-st bad" title="No stock gives a volume in range">✗</span>':egStatus(c.relErr);
       // An out-of-range row has no stock; showing the first option ("Source") read as
       // if Source had been chosen for it.
       var stockOpts=(c?'':'<option value="" selected>—</option>')+sorted.map(function(s){
@@ -10752,32 +10933,25 @@ function _unhideAllResultsCols() {
       }).join('');
       var tr=document.createElement('tr');
       tr.dataset.pt=row.pt;
-      tr.style.borderBottom='1px solid var(--border)';
+      if(!c||c.relErr>EG_TOL) tr.className='eg-off';
       tr.innerHTML=
-        '<td style="padding:5px 8px;text-align:center;color:var(--text3);font-size:12px">'+row.pt+'</td>'+
-        '<td style="padding:5px 8px;text-align:center">'+
-          '<select aria-label="Stock for point '+row.pt+'" style="padding:2px 5px;border:1px solid var(--border);border-radius:4px;'+
-            'background:var(--surface);color:var(--text);font-size:12px" '+
-            'data-pt="'+row.pt+'" onchange="_egRowStock(this)">'+stockOpts+'</select></td>'+
-        '<td class="eg-ideal" style="padding:5px 8px;text-align:right;color:var(--text3);font-size:12px">'+
-          (c?fmtVol(c.vIdeal):'—')+'</td>'+
-        '<td style="padding:5px 8px;text-align:right">'+
-          '<input type="number" aria-label="Transfer for point '+row.pt+' (nL)" value="'+(vA||'')+'" step="2.5" min="0" '+
-            'data-pt="'+row.pt+'" data-cs="'+cS+'" '+
-            'onchange="_egRowVol(this)" '+
-            'style="width:68px;padding:3px 5px;border:1px solid var(--border);border-radius:4px;'+
-            'background:var(--surface);color:var(--text);font-size:13px;text-align:right;'+
-            'font-variant-numeric:tabular-nums"></td>'+
-        '<td id="eg-b'+row.pt+'" class="eg-bfc" style="padding:5px 8px;text-align:right;color:var(--text3);font-variant-numeric:tabular-nums">'+fmtVol(Math.max(0,maxT-vA))+'</td>'+
-        '<td id="eg-f'+row.pt+'" style="padding:5px 8px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums">'+fmtTbl(finalDisp)+'</td>'+
-        '<td style="padding:5px 8px;text-align:right;color:var(--text3);font-variant-numeric:tabular-nums">'+fmtTbl(planDisp)+'</td>'+
-        '<td id="eg-d'+row.pt+'" class="eg-dmso" style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums'+(overDmso?';color:#ef4444;font-weight:600':';color:var(--text3)')+'">'+(dmsoPct!=null?dmsoPct.toFixed(2)+'%':'—')+'</td>'+
-        '<td id="eg-st'+row.pt+'" style="padding:5px 8px;text-align:center">'+statusHtml+'</td>';
+        '<td class="eg-c-c eg-mut">'+row.pt+'</td>'+
+        '<td class="eg-mut" style="color:var(--text)">'+fmtTbl(planDisp)+'</td>'+
+        '<td class="eg-c-c eg-gs">'+
+          '<select class="eg-sel" aria-label="Stock for point '+row.pt+'" data-pt="'+row.pt+'" onchange="_egRowStock(this)">'+stockOpts+'</select></td>'+
+        '<td class="eg-ideal eg-mut">'+(c?fmtVol(c.vIdeal):'—')+'</td>'+
+        '<td><input class="eg-tin" type="number" aria-label="Transfer for point '+row.pt+' (nL)" value="'+(vA||'')+'" step="2.5" min="0" '+
+            'data-pt="'+row.pt+'" data-cs="'+cS+'" onchange="_egRowVol(this)"></td>'+
+        '<td id="eg-b'+row.pt+'" class="eg-bfc eg-mut">'+fmtVol(Math.max(0,maxT-vA))+'</td>'+
+        '<td id="eg-f'+row.pt+'" class="eg-fin eg-gs">'+fmtTbl(finalDisp)+'</td>'+
+        '<td id="eg-d'+row.pt+'" class="eg-dmso eg-mut"'+(overDmso?' style="color:var(--danger);font-weight:600"':'')+'>'+(dmsoPct!=null?dmsoPct.toFixed(2)+'%':'—')+'</td>'+
+        '<td id="eg-st'+row.pt+'" class="eg-c-c">'+statusHtml+'</td>';
       tbody.appendChild(tr);
     });
     tbl.style.display='';
     cr.style.display='flex';
     _egBfSyncPerComp();
+    _egLadder();
     _egBfCalc();
   }
 
@@ -10902,101 +11076,81 @@ function _unhideAllResultsCols() {
     var out=document.getElementById('eg-bf-out');
     if(!out) return;
     var bf=_egBfCompute();
-    var html='';
+    var H='';   // three blocks: what to prepare, what to back-fill, and whether the wells hold it
+    function msg(kind,t){ return '<div class="eg-msg '+kind+'">'+t+'</div>'; }
 
-    if(bf.interVol>bf.wellMax){
-      html+='<div style="color:#ef4444;font-size:12px;margin-bottom:8px">⚠ A '+bf.interVol+' µL pre-fill is more than '+bf.plateName+' well holds (~'+bf.wellMax+' µL).</div>';
-    }
-    if(bf.interVol>0){
-      html+='<div style="font-size:11px;color:var(--text3);margin-bottom:12px">Pre-fill <strong>every</strong> well you plan to use on the intermediate plate — the ones becoming an intermediate concentration <em>and</em> the ones held back for backfill — with the same <strong>'+bf.interVol+' µL</strong> of neat DMSO before the Echo run.</div>';
-    }
-
-    // ── Part 1 render ──
-    html+='<div style="font-weight:600;color:var(--text);margin-bottom:6px">1. Intermediate concentrations <span style="font-weight:400;color:var(--text3)">(transfer added on top of the pre-fill)</span></div>';
+    // ── Block 1: the intermediates ──
+    var b1='<h4>Intermediate concentrations <small>· transfer added on top of the pre-fill</small></h4>';
+    if(bf.interVol>bf.wellMax) b1+=msg('err','⚠ A '+bf.interVol+' µL pre-fill is more than '+bf.plateName+' well holds (~'+bf.wellMax+' µL).');
+    if(bf.interVol>0) b1+='<div style="margin-bottom:8px">Pre-fill <strong>every</strong> well you plan to use — the ones becoming an intermediate <em>and</em> the ones held back for backfill — with <strong>'+bf.interVol+' µL</strong> of neat DMSO before the Echo run.</div>';
     if(bf.prepRows){
-      html+='<table style="width:100%;max-width:460px;border-collapse:collapse;font-size:12.5px;margin-bottom:6px">'+
-        '<tr><th style="text-align:left;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0">Well</th>'+
-        '<th style="text-align:left;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0">From</th>'+
-        '<th style="text-align:right;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;white-space:nowrap">Echo transfer (nL)</th></tr>';
+      b1+='<div class="eg-scroll"><table class="eg-mini"><tr><th>Well</th><th>From</th><th>Echo transfer (nL)</th></tr>';
       bf.prepRows.forEach(function(r){
-        html+='<tr class="'+(r.ok?'':'eg-bad')+'" style="border-bottom:1px solid var(--border)">'+
-          '<td style="padding:5px 8px">'+r.label+'</td>'+
-          '<td style="padding:5px 8px">'+r.parent+'</td>'+
-          '<td style="padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums">'+(r.ok?fmtVol(r.adjNL):'infeasible ⚠')+'</td>'+
-        '</tr>';
+        b1+='<tr class="'+(r.ok?'':'eg-bad')+'"><td>'+r.label+'</td><td>'+r.parent+'</td><td>'+(r.ok?fmtVol(r.adjNL):'infeasible ⚠')+'</td></tr>';
       });
-      html+='</table>';
+      b1+='</table></div>';
       var _split=bf.prepRows.filter(function(r){return r.split;}), _over=bf.prepRows.filter(function(r){return r.over;});
-      if(_split.length) html+='<div style="color:#d97706;font-size:11px;margin-bottom:6px">⚠ '+_split.map(function(r){return r.label;}).join(', ')+' need'+(_split.length===1?'s':'')+' more than 10 µL, the largest single Echo transfer — it will run as several transfers.</div>';
-      if(_over.length) html+='<div style="color:#ef4444;font-size:11px;margin-bottom:6px">⚠ '+_over.map(function(r){return r.label;}).join(', ')+': the pre-fill plus the transfer is more than '+bf.plateName+' well holds (~'+bf.wellMax+' µL). Lower the pre-fill or use a less concentrated Source.</div>';
-      if(!bf.prepOk){
-        html+='<div style="color:#ef4444;font-size:11px;margin-bottom:12px">⚠ One or more intermediates cannot be made from Source — either the target isn\'t below the Source concentration, or the transfer would be under Echo\'s 2.5 nL minimum drop. A larger intermediate-plate volume or a less concentrated Source makes more dilute intermediates reachable.</div>';
-      }
+      if(_split.length) b1+=msg('warn','⚠ '+_split.map(function(r){return r.label;}).join(', ')+' need'+(_split.length===1?'s':'')+' more than 10 µL, the largest single Echo transfer — it will run as several transfers.');
+      if(_over.length) b1+=msg('err','⚠ '+_over.map(function(r){return r.label;}).join(', ')+': the pre-fill plus the transfer is more than '+bf.plateName+' well holds (~'+bf.wellMax+' µL). Lower the pre-fill or use a less concentrated Source.');
+      if(!bf.prepOk) b1+=msg('err','⚠ One or more intermediates cannot be made from Source — either the target isn\'t below the Source concentration, or the transfer would be under Echo\'s 2.5 nL minimum drop. A larger intermediate-plate volume or a less concentrated Source makes more dilute intermediates reachable.');
     } else {
-      html+='<div style="color:var(--text3);font-size:12.5px;margin-bottom:12px">'+(_egS.length>1?'Set a Source concentration and a pre-fill volume to see the prep transfer volumes.':'None — Source reaches every point, so the intermediate plate only holds backfill DMSO.')+'</div>';
+      b1+=msg('mut',_egS.length>1?'Set a Source concentration and a pre-fill volume to see the prep transfer volumes.':'None — Source reaches every point, so the intermediate plate only holds backfill DMSO.');
     }
+    H+='<div class="eg-sub">'+b1+'</div>';
 
-    // ── Part 2 render ──
-    html+='<div style="font-weight:600;color:var(--text);margin-bottom:6px">2. Destination plate backfill</div>';
+    // ── Block 2: destination backfill ──
+    var b2='<h4>Destination plate backfill</h4>';
     var b=bf.backfill;
+    function kv(k,v,cls){ return '<div class="eg-kv'+(cls?' '+cls:'')+'"><span>'+k+'</span><b>'+v+'</b></div>'; }
     if(b.status==='no-gradient'){
-      html+='<div style="color:var(--text3);font-size:12.5px">Set up a valid dose-response gradient above to compute this.</div>';
+      b2+=msg('mut','Set up a valid dose-response gradient above to compute this.');
     } else if(b.status==='missing-inputs'){
-      html+='<div style="color:var(--text3);font-size:12.5px">Enter compound count, wells per compound, sets, replicates and an intermediate plate volume.</div>';
+      b2+=msg('mut','Enter compound count, wells per compound, sets, replicates and an intermediate plate volume.');
     } else if(b.status==='no-usable-volume'){
-      html+='<div style="color:#ef4444;font-size:12.5px"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" style="vertical-align:-.15em"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg> <strong>'+bf.interVol+' µL/well</strong> is at or below the '+bf.deadVol+
-        ' µL Echo dead volume — this plate can\'t supply any backfill. Increase the pre-fill volume or switch to an LDV plate.</div>';
+      b2+=msg('err',ICON_NO+' <strong>'+bf.interVol+' µL/well</strong> is at or below the '+bf.deadVol+
+        ' µL Echo dead volume — this plate can\'t supply any backfill. Increase the pre-fill volume or switch to an LDV plate.');
     } else {
-      html+=
-        '<div style="font-size:12.5px;line-height:1.8">'+
-        '<div>Total DMSO backfill needed for the assay: <strong>'+fmtVol(b.totalBackfillNL)+' nL</strong> ('+b.totalBackfillUL.toFixed(2)+' µL)</div>'+
-        (b.vehicleWells>0?(
-        '<div style="padding-left:14px;color:var(--text3)">— from compound wells: '+fmtVol(b.compoundBackfillNL)+' nL</div>'+
-        '<div style="padding-left:14px;color:var(--text3)">— from '+b.vehicleWells+' DMSO-only (vehicle) well'+(b.vehicleWells===1?'':'s')+' at the full max-transfer volume: '+fmtVol(b.vehicleBackfillNL)+' nL</div>'
-        ):'')+
-        '<div>Usable volume per backfill well: <strong>'+b.usablePerWell.toFixed(1)+' µL</strong> ('+bf.interVol+' µL pre-filled &minus; '+bf.deadVol+' µL dead volume)</div>'+
-        '<div>Wells already spoken for by compounds: <strong>'+b.wellsUsedByCompounds+'</strong> ('+bf.nComp+' × '+bf.perComp+' — sets and replicates redraw from these same wells)</div>'+
-        '<div>Destination wells needing backfill: <strong>'+b.destWellsNeedingBackfill+'</strong> ('+bf.nComp+' compounds × '+b.nPoints+' points × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' replicate'+(bf.nReps===1?'':'s')+(b.vehicleWells>0?' + '+b.vehicleWells+' vehicle':'')+')</div>'+
-        '</div>'+
-        '<div style="margin-top:8px;padding:8px 12px;background:rgba(0,200,150,0.08);border:1px solid var(--accent3);border-radius:4px;font-size:12.5px">'+
-          '✦ Reserve at least <strong>'+b.minWells+' free well'+(b.minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
-        '</div>'+
-        '<div style="margin-top:8px;font-size:12.5px">Total wells to pre-fill with '+bf.interVol+' µL DMSO before the run (intermediates + backfill): <strong>'+b.totalWells+'</strong> ('+b.wellsUsedByCompounds+' + '+b.minWells+')</div>';
+      b2+=kv('Total DMSO backfill needed',fmtVol(b.totalBackfillNL)+' nL <span style="font-weight:400;color:var(--text3)">('+b.totalBackfillUL.toFixed(2)+' µL)</span>');
+      if(b.vehicleWells>0){
+        b2+=kv('from compound wells',fmtVol(b.compoundBackfillNL)+' nL','sub')+
+            kv('from '+b.vehicleWells+' DMSO-only well'+(b.vehicleWells===1?'':'s')+' at the full max transfer',fmtVol(b.vehicleBackfillNL)+' nL','sub');
+      }
+      b2+=kv('Usable volume per backfill well',b.usablePerWell.toFixed(1)+' µL <span style="font-weight:400;color:var(--text3)">('+bf.interVol+' pre-filled − '+bf.deadVol+' dead)</span>')+
+          kv('Wells already used by compounds',b.wellsUsedByCompounds+' <span style="font-weight:400;color:var(--text3)">('+bf.nComp+' × '+bf.perComp+'; sets and replicates redraw from these)</span>')+
+          kv('Destination wells needing backfill',b.destWellsNeedingBackfill+' <span style="font-weight:400;color:var(--text3)">('+bf.nComp+' × '+b.nPoints+' pts × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' rep'+(bf.nReps===1?'':'s')+(b.vehicleWells>0?' + '+b.vehicleWells+' vehicle':'')+')</span>');
+      b2+='<div class="eg-call">✦ Reserve at least <strong>'+b.minWells+' free well'+(b.minWells===1?'':'s')+'</strong> on the intermediate plate, pre-filled with neat DMSO, for backfill.'+
+          '<div style="margin-top:4px;color:var(--text2)">In total pre-fill <strong>'+b.totalWells+'</strong> wells with '+bf.interVol+' µL DMSO before the run ('+b.wellsUsedByCompounds+' intermediates + '+b.minWells+' backfill).</div></div>';
     }
+    H+='<div class="eg-sub">'+b2+'</div>';
 
-    // ── Part 3: does each stock well hold what the run draws from it? ──
+    // ── Block 3: does each stock well hold what the run draws from it? ──
     var use=egStockUse(bf);
     if(use){
-      var th='text-align:right;padding:5px 8px;border-bottom:2px solid var(--border);text-transform:none;font-size:11px;font-weight:500;color:var(--text3);letter-spacing:0;white-space:nowrap';
-      html+='<div style="font-weight:600;color:var(--text);margin:16px 0 6px">3. Stock volumes per compound <span style="font-weight:400;color:var(--text3)">(spare = left above the '+bf.deadVol+' µL dead volume · × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' replicate'+(bf.nReps===1?'':'s')+')</span></div>'+
-        '<div style="overflow-x:auto"><table style="width:100%;max-width:520px;border-collapse:collapse;font-size:12.5px;margin-bottom:6px">'+
-        '<tr><th style="'+th+';text-align:left">µL</th><th style="'+th+'" title="Pre-fill plus the transfer that made it">Holds</th><th style="'+th+'" title="Every point dispensed from it, × sets × replicates">To assay</th><th style="'+th+'" title="Drawn from Source to make the intermediates">To intermediates</th><th style="'+th+'" title="Left above the Echo dead volume">Spare</th></tr>';
+      var b3='<h4>Stock volumes per compound <small>· spare = left above the '+bf.deadVol+' µL dead volume · × '+bf.nSets+' set'+(bf.nSets===1?'':'s')+' × '+bf.nReps+' replicate'+(bf.nReps===1?'':'s')+'</small></h4>'+
+        '<div class="eg-scroll"><table class="eg-mini"><tr><th>µL</th><th title="Pre-fill plus the transfer that made it">Holds</th><th title="Every point dispensed from it, × sets × replicates">To assay</th><th title="Drawn from Source to make the intermediates">To intermediates</th><th title="Left above the Echo dead volume">Spare</th></tr>';
       var short=[];
       use.forEach(function(x){
-        var tdR='padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums';
         var bad=!x.source&&!x.ok;
         if(bad) short.push(x);
-        html+='<tr class="'+(bad?'eg-bad':'')+'" style="border-bottom:1px solid var(--border)">'+
-          '<td style="padding:5px 8px" title="'+esc(egPtsText(x.pts))+'">'+x.label+'</td>'+
-          '<td style="'+tdR+'">'+(x.source?'yours':egNum(x.holds/1000))+'</td>'+
-          '<td style="'+tdR+'">'+egNum(x.dest/1000)+'</td>'+
-          '<td style="'+tdR+'">'+(x.nextLbl?egNum(x.toNext/1000):'—')+'</td>'+
-          '<td style="'+tdR+(bad?';font-weight:600':'')+'">'+(x.source?'—':(x.ok?egNum(x.left/1000):'short by '+egNum(-x.left/1000)))+'</td>'+
+        b3+='<tr class="'+(bad?'eg-bad':'')+'">'+
+          '<td title="'+esc(egPtsText(x.pts))+'">'+x.label+'</td>'+
+          '<td>'+(x.source?'yours':egNum(x.holds/1000))+'</td>'+
+          '<td>'+egNum(x.dest/1000)+'</td>'+
+          '<td>'+(x.nextLbl?egNum(x.toNext/1000):'—')+'</td>'+
+          '<td'+(bad?' style="font-weight:600"':'')+'>'+(x.source?'—':(x.ok?egNum(x.left/1000):'short by '+egNum(-x.left/1000)))+'</td>'+
         '</tr>';
       });
-      html+='</table></div>';
+      b3+='</table></div>';
       var src=use[0];
-      html+='<div style="font-size:12px;margin-bottom:4px">Each compound\'s <strong>Source</strong> well gives up <strong>'+egNum(src.draw/1000)+' µL</strong>'+
+      b3+='<div style="margin-top:8px">Each compound\'s <strong>Source</strong> well gives up <strong>'+egNum(src.draw/1000)+' µL</strong>'+
         (src.nextLbl&&src.dest?' ('+egNum(src.dest/1000)+' to the assay, '+egNum(src.toNext/1000)+' to make '+src.nextLbl+')':src.nextLbl?' to make '+src.nextLbl:'')+
         ' — keep at least that plus the source plate\'s dead volume in it.</div>';
-      if(short.length){
-        html+='<div style="color:#ef4444;font-size:12px">⚠ '+short.map(function(x){return x.label;}).join(', ')+
-          ' cannot supply '+(short.length===1?'its':'their')+' transfers above the '+bf.deadVol+' µL dead volume. Raise the pre-fill, or split the sets across a second intermediate well.</div>';
-      } else {
-        html+='<div style="color:#16a34a;font-size:12px">✓ Every intermediate well holds what the run draws from it.</div>';
-      }
+      b3+=short.length
+        ?msg('err','⚠ '+short.map(function(x){return x.label;}).join(', ')+' cannot supply '+(short.length===1?'its':'their')+' transfers above the '+bf.deadVol+' µL dead volume. Raise the pre-fill, or split the sets across a second intermediate well.')
+        :msg('ok','✓ Every intermediate well holds what the run draws from it.');
+      H+='<div class="eg-sub wide">'+b3+'</div>';
     }
-    out.innerHTML=html;
+    out.innerHTML=H;
   }
 
   // ── Row callbacks ──────────────────────────────────────────────────────
@@ -11008,7 +11162,7 @@ function _unhideAllResultsCols() {
     if(!s){  // back to "—": nothing is dispensed for this point
       var tr0=sel.closest('tr'), inp0=tr0&&tr0.querySelector('input[type=number]');
       if(inp0){ inp0.value=''; inp0.dataset.cs=0; }
-      if(tr0) tr0.querySelectorAll('td')[2].textContent='—';
+      if(tr0){ var _id0=tr0.querySelector('.eg-ideal'); if(_id0) _id0.textContent='—'; }
       _egRowVolCalc(pt,0,0,vol,maxT); return;
     }
     var vI=(vol*row.planM*1000)/s.cM;
@@ -11016,7 +11170,7 @@ function _unhideAllResultsCols() {
     var tr=sel.closest('tr'); if(!tr) return;
     var inp=tr.querySelector('input[type=number]');
     if(inp){inp.value=vA;inp.dataset.cs=s.cM;}
-    tr.querySelectorAll('td')[2].textContent=fmtVol(vI); // Ideal is now col index 2
+    var _id=tr.querySelector('.eg-ideal'); if(_id) _id.textContent=fmtVol(vI);
     _egRowVolCalc(pt,vA,s.cM,vol,maxT);
   };
 
@@ -11045,18 +11199,21 @@ function _unhideAllResultsCols() {
     var be=document.getElementById('eg-b'+pt); if(be) be.textContent=fmtVol(Math.max(0,maxT-(vA||0)));
     if(de){
       de.textContent=(dmsoPct!=null?dmsoPct.toFixed(2)+'%':'—');
-      de.style.color=overDmso?'#ef4444':'var(--text3)';
+      de.style.color=overDmso?'var(--danger)':'';
       de.style.fontWeight=overDmso?'600':'';
     }
     if(se){
       var ok=vA>=DROP&&vA<=maxT;
       // A volume with no stock behind it dispenses nothing anyone can name — it was
       // marked "~ closest achievable" beside a Final of "—".
-      se.innerHTML=!cS?'<span style="color:#ef4444" title="Pick a stock for this point">✗</span>'
-                  :!ok?'<span style="color:#ef4444" title="Transfer out of range ('+fmtVol(DROP)+'–'+fmtVol(maxT)+' nL)">✗</span>'
-                  :egStatus(row&&finalNM!==null&&row.planNM?Math.abs(finalNM-row.planNM)/row.planNM:1);
+      var _rel=row&&finalNM!==null&&row.planNM?Math.abs(finalNM-row.planNM)/row.planNM:1;
+      se.innerHTML=!cS?'<span class="eg-st bad" title="Pick a stock for this point">✗</span>'
+                  :!ok?'<span class="eg-st bad" title="Transfer out of range ('+fmtVol(DROP)+'–'+fmtVol(maxT)+' nL)">✗</span>'
+                  :egStatus(_rel);
+      var _tr=se.closest('tr'); if(_tr) _tr.classList.toggle('eg-off',!cS||!ok||_rel>EG_TOL);
     }
     // Keep the intermediate-plate / backfill card in sync with manual transfer edits.
+    _egLadder();
     if(typeof _egBfCalc==='function') _egBfCalc();
   }
 
@@ -11419,18 +11576,27 @@ function switchSetupTab(name) {
 (function(){
   // One notice for both remote dependencies. jsPDF is known missing at load; RDKit is lazy and
   // only fails when you actually drop a SMILES file, so it calls this from its own catch.
+  // The notices stack in one column: each used to be fixed at the same spot, so when both
+  // dependencies were missing the second was painted straight over the first.
   window._depNotice=function(id,html){
     if(document.getElementById(id)) return;
+    var st=document.getElementById('dep-stack');
+    if(!st){
+      st=document.createElement('div');
+      st.id='dep-stack';
+      st.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99999;'
+        +'width:min(560px,92vw);display:flex;flex-direction:column;gap:8px;pointer-events:none';
+      document.body.appendChild(st);
+    }
     var d=document.createElement('div');
     d.id=id;
     d.setAttribute('role','status');
-    d.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99999;'
-      +'max-width:min(560px,92vw);background:#8a5a00;color:#fff;font:500 12.5px/1.5 system-ui,-apple-system,sans-serif;'
+    d.style.cssText='pointer-events:auto;background:#8a5a00;color:#fff;font:500 12.5px/1.5 system-ui,-apple-system,sans-serif;'
       +'padding:10px 14px;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.28);display:flex;gap:10px;align-items:flex-start';
-    d.innerHTML='<span>'+html+'</span>'
-      +'<span style="cursor:pointer;opacity:.8;font-size:15px;line-height:1" title="Dismiss">&times;</span>';
-    d.lastChild.onclick=function(){ d.remove(); };
-    document.body.appendChild(d);
+    d.innerHTML='<span style="flex:1">'+html+'</span>'
+      +'<button type="button" aria-label="Dismiss" title="Dismiss" style="flex:none;cursor:pointer;opacity:.85;font-size:16px;line-height:1;color:inherit;background:none;border:0;padding:0 2px">&times;</button>';
+    d.lastChild.onclick=function(){ d.remove(); if(!st.children.length) st.remove(); };
+    st.appendChild(d);
   };
   function warn(){
     if(window.jspdf && window.jspdf.jsPDF) return;

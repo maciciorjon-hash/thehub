@@ -39,6 +39,9 @@
 //   E18 wells as data         The wells CSV carries exactly the wells a search matches, with role, dose and exclusion,
 //                             quoted and formula-safe.
 //   E19 pictures from Echo    Labbook keeps only real image data URLs from another app, at most 12, with safe names.
+//   E20 the planner keeps       Typing a decimal into Source, a pre-fill or a volume at a human pace keeps the box, the caret and every
+//       what you type          digit (the planner re-drew the stock boxes 220 ms after each key, so "0.5" became 5); an intermediate you
+//                              are typing in survives the re-plan; restoring an analysis session never writes into the planner.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -518,6 +521,45 @@ if (run('E19')) await guard('E19', async () => {
   check('E19', 'at most 12', r.many === 12, r.many);
   check('E19', 'not a list → no images', r.none, r);
   if (errs2.length) check('E19', 'no page error in Labbook', false, errs2);
+});
+
+if (run('E20')) await guard('E20', async () => {
+  await E(() => { document.getElementById('setup-modal')?.classList.add('hidden'); [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); });
+  await pg.waitForTimeout(700);
+  const typeSlow = async (sel, text, delay) => {
+    await pg.click(sel, { clickCount: 3 });
+    for (const ch of text) { await pg.keyboard.type(ch); await pg.waitForTimeout(delay); }
+    await pg.waitForTimeout(500);
+  };
+  const state = () => E(() => ({ src: window._egS[0].val, srcBox: document.querySelector('#eg-stocks-container input').value,
+    focusOk: document.activeElement && document.activeElement.tagName === 'INPUT', pre: document.getElementById('eg-inter-vol').value,
+    vol: document.getElementById('eg-vol').value, rows: document.querySelectorAll('#eg-tbody tr').length }));
+  for (const [what, sel, text, key] of [['Source', '#eg-stocks-container input', '0.5', 'src'], ['Source', '#eg-stocks-container input', '12.25', 'src']]) {
+    await typeSlow(sel, text, 320);
+    const st = await state();
+    check('E20', `typing ${text} into ${what} at a human pace gives ${text}`, st.src === parseFloat(text) && st.srcBox === text && st.focusOk, st);
+  }
+  await typeSlow('#eg-inter-vol', '12.5', 320);
+  let st = await state(); check('E20', 'a decimal pre-fill volume is kept', st.pre === '12.5', st);
+  await typeSlow('#eg-vol', '17.5', 320);
+  st = await state(); check('E20', 'a decimal assay volume is kept', st.vol === '17.5' && st.rows > 0, st);
+  // an intermediate typed by hand is not re-drawn under the caret
+  await E(() => { window._egLoadPreset('hibit'); });
+  await pg.waitForTimeout(600);
+  const n = await E(() => window._egS.length);
+  if (n > 1) {
+    const before = await E(() => { const i = document.querySelectorAll('#eg-stocks-container input')[1]; i.dataset.mark = 'kept'; return true; });
+    await typeSlow('#eg-stocks-container .eg-srow:nth-child(2) input', '7.5', 320);
+    const kept = await E(() => ({ same: document.querySelectorAll('#eg-stocks-container input')[1].dataset.mark === 'kept', v: window._egS[1].val }));
+    check('E20', 'an intermediate being typed in is the same box afterwards, with every digit', kept.same && kept.v === 7.5, kept);
+  }
+  // a restored analysis never touches the planner
+  const leak = await E(() => {
+    const snap = _esFormState(); const keys = Object.keys(snap).filter(k => k.startsWith('eg-'));
+    document.getElementById('eg-vol').value = '33'; _esApplyForm({ 'eg-vol': '99', 'eg-inter-vol': '99' });
+    return { keys, vol: document.getElementById('eg-vol').value };
+  });
+  check('E20', 'an analysis session neither saves nor restores planner boxes', leak.keys.length === 0 && leak.vol === '33', leak);
 });
 
 await browser.close();
