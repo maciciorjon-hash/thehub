@@ -62,14 +62,21 @@
 //   E26 input files         The Echo file may be comma-, semicolon- or tab-separated, end its lines with \r, carry a BOM, give its
 //                           concentrations in µM, write 2,001E-05, and spell one compound in two cases; a reader cell may be "1000,5",
 //                           "1 000,5" or OVRFLW. Two transfer files with different columns are not merged.
-//   E27 one analysis,       Redrawing the results (sort, show all, a curve edit) does not add History entries; the entry carries the
-//       one history entry   run's own settings; a full browser store drops the oldest, not the new one.
+//   E27 History keeps       One record per DATASET (a hash of the input files), one VERSION per different analysis of it: the same files
+//       datasets, not copies analysed the same way add nothing, another setting is v2 and says what changed, a redraw or a curve edit
+//                           updates in place, Load restores the version's own settings, a full store drops stored files first, the old
+//                           browser-store list migrates once with its copies collapsed, and a cloud merge never resurrects a deletion.
+//   E32 compare             Two analyses matched by group and compound: fold change, unmatched counted, self-compare is 1, biggest change first.
 //   E28 Properties names    The Properties tab lists a compound's potency for every group it was fitted in, not the last one.
 //       every group
 //   E29 the source plate    Remaining volume ignores transfers that failed and transfers from other source plates, and a well asked for
 //       tells the truth     more than it holds is a shortfall, not "empty".
 //   E31 Properties sorts   A column header sorts the Properties table (ascending, descending, reset), a missing value is last either
 //                          way, and a multi-assay run with two panels on the same files is refused instead of doubled.
+//   E33 review and groups  The Review reads the files with the settings as they stand and says what will happen: curves, groups, plates
+//                          without a reader file, controls that land on compound wells, curves with too few readings; the group of a
+//                          plate follows the chosen rule (first dash, last dash, whole barcode, own table) in the run, the Review and
+//                          the Protocol, and editing it in the Review writes the table.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -817,34 +824,93 @@ if (run('E26')) await guard('E26', async () => {
 
 if (run('E27')) await guard('E27', async () => {
   await BACK_TO_ANALYSIS();
-  await E(() => { localStorage.removeItem(HIST_KEY); });
-  await runWith({});
-  const r = await E(() => {
-    const count = () => (JSON.parse(localStorage.getItem(HIST_KEY) || '[]')).length;
-    const n0 = count();
+  const wipe = () => E(async () => { await _hxLoad(); await _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true); try { localStorage.removeItem(HIST_KEY); } catch (e) {} });
+  const settle = () => pg.waitForTimeout(1300);
+  await wipe();
+  await runWith({}); await settle();
+  const a = await E(() => {
     for (const col of ['DC50_nM', 'Dmax_pct', 'R2']) sortResultsBy(col);
     window._resultsShowAll = true; renderResults(_lastResultsData); renderResults(_lastResultsData);
-    const h = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
-    return { n0, n1: count(), ids: new Set(h.map(x => x.id)).size, hasParams: !!(h[0] && h[0].params && Number.isFinite(h[0].params.minR2)), assay: h[0] && h[0].assayId, ts: h[0] && h[0].ts };
+    return new Promise(r => setTimeout(() => r({ runs: Object.keys(_hx.runs).length, sets: Object.keys(_hx.sets).length, set: Object.values(_hx.sets)[0] && Object.values(_hx.sets)[0].id }), 900));
   });
-  check('E27', 'sorting and redrawing the table leaves one History entry for the analysis', r.n0 === 1 && r.n1 === 1 && r.ids === 1, r);
-  check('E27', 'the entry carries the run\'s own settings', r.hasParams, r);
-  const q = await E(() => {
-    const real = Storage.prototype.setItem; let calls = 0;
-    // a store with room for the new analysis and ONE of the old ones: the newest must survive, the oldest go
-    localStorage.removeItem(HIST_KEY); window._analysisId = 5555; saveToHistory([{ Protein: 'G', Sample_ID: 'new', Flag: 'No' }]);
-    const L = localStorage.getItem(HIST_KEY).length; localStorage.removeItem(HIST_KEY);
-    Storage.prototype.setItem = function (k, v) { if (k === HIST_KEY && v.length > L + 60000) { calls++; throw new DOMException('full', 'QuotaExceededError'); } return real.call(this, k, v); };
-    try {
-      const mk = i => ({ id: 1000 + i, ts: 'old' + i, assayId: 'old' + i, groups: 'G', n: 1, nFlag: 0, data: [{ Protein: 'G', Sample_ID: 'x', Flag: 'No', pad: 'x'.repeat(40000) }] });
-      real.call(localStorage, HIST_KEY, JSON.stringify([mk(1), mk(2), mk(3)]));
-      window._analysisId = 5555; saveToHistory([{ Protein: 'G', Sample_ID: 'new', Flag: 'No' }]);
-      const h = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
-      return { ids: h.map(x => x.id), calls };
-    } finally { Storage.prototype.setItem = real; }
+  check('E27', 'one analysis → one dataset, one version; sorting and redrawing the table add nothing', a.runs === 1 && a.sets === 1, a);
+  await runWith({}); await settle();
+  const b = await E(() => ({ runs: Object.keys(_hx.runs).length, reruns: Object.values(_hx.runs)[0].reruns, sets: Object.keys(_hx.sets).length }));
+  check('E27', 'the same files analysed the same way again adds no version (it is counted as a re-run)', b.runs === 1 && b.reruns === 1 && b.sets === 1, b);
+  await runWith({ 'p-ctrl': 'B12:O12' }); await settle();
+  const c = await E(() => ({ runs: Object.keys(_hx.runs).length }));
+  check('E27', 'B12:O12 and B12-O12 are the same wells: no new version', c.runs === 1, c);
+  await runWith({ 'p-r2': '0.9' }); await settle();
+  const d = await E(() => { const rs = Object.values(_hx.runs).sort((x, y) => x.ver - y.ver); return { runs: rs.length, sets: Object.keys(_hx.sets).length, vers: rs.map(r => r.ver), diff: rs[1] && rs[1].paramsDiff.map(x => x.label + ':' + x.from + '>' + x.to), flags: rs.map(r => r.nFlag) }; });
+  check('E27', 'the same files with another setting are version 2 of the same dataset, and say what changed', d.runs === 2 && d.sets === 1 && d.vers.join() === '1,2' && d.diff && d.diff.join() === 'Min R²:0.8>0.9', d);
+  const e = await E(async () => {
+    const run = Object.values(_hx.runs).sort((x, y) => y.ver - x.ver)[0];
+    _lastResultsData[0].DC50_nM = 123.4; renderResults(_lastResultsData);
+    await new Promise(r => setTimeout(r, 900));
+    const after = _hx.runs[run.id];
+    return { runs: Object.keys(_hx.runs).length, edited: after.edited, same: after.id === run.id };
   });
-  check('E27', 'a full browser store drops the oldest analyses, keeps the new one', q.ids[0] === 5555 && q.ids.length < 4 && q.ids.length >= 1, q);
-  await E(() => { localStorage.removeItem(HIST_KEY); });
+  check('E27', 'editing the loaded analysis updates that version in place and marks it edited', e.runs === 2 && e.edited && e.same, e);
+  const f = await E(async () => {
+    const v1 = Object.values(_hx.runs).sort((x, y) => x.ver - y.ver)[0];
+    await loadHistoryEntry(v1.id); await new Promise(r => setTimeout(r, 600));
+    return { id: window._analysisId === v1.id, r2: window._lastAnalysisParams && window._lastAnalysisParams.minR2, n: _lastResultsData.length, setKey: window._setKey === v1.setId };
+  });
+  check('E27', 'Load brings back version 1 with its own settings', f.id && f.r2 === 0.8 && f.n === 63 && f.setKey, f);
+  const g = await E(() => { const s = Object.values(_hx.sets)[0]; return { files: s.filesStored, meta: (s.fileMeta || []).length }; });
+  check('E27', 'the input files are kept once for the dataset', g.files === true && g.meta >= 8, g);
+  const h = await E(async () => {
+    const real = _hxPut; let n = 0, evicted = null; const set = Object.values(_hx.sets)[0];
+    const r = await _hxPutRetry(async () => { if (n++ < 2) { const e = new Error('full'); e.name = 'QuotaExceededError'; throw e; } return 'ok'; });
+    return { r, n, filesStored: set.filesStored, dropped: set.filesDropped };
+  });
+  check('E27', 'a full store frees the input files of the oldest dataset first, keeps the results, and goes on', h.r === 'ok' && h.n === 3 && h.filesStored === false && h.dropped === true, h);
+  const k = await E(async () => {
+    await _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true);
+    const mk = (id, assay, flag) => ({ id, ts: new Date(id).toLocaleString(), assayId: assay, groups: 'G', n: 1, nFlag: 0, data: [{ Protein: 'G', Sample_ID: 'x', DC50_nM: flag, Flag: 'No' }], plateData: null });
+    // five old entries: the same analysis three times (the old history made a copy per run), another assay, another outcome
+    localStorage.setItem(HIST_KEY, JSON.stringify([mk(5000, 'A', 1), mk(4000, 'A', 1), mk(3000, 'A', 1), mk(2000, 'B', 1), mk(1000, 'A', 2)]));
+    _hxLoadP = null; for (const k of Object.keys(_hx.runs)) delete _hx.runs[k]; for (const k of Object.keys(_hx.sets)) delete _hx.sets[k];
+    await _hxLoad();
+    return { runs: Object.keys(_hx.runs).length, sets: Object.keys(_hx.sets).length, left: localStorage.getItem(HIST_KEY) };
+  });
+  check('E27', 'the old browser-store history is migrated once: the same analysis saved three times becomes one version', k.runs === 3 && k.sets === 2 && k.left === null, k);
+  const m = await E(async () => {
+    await _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true);
+    const ent = (id, extra) => Object.assign({ id, ts: id, assayId: 'CLOUD', groups: 'G', n: 1, nFlag: 0, data: [{ Protein: 'G', Sample_ID: 'x', DC50_nM: id, Flag: 'No' }] }, extra || {});
+    const a1 = await _hxIngest(ent(9001)), a2 = await _hxIngest(ent(9001)), a3 = await _hxIngest(ent(9002));
+    await _hxDeleteRuns([9001], true);     // tombstoned on this device
+    const back = await _hxIngest(ent(9001));
+    return { first: a1, again: a2, second: a3, resurrected: back, left: Object.keys(_hx.runs).map(Number).sort() };
+  });
+  check('E27', 'merging from the cloud adds runs this device lacks, ignores duplicates, and does not resurrect what was deleted here', m.first === 9001 && m.again === null && m.second === 9002 && m.resurrected === null && m.left.join() === '9002', m);
+  await wipe();
+});
+
+if (run('E32')) await guard('E32', async () => {
+  await BACK_TO_ANALYSIS();
+  await E(async () => { await _hxLoad(); await _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true); });
+  await runWith({}); await pg.waitForTimeout(1300);
+  await runWith({ 'p-r2': '0.9' }); await pg.waitForTimeout(1300);
+  const r = await E(async () => {
+    const rs = Object.values(_hx.runs).sort((x, y) => x.ver - y.ver);
+    // doctor version 2: one compound twice as potent, one flat, one missing
+    const blob = await _hxGet('blobs', rs[1].id);
+    const d = blob.data; d[0].DC50_nM = +(d[0].DC50_nM / 2).toPrecision(3); d[1].DC50_nM = d[1].DC50_nM * 10; d[2].Flag = 'Yes'; d[2].Flag_Reason = 'No effect (span 3%)'; const gone = d.pop();
+    await _hxPut('blobs', blob);
+    const A = (await _hxGet('blobs', rs[0].id)).data, P = _hxPairs(A, d);
+    const self = _hxPairs(A, A);
+    hxCompare(rs[0].id, rs[1].id); await new Promise(r => setTimeout(r, 700));
+    const panel = document.getElementById('history-panel');
+    return { matched: P.rows.length, onlyA: P.onlyA, onlyB: P.onlyB, r0: P.rows[0].ratio, r1: P.rows[1].ratio, nd: P.rows[2].ratio, selfOne: self.rows.every(x => Number.isNaN(x.ratio) || Math.abs(x.ratio - 1) < 1e-12), text: panel.innerText.replace(/\s+/g, ' '),
+      points: panel.querySelectorAll('.hx-pt').length, valid: P.rows.filter(x => Number.isFinite(x.lr)).length, rows: panel.querySelectorAll('.hx-tbl tbody tr').length, first: panel.querySelector('.hx-tbl tbody tr') && panel.querySelector('.hx-tbl tbody tr').getAttribute('data-k'), diff: !!panel.querySelector('.hx-d') };
+  });
+  check('E32', 'rows are matched by group and compound; unmatched ones are counted, not dropped silently', r.matched === 62 && r.onlyA === 1 && r.onlyB === 0, r);
+  check('E32', 'the fold change is second over first (÷2 for a halved DC50, ×10 for a tenfold one) and a flat curve has none', Math.abs(r.r0 - 0.5) < 0.01 && Math.abs(r.r1 - 10) < 1e-9 && Number.isNaN(r.nd), r);
+  check('E32', 'comparing an analysis with itself changes nothing anywhere', r.selfOne, r);
+  check('E32', 'the view lists the setting that differs, draws every comparable point, and puts the biggest change first',
+    /Min R² 0\.8 → 0\.9/.test(r.text) && r.points === r.valid && r.rows === 62 && /EDA-014/.test(r.first || '') && /Newly flagged/.test(r.text), { text: r.text.slice(150, 600), points: r.points, valid: r.valid, rows: r.rows, first: r.first });
+  await E(() => { hxCloseCompare(); return _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true); });
 });
 
 if (run('E28')) await guard('E28', async () => {
@@ -943,6 +1009,47 @@ if (run('E31')) await guard('E31', async () => {
     return { stopped: /analysis stopped/i.test(msg), msg: msg.slice(0, 200) };
   });
   check('E31', 'two panels with the same assay type and prefix stop the run instead of doubling every compound', dup.stopped && /Two assay panels/.test(dup.msg), dup);
+});
+
+if (run('E33')) await guard('E33', async () => {
+  await BACK_TO_ANALYSIS();
+  const r = await E(async () => {
+    const out = {};
+    const rv = async () => { const R = await echoReview(); return { level: R.level, issues: R.issues.map(i => i.level + ': ' + i.msg), plates: R.plates.map(p => p.plate + ':' + p.status + ':' + p.group), stats: R.stats }; };
+    document.getElementById('p-ctrl').value = 'B12-O12';
+    out.ok = await rv();
+    document.getElementById('p-ctrl').value = 'B2:O3'; out.onCpd = await rv();
+    document.getElementById('p-ctrl').value = ''; out.noCtrl = await rv();
+    document.getElementById('p-ctrl').value = 'B12-O12';
+    const saved = readerFiles['BRD3-02.xlsx']; delete readerFiles['BRD3-02.xlsx']; out.noReader = await rv(); readerFiles['BRD3-02.xlsx'] = saved;
+    const savedEcho = echoFiles.slice();
+    const txt = new TextDecoder().decode(Uint8Array.from(atob(_TEST_ECHO_B64), c => c.charCodeAt(0)));
+    let n = 0; const cut = txt.split(/\r?\n/).filter(l => { if (/,BRD2-01,/.test(l) && /,EDA-013,/.test(l)) { n++; return n <= 3; } return true; }).join('\n');
+    echoFiles = [new File([cut], 'few.csv', { type: 'text/csv' })]; out.few = await rv(); echoFiles = savedEcho;
+    // group rules
+    const g = document.getElementById('p-group-mode');
+    g.value = 'whole'; out.whole = (await rv()).plates;
+    g.value = 'last'; out.last = (await rv()).plates;
+    g.value = 'first';
+    // the Review's own editing writes the table and switches to it
+    const inp = document.querySelector('#rv-body input.rv-g'); document.querySelector('.setup-stab[data-tab="review"]').click(); await new Promise(r => setTimeout(r, 1500));
+    const first = document.querySelector('#rv-body input.rv-g[data-bc="BRD2-01"]'); first.value = 'Alpha'; first.dispatchEvent(new Event('change', { bubbles: true }));
+    out.mode = g.value; out.map = document.getElementById('p-group-map').value; await new Promise(r => setTimeout(r, 900));
+    out.afterEdit = (await rv()).plates.map(p => p.replace(/:[a-z]+:/, ':'));
+    return out;
+  });
+  check('E33', 'clean data: ready, 63 curves in 3 groups, the intermediate plate is skipped not flagged', r.ok.level === 'ok' && r.ok.stats.curves === 63 && r.ok.stats.groups === 3 && r.ok.plates.some(p => p.startsWith('INTER:skip')) && !r.ok.issues.length, r.ok);
+  check('E33', 'control wells that hold compounds are reported', r.onCpd.issues.some(i => /compound transfers land in the control wells/.test(i)), r.onCpd);
+  check('E33', 'no control wells is an error', r.noCtrl.level === 'error' && r.noCtrl.issues.some(i => /No control wells/.test(i)), r.noCtrl);
+  check('E33', 'a plate without a reader file is an error naming it', r.noReader.level === 'error' && r.noReader.issues.some(i => /BRD3-02/.test(i) && /no reader file/.test(i)), r.noReader);
+  check('E33', 'a compound with fewer than 4 readings is listed as skipped', r.few.issues.some(i => /will be skipped/.test(i) && /EDA-013/.test(i)), r.few);
+  check('E33', 'group rules: whole barcode and last dash', r.whole.includes('BRD2-01:ok:BRD2-01') && r.last.includes('BRD2-01:ok:BRD2'), { whole: r.whole, last: r.last });
+  check('E33', 'editing a plate\'s group in the Review writes the table, switches to it, and regroups only that plate', r.mode === 'custom' && /BRD2-01 = Alpha/.test(r.map) && r.afterEdit.includes('BRD2-01:Alpha') && r.afterEdit.includes('BRD2-02:BRD2'), { mode: r.mode, map: r.map, after: r.afterEdit });
+  const run = await runWith({ 'p-group-mode': 'custom', 'p-group-map': 'BRD2-* = Alpha\nBRD3-01 = Beta' });
+  const grp = await E(() => ({ groups: [...new Set(_lastResultsData.map(x => x.Protein))].sort(), proto: (document.getElementById('tab-protocol')?.innerText || '').match(/Plates grouped by[^\n]*\n?[^\n]*/)?.[0] || '', mode: _lastAnalysisParams.groupMode }));
+  check('E33', 'the run uses the table (BRD2-* → Alpha, BRD3-01 → Beta, the rest by the first dash) and the Protocol tab says so', grp.groups.join() === 'Alpha,BRD3,BRD4,Beta' || grp.groups.join() === 'Alpha,BRD3,BRD4,Beta'.split(',').sort().join(), grp);
+  await E(() => { document.getElementById('p-group-mode').value = 'first'; document.getElementById('p-group-map').value = ''; onGroupModeChange(); });
+  await runWith({});
 });
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));

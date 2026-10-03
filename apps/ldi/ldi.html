@@ -1173,10 +1173,36 @@ function ldiLoadCSV(input) {
 // CSV, and they are what Echo fits and keeps (journal/echo, and this origin's localStorage).
 // Pick the analysis run on each line; compounds are matched by name.
 function readEchoHistory(cb){
-  var local=[]; try{ local=JSON.parse(localStorage.getItem('eda_history_v1')||'[]'); }catch(e){}
-  try{ if(window.parent && window.parent!==window && window.parent.firebase){
-    window.parent.firebase.database().ref('journal/echo').once('value').then(function(s){ var v=s.val(); cb((v&&Array.isArray(v.history)&&v.history.length)?v.history:local); }).catch(function(){ cb(local); }); return; } }catch(e){}
-  cb(local);
+  // Echo Dose Response keeps its History in this origin's IndexedDB ("echo_history": runs + their results), one
+  // record per dataset with a version per analysis. The old browser-store list and the cloud copy are the fallbacks.
+  function legacy(){
+    var local=[]; try{ local=JSON.parse(localStorage.getItem('eda_history_v1')||'[]'); }catch(e){}
+    try{
+      if(window.parent && window.parent!==window && window.parent.firebase){
+        window.parent.firebase.database().ref('journal/echo').once('value').then(function(s){ var v=s.val(); var l=v&&v.history; if(l&&!Array.isArray(l)) l=Object.keys(l).map(function(k){return l[k];}); cb((l&&l.length)?l:local); }).catch(function(){ cb(local); });
+        return;
+      }
+    }catch(e){}
+    cb(local);
+  }
+  try{
+    var rq=indexedDB.open('echo_history');
+    rq.onerror=legacy;
+    rq.onupgradeneeded=function(){ try{ rq.transaction.abort(); }catch(e){} };
+    rq.onsuccess=function(){
+      var db=rq.result;
+      if(!db.objectStoreNames.contains('runs')||!db.objectStoreNames.contains('blobs')){ db.close(); legacy(); return; }
+      var tx=db.transaction(['runs','blobs'],'readonly'), runs=tx.objectStore('runs').getAll(), blobs=tx.objectStore('blobs').getAll();
+      tx.oncomplete=function(){
+        var by={}; (blobs.result||[]).forEach(function(b){ by[b.id]=b; });
+        var out=(runs.result||[]).filter(function(r){ return by[r.id]&&by[r.id].data; }).sort(function(a,b){ return b.ts-a.ts; })
+          .map(function(r){ return {id:r.id, assayId:r.assayId+(r.ver>1?' v'+r.ver:''), groups:r.groups, ts:new Date(r.ts).toLocaleString(), n:r.n, nFlag:r.nFlag, data:by[r.id].data}; });
+        db.close();
+        if(out.length) cb(out); else legacy();
+      };
+      tx.onerror=function(){ db.close(); legacy(); };
+    };
+  }catch(e){ legacy(); }
 }
 function ldiOpenFromEcho(){
   readEchoHistory(function(hist){
