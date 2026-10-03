@@ -48,6 +48,9 @@
 //       control is smart       noisier than the plain mean, a real row / odd-even / left-to-right effect is followed, one bad control
 //                              well cannot move a row, the 0 % control scales with the row's reference, and with the toggle off the
 //                              numbers are exactly the plain plate mean.
+//   E23 the results table      A confidence limit is never printed as a long run of digits (three significant figures, a power of ten outside
+//                              0.01–99,999, ∞ for an unbounded limit), and column widths follow the content: Flag and the numbers take what
+//                              they need, Reason is the widest and wraps. The app is called Echo Dose Response in the setup header.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -681,6 +684,25 @@ if (run('E22')) await guard('E22', async () => {
   await E(() => { document.getElementById('p-row-norm').checked = false; });
 });
 
+if (run('E23')) await guard('E23', async () => {
+  const res = await E(() => {
+    const strip = h => h.replace(/<sup>/g, '^').replace(/<[^>]+>/g, '');
+    const cases = [[3.1e-5, 1.1e7], [0.00429, 1.68e6], [0, Infinity], [0, null], [1.04, 34100], [9.996e-3, 99999.7], [0.272, 3.99e6], [5, 5.7]]
+      .map(([a, b]) => strip(_ciHtml(a, b)));
+    renderResults(_lastResultsData);
+    const cells = [...document.querySelectorAll('.results-tbl-scroll td.c-ci')].map(c => c.textContent);
+    const ths = Object.fromEntries([...document.querySelectorAll('.results-tbl-scroll th')].map(t => [t.textContent.replace(/ [▲▼]$/, ''), t.getBoundingClientRect().width]));
+    const reasons = [...document.querySelectorAll('.results-tbl-scroll td.c-reason')];
+    return { cases, cells: cells.length, longCells: cells.filter(t => /\d{7,}|e[+-]?\d/.test(t)), ths,
+      reasonOverflow: reasons.filter(c => c.scrollWidth > c.clientWidth + 1).length, title: document.querySelector('.setup-htitle')?.textContent, tab: document.title };
+  });
+  check('E23', 'limits read as three significant figures, a power of ten outside 0.01–99,999, ∞ when unbounded',
+    JSON.stringify(res.cases) === JSON.stringify(['3.1×10^−5–1.1×10^7', '4.29×10^−3–1.68×10^6', '0–∞', '0–∞', '1.04–34100', '0.01–1×10^5', '0.272–3.99×10^6', '5–5.7']), res.cases);
+  check('E23', 'no confidence limit in the table runs to seven digits or prints as 1e-5', res.cells > 0 && !res.longCells.length, res.longCells.slice(0, 5));
+  check('E23', 'Reason is the widest column and Flag is narrow (widths follow the content)', res.ths.Reason > 200 && res.ths.Flag < 70 && res.ths.Reason > 3 * res.ths.Flag, res.ths);
+  check('E23', 'the Reason text wraps rather than being cut', res.reasonOverflow === 0, res.reasonOverflow);
+  check('E23', 'the app is called Echo Dose Response', res.title === 'Echo Dose Response' && res.tab === 'Echo Dose Response', { t: res.title, tab: res.tab });
+});
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
 for (const inv of invs) {
