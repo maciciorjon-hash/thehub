@@ -1,4 +1,4 @@
-// Echo Data Analysis invariants — the bug classes the 2026-09-28 beta test of the Curves, Plots
+// Echo Dose Response invariants — the bug classes the 2026-09-28 beta test of the Curves, Plots
 // and exports found, as checks that run every time. Same rule as tools/invariants.mjs: each check
 // is a CLASS already found once by hand, proven by running it against the build before the fix.
 //
@@ -44,6 +44,10 @@
 //                              are typing in survives the re-plan; restoring an analysis session never writes into the planner.
 //   E21 Dmax is the span       Dmax / Span is top − bottom of the fitted curve, not 100 − bottom: a curve that starts at 80 %
 //                             and falls to 20 % has Dmax 60 in the pipeline's rows and in the local refit.
+//   E22 the Smart DMSO         The 100 % reference is learned from the plate's own control wells: a clean plate is not made
+//       control is smart       noisier than the plain mean, a real row / odd-even / left-to-right effect is followed, one bad control
+//                              well cannot move a row, the 0 % control scales with the row's reference, and with the toggle off the
+//                              numbers are exactly the plain plate mean.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -588,6 +592,93 @@ if (run('E20')) await guard('E20', async () => {
     return { keys, vol: document.getElementById('eg-vol').value };
   });
   check('E20', 'an analysis session neither saves nor restores planner boxes', leak.keys.length === 0 && leak.vol === '33', leak);
+});
+
+if (run('E22')) await guard('E22', async () => {
+  const res = await E(() => {
+    // seeded normal noise, so a failure is reproducible
+    let seed = 12345; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    const gauss = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()); };
+    const cv = 0.08;
+    // 14 rows (B..O) of controls in the given columns; eff(row,col) is the true reference of that spot
+    const plate = (cols, eff, bad) => { const pts = []; for (let r = 1; r <= 14; r++) for (const c of cols) pts.push({ well: String.fromCharCode(65 + r) + String(c + 1).padStart(2, '0'), row: r, col: c, v: eff(r, c) * (1 + cv * gauss()) }); if (bad) bad(pts); return pts; };
+    const out = {};
+    const stat = (n, eff, cols) => { let sp = 0, sr = 0, ss = 0, flagged = 0;
+      for (let i = 0; i < n; i++) {
+        const pts = plate(cols, eff), m = _smartCtrl(pts, { nR: 16 }), mu = pts.reduce((a, p) => a + p.v, 0) / pts.length;
+        const r = 1 + Math.floor(rnd() * 14), c = cols[0], t = eff(r, c), x = t * (1 + cv * gauss());
+        const own = pts.filter(p => p.row === r), rm = own.reduce((a, p) => a + p.v, 0) / own.length;
+        sp += (x / mu - 1) ** 2; sr += (x / rm - 1) ** 2; ss += (x / m.ref(r, c) - 1) ** 2;
+        if (m.info.rowEffect && m.info.rowEffect.applied) flagged++;
+      }
+      return { plate: Math.sqrt(sp / n), row: Math.sqrt(sr / n), smart: Math.sqrt(ss / n), flagged: flagged / n }; };
+    out.clean = stat(2000, () => 1, [21, 22]);   // many plates: the cost is a few %, and 300 plates cannot resolve 3 % from sampling noise
+    // a row effect, redrawn for every plate
+    { let sp = 0, sr = 0, ss = 0, n = 300, flagged = 0;
+      for (let i = 0; i < n; i++) { const fx = Array.from({ length: 16 }, () => 1 + 0.1 * gauss()), eff = r => fx[r];
+        const pts = plate([21, 22], eff), m = _smartCtrl(pts, { nR: 16 }), mu = pts.reduce((a, p) => a + p.v, 0) / pts.length;
+        const r = 1 + Math.floor(rnd() * 14), x = eff(r) * (1 + cv * gauss()), own = pts.filter(p => p.row === r), rm = own.reduce((a, p) => a + p.v, 0) / own.length;
+        sp += (x / mu - 1) ** 2; sr += (x / rm - 1) ** 2; ss += (x / m.ref(r, 21) - 1) ** 2; if (m.info.rowEffect.applied) flagged++; }
+      out.rowFx = { plate: Math.sqrt(sp / n), row: Math.sqrt(sr / n), smart: Math.sqrt(ss / n), flagged: flagged / n }; }
+    // one dead control well (40 %) in a row, in 100 plates
+    { let worst = 0, missed = 0;
+      for (let i = 0; i < 100; i++) { const r = 1 + Math.floor(rnd() * 14), pts = plate([21, 22], () => 1, ps => { const q = ps.find(p => p.row === r && p.col === 22); q.v = 0.4 * (1 + 0.02 * gauss()); });
+        const m = _smartCtrl(pts, { nR: 16 }); worst = Math.max(worst, Math.abs(m.ref(r, 21) - 1)); if (!m.info.rejected.some(x => x.well === String.fromCharCode(65 + r) + '23')) missed++; }
+      out.bad = { worst, missed }; }
+    // a left-to-right drift of 20 % across the plate, controls on both sides
+    { const slope = 0.2 / 22, eff = (r, c) => 1 + slope * (c - 11.5), pts = plate([0, 1, 22, 23], eff), m = _smartCtrl(pts, { nR: 16 });
+      let worst = 0; for (const c of [0, 3, 6, 11, 17, 20, 23]) worst = Math.max(worst, Math.abs(m.ref(5, c) / eff(5, c) - 1));
+      out.drift = { applied: !!(m.info.trend && m.info.trend.applied), worst, pct: m.info.trend && m.info.trend.pct };
+      const one = _smartCtrl(plate([21, 22], () => 1), { nR: 16 }); out.driftOneSide = { note: one.info.notes.some(n => /left-to-right/.test(n)), trend: !!one.info.trend }; }
+    // odd rows +15 %, even rows −5 %, controls in rows B..O only: rows A and P borrow their parity's reference
+    { const eff = r => r % 2 ? 1.15 : 0.95, pts = plate([21, 22], eff), m = _smartCtrl(pts, { nR: 16 });
+      out.parity = { applied: !!(m.info.parity && m.info.parity.applied), a: m.ref(0, 5) / eff(0) - 1, p: m.ref(15, 5) / eff(15) - 1, mode: m.info.mode }; }
+    // one control per row: no row effect can be told from noise — plate reference, and it says so
+    { const pts = plate([21], r => (r === 5 ? 1.3 : 1)), m = _smartCtrl(pts, { nR: 16 });
+      out.single = { note: m.info.notes.some(n => /one control well per row/i.test(n)), rowEffect: !!(m.info.rowEffect && m.info.rowEffect.applied) }; }
+    // the 0 % control scales with the row: a row reading 1.2× gives the same answer as one reading 1×
+    { const c0 = 1000, z0 = 100, f = 0.5, meas0 = z0 + f * (c0 - z0), s = 1.2;
+      out.disp = { same: _normValue('displacement', meas0 * s, c0 * s, z0, s), plain: _normValue('displacement', meas0, c0, z0, 1), unscaled: _normValue('displacement', meas0 * s, c0 * s, z0, 1), gain: _normValue('gain', 700, 200, null, 1), ratio: _normValue('hibit', 40, 80, null, 1) }; }
+    // the p-values the tests use
+    out.p = { t: _pT2(2.228, 10), f: _pF(4.066, 3, 8), tq: _tQ95(10) };
+    return out;
+  });
+  check('E22', 'a clean plate costs at most a few % of noise against the plate mean (≤ 6 %)', res.clean.smart <= res.clean.plate * 1.06, res.clean);
+  check('E22', 'a clean plate rarely invents a row effect (≤ 12 % of plates)', res.clean.flagged <= 0.12, res.clean);
+  check('E22', 'with a real row effect it beats the plate mean and the raw row mean', res.rowFx.smart < res.rowFx.plate * 0.9 && res.rowFx.smart <= res.rowFx.row * 1.03, res.rowFx);
+  check('E22', 'a dead control well is left out, every time, and cannot move its row', res.bad.missed === 0 && res.bad.worst < 0.12, res.bad);
+  check('E22', 'a 20 % left-to-right drift is followed across the plate (within 4.5 % with 8 % well noise)', res.drift.applied && res.drift.worst < 0.045, res.drift);
+  check('E22', 'controls on one side only: no drift invented, and it says it cannot check', !res.driftOneSide.trend && res.driftOneSide.note, res.driftOneSide);
+  check('E22', 'odd/even rows are told apart and a row with no control borrows its parity', res.parity.applied && Math.abs(res.parity.a) < 0.04 && Math.abs(res.parity.p) < 0.04, res.parity);
+  check('E22', 'one control per row: no row effect claimed, and it says why', res.single.note && !res.single.rowEffect, res.single);
+  check('E22', 'the 0 % control scales with the row (same answer at 1.2× as at 1×)', Math.abs(res.disp.same - res.disp.plain) < 1e-9 && Math.abs(res.disp.unscaled - res.disp.plain) > 0.5, res.disp);
+  check('E22', 'normalised value per assay: gain subtracts, the rest divide', res.disp.gain === 500 && res.disp.ratio === 50, res.disp);
+  check('E22', 'the t and F p-values are the textbook ones', Math.abs(res.p.t - 0.05) < 0.001 && Math.abs(res.p.f - 0.05) < 0.001 && Math.abs(res.p.tq - 2.228) < 0.001, res.p);
+
+  // the whole pipeline: toggle off is the plain mean, toggle on learns per plate and the QC tab shows it
+  const off = await E(() => {
+    const out = { plates: 0, bad: [], smartKeys: Object.keys(window._smartInfo || {}).length };
+    for (const [bc, wells] of Object.entries(window._plateData)) {
+      const ctrl = Object.values(wells).filter(w => w.ctrl && w.raw != null); if (!ctrl.length) continue; out.plates++;
+      const mean = ctrl.reduce((a, w) => a + w.raw, 0) / ctrl.length;
+      for (const w of Object.values(wells)) if (w.raw != null && w.m != null && Math.abs(w.m - w.raw / mean * 100) > 0.06 * Math.max(1, w.raw / mean) + 0.02) out.bad.push(bc);
+    }
+    return out;
+  });
+  check('E22', 'toggle off: every well is raw / plain control mean × 100 and nothing smart is recorded', off.plates > 0 && !off.bad.length && off.smartKeys === 0, off);
+  await E(() => { document.getElementById('p-row-norm').checked = true; runPipeline(); });
+  await pg.waitForTimeout(1500);
+  await pg.waitForFunction(() => !window._pipelineRunning && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }).catch(() => {});
+  const on = await E(() => {
+    const info = window._smartInfo || {}, bcs = Object.keys(window._plateData);
+    const nan = Object.values(window._plateData).some(p => Object.values(p).some(w => w.m != null && !isFinite(w.m)));
+    let html = ''; try { _plateComputeStats(); window._plateGrid = _plGrid(window._plateData); const host = document.createElement('div'); _plateQCRender(host); html = host.innerHTML; } catch (e) { html = 'THREW ' + e.message; }
+    return { plates: bcs.length, smart: Object.keys(info).length, modes: [...new Set(Object.values(info).map(i => i.mode))], nan, rows: _lastResultsData.length,
+      qc: /Smart ·/.test(html), qcCard: /100% reference per row/.test(html), threw: /THREW/.test(html) ? html.slice(0, 120) : '', params: (typeof _lastAnalysisParams !== 'undefined') && _lastAnalysisParams.rowNorm === true };
+  });
+  check('E22', 'toggle on: a model for every plate, results produced, no NaN', on.plates > 0 && on.smart === on.plates && on.rows > 0 && !on.nan && on.params, on);
+  check('E22', 'toggle on: the Plate QC tab says what the reference did', on.qc && on.qcCard && !on.threw, on);
+  await E(() => { document.getElementById('p-row-norm').checked = false; });
 });
 
 await browser.close();
