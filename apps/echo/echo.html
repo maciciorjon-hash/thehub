@@ -145,7 +145,10 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .setup-stab.active{color:var(--accent2);border-bottom-color:var(--accent2);}
 .setup-sbody{flex:1;overflow-y:auto;padding:22px 26px;}
 .setup-pane{display:none;}
-.setup-pane.active{display:block;}
+.setup-pane.active{display:block;animation:moPane var(--dur-1) var(--ease-out) backwards;}
+/* One height for every tab. The card was sized to its content and centred, so choosing another tab moved
+   its top edge by up to 110 px under the pointer that had just clicked it; the body scrolls instead. */
+.setup-card{height:min(700px,calc(100vh - 28px));height:min(700px,calc(100dvh - 28px));}
 .setup-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:10px;padding:12px 26px 14px;border-top:1px solid var(--border);flex-shrink:0;}
 /* Its own line: squeezed beside five buttons it had 48px and read "Echo C…", so the one line
    that says which file is missing said nothing. */
@@ -193,6 +196,16 @@ th.tbl-frozen{z-index:3;width:110px;}
 .results-tbl-scroll th,.results-tbl-scroll td{padding-left:10px;padding-right:10px;}
 .results-tbl-scroll td.c-reason{white-space:normal;overflow:visible;min-width:240px;width:100%;font-size:var(--fs-1);line-height:1.4;color:var(--text3);}
 .results-tbl-scroll td.c-ci{font-size:var(--fs-1);color:var(--text2);}
+.results-tbl-scroll td.c-norm,.results-tbl-scroll td.c-nchk{font-size:var(--fs-1);white-space:nowrap;color:var(--text2);}
+.results-tbl-scroll td.nchk-ok{color:var(--text3);}.results-tbl-scroll td.nchk-differs{color:var(--warn);}.results-tbl-scroll td.nchk-dep{color:var(--danger);font-weight:600;}
+/* The normalisation audit above the table: one line when everything agrees, open when something depends on the method. */
+.na-box{margin:0 20px 10px;border:1px solid var(--border2);border-radius:var(--r-2,8px);background:var(--surface2);font-size:var(--fs-1);}
+.na-box>summary{cursor:pointer;padding:8px 12px;color:var(--text2);list-style-position:inside;}
+.na-box.na-warn{border-color:var(--warn);}.na-box .na-dep{color:var(--danger);}.na-box .na-id{color:var(--text3);margin-left:8px;}
+.na-tbl{border-collapse:collapse;width:100%;margin:0 0 6px;}
+.na-tbl th{text-align:left;vertical-align:top;white-space:nowrap;padding:5px 12px;color:var(--text3);font-weight:500;width:1%;}
+.na-tbl td{padding:5px 12px 5px 0;color:var(--text2);line-height:1.45;}
+.na-tbl tr+tr th,.na-tbl tr+tr td{border-top:1px solid var(--border);}
 .results-tbl-scroll td.c-ci .ci-sep{color:var(--text3);padding:0 2px;}
 .results-tbl-scroll td.c-ci .ci-na{color:var(--text3);}
 /* Between a phone and a laptop the fixed layout cut the headers ("DC50 (…", "LogDC…"): the table keeps its natural width and scrolls inside its own box, as it does on a phone. */
@@ -613,7 +626,6 @@ rect.pq-ok{fill:var(--accent);opacity:.55;}rect.pq-warn{fill:var(--warn);opacity
 @media(max-width:640px){#eg-table .eg-ideal,#eg-table .eg-dmso,#eg-table .eg-bfc{display:none;}#eg-table td,#eg-table th{padding-left:6px!important;padding-right:6px!important;}#eg-table thead tr.eg-grp{display:none;}.eg-card{padding:12px;}}
 .btn{background:var(--accent);color:#fff;border:none;border-radius:var(--r-4);padding:8px 18px;font-family:var(--sans);font-size:var(--fs-3);font-weight:600;cursor:pointer;transition:opacity .15s;}
 .btn:hover{opacity:.87;}
-.btn-sm{padding:5px 12px;font-size:var(--fs-3);}
 @media(max-width:640px){
   header{padding:0 12px;}
   .outer-tabs{padding:0 6px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -628,16 +640,15 @@ rect.pq-ok{fill:var(--accent);opacity:.55;}rect.pq-warn{fill:var(--warn);opacity
   /* three metric tiles share one row: 110px each did not fit 350px, so "COMPOUNDS" stuck out of its own tile */
   .meta-row{gap:8px;}
   .mcard{flex:1 1 0;min-width:0;padding:10px 9px;}
-  .mc-lbl{letter-spacing:.3px;overflow-wrap:anywhere;}
+  /* anywhere-wrapping cut “COMPOUNDS” into “COMPO / UNDS” and “FLAGGED” into “FLAGGE / D” in a tile three to a row */
+  .mc-lbl{letter-spacing:0;text-transform:none;overflow-wrap:normal;white-space:nowrap;}
   .tab{white-space:nowrap;flex-shrink:0;font-size:var(--fs-2);padding:8px 8px;}
   .setup-reopen-btn{margin:4px 0 4px 6px;}
   .grad-wrap{padding:10px!important;}
   .guide-panel{padding:12px!important;}
-  .param-row{flex-wrap:wrap;}
   .stbtn,.sc-clear{font-size:var(--fs-2);padding:0 12px;min-height:40px;}
   .scatter-dl-btn{min-height:40px;height:auto;padding:0 12px;}
   .btn{min-height:40px;font-size:var(--fs-4);}
-  .btn-sm{min-height:36px;font-size:var(--fs-3);padding:6px 12px;}
   .opts-btn{min-width:40px;min-height:40px;}
   /* Curve panel: full-screen overlay on mobile */
   #curve-panel.open{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;z-index:100;}
@@ -1103,7 +1114,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
               <button onclick="openCtrlPicker()" style="padding:7px 10px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text2);font-size:11px;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:all .2s;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)'">⊞ Grid</button>
             </div>
             <div class="hint">DMSO/vehicle reference wells used for plate-by-plate normalisation (sets the 100% reference). Formats: B22:O23 (block), B12-O12 (row range).</div>
-            <div style="margin-top:8px;padding:8px 10px;border-radius:4px;background:var(--surface3);border:1px solid var(--border);"><label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--text2);cursor:pointer;"><input type="checkbox" id="p-row-norm" style="margin-top:1px;flex-shrink:0;"> <span><b style="color:var(--text);">Smart DMSO control</b> — learn the 100% reference from each plate's own control wells instead of taking their plain mean. A control well that is plainly wrong is left out, and the plate is <i>tested</i> for a row effect (e.g. one channel of a Multidrop Combi delivering a different volume), an odd/even row effect and a left-to-right drift; each row's reference leans on the plate mean unless its own wells say otherwise, so a clean plate ends up at its mean. Row correction needs two or more control wells per row (e.g. B22:O23); a drift needs controls on both sides of the plate. <b>Off:</b> the plain mean of every control well, as it always was.</span></label></div>
+            <div style="margin-top:8px;padding:8px 10px;border-radius:4px;background:var(--surface3);border:1px solid var(--border);"><label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--text2);cursor:pointer;"><input type="checkbox" id="p-row-norm" style="margin-top:1px;flex-shrink:0;"> <span><b style="color:var(--text);">Smart DMSO control</b> — learn the 100% reference from each plate's own control wells instead of taking their plain mean. A control well that is plainly wrong is left out, and the plate is <i>tested</i> for a row effect (e.g. one channel of a Multidrop Combi delivering a different volume), an odd/even row effect and a left-to-right drift; each row's reference leans on the plate mean unless its own wells say otherwise, so a clean plate ends up at its mean. Row correction needs two or more control wells per row (e.g. B22:O23); a drift needs controls on both sides of the plate. <b>Off:</b> the plain mean of every control well, as it always was. <b>On, every curve says what it got:</b> the method of each plate, how far its reference sat from the plain mean, and a second fit of the same wells with the plain mean, so you can see whether the potency depends on the choice.</span></label></div>
             <div style="margin-top:8px;padding:8px 10px;border-radius:4px;background:var(--surface3);border:1px solid var(--border);"><label style="display:flex;align-items:flex-start;gap:7px;font-size:11px;color:var(--text2);cursor:pointer;"><input type="checkbox" id="p-skip-norm" style="margin-top:1px;flex-shrink:0;" onchange="var e=document.getElementById('p-ctrl');e.disabled=this.checked;e.style.opacity=this.checked?'0.35':'1';var r=document.getElementById('p-row-norm');r.disabled=this.checked;if(this.checked)r.checked=false;"> <span><b style="color:var(--text);">No normalisation</b> — use raw signal values as-is. Tick this if your data is already normalised, if you have no DMSO controls, or if you are using an endpoint that does not require a reference (e.g. raw luminescence). The Y-axis will show raw signal units.</span></label></div>
           </div>
         </div>
@@ -1171,7 +1182,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-bot" onchange="var el=document.getElementById('p-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span id="lbl-fix-bottom" class="flbl">Fix bottom (%)</span></div><input type="number" id="p-bot-val" value="0" min="-50" max="100" disabled style="opacity:0.35;"><div class="hint">Pin 4PL bottom asymptote</div></div>
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-fix-hill" onchange="var el=document.getElementById('p-hill-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span class="flbl">Fix Hill slope</span></div><input type="number" id="p-hill-val" value="1" min="0.1" max="5" step="0.1" disabled style="opacity:0.35;"><div class="hint">Pin Hill slope coefficient</div></div>
         </div>
-        <div class="setup-2col">
+        <div class="setup-2col" style="margin-top:16px;">
           <div class="field" style="margin-bottom:0;"><div class="field-hdr"><label class="fen"><input type="checkbox" id="p-min-bot-en" checked onchange="var el=document.getElementById('p-min-bot-val');el.disabled=!this.checked;el.style.opacity=this.checked?'1':'0.35';"></label><span id="lbl-bot-ge" class="flbl">Bottom ≥ (%)<span class="pinfo" data-tip="Constrains the 4PL bottom asymptote to be ≥ this value. Set to 0 for normalized data — prevents the curve from fitting a negative baseline plateau.">i</span></span></div><input type="number" id="p-min-bot-val" value="0" min="-100" max="50" step="1"><div class="hint">Lower bound on bottom asymptote</div></div>
         </div>
         </div><!-- end single-analysis-params -->
@@ -1196,6 +1207,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
             <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="Bot_val"> <span>Bottom</span></label>
             <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="CI_DC50" checked> <span>DC<sub>50</sub> 95% CI</span></label>
             <label class="csv-lbl"><input type="checkbox" class="csv-col-cb" data-col="CI_all"> <span>All param 95% CI</span></label>
+            <label class="csv-lbl" title="Which normalisation each curve got, how far its reference sat from the plain plate mean, and the potency when the same wells are normalised the plain way"><input type="checkbox" class="csv-col-cb" data-col="Norm" checked> <span>Normalisation audit</span></label>
           </div>
         </div>
       </div>
@@ -1380,7 +1392,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <div class="guide-row"><div class="guide-key">Right-click — exclude conc</div><div class="guide-val">Right-click a mean point (or any rep) and choose <b>Exclude all at this concentration</b> to remove all replicates at that dose. Right-click → <b>Re-include all excluded</b> to restore everything.</div></div>
           <div class="guide-row"><div class="guide-key">Right-click — hook effect</div><div class="guide-val">For compounds with a hook effect (orange × at highest doses), right-click anywhere on the canvas and choose <b>Re-include hook effect concentrations</b> to refit with all data.</div></div>
           <div class="guide-row"><div class="guide-key">Flag stats (right-click)</div><div class="guide-val">When a compound is flagged, the Flag row in the stats bar shows a dot indicator. Right-click it to <b>Resolve flag</b> (mark as accepted).</div></div>
-          <div class="guide-row"><div class="guide-key">Fix Y axis</div><div class="guide-val">Check <b>Fix Y</b> and enter bottom/top values to lock the Y-axis range across compounds, useful for comparing curves on the same scale.</div></div>
+          <div class="guide-row"><div class="guide-key">Fix Y axis</div><div class="guide-val">Check <b>Fix Y</b> to lock the Y-axis range across compounds (it starts at −15 to 120 % of control; change either value). Useful for comparing curves on the same scale.</div></div>
           <div class="guide-row"><div class="guide-key">Compare — sort</div><div class="guide-val">In Compare mode, sort the compound list by DC₅₀ ↑↓ or Dmax ↑↓ using the sort selector above the list.</div></div>
         </div>
 
@@ -1979,6 +1991,7 @@ async function runPipeline() {
   const skipNorm = document.getElementById('p-skip-norm')?.checked || false;
   const rowNorm = !skipNorm && (document.getElementById('p-row-norm')?.checked || false);
   window._smartInfo = {};
+  window._normAudits = [];
   const qcOverridesJSON = window._pendingQcOverrides || '{}';
   window._pendingQcOverrides = null;
   const assayType = document.getElementById('p-assay-type')?.value || 'hibit';
@@ -2311,6 +2324,150 @@ function _normValue(assayType, meas, ctrl, zp, scale) {
     return d !== 0 ? ((meas - z) / d) * 100 : (meas / ctrl) * 100;
   }
   return (meas / ctrl) * 100;
+}
+
+// ── Normalisation audit ──────────────────────────────────────────────────────────────────────
+// A reference that is different for every well is only trustworthy if the reader can see which one
+// each curve got and what it would have been without it. So every curve carries (Norm_*) the method
+// of each plate its replicates came from, how far its reference sat from the plain plate mean, and a
+// second fit of the same wells normalised the old way. The thresholds are stated in the output.
+const NORM_THR = { same: 1.25, differs: 2, dmax: 5 };
+const _NORM_BOUND = r => /EC50[<>]range|No effect/.test((r && r.Flag_Reason) || '');
+// The curve as fitted now against the same wells normalised with the plain plate mean.
+function _normVerdict(row, alt) {
+  const o = { Plain_DC50_nM: null, Plain_Dmax_pct: null, Norm_Ratio: null, Norm_Check: '', Norm_Why: '' };
+  if (!alt) { o.Norm_Check = 'No plain fit'; o.Norm_Why = 'the same wells could not be fitted with the plain plate mean'; return o; }
+  o.Plain_DC50_nM = alt.DC50_nM; o.Plain_Dmax_pct = alt.Dmax_pct;
+  const bothBound = _NORM_BOUND(row) && _NORM_BOUND(alt), a = +row.DC50_nM, b = +alt.DC50_nM;
+  const ratio = (a > 0 && b > 0 && !bothBound) ? a / b : null;
+  if (ratio != null) o.Norm_Ratio = +ratio.toPrecision(3);
+  const fold = ratio == null ? 1 : Math.max(ratio, 1 / ratio);
+  const dD = isFinite(row.Dmax_pct) && isFinite(alt.Dmax_pct) ? row.Dmax_pct - alt.Dmax_pct : 0;
+  const why = [];
+  if (fold > NORM_THR.same) why.push('potency ×' + ratio.toPrecision(2) + ' vs the plain plate mean');
+  if (Math.abs(dD) > NORM_THR.dmax) why.push('effect ' + (dD > 0 ? '+' : '') + dD.toFixed(0) + ' points');
+  if (_NORM_BOUND(row) !== _NORM_BOUND(alt)) why.push('with the plain mean it ' + (_NORM_BOUND(alt) ? 'is out of range / no effect' : 'has a measurable midpoint'));
+  else if (row.Flag !== alt.Flag) why.push('flag ' + (alt.Flag === 'Yes' ? 'clears' : 'is raised') + ' (plain mean: ' + (alt.Flag_Reason || 'none') + ')');
+  o.Norm_Check = (fold > NORM_THR.differs || _NORM_BOUND(row) !== _NORM_BOUND(alt)) ? 'Method-dependent' : why.length ? 'Differs' : 'Same';
+  o.Norm_Why = why.join('; ');
+  return o;
+}
+// What the reference was for the wells of one curve. plates: {barcodeKey: {name, mode, info, suspect}}.
+function _normProv(sdata, plates, smartOn) {
+  const keys = [...new Set(sdata.map(r => r.barcodeKey))];
+  const P = k => plates[k] || { name: k, mode: 'plate mean', info: null, suspect: [] };
+  const modes = new Map();
+  keys.forEach(k => { const m = P(k).mode; if (!modes.has(m)) modes.set(m, []); modes.get(m).push(P(k).name); });
+  const method = !smartOn ? 'Plate mean' : modes.size <= 1 ? 'Smart · ' + (modes.size ? [...modes.keys()][0] : 'plate mean')
+    : 'Smart · mixed — ' + [...modes].map(([m, ps]) => ps.join(', ') + ': ' + m).join('; ');
+  const sh = sdata.filter(r => r.ref > 0 && r.refPlain > 0).map(r => (r.ref / r.refPlain - 1) * 100);
+  const notes = [];
+  keys.forEach(k => {
+    const p = P(k), info = p.info, nm = p.name;
+    if (info) {
+      if (info.rejected.length) notes.push(nm + ': control wells left out of the reference — ' + info.rejected.slice(0, 5).map(x => x.well).join(', ') + (info.rejected.length > 5 ? ' …' : ''));
+      const act = (info.rowEffect && info.rowEffect.applied) || (info.parity && info.parity.applied);
+      if (act && info.noRowCtrl.length) {
+        const rows = new Set(sdata.filter(r => r.barcodeKey === k).map(r => { const rc = _wellRC(r.well); return rc ? _rowLetters(rc.row) : null; }));
+        const b = info.noRowCtrl.filter(l => rows.has(l));
+        if (b.length) notes.push(nm + ': row' + (b.length > 1 ? 's' : '') + ' ' + b.join(', ') + ' ha' + (b.length > 1 ? 've' : 's') + ' no control well, so ' + (b.length > 1 ? 'they use' : 'it uses') + ' the ' + (info.parity && info.parity.applied ? 'odd/even' : 'plate') + ' reference');
+      }
+      if (info.trend && info.trend.applied) notes.push(nm + ': left-to-right drift of ' + (info.trend.pct > 0 ? '+' : '') + info.trend.pct.toFixed(1) + '% corrected');
+    } else if (smartOn && !p.info) {
+      notes.push(nm + ': no Smart model could be built (too few control readings) — plain plate mean');
+    }
+    if (!smartOn && p.suspect && p.suspect.length) notes.push(nm + ': the plate mean still includes control wells that look wrong — ' + p.suspect.slice(0, 5).join(', '));
+  });
+  return {
+    Norm_Method: method, Norm_Plates: keys.map(k => P(k).name).join(', '),
+    Norm_Shift_pct: sh.length ? +(sh.reduce((s, v) => s + v, 0) / sh.length).toFixed(1) : null,
+    Norm_Shift_max_pct: sh.length ? +Math.max(...sh.map(Math.abs)).toFixed(1) : null,
+    Norm_Note: notes.join(' | ')
+  };
+}
+// One analysis's account of itself: the procedure, what each plate did with it, and how far the
+// answer depends on it. Everything printed (banner, XLSX, Protocol, Labbook) is made from this.
+function _normAuditBuild(o) {
+  const rows = o.summary || [], plates = Object.values(o.plates || {}).map(p => {
+    const i = p.info || null;
+    return { plate: p.name, mode: p.mode, smart: !!i, nCtrl: p.nCtrl, used: i ? i.used : p.nCtrl, mu: i ? i.mu : p.muAll, muAll: p.muAll,
+      rejShiftPct: i && p.muAll ? +((i.mu / p.muAll - 1) * 100).toFixed(1) : 0,
+      left: i ? i.rejected.map(x => ({ well: x.well, why: x.why })) : [], suspect: p.suspect || [],
+      rowEffect: i && i.rowEffect || null, parity: i && i.parity || null, trend: i && i.trend || null,
+      maxRowPct: i ? +Math.max(0, ...Object.values(i.rows).map(r => Math.abs(r.pct))).toFixed(1) : 0,
+      noRowCtrl: i ? i.noRowCtrl : [], notes: i ? i.notes : [] };
+  }).sort((a, b) => natCmp(a.plate, b.plate));
+  const by = {}; rows.forEach(r => { const k = r.Norm_Method || '—'; by[k] = (by[k] || 0) + 1; });
+  const chk = { Same: 0, Differs: 0, 'Method-dependent': 0, 'No plain fit': 0 }; rows.forEach(r => { if (chk[r.Norm_Check] != null) chk[r.Norm_Check]++; });
+  const sh = rows.map(r => Math.abs(r.Norm_Shift_max_pct || 0));
+  const worst = rows.filter(r => r.Norm_Check && r.Norm_Check !== 'Same').sort((a, b) => {
+    const s = r => r.Norm_Check === 'Method-dependent' ? 2 : r.Norm_Check === 'No plain fit' ? 2 : 1, f = r => r.Norm_Ratio ? Math.abs(Math.log(r.Norm_Ratio)) : 0;
+    return s(b) - s(a) || f(b) - f(a); }).slice(0, 8).map(r => ({ sample: r.Sample_ID, protein: r.Protein, check: r.Norm_Check, ratio: r.Norm_Ratio, why: r.Norm_Why }));
+  return { v: 1, assayId: o.assayId, assayType: o.assayType, smart: !!o.smartOn, none: !!o.skipNorm, ctrlRange: o.ctrlRange || '', plates, n: rows.length, byMethod: by,
+    mixed: rows.filter(r => /mixed/.test(r.Norm_Method || '')).length, check: chk, compared: o.smartOn ? rows.filter(r => r.Norm_Check).length : 0,
+    moved5: sh.filter(v => v > 5).length, moved10: sh.filter(v => v > 10).length, maxShift: sh.length ? +Math.max(...sh).toFixed(1) : 0, worst, thr: NORM_THR };
+}
+function _normAuditLines(a) {
+  if (!a) return [];
+  const L = [];
+  if (a.none) return [['Normalisation', 'None — the raw signal was fitted.']];
+  if (!a.smart) {
+    L.push(['Procedure', 'Each plate’s 100 % reference is the plain mean of every control well (' + a.ctrlRange + ') on that plate, applied to every well and every curve alike.']);
+    const sus = a.plates.filter(p => p.suspect.length);
+    L.push(['Control wells', sus.length ? 'Still in the mean although they look wrong — ' + sus.map(p => p.plate + ': ' + p.suspect.slice(0, 4).join(', ')).join(' · ') + '. Smart DMSO control would leave them out.' : 'No control well looked out of line with the others.']);
+    L.push(['Bias check', 'Not run: there is only one method in use. Tick Smart DMSO control to have every curve compared against this plain-mean normalisation.']);
+    return L;
+  }
+  L.push(['Procedure', 'Smart DMSO control, one model per plate from that plate’s own control wells (' + a.ctrlRange + '), the same rules and thresholds for every plate: (1) control wells more than 3.5 robust SD from the control median, or 4.5 SD from their own row, are left out; (2) a left-to-right drift across the control columns, and (3) an odd/even-row difference, are corrected only when p < 0.01 and ≥ 2 %; (4) each row’s reference is shrunk toward the plate/parity reference by its own noise, so a row differs only as far as the controls can show; (5) a 0 % control scales with the well’s reference. What differs between plates is the outcome of these tests, not the rules.']);
+  L.push(['Methods in use', Object.entries(a.byMethod).map(([k, v]) => v + ' curve' + (v === 1 ? '' : 's') + ' · ' + k).join('; ') + (a.mixed ? ' — ' + a.mixed + ' curve' + (a.mixed === 1 ? ' has' : 's have') + ' replicates on plates that were normalised differently' : '')]);
+  L.push(['Reference vs plain mean', a.moved10 + ' of ' + a.n + ' curves sit more than 10 % from the plain plate mean at their furthest well, ' + a.moved5 + ' more than 5 % (largest ' + a.maxShift + ' %).']);
+  const c = a.check;
+  L.push(['Bias check', 'Every curve was fitted twice: with the Smart reference and with the plain plate mean (all control wells). Same = potency within ×' + a.thr.same + ', effect within ' + a.thr.dmax + ' points and the same flag; Method-dependent = potency beyond ×' + a.thr.differs + ' or the midpoint appears/disappears. Result: ' + c.Same + ' Same · ' + c.Differs + ' Differs · ' + (c['Method-dependent'] + c['No plain fit']) + ' Method-dependent' + ' (of ' + a.compared + ').']);
+  if (a.worst.length) L.push(['Look at', a.worst.map(w => w.sample + (w.protein ? ' (' + w.protein + ')' : '') + ': ' + w.check + (w.why ? ' — ' + w.why : '')).join(' · ')]);
+  a.plates.forEach(p => {
+    const bits = [p.mode + ' · controls ' + p.used + '/' + p.nCtrl];
+    if (p.left.length) bits.push('left out: ' + p.left.map(x => x.well + ' (' + x.why + ')').join('; ') + ' — moves the reference ' + (p.rejShiftPct > 0 ? '+' : '') + p.rejShiftPct + ' %');
+    if (p.rowEffect) bits.push(p.rowEffect.applied ? 'rows differ (p ' + (p.rowEffect.p < 0.001 ? '<0.001' : p.rowEffect.p.toFixed(3)) + ', ±' + p.rowEffect.tauPct.toFixed(1) + ' %)' : 'no row effect (p ' + p.rowEffect.p.toFixed(3) + ')');
+    if (p.parity && p.parity.applied) bits.push('odd/even rows differ by ' + p.parity.pct.toFixed(1) + ' %');
+    if (p.trend && p.trend.applied) bits.push('drift ' + p.trend.pct.toFixed(1) + ' % corrected');
+    if (p.maxRowPct) bits.push('largest row reference ' + p.maxRowPct + ' % from the plate mean');
+    L.push(['Plate ' + p.plate, bits.join(' · ')]);
+  });
+  return L;
+}
+function _normAuditHtml(audits) {
+  audits = (audits || []).filter(Boolean);
+  if (!audits.length) return '';
+  const e = esc;
+  return audits.map(a => {
+    const c = a.check, dep = (c['Method-dependent'] || 0) + (c['No plain fit'] || 0), att = dep + (c.Differs || 0);
+    const head = a.none ? 'Normalisation: none (raw signal)'
+      : !a.smart ? 'Normalisation: plain plate mean' + (a.plates.some(p => p.suspect.length) ? ' · ' + a.plates.reduce((s, p) => s + p.suspect.length, 0) + ' control well(s) look wrong' : '')
+      : 'Normalisation: Smart DMSO control · ' + (dep ? '<b class="na-dep">' + dep + ' of ' + a.compared + ' curves depend on the method</b>' : att ? c.Differs + ' of ' + a.compared + ' curves differ slightly from the plain mean' : 'all ' + a.compared + ' curves agree with the plain plate mean');
+    const rows = _normAuditLines(a).map(([k, v]) => '<tr><th>' + e(k) + '</th><td>' + e(v) + '</td></tr>').join('');
+    return '<details class="na-box' + (dep ? ' na-warn' : '') + '"' + (dep ? ' open' : '') + '><summary>' + head + (a.assayId && audits.length > 1 ? ' <span class="na-id">' + e(a.assayId) + '</span>' : '') + '</summary><table class="na-tbl">' + rows + '</table></details>';
+  }).join('');
+}
+function _normShort(r) {
+  const m = r.Norm_Method;
+  if (!m) return '—';
+  if (m === 'Plate mean') return 'Plate mean';
+  return m.replace(/^Smart · /, 'Smart · ').replace(/mixed — .*/, 'mixed');
+}
+function _normTip(r) {
+  if (!r.Norm_Method) return 'Opened from an analysis saved before the normalisation audit existed.';
+  const t = [r.Norm_Method];
+  if (r.Norm_Plates) t.push('Plates: ' + r.Norm_Plates);
+  if (r.Norm_Shift_pct != null) t.push('Reference vs plain plate mean: ' + (r.Norm_Shift_pct > 0 ? '+' : '') + r.Norm_Shift_pct + ' % on average, up to ' + r.Norm_Shift_max_pct + ' % at its furthest well');
+  if (r.Norm_Note) t.push(r.Norm_Note.split(' | ').join('\n'));
+  return t.join('\n');
+}
+function _normCheckCell(r) {
+  if (!r.Norm_Check) return '<td class="c-nchk" title="' + esc(r.Norm_Method ? 'Not compared: the plain plate mean was the method.' : 'Opened from an analysis saved before the normalisation audit existed.') + '">—</td>';
+  const cls = r.Norm_Check === 'Same' ? 'nchk-ok' : r.Norm_Check === 'Differs' ? 'nchk-differs' : 'nchk-dep';
+  const txt = r.Norm_Check === 'Same' ? 'Same' : r.Norm_Check === 'Differs' ? (r.Norm_Ratio ? '×' + r.Norm_Ratio : 'Differs') : (r.Norm_Ratio ? '×' + r.Norm_Ratio + ' ⚠' : 'Depends ⚠');
+  const tip = 'Fitted again with the plain plate mean: ' + (r.Plain_DC50_nM != null ? 'potency ' + r.Plain_DC50_nM + ' nM, effect ' + r.Plain_Dmax_pct + '.' : 'no fit.') + (r.Norm_Why ? '\n' + r.Norm_Why : '\nPotency within ×' + NORM_THR.same + ', effect within ' + NORM_THR.dmax + ' points, same flag.');
+  return '<td class="c-nchk ' + cls + '" title="' + esc(tip) + '">' + txt + '</td>';
 }
 
 // Native alert() inside dHUB is a browser dialog headed "localhost says", which reads as the
@@ -2885,6 +3042,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       : 'No control wells are set, so the readings cannot be turned into % of control. Enter the DMSO wells in Setup › Assay (for example B12-O12), or tick “No normalisation” to fit the raw readings.');
   const doNormalize = ctrlWells.size > 0 && !skipNorm;
   let _noCtrlAll = false;
+  const ctrlPlain = {}, normPlates = {};
 
   if (doNormalize) {
     log('Normalizing…');
@@ -2905,6 +3063,9 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     const ctrlMean = {}, zeroPctMean = {};
     for (const [bk, v] of Object.entries(ctrlSums)) ctrlMean[bk] = v.n > 0 ? v.sum / v.n : NaN;
     for (const [bk, v] of Object.entries(zeroPctSums)) zeroPctMean[bk] = v.n > 0 ? v.sum / v.n : NaN;
+    // The plain mean of every control well, kept: it is what the analysis would have used without the
+    // Smart model, and what every curve is compared against in the bias check.
+    Object.assign(ctrlPlain, ctrlMean);
 
     // Smart DMSO control: one model per plate, from that plate's own control wells. The plate
     // reference becomes the outlier-free mean; each well then asks the model for its own reference.
@@ -2917,7 +3078,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     } else {
       // The plain plate mean is unchanged, but a control well that is plainly wrong is said so.
       const sus = [];
-      for (const [bk, pts] of Object.entries(ctrlPts)) { const rj = _ctrlOutliers(pts); if (rj.size) sus.push(bk + ': ' + [...rj.keys()].map(p => p.well).join(', ')); }
+      for (const [bk, pts] of Object.entries(ctrlPts)) { const rj = _ctrlOutliers(pts); if (rj.size) sus.push(bk + ': ' + [...rj.keys()].map(p => p.well).join(', ')); normPlates[bk] = { suspect: [...rj.keys()].map(p => p.well) }; }
       if (sus.length) log('⚠ Control wells that look like outliers (still in the plate mean): ' + sus.slice(0, 4).join(' · ') + (sus.length > 4 ? ' …' : '') + '. Smart DMSO control leaves them out.', 'warn');
     }
 
@@ -2937,7 +3098,17 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
         if (r && isFinite(r)) { ctrl = r; scale = r / sm.mu; }
       }
       w.measurementNorm = _normValue(assayType, w.measurement, ctrl, zeroPctMean[w.barcodeKey], scale);
+      // Exactly what was divided by, and what the plain plate mean would have divided by.
+      w.refUsed = ctrl; w.refPlain = ctrlPlain[w.barcodeKey];
+      if (rowNorm && w.refPlain && isFinite(w.refPlain)) w.measurementPlain = _normValue(assayType, w.measurement, w.refPlain, zeroPctMean[w.barcodeKey], 1);
     }
+    // Per plate: which model it got, from how many control wells.
+    { const nameOf2 = {}; for (const w of readerRaw) nameOf2[w.barcodeKey] = w.barcode;
+      for (const bk of Object.keys(ctrlSums)) {
+        const sm = smart[bk];
+        normPlates[bk] = Object.assign(normPlates[bk] || { suspect: [] }, { name: nameOf2[bk] || bk, mode: sm ? sm.info.mode : 'plate mean', info: sm ? sm.info : null,
+          nCtrl: ctrlSums[bk].n, muAll: ctrlPlain[bk] });
+      } }
     if (rowNorm) {
       const plates = Object.entries(smart), sum = window._smartInfo = window._smartInfo || {};
       // keyed by the name the plate has in the Plate tab (the barcode as written in the reader file)
@@ -3016,6 +3187,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       sampleId: e.sampleId, barcode: rw.barcode, barcodeKey: e.barcodeKey,
       well: e.well, conc: e.conc, log10Conc: e.log10Conc,
       measurement: rw.measurementNorm, measurementRaw: rw.measurement,
+      ref: rw.refUsed, refPlain: rw.refPlain, measurementPlain: rw.measurementPlain,
       isCtrl: ctrlWells.has(e.well), proteinRaw: e.barcode.split('-')[0]
     });
   }
@@ -3069,12 +3241,16 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
 
   // 6. Raw CSV
   const rawCsvName = 'Results_' + assayId + '_Raw_Data.csv';
-  const rawHeader = 'Protein,Sample_ID,Plate_Barcode,Well,Log10_Conc,Measurement,Concentration_nM\r\n';
+  // Measurement is the NORMALISED value (% of control); the last three columns are what it was made
+  // from, so anyone can recompute it: Measurement = Raw_Signal / Reference_Signal × 100.
+  const rawHeader = 'Protein,Sample_ID,Plate_Barcode,Well,Log10_Conc,Measurement,Concentration_nM,Raw_Signal,Reference_Signal,Normalisation\r\n';
   const rawRows = merged.map(r => {
     // Six significant figures: toFixed(4) printed a 50 fM point as 0 nM.
     const concNM = +(Math.pow(10, r.log10Conc) * 1e9).toPrecision(6);
     return [r.protein || '', r.sampleId || '', r.barcode || '', r.well || '',
-      r.log10Conc.toFixed(4), r.measurement !== null && isFinite(r.measurement) ? r.measurement.toFixed(4) : '', concNM
+      r.log10Conc.toFixed(4), r.measurement !== null && isFinite(r.measurement) ? r.measurement.toFixed(4) : '', concNM,
+      r.measurementRaw !== null && isFinite(r.measurementRaw) ? +r.measurementRaw.toFixed(2) : '', r.ref && isFinite(r.ref) ? +r.ref.toFixed(2) : '',
+      !doNormalize ? 'none' : (normPlates[r.barcodeKey] ? normPlates[r.barcodeKey].mode : 'plate mean')
     ].map(_csvCell).join(',');
   });
   downloadBlobs.push({ name: rawCsvName, bytes: _buildCsvBytes(rawHeader, rawRows), type: 'text/csv', kind: 'csv' });
@@ -3124,7 +3300,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       // fully degraded. Taking the high-dose half of one compound off the plate moved its Dmax to 100 %
       // with "Bottom at bound" as the only hint. A missing reading is missing; it is not a measurement.
       const fitSdata = (isHook ? sdata.filter(r => !hookConcs.has(r.log10Conc)) : sdata).filter(r => r.measurement !== null && isFinite(r.measurement));
-      { const nMiss = sdata.filter(r => r.measurement === null || !isFinite(r.measurement)).length; if (nMiss) { _drop.pts += nMiss; _drop.fits.add(sid + '||' + protein); } }
+      { const nMiss = sdata.filter(r => r.measurement === null || !isFinite(r.measurement)).length; if (nMiss && !(opt && opt.alt)) { _drop.pts += nMiss; _drop.fits.add(sid + '||' + protein); } }
 
       try {
         let xArr = fitSdata.map(r => r.log10Conc);
@@ -3140,7 +3316,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           yArr = yArr.filter((_, i) => keep[i]);
         }
 
-        if (xArr.length < 4) { log('  Skip ' + sid + ': ' + xArr.length + ' pts', 'warn'); return null; }
+        if (xArr.length < 4) { if (!(opt && opt.alt)) log('  Skip ' + sid + ': ' + xArr.length + ' pts', 'warn'); return null; }
 
         const xMin = Math.min(...xArr), xMax = Math.max(...xArr);
         const yMin2 = Math.min(...yArr), yMax2 = Math.max(...yArr);
@@ -3302,7 +3478,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
 
         // Replicates at full precision: they are what the curve editor refits from, and rounding
         // them here moved a potency on the rounding edge (7.53 → 7.54 nM) on a refit of the same data.
-        const repsList = sdata.filter(r => r.measurement !== null && isFinite(r.measurement)).map(r => ({ x: r.log10Conc, y: r.measurement }));
+        const repsList = sdata.filter(r => r.measurement !== null && isFinite(r.measurement)).map(r => (r.measurementPlain != null && isFinite(r.measurementPlain) ? { x: r.log10Conc, y: r.measurement, yp: r.measurementPlain } : { x: r.log10Conc, y: r.measurement }));
         const hookConcsArr = [...hookConcs].sort((a, b) => b - a);
 
         return {
@@ -3323,10 +3499,20 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           _hook_concs: hookConcsArr, _is_hook: isHook,
           _gainMode: gainMode, _assayType: assayType
         };
-      } catch (e) { log('  Fit failed ' + sid + ': ' + e.message, 'warn'); return null; }
+      } catch (e) { if (!(opt && opt.alt)) log('  Fit failed ' + sid + ': ' + e.message, 'warn'); return null; }
 
   };
-  window._echoFitOne = _fitOne;
+  // The comparison fit: the same wells, normalised with the plain plate mean, by the same function and
+  // settings. The plain-normalised values ride on each replicate (measurementPlain / yp), so the curve
+  // editor can repeat the comparison after a point is left out.
+  const _fitOneBase = _fitOne;
+  const _fitWithCheck = (protein, sid, sdata, opt) => {
+    const row = _fitOneBase(protein, sid, sdata, opt);
+    if (!row || (opt && opt.alt) || !sdata.some(r => r.measurementPlain != null && isFinite(r.measurementPlain))) return row;
+    const alt = _fitOneBase(protein, sid, sdata.map(r => Object.assign({}, r, { measurement: r.measurementPlain })), { alt: true, noHook: opt && opt.noHook });
+    return Object.assign(row, _normVerdict(row, alt));
+  };
+  window._echoFitOne = _fitWithCheck;
 
   for (const protein of proteins) {
     log('Fitting: ' + protein + '…', 'info');
@@ -3337,8 +3523,8 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
 
     for (const sid of sampleIds) {
       const sdata = sampleMap.get(sid);
-      const _row = _fitOne(protein, sid, sdata);
-      if (_row) { summary.push(_row); nFit++; }
+      const _row = _fitWithCheck(protein, sid, sdata);
+      if (_row) { Object.assign(_row, _normProv(sdata, normPlates, !!(doNormalize && rowNorm))); summary.push(_row); nFit++; }
 
       nDone++;
       if (nDone % 10 === 0 || nDone === totalFits) setProgress(15 + Math.round(nDone / totalFits * 70));
@@ -3346,6 +3532,15 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     }
     log('  ' + protein + ': ' + nFit + ' fitted', 'ok');
   }
+  // The account of how this analysis normalised, and how far its answers depend on that.
+  { const aud = _normAuditBuild({ assayId, assayType, smartOn: !!(doNormalize && rowNorm), skipNorm: !doNormalize, ctrlRange, plates: normPlates, summary });
+    (window._normAudits = window._normAudits || []).push(aud);
+    if (aud.smart) {
+      const c = aud.check, dep = c['Method-dependent'] + c['No plain fit'];
+      log('Bias check: every curve was also fitted with the plain plate mean — ' + c.Same + ' same · ' + c.Differs + ' differ · ' + dep + ' method-dependent (potency beyond ×' + NORM_THR.differs + ' or midpoint appears/disappears).', dep ? 'warn' : 'ok');
+      if (aud.worst.length) log('  Look at: ' + aud.worst.slice(0, 5).map(w => w.sample + (w.ratio ? ' ×' + w.ratio : '')).join(', '), 'warn');
+      if (aud.mixed) log('⚠ ' + aud.mixed + ' curve' + (aud.mixed === 1 ? ' has' : 's have') + ' replicate plates normalised by different mechanisms (same rules, different test outcomes) — see the Normalisation audit.', 'warn');
+    } } 
   if (_drop.pts) log('⚠ ' + _drop.pts + ' well' + (_drop.pts === 1 ? '' : 's') + ' with no reading ' + (_drop.pts === 1 ? 'was' : 'were') + ' left out of the fits (' + _drop.fits.size + ' curve' + (_drop.fits.size === 1 ? '' : 's') + ' affected). They are not counted as 0 %.', 'warn');
 
   // 8. Summary CSV
@@ -3359,7 +3554,15 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     return true;
   });
   const outputCols = [...new Set([...alwaysCols, ...(csvCols.length ? csvCols.filter(c => filtSumCols.includes(c)) : filtSumCols)])];
-  const headerCols2 = outputCols.map(c => colMap2[c] || c);
+  // The normalisation each curve got and the check against the plain plate mean. Ticked by default;
+  // the comparison columns exist only when Smart DMSO control ran (otherwise there is nothing to compare).
+  if (doNormalize && (!csvCols.length || csvCols.includes('Norm'))) {
+    outputCols.push('Norm_Method', 'Norm_Shift_pct');
+    if (rowNorm) outputCols.push('Plain_DC50_nM', 'Norm_Ratio', 'Norm_Check', 'Norm_Why');
+    outputCols.push('Norm_Note');
+  }
+  const _normHdr = { Norm_Method: 'Normalisation', Norm_Shift_pct: 'Reference_vs_plain_mean_pct', Plain_DC50_nM: 'Plain_mean_' + (colMap2.DC50_nM || 'DC50_nM'), Norm_Ratio: 'Ratio_vs_plain_mean', Norm_Check: 'Normalisation_check', Norm_Why: 'Normalisation_check_reason', Norm_Note: 'Normalisation_note' };
+  const headerCols2 = outputCols.map(c => _normHdr[c] || colMap2[c] || c);
   const sumCsvName = 'Results_' + assayId + '_Consolidated_Summary.csv';
   const sumHeader = headerCols2.join(',') + '\r\n';
   const sumRows = summary.map(r => outputCols.map(c => _csvCell(r[c])).join(','));
@@ -3436,6 +3639,9 @@ function echoResultRows(){
       // left the Results tab asking the person to retype a reason the app already knew.
       note:     r.Flag === 'Yes' ? (r.Flag_Reason || '') : '',
       flagReason: r.Flag_Reason || '',
+      // How this curve was normalised and whether its potency depends on that choice. Separate from
+      // `note`/`flag`: those are the fitter's opinion of the fit, this is a fact about the method.
+      norm:     r.Norm_Method ? { method: r.Norm_Method, shift: r.Norm_Shift_pct, check: r.Norm_Check || '', ratio: r.Norm_Ratio, plain: r.Plain_DC50_nM, why: r.Norm_Why || '', note: r.Norm_Note || '' } : null,
       // A midpoint outside the doses tested, or no effect at all, is a bound, not a value.
       bound:    /EC50[<>]range|No effect/.test(r.Flag_Reason || '')
     };
@@ -3494,6 +3700,7 @@ function sendResultsToLabbook(){
       potencyUnit: 'nM',
       effectUnit: '%',
       rows: rows,
+      normalisation: (window._normAudits || []).reduce(function(o,a){ return o.concat(_normAuditLines(a).map(function(l){ return l[0] + ': ' + l[1]; })); }, []),
       createdAt: new Date().toISOString()
     }]
   };
@@ -3563,6 +3770,8 @@ function renderResults(data) {
     R2: r=>'<td>'+r.R2+'</td>',
     Flag: r=>'<td class="'+(r.Flag==='Yes'?'fy':'fn')+'">'+r.Flag+'</td>',
     Flag_Reason: r=>'<td class="c-reason">'+esc(r.Flag_Reason||'')+'</td>',
+    Norm_Method: r=>'<td class="c-norm" title="'+esc(_normTip(r))+'">'+esc(_normShort(r))+(r.Norm_Shift_pct!=null&&r.Norm_Method!=='Plate mean'?' <span style="color:var(--text3)">('+(r.Norm_Shift_pct>0?'+':'')+r.Norm_Shift_pct+'%)</span>':'')+'</td>',
+    Norm_Check: r=>_normCheckCell(r),
     CI_DC50: r=>`<td class="c-ci">${_ciHtml(r.CI_DC50_lower,r.CI_DC50_upper)}</td>`,
     CI_all:  r=>`<td style="font-size:10px;color:var(--text3);white-space:nowrap;">${r.CI_Hill_lower!=null?r.CI_Hill_lower+'–'+r.CI_Hill_upper:'—'}</td>`,
     Top_val: r=>`<td>${r.Top_val!=null?r.Top_val:'—'}</td>`,
@@ -3586,6 +3795,8 @@ function renderResults(data) {
     ...(_selTop  ? [{k:'Top_val',  l:'Top',         ns:true}] : []),
     ...(_selBot  ? [{k:'Bot_val',  l:'Bottom',      ns:true}] : []),
     ...(_selCIall? [{k:'CI_all',   l:'Hill 95% CI', ns:true}] : []),
+    ...(_selCols.has('Norm') && data.some(r=>r.Norm_Method) ? [{k:'Norm_Method',l:'Normalisation',ns:true}] : []),
+    ...(_selCols.has('Norm') && data.some(r=>r.Norm_Check) ? [{k:'Norm_Check',l:'vs plain mean',ns:true}] : []),
   ].filter(col => !(window._hiddenResultsCols?.has(col.k)));
   const _rawBlob=downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
   // Build download section
@@ -3611,6 +3822,7 @@ function renderResults(data) {
     +_dlSection
     +'</div>'
     +'</div>'
+    +_normAuditHtml(window._normAudits)
     +'<div class="results-tbl-scroll"><div class="tbl-wrap"><table><thead><tr>';
   cols.forEach(col=>{
     const isA=_sortState.col===col.k, arr=isA?(_sortState.asc?' ▲':' ▼'):'';
@@ -3698,6 +3910,7 @@ function renderMultiAssayResults(data) {
     +_dlSectionM
     +'</div>'
     +'</div>'
+    +_normAuditHtml(window._normAudits)
     +'<div class="results-tbl-scroll"><div class="tbl-wrap"><table><thead>';
 
   // Header row 1: assay type spanning cells
@@ -3762,7 +3975,10 @@ function copyResultsTSV() {
   const _vlT = window._bpVarLabels || {};
   const _allK = ['Protein','Sample_ID','DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason'];
   const _lbl = {Protein:'Group',Sample_ID:'Sample ID',DC50_nM:_vlT['DC50_nM']||'DC50 (nM)',AbsDC50_nM:_vlT['AbsDC50_nM']||'Abs DC50 (nM)',Dmax_pct:_vlT['Dmax_pct']||'Dmax (%)',LogIC50_M:_vlT['LogIC50_M']||'LogIC50 (M)',pDC50:_vlT['pDC50']||'pDC50 (M)',HillSlope:'Hill',R2:'R²',Flag:'Flag',Flag_Reason:'Reason'};
+  const _withNorm = _selTsv.has('Norm') && _lastResultsData.some(r=>r.Norm_Method);
+  const _cmp = _withNorm && _lastResultsData.some(r=>r.Norm_Check);
   const cols = _allK.filter(k=>(k==='Protein'||k==='Sample_ID'||_selTsv.has(k))&&!(k==='AbsDC50_nM'&&_tTsv!=='hibit')&&!(k==='Dmax_pct'&&_noGainTsv));
+  if (_withNorm) { cols.push('Norm_Method','Norm_Shift_pct'); if (_cmp) cols.push('Plain_DC50_nM','Norm_Ratio','Norm_Check'); _lbl.Norm_Method='Normalisation'; _lbl.Norm_Shift_pct='Ref vs plain mean (%)'; _lbl.Plain_DC50_nM='Plain-mean '+(_vlT['DC50_nM']||'DC50 (nM)'); _lbl.Norm_Ratio='Ratio vs plain mean'; _lbl.Norm_Check='Normalisation check'; }
   const rows = [cols.map(k=>_lbl[k]||k).join('\t'), ..._lastResultsData.map(r=>cols.map(c=>_tsvCell(r[c])).join('\t'))];
   navigator.clipboard.writeText(rows.join('\n')).then(()=>{
     const btn=document.querySelector('[onclick="copyResultsTSV()"]');
@@ -3916,7 +4132,9 @@ function generateOutputXLSX() {
   var _ciLbl = t==='displacement'||t==='ctg' ? 'IC50' : t==='gain' ? 'EC50' : 'DC50';
   if (_selXlsxCols.has('CI_DC50')) filtCols.push('CI_DC50_lower', 'CI_DC50_upper');
   if (_selXlsxCols.has('CI_all'))  filtCols.push('CI_Hill_lower', 'CI_Hill_upper');
-  var _xlsxNames = {Top_val:'Top', Bot_val:'Bottom', CI_DC50_lower:_ciLbl+'_CI_lower', CI_DC50_upper:_ciLbl+'_CI_upper', CI_Hill_lower:'Hill_CI_lower', CI_Hill_upper:'Hill_CI_upper'};
+  var _hasNormX = _selXlsxCols.has('Norm') && scatterData.some(function(r){return r.Norm_Method;});
+  if (_hasNormX) { filtCols.push('Norm_Method','Norm_Shift_pct'); if (scatterData.some(function(r){return r.Norm_Check;})) filtCols.push('Plain_DC50_nM','Norm_Ratio','Norm_Check'); }
+  var _xlsxNames = {Norm_Method:'Normalisation', Norm_Shift_pct:'Reference vs plain mean (%)', Plain_DC50_nM:'Plain-mean '+(colMap.DC50_nM||'DC50_nM'), Norm_Ratio:'Ratio vs plain mean', Norm_Check:'Normalisation check', Top_val:'Top', Bot_val:'Bottom', CI_DC50_lower:_ciLbl+'_CI_lower', CI_DC50_upper:_ciLbl+'_CI_upper', CI_Hill_lower:'Hill_CI_lower', CI_Hill_upper:'Hill_CI_upper'};
   var headerCols = filtCols.map(function(c) { return _xlsxNames[c] || colMap[c] || c; });
   var _hasExclusions = scatterData.some(function(r){return (r._excludedRepXYs||[]).length>0||(r._deletedPts||[]).length>0;});
   if(_hasExclusions) headerCols = headerCols.concat(['Notes']);
@@ -4010,7 +4228,7 @@ function generateOutputXLSX() {
     [],
     ['─── CURVE FITTING ───────────────────────────', ''],
     ['Model', '4-Parameter Logistic (4PL)'],
-    ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? (params.rowNorm ? 'Smart DMSO control (outlier control wells excluded; row, odd/even-row and column-drift corrections applied only where significant) — controls: ' : 'DMSO mean per plate — controls: ') + '' + params.ctrlRange : 'No control wells')],
+    ['Normalisation', params.skipNorm ? 'None (raw signal)' : (params.ctrlRange ? (params.rowNorm ? 'Smart DMSO control (outlier control wells excluded; row, odd/even-row and column-drift corrections applied only where significant) — controls: ' : 'DMSO mean per plate — controls: ') + '' + params.ctrlRange : 'No control wells') + (window._normAudits && window._normAudits.length ? '   → see the "Normalisation" sheet for what each plate and curve received' : '')],
     ['Top constraint (%)', params.topEnabled !== false ? params.topConstrain : 'Free (unconstrained)'],
     ['Bottom (%)', params.fixBot ? ('Fixed at ' + params.botVal) : ('Free' + (params.minBotEnabled !== false ? ' (≥ ' + (params.minBotVal ?? 0) + '%)' : ''))],
     ['Hill slope', params.fixHill ? ('Fixed at ' + params.hillVal) : 'Free'],
@@ -4057,6 +4275,11 @@ function generateOutputXLSX() {
     ['─── PHERASTAR FILES ─────────────────────────', ''],
     ['Files', (params.readerFileNames || []).join(', ')],
   ];
+  (window._normAudits || []).forEach(function(a){
+    protocolRows.push([]);
+    protocolRows.push(['─── NORMALISATION AUDIT' + (a.assayId && window._normAudits.length > 1 ? ' (' + a.assayId + ')' : '') + ' ───', '']);
+    _normAuditLines(a).forEach(function(l){ protocolRows.push(l); });
+  });
   if(_hasExclusions){
     protocolRows.push([]);
     protocolRows.push(['─── MANUAL EXCLUSIONS ───────────────────────', '']);
@@ -4077,6 +4300,19 @@ function generateOutputXLSX() {
 
   var wsProtocol = XLSX.utils.aoa_to_sheet(_sanitizeAoa(protocolRows));
   XLSX.utils.book_append_sheet(wb, wsProtocol, 'Data Analysis Protocol');
+
+  // One row per curve: what it was normalised with, and the same wells normalised the plain way.
+  if (scatterData.some(function(r){return r.Norm_Method;})) {
+    var _lblPot = (colMap.DC50_nM || 'DC50_nM');
+    var nrm = [['Group','Sample ID','Assay','Normalisation','Plates','Reference vs plain plate mean, mean (%)','…at its furthest well (%)',
+      _lblPot, 'Plain-mean ' + _lblPot, 'Ratio (this / plain)', 'Dmax / Span', 'Plain-mean Dmax / Span', 'Check', 'Why', 'Note']];
+    scatterData.forEach(function(r){
+      nrm.push([r.Protein, r.Sample_ID, r._assayType || t, r.Norm_Method || '', r.Norm_Plates || '', r.Norm_Shift_pct == null ? '' : r.Norm_Shift_pct, r.Norm_Shift_max_pct == null ? '' : r.Norm_Shift_max_pct,
+        r.DC50_nM == null ? '' : r.DC50_nM, r.Plain_DC50_nM == null ? '' : r.Plain_DC50_nM, r.Norm_Ratio == null ? '' : r.Norm_Ratio, r.Dmax_pct == null ? '' : r.Dmax_pct, r.Plain_Dmax_pct == null ? '' : r.Plain_Dmax_pct,
+        r.Norm_Check || '', r.Norm_Why || '', r.Norm_Note || '']);
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(nrm)), 'Normalisation');
+  }
 
   if (window._pheraProtocol && window._pheraProtocol.rows && window._pheraProtocol.rows.length) {
     var wsPP = XLSX.utils.aoa_to_sheet(_sanitizeAoa(window._pheraProtocol.rows));
@@ -4119,6 +4355,7 @@ function renderProtocol() {
   html += row('Assay type', atLabels[params.assayType] || params.assayType || '—');
   html += row('Curve fitting', '4-Parameter Logistic (4PL)');
   html += row('Normalisation', params.skipNorm ? '<span style="color:var(--text3)">None — raw signal</span>' : (params.ctrlRange ? (params.rowNorm ? 'Smart DMSO control (outlier controls excluded; row / odd-even / drift corrected only where significant) · control wells: <strong>' : 'DMSO mean per plate · control wells: <strong>') + params.ctrlRange + '</strong>' : '<span style="color:var(--text3)">No control wells defined</span>'));
+  html += _normAuditHtml(window._normAudits);
   html += row('Hook effect threshold', on(params.hookEnabled, params.hookThr, '%'));
   html += row('Min R²', on(params.r2Enabled, params.minR2, ''));
   html += row('Max replicate SD', on(params.sdEnabled, params.maxSd, '%'));
@@ -7387,6 +7624,7 @@ function renderCvStats(compounds) {
       <div class="cv-stat"><div class="csl">${pdc50Lbl}</div><div class="csv">${r.pDC50??'—'}</div></div>
       <div class="cv-stat"><div class="csl">Hill</div><div class="csv">${r.HillSlope??'—'}</div></div>
       <div class="cv-stat"><div class="csl">R²</div><div class="csv">${r.R2??'—'}</div></div>
+      ${r.Norm_Method?`<div class="cv-stat" title="${esc(_normTip(r)+(r.Norm_Check?'\n'+(r.Norm_Check==='Same'?'Same result with the plain plate mean.':'With the plain plate mean: '+(r.Plain_DC50_nM!=null?r.Plain_DC50_nM+' nM':'no fit')+(r.Norm_Why?' ('+r.Norm_Why+')':'')):''))}"><div class="csl">Normalisation</div><div class="csv" style="font-size:var(--fs-2);">${esc(_normShort(r))}${r.Norm_Check&&r.Norm_Check!=='Same'?' · <span style="color:'+(r.Norm_Check==='Differs'?'var(--warn)':'var(--danger)')+'">'+(r.Norm_Ratio?'×'+r.Norm_Ratio+' vs plain':'differs vs plain')+'</span>':r.Norm_Check?' · = plain':''}</div></div>`:''}
       <div class="cv-stat"${r.Flag==='Yes'?' style="cursor:context-menu;" oncontextmenu="cvStatFlagMenu(event)" title="Right-click to resolve flag"':''}>
         <div class="csl">Flag${r.Flag==='Yes'?' <span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;vertical-align:.15em"></span>':''}</div>
         <div class="csv" style="color:${fc};">${r.Flag==='Yes'?'Yes'+(r.Flag_Reason?' ('+esc(r.Flag_Reason)+')':''):'No'}</div>
@@ -8078,9 +8316,15 @@ function _onCvFixYChange(cb) {
     const minEl = document.getElementById('cv-ymin-fixed');
     const maxEl = document.getElementById('cv-ymax-fixed');
     if (minEl && !minEl.value && maxEl && !maxEl.value) {
+      // % of control: −15 to 120 shows a curve that dips below the control or sits above it. Both
+      // boxes stay editable. A raw-signal or gain run is not on that scale, so it starts from its data.
       const comps = document.getElementById('cv-canvas')?._cvCompounds || [];
-      const R = comps.length ? _cvRange(comps, {_ignoreFixY: true}) : {ok:false};
-      if (R.ok) { minEl.value = Math.round(R.ylo * 10) / 10; maxEl.value = Math.round(R.yhi * 10) / 10; }
+      const pct = !window._lastAnalysisParams?.skipNorm && !comps.some(r => r._gainMode || r._assayType === 'gain');
+      if (pct) { minEl.value = -15; maxEl.value = 120; }
+      else {
+        const R = comps.length ? _cvRange(comps, {_ignoreFixY: true}) : {ok:false};
+        if (R.ok) { minEl.value = Math.round(R.ylo * 10) / 10; maxEl.value = Math.round(R.yhi * 10) / 10; }
+      }
     }
   }
   renderCvCurve();
@@ -8365,11 +8609,12 @@ function _cvApplyEditsAndRefit(r) {
   // behind them, so they fall back to the local fit below — flags then stay as they were.
   const _fitOne = window._echoFitOne;
   if (_fitOne && r._assayType === (window._lastAssayType || r._assayType)) {
-    const sdata = activeReps.filter(p => p.y !== null && isFinite(p.y)).map(p => ({ log10Conc: p.x, measurement: p.y }));
+    const sdata = activeReps.filter(p => p.y !== null && isFinite(p.y)).map(p => ({ log10Conc: p.x, measurement: p.y, measurementPlain: p.yp }));
     const nr = sdata.length ? _fitOne(r.Protein, r.Sample_ID, sdata, { noHook: !!r._hookIn }) : null;
     const FIT_KEYS = ['DC50_nM','AbsDC50_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag','Flag_Reason','Top_val','Bot_val',
       'CI_DC50_lower','CI_DC50_upper','CI_Hill_lower','CI_Hill_upper','CI_Top_lower','CI_Top_upper','CI_Bot_lower','CI_Bot_upper',
-      '_bot','_logec50','_hill','_tc','_pts','_hook_x','_hook_concs','_is_hook'];
+      '_bot','_logec50','_hill','_tc','_pts','_hook_x','_hook_concs','_is_hook',
+      'Plain_DC50_nM','Plain_Dmax_pct','Norm_Ratio','Norm_Check','Norm_Why'];
     const targets = [r];
     const rd = window._resultsData?.find(x => x !== r && x.Sample_ID === r.Sample_ID && x.Protein === r.Protein);
     if (rd) targets.push(rd);
@@ -8562,7 +8807,7 @@ function saveToHistory(data) {
     try{hist=JSON.parse(localStorage.getItem(HIST_KEY)||'[]');}catch(e){}
     const prev=hist.find(h=>h&&h.id===aid);
     // params: what the Protocol tab prints. Without them a loaded analysis showed the protocol of the last RUN.
-    const entry={id:aid,ts:prev?prev.ts:new Date().toLocaleString(),assayId,groups,n:data.length,nFlag:data.filter(r=>r.Flag==='Yes').length,data,plateData:window._plateData||null,smart:window._smartInfo||null,
+    const entry={id:aid,ts:prev?prev.ts:new Date().toLocaleString(),assayId,groups,n:data.length,nFlag:data.filter(r=>r.Flag==='Yes').length,data,plateData:window._plateData||null,smart:window._smartInfo||null,normAudits:window._normAudits||null,
       params:window._lastAnalysisParams||null,assayType:window._lastAssayType||null};
     hist=hist.filter(h=>h&&h.id!==aid);
     hist.unshift(entry);
@@ -8629,6 +8874,7 @@ function loadHistoryEntry(idx) {
     renderScatter(entry.data);
     if(entry.plateData) window._plateData=entry.plateData;
     window._smartInfo=entry.smart||{};
+    window._normAudits=entry.normAudits||[];
     window._loadingFromHistory=false;
   },0);
 }
@@ -9982,22 +10228,40 @@ function parseSurveyCSV(text) {
   return {wells,plateType,plateName};
 }
 
-function _buildTransferMap() {
-  // Build sourceWell → totalTransferredNL from cached Echo picklist text
+function _buildTransferMap(srcPlate) {
+  // sourceWell → nL that left it, from the picklist of the loaded run. Two things this used to get wrong:
+  // a transfer the Echo reported as FAILED never left the well, and a picklist can draw on more than one
+  // source plate — A1 of every one of them was added into one well, so the "remaining volume" of a survey
+  // was lower than the truth (and a well looked empty that was not). Rows are now filtered to the survey's
+  // own plate when the picklist names source plates and one of them matches; the status column is honoured.
   const map={};
   if(!window._lastEchoText) return map;
-  const allLines=window._lastEchoText.split(/\r?\n/);
-  let headerIdx=-1, swIdx=-1, tvIdx=-1;
+  const allLines=window._lastEchoText.replace(/^\uFEFF/,'').split(/\r\n|\r|\n/);
+  const delim=[',',';','\t'].map(d=>[d,allLines.slice(0,60).reduce((n,l)=>n+(/source.?well/i.test(l)?l.split(d).length-1:0),0)]).sort((a,b)=>b[1]-a[1])[0][0];
+  const split=l=>l.split(delim).map(c=>c.trim().replace(/^"|"$/g,''));
+  let headerIdx=-1, swIdx=-1, tvIdx=-1, stIdx=-1, spbIdx=-1, spnIdx=-1;
   for(let i=0;i<Math.min(60,allLines.length);i++){
-    const h=allLines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
-    const sw=h.findIndex(c=>/source.?well/i.test(c));
-    const tv=h.findIndex(c=>/transfer.?volume/i.test(c));
-    if(sw>=0&&tv>=0){headerIdx=i;swIdx=sw;tvIdx=tv;break;}
+    const h=split(allLines[i]);
+    const sw=h.findIndex(c=>/^source.?well$/i.test(c));
+    const tv=h.findIndex(c=>/^transfer.?volume/i.test(c));
+    if(sw>=0&&tv>=0){headerIdx=i;swIdx=sw;tvIdx=tv;
+      stIdx=h.findIndex(c=>/transfer.?status/i.test(c)); spbIdx=h.findIndex(c=>/^source.?plate.?barcode/i.test(c)); spnIdx=h.findIndex(c=>/^source.?plate.?name/i.test(c)); break;}
   }
   if(headerIdx<0) return map;
+  const want=String(srcPlate||'').trim().toLowerCase();
+  const rows=[];
   for(let i=headerIdx+1;i<allLines.length;i++){
-    const cols=allLines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    if(!allLines[i].trim()) continue;
+    const cols=split(allLines[i]);
     if(!cols[swIdx]) continue;
+    if(stIdx>=0&&cols[stIdx]&&!/^ok$/i.test(cols[stIdx])) continue;
+    rows.push(cols);
+  }
+  const matches=want?rows.filter(c=>(spbIdx>=0&&String(c[spbIdx]||'').toLowerCase()===want)||(spnIdx>=0&&String(c[spnIdx]||'').toLowerCase()===want)):[];
+  const use=matches.length?matches:rows;
+  map._filtered=matches.length>0;
+  const plates=new Set(rows.map(c=>spbIdx>=0?c[spbIdx]:'')); map._nPlates=plates.size;
+  for(const cols of use){
     let w=cols[swIdx].trim().toUpperCase();
     const wm=w.match(/^([A-P])(\d+)$/);
     if(wm) w=`${wm[1]}${parseInt(wm[2])<10?'0':''}${parseInt(wm[2])}`;
@@ -10026,8 +10290,8 @@ function renderSurveyPlate(surveyResult) {
   const minWorkVol = isLDV ? 2.5 : 20; // µL
 
   // Build transfer map (nL) from loaded Echo picklist
-  const transferMap = _buildTransferMap();
-  const hasTransfers = Object.keys(transferMap).length > 0;
+  const transferMap = _buildTransferMap(plateName);
+  const hasTransfers = Object.keys(transferMap).filter(k=>k[0]!=='_').length > 0;
 
   // Compute after-assay volumes.
   // Echo survey reports Survey Fluid Volume in µL; the picklist Transfer Volume is in nL.
@@ -10036,8 +10300,11 @@ function renderSurveyPlate(surveyResult) {
     const volUL = entry && typeof entry==='object' ? entry.vol : entry;
     const beforeUL = isFinite(volUL) ? volUL : 0;
     const transferredUL = (transferMap[w]||0)/1000;
-    const afterUL = Math.max(0, beforeUL - transferredUL);
-    wells[w] = {beforeUL, transferredUL, afterUL, status: entry?.status||''};
+    // A well asked for more than it holds is a run that could not have completed. Clamped to 0 it read
+    // "empty", exactly like a well that was used up on purpose; the shortfall is kept and drawn.
+    const rawLeft = beforeUL - transferredUL;
+    const afterUL = Math.max(0, rawLeft);
+    wells[w] = {beforeUL, transferredUL, afterUL, shortUL: rawLeft < -0.0005 ? -rawLeft : 0, status: entry?.status||''};
   }
 
   const afterVols = Object.values(wells).map(d=>d.afterUL).filter(v=>isFinite(v)&&v>=0);
@@ -10055,7 +10322,7 @@ function renderSurveyPlate(surveyResult) {
   if(!hdr){hdr=document.createElement('div');hdr.className='survey-hdr';container.innerHTML='';container.appendChild(hdr);}
   const ptypeStr = plateType ? `<b>${plateType}</b>` : '384PP';
   const threshStr = `Min working volume: <b>${minWorkVol} µL</b>`;
-  const transferStr = hasTransfers ? `Echo transfers loaded — showing volume <b>after</b> this assay` : `<span style="color:var(--text3);">Run analysis first to see remaining volume after transfers</span>`;
+  const transferStr = hasTransfers ? `Echo transfers loaded${transferMap._filtered?' for this plate':(transferMap._nPlates>1?' <span style="color:var(--warn);">(the picklist uses '+transferMap._nPlates+' source plates and none is named like this one, so all are added)</span>':'')} — showing volume <b>after</b> this assay` : `<span style="color:var(--text3);">Run analysis first to see remaining volume after transfers</span>`;
   hdr.style.cssText='font-size:12px;color:var(--text2);padding:0 0 10px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-family:var(--sans);';
   hdr.innerHTML=`<span>Plate type: ${ptypeStr}</span><span>${threshStr}</span><span>${transferStr}</span>`;
 
@@ -10067,7 +10334,8 @@ function renderSurveyPlate(surveyResult) {
   const bg=isDark?'#13161e':'#f8f9fc', textCol=isDark?'#8b90a8':'#5a5f7a';
   ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
 
-  function volColor(afterUL){
+  function volColor(afterUL, shortUL){
+    if(shortUL>0) return isDark?'rgba(240,138,132,0.95)':'rgba(192,64,64,0.95)';
     if(afterUL===undefined||afterUL===null||isNaN(afterUL)) return isDark?'#252a3a':'#dde0ea';
     if(afterUL<=0) return isDark?'#1c2030':'#e8eaf2';
     if(afterUL<minWorkVol) return isDark?'rgba(233,30,99,0.75)':'rgba(233,30,99,0.70)';
@@ -10082,8 +10350,9 @@ function renderSurveyPlate(surveyResult) {
       const col=ci+1, wid=`${r}${col<10?'0'+col:col}`;
       const w=wells[wid];
       const x=padL+ci*cellW+1, y=padT+ri*cellH+1, rw=cellW-2, rh=cellH-2;
-      ctx.fillStyle=volColor(w?.afterUL);
+      ctx.fillStyle=volColor(w?.afterUL, w?.shortUL);
       ctx.beginPath();ctx.roundRect(x,y,rw,rh,2);ctx.fill();
+      if(w&&w.shortUL>0){ctx.strokeStyle=isDark?'#13161e':'#fff';ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(x+3,y+3);ctx.lineTo(x+rw-3,y+rh-3);ctx.moveTo(x+rw-3,y+3);ctx.lineTo(x+3,y+rh-3);ctx.stroke();}
     });
   });
   Array.from({length:24},(_,ci)=>{ctx.fillStyle=textCol;ctx.font=`9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(ci+1,padL+ci*cellW+cellW/2,padT-3);});
@@ -10094,7 +10363,8 @@ function renderSurveyPlate(surveyResult) {
     {col:isDark?'rgba(67,160,71,0.80)':'rgba(67,160,71,0.75)',lbl:`≥${minWorkVol*2} µL`},
     {col:isDark?'rgba(230,156,48,0.80)':'rgba(230,156,48,0.75)',lbl:`${minWorkVol}–${minWorkVol*2} µL`},
     {col:isDark?'rgba(233,30,99,0.75)':'rgba(233,30,99,0.70)',lbl:`<${minWorkVol} µL (below min)`},
-    {col:isDark?'#1c2030':'#e8eaf2',lbl:'Empty / 0 µL'}
+    {col:isDark?'#1c2030':'#e8eaf2',lbl:'Empty / 0 µL'},
+    ...(Object.values(wells).some(w=>w.shortUL>0)?[{col:isDark?'rgba(240,138,132,0.95)':'rgba(192,64,64,0.95)',lbl:'✕ short: asked for more than it holds'}]:[])
   ];
   let lx=padL;
   items.forEach(({col,lbl})=>{ctx.fillStyle=col;ctx.beginPath();ctx.roundRect(lx,ly,14,10,2);ctx.fill();ctx.fillStyle=textCol;ctx.font=`9px 'IBM Plex Sans',sans-serif`;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(lbl,lx+17,ly+5);lx+=lbl.length*5.5+26;});
@@ -10119,7 +10389,8 @@ function _surveyHover(e){
   let tip=`${wid}: ${fmt(w.afterUL)} remaining`;
   if(meta.hasTransfers&&w.transferredUL>0) tip+=` (was ${fmt(w.beforeUL)}, transferred ${fmt(w.transferredUL)})`;
   else if(!meta.hasTransfers) tip+=` (current)`;
-  if(w.afterUL<meta.minWorkVol&&w.afterUL>0) tip+=' ⚠ below min';
+  if(w.shortUL>0) tip=`${wid}: SHORT by ${w.shortUL.toFixed(2)} µL (holds ${fmt(w.beforeUL)}, the run asked for ${fmt(w.transferredUL)})`;
+  else if(w.afterUL<meta.minWorkVol&&w.afterUL>0) tip+=' ⚠ below min';
   if(w.status) tip+=` · ${w.status}`;
   tt.textContent=tip; tt.style.display='block'; tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-8)+'px';
 }

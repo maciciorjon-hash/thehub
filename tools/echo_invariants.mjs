@@ -51,6 +51,20 @@
 //   E23 the results table      A confidence limit is never printed as a long run of digits (three significant figures, a power of ten outside
 //                              0.01–99,999, ∞ for an unbounded limit), and column widths follow the content: Flag and the numbers take what
 //                              they need, Reason is the widest and wraps. The app is called Echo Dose Response in the setup header.
+//   E24 a setting is a      An emptied number on the Setup form uses its default and says so (no NaN anywhere, no gate switched off in silence);
+//       number or an error  a top, a Hill slope or a fixed bottom that cannot mean anything stops the run with the reason instead of
+//                           flagging every curve; an empty control range is an error, not raw counts; "B1-O2" is a rectangle and
+//                           "B12:O12, B1:O1" is two ranges.
+//   E25 missing is missing  A well with no reading is left out of a fit. It used to be a point at 0 % of control: fully degraded.
+//   E26 input files         The Echo file may be comma-, semicolon- or tab-separated, end its lines with \r, carry a BOM, give its
+//                           concentrations in µM, write 2,001E-05, and spell one compound in two cases; a reader cell may be "1000,5",
+//                           "1 000,5" or OVRFLW. Two transfer files with different columns are not merged.
+//   E27 one analysis,       Redrawing the results (sort, show all, a curve edit) does not add History entries; the entry carries the
+//       one history entry   run's own settings; a full browser store drops the oldest, not the new one.
+//   E28 Properties names    The Properties tab lists a compound's potency for every group it was fitted in, not the last one.
+//       every group
+//   E29 the source plate    Remaining volume ignores transfers that failed and transfers from other source plates, and a well asked for
+//       tells the truth     more than it holds is a shortfall, not "empty".
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -685,6 +699,9 @@ if (run('E22')) await guard('E22', async () => {
 });
 
 if (run('E23')) await guard('E23', async () => {
+  // E20 and E21 leave the Gradient Planner open, and the widths of a hidden pane are 0.
+  await E(() => { switchPanel('analysis', document.querySelectorAll('.outer-tab')[0]); document.querySelector('.tab[data-tab="results"]').click(); });
+  await pg.waitForTimeout(500);
   const res = await E(() => {
     const strip = h => h.replace(/<sup>/g, '^').replace(/<[^>]+>/g, '');
     const cases = [[3.1e-5, 1.1e7], [0.00429, 1.68e6], [0, Infinity], [0, null], [1.04, 34100], [9.996e-3, 99999.7], [0.272, 3.99e6], [5, 5.7]]
@@ -702,6 +719,156 @@ if (run('E23')) await guard('E23', async () => {
   check('E23', 'Reason is the widest column and Flag is narrow (widths follow the content)', res.ths.Reason > 200 && res.ths.Flag < 70 && res.ths.Reason > 3 * res.ths.Flag, res.ths);
   check('E23', 'the Reason text wraps rather than being cut', res.reasonOverflow === 0, res.reasonOverflow);
   check('E23', 'the app is called Echo Dose Response', res.title === 'Echo Dose Response' && res.tab === 'Echo Dose Response', { t: res.title, tab: res.tab });
+});
+
+// ── E24–E29: the input and bookkeeping beat of 2026-10-03 ──────────────────────────────────────────────
+const BACK_TO_ANALYSIS = () => E(() => { switchPanel('analysis', document.querySelectorAll('.outer-tab')[0]); document.querySelector('.tab[data-tab="results"]').click(); });
+const SETUP_DEFAULTS = { 'p-ctrl': 'B12-O12', 'p-skip': '8', 'p-hook': '10', 'p-r2': '0.8', 'p-sd': '25', 'p-top': '100', 'p-bot-val': '0', 'p-hill-val': '1', 'p-min-bot-val': '0', 'p-zero-pct': '' };
+const runWith = set => E(async ({ set, defs }) => {
+  for (const [k, v] of Object.entries(defs)) { const el = document.getElementById(k); if (el) el.value = v; }
+  for (const id of ['p-row-norm', 'p-skip-norm', 'p-fix-bot', 'p-fix-hill']) { const el = document.getElementById(id); if (el) el.checked = false; }
+  for (const [k, v] of Object.entries(set)) { const el = document.getElementById(k); if (!el) continue; if (el.type === 'checkbox') el.checked = !!v; else el.value = v; }
+  _lastResultsData = null; document.getElementById('log-panel').innerHTML = '';
+  await runPipeline();
+  const d = _lastResultsData || [], p = window._lastAnalysisParams || {};
+  const panel = (document.getElementById('results-panel')?.innerText || '') + '\n' + (document.getElementById('tab-protocol')?.innerText || '');
+  return { n: d.length, flagged: d.filter(r => r.Flag === 'Yes').length, nan: /\bNaN\b|undefined/.test(panel), stopped: /analysis stopped/i.test(document.getElementById('results-panel')?.innerText || ''),
+    msg: (document.getElementById('results-panel')?.innerText || '').replace(/\s+/g, ' ').slice(0, 220), params: { hookThr: p.hookThr, minR2: p.minR2, maxSd: p.maxSd, minBotVal: p.minBotVal, skipRows: p.skipRows, topConstrain: p.topConstrain } };
+}, { set, defs: SETUP_DEFAULTS });
+
+if (run('E24')) await guard('E24', async () => {
+  const base = await runWith({});
+  const empty = await runWith({ 'p-skip': '', 'p-hook': '', 'p-r2': '', 'p-sd': '', 'p-top': '', 'p-min-bot-val': '' });
+  check('E24', 'emptied numbers use their defaults: the same results as the defaults, finite parameters, no NaN on screen',
+    empty.n === base.n && empty.flagged === base.flagged && !empty.nan && Object.values(empty.params).every(Number.isFinite), { base: base.n + '/' + base.flagged, empty });
+  for (const [name, set, re] of [['top 0', { 'p-top': '0' }, /Top constraint/], ['negative top', { 'p-top': '-5' }, /Top constraint/], ['fixed Hill −2', { 'p-fix-hill': true, 'p-hill-val': '-2' }, /Hill/], ['fixed bottom above the top', { 'p-fix-bot': true, 'p-bot-val': '150' }, /bottom/i]]) {
+    const r = await runWith(set);
+    check('E24', name + ' stops the run and names the setting (not 63 flagged curves)', r.n === 0 && r.stopped && re.test(r.msg), r);
+  }
+  const noCtrl = await runWith({ 'p-ctrl': '' });
+  check('E24', 'no control wells stops the run and says what to do', noCtrl.n === 0 && noCtrl.stopped && /No control wells/.test(noCtrl.msg) && /No normalisation/.test(noCtrl.msg), noCtrl);
+  const rawOk = await runWith({ 'p-ctrl': '', 'p-skip-norm': true });
+  check('E24', 'ticking No normalisation still allows an empty control range', rawOk.n > 0, rawOk);
+  const garbage = await runWith({ 'p-ctrl': 'hello' });
+  check('E24', 'control wells that are not wells stop the run', garbage.n === 0 && garbage.stopped, garbage);
+  const pr = await E(() => ({ rect: _parseCtrlRange('B1-O2').length, two: _parseCtrlRange('B12:O12, B1:O1').length, sp: _parseCtrlRange('B12 - O12').length, one: _parseCtrlRange('b3').join(), bad: _parseCtrlRange('B12, zz, 7').slice().join() + '|' + _parseCtrlRange('B12, zz, 7')._bad.join(), col: _parseCtrlRange('B12-O12').length, pad: _parseCtrlRange('B012:C012').join() }));
+  check('E24', '"B1-O2" is the 28 wells of a rectangle, not the first column', pr.rect === 28, pr);
+  check('E24', '"B12:O12, B1:O1" is both ranges (28 wells), "B12 - O12" tolerates spaces', pr.two === 28 && pr.sp === 14 && pr.col === 14, pr);
+  check('E24', 'single wells are padded, padded input is read, and the tokens that are not wells are reported', pr.one === 'B03' && pr.pad === 'B12,C12' && pr.bad === 'B12|zz,7', pr);
+  await runWith({});
+});
+
+if (run('E25')) await guard('E25', async () => {
+  await BACK_TO_ANALYSIS();
+  const r = await E(() => {
+    const doses = Array.from({ length: 12 }, (_, i) => -10 + i * 0.45), f = x => 5 + 95 / (1 + Math.pow(10, 1.1 * (x - (-7.6))));
+    const rows = [], mk = (x, m) => ({ sampleId: 'SYN', protein: 'PX', barcode: 'PX-01', barcodeKey: 'px-01', well: 'C03', conc: Math.pow(10, x), log10Conc: x, measurement: m });
+    doses.forEach(x => { rows.push(mk(x, f(x) + 1.5)); rows.push(mk(x, f(x) - 1.5)); });
+    const full = _echoFitOne('PX', 'SYN', rows);
+    const gone = rows.filter(r => r.log10Conc < -6.3);
+    const withNulls = rows.map(r => r.log10Conc >= -6.3 ? Object.assign({}, r, { measurement: null }) : r);
+    const holes = _echoFitOne('PX', 'SYN', withNulls), clean = _echoFitOne('PX', 'SYN', gone);
+    const nan = _echoFitOne('PX', 'SYN', rows.map((r, i) => i % 7 === 0 ? Object.assign({}, r, { measurement: NaN }) : r));
+    return { full: full && [full.DC50_nM, full.Dmax_pct], holes: holes && [holes.DC50_nM, holes.Dmax_pct, holes.Flag_Reason, holes._reps.length], clean: clean && [clean.DC50_nM, clean.Dmax_pct, clean._reps.length], nan: nan && [nan.DC50_nM, nan.R2] };
+  });
+  check('E25', 'a fit with unread wells is exactly the fit of the wells that were read', r.holes && r.clean && r.holes[0] === r.clean[0] && r.holes[1] === r.clean[1] && r.holes[3] === r.clean[2], r);
+  check('E25', 'unread wells are not a point at 0 % (Dmax stays what the read points say)', r.holes && r.full && Math.abs(r.holes[1] - r.full[1]) < 25 && !/Bottom at bound/.test(r.holes[2] || ''), r);
+  check('E25', 'a NaN reading is left out too, and the fit stays finite', r.nan && Number.isFinite(r.nan[0]) && Number.isFinite(r.nan[1]), r);
+});
+
+if (run('E26')) await guard('E26', async () => {
+  const r = await E(() => {
+    const txt = new TextDecoder().decode(Uint8Array.from(atob(_TEST_ECHO_B64), c => c.charCodeAt(0)));
+    const lines = txt.split(/\r?\n/), hi = lines.findIndex(l => /destination.*well/i.test(l)), hd = lines[hi].split(',');
+    const si = hd.findIndex(h => /sample.?id/i.test(h)), ci = hd.findIndex(h => /^destination concentration$/i.test(h)), ui = hd.findIndex(h => /destination concentration units/i.test(h));
+    const parse = (t, skip = 8) => { try { const d = _parseEchoCSV(t, skip); return { n: d.length, c0: d[0] && d[0].conc, ids: new Set(d.map(x => x.sampleId)).size, plates: new Set(d.map(x => x.barcode)).size }; } catch (e) { return { err: e.message.slice(0, 120) }; } };
+    const mod = fn => lines.map((l, i) => { if (i <= hi || !l.trim()) return l; const c = l.split(','); if (c.length <= Math.max(si, ci, ui)) return l; fn(c); return c.join(','); }).join('\n');
+    const out = { base: parse(txt) };
+    out.semicolon = parse(lines.map((l, i) => i >= hi ? l.replace(/,/g, ';') : l).join('\n'));
+    out.tab = parse(lines.map((l, i) => i >= hi ? l.replace(/,/g, '\t') : l).join('\n'));
+    out.cr = parse(txt.replace(/\n/g, '\r'));
+    out.bom = parse('﻿' + txt);
+    out.uM = parse(mod(c => { c[ci] = String(+c[ci] * 1e6); c[ui] = 'uM'; }));
+    out.nM = parse(mod(c => { c[ci] = String(+c[ci] * 1e9); c[ui] = 'nM'; }));
+    out.euro = parse(mod(c => { c[ci] = '"' + String(c[ci]).replace('.', ',') + '"'; }));
+    out.cases = parse(mod(c => { if (Math.random() < 0.5) c[si] = c[si].toLowerCase(); }));
+    const num = ['1000,5', '1 000,5', '1.234,5', '1,234.5', '1234', 1234.5, 'OVRFLW', '', '----', '3.5e4', '-12,5'].map(v => _readerNum(v));
+    // the pipeline's own message for two files whose columns differ
+    return Promise.all([
+      mergeEchoCsvs([new File([lines.slice(hi).join('\n')], 'a.csv'), new File([lines.slice(hi).join('\n')], 'b.csv')]).then(b => b.text()).then(t => t.split('\n').length, e => 'ERR ' + e.message),
+      mergeEchoCsvs([new File([lines.slice(hi).join('\n')], 'a.csv'), new File([[...hd].reverse().join(',') + '\n' + lines[hi + 1]], 'b.csv')]).then(() => 'merged', e => e.message.slice(0, 90))
+    ]).then(([okMerge, badMerge]) => Object.assign(out, { num, okMerge, badMerge }));
+  });
+  const same = k => r[k] && !r[k].err && r[k].n === r.base.n && Math.abs(r[k].c0 - r.base.c0) / r.base.c0 < 1e-9 && r[k].plates === r.base.plates;
+  check('E26', 'semicolon-, tab- and CR-separated transfer files read exactly like the comma one', same('semicolon') && same('tab') && same('cr'), { s: r.semicolon, t: r.tab, c: r.cr });
+  check('E26', 'a byte-order mark does not matter', same('bom'), r.bom);
+  check('E26', 'concentrations given in µM or nM are converted to molar', same('uM') && same('nM'), { uM: r.uM, nM: r.nM, base: r.base });
+  check('E26', 'a decimal comma in scientific notation ("2,001E-05") is read as 2.001E-05', same('euro'), { euro: r.euro, base: r.base });
+  check('E26', 'one compound typed in two letter cases is one compound', r.cases && r.cases.ids === r.base.ids, { cases: r.cases, base: r.base });
+  check('E26', 'reader cells: "1000,5" "1 000,5" "1.234,5" "1,234.5" "3.5e4" "-12,5" are numbers; OVRFLW, ---- and blank are not',
+    JSON.stringify(r.num) === JSON.stringify([1000.5, 1000.5, 1234.5, 1234.5, 1234, 1234.5, null, null, null, 35000, -12.5].map(v => v === null ? null : v)) || (r.num.slice(0, 6).every((v, i) => v === [1000.5, 1000.5, 1234.5, 1234.5, 1234, 1234.5][i]) && r.num.slice(6, 9).every(Number.isNaN) && r.num[9] === 35000 && r.num[10] === -12.5), r.num);
+  check('E26', 'two transfer files with the same columns merge; with different columns they are refused with both names', typeof r.okMerge === 'number' && /a\.csv|b\.csv/.test(r.badMerge) && /different columns/.test(r.badMerge), { ok: r.okMerge, bad: r.badMerge });
+});
+
+if (run('E27')) await guard('E27', async () => {
+  await BACK_TO_ANALYSIS();
+  await E(() => { localStorage.removeItem(HIST_KEY); });
+  await runWith({});
+  const r = await E(() => {
+    const count = () => (JSON.parse(localStorage.getItem(HIST_KEY) || '[]')).length;
+    const n0 = count();
+    for (const col of ['DC50_nM', 'Dmax_pct', 'R2']) sortResultsBy(col);
+    window._resultsShowAll = true; renderResults(_lastResultsData); renderResults(_lastResultsData);
+    const h = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
+    return { n0, n1: count(), ids: new Set(h.map(x => x.id)).size, hasParams: !!(h[0] && h[0].params && Number.isFinite(h[0].params.minR2)), assay: h[0] && h[0].assayId, ts: h[0] && h[0].ts };
+  });
+  check('E27', 'sorting and redrawing the table leaves one History entry for the analysis', r.n0 === 1 && r.n1 === 1 && r.ids === 1, r);
+  check('E27', 'the entry carries the run\'s own settings', r.hasParams, r);
+  const q = await E(() => {
+    const real = Storage.prototype.setItem; let calls = 0;
+    // a store with room for the new analysis and ONE of the old ones: the newest must survive, the oldest go
+    localStorage.removeItem(HIST_KEY); window._analysisId = 5555; saveToHistory([{ Protein: 'G', Sample_ID: 'new', Flag: 'No' }]);
+    const L = localStorage.getItem(HIST_KEY).length; localStorage.removeItem(HIST_KEY);
+    Storage.prototype.setItem = function (k, v) { if (k === HIST_KEY && v.length > L + 60000) { calls++; throw new DOMException('full', 'QuotaExceededError'); } return real.call(this, k, v); };
+    try {
+      const mk = i => ({ id: 1000 + i, ts: 'old' + i, assayId: 'old' + i, groups: 'G', n: 1, nFlag: 0, data: [{ Protein: 'G', Sample_ID: 'x', Flag: 'No', pad: 'x'.repeat(40000) }] });
+      real.call(localStorage, HIST_KEY, JSON.stringify([mk(1), mk(2), mk(3)]));
+      window._analysisId = 5555; saveToHistory([{ Protein: 'G', Sample_ID: 'new', Flag: 'No' }]);
+      const h = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
+      return { ids: h.map(x => x.id), calls };
+    } finally { Storage.prototype.setItem = real; }
+  });
+  check('E27', 'a full browser store drops the oldest analyses, keeps the new one', q.ids[0] === 5555 && q.ids.length < 4 && q.ids.length >= 1, q);
+  await E(() => { localStorage.removeItem(HIST_KEY); });
+});
+
+if (run('E28')) await guard('E28', async () => {
+  await BACK_TO_ANALYSIS();
+  const r = await E(() => {
+    const d = _lastResultsData.find(x => x.Sample_ID === 'EDA-013'), others = _lastResultsData.filter(x => x.Sample_ID === 'EDA-013');
+    const cd = { 'EDA-013': { smiles: 'CCO', MW: 46, logP: -0.3, HBA: 1, HBD: 1, TPSA: 20, RotBonds: 0, ArRings: 0, svg: '' } };
+    const host = document.getElementById('props-panel'); renderProperties(_lastResultsData, cd);
+    const cell = host.querySelector('td.pp-aff');
+    return { groups: others.map(x => x.Protein + ':' + x.DC50_nM), rows: cell ? [...cell.querySelectorAll('.pp-aff-r')].map(e => e.textContent.replace(/\s+/g, ' ').trim()) : null };
+  });
+  check('E28', 'the Properties tab lists the potency for every group a compound was fitted in', r.rows && r.rows.length === r.groups.length && r.groups.every(g => r.rows.some(t => t.replace(' ', ':') === g || t.includes(g.split(':')[1]) && t.includes(g.split(':')[0]))), r);
+});
+
+if (run('E29')) await guard('E29', async () => {
+  const r = await E(() => {
+    const survey = ['[DETAILS]', 'Source Plate Barcode,Source Plate Type,Source Well,Survey Fluid Volume,Survey Status', 'RP-001,384PP_DMSO2,A1,40.0,OK', 'RP-001,384PP_DMSO2,A2,40.0,OK', 'RP-001,384PP_DMSO2,A3,10.0,OK', 'RP-001,384PP_DMSO2,A4,40.0,OK'].join('\n');
+    const pick = ['[DETAILS]', 'Source Plate Barcode,Source Well,Transfer Volume,Transfer Status,Destination Well,Destination Plate Barcode,Sample ID,Destination Concentration',
+      'RP-001,A1,5000,OK,B2,P1,a,1e-6', 'RP-001,A1,5000,FAILED,B3,P1,a,1e-6', 'RP-002,A1,9000,OK,B4,P1,b,1e-6', 'RP-001,A2,60000,OK,B5,P1,c,1e-6', 'RP-001,A4,0,OK,B6,P1,d,1e-6'].join('\n');
+    const sv = parseSurveyCSV(survey); window._lastEchoText = pick;
+    const m = _buildTransferMap(sv.plateName);
+    const tab = document.querySelector('.tab[data-tab="survey"]'); tab && tab.click();
+    renderSurveyPlate(sv);
+    const canvas = document.querySelector('#survey-plate-container canvas'), w = canvas && canvas._surveyWells;
+    return { plate: sv.plateName, a1: m.A01, a2: m.A02, filtered: m._filtered, a1after: w && w.A01 && w.A01.afterUL, a2: w && w.A02 && { after: w.A02.afterUL, short: w.A02.shortUL }, a3: w && w.A03 && w.A03.afterUL };
+  });
+  check('E29', 'only the survey plate\'s own, successful transfers are subtracted (A1: 5 µL of 40 → 35 left, not 49)', r.filtered && Math.abs(r.a1after - 35) < 1e-6, r);
+  check('E29', 'a well asked for more than it holds is a shortfall, not an empty well', r.a2 && r.a2.after === 0 && Math.abs(r.a2.short - 20) < 1e-6, r);
+  check('E29', 'a well nothing was drawn from keeps its volume', Math.abs(r.a3 - 10) < 1e-6, r);
 });
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
