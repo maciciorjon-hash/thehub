@@ -1616,6 +1616,9 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .res-empty .t{font-size:var(--fs-5);font-weight:600;color:var(--text2);margin-bottom:6px;}
 .res-empty .btn{margin-top:16px;}
 .res-top{display:flex;justify-content:flex-end;margin-bottom:10px;}
+.res-norm{margin:0 0 8px;border:1px solid var(--border);border-radius:var(--r-2);font-size:var(--fs-1);color:var(--text2);}
+.res-norm>summary{cursor:pointer;padding:6px 10px;}.res-norm>div{padding:3px 10px;line-height:1.45;}.res-norm>div span{display:inline-block;min-width:110px;color:var(--text3);margin-right:8px;vertical-align:top;}
+.res-nm{font-size:var(--fs-1);color:var(--warn);white-space:nowrap;}.res-nm.dep{color:var(--danger);font-weight:600;}
 .res-card{border-top:1px solid var(--border);margin-bottom:14px;overflow:hidden;}
 .res-hd{display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1px solid var(--border);
   font-size:var(--fs-3);font-weight:600;}
@@ -13897,6 +13900,19 @@ function openResultInApp(expId,rid,compound){
   var app=set.origin==='echo'?'echo':'lumina';
   try{ H.openApp(app,undefined,undefined,{source:'labbook',open:{app:app,session:set.session,setId:set.id,expId:expId,compound:compound||'',label:(e.code||e.title||'')}}); }
   catch(err){ toast('Could not open '+_resAppName(set)+'.'); } }
+// How the analysis normalised its readings and whether a curve's potency depends on that choice.
+// Written by the app that fitted it (Echo's normalisation audit); shown, never recomputed here.
+function _resNormHtml(r){
+  var L=(r&&r.normalisation); if(!Array.isArray(L)||!L.length) return '';
+  var dep=(r.rows||[]).filter(function(x){ return x.norm&&x.norm.check&&x.norm.check!=='Same'&&x.norm.check!=='Differs'; }).length;
+  return '<details class="res-norm"'+(dep?' open':'')+'><summary>Normalisation'+(dep?' \u00b7 <b>'+dep+' curve'+(dep===1?'':'s')+' depend'+(dep===1?'s':'')+' on the method</b>':'')+'</summary>'
+    +L.map(function(l){ var i=String(l).indexOf(': '); return '<div><span>'+esc(i>0?String(l).slice(0,i):'')+'</span>'+esc(i>0?String(l).slice(i+2):String(l))+'</div>'; }).join('')+'</details>';
+}
+function _resNormMark(x){
+  var n=x&&x.norm; if(!n||!n.check||n.check==='Same') return '';
+  var dep=n.check!=='Differs';
+  return ' <span class="res-nm'+(dep?' dep':'')+'" title="'+esc('Normalised: '+n.method+(n.plain!=null?'. With the plain plate mean: '+n.plain+' nM':'')+(n.why?'. '+n.why:''))+'">'+(n.ratio?'\u00d7'+esc(n.ratio):'differs')+(dep?' \u26a0':'')+'</span>';
+}
 function resultsPaneHtml(e){
   var rs=(e.integration&&e.integration.results)||[];
   var L=resultLabels(e);
@@ -13922,6 +13938,7 @@ function resultsPaneHtml(e){
       +(flagged?('<span class="res-flag">'+flagged+' flagged</span>'):'')
       +_resEditBtn(e.id,r,'')
       +'<button class="res-del" title="Remove this result" onclick="delResult(\''+e.id+'\',\''+esc(r.id||'')+'\')">&times;</button></div>'
+      +_resNormHtml(r)
       +'<div class="res-scroll"><table class="res-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(r.potencyLabel||'Potency')
       +'</th><th>'+esc(r.effectLabel||'Effect')+'</th><th>Hill</th><th>R²</th>'+(rows.some(function(x){ return x.curve; })?'<th>Curve</th>':'')+'<th>Note</th><th></th></tr></thead><tbody>'
       +rows.map(function(x,ri){
@@ -13931,7 +13948,7 @@ function resultsPaneHtml(e){
         var xid="'"+esc(e.id)+"','"+esc(r.id||'')+"',"+ri;
         var anyCv=rows.some(function(q){ return q.curve; }), open=x.curve&&RCV_OPEN[_rcvKey(e.id,r.id,ri)];
         return '<tr class="'+(x.flag?'flagged ':'')+(x.excluded?'excluded':'')+'" data-ri="'+ri+'">'
-        +'<td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td>'
+        +'<td>'+esc(x.compound||'')+_resNormMark(x)+'</td><td>'+esc(x.target||'')+'</td>'
         +'<td class="num">'+_rn(x.potency)+'</td><td class="num">'+_rn(x.effect)+'</td>'
         +'<td class="num">'+_rn(x.hill)+'</td><td class="num">'+_rn(x.r2)+'</td>'
         +(anyCv?('<td class="res-cvc">'+(x.curve?('<button class="res-cvb'+(open?' on':'')+'" title="Show the curve" aria-label="Show the curve of '+esc(x.compound||'')+'" aria-expanded="'+(open?'true':'false')+'" onclick="toggleResultCurve(\''+esc(e.id)+'\',\''+esc(r.id||'')+'\','+ri+',this)">'+rcvSvg(x.curve,{mini:true})+'</button>'):'')+'</td>'):'')
