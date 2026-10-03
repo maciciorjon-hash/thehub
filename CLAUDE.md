@@ -87,7 +87,7 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 
 | ID | Name | Logo | Accent | Standalone file |
 |----|------|------|--------|-----------------|
-| `echo` | Echo (formerly Labcyte Echo / Echo Data Analysis) | SVG bar chart | `#ff5760` | `apps/echo/echo.html` |
+| `echo` | Echo Dose Response (formerly Echo, Echo Data Analysis, Labcyte Echo — the id, folder and file stay `echo`) | SVG bar chart | `#ff5760` | `apps/echo/echo.html` |
 | `deg` | Dora (formerly Degradation Explorer) | SVG curve | `#7c6fd4` | `apps/dora/dora.html` |
 | `pd` | Blueprint (formerly Lab Designer) | SVG wells | `#0079b9` | `apps/blueprint/blueprint.html` |
 | `dna` | Helix | SVG helix | `#43a047` | `apps/helix/helix.html` |
@@ -6690,6 +6690,24 @@ the rejected wells) and its Labbook table; the Methods/params text. `_betaIncReg
 **Invariant E22** (proven by putting six bugs back): a clean plate is not made noisier by more than 6 %, a real
 row effect is followed, a dead well is always left out, a 20 % drift is followed within 3 %, parity is found, the
 0 % scales, the p-values are textbook, and toggle-off is exactly raw / plain mean × 100.
+
+## Echo Dose Response, beta-tested (2026-10-03)
+
+The app is **Echo Dose Response** everywhere a person reads its name (shell card, APP_INFO, spotlight, landing, header, `<title>`, Labbook's *Edit in…* / result chip, Dora and LDI buttons, assistant notes). "Echo" on its own still means the **instrument** (Echo picklist, Echo 550). Ids, paths and the `.echo.json` extension are unchanged. The Echo tab that was called *Data Analysis* is *Analysis* (the rail category *Data Analysis* is unchanged).
+
+Found by feeding it hostile input, not by reading it — every class has an invariant (`tools/echo_invariants.mjs` **E24–E31**, each proven against the pre-fix build):
+
+- **A missing reading was fitted as 0 %.** `measurement: null` is 0 in the least-squares sums, so an unread well was a fully degraded point (Dmax → 100 %, "Bottom at bound"). `_fitOne` drops null/NaN points; the Console counts them.
+- **A setting was a number or nothing.** An emptied hook/R²/SD box was NaN (gate silently off, "NaN" on the Protocol tab); top ≤ 0, Hill ≤ 0 or a fixed bottom above the top flagged all 63 curves. `_pNum` gives a default and says so, or stops the run naming the setting. An **empty control range** used to run on raw counts — it is an error unless *No normalisation* is ticked.
+- **`_parseCtrlRange`** read only the first column of `B1-O3` and kept `B12:O12, B1:O1` as a string that matched nothing. It is now a rectangle/list parser (`._bad` lists unreadable tokens).
+- **Input files.** Semicolon/tab transfer files were "all transfers failed" (every field resolved to column 0); CR-only line ends; `Destination Concentration Units` was ignored (µM read as M); `2,001E-05`; one compound in two letter cases was two compounds; reader cells `1000,5` / `1 000,5` read as 1000 / 1; OVRFLW silently null; two transfer files with different columns were merged column-for-column. The barcode pre-flight (comma-only, called the intermediate plate "missing") is replaced by one message at the merge.
+- **History** gained an entry on every redraw (`saveToHistory` runs from `renderResults`): now one entry per analysis (`window._analysisId`), with the run's own params; a full store drops the oldest and says so.
+- **Properties** showed the *last* group's DC50 for a compound fitted on three targets; it lists every group, sorts by column and copies SMILES on click (the Guide had promised both).
+- **Source Plate survey** subtracted failed transfers and transfers from other source plates, and clamped a shortfall to "empty"; it now filters by status and plate and draws shortfalls.
+- Multi-assay: two panels with the same type and prefix doubled every compound — refused.
+- Visual: flags use `--warn` (Yes) / muted (No) instead of the interactive blue; no-effect potencies are italic-dotted (`td.nd`); the setup dialog is one height for every tab and its fields no longer touch; tile labels no longer break mid-word on a phone; Guide corrected (SD default 25, Plate tab, control syntax, units).
+
+Process note: other Claude sessions were editing Echo in the same working tree (Smart DMSO control, results-table columns, Gradient Planner). Commits can sweep up each other's hunks; check `git status` before assuming a diff is only yours.
 
 ## Current state
 

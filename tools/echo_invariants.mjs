@@ -48,6 +48,9 @@
 //       control is smart       noisier than the plain mean, a real row / odd-even / left-to-right effect is followed, one bad control
 //                              well cannot move a row, the 0 % control scales with the row's reference, and with the toggle off the
 //                              numbers are exactly the plain plate mean.
+//   E30 every curve says       With Smart DMSO control on, each curve carries the method of its plates, its reference vs the plain mean and a
+//       how it was normalised   second fit with the plain mean; the Raw CSV carries Raw_Signal and Reference_Signal so Measurement can be recomputed;
+//                             the table, summary CSV, XLSX audit sheet and the Labbook payload all carry it; off, nothing is invented. Fix Y starts at −15 / 120.
 //   E23 the results table      A confidence limit is never printed as a long run of digits (three significant figures, a power of ten outside
 //                              0.01–99,999, ∞ for an unbounded limit), and column widths follow the content: Flag and the numbers take what
 //                              they need, Reason is the widest and wraps. The app is called Echo Dose Response in the setup header.
@@ -65,6 +68,8 @@
 //       every group
 //   E29 the source plate    Remaining volume ignores transfers that failed and transfers from other source plates, and a well asked for
 //       tells the truth     more than it holds is a shortfall, not "empty".
+//   E31 Properties sorts   A column header sorts the Properties table (ascending, descending, reset), a missing value is last either
+//                          way, and a multi-assay run with two panels on the same files is refused instead of doubled.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -869,6 +874,75 @@ if (run('E29')) await guard('E29', async () => {
   check('E29', 'only the survey plate\'s own, successful transfers are subtracted (A1: 5 µL of 40 → 35 left, not 49)', r.filtered && Math.abs(r.a1after - 35) < 1e-6, r);
   check('E29', 'a well asked for more than it holds is a shortfall, not an empty well', r.a2 && r.a2.after === 0 && Math.abs(r.a2.short - 20) < 1e-6, r);
   check('E29', 'a well nothing was drawn from keeps its volume', Math.abs(r.a3 - 10) < 1e-6, r);
+});
+
+if (run('E30')) await guard('E30', async () => {
+  const runWith = async on => {
+    await E(on => { document.getElementById('p-row-norm').checked = on; window._pipelineRunning = true; runPipeline(); }, on);
+    await pg.waitForTimeout(1500);
+    await pg.waitForFunction(() => !window._pipelineRunning && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }).catch(() => {});
+  };
+  await runWith(true);
+  const on = await E(() => {
+    const rows = _lastResultsData, aud = window._normAudits || [];
+    const raw = downloadBlobs.find(b => b.kind === 'csv' && b.name.includes('Raw_Data')), sum = downloadBlobs.find(b => b.kind === 'csv' && b.name.includes('Consolidated_Summary'));
+    const txt = b => new TextDecoder().decode(b.bytes).replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean);
+    const rl = txt(raw), rh = rl[0].split(','), iM = rh.indexOf('Measurement'), iR = rh.indexOf('Raw_Signal'), iF = rh.indexOf('Reference_Signal');
+    let badRecalc = 0, n = 0; rl.slice(1).forEach(l => { const c = l.split(','); const m = +c[iM], r = +c[iR], f = +c[iF]; if (isFinite(m) && r && f) { n++; if (Math.abs(m - r / f * 100) > 0.01 + Math.abs(m) * 1e-4) badRecalc++; } });
+    const sl = txt(sum), sh = sl[0];
+    const tbl = document.getElementById('results-panel'); document.querySelector('.tab[data-tab="results"]').click(); renderResults(_lastResultsData);
+    const th = [...document.querySelectorAll('.results-tbl-scroll th')].map(t => t.textContent);
+    const ctx = (() => { const r = echoResultRows(); return { norm: r.filter(x => x.norm && x.norm.method).length, n: r.length }; })();
+    return { rows: rows.length, withMethod: rows.filter(r => r.Norm_Method).length, withCheck: rows.filter(r => r.Norm_Check).length, withPlain: rows.filter(r => r.Plain_DC50_nM != null).length,
+      checks: [...new Set(rows.map(r => r.Norm_Check))], reps: rows.every(r => (r._reps || []).some(p => p.yp != null)), aud: aud.length, audN: aud[0] && aud[0].n, audLines: aud[0] ? _normAuditLines(aud[0]).length : 0,
+      banner: !!document.querySelector('.na-box'), thN: th.includes('Normalisation'), thC: th.includes('vs plain mean'), nRaw: n, badRecalc, hasRawCols: iR > 0 && iF > 0,
+      sumHdr: /Normalisation/.test(sh) && /Ratio_vs_plain_mean/.test(sh), ctx, tip: rows[0] && _normTip(rows[0]).length > 10 };
+  });
+  check('E30', 'every curve carries its method, the check and the plain-mean fit', on.rows > 0 && on.withMethod === on.rows && on.withCheck === on.rows && on.withPlain > 0 && on.reps, on);
+  check('E30', 'the audit exists, is not empty, and covers every curve', on.aud === 1 && on.audN === on.rows && on.audLines >= 5, on);
+  check('E30', 'Measurement = Raw_Signal / Reference_Signal × 100 on every row of the Raw CSV', on.hasRawCols && on.nRaw > 0 && on.badRecalc === 0, on);
+  check('E30', 'the table has the two columns and the audit above it; the summary CSV has them too', on.banner && on.thN && on.thC && on.sumHdr, on);
+  check('E30', 'Labbook receives the method and the check for every curve', on.ctx.norm === on.ctx.n, on);
+  await runWith(false);
+  const off = await E(() => {
+    const rows = _lastResultsData, aud = window._normAudits || [];
+    return { methods: [...new Set(rows.map(r => r.Norm_Method))], checks: rows.filter(r => r.Norm_Check).length, plain: rows.filter(r => r.Plain_DC50_nM != null).length, yp: rows.some(r => (r._reps || []).some(p => p.yp != null)), smart: aud[0] && aud[0].smart, banner: !!document.querySelector('.na-box') };
+  });
+  check('E30', 'Smart off: "Plate mean", no comparison invented, the audit says the bias check was not run', off.methods.length === 1 && off.methods[0] === 'Plate mean' && !off.checks && !off.plain && !off.yp && off.smart === false && off.banner, off);
+  const fy = await E(() => { document.querySelector('.tab[data-tab="curves"]').click(); if (!document.getElementById('cv-fix-y')) renderCurvesTab(_lastResultsData); const cb = document.getElementById('cv-fix-y'), a = document.getElementById('cv-ymin-fixed'), b = document.getElementById('cv-ymax-fixed'); a.value = ''; b.value = ''; cb.checked = true; _onCvFixYChange(cb); const d = [a.value, b.value]; a.value = '-30'; cb.checked = false; cb.checked = true; _onCvFixYChange(cb); return { d, kept: a.value }; });
+  check('E30', 'Fix Y starts at −15 / 120 and keeps a value you typed', fy.d[0] === '-15' && fy.d[1] === '120' && fy.kept === '-30', fy);
+});
+
+if (run('E31')) await guard('E31', async () => {
+  await BACK_TO_ANALYSIS();
+  const r = await E(() => {
+    const ids = [...new Set(_lastResultsData.map(x => x.Sample_ID))].slice(0, 5);
+    const mw = [300, 120, null, 250, 500];
+    const cd = {}; ids.forEach((id, i) => { cd[id] = { smiles: 'C'.repeat(i + 1), MW: mw[i], logP: i, HBA: 1, HBD: 1, TPSA: 1, RotBonds: 1, ArRings: 1, svg: '' }; });
+    window._propSort = { col: null, asc: true };
+    const col = () => [...document.querySelectorAll('#props-panel tbody tr')].map(tr => tr.children[3].textContent.trim());
+    renderProperties(_lastResultsData, cd); window._lastCompoundData = cd;
+    const th = [...document.querySelectorAll('#props-panel th.pp-sort')].find(t => /^MW/.test(t.textContent.trim()));
+    const out = { plain: col() };
+    th.click(); out.asc = col(); document.querySelectorAll('#props-panel th.pp-sort').forEach(t => { if (/^MW/.test(t.textContent.trim())) out.sortAttr = t.getAttribute('aria-sort'); });
+    [...document.querySelectorAll('#props-panel th.pp-sort')].find(t => /^MW/.test(t.textContent.trim())).click(); out.desc = col();
+    [...document.querySelectorAll('#props-panel th.pp-sort')].find(t => /^MW/.test(t.textContent.trim())).click(); out.reset = col();
+    window._propSort = { col: null, asc: true };
+    return out;
+  });
+  check('E31', 'ascending: 120 250 300 500, the missing value last', JSON.stringify(r.asc) === JSON.stringify(['120', '250', '300', '500', '—']), r);
+  check('E31', 'descending keeps the missing value last', JSON.stringify(r.desc) === JSON.stringify(['500', '300', '250', '120', '—']), r);
+  check('E31', 'a third click restores the original order, and the header says which way it sorts', JSON.stringify(r.reset) === JSON.stringify(r.plain) && r.sortAttr === 'ascending', r);
+  const dup = await E(async () => {
+    const chk = document.getElementById('multi-assay-chk'); chk.checked = true; toggleMultiAssay(); 
+    const list = document.querySelectorAll('#mat-type-list [id^="mat-panel-"]');
+    while (document.querySelectorAll('#mat-type-list [id^="mat-panel-"]').length < 2) addAssayType();
+    await runPipeline();
+    const msg = document.getElementById('results-panel').innerText.replace(/\s+/g, ' ');
+    chk.checked = false; toggleMultiAssay();
+    return { stopped: /analysis stopped/i.test(msg), msg: msg.slice(0, 200) };
+  });
+  check('E31', 'two panels with the same assay type and prefix stop the run instead of doubling every compound', dup.stopped && /Two assay panels/.test(dup.msg), dup);
 });
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));

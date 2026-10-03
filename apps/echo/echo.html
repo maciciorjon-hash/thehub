@@ -463,6 +463,10 @@ rect.pq-ok{fill:var(--accent);opacity:.55;}rect.pq-warn{fill:var(--warn);opacity
 #props-panel{flex:1;overflow:auto;padding:18px 20px;}
 .props-table{border-collapse:collapse;font-size:var(--fs-3);min-width:100%;}
 .props-table thead tr{border-bottom:1px solid var(--border2);}
+.props-table th.pp-sort{cursor:pointer;user-select:none;}
+.props-table th.pp-sort:hover{color:var(--text);}
+.props-table td.smiles-cell{cursor:copy;}
+.pp-arrow{font-size:9px;opacity:.8;}
 .props-table th{padding:8px 10px;text-align:left;font-size:var(--fs-1);font-weight:600;letter-spacing:0;text-transform:none;color:var(--text3);white-space:nowrap;}
 .props-table td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text2);font-family:var(--sans);font-size:var(--fs-3);white-space:nowrap;vertical-align:middle;}
 .props-table td.struct-cell{white-space:normal;padding:4px 8px;}
@@ -1080,7 +1084,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
             <div class="dz-fname" id="smiles-name" style="display:none;"></div>
           </div>
         </div>
-        <button id="test-btn" onclick="loadTestData()" style="width:100%;padding:7px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:11px;font-family:var(--sans);cursor:pointer;transition:all .2s;margin-top:4px;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)'">Load test data</button>
+        <button id="test-btn" onclick="loadTestData()" style="width:100%;padding:7px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:11px;font-family:var(--sans);cursor:pointer;transition:border-color var(--dur-1) var(--ease),background-color var(--dur-1) var(--ease);margin-top:4px;" onmouseover="this.style.borderColor='var(--accent2)'" onmouseout="this.style.borderColor='var(--border2)'">Load test data</button>
       </div>
 
       <!-- TAB 2: ASSAY -->
@@ -1323,19 +1327,21 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div style="font-size:12px;color:var(--text3);margin-bottom:28px;">4PL curve fitting for HiBiT degradation assays · Echo liquid handler + PHERAstar plate reader</div>
         <div class="guide-section">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>Input files</h3>
-          <div class="guide-row"><div class="guide-key">Echo CSV</div><div class="guide-val">Transfer file from the Echo liquid handler. Required columns: <b>Sample ID</b>, <b>Destination Plate Barcode</b>, <b>Destination Well</b>, <b>Destination Concentration</b> (in M). The barcode links each transfer well to the matching PHERAstar plate.</div></div>
-          <div class="guide-row"><div class="guide-key">PHERAstar XLS / XLSX</div><div class="guide-val">One file per assay plate. <b>Filename (without extension) must exactly match the plate barcode</b> in the Echo CSV. Luminescence data is read from rows 16–32, columns 2–26 (standard 384-well HiBiT layout).</div></div>
+          <div class="guide-row"><div class="guide-key">Echo CSV</div><div class="guide-val">Transfer file from the Echo liquid handler. Required columns: <b>Sample ID</b>, <b>Destination Plate Barcode</b>, <b>Destination Well</b>, <b>Destination Concentration</b>. The concentration is read in the unit of <b>Destination Concentration Units</b> (M, mM, µM, nM… — converted to molar; M if the column is absent). Comma-, semicolon- and tab-separated files are all read. A transfer whose <b>Transfer Status</b> is not OK never reached the plate and is left out. The barcode links each transfer well to the matching PHERAstar plate.</div></div>
+          <div class="guide-row"><div class="guide-key">PHERAstar XLS / XLSX</div><div class="guide-val">One file per assay plate. <b>Filename (without extension) must exactly match the plate barcode</b> in the Echo CSV. The lettered A–P / 1–24 grid is found automatically (or give its A01 cell in Setup › Assay). A cell that is not a number (OVRFLW, a blank) is left unread — it is never counted as 0 %, and the Console says how many.</div></div>
           <div class="guide-row"><div class="guide-key">SMILES CSV <em style="font-weight:400;color:var(--text3)">(optional)</em></div><div class="guide-val">Two-column file with <b>Sample ID</b> and <b>SMILES</b> headers. Enables structure display and computed ADMET/PK properties in the Properties tab. <b>Needs an internet connection</b> &mdash; the chemistry toolkit (RDKit) is fetched from a CDN, so on a machine with no signal or a blocked CDN this one feature is unavailable; nothing else is.</div></div>
           <div class="guide-row"><div class="guide-key">Load test data</div><div class="guide-val">Loads a built-in set of example files (Echo CSV + 6 PHERAstar plates) so you can explore the app without uploading real data. Useful for testing or demos.</div></div>
         </div>
         <div class="guide-section">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>Parameters</h3>
           <div class="guide-row"><div class="guide-key">Assay ID</div><div class="guide-val">Free-text label used to name output files: <span class="guide-tag">Results_ID_Group.pdf</span>. Use a date or experiment code. Leave blank for a generic name.</div></div>
-          <div class="guide-row"><div class="guide-key">Control wells range</div><div class="guide-val">DMSO-only wells used as 100% reference. Signals are normalised per plate to the mean of these wells. Accepted formats: <b>B12-O12</b> (column range), <b>B22:O23</b> (rectangular block), <b>B12,C12</b> (comma-separated). Leave <b>blank</b> to use raw luminescence without normalisation.</div></div>
+          <div class="guide-row"><div class="guide-key">Control wells range</div><div class="guide-val">DMSO-only wells used as 100% reference. Signals are normalised per plate to the mean of these wells. Accepted: <b>B12-O12</b> or <b>B22:O23</b> (a rectangle — every row and column between the two wells), single wells <b>B12, C12</b>, and any mix: <b>B1:O1, B24:O24</b> (controls down both edges). It cannot be blank: either name the control wells or tick <b>No normalisation</b>.</div></div>
+          <div class="guide-row"><div class="guide-key">Smart DMSO control</div><div class="guide-val">Instead of the plain mean of every control well, learn the 100 % reference from each plate's own controls: a plainly wrong control well is left out, and row, odd/even-row and left-to-right effects are corrected <i>only where the data show they are real</i>. The Console and the Plate QC tab say what it did on each plate. Off, the numbers are exactly the plain plate mean.</div></div>
+          <div class="guide-row"><div class="guide-key">Settings that cannot be right</div><div class="guide-val">An emptied number falls back to its default and the Console says so. A top constraint ≤ 0, a fixed Hill slope ≤ 0 or a fixed bottom above the top stops the run with the reason instead of flagging every curve.</div></div>
           <div class="guide-row"><div class="guide-key">Echo header rows</div><div class="guide-val">Metadata rows above the column header in the Echo CSV. <b>Default: 8</b> for standard Echo Plate Reformat output.</div></div>
           <div class="guide-row"><div class="guide-key">Hook effect threshold (Δ%)</div><div class="guide-val">A <b>hook effect</b> occurs when HiBiT signal rises at the highest concentrations. If the mean signal at the highest concentration exceeds the mean at 2 steps lower by more than this many <b>percentage points</b>, that point is flagged (orange ×) and excluded from fitting. E.g. threshold=10: ref=90% → hook if &gt;100%. <b>Default: 10 Δ%.</b> Right-click the canvas in the Curves tab to re-include hook concentrations for any compound.</div></div>
           <div class="guide-row"><div class="guide-key">Min R² for fit</div><div class="guide-val">Minimum acceptable R² for a 4PL curve. Compounds below this are reported but flagged in red. <b>Default: 0.8.</b></div></div>
-          <div class="guide-row"><div class="guide-key">Max replicate SD</div><div class="guide-val">Maximum SD (in % DMSO) across replicates at any concentration. Compounds exceeding this are flagged as noisy. <b>Default: 20.</b></div></div>
+          <div class="guide-row"><div class="guide-key">Max replicate SD</div><div class="guide-val">Maximum SD (in % of control) across replicates at any concentration. Compounds exceeding this are flagged as noisy. <b>Default: 25.</b></div></div>
         </div>
         <div class="guide-section">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>Output values</h3>
@@ -1398,14 +1404,14 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 
         <div class="guide-section">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>Plate view</h3>
-          <div class="guide-row"><div class="guide-key">Signal intensity</div><div class="guide-val">Colours each well by its normalised luminescence (%) using a viridis colour scale. Controls appear as green-tinted wells.</div></div>
-          <div class="guide-row"><div class="guide-key">Raw signal QC</div><div class="guide-val"><b>New.</b> Colours wells by their robust z-score relative to the plate median (MAD-based). Blue = unusually low signal (possible empty well / poor cell dispensing); red = unusually high (double dispensing or background artefact). Ideal for catching dispensing errors before interpreting results.</div></div>
-          <div class="guide-row"><div class="guide-key">DC50 / Dmax (fitted)</div><div class="guide-val">Colours each well by the fitted DC50 or Dmax of the compound at that position. Only populated after curve fitting.</div></div>
+          <div class="guide-row"><div class="guide-key">Maps</div><div class="guide-val">Every plate as a map. <b>Colour by</b> raw luminescence, normalised %, compound, group, fitted DC50/Dmax or Echo transfers; <b>Scale</b> per plate, per group or across all plates; <b>Clip outliers</b> uses the 2nd–98th percentile. The legend shows the range and unit. Type in <b>Find</b> to dim everything but a compound, group, plate or well. Right-click (or Shift-click) a well to leave it out of its curve — or put it back; Ctrl/⌘+Z in Curves undoes it. <b>Wells CSV</b> exports every well (or only the ones your search matches).</div></div>
+          <div class="guide-row"><div class="guide-key">Plate QC</div><div class="guide-val">Per plate, from the raw control wells: Z′ (when 0 % wells are set), S/B, control CV, drift down the rows and across the columns, edge effect, and the reference the normalisation used. Verdicts use the control CV when Z′ cannot be computed, and say so.</div></div>
+          <div class="guide-row"><div class="guide-key">Compare</div><div class="guide-val">Plate A against plate B, matched by compound and dose (replicate plates rarely put a compound in the same well) or by well: scatter with the identity line, r, median ratio, % within tolerance, the ten worst pairs.</div></div>
         </div>
 
         <div class="guide-section">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="8" r="2.4"/><circle cx="17" cy="8" r="2"/><circle cx="12" cy="16" r="2.6"/><path d="M9 9.5l1 4M15 9.3l-1 4.5"/></svg>Properties tab</h3>
-          <div class="guide-row"><div class="guide-key">Sortable columns</div><div class="guide-val">Click any column header to sort by that property (ascending → descending → reset). An arrow indicator (▲▼) shows the active sort column and direction.</div></div>
+          <div class="guide-row"><div class="guide-key">Sortable columns</div><div class="guide-val">Click a column header to sort (ascending → descending → reset). The potency columns sort by the best value across groups; a compound fitted against several targets lists each target's value.</div></div>
           <div class="guide-row"><div class="guide-key">SMILES</div><div class="guide-val">The SMILES cell shows a truncated string. Hover to see the full SMILES in a tooltip. Click to copy the full SMILES string to the clipboard.</div></div>
           <div class="guide-row"><div class="guide-key">Ro5</div><div class="guide-val">Lipinski Rule of Five: flags compounds with MW ≥ 500, logP ≥ 5, HBA &gt; 10, or HBD &gt; 5. Shows number of violations.</div></div>
         </div>
@@ -1413,7 +1419,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div class="guide-section">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 00-3 11.2V16h6v-1.8A6 6 0 0012 3z"/></svg>Tips</h3>
           <div class="guide-row"><div class="guide-key">ⓘ icons</div><div class="guide-val">Hover over any <b>i</b> icon next to a parameter label for a quick explanation of what it controls and how to set it.</div></div>
-          <div class="guide-row"><div class="guide-key">Keyboard shortcuts</div><div class="guide-val">In the Curves tab: ← / → to navigate between compounds; scroll to zoom; drag to pan; double-click to reset zoom. Ctrl+Z / Ctrl+Y to undo/redo scatter filters.</div></div>
+          <div class="guide-row"><div class="guide-key">Keyboard shortcuts</div><div class="guide-val">In the Curves tab: ← / → (or the scroll wheel) to step between compounds; double-click the plot to reset the zoom; Ctrl/⌘+Z and Ctrl+Y undo and redo curve edits here and filter changes in Plots.</div></div>
           <div class="guide-row"><div class="guide-key">Progress indicator</div><div class="guide-val">A small bat 🦇 appears in the bottom-right corner during analysis, flapping to show the app is running. The progress bar shows <em>N / Total curves fitted · X%</em> in real time.</div></div>
         </div>
       </div>
@@ -1857,7 +1863,7 @@ function loadTestData() {
       if (ctrlEl) ctrlEl.value = 'B12-O12';
 
       checkReady();
-      if (btn) { btn.textContent = '✓ Test data loaded'; btn.style.background='var(--accent3)'; btn.style.color='#fff'; btn.style.borderColor='var(--accent3)'; }
+      if (btn) { btn.textContent = '✓ Test data loaded'; btn.style.background='color-mix(in oklab,var(--good) 12%,var(--surface))'; btn.style.color='var(--good)'; btn.style.borderColor='var(--good)'; }
     } catch(e) {
       log('Test data load error: ' + e.message, 'err');
       if (btn) { btn.textContent = 'Test'; btn.disabled = false; }
@@ -2012,6 +2018,15 @@ async function runPipeline() {
       // ── Multi-assay mode: run once per assay type, merge results ──
       const matConfigs = collectMultiAssayConfigs();
       if (!matConfigs.length) throw new Error('No assay types configured in multi-assay mode.');
+      // Two panels with the same assay type and the same file prefix analyse the same plates twice: every
+      // compound came out in duplicate (four default panels gave 252 rows for 63 fits) and the Excel
+      // pivot, which is keyed by compound and assay type, kept only the last of each.
+      { const seen = new Set();
+        for (const mc of matConfigs) {
+          const k = mc.type + '|' + (mc.prefix || '').toLowerCase();
+          if (seen.has(k)) throw new Error('Two assay panels both analyse ' + mc.type + (mc.prefix ? ' for the files starting “' + mc.prefix + '”' : ' for all the plate files') + ', so every compound would appear twice. Give each panel its own assay type or file prefix, or remove one.');
+          seen.add(k);
+        } }
       const mergedResults = [];
       const allPlateData = {};
       downloadBlobs = [];
@@ -6923,13 +6938,28 @@ function renderProperties(results, cdata) {
 
   const _affinityCols = _orderedPropTypes.map(at => ({at, ...(_affinityMeta[at]||{label:'DC50 (nM)',key:'DC50_nM'})}));
 
+  // Sorting, as the Guide has always said: click a column header; again reverses; a third click resets.
+  const _ps = window._propSort || (window._propSort = { col: null, asc: true });
+  const _affVal = (sid, at) => { const v = ((_propResMap[sid.toLowerCase()] || {})[at] || []).map(r => parseFloat(r.DC50_nM)).filter(isFinite); return v.length ? Math.min(...v) : NaN; };
+  const _ro5N = cd => Object.entries(ro5Check).filter(([p, fn]) => cd[p] != null && fn(cd[p])).length;
+  if (_ps.col) {
+    const key = m => _ps.col === 'sid' ? m.sid : _ps.col === 'smiles' ? (m.cd.smiles || '') : _ps.col === 'ro5' ? _ro5N(m.cd)
+      : _ps.col.startsWith('aff:') ? _affVal(m.sid, _ps.col.slice(4)) : m.cd[_ps.col];
+    matched.sort((a, b) => {
+      const x = key(a), y = key(b), xn = typeof x === 'number' && isFinite(x), yn = typeof y === 'number' && isFinite(y);
+      if (xn !== yn) return xn ? -1 : 1;                 // a missing value is last whichever way it is sorted
+      const c = xn ? x - y : natCmp(String(x == null ? '' : x), String(y == null ? '' : y));
+      return _ps.asc ? c : -c;
+    });
+  }
+  const _th = (k, label, extra) => '<th class="pp-sort" onclick="propSortBy(\'' + k + '\')" aria-sort="' + (_ps.col === k ? (_ps.asc ? 'ascending' : 'descending') : 'none') + '">' + label + (extra || '') + (_ps.col === k ? ' <span class="pp-arrow">' + (_ps.asc ? '▲' : '▼') + '</span>' : '') + '</th>';
   let h = '<div style="margin-bottom:10px;font-size:12px;color:var(--text3);">'
     + matched.length + ' compound' + (matched.length>1?'s':'') + ' matched</div>'
     + '<div style="overflow-x:auto;"><table class="props-table"><thead><tr>'
-    + '<th>Structure</th><th>Sample ID</th><th>SMILES</th>'
-    + propCols.map(p=>'<th>'+(propLabels[p]||p)+'</th>').join('')
-    + _affinityCols.map(c=>'<th>'+c.label+(_isMultiProp&&_orderedPropTypes.length>1?' <span style="font-size:var(--fs-1);opacity:.6;">['+esc(c.at)+']</span>':'')+'</th>').join('')
-    + '<th>Ro5</th></tr></thead><tbody>';
+    + '<th>Structure</th>' + _th('sid', 'Sample ID') + _th('smiles', 'SMILES')
+    + propCols.map(p=>_th(p, propLabels[p]||p)).join('')
+    + _affinityCols.map(c=>_th('aff:' + c.at, c.label, (_isMultiProp&&_orderedPropTypes.length>1?' <span style="font-size:var(--fs-1);opacity:.6;">['+esc(c.at)+']</span>':''))).join('')
+    + _th('ro5', 'Ro5') + '</tr></thead><tbody>';
 
   matched.forEach(({ sid, cd }) => {
     const viols = Object.entries(ro5Check).filter(([p,fn])=>cd[p]!=null&&fn(cd[p])).map(([p])=>p);
@@ -6942,7 +6972,7 @@ function renderProperties(results, cdata) {
     h += '<td class="struct-cell"><div style="background:#fff;border-radius:4px;padding:2px;display:inline-block;">'
       + (svg||'<span style="color:var(--text3);font-size:10px;padding:4px;">N/A</span>') + '</div></td>';
     h += '<td style="font-weight:500;color:var(--text);">' + esc(sid) + '</td>';
-    h += '<td class="smiles-cell" title="'+esc(cd.smiles)+'">' + esc(cd.smiles.length>22?cd.smiles.slice(0,22)+'…':cd.smiles) + '</td>';
+    h += '<td class="smiles-cell" title="'+esc(cd.smiles)+' (click to copy)" data-smiles="'+esc(cd.smiles)+'" onclick="propCopySmiles(this)">' + esc(cd.smiles.length>22?cd.smiles.slice(0,22)+'…':cd.smiles) + '</td>';
     propCols.forEach(p => {
       const v = cd[p];
       const fail = ro5Check[p] && v!=null && ro5Check[p](v);
@@ -6964,6 +6994,18 @@ function renderProperties(results, cdata) {
   });
   h += '</tbody></table></div>';
   panel.innerHTML = h;
+}
+
+function propSortBy(col) {
+  const s = window._propSort || (window._propSort = { col: null, asc: true });
+  if (s.col !== col) { s.col = col; s.asc = true; } else if (s.asc) s.asc = false; else { s.col = null; s.asc = true; }
+  renderProperties(_lastResultsData, window._lastCompoundData || {});
+}
+function propCopySmiles(td) {
+  const t = td.getAttribute('data-smiles') || '';
+  const done = () => echoToast('SMILES copied');
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, () => echoToast('Could not copy — select the text in the tooltip instead.', 'err'));
+  else echoToast('Could not copy — this browser blocks the clipboard here.', 'err');
 }
 
 // ===== RENDER DOWNLOADS =====
