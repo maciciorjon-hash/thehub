@@ -6,7 +6,7 @@
   function anyExp(w){ return !!(w.LB && w.LB.data && w.LB.data.experiments && Object.keys(w.LB.data.experiments).length); }
   assistRegister('labbook', {
     name: 'Labbook',
-    blurb: 'Labbook is where experiments are planned, run and written up. You create an experiment; it becomes dated steps with live calculators and a plate map; each day shows what is due, and ticking a step writes the Journal for you. Potencies from Echo or Lumina land on the experiment, and the Report turns it all into a document.',
+    blurb: 'Labbook is where experiments are planned, run and written up. You create an experiment; it becomes dated steps with live calculators and a plate map; each day shows what is due, and ticking a step writes the Journal for you. Potencies from Echo Dose Response or Lumina land on the experiment, and the Report turns it all into a document.',
     first: ['start', 'new-exp', 'today', 'report'],
     avoid: ['#lb-timers'],
     screen: function(w){
@@ -108,7 +108,7 @@
         show: [{ sel: '#fx-drop', say: 'Drop the picklist here.', miss: NOEXP }] },
       { id: 'results', t: 'Get potencies into the experiment', group: 'Experiments', on: ['exp'],
         q: ['results', 'dc50', 'potency', 'send results', 'from echo', 'from lumina', 'flagged', 'exclude a result', 'resultados', 'potencia', 'enviar resultados', 'desde echo', 'excluir', 'n=3', 'replicates statistics', 'geometric mean'],
-        a: 'In dHUB, **Send to Labbook** in Echo, Lumina, BCA or Blueprint attaches the numbers to an experiment (you are asked which one). A **Results** section appears with the potencies, and each keeps its QC flag.',
+        a: 'In dHUB, **Send to Labbook** in Echo Dose Response, Lumina, BCA or Blueprint attaches the numbers to an experiment (you are asked which one). A **Results** section appears with the potencies, and each keeps its QC flag.',
         steps: ['You can add a note to a measurement and **exclude** it: an excluded row stays in the table, struck through, but leaves the results sentence.', 'Repeat an experiment as a replicate and the Results show n biological replicates: technical duplicates are averaged first, and potencies use a geometric mean.'],
         tip: 'The fitter’s flag is its opinion; excluding is yours. Only yours removes a number from the text.' },
       { id: 'setup-edit', t: 'Change the setup of an experiment', group: 'Experiments', on: ['exp'],
@@ -197,7 +197,7 @@
         tip: 'The status is shown honestly: it never says “saved” for something that only lives on this device.' },
       { id: 'visualize', t: 'Charts of my experiments', group: 'Overview', on: ['viz'],
         q: ['visualize', 'charts', 'statistics', 'dashboard', 'success rate', 'heatmap', 'timeline', 'potency landscape', 'graficos', 'estadisticas', 'panel', 'tasa de exito', 'linea de tiempo'],
-        a: '**Visualize** draws your notebook: tiles (experiments, running, success rate, steps ticked, measurements, overdue), an activity heatmap, the monthly rhythm, projects by status, verdicts per type, a timeline, and the **potency landscape** of every measurement Echo sent. Filter by project, type and range; click any mark to open what is behind it.',
+        a: '**Visualize** draws your notebook: tiles (experiments, running, success rate, steps ticked, measurements, overdue), an activity heatmap, the monthly rhythm, projects by status, verdicts per type, a timeline, and the **potency landscape** of every measurement Echo Dose Response sent. Filter by project, type and range; click any mark to open what is behind it.',
         go: [{ l: 'Open Visualize', fn: 'selectNode', args: ['viz', '', ''] }] },
       { id: 'week', t: 'The week at a glance', group: 'Overview', on: ['week'],
         q: ['week', 'weekly planner', 'calendar', 'this week', 'semana', 'planificador', 'calendario', 'esta semana'],

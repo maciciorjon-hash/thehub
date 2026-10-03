@@ -49,7 +49,7 @@ assistRegister('hub', {
     { id: 'offline', t: 'Does it work offline?', group: 'Your data',
       q: ['offline', 'no internet', 'without connection', 'no wifi', 'sin internet', 'sin conexion', 'sin wifi', 'funciona offline'],
       a: ['Once the page has loaded, the tools are self-contained and most keep working without a connection.',
-          'A few features load a library online when you use them, such as PDF export in Echo and the structure drawings in Echo, Dora and Ribbon.'] },
+          'A few features load a library online when you use them, such as PDF export in Echo Dose Response and the structure drawings in Echo Dose Response, Dora and Ribbon.'] },
     { id: 'back-home', t: 'Getting back to the home page', group: 'Getting around',
       q: ['go back', 'back to home', 'home', 'leave app', 'close app', 'exit', 'volver', 'volver al inicio', 'salir', 'cerrar app', 'inicio'],
       a: 'Click the **d** at the top left. Inside a tool it takes you back to the home page.',

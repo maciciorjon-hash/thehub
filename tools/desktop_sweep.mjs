@@ -74,7 +74,7 @@ async function app(name, url, drive) {
 await app('echo', '/apps/echo/echo.html', async (page, m) => {
   await page.evaluate(() => { document.getElementById('setup-modal')?.classList.add('hidden'); [...document.querySelectorAll('.outer-tab')].find(b => /Gradient/.test(b.textContent)).click(); });
   await m('echo-gradient');
-  await page.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Data Analysis/.test(b.textContent)).click(); document.getElementById('setup-modal')?.classList.add('hidden'); loadTestData(); });
+  await page.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Analysis/.test(b.textContent)).click(); document.getElementById('setup-modal')?.classList.add('hidden'); loadTestData(); });
   await page.waitForTimeout(600);
   await page.evaluate(() => { runPipeline(); });
   await page.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 });
