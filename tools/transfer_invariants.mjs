@@ -179,6 +179,9 @@ try {
   check('T6 the analysis is rebuilt on the compound clicked', eo.n === 3 && /EDA-002/.test(eo.sel || ''), JSON.stringify(eo));
   check('T6 the Send button says it updates', /Update/.test(eo.btn || '') && eo.link === echoSet.id, eo.btn);
   check('T6 Echo acks the message', (await page.evaluate(() => Object.values(window.__acks))).includes('echo'));
+  // a flat curve travels as n.d.: no potency, nd:true, and the notebook says so in its tables
+  const nd = await lb.evaluate(() => ({ cell: _rnp({ nd: true, potency: null }), num: _rnp({ potency: 12.34 }), none: _rnp({ potency: null }), kept: _rnp({ nd: true, potency: 5 }) }));
+  check('T6b Labbook reads nd:true as n.d., a number as a number, and nothing as a dash', nd.cell === 'n.d.' && nd.num === '12.3' && nd.none === '—' && nd.kept === '5.00', JSON.stringify(nd));
   await ec.evaluate(() => { const c = document.getElementById('cv-canvas'); const r = c && c._cvCompounds && c._cvCompounds[0]; if (!r) throw new Error('no curve'); _cvUndoMark(r, 'Exclude replicate'); (r._excludedRepXYs = r._excludedRepXYs || []).push({ x: r._reps[0].x, y: r._reps[0].y }); _cvApplyEditsAndRefit(r); });
   await sleep(300);
   await ec.evaluate(() => sendResultsToLabbook()); await sleep(1000);

@@ -11648,7 +11648,7 @@ function _pubResultsTable(e){
   return rs.map(function(r){ var rows=r.rows||[]; if(!rows.length) return '';
     var pl=String(r.potencyLabel||'Potency').split(' ')[0]+(r.potencyUnit?(' ('+r.potencyUnit+')'):''), el2=String(r.effectLabel||'Effect').split(' ')[0]+(r.effectUnit?(' ('+r.effectUnit+')'):'');
     return '<table class="pub-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(pl)+'</th><th>'+esc(el2)+'</th><th>R\u00b2</th><th></th></tr></thead><tbody>'
-      +rows.map(function(x){ return '<tr'+(x.excluded?' class="pub-x"':'')+'><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rn(x.potency))+'</td><td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.r2))+'</td><td>'+(x.excluded?'excluded':(x.flag?'flagged':''))+((x.note||'').trim()?(' \u2014 '+esc(x.note.trim())):'')+'</td></tr>'; }).join('')
+      +rows.map(function(x){ return '<tr'+(x.excluded?' class="pub-x"':'')+'><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rnp(x))+'</td><td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.r2))+'</td><td>'+(x.excluded?'excluded':(x.flag?'flagged':''))+((x.note||'').trim()?(' \u2014 '+esc(x.note.trim())):'')+'</td></tr>'; }).join('')
       +'</tbody></table>'; }).join('');
 }
 // What is attached, by name and caption. The bytes are in the Files tab and the record PDF;
@@ -13639,6 +13639,8 @@ function setupSummaryHtml(e){
 // A DC50 typed by hand into a notebook is where a published number stops being traceable to
 // the curve it came from. These arrive as data from Echo (dhub:context v1) and keep the flag
 // the fitting app raised, so a curve Echo was unhappy about stays visibly unhappy here.
+// A curve Echo Dose Response reported as having no effect carries nd:true and no potency (it has no midpoint).
+function _rnp(x){ return x&&x.nd&&!isFinite(parseFloat(x.potency))?'n.d.':_rn(x&&x.potency); }
 function _rn(v,d){ var n=parseFloat(v); if(!isFinite(n)) return '—';
   return (Math.abs(n)>=100?n.toFixed(0):Math.abs(n)>=10?n.toFixed(1):n.toFixed(2)); }
 // Not every assay is fitted in Echo. A NanoBRET read on a plate reader and fitted in Prism is
@@ -13810,7 +13812,7 @@ function curvesHtml(e,mode,opt){
     var set=gr.set, rows=gr.rows, R=_rcvRange(rows.map(function(x){ return x.curve; })), cols=rows.length>24?4:3;
     var L=resultLabels(e), pot=String(set.potencyLabel||L.p).split(' ')[0], pu=set.potencyUnit||'nM';
     var bitsOf=function(x){ var c=x.curve, nEx=(c.ex||[]).length, bits=[];
-      if(isFinite(parseFloat(x.potency))) bits.push(pot+' '+_rn(x.potency)+' '+pu+(c.ci?(' ('+_rn(c.ci[0])+'\u2013'+_rn(c.ci[1])+')'):''));
+      if(isFinite(parseFloat(x.potency))) bits.push(pot+' '+_rnp(x)+' '+pu+(c.ci?(' ('+_rn(c.ci[0])+'\u2013'+_rn(c.ci[1])+')'):''));
       bits.push('n\u00a0'+c.n+(nEx?(' (+'+nEx+' left out)'):''));
       if(x.flag) bits.push('flagged'+((x.flagReason||'').trim()?(': '+x.flagReason.trim()):''));
       return bits; };
@@ -13871,7 +13873,7 @@ function _rcvRowHtml(e,set,x,ri){
   var stat=function(k,v){ return '<div><span>'+esc(k)+'</span><b>'+v+'</b></div>'; };
   return '<tr class="res-cv-row"><td colspan="9"><div class="rcv"><div class="rcv-plot">'+rcvSvg(c)+'</div><div class="rcv-side">'
     +'<div class="rcv-name">'+esc(x.compound||'')+(x.target?' <i>'+esc(x.target)+'</i>':'')+'</div>'
-    +stat(esc((set.potencyLabel||L.p).split(' ')[0]),_rn(x.potency)+' '+esc(set.potencyUnit||'nM'))
+    +stat(esc((set.potencyLabel||L.p).split(' ')[0]),(x.nd&&!isFinite(parseFloat(x.potency))?'n.d.':_rn(x.potency)+' '+esc(set.potencyUnit||'nM')))
     +(c.ci?stat('95% CI',_rn(c.ci[0])+' \u2013 '+_rn(c.ci[1])):'')
     +stat(esc((set.effectLabel||L.e).split(' ')[0]),_rn(x.effect))
     +stat('Hill',_rn(x.hill))+stat('R\u00b2',_rn(x.r2))
@@ -13949,7 +13951,7 @@ function resultsPaneHtml(e){
         var anyCv=rows.some(function(q){ return q.curve; }), open=x.curve&&RCV_OPEN[_rcvKey(e.id,r.id,ri)];
         return '<tr class="'+(x.flag?'flagged ':'')+(x.excluded?'excluded':'')+'" data-ri="'+ri+'">'
         +'<td>'+esc(x.compound||'')+_resNormMark(x)+'</td><td>'+esc(x.target||'')+'</td>'
-        +'<td class="num">'+_rn(x.potency)+'</td><td class="num">'+_rn(x.effect)+'</td>'
+        +'<td class="num">'+_rnp(x)+'</td><td class="num">'+_rn(x.effect)+'</td>'
         +'<td class="num">'+_rn(x.hill)+'</td><td class="num">'+_rn(x.r2)+'</td>'
         +(anyCv?('<td class="res-cvc">'+(x.curve?('<button class="res-cvb'+(open?' on':'')+'" title="Show the curve" aria-label="Show the curve of '+esc(x.compound||'')+'" aria-expanded="'+(open?'true':'false')+'" onclick="toggleResultCurve(\''+esc(e.id)+'\',\''+esc(r.id||'')+'\','+ri+',this)">'+rcvSvg(x.curve,{mini:true})+'</button>'):'')+'</td>'):'')
         +'<td class="res-note"><input value="'+esc(x.note||'')+'" placeholder="'+(x.flag?'Why it is flagged, or why you kept it':'Note…')
@@ -14146,7 +14148,7 @@ function pubResultsSentence(e){
   } else {
     best=uniq.slice(0,3).map(function(x){
       return String(x.compound)+(x.target?(' against '+String(x.target)):'')
-        +' ('+pl+' '+_rn(x.potency)+' '+pu
+        +' ('+pl+' '+_rnp(x)+' '+pu
         +(isFinite(parseFloat(x.effect))?(', '+el2+' '+_rn(x.effect)+eu):'')+')'; });
   }
   return 'Dose–response curves were fitted with a four-parameter logistic model. '
@@ -20432,7 +20434,7 @@ function pdResults(e){
       +'<table class="pd-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(String(r.potencyLabel||'Potency').split(' ')[0])+pu
       +'</th><th>'+esc(String(r.effectLabel||'Effect').split(' ')[0])+eu+'</th><th>Hill</th><th>R&sup2;</th><th>Flag</th></tr></thead><tbody>'
       + rows.map(function(x){
-          return '<tr><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rn(x.potency))+'</td>'
+          return '<tr><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rnp(x))+'</td>'
             +'<td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.hill))+'</td><td>'+esc(_rn(x.r2))+'</td>'
             // A curve the fitting app was unhappy about must stay visibly unhappy on paper too.
             +'<td>'+(x.flag?'flagged':'')+'</td></tr>';
@@ -20471,7 +20473,7 @@ function exportSummaryCSV(sc){
     ((e.integration&&e.integration.results)||[]).forEach(function(r){
       (r.rows||[]).forEach(function(x){ any=true;
         lines.push(base.concat(['result',x.compound||'',x.target||'',
-          (x.potency==null?'':x.potency)+(r.potencyUnit?(' '+r.potencyUnit):''),
+          (x.nd&&x.potency==null?'n.d.':(x.potency==null?'':x.potency+(r.potencyUnit?(' '+r.potencyUnit):''))),
           (x.effect==null?'':x.effect)+(r.effectUnit?(' '+r.effectUnit):''),
           x.hill==null?'':x.hill, x.r2==null?'':x.r2, x.flag?'flagged':'']).map(q).join(','));
       });
@@ -21166,7 +21168,7 @@ function _resultRowsOf(e){
   ((e.integration&&e.integration.results)||[]).forEach(function(r){
     (r.rows||[]).forEach(function(x){
       out.push([e.code||'', e.title||'', e.startDate||'', r.assay||x.assay||'',
-        x.compound||'', x.target||'', x.potency, r.potencyUnit||'', x.effect, r.effectUnit||'',
+        x.compound||'', x.target||'', (x.nd&&x.potency==null?'n.d.':x.potency), r.potencyUnit||'', x.effect, r.effectUnit||'',
         x.hill, x.r2, x.flag?'yes':'', x.excluded?'yes':'', x.note||'',
         r.source||'', (r.createdAt||'').slice(0,10)]);
     });

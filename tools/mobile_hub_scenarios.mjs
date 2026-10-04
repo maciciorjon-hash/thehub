@@ -179,7 +179,17 @@ export const SCENARIOS = [
       let seeded = false;
       for (const js of (SEEDS[id] || [])) { try { await fr.evaluate(js); seeded = true; await settle(page, SEED_WAIT[id] || 500); } catch (e) {} }
       if (SEED_BUTTONS[id]) { seeded = await fr.evaluate(re => { const R = new RegExp(re, 'i'); const b = [...document.querySelectorAll('button')].find(x => R.test(x.textContent.trim())); if (b) { b.click(); return true; } return false; }, SEED_BUTTONS[id].source).catch(() => false) || seeded; await settle(page, 500); }
-      if (id === 'echo' && seeded) { await fr.evaluate('runPipeline()').catch(() => {}); await settle(page, 7000); await fr.evaluate('try{closeSetupModal()}catch(e){}').catch(() => {}); await settle(page, 400); }
+      if (id === 'echo' && seeded) {
+        // the Review step, before anything is run
+        await fr.evaluate("switchSetupTab('review')").catch(() => {}); await settle(page, 2500); await measure('review', fr);
+        await fr.evaluate('runPipeline()').catch(() => {}); await settle(page, 7000);
+        // a second analysis of the same files gives History a version to show and Compare something to compare
+        await fr.evaluate("document.getElementById('p-r2').value='0.9'; runPipeline()").catch(() => {}); await settle(page, 7000);
+        await fr.evaluate('try{closeSetupModal()}catch(e){}').catch(() => {}); await settle(page, 400);
+        await fr.evaluate("document.querySelector('.tab[data-tab=\"history\"]').click()").catch(() => {}); await settle(page, 900); await measure('history', fr);
+        await fr.evaluate("(()=>{const r=Object.values(_hx.runs).sort((a,b)=>a.ver-b.ver); if(r.length>1) hxCompare(r[0].id,r[1].id);})()").catch(() => {}); await settle(page, 1000); await measure('compare', fr);
+        await fr.evaluate("hxCloseCompare(); document.querySelector('.tab[data-tab=\"results\"]').click()").catch(() => {}); await settle(page, 400);
+      }
       if (seeded) await measure('seeded', fr);
       await crawl(page, fr, measure, 'crawl', { max: id === 'echo' ? 34 : 22, defer: id === 'echo' ? /gradient planner/ : null });
       await home(page);

@@ -76,13 +76,24 @@ await app('echo', '/apps/echo/echo.html', async (page, m) => {
   await m('echo-gradient');
   await page.evaluate(() => { [...document.querySelectorAll('.outer-tab')].find(b => /Analysis/.test(b.textContent)).click(); document.getElementById('setup-modal')?.classList.add('hidden'); loadTestData(); });
   await page.waitForTimeout(600);
+  await page.evaluate(() => { document.getElementById('setup-modal')?.classList.remove('hidden'); switchSetupTab('review'); });
+  await page.waitForTimeout(2500);
+  await m('echo-review');
   await page.evaluate(() => { runPipeline(); });
   await page.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 });
+  await page.waitForTimeout(1500);
+  // a second analysis of the same files: History gets a version, Compare something to compare
+  await page.evaluate(() => { document.getElementById('p-r2').value = '0.9'; runPipeline(); });
+  await page.waitForTimeout(6000);
   await page.evaluate(() => document.getElementById('setup-modal')?.classList.add('hidden'));
   for (const t of ['results', 'curves', 'scatter', 'props', 'history']) {
     await page.evaluate(k => document.querySelector(`.tab[data-tab="${k}"]`).click(), t);
     await m('echo-' + t);
   }
+  await page.evaluate(() => { const r = Object.values(_hx.runs).sort((a, b) => a.ver - b.ver); if (r.length > 1) hxCompare(r[0].id, r[1].id); });
+  await page.waitForTimeout(900);
+  await m('echo-compare');
+  await page.evaluate(() => hxCloseCompare());
   await page.evaluate(() => document.querySelector('.tab[data-tab="plate"]').click());
   for (const v of ['maps', 'qc', 'compare']) {
     await page.evaluate(k => plateSetView(k), v).catch(() => {});

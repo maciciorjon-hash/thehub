@@ -77,6 +77,16 @@
 //                          without a reader file, controls that land on compound wells, curves with too few readings; the group of a
 //                          plate follows the chosen rule (first dash, last dash, whole barcode, own table) in the run, the Review and
 //                          the Protocol, and editing it in the Review writes the table.
+//   E34 n.d.               A curve flagged "No effect" has no midpoint: with the switch on (Setup › Output) its potency, logs, Hill and
+//                          confidence limits read n.d. in the table, the Curves stats, the summary CSV, Copy TSV, the workbook, Properties
+//                          and the rows sent to Labbook (nd:true, no potency); it is left off potency axes and says how many; Dmax and R²
+//                          stay numbers; with the switch off every number is printed as before; the data rows keep the fitted values.
+//   E35 keyboard and        Tabs are a tablist (one selected, arrows / Home / End move and select), sortable headers are reachable and sort
+//       screen reader       on Enter, every visible control on every view has an accessible name, the Setup dialog traps Tab, closes on
+//                           Esc and gives focus back, progress is a progressbar, charts describe themselves, [ ] and / work.
+//   E36 motion and focus   Nothing animates at rest; one underline travels to the picked tab (and sits under it); coming back from the Gradient
+//                          Planner does not put Setup over the results; an edit made in Curves flashes its row in Results; with reduced
+//                          motion the transitions are clamped.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -1050,6 +1060,141 @@ if (run('E33')) await guard('E33', async () => {
   check('E33', 'the run uses the table (BRD2-* → Alpha, BRD3-01 → Beta, the rest by the first dash) and the Protocol tab says so', grp.groups.join() === 'Alpha,BRD3,BRD4,Beta' || grp.groups.join() === 'Alpha,BRD3,BRD4,Beta'.split(',').sort().join(), grp);
   await E(() => { document.getElementById('p-group-mode').value = 'first'; document.getElementById('p-group-map').value = ''; onGroupModeChange(); });
   await runWith({});
+});
+
+if (run('E34')) await guard('E34', async () => {
+  await BACK_TO_ANALYSIS();
+  await runWith({});
+  const r = await E(async () => {
+    const out = {};
+    const nds = _lastResultsData.filter(x => /No effect/.test(x.Flag_Reason || '')), ok = _lastResultsData.find(x => x.Flag !== 'Yes');
+    out.nNd = nds.length; const nd0 = nds[0];
+    out.keeps = typeof nd0.DC50_nM === 'number' && nd0.DC50_nM > 0;
+    document.querySelector('.tab[data-tab="results"]').click(); renderResults(_lastResultsData);
+    const rowOf = x => [...document.querySelectorAll('.results-tbl-scroll tbody tr')].find(tr => tr.children[1] && tr.children[1].textContent.trim() === x.Sample_ID && tr.children[0].textContent.trim() === x.Protein);
+    const cells = tr => [...tr.children].map(c => c.textContent.trim());
+    out.ndRow = cells(rowOf(nd0)).join('|'); out.okRow = cells(rowOf(ok)).join('|');
+    out.ndCount = [...rowOf(nd0).children].filter(c => c.textContent.trim() === 'n.d.').length;
+    // summary csv
+    const blob = downloadBlobs.find(b => /Consolidated_Summary/.test(b.name)); const csv = new TextDecoder().decode(blob.bytes);
+    const lines = csv.split(/\r?\n/), hdr = lines[0].split(','), line = lines.find(l => l.indexOf(nd0.Sample_ID) >= 0 && l.indexOf(nd0.Protein) === 0 || l.startsWith(nd0.Protein + ',' + nd0.Sample_ID));
+    out.csvNd = line && line.split(',').filter(c => c === 'n.d.').length; out.csvHdr = hdr.length;
+    // TSV
+    let tsv = ''; const realClip = navigator.clipboard; Object.defineProperty(navigator, 'clipboard', { value: { writeText: t => { tsv = t; return Promise.resolve(); } }, configurable: true });
+    copyResultsTSV(); await new Promise(r => setTimeout(r, 100)); Object.defineProperty(navigator, 'clipboard', { value: realClip, configurable: true });
+    out.tsvNd = (tsv.split('\n').find(l => l.startsWith(nd0.Protein + '\t' + nd0.Sample_ID)) || '').split('\t').filter(c => c === 'n.d.').length;
+    // workbook
+    let wb = null; const realWrite = XLSX.write; XLSX.write = (w, o) => { wb = w; return realWrite.call(XLSX, w, o); }; try { generateOutputXLSX(); } finally { XLSX.write = realWrite; }
+    if (wb) { const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 }); const h = rows[0]; const row = rows.find(rw => rw[0] === nd0.Protein && rw[1] === nd0.Sample_ID); out.xlsxNd = row.filter(c => c === 'n.d.').length; out.xlsxDmax = row[h.findIndex(c => /Dmax/.test(c))]; }
+    // labbook
+    const lb = echoResultRows().find(x => x.compound === nd0.Sample_ID && x.target === nd0.Protein), lbOk = echoResultRows().find(x => x.compound === ok.Sample_ID);
+    out.lb = { nd: lb.nd, potency: lb.potency, fit: lb.potencyFit, bound: lb.bound, okPotency: lbOk.potency, okNd: lbOk.nd, effect: lb.effect };
+    // properties
+    const cd = {}; cd[nd0.Sample_ID] = { smiles: 'C', MW: 1, logP: 1, HBA: 1, HBD: 1, TPSA: 1, RotBonds: 1, ArRings: 1, svg: '' };
+    renderProperties(_lastResultsData, cd); out.props = document.querySelector('#props-panel td.pp-aff') ? document.querySelector('#props-panel td.pp-aff').innerText.replace(/\s+/g, ' ') : null;
+    // scatter: potency axes drop it, a Dmax-only plot keeps it
+    window._scNd = 0; renderScatter(_lastResultsData); document.getElementById('sc-flags').checked = true; buildScatterChart(); out.scNd = window._scNd; out.scNote = document.getElementById('sc-nd-note') && document.getElementById('sc-nd-note').textContent;
+    // switch off
+    _lastAnalysisParams.ndNoEffect = false; renderResults(_lastResultsData);
+    out.offRow = cells(rowOf(nd0)).join('|'); out.offNd = _outVal(nd0, 'DC50_nM') === nd0.DC50_nM; _lastAnalysisParams.ndNoEffect = true;
+    return out;
+  });
+  check('E34', 'there are flat curves in the test data and the data rows keep their fitted values', r.nNd >= 2 && r.keeps, r);
+  check('E34', 'the table prints n.d. for potency, Abs, logs, Hill and the interval of a flat curve, and numbers for a good one', r.ndCount >= 5 && !/n\.d\./.test(r.okRow), { nd: r.ndRow, ok: r.okRow });
+  check('E34', 'the summary CSV, Copy TSV and the workbook say n.d. too, and Dmax stays a number', r.csvNd >= 4 && r.tsvNd >= 4 && r.xlsxNd >= 4 && typeof r.xlsxDmax === 'number', { csv: r.csvNd, tsv: r.tsvNd, xlsx: r.xlsxNd, dmax: r.xlsxDmax });
+  check('E34', 'Labbook gets nd:true and no potency for a flat curve, the numbers for the rest', r.lb.nd === true && r.lb.potency === null && r.lb.fit > 0 && r.lb.bound && r.lb.okNd === false && r.lb.okPotency > 0 && typeof r.lb.effect === 'number', r.lb);
+  check('E34', 'Properties shows n.d. for it', r.props && /n\.d\./.test(r.props), r.props);
+  check('E34', 'potency plots leave it out and say how many', r.scNd >= 1 && /no effect/.test(r.scNote || ''), { n: r.scNd, note: r.scNote });
+  check('E34', 'with the switch off the numbers come back everywhere', !/n\.d\./.test(r.offRow) && r.offNd, { off: r.offRow });
+});
+
+if (run('E35')) await guard('E35', async () => {
+  await BACK_TO_ANALYSIS();
+  await runWith({});
+  const r = await E(async () => {
+    const out = { unnamed: {}, tablists: [] };
+    const named = el => !!(el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || (el.labels && el.labels.length) || (['BUTTON'].includes(el.tagName) && (el.textContent || '').trim()) || el.getAttribute('title'));
+    for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'log', 'history', 'protocol', 'survey', 'guide']) {
+      document.querySelector('.tab[data-tab="' + t + '"]').click(); await new Promise(r => setTimeout(r, 450));
+      const pane = document.getElementById('tab-' + t);
+      out.unnamed[t] = [...pane.querySelectorAll('button, input:not([type=hidden]), select, textarea, [role=button]')].filter(e => e.offsetParent !== null && !named(e)).map(e => (e.tagName + '#' + e.id + '.' + e.className).slice(0, 50)).slice(0, 4);
+    }
+    document.querySelector('.tab[data-tab="results"]').click(); await new Promise(r => setTimeout(r, 300));
+    document.querySelectorAll('[role=tablist]').forEach(l => out.tablists.push({ label: l.getAttribute('aria-label'), tabs: l.querySelectorAll('[role=tab]').length, selected: l.querySelectorAll('[aria-selected="true"]').length, focusable: l.querySelectorAll('[role=tab][tabindex="0"]').length }));
+    // arrows
+    const first = document.querySelector('.tabs-scroll .tab.active'); first.focus();
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await new Promise(r => setTimeout(r, 200));
+    out.afterArrow = document.querySelector('.tabs-scroll .tab.active').dataset.tab;
+    document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })); await new Promise(r => setTimeout(r, 200));
+    out.afterEnd = document.querySelector('.tabs-scroll .tab.active').dataset.tab;
+    document.body.focus(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '[', bubbles: true })); await new Promise(r => setTimeout(r, 200));
+    out.afterBracket = document.querySelector('.tabs-scroll .tab.active').dataset.tab;
+    document.querySelector('.tab[data-tab="results"]').click(); await new Promise(r => setTimeout(r, 300));
+    // sortable header
+    const th = [...document.querySelectorAll('.results-tbl-scroll th[data-col-key]')].find(h => h.getAttribute('data-col-key') === 'DC50_nM');
+    out.thTab = th.tabIndex; th.focus(); th.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await new Promise(r => setTimeout(r, 200));
+    out.thSort = [...document.querySelectorAll('.results-tbl-scroll th[data-col-key]')].find(h => h.getAttribute('data-col-key') === 'DC50_nM').getAttribute('aria-sort');
+    // dialog
+    const opener = document.querySelector('[onclick*="openSetupModal"]'); opener.focus(); opener.click(); await new Promise(r => setTimeout(r, 300));
+    const m = document.getElementById('setup-modal'), card = m.querySelector('.setup-card');
+    out.dialog = { role: card.getAttribute('role'), modal: card.getAttribute('aria-modal'), inside: m.contains(document.activeElement) };
+    const f = [...m.querySelectorAll('button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null);
+    f[f.length - 1].focus(); document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    out.trapped = m.contains(document.activeElement);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await new Promise(r => setTimeout(r, 300));
+    out.closed = m.classList.contains('hidden'); out.restored = document.activeElement === opener;
+    const pb = document.querySelector('.pbar-wrap'); out.pb = pb.getAttribute('role');
+    document.querySelector('.tab[data-tab="curves"]').click(); await new Promise(r => setTimeout(r, 500)); a11yDescribeCharts();
+    const cv = document.getElementById('cv-canvas'); out.cv = cv.getAttribute('role') + ' | ' + cv.getAttribute('aria-label');
+    return out;
+  });
+  const un = Object.entries(r.unnamed).filter(([, v]) => v.length);
+  check('E35', 'every visible button, input and select on every view has a name', un.length === 0, un);
+  check('E35', 'each tab list has one selected tab and one tab stop', r.tablists.length >= 3 && r.tablists.every(l => l.tabs > 0 && l.selected === 1 && l.focusable === 1), r.tablists);
+  check('E35', '→ selects the next view, End the last, [ the previous', r.afterArrow === 'curves' && r.afterEnd === 'guide' && r.afterBracket === 'survey', { a: r.afterArrow, e: r.afterEnd, b: r.afterBracket });
+  check('E35', 'a sortable header is a tab stop and Enter sorts it (aria-sort follows)', r.thTab === 0 && r.thSort === 'ascending', { tab: r.thTab, sort: r.thSort });
+  check('E35', 'the Setup dialog is a modal dialog, takes focus, traps Tab, closes on Esc and gives focus back', r.dialog.role === 'dialog' && r.dialog.modal === 'true' && r.dialog.inside && r.trapped && r.closed && r.restored, { d: r.dialog, trapped: r.trapped, closed: r.closed, restored: r.restored });
+  check('E35', 'progress is a progressbar; the curve describes itself', r.pb === 'progressbar' && /^img \| Dose-response curve of /.test(r.cv), { pb: r.pb, cv: r.cv });
+});
+
+if (run('E36')) await guard('E36', async () => {
+  await BACK_TO_ANALYSIS();
+  await runWith({});
+  await pg.waitForTimeout(1500);
+  const r = await E(async () => {
+    const out = {};
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    document.querySelector('.tab[data-tab="results"]').click(); await wait(500);
+    // 1. nothing loops at rest
+    out.looping = [...document.querySelectorAll('body *')].filter(el => el.getClientRects().length > 0).filter(el => { const cs = getComputedStyle(el); return cs.animationName !== 'none' && cs.animationIterationCount === 'infinite'; }).map(el => el.tagName + '#' + el.id + '.' + el.className).slice(0, 5);
+    // 2. the ink
+    const host = document.querySelector('.tabs-scroll'), ink = host.querySelector(':scope > .tab-ink');
+    const under = () => { const a = host.querySelector('.tab.active'), m = (ink.style.transform.match(/translate\(([\d.]+)px,\s*([\d.]+)px\) scaleX\(([\d.]+)\)/) || []); return { dx: Math.abs(+m[1] - a.offsetLeft), dw: Math.abs(+m[3] * 100 - a.offsetWidth), dy: Math.abs(+m[2] - (a.offsetTop + a.offsetHeight - 2)) }; };
+    out.ink0 = under();
+    document.querySelector('.tab[data-tab="scatter"]').click(); await wait(80);
+    out.inkMoving = getComputedStyle(ink).transitionProperty.includes('transform') && parseFloat(getComputedStyle(ink).transitionDuration) > 0;
+    await wait(450); out.ink1 = under();
+    // 3. coming back from the planner
+    switchPanel('gradient', document.querySelectorAll('.outer-tab')[1]); await wait(200);
+    switchPanel('analysis', document.querySelectorAll('.outer-tab')[0]); await wait(300);
+    out.setupAfterPlanner = !document.getElementById('setup-modal').classList.contains('hidden');
+    // 4. an edit flashes its row
+    document.querySelector('.tab[data-tab="results"]').click(); await wait(300);
+    const r0 = _lastResultsData[0]; window._flashKey = null;
+    _cvApplyEditsAndRefit(r0); await wait(150);
+    out.flash = !!document.querySelector('.results-tbl-scroll tr.row-flash') && document.querySelector('.results-tbl-scroll tr.row-flash').getAttribute('data-k') === r0.Protein + '|' + r0.Sample_ID;
+    return out;
+  });
+  check('E36', 'nothing at rest runs an infinite animation', r.looping.length === 0, r.looping);
+  check('E36', 'the tab underline sits under the active tab, and travels to the next by transform', r.ink0.dx < 1.5 && r.ink0.dw < 1.5 && r.ink0.dy < 1.5 && r.inkMoving && r.ink1.dx < 1.5 && r.ink1.dw < 1.5, { a: r.ink0, b: r.ink1, moving: r.inkMoving });
+  check('E36', 'returning from the Gradient Planner does not put Setup over the results', r.setupAfterPlanner === false, r);
+  check('E36', 'an edit made in Curves flashes the changed row in Results', r.flash, r);
+  const ctx2 = await browser.newContext({ viewport: { width: 1200, height: 800 }, reducedMotion: 'reduce' });
+  const p2 = await ctx2.newPage(); await p2.goto('file://' + FILE); await p2.waitForTimeout(1200);
+  const rm = await p2.evaluate(() => { const ink = document.querySelector('.tabs-scroll > .tab-ink'); const ds = [ink, document.querySelector('.hist-btn') || document.querySelector('.tab')].filter(Boolean).map(e => parseFloat(getComputedStyle(e).transitionDuration)); return ds; });
+  check('E36', 'with reduced motion every transition is clamped to a hair', rm.length > 0 && rm.every(d => d <= 0.01), rm);
+  await ctx2.close();
 });
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
