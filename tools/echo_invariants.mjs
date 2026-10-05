@@ -66,6 +66,8 @@
 //       datasets, not copies analysed the same way add nothing, another setting is v2 and says what changed, a redraw or a curve edit
 //                           updates in place, Load restores the version's own settings, a full store drops stored files first, the old
 //                           browser-store list migrates once with its copies collapsed, and a cloud merge never resurrects a deletion.
+//   E38 export each curve   Curves compared on one chart can each be exported alone (PNG, PDF, one PDF with a page per curve, or all as files),
+//                           and every figure — overlay or single — carries the chart's axes, a fixed Y included.
 //   E37 history by name    A History entry is its NAME: runs with one name are versions of one entry (any spelling, any input files), old copies merge, unnamed runs stay by dataset, rename/merge, and every way to compare is findable.
 //   E32 compare             Two analyses matched by group and compound: fold change, unmatched counted, self-compare is 1, biggest change first.
 //   E28 Properties names    The Properties tab lists a compound's potency for every group it was fitted in, not the last one.
@@ -171,6 +173,42 @@ if (run('E2') && hasPdf) await guard('E2', async () => {
   const txt = batch.toString('latin1');
   check('E2', 'batch PDF has no raster', imgs(batch) === 0, imgs(batch));
   check('E2', 'batch PDF prints a flag reason as text', /\(Hookx1\)/.test(txt), 'Hookx1 not found as a text run');
+});
+
+if (run('E38') && hasPdf) await guard('E38', async () => {
+  await E(() => { document.querySelector('[data-tab="curves"]').click(); });
+  await pg.waitForTimeout(400);
+  await E(() => { window._cvSelected && window._cvSelected.clear && window._cvSelected.clear(); window._cvColorIdx && window._cvColorIdx.clear && window._cvColorIdx.clear(); setCvMode('compare'); });
+  await pg.waitForTimeout(500);
+  for (let i = 0; i < 3; i++) { await pg.locator('#cv-compare-list label').nth(i).click(); await pg.waitForTimeout(150); }
+  await pg.waitForTimeout(500);
+  const range = L => [L.xlo, L.xhi, L.ylo, L.yhi].map(v => +v.toFixed(6)).join();
+  const r = await E(() => {
+    const cv = document.getElementById('cv-canvas'), on = cv._cvLay, specs = [0, 1, 2].map(i => _cvFigureSpec(i)), c = document.createElement('canvas').getContext('2d');
+    const lay = sp => _cvLayout(c, sp.W, null, sp.comps, Object.assign({}, sp.cfg));
+    window._cvExpSameAxes = false; const free = [0, 1, 2].map(i => _cvLayout(c, 520, null, _cvFigureSpec(i).comps, _cvFigureSpec(i).cfg)); window._cvExpSameAxes = true;
+    const o = _cvFigureSpec();
+    return { n: (cv._cvCompounds || []).length, screen: [on.xlo, on.xhi, on.ylo, on.yhi], each: specs.map(sp => { const L = lay(sp); return [L.xlo, L.xhi, L.ylo, L.yhi]; }), overlay: (() => { const L = lay(o); return [L.xlo, L.xhi, L.ylo, L.yhi]; })(),
+      free: free.map(L => [L.ylo, L.yhi]), names: specs.map(sp => sp.name), one: specs.every(sp => sp.comps.length === 1) };
+  });
+  const same = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+  check('E38', 'three curves compared, each can be exported on its own (one compound per file, distinct names)', r.n === 3 && r.one && new Set(r.names).size === 3, r);
+  check('E38', 'every individual figure uses the chart\'s axes, X and Y', r.each.every(a => same(a, r.screen)) && same(r.overlay, r.screen), r);
+  check('E38', 'without "same axes" a curve is scaled to itself (the option does something)', r.free.some(f => Math.abs(f[0] - r.screen[2]) > 1e-6 || Math.abs(f[1] - r.screen[3]) > 1e-6), r);
+  await E(() => { const cb = document.getElementById('cv-fix-y'); cb.checked = true; _onCvFixYChange(cb); document.getElementById('cv-ymin-fixed').value = -30; document.getElementById('cv-ymax-fixed').value = 140; renderCvCurve(); });
+  await pg.waitForTimeout(400);
+  const f = await E(() => { const c = document.createElement('canvas').getContext('2d'); return [0, 1, 2].map(i => { const sp = _cvFigureSpec(i), L = _cvLayout(c, sp.W, null, sp.comps, sp.cfg); return [L.ylo, L.yhi]; }).concat([(() => { const sp = _cvFigureSpec(), L = _cvLayout(c, sp.W, null, sp.comps, sp.cfg); return [L.ylo, L.yhi]; })()]); });
+  check('E38', 'a fixed Y (−30 to 140) is the Y of every exported figure, the overlay and each curve alone', f.every(a => a[0] === -30 && a[1] === 140), f);
+  const pdf = await download(() => cvDownloadEach('pdf'));
+  const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+  check('E38', 'one PDF with a page per curve', pages === 3, pages);
+  const names = []; const on = d => names.push(d.suggestedFilename()); pg.on('download', on);
+  await E(() => { cvDownloadEach('png'); }); await pg.waitForTimeout(2500); pg.off('download', on);
+  check('E38', 'one PNG per curve, each its own file', names.length === 3 && new Set(names).size === 3 && names.every(n => /^curve_.*\.png$/.test(n)), names);
+  await E(() => cvShowDownloadPicker()); if (args.shot) await pg.screenshot({ path: String(args.shot) }); await E(() => document.getElementById('cv-dl-picker')?.remove());
+  const pk = await E(() => { cvShowDownloadPicker(); const p = document.getElementById('cv-dl-picker'), t = p.innerText; const rows = p.querySelectorAll('.cv-dl-row').length; p.remove(); return { t: t.replace(/\s+/g, ' '), rows }; });
+  check('E38', 'the Download menu offers each curve on its own, all of them at once, and the axes option', pk.rows === 3 && /Each curve on its own/.test(pk.t) && /one page per curve/.test(pk.t) && /Same axes/.test(pk.t), pk);
+  await E(() => { const cb = document.getElementById('cv-fix-y'); cb.checked = false; _onCvFixYChange(cb); setCvMode('single'); });
 });
 
 if (run('E3') || run('E4')) await guard('E3', async () => {

@@ -472,6 +472,12 @@ rect.pq-ok{fill:var(--accent);opacity:.55;}rect.pq-warn{fill:var(--warn);opacity
 .cv-struct-popup{position:absolute;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-2,6px);padding:8px;box-shadow:0 4px 20px rgba(0,0,0,.2);z-index:20;pointer-events:none;}
 .cv-dl-item{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 12px;border-radius:var(--r-1);border:none;background:none;color:var(--text);font-size:var(--fs-2);cursor:pointer;text-align:left;width:100%;font-family:var(--sans);}
 .cv-dl-item:hover,.cv-dl-item:focus-visible{background:var(--surface2);}
+.cv-dl-h{font-size:var(--fs-1);font-weight:600;color:var(--text3);padding:8px 12px 3px;}
+.cv-dl-ax{display:flex;align-items:center;gap:7px;padding:4px 12px 6px;font-size:var(--fs-2);color:var(--text2);cursor:pointer;}
+.cv-dl-row{display:flex;align-items:center;gap:6px;padding:2px 8px 2px 12px;}
+.cv-dl-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-2);color:var(--text);}
+.cv-dl-nm i{font-style:normal;color:var(--text3);}
+.cv-dl-row .hist-btn{height:26px;padding:0 9px;}
 .cv-dl-sub{font-size:var(--fs-1);color:var(--text3);}
 @media(max-width:760px){
   .cv-body{flex-direction:column;overflow-y:auto;}
@@ -8565,34 +8571,44 @@ function _pdfCtx(doc, k, ox, oy) {
 // A figure has one geometry whatever the window: 520 px wide for a curve, 620 for a
 // comparison, fonts and lines at print weight. What is on screen — zoom, fixed Y, the pinned
 // reference, the compare colours — is what is exported.
-function _cvFigureSpec() {
+function _cvFigureSpec(only) {
   const canvas = document.getElementById('cv-canvas');
-  const comps = canvas?._cvCompounds || [];
+  const all = canvas?._cvCompounds || [];
+  const comps = only != null ? [all[only]].filter(Boolean) : all;
+  const single = comps.length === 1;
   const cfg = Object.assign({}, window._cvCfg || {}, {
     bgStyle:'white', _exportFontMul:1.1, _exportLegendMul:1.05, _exportLineMul:1, _exportPointMul:1,
     _exportBoldTitle:true, _aspect: comps.length > 1 ? 0.72 : 0.78,
     palette: canvas?._cvPalette, dashes: canvas?._cvDashes,
   });
+  // The axes of the chart on screen — zoom and fixed Y included — are the axes of the file. A curve exported on its
+  // own would otherwise be scaled to itself, and curves that were compared on one scale would no longer be.
+  const Ls = canvas?._cvLay;
+  if (window._cvExpSameAxes !== false && Ls && Ls.ok) Object.assign(cfg, {xlo: Ls.xlo, xhi: Ls.xhi, ylo: Ls.ylo, yhi: Ls.yhi});
   const z = window._cvZoom;
   if (z && !z._auto) Object.assign(cfg, {xlo: z.xlo, xhi: z.xhi, ylo: z.ylo, yhi: z.yhi});
-  const ref = (window._cvMode === 'single' && window._cvRef && comps[0] && _cvKey(window._cvRef) !== _cvKey(comps[0])) ? window._cvRef : null;
+  const ref = (only == null && window._cvMode === 'single' && window._cvRef && comps[0] && _cvKey(window._cvRef) !== _cvKey(comps[0])) ? window._cvRef : null;
   const safe = s => String(s || '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
-  const name = comps.length === 1 ? 'curve_' + safe(comps[0].Sample_ID) + '_' + safe(comps[0].Protein)
+  const name = single ? 'curve_' + safe(comps[0].Sample_ID) + '_' + safe(comps[0].Protein)
     : 'curves_' + (safe([...new Set(comps.map(r => r.Protein))].slice(0, 3).join('-')) || 'compare') + '_' + comps.length;
   return {comps, cfg, ref, W: comps.length > 1 ? 620 : 520, name};
 }
 
-function cvDownloadPNG() {
-  const s = _cvFigureSpec();
-  if (!s.comps.length) { echoToast('Select a compound first.'); return; }
+function _cvPngUrl(s) {
   const off = document.createElement('canvas');
   off.style.width = s.W + 'px';
   const cfg = Object.assign({}, s.cfg, {_exportScale: 6, _fitHeight: true});
   const L = drawMultiCurve(off, s.comps, cfg);
   if (s.ref) drawMultiCurve(off, [s.ref], Object.assign({}, cfg, {_refMode: true, _noResize: true, _lay: L}));
-  const a = document.createElement('a');
-  a.download = s.name + '.png';
-  a.href = off.toDataURL('image/png'); a.click();
+  return off.toDataURL('image/png');
+}
+function _cvSave(url, name) { const a = document.createElement('a'); a.download = name; a.href = url; document.body.appendChild(a); a.click(); a.remove(); }
+
+// i (optional): the index of one curve of the comparison, exported on its own.
+function cvDownloadPNG(i) {
+  const s = _cvFigureSpec(i);
+  if (!s.comps.length) { echoToast('Select a compound first.'); return; }
+  _cvSave(_cvPngUrl(s), s.name + '.png');
 }
 
 function _cvPdfFigure(doc, ox, oy, k, W, comps, cfg, ref, H) {
@@ -8604,20 +8620,41 @@ function _cvPdfFigure(doc, ox, oy, k, W, comps, cfg, ref, H) {
   return L;
 }
 
-function cvDownloadPDF() {
+// One PDF of one figure, or — given several specs — one page per figure, all on the page size of the first.
+function _cvPdfOf(specs, title) {
   const jsPDFCls = window.jspdf && window.jspdf.jsPDF;
-  if (!jsPDFCls) { echoToast('PDF library not loaded yet — try again in a moment.'); return; }
-  const s = _cvFigureSpec();
-  if (!s.comps.length) { echoToast('Select a compound first.'); return; }
+  if (!jsPDFCls) { echoToast('PDF library not loaded yet — try again in a moment.'); return null; }
   const k = 0.75; // 1 CSS px = 0.75 pt: a 520 px figure is 13.8 cm wide
   const probe = new jsPDFCls({unit:'pt', format:[200, 200]});
-  const Lp = _cvLayout(_pdfCtx(probe, k), s.W, null, s.comps, Object.assign({}, s.cfg, {_vector: true}));
-  const Wpt = s.W * k, Hpt = Lp.H * k;
+  const Hs = specs.map(s => _cvLayout(_pdfCtx(probe, k), s.W, null, s.comps, Object.assign({}, s.cfg, {_vector: true})).H);
+  const Hmax = Math.max(...Hs), Wpt = specs[0].W * k, Hpt = Hmax * k;
   const doc = new jsPDFCls({unit:'pt', format:[Wpt, Hpt], orientation: Wpt > Hpt ? 'landscape' : 'portrait'});
-  _cvPdfFigure(doc, 0, 0, k, s.W, s.comps, s.cfg, s.ref);
-  doc.setProperties({title: s.name, creator: 'dHUB Echo Dose Response'});
-  doc.save(s.name + '.pdf');
+  specs.forEach((s, ix) => { if (ix) doc.addPage([Wpt, Hpt], Wpt > Hpt ? 'landscape' : 'portrait'); _cvPdfFigure(doc, 0, 0, k, s.W, s.comps, s.cfg, s.ref, specs.length > 1 ? Hmax : null); });
+  doc.setProperties({title, creator: 'dHUB Echo Dose Response'});
+  return doc;
 }
+function cvDownloadPDF(i) {
+  const s = _cvFigureSpec(i);
+  if (!s.comps.length) { echoToast('Select a compound first.'); return; }
+  const doc = _cvPdfOf([s], s.name); if (doc) doc.save(s.name + '.pdf');
+}
+// Every curve of the comparison on its own, on the chart's axes: one PNG each, or one PDF with a page each.
+async function cvDownloadEach(kind) {
+  const n = (document.getElementById('cv-canvas')?._cvCompounds || []).length;
+  if (n < 2) { echoToast('Compare at least two curves first.'); return; }
+  const specs = []; for (let i = 0; i < n; i++) specs.push(_cvFigureSpec(i));
+  if (kind === 'pdf') {
+    const doc = _cvPdfOf(specs, 'curves_' + n); if (!doc) return;
+    doc.save('curves_' + specs[0].comps[0].Protein.replace(/[^A-Za-z0-9._-]+/g, '_') + '_' + n + '_one_per_page.pdf'); return;
+  }
+  echoToast('Downloading ' + n + ' PNG files… if your browser asks to allow multiple downloads, allow it.');
+  const used = {};
+  for (const s of specs) {
+    let nm = s.name; used[nm] = (used[nm] || 0) + 1; if (used[nm] > 1) nm += '_' + used[nm];
+    _cvSave(_cvPngUrl(s), nm + '.png'); await new Promise(r => setTimeout(r, 450));
+  }
+}
+function cvSameAxes(on) { window._cvExpSameAxes = !!on; }
 
 function _onCvFixYChange(cb) {
   if (cb.checked) {
@@ -8643,15 +8680,26 @@ function cvShowDownloadPicker() {
   if (existing) { existing.remove(); return; }
   const btn = document.getElementById('cv-dl-btn');
   if (!btn) return;
+  const comps = document.getElementById('cv-canvas')?._cvCompounds || [];
   const picker = document.createElement('div');
   picker.id = 'cv-dl-picker';
   picker.setAttribute('role', 'menu');
-  picker.style.cssText = 'position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border2);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:5px;display:flex;flex-direction:column;gap:2px;min-width:170px;font-family:var(--sans);';
-  const item = (label, sub, fn) => '<button role="menuitem" class="cv-dl-item" onclick="document.getElementById(\'cv-dl-picker\')?.remove();' + fn + '()"><span>' + label + '</span><span class="cv-dl-sub">' + sub + '</span></button>';
-  picker.innerHTML = item('PNG', 'image, 3120 px wide', 'cvDownloadPNG') + item('PDF', 'vector, editable', 'cvDownloadPDF');
+  picker.style.cssText = 'position:fixed;z-index:9999;background:var(--surface);border:1px solid var(--border2);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:5px;display:flex;flex-direction:column;gap:2px;min-width:230px;max-width:340px;max-height:calc(100vh - 24px);overflow:auto;font-family:var(--sans);';
+  const item = (label, sub, fn) => '<button role="menuitem" class="cv-dl-item" onclick="document.getElementById(\'cv-dl-picker\')?.remove();' + fn + '"><span>' + label + '</span><span class="cv-dl-sub">' + sub + '</span></button>';
+  const many = comps.length > 1;
+  let h = (many ? '<div class="cv-dl-h">All ' + comps.length + ' curves on one chart</div>' : '') + item('PNG', 'image, 3120 px wide', 'cvDownloadPNG()') + item('PDF', 'vector, editable', 'cvDownloadPDF()');
+  if (many) {
+    h += '<div class="cv-dl-h">Each curve on its own</div>'
+      + '<label class="cv-dl-ax"><input type="checkbox" ' + (window._cvExpSameAxes !== false ? 'checked' : '') + ' onchange="cvSameAxes(this.checked)"> Same axes as the chart (X, and Y as you have it)</label>'
+      + item('PDF — one page per curve', 'one file, vector', 'cvDownloadEach(\'pdf\')') + item('PNG — one file per curve', comps.length + ' downloads', 'cvDownloadEach(\'png\')')
+      + '<div class="cv-dl-h">Or just one</div>'
+      + comps.map((r, i) => '<div class="cv-dl-row"><span class="cv-dl-nm" title="' + esc(r.Sample_ID + ' · ' + r.Protein) + '">' + esc(r.Sample_ID) + ' <i>' + esc(r.Protein) + '</i></span>'
+        + '<button class="hist-btn" onclick="document.getElementById(\'cv-dl-picker\')?.remove();cvDownloadPNG(' + i + ')">PNG</button><button class="hist-btn" onclick="document.getElementById(\'cv-dl-picker\')?.remove();cvDownloadPDF(' + i + ')">PDF</button></div>').join('');
+  } else h += '<label class="cv-dl-ax"><input type="checkbox" ' + (window._cvExpSameAxes !== false ? 'checked' : '') + ' onchange="cvSameAxes(this.checked)"> Axes as shown on screen</label>';
+  picker.innerHTML = h;
   document.body.appendChild(picker);
   const r = btn.getBoundingClientRect(), pr = picker.getBoundingClientRect();
-  picker.style.top = Math.min(r.bottom + 4, window.innerHeight - pr.height - 8) + 'px';
+  picker.style.top = Math.max(8, Math.min(r.bottom + 4, window.innerHeight - pr.height - 8)) + 'px';
   picker.style.left = Math.max(8, Math.min(r.right - pr.width, window.innerWidth - pr.width - 8)) + 'px';
   const _close = e => { if (!picker.contains(e.target) && e.target !== btn && !btn.contains(e.target)) { picker.remove(); document.removeEventListener('click', _close, true); } };
   setTimeout(() => document.addEventListener('click', _close, true), 0);
