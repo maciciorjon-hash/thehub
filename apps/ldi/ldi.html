@@ -1179,7 +1179,16 @@ function readEchoHistory(cb){
     var local=[]; try{ local=JSON.parse(localStorage.getItem('eda_history_v1')||'[]'); }catch(e){}
     try{
       if(window.parent && window.parent!==window && window.parent.firebase){
-        window.parent.firebase.database().ref('journal/echo').once('value').then(function(s){ var v=s.val(); var l=v&&v.history; if(l&&!Array.isArray(l)) l=Object.keys(l).map(function(k){return l[k];}); cb((l&&l.length)?l:local); }).catch(function(){ cb(local); });
+        // The cloud copy: one row and one results blob per analysis (journal/echo/store); the old single array is the fallback.
+        window.parent.firebase.database().ref('journal/echo').once('value').then(function(s){
+          var v=s.val()||{}, st=v.store, l=null;
+          if(st&&st.runs&&st.blobs){
+            l=Object.keys(st.runs).map(function(k){ try{ var r=JSON.parse(st.runs[k].j), b=st.blobs[k]&&JSON.parse(st.blobs[k].j); if(!b||!b.data) return null;
+              return {id:r.id, assayId:r.assayId+(r.ver>1?' v'+r.ver:''), groups:r.groups, ts:new Date(r.ts).toLocaleString(), n:r.n, nFlag:r.nFlag, data:b.data, _t:r.ts}; }catch(e){ return null; } })
+              .filter(Boolean).sort(function(a,b){ return b._t-a._t; });
+          }
+          if(!(l&&l.length)){ l=v.history; if(l&&!Array.isArray(l)) l=Object.keys(l).map(function(k){return l[k];}); }
+          cb((l&&l.length)?l:local); }).catch(function(){ cb(local); });
         return;
       }
     }catch(e){}

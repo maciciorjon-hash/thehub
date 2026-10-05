@@ -68,6 +68,10 @@
 //                           browser-store list migrates once with its copies collapsed, and a cloud merge never resurrects a deletion.
 //   E38 export each curve   Curves compared on one chart can each be exported alone (PNG, PDF, one PDF with a page per curve, or all as files),
 //                           and every figure — overlay or single — carries the chart's axes, a fixed Y included.
+//   E39 right-click in      Compare: right-click excludes / re-includes one replicate (or a whole concentration) of the curve it belongs to;
+//       Compare             several points under the pointer open a list — which point of which compound — first.
+//   E40 history in the cloud Every analysis is written to the cloud store under its name (row, results, whole), versions of one name are one
+//                           analysis there, an empty browser gets it all back (results on demand), deletes travel, no name = no run.
 //   E37 history by name    A History entry is its NAME: runs with one name are versions of one entry (any spelling, any input files), old copies merge, unnamed runs stay by dataset, rename/merge, and every way to compare is findable.
 //   E32 compare             Two analyses matched by group and compound: fold change, unmatched counted, self-compare is 1, biggest change first.
 //   E28 Properties names    The Properties tab lists a compound's potency for every group it was fitted in, not the last one.
@@ -209,6 +213,60 @@ if (run('E38') && hasPdf) await guard('E38', async () => {
   const pk = await E(() => { cvShowDownloadPicker(); const p = document.getElementById('cv-dl-picker'), t = p.innerText; const rows = p.querySelectorAll('.cv-dl-row').length; p.remove(); return { t: t.replace(/\s+/g, ' '), rows }; });
   check('E38', 'the Download menu offers each curve on its own, all of them at once, and the axes option', pk.rows === 3 && /Each curve on its own/.test(pk.t) && /one page per curve/.test(pk.t) && /Same axes/.test(pk.t), pk);
   await E(() => { const cb = document.getElementById('cv-fix-y'); cb.checked = false; _onCvFixYChange(cb); setCvMode('single'); });
+});
+
+if (run('E39')) await guard('E39', async () => {
+  await E(() => { document.querySelector('[data-tab="curves"]').click(); });
+  await pg.waitForTimeout(400);
+  await E(() => { window._cvSelected && window._cvSelected.clear && window._cvSelected.clear(); window._cvColorIdx && window._cvColorIdx.clear && window._cvColorIdx.clear(); setCvMode('compare'); });
+  await pg.waitForTimeout(500);
+  for (let i = 0; i < 3; i++) { await pg.locator('#cv-compare-list label').nth(i).click(); await pg.waitForTimeout(150); }
+  await pg.waitForTimeout(600);
+  // where the replicate of curve 2 is drawn, in page coordinates
+  const at = (ci, kind) => E(({ ci, kind }) => {
+    const cv = document.getElementById('cv-canvas'), rc = cv.getBoundingClientRect(), r = cv._cvCompounds[ci];
+    const p = window._cvPtMap.find(q => q.r === r && (kind === 'rep' ? q.isRep && !q.isExcluded : kind === 'x' ? q.isExcluded : q.isDeletedConc));
+    return p ? { x: rc.left + p.px, y: rc.top + p.py, rx: p.x, ry: p.y } : null;
+  }, { ci, kind });
+  const menuText = () => E(() => { const m = [...document.querySelectorAll('div[role="menu"]')].pop(); return m ? m.innerText.replace(/\s+/g, ' ') : null; });
+  const state = () => E(() => (document.getElementById('cv-canvas')._cvCompounds).map(r => ({ ex: (r._excludedRepXYs || []).length, del: (r._deletedPts || []).length, dc: r.DC50_nM })));
+  const before = await state();
+  const p = await at(1, 'rep');
+  check('E39', 'in Compare every drawn point is in the hit map, tagged with its compound', !!p, p);
+  // a replicate of curve 2; where curves overlap a list asks first, and the test answers it the way a person would
+  const openFor = async (pt, name, kind) => {
+    await pg.mouse.click(pt.x, pt.y, { button: 'right' }); await pg.waitForTimeout(200);
+    let t = await menuText();
+    if (/Which point\?/.test(t || '')) { const it = pg.locator('div[role="menuitem"]', { hasText: name }).filter({ hasText: kind === 'x' ? 'excluded replicate' : 'replicate' }).first(); await it.click(); await pg.waitForTimeout(250); t = await menuText(); }
+    return t;
+  };
+  const t1 = await openFor(p, 'EDA-014', 'rep');
+  check('E39', 'right-click on a point in Compare opens its menu, naming the compound', /EDA-014/.test(t1 || '') && /Exclude this replicate/.test(t1 || '') && /Exclude all at this concentration/.test(t1 || ''), t1);
+  await pg.locator('div[role="menuitem"]', { hasText: 'Exclude this replicate' }).click(); await pg.waitForTimeout(500);
+  const after = await state();
+  check('E39', 'only that curve loses the replicate (its fit is redone); the others are untouched', after[1].ex === 1 && after[0].ex === 0 && after[2].ex === 0 && after[0].dc === before[0].dc && after[2].dc === before[2].dc, { before, after });
+  check('E39', 'the stats table still lists all three curves after the edit', await E(() => /EDA-013/.test(document.getElementById('cv-stats').innerText) && /EDA-015/.test(document.getElementById('cv-stats').innerText)));
+  const x = await at(1, 'x');
+  const t1b = await openFor(x, 'EDA-014', 'x');
+  check('E39', 'right-click on the excluded ✕ offers to re-include it', /Re-include this replicate/.test(t1b || ''), t1b);
+  await pg.locator('div[role="menuitem"]', { hasText: 'Re-include this replicate' }).click(); await pg.waitForTimeout(500);
+  const back = await state();
+  check('E39', 're-including restores the curve to the digit', back[1].ex === 0 && back[1].dc === before[1].dc, { before: before[1], back: back[1] });
+  // two curves with a point in the same place: a list asks which one
+  await E(() => { const cv = document.getElementById('cv-canvas'), c = cv._cvCompounds; window.__e39 = [[c[2], _cvSnapRow(c[2])], [_cvTwin(c[2]), _cvSnapRow(_cvTwin(c[2]))]]; c[2]._reps = JSON.parse(JSON.stringify(c[0]._reps)); c[2]._pts = JSON.parse(JSON.stringify(c[0]._pts)); renderCvCurve(); });
+  await pg.waitForTimeout(500);
+  const q = await at(0, 'rep');
+  await pg.mouse.click(q.x, q.y, { button: 'right' }); await pg.waitForTimeout(200);
+  const t2 = await menuText();
+  check('E39', 'with several points under the pointer a list asks which point of which compound', /Which point\?/.test(t2 || '') && /EDA-013/.test(t2 || '') && /EDA-015/.test(t2 || ''), t2);
+  await pg.locator('div[role="menuitem"]', { hasText: 'EDA-015' }).first().click(); await pg.waitForTimeout(300);
+  const t3 = await menuText();
+  check('E39', 'choosing one opens that compound\'s own menu', /EDA-015/.test(t3 || '') && /Exclude this replicate/.test(t3 || ''), t3);
+  await pg.locator('div[role="menuitem"]', { hasText: 'Exclude this replicate' }).click(); await pg.waitForTimeout(500);
+  const fin = await state();
+  check('E39', 'the chosen compound — not the one on top — lost the replicate', fin[2].ex === 1 && fin[0].ex === 0, fin);
+  // leave the data as it was: the test bent one curve to sit under another
+  await E(() => { window.__e39.forEach(([o, snap]) => _cvRestoreRow(o, snap)); _CV_UNDO.length = 0; _CV_REDO.length = 0; setCvMode('single'); renderCvCurve(); });
 });
 
 if (run('E3') || run('E4')) await guard('E3', async () => {
@@ -1013,6 +1071,58 @@ if (run('E37')) await guard('E37', async () => {
   await wipe();
 });
 
+if (run('E40')) await guard('E40', async () => {
+  await BACK_TO_ANALYSIS();
+  // an in-memory stand-in for the Hub's Firebase: enough of the real-time database for the History's cloud copy
+  await E(() => {
+    const tree = {}, L = [];
+    const get = path => path.split('/').filter(Boolean).reduce((o, k) => (o === undefined || o === null) ? undefined : o[k], tree);
+    const snap = path => ({ val: () => { const v = get(path); return v === undefined ? null : JSON.parse(JSON.stringify(v)); } });
+    const setAt = (path, val) => { const ks = path.split('/').filter(Boolean); let o = tree; ks.slice(0, -1).forEach(k => { if (!o[k] || typeof o[k] !== 'object') o[k] = {}; o = o[k]; }); const last = ks[ks.length - 1]; if (val === null || val === undefined) delete o[last]; else o[last] = JSON.parse(JSON.stringify(val)); };
+    const fire = () => L.slice().forEach(l => setTimeout(() => l.cb(snap(l.path)), 0));
+    const node = path => ({ child: p => node(path + '/' + p), parent: { child: p => node(path.split('/').slice(0, -1).join('/') + '/' + p) },
+      once: async () => snap(path), set: async v => { setAt(path, v); fire(); }, remove: async () => { setAt(path, null); fire(); },
+      update: async u => { Object.keys(u).forEach(k => setAt(path + '/' + k, u[k])); fire(); },
+      on: (ev, cb) => { L.push({ path, cb }); setTimeout(() => cb(snap(path)), 0); }, off: () => { for (let i = L.length - 1; i >= 0; i--) if (L[i].path === path) L.splice(i, 1); } });
+    window.firebase = { database: () => ({ ref: p => node(p) }) }; window.__tree = tree; window.__fbHas = () => get('journal/echo/store') || {};
+  });
+  const resetEh = () => E(async () => { await _hxLoad(); for (const id of Object.keys(_hx.runs)) { await _hxDel('runs', +id).catch(() => {}); await _hxDel('blobs', +id).catch(() => {}); delete _hx.runs[id]; } for (const k of Object.keys(_hx.sets)) { await _hxDel('sets', k).catch(() => {}); await _hxDel('files', k).catch(() => {}); delete _hx.sets[k]; } try { localStorage.removeItem(HX_TOMB_KEY); } catch (e) {} Object.assign(_eh, { runFp: {}, blobSig: {}, setFp: {}, tombSent: {}, legacyDone: true, state: 'local' }); });
+  await resetEh(); await E(() => { window.__tree = window.__tree; for (const k of Object.keys(window.__tree)) delete window.__tree[k]; ehSyncInit(); });
+  await runWith({ 'p-assay': 'CLOUD1' }); await pg.waitForTimeout(4000);
+  const a = await E(() => { const s = window.__fbHas(), r = Object.keys(s.runs || {}), b = s.blobs && s.blobs[r[0]]; let n = 0; try { n = JSON.parse(b.j).data.length; } catch (e) {} return { runs: r.length, blobs: Object.keys(s.blobs || {}).length, sets: Object.keys(s.sets || {}).length, n, state: _eh.state, name: r[0] && JSON.parse(s.runs[r[0]].j).assayId }; });
+  check('E40', 'an analysis is written to the cloud: its row, its results (all 63 fits) and the analysis as a whole, under its name', a.runs === 1 && a.blobs === 1 && a.sets === 1 && a.n === 63 && a.name === 'CLOUD1' && a.state === 'ok', a);
+  const st = await E(async () => { document.querySelector('.tab[data-tab="history"]').click(); await renderHistoryTab(); return document.getElementById('hx-cloud').innerText; });
+  check('E40', 'the History says it is backed up', /Backed up in the cloud/.test(st), st);
+  // a second run under the same name is another version in the same analysis, in the cloud too
+  await runWith({ 'p-assay': 'CLOUD1', 'p-r2': '0.9' }); await pg.waitForTimeout(4000);
+  const b = await E(() => { const s = window.__fbHas(); return { runs: Object.keys(s.runs || {}).length, sets: Object.keys(s.sets || {}).length, vers: Object.values(s.runs || {}).map(r => JSON.parse(r.j).ver).sort().join() }; });
+  check('E40', 'the same name again is version 2 of one analysis in the cloud, not a second analysis', b.runs === 2 && b.sets === 1 && b.vers === '1,2', b);
+  // History: the analysis is one line; its versions open on click
+  const h = await E(async () => { _hxUi.open = {}; _hxUi.all = false; document.querySelector('.tab[data-tab="history"]').click(); await renderHistoryTab(); const p = document.getElementById('history-panel'); return { rows: p.querySelectorAll('.hx-set').length, vers: p.querySelectorAll('.hx-ver').length, name: p.querySelector('.hx-name').innerText, pill: p.querySelector('.hx-sa .hx-pill').innerText }; });
+  check('E40', 'History lists the analysis by name on one line, its versions hidden', h.rows === 1 && h.vers === 0 && /CLOUD1/.test(h.name) && /2 versions/.test(h.pill), h);
+  await pg.locator('.hx-set .hx-sm').first().click(); await pg.waitForTimeout(300);
+  const h2 = await E(() => document.querySelectorAll('#history-panel .hx-ver').length);
+  check('E40', 'clicking the analysis shows its versions', h2 === 2, h2);
+  // another device / a cleared browser: everything comes back from the cloud, results on demand
+  await resetEh(); await E(() => { _hxUi.open = {}; ehSyncInit(); }); await pg.waitForTimeout(1500);
+  const c = await E(async () => { const rs = Object.values(_hx.runs).sort((x, y) => x.ver - y.ver), local = await _hxGet('blobs', rs[0] && rs[0].id).catch(() => null); return { runs: rs.length, vers: rs.map(r => r.ver).join(), sets: Object.keys(_hx.sets), name: _hx.sets['n:cloud1'] && _hx.sets['n:cloud1'].name, localBlob: !!local && local !== true && !!local.data }; });
+  check('E40', 'with an empty browser the History comes back from the cloud: the analysis, its name, its versions', c.runs === 2 && c.vers === '1,2' && c.name === 'CLOUD1', c);
+  check('E40', 'its results are not downloaded until it is opened', c.localBlob === false, c);
+  const d = await E(async () => { const r = Object.values(_hx.runs).find(x => x.ver === 1); _lastResultsData = null; await loadHistoryEntry(r.id); await new Promise(res => setTimeout(res, 600)); const l = await _hxGet('blobs', r.id).catch(() => null); return { n: (_lastResultsData || []).length, cached: !!l && l !== true && !!l.data }; });
+  check('E40', 'opening it fetches the results from the cloud (and keeps a copy here)', d.n === 63 && d.cached, d);
+  // deleting here removes it from the cloud and leaves a tombstone for the other devices
+  const id2 = await E(async () => { const r = Object.values(_hx.runs).find(x => x.ver === 2); await _hxDeleteRuns([r.id]); ehSyncPush(); return r.id; }); await pg.waitForTimeout(2800);
+  const e = await E(id => { const s = window.__fbHas(); return { run: !!(s.runs && s.runs[id]), blob: !!(s.blobs && s.blobs[id]), tomb: !!(s.deleted && s.deleted[id]), left: Object.keys(s.runs || {}).length }; }, id2);
+  check('E40', 'deleting a version removes it from the cloud and leaves a deletion marker', !e.run && !e.blob && e.tomb && e.left === 1, e);
+  // an analysis with no name is not run
+  const f = await E(async () => { const before = _lastResultsData, pa = document.getElementById('p-assay'); pa.value = ''; await runPipeline(); const toast = document.body.innerText; const r = { same: _lastResultsData === before, flagged: pa.classList.contains('needs-name'), modal: !document.getElementById('setup-modal').classList.contains('hidden') }; pa.value = 'CLOUD1'; closeSetupModal(); return r; });
+  check('E40', 'Run with no name stops, opens Setup on the Assay tab and marks the field', f.same && f.flagged && f.modal, f);
+  // no Firebase: the History says it is only on this device
+  const g = await E(async () => { delete window.firebase; await _ehFlush(); document.querySelector('.tab[data-tab="history"]').click(); await renderHistoryTab(); return document.getElementById('hx-cloud').innerText; });
+  check('E40', 'without the cloud the History says plainly that it is only on this device', /On this device only/.test(g), g);
+  await E(() => { _hxUi.open = {}; }); await resetEh();
+});
+
 if (run('E32')) await guard('E32', async () => {
   await BACK_TO_ANALYSIS();
   await E(async () => { await _hxLoad(); await _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true); });
@@ -1235,7 +1345,7 @@ if (run('E35')) await guard('E35', async () => {
     const out = { unnamed: {}, tablists: [] };
     const named = el => !!(el.getAttribute('aria-label') || el.getAttribute('aria-labelledby') || (el.labels && el.labels.length) || (['BUTTON'].includes(el.tagName) && (el.textContent || '').trim()) || el.getAttribute('title'));
     for (const t of ['results', 'curves', 'scatter', 'plate', 'props', 'log', 'history', 'protocol', 'survey', 'guide']) {
-      document.querySelector('.tab[data-tab="' + t + '"]').click(); await new Promise(r => setTimeout(r, 450));
+      document.querySelector('.tab[data-tab="' + t + '"]').click(); await new Promise(r => setTimeout(r, t === 'plate' ? 1000 : 450));   // the plate view is drawn before it is named
       const pane = document.getElementById('tab-' + t);
       out.unnamed[t] = [...pane.querySelectorAll('button, input:not([type=hidden]), select, textarea, [role=button]')].filter(e => e.offsetParent !== null && !named(e)).map(e => (e.tagName + '#' + e.id + '.' + e.className).slice(0, 50)).slice(0, 4);
     }
