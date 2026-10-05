@@ -535,6 +535,12 @@ th[tabindex]:focus-visible{outline-offset:-2px;}
 .hx-ic:has(.hx-conf){width:auto;}
 .hx-pill{font-size:var(--fs-1);font-weight:500;padding:1px 7px;border-radius:var(--r-full);background:var(--surface3);color:var(--text2);white-space:nowrap;}
 .hx-pill.off{color:var(--warn);}
+.hx-hint{font-size:var(--fs-2);color:var(--text2);padding:0 2px 10px;}
+.hx-hint b{color:var(--text);font-weight:600;}
+.hx-ren{font:inherit;font-weight:600;height:30px;min-width:200px;padding:0 8px;border:1px solid var(--accent);border-radius:var(--r-1);background:var(--surface);color:var(--text);}
+.hist-btn.on{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+.hx-namehint{font-size:var(--fs-1);color:var(--text3);margin-top:5px;min-height:0;}
+.hx-namehint:empty{display:none;}
 .hx-vers{list-style:none;margin:0;padding:0 14px 10px 50px;}
 .hx-ver{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:7px 8px;border-top:1px solid var(--border);border-radius:var(--r-1);transition:background-color var(--dur-1) var(--ease);}
 .hx-ver:hover{background:var(--surface3);}
@@ -1214,7 +1220,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <!-- TAB 2: ASSAY -->
       <div class="setup-pane" id="setup-pane-assay">
         <div class="setup-2col" style="margin-bottom:16px;">
-          <div class="field" style="margin-bottom:0;"><label>Assay ID</label><input type="text" id="p-assay" value="" placeholder="e.g. HB20260504"></div>
+          <div class="field" style="margin-bottom:0;"><label>Assay ID</label><input type="text" id="p-assay" value="" placeholder="e.g. HB20260504" oninput="_hxNameHint()"><div id="p-assay-hint" class="hx-namehint" role="status" aria-live="polite"></div></div>
           <div class="field" style="margin-bottom:0;">
             <label>Assay type</label>
             <select id="p-assay-type" onchange="onAssayTypeChange()" style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);cursor:pointer;">
@@ -4053,6 +4059,7 @@ function renderResults(data) {
   const _dlBtnStyle='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
   const _dlBtnHover='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
   let _dlSection = '<div class="res-dl" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">'
+    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="hxCompareFromResults()" title="Put this analysis beside another one, or beside an earlier version of it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M8 4v16M16 4v16M4 8l4-4 4 4M12 16l4 4 4-4"/></svg> Compare…</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy TSV</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="sendResultsToLabbook()" title="'+(window._lbLink&&window._lbLink.setId?'Send this analysis back — it replaces the result set it came from':'Attach these potencies, with their curves, to the Labbook experiment')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><circle cx="5.5" cy="17" r="2.4"/><circle cx="18.5" cy="17" r="2.4"/><path d="M10.7 8.1L6.8 14.9M13.3 8.1l3.9 6.8M8 17h8"/></svg> '+(window._lbLink&&window._lbLink.setId?'Update in Labbook':'Send to Labbook')+'</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputXLSX()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg> Results XLSX</button>';
@@ -4149,6 +4156,7 @@ function renderMultiAssayResults(data) {
   // Build download buttons (centered row beneath meta cards)
   const _rawBlobM = downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
   let _dlSectionM = '<div class="res-dl" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">'
+    + '<button style="'+_dlS+'" '+_dlH+' onclick="hxCompareFromResults()" title="Put this analysis beside another one, or beside an earlier version of it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M8 4v16M16 4v16M4 8l4-4 4 4M12 16l4 4 4-4"/></svg> Compare…</button>'
     + '<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy TSV</button>'
     + '<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg> Results XLSX</button>';
   if (_rawBlobM) _dlSectionM += '<button style="'+_dlS+'" '+_dlH+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg> Raw Data CSV</button>';
@@ -9107,7 +9115,7 @@ const HX_DB = 'echo_history', HX_RUNS_PER_SET = 30, HX_MAX_SETS = 60, HX_FILES_M
 const HX_TOMB_KEY = 'eda_history_tomb';
 let _hxDbP = null, _hxLoadP = null;
 const _hx = { sets: {}, runs: {} };
-const _hxUi = { open: {}, sel: [], q: '', cmp: null, confirm: null, thr: 2, sort: 'change', all: false };
+const _hxUi = { edit: null, open: {}, sel: [], q: '', cmp: null, confirm: null, thr: 2, sort: 'change', all: false };
 
 function _hxOpen() {
   if (_hxDbP) return _hxDbP;
@@ -9152,6 +9160,12 @@ async function _hxSetKey() {
   parts.sort();
   return 's' + _hxHashStr(parts.join('|'));
 }
+// An analysis is known by its NAME. Two analyses called "HB20260504" are one History entry whatever files they were run
+// on: the second is its next version, never a copy. Only an analysis nobody named (the default HB_ANALYSIS, or blank)
+// falls back to the dataset itself, because two unnamed analyses of unrelated data are not the same thing.
+const _hxNameKey = n => String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+const _hxUnnamed = n => { const k = _hxNameKey(n); return !k || k === 'hb_analysis' || k === 'unnamed'; };
+function _hxSetIdFor(assayId, fk, aid) { return _hxUnnamed(assayId) ? (fk || ('adhoc:' + aid)) : 'n:' + _hxNameKey(assayId); }
 const _HX_SKIP_PARAM = { timestamp: 1, timestampLocal: 1, matConfigs: 0 };
 // B12-O12 and B12:O12 are the same wells: settings are compared by what they mean, not how they were typed.
 function _hxNormParams(p) { if (!p) return p; const o = Object.assign({}, p); ['ctrlRange', 'zeroPctCtrl'].forEach(k => { if (typeof o[k] === 'string') o[k] = _parseCtrlRange(o[k]).join(','); }); return o; }
@@ -9194,11 +9208,12 @@ function _hxLoad() {
       sets.forEach(s => { _hx.sets[s.id] = s; }); runs.forEach(r => { _hx.runs[r.id] = r; });
     } catch (e) { _hxLoadP = null; _hxBroken = e; return; }
     await _hxMigrateLegacy();
+    try { await _hxMergeByName(); } catch (e) { console.warn('History merge:', e); }
   })();
   return _hxLoadP;
 }
 let _hxBroken = null;
-const _hxRunsOf = sid => Object.values(_hx.runs).filter(r => r.setId === sid).sort((a, b) => b.ts - a.ts);
+const _hxRunsOf = sid => Object.values(_hx.runs).filter(r => r.setId === sid).sort((a, b) => (b.ver - a.ver) || (b.ts - a.ts));
 
 async function _hxMigrateLegacy() {
   let old = []; try { old = JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch (e) {}
@@ -9215,15 +9230,17 @@ async function _hxIngest(e, legacy) {
   if (_hx.runs[id] || _hxTomb().includes(id)) return null;
   const ts = typeof e.ts === 'number' ? e.ts : (Date.parse(e.ts) || id);
   const groups = e.groups || [...new Set(e.data.map(r => r.Protein))].sort(natCmp).join(', ');
-  const setId = e.setId || ('legacy:' + (e.assayId || 'Unnamed') + '|' + groups);
+  const assay = e.assayId || 'Unnamed';
+  const fk = e.fk || (/^s[0-9a-z]+$/.test(e.setId || '') ? e.setId : null);
+  const setId = !_hxUnnamed(assay) ? 'n:' + _hxNameKey(assay) : ((e.setId && e.setId.indexOf('n:') !== 0) ? e.setId : ('legacy:' + assay + '|' + groups));
   const fp = e.fp || _hxFp(e.data), pk = e.pk || _hxParamsKey(e.params);
   const sibs = _hxRunsOf(setId);
-  if (legacy && sibs[0] && sibs[0].fp === fp && sibs[0].pk === pk) return null;   // the same analysis saved again
+  if (legacy && sibs.some(x => x.fp === fp && x.pk === pk)) return null;   // the same analysis saved again
   let set = _hx.sets[setId];
   if (!set) { set = _hx.sets[setId] = { id: setId, name: e.assayId || 'Unnamed', created: ts, updated: ts, nextVer: 1, filesStored: false, legacy: !e.setId }; }
   const run = {
     id, setId, ts, assayId: e.assayId || 'Unnamed', groups, n: e.n || e.data.length, nCompounds: new Set(e.data.map(r => r.Sample_ID)).size, nFlag: e.nFlag != null ? e.nFlag : e.data.filter(r => r.Flag === 'Yes').length,
-    params: e.params || null, assayType: e.assayType || null, form: e.form || null, matPanels: e.matPanels || 0, fp, pk, ver: e.ver || set.nextVer, edited: !!e.edited, reruns: e.reruns || 0,
+    params: e.params || null, assayType: e.assayType || null, form: e.form || null, matPanels: e.matPanels || 0, fp, pk, fk, ver: e.ver || set.nextVer, edited: !!e.edited, reruns: e.reruns || 0,
     paramsDiff: e.paramsDiff || (sibs[0] ? _hxDiff(sibs[0].params, e.params) : []), pinned: !!e.pinned, label: e.label || '', bytes: 0
   };
   set.nextVer = Math.max(set.nextVer, run.ver + 1); set.updated = Math.max(set.updated, ts); set.created = Math.min(set.created, ts);
@@ -9231,7 +9248,65 @@ async function _hxIngest(e, legacy) {
   run.bytes = JSON.stringify(blob).length;
   await _hxPutRetry(async () => { await _hxPut('blobs', blob); await _hxPut('runs', run); await _hxPut('sets', set); });
   _hx.runs[id] = run;
+  await _hxRenumber(setId);
   return id;
+}
+// Versions are the order the analyses were made in (their id is the moment they started): 1, 2, 3… with what
+// changed from the one before. Re-derived after anything that can bring runs together (a merge, a cloud copy).
+async function _hxRenumber(sid) {
+  const set = _hx.sets[sid]; if (!set) return;
+  const rs = Object.values(_hx.runs).filter(r => r.setId === sid).sort((a, b) => a.id - b.id);
+  let prev = null;
+  for (let i = 0; i < rs.length; i++) {
+    const r = rs[i], diff = prev ? _hxDiff(prev.params, r.params) : [];
+    if (r.ver !== i + 1 || JSON.stringify(r.paramsDiff || []) !== JSON.stringify(diff)) { r.ver = i + 1; r.paramsDiff = diff; await _hxPut('runs', r); }
+    prev = r;
+  }
+  if (set.nextVer !== rs.length + 1) { set.nextVer = rs.length + 1; await _hxPut('sets', set); }
+}
+// Bring runs under one entry: the one the name points at. The newest input files win, and the entry keeps the
+// pin of whichever source had one.
+async function _hxAdopt(tid, runs, name, rename) {
+  if (!runs.length) return;
+  const srcIds = [...new Set(runs.map(r => r.setId).filter(i => i !== tid))];
+  const srcs = srcIds.map(i => _hx.sets[i]).filter(Boolean);
+  let t = _hx.sets[tid];
+  const all = (t ? [t] : []).concat(srcs);
+  const newest = all.slice().sort((a, b) => b.updated - a.updated)[0] || { created: runs[0].ts, updated: runs[0].ts };
+  if (!t) t = _hx.sets[tid] = { id: tid, name, created: newest.created, updated: newest.updated, nextVer: 1, filesStored: false };
+  const pool = all.length ? all : [t];
+  const withFiles = all.filter(x => x.filesStored).sort((a, b) => b.updated - a.updated)[0];
+  if (withFiles && withFiles !== t) {
+    const f = await _hxGet('files', withFiles.id).catch(() => null);
+    if (f) { f.setId = tid; await _hxPut('files', f); t.filesStored = true; t.fileMeta = withFiles.fileMeta; t.fileBytes = withFiles.fileBytes; t.fk = withFiles.fk || (/^s[0-9a-z]+$/.test(withFiles.id) ? withFiles.id : null); t.filesDropped = false; }
+  }
+  for (const r of runs) {
+    if (!r.fk && /^s[0-9a-z]+$/.test(r.setId)) r.fk = r.setId;
+    r.setId = tid;
+    if (rename) { r.assayId = name; if (r.form && r.form['p-assay'] !== undefined) r.form['p-assay'] = name; }
+    await _hxPut('runs', r);
+  }
+  t.name = name; t.created = Math.min(...pool.map(x => x.created)); t.updated = Math.max(...pool.map(x => x.updated)); t.pinned = pool.some(x => x.pinned);
+  t.nPlates = (newest && newest.nPlates) || t.nPlates;
+  await _hxPut('sets', t);
+  for (const sid of srcIds) {
+    if (_hxRunsOf(sid).length) continue;
+    delete _hx.sets[sid]; await _hxDel('sets', sid).catch(() => {}); await _hxDel('files', sid).catch(() => {});
+  }
+  await _hxRenumber(tid);
+}
+// One-off for what was saved before names were the identity: every named analysis that was kept as several
+// datasets (a different file list each time) becomes one entry with its versions.
+async function _hxMergeByName() {
+  const by = {};
+  Object.values(_hx.runs).forEach(r => { if (_hxUnnamed(r.assayId)) return; const tid = 'n:' + _hxNameKey(r.assayId); if (r.setId !== tid) (by[tid] = by[tid] || []).push(r); });
+  const tids = Object.keys(by); if (!tids.length) return;
+  for (const tid of tids) {
+    const runs = by[tid], latest = runs.slice().sort((a, b) => b.id - a.id)[0], existing = _hx.sets[tid];
+    // runs already under the entry count too, for the newest name's spelling
+    await _hxAdopt(tid, runs, existing ? existing.name : latest.assayId, false);
+  }
+  try { ehSyncPush(); } catch (e) {}
 }
 let _hxQuotaToasted = false;
 async function _hxPutRetry(fn) {
@@ -9282,15 +9357,17 @@ async function _hxCommit() {
   if (_hxBroken) { if (!window._hxWarned) { window._hxWarned = true; echoToast('History cannot be kept in this browser (' + (_hxBroken.message || 'storage unavailable') + '). Save projects instead.', 'warn'); } return; }
   const aid = window._analysisId || (window._analysisId = Date.now());
   const params = window._lastAnalysisParams || null, pk = _hxParamsKey(params), fp = _hxFp(data);
-  const setId = window._setKey || ('adhoc:' + aid);
+  const fk = window._setKey || null;
   const assayId = window._lastAssayId || document.getElementById('p-assay')?.value || 'Unnamed';
   const groups = [...new Set(data.map(r => r.Protein))].sort(natCmp).join(', ');
   const now = Date.now();
   let run = _hx.runs[aid];
+  const setId = run ? run.setId : _hxSetIdFor(assayId, fk, aid);
   if (!run) {
-    // A fresh run: the same set analysed the same way with the same outcome is the run that is already there.
-    const latest = _hxRunsOf(setId)[0];
-    if (latest && latest.pk === pk && latest.fp === fp) {
+    // A fresh run: the same analysis with the same settings and the same outcome as one already in the entry is
+    // that run, wherever in the entry's history it sits.
+    const latest = _hxRunsOf(setId).find(x => x.pk === pk && x.fp === fp);
+    if (latest) {
       window._analysisId = latest.id; latest.ts = now; latest.reruns = (latest.reruns || 0) + 1;
       const set = _hx.sets[setId]; if (set) set.updated = now;
       await _hxPutRetry(async () => { await _hxPut('runs', latest); if (set) await _hxPut('sets', set); });
@@ -9301,17 +9378,18 @@ async function _hxCommit() {
   const isNewSet = !set;
   if (!set) set = _hx.sets[setId] = { id: setId, name: assayId, created: now, updated: now, nextVer: 1, filesStored: false, fileMeta: _hxFileMeta(), nPlates: (window._plateData ? Object.keys(window._plateData).length : 0) };
   const prev = run ? null : _hxRunsOf(setId)[0];
-  const rec = run || { id: aid, setId, ts: now, ver: set.nextVer++, paramsDiff: prev ? _hxDiff(prev.params, params) : [], pinned: false, label: '', edited: false, reruns: 0 };
+  const rec = run || { id: aid, setId, fk, ts: now, ver: set.nextVer++, paramsDiff: prev ? _hxDiff(prev.params, params) : [], pinned: false, label: '', edited: false, reruns: 0 };
   if (run && run.fp !== fp) rec.edited = true;
   Object.assign(rec, { assayId, groups, n: data.length, nCompounds: new Set(data.map(r => r.Sample_ID)).size, nFlag: data.filter(r => r.Flag === 'Yes').length, params, assayType: window._lastAssayType || null, fp, pk,
     form: window._runForm || rec.form || null, matPanels: window._runMat || rec.matPanels || 0 });
   const blob = { id: aid, data, plateData: window._plateData || null, smart: window._smartInfo || null, normAudits: window._normAudits || null };
   rec.bytes = JSON.stringify(blob).length;
-  set.name = assayId; set.updated = now; set.nPlates = window._plateData ? Object.keys(window._plateData).length : set.nPlates;
+  set.name = assayId.trim() || set.name; set.updated = now; set.nPlates = window._plateData ? Object.keys(window._plateData).length : set.nPlates;
   await _hxPutRetry(async () => { await _hxPut('blobs', blob); await _hxPut('runs', rec); await _hxPut('sets', set); });
   _hx.runs[aid] = rec;
   if (!run) _hxUi.flashId = aid;
-  if (isNewSet || (!set.filesStored && !set.filesTried)) _hxStoreFiles(set).catch(() => {});
+  // The input files belong to the entry and are those of its newest dataset. Only a fresh run has them in memory.
+  if (!run && (isNewSet || (fk && set.fk !== fk) || (!set.filesStored && !set.filesTried))) _hxStoreFiles(set, fk).catch(() => {});
   _hxPrune(setId).catch(() => {});
   renderHistoryTab();
   ehSyncPush();
@@ -9324,8 +9402,8 @@ function _hxFileMeta() {
   return m;
 }
 // The input files, once per set. Past ~80 MB they are not kept (the results still are).
-async function _hxStoreFiles(set) {
-  set.filesTried = true;
+async function _hxStoreFiles(set, fk) {
+  set.filesTried = true; set.fk = fk || null;
   const eFiles = echoFiles.length ? echoFiles : (echoFile ? [echoFile] : []);
   const total = eFiles.concat(Object.values(readerFiles), smilesFile ? [smilesFile] : []).reduce((a, f) => a + (f.size || 0), 0);
   set.fileBytes = total;
@@ -9351,7 +9429,8 @@ const _I = {
   chev: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
   pin: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>',
   pin0: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>',
-  x: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+  x: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  pen: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1L19 8l-3-3L5 16z"/></svg>'
 };
 async function renderHistoryTab() {
   const panel = document.getElementById('history-panel');
@@ -9371,9 +9450,10 @@ async function renderHistoryTab() {
   let h = '<div class="hx-bar"><div class="hx-title">History</div><div class="hx-count">' + sets.length + ' dataset' + (sets.length === 1 ? '' : 's') + ' · ' + runsN + ' analys' + (runsN === 1 ? 'is' : 'es') + ' · ' + _hxMB(bytes) + ' on this device</div>'
     + '<input class="hx-q" type="search" placeholder="Find a dataset…" aria-label="Find in History" value="' + esc(_hxUi.q) + '" oninput="hxSearch(this.value)">'
     + '<button class="hist-btn" onclick="hxClearAll()">' + (_hxUi.confirm === 'all' ? 'Delete everything?' : 'Clear all') + '</button></div>';
+  if (!sel.length && runsN > 1) h += '<div class="hx-hint"><b>Compare two analyses:</b> press <b>Compare</b> on one and then on another — or <b>vs v…</b> to put a version beside the one before it.</div>';
   if (sel.length) {
     const ra = _hx.runs[sel[0]], rb = sel[1] && _hx.runs[sel[1]];
-    h += '<div class="hx-cmpbar" role="status"><span>' + (rb ? 'Compare <b>' + esc(ra.assayId) + ' v' + ra.ver + '</b> with <b>' + esc(rb.assayId) + ' v' + rb.ver + '</b>' : '<b>' + esc(ra.assayId) + ' v' + ra.ver + '</b> selected — pick a second analysis to compare it with') + '</span>'
+    h += '<div class="hx-cmpbar" role="status"><span>' + (rb ? 'Compare <b>' + esc(ra.assayId) + ' v' + ra.ver + '</b> with <b>' + esc(rb.assayId) + ' v' + rb.ver + '</b>' : '<b>' + esc(ra.assayId) + ' v' + ra.ver + '</b> chosen — press <b>Compare</b> on a second analysis') + '</span>'
       + (rb ? '<button class="hist-btn hx-go" onclick="hxCompare(' + sel[0] + ',' + sel[1] + ')">Compare</button>' : '') + '<button class="hist-btn" onclick="hxSel()">Clear</button></div>';
   }
   let shown = 0;
@@ -9382,12 +9462,13 @@ async function renderHistoryTab() {
     if (q && !(s.name + ' ' + runs.map(r => r.groups).join(' ')).toLowerCase().includes(q)) return;
     shown++;
     const open = _hxUi.open[s.id] === undefined ? si === 0 : _hxUi.open[s.id];
+    const prevRun = (list, r) => list.filter(x => x.ver < r.ver).sort((a, b) => b.ver - a.ver)[0];
     const last = runs[0], files = s.filesStored ? '<span class="hx-pill" title="The input files are stored on this device">files kept</span>' : (s.filesDropped ? '<span class="hx-pill off" title="Dropped to make room; the results are still here">files dropped</span>' : '');
     const sk = esc(s.id).replace(/'/g, '');
     h += '<section class="hx-set' + (open ? ' open' : '') + '" data-set="' + sk + '"><header class="hx-sh">'
       + '<button class="hx-tg" onclick="hxToggle(\'' + sk + '\')" aria-expanded="' + open + '" aria-label="' + (open ? 'Collapse' : 'Expand') + ' ' + esc(s.name) + '">' + _I.chev + '</button>'
-      + '<div class="hx-sm"><div class="hx-name">' + esc(s.name) + files + '</div><div class="hx-meta">' + esc(last.groups) + ' · ' + (s.nPlates ? s.nPlates + ' plates · ' : '') + '<b>' + last.nCompounds + '</b> compounds · ' + runs.length + ' analys' + (runs.length === 1 ? 'is' : 'es') + ' · last ' + _hxWhen(s.updated) + '</div></div>'
-      + '<div class="hx-sa">' + (s.filesStored ? '<button class="hist-btn" onclick="hxReanalyse(' + last.id + ')" title="Put these input files and the latest settings back in Setup, so you can change a setting and run again">Re-analyse…</button>' : '')
+      + '<div class="hx-sm"><div class="hx-name">' + (_hxUi.edit === s.id ? '<input class="hx-ren" value="' + esc(s.name) + '" aria-label="Name of this analysis" onkeydown="if(event.key===\'Enter\'){this.blur()}else if(event.key===\'Escape\'){this.dataset.x=1;this.blur()}" onblur="hxRenameDo(\'' + sk + '\',this)">' : esc(s.name) + (_hxUnnamed(s.name) ? '<span class="hx-pill off" title="Not named: each dataset is kept apart. Name it, and every analysis with that name becomes versions of one entry.">unnamed</span>' : '')) + files + '</div><div class="hx-meta">' + esc(last.groups) + ' · ' + (s.nPlates ? s.nPlates + ' plates · ' : '') + '<b>' + last.nCompounds + '</b> compounds · ' + runs.length + ' analys' + (runs.length === 1 ? 'is' : 'es') + ' · last ' + _hxWhen(s.updated) + '</div></div>'
+      + '<div class="hx-sa"><button class="hx-ic" onclick="hxRename(\'' + sk + '\')" aria-label="Rename ' + esc(s.name) + '" title="Rename. Giving it the name of another entry merges them.">' + _I.pen + '</button>' + (s.filesStored ? '<button class="hist-btn" onclick="hxReanalyse(' + last.id + ')" title="Put these input files and the latest settings back in Setup, so you can change a setting and run again">Re-analyse…</button>' : '')
       + '<button class="hx-ic' + (s.pinned ? ' on' : '') + '" onclick="hxPinSet(\'' + sk + '\')" aria-pressed="' + !!s.pinned + '" title="' + (s.pinned ? 'Pinned: never removed to make room' : 'Pin: never remove this dataset to make room') + '" aria-label="Pin ' + esc(s.name) + '">' + (s.pinned ? _I.pin : _I.pin0) + '</button>'
       + '<button class="hx-ic del" onclick="hxDelSet(\'' + sk + '\')" aria-label="Delete ' + esc(s.name) + '" title="Delete this dataset and all its analyses">' + (_hxUi.confirm === 'set:' + s.id ? '<span class="hx-conf">Delete?</span>' : _I.x) + '</button></div></header>';
     const vis = open || _hxUi.all ? runs : runs.slice(0, 1);
@@ -9400,7 +9481,9 @@ async function renderHistoryTab() {
         + '<span class="hx-vs"><b>' + r.n + '</b> fits · <b' + (r.nFlag ? ' class="hx-fl"' : '') + '>' + r.nFlag + '</b> flagged</span>'
         + '<span class="hx-vd">' + (r.paramsDiff && r.paramsDiff.length ? diff : (r.ver === 1 || !runs.some(x => x.ver < r.ver) ? '<span class="hx-d first">first analysis</span>' : '<span class="hx-d first">same settings</span>')) + '</span>'
         + (r.edited ? '<span class="hx-pill" title="Curves were edited after the run">edited</span>' : '') + (r.reruns ? '<span class="hx-pill" title="Run again with the same result ' + r.reruns + '×; nothing was added">re-run ×' + r.reruns + '</span>' : '')
-        + '<span class="hx-va"><button class="hist-btn" onclick="loadHistoryEntry(' + r.id + ')">Load</button>'
+        + '<span class="hx-va">' + (prevRun(runs, r) ? '<button class="hist-btn" onclick="hxCompare(' + prevRun(runs, r).id + ',' + r.id + ')" title="Compare v' + r.ver + ' with v' + prevRun(runs, r).ver + '">vs v' + prevRun(runs, r).ver + '</button>' : '')
+        + '<button class="hist-btn' + (isSel ? ' on' : '') + '" onclick="hxCmpPick(' + r.id + ')" title="' + (sel.length === 1 && !isSel ? 'Compare with the analysis you chose' : 'Choose this analysis, then press Compare on another') + '">' + (isSel ? 'Chosen' : 'Compare') + '</button>'
+        + '<button class="hist-btn" onclick="loadHistoryEntry(' + r.id + ')">Load</button>'
         + '<button class="hx-ic' + (r.pinned ? ' on' : '') + '" onclick="hxPinRun(' + r.id + ')" aria-pressed="' + !!r.pinned + '" aria-label="Pin version ' + r.ver + '" title="Pin this analysis">' + (r.pinned ? _I.pin : _I.pin0) + '</button>'
         + '<button class="hx-ic del" onclick="hxDelRun(' + r.id + ')" aria-label="Delete version ' + r.ver + '" title="Delete this analysis">' + (_hxUi.confirm === 'run:' + r.id ? '<span class="hx-conf">Delete?</span>' : _I.x) + '</button></span></li>';
     });
@@ -9415,6 +9498,39 @@ async function renderHistoryTab() {
 }
 function hxSearch(v) { _hxUi.q = v; clearTimeout(hxSearch._t); hxSearch._t = setTimeout(renderHistoryTab, 120); }
 function hxToggle(sid) { const s = _hx.sets[sid]; const cur = _hxUi.open[sid] === undefined ? Object.values(_hx.sets).sort((a, b) => b.updated - a.updated)[0] === s : _hxUi.open[sid]; _hxUi.open[sid] = !cur; renderHistoryTab(); }
+// Under Assay ID: what History will do with a run called this. The name is the identity.
+async function _hxNameHint() {
+  const el = document.getElementById('p-assay-hint'); if (!el) return;
+  await _hxLoad();
+  const v = document.getElementById('p-assay').value;
+  if (_hxUnnamed(v)) { el.textContent = v.trim() ? '' : 'No name: History keeps this dataset on its own. Name it to keep versions of one analysis together.'; return; }
+  const set = _hx.sets['n:' + _hxNameKey(v)];
+  el.textContent = set ? 'In History: “' + set.name + '” has ' + _hxRunsOf(set.id).length + ' version' + (_hxRunsOf(set.id).length === 1 ? '' : 's') + '. Running adds a new version (or updates it if nothing changed) — not a copy.' : 'New in History: saved as “' + v.trim() + '”.';
+}
+function hxCmpPick(id) {
+  const sel = _hxUi.sel.filter(i => _hx.runs[i]);
+  if (sel.length === 1 && sel[0] !== id) { hxCompare(sel[0], id); return; }
+  if (sel.includes(id)) _hxUi.sel = sel.filter(i => i !== id); else _hxUi.sel = [id];
+  renderHistoryTab();
+}
+function hxRename(sid) { _hxUi.edit = sid; renderHistoryTab().then(() => { const i = document.querySelector('.hx-ren'); if (i) { i.focus(); i.select(); } }); }
+async function hxRenameDo(sid, inp) {
+  const name = inp.value.trim(), cancel = inp.dataset.x === '1'; _hxUi.edit = null;
+  const s = _hx.sets[sid]; if (!s) return;
+  if (cancel || !name || name === s.name) { renderHistoryTab(); return; }
+  const runs = _hxRunsOf(sid), tid = _hxUnnamed(name) ? sid : 'n:' + _hxNameKey(name), other = _hx.sets[tid];
+  if (other && tid !== sid) { await _hxAdopt(tid, runs, other.name, true); echoToast('Merged into “' + other.name + '”: its analyses are now versions of one entry.'); }
+  else await _hxAdopt(tid, runs, name, true);
+  const cur = _hx.runs[window._analysisId]; if (cur) window._lastAssayId = cur.assayId;
+  renderHistoryTab(); ehSyncPush();
+}
+function hxCompareFromResults() {
+  const id = window._analysisId;
+  _hxUi.cmp = null; _hxUi.sel = _hx.runs[id] ? [id] : [];
+  document.querySelector('.tab[data-tab="history"]')?.click();
+  renderHistoryTab();
+  echoToast(_hx.runs[id] ? 'This analysis is chosen. Press Compare on another one in History.' : 'This analysis is still being saved — try again in a moment.');
+}
 function hxSel(id) { if (id === undefined) _hxUi.sel = []; else { const i = _hxUi.sel.indexOf(id); if (i >= 0) _hxUi.sel.splice(i, 1); else { _hxUi.sel.push(id); if (_hxUi.sel.length > 2) _hxUi.sel.shift(); } } renderHistoryTab(); }
 async function hxPinSet(sid) { const s = _hx.sets[sid]; if (!s) return; s.pinned = !s.pinned; await _hxPut('sets', s); renderHistoryTab(); }
 async function hxPinRun(id) { const r = _hx.runs[id]; if (!r) return; r.pinned = !r.pinned; await _hxPut('runs', r); renderHistoryTab(); }
@@ -9433,7 +9549,7 @@ async function loadHistoryEntry(id) {
   const blob = await _hxGet('blobs', id).catch(() => null);
   if (!blob || !blob.data) { echoToast('The results of this analysis could not be read.', 'err'); return; }
   window._loadingFromHistory = true;
-  window._analysisId = run.id; window._setKey = run.setId.indexOf('adhoc:') === 0 || run.setId.indexOf('legacy:') === 0 ? null : run.setId;
+  window._analysisId = run.id; window._setKey = run.fk || null;
   if (run.params) window._lastAnalysisParams = run.params;
   if (run.assayType) window._lastAssayType = run.assayType;
   if (run.assayId) window._lastAssayId = run.assayId;
@@ -9455,6 +9571,8 @@ async function loadHistoryEntry(id) {
 // Input files + the settings of that analysis back in Setup, ready to be changed and run again.
 async function hxReanalyse(id) {
   const run = _hx.runs[id]; if (!run) return;
+  const set = _hx.sets[run.setId];
+  if (set && run.fk && set.fk && run.fk !== set.fk) { echoToast('v' + run.ver + ' was run on other input files than the ones kept for ' + run.assayId + '. Re-analyse the latest version to use the kept files.', 'warn'); return; }
   const f = await _hxGet('files', run.setId).catch(() => null);
   if (!f) { echoToast('The input files of this dataset were not kept (too large, or dropped to make room).', 'warn'); return; }
   const ok = await echoRestore({ v: ECHO_SESSION_V, savedAt: new Date(run.ts).toISOString(), matPanels: run.matPanels || 0, files: { echo: f.echo, readers: f.readers, smiles: f.smiles }, form: run.form || {}, qc: {}, view: {}, hadResults: false }, { run: false });
@@ -9479,7 +9597,7 @@ async function _hxRenderCompare(panel) {
   const { a, b } = _hxUi.cmp, ra = _hx.runs[a], rb = _hx.runs[b];
   if (!ra || !rb) { _hxUi.cmp = null; return renderHistoryTab(); }
   const [ba, bb] = await Promise.all([_hxGet('blobs', a).catch(() => null), _hxGet('blobs', b).catch(() => null)]);
-  if (!ba || !bb) { panel.innerHTML = '<div class="empty"><p>One of these analyses could not be read.</p><button class="hist-btn" onclick="hxCloseCompare()">Back</button></div>'; return; }
+  if (!ba || !bb || !ba.data || !bb.data) { panel.innerHTML = '<div class="empty"><p>One of these analyses could not be read.</p><button class="hist-btn" onclick="hxCloseCompare()">Back</button></div>'; return; }
   const P = _hxPairs(ba.data, bb.data), thr = _hxUi.thr, lt = Math.log10(thr);
   const valid = P.rows.filter(r => isFinite(r.lr)), med = valid.length ? valid.map(r => r.lr).sort((x, y) => x - y)[Math.floor(valid.length / 2)] : NaN;
   const within = valid.filter(r => Math.abs(r.lr) <= lt).length;
@@ -12828,6 +12946,7 @@ function openSetupModal(_initial) {
   const hclose = document.getElementById('setup-hclose');
   const cancel = document.getElementById('setup-cancel');
   if (hclose) hclose.style.display = '';
+  try { _hxNameHint(); } catch (e) {}
   if (cancel) cancel.style.display = '';
   const sub = document.getElementById('setup-hsub');
   if (sub) sub.textContent = ran ? 'Modify parameters and re-run' : 'Configure your experiment';

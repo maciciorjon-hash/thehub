@@ -66,6 +66,7 @@
 //       datasets, not copies analysed the same way add nothing, another setting is v2 and says what changed, a redraw or a curve edit
 //                           updates in place, Load restores the version's own settings, a full store drops stored files first, the old
 //                           browser-store list migrates once with its copies collapsed, and a cloud merge never resurrects a deletion.
+//   E37 history by name    A History entry is its NAME: runs with one name are versions of one entry (any spelling, any input files), old copies merge, unnamed runs stay by dataset, rename/merge, and every way to compare is findable.
 //   E32 compare             Two analyses matched by group and compound: fold change, unmatched counted, self-compare is 1, biggest change first.
 //   E28 Properties names    The Properties tab lists a compound's potency for every group it was fitted in, not the last one.
 //       every group
@@ -864,7 +865,7 @@ if (run('E27')) await guard('E27', async () => {
   const f = await E(async () => {
     const v1 = Object.values(_hx.runs).sort((x, y) => x.ver - y.ver)[0];
     await loadHistoryEntry(v1.id); await new Promise(r => setTimeout(r, 600));
-    return { id: window._analysisId === v1.id, r2: window._lastAnalysisParams && window._lastAnalysisParams.minR2, n: _lastResultsData.length, setKey: window._setKey === v1.setId };
+    return { id: window._analysisId === v1.id, r2: window._lastAnalysisParams && window._lastAnalysisParams.minR2, n: _lastResultsData.length, setKey: window._setKey === v1.fk };
   });
   check('E27', 'Load brings back version 1 with its own settings', f.id && f.r2 === 0.8 && f.n === 63 && f.setKey, f);
   const g = await E(() => { const s = Object.values(_hx.sets)[0]; return { files: s.filesStored, meta: (s.fileMeta || []).length }; });
@@ -894,6 +895,83 @@ if (run('E27')) await guard('E27', async () => {
     return { first: a1, again: a2, second: a3, resurrected: back, left: Object.keys(_hx.runs).map(Number).sort() };
   });
   check('E27', 'merging from the cloud adds runs this device lacks, ignores duplicates, and does not resurrect what was deleted here', m.first === 9001 && m.again === null && m.second === 9002 && m.resurrected === null && m.left.join() === '9002', m);
+  await wipe();
+});
+
+if (run('E37')) await guard('E37', async () => {
+  await BACK_TO_ANALYSIS();
+  const wipe = () => E(async () => { await _hxLoad(); await _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true); });
+  await wipe();
+  // 1. a real run, named: the name is the identity, so another run under it is a version of the same entry
+  await runWith({ 'p-assay': 'NAMETEST' }); await pg.waitForTimeout(1300);
+  await runWith({ 'p-assay': 'NAMETEST', 'p-r2': '0.9' }); await pg.waitForTimeout(1300);
+  const a = await E(() => ({ sets: Object.keys(_hx.sets), vers: Object.values(_hx.runs).map(r => r.ver).sort().join(), fk: Object.values(_hx.runs).every(r => !!r.fk) }));
+  check('E37', 'two runs called the same are one History entry with two versions', a.sets.length === 1 && a.sets[0] === 'n:nametest' && a.vers === '1,2' && a.fk, a);
+  const b = await E(async () => {
+    // the same name typed another way, run on other input files (a different hash): still the same entry
+    const run = Object.values(_hx.runs)[0], data = (await _hxGet('blobs', run.id)).data;
+    const ent = (id, name, setId) => ({ id, ts: id, assayId: name, setId, groups: 'G', n: 1, nFlag: 0, data: [{ Protein: 'G', Sample_ID: 'x', DC50_nM: id, Flag: 'No' }] });
+    await _hxIngest(ent(5e12, '  NameTest ', 'sOTHERFILES'));
+    const u1 = await _hxIngest(ent(5e12 + 1, 'HB_ANALYSIS', 'sUNRELATED1')), u2 = await _hxIngest(ent(5e12 + 2, 'HB_ANALYSIS', 'sUNRELATED2'));
+    const mine = _hxRunsOf('n:nametest');
+    return { sets: Object.keys(_hx.sets).sort(), vers: mine.map(r => r.ver).sort().join(), setN: _hx.sets['n:nametest'].nextVer };
+  });
+  check('E37', 'the same name in another spelling, on other files, is a third version — not a copy', b.vers === '1,2,3' && b.setN === 4, b);
+  check('E37', 'analyses nobody named keep to their own dataset (two unrelated HB_ANALYSIS are two entries)', b.sets.includes('sUNRELATED1') && b.sets.includes('sUNRELATED2'), b);
+  // 2. History saved before names were the identity: several datasets with one name become one entry
+  const c = await E(async () => {
+    await _hxDeleteRuns(Object.keys(_hx.runs).map(Number), true);
+    const mkSet = (id, t, extra) => Object.assign({ id, name: 'OLD', created: t, updated: t, nextVer: 2, filesStored: false }, extra || {});
+    const mkRun = (id, setId, params) => ({ id, setId, ts: id, assayId: 'OLD', groups: 'G', n: 1, nCompounds: 1, nFlag: 0, params, fp: 'f' + id, pk: 'p' + id, ver: 1, paramsDiff: [], pinned: false, label: '', bytes: 1 });
+    for (const [sid, t] of [['saaa', 1000], ['sbbb', 2000], ['sccc', 3000]]) { _hx.sets[sid] = mkSet(sid, t, sid === 'sbbb' ? { filesStored: true, fileMeta: [{ role: 'echo', name: 'x.csv' }] } : {}); await _hxPut('sets', _hx.sets[sid]); }
+    await _hxPut('files', { setId: 'sbbb', echo: [], readers: {}, smiles: null });
+    for (const [id, sid, r2] of [[1000, 'saaa', 0.8], [2000, 'sbbb', 0.9], [3000, 'sccc', 0.7]]) { _hx.runs[id] = mkRun(id, sid, { minR2: r2, r2Enabled: true }); await _hxPut('runs', _hx.runs[id]); await _hxPut('blobs', { id, data: [{ Protein: 'G', Sample_ID: 'x', DC50_nM: r2, Flag: 'No' }] }); }
+    await _hxMergeByName();
+    const has = async k => { const v = await _hxGet('files', k).catch(() => null); return !!v && v !== true; };
+    const rs = _hxRunsOf('n:old').sort((x, y) => x.ver - y.ver), f = await has('n:old');
+    return { sets: Object.keys(_hx.sets), vers: rs.map(r => r.ver).join(), diff: rs[1] && rs[1].paramsDiff.map(d => d.label).join(), fk: rs.map(r => r.fk).join(), files: f, filesFlag: _hx.sets['n:old'].filesStored, oldFiles: await has('sbbb') };
+  });
+  check('E37', 'old copies of one name are merged into a single entry with versions 1..n in the order they were made', c.sets.length === 1 && c.sets[0] === 'n:old' && c.vers === '1,2,3' && /Min R²/.test(c.diff), c);
+  check('E37', 'the merge keeps the input files (under the new entry) and remembers which dataset each version ran on', c.files && c.filesFlag && !c.oldFiles && c.fk === 'saaa,sbbb,sccc', c);
+  // 3. rename, merge by rename, and unnamed → named
+  const d = await E(async () => {
+    const mk = (id, name, setId) => _hxIngest({ id, ts: id, assayId: name, setId, groups: 'G', n: 1, nFlag: 0, data: [{ Protein: 'G', Sample_ID: 'x', DC50_nM: id, Flag: 'No' }] });
+    await mk(7e12, 'HB_ANALYSIS', 'sLOOSE'); await mk(7e12 + 1, 'OTHER', 'sX');
+    const inp = v => { const i = document.createElement('input'); i.value = v; i.dataset.x = ''; return i; };
+    await hxRenameDo('sLOOSE', inp('Fresh name'));
+    const named = Object.keys(_hx.sets).includes('n:fresh name') && !_hx.sets['sLOOSE'] && Object.values(_hx.runs).find(r => r.id === 7e12).assayId === 'Fresh name';
+    await hxRenameDo('n:other', inp('old'));      // typed over an existing name: merged
+    const merged = _hxRunsOf('n:old').length === 4 && !_hx.sets['n:other'];
+    return { named, merged, vers: _hxRunsOf('n:old').map(r => r.ver).sort().join(), sets: Object.keys(_hx.sets) };
+  });
+  check('E37', 'renaming an unnamed analysis names it; renaming one to an existing name merges them as versions', d.named && d.merged && d.vers === '1,2,3,4', d);
+  // 4. comparing is findable: a Compare button on every version, "vs v1" on the later ones, and one on the Results tab
+  const e = await E(async () => {
+    document.querySelector('.tab[data-tab="history"]').click(); _hxUi.all = true; await renderHistoryTab();
+    const panel = document.getElementById('history-panel');
+    const txt = panel.innerText.replace(/\s+/g, ' ');
+    const cmpBtns = panel.querySelectorAll('.hx-ver .hist-btn').length, vs = [...panel.querySelectorAll('.hx-ver .hist-btn')].filter(b => /^vs v/.test(b.textContent)).length;
+    const [r1, r2] = _hxRunsOf('n:old').sort((x, y) => x.ver - y.ver);
+    hxCmpPick(r1.id); await new Promise(r => setTimeout(r, 300));
+    const chosen = /chosen/.test(panel.innerText);
+    hxCmpPick(r2.id); await new Promise(r => setTimeout(r, 600));
+    const open = !!document.querySelector('.hx-cmp');
+    hxCloseCompare(); _hxUi.all = false; _hxUi.sel = [];
+    return { hint: /Compare two analyses/.test(txt), cmpBtns, vs, chosen, open };
+  });
+  check('E37', 'History says how to compare, every version has a Compare button, later ones "vs v…", and two presses open the comparison', e.hint && e.cmpBtns >= 8 && e.vs >= 3 && e.chosen && e.open, e);
+  const f = await E(async () => {
+    switchPanel('analysis', document.querySelectorAll('.outer-tab')[0]); document.querySelector('.tab[data-tab="results"]').click();
+    return !!document.querySelector('#results-panel button[onclick="hxCompareFromResults()"]');
+  });
+  check('E37', 'the Results tab has a Compare… button', f, f);
+  // 5. the hint under Assay ID tells what a name will do
+  const g = await E(async () => {
+    const el = document.getElementById('p-assay'); el.value = 'old'; await _hxNameHint(); const t1 = document.getElementById('p-assay-hint').textContent;
+    el.value = 'brand new'; await _hxNameHint(); const t2 = document.getElementById('p-assay-hint').textContent; el.value = '';
+    return { t1, t2 };
+  });
+  check('E37', 'under Assay ID: an existing name says a new version will be added; a new one says it is new', /4 versions/.test(g.t1) && /not a copy/.test(g.t1) && /New in History/.test(g.t2), g);
   await wipe();
 });
 
