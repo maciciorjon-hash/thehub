@@ -2626,6 +2626,28 @@ function _normAuditHtml(audits) {
     return '<details class="na-box' + (dep ? ' na-warn' : '') + '"' + (dep ? ' open' : '') + '><summary>' + head + (a.assayId && audits.length > 1 ? ' <span class="na-id">' + e(a.assayId) + '</span>' : '') + '</summary><table class="na-tbl">' + rows + '</table></details>';
   }).join('');
 }
+// The same account as one Methods-style sentence: what the readings were divided by and how far the
+// answer depends on it. Labbook's Report and the curve PDFs print this.
+function _normAuditSentence(a) {
+  if (!a) return '';
+  if (a.none) return 'The raw signal was fitted without normalisation.';
+  if (!a.smart) return 'Readings were normalised to the plain mean of the DMSO control wells of each plate (' + a.ctrlRange + ')' + (a.plates.some(p => p.suspect.length) ? '; ' + a.plates.reduce((s, p) => s + p.suspect.length, 0) + ' control well(s) that look out of line were still in that mean.' : '.');
+  const c = a.check, dep = c['Method-dependent'] + c['No plain fit'];
+  const left = a.plates.reduce((s, p) => s + p.left.length, 0);
+  let t = 'Readings were normalised to a per-plate DMSO reference learned from each plate\u2019s own control wells (' + a.ctrlRange + '): control wells more than 3.5 robust SD from the control median or 4.5 SD from their own row were left out' + (left ? ' (' + left + ' well' + (left === 1 ? '' : 's') + ')' : ' (none were)') + ', and a left-to-right drift or an odd/even-row difference was corrected only where significant (p < 0.01 and at least 2 %). The same rules and thresholds were applied to every plate. ';
+  t += 'Every curve was also fitted with the plain plate mean: ' + c.Same + ' of ' + a.compared + ' gave the same result (potency within \u00d7' + a.thr.same + ', effect within ' + a.thr.dmax + ' points)' + (c.Differs ? ', ' + c.Differs + ' differed' : '') + (dep ? ', ' + dep + ' depended on the method (potency beyond \u00d7' + a.thr.differs + ' or the midpoint appeared/disappeared)' : '') + '.';
+  if (a.worst.length) t += ' Curves that differ: ' + a.worst.slice(0, 6).map(w => w.sample + (w.ratio ? ' (\u00d7' + w.ratio + ')' : '')).join(', ') + (a.worst.length > 6 ? ', \u2026' : '') + '.';
+  return t;
+}
+// One curve's normalisation on one line (PDFs): method, reference shift, and the plain-mean comparison.
+function _normPdfLine(r) {
+  if (!r.Norm_Method) return null;
+  let t = 'Normalisation: ' + _normShort(r) + (r.Norm_Shift_pct != null && r.Norm_Method !== 'Plate mean' ? ' (ref ' + (r.Norm_Shift_pct > 0 ? '+' : '') + r.Norm_Shift_pct + '% vs plate mean)' : '');
+  let tone = 0;
+  if (r.Norm_Check === 'Same') t += '  \u00b7  = plain mean';
+  else if (r.Norm_Check) { tone = r.Norm_Check === 'Differs' ? 1 : 2; t += '  \u00b7  plain mean: ' + (r.Plain_DC50_nM != null ? r.Plain_DC50_nM + ' nM' : 'no fit') + (r.Norm_Ratio ? ' (\u00d7' + r.Norm_Ratio + ')' : '') + (r.Norm_Check === 'Method-dependent' ? ' \u2014 depends on method' : ''); }
+  return { text: t, tone };
+}
 function _normShort(r) {
   const m = r.Norm_Method;
   if (!m) return '—';
@@ -3927,6 +3949,7 @@ function sendResultsToLabbook(){
       potencyUnit: 'nM',
       effectUnit: '%',
       rows: rows,
+      normText: (window._normAudits || []).map(_normAuditSentence).filter(Boolean).join(' '),
       normalisation: (window._normAudits || []).reduce(function(o,a){ return o.concat(_normAuditLines(a).map(function(l){ return l[0] + ': ' + l[1]; })); }, []),
       createdAt: new Date().toISOString()
     }]
@@ -7339,7 +7362,7 @@ async function generateCurvePDFs(results) {
   let done = 0;
   log('Generating curve PDFs (' + total + ' compounds)…', 'info');
   const PW = 595.28, PH = 841.89, M = 34, GX = 18, GY = 14, COLS = 2, ROWS = 3, PER = COLS * ROWS;
-  const HEAD = 30, FOOT = 18, TXT = 36;
+  const HEAD = 30, FOOT = 30, TXT = 45;
   const cellW = (PW - 2 * M - GX * (COLS - 1)) / COLS;
   const cellH = (PH - 2 * M - HEAD - FOOT - GY * (ROWS - 1)) / ROWS;
   const k = 0.75, chartW = cellW / k, chartH = (cellH - TXT) / k;
@@ -7355,6 +7378,9 @@ async function generateCurvePDFs(results) {
     const potL = lab.potency.replace(/ \(nM\)$/, ''), effL = lab.effect.replace(/ \(%\)$/, ''), effPct = /%/.test(lab.effect);
     const doc = new jsPDFCls({orientation:'portrait', unit:'pt', format:'a4'});
     const pages = Math.ceil(pResults.length / PER);
+    const _pdfAud = (window._normAudits || []).find(a => !_isMulti || a.assayType === at) || null;
+    const _pdfAudLines = _pdfAud ? doc.setFontSize(6.5) && doc.splitTextToSize(_pdfText(_normAuditSentence(_pdfAud)), PW - 2 * M).slice(0, 4) : [];
+    if (_pdfAud && doc.splitTextToSize(_pdfText(_normAuditSentence(_pdfAud)), PW - 2 * M).length > 4) _pdfAudLines[3] = _pdfAudLines[3].replace(/.{0,3}$/, '...');
     for (let pg = 0; pg < pages; pg++) {
       if (pg) doc.addPage();
       // Page header and footer
@@ -7363,6 +7389,9 @@ async function generateCurvePDFs(results) {
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90, 95, 115);
       doc.text(fitLine(doc, 'Assay ' + assayId + '   ·   ' + pResults.length + ' compound' + (pResults.length === 1 ? '' : 's'), 200), PW - M, M + 12, {align:'right'});
       doc.setDrawColor(200, 203, 214); doc.setLineWidth(0.6); doc.setLineDashPattern([], 0); doc.line(M, M + 20, PW - M, M + 20);
+      // The account of the normalisation, on every page: a printed curve is separated from the screen
+      // that explained how its readings were made.
+      if (_pdfAud) { doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(110, 115, 135); _pdfAudLines.forEach((ln, li) => doc.text(ln, M, PH - M - 2 - 8 * (_pdfAudLines.length - 1 - li))); }
       doc.setFontSize(7.5); doc.setTextColor(140, 144, 160);
       doc.text('dHUB Echo Dose Response · ' + stamp, M, PH - M + 4);
       doc.text('Page ' + (pg + 1) + ' of ' + pages, PW - M, PH - M + 4, {align:'right'});
@@ -7384,6 +7413,8 @@ async function generateCurvePDFs(results) {
           + '    Hill ' + (_ndr ? ND_TEXT : (r.HillSlope ?? '—')) + '    R² ' + (r.R2 ?? '—');
         doc.text(fitLine(doc, st, cellW), x, y + 20);
         if (flagged && r.Flag_Reason) { doc.setTextColor(160, 90, 10); doc.text(fitLine(doc, r.Flag_Reason, cellW), x, y + 30); }
+        // How this curve was normalised, and what the plain plate mean would have said.
+        { const nl = _normPdfLine(r); if (nl) { doc.setFontSize(7); doc.setTextColor(nl.tone === 2 ? 192 : nl.tone === 1 ? 160 : 110, nl.tone === 2 ? 64 : nl.tone === 1 ? 90 : 115, nl.tone === 2 ? 64 : nl.tone === 1 ? 10 : 135); doc.text(fitLine(doc, nl.text, cellW), x, y + 39); doc.setFontSize(7.5); } }
         _cvPdfFigure(doc, x, y + TXT - 4, k, chartW, [r], cfg, null, chartH);
         done++;
         setProgress(Math.round(done / total * 100));

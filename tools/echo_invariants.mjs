@@ -979,6 +979,10 @@ if (run('E30')) await guard('E30', async () => {
   check('E30', 'Measurement = Raw_Signal / Reference_Signal × 100 on every row of the Raw CSV', on.hasRawCols && on.nRaw > 0 && on.badRecalc === 0, on);
   check('E30', 'the table has the two columns and the audit above it; the summary CSV has them too', on.banner && on.thN && on.thC && on.sumHdr, on);
   check('E30', 'Labbook receives the method and the check for every curve', on.ctx.norm === on.ctx.n, on);
+  if (hasPdf) {
+    const bt = (await download(() => _pdfExportFiltered(_lastResultsData.filter(r => r.Protein === 'BRD2')))).toString('latin1');
+    check('E30', 'the curve PDF says how each curve was normalised and carries the account on the page', /Normalisation: Smart/.test(bt) && /Readings were normalised to a per-plate/.test(bt) && /plain mean/.test(bt), { smart: /Normalisation: Smart/.test(bt), foot: /Readings were normalised/.test(bt) });
+  }
   await runWith(false);
   const off = await E(() => {
     const rows = _lastResultsData, aud = window._normAudits || [];

@@ -15,6 +15,8 @@
 //                          exclusions written in Labbook, and lands on the experiment's Results
 //   T6  Echo               the same round trip from Echo: curves, replicate points left out, Edit in Echo,
 //                          Update in Labbook
+//   T8  normalisation      what Echo says about how the readings were normalised arrives with the set, and is printed in the Report,
+//                          the record PDF and the Methods sheet: a sentence, the per-plate lines and a column of 'vs plain mean'.
 //   T7  hostile payloads   a curve with non-numbers, a session too big to store, a payload from a
 //                          frame that is not the Hub's — dropped or refused, never drawn or stored
 //
@@ -189,6 +191,27 @@ try {
   const echo2 = S.filter(s => s.origin === 'echo');
   const row2 = echo2[0] && echo2[0].rows.find(r => r.compound === 'EDA-002');
   check('T6 updating replaces the Echo set and carries the left-out replicate', echo2.length === 1 && S.length === 2 && !!row2 && row2.curve.ex.length === 1 && row2.curve.x.length === 19, JSON.stringify({ sets: S.length, ex: row2 && row2.curve.ex.length, n: row2 && row2.curve.x.length }));
+
+  // ── T8: the normalisation audit reaches the Report and the PDF ───────────────────────────
+  await page.evaluate(() => show('echo'));
+  await ec.evaluate(() => {
+    const rows = _lastResultsData;
+    rows.forEach((r, i) => { Object.assign(r, { Norm_Method: i === 2 ? 'Smart \u00b7 odd/even rows' : 'Smart \u00b7 plate mean', Norm_Plates: 'P1', Norm_Shift_pct: i, Norm_Shift_max_pct: i + 1, Norm_Note: '',
+      Norm_Check: i === 0 ? 'Same' : i === 1 ? 'Differs' : 'Method-dependent', Norm_Ratio: i === 0 ? 1.02 : i === 1 ? 1.6 : 2.7, Plain_DC50_nM: 100, Plain_Dmax_pct: 90, Norm_Why: 'potency vs the plain plate mean' }); });
+    const plates = { k1: { name: 'P1', mode: 'plate mean', info: null, nCtrl: 14, muAll: 1000, suspect: [] } };
+    window._normAudits = [_normAuditBuild({ assayId: 'INV_ECHO', assayType: 'hibit', smartOn: true, skipNorm: false, ctrlRange: 'B12-O12', plates, summary: rows })];
+  });
+  await ec.evaluate(() => sendResultsToLabbook()); await sleep(1000);
+  const n8 = await lb.evaluate(id => { const e = LB.data.experiments[id]; const set = e.integration.results.find(r => r.origin === 'echo');
+    const rep = buildPubReadyFromExp(e), pdf = pdResults(e), meth = (() => { try { return buildPubReadyFromExp(e); } catch (x) { return ''; } })();
+    return { text: !!set.normText, lines: (set.normalisation || []).length, rowNorm: set.rows.filter(r => r.norm && r.norm.check).length, n: set.rows.length,
+      repSentence: /normalised to a per-plate DMSO reference/.test(rep), repCol: /vs plain mean/.test(rep), repRatio: /\u00d72\.7|×2\.7/.test(rep),
+      pdfPara: /<b>Normalisation\.<\/b>/.test(pdf), pdfCol: /vs plain mean/.test(pdf) && /×2\.7/.test(pdf), pdfPlate: /Plate P1/.test(pdf),
+      card: /Normalisation/.test(resultsPaneHtml(e)) && /res-nm dep/.test(resultsPaneHtml(e)), stale: _pubSourceSig(e).length > 0 }; }, expId);
+  check('T8 the sentence, the lines and a check for every row arrive with the set', n8.text && n8.lines >= 3 && n8.rowNorm === n8.n, JSON.stringify(n8));
+  check('T8 the Report carries the sentence and the vs-plain-mean column', n8.repSentence && n8.repCol && n8.repRatio, JSON.stringify(n8));
+  check('T8 the record PDF carries the paragraph, the plate lines and the column', n8.pdfPara && n8.pdfCol && n8.pdfPlate, JSON.stringify(n8));
+  check('T8 the Results card shows it and marks the method-dependent curve', n8.card, JSON.stringify(n8));
 
   // ── T7: hostile payloads ────────────────────────────────────────────────────────────────
   const hostile = await lb.evaluate((id) => {

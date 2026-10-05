@@ -1749,6 +1749,7 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .exp-pub .pub-wells b{font-family:var(--mono);font-weight:600;}
 .exp-pub .pub-wells .pub-n{color:var(--text3);}
 @media (max-width:640px){ .exp-pub .pub-wells{columns:1;} .rep-x-sep{display:none;} .rep-x{height:36px;} }
+.exp-pub .pub-norm{font-size:var(--fs-2);color:var(--text2);}
 .exp-pub .pub-tbl{border-collapse:collapse;font-size:var(--fs-2);margin:0 0 12px;}
 .exp-pub .pub-tbl th,.exp-pub .pub-tbl td{padding:4px 10px 4px 0;text-align:left;border-bottom:1px solid var(--border);vertical-align:top;}
 .exp-pub .pub-tbl th{font-size:var(--fs-3);color:var(--text3);font-weight:600;}
@@ -11610,7 +11611,7 @@ function _pubSourceSig(e){
       e.aim||'', e.status||'', e.html||'',
       (e.blocks||[]).map(function(b){ return [b.done?1:0, b.completedAt||0, b.log||'']; }),
       (e.files||[]).map(function(f){ return [f.name||'', f.caption||'', f.include===false?0:1]; }),
-      ((e.integration&&e.integration.results)||[]).map(function(r){ return (r.rows||[]).map(function(x){ return [x.compound,x.target,x.potency,x.effect,x.flag?1:0,x.excluded?1:0,x.note||'']; }); })]);
+      ((e.integration&&e.integration.results)||[]).map(function(r){ return (r.rows||[]).map(function(x){ return [x.compound,x.target,x.potency,x.effect,x.flag?1:0,x.excluded?1:0,x.note||'',x.norm&&x.norm.check||'']; }).concat([r.normText||'']); })]);
   }catch(_e){ return ''; }
 }
 function pubIsStale(e){ return !!(e && e.pubEdited && e.pubReady && e.pubSrcSig && e.pubSrcSig!==_pubSourceSig(e)); }
@@ -11643,12 +11644,20 @@ function _pubLogHtml(e){
 function _localDay(ms){ var d=new Date(ms); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 // The measurements as a table, exclusions struck and flags kept — the same rows the Results tab
 // shows, so the Report cannot disagree with it.
+// The normalisation the fitting app reported for a result set: one Methods-style sentence (normText) and
+// per-plate lines (normalisation[]). Written by the app, printed here, never recomputed.
+function _normSets(e){ return ((e.integration&&e.integration.results)||[]).filter(function(r){ return r&&(r.normText||(r.normalisation&&r.normalisation.length)); }); }
+function _normTexts(e){ var seen={}, out=[]; _normSets(e).forEach(function(r){ var t=String(r.normText||'').trim(); if(t&&!seen[t]){ seen[t]=1; out.push(t); } }); return out; }
+function _normCellTxt(x){ var n=x&&x.norm; if(!n||!n.check) return ''; if(n.check==='Same') return '= plain'; return (n.ratio?('\u00d7'+n.ratio):'differs')+(n.check==='Differs'?'':' \u26a0'); }
+function _rowsHaveNorm(rows){ return (rows||[]).some(function(x){ return x&&x.norm&&x.norm.check; }); }
+function _normPlateLines(r){ return (r.normalisation||[]).filter(function(l){ return /^(Plate |Look at)/.test(String(l)); }); }
 function _pubResultsTable(e){
   var rs=(e.integration&&e.integration.results)||[]; if(!rs.length) return '';
   return rs.map(function(r){ var rows=r.rows||[]; if(!rows.length) return '';
     var pl=String(r.potencyLabel||'Potency').split(' ')[0]+(r.potencyUnit?(' ('+r.potencyUnit+')'):''), el2=String(r.effectLabel||'Effect').split(' ')[0]+(r.effectUnit?(' ('+r.effectUnit+')'):'');
-    return '<table class="pub-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(pl)+'</th><th>'+esc(el2)+'</th><th>R\u00b2</th><th></th></tr></thead><tbody>'
-      +rows.map(function(x){ return '<tr'+(x.excluded?' class="pub-x"':'')+'><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rnp(x))+'</td><td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.r2))+'</td><td>'+(x.excluded?'excluded':(x.flag?'flagged':''))+((x.note||'').trim()?(' \u2014 '+esc(x.note.trim())):'')+'</td></tr>'; }).join('')
+    var nc=_rowsHaveNorm(rows);
+    return '<table class="pub-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(pl)+'</th><th>'+esc(el2)+'</th><th>R\u00b2</th>'+(nc?'<th title="Potency when the same wells are normalised with the plain plate mean">vs plain mean</th>':'')+'<th></th></tr></thead><tbody>'
+      +rows.map(function(x){ return '<tr'+(x.excluded?' class="pub-x"':'')+'><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rnp(x))+'</td><td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.r2))+'</td>'+(nc?'<td>'+esc(_normCellTxt(x))+'</td>':'')+'<td>'+(x.excluded?'excluded':(x.flag?'flagged':''))+((x.note||'').trim()?(' \u2014 '+esc(x.note.trim())):'')+'</td></tr>'; }).join('')
       +'</tbody></table>'; }).join('');
 }
 // What is attached, by name and caption. The bytes are in the Files tab and the record PDF;
@@ -11746,7 +11755,9 @@ function buildPubReadyFromExp(e,only){
   }
   if(o.dev){ var d=deviationsSentence(e); if(d){ H('Deviations from the protocol'); P(esc(d)); } }
   if(o.log){ var lg=_pubLogHtml(e); if(lg){ H('What happened'); out.push(lg); } }
-  if(o.results){ var r=pubResultsSentence(e), rt=_pubResultsTable(e); if(r||rt){ H('Results'); P(esc(r)); if(rt) out.push(rt); } }
+  if(o.results){ var r=pubResultsSentence(e), rt=_pubResultsTable(e); if(r||rt){ H('Results'); P(esc(r)); if(rt) out.push(rt);
+    // How the readings were normalised and whether any curve depends on that choice.
+    var nt=_normTexts(e); nt.forEach(function(t){ P('<span class="pub-norm">'+esc(t)+'</span>'); }); } }
   // A marker, not the drawing: curves are drawn from the record each time the report is read.
   if(o.curves && expHasCurves(e)){ H('Dose\u2013response curves'); out.push('<div class="pub-curves" contenteditable="false"></div>'); }
   if(o.obs && (e.html||'').replace(/<[^>]+>/g,'').trim()){ H('Observations'); out.push('<div class="pub-obs">'+e.html+'</div>'); }
@@ -20262,6 +20273,7 @@ var PRINT_CSS='<style>@page{size:A4;margin:16mm 15mm 17mm}'
  +'#print-root .pd-res-hd{font-weight:700;margin-bottom:2px;font-size:10pt;break-after:avoid}'
  +'#print-root .pd-res-when{float:right;font-weight:400;color:#555;font-size:8.5pt}'
  +'#print-root .pd-note{font-size:8.5pt;color:#555;margin:2px 0 0}'
+ +'#print-root .pd-norm{font-size:8.5pt;color:#333;margin:3px 0 0;break-inside:avoid}#print-root .pd-norm p{margin:0 0 3px}#print-root .pd-norm ul{margin:0;padding:0;list-style:none}#print-root .pd-norm li{margin:0 0 1px;color:#444}'
  // Curves: small panels on shared axes, grey marks, never split across a page. The universal reset
  // above sets font-size:inherit, which beats a presentation attribute, so the axis text is stated here.
  +'#print-root .pd-cvset{margin:4px 0 10px}#print-root .pd-cvset-hd{font-weight:700;font-size:9pt;margin:0 0 4px;break-after:avoid}'
@@ -20429,18 +20441,26 @@ function pdResults(e){
   return '<div class="pd-sec-hd">Results</div>' + tb + pdRepStats(e) + rs.map(function(r){
     var rows=(r.rows||[]); if(!rows.length) return '';
     var pu=r.potencyUnit?(' ('+r.potencyUnit+')'):'', eu=r.effectUnit?(' ('+r.effectUnit+')'):'';
+    var nc=_rowsHaveNorm(rows);
     return '<div class="pd-res"><div class="pd-res-hd">'+esc(r.label||r.source||'result')
       +'<span class="pd-res-when">'+esc(String(r.createdAt||'').slice(0,10))+'</span></div>'
       +'<table class="pd-tbl"><thead><tr><th>Compound</th><th>Target</th><th>'+esc(String(r.potencyLabel||'Potency').split(' ')[0])+pu
-      +'</th><th>'+esc(String(r.effectLabel||'Effect').split(' ')[0])+eu+'</th><th>Hill</th><th>R&sup2;</th><th>Flag</th></tr></thead><tbody>'
+      +'</th><th>'+esc(String(r.effectLabel||'Effect').split(' ')[0])+eu+'</th><th>Hill</th><th>R&sup2;</th>'+(nc?'<th>vs plain mean</th>':'')+'<th>Flag</th></tr></thead><tbody>'
       + rows.map(function(x){
           return '<tr><td>'+esc(x.compound||'')+'</td><td>'+esc(x.target||'')+'</td><td>'+esc(_rnp(x))+'</td>'
-            +'<td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.hill))+'</td><td>'+esc(_rn(x.r2))+'</td>'
+            +'<td>'+esc(_rn(x.effect))+'</td><td>'+esc(_rn(x.hill))+'</td><td>'+esc(_rn(x.r2))+'</td>'+(nc?'<td>'+esc(_normCellTxt(x))+'</td>':'')
             // A curve the fitting app was unhappy about must stay visibly unhappy on paper too.
             +'<td>'+(x.flag?'flagged':'')+'</td></tr>';
         }).join('')
-      +'</tbody></table></div>';
+      +'</tbody></table>'+_pdNormHtml(r)+'</div>';
   }).join('');
+}
+// The normalisation behind a results table, printed with it: a table of numbers without how its
+// readings were divided is the half of the method a reader cannot repeat.
+function _pdNormHtml(r){
+  var t=String(r.normText||'').trim(), pl=_normPlateLines(r); if(!t&&!pl.length) return '';
+  return '<div class="pd-norm">'+(t?('<p><b>Normalisation.</b> '+esc(t)+'</p>'):'')
+    +(pl.length?('<ul>'+pl.map(function(l){ var i=String(l).indexOf(': '); return '<li><b>'+esc(i>0?String(l).slice(0,i):'')+'</b> '+esc(i>0?String(l).slice(i+2):String(l))+'</li>'; }).join('')+'</ul>'):'')+'</div>';
 }
 // The curves behind the results table, one small panel per fitted compound on shared axes. Nothing at
 // all — no heading — when the experiment holds no fitted dose response.

@@ -6719,7 +6719,8 @@ Jon, on the Smart DMSO control: *how do I know what was used for each curve, is 
 - **Where it shows**: banner above the Results table (open by itself when anything depends on the method), two columns (`Normalisation`, `vs plain mean`), the Curves stat strip, Protocol tab, summary CSV, Copy TSV, XLSX (columns, audit lines in the protocol sheet, a per-curve `Normalisation` sheet), **Raw CSV** (`Raw_Signal`, `Reference_Signal`, `Normalisation` appended, so `Measurement = Raw / Reference × 100` can be recomputed), and Labbook (`row.norm`, `set.normalisation`, shown under the result card header).
 - Smart off: `Plate mean`, no comparison is invented, and the audit says the bias check was not run and lists control wells that still sit in the mean although they look wrong.
 - Curves › **Fix Y** now starts at −15 / 120 (% of control; both editable, a typed value is kept; raw/gain runs start from their data).
-- Invariant **E30**. Not done: a flag raised from the check (left to Jon), the audit in curve PDFs and Labbook's PDF/Report.
+- **On paper too** (same day): Echo's curve PDFs print a normalisation line under each curve (method, reference shift, what the plain mean gave, red when it depends on the method) and the account of the normalisation on every page's foot (`_normAuditSentence`, `_normPdfLine`). Echo sends `set.normText` (one Methods sentence) beside `set.normalisation[]`; Labbook prints the sentence and a *vs plain mean* column in the **Report** (Results section, so also the Methods sheet) and in the **record PDF** with the per-plate lines (`_pdNormHtml`), and it is in `_pubSourceSig`, so changing it makes a hand-written Report stale.
+- Invariants **E30** (Echo, incl. the curve PDF) and **T8** (Labbook Report / PDF). Not done: a flag raised from the check (left to Jon).
 
 ## Echo Dose Response: History by dataset, Compare, Review, groups, n.d., keyboard (2026-10-04)
 
