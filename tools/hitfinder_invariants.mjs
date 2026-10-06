@@ -26,6 +26,9 @@
 //   H18 an edge can be dragged Dragging a threshold's handle (pointer or arrow keys) moves it, the counts follow while it moves, and the result equals
 //                              what typing the same number would give.
 //   H19 a screen can be big     5000 compounds recompute in seconds, only the rows in view are built, and the last row is reachable.
+//   H11 a plot is the data    Each plot draws exactly its compounds (a bound as an arrow, a hook as a diamond); the shaded corner moves with the criteria; a flip of
+//                              the theme repaints; the SVG / PNG / CSV are on white, carry no CSS variable and no NaN, and agree with the screen; a rectangle
+//                              dragged on one plot picks the same compounds in all of them, and Show in Hits lists exactly those.
 //   H15 the reader creates     Reading Echo's History never creates its database: with no database there is nothing to list and nothing is made.
 //       nothing
 //   H16 the example is real   The example screen has 72 compounds in 5 screens, every record is schema echo-screen/1 and went through the engine
@@ -401,6 +404,49 @@ if (run('H19')) await guard('H19', async () => {
   }, SCN);
   check('H19', '5000 compounds load and judge in a few seconds, and a moved threshold is patched in well under one', r.n === 5000 && r.load < 8000 && r.patch < 1500, r);
   check('H19', 'only the rows in view are built (not thousands), and the last compound is reachable by scrolling', r.dom < 120 && r.rowsAfter < 120 && r.total > 100 && r.lastShown, r);
+});
+
+
+if (run('H11')) await guard('H11', async () => {
+  await hfReset(); await E(() => hfTab('plots')); await pg.waitForTimeout(500);
+  const r = await E(() => {
+    const out = { plots: Object.keys(HF.plots) };
+    out.counts = out.plots.map(id => { const d = HF.plots[id], dom = document.querySelectorAll('#pl-' + id + ' svg.plot .mk').length; return [id, d.spec.pts.length, dom, d.spec.pts.filter(p => p.xb || p.yb).length, document.querySelectorAll('#pl-' + id + ' svg.plot .mk path[d^="M"][fill]').length]; });
+    const fillOf = () => { const m = document.querySelector('#pl-dmax .mk circle[fill="var(--good)"], #pl-dmax .mk path[fill="var(--good)"]'); return m ? getComputedStyle(m).fill : null; };
+    out.light = fillOf(); document.documentElement.setAttribute('data-theme', 'dark'); out.dark = fillOf(); document.documentElement.setAttribute('data-theme', 'light');
+    // the shaded corner is the criteria's
+    const zone = () => { const z = document.querySelector('#pl-dmax .zp'); return z ? +z.getAttribute('width') : null; };
+    out.z0 = zone(); const c = HF.crit.rows.find(x => x.metric === 'potency'); const keep = c.pass; c.pass = 10; hfComputeVerdicts(); hfRenderPlots(); out.z1 = zone(); c.pass = keep; hfComputeVerdicts(); hfRenderPlots();
+    return out;
+  });
+  check('H11', 'each plot draws every compound it has points for, once', r.counts.length >= 4 && r.counts.every(c => c[1] === c[2] && c[1] > 0), r.counts);
+  check('H11', 'the colour is the theme\'s: a hit is green in both, and the two greens differ', r.light && r.dark && r.light !== r.dark, [r.light, r.dark]);
+  check('H11', 'the shaded corner is the criteria\'s: tightening the potency edge shrinks it', r.z0 > r.z1 && r.z1 > 0, [r.z0, r.z1]);
+  // exports
+  const files = await E(() => { const o = {}; HF.plots && Object.keys(HF.plots).forEach(id => { const f = hfPlotFile(id); o[id] = f ? { svg: f.svg, n: (f.svg.match(/data-ck=/g) || []).length, dom: HF.plots[id].spec.pts.length } : null; }); return o; });
+  const ids = Object.keys(files);
+  check('H11', 'every exported SVG is on white, draws as many compounds as the screen, and carries no CSS variable and no NaN', ids.length >= 4 && ids.every(id => { const f = files[id]; return f && /<rect width="720" height="520" fill="#ffffff"/.test(f.svg) && !/var\(/.test(f.svg) && !/NaN|undefined/.test(f.svg) && f.n === f.dom && /^<svg xmlns=/.test(f.svg); }), ids.map(id => [id, files[id] && files[id].n, files[id] && files[id].dom, files[id] && /var\(/.test(files[id].svg)]));
+  const dl = async (fn) => { const [d] = await Promise.all([pg.waitForEvent('download', { timeout: 20000 }), E(fn)]); const p = await d.path(); return { name: d.suggestedFilename(), buf: fs.readFileSync(p) }; };
+  const png = await dl(() => hfPlotSave('dmax', 'png')), csv = await dl(() => hfPlotSave('dmax', 'csv')), svg = await dl(() => hfPlotSave('window', 'svg'));
+  const n = await E(() => HF.plots.dmax.spec.pts.length);
+  check('H11', 'the PNG is a real PNG, four times the plot\'s size; the CSV has a row per plotted compound; the SVG file is the SVG', png.buf.slice(1, 4).toString() === 'PNG' && png.buf.readUInt32BE(16) === 720 * 4 && csv.buf.toString('utf8').split('\r\n').length === n + 1 && /^<svg /.test(svg.buf.toString()) && /hitfinder_dmax\.png/.test(png.name), { png: png.buf.length, w: png.buf.readUInt32BE(16), rows: csv.buf.toString('utf8').split('\r\n').length, n });
+  // table view
+  await E(() => hfPlotTable('dmax'));
+  const tb = await E(() => ({ rows: document.querySelectorAll('#pl-dmax tbody tr').length, n: HF.plots.dmax.spec.pts.length, svg: !!document.querySelector('#pl-dmax svg.plot') }));
+  await E(() => hfPlotTable('dmax'));
+  check('H11', 'the table view lists the same compounds as the plot', tb.rows === tb.n && !tb.svg, tb);
+  // brushing: a rectangle on one plot picks the same compounds in all
+  const geo = await E(() => { const d = HF.plots.dmax, box = d.r.box, svg = document.querySelector('#pl-dmax svg.plot'), b = svg.getBoundingClientRect(), k = b.width / d.r.W; const xs = d.r.pts.map(p => p.x).sort((a, c) => a - c);
+    const cx = box[0] + (xs[Math.floor(xs.length * 0.6)] - box[0]), cy = box[1] + (box[3] - box[1]) * 0.45; const want = d.r.pts.filter(p => p.x <= cx && p.y <= cy).map(p => p.ck).sort();
+    return { x0: b.left + (box[0] + 2) * k, y0: b.top + (box[1] + 2) * k, x1: b.left + cx * k, y1: b.top + cy * k, want, xonly: d.r.pts.filter(p => p.x <= cx).length, hit: document.elementFromPoint(b.left + (box[0] + 2) * k, b.top + (box[1] + 2) * k).closest('.mk') }; });
+  await pg.mouse.move(geo.x0, geo.y0); await pg.mouse.down(); await pg.mouse.move((geo.x0 + geo.x1) / 2, (geo.y0 + geo.y1) / 2, { steps: 5 }); await pg.mouse.move(geo.x1, geo.y1, { steps: 5 }); await pg.mouse.up(); await pg.waitForTimeout(200);
+  const sel = await E(() => ({ sel: [...HF.selSet].sort(), bar: (document.getElementById('selbar') || {}).textContent, rings: [...document.querySelectorAll('svg.plot')].map(sv => sv.querySelectorAll('.selr').length), exp: Object.keys(HF.plots).map(id => HF.plots[id].spec.pts.filter(p => HF.selSet.has(p.ck)).length) }));
+  check('H11', 'a rectangle dragged on the plot picks exactly the compounds inside it (and not everything left of its edge)', geo.want.length > 0 && geo.xonly > geo.want.length && JSON.stringify(sel.sel) === JSON.stringify(geo.want), { want: geo.want.length, got: sel.sel.length });
+  check('H11', 'they are ringed in every plot that shows them, and the bar says how many', sel.rings.every((n, i) => n === sel.exp[i]) && sel.rings.some(n => n > 0) && new RegExp('^' + sel.sel.length).test(sel.bar || ''), sel);
+  await E(() => hfSelToHits()); await pg.waitForTimeout(300);
+  const lst = await E(() => ({ list: [...HF.hitList].sort(), sel: [...HF.selSet].sort(), tab: HF.ui.tab }));
+  check('H11', 'Show in Hits lists exactly the selection, whatever its tier', lst.tab === 'hits' && JSON.stringify(lst.list) === JSON.stringify(lst.sel), lst);
+  await E(() => { hfSelClear(); HF.hits.useSel = false; });
 });
 
 if (run('H5')) await guard('H5', async () => {
