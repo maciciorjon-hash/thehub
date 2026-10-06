@@ -8,8 +8,24 @@
 //       same table              compounds, the same qualifiers and the same numbers; the lossless ones are field-for-field identical.
 //   H2  names are read, not    HF-001 / hf-001 / HF_001 are one compound; HF-7 and HF-007 are only SUGGESTED, and merging is a click that is remembered.
 //       guessed
+//   H3  a gate says what it   pass / borderline / fail / unknown over points AND intervals: "> 10 µM" conclusively fails "≤ 100 nM" and conclusively passes
+//       knows                  "≥ 1 µM", a bound that straddles the threshold is unknown, a missing number is never a pass and never a zero, a fail beats an
+//                              unknown beats a borderline, and a criterion whose slot has no screen is inactive, not failed.
+//   H4  a hook is not a defect Dmax is the effect with the hook left out, so a hooker and its twin without the hook pass the same gates; the window is the
+//                              last productive dose over DC50; degradation at a dose inside the hook is read from the wells or is unknown, never from the curve.
+//   H6  scores and ranks       The desirability falls monotonically as a number gets worse, a compound with unread gates can never outrank a fully measured
+//                              one on its guaranteed score, and ties rank by name whatever order the data came in.
+//   H7  the funnel adds up     Every compound is dropped at exactly one gate or survives; the counts equal a fresh re-evaluation; the compounds listed at a
+//                              gate are the ones that failed it.
 //   H5  n = 3 means what it    Replicates combine as potencies do: {1,10,100} nM is 10 nM ×/÷ 10 (never 37), a bound is counted and never averaged,
 //       says                    two groups of one run are collapsed before runs are combined, and two versions of one analysis are one measurement.
+//   H10 typing keeps the box   A threshold typed at human pace keeps the box, the caret and every digit (the card is patched, never re-drawn under the
+//                              cursor); the sentence, the counts and the hit total follow each keystroke and equal a fresh re-evaluation.
+//   H14 your call is yours     h / m / x and the note are kept beside the tier and never change it; they survive a change of criteria and a reload;
+//                              the arrows move through the ranked list, Enter opens the drawer, Esc closes it, / finds.
+//   H18 an edge can be dragged Dragging a threshold's handle (pointer or arrow keys) moves it, the counts follow while it moves, and the result equals
+//                              what typing the same number would give.
+//   H19 a screen can be big     5000 compounds recompute in seconds, only the rows in view are built, and the last row is reachable.
 //   H15 the reader creates     Reading Echo's History never creates its database: with no database there is nothing to list and nothing is made.
 //       nothing
 //   H16 the example is real   The example screen has 72 compounds in 5 screens, every record is schema echo-screen/1 and went through the engine
@@ -161,6 +177,230 @@ if (run('H2')) await guard('H2', async () => {
   check('H2', 'merging is a click: only then is it one compound, and it is remembered', r.after === r.before - 1 && r.kept === 'hf-7', r);
 });
 
+
+// A scenario: a compound per entry, each with a potency in the primary slot and optionally others, gates picked by the test.
+const SCN = `(() => {
+  const make = ${REC};
+  const arm = { primary: 'P', anti: 'A', viability: 'V', counter: 'C', rescue: 'R' };
+  const load = (cmps, rows) => {
+    HF.recs = []; HF.screens = new Map(); HF.arms = new Map(); HF.alias = new Map(); HF.smiles = new Map();
+    const recs = []; cmps.forEach(c => Object.keys(arm).forEach(sl => { const o = c[sl]; if (!o) return; recs.push(make(Object.assign({}, o, { Compound: c.id, Group: arm[sl], Assay_ID: 'S' + arm[sl], Run_ID: 'r' + arm[sl], Set_ID: 's' + arm[sl] }))); }));
+    hfAddRecords(recs, 't'); HF.arms.forEach(a => { a.slot = Object.keys(arm).find(k => arm[k] === a.group); a.guessed = false; });
+    HF.crit = { v: 1, rows: rows || [] }; hfRecompute();
+  };
+  return { make, load, arm };
+})()`;
+
+if (run('H3')) await guard('H3', async () => {
+  const r = await E((scn) => {
+    const S = eval(scn), out = {};
+    const pot = (o) => Object.assign({ Fit_Status: 'fitted', Potency_Qualifier: 'exact' }, o);
+    const st = (cmp, c) => { S.load([cmp], [c]); return hfEvalOne(c, hfKey(cmp.id)).status; };
+    const le = () => hfNewCrit('potency', { pass: 100, fail: 300 });
+    const ge = () => hfNewCrit('potency', { dir: 'higher', pass: 1000, fail: null });
+    out.exact = [50, 200, 500].map(v => st({ id: 'a', primary: pot({ Potency_nM: v }) }, le()));
+    out.gtLE = [st({ id: 'a', primary: pot({ Potency_Qualifier: '>', Potency_nM: 10000 }) }, le()), st({ id: 'a', primary: pot({ Potency_Qualifier: '>', Potency_nM: 50 }) }, le())];
+    out.ltLE = [st({ id: 'a', primary: pot({ Potency_Qualifier: '<', Potency_nM: 0.5 }) }, le()), st({ id: 'a', primary: pot({ Potency_Qualifier: '<', Potency_nM: 5000 }) }, le())];
+    out.gtGE = [st({ id: 'a', primary: pot({ Potency_Qualifier: '>', Potency_nM: 10000 }) }, ge()), st({ id: 'a', primary: pot({ Potency_Qualifier: '>', Potency_nM: 500 }) }, ge())];
+    out.nd = [st({ id: 'a', primary: pot({ Potency_Qualifier: 'n.d.', Potency_nM: null, Tested_Max_nM: 10000 }) }, le()), st({ id: 'a', primary: pot({ Potency_Qualifier: 'n.d.', Potency_nM: null }) }, le())];
+    out.noQual = [st({ id: 'a', primary: pot({ Potency_Qualifier: null, Potency_nM: null }) }, le())];
+    out.policy = ['unknown', 'fail', 'skip'].map(p => st({ id: 'a', primary: pot({ Potency_nM: 50 }) }, hfNewCrit('effect', { slot: 'viability', missing: p })));
+    // contrast through intervals
+    const ct = (a, b) => st({ id: 'a', primary: pot(a), viability: pot(b) }, hfNewCrit('contrast', { slot2: 'viability', pass: 10, fail: 3 }));
+    out.contrast = [ct({ Potency_nM: 10 }, { Potency_nM: 200 }), ct({ Potency_nM: 10 }, { Potency_nM: 50 }), ct({ Potency_nM: 10 }, { Potency_nM: 20 }), ct({ Potency_nM: 10 }, { Potency_Qualifier: '>', Potency_nM: 10000 }), ct({ Potency_nM: 10 }, { Potency_Qualifier: '>', Potency_nM: 50 }), ct({ Potency_Qualifier: '<', Potency_nM: 0.5 }, { Potency_nM: 200 })];
+    // tiers: a fail beats an unknown beats a borderline
+    // (a second compound that does have a viability result, so that the viability slot exists at all)
+    const decoy = { id: 'decoy', primary: pot({ Potency_nM: 50, Effect_Eff: 90 }), viability: pot({ Potency_nM: 9000, Effect_Eff: 5 }) };
+    const tier = (cmp, rows) => { S.load([cmp, decoy], rows); return HF.verdicts.get(hfKey(cmp.id)).tier; };
+    const cmp = { id: 'a', primary: pot({ Potency_nM: 50, Effect_Eff: 90 }) };
+    out.tiers = [tier(cmp, [hfNewCrit('potency'), hfNewCrit('effect')]), tier(cmp, [hfNewCrit('potency', { pass: 20, fail: 100 }), hfNewCrit('effect')]), tier(cmp, [hfNewCrit('potency'), hfNewCrit('effect', { slot: 'viability' })]),
+      tier(cmp, [hfNewCrit('potency', { pass: 10, fail: 20 }), hfNewCrit('effect', { slot: 'viability' })]), tier(cmp, [hfNewCrit('potency'), hfNewCrit('effect', { slot: 'viability', missing: 'skip' })]), tier(cmp, [hfNewCrit('potency'), hfNewCrit('effect', { slot: 'viability', kind: 'advisory' })])];
+    // a criterion on a slot nobody loaded is inactive: it neither fails nor makes anything unknown
+    S.load([cmp], [hfNewCrit('potency'), hfNewCrit('contrast', { slot2: 'anti' })]);
+    out.inactive = { tier: HF.verdicts.get('a').tier, active: HF.activeRows.length, rows: HF.crit.rows.length };
+    return out;
+  }, SCN);
+  const j = x => JSON.stringify(x);
+  check('H3', 'exact values: 50 passes, 200 is borderline, 500 fails (≤ 100, soft 300)', j(r.exact) === '["pass","borderline","fail"]', r.exact);
+  check('H3', '"> 10 µM" conclusively fails ≤ 100 nM; "> 50 nM" does not settle it', j(r.gtLE) === '["fail","unknown"]', r.gtLE);
+  check('H3', '"< 0.5 nM" conclusively passes ≤ 100 nM; "< 5 µM" does not settle it', j(r.ltLE) === '["pass","unknown"]', r.ltLE);
+  check('H3', '"> 10 µM" conclusively passes IC50 ≥ 1 µM; "> 500 nM" does not settle it', j(r.gtGE) === '["pass","unknown"]', r.gtGE);
+  check('H3', 'n.d. fails when the highest dose tested is known, and is unknown when it is not', j(r.nd) === '["fail","unknown"]', r.nd);
+  check('H3', 'a potency with no number and no qualifier is unknown, never a pass', j(r.noQual) === '["unknown"]', r.noQual);
+  check('H3', 'a missing result follows the policy: unknown, fail, or skipped', j(r.policy) === '["unknown","fail","skip"]', r.policy);
+  check('H3', 'contrast across intervals: ×20 pass, ×5 borderline, ×2 fail, ≥ ×1000 pass, ≥ ×5 at least borderline, from a bound below ≥ ×400 pass', j(r.contrast) === '["pass","borderline","fail","pass","borderline","pass"]', r.contrast);
+  check('H3', 'tiers: pass+pass = hit; a borderline = borderline; an unread gate = unverified; a fail beats an unread gate; a skipped or advisory one changes nothing', j(r.tiers) === '["hit","borderline","unverified","rejected","hit","hit"]', r.tiers);
+  check('H3', 'a criterion on a slot with no screen is inactive: it fails nothing and makes nothing unknown', r.inactive.tier === 'hit' && r.inactive.active === 1 && r.inactive.rows === 2, r.inactive);
+});
+
+if (run('H4')) await guard('H4', async () => {
+  const r = await E((scn) => {
+    const S = eval(scn), out = {};
+    // a hooker, as the example's own generator draws it, and its twin: the same wells with the hook points taken out
+    const rng = hfRng(7), P = hfP(20, 92, 1.1, { onset: Math.log10(600e-9), depth: 45 });
+    const rowA = hfSynthRow(rng, 'G', 'HK', 'hibit', P), hc = rowA._hook_concs;
+    const rowB = Object.assign({}, rowA, { _reps: rowA._reps.filter(q => !hc.some(h => Math.abs(h - q.x) < 0.002)), _is_hook: false, _hook_concs: [], _hook_x: null, Flag_Reason: rowA.Flag_Reason.replace(/;?\s*Hookx\d+/, ''), _xmax: Math.max(...rowA._pts.map(q => q.x)) });
+    const a = scrRecord(rowA, { assayId: 'A', runId: 1, setId: 'a' }), b = scrRecord(rowB, { assayId: 'B', runId: 2, setId: 'b' });
+    out.rec = { hookA: a.Hook_State, hookB: b.Hook_State, effA: a.Effect_Eff, effB: b.Effect_Eff, dc50A: a.Potency_nM, dc50B: b.Potency_nM, winA: a.Window_Conservative, winB: b.Window_Conservative, onset: a.Hook_Onset_nM };
+    const crit = [hfNewCrit('potency'), hfNewCrit('effect'), hfNewCrit('flags'), hfNewCrit('window', { kind: 'advisory' })];
+    S.load([{ id: 'hk-a', primary: a }, { id: 'hk-b', primary: b }], crit);
+    const va = HF.verdicts.get('hk-a'), vb = HF.verdicts.get('hk-b');
+    out.tiers = [va.tier, vb.tier]; out.same = JSON.stringify(va.items.filter(i => i.c.metric !== 'window').map(i => i.status)) === JSON.stringify(vb.items.filter(i => i.c.metric !== 'window').map(i => i.status));
+    out.hookFlagAllowed = !va.items.find(i => i.c.metric === 'flags').status.match(/fail/);
+    // degradation at a dose: measured inside the hook, unknown between wells inside the hook, curve below the onset
+    const gA = HF.agg.get('hk-a').get('primary'), onsetNM = a.Hook_Onset_nM, top = rowA.Top_val;
+    const hookMeasured = Math.pow(10, hc[0]) * 1e9, mean = rowA._reps.filter(q => Math.abs(q.x - hc[0]) < 0.002).reduce((s, q, _, A) => s + q.y / A.length, 0);
+    out.deg = { measured: hfDegAt(gA, hookMeasured), expect: Math.max(0, top - mean), between: hfDegAt(gA, hookMeasured * 0.6 + 1e-9 * 0), below: hfDegAt(gA, onsetNM / 8), onset: onsetNM };
+    // none of it applies to a curve whose hook was never looked for
+    out.unknown = scrHook(Object.assign({}, rowA, { _hookThr: undefined, _is_hook: false, _hook_concs: [] })).state;
+    return out;
+  }, SCN);
+  const near = (x, y, t) => x != null && y != null && Math.abs(x - y) <= (t || 1e-6) * Math.max(1, Math.abs(y));
+  check('H4', 'the hooker is a hook the engine saw; its twin has none', r.rec.hookA === 'excluded' && r.rec.hookB === 'none', r.rec);
+  check('H4', 'Dmax, DC50 and the window are the same with and without the hook points (they are computed without them)', near(r.rec.effA, r.rec.effB) && near(r.rec.dc50A, r.rec.dc50B) && near(r.rec.winA, r.rec.winB), r.rec);
+  check('H4', 'so the hooker and its twin pass the same gates and are both hits; a hook is not a disqualifying flag', r.same && r.tiers[0] === 'hit' && r.tiers[1] === 'hit' && r.hookFlagAllowed, r);
+  check('H4', 'degradation inside the hook is what the wells read there (a rebound), not what the 4PL says', near(r.deg.measured, r.deg.expect, 1e-3), r.deg);
+  check('H4', 'between two wells inside the hook it is unknown; below the onset it is read from the curve', r.deg.between === null && r.deg.below != null && r.deg.below > 50, r.deg);
+  check('H4', 'a curve whose hook was never looked for is unknown, not "no hook"', r.unknown === 'unknown', r.unknown);
+});
+
+if (run('H6')) await guard('H6', async () => {
+  const r = await E((scn) => {
+    const S = eval(scn), out = {};
+    // desirability falls monotonically as the number gets worse, for every direction and scale
+    const mono = [];
+    [['potency', 'lower'], ['effect', 'higher'], ['window', 'higher'], ['r2', 'higher'], ['ci_fold', 'lower']].forEach(([m, dir]) => {
+      const c = hfNewCrit(m), M = METRICS[m], xs = Array.from({ length: 200 }, (_, i) => dir === 'lower' ? Math.pow(10, -1 + i * 0.03) : (m === 'r2' ? 0.5 + i * 0.0025 : m === 'effect' ? i * 0.5 : Math.pow(10, -1 + i * 0.02)));
+      const d = xs.map(x => hfDesir(c, M, x)); let bad = 0;
+      for (let i = 1; i < d.length; i++) if (dir === 'lower' ? d[i] > d[i - 1] + 1e-12 : d[i] < d[i - 1] - 1e-12) bad++;
+      mono.push([m, bad, d[0], d[d.length - 1]]);
+    });
+    out.mono = mono;
+    // an unread gate can never outrank a fully read compound on the guaranteed score
+    const full = { id: 'full', primary: S.make({ Potency_nM: 90, Effect_Eff: 82 }), viability: S.make({ Potency_nM: 9000 }) }, partial = { id: 'part', primary: S.make({ Potency_nM: 5, Effect_Eff: 99 }) };
+    S.load([full, partial], [hfNewCrit('potency'), hfNewCrit('effect'), hfNewCrit('contrast', { slot2: 'viability', kind: 'gate', missing: 'unknown' })]);
+    const vf = HF.verdicts.get('full'), vp = HF.verdicts.get('part');
+    out.bounds = { full: [vf.tier, vf.Dlo, vf.Dhi], part: [vp.tier, vp.Dlo, vp.Dhi], order: HF.uni.slice().sort(hfRankCmp) };
+    // ties rank by name, whatever order the data arrived in
+    const ids = ['c-10', 'c-2', 'c-1', 'c-3', 'b-1'], mk = o => ids.map(id => ({ id, primary: S.make({ Potency_nM: 50, Effect_Eff: 90 }) }));
+    S.load(mk(), [hfNewCrit('potency'), hfNewCrit('effect')]); const o1 = HF.uni.slice().sort(hfRankCmp);
+    S.load(mk().reverse(), [hfNewCrit('potency'), hfNewCrit('effect')]); const o2 = HF.uni.slice().sort(hfRankCmp);
+    out.ties = [o1, o2];
+    return out;
+  }, SCN);
+  check('H6', 'desirability never rises as the number gets worse (potency, effect, window, R², CI)', r.mono.every(m => m[1] === 0 && m[2] !== m[3]), r.mono);
+  check('H6', 'a compound with an unread gate keeps its guaranteed score below its best case, and cannot outrank a fully read hit', r.bounds.part[0] === 'unverified' && r.bounds.part[1] < r.bounds.part[2] && r.bounds.full[0] === 'hit' && r.bounds.order[0] === 'full', r.bounds);
+  check('H6', 'ties rank by natural name order (c-1, c-2, c-3, c-10) whichever way the data came in', JSON.stringify(r.ties[0]) === JSON.stringify(['b-1', 'c-1', 'c-2', 'c-3', 'c-10']) && JSON.stringify(r.ties[0]) === JSON.stringify(r.ties[1]), r.ties);
+});
+
+if (run('H7')) await guard('H7', async () => {
+  const r = await E(() => {
+    loadHitFinderTestData();
+    const uni = HF.uni.slice(), F = HF.funnel, steps = F.steps.map(s => ({ label: hfCritLabel(s.c), in: s.in, dropped: s.dropped.slice(), out: s.out, unknown: s.unknown }));
+    // a fresh, independent pass over the gates
+    let alive = uni.slice(); const direct = [];
+    HF.activeRows.filter(c => c.kind === 'gate').forEach(c => { const gone = alive.filter(ck => hfEvalOne(c, ck).status === 'fail'); direct.push(gone.slice().sort(natCmp)); alive = alive.filter(ck => gone.indexOf(ck) < 0); });
+    const dropped = new Set(); let dup = 0; steps.forEach(s => s.dropped.forEach(ck => { if (dropped.has(ck)) dup++; dropped.add(ck); }));
+    const sumOk = steps.every((s, i) => s.in - s.dropped.length === s.out && (i === 0 || s.in === steps[i - 1].out));
+    const list = steps.map((s, i) => JSON.stringify(s.dropped.slice().sort(natCmp)) === JSON.stringify(direct[i]));
+    const rejected = [...HF.verdicts.values()].filter(v => v.tier === 'rejected').length;
+    return { n: uni.length, steps: steps.map(s => [s.label, s.in, s.dropped.length, s.out]), dup, sumOk, list, survivors: F.end.length, dropTotal: dropped.size, rejected, alive: alive.length, endSame: JSON.stringify(F.end) === JSON.stringify(alive) };
+  });
+  check('H7', 'each gate takes in what the last let through, and in − dropped = out', r.sumOk, r.steps);
+  check('H7', 'nobody is dropped twice, and survivors + everyone dropped = the whole universe', r.dup === 0 && r.survivors + r.dropTotal === r.n, r);
+  check('H7', 'the funnel equals a fresh re-evaluation, gate by gate, name by name', r.list.every(Boolean) && r.endSame, r.list);
+  check('H7', 'everyone dropped is a rejected compound, and nobody else is', r.dropTotal === r.rejected, r);
+});
+
+
+const fmtMid = v => (v >= 1000 ? +(v / 1000).toPrecision(3) + ' µM' : v < 1 ? +(v * 1000).toPrecision(3) + ' pM' : +v.toPrecision(3) + ' nM');
+const hfReset = () => E(() => { try { localStorage.removeItem('hf_crit_v1'); localStorage.removeItem('hf_dec_v1'); } catch (e) {} HF.crit = null; HF.dec = new Map(); loadHitFinderTestData(); hfTab('criteria'); });
+const critId = (metric, slot) => E(([m, sl]) => (HF.crit.rows.find(c => c.metric === m && (c.slot || 'primary') === (sl || 'primary')) || {}).id, [metric, slot]);
+
+if (run('H10')) await guard('H10', async () => {
+  await hfReset(); await pg.waitForTimeout(300);
+  const id = await critId('potency'), sel = '#crit-' + id + ' input[data-f="pass"]';
+  await E(i => { document.querySelector('#crit-' + i).__same = 1; document.querySelector('#crit-' + i + ' input[data-f="pass"]').__same = 1; }, id);
+  await pg.locator(sel).click({ clickCount: 3 });
+  const seen = [];
+  for (const ch of '45.5') { await pg.keyboard.type(ch, { delay: 60 }); seen.push(await E(i => { const el = document.activeElement; return { same: !!(el && el.__same), v: el && el.value, card: !!document.querySelector('#crit-' + i).__same, caret: el && el.selectionStart }; }, id)); await pg.waitForTimeout(60); }
+  const r = await E(i => { const c = HF.crit.rows.find(x => x.id === i); const direct = (() => { let n = 0; HF.uni.forEach(ck => { if (hfVerdictOf(ck, HF.activeRows).tier === 'hit') n++; }); return n; })();
+    return { pass: c.pass, sentence: document.getElementById('sent-' + i).textContent, hits: HF.counts.hit, direct, badge: document.getElementById('b-hits').textContent, sum: document.getElementById('crit-sum').textContent, counts: document.getElementById('cnt-' + i).textContent }; }, id);
+  check('H10', 'every keystroke leaves the focus in the same box, the card standing, the caret at the end', seen.length === 4 && seen.every((x, k) => x.same && x.card && x.v === '45.5'.slice(0, k + 1) && x.caret === k + 1), seen);
+  check('H10', 'what was typed is the threshold (45.5 nM), and the sentence says so', r.pass === 45.5 && /45\.5 nM/.test(r.sentence), r);
+  check('H10', 'the hit total, the badge and the summary follow it, and equal a fresh re-evaluation', r.hits === r.direct && +r.badge === r.hits && new RegExp('^' + r.hits + ' hits').test(r.sum), r);
+  // a half-typed number does not break anything: "4." and "" keep the old value without an error state on a pass edge
+  await pg.locator(sel).click({ clickCount: 3 }); await pg.keyboard.type('-', { delay: 40 });
+  const bad = await E(i => ({ bad: document.querySelector('#crit-' + i + ' input[data-f="pass"]').classList.contains('bad'), pass: HF.crit.rows.find(x => x.id === i).pass, hits: HF.counts.hit }), id);
+  check('H10', 'an unreadable value is marked and ignored: the last good threshold stands', bad.bad && bad.pass === 45.5, bad);
+});
+
+if (run('H18')) await guard('H18', async () => {
+  await hfReset(); await pg.waitForTimeout(300);
+  const id = await critId('potency'), box = await pg.locator('#crit-' + id + ' .hh[data-h="pass"] circle').boundingBox();
+  const before = await E(i => ({ pass: HF.crit.rows.find(c => c.id === i).pass, hits: HF.counts.hit, text: document.getElementById('cnt-' + i).textContent }), id);
+  await pg.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await pg.mouse.down();
+  await pg.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2, { steps: 8 });
+  await pg.waitForTimeout(120);      // the patch is made on the next animation frame
+  const mid = await E(i => { const c = HF.crit.rows.find(x => x.id === i); return { pass: c.pass, hits: HF.counts.hit, direct: HF.uni.filter(ck => hfVerdictOf(ck, HF.activeRows).tier === 'hit').length, dragging: HF.dragging, text: document.getElementById('cnt-' + i).textContent, sent: document.getElementById('sent-' + i).textContent }; }, id);
+  await pg.mouse.up(); await pg.waitForTimeout(200);
+  const after = await E(i => { const c = HF.crit.rows.find(x => x.id === i); const direct = HF.uni.filter(ck => hfVerdictOf(ck, HF.activeRows).tier === 'hit').length;
+    // the same number, typed
+    const keep = c.pass; c.pass = +c.pass; hfComputeVerdicts(); const typed = HF.counts.hit; return { pass: c.pass, hits: HF.counts.hit, direct, typed, soft: c.fail, ok: c.fail == null || c.fail >= c.pass, dragging: HF.dragging }; }, id);
+  check('H18', 'dragging the handle left lowers the pass edge, live: before the pointer is let go the counts and the sentence already follow it', mid.dragging === true && mid.pass < before.pass && mid.hits === mid.direct && mid.text !== before.text && mid.sent.indexOf(fmtMid(mid.pass)) >= 0, { before, mid });
+  check('H18', 'after the drop the hit total equals a fresh re-evaluation and the soft edge never sits inside the pass edge', after.hits === after.direct && after.typed === after.hits && after.ok && after.dragging === false, after);
+  // the keyboard
+  const k0 = await E(i => HF.crit.rows.find(c => c.id === i).pass, id);
+  await pg.locator('#crit-' + id + ' .hh[data-h="pass"]').focus(); await pg.keyboard.press('ArrowRight');
+  const k1 = await E(i => ({ pass: HF.crit.rows.find(c => c.id === i).pass, focus: document.activeElement && document.activeElement.dataset && document.activeElement.dataset.h }), id);
+  await pg.keyboard.press('ArrowLeft'); await pg.keyboard.press('ArrowLeft');
+  const k2 = await E(i => HF.crit.rows.find(c => c.id === i).pass, id);
+  check('H18', 'the arrow keys move a focused handle, and the focus stays on it', k1.pass > k0 && k1.focus === 'pass' && k2 < k1.pass, { k0, k1, k2 });
+});
+
+if (run('H14')) await guard('H14', async () => {
+  await hfReset(); await E(() => hfTab('hits')); await pg.waitForTimeout(500);
+  await pg.locator('#hits-scroll').focus();
+  await pg.keyboard.press('ArrowDown'); await pg.keyboard.press('ArrowDown');
+  const sel1 = await E(() => ({ sel: HF.hits.sel, first: HF.hitList[0], second: HF.hitList[1] }));
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  const open = await E(() => ({ open: document.getElementById('hf-drawer').classList.contains('open'), drawer: HF.drawer, title: document.querySelector('#hf-drawer h3').textContent }));
+  const tier0 = await E(ck => HF.verdicts.get(ck).tier, open.drawer);
+  await pg.keyboard.press('h'); await pg.keyboard.press('x');
+  await pg.locator('#hf-drawer textarea').fill('re-test at lower top dose'); await pg.waitForTimeout(150);
+  const dec = await E(ck => ({ d: HF.dec.get(ck), tier: HF.verdicts.get(ck).tier, stored: localStorage.getItem('hf_dec_v1') }), open.drawer);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+  const closed = await E(() => !document.getElementById('hf-drawer').classList.contains('open'));
+  // criteria change; the call stays, the tier may move
+  await E(() => { const c = HF.crit.rows.find(x => x.metric === 'potency'); c.pass = 1; c.fail = 2; hfComputeVerdicts(); hfRender(); });
+  const kept = await E(ck => ({ d: HF.dec.get(ck), tierNow: HF.verdicts.get(ck).tier }), open.drawer);
+  await pg.keyboard.press('/'); const focus = await E(() => document.activeElement && document.activeElement.id);
+  await pg.reload(); await pg.waitForTimeout(500);
+  const reloaded = await E(ck => ({ d: HF.dec.get(ck) }), open.drawer);
+  check('H14', 'the arrows move through the ranked list', sel1.sel === sel1.second, sel1);
+  check('H14', 'Enter opens the drawer on that compound', open.open && open.drawer === sel1.second && /HF-\d+/.test(open.title), open);
+  check('H14', 'h then x leaves the last call (reject) and the note beside the tier — which did not move', dec.d && dec.d.state === 'reject' && dec.d.note === 're-test at lower top dose' && dec.tier === tier0, { dec, tier0 });
+  check('H14', 'Escape closes the drawer', closed, closed);
+  check('H14', 'a change of criteria keeps the call (the tier may move, the call does not)', kept.d && kept.d.state === 'reject', kept);
+  check('H14', '/ goes to the search box', focus === 'hits-q', focus);
+  check('H14', 'after a reload the call and the note are still there', reloaded.d && reloaded.d.state === 'reject' && reloaded.d.note === 're-test at lower top dose', reloaded);
+});
+
+if (run('H19')) await guard('H19', async () => {
+  const r = await E((scn) => {
+    const S = eval(scn), cmps = [], rnd = hfRng(5);
+    for (let i = 0; i < 5000; i++) { const dc = hfLogU(rnd, 0.5, 5000); cmps.push({ id: 'BIG-' + String(i + 1).padStart(4, '0'), primary: S.make({ Potency_nM: dc, Effect_Eff: 30 + rnd() * 68 }), viability: S.make({ Potency_nM: rnd() < 0.7 ? 1e5 : dc * (1 + rnd() * 20), Potency_Qualifier: 'exact' }) }); }
+    const t0 = performance.now(); S.load(cmps, [hfNewCrit('potency'), hfNewCrit('effect'), hfNewCrit('contrast', { slot2: 'viability' })]); const load = performance.now() - t0;
+    hfTab('hits'); const dom = document.querySelectorAll('#hits-body .h-r').length, total = HF.hitList.length;
+    const t1 = performance.now(); const c = HF.crit.rows[0]; c.pass = 50; hfCritPatch(c); const patch = performance.now() - t1;
+    const sc = document.getElementById('hits-scroll'); sc.scrollTop = sc.scrollHeight; sc.dispatchEvent(new Event('scroll'));
+    const rows = [...document.querySelectorAll('#hits-body .h-r')].map(x => x.dataset.ck), last = HF.hitList[HF.hitList.length - 1];
+    return { n: HF.uni.length, load: Math.round(load), patch: Math.round(patch), dom, total, lastShown: rows.indexOf(last) >= 0, rowsAfter: rows.length };
+  }, SCN);
+  check('H19', '5000 compounds load and judge in a few seconds, and a moved threshold is patched in well under one', r.n === 5000 && r.load < 8000 && r.patch < 1500, r);
+  check('H19', 'only the rows in view are built (not thousands), and the last compound is reachable by scrolling', r.dom < 120 && r.rowsAfter < 120 && r.total > 100 && r.lastShown, r);
+});
+
 if (run('H5')) await guard('H5', async () => {
   const r = await E((mk) => {
     const make = eval(mk), out = {};
@@ -228,8 +468,9 @@ if (run('H16')) await guard('H16', async () => {
 if (run('H17')) await guard('H17', async () => {
   const r = await E(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
-    const sel = () => $$('.tab[aria-selected="true"]').map(t => t.dataset.tab);
-    const o = { start: sel() };
+    hfTab('screens');
+    const vis = $$('.tab:not([hidden])').map(t => t.dataset.tab), sel = () => $$('.tab[aria-selected="true"]').map(t => t.dataset.tab);
+    const o = { vis, start: sel() };
     const key = k => $('#hf-tabs').dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
     key('ArrowRight'); o.right = sel(); key('End'); o.end = sel(); key('Home'); o.home = sel(); key('ArrowLeft'); o.left = sel();
     hfTab('hits'); await wait(350);
@@ -240,7 +481,8 @@ if (run('H17')) await guard('H17', async () => {
     return o;
   });
   check('H17', 'exactly one tab is selected at the start', JSON.stringify(r.start) === '["screens"]', r.start);
-  check('H17', 'ArrowRight / End / Home / ArrowLeft move and select', JSON.stringify(r.right) === '["criteria"]' && JSON.stringify(r.end) === '["export"]' && JSON.stringify(r.home) === '["screens"]' && JSON.stringify(r.left) === '["export"]', r);
+  const vv = r.vis, last = vv[vv.length - 1];
+  check('H17', 'ArrowRight / End / Home / ArrowLeft move and select (over the tabs that exist)', JSON.stringify(r.right) === JSON.stringify([vv[1]]) && JSON.stringify(r.end) === JSON.stringify([last]) && JSON.stringify(r.home) === JSON.stringify([vv[0]]) && JSON.stringify(r.left) === JSON.stringify([last]), r);
   check('H17', 'the underline sits under the active tab; exactly one pane shows', r.ink.dx < 1.5 && r.ink.dw < 1.5 && JSON.stringify(r.panes) === '["pane-hits"]', r);
 });
 
