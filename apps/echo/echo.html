@@ -1257,6 +1257,21 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         </div>
 
         <div class="field" style="margin-bottom:12px;">
+          <label>About this screen <span class="pinfo" data-tip="Optional. These travel with the results (History, the Screen export, Hit Finder) so a screen can be told apart from the next one: what it measures, in which cells, and when. The role says what the numbers are for — a viability screen is read against a degradation screen, not alongside it. Auto takes it from the assay type.">?</span></label>
+          <div class="setup-2col" style="gap:8px;margin-bottom:8px;">
+            <select id="p-role" style="height:32px;width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);box-sizing:border-box;cursor:pointer;" aria-label="Role of this screen">
+              <option value="">Role: automatic</option><option value="degradation">Role: degradation</option><option value="viability">Role: viability</option>
+              <option value="counter-screen">Role: counter-screen</option><option value="rescue">Role: rescue</option><option value="binding">Role: binding</option><option value="other">Role: other</option>
+            </select>
+            <input type="text" id="p-target" placeholder="Target (e.g. BRD4)" aria-label="Target of this screen" style="height:32px;width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);box-sizing:border-box;">
+          </div>
+          <div class="setup-2col" style="gap:8px;">
+            <input type="text" id="p-cell" placeholder="Cell line (e.g. HEK293)" aria-label="Cell line" style="height:32px;width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);box-sizing:border-box;">
+            <input type="text" id="p-time" inputmode="decimal" placeholder="Time point, hours (e.g. 6)" aria-label="Time point in hours" style="height:32px;width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);box-sizing:border-box;">
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:12px;">
           <label>PHERAstar data location <span class="pinfo" data-tip="Optional: enter the Excel cell (e.g. B3) that corresponds to plate well A01. Use this when your Excel file has multiple tables and auto-detection picks the wrong one. Leave blank for auto-detection.">?</span></label>
           <div style="display:flex;gap:8px;align-items:center;">
             <input type="text" id="p-a1-loc" placeholder="e.g. B3  (optional)" style="width:130px;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--mono);outline:none;">
@@ -2196,6 +2211,7 @@ async function runPipeline() {
   const rowNorm = !skipNorm && (document.getElementById('p-row-norm')?.checked || false);
   window._smartInfo = {};
   window._normAudits = [];
+  window._notFitted = [];
   const qcOverridesJSON = window._pendingQcOverrides || '{}';
   window._pendingQcOverrides = null;
   const assayType = document.getElementById('p-assay-type')?.value || 'hibit';
@@ -2227,6 +2243,7 @@ async function runPipeline() {
         } }
       const mergedResults = [];
       const allPlateData = {};
+      window._runScreens = matConfigs.map((mc, i) => _screenMeta(i, mc.type, mc.role, mc.target, mc.cell, mc.time, mc.prefix));
       downloadBlobs = [];
       for (let mi = 0; mi < matConfigs.length; mi++) {
         const mc = matConfigs[mi];
@@ -2249,6 +2266,8 @@ async function runPipeline() {
             mc.dmaxCapEnabled, mc.dmaxCapVal, qcOverridesJSON,
             mc.minBotEnabled, mc.minBotVal, mc.a1Loc||'', !!mc.rowNorm && !mc.skipNorm
           );
+          typeResults.forEach(r => { r._panel = mi; });
+          (window._notFitted || []).forEach(n => { if (n.panel == null) n.panel = mi; });
           mergedResults.push(...typeResults);
           Object.assign(allPlateData, window._plateData || {});
         } finally {
@@ -2261,6 +2280,9 @@ async function runPipeline() {
       window._lastAnalysisParams = {...window._lastAnalysisParams, assayType:'multi', multiAssay:true, matConfigs};
     } else {
       results = await runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled, minR2, r2Enabled, maxSd, sdEnabled, topConstrain, topEnabled, fixBot, botVal, fixHill, hillVal, absdc50Enabled, skipNorm, csvCols, assayType, zeroPctCtrl, dmaxCapEnabled, dmaxCapVal, qcOverridesJSON, minBotEnabled, minBotVal, (document.getElementById('p-a1-loc')?.value||'').trim(), rowNorm);
+      results.forEach(r => { r._panel = 0; });
+      (window._notFitted || []).forEach(n => { if (n.panel == null) n.panel = 0; });
+      window._runScreens = [_screenMeta(0, assayType, document.getElementById('p-role')?.value, document.getElementById('p-target')?.value, document.getElementById('p-cell')?.value, document.getElementById('p-time')?.value, '')];
     }
 
     setProgress(100);
@@ -2565,6 +2587,16 @@ function _normVerdict(row, alt) {
   o.Norm_Why = why.join('; ');
   return o;
 }
+// Which screen a panel is: what it measures, in what, and for how long. The role defaults from the assay type
+// (a HiBiT run is a degradation screen, a CellTiter-Glo run a viability one) and everything else is optional.
+// It rides on the History run as `screens`, NOT in the settings: a typo fixed in a target name must not look like a
+// new analysis, and the numbers it describes did not change.
+var SCREEN_ROLE_DEFAULT = { hibit: 'degradation', ctg: 'viability', displacement: 'binding', gain: 'other' };
+function _screenMeta(panel, assayType, role, target, cell, time, prefix) {
+  const t = parseFloat(String(time == null ? '' : time).replace(',', '.'));
+  return { panel, assayType, role: (role || '').trim() || SCREEN_ROLE_DEFAULT[assayType] || 'other', target: (target || '').trim(), cellLine: (cell || '').trim(),
+    timepointH: isFinite(t) && t >= 0 ? t : null, prefix: (prefix || '').trim() };
+}
 // What the reference was for the wells of one curve. plates: {barcodeKey: {name, mode, info, suspect}}.
 // `normalised` is false when the run did NOT normalise at all (the No-normalisation switch, or no control
 // wells): the signal is raw, so the method is not a "plate mean" — it used to say so, which is the one
@@ -2780,6 +2812,176 @@ function updateGroupPreview() {
   el.innerHTML = ks.length + ' group' + (ks.length === 1 ? '' : 's') + ': ' + ks.slice(0, 6).map(k => '<b>' + esc(k) + '</b> <span>(' + by[k].length + ' plate' + (by[k].length === 1 ? '' : 's') + ')</span>').join(' · ') + (ks.length > 6 ? ' …' : '')
     + (ks.length === 1 && names.length > 1 ? ' <span class="gp-warn">— every plate is in one group; if these are different targets, change the rule</span>' : '');
 }
+// ═══ SCREEN ENGINE — BEGIN (canonical in Echo; tools/sync_screen_engine.py copies it into Hit Finder) ═══
+// Pure functions over a RESULT ROW (what _fitOne returns and History stores). Nothing here fits a curve and
+// nothing reads the page, so the same numbers come out of Echo's export and out of Hit Finder, from a live
+// run or from a History entry saved a year ago. Concentrations on a row are log10(M); what is returned is nM.
+// Derived, never stored: a stored hook onset would go stale the moment a point is left out in Curves.
+var SCR_SCHEMA = 'echo-screen/1';
+function scrFin(v) { return (v != null && v !== '' && isFinite(+v)) ? +v : null; }
+function scrNM(logM) { var v = scrFin(logM); return v == null ? null : Math.pow(10, v) * 1e9; }
+function scrSig(v, n) { v = scrFin(v); return v == null ? null : +v.toPrecision(n || 4); }
+function scrRound(v, d) { v = scrFin(v); return v == null ? null : +v.toFixed(d == null ? 1 : d); }
+// The flag text is the one place Echo says why a curve was flagged; this turns it back into facts.
+function scrFlags(row) {
+  var s = String((row && row.Flag_Reason) || ''), m;
+  return { noEffect: /No effect/.test(s), rangeHi: /EC50>range/.test(s), rangeLo: /EC50<range/.test(s),
+    botBound: /Bottom at bound/.test(s), topBound: /Top at bound/.test(s),
+    hookN: (m = s.match(/Hookx(\d+)/)) ? +m[1] : 0, fewPts: /n=\d+ \((no df|df=\d+)\)/.test(s),
+    r2: (m = s.match(/R2=([\d.]+)/)) ? +m[1] : null, sd: (m = s.match(/SD=([\d.]+)/)) ? +m[1] : null };
+}
+// The replicate readings grouped by concentration (tolerance 0.002 log), highest concentration first.
+function scrGroupReps(reps) {
+  var pts = (reps || []).filter(function (p) { return p && scrFin(p.x) != null && scrFin(p.y) != null; })
+    .slice().sort(function (a, b) { return b.x - a.x; });
+  var g = [];
+  pts.forEach(function (p) {
+    var last = g[g.length - 1];
+    if (last && Math.abs(last.x - p.x) < 0.002) last.ys.push(+p.y); else g.push({ x: +p.x, ys: [+p.y] });
+  });
+  g.forEach(function (c) { c.mean = c.ys.reduce(function (s, v) { return s + v; }, 0) / c.ys.length; });
+  return g;
+}
+// Echo's own hook rule (_fitOne): from the top, a concentration is a hook when its mean sits more than `thr`
+// points ABOVE the mean two concentrations down; at most three, and the first that is not stops the walk.
+function scrDetectHook(g, thr) {
+  var out = [];
+  for (var i = 0; i < Math.min(3, g.length - 2); i++) { if (g[i].mean > g[i + 2].mean + thr) out.push(g[i].x); else break; }
+  return out;
+}
+// Hook state of one curve. opt = { hookEnabled, hookThr } is what the analysis's settings said, for a row saved
+// before the threshold was stamped on it (_hookThr). States: excluded (detected, left out of the fit) · included
+// (detected, then put back in the fit by the user) · none (looked, found none) · off (not looked for) ·
+// n/a (this assay has no hook) · unknown (an old row and no settings to ask).
+function scrHook(row, opt) {
+  var at = row._assayType, out = { state: 'unknown', thr: null, concs: [], onset_nM: null, lastProductive_nM: null,
+    nadir: null, depth: null, recovery: null, dmaxObs: null };
+  if (at === 'gain' || at === 'displacement') { out.state = 'n/a'; return out; }
+  var thr = row._hookThr !== undefined ? scrFin(row._hookThr)
+    : (opt && opt.hookEnabled !== undefined ? (opt.hookEnabled ? scrFin(opt.hookThr) : null) : undefined);
+  var g = scrGroupReps(row._reps), H = null;
+  var hc = (row._hook_concs || []).map(Number).filter(isFinite);
+  out.thr = thr == null ? null : thr;
+  if (row._is_hook && hc.length) { out.state = 'excluded'; H = hc; }
+  else if (row._hookIn) { out.state = 'included'; H = thr == null ? [] : scrDetectHook(g, thr); }
+  else if (thr != null) { out.state = 'none'; H = []; }
+  else if (thr === null) { out.state = 'off'; }
+  if (!g.length) return out;
+  var isH = function (x) { return (H || []).some(function (h) { return Math.abs(h - x) < 0.002; }); };
+  var N = out.state === 'included' ? g : g.filter(function (c) { return !isH(c.x); });
+  if (!N.length) return out;
+  var nad = N.reduce(function (a, c) { return c.mean < a.mean ? c : a; });
+  out.nadir = nad.mean;
+  out.lastProductive_nM = scrNM(N[0].x);
+  var top = scrFin(row.Top_val); if (top == null) top = scrFin(row._tc); if (top == null) top = 100;
+  out.dmaxObs = Math.max(0, top - nad.mean);
+  if (H && H.length) {
+    out.concs = H.slice().sort(function (a, b) { return b - a; });
+    out.onset_nM = scrNM(Math.min.apply(null, H));
+    out.depth = g[0].mean - nad.mean;
+    var span = top - nad.mean;
+    out.recovery = span > 0 ? Math.min(1, Math.max(0, out.depth / span)) : null;
+    if (out.state === 'included') out.lastProductive_nM = scrNM(g.filter(function (c) { return !isH(c.x); }).map(function (c) { return c.x; })[0]);
+  }
+  return out;
+}
+// How much of the curve was actually measured: points on each side of the midpoint, and whether the plateaus
+// were reached. A half-curve fits its own half beautifully (R² 0.997) — this is what says it is a half.
+function scrCoverage(row, hook) {
+  var g = scrGroupReps(row._reps), H = (hook && hook.state === 'excluded') ? hook.concs : [];
+  var N = g.filter(function (c) { return !H.some(function (h) { return Math.abs(h - c.x) < 0.002; }); });
+  var bot = scrFin(row._bot), top = scrFin(row._tc), ec = scrFin(row._logec50), gain = !!row._gainMode;
+  var o = { nConc: N.length, nLo: null, nHi: null, plateauLow: null, plateauHigh: null, cat: 'unknown' };
+  if (bot == null || top == null || ec == null || !N.length) return o;
+  o.nLo = N.filter(function (c) { return c.x <= ec - 0.5; }).length;
+  o.nHi = N.filter(function (c) { return c.x >= ec + 0.5; }).length;
+  var mid = N.some(function (c) { return Math.abs(c.x - ec) <= 0.5; });
+  var lowRef = gain ? bot : top, highRef = gain ? top : bot;
+  o.plateauHigh = Math.abs(N[0].mean - highRef) <= 10;
+  o.plateauLow = Math.abs(N[N.length - 1].mean - lowRef) <= 10;
+  o.cat = (N.length < 6 || !mid) ? 'sparse' : (o.plateauLow && o.plateauHigh) ? 'complete'
+    : o.plateauHigh ? 'no-low-plateau' : o.plateauLow ? 'no-high-plateau' : 'no-plateaus';
+  return o;
+}
+// Wells behind a curve: how many concentrations, how many readings, and the typical replicate count.
+function scrWells(row) {
+  var g = scrGroupReps(row._reps), n = g.map(function (c) { return c.ys.length; }).sort(function (a, b) { return a - b; });
+  var med = n.length ? (n.length % 2 ? n[(n.length - 1) / 2] : (n[n.length / 2 - 1] + n[n.length / 2]) / 2) : null;
+  return { nConc: g.length, nWells: n.reduce(function (s, v) { return s + v; }, 0), perConc: med };
+}
+// A potency as an INTERVAL in nM. A midpoint past the doses tested is a bound, not a number: it conclusively
+// fails "DC50 ≤ 100 nM" and conclusively passes "IC50 ≥ 1 µM", and it never enters a mean.
+//   '=' [v,v] · '>' (tested max, ∞) · '<' (0, tested min] · 'n.d.' (tested max, ∞) · '' unknown
+function scrPotency(row) {
+  var f = scrFlags(row), v = scrFin(row.DC50_nM), lo = scrNM(row._xmin), hi = scrNM(row._xmax);
+  if (f.noEffect) return { q: 'n.d.', value: null, lo: hi, hi: null };
+  if (f.rangeHi) return { q: '>', value: hi, lo: hi, hi: null };
+  if (f.rangeLo) return { q: '<', value: lo, lo: 0, hi: lo };
+  if (v == null) return { q: '', value: null, lo: null, hi: null };
+  return { q: '=', value: v, lo: v, hi: v };
+}
+var SCR_COLS = ['Schema', 'Assay_ID', 'Run_ID', 'Set_ID', 'Version', 'Run_Time', 'Panel', 'Assay', 'Role', 'Target', 'Cell_Line', 'Timepoint_h',
+  'Group', 'Compound', 'Fit_Status', 'Potency_nM', 'Potency_Qualifier', 'Tested_Min_nM', 'Tested_Max_nM', 'CI_Lower_nM', 'CI_Upper_nM',
+  'Effect_Fit', 'Effect_Obs', 'Effect_Eff', 'Effect_Unit', 'Top', 'Bottom', 'Hill', 'Hill_CI_Lower', 'Hill_CI_Upper', 'R2',
+  'Conc_N', 'Wells', 'Wells_Per_Conc', 'Coverage', 'Hook_State', 'Hook_Threshold', 'Hook_Onset_nM', 'Last_Productive_nM',
+  'Hook_Depth', 'Hook_Recovery', 'Window_Conservative',
+  'Flag', 'Flag_Reason', 'Flag_NoEffect', 'Flag_RangeHigh', 'Flag_RangeLow', 'Flag_BottomBound', 'Flag_TopBound', 'Flag_R2', 'Flag_FewPoints', 'Flag_SD', 'Flag_Hook',
+  'Norm_Method', 'Norm_Check', 'Norm_Ratio', 'Plain_Potency_nM', 'Norm_Plates', 'Fit_Params', 'Curve_Points', 'Hook_Points'];
+// One row of the screen export, as an object keyed by SCR_COLS. meta = run / panel identity; opt = scrHook's.
+// Missing is null, never 0 and never ''. An effect of an assay with no effect (displacement) is null.
+function scrRecord(row, meta, opt) {
+  meta = meta || {};
+  var at = row._assayType, pot = scrPotency(row), fl = scrFlags(row), hk = scrHook(row, opt), cov = scrCoverage(row, hk), wl = scrWells(row);
+  var gain = at === 'gain', disp = at === 'displacement';
+  var fit = disp ? null : scrFin(row.Dmax_pct), obs = (gain || disp) ? null : hk.dmaxObs, eff;
+  if (hk.state === 'included' && obs != null) eff = obs;
+  else eff = (fit != null && obs != null) ? Math.min(fit, obs) : (fit != null ? fit : obs);
+  var win = (pot.q === '=' && pot.value > 0 && hk.lastProductive_nM != null) ? hk.lastProductive_nM / pot.value : null;
+  var b = function (x) { return x ? 1 : 0; };
+  var pts = (row._pts || []).filter(function (p) { return scrFin(p.x) != null && scrFin(p.y) != null; })
+    .map(function (p) { return scrRound(p.x, 3) + ',' + scrRound(p.y, 1) + ',' + (scrRound(p.sd, 1) == null ? 0 : scrRound(p.sd, 1)); }).join(';');
+  var hpts = (hk.concs || []).map(function (x) {
+    var c = scrGroupReps(row._reps).filter(function (q) { return Math.abs(q.x - x) < 0.002; })[0];
+    return c ? scrRound(x, 3) + ',' + scrRound(c.mean, 1) : null;
+  }).filter(Boolean).join(';');
+  var nd = pot.q === 'n.d.';
+  return {
+    Schema: SCR_SCHEMA, Assay_ID: meta.assayId == null ? null : meta.assayId, Run_ID: meta.runId == null ? null : meta.runId, Set_ID: meta.setId == null ? null : meta.setId,
+    Version: meta.ver == null ? null : meta.ver, Run_Time: meta.runTime || null, Panel: row._panel == null ? (meta.panel == null ? null : meta.panel) : row._panel,
+    Assay: at || null, Role: meta.role || null, Target: meta.target || null, Cell_Line: meta.cellLine || null, Timepoint_h: scrFin(meta.timepointH),
+    Group: row.Protein == null ? null : row.Protein, Compound: row.Sample_ID == null ? null : row.Sample_ID, Fit_Status: 'fitted',
+    Potency_nM: scrSig(pot.value, 4), Potency_Qualifier: pot.q === '=' ? 'exact' : (pot.q || null), Tested_Min_nM: scrSig(scrNM(row._xmin), 4), Tested_Max_nM: scrSig(scrNM(row._xmax), 4),
+    CI_Lower_nM: (pot.q === '=' ? scrSig(row.CI_DC50_lower, 3) : null), CI_Upper_nM: (pot.q === '=' ? scrSig(row.CI_DC50_upper, 3) : null),
+    Effect_Fit: scrRound(fit, 1), Effect_Obs: scrRound(obs, 1), Effect_Eff: scrRound(eff, 1), Effect_Unit: disp ? null : (gain ? 'signal' : '%'),
+    Top: scrRound(row.Top_val, 1), Bottom: scrRound(row.Bot_val, 1),
+    Hill: nd ? null : scrRound(row.HillSlope, 2), Hill_CI_Lower: nd ? null : scrRound(row.CI_Hill_lower, 2), Hill_CI_Upper: nd ? null : scrRound(row.CI_Hill_upper, 2), R2: scrRound(row.R2, 3),
+    Conc_N: wl.nConc || null, Wells: wl.nWells || null, Wells_Per_Conc: scrRound(wl.perConc, 1), Coverage: cov.cat,
+    Hook_State: hk.state, Hook_Threshold: hk.thr, Hook_Onset_nM: scrSig(hk.onset_nM, 4), Last_Productive_nM: scrSig(hk.lastProductive_nM, 4),
+    Hook_Depth: scrRound(hk.depth, 1), Hook_Recovery: scrRound(hk.recovery, 2), Window_Conservative: scrSig(win, 3),
+    Flag: row.Flag == null ? null : row.Flag, Flag_Reason: row.Flag_Reason || null,
+    Flag_NoEffect: b(fl.noEffect), Flag_RangeHigh: b(fl.rangeHi), Flag_RangeLow: b(fl.rangeLo), Flag_BottomBound: b(fl.botBound), Flag_TopBound: b(fl.topBound),
+    Flag_R2: b(fl.r2 != null), Flag_FewPoints: b(fl.fewPts), Flag_SD: b(fl.sd != null), Flag_Hook: fl.hookN,
+    Norm_Method: row.Norm_Method || null, Norm_Check: row.Norm_Check || null, Norm_Ratio: scrFin(row.Norm_Ratio),
+    Plain_Potency_nM: scrSig(row.Plain_DC50_nM, 4), Norm_Plates: row.Norm_Plates || null,
+    Fit_Params: [row._bot, row._logec50, row._hill, row._tc].map(function (v) { return scrFin(v) == null ? '' : +(+v).toFixed(4); }).join(';'),
+    Curve_Points: pts || null, Hook_Points: hpts || null
+  };
+}
+// A compound that was tested and could not be fitted (fewer than four readings, a fit that failed, or no reading at
+// all). It is a row of its own — "not fitted" is neither "inactive" nor "never tested", and a hit list that cannot
+// tell them apart claims more than it knows. nf = { group, compound, assay, panel, why, readings }.
+function scrUnfitted(nf, meta) {
+  meta = meta || {};
+  var o = {}; SCR_COLS.forEach(function (c) { o[c] = null; });
+  o.Schema = SCR_SCHEMA; o.Assay_ID = meta.assayId == null ? null : meta.assayId; o.Run_ID = meta.runId == null ? null : meta.runId;
+  o.Set_ID = meta.setId == null ? null : meta.setId; o.Version = meta.ver == null ? null : meta.ver; o.Run_Time = meta.runTime || null;
+  o.Panel = nf.panel == null ? (meta.panel == null ? null : meta.panel) : nf.panel; o.Assay = nf.assay || null;
+  o.Role = meta.role || null; o.Target = meta.target || null; o.Cell_Line = meta.cellLine || null; o.Timepoint_h = scrFin(meta.timepointH);
+  o.Group = nf.group == null ? null : nf.group; o.Compound = nf.compound == null ? null : nf.compound; o.Fit_Status = nf.why || 'fit-failed';
+  o.Wells = nf.readings || null; o.Flag = 'Yes'; o.Flag_Reason = 'Not fitted: ' + (nf.why || 'fit-failed');
+  return o;
+}
+// ═══ SCREEN ENGINE — END ═══
 // ── “n.d.”: a curve that barely moves has no midpoint ──────────────────────────────────────────────
 // The fitter still returns a number for it (where the search stopped: 10800 nM for a compound that does
 // nothing) and that number used to travel into the table, the exports and Labbook looking like a potency.
@@ -3559,6 +3761,16 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     if (!_sm.has(r.sampleId)) _sm.set(r.sampleId, []);
     _sm.get(r.sampleId).push(r);
   }
+  // A compound the Echo dosed onto a plate that was read, but with no reading in any of its wells, has no rows at all —
+  // it would vanish. It is listed as "not fitted: no readings", which is a different fact from "inactive".
+  { const _nfSeen = new Set();
+    for (const e of echoData) {
+      if (!_matchedSet.has(e.barcodeKey) || readerMap[e.barcodeKey + '|' + e.well]) continue;
+      const g0 = _groupOf(e.barcode, (window._lastAnalysisParams || {}).groupMode, (window._lastAnalysisParams || {}).groupMap), g = proteinCanon[(g0 || '').toLowerCase()] || g0;
+      if (_byProteinSample.get(g) && _byProteinSample.get(g).has(e.sampleId)) continue;
+      const k = g + '||' + e.sampleId; if (_nfSeen.has(k)) continue; _nfSeen.add(k);
+      (window._notFitted = window._notFitted || []).push({ group: g, compound: e.sampleId, assay: assayType, why: 'no-readings', readings: 0 });
+    } }
   const proteins = [..._byProteinSample.keys()].sort(natCmp);
   const totalFits = [..._byProteinSample.values()].reduce((s, sm) => s + sm.size, 0);
   let nDone = 0;
@@ -3569,7 +3781,9 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   // always used the degradation model even for a gain assay, rounded potencies to one
   // decimal, and never re-evaluated a flag or a confidence interval.
   const _drop = { pts: 0, fits: new Set() };
+  let _nfWhy = null, _nfN = null;   // why the last _fitOne returned nothing, and how many readings it had left — the pipeline lists those compounds instead of losing them
   const _fitOne = (protein, sid, sdata, opt) => {
+      _nfWhy = null; _nfN = null;
 
       // Hook detection
       const hookConcs = new Set();
@@ -3608,7 +3822,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           yArr = yArr.filter((_, i) => keep[i]);
         }
 
-        if (xArr.length < 4) { if (!(opt && opt.alt)) log('  Skip ' + sid + ': ' + xArr.length + ' pts', 'warn'); return null; }
+        if (xArr.length < 4) { _nfWhy = 'few-points'; _nfN = xArr.length; if (!(opt && opt.alt)) log('  Skip ' + sid + ': ' + xArr.length + ' pts', 'warn'); return null; }
 
         const xMin = Math.min(...xArr), xMax = Math.max(...xArr);
         const yMin2 = Math.min(...yArr), yMax2 = Math.max(...yArr);
@@ -3789,9 +4003,12 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
           _pts: ptsList, _reps: repsList,
           _hook_x: isHook ? hookConcsArr[0] : null,
           _hook_concs: hookConcsArr, _is_hook: isHook,
-          _gainMode: gainMode, _assayType: assayType
+          _gainMode: gainMode, _assayType: assayType,
+          // The threshold the hook test ran with (null: not run, undefined on rows saved before this existed): without it a
+          // curve with no hook cannot be told from one that was never checked.
+          _hookThr: (hookEnabled && !disableHook) ? hookThr : null
         };
-      } catch (e) { if (!(opt && opt.alt)) log('  Fit failed ' + sid + ': ' + e.message, 'warn'); return null; }
+      } catch (e) { _nfWhy = 'fit-failed'; if (!(opt && opt.alt)) log('  Fit failed ' + sid + ': ' + e.message, 'warn'); return null; }
 
   };
   // The comparison fit: the same wells, normalised with the plain plate mean, by the same function and
@@ -3817,6 +4034,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       const sdata = sampleMap.get(sid);
       const _row = _fitWithCheck(protein, sid, sdata);
       if (_row) { Object.assign(_row, _normProv(sdata, normPlates, !!(doNormalize && rowNorm), !!doNormalize)); summary.push(_row); nFit++; }
+      else (window._notFitted = window._notFitted || []).push({ group: protein, compound: sid, assay: assayType, why: _nfWhy || 'fit-failed', readings: _nfN != null ? _nfN : sdata.filter(r => r.measurement !== null && isFinite(r.measurement)).length });
 
       nDone++;
       if (nDone % 10 === 0 || nDone === totalFits) setProgress(15 + Math.round(nDone / totalFits * 70));
@@ -4103,6 +4321,7 @@ function renderResults(data) {
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy TSV</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="sendResultsToLabbook()" title="'+(window._lbLink&&window._lbLink.setId?'Send this analysis back — it replaces the result set it came from':'Attach these potencies, with their curves, to the Labbook experiment')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><circle cx="5.5" cy="17" r="2.4"/><circle cx="18.5" cy="17" r="2.4"/><path d="M10.7 8.1L6.8 14.9M13.3 8.1l3.9 6.8M8 17h8"/></svg> '+(window._lbLink&&window._lbLink.setId?'Update in Labbook':'Send to Labbook')+'</button>'
     + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputXLSX()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg> Results XLSX</button>';
+  _dlSection += _screenBtns(_dlBtnStyle, _dlBtnHover);
   if (_rawBlob) {
     _dlSection += '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg> Raw Data CSV</button>';
   }
@@ -4219,6 +4438,7 @@ function renderMultiAssayResults(data) {
     + '<button style="'+_dlS+'" '+_dlH+' onclick="hxCompareFromResults()" title="Put this analysis beside another one, or beside an earlier version of it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M8 4v16M16 4v16M4 8l4-4 4 4M12 16l4 4 4-4"/></svg> Compare…</button>'
     + '<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy TSV</button>'
     + '<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg> Results XLSX</button>';
+  _dlSectionM += _screenBtns(_dlS, _dlH);
   if (_rawBlobM) _dlSectionM += '<button style="'+_dlS+'" '+_dlH+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg> Raw Data CSV</button>';
   _dlSectionM += '<button id="cv-pdf-gen-btn" style="'+_dlS+'" '+_dlH+' onclick="generateAndDownloadCurvePDFs()" title="Generate curve PDFs using current Curves Style settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg> Generate curve PDFs</button>';
   _dlSectionM += '</div>';
@@ -4310,6 +4530,54 @@ function copyResultsTSV() {
     const btn=document.querySelector('[onclick="copyResultsTSV()"]');
     if(btn){const t=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=t,1500);}
   }).catch(()=>echoToast('Clipboard write failed — use CSV export instead.', 'err'));
+}
+
+// ── The screen export: what Hit Finder reads ───────────────────────────────────────────────────────────
+// One row per compound, group and assay with everything a triage needs that the other exports leave out: the
+// qualifier of a potency (a bound is not a number), hook onset and depth, how much of the curve was measured,
+// wells behind it, the normalisation verdict — plus the compounds that could NOT be fitted, as rows of their own.
+// The table is made by scrRecord (the shared SCREEN ENGINE), so Hit Finder gets the same numbers from a file and
+// from History. Columns are appended to, never reordered: it is a schema (Schema = echo-screen/1).
+function _screenRecords() {
+  const data = (typeof _lastResultsData !== 'undefined' && _lastResultsData) || [];
+  const params = window._lastAnalysisParams || {};
+  const run = (window._analysisId && typeof _hx !== 'undefined' && _hx.runs) ? _hx.runs[window._analysisId] : null;
+  const screens = window._runScreens || (run && run.screens) || [];
+  const byPanel = {}; screens.forEach(sc => { byPanel[sc.panel] = sc; });
+  const runTime = new Date(run ? run.ts : Date.now()).toISOString();
+  const metaOf = (panel, at) => {
+    const sc = byPanel[panel] || {};
+    return { assayId: window._lastAssayId || params.assayId || '', runId: window._analysisId || null, setId: run ? run.setId : null, ver: run ? run.ver : null, runTime, panel,
+      role: sc.role || SCREEN_ROLE_DEFAULT[at] || 'other', target: sc.target, cellLine: sc.cellLine, timepointH: sc.timepointH };
+  };
+  const rows = data.map(r => {
+    const panel = r._panel != null ? r._panel : 0;
+    const cfg = params.multiAssay ? (params.matConfigs || [])[panel] : params;
+    return scrRecord(r, metaOf(panel, r._assayType), cfg ? { hookEnabled: !!cfg.hookEnabled, hookThr: cfg.hookThr } : undefined);
+  });
+  (window._notFitted || []).forEach(nf => rows.push(scrUnfitted(nf, metaOf(nf.panel != null ? nf.panel : 0, nf.assay))));
+  return rows;
+}
+function _screenAoa() {
+  const recs = _screenRecords();
+  return [SCR_COLS.slice()].concat(recs.map(r => SCR_COLS.map(c => r[c] == null ? '' : r[c])));
+}
+function screenCsvBytes() {
+  const recs = _screenRecords();
+  return _buildCsvBytes(SCR_COLS.join(',') + '\r\n', recs.map(r => SCR_COLS.map(c => _csvCell(r[c] == null ? '' : r[c])).join(',')));
+}
+function downloadScreenCsv() {
+  if (!(typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length)) { echoToast('No results to export. Run an analysis first.'); return; }
+  downloadBlob({ name: 'Screen_' + (window._lastAssayId || 'output') + '.csv', bytes: screenCsvBytes(), type: 'text/csv' });
+}
+function _hitFinderReady() { try { return window.parent !== window && !!(window.parent.APP_INFO && window.parent.APP_INFO.hitfinder); } catch (e) { return false; } }
+function openInHitFinder() {
+  try { window.parent.openApp('hitfinder', undefined, undefined, { source: 'echo', echoRun: window._analysisId || null }); } catch (e) { echoToast('Open Hit Finder from the Hub to triage this screen.', 'warn'); }
+}
+function _screenBtns(st, hov) {
+  const ico = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/><path d="M8.5 11h5"/></svg>';
+  return '<button style="' + st + '" ' + hov + ' onclick="downloadScreenCsv()" title="One row per compound and assay with everything Hit Finder reads: potency qualifier, hook, coverage, replicates, normalisation, and the compounds that could not be fitted">' + ico + ' Screen CSV</button>'
+    + (_hitFinderReady() ? '<button style="' + st + '" ' + hov + ' onclick="openInHitFinder()" title="Triage this screen in Hit Finder">' + ico + ' Hit Finder</button>' : '');
 }
 
 function _csvColMap(t){
@@ -4650,6 +4918,9 @@ function generateOutputXLSX() {
   var wsPrismFrac = XLSX.utils.aoa_to_sheet(_sanitizeAoa(prismFrac.aoa));
   if (prismFrac.merges.length) wsPrismFrac['!merges'] = prismFrac.merges;
   XLSX.utils.book_append_sheet(wb, wsPrismFrac, 'Prism (Fraction)');
+
+  // Last, so every sheet before it keeps its place. Self-describing: the Schema column names the format.
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_screenAoa())), 'Screen (Hit Finder)');
 
   var wbout = XLSX.write(wb, { bookType:'xlsx', type:'array' });
   var blob = new Blob([wbout], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -9397,10 +9668,10 @@ async function _hxIngest(e, legacy) {
   const run = {
     id, setId, ts, assayId: e.assayId || 'Unnamed', groups, n: e.n || e.data.length, nCompounds: new Set(e.data.map(r => r.Sample_ID)).size, nFlag: e.nFlag != null ? e.nFlag : e.data.filter(r => r.Flag === 'Yes').length,
     params: e.params || null, assayType: e.assayType || null, form: e.form || null, matPanels: e.matPanels || 0, fp, pk, fk, ver: e.ver || set.nextVer, edited: !!e.edited, reruns: e.reruns || 0,
-    paramsDiff: e.paramsDiff || (sibs[0] ? _hxDiff(sibs[0].params, e.params) : []), pinned: !!e.pinned, label: e.label || '', bytes: 0
+    paramsDiff: e.paramsDiff || (sibs[0] ? _hxDiff(sibs[0].params, e.params) : []), pinned: !!e.pinned, label: e.label || '', bytes: 0, screens: e.screens || null
   };
   set.nextVer = Math.max(set.nextVer, run.ver + 1); set.updated = Math.max(set.updated, ts); set.created = Math.min(set.created, ts);
-  const blob = { id, data: e.data, plateData: e.plateData || null, smart: e.smart || null, normAudits: e.normAudits || null };
+  const blob = { id, data: e.data, plateData: e.plateData || null, smart: e.smart || null, normAudits: e.normAudits || null, notFitted: e.notFitted || [] };
   run.bytes = JSON.stringify(blob).length;
   await _hxPutRetry(async () => { await _hxPut('blobs', blob); await _hxPut('runs', run); await _hxPut('sets', set); });
   _hx.runs[id] = run;
@@ -9531,6 +9802,7 @@ async function _hxCommit() {
     const latest = _hxRunsOf(setId).find(x => x.pk === pk && x.fp === fp);
     if (latest) {
       window._analysisId = latest.id; latest.ts = now; latest.reruns = (latest.reruns || 0) + 1;
+      if (window._runScreens) latest.screens = window._runScreens;   // a corrected target name is not a new version
       const set = _hx.sets[setId]; if (set) set.updated = now;
       await _hxPutRetry(async () => { await _hxPut('runs', latest); if (set) await _hxPut('sets', set); });
       renderHistoryTab(); return;
@@ -9543,8 +9815,9 @@ async function _hxCommit() {
   const rec = run || { id: aid, setId, fk, ts: now, ver: set.nextVer++, paramsDiff: prev ? _hxDiff(prev.params, params) : [], pinned: false, label: '', edited: false, reruns: 0 };
   if (run && run.fp !== fp) rec.edited = true;
   Object.assign(rec, { assayId, groups, n: data.length, nCompounds: new Set(data.map(r => r.Sample_ID)).size, nFlag: data.filter(r => r.Flag === 'Yes').length, params, assayType: window._lastAssayType || null, fp, pk,
-    form: window._runForm || rec.form || null, matPanels: window._runMat || rec.matPanels || 0 });
-  const blob = { id: aid, data, plateData: window._plateData || null, smart: window._smartInfo || null, normAudits: window._normAudits || null };
+    form: window._runForm || rec.form || null, matPanels: window._runMat || rec.matPanels || 0,
+    screens: window._runScreens || rec.screens || null });
+  const blob = { id: aid, data, plateData: window._plateData || null, smart: window._smartInfo || null, normAudits: window._normAudits || null, notFitted: window._notFitted || [] };
   rec.bytes = JSON.stringify(blob).length; rec.u = now;
   set.name = assayId.trim() || set.name; set.updated = now; set.nPlates = window._plateData ? Object.keys(window._plateData).length : set.nPlates;
   await _hxPutRetry(async () => { await _hxPut('blobs', blob); await _hxPut('runs', rec); await _hxPut('sets', set); });
@@ -9728,6 +10001,8 @@ async function loadHistoryEntry(id) {
     if (blob.plateData) window._plateData = blob.plateData;
     window._smartInfo = blob.smart || {};
     window._normAudits = blob.normAudits || [];
+    window._notFitted = blob.notFitted || [];
+    window._runScreens = run.screens || null;
     window._loadingFromHistory = false;
   }, 0);
 }
@@ -9890,8 +10165,8 @@ async function _ehFlush() {
     for (const r of blobs) {
       const b = await _hxGet('blobs', r.id).catch(() => null);
       if (!b || b === true || !b.data) { _eh.blobSig[r.id] = r.fp + ':' + (r.bytes || 0); continue; }      // only the cloud has it, so the cloud has it
-      let j = JSON.stringify({ data: b.data, plateData: b.plateData || null, smart: b.smart || null, normAudits: b.normAudits || null });
-      if (j.length > 9e6) j = JSON.stringify({ data: b.data, plateData: null, smart: b.smart || null, normAudits: b.normAudits || null });
+      let j = JSON.stringify({ data: b.data, plateData: b.plateData || null, smart: b.smart || null, normAudits: b.normAudits || null, notFitted: b.notFitted || [] });
+      if (j.length > 9e6) j = JSON.stringify({ data: b.data, plateData: null, smart: b.smart || null, normAudits: b.normAudits || null, notFitted: b.notFitted || [] });
       _ehSetState('syncing');
       await root.child('blobs/' + r.id).set({ j });
       _eh.blobSig[r.id] = r.fp + ':' + (r.bytes || 0);
@@ -11474,7 +11749,16 @@ function addAssayType() {
         <input type="text" id="mat-zero-${idx}" placeholder="e.g. B24:O24" style="${_fs}">
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+    <div class="setup-2col" style="gap:8px;margin-top:8px;">
+      <select id="mat-role-${idx}" aria-label="Role of this panel" style="height:30px;width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);box-sizing:border-box;font-size:11px;cursor:pointer;">
+        <option value="">Role: automatic</option><option value="degradation">Role: degradation</option><option value="viability">Role: viability</option>
+        <option value="counter-screen">Role: counter-screen</option><option value="rescue">Role: rescue</option><option value="binding">Role: binding</option><option value="other">Role: other</option>
+      </select>
+      <input type="text" id="mat-target-${idx}" placeholder="Target" aria-label="Target of this panel" style="height:30px;width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);box-sizing:border-box;font-size:11px;">
+      <input type="text" id="mat-cell-${idx}" placeholder="Cell line" aria-label="Cell line of this panel" style="height:30px;width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);box-sizing:border-box;font-size:11px;">
+      <input type="text" id="mat-time-${idx}" inputmode="decimal" placeholder="Time point (h)" aria-label="Time point of this panel in hours" style="height:30px;width:100%;padding:6px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:12px;font-family:var(--sans);box-sizing:border-box;font-size:11px;">
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
       <label style="font-size:11px;color:var(--text2);white-space:nowrap;flex-shrink:0;">PHERAstar A1 cell</label>
       <input type="text" id="mat-a1-${idx}" placeholder="e.g. B3 (optional)" style="width:120px;padding:4px 7px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:11px;font-family:var(--mono);outline:none;">
       <span style="font-size:10px;color:var(--text3);">Excel cell = A01. Leave blank for auto-detect.</span>
@@ -11602,7 +11886,8 @@ function collectMultiAssayConfigs() {
       minBotEnabled:gc('minbot-en'), minBotVal:gn('minbot',0),
       skipNorm:gc('skipnorm'), rowNorm:gc('rownorm'),
       tracerConc:gv('tracer-conc'), tracerUnit:gv('tracer-unit')||'nM',
-      tracerKd:gv('tracer-kd'), kdUnit:gv('kd-unit')||'nM'
+      tracerKd:gv('tracer-kd'), kdUnit:gv('kd-unit')||'nM',
+      role:(gv('role')||'').trim(), target:(gv('target')||'').trim(), cell:(gv('cell')||'').trim(), time:(gv('time')||'').trim()
     });
   });
   return configs;

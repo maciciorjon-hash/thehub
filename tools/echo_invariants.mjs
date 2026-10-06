@@ -102,6 +102,16 @@
 //   E44 a multi-assay pivot  One result per (assay, group): a compound fitted against two groups of one assay shows BOTH, in the table and in the
 //       overwrites nothing   XLSX, under headers that name the group; two results for one compound in one block open another block.
 //   E45 Copy TSV says which  A multi-assay Copy TSV names the assay of every row and calls the potency column a potency; a single-assay one is unchanged.
+//   E46 the screen export    Screen CSV and the workbook's last sheet are the same table (header = SCR_COLS, Schema echo-screen/1), one row per fitted
+//       is the results        curve plus one per compound that could not be fitted; a midpoint past the doses is a qualifier (>, <, n.d.) with the tested
+//                             range beside it — also with the n.d. display switch off; the button is on both result views; existing sheets keep their place.
+//   E47 hook and coverage     The engine's hook rule is Echo's own (same concentrations on real fits); onset, last productive concentration, depth,
+//       are derived           recovery and the observed Dmax are the arithmetic of the replicate means; a re-included hook is still a hook; no hook is
+//                             'none' only when the test ran; a half curve is not 'complete'.
+//   E48 a screen says what    Role / target / cell line / time point reach the run, every Screen row and the History run; a corrected target name is
+//       it is                 not a new version; opening the run from History brings them back; the role defaults from the assay type.
+//   E49 not fitted is a       A compound left with fewer than four readings is listed (few-points), exported as a row of its own, kept in History and
+//       fact, not a gap       restored from it; a clean run lists none.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -1526,6 +1536,154 @@ if (run('E45')) await guard('E45', async () => {
   check('E45', 'every row names its assay (HiBiT / CTG/Viability)', r.multi.slice(1).every(l => /^(HiBiT|CTG\/Viability)$/.test(l[0])) && r.multi.slice(1).some(l => l[0] === 'CTG/Viability'), r.multi.slice(1).map(l => l[0]));
   check('E45', 'the potency column is called a potency, not DC50, when viability rows share it', (r.multi[0] || []).some(h => /^Potency/.test(h)), r.multi[0]);
   check('E45', 'a single-assay Copy TSV has no Assay column', r.single[0] && r.single[0][0] !== 'Assay' && !r.single[0].includes('Assay'), r.single[0]);
+});
+
+// A synthetic compound for the engine: 12 doses, a sigmoid around -7.6, and (optionally) the top doses rebounding.
+const SCR_SYN = `((hookTop, protein, sid, xs) => {
+  const doses = xs || Array.from({ length: 12 }, (_, i) => -10 + i * 0.45), f = x => 5 + 95 / (1 + Math.pow(10, 1.1 * (x - (-7.6))));
+  const top3 = doses.slice().sort((a, b) => b - a).slice(0, 3);
+  const mk = (x, m) => ({ sampleId: sid, protein, barcode: protein + '-01', barcodeKey: protein.toLowerCase() + '-01', well: 'C03', conc: Math.pow(10, x), log10Conc: x, measurement: m });
+  const rows = [];
+  doses.forEach(x => { let y = f(x); if (hookTop === true && x === top3[0]) y = 62; if (hookTop === true && x === top3[1]) y = 40; if (hookTop === true && x === top3[2]) y = 22 + 6;
+    // subtle: only the top dose rebounds, by 16 points, and the next one by 7 — a hook against the concentration TWO down, not against its neighbour
+    if (hookTop === 'subtle' && x === top3[0]) y = f(x) + 16; if (hookTop === 'subtle' && x === top3[1]) y = f(x) + 7; [-1.5, 0, 1.5].forEach(d => rows.push(mk(x, y + d))); });
+  return rows;
+})`;
+
+if (run('E46')) await guard('E46', async () => {
+  await BACK_TO_ANALYSIS();
+  await runWith({});
+  await pg.waitForTimeout(800);
+  const r = await E(async () => {
+    const parse = text => { const out = []; let row = [], cur = '', q = false; for (let i = 0; i < text.length; i++) { const ch = text[i];
+      if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+      else if (ch === '"') q = true; else if (ch === ',') { row.push(cur); cur = ''; } else if (ch === '\n') { row.push(cur.replace(/\r$/, '')); out.push(row); row = []; cur = ''; } else cur += ch; }
+      if (cur || row.length) { row.push(cur); out.push(row); } return out; };
+    const recs = _screenRecords(), csv = parse(new TextDecoder().decode(screenCsvBytes()));
+    const names = [], caps = [], oA = XLSX.utils.book_append_sheet, oS = XLSX.utils.aoa_to_sheet;
+    XLSX.utils.book_append_sheet = function (wb, ws, n) { names.push(n); return oA.apply(this, arguments); };
+    XLSX.utils.aoa_to_sheet = function (a) { caps.push(a); return oS.apply(this, arguments); };
+    try { generateOutputXLSX(); } finally { XLSX.utils.book_append_sheet = oA; XLSX.utils.aoa_to_sheet = oS; }
+    const screenAoa = caps.find(a => a[0] && a[0][0] === 'Schema');
+    const same = csv.length === (screenAoa || []).length && csv.every((rw, i) => rw.length === screenAoa[i].length && rw.every((c, j) => c === String(screenAoa[i][j])));
+    // n.d. and bounds, with the DISPLAY switch off
+    const keep = window._lastAnalysisParams; window._lastAnalysisParams = Object.assign({}, keep, { ndNoEffect: false });
+    const recsOff = _screenRecords(); window._lastAnalysisParams = keep;
+    const nd = _lastResultsData.filter(x => /No effect/.test(x.Flag_Reason || ''));
+    const ndRecs = recsOff.filter(x => /No effect/.test(x.Flag_Reason || ''));
+    const base = _lastResultsData.find(x => !/No effect|range/.test(x.Flag_Reason || ''));
+    const hi = scrRecord(Object.assign({}, base, { Flag_Reason: 'EC50>range' })), lo = scrRecord(Object.assign({}, base, { Flag_Reason: 'EC50<range' }));
+    const oneCsv = recs.filter(x => x.Fit_Status === 'fitted').length;
+    const btn1 = document.querySelectorAll('#results-panel button[onclick="downloadScreenCsv()"]').length;
+    const keepP = window._lastAnalysisParams, keepD = _lastResultsData, keepH = window.saveToHistory; window.saveToHistory = () => {};
+    window._lastAnalysisParams = Object.assign({}, keepP, { multiAssay: true });
+    renderMultiAssayResults(keepD.map(x => Object.assign({}, x)));
+    const btn2 = document.querySelectorAll('#results-panel button[onclick="downloadScreenCsv()"]').length;
+    window._lastAnalysisParams = keepP; window.saveToHistory = keepH; _lastResultsData = keepD; renderResults(scatterData);
+    return { header: csv[0], cols: SCR_COLS, nCsv: csv.length - 1, nRecs: recs.length, nFit: _lastResultsData.length, nNf: (window._notFitted || []).length, schemaOK: recs.every(x => x.Schema === 'echo-screen/1'),
+      same, names, ndN: nd.length, ndOk: ndRecs.length === nd.length && ndRecs.every(x => x.Potency_Qualifier === 'n.d.' && x.Potency_nM === null && x.Tested_Max_nM > 0),
+      hi: [hi.Potency_Qualifier, hi.Potency_nM, hi.Tested_Max_nM], lo: [lo.Potency_Qualifier, lo.Potency_nM, lo.Tested_Min_nM], oneCsv, btn1, btn2, hitFinderBtn: !!document.querySelector('#results-panel button[onclick="openInHitFinder()"]') };
+  });
+  check('E46', 'the CSV header is SCR_COLS, Schema echo-screen/1 on every row', JSON.stringify(r.header) === JSON.stringify(r.cols) && r.schemaOK, r.header);
+  check('E46', 'one row per fitted curve plus one per compound that could not be fitted', r.nCsv === r.nFit + r.nNf && r.nRecs === r.nCsv && r.nFit > 0, r);
+  check('E46', 'the workbook carries the same table as its last sheet, after every existing sheet', r.same && r.names[r.names.length - 1] === 'Screen (Hit Finder)' && r.names.slice(0, 1)[0] === 'Results', r.names);
+  check('E46', 'a flat curve is n.d. with the tested maximum beside it, even with the display switch off', r.ndN > 0 && r.ndOk, r);
+  check('E46', 'a midpoint past the doses is a qualifier: > carries the tested maximum, < the tested minimum', r.hi[0] === '>' && r.hi[1] === r.hi[2] && r.lo[0] === '<' && r.lo[1] === r.lo[2], r);
+  check('E46', 'Screen CSV is on the single-assay and the multi-assay result views; Hit Finder only inside the Hub', r.btn1 >= 1 && r.btn2 >= 1 && !r.hitFinderBtn, { single: r.btn1, multi: r.btn2, hitFinderButton: r.hitFinderBtn });
+});
+
+if (run('E47')) await guard('E47', async () => {
+  await BACK_TO_ANALYSIS();
+  await runWith({ 'p-hook-en': true, 'p-hook': 10 });
+  const r = await E(async (syn) => {
+    const mkRows = eval(syn);
+    const out = {};
+    const hk = _echoFitOne('PX', 'HK', mkRows(true, 'PX', 'HK'));
+    out.hk = hk && { concs: hk._hook_concs, thr: hk._hookThr, isHook: hk._is_hook };
+    const hv = scrHook(hk);
+    const g = scrGroupReps(hk._reps);
+    out.engineRule = JSON.stringify(scrDetectHook(g, hk._hookThr)) === JSON.stringify(hk._hook_concs);
+    const sub = _echoFitOne('PX', 'SUB', mkRows('subtle', 'PX', 'SUB'));
+    out.subtle = sub && { concs: sub._hook_concs, engine: scrDetectHook(scrGroupReps(sub._reps), sub._hookThr), state: scrHook(sub).state };
+    const nonHook = g.filter(c => !hk._hook_concs.some(h => Math.abs(h - c.x) < 0.002));
+    const nadir = Math.min(...nonHook.map(c => c.mean)), top = hk.Top_val;
+    out.hv = { state: hv.state, onset: hv.onset_nM, last: hv.lastProductive_nM, depth: hv.depth, rec: hv.recovery, dmaxObs: hv.dmaxObs };
+    out.exp = { onset: Math.pow(10, Math.min(...hk._hook_concs)) * 1e9, last: Math.pow(10, Math.max(...nonHook.map(c => c.x))) * 1e9, depth: g[0].mean - nadir, dmaxObs: top - nadir, rec: (g[0].mean - nadir) / (top - nadir) };
+    // re-included: refit with the hook in, flagged as the editor does
+    const back = Object.assign(_echoFitOne('PX', 'HK', mkRows(true, 'PX', 'HK'), { noHook: true }), { _hookIn: true });
+    const bv = scrHook(back); const brec = scrRecord(back, {});
+    out.back = { state: bv.state, concs: bv.concs, eff: brec.Effect_Eff, obs: brec.Effect_Obs };
+    // no hook: a clean sigmoid, the test ran
+    const cl = _echoFitOne('PX', 'CL', mkRows(false, 'PX', 'CL'));
+    const cv = scrHook(cl); const crec = scrRecord(cl, {});
+    out.clean = { state: cv.state, onset: cv.onset_nM, win: crec.Window_Conservative, cov: crec.Coverage, last: crec.Last_Productive_Nm };
+    // never asked / not an assay with a hook
+    out.off = scrHook(Object.assign({}, cl, { _hookThr: null })).state;
+    out.old = scrHook(Object.assign({}, cl, { _hookThr: undefined })).state;
+    out.oldWithSettings = scrHook(Object.assign({}, cl, { _hookThr: undefined }), { hookEnabled: true, hookThr: 10 }).state;
+    out.gain = scrHook(Object.assign({}, cl, { _assayType: 'gain' })).state;
+    // a half curve: the doses stop before the midpoint (-7.6)
+    const half = _echoFitOne('PX', 'HALF', mkRows(false, 'PX', 'HALF', Array.from({ length: 8 }, (_, i) => -10 + i * 0.3)));
+    out.half = half && { cov: scrCoverage(half, scrHook(half)).cat, q: scrPotency(half).q, flag: half.Flag_Reason };
+    const rec = scrRecord(hk, {}); out.win = [rec.Window_Conservative, rec.Last_Productive_nM / rec.Potency_nM];
+    return out;
+  }, SCR_SYN);
+  const near = (a, b) => a != null && b != null && Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(b));
+  check('E47', 'Echo finds the hook on the synthetic curve (engine reads the same concentrations)', r.hk && r.hk.isHook && r.hk.concs.length >= 1 && r.engineRule, r.hk);
+  check('E47', 'a hook that only shows against the concentration two down is found by Echo and by the engine alike', r.subtle && r.subtle.concs.length === 1 && JSON.stringify(r.subtle.engine) === JSON.stringify(r.subtle.concs) && r.subtle.state === 'excluded', r.subtle);
+  check('E47', 'onset is the lowest hook concentration, last productive the highest one before it', r.hv.state === 'excluded' && near(r.hv.onset, r.exp.onset) && near(r.hv.last, r.exp.last), { hv: r.hv, exp: r.exp });
+  check('E47', 'depth, recovery and the observed Dmax are the arithmetic of the replicate means', near(r.hv.depth, r.exp.depth) && near(r.hv.rec, r.exp.rec) && near(r.hv.dmaxObs, r.exp.dmaxObs), { hv: r.hv, exp: r.exp });
+  check('E47', 'the conservative window is last productive / potency', near(r.win[0], +(+r.win[1]).toPrecision(3)), r.win);
+  check('E47', 'a hook the user put back in the fit is still a hook, and its Dmax is the observed one', r.back.state === 'included' && r.back.concs.length >= 1 && r.back.eff === r.back.obs, r.back);
+  check('E47', 'a curve with no hook is none only because the test ran; not asked is off / unknown; gain has none', r.clean.state === 'none' && r.clean.onset === null && r.off === 'off' && r.old === 'unknown' && r.oldWithSettings === 'none' && r.gain === 'n/a', r);
+  check('E47', 'a complete curve says so; a half curve is not complete and its midpoint is a qualifier', r.clean.cov === 'complete' && r.half && r.half.cov !== 'complete' && r.half.q !== '=', r);
+});
+
+if (run('E48')) await guard('E48', async () => {
+  await BACK_TO_ANALYSIS();
+  const fields = { 'p-assay': 'E48-SCREEN', 'p-role': 'degradation', 'p-target': 'BRD4', 'p-cell': 'HEK293', 'p-time': '6' };
+  await runWith(fields);
+  await pg.waitForTimeout(1600);
+  const a = await E(async () => { await _hxLoad(); const id = window._analysisId, run = _hx.runs[id];
+    const recs = _screenRecords();
+    return { screens: window._runScreens, stored: run && run.screens, setId: run && run.setId, id, nRuns: Object.values(_hx.runs).filter(x => run && x.setId === run.setId).length, reruns: run && run.reruns,
+      rowsOK: recs.every(x => x.Role === 'degradation' && x.Target === 'BRD4' && x.Cell_Line === 'HEK293' && x.Timepoint_h === 6 && x.Set_ID === run.setId && x.Run_ID === id) }; });
+  const want = { panel: 0, assayType: 'hibit', role: 'degradation', target: 'BRD4', cellLine: 'HEK293', timepointH: 6, prefix: '' };
+  check('E48', 'the run carries the screen\'s role, target, cell line and time point', JSON.stringify(a.screens) === JSON.stringify([want]), a.screens);
+  check('E48', 'the History run keeps them, and every Screen row repeats them with the run identity', JSON.stringify(a.stored) === JSON.stringify([want]) && a.rowsOK, a);
+  await runWith(Object.assign({}, fields, { 'p-target': 'BRD4-corrected' }));
+  await pg.waitForTimeout(1600);
+  const b = await E(async () => { await _hxLoad(); const run = _hx.runs[window._analysisId]; return { nRuns: Object.values(_hx.runs).filter(x => x.setId === run.setId).length, target: run.screens && run.screens[0] && run.screens[0].target, reruns: run.reruns }; });
+  check('E48', 'correcting a target name is not a new version: same run, updated', b.nRuns === a.nRuns && b.target === 'BRD4-corrected', { a: a.nRuns, b });
+  const c = await E(async () => { const id = window._analysisId; window._runScreens = null; await loadHistoryEntry(id); await new Promise(r => setTimeout(r, 200)); return window._runScreens; });
+  check('E48', 'opening the run from History brings the screen back', c && c[0] && c[0].target === 'BRD4-corrected' && c[0].cellLine === 'HEK293', c);
+  const d = await E(() => ({ ctg: _screenMeta(0, 'ctg', '', '', '', ''), hib: _screenMeta(0, 'hibit', '', '', '', ''), t1: _screenMeta(0, 'hibit', '', '', '', '6,5').timepointH, t2: _screenMeta(0, 'hibit', '', '', '', 'abc').timepointH, t3: _screenMeta(0, 'hibit', 'rescue', ' BRD2 ', '', '').target }));
+  check('E48', 'the role defaults from the assay type; a time point is a number or nothing', d.ctg.role === 'viability' && d.hib.role === 'degradation' && d.t1 === 6.5 && d.t2 === null && d.t3 === 'BRD2', d);
+});
+
+if (run('E49')) await guard('E49', async () => {
+  await BACK_TO_ANALYSIS();
+  await runWith({ 'p-assay': 'E49-NF' });
+  const clean = await E(() => (window._notFitted || []).length);
+  const victim = await E(() => { const r = _lastResultsData[0]; const per = {}; r._reps.forEach(p => { const k = p.x.toFixed(4); per[k] = (per[k] || 0) + 1; });
+    // keep the highest concentrations only while their readings add up to three: Echo counts READINGS (replicate wells), not concentrations, so four readings is a fit
+    const xs = Object.keys(per).map(Number).sort((a, b) => b - a); let n = 0, drop = []; xs.forEach(x => { const c = per[x.toFixed(4)]; if (n + c <= 3) n += c; else drop.push(x); });
+    return { key: r.Sample_ID + '||' + r.Protein, sid: r.Sample_ID, grp: r.Protein, drop, kept: n }; });
+  const r = await E(async (v) => {
+    window._pendingQcOverrides = JSON.stringify({ [v.key]: { excludedPts: v.drop.map(x => ({ x })) } });
+    _lastResultsData = null; await runPipeline();
+    await new Promise(r => setTimeout(r, 1600)); await _hxLoad();
+    const id = window._analysisId, blob = await _hxBlob(id), recs = _screenRecords();
+    const nf = (window._notFitted || []).find(n => n.compound === v.sid && n.group === v.grp);
+    const row = recs.find(x => x.Compound === v.sid && x.Group === v.grp);
+    window._notFitted = null; await loadHistoryEntry(id); await new Promise(r => setTimeout(r, 200));
+    return { nf, inFit: _lastResultsData.some(x => x.Sample_ID === v.sid && x.Protein === v.grp), stored: blob && (blob.notFitted || []).some(n => n.compound === v.sid), row: row && { st: row.Fit_Status, pot: row.Potency_nM, fl: row.Flag_Reason }, restored: (window._notFitted || []).some(n => n.compound === v.sid) };
+  }, victim);
+  check('E49', 'a clean run lists no compound as not fitted', clean === 0, clean);
+  check('E49', 'a compound left with three readings is listed (few-points) and has no curve', r.nf && r.nf.why === 'few-points' && r.inFit === false, r);
+  check('E49', 'it is a row of its own in the Screen export, with no potency', r.row && r.row.st === 'few-points' && r.row.pot === null && /Not fitted/.test(r.row.fl), r);
+  check('E49', 'it is kept in History and restored from it', r.stored === true && r.restored === true, r);
+  await runWith({});   // leave the page as the next test expects it
 });
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
