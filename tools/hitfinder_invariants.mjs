@@ -36,6 +36,11 @@
 //   H20 send means sent      "Send to Hit Finder" in Echo opens Hit Finder by itself with the analysis loaded (from History, saved first, so pressing it the instant a
 //                             run finishes works), and where History cannot be kept the Screen table travels instead; sending twice never doubles the screens;
 //                             the button is there only inside the Hub, and a guessed slot is said where the hits are read.
+//   H8  what leaves can come    The workbook's Criteria sheet re-creates exactly the tiers its own All-compounds sheet lists; Hits is the Hits tab in its order; a number is a number
+//       back                       and a missing one is blank, never 0; nothing a spreadsheet would run as a formula leaves in any file; the cherry-pick ranges are
+//                                  centred and on a 1-3-10 grid, a rejected compound is out and a hit you picked is in; a project round-trips (verdicts, calls,
+//                                  criteria, slots, merges, edited targets) and a file that is not one changes nothing; autosave survives a reload and keeps the session
+//                                  before it; the printed page is the summary alone, on white, with dark ink.
 //   H17 the tabs are a tablist One selected tab, arrows / Home / End move and select, the underline sits under the active tab.
 //
 // Usage (repo root):  node tools/hitfinder_invariants.mjs [--only=H0,H16] [--file=path/to/hitfinder.html] [--echo=path/to/echo.html] [--verbose]
@@ -535,7 +540,7 @@ if (run('H17')) await guard('H17', async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms));
     hfTab('screens');
     const vis = $$('.tab:not([hidden])').map(t => t.dataset.tab), sel = () => $$('.tab[aria-selected="true"]').map(t => t.dataset.tab);
-    const o = { vis, start: sel() };
+    const o = { vis, start: sel(), shown: $$('.tab').filter(t => t.offsetParent !== null).map(t => t.dataset.tab), hiddenShown: $$('[hidden]').filter(e => getComputedStyle(e).display !== 'none').length };
     const key = k => $('#hf-tabs').dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
     key('ArrowRight'); o.right = sel(); key('End'); o.end = sel(); key('Home'); o.home = sel(); key('ArrowLeft'); o.left = sel();
     hfTab('hits'); await wait(350);
@@ -545,10 +550,186 @@ if (run('H17')) await guard('H17', async () => {
     hfTab('screens');
     return o;
   });
+  check('H17', 'a tab (or anything) marked hidden is not drawn: the tabs on screen are exactly the ones that exist', JSON.stringify(r.shown) === JSON.stringify(r.vis) && r.hiddenShown === 0, { shown: r.shown, vis: r.vis, hiddenShown: r.hiddenShown });
   check('H17', 'exactly one tab is selected at the start', JSON.stringify(r.start) === '["screens"]', r.start);
   const vv = r.vis, last = vv[vv.length - 1];
   check('H17', 'ArrowRight / End / Home / ArrowLeft move and select (over the tabs that exist)', JSON.stringify(r.right) === JSON.stringify([vv[1]]) && JSON.stringify(r.end) === JSON.stringify([last]) && JSON.stringify(r.home) === JSON.stringify([vv[0]]) && JSON.stringify(r.left) === JSON.stringify([last]), r);
   check('H17', 'the underline sits under the active tab; exactly one pane shows', r.ink.dx < 1.5 && r.ink.dw < 1.5 && JSON.stringify(r.panes) === '["pane-hits"]', r);
+});
+
+if (run('H8')) await guard('H8', async () => {
+  const hasX = await E(() => !!window.XLSX); if (!hasX) { skipped.push('H8 — SheetJS did not load'); return; }
+  await E(async () => { try { indexedDB.deleteDatabase('hitfinder'); } catch (e) {} });
+  await hfReset();
+  // make the criteria non-default, make some calls, merge a pair, edit a target: a round trip of the defaults proves nothing
+  await E(() => {
+    HF.crit.rows.find(c => c.metric === 'potency').pass = 30; HF.crit.rows.find(c => c.metric === 'potency').fail = 90;
+    HF.crit.name = 'Tightened (test)'; hfComputeVerdicts(); hfRender();
+    const hits = HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'hit'), unv = HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'unverified'), rej = HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'rejected');
+    hfDecide(hits[0], 'reject'); hfNote(hits[0], 'looks like an aggregator'); hfDecide(rej[0], 'hit'); if (unv[0]) hfDecide(unv[0], 'hit'); hfDecide(hits[1], 'maybe');
+    window.__t = { rejected: hits[0], forced: rej[0], unv: unv[0] || null };
+  });
+  // ① the workbook, written for real and read back
+  const wbr = await E(() => {
+    const bytes = XLSX.write(hfWorkbook(), { bookType: 'xlsx', type: 'array' }), wb = XLSX.read(bytes, { type: 'array' });
+    const sh = n => XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null });
+    const all = sh('All compounds'), hits = sh('Hits'), crit = sh('Criteria used'), want = HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'hit' || HF.verdicts.get(ck).tier === 'borderline').sort(hfRankCmp).map(hfName);
+    const col = (a, n) => a[0].indexOf(n);
+    const out = { names: wb.SheetNames, nHits: hits.length - 1, hitNames: hits.slice(1).map(r => r[col(hits, 'Compound')]), wantNames: want, ranks: hits.slice(1).map(r => r[0]), counts: HF.counts, zip: new Uint8Array(bytes)[0] === 0x50 && new Uint8Array(bytes)[1] === 0x4B };
+    // rebuild the criteria from the sheet alone, re-judge every compound, compare with what the workbook says each one is
+    const saved = HF.crit; let rows = null; try { rows = hfCritFromAoa(crit); } catch (e) {}
+    out.critRows = rows ? rows.length : 0; out.critSame = rows && JSON.stringify(rows) === JSON.stringify(saved.rows);
+    if (rows) { HF.crit = Object.assign({}, saved, { rows }); hfComputeVerdicts(); const ti = col(all, 'Tier'), ni = col(all, 'Compound'), byName = new Map(); HF.uni.forEach(ck => byName.set(hfName(ck), TIER_NAME[HF.verdicts.get(ck).tier]));
+      out.mismatch = all.slice(1).filter(r => byName.get(r[ni]) !== r[ti]).length; out.n = all.length - 1; HF.crit = saved; hfComputeVerdicts(); }
+    // numbers are numbers and missing is blank
+    const hdr = all[0], ix = n => hdr.indexOf(n), zero = ['Potency_nM', 'Hook_Onset_nM', 'Last_Productive_nM', 'Window_x', 'Hill', 'Hook_Depth_pct'].map(n => [n, all.slice(1).filter(r => r[ix(n)] === 0).length]).filter(x => x[1]);
+    const strNum = all.slice(1).filter(r => typeof r[ix('Potency_nM')] === 'string').length;
+    const bound = HF.uni.filter(ck => { const g = hfPrimOf(ck); return g && g.n && g.pot.q !== 'exact'; }).map(hfName), boundRows = all.slice(1).filter(r => bound.indexOf(r[ix('Compound')]) >= 0);
+    out.zero = zero; out.strNum = strNum; out.nBound = boundRows.length; out.boundHasNumber = boundRows.filter(r => typeof r[ix('Potency_nM')] === 'number').length;
+    const noHook = all.slice(1).filter(r => !r[ix('Hook')] || r[ix('Hook')] === 'none'); out.noHookWithOnset = noHook.filter(r => r[ix('Hook_Onset_nM')] != null).length;
+    out.sheetsAoa = hfSheets().map(s => s.name);
+    return out;
+  });
+  const want = ['Summary', 'Hits', 'All compounds', 'Criteria used', 'Funnel', 'Screens and slots', 'Decisions', 'Cherry-pick', 'Screen data', 'Provenance'];
+  check('H8', 'the file is a real workbook with the ten sheets, in this order', wbr.zip && JSON.stringify(wbr.names) === JSON.stringify(want) && JSON.stringify(wbr.sheetsAoa) === JSON.stringify(want), { names: wbr.names, zip: wbr.zip });
+  check('H8', 'the Hits sheet is the Hits tab: the same compounds, in the same order, ranked 1…n', wbr.nHits === wbr.counts.hit + wbr.counts.borderline && JSON.stringify(wbr.hitNames) === JSON.stringify(wbr.wantNames) && wbr.ranks.every((r, i) => r === i + 1), { got: wbr.hitNames.slice(0, 5), want: wbr.wantNames.slice(0, 5), n: wbr.nHits });
+  check('H8', 'the Criteria sheet alone re-creates the criteria exactly', wbr.critRows > 0 && wbr.critSame, { rows: wbr.critRows, same: wbr.critSame });
+  check('H8', 'and judging every compound with them gives the tier the workbook gives it, for all compounds', wbr.n > 20 && wbr.mismatch === 0, { n: wbr.n, mismatch: wbr.mismatch });
+  check('H8', 'a number is a number: no zero where a value is missing, nothing numeric stored as text', wbr.zero.length === 0 && wbr.strNum === 0, { zero: wbr.zero, strNum: wbr.strNum });
+  check('H8', 'a bound (> or <) leaves the potency cell blank and says so in the qualifier; a compound with no hook has no onset', wbr.nBound > 0 && wbr.boundHasNumber === 0 && wbr.noHookWithOnset === 0, { nBound: wbr.nBound, boundHasNumber: wbr.boundHasNumber, noHookWithOnset: wbr.noHookWithOnset });
+
+  // the workbook is also a way back in: its Screen data sheet is the screens and its Criteria sheet the criteria, so the same list comes out
+  const rt = await E(async () => {
+    const tiersOf = () => JSON.stringify([...HF.verdicts].map(([k, v]) => [k, v.tier]).sort()), want = tiersOf(), names = HF.crit.name;
+    const bytes = XLSX.write(hfWorkbook(), { bookType: 'xlsx', type: 'array' }), f = new File([bytes], 'HitFinder_export.xlsx');
+    hfResetSession(); HF.crit = null; HF.dec = new Map(); hfRecompute();
+    await hfAddFiles([f]); const asked = !!document.querySelector('#hf-crit-go'); document.querySelector('#hf-crit-go') && document.querySelector('#hf-crit-go').click(); await new Promise(r => setTimeout(r, 300));
+    return { asked, same: tiersOf() === want, name: HF.crit.name, n: HF.uni.length };
+  });
+  check('H8', 'the workbook opened as a file brings its screens back and offers its criteria; with them every compound lands in the same tier', rt.asked && rt.same && /Criteria from HitFinder_export/.test(rt.name), rt);
+  await hfReset();
+  await E(() => { HF.crit.rows.find(c => c.metric === 'potency').pass = 30; HF.crit.rows.find(c => c.metric === 'potency').fail = 90; hfComputeVerdicts(); });
+
+  // ② nothing a spreadsheet would run leaves in any file
+  const inj = await E(() => {
+    const evil = ['=HYPERLINK("http://x","y")', '+1+1', '-2+3', '@SUM(A1)', '=-1', '=cmd|\' /C calc\'!A0'], cks = HF.uni.slice(0, evil.length);
+    cks.forEach((ck, i) => { HF.recs.forEach(r => { if (r._ck === ck) r.Compound = evil[i]; }); });
+    hfRecompute(); hfNote(hfCk(evil[0]), '=1+1'); hfNote(hfCk(evil[1]), '@x');
+    const bad = [];
+    const scan = (where, v) => { if (typeof v === 'string' && /^[=+\-@\t\r]/.test(v) && !HF_NUMLIKE.test(v)) bad.push(where + ': ' + v.slice(0, 24)); };
+    hfSheets().forEach(sh => sh.aoa.forEach(r => r.forEach(v => scan(sh.name, v))));
+    const csv = hfCsvOf(hfTable(HF.uni.slice().sort(hfRankCmp), true)), cherry = hfCsvOf(hfCherryRows(new Set(['hit', 'borderline', 'unverified', 'rejected'])));
+    [csv, cherry].forEach((text, j) => hfParseCSV(text.replace(/^\uFEFF/, '')).forEach(row => row.forEach(v => { if (/^[=+\-@\t\r]/.test(v) && !HF_NUMLIKE.test(v)) bad.push('csv' + j + ': ' + v.slice(0, 24)); })));
+    const present = evil.map(e => HF.names.get(hfCk(e)) && [...HF.names.get(hfCk(e)).keys()][0] === e);
+    return { bad, present, plain: csvCell('-5') === '-5' && csvCell(-5) === '-5' && csvCell('1e-3') === '1e-3', formula: csvCell('-2+3') === "'-2+3" && csvCell('=1+1') === "'=1+1" };
+  });
+  check('H8', 'the hostile names were really in the data (so the scan means something)', inj.present.every(Boolean), inj.present);
+  check('H8', 'no cell in any sheet or CSV starts with = + - @ or a control character unless it is a number', inj.bad.length === 0, inj.bad.slice(0, 5));
+  check('H8', 'a real negative number is left alone and a formula that starts like one is not', inj.plain && inj.formula, inj);
+  await hfReset();
+
+  // ③ cherry-pick
+  const ch = await E(() => {
+    HF.crit.rows.find(c => c.metric === 'potency').pass = 30; HF.crit.rows.find(c => c.metric === 'potency').fail = 90; hfComputeVerdicts();
+    const hits = HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'hit'), unv = HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'unverified'), rej = HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'rejected');
+    hfDecide(hits[0], 'reject'); hfDecide(rej[0], 'hit');
+    const rows = hfCherryRows(new Set(['hit', 'borderline'])), hdr = rows[0], ix = n => hdr.indexOf(n), body = rows.slice(1), names = body.map(r => r[ix('Compound')]);
+    const grid = x => { const e = Math.floor(Math.log10(x) + 1e-9), m = Math.round(x / Math.pow(10, e) * 1000) / 1000; return [1, 3, 10].indexOf(m) >= 0; };
+    const exact = body.filter(r => r[ix('Qualifier')] === 'exact' && r[ix('Retest_Top_nM')] != null && r[ix('Retest_Top_nM')] < 100000 && !/extended/.test(r[ix('Basis')]));
+    const hook = body.filter(r => r[ix('Hook')] === 'excluded');
+    const onsetOf = nm => { const g = hfPrimOf(hfCk(nm)); return g && g.hook ? g.hook.onset : null; };
+    return { rejectedOut: names.indexOf(hfName(hits[0])) < 0, forcedIn: names.indexOf(hfName(rej[0])) >= 0, unvIn: true,
+      onlyTiers: body.every(r => ['Hit', 'Borderline'].indexOf(r[ix('Tier')]) >= 0 || r[ix('Your_Call')] === 'hit'),
+      ratio: body.filter(r => r[ix('Retest_Top_nM')] != null).every(r => Math.abs(r[ix('Retest_Top_nM')] / r[ix('Retest_Bottom_nM')] / 19683 - 1) < 1e-4 && r[ix('Points')] === 10 && r[ix('Fold')] === 3),
+      grid: body.filter(r => r[ix('Retest_Top_nM')] != null).every(r => grid(r[ix('Retest_Top_nM')])),
+      centred: exact.length > 0 && exact.every(r => { const mid = Math.sqrt(r[ix('Retest_Top_nM')] * r[ix('Retest_Bottom_nM')]); return Math.abs(Math.log10(mid / r[ix('Potency_nM')])) < 0.3; }), nExact: exact.length,
+      hookPast: hook.length > 0 && hook.every(r => r[ix('Retest_Top_nM')] >= Math.min(100000, onsetOf(r[ix('Compound')]) * 5)), nHook: hook.length,
+      bounded: body.filter(r => r[ix('Qualifier')] === '>' || r[ix('Qualifier')] === 'n.d.').every(r => /no midpoint/.test(r[ix('Basis')])),
+      withUnv: hfCherryRows(new Set(['hit', 'borderline', 'unverified'])).length > rows.length || !unv.length, csv: hfCsvOf(rows).split('\r\n')[0] };
+  });
+  check('H8', 'cherry-pick: a rejected compound is out, a hit you picked is in, and nothing else is outside the tiers chosen', ch.rejectedOut && ch.forcedIn && ch.onlyTiers && ch.unvIn, ch);
+  check('H8', 'cherry-pick: every range is 10 points, 3-fold (top ÷ bottom = 3⁹), on the 1-3-10 grid, and centred on the potency', ch.ratio && ch.grid && ch.centred, ch);
+  check('H8', 'cherry-pick: a compound with a hook keeps its top points out past it, a bound says it has no midpoint, and more tiers add rows', ch.hookPast && ch.bounded && ch.withUnv, ch);
+  check('H8', 'cherry-pick CSV opens with a byte-order mark and the header', /^﻿Rank,Compound,Tier,Your_Call,Potency_nM/.test(ch.csv), ch.csv);
+
+  // ④ the project
+  const snap = `(() => ({ v: [...HF.verdicts].map(([k, v]) => [k, v.tier, v.Dlo == null ? null : +v.Dlo.toFixed(9)]).sort(), dec: JSON.stringify([...HF.dec].sort()), crit: JSON.stringify(HF.crit.rows), arms: [...HF.arms.values()].map(a => [a.key, a.slot, a.guessed, a.target]).sort(), scr: [...HF.screens.values()].map(s => [s.key, s.role, s.target, s.cell, s.tp]).sort(), alias: [...HF.alias].sort(), n: HF.recs.length }))()`;
+  const pr = await E((snapSrc) => {
+    hfRecompute();
+    const a = HF.uni[3], b = HF.uni[4]; hfMerge(b, a);   // a is now read as b
+    const sc = [...HF.screens.values()][0]; hfSetScr(sc.key, 'target', 'XYZ'); hfSetScr(sc.key, 'cell', 'HEK-test');
+    const arm = [...HF.arms.values()].find(x => x.slot === 'viability'); if (arm) hfSetArm(arm.key, 'slot', 'counter');
+    const before = eval(snapSrc), txt = JSON.stringify(hfProject());
+    const bad = (() => { try { hfLoadProject({ hello: 1 }); return 'did not throw'; } catch (e) { return String(e.message); } })(); const untouched = eval(snapSrc);
+    hfResetSession(); HF.crit = null; HF.dec = new Map(); hfRecompute();
+    const emptied = HF.recs.length === 0 && HF.dec.size === 0;
+    hfLoadProject(JSON.parse(txt)); const after = eval(snapSrc);
+    return { before, after, emptied, bad, untouchedSame: JSON.stringify(untouched) === JSON.stringify(before), size: txt.length, cols: JSON.parse(txt).cols.length, scrCols: SCR_COLS.length, nrecs: before.n };
+  }, snap);
+  check('H8', 'a project round-trips: every verdict and score, your calls, the criteria, the slots, the merges and the targets you edited', JSON.stringify(pr.before) === JSON.stringify(pr.after) && pr.emptied && pr.nrecs > 100, { same: JSON.stringify(pr.before) === JSON.stringify(pr.after), emptied: pr.emptied, n: pr.nrecs, diff: ['v', 'dec', 'crit', 'arms', 'scr', 'alias'].filter(k => JSON.stringify(pr.before[k]) !== JSON.stringify(pr.after[k])) });
+  check('H8', 'a file that is not a project is refused and changes nothing', /not a Hit Finder project/.test(pr.bad) && pr.untouchedSame, { bad: pr.bad, same: pr.untouchedSame });
+  // opening one over a loaded session asks first, and "keep what I have" keeps it
+  const dlg = await E(async () => {
+    const p = JSON.parse(JSON.stringify(hfProject())); p.crit.name = 'FROM-FILE';
+    const f = new File([JSON.stringify(p)], 'x.hitfinder.json', { type: 'application/json' }), before = HF.crit.name;
+    await hfAddFiles([f]); const d1 = !!document.querySelector('#hf-dlg'), keepBtn = [...document.querySelectorAll('#hf-dlg .btn')].find(b => /Keep/.test(b.textContent));
+    keepBtn && keepBtn.click(); await new Promise(r => setTimeout(r, 400)); const kept = HF.crit.name === before;
+    await hfAddFiles([f]); document.querySelector('#hf-open-go') && document.querySelector('#hf-open-go').click(); await new Promise(r => setTimeout(r, 400));
+    return { asked: d1, kept, opened: HF.crit.name === 'FROM-FILE', tab: HF.ui.tab };
+  });
+  check('H8', 'opening a project over a loaded session asks first; "Keep what I have" keeps it and "Open it" replaces it', dlg.asked && dlg.kept && dlg.opened && dlg.tab === 'hits', dlg);
+
+  // ⑤ autosave, a reload, and the session before
+  await hfReset();
+  await E(() => { HF.crit.name = 'AUTOSAVED'; HF.crit.rows.find(c => c.metric === 'potency').pass = 55; hfSaveCrit(); hfComputeVerdicts(); hfRender(); });
+  await pg.waitForTimeout(1800);
+  const saved = await E(async () => { const o = await hfSessGet('last'); return o ? { name: o.crit.name, pass: o.crit.rows.find(c => c.metric === 'potency').pass, rows: o.recs.length } : null; });
+  check('H8', 'the session is kept on this device as you work', !!saved && saved.name === 'AUTOSAVED' && saved.pass === 55 && saved.rows > 100, saved);
+  const beforeTiers = await E(() => JSON.stringify([...HF.verdicts].map(([k, v]) => [k, v.tier]).sort()));
+  await pg.reload(); await pg.waitForTimeout(1500);
+  const offer = await E(() => ({ card: !!document.querySelector('#hf-resume'), empty: HF.screens.size === 0, text: (document.querySelector('#hf-resume') || {}).textContent || '' }));
+  check('H8', 'after a reload the empty app offers to pick up where you left off, with what is in it', offer.empty && offer.card && /screens/.test(offer.text) && /Resume/.test(offer.text), offer);
+  const back = await E(async () => { await hfResume('last'); await new Promise(r => setTimeout(r, 300)); return { tiers: JSON.stringify([...HF.verdicts].map(([k, v]) => [k, v.tier]).sort()), name: HF.crit.name, tab: HF.ui.tab }; });
+  check('H8', 'Resume puts every verdict back exactly', back.tiers === beforeTiers && back.name === 'AUTOSAVED', { same: back.tiers === beforeTiers, name: back.name });
+  // starting something else must not lose it: the one before is kept as "previous"
+  await pg.reload(); await pg.waitForTimeout(1200);
+  await E(() => { hfResetSession(); loadHitFinderTestData(); HF.crit.name = 'SOMETHING ELSE'; hfSaveCrit(); });
+  await pg.waitForTimeout(1800);
+  const prev = await E(async () => { const p = await hfSessGet('prev'), l = await hfSessGet('last'); return { prev: p && p.crit.name, last: l && l.crit.name }; });
+  check('H8', 'a new session never overwrites the last one: it becomes "previous" and can be reopened', prev.prev === 'AUTOSAVED' && prev.last === 'SOMETHING ELSE', prev);
+  await E(() => hfTab('export')); await pg.waitForTimeout(500);
+  const link = await E(() => !![...document.querySelectorAll('#pane-export .lnk')].find(b => /before this one/.test(b.textContent)));
+  check('H8', 'and the Export tab says so, with a way back', link, link);
+
+  // ⑥ the page you print
+  await hfReset(); await E(() => { HF.crit.rows.find(c => c.metric === 'potency').pass = 30; hfComputeVerdicts(); hfRender(); hfDecide(HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'hit')[0], 'hit'); });
+  const pageData = await E(() => { const ok = hfBuildPrint(); return { ok, hits: HF.uni.filter(ck => HF.verdicts.get(ck).tier === 'hit').sort(hfRankCmp).slice(0, 25).map(hfName), counts: HF.counts, gates: HF.activeRows.filter(c => c.kind === 'gate').length, steps: HF.funnel.steps.length }; });
+  await pg.emulateMedia({ media: 'print' }); await pg.waitForTimeout(200);
+  const pp = await E(() => {
+    const vis = e => { const cs = getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden'; };
+    const kids = [...document.body.children].filter(e => vis(e) && e.tagName !== 'SCRIPT').map(e => e.id || e.tagName);
+    const root = document.getElementById('hf-print'), lum = c => { const m = c.match(/[\d.]+/g).map(Number); return (0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2]) / 255; };
+    const texts = [...root.querySelectorAll('*')].filter(e => e.children.length === 0 && e.textContent.trim()), light = texts.filter(e => lum(getComputedStyle(e).color) > 0.5).map(e => e.textContent.slice(0, 20));
+    const tiles = [...root.querySelectorAll('.pr-tiles b')].map(e => +e.textContent), rowsN = [...root.querySelectorAll('table.pr-t:not(.pr-f) tbody tr')].map(r => r.children[1].querySelector('b').textContent);
+    return { kids, bodyBg: getComputedStyle(document.body).backgroundColor, light, tiles, rowsN, steps: root.querySelectorAll('.pr-f tr').length, gates: root.querySelectorAll('.pr-c li').length, svg: !!root.querySelector('svg'), noVar: !/var\(/.test(root.innerHTML), width: root.getBoundingClientRect().width, text: root.textContent.length };
+  });
+  await pg.emulateMedia({ media: 'screen' });
+  const scr = await E(() => getComputedStyle(document.getElementById('hf-print')).display);
+  check('H8', 'printing shows the summary and nothing else, on white', pp.kids.length === 1 && pp.kids[0] === 'hf-print' && /255, 255, 255/.test(pp.bodyBg) && scr === 'none', { kids: pp.kids, bg: pp.bodyBg, onScreen: scr });
+  check('H8', 'the ink is dark (it prints on a black-and-white laser) and the plot carries no CSS variable', pp.light.length === 0 && pp.svg && pp.noVar, { light: pp.light.slice(0, 5), svg: pp.svg });
+  check('H8', 'its numbers are the app\'s: tier counts, one line per gate and per funnel step, and the top hits in rank order', JSON.stringify(pp.tiles) === JSON.stringify([pageData.counts.hit, pageData.counts.borderline, pageData.counts.unverified, pageData.counts.rejected]) && pp.gates === pageData.gates && pp.steps === pageData.steps && JSON.stringify(pp.rowsN) === JSON.stringify(pageData.hits), { tiles: pp.tiles, counts: pageData.counts, gates: [pp.gates, pageData.gates], steps: [pp.steps, pageData.steps], rows: [pp.rowsN.slice(0, 3), pageData.hits.slice(0, 3)] });
+
+  // ⑦ the tab itself
+  await E(() => hfTab('export')); await pg.waitForTimeout(400);
+  const ui = await E(async () => {
+    const out = { btns: [...document.querySelectorAll('#pane-export .btn')].map(b => b.textContent.trim().slice(0, 30)) };
+    const n0 = document.querySelectorAll('#pane-export .ex-prev tbody tr').length; hfExTier('unverified'); await new Promise(r => setTimeout(r, 300)); const n1 = document.querySelectorAll('#pane-export .ex-prev tbody tr').length;
+    out.n0 = n0; out.n1 = n1; out.sel = [...document.querySelectorAll('#pane-export .tchip')].map(c => c.getAttribute('aria-pressed')); hfExTier('unverified'); return out;
+  });
+  check('H8', 'the Export tab offers the workbook, the CSVs, print and the project, and the tier chips change what the cherry-pick list holds', ui.btns.some(b => /workbook/i.test(b)) && ui.btns.some(b => /Print/.test(b)) && ui.btns.some(b => /Save project/.test(b)) && ui.n1 > ui.n0 - 1 && ui.sel.length === 3, ui);
+  const [dl] = await Promise.all([pg.waitForEvent('download', { timeout: 20000 }), E(() => document.getElementById('ex-xlsx').click())]);
+  const xb = fs.readFileSync(await dl.path());
+  check('H8', 'the download button gives a .xlsx named for the screen, and it is a zip', /^HitFinder_.*\.xlsx$/.test(dl.suggestedFilename()) && xb[0] === 0x50 && xb[1] === 0x4B, { name: dl.suggestedFilename(), bytes: xb.length });
 });
 
 if (run('H20')) await guard('H20', async () => {
