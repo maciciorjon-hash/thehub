@@ -39,7 +39,7 @@ const SEEDS = {
   spectra: ['loadTestData()'],
   beacon: ["loadTestData('gain')"],
   lumina: ['loadLuminaTestData()'],
-  hitfinder: ['loadHitFinderTestData()'],
+  hitfinder: HF_SEED,
   dna: ['loadSeqExample()', 'loadTrExample()', 'loadRtExample()'],
   pt: ['loadExample()'],
   protocols: ["openProtocol('gibson')"],
@@ -51,10 +51,11 @@ const SEEDS = {
   cellarchive: ["document.querySelector('.cell-tile').click()"],
 };
 // Pressed by label when the app has no such function.
-const SEED_WAIT = { ribbon: 5000, blot: 1500 };   // ms after seeding: Ribbon fetches the structure from RCSB
+const SEED_WAIT = { ribbon: 5000, blot: 1500, hitfinder: 3000 };   // ms after seeding: Ribbon fetches the structure from RCSB
 const SEED_BUTTONS = { protocols: null };
 
 const DENY = /delete|remove|clear|reset|erase|discard|wipe|sign ?out|log ?out|download|export|print|upload|import|trash|^x$|^✕$|^×$|new project|resign|kill|drop\b/i;
+import { HF_SEED } from './hitfinder_seed.mjs';
 const CLOSE = /^(close|cancel|done|ok|got it|dismiss|skip|✕|×|x|back|never mind)$/i;
 
 // Press, once each, everything that looks like it changes the screen; measure what it produced.

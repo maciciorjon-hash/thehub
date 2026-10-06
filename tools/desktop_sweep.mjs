@@ -14,6 +14,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DETECT } from './mobile_hub_sweep.mjs';
+import { HF_SEED } from './hitfinder_seed.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map(a => { const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] === undefined ? true : m[2]] : [a, true]; }));
 const BASE = args.url || 'http://127.0.0.1:8791';
@@ -142,6 +143,16 @@ for (const g of GENERIC) {
     }
   });
 }
+
+// Hit Finder with the example screen and structures: every tab, then a compound drawer open over the Hits tab and over the Chemistry tab.
+await app('hitfinder', '/apps/hitfinder/hitfinder.html', async (page, m) => {
+  for (const js of HF_SEED) await page.evaluate(js);
+  await page.waitForTimeout(3200);
+  for (const t of ['screens', 'criteria', 'hits', 'plots', 'chem', 'export']) { await page.evaluate(k => hfTab(k), t); await page.waitForTimeout(500); await m('hitfinder-data-' + t); }
+  await page.evaluate(() => { hfTab('hits'); hfOpenDrawer(HF.uni[0]); }); await page.waitForTimeout(500); await m('hitfinder-drawer');
+  await page.evaluate(() => hfCloseDrawer());
+  await page.evaluate(() => { hfTab('chem'); hfChemQ(hfName(HF.uni[3])); }); await page.waitForTimeout(500); await m('hitfinder-chem-similar');
+});
 
 await browser.close();
 const uniq = [...new Set(findings)];

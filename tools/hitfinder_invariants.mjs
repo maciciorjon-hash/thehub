@@ -41,6 +41,14 @@
 //                                  centred and on a 1-3-10 grid, a rejected compound is out and a hit you picked is in; a project round-trips (verdicts, calls,
 //                                  criteria, slots, merges, edited targets) and a file that is not one changes nothing; autosave survives a reload and keeps the session
 //                                  before it; the printed page is the summary alone, on white, with dark ink.
+//   H9  a series is a series    Tanimoto is shared ÷ union (two empty fingerprints are 0, not 1); Butina gives the groups RDKit's would, the same groups whatever order the
+//                              compounds arrive in, every compound in exactly one, and more groups as the threshold rises; the cliff score is |ΔpDC50| ÷ (1 − similarity)
+//                              and never counts a bound; the map reproduces the distances it was given when they fit in two dimensions, and never produces NaN.
+//   H13 RDKit says what it says  Aspirin's weight, polar surface, logP, donors, acceptors and rotatable bonds are the known ones; '' is no structure (RDKit calls it a
+//                              valid empty molecule); an unreadable SMILES is flagged, not zero; a salt is its largest piece; every alert pattern compiles, fires on a
+//                              molecule that has it and stays silent on one that does not.
+//   H21 structures, honestly    With RDKit unreachable the app says so once and carries on; the properties a file brings are used, win over computed ones, and are
+//                              judged against each rule set; a gate on them reads the right tier; a missing property is unread (skipped or Unverified as chosen), never 0.
 //   H17 the tabs are a tablist One selected tab, arrows / Home / End move and select, the underline sits under the active tab.
 //
 // Usage (repo root):  node tools/hitfinder_invariants.mjs [--only=H0,H16] [--file=path/to/hitfinder.html] [--echo=path/to/echo.html] [--verbose]
@@ -730,6 +738,135 @@ if (run('H8')) await guard('H8', async () => {
   const [dl] = await Promise.all([pg.waitForEvent('download', { timeout: 20000 }), E(() => document.getElementById('ex-xlsx').click())]);
   const xb = fs.readFileSync(await dl.path());
   check('H8', 'the download button gives a .xlsx named for the screen, and it is a zip', /^HitFinder_.*\.xlsx$/.test(dl.suggestedFilename()) && xb[0] === 0x50 && xb[1] === 0x4B, { name: dl.suggestedFilename(), bytes: xb.length });
+});
+
+if (run('H9')) await guard('H9', async () => {
+  const r = await E(async () => {
+    const out = {};
+    const bits = list => { const a = new Uint32Array(64); list.forEach(b => { a[b >> 5] |= (1 << (b & 31)) >>> 0; }); return a; };
+    const A = bits([0, 1, 2, 3]), B = bits([2, 3, 4, 5]), Z = bits([]);
+    out.tan = [hfTanimoto(A, B, hfFpPop(A), hfFpPop(B)), hfTanimoto(A, A, 4, 4), hfTanimoto(Z, Z, 0, 0), hfTanimoto(A, Z, 4, 0)];
+    let ok = true; for (let k = 0; k < 400; k++) { let x = (k * 2654435761) >>> 0, n = 0; for (let b = 0; b < 32; b++) if ((x >>> b) & 1) n++; if (hfPop32(x) !== n) ok = false; } out.pop = ok;
+    // Butina by hand: A-B .9, A-C .8, A-D .7, B-C .75, E-F .85
+    const names = ['a', 'b', 'c', 'd', 'e', 'f'], E = [[0, 1, .9], [0, 2, .8], [0, 3, .7], [1, 2, .75], [4, 5, .85]];
+    const mk = (perm) => { const nb = names.map(() => []); E.forEach(([i, j, s]) => { nb[perm[i]].push([perm[j], s]); nb[perm[j]].push([perm[i], s]); }); const nm = []; names.forEach((n, i) => { nm[perm[i]] = n; }); return { nb, nm }; };
+    const lab = (g, nm) => JSON.stringify(g.groups.map(x => x.map(i => nm[i]).sort()).sort((p, q) => p[0] < q[0] ? -1 : 1));
+    const id = [0, 1, 2, 3, 4, 5], sh = [3, 5, 0, 4, 1, 2];
+    const m1 = mk(id), m2 = mk(sh);
+    out.b70 = lab(hfButina(m1.nb, m1.nm, 0.7), m1.nm); out.b80 = lab(hfButina(m1.nb, m1.nm, 0.8), m1.nm); out.b70s = lab(hfButina(m2.nb, m2.nm, 0.7), m2.nm); out.b80s = lab(hfButina(m2.nb, m2.nm, 0.8), m2.nm);
+    // a tie that matters: x-y-z-w in a line. y and z have two neighbours each; whichever is taken first decides the groups, so the NAME must, not the position
+    const pn = ['x', 'y', 'z', 'w'], pe = [[0, 1], [1, 2], [2, 3]], pm = perm => { const nb = pn.map(() => []), nm = []; pn.forEach((n, i) => { nm[perm[i]] = n; }); pe.forEach(([i, j]) => { nb[perm[i]].push([perm[j], .9]); nb[perm[j]].push([perm[i], .9]); }); return { nb, nm }; };
+    out.tie = [[0, 1, 2, 3], [0, 2, 1, 3], [3, 2, 1, 0], [1, 3, 0, 2]].map(pr => { const m = pm(pr); return lab(hfButina(m.nb, m.nm, 0.7), m.nm); });
+    // properties on random fingerprints
+    let seed = 7; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const fps = Array.from({ length: 70 }, (_, i) => { const base = (i % 7) * 40, l = []; for (let k = 0; k < 24; k++) l.push(rnd() < 0.7 ? base + Math.floor(rnd() * 40) : Math.floor(rnd() * 2048)); const f = bits(l); return { fp: f, pop: hfFpPop(f) }; });
+    const nb = await hfEdges(fps, 0.2), nm = fps.map((_, i) => 'c' + String(i).padStart(3, '0'));
+    let brute = 0, edges = 0, sym = true, selfs = false, below = false;
+    for (let i = 0; i < fps.length; i++) for (let j = i + 1; j < fps.length; j++) if (hfTanimoto(fps[i].fp, fps[j].fp, fps[i].pop, fps[j].pop) >= 0.2) brute++;
+    nb.forEach((l, i) => l.forEach(([j, s]) => { edges++; if (j === i) selfs = true; if (s < 0.2) below = true; if (!nb[j].some(x => x[0] === i && x[1] === s)) sym = false; }));
+    out.edges = { brute, edges: edges / 2, sym, selfs, below };
+    let prev = 0, mono = true, once = true, cen = true; const ts = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+    ts.forEach(tv => { const g = hfButina(nb, nm, tv), seen = new Set(); g.groups.forEach((grp, gi) => { grp.forEach(i => { if (seen.has(i)) once = false; seen.add(i); }); const c = grp[0]; grp.slice(1).forEach(i => { const s = hfTanimoto(fps[c].fp, fps[i].fp, fps[c].pop, fps[i].pop); if (s < tv - 1e-12) cen = false; }); }); if (seen.size !== fps.length) once = false; if (g.groups.length < prev) mono = false; prev = g.groups.length; });
+    out.butina = { mono, once, cen, n: prev };
+    // cliffs
+    const nb2 = [[[1, 0.8], [2, 0.5]], [[0, 0.8]], [[0, 0.5]], [[4, 1.0]], [[3, 1.0]]], p = [7, 9, 3, 6, 6.5], sali = hfSali(nb2, p, 0.55);
+    out.sali = sali.map(x => [x.a, x.b, +x.sali.toFixed(4)]);
+    // the map: points in the plane, distances kept (up to the rotation and mirror an embedding is free to make)
+    const pts = Array.from({ length: 80 }, (_, i) => [Math.cos(i * 0.7) * (1 + i % 5), Math.sin(i * 1.3) * (1 + i % 3)]), d = (i, j) => Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+    const xy = hfMDS(d, 80, 30), xy2 = hfMDS(d, 80, 30); let worst = 0; for (let i = 0; i < 80; i += 3) for (let j = i + 1; j < 80; j += 5) { const e = Math.hypot(xy[2 * i] - xy[2 * j], xy[2 * i + 1] - xy[2 * j + 1]); worst = Math.max(worst, Math.abs(e - d(i, j))); }
+    out.mds = { worst, same: Array.from(xy).every((v, i) => v === xy2[i]), nan: Array.from(xy).some(v => !isFinite(v)) };
+    out.edge = [hfMDS(() => 0, 5, 10), hfMDS(() => 1, 1, 10), hfMDS(() => 1, 2, 10), hfMDS(() => 1, 0, 10)].map(a => Array.from(a).some(v => !isFinite(v)));
+    return out;
+  });
+  check('H9', 'Tanimoto is shared ÷ union: ⅓ for {0,1,2,3} against {2,3,4,5}, 1 for itself, and 0 (not 1) for two empty fingerprints', Math.abs(r.tan[0] - 1 / 3) < 1e-12 && r.tan[1] === 1 && r.tan[2] === 0 && r.tan[3] === 0 && r.pop, r.tan);
+  check('H9', 'Butina by hand: at 0.7 {a,b,c,d}{e,f}; at 0.8 {a,b,c}{d}{e,f}', r.b70 === '[["a","b","c","d"],["e","f"]]' && r.b80 === '[["a","b","c"],["d"],["e","f"]]', { b70: r.b70, b80: r.b80 });
+  check('H9', 'and the same groups come out when the compounds arrive in another order, even when two compounds tie for the next centroid (the name decides, not the position)', r.b70s === r.b70 && r.b80s === r.b80 && r.tie.every(x => x === r.tie[0]) && r.tie[0] === '[["w"],["x","y","z"]]', { b70s: r.b70s, b80s: r.b80s, tie: r.tie });
+  check('H9', 'all pairs at or above the cut are found, once each, both ways round, none below it', r.edges.brute === r.edges.edges && r.edges.brute > 15 && r.edges.sym && !r.edges.selfs && !r.edges.below, r.edges);
+  check('H9', 'every compound is in exactly one group, every member is as close to its centroid as the threshold says, and a higher threshold never makes fewer groups', r.butina.once && r.butina.cen && r.butina.mono && r.butina.n > 10, r.butina);
+  check('H9', 'cliff score = |ΔpDC50| ÷ (1 − similarity): (7,9) at 0.8 is 10; identical structures (similarity 1) are capped at 0.99, not divided by zero; a pair below the similarity floor is not scored', JSON.stringify(r.sali) === '[[3,4,50],[0,1,10]]', r.sali);
+  check('H9', 'the map reproduces distances that fit in two dimensions, is the same twice, and never makes a NaN (not from zero distances, one point, or none)', r.mds.worst < 1e-6 && r.mds.same && !r.mds.nan && r.edge.every(x => !x), { mds: r.mds, edge: r.edge });
+});
+
+if (run('H21')) await guard('H21', async () => {
+  await hfReset();
+  const r = await E(async () => {
+    const out = {}, cks = HF.uni.slice(0, 8), names = cks.map(hfName);
+    const csv = ['Compound,SMILES,MW,cLogP,TPSA,HBD,HBA,RotB,LogD',
+      names[0] + ',CCO,450,3,100,2,6,5,1.1', names[1] + ',CCN,600,4,120,3,8,8,2.0', names[2] + ',CCC,800,6.5,200,7,12,14,3.2', names[3] + ',CCCC,500,5,140,5,10,10,1', names[4] + ',CCCCC,,2,90,1,4,3,0.5', 'NOT-IN-SCREENS,CCCCCC,300,1,50,1,2,1,0'].join('\n');
+    HF.smiles = new Map(); hfChemReset();                              // the example brings structures of its own: start from none
+    const f = new File([csv], 'structures.csv', { type: 'text/csv' });
+    const msg = await hfAddFiles([f]); out.msg = msg.join(' | ');
+    await new Promise(r => setTimeout(r, 400));
+    out.have = HF.chem.by.size; out.status = HF.chem.status; hfChemNotice(true); hfChemNotice(true); out.notice = document.querySelectorAll('#hf-rd-note').length;
+    out.mw = [hfProp(cks[0], 'mw'), hfProp(cks[4], 'mw')]; out.from = [hfPropFrom(cks[0], 'mw'), hfPropFrom(cks[4], 'mw')];
+    out.extra = (HF.chem.by.get(cks[0]).props || {})['x:LogD'];
+    out.prof = HF_PROFILE_ORDER.map(id => [id, [0, 1, 2, 3, 4].map(i => { const r = hfProfileEval(cks[i], id); return r ? r.pass + ':' + r.viol + ':' + r.unread : null; })]);
+    // a gate on the property reads the right status
+    hfCritAdd('mw'); const c = HF.crit.rows.find(x => x.metric === 'mw'); c.pass = 500; c.fail = 700; hfCritPatch(c);
+    out.mwStatus = cks.slice(0, 5).map(ck => HF.verdicts.get(ck).items.find(i => i.c.id === c.id).status);
+    out.gateIsGate = c.kind === 'gate' && c.missing === 'skip';
+    c.missing = 'unknown'; hfCritPatch(c); out.mwUnk = HF.verdicts.get(cks[4]).items.find(i => i.c.id === c.id).status; out.tierUnk = HF.verdicts.get(cks[4]).unknown.indexOf(c.id) >= 0;
+    c.missing = 'skip'; hfCritPatch(c); out.mwSkip = HF.verdicts.get(cks[4]).items.find(i => i.c.id === c.id).status;
+    hfChemGate('ro5'); const g = HF.crit.rows.find(x => x.metric === 'viol_ro5'); hfComputeVerdicts();
+    out.ro5 = cks.slice(0, 5).map(ck => { const it = HF.verdicts.get(ck).items.find(i => i.c.id === g.id); return it.status + ':' + it.text; });
+    hfChemGate('ro5'); out.noDup = HF.crit.rows.filter(x => x.metric === 'viol_ro5').length;
+    // the tab and the drawer draw without a chemistry toolkit
+    hfTab('chem'); await new Promise(r => setTimeout(r, 400));
+    out.tab = { profRows: document.querySelectorAll('#pane-chem .prof-t tbody tr').length, hist: document.querySelectorAll('#pane-chem .ph-c').length, note: (document.querySelector('#chem-series') || {}).textContent.slice(0, 300) };
+    hfOpenDrawer(cks[0]); out.drawer = { chips: document.querySelectorAll('#hf-drawer .pchip').length, text: document.querySelector('#hf-drawer .dr-sec .pchips').textContent, profs: document.querySelectorAll('#hf-drawer .prof').length };
+    hfCloseDrawer();
+    // the workbook carries them
+    const sh = hfSheets().find(s => s.name === 'All compounds').aoa, h = sh[0]; out.cols = ['MW (Da)', 'cLogP', 'Lipinski Ro5 violations', 'Structural alerts', 'SMILES'].map(n => h.indexOf(n) >= 0);
+    const i0 = h.indexOf('MW (Da)'), nmI = h.indexOf('Compound'), row = sh.find(r => r[nmI] === names[0]); out.xlMw = row ? row[i0] : 'missing'; const row4 = sh.find(r => r[nmI] === names[4]); out.xlMw4 = row4 ? row4[i0] : 'missing';
+    // a .smi file, and a results file that carries its own SMILES column
+    out.smi = hfParseSmi('CCO ethanol\n# comment\n\nCCN ethylamine extra words\n').map(r => r.join('|')).join(';');
+    return out;
+  });
+  check('H21', 'a structure file is read: its rows, matched to the screens\' compounds, and one unmatched structure is said to be unmatched', /structures\.csv: 6 structures/.test(r.msg) && r.have === 6, { msg: r.msg, have: r.have });
+  check('H21', 'with RDKit unreachable the status says so, once, and the banner is not repeated', r.status === 'unavailable' && r.notice === 1, { status: r.status, notice: r.notice });
+  check('H21', 'a property the file brought is used and wins; a blank cell is missing (null), not 0; an extra numeric column is kept', r.mw[0] === 450 && r.mw[1] === null && r.from[0] === 'file' && r.from[1] === '' && r.extra === 1.1, { mw: r.mw, from: r.from, extra: r.extra });
+  const P = Object.fromEntries(r.prof);
+  check('H21', 'Ro5 is strict "greater than" (500 Da / logP 5 / 5 donors / 10 acceptors are NOT violations) and allows one; Veber and Egan allow none', P.ro5[0] === 'pass:0:0' && P.ro5[1] === 'pass:1:0' && P.ro5[3] === 'pass:0:0' && P.ro5[2].startsWith('fail:') && P.veber[3] === 'pass:0:0' && P.veber[1] === 'pass:0:0' && P.veber[2].startsWith('fail:') && P.egan[0] === 'pass:0:0' && P.egan[2].startsWith('fail:'), P);
+  check('H21', 'an unread rule is unread, not a pass: Ro5 with MW missing and nothing else wrong is "unknown", and one violation already seen still fails', P.ro5[4].startsWith('unknown:') && P.ghose[0].startsWith('unknown:'), { ro5: P.ro5[4], ghose: P.ghose[0] });
+  check('H21', 'a gate on MW (pass ≤ 500, borderline ≤ 700) reads pass (450), borderline (600), fail (800), pass at the edge (500), and skip/unknown for the compound with no MW, as the policy says', JSON.stringify(r.mwStatus) === JSON.stringify(['pass', 'borderline', 'fail', 'pass', 'skip']) && r.gateIsGate && r.mwUnk === 'unknown' && r.tierUnk === true && r.mwSkip === 'skip', { mwStatus: r.mwStatus, unk: r.mwUnk, tier: r.tierUnk, skip: r.mwSkip });
+  check('H21', 'the violations gate reads each compound from the numbers and names what was violated; adding it twice adds it once', r.ro5.length === 5 && /^pass:0 violations/.test(r.ro5[0]) && /^pass:1 violation: MW > 500/.test(r.ro5[1]) && /^fail:\d+ violations?: /.test(r.ro5[2]) && r.noDup === 1, { ro5: r.ro5, noDup: r.noDup });
+  check('H21', 'the Chemistry tab and the drawer draw without RDKit: the rule sets, the distributions, the property chips and the verdict pills', r.tab.profRows === 6 && r.tab.hist === 8 && /RDKit/.test(r.tab.note) && r.drawer.chips === 8 && /450/.test(r.drawer.text) && r.drawer.profs === 6, { tab: r.tab, drawer: r.drawer });
+  check('H21', 'the workbook carries the properties, the violations and the SMILES, with a number where the file gave one and a blank where it did not', r.cols.every(Boolean) && r.xlMw === 450 && r.xlMw4 === null, { cols: r.cols, xlMw: r.xlMw, xlMw4: r.xlMw4 });
+  check('H21', 'a .smi file is "SMILES name", comments and blank lines skipped, a name may have spaces', r.smi === 'SMILES|Compound;CCO|ethanol;CCN|ethylamine extra words', r.smi);
+});
+
+if (run('H13')) await guard('H13', async () => {
+  const c3 = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+  await c3.route(/^https?:/, r => { const u = r.request().url(); if (u.startsWith(BASE) || /unpkg\.com\/@rdkit|cdn\.jsdelivr\.net\/npm\/@rdkit/.test(u)) return r.continue(); r.abort(); });
+  const p3 = await c3.newPage(); p3.on('pageerror', e => pageErrs.push('rdkit page: ' + String(e && e.message || e)));
+  await p3.goto(BASE + '/__hf.html'); await p3.waitForTimeout(600);
+  const up = await p3.evaluate(async () => { try { await loadRDKitPinned(); return true; } catch (e) { return false; } });
+  if (!up) { skipped.push('H13 — RDKit could not be loaded from its CDN'); await c3.close(); return; }
+  const r = await p3.evaluate(async () => {
+    const rd = await loadRDKitPinned(), qm = hfAlertQmols(rd), out = {};
+    const asp = hfChemOne(rd, 'CC(=O)Oc1ccccc1C(=O)O', qm); out.asp = { ok: asp.ok, d: asp.d, pop: asp.pop, words: asp.fp.length, nfrag: asp.nfrag };
+    out.empty = hfChemOne(rd, '', qm); out.bad = [hfChemOne(rd, 'not a smiles', qm), hfChemOne(rd, 'C1CC', qm)].map(x => [x.ok, !!x.empty]);
+    const salt = hfChemOne(rd, 'CC(=O)Oc1ccccc1C(=O)O.[Na+].[Cl-]', qm); out.salt = { mw: salt.d.mw, nfrag: salt.nfrag, frag: salt.frag, asp: asp.frag };
+    const para = hfChemOne(rd, 'CC(=O)Nc1ccc(O)cc1', qm); out.sim = [hfTanimoto(asp.fp, asp.fp, asp.pop, asp.pop), hfTanimoto(asp.fp, para.fp, asp.pop, para.pop)];
+    out.nq = [qm.length, HF_ALERTS.length + HF_E3_HINTS.length];
+    out.alerts = HF_ALERTS.concat(HF_E3_HINTS).map(a => { const q = qm.find(x => x.id === a.id); const pm = rd.get_mol(a.pos), nm = rd.get_mol(a.neg); const o = [a.id, !!q && pm.get_substruct_match(q.q) !== '{}', !!q && nm.get_substruct_match(q.q) === '{}']; pm.delete(); nm.delete(); return o; });
+    // through the app: imported beats computed; none of the example's structures is an empty one; the salt, the unreadable and the missing are all accounted for
+    loadHitFinderTestData(); await new Promise(r => { const t = setInterval(() => { if (HF.chem.status === 'ready') { clearInterval(t); r(); } }, 100); });
+    const R = hfReconcileChem(); out.ex = { cache: HF.chem.cache.size, bad: R.bad, noStruct: R.noStruct, salts: R.salts, okN: [...HF.chem.cache.values()].filter(x => x.ok).length };
+    const ck = HF.uni[0], c = hfChemOf(ck); out.exProp = { mw: c.d.mw, from: hfPropFrom(ck, 'mw') }; HF.chem.by.get(ck).props = { mw: 999 }; out.exImp = [hfProp(ck, 'mw'), hfPropFrom(ck, 'mw')];
+    out.svg = (await hfStructSvg(ck, 200, 140)).slice(0, 60); out.notice = document.querySelectorAll('#hf-rd-note').length;
+    return out;
+  });
+  const d = r.asp.d;
+  check('H13', 'aspirin: MW 180.159, TPSA 63.6, cLogP 1.3101, 1 donor, 4 acceptors, 2 rotatable bonds, 1 aromatic ring, Fsp3 0.111; a 2048-bit fingerprint in 64 words', r.asp.ok && Math.abs(d.mw - 180.159) < 1e-3 && Math.abs(d.tpsa - 63.6) < 1e-6 && Math.abs(d.clogp - 1.3101) < 1e-4 && d.hbd === 1 && d.hba === 4 && d.rotb === 2 && d.arom === 1 && Math.abs(d.fsp3 - 1 / 9) < 1e-6 && r.asp.words === 64 && r.asp.pop > 5, r.asp);
+  check('H13', '"" is no structure (RDKit calls it a valid molecule with no atoms), and an unreadable SMILES is not-ok but not "empty"', r.empty.ok === false && r.empty.empty === true && JSON.stringify(r.bad) === '[[false,false],[false,false]]', { empty: r.empty, bad: r.bad });
+  check('H13', 'a salt is its largest piece: the weight and the drawing are aspirin\'s, and the app knows there were three pieces', r.salt.nfrag === 3 && Math.abs(r.salt.mw - 180.159) < 1e-3 && r.salt.frag === r.salt.asp, r.salt);
+  check('H13', 'Tanimoto of a molecule with itself is 1 and aspirin against paracetamol is well below that', r.sim[0] === 1 && r.sim[1] < 0.5 && r.sim[1] > 0, r.sim);
+  check('H13', 'every alert and E3 pattern compiles, fires on a molecule that has it and stays silent on one that does not', r.nq[0] === r.nq[1] && r.alerts.every(a => a[1] && a[2]), r.alerts.filter(a => !(a[1] && a[2])));
+  check('H13', 'in the app: the example\'s 71 structures are read, the unreadable one (HF-010) and the missing one (HF-006) are counted, the salt is flagged, nothing is "empty"', r.ex.okN === 70 && r.ex.bad.length === 1 && r.ex.noStruct.length === 1 && r.ex.salts.length === 1, r.ex);
+  check('H13', 'a number from the file beats the computed one and says where it came from', r.exProp.from === 'RDKit' && r.exProp.mw > 500 && r.exImp[0] === 999 && r.exImp[1] === 'file', { exProp: r.exProp, exImp: r.exImp });
+  check('H13', 'a structure is drawn as an SVG on a transparent ground, and no "RDKit unavailable" banner appears when RDKit is there', /^<svg/.test(r.svg) && r.notice === 0, { svg: r.svg, notice: r.notice });
+  await c3.close();
 });
 
 if (run('H20')) await guard('H20', async () => {
