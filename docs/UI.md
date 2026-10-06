@@ -486,3 +486,15 @@ PY
 Then open the app **on its own** (not only inside the Hub) in light and dark, at 1440 and 375, and
 check the console is clean. An app that only works embedded has stopped being portable, and that is
 what keeps the Archive PWA, `labbook-standalone` and the ChemLib hand-off alive.
+
+## Screening charts (Hit Finder, 2026-10-07)
+
+A chart that ranks things is read for what is **in** it and what is **missing from** it, so these rules are not decoration.
+
+- **One builder for the screen and for the file.** The export is the same function with the light palette on white. A canvas does not understand `var(--x)` and paints it black; an SVG for a slide must not carry one.
+- **Marks never collide in meaning.** Tier is the fill (solid · half · hollow · dashed); a bound is an arrow towards the limit; a flag is a ring; a hook is a diamond; excluded is struck through. A selection is a ring in the accent, never a fill.
+- **A chart has a table.** Every plot can be seen as the rows behind it, because a figure nobody can check is an opinion.
+- **A threshold is a handle.** The edge of a histogram can be dragged with a pointer or with the arrow keys, and what moves is the number the user would have typed.
+- **A crowd is a texture.** Past ~2,500 points the grey rest is one bitmap and only the compounds that matter are elements.
+- **Missing is blank.** In a file a missing number is an empty cell — not 0, not "—" (a spreadsheet would sum it).
+- **`[hidden]` always wins** (`[hidden]{display:none !important}`): an author rule such as `.tab{display:flex}` otherwise beats the attribute.
