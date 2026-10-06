@@ -43,6 +43,7 @@ if '--no-js-check' not in flags:
 APPS = [
     ('echo', 'apps/echo/echo.html'),
     ('deg',  'apps/dora/dora.html'),
+    ('hitfinder', 'apps/hitfinder/hitfinder.html'),
     ('pd',   'apps/blueprint/blueprint.html'),
     ('dna',  'apps/helix/helix.html'),
     ('pt',   'apps/protein-tools/protein-tools.html'),
@@ -70,7 +71,7 @@ APPS = [
 PROFILES = {
     'product': ['labbook', 'protocols',
                 'incubator', 'cellarchive', 'cryo',
-                'echo', 'deg', 'spectra', 'lumina', 'beacon'],
+                'echo', 'hitfinder', 'deg', 'spectra', 'lumina', 'beacon'],
 }
 # ── Standalone Labbook ────────────────────────────────────────────────────
 # Labbook + Archive as one self-contained file, with no dHUB around it. Archive is embedded

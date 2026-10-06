@@ -39,6 +39,7 @@ const SEEDS = {
   spectra: ['loadTestData()'],
   beacon: ["loadTestData('gain')"],
   lumina: ['loadLuminaTestData()'],
+  hitfinder: ['loadHitFinderTestData()'],
   dna: ['loadSeqExample()', 'loadTrExample()', 'loadRtExample()'],
   pt: ['loadExample()'],
   protocols: ["openProtocol('gibson')"],
@@ -113,7 +114,7 @@ const GATES = [
   { app: 'pd',     how: "setFormat('384')",                                                                           note: '#pd-rotate', thing: '#plate-scroll-area' },
 ];
 
-export const APPS = ['echo', 'deg', 'pd', 'dna', 'pt', 'spectra', 'cryo', 'cuppa', 'beacon', 'lumina', 'ribbon', 'protocols', 'cellarchive', 'incubator', 'blot'];
+export const APPS = ['echo', 'hitfinder', 'deg', 'pd', 'dna', 'pt', 'spectra', 'cryo', 'cuppa', 'beacon', 'lumina', 'ribbon', 'protocols', 'cellarchive', 'incubator', 'blot'];
 
 export const SCENARIOS = [
   { id: 'visitor', async run({ measureOn, fresh }) {

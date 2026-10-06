@@ -27,6 +27,7 @@ APPS = {
     'bca':           ('.panel',    [], ''),
     'beacon':        ('.panel',    [('.assay-mode-card', 2)], ''),
     'lumina':        ('.tabpane',  [], ''),
+    'hitfinder':     ('.tabpane',  [], ''),
     'blueprint':     ('.panel',    [], ''),
     'helix':         ('.panel',    [], ''),
     'protein-tools': ('.panel',    [], ''),
