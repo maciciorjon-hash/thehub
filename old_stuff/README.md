@@ -25,3 +25,9 @@ the public Pages site, where a visitor who found it would remember nothing else 
 ## gantt/ (retired 2026-09-16)
 Cadence, the grant/fellowship Gantt chart builder. Jon: "no lo uso para nada." Out of the product
 build since 2026-07-30; removed from the personal build and the shell at his instruction.
+
+## ldi/ (retired 2026-10-06)
+LDI, the ligase dependency index (AUC-based score from CRBN-KO and VHL-KO curves). Jon: "no lo
+usamos." Removed from the personal and product builds and from the shell. `ctxkit-ldi.js` is its
+right-click menu block, kept with it. Its two ideas live on elsewhere: Echo's Selectivity plot
+covers any two groups, and Hit Finder's contrasts between slots cover E3 dependence (WT vs KO).

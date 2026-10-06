@@ -120,7 +120,7 @@ await app('lumina', '/apps/lumina/lumina.html', async (page, m) => {
 
 // Every other app: its opening screen, then each of its top-level tabs in turn. No data is loaded, so
 // this is the empty state and the navigation — the demo-data screens are the phone sweep's job.
-const GENERIC = ['dora/dora', 'blueprint/blueprint', 'helix/helix', 'protein-tools/protein-tools', 'bca/bca', 'ldi/ldi',
+const GENERIC = ['dora/dora', 'blueprint/blueprint', 'helix/helix', 'protein-tools/protein-tools', 'bca/bca',
   'iceberg/iceberg', 'cuppa/cuppa', 'beacon/beacon', 'ribbon/ribbon', 'archive/archive', 'cell-archive/cell-archive',
   'incubator/incubator', 'labbook/labbook', 'western-blot/western-blot'];
 for (const g of GENERIC) {

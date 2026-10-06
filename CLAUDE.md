@@ -93,7 +93,6 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 | `dna` | Helix | SVG helix | `#43a047` | `apps/helix/helix.html` |
 | `pt` | Protein Tools | SVG chain | `#9c6fd4` | `apps/protein-tools/protein-tools.html` |
 | `spectra` | BCA (formerly Spectra) | SVG standard curve | `#26a69a` | `apps/bca/bca.html` |
-| `ldi` | LDI | SVG balance/scale | `#e91e63` | `apps/ldi/ldi.html` |
 | `cryo` | Iceberg | SVG snowflake | `#00acc1` | `apps/iceberg/iceberg.html` |
 | `cuppa` | Cuppa | SVG coffee cup | `#8d6e63` | `apps/cuppa/cuppa.html` |
 | `beacon` | Beacon | SVG donor/acceptor BRET glyph | `#5e72c4` | `apps/beacon/beacon.html` |
@@ -140,7 +139,7 @@ The_Hub/
 │   ├── labbook/labbook.html    (+ backups/)
 │   ├── archive/archive.html    (+ icons/ for the PWA build)
 │   ├── echo/echo.html   dora/dora.html   blueprint/blueprint.html
-│   ├── helix/  protein-tools/  bca/  ldi/  iceberg/  incubator/  cell-archive/
+│   ├── helix/  protein-tools/  bca/  iceberg/  incubator/  cell-archive/
 │   └── beacon/  lumina/  western-blot/  ribbon/  cuppa/
 ├── tools/                      ← not part of the build
 │   ├── check_shared.py         sync_fit_engine.py      sync_icons.py (the icon set)
@@ -222,7 +221,7 @@ git push
 ```
 shell/hub-shell.html / dHUB.html
 ├── <script>APP_B64{echo,deg,lm}</script>         — base64-encoded app HTML
-├── <script>APP_B64_NEW{dna,pd,pt,spectra,ldi}</script> — base64-encoded app HTML
+├── <script>APP_B64_NEW{dna,pd,pt,spectra}</script> — base64-encoded app HTML
 ├── #hub-nav       — nav bar: d logo + "dHUB" + theme toggle + lab/settings btns
 ├── #hub-announce  — fixed banner below nav (Firebase-driven, admin posts, all sessions see it)
 ├── #hub-home      — 42px title + rotating subtitle + 8-card grid

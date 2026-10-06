@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ── hues: muted, one per app, readable as an accent on either theme ─────────────────────────
 HUES = {
     'labbook':'#4a74a8', 'echo':'#b8646a', 'deg':'#7b70b4', 'pd':'#3f7eaa', 'dna':'#4d9468',
-    'pt':'#8a70b0', 'spectra':'#3c948c', 'ldi':'#b05e80', 'cryo':'#3b93aa', 'cuppa':'#94765f',
+    'pt':'#8a70b0', 'spectra':'#3c948c', 'cryo':'#3b93aa', 'cuppa':'#94765f',
     'beacon':'#5b6fb0', 'lumina':'#b8923a', 'ribbon':'#bb6c66', 'protocols':'#9c6e88',
     'cellarchive':'#b87a55', 'incubator':'#4b8aa2', 'blot':'#657586',
 }
@@ -98,10 +98,6 @@ APP_ICONS = {
                 '<circle cx="17.5" cy="7.6" r="1.05" fill="currentColor" stroke="none"/>'
                 '<path d="M13.6 13.4v5" stroke-dasharray="1.1 1.9" '+DIM+'/>'
                 '<circle cx="13.6" cy="11.2" r="1.75" '+acf('m1')+'/>'),
-    # two dose-response curves, one ligase knocked out: the shift between them is the score
-    'ldi': ('<path d="M3 6.5h1.8c3.8 0 3.8 11 7.6 11H14"/>'
-            '<path d="M9.5 6.5h1.8c3.8 0 3.8 11 7.6 11h1.6" '+acs('m1')+'/>'
-            '<path d="M9.3 12h3.4m-1.4-1.6 1.6 1.6-1.6 1.6" '+DIM+'/>'),
     # a cryovial, and the cold that keeps it
     'cryo': ('<path d="M5.8 5.8V4.2a1.4 1.4 0 0 1 1.4-1.4h5.6a1.4 1.4 0 0 1 1.4 1.4v1.6z"/>'
              '<path d="M8.1 2.8v3M10 2.8v3M11.9 2.8v3" '+DIM+'/>'
@@ -232,7 +228,7 @@ body{background:var(--bg);color:var(--text);font:12px system-ui;margin:0;padding
 APP_FILES = {
     'echo':'apps/echo/echo.html', 'deg':'apps/dora/dora.html', 'pd':'apps/blueprint/blueprint.html',
     'dna':'apps/helix/helix.html', 'pt':'apps/protein-tools/protein-tools.html', 'spectra':'apps/bca/bca.html',
-    'ldi':'apps/ldi/ldi.html', 'cryo':'apps/iceberg/iceberg.html', 'cuppa':'apps/cuppa/cuppa.html',
+    'cryo':'apps/iceberg/iceberg.html', 'cuppa':'apps/cuppa/cuppa.html',
     'beacon':'apps/beacon/beacon.html', 'lumina':'apps/lumina/lumina.html', 'ribbon':'apps/ribbon/ribbon.html',
     'protocols':'apps/archive/archive.html', 'cellarchive':'apps/cell-archive/cell-archive.html',
     'incubator':'apps/incubator/incubator.html', 'labbook':'apps/labbook/labbook.html',

@@ -47,7 +47,6 @@ APPS = [
     ('dna',  'apps/helix/helix.html'),
     ('pt',   'apps/protein-tools/protein-tools.html'),
     ('spectra', 'apps/bca/bca.html'),
-    ('ldi',     'apps/ldi/ldi.html'),
     ('cryo',    'apps/iceberg/iceberg.html'),
     ('cuppa',      'apps/cuppa/cuppa.html'),
     ('beacon',     'apps/beacon/beacon.html'),
@@ -62,7 +61,7 @@ APPS = [
 
 # Which apps ship in which build. 'all' is the personal Hub; 'product' is the sellable
 # story — the notebook, the analysis that feeds it, the protocol library and the modules
-# they depend on. Cuppa and the off-path tools stay out (Fabricata and Cadence are retired to old_stuff/).
+# they depend on. Cuppa and the off-path tools stay out (Fabricata, Cadence and LDI are retired to old_stuff/).
 # The sellable build is the spine plus what feeds it: Labbook (the notebook), Archive (protocols
 # AND the reagent Library, which now holds plasmids too), Cells (the three frames the merged app
 # hosts), Echo, and the analysis apps Echo hands off to. Blueprint, Blot and Helix are useful in
@@ -71,7 +70,7 @@ APPS = [
 PROFILES = {
     'product': ['labbook', 'protocols',
                 'incubator', 'cellarchive', 'cryo',
-                'echo', 'deg', 'spectra', 'ldi', 'lumina', 'beacon'],
+                'echo', 'deg', 'spectra', 'lumina', 'beacon'],
 }
 # ── Standalone Labbook ────────────────────────────────────────────────────
 # Labbook + Archive as one self-contained file, with no dHUB around it. Archive is embedded

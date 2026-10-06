@@ -51,7 +51,7 @@ const SEEDS = {
 };
 // Pressed by label when the app has no such function.
 const SEED_WAIT = { ribbon: 5000, blot: 1500 };   // ms after seeding: Ribbon fetches the structure from RCSB
-const SEED_BUTTONS = { ldi: /^(example)$/i, protocols: null };
+const SEED_BUTTONS = { protocols: null };
 
 const DENY = /delete|remove|clear|reset|erase|discard|wipe|sign ?out|log ?out|download|export|print|upload|import|trash|^x$|^✕$|^×$|new project|resign|kill|drop\b/i;
 const CLOSE = /^(close|cancel|done|ok|got it|dismiss|skip|✕|×|x|back|never mind)$/i;
@@ -113,7 +113,7 @@ const GATES = [
   { app: 'pd',     how: "setFormat('384')",                                                                           note: '#pd-rotate', thing: '#plate-scroll-area' },
 ];
 
-export const APPS = ['echo', 'deg', 'pd', 'dna', 'pt', 'spectra', 'ldi', 'cryo', 'cuppa', 'beacon', 'lumina', 'ribbon', 'protocols', 'cellarchive', 'incubator', 'blot'];
+export const APPS = ['echo', 'deg', 'pd', 'dna', 'pt', 'spectra', 'cryo', 'cuppa', 'beacon', 'lumina', 'ribbon', 'protocols', 'cellarchive', 'incubator', 'blot'];
 
 export const SCENARIOS = [
   { id: 'visitor', async run({ measureOn, fresh }) {

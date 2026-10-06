@@ -25,7 +25,6 @@ APPS = {
     'echo':          ('.tabpane',  [], ''),
     'dora':          ('.panel',    [], ''),
     'bca':           ('.panel',    [], ''),
-    'ldi':           ('.tab-pane', [], ''),
     'beacon':        ('.panel',    [('.assay-mode-card', 2)], ''),
     'lumina':        ('.tabpane',  [], ''),
     'blueprint':     ('.panel',    [], ''),
