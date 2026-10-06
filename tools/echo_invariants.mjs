@@ -97,6 +97,11 @@
 //   E41 chemistry is honest  Structures come from a PINNED RDKit (every '@rdkit/rdkit' URL in Echo and Dora carries a version), and a
 //                            descriptor RDKit did not return is MISSING (null) — never 0, which passed every property filter downstream.
 //   E42 Ro5 is strict        Lipinski's limits are > 500, > 5, > 10, > 5: a compound exactly AT a limit passes, one hair over it fails.
+//   E43 raw is not a mean    A run that did not normalise (No normalisation) says "None (raw signal)" in every row's Norm_Method; a normalised run
+//                            still says "Plate mean" / "Smart · …". It used to call raw signal a plate mean.
+//   E44 a multi-assay pivot  One result per (assay, group): a compound fitted against two groups of one assay shows BOTH, in the table and in the
+//       overwrites nothing   XLSX, under headers that name the group; two results for one compound in one block open another block.
+//   E45 Copy TSV says which  A multi-assay Copy TSV names the assay of every row and calls the potency column a potency; a single-assay one is unchanged.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -1463,6 +1468,64 @@ if (run('E42')) await guard('E42', async () => {
   });
   check('E42', 'a compound exactly AT every Lipinski limit passes', /Pass/.test(r.atLimits || ''), r);
   check('E42', 'a hair over MW / logP / HBA / HBD each fails', [r.mwOver, r.logpOver, r.hbaOver, r.hbdOver].every(t => /1 fail/.test(t || '')), r);
+});
+
+// Rows for a multi-assay table: compound X is fitted against two groups of one assay (BRD2, BRD4) and once in viability.
+const MA_ROWS = `(() => {
+  const mk = (g, sid, at, dc, dm) => ({ Protein: g, Sample_ID: sid, DC50_nM: dc, AbsDC50_nM: null, Dmax_pct: dm, LogIC50_M: -8, pDC50: 8, HillSlope: 1.2, R2: 0.98, Flag: 'No', Flag_Reason: '',
+    Top_val: 100, Bot_val: 100 - dm, CI_DC50_lower: dc / 2, CI_DC50_upper: dc * 2, _assayType: at });
+  return [mk('BRD2', 'X-1', 'hibit', 11.1, 80), mk('BRD4', 'X-1', 'hibit', 222, 60), mk('HEK', 'X-1', 'ctg', 3333, 90), mk('BRD2', 'X-2', 'hibit', 44.4, 70)];
+})()`;
+
+if (run('E43')) await guard('E43', async () => {
+  await BACK_TO_ANALYSIS();
+  const raw = await E(async () => { const set = { 'p-skip-norm': true }; for (const [k, v] of Object.entries(set)) { const el = document.getElementById(k); if (el) el.checked = !!v; } _lastResultsData = null; await runPipeline(); return _lastResultsData.map(r => r.Norm_Method); });
+  check('E43', 'a run with No normalisation says None (raw signal) on every row', raw.length > 0 && raw.every(m => m === 'None (raw signal)'), [...new Set(raw)]);
+  const norm = await E(async () => { const el = document.getElementById('p-skip-norm'); if (el) el.checked = false; _lastResultsData = null; await runPipeline(); return _lastResultsData.map(r => r.Norm_Method); });
+  check('E43', 'a normalised run still says Plate mean (or Smart …), never None', norm.length > 0 && norm.every(m => /^(Plate mean|Smart)/.test(m)), [...new Set(norm)]);
+});
+
+if (run('E44')) await guard('E44', async () => {
+  await BACK_TO_ANALYSIS();
+  const r = await E(async (ma) => {
+    const data = eval(ma), keepP = window._lastAnalysisParams, keepD = _lastResultsData, keepS = scatterData, keepH = window.saveToHistory;
+    window._lastAnalysisParams = Object.assign({}, keepP || {}, { multiAssay: true }); window.saveToHistory = () => {};
+    renderMultiAssayResults(data);
+    const heads = [...document.querySelectorAll('#results-panel thead tr:first-child th')].map(t => t.textContent.trim());
+    const rows = [...document.querySelectorAll('#results-panel tbody tr')].map(tr => [...tr.children].map(td => td.textContent.trim()));
+    // the workbook: capture the Results sheet's array
+    scatterData = data; _lastResultsData = data;
+    const caps = [], orig = XLSX.utils.aoa_to_sheet; XLSX.utils.aoa_to_sheet = function (a) { caps.push(a); return orig.apply(this, arguments); };
+    try { generateOutputXLSX(); } finally { XLSX.utils.aoa_to_sheet = orig; }
+    window._lastAnalysisParams = keepP; window.saveToHistory = keepH; _lastResultsData = keepD; scatterData = keepS;
+    return { heads, rows, xlsx: caps[0] };
+  }, '(' + MA_ROWS + ')');
+  const x1 = r.rows.find(t => t[0] === 'X-1') || [];
+  check('E44', 'the table has a block per assay and group: HiBiT · BRD2, HiBiT · BRD4, CTG/Viability', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability'].every(h => r.heads.includes(h)), r.heads);
+  check('E44', 'compound X-1 shows BOTH HiBiT results (11.1 and 222) and the viability one', ['11.1', '222', '3333'].every(v => x1.includes(v)), x1);
+  const hx = r.xlsx || [], hrow = hx[0] || [], x1x = (hx.find(t => t[0] === 'X-1') || []);
+  check('E44', 'the workbook has the same blocks and the same numbers', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability'].every(h => hrow.includes(h)) && ['11.1', '222', '3333'].every(v => x1x.map(String).includes(v)), { hrow, x1x });
+  check('E44', 'a compound only fitted in one group leaves the other block empty, not copied', (r.rows.find(t => t[0] === 'X-2') || []).includes('44.4') && !(r.rows.find(t => t[0] === 'X-2') || []).includes('222'), r.rows);
+});
+
+if (run('E45')) await guard('E45', async () => {
+  await BACK_TO_ANALYSIS();
+  const r = await E(async (ma) => {
+    const data = eval(ma), keepP = window._lastAnalysisParams, keepD = _lastResultsData;
+    let text = ''; const keepC = navigator.clipboard; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { text = t; return Promise.resolve(); } } });
+    const grab = async () => { text = ''; copyResultsTSV(); await new Promise(r => setTimeout(r, 30)); return text.split('\n').map(l => l.split('\t')); };
+    _lastResultsData = data; window._lastAnalysisParams = Object.assign({}, keepP || {}, { multiAssay: true });
+    const multi = await grab();
+    window._lastAnalysisParams = Object.assign({}, keepP || {}, { multiAssay: false }); _lastResultsData = keepD;
+    const single = await grab();
+    window._lastAnalysisParams = keepP;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: keepC });
+    return { multi, single };
+  }, '(' + MA_ROWS + ')');
+  check('E45', 'a multi-assay Copy TSV starts with an Assay column', r.multi[0] && r.multi[0][0] === 'Assay', r.multi[0]);
+  check('E45', 'every row names its assay (HiBiT / CTG/Viability)', r.multi.slice(1).every(l => /^(HiBiT|CTG\/Viability)$/.test(l[0])) && r.multi.slice(1).some(l => l[0] === 'CTG/Viability'), r.multi.slice(1).map(l => l[0]));
+  check('E45', 'the potency column is called a potency, not DC50, when viability rows share it', (r.multi[0] || []).some(h => /^Potency/.test(h)), r.multi[0]);
+  check('E45', 'a single-assay Copy TSV has no Assay column', r.single[0] && r.single[0][0] !== 'Assay' && !r.single[0].includes('Assay'), r.single[0]);
 });
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));

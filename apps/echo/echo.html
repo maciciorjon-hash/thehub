@@ -2566,12 +2566,15 @@ function _normVerdict(row, alt) {
   return o;
 }
 // What the reference was for the wells of one curve. plates: {barcodeKey: {name, mode, info, suspect}}.
-function _normProv(sdata, plates, smartOn) {
+// `normalised` is false when the run did NOT normalise at all (the No-normalisation switch, or no control
+// wells): the signal is raw, so the method is not a "plate mean" — it used to say so, which is the one
+// thing a reader of the export must be able to rely on.
+function _normProv(sdata, plates, smartOn, normalised) {
   const keys = [...new Set(sdata.map(r => r.barcodeKey))];
   const P = k => plates[k] || { name: k, mode: 'plate mean', info: null, suspect: [] };
   const modes = new Map();
   keys.forEach(k => { const m = P(k).mode; if (!modes.has(m)) modes.set(m, []); modes.get(m).push(P(k).name); });
-  const method = !smartOn ? 'Plate mean' : modes.size <= 1 ? 'Smart · ' + (modes.size ? [...modes.keys()][0] : 'plate mean')
+  const method = normalised === false ? 'None (raw signal)' : !smartOn ? 'Plate mean' : modes.size <= 1 ? 'Smart · ' + (modes.size ? [...modes.keys()][0] : 'plate mean')
     : 'Smart · mixed — ' + [...modes].map(([m, ps]) => ps.join(', ') + ': ' + m).join('; ');
   const sh = sdata.filter(r => r.ref > 0 && r.refPlain > 0).map(r => (r.ref / r.refPlain - 1) * 100);
   const notes = [];
@@ -2589,7 +2592,7 @@ function _normProv(sdata, plates, smartOn) {
     } else if (smartOn && !p.info) {
       notes.push(nm + ': no Smart model could be built (too few control readings) — plain plate mean');
     }
-    if (!smartOn && p.suspect && p.suspect.length) notes.push(nm + ': the plate mean still includes control wells that look wrong — ' + p.suspect.slice(0, 5).join(', '));
+    if (normalised !== false && !smartOn && p.suspect && p.suspect.length) notes.push(nm + ': the plate mean still includes control wells that look wrong — ' + p.suspect.slice(0, 5).join(', '));
   });
   return {
     Norm_Method: method, Norm_Plates: keys.map(k => P(k).name).join(', '),
@@ -3813,7 +3816,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     for (const sid of sampleIds) {
       const sdata = sampleMap.get(sid);
       const _row = _fitWithCheck(protein, sid, sdata);
-      if (_row) { Object.assign(_row, _normProv(sdata, normPlates, !!(doNormalize && rowNorm))); summary.push(_row); nFit++; }
+      if (_row) { Object.assign(_row, _normProv(sdata, normPlates, !!(doNormalize && rowNorm), !!doNormalize)); summary.push(_row); nFit++; }
 
       nDone++;
       if (nDone % 10 === 0 || nDone === totalFits) setProgress(15 + Math.round(nDone / totalFits * 70));
@@ -4148,6 +4151,33 @@ function renderResults(data) {
   if (window._flashKey) { const k = window._flashKey; window._flashKey = null; const tr = [...p.querySelectorAll('tbody tr')].find(t => t.getAttribute('data-k') === k); if (tr) { tr.classList.add('row-flash'); tr.scrollIntoView && tr.scrollIntoView({ block: 'nearest' }); } }
 }
 
+// One column block per (assay type, group), one row per compound. The pivot used to be keyed by assay type
+// alone, so a compound fitted against three groups of one assay showed only the LAST group's result (the
+// others were silently overwritten), and two panels of the same type collided the same way. A second result
+// for the same compound in the same block opens another block ("(2)") rather than replacing the first.
+const _MA_NAMES = { hibit:'HiBiT', displacement:'Displacement', gain:'Gain-of-Signal', ctg:'CTG/Viability' };
+function _maPivot(data) {
+  const types = [...new Set(data.map(r => r._assayType).filter(Boolean))];
+  const groupsOf = {};
+  types.forEach(at => { groupsOf[at] = new Set(data.filter(r => r._assayType === at).map(r => r.Protein || '')).size; });
+  const keyOf = (r, n) => r._assayType + '\u0001' + (r.Protein || '') + (n ? '\u0001#' + n : '');
+  const byKey = new Map(), pivot = new Map();
+  for (const r of data) {
+    if (!r._assayType) continue;
+    if (!pivot.has(r.Sample_ID)) pivot.set(r.Sample_ID, {});
+    const slot = pivot.get(r.Sample_ID);
+    let n = 0; while (slot[keyOf(r, n)]) n++;
+    const k = keyOf(r, n);
+    slot[k] = r;
+    if (!byKey.has(k)) byKey.set(k, { key: k, at: r._assayType, group: r.Protein || '', dup: n });
+  }
+  const blocks = [...byKey.values()].sort((a, b) =>
+    (types.indexOf(a.at) - types.indexOf(b.at)) || natCmp(a.group, b.group) || (a.dup - b.dup));
+  blocks.forEach(b => {
+    b.label = (_MA_NAMES[b.at] || b.at) + (groupsOf[b.at] > 1 && b.group ? ' · ' + b.group : '') + (b.dup ? ' (' + (b.dup + 1) + ')' : '');
+  });
+  return { blocks, pivot };
+}
 function renderMultiAssayResults(data) {
   _lastResultsData = data;
   const p = document.getElementById('results-panel');
@@ -4172,20 +4202,13 @@ function renderMultiAssayResults(data) {
     ctg:         {name:'CTG/Viability', color:'#816baf', dc50:'IC50 (nM)',  logdc50:'LogIC50 (M)', pdc50:'pIC50 (M)', dmax:'Span (%)',  ki:null},
   };
 
-  const orderedTypes = [...new Set(data.map(r=>r._assayType).filter(Boolean))];
   const _selCols = new Set([...document.querySelectorAll('.csv-col-cb:checked')].map(el=>el.dataset.col));
   const activeKeys = ['DC50_nM','Ki_nM','Dmax_pct','LogIC50_M','pDC50','HillSlope','R2','Flag',...(_selCols.has('CI_DC50')?['CI_DC50']:[])]
     .filter(k=>k==='DC50_nM'||k==='Ki_nM'||k==='Flag'||k==='CI_DC50'||_selCols.has(k))
     .filter(k=>!(window._hiddenResultsCols?.has(k)));
 
-  // Pivot: one entry per Sample_ID
-  const pivot = new Map();
-  const proteinOf = new Map();
-  for (const r of data) {
-    if (!pivot.has(r.Sample_ID)) pivot.set(r.Sample_ID, {});
-    pivot.get(r.Sample_ID)[r._assayType] = r;
-    if (r.Protein) proteinOf.set(r.Sample_ID, r.Protein);
-  }
+  // Pivot: one entry per Sample_ID, one column block per (assay type, group)
+  const { blocks: _maBlocks, pivot } = _maPivot(data);
 
   const flagged = data.filter(r=>r.Flag==='Yes').length;
   const _dlS='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
@@ -4213,16 +4236,18 @@ function renderMultiAssayResults(data) {
 
   // Header row 1: assay type spanning cells
   h += '<tr><th rowspan="2" class="tbl-frozen">Sample ID</th>';
-  for (const at of orderedTypes) {
+  for (const bl of _maBlocks) {
+    const at = bl.at;
     const m = _assayMeta[at]||{name:at,color:'#8b90a8',dmax:'Dmax (%)',ki:null};
     const n = activeKeys.filter(k=>!(k==='Dmax_pct'&&!m.dmax)&&!(k==='Ki_nM'&&!m.ki)).length;
-    h += `<th colspan="${n}" style="background:${m.color}22;color:${m.color};border-bottom:2px solid ${m.color};text-align:center;font-size:11px;font-weight:700;letter-spacing:.3px;white-space:nowrap;">${esc(m.name)}</th>`;
+    h += `<th colspan="${n}" style="background:${m.color}22;color:${m.color};border-bottom:2px solid ${m.color};text-align:center;font-size:11px;font-weight:700;letter-spacing:.3px;white-space:nowrap;">${esc(bl.label)}</th>`;
   }
   h += '</tr>';
 
   // Header row 2: individual column names
   h += '<tr>';
-  for (const at of orderedTypes) {
+  for (const bl of _maBlocks) {
+    const at = bl.at;
     const m = _assayMeta[at]||{name:at,color:'#8b90a8',dc50:'DC50 (nM)',logdc50:'LogDC50 (M)',pdc50:'pDC50 (M)',dmax:'Dmax (%)',ki:null};
     const _ciLblM = (at==='displacement'||at==='ctg')?'IC50 95% CI':(at==='gain')?'EC50 95% CI':'DC50 95% CI';
     const lbl = {DC50_nM:m.dc50,Ki_nM:m.ki,Dmax_pct:m.dmax,LogIC50_M:m.logdc50,pDC50:m.pdc50,HillSlope:'Hill',R2:'R²',Flag:'Flag',CI_DC50:_ciLblM};
@@ -4235,12 +4260,11 @@ function renderMultiAssayResults(data) {
   h += '</tr></thead><tbody>';
 
   for (const [sampleId, byType] of pivot) {
-    const protein = proteinOf.get(sampleId)||'';
     h += '<tr>';
     h += `<td class="tbl-frozen">${esc(sampleId)}</td>`;
-    for (const at of orderedTypes) {
-      const m = _assayMeta[at]||{color:'#8b90a8',dmax:'Dmax (%)',ki:null};
-      const r = byType[at];
+    for (const bl of _maBlocks) {
+      const m = _assayMeta[bl.at]||{color:'#8b90a8',dmax:'Dmax (%)',ki:null};
+      const r = byType[bl.key];
       for (const k of activeKeys) {
         if (k==='Dmax_pct'&&!m.dmax) continue;
         if (k==='Ki_nM'&&!m.ki) continue;
@@ -4278,7 +4302,10 @@ function copyResultsTSV() {
   const _cmp = _withNorm && _lastResultsData.some(r=>r.Norm_Check);
   const cols = _allK.filter(k=>(k==='Protein'||k==='Sample_ID'||_selTsv.has(k))&&!(k==='AbsDC50_nM'&&_tTsv!=='hibit')&&!(k==='Dmax_pct'&&_noGainTsv));
   if (_withNorm) { cols.push('Norm_Method','Norm_Shift_pct'); if (_cmp) cols.push('Plain_DC50_nM','Norm_Ratio','Norm_Check'); _lbl.Norm_Method='Normalisation'; _lbl.Norm_Shift_pct='Ref vs plain mean (%)'; _lbl.Plain_DC50_nM='Plain-mean '+(_vlT['DC50_nM']||'DC50 (nM)'); _lbl.Norm_Ratio='Ratio vs plain mean'; _lbl.Norm_Check='Normalisation check'; }
-  const rows = [cols.map(k=>_lbl[k]||k).join('\t'), ..._lastResultsData.map(r=>cols.map(c=>_tsvCell(_outVal(r,c))).join('\t'))];
+  // A multi-assay run mixes DC50, IC50 and EC50 rows in one list: say which assay each row is, and call the
+  // potency and effect columns by what they are for every row (they used to read "DC50" on a viability row).
+  if (window._lastAnalysisParams && window._lastAnalysisParams.multiAssay) { cols.unshift('Assay'); _lbl.Assay='Assay'; _lbl.DC50_nM='Potency (nM)'; _lbl.Dmax_pct='Effect (% or signal)'; }
+  const rows = [cols.map(k=>_lbl[k]||k).join('\t'), ..._lastResultsData.map(r=>cols.map(c=>_tsvCell(c==='Assay'?(_MA_NAMES[r._assayType]||r._assayType||''):_outVal(r,c))).join('\t'))];
   navigator.clipboard.writeText(rows.join('\n')).then(()=>{
     const btn=document.querySelector('[onclick="copyResultsTSV()"]');
     if(btn){const t=btn.textContent;btn.textContent='✓ Copied';setTimeout(()=>btn.textContent=t,1500);}
@@ -4461,15 +4488,9 @@ function generateOutputXLSX() {
       .filter(function(k){ return !(window._hiddenResultsCols && window._hiddenResultsCols.has(k)); });
     if (_ciOnX) _activeKeysX.push('CI_DC50_lower','CI_DC50_upper');
 
-    var _orderedTypesX = [];
-    var _seenTypes = {};
-    scatterData.forEach(function(r){ if (r._assayType && !_seenTypes[r._assayType]) { _seenTypes[r._assayType]=true; _orderedTypesX.push(r._assayType); } });
-
-    var _pivotX = {}; var _ids = [];
-    scatterData.forEach(function(r){
-      if (!_pivotX[r.Sample_ID]) { _pivotX[r.Sample_ID] = {}; _ids.push(r.Sample_ID); }
-      _pivotX[r.Sample_ID][r._assayType] = r;
-    });
+    var _pvX = _maPivot(scatterData);          // one block per (assay type, group); nothing is overwritten
+    var _blocksX = _pvX.blocks, _pivotX = {}, _ids = [];
+    _pvX.pivot.forEach(function(slot, sid){ _pivotX[sid] = slot; _ids.push(sid); });
 
     var _keysFor = function(at){
       var m = _amX[at] || {dmax:'Dmax (%)'};
@@ -4485,11 +4506,12 @@ function generateOutputXLSX() {
     var _hdr2 = [''];
     var _colCursor = 1;
     var _mergesX = [{s:{r:0,c:0},e:{r:1,c:0}}]; // Sample ID spans both header rows
-    _orderedTypesX.forEach(function(at){
+    _blocksX.forEach(function(bl){
+      var at = bl.at;
       var m = _amX[at] || {name:at};
       var ks = _keysFor(at);
       var lbl = _lblFor(at);
-      _hdr1.push(m.name);
+      _hdr1.push(bl.label);
       for (var i=1;i<ks.length;i++) _hdr1.push('');
       if (ks.length>1) _mergesX.push({s:{r:0,c:_colCursor},e:{r:0,c:_colCursor+ks.length-1}});
       ks.forEach(function(k){ _hdr2.push(lbl[k]||k); });
@@ -4498,8 +4520,8 @@ function generateOutputXLSX() {
 
     var _dataRows = _ids.map(function(sid){
       var row = [sid];
-      _orderedTypesX.forEach(function(at){
-        var r = _pivotX[sid][at];
+      _blocksX.forEach(function(bl){
+        var at = bl.at, r = _pivotX[sid][bl.key];
         _keysFor(at).forEach(function(k){
           if (!r) { row.push(''); return; }
           var v = _outVal(r, k); row.push(v==null?'':v);
