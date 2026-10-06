@@ -283,8 +283,9 @@ if (run('H6')) await guard('H6', async () => {
     out.bounds = { full: [vf.tier, vf.Dlo, vf.Dhi], part: [vp.tier, vp.Dlo, vp.Dhi], order: HF.uni.slice().sort(hfRankCmp) };
     // ties rank by name, whatever order the data arrived in
     const ids = ['c-10', 'c-2', 'c-1', 'c-3', 'b-1'], mk = o => ids.map(id => ({ id, primary: S.make({ Potency_nM: 50, Effect_Eff: 90 }) }));
-    S.load(mk(), [hfNewCrit('potency'), hfNewCrit('effect')]); const o1 = HF.uni.slice().sort(hfRankCmp);
-    S.load(mk().reverse(), [hfNewCrit('potency'), hfNewCrit('effect')]); const o2 = HF.uni.slice().sort(hfRankCmp);
+    // the comparator itself must settle ties: hand it the list in three different orders
+    S.load(mk(), [hfNewCrit('potency'), hfNewCrit('effect')]); const o1 = HF.uni.slice().reverse().sort(hfRankCmp);
+    S.load(mk().reverse(), [hfNewCrit('potency'), hfNewCrit('effect')]); const o2 = HF.uni.slice().sort((a, b) => (a < b ? 1 : -1)).sort(hfRankCmp);
     out.ties = [o1, o2];
     return out;
   }, SCN);
@@ -368,7 +369,8 @@ if (run('H14')) await guard('H14', async () => {
   const tier0 = await E(ck => HF.verdicts.get(ck).tier, open.drawer);
   await pg.keyboard.press('h'); await pg.keyboard.press('x');
   await pg.locator('#hf-drawer textarea').fill('re-test at lower top dose'); await pg.waitForTimeout(150);
-  const dec = await E(ck => ({ d: HF.dec.get(ck), tier: HF.verdicts.get(ck).tier, stored: localStorage.getItem('hf_dec_v1') }), open.drawer);
+  // the verdicts are made again, as they are on every change, and must not have read the call
+  const dec = await E(ck => { hfComputeVerdicts(); return { d: HF.dec.get(ck), tier: HF.verdicts.get(ck).tier, stored: localStorage.getItem('hf_dec_v1') }; }, open.drawer);
   await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
   const closed = await E(() => !document.getElementById('hf-drawer').classList.contains('open'));
   // criteria change; the call stays, the tier may move
