@@ -1317,36 +1317,64 @@ function exportScatter(bg) {
 }
 // ─── SMILES / PROPERTIES ──────────────────────────────────────────────────────
 let _smilesData = {}, _rdkit = null, _rdkitLoading = false, _rdkitFailed = null;
+// ═══ RDKIT LOADER — BEGIN (canonical in Echo; tools/sync_screen_engine.py copies it into every app that draws structures) ═══
+// RDKit comes from a CDN, so the version is PINNED and both files are integrity-checked: an unpinned
+// '@rdkit/rdkit/dist/…' silently changes under us (Dora's old path now answers 404). The script is
+// loaded with an SRI tag; the wasm is fetched here with its own hash and handed to the module, so a
+// tampered or truncated file fails loudly instead of running. unpkg first, jsDelivr as the fallback —
+// the same bytes on both (hashes verified 2026-10-06).
+var RDKIT_VERSION = '2026.9.1';
+var RDKIT_SRI = { js: 'sha384-gBdna7fxxnpz64Sewln4eBm8+sAiS6ur6q7X0xEum//b7MzSjJGK3ENuAmuRL5Y3',
+                  wasm: 'sha384-o1WTb3ojy+rYWbWbFHMcvH3BDxTKFBRJoH2UQ5Y2GNCDxwp13z33o8ZNtWOBGBxL' };
+function loadRDKitPinned() {
+  if (window._rdkitPromise) return window._rdkitPromise;
+  var bases = ['https://unpkg.com/@rdkit/rdkit@' + RDKIT_VERSION + '/dist/',
+               'https://cdn.jsdelivr.net/npm/@rdkit/rdkit@' + RDKIT_VERSION + '/dist/'];
+  window._rdkitPromise = (async function () {
+    var lastErr = null;
+    for (var i = 0; i < bases.length; i++) {
+      var base = bases[i], tag = null;
+      try {
+        if (!window.initRDKitModule) {
+          await new Promise(function (res, rej) {
+            tag = document.createElement('script');
+            tag.src = base + 'RDKit_minimal.js'; tag.integrity = RDKIT_SRI.js; tag.crossOrigin = 'anonymous';
+            tag.onload = res; tag.onerror = function () { rej(new Error('script not loaded')); };
+            document.head.appendChild(tag);
+          });
+        }
+        var r = await fetch(base + 'RDKit_minimal.wasm', { integrity: RDKIT_SRI.wasm });
+        if (!r.ok) throw new Error('wasm ' + r.status);
+        return await window.initRDKitModule({ wasmBinary: await r.arrayBuffer() });
+      } catch (e) {
+        lastErr = e;
+        if (tag && tag.parentNode) tag.parentNode.removeChild(tag);
+      }
+    }
+    window._rdkitPromise = null;               // a later attempt may succeed (network came back)
+    throw lastErr || new Error('RDKit unreachable');
+  })();
+  return window._rdkitPromise;
+}
+// ═══ RDKIT LOADER — END ═══
 function loadRDKit(cb) {
   if (_rdkit) { cb(_rdkit); return; }
-  if (_rdkitLoading) { setTimeout(()=>loadRDKit(cb), 300); return; }
-  _rdkitLoading = true;
   const st = document.getElementById('smiles-status');
   if (st) st.textContent = 'Loading RDKit…';
-  const s = document.createElement('script');
-  s.src = 'https://unpkg.com/@rdkit/rdkit/Code/MinimalLib/dist/RDKit_minimal.js';
-  // Every failure path has to call back. It used to drop the callback on error, so the file
-  // you dropped sat at "computing properties…" for ever with no way to tell why — and
-  // initRDKitModule() had no catch either, so a script that loaded but failed to start hung
-  // in exactly the same way.
-  const fail = (why) => {
+  // Every failure path has to call back, or the file you dropped sits at "computing properties…" for
+  // ever with no way to tell why. loadRDKitPinned() rejects on a blocked network, a bad hash and a
+  // module that fails to start alike.
+  loadRDKitPinned().then(rdk => {
+    _rdkit = rdk; _rdkitLoading = false;
+    const st2 = document.getElementById('smiles-status'); if (st2 && st2.textContent==='Loading RDKit…') st2.textContent = '';
+    cb(rdk);
+  }, e => {
     _rdkitLoading = false;
-    _rdkitFailed = why || 'unreachable';
+    _rdkitFailed = (e && e.message) || 'unreachable';
     const st2 = document.getElementById('smiles-status');
     if (st2) st2.textContent = 'Structures unavailable — RDKit could not be loaded';
     cb(null);
-  };
-  s.onload = () => {
-    let p; try { p = window.initRDKitModule(); } catch(e) { return fail('init'); }
-    if (!p || !p.then) return fail('init');
-    p.then(rdk => {
-      _rdkit = rdk; _rdkitLoading = false;
-      const st2 = document.getElementById('smiles-status'); if (st2 && st2.textContent==='Loading RDKit…') st2.textContent = '';
-      cb(rdk);
-    }, () => fail('init'));
-  };
-  s.onerror = () => fail('network');
-  document.head.appendChild(s);
+  });
 }
 function parseSmilesRows(rows) {
   if (!rows.length) return [];
@@ -1403,11 +1431,13 @@ function handleSmilesFile(file) {
               const det = JSON.stringify({width:90, height:70, addStereoAnnotation:false});
               const svg = mol.get_svg_with_highlights(det);
               _smilesData[name] = { smiles, svg,
-                MW:   desc.CrippenMW       != null ? (+desc.CrippenMW).toFixed(1)    : '—',
+                // RDKit's real keys: amw (not CrippenMW), tpsa (not TPSA), lipinskiHBA/HBD (not NumHBA/NumHBD).
+                // Dora read the wrong ones, so MW, TPSA, HBA and HBD showed "—" for every compound.
+                MW:   (desc.amw ?? desc.exactmw) != null ? (+(desc.amw ?? desc.exactmw)).toFixed(1) : '—',
                 logP: desc.CrippenClogP    != null ? (+desc.CrippenClogP).toFixed(2) : '—',
-                HBA:  desc.NumHBA          ?? '—',
-                HBD:  desc.NumHBD          ?? '—',
-                TPSA: desc.TPSA            != null ? (+desc.TPSA).toFixed(1)         : '—',
+                HBA:  desc.lipinskiHBA ?? desc.NumHBA ?? '—',
+                HBD:  desc.lipinskiHBD ?? desc.NumHBD ?? '—',
+                TPSA: desc.tpsa            != null ? (+desc.tpsa).toFixed(1)         : '—',
                 RotBonds: desc.NumRotatableBonds ?? '—'
               };
               mol.delete(); ok++;
@@ -1768,7 +1798,8 @@ function downloadTemplate() {
 // ── Open from Echo ──────────────────────────────────────────────────────────────────────
 // Dora reads the Excel that Echo writes; Echo already keeps its last ten fitted analyses in
 // journal/echo (and in this origin's localStorage). Reading them here removes the .xlsx round
-// trip — and it is the first step of the Dora + LDI consolidation on the plan.
+// trip. (LDI, which carried a copy of this reader, was retired on 2026-10-06; Hit Finder reads
+// the same store for multi-screen triage.)
 function readEchoHistory(cb){
   // Echo Dose Response keeps its History in this origin's IndexedDB ("echo_history": runs + their results), one
   // record per dataset with a version per analysis. The old browser-store list and the cloud copy are the fallbacks.

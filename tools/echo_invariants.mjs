@@ -94,6 +94,9 @@
 //   E36 motion and focus   Nothing animates at rest; one underline travels to the picked tab (and sits under it); coming back from the Gradient
 //                          Planner does not put Setup over the results; an edit made in Curves flashes its row in Results; with reduced
 //                          motion the transitions are clamped.
+//   E41 chemistry is honest  Structures come from a PINNED RDKit (every '@rdkit/rdkit' URL in Echo and Dora carries a version), and a
+//                            descriptor RDKit did not return is MISSING (null) — never 0, which passed every property filter downstream.
+//   E42 Ro5 is strict        Lipinski's limits are > 500, > 5, > 10, > 5: a compound exactly AT a limit passes, one hair over it fails.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -1425,6 +1428,41 @@ if (run('E36')) await guard('E36', async () => {
   const rm = await p2.evaluate(() => { const ink = document.querySelector('.tabs-scroll > .tab-ink'); const ds = [ink, document.querySelector('.hist-btn') || document.querySelector('.tab')].filter(Boolean).map(e => parseFloat(getComputedStyle(e).transitionDuration)); return ds; });
   check('E36', 'with reduced motion every transition is clamped to a hair', rm.length > 0 && rm.every(d => d <= 0.01), rm);
   await ctx2.close();
+});
+
+if (run('E41')) await guard('E41', async () => {
+  // A URL is pinned when '@rdkit/rdkit' is followed by '@<digit>' or by '@' + RDKIT_VERSION; comments are not URLs.
+  const unpinned = f => { const t = fs.readFileSync(f, 'utf8').split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n'); return [...t.matchAll(/@rdkit\/rdkit(?!@(?:\d|' \+ RDKIT_VERSION))/g)].length; };
+  check('E41', 'every @rdkit/rdkit URL in echo.html carries a version', unpinned(FILE) === 0, unpinned(FILE));
+  const dora = path.join(ROOT, 'apps/dora/dora.html');
+  check('E41', 'every @rdkit/rdkit URL in dora.html carries a version', unpinned(dora) === 0, unpinned(dora));
+  const r = await E(async () => {
+    const full = { amw: 46.069, tpsa: 20.23, CrippenClogP: -0.0014, lipinskiHBA: 1, lipinskiHBD: 1, NumRotatableBonds: 0, NumAromaticRings: 0 };
+    const mk = d => ({ is_valid: () => true, get_svg: () => '<svg/>', get_descriptors: () => JSON.stringify(d), get_substruct_match: () => '[]', delete() {} });
+    const keep = window._rdkit;
+    window._rdkit = { get_mol: smi => mk(smi === 'CCO' ? full : {}), get_qmol: () => null };
+    let cd, err = null;
+    try { cd = await processSmilesWithRDKit(new File(['id,smiles\nA,CCO\nB,CCN\n'], 's.csv', { type: 'text/csv' })); } catch (e) { err = String(e && e.message || e); }
+    window._rdkit = keep;
+    return { err, A: cd && cd.A, B: cd && cd.B };
+  });
+  check('E41', 'a compound RDKit described keeps its numbers', r.A && r.A.MW === 46.1 && r.A.TPSA === 20.2 && r.A.HBA === 1 && r.A.HBD === 1 && r.A.logP === 0, r);
+  check('E41', 'a descriptor RDKit did not return is null, never 0', r.B && ['MW', 'logP', 'HBA', 'HBD', 'TPSA', 'RotBonds', 'ArRings'].every(k => r.B[k] === null), r);
+});
+
+if (run('E42')) await guard('E42', async () => {
+  await BACK_TO_ANALYSIS();
+  const r = await E(() => {
+    const verdict = (MW, logP, HBA, HBD) => {
+      const cd = { 'EDA-013': { smiles: 'CCO', MW, logP, HBA, HBD, TPSA: 20, RotBonds: 0, ArRings: 0, svg: '' } };
+      renderProperties(_lastResultsData, cd);
+      const row = document.querySelector('#props-panel table.props-table tbody tr');
+      return row ? row.lastElementChild.textContent.replace(/\s+/g, ' ').trim() : null;
+    };
+    return { atLimits: verdict(500, 5, 10, 5), mwOver: verdict(500.1, 5, 10, 5), logpOver: verdict(500, 5.01, 10, 5), hbaOver: verdict(500, 5, 11, 5), hbdOver: verdict(500, 5, 10, 6) };
+  });
+  check('E42', 'a compound exactly AT every Lipinski limit passes', /Pass/.test(r.atLimits || ''), r);
+  check('E42', 'a hair over MW / logP / HBA / HBD each fails', [r.mwOver, r.logpOver, r.hbaOver, r.hbdOver].every(t => /1 fail/.test(t || '')), r);
 });
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));

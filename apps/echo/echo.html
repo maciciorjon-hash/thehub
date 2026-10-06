@@ -6939,8 +6939,49 @@ async function downloadScatterHiRes() {
   log(`Hi-res PNG exported: ${W}×${H}px (≈600 DPI)`, 'ok');
 }
 
+// ═══ RDKIT LOADER — BEGIN (canonical in Echo; tools/sync_screen_engine.py copies it into every app that draws structures) ═══
+// RDKit comes from a CDN, so the version is PINNED and both files are integrity-checked: an unpinned
+// '@rdkit/rdkit/dist/…' silently changes under us (Dora's old path now answers 404). The script is
+// loaded with an SRI tag; the wasm is fetched here with its own hash and handed to the module, so a
+// tampered or truncated file fails loudly instead of running. unpkg first, jsDelivr as the fallback —
+// the same bytes on both (hashes verified 2026-10-06).
+var RDKIT_VERSION = '2026.9.1';
+var RDKIT_SRI = { js: 'sha384-gBdna7fxxnpz64Sewln4eBm8+sAiS6ur6q7X0xEum//b7MzSjJGK3ENuAmuRL5Y3',
+                  wasm: 'sha384-o1WTb3ojy+rYWbWbFHMcvH3BDxTKFBRJoH2UQ5Y2GNCDxwp13z33o8ZNtWOBGBxL' };
+function loadRDKitPinned() {
+  if (window._rdkitPromise) return window._rdkitPromise;
+  var bases = ['https://unpkg.com/@rdkit/rdkit@' + RDKIT_VERSION + '/dist/',
+               'https://cdn.jsdelivr.net/npm/@rdkit/rdkit@' + RDKIT_VERSION + '/dist/'];
+  window._rdkitPromise = (async function () {
+    var lastErr = null;
+    for (var i = 0; i < bases.length; i++) {
+      var base = bases[i], tag = null;
+      try {
+        if (!window.initRDKitModule) {
+          await new Promise(function (res, rej) {
+            tag = document.createElement('script');
+            tag.src = base + 'RDKit_minimal.js'; tag.integrity = RDKIT_SRI.js; tag.crossOrigin = 'anonymous';
+            tag.onload = res; tag.onerror = function () { rej(new Error('script not loaded')); };
+            document.head.appendChild(tag);
+          });
+        }
+        var r = await fetch(base + 'RDKit_minimal.wasm', { integrity: RDKIT_SRI.wasm });
+        if (!r.ok) throw new Error('wasm ' + r.status);
+        return await window.initRDKitModule({ wasmBinary: await r.arrayBuffer() });
+      } catch (e) {
+        lastErr = e;
+        if (tag && tag.parentNode) tag.parentNode.removeChild(tag);
+      }
+    }
+    window._rdkitPromise = null;               // a later attempt may succeed (network came back)
+    throw lastErr || new Error('RDKit unreachable');
+  })();
+  return window._rdkitPromise;
+}
+// ═══ RDKIT LOADER — END ═══
+
 // ===== SMILES PROCESSING =====
-// NOT offline: RDKit is fetched from unpkg below. This comment used to claim the opposite,
+// NOT offline: RDKit is fetched from a CDN (pinned, integrity-checked) below. This comment used to claim the opposite,
 // which is the sort of thing you only find out at the bench with no wifi. SheetJS and
 // Chart.js ARE embedded; structure rendering is the one thing here that needs a network.
 async function processSmilesWithRDKit(file) {
@@ -7004,17 +7045,9 @@ async function processSmilesWithRDKit(file) {
 
   // ── Initialise RDKit (CDN, lazy) ─────────────────────────────────────
   if (!window._rdkit) {
-    log('Loading RDKit from CDN…', 'info');
+    log('Loading RDKit '+RDKIT_VERSION+' from CDN…', 'info');
     try {
-      if (!window.initRDKitModule) {
-        await new Promise((res, rej) => {
-          const s = document.createElement('script');
-          s.src = 'https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js';
-          s.onload = res; s.onerror = rej;
-          document.head.appendChild(s);
-        });
-      }
-      window._rdkit = await window.initRDKitModule();
+      window._rdkit = await loadRDKitPinned();
       log('RDKit ready ✓', 'ok');
     } catch(e) {
       window._rdkit = null;
@@ -7060,6 +7093,7 @@ async function processSmilesWithRDKit(file) {
 
       const r1=v=>Math.round((+v)*10)/10;
       const r2=v=>Math.round((+v)*100)/100;
+      const _dnum=(v,f)=>(v==null||!isFinite(+v))?null:f(+v);
       // pKa of most basic nitrogen (SMARTS heuristic) — reuse same mol, no re-parse
       let pKaBasicN=null;
       const _pkaPats=[
@@ -7089,13 +7123,15 @@ async function processSmilesWithRDKit(file) {
         // RDKit's names are lower-case `tpsa` and `amw`/`exactmw`. TPSA was read as p.TPSA, which
         // does not exist, so every compound's TPSA was 0. MW is the average weight — the one a
         // stock is weighed out with — not the monoisotopic mass.
-        MW:       r1(p.amw ?? p.exactmw ?? 0),
-        logP:     r2(p.CrippenClogP ?? 0),
-        HBA:      +(p.lipinskiHBA   ?? p.NumHBA   ?? 0),
-        HBD:      +(p.lipinskiHBD   ?? p.NumHBD   ?? 0),
-        TPSA:     r1(p.tpsa ?? p.TPSA ?? 0),
-        RotBonds: +(p.NumRotatableBonds ?? 0),
-        ArRings:  +(p.NumAromaticRings  ?? 0),
+        // A descriptor RDKit did not return is MISSING (null), never 0: `?? 0` turned "not computed" into
+        // "zero heavy-atom weight / zero TPSA", which then passed every property filter downstream.
+        MW:       _dnum(p.amw ?? p.exactmw, r1),
+        logP:     _dnum(p.CrippenClogP, r2),
+        HBA:      _dnum(p.lipinskiHBA ?? p.NumHBA, v=>v),
+        HBD:      _dnum(p.lipinskiHBD ?? p.NumHBD, v=>v),
+        TPSA:     _dnum(p.tpsa, r1),
+        RotBonds: _dnum(p.NumRotatableBonds, v=>v),
+        ArRings:  _dnum(p.NumAromaticRings, v=>v),
         pKaBasicN: pKaBasicN!=null?Math.round(pKaBasicN*10)/10:null,
         _extra: _extraCols,
       };
@@ -7202,7 +7238,8 @@ function renderProperties(results, cdata) {
 
   const propCols = ['MW','logP','HBA','HBD','TPSA','RotBonds','ArRings'];
   const propLabels = {'MW':'MW','logP':'logP','HBA':'HBA','HBD':'HBD','TPSA':'TPSA','RotBonds':'RotBonds','ArRings':'ArRings'};
-  const ro5Check = { MW: v=>v>=500, logP: v=>v>=5, HBA: v=>v>10, HBD: v=>v>5 };
+  // Lipinski's four limits are strict (> 500, > 5, > 10, > 5): a compound AT 500 Da / logP 5 passes.
+  const ro5Check = { MW: v=>v>500, logP: v=>v>5, HBA: v=>v>10, HBD: v=>v>5 };
 
   // Build per-assay-type affinity info
   const _isMultiProp = !!(window._lastAnalysisParams?.multiAssay);
