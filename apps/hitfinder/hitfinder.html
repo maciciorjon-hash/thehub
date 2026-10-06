@@ -266,7 +266,6 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 @keyframes fnGrow{from{transform:scaleX(0);}}
 .fn-n{font-family:var(--mono);font-size:var(--fs-2);color:var(--text2);white-space:nowrap;}
 .fn-n b{color:var(--text);font-weight:600;}
-.fn-end{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 8px 0;}
 .hits-bar{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;margin-bottom:10px;}
 .hits-bar .grow{flex:1 1 180px;min-width:150px;}
 .tchip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:var(--r-full);border:1px solid var(--border2);background:var(--surface);font-size:var(--fs-3);font-weight:600;cursor:pointer;color:var(--text);font-family:inherit;transition:background var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
@@ -360,8 +359,6 @@ textarea.note-in:focus{outline:none;border-color:var(--accent);}
 .pl svg.plot .mk{cursor:pointer;transition:opacity var(--dur-1) var(--ease);} .pl svg.plot .mk:hover{opacity:.8;}
 .pl svg.plot .brush{fill:var(--accent);fill-opacity:.12;stroke:var(--accent);stroke-width:1;stroke-dasharray:3 3;pointer-events:none;}
 .pl svg.plot .selr{fill:none;stroke:var(--accent);stroke-width:2;pointer-events:none;}
-.pl svg.plot .mk-in{animation:mkIn var(--dur-3) var(--ease-out) backwards;transform-box:fill-box;transform-origin:center;}
-@keyframes mkIn{from{opacity:0;transform:scale(.4);}}
 .pl .tbl-wrap{max-height:360px;overflow:auto;}
 .pl-leg{display:flex;gap:6px 14px;flex-wrap:wrap;margin:6px 2px 2px;font-size:var(--fs-2);color:var(--text2);}
 .pl-leg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:-1px;background:var(--c);}
@@ -419,7 +416,7 @@ textarea.note-in:focus{outline:none;border-color:var(--accent);}
 <body>
 
 <header>
-  <div class="logo ic-tile" style="--hue:#8a9440"><svg class="ic mo-hitfinder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path d="M3.5 6h17L14 12.6v4l-4 1.9v-5.9z"/><circle cx="7.2" cy="2.9" r=".95" fill="currentColor" stroke="none" opacity=".45"/><circle cx="12" cy="2.1" r=".95" fill="currentColor" stroke="none" opacity=".45"/><circle cx="16.8" cy="3" r=".95" fill="currentColor" stroke="none" opacity=".45"/><circle cx="12" cy="21.2" r="1.6" class="ac m1" style="fill:var(--ic-ac,currentColor)" stroke="none"/></svg></div>
+  <div class="logo ic-tile" style="--hue:#8a9440"><svg class="ic mo-hitfinder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><circle cx="12" cy="12" r="8.6"/><path d="M12 1.8v5.2M12 17v5.2M1.8 12H7M17 12h5.2"/><circle cx="9.1" cy="12" r=".7" fill="currentColor" stroke="none" opacity=".45"/><circle cx="14.9" cy="12" r=".7" fill="currentColor" stroke="none" opacity=".45"/><circle cx="12" cy="12" r="1.9" class="ac m1" style="fill:var(--ic-ac,currentColor)" stroke="none"/></svg></div>
   <div><div class="app-name">Hit Finder</div><div class="app-sub">Triage Echo screens into hits</div></div>
   <div class="hdr-spacer"></div>
   <span class="hdr-chip" id="hf-status" hidden></span>
@@ -1380,6 +1377,9 @@ function hfEvalOne(c, ck) {
 }
 const TIER_ORDER = { hit: 0, borderline: 1, unverified: 2, rejected: 3 };
 const TIER_NAME = { hit: 'Hit', borderline: 'Borderline', unverified: 'Unverified', rejected: 'Rejected' };
+// the class is spelled out here, in full, so the stylesheet audit (and a search for “t-hit”) can find who uses it
+const HF_TIER_CLS = { hit: 't-hit', borderline: 't-borderline', unverified: 't-unverified', rejected: 't-rejected' };
+const hfTierCls = t => HF_TIER_CLS[t] || '';
 function hfNearTol(c) { const M = METRICS[c.metric]; return M.scale === 'log' ? 0.3 : c.metric === 'effect' || c.metric === 'deg_at' || c.metric === 'cytotox' ? 5 : c.metric === 'r2' ? 0.05 : 0.5; }
 function hfVerdictOf(ck, rows) {
   const items = rows.map(c => hfEvalOne(c, ck)), gates = items.filter(i => i.c.kind === 'gate' && i.status !== 'skip');
@@ -1620,12 +1620,35 @@ function hfMapGo() {
   window.addEventListener('dragleave', e => { if (!has(e)) return; depth = Math.max(0, depth - 1); if (!depth) veil().classList.remove('on'); });
   window.addEventListener('drop', async e => { if (!has(e)) return; e.preventDefault(); depth = 0; veil().classList.remove('on'); const f = [...e.dataTransfer.files]; if (f.length) hfToast((await hfAddFiles(f)).join(' · '), ''); });
 })();
-// Echo's “Open in Hit Finder”: the Hub hands over which analysis, and this answers so the shell stops asking.
+// Echo's “Send to Hit Finder”: the Hub opens this app and hands over which analysis — or, where Echo cannot keep History on this
+// browser, the Screen table itself — and the screens are loaded and the verdicts read without another click.
+async function hfReceiveFromEcho(c) {
+  let r = { loaded: [], skipped: [], missing: [], replaced: [] };
+  if (c.echoRun) r = await hfEchoLoad([c.echoRun]);
+  if (!r.loaded.length && !r.skipped.length && Array.isArray(c.table) && c.table.length > 1) {
+    const recs = hfParseScreenTable(c.table), label = String(c.name || 'Echo analysis');
+    if (recs.length) {
+      const keys = new Set(recs.map(hfScreenKey)), had = [...keys].filter(k => HF.screens.has(k));
+      had.forEach(k => hfRemoveScreen(k, true));            // the same analysis sent again is a newer version of it, not a replicate
+      hfAddRecords(recs, 'Echo · ' + label + ' (sent)'); r.loaded.push(label); if (had.length) r.replaced.push(label);
+      r.missing = [];
+    }
+  }
+  hfAfterIngest();
+  if (r.loaded.length) {
+    // The hits are what was sent for. They open straight away whenever a primary screen was found; if the slots were only guessed
+    // the Hits tab says so and one click settles it, so nothing is trusted silently. With no primary screen there is nothing to read yet.
+    const prim = [...HF.arms.values()].some(a => a.slot === 'primary');
+    hfTab(prim ? 'hits' : 'screens');
+    hfToast((r.replaced.length ? 'Updated ' : 'Received ') + r.loaded.join(', ') + (prim ? ' — ' + (HF.counts ? HF.counts.hit : 0) + ' hits of ' + (HF.uni || []).length + (hfSlotsGuessed() ? ' · check the slots' : '') : ' — say which screen is the primary one'), '');
+  } else if (r.skipped.length) { hfTab('hits'); hfToast(r.skipped.join(', ') + ' is already loaded', ''); }
+  else { hfTab('screens'); hfToast('Echo could not hand this analysis over' + (r.missing.length ? ' (' + r.missing.join(', ') + ')' : '') + ' — pick it under Echo analyses', 'warn'); }
+}
 window.addEventListener('message', async e => {
   if (e.source !== window.parent || !e.data || e.data.type !== 'dhub:context') return;
   try { e.source.postMessage({ type: 'dhub:ack', requestId: e.data.requestId, app: 'hitfinder' }, '*'); } catch (_) {}
   const c = e.data.context || {};
-  if (c.source === 'echo' && c.echoRun) { const r = await hfEchoLoad([c.echoRun]); hfAfterIngest(); hfTab('screens'); hfToast(r.loaded.length ? 'Added ' + r.loaded.join(', ') : r.skipped.length ? r.skipped.join(', ') + ' is already loaded' : 'Open Echo and run the analysis first', r.loaded.length || r.skipped.length ? '' : 'warn'); }
+  if (c.source === 'echo') { try { await hfReceiveFromEcho(c); } catch (err) { hfToast('Could not read what Echo sent: ' + (err && err.message || err), 'warn'); } }
 });
 
 /* ───── §5b the Criteria tab ───── */
@@ -1907,12 +1930,17 @@ function hfHitsCols() {
   const n = hfContrastCols().length; HF.hits.cc = n;
   return '34px minmax(120px,1.2fr) 104px minmax(110px,.9fr) minmax(80px,.8fr) 64px 84px ' + '78px '.repeat(n) + 'minmax(170px,2.2fr)';
 }
+// Slots that were guessed rather than chosen: said wherever the verdicts are read, not only where they are set.
+const hfSlotsGuessed = () => [...HF.arms.values()].some(a => a.guessed && a.slot !== 'ignore');
+function hfSlotNoteHtml() {
+  return hfSlotsGuessed() ? '<div class="note"><span><b>The slots were guessed</b> from each screen’s role and size, so a hit here is only as right as that guess.</span><span style="display:flex;gap:8px"><button class="btn" onclick="hfTab(\'screens\')">Check them</button><button class="btn" onclick="hfConfirmSlots()">Looks right</button></span></div>' : '';
+}
 function hfRenderHits() {
   const host = $('#pane-hits');
   if (!HF.screens.size || !HF.verdicts) { host.innerHTML = '<div class="card">' + hfEmpty(HF_ICON.list, 'Load a screen first', 'Hits are decided on the screens you load. Start from Screens.', '<button class="btn" onclick="hfTab(\'screens\')">Go to Screens</button>') + '</div>'; return; }
   const H = HF.hits, k = HF.counts;
   const cc = hfContrastCols();
-  host.innerHTML = '<div class="sec-hd"><h2>Hits</h2><span class="sec-sub"><b>' + k.hit + '</b> of ' + HF.uni.length + ' compounds pass every gate · ' + esc(HF.crit.name || 'custom criteria') + '</span></div>'
+  host.innerHTML = hfSlotNoteHtml() + '<div class="sec-hd"><h2>Hits</h2><span class="sec-sub"><b>' + k.hit + '</b> of ' + HF.uni.length + ' compounds pass every gate · ' + esc(HF.crit.name || 'custom criteria') + '</span></div>'
     + '<div class="card" style="padding:12px 10px 10px">' + hfFunnelHtml() + '</div>'
     + '<div class="hits-bar" style="margin-top:16px"><div class="tchips" style="display:flex;gap:8px;flex-wrap:wrap">' + hfTierChips() + (HF.selSet.size ? '<button class="tchip" style="--tc:var(--accent)" aria-pressed="' + !!H.useSel + '" onclick="hfToggleSel()" title="Only the compounds picked on a plot">Selection <b>' + HF.selSet.size + '</b></button>' : '') + '</div>'
     + '<input class="inp grow" id="hits-q" type="search" placeholder="Find a compound  ( / )" value="' + esc(H.q) + '" oninput="hfHitsQ(this.value)" aria-label="Find a compound">'

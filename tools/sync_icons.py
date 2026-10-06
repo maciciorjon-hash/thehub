@@ -98,12 +98,12 @@ APP_ICONS = {
                 '<circle cx="17.5" cy="7.6" r="1.05" fill="currentColor" stroke="none"/>'
                 '<path d="M13.6 13.4v5" stroke-dasharray="1.1 1.9" '+DIM+'/>'
                 '<circle cx="13.6" cy="11.2" r="1.75" '+acf('m1')+'/>'),
-    # a funnel over a row of compounds: most of them stay out, the one that passes drops through
-    'hitfinder': ('<path d="M3.5 6h17L14 12.6v4l-4 1.9v-5.9z"/>'
-                  '<circle cx="7.2" cy="2.9" r=".95" fill="currentColor" stroke="none" '+DIM+'/>'
-                  '<circle cx="12" cy="2.1" r=".95" fill="currentColor" stroke="none" '+DIM+'/>'
-                  '<circle cx="16.8" cy="3" r=".95" fill="currentColor" stroke="none" '+DIM+'/>'
-                  '<circle cx="12" cy="21.2" r="1.6" '+acf('m1')+'/>'),
+    # a sniper scope: the reticle, four hairlines that stop short of the centre, and the one compound it has locked on
+    'hitfinder': ('<circle cx="12" cy="12" r="8.6"/>'
+                  '<path d="M12 1.8v5.2M12 17v5.2M1.8 12H7M17 12h5.2"/>'
+                  '<circle cx="9.1" cy="12" r=".7" fill="currentColor" stroke="none" '+DIM+'/>'
+                  '<circle cx="14.9" cy="12" r=".7" fill="currentColor" stroke="none" '+DIM+'/>'
+                  '<circle cx="12" cy="12" r="1.9" '+acf('m1')+'/>'),
     # a cryovial, and the cold that keeps it
     'cryo': ('<path d="M5.8 5.8V4.2a1.4 1.4 0 0 1 1.4-1.4h5.6a1.4 1.4 0 0 1 1.4 1.4v1.6z"/>'
              '<path d="M8.1 2.8v3M10 2.8v3M11.9 2.8v3" '+DIM+'/>'

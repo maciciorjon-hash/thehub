@@ -159,6 +159,12 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .rv-m{flex:1;}
 .rv-fix{flex:none;border:1px solid var(--border2);background:var(--surface);color:var(--accent);border-radius:var(--r-1);padding:2px 9px;font:inherit;font-size:var(--fs-1);cursor:pointer;white-space:nowrap;}
 .rv-fix:hover{background:var(--accent-dim);}
+.hf-send{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 13px;border-radius:5px;border:1px solid var(--accent-soft);background:var(--accent-dim);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease),transform var(--dur-1) var(--ease);}
+.hf-send:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
+.hf-send:active{transform:scale(.97);}
+.hf-send:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.hf-send svg{transition:transform var(--dur-2) var(--ease-out);}
+.hf-send:hover svg{transform:rotate(90deg);}
 .rv-tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-2);}
 .rv-t2{width:100%;border-collapse:collapse;font-size:var(--fs-2);}
 .rv-t2 th{padding:6px 9px;text-align:left;font-weight:600;color:var(--text3);font-size:var(--fs-1);white-space:nowrap;border-bottom:1px solid var(--border2);}
@@ -4571,13 +4577,28 @@ function downloadScreenCsv() {
   downloadBlob({ name: 'Screen_' + (window._lastAssayId || 'output') + '.csv', bytes: screenCsvBytes(), type: 'text/csv' });
 }
 function _hitFinderReady() { try { return window.parent !== window && !!(window.parent.APP_INFO && window.parent.APP_INFO.hitfinder); } catch (e) { return false; } }
-function openInHitFinder() {
-  try { window.parent.openApp('hitfinder', undefined, undefined, { source: 'echo', echoRun: window._analysisId || null }); } catch (e) { echoToast('Open Hit Finder from the Hub to triage this screen.', 'warn'); }
+// "Send to Hit Finder". The analysis is written to History first (that save is debounced 350 ms, which would lose the race
+// with the Hub's switch of app), then Hit Finder opens by itself with it loaded. Where History cannot be kept, the Screen
+// table travels in the message instead, so the send still works.
+let _hfSending = false;
+async function openInHitFinder() {
+  if (!(typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length)) { echoToast('Run an analysis first, then send it to Hit Finder.', 'warn'); return; }
+  if (!_hitFinderReady()) { echoToast('Hit Finder opens from the Hub.', 'warn'); return; }
+  if (_hfSending) return; _hfSending = true;
+  try {
+    clearTimeout(_hxT);
+    try { await _hxCommit(); } catch (e) { console.warn('History save:', e); }
+    const aid = window._analysisId || null, kept = !!(aid && !_hxBroken && _hx && _hx.runs && _hx.runs[aid]);
+    let table = null; if (!kept) { try { table = _screenAoa(); } catch (e) { table = null; } }
+    const name = window._lastAssayId || document.getElementById('p-assay')?.value || 'Echo analysis';
+    window.parent.openApp('hitfinder', undefined, undefined, { source: 'echo', echoRun: kept ? aid : null, name, table });
+  } catch (e) { echoToast('Could not open Hit Finder from here. Open it from the Hub and pick this analysis under Echo.', 'warn'); }
+  finally { _hfSending = false; }
 }
 function _screenBtns(st, hov) {
-  const ico = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/><path d="M8.5 11h5"/></svg>';
-  return '<button style="' + st + '" ' + hov + ' onclick="downloadScreenCsv()" title="One row per compound and assay with everything Hit Finder reads: potency qualifier, hook, coverage, replicates, normalisation, and the compounds that could not be fitted">' + ico + ' Screen CSV</button>'
-    + (_hitFinderReady() ? '<button style="' + st + '" ' + hov + ' onclick="openInHitFinder()" title="Triage this screen in Hit Finder">' + ico + ' Hit Finder</button>' : '');
+  const ico = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><circle cx="12" cy="12" r="8.6"/><path d="M12 1.8v5.2M12 17v5.2M1.8 12H7M17 12h5.2"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg>';
+  return '<button style="' + st + '" ' + hov + ' onclick="downloadScreenCsv()" title="One row per compound and assay with everything Hit Finder reads: potency qualifier, hook, coverage, replicates, normalisation, and the compounds that could not be fitted">Screen CSV</button>'
+    + (_hitFinderReady() ? '<button class="hf-send" onclick="openInHitFinder()" title="Open Hit Finder with this analysis already loaded: hits, hooks and rejections against the criteria you set there">' + ico + ' Send to Hit Finder</button>' : '');
 }
 
 function _csvColMap(t){

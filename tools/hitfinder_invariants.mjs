@@ -33,9 +33,12 @@
 //       nothing
 //   H16 the example is real   The example screen has 72 compounds in 5 screens, every record is schema echo-screen/1 and went through the engine
 //                             (hook states, qualifiers, the compounds that could not be fitted), and a compound written three ways is one compound.
+//   H20 send means sent      "Send to Hit Finder" in Echo opens Hit Finder by itself with the analysis loaded (from History, saved first, so pressing it the instant a
+//                             run finishes works), and where History cannot be kept the Screen table travels instead; sending twice never doubles the screens;
+//                             the button is there only inside the Hub, and a guessed slot is said where the hits are read.
 //   H17 the tabs are a tablist One selected tab, arrows / Home / End move and select, the underline sits under the active tab.
 //
-// Usage (repo root):  node tools/hitfinder_invariants.mjs [--only=H0,H16] [--file=path/to/hitfinder.html] [--verbose]
+// Usage (repo root):  node tools/hitfinder_invariants.mjs [--only=H0,H16] [--file=path/to/hitfinder.html] [--echo=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -58,10 +61,24 @@ function check(inv, name, ok, detail) {
 async function guard(inv, fn) { try { await fn(); } catch (e) { out.push({ inv, case: 'harness', msg: 'threw: ' + String(e && e.message || e).split('\n')[0] }); } }
 const block = (src, name) => { const i = src.indexOf('// ═══ ' + name + ' — BEGIN'), j = src.indexOf('// ═══ ' + name + ' — END'); return i < 0 || j < 0 ? null : src.slice(i, src.indexOf('\n', j)); };
 
+// A stand-in for the Hub: Echo is already in its frame, Hit Finder is loaded the first time something opens it, and the message is repeated until it is acknowledged (as the shell's _hubQueueMessage does).
+const HOST_HTML = `<!doctype html><html><body style="margin:0"><iframe id="frame-echo" src="/apps/echo/echo.html" style="width:1300px;height:820px;border:0"></iframe><iframe id="frame-hitfinder" style="width:1300px;height:820px;border:0"></iframe><script>
+var APP_INFO = { hitfinder: { name: 'Hit Finder' } }; window.__opens = []; var acked = {};
+window.addEventListener('message', function (e) { if (e.data && e.data.type === 'dhub:ack') acked[e.data.requestId] = true; });
+function openApp(id, tab, item, context) {
+  window.__opens.push({ id: id, source: context && context.source, echoRun: context && context.echoRun, hasTable: !!(context && context.table), tableRows: context && context.table ? context.table.length : 0, name: context && context.name });
+  var f = document.getElementById('frame-' + id); if (!f.getAttribute('src')) f.src = '/__hf.html';
+  var msg = { type: 'dhub:context', version: 1, source: (context && context.source) || 'hub', target: id, action: 'open', context: context, requestId: 't' + Date.now() + Math.random() };
+  var n = 0; (function send() { if (acked[msg.requestId] || n >= 60) return; try { f.contentWindow.postMessage(msg, '*'); } catch (x) {} n++; setTimeout(send, 250); })();
+}
+<\/script></body></html>`;
+
 // Both apps are served from one origin, so Hit Finder reads the IndexedDB Echo has just written (file:// pages do not share it reliably).
 const server = http.createServer((req, res) => {
-  const u = decodeURIComponent(req.url.split('?')[0]), f = u === '/__hf.html' ? FILE : path.join(ROOT, u);
-  if (!f.startsWith(ROOT) && f !== FILE) { res.statusCode = 403; return res.end(); }
+  const u = decodeURIComponent(req.url.split('?')[0]);
+  if (u === '/__host.html') { res.setHeader('content-type', 'text/html; charset=utf-8'); return res.end(HOST_HTML); }
+  const f = u === '/__hf.html' ? FILE : (u === '/apps/echo/echo.html' && args.echo) ? path.resolve(String(args.echo)) : path.join(ROOT, u);
+  if (!f.startsWith(ROOT) && f !== FILE && !(args.echo && f === path.resolve(String(args.echo)))) { res.statusCode = 403; return res.end(); }
   fs.readFile(f, (e, b) => { if (e) { res.statusCode = 404; return res.end(); } res.setHeader('content-type', f.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream'); res.end(b); });
 });
 await new Promise(r => server.listen(0, '127.0.0.1', r));
@@ -532,6 +549,70 @@ if (run('H17')) await guard('H17', async () => {
   const vv = r.vis, last = vv[vv.length - 1];
   check('H17', 'ArrowRight / End / Home / ArrowLeft move and select (over the tabs that exist)', JSON.stringify(r.right) === JSON.stringify([vv[1]]) && JSON.stringify(r.end) === JSON.stringify([last]) && JSON.stringify(r.home) === JSON.stringify([vv[0]]) && JSON.stringify(r.left) === JSON.stringify([last]), r);
   check('H17', 'the underline sits under the active tab; exactly one pane shows', r.ink.dx < 1.5 && r.ink.dw < 1.5 && JSON.stringify(r.panes) === '["pane-hits"]', r);
+});
+
+if (run('H20')) await guard('H20', async () => {
+  const sendRun = async (broken) => {
+    const hp = await ctx.newPage(); hp.on('pageerror', e => pageErrs.push('host: ' + String(e && e.message || e)));
+    await hp.goto(BASE + '/__host.html'); await hp.waitForTimeout(1800);
+    const ef = hp.frames().find(f => /echo\.html/.test(f.url()));
+    await ef.evaluate((b) => { document.documentElement.setAttribute('data-theme', 'light'); if (b) _hxBroken = new Error('no storage'); loadTestData(); }, broken);
+    await ef.waitForTimeout(800);
+    await ef.evaluate(() => { document.getElementById('p-assay').value = 'H20-SEND'; document.getElementById('p-role').value = 'degradation'; document.getElementById('p-target').value = 'BRD4'; runPipeline(); });
+    await ef.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 });
+    return { hp, ef };
+  };
+  const hfOf = hp => hp.frames().find(f => /__hf\.html/.test(f.url()));
+  // ① pressed the moment the run finishes: History has not been written yet (its save is debounced), and the send has to cope
+  const { hp, ef } = await sendRun(false);
+  const btn = await ef.evaluate(() => { const b = document.querySelector('.hf-send'); return b ? { text: b.textContent.trim(), svg: !!b.querySelector('svg circle') } : null; });
+  check('H20', 'inside the Hub the results carry a "Send to Hit Finder" button with the scope icon', !!btn && /Send to Hit Finder/.test(btn.text) && btn.svg, btn);
+  const nEcho = await ef.evaluate(() => _screenRecords().length);
+  await ef.evaluate(() => document.querySelector('.hf-send').click());
+  await hp.waitForFunction(() => { const f = document.getElementById('frame-hitfinder'); try { return !!(f && f.contentWindow && f.contentWindow.eval('typeof HF !== "undefined" && HF.screens.size > 0')); } catch (e) { return false; } }, null, { timeout: 30000 });
+  const hf = hfOf(hp); await hf.waitForTimeout(400);
+  const a = await hf.evaluate(() => ({ recs: HF.recs.length, srcs: [...HF.screens.values()].map(s => s.source), tab: HF.ui.tab, active: (document.querySelector('.tab.active') || {}).dataset && document.querySelector('.tab.active').dataset.tab, pane: [...document.querySelectorAll('.tabpane.active')].map(p => p.id), toast: (document.querySelector('.toast') || {}).textContent, hits: HF.counts && HF.counts.hit, uni: (HF.uni || []).length }));
+  const opens = await hp.evaluate(() => window.__opens);
+  check('H20', 'it opened Hit Finder by itself, once, naming the analysis', opens.length === 1 && opens[0].id === 'hitfinder' && opens[0].source === 'echo' && opens[0].name === 'H20-SEND', opens);
+  check('H20', 'the analysis arrived through History (so it carries its version), with every curve Echo has', a.srcs.length > 0 && a.srcs.every(x => /^Echo History/.test(x)) && a.recs === nEcho && nEcho > 0, { nEcho, a });
+  check('H20', 'it lands on the hits (a primary screen was found), and says what arrived', a.tab === 'hits' && a.active === a.tab && a.pane.length === 1 && /Received H20-SEND/.test(a.toast || ''), a);
+  check('H20', 'the verdicts were read without another click', a.uni > 0 && a.hits != null, a);
+  // ② the same analysis sent again is the same analysis
+  await ef.evaluate(() => openInHitFinder()); await hf.waitForTimeout(900);
+  const b = await hf.evaluate(() => ({ screens: HF.screens.size, recs: HF.recs.length, toast: (document.querySelector('.toast') || {}).textContent }));
+  check('H20', 'sending it again does not double the screens', b.screens === (await hf.evaluate(() => new Set([...HF.screens.values()].map(s => s.key)).size)) && b.recs === a.recs && /already loaded/.test(b.toast || ''), b);
+  // ③ a guessed slot is said where the hits are read, and one click settles it
+  await hf.evaluate(() => hfTab('hits')); await hf.waitForTimeout(400);
+  const n1 = await hf.evaluate(() => ({ guessed: hfSlotsGuessed(), note: !![...document.querySelectorAll('#pane-hits .note')].find(n => /guessed/.test(n.textContent)) }));
+  check('H20', 'while slots are guessed, the Hits tab says so', n1.guessed === n1.note && n1.guessed, n1);
+  await hf.evaluate(() => hfConfirmSlots()); await hf.waitForTimeout(300);
+  const n2 = await hf.evaluate(() => ({ guessed: hfSlotsGuessed(), note: !![...document.querySelectorAll('#pane-hits .note')].find(n => /guessed/.test(n.textContent)) }));
+  check('H20', 'and confirming them takes the note away', !n2.guessed && !n2.note, n2);
+  // a screen with one group has nothing to confirm: it goes straight to the hits, from wherever you were
+  const one = await ef.evaluate(() => { const a = _screenAoa(), gi = a[0].indexOf('Group'), g = a[1][gi]; return [a[0]].concat(a.slice(1).filter(r => r[gi] === g)); });
+  await hf.evaluate(() => { HF.recs.length = 0; HF.screens.clear(); HF.arms.clear(); hfAfterIngest(); hfTab('plots'); });
+  await hf.evaluate(t => hfReceiveFromEcho({ source: 'echo', table: t, name: 'ONE-GROUP' }), one); await hf.waitForTimeout(500);
+  const e1 = await hf.evaluate(() => ({ tab: HF.ui.tab, arms: HF.arms.size, uni: (HF.uni || []).length }));
+  check('H20', 'one group needs no confirming: it opens on the hits, from whichever tab you were on', e1.arms === 1 && e1.tab === 'hits' && e1.uni > 0, e1);
+  await hp.close();
+  // ④ History cannot be kept in this browser: the table goes with the message
+  const r2 = await sendRun(true);
+  const nEcho2 = await r2.ef.evaluate(() => _screenRecords().length);
+  await r2.ef.evaluate(() => openInHitFinder());
+  await r2.hp.waitForFunction(() => { const f = document.getElementById('frame-hitfinder'); try { return !!(f && f.contentWindow && f.contentWindow.eval('typeof HF !== "undefined" && HF.screens.size > 0')); } catch (e) { return false; } }, null, { timeout: 30000 });
+  const hf2 = hfOf(r2.hp); await hf2.waitForTimeout(400);
+  const c = await hf2.evaluate(() => ({ recs: HF.recs.length, srcs: [...HF.screens.values()].map(s => s.source), screens: HF.screens.size }));
+  const o2 = await r2.hp.evaluate(() => window.__opens);
+  check('H20', 'with no History the Screen table travels instead and arrives whole', o2[0].hasTable && o2[0].echoRun == null && c.recs === nEcho2 && c.srcs.every(x => /\(sent\)/.test(x)), { o2, c, nEcho2 });
+  await r2.ef.evaluate(() => openInHitFinder()); await hf2.waitForTimeout(900);
+  const d = await hf2.evaluate(() => ({ recs: HF.recs.length, screens: HF.screens.size, toast: (document.querySelector('.toast') || {}).textContent }));
+  check('H20', 'sent again, it replaces itself rather than adding a second copy', d.recs === c.recs && d.screens === c.screens && /Updated/.test(d.toast || ''), d);
+  await r2.hp.close();
+  // ⑤ outside the Hub there is nobody to send it to
+  const sp = await ctx.newPage(); await sp.goto(BASE + '/apps/echo/echo.html'); await sp.waitForTimeout(1500);
+  const solo = await sp.evaluate(() => ({ ready: _hitFinderReady(), html: _screenBtns('', '') }));
+  check('H20', 'standalone Echo offers Screen CSV and no Send button', !solo.ready && /Screen CSV/.test(solo.html) && !/hf-send/.test(solo.html), solo);
+  await sp.close();
 });
 
 await browser.close(); server.close();
