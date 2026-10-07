@@ -6863,20 +6863,23 @@ never as letters: `P1` is not inside `P12`. Rules that keep it from guessing:
   inside file names (`_plSpecific`); the sheet stage needs ≥ 3 characters and only looks for the barcode inside a cell.
 - One file reads one plate; the more specific (more words) match wins.
 
-**A paired plate is called after its file from there on** (`_applyPlateNames` renames the Echo rows and its failed
-transfers; the original is kept as `barcodeOrig`) — in the merge, the Plate tab, the raw CSV and the group rule, as it
-was when the two names agreed. So with decorated names the default group rule ("text before the first -") reads the
-decorated name; the Setup preview and the editable Group column in Review show it, and "My own table" fixes it.
+**The file name only identifies the plate; the plate keeps the Echo file's barcode as its name** (Jon's call, 2026-10-07:
+"the software can always resort to that"). `_applyPlateNames` files a paired file's readings under the Echo barcode
+(`readerRaw` wells get `barcode`/`barcodeKey` of the Echo plate) in the merge, the Plate tab, the raw CSV and the group
+rule — exactly as when the two names were equal, so "text before the first -" reads `BRD2-01` as `BRD2` however the file
+was named, and nothing downstream (groups, custom tables, History) learned about pairing. A file nothing paired keeps its
+own name. (A first version renamed the plate after its file; with decorated names that split the groups — `EDA2026_BRD2`,
+`brd2_02 (reread)` — which is what this replaced.) The Setup group preview and `rvSetGroup` name a paired file by the
+barcode the Review paired it with (`_plateNameOfFile`, from `window._rv`).
 
 **A picklist with no Destination Plate Barcode** (a plate that was never scanned) is read by its *Destination Plate
 Name* instead (`_parseEchoCSV`); a row with neither is skipped and counted, as before.
 
-Review: each plate row says how it was matched (*matched by name: the file name contains the plate barcode — the Echo
-file calls it …*), a plate with no file offers a **Read it from…** list of the loose files, and a choice made by hand
-has **Use automatic**. **Not done:** the choice is not saved in an `.echo.json` session or History; and
+Review: each plate row says which file it was read from and how it was found, a plate with no file offers a **Read it
+from…** list of the loose files on its error line, and a choice made by hand has **Use automatic**. **Not done:** the choice is not saved in an `.echo.json` session or History; and
 `tools/tourkit/apps/echo.js` (another session's tour text) still says the reader files must be named *exactly* like the
 barcode — true as advice, stricter than it now needs to be. `tools/echo_invariants.mjs` **E51** (resolver rules, a
-full run with six renamed files giving exactly the exact-name curves, the Review's manual choice, the barcode-less
+full run with six renamed files giving exactly the curves, groups and plate names of the exact ones, the Review's manual choice, the barcode-less
 picklist), each proven by putting seven bugs back.
 
 ## Echo Dose Response: a right-click is about a concentration (2026-10-07)

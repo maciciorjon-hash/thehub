@@ -2852,7 +2852,7 @@ const _PL_HOW = { manual: 'chosen by you', same: 'same name, spelled differently
 function _resolvePlates(plates, files, opt) {
   const assign = (opt && opt.assign) || {};
   const pairs = new Map(), byPlate = new Map(), ambiguous = [];
-  const take = (f, p, how) => { pairs.set(f.file, { key: p.key, name: p.name, how }); byPlate.set(p.key, { file: f.file, stem: f.stem, how }); };
+  const take = (f, p, how) => { pairs.set(f.file, { key: p.key, name: p.name, how }); byPlate.set(p.key, { file: f.file, stem: f.stem, name: p.name, how }); };
   const freeF = () => files.filter(f => !pairs.has(f.file)), freeP = (fuzzy) => plates.filter(p => !byPlate.has(p.key) && !(fuzzy && p.inter));
   // manual
   plates.forEach(p => { const fn = assign[p.key]; const f = fn && files.find(x => x.file === fn); if (f && !pairs.has(f.file)) take(f, p, 'manual'); });
@@ -2918,13 +2918,14 @@ function _echoPlates(echoData) {
   echoData.forEach(r => { if (!m.has(r.barcodeKey)) m.set(r.barcodeKey, { key: r.barcodeKey, name: r.barcode, inter: interRe.test(r.barcode) }); });
   return [...m.values()];
 }
-// From here on the plate is called what its FILE is called, in the merge, the Plate tab, the raw CSV and the
-// group rule — as it always was when the two names agreed.
-function _applyPlateNames(echoData, byPlate) {
-  const to = new Map(); byPlate.forEach((v, key) => { if (v.how !== 'exact') to.set(key, v.stem); });
+// The file name only IDENTIFIES the plate. From here on the plate is called what the Echo file calls it — in the
+// merge, the Plate tab, the raw CSV and the group rule — exactly as when the two names were the same, so
+// "text before the first -" still reads BRD2-01 as BRD2 however the file was named. A reader file's readings
+// are filed under the Echo barcode; a file nothing paired keeps its own name.
+function _applyPlateNames(readerRows, byPlate) {
+  const to = new Map(); byPlate.forEach(v => { if (v.how !== 'exact') to.set(v.stem.toLowerCase(), v.name); });
   if (!to.size) return 0;
-  const re = r => { const s = to.get(r.barcodeKey); if (s != null) { r.barcodeOrig = r.barcode; r.barcode = s; r.barcodeKey = s.toLowerCase(); } };
-  echoData.forEach(re); (echoData.failed || []).forEach(re);
+  readerRows.forEach(w => { const n = to.get(w.barcodeKey); if (n != null) { w.barcode = n; w.barcodeKey = n.toLowerCase(); } });
   return to.size;
 }
 const _GROUP_LABELS = { first: 'Text before the first “-”  (BRD2-01 → BRD2)', last: 'Text before the last “-”  (HEK-BRD4-01 → HEK-BRD4)', whole: 'The whole barcode  (each plate is its own group)', custom: 'My own table…' };
@@ -2933,9 +2934,11 @@ function onGroupModeChange() {
   if (t) t.style.display = m === 'custom' ? '' : 'none';
   updateGroupPreview();
 }
+// The name a reader file's plate has in the run: the Echo barcode the Review paired it with, else its own name.
+function _plateNameOfFile(n) { const p = window._rv && window._rv.plates && window._rv.plates.find(x => x.file === n); return p ? p.plate : n.replace(/\.[^.]+$/, ''); }
 function updateGroupPreview() {
   const el = document.getElementById('p-group-preview'); if (!el) return;
-  const names = Object.keys(readerFiles).map(n => n.replace(/\.[^.]+$/, ''));
+  const names = Object.keys(readerFiles).map(_plateNameOfFile);
   if (!names.length) { el.textContent = 'Shown here once the reader files are loaded.'; return; }
   const g = _groupCfg(), by = {};
   names.forEach(n => { const k = _groupOf(n, g.mode, g.map); (by[k] = by[k] || []).push(n); });
@@ -3664,8 +3667,8 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   // Echo file's barcode letter for letter (see _resolvePlates). The Echo rows take the file's name from here on.
   { const R = await _resolvePlatesAsync(_echoPlates(echoData), _readerOk, window._plateAssign, async f => _sheetTexts(_readerBuf[f.file]));
     window._plateMap = [...R.pairs].map(([file, v]) => ({ file, plate: v.name, how: v.how }));
-    _applyPlateNames(echoData, R.byPlate);
-    R.pairs.forEach((v, file) => { if (v.how !== 'exact') log('  ' + file + ' → plate “' + v.name + '” (' + _PL_HOW[v.how] + '); the plate is called “' + file.replace(/\.[^.]+$/, '') + '” from here on', 'ok'); });
+    _applyPlateNames(readerRaw, R.byPlate);
+    R.pairs.forEach((v, file) => { if (v.how !== 'exact') log('  ' + file + ' → plate “' + v.name + '” (' + _PL_HOW[v.how] + ')', 'ok'); });
     R.ambiguous.forEach(a => log('⚠ ' + (a.files.length > 1 ? 'Files ' + a.files.join(', ') + ' all look like' : '“' + a.files[0] + '” looks like') + ' plate' + (a.plates.length > 1 ? 's ' + a.plates.join(', ') : ' ' + a.plates[0]) + ' — not paired, because a guess would put one plate’s readings under another’s compounds. Choose the file for each plate in Setup › Review.', 'warn')); }
 
   // 3. Normalize
@@ -13875,9 +13878,9 @@ async function echoReview() {
   const pts = new Map();                 // group|compound → readings
   const doseSet = new Map();             // group|compound → Set(log10 conc)
   byBc.forEach((p, bk) => {
-    const pf = RES.byPlate.get(bk), r = pf ? rd[pf.stem.toLowerCase()] : null, shown = pf ? pf.stem : p.name;
-    const rec = { plate: shown, picklist: p.name, how: pf && pf.how !== 'exact' ? pf.how : null, key: bk, group: _groupOf(shown, g.mode, g.map), file: r ? r.file : null, dosed: new Set(p.rows.map(x => x.well)).size, compounds: new Set(p.rows.map(x => x.sampleId)).size, unread: 0, ctrlRead: null, ctrlN: ctrl.size, ctrlMean: null, ctrlCV: null, inter: !r && interRe.test(p.name), status: 'ok', notes: [] };
-    if (rec.how) { rec.notes.push((rec.how === 'manual' ? 'chosen by you' : 'matched by name') + ' · the Echo file calls it “' + p.name + '”'); if (rec.how === 'manual') add('info', 'Plate “' + p.name + '” is read from “' + r.file + '”, as you chose.', null, { undo: bk }); }
+    const pf = RES.byPlate.get(bk), r = pf ? rd[pf.stem.toLowerCase()] : null, shown = p.name;
+    const rec = { plate: shown, how: pf && pf.how !== 'exact' ? pf.how : null, key: bk, group: _groupOf(shown, g.mode, g.map), file: r ? r.file : null, dosed: new Set(p.rows.map(x => x.well)).size, compounds: new Set(p.rows.map(x => x.sampleId)).size, unread: 0, ctrlRead: null, ctrlN: ctrl.size, ctrlMean: null, ctrlCV: null, inter: !r && interRe.test(p.name), status: 'ok', notes: [] };
+    if (rec.how) { rec.notes.push((rec.how === 'manual' ? 'file chosen by you' : 'file found by name') + ' · read from “' + r.file + '”'); if (rec.how === 'manual') add('info', 'Plate “' + p.name + '” is read from “' + r.file + '”, as you chose.', null, { undo: bk }); }
     if (!r) {
       if (rec.inter) { rec.status = 'skip'; rec.notes.push('intermediate plate — not read'); }
       else { rec.status = 'error'; rec.notes.push('no reader file'); add('error', 'The Echo file has transfers onto plate “' + p.name + '” but no reader file could be matched to it. Put the plate’s barcode in the name of its reader file, or choose the file for it.', { tab: 'files', label: 'Back to files' }, { pick: bk }); }
@@ -13958,14 +13961,15 @@ async function renderReview(force) {
   });
   let tb = '<div class="rv-tw"><table class="rv-t2"><thead><tr><th>Plate</th><th>Group</th><th class="n">Wells dosed</th><th class="n">Compounds</th><th class="n">Controls read</th><th class="n">Control mean</th><th>Notes</th></tr></thead><tbody>';
   R.plates.slice().sort((a, b) => natCmp(a.plate, b.plate)).forEach(p => {
-    tb += '<tr class="rv-r ' + p.status + '"><td class="pl" title="' + (p.file ? 'Reader file: ' + esc(p.file) + (p.picklist !== p.plate ? ' · the Echo file calls it ' + esc(p.picklist) : '') : 'No reader file') + '"><span class="rv-dot ' + p.status + '" role="img" aria-label="' + p.status + '"></span>' + esc(p.plate) + '</td>'
+    tb += '<tr class="rv-r ' + p.status + '"><td class="pl" title="' + (p.file ? 'Reader file: ' + esc(p.file) + '' : 'No reader file') + '"><span class="rv-dot ' + p.status + '" role="img" aria-label="' + p.status + '"></span>' + esc(p.plate) + '</td>'
       + '<td>' + (p.file ? '<input class="rv-g" value="' + esc(p.group) + '" data-bc="' + esc(p.plate) + '" aria-label="Group of plate ' + esc(p.plate) + '" onchange="rvSetGroup(this)">' : '<span class="rv-na">—</span>') + '</td>'
       + '<td class="n">' + p.dosed + '</td><td class="n">' + p.compounds + '</td>'
       + '<td class="n">' + (p.ctrlRead === null ? '—' : p.ctrlRead + ' / ' + p.ctrlN) + '</td><td class="n">' + (p.ctrlMean === null ? '—' : Math.round(p.ctrlMean).toLocaleString() + (p.ctrlCV != null ? ' <span class="rv-cv">± ' + p.ctrlCV.toFixed(0) + ' %</span>' : '')) + '</td>'
       + '<td class="rv-nt">' + esc(p.notes.join(' · ')) + '</td></tr>';
   });
-  tb += '</tbody></table></div><div class="rv-cap">A plate is found by its barcode being in its reader file’s name, and is called after the file from there on. The group of a plate is editable here: typing one writes a line of “My own table” in Setup › Assay.</div>';
+  tb += '</tbody></table></div><div class="rv-cap">A plate is found by its barcode being in its reader file’s name, and keeps the Echo file’s barcode as its name. The group of a plate is editable here: typing one writes a line of “My own table” in Setup › Assay.</div>';
   host.innerHTML = head + (iss ? '<ul class="rv-list">' + iss + '</ul>' : '') + tb;
+  try { updateGroupPreview(); } catch (e) {}   // the preview names plates as the run will (the Echo barcode a file was paired with)
 }
 function rvGo(tab, focus) {
   if (tab) switchSetupTab(tab);
@@ -13986,7 +13990,7 @@ function rvSetGroup(inp) {
   const lines = (cur.mode === 'custom' ? map.value : '').split(/\r?\n/).filter(l => l.trim() && l.split('=')[0].trim().toLowerCase() !== bc.toLowerCase());
   if (cur.mode !== 'custom') {
     // freeze the current rule for the other plates so switching to a table does not regroup them
-    Object.keys(readerFiles).map(n => n.replace(/\.[^.]+$/, '')).forEach(n => { if (n.toLowerCase() !== bc.toLowerCase()) lines.push(n + ' = ' + _groupOf(n, cur.mode, cur.map)); });
+    Object.keys(readerFiles).map(_plateNameOfFile).forEach(n => { if (n.toLowerCase() !== bc.toLowerCase()) lines.push(n + ' = ' + _groupOf(n, cur.mode, cur.map)); });
   }
   lines.push(bc + ' = ' + grp);
   map.value = lines.join('\n'); sel.value = 'custom'; onGroupModeChange();

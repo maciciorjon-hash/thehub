@@ -118,9 +118,9 @@
 //                             what it did to the potency, and the Plate tab matches wells to replicates the same way.
 //   E51 a plate is found by   A reader file is paired with its destination plate by the barcode being IN the file name (exact · same words ·
 //       its barcode in the    inside the file name · file name inside the barcode · written inside the sheet), a pairing two candidates want
-//       file's name           equally is not made, an intermediate plate is never guessed, a choice made by hand wins, the plate is called after
-//                             its file, six renamed bundled files give exactly the curves of the exact names, and a picklist with no barcode
-//                             is read by its Destination Plate Name.
+//       file's name           equally is not made, an intermediate plate is never guessed, a choice made by hand wins, the plate keeps the
+//                             Echo barcode as its name (the file only identifies it), six renamed bundled files give exactly the curves and
+//                             groups of the exact names, and a picklist with no barcode is read by its Destination Plate Name.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -1844,7 +1844,7 @@ if (run('E50')) await guard('E50', async () => {
 // and so did "Plate 3.xlsx" for PLATE-03, or a reader that carries no ID inside it at all. Names are matched in
 // stages (exact · same words · barcode inside the file name · file name inside the barcode · the barcode written in
 // the sheet), a pairing two candidates want equally is NOT made, an intermediate plate is never guessed, and what
-// is paired is called after its file from there on. A picklist with no Destination Plate Barcode is named by its
+// is paired keeps the Echo barcode as its name, so groups work as ever. A picklist with no Destination Plate Barcode is named by its
 // Destination Plate Name. Proven by putting each rule's bug back.
 if (run('E51')) await guard('E51', async () => {
   const R = await E(() => {
@@ -1871,11 +1871,11 @@ if (run('E51')) await guard('E51', async () => {
     o.sheet = (() => { const r = _resolvePlates(pl, withTxt(['scan0007'], { scan0007: ['Protocol', 'ID1: BRD2-01', 'Date'] }), {}); return [...r.byPlate].map(([k, v]) => k + ':' + v.how); })();
     o.sheetGeneric = (() => { const r = _resolvePlates(P('A'), withTxt(['scan'], { scan: ['Plate A', 'A'] }), {}); return r.byPlate.size; })();
     o.tok = [_plTok('Plate 03'), _plTok('PLATE-3'), _plTok('plate3'), _plTok('HB20260504_P1_144h')].map(t => t.join('|'));
-    // renaming: the Echo rows take the file's name, a plate matched exactly is untouched
-    const rows = [{ barcode: 'HB_P1', barcodeKey: 'hb_p1' }, { barcode: 'BRD2-01', barcodeKey: 'brd2-01' }]; rows.failed = [{ barcode: 'HB_P1', barcodeKey: 'hb_p1' }];
-    const r2 = _resolvePlates(P('HB_P1', 'BRD2-01'), F('P1', 'BRD2-01'), {});
-    _applyPlateNames(rows, r2.byPlate);
-    o.rename = { rows: rows.map(r => r.barcode + '/' + r.barcodeKey + '/' + (r.barcodeOrig || '')), failed: rows.failed[0].barcode };
+    // naming: the file only identifies the plate — its readings are filed under the Echo barcode; an exact match and an unpaired file are untouched
+    const wells = [{ barcode: 'P1', barcodeKey: 'p1' }, { barcode: 'BRD2-01', barcodeKey: 'brd2-01' }, { barcode: 'loose', barcodeKey: 'loose' }];
+    const r2 = _resolvePlates(P('HB_P1', 'BRD2-01'), F('P1', 'BRD2-01', 'loose'), {});
+    _applyPlateNames(wells, r2.byPlate);
+    o.rename = wells.map(w => w.barcode + '/' + w.barcodeKey);
     return o;
   });
   check('E51', 'exact names pair exactly, in any case — nothing is renamed', R.exact.m['brd2-01'] === 'BRD2-01:exact' && R.exact.m['brd2-02'] === 'brd2-02:exact' && !R.exact.leftF.length, R.exact);
@@ -1889,7 +1889,7 @@ if (run('E51')) await guard('E51', async () => {
   check('E51', 'one file reads one plate, and the more specific barcode wins', R.oneEach.m['hb_p1'] === 'HB_P1_read:in-file' && !R.oneEach.m['p1'], R.oneEach);
   check('E51', 'a file chosen by hand pairs with its plate, beats the name match, and the other plate still pairs by name', R.manual.m['brd2-02'] === 'scan0007:manual' && R.manualBeatsName.m.p1 === 'P2_read:manual' && R.manualBeatsName.m.p2 === undefined, { m: R.manual, b: R.manualBeatsName });
   check('E51', 'a barcode written inside the sheet places a file the name could not — and only then', R.noSheet === 0 && R.sheet.length === 1 && R.sheet[0] === 'brd2-01:sheet' && R.sheetGeneric === 0, { noSheet: R.noSheet, sheet: R.sheet, g: R.sheetGeneric });
-  check('E51', 'the Echo rows (and its failed transfers) take the file’s name; an exact match keeps its own', R.rename.rows[0] === 'P1/p1/HB_P1' && R.rename.rows[1] === 'BRD2-01/brd2-01/' && R.rename.failed === 'P1', R.rename);
+  check('E51', 'a paired file’s readings are filed under the Echo barcode (HB_P1); an exact match and a file nothing paired keep their own names', JSON.stringify(R.rename) === JSON.stringify(['HB_P1/hb_p1', 'BRD2-01/brd2-01', 'loose/loose']), R.rename);
 
   // The whole run: the six bundled reader files, renamed as a person would, give the same curves as when the names are exact.
   const run1 = await E(async () => {
@@ -1903,8 +1903,7 @@ if (run('E51')) await guard('E51', async () => {
     const nf = {}; _TEST_READERS.forEach(r => { const n = fancy[r.name]; nf[n] = _b64toFile(r.b64, n, mime); });
     readerFiles = nf; window._plateAssign = {};
     document.getElementById('p-assay').value = 'E51-renamed';
-    // a plate named after its file is grouped by the rule in Setup; a table keeps the groups of the exact run so the curves can be compared
-    document.getElementById('p-group-mode').value = 'custom'; document.getElementById('p-group-map').value = '*brd2* = BRD2\n*brd3* = BRD3\n*brd4* = BRD4'; onGroupModeChange();
+    document.getElementById('p-group-mode').value = 'first'; onGroupModeChange();   // the rule of the exact run: the plates are still called BRD2-01 …
     _lastResultsData = null; await runPipeline();
     const ren = _lastResultsData ? snap() : null, plates1 = Object.keys(window._plateData || {}).sort(), map = window._plateMap || [];
     const log = document.getElementById('log-panel').innerText;
@@ -1920,16 +1919,19 @@ if (run('E51')) await guard('E51', async () => {
     const rv0 = await echoReview();
     window._plateAssign = { 'brd2-01': 'scan0007.xlsx' };
     const rv1 = await echoReview();
-    window._plateAssign = {}; readerFiles = nf; document.getElementById('p-group-mode').value = 'first'; onGroupModeChange();
-    return { same: ren && Object.keys(base).length === Object.keys(ren).length && Object.keys(base).every(k => ren[k] === base[k]), nBase: Object.keys(base).length, nRen: ren ? Object.keys(ren).length : 0, plates0, plates1,
+    window._plateAssign = {}; readerFiles = nf;
+    // the group preview in Setup names plates as the run will: BRD2 · BRD3 · BRD4, not one group per decorated file name
+    const gp = await (async () => { document.getElementById('setup-modal')?.classList.remove('hidden'); await renderReview(); const t = document.getElementById('p-group-preview').innerText; document.getElementById('setup-modal')?.classList.add('hidden'); return t; })();
+    return { gp, same: ren && Object.keys(base).length === Object.keys(ren).length && Object.keys(base).every(k => ren[k] === base[k]), nBase: Object.keys(base).length, nRen: ren ? Object.keys(ren).length : 0, plates0, plates1,
       how: map.map(m => m.how).sort(), logHas: /plate “BRD2-01” \(the file name contains the plate barcode\)/.test(log), logHasSame: /plate “BRD3-02” \(same name, spelled differently\)/.test(log),
-      rv0: { err: rv0.issues.filter(i => i.level === 'error').length, free: rv0.freeFiles, nofile: rv0.plates.filter(p => !p.file && !p.inter).map(p => p.picklist) },
+      rv0: { err: rv0.issues.filter(i => i.level === 'error').length, free: rv0.freeFiles, nofile: rv0.plates.filter(p => !p.file && !p.inter).map(p => p.plate) },
       rv1: { err: rv1.issues.filter(i => i.level === 'error').length, how: (rv1.plates.find(p => p.key === 'brd2-01') || {}).how, plate: (rv1.plates.find(p => p.key === 'brd2-01') || {}).plate },
       rvHtml: await (async () => { readerFiles = o; window._plateAssign = {}; document.getElementById('setup-modal')?.classList.remove('hidden'); await renderReview(); const h = document.getElementById('rv-body').innerHTML; document.getElementById('setup-modal')?.classList.add('hidden'); return /class="rv-pick"/.test(h); })() };
   });
-  check('E51', 'six reader files renamed with run names, spellings and extra words give exactly the curves of the exact names', run1.same && run1.nBase > 0 && run1.nBase === run1.nRen, { base: run1.nBase, ren: run1.nRen });
-  check('E51', 'the plates are called after their files in the Plate tab data, and the run says how each was found', run1.plates1.length === 6 && run1.plates1.includes('brd2_02 (reread)') && run1.plates1.includes('EDA20260504_BRD2-01_144h') && !run1.plates1.includes('BRD2-01') && run1.how.length === 6 && run1.how.filter(h => h === 'in-file').length === 5 && run1.how.includes('same') && run1.logHas && run1.logHasSame, { p0: run1.plates0, p1: run1.plates1, how: run1.how });
-  check('E51', 'Review: a plate no file name can place is an error that offers the loose files; choosing one clears it and says it was chosen by hand', run1.rv0.err >= 1 && run1.rv0.nofile.includes('BRD2-01') && run1.rv0.free.includes('scan0007.xlsx') && run1.rv1.err === 0 && run1.rv1.how === 'manual' && run1.rv1.plate === 'scan0007' && run1.rvHtml, { rv0: run1.rv0, rv1: run1.rv1, rvHtml: run1.rvHtml });
+  check('E51', 'six reader files renamed with run names, spellings and extra words give exactly the curves — and groups — of the exact names', run1.same && run1.nBase > 0 && run1.nBase === run1.nRen, { base: run1.nBase, ren: run1.nRen });
+  check('E51', 'the group preview in Setup names the plates as the run does: 3 groups (BRD2, BRD3, BRD4)', /3 groups/.test(run1.gp) && /BRD2/.test(run1.gp) && !/reread|scan|EDA2026/.test(run1.gp), run1.gp);
+  check('E51', 'the plates keep their Echo barcodes in the Plate tab data (the same names as the exact run), and the run says how each file was found', JSON.stringify(run1.plates1) === JSON.stringify(run1.plates0) && run1.how.length === 6 && run1.how.filter(h => h === 'in-file').length === 5 && run1.how.includes('same') && run1.logHas && run1.logHasSame, { p0: run1.plates0, p1: run1.plates1, how: run1.how });
+  check('E51', 'Review: a plate no file name can place is an error that offers the loose files; choosing one clears it and says it was chosen by hand', run1.rv0.err >= 1 && run1.rv0.nofile.includes('BRD2-01') && run1.rv0.free.includes('scan0007.xlsx') && run1.rv1.err === 0 && run1.rv1.how === 'manual' && run1.rv1.plate === 'BRD2-01' && run1.rvHtml, { rv0: run1.rv0, rv1: run1.rv1, rvHtml: run1.rvHtml });
   // a picklist with no barcode column value: the Destination Plate Name is the plate
   const nb = await E(() => {
     const txt = new TextDecoder().decode(Uint8Array.from(atob(_TEST_ECHO_B64), c => c.charCodeAt(0)));
