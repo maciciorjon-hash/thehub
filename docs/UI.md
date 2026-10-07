@@ -24,7 +24,7 @@ Every app declares the same names. Two scales, no loose values.
   /* light is the default; dark is the override */
   --bg:#f4f5f8; --surface:#ffffff; --surface2:#f0f1f5; --surface3:#e4e6ee;
   --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.13);
-  --text:#1a1d2e; --text2:#5a5f7a; --text3:#9ca0b8;
+  --text:#1a1d2e; --text2:#5a5f7a; --text3:#7c8199;
 
   --accent:#5e87c5;                      /* ONE blue, every app, everything interactive */
   --accent-dim:rgba(94,135,197,0.12); --accent-soft:rgba(94,135,197,0.22);
@@ -47,7 +47,7 @@ Every app declares the same names. Two scales, no loose values.
 [data-theme="dark"]{
   --bg:#0d0f14; --surface:#13161e; --surface2:#1c2030; --surface3:#252a3a;
   --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
-  --text:#e8eaf2; --text2:#8b90a8; --text3:#4e5368;
+  --text:#e8eaf2; --text2:#8b90a8; --text3:#7b8099;
   --accent:#8aaee0; --accent-dim:rgba(138,174,224,0.16); --accent-soft:rgba(138,174,224,0.26);
   --good:#6ddca8; --warn:#f0b060; --danger:#f08a84;
   --paper:#1a1917;
@@ -486,6 +486,10 @@ PY
 Then open the app **on its own** (not only inside the Hub) in light and dark, at 1440 and 375, and
 check the console is clean. An app that only works embedded has stopped being portable, and that is
 what keeps the Archive PWA, `labbook-standalone` and the ChemLib hand-off alive.
+
+## Tertiary text still has to be read (2026-10-07)
+
+`--text3` was 2.6:1 on white and 2.4:1 on the dark surface — a colour for things nobody needs to read, used for the table headers, the counts, the hints and the placeholders, which people do. It is **3.8:1 light (`#7c8199`) and 4.1:1 dark (`#7b8099`)** now: still the quietest ink, no longer a disabled one. A placeholder is `color-mix(in srgb, var(--text2) 80%, var(--surface))` (≥ 3:1 in both themes). On touch, a box is **40px** (`min-height:40px !important`, like the 16px rule: a device rule, not a taste) and its neighbours in the row are raised to match, or the row misaligns. `tools/inputs_audit.mjs` measures all of it at 1440 · 1024 · 768 · 390 · 320, both themes: clipped values, text under 16px on touch, boxes under 26/40px, text under 4.5:1 and placeholders under 3:1.
 
 ## Screening charts (Hit Finder, 2026-10-07)
 

@@ -6,6 +6,8 @@
 //   C2  nothing runs in a file   Names and notes that start = + - @ are neutral in every CSV the app writes; a real number is left alone.
 //   C3  a concentration is real  A sample below the blank is not a negative concentration; a dilution of 0 or less, or a negative standard, is "not set".
 //   C4  text is data             HTML in a name is shown as text everywhere it is shown.
+//   D2  Echo's word is Echo's    Dora opening an Echo analysis uses the potency Echo stands behind: a flat curve is n.d. (not its fitted 0.4 nM), a midpoint past the doses is a bound at the
+//                                dose limit (not the fitted number).
 //   B1  a range is on the plate  Beacon's well ranges never invent wells outside a 24-column plate: "A1:A99999999" is 24 wells in a blink, "A0" and "A25" are none.
 //   D1  a bound is a bound       Dora keeps "> 10000" and "< 1" as bounds (shown with their sign, drawn hollow, never "good" when the bound is in the wrong direction), a DC50 of 0
 //                                or less and "n/a" are no potency, and a missing Dmax is a dash, not a 0 with an empty bar.
@@ -129,6 +131,21 @@ if (run('B1')) await guard('B1', async () => {
   check('B1', 'a column past the plate is clipped to it: "A1:A99999" is 24 wells and "A1:P99999" is 384, instantly', r.bigN === 24 && r.big2N === 384 && r.ms < 200, { bigN: r.bigN, big2N: r.big2N, ms: Math.round(r.ms) });
   check('B1', 'column 0 and column 25 are not wells; a list keeps the wells that exist and drops the rest', r.zero.length === 0 && r.over.length === 0 && r.list === 'A01,B02,C24', { zero: r.zero, over: r.over, list: r.list });
   check('B1', 'ranges still mean what they did: reversed or forward the same wells, a rectangle, a column, either case', r.rev === 'A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,A11,A12' && r.fwd === r.rev && r.rect === 'B02,B03,C02,C03' && r.lower === r.rect && r.col === 16, r);
+  await ctx.close();
+});
+
+if (run('D2')) await guard('D2', async () => {
+  const { ctx, pg } = await open('/apps/dora/dora.html');
+  const r = await pg.evaluate(async () => {
+    const row = (n, p, dc, dm, why, xmin, xmax) => ({ Sample_ID: n, Protein: p, DC50_nM: dc, Dmax_pct: dm, Flag: why ? 'Yes' : 'No', Flag_Reason: why, _xmin: xmin == null ? -9 : xmin, _xmax: xmax == null ? -5 : xmax });
+    window._echoHist = [{ assayId: 'T', data: [row('EXACT', 'BRD4', 12, 90, ''), row('FLAT', 'BRD4', 0.4, 6, 'No effect (span 6%)'), row('HIGH', 'BRD4', 90000, 95, 'EC50>range', -9, -5), row('LOW', 'BRD4', 0.02, 95, 'EC50<range', -8, -5), row('ZERO', 'BRD4', 0, 70, '')] }];
+    loadFromEcho(0); const t = n => RAW.find(c => c.compound === n).targets.BRD4;
+    return { exact: [t('EXACT').dc50, t('EXACT').dc50_q], flat: [t('FLAT').dc50, t('FLAT').nd], high: [t('HIGH').dc50, t('HIGH').dc50_q], low: [t('LOW').dc50, t('LOW').dc50_q], zero: t('ZERO').dc50,
+      cell: [...document.querySelectorAll('#table-body tr')].map(tr => tr.textContent.replace(/\s+/g, ' ').trim()) };
+  });
+  check('D2', 'a flat curve is n.d.: no potency (not its fitted 0.4 nM) and the table says n.d.', r.flat[0] === null && r.flat[1] === true && r.cell.some(c => /^FLAT\s+n\.d\./.test(c)), { flat: r.flat, cells: r.cell });
+  check('D2', 'a midpoint past the doses is a bound at the dose limit: "> 10000 nM" (10^−5 M), "< 10 nM" (10^−8 M) — not the fitted 90000 / 0.02', r.high[0] === 10000 && r.high[1] === '>' && Math.abs(r.low[0] - 10) < 1e-6 && r.low[1] === '<', { high: r.high, low: r.low });
+  check('D2', 'an ordinary fit is exact, and a potency of 0 is none', r.exact[0] === 12 && r.exact[1] === '' && r.zero === null, { exact: r.exact, zero: r.zero });
   await ctx.close();
 });
 

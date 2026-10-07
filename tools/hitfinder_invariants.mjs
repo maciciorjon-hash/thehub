@@ -49,6 +49,8 @@
 //                              molecule that has it and stays silent on one that does not.
 //   H21 structures, honestly    With RDKit unreachable the app says so once and carries on; the properties a file brings are used, win over computed ones, and are
 //                              judged against each rule set; a gate on them reads the right tier; a missing property is unread (skipped or Unverified as chosen), never 0.
+//   H22 a bad file is a bad file  Empty, header-only, binary, a CSV with a BOM / semicolons / decimal commas, impossible numbers (1e999, negative, text), garbage curve points and
+//                              markup in names: nothing throws, no row with no compound or no number is invented, and no tab ever shows NaN / Infinity / undefined.
 //   H17 the tabs are a tablist One selected tab, arrows / Home / End move and select, the underline sits under the active tab.
 //
 // Usage (repo root):  node tools/hitfinder_invariants.mjs [--only=H0,H16] [--file=path/to/hitfinder.html] [--echo=path/to/echo.html] [--verbose]
@@ -867,6 +869,38 @@ if (run('H13')) await guard('H13', async () => {
   check('H13', 'a number from the file beats the computed one and says where it came from', r.exProp.from === 'RDKit' && r.exProp.mw > 500 && r.exImp[0] === 999 && r.exImp[1] === 'file', { exProp: r.exProp, exImp: r.exImp });
   check('H13', 'a structure is drawn as an SVG on a transparent ground, and no "RDKit unavailable" banner appears when RDKit is there', /^<svg/.test(r.svg) && r.notice === 0, { svg: r.svg, notice: r.notice });
   await c3.close();
+});
+
+if (run('H22')) await guard('H22', async () => {
+  await E(() => { HF.recs.length = 0; HF.screens.clear(); HF.arms.clear(); HF.smiles = new Map(); hfChemReset(); HF.verdicts = null; });
+  const r = await E(async () => {
+    const out = { msgs: [], threw: null };
+    const head = SCR_COLS.join(','), mk = (o) => SCR_COLS.map(c => o[c] == null ? '' : String(o[c]).replace(/,/g, '.')).join(',');
+    const base = { Schema: 'echo-screen/1', Assay_ID: 'HOSTILE', Run_ID: 1, Set_ID: 'h', Version: 1, Panel: 0, Assay: 'hibit', Role: 'degradation', Target: 'BRD4', Group: 'BRD4', Fit_Status: 'fitted', Potency_Qualifier: 'exact' };
+    const files = [
+      new File([''], 'empty.csv'), new File([head + '\n'], 'header.csv'), new File([new Uint8Array([0, 255, 254, 1, 2, 3, 0, 0, 9, 200])], 'binary.xlsx'), new File(['not a table at all'], 'text.csv'),
+      new File([[head, mk(Object.assign({}, base, { Compound: 'OK-1', Potency_nM: 12, Effect_Eff: 90 })), mk(Object.assign({}, base, { Compound: '', Potency_nM: 5, Effect_Eff: 80 })),
+        mk(Object.assign({}, base, { Compound: 'INF', Potency_nM: '1e999', Effect_Eff: 'abc', Hill: -3, R2: 7 })), mk(Object.assign({}, base, { Compound: 'NEG', Potency_nM: -4, Effect_Eff: 120, Hook_Onset_nM: -1, Last_Productive_nM: 'x' })),
+        mk(Object.assign({}, base, { Compound: '<img src=x onerror="window.__h=1">', Potency_nM: 30, Effect_Eff: 70, Curve_Points: '1,2;abc;3,NaN;,;5', Fit_Params: 'a,b,c,d', Hook_Points: ';;' })),
+        mk(Object.assign({}, base, { Compound: '=HYPERLINK("http://x")', Potency_nM: 40, Effect_Eff: 75 })), mk(Object.assign({}, base, { Compound: 'NOQ', Potency_nM: 50, Effect_Eff: 80, Potency_Qualifier: '≈' }))].join('\n')], 'hostile.csv'),
+      new File(['﻿Compound;DC50 (nM);Dmax (%)\nSEMI-1;"12,5";"90,1"\nSEMI-2;n.d.;50\n'], 'semi.csv')
+    ];
+    window.__h = 0;
+    try { out.msgs = await hfAddFiles(files); } catch (e) { out.threw = String(e && e.message || e); }
+    await new Promise(r => setTimeout(r, 400));
+    out.recs = HF.recs.map(x => x.Compound); out.uni = (HF.uni || []).length;
+    const bad = [], scan = where => { const txt = document.body.innerText || ''; const m = txt.match(/\bNaN\b|\bInfinity\b|\bundefined\b|\[object /); if (m) bad.push(where + ': ' + m[0]); };
+    for (const tab of ['screens', 'criteria', 'hits', 'plots', 'chem', 'export']) { try { hfTab(tab); } catch (e) { bad.push(tab + ' threw ' + e); } await new Promise(r => setTimeout(r, 250)); scan(tab); }
+    try { if (HF.uni && HF.uni.length) { hfOpenDrawer(HF.uni[0]); await new Promise(r => setTimeout(r, 250)); scan('drawer'); hfCloseDrawer(); } } catch (e) { bad.push('drawer threw ' + e); }
+    out.num = [hfNum('1e999'), hfNum('-1e999'), hfNum('1e3'), hfNum('1,5'), hfNum('abc'), hfNum('')].map(String);
+    out.bad = bad; out.xss = window.__h; out.imgs = document.querySelectorAll('img[src="x"]').length;
+    return out;
+  });
+  check('H22', 'a pile of bad files does not throw, and each says what it is (empty, no rows, not a table)', !r.threw && r.msgs.length >= 5, { threw: r.threw, msgs: r.msgs });
+  check('H22', 'a row with no compound is not invented; the good rows from the same file are read', !r.recs.includes('') && r.recs.includes('OK-1') && r.recs.includes('SEMI-1') && r.recs.includes('SEMI-2'), r.recs);
+  check('H22', 'no tab and no drawer ever shows NaN, Infinity or undefined, whatever was in the file', r.bad.length === 0, r.bad);
+  check('H22', 'a number too big for a number is no number (1e999 is Infinity, which would take every axis and every mean with it)', JSON.stringify(r.num) === JSON.stringify(['null', 'null', '1000', '1.5', 'null', 'null']), r.num);
+  check('H22', 'markup in a name is text', r.xss === 0 && r.imgs === 0, { xss: r.xss, imgs: r.imgs });
 });
 
 if (run('H20')) await guard('H20', async () => {

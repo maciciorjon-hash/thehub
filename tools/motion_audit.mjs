@@ -78,7 +78,10 @@ for (const [id, A] of Object.entries(APPS)) {
   }
 }
 await browser.close();
-const lines = [...found.keys()].sort();
+// "still" is advisory: a checkbox or a slider is native and snaps, and some buttons are icons that only change colour — it is listed so a new control is noticed,
+// not to fail a build. Everything else (an arriving pane that does not arrive, a long or layout-making transition, a loop at rest, motion that ignores
+// reduced-motion) is a finding.
+const lines = [...found.keys()].sort(), hard = lines.filter(l => !/^still/.test(l));
 console.log(lines.length ? lines.join('\n') : 'Everything that moves moves like the rest of the Hub, and stands still when asked to.');
-console.log(`\n${lines.length} finding(s).`);
-process.exit(lines.length ? 1 : 0);
+console.log(`\n${hard.length} finding(s)` + (lines.length > hard.length ? `, ${lines.length - hard.length} controls that snap (advisory).` : '.'));
+process.exit(hard.length ? 1 : 0);

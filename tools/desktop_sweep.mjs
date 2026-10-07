@@ -35,7 +35,7 @@ async function measure(page, label, size, theme) {
   await page.waitForTimeout(350);
   // A missing CDN script raises an offline notice over the page; that is the sandbox, not the screen
   // being measured. (Stacking of the notices themselves is checked once, below.)
-  await page.evaluate(() => { document.getElementById('dep-stack')?.remove(); document.querySelectorAll('#dep-jspdf,#dep-rdkit').forEach(n => n.remove()); const t = document.getElementById('toast'); if (t) t.style.display = 'none'; });
+  await page.evaluate(() => { document.getElementById('dep-stack')?.remove(); document.querySelectorAll('#dep-jspdf,#dep-rdkit').forEach(n => n.remove()); document.querySelectorAll('body > div[role=status][style*="99999"]').forEach(n => n.remove()); const t = document.getElementById('toast'); if (t) t.style.display = 'none'; });
   const r = await page.evaluate(([D, A, B]) => {
     try { (0, eval)(D); (0, eval)(A); (0, eval)(B); } catch (e) { return { err: String(e) }; }
     const det = window.__hub.detect({ minFont: 10 });
