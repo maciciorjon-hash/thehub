@@ -157,7 +157,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 .scr-tbl td .inp{width:100%;min-width:116px;}
 .scr-tbl td select.inp{min-width:150px;}
 .scr-tbl td[data-l="Time (h)"] .inp{min-width:64px;}
-.scr-tbl td .slot-cell select.inp{min-width:176px;}   /* room for its longest name and the guess pill */
+.scr-tbl td .slot-cell select.inp{min-width:198px;}   /* room for its longest name and the guess pill */
 .scr-tbl td.act{width:34px;padding-left:0;}
 /* a screen is named after its file ("HB20260504_BET_degradation_screen_plate_series_A_B_C"): it breaks anywhere and takes a quarter of the row at most, or it widens the table and pushes Slot, Curves and the remove button out of the card */
 .scr-tbl td.nm{overflow-wrap:anywhere;width:24%;min-width:130px;}
@@ -212,6 +212,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   /* the rule above is (0,2,2); this one has to beat it, or every empty cell of the ten-column table keeps a grid slot and the cells that do hold something are staggered across the card */
   .scr-tbl tr td:empty,.scr-tbl tr.scr td:empty,.scr-tbl tr.arm td:empty{display:none;}
   .scr-tbl td.nm{grid-column:1/-1;}
+  .scr-tbl td[data-l="Slot"]{grid-column:1/-1;}   /* the longest role name plus the guess pill needs ~210px; a 150px grid cell clips it */
   .scr-tbl tr.scr td.nm{padding-right:34px;}
   .scr-tbl tr.arm .arm-n{padding-left:0;}
   .scr-tbl tr.arm .arm-n::before{display:none;}
@@ -2369,18 +2370,19 @@ const hfAnyFlag = g => !!(g && g.flags && Object.keys(g.flags).some(k => k !== '
 function hfCritEdge(metric, slot, f) { const c = (HF.activeRows || []).find(r => r.metric === metric && (r.slot || 'primary') === slot && r.kind !== 'advisory'); return c ? c[f] : null; }
 function hfContrastEdge(slot2, f) { const c = (HF.activeRows || []).find(r => r.metric === 'contrast' && r.slot2 === slot2 && r.kind !== 'advisory'); return c ? c[f] : null; }
 function hfScatter(spec, pal, W, H, selSet) {
-  const L = 66, R = 16, T = spec.top || 12, B = 44, pts = spec.pts.filter(p => p.x != null && p.y != null);
+  let L = 66; const R = 16, T = spec.top || 12, B = 44, pts = spec.pts.filter(p => p.x != null && p.y != null);
   const fin = (k) => pts.map(p => p[k]).filter(v => isFinite(v) && (spec[k + 'log'] ? v > 0 : true));
   const ext = (k, log, lo0, hi0) => { const v = fin(k).concat(spec.include && spec.include[k] || []).filter(x => isFinite(x) && (!log || x > 0)); let lo = v.length ? Math.min(...v) : lo0, hi = v.length ? Math.max(...v) : hi0;
     if (log) { lo = Math.pow(10, Math.floor(Math.log10(lo) - 0.3)); hi = Math.pow(10, Math.ceil(Math.log10(hi) + 0.3)); } else { const pad = (hi - lo || 1) * 0.06; lo = spec.min != null && k === 'y' ? Math.min(lo - pad, spec.min) : lo - pad; hi += pad; if (spec.maxFloor && k === 'y') hi = Math.max(hi, spec.maxFloor); }
     return [lo, hi]; };
   const [x0, x1] = ext('x', spec.xlog, 1, 1000), [y0, y1] = ext('y', spec.ylog, spec.ylog ? 1 : 0, spec.ylog ? 1000 : 100);       // an empty plot still has an axis: log10(0) is not a place to start
+  const xt = spec.bare ? [] : spec.xlog ? hfLogTicks(x0, x1) : hfLinTicks(x0, x1), yt = spec.bare ? [] : spec.ylog ? hfLogTicks(y0, y1) : hfLinTicks(y0, y1);
+  const fx = spec.xfmt || (v => v), fy = spec.yfmt || (v => v);
+  { const wid = Math.max(0, ...yt.map(t => String(fy(t)).length)); L = Math.max(L, Math.ceil(30 + 6.8 * wid)); }   // the rotated axis title sits at x=14: the widest tick label (×100000 is 7 characters) must end clear of it, whatever the font
   const sx = v => { const p = spec.xlog ? (Math.log10(Math.max(v, x0)) - Math.log10(x0)) / (Math.log10(x1) - Math.log10(x0)) : (v - x0) / (x1 - x0); return L + p * (W - L - R); };
   const sy = v => { const p = spec.ylog ? (Math.log10(Math.max(v, y0)) - Math.log10(y0)) / (Math.log10(y1) - Math.log10(y0)) : (v - y0) / (y1 - y0); return H - B - p * (H - B - T); };
   const px = v => v === hfInf ? x1 : v === 0 ? x0 : v, py = v => v === hfInf ? y1 : v === 0 ? y0 : v;
   let s = '<svg class="plot" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(spec.title) + ': ' + pts.length + ' compounds" data-p="' + spec.id + '"><rect class="bg" x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '" fill="transparent"/>';
-  const xt = spec.bare ? [] : spec.xlog ? hfLogTicks(x0, x1) : hfLinTicks(x0, x1), yt = spec.bare ? [] : spec.ylog ? hfLogTicks(y0, y1) : hfLinTicks(y0, y1);
-  const fx = spec.xfmt || (v => v), fy = spec.yfmt || (v => v);
   xt.forEach(t => { const x = sx(t); s += '<line class="gx" x1="' + x + '" x2="' + x + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + pal.grid + '"/><text x="' + x + '" y="' + (H - B + 15) + '" text-anchor="middle" fill="' + pal.text2 + '" font-size="11" font-family="IBM Plex Mono, Menlo, monospace">' + esc(fx(t)) + '</text>'; });
   yt.forEach(t => { const y = sy(t); s += '<line class="gx" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="' + pal.grid + '"/><text x="' + (L - 6) + '" y="' + (y + 3.5) + '" text-anchor="end" fill="' + pal.text2 + '" font-size="11" font-family="IBM Plex Mono, Menlo, monospace">' + esc(fy(t)) + '</text>'; });
   s += '<line class="axl" x1="' + L + '" x2="' + (W - R) + '" y1="' + (H - B) + '" y2="' + (H - B) + '" stroke="' + pal.axis + '"/><line class="axl" x1="' + L + '" x2="' + L + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + pal.axis + '"/>';
