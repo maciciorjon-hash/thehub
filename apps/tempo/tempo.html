@@ -2295,9 +2295,19 @@ function tpBars(rows, k, o) {
   o = Object.assign({ W: 560, light: false }, o || {}); const pal = tpPal(o.light), M = TP_METRICS[k];
   const its = rows.map(r => ({ r: r, x: tpM(r.comp, k) })).filter(p => p.x && p.x.v != null).sort((a, b) => (M.hi ? b.x.v - a.x.v : a.x.v - b.x.v));
   if (!its.length) return tpSvg(o.W, 100, '<text x="20" y="44" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">No compound has this number.</text>', pal);
-  const rh = 26, H = 20 + its.length * rh, lx = 130, iw = o.W - lx - 120; const vals = its.map(p => M.log ? Math.log10(Math.max(p.x.v, 1e-12)) : p.x.v); let lo = Math.min(0, Math.min.apply(null, vals)), hi = Math.max.apply(null, vals); if (M.log) lo = Math.min.apply(null, vals) - 0.3; if (hi === lo) hi = lo + 1; const sx = v => (v - lo) / (hi - lo) * iw;
-  let s = ''; its.forEach((p, i) => { const y = 10 + i * rh, v = vals[i], w = Math.max(2, sx(v) - (M.log ? 0 : sx(Math.min(0, lo)))), x0 = lx + (M.log ? 0 : sx(0)); const x = M.log ? lx : Math.min(x0, lx + sx(v)); const bw = M.log ? sx(v) : Math.abs(sx(v) - sx(0)); const q = p.x.q !== '=' && p.x.q !== 'n.d.'; void w;
-    s += '<text x="' + (lx - 8) + '" y="' + (y + 15) + '" text-anchor="end" font-size="11.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc((p.r.comp.compound || '').slice(0, 16)) + '</text><rect x="' + x.toFixed(1) + '" y="' + (y + 3) + '" width="' + Math.max(2, bw).toFixed(1) + '" height="' + (rh - 9) + '" rx="3" fill="' + (q ? 'none' : tpGroupColor(pal, 0)) + '" stroke="' + tpGroupColor(pal, 0) + '" stroke-width="1.6" opacity="' + (q ? 1 : .85) + '" style="cursor:pointer" onclick="tpOpenComp(\'' + p.r.plate.id + '\',\'' + p.r.comp.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')"/><text x="' + (lx + iw + 10) + '" y="' + (y + 15) + '" font-size="11" fill="' + pal.text2 + '" font-family="IBM Plex Mono,monospace">' + esc(tpQ(p.x.q === '=' ? '' : p.x.q, M.fmt(p.x.v))) + '</text>'; });
+  const rh = 26, H = 20 + its.length * rh, lx = 130, iw = o.W - lx - 120;
+  // bars start at zero when zero is in the range (a log efficiency is mostly negative: the bars then hang from the right-hand zero), at the left edge on a log axis
+  const vals = its.map(p => M.log ? Math.log10(Math.max(p.x.v, 1e-12)) : p.x.v);
+  let lo = M.log ? Math.min.apply(null, vals) - 0.3 : Math.min(0, Math.min.apply(null, vals)), hi = M.log ? Math.max.apply(null, vals) + 0.1 : Math.max(0, Math.max.apply(null, vals)); if (hi === lo) hi = lo + 1;
+  const sx = v => lx + (v - lo) / (hi - lo) * iw, zero = M.log ? lx : sx(0);
+  let s = '';
+  its.forEach((p, i) => {
+    const y = 10 + i * rh, v = vals[i], x1 = sx(v), q = p.x.q !== '=' && p.x.q !== 'n.d.', x = Math.min(zero, x1), w = Math.max(2, Math.abs(x1 - zero)), col = tpGroupColor(pal, 0);
+    s += '<text x="' + (lx - 8) + '" y="' + (y + 15) + '" text-anchor="end" font-size="11.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc((p.r.comp.compound || '').slice(0, 16)) + '</text>' +
+      '<rect x="' + x.toFixed(1) + '" y="' + (y + 3) + '" width="' + w.toFixed(1) + '" height="' + (rh - 9) + '" rx="3" fill="' + (q ? 'none' : col) + '" stroke="' + col + '" stroke-width="1.6" opacity="' + (q ? 1 : .85) + '" style="cursor:pointer" onclick="tpOpenComp(\'' + p.r.plate.id + '\',\'' + p.r.comp.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')"/>' +
+      '<text x="' + (lx + iw + 10) + '" y="' + (y + 15) + '" font-size="11" fill="' + pal.text2 + '" font-family="IBM Plex Mono,monospace">' + esc(tpQ(p.x.q === '=' ? '' : p.x.q, M.fmt(p.x.v))) + '</text>';
+  });
+  if (!M.log && lo < 0 && hi > 0) s += '<line x1="' + zero.toFixed(1) + '" x2="' + zero.toFixed(1) + '" y1="4" y2="' + (H - 4) + '" stroke="' + pal.axis + '"/>';
   return tpSvg(o.W, H, s, pal, 'data-chart="bars"');
 }
 function tpOverlayK(rows, o) {
@@ -2589,7 +2599,19 @@ function tpScreenRecords(plates) {
   });
   return out;
 }
-function tpScreenTable(plates) { const recs = tpScreenRecords(plates); return [SCR_COLS.slice()].concat(recs.map(r => SCR_COLS.map(k => r[k] === undefined ? null : r[k]))); }
+// The kinetic columns ride AFTER Echo's 57, never among them (the Screen schema is append-only and Echo owns it): Hit Finder reads columns by name and
+// ignores the ones it does not know, and the same table opened in Excel carries the rate parameters beside the potency.
+const TP_KIN_COLS = ['Kin_Class', 'KDegMax_per_h', 'KDeg50_nM', 'KDeg_Eff', 'KDeg_LogEff', 'KDeg_Eff_Qualifier', 'K_per_h_at_cref', 'K_cref_nM', 'T_half_h', 'Onset_h', 'Rebound_Pct'];
+function tpKinCells(c) {
+  const B = c.B, ref = c.ref, ok = B && B.ok, sg = (v, d) => (v == null || !isFinite(v)) ? null : +(+v).toPrecision(d || 5);
+  return [c.cls, ok ? sg(B.Kmax) : null, ok ? sg(B.K50) : null, ok ? sg(B.Eff) : null, ok ? sg(B.LogEff) : null, ok ? (B.effq === '≥' ? '>=' : 'exact') : null,
+    ref && ref.K != null ? sg(ref.K) : null, ref ? c.cref : null, ref && ref.t12 != null ? sg(ref.t12) : null, ref && (ref.lag != null || ref.onset != null) ? sg(ref.lag != null ? ref.lag : ref.onset) : null, ref ? (ref.rebound ? +ref.rebound.pct.toFixed(1) : 0) : null];
+}
+function tpScreenTable(plates) {
+  const recs = tpScreenRecords(plates), kin = [];
+  (plates || TP.plates).forEach(p => { const res = tpRes(p); if (res) res.compounds.forEach(c => kin.push(tpKinCells(c))); });
+  return [SCR_COLS.concat(TP_KIN_COLS)].concat(recs.map((r, i) => SCR_COLS.map(k => r[k] === undefined ? null : r[k]).concat(kin[i] || TP_KIN_COLS.map(() => null))));
+}
 function tpExportScreenCSV() { const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to export yet', 'warn'); return; } tpDownload(tpBase() + '_tempo_screen.csv', tpBlob(tpCSV(t))); tpToast('Screen table written: drop it on Hit Finder'); }
 function tpSendToHitFinder() {
   const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to send yet', 'warn'); return; }

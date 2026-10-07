@@ -329,7 +329,9 @@ try {
   check('K13 Hit Finder reads every compound Tempo sends, as a degradation screen with the potency it was sent', K13.n === table.comps.length && K13.roles === 'degradation' && K13.dc50, JSON.stringify([K13.n, table.comps.length, K13.roles, K13.dc50]));
   check('K13 the hook Tempo found arrives as Echo’s hook state, and a curve with no effect as n.d.', K13.hooker === 'excluded' && K13.inactive === 'n.d.', JSON.stringify([K13.hooker, K13.inactive]));
   check('K13 one screen per plate, and sending again replaces it instead of doubling', K13.screens1 === 2 && K13.screens2 === 2, JSON.stringify([K13.screens1, K13.screens2]));
-  check('K13 the table has exactly the Screen columns and no NaN, Infinity or undefined', table.table[0].length === table.cols && !K13.nanText, '');
+  check('K13 the table is Echo’s 57 Screen columns in their order, then Tempo’s kinetic ones, and no NaN, Infinity or undefined', table.table[0].length > table.cols && table.table[0][0] === 'Schema' && table.table[0][table.cols - 1] === 'Hook_Points' && table.table[0][table.cols] === 'Kin_Class' && table.table.every(r => r.length === table.table[0].length) && !K13.nanText, JSON.stringify([table.table[0].length, table.cols, table.table[0][table.cols - 1]]));
+  const kcol = table.table[0].indexOf('KDegMax_per_h'), lcol = table.table[0].indexOf('KDeg_LogEff');
+  check('K13 the kinetic columns carry KDegMax and its log efficiency for a compound with a K–response, blank (never 0) for one without', kcol > 0 && table.table.slice(1).some(r => typeof r[kcol] === 'number' && typeof r[lcol] === 'number') && table.table.slice(1).some(r => r[kcol] === null), '');
   await hfPage.close();
 
   /* ───── the real ProNect files, when they are here ───── */
