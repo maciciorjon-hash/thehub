@@ -7,7 +7,7 @@
   assistRegister('spectra', {
     name: 'BCA',
     blurb: 'BCA turns the plate-reader absorbance of a BCA protein assay into concentrations: paste the plate, mark the BSA standards to fit a curve, mark your samples, and it tells you how much water to add to bring every sample to the same concentration.',
-    first: ['start', 'import', 'standards', 'samples'],
+    first: ['start', 'tour', 'import', 'standards', 'samples'],
     screen: function(w){ return vis(w, '#panel-guide.active') ? 'guide' : 'workflow'; },
     diag: function(w){
       var d = [];
@@ -19,6 +19,11 @@
       return d;
     },
     topics: [
+      { id: 'tour', t: 'Take a guided tour', group: 'Getting started', on: ['workflow'],
+        q: ['guided tour', 'take the tour', 'tour of this tool', 'show me around', 'visita guiada', 'recorrido guiado', 'enseñame la herramienta'],
+        a: 'A one-minute tour moves through each part of this tool and points at what it is for. It is also on the **Guide** tab, where every part has a tour of its own.',
+        go: [{ l: 'Take the tour', fn: 'appTour' }],
+        show: { sel: '.tab[data-tab="guide"]', say: 'The Guide tab keeps the tour, and a tour for each part.' } },
       { id: 'start', t: 'The workflow, start to finish', group: 'Getting started', on: ['workflow'],
         q: ['how does it work', 'how to use', 'get started', 'workflow', 'steps', 'first time', 'tutorial', 'como funciona', 'como se usa', 'empezar', 'primeros pasos', 'flujo'],
         a: 'Everything happens on one page, top to bottom. Each section unlocks when the one above is done.',

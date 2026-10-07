@@ -3877,6 +3877,14 @@ window.ASSIST_HOST = {
   win: function(id){ var f = document.getElementById('frame-' + id); return f && f.contentWindow || null; },
   open: function(id){ try { openApp(id); } catch (e) {} }
 };
+
+// "Take the tour": whichever tool is open runs its own guided tour (the kit in tools/tourkit/ gives each one appTour).
+window.hubAppTour = function(){
+  var id = window.ASSIST_HOST.current(), w = id && window.ASSIST_HOST.win(id);
+  if (w && typeof w.appTour === 'function') { try { w.appTour(); } catch (e) {} return true; }
+  try { if (typeof hubToast === 'function') hubToast('Open a tool first — its guided tour starts from there.'); } catch (e) {}
+  return false;
+};
 // The help assistant, the same in every place that has one. No model behind it: a written knowledge
 // base per app, searched the way Cmd+K searches, and a way to point at the real control.
 //
@@ -4348,7 +4356,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
 assistRegister('hub', {
   name: 'dHUB',
   blurb: 'Ask how something works, in dHUB or in the tool you have open. I answer from notes written for each tool, and I point at the real button when I can.',
-  first: ['about', 'apps', 'help', 'data-safety'],
+  first: ['about', 'apps', 'tours', 'help', 'data-safety'],
   screen: function(w){ return w.document.body.classList.contains('ws') ? 'ws-' + w._wsSection : 'visitor'; },
   diag: function(w){
     var d = [];
@@ -4382,6 +4390,11 @@ assistRegister('hub', {
       a: ['Some tools are shared by invitation. If someone gave you a code word, type it into the **discover** box on the home page and press Enter. Most words open one tool; a suite word opens a whole group of tools at once.',
           'There is no account to create.'],
       show: { sel: '#hub-unlock-input', say: 'Type the code word here.' } },
+    { id: 'tours', t: 'Take a guided tour of a tool', group: 'Getting started',
+      q: ['guided tour', 'take the tour', 'tour of this tool', 'show me around', 'walk me through', 'first time using', 'new to this tool', 'visita guiada', 'recorrido guiado', 'enseñame como funciona', 'primera vez'],
+      a: ['The data-analysis tools each have a **guided tour**: about a minute, moving through the tool’s tabs and pointing at the real controls. A tool offers it the first time you open it, and it is always on the tool’s **Guide** tab — where every tab also has a tour of its own.',
+          'Open a tool, then press the button below.'],
+      go: [{ l: 'Take the tour of the open tool', hub: 'hubAppTour' }] },
     { id: 'help', t: 'What can this assistant do?', group: 'Getting started',
       q: ['what can you do', 'who are you', 'are you ai', 'are you a bot', 'como funciona esta ayuda', 'que puedes hacer', 'eres una ia', 'how does help work'],
       a: ['I answer how-to questions about dHUB and about the tool you have open, from notes written for each screen. I am not connected to an AI, and I never read or change your data.',
@@ -4446,7 +4459,7 @@ assistRegister('hub', {
   assistRegister('spectra', {
     name: 'BCA',
     blurb: 'BCA turns the plate-reader absorbance of a BCA protein assay into concentrations: paste the plate, mark the BSA standards to fit a curve, mark your samples, and it tells you how much water to add to bring every sample to the same concentration.',
-    first: ['start', 'import', 'standards', 'samples'],
+    first: ['start', 'tour', 'import', 'standards', 'samples'],
     screen: function(w){ return vis(w, '#panel-guide.active') ? 'guide' : 'workflow'; },
     diag: function(w){
       var d = [];
@@ -4458,6 +4471,11 @@ assistRegister('hub', {
       return d;
     },
     topics: [
+      { id: 'tour', t: 'Take a guided tour', group: 'Getting started', on: ['workflow'],
+        q: ['guided tour', 'take the tour', 'tour of this tool', 'show me around', 'visita guiada', 'recorrido guiado', 'enseñame la herramienta'],
+        a: 'A one-minute tour moves through each part of this tool and points at what it is for. It is also on the **Guide** tab, where every part has a tour of its own.',
+        go: [{ l: 'Take the tour', fn: 'appTour' }],
+        show: { sel: '.tab[data-tab="guide"]', say: 'The Guide tab keeps the tour, and a tour for each part.' } },
       { id: 'start', t: 'The workflow, start to finish', group: 'Getting started', on: ['workflow'],
         q: ['how does it work', 'how to use', 'get started', 'workflow', 'steps', 'first time', 'tutorial', 'como funciona', 'como se usa', 'empezar', 'primeros pasos', 'flujo'],
         a: 'Everything happens on one page, top to bottom. Each section unlocks when the one above is done.',
@@ -4763,7 +4781,7 @@ assistRegister('hub', {
   assistRegister('lumina', {
     name: 'Lumina',
     blurb: 'Lumina fits dose–response curves for assays you pipette by hand. You draw the layout on the plate — which wells are which dilution series, which compound, which controls — drop the reader file onto it, and get potencies with their fits.',
-    first: ['start', 'assay-types', 'readings', 'export'],
+    first: ['start', 'tour', 'assay-types', 'readings', 'export'],
     avoid: [],
     screen: function(w){ return w.document.querySelector('#pane-results.active') ? 'results' : 'plate'; },
     diag: function(w){
@@ -4774,6 +4792,11 @@ assistRegister('hub', {
       return out;
     },
     topics: [
+      { id: 'tour', t: 'Take a guided tour', group: 'Getting started', on: ['plate','results'],
+        q: ['guided tour', 'take the tour', 'tour of this tool', 'show me around', 'visita guiada', 'recorrido guiado', 'enseñame la herramienta'],
+        a: 'A one-minute tour moves through each part of this tool and points at what it is for. It is also on the **Guide** tab, where every part has a tour of its own.',
+        go: [{ l: 'Take the tour', fn: 'appTour' }],
+        show: { sel: '.tab[data-tab="guide"]', say: 'The Guide tab keeps the tour, and a tour for each part.' } },
       { id: 'start', t: 'Your first plate in five steps', group: 'Getting started', on: ['plate'],
         q: ['first plate', 'get started', 'how do i start', 'how to use', 'tutorial', 'walkthrough', 'empezar', 'como empiezo', 'como se usa', 'primeros pasos', 'quick start'],
         a: 'The five steps along the top of the plate say what is done and what is next; you can click any of them to jump there.',

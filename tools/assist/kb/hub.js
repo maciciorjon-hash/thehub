@@ -2,7 +2,7 @@
 assistRegister('hub', {
   name: 'dHUB',
   blurb: 'Ask how something works, in dHUB or in the tool you have open. I answer from notes written for each tool, and I point at the real button when I can.',
-  first: ['about', 'apps', 'help', 'data-safety'],
+  first: ['about', 'apps', 'tours', 'help', 'data-safety'],
   screen: function(w){ return w.document.body.classList.contains('ws') ? 'ws-' + w._wsSection : 'visitor'; },
   diag: function(w){
     var d = [];
@@ -36,6 +36,11 @@ assistRegister('hub', {
       a: ['Some tools are shared by invitation. If someone gave you a code word, type it into the **discover** box on the home page and press Enter. Most words open one tool; a suite word opens a whole group of tools at once.',
           'There is no account to create.'],
       show: { sel: '#hub-unlock-input', say: 'Type the code word here.' } },
+    { id: 'tours', t: 'Take a guided tour of a tool', group: 'Getting started',
+      q: ['guided tour', 'take the tour', 'tour of this tool', 'show me around', 'walk me through', 'first time using', 'new to this tool', 'visita guiada', 'recorrido guiado', 'enseñame como funciona', 'primera vez'],
+      a: ['The data-analysis tools each have a **guided tour**: about a minute, moving through the tool’s tabs and pointing at the real controls. A tool offers it the first time you open it, and it is always on the tool’s **Guide** tab — where every tab also has a tour of its own.',
+          'Open a tool, then press the button below.'],
+      go: [{ l: 'Take the tour of the open tool', hub: 'hubAppTour' }] },
     { id: 'help', t: 'What can this assistant do?', group: 'Getting started',
       q: ['what can you do', 'who are you', 'are you ai', 'are you a bot', 'como funciona esta ayuda', 'que puedes hacer', 'eres una ia', 'how does help work'],
       a: ['I answer how-to questions about dHUB and about the tool you have open, from notes written for each screen. I am not connected to an AI, and I never read or change your data.',

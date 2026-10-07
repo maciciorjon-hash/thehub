@@ -72,6 +72,7 @@
 //       Compare             several points under the pointer open a list — which point of which compound — first.
 //   E40 history in the cloud Every analysis is written to the cloud store under its name (row, results, whole), versions of one name are one
 //                           analysis there, an empty browser gets it all back (results on demand), deletes travel, no name = no run.
+//   E52 History repairs itself   A database called echo_history with no (or only some) of Echo's stores — what anything that opened it first leaves behind — is repaired in place, keeps what it holds, and an analysis survives a reload (before: "object stores was not found" on every save).
 //   E37 history by name    A History entry is its NAME: runs with one name are versions of one entry (any spelling, any input files), old copies merge, unnamed runs stay by dataset, rename/merge, and every way to compare is findable.
 //   E32 compare             Two analyses matched by group and compound: fold change, unmatched counted, self-compare is 1, biggest change first.
 //   E28 Properties names    The Properties tab lists a compound's potency for every group it was fitted in, not the last one.
@@ -1948,6 +1949,36 @@ if (run('E51')) await guard('E51', async () => {
   check('E51', 'a picklist whose barcodes are blank takes the plates from Destination Plate Name — the same transfers, the same plates', !nb.named.err && nb.named.n === nb.base.n && nb.named.p.length === nb.base.p.length && nb.named.p.includes('BRD2-01'), nb);
   check('E51', 'a picklist with no barcode column at all reads too; one with neither barcode nor name is refused, not read as empty', !nb.dropped.err && nb.dropped.n === nb.base.n && (nb.both.err || nb.both.n === 0), nb);
   await runWith({});   // leave the page as the next test expects it
+});
+
+if (run('E52')) await guard('E52', async () => {
+  // A database called echo_history can exist WITHOUT Echo's four stores (anything that opened it with no version and no
+  // abort leaves an empty v1). Echo's own open then never ran its upgrade and EVERY save failed with "object stores was
+  // not found". It must repair itself, keep whatever is already there, and keep an analysis across a reload.
+  const mk = async (stores, rec) => { const c = await browser.newContext({ viewport: { width: 1200, height: 800 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(String(e.message || e)));
+    await q.goto('file://' + FILE); await q.waitForTimeout(500);
+    await q.evaluate(() => new Promise(r => { const d = indexedDB.deleteDatabase('echo_history'); d.onsuccess = d.onerror = d.onblocked = () => r(); }));
+    await q.goto('about:blank');
+    const q2 = await c.newPage(); await q2.goto('file://' + path.join(ROOT, 'apps/cuppa/cuppa.html')); await q2.waitForTimeout(300);   // any page that is not Echo: it plants the broken database on the same origin
+    return { c, q2, errs };
+  };
+  for (const scenario of ['empty', 'partial']) {
+    const { c, q2 } = await mk();
+    // plant the broken database from a page that is not running Echo's History yet
+    await q2.evaluate(async sc => { window.__noHx = 1; await new Promise(r => { const rq = indexedDB.open('echo_history'); rq.onsuccess = () => { rq.result.close(); r(); }; }); if (sc === 'partial') { await new Promise(r => { const rq = indexedDB.open('echo_history', 2); rq.onupgradeneeded = () => { const d = rq.result; d.createObjectStore('runs', { keyPath: 'id' }).put({ id: 7, setId: 'n:keepme', assayId: 'KeepMe', ts: 7, ver: 1, n: 1, nFlag: 0, groups: 'G', nCompounds: 1 }); }; rq.onsuccess = () => { rq.result.close(); r(); }; }); } }, scenario);
+    await q2.goto('about:blank'); await q2.goto('file://' + FILE); await q2.waitForTimeout(1500);
+    const pre = await q2.evaluate(() => _hxLoad().then(() => ({ broken: _hxBroken && _hxBroken.message, runs: Object.keys(_hx.runs).map(Number) })));
+    check('E52', scenario + ': a database with missing stores opens (History is not "broken")', !pre.broken, pre);
+    if (scenario === 'partial') check('E52', 'partial: a run already stored survives the repair', pre.runs.includes(7), pre);
+    await q2.evaluate(() => loadTestData()); await q2.waitForTimeout(1500);
+    await q2.evaluate(() => { document.getElementById('p-assay').value = 'E52SAVE'; return runPipeline(); }); await q2.waitForTimeout(3500);
+    const a = await q2.evaluate(() => ({ broken: _hxBroken && _hxBroken.message, sets: Object.keys(_hx.sets) }));
+    check('E52', scenario + ': an analysis is saved to History', !a.broken && a.sets.includes('n:e52save'), a);
+    await q2.reload({ waitUntil: 'load' }); await q2.waitForTimeout(2500);
+    const b = await q2.evaluate(async () => { await _hxLoad(); const run = Object.values(_hx.runs).find(r => r.setId === 'n:e52save'); const blob = run && await _hxGet('blobs', run.id); return { broken: _hxBroken && _hxBroken.message, run: !!run, rows: blob && blob.data ? blob.data.length : 0, tab: document.getElementById('history-panel').textContent.includes('E52SAVE') }; });
+    check('E52', scenario + ': after a reload the analysis, its results and its History row are still there', !b.broken && b.run && b.rows > 0 && b.tab, b);
+    await c.close();
+  }
 });
 
 await browser.close();

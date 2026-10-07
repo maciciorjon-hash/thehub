@@ -12,7 +12,7 @@
   assistRegister('lumina', {
     name: 'Lumina',
     blurb: 'Lumina fits dose–response curves for assays you pipette by hand. You draw the layout on the plate — which wells are which dilution series, which compound, which controls — drop the reader file onto it, and get potencies with their fits.',
-    first: ['start', 'assay-types', 'readings', 'export'],
+    first: ['start', 'tour', 'assay-types', 'readings', 'export'],
     avoid: [],
     screen: function(w){ return w.document.querySelector('#pane-results.active') ? 'results' : 'plate'; },
     diag: function(w){
@@ -23,6 +23,11 @@
       return out;
     },
     topics: [
+      { id: 'tour', t: 'Take a guided tour', group: 'Getting started', on: ['plate','results'],
+        q: ['guided tour', 'take the tour', 'tour of this tool', 'show me around', 'visita guiada', 'recorrido guiado', 'enseñame la herramienta'],
+        a: 'A one-minute tour moves through each part of this tool and points at what it is for. It is also on the **Guide** tab, where every part has a tour of its own.',
+        go: [{ l: 'Take the tour', fn: 'appTour' }],
+        show: { sel: '.tab[data-tab="guide"]', say: 'The Guide tab keeps the tour, and a tour for each part.' } },
       { id: 'start', t: 'Your first plate in five steps', group: 'Getting started', on: ['plate'],
         q: ['first plate', 'get started', 'how do i start', 'how to use', 'tutorial', 'walkthrough', 'empezar', 'como empiezo', 'como se usa', 'primeros pasos', 'quick start'],
         a: 'The five steps along the top of the plate say what is done and what is next; you can click any of them to jump there.',
