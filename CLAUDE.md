@@ -7034,7 +7034,7 @@ that the invariants load without a browser. **There is no PlateEngine port**: Te
 selection, series and paste-layout editor — dragging a Lumina-style gradient over a kinetic plate is
 not built.
 
-**Tests.** `tools/tempo_invariants.mjs` (K0–K13, 60 checks, in CI): shared blocks · every reader and
+**Tests.** `tools/tempo_invariants.mjs` (K0–K14, 62 checks, in CI): shared blocks · every reader and
 time format · the time axis · normalisation against an independent calculation · known-answer fits,
 profile-CI coverage, brute-force agreement · window, rebound, skip, lag · the noise gate · bounds ·
 MM rules and Jon's headers · the exports and the ProNect round trip · one-compound refit and undo ·
@@ -7042,7 +7042,7 @@ MM rules and Jon's headers · the exports and the ProNect round trip · one-comp
 real ProNect plate. **The three real files are gitignored in `tools/fixtures/tempo/`** — they carry
 real compound codes, and the repo's rule is that Jon's compound names appear nowhere in shipped code;
 CI uses synthetic plates in the identical schema. `tools/transfer_invariants.mjs` T9–T12 cover Send,
-Edit, Update and the `extra` sanitiser. Nine Tempo, four transfer and one Hit Finder mutation were
+Edit, Update and the `extra` sanitiser. **K14 is the escape/runtime/alignment audit over every Tempo screen** (empty and example plate, four tabs, 1440 → 320 px, both themes) plus a direct check that the empty state's button icons are button-sized: the first-delivery empty state drew its icon at 44px inside the *Choose files* button because `.empty-state svg` matches every descendant (Hit Finder had the same rule and was fixed in H23; use `.empty-state > svg`, now also in Lumina and Incubator). The same sweep found four chart faults — scatter names that left the plot or sat on each other (greedy placement now), x ticks and y titles wider than the plot (`tpFrame` thins and fits them), a log axis squeezed to 128px by a 120px right-hand legend on a phone (legend goes above the plot under 440px), and a card-layout cell whose long header pushed its value out. Each was put back and K14 failed. Nine Tempo, four transfer and one Hit Finder mutation were
 each put back and caught. Phone sweep: 0 findings on Chromium over 64 screens (390, 844×390, 320,
 375, both themes); WebKit has one advisory (an ellipsed flag).
 

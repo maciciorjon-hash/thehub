@@ -126,7 +126,7 @@ select.inp{padding-right:6px;}
 .note-list li.ok::before{background:var(--good);}
 
 .empty-state{text-align:center;padding:56px 20px;color:var(--text2);}
-.empty-state svg{width:44px;height:44px;stroke:var(--text3);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;opacity:.5;margin-bottom:12px;}
+.empty-state > svg{width:44px;height:44px;stroke:var(--text3);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;opacity:.5;margin-bottom:12px;}
 .empty-state .es-t{font-size:var(--fs-5);font-weight:600;color:var(--text);margin-bottom:4px;}
 .empty-state .es-s{font-size:var(--fs-3);max-width:50ch;margin:0 auto 18px;line-height:1.5;}
 .empty-state .es-a{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
@@ -262,9 +262,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   .res-card .tbl,.res-card .tbl tbody,.res-card .tbl tr,.res-card .tbl td{display:block;width:100%;}
   .res-card .tbl tr{border:1px solid var(--border);border-radius:var(--r-3);padding:8px 10px;margin-bottom:10px;}
   .res-card .tbl td{border:0;padding:3px 0;display:flex;justify-content:space-between;gap:12px;text-align:right;}
-  .res-card .tbl td::before{content:attr(data-h);color:var(--text2);font-size:var(--fs-2);font-weight:600;text-align:left;}
+  .res-card .tbl td::before{content:attr(data-h);color:var(--text2);font-size:var(--fs-2);font-weight:600;text-align:left;flex:1 1 0;min-width:0;overflow-wrap:anywhere;}
 }
-@media (max-width:640px){ .dr-grid{grid-template-columns:1fr;} .pgrid{--wpx:24px;} .pgrid.p384{--wpx:12px;} }
+@media (max-width:640px){ .dr-grid{grid-template-columns:1fr;} .pgrid{--wpx:24px;} .pgrid.p384{--wpx:12px;} .pgrid .w .t{display:none;} }
 /* a 384-well plate cannot be drawn honestly in portrait on a phone: say so, never show a plate nobody can use */
 @media (max-width:640px) and (orientation:portrait){ body.tp-384 .pgrid.p384{display:none;} body.tp-384 .rotate-note.for-plate{display:block;} }
 
@@ -1740,11 +1740,14 @@ function tpFrame(o) {
   const font = 'font-family="IBM Plex Mono,ui-monospace,Menlo,Consolas,monospace"';
   let s = '';
   const xt = tk(o.x), yt = tk(o.y);
-  xt.forEach(v => { const x = X(v); s += '<line x1="' + x.toFixed(1) + '" y1="' + m.t + '" x2="' + x.toFixed(1) + '" y2="' + (m.t + ih) + '" stroke="' + pal.grid + '"/>' + '<text x="' + x.toFixed(1) + '" y="' + (m.t + ih + 15) + '" text-anchor="middle" font-size="10.5" fill="' + pal.text2 + '" ' + font + '>' + esc((o.x.fmt || tpF)(v)) + '</text>'; });
+  // an axis label is only drawn when it does not touch the one before it (the gridline stays): 6.4px a character at 10.5px mono
+  let lastR = -1e9; xt.forEach(v => { const x = X(v), t = String((o.x.fmt || tpF)(v)), hw = t.length * 3.2; const ok = x - hw >= lastR + 6 && x + hw <= W - 2; if (ok) lastR = x + hw; s += '<line x1="' + x.toFixed(1) + '" y1="' + m.t + '" x2="' + x.toFixed(1) + '" y2="' + (m.t + ih) + '" stroke="' + pal.grid + '"/>' + (ok ? '<text x="' + x.toFixed(1) + '" y="' + (m.t + ih + 15) + '" text-anchor="middle" font-size="10.5" fill="' + pal.text2 + '" ' + font + '>' + esc(t) + '</text>' : ''); });
   yt.forEach(v => { const y = Y(v); s += '<line x1="' + m.l + '" y1="' + y.toFixed(1) + '" x2="' + (m.l + iw) + '" y2="' + y.toFixed(1) + '" stroke="' + pal.grid + '"/>' + '<text x="' + (m.l - 7) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end" font-size="10.5" fill="' + pal.text2 + '" ' + font + '>' + esc((o.y.fmt || tpF)(v)) + '</text>'; });
   s += '<line x1="' + m.l + '" y1="' + (m.t + ih) + '" x2="' + (m.l + iw) + '" y2="' + (m.t + ih) + '" stroke="' + pal.axis + '"/><line x1="' + m.l + '" y1="' + m.t + '" x2="' + m.l + '" y2="' + (m.t + ih) + '" stroke="' + pal.axis + '"/>';
-  if (o.x.label) s += '<text x="' + (m.l + iw / 2) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="11.5" fill="' + pal.text2 + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc(o.x.label) + '</text>';
-  if (o.y.label) s += '<text transform="translate(13 ' + (m.t + ih / 2) + ') rotate(-90)" text-anchor="middle" font-size="11.5" fill="' + pal.text2 + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc(o.y.label) + '</text>';
+  // a title longer than the plot it names is cut at a bracket, or with an ellipsis, so it never leaves the picture (the full text is the tooltip)
+  const fitT = (t, px) => { t = String(t); const max = Math.max(6, Math.floor(px / 6.3)); if (t.length <= max) return t; const b = t.indexOf(' ('); return b > 3 && b <= max ? t.slice(0, b) : t.slice(0, max - 1) + '…'; };
+  if (o.x.label) s += '<text x="' + (m.l + iw / 2) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="11.5" fill="' + pal.text2 + '" font-family="IBM Plex Sans,Arial,sans-serif"><title>' + esc(o.x.label) + '</title>' + esc(fitT(o.x.label, W - 20)) + '</text>';
+  if (o.y.label) s += '<text transform="translate(13 ' + (m.t + ih / 2) + ') rotate(-90)" text-anchor="middle" font-size="11.5" fill="' + pal.text2 + '" font-family="IBM Plex Sans,Arial,sans-serif"><title>' + esc(o.y.label) + '</title>' + esc(fitT(o.y.label, ih)) + '</text>';
   return { s: s, X: X, Y: Y, m: m, iw: iw, ih: ih, clip: '<clipPath id="' + (o.id || 'cp') + '"><rect x="' + m.l + '" y="' + m.t + '" width="' + iw + '" height="' + ih + '"/></clipPath>' };
 }
 function tpSvg(W, H, inner, pal, extra) { return '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" role="img" ' + (extra || '') + '><rect width="' + W + '" height="' + H + '" fill="' + pal.bg + '"/>' + inner + '</svg>'; }
@@ -1920,7 +1923,7 @@ function tpEmptyPlate() {
   return '<div class="card"><div class="empty-state">' + ICO.curve +
     '<div class="es-t">Drop the kinetic reads of a plate</div>' +
     '<div class="es-s">A ProNect export (<span class="mono">normalized_data.json</span> or <span class="mono">raw_kinetic.csv</span>) brings its layout with it. Any other table works too — a row of well labels with a time column, or a column of well labels with the time along the top — and you then say which wells hold what. You can also paste a table straight from Excel.</div>' +
-    '<div class="es-a"><button class="btn primary" onclick="tpPickFiles()">' + ICO.up + 'Choose files</button><button class="btn" onclick="tpLoadExample()">Load an example plate</button><button class="btn" onclick="$(\'#tp-proj\').click()">Open a project</button></div></div></div>';
+    '<div class="es-a"><button class="btn primary" onclick="tpPickFiles()">' + ICO.up + 'Choose files</button><button class="btn" onclick="tpLoadExample()">Load an example plate</button><button class="btn" onclick="tpOpenProjectDlg()">Open a project</button></div></div></div>';
 }
 const TP_ROLE_L = { dose: 'Compound', veh: 'Vehicle', bkg: 'Background', blank: 'Blank' };
 function tpInterval(p) { const d = []; for (let i = 1; i < p.times.length; i++) d.push(p.times[i] - p.times[i - 1]); return tpMedian(d); }
@@ -1988,7 +1991,7 @@ function tpPlateGrid(p) {
         const col = tpWellColor(w, p, res, view, kk, pal); if (col && role !== 'bkg' && role !== 'blank') { st = ' style="background:' + col + ';color:' + (tpLum(col) > .55 ? '#1a1d2e' : '#fff') + '"'; }
         if (ex.has(id)) cls += ' out';
         if (view === 'layout' && role === 'dose' && w.compound) { const cc = tpCompColor(p, w.compound, pal); st = ' style="background:' + cc + ';color:' + (tpLum(cc) > .5 ? '#1a1d2e' : '#fff') + '"'; }
-        if (p.fmt.n === 96) label = role === 'dose' ? (w.conc != null ? tpShortConc(w.conc) : (w.compound ? esc(w.compound.slice(0, 5)) : '')) : role === 'veh' ? 'veh' : role === 'bkg' ? 'bkg' : '';
+        if (p.fmt.n === 96) label = role === 'dose' ? '<span class="wd">' + (w.conc != null ? tpShortConc(w.conc) : (w.compound ? esc(w.compound.slice(0, 5)) : '')) + '</span>' : role === 'veh' ? 'veh' : role === 'bkg' ? 'bkg' : '';
         tip = esc(id + ' · ' + (TP_ROLE_L[role] || role) + (w.compound ? ' · ' + w.compound : '') + (w.conc != null && w.conc > 0 ? ' · ' + tpAxConc(w.conc) : '') + (ex.has(id) ? ' · left out' : ''));
       }
       if (sel) cls += ' sel';
@@ -2287,10 +2290,23 @@ function tpScatter(rows, xk, yk, o) {
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#cs)">'; const names = [...new Set(pts.map(p => p.r.comp.target || p.r.plate.name))];
   pts.forEach((p, i) => { const cx = F.X(lg(X, p.x.v)), cy = F.Y(lg(Y, p.y.v)), gi = names.indexOf(p.r.comp.target || p.r.plate.name), col = tpGroupColor(pal, gi), flagged = (p.r.comp.A && !p.r.comp.A.fail && /K:/.test(p.r.comp.A.Flag_Reason)); const q = p.x.q !== '=' || p.y.q !== '=';
     s += '<g class="sp" data-i="' + i + '" style="cursor:pointer" onclick="tpOpenComp(\'' + p.r.plate.id + '\',\'' + p.r.comp.key.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')" data-tip="' + esc((p.r.comp.compound || '') + ' · ' + X.l + ' ' + tpMCell(p.r.comp, xk) + ' · ' + Y.l + ' ' + tpMCell(p.r.comp, yk)) + '"><circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6.2" fill="' + (q ? pal.bg : col) + '" stroke="' + col + '" stroke-width="2"/>' + (flagged ? '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="9.6" fill="none" stroke="' + pal.warn + '" stroke-width="1.4"/>' : '') + '</g>';
-    s += '<text x="' + (cx + 10).toFixed(1) + '" y="' + (cy + 4).toFixed(1) + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif" pointer-events="none">' + esc((p.r.comp.compound || '').slice(0, 14)) + '</text>'; });
+    p.cx = cx; p.cy = cy; });
+  // names: each goes right of its dot, else left, above or below; one that would leave the plot or land on another name is left out (the tooltip has it)
+  const box = { l: F.m.l + 2, r: F.m.l + F.iw - 2, t: F.m.t + 2, b: F.m.t + F.ih - 2 }, placed = [], lab = [];
+  pts.slice().sort((a, b) => a.cx - b.cx).forEach(p => {
+    const nm = (p.r.comp.compound || '').slice(0, 14); if (!nm) return; const w = nm.length * 5.9 + 2, h = 12;
+    const tries = [[p.cx + 10, p.cy + 4, 'start', p.cx + 10, p.cy - 8], [p.cx - 10, p.cy + 4, 'end', p.cx - 10 - w, p.cy - 8], [p.cx, p.cy - 12, 'middle', p.cx - w / 2, p.cy - 22], [p.cx, p.cy + 19, 'middle', p.cx - w / 2, p.cy + 9]];
+    for (const t of tries) { const r = { x: t[3], y: t[4], w: w, h: h }; if (r.x < box.l || r.x + r.w > box.r || r.y < box.t || r.y + r.h > box.b) continue;
+      if (placed.some(q => r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y)) continue;
+      if (pts.some(o2 => o2 !== p && r.x < o2.cx + 8 && r.x + r.w > o2.cx - 8 && r.y < o2.cy + 8 && r.y + r.h > o2.cy - 8)) continue;
+      placed.push(r); lab.push('<text x="' + t[0].toFixed(1) + '" y="' + t[1].toFixed(1) + '" text-anchor="' + t[2] + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif" pointer-events="none">' + esc(nm) + '</text>'); break; } });
+  s += lab.join('');
   return tpSvg(o.W, o.H, s + '</g>', pal, 'data-chart="scatter"');
 }
 function tpGroupColor(pal, i) { const P = pal.dark ? ['#8aaee0', '#f0b060', '#6ddca8', '#d49be8', '#f08a84', '#7fd3e0'] : ['#3b6fb5', '#c47818', '#2d9462', '#8a4fb0', '#c04040', '#1f8aa0']; return P[i % P.length]; }
+// a legend that has no room on the right (a phone) goes above the plot in rows that wrap: { pos:[[x,y]…], extra: height it adds }
+function tpLegendRows(names, W) { const pos = []; let x = 14, y = 12, n = 1; names.forEach(t => { const w = 26 + t.length * 6.2 + 14; if (x + w > W - 8 && x > 14) { x = 14; y += 16; n++; } pos.push([x, y]); x += w; }); return { pos: pos, extra: (n - 1) * 16 + 18 }; }
+function tpLegendSvg(LG, names, cols, pal) { return names.map((t, i) => '<line x1="' + LG.pos[i][0] + '" x2="' + (LG.pos[i][0] + 18) + '" y1="' + (LG.pos[i][1] - 3) + '" y2="' + (LG.pos[i][1] - 3) + '" stroke="' + cols[i] + '" stroke-width="2.4"/><text x="' + (LG.pos[i][0] + 24) + '" y="' + LG.pos[i][1] + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc(t) + '</text>').join(''); }
 function tpBars(rows, k, o) {
   o = Object.assign({ W: 560, light: false }, o || {}); const pal = tpPal(o.light), M = TP_METRICS[k];
   const its = rows.map(r => ({ r: r, x: tpM(r.comp, k) })).filter(p => p.x && p.x.v != null).sort((a, b) => (M.hi ? b.x.v - a.x.v : a.x.v - b.x.v));
@@ -2314,21 +2330,22 @@ function tpOverlayK(rows, o) {
   o = Object.assign({ W: 560, H: 380, light: false }, o || {}); const pal = tpPal(o.light), usable = rows.filter(r => r.comp.B && r.comp.B.ok);
   if (!usable.length) return tpSvg(o.W, 100, '<text x="20" y="44" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">No compound has a K–response to overlay.</text>', pal);
   let lo = Infinity, hi = 0, kMax = 0; usable.forEach(r => r.comp.concs.forEach(c => { lo = Math.min(lo, c.c); hi = Math.max(hi, c.c); })); lo /= 2.5; hi *= 2.5; usable.forEach(r => { kMax = Math.max(kMax, r.comp.B.curve(hi) * 1.03, Math.max.apply(null, r.comp.B.points.map(p => p.K))); });
-  const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'ck3', m: { r: 120 }, x: { lo: lo, hi: hi, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: 0, hi: kMax * 1.08, label: tpKLabel(), fmt: v => tpF(tpKV(v), 2) } });
+  const lgN = usable.map(r => (r.comp.compound || '').slice(0, 12)), LG = o.W < 440 ? tpLegendRows(lgN, o.W) : null, HH = o.H + (LG ? LG.extra : 0);
+  const F = tpFrame({ W: o.W, H: HH, pal: pal, id: 'ck3', m: LG ? { r: 16, t: 14 + LG.extra } : { r: 120 }, x: { lo: lo, hi: hi, log: true, label: 'Concentration', fmt: tpAxConc }, y: { lo: 0, hi: kMax * 1.08, label: tpKLabel(), fmt: v => tpF(tpKV(v), 2) } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#ck3)">'; const xs = []; for (let i = 0; i <= 120; i++) xs.push(Math.pow(10, Math.log10(lo) + (Math.log10(hi) - Math.log10(lo)) * i / 120));
   usable.forEach((r, i) => { const col = tpGroupColor(pal, i); s += '<path d="' + tpPath(xs.map(x => [x, r.comp.B.curve(x)]), F.X, F.Y) + '" fill="none" stroke="' + col + '" stroke-width="2"/>'; r.comp.B.points.forEach(p => { s += '<circle cx="' + F.X(p.c).toFixed(1) + '" cy="' + F.Y(p.K).toFixed(1) + '" r="3.4" fill="' + col + '"/>'; }); });
-  s += '</g>'; usable.forEach((r, i) => { const col = tpGroupColor(pal, i), y = F.m.t + 8 + i * 17; s += '<line x1="' + (F.m.l + F.iw + 14) + '" x2="' + (F.m.l + F.iw + 32) + '" y1="' + (y - 3) + '" y2="' + (y - 3) + '" stroke="' + col + '" stroke-width="2.4"/><text x="' + (F.m.l + F.iw + 38) + '" y="' + y + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc((r.comp.compound || '').slice(0, 12)) + '</text>'; });
-  return tpSvg(o.W, o.H, s, pal, 'data-chart="koverlay"');
+  s += '</g>'; if (LG) s += tpLegendSvg(LG, lgN, usable.map((r, i) => tpGroupColor(pal, i)), pal); else usable.forEach((r, i) => { const col = tpGroupColor(pal, i), y = F.m.t + 8 + i * 17; s += '<line x1="' + (F.m.l + F.iw + 14) + '" x2="' + (F.m.l + F.iw + 32) + '" y1="' + (y - 3) + '" y2="' + (y - 3) + '" stroke="' + col + '" stroke-width="2.4"/><text x="' + (F.m.l + F.iw + 38) + '" y="' + y + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc((r.comp.compound || '').slice(0, 12)) + '</text>'; });
+  return tpSvg(o.W, HH, s, pal, 'data-chart="koverlay"');
 }
 function tpOverlayTraces(rows, c, o) {
   o = Object.assign({ W: 560, H: 380, light: false }, o || {}); const pal = tpPal(o.light), items = [];
   rows.forEach(r => { const cc = r.comp.concs.find(x => tpCKey(x.c) === tpCKey(c)); if (cc) items.push({ r: r, cc: cc, t: r.res.t }); });
   if (!items.length) return tpSvg(o.W, 100, '<text x="20" y="44" fill="' + pal.text2 + '" font-size="13" font-family="IBM Plex Sans,Arial,sans-serif">No compound was tested at that concentration.</text>', pal);
-  const tMax = Math.max.apply(null, items.map(i => i.t[i.t.length - 1])); const F = tpFrame({ W: o.W, H: o.H, pal: pal, id: 'ct3', m: { r: 120 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: 1.15, label: 'Fractional signal', ticks: [0, .25, .5, .75, 1] } });
+  const tMax = Math.max.apply(null, items.map(i => i.t[i.t.length - 1])); const lgN = items.map(it => (it.r.comp.compound || '').slice(0, 12)), LG = o.W < 440 ? tpLegendRows(lgN, o.W) : null, HH = o.H + (LG ? LG.extra : 0); const F = tpFrame({ W: o.W, H: HH, pal: pal, id: 'ct3', m: LG ? { r: 16, t: 14 + LG.extra } : { r: 120 }, x: { lo: 0, hi: tpTT(tMax), label: tpTimeLabel() }, y: { lo: 0, hi: 1.15, label: 'Fractional signal', ticks: [0, .25, .5, .75, 1] } });
   let s = '<defs>' + F.clip + '</defs>' + F.s + '<g clip-path="url(#ct3)"><line x1="' + F.m.l + '" x2="' + (F.m.l + F.iw) + '" y1="' + F.Y(1) + '" y2="' + F.Y(1) + '" stroke="' + pal.veh + '" stroke-dasharray="5 4"/>';
   items.forEach((it, i) => { s += '<path d="' + tpPath(it.t.map((tt, k) => [tpTT(tt), it.cc.mean[k]]), F.X, F.Y) + '" fill="none" stroke="' + tpGroupColor(pal, i) + '" stroke-width="2"/>'; }); s += '</g>';
-  items.forEach((it, i) => { const y = F.m.t + 8 + i * 17; s += '<line x1="' + (F.m.l + F.iw + 14) + '" x2="' + (F.m.l + F.iw + 32) + '" y1="' + (y - 3) + '" y2="' + (y - 3) + '" stroke="' + tpGroupColor(pal, i) + '" stroke-width="2.4"/><text x="' + (F.m.l + F.iw + 38) + '" y="' + y + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc((it.r.comp.compound || '').slice(0, 12)) + '</text>'; });
-  return tpSvg(o.W, o.H, s, pal, 'data-chart="toverlay"');
+  if (LG) s += tpLegendSvg(LG, lgN, items.map((it, i) => tpGroupColor(pal, i)), pal); else items.forEach((it, i) => { const y = F.m.t + 8 + i * 17; s += '<line x1="' + (F.m.l + F.iw + 14) + '" x2="' + (F.m.l + F.iw + 32) + '" y1="' + (y - 3) + '" y2="' + (y - 3) + '" stroke="' + tpGroupColor(pal, i) + '" stroke-width="2.4"/><text x="' + (F.m.l + F.iw + 38) + '" y="' + y + '" font-size="10.5" fill="' + pal.ink + '" font-family="IBM Plex Sans,Arial,sans-serif">' + esc((it.r.comp.compound || '').slice(0, 12)) + '</text>'; });
+  return tpSvg(o.W, HH, s, pal, 'data-chart="toverlay"');
 }
 function tpCmpSet(k, v) { TP.ui[k] = v; tpRenderCompare(); }
 function tpRenderCompare() {

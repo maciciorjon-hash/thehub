@@ -15,6 +15,8 @@
 // K10 leaving a read out refits that compound alone; undo puts everything back exactly
 // K11 the flag text and the Screen engine agree
 // K12 hostile input: nothing throws, nothing is rendered as markup, every tab draws
+// K14 everything stays in its box: the empty state and the example plate, every tab, 1440 → 320 px, both themes — no icon or text leaves the box drawn around it,
+//     no two runs of text land on each other, nothing is cut with no way to scroll to it, no dead handler, no misaligned row (the empty-state icon that was 44px inside a button)
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
@@ -333,6 +335,35 @@ try {
   const kcol = table.table[0].indexOf('KDegMax_per_h'), lcol = table.table[0].indexOf('KDeg_LogEff');
   check('K13 the kinetic columns carry KDegMax and its log efficiency for a compound with a K–response, blank (never 0) for one without', kcol > 0 && table.table.slice(1).some(r => typeof r[kcol] === 'number' && typeof r[lcol] === 'number') && table.table.slice(1).some(r => r[kcol] === null), '');
   await hfPage.close();
+
+  /* ───── K14 everything stays in its box ───── */
+  {
+    const ESC = fs.readFileSync(path.join(ROOT, 'tools/audit_escape.js'), 'utf8').replace(/window\.__escapeAudit\(\);\s*$/, ''), RT = fs.readFileSync(path.join(ROOT, 'tools/audit_runtime.js'), 'utf8'), AL = fs.readFileSync(path.join(ROOT, 'tools/audit_align.js'), 'utf8');
+    const bad = [];
+    for (const theme of ['light', 'dark']) for (const w of [1440, 1180, 1024, 768, 390, 320]) {
+      const c2 = await browser.newContext({ viewport: { width: w, height: w < 500 ? 844 : 900 }, hasTouch: w < 500, isMobile: w < 500 }), pg = await c2.newPage();
+      await pg.route(/^https?:/, r => r.abort());
+      await pg.addInitScript(t => { try { localStorage.clear(); localStorage.setItem('hub_theme', t); } catch (e) {} }, theme);
+      await pg.goto('file://' + FILE); await pg.waitForFunction(() => typeof tpTab === 'function');
+      await pg.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const run = async tag => {
+        await pg.waitForTimeout(400);
+        const f = [].concat(await pg.evaluate(ESC + ';window.__escapeAudit({allowScroll:".tbl-wrap,.tbl-scroll,table"})').catch(x => ['escape audit crashed: ' + x.message]).then(r => r.map(x => 'ESCAPE ' + x)),
+          await pg.evaluate(RT + ';(window.__runtimeAudit||(()=>[]))()').catch(() => []).then(r => (r || []).map(x => 'RUNTIME ' + x)),
+          await pg.evaluate(AL + ';(window.__alignAudit||(()=>[]))()').catch(() => []).then(r => (r || []).map(x => 'ALIGN ' + x)));
+        f.forEach(x => bad.push(theme + ' ' + w + 'px ' + tag + ': ' + x));
+      };
+      if (w === 1440 && theme === 'light') {
+        const ic = await pg.evaluate(() => [...document.querySelectorAll('.empty-state .btn svg')].map(s => Math.round(s.getBoundingClientRect().width)));
+        check('K14 the icons inside the empty state’s buttons are button-sized, not the 44px illustration', ic.length === 3 || ic.length === 1 ? ic.every(v => v <= 16) && ic.length >= 1 : false, JSON.stringify(ic));
+      }
+      for (const t of ['plate', 'curves', 'results', 'compare']) { await pg.evaluate(t => tpTab(t), t); await run('empty/' + t); }
+      await pg.evaluate(() => tpTab('plate')); await pg.evaluate(() => tpLoadExample()); await pg.waitForTimeout(1500);
+      for (const t of ['plate', 'curves', 'results', 'compare']) { await pg.evaluate(t => tpTab(t), t); await run('example/' + t); }
+      await c2.close();
+    }
+    check('K14 nothing leaves its box, lands on its neighbour, is cut with no scroll, or sits off the line — empty and example, every tab, 1440 to 320 px, both themes', bad.length === 0, bad.slice(0, 6).join(' | ') + (bad.length > 6 ? ' … +' + (bad.length - 6) : ''));
+  }
 
   /* ───── the real ProNect files, when they are here ───── */
   if (REAL) {
