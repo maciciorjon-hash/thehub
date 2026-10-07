@@ -52,12 +52,17 @@
 //   H22 a bad file is a bad file  Empty, header-only, binary, a CSV with a BOM / semicolons / decimal commas, impossible numbers (1e999, negative, text), garbage curve points and
 //                              markup in names: nothing throws, no row with no compound or no number is invented, and no tab ever shows NaN / Infinity / undefined.
 //   H17 the tabs are a tablist One selected tab, arrows / Home / End move and select, the underline sits under the active tab.
+//   H23 everything stays in    With the names a lab really uses (a 60-character screen label, a compound code with a batch suffix, a target with its fusion
+//       its box                 tag, a cell line with its knock-out) every tab, the drawer and every dialog, at 1440 / 1260 (the Hub's frame on a laptop) / 1100 /
+//                              900 / 390 px, is checked by tools/audit_escape.js: no icon or text leaves the box drawn around it, no two runs of text land on
+//                              one another, no chart label touches another, and nothing a person must read whole hides behind a sideways scroll.
 //
 // Usage (repo root):  node tools/hitfinder_invariants.mjs [--only=H0,H16] [--file=path/to/hitfinder.html] [--echo=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
+import { HF_SEED } from './hitfinder_seed.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map(a => {
   const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] === undefined ? true : m[2]] : [a, true];
@@ -965,6 +970,59 @@ if (run('H20')) await guard('H20', async () => {
   const solo = await sp.evaluate(() => ({ ready: _hitFinderReady(), html: _screenBtns('', '') }));
   check('H20', 'standalone Echo offers Screen CSV and no Send button', !solo.ready && /Screen CSV/.test(solo.html) && !/hf-send/.test(solo.html), solo);
   await sp.close();
+});
+
+if (run('H23')) await guard('H23', async () => {
+  const SRC = fs.readFileSync(path.join(ROOT, 'tools/audit_escape.js'), 'utf8').replace(/window\.__escapeAudit\(\);\s*$/, '');   // defines the audit; each screen then calls it
+  const c23 = await browser.newContext({ acceptDownloads: true });   // its own storage: the criteria and calls the earlier invariants saved would change what the list shows
+  await c23.route(/^https?:/, r => r.request().url().startsWith(BASE) ? r.continue() : r.abort());
+  const ALLOW = { allowScroll: '.hits-scroll' };            // the ranked list is a wide table in its own box by design
+  const sizes = [[1440, 900], [1260, 800], [1180, 800], [1100, 800], [900, 800], [390, 844]];   // 1180: a laptop window, where the screens table is a table and has 1130px of its own to find
+  for (const [w, h] of sizes) {
+    const sp = await c23.newPage(); await sp.bringToFront(); await sp.setViewportSize({ width: w, height: h });
+    const seen = [], at = tag => r => r.forEach(x => seen.push(`${w}px ${tag}: ${x}`));
+    const audit = async tag => at(tag)(await sp.evaluate(SRC + ';window.__escapeAudit(' + JSON.stringify(ALLOW) + ')'));
+    try {
+      await sp.goto(BASE + '/__hf.html'); await sp.waitForTimeout(700);
+      await sp.evaluate(() => { document.getElementById('dep-stack')?.remove(); });
+      await audit('empty');                                                                     // the empty state: its illustration must not size the icons inside its buttons
+      await sp.evaluate(() => {                                                                  // the names a lab really uses
+        const o = window.hfExampleRuns;
+        window.hfExampleRuns = () => { const ex = o(); ex.runs.forEach(r => { r.assayId += '_BET_degradation_screen_plate_series_ABC_20260504'; r.screens.forEach(s => { if (s.target) s.target += '(BD1)-NanoLuc fusion'; s.cellLine += ' DCAF15 KO #15 pool'; }); }); return ex; };
+        loadHitFinderTestData();
+        HF.names.forEach((m, ck) => { const [[n, c]] = [...m.entries()]; HF.names.set(ck, new Map([['EDA-099-JMM06-batch-2-' + n, c]])); });   // after the ingest, which would rebuild the names
+      });
+      await sp.waitForTimeout(500);
+      await sp.evaluate(HF_SEED[1]); await sp.waitForTimeout(2600);                              // structures the offline run cannot fetch
+      for (const t of ['screens', 'criteria', 'hits', 'plots', 'chem', 'export']) {
+        await sp.evaluate(k => { hfTab(k); window.scrollTo(0, 0); }, t); await sp.waitForTimeout(450);
+        if (t === 'chem') { const drawn = await sp.waitForSelector('.cl-grp', { timeout: 8000 }).then(() => true, () => false); await sp.waitForTimeout(300); check('H23', `the Chemistry tables were drawn at ${w}px, so they were measured`, drawn, drawn); }
+        if (t === 'hits') {      // the widest thing each metric cell can hold, whatever the first rows of this data happen to say
+          const spill = await sp.evaluate(() => { const r = document.querySelector('.h-r'), c = r.cloneNode(true), W = ['> 10 µM ×/÷1.45', '103%', '×100000', '≥ ×100000', '≥ ×100000', '≥ ×100000'];
+            c.querySelectorAll('.c-ms .c-m').forEach((e, i) => { e.textContent = W[i] || '×1'; }); r.parentNode.insertBefore(c, r);
+            return innerWidth > 760 ? [...c.querySelectorAll('.c-ms .c-m')].filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent + ' needs ' + e.scrollWidth + 'px in ' + e.clientWidth) : []; });
+          spill.forEach(x => seen.push(`${w}px hits: a number is cut or spills out of its cell: ${x}`));
+        }
+        await audit(t);
+      }
+      await sp.evaluate(() => { hfTab('chem'); hfChemQ(hfName(HF.uni[3])); }); await sp.waitForTimeout(600); await audit('closest-to');
+      await sp.evaluate(() => { hfTab('hits'); hfOpenDrawer(HF.uni[0]); }); await sp.waitForTimeout(600); await audit('drawer');
+      await sp.evaluate(() => { document.querySelector('.dr-bd').scrollTop = 99999; }); await sp.waitForTimeout(300); await audit('drawer-end');
+      await sp.evaluate(() => hfCloseDrawer());
+      // dialogs, with the file names a plate reader writes
+      await sp.evaluate(() => {
+        window.hfEchoRuns = async () => { const mk = (id, setId, name, ver) => ({ id, setId, name, groups: 'BRD2, BRD3, BRD4, BRD9 and a very long list of groups that goes on and on', ver, ts: Date.now() - id * 8.64e7, n: 138, nFlag: 7, multi: id % 2 === 0, assayType: 'hibit', screens: [{ target: 'BRD4(BD1)-NanoLuc fusion in HEK293' }] });
+          return [mk(5, 's1', 'HB20260504_BET_degradation_screen_plate_series_A_B_C', 3), mk(4, 's1', 'HB20260504_BET_degradation_screen_plate_series_A_B_C', 2), mk(3, 's2', 'CTG72_viability', 1)]; };
+        hfOpenEcho();
+      });
+      await sp.waitForTimeout(500); await audit('dialog-echo'); await sp.evaluate(() => hfCloseDialog());
+      await sp.evaluate(() => hfOpenMapper([['Very long compound identifier column name', 'Potency (DC50, nM) measured at 24 h in HEK293 cells', 'Group', 'Dmax (%)'], ['A', 1, 'g', 90]], 'a_really_long_file_name_from_the_plate_reader_export_2026-10-07_final_v3.csv'));
+      await sp.waitForTimeout(500); await audit('dialog-mapper'); await sp.evaluate(() => hfCloseDialog());
+      await sp.evaluate(() => hfSavePreset()); await sp.waitForTimeout(400); await audit('dialog-preset'); await sp.evaluate(() => hfCloseDialog());
+    } finally { await sp.close(); }
+    check('H23', `at ${w}px nothing leaves its box, nothing lands on its neighbour, and nothing is hidden behind a sideways scroll`, seen.length === 0, [...new Set(seen)].slice(0, 6));
+  }
+  await c23.close();
 });
 
 await browser.close(); server.close();
