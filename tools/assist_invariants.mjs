@@ -208,9 +208,9 @@ if (run('A2') || run('A4') || run('A5') || run('A6')) {
           assistClose();
           // asked about codes, the assistant must never say one (they are ordinary words elsewhere, so this is
           // about the answers to those questions, not a search of the notes)
-          const words = Object.values(APP_UNLOCK_WORDS || {}).map(String).filter(w => w.length > 3);
+          const words = Object.values(APP_UNLOCK_WORDS || {}).map(String).concat(Object.values(SUITE_UNLOCK_WORDS || {}).map(x => String(x.word))).filter(w => w.length > 3);
           out.words = [];
-          ['code word', 'what is the code for lumina', 'unlock echo', 'secret code', 'password', 'how do i unlock lumina', 'codigo', 'discover box'].forEach(q => {
+          ['code word', 'what is the code for lumina', 'unlock echo', 'secret code', 'password', 'how do i unlock lumina', 'codigo', 'discover box', 'suite code', 'unlock the whole data analysis suite', 'unlock hit finder', 'unlock beacon'].forEach(q => {
             const r = ASSIST.search(q)[0]; if (!r) return;
             const txt = ASSIST.answerHtml(r.t, true).replace(/<[^>]+>/g, ' ').toLowerCase();
             words.forEach(w => { if (new RegExp('\\b' + w + '\\b').test(txt)) out.words.push(`"${q}" -> ${w}`); });
@@ -223,6 +223,14 @@ if (run('A2') || run('A4') || run('A5') || run('A6')) {
           isAdmin = true;
           out.vis3 = ASSIST.visible().length; out.adminTopic3 = !!ASSIST.find('hub:sync'); out.labSend3 = !!ASSIST.find('lumina:send-labbook');
           isAdmin = false;
+          // the suite word: opens every tool the suite lists (admin-only ones included), and nothing outside it
+          _unlockedApps.clear();
+          const SU = SUITE_UNLOCK_WORDS.analysis, accessible = () => SU.apps.filter(id => _isAppAccessible(id));
+          out.suiteBefore = accessible().length;
+          tryUnlock(SU.word);
+          out.suiteAfter = accessible().length; out.suiteAll = SU.apps.length;
+          out.suiteLeak = ['labbook', 'incubator', 'cellarchive'].filter(id => _isAppAccessible(id));
+          _unlockedApps.clear(); try { localStorage.removeItem('hub_unlocked'); } catch (e) {} _pendingDeepLink = null;
           return out;
         });
         (v.vis.length === 1 && v.vis[0] === 'hub') ? ok() : bad('A4', 'visitor', `sees notes for ${v.vis.join(', ')}`);
@@ -233,6 +241,8 @@ if (run('A2') || run('A4') || run('A5') || run('A6')) {
         (v.vis2.includes('lumina') && !v.vis2.includes('labbook')) ? ok() : bad('A4', 'after unlocking Lumina', 'sees ' + v.vis2.join(', '));
         (!v.labSend && !v.adminTopic) ? ok() : bad('A4', 'after unlocking Lumina', 'still sees a Labbook or admin-only topic');
         (v.vis3 > 2 && v.adminTopic3 && v.labSend3) ? ok() : bad('A4', 'admin', 'an admin does not see everything');
+        (v.suiteBefore === 0 && v.suiteAfter === v.suiteAll) ? ok() : bad('A4', 'suite code', `before ${v.suiteBefore}, after ${v.suiteAfter} of ${v.suiteAll}`);
+        v.suiteLeak.length ? bad('A4', 'suite code', 'also opened ' + v.suiteLeak.join(', ')) : ok();
       }
 
       // A2 — found by name, in the Hub with everything open (topics compete across apps)

@@ -97,7 +97,7 @@ Research & Innovation Services), enabling Firebase Storage in the console, and p
 | `cuppa` | Cuppa | SVG coffee cup | `#8d6e63` | `apps/cuppa/cuppa.html` |
 | `beacon` | Beacon | SVG donor/acceptor BRET glyph | `#5e72c4` | `apps/beacon/beacon.html` |
 | `lumina` | Lumina | SVG light bulb | `#f5c518` (warm gold) | `apps/lumina/lumina.html` |
-| `hitfinder` | Hit Finder (**admin-only** at launch — triage the screens Echo analysed) | SVG sniper scope (a reticle with the one compound it has locked on) | `#8a9440` (muted olive) | `apps/hitfinder/hitfinder.html` |
+| `hitfinder` | Hit Finder (**admin-only** — triage the screens Echo analysed; the one way a non-admin reaches it is the Data Analysis suite code) | SVG sniper scope (a reticle with the one compound it has locked on) | `#8a9440` (muted olive) | `apps/hitfinder/hitfinder.html` |
 | `ribbon` | Ribbon | SVG ribbon waves | `#e36c69` (salmon) | `apps/ribbon/ribbon.html` |
 | `protocols` | Archive (formerly Protocols) | SVG open book | `#a56983` (dusty pink) | `apps/archive/archive.html` |
 | `cellarchive` | Cell Archive | SVG cell/nucleus | `#d17a4a` (terracotta) | `apps/cell-archive/cell-archive.html` |
@@ -6800,6 +6800,37 @@ Jon: *"audit absoluto de las apps de data analysis. break, find and fix, tambié
 **The tools** (CI runs all four after the Hit Finder invariants): `tools/analysis_invariants.mjs` (C1–C4, D1, D2, B1) · `tools/monkey.mjs` — seeds each app, goes to each tab and puts twelve hostile values (empty, 0, −1, 1e999, text, `0,5`, markup, a formula, a range with 99,999,999 rows…) in every box and select, failing on an uncaught error, `NaN`/`undefined`/`Infinity` on screen or markup that ran · `tools/inputs_audit.mjs` — every box at 1440/1024/768/390/320 in both themes: clipped value, text under 16px on touch, a box under 26/40px, text under 4.5:1, a placeholder under 3:1 · `tools/motion_audit.mjs`. `tools/hitfinder_seed.mjs` fills Hit Finder's structure cache so the offline sweeps still measure the series.
 
 **Not done, and why:** the `/beta-test` skill is Jon's to run (it cannot be invoked by Claude); Echo's SMILES column cells ellipse by design (copy on click); the rest of the Hub's apps have not been through `inputs_audit`/`monkey`.
+
+## One word for the whole Data Analysis suite (2026-10-07)
+
+Jon: *"crea código para usuarios para acceder a data analysis por completo, todo el suite."* The
+per-app words (`APP_UNLOCK_WORDS`, one tool each) are the wrong unit for a collaborator who should
+have all of Data Analysis, so a **suite code** opens the group in one go.
+
+- **`SUITE_UNLOCK_WORDS`** (next to the per-app words in `shell/hub-shell.html`):
+  `analysis: {word, name, apps}` — the word is **`hillslope`**, and `apps` is `LANDINGS.analysis`:
+  Echo Dose Response · Hit Finder · Dora · BCA · Lumina · Beacon. A second suite is a second entry.
+- **It opens admin-only apps too, and that is deliberate.** Hit Finder is in `ADMIN_ONLY_APPS` and has
+  no word of its own; `_suiteGrants(id)` (an unlocked app that some suite lists) is what lets
+  `_isAppAccessible`, `_adminOnlyBlocked` and `_warmApp` through for it. **To keep an app admin-only,
+  take it out of the suite's `apps` array.** Labbook, Cells, Incubator and Cell Archive are not in it
+  and stay closed (checked). Beacon had no word and no `labConfig` row; it is in `ALL_APP_IDS` now, so
+  Settings → Lab has its switch, and **per-app visibility still applies on top** — a suite code never
+  opens an app Jon has switched off.
+- **State is the same `hub_unlocked` set** (one id per app), so nothing else had to learn about suites;
+  `tryUnlock` tries the suite words first, `onDiscoverInput`'s "could this still become a word" check
+  includes them (typing `hillslop` is not shaken away), and a toast says *Data Analysis unlocked — 6
+  tools*. `PUBLIC_APPS` now means "apps a visitor can discover by a word *or* a suite code" and lists
+  Hit Finder and Beacon in landing order.
+- **Settings → Lab** has a *Suite codes* block above the per-app list (code, and the apps it opens);
+  Hit Finder and Beacon read *suite code* where they used to read *admin only*.
+- **Same honesty as the per-app words: this hides, it does not protect.** The word is plain JS and every
+  app is embedded regardless (and Hit Finder's `#hash` now opens for anyone who typed it). Anyone given
+  the code keeps the apps for good — changing the word does not take them back.
+- **The assistant never says it.** The Hub's *Getting more tools* note says only that "a suite word opens
+  a whole group". `tools/assist_invariants.mjs` **A4** now also checks the suite words are never in an
+  answer about unlocking, that the suite word opens exactly the suite's apps (none before, all after),
+  and that it opens no Labbook/Cells app — each proven by putting the bug back on a copy.
 
 ## Current state
 

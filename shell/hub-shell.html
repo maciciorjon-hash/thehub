@@ -1408,7 +1408,7 @@ function _warmApp(id) {
   // and warming is not a request to open anything. In practice a visitor never reaches this —
   // the cards are display:none for them — but decoding a megabyte of an app nobody can open is
   // not something to leave to the markup.
-  if (ADMIN_ONLY_APPS[id] && !isAdmin) return;
+  if (ADMIN_ONLY_APPS[id] && !isAdmin && !_suiteGrants(id)) return;
   if (!document.getElementById('frame-' + id)) return;
   if (!(APP_B64[id] || APP_B64_NEW[id])) return;
   _warmed[id] = 1;
@@ -2239,7 +2239,7 @@ function rotateBackups(prefix, keep) {
   }).catch(function () {});
 }
 
-var ALL_APP_IDS = ['echo','hitfinder','cellarchive','deg','pd','dna','pt','spectra','cryo','cuppa','lumina','ribbon','protocols','blot'];
+var ALL_APP_IDS = ['echo','hitfinder','cellarchive','deg','pd','dna','pt','spectra','cryo','cuppa','lumina','beacon','ribbon','protocols','blot'];
 // Per-app discovery codes for visitors (public apps only; Cell Archive & Incubator
 // are admin-only).
 var APP_UNLOCK_WORDS = {
@@ -2255,6 +2255,16 @@ var APP_UNLOCK_WORDS = {
   ribbon:     'cartoon',
   protocols:  'benchwork',
   blot:       'immunoblot'
+};
+// A suite code opens every app in a group with one word — what you hand to a collaborator who
+// should have the whole of Data Analysis rather than one tool at a time. It is the same
+// discovery gimmick as the per-app words (the word is plain JS; this hides, it does not
+// protect), with one difference that matters: a suite may include apps that are in
+// ADMIN_ONLY_APPS, and for those the suite is the only way a visitor reaches them
+// (_suiteGrants). The apps list is LANDINGS.analysis, minus nothing — take an app out of the
+// array to keep it admin-only. Per-app visibility (Settings → Lab) still applies on top.
+var SUITE_UNLOCK_WORDS = {
+  analysis: { word:'hillslope', name:'Data Analysis', apps:['echo','hitfinder','deg','spectra','lumina','beacon'] }
 };
 
 var _unlockedApps = new Set(JSON.parse(localStorage.getItem('hub_unlocked') || '[]'));
@@ -2320,16 +2330,26 @@ function buildLabPanel() {
   var rows = ALL_APP_IDS.map(function(id) {
     var info = APP_INFO[id] || {name: id, color: '#888'};
     var word = APP_UNLOCK_WORDS[id];
+    var viaSuite = !word && Object.keys(SUITE_UNLOCK_WORDS).some(function(k){ return SUITE_UNLOCK_WORDS[k].apps.indexOf(id) >= 0; });
     return '<div class="lab-app-row">' +
       '<span class="lab-app-name">' +
         '<span style="width:9px;height:9px;border-radius:50%;background:' + info.color + ';flex-shrink:0;display:inline-block;"></span>' +
         info.name +
       '</span>' +
-      (word ? '<code class="lab-app-code" title="What a visitor types to open it">' + word + '</code>' : '<span class="lab-app-code muted">admin only</span>') +
+      (word ? '<code class="lab-app-code" title="What a visitor types to open it">' + word + '</code>' : (viaSuite ? '<span class="lab-app-code muted" title="Opened by a suite code (above)">suite code</span>' : '<span class="lab-app-code muted">admin only</span>')) +
       '<label class="theme-switch" title="Visible to visitors">' +
         '<input type="checkbox" class="lab-toggle" data-id="' + id + '" ' + (labConfig[id] !== false ? 'checked' : '') + ' onchange="onLabToggle(\'' + id + '\',this.checked)">' +
         '<span class="theme-slider"></span>' +
       '</label>' +
+    '</div>';
+  }).join('');
+  var suiteRows = Object.keys(SUITE_UNLOCK_WORDS).map(function(k) {
+    var su = SUITE_UNLOCK_WORDS[k];
+    var names = su.apps.map(function(id) { return (APP_INFO[id] || {name: id}).name; }).join(' · ');
+    return '<div class="lab-app-row">' +
+      '<span class="lab-app-name"><b>' + su.name + '</b></span>' +
+      '<code class="lab-app-code" title="What a visitor types to open the whole suite">' + su.word + '</code>' +
+      '<div style="grid-column:1/-1;font-size:11px;color:var(--text2);margin-top:-2px;">' + names + '</div>' +
     '</div>';
   }).join('');
   panel.innerHTML = '' +
@@ -2340,6 +2360,9 @@ function buildLabPanel() {
       '<button onclick="clearAnnouncement()" style="height:28px;padding:0 12px;border:1px solid var(--border2);border-radius:4px;background:none;color:var(--text2);font-family:var(--sans);font-size:11px;cursor:pointer;">Clear</button>' +
     '</div>' +
     '<div class="opts-divider" style="margin-bottom:14px;"></div>' +
+    '<div style="font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Suite codes — one word, the whole group</div>' +
+    suiteRows +
+    '<div class="opts-divider" style="margin:14px 0;"></div>' +
     '<div style="font-size:10px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Apps — code word and visibility</div>' +
     '<div class="opts-row" style="margin-bottom:12px;">' +
       '<span class="opts-label" style="font-size:12px;">Preview lab view</span>' +
@@ -2719,10 +2742,17 @@ var EXTRA_GROUPS = [
 ];
 // Apps only Jon can reach (never shown to visitors, no public unlock code).
 var ADMIN_ONLY_APPS = { cellarchive:1, incubator:1, labbook:1, hitfinder:1 };
-// Apps visitors can discover individually (the per-app unlock codes below).
-var PUBLIC_APPS = ['echo','lumina','spectra','deg','protocols','ribbon','pd','dna','pt','cryo','cuppa','blot'];
+// Apps visitors can discover (the per-app unlock words and the suite codes, above).
+// Hit Finder and Beacon have no word of their own: they appear only through the Data Analysis suite code.
+var PUBLIC_APPS = ['echo','hitfinder','lumina','spectra','deg','beacon','protocols','ribbon','pd','dna','pt','cryo','cuppa','blot'];
 function _suiteVisibleApps(s){ return s.apps.filter(function(id){ return (isAdmin || labConfig[id] !== false) && document.querySelector('#app-grid .card[data-app-id="'+id+'"]'); }); }
-function _isAppAccessible(appId){ if (isAdmin) return true; if (ADMIN_ONLY_APPS[appId]) return false; return _unlockedApps.has(appId) && labConfig[appId] !== false; }
+// An admin-only app that an unlocked suite lists. The per-app set holds the id once a suite code
+// has been typed (hitfinder has no word of its own, so nothing else can put it there).
+function _suiteGrants(appId){
+  if (!_unlockedApps.has(appId)) return false;
+  return Object.keys(SUITE_UNLOCK_WORDS).some(function(k){ return SUITE_UNLOCK_WORDS[k].apps.indexOf(appId) >= 0; });
+}
+function _isAppAccessible(appId){ if (isAdmin) return true; if (ADMIN_ONLY_APPS[appId] && !_suiteGrants(appId)) return false; return _unlockedApps.has(appId) && labConfig[appId] !== false; }
 // Admin-only means admin-only from every direction. Returns true when the open must not happen.
 // isAdmin is resolved asynchronously by onAuthStateChanged, so a deep link read at DOMContentLoaded
 // arrives before we know who you are: park it and let onAdminStateChanged replay it rather than
@@ -2731,6 +2761,7 @@ var _pendingDeepLink = null;
 function _adminOnlyBlocked(appId){
   if (!ADMIN_ONLY_APPS[appId]) return false;
   if (isAdmin) return false;
+  if (_suiteGrants(appId) && labConfig[appId] !== false) return false;
   if (!_authResolved) { _pendingDeepLink = appId; return true; }
   _pendingDeepLink = null;
   try { location.hash = ''; } catch(e) {}
@@ -3113,16 +3144,37 @@ function onDiscoverInput(inp){
   if(v.length<3) return;
   if(tryUnlock(v)){ inp.value=''; return; }
   if(v.length>=4){
-    var possible = Object.keys(APP_UNLOCK_WORDS).some(function(id){ return APP_UNLOCK_WORDS[id].indexOf(v)===0; });
+    var possible = Object.keys(APP_UNLOCK_WORDS).some(function(id){ return APP_UNLOCK_WORDS[id].indexOf(v)===0; })
+      || Object.keys(SUITE_UNLOCK_WORDS).some(function(k){ return SUITE_UNLOCK_WORDS[k].word.indexOf(v)===0; });
     if(!possible){ inp.classList.add('ul-shake'); setTimeout(function(){ inp.classList.remove('ul-shake'); inp.value=''; },320); }
   }
 }
+function _saveUnlocked(){ try{ localStorage.setItem('hub_unlocked', JSON.stringify(Array.from(_unlockedApps))); }catch(e){} }
+// A suite word opens every app the suite lists that this visitor can see (an app switched off in
+// Settings → Lab stays off). Cards glow in turn so it reads as a set arriving, not one app.
+function _trySuiteUnlock(code){
+  var suite=null;
+  Object.keys(SUITE_UNLOCK_WORDS).forEach(function(k){ if(SUITE_UNLOCK_WORDS[k].word===code) suite=SUITE_UNLOCK_WORDS[k]; });
+  if(!suite) return false;
+  var ids=suite.apps.filter(function(id){ return labConfig[id]!==false; });
+  var fresh=ids.filter(function(id){ return !_unlockedApps.has(id); });
+  ids.forEach(function(id){ _unlockedApps.add(id); });
+  _saveUnlocked();
+  renderSuites();
+  ids.forEach(function(id,i){
+    var card=document.querySelector('#hub-suites .card[data-app-id="'+id+'"]'); if(!card) return;
+    setTimeout(function(){ card.classList.add('card-discovering'); setTimeout(function(){ card.classList.add('card-glow'); },80); setTimeout(function(){ card.classList.remove('card-discovering','card-glow'); },1400); }, i*90);
+  });
+  try{ hubToast(fresh.length ? suite.name+' unlocked — '+ids.length+' tools' : suite.name+' is already unlocked'); }catch(e){}
+  return true;
+}
 function tryUnlock(code){
   code=(code||'').trim().toLowerCase(); if(!code) return false;
+  if(_trySuiteUnlock(code)) return true;
   var matched=null;
   Object.keys(APP_UNLOCK_WORDS).forEach(function(id){ if(APP_UNLOCK_WORDS[id]===code && PUBLIC_APPS.indexOf(id)>=0) matched=id; });
   if(!matched) return false;
-  if(!_unlockedApps.has(matched)){ _unlockedApps.add(matched); try{ localStorage.setItem('hub_unlocked', JSON.stringify(Array.from(_unlockedApps))); }catch(e){} }
+  if(!_unlockedApps.has(matched)){ _unlockedApps.add(matched); _saveUnlocked(); }
   renderSuites();
   var card=document.querySelector('#hub-suites .card[data-app-id="'+matched+'"]');
   if(card){ card.classList.add('card-discovering'); setTimeout(function(){ card.classList.add('card-glow'); },80); setTimeout(function(){ card.classList.remove('card-discovering','card-glow'); },1400); }
@@ -4307,7 +4359,7 @@ assistRegister('hub', {
       see: ['unlock', 'about'] },
     { id: 'unlock', t: 'Getting more tools', group: 'Getting started', on: ['visitor'],
       q: ['code word', 'unlock', 'discover', 'enter code', 'secret code', 'hidden apps', 'codigo', 'palabra clave', 'desbloquear', 'mas apps', 'more apps', 'more tools', 'i dont see', 'no veo'],
-      a: ['Some tools are shared by invitation. If someone gave you a code word, type it into the **discover** box on the home page and press Enter. Each word opens one tool.',
+      a: ['Some tools are shared by invitation. If someone gave you a code word, type it into the **discover** box on the home page and press Enter. Most words open one tool; a suite word opens a whole group of tools at once.',
           'There is no account to create.'],
       show: { sel: '#hub-unlock-input', say: 'Type the code word here.' } },
     { id: 'help', t: 'What can this assistant do?', group: 'Getting started',

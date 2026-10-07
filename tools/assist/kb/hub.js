@@ -33,7 +33,7 @@ assistRegister('hub', {
       see: ['unlock', 'about'] },
     { id: 'unlock', t: 'Getting more tools', group: 'Getting started', on: ['visitor'],
       q: ['code word', 'unlock', 'discover', 'enter code', 'secret code', 'hidden apps', 'codigo', 'palabra clave', 'desbloquear', 'mas apps', 'more apps', 'more tools', 'i dont see', 'no veo'],
-      a: ['Some tools are shared by invitation. If someone gave you a code word, type it into the **discover** box on the home page and press Enter. Each word opens one tool.',
+      a: ['Some tools are shared by invitation. If someone gave you a code word, type it into the **discover** box on the home page and press Enter. Most words open one tool; a suite word opens a whole group of tools at once.',
           'There is no account to create.'],
       show: { sel: '#hub-unlock-input', say: 'Type the code word here.' } },
     { id: 'help', t: 'What can this assistant do?', group: 'Getting started',
