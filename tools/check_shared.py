@@ -26,6 +26,7 @@ FILES = {
     'Echo':   'apps/echo/echo.html',
     'Beacon': 'apps/beacon/beacon.html',
     'Lumina': 'apps/lumina/lumina.html',
+    'Tempo':  'apps/tempo/tempo.html',
 }
 # The functions that make up the shared engine (superset — not all exist in every app).
 FUNCS = ['_4plVal4', '_4plVal4_gain', '_4plVal3', '_4plJac4', '_4plJac4_gain',

@@ -15,6 +15,7 @@ const ONLY = args.only ? String(args.only).split(',') : null;
 const APPS = {
   echo: { url: '/apps/echo/echo.html', seed: ['loadTestData()'], views: ['switchPanel && switchPanel("gradient")', ''], wait: 1500 },
   hitfinder: { url: '/apps/hitfinder/hitfinder.html', seed: HF_SEED, views: ['hfTab("screens")', 'hfTab("criteria")', 'hfTab("hits")', 'hfTab("chem")', 'hfTab("export")'], wait: 3500 },
+  tempo: { url: '/apps/tempo/tempo.html', seed: ['loadTestData()'], views: ['tpTab("plate")', 'tpTab("curves")', 'tpTab("results")', 'tpTab("compare")', 'tpTab("plate"); tpOpenSettings()'], wait: 1500 },
   dora: { url: '/apps/dora/dora.html', seed: ['loadTestData()'], views: ['switchTab("table")', 'switchTab("scatter")'], wait: 800 },
   bca: { url: '/apps/bca/bca.html', seed: ['loadTestData()'], views: ['switchTab("import")', 'switchTab("standards")', 'switchTab("samples")'], wait: 800 },
   beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], views: ['switchTab("qc")', 'switchTab("dose")', 'openSetupModal(); switchSetupTab("assay")', 'openSetupModal(); switchSetupTab("platemap")'], wait: 800 },

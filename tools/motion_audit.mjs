@@ -16,6 +16,7 @@ const ONLY = args.only ? String(args.only).split(',') : null;
 const APPS = {
   echo: { url: '/apps/echo/echo.html', seed: ['loadTestData()'], views: [''], wait: 1500, tabs: '.outer-tab' },
   hitfinder: { url: '/apps/hitfinder/hitfinder.html', seed: HF_SEED, views: [''], wait: 3500, tabs: '.tab' },
+  tempo: { url: '/apps/tempo/tempo.html', seed: ['loadTestData()'], views: [''], wait: 1500, tabs: '.tab' },
   dora: { url: '/apps/dora/dora.html', seed: ['loadTestData()'], views: [''], wait: 800, tabs: '.tab' },
   bca: { url: '/apps/bca/bca.html', seed: ['loadTestData()'], views: [''], wait: 800, tabs: '.tab' },
   beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], views: [''], wait: 800, tabs: '.tab' },

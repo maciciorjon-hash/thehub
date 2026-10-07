@@ -26,7 +26,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HUES = {
     'labbook':'#4a74a8', 'echo':'#b8646a', 'deg':'#7b70b4', 'pd':'#3f7eaa', 'dna':'#4d9468',
     'pt':'#8a70b0', 'spectra':'#3c948c', 'cryo':'#3b93aa', 'cuppa':'#94765f',
-    'hitfinder':'#8a9440', 'beacon':'#5b6fb0', 'lumina':'#b8923a', 'ribbon':'#bb6c66', 'protocols':'#9c6e88',
+    'hitfinder':'#8a9440', 'tempo':'#c26d3a', 'beacon':'#5b6fb0', 'lumina':'#b8923a', 'ribbon':'#bb6c66', 'protocols':'#9c6e88',
     'cellarchive':'#b87a55', 'incubator':'#4b8aa2', 'blot':'#657586',
 }
 
@@ -98,6 +98,12 @@ APP_ICONS = {
                 '<circle cx="17.5" cy="7.6" r="1.05" fill="currentColor" stroke="none"/>'
                 '<path d="M13.6 13.4v5" stroke-dasharray="1.1 1.9" '+DIM+'/>'
                 '<circle cx="13.6" cy="11.2" r="1.75" '+acf('m1')+'/>'),
+    # a stopwatch whose hand is the trace itself: a signal that falls and then holds, and the one accent where it starts (t0)
+    'tempo': ('<circle cx="12" cy="13.6" r="7.6"/>'
+              '<path class="m2" d="M9.6 2.9h4.8"/><path d="M12 2.9V6"/>'
+              '<path d="M18.4 7.5l1.3-1.3" '+DIM+'/>'
+              '<path d="M8 11c1.3 0 1.9.3 2.6 1.9.8 1.8 1.9 2.8 5.2 2.8"/>'
+              '<circle cx="8" cy="11" r="1.3" '+acf('m1')+'/>'),
     # a sniper scope: the reticle, four hairlines that stop short of the centre, and the one compound it has locked on
     'hitfinder': ('<circle cx="12" cy="12" r="8.6"/>'
                   '<path d="M12 1.8v5.2M12 17v5.2M1.8 12H7M17 12h5.2"/>'
@@ -235,7 +241,7 @@ APP_FILES = {
     'echo':'apps/echo/echo.html', 'deg':'apps/dora/dora.html', 'pd':'apps/blueprint/blueprint.html',
     'dna':'apps/helix/helix.html', 'pt':'apps/protein-tools/protein-tools.html', 'spectra':'apps/bca/bca.html',
     'cryo':'apps/iceberg/iceberg.html', 'cuppa':'apps/cuppa/cuppa.html',
-    'hitfinder':'apps/hitfinder/hitfinder.html', 'beacon':'apps/beacon/beacon.html', 'lumina':'apps/lumina/lumina.html', 'ribbon':'apps/ribbon/ribbon.html',
+    'hitfinder':'apps/hitfinder/hitfinder.html', 'tempo':'apps/tempo/tempo.html', 'beacon':'apps/beacon/beacon.html', 'lumina':'apps/lumina/lumina.html', 'ribbon':'apps/ribbon/ribbon.html',
     'protocols':'apps/archive/archive.html', 'cellarchive':'apps/cell-archive/cell-archive.html',
     'incubator':'apps/incubator/incubator.html', 'labbook':'apps/labbook/labbook.html',
     'blot':'apps/western-blot/western-blot.html',

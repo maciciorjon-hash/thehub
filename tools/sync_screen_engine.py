@@ -24,7 +24,7 @@ import os, sys
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CANON = 'apps/echo/echo.html'
 BLOCKS = [
-    ('SCREEN ENGINE', '// ═══ SCREEN ENGINE — BEGIN', '// ═══ SCREEN ENGINE — END', ['apps/hitfinder/hitfinder.html', 'apps/dora/dora.html']),
+    ('SCREEN ENGINE', '// ═══ SCREEN ENGINE — BEGIN', '// ═══ SCREEN ENGINE — END', ['apps/hitfinder/hitfinder.html', 'apps/dora/dora.html', 'apps/tempo/tempo.html']),
     ('RDKIT LOADER',  '// ═══ RDKIT LOADER — BEGIN',  '// ═══ RDKIT LOADER — END',  ['apps/dora/dora.html', 'apps/hitfinder/hitfinder.html']),
 ]
 

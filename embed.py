@@ -44,6 +44,7 @@ APPS = [
     ('echo', 'apps/echo/echo.html'),
     ('deg',  'apps/dora/dora.html'),
     ('hitfinder', 'apps/hitfinder/hitfinder.html'),
+    ('tempo', 'apps/tempo/tempo.html'),
     ('pd',   'apps/blueprint/blueprint.html'),
     ('dna',  'apps/helix/helix.html'),
     ('pt',   'apps/protein-tools/protein-tools.html'),

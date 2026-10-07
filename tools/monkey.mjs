@@ -13,6 +13,7 @@ const ONLY = args.only ? String(args.only).split(',') : null;
 const APPS = {
   echo: { url: '/apps/echo/echo.html', seed: ['document.getElementById("setup-modal") && document.getElementById("setup-modal").classList.add("hidden")', 'loadTestData()'], wait: 6000, pre: p => p.evaluate(() => { try { runPipeline(); } catch (e) {} }), ready: '() => typeof _lastResultsData !== "undefined" && _lastResultsData && _lastResultsData.length' },
   hitfinder: { url: '/apps/hitfinder/hitfinder.html', seed: HF_SEED, wait: 3500 },
+  tempo: { url: '/apps/tempo/tempo.html', seed: ['loadTestData()'], wait: 1500, views: ['tpTab("plate")', 'tpTab("curves")', 'tpTab("results")', 'tpTab("compare")', 'tpOpenSettings()'] },
   dora: { url: '/apps/dora/dora.html', seed: ['loadTestData()'], wait: 800 },
   bca: { url: '/apps/bca/bca.html', seed: ['loadTestData()'], wait: 800, views: ['switchTab("import")', 'switchTab("standards")', 'switchTab("samples")'] },
   beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], wait: 800, views: ['openSetupModal(); switchSetupTab("assay")', 'openSetupModal(); switchSetupTab("platemap")', 'switchTab("qc")', 'switchTab("dose")'] },

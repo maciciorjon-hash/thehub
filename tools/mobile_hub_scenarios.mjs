@@ -40,6 +40,7 @@ const SEEDS = {
   beacon: ["loadTestData('gain')"],
   lumina: ['loadLuminaTestData()'],
   hitfinder: HF_SEED,
+  tempo: ['loadTestData()'],
   dna: ['loadSeqExample()', 'loadTrExample()', 'loadRtExample()'],
   pt: ['loadExample()'],
   protocols: ["openProtocol('gibson')"],
@@ -51,7 +52,7 @@ const SEEDS = {
   cellarchive: ["document.querySelector('.cell-tile').click()"],
 };
 // Pressed by label when the app has no such function.
-const SEED_WAIT = { ribbon: 5000, blot: 1500, hitfinder: 3000 };   // ms after seeding: Ribbon fetches the structure from RCSB
+const SEED_WAIT = { ribbon: 5000, blot: 1500, hitfinder: 3000, tempo: 1500 };   // ms after seeding: Ribbon fetches the structure from RCSB
 const SEED_BUTTONS = { protocols: null };
 
 const DENY = /delete|remove|clear|reset|erase|discard|wipe|sign ?out|log ?out|download|export|print|upload|import|trash|^x$|^✕$|^×$|new project|resign|kill|drop\b/i;
@@ -112,10 +113,11 @@ async function crawl(page, fr, measure, label, { max = 22, defer = null } = {}) 
 const GATES = [
   { app: 'lumina', how: "[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='384-well').click()", note: '#lm-rotate', thing: '#lm-body' },
   { app: 'labbook', how: "(()=>{ const P=LB.data.projects[0], s=P.sections[0]; selectNode('expsec',P.id,s.id); openNew(); document.getElementById('nm-type').value='HB'; nmUpdateCode(); nmResetSetup(); nmProtos(); document.getElementById('nm-title').value='t384'; nmPreview(); createExperiment(); const ids=Object.keys(LB.data.experiments), id=ids[ids.length-1]; LB.data.experiments[id].plate={format:'384',title:'p',types:[],wells:{}}; openPlateEditor('exp:'+id); })()", note: '#pl-rotate', thing: '.pl-gridwrap', cleanup: 'closePlateEditor()' },
+  { app: 'tempo', how: "(()=>{ const p=tpSynthPlate({name:'384',seed:4,compounds:tpSynthDemoSpecs().slice(0,2),reads:30}); p.fmt={rows:16,cols:24,n:384}; TP.plates=[p]; TP.pi=0; tpTab('plate'); document.body.classList.add('tp-384'); tpRunPlate(p).then(()=>tpRender()); })()", note: '.rotate-note.for-plate', thing: '#tp-pgrid' },
   { app: 'pd',     how: "setFormat('384')",                                                                           note: '#pd-rotate', thing: '#plate-scroll-area' },
 ];
 
-export const APPS = ['echo', 'hitfinder', 'deg', 'pd', 'dna', 'pt', 'spectra', 'cryo', 'cuppa', 'beacon', 'lumina', 'ribbon', 'protocols', 'cellarchive', 'incubator', 'blot'];
+export const APPS = ['echo', 'hitfinder', 'tempo', 'deg', 'pd', 'dna', 'pt', 'spectra', 'cryo', 'cuppa', 'beacon', 'lumina', 'ribbon', 'protocols', 'cellarchive', 'incubator', 'blot'];
 
 export const SCENARIOS = [
   { id: 'visitor', async run({ measureOn, fresh }) {
