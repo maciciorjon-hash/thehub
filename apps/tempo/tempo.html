@@ -2253,7 +2253,7 @@ function tpRenderResults() {
   const pane = $('#pane-results'); if (!pane) return; const rows = tpAllRows();
   if (!rows.length) { pane.innerHTML = '<div class="card"><div class="empty-state">' + ICO.plate + '<div class="es-t">No results yet</div><div class="es-s">Load a plate: both analyses run as soon as the reads are in.</div><div class="es-a"><button class="btn primary" onclick="tpTab(\'plate\')">Go to Plate</button></div></div></div>'; return; }
   const multi = TP.plates.length > 1, cols = tpResultsCols(multi), sorted = tpSortRows(rows, cols), s = TP.ui.sort;
-  let h = '<div class="card res-card"><div class="res-tools"><div class="sec-hd" style="margin:0"><h2>Results</h2><span class="sec-sub">' + rows.length + ' compound' + (rows.length > 1 ? 's' : '') + ' · both analyses side by side</span></div><div style="display:flex;gap:8px"><button class="btn sm" onclick="tpCopyResults()">Copy table</button><button class="btn sm" onclick="tpExportXLSX()">Excel</button></div></div>';
+  let h = '<div class="card res-card"><div class="res-tools"><div class="sec-hd" style="margin:0"><h2>Results</h2><span class="sec-sub">' + rows.length + ' compound' + (rows.length > 1 ? 's' : '') + ' · both analyses side by side</span></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="tpCopyResults()">Copy table</button><button class="btn sm" onclick="tpExportXLSX()">Excel</button><button class="btn sm" onclick="tpSendToHitFinder()" data-tip="One record per compound, built by the same Screen engine Echo uses">' + (tpInHub() ? 'Send to Hit Finder' : 'Screen table for Hit Finder') + '</button>' + (tpInHub() ? '<button class="btn primary sm" id="tp-lb-btn" onclick="tpSendToLabbook()" data-tip="Attach DC50, Dmax and KDegMax with their curves to an experiment">' + (TP.lbLink && TP.lbLink.setId ? 'Update in Labbook' : 'Send to Labbook') + '</button>' : '') + '</div></div>';
   h += '<div class="tbl-wrap"><table class="tbl" id="tp-restbl"><thead><tr>' + cols.map(c => '<th data-k="' + c.k + '" class="' + (c.num ? 'num' : '') + '" onclick="tpSortBy(\'' + c.k + '\')" aria-sort="' + (s.k === c.k ? (s.d > 0 ? 'ascending' : 'descending') : 'none') + '">' + esc(c.h) + (s.k === c.k ? '<span class="ar">' + (s.d > 0 ? '▲' : '▼') + '</span>' : '') + '</th>').join('') + '<th>Flags</th></tr></thead><tbody>';
   sorted.forEach(r => {
     const ref = r.comp.ref;
@@ -2446,7 +2446,7 @@ function tpPrint() {
 function tpExportMenu(btn) {
   const old = $('#tp-exp-menu'); if (old) { old.remove(); return; }
   const m = document.createElement('div'); m.id = 'tp-exp-menu'; m.className = 'ctx open'; m.setAttribute('role', 'menu');
-  const items = [['Excel workbook', 'tpExportXLSX', 'results, both analyses, every trace'], ['ProNect-compatible files (3)', 'tpExportProNect', 'raw_kinetic.csv · norm_kinetic.csv · normalized_data.json'], ['Tidy CSV', 'tpExportCSV', 'one row per well and read'], ['Prism tables', 'tpExportPrism', 'traces, K and Dmax against concentration'], null, ['This chart as PNG', 'tpSavePNG', 'white ground, 3×'], ['This chart as SVG', 'tpSaveSVG', ''], ['Print summary', 'tpPrint', 'one page, A4'], null, ['Save project', 'tpSaveProject', 'the plates, layout, left-out points and settings'], ['Open project…', 'tpOpenProjectDlg', '']];
+  const items = [['Excel workbook', 'tpExportXLSX', 'results, both analyses, every trace'], ['ProNect-compatible files (3)', 'tpExportProNect', 'raw_kinetic.csv · norm_kinetic.csv · normalized_data.json'], ['Tidy CSV', 'tpExportCSV', 'one row per well and read'], ['Prism tables', 'tpExportPrism', 'traces, K and Dmax against concentration'], ['Screen table for Hit Finder', 'tpExportScreenCSV', 'one record per compound, Echo’s columns'], null, ['This chart as PNG', 'tpSavePNG', 'white ground, 3×'], ['This chart as SVG', 'tpSaveSVG', ''], ['Print summary', 'tpPrint', 'one page, A4'], null, ['Save project', 'tpSaveProject', 'the plates, layout, left-out points and settings'], ['Open project…', 'tpOpenProjectDlg', '']];
   m.style.cssText = 'position:fixed;z-index:9000;min-width:280px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-2);box-shadow:var(--shadow-lg);padding:5px;';
   m.innerHTML = items.map(i => i ? '<button class="mi" style="display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:7px 10px;border:0;background:none;border-radius:var(--r-1);cursor:pointer;font-family:inherit;color:var(--text);text-align:left" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'none\'" onclick="document.getElementById(\'tp-exp-menu\').remove();' + i[1] + '()"><span style="font-size:var(--fs-3);font-weight:600">' + i[0] + '</span>' + (i[2] ? '<span style="font-size:var(--fs-2);color:var(--text2)">' + i[2] + '</span>' : '') + '</button>' : '<div style="height:1px;background:var(--border);margin:5px 4px"></div>').join('');
   document.body.appendChild(m); const r = btn.getBoundingClientRect(); m.style.top = (r.bottom + 6) + 'px'; m.style.left = Math.max(8, Math.min(innerWidth - m.offsetWidth - 8, r.right - m.offsetWidth)) + 'px';
@@ -2499,6 +2499,104 @@ function tpApplySettings() {
   TP.ui.units.time = v('st-tu'); TP.ui.units.conc = v('st-cu'); tpSaveSettings(); tpCloseSettings(); tpRunAll().then(() => tpToast('Refitted with the new settings'));
 }
 function tpResetSettings() { TP.S = tpSet(); tpSaveSettings(); tpCloseSettings(); tpRunAll().then(() => tpToast('Back to the lab defaults')); }
+
+/* ───── §9 bridges: Labbook and Hit Finder ───── */
+// What identifies an analysis is its plate: the reads, the layout and the roles. Leaving a read out or moving a setting is still the same
+// analysis, so sending again updates its set in Labbook instead of adding a second copy.
+function tpDataId(p) {
+  const ids = Object.keys(p.wells).sort(tpNatCmp);
+  const str = JSON.stringify([p.times, ids.map(id => { const w = p.wells[id]; return [id, w.kind, w.role || '', w.compound, w.target, w.conc, w.raw]; })]);
+  let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+  return 'tempo-' + (h >>> 0).toString(36);
+}
+function tpInHub() { try { return !!(window.parent && window.parent !== window && window.parent.openApp); } catch (e) { return false; } }
+async function tpPack(obj) {
+  const json = JSON.stringify(obj, (k, v) => (typeof v === 'number' && !isFinite(v)) ? null : v);
+  if (typeof CompressionStream === 'function') {
+    const cs = new CompressionStream('gzip'), w = cs.writable.getWriter(); w.write(new TextEncoder().encode(json)); w.close();
+    const u = new Uint8Array(await new Response(cs.readable).arrayBuffer()); let bin = ''; for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    return 'gz:' + btoa(bin);
+  }
+  return 'js:' + json;
+}
+async function tpUnpack(s) {
+  s = String(s || ''); if (s.indexOf('js:') === 0) return JSON.parse(s.slice(3)); if (s.indexOf('gz:') !== 0) throw new Error('unknown packing');
+  const bin = atob(s.slice(3)), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  const ds = new DecompressionStream('gzip'), w = ds.writable.getWriter(); w.write(u); w.close();
+  return JSON.parse(await new Response(ds.readable).text());
+}
+function tpSession(p) { const q = Object.assign({}, p); delete q.truth; return { v: 1, S: TP.S, plate: q, ex: tpEx(p), units: TP.ui.units }; }
+function tpExtraPairs(c) {
+  const B = c.B, ref = c.ref, o = [];
+  if (B && B.ok) { o.push(['KDegMax (h-1)', (B.saturated ? '' : '≥ ') + tpF(B.Kmax, 3)]); o.push(['KDeg50 (nM)', (B.K50q === '=' ? '' : B.K50q + ' ') + tpF(B.K50, 3)]); o.push(['KDegMax/KDeg50', (B.effq === '≥' ? '≥ ' : '') + tpF(B.Eff, 3)]); o.push(['Log[KDegMax/KDeg50]', (B.effq === '≥' ? '≥ ' : '') + tpF(B.LogEff, 3)]); }
+  if (ref) { o.push(['K at ' + tpAxConc(c.cref), (ref.Kq === '>' ? '> ' : '') + tpF(ref.K, 3) + ' h-1']); o.push(['t½', tpF(ref.t12, 3) + ' h']); if (ref.lag != null) o.push(['Delay', tpF(ref.lag, 2) + ' h']); if (ref.rebound) o.push(['Recovery', Math.round(ref.rebound.pct) + ' %']); }
+  return o.slice(0, 8);
+}
+function tpLabbookRows(p, res) {
+  const rows = [];
+  res.compounds.forEach(c => {
+    const A = c.A; if (!A || A.fail) return;
+    const nd = /No effect/.test(A.Flag_Reason), xs = [], ys = [];
+    c.concs.forEach(cc => cc.live.forEach(id => { const f = cc.wellFits[id]; if (!f || !f.ok) return; const v = f.degrading ? f.P : f.level; xs.push(+tpLog10M(cc.c).toFixed(4)); ys.push(+(100 - v * 100).toFixed(2)); }));
+    const txt = tpFlagsOf(c);
+    rows.push({ compound: c.compound, target: c.target || '', potency: nd ? null : A.DC50_nM, nd: nd, effect: Math.round(A.Dmax_pct), hill: nd ? null : +(+A.HillSlope).toFixed(2), r2: +(+A.R2).toFixed(3), flag: !!txt, note: txt, flagReason: txt, assay: 'kd', plate: p.name,
+      curve: { x: xs, y: ys, ex: [], p: [100 - A._tc, A._logec50, A._hill, 100 - A._bot].map(v => +(+v).toFixed(4)), gain: true, n: xs.length, ci: (!nd && A.CI_DC50_lower != null && A.CI_DC50_upper != null) ? [A.CI_DC50_lower, A.CI_DC50_upper] : null, yl: 'Dmax (% degradation)' },
+      extra: tpExtraPairs(c) });
+  });
+  return rows;
+}
+async function tpSendToLabbook() {
+  const p = tpPlate(), res = tpRes(p); if (!p || !res) { tpToast('Nothing to send yet', 'warn'); return; }
+  if (!tpInHub()) { tpToast('Open Tempo inside dHUB to send results to Labbook.', 'warn'); return; }
+  const rows = tpLabbookRows(p, res); if (!rows.length) { tpToast('No compound has a dose–response to send yet (a compound needs four concentrations with a measurable plateau).', 'warn'); return; }
+  const id = (TP.lbLink && TP.lbLink.setId) || tpDataId(p), N = TP.S.norm;
+  let session = null; try { const z = await tpPack(tpSession(p)); if (z.length < 650000) session = { v: 1, z: z }; } catch (e) { session = null; }
+  if (!session) tpToast('The raw reads are too large to store in the notebook: the numbers and curves go, “Edit in Tempo” will not be offered. The project file keeps everything.', 'warn');
+  const vn = res.nm.vehUsed.length;
+  const ctx = { source: 'tempo', experiment: TP.lbLink && TP.lbLink.expId ? { id: TP.lbLink.expId } : null, cellLines: [], plateMaps: [], protocols: [], compounds: rows.map(r => ({ name: r.compound })),
+    results: [{ id: id, source: 'Tempo', origin: 'tempo', session: session || undefined, label: 'Kinetic degradation · ' + rows.length + ' compound' + (rows.length === 1 ? '' : 's') + (p.name ? ' · ' + p.name : ''), assay: 'kd',
+      potencyLabel: 'DC50 (nM)', effectLabel: 'Dmax (%)', potencyUnit: 'nM', effectUnit: '%', rows: rows, createdAt: new Date().toISOString(),
+      normalisation: ['Normalised as: ' + tpNormName(), 'Vehicle: ' + vn + ' well' + (vn === 1 ? '' : 's') + (res.nm.vehCVmean != null ? ', scatter ' + (res.nm.vehCVmean * 100).toFixed(1) + ' %' : ''), 'Fit: one-phase decay per concentration, y = P + (1 − P)·exp(−K·t), y0 fixed at 1; DC50 from the Dmax of every well against concentration; KDegMax and KDeg50 from K against concentration (Michaelis–Menten)'],
+      normText: 'Luminescence was recorded kinetically; each trace was background-subtracted, divided by its own first read and by the vehicle trace treated the same way' + (N.veh === 'ratioOfMeans' ? '' : ' (' + N.veh + ')') + '. A one-phase decay was fitted to every concentration (initial level fixed at 1), Dmax and DC50 were obtained from the plateau of each well against concentration, and the rate constants were fitted against concentration with a Michaelis–Menten model to give KDegMax and KDeg50.' }] };
+  TP.lbLink = { expId: TP.lbLink ? TP.lbLink.expId : null, setId: id, label: TP.lbLink ? TP.lbLink.label : '' };
+  try { window.parent.openApp('labbook', undefined, undefined, ctx); tpSyncLb(); } catch (e) { tpToast('Could not reach Labbook.', 'err'); }
+}
+function tpSyncLb() { const b = $('#tp-lb-btn'); if (!b) return; b.textContent = TP.lbLink && TP.lbLink.setId ? 'Update in Labbook' : 'Send to Labbook'; }
+async function tpOpenFromLabbook(o) {
+  let sess = o.session; if (sess && sess.z) sess = await tpUnpack(sess.z);
+  if (!sess || !sess.plate || !sess.plate.wells) { tpToast('That analysis could not be opened.', 'err'); return; }
+  const p = sess.plate; TP.plates = [p]; TP.pi = 0; TP.ex = {}; TP.ex[p.id] = sess.ex || { wells: [], pts: {}, masks: [], mm: {} }; TP.S = tpSet(sess.S); if (sess.units) Object.assign(TP.ui.units, sess.units); TP.res = {}; TP.wsel = new Set();
+  TP.lbLink = { expId: o.expId || null, setId: o.setId || null, label: o.label || '' }; TP_UNDO.stack = []; TP_UNDO.redo = [];
+  await tpRunPlate(p); const comp = o.compound && tpRes(p).compounds.find(c => c.compound === o.compound); if (comp) { TP.sel.comp = comp.key; TP.sel.conc = null; }
+  tpAfterLoad(); tpTab('curves'); tpToast('Opened from Labbook' + (o.label ? ' — ' + o.label : '') + '. Change it, then press Update in Labbook.');
+}
+let _tpLastReq = null;
+function tpOnContext(c, requestId) {
+  const o = c && c.open; if (!o || o.app !== 'tempo' || !o.session) return;
+  if (requestId && requestId === _tpLastReq) return; _tpLastReq = requestId || null; tpOpenFromLabbook(o);
+}
+/* Hit Finder takes the table of one record per compound that Echo's Screen export writes. The record is built by the Screen engine from an
+   Echo-shaped row, so what a hook is, what the coverage is and how a bound is written cannot differ from Echo's. */
+function tpScreenRecords(plates) {
+  const out = [], now = new Date().toISOString();
+  (plates || TP.plates).forEach(p => {
+    const res = tpRes(p); if (!res) return; const meta = { assayId: 'Tempo · ' + p.name, runId: 'tempo-' + p.id, setId: 'tempo-' + p.id, ver: 1, runTime: now, panel: 0, role: 'degradation', timepointH: null };
+    res.compounds.forEach(c => {
+      const m = Object.assign({}, meta, { target: c.target || '' });
+      if (c.A && !c.A.fail) { const row = Object.assign({}, c.A, { Protein: c.target || p.name, Sample_ID: c.compound, _panel: 0 }); out.push(scrRecord(row, m, { hookEnabled: TP.S.dr.hookOn, hookThr: TP.S.dr.hookThr })); }
+      else out.push(scrUnfitted({ group: c.target || p.name, compound: c.compound, assay: 'hibit', panel: 0, why: (c.A && c.A.fail) || 'few-points', readings: c.concs.reduce((s, cc) => s + cc.live.length, 0) }, m));
+    });
+  });
+  return out;
+}
+function tpScreenTable(plates) { const recs = tpScreenRecords(plates); return [SCR_COLS.slice()].concat(recs.map(r => SCR_COLS.map(k => r[k] === undefined ? null : r[k]))); }
+function tpExportScreenCSV() { const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to export yet', 'warn'); return; } tpDownload(tpBase() + '_tempo_screen.csv', tpBlob(tpCSV(t))); tpToast('Screen table written: drop it on Hit Finder'); }
+function tpSendToHitFinder() {
+  const t = tpScreenTable(); if (t.length < 2) { tpToast('Nothing to send yet', 'warn'); return; }
+  let ok = false; try { ok = !!(window.parent && window.parent !== window && window.parent.APP_INFO && window.parent.APP_INFO.hitfinder); } catch (e) {}
+  if (!ok) { tpExportScreenCSV(); return; }
+  try { window.parent.openApp('hitfinder', undefined, undefined, { source: 'tempo', name: tpPlate() ? tpPlate().name : 'Tempo', table: t }); } catch (e) { tpToast('Could not reach Hit Finder.', 'err'); }
+}
 
 /* ───── §10 wiring ───── */
 function tpTab(name) {
@@ -2556,7 +2654,7 @@ document.addEventListener('paste', async e => {
 window.addEventListener('message', e => {
   if (e.source !== window.parent || !e.data || e.data.type !== 'dhub:context') return;
   try { e.source.postMessage({ type: 'dhub:ack', requestId: e.data.requestId, app: 'tempo' }, '*'); } catch (_) {}
-  if (typeof tpOnContext === 'function') { try { tpOnContext(e.data.context || {}); } catch (err) { tpToast('Could not read what the Hub sent: ' + (err && err.message || err), 'warn'); } }
+  if (typeof tpOnContext === 'function') { try { tpOnContext(e.data.context || {}, e.data.requestId); } catch (err) { tpToast('Could not read what the Hub sent: ' + (err && err.message || err), 'warn'); } }
 });
 window.addEventListener('resize', () => { tpInk(); clearTimeout(tpInk._t); tpInk._t = setTimeout(() => { if (TP.ui.tab === 'curves' || TP.ui.tab === 'compare') tpRender(); }, 180); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(tpInk);

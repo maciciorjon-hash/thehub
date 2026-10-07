@@ -34,9 +34,10 @@ const HOST = `<!doctype html><meta charset=utf-8><body style="margin:0;backgroun
 <iframe id="frame-labbook" src="/apps/labbook/labbook.html" style="width:1300px;height:900px;border:0"></iframe>
 <iframe id="frame-lumina" src="/apps/lumina/lumina.html" style="width:1300px;height:900px;border:0;display:none"></iframe>
 <iframe id="frame-echo" src="/apps/echo/echo.html" style="width:1300px;height:900px;border:0;display:none"></iframe>
+<iframe id="frame-tempo" src="/apps/tempo/tempo.html" style="width:1300px;height:900px;border:0;display:none"></iframe>
 <script>
 window.__cur='labbook'; window.__acks={}; window.__sent=[];
-function show(id){ ['labbook','lumina','echo'].forEach(function(k){ document.getElementById('frame-'+k).style.display = k===id?'block':'none'; }); window.__cur=id; }
+function show(id){ ['labbook','lumina','echo','tempo'].forEach(function(k){ document.getElementById('frame-'+k).style.display = k===id?'block':'none'; }); window.__cur=id; }
 window.openApp=function(id,tab,item,ctx){
   show(id); window.__sent.push({id:id,src:ctx&&ctx.source});
   if(!ctx) return;
@@ -63,10 +64,11 @@ try {
   await page.route(`http://127.0.0.1:${port}/__host.html`, r => r.fulfill({ contentType: 'text/html', body: HOST }));
   await page.goto(`http://127.0.0.1:${port}/__host.html`);
   const F = n => page.frame({ url: new RegExp('/apps/' + n + '/') });
-  const lb = F('labbook'), lm = F('lumina'), ec = F('echo');
+  const lb = F('labbook'), lm = F('lumina'), ec = F('echo'), tp = F('tempo');
   await lb.waitForFunction(() => window.LB && LB.data && LB.data.presets && Object.keys(LB.data.presets).length && (LB.data.projects || []).length, null, { timeout: 25000 });
   await lm.waitForFunction(() => typeof loadLuminaTestData === 'function', null, { timeout: 15000 });
   await ec.waitForFunction(() => typeof sendResultsToLabbook === 'function', null, { timeout: 25000 });
+  await tp.waitForFunction(() => typeof tpSendToLabbook === 'function', null, { timeout: 25000 });
   await sleep(500);
   const cur = () => page.evaluate(() => window.__cur);
 
@@ -213,6 +215,36 @@ try {
   check('T8 the record PDF carries the paragraph, the plate lines and the column', n8.pdfPara && n8.pdfCol && n8.pdfPlate, JSON.stringify(n8));
   check('T8 the Results card shows it and marks the method-dependent curve', n8.card, JSON.stringify(n8));
 
+
+  // ── T9–T11: Tempo ───────────────────────────────────────────────────────────────────────
+  await tp.evaluate(async () => { await loadTestData(); });
+  await page.evaluate(() => show('tempo'));
+  const tsent = await tp.evaluate(() => { const p = tpPlate(), res = tpRes(p), rows = tpLabbookRows(p, res); return { n: rows.length, pot: rows.map(r => r.potency), curves: rows.filter(r => r.curve && r.curve.x.length >= 6 && r.curve.p && r.curve.gain === true).length, extra: rows.filter(r => r.extra && r.extra.length >= 4).length, first: rows[0].compound, name: p.name }; });
+  check('T9 every compound with a dose–response is sent with a rising 4PL curve and its extra numbers', tsent.n >= 4 && tsent.curves === tsent.n && tsent.extra === tsent.n, JSON.stringify(tsent));
+  const nBefore = (await sets()).length;
+  await tp.evaluate(() => tpSendToLabbook()); await sleep(1100);
+  check('T9 Labbook is what is shown after Send from Tempo', (await cur()) === 'labbook', 'shown: ' + await cur());
+  S = await sets(); const tset = S.find(x => x.origin === 'tempo');
+  check('T9 one new set, from Tempo, with the analysis', S.length === nBefore + 1 && !!tset && tset.hasSession && tset.n === tsent.n, JSON.stringify(S.map(x => [x.origin, x.n, x.hasSession])));
+  await lb.evaluate(() => { EXP_TAB = 'res'; renderEditor(); }); await sleep(300);
+  const tview = await lb.evaluate(id => { const card = Array.from(document.querySelectorAll('.res-card')).find(c => /Tempo/.test(c.textContent)); if (!card) return null; const btns = card.querySelectorAll('.res-cvb'); btns[0] && btns[0].click(); const row = card.querySelector('.res-cv-row'); return { minis: card.querySelectorAll('.rcv-mini').length, edit: (card.querySelector('.res-edit') || {}).textContent, fit: row ? !!row.querySelector('.rcv-fit') : false, pts: row ? row.querySelectorAll('circle.rcv-pt').length : 0, txt: row ? row.textContent : '' }; }, expId);
+  check('T9 Labbook draws a curve for every row and offers Edit in Tempo', !!tview && tview.minis === tsent.n && /Tempo/.test(tview.edit || ''), JSON.stringify(tview && { m: tview.minis, e: tview.edit }));
+  check('T9 the opened curve is drawn from the points and the fit, and carries KDegMax, KDeg50 and the efficiency', !!tview && tview.fit && tview.pts >= 6 && /KDegMax/.test(tview.txt) && /KDeg50/.test(tview.txt) && /Log\[KDegMax/.test(tview.txt), JSON.stringify(tview && { fit: tview.fit, pts: tview.pts }));
+  const tid = tset && tset.id, tpot = tset.rows[2].potency, tcomp = tset.rows[2].compound;
+  await lb.evaluate(([id, sid]) => { const set = LB.data.experiments[id].integration.results.find(r => String(r.id) === String(sid)); set.rows[1].note = 'INV: looked at this one'; }, [expId, tid]);
+  await tp.evaluate(() => { TP.plates = []; TP.res = {}; TP.ex = {}; TP.lbLink = null; tpAfterLoad(); });
+  await lb.evaluate(([id, sid, c]) => openResultInApp(id, sid, c), [expId, tid, tcomp]); await sleep(1500);
+  check('T10 Tempo is what is shown after Edit', (await cur()) === 'tempo', 'shown: ' + await cur());
+  const tback = await tp.evaluate(() => { const p = tpPlate(), res = p && tpRes(p); return { n: res ? res.compounds.length : 0, sel: TP.sel.comp, tab: TP.ui.tab, link: TP.lbLink && TP.lbLink.setId, pots: res ? res.compounds.map(c => c.A && !c.A.fail ? c.A.DC50_nM : null) : [], btn: (document.getElementById('tp-lb-btn') || {}).textContent }; });
+  check('T10 the analysis is rebuilt: the same compounds and the same DC50 as were sent', tback.n === tsent.n && tback.pots[2] === tpot, JSON.stringify({ n: tback.n, got: tback.pots[2], sent: tpot }));
+  check('T10 it opens on the compound that was clicked, on Curves, and says it updates', /Curves/i.test(tback.tab) && (tback.sel || '').indexOf(tcomp) === 0 && tback.link === tid, JSON.stringify(tback));
+  check('T10 Tempo acks the message (the shell re-sends until someone does)', (await page.evaluate(() => Object.values(window.__acks))).includes('tempo'));
+  // leave a read out in Tempo, send again: the same set, replaced, the note written in Labbook kept
+  await tp.evaluate(async () => { const p = tpPlate(), res = tpRes(p), c = res.compounds[2], cc = c.concs[c.concs.length - 1], ex = tpEx(p); cc.live.forEach(id => { ex.pts[id] = [40, 41, 42, 43, 44, 45, 46, 47]; }); tpRefit(p, c.key); await new Promise(r => setTimeout(r, 200)); tpTab('results'); });
+  await tp.evaluate(() => tpSendToLabbook()); await sleep(1100);
+  S = await sets(); const t2 = S.filter(x => x.origin === 'tempo');
+  check('T11 sending again replaces the same set — never a second copy — and keeps the note written in Labbook', t2.length === 1 && t2[0].id === tid && S.length === nBefore + 1 && t2[0].rows[1].note && /INV: looked/.test(t2[0].rows[1].note), JSON.stringify({ n: t2.length, same: t2[0] && t2[0].id === tid, note: t2[0] && t2[0].rows[1].note }));
+
   // ── T7: hostile payloads ────────────────────────────────────────────────────────────────
   const hostile = await lb.evaluate((id) => {
     const e = LB.data.experiments[id]; const n0 = e.integration.results.length;
@@ -229,6 +261,9 @@ try {
   check('T7 a curve with non-numbers keeps only the numbers', hostile.a && hostile.a.x.length === hostile.a.y.length && hostile.a.x.every(Number.isFinite) && hostile.a.p === null, JSON.stringify(hostile.a));
   check('T7 a curve that is not a curve is dropped', hostile.b === undefined);
   check('T7 a left-out point that is not a number is dropped', hostile.c && hostile.c.ex.length === 1, JSON.stringify(hostile.c));
+  // What an analysis app says beside a row (Tempo's KDegMax…) is a handful of short [label, value] texts: a number that is not a number, an object, a very long string or thirty pairs are cut.
+  const hx = await lb.evaluate(id => { const e = LB.data.experiments[id]; _mergeDHubContext({ experiment: { id }, results: [{ id: 'tx-1', source: 'Tempo', origin: 'tempo', label: 'x', rows: [{ compound: 'A', potency: 1, effect: 50, extra: [['ok', '1.5'], ['nan', NaN], [{}, []], ['long', 'x'.repeat(200)], ['inf', Infinity], 5, 'str', null].concat(Array.from({ length: 30 }, (_, i) => ['k' + i, 'v' + i])) }] }] }); const set = e.integration.results.find(r => r.id === 'tx-1'); return set && set.rows[0].extra; }, expId);
+  check('T12 the extra numbers of a row are a handful of short texts: non-numbers, objects, long strings and the thirtieth pair are dropped', Array.isArray(hx) && hx.length <= 10 && hx.every(q => q.length === 2 && q.every(v => typeof v === 'string' && v.length <= 40 && !/^(NaN|Infinity)$/.test(v))) && hx[0][0] === 'ok' && !hx.some(q => q[0] === 'nan' || q[0] === 'inf'), JSON.stringify(hx));
   // A set with curves but no analysis is drawn, and offers no Edit button it could not honour.
   await lb.evaluate((id) => { _mergeDHubContext({ experiment: { id }, results: [{ id: 'nosess-1', source: 'Lumina', origin: 'lumina', label: 'no session', rows: [{ compound: 'Z', potency: 5, effect: 90, curve: { x: [-6, -7, -8], y: [90, 50, 10], p: [0, -7, 1, 100], n: 3 } }] }] }); EXP_TAB = 'res'; renderEditor(); }, expId);
   await sleep(300);

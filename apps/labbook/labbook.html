@@ -13889,6 +13889,7 @@ function _rcvRowHtml(e,set,x,ri){
     +stat(esc((set.effectLabel||L.e).split(' ')[0]),_rn(x.effect))
     +stat('Hill',_rn(x.hill))+stat('R\u00b2',_rn(x.r2))
     +stat('Points',c.n+(nEx?' <em>('+nEx+' left out)</em>':''))
+    +(x.extra||[]).map(function(q){ return stat(esc(q[0]),esc(q[1])); }).join('')
     +(x.flag&&(x.flagReason||x.note)?'<div class="rcv-flag">'+esc(x.flagReason||x.note)+'</div>':'')
     +_resEditBtn(e.id,set,x.compound||'')+'</div></div></td></tr>'; }
 function toggleResultCurve(expId,rid,ri,btn){
@@ -13901,7 +13902,7 @@ function toggleResultCurve(expId,rid,ri,btn){
   btn.classList.toggle('on',!!RCV_OPEN[k]); btn.setAttribute('aria-expanded',RCV_OPEN[k]?'true':'false'); }
 // The button that reopens the analysis in the app that made it. Only inside the Hub (there is no
 // app to open standalone) and only when the set carries the analysis.
-function _resAppName(set){ return set&&set.origin==='echo'?'Echo Dose Response':(set&&set.origin==='lumina'?'Lumina':''); }
+function _resAppName(set){ return set&&set.origin==='echo'?'Echo Dose Response':(set&&set.origin==='lumina'?'Lumina':(set&&set.origin==='tempo'?'Tempo':'')); }
 function _resEditBtn(expId,set,compound){
   var nm=_resAppName(set), H=lbHost();
   if(!nm||!set.session||!H||!H.openApp) return '';
@@ -13910,7 +13911,7 @@ function _resEditBtn(expId,set,compound){
 function openResultInApp(expId,rid,compound){
   var e=LB.data.experiments[expId], set=e&&((e.integration&&e.integration.results)||[]).filter(function(r){ return String(r.id)===String(rid); })[0];
   var H=lbHost(); if(!set||!set.session||!H||!H.openApp){ toast('That analysis cannot be opened from here.'); return; }
-  var app=set.origin==='echo'?'echo':'lumina';
+  var app=set.origin==='echo'?'echo':(set.origin==='tempo'?'tempo':'lumina');
   try{ H.openApp(app,undefined,undefined,{source:'labbook',open:{app:app,session:set.session,setId:set.id,expId:expId,compound:compound||'',label:(e.code||e.title||'')}}); }
   catch(err){ toast('Could not open '+_resAppName(set)+'.'); } }
 // How the analysis normalised its readings and whether a curve's potency depends on that choice.
@@ -13936,7 +13937,9 @@ function resultsPaneHtml(e){
       +'<div>'+esc(L.p)+', '+esc(L.e)+', Hill slope and R² belong here as data — each row with its own note '
       +'and its own exclusion — not as a screenshot of a curve.</div>'
       +'<div>'+(ECHO_FED_TYPES[e.type]
-        ? 'Fit in <b>Echo Dose Response</b> and press <b>Send to Labbook</b> with this experiment open, or paste a table from whatever you fitted in.'
+        ? (e.type==='KD'
+            ? 'Analyse the kinetic reads in <b>Tempo</b> and press <b>Send to Labbook</b> with this experiment open, or paste a table from whatever you fitted in.'
+            : 'Fit in <b>Echo Dose Response</b> and press <b>Send to Labbook</b> with this experiment open, or paste a table from whatever you fitted in.')
         : 'Paste a table from whatever you fitted in — Prism, R, Excel — one row per compound.')
       +'</div>'+add+'</div>';
   }
@@ -22704,11 +22707,17 @@ function _cleanCurve(c){
   var pp=nums(c.p,4); o.p=(pp.length===4)?pp:null;
   var ci=nums(c.ci,2); o.ci=(ci.length===2)?ci:null;
   return o; }
+// What an analysis app says about a row beyond the potency and the effect (Tempo: KDegMax, KDeg50, the efficiency, t½…): a handful of
+// [label, value] pairs of short text. Anything else is dropped rather than stored.
+function _cleanExtra(v){
+  var ok=function(t){ return typeof t==='string'||(typeof t==='number'&&isFinite(t)); };
+  return _lbList(v,false).map(function(q){ q=_lbList(q,false); return (q.length>=2&&ok(q[0])&&ok(q[1]))?[String(q[0]).slice(0,40),String(q[1]).slice(0,40)]:null; }).filter(Boolean).slice(0,10); }
 function _cleanCtx(ctx){
   var o=Object.assign({},ctx);
   if(Array.isArray(o.results)) o.results=o.results.filter(function(r){ return r&&typeof r==='object'; }).map(function(r){
     var c=Object.assign({},r); c.rows=_lbList(c.rows,true).map(function(x){
-      var cv=x.curve?_cleanCurve(x.curve):null, y=Object.assign({},x); if(cv) y.curve=cv; else delete y.curve; return y; });
+      var cv=x.curve?_cleanCurve(x.curve):null, y=Object.assign({},x); if(cv) y.curve=cv; else delete y.curve;
+      if(y.extra!=null){ y.extra=_cleanExtra(y.extra); if(!y.extra.length) delete y.extra; } return y; });
     // The analysis itself, so it can be opened again in the app that made it. Bounded: a session
     // is the readings of every plate and Firebase re-sends the whole experiment record on a change.
     // Firebase refuses NaN and Infinity anywhere in a record, so a stray one in a session would stop
