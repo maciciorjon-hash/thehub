@@ -1600,9 +1600,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div class="guide-section">
           <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-10 8 6 12-4c2-5 4-2 6-2"/></svg>Curves tab</h3>
           <div class="guide-row"><div class="guide-key">Single / Compare modes</div><div class="guide-val">Single mode shows one compound at a time with full stats. Compare mode overlays multiple selected compounds. Scroll-wheel in single mode navigates between compounds.</div></div>
-          <div class="guide-row"><div class="guide-key">Right-click — exclude rep</div><div class="guide-val">Right-click any individual replicate point to exclude it. Excluded points appear as grey × and are excluded from the refit. Right-click a grey × to re-include it.</div></div>
-          <div class="guide-row"><div class="guide-key">Right-click — exclude conc</div><div class="guide-val">Right-click a mean point (or any rep) and choose <b>Exclude all at this concentration</b> to remove all replicates at that dose. Right-click → <b>Re-include all excluded</b> to restore everything.</div></div>
-          <div class="guide-row"><div class="guide-key">Right-click — hook effect</div><div class="guide-val">For compounds with a hook effect (orange × at highest doses), right-click anywhere on the canvas and choose <b>Re-include hook effect concentrations</b> to refit with all data.</div></div>
+          <div class="guide-row"><div class="guide-key">Right-click — exclude rep</div><div class="guide-val">Right-click any point: the menu lists <b>every replicate at that concentration</b> with its reading — choose one to leave it out, and point at a row to see which dot it is. Excluded replicates appear as grey × and are left out of the refit; right-click a grey × to put it back. A message says what the potency did, and ⌘Z / Ctrl+Z undoes it.</div></div>
+          <div class="guide-row"><div class="guide-key">Right-click — exclude conc</div><div class="guide-val">In the same menu, <b>Exclude all N replicates</b> removes the whole concentration (it works from a replicate or from the mean dot). <b>Put back everything left out</b> restores the curve. A little off a point, the nearest one is used and the menu says so.</div></div>
+          <div class="guide-row"><div class="guide-key">Right-click — hook effect</div><div class="guide-val">For compounds with a hook effect (orange × at highest doses), right-click one of them and choose <b>Include the hook concentrations in the fit</b> to refit with all data.</div></div>
           <div class="guide-row"><div class="guide-key">Flag stats (right-click)</div><div class="guide-val">When a compound is flagged, the Flag row in the stats bar shows a dot indicator. Right-click it to <b>Resolve flag</b> (mark as accepted).</div></div>
           <div class="guide-row"><div class="guide-key">Fix Y axis</div><div class="guide-val">Check <b>Fix Y</b> to lock the Y-axis range across compounds (it starts at −15 to 120 % of control; change either value). Useful for comparing curves on the same scale.</div></div>
           <div class="guide-row"><div class="guide-key">Compare — sort</div><div class="guide-val">In Compare mode, sort the compound list by DC₅₀ ↑↓ or Dmax ↑↓ using the sort selector above the list.</div></div>
@@ -8724,7 +8724,7 @@ function _cvPaint(ctx, L, compounds, cfg) {
       r._reps.forEach(rep => {
         if (!isFinite(rep.y)) return;
         const X = px(rep.x), Y = py(rep.y);
-        if (isHk(rep.x)) { hookX(X, Y, ptSz + 1); return; }
+        if (isHk(rep.x)) { hookX(X, Y, ptSz + 1); if (cfg._qcPtMapOut) cfg._qcPtMapOut.push({px: X, py: Y, x: rep.x, y: rep.y, isRep: true, isHook: true, r}); return; }
         ctx.fillStyle = col; ctx.strokeStyle = T.bg; ctx.lineWidth = 1.2 * pm;
         drawPointShape(ctx, X, Y, ptSz * 0.85, cfg.pointShape || 'circle');
         if (cfg._qcPtMapOut) cfg._qcPtMapOut.push({px: X, py: Y, x: rep.x, y: rep.y, isRep: true, r});
@@ -8740,7 +8740,7 @@ function _cvPaint(ctx, L, compounds, cfg) {
       (r._pts||[]).forEach(pt => {
         if (!isFinite(pt.y)) return;
         const X = px(pt.x), Y = py(pt.y);
-        if (isHk(pt.x)) { hookX(X, Y, ptSz + 2); return; }
+        if (isHk(pt.x)) { hookX(X, Y, ptSz + 2); if (cfg._qcPtMapOut) cfg._qcPtMapOut.push({px: X, py: Y, x: pt.x, ym: pt.y, isMean: true, isHook: true, r}); return; }
         if (cfg.sdStyle !== 'none' && pt.sd > 0) {
           const t = py(pt.y + pt.sd), b = py(pt.y - pt.sd), cap = Math.max(3, ptSz * 0.7);
           ctx.beginPath(); ctx.strokeStyle = col; ctx.lineWidth = 1.4 * lm;
@@ -9135,18 +9135,52 @@ function fit4PL_JS(pts, topFixed=true, topVal=100, botFixed=false, botVal=null, 
           pDC50:Math.round(-logec50*100)/100};
 }
 
-// Right-click on the chart. Every drawn point — each replicate, each mean, each excluded ✕ — is in the hit map
-// tagged with the compound it belongs to. One point under the pointer: its menu. Several (Compare puts curves on
-// top of each other): a list to say which point of which compound, then that point's menu.
-const _CV_HIT_R = 12, _CV_NEAR_R = 35;
-function _cvCloseCtx() { if (_cvCtxMenu) { _cvCtxMenu.remove(); _cvCtxMenu = null; } }
+// Right-click on the chart. A right-click is about a CONCENTRATION, not about a dot: the menu lists every replicate
+// there with its reading — leave out this one, leave out all of them, put one back — and pointing at a row rings that
+// point on the chart, so there is nothing to guess. It used to open "Which point? 2 here" with two rows that read the
+// same, then a second menu at the same place, and "Exclude this replicate" matched ANY replicate of the concentration
+// within 0.1 of that reading, so two close replicates went together (12 of 256 on the bundled data). Where curves
+// overlap (Compare) each compound is its own section of one menu.
+const _CV_HIT_R = 14, _CV_NEAR_R = 40;
+const _CV_EX_DX = 0.002, _CV_EX_DY = 0.005;
+// An exclusion is the {x, y} of the replicate it removed, and it removes exactly ONE: the closest replicate it has not
+// already claimed. Replicates that read the same (or within 0.005) are two points, and two entries take both.
+function _cvExFlags(reps, excl) {
+  const used = new Array((excl || []).length).fill(false);
+  return (reps || []).map(rep => {
+    let best = -1, bd = Infinity;
+    (excl || []).forEach((e, i) => {
+      if (used[i] || Math.abs(e.x - rep.x) >= _CV_EX_DX) return;
+      const d = Math.abs(e.y - rep.y);
+      if (d < _CV_EX_DY && d < bd) { bd = d; best = i; }
+    });
+    if (best >= 0) used[best] = true;
+    return best >= 0;
+  });
+}
+function _cvExRemove(r, x, y) {
+  const ex = r._excludedRepXYs || []; let best = -1, bd = Infinity;
+  ex.forEach((e, i) => { if (Math.abs(e.x - x) >= _CV_EX_DX) return; const d = Math.abs(e.y - y); if (d < _CV_EX_DY && d < bd) { bd = d; best = i; } });
+  if (best >= 0) ex.splice(best, 1);
+  return best >= 0;
+}
+let _cvHLEl = null;
+function _cvHL(pts) {   // rings over points of the chart ({px, py} in canvas CSS pixels); nothing clears them
+  if (!pts || !pts.length) { if (_cvHLEl) { _cvHLEl.remove(); _cvHLEl = null; } return; }
+  const cv = document.getElementById('cv-canvas'); if (!cv) return;
+  const rc = cv.getBoundingClientRect();
+  if (!_cvHLEl) { _cvHLEl = document.createElement('div'); _cvHLEl.id = 'cv-hl'; _cvHLEl.setAttribute('aria-hidden', 'true'); _cvHLEl.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;z-index:9998;'; document.body.appendChild(_cvHLEl); }
+  _cvHLEl.innerHTML = pts.map(p => '<span style="position:absolute;left:' + (rc.left + p.px - 11).toFixed(1) + 'px;top:' + (rc.top + p.py - 11).toFixed(1) + 'px;width:22px;height:22px;box-sizing:border-box;border-radius:50%;border:2px solid var(--accent);box-shadow:0 0 0 3px var(--accent-soft, rgba(94,135,197,.28));"></span>').join('');
+}
+function _cvCloseCtx() { if (_cvCtxMenu) { _cvCtxMenu.remove(); _cvCtxMenu = null; } _cvHL(null); }
 function _cvCtxShell(e, w, h) {
   _cvCloseCtx();
   const menu = document.createElement('div');
   menu.setAttribute('role', 'menu');
-  menu.style.cssText = 'position:fixed;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:4px 0;min-width:' + w + 'px;max-width:340px;box-shadow:0 6px 24px rgba(0,0,0,.22);z-index:9999;font-size:12px;font-family:var(--sans);max-height:calc(100vh - 16px);overflow:auto;';
+  menu.style.cssText = 'position:fixed;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:4px 0;min-width:' + w + 'px;max-width:360px;box-shadow:0 6px 24px rgba(0,0,0,.22);z-index:9999;font-size:12px;font-family:var(--sans);max-height:calc(100vh - 16px);overflow:auto;outline:none;';
   _cvCtxMenu = menu;
   menu._at = {x: e.clientX, y: e.clientY};
+  menu.addEventListener('contextmenu', ev => ev.preventDefault());   // a right-click on the menu is not a right-click on the page
   return menu;
 }
 function _cvCtxPlace(menu) {
@@ -9156,52 +9190,108 @@ function _cvCtxPlace(menu) {
   if (left + pr.width > window.innerWidth - 4) left = at.x - pr.width - 6;
   if (top + pr.height > window.innerHeight - 4) top = at.y - pr.height - 4;
   menu.style.left = Math.max(4, left) + 'px'; menu.style.top = Math.max(4, top) + 'px';
+  // ↑ ↓ move through the rows; the menu itself holds the focus until one is used.
+  menu.tabIndex = -1;
+  menu.addEventListener('keydown', ev => {
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    ev.preventDefault();
+    const it = [...menu.querySelectorAll('[role=menuitem]')]; if (!it.length) return;
+    const i = it.indexOf(document.activeElement);
+    it[(ev.key === 'ArrowDown' ? i + 1 : i <= 0 ? it.length - 1 : i - 1) % it.length].focus();
+  });
+  try { menu.focus({preventScroll: true}); } catch (_) {}
   // Closes this menu only: the click that picks an item opens the next menu in the same event.
   setTimeout(() => {
     document.addEventListener('click', () => { if (_cvCtxMenu === menu) _cvCloseCtx(); }, {once: true});
     document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape' && _cvCtxMenu === menu) _cvCloseCtx(); document.removeEventListener('keydown', esc); }, {once: true});
   }, 10);
 }
-function _cvCtxItem(menu, icon, label, cb, danger, swatch) {
+// A row. `label` may end in a <span> with the reading, which is set against the right edge; `hl` is the points of the
+// chart the row is about (rung while the row is pointed at or focused).
+function _cvCtxItem(menu, icon, label, cb, danger, swatch, hl) {
   const d = document.createElement('div');
   d.setAttribute('role', 'menuitem'); d.tabIndex = 0;
   d.style.cssText = 'padding:7px 14px;cursor:pointer;display:flex;align-items:center;gap:8px;color:' + (danger ? 'var(--accent)' : 'var(--text)') + ';';
-  d.innerHTML = (swatch ? '<span style="width:10px;height:10px;border-radius:50%;flex:none;background:' + swatch + '"></span>' : '<span>' + icon + '</span>') + '<span>' + label + '</span>';
-  d.onmouseenter = () => d.style.background = 'var(--surface3)';
-  d.onmouseleave = () => d.style.background = '';
+  d.innerHTML = (swatch ? '<span style="width:10px;height:10px;border-radius:50%;flex:none;background:' + swatch + '"></span>' : '<span>' + icon + '</span>') + '<span style="flex:1;display:flex;justify-content:space-between;gap:16px;white-space:nowrap;">' + label + '</span>';
+  const on = () => { d.style.background = 'var(--surface3)'; if (hl) _cvHL(hl); };
+  const off = () => { d.style.background = ''; if (hl) _cvHL(null); };
+  d.onmouseenter = on; d.onmouseleave = off; d.onfocus = on; d.onblur = off;
   d.onkeydown = ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); d.click(); } };
   d.onclick = () => { _cvCloseCtx(); cb(); };
   menu.appendChild(d);
 }
-function _cvCtxSep(menu) { const d = document.createElement('div'); d.style.cssText = 'height:1px;background:var(--border);margin:4px 0;'; menu.appendChild(d); }
-function _cvCtxNote(menu, t, bold) { const d = document.createElement('div'); d.style.cssText = 'padding:6px 14px;color:var(--text3);font-size:11px;' + (bold ? 'font-weight:600;' : ''); d.textContent = t; menu.appendChild(d); }
-const _cvName = r => (r ? (r.Sample_ID || '') + ' · ' + (r.Protein || '') : '');
-function _cvPtLabel(p) {
-  const lx = 'log ' + (+p.x).toFixed(2);
-  if (p.isDeletedConc) return 'excluded concentration, ' + lx;
-  if (p.isExcluded) return 'excluded replicate, ' + lx + ', y = ' + (+p.y).toFixed(1);
-  if (p.isMean) return 'all replicates at ' + lx + (isFinite(p.ym) ? ' (mean ' + (+p.ym).toFixed(1) + ')' : '');
-  return 'replicate, ' + lx + ', y = ' + (+p.y).toFixed(1);
+function _cvCtxSep(menu) { const d = document.createElement('div'); d.setAttribute('role', 'separator'); d.style.cssText = 'height:1px;background:var(--border);margin:4px 0;'; menu.appendChild(d); }
+function _cvCtxNote(menu, t, bold) { const d = document.createElement('div'); d.style.cssText = 'padding:6px 14px;color:var(--text2);font-size:11px;max-width:320px;white-space:normal;' + (bold ? 'font-weight:600;' : ''); d.textContent = t; menu.appendChild(d); }
+// What the next rows are about: the compound (Compare only) and the concentration, with what is there.
+function _cvCtxHead(menu, title, sub, swatch) {
+  const d = document.createElement('div'); d.setAttribute('role', 'presentation');
+  d.style.cssText = 'padding:6px 14px 4px;font-size:11px;line-height:1.4;';
+  d.innerHTML = (title ? '<div style="display:flex;align-items:center;gap:7px;font-weight:600;color:var(--text);">' + (swatch ? '<span style="width:10px;height:10px;border-radius:50%;flex:none;background:' + swatch + '"></span>' : '') + '<span>' + title + '</span></div>' : '')
+    + '<div style="color:var(--text2);' + (title && swatch ? 'padding-left:17px;' : '') + '">' + sub + '</div>';
+  menu.appendChild(d);
 }
-function _cvPointMenu(e, p) {
-  const canvas = document.getElementById('cv-canvas'), r = p.r || canvas?._cvCompounds?.[0];
-  const menu = _cvCtxShell(e, 210);
-  const many = (canvas?._cvCompounds || []).length > 1;
-  if (many) _cvCtxNote(menu, _cvName(r), true);
-  const concGone = x => (r?._deletedPts || []).some(v => Math.abs(v - x) < 0.005);
-  if (p.isDeletedConc) {
-    _cvCtxItem(menu, '↩', 'Re-include all at log=' + p.x.toFixed(2), () => cvRestorePoint(p.x, r));
-  } else if (p.isRep) {
-    const exRep = (r?._excludedRepXYs || []).some(q => Math.abs(q.x - p.x) < 0.002 && Math.abs(q.y - p.y) < 0.1);
-    if (!exRep) _cvCtxItem(menu, '✕', 'Exclude this replicate (log=' + p.x.toFixed(2) + ', y=' + (+p.y).toFixed(1) + ')', () => cvExcludeRepXY(p.x, p.y, r), true);
-    else _cvCtxItem(menu, '↩', 'Re-include this replicate', () => cvReincludeRepXY(p.x, p.y, r));
-    if (!concGone(p.x)) { _cvCtxSep(menu); _cvCtxItem(menu, '✕✕', 'Exclude all at this concentration', () => cvDeletePoint(p.x, r), true); }
-  } else {
-    if (!concGone(p.x)) _cvCtxItem(menu, '✕', 'Exclude all at log=' + p.x.toFixed(2), () => cvDeletePoint(p.x, r), true);
-    else _cvCtxItem(menu, '↩', 'Re-include all at log=' + p.x.toFixed(2), () => cvRestorePoint(p.x, r));
-  }
-  if ((r?._deletedPts || []).length || (r?._excludedRepXYs || []).length) { _cvCtxSep(menu); _cvCtxItem(menu, '↩', 'Re-include all excluded points' + (many ? ' of ' + esc(r.Sample_ID) : ''), () => cvRestoreAll(r)); }
-  if (r?._is_hook) { _cvCtxSep(menu); _cvCtxItem(menu, '↩', 'Re-include hook effect concentrations', () => cvReincludeHook(r)); }
+const _cvName = r => (r ? (r.Sample_ID || '') + ' · ' + (r.Protein || '') : '');
+const _cvYFmt = y => { const v = +y; return (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en') : v.toFixed(1)) + (/%/.test(_cvYTitle()) ? ' %' : ''); };
+function _cvPx(canvas, x, y) {   // where a reading is drawn: the layout the chart was drawn with
+  const L = canvas && canvas._cvLay; if (!L || !L.ok) return null;
+  return {px: L.pL + L.pw * (x - L.xlo) / (L.xhi - L.xlo), py: L.pT + L.ph * (1 - (y - L.ylo) / (L.yhi - L.ylo))};
+}
+// Every replicate of one curve at one concentration, and what has been done to it.
+function _cvConcGroup(r, x) {
+  const reps = r._repsOrig || r._reps || [], flags = _cvExFlags(reps, r._excludedRepXYs);
+  const at = reps.map((rep, i) => ({rep, ex: flags[i]})).filter(o => Math.abs(o.rep.x - x) < _CV_EX_DX && o.rep.y != null && isFinite(o.rep.y));
+  return {r, x, n: at.length,
+    del: (r._deletedPts || []).some(v => Math.abs(v - x) < 0.005),
+    hook: (r._hook_concs || []).some(h => Math.abs(h - x) < _CV_EX_DX),
+    active: at.filter(o => !o.ex).map(o => o.rep), left: at.filter(o => o.ex).map(o => o.rep)};
+}
+// How many replicates of this curve are left out, one by one or with their concentration.
+function _cvLeftOut(r) {
+  const reps = r._repsOrig || r._reps || [], flags = _cvExFlags(reps, r._excludedRepXYs);
+  return reps.filter((p, i) => flags[i] || (r._deletedPts || []).some(v => Math.abs(v - p.x) < 0.005)).length;
+}
+function _cvPointsMenu(e, groups, nearest, more) {
+  const canvas = document.getElementById('cv-canvas'), comps = canvas?._cvCompounds || [], pal = canvas?._cvPalette || [];
+  const many = comps.length > 1, menu = _cvCtxShell(e, 250);
+  const ring = reps => reps.map(p => _cvPx(canvas, p.x, p.y)).filter(Boolean);
+  if (nearest) _cvCtxNote(menu, 'Nearest point to where you clicked');
+  groups.forEach((g, gi) => {
+    if (gi) _cvCtxSep(menu);
+    const r = g.r, ci = comps.indexOf(r), col = ci >= 0 && pal[ci] ? pal[ci] : null;
+    const name = many ? esc(_cvName(r)) : '', conc = _cvFmtConc(Math.pow(10, g.x + 9)), where = conc + ' · log ' + g.x.toFixed(2);
+    const val = y => '<span style="color:var(--text2);font-variant-numeric:tabular-nums;">' + _cvYFmt(y) + '</span>';
+    const k = g.active.length, rows = g.active.slice().sort((a, b) => b.y - a.y), every = g.active.concat(g.left);
+    if (!g.n) { _cvCtxHead(menu, name, where, col); _cvCtxNote(menu, 'This analysis was opened from History, which keeps no replicate readings. Run it again to leave points out.'); return; }
+    if (g.del) {
+      _cvCtxHead(menu, name, where + ' · left out', col);
+      _cvCtxItem(menu, '↩', 'Put back ' + (g.n > 1 ? 'all ' + g.n + ' replicates' : 'the point'), () => cvRestorePoint(g.x, r), false, col, ring(every));
+      return;
+    }
+    if (g.hook) {
+      _cvCtxHead(menu, name, where + ' · hook effect, already left out of the fit', col);
+      _cvCtxItem(menu, '↩', 'Include the hook concentrations in the fit', () => cvReincludeHook(r), false, col, ring(every));
+      return;
+    }
+    _cvCtxHead(menu, name, where + ' · ' + (g.left.length ? k + ' of ' + g.n : k) + ' replicate' + (g.n === 1 ? '' : 's'), col);
+    if (k === 1) {
+      _cvCtxItem(menu, '✕', (g.n === 1 ? 'Exclude this point' : 'Exclude the last replicate here') + val(rows[0].y), () => cvExcludeRepXY(rows[0].x, rows[0].y, r), true, col, ring(rows));
+    } else if (k > 1) {
+      const word = i => k === 2 ? (i ? 'lower' : 'upper') : k === 3 ? ['upper', 'middle', 'lower'][i] : null;
+      rows.forEach((p, i) => _cvCtxItem(menu, '✕', 'Exclude ' + (word(i) ? 'the ' + word(i) + ' replicate' : 'replicate ' + (i + 1) + ' from the top') + val(p.y), () => cvExcludeRepXY(p.x, p.y, r), true, col, ring([p])));
+      _cvCtxItem(menu, '✕✕', 'Exclude all ' + k + ' replicates<span style="color:var(--text2);">at ' + conc + '</span>', () => cvDeletePoint(g.x, r), true, col, ring(rows));
+    }
+    g.left.forEach(p => _cvCtxItem(menu, '↩', 'Put back the replicate left out' + val(p.y), () => cvReincludeRepXY(p.x, p.y, r), false, col, ring([p])));
+  });
+  if (more > 0) _cvCtxNote(menu, '+' + more + ' more concentration' + (more > 1 ? 's' : '') + ' under the pointer — zoom in to separate them');
+  // Whole-curve rows once per curve: everything left out, and a hook that is not the one pointed at.
+  const rs = [...new Set(groups.map(g => g.r))];
+  let first = true;
+  const sep = () => { if (first) { _cvCtxSep(menu); first = false; } };
+  rs.forEach(r => {
+    const n = _cvLeftOut(r);
+    if (n) { sep(); _cvCtxItem(menu, '↩', 'Put back everything left out' + (many ? ' of ' + esc(_cvName(r)) : '') + '<span style="color:var(--text2);">' + n + '</span>', () => cvRestoreAll(r)); }
+    if (r._is_hook && !groups.some(g => g.r === r && g.hook)) { sep(); _cvCtxItem(menu, '↩', 'Include the hook concentrations in the fit' + (many ? '<span style="color:var(--text2);">' + esc(r.Sample_ID) + '</span>' : ''), () => cvReincludeHook(r)); }
+  });
   _cvCtxPlace(menu);
 }
 function cvRightClick(e) {
@@ -9210,26 +9300,17 @@ function cvRightClick(e) {
   const canvas = document.getElementById('cv-canvas');
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
-  const map = (window._cvPtMap || []).map(p => ({p, d: (p.px - mx) ** 2 + (p.py - my) ** 2})).sort((a, b) => a.d - b.d);
-  let hits = map.filter(h => h.d <= _CV_HIT_R ** 2).map(h => h.p);
-  // The same drawn point can be in the map twice (a mean under its replicates); a point is what you can tell apart.
-  const seen = new Set(); hits = hits.filter(p => { const k = [p.r ? _cvKey(p.r) : '', p.isMean ? 'm' : p.isDeletedConc ? 'd' : p.isExcluded ? 'x' : 'r', (+p.x).toFixed(3), (p.isMean || p.isDeletedConc) ? '' : (+p.y).toFixed(2)].join('|'); if (seen.has(k)) return false; seen.add(k); return true; });
-  if (!hits.length && map.length && map[0].d <= _CV_NEAR_R ** 2) hits = [map[0].p];
-  if (hits.length === 1) { _cvPointMenu(e, hits[0]); return; }
+  const map = (window._cvPtMap || []).filter(p => p.r).map(p => ({p, d: (p.px - mx) ** 2 + (p.py - my) ** 2})).sort((a, b) => a.d - b.d);
+  let hits = map.filter(h => h.d <= _CV_HIT_R ** 2), nearest = false;
+  if (!hits.length && map.length && map[0].d <= _CV_NEAR_R ** 2) { hits = [map[0]]; nearest = true; }
+  // One section per compound and concentration, nearest first.
+  const groups = [], seen = new Set();
+  hits.forEach(h => { const k = _cvKey(h.p.r) + '|' + (+h.p.x).toFixed(3); if (seen.has(k)) return; seen.add(k); groups.push(_cvConcGroup(h.p.r, h.p.x)); });
+  if (groups.length) { _cvPointsMenu(e, groups.slice(0, 4), nearest, Math.max(0, groups.length - 4)); return; }
   const menu = _cvCtxShell(e, 230);
-  if (!hits.length) {
-    _cvCtxNote(menu, 'No data point nearby');
-    const comps = (canvas._cvCompounds || []).filter(r => (r._deletedPts || []).length || (r._excludedRepXYs || []).length);
-    if (comps.length) { _cvCtxSep(menu); _cvCtxItem(menu, '↩', 'Re-include all excluded points' + (comps.length > 1 ? ' (' + comps.length + ' curves)' : ''), () => comps.forEach(r => cvRestoreAll(r))); }
-    _cvCtxPlace(menu); return;
-  }
-  // More than one point here: which one, of which compound?
-  const comps = canvas._cvCompounds || [], pal = canvas._cvPalette || [];
-  _cvCtxNote(menu, 'Which point? ' + hits.length + ' here', true);
-  hits.forEach(p => {
-    const ci = comps.indexOf(p.r), col = ci >= 0 && pal[ci] ? pal[ci] : 'var(--accent)';
-    _cvCtxItem(menu, '', '<b>' + esc(_cvName(p.r)) + '</b><br><span style="color:var(--text3)">' + esc(_cvPtLabel(p)) + '</span>', () => _cvPointMenu(e, p), false, col);
-  });
+  _cvCtxNote(menu, 'No data point here — right-click on a point');
+  const comps = (canvas._cvCompounds || []).filter(r => _cvLeftOut(r));
+  if (comps.length) { _cvCtxSep(menu); _cvCtxItem(menu, '↩', 'Put back everything left out' + (comps.length > 1 ? ' (' + comps.length + ' curves)' : ''), () => comps.forEach(r => cvRestoreAll(r))); }
   _cvCtxPlace(menu);
 }
 
@@ -9268,39 +9349,62 @@ function cvUndo() { _cvUndoStep(_CV_UNDO, _CV_REDO, 'Undone'); }
 function cvRedo() { _cvUndoStep(_CV_REDO, _CV_UNDO, 'Redone'); }
 
 const _cvTarget = r => r || document.getElementById('cv-canvas')?._cvCompounds?.[0];
+// An edit says what it did: which readings went, and what the curve now reads. A reading on a plateau changes nothing
+// in the fit — without the line the click looked like it had done nothing.
+function _cvPotText(r) { return _nd(r) ? ND_TEXT : r.DC50_nM != null ? r.DC50_nM + ' nM' : 'no fit'; }
+function _cvDone(r, before, what) {
+  const at = r._assayType || window._lastAssayType || '', lbl = (at === 'displacement' || at === 'ctg') ? 'IC50' : at === 'gain' ? 'EC50' : 'DC50';
+  const after = _cvPotText(r), key = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘Z' : 'Ctrl+Z';
+  const nofit = r.DC50_nM == null && !_nd(r);
+  echoToast(what + ' — ' + _cvName(r) + ' · ' + lbl + ' ' + (before === after ? after + ' (unchanged)' : before + ' → ' + after) + (nofit ? ' · too few points left to fit' : '') + ' · ' + key + ' to undo', nofit ? 'warn' : undefined);
+}
 function cvDeletePoint(logX, r0) {
   const r=_cvTarget(r0); if(!r) return;
+  const g=_cvConcGroup(r,logX), b=_cvPotText(r);
+  if(g.del) return;
   _cvUndoMark(r,'Exclude concentration');
   if(!r._deletedPts) r._deletedPts=[];
   r._deletedPts.push(logX);
   _cvApplyEditsAndRefit(r);
+  _cvDone(r,b,'Excluded '+(g.active.length>1?'all '+g.active.length+' replicates':'the point')+' at '+_cvFmtConc(Math.pow(10,logX+9)));
 }
 
 function cvRestorePoint(logX, r0) {
   const r=_cvTarget(r0); if(!r) return;
+  const g=_cvConcGroup(r,logX), b=_cvPotText(r);
   _cvUndoMark(r,'Re-include concentration');
   r._deletedPts=(r._deletedPts||[]).filter(x=>Math.abs(x-logX)>0.005);
   _cvApplyEditsAndRefit(r);
+  _cvDone(r,b,'Put back '+(g.n>1?'all '+g.n+' replicates':'the point')+' at '+_cvFmtConc(Math.pow(10,logX+9)));
 }
 
 function cvRestoreAll(r0) {
   const r=_cvTarget(r0); if(!r) return;
+  const n=_cvLeftOut(r), b=_cvPotText(r);
   _cvUndoMark(r,'Re-include all points');
   r._deletedPts=[]; r._excludedRepXYs=[];
   _cvApplyEditsAndRefit(r);
+  _cvDone(r,b,'Put back everything left out ('+n+' reading'+(n===1?'':'s')+')');
 }
 function cvExcludeRepXY(x,y,r0) {
   const r=_cvTarget(r0); if(!r) return;
+  // Only a replicate that is still in the fit can be left out: a second click on one already gone must not claim another.
+  const g=_cvConcGroup(r,x);
+  if(!g.active.some(p=>Math.abs(p.y-y)<_CV_EX_DY)) { echoToast('That replicate is already left out.'); return; }
+  const b=_cvPotText(r);
   _cvUndoMark(r,'Exclude replicate');
   if(!r._excludedRepXYs) r._excludedRepXYs=[];
   r._excludedRepXYs.push({x,y});
   _cvApplyEditsAndRefit(r);
+  _cvDone(r,b,'Excluded one replicate ('+_cvYFmt(y)+') at '+_cvFmtConc(Math.pow(10,x+9)));
 }
 function cvReincludeRepXY(x,y,r0) {
   const r=_cvTarget(r0); if(!r) return;
+  const b=_cvPotText(r);
   _cvUndoMark(r,'Re-include replicate');
-  r._excludedRepXYs=(r._excludedRepXYs||[]).filter(e=>!(Math.abs(e.x-x)<0.002&&Math.abs(e.y-y)<0.1));
+  _cvExRemove(r,x,y);
   _cvApplyEditsAndRefit(r);
+  _cvDone(r,b,'Put back one replicate ('+_cvYFmt(y)+') at '+_cvFmtConc(Math.pow(10,x+9)));
 }
 
 function cvResolveFlag() {
@@ -9342,6 +9446,7 @@ function cvStatFlagMenu(e) {
 
 function cvReincludeHook(r0) {
   const r=_cvTarget(r0); if(!r||!r._is_hook) return;
+  const _b=_cvPotText(r);
   _cvUndoMark(r,'Re-include hook');
   r._is_hook=false; r._hook_x=null; r._hook_concs=[]; r._hookIn=true;
   if(r.Flag_Reason) r.Flag_Reason=r.Flag_Reason.split('; ').filter(f=>!f.startsWith('Hook')).join('; ');
@@ -9349,6 +9454,7 @@ function cvReincludeHook(r0) {
   const rd=window._resultsData?.find(x=>x.Sample_ID===r.Sample_ID&&x.Protein===r.Protein);
   if(rd){rd._is_hook=false;rd._hook_x=null;rd._hook_concs=[];rd.Flag_Reason=r.Flag_Reason;rd.Flag=r.Flag;}
   _cvApplyEditsAndRefit(r);
+  _cvDone(r,_b,'Included the hook concentrations in the fit');
 }
 
 const _cvStatSet = r => { const c = document.getElementById('cv-canvas')?._cvCompounds || []; return window._cvMode === 'compare' && c.length ? c : [r]; };
@@ -9357,12 +9463,12 @@ function _cvApplyEditsAndRefit(r) {
   const del=new Set((r._deletedPts||[]).map(x=>x.toFixed(3)));
   // Per-rep exclusions: array of {x,y} pairs
   const exRep=r._excludedRepXYs||[];
-  const isExcludedRep=(rep)=>exRep.some(e=>Math.abs(e.x-rep.x)<0.002&&Math.abs(e.y-rep.y)<0.1);
   // Preserve originals
   if(!r._ptsOrig) r._ptsOrig=[...r._pts];
   if(!r._repsOrig) r._repsOrig=[...r._reps||[]];
   // Filter reps: exclude by concentration and by per-rep exclusion
-  const activeReps=(r._repsOrig).filter(p=>!del.has(p.x.toFixed(3))&&!isExcludedRep(p));
+  const _exFl=_cvExFlags(r._repsOrig,exRep);   // one exclusion = one replicate, never two that read alike
+  const activeReps=(r._repsOrig).filter((p,i)=>!del.has(p.x.toFixed(3))&&!_exFl[i]);
   // Re-derive pts from surviving reps (re-average)
   const grp={};
   activeReps.forEach(rep=>{const k=rep.x.toFixed(4);(grp[k]=grp[k]||[]).push(rep.y);});
@@ -10797,7 +10903,16 @@ function _plExcluded(bc, w) {
   if (!_plIsCpd(w) || w.c == null) return false;
   const r = _plFit(w.s, w.p, bc); if (!r) return false;
   if ((r._deletedPts || []).some(x => Math.abs(x - w.c) < 0.005)) return true;
-  return w.m != null && (r._excludedRepXYs || []).some(e => Math.abs(e.x - w.c) < 0.002 && Math.abs(e.y - w.m) < 0.1);
+  if (w.m == null) return false;
+  const reps = r._repsOrig || r._reps || [], i = _plRepIdx(reps, w.c, w.m);
+  if (i < 0) return (r._excludedRepXYs || []).some(e => Math.abs(e.x - w.c) < _CV_EX_DX && Math.abs(e.y - w.m) < _CV_EX_DY);
+  return _cvExFlags(reps, r._excludedRepXYs)[i];
+}
+// The replicate of a curve that a well is: the one at its concentration whose reading is nearest the well's.
+function _plRepIdx(reps, c, m) {
+  let best = -1, bd = Infinity;
+  reps.forEach((p, i) => { if (Math.abs(p.x - c) >= _CV_EX_DX || p.y == null) return; const d = Math.abs(p.y - m); if (d < bd) { bd = d; best = i; } });
+  return best;
 }
 function plateToggleExclude(bc, row, col) {
   const w = _plWell(window._plateData[bc], row, col);
@@ -10805,14 +10920,14 @@ function plateToggleExclude(bc, row, col) {
   const r = _plFit(w.s, w.p, bc);
   const reps = r ? (r._repsOrig || r._reps || []) : [];
   if (!r || !reps.length) { echoToast('There is no curve to edit for ' + w.s + ' (results opened from History carry no replicate points).'); return; }
-  const rep = reps.filter(p => Math.abs(p.x - w.c) < 0.002).sort((a, b) => Math.abs(a.y - w.m) - Math.abs(b.y - w.m))[0];
+  const ri = _plRepIdx(reps, w.c, w.m), rep = reps[ri];
   if (!rep) { echoToast('This well is not one of the points on ' + w.s + '’s curve.'); return; }
   if (!window._cvData) { try { renderCurvesTab(scatterData); } catch (e) {} }
   const conc = (r._deletedPts || []).some(x => Math.abs(x - rep.x) < 0.005);
-  const rex = (r._excludedRepXYs || []).some(e => Math.abs(e.x - rep.x) < 0.002 && Math.abs(e.y - rep.y) < 0.1);
+  const rex = _cvExFlags(reps, r._excludedRepXYs)[ri];
   try {
     if (conc) { _cvUndoMark(r, 'Re-include concentration'); r._deletedPts = r._deletedPts.filter(x => Math.abs(x - rep.x) > 0.005); }
-    else if (rex) { _cvUndoMark(r, 'Re-include replicate'); r._excludedRepXYs = r._excludedRepXYs.filter(e => !(Math.abs(e.x - rep.x) < 0.002 && Math.abs(e.y - rep.y) < 0.1)); }
+    else if (rex) { _cvUndoMark(r, 'Re-include replicate'); _cvExRemove(r, rep.x, rep.y); }
     else { _cvUndoMark(r, 'Exclude replicate'); (r._excludedRepXYs = r._excludedRepXYs || []).push({x: rep.x, y: rep.y}); }
     _cvApplyEditsAndRefit(r);
   } catch (e) { console.error(e); }

@@ -112,6 +112,10 @@
 //       it is                 not a new version; opening the run from History brings them back; the role defaults from the assay type.
 //   E49 not fitted is a       A compound left with fewer than four readings is listed (few-points), exported as a row of its own, kept in History and
 //       fact, not a gap       restored from it; a clean run lists none.
+//   E50 right-click does    Leaving out one replicate leaves out one (replicates that read alike are two points — it used to take both), the menu is ONE
+//       what it says          menu per concentration listing each replicate by its reading and the whole concentration with its count (from a replicate and
+//                             from the mean dot), pointing at a row rings its points, a hook ✕ is reachable, a click off a point says so, the click says
+//                             what it did to the potency, and the Plate tab matches wells to replicates the same way.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -243,44 +247,46 @@ if (run('E39')) await guard('E39', async () => {
   // where the replicate of curve 2 is drawn, in page coordinates
   const at = (ci, kind) => E(({ ci, kind }) => {
     const cv = document.getElementById('cv-canvas'), rc = cv.getBoundingClientRect(), r = cv._cvCompounds[ci];
-    const p = window._cvPtMap.find(q => q.r === r && (kind === 'rep' ? q.isRep && !q.isExcluded : kind === 'x' ? q.isExcluded : q.isDeletedConc));
+    const p = window._cvPtMap.find(q => q.r === r && (kind === 'rep' ? q.isRep && !q.isExcluded && !q.isHook : kind === 'x' ? q.isExcluded : q.isDeletedConc));
     return p ? { x: rc.left + p.px, y: rc.top + p.py, rx: p.x, ry: p.y } : null;
   }, { ci, kind });
   const menuText = () => E(() => { const m = [...document.querySelectorAll('div[role="menu"]')].pop(); return m ? m.innerText.replace(/\s+/g, ' ') : null; });
   const state = () => E(() => (document.getElementById('cv-canvas')._cvCompounds).map(r => ({ ex: (r._excludedRepXYs || []).length, del: (r._deletedPts || []).length, dc: r.DC50_nM })));
+  // The row of the menu that is about a compound: a section opens with its compound's name, its rows follow.
+  const rowIn = (name, re) => E(({ name, src }) => {
+    const m = [...document.querySelectorAll('div[role="menu"]')].pop(); if (!m) return -1;
+    let cur = '', idx = -1, k = 0;
+    [...m.children].forEach(c => { if (c.getAttribute('role') === 'presentation') cur = c.innerText; else if (c.getAttribute('role') === 'separator') cur = cur; else if (c.getAttribute('role') === 'menuitem') { if (idx < 0 && cur.includes(name) && new RegExp(src).test(c.innerText)) idx = k; k++; } });
+    return idx;
+  }, { name, src: re.source });
+  const pick = async idx => { await pg.locator('div[role="menu"] [role="menuitem"]').nth(idx).click(); await pg.waitForTimeout(500); };
   const before = await state();
   const p = await at(1, 'rep');
   check('E39', 'in Compare every drawn point is in the hit map, tagged with its compound', !!p, p);
-  // a replicate of curve 2; where curves overlap a list asks first, and the test answers it the way a person would
-  const openFor = async (pt, name, kind) => {
-    await pg.mouse.click(pt.x, pt.y, { button: 'right' }); await pg.waitForTimeout(200);
-    let t = await menuText();
-    if (/Which point\?/.test(t || '')) { const it = pg.locator('div[role="menuitem"]', { hasText: name }).filter({ hasText: kind === 'x' ? 'excluded replicate' : 'replicate' }).first(); await it.click(); await pg.waitForTimeout(250); t = await menuText(); }
-    return t;
-  };
-  const t1 = await openFor(p, 'EDA-014', 'rep');
-  check('E39', 'right-click on a point in Compare opens its menu, naming the compound', /EDA-014/.test(t1 || '') && /Exclude this replicate/.test(t1 || '') && /Exclude all at this concentration/.test(t1 || ''), t1);
-  await pg.locator('div[role="menuitem"]', { hasText: 'Exclude this replicate' }).click(); await pg.waitForTimeout(500);
+  await pg.mouse.click(p.x, p.y, { button: 'right' }); await pg.waitForTimeout(200);
+  const t1 = await menuText();
+  check('E39', 'right-click on a point in Compare opens one menu, naming the compound, offering the replicate and the whole concentration', /EDA-014/.test(t1 || '') && /Exclude the (upper|lower) replicate|Exclude replicate/.test(t1 || '') && /Exclude all \d+ replicates/.test(t1 || '') && !/Which point/.test(t1 || ''), t1);
+  const i1 = await rowIn('EDA-014', /Exclude (the|replicate)/);
+  await pick(i1);
   const after = await state();
   check('E39', 'only that curve loses the replicate (its fit is redone); the others are untouched', after[1].ex === 1 && after[0].ex === 0 && after[2].ex === 0 && after[0].dc === before[0].dc && after[2].dc === before[2].dc, { before, after });
   check('E39', 'the stats table still lists all three curves after the edit', await E(() => /EDA-013/.test(document.getElementById('cv-stats').innerText) && /EDA-015/.test(document.getElementById('cv-stats').innerText)));
   const x = await at(1, 'x');
-  const t1b = await openFor(x, 'EDA-014', 'x');
-  check('E39', 'right-click on the excluded ✕ offers to re-include it', /Re-include this replicate/.test(t1b || ''), t1b);
-  await pg.locator('div[role="menuitem"]', { hasText: 'Re-include this replicate' }).click(); await pg.waitForTimeout(500);
+  await pg.mouse.click(x.x, x.y, { button: 'right' }); await pg.waitForTimeout(200);
+  const t1b = await menuText();
+  check('E39', 'right-click on the excluded ✕ offers to put it back', /Put back the replicate left out/.test(t1b || ''), t1b);
+  await pick(await rowIn('EDA-014', /Put back the replicate/));
   const back = await state();
-  check('E39', 're-including restores the curve to the digit', back[1].ex === 0 && back[1].dc === before[1].dc, { before: before[1], back: back[1] });
-  // two curves with a point in the same place: a list asks which one
-  await E(() => { const cv = document.getElementById('cv-canvas'), c = cv._cvCompounds; window.__e39 = [[c[2], _cvSnapRow(c[2])], [_cvTwin(c[2]), _cvSnapRow(_cvTwin(c[2]))]]; c[2]._reps = JSON.parse(JSON.stringify(c[0]._reps)); c[2]._pts = JSON.parse(JSON.stringify(c[0]._pts)); renderCvCurve(); });
+  check('E39', 'putting it back restores the curve to the digit', back[1].ex === 0 && back[1].dc === before[1].dc, { before: before[1], back: back[1] });
+  // two curves with a point in the same place: ONE menu, a section for each compound
+  await E(() => { const cv = document.getElementById('cv-canvas'), c = cv._cvCompounds; window.__e39 = [[c[2], _cvSnapRow(c[2])], [_cvTwin(c[2]), _cvSnapRow(_cvTwin(c[2]))]]; c[2]._reps = JSON.parse(JSON.stringify(c[0]._reps)); c[2]._pts = JSON.parse(JSON.stringify(c[0]._pts)); delete c[2]._repsOrig; renderCvCurve(); });
   await pg.waitForTimeout(500);
   const q = await at(0, 'rep');
   await pg.mouse.click(q.x, q.y, { button: 'right' }); await pg.waitForTimeout(200);
   const t2 = await menuText();
-  check('E39', 'with several points under the pointer a list asks which point of which compound', /Which point\?/.test(t2 || '') && /EDA-013/.test(t2 || '') && /EDA-015/.test(t2 || ''), t2);
-  await pg.locator('div[role="menuitem"]', { hasText: 'EDA-015' }).first().click(); await pg.waitForTimeout(300);
-  const t3 = await menuText();
-  check('E39', 'choosing one opens that compound\'s own menu', /EDA-015/.test(t3 || '') && /Exclude this replicate/.test(t3 || ''), t3);
-  await pg.locator('div[role="menuitem"]', { hasText: 'Exclude this replicate' }).click(); await pg.waitForTimeout(500);
+  check('E39', 'with several curves under the pointer one menu has a section for each compound', /EDA-013/.test(t2 || '') && /EDA-015/.test(t2 || '') && !/Which point/.test(t2 || ''), t2);
+  check('E39', 'there is one menu, not a menu that opens another', await E(() => document.querySelectorAll('div[role="menu"]').length === 1));
+  await pick(await rowIn('EDA-015', /Exclude (the|replicate)/));
   const fin = await state();
   check('E39', 'the chosen compound — not the one on top — lost the replicate', fin[2].ex === 1 && fin[0].ex === 0, fin);
   // leave the data as it was: the test bent one curve to sit under another
@@ -326,7 +332,7 @@ if (run('E5')) await guard('E5', async () => {
   if (hit) {
     const box = await E(() => { const c = document.getElementById('cv-canvas').getBoundingClientRect(); const p = window._cvPtMap.find(q => q.isDeletedConc); return { x: c.left + p.px, y: c.top + p.py }; });
     await pg.mouse.click(box.x, box.y, { button: 'right' }); await pg.waitForTimeout(200);
-    const offered = await E(() => [...document.querySelectorAll('div')].some(d => d.children.length === 2 && /^Re-include all at/.test(d.children[1].textContent)));
+    const offered = await E(() => [...document.querySelectorAll('div[role="menuitem"]')].some(d => /Put back (all \d+ replicates|the point)/.test(d.textContent)));
     check('E5', 'right-click offers it back', offered);
     await pg.mouse.click(5, 5);
   }
@@ -1685,6 +1691,149 @@ if (run('E49')) await guard('E49', async () => {
   check('E49', 'it is kept in History and restored from it', r.stored === true && r.restored === true, r);
   await runWith({});   // leave the page as the next test expects it
 });
+
+// E50 — a right-click on the curve does what its menu says, to the replicate it says. Found 2026-10-07 on the bundled data:
+// "Exclude this replicate" matched ANY replicate of the concentration within 0.1 of its reading, so where two replicates
+// read alike (12 of 256) one click left out both; the menu was a list of two identical-looking rows, then a second menu;
+// a hook ✕ was drawn and unreachable; and nothing said what the click had done to the fit.
+if (run('E50')) await guard('E50', async () => {
+  await E(() => { document.querySelector('[data-tab="curves"]').click(); });
+  await pg.waitForTimeout(400);
+  await E(() => { setCvMode('single'); window._cvCfg.showReps = true; });
+  await pg.waitForTimeout(400);
+  const rowsOf = () => E(() => document.getElementById('cv-compound')._filtered.length);
+  const nRows = await rowsOf();
+  // a. leaving out one replicate leaves out one — every replicate of the curves that have two that read alike, and of a few that do not
+  const bad = await E(() => {
+    const out = [], list = document.getElementById('cv-compound')._filtered;
+    const alike = r => { const reps = (r._repsOrig || r._reps || []).filter(p => p.y != null); return reps.some((p, i) => reps.some((q, j) => j !== i && Math.abs(p.x - q.x) < 0.002 && Math.abs(p.y - q.y) < 0.1)); };
+    const pick = list.filter(alike).slice(0, 10).concat(list.filter(r => !alike(r)).slice(0, 3));
+    pick.forEach(r => {
+      const reps = (r._repsOrig || r._reps || []).filter(p => p.y != null && isFinite(p.y)).map(p => ({ x: p.x, y: p.y }));
+      reps.forEach(p => {
+        const n0 = r._reps.length;
+        cvExcludeRepXY(p.x, p.y, r);
+        const n1 = r._reps.length;
+        if (n1 !== n0 - 1) out.push(r.Sample_ID + '·' + r.Protein + ' x=' + p.x.toFixed(2) + ' y=' + p.y.toFixed(2) + ': ' + n0 + '→' + n1);
+        cvRestoreAll(r);
+      });
+    });
+    _CV_UNDO.length = 0; _CV_REDO.length = 0;
+    return { checked: pick.length, bad: out };
+  });
+  check('E50', 'leaving out one replicate removes exactly one, for every replicate of ' + bad.checked + ' curves (incl. replicates that read alike)', bad.checked >= 8 && bad.bad.length === 0, bad.bad.slice(0, 5));
+  // b. replicates that read exactly the same are two points: two exclusions take both, a third is refused, one put back returns one
+  const same = await E(() => {
+    const r = document.getElementById('cv-compound')._filtered[0], snap = [[r, _cvSnapRow(r)], [_cvTwin(r), _cvSnapRow(_cvTwin(r))]];
+    const xs = {}; r._reps.forEach(p => { (xs[p.x.toFixed(4)] = xs[p.x.toFixed(4)] || []).push(p); });
+    const pair = Object.values(xs).find(a => a.length >= 2); pair[1].y = pair[0].y;
+    delete r._repsOrig; _cvApplyEditsAndRefit(r);
+    const x = pair[0].x, y = pair[0].y, n0 = r._reps.length, o = {};
+    cvExcludeRepXY(x, y, r); o.one = r._reps.length - n0;
+    cvExcludeRepXY(x, y, r); o.two = r._reps.length - n0;
+    cvExcludeRepXY(x, y, r); o.three = r._reps.length - n0; o.entries = (r._excludedRepXYs || []).length;
+    cvReincludeRepXY(x, y, r); o.back = r._reps.length - n0;
+    snap.forEach(([a, s]) => _cvRestoreRow(a, s)); delete r._repsOrig; delete r._excludedRepXYs; delete r._deletedPts; _CV_UNDO.length = 0; _CV_REDO.length = 0;
+    return o;
+  });
+  check('E50', 'replicates that read exactly the same are two points: one click takes one, two take both, a third is refused', same.one === -1 && same.two === -2 && same.three === -2 && same.entries === 2, same);
+  check('E50', 'putting one back returns one', same.back === -1, same);
+  // c. the menu: every replicate at the concentration, with its reading, and the whole concentration with its count — from a replicate and from the mean
+  const probe = async mode => {
+    await E(m => { window._cvCfg.showReps = (m === 'reps'); document.getElementById('cv-compound').selectedIndex = 1; renderCvCurve(); }, mode); await pg.waitForTimeout(600);
+    const t = await E(m => {
+      const cv = document.getElementById('cv-canvas'), rc = cv.getBoundingClientRect(), r = cv._cvCompounds[0];
+      const xs = {}; r._reps.forEach(p => { (xs[p.x.toFixed(4)] = xs[p.x.toFixed(4)] || []).push(p); });
+      const grp = Object.values(xs).find(a => a.length >= 2 && !(r._hook_concs || []).some(h => Math.abs(h - a[0].x) < 0.002)), x = grp[0].x;
+      const e = window._cvPtMap.find(p => p.r === r && Math.abs(p.x - x) < 0.002 && (m === 'reps' ? p.isRep : p.isMean));
+      return { x: rc.left + e.px, y: rc.top + e.py, ys: grp.map(p => p.y), n: grp.length, ex: grp[0].x };
+    }, mode);
+    await pg.mouse.click(t.x, t.y, { button: 'right' }); await pg.waitForTimeout(250);
+    const txt = await E(() => { const ms = [...document.querySelectorAll('div[role="menu"]')]; return { count: ms.length, text: ms.length ? ms[ms.length - 1].innerText.replace(/\s+/g, ' ') : '' }; });
+    return { t, txt };
+  };
+  for (const mode of ['reps', 'mean']) {
+    const { t, txt } = await probe(mode);
+    check('E50', (mode === 'reps' ? 'from a replicate' : 'from the mean ± SD dot') + ': the menu lists each of the ' + t.n + ' replicates by its reading and "Exclude all ' + t.n + ' replicates"',
+      txt.count === 1 && t.ys.every(y => txt.text.includes(y.toFixed(1))) && new RegExp('Exclude all ' + t.n + ' replicates').test(txt.text) && !/Which point/.test(txt.text), { t, txt });
+    await E(() => _cvCloseCtx());
+  }
+  await E(() => { window._cvCfg.showReps = true; renderCvCurve(); }); await pg.waitForTimeout(500);
+  // d. pointing at a row rings the points it is about; leaving, or closing the menu, takes the rings away
+  const { t } = await probe('reps');
+  const ringN = () => E(() => document.querySelectorAll('#cv-hl span').length);
+  await pg.locator('div[role="menu"] [role="menuitem"]').first().hover(); await pg.waitForTimeout(150);
+  const one = await ringN();
+  await pg.locator('div[role="menu"] [role="menuitem"]', { hasText: 'Exclude all' }).hover(); await pg.waitForTimeout(150);
+  const all = await ringN();
+  check('E50', 'pointing at "Exclude the … replicate" rings that one point; at "Exclude all N" rings all N', one === 1 && all === t.n, { one, all, n: t.n });
+  const where = await E(() => { const s = document.querySelector('#cv-hl span'); const r = s && s.getBoundingClientRect(), cv = document.getElementById('cv-canvas').getBoundingClientRect(); return r && { cx: r.left + r.width / 2 - cv.left, cy: r.top + r.height / 2 - cv.top, map: window._cvPtMap.filter(p => p.isRep).map(p => [p.px, p.py]) }; });
+  check('E50', 'a ring sits on a drawn point (within a pixel)', !!where && where.map.some(([px, py]) => Math.abs(px - where.cx) < 1 && Math.abs(py - where.cy) < 1), where && { cx: where.cx, cy: where.cy });
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(150);
+  check('E50', 'closing the menu takes the rings away', (await ringN()) === 0 && !(await E(() => !!document.querySelector('div[role="menu"]'))));
+  // e. ↓ moves into the rows
+  await pg.mouse.click(t.x, t.y, { button: 'right' }); await pg.waitForTimeout(250);
+  await pg.keyboard.press('ArrowDown'); await pg.waitForTimeout(100);
+  check('E50', '↓ moves the focus to the first row', await E(() => document.activeElement && document.activeElement.getAttribute('role') === 'menuitem'));
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  // f. the click says what it did to the curve
+  const toast = await E(() => document.getElementById('echo-toast') && document.getElementById('echo-toast').textContent);
+  check('E50', 'after the click a line says what was left out, what the potency did, and how to undo it', /Excluded one replicate/.test(toast || '') && /(DC50|IC50|EC50) .* (→|\(unchanged\))/.test(toast || '') && /(⌘Z|Ctrl\+Z) to undo/.test(toast || ''), toast);
+  await E(() => { cvRestoreAll(); _CV_UNDO.length = 0; _CV_REDO.length = 0; });
+  // g. a hook ✕ is not a dead spot
+  const hk = await E(() => {
+    const sel = document.getElementById('cv-compound'), i = sel._filtered.findIndex(r => r._is_hook);
+    if (i < 0) return null; sel.selectedIndex = i; renderCvCurve(); return i;
+  });
+  if (hk === null) skipped.push('E50 — no curve with a hook in this data');
+  else {
+    await pg.waitForTimeout(600);
+    const h = await E(() => { const cv = document.getElementById('cv-canvas'), rc = cv.getBoundingClientRect(), p = window._cvPtMap.find(q => q.isHook); return p && { x: rc.left + p.px, y: rc.top + p.py }; });
+    check('E50', 'a hook ✕ is in the hit map', !!h);
+    if (h) {
+      await pg.mouse.click(h.x, h.y, { button: 'right' }); await pg.waitForTimeout(250);
+      const txt = await E(() => { const m = [...document.querySelectorAll('div[role="menu"]')].pop(); return m ? m.innerText.replace(/\s+/g, ' ') : ''; });
+      check('E50', 'right-click on it says it is a hook effect, already left out, and offers to include it', /hook effect/i.test(txt) && /Include the hook concentrations in the fit/.test(txt), txt);
+      await E(() => _cvCloseCtx());
+    }
+  }
+  // h. near a point: the nearest one, said so; far from every point: say that, not a menu of nothing
+  await E(() => { document.getElementById('cv-compound').selectedIndex = 1; renderCvCurve(); }); await pg.waitForTimeout(600);
+  const spots = await E(() => {
+    const cv = document.getElementById('cv-canvas'), rc = cv.getBoundingClientRect(), L = cv._cvLay, m = window._cvPtMap;
+    const d = (x, y) => Math.min(...m.map(p => Math.hypot(p.px - x, p.py - y)));
+    let far = null, near = null;
+    for (let x = L.pL + 20; x < L.pL + L.pw - 20 && !far; x += 25) for (let y = L.pT + 20; y < L.pT + L.ph - 20 && !far; y += 25) if (d(x, y) > 80) far = { x: rc.left + x, y: rc.top + y };
+    const p = m.find(q => q.isRep);
+    for (const [dx, dy] of [[26, 0], [-26, 0], [0, 26], [0, -26]]) { if (!near && Math.abs(d(p.px + dx, p.py + dy) - 26) < 1.5) near = { x: rc.left + p.px + dx, y: rc.top + p.py + dy }; }
+    return { far, near };
+  });
+  if (spots.near) { await pg.mouse.click(spots.near.x, spots.near.y, { button: 'right' }); await pg.waitForTimeout(250); check('E50', 'a click a little off a point opens the nearest one’s menu and says it is the nearest', await E(() => /Nearest point/.test([...document.querySelectorAll('div[role="menu"]')].pop()?.innerText || '')), spots.near); await E(() => _cvCloseCtx()); }
+  if (spots.far) { await pg.mouse.click(spots.far.x, spots.far.y, { button: 'right' }); await pg.waitForTimeout(250); check('E50', 'a click far from every point says there is no point there', await E(() => /No data point here/.test([...document.querySelectorAll('div[role="menu"]')].pop()?.innerText || '')), spots.far); await E(() => _cvCloseCtx()); }
+  // i. the Plate tab is the same: right-clicking one of two wells that read alike leaves out that well and not the other
+  const plate = await E(() => {
+    const out = { found: false };
+    for (const bc of Object.keys(window._plateData)) {
+      const wells = window._plateData[bc], ids = Object.keys(wells).filter(k => _plIsCpd(wells[k]) && wells[k].c != null && wells[k].m != null && _plFit(wells[k].s, wells[k].p, bc));
+      for (const a of ids) for (const b of ids) {
+        if (a >= b) continue; const wa = wells[a], wb = wells[b];
+        if (wa.s === wb.s && wa.p === wb.p && Math.abs(wa.c - wb.c) < 0.002 && Math.abs(wa.m - wb.m) < 0.1 && Math.abs(wa.m - wb.m) > 0.0005) {
+          const r = _plFit(wa.s, wa.p, bc), n0 = r._reps.length;
+          plateToggleExclude(bc, a[0], +a.slice(1));
+          out.found = true; out.n = r._reps.length - n0; out.first = _plExcluded(bc, wa); out.second = _plExcluded(bc, wb); out.pair = [bc, a, b, wa.m, wb.m];
+          plateToggleExclude(bc, a[0], +a.slice(1)); out.restored = r._reps.length - n0;
+          _CV_UNDO.length = 0; _CV_REDO.length = 0; return out;
+        }
+      }
+    }
+    return out;
+  });
+  if (!plate.found) skipped.push('E50 — no two wells that read alike in the Plate data');
+  else check('E50', 'Plate tab: right-click one of two wells that read alike leaves out that curve point only, and the same click puts it back', plate.n === -1 && plate.first === true && plate.second === false && plate.restored === 0, plate);
+  await E(() => { window._cvCfg.showReps = true; cvRestoreAll(document.getElementById('cv-canvas')._cvCompounds[0]); _CV_UNDO.length = 0; _CV_REDO.length = 0; });
+  void nRows;
+});
+
 await browser.close();
 const invs = [...new Set([...Object.keys(counts), ...out.map(x => x.inv)])].sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
 for (const inv of invs) {
