@@ -10,13 +10,14 @@
 //   · two runs of text, not nested in one another, whose painted boxes intersect — "4.29 nM ×/÷1.2" over "98%" in a grid whose tracks had shrunk
 //     below their content, which no clipping rule noticed because the text was neither clipped nor outside its row
 //   · two <text> labels of one chart that touch, or a label outside its own svg
-//   · a scroller that hides part of its content behind a sideways scroll (a data table inside its own box is fine: pass `allowScroll`
+//   · a scroller that hides part of its content behind a sideways scroll (a data table that is the content of its own box is fine, and so is anything matching `allowScroll`
 //     as a selector; everything a person must read whole is a finding)
 //   · the page itself scrolling sideways
 //
 // What it deliberately does NOT count (each one was a false positive first):
 //   · text cut by its own box with text-overflow:ellipsis (the ellipsis is the message)
 //   · content inside an overflow:auto|scroll box on the scrolled axis — that is what the scrollbar is for
+//   · the answer inside a closed <details>, or a control inside an opacity:0 ancestor — they have a box and paint nothing (checkVisibility says so)
 //   · text under a layer drawn over the page (#hf-drawer, [role=dialog], .modal, .dlg) — a layer covers the page by design; a pair is only
 //     compared when both are in the same layer
 //   · a run that is not painted at its own centre (scrolled out of a box, covered): elementFromPoint must land in it or around it
@@ -28,7 +29,9 @@ window.__escapeAudit = (opts = {}) => {
   // Every visible text run, icon and image must sit inside the nearest box that draws something around it
   // (a button, pill, chip, card, cell, field…). Clipped boxes are skipped: what they cut is the overflow detector's job.
   const out = [];
-  const vis = el => { const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const vis = el => { const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) return false;
+    // the answer inside a closed <details>, anything under content-visibility:hidden, or inside an opacity:0 / visibility:hidden ancestor (a control that only appears on hover) keeps a box but paints nothing
+    if (el.checkVisibility && !el.checkVisibility({ contentVisibilityAuto: true, checkOpacity: true, checkVisibilityCSS: true })) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   const drawn = el => {
     const cs = getComputedStyle(el);
     if (/^(BUTTON|INPUT|SELECT|TEXTAREA|TD|TH)$/.test(el.tagName)) return true;
@@ -79,7 +82,9 @@ window.__escapeAudit = (opts = {}) => {
   }
 
   // text over text: two runs that are not nested in one another and whose boxes intersect
-  const T = items.filter(i => i._text && i.rects.length === 1).map(i => ({ el: i.el, r: i.rects[0] })).filter(t => t.r.bottom > 0 && t.r.top < innerHeight * 3);
+  // only the part of a run that is painted counts: whatever a scroll box or clip has cut off (the letters of a scrolling preview, scrolled out of it) is not on screen
+  const painted = (el, r) => { let L = r.left, T0 = r.top, R = r.right, B = r.bottom; for (let a = el; a && a !== document.documentElement; a = a.parentElement) { const cs = getComputedStyle(a); if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue; const b = a.getBoundingClientRect(); if (cs.overflowX !== 'visible') { L = Math.max(L, b.left); R = Math.min(R, b.right); } if (cs.overflowY !== 'visible') { T0 = Math.max(T0, b.top); B = Math.min(B, b.bottom); } } return R - L > 0.5 && B - T0 > 0.5 ? { left: L, right: R, top: T0, bottom: B, width: R - L, height: B - T0 } : null; };
+  const T = items.filter(i => i._text && i.rects.length === 1).map(i => ({ el: i.el, r: painted(i.el, i.rects[0]) })).filter(t => t.r && t.r.bottom > 0 && t.r.top < innerHeight * 3);
   if (T.length < 2500) {
     T.sort((a, b) => a.r.left - b.r.left);
     const seenP = new Set();
@@ -108,7 +113,7 @@ window.__escapeAudit = (opts = {}) => {
   });
 
   // boxes that hide part of their content behind a sideways scroll: fine for a wide data table, a finding for anything a person must read whole
-  document.querySelectorAll('*').forEach(el => { const cs = getComputedStyle(el); if (!/(auto|scroll)/.test(cs.overflowX) || !vis(el)) return; const hid = el.scrollWidth - el.clientWidth; if (hid > 2 && !el.matches(allow)) out.push(`scroller ${desc(el)} hides ${hid}px of its content to the right`); });
+  document.querySelectorAll('*').forEach(el => { const cs = getComputedStyle(el); if (!/(auto|scroll)/.test(cs.overflowX) || !vis(el)) return; const hid = el.scrollWidth - el.clientWidth; const isTbl = el.children.length <= 2 && [].some.call(el.children, c => c.tagName === 'TABLE'); if (hid > 2 && !isTbl && !el.matches(allow)) out.push(`scroller ${desc(el)} hides ${hid}px of its content to the right`); });
   // the page itself
   const sw = document.documentElement.scrollWidth - document.documentElement.clientWidth;
   if (sw > 1) out.push('page scrolls sideways by ' + sw + 'px');

@@ -6949,6 +6949,33 @@ Hit Finder's **H23** drives every tab, the drawer and the dialogs with long real
 bugs back (the icon rule, the old grid tracks, the 1100px breakpoint, the stacked chem tables, the dialog title, the screen-label wrap, the orphan filter): each fails it.
 Not yet applied to the other 16 apps — run `__escapeAudit()` over them next.
 
+## Every app through the escape audit (2026-10-07)
+
+Jon, on Tempo's empty state (an upload icon drawn at 44px inside the *Choose files* button): *"estos errores visuales son inaceptables."* Tempo had never been through `tools/audit_escape.js`, and neither had the other 15 apps. It is now a flag on the Hub sweep rather than a separate harness, so it runs on every screen the sweep already visits — each app at rest, seeded with its demo data, and crawled tab by tab and dialog by dialog:
+
+```
+node tools/mobile_hub_sweep.mjs --escape                       # the phone, as before, plus the escape audit
+node tools/mobile_hub_sweep.mjs --desktop --escape --sizes=1440x900,1024x768 --themes=light,dark
+```
+
+`--desktop` is a mouse and a desktop browser (no emulated iPhone) and skips what is about a phone (the rotate note, text under 10px). **CI runs both** (phone 390 × 844 and 844 × 390 with `--escape`, then a 1440 and a 1024 desktop pass), so a finding stops the deploy. Proven by putting Tempo's bug back: the sweep reports *svg "" in button.btn.primary sticks out top by 13px (44×44 in 148×32)*. `ESC_OPTS` in the sweep lists the scrollers that hold a data table or a figure bigger than its box on purpose (`.results-tbl-scroll`, `.hits-scroll`, `.fig-shell`, `.crop-area`, `.eg-tblwrap`, `.eg-scroll`); a box whose only content is a `<table>` is allowed by the audit itself.
+
+**The audit's own false positives came first, and are fixed in `tools/audit_escape.js`** — the first pass reported ~60 findings across the 18 apps and a third were the audit: the answer inside a closed `<details>` (it has a box and paints nothing), a control inside an `opacity:0` ancestor (hover-only buttons), letters scrolled out of a scrolling preview box (compared as if still painted), and a data table that is the content of its own scroll box. It uses `checkVisibility({checkOpacity, checkVisibilityCSS, contentVisibilityAuto})` now and compares only the painted part of each run of text.
+
+**What was real, one rule each** (the first round was ~35 findings, the last is 0):
+
+- **`1fr` is `minmax(auto,1fr)`**: a grid column grows to its widest unbreakable content. Echo and Beacon's `.proto-row` (220px key column in a 264px phone row), Cuppa's two-input `.field-row` (a text input's own width), Protein Tools' `.props-grid`, Echo's History compare (`.hx-body`, the plot column grew to the neighbouring table's 606px). All `minmax(0,1fr)`, and a single column on a phone.
+- **A strip that scrolls sideways hides what is in it**, and the Hub's rule is that tabs and tool groups wrap: Dora's tab bar (its right-hand group now takes its own row under 1100px), Blueprint's Gel Designer ribbon (it hid 1,115px of tool groups behind a swipe; it wraps, two controls to a row), Ribbon's top bar (nowrap strip, last select cut in half at 768px). **Protein Tools' tab bar stays a strip on purpose** — it carries a sliding indicator that cannot span two rows — so it gets tighter padding at ≤380px instead.
+- **`margin-left:auto` again** (the seventh time): Dora's export group sat 1,030px to the right of where its row began once the row wrapped. Two halves (`.ctl-l`/`.ctl-r`) and `justify-content:space-between`, in both Dora control rows.
+- **A fixed `height` with `overflow:hidden`** clipped content that wrapped: Echo's reader dropzone (the sub-line is two lines at a column's width, icon and text each cut by 3–4px). `min-height`, and both zones of that row share one.
+- **A descendant selector for an illustration** (`.empty-state svg`) matches every SVG inside, including a button's icon. Tempo had it; Lumina and Incubator had the same pattern and now use `>`. **Use `> svg` for anything meant for one child.**
+- **Chart text is positioned in the picture's own units, so it has to be fitted to them**: Tempo's scatter names (greedy placement: right, left, above, below, never outside the plot or on another name or dot), x tick labels and axis titles wider than the plot (`tpFrame` thins ticks and cuts a title at a bracket), a log axis squeezed to 128px by a 120px right-hand legend on a phone (above the plot under 440px), Echo's compare scatter (last tick label past the edge; left pad 38 → 46 for "100 µM"), Hit Finder's plot ticks (labels thinned; the first x label sat on the last y label at the origin).
+- **A box whose own text is too wide for it at the smallest size**: Lumina's wells under 24px (`.lm-tiny` hides the concentration text; the colour, outline and tooltip say it), Tempo's wells on a phone, Hit Finder's funnel row (the count line stacks under the label at ≤430px), Blueprint's controls, BCA's dose chip (input raised to 36px, its delete button was left at 28), Cuppa's settings dialog, a card-layout cell in Tempo's Results whose long `::before` header pushed its value out, Labbook's drag grip (a `margin-left:-4px` inside an `overflow:hidden` day group clipped it), Labbook's 384-well preview at 320px (columns give way instead of the last two going behind a swipe).
+- **The shared Guide's keyboard table** (`tools/tourkit/tour.css`, `.tkg-keys`) was 444px wide in every app that has a Guide; at ≤560px a shortcut and its description stack. Edited at the source and propagated (`tools/sync_tour.py`).
+- **A rejected clipboard write is not a copy.** Inside a frame a denied permission rejects `navigator.clipboard.writeText`; Echo's Gradient Planner, Protein Tools and Labbook's plate summary left it unhandled (the sweep surfaced it as a page error) and Labbook said "copied" regardless. Each falls back to the textarea route or says so.
+
+**Not changed, and why.** The Gel Designer ribbon is ~1,100px tall on a phone now (everything visible rather than most of it behind a swipe); a collapsible group would be the next step. Tempo's and Hit Finder's wide results tables scroll inside their own box by design.
+
 ## Tempo — kinetic degradation, two analyses of one set of fits (2026-10-07)
 
 Jon: replicate what Promega's ProNect does for time-dependent degradation, in dHUB's style, and add

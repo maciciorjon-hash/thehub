@@ -55,7 +55,7 @@ input:focus{border-color:var(--accent);}
 .card-hdr{font-size:var(--fs-2);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:14px;}
 .warn{color:#ff9800;font-size:var(--fs-3);margin-top:6px;}
 .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
-.props-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.props-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;}
 .res-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;} /* 8 cards: two full rows, not 3+3+2 */
 .res-item{background:var(--surface2);border-radius:var(--r-2);padding:10px 14px;}
 .res-val{font-size:var(--fs-6);font-weight:700;font-family:var(--mono);color:var(--text);}
@@ -68,8 +68,8 @@ input:focus{border-color:var(--accent);}
 .aa-letter{font-family:var(--mono);font-size:var(--fs-4);font-weight:700;color:var(--text);}
 .aa-count{font-size:var(--fs-1);color:var(--text2);}
 .aa-pct{font-size:var(--fs-1);color:var(--text3);font-family:var(--mono);}
-.conc-row{display:flex;gap:10px;align-items:flex-end;}
-.conc-row input{flex:1;}
+.conc-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;}
+.conc-row input{flex:1 1 90px;min-width:0;}
 /* Chart */
 .chart-wrap{position:relative;width:100%;}
 .chart-wrap svg{display:block;width:100%;overflow:visible;}
@@ -132,6 +132,7 @@ input:focus{border-color:var(--accent);}
   header{padding:0 12px;}
   .tabs{padding:0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .tab{white-space:nowrap;flex-shrink:0;padding:10px 10px;font-size:var(--fs-3);}
+  @media(max-width:380px){ .tabs{gap:0;padding:0 4px;} .tab{padding:10px 7px;} }   /* the tab bar carries a sliding indicator, so it cannot wrap: at 320px the last tab was 8px past the edge */
   .panel{padding:12px 10px;}
   .row{gap:6px;}
   .res-item{padding:8px 10px;}
@@ -970,7 +971,8 @@ function copyResults(){
   if(!_lastResult){ptToast('No results to copy.', 'err'); return;}
   const r=_lastResult;
   const lines=['Protein Tools — Results',`Sequence length: ${r.n} aa`,`MW (average): ${(r.mw_avg/1000).toFixed(3)} kDa`,`MW (monoisotopic): ${(r.mw_mono/1000).toFixed(3)} kDa`,`pI: ${r.pi.toFixed(2)}`,`ε280 (reduced): ${r.e280_reduced} M⁻¹cm⁻¹`,`ε280 (oxidised): ${r.e280_oxidized} M⁻¹cm⁻¹`,`GRAVY: ${r.gravy.toFixed(3)}`,`Instability index: ${r.instability.toFixed(1)}`,`Aliphatic index: ${r.aliphatic.toFixed(1)}`,`Est. half-life (N-end, mammalian): ${r.halflife?r.halflife.mam:'—'}`,'','AA composition:',...Object.entries(r.comp).map(([aa,cnt])=>`  ${aa}: ${cnt} (${r.n?(cnt/r.n*100).toFixed(1):'0'}%)`)];
-  navigator.clipboard.writeText(lines.join('\n'));
+  const t=lines.join('\n'), legacy=()=>{ const ta=document.createElement('textarea'); ta.value=t; ta.style.cssText='position:fixed;opacity:0;'; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand('copy'); }catch(e){} ta.remove(); ptToast(ok?'Results copied':'Copy was blocked by the browser','warn'); };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(()=>ptToast('Results copied')).catch(legacy); else legacy();
 }
 
 function loadExample(){

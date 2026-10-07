@@ -28,6 +28,8 @@
 //   node tools/mobile_hub_sweep.mjs [--engine=chromium|webkit] [--url=URL]
 //        [--sizes=390x844,375x667,320x568,844x390] [--themes=light,dark] [--only=echo,pd,shell]
 //        [--shots=DIR] [--json=FILE] [--verbose] [--min-font=11]
+//        [--escape]   also run tools/audit_escape.js on every screen: nothing leaves the box drawn around it, no text lands on its neighbour
+//        [--desktop]  a mouse and a desktop browser instead of an iPhone, for the sizes you pass (e.g. --sizes=1440x900,1024x768); skips the phone-only checks (the rotate note, text under 10px)
 // Exit 1 on any finding.
 import { chromium, webkit } from 'playwright';
 import fs from 'node:fs';
@@ -44,9 +46,14 @@ const ONLY    = args.only ? String(args.only).split(',') : null;
 const SHOTS   = args.shots ? String(args.shots) : null;
 const JSON_OUT= args.json ? String(args.json) : null;
 const VERBOSE = !!args.verbose;
+const ESCAPE  = !!args.escape;
+// scrollers that hold a data table or a figure larger than its box on purpose (a table whose box is its only child is allowed by the audit itself)
+const ESC_OPTS = JSON.stringify({ allowScroll: '.results-tbl-scroll,.hits-scroll,.fig-shell,.crop-area,.eg-tblwrap,.eg-scroll' });
+const DESKTOP = !!args.desktop;
 const OFFLINE = !!args.offline;   // block Firebase entirely: the state a phone at the bench with no signal is in
-const MIN_FONT= Number(args['min-font'] || 11);
+const MIN_FONT= Number(args['min-font'] || (args.desktop ? 9 : 11));   // a desktop's own 10px labels are the scale, not a finding
 const here = path.dirname(new URL(import.meta.url).pathname);
+const ESC_SRC = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), 'audit_escape.js'), 'utf8').replace(/window\.__escapeAudit\(\);\s*$/, '');
 const AUDITS = ['audit_runtime.js', 'audit_align.js'].map(f => fs.readFileSync(path.join(here, f), 'utf8'));
 
 // ── the in-page detector ────────────────────────────────────────────────────────────────────────
@@ -398,6 +405,7 @@ async function measure(page, label, ctx, frame, opts = {}) {
     push(where, a); push(where, b.filter(m => !seenMsg.has(m) && /^(covered|overlap|clipped|offscreen)/.test(m)).map(m => m + '  [at the end of the scroll]'));
   };
   try { await scan(page, 'shell'); } catch (e) { push('shell', ['detector threw: ' + e.message]); }
+  if (ESCAPE && !frame) { try { push('shell', (await page.evaluate(ESC_SRC + ';window.__escapeAudit(' + ESC_OPTS + ')')).map(m => 'escape: ' + m)); } catch (e) { push('shell', ['escape audit threw: ' + e.message]); } }
   if (frame) {
     try {
       await frame.evaluate(DETECT);
@@ -406,6 +414,7 @@ async function measure(page, label, ctx, frame, opts = {}) {
       const a = opts.audits === false ? [] : await frame.evaluate(() => { let o = []; try { o = o.concat((window.__runtimeAudit && window.__runtimeAudit()) || []); } catch (e) {} try { o = o.concat((window.__alignAudit && window.__alignAudit()) || []); } catch (e) {} return o; });
       // dead handlers / duplicate ids are covered by the desktop audits; here only the visual ones
       push('app', a.filter(s => /invisible|contrast|clipped|wider|align|different left|height/i.test(s)).map(s => 'audit ' + s));
+      if (ESCAPE) push('app', (await frame.evaluate(ESC_SRC + ';window.__escapeAudit(' + ESC_OPTS + ')').catch(e => ['escape audit threw: ' + e.message])).map(m => 'escape: ' + m));
     } catch (e) { push('app', ['detector threw: ' + e.message]); }
   }
   if (shotDir) await page.screenshot({ path: path.join(shotDir, `${ctx.theme}-${size}-${label.replace(/[^a-z0-9]+/gi, '_')}.png`) });
@@ -418,7 +427,7 @@ async function main() {
   const browser = await browserType.launch();
   for (const [w, h] of SIZES) for (const theme of THEMES) {
     const ctx = { w, h, theme };
-    const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: UA });
+    const context = await browser.newContext(DESKTOP ? { viewport: { width: w, height: h }, deviceScaleFactor: 1, acceptDownloads: true } : { viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: UA });
     if (OFFLINE) await context.route(/gstatic\.com\/firebasejs|firebaseio|identitytoolkit|firebaseapp\.com|firebasestorage/, r => r.abort());
     else {
       // The signed-in, healthy state: the SDK answers, the admin is signed in, nothing is in the cloud.
@@ -437,6 +446,7 @@ async function main() {
     const { SCENARIOS } = await import('./mobile_hub_scenarios.mjs');
     for (const sc of SCENARIOS) {
       if (ONLY && !ONLY.includes(sc.id)) continue;
+      if (DESKTOP && sc.id === 'rotate') continue;   // the rotate-your-phone contract is about a phone
       try { await sc.run({ page, ctx, measure: (label, frame, o) => measure(page, `${sc.id}:${label}`, ctx, frame, o), frameOf: id => frameOf(page, id), DETECT, report: (label, msg) => findings.push({ size: `${w}x${h}`, theme, screen: `${sc.id}:${label}`, where: 'app', msg }), measureOn: (pg, label, frame, o) => measure(pg, `${sc.id}:${label}`, ctx, frame, o),
               fresh: async (o = {}) => { const pg = await context.newPage(); if (o.visitor) await pg.addInitScript(() => { window.__STUB_NOUSER = 1; }); await pg.goto(URL0, { timeout: 120000 }); await pg.waitForTimeout(1200); await pg.evaluate(DETECT); return pg; } }); }
       catch (e) { findings.push({ size: `${w}x${h}`, theme, screen: sc.id, where: 'harness', msg: 'scenario threw: ' + e.message.split('\n')[0] }); }

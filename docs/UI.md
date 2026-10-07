@@ -491,6 +491,20 @@ what keeps the Archive PWA, `labbook-standalone` and the ChemLib hand-off alive.
 
 `--text3` was 2.6:1 on white and 2.4:1 on the dark surface — a colour for things nobody needs to read, used for the table headers, the counts, the hints and the placeholders, which people do. It is **3.8:1 light (`#7c8199`) and 4.1:1 dark (`#7b8099`)** now: still the quietest ink, no longer a disabled one. A placeholder is `color-mix(in srgb, var(--text2) 80%, var(--surface))` (≥ 3:1 in both themes). On touch, a box is **40px** (`min-height:40px !important`, like the 16px rule: a device rule, not a taste) and its neighbours in the row are raised to match, or the row misaligns. `tools/inputs_audit.mjs` measures all of it at 1440 · 1024 · 768 · 390 · 320, both themes: clipped values, text under 16px on touch, boxes under 26/40px, text under 4.5:1 and placeholders under 3:1.
 
+## Everything stays in its box (2026-10-07)
+
+`tools/audit_escape.js` asks whether anything leaves the box drawn around it or lands on its neighbour, and `node tools/mobile_hub_sweep.mjs --escape` (also `--desktop`) runs it on every screen of every app; CI stops the deploy on a finding. The rules it holds:
+
+- **A selector meant for one child says `>`.** `.empty-state svg` styles the illustration *and* the icon inside every button in it. Use `.empty-state > svg`.
+- **`1fr` is `minmax(auto,1fr)`.** A grid track grows to its widest unbreakable content (an input's own width, a table's minimum) and drags the page past its card. Write `minmax(0,1fr)`, and give a two-column key/value row a single column under 640px.
+- **A bar wraps; it does not scroll.** A strip of tabs, tool groups or controls that scrolls sideways hides what is in it. The exception is a bar carrying a sliding indicator, which tightens its padding instead.
+- **A fixed `height` on a box whose text can wrap is `min-height`.** `overflow:hidden` makes the clip silent.
+- **Chart text is fitted to the picture.** Axis labels are thinned when they would touch (the gridline stays), an axis title is cut at a bracket or with an ellipsis when it is longer than the plot, point names go right, left, above or below and are left out rather than drawn over another name or dot, and a legend that has no room beside the plot goes above it.
+- **A well, chip or cell too small for its text drops the text**, never overflows: the colour, the outline and the tooltip carry it.
+- **A rejected clipboard write is not a copy.** Handle the rejection (fall back to a textarea) and say so when it also fails.
+
+Scrollers that are a data table or a figure larger than their box on purpose are listed in `ESC_OPTS` in the sweep; a box whose only content is a `<table>` is allowed by the audit itself.
+
 ## Screening charts (Hit Finder, 2026-10-07)
 
 A chart that ranks things is read for what is **in** it and what is **missing from** it, so these rules are not decoration.
