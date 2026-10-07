@@ -536,3 +536,18 @@ A trace chart answers *how fast, how deep, and did it come back*, so what is dra
 - **Ranking bars hang from zero.** A metric can be negative (a log efficiency of −1.64): the baseline is at zero and the bar goes down from it, so a smaller value is never drawn as a bigger bar.
 - **Fractional signal, not raw counts, on the y axis** — and the normalisation that produced it is named under the chart, because two analyses of one plate are only comparable if their reference is the same.
 - **Validation is a pill, not a colour.** Acceptable · excellent · check, with the rule that failed in the tooltip. A green dot nobody can explain is a decoration.
+
+## A viewer frames its subject by measurement, and a canvas has its own right-click (Ribbon, 2026-10-07)
+
+- **Fit is measured.** A 3D viewer's own "zoom to" fits a sphere to one dimension; on a portrait phone or an elongated subject
+  it cuts the subject off. Project the subject's points, move and scale until the box fits with a margin, and keep following
+  the viewer's size **until the user moves the view** — then never again until they press Fit.
+- **A saved camera is a composition.** Restore it exactly when the viewer has the same shape; only when it does not, bring the
+  subject into view.
+- **One colour function for the whole figure.** Every mode, the palette tuning, a highlight, a chain colour and the dimming of
+  what is not selected go through one function, so a control that "tunes every colour" cannot silently skip a mode.
+- **A canvas that uses the right button for panning opens its menu on *release*, and only if the pointer did not move.** macOS
+  raises `contextmenu` on the press, so check whether the button is still down. A click handler fired for every button
+  must ignore the right one.
+- **A viewer that cannot load leaves the page alive:** the rest of the controls work, the viewer says why and offers *Try again*.
+

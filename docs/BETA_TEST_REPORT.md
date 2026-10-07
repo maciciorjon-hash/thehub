@@ -4,6 +4,99 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## Ribbon, reworked — 2026-10-07
+
+Jon asked for Ribbon to be reworked: *better app, one style with the rest of the Hub, bugs found and fixed,
+improvements, and suggestions.* Ribbon had last been audited on 2026-09-28 (RB-1 … RB-10 below) and had three
+known gaps (N5–N7). This pass broke it first, then rebuilt it around what it found.
+
+### Scope & environment
+- **App:** `apps/ribbon/ribbon.html` — standalone, and embedded in the built Hub (phone and desktop sweeps).
+- **Tools:** Playwright (Chromium and WebKit) against live RCSB, AlphaFold DB and UniProt for the break-it phase;
+  stubs for the permanent checks. 3Dmol from its CDN. `mobile_hub_sweep.mjs --escape`, `check_css`, `check_js`,
+  `audit_app --xref`, the three sync checks, `assist_invariants.mjs`.
+- **Viewports:** 1440×900, 1024×768, 768×1024, 390×844, 844×390, 320×568, light and dark.
+- **Structures used:** 1CRN, 4HHB, 5T35 (VHL–MZ1–BRD4), 6VXX, 7K00 (150 k atoms, 56 chains), 1D3Z (NMR, 10 models),
+  1BNA (DNA), AF p53 (AlphaFold), hostile files.
+
+### Bugs found by breaking the old build
+| ID | Sev | What happened | Root cause |
+|---|---|---|---|
+| RB-11 | High | With the CDN unreachable the **whole page was dead**: no theme switch, no swatches, no design list, Go did nothing and said nothing | `initViewer()` threw inside the one `DOMContentLoaded` handler, so nothing after it was wired |
+| RB-12 | High | On a portrait phone **every protein ran off both edges**; 5T35 touched the bottom of a 1440×900 window and sat 90 px off-centre | `zoomTo` fits a sphere to the view's height and ignores its shape and perspective |
+| RB-13 | Med | A search with no hits said "Search failed. Check your connection" | RCSB answers *no hits* with HTTP 204 and an empty body; `r.json()` threw |
+| RB-14 | Med | A saved design did not hold the camera: loading it gave the colours back and the structure at the default view | `collectDesign` never wrote `getView()` |
+| RB-15 | Med | The "All colours" sliders did **nothing** in Spectrum and Secondary mode | those modes were 3Dmol colour schemes, outside the HSL tuning |
+| RB-16 | Med | Saving under an existing name overwrote it silently (N6) | no check |
+| RB-17 | Med | A chain could only be picked by clicking the model (N5): not from the keyboard, hard on a phone | no list |
+| RB-18 | Low | Extended ids (`pdb_00001abc`) were refused (N7); `1crn.pdb` was searched for as a name | id regex |
+| RB-19 | Med | A file that parsed to nothing cleared the viewer and was reported as "could not reach the PDB" | render ran inside the fetch chain, and any throw there counted as offline |
+| RB-20 | Low | Residue labels were 3Dmol sprites: not draggable, not styled by Label style, hidden from the export by removing and re-adding them | a second label system |
+| RB-21 | Low | 3Dmol was loaded unpinned from `3Dmol.org` (a different build from the npm release) with no integrity check | script tag |
+| RB-22 | Low | A 1200 dpi export was a 14 MB `data:` URL on an `<a href>`, which Safari refuses | `toDataURL` |
+| RB-23 | Med | Swatches, chips and search results were clickable `div`/`span`s: not focusable; sliders and the theme switch had no name | markup |
+
+### Bugs found in the new code by the same checks, before it shipped
+A PROTAC built on a hydroxyproline has `N`, `CA` and `C` atoms, so "has a backbone" made it a *residue* and the
+ligand list was empty (5T35) · lists with a height limit **shrank their rows into each other** (the escape audit) ·
+a right click on an atom also picked its chain (3Dmol fires the click for every button) · macOS raises the context
+menu on the button *press*, so a right-drag to pan opened a menu · a corrupt `ribbon_recent` threw on a `null`.
+
+### What changed
+Everything is in `apps/ribbon/ribbon.html`; ids the older tools use (`fetchBtn`, `pdbInput`, `.example-chip`, `state`,
+`saveDesign`, …) were kept, and R1–R3 in `design_invariants.mjs` still pass unchanged.
+- **A viewer that is never inert.** 3Dmol 2.5.5 is pinned with a SHA-384 hash, tried on unpkg, jsDelivr and cdnjs
+  (the same bytes), and a failure says so in the viewer with *Try again*; the rest of the page keeps working.
+- **Framing.** `fitView` projects the atoms and corrects until they fit, in any viewer shape, and follows a resize until
+  the user moves the structure. Fit animates (a quaternion slerp of the camera).
+- **One colour function** drives cartoon, stick and surface: highlight > chain colour > mode, then the palette tuning,
+  then dimming. Colour modes: uniform, chain, rainbow N→C, secondary structure, B-factor / **AlphaFold pLDDT** with a key.
+- **Sources:** PDB (incl. extended ids), **AlphaFold DB** by UniProt id, AF id or a name search (UniProt), and
+  **local files** (`.pdb .ent .cif .mmcif .pqr`, `.gz`, drag and drop); NMR ensembles get a model slider.
+- **Panel as folding sections** (Structure · Chains · Highlight · Appearance · Labels · Designs), the same
+  language as the Gel Designer; what is open is remembered; a folded section says what is in it.
+- **Chains** list with molecule names from the entry, hide / isolate / colour, reachable from the keyboard.
+  **Ligands** with their own carbon colour and a **pocket** (residues within *r* Å); **residue highlights** by
+  `chain:range`; ions drawn but not listed; modified residues stay in their chain.
+- **Labels** — chain and residue labels are one kind of element: drag, arrow keys, Delete, placed clear of each other,
+  hidden with their chain, drawn into the export exactly when asked.
+- **Designs** keep the camera (restored exactly when the viewer has the same shape, brought into view when not), a
+  thumbnail, the source; replacing asks, deleting offers Undo.
+- **Export:** PNG/JPEG as a blob, **Copy** to the clipboard, **Send to Labbook** (the figure arrives on the experiment's
+  Files), and the colour key as a band under the picture.
+- **Right-click** on the structure: a menu about the atom under the pointer; hover names it.
+- **Help assistant** notes for Ribbon (`tools/assist/kb/ribbon.js`) and an updated context menu.
+
+### Coverage matrix
+| Area | Functional | Edge | UI | Mobile | Persistence | Errors | A11y | Perf |
+|---|---|---|---|---|---|---|---|---|
+| Load: PDB, extended id, AlphaFold, name search, file, gz, drop | ✅ | ✅ 204/404/500/offline, junk, huge range | ✅ | ✅ | ✅ recent, last | ✅ | ✅ | ✅ 150 k atoms |
+| Framing and resize | ✅ | ✅ rod, tall, globular × 4 viewer shapes | ✅ | ✅ | — | — | — | ✅ |
+| Colour modes, palette tuning, surface | ✅ | ✅ every mode vs HSL | ✅ | ✅ | ✅ design | — | — | ⚠️ software GL only |
+| Chains, ligands, pockets, highlights | ✅ | ✅ PROTAC with backbone, MSE, ions | ✅ | ✅ | ✅ design | ✅ bad ranges | ✅ | — |
+| Labels (chain and residue), export | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ keys | — |
+| Designs and sync | ✅ | ✅ old design, corrupt storage | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+
+### Not fixed — recommendations
+See *Suggestions* in the session notes; the open items are an embedded 3Dmol (offline viewer, +0.9 MB on the Hub),
+distance and angle measurements, an interface/contact view for ternary complexes, and superposition of two structures.
+
+### Regression results
+- `tools/ribbon_invariants.mjs` (new, **RB1–RB17, ~175 cases**, in CI): every one of ~20 bugs put back in a copy was
+  caught by the invariant it belongs to (two mutations were behaviour-equivalent — a refused file is protected twice).
+- `design_invariants.mjs` R1–R3 pass unchanged. `assist_invariants.mjs` passes with the new notes.
+- `mobile_hub_sweep.mjs --escape`: 0 findings, Ribbon, 390×844 · 844×390 · 1440×900 · 1024×768 · 768×1024, both themes;
+  WebKit phone portrait and landscape clean.
+- `check_css`, `check_js`, `audit_app --xref`, `sync_icons/ctxkit/assist --check` clean.
+
+### Residual risk
+- Rendering was measured in **software GL** (headless); a draw is ~10× slower than on a GPU, so the 150 k-atom
+  timings are an upper bound.
+- **Touch gestures were emulated**, not tested on a device (dragging tags, pinch).
+- **Send to Labbook** was verified end to end against a real Labbook frame (RB17: the picture lands on the open
+  experiment's Files, captioned, with `ribbon` recorded as a source), not through a signed-in Hub session.
+- The hover picker is disabled above 160 k atoms.
+
 ## dHUB on a phone — 2026-09-29
 
 ### Scope & environment
