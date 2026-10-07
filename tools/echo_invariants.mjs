@@ -116,6 +116,11 @@
 //       what it says          menu per concentration listing each replicate by its reading and the whole concentration with its count (from a replicate and
 //                             from the mean dot), pointing at a row rings its points, a hook ✕ is reachable, a click off a point says so, the click says
 //                             what it did to the potency, and the Plate tab matches wells to replicates the same way.
+//   E51 a plate is found by   A reader file is paired with its destination plate by the barcode being IN the file name (exact · same words ·
+//       its barcode in the    inside the file name · file name inside the barcode · written inside the sheet), a pairing two candidates want
+//       file's name           equally is not made, an intermediate plate is never guessed, a choice made by hand wins, the plate is called after
+//                             its file, six renamed bundled files give exactly the curves of the exact names, and a picklist with no barcode
+//                             is read by its Destination Plate Name.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -1832,6 +1837,115 @@ if (run('E50')) await guard('E50', async () => {
   else check('E50', 'Plate tab: right-click one of two wells that read alike leaves out that curve point only, and the same click puts it back', plate.n === -1 && plate.first === true && plate.second === false && plate.restored === 0, plate);
   await E(() => { window._cvCfg.showReps = true; cvRestoreAll(document.getElementById('cv-canvas')._cvCompounds[0]); _CV_UNDO.length = 0; _CV_REDO.length = 0; });
   void nRows;
+});
+
+// E51 — a plate is found by its barcode being IN its reader file's name, not by the two being equal. A reader file
+// named after the run (HB20260504_P1_144h.xlsx) against the barcode HB20260504_P1 matched nothing ("Merge = 0 rows"),
+// and so did "Plate 3.xlsx" for PLATE-03, or a reader that carries no ID inside it at all. Names are matched in
+// stages (exact · same words · barcode inside the file name · file name inside the barcode · the barcode written in
+// the sheet), a pairing two candidates want equally is NOT made, an intermediate plate is never guessed, and what
+// is paired is called after its file from there on. A picklist with no Destination Plate Barcode is named by its
+// Destination Plate Name. Proven by putting each rule's bug back.
+if (run('E51')) await guard('E51', async () => {
+  const R = await E(() => {
+    const P = (...names) => names.map(n => ({ key: n.toLowerCase(), name: n, inter: /inter|dilution|source|prefill/i.test(n) }));
+    const F = (...stems) => stems.map(s => ({ file: s + '.xlsx', stem: s }));
+    const res = (plates, files, assign) => { const r = _resolvePlates(plates, files, { assign }); return { m: Object.fromEntries([...r.byPlate].map(([k, v]) => [k, v.stem + ':' + v.how])), amb: r.ambiguous.length, leftF: r.leftFiles.map(f => f.stem), leftP: r.leftPlates.map(p => p.name) }; };
+    const o = {};
+    o.exact = res(P('BRD2-01', 'BRD2-02'), F('BRD2-01', 'brd2-02'));
+    o.decorated = res(P('BRD2-01', 'BRD2-02', 'BRD3-01'), F('BRD2-01_144h', 'brd2_02 (reread)', 'E5XX BRD3-01 read'));
+    o.spelled = res(P('BRD3-02'), F('brd3_02'));
+    o.zeros = res(P('PLATE-03'), F('Plate 3'));
+    o.inPlate = res(P('HB20260504_P1', 'HB20260504_P11'), F('P1'));
+    o.prefix = res(P('P1'), F('P12'));
+    o.ambig = res(P('P1'), F('P1_24h', 'P1_72h'));
+    o.inter = res(P('Intermediate Sample Plate[1]', 'P1'), F('read Intermediate Sample Plate 1', 'P1_144h'));
+    o.single = res(P('A'), F('A_plate'));
+    o.shortNum = res(P('1', '2'), F('plate 1', 'plate 2'));
+    o.oneEach = res(P('P1', 'HB_P1'), F('HB_P1_read'));
+    o.manual = res(P('BRD2-01', 'BRD2-02'), F('scan0007', 'scan0008'), { 'brd2-02': 'scan0007.xlsx' });
+    o.manualBeatsName = res(P('P1', 'P2'), F('P1_read', 'P2_read'), { p1: 'P2_read.xlsx' });
+    const withTxt = (stems, txt) => stems.map(s => ({ file: s + '.xlsx', stem: s, texts: txt[s] }));
+    const pl = P('BRD2-01', 'BRD2-02');
+    o.noSheet = _resolvePlates(pl, withTxt(['scan0007'], {}), {}).byPlate.size;
+    o.sheet = (() => { const r = _resolvePlates(pl, withTxt(['scan0007'], { scan0007: ['Protocol', 'ID1: BRD2-01', 'Date'] }), {}); return [...r.byPlate].map(([k, v]) => k + ':' + v.how); })();
+    o.sheetGeneric = (() => { const r = _resolvePlates(P('A'), withTxt(['scan'], { scan: ['Plate A', 'A'] }), {}); return r.byPlate.size; })();
+    o.tok = [_plTok('Plate 03'), _plTok('PLATE-3'), _plTok('plate3'), _plTok('HB20260504_P1_144h')].map(t => t.join('|'));
+    // renaming: the Echo rows take the file's name, a plate matched exactly is untouched
+    const rows = [{ barcode: 'HB_P1', barcodeKey: 'hb_p1' }, { barcode: 'BRD2-01', barcodeKey: 'brd2-01' }]; rows.failed = [{ barcode: 'HB_P1', barcodeKey: 'hb_p1' }];
+    const r2 = _resolvePlates(P('HB_P1', 'BRD2-01'), F('P1', 'BRD2-01'), {});
+    _applyPlateNames(rows, r2.byPlate);
+    o.rename = { rows: rows.map(r => r.barcode + '/' + r.barcodeKey + '/' + (r.barcodeOrig || '')), failed: rows.failed[0].barcode };
+    return o;
+  });
+  check('E51', 'exact names pair exactly, in any case — nothing is renamed', R.exact.m['brd2-01'] === 'BRD2-01:exact' && R.exact.m['brd2-02'] === 'brd2-02:exact' && !R.exact.leftF.length, R.exact);
+  check('E51', 'a file named after the run, a spelling variant and extra words around the barcode are all found', R.decorated.m['brd2-01'] === 'BRD2-01_144h:in-file' && R.decorated.m['brd2-02'] === 'brd2_02 (reread):in-file' && R.decorated.m['brd3-01'] === 'E5XX BRD3-01 read:in-file' && !R.decorated.leftP.length, R.decorated);
+  check('E51', 'Plate 3 is PLATE-03 (leading zeros, spaces and dashes do not matter)', R.zeros.m['plate-03'] === 'Plate 3:same' && R.spelled.m['brd3-02'] === 'brd3_02:same' && JSON.stringify(R.tok) === JSON.stringify(['plate|3', 'plate|3', 'plate|3', 'hb|20260504|p|1|144|h']), { z: R.zeros, tok: R.tok });
+  check('E51', 'a file named P1 is the plate HB20260504_P1 and not HB20260504_P11', R.inPlate.m['hb20260504_p1'] === 'P1:in-plate' && !R.inPlate.m['hb20260504_p11'], R.inPlate);
+  check('E51', 'P12 is not P1 (words, not letters)', !Object.keys(R.prefix.m).length, R.prefix);
+  check('E51', 'two files that both look like plate P1 pair with neither, and say so', !Object.keys(R.ambig.m).length && R.ambig.amb === 1 && R.ambig.leftF.length === 2, R.ambig);
+  check('E51', 'an intermediate plate is never guessed from a file name', !R.inter.m['intermediate sample plate[1]'] && R.inter.m['p1'] === 'P1_144h:in-file', R.inter);
+  check('E51', 'a one-letter or one-digit barcode is not found inside file names', !Object.keys(R.single.m).length && !Object.keys(R.shortNum.m).length, { s: R.single, n: R.shortNum });
+  check('E51', 'one file reads one plate, and the more specific barcode wins', R.oneEach.m['hb_p1'] === 'HB_P1_read:in-file' && !R.oneEach.m['p1'], R.oneEach);
+  check('E51', 'a file chosen by hand pairs with its plate, beats the name match, and the other plate still pairs by name', R.manual.m['brd2-02'] === 'scan0007:manual' && R.manualBeatsName.m.p1 === 'P2_read:manual' && R.manualBeatsName.m.p2 === undefined, { m: R.manual, b: R.manualBeatsName });
+  check('E51', 'a barcode written inside the sheet places a file the name could not — and only then', R.noSheet === 0 && R.sheet.length === 1 && R.sheet[0] === 'brd2-01:sheet' && R.sheetGeneric === 0, { noSheet: R.noSheet, sheet: R.sheet, g: R.sheetGeneric });
+  check('E51', 'the Echo rows (and its failed transfers) take the file’s name; an exact match keeps its own', R.rename.rows[0] === 'P1/p1/HB_P1' && R.rename.rows[1] === 'BRD2-01/brd2-01/' && R.rename.failed === 'P1', R.rename);
+
+  // The whole run: the six bundled reader files, renamed as a person would, give the same curves as when the names are exact.
+  const run1 = await E(async () => {
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const snap = () => Object.fromEntries(_lastResultsData.map(r => [r.Protein + '|' + r.Sample_ID, r.DC50_nM + '|' + r.Dmax_pct]));
+    loadTestData(); await new Promise(r => setTimeout(r, 400));
+    document.getElementById('p-assay').value = 'E51-exact'; document.getElementById('p-ctrl').value = 'B12-O12';
+    _lastResultsData = null; await runPipeline();
+    const base = snap(), plates0 = Object.keys(window._plateData || {}).sort();
+    const fancy = { 'BRD2-01.xlsx': 'EDA20260504_BRD2-01_144h.xlsx', 'BRD2-02.xlsx': 'brd2_02 (reread).xlsx', 'BRD3-01.xlsx': 'BRD3-01 read 2.xlsx', 'BRD3-02.xlsx': 'brd3_02.xlsx', 'BRD4-01.xlsx': 'BRD4-01_p.xlsx', 'BRD4-02.xlsx': 'BRD4-02.xls.xlsx' };
+    const nf = {}; _TEST_READERS.forEach(r => { const n = fancy[r.name]; nf[n] = _b64toFile(r.b64, n, mime); });
+    readerFiles = nf; window._plateAssign = {};
+    document.getElementById('p-assay').value = 'E51-renamed';
+    // a plate named after its file is grouped by the rule in Setup; a table keeps the groups of the exact run so the curves can be compared
+    document.getElementById('p-group-mode').value = 'custom'; document.getElementById('p-group-map').value = '*brd2* = BRD2\n*brd3* = BRD3\n*brd4* = BRD4'; onGroupModeChange();
+    _lastResultsData = null; await runPipeline();
+    const ren = _lastResultsData ? snap() : null, plates1 = Object.keys(window._plateData || {}).sort(), map = window._plateMap || [];
+    const log = document.getElementById('log-panel').innerText;
+    // the same files, by hand: one plate whose file the names cannot place
+    const o = Object.assign({}, nf); const odd = (() => {
+      // the same readings as BRD2-01 in a bare sheet: row letters, column numbers and no ID anywhere in it
+      const w = _parsePHERAstarXLS(Uint8Array.from(atob(_TEST_READERS[0].b64), c => c.charCodeAt(0)).buffer, 'x', ''), L = 'ABCDEFGHIJKLMNOP'.split('');
+      const aoa = [['', ...Array.from({ length: 24 }, (_, i) => i + 1)]]; L.forEach((l, ri) => aoa.push([l, ...Array.from({ length: 24 }, (_, ci) => { const m = w[ri * 24 + ci].measurement; return m === null ? '' : m; })]));
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Data');
+      return new File([XLSX.write(wb, { type: 'array', bookType: 'xlsx' })], 'scan0007.xlsx', { type: mime });
+    })(); delete o['EDA20260504_BRD2-01_144h.xlsx']; o['scan0007.xlsx'] = odd;
+    readerFiles = o; window._plateAssign = {};
+    const rv0 = await echoReview();
+    window._plateAssign = { 'brd2-01': 'scan0007.xlsx' };
+    const rv1 = await echoReview();
+    window._plateAssign = {}; readerFiles = nf; document.getElementById('p-group-mode').value = 'first'; onGroupModeChange();
+    return { same: ren && Object.keys(base).length === Object.keys(ren).length && Object.keys(base).every(k => ren[k] === base[k]), nBase: Object.keys(base).length, nRen: ren ? Object.keys(ren).length : 0, plates0, plates1,
+      how: map.map(m => m.how).sort(), logHas: /plate “BRD2-01” \(the file name contains the plate barcode\)/.test(log), logHasSame: /plate “BRD3-02” \(same name, spelled differently\)/.test(log),
+      rv0: { err: rv0.issues.filter(i => i.level === 'error').length, free: rv0.freeFiles, nofile: rv0.plates.filter(p => !p.file && !p.inter).map(p => p.picklist) },
+      rv1: { err: rv1.issues.filter(i => i.level === 'error').length, how: (rv1.plates.find(p => p.key === 'brd2-01') || {}).how, plate: (rv1.plates.find(p => p.key === 'brd2-01') || {}).plate },
+      rvHtml: await (async () => { readerFiles = o; window._plateAssign = {}; document.getElementById('setup-modal')?.classList.remove('hidden'); await renderReview(); const h = document.getElementById('rv-body').innerHTML; document.getElementById('setup-modal')?.classList.add('hidden'); return /class="rv-pick"/.test(h); })() };
+  });
+  check('E51', 'six reader files renamed with run names, spellings and extra words give exactly the curves of the exact names', run1.same && run1.nBase > 0 && run1.nBase === run1.nRen, { base: run1.nBase, ren: run1.nRen });
+  check('E51', 'the plates are called after their files in the Plate tab data, and the run says how each was found', run1.plates1.length === 6 && run1.plates1.includes('brd2_02 (reread)') && run1.plates1.includes('EDA20260504_BRD2-01_144h') && !run1.plates1.includes('BRD2-01') && run1.how.length === 6 && run1.how.filter(h => h === 'in-file').length === 5 && run1.how.includes('same') && run1.logHas && run1.logHasSame, { p0: run1.plates0, p1: run1.plates1, how: run1.how });
+  check('E51', 'Review: a plate no file name can place is an error that offers the loose files; choosing one clears it and says it was chosen by hand', run1.rv0.err >= 1 && run1.rv0.nofile.includes('BRD2-01') && run1.rv0.free.includes('scan0007.xlsx') && run1.rv1.err === 0 && run1.rv1.how === 'manual' && run1.rv1.plate === 'scan0007' && run1.rvHtml, { rv0: run1.rv0, rv1: run1.rv1, rvHtml: run1.rvHtml });
+  // a picklist with no barcode column value: the Destination Plate Name is the plate
+  const nb = await E(() => {
+    const txt = new TextDecoder().decode(Uint8Array.from(atob(_TEST_ECHO_B64), c => c.charCodeAt(0)));
+    const lines = txt.split(/\r?\n/), hi = lines.findIndex(l => /destination.*well/i.test(l)), hd = lines[hi].split(',');
+    const bi = hd.findIndex(h => /^destination plate barcode$/i.test(h)), ni = hd.findIndex(h => /^destination plate name$/i.test(h));
+    const conv = (fn) => lines.map((l, i) => { if (i <= hi || !l.trim()) return l; const c = l.split(','); if (c.length <= Math.max(bi, ni)) return l; fn(c); return c.join(','); }).join('\n');
+    const plates = t => { try { const d = _parseEchoCSV(t, 8); return { n: d.length, p: [...new Set(d.map(x => x.barcode))].sort() }; } catch (e) { return { err: e.message.slice(0, 120) }; } };
+    const base = plates(txt);
+    const named = plates(conv(c => { c[ni] = c[bi].replace('INTER', 'Intermediate Sample Plate[1]'); c[bi] = ''; }));
+    const dropped = (() => { const hd2 = hd.filter((_, i) => i !== bi); const t = lines.map((l, i) => { if (i < hi || !l.trim()) return l; const c = l.split(','); if (i === hi) return hd2.join(','); c[ni] = c[bi]; c.splice(bi, 1); return c.join(','); }).join('\n'); return plates(t); })();
+    const both = plates(conv(c => { c[bi] = ''; c[ni] = ''; }));
+    return { base, named, dropped, both };
+  });
+  check('E51', 'a picklist whose barcodes are blank takes the plates from Destination Plate Name — the same transfers, the same plates', !nb.named.err && nb.named.n === nb.base.n && nb.named.p.length === nb.base.p.length && nb.named.p.includes('BRD2-01'), nb);
+  check('E51', 'a picklist with no barcode column at all reads too; one with neither barcode nor name is refused, not read as empty', !nb.dropped.err && nb.dropped.n === nb.base.n && (nb.both.err || nb.both.n === 0), nb);
+  await runWith({});   // leave the page as the next test expects it
 });
 
 await browser.close();

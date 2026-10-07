@@ -6832,6 +6832,52 @@ have all of Data Analysis, so a **suite code** opens the group in one go.
   answer about unlocking, that the suite word opens exactly the suite's apps (none before, all after),
   and that it opens no Labbook/Cells app — each proven by putting the bug back on a copy.
 
+## Echo Dose Response: a plate is found by its barcode being in its file's name (2026-10-07)
+
+Jon: take the destination plate's name from the Excel file name too, so a reader that is not a PHERAstar export
+(no ID where the export puts it) still lines up with the picklist, and A01 can be chosen by hand while the plate
+is still recognised. The plate's identity was always the reader file's name, but the Echo file's *Destination Plate
+Barcode* had to **equal** it letter for letter, so `HB20260504_P1_144h.xlsx` against the barcode `HB20260504_P1`
+matched nothing (*Merge = 0 rows*).
+
+`_resolvePlates(plates, files, {assign})` in `apps/echo/echo.html` (next to `_groupOf`) pairs each reader file with
+a destination plate in stages, most certain first, and is the one answer the run (`runAnalysisJS`, step 2b) and the
+Review (`echoReview`) both use:
+
+| stage | meaning |
+|---|---|
+| `manual` | you chose the file in Setup › Review (`window._plateAssign`, `rvPickFile`; held for the session) |
+| `exact` | the file name is the barcode, case aside — what always worked, unchanged |
+| `same` | the same words spelled differently: `brd2_02` · `BRD2-02` · `Plate 3` for `PLATE-03` |
+| `in-file` | the barcode is inside the file name (`HB20260504_P1_144h` holds `HB20260504_P1`) |
+| `in-plate` | the file name is inside the barcode (`P1` in `HB20260504_P1`) |
+| `sheet` | the barcode is written inside the sheet — only for a file none of the above could place (`_sheetTexts`) |
+
+Words are letter runs and digit runs with leading zeros removed (`_plTok`), matched as a contiguous run of words,
+never as letters: `P1` is not inside `P12`. Rules that keep it from guessing:
+- **A pairing two candidates want equally is not made** (`P1_24h.xlsx` and `P1_72h.xlsx` both look like P1): the files
+  are left unpaired and the Review and the Console say so. A wrong pairing puts one plate's readings under another's
+  compounds, which nothing downstream can detect.
+- **An intermediate plate is never guessed** from a file name; a one-letter or one-digit barcode is not searched for
+  inside file names (`_plSpecific`); the sheet stage needs ≥ 3 characters and only looks for the barcode inside a cell.
+- One file reads one plate; the more specific (more words) match wins.
+
+**A paired plate is called after its file from there on** (`_applyPlateNames` renames the Echo rows and its failed
+transfers; the original is kept as `barcodeOrig`) — in the merge, the Plate tab, the raw CSV and the group rule, as it
+was when the two names agreed. So with decorated names the default group rule ("text before the first -") reads the
+decorated name; the Setup preview and the editable Group column in Review show it, and "My own table" fixes it.
+
+**A picklist with no Destination Plate Barcode** (a plate that was never scanned) is read by its *Destination Plate
+Name* instead (`_parseEchoCSV`); a row with neither is skipped and counted, as before.
+
+Review: each plate row says how it was matched (*matched by name: the file name contains the plate barcode — the Echo
+file calls it …*), a plate with no file offers a **Read it from…** list of the loose files, and a choice made by hand
+has **Use automatic**. **Not done:** the choice is not saved in an `.echo.json` session or History; and
+`tools/tourkit/apps/echo.js` (another session's tour text) still says the reader files must be named *exactly* like the
+barcode — true as advice, stricter than it now needs to be. `tools/echo_invariants.mjs` **E51** (resolver rules, a
+full run with six renamed files giving exactly the exact-name curves, the Review's manual choice, the barcode-less
+picklist), each proven by putting seven bugs back.
+
 ## Echo Dose Response: a right-click is about a concentration (2026-10-07)
 
 Jon: *"click derecho y exclude point no funciona bien, muchas veces no excluye, y no queda claro si

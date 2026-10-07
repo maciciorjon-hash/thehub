@@ -177,6 +177,8 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .rv-na{color:var(--text3);}.rv-cv{color:var(--text3);font-size:var(--fs-1);}
 .rv-g{width:110px;height:24px;padding:0 6px;border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface);color:var(--text);font:inherit;font-size:var(--fs-2);}
 .rv-g:focus{border-color:var(--accent);outline:none;}
+.rv-pick{flex:none;max-width:190px;height:24px;padding:0 6px;border:1px solid var(--border);border-radius:var(--r-1);background:var(--surface);color:var(--text);font:inherit;font-size:var(--fs-2);}
+.rv-pick:focus{border-color:var(--accent);outline:none;}
 .rv-cap{font-size:var(--fs-1);color:var(--text3);margin-top:6px;}
 .rv-pulse{animation:rvPulse 1.2s var(--ease-out);}
 @keyframes rvPulse{0%{box-shadow:0 0 0 0 var(--accent-soft);}40%{box-shadow:0 0 0 6px var(--accent-soft);}100%{box-shadow:0 0 0 0 transparent;}}
@@ -1239,7 +1241,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
               <input type="file" id="reader-input" accept=".xls,.xlsx" multiple>
               <span class="dz-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg></span>
               <div class="dz-title">Drop XLS/XLSX or click</div>
-              <div class="dz-sub">One file per plate · filename = barcode</div>
+              <div class="dz-sub">One file per plate · the plate barcode goes in the file name</div>
             </div>
             <div class="rlist" id="rlist"></div>
           </div>
@@ -2812,6 +2814,119 @@ function _groupOf(bc, mode, map) {
   return first();
 }
 function _groupCfg() { const m = document.getElementById('p-group-mode')?.value || 'first'; return { mode: m, map: m === 'custom' ? (document.getElementById('p-group-map')?.value || '') : '' }; }
+
+// ── Which reader file reads which destination plate ──────────────────────────────────────────────────────────
+// A reader file is named after its plate, and the Echo file's Destination Plate Barcode had to equal that name
+// letter for letter (case aside). So HB20260504_P1_144h.xlsx against the barcode HB20260504_P1 matched nothing
+// ("Merge = 0 rows"), and neither did "Plate 3.xlsx" for a plate the Echo calls PLATE-03, or a reader that is not
+// a PHERAstar export at all and carries no ID anywhere inside it. The name of the FILE is what identifies the
+// plate, so it is read for what it contains. Stages, most certain first:
+//   manual  — you chose the file for the plate (Setup › Review)
+//   exact   — the file name is the barcode (what always worked)
+//   same    — the same words, spelled differently:  brd2_02 · BRD2-02 · BRD2-2
+//   in-file — the barcode is inside the file name:   HB20260504_P1_144h  holds  HB20260504_P1
+//   in-plate— the file name is inside the barcode:   P1  in  HB20260504_P1
+//   sheet   — the barcode is written inside the sheet (only for files none of the above could place)
+// A pairing two candidates want equally is NOT made: P1_24h.xlsx and P1_72h.xlsx both look like plate P1, and a
+// guess puts one plate's readings under another plate's compounds, which nothing downstream can see.
+// Words are letter runs and digit runs, digits without leading zeros, so plate03 · plate-3 · Plate 3 are one name.
+function _plTok(s) {
+  const t = String(s == null ? '' : s).normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return (t.match(/[a-z]+|\d+/g) || []).map(x => /^\d+$/.test(x) ? x.replace(/^0+(?=\d)/, '') : x);
+}
+function _plFind(hay, needle) {
+  if (!needle.length || needle.length > hay.length) return -1;
+  for (let i = 0; i + needle.length <= hay.length; i++) { let k = 0; while (k < needle.length && hay[i + k] === needle[k]) k++; if (k === needle.length) return i; }
+  return -1;
+}
+// A needle too short to mean anything ("A", "1", "12") would sit inside half of all file names.
+function _plSpecific(n, minLen) {
+  const c = n.join('');
+  if (c.length < (minLen || 2)) return false;
+  return !(n.length === 1 && /^\d+$/.test(n[0]) && n[0].length < 3);
+}
+const _PL_HOW = { manual: 'chosen by you', same: 'same name, spelled differently', 'in-file': 'the file name contains the plate barcode', 'in-plate': 'the plate barcode contains the file name', sheet: 'the barcode is written inside the file' };
+// plates: [{key, name, inter}] — the Echo file's destination plates (key = lower-case barcode).
+// files:  [{file, stem, texts?}] — texts: the strings found inside the sheet, when they have been read.
+// opt.assign: {plateKey: fileName} — the choices made by hand.
+function _resolvePlates(plates, files, opt) {
+  const assign = (opt && opt.assign) || {};
+  const pairs = new Map(), byPlate = new Map(), ambiguous = [];
+  const take = (f, p, how) => { pairs.set(f.file, { key: p.key, name: p.name, how }); byPlate.set(p.key, { file: f.file, stem: f.stem, how }); };
+  const freeF = () => files.filter(f => !pairs.has(f.file)), freeP = (fuzzy) => plates.filter(p => !byPlate.has(p.key) && !(fuzzy && p.inter));
+  // manual
+  plates.forEach(p => { const fn = assign[p.key]; const f = fn && files.find(x => x.file === fn); if (f && !pairs.has(f.file)) take(f, p, 'manual'); });
+  // exact — the rule that has always applied, unchanged
+  freeP(false).forEach(p => { const f = freeF().find(x => x.stem.toLowerCase() === p.key); if (f) take(f, p, 'exact'); });
+  const stage = cands => {
+    cands.sort((a, b) => b.score - a.score);
+    const badF = new Set(), badP = new Set();   // a file or a plate two candidates want equally is left alone for the rest of the stage
+    for (const c of cands) {
+      if (pairs.has(c.f.file) || byPlate.has(c.p.key) || badF.has(c.f.file) || badP.has(c.p.key)) continue;
+      const rivals = cands.filter(o => o !== c && o.score === c.score && !pairs.has(o.f.file) && !byPlate.has(o.p.key) && (o.f === c.f) !== (o.p === c.p));
+      if (rivals.length) {
+        const all = rivals.concat(c);
+        all.forEach(x => { badF.add(x.f.file); badP.add(x.p.key); });
+        ambiguous.push({ files: [...new Set(all.map(x => x.f.file))], plates: [...new Set(all.map(x => x.p.name))] });
+        continue;
+      }
+      take(c.f, c.p, c.how);
+    }
+  };
+  // names
+  { const cands = [];
+    freeF().forEach(f => { const ft = _plTok(f.stem); freeP(true).forEach(p => {
+      const pt = _plTok(p.name); if (!ft.length || !pt.length) return;
+      if (ft.join('\u0001') === pt.join('\u0001')) { cands.push({ f, p, how: 'same', score: 300 + pt.length }); return; }
+      if (_plSpecific(pt) && _plFind(ft, pt) >= 0) cands.push({ f, p, how: 'in-file', score: 200 + pt.length });
+      else if (_plSpecific(ft) && _plFind(pt, ft) >= 0) cands.push({ f, p, how: 'in-plate', score: 100 + ft.length });
+    }); });
+    stage(cands); }
+  // the sheet itself — only for files the name could not place, and only the barcode found inside a cell
+  { const cands = [];
+    freeF().forEach(f => { if (!f.texts || !f.texts.length) return; const cells = f.texts.map(_plTok).filter(t => t.length);
+      freeP(true).forEach(p => { const pt = _plTok(p.name); if (!_plSpecific(pt, 3)) return;
+        if (cells.some(c => _plFind(c, pt) >= 0)) cands.push({ f, p, how: 'sheet', score: 50 + pt.length }); }); });
+    stage(cands); }
+  return { pairs, byPlate, ambiguous: ambiguous.filter(a => a.files.some(f => !pairs.has(f))), leftFiles: freeF(), leftPlates: freeP(true) };
+}
+async function _resolvePlatesAsync(plates, files, assign, getTexts) {
+  let R = _resolvePlates(plates, files, { assign });
+  if (R.leftFiles.length && R.leftPlates.length && getTexts) {
+    for (const f of R.leftFiles) { try { f.texts = await getTexts(f); } catch (e) { f.texts = []; } }
+    R = _resolvePlates(plates, files, { assign });
+  }
+  return R;
+}
+// The text cells near the top of a reader sheet (all of the first sheets, 60 rows): where a plate ID might be
+// written, whatever the instrument called the field. "ID1: BRD2-01" also yields "BRD2-01".
+function _sheetTexts(ab) {
+  try {
+    const wb = XLSX.read(ab, { type: 'array', cellDates: false, raw: true, sheetRows: 60 }), out = [];
+    wb.SheetNames.slice(0, 3).forEach(sn => {
+      XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' }).slice(0, 60).forEach(row => row.slice(0, 40).forEach(c => {
+        if (typeof c !== 'string' || !c.trim() || c.length > 120) return;
+        out.push(c); c.split(/[:=]/).slice(1).forEach(x => { if (x.trim()) out.push(x); });
+      }));
+    });
+    return out;
+  } catch (e) { return []; }
+}
+// The Echo plates as the resolver wants them, and the rows renamed to the reader files that read them.
+function _echoPlates(echoData) {
+  const m = new Map(), interRe = /inter|dilution|source|prefill/i;
+  echoData.forEach(r => { if (!m.has(r.barcodeKey)) m.set(r.barcodeKey, { key: r.barcodeKey, name: r.barcode, inter: interRe.test(r.barcode) }); });
+  return [...m.values()];
+}
+// From here on the plate is called what its FILE is called, in the merge, the Plate tab, the raw CSV and the
+// group rule — as it always was when the two names agreed.
+function _applyPlateNames(echoData, byPlate) {
+  const to = new Map(); byPlate.forEach((v, key) => { if (v.how !== 'exact') to.set(key, v.stem); });
+  if (!to.size) return 0;
+  const re = r => { const s = to.get(r.barcodeKey); if (s != null) { r.barcodeOrig = r.barcode; r.barcode = s; r.barcodeKey = s.toLowerCase(); } };
+  echoData.forEach(re); (echoData.failed || []).forEach(re);
+  return to.size;
+}
 const _GROUP_LABELS = { first: 'Text before the first “-”  (BRD2-01 → BRD2)', last: 'Text before the last “-”  (HEK-BRD4-01 → HEK-BRD4)', whole: 'The whole barcode  (each plate is its own group)', custom: 'My own table…' };
 function onGroupModeChange() {
   const m = document.getElementById('p-group-mode').value, t = document.getElementById('p-group-map');
@@ -3064,6 +3179,9 @@ function _parseEchoCSV(text, skipRows) {
   if (delim !== ',') log('  Echo CSV: columns are separated by ' + (delim === ';' ? 'semicolons' : 'tabs'), 'info');
   const si = hdrs.findIndex(h => /sample.?id/i.test(h));
   const bi = hdrs.findIndex(h => /destination.plate.barcode/i.test(h));
+  // A plate that was never scanned has an empty barcode and only a Destination Plate Name ("Destination[1]",
+  // "Plate 3"). That name is the plate's identity then — a row used to be skipped for having no barcode.
+  const ni = hdrs.findIndex(h => /destination.plate.name/i.test(h));
   const wi = hdrs.findIndex(h => /destination.well/i.test(h));
   const ci = hdrs.findIndex(h => /destination.concentration/i.test(h) && !/unit/i.test(h));
   // 'Destination Concentration Units': the value is a number of THESE, not always of molar. Every file seen
@@ -3080,24 +3198,26 @@ function _parseEchoCSV(text, skipRows) {
 
   // Diagnostic: report which columns were (not) found
   if (si < 0) log('  ⚠ Echo CSV: "Sample ID" column not found — expected a column matching /sample.?id/', 'warn');
-  if (bi < 0) log('  ⚠ Echo CSV: "Destination Plate Barcode" column not found', 'warn');
+  if (bi < 0 && ni < 0) log('  ⚠ Echo CSV: "Destination Plate Barcode" column not found', 'warn');
+  else if (bi < 0) log('  Echo CSV: no "Destination Plate Barcode" column — the "Destination Plate Name" identifies the plates', 'info');
   if (wi < 0) log('  ⚠ Echo CSV: "Destination Well" column not found', 'warn');
   if (ci < 0) log('  ⚠ Echo CSV: "Destination Concentration" column not found — all rows will be skipped', 'warn');
   // Without these four there is nothing to fit; every row would be skipped and the run would
   // end in an empty table with the reason only in the Console.
-  const _miss = [[si,'Sample ID'],[bi,'Destination Plate Barcode'],[wi,'Destination Well'],[ci,'Destination Concentration']].filter(x=>x[0]<0).map(x=>'"'+x[1]+'"');
+  const _miss = [[si,'Sample ID'],[bi >= 0 ? bi : ni,'Destination Plate Barcode'],[wi,'Destination Well'],[ci,'Destination Concentration']].filter(x=>x[0]<0).map(x=>'"'+x[1]+'"');
   if (_miss.length) throw new Error('The Echo transfer file has no ' + _miss.join(', ') + ' column' + (_miss.length>1?'s':'') + '. It needs the transfer report the Echo writes after a run, not a picklist.');
-  if (si >= 0 && bi >= 0 && wi >= 0 && ci >= 0) {
-    log('  Columns: SampleID@' + si + ', Barcode@' + bi + ', Well@' + wi + ', Conc@' + ci, 'info');
+  if (si >= 0 && (bi >= 0 || ni >= 0) && wi >= 0 && ci >= 0) {
+    log('  Columns: SampleID@' + si + ', Barcode@' + (bi >= 0 ? bi : 'name ' + ni) + ', Well@' + wi + ', Conc@' + ci, 'info');
   }
 
   const data = [], failed = [];
-  let _skipNoSid=0, _skipNoBc=0, _skipNoWell=0, _skipNoConc=0, _skipFailed=0;
+  let _skipNoSid=0, _skipNoBc=0, _skipNoWell=0, _skipNoConc=0, _skipFailed=0, _byName=0;
   for (let i = headerIdx + 1; i < allLines.length; i++) {
     const line = allLines[i].trim(); if (!line) continue;
     const cols = parseRow(line);
     const sampleId = si >= 0 ? cols[si] : '';
-    const barcode  = bi >= 0 ? cols[bi] : '';
+    let barcode    = bi >= 0 ? cols[bi] : '';
+    if (!barcode && ni >= 0 && cols[ni]) { barcode = cols[ni]; _byName++; }
     const well     = _stdWell(wi >= 0 ? cols[wi] : '');
     let conc       = _echoNum(ci >= 0 ? cols[ci] : '');
     if (ui >= 0 && cols[ui] != null && isFinite(conc)) {
@@ -3119,6 +3239,7 @@ function _parseEchoCSV(text, skipRows) {
     if (isNaN(conc) || conc <= 0) { _skipNoConc++; continue; }
     data.push({ sampleId, barcode, barcodeKey: barcode.toLowerCase(), well, conc, log10Conc: Math.log10(conc) });
   }
+  if (_byName) log('  ' + _byName + ' transfer' + (_byName === 1 ? ' has' : 's have') + ' no Destination Plate Barcode — the Destination Plate Name was used for ' + (_byName === 1 ? 'it' : 'them') + '.', 'info');
   if (_skipFailed) log('  ' + _skipFailed + ' transfer' + (_skipFailed===1?'':'s')
     + ' skipped: Transfer Status is not OK — those wells did not receive the compound', 'warn');
   { const odd = [..._unitSeen.keys()].filter(u => !/^(m|mol\/l|molar)$/i.test(u));
@@ -3155,7 +3276,7 @@ function _parseEchoCSV(text, skipRows) {
   if (!dedup.length) {
     if (_skipFailed) log('  ⚠ ' + _skipFailed + ' rows skipped: Transfer Status was not OK', 'warn');
     if (_skipNoSid)  log('  ⚠ ' + _skipNoSid + ' rows skipped: empty Sample ID (col ' + si + ')', 'warn');
-    if (_skipNoBc)   log('  ⚠ ' + _skipNoBc + ' rows skipped: empty Destination Barcode (col ' + bi + ')', 'warn');
+    if (_skipNoBc)   log('  ⚠ ' + _skipNoBc + ' rows skipped: empty Destination Plate Barcode' + (ni >= 0 ? ' and Name' : '') + ' (col ' + (bi >= 0 ? bi : ni) + ')', 'warn');
     if (_skipNoWell) log('  ⚠ ' + _skipNoWell + ' rows skipped: empty/invalid Destination Well (col ' + wi + ')', 'warn');
     if (_skipNoConc) log('  ⚠ ' + _skipNoConc + ' rows skipped: missing or zero Destination Concentration (col ' + ci + ')', 'warn');
     if (_skipNoSid + _skipNoBc + _skipNoWell + _skipNoConc + _skipFailed === 0)
@@ -3519,12 +3640,14 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   log('Parsing PHERAstar files…');
   let readerRaw = [];
   window._pheraProtocol = null;
+  const _readerBuf = {}, _readerOk = [];
   for (const [fname, file] of Object.entries(readerFiles)) {
     const bytes = await toBytes(file);
     const barcode = fname.replace(/\.[^.]+$/, '');
     try {
       const wells = _parsePHERAstarXLS(bytes.buffer, barcode, a1Loc||'');
       readerRaw.push(...wells);
+      _readerBuf[fname] = bytes.buffer; _readerOk.push({ file: fname, stem: barcode });
       log('  ' + fname + ' → ' + barcode, 'ok');
       if (!window._pheraProtocol) {
         const protData = _extractPHERAProtocol(bytes.buffer, fname);
@@ -3536,6 +3659,14 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   }
   if (!readerRaw.length) throw new Error('No PHERAstar data parsed. Check XLS structure.');
   log('Reader: ' + readerRaw.length + ' wells, ' + new Set(readerRaw.map(r => r.barcode)).size + ' plates', 'ok');
+
+  // 2b. Which reader file reads which Echo plate. The file name identifies the plate; it need not equal the
+  // Echo file's barcode letter for letter (see _resolvePlates). The Echo rows take the file's name from here on.
+  { const R = await _resolvePlatesAsync(_echoPlates(echoData), _readerOk, window._plateAssign, async f => _sheetTexts(_readerBuf[f.file]));
+    window._plateMap = [...R.pairs].map(([file, v]) => ({ file, plate: v.name, how: v.how }));
+    _applyPlateNames(echoData, R.byPlate);
+    R.pairs.forEach((v, file) => { if (v.how !== 'exact') log('  ' + file + ' → plate “' + v.name + '” (' + _PL_HOW[v.how] + '); the plate is called “' + file.replace(/\.[^.]+$/, '') + '” from here on', 'ok'); });
+    R.ambiguous.forEach(a => log('⚠ ' + (a.files.length > 1 ? 'Files ' + a.files.join(', ') + ' all look like' : '“' + a.files[0] + '” looks like') + ' plate' + (a.plates.length > 1 ? 's ' + a.plates.join(', ') : ' ' + a.plates[0]) + ' — not paired, because a guess would put one plate’s readings under another’s compounds. Choose the file for each plate in Setup › Review.', 'warn')); }
 
   // 3. Normalize
   const _ctrlList = _parseCtrlRange(ctrlRange), _zeroList = _parseCtrlRange(zeroPctCtrl);
@@ -3655,7 +3786,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
     const inter = unmatched.filter(b => /inter|dilution|source|prefill/i.test(b)), missing = unmatched.filter(b => !inter.includes(b));
     const extra = readerBarcodeKeys.filter(b => !echoBarcodeKeys.includes(b)).map(b => (readerRaw.find(w => w.barcodeKey === b) || {}).barcode || b);
     if (inter.length) log('  Not read (intermediate plate): ' + inter.join(', '), 'info');
-    if (missing.length) log('⚠ The Echo file has transfers onto plate' + (missing.length > 1 ? 's' : '') + ' with no PHERAstar file: ' + missing.join(', ') + ' — those wells have no reading. Name each reader file after its plate barcode.', 'warn');
+    if (missing.length) log('⚠ The Echo file has transfers onto plate' + (missing.length > 1 ? 's' : '') + ' with no PHERAstar file: ' + missing.join(', ') + ' — those wells have no reading. Put the plate’s barcode in the name of its reader file, or choose the file for it in Setup › Review.', 'warn');
     if (extra.length) log('⚠ PHERAstar file' + (extra.length > 1 ? 's' : '') + ' the Echo file does not mention: ' + extra.join(', ') + ' — ' + (extra.length > 1 ? 'they are' : 'it is') + ' not part of this analysis.', 'warn'); }
 
   // Build echo summary with final vs intermediate plate separation
@@ -3683,7 +3814,7 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
   if (!matchedBks.length) {
     log('  Echo barcodes: ' + echoBarcodeKeys.slice(0, 4).join(', '), 'warn');
     log('  PHERAstar barcodes: ' + readerBarcodeKeys.slice(0, 4).join(', '), 'warn');
-    throw new Error('Merge = 0 rows. Echo barcodes do not match PHERAstar filenames (even case-insensitive).');
+    throw new Error('No reader file could be matched to any plate in the Echo file. A plate is found by its barcode being in the reader file’s name (' + (readerBarcodeKeys.slice(0, 3).join(', ') || 'no files') + ') — the Echo file has ' + (echoBarcodeKeys.slice(0, 3).join(', ') || 'none') + '. Rename the files, or choose a file for each plate in Setup › Review.');
   }
 
   const readerMap = {};
@@ -12214,7 +12345,7 @@ async function echoRestore(st, opts) {
     document.getElementById('echo-zone').classList.add('filled');
     renderEchoList();
   }
-  readerFiles = {};
+  readerFiles = {}; window._plateAssign = {};
   Object.keys(st.files.readers || {}).forEach(n => { const f = _esRecFile(st.files.readers[n]); if (f) readerFiles[n] = f; });
   renderReaderList();
   smilesFile = _esRecFile(st.files.smiles);
@@ -13577,7 +13708,7 @@ window.addEventListener('resize', function() {
 var _setupModalPopping = false;
 function clearSetup() {
   // Reset file state
-  echoFile = null; echoFiles = []; readerFiles = {}; smilesFile = null;
+  echoFile = null; echoFiles = []; readerFiles = {}; smilesFile = null; window._plateAssign = {};
   // Reset file zone UI
   var ez = document.getElementById('echo-zone'); if(ez) ez.classList.remove('filled');
   var ei = document.getElementById('echo-icon'); if(ei) ei.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg>';
@@ -13689,7 +13820,7 @@ async function echoReview() {
   const seq = ++_rvSeq;
   const eFiles = echoFiles.length ? echoFiles : (echoFile ? [echoFile] : []), rNames = Object.keys(readerFiles);
   const R = { issues: [], plates: [], stats: {}, empty: false, level: 'ok' };
-  const add = (level, msg, fix) => R.issues.push({ level, msg, fix });
+  const add = (level, msg, fix, extra) => R.issues.push(Object.assign({ level, msg, fix }, extra || {}));
   if (!eFiles.length || !rNames.length) { R.empty = true; return R; }
   const skip = (() => { const v = parseInt(document.getElementById('p-skip')?.value, 10); return isFinite(v) ? v : 8; })();
   const a1 = document.getElementById('p-a1-loc')?.value || '';
@@ -13733,14 +13864,23 @@ async function echoReview() {
   const byBc = new Map();
   echoData.forEach(r => { if (!byBc.has(r.barcodeKey)) byBc.set(r.barcodeKey, { name: r.barcode, rows: [] }); byBc.get(r.barcodeKey).rows.push(r); });
   const interRe = /inter|dilution|source|prefill/i;
+  // Which reader file reads which Echo plate — the file name identifies the plate and need not equal the
+  // Echo barcode letter for letter (_resolvePlates). Same answer the run will use.
+  const _txtOf = async f => { const fl = readerFiles[f.file], ck = _rvKey(fl) + '|txt'; let t = _rvCache.get(ck); if (!t) { t = _sheetTexts((await toBytes(fl)).buffer); _rvCache.set(ck, t); } return t; };
+  const RES = await _resolvePlatesAsync([...byBc].map(([k, p]) => ({ key: k, name: p.name, inter: interRe.test(p.name) })), Object.keys(rd).map(k => ({ file: rd[k].file, stem: rd[k].name })), window._plateAssign, _txtOf);
+  if (seq !== _rvSeq) return null;
+  R.freeFiles = RES.leftFiles.map(f => f.file);
+  RES.ambiguous.forEach(a => add('warn', (a.files.length > 1 ? 'Files ' + a.files.join(', ') + ' all look like' : '“' + a.files[0] + '” looks like') + ' plate' + (a.plates.length > 1 ? 's ' + a.plates.join(', ') : ' ' + a.plates[0]) + ' — not paired, because a guess would put one plate’s readings under another’s compounds. Choose the file for each plate below.'));
   let ctrlOnCpd = 0;
   const pts = new Map();                 // group|compound → readings
   const doseSet = new Map();             // group|compound → Set(log10 conc)
   byBc.forEach((p, bk) => {
-    const r = rd[bk], rec = { plate: p.name, key: bk, group: _groupOf(p.name, g.mode, g.map), file: r ? r.file : null, dosed: new Set(p.rows.map(x => x.well)).size, compounds: new Set(p.rows.map(x => x.sampleId)).size, unread: 0, ctrlRead: null, ctrlN: ctrl.size, ctrlMean: null, ctrlCV: null, inter: !r && interRe.test(p.name), status: 'ok', notes: [] };
+    const pf = RES.byPlate.get(bk), r = pf ? rd[pf.stem.toLowerCase()] : null, shown = pf ? pf.stem : p.name;
+    const rec = { plate: shown, picklist: p.name, how: pf && pf.how !== 'exact' ? pf.how : null, key: bk, group: _groupOf(shown, g.mode, g.map), file: r ? r.file : null, dosed: new Set(p.rows.map(x => x.well)).size, compounds: new Set(p.rows.map(x => x.sampleId)).size, unread: 0, ctrlRead: null, ctrlN: ctrl.size, ctrlMean: null, ctrlCV: null, inter: !r && interRe.test(p.name), status: 'ok', notes: [] };
+    if (rec.how) { rec.notes.push((rec.how === 'manual' ? 'chosen by you' : 'matched by name') + ' · the Echo file calls it “' + p.name + '”'); if (rec.how === 'manual') add('info', 'Plate “' + p.name + '” is read from “' + r.file + '”, as you chose.', null, { undo: bk }); }
     if (!r) {
       if (rec.inter) { rec.status = 'skip'; rec.notes.push('intermediate plate — not read'); }
-      else { rec.status = 'error'; rec.notes.push('no reader file'); add('error', 'The Echo file has transfers onto plate “' + p.name + '” but no reader file has that name. Name each reader file after its plate barcode.', { tab: 'files', label: 'Back to files' }); }
+      else { rec.status = 'error'; rec.notes.push('no reader file'); add('error', 'The Echo file has transfers onto plate “' + p.name + '” but no reader file could be matched to it. Put the plate’s barcode in the name of its reader file, or choose the file for it.', { tab: 'files', label: 'Back to files' }, { pick: bk }); }
       R.plates.push(rec); return;
     }
     const seen = new Set();
@@ -13767,8 +13907,8 @@ async function echoReview() {
     if (rec.unread) { rec.status = rec.status === 'ok' ? 'warn' : rec.status; rec.notes.push(rec.unread + ' dosed well' + (rec.unread === 1 ? '' : 's') + ' unread'); }
     R.plates.push(rec);
   });
-  const unusedReaders = Object.keys(rd).filter(k => !byBc.has(k));
-  if (unusedReaders.length) add('warn', 'Reader file' + (unusedReaders.length > 1 ? 's' : '') + ' the Echo file does not mention: ' + unusedReaders.map(k => rd[k].file).join(', ') + ' — not part of this analysis.');
+  const unusedReaders = RES.leftFiles.map(f => f.file);
+  if (unusedReaders.length) add('warn', 'Reader file' + (unusedReaders.length > 1 ? 's' : '') + ' the Echo file does not mention: ' + unusedReaders.join(', ') + ' — not part of this analysis.');
   if (ctrlOnCpd && !skipNorm) add('warn', ctrlOnCpd + ' compound transfer' + (ctrlOnCpd === 1 ? '' : 's') + ' land in the control wells (' + ctrlRaw + '). Those wells are the 100 % reference, so they are not fitted as points. Are the control wells where the DMSO is?', { tab: 'assay', focus: 'p-ctrl' });
   // compounds and doses
   const counts = [...pts.values()].sort((a, b) => a - b);
@@ -13810,23 +13950,33 @@ async function renderReview(force) {
   let iss = '';
   const order = { error: 0, warn: 1, info: 2 };
   R.issues.slice().sort((a, b) => order[a.level] - order[b.level]).forEach(i => {
-    iss += '<li class="rv-i ' + i.level + '"><span class="rv-d" aria-hidden="true"></span><span class="rv-m">' + esc(i.msg) + '</span>'
-      + (i.fix ? '<button class="rv-fix" onclick="rvGo(\'' + (i.fix.tab || '') + '\',\'' + (i.fix.focus || '') + '\')">' + esc(i.fix.label || 'Go to setting') + '</button>' : '') + '</li>';
+    // A plate no file name could place is given its file right here, by hand; one given by hand can be handed back to the rule.
+    const sel = (i.pick && R.freeFiles && R.freeFiles.length) ? '<select class="rv-pick" data-key="' + esc(i.pick) + '" aria-label="Reader file for this plate" onchange="rvPickFile(this)"><option value="">Read it from…</option>' + R.freeFiles.map(f => '<option value="' + esc(f) + '">' + esc(f) + '</option>').join('') + '</select>' : '';
+    iss += '<li class="rv-i ' + i.level + '"><span class="rv-d" aria-hidden="true"></span><span class="rv-m">' + esc(i.msg) + '</span>' + sel
+      + (i.undo ? '<button class="rv-fix" data-key="' + esc(i.undo) + '" onclick="rvPickFile(this)">Use automatic</button>' : '')
+      + (i.fix && !sel ? '<button class="rv-fix" onclick="rvGo(\'' + (i.fix.tab || '') + '\',\'' + (i.fix.focus || '') + '\')">' + esc(i.fix.label || 'Go to setting') + '</button>' : '') + '</li>';
   });
   let tb = '<div class="rv-tw"><table class="rv-t2"><thead><tr><th>Plate</th><th>Group</th><th class="n">Wells dosed</th><th class="n">Compounds</th><th class="n">Controls read</th><th class="n">Control mean</th><th>Notes</th></tr></thead><tbody>';
   R.plates.slice().sort((a, b) => natCmp(a.plate, b.plate)).forEach(p => {
-    tb += '<tr class="rv-r ' + p.status + '"><td class="pl" title="' + (p.file ? 'Reader file: ' + esc(p.file) : 'No reader file') + '"><span class="rv-dot ' + p.status + '" role="img" aria-label="' + p.status + '"></span>' + esc(p.plate) + '</td>'
+    tb += '<tr class="rv-r ' + p.status + '"><td class="pl" title="' + (p.file ? 'Reader file: ' + esc(p.file) + (p.picklist !== p.plate ? ' · the Echo file calls it ' + esc(p.picklist) : '') : 'No reader file') + '"><span class="rv-dot ' + p.status + '" role="img" aria-label="' + p.status + '"></span>' + esc(p.plate) + '</td>'
       + '<td>' + (p.file ? '<input class="rv-g" value="' + esc(p.group) + '" data-bc="' + esc(p.plate) + '" aria-label="Group of plate ' + esc(p.plate) + '" onchange="rvSetGroup(this)">' : '<span class="rv-na">—</span>') + '</td>'
       + '<td class="n">' + p.dosed + '</td><td class="n">' + p.compounds + '</td>'
       + '<td class="n">' + (p.ctrlRead === null ? '—' : p.ctrlRead + ' / ' + p.ctrlN) + '</td><td class="n">' + (p.ctrlMean === null ? '—' : Math.round(p.ctrlMean).toLocaleString() + (p.ctrlCV != null ? ' <span class="rv-cv">± ' + p.ctrlCV.toFixed(0) + ' %</span>' : '')) + '</td>'
       + '<td class="rv-nt">' + esc(p.notes.join(' · ')) + '</td></tr>';
   });
-  tb += '</tbody></table></div><div class="rv-cap">The group of a plate is editable here: typing one writes a line of “My own table” in Setup › Assay.</div>';
+  tb += '</tbody></table></div><div class="rv-cap">A plate is found by its barcode being in its reader file’s name, and is called after the file from there on. The group of a plate is editable here: typing one writes a line of “My own table” in Setup › Assay.</div>';
   host.innerHTML = head + (iss ? '<ul class="rv-list">' + iss + '</ul>' : '') + tb;
 }
 function rvGo(tab, focus) {
   if (tab) switchSetupTab(tab);
   if (focus) setTimeout(() => { const el = document.getElementById(focus); if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); el.classList.remove('rv-pulse'); void el.offsetWidth; el.classList.add('rv-pulse'); } }, 60);
+}
+// Choose (or give back) the reader file that reads a plate. Held for this session; the run reads it from _plateAssign.
+function rvPickFile(el) {
+  const key = el.getAttribute('data-key'), fn = el.tagName === 'SELECT' ? el.value : '';
+  const m = window._plateAssign = window._plateAssign || {};
+  if (fn) { Object.keys(m).forEach(k => { if (m[k] === fn) delete m[k]; }); m[key] = fn; } else delete m[key];
+  scheduleReview(30);
 }
 function rvSetGroup(inp) {
   const bc = inp.getAttribute('data-bc'), grp = inp.value.trim(), sel = document.getElementById('p-group-mode'), map = document.getElementById('p-group-map');
