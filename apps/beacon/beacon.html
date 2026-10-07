@@ -36,7 +36,7 @@
   --shadow-md:0 6px 24px rgba(0,0,0,.50);--shadow-lg:0 16px 48px rgba(0,0,0,.55);
   --shadow-xl:0 32px 80px rgba(0,0,0,.65);--modal-backdrop:rgba(0,0,0,.65);
 }
-input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
+input::placeholder,textarea::placeholder{color:color-mix(in srgb,var(--text2) 80%,var(--surface));opacity:1;}
 
 html,body{height:100%;overflow:hidden;}
 body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);
@@ -291,6 +291,11 @@ input:checked + .theme-slider:before{transform:translateX(18px);background:var(-
 :root[data-theme="dark"] .ic-tile.ic-tile{--ic-ac:color-mix(in oklab,var(--hue,#888) 60%,#fff);background:color-mix(in oklab,var(--hue,#888) 13%,var(--surface));}
 :root .ic-tile.ic-tile svg{width:58%;height:58%;display:block;flex:none;}
 /* ic-tile:end */
+
+/* touch: a box is a thing a finger has to hit — 40px, the height of the toolbar controls (docs/UI.md) */
+@media (hover:none){
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=hidden]):not([type=button]):not([type=submit]),select{min-height:40px !important;}
+}
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -883,17 +888,19 @@ function parseWellRange(s) {
   s = (s || '').trim();
   var wells = [];
   var ROWS = 'ABCDEFGHIJKLMNOP';
+  // A plate has columns 1 to 24. "A1:A99999999" used to be 99,999,999 strings and a frozen tab; a column outside the plate is not a well.
+  var COL = function(c){ return Math.max(1, Math.min(24, c)); };
   var colRange = s.match(/^([A-P])(\d+)-([A-P])(\d+)$/i);
   if (colRange && colRange[1].toUpperCase() === colRange[3].toUpperCase()) {
     var row = colRange[1].toUpperCase();
-    var cc1 = parseInt(colRange[2], 10), cc2 = parseInt(colRange[4], 10);
+    var cc1 = COL(parseInt(colRange[2], 10)), cc2 = COL(parseInt(colRange[4], 10));
     for (var j = Math.min(cc1, cc2); j <= Math.max(cc1, cc2); j++) {
       wells.push(row + (j < 10 ? '0' + j : j));
     }
     return wells;
   }
   if (colRange && colRange[2] === colRange[4]) {
-    var col = parseInt(colRange[2], 10);
+    var col = COL(parseInt(colRange[2], 10));
     var r1 = ROWS.indexOf(colRange[1].toUpperCase());
     var r2 = ROWS.indexOf(colRange[3].toUpperCase());
     for (var i = Math.min(r1, r2); i <= Math.max(r1, r2); i++) {
@@ -903,7 +910,7 @@ function parseWellRange(s) {
   }
   var rect = s.match(/^([A-P])(\d+):([A-P])(\d+)$/i);
   if (rect) {
-    var c1 = parseInt(rect[2], 10), c2 = parseInt(rect[4], 10);
+    var c1 = COL(parseInt(rect[2], 10)), c2 = COL(parseInt(rect[4], 10));
     var rr1 = ROWS.indexOf(rect[1].toUpperCase()), rr2 = ROWS.indexOf(rect[3].toUpperCase());
     for (var r = Math.min(rr1, rr2); r <= Math.max(rr1, rr2); r++) {
       for (var c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
@@ -916,7 +923,7 @@ function parseWellRange(s) {
     var m = w.trim().match(/^([A-P])(\d+)$/i);
     if (m) {
       var n = parseInt(m[2], 10);
-      wells.push(m[1].toUpperCase() + (n < 10 ? '0' + n : n));
+      if (n >= 1 && n <= 24) wells.push(m[1].toUpperCase() + (n < 10 ? '0' + n : n));
     }
   });
   return wells;

@@ -31,7 +31,7 @@
   --shadow-md:0 6px 24px rgba(0,0,0,.50);--shadow-lg:0 16px 48px rgba(0,0,0,.55);
   --shadow-xl:0 32px 80px rgba(0,0,0,.65);--modal-backdrop:rgba(0,0,0,.65);
 }
-input::placeholder,textarea::placeholder{color:var(--text3);opacity:1;}
+input::placeholder,textarea::placeholder{color:color-mix(in srgb,var(--text2) 80%,var(--surface));opacity:1;}
 
 html,body{height:100%;overflow:hidden;}
 body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);
@@ -293,6 +293,12 @@ canvas{display:block;border-radius:var(--r-2);}
 :root[data-theme="dark"] .ic-tile.ic-tile{--ic-ac:color-mix(in oklab,var(--hue,#888) 60%,#fff);background:color-mix(in oklab,var(--hue,#888) 13%,var(--surface));}
 :root .ic-tile.ic-tile svg{width:58%;height:58%;display:block;flex:none;}
 /* ic-tile:end */
+
+/* touch: a box is a thing a finger has to hit — 40px, the height of the toolbar controls (docs/UI.md) */
+@media (hover:none){
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=hidden]):not([type=button]):not([type=submit]),select{min-height:40px !important;}
+  .dose-chip-remove{min-height:40px;min-width:40px;}
+}
 </style>
 <style>
 /* ── Touch devices: never let iOS zoom the page on focus ──────────────────────────────────
@@ -820,8 +826,21 @@ function escapeAttr(s){
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// A cell in a file is data, never a formula: text that starts with = + - @ is made inert (a real number is left alone).
 function escapeCsv(s){
-  return '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+  var t = String(s == null ? '' : s);
+  if(/^[=+\-@\t\r]/.test(t) && !/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t)) t = "'" + t;
+  return '"' + t.replace(/"/g, '""') + '"';
+}
+// An absorbance typed or pasted by a person: "0.543", "0,543" (a European Excel copies the comma), " 1.2 ". Anything else —
+// empty, "OVRFLW", "n/a" — is NO READING, which is not zero: a well that was not read must not drag an average down to 0.
+function bcaNum(t){
+  if(typeof t === 'number') return isFinite(t) ? t : null;
+  var s = String(t == null ? '' : t).trim();
+  if(!s) return null;
+  if(/^[+-]?\d{1,3}(\.\d{3})+,\d+$/.test(s)) s = s.replace(/\./g, '').replace(',', '.');
+  else if(/^[+-]?\d+,\d+$/.test(s)) s = s.replace(',', '.');
+  return /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s) ? parseFloat(s) : null;
 }
 
 /* ─── WELL HELPERS (ported from Beacon) ─── */
@@ -895,16 +914,21 @@ function handlePasteGridKeydown(e, cell){
 
 function commitPasteGrid(){
   var ROWS = 'ABCDEFGH';
-  var grid = [];
+  var grid = [], unreadable = 0, read = 0;
   for(var r=0; r<8; r++){
     var vals = [];
     for(var c=0; c<12; c++){
       var input = pasteGridCell(r, c);
-      var v = input ? parseFloat(input.value) : NaN;
-      vals.push(isNaN(v) ? 0 : v);
+      var raw = input ? String(input.value).trim() : '';
+      var v = bcaNum(raw);
+      if(v === null && raw !== '') unreadable++;
+      if(v !== null) read++;
+      vals.push(v);                     // null = no reading; it is NOT 0
     }
     grid.push({ label: ROWS[r], vals: vals });
   }
+  if(!read){ bcaToast('Nothing to read: paste the plate\u2019s absorbances first.', 'warn'); return; }
+  if(unreadable) bcaToast(unreadable + ' cell' + (unreadable === 1 ? '' : 's') + ' could not be read as a number and ' + (unreadable === 1 ? 'is' : 'are') + ' left empty (not zero).', 'warn');
   state.plate = grid;
   resetPlateState();
   document.getElementById('import-filename').textContent = 'Pasted from Excel';
@@ -1007,7 +1031,7 @@ function exportPlateCSV(){
   if(!state.plate) return;
   var csv = ',' + Array.from({length:12}, function(_,i){return i+1;}).join(',') + '\n';
   state.plate.forEach(function(row){
-    csv += row.label + ',' + row.vals.map(function(v){return v.toFixed(4);}).join(',') + '\n';
+    csv += row.label + ',' + row.vals.map(function(v){return typeof v === 'number' && isFinite(v) ? v.toFixed(4) : '';}).join(',') + '\n';
   });
   downloadCSV(csv, 'bca_plate.csv');
 }
@@ -1041,9 +1065,9 @@ function drawHeatmap(){
   if(!data) return;
 
   var allVals = [];
-  data.forEach(function(r){ r.vals.forEach(function(v){ allVals.push(v); }); });
-  var minV = Math.min.apply(null, allVals);
-  var maxV = Math.max.apply(null, allVals);
+  data.forEach(function(r){ r.vals.forEach(function(v){ if(typeof v === 'number' && isFinite(v)) allVals.push(v); }); });
+  var minV = allVals.length ? Math.min.apply(null, allVals) : 0;
+  var maxV = allVals.length ? Math.max.apply(null, allVals) : 0;
 
   var W = canvas.offsetWidth || 600;
   var H = canvas.offsetHeight || 320;
@@ -1080,11 +1104,15 @@ function drawHeatmap(){
 
   data.forEach(function(row, ri){
     row.vals.forEach(function(v, ci){
-      var t = maxV > minV ? (v - minV) / (maxV - minV) : 0;
-      var rgb = interpolateColor(lowRGB,[81,195,206], t);
       var x = padL + ci*cellW;
       var y = padT + ri*cellH;
       var gap = 1.5;
+      if(typeof v !== 'number' || !isFinite(v)){            // not read: an empty outline, not the colour of the lowest well
+        ctx.strokeStyle = getCSSVar('--border2'); ctx.lineWidth = 1;
+        roundRect(ctx, x+gap, y+gap, cellW-gap*2, cellH-gap*2, rx); ctx.stroke(); return;
+      }
+      var t = maxV > minV ? (v - minV) / (maxV - minV) : 0;
+      var rgb = interpolateColor(lowRGB,[81,195,206], t);
       ctx.fillStyle = 'rgb(' + rgb.join(',') + ')';
       roundRect(ctx, x+gap, y+gap, cellW-gap*2, cellH-gap*2, rx);
       ctx.fill();
@@ -1101,7 +1129,7 @@ function drawHeatmap(){
     if(ci >= 0 && ci < 12 && ri >= 0 && ri < 8){
       var vv = data[ri].vals[ci];
       var label = rowLabels[ri] + (ci+1);
-      tip.textContent = label + ' — ' + vv.toFixed(4) + ' Abs';
+      tip.textContent = label + ' — ' + (typeof vv === 'number' && isFinite(vv) ? vv.toFixed(4) + ' Abs' : 'no reading');
       tip.style.display = 'block';
       tip.style.left = (e.clientX + 12) + 'px';
       tip.style.top  = (e.clientY - 20) + 'px';
@@ -1323,8 +1351,9 @@ function pmSetGroupField(kind, groupId, field, value){
   var group = pmGroupsArr(kind).filter(function(g){ return g.id === groupId; })[0];
   if(!group) return;
   if(field === 'name'){ group.name = value; return; }
-  var n = parseFloat(value);
-  group[field] = (value === '' || isNaN(n)) ? null : n;
+  var n = bcaNum(value);
+  // a dilution of 0 or less, or a negative concentration, is not a number the protocol can mean: it is "not set"
+  group[field] = (n === null || ((field === 'dilutionFactor' || field === 'conc') && (field === 'dilutionFactor' ? n <= 0 : n < 0))) ? null : n;
   if(kind === 'standard') renderStandardsCurve(); else renderSamplesTable();
 }
 
@@ -1632,11 +1661,11 @@ function computeSampleResults(){
     var extrapolated = !isNaN(assayConc) && xs.length > 0 && (assayConc < xMin || assayConc > xMax);
     var missingDilutionFactor = (g.dilutionFactor === null || g.dilutionFactor === undefined);
     var dil = missingDilutionFactor ? masterDil : g.dilutionFactor;
-    var finalConc = isNaN(assayConc) ? NaN : assayConc * dil;
+    var finalConc = isNaN(assayConc) || assayConc < 0 ? NaN : assayConc * dil;     // below the blank is not a negative concentration: it is no measurement
     return {
       group: g, avgAbs: avgAbs, assayConc: assayConc, finalConc: finalConc,
       dilutionFactor: dil, missingDilutionFactor: missingDilutionFactor,
-      extrapolated: extrapolated, lowReplicates: nValid < 2, invalid: nValid === 0 || isNaN(assayConc)
+      extrapolated: extrapolated, lowReplicates: nValid < 2, belowBlank: !isNaN(assayConc) && assayConc < 0, invalid: nValid === 0 || isNaN(assayConc) || assayConc < 0
     };
   });
 }
@@ -1657,7 +1686,7 @@ function renderSamplesTable(){
   results.forEach(function(r, i){
     var norm = validTargets ? calcNormalizeRow(r.finalConc, targetConc, targetVol) : null;
     var flags = [];
-    if(r.invalid) flags.push('<span style="color:var(--poor)">no valid concentration</span>');
+    if(r.invalid) flags.push('<span style="color:var(--poor)">' + (r.belowBlank ? 'below the blank (negative on the curve)' : 'no valid concentration') + '</span>');
     if(r.lowReplicates && !r.invalid) flags.push('<span style="color:var(--mid)">only 1 well</span>');
     if(r.extrapolated) flags.push('<span style="color:var(--mid)">extrapolated</span>');
     if(norm && norm.status === 'infeasible') flags.push('<span style="color:var(--poor)">too dilute</span>');
@@ -1690,7 +1719,7 @@ function sendSamplesToLabbook(){
   var cols=['Sample','Wells','Avg abs','Assay conc (µg/µL)','Dilution ×','Final conc (µg/µL)'].concat(validTargets?['Protein (µL)','Water (µL)']:[]).concat(['Note']);
   var rows=results.map(function(r){
     var norm = validTargets ? calcNormalizeRow(r.finalConc, targetConc, targetVol) : null;
-    var note=[]; if(r.extrapolated) note.push('extrapolated'); if(r.lowReplicates && !r.invalid) note.push('only 1 well'); if(norm && norm.status==='infeasible') note.push('too dilute'); if(r.invalid) note.push('no valid concentration');
+    var note=[]; if(r.extrapolated) note.push('extrapolated'); if(r.lowReplicates && !r.invalid) note.push('only 1 well'); if(norm && norm.status==='infeasible') note.push('too dilute'); if(r.invalid) note.push(r.belowBlank ? 'below the blank' : 'no valid concentration');
     var row=[r.group.name, r.group.wells.join(' '), isNaN(r.avgAbs)?'':r.avgAbs.toFixed(3), isNaN(r.assayConc)?'':r.assayConc.toFixed(3), r.dilutionFactor, isNaN(r.finalConc)?'':r.finalConc.toFixed(3)];
     if(validTargets) row=row.concat([norm&&norm.status==='ok'?norm.proteinVol.toFixed(2):'', norm&&norm.status==='ok'?norm.waterVol.toFixed(2):'']);
     return row.concat([note.join(', ')]); });
@@ -1711,7 +1740,7 @@ function exportSamplesCSV(){
     if(r.extrapolated) note.push('extrapolated');
     if(r.lowReplicates && !r.invalid) note.push('only 1 well');
     if(norm && norm.status === 'infeasible') note.push('too dilute');
-    if(r.invalid) note.push('no valid concentration');
+    if(r.invalid) note.push(r.belowBlank ? 'below the blank' : 'no valid concentration');
     csv += [
       escapeCsv(r.group.name),
       escapeCsv(r.group.wells.join(' ')),
@@ -1754,7 +1783,7 @@ function exportWorkbook(){
 
   // 2) Raw plate values — the imported 8×12 matrix, exactly as read.
   var rawAoa = [['']. concat(Array.from({length:12},function(_,i){return i+1;}))];
-  if(state.plate){ state.plate.forEach(function(row){ rawAoa.push([row.label].concat(row.vals.map(function(v){return +v.toFixed(4);}))); }); }
+  if(state.plate){ state.plate.forEach(function(row){ rawAoa.push([row.label].concat(row.vals.map(function(v){return typeof v === 'number' && isFinite(v) ? +v.toFixed(4) : null;}))); }); }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawAoa), 'Raw plate values');
 
   // 3) Samples — the full extrapolation → dilution → concentration → prep chain.
@@ -1768,7 +1797,7 @@ function exportWorkbook(){
   results.forEach(function(r){
     var norm = validTargets ? calcNormalizeRow(r.finalConc, targetConc, targetVol) : null;
     var note=[]; if(r.extrapolated) note.push('extrapolated'); if(r.lowReplicates && !r.invalid) note.push('only 1 well');
-    if(norm && norm.status==='infeasible') note.push('too dilute'); if(r.invalid) note.push('no valid concentration');
+    if(norm && norm.status==='infeasible') note.push('too dilute'); if(r.invalid) note.push(r.belowBlank ? 'below the blank' : 'no valid concentration');
     sAoa.push([
       r.group.name, (r.group.wells||[]).join(' '), (r.group.excluded||[]).join(' '),
       isNaN(r.avgAbs)?'':+r.avgAbs.toFixed(4), isNaN(r.assayConc)?'':+r.assayConc.toFixed(4),
