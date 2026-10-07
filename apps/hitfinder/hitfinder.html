@@ -1818,7 +1818,7 @@ async function hfReceiveFromEcho(c) {
     if (recs.length) {
       const keys = new Set(recs.map(hfScreenKey)), had = [...keys].filter(k => HF.screens.has(k));
       had.forEach(k => hfRemoveScreen(k, true));            // the same analysis sent again is a newer version of it, not a replicate
-      hfAddRecords(recs, 'Echo · ' + label + ' (sent)'); r.loaded.push(label); if (had.length) r.replaced.push(label);
+      hfAddRecords(recs, (c.source === 'tempo' ? 'Tempo' : 'Echo') + ' · ' + label + ' (sent)'); r.loaded.push(label); if (had.length) r.replaced.push(label);
       r.missing = [];
     }
   }
@@ -1830,13 +1830,13 @@ async function hfReceiveFromEcho(c) {
     hfTab(prim ? 'hits' : 'screens');
     hfToast((r.replaced.length ? 'Updated ' : 'Received ') + r.loaded.join(', ') + (prim ? ' — ' + (HF.counts ? HF.counts.hit : 0) + ' hits of ' + (HF.uni || []).length + (hfSlotsGuessed() ? ' · check the slots' : '') : ' — say which screen is the primary one'), '');
   } else if (r.skipped.length) { hfTab('hits'); hfToast(r.skipped.join(', ') + ' is already loaded', ''); }
-  else { hfTab('screens'); hfToast('Echo could not hand this analysis over' + (r.missing.length ? ' (' + r.missing.join(', ') + ')' : '') + ' — pick it under Echo analyses', 'warn'); }
+  else { hfTab('screens'); hfToast((c.source === 'tempo' ? 'Tempo' : 'Echo') + ' could not hand this analysis over' + (r.missing.length ? ' (' + r.missing.join(', ') + ')' : '') + ' — pick it under Echo analyses', 'warn'); }
 }
 window.addEventListener('message', async e => {
   if (e.source !== window.parent || !e.data || e.data.type !== 'dhub:context') return;
   try { e.source.postMessage({ type: 'dhub:ack', requestId: e.data.requestId, app: 'hitfinder' }, '*'); } catch (_) {}
   const c = e.data.context || {};
-  if (c.source === 'echo') { try { await hfReceiveFromEcho(c); } catch (err) { hfToast('Could not read what Echo sent: ' + (err && err.message || err), 'warn'); } }
+  if (c.source === 'echo' || c.source === 'tempo') { try { await hfReceiveFromEcho(c); } catch (err) { hfToast('Could not read what ' + (c.source === 'tempo' ? 'Tempo' : 'Echo') + ' sent: ' + (err && err.message || err), 'warn'); } }
 });
 
 /* ───── §5b the Criteria tab ───── */

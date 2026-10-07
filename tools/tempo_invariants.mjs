@@ -310,6 +310,28 @@ try {
   check('K12 names and compounds are never rendered as markup', !K12.xss, '');
   check('K12 no page error or console error in the whole run', errs.length === 0, errs.slice(0, 3).join(' | '));
 
+  /* ───── K13 Hit Finder reads what Tempo sends ───── */
+  const table = await ev(async () => { TP.plates = []; TP.res = {}; TP.ex = {}; await loadTestData(); const t = tpScreenTable(); return { table: t, comps: [].concat.apply([], TP.plates.map(p => tpRes(p).compounds.map(c => ({ n: c.compound, dc50: c.A && !c.A.fail ? c.A.DC50_nM : null, hook: c.A && !c.A.fail ? c.A._hook_concs.length : null, nd: c.A && !c.A.fail && /No effect/.test(c.A.Flag_Reason) })))), cols: SCR_COLS.length }; });
+  const hfPage = await ctx.newPage(); hfPage.on('pageerror', e => errs.push('hitfinder: ' + e.message)); await hfPage.route(/^https?:/, r => r.abort());
+  await hfPage.addInitScript(() => { try { localStorage.clear(); indexedDB.deleteDatabase('hitfinder'); } catch (e) {} });
+  await hfPage.goto('file://' + path.join(ROOT, 'apps/hitfinder/hitfinder.html')); await hfPage.waitForFunction(() => typeof hfReceiveFromEcho === 'function');
+  const K13 = await hfPage.evaluate(async t => {
+    const o = {}; o.recs = hfParseScreenTable(t.table); o.n = o.recs.length;
+    // through the Hub's own door: a dhub:context message from the parent frame (here the page is its own parent)
+    const send = async () => { window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { type: 'dhub:context', version: 1, requestId: 'k13', context: { source: 'tempo', name: 'plate', table: t.table } } })); await new Promise(r => setTimeout(r, 700)); };
+    await send(); o.screens1 = HF.screens.size; await send(); o.screens2 = HF.screens.size;
+    o.roles = [...new Set(o.recs.map(r => r.Role))].join(); o.assays = [...new Set(o.recs.map(r => r.Assay))].join();
+    o.dc50 = t.comps.every(c => { const r = o.recs.find(x => x.Compound === c.n); return r && (c.dc50 == null || c.nd || r.Potency_nM == null || Math.abs(r.Potency_nM - c.dc50) / c.dc50 < 1e-3); });
+    o.hooker = (o.recs.find(r => r.Compound === 'Hooker-C') || {}).Hook_State; o.inactive = (o.recs.find(r => r.Compound === 'Inactive-G') || {}).Potency_Qualifier;
+    o.nanText = JSON.stringify(o.recs).match(/NaN|undefined|Infinity/) ? true : false;
+    return o;
+  }, table);
+  check('K13 Hit Finder reads every compound Tempo sends, as a degradation screen with the potency it was sent', K13.n === table.comps.length && K13.roles === 'degradation' && K13.dc50, JSON.stringify([K13.n, table.comps.length, K13.roles, K13.dc50]));
+  check('K13 the hook Tempo found arrives as Echo’s hook state, and a curve with no effect as n.d.', K13.hooker === 'excluded' && K13.inactive === 'n.d.', JSON.stringify([K13.hooker, K13.inactive]));
+  check('K13 one screen per plate, and sending again replaces it instead of doubling', K13.screens1 === 2 && K13.screens2 === 2, JSON.stringify([K13.screens1, K13.screens2]));
+  check('K13 the table has exactly the Screen columns and no NaN, Infinity or undefined', table.table[0].length === table.cols && !K13.nanText, '');
+  await hfPage.close();
+
   /* ───── the real ProNect files, when they are here ───── */
   if (REAL) {
     const F = path.join(ROOT, 'tools/fixtures/tempo');
