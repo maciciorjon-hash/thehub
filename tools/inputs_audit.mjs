@@ -19,6 +19,7 @@ const APPS = {
   dora: { url: '/apps/dora/dora.html', seed: ['loadTestData()'], views: ['switchTab("table")', 'switchTab("scatter")'], wait: 800 },
   bca: { url: '/apps/bca/bca.html', seed: ['loadTestData()'], views: ['switchTab("import")', 'switchTab("standards")', 'switchTab("samples")'], wait: 800 },
   beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], views: ['switchTab("qc")', 'switchTab("dose")', 'openSetupModal(); switchSetupTab("assay")', 'openSetupModal(); switchSetupTab("platemap")'], wait: 800 },
+  blueprint: { url: '/apps/blueprint/blueprint.html', seed: [], views: ['', 'selectAll()', "switchTab('gel',document.querySelectorAll('.tab')[1]);document.querySelectorAll('.gd-sec').forEach(d=>d.open=true)"], wait: 600 },
   lumina: { url: '/apps/lumina/lumina.html', seed: ['loadLuminaTestData()'], views: ['', ''], wait: 800 },
 };
 const SIZES = [[1440, 900, false], [1024, 768, false], [768, 1024, true], [390, 844, true], [320, 568, true]];

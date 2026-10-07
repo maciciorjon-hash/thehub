@@ -20,6 +20,7 @@ const APPS = {
   dora: { url: '/apps/dora/dora.html', seed: ['loadTestData()'], views: [''], wait: 800, tabs: '.tab' },
   bca: { url: '/apps/bca/bca.html', seed: ['loadTestData()'], views: [''], wait: 800, tabs: '.tab' },
   beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], views: [''], wait: 800, tabs: '.tab' },
+  blueprint: { url: '/apps/blueprint/blueprint.html', seed: [], views: [''], wait: 600, tabs: '.tab' },
   lumina: { url: '/apps/lumina/lumina.html', seed: ['loadLuminaTestData()'], views: [''], wait: 800, tabs: '.tab' },
 };
 const found = new Map(); const add = (k, v) => found.set(k, v);

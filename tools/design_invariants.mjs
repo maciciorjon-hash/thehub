@@ -20,6 +20,14 @@
 //                             plate when no well is active.
 //   B9 destructive = undoable A change of comb keeps the lanes, and Clear / comb changes on the
 //                             gel are undone by ⌘Z.
+//   B10 the gel tools fold   Each tool section folds and unfolds (and Fold all does both), what is open
+//                             is remembered and restored, a folded section shows the values that are
+//                             set in it, and a folded section's controls still drive the gel.
+//   B11 one way to every      Four tabs (Plate, Gel, History, Guide), the underline sits under the one
+//       screen                that is active, and the Guide is a tab (the modal and its ? are gone).
+//   B12 a toggle keeps its    The Types and Brackets buttons keep their icon and chevron when they open
+//       icon                  and close (the Brackets one rewrote its own innerHTML), and say so in
+//                             aria-expanded.
 //   N1 Beacon paste shapes    Beacon's plate-reader parser (the fourth copy) reads tab, space,
 //                             lettered, semicolon/decimal-comma and comma grids, and a blank A1
 //                             stays in column 1. (It read a space-separated grid as one column.)
@@ -189,6 +197,70 @@ async function blueprint(pg) {
     check('B9', 'a comb change keeps the lanes', r.kept === 'Lysate A|15', r.kept);
     check('B9', 'a comb change is undoable', r.undone === '20|20', r.undone);
     check('B9', 'Clear is undoable', r.cleared === 'Lysate A', r.cleared);
+  }
+  if (run('B10')) {
+    await E(() => { switchTab('gel', document.querySelector(`.tab[onclick*="'gel'"]`)); localStorage.removeItem('bp_gd_sec'); gdSecInit(); gdInit(); });
+    await pg.waitForTimeout(150);
+    const secs = () => E(() => Object.fromEntries([...document.querySelectorAll('.gd-sec')].map(d => [d.dataset.sec, d.open])));
+    const first = await secs();
+    check('B10', 'six sections, and the first visit opens the comb, the labels and the lanes',
+      Object.keys(first).join() === 'gel,labels,title,lanes,fill,extras' && first.gel && first.labels && first.lanes && !first.title && !first.fill && !first.extras, first);
+    // a click on a summary folds it, and the choice is remembered
+    await pg.click('.gd-sec[data-sec="lanes"] > summary'); await pg.waitForTimeout(200);
+    await pg.click('.gd-sec[data-sec="title"] > summary'); await pg.waitForTimeout(200);
+    const s1 = await secs(), stored = await E(() => JSON.parse(localStorage.getItem('bp_gd_sec') || 'null'));
+    check('B10', 'a click folds one section and opens another', s1.lanes === false && s1.title === true, s1);
+    check('B10', 'what is open is remembered', stored && stored.lanes === false && stored.title === true && stored.gel === true, stored);
+    await E(() => { document.querySelectorAll('.gd-sec').forEach(d => { d.open = !d.open; }); gdSecInit(); });
+    const s2 = await secs();
+    check('B10', 'it is restored from what was remembered', s2.lanes === false && s2.title === true && s2.gel === true && s2.fill === false, s2);
+    // Fold all / Unfold all
+    const f = await E(() => { gdFoldAll(); const a = [...document.querySelectorAll('.gd-sec')].every(d => !d.open), l1 = document.getElementById('gd-fold-all').textContent;
+      gdFoldAll(); const b = [...document.querySelectorAll('.gd-sec')].every(d => d.open), l2 = document.getElementById('gd-fold-all').textContent; return { a, l1, b, l2 }; });
+    check('B10', 'Fold all folds every section, and the next press unfolds them all', f.a && f.b && f.l1 === 'Unfold all' && f.l2 === 'Fold all', f);
+    // folded sections say what is in them, and still work
+    const v = await E(() => {
+      gdFoldAll();
+      const g = id => document.getElementById(id), fire = (el, t) => el.dispatchEvent(new Event(t, { bubbles: true }));
+      g('gd-gel').value = '12'; fire(g('gd-gel'), 'change');
+      g('gd-title').value = 'WB BRD4'; fire(g('gd-title'), 'input');
+      g('gd-fsize').value = '14'; fire(g('gd-fsize'), 'input');
+      gdWells[4].label = 'DMSO'; gdDraw();
+      return { n: gdWells.length, gel: g('gd-sum-gel').textContent, title: g('gd-sum-title').textContent, labels: g('gd-sum-labels').textContent, lanes: g('gd-sum-lanes').textContent };
+    });
+    check('B10', 'a control inside a folded section still drives the gel', v.n === 12, v);
+    check('B10', 'a folded section shows the comb it is set to', /12-well/.test(v.gel), v.gel);
+    check('B10', 'the title section shows the title', /WB BRD4/.test(v.title), v.title);
+    check('B10', 'the labels section shows the size', /14 pt/.test(v.labels), v.labels);
+    check('B10', 'the lanes section counts the labelled lanes', /2 of 12/.test(v.lanes), v.lanes);
+    await E(() => { document.getElementById('gd-gel').value = '20'; gdInit(); document.getElementById('gd-title').value = ''; document.getElementById('gd-fsize').value = '12'; gdDraw(); localStorage.removeItem('bp_gd_sec'); gdSecInit(); });
+  }
+  if (run('B11')) {
+    const t = await E(() => {
+      const tabs = [...document.querySelectorAll('.tabs .tab')].map(b => b.textContent.trim());
+      switchTab('history', document.querySelector(`.tab[onclick*="'history'"]`));
+      const ind = document.querySelector('.tab-indicator'), act = document.querySelector('.tab.active');
+      return { tabs, tf: ind.style.transform, left: act.offsetLeft, w: act.offsetWidth, modal: !!document.getElementById('pd-guide-modal'), qbtn: !!document.getElementById('guide-btn') };
+    });
+    check('B11', 'four tabs, in order', t.tabs.join('|') === 'Plate Designer|Gel Designer|History|Guide', t.tabs);
+    check('B11', 'the underline sits under the active tab', t.tf === 'translateX(' + t.left + 'px) scaleX(' + t.w + ')', t);
+    check('B11', 'the guide is a tab, not a modal behind a ?', !t.modal && !t.qbtn, t);
+    const g = await E(() => { switchTab('guide', document.querySelector(`.tab[onclick*="'guide'"]`)); const p = document.getElementById('panel-guide'); return { shown: p.classList.contains('active') && p.offsetHeight > 0, gel: /Gel Designer/.test(p.textContent) && /Fold|fold/.test(p.textContent) }; });
+    check('B11', 'the Guide tab shows, and covers the gel tools', g.shown && g.gel, g);
+    await E(() => switchTab('designer', document.querySelector(`.tab[onclick*="'designer'"]`)));
+  }
+  if (run('B12')) {
+    const r = await E(() => {
+      const btn = id => document.getElementById(id), n = id => btn(id).querySelectorAll('svg').length;
+      const o = { before: [n('btn-brackets'), n('btn-types-panel')], ex0: btn('btn-brackets').getAttribute('aria-expanded') };
+      pdToggleBracketsBar(); o.exOpen = btn('btn-brackets').getAttribute('aria-expanded'); o.afterOpen = n('btn-brackets');
+      pdToggleBracketsBar(); o.exShut = btn('btn-brackets').getAttribute('aria-expanded'); o.afterShut = n('btn-brackets');
+      toggleTypesPanel(); o.tOpen = btn('btn-types-panel').getAttribute('aria-expanded'); o.tIcons = n('btn-types-panel');
+      toggleTypesPanel(); o.tShut = btn('btn-types-panel').getAttribute('aria-expanded');
+      return o;
+    });
+    check('B12', 'the Brackets button keeps its icon and chevron through open and close', r.before[0] === 2 && r.afterOpen === 2 && r.afterShut === 2, r);
+    check('B12', 'both buttons say whether their panel is open', r.ex0 === 'false' && r.exOpen === 'true' && r.exShut === 'false' && r.tOpen === 'true' && r.tShut === 'false' && r.tIcons === 2, r);
   }
 }
 

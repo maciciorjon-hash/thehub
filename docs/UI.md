@@ -505,6 +505,16 @@ what keeps the Archive PWA, `labbook-standalone` and the ChemLib hand-off alive.
 
 Scrollers that are a data table or a figure larger than their box on purpose are listed in `ESC_OPTS` in the sweep; a box whose only content is a `<table>` is allowed by the audit itself.
 
+## A tool strip is sections that fold (Blueprint, 2026-10-07)
+
+A ribbon of grouped tools is wide on a desktop and, once it wraps, a screenful on a phone. Make each group a `<details class="…-sec">` in a column beside the thing being edited:
+- **A folded section shows what is set in it** (one muted line, hidden while open), so folding hides the controls and never the state.
+- **What is open is remembered per device** and the first visit opens what the job needs first (nothing on a phone). Set `open` programmatically *before* attaching the `toggle` listener that saves: the events are asynchronous and a default must not be stored as a choice.
+- **Anything used every minute is not a section**: Copy and Export sit in the header of the thing they act on.
+- **Provide Fold all / Unfold all** and update its label in the same call, not from the `toggle` events.
+- On a phone put the thing being edited first and the folded tools under it.
+- A button that toggles a panel keeps its icon and says so in `aria-expanded`; the chevron is CSS that rotates. Never rewrite its `innerHTML`.
+
 ## Screening charts (Hit Finder, 2026-10-07)
 
 A chart that ranks things is read for what is **in** it and what is **missing from** it, so these rules are not decoration.
