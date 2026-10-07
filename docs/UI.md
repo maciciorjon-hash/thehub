@@ -502,3 +502,13 @@ A chart that ranks things is read for what is **in** it and what is **missing fr
 - **A crowd is a texture.** Past ~2,500 points the grey rest is one bitmap and only the compounds that matter are elements.
 - **Missing is blank.** In a file a missing number is an empty cell — not 0, not "—" (a spreadsheet would sum it).
 - **`[hidden]` always wins** (`[hidden]{display:none !important}`): an author rule such as `.tab{display:flex}` otherwise beats the attribute.
+
+## Kinetic charts (Tempo, 2026-10-07)
+
+A trace chart answers *how fast, how deep, and did it come back*, so what is drawn must show what the fit was **given** as well as what it returned.
+
+- **One hue, light to dark, for the concentrations.** Vehicle is grey and dashed at 1; the fit is a dashed line in the trace's own colour; the window, the onset and the plateau are markers, not extra series. A hooked concentration is hollow.
+- **A bound is drawn as a bound.** A plateau that was not reached is an arrow on the end of the trace; a rate faster than the read interval carries `>`; an excluded read is a cross at its position, never absent.
+- **Ranking bars hang from zero.** A metric can be negative (a log efficiency of −1.64): the baseline is at zero and the bar goes down from it, so a smaller value is never drawn as a bigger bar.
+- **Fractional signal, not raw counts, on the y axis** — and the normalisation that produced it is named under the chart, because two analyses of one plate are only comparable if their reference is the same.
+- **Validation is a pill, not a colour.** Acceptable · excellent · check, with the rule that failed in the tooltip. A green dot nobody can explain is a decoration.
