@@ -79,7 +79,8 @@ function synPdb(o = {}) {
     n = 1;
     for (const c of chains) for (let i = 1; i <= c.len; i++) {
       let x, y, z;
-      if (c.shape === 'x') { x = (c.x0 || 0) + i * 3.8; y = Math.sin(i / 3) * 3 + 0.4 * m; z = Math.cos(i / 3) * 3; }
+      if (c.shape === 'line') { x = (c.x0 || 0) + i * 6; y = c.y0 || 0; z = 0; }
+      else if (c.shape === 'x') { x = (c.x0 || 0) + i * 3.8; y = Math.sin(i / 3) * 3 + 0.4 * m; z = Math.cos(i / 3) * 3; }
       else if (c.shape === 'y') { x = (c.x0 || 0) + Math.sin(i / 3) * 3 + 0.4 * m; y = i * 3.8; z = Math.cos(i / 3) * 3; }
       else { x = (c.x0 || 0) + Math.cos(i) * 4 + 0.4 * m; y = Math.sin(i) * 4; z = i * 1.5 + 0.5 * m * Math.sin(i * 2.1); }   // models that differ in shape, not only in place
       const resn = (o.mod && c.id === 'A' && i === 6) ? 'MSE' : 'ALA';
@@ -109,6 +110,8 @@ const STRUCTS = {
   '3TAL': () => synPdb({ chains: [{ id: 'A', len: 180, shape: 'y' }] }),
   '4LIG': () => synPdb({ ligand: true, protac: true, ion: true, mod: true, waters: true }),
   '5NMR': () => synPdb({ chains: [{ id: 'A', len: 20, x0: 0 }], models: 3 }),
+  '6IFC': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 4 }] }),   // B lies 4 Å from A along its first six residues
+  '6FAR': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 60 }] }),
 };
 
 // ── the network: every call but 3Dmol's own is answered here ────────────────────────────────
@@ -852,8 +855,84 @@ async function rb18() {
   await ctx.close();
 }
 
+// ── RB19 interface ──────────────────────────────────────────────────────────────────────────
+// Brute force, written here and not in the page: heavy atoms of two chains from the file's own text.
+function parseAtoms(text) {
+  return text.split('\n').filter(l => /^ATOM  /.test(l)).map(l => ({ chain: l[21], resi: parseInt(l.slice(22, 26)), resn: l.slice(17, 20).trim(), name: l.slice(12, 16).trim(), x: +l.slice(30, 38), y: +l.slice(38, 46), z: +l.slice(46, 54) }));
+}
+function bruteInterface(text, a, b, cut) {
+  const A = parseAtoms(text).filter(x => x.chain === a), B = parseAtoms(text).filter(x => x.chain === b), pairs = new Map(), ra = new Set(), rb = new Set();
+  for (const x of A) for (const y of B) { const d = Math.hypot(x.x - y.x, x.y - y.y, x.z - y.z); if (d <= cut) { ra.add(x.resi); rb.add(y.resi); const k = x.resi + '|' + y.resi; if (!pairs.has(k) || d < pairs.get(k)) pairs.set(k, d); } }
+  return { ra: [...ra].sort((p, q) => p - q), rb: [...rb].sort((p, q) => p - q), pairs: [...pairs.values()].sort((p, q) => p - q) };
+}
+async function rb19() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB19 ' });
+  if (!(await has3d(pg))) { skipped.push('RB19 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('6IFC'); await sleep(500);
+  await E(() => document.querySelectorAll('details.rb-sec').forEach(d => { d.open = true; }));
+  const text = STRUCTS['6IFC']();
+  const opts = await E(() => ({ a: [...document.querySelectorAll('#ifA option')].map(o => o.value).join(''), b: [...document.querySelectorAll('#ifB option')].map(o => o.value).join(''), bSel: document.getElementById('ifB').value, chips: [...document.querySelectorAll('#ifPairs .example-chip')].map(c => c.textContent) }));
+  check('RB19', 'the selects list the chains, the second defaults to another one, and touching chains are suggested', opts.a === 'AB' && opts.b === 'AB' && opts.bSel === 'B' && opts.chips.length === 1 && /^A – B · \d+$/.test(opts.chips[0]), opts);
+  await pg.click('#ifPairs .example-chip'); await sleep(500);
+  const want = bruteInterface(text, 'A', 'B', 4.5);
+  const got = await E(() => { const c = ifaceNow(), f = state.iface; return { show: f.show, ra: ifaceResidues(c, 'A').sort((x, y) => x - y), rb: ifaceResidues(c, 'B').sort((x, y) => x - y), pairs: c.v.pairs.map(p => p.d).sort((x, y) => x - y), card: document.getElementById('ifResult').textContent }; });
+  check('RB19', 'the residues in contact are the ones brute force finds', JSON.stringify(got.ra) === JSON.stringify(want.ra) && JSON.stringify(got.rb) === JSON.stringify(want.rb) && want.ra.length === 6, { got: got.ra, want: want.ra });
+  check('RB19', 'and so are the residue pairs and their distances', got.pairs.length === want.pairs.length && got.pairs.every((d, i) => Math.abs(d - want.pairs[i]) < 1e-9) && want.pairs.length > 0, { n: got.pairs.length, w: want.pairs.length });
+  check('RB19', 'the card names the chains, the count, and the buried surface', /A – B/.test(got.card) && /residues of Chain A/.test(got.card) && /Buried surface \d/.test(got.card), got.card);
+  // a different cutoff
+  await pg.fill('#ifCut', '3.0'); await sleep(300);
+  const w3 = bruteInterface(text, 'A', 'B', 3.0);
+  check('RB19', 'a smaller cutoff finds what brute force finds', await E(() => ifaceNow().v.pairs.length) === w3.pairs.length, { w3: w3.pairs.length });
+  await pg.fill('#ifCut', '4.5'); await sleep(300);
+  // colours and sticks
+  const col = await E(() => { const f = makeColorFn(), at = (r) => currentModel.selectedAtoms({ chain: 'A', resi: r, atom: 'CA' })[0]; return { inside: f(at(2)), outside: f(at(9)), want: adjustColor('#ffbf7b'), sticks: [2, 9].map(r => !!(currentModel.selectedAtoms({ chain: 'A', resi: r, atom: 'CA' })[0].style || {}).stick), b: makeColorFn()(currentModel.selectedAtoms({ chain: 'B', resi: 2, atom: 'CA' })[0]) === adjustColor('#51c3ce') }; });
+  check('RB19', 'an interface residue takes the interface colour, one outside it does not', col.inside === col.want && col.outside !== col.want && col.b, col);
+  check('RB19', 'interface residues are drawn as sticks and the rest are not', col.sticks[0] === true && col.sticks[1] === false, col.sticks);
+  await E(() => { state.highlights = [{ id: 'x', sel: 'A:2-2', color: '#00ff00', sticks: false }]; recolorStructure(); });
+  check('RB19', 'a highlight is above the interface', await E(() => makeColorFn()(currentModel.selectedAtoms({ chain: 'A', resi: 2, atom: 'CA' })[0])) === await E(() => adjustColor('#00ff00')));
+  await E(() => { state.highlights = []; recolorStructure(); });
+  // buried surface: the arithmetic
+  const s = await E(() => {
+    const one = [{ x: 0, y: 0, z: 0, elem: 'C' }], two = [{ x: 0, y: 0, z: 0, elem: 'C' }, { x: 2, y: 0, z: 0, elem: 'C' }];
+    const R = 1.7 + 1.4, cap = 2 * Math.PI * R * (R - 1);
+    const all = polyAtoms('A').concat(polyAtoms('B'));
+    return { one: sasa(one, { points: 800 }), oneWant: 4 * Math.PI * R * R, two: sasa(two, { points: 800 }), twoWant: 2 * (4 * Math.PI * R * R - cap), grid: sasa(all), brute: sasa(all, { brute: true }), sym: [ifaceNow().bsa, (() => { const A = polyAtoms('B'), B = polyAtoms('A'); return sasa(A) + sasa(B) - sasa(A.concat(B)); })()] };
+  });
+  check('RB19', 'an isolated atom has the area of its probe-expanded sphere', Math.abs(s.one - s.oneWant) / s.oneWant < 0.01, s);
+  check('RB19', 'two overlapping atoms bury the analytic spherical caps', Math.abs(s.two - s.twoWant) / s.twoWant < 0.02, s);
+  check('RB19', 'the grid and brute force give the same area', Math.abs(s.grid - s.brute) < 1e-6, s);
+  check('RB19', 'the buried surface is positive and the same whichever chain is first', s.sym[0] > 50 && Math.abs(s.sym[0] - s.sym[1]) < 1e-6, s.sym);
+  // copying
+  const txt = await E(async () => { document.getElementById('ifCopy').click(); await new Promise(r => setTimeout(r, 300)); return navigator.clipboard.readText(); });
+  check('RB19', 'Copy residues gives compressed ranges for both chains', txt === 'A:1-6, B:1-6', txt);
+  const tsv = await E(async () => { document.getElementById('ifTable').click(); await new Promise(r => setTimeout(r, 300)); return navigator.clipboard.readText(); });
+  check('RB19', 'Copy table gives a header and a row per pair', tsv.split('\n').length === want.pairs.length + 1 && /^Chain A\tResidue A/.test(tsv), tsv.split('\n').length);
+  await E(() => document.getElementById('ifHl').click());
+  check('RB19', 'Add as highlights makes one highlight per chain, with sticks', await E(() => state.highlights.length === 2 && state.highlights.every(x => x.sticks) && state.highlights[0].sel === 'A:1-6'));
+  await E(() => { state.highlights = []; });
+  // a contact becomes a measurement
+  await E(() => document.querySelector('#ifList .ibtn').click()); await sleep(900);
+  const m = await E(() => ({ n: state.measures.length, v: measureValue(state.measures[0]), d: ifaceNow().v.pairs[0].d }));
+  check('RB19', 'a contact row measures that contact, and the value is its distance', m.n === 1 && Math.abs(m.v - m.d) < 1e-9, m);
+  // a design keeps it
+  await E(() => { document.getElementById('designName').value = 'iface'; saveDesign(); }); await sleep(500);
+  const keep = JSON.stringify(await E(() => state.iface));
+  await E(() => { state.iface = null; _if = null; recolorStructure(); loadDesign('iface'); }); await sleep(2800);
+  check('RB19', 'a design keeps the interface and shows it again', JSON.stringify(await E(() => state.iface)) === keep && await E(() => !!(currentModel.selectedAtoms({ chain: 'A', resi: 2, atom: 'CA' })[0].style || {}).stick));
+  // the same chain twice, and far-apart chains
+  await E(() => { document.getElementById('ifB').value = 'A'; document.getElementById('ifB').dispatchEvent(new Event('change')); });
+  check('RB19', 'the same chain twice is refused with a message', /Choose two different chains/.test(await E(() => document.getElementById('ifResult').textContent)));
+  await go('6FAR'); await sleep(400);
+  await E(() => { ifaceSet('A', 'B', true); }); await sleep(400);
+  const far = await E(() => ({ n: ifaceNow().v.pairs.length, bsa: ifaceNow().bsa, chips: document.querySelectorAll('#ifPairs .example-chip').length, text: document.getElementById('ifResult').textContent }));
+  check('RB19', 'chains that do not touch have no contacts, no buried surface and no suggestion', far.n === 0 && far.bsa === 0 && far.chips === 0, far);
+  await go('1XYZ');
+  check('RB19', 'a new structure forgets the interface', await E(() => state.iface === null));
+  await ctx.close();
+}
+
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

@@ -172,6 +172,7 @@ input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webki
 .li-acts{display:flex;align-items:center;gap:0;}
 .li input.inp{height:28px;font-family:var(--sans);}
 .empty-note{font-size:var(--fs-2);color:var(--text3);line-height:1.5;}
+.if-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 84px;gap:8px;align-items:end;}
 .hl-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;}
 .hl-form .check{grid-column:1/-1;}
 .ls-grid{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:10px;align-items:end;}
@@ -623,6 +624,28 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       </div>
     </details>
 
+    <details class="rb-sec rb-needs" data-sec="interface">
+      <summary><span class="rb-sec-t">Interface</span><span class="rb-sec-sum" id="sum-interface"></span></summary>
+      <div class="rb-body">
+        <div class="hint">The residues of two chains that touch: any atom of one within the distance of any atom of the other.</div>
+        <div class="if-grid">
+          <div class="fld"><label for="ifA">Chain</label><select id="ifA" class="inp"></select></div>
+          <div class="fld"><label for="ifB">and chain</label><select id="ifB" class="inp"></select></div>
+          <div class="fld"><label for="ifCut">Within (Å)</label><input type="number" id="ifCut" class="inp sans" min="2.5" max="8" step="0.1" value="4.5"></div>
+        </div>
+        <div class="chips" id="ifPairs" role="group" aria-label="Chains in contact"></div>
+        <label class="check"><input type="checkbox" id="ifShow"> Colour the interface and draw it as sticks</label>
+        <div class="info-card" id="ifResult" hidden></div>
+        <div class="list" id="ifList"></div>
+        <div class="row" style="flex-wrap:wrap">
+          <button type="button" class="btn sm" id="ifBsa" hidden>Buried surface area</button>
+          <button type="button" class="btn sm" id="ifHl" hidden>Add as highlights</button>
+          <button type="button" class="btn sm" id="ifCopy" hidden>Copy residues</button>
+          <button type="button" class="btn sm" id="ifTable" hidden>Copy table</button>
+        </div>
+      </div>
+    </details>
+
     <details class="rb-sec rb-needs" data-sec="appearance">
       <summary><span class="rb-sec-t">Appearance</span><span class="rb-sec-sum" id="sum-appearance"></span></summary>
       <div class="rb-body">
@@ -837,7 +860,7 @@ var viewer=null, currentModel=null, currentPdbId='', currentSurfs=[], currentSou
 var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',bg:'transparent',surfaceOpacity:0.55,projection:'perspective',
   chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,hsl:{h:0,s:100,l:100},
   exportLabels:true,residueLabels:[],hiddenChains:{},showLigands:true,showWaters:false,
-  highlights:[],ligColors:{},pockets:{},pocketR:5,measures:[],measColor:'#ffc107',
+  highlights:[],ligColors:{},pockets:{},pocketR:5,measures:[],measColor:'#ffc107',iface:null,
   labelStyle:{font:'sans',size:13,bold:false,italic:false,bg:true,bgMode:'chain',bgColor:'#333333',shape:'rounded'}};
 var chainList=[], chainInfo={}, ligands=[], ligOverflow=0, ionResn=[], ionCount=0, chainRange={}, bRange=[0,100], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
 var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _reqSeq=0, _searchSeq=0, _surfTok=0;
@@ -1101,7 +1124,7 @@ function buildModel(text,fmt,meta,nm){
   viewer.clear(); currentSurfs=[]; stopHover();
   Object.keys(labelEls).forEach(removeLabelEl);
   state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
-  state.residueLabels=[]; state.hiddenChains={}; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
+  state.residueLabels=[]; state.hiddenChains={}; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; state.iface=null; _if=null; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
   chainAnchorCache={}; selectedChain=null; _hoverAtom=null; _frame=0; _userMoved=false;
   closeChainPopup();
   var model=viewer.addModel(text,fmt,nm>1?{multimodel:true,frames:true}:{});
@@ -1258,7 +1281,7 @@ function hlIndex(){
 function makeColorFn(opts){
   opts=opts||{};
   var hl=hlIndex(), cache={}, dimCh=(opts.noDim||selectedChain===null||chainList.length<2)?null:selectedChain, mix=darkTone()?'#13161e':'#ffffff';
-  var cc=state.chainColors, mode=state.color, uni=state.uniformColor, anyHl=Object.keys(hl).length>0;
+  var cc=state.chainColors, mode=state.color, uni=state.uniformColor, anyHl=Object.keys(hl).length>0, ifx=ifaceColours();
   function tune(h){ var v=cache[h]; return v||(cache[h]=adjustColor(h)); }
   function modeColor(a,ch){
     if(mode==='chain'){ var i=chainList.indexOf(ch); return CHAIN_COLORS[(i<0?0:i)%CHAIN_COLORS.length]; }
@@ -1274,6 +1297,7 @@ function makeColorFn(opts){
     var ch=a.chain||'', base=null, r, i;
     if(anyHl){ r=hl[ch]; if(r){ for(i=0;i<r.length;i++) if(a.resi>=r[i].lo&&a.resi<=r[i].hi){ base=r[i].c; break; } }
       if(!base&&(r=hl['*'])){ for(i=0;i<r.length;i++) if(a.resi>=r[i].lo&&a.resi<=r[i].hi){ base=r[i].c; break; } } }
+    if(!base&&ifx&&ifx[ch]) base=ifx[ch][a.resi]||null;   // the interface sits under a highlight and over a chain colour
     if(!base) base=cc[ch]||modeColor(a,ch);
     var c=tune(base);
     if(dimCh!==null&&ch!==dimCh){ var k='d'+c; c=cache[k]||(cache[k]=_mixHex(c,mix,0.72)); }
@@ -1330,6 +1354,7 @@ function rebuildStyles(){
       viewer.addStyle(sel,{stick:{radius:0.15,colorfunc:ef}});
     });
   });
+  var fi=state.iface; if(fi&&fi.show&&fi.sticks!==false){ var ic=ifaceNow(); if(ic) [fi.a,fi.b].forEach(function(ch){ if(state.hiddenChains[ch]) return; var rs=ifaceResidues(ic,ch); if(rs.length) viewer.addStyle({chain:ch,resi:rs},{stick:{radius:0.15,colorfunc:ef}}); }); }
   state.measures.forEach(function(m){ m.pts.forEach(function(pt){ if(!state.hiddenChains[pt.c]) viewer.addStyle({chain:pt.c,resi:pt.r,not:{resn:WATER_RESN}},{stick:{radius:0.15,colorfunc:ef}}); }); });   // an atom you measured is on screen to be seen
   ligands.forEach(function(l){
     if(!state.pockets[l.key]||!state.showLigands||state.hiddenChains[l.chain]) return;
@@ -2141,6 +2166,185 @@ function updateMeasLines(vp){
   });
 }
 
+// ── Interface: what two chains touch, and how much surface they bury ────────────────────────
+// A residue is on the interface when any heavy atom of it lies within the cutoff of any heavy atom of the other chain.
+// The buried surface is the Shrake–Rupley accessible area of each chain alone, less that of the two together.
+var ELEM_R={C:1.7,N:1.55,O:1.52,S:1.8,P:1.8,SE:1.9,F:1.47,CL:1.75,BR:1.85,I:1.98,FE:1.4,ZN:1.39,MG:1.73,CA:2.0,NA:2.27,K:2.75,MN:1.4,CU:1.4};
+function atomR(a){ return ELEM_R[(a.elem||'C').toUpperCase()]||1.8; }
+function polyAtoms(chain){
+  return currentModel.selectedAtoms({chain:chain}).filter(function(a){ return !a.hetflag&&(a.elem||'C').toUpperCase()!=='H'; });
+}
+function gridKey(x,y,z,c){ return Math.floor(x/c)+','+Math.floor(y/c)+','+Math.floor(z/c); }
+function gridOf(atoms,cell){
+  var g={}; atoms.forEach(function(a,i){ var k=gridKey(a.x,a.y,a.z,cell); (g[k]||(g[k]=[])).push(i); }); return g;
+}
+function gridNear(g,cell,x,y,z,fn){
+  var cx=Math.floor(x/cell), cy=Math.floor(y/cell), cz=Math.floor(z/cell);
+  for(var i=-1;i<=1;i++) for(var j=-1;j<=1;j++) for(var k=-1;k<=1;k++){ var L=g[(cx+i)+','+(cy+j)+','+(cz+k)]; if(L) for(var q=0;q<L.length;q++) fn(L[q]); }
+}
+var _sphere={};
+function spherePoints(n){
+  if(_sphere[n]) return _sphere[n];
+  var P=[], inc=Math.PI*(3-Math.sqrt(5)), i;
+  for(i=0;i<n;i++){ var y=1-(i+0.5)*2/n, r=Math.sqrt(Math.max(0,1-y*y)), t=i*inc; P.push([Math.cos(t)*r,y,Math.sin(t)*r]); }
+  return _sphere[n]=P;
+}
+// Accessible surface (Å²) of a set of atoms, each atom judged against the others in the set. {points, probe, brute}
+function sasa(atoms,o){
+  o=o||{}; var probe=o.probe!=null?o.probe:1.4, n=o.points||92, P=spherePoints(n), N=atoms.length, R=new Array(N), i, j, total=0, maxR=0;
+  for(i=0;i<N;i++){ R[i]=atomR(atoms[i])+probe; if(R[i]>maxR) maxR=R[i]; }
+  var cell=2*maxR, g=o.brute?null:gridOf(atoms,cell);
+  for(i=0;i<N;i++){
+    var a=atoms[i], nb=[];
+    var add=function(jj){ if(jj===i) return; var b=atoms[jj], dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z, s=R[i]+R[jj]; if(dx*dx+dy*dy+dz*dz<s*s) nb.push(jj); };
+    if(o.brute) for(j=0;j<N;j++) add(j); else gridNear(g,cell,a.x,a.y,a.z,add);
+    var free=0;
+    for(var q=0;q<n;q++){
+      var px=a.x+R[i]*P[q][0], py=a.y+R[i]*P[q][1], pz=a.z+R[i]*P[q][2], hit=false;
+      for(var m=0;m<nb.length&&!hit;m++){ var b=atoms[nb[m]], dx=px-b.x, dy=py-b.y, dz=pz-b.z; if(dx*dx+dy*dy+dz*dz<R[nb[m]]*R[nb[m]]) hit=true; }
+      if(!hit) free++;
+    }
+    total+=free/n*4*Math.PI*R[i]*R[i];
+  }
+  return total;
+}
+function resKey(a){ return a.resi+(a.icode||''); }
+// → {a,b,cut, res:{chain:{key:{r,n}}}, pairs:[{ra,rb,na,nb,d,atomA,atomB}] sorted by distance}
+function ifaceCompute(a,b,cut){
+  var A=polyAtoms(a), B=polyAtoms(b), g=gridOf(B,cut), c2=cut*cut, pairs={}, resA={}, resB={};
+  A.forEach(function(x){
+    gridNear(g,cut,x.x,x.y,x.z,function(j){
+      var y=B[j], dx=x.x-y.x, dy=x.y-y.y, dz=x.z-y.z, d2=dx*dx+dy*dy+dz*dz;
+      if(d2>c2) return;
+      var ka=resKey(x), kb=resKey(y), k=ka+'|'+kb;
+      resA[ka]={r:x.resi,n:x.resn}; resB[kb]={r:y.resi,n:y.resn};
+      if(!pairs[k]||d2<pairs[k].d2) pairs[k]={ra:x.resi,rb:y.resi,na:x.resn,nb:y.resn,d2:d2,atomA:atomRef(x),atomB:atomRef(y)};
+    });
+  });
+  var L=Object.keys(pairs).map(function(k){ var p=pairs[k]; p.d=Math.sqrt(p.d2); return p; }).sort(function(p,q){ return p.d-q.d; });
+  var res={}; res[a]=resA; res[b]=resB;
+  return {a:a,b:b,cut:cut,res:res,pairs:L,nA:A.length,nB:B.length};
+}
+var _if=null;
+function ifaceNow(){
+  var f=state.iface; if(!f||!currentModel||chainList.indexOf(f.a)<0||chainList.indexOf(f.b)<0||f.a===f.b) return null;
+  var key=[currentPdbId,_frame,f.a,f.b,f.cut].join('|');
+  if(!_if||_if.key!==key) _if={key:key,v:ifaceCompute(f.a,f.b,f.cut),bsa:null};
+  return _if;
+}
+// colours by chain and residue number, for the colour function; null when the interface is not shown
+function ifaceColours(){
+  var f=state.iface; if(!f||!f.show) return null;
+  var c=ifaceNow(); if(!c) return null;
+  var o={}; o[f.a]={}; o[f.b]={};
+  Object.keys(c.v.res[f.a]).forEach(function(k){ o[f.a][c.v.res[f.a][k].r]=f.colorA; });
+  Object.keys(c.v.res[f.b]).forEach(function(k){ o[f.b][c.v.res[f.b][k].r]=f.colorB; });
+  return o;
+}
+function rangesText(chain,resis){
+  var L=resis.slice().sort(function(x,y){ return x-y; }).filter(function(v,i,a){ return i===0||v!==a[i-1]; }), out=[], s=null, e=null;
+  L.forEach(function(v){ if(s===null){ s=e=v; } else if(v===e+1){ e=v; } else { out.push(s===e?''+s:s+'-'+e); s=e=v; } });
+  if(s!==null) out.push(s===e?''+s:s+'-'+e);
+  return out.map(function(r){ return (chain.trim()?chain+':':'')+r; }).join(', ');
+}
+function ifaceResidues(c,chain){ return Object.keys(c.v.res[chain]).map(function(k){ return c.v.res[chain][k].r; }); }
+function ifaceBsa(c){
+  if(c.bsa!=null) return c.bsa;
+  var A=polyAtoms(c.v.a), B=polyAtoms(c.v.b);
+  var v=sasa(A)+sasa(B)-sasa(A.concat(B));
+  return c.bsa=v<1e-6?0:v;   // floating-point dust is not a negative area
+}
+// which chains touch, most first (atoms of different chains within 5 Å)
+function contactingChains(){
+  var atoms=currentModel.selectedAtoms({}).filter(function(a){ return !a.hetflag&&(a.elem||'C').toUpperCase()!=='H'&&chainList.indexOf(a.chain||'')>=0; });
+  if(atoms.length>90000) return null;
+  var cell=5, g=gridOf(atoms,cell), cnt={};
+  atoms.forEach(function(x,i){
+    gridNear(g,cell,x.x,x.y,x.z,function(j){
+      if(j<=i) return; var y=atoms[j]; if((x.chain||'')===(y.chain||'')) return;
+      var dx=x.x-y.x, dy=x.y-y.y, dz=x.z-y.z; if(dx*dx+dy*dy+dz*dz>25) return;
+      var a=x.chain||'', b=y.chain||''; var k=a<b?a+'\u0001'+b:b+'\u0001'+a; cnt[k]=(cnt[k]||0)+1;
+    });
+  });
+  return Object.keys(cnt).map(function(k){ var s=k.split('\u0001'); return {a:s[0],b:s[1],n:cnt[k]}; }).sort(function(p,q){ return q.n-p.n; });
+}
+function ifaceFill(){
+  ['ifA','ifB'].forEach(function(id){
+    var s=$(id), cur=s.value; s.innerHTML=chainList.map(function(c){ return '<option value="'+escapeHtml(c)+'">'+escapeHtml(chainTitle(c).replace('Chain ',''))+(chainInfo[c]&&chainInfo[c].name?' · '+escapeHtml(chainInfo[c].name.slice(0,22)):'')+'</option>'; }).join('');
+    if(chainList.indexOf(cur)>=0) s.value=cur; else if(id==='ifB'&&chainList.length>1) s.selectedIndex=1;
+  });
+}
+function ifaceSet(a,b,show){
+  var f=state.iface||(state.iface={a:a,b:b,cut:4.5,show:false,sticks:true,colorA:'#ffbf7b',colorB:'#51c3ce'});
+  f.a=a; f.b=b; if(show!=null) f.show=show;
+  syncIface(); recolorStructure(); renderIface();
+}
+function syncIface(){
+  var f=state.iface||{};
+  if(f.a!=null&&chainList.indexOf(f.a)>=0) $('ifA').value=f.a;
+  if(f.b!=null&&chainList.indexOf(f.b)>=0) $('ifB').value=f.b;
+  $('ifCut').value=f.cut!=null?f.cut:4.5; $('ifShow').checked=!!f.show;
+}
+function renderIface(){
+  var box=$('ifResult'), list=$('ifList'); if(!box) return;
+  list.innerHTML=''; ['ifBsa','ifHl','ifCopy','ifTable'].forEach(function(id){ $(id).hidden=true; });
+  var f=state.iface, c=f&&ifaceNow();
+  if(f&&f.a===f.b){ box.hidden=false; box.innerHTML='<div class="info-meta">Choose two different chains.</div>'; updateSummaries(); return; }
+  if(!c){ box.hidden=true; updateSummaries(); return; }
+  var nA=Object.keys(c.v.res[f.a]).length, nB=Object.keys(c.v.res[f.b]).length;
+  box.hidden=false;
+  box.innerHTML='<div class="info-id"><b>'+escapeHtml(f.a)+' – '+escapeHtml(f.b)+'</b><span class="badge">'+c.v.pairs.length+' contacts</span></div>'
+    +'<div class="info-meta">'+nA+' residues of '+escapeHtml(chainTitle(f.a))+' · '+nB+' of '+escapeHtml(chainTitle(f.b))+' within '+f.cut+' Å'
+    +(c.bsa!=null?'<br><b>Buried surface '+Math.round(c.bsa).toLocaleString()+' Å²</b> ('+Math.round(c.bsa/2).toLocaleString()+' Å² on each side)':'')+'</div>';
+  $('ifBsa').hidden=c.bsa!=null; $('ifHl').hidden=!(nA+nB); $('ifCopy').hidden=!(nA+nB); $('ifTable').hidden=!c.v.pairs.length;
+  if(c.bsa==null&&c.v.nA+c.v.nB<=12000){ ifaceBsa(c); renderIface(); return; }   // small enough to be quick: show it without asking
+  c.v.pairs.slice(0,12).forEach(function(p){
+    var row=document.createElement('div'); row.className='li'; row.style.gridTemplateColumns='minmax(0,1fr) auto';
+    row.innerHTML='<span class="li-main" style="cursor:default"><span class="li-name">'+escapeHtml(p.na+' '+p.ra+' – '+p.nb+' '+p.rb)+'</span><span class="li-meta">'+p.d.toFixed(2)+' Å · '+escapeHtml(p.atomA.n+' – '+p.atomB.n)+'</span></span>'
+      +'<button type="button" class="ibtn" title="Measure this contact" aria-label="Measure this contact"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></button>';
+    row.querySelector('.ibtn').addEventListener('click',function(){
+      var m={id:'m'+(++_measSeq).toString(36)+Date.now().toString(36).slice(-4),kind:'dist',pts:[p.atomA,p.atomB]};
+      state.measures.push(m); _userMoved=true; recolorStructure(); renderLabelTags(); renderMeasList(); showToast(measureText(m));
+      fitView({focus:{or:[{chain:p.atomA.c,resi:p.atomA.r},{chain:p.atomB.c,resi:p.atomB.r}]},animate:true,margin:0.25});
+    });
+    list.appendChild(row);
+  });
+  if(c.v.pairs.length>12){ var n=document.createElement('div'); n.className='empty-note'; n.textContent='+ '+(c.v.pairs.length-12)+' more in the table (Copy table).'; list.appendChild(n); }
+  updateSummaries();
+}
+function ifaceCopyResidues(){
+  var f=state.iface, c=ifaceNow(); if(!c) return;
+  var t=rangesText(f.a,ifaceResidues(c,f.a))+(Object.keys(c.v.res[f.b]).length?', '+rangesText(f.b,ifaceResidues(c,f.b)):'');
+  var done=function(){ showToast('Residues copied: '+t.slice(0,60)+(t.length>60?'…':'')); }, fail=function(){ showToast('The browser did not allow copying.'); };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done,fail); else fail();
+}
+function ifaceCopyTable(){
+  var c=ifaceNow(); if(!c) return;
+  var tsv=['Chain A\tResidue A\tChain B\tResidue B\tMin distance (Å)\tAtom A\tAtom B'].concat(c.v.pairs.map(function(p){ return [c.v.a,p.na+' '+p.ra,c.v.b,p.nb+' '+p.rb,p.d.toFixed(2),p.atomA.n,p.atomB.n].join('\t'); })).join('\n');
+  var done=function(){ showToast('Table copied — '+c.v.pairs.length+' contacts.'); }, fail=function(){ showToast('The browser did not allow copying.'); };
+  if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(tsv).then(done,fail); else fail();
+}
+function ifaceAsHighlights(){
+  var f=state.iface, c=ifaceNow(); if(!c) return;
+  [[f.a,f.colorA],[f.b,f.colorB]].forEach(function(x){
+    var r=ifaceResidues(c,x[0]); if(!r.length) return;
+    state.highlights.push({id:'h'+Date.now().toString(36)+x[0],sel:rangesText(x[0],r),color:x[1],sticks:true});
+  });
+  recolorStructure(); renderHlList(); updateSummaries(); showToast('Added as highlights');
+}
+function ifaceSuggest(){
+  var el=$('ifPairs'); el.innerHTML='';
+  var L=chainList.length>1?contactingChains():[];
+  if(L===null){ el.innerHTML='<span class="hint">This structure is too large to scan for touching chains; choose two.</span>'; return; }
+  if(!L.length) return;
+  var cap=document.createElement('span'); cap.className='chips-cap'; cap.textContent='In contact'; el.appendChild(cap);
+  L.slice(0,6).forEach(function(p){
+    var b=document.createElement('button'); b.type='button'; b.className='example-chip'; b.textContent=p.a+' – '+p.b+' · '+p.n; b.title=p.n+' atom pairs within 5 Å';
+    b.addEventListener('click',function(){ ifaceSet(p.a,p.b,true); });
+    el.appendChild(b);
+  });
+}
+
 // ── Residue labels ───────────────────────────────────────────────────────────────────────────
 // Tag mode: clicking an atom drops a tag at that residue; clicking the same residue again removes it.
 function toggleResLabelMode(force){
@@ -2385,10 +2589,11 @@ function updateSummaries(){
   set('sum-highlight',[state.highlights.length?state.highlights.length+' highlighted':'',np?np+(np===1?' pocket':' pockets'):''].filter(Boolean).join(' · '));
   set('sum-appearance',(COLOR_NAMES[state.color]||'')+(state.projection==='orthographic'?' · orthographic':''));
   var nl=tagList().filter(function(t){ return t.kind!=='meas'; }).length; set('sum-labels',nl?nl+(nl===1?' label':' labels'):'');
+  var fi=state.iface, ci=fi&&fi.show&&ifaceNow(); set('sum-interface',ci?fi.a+' – '+fi.b+' · '+ci.v.pairs.length+' contacts':'');
   var nm=state.measures.length; set('sum-measure',nm?nm+(nm===1?' measurement':' measurements'):'');
   var nd=Object.keys(getDesigns()).length; set('sum-designs',nd?nd+' saved':'');
 }
-var SEC_DEFAULT={structure:true,chains:true,highlight:false,measure:false,appearance:true,labels:false,designs:false};
+var SEC_DEFAULT={structure:true,chains:true,highlight:false,measure:false,interface:false,appearance:true,labels:false,designs:false};
 function secSave(){ var o={}; document.querySelectorAll('.rb-sec').forEach(function(d){ o[d.dataset.sec]=d.open; }); store('ribbon_sec',JSON.stringify(o)); foldLabel(); }
 function foldLabel(){ var any=[].some.call(document.querySelectorAll('.rb-sec'),function(d){ return d.open; }); $('foldAll').textContent=any?'Fold all':'Unfold all'; }
 function foldAll(){
@@ -2690,7 +2895,7 @@ function collectDesign(){
   st.chainColors=_clone(state.chainColors); st.chainLabels=_clone(state.chainLabels);
   st.labelOffsets=_clone(state.labelOffsets); st.labelAnchors=_clone(state.labelAnchors);
   st.residueLabels=_clone(state.residueLabels||[]);
-  st.hiddenChains=_clone(state.hiddenChains); st.highlights=_clone(state.highlights); st.ligColors=_clone(state.ligColors); st.pockets=_clone(state.pockets); st.measures=_clone(state.measures);
+  st.hiddenChains=_clone(state.hiddenChains); st.highlights=_clone(state.highlights); st.ligColors=_clone(state.ligColors); st.pockets=_clone(state.pockets); st.measures=_clone(state.measures); st.iface=state.iface?_clone(state.iface):null;
   var view=null; try{ view=viewer.getView(); }catch(e){}
   var vpEl=$('viewport');
   return { pdbId:currentPdbId, source:currentSource?{kind:currentSource.kind,rid:currentSource.rid}:null, ts:Date.now(), view:view, vp:[vpEl.clientWidth,vpEl.clientHeight], state:st };
@@ -2746,6 +2951,7 @@ function applyPendingDesign(){
   state.ligColors=ps.ligColors?_clone(ps.ligColors):{};
   state.pockets=ps.pockets?_clone(ps.pockets):{};
   state.measures=Array.isArray(ps.measures)?_clone(ps.measures).filter(validMeasure):[];
+  state.iface=(ps.iface&&typeof ps.iface==='object'&&typeof ps.iface.a==='string'&&typeof ps.iface.b==='string')?_clone(ps.iface):null; _if=null;
   syncControlsToState();
   return ps;
 }
@@ -2786,7 +2992,7 @@ function syncControlsToState(){
   var us=$('uniformSwatches'); if(us)us.querySelectorAll('.swatch').forEach(function(s){ var on=s.dataset.c===state.uniformColor; s.classList.toggle('active',on); s.setAttribute('aria-pressed',on?'true':'false'); });
 }
 function updateAll(){
-  renderInfoCard(); renderChainList(); renderLigList(); renderHlList(); renderResLblList(); renderMeasList(); updateLegend(); updateFrameCtl(); updateSummaries();
+  renderInfoCard(); renderChainList(); renderLigList(); renderHlList(); renderResLblList(); renderMeasList(); ifaceFill(); syncIface(); renderIface(); setTimeout(ifaceSuggest,60); updateLegend(); updateFrameCtl(); updateSummaries();
   $('statusBar').innerHTML=statusHtml(); $('statusBar').classList.add('show');
 }
 
@@ -2924,6 +3130,15 @@ function boot(){
   $('measGo').addEventListener('click',function(){ toggleMeasure(); });
   segHandler('measSeg',null,function(v){ _measKind=v; clearMeasPending(); setMeasHint(); if(_measMode) toggleMeasure(true); });
   $('measCopy').addEventListener('click',copyMeasures); $('measClear').addEventListener('click',clearMeasures);
+  function ifaceFromUI(){
+    var a=$('ifA').value, b=$('ifB').value, cut=parseFloat($('ifCut').value), f=state.iface||(state.iface={a:a,b:b,cut:4.5,show:false,sticks:true,colorA:'#ffbf7b',colorB:'#51c3ce'});
+    f.a=a; f.b=b; if(cut>=2.5&&cut<=8) f.cut=cut; f.show=$('ifShow').checked;
+    recolorStructure(); renderIface();
+  }
+  ['ifA','ifB'].forEach(function(id){ $(id).addEventListener('change',ifaceFromUI); });
+  $('ifCut').addEventListener('input',ifaceFromUI); $('ifShow').addEventListener('change',ifaceFromUI);
+  $('ifBsa').addEventListener('click',function(){ var c=ifaceNow(); if(c){ ifaceBsa(c); renderIface(); } });
+  $('ifHl').addEventListener('click',ifaceAsHighlights); $('ifCopy').addEventListener('click',ifaceCopyResidues); $('ifTable').addEventListener('click',ifaceCopyTable);
 
   // Chains, ligands and highlights.
   $('showLigands').addEventListener('change',function(e){ state.showLigands=e.target.checked; recolorStructure(); renderLigList(); });
@@ -3838,6 +4053,13 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
             'An atom you measure has its residue drawn as sticks, so the side chain is there to see. The list under Measure can be copied as a table, and the values follow the model when you step through an NMR ensemble.'],
         tip: 'A measurement label can be dragged like any other label and is removed with **Delete**. Its line is part of the export, and goes with **Include labels**.',
         prep: open('measure'), show: [{ sel: '#measBtn', say: 'The ruler.', miss: NEED }], see: ['label'] },
+      { id: 'interface', t: 'The interface between two chains', group: 'Highlight', on: ['viewer'],
+        q: ['interface', 'protein protein interface', 'contacts', 'buried surface', 'bsa', 'ternary complex', 'cooperativity', 'residues in contact', 'interfaz', 'superficie enterrada', 'contactos', 'cooperatividad', 'complejo ternario'],
+        a: ['Under **Interface**, pick two chains (the chips suggest the ones that touch most), and Ribbon finds the residues of each within the distance you set — any atom of one near any atom of the other. They are coloured and drawn as sticks, and the card gives the number of contacts and the **buried surface area** in Å².',
+            'The closest residue pairs are listed with their distance; the ruler measures one in the figure. **Add as highlights** keeps the two sets, **Copy residues** gives them as `A:45-60, B:100`, and **Copy table** gives every pair for a spreadsheet.'],
+        tip: 'For a PROTAC ternary complex this is the protein–protein interface the degrader brings about: 5T35 chains D and A.',
+        warn: 'The buried surface is the accessible area of each chain alone less that of the two together (probe 1.4 Å), so it is the area lost by both sides; half of it is the usual "per side" figure.',
+        prep: open('interface'), show: [{ sel: '#ifA', say: 'Pick the two chains.', miss: NEED }], see: ['measure', 'highlight'] },
       { id: 'surface', t: 'A molecular surface', group: 'Look', on: ['viewer'],
         q: ['surface', 'molecular surface', 'transparent', 'opacity', 'superficie', 'opacidad'],
         a: 'Choose **Surface** in the style: the cartoon stays inside a translucent surface of the visible chains. The **Surface** slider that appears sets its opacity, and a colour change recolours it without recomputing it.',
