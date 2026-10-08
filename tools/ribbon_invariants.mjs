@@ -185,7 +185,7 @@ async function open(o = {}) {
   if (o.pre) await o.pre(ctx, st);
   const pg = await ctx.newPage();
   pg.on('pageerror', e => pageErrs.push((o.tag || '') + String(e && e.message || e).slice(0, 200)));
-  await pg.goto(base + (args.file || 'apps/ribbon/ribbon.html') + '?_ts=' + Date.now(), { waitUntil: 'load' });
+  await pg.goto(base + (o.file || args.file || 'apps/ribbon/ribbon.html') + '?_ts=' + Date.now(), { waitUntil: 'load' });
   await pg.waitForTimeout(o.settle ?? 1500);
   const E = (f, a) => pg.evaluate(f, a);
   const idle = () => E(() => new Promise(res => { const t0 = Date.now(), t = setInterval(() => { if (!document.getElementById('fetchBtn').disabled || Date.now() - t0 > 20000) { clearInterval(t); res(); } }, 60); }));
@@ -1378,8 +1378,41 @@ async function rb23() {
   await ctx.close();
 }
 
+// ── RB24 3Dmol embedded for the Hub: the viewer works with no network ─────────────────────────
+// embed.py writes the vendored 3Dmol into Ribbon for the Hub build (tools/inline_3dmol.py). Here the same step is run by hand on the
+// source file, the page is loaded with every 3Dmol CDN refused, and the viewer has to come up and draw a structure.
+async function rb24() {
+  const { execFileSync } = await import('node:child_process');
+  const fs = await import('node:fs');
+  const out = path.join(ROOT, 'apps/ribbon/_offline.html'), src = path.join(ROOT, 'apps/ribbon/ribbon.html');
+  const py = (code, args = []) => { try { return { ok: true, out: execFileSync('python3', ['-c', code, ...args], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }; } catch (e) { return { ok: false, out: String(e.stderr || e.message) }; } };
+  const tmp = path.join(ROOT, 'apps/ribbon/_tag.html');
+  try {
+    execFileSync('python3', ['tools/inline_3dmol.py', src, out], { cwd: ROOT, stdio: 'ignore' });
+    const html = fs.readFileSync(out, 'utf8');
+    check('RB24', 'the inlined page has no 3Dmol script tag left, and carries the library once', !/<script src="https:\/\/unpkg\.com\/3dmol/.test(html) && (html.match(/embedded by embed\.py so Ribbon works offline/g) || []).length === 1 && html.length > fs.readFileSync(src, 'utf8').length + 500000, { len: html.length });
+    // the guards: a file that is not the pinned one, and a page without the tag, are refused
+    const bad = py("import sys; sys.path.insert(0,'tools'); import inline_3dmol as m, shutil, os\nsrc=open('apps/ribbon/ribbon.html','rb').read().replace(b'sha384-Osczybld',b'sha384-Osczybld')\nsrc=src.replace(b'sha384-OsczYbld',b'sha384-OsczYblD')\ntry:\n    m.inline(src); print('NOT REFUSED')\nexcept ValueError as e: print('refused:', e)");
+    const none = py("import sys; sys.path.insert(0,'tools'); import inline_3dmol as m\ntry:\n    m.inline(b'<html><script src=\"https://example.com/x.js\"></script></html>'); print('NOT REFUSED')\nexcept ValueError as e: print('refused:', e)");
+    check('RB24', 'a page whose tag pins another hash, or has no tag, is refused rather than built', /^refused: .*not the file the tag pins/.test(bad.out.trim()) && /^refused: expected exactly one pinned 3Dmol tag/.test(none.out.trim()), { bad: bad.out.trim().slice(0, 140), none: none.out.trim().slice(0, 140) });
+    const sri = /integrity="(sha384-[^"]+)"/.exec(fs.readFileSync(src, 'utf8'))[1];
+    const h = py("import hashlib,base64; print('sha384-'+base64.b64encode(hashlib.sha384(open('vendor/3Dmol-min-2.5.5.js','rb').read()).digest()).decode())");
+    check('RB24', 'the vendored file is the one the head tag pins', h.ok && h.out.trim() === sri, { sri, vendored: h.out.trim() });
+    // the page, with the network to every 3Dmol host refused
+    const hits = [];
+    const { ctx, pg, E, go } = await open({ file: 'apps/ribbon/_offline.html', tag: 'RB24 ', pre: async c => { await c.route(/unpkg\.com|jsdelivr\.net|cdnjs\.cloudflare\.com|3dmol\.org/i, r => { hits.push(r.request().url()); r.abort(); }); } });
+    const up = await E(() => ({ has3d: !!window.$3Dmol, viewer: !!viewer, create: !!(window.$3Dmol && $3Dmol.createViewer), empty: document.body.classList.contains('rb-empty'), title: document.getElementById('veTitle').textContent }));
+    check('RB24', 'with every 3Dmol host refused the viewer is there at load (no "could not be loaded", no fallback loader)', up.has3d && up.viewer && up.create && !/could not be loaded/.test(up.title) && !hits.length, { up, hits });
+    await go('1XYZ'); await sleep(600);
+    const drawn = await E(() => ({ id: currentPdbId, atoms: currentModel ? currentModel.selectedAtoms({}).length : 0, canvas: !!document.querySelector('#viewport canvas'), chains: chainList.join('') }));
+    check('RB24', 'a structure loads and draws on it', drawn.id === '1XYZ' && drawn.atoms > 50 && drawn.canvas && drawn.chains === 'AB', drawn);
+    check('RB24', 'and nothing went looking for 3Dmol on the network', !hits.length, hits);
+    await ctx.close();
+  } finally { for (const f of [out, tmp]) { try { fs.unlinkSync(f); } catch (e) {} } }
+}
+
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

@@ -158,6 +158,22 @@ jobs:
       - name: Build dHUB
         run: python embed.py dist/index.html
 
+      # Ribbon's 3Dmol is embedded in the Hub (vendor/, tools/inline_3dmol.py) so the viewer works
+      # offline. embed.py refuses a vendored file that is not the pinned one; this proves the built Hub
+      # really carries it and no longer asks a CDN for it.
+      - name: The built Hub carries 3Dmol
+        run: |
+          python - <<'PY'
+          import base64, re
+          t = open('dist/index.html', encoding='utf-8').read()
+          m = re.search(r'ribbon: "([^"]*)"', t)
+          assert m, 'Ribbon payload not found in dist/index.html'
+          h = base64.b64decode(m.group(1)).decode('utf-8')
+          assert 'embedded by embed.py so Ribbon works offline' in h, 'Ribbon in the Hub has no embedded 3Dmol'
+          assert '<script src="https://unpkg.com/3dmol' not in h, 'Ribbon in the Hub still loads 3Dmol from a CDN'
+          print('Ribbon in the Hub carries 3Dmol inline (%d KB)' % (len(h) // 1024))
+          PY
+
       # The help assistant (2026-09-30). Its notes are written by hand, so they rot: every "Show me"
       # must point at an element that exists, every button must call a function that exists, every topic
       # must be found by its own title and phrases, a visitor must only ever be answered about what they

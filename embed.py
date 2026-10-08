@@ -380,6 +380,9 @@ if profile != 'all':
     APPS = [(k, r) for k, r in APPS if k in keep]
     print('profile=%s — shipping %d apps, omitting: %s' % (profile, len(APPS), ', '.join(dropped)))
 
+sys.path.insert(0, os.path.join(BASE, 'tools'))
+from inline_3dmol import inline as _inline_3dmol
+
 src = open(SHELL, encoding='utf-8').read()
 errors = []
 
@@ -437,6 +440,14 @@ for key, rel in APPS:
         print(f'  {key}: MISSING SOURCE — {rel}')
         errors.append(f'{key}: source file not found ({rel})')
         continue
+    if key == 'ribbon':
+        # Ribbon's source loads 3Dmol from a CDN (pinned, integrity-checked). A Hub build carries the same bytes inline,
+        # so the structure viewer works with no network. tools/inline_3dmol.py checks the hash before it writes anything.
+        try:
+            data = _inline_3dmol(data)
+        except (ValueError, OSError) as e:
+            errors.append('ribbon: could not embed 3Dmol - %s' % e)
+            continue
     b64 = base64.b64encode(data).decode('ascii')
     src, n = re.subn(r'(?<=' + key + r': ")[^"]*', b64, src)
     print(f'  {key}: {n} replacement(s)')
