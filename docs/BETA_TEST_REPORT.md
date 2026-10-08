@@ -4,6 +4,33 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## Ribbon, eight more things — 2026-10-08
+
+Not a bug hunt: the eight suggestions from the rework, built one at a time, each with an invariant that was proven by putting its
+bug back. What the building *found* is what belongs here.
+
+| id | where | what was wrong (while building) | fixed in |
+|---|---|---|---|
+| RB-24 | PyMOL script | `resi -2` selects every residue up to 2 (24 atoms of 6 residues), and `resi -2--1+0` five; negative numbers need `\-2` | `_scRange(…, py)` |
+| RB-25 | both scripts | `1-5` takes residue `1A` with it: a colour group emitted after a range that spans an insertion-code residue repainted it | numeric ranges first, insertion-code residues last (`_scColourItems`) |
+| RB-26 | both scripts | a `;` in a comment (the PDB title) or a label is a command separator in both programs | no `;` is ever written |
+| RB-27 | ChimeraX script | a `#` comment after a command is an error (a comment is only at the start of a line) | the note goes on its own line |
+| RB-28 | ChimeraX, headless | `camera ortho` fails in `--nogui` (no OpenGL) | verification sets the camera from Python |
+| RB-29 | Ribbon | the add-a-checkbox row centred its box against a two-line label; the colour-swatch overlay was a 40 px `input` inside a 24 px swatch; the landscape bar had a 36 px button beside a 40 px select | `.check` aligns to the first line; the overlay is the swatch's size; `--tb-h` for the select |
+| RB-30 | harness | the host page framed the *source* file, so every mutation of the open-a-target path was reported "missed" | `HOST3` frames `args.file` |
+
+**Verified in the real programs** (not in CI): PyMOL.app and ChimeraX 1.11 on this Mac ran the generated scripts for 4HHB with a
+chain palette, a spectrum with a palette shift, a surface, sticks, a hidden chain, two ligands, a pocket, a distance, an angle,
+residue and chain labels and a rotated camera: colours **48/48**, camera **within 0.0002 Å**, hidden chain not drawn, no command
+refused. Offscreen rendering is not available in ChimeraX here, so its camera was checked by projecting the atoms numerically.
+
+**Residual risk**
+- 3Dmol's own orthographic view shears about 1–3 % with depth, so a script's camera is matched in *orientation* (within 2°), not pixel for pixel.
+- A multi-panel figure downloads at most 9000 px a side; a browser with a lower canvas limit (iOS) may refuse a large one and says so.
+- The pocket chosen for a target is the best-resolved *ligand-bound* entry, which may be a ligand of another series than the hit; the
+  note says whose it is, but nothing can say whether it is the pocket the hit uses.
+- ChimeraX has no angle monitor: an angle is a label on the middle residue.
+
 ## Ribbon, reworked — 2026-10-07
 
 Jon asked for Ribbon to be reworked: *better app, one style with the rest of the Hub, bugs found and fixed,

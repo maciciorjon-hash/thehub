@@ -560,3 +560,19 @@ A trace chart answers *how fast, how deep, and did it come back*, so what is dra
   must ignore the right one.
 - **A viewer that cannot load leaves the page alive:** the rest of the controls work, the viewer says why and offers *Try again*.
 
+## What a figure tool hands to another program (Ribbon, 2026-10-08)
+
+- **A script that rebuilds a figure is written from the one colour function, not from the settings.** Palette tuning, a chain
+  colour, a highlight, the interface and a values mode have already been resolved by the time a residue has a colour; emit that,
+  per residue, and every mode is in the script without the generator knowing about any of them.
+- **Check it in the real program, then check what you can in CI.** CI has neither PyMOL nor ChimeraX, so the invariant reads the
+  script back (apply the colour lines in order, take the camera numbers apart) and compares with what the viewer draws; the real
+  programs were run once and the numbers are in the changelog.
+- **A command language has its own characters.** `;` separates commands even inside a comment or a quoted label; a leading
+  `-` can mean "up to"; a range that includes `1-5` includes `1A`. Escape, order or avoid them, and say which in the comment.
+- **A figure of several panels is built from saved states, not from the screen.** Apply each state, render it by the same
+  function as a single export, compose, and **put the user's own view back** — including the export dialog's own choices.
+- **Say whose it is.** When one tool opens another to show "the pocket", say in the receiving tool whose pocket it is (here the
+  crystal's own ligand, not the compound that was screened).
+- **A library the page needs offline is embedded for the build that has to work offline, from a pinned file whose hash the page
+  already states** — the build refuses a file that is not that one.
