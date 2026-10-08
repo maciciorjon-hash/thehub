@@ -51,7 +51,7 @@ const ESCAPE  = !!args.escape;
 // theme's white on #5e87c5 is 3.65:1 — a palette decision (docs/UI.md), so it is held at 3:1 until the blue is chosen.
 const ACCENT_INK = { dark: 4.5, light: 3 };
 // scrollers that hold a data table or a figure larger than its box on purpose (a table whose box is its only child is allowed by the audit itself)
-const ESC_OPTS = JSON.stringify({ allowScroll: '.results-tbl-scroll,.hits-scroll,.fig-shell,.crop-area,.eg-tblwrap,.eg-scroll' });
+const ESC_OPTS = JSON.stringify({ allowScroll: '.results-tbl-scroll,.hits-scroll,.fig-shell,.crop-area,.eg-tblwrap,.eg-scroll,.sq-scroll' });
 const DESKTOP = !!args.desktop;
 const OFFLINE = !!args.offline;   // block Firebase entirely: the state a phone at the bench with no signal is in
 const MIN_FONT= Number(args['min-font'] || (args.desktop ? 9 : 11));   // a desktop's own 10px labels are the scale, not a finding

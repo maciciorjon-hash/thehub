@@ -1,8 +1,8 @@
 // Ribbon: protein structures as figures.
 (function(){
   var NEED = 'This appears once a structure is loaded. Type a PDB code first, for example **5T35**.';
-  function open(sec){ return function(w){ var d = w.document.querySelector('details.rb-sec[data-sec="' + sec + '"]'); if (d) d.open = true; }; }
-  assistRegister('ribbon', {
+  function open(sec){ return function(w){ if (w.rbOpenSec) w.rbOpenSec(sec); else { var d = w.document.querySelector('details.rb-sec[data-sec="' + sec + '"]'); if (d) d.open = true; } }; }
+  var KB = {
     name: 'Ribbon',
     blurb: 'Ribbon draws a protein structure as a figure. Load one from the PDB or AlphaFold, or open your own file; colour the chains, label them, pull out a ligand and the residues around it, and export a picture at print resolution.',
     first: ['start', 'load', 'colour', 'label', 'export'],
@@ -17,10 +17,10 @@
     topics: [
       { id: 'start', t: 'Your first figure in five steps', group: 'Getting started', on: ['empty', 'viewer'],
         q: ['first figure', 'get started', 'how do i start', 'how to use', 'tutorial', 'walkthrough', 'empezar', 'como empiezo', 'como se usa', 'primeros pasos', 'quick start'],
-        a: 'Everything is on one screen: the structure on the left, the controls on the right — where ChimeraX and PyMOL keep them. The arrow at the end of the toolbar folds the panel away.',
+        a: 'Everything is on one screen: the structure on the left, the controls on the right — where ChimeraX and PyMOL keep them — in tabs down the right edge: **Open · Models · Colour · Analyse · Figure · Designs**. Click the open tab again to fold the panel away.',
         steps: ['**Load** a structure: a PDB code (try `5T35`), a UniProt id, a protein name, or a file.',
                 'Pick the **style** and the **colour** along the top.',
-                'Click a chain to **colour and label** it, or open **Highlight** to pull out a ligand and its pocket.',
+                'Click a chain to **colour and label** it, or open **Models** to pull out a ligand and its pocket.',
                 '**Save the design** if you want to come back to it.',
                 '**Export** the picture.'],
         tip: 'Press **F** any time to fit the structure to the view.',
@@ -79,7 +79,7 @@
         a: ['**Highlight › Ligands** lists what is bound in the structure — a PROTAC or glue included. Click one to **zoom** to it, click its **colour dot** to change its carbon colour (so it stands out from the protein), and press the dashed circle for its **pocket**: the residues within the radius you set, as sticks.',
             '**Show ligands** and **Show waters** are under Chains.'],
         tip: 'Ions are drawn but not listed. Try `5T35`: a VHL–PROTAC–BRD4 ternary complex.',
-        prep: open('highlight'), show: [{ sel: '#ligList', say: 'The ligands.', miss: NEED }] },
+        prep: open('chains'), show: [{ sel: '#ligList', say: 'The ligands.', miss: NEED }] },
       { id: 'measure', t: 'Measure a distance or an angle', group: 'Measure', on: ['viewer'],
         q: ['measure', 'distance', 'angle', 'angstrom', 'contact', 'hydrogen bond', 'h-bond', 'ruler', 'medir', 'distancia', 'angulo', 'contacto', 'puente de hidrogeno'],
         a: ['Press **Measure** (the ruler, or **M**) and click **two atoms** for a distance, or **three** for an angle at the middle one (switch under **Measure**). A dashed line and its value stay on the figure.',
@@ -162,5 +162,12 @@
         tip: 'Fetching a structure needs the internet as well (RCSB or AlphaFold); opening your own file does not, once the viewer has loaded.',
         show: [{ sel: '#veRetry', say: 'Try again.', miss: 'The viewer has loaded, so there is nothing to retry.' }] }
     ]
+  };
+  // The panel is tabs: whatever a topic points at is brought on screen first (its tab, its section).
+  KB.topics.forEach(function(t){
+    if (!t.show) return;
+    var own = t.prep;
+    t.prep = function(w){ if (own) own(w); if (w.rbReveal) t.show.forEach(function(x){ try { w.rbReveal(x.sel); } catch (e) {} }); };
   });
+  assistRegister('ribbon', KB);
 })();

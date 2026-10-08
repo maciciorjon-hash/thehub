@@ -32,6 +32,12 @@
 //                           opens nothing; a left click picks the chain.
 //   RB17 to the notebook    Inside the Hub, Send to Labbook puts the figure on the open experiment's Files tab, captioned,
 //                           and the experiment records that it came from Ribbon.
+//   RB26 tabs and Models    The panel is icon tabs on the right; each tab one pane; Models lists what is in the scene and its eyes
+//                           put things away without deleting them, kept by a design and honoured by the scripts.
+//   RB27 sequence + selection  The sequence is read from the structure, numbered, marked by secondary structure; a click, a drag,
+//                           Shift and ⌘ select; the selection is green in the structure and never in an export, a script or a design.
+//   RB28 command line       The selection language counts the same residues as a direct count; within is a brute-force distance;
+//                           every command changes what it says; Tab completes with what the structure contains; ↑, Esc, errors stay.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
 //                           a label, a row; in the export only with labels; kept by a design; hidden with a chain; follows the model.
 //
@@ -191,6 +197,11 @@ async function open(o = {}) {
   await pg.goto(base + (o.file || args.file || 'apps/ribbon/ribbon.html') + '?_ts=' + Date.now(), { waitUntil: 'load' });
   await pg.waitForTimeout(o.settle ?? 1500);
   const E = (f, a) => pg.evaluate(f, a);
+  // the panel is tabs: a control is brought on screen (its tab, its section) before it is pressed, as a person would
+  for (const m of ['click', 'fill', 'check', 'uncheck', 'focus']) {
+    const orig = pg[m].bind(pg);
+    pg[m] = async (sel, ...rest) => { if (typeof sel === 'string' && !/:text|>>/.test(sel)) { try { await pg.evaluate(q => window.rbReveal && rbReveal(q), sel); } catch (e) {} } return orig(sel, ...rest); };
+  }
   const idle = () => E(() => new Promise(res => { const t0 = Date.now(), t = setInterval(() => { if (!document.getElementById('fetchBtn').disabled || Date.now() - t0 > 20000) { clearInterval(t); res(); } }, 60); }));
   const go = async q => { await E(q => { document.getElementById('pdbInput').value = q; handleSubmit(); }, q); await sleep(60); await idle(); await sleep(450); };
   return { ctx, pg, st, E, idle, go };
@@ -680,15 +691,19 @@ async function rb13() {
   const nonButtons = await E(() => [...document.querySelectorAll('.swatch,.example-chip,.search-result,.cp-sw,.li-dot,.li-main,.di-main')].filter(e => e.tagName !== 'BUTTON').length);
   check('RB13', 'swatches, chips, rows and dots are buttons, not clickable boxes', nonButtons === 0, nonButtons);
   check('RB13', 'the viewer says what it is', await E(() => { const c = document.querySelector('#viewport canvas'); return c.getAttribute('role') === 'img' && /3D structure/.test(c.getAttribute('aria-label')); }));
-  check('RB13', 'toggles say whether they are on', await E(() => ['spinBtn', 'resTagBtn', 'collapseBtn'].every(id => document.getElementById(id).hasAttribute('aria-pressed')) && [...document.querySelectorAll('#styleSeg button,#projSeg button')].every(b => b.hasAttribute('aria-pressed'))));
-  // the panel is on the right, like ChimeraX and PyMOL: right of the viewer, the fold button last in the toolbar, and a chain's popup opens beside it, never over it
-  const lay = await E(() => { const sb = document.getElementById('sidebar').getBoundingClientRect(), vp = document.getElementById('viewport').getBoundingClientRect(), tb = [...document.querySelector('.top-bar').querySelectorAll('button')].filter(b => b.offsetWidth); return { right: sb.left >= vp.right - 1, last: tb[tb.length - 1].id }; });
-  check('RB13', 'the controls panel sits to the right of the viewer', lay.right, lay);
-  check('RB13', 'the fold button is the last thing in the toolbar, next to the panel', lay.last === 'collapseBtn', lay.last);
-  const pop = await E(async () => { document.querySelector('#chainList .li[data-chain] .li-main').click(); await new Promise(r => setTimeout(r, 250)); const p = document.getElementById('chain-popup').getBoundingClientRect(), sb = document.getElementById('sidebar').getBoundingClientRect(); closeChainPopup(); return { pr: Math.round(p.right), sl: Math.round(sb.left) }; });
+  check('RB13', 'toggles say whether they are on', await E(() => ['spinBtn', 'resTagBtn'].every(id => document.getElementById(id).hasAttribute('aria-pressed')) && [...document.querySelectorAll('.rb-tab')].every(b => b.getAttribute('role') === 'tab' && b.hasAttribute('aria-selected')) && [...document.querySelectorAll('#styleSeg button,#projSeg button')].every(b => b.hasAttribute('aria-pressed'))));
+  // the panel is on the right, like ChimeraX and PyMOL: the pane right of the viewer, its tabs at the edge, a chain's popup beside it, never over it
+  const lay = await E(() => { const pn = document.getElementById('rbPanel').getBoundingClientRect(), rl = document.getElementById('rbRail').getBoundingClientRect(), vp = document.getElementById('viewport').getBoundingClientRect(); return { right: pn.left >= vp.right - 1, rail: rl.left >= pn.right - 1 && rl.right >= innerWidth - 1 }; });
+  check('RB13', 'the controls pane sits to the right of the viewer', lay.right, lay);
+  check('RB13', 'the tabs are a column at the right edge, beside the pane', lay.rail, lay);
+  const pop = await E(async () => { rbTab('models'); document.querySelector('#chainList .li[data-chain] .li-main').click(); await new Promise(r => setTimeout(r, 250)); const p = document.getElementById('chain-popup').getBoundingClientRect(), sb = document.getElementById('rbPanel').getBoundingClientRect(); closeChainPopup(); return { pr: Math.round(p.right), sl: Math.round(sb.left) }; });
   check('RB13', 'a chain popup opened from the panel does not cover the panel', pop.pr <= pop.sl, pop);
-  const fold = await E(async () => { const b = document.getElementById('collapseBtn'); b.click(); await new Promise(r => setTimeout(r, 50)); const hid = !document.getElementById('sidebar').offsetWidth; b.click(); await new Promise(r => setTimeout(r, 50)); return hid && document.getElementById('sidebar').offsetWidth > 0; });
-  check('RB13', 'the fold button hides the panel and brings it back', fold);
+  const fold = await E(async () => { const w = () => new Promise(r => setTimeout(r, 60)), b = () => document.querySelector('.rb-tab.on'), vis = () => document.getElementById('rbPanel').offsetWidth > 0; rbTab('colour'); await w(); b().click(); await w(); const hid = !vis(); document.getElementById('tab-analyse').click(); await w(); return { hid, back: vis(), tab: _rbTab }; });
+  check('RB13', 'clicking the open tab folds the pane away; another tab brings it back, on that tab', fold.hid && fold.back && fold.tab === 'analyse', fold);
+  const keysT = await E(async () => { const t = document.getElementById('tab-analyse'); t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })); await new Promise(r => setTimeout(r, 30)); return { tab: _rbTab, focus: document.activeElement.id, panes: [...document.querySelectorAll('.rb-pane')].filter(p => !p.hidden).length }; });
+  check('RB13', 'the arrow keys move between tabs, one pane at a time', keysT.tab === 'figure' && keysT.focus === 'tab-figure' && keysT.panes === 1, keysT);
+  const remem = await E(() => localStorage.getItem('ribbon_tab'));
+  check('RB13', 'the open tab is remembered', remem === 'figure', remem);
   // keys
   await E(() => { document.activeElement && document.activeElement.blur(); document.body.focus(); _userMoved = true; });
   await pg.keyboard.press('f'); await sleep(700);
@@ -712,15 +727,15 @@ async function rb13() {
   await pg.keyboard.press('Escape'); await sleep(200);
   check('RB13', 'Escape closes it and the focus goes back where it was', await E(() => !document.getElementById('export-modal').classList.contains('open')));
   // the sections fold from the keyboard and remember
-  await pg.focus('details[data-sec=labels] > summary'); await pg.keyboard.press('Enter'); await sleep(200);
-  const was = await E(() => document.querySelector('details[data-sec=labels]').open);
+  await pg.focus('details[data-sec=values] > summary'); await pg.keyboard.press('Enter'); await sleep(200);
+  const was = await E(() => document.querySelector('details[data-sec=values]').open);
   await pg.keyboard.press('Enter'); await sleep(200);
-  check('RB13', 'a section folds and unfolds with Enter', was !== await E(() => document.querySelector('details[data-sec=labels]').open));
-  await E(() => { document.querySelector('details[data-sec=labels]').open = true; }); await sleep(250);
-  const saved = await E(() => JSON.parse(localStorage.getItem('ribbon_sec') || '{}').labels);
+  check('RB13', 'a section folds and unfolds with Enter', was !== await E(() => document.querySelector('details[data-sec=values]').open));
+  await E(() => { document.querySelector('details[data-sec=values]').open = true; }); await sleep(250);
+  const saved = await E(() => JSON.parse(localStorage.getItem('ribbon_sec') || '{}').values);
   check('RB13', 'what is open is remembered', saved === true, saved);
-  await E(() => foldAll()); await sleep(100);
-  check('RB13', 'Fold all folds everything and turns into Unfold all', await E(() => [...document.querySelectorAll('details.rb-sec')].every(d => !d.open) && document.getElementById('foldAll').textContent === 'Unfold all'));
+  await E(() => { rbTab('colour'); foldAll(); }); await sleep(100);
+  check('RB13', 'Fold all folds the open pane and turns into Unfold all', await E(() => { const p = document.getElementById('pane-colour'); return [...p.querySelectorAll('details.rb-sec')].every(d => !d.open) && p.querySelector('.fold-all').textContent === 'Unfold all'; }));
   await ctx.close();
 }
 
@@ -1516,7 +1531,252 @@ async function rb25() {
 }
 
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25]];
+
+// ── RB26 the panel is tabs; Models puts things away without deleting them ─────────────────
+async function rb26() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB26 ' });
+  if (!(await has3d(pg))) { skipped.push('RB26 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  const empty = await E(() => [...document.querySelectorAll('.rb-tab')].filter(b => b.disabled).map(b => b.dataset.tab).join());
+  check('RB26', 'with nothing loaded only Open and Designs can be opened', empty === 'models,colour,analyse,figure', empty);
+  await go('4LIG');
+  const open1 = await E(() => [...document.querySelectorAll('.rb-tab')].every(b => !b.disabled));
+  check('RB26', 'a structure opens every tab', open1);
+  const panes = await E(() => { const r = {}; document.querySelectorAll('.rb-tab').forEach(b => { rbTab(b.dataset.tab); r[b.dataset.tab] = [...document.querySelectorAll('.rb-pane')].filter(p => !p.hidden).map(p => p.dataset.tab).join(); }); return r; });
+  check('RB26', 'each tab shows its own pane and only that one', Object.entries(panes).every(([k, v]) => k === v), panes);
+  const where = await E(() => ({ lig: rbPaneOf(document.getElementById('ligList')), ch: rbPaneOf(document.getElementById('chainList')), hl: rbPaneOf(document.getElementById('hlInput')), meas: rbPaneOf(document.getElementById('measList')), lbl: rbPaneOf(document.getElementById('resLblList')), dsg: rbPaneOf(document.getElementById('designList')) }));
+  check('RB26', 'chains and ligands live in Models; highlights in Colour; measuring in Analyse; labels in Figure', where.lig === 'models' && where.ch === 'models' && where.hl === 'colour' && where.meas === 'analyse' && where.lbl === 'figure' && where.dsg === 'designs', where);
+  const opened = await E(() => { rbTab('open'); rbOpenSec('values'); return { tab: _rbTab, open: document.querySelector('details[data-sec=values]').open }; });
+  check('RB26', 'asking for a section opens its tab and the section', opened.tab === 'colour' && opened.open, opened);
+  // things in the scene
+  await E(() => { document.getElementById('hlInput').value = 'A:2-5'; document.getElementById('hlSticks').checked = true; addHighlight(); state.residueLabels.push({ chain: 'A', resi: 3, resn: 'ALA', text: 'ALA 3' }); renderLabelTags(); const a = currentModel.selectedAtoms({ chain: 'A', resi: 2, atom: 'CA' })[0], b = currentModel.selectedAtoms({ chain: 'B', resi: 4, atom: 'CA' })[0]; state.measures.push({ id: 'm1', kind: 'dist', pts: [atomRef(a), atomRef(b)] }); recolorStructure(); renderMeasList(); updateSummaries(); rbTab('models'); });
+  await sleep(300);
+  const rows = await E(() => [...document.querySelectorAll('#modelExtras .li')].map(r => r.dataset.x).join());
+  check('RB26', 'Models lists the ions, highlights, measurements and labels', ['ions', 'hl', 'meas', 'labels'].every(k => rows.split(',').includes(k)), rows);
+  const pic = () => E(() => { viewer.render(); return viewer.pngURI().length; });
+  const tags = () => E(() => document.querySelectorAll('#label-layer .chain-tag').length);
+  const t0 = await tags(), p0 = await pic();
+  await pg.click('#modelExtras [data-x=labels] .x-eye'); await sleep(250);
+  check('RB26', 'the eye on Labels takes every label off the figure', await tags() < t0 && await E(() => state.residueLabels.length === 1 && state.off.labels === true));
+  await pg.click('#modelExtras [data-x=meas] .x-eye'); await sleep(250);
+  check('RB26', 'the eye on Measurements hides them and keeps them', await E(() => state.measures.length === 1 && !document.querySelector('#label-lines line[style=""]') && tagList().every(t => t.kind !== 'meas')));
+  await pg.click('#modelExtras [data-x=hl] .x-eye'); await sleep(250);
+  const hlOff = await E(() => { const fn = makeColorFn(); const a = currentModel.selectedAtoms({ chain: 'A', resi: 3, atom: 'CA' })[0]; return { c: fn(a), u: adjustColor(state.uniformColor), n: state.highlights.length }; });
+  check('RB26', 'the eye on Highlights draws the residues in their own colour again and keeps the list', hlOff.c === hlOff.u && hlOff.n === 1, hlOff);
+  await pg.click('#modelExtras [data-x=ions] .x-eye'); await sleep(250);
+  check('RB26', 'the picture changes as things are put away', await pic() !== p0);
+  const eyes = await E(() => [...document.querySelectorAll('#modelExtras .x-eye')].map(b => b.getAttribute('aria-pressed')).join());
+  check('RB26', 'every eye says it is off', eyes.split(',').every(v => v === 'false'), eyes);
+  // a design keeps what was put away
+  await E(() => { document.getElementById('designName').value = 'offs'; saveDesign(true); state.off = {}; loadDesign('offs'); }); await sleep(1500);
+  const back = await E(() => JSON.stringify(state.off));
+  check('RB26', 'a design keeps what the eyes put away', /"labels":true/.test(back) && /"meas":true/.test(back) && /"hl":true/.test(back) && /"ions":true/.test(back), back);
+  const sk = await E(() => { const off = _scStickResidues().filter(r => r.chain === 'A' && r.lo === 2 && r.hi === 5).length; delete state.off.hl; const on = _scStickResidues().filter(r => r.chain === 'A' && r.lo === 2 && r.hi === 5).length; state.off.hl = true; return { off, on }; });
+  check('RB26', 'a script draws what is on screen: a highlight put away is not exported as sticks', sk.off === 0 && sk.on === 1, sk);
+  await E(() => setExtraShown('labels', true)); await sleep(200);
+  check('RB26', 'and the eye brings them back', await tags() >= 1);
+  // the phone: the tabs are a row on top of the sheet
+  await ctx.close();
+  const m = await open({ tag: 'RB26m ', vp: { width: 390, height: 844 }, touch: true });
+  await m.go('4LIG');
+  const ph = await m.E(async () => { openControls(); await new Promise(r => setTimeout(r, 450)); const rl = document.getElementById('rbRail').getBoundingClientRect(), pn = document.getElementById('rbPanel').getBoundingClientRect(); return { row: rl.width > rl.height, above: rl.bottom <= pn.top + 1, fits: rl.right <= innerWidth + 0.5 && rl.left >= -0.5, n: [...document.querySelectorAll('.rb-tab')].filter(b => b.offsetWidth).length }; });
+  check('RB26', 'on a phone the tabs are one row across the top of the sheet, all six on screen', ph.row && ph.above && ph.fits && ph.n === 6, ph);
+  await m.ctx.close();
+}
+
+
+// ── RB27 the sequence and the selection ─────────────────────────────────────────────────────
+async function rb27() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB27 ' });
+  if (!(await has3d(pg))) { skipped.push('RB27 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ'); await sleep(300);
+  await E(() => { currentModel.selectedAtoms({ chain: 'A' }).forEach(x => { if (x.resi <= 12) x.ss = 'h'; }); seqBuild(); seqRender(); });   // 3Dmol does not read HELIX records from these synthetic files
+  const a = await E(() => ({ on: !document.getElementById('seqBar').hidden, rows: document.querySelectorAll('#sqRows .sq-row').length, letters: [...document.querySelectorAll('#sqRows .sq-r')].map(x => x.textContent).join(''), nums: [...document.querySelectorAll('#sqRows .sq-r[data-n]')].map(x => x.dataset.n).join(), chips: document.querySelectorAll('#sqChains .sq-chip').length, helix: document.querySelectorAll('#sqRows .sq-r.ss-h').length }));
+  const want = Array.from({ length: 24 }, (_, i) => ({ ALA: 'A', GLY: 'G', SER: 'S', LEU: 'L', LYS: 'K', VAL: 'V', THR: 'T', GLU: 'E', ASP: 'D', ILE: 'I', PHE: 'F', ARG: 'R', TYR: 'Y', PRO: 'P' })[['ALA', 'GLY', 'SER', 'LEU', 'LYS', 'VAL', 'THR', 'GLU', 'ASP', 'ILE', 'PHE', 'ARG', 'TYR', 'PRO'][(i + 1) % 14]]).join('');
+  check('RB27', 'on a desktop the sequence is shown, one chain, read from the structure', a.on && a.rows === 1 && a.letters === want, { a, want });
+  check('RB27', 'a number every ten residues, the helix marked, a chip per chain and All', a.nums === '10,20' && a.helix >= 10 && a.chips === 3, a);
+  await pg.click('#sqChains .sq-chip[data-ch="*"]'); await sleep(150);
+  check('RB27', 'All shows every chain', await E(() => document.querySelectorAll('#sqRows .sq-row').length) === 2);
+  await pg.click('#sqChains .sq-chip[data-ch="B"]'); await sleep(150);
+  check('RB27', 'a chip shows that chain', await E(() => [...document.querySelectorAll('#sqRows .sq-row')].map(r => r.dataset.ch).join()) === 'B');
+  await pg.click('#sqChains .sq-chip[data-ch="A"]'); await sleep(150);
+  const r = sel => pg.locator(`#sqRows .sq-r[data-k="${sel}"]`);
+  const base = await E(() => { const at = currentModel.selectedAtoms({ chain: 'A', resi: 5, atom: 'CA' })[0]; return makeColorFn()(at); });
+  await r('A|5').click(); await sleep(250);
+  const one = await E(() => { const at = currentModel.selectedAtoms({ chain: 'A', resi: 5, atom: 'CA' })[0]; return { keys: selKeys().join(), tint: makeColorFn()(at), fig: makeColorFn({ noDim: true })(at), seq: document.querySelector('#sqRows .sq-r[data-k="A|5"]').classList.contains('sel'), acts: document.querySelectorAll('#sqActs button').length }; });
+  check('RB27', 'a click on a letter selects that residue, here and in the structure (green)', one.keys === 'A|5' && one.seq && one.tint !== base, one);
+  check('RB27', 'the selection is not part of the figure: the colour a script or export reads is the real one', one.fig === base, { one, base });
+  check('RB27', 'what can be done with it appears beside the sequence', one.acts >= 5, one.acts);
+  await pg.keyboard.down('Shift'); await r('A|9').click(); await pg.keyboard.up('Shift'); await sleep(250);
+  check('RB27', 'Shift extends from the last one: 5–9', await E(() => selKeys().sort().join()) === ['A|5', 'A|6', 'A|7', 'A|8', 'A|9'].sort().join());
+  { const mk = process.platform === 'darwin' ? 'Meta' : 'Control'; await pg.keyboard.down(mk); await r('A|15').click(); await pg.keyboard.up(mk); } await sleep(250);
+  check('RB27', '⌘/Ctrl adds one', await E(() => selKeys().length) === 6);
+  check('RB27', 'the ranges are the form the highlight box reads', await E(() => selRangesText()) === 'A:5-9, A:15');
+  // a drag
+  const b1 = await r('A|2').boundingBox(), b2 = await r('A|7').boundingBox();
+  await pg.mouse.move(b1.x + 4, b1.y + 8); await pg.mouse.down(); await pg.mouse.move(b1.x + 20, b1.y + 8, { steps: 3 }); await pg.mouse.move(b2.x + 4, b2.y + 8, { steps: 4 }); await pg.mouse.up(); await sleep(250);
+  check('RB27', 'a drag across letters selects the range and nothing else', await E(() => selRangesText()) === 'A:2-7');
+  // the structure → the sequence
+  await E(() => { const at = currentModel.selectedAtoms({ chain: 'A', resi: 20, atom: 'CA' })[0]; rbOnHover(at); });
+  check('RB27', 'the residue under the pointer in the structure is marked in the sequence', await E(() => !!document.querySelector('#sqRows .sq-r.hov[data-k="A|20"]')));
+  await r('A|11').hover(); await sleep(200);
+  check('RB27', 'the residue under the pointer in the sequence is marked in the structure', await E(() => !!_seqHoverShape));
+  await pg.mouse.move(5, 5); await sleep(150);
+  check('RB27', 'and the mark goes when the pointer leaves', await E(() => !_seqHoverShape));
+  // acting on it
+  await pg.click('#sqActs [data-a=colour]'); await sleep(250);
+  check('RB27', 'Colour makes the selection a highlight', await E(() => state.highlights.length === 1 && state.highlights[0].sel === 'A:2-7'));
+  await pg.click('#sqActs [data-a=label]'); await sleep(250);
+  check('RB27', 'Label labels each selected residue', await E(() => state.residueLabels.length === 6));
+  // the export does not show it
+  const exA = await E(() => { _exOpts.res = '300'; const c = renderExport(); return c && c.toDataURL().length; });
+  const exB = await E(() => { const k = selKeys(); selClear(); const c = renderExport(); selSet(k); return c && c.toDataURL().length; });
+  check('RB27', 'an exported picture is the same with or without a selection on screen', exA === exB && exA > 1000, { exA, exB });
+  check('RB27', 'a design does not keep the selection', await E(() => !('sel' in collectDesign().state) && !JSON.stringify(collectDesign()).includes('"A|2"')));
+  // ⌘-click in the structure
+  await E(() => { selClear(); });
+  const pt = await E(() => { _userMoved = true; viewer.setStyle({}, { sphere: { radius: 1.6, colorfunc: makeColorFn() } }); viewer.render(); const at = currentModel.selectedAtoms({ chain: 'B', resi: 12, atom: 'CA' })[0]; const p = viewer.modelToScreen({ x: at.x, y: at.y, z: at.z }); return { x: p.x, y: p.y }; });
+  await pg.mouse.move(pt.x, pt.y); await sleep(100);
+  const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await pg.keyboard.down(mod); await pg.mouse.down(); await pg.mouse.up(); await pg.keyboard.up(mod); await sleep(400);
+  check('RB27', '⌘/Ctrl-click on the structure selects the residue, and the sequence follows', await E(() => selKeys().join() === 'B|12' && selectedChain === null), await E(() => selKeys()));
+  await E(() => recolorStructure());
+  await pg.keyboard.press('Escape');
+  check('RB27', 'Esc clears the selection', await E(() => _selN === 0 && !document.querySelector('#sqRows .sq-r.sel')));
+  // Q hides and shows it, and it is remembered
+  await E(() => document.body.focus()); await pg.keyboard.press('q'); await sleep(200);
+  check('RB27', 'Q hides the sequence and says so', await E(() => document.getElementById('seqBar').hidden && document.getElementById('seqBtn').getAttribute('aria-pressed') === 'false' && localStorage.getItem('ribbon_seq') === '0'));
+  await pg.keyboard.press('q'); await sleep(200);
+  check('RB27', 'and shows it again', await E(() => !document.getElementById('seqBar').hidden));
+  await E(() => toggleChain('A')); await sleep(250);
+  check('RB27', 'a hidden chain is faded in the sequence', await E(() => document.querySelector('#sqRows .sq-row[data-ch="A"]').classList.contains('off')));
+  await ctx.close();
+  const m = await open({ tag: 'RB27m ', vp: { width: 390, height: 844 }, touch: true });
+  await m.go('7SEQ');
+  check('RB27', 'on a phone the sequence starts hidden (the structure needs the room)', await m.E(() => document.getElementById('seqBar').hidden));
+  await m.ctx.close();
+}
+
+
+// ── RB28 the command line and the selection language ──────────────────────────────────────
+async function rb28() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB28 ' });
+  if (!(await has3d(pg))) { skipped.push('RB28 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ');
+  await E(() => { currentModel.selectedAtoms({}).forEach(x => { if (x.chain === 'A' && x.resi <= 12) x.ss = 'h'; }); });
+  // the language, against a count made here from the atoms themselves
+  const lang = await E(() => {
+    const at = currentModel.selectedAtoms({}), res = f => { const k = {}; at.filter(f).forEach(a => { k[a.chain + '|' + a.resi] = 1; }); return Object.keys(k).length; };
+    const n = t => { const r = specResidues(t); return r.err ? 'ERR ' + r.err : r.keys.length; };
+    const na = t => { const r = specAtoms(t); return r.err ? 'ERR ' + r.err : r.atoms.length; };
+    return [
+      ['chain A', n('chain A'), res(a => a.chain === 'A')], ['A', n('A'), res(a => a.chain === 'A')], ['/A', n('/A'), res(a => a.chain === 'A')],
+      ['/A:1-5', n('/A:1-5'), 5], ['A:1-5', n('A:1-5'), 5], [':5', n(':5'), 2], ['resi 3-4,9', n('resi 3-4,9'), 6], ['3-4', n('3-4'), 4],
+      ['lys', n('lys'), res(a => a.resn === 'LYS')], ['resn LYS,ARG', n('resn LYS,ARG'), res(a => a.resn === 'LYS' || a.resn === 'ARG')], [':LYS', n(':LYS'), res(a => a.resn === 'LYS')],
+      ['name CA', na('name CA'), at.filter(a => a.atom === 'CA').length], ['@CA and chain A', na('@CA and chain A'), at.filter(a => a.atom === 'CA' && a.chain === 'A').length],
+      ['chain A lys', n('chain A lys'), res(a => a.chain === 'A' && a.resn === 'LYS')], ['not chain A', n('not chain A'), res(a => a.chain !== 'A')],
+      ['(chain A or chain B) and aromatic', n('(chain A or chain B) and aromatic'), res(a => ['PHE', 'TRP', 'TYR', 'HIS'].includes(a.resn))],
+      ['helix', n('helix'), res(a => a.ss === 'h')], ['helix and not chain B', n('helix and not chain B'), res(a => a.ss === 'h' && a.chain !== 'B')],
+      ['hydrophobic', n('hydrophobic'), res(a => ['ALA', 'VAL', 'LEU', 'ILE', 'MET', 'PHE', 'TRP', 'PRO', 'CYS'].includes(a.resn))],
+      ['byres name CA and resi 2', n('byres name CA and resi 2'), 2], ['chain a', n('chain a'), res(a => a.chain === 'A')],
+    ];
+  });
+  lang.forEach(([t, got, want]) => check('RB28', 'the language: “' + t + '”', got === want, { got, want }));
+  const errs = await E(() => ['chain Z', 'lyss', '(chain A', 'within', 'chain A and', 'resi', 'foo bar'].map(t => [t, specParse(t).err || '']));
+  check('RB28', 'a word it does not know says so; a near miss gets a "did you mean"', errs.every(([, e]) => e) && /chains: A, B/.test(errs[0][1]) && /Did you mean/.test(errs[1][1]) && /never closed/.test(errs[2][1]), errs);
+  // within, against a brute-force distance
+  await go('4LIG');
+  const w = await E(() => {
+    const at = currentModel.selectedAtoms({}), L = at.filter(a => a.resn === 'LIG' || a.resn === 'PRC'), k = {};
+    at.forEach(a => { if (a.resn === 'LIG' || a.resn === 'PRC' || a.resn === 'HOH') return; if (L.some(b => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) <= 5)) k[a.chain + '|' + a.resi] = 1; });
+    const r = specResidues('within 5 of ligand and not ligand'); return { got: r.keys.slice().sort().join(), want: Object.keys(k).sort().join(), n: r.keys.length };
+  });
+  check('RB28', '“within 5 of ligand” is every residue with an atom within 5 Å of one, by brute force', w.got === w.want && w.n > 0, w);
+  const lw = await E(() => ({ lig: specResidues('LIG').keys.length, ions: specResidues('ions').keys.length, w: specResidues('waters').keys.length, all: specResidues('ligand').keys.length }));
+  check('RB28', 'a ligand by its code; ions; waters', lw.lig === 1 && lw.ions === 1 && lw.w === 3 && lw.all === 2, lw);
+  // the commands
+  const run = c => E(c => { const r = runCommand(c, { noHistory: true }); return r && (r.err ? 'ERR ' + r.err : r.ok); }, c);
+  const pic = () => E(() => { viewer.render(); return viewer.pngURI().length; });
+  let p0 = await pic(), r;
+  r = await run('color LIG orange');
+  check('RB28', 'color <ligand> <colour> sets that ligand’s carbon colour', await E(() => { const l = ligands.find(x => x.resn === 'LIG'); return ligHex(l) === NAMED_COLORS.orange && state.highlights.length === 0; }) && await pic() !== p0, r);
+  r = await run('color chain A red');
+  check('RB28', 'color <whole chain> <colour> is the chain’s own colour', await E(() => state.chainColors.A === NAMED_COLORS.red), r);
+  r = await run('color A:2-4 #3366cc');
+  check('RB28', 'color <some residues> <hex> is a highlight of exactly those', await E(() => state.highlights.length === 1 && state.highlights[0].sel === 'A:2-4' && state.highlights[0].color === '#3366cc'), r);
+  r = await run('color bychain');
+  check('RB28', 'color <scheme> colours the whole structure', await E(() => state.color === 'chain' && document.getElementById('topColor').value === 'chain'), r);
+  r = await run('color');
+  check('RB28', 'a command missing its argument says what it wants', /^ERR /.test(r), r);
+  r = await run('select within 5 of ligand and not ligand');
+  check('RB28', 'select sets the selection the sequence and panel show', await E(() => _selN) === w.n, r);
+  p0 = await pic(); r = await run('show sel as sticks');
+  check('RB28', 'show <sel> as sticks draws them as sticks and the picture changes', await E(() => state.reps.length === 1 && state.reps[0].rep === 'stick') && await pic() !== p0, r);
+  check('RB28', 'sticks drawn by a command are in the scripts', await E(() => { const t = state.reps[0].sel.split(',')[0].trim(); const m = /^([A-Z]):(\d+)/.exec(t); return _scStickResidues().some(x => x.chain === m[1] && x.lo <= +m[2] && x.hi >= +m[2]); }));
+  r = await run('hide sticks'); check('RB28', 'hide sticks takes them off', await E(() => state.reps.length === 0), r);
+  r = await run('show waters'); check('RB28', 'show waters', await E(() => state.showWaters && document.getElementById('showWaters').checked), r);
+  r = await run('hide waters'); check('RB28', 'hide waters', await E(() => !state.showWaters), r);
+  r = await run('hide chain B'); check('RB28', 'hide <chain> hides the chain (same as its eye)', await E(() => state.hiddenChains.B === true), r);
+  r = await run('show chain B'); check('RB28', 'show <chain> brings it back', await E(() => !state.hiddenChains.B), r);
+  r = await run('hide A:1-3'); check('RB28', 'hide <residues> stops drawing just them', await E(() => state.hide.join() === 'A:1-3'), r);
+  r = await run('show A:1-3'); check('RB28', 'and show brings them back', await E(() => state.hide.length === 0), r);
+  r = await run('label A:3'); check('RB28', 'label <residue>', await E(() => state.residueLabels.some(x => x.chain === 'A' && x.resi === 3)), r);
+  r = await run('label chain B "Beta"'); check('RB28', 'label <chain> "text" names the chain', await E(() => state.chainLabels.B === 'Beta'), r);
+  r = await run('distance A:2@CA B:4@CA');
+  const dd = await E(() => { const a = currentModel.selectedAtoms({ chain: 'A', resi: 2, atom: 'CA' })[0], b = currentModel.selectedAtoms({ chain: 'B', resi: 4, atom: 'CA' })[0]; return { want: Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z), got: measureValue(state.measures[state.measures.length - 1]) }; });
+  check('RB28', 'distance <atom> <atom> is the distance between their coordinates', Math.abs(dd.want - dd.got) < 1e-6, dd);
+  r = await run('distance A:2 B:4'); check('RB28', 'an atom spec without @ means its CA', /Å/.test(r), r);
+  r = await run('bg dark; outline thick; projection ortho');
+  check('RB28', 'commands joined with ; run in turn', await E(() => state.bg === 'dark' && state.border === 'thick' && state.projection === 'orthographic'), r);
+  r = await run('style surface'); check('RB28', 'style surface', await E(() => state.style === 'surface'), r); await run('style cartoon');
+  r = await run('colr red'); check('RB28', 'a misspelt command is answered with the right one', /color/.test(r) && /^ERR/.test(r), r);
+  r = await run('interface A B'); check('RB28', 'interface A B shows the contacts', await E(() => state.iface && state.iface.a === 'A' && state.iface.b === 'B' && state.iface.show), r);
+  check('RB28', 'and “interface” is then a word of the language', await E(() => specResidues('interface').keys.length > 0));
+  r = await run('pocket LIG'); check('RB28', 'pocket <ligand>', await E(() => Object.keys(state.pockets).length === 1), r);
+  r = await run('only chain A'); check('RB28', 'only <chain>', await E(() => state.hiddenChains.B === true && !state.hiddenChains.A), r); await run('show chain B');
+  // a design keeps what the commands drew
+  await run('show A:5-6 as spheres'); await run('hide B:1-2');
+  check('RB28', 'a design keeps what commands drew and hid', await E(() => { const d = collectDesign().state; return d.reps.length === 1 && d.reps[0].rep === 'sphere' && d.hide.join() === 'B:1-2'; }));
+  // completion
+  const sg = t => E(t => cmdSuggest(t).list.map(x => x.t), t);
+  check('RB28', 'col → color', (await sg('col'))[0] === 'color');
+  check('RB28', 'sel → select (an alias completes to the command)', (await sg('sel'))[0] === 'select');
+  check('RB28', 'after “color ” the schemes are offered', (await sg('color ')).includes('bychain'));
+  check('RB28', 'after “color chain ” the chains of this structure', (await sg('color chain ')).slice(0, 2).join() === 'A,B');
+  check('RB28', 'after “select resn ” the residue names in this structure', (await sg('select resn ')).includes('LIG') || (await sg('select resn ')).includes('ALA'));
+  check('RB28', 'after a selection, colours come first', !!(await E(() => cmdSuggest('color A:2-4 ').list[0].hex)));
+  check('RB28', 'after “select within ” a distance', /^\d/.test((await sg('select within '))[0]));
+  check('RB28', 'a ligand code is offered by its letters', (await sg('zoom LI')).includes('LIG'));
+  await E(() => runCommand('color chain B teal'));
+  check('RB28', 'a line typed before is offered first when the start matches', (await sg('color chain B t'))[0] === 'color chain B teal');
+  await E(() => { CMD.hist = []; CMD.next = {}; });
+  check('RB28', 'with nothing typed after color, the likely next words lead: the selection, then a scheme', await E(() => { const l = cmdSuggest('color ').list.map(x => x.t); return l[0] === 'sel' && l.indexOf('bychain') >= 0 && l.indexOf('bychain') < 4; }), await sg('color '));
+  check('RB28', 'after “color ligand ” the usual ligand colour leads', (await sg('color ligand '))[0] === 'yellow');
+  // the keyboard (a fresh history, so what is offered is the dictionary, not a line typed before)
+  await E(() => { CMD.hist = []; document.activeElement && document.activeElement.blur(); });
+  await pg.keyboard.press('/'); await sleep(100);
+  check('RB28', '/ goes to the command line', await E(() => document.activeElement.id === 'cmdInput'));
+  await pg.keyboard.type('col'); await sleep(120);
+  check('RB28', 'the rest of the word is shown in grey as you type', await E(() => document.querySelector('#cmdGhost .cg-r').textContent === 'or'));
+  await pg.keyboard.press('Tab'); await sleep(80);
+  check('RB28', 'Tab takes it', await E(() => document.getElementById('cmdInput').value === 'color '));
+  await pg.keyboard.type('chain A gre'); await pg.keyboard.press('Tab'); await sleep(80);
+  check('RB28', 'and again, mid-line', await E(() => document.getElementById('cmdInput').value) === 'color chain A green ');
+  await pg.keyboard.press('Enter'); await sleep(250);
+  check('RB28', 'Enter runs it, empties the line and says what happened', await E(() => state.chainColors.A === NAMED_COLORS.green && document.getElementById('cmdInput').value === '' && !document.getElementById('cmdOut').hidden));
+  await pg.keyboard.press('ArrowUp'); await sleep(60);
+  check('RB28', '↑ brings back what was run', await E(() => document.getElementById('cmdInput').value) === 'color chain A green');
+  await pg.keyboard.press('Escape'); await pg.keyboard.press('Escape'); await sleep(60);
+  check('RB28', 'Esc leaves the line', await E(() => document.activeElement.id !== 'cmdInput'));
+  await E(() => cmdFocus('zzzz')); await pg.keyboard.press('Enter'); await sleep(100);
+  check('RB28', 'a line that fails stays, selected, so it can be fixed', await E(() => document.getElementById('cmdInput').value === 'zzzz' && document.getElementById('cmdOut').classList.contains('err')));
+  await ctx.close();
+  const m = await open({ tag: 'RB28m ', vp: { width: 390, height: 844 }, touch: true });
+  await m.go('7SEQ');
+  check('RB28', 'on a phone there is no command line (the panel does it all)', await m.E(() => getComputedStyle(document.getElementById('cmdBar')).display === 'none'));
+  await m.ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
