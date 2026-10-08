@@ -66,6 +66,7 @@ const f3 = (v, w) => v.toFixed(3).padStart(w);
 function atomLine(rec, n, name, resn, ch, resi, x, y, z, b = 20, elem = 'C') {
   return rec.padEnd(6) + String(n).padStart(5) + ' ' + name.padEnd(4) + ' ' + resn.padStart(3) + ' ' + ch + String(resi).padStart(4) + '    ' + f3(x, 8) + f3(y, 8) + f3(z, 8) + '  1.00' + b.toFixed(2).padStart(6) + '           ' + elem.padStart(2);
 }
+const NAMES3 = ['ALA', 'GLY', 'SER', 'LEU', 'LYS', 'VAL', 'THR', 'GLU', 'ASP', 'ILE', 'PHE', 'ARG', 'TYR', 'PRO'];
 // chains: [{id, len, shape:'helix'|'x'|'y', x0, y0, b:(i)=>number}], extras: ligand/ion/modified/waters, models
 function synPdb(o = {}) {
   const L = []; let n = 1;
@@ -83,7 +84,7 @@ function synPdb(o = {}) {
       else if (c.shape === 'x') { x = (c.x0 || 0) + i * 3.8; y = Math.sin(i / 3) * 3 + 0.4 * m; z = Math.cos(i / 3) * 3; }
       else if (c.shape === 'y') { x = (c.x0 || 0) + Math.sin(i / 3) * 3 + 0.4 * m; y = i * 3.8; z = Math.cos(i / 3) * 3; }
       else { x = (c.x0 || 0) + Math.cos(i) * 4 + 0.4 * m; y = Math.sin(i) * 4; z = i * 1.5 + 0.5 * m * Math.sin(i * 2.1); }   // models that differ in shape, not only in place
-      const resn = (o.mod && c.id === 'A' && i === 6) ? 'MSE' : 'ALA';
+      const resn = (o.mod && c.id === 'A' && i === 6) ? 'MSE' : (o.names ? NAMES3[(i + (c.shift || 0)) % NAMES3.length] : 'ALA');
       const rec = resn === 'MSE' ? 'HETATM' : 'ATOM';
       const b = c.b ? c.b(i) : 20;
       if (resn === 'MSE') { L.push(atomLine(rec, n++, 'N', resn, c.id, i, x - 1, y, z, b, 'N')); L.push(atomLine(rec, n++, 'CA', resn, c.id, i, x, y, z, b)); L.push(atomLine(rec, n++, 'C', resn, c.id, i, x + 1, y, z, b)); }
@@ -103,6 +104,20 @@ function synCif() {
     rows.push(['ATOM', n++, 'C', 'CA', 'ALA', ch, i, (x0 + Math.cos(i) * 4).toFixed(3), (Math.sin(i) * 4).toFixed(3), (i * 1.5).toFixed(3), '1.00', '20.00', ch, i, 1].join(' '));
   return 'data_SYN\nloop_\n_atom_site.group_PDB\n_atom_site.id\n_atom_site.type_symbol\n_atom_site.label_atom_id\n_atom_site.label_comp_id\n_atom_site.label_asym_id\n_atom_site.label_seq_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n_atom_site.occupancy\n_atom_site.B_iso_or_equiv\n_atom_site.auth_asym_id\n_atom_site.auth_seq_id\n_atom_site.pdbx_PDB_model_num\n' + rows.join('\n') + '\n#\n';
 }
+// A copy of a structure turned and moved, optionally with some residues dropped, renamed or pushed out of place.
+function rotatedCopy(text, o = {}) {
+  const ax = o.axis || [1, 2, 3], n = Math.hypot(...ax), u = ax.map(v => v / n), th = (o.deg ?? 70) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), t = o.t || [20, -15, 30];
+  const R = [[c + u[0] * u[0] * (1 - c), u[0] * u[1] * (1 - c) - u[2] * s, u[0] * u[2] * (1 - c) + u[1] * s], [u[1] * u[0] * (1 - c) + u[2] * s, c + u[1] * u[1] * (1 - c), u[1] * u[2] * (1 - c) - u[0] * s], [u[2] * u[0] * (1 - c) - u[1] * s, u[2] * u[1] * (1 - c) + u[0] * s, c + u[2] * u[2] * (1 - c)]];
+  return text.split('\n').filter(l => !(o.drop && /^(ATOM|HETATM)/.test(l) && o.drop.includes(l[21] + parseInt(l.slice(22, 26))))).map(l => {
+    if (!/^(ATOM  |HETATM)/.test(l)) return l;
+    const key = l[21] + parseInt(l.slice(22, 26)); let p = [+l.slice(30, 38), +l.slice(38, 46), +l.slice(46, 54)];
+    if (o.push && o.push.includes(key)) p = [p[0] + 9, p[1], p[2]];   // out of place by 9 Å before the turn
+    const q = [0, 1, 2].map(i => R[i][0] * p[0] + R[i][1] * p[1] + R[i][2] * p[2] + t[i]);
+    let out = l.slice(0, 30) + f3(q[0], 8) + f3(q[1], 8) + f3(q[2], 8) + l.slice(54);
+    if (o.rename && o.rename[key]) out = out.slice(0, 17) + o.rename[key] + out.slice(20);
+    return out;
+  }).join('\n');
+}
 const AF_B = i => (i <= 3 ? 95 : i <= 6 ? 80 : i <= 9 ? 60 : 30);
 const STRUCTS = {
   '1XYZ': () => synPdb(),
@@ -110,6 +125,9 @@ const STRUCTS = {
   '3TAL': () => synPdb({ chains: [{ id: 'A', len: 180, shape: 'y' }] }),
   '4LIG': () => synPdb({ ligand: true, protac: true, ion: true, mod: true, waters: true }),
   '5NMR': () => synPdb({ chains: [{ id: 'A', len: 20, x0: 0 }], models: 3 }),
+  '7SEQ': () => synPdb({ chains: [{ id: 'A', len: 24, x0: 0 }, { id: 'B', len: 24, x0: 20, shape: 'x', shift: 5 }], names: true }),
+  '7ROT': () => rotatedCopy(synPdb({ chains: [{ id: 'A', len: 24, x0: 0 }, { id: 'B', len: 24, x0: 20, shape: 'x', shift: 5 }], names: true })),
+  '7MUT': () => rotatedCopy(synPdb({ chains: [{ id: 'A', len: 24, x0: 0 }, { id: 'B', len: 24, x0: 20, shape: 'x', shift: 5 }], names: true }), { drop: ['A5'], push: ['A3', 'A9'], rename: { A7: 'TRP' } }),
   '6IFC': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 4 }] }),   // B lies 4 Å from A along its first six residues
   '6FAR': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 60 }] }),
 };
@@ -931,8 +949,90 @@ async function rb19() {
   await ctx.close();
 }
 
+// ── RB20 comparing two structures ───────────────────────────────────────────────────────────
+async function rb20() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB20 ' });
+  if (!(await has3d(pg))) { skipped.push('RB20 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  // the arithmetic, apart from the page
+  const m = await E(() => {
+    const rnd = (() => { let s = 12345; return () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296; })();
+    const q = [rnd() - .5, rnd() - .5, rnd() - .5, rnd() - .5], n = Math.hypot(...q); const [w, x, y, z] = q.map(v => v / n);
+    const R0 = [[w*w+x*x-y*y-z*z, 2*(x*y-w*z), 2*(x*z+w*y)], [2*(x*y+w*z), w*w-x*x+y*y-z*z, 2*(y*z-w*x)], [2*(x*z-w*y), 2*(y*z+w*x), w*w-x*x-y*y+z*z]], t0 = [3, -7, 11];
+    const P = [...Array(40)].map(() => [rnd() * 30, rnd() * 30, rnd() * 30]), app = (R, t, p) => [0, 1, 2].map(i => R[i][0] * p[0] + R[i][1] * p[1] + R[i][2] * p[2] + t[i]);
+    const Q = P.map(p => app(R0, t0, p)), F = hornFit(P, Q);
+    let dR = 0; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) dR = Math.max(dR, Math.abs(F.R[i][j] - R0[i][j]));
+    const det = M => M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1]) - M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0]) + M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]);
+    const mir = hornFit(P, Q.map(p => [-p[0], p[1], p[2]]));
+    const nw1 = nwAlign('ACDEFG', 'ACEFG'), nw2 = nwAlign('MKVLAAGIV', 'MKVLAAGIV');
+    return { dR, det: det(F.R), tdiff: Math.max(...F.t.map((v, i) => Math.abs(v - t0[i]))), mirDet: det(mir.R), nw1: nw1.pairs.map(p => p.join(':')).join(), nw1id: nw1.ident, nw2: nw2.pairs.length, nw2id: nw2.ident, none: nwAlign('', 'AAA') };
+  });
+  check('RB20', 'Horn recovers a known rotation and translation to rounding', m.dR < 1e-9 && m.tdiff < 1e-8 && Math.abs(m.det - 1) < 1e-9, m);
+  check('RB20', 'a mirror image is never fitted by a reflection', Math.abs(m.mirDet - 1) < 1e-9, m.mirDet);
+  check('RB20', 'the sequence alignment puts the gap where the residue is missing', m.nw1 === '0:0,1:1,3:2,4:3,5:4' && m.nw1id === 1 && m.nw2 === 9 && m.nw2id === 1 && m.none === null, m);
+  // an identical structure, turned and moved
+  await go('7SEQ'); await sleep(300);
+  const pic0 = await E(() => viewer.pngURI());
+  await E(() => document.querySelectorAll('details.rb-sec').forEach(d => { d.open = true; }));
+  await E(() => { document.getElementById('ovInput').value = '7ROT'; document.getElementById('ovGo').click(); }); await sleep(2500);
+  const r = await E(() => ({ res: ovl && ovl.res, ref: state.overlay.ref, mov: state.overlay.mov, body: !document.getElementById('ovBody').hidden, card: document.getElementById('ovResult').textContent, models: viewer.selectedAtoms({}).length, prim: currentModel.selectedAtoms({}).length, ov: ovl.atoms.length }));
+  check('RB20', 'a rotated, moved copy aligns with an RMSD at the rounding of the file, over every residue', r.res && r.res.rmsd < 0.002 && r.res.n === 24 && r.res.total === 24 && r.res.ident === 1, r);
+  check('RB20', 'the best pair of chains is found (A with A) and the card says what was done', r.ref === 'A' && r.mov === 'A' && r.body && /RMSD 0\.00 Å over 24 residues/.test(r.card) && /100% identical/.test(r.card), r);
+  const where = await E(() => { let worst = 0; ['A', 'B'].forEach(c => currentModel.selectedAtoms({ chain: c, atom: 'CA' }).forEach(a => { const b = ovl.model.selectedAtoms({ chain: c, resi: a.resi, atom: 'CA' })[0]; worst = Math.max(worst, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)); })); return worst; });
+  check('RB20', 'the whole second structure moved with it, chain B as well as the one fitted', where < 0.005, where);
+  check('RB20', 'the second structure is not pickable and the first still is', await E(() => !ovl.atoms.some(a => a.clickable) && currentModel.selectedAtoms({}).some(a => a.clickable)));
+  check('RB20', 'both structures are inside the view', await (async () => { const b = await boxOf(E); return b.x0 >= -4 && b.x1 <= b.W + 4 && b.y0 >= -4 && b.y1 <= b.H + 4; })());
+  const pic1 = await E(() => viewer.pngURI());
+  // colour, visibility
+  await E(() => document.querySelectorAll('#ovColors .swatch')[2].click()); await sleep(200);
+  check('RB20', 'a colour for the second structure changes the picture, and the palette tuning acts on it', await E(() => viewer.pngURI()) !== pic1 && await E(() => state.overlay.color === OV_COLORS[2]));
+  await E(() => { state.hsl.h = 100; recolorStructure(); }); const tuned = await E(() => viewer.pngURI()); await E(() => { state.hsl.h = 0; recolorStructure(); });
+  check('RB20', 'palette tuning moves the second colour too', tuned !== await E(() => viewer.pngURI()));
+  await E(() => { document.getElementById('ovShow').checked = false; document.getElementById('ovShow').dispatchEvent(new Event('change')); }); await sleep(200);
+  check('RB20', 'hiding it leaves the first structure as it was', await E(() => viewer.pngURI()) !== pic1);
+  await E(() => { document.getElementById('ovShow').checked = true; document.getElementById('ovShow').dispatchEvent(new Event('change')); });
+  // a mutation, a missing residue and two residues out of place
+  await E(() => { document.getElementById('ovInput').value = '7MUT'; document.getElementById('ovGo').click(); }); await sleep(2500);
+  await E(() => { ['ovRef', 'ovMov'].forEach(id => { const e = document.getElementById(id); e.value = 'A'; e.dispatchEvent(new Event('change')); }); });   // the best pair here is B with B (whole and identical); the interesting one is A with A
+  const u = await E(() => ({ res: ovl.res, models: viewer.selectedAtoms({}).length, prim: currentModel.selectedAtoms({}).length, ov: ovl.atoms.length }));
+  check('RB20', 'a second structure replaces the first rather than adding to it', u.models === u.prim + u.ov && u.ov < r.ov, u);
+  check('RB20', 'a gap, a mutation and two outliers: the pairs are made, the outliers left out, the fit stays tight', u.res.total === 23 && u.res.n === 21 && u.res.rmsd < 0.002 && u.res.ident > 0.9 && u.res.ident < 1, u.res);
+  const offA = await E(() => { const k = (c, r) => ovl.model.selectedAtoms({ chain: c, resi: r, atom: 'CA' })[0], p = (c, r) => currentModel.selectedAtoms({ chain: c, resi: r, atom: 'CA' })[0]; const d = r => Math.hypot(k('A', r).x - p('A', r).x, k('A', r).y - p('A', r).y, k('A', r).z - p('A', r).z); return { good: Math.max(d(2), d(10), d(20)), out: d(3) }; });
+  check('RB20', 'the residues kept sit on top of each other and the outlier does not', offA.good < 0.01 && offA.out > 5, offA);
+  // another chain, the same structure
+  await E(() => { const s = document.getElementById('ovMov'); s.value = 'B'; s.dispatchEvent(new Event('change')); });
+  check('RB20', 'choosing another chain re-aligns and says it', await E(() => ovl.res.mov === 'B') );
+  await E(() => { const s = document.getElementById('ovMov'); s.value = 'A'; s.dispatchEvent(new Event('change')); });
+  // reset and align again
+  await E(() => document.getElementById('ovReset').click());
+  const back = await E(() => { const a = ovl.atoms[0]; return Math.hypot(a.x - a._o[0], a.y - a._o[1], a.z - a._o[2]) + (ovl.res === null ? 0 : 1); });
+  check('RB20', 'Put it back returns every atom to where its file had it', back === 0, back);
+  await E(() => document.getElementById('ovAlign').click()); await sleep(300);
+  check('RB20', 'Align again aligns again', await E(() => ovl.res && ovl.res.n === 21));
+  // a design keeps it
+  await E(() => { document.getElementById('designName').value = 'cmp'; saveDesign(); }); await sleep(500);
+  const keep = await E(() => JSON.stringify(state.overlay));
+  await E(() => { removeOverlay(); loadDesign('cmp'); }); await sleep(4500);
+  const re = await E(() => ({ o: JSON.stringify(state.overlay), rmsd: ovl && ovl.res && ovl.res.rmsd, n: ovl && ovl.res && ovl.res.n }));
+  check('RB20', 'a design keeps the second structure, its chains and colour, and aligns it again when it loads', re.o === keep && re.n === 21 && re.rmsd < 0.002, { re, keep });
+  // remove: nothing of it is left
+  await E(() => document.getElementById('ovRemove').click()); await sleep(400);
+  check('RB20', 'removing it leaves the first structure alone', await E(() => viewer.selectedAtoms({}).length === currentModel.selectedAtoms({}).length && !state.overlay && document.getElementById('ovBody').hidden));
+  // bad input
+  await E(() => { document.getElementById('ovInput').value = 'zzzz!'; document.getElementById('ovGo').click(); });
+  check('RB20', 'something that is not an id is refused with a reason', /Enter a PDB code/.test(await E(() => document.getElementById('ovErr').textContent)));
+  await E(() => { document.getElementById('ovInput').value = '9ZZ9'; document.getElementById('ovGo').click(); }); await sleep(700);
+  check('RB20', 'an entry that does not exist is named', /There is no PDB entry “9ZZ9”/.test(await E(() => document.getElementById('ovErr').textContent)) && await E(() => !document.getElementById('ovGo').disabled));
+  await pg.setInputFiles('#ovFileInput', { name: 'junk.pdb', mimeType: 'text/plain', buffer: Buffer.from('not a structure') }); await sleep(600);
+  check('RB20', 'a file that is not a structure is refused', /does not look like a structure/.test(await E(() => document.getElementById('ovErr').textContent)) && await E(() => !state.overlay));
+  await pg.setInputFiles('#ovFileInput', { name: 'copy.pdb', mimeType: 'text/plain', buffer: Buffer.from(rotatedCopy(STRUCTS['7SEQ']())) }); await sleep(1800);
+  check('RB20', 'a file works as the second structure', await E(() => ovl && ovl.res && ovl.res.rmsd < 0.002 && state.overlay.kind === 'file'));
+  await go('1XYZ');
+  check('RB20', 'a new first structure drops the second', await E(() => !state.overlay && !ovl && viewer.selectedAtoms({}).length === currentModel.selectedAtoms({}).length));
+  await ctx.close();
+}
+
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

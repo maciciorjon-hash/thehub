@@ -172,6 +172,7 @@ input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webki
 .li-acts{display:flex;align-items:center;gap:0;}
 .li input.inp{height:28px;font-family:var(--sans);}
 .empty-note{font-size:var(--fs-2);color:var(--text3);line-height:1.5;}
+#ovBody{display:flex;flex-direction:column;gap:12px;}
 .if-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 84px;gap:8px;align-items:end;}
 .hl-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;}
 .hl-form .check{grid-column:1/-1;}
@@ -646,6 +647,29 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       </div>
     </details>
 
+    <details class="rb-sec rb-needs" data-sec="compare">
+      <summary><span class="rb-sec-t">Compare</span><span class="rb-sec-sum" id="sum-compare"></span></summary>
+      <div class="rb-body">
+        <div class="hint">Lay a second structure over this one. It is moved onto this one by the residues two chains have in common (a sequence alignment, then a rigid fit that leaves out the outliers).</div>
+        <div class="fld">
+          <label for="ovInput">Second structure</label>
+          <div class="row"><input type="text" class="inp" id="ovInput" placeholder="e.g. 4HHB or P04637" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" id="ovGo" type="button">Add</button></div>
+        </div>
+        <div class="row"><button type="button" class="btn sm" id="ovFile">Open file…</button><input type="file" id="ovFileInput" hidden accept=".pdb,.ent,.cif,.mmcif,.pqr,.gz"></div>
+        <div class="err-text" id="ovErr" role="alert"></div>
+        <div id="ovBody" hidden>
+          <div class="info-card" id="ovResult"></div>
+          <div class="if-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+            <div class="fld"><label for="ovRef">Onto chain (this)</label><select id="ovRef" class="inp"></select></div>
+            <div class="fld"><label for="ovMov">Chain (second)</label><select id="ovMov" class="inp"></select></div>
+          </div>
+          <div class="fld"><span>Colour</span><div class="swatches" id="ovColors" role="group" aria-label="Colour of the second structure"></div></div>
+          <label class="check"><input type="checkbox" id="ovShow" checked> Show it</label>
+          <div class="row" style="flex-wrap:wrap"><button type="button" class="btn sm" id="ovAlign">Align again</button><button type="button" class="btn sm" id="ovReset">Put it back</button><button type="button" class="btn sm danger" id="ovRemove">Remove</button></div>
+        </div>
+      </div>
+    </details>
+
     <details class="rb-sec rb-needs" data-sec="appearance">
       <summary><span class="rb-sec-t">Appearance</span><span class="rb-sec-sum" id="sum-appearance"></span></summary>
       <div class="rb-body">
@@ -860,7 +884,7 @@ var viewer=null, currentModel=null, currentPdbId='', currentSurfs=[], currentSou
 var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',bg:'transparent',surfaceOpacity:0.55,projection:'perspective',
   chainColors:{},chainLabels:{},labelOffsets:{},labelAnchors:{},showLines:true,hsl:{h:0,s:100,l:100},
   exportLabels:true,residueLabels:[],hiddenChains:{},showLigands:true,showWaters:false,
-  highlights:[],ligColors:{},pockets:{},pocketR:5,measures:[],measColor:'#ffc107',iface:null,
+  highlights:[],ligColors:{},pockets:{},pocketR:5,measures:[],measColor:'#ffc107',iface:null,overlay:null,
   labelStyle:{font:'sans',size:13,bold:false,italic:false,bg:true,bgMode:'chain',bgColor:'#333333',shape:'rounded'}};
 var chainList=[], chainInfo={}, ligands=[], ligOverflow=0, ionResn=[], ionCount=0, chainRange={}, bRange=[0,100], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
 var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _reqSeq=0, _searchSeq=0, _surfTok=0;
@@ -1124,7 +1148,7 @@ function buildModel(text,fmt,meta,nm){
   viewer.clear(); currentSurfs=[]; stopHover();
   Object.keys(labelEls).forEach(removeLabelEl);
   state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
-  state.residueLabels=[]; state.hiddenChains={}; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; state.iface=null; _if=null; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
+  state.residueLabels=[]; state.hiddenChains={}; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; state.iface=null; _if=null; state.overlay=null; ovl=null; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
   chainAnchorCache={}; selectedChain=null; _hoverAtom=null; _frame=0; _userMoved=false;
   closeChainPopup();
   var model=viewer.addModel(text,fmt,nm>1?{multimodel:true,frames:true}:{});
@@ -1152,6 +1176,7 @@ function buildModel(text,fmt,meta,nm){
   else fitView();
   renderLabelTags();
   updateAll();
+  if(state.overlay){ var ko=state.overlay; state.overlay=null; setTimeout(function(){ if(currentSource===meta) addOverlay(ko.rid,ko); },0); }   // the second structure comes back with the design, after the first has drawn
   var hint=$('chainHint');
   if(chainList.length>1){ hint.textContent=isPhone()?'Tap a chain to colour and label it':'Click a chain to colour and label it'; hint.classList.add('show'); setTimeout(function(){ hint.classList.remove('show'); },4200); }
 }
@@ -1360,11 +1385,12 @@ function rebuildStyles(){
     if(!state.pockets[l.key]||!state.showLigands||state.hiddenChains[l.chain]) return;
     viewer.addStyle({hetflag:false,within:{distance:state.pocketR,sel:ligSel(l)},byres:true},{stick:{radius:0.14,colorfunc:ef}});
   });
+  applyOverlayStyle();   // last, so nothing drawn for this structure above reaches the second one
 }
 function addSurfaces(){
   currentSurfs=[];
   var vis=visibleChains(); if(!vis.length) return;
-  var sel={hetflag:false}; if(vis.length<chainList.length) sel.chain=vis;
+  var sel={hetflag:false,model:currentModel}; if(vis.length<chainList.length) sel.chain=vis;
   var tok=++_surfTok;
   viewer.addSurface($3Dmol.SurfaceType.SES,{opacity:state.surfaceOpacity,colorfunc:makeColorFn()},sel).then(function(id){
     if(tok!==_surfTok||state.style!=='surface'){ try{viewer.removeSurface(id);}catch(e){} return; }
@@ -1434,6 +1460,7 @@ function fitPoints(focus){
   }
   var step=Math.max(1,Math.ceil(want.length/2500));
   for(i=0;i<want.length;i+=step) pts.push(want[i]);
+  if(!focus&&ovl&&state.overlay&&state.overlay.show){ var oa=ovl.model.selectedAtoms({atom:'CA'}), os=Math.max(1,Math.ceil(oa.length/800)); for(i=0;i<oa.length;i+=os) pts.push(oa[i]); }   // the second structure is part of the picture
   return pts;
 }
 function projBox(pts,r){
@@ -1514,7 +1541,7 @@ function fitToView(){ _userMoved=false; fitView({animate:true}); }
 // ── What the pointer can do on the structure ─────────────────────────────────────────────────
 function setupInteractions(){
   if(!viewer||!currentModel) return;
-  viewer.setClickable({},true,function(atom,v,ev){
+  viewer.setClickable({model:currentModel},true,function(atom,v,ev){
     if(!atom) return;
     if(ev&&(ev.button>0||ev.ctrlKey)) return;   // a right click is the menu's, never a chain pick
     if(WATER_RESN.indexOf(atom.resn)>=0&&!_measMode) return;
@@ -1524,7 +1551,7 @@ function setupInteractions(){
     selectChain(atom.chain||'');
   });
   if(currentModel.selectedAtoms({}).length<160000){
-    viewer.setHoverable({},true,function(atom,v,ev){
+    viewer.setHoverable({model:currentModel},true,function(atom,v,ev){
       if(!atom||_resLabelMode&&false) return;
       _hoverAtom=atom; showHover(atom,ev);
     },function(){ hideHover(); });
@@ -2345,6 +2372,213 @@ function ifaceSuggest(){
   });
 }
 
+// ── Compare: a second structure laid over this one ──────────────────────────────────────────
+// The second structure is moved onto this one by the residues two chains share: a global sequence alignment
+// (Needleman–Wunsch) pairs the C-alpha atoms, Horn's quaternion method fits them rigidly, and pairs further than twice
+// the RMSD are left out and the fit repeated (the way PyMOL's align does), so a flexible loop does not drag the rest.
+var AA3={ALA:'A',ARG:'R',ASN:'N',ASP:'D',CYS:'C',GLN:'Q',GLU:'E',GLY:'G',HIS:'H',ILE:'I',LEU:'L',LYS:'K',MET:'M',PHE:'F',PRO:'P',SER:'S',THR:'T',TRP:'W',TYR:'Y',VAL:'V',
+  MSE:'M',SEP:'S',TPO:'T',PTR:'Y',CSO:'C',HYP:'P',SEC:'U',MLY:'K',M3L:'K',CME:'C',KCX:'K',HIC:'H',A:'A',C:'C',G:'G',U:'U',T:'T',DA:'A',DC:'C',DG:'G',DT:'T',DU:'U'};
+var OV_COLORS=['#5e87c5','#51c3ce','#816baf','#2d9462','#ffbf7b','#a56983'];
+var ovl=null;   // {model, meta, atoms, res:{rmsd,n,total,ident}}
+function chainSeq(model,ch){
+  var out=[], A=model.selectedAtoms({chain:ch,atom:'CA'});
+  if(!A.length) A=model.selectedAtoms({chain:ch,atom:'P'});
+  A.forEach(function(a){ if(a.hetflag&&!AA3[a.resn]) return; out.push({a:a,l:AA3[a.resn]||'X'}); });
+  return out;
+}
+function nwAlign(s,t){
+  var n=s.length, m=t.length, gap=-2, hit=2, miss=-1;
+  if(!n||!m||n*m>16e6) return null;
+  var tr=new Uint8Array((n+1)*(m+1)), prev=new Int32Array(m+1), cur=new Int32Array(m+1), i, j;
+  for(j=1;j<=m;j++){ prev[j]=j*gap; tr[j]=2; }
+  for(i=1;i<=n;i++){
+    cur[0]=i*gap; tr[i*(m+1)]=1;
+    for(j=1;j<=m;j++){
+      var d=prev[j-1]+(s[i-1]===t[j-1]&&s[i-1]!=='X'?hit:miss), u=prev[j]+gap, l=cur[j-1]+gap, b=d, k=0;
+      if(u>b){ b=u; k=1; } if(l>b){ b=l; k=2; }
+      cur[j]=b; tr[i*(m+1)+j]=k;
+    }
+    var tmp=prev; prev=cur; cur=tmp;
+  }
+  var pairs=[]; i=n; j=m;
+  while(i>0||j>0){
+    var k2=i===0?2:(j===0?1:tr[i*(m+1)+j]);
+    if(k2===0){ pairs.push([i-1,j-1]); i--; j--; } else if(k2===1) i--; else j--;
+  }
+  pairs.reverse();
+  var same=0; pairs.forEach(function(p){ if(s[p[0]]===t[p[1]]) same++; });
+  return {pairs:pairs,ident:pairs.length?same/pairs.length:0,coverage:pairs.length/Math.min(n,m)};
+}
+function jacobi4(M){
+  var A=M.map(function(r){ return r.slice(); }), V=[[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]], sweep, p, q, k;
+  for(sweep=0;sweep<60;sweep++){
+    var off=0; for(p=0;p<4;p++) for(q=p+1;q<4;q++) off+=A[p][q]*A[p][q];
+    if(off<1e-22) break;
+    for(p=0;p<3;p++) for(q=p+1;q<4;q++){
+      if(Math.abs(A[p][q])<1e-300) continue;
+      var th=(A[q][q]-A[p][p])/(2*A[p][q]), t=(th>=0?1:-1)/(Math.abs(th)+Math.sqrt(th*th+1)), c=1/Math.sqrt(t*t+1), s=t*c;
+      for(k=0;k<4;k++){ var akp=A[k][p], akq=A[k][q]; A[k][p]=c*akp-s*akq; A[k][q]=s*akp+c*akq; }
+      for(k=0;k<4;k++){ var apk=A[p][k], aqk=A[q][k]; A[p][k]=c*apk-s*aqk; A[q][k]=s*apk+c*aqk; }
+      for(k=0;k<4;k++){ var vkp=V[k][p], vkq=V[k][q]; V[k][p]=c*vkp-s*vkq; V[k][q]=s*vkp+c*vkq; }
+    }
+  }
+  var best=0; for(k=1;k<4;k++) if(A[k][k]>A[best][best]) best=k;
+  return [V[0][best],V[1][best],V[2][best],V[3][best]];
+}
+// Rotation R and translation t that carry the points P onto Q with least squares (Horn, 1987). Always a proper rotation.
+function hornFit(P,Q){
+  var n=P.length, cp=[0,0,0], cq=[0,0,0], i, a;
+  for(i=0;i<n;i++) for(a=0;a<3;a++){ cp[a]+=P[i][a]; cq[a]+=Q[i][a]; }
+  for(a=0;a<3;a++){ cp[a]/=n; cq[a]/=n; }
+  var S=[[0,0,0],[0,0,0],[0,0,0]];
+  for(i=0;i<n;i++) for(var r=0;r<3;r++) for(var c=0;c<3;c++) S[r][c]+=(P[i][r]-cp[r])*(Q[i][c]-cq[c]);
+  var Sxx=S[0][0], Sxy=S[0][1], Sxz=S[0][2], Syx=S[1][0], Syy=S[1][1], Syz=S[1][2], Szx=S[2][0], Szy=S[2][1], Szz=S[2][2];
+  var q=jacobi4([[Sxx+Syy+Szz,Syz-Szy,Szx-Sxz,Sxy-Syx],[Syz-Szy,Sxx-Syy-Szz,Sxy+Syx,Szx+Sxz],[Szx-Sxz,Sxy+Syx,-Sxx+Syy-Szz,Syz+Szy],[Sxy-Syx,Szx+Sxz,Syz+Szy,-Sxx-Syy+Szz]]);
+  var w=q[0], x=q[1], y=q[2], z=q[3], nn=Math.hypot(w,x,y,z)||1; w/=nn; x/=nn; y/=nn; z/=nn;
+  var R=[[w*w+x*x-y*y-z*z,2*(x*y-w*z),2*(x*z+w*y)],[2*(x*y+w*z),w*w-x*x+y*y-z*z,2*(y*z-w*x)],[2*(x*z-w*y),2*(y*z+w*x),w*w-x*x-y*y+z*z]];
+  var t=[0,0,0]; for(a=0;a<3;a++) t[a]=cq[a]-(R[a][0]*cp[0]+R[a][1]*cp[1]+R[a][2]*cp[2]);
+  return {R:R,t:t};
+}
+function xform(F,p){ return [F.R[0][0]*p[0]+F.R[0][1]*p[1]+F.R[0][2]*p[2]+F.t[0],F.R[1][0]*p[0]+F.R[1][1]*p[1]+F.R[1][2]*p[2]+F.t[1],F.R[2][0]*p[0]+F.R[2][1]*p[1]+F.R[2][2]*p[2]+F.t[2]]; }
+// Pair, fit, reject, repeat. P and Q are the matched points (moving, reference); returns the fit and who was kept.
+function fitWithRejection(P,Q,cycles){
+  var keep=P.map(function(_,i){ return i; }), F=null, rms=0, c;
+  for(c=0;c<(cycles||5);c++){
+    F=hornFit(keep.map(function(i){ return P[i]; }),keep.map(function(i){ return Q[i]; }));
+    var d=P.map(function(p,i){ var r=xform(F,p), q=Q[i]; return Math.hypot(r[0]-q[0],r[1]-q[1],r[2]-q[2]); });
+    var ss=0; keep.forEach(function(i){ ss+=d[i]*d[i]; }); rms=Math.sqrt(ss/keep.length);
+    var thr=Math.max(1.0,2*rms), next=P.map(function(_,i){ return i; }).filter(function(i){ return d[i]<=thr; });
+    if(next.length===keep.length||next.length<4) break;
+    keep=next;
+  }
+  F=hornFit(keep.map(function(i){ return P[i]; }),keep.map(function(i){ return Q[i]; }));
+  var s2=0; keep.forEach(function(i){ var r=xform(F,P[i]), q=Q[i]; s2+=Math.pow(r[0]-q[0],2)+Math.pow(r[1]-q[1],2)+Math.pow(r[2]-q[2],2); });
+  return {F:F,keep:keep,rmsd:Math.sqrt(s2/keep.length)};
+}
+function longestChains(model,k){
+  var seen={}, L=[];
+  model.selectedAtoms({atom:'CA'}).forEach(function(a){ var c=a.chain||''; if(!seen[c]) seen[c]={c:c,n:0}; seen[c].n++; });
+  Object.keys(seen).forEach(function(c){ L.push(seen[c]); });
+  return L.sort(function(x,y){ return y.n-x.n; }).slice(0,k).map(function(x){ return x.c; });
+}
+function bestChainPair(){
+  var best=null;
+  longestChains(currentModel,3).forEach(function(r){ longestChains(ovl.model,3).forEach(function(m){
+    var A=chainSeq(currentModel,r), B=chainSeq(ovl.model,m); if(A.length<3||B.length<3) return;
+    var al=nwAlign(A.map(function(x){ return x.l; }).join(''),B.map(function(x){ return x.l; }).join('')); if(!al) return;
+    var sc=al.pairs.length*al.ident; if(!best||sc>best.sc) best={ref:r,mov:m,sc:sc};
+  }); });
+  return best;
+}
+function ovlSetError(msg){ var e=$('ovErr'); e.textContent=msg||''; e.classList.toggle('show',!!msg); }
+// Align chain `mov` of the second structure onto chain `ref` of this one, and move the whole second structure with it.
+function alignOverlay(){
+  var o=state.overlay; if(!o||!ovl) return false;
+  var A=chainSeq(currentModel,o.ref), B=chainSeq(ovl.model,o.mov);
+  if(A.length<3||B.length<3){ ovlSetError('Chain '+(A.length<3?o.ref:o.mov)+' has too few residues to align.'); ovl.res=null; return false; }
+  var al=nwAlign(A.map(function(x){ return x.l; }).join(''),B.map(function(x){ return x.l; }).join(''));
+  if(!al){ ovlSetError('Those chains are too long to align by sequence.'); ovl.res=null; return false; }
+  if(al.pairs.length<3){ ovlSetError('The two chains have no stretch in common.'); ovl.res=null; return false; }
+  var P=al.pairs.map(function(p){ return B[p[1]].a._o; }), Q=al.pairs.map(function(p){ var a=A[p[0]].a; return [a.x,a.y,a.z]; });
+  var fit=fitWithRejection(P,Q,5);
+  ovl.atoms.forEach(function(a){ var r=xform(fit.F,a._o); a.x=r[0]; a.y=r[1]; a.z=r[2]; });
+  ovl.res={rmsd:fit.rmsd,n:fit.keep.length,total:al.pairs.length,ident:al.ident,coverage:al.coverage,ref:o.ref,mov:o.mov};
+  ovlSetError('');
+  return true;
+}
+function resetOverlayPosition(){
+  if(!ovl) return;
+  ovl.atoms.forEach(function(a){ a.x=a._o[0]; a.y=a._o[1]; a.z=a._o[2]; });
+  ovl.res=null; recolorStructure(); renderOverlayUI();
+}
+function applyOverlayStyle(){
+  var o=state.overlay; if(!o||!ovl||!viewer) return;
+  var m={model:ovl.model};
+  viewer.setStyle(m,{});
+  if(!o.show) return;
+  var col=adjustColor(o.color);
+  viewer.setStyle(m,{cartoon:{color:col}});
+  viewer.addStyle({model:ovl.model,hetflag:true,not:{resn:WATER_RESN}},{stick:{radius:0.2,colorfunc:elemColorFn(function(){ return col; })}});
+}
+function installOverlay(text,fmt,meta,keep){
+  if(!viewer||!currentModel) return;
+  var sniff=text.length>400000?text.slice(0,400000):text;
+  if(!/^(ATOM  |HETATM)/m.test(sniff)&&!/_atom_site\./.test(sniff)){ ovlSetError('That does not look like a structure file (no atoms found).'); return; }
+  removeOverlay(true);
+  var model;
+  try{ model=viewer.addModel(text,fmt,{}); }catch(e){ ovlSetError('Could not draw that structure.'); return; }
+  var atoms=model.selectedAtoms({});
+  if(!atoms.length){ try{ viewer.removeModel(model); }catch(e){} ovlSetError('That does not look like a structure file (no atoms found).'); return; }
+  atoms.forEach(function(a){ a._o=[a.x,a.y,a.z]; });   // where its own file put every atom, so it can be aligned again or put back
+  ovl={model:model,meta:meta,atoms:atoms,res:null};
+  state.overlay={kind:meta.kind,rid:meta.rid,id:meta.id,ref:'',mov:'',color:OV_COLORS[0],show:true};
+  var pair=bestChainPair();
+  if(keep&&keep.ref&&chainList.indexOf(keep.ref)>=0&&longestChains(model,99).indexOf(keep.mov)>=0) pair={ref:keep.ref,mov:keep.mov};
+  if(!pair){ ovlSetError('No chain of the second structure resembles one of this structure.'); state.overlay.ref=chainList[0]||''; state.overlay.mov=longestChains(model,1)[0]||''; }
+  else { state.overlay.ref=pair.ref; state.overlay.mov=pair.mov; alignOverlay(); }
+  if(keep){ if(keep.color) state.overlay.color=keep.color; if(keep.show===false) state.overlay.show=false; }
+  recolorStructure();
+  if(!keep&&!_userMoved) fitView({animate:true});
+  renderOverlayUI(); updateSummaries();
+}
+function removeOverlay(quiet){
+  if(ovl){ try{ viewer.removeModel(ovl.model); }catch(e){} ovl=null; }
+  state.overlay=null;
+  if(!quiet){ recolorStructure(); renderOverlayUI(); updateSummaries(); if(!_userMoved) fitView({animate:true}); }
+}
+function addOverlay(q,keep){
+  q=(q||'').trim(); ovlSetError('');
+  if(!viewer||!currentModel){ ovlSetError('Load a structure first.'); return; }
+  var s=normId(q), spec=null;
+  if(isPdbId(s)){ var id=s.toUpperCase(); if(/^PDB_/.test(id)) id='pdb_'+id.slice(4).toLowerCase(); spec={kind:'pdb',rid:id,id:id.toUpperCase()}; }
+  else { var acc=afAcc(s); if(acc) spec={kind:'af',rid:acc,id:'AF-'+acc+'-F1'}; }
+  if(!spec){ ovlSetError('Enter a PDB code or a UniProt id.'); return; }
+  $('ovGo').disabled=true;
+  var done=function(){ $('ovGo').disabled=false; };
+  var get;
+  if(spec.kind==='pdb'){
+    var urls=pdbUrls(spec.rid), i=0, off=null;
+    get=new Promise(function(res,rej){ (function attempt(){
+      if(i>=urls.length) return rej(off||{kind:'notfound'});
+      var u=urls[i++]; rbFetch(u.u).then(function(r){ return r.text(); }).then(function(t){ res({text:t,fmt:u.f}); },function(e){ if(e&&e.kind==='notfound') attempt(); else { off=e; attempt(); } });
+    })(); });
+  } else {
+    get=rbFetch('https://alphafold.ebi.ac.uk/api/prediction/'+encodeURIComponent(spec.rid)).then(function(r){ return r.json(); }).then(function(arr){
+      var m=Array.isArray(arr)?arr[0]:null; if(!m||!m.pdbUrl) throw {kind:'notfound'};
+      spec.id=m.modelEntityId||spec.id; return rbFetch(m.pdbUrl).then(function(r){ return r.text(); }).then(function(t){ return {text:t,fmt:'pdb'}; });
+    });
+  }
+  get.then(function(r){ done(); installOverlay(r.text,r.fmt,spec,keep); },function(e){ done(); ovlSetError(e&&e.kind==='notfound'?'There is no '+(spec.kind==='af'?'AlphaFold model':'PDB entry')+' “'+q+'”.':netMessage(e,spec.kind==='af'?'AlphaFold DB':'the Protein Data Bank')); });
+}
+function openOverlayFile(file){
+  if(!file) return; ovlSetError('');
+  if(!currentModel){ ovlSetError('Load a structure first.'); return; }
+  var ext=(/\.([a-z]+)$/i.exec(file.name.replace(/\.gz$/i,''))||[])[1]||'';
+  readFileText(file).then(function(t){
+    var fmt=/^(cif|mmcif)$/i.test(ext)?'cif':/^pqr$/i.test(ext)?'pqr':'pdb';
+    installOverlay(t,fmt,{kind:'file',rid:file.name,id:file.name});
+  },function(e){ ovlSetError(e&&e.kind==='gz'?'This browser cannot open .gz files. Unzip it first.':'Could not read that file.'); });
+}
+function renderOverlayUI(){
+  var o=state.overlay, body=$('ovBody'); if(!body) return;
+  body.hidden=!(o&&ovl);
+  if(!(o&&ovl)){ $('ovResult').innerHTML=''; updateSummaries(); return; }
+  var fill=function(id,list,cur){ var s=$(id); s.innerHTML=list.map(function(c){ return '<option value="'+escapeHtml(c)+'">'+escapeHtml(chainTitle(c).replace('Chain ',''))+'</option>'; }).join(''); s.value=cur; };
+  fill('ovRef',longestChains(currentModel,99),o.ref); fill('ovMov',longestChains(ovl.model,99),o.mov);
+  $('ovShow').checked=o.show!==false;
+  var sw=$('ovColors'); sw.innerHTML='';
+  OV_COLORS.forEach(function(c){
+    var b=document.createElement('button'); b.type='button'; b.className='swatch'+(c===o.color?' active':''); b.style.background=c; b.setAttribute('aria-label','Colour '+c); b.setAttribute('aria-pressed',c===o.color?'true':'false');
+    b.addEventListener('click',function(){ o.color=c; recolorStructure(); renderOverlayUI(); });
+    sw.appendChild(b);
+  });
+  var r=ovl.res, box=$('ovResult');
+  box.innerHTML='<div class="info-id"><b>'+escapeHtml(o.id||ovl.meta.id)+'</b><span class="badge">'+escapeHtml(ovl.meta.kind==='af'?'AlphaFold':ovl.meta.kind==='file'?'File':'PDB')+'</span></div>'
+    +(r?'<div class="info-meta"><b>RMSD '+r.rmsd.toFixed(2)+' Å</b> over '+r.n+' residues (of '+r.total+' paired) · '+Math.round(r.ident*100)+'% identical<br>'+escapeHtml(chainTitle(r.mov))+' of it onto '+escapeHtml(chainTitle(r.ref))+' of '+escapeHtml(currentPdbId)
+      +((r.ident<0.3||r.rmsd>4||r.n<0.5*r.total)?'<br><span style="color:var(--warn)">'+(r.rmsd>4?'The fit is loose ('+r.rmsd.toFixed(1)+' Å): these may not be the same fold, or a domain moved. Try another chain pair.':'These chains share few residues; the fit may mean little.')+'</span>':'')+'</div>'
+      :'<div class="info-meta">Not aligned: it is where its own file put it.</div>');
+}
+
 // ── Residue labels ───────────────────────────────────────────────────────────────────────────
 // Tag mode: clicking an atom drops a tag at that residue; clicking the same residue again removes it.
 function toggleResLabelMode(force){
@@ -2590,10 +2824,11 @@ function updateSummaries(){
   set('sum-appearance',(COLOR_NAMES[state.color]||'')+(state.projection==='orthographic'?' · orthographic':''));
   var nl=tagList().filter(function(t){ return t.kind!=='meas'; }).length; set('sum-labels',nl?nl+(nl===1?' label':' labels'):'');
   var fi=state.iface, ci=fi&&fi.show&&ifaceNow(); set('sum-interface',ci?fi.a+' – '+fi.b+' · '+ci.v.pairs.length+' contacts':'');
+  set('sum-compare',state.overlay?(state.overlay.id||''):'');
   var nm=state.measures.length; set('sum-measure',nm?nm+(nm===1?' measurement':' measurements'):'');
   var nd=Object.keys(getDesigns()).length; set('sum-designs',nd?nd+' saved':'');
 }
-var SEC_DEFAULT={structure:true,chains:true,highlight:false,measure:false,interface:false,appearance:true,labels:false,designs:false};
+var SEC_DEFAULT={structure:true,chains:true,highlight:false,measure:false,interface:false,compare:false,appearance:true,labels:false,designs:false};
 function secSave(){ var o={}; document.querySelectorAll('.rb-sec').forEach(function(d){ o[d.dataset.sec]=d.open; }); store('ribbon_sec',JSON.stringify(o)); foldLabel(); }
 function foldLabel(){ var any=[].some.call(document.querySelectorAll('.rb-sec'),function(d){ return d.open; }); $('foldAll').textContent=any?'Fold all':'Unfold all'; }
 function foldAll(){
@@ -2895,7 +3130,7 @@ function collectDesign(){
   st.chainColors=_clone(state.chainColors); st.chainLabels=_clone(state.chainLabels);
   st.labelOffsets=_clone(state.labelOffsets); st.labelAnchors=_clone(state.labelAnchors);
   st.residueLabels=_clone(state.residueLabels||[]);
-  st.hiddenChains=_clone(state.hiddenChains); st.highlights=_clone(state.highlights); st.ligColors=_clone(state.ligColors); st.pockets=_clone(state.pockets); st.measures=_clone(state.measures); st.iface=state.iface?_clone(state.iface):null;
+  st.hiddenChains=_clone(state.hiddenChains); st.highlights=_clone(state.highlights); st.ligColors=_clone(state.ligColors); st.pockets=_clone(state.pockets); st.measures=_clone(state.measures); st.iface=state.iface?_clone(state.iface):null; st.overlay=(state.overlay&&state.overlay.kind!=='file')?_clone(state.overlay):null;
   var view=null; try{ view=viewer.getView(); }catch(e){}
   var vpEl=$('viewport');
   return { pdbId:currentPdbId, source:currentSource?{kind:currentSource.kind,rid:currentSource.rid}:null, ts:Date.now(), view:view, vp:[vpEl.clientWidth,vpEl.clientHeight], state:st };
@@ -2951,6 +3186,7 @@ function applyPendingDesign(){
   state.ligColors=ps.ligColors?_clone(ps.ligColors):{};
   state.pockets=ps.pockets?_clone(ps.pockets):{};
   state.measures=Array.isArray(ps.measures)?_clone(ps.measures).filter(validMeasure):[];
+  state.overlay=(ps.overlay&&typeof ps.overlay==='object'&&typeof ps.overlay.rid==='string'&&ps.overlay.kind!=='file')?_clone(ps.overlay):null;
   state.iface=(ps.iface&&typeof ps.iface==='object'&&typeof ps.iface.a==='string'&&typeof ps.iface.b==='string')?_clone(ps.iface):null; _if=null;
   syncControlsToState();
   return ps;
@@ -2992,7 +3228,7 @@ function syncControlsToState(){
   var us=$('uniformSwatches'); if(us)us.querySelectorAll('.swatch').forEach(function(s){ var on=s.dataset.c===state.uniformColor; s.classList.toggle('active',on); s.setAttribute('aria-pressed',on?'true':'false'); });
 }
 function updateAll(){
-  renderInfoCard(); renderChainList(); renderLigList(); renderHlList(); renderResLblList(); renderMeasList(); ifaceFill(); syncIface(); renderIface(); setTimeout(ifaceSuggest,60); updateLegend(); updateFrameCtl(); updateSummaries();
+  renderInfoCard(); renderChainList(); renderLigList(); renderHlList(); renderResLblList(); renderMeasList(); ifaceFill(); syncIface(); renderIface(); renderOverlayUI(); setTimeout(ifaceSuggest,60); updateLegend(); updateFrameCtl(); updateSummaries();
   $('statusBar').innerHTML=statusHtml(); $('statusBar').classList.add('show');
 }
 
@@ -3138,6 +3374,14 @@ function boot(){
   ['ifA','ifB'].forEach(function(id){ $(id).addEventListener('change',ifaceFromUI); });
   $('ifCut').addEventListener('input',ifaceFromUI); $('ifShow').addEventListener('change',ifaceFromUI);
   $('ifBsa').addEventListener('click',function(){ var c=ifaceNow(); if(c){ ifaceBsa(c); renderIface(); } });
+  $('ovGo').addEventListener('click',function(){ addOverlay($('ovInput').value); });
+  $('ovInput').addEventListener('keydown',function(e){ if(e.key==='Enter') addOverlay($('ovInput').value); });
+  $('ovFile').addEventListener('click',function(){ $('ovFileInput').click(); });
+  $('ovFileInput').addEventListener('change',function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=''; if(f) openOverlayFile(f); });
+  ['ovRef','ovMov'].forEach(function(id){ $(id).addEventListener('change',function(){ if(!state.overlay) return; state.overlay.ref=$('ovRef').value; state.overlay.mov=$('ovMov').value; alignOverlay(); recolorStructure(); renderOverlayUI(); }); });
+  $('ovAlign').addEventListener('click',function(){ if(alignOverlay()){ recolorStructure(); renderOverlayUI(); if(!_userMoved) fitView({animate:true}); } else renderOverlayUI(); });
+  $('ovReset').addEventListener('click',resetOverlayPosition); $('ovRemove').addEventListener('click',function(){ removeOverlay(); });
+  $('ovShow').addEventListener('change',function(e){ if(state.overlay){ state.overlay.show=e.target.checked; recolorStructure(); } });
   $('ifHl').addEventListener('click',ifaceAsHighlights); $('ifCopy').addEventListener('click',ifaceCopyResidues); $('ifTable').addEventListener('click',ifaceCopyTable);
 
   // Chains, ligands and highlights.
@@ -4060,6 +4304,13 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         tip: 'For a PROTAC ternary complex this is the protein–protein interface the degrader brings about: 5T35 chains D and A.',
         warn: 'The buried surface is the accessible area of each chain alone less that of the two together (probe 1.4 Å), so it is the area lost by both sides; half of it is the usual "per side" figure.',
         prep: open('interface'), show: [{ sel: '#ifA', say: 'Pick the two chains.', miss: NEED }], see: ['measure', 'highlight'] },
+      { id: 'compare', t: 'Superimpose a second structure', group: 'Compare', on: ['viewer'],
+        q: ['superimpose', 'superpose', 'align', 'overlay', 'compare structures', 'rmsd', 'second structure', 'two structures', 'superponer', 'alinear', 'comparar estructuras', 'segunda estructura', 'solapar'],
+        a: ['Under **Compare**, type a PDB code or UniProt id (or open a file) and it is laid over the structure you have. Ribbon pairs the residues of the two chains by **sequence alignment**, fits the second onto the first with a rigid motion that **leaves out the outliers** (anything further than twice the RMSD, repeated), and reports the **RMSD** and how many residues were used.',
+            'It picks the best pair of chains; the two lists change that. The whole second structure moves, ligands included, so you can see whether a ligand sits in the same place. **Put it back** returns it to where its file had it.'],
+        tip: 'A ligand in two structures of the same protein: align on the protein, then hide the second one\'s cartoon in Colour and keep its sticks — or just look at them together.',
+        warn: 'The fit is only as meaningful as the chains: it warns when the RMSD is large or the sequences share little. It does not search for a structural match between unrelated proteins.',
+        prep: open('compare'), show: [{ sel: '#ovInput', say: 'Type a code here and press **Add**.', miss: NEED }], see: ['interface'] },
       { id: 'surface', t: 'A molecular surface', group: 'Look', on: ['viewer'],
         q: ['surface', 'molecular surface', 'transparent', 'opacity', 'superficie', 'opacidad'],
         a: 'Choose **Surface** in the style: the cartoon stays inside a translucent surface of the visible chains. The **Surface** slider that appears sets its opacity, and a colour change recolours it without recomputing it.',
