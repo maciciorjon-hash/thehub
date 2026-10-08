@@ -1,5 +1,18 @@
 name: Build and Deploy dHUB
 
+# Two halves, on purpose.
+#
+#   build -> deploy   is the path to Pages: static checks, every build profile, a look inside the artifact.
+#                     Minutes, no browser, no network beyond checkout. A push is live as soon as this is green.
+#   tests             run in parallel with it (the invariants, the audits, the phone/desktop sweeps). They
+#                     answer "is it right?", not "can it ship?" — a red one marks the commit and says which
+#                     suite, but it no longer holds the deploy hostage to a CDN hiccup or a slow runner.
+#
+# This used to be one 32-step job in which any finding in any suite stopped Pages. The suites grew from
+# 15 to 32 steps in two weeks (about 40 minutes on a fast laptop, more on a 2-vCPU runner), several of them
+# fetch jsPDF / SheetJS / RDKit / 3Dmol from a CDN, and deploys started failing for reasons unrelated to the
+# change being pushed. To make a suite gate the deploy again, add its job id to `needs:` on `deploy`.
+
 on:
   push:
     branches: [main]
@@ -7,19 +20,15 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ─────────────────────────────── ships ───────────────────────────────
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -32,129 +41,40 @@ jobs:
         with:
           node-version: '20'
 
-      # There is no test suite and no module system, so these two scripts are the whole
-      # safety net: a SyntaxError in any app, and drift in the 4PL engine Beacon and Lumina
-      # copy from Echo. Both were manual-only before and neither ran on the way to Pages.
+      # No module system, so these are the safety net that is cheap enough to sit on the way to Pages:
+      # a SyntaxError in any app, orphan CSS declarations and white ink on a solid fill, and drift in
+      # every block that is copied from one canonical source into several files.
       - name: Parse-check every app's inline JavaScript
         run: python tools/check_js.py
 
-      # Orphan declarations (a rule dropped silently), tokens nothing defines, and white ink written on a solid
-      # colour fill — 2.3:1 on the primary button in the dark theme, where every fill is a light pastel.
       - name: Check every stylesheet
         run: python tools/check_css.py
 
       - name: Check the shared fit engine for drift
         run: python tools/check_shared.py
 
-      # Every app's icon exists in up to five places; tools/sync_icons.py is the one source.
       - name: Check the icon set for drift
         run: python tools/sync_icons.py --check
 
-      # The motion every app shares is written into each one from tools/sync_motion.py.
       - name: Check the motion kit for drift
         run: python tools/sync_motion.py --check
 
-      # The right-click menu (tools/ctxkit) is written into Lumina and the shell from one source.
       - name: Check the right-click kit for drift
         run: python tools/sync_ctxkit.py --check
 
-      # The help assistant (tools/assist) is written into the shell and into every app that has notes.
       - name: Check the help assistant for drift
         run: python tools/sync_assist.py --check
 
-      # The blocks Echo owns and others copy: the Screen engine (Hit Finder reads the same hook / coverage numbers
-      # Echo exports) and the pinned RDKit loader (Echo, Dora, Hit Finder).
       - name: Check the shared Echo blocks for drift
         run: python tools/sync_screen_engine.py --check
 
-      # The classes of bug the Designer and the quick window kept producing — a value typed in
-      # one place and a different one stored, a preview that disagrees with the record, a key
-      # dropped on the way — checked over every preset and every library module. A finding
-      # stops the deploy, which is the point: each of these used to reach Pages and be found
-      # by hand a day later. Run against the standalone build too, since only that one embeds
-      # Archive and so only there do the protocol cases run.
-      - name: Install Playwright (Chromium) for the invariants
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-
-      - name: Build the standalone Labbook (Archive embedded)
-        run: python embed.py --profile=labbook
-
-      - name: Labbook invariants
-        run: node tools/invariants.mjs
-
-      # Blueprint and Ribbon: the bug classes the 2026-09-28 beta test found (a no-op that wiped
-      # a plate, pasted values that filled one column, labels cut at a quote, designs that lost
-      # residue labels…), each proven by putting the bug back. RCSB is stubbed; if Ribbon's 3Dmol
-      # CDN is unreachable its checks are reported as skipped rather than failing the deploy.
-      - name: Blueprint and Ribbon invariants
-        run: node tools/design_invariants.mjs
-
-      # Ribbon, reworked 2026-10-07: a viewer that is never inert (pinned, integrity-checked 3Dmol with
-      # fallbacks), errors that tell the truth, every structure framed inside the view whatever its
-      # shape, designs that keep the camera, one colour function for every mode, chains reachable from the
-      # keyboard, labels that export exactly when asked, files, AlphaFold, ligands and pockets, hostile
-      # input. Each proven by putting the bug back. 3Dmol comes from its CDN; if it cannot load, the
-      # viewer checks are reported as skipped.
-      - name: Ribbon invariants
-        run: node tools/ribbon_invariants.mjs
-
-      # Echo Dose Response: curve figures that lay out every label, vector PDFs, a Compare that
-      # does not move, edits that come back with ⌘Z, fits that sit at their minimum, exact
-      # quartiles and t quantiles, the log-DC50 selectivity direction, quoted CSVs. Each proven
-      # against the build before the 2026-09-28 fixes. jsPDF comes from its CDN; if it cannot
-      # load, the PDF checks are reported as skipped.
-      - name: Echo invariants
-        run: node tools/echo_invariants.mjs
-
-      # Lumina (2026-09-30): plates named after their reader files, Fit settings that hold still
-      # when a box is ticked, every unit and scale exported to the value that was fitted, arrow keys
-      # through the results, a right-click menu on every surface, the Plot for every pair, a run
-      # with no control read as raw counts, readings that fit their wells. SheetJS comes from its
-      # CDN; if it cannot load the file-drop cases are reported as skipped.
-      - name: Lumina invariants
-        run: node tools/lumina_invariants.mjs
-
-      # Transfer (2026-09-30): Lumina and Echo send their results to Labbook as data with their
-      # curves, Labbook draws them, "Edit in Lumina / Echo" opens the same analysis back in the app,
-      # a point left out there refits at once, and "Update in Labbook" replaces the same set while
-      # keeping the notes and exclusions written in the notebook. The three apps run as frames of one
-      # host page that answers openApp() and acks context messages the way the shell does.
-      - name: Transfer invariants
-        run: node tools/transfer_invariants.mjs
-
-      # Triage, not fitting: what a hit is, why a compound is not one, and that a number which is missing stays missing.
-      - name: Hit Finder invariants
-        run: node tools/hitfinder_invariants.mjs
-
-      # Tempo, kinetic degradation (2026-10-07): the readers (ProNect JSON and CSV, tables with the time down or across, blank = missing),
-      # the normalisation against an independent calculation, a trace with a known answer recovered with an interval that covers it,
-      # noise that is not degradation, a plateau that is a bound, the Michaelis–Menten rules and Jon's four headers, the exports read back,
-      # undo, and hostile input. The real ProNect files are local only (--real), so CI runs on the synthetic plates.
-      - name: Tempo invariants
-        run: node tools/tempo_invariants.mjs
-
-      # The Data Analysis apps that had no checks of their own (2026-10-07): BCA, Dora and Beacon (a blank well is not
-      # 0, a bound is not a value, a range cannot freeze the tab, nothing in a file runs as a formula), then a monkey
-      # that puts hostile values in every box of all six apps, an audit that every box reads at every width in both
-      # themes, and one that every control eases and every arriving pane arrives.
-      - name: Data Analysis apps — hostile input, boxes that read, motion
-        run: |
-          python3 -m http.server 8791 > /dev/null 2>&1 &
-          sleep 2
-          node tools/analysis_invariants.mjs
-          node tools/monkey.mjs
-          node tools/inputs_audit.mjs
-          node tools/motion_audit.mjs
-
-      # Smoke test only — the sellable subset is not what Pages serves (see below), but a
-      # broken product build should fail here rather than the day someone asks for it.
+      # Smoke test only — the sellable subset is not what Pages serves, but a broken product build
+      # should fail here rather than the day someone asks for it.
       - name: Build the product profile (smoke test)
         run: python embed.py --profile=product /tmp/product.html
 
       # Pages serves the full personal build. The apps that must not be public are gated by
-      # ADMIN_ONLY_APPS, which openApp now enforces from every entry point including #hashes.
+      # ADMIN_ONLY_APPS, which openApp enforces from every entry point including #hashes.
       - name: Build dHUB
         run: python embed.py dist/index.html
 
@@ -174,42 +94,12 @@ jobs:
           print('Ribbon in the Hub carries 3Dmol inline (%d KB)' % (len(h) // 1024))
           PY
 
-      # The help assistant (2026-09-30). Its notes are written by hand, so they rot: every "Show me"
-      # must point at an element that exists, every button must call a function that exists, every topic
-      # must be found by its own title and phrases, a visitor must only ever be answered about what they
-      # can open (and no answer may say a code word), there is one bubble (the app inside the Hub draws
-      # none), and the panel fits upright and sideways and clears the tab bar. Needs the built Hub.
-      - name: Assistant invariants
-        run: node tools/assist_invariants.mjs
-
-      # dHUB on a phone (2026-09-29): the shell and all 17 apps in their real frames, in an emulated
-      # iPhone held upright and sideways — a signed-in (stubbed) Hub, every app seeded with its demo
-      # data and crawled tab by tab. Fails on text that overlaps other text, text with something
-      # painted over it, anything cut by an overflow or the screen edge with nothing to scroll it
-      # back, a tab sliced by a scrolling row, a page that scrolls sideways, text under 11px, and a
-      # 384-well plate drawn in portrait instead of the "turn your phone" note. A finding stops the
-      # deploy. (--strict is off: an ellipsis on a long name in a list is a design choice.)
-      - name: dHUB on a phone
-        run: |
-          python3 -m http.server 8899 --directory dist > /dev/null 2>&1 &
-          sleep 2
-          node tools/mobile_hub_sweep.mjs --url=http://127.0.0.1:8899/index.html --sizes=390x844,844x390 --themes=light --escape
-          # the same screens at a laptop and a tablet width, with a mouse: also stops the deploy on anything that
-          # leaves the box drawn around it or lands on its neighbour (tools/audit_escape.js — an icon 44px inside a
-          # 32px button, a label wider than its chart, a column that grows to its table's width)
-          node tools/mobile_hub_sweep.mjs --url=http://127.0.0.1:8899/index.html --desktop --escape --sizes=1440x900 --themes=light
-          node tools/mobile_hub_sweep.mjs --url=http://127.0.0.1:8899/index.html --desktop --escape --sizes=1024x768 --themes=dark
-
-      # This was never built in CI, and dist/ is gitignored — so the Archive PWA has only
-      # ever existed on Jon's laptop while every installed home-screen copy pointed at a 404
-      # that its own service worker hid. ARCHIVE_SLUG must never change: each installed app
-      # is pinned to it.
+      # dist/ is gitignored, so a profile CI does not build exists only on one laptop and its installed
+      # copies point at a 404 their own service worker hides. ARCHIVE_SLUG and LABBOOK_SLUG must never
+      # change: each installed home-screen app is pinned to its slug.
       - name: Build the Archive PWA
         run: python embed.py --profile=archive dist/archive-14cadcd792a2
 
-      # Same lesson as the Archive PWA above: a profile CI does not build is a profile that
-      # exists only on one laptop, and its installed copies point at a 404 their own service
-      # worker hides until a cache miss. LABBOOK_SLUG must never change either.
       - name: Build the Labbook bench PWA
         run: python embed.py --profile=labbook-pwa dist/labbook-6b1d0c4f9a72
 
@@ -230,9 +120,123 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    # One deploy at a time, and a deploy already running is never cancelled mid-way.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/deploy-pages@v4
         id: deploy
+
+  # ───────────────────────────── checks it ─────────────────────────────
+  # Independent suites in parallel. Each starts its own server on a free port, so they share nothing.
+  # Every command goes through tools/ci_retry.sh: a CDN that does not answer or one slow frame gets a
+  # second attempt, a real failure fails both.
+  suites:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # A newer push makes the older run's verdict moot; don't spend runner minutes on it.
+    concurrency:
+      group: tests-${{ github.ref }}-${{ matrix.name }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The bug classes found by hand in the Designer, the quick window, the Report and the exports,
+          # checked over every preset and every library module. Run against the standalone build too:
+          # only that one embeds Archive, so only there do the protocol cases run.
+          - name: Labbook invariants
+            run: |
+              python embed.py --profile=labbook
+              tools/ci_retry.sh node tools/invariants.mjs
+
+          # Blueprint and Ribbon: the 2026-09-28 beta-test classes, then Ribbon's own (a viewer that is
+          # never inert, framing, one colour function, files, AlphaFold, ligands, measure, interface,
+          # compare, values, scripts, panels). RCSB is stubbed; 3Dmol comes from its CDN and the viewer
+          # checks are reported as skipped if it cannot load.
+          - name: Blueprint and Ribbon invariants
+            run: |
+              tools/ci_retry.sh node tools/design_invariants.mjs
+              tools/ci_retry.sh node tools/ribbon_invariants.mjs
+
+          # Echo Dose Response (curve figures, vector PDFs, fits, normalisation, History), Lumina (plates,
+          # units, keys, Plot) and the Labbook <-> Echo/Lumina transfer (results with their curves, Edit in
+          # the app, Update in Labbook).
+          - name: Echo, Lumina and transfer invariants
+            run: |
+              tools/ci_retry.sh node tools/echo_invariants.mjs
+              tools/ci_retry.sh node tools/lumina_invariants.mjs
+              tools/ci_retry.sh node tools/transfer_invariants.mjs
+
+          # Hit Finder (what a hit is, why a compound is not one, a missing number stays missing) and Tempo
+          # (readers, normalisation, known-answer fits, Michaelis-Menten rules). The real ProNect files are
+          # local only, so CI runs on the synthetic plates.
+          - name: Hit Finder and Tempo invariants
+            run: |
+              tools/ci_retry.sh node tools/hitfinder_invariants.mjs
+              tools/ci_retry.sh node tools/tempo_invariants.mjs
+
+          # BCA, Dora and Beacon (a blank well is not 0, a bound is not a value), then a monkey that puts
+          # hostile values in every box of the Data Analysis apps, a box-legibility audit, and a motion audit.
+          - name: Data Analysis apps — hostile input, boxes, motion
+            run: |
+              python3 -m http.server 8791 > /dev/null 2>&1 &
+              sleep 2
+              tools/ci_retry.sh node tools/analysis_invariants.mjs
+              tools/ci_retry.sh node tools/monkey.mjs
+              tools/ci_retry.sh node tools/inputs_audit.mjs
+              tools/ci_retry.sh node tools/motion_audit.mjs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-tests
+      - name: ${{ matrix.name }}
+        shell: bash
+        run: |
+          chmod +x tools/ci_retry.sh
+          ${{ matrix.run }}
+
+  # The built Hub, in a browser: the help assistant's notes, and the shell plus all 17 apps in their real
+  # frames — an emulated iPhone upright and sideways, then a laptop and a tablet with a mouse. Fails on text
+  # that overlaps text, anything cut by an overflow with nothing to scroll it back, anything that leaves the
+  # box drawn around it, a page that scrolls sideways, text under 11px on a phone, and a 384-well plate drawn
+  # in portrait instead of the "turn your phone" note.
+  hub:
+    name: The Hub in a browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: tests-${{ github.ref }}-hub
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-tests
+
+      - name: Build dHUB
+        run: python embed.py dist/index.html
+
+      - name: Assistant invariants
+        run: tools/ci_retry.sh node tools/assist_invariants.mjs
+
+      - name: Serve the build
+        run: |
+          python3 -m http.server 8899 --directory dist > /dev/null 2>&1 &
+          sleep 2
+          curl -fsS -o /dev/null http://127.0.0.1:8899/index.html
+
+      - name: On a phone (upright and sideways)
+        run: tools/ci_retry.sh node tools/mobile_hub_sweep.mjs --url=http://127.0.0.1:8899/index.html --sizes=390x844,844x390 --themes=light --escape
+
+      - name: On a laptop, with a mouse
+        run: tools/ci_retry.sh node tools/mobile_hub_sweep.mjs --url=http://127.0.0.1:8899/index.html --desktop --escape --sizes=1440x900 --themes=light
+
+      - name: On a tablet, dark theme
+        run: tools/ci_retry.sh node tools/mobile_hub_sweep.mjs --url=http://127.0.0.1:8899/index.html --desktop --escape --sizes=1024x768 --themes=dark

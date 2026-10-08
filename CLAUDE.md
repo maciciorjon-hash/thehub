@@ -206,6 +206,8 @@ On every push to `main`:
 2. Deploys `dist/` to GitHub Pages
 3. dHUB is live at the Pages URL within ~2 min
 
+**CI is two halves (restructured 2026-10-08).** `build` → `deploy` is the path to Pages: static checks, every build profile, a look inside the artifact — minutes, no browser, no CDN. The invariants, audits and phone/desktop sweeps run **in parallel** as the `suites` matrix and the `hub` job; a red one marks the commit but does not hold the deploy. They had grown from 15 to 32 steps in one job (about 40 min on a laptop), several fetch jsPDF/SheetJS/RDKit/3Dmol from a CDN, and deploys were failing for reasons unrelated to the push. Every test command goes through `tools/ci_retry.sh` (one retry; a real failure fails both attempts). To make a suite gate the deploy again, add its job id to `needs:` on `deploy`. When a sweep fails locally with *"X is not defined"* on every screen, check that nothing else is already listening on its port.
+
 **Local dev workflow:**
 ```bash
 # 1. Edit any standalone app file
