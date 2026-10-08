@@ -254,6 +254,21 @@ textarea.inp{height:auto;padding:8px 10px;resize:vertical;line-height:1.45;font-
 .tb-end{display:flex;gap:8px;align-items:center;}
 
 #viewport{flex:1;position:relative;overflow:hidden;min-height:0;}
+/* ── Look: style cards, and the helpers on the picture ── */
+.preset-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.preset{display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:6px;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface);cursor:pointer;font-family:inherit;color:var(--text);text-align:left;min-width:0;}
+.preset:hover{border-color:var(--accent);}
+.preset.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent);}
+.preset i{display:block;height:34px;border-radius:var(--r-1);}
+.preset b{font-size:var(--fs-2);font-weight:600;line-height:1.2;overflow-wrap:anywhere;}   /* a name wraps rather than losing its end */
+.warn-line{color:var(--warn,#b7791f);}
+.axes-ind{position:absolute;left:14px;bottom:46px;width:60px;height:60px;z-index:4;pointer-events:none;overflow:visible;}
+.axes-ind line{stroke-width:2.2;stroke-linecap:round;}
+.axes-ind text{font:600 9px var(--mono);}
+.scale-bar{position:absolute;right:14px;bottom:52px;z-index:4;display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:none;}
+.scale-bar i{display:block;height:4px;border-radius:2px;background:var(--text);}
+.scale-bar span{font:600 var(--fs-2)/1 var(--mono);color:var(--text);}
+@media(max-width:760px){ .preset-grid{grid-template-columns:repeat(2,minmax(0,1fr));} }
 /* ── The command line, under the structure (ChimeraX keeps one there too) ── */
 .cmd-bar{position:relative;flex:none;display:flex;align-items:center;gap:8px;min-height:40px;padding:0 10px 0 8px;border-top:1px solid var(--border);background:var(--surface);}
 .cmd-prompt{flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center;color:var(--text3);cursor:text;}
@@ -329,6 +344,12 @@ body.cmd-focus .cmd-prompt{color:var(--accent);}
 .viewer-empty .ve-t{font-size:var(--fs-5);color:var(--text2);}
 .viewer-empty .ve-s{font-size:var(--fs-3);max-width:340px;line-height:1.5;}
 .viewer-empty .btn{margin-top:4px;}
+.ve-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:10px;max-width:460px;pointer-events:auto;}
+.ve-chips:empty{display:none;}
+.ve-chip{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:108px;padding:8px 12px;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface);color:var(--text);cursor:pointer;text-align:left;font-family:inherit;}
+.ve-chip:hover{border-color:var(--accent);}
+.ve-chip b{font:600 var(--fs-3)/1.2 var(--mono);}
+.ve-chip span{font-size:var(--fs-2);color:var(--text2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .viewer-empty[hidden]{display:none;}
 .status-bar{position:absolute;bottom:14px;left:14px;z-index:5;font-family:var(--mono);max-width:calc(100% - 28px);
   font-size:var(--fs-2);color:var(--text2);background:var(--surface);padding:5px 10px;border-radius:var(--r-2);
@@ -747,6 +768,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <div class="ve-t" id="veTitle">No structure yet</div>
         <div class="ve-s" id="veSub">Type a PDB code, a UniProt id or a protein name, open a file, or drop one here.</div>
         <button type="button" class="btn" id="veRetry" hidden>Try again</button>
+        <div class="ve-chips" id="veChips"></div>
       </div>
       <div class="chain-hint" id="chainHint" role="status"></div>
       <svg id="label-lines" aria-hidden="true"></svg>
@@ -754,6 +776,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div id="hover-tip"></div>
       <div id="drop-veil">Drop a structure file</div>
       <div id="legend" aria-label="Colour key"></div>
+      <svg id="axesInd" class="axes-ind" viewBox="-30 -30 60 60" aria-hidden="true" hidden></svg>
+      <div id="scaleBar" class="scale-bar" aria-hidden="true" hidden><i></i><span></span></div>
       <div id="frame-ctl"><button type="button" class="ibtn" id="frPrev" aria-label="Previous model"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button><input type="range" id="frRange" min="1" max="1" value="1" aria-label="Model"><b id="frLabel">1 / 1</b><button type="button" class="ibtn" id="frNext" aria-label="Next model"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button></div>
       <div class="status-bar" id="statusBar" role="status"></div>
     </div>
@@ -822,6 +846,21 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     </section>
     <section class="rb-pane" id="pane-colour" data-tab="colour" role="tabpanel" aria-labelledby="tab-colour" hidden>
       <div class="rb-pane-hd"><h2 class="rb-pane-t">Colour</h2><button type="button" class="link fold-all">Fold all</button></div>
+    <details class="rb-sec rb-needs" data-sec="look">
+      <summary><span class="rb-sec-t">Look</span><span class="rb-sec-sum" id="sum-look"></span></summary>
+      <div class="rb-body">
+        <div class="preset-grid" id="presetGrid" role="group" aria-label="Styles"></div>
+        <div class="fld">
+          <span>Lighting</span>
+          <div class="seg" id="lightSeg" role="group" aria-label="Lighting"><button type="button" data-v="simple" class="active">Simple</button><button type="button" data-v="soft">Soft</button><button type="button" data-v="full">Full</button><button type="button" data-v="flat">Flat</button></div>
+          <span class="hint" id="lightHint"></span>
+        </div>
+        <label class="check"><input type="checkbox" id="fogChk"> Depth cue — what is further away fades</label>
+        <div class="fld"><label for="palSel">Chain colours</label><select id="palSel" class="inp"></select></div>
+        <div class="hint warn-line" id="contrastWarn" hidden></div>
+      </div>
+    </details>
+
     <details class="rb-sec rb-needs" data-sec="appearance">
       <summary><span class="rb-sec-t">Appearance</span><span class="rb-sec-sum" id="sum-appearance"></span></summary>
       <div class="rb-body">
@@ -878,6 +917,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         </div>
         <div class="err-text" id="valErr" role="alert"></div>
         <div class="info-card" id="valInfo" hidden></div>
+        <div class="fld" id="valMapFld" hidden><label for="valMapSel">Colour ramp</label><select id="valMapSel" class="inp"></select></div>
         <div class="row" id="valActs" hidden style="flex-wrap:wrap"><label class="check"><input type="checkbox" id="valRev"> Reverse the colours</label><button type="button" class="btn sm danger" id="valClear">Clear the values</button></div>
       </div>
     </details>
@@ -952,6 +992,14 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     </section>
     <section class="rb-pane" id="pane-figure" data-tab="figure" role="tabpanel" aria-labelledby="tab-figure" hidden>
       <div class="rb-pane-hd"><h2 class="rb-pane-t">Figure</h2></div>
+    <details class="rb-sec rb-needs" data-sec="decor">
+      <summary><span class="rb-sec-t">On the picture</span><span class="rb-sec-sum" id="sum-decor"></span></summary>
+      <div class="rb-body">
+        <label class="check"><input type="checkbox" id="scaleChk"> Scale bar (in the export too)</label>
+        <label class="check"><input type="checkbox" id="axesChk"> Axes, to see how it is turned (screen only)</label>
+      </div>
+    </details>
+
     <details class="rb-sec rb-needs" data-sec="labels">
       <summary><span class="rb-sec-t">Labels</span><span class="rb-sec-sum" id="sum-labels"></span></summary>
       <div class="rb-body">
@@ -1110,6 +1158,12 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
    Everything the user can set lives in `state`, and a saved design is `state` plus the camera. */
 var UNIFORM_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#c5c5c5','#2d9462'];
 var CHAIN_COLORS=['#e36c69','#51c3ce','#5e87c5','#ffbf7b','#816baf','#a56983','#2d9462','#c5c5c5','#1a1d2e','#ffffff'];
+// Chain palettes. Okabe–Ito and Tol are the two built to stay apart for the commonest colour blindness.
+var PALETTES={ribbon:{n:'Ribbon',c:null},okabe:{n:'Okabe–Ito (colour-blind safe)',c:['#e69f00','#56b4e9','#009e73','#f0e442','#0072b2','#d55e00','#cc79a7','#999999','#000000']},
+  tol:{n:'Tol bright (colour-blind safe)',c:['#4477aa','#ee6677','#228833','#ccbb44','#66ccee','#aa3377','#bbbbbb']},
+  pastel:{n:'Pastel',c:['#9fc5e8','#f4b6b2','#b6d7a8','#f9cb9c','#c9b8e0','#ffe599','#a2d9d4','#d9d9d9']},
+  vivid:{n:'Vivid',c:['#e6194b','#3cb44b','#4363d8','#f58231','#911eb4','#42d4f4','#f032e6','#bfef45']}};
+function chainPal(){ var p=PALETTES[state.palette]; return p&&p.c?p.c:CHAIN_COLORS; }
 var HL_COLORS=['#ffbf7b','#51c3ce','#816baf','#2d9462','#e36c69','#5e87c5'];
 var SS_COLORS={h:'#e36c69',s:'#ffbf7b',c:'#c5c5c5'};
 var ELEM_COLORS={N:'#3050f8',O:'#ff0d0d',S:'#d9b800',P:'#ff8000',F:'#4fbf4f',CL:'#1ff01f',BR:'#a62929',I:'#940094',FE:'#e06633',ZN:'#7d80b0',MG:'#2a8f2a',CA:'#3dff00',H:'#dddddd'};
@@ -1126,7 +1180,7 @@ var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',
   exportLabels:true,residueLabels:[],hiddenChains:{},showLigands:true,showWaters:false,
   highlights:[],ligColors:{},pockets:{},pocketR:5,measures:[],measColor:'#ffc107',iface:null,overlay:null,values:null,
   labelStyle:{font:'sans',size:13,bold:false,italic:false,bg:true,bgMode:'chain',bgColor:'#333333',shape:'rounded'},
-  reps:[],hide:[],
+  reps:[],hide:[],lighting:'simple',fog:false,palette:'ribbon',valMap:'consurf',scalebar:false,
   off:{}};   // reps: residues drawn another way ({sel,rep:'stick'|'sphere'}); hide: residues not drawn. off: what the Models panel has put away without deleting (hl · meas · labels · ions)
 var chainList=[], chainInfo={}, ligands=[], ligOverflow=0, ionResn=[], ionCount=0, chainRange={}, bRange=[0,100], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
 var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _reqSeq=0, _searchSeq=0, _surfTok=0;
@@ -1224,6 +1278,7 @@ function initViewer(){
   var cv=$('viewport').querySelector('canvas');
   if(cv){ cv.setAttribute('role','img'); cv.setAttribute('aria-label','3D structure. Drag to rotate, scroll to zoom, right-drag to move.'); }
   try{ viewer.setHoverDuration(120); }catch(e){}
+  lookOnViewer();
   document.body.classList.remove('rb-no3d');
   if(!currentModel){ $('emptyState').hidden=false; $('veTitle').textContent='No structure yet'; $('veSub').textContent='Type a PDB code, a UniProt id or a protein name, open a file, or drop one here.'; $('veRetry').hidden=true; }
   applyBackground();
@@ -1563,7 +1618,7 @@ function makeColorFn(opts){
   var cc=state.chainColors, mode=state.color, uni=state.uniformColor, anyHl=Object.keys(hl).length>0, ifx=ifaceColours(), selT=opts.noDim?null:rbSelTint();
   function tune(h){ var v=cache[h]; return v||(cache[h]=adjustColor(h)); }
   function modeColor(a,ch){
-    if(mode==='chain'){ var i=chainList.indexOf(ch); return CHAIN_COLORS[(i<0?0:i)%CHAIN_COLORS.length]; }
+    if(mode==='chain'){ var i=chainList.indexOf(ch), P=chainPal(); return P[(i<0?0:i)%P.length]; }
     if(mode==='spectrum'){
       var r=chainRange[ch]||[0,1], t=(a.resi-r[0])/((r[1]-r[0])||1); t=Math.max(0,Math.min(1,t));
       return _hslToHex(240*(1-Math.round(t*90)/90),80,52);   // N-terminus blue → C-terminus red, in 90 steps so the colour cache works
@@ -1589,7 +1644,7 @@ function makeColorFn(opts){
 function chainSolidColor(ch){
   var base=state.chainColors[ch];
   if(!base){
-    if(state.color==='chain'){ var i=chainList.indexOf(ch); if(i<0)i=0; base=CHAIN_COLORS[i%CHAIN_COLORS.length]; }
+    if(state.color==='chain'){ var i=chainList.indexOf(ch), P=chainPal(); if(i<0)i=0; base=P[i%P.length]; }
     else base=state.uniformColor;
   }
   return adjustColor(base);
@@ -1692,14 +1747,24 @@ function updateColorOrOpacity(){
   recolorStructure(); updateLegend(); updateSummaries();
 }
 // Border/shading only touch the outline overlay, never the mesh — always instant.
-function applyBorder(){
-  if(!viewer)return;
-  var width=state.border==='thick'?0.15:(state.border==='thin'?0.06:0);
-  if(width<=0) viewer.setViewStyle({}); else viewer.setViewStyle({style:'outline',color:'black',width:width});
-  viewer.render();
+// Lighting: the outline, ambient occlusion (crevices darken, so a surface reads as a shape) and a depth cue (what is further
+// away fades into the background). One function, because 3Dmol takes outline and occlusion as one setting.
+var LIGHTING={simple:{n:'Simple',ao:0,d:'Even light. Fastest.'},soft:{n:'Soft',ao:0.9,r:5,d:'Crevices darken a little: shapes read better.'},full:{n:'Full',ao:1.7,r:8,d:'Deep shadows in every crevice — for surfaces and covers.'},flat:{n:'Flat',ao:0,flat:true,d:'A drawn look: thick outline, no depth cue.'}};
+function applyViewStyle(){
+  if(!viewer) return;
+  var L=LIGHTING[state.lighting]||LIGHTING.simple, b=L.flat&&state.border==='none'?'thick':state.border;
+  var width=b==='thick'?0.15:(b==='thin'?0.06:0), st=[], o={};
+  if(width>0){ st.push('outline'); o.color='black'; o.width=width; }
+  if(L.ao>0){ st.push('ambientOcclusion'); o.strength=L.ao; o.radius=L.r; }
+  o.style=st.join(' ');
+  try{ viewer.setViewStyle(st.length?o:{}); }catch(e){}
+  var fog=state.fog&&!L.flat&&state.bg!=='transparent';
+  try{ if(fog) viewer.enableFog({fogStart:0.5,fogEnd:1}); else viewer.enableFog(false); }catch(e){}
 }
+function applyBorder(){ if(!viewer)return; applyViewStyle(); viewer.render(); }
 function applyProjection(){
   if(!viewer) return;
+  setTimeout(function(){ if(typeof decorUpdate==='function') decorUpdate(); },0);
   try{ viewer.setProjection(state.projection==='orthographic'?'orthographic':'perspective'); }catch(e){}
   viewer.render();
 }
@@ -1709,7 +1774,7 @@ function _setViewerBg(key){
   else if(key==='white')viewer.setBackgroundColor('white',1);
   else viewer.setBackgroundColor('#13161e',1);
 }
-function applyBackground(){ if(!viewer)return; _setViewerBg(state.bg); viewer.render(); }
+function applyBackground(){ if(!viewer)return; _setViewerBg(state.bg); applyViewStyle(); viewer.render(); }
 
 // ── Framing: fit the structure to the viewer, whatever its shape and whatever the screen ─────
 // 3Dmol's zoomTo fits a sphere to the view's height, so on a portrait phone every protein ran off both
@@ -1850,7 +1915,7 @@ function chainDot(ch){
   var m=state.color;
   if(m==='spectrum') return 'linear-gradient(135deg,'+adjustColor('#3050f8')+','+adjustColor('#30c0a0')+','+adjustColor('#f0c030')+','+adjustColor('#e04030')+')';
   if(m==='ss') return 'conic-gradient('+adjustColor(SS_COLORS.h)+' 0 33%,'+adjustColor(SS_COLORS.s)+' 0 66%,'+adjustColor(SS_COLORS.c)+' 0)';
-  if(m==='values') return 'linear-gradient(135deg,'+VAL_STOPS.map(adjustColor).join(',')+')';
+  if(m==='values') return 'linear-gradient(135deg,'+valStops().map(adjustColor).join(',')+')';
   if(m==='conf') return 'linear-gradient(135deg,'+adjustColor(isAF()?AF_BINS[0].hex:'#2b6cb0')+','+adjustColor(isAF()?AF_BINS[2].hex:'#f2f2f2')+','+adjustColor(isAF()?AF_BINS[3].hex:'#d6453d')+')';
   return labelColor(ch);
 }
@@ -2886,9 +2951,12 @@ function renderOverlayUI(){
 // ── Values: conservation, variants, and any number per residue ──────────────────────────────
 // All three end the same way: state.values = {title, kind, data:{chain:{resi:value}}, min, max, rev}, and the colour mode "values".
 var VAL_STOPS=['#2aa7b8','#f3f1f1','#8a1f4c'];   // variable → conserved (the ConSurf reading); the same ramp for any number
+// Viridis and cividis read in order in greyscale and to colour-blind eyes; the ConSurf ramp is what that field expects.
+var VAL_MAPS={consurf:{n:'ConSurf (teal → white → maroon)',s:['#2aa7b8','#f3f1f1','#8a1f4c']},viridis:{n:'Viridis',s:['#440154','#3b528b','#21918c','#5ec962','#fde725']},cividis:{n:'Cividis (colour-blind safe)',s:['#00204d','#414d6b','#7c7b78','#bcaf6f','#ffea46']}};
+function valStops(){ var m=VAL_MAPS[state.valMap]; return m?m.s:VAL_STOPS; }
 function valueColor(t){
-  t=Math.max(0,Math.min(1,t)); var s=VAL_STOPS;
-  return t<0.5?_mixHex(s[0],s[1],t*2):_mixHex(s[1],s[2],(t-0.5)*2);
+  t=Math.max(0,Math.min(1,t)); var s=valStops(), n=s.length-1, k=Math.min(n-1,Math.floor(t*n));
+  return _mixHex(s[k],s[k+1],t*n-k);
 }
 function valueOf(ch,resi){ var v=state.values; if(!v) return null; var m=v.data[ch]; if(!m) m=v.data['*']; return m&&m[resi]!=null?m[resi]:null; }
 function valueT(v){ var s=state.values, t=(v-s.min)/((s.max-s.min)||1); return s.rev?1-t:t; }
@@ -3269,7 +3337,7 @@ function setFrameN(n){
 // ── Colour key ───────────────────────────────────────────────────────────────────────────────
 function legendSpec(){
   if(state.color==='values'&&state.values&&currentModel){
-    var vs=state.values, cons=vs.kind==='cons', st=vs.rev?VAL_STOPS.slice().reverse():VAL_STOPS;
+    var vs=state.values, cons=vs.kind==='cons', st=vs.rev?valStops().slice().reverse():valStops();
     return {title:vs.title,grad:st,ends:[vs.min.toFixed(2),vs.max.toFixed(2)],lo:cons?'variable':'low',hi:cons?'conserved':'high',noData:'no value'};
   }
   if(state.color!=='conf'||!currentModel) return null;
@@ -3296,6 +3364,8 @@ function updateSummaries(){
   var np=Object.keys(state.pockets).length;
   set('sum-highlight',[state.highlights.length?state.highlights.length+' highlighted':'',np?np+(np===1?' pocket':' pockets'):''].filter(Boolean).join(' · '));
   set('sum-appearance',(COLOR_NAMES[state.color]||'')+(state.projection==='orthographic'?' · orthographic':''));
+  set('sum-look',((LIGHTING[state.lighting]||LIGHTING.simple).n+' light')+(state.fog?' · depth cue':'')+(state.palette&&state.palette!=='ribbon'?' · '+PALETTES[state.palette].n.split(' (')[0]:''));
+  set('sum-decor',[state.scalebar?'scale bar':'',load('ribbon_axes')==='1'?'axes':''].filter(Boolean).join(' · '));
   var nl=tagList().filter(function(t){ return t.kind!=='meas'; }).length; set('sum-labels',nl?nl+(nl===1?' label':' labels'):'');
   var fi=state.iface, ci=fi&&fi.show&&ifaceNow(); set('sum-interface',ci?fi.a+' – '+fi.b+' · '+ci.v.pairs.length+' contacts':'');
   set('sum-values',state.values?state.values.title:'');
@@ -3303,7 +3373,7 @@ function updateSummaries(){
   var nm=state.measures.length; set('sum-measure',nm?nm+(nm===1?' measurement':' measurements'):'');
   var nd=Object.keys(getDesigns()).length; set('sum-designs',nd?nd+' saved':'');
 }
-var SEC_DEFAULT={structure:true,chains:true,highlight:true,measure:true,interface:false,compare:false,values:false,appearance:true,labels:true,designs:true};
+var SEC_DEFAULT={look:true,decor:false,structure:true,chains:true,highlight:true,measure:true,interface:false,compare:false,values:false,appearance:true,labels:true,designs:true};
 // ── The panel's tabs ─────────────────────────────────────────────────────────────────────────
 // Each tab is a pane of sections. The open tab is remembered; clicking it again folds the pane away (the tabs stay).
 var RB_TAB_IDS=['open','models','colour','analyse','figure','designs'], _rbTab='open';
@@ -3575,6 +3645,7 @@ function renderExport(){
     restore();
     // Labels are drawn AFTER restoring the live viewport so they project against the live canvas and scale by the full export factor.
     if(state.exportLabels){ var lr=canvas.getBoundingClientRect(); drawLabelsToCtx(ctx, off.width/lr.width, lr); }
+    if(state.scalebar){ var sr=canvas.getBoundingClientRect(); drawScaleBarToCtx(ctx, off.width/sr.width, sr, _exOpts.bg); }
   }catch(e){
     restore();
     off.width=d.w; off.height=d.h;   // fallback: upscale the current canvas
@@ -3933,7 +4004,8 @@ function buildScript(kind){
     out('hide '+C+'1 atoms,cartoons,surfaces');
     out('set bgColor '+(dark?'#13161e':'white'));
     if(state.projection==='orthographic') out('camera ortho'); else out('camera mono');
-    out('lighting '+(state.style==='surface'?'soft':'simple'));
+    out('lighting '+({soft:'soft',full:'full',flat:'flat'}[state.lighting]||'simple'));   // ChimeraX has the same four
+    out('lighting depthCue '+(state.fog&&state.bg!=='transparent'?'true':'false'));
     if(state.border!=='none') out('graphics silhouettes true width '+(state.border==='thick'?3:1.5)); else out('graphics silhouettes false');
     var shownCh=chainList.map(_scId).filter(function(c,i){ return c&&!state.hiddenChains[chainList[i]]; });
     out('');
@@ -4006,6 +4078,8 @@ function buildScript(kind){
   out('set orthoscopic, '+(state.projection==='orthographic'?1:0));
   out('set antialias, 2');
   out('set ray_trace_mode, '+(state.border==='none'?0:1));
+  out('set depth_cue, '+(state.fog&&state.bg!=='transparent'?1:0));
+  if(state.lighting==='soft'||state.lighting==='full'){ out('set ambient_occlusion_mode, 1'); out('set ambient_occlusion_scale, '+(state.lighting==='full'?25:15)); }
   if(state.border!=='none') out('set ray_trace_gain, '+(state.border==='thick'?'0.12':'0.06'));
   if(_nFrames>1) out('set state, '+(_frame+1));
   out('');
@@ -4200,7 +4274,7 @@ function rbnInitSync(){ var r=rbnFb(); if(!r) return;
   }, function(){ try{ r.off(); }catch(e){} _rbnRetry(); }); }catch(e){ _rbnRetry(); }
 }
 function _clone(o){ return JSON.parse(JSON.stringify(o)); }
-var DESIGN_KEYS=['style','color','uniformColor','border','bg','surfaceOpacity','projection','showLines','exportLabels','showLigands','showWaters','pocketR','measColor'];
+var DESIGN_KEYS=['style','color','uniformColor','border','bg','surfaceOpacity','projection','showLines','exportLabels','showLigands','showWaters','pocketR','measColor','lighting','fog','palette','valMap','scalebar'];
 function thumbnail(){
   try{
     var src=viewer.pngURI(), im=new Image();   // pngURI is synchronous; the picture is drawn once it decodes
@@ -4308,6 +4382,7 @@ function renderDesignList(){
 // ── Push the state into every control (after loading a design or a structure) ───────────────
 function _segSet(id,val){ document.querySelectorAll('#'+id+' button').forEach(function(b){ var on=b.dataset.v===val; b.classList.toggle('active',on); b.setAttribute('aria-pressed',on?'true':'false'); }); }
 function syncControlsToState(){
+  if(typeof syncLookControls==='function') syncLookControls();
   _segSet('styleSeg',state.style); _segSet('projSeg',state.projection); _segSet('measSeg',_measKind);
   $('topColor').value=state.color; _segSet('borderSeg',state.border); _segSet('bgSeg',state.bg);
   $('surfaceOpacity').value=state.surfaceOpacity;
@@ -4325,6 +4400,7 @@ function syncControlsToState(){
   var us=$('uniformSwatches'); if(us)us.querySelectorAll('.swatch').forEach(function(s){ var on=s.dataset.c===state.uniformColor; s.classList.toggle('active',on); s.setAttribute('aria-pressed',on?'true':'false'); });
 }
 function updateAll(){
+  syncLookControls(); renderPresets();
   renderInfoCard(); renderChainList(); renderLigList(); renderHlList(); renderResLblList(); renderMeasList(); ifaceFill(); syncIface(); renderIface(); renderOverlayUI(); renderValuesInfo(); setTimeout(ifaceSuggest,60); updateLegend(); updateFrameCtl(); updateSummaries();
   $('statusBar').innerHTML=statusHtml(); $('statusBar').classList.add('show');
 }
@@ -5182,6 +5258,152 @@ function cmdWire(){
   _selListeners.push(inspectorPaint);
 }
 function cmdFocus(prefill){ var inp=$('cmdInput'); if(!inp||$('cmdBar').offsetParent===null) return false; if(prefill!=null){ inp.value=prefill; } inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length); cmdRefresh(); return true; }
+// ── Look: lighting, one-click styles, colour-blind palettes, and the helpers on the picture ─────
+// A style changes how the figure looks — colour mode, lighting, outline, background, projection — and never what is in it:
+// labels, highlights, measurements and pockets stay. One click, one undo.
+var PRESETS=[
+  {id:'clean',n:'Clean',d:'One colour, soft light, white',sw:'linear-gradient(135deg,#5e87c5,#9fb6dd)',
+   s:{style:'cartoon',color:'uniform',uniformColor:'#5e87c5',lighting:'soft',fog:false,border:'thin',bg:'white',projection:'orthographic',palette:'ribbon'}},
+  {id:'ternary',n:'Ternary complex',d:'A colour per chain, the degrader magenta, its pocket',sw:'linear-gradient(135deg,#9fc5e8 0 33%,#f4b6b2 0 66%,#e642c8 0)',
+   s:{style:'cartoon',color:'chain',lighting:'soft',fog:false,border:'thin',bg:'white',palette:'pastel'},
+   after:function(){ var l=ligands[0]; if(l){ state.ligColors[l.key]='#e642c8'; state.pockets={}; state.pockets[l.key]=true; } }},
+  {id:'pocket',n:'Ligand pocket',d:'Grey protein, yellow ligand, the residues around it, close up',sw:'linear-gradient(135deg,#c9ccd6 0 60%,#ffd400 0)',
+   s:{style:'cartoon',color:'uniform',uniformColor:'#c9ccd6',lighting:'soft',fog:true,border:'thin',bg:'white'},
+   after:function(){ var l=ligands[0]; if(l){ state.ligColors[l.key]='yellowCarbon'; state.pockets={}; state.pockets[l.key]=true; setTimeout(function(){ focusLigand(l); },60); } }},
+  {id:'surface',n:'Surface',d:'A translucent surface over the chains',sw:'radial-gradient(circle at 40% 40%,#cfe0f7,#5e87c5)',
+   s:{style:'surface',color:'chain',surfaceOpacity:0.55,lighting:'soft',fog:false,border:'thin',bg:'white',palette:'ribbon'}},
+  {id:'cover',n:'Cover',d:'Dark, deep shadows, thick outline',sw:'linear-gradient(135deg,#13161e 0 45%,#e6194b 0 70%,#42d4f4 0)',
+   s:{style:'cartoon',color:'chain',lighting:'full',fog:true,border:'thick',bg:'dark',projection:'orthographic',palette:'vivid'}},
+  {id:'confidence',n:'Confidence',d:'Coloured by pLDDT or B-factor, with the key',sw:'linear-gradient(90deg,#ff7d45,#ffdb13,#65cbf3,#0053d6)',
+   s:{style:'cartoon',color:'conf',lighting:'simple',fog:false,border:'thin',bg:'white'}}
+];
+function applyLook(patch,after){
+  if(!currentModel) return;
+  if(patch.color&&patch.color!=='uniform') state.chainColors={};
+  Object.keys(patch).forEach(function(k){ state[k]=typeof patch[k]==='object'&&patch[k]?_clone(patch[k]):patch[k]; });
+  if(after) after();
+  syncControlsToState(); $('topColor').value=state.color;
+  applyBackground(); applyProjection(); buildGeometry(); updateLegend(); renderChainList(); renderLigList(); updateSummaries(); if(SEQ.on) seqRender();
+  if(!_userMoved) fitView({animate:true});
+}
+function applyPreset(id){
+  var p=PRESETS.filter(function(x){ return x.id===id; })[0]; if(!p) return false;
+  if(id==='confidence'&&!isAF()&&!(bRange[1]>bRange[0])) { showToast('This structure has no B-factors to colour by.'); return false; }
+  applyLook(p.s,p.after); state.look=id; renderPresets(); return true;
+}
+function renderPresets(){
+  var g=$('presetGrid'); if(!g) return;
+  g.innerHTML=PRESETS.map(function(p){ return '<button type="button" class="preset'+(state.look===p.id?' on':'')+'" data-p="'+p.id+'" title="'+escapeHtml(p.d)+'" aria-pressed="'+(state.look===p.id)+'"><i style="background:'+p.sw+'"></i><b>'+escapeHtml(p.n)+'</b></button>'; }).join('');
+}
+function syncLookControls(){
+  _segSet('lightSeg',state.lighting||'simple');
+  var L=LIGHTING[state.lighting]||LIGHTING.simple; if($('lightHint')) $('lightHint').textContent=L.d;
+  if($('fogChk')){ $('fogChk').checked=!!state.fog; $('fogChk').disabled=state.bg==='transparent'||!!L.flat; $('fogChk').parentNode.title=state.bg==='transparent'?'A depth cue needs a white or dark background: what is further away fades into it.':''; }
+  if($('palSel')) $('palSel').value=state.palette||'ribbon';
+  if($('valMapSel')) $('valMapSel').value=state.valMap||'consurf';
+  if($('valMapFld')) $('valMapFld').hidden=!state.values;
+  if($('scaleChk')) $('scaleChk').checked=!!state.scalebar;
+  contrastCheck(); decorUpdate();
+}
+// A chain colour that nearly disappears against the background is named, so it can be changed before it reaches a slide.
+function _contrast(a,b){ var la=_lum(a)+0.05, lb=_lum(b)+0.05; return la>lb?la/lb:lb/la; }
+function contrastCheck(){
+  var el=$('contrastWarn'); if(!el) return;
+  if(!currentModel||state.style==='stick'){ el.hidden=true; return; }
+  var bg=state.bg==='dark'?'#13161e':state.bg==='white'?'#ffffff':(document.documentElement.getAttribute('data-theme')==='dark'?'#13161e':'#ffffff');
+  var lim=state.border==='none'?1.35:1.12;   // an outline carries a pale shape on its own
+  var weak=visibleChains().filter(function(ch){ return _contrast(chainSolidColor(ch),bg)<lim; });
+  if(state.color==='uniform'&&!weak.length&&_contrast(adjustColor(state.uniformColor),bg)<lim) weak=['all'];
+  el.hidden=!weak.length;
+  el.textContent=weak.length?(weak[0]==='all'?'This colour is hard to see on this background.':(weak.length===1?chainTitle(weak[0]):weak.length+' chains')+' will be hard to see on this background.'):'';
+}
+// The axes and the scale bar follow the camera
+var _decorRaf=0;
+function decorUpdate(){
+  if(_decorRaf) return;
+  _decorRaf=requestAnimationFrame(function(){ _decorRaf=0; drawAxes(); drawScaleBar(); });
+}
+function drawAxes(){
+  var el=$('axesInd'); if(!el) return;
+  var on=!!(currentModel&&viewer&&load('ribbon_axes')==='1'); el.toggleAttribute('hidden',!on); if(!on) return;   // an <svg> has no .hidden property
+  var v; try{ v=viewer.getView(); }catch(e){ return; }
+  var R=_camRot(v), cols=['#e5484d','#30a46c','#3e63dd'], names=['x','y','z'], h='';
+  [0,1,2].map(function(i){ return {i:i,x:R[0][i],y:R[1][i],z:R[2][i]}; }).sort(function(a,b){ return a.z-b.z; }).forEach(function(a){
+    var x=a.x*20, y=-a.y*20;
+    h+='<line x1="0" y1="0" x2="'+x.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="'+cols[a.i]+'" opacity="'+(a.z<0?0.45:1)+'"/><text x="'+(x*1.32).toFixed(1)+'" y="'+(y*1.32+3).toFixed(1)+'" text-anchor="middle" fill="'+cols[a.i]+'">'+names[a.i]+'</text>';
+  });
+  el.innerHTML=h;
+}
+function scaleMeasure(){   // pixels per Å at the middle of the structure, and a round length that makes a 50–140 px bar
+  if(!viewer||!currentModel) return null;
+  var pts=fitPoints(); if(!pts.length) return null;
+  var c={x:0,y:0,z:0}; pts.forEach(function(p){ c.x+=p.x; c.y+=p.y; c.z+=p.z; }); c.x/=pts.length; c.y/=pts.length; c.z/=pts.length;
+  var v; try{ v=viewer.getView(); }catch(e){ return null; }
+  var R=_camRot(v), ax={x:R[0][0],y:R[0][1],z:R[0][2]};   // the camera's x axis, in model coordinates
+  var a=viewer.modelToScreen(c), b=viewer.modelToScreen({x:c.x+ax.x*10,y:c.y+ax.y*10,z:c.z+ax.z*10});
+  var ppa=Math.hypot(b.x-a.x,b.y-a.y)/10; if(!(ppa>0)) return null;
+  var L=[1,2,5,10,20,25,50,100,200,500].filter(function(x){ return x*ppa>=50&&x*ppa<=150; })[0]||[1,2,5,10,20,25,50,100,200,500].reduce(function(p,x){ return Math.abs(x*ppa-90)<Math.abs(p*ppa-90)?x:p; },10);
+  return {ppa:ppa,len:L,px:L*ppa};
+}
+function drawScaleBar(){
+  var el=$('scaleBar'); if(!el) return;
+  var on=!!(state.scalebar&&currentModel); el.hidden=!on; if(!on) return;
+  var m=scaleMeasure(); if(!m){ el.hidden=true; return; }
+  var ink=state.bg==='dark'?'#e8eaf2':state.bg==='white'?'#1a1d2e':'';   // the bar is drawn on the picture's background, not the page's
+  el.style.color=ink; el.querySelector('i').style.background=ink||''; el.querySelector('i').style.width=m.px.toFixed(1)+'px'; el.querySelector('span').textContent=m.len+' Å'; el.querySelector('span').style.color=ink||'';
+}
+function drawScaleBarToCtx(ctx,factor,rect,bgKey){
+  var m=scaleMeasure(); if(!m) return;
+  var dark=bgKey==='dark'||(bgKey==='transparent'&&state.bg==='dark'), ink=dark?'#e8eaf2':'#1a1d2e';
+  var w=m.px*factor, x1=ctx.canvas.width-24*factor, x0=x1-w, y=ctx.canvas.height-28*factor;
+  ctx.save(); ctx.fillStyle=ink; ctx.beginPath(); _roundRectPath(ctx,x0,y,w,4*factor,2*factor); ctx.fill();
+  ctx.font='600 '+(12*factor)+"px 'IBM Plex Mono', monospace"; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText(m.len+' Å',x0+w/2,y-4*factor); ctx.restore();
+}
+function veChips(){   // the empty viewer offers what was opened before, and two examples
+  var el=$('veChips'); if(!el) return;
+  var rec=[]; try{ rec=JSON.parse(load('ribbon_recent')||'[]'); }catch(e){}
+  rec=(Array.isArray(rec)?rec:[]).filter(function(r){ return r&&typeof r.q==='string'; }).slice(0,4);
+  var ex=[{q:'5T35',l:'PROTAC ternary complex'},{q:'P04637',l:'AlphaFold: p53'}].filter(function(x){ return !rec.some(function(r){ return r.q===x.q; }); });
+  el.innerHTML=rec.map(function(r){ return '<button type="button" class="ve-chip" data-q="'+escapeHtml(r.q)+'"><b>'+escapeHtml(r.q)+'</b><span>'+escapeHtml(r.l&&r.l!==r.q?r.l:'opened before')+'</span></button>'; }).join('')
+    +ex.slice(0,Math.max(0,4-rec.length)).map(function(r){ return '<button type="button" class="ve-chip" data-q="'+r.q+'"><b>'+r.q+'</b><span>'+r.l+'</span></button>'; }).join('');
+}
+function lookWire(){
+  renderPresets();
+  $('presetGrid').addEventListener('click',function(e){ var b=e.target.closest('.preset'); if(b) applyPreset(b.dataset.p); });
+  segHandler('lightSeg','lighting',function(){ state.look=null; renderPresets(); applyBorder(); syncLookControls(); updateSummaries(); });
+  $('fogChk').addEventListener('change',function(e){ state.fog=e.target.checked; applyBorder(); });
+  $('palSel').innerHTML=Object.keys(PALETTES).map(function(k){ return '<option value="'+k+'">'+escapeHtml(PALETTES[k].n)+'</option>'; }).join('');
+  $('palSel').addEventListener('change',function(e){ state.palette=e.target.value; if(state.color!=='chain'){ state.color='chain'; $('topColor').value='chain'; } state.chainColors={}; updateColorOrOpacity(); renderChainList(); contrastCheck(); if(SEQ.on) seqRender(); });
+  $('valMapSel').innerHTML=Object.keys(VAL_MAPS).map(function(k){ return '<option value="'+k+'">'+escapeHtml(VAL_MAPS[k].n)+'</option>'; }).join('');
+  $('valMapSel').addEventListener('change',function(e){ state.valMap=e.target.value; recolorStructure(); updateLegend(); renderChainList(); });
+  $('scaleChk').addEventListener('change',function(e){ state.scalebar=e.target.checked; decorUpdate(); updateSummaries(); });
+  $('axesChk').checked=load('ribbon_axes')==='1';
+  $('axesChk').addEventListener('change',function(e){ store('ribbon_axes',e.target.checked?'1':'0'); decorUpdate(); });
+  $('veChips').addEventListener('click',function(e){ var b=e.target.closest('.ve-chip'); if(!b) return; $('pdbInput').value=b.dataset.q; handleSubmit(); });
+  veChips();
+  _selListeners.push(contrastCheck);
+}
+function lookOnViewer(){ try{ viewer.setViewChangeCallback(function(){ decorUpdate(); }); }catch(e){} }
+RB_CMDS.push(
+  {n:['lighting','light','lights'],d:'Simple, soft, full or flat light',f:'lighting soft · lighting full',
+   args:function(){ return Object.keys(LIGHTING).map(function(k){ return _cand(k,'word',LIGHTING[k].d); }); },
+   run:function(a){ var l=a.trim().toLowerCase(); if(!LIGHTING[l]) return _err('lighting simple · soft · full · flat'); state.lighting=l; state.look=null; _segSet('lightSeg',l); applyBorder(); syncLookControls(); renderPresets(); return _ok(LIGHTING[l].n+' light.'); }},
+  {n:['fog','depthcue','depth'],d:'Fade what is further away',f:'fog on · fog off',
+   args:function(){ return [_cand('on','word',''),_cand('off','word','')]; },
+   run:function(a){ var on=!/^(off|no|false|0)$/i.test(a.trim()); state.fog=on; applyBorder(); syncLookControls(); return _ok(on?(state.bg==='transparent'?'Depth cue on — it shows once the background is white or dark.':'Depth cue on.'):'Depth cue off.'); }},
+  {n:['preset','look','theme'],d:'A whole look in one go',f:'preset ternary · preset pocket · preset cover',
+   args:function(){ return PRESETS.map(function(p){ return _cand(p.id,'word',p.n+' — '+p.d); }); },
+   run:function(a){ var n=needModel(); if(n) return n; var l=a.trim().toLowerCase(), p=PRESETS.filter(function(x){ return x.id===l||x.n.toLowerCase()===l||x.n.toLowerCase().indexOf(l)===0; })[0]; if(!p) return _err('preset '+PRESETS.map(function(x){ return x.id; }).join(' · ')); return applyPreset(p.id)?_ok(p.n+'.'):_err('Not for this structure.'); }},
+  {n:['palette','colours','colors'],d:'The colours chains are given',f:'palette okabe · palette tol · palette pastel',
+   args:function(){ return Object.keys(PALETTES).map(function(k){ return _cand(k,'word',PALETTES[k].n); }); },
+   run:function(a){ var l=a.trim().toLowerCase(), k=Object.keys(PALETTES).filter(function(x){ return x===l||PALETTES[x].n.toLowerCase().indexOf(l)===0; })[0]; if(!k) return _err('palette '+Object.keys(PALETTES).join(' · ')); $('palSel').value=k; $('palSel').dispatchEvent(new Event('change')); return _ok(PALETTES[k].n+'.'); }},
+  {n:['scalebar','scale'],d:'A scale bar in Å, in the export too',f:'scalebar on · scalebar off',
+   args:function(){ return [_cand('on','word',''),_cand('off','word','')]; },
+   run:function(a){ state.scalebar=!/^(off|no|false|0)$/i.test(a.trim()); syncLookControls(); decorUpdate(); return _ok('Scale bar '+(state.scalebar?'on.':'off.')); }},
+  {n:['axes','axis'],d:'Show the x, y and z axes (screen only)',f:'axes on · axes off',
+   args:function(){ return [_cand('on','word',''),_cand('off','word','')]; },
+   run:function(a){ var on=!/^(off|no|false|0)$/i.test(a.trim()); store('ribbon_axes',on?'1':'0'); $('axesChk').checked=on; decorUpdate(); return _ok('Axes '+(on?'on.':'off.')); }}
+);
 // ═══ RIBBON STUDIO — END ═══
 
 // ── Boot ─────────────────────────────────────────────────────────────────────────────────────
@@ -5195,7 +5417,7 @@ function boot(){
   segHandler('projSeg','projection',function(){ applyProjection(); if(currentModel&&!_userMoved) fitView(); updateSummaries(); });
   $('topColor').addEventListener('change',function(e){ state.color=e.target.value; updateColorOrOpacity(); });
   segHandler('borderSeg','border',function(){ applyBorder(); });
-  segHandler('bgSeg','bg',function(){ applyBackground(); if(selectedChain!==null) recolorStructure(); });
+  segHandler('bgSeg','bg',function(){ applyBackground(); if(selectedChain!==null) recolorStructure(); syncLookControls(); });
 
   // Global HSL palette tuning — it acts on every colour mode, since every mode goes through the one colour function.
   var _hslRaf=0;
@@ -5394,7 +5616,7 @@ function boot(){
       if(!viewer) return;
       viewer.resize();
       if(currentModel&&!_userMoved) fitView(); else viewer.render();
-      updateLabelPositions();
+      updateLabelPositions(); decorUpdate();
     },90);
   }
   if(window.ResizeObserver) new ResizeObserver(onSize).observe(vp); else window.addEventListener('resize',onSize);

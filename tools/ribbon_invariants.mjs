@@ -38,6 +38,8 @@
 //                           Shift and ⌘ select; the selection is green in the structure and never in an export, a script or a design.
 //   RB28 command line       The selection language counts the same residues as a direct count; within is a brute-force distance;
 //                           every command changes what it says; Tab completes with what the structure contains; ↑, Esc, errors stay.
+//   RB29 look               Lighting, depth cue, one-click styles, palettes and value ramps change the picture and nothing in it;
+//                           a too-pale colour is named; the scale bar is its label long and is exported, the axes are not.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
 //                           a label, a row; in the export only with labels; kept by a design; hidden with a chain; follows the model.
 //
@@ -1776,7 +1778,63 @@ async function rb28() {
   await m.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28]];
+
+// ── RB29 look: lighting, styles, palettes, the scale bar ───────────────────────────────────
+async function rb29() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB29 ' });
+  if (!(await has3d(pg))) { skipped.push('RB29 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('4LIG');
+  const pic = () => E(() => { viewer.render(); return viewer.pngURI(); });
+  const p0 = await pic();
+  await E(() => { rbTab('colour'); }); await pg.click('#lightSeg button[data-v=full]'); await sleep(300);
+  const full = await E(() => ({ l: state.lighting, ao: !!viewer.getConfig || true, pressed: document.querySelector('#lightSeg button[data-v=full]').getAttribute('aria-pressed'), hint: document.getElementById('lightHint').textContent }));
+  check('RB29', 'a lighting button sets the light, says what it does, and the picture changes', full.l === 'full' && full.pressed === 'true' && /shadow/i.test(full.hint) && await pic() !== p0, full);
+  await pg.click('#bgSeg button[data-v=white]'); await sleep(150);   // the button, so the depth-cue box follows the background as it does for a person
+  const f0 = await pic(); await pg.check('#fogChk'); await sleep(250);
+  check('RB29', 'the depth cue changes the picture on a white background', await E(() => state.fog) && await pic() !== f0);
+  await pg.click('#bgSeg button[data-v=transparent]'); await sleep(150);
+  check('RB29', 'and is off (and says why) on a transparent one, where it would fade into nothing', await E(() => document.getElementById('fogChk').disabled && /white or dark/.test(document.getElementById('fogChk').parentNode.title)));
+  // styles
+  const before = await E(() => { state.residueLabels.push({ chain: 'A', resi: 3, resn: 'ALA', text: 'ALA 3' }); state.highlights.push({ id: 'h1', sel: 'A:2-4', color: '#123456', sticks: false }); recolorStructure(); return { lab: state.residueLabels.length, hl: state.highlights.length }; });
+  for (const id of ['clean', 'ternary', 'pocket', 'surface', 'cover', 'confidence']) {
+    const q0 = await pic();
+    await pg.click(`#presetGrid .preset[data-p=${id}]`); await sleep(500);
+    const r = await E(id => ({ on: document.querySelector('#presetGrid .preset[data-p=' + id + ']').getAttribute('aria-pressed'), lab: state.residueLabels.length, hl: state.highlights.length, style: state.style, light: state.lighting, bg: state.bg }), id);
+    check('RB29', 'the style “' + id + '” changes the picture and keeps the labels and highlights', r.on === 'true' && r.lab === before.lab && r.hl === before.hl && await pic() !== q0, r);
+  }
+  check('RB29', 'Ternary complex gives the ligand its own colour and its pocket', await E(() => { applyPreset('ternary'); return /^#e642c8$/i.test(ligHex(ligands[0])) && !!state.pockets[ligands[0].key]; }));
+  // palettes
+  const okabe = await E(() => { const s = document.getElementById('palSel'); s.value = 'okabe'; s.dispatchEvent(new Event('change')); return { mode: state.color, a: chainSolidColor('A'), want: adjustColor(PALETTES.okabe.c[0]) }; });
+  check('RB29', 'a palette colours the chains from that palette', okabe.mode === 'chain' && okabe.a === okabe.want, okabe);
+  const warn = await E(() => { state.color = 'uniform'; state.uniformColor = '#ffffff'; state.bg = 'white'; state.border = 'none'; recolorStructure(); syncLookControls(); return { hidden: document.getElementById('contrastWarn').hidden, t: document.getElementById('contrastWarn').textContent }; });
+  check('RB29', 'a colour that disappears on the background is pointed out', !warn.hidden && /hard to see/.test(warn.t), warn);
+  const vm = await E(() => { state.valMap = 'viridis'; const a = valueColor(0), b = valueColor(1); state.valMap = 'consurf'; return { a, b }; });
+  check('RB29', 'viridis runs dark purple → yellow', vm.a === '#440154' && vm.b === '#fde725', vm);
+  // the scale bar is the right length
+  await E(() => { state.bg = 'white'; state.border = 'thin'; state.color = 'chain'; applyBackground(); recolorStructure(); });
+  await pg.check('#scaleChk'); await sleep(300);
+  const sb = await E(() => { const m = scaleMeasure(), el = document.getElementById('scaleBar'), w = el.querySelector('i').getBoundingClientRect().width;
+    const c = currentModel.selectedAtoms({ atom: 'CA' })[0], v = viewer.getView(), R = _camRot(v), a = viewer.modelToScreen(c), b = viewer.modelToScreen({ x: c.x + R[0][0] * m.len, y: c.y + R[0][1] * m.len, z: c.z + R[0][2] * m.len });
+    return { shown: !el.hidden, w, want: Math.hypot(b.x - a.x, b.y - a.y), label: el.querySelector('span').textContent, len: m.len }; });
+  check('RB29', 'the scale bar is as long as its label in Å at the structure (orthographic, so anywhere in it)', sb.shown && Math.abs(sb.w - sb.want) / sb.want < 0.06 && sb.label === sb.len + ' Å', sb);
+  const ex = await E(() => { _exOpts.res = '300'; _exOpts.bg = 'white'; const a = renderExport().toDataURL(); state.scalebar = false; const b = renderExport().toDataURL(); state.scalebar = true; return a !== b; });
+  check('RB29', 'the scale bar is in the export', ex);
+  await pg.check('#axesChk'); await sleep(200);
+  check('RB29', 'the axes show on screen', await E(() => !document.getElementById('axesInd').hasAttribute('hidden') && document.querySelectorAll('#axesInd line').length === 3));
+  const ax = await E(() => { const a = renderExport().toDataURL(); store('ribbon_axes', '0'); decorUpdate(); const b = renderExport().toDataURL(); store('ribbon_axes', '1'); return a === b; });
+  check('RB29', 'and never in the export', ax);
+  // a design keeps the look
+  const d = await E(() => { state.lighting = 'soft'; state.fog = true; state.palette = 'tol'; state.valMap = 'cividis'; const st = collectDesign().state; return [st.lighting, st.fog, st.palette, st.valMap, st.scalebar].join(); });
+  check('RB29', 'a design keeps the light, the depth cue, the palette, the ramp and the scale bar', d === 'soft,true,tol,cividis,true', d);
+  const sc = await E(() => { state.lighting = 'full'; state.fog = true; state.bg = 'white'; return { cx: buildScript('chimerax'), py: buildScript('pymol') }; });
+  check('RB29', 'the scripts carry the light and the depth cue', /lighting full/.test(sc.cx) && /lighting depthCue true/.test(sc.cx) && /set depth_cue, 1/.test(sc.py) && /set ambient_occlusion_mode, 1/.test(sc.py));
+  // the commands
+  const cm = await E(() => [runCommand('lighting soft', { noHistory: true }).ok && state.lighting === 'soft', runCommand('preset cover', { noHistory: true }).ok && state.bg === 'dark', runCommand('palette tol', { noHistory: true }).ok && state.palette === 'tol', !!runCommand('lighting neon', { noHistory: true }).err, cmdSuggest('lighting ').list.map(x => x.t).join() === 'simple,soft,full,flat']);
+  check('RB29', 'lighting, preset and palette are commands, and complete', cm.every(Boolean), cm);
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
