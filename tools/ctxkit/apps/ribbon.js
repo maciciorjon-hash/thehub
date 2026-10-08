@@ -4,6 +4,8 @@ ctxApp(null, { canvas: false, acts: [
   { l: 'Fit to view', f: 'fitToView', k: 'F', when: function(){ return !!window.currentModel; } },
   { l: 'Export image…', f: 'openExport', when: function(){ return !!window.currentModel; } },
   { l: 'Copy image', f: 'copyImage', when: function(){ return !!window.currentModel; } },
+  { l: 'PyMOL script', f: 'exportPyMOL', when: function(){ return !!window.currentModel; } },
+  { l: 'ChimeraX script', f: 'exportChimeraX', when: function(){ return !!window.currentModel; } },
   { l: 'Open file…', f: 'rbOpenFilePicker' },
   { l: 'Controls…', f: 'openControls', when: function(){ return window.innerWidth <= 760; } }
 ] });

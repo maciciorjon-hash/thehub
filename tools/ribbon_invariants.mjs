@@ -1117,8 +1117,153 @@ async function rb21() {
   await ctx.close();
 }
 
+// ── RB22 the figure as a script (PyMOL .pml, ChimeraX .cxc) ───────────────────────────────────
+// PyMOL and ChimeraX are not on the CI machines, so the scripts are read back here and checked against what Ribbon draws:
+// every residue's colour, what is hidden, what is drawn as sticks, and the camera. (The same scripts were run in the real programs
+// once, by hand: colours 48/48, camera within 0.0002 Å in both, no command refused.)
+const PY_CMDS = new Set(['reinitialize', 'fetch', 'load', 'hide', 'bg_color', 'set', 'show', 'color', 'util.cnc', 'label', 'pseudoatom', 'distance', 'angle', 'set_view', 'zoom']);
+const CX_CMDS = new Set(['open', 'hide', 'set', 'camera', 'lighting', 'graphics', 'cartoon', 'show', 'style', 'color', 'size', 'surface', 'transparency', 'label', 'marker', 'distance', 'view']);
+const rangesOf = s => { const out = []; for (const t0 of String(s).split(/[+,]/)) { const t = t0.replace(/\\/g, ''); const ic = /^(-?\d+)([A-Za-z])$/.exec(t); const m = /^(-?\d+)-(-?\d+)$/.exec(t) || /^(-?\d+)$/.exec(t); if (ic) out.push(t); else if (m) out.push([+m[1], m[2] != null ? +m[2] : +m[1]]); else if (t) out.push(t); } return out; };
+const inRanges = (rs, resi, ic) => rs.some(r => typeof r === 'string' ? r === resi + ic : r[0] === r[1] ? (!ic && resi === r[0]) : (resi >= r[0] && resi <= r[1]));   // as both programs read it: "1" is residue 1 alone, "1-2" takes 1A with it
+// the colour each residue ends up with when a script's colour lines are applied in order
+function readColours(text, kind, residues) {
+  const col = new Map(residues.map(r => [r.chain + '|' + r.resi + '|' + r.ic, null]));
+  const apply = (chain, ranges, hex) => { for (const r of residues) { if (chain && r.chain !== chain) continue; if (ranges && !inRanges(ranges, r.resi, r.ic)) continue; col.set(r.chain + '|' + r.resi + '|' + r.ic, hex.toLowerCase()); } };
+  for (const l of text.split('\n')) {
+    let m;
+    if (kind === 'pymol') { if ((m = /^color 0x([0-9a-fA-F]{6}), structure and polymer(?: and chain (\w+))?(?: and resi (\S+))?$/.exec(l))) apply(m[2], m[3] && rangesOf(m[3]), '#' + m[1]); }
+    else if ((m = /^color (?:#1|\/(\w+))(?::(\S+))? & \(protein\|nucleic\) (#[0-9a-fA-F]{6})$/.exec(l))) apply(m[1], m[2] && rangesOf(m[2]), m[3]);
+  }
+  return col;
+}
+// the camera as a script states it: where an atom lands relative to the others, to be compared with the viewer's own screen
+function cameraOf(text, kind) {
+  if (kind === 'pymol') {
+    const m = /^set_view \(([^)]+)\)$/m.exec(text); if (!m) return null; const v = m[1].split(',').map(Number); if (v.length !== 18) return null;
+    const R = [[v[0], v[3], v[6]], [v[1], v[4], v[7]], [v[2], v[5], v[8]]], c = v.slice(12, 15);   // PyMOL lists the matrix column by column
+    return p => [0, 1].map(k => R[k][0] * (p[0] - c[0]) + R[k][1] * (p[1] - c[1]) + R[k][2] * (p[2] - c[2]));
+  }
+  const m = /^view matrix camera (\S+)$/m.exec(text); if (!m) return null; const v = m[1].split(',').map(Number); if (v.length !== 12) return null;
+  const Rc = [[v[0], v[1], v[2]], [v[4], v[5], v[6]], [v[8], v[9], v[10]]], t = [v[3], v[7], v[11]];   // camera → scene, so a scene point is taken back with the transpose
+  return p => [0, 1].map(k => Rc[0][k] * (p[0] - t[0]) + Rc[1][k] * (p[1] - t[1]) + Rc[2][k] * (p[2] - t[2]));
+}
+const fitErr = (pts, f) => {   // the camera's x and −y offsets, turned and scaled as little as can be, onto the viewer's screen offsets
+  const cam = pts.map(p => f(p.xyz)), P = cam.map(c => [c[0], -c[1]]), Q = pts.map(p => [p.sx, p.sy]);
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length, mp = [mean(P.map(p => p[0])), mean(P.map(p => p[1]))], mq = [mean(Q.map(p => p[0])), mean(Q.map(p => p[1]))];
+  let sxx = 0, sxy = 0, nn = 0; P.forEach((p, i) => { const a = [p[0] - mp[0], p[1] - mp[1]], b = [Q[i][0] - mq[0], Q[i][1] - mq[1]]; sxx += a[0] * b[0] + a[1] * b[1]; sxy += a[0] * b[1] - a[1] * b[0]; nn += a[0] * a[0] + a[1] * a[1]; });
+  const ang = Math.atan2(sxy, sxx), k = Math.hypot(sxx, sxy) / nn;
+  const res = P.map((p, i) => { const a = [p[0] - mp[0], p[1] - mp[1]], x = k * (Math.cos(ang) * a[0] - Math.sin(ang) * a[1]) + mq[0], y = k * (Math.sin(ang) * a[0] + Math.cos(ang) * a[1]) + mq[1]; return Math.hypot(x - Q[i][0], y - Q[i][1]); });
+  const spread = Math.max(...Q.map(q => Math.hypot(q[0] - mq[0], q[1] - mq[1])));
+  return { k, angDeg: ang * 180 / Math.PI, rel: Math.max(...res) / spread };   // a wrong convention turns the picture by tens of degrees; 3Dmol's own orthographic view shears a few percent with depth
+};
+async function rb22() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB22 ' });
+  if (!(await has3d(pg))) { skipped.push('RB22 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ'); await sleep(300);
+  // a figure with everything in it: a palette shift, a chain colour, a highlight with sticks, a hidden chain's worth of tags, a measurement of each kind
+  const setup = await E(async () => {
+    state.color = 'spectrum'; state.hsl = { h: 20, s: 85, l: 105 }; state.projection = 'orthographic'; state.border = 'thick'; state.bg = 'white';
+    state.chainColors = { B: '#51c3ce' };
+    state.highlights = [{ sel: 'A:3-6', color: '#ffbf7b', sticks: true }];
+    state.residueLabels = [{ chain: 'A', resi: 5, text: 'Lys"5;x\\y' }];
+    state.chainLabels = { B: 'Beta' };
+    const at = (c, r, n) => ({ c, r, n });
+    state.measures = [{ id: 'm1', kind: 'dist', pts: [at('A', 2, 'CA'), at('B', 4, 'CA')] }, { id: 'm2', kind: 'angle', pts: [at('A', 2, 'CA'), at('A', 8, 'CA'), at('A', 14, 'CA')] }];
+    buildGeometry(); applyProjection(); viewer.rotate(41, 'y'); viewer.rotate(-27, 'x'); viewer.rotate(13, 'z'); viewer.render();
+    await new Promise(r => setTimeout(r, 300));
+    const fn = makeColorFn({ noDim: true }), seen = {}, residues = [];
+    currentModel.selectedAtoms({ hetflag: false }).forEach(a => { const ic = String(a.icode || '').trim(), k = a.chain + '|' + a.resi + '|' + ic; if (seen[k]) return; seen[k] = 1; residues.push({ chain: a.chain, resi: a.resi, ic, hex: fn(a) }); });
+    const vp = document.getElementById('viewport').getBoundingClientRect(), pts = [];
+    currentModel.selectedAtoms({ atom: 'CA' }).forEach((a, i) => { if (i % 3) return; const s = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z }); pts.push({ xyz: [a.x, a.y, a.z], sx: s.x - vp.left, sy: s.y - vp.top }); });
+    return { pml: buildScript('pymol'), cxc: buildScript('chimerax'), residues, pts, anchor: getAnchor('B') };
+  });
+  const { pml, cxc, residues, pts } = setup;
+  // every residue in the colour it is drawn in
+  for (const [kind, text] of [['pymol', pml], ['chimerax', cxc]]) {
+    const col = readColours(text, kind, residues), bad = residues.filter(r => col.get(r.chain + '|' + r.resi + '|' + r.ic) !== r.hex.toLowerCase());
+    check('RB22', kind + ': applying the colour lines gives every residue the colour the viewer draws (palette shift, chain colour, highlight, spectrum)', !bad.length && residues.length === 48, { bad: bad.slice(0, 3), n: residues.length });
+  }
+  // nothing a command line would misread
+  for (const [kind, text, cmds] of [['pymol', pml, PY_CMDS], ['chimerax', cxc, CX_CMDS]]) {
+    const lines = text.split('\n').filter(l => l.trim()), unk = lines.filter(l => !l.startsWith('#') && !cmds.has(l.split(/[ ,]/)[0]));
+    check('RB22', kind + ': every line is a comment or a command the program has', !unk.length, unk.slice(0, 3));
+    check('RB22', kind + ': no ";" anywhere (it separates commands, in a comment and in a label too), no undefined / NaN / Infinity, no trailing comment after a command', !/;/.test(text) && !/undefined|NaN|Infinity|\bnull\b/.test(text) && !lines.some(l => !l.startsWith('#') && /\s#\s/.test(l)), text.split('\n').filter(l => /;|undefined|NaN|\s#\s/.test(l) && !l.startsWith('#')).slice(0, 3));
+  }
+  // the camera
+  const cp = fitErr(pts, cameraOf(pml, 'pymol')), cc = fitErr(pts, cameraOf(cxc, 'chimerax'));
+  check('RB22', 'PyMOL set_view: the atoms are turned the way the viewer shows them (within 2°: 3Dmol\'s own orthographic view shears a little with depth, so a pixel-exact match is not on offer; a wrong convention is tens of degrees out)', Math.abs(cp.angDeg) < 2 && cp.rel < 0.1 && cp.k > 2, cp);
+  check('RB22', 'ChimeraX view matrix camera: the same', Math.abs(cc.angDeg) < 2 && cc.rel < 0.1 && cc.k > 2, cc);
+  check('RB22', 'the script tells the program to frame the structure itself after the orientation', /^zoom visible/m.test(pml) && /^view$/m.test(cxc));
+  // style, sticks, labels, measurements
+  check('RB22', 'PyMOL: the highlight is drawn as sticks, with non-carbon atoms by element', /^show sticks, structure and polymer and chain A and resi 3-6$/m.test(pml) && /^util\.cnc structure and polymer and chain A and resi 3-6$/m.test(pml));
+  check('RB22', 'ChimeraX: the same, by hetero-atom', /^show #1\/A:3-6 & \(protein\|nucleic\) atoms$/m.test(cxc) && /^color #1\/A:3-6 & \(protein\|nucleic\) byhetero$/m.test(cxc));
+  check('RB22', 'a residue you measured is drawn as sticks in both', ['2', '4', '8', '14'].every(r => new RegExp('^show sticks, structure and polymer and chain \\w and resi ' + r + '$', 'm').test(pml) && new RegExp('^show #1/\\w:' + r + ' & ', 'm').test(cxc)));
+  check('RB22', 'residue text is made safe (quotes, backslash, semicolon) and sits on the right residue', /label structure and chain A and resi 5 and name CA, "Lys 5,x y"/.test(pml) && /^label #1\/A:5 text "Lys 5,x y" /m.test(cxc), pml.split('\n').filter(l => /^label/.test(l)));
+  const an = setup.anchor, pa = /^pseudoatom rb_chain\d+, pos=\[([-\d.]+),([-\d.]+),([-\d.]+)\], label="Beta"$/m.exec(pml), ma = /^marker #900 position ([-\d.]+),([-\d.]+),([-\d.]+) /m.exec(cxc);
+  const near = m => m && Math.hypot(+m[1] - an.x, +m[2] - an.y, +m[3] - an.z) < 0.01;
+  check('RB22', 'a chain name is placed at its 3D anchor (a PyMOL pseudoatom there; a ChimeraX marker there, labelled)', near(pa) && near(ma) && /^label #900:1 text "Beta" /m.test(cxc), { an, pa: pa && pa[0], ma: ma && ma[0] });
+  check('RB22', 'a distance and an angle are in the script, on the atoms measured', /^distance rb_dist0, \(structure and chain A and resi 2 and name CA\), \(structure and chain B and resi 4 and name CA\)$/m.test(pml) && /^angle rb_angle1, /m.test(pml) && /^distance #1\/A:2@CA #1\/B:4@CA /m.test(cxc) && /^label #1\/A:8 text "\d+\.\d°"/m.test(cxc), { d: pml.split('\n').filter(l => /distance|angle/.test(l)), c: cxc.split('\n').filter(l => /distance|angle/.test(l)) });
+  check('RB22', 'projection and background carry over (orthographic, white, opaque off for transparent)', /^set orthoscopic, 1$/m.test(pml) && /^bg_color white$/m.test(pml) && /^camera ortho$/m.test(cxc) && /^set bgColor white$/m.test(cxc));
+  // hidden chain
+  const hid = await E(() => { toggleChain('B', true); return { pml: buildScript('pymol'), cxc: buildScript('chimerax') }; }); await sleep(100);
+  check('RB22', 'a hidden chain is hidden in both, and its tags and measurements are left out', /^hide everything, structure and chain B$/m.test(hid.pml) && /^hide \/B atoms,cartoons,surfaces$/m.test(hid.cxc) && !/"Beta"/.test(hid.pml + hid.cxc) && !/rb_dist0/.test(hid.pml) && !/^distance /m.test(hid.cxc));
+  await E(() => toggleChain('B', false));
+  // surface and stick styles, dark background
+  const sty = await E(() => { state.style = 'surface'; state.surfaceOpacity = 0.4; state.bg = 'dark'; state.projection = 'perspective'; state.border = 'none'; return { pml: buildScript('pymol'), cxc: buildScript('chimerax') }; });
+  check('RB22', 'surface style: a surface and the transparency that is drawn (60 %), in both', /^show surface, structure and polymer$/m.test(sty.pml) && /^set transparency, 0\.6$/m.test(sty.pml) && /^surface #1$/m.test(sty.cxc) && /^transparency #1 60 target s$/m.test(sty.cxc));
+  check('RB22', 'dark background, perspective and no outline carry over', /^bg_color 0x13161e$/m.test(sty.pml) && /^set orthoscopic, 0$/m.test(sty.pml) && /^set ray_trace_mode, 0$/m.test(sty.pml) && /^set bgColor #13161e$/m.test(sty.cxc) && /^camera mono$/m.test(sty.cxc) && /^graphics silhouettes false$/m.test(sty.cxc));
+  const stk = await E(() => { state.style = 'stick'; return { pml: buildScript('pymol'), cxc: buildScript('chimerax') }; });
+  check('RB22', 'stick style: sticks for the polymer, no cartoon', /^show sticks, structure and polymer$/m.test(stk.pml) && !/^show cartoon/m.test(stk.pml) && /^style #1 & \(protein\|nucleic\) stick$/m.test(stk.cxc) && !/^cartoon /m.test(stk.cxc));
+  // the dialog downloads them
+  await E(() => { state.style = 'cartoon'; state.bg = 'transparent'; });
+  await E(() => openExport());
+  const [d1] = await Promise.all([pg.waitForEvent('download'), pg.click('#exPml')]);
+  const t1 = await (async () => { const s = await d1.createReadStream(); const chunks = []; for await (const c of s) chunks.push(c); return Buffer.concat(chunks).toString(); })();
+  check('RB22', 'the PyMOL button saves <id>_ribbon.pml with the script, and closes the dialog', /_ribbon\.pml$/.test(d1.suggestedFilename()) && /^reinitialize$/m.test(t1) && /^set ray_opaque_background, off$/m.test(t1) && await E(() => !document.getElementById('export-modal').classList.contains('open')), d1.suggestedFilename());
+  await E(() => openExport());
+  const [d2] = await Promise.all([pg.waitForEvent('download'), pg.click('#exCxc')]);
+  const t2 = await (async () => { const s = await d2.createReadStream(); const chunks = []; for await (const c of s) chunks.push(c); return Buffer.concat(chunks).toString(); })();
+  check('RB22', 'the ChimeraX button saves <id>_ribbon.cxc', /_ribbon\.cxc$/.test(d2.suggestedFilename()) && /^open 7seq$/m.test(t2) && /^view$/m.test(t2), d2.suggestedFilename());
+  // where the structure comes from
+  const src = await E(() => {
+    const keep = [currentSource, currentPdbId, currentInfo], o = {};
+    currentSource = { kind: 'file', id: 'my model.pdb' }; currentPdbId = 'my model.pdb'; currentInfo = { title: 'A; B' };
+    o.file = { pml: buildScript('pymol'), cxc: buildScript('chimerax') };
+    currentSource = { kind: 'af', id: 'AF-P12345-F1', rid: 'P12345', af: { pdbUrl: 'https://alphafold.ebi.ac.uk/files/AF-P12345-F1-model_v4.pdb' } }; currentPdbId = 'AF-P12345-F1';
+    o.af = { pml: buildScript('pymol'), cxc: buildScript('chimerax') };
+    [currentSource, currentPdbId, currentInfo] = keep; return o;
+  });
+  check('RB22', 'a file is loaded by name and says to keep it next to the script; a semicolon in the title cannot split a comment', /^load "my model\.pdb", structure$/m.test(src.file.pml) && /^open "my model\.pdb"$/m.test(src.file.cxc) && /keep "my model\.pdb" next to this script/.test(src.file.pml) && !/;/.test(src.file.pml + src.file.cxc));
+  check('RB22', 'AlphaFold is loaded from the model URL', /^load https:\/\/alphafold\.ebi\.ac\.uk\/files\/AF-P12345-F1-model_v4\.pdb, structure$/m.test(src.af.pml) && /^open https:\/\/alphafold\.ebi\.ac\.uk\/files\/AF-P12345-F1-model_v4\.pdb$/m.test(src.af.cxc));
+  // ligands, ions, waters, a pocket
+  await go('4LIG'); await sleep(300);
+  const lg = await E(() => { state.showWaters = true; const l = ligands.find(x => x.resn === 'LIG'); state.pockets[l.key] = true; state.ligColors[l.key] = 'cyanCarbon'; state.pocketR = 6; buildGeometry(); return { pml: buildScript('pymol'), cxc: buildScript('chimerax'), keys: ligands.map(x => x.key) }; });
+  check('RB22', 'a ligand: sticks and balls in the colour chosen, other atoms by element', /^show sticks, structure and resn LIG and chain A and resi 201$/m.test(lg.pml) && /^color 0x1ac8c8, structure and resn LIG and chain A and resi 201$/m.test(lg.pml) && /^color #1\/A:201 #1ac8c8$/m.test(lg.cxc) && /^color #1\/A:201 byhetero$/m.test(lg.cxc), lg.pml.split('\n').filter(l => /LIG/.test(l)));
+  check('RB22', 'its pocket is the residues within the radius that is set (6 Å), shown as sticks', /byres \(\(structure and polymer\) within 6 of \(structure and resn LIG and chain A and resi 201\)\)/.test(lg.pml) && /\(\(#1\/A:201\) :<6\) & \(protein\|nucleic\)/.test(lg.cxc));
+  check('RB22', 'ions and waters are drawn when the viewer draws them', /^show spheres, structure and resn MG$/m.test(lg.pml) && /^show spheres, structure and solvent$/m.test(lg.pml) && /^show #1 & solvent atoms$/m.test(lg.cxc));
+  const nolig = await E(() => { state.showLigands = false; state.showWaters = false; return { pml: buildScript('pymol'), cxc: buildScript('chimerax') }; });
+  check('RB22', 'with ligands off there is no ligand, ion, water or pocket line', !/resn|solvent|within/.test(nolig.pml) && !/solvent|:<|ligand/.test(nolig.cxc), nolig.pml.split('\n').filter(l => /resn|solvent|within/.test(l)).slice(0, 2));
+  await ctx.close();
+  // odd residue ids: negative numbers, an insertion code, a blank chain
+  const { ctx: c2, pg: p2, E: E2 } = await open({ tag: 'RB22b ' });
+  const L = []; let n = 1; const ids = [[-2, ''], [-1, ''], [0, ''], [1, ''], [1, 'A'], [2, '']];
+  ids.forEach(([r, ic], i) => { ['N', 'CA', 'C', 'O'].forEach((nm, k) => { const l = atomLine('ATOM', n++, nm, 'ALA', 'A', r, i * 3.8 + k * 0.4, Math.sin(i), 0.3 * k, 20, nm[0]); L.push(ic ? l.slice(0, 26) + ic + l.slice(27) : l); }); });
+  await p2.setInputFiles('#fileInput', { name: 'odd.pdb', mimeType: 'text/plain', buffer: Buffer.from(L.join('\n') + '\nEND\n') }); await sleep(1800);
+  // colours chosen so that a run of red would cover the blue insertion-code residue if it were allowed to span it
+  const odd = await E2(() => {
+    window.makeColorFn = () => a => ((a.resi === -2 || (a.resi === 1 && String(a.icode || '').trim() === 'A')) ? '#0000ff' : '#ff0000');
+    const fn = makeColorFn(), seen = {}, res = [];
+    currentModel.selectedAtoms({ hetflag: false }).forEach(a => { const ic = String(a.icode || '').trim(), k = a.chain + '|' + a.resi + '|' + ic; if (seen[k]) return; seen[k] = 1; res.push({ chain: a.chain, resi: a.resi, ic, hex: fn(a) }); });
+    return { pml: buildScript('pymol'), cxc: buildScript('chimerax'), res };
+  });
+  const okOdd = ['pymol', 'chimerax'].map(kind => { const col = readColours(kind === 'pymol' ? odd.pml : odd.cxc, kind, odd.res); return odd.res.every(r => col.get(r.chain + '|' + r.resi + '|' + r.ic) === r.hex.toLowerCase()); });
+  check('RB22', 'negative residue numbers and an insertion code still colour every residue right (a run never spans the insertion-code residue)', okOdd[0] && okOdd[1] && odd.res.length === 6, { res: odd.res.map(r => r.resi + r.ic), okOdd, lines: odd.pml.split('\n').filter(l => /^color/.test(l)) });
+  check('RB22', 'PyMOL reads a leading minus as "up to": every negative number in a residue list is escaped', /resi [^\n]*\\-2/.test(odd.pml) && !/(resi |\+)-\d/.test(odd.pml), odd.pml.split('\n').filter(l => /^color/.test(l)));
+  await c2.close();
+}
+
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

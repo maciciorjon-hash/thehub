@@ -95,8 +95,8 @@ input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webki
 .seg button.active{background:var(--accent);color:var(--on-accent);font-weight:600;}
 .seg button:hover:not(.active){background:var(--surface3);}
 .seg button:focus-visible{outline-offset:-2px;}
-.check{display:flex;align-items:center;gap:8px;font-size:var(--fs-4);color:var(--text2);cursor:pointer;min-width:0;}
-.check input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;flex:none;}
+.check{display:flex;align-items:flex-start;gap:8px;font-size:var(--fs-4);line-height:1.35;color:var(--text2);cursor:pointer;min-width:0;}
+.check input{width:15px;height:15px;margin:calc((var(--fs-4) * 1.35 - 15px) / 2) 0 0;accent-color:var(--accent);cursor:pointer;flex:none;}   /* the box sits on the first line of a label that wraps */
 .err-text{font-size:var(--fs-3);color:var(--danger);display:none;line-height:1.45;}
 .err-text.show{display:block;}
 .range-row{display:flex;align-items:center;gap:8px;font-size:var(--fs-2);color:var(--text2);}
@@ -109,7 +109,7 @@ input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webki
 .swatch-custom{position:relative;overflow:hidden;background:var(--surface2);display:inline-flex;align-items:center;justify-content:center;
   width:24px;height:24px;border-radius:var(--r-2);border:1.5px dashed var(--border2);cursor:pointer;color:var(--text2);}
 .swatch-custom svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;pointer-events:none;}
-.swatch-custom input{position:absolute;inset:-6px;width:40px;height:40px;opacity:0;cursor:pointer;border:none;padding:0;}
+.swatch-custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:none;padding:0;}
 
 /* ── Sidebar: sections that fold (docs/UI.md › A tool strip is sections that fold) ── */
 .sidebar{width:328px;flex:none;background:var(--bg);border-right:1px solid var(--border);overflow-y:auto;
@@ -311,6 +311,10 @@ textarea.inp{height:auto;padding:8px 10px;resize:vertical;line-height:1.45;font-
 .ov-body{padding:16px 18px 8px;display:flex;flex-direction:column;gap:14px;}
 .ov-body p{font-size:var(--fs-4);color:var(--text2);line-height:1.55;overflow-wrap:anywhere;}
 .ov-dim{font-size:var(--fs-2);color:var(--text2);font-family:var(--mono);line-height:1.5;}
+.ex-script{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--border);}
+.ex-script-h{font-size:var(--fs-3);font-weight:600;color:var(--text);}
+.ex-script-b{display:flex;gap:8px;flex-wrap:wrap;}
+.ex-script .ov-dim{font-family:var(--sans);}
 .ov-foot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;padding:12px 18px 16px;border-top:1px solid var(--border);margin-top:8px;}
 
 /* ── Label tags: HTML callouts over the canvas (chains and residues) ── */
@@ -395,6 +399,7 @@ body.controls-open .viewer-empty{visibility:hidden;}
 /* a phone held sideways: the bar and the sheet have to leave room for the structure */
 @media (hover:none) and (pointer:coarse) and (max-height:520px){
   .top-bar{--tb-h:36px;padding:5px 12px;gap:6px 12px;}
+  .top-bar .tb-select{min-height:var(--tb-h) !important;}
   #mobile-controls-btn{height:38px;bottom:10px;}
 }
 
@@ -878,6 +883,11 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div class="ov-dim" id="exDim"></div>
       <label class="check"><input type="checkbox" id="exLabels" checked> Include labels</label>
       <label class="check" id="exLegendRow" hidden><input type="checkbox" id="exLegend" checked> Include the colour key</label>
+      <div class="ex-script" role="group" aria-label="Export as a script">
+        <div class="ex-script-h">Or take it into another program</div>
+        <div class="ex-script-b"><button class="btn" type="button" id="exPml">PyMOL script</button><button class="btn" type="button" id="exCxc">ChimeraX script</button></div>
+        <div class="ov-dim">The structure, every colour as drawn, ligands, labels, measurements and the direction you are looking from.</div>
+      </div>
     </div>
     <div class="ov-foot">
       <button class="btn" type="button" onclick="closeExport()">Cancel</button>
@@ -3298,6 +3308,272 @@ function sendToLabbook(){
   }catch(e){ showToast('Labbook could not be reached.'); }
 }
 
+// ── The figure as a script: PyMOL (.pml) and ChimeraX (.cxc) ─────────────────────────────────
+// For the people who finish a figure in PyMOL or ChimeraX. The script rebuilds what is on screen: the structure,
+// the style, every residue in the colour it is drawn in (palette tuning, chain colours, highlights, the interface and
+// values included), hidden chains, ligands and pockets, sticks, labels, measurements and the camera orientation.
+// The camera is the direction you are looking from; the other program frames the structure itself.
+function _camRot(v){   // 3Dmol's view → the rotation that takes model coordinates to camera ones (x right, y up, looking down −z)
+  var x=v[4],y=v[5],z=v[6],w=v[7];
+  return [[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w)],[2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w)],[2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y)]];
+}
+function _scId(s){ s=String(s==null?'':s).trim(); return /^[A-Za-z0-9]{1,4}$/.test(s)?s:''; }   // a chain id both programs can name; blank means "no chain term"
+function _scComment(s){ return String(s==null?'':s).replace(/[;\r\n]+/g,',').trim(); }
+function _scText(s){ return String(s==null?'':s).replace(/[\\"\r\n]+/g,' ').replace(/;/g,',').trim(); }   // a semicolon separates commands in both programs, quoted or not
+function _scNum(v){ return (Math.round(v*1e5)/1e5).toString(); }
+// Every polymer residue in the colour the figure draws it in, as runs: {chain:{hex:[[lo,hi]|'52A', …]}} plus how many residues each chain has.
+function scriptColours(){
+  var fn=makeColorFn({noDim:true}), seen={}, per={}, order=[];
+  currentModel.selectedAtoms({hetflag:false}).forEach(function(a){
+    if(WATER_RESN.indexOf(a.resn)>=0) return;
+    var ch=_scId(a.chain), ic=String(a.icode||'').trim(), k=ch+'|'+a.resi+'|'+ic;
+    if(seen[k]) return; seen[k]=1;
+    if(!per[ch]){ per[ch]=[]; order.push(ch); }
+    per[ch].push({r:a.resi,ic:ic,c:fn(a)});
+  });
+  var out=order.map(function(ch){
+    var list=per[ch], groups={}, gorder=[];
+    list.forEach(function(e){
+      var g=groups[e.c]; if(!g){ g=groups[e.c]=[]; gorder.push(e.c); }
+      var tail=g[g.length-1];
+      if(!e.ic&&tail&&!tail.ic&&tail.hi===e.r-1) tail.hi=e.r; else g.push({lo:e.r,hi:e.r,ic:e.ic});
+    });
+    return {chain:ch,n:list.length,groups:gorder.map(function(c){ return {hex:c,runs:groups[c]}; })};
+  });
+  return out;
+}
+// The colour lines of one chain, in the order to apply them: numeric ranges first, insertion-code residues last. Both programs read "1-5" as
+// taking residue 1A with it, so the residue that has a colour of its own has to be set after every range that could cover it.
+function _scColourItems(cc,py){
+  var num=[], ics=[];
+  cc.groups.forEach(function(g){
+    var n=g.runs.filter(function(r){ return !r.ic; }).map(function(r){ return _scRange(r,py); });
+    var c=g.runs.filter(function(r){ return r.ic; }).map(function(r){ return _scRange(r,py); });
+    for(var i=0;i<n.length;i+=60) num.push({hex:g.hex,parts:n.slice(i,i+60)});
+    for(var j=0;j<c.length;j+=60) ics.push({hex:g.hex,parts:c.slice(j,j+60)});
+  });
+  return num.concat(ics);
+}
+// A residue range as each program writes it. PyMOL reads a leading minus as "up to", so a negative number has to be escaped.
+function _scRange(r,py){
+  var n=function(v){ return py&&v<0?'\\-'+(-v):String(v); };
+  if(r.ic) return n(r.lo)+r.ic;
+  return r.lo===r.hi?n(r.lo):n(r.lo)+'-'+n(r.hi);
+}
+function _scLigands(){   // what the viewer draws as ligands, with the carbon colour each has been given
+  var shown=ligands.filter(function(l){ return !state.hiddenChains[l.chain]; });
+  var generic=state.showLigands&&shown.length+ligOverflow>40;
+  return {on:state.showLigands, generic:generic, list:shown.map(function(l){
+    var s=ligScheme(l), hex=(LIG_SCHEMES.filter(function(x){ return x.k===s; })[0]||LIG_SCHEMES[0]).hex;
+    return {resn:_scId(l.resn)||l.resn.replace(/[^A-Za-z0-9]/g,''),chain:_scId(l.chain),resi:l.resi,hex:hex,pocket:!!state.pockets[l.key]};
+  })};
+}
+function _scStickResidues(){   // residues drawn as sticks on top of the cartoon: highlights asked for them, the interface, and an atom you measured
+  var out=[], seen={};
+  function add(ch,lo,hi){ var k=ch+'|'+lo+'|'+hi; if(seen[k]) return; seen[k]=1; out.push({chain:ch,lo:lo,hi:hi}); }
+  state.highlights.forEach(function(h){
+    if(!h.sticks) return;
+    var p=parseResidues(h.sel); if(!p.ranges) return;
+    p.ranges.forEach(function(r){
+      if(r.chain!=='*') add(_scId(r.chain),r.lo,r.hi);
+      else chainList.forEach(function(c){ if(!state.hiddenChains[c]) add(_scId(c),r.lo,r.hi); });
+    });
+  });
+  var fi=state.iface; if(fi&&fi.show&&fi.sticks!==false){ var ic=ifaceNow(); if(ic) [fi.a,fi.b].forEach(function(ch){ if(state.hiddenChains[ch]) return; ifaceResidues(ic,ch).sort(function(x,y){ return x-y; }).forEach(function(r){ add(_scId(ch),r,r); }); }); }
+  state.measures.forEach(function(m){ if(!measureShown(m)) return; m.pts.forEach(function(pt){ add(_scId(pt.c),pt.r,pt.r); }); });
+  return out;
+}
+function _scLabels(){   // text on the figure: residue labels, chain names (at their 3D anchor) and measurements
+  var L=[];
+  tagList().forEach(function(t){
+    if(t.kind==='meas') return;
+    var a=getAnchor(t.key); if(!a) return;
+    L.push({kind:t.kind,text:_scText(t.text),chain:_scId(t.chain),resi:t.resi,x:a.x,y:a.y,z:a.z});
+  });
+  return L;
+}
+function scriptSource(kind){   // how each program is told where the structure comes from
+  var s=currentSource||{}, id=(s.rid||currentPdbId||'').trim();
+  if(s.kind==='af'){ var url=s.af&&s.af.pdbUrl; return {how:'url',ref:url||('https://alphafold.ebi.ac.uk/files/AF-'+id+'-F1-model_v4.pdb'),name:'AF-'+id}; }
+  if(s.kind==='file') return {how:'file',ref:String(currentPdbId||'structure.pdb').replace(/[\r\n"]/g,''),name:String(currentPdbId||'structure')};
+  return {how:'pdb',ref:id.toLowerCase(),name:id.toUpperCase()};
+}
+function buildScript(kind){
+  if(!currentModel||!viewer) return '';
+  var L=[], cx=kind==='chimerax', C='#', src=scriptSource(kind), hid=chainList.filter(function(c){ return state.hiddenChains[c]; }).map(_scId).filter(Boolean);
+  var colours=scriptColours(), lig=_scLigands(), sticks=_scStickResidues(), labels=_scLabels();
+  var bgKey=state.bg==='dark'?'dark':state.bg==='white'?'white':'transparent';
+  var dark=bgKey==='dark', inkHex=dark?'#e8eaf2':'#1a1d2e';
+  var view=null; try{ view=viewer.getView(); }catch(e){}
+  function out(s){ L.push(s); }
+  function hex6(h){ return h.charAt(0)==='#'?h:'#'+h; }
+  var title=(currentInfo&&currentInfo.title)?_scComment(currentInfo.title):'';
+  out('# Ribbon — figure script for '+(cx?'ChimeraX':'PyMOL'));
+  out('# '+src.name+(title?' — '+title:''));
+  out('# Made '+new Date().toISOString().slice(0,10)+'. Each residue is in the colour it has on screen.');
+  if(src.how==='file') out('# This structure was opened from a file - keep "'+_scComment(src.ref)+'" next to this script (or edit the path below).');
+  if(state.overlay) out('# A second structure is superposed in Ribbon; it is not part of this script.');
+  if(_nFrames>1) out('# This is an ensemble of '+_nFrames+' models; Ribbon showed model '+(_frame+1)+'.');
+  out('');
+  // ── ChimeraX ───────────────────────────────────────────────────────────────────────────────
+  if(cx){
+    var open=src.how==='pdb'?'open '+src.ref:(src.how==='url'?'open '+src.ref:'open "'+src.ref+'"');
+    out(open);
+    out('hide '+C+'1 atoms,cartoons,surfaces');
+    out('set bgColor '+(dark?'#13161e':'white'));
+    if(state.projection==='orthographic') out('camera ortho'); else out('camera mono');
+    out('lighting '+(state.style==='surface'?'soft':'simple'));
+    if(state.border!=='none') out('graphics silhouettes true width '+(state.border==='thick'?3:1.5)); else out('graphics silhouettes false');
+    var shownCh=chainList.map(_scId).filter(function(c,i){ return c&&!state.hiddenChains[chainList[i]]; });
+    out('');
+    out('# colours — every residue as drawn');
+    if(state.style==='stick'){ out('show '+C+'1 & (protein|nucleic) atoms'); out('style '+C+'1 & (protein|nucleic) stick'); }
+    else out('cartoon '+C+'1');
+    colours.forEach(function(cc){
+      var sp=cc.chain?'/'+cc.chain:'';
+      if(cc.groups.length===1){ out('color '+(sp||C+'1')+' & (protein|nucleic) '+hex6(cc.groups[0].hex)); return; }
+      _scColourItems(cc,false).forEach(function(it){ out('color '+(sp||C+'1')+':'+it.parts.join(',')+' & (protein|nucleic) '+hex6(it.hex)); });
+    });
+    if(state.style==='surface'){
+      var vs=chainList.filter(function(c){ return !state.hiddenChains[c]&&_scId(c); }).map(_scId);
+      if(vs.length){ out('surface '+(vs.length<chainList.length?'/'+vs.join(','):C+'1')); out('transparency '+(vs.length<chainList.length?'/'+vs.join(','):C+'1')+' '+Math.round((1-state.surfaceOpacity)*100)+' target s'); }
+    }
+    if(lig.on){
+      if(ionResn.length){ out('show '+C+'1 & :'+ionResn.join(',')+' atoms'); out('style '+C+'1 & :'+ionResn.join(',')+' sphere'); out('size '+C+'1 & :'+ionResn.join(',')+' atomRadius 0.45'); }
+      if(lig.generic){ out('show '+C+'1 & ligand atoms'); out('style '+C+'1 & ligand '+(state.style==='stick'?'stick':'ball')); out('color '+C+'1 & ligand & C '+hex6('#ffd400')); out('color '+C+'1 & ligand byhetero'); }
+      else lig.list.forEach(function(l){
+        var sp=C+'1'+(l.chain?'/'+l.chain:'')+':'+l.resi;
+        out('show '+sp+' atoms'); out('style '+sp+' '+(state.style==='stick'?'stick':'ball')); out('size '+sp+' stickRadius 0.2');
+        out('color '+sp+' '+hex6(l.hex)); out('color '+sp+' byhetero');
+      });
+    }
+    if(state.showWaters){ out('show '+C+'1 & solvent atoms'); out('style '+C+'1 & solvent sphere'); out('size '+C+'1 & solvent atomRadius 0.3'); out('color '+C+'1 & solvent #d94d4d'); }
+    if(lig.on) lig.list.forEach(function(l){
+      if(!l.pocket) return;
+      var sp=C+'1'+(l.chain?'/'+l.chain:'')+':'+l.resi, z='(('+sp+') :<'+_scNum(state.pocketR)+') & (protein|nucleic)';
+      out('show '+z+' atoms'); out('style '+z+' stick'); out('color '+z+' byhetero');
+    });
+    sticks.forEach(function(s){
+      var sp=C+'1'+(s.chain?'/'+s.chain:'')+':'+s.lo+(s.hi!==s.lo?'-'+s.hi:'')+' & (protein|nucleic)';
+      out('show '+sp+' atoms'); out('style '+sp+' stick'); out('color '+sp+' byhetero');
+    });
+    if(hid.length) out('hide '+hid.map(function(c){ return '/'+c; }).join(',')+' atoms,cartoons,surfaces');
+    var any=false, nMark=0;
+    labels.forEach(function(t){
+      if(!t.text) return; if(!any){ out(''); out('# labels'); any=true; }
+      if(t.kind==='res') out('label '+C+'1'+(t.chain?'/'+t.chain:'')+':'+t.resi+' text "'+t.text+'" height 1.6 color '+inkHex);
+      else { nMark++; out('marker '+C+'900 position '+_scNum(t.x)+','+_scNum(t.y)+','+_scNum(t.z)+' color '+inkHex+' radius 0.05'); out('label '+C+'900:'+nMark+' text "'+t.text+'" height 2.4 color '+inkHex); }
+    });
+    var ms=state.measures.filter(measureShown);
+    if(ms.length){
+      out(''); out('# measurements');
+      ms.forEach(function(m){
+        var sp=m.pts.map(function(q){ return C+'1'+(_scId(q.c)?'/'+_scId(q.c):'')+':'+q.r+'@'+q.n; });
+        if(m.kind==='dist') out('distance '+sp.join(' ')+' color '+hex6(state.measColor)+' radius 0.08 decimalPlaces 2');
+        else { out('# angle at '+sp[1]+' - ChimeraX has no angle monitor, so the value is a label on that residue'); out('label '+sp[1].replace(/@.*$/,'')+' text "'+_scText(measureText(m))+'" height 1.6 color '+hex6(state.measColor)); }
+      });
+    }
+    out('');
+    out('# the direction you were looking from - ChimeraX then frames the structure');
+    if(view){
+      var R=_camRot(view), c=[-view[0],-view[1],-view[2]], D=100;
+      var row=function(i){ return [R[0][i],R[1][i],R[2][i],c[i]+D*R[2][i]].map(_scNum).join(','); };
+      out('view matrix camera '+[row(0),row(1),row(2)].join(','));
+    }
+    out('view');
+    out('');
+    out('# to save the picture:');
+    out('# save figure.png width 2400 supersample 3'+(bgKey==='transparent'?' transparentBackground true':''));
+    return L.join('\n')+'\n';
+  }
+  // ── PyMOL ──────────────────────────────────────────────────────────────────────────────────
+  out('reinitialize');
+  if(src.how==='pdb') out('fetch '+src.ref+', structure, async=0'); else out('load '+(src.how==='url'?src.ref:'"'+src.ref+'"')+', structure');
+  out('hide everything');
+  out('bg_color '+(dark?'0x13161e':'white'));
+  out('set ray_opaque_background, '+(bgKey==='transparent'?'off':'on'));
+  out('set orthoscopic, '+(state.projection==='orthographic'?1:0));
+  out('set antialias, 2');
+  out('set ray_trace_mode, '+(state.border==='none'?0:1));
+  if(state.border!=='none') out('set ray_trace_gain, '+(state.border==='thick'?'0.12':'0.06'));
+  if(_nFrames>1) out('set state, '+(_frame+1));
+  out('');
+  out('# structure and colours — every residue as drawn');
+  var P='structure and polymer', stick=state.style==='stick';
+  out('show '+(stick?'sticks':'cartoon')+', '+P);
+  if(stick) out('set stick_radius, 0.2, '+P);
+  out('set cartoon_fancy_helices, 1');
+  colours.forEach(function(cc){
+    var sp=cc.chain?'chain '+cc.chain+' and ':'';
+    if(cc.groups.length===1){ out('color 0x'+cc.groups[0].hex.replace('#','')+', '+P+(cc.chain?' and chain '+cc.chain:'')); return; }
+    _scColourItems(cc,true).forEach(function(it){ out('color 0x'+it.hex.replace('#','')+', '+P+' and '+sp+'resi '+it.parts.join('+')); });
+  });
+  if(state.style==='surface'){
+    out('show surface, '+P+(hid.length?' and not chain '+hid.join('+'):''));
+    out('set transparency, '+_scNum(1-state.surfaceOpacity));
+  }
+  if(lig.on){
+    if(ionResn.length){ out('show spheres, structure and resn '+ionResn.join('+')); out('set sphere_scale, 0.3, structure and resn '+ionResn.join('+')); out('util.cnc structure and resn '+ionResn.join('+')); }
+    if(lig.generic){ out('show sticks, structure and organic'); out('set stick_radius, 0.2, structure and organic'); if(!stick){ out('show spheres, structure and organic'); out('set sphere_scale, 0.3, structure and organic'); } out('color 0xffd400, structure and organic'); out('util.cnc structure and organic'); }
+    else lig.list.forEach(function(l){
+      var s='structure and resn '+l.resn+(l.chain?' and chain '+l.chain:'')+' and resi '+_scRange({lo:l.resi,hi:l.resi,ic:''},true);
+      out('show sticks, '+s); out('set stick_radius, 0.2, '+s);
+      if(!stick){ out('show spheres, '+s); out('set sphere_scale, 0.3, '+s); }
+      out('color 0x'+l.hex.replace('#','')+', '+s); out('util.cnc '+s);
+    });
+  }
+  if(state.showWaters){ out('show spheres, structure and solvent'); out('set sphere_scale, 0.2, structure and solvent'); out('color 0xd94d4d, structure and solvent'); }
+  if(lig.on) lig.list.forEach(function(l){
+    if(!l.pocket) return;
+    var s='structure and resn '+l.resn+(l.chain?' and chain '+l.chain:'')+' and resi '+_scRange({lo:l.resi,hi:l.resi,ic:''},true);
+    var z='(byres ((structure and polymer) within '+_scNum(state.pocketR)+' of ('+s+')))';
+    out('show sticks, '+z); out('set stick_radius, 0.14, '+z); out('util.cnc '+z);
+  });
+  sticks.forEach(function(s){
+    var sp='structure and polymer and '+(s.chain?'chain '+s.chain+' and ':'')+'resi '+_scRange({lo:s.lo,hi:s.hi,ic:''},true);
+    out('show sticks, '+sp); out('set stick_radius, 0.15, '+sp); out('util.cnc '+sp);
+  });
+  if(hid.length) out('hide everything, structure and chain '+hid.join('+'));
+  var anyLbl=false;
+  labels.forEach(function(t,i){
+    if(!t.text) return; if(!anyLbl){ out(''); out('# labels'); out('set label_color, '+(dark?'white':'black')); out('set label_size, 18'); out('set label_position, (0,0,2)'); anyLbl=true; }
+    if(t.kind==='res') out('label structure and '+(t.chain?'chain '+t.chain+' and ':'')+'resi '+_scRange({lo:t.resi,hi:t.resi,ic:''},true)+' and name CA, "'+t.text+'"');
+    else { out('pseudoatom rb_chain'+i+', pos=['+_scNum(t.x)+','+_scNum(t.y)+','+_scNum(t.z)+'], label="'+t.text+'"'); }
+  });
+  var ms=state.measures.filter(measureShown);
+  if(ms.length){
+    out(''); out('# measurements');
+    out('set dash_color, 0x'+state.measColor.replace('#',''));
+    out('set label_color, 0x'+state.measColor.replace('#',''));
+    ms.forEach(function(m,i){
+      var sp=m.pts.map(function(q){ return '(structure and '+(_scId(q.c)?'chain '+_scId(q.c)+' and ':'')+'resi '+_scRange({lo:q.r,hi:q.r,ic:''},true)+' and name '+q.n.replace(/'/g,'*')+')'; });
+      out((m.kind==='dist'?'distance rb_dist'+i+', ':'angle rb_angle'+i+', ')+sp.join(', '));
+    });
+  }
+  out('');
+  out('# the direction you were looking from - PyMOL then frames the structure');
+  if(view){
+    var R2=_camRot(view), c2=[-view[0],-view[1],-view[2]];
+    var flat=[R2[0][0],R2[1][0],R2[2][0],R2[0][1],R2[1][1],R2[2][1],R2[0][2],R2[1][2],R2[2][2]].map(_scNum).join(',');
+    out('set_view ('+flat+', 0,0,-100, '+c2.map(_scNum).join(',')+', 50,150, 0)');
+  }
+  out('zoom visible, buffer=2');
+  out('');
+  out('# to save the picture:');
+  out('# ray 2400,0');
+  out('# png figure.png, dpi=300');
+  return L.join('\n')+'\n';
+}
+function exportPyMOL(){ exportScript('pymol'); }
+function exportChimeraX(){ exportScript('chimerax'); }
+function exportScript(kind){
+  if(!currentModel){ showToast('Load a structure first.'); return; }
+  var text=buildScript(kind); if(!text){ showToast('Nothing to export.'); return; }
+  var base=(currentPdbId||'structure').replace(/[\\/:*?"<>|\s]+/g,'_')+'_ribbon';
+  _saveBlob(new Blob([text],{type:'text/plain'}),base+(kind==='chimerax'?'.cxc':'.pml'));
+  showToast((kind==='chimerax'?'ChimeraX':'PyMOL')+' script saved');
+}
+
 // ── Saved designs (localStorage, mirrored to the cloud when the Hub is signed in) ────────────
 function getDesigns(){ try{ var o=JSON.parse(localStorage.getItem('ribbon_designs')||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }catch(e){return {};} }
 function putDesigns(d){ try{localStorage.setItem('ribbon_designs',JSON.stringify(d));}catch(e){ showToast('The browser has no room to save this design.'); } rbnSyncPush(d); updateSummaries(); }
@@ -3630,6 +3906,8 @@ function boot(){
   $('exGo').addEventListener('click',doExport);
   $('exCopy').addEventListener('click',copyImage);
   $('exLabbook').addEventListener('click',sendToLabbook);
+  $('exPml').addEventListener('click',function(){ exportScript('pymol'); closeExport(); });
+  $('exCxc').addEventListener('click',function(){ exportScript('chimerax'); closeExport(); });
   $('exportBtn2').addEventListener('click',openExport);
   $('cfYes').addEventListener('click',function(){ _cfClose(true); });
   $('cfNo').addEventListener('click',function(){ _cfClose(false); });
@@ -3953,6 +4231,8 @@ ctxApp(null, { canvas: false, acts: [
   { l: 'Fit to view', f: 'fitToView', k: 'F', when: function(){ return !!window.currentModel; } },
   { l: 'Export image…', f: 'openExport', when: function(){ return !!window.currentModel; } },
   { l: 'Copy image', f: 'copyImage', when: function(){ return !!window.currentModel; } },
+  { l: 'PyMOL script', f: 'exportPyMOL', when: function(){ return !!window.currentModel; } },
+  { l: 'ChimeraX script', f: 'exportChimeraX', when: function(){ return !!window.currentModel; } },
   { l: 'Open file…', f: 'rbOpenFilePicker' },
   { l: 'Controls…', f: 'openControls', when: function(){ return window.innerWidth <= 760; } }
 ] });
@@ -4554,6 +4834,13 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
             '**Copy** puts it on the clipboard for a slide. Inside dHUB, **Send to Labbook** attaches it to an experiment. With confidence colouring there is a tick for the **colour key**.'],
         tip: 'Labels are drawn into the picture exactly where you put them, unless **Include labels** is off.',
         show: [{ sel: '#exportBtn2', say: 'Export.', miss: NEED }] },
+      { id: 'script', t: 'Take the figure into PyMOL or ChimeraX', group: 'Export', on: ['viewer'],
+        q: ['pymol', 'chimerax', 'chimera', 'script', 'pml', 'cxc', 'session', 'export script', 'continue in pymol', 'ray trace', 'render', 'guion', 'sesion', 'exportar a pymol'],
+        a: ['In the export dialog, **PyMOL script** and **ChimeraX script** save the figure as commands: the structure, the style, every residue in the colour it has on screen (palette tuning, chain colours, highlights, the interface and values included), hidden chains, ligands and pockets, sticks, labels, measurements and the direction you are looking from.',
+            'Open it in the program (**File › Run script** in PyMOL, **File › Open** in ChimeraX). It fetches the structure by its PDB code or AlphaFold link; for a file you opened, keep the file next to the script.'],
+        tip: 'The program frames the structure itself, so the zoom and the window shape are its own. The last lines of the script, commented out, save a high-resolution picture.',
+        warn: 'A second structure superposed in Ribbon is not part of the script.',
+        show: [{ sel: '#exportBtn2', say: 'Export, then the two script buttons at the bottom.', miss: NEED }] },
       { id: 'models', t: 'Models of an NMR structure', group: 'Structures', on: ['viewer'],
         q: ['nmr', 'models', 'ensemble', 'frames', 'conformers', 'modelos', 'conjunto', 'conformeros'],
         a: 'A file with several models (an NMR ensemble) shows a small control at the bottom of the viewer: the arrows or the slider step through the models.',
