@@ -32,6 +32,8 @@
 //                           opens nothing; a left click picks the chain.
 //   RB17 to the notebook    Inside the Hub, Send to Labbook puts the figure on the open experiment's Files tab, captioned,
 //                           and the experiment records that it came from Ribbon.
+//   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
+//                           a label, a row; in the export only with labels; kept by a design; hidden with a chain; follows the model.
 //
 // 3Dmol comes from its CDN (pinned); every other network call is stubbed. If the CDN is unreachable the
 // checks that need the viewer are reported as skipped, not passed.
@@ -79,7 +81,7 @@ function synPdb(o = {}) {
       let x, y, z;
       if (c.shape === 'x') { x = (c.x0 || 0) + i * 3.8; y = Math.sin(i / 3) * 3 + 0.4 * m; z = Math.cos(i / 3) * 3; }
       else if (c.shape === 'y') { x = (c.x0 || 0) + Math.sin(i / 3) * 3 + 0.4 * m; y = i * 3.8; z = Math.cos(i / 3) * 3; }
-      else { x = (c.x0 || 0) + Math.cos(i) * 4 + 0.4 * m; y = Math.sin(i) * 4; z = i * 1.5; }
+      else { x = (c.x0 || 0) + Math.cos(i) * 4 + 0.4 * m; y = Math.sin(i) * 4; z = i * 1.5 + 0.5 * m * Math.sin(i * 2.1); }   // models that differ in shape, not only in place
       const resn = (o.mod && c.id === 'A' && i === 6) ? 'MSE' : 'ALA';
       const rec = resn === 'MSE' ? 'HETATM' : 'ATOM';
       const b = c.b ? c.b(i) : 20;
@@ -789,8 +791,69 @@ async function rb17() {
   await ctx.close();
 }
 
+// ── RB18 measurements ───────────────────────────────────────────────────────────────────────
+async function rb18() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB18 ' });
+  if (!(await has3d(pg))) { skipped.push('RB18 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('1XYZ'); await E(() => { state.style = 'stick'; buildGeometry(); }); await sleep(600);
+  const at = (c, r, n) => E(([c, r, n]) => { const a = currentModel.selectedAtoms({ chain: c, resi: r, atom: n })[0], p = viewer.modelToScreen(a); return { x: p.x, y: p.y, X: a.x, Y: a.y, Z: a.z }; }, [c, r, n]);
+  await pg.focus('body'); await pg.keyboard.press('m'); await sleep(100);
+  check('RB18', 'M switches the tool on and says so; tag mode is off', await E(() => _measMode && !_resLabelMode && document.getElementById('measBtn').getAttribute('aria-pressed') === 'true' && /click 2 atoms/.test(document.getElementById('chainHint').textContent)));
+  const A = await at('A', 6, 'CA'), B = await at('B', 6, 'CA');
+  await pg.mouse.click(A.x, A.y); await sleep(250);
+  check('RB18', 'the first atom is marked and the hint counts', await E(() => _measPend.length === 1 && /atom 2 of 2/.test(document.getElementById('measHint').textContent) && !!document.querySelector('#label-lines .meas-pend')));
+  await pg.mouse.click(B.x, B.y); await sleep(350);
+  const m = await E(() => ({ n: state.measures.length, text: state.measures[0] && measureText(state.measures[0]), val: state.measures[0] && measureValue(state.measures[0]), tag: Object.keys(labelEls).filter(k => k[0] === 'm'), lines: [...document.querySelectorAll('#label-lines line[stroke-dasharray]')].filter(l => l.style.display !== 'none').length, row: document.querySelectorAll('#measList .li').length, pend: _measPend.length }));
+  const want = Math.hypot(B.X - A.X, B.Y - A.Y, B.Z - A.Z);
+  check('RB18', 'two clicks make a distance, equal to the coordinates', m.n === 1 && Math.abs(m.val - want) < 1e-6 && m.text === want.toFixed(2) + ' Å' && Math.abs(want - 12) < 1e-6, { m, want });
+  check('RB18', 'it is a dashed line, a label with the value, and a row in the list; the pending mark is gone', m.tag.length === 1 && m.lines === 1 && m.row === 1 && m.pend === 0, m);
+  check('RB18', 'the label shows the value', await E(() => labelEls[Object.keys(labelEls).filter(k => k[0] === 'm')[0]].div.textContent) === want.toFixed(2) + ' Å');
+  // an angle, through three atoms of a residue
+  await E(() => { toggleMeasure(false); });
+  const ang = await E(() => { _measKind = 'angle'; const g = (n) => currentModel.selectedAtoms({ chain: 'A', resi: 8, atom: n })[0]; ['N', 'CA', 'O'].forEach(n => addMeasurePoint(g(n))); const m = state.measures[1]; return { v: measureValue(m), t: measureText(m), kind: m.kind }; });
+  check('RB18', 'three atoms make an angle at the middle one (149.1° for N–CA–O of the synthetic residue)', ang.kind === 'angle' && Math.abs(ang.v - 149.1) < 0.1 && /°$/.test(ang.t), ang);
+  check('RB18', 'an angle draws two segments', await E(() => { const g = measEls[state.measures[1].id]; return g && g.line.every(l => l.style.display !== 'none'); }));
+  // the list copies as a table
+  await E(() => { document.querySelectorAll('details.rb-sec').forEach(d => { d.open = true; }); });
+  await pg.click('#measCopy'); await sleep(300);
+  const tsv = await E(async () => navigator.clipboard.readText());
+  check('RB18', 'Copy table gives a TSV with a header and a row per measurement', tsv.split('\n').length === 3 && /^#\tKind\tAtoms\tValue/.test(tsv) && /distance/.test(tsv) && /angle/.test(tsv), tsv);
+  // the export carries the line and the label, and not when labels are off
+  const count = on => E(on => { $('exLabels').checked = on; const c = renderExport(); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - 0xff) < 8 && Math.abs(d[i + 1] - 0xc1) < 10 && Math.abs(d[i + 2] - 0x07) < 12 && d[i + 3] > 200) n++; return n; }, on);
+  const withL = await count(true), without = await count(false);
+  check('RB18', 'the export draws the dashed lines with "Include labels" and not without', withL > 150 && without === 0, { withL, without });
+  // a hidden chain hides what is measured on it
+  await E(() => toggleChain('B', true)); await sleep(200);
+  const hid = await E(() => ({ tags: Object.keys(labelEls).filter(k => k[0] === 'm').length, lines: [...document.querySelectorAll('#label-lines line[stroke-dasharray]')].filter(l => l.style.display !== 'none').length }));
+  check('RB18', 'hiding a chain hides a measurement that touches it, and leaves the other', hid.tags === 1 && hid.lines === 2, hid);
+  await E(() => toggleChain('B', false)); await sleep(150);
+  // a design keeps them
+  const keep = JSON.stringify(await E(() => state.measures));
+  await E(() => { document.getElementById('designName').value = 'meas'; saveDesign(); }); await sleep(500);
+  await E(() => { clearMeasures(); loadDesign('meas'); }); await sleep(2800);
+  check('RB18', 'a design keeps the measurements and draws them again', JSON.stringify(await E(() => state.measures)) === keep && await E(() => [...document.querySelectorAll('#label-lines line[stroke-dasharray]')].filter(l => l.style.display !== 'none').length) === 3);
+  // Delete on a label removes that measurement only
+  await E(() => labelEls[Object.keys(labelEls).filter(k => k[0] === 'm')[0]].div.focus()); await pg.keyboard.press('Delete'); await sleep(200);
+  check('RB18', 'Delete on a measurement label removes it', await E(() => state.measures.length === 1 && Object.keys(labelEls).filter(k => k[0] === 'm').length === 1));
+  await E(() => clearMeasures());
+  check('RB18', 'Clear all empties the list, the lines and the labels', await E(() => !state.measures.length && !Object.keys(measEls).length && !Object.keys(labelEls).filter(k => k[0] === 'm').length));
+  // Esc stops and forgets a half-made one
+  await E(() => { _measKind = 'dist'; toggleMeasure(true); addMeasurePoint(currentModel.selectedAtoms({ chain: 'A', resi: 3, atom: 'CA' })[0]); });
+  await pg.keyboard.press('Escape');
+  check('RB18', 'Escape stops measuring and drops the half-made one', await E(() => !_measMode && _measPend.length === 0 && !document.querySelector('#label-lines .meas-pend')));
+  // a model change updates the reading; a new structure forgets them
+  await go('5NMR'); await E(() => { state.style = 'stick'; buildGeometry(); _measKind = 'dist'; addMeasurePoint(currentModel.selectedAtoms({ chain: 'A', resi: 2, atom: 'CA' })[0]); addMeasurePoint(currentModel.selectedAtoms({ chain: 'A', resi: 15, atom: 'CA' })[0]); }); await sleep(300);
+  const t1 = await E(() => measureText(state.measures[0]));
+  await pg.click('#frNext'); await sleep(700);
+  const t2 = await E(() => ({ v: measureText(state.measures[0]), tag: labelEls[Object.keys(labelEls).filter(k => k[0] === 'm')[0]].div.textContent }));
+  check('RB18', 'stepping to another model updates the measured value, in the list and on the label', t1 !== t2.v && t2.tag === t2.v, { t1, t2 });
+  await go('1XYZ');
+  check('RB18', 'a new structure starts with no measurements', await E(() => !state.measures.length && !Object.keys(measEls).length));
+  await ctx.close();
+}
+
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
