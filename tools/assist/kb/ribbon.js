@@ -17,7 +17,7 @@
     topics: [
       { id: 'start', t: 'Your first figure in five steps', group: 'Getting started', on: ['empty', 'viewer'],
         q: ['first figure', 'get started', 'how do i start', 'how to use', 'tutorial', 'walkthrough', 'empezar', 'como empiezo', 'como se usa', 'primeros pasos', 'quick start'],
-        a: 'Everything is on one screen: the controls on the left, the structure on the right.',
+        a: 'Everything is on one screen: the structure on the left, the controls on the right — where ChimeraX and PyMOL keep them. The arrow at the end of the toolbar folds the panel away.',
         steps: ['**Load** a structure: a PDB code (try `5T35`), a UniProt id, a protein name, or a file.',
                 'Pick the **style** and the **colour** along the top.',
                 'Click a chain to **colour and label** it, or open **Highlight** to pull out a ligand and its pocket.',

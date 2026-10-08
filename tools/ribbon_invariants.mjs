@@ -681,6 +681,14 @@ async function rb13() {
   check('RB13', 'swatches, chips, rows and dots are buttons, not clickable boxes', nonButtons === 0, nonButtons);
   check('RB13', 'the viewer says what it is', await E(() => { const c = document.querySelector('#viewport canvas'); return c.getAttribute('role') === 'img' && /3D structure/.test(c.getAttribute('aria-label')); }));
   check('RB13', 'toggles say whether they are on', await E(() => ['spinBtn', 'resTagBtn', 'collapseBtn'].every(id => document.getElementById(id).hasAttribute('aria-pressed')) && [...document.querySelectorAll('#styleSeg button,#projSeg button')].every(b => b.hasAttribute('aria-pressed'))));
+  // the panel is on the right, like ChimeraX and PyMOL: right of the viewer, the fold button last in the toolbar, and a chain's popup opens beside it, never over it
+  const lay = await E(() => { const sb = document.getElementById('sidebar').getBoundingClientRect(), vp = document.getElementById('viewport').getBoundingClientRect(), tb = [...document.querySelector('.top-bar').querySelectorAll('button')].filter(b => b.offsetWidth); return { right: sb.left >= vp.right - 1, last: tb[tb.length - 1].id }; });
+  check('RB13', 'the controls panel sits to the right of the viewer', lay.right, lay);
+  check('RB13', 'the fold button is the last thing in the toolbar, next to the panel', lay.last === 'collapseBtn', lay.last);
+  const pop = await E(async () => { document.querySelector('#chainList .li[data-chain] .li-main').click(); await new Promise(r => setTimeout(r, 250)); const p = document.getElementById('chain-popup').getBoundingClientRect(), sb = document.getElementById('sidebar').getBoundingClientRect(); closeChainPopup(); return { pr: Math.round(p.right), sl: Math.round(sb.left) }; });
+  check('RB13', 'a chain popup opened from the panel does not cover the panel', pop.pr <= pop.sl, pop);
+  const fold = await E(async () => { const b = document.getElementById('collapseBtn'); b.click(); await new Promise(r => setTimeout(r, 50)); const hid = !document.getElementById('sidebar').offsetWidth; b.click(); await new Promise(r => setTimeout(r, 50)); return hid && document.getElementById('sidebar').offsetWidth > 0; });
+  check('RB13', 'the fold button hides the panel and brings it back', fold);
   // keys
   await E(() => { document.activeElement && document.activeElement.blur(); document.body.focus(); _userMoved = true; });
   await pg.keyboard.press('f'); await sleep(700);
