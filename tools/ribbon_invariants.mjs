@@ -90,7 +90,8 @@ function synPdb(o = {}) {
       if (resn === 'MSE') { L.push(atomLine(rec, n++, 'N', resn, c.id, i, x - 1, y, z, b, 'N')); L.push(atomLine(rec, n++, 'CA', resn, c.id, i, x, y, z, b)); L.push(atomLine(rec, n++, 'C', resn, c.id, i, x + 1, y, z, b)); }
       else { L.push(atomLine(rec, n++, 'N', resn, c.id, i, x - 1.2, y, z - 0.5, b, 'N')); L.push(atomLine(rec, n++, 'CA', resn, c.id, i, x, y, z, b)); L.push(atomLine(rec, n++, 'C', resn, c.id, i, x + 1.2, y, z + 0.5, b)); L.push(atomLine(rec, n++, 'O', resn, c.id, i, x + 1.5, y + 1, z + 0.8, b, 'O')); }   // a backbone, so a cartoon is drawn
     }
-    if (o.ligand) for (let k = 0; k < 6; k++) L.push(atomLine('HETATM', n++, 'C' + (k + 1), 'LIG', 'A', 201, 2 + k * 1.2, 3 + (k % 2), 8, 30));
+    if (o.additive) for (let k = 0; k < 16; k++) L.push(atomLine('HETATM', n++, 'C' + (k + 1), 'GOL', 'A', 202, 3 + k * 0.9, 6 + (k % 2), 9, 30));   // an additive, larger than the ligand beside it
+    if (o.ligand) for (let k = 0; k < (o.ligandN || 6); k++) L.push(atomLine('HETATM', n++, 'C' + (k + 1), 'LIG', 'A', 201, 2 + k * 1.2, 3 + (k % 2), 8, 30));
     if (o.protac) { L.push(atomLine('HETATM', n++, 'N', 'PRC', 'B', 301, 14, 1, 9, 30, 'N')); L.push(atomLine('HETATM', n++, 'CA', 'PRC', 'B', 301, 15, 1, 9, 30)); L.push(atomLine('HETATM', n++, 'C', 'PRC', 'B', 301, 16, 1, 9, 30)); for (let k = 0; k < 4; k++) L.push(atomLine('HETATM', n++, 'C' + (k + 4), 'PRC', 'B', 301, 16 + k, 2, 9.5, 30)); }
     if (o.ion) L.push(atomLine('HETATM', n++, 'MG', 'MG', 'A', 301 + 1, 5, 5, 5, 30, 'MG'));
     if (o.waters) for (let k = 0; k < 3; k++) L.push(atomLine('HETATM', n++, 'O', 'HOH', 'A', 401 + k, 6 + k, 6, 6, 30, 'O'));
@@ -130,6 +131,8 @@ const STRUCTS = {
   '7MUT': () => rotatedCopy(synPdb({ chains: [{ id: 'A', len: 24, x0: 0 }, { id: 'B', len: 24, x0: 20, shape: 'x', shift: 5 }], names: true }), { drop: ['A5'], push: ['A3', 'A9'], rename: { A7: 'TRP' } }),
   '6IFC': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 4 }] }),   // B lies 4 Å from A along its first six residues
   '6FAR': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 60 }] }),
+  '7APO': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true }),   // an entry whose only ligand is glycerol
+  '8POC': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true, ligand: true, ligandN: 14 }),   // a real ligand beside the glycerol
 };
 
 // ── the network: every call but 3Dmol's own is answered here ────────────────────────────────
@@ -1411,8 +1414,101 @@ async function rb24() {
   } finally { for (const f of [out, tmp]) { try { fs.unlinkSync(f); } catch (e) {} } }
 }
 
+// ── RB25 opened from another app: a target and the pocket of the ligand in it ─────────────────
+const HOST3 = () => `<!doctype html><meta charset=utf-8><body style="margin:0">
+<iframe id="frame-ribbon" src="/${args.file || 'apps/ribbon/ribbon.html'}" style="width:1300px;height:850px;border:0"></iframe>
+<script>
+window.__acks={}; window.__sent=0;
+window.openApp=function(id,tab,item,ctx){
+  if(!ctx) return; window.__sent++;
+  var rid='r'+Math.random().toString(36).slice(2), msg={type:'dhub:context',version:1,source:ctx.source||'hub',target:id,action:'open',context:ctx,requestId:rid}, n=0;
+  (function send(){ if(window.__acks[rid]||n++>10) return; try{ document.getElementById('frame-ribbon').contentWindow.postMessage(msg,'*'); }catch(e){} setTimeout(send,250); })();
+};
+window.addEventListener('message',function(e){ if(e.data&&e.data.type==='dhub:ack') window.__acks[e.data.requestId]=1; });
+</script>`;
+async function rb25() {
+  const seen = { uni: [], rcsb: [], gql: [] };
+  const { ctx, pg } = await open({ tag: 'RB25 ', pre: async c => {
+    await c.route(base + '__host3.html', r => r.fulfill({ contentType: 'text/html', body: HOST3() }));
+    const J = (r, o) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+    const U = (acc, gene, name) => ({ results: [{ primaryAccession: acc, genes: [{ geneName: { value: gene } }], proteinDescription: { recommendedName: { fullName: { value: name } } }, organism: { scientificName: 'Homo sapiens' } }] });
+    await c.route('**/rest.uniprot.org/**', async r => {
+      const u = decodeURIComponent(r.request().url()); seen.uni.push(u);
+      if (/SLOWA/.test(u)) { await sleep(900); return J(r, U('P00009', 'SLOWA', 'Slow protein')); }
+      if (/XYZ1/.test(u)) return J(r, U('P00001', 'XYZ1', 'Protein X'));
+      if (/APO1/.test(u)) return J(r, U('P00002', 'APO1', 'Apo protein'));
+      if (/ONLYAF/.test(u)) return J(r, U('P12345', 'ONLYAF', 'Only predicted'));
+      return J(r, { results: [] });
+    });
+    await c.route('**/search.rcsb.org/rcsbsearch/v2/query', r => {
+      const b = r.request().postData() || ''; seen.rcsb.push(b);
+      if (!/database_accession/.test(b)) return r.fallback();
+      if (b.includes('"P00001"')) return J(r, { total_count: 4, result_set: [{ identifier: '7APO' }, { identifier: '8POC' }, { identifier: '6BIG' }, { identifier: '1XYZ' }] });
+      if (b.includes('"P00002"')) return J(r, { total_count: 1, result_set: [{ identifier: '1XYZ' }] });
+      if (b.includes('"P00009"')) return J(r, { total_count: 1, result_set: [{ identifier: '1XYZ' }] });
+      return r.fulfill({ status: 204, body: '' });
+    });
+    await c.route('**/data.rcsb.org/graphql', r => {
+      const b = r.request().postData() || ''; if (!/entries\(entry_ids/.test(b)) return r.fallback(); seen.gql.push(b);
+      const ent = (id, res, comps) => ({ rcsb_id: id, rcsb_entry_info: { resolution_combined: [res] }, nonpolymer_entities: comps.map(([i, w]) => ({ nonpolymer_comp: { chem_comp: { id: i, name: i, formula_weight: w } } })) });
+      let ids = []; try { ids = JSON.parse((/entry_ids:(\[[^\]]*\])/.exec(JSON.parse(b).query) || [])[1]); } catch (e) {}
+      const all = [ent('6BIG', 2.5, [['LIG', 400]]), ent('8POC', 1.1, [['GOL', 92], ['LIG', 350]]), ent('1XYZ', 2.0, []), ent('7APO', 0.9, [['GOL', 92]])];   // not in resolution order on purpose
+      return J(r, { data: { entries: all.filter(x => ids.includes(x.rcsb_id)) } });   // the API answers for the ids it was asked about
+    });
+  } });
+  await pg.goto(base + '__host3.html'); await sleep(2500);
+  const rb = pg.frame({ url: /ribbon\.html/ });
+  if (!(await rb.evaluate(() => !!window.$3Dmol))) { skipped.push('RB25 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  const send = c => pg.evaluate(c => window.openApp('ribbon', undefined, undefined, c), c);
+  const state0 = () => rb.evaluate(() => ({ id: currentPdbId, pockets: Object.keys(state.pockets), err: document.getElementById('errText').textContent, note: (document.querySelector('#infoCard .info-note') || {}).textContent || '', kind: currentSource && currentSource.kind, moved: _userMoved, sec: !!document.querySelector('details.rb-sec[data-sec=chains]').open, pressed: [...document.querySelectorAll('#ligList .lg-pocket[aria-pressed=true]')].map(b => b.getAttribute('aria-label')) }));
+  const settle = async id => { for (let i = 0; i < 80; i++) { const s = await state0().catch(() => null); if (s && s.id === id) { await sleep(900); return await state0(); } await sleep(150); } return await state0(); };
+  // a gene symbol: the entry with a real ligand, not the best-resolved one that only holds glycerol
+  await send({ source: 'hitfinder', ribbon: { query: 'XYZ1', pocket: true, compound: 'EDA-099', from: 'Hit Finder' } });
+  let s = await settle('8POC');
+  check('RB25', 'a gene symbol opens the best-resolved entry that has a real ligand (not the one whose only ligand is glycerol)', s.id === '8POC' && seen.gql.length === 1 && /7APO/.test(seen.gql[0]) && /UniProt/.test(seen.rcsb[0]), { s, gql: seen.gql.length });
+  check('RB25', 'the pocket shown is the ligand\'s, not the additive\'s, and its button is pressed', s.pockets.join() === 'LIG:A:201' && s.pressed.length === 1 && /LIG/.test(s.pressed[0]) && s.moved && s.sec, s);
+  check('RB25', 'the page says whose ligand it is: the compound is named and the pocket is not claimed to be its', /EDA-099/.test(s.note) && /Hit Finder/.test(s.note) && /co-crystallised LIG/.test(s.note) && /not EDA-099/.test(s.note) && /best-resolved structure with a ligand/.test(s.note), s.note);
+  // a protein with PDB entries and no ligand: the best entry, no pocket, and it says so
+  await send({ source: 'hitfinder', ribbon: { query: 'APO1', pocket: true, compound: 'EDA-100', from: 'Hit Finder' } });
+  s = await settle('1XYZ');
+  check('RB25', 'with no ligand-bound structure the best entry opens, no pocket is drawn, and the note says why', s.id === '1XYZ' && !s.pockets.length && /no structure with a ligand/i.test(s.note) && /No ligand pocket/.test(s.note) && /EDA-100/.test(s.note), s);
+  // nothing in the PDB: the AlphaFold model
+  await send({ source: 'hitfinder', ribbon: { query: 'ONLYAF', pocket: true, compound: 'EDA-101', from: 'Hit Finder' } });
+  s = await settle('AF-P12345-F1');
+  check('RB25', 'with no PDB entry at all the AlphaFold model opens, and says so', s.id === 'AF-P12345-F1' && s.kind === 'af' && /no PDB entry/i.test(s.note), s);
+  // a name that is nothing keeps what is on screen and says so
+  await send({ source: 'hitfinder', ribbon: { query: 'NOSUCH', pocket: true, compound: 'EDA-102', from: 'Hit Finder' } }); await sleep(2500);
+  s = await state0();
+  check('RB25', 'an unknown name leaves the structure on screen and says nothing was found', s.id === 'AF-P12345-F1' && /No protein called “NOSUCH”/.test(s.err), s);
+  // a PDB code is opened as given
+  await send({ source: 'hitfinder', ribbon: { query: '8POC', pocket: true, compound: 'EDA-103', from: 'Hit Finder' } });
+  s = await settle('8POC');
+  check('RB25', 'a PDB code is opened as asked, with the ligand\'s pocket', s.id === '8POC' && s.pockets.join() === 'LIG:A:201' && /entry that was asked for/.test(s.note), s);
+  // the newer request wins over a slow older one
+  await send({ source: 'hitfinder', ribbon: { query: 'SLOWA', pocket: true, compound: 'OLD', from: 'Hit Finder' } });
+  await sleep(150); await send({ source: 'hitfinder', ribbon: { query: 'APO1', pocket: true, compound: 'NEW', from: 'Hit Finder' } });
+  await sleep(3500); s = await state0();
+  check('RB25', 'a second request replaces a slower first one, and the first does not land afterwards', s.id === '1XYZ' && /NEW/.test(s.note) && !/OLD/.test(s.note), s);
+  // what is in the message is text, and a huge one is cut
+  await send({ source: 'hitfinder', ribbon: { query: 'XYZ1', pocket: true, compound: '<img src=x onerror="window.__pwn=1">'.repeat(3), from: '<b>x</b>' } });
+  s = await settle('8POC');
+  const inj = await rb.evaluate(() => ({ img: document.querySelectorAll('#infoCard .info-note img, #infoCard .info-note b').length, pwn: !!window.__pwn, note: (document.querySelector('#infoCard .info-note') || {}).textContent.slice(0, 80) }));
+  check('RB25', 'a compound name with markup in it is shown as text', inj.img === 0 && !inj.pwn, inj);
+  const longq = await rb.evaluate(() => { window.postMessage({ type: 'dhub:context', context: { ribbon: { query: 'APO1' } } }, '*'); return 'sent'; }); await sleep(2500);
+  check('RB25', 'a message from the page itself (not its host) is ignored', (await state0()).id === '8POC' && await pg.evaluate(() => window.__sent) > 0);
+  await ctx.close();
+  // not hosted: the same message does nothing
+  const solo = await open({ tag: 'RB25b ' });
+  if (await has3d(solo.pg)) {
+    await solo.go('1XYZ'); const before = await solo.E(() => currentPdbId);
+    await solo.E(() => { window.postMessage({ type: 'dhub:context', context: { ribbon: { query: '4LIG' } } }, '*'); }); await sleep(1500);
+    check('RB25', 'opened on its own (no Hub around it) Ribbon ignores such a message', await solo.E(() => currentPdbId) === before, before);
+  }
+  await solo.ctx.close();
+}
+
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

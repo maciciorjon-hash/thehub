@@ -86,8 +86,8 @@ const HOST_HTML = `<!doctype html><html><body style="margin:0"><iframe id="frame
 var APP_INFO = { hitfinder: { name: 'Hit Finder' } }; window.__opens = []; var acked = {};
 window.addEventListener('message', function (e) { if (e.data && e.data.type === 'dhub:ack') acked[e.data.requestId] = true; });
 function openApp(id, tab, item, context) {
-  window.__opens.push({ id: id, source: context && context.source, echoRun: context && context.echoRun, hasTable: !!(context && context.table), tableRows: context && context.table ? context.table.length : 0, name: context && context.name });
-  var f = document.getElementById('frame-' + id); if (!f.getAttribute('src')) f.src = '/__hf.html';
+  window.__opens.push({ ribbon: context && context.ribbon, id: id, source: context && context.source, echoRun: context && context.echoRun, hasTable: !!(context && context.table), tableRows: context && context.table ? context.table.length : 0, name: context && context.name });
+  var f = document.getElementById('frame-' + id); if (!f) return; if (!f.getAttribute('src')) f.src = '/__hf.html';
   var msg = { type: 'dhub:context', version: 1, source: (context && context.source) || 'hub', target: id, action: 'open', context: context, requestId: 't' + Date.now() + Math.random() };
   var n = 0; (function send() { if (acked[msg.requestId] || n >= 60) return; try { f.contentWindow.postMessage(msg, '*'); } catch (x) {} n++; setTimeout(send, 250); })();
 }
@@ -1023,6 +1023,35 @@ if (run('H23')) await guard('H23', async () => {
     check('H23', `at ${w}px nothing leaves its box, nothing lands on its neighbour, and nothing is hidden behind a sideways scroll`, seen.length === 0, [...new Set(seen)].slice(0, 6));
   }
   await c23.close();
+});
+
+// ── H24 a hit's target opens in Ribbon ─────────────────────────────────────────────────────────
+// Inside the Hub the drawer offers one button per protein the compound was measured against in a primary screen; it asks the Hub
+// to open Ribbon with the protein's name and the compound's. Outside the Hub, or for someone who may not open Ribbon, there is none.
+if (run('H24')) await guard('H24', async () => {
+  const hp = await ctx.newPage(); hp.on('pageerror', e => pageErrs.push('host: ' + String(e && e.message || e)));
+  await hp.goto(BASE + '/__host.html'); await hp.waitForTimeout(800);
+  await hp.evaluate(() => { document.getElementById('frame-hitfinder').src = '/__hf.html'; });
+  await hp.waitForTimeout(1500);
+  const hf = hp.frames().find(f => /__hf\.html/.test(f.url()));
+  await hf.evaluate(() => { document.documentElement.setAttribute('data-theme', 'light'); loadHitFinderTestData(); });
+  await hf.waitForTimeout(800);
+  const pick = await hf.evaluate(() => { for (const ck of HF.names.keys()) { const t = hfTargetsOf(ck); if (t.length) return { ck, t, name: [...HF.names.get(ck).keys()][0] }; } return null; });
+  check('H24', 'a compound with a fitted primary screen has targets to open', !!pick && pick.t.length >= 1, pick);
+  await hf.evaluate(ck => hfOpenDrawer(ck), pick.ck); await hf.waitForTimeout(400);
+  const btns = await hf.evaluate(() => [...document.querySelectorAll('#hf-drawer .dr-tgt .btn')].map(b => ({ t: b.textContent.trim(), tgt: b.dataset.t, h: Math.round(b.getBoundingClientRect().height) })));
+  check('H24', 'inside the Hub the drawer has an "Open <target> in Ribbon" button per target, and says whose pocket it is', btns.length === pick.t.length && btns.every(b => /^Open .+ in Ribbon$/.test(b.t) && b.h >= 28) && await hf.evaluate(() => /not of this compound/.test(document.querySelector('#hf-drawer .dr-tgt').parentNode.textContent)), btns);
+  await hf.evaluate(() => document.querySelector('#hf-drawer .dr-tgt .btn').click()); await hp.waitForTimeout(300);
+  const opens = (await hp.evaluate(() => window.__opens)).filter(o => o.id === 'ribbon');
+  check('H24', 'pressing it asks the Hub for Ribbon with the protein, the compound as it is spelled, and the pocket switched on', opens.length === 1 && opens[0].source === 'hitfinder' && opens[0].ribbon && opens[0].ribbon.query === pick.t[0] && opens[0].ribbon.compound === pick.name && opens[0].ribbon.pocket === true && opens[0].ribbon.from === 'Hit Finder', opens);
+  // someone who may not open Ribbon is not offered it
+  await hp.evaluate(() => { window._isAppAccessible = id => id !== 'ribbon'; });
+  await hf.evaluate(ck => hfOpenDrawer(ck), pick.ck); await hf.waitForTimeout(300);
+  check('H24', 'without access to Ribbon there is no button', await hf.evaluate(() => !document.querySelector('#hf-drawer .dr-tgt')));
+  await hp.close();
+  // on its own, no Hub
+  await E(() => { loadHitFinderTestData(); });
+  check('H24', 'opened on its own, the drawer has no Ribbon button', await E(ck => !/Target structure/.test(hfDrawerHtml(ck)), pick.ck));
 });
 
 await browser.close(); server.close();

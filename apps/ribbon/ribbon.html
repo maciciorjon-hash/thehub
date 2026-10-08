@@ -143,6 +143,7 @@ input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webki
 .info-title{font-size:var(--fs-3);color:var(--text);line-height:1.4;overflow-wrap:anywhere;}
 .info-meta{font-size:var(--fs-2);color:var(--text2);line-height:1.5;overflow-wrap:anywhere;}
 .info-links{display:flex;gap:12px;flex-wrap:wrap;}
+.info-note{font-size:var(--fs-2);color:var(--text);line-height:1.5;border-left:2px solid var(--accent);padding-left:8px;overflow-wrap:anywhere;}
 .info-links a{font-size:var(--fs-2);color:var(--accent);text-decoration:none;font-weight:600;}
 .info-links a:hover{text-decoration:underline;}
 
@@ -983,6 +984,8 @@ var ELEM_COLORS={N:'#3050f8',O:'#ff0d0d',S:'#d9b800',P:'#ff8000',F:'#4fbf4f',CL:
 var LIG_SCHEMES=[{k:'yellowCarbon',hex:'#ffd400'},{k:'magentaCarbon',hex:'#e642c8'},{k:'cyanCarbon',hex:'#1ac8c8'},{k:'greenCarbon',hex:'#3fbf3f'},
   {k:'orangeCarbon',hex:'#ff8c1a'},{k:'whiteCarbon',hex:'#e6e6e6'},{k:'purpleCarbon',hex:'#9c5cf0'},{k:'grayCarbon',hex:'#8c8c8c'}];
 var WATER_RESN=['HOH','WAT','DOD','H2O','TIP','SOL'];
+// What a crystal is grown in or frozen with: present in a structure, never the ligand it is about.
+var RB_ADDITIVES=['EDO','GOL','PEG','PGE','PG4','PG6','P6G','1PE','2PE','PE4','PE5','PE8','15P','12P','1PG','PGR','PGO','PEU','MPD','MRD','DMS','ACT','ACY','FMT','TRS','EPE','MES','BME','CIT','FLC','TAR','TLA','IMD','SO4','PO4','NO3','SCN','AZI','NH4','CAC','EOH','IPA','MOH','BU3','B3P','HEZ','DTT','OCT','LDA','OLC','LMT','BOG','DIO','TFA','GBL','SIN','URE','IOD','BR','CL','EDT','BCT','ABU','MLI','CXS','SGM','OGA','NA','K','MG','ZN','CA','MN','CD','NI','CO','FE','CU'];
 var NUCLEIC_RESN=['A','C','G','U','T','I','DA','DC','DG','DT','DU','DI','N','DN'];
 var AF_BINS=[{min:90,hex:'#0053d6',t:'Very high',r:'> 90'},{min:70,hex:'#65cbf3',t:'Confident',r:'70 – 90'},{min:50,hex:'#ffdb13',t:'Low',r:'50 – 70'},{min:-1e9,hex:'#ff7d45',t:'Very low',r:'< 50'}];
 var viewer=null, currentModel=null, currentPdbId='', currentSurfs=[], currentSource=null, currentInfo=null;
@@ -994,6 +997,7 @@ var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',
 var chainList=[], chainInfo={}, ligands=[], ligOverflow=0, ionResn=[], ionCount=0, chainRange={}, bRange=[0,100], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
 var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _reqSeq=0, _searchSeq=0, _surfTok=0;
 var _measMode=false, _measKind='dist', _measPend=[], measEls={}, _measSeq=0;
+var _pendingOpen=null, _openSeq=0, currentOpen=null;
 var _resLabelMode=false, _userMoved=false, _hoverAtom=null, _nFrames=1, _frame=0, _cur=null, _viewerQueue=[], _animRaf=0, _infoSeq=0;
 
 function $(id){return document.getElementById(id);}
@@ -1234,6 +1238,7 @@ function finishRender(tk,text,fmt,meta){
   showToast('Loaded '+currentPdbId);
   if(meta.kind!=='file'){ store('ribbon_last',meta.kind==='af'?meta.rid:meta.rid.toUpperCase()); pushRecent(meta); }
   loadInfo(meta);
+  rbApplyOpen(meta);
 }
 function modelCount(text,fmt){ if(fmt==='cif') return 0; var m=text.match(/^MODEL\s/mg); return m?m.length:0; }
 function renderStructure(text,fmt,meta){
@@ -1254,7 +1259,7 @@ function buildModel(text,fmt,meta,nm){
   Object.keys(labelEls).forEach(removeLabelEl);
   state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
   state.residueLabels=[]; state.hiddenChains={}; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; state.iface=null; _if=null; state.overlay=null; ovl=null; state.values=null; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
-  chainAnchorCache={}; selectedChain=null; _hoverAtom=null; _frame=0; _userMoved=false;
+  chainAnchorCache={}; selectedChain=null; _hoverAtom=null; _frame=0; _userMoved=false; currentOpen=null;
   closeChainPopup();
   var model=viewer.addModel(text,fmt,nm>1?{multimodel:true,frames:true}:{});
   if(!model||!model.selectedAtoms({}).length){ try{viewer.clear();}catch(e){} throw {kind:'parse'}; }
@@ -3030,7 +3035,7 @@ function renderInfoCard(){
   } else { badge='File'; title=s.rid||''; }
   meta.push(chainList.length+(chainList.length===1?' chain':' chains')+' · '+atoms.toLocaleString()+' atoms'+(_nFrames>1?' · '+_nFrames+' models':''));
   el.innerHTML='<div class="info-id"><b>'+escapeHtml(currentPdbId)+'</b><span class="badge">'+escapeHtml(badge)+'</span></div>'
-    +(title?'<div class="info-title">'+escapeHtml(title)+'</div>':'')+'<div class="info-meta">'+escapeHtml(meta.join(' · '))+'</div>'+(links?'<div class="info-links">'+links+'</div>':'');
+    +(title?'<div class="info-title">'+escapeHtml(title)+'</div>':'')+'<div class="info-meta">'+escapeHtml(meta.join(' · '))+'</div>'+(links?'<div class="info-links">'+links+'</div>':'')+(currentOpen?'<div class="info-note">'+escapeHtml(rbOpenNote())+'</div>':'');
   el.hidden=false;
 }
 function pushRecent(meta){
@@ -3821,6 +3826,103 @@ function exportScript(kind){
   _saveBlob(new Blob([text],{type:'text/plain'}),base+(kind==='chimerax'?'.cxc':'.pml'));
   showToast((kind==='chimerax'?'ChimeraX':'PyMOL')+' script saved');
 }
+
+// ── Opened from another app: a target, and the pocket of a ligand that is in it ──────────────
+// Hit Finder says "this hit was measured against BRD4". The structure that answers that is the best-resolved PDB entry of the protein
+// that has a real ligand in it (not glycerol or sulfate), else the best-resolved entry, else the AlphaFold model. The pocket shown is
+// that ligand's, and the page says so: it is the structure's own ligand, not the compound that was screened.
+function _rbClean(s,n){ return String(s==null?'':s).replace(/[\u0000-\u001f\u007f]+/g,' ').trim().slice(0,n); }
+function rcsbEntriesForAcc(acc){
+  var body={query:{type:'group',logical_operator:'and',nodes:[
+    {type:'terminal',service:'text',parameters:{attribute:'rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_accession',operator:'exact_match',value:acc}},
+    {type:'terminal',service:'text',parameters:{attribute:'rcsb_polymer_entity_container_identifiers.reference_sequence_identifiers.database_name',operator:'exact_match',value:'UniProt'}}]},
+    request_options:{sort:[{sort_by:'rcsb_entry_info.resolution_combined',direction:'asc'}],paginate:{start:0,rows:25}},return_type:'entry'};
+  return rbFetch('https://search.rcsb.org/rcsbsearch/v2/query',{timeout:15000,init:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}})
+    .then(function(r){ return r.json(); },function(e){ if(e&&e.kind==='empty') return {result_set:[]}; throw e; })
+    .then(function(d){ return ((d&&d.result_set)||[]).map(function(x){ return String(x.identifier).toUpperCase(); }); });
+}
+// First entry, in resolution order, with a ligand that is not an additive and weighs at least 180 Da.
+function rcsbPickLigandEntry(ids){
+  var q='{ entries(entry_ids:'+JSON.stringify(ids)+'){ rcsb_id rcsb_entry_info{resolution_combined} nonpolymer_entities{ nonpolymer_comp{ chem_comp{ id name formula_weight } } } } }';
+  return rbFetch('https://data.rcsb.org/graphql',{timeout:15000,init:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})}})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var list=((d&&d.data&&d.data.entries)||[]).filter(Boolean), pos={}; ids.forEach(function(id,i){ pos[id]=i; });
+      list.sort(function(a,b){ return (pos[String(a.rcsb_id).toUpperCase()]||0)-(pos[String(b.rcsb_id).toUpperCase()]||0); });
+      for(var i=0;i<list.length;i++){
+        var best=null;
+        (list[i].nonpolymer_entities||[]).forEach(function(n){
+          var c=n&&n.nonpolymer_comp&&n.nonpolymer_comp.chem_comp; if(!c||RB_ADDITIVES.indexOf(String(c.id).toUpperCase())>=0||!(c.formula_weight>=180)) return;
+          if(!best||c.formula_weight>best.formula_weight) best=c;
+        });
+        if(best){ var res=list[i].rcsb_entry_info&&list[i].rcsb_entry_info.resolution_combined&&list[i].rcsb_entry_info.resolution_combined[0];
+          return {id:String(list[i].rcsb_id).toUpperCase(),resn:String(best.id).toUpperCase(),lig:best.name||best.id,res:res||null}; }
+      }
+      return null;
+    });
+}
+function rbFindTargetStructure(q){
+  var s=normId(q);
+  if(isPdbId(s)) return Promise.resolve({kind:'pdb',id:s.toUpperCase(),resn:null,why:'the entry that was asked for'});
+  var accP=(afAcc(s)||isUniprot(s))?Promise.resolve((afAcc(s)||s).toUpperCase().split('-')[0]):uniprotSearch(q).then(function(list){
+    if(!list.length) throw {kind:'notfound'};
+    var g=list.filter(function(x){ return String(x.gene).toUpperCase()===q.toUpperCase(); })[0];
+    return (g||list[0]).acc;
+  });
+  return accP.then(function(acc){
+    return rcsbEntriesForAcc(acc).then(function(ids){
+      if(!ids.length) return {kind:'af',acc:acc,why:'no PDB entry for '+acc+', so the AlphaFold model'};
+      return rcsbPickLigandEntry(ids).then(function(p){
+        if(p) return {kind:'pdb',id:p.id,resn:p.resn,why:'best-resolved structure with a ligand'+(p.res?' ('+(+p.res).toFixed(2)+' Å, '+p.resn+')':' ('+p.resn+')')};
+        return {kind:'pdb',id:ids[0],resn:null,why:'no structure with a ligand was found, so the best-resolved entry'};
+      },function(){ return {kind:'pdb',id:ids[0],resn:null,why:'the best-resolved entry (the ligand lookup failed)'}; });
+    });
+  });
+}
+function rbOpenTarget(c){
+  var q=_rbClean(c.query,80); if(!q) return;
+  var mine=++_openSeq; _pendingOpen=null; $('pdbInput').value=q; setError('');
+  setLoading(true,'a structure of '+q); showToast('Finding a structure of '+q+'…');
+  rbFindTargetStructure(q).then(function(r){
+    if(mine!==_openSeq) return;
+    _pendingOpen={id:r.kind==='pdb'?r.id:null,acc:r.kind==='af'?r.acc:null,resn:r.resn||null,pocket:c.pocket!==false,compound:_rbClean(c.compound,60),query:q,why:r.why,from:_rbClean(c.from,24)};
+    if(r.kind==='pdb'){ $('pdbInput').value=r.id; fetchPdb(r.id); } else { $('pdbInput').value=r.acc; fetchAlphaFold(r.acc); }
+  },function(e){
+    if(mine!==_openSeq) return;
+    setLoading(false);
+    var msg=e&&e.kind==='notfound'?'No protein called “'+q+'” was found, so there is nothing to open.':netMessage(e,'the structure databases');
+    setError(msg); showToast(msg);
+  });
+}
+function rbOpenNote(){
+  var o=currentOpen; if(!o) return '';
+  var who=(o.from?'Opened from '+o.from:'Opened')+(o.compound?' for '+o.compound:'')+' · '+o.query+'. ';
+  if(o.ligand) return who+'This is the '+o.why+'. The pocket shown is the co-crystallised '+o.ligand+', not '+(o.compound||'your compound')+'.';
+  return who+(o.why?o.why.charAt(0).toUpperCase()+o.why.slice(1)+'. ':'')+'No ligand pocket is shown.';
+}
+function rbApplyOpen(meta){
+  var po=_pendingOpen; if(!po) return;
+  _pendingOpen=null;
+  var ok=po.id?(meta.kind==='pdb'&&String(meta.rid||'').toUpperCase()===po.id.toUpperCase()):(meta.kind==='af'&&String(meta.rid||'').toUpperCase()===String(po.acc||'').toUpperCase());
+  if(!ok) return;   // the person loaded something else meanwhile
+  var cand=ligands.filter(function(l){ return RB_ADDITIVES.indexOf(String(l.resn).toUpperCase())<0&&(l.n||0)>=8; });
+  cand.sort(function(a,b){ var pa=po.resn&&a.resn===po.resn?1:0, pb=po.resn&&b.resn===po.resn?1:0; return (pb-pa)||((b.n||0)-(a.n||0)); });
+  var l=cand[0]||null;
+  currentOpen={compound:po.compound,query:po.query,why:po.why,from:po.from,ligand:(po.pocket&&l)?l.resn:null};
+  if(po.pocket&&l){
+    state.pockets[l.key]=true; state.showLigands=true;
+    recolorStructure(); renderLigList(); updateSummaries();
+    var d=document.querySelector('details.rb-sec[data-sec="chains"]'); if(d) d.open=true;
+    setTimeout(function(){ if(currentSource===meta) focusLigand(l); },80);
+  }
+  renderInfoCard();
+}
+window.addEventListener('message',function(e){
+  var d=e.data;
+  if(!d||d.type!=='dhub:context'||e.source!==window.parent||!hosted()) return;
+  try{ e.source.postMessage({type:'dhub:ack',requestId:d.requestId,app:'ribbon'},'*'); }catch(_){}
+  var c=d.context&&d.context.ribbon; if(c&&typeof c==='object') rbOpenTarget(c);
+});
 
 // ── Saved designs (localStorage, mirrored to the cloud when the Hub is signed in) ────────────
 function getDesigns(){ try{ var o=JSON.parse(localStorage.getItem('ribbon_designs')||'{}'); return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }catch(e){return {};} }
@@ -5106,6 +5208,12 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         tip: 'The designs may be of different structures: Ribbon loads each one for its picture, and puts the figure you had back afterwards. A design of a file you opened can only be a panel while that file is open.',
         warn: 'Stop ends it after the panel being drawn. A very large figure is scaled down to fit what a browser can save.',
         prep: open('designs'), show: [{ sel: '#panelsBtn', say: 'Multi-panel figure.', miss: NEED }] },
+      { id: 'target', t: 'Open a hit\'s target from Hit Finder', group: 'Structures', on: ['viewer','empty'],
+        q: ['hit finder', 'target', 'open target', 'pocket of a hit', 'binding site', 'where does it bind', 'structure of the target', 'from hit finder', 'gene', 'blanco', 'diana', 'sitio de union', 'abrir la proteina'],
+        a: ['In **Hit Finder**, open a compound and press **Open <target> in Ribbon**. Ribbon finds the protein, opens the best-resolved structure of it that has a real ligand in it (not glycerol or sulfate), draws that ligand and the residues around it, and zooms in.',
+            'If the protein has PDB entries but none with a ligand, the best-resolved entry opens without a pocket. If it has none at all, the AlphaFold model opens.'],
+        warn: 'The pocket is the ligand that is in the crystal, not your compound. The note under the structure\'s title says so and names both.',
+        tip: 'You can also type a gene name (BRD4) into the box and pick from the list. The Hit Finder route only does that choice for you.' },
       { id: 'script', t: 'Take the figure into PyMOL or ChimeraX', group: 'Export', on: ['viewer'],
         q: ['pymol', 'chimerax', 'chimera', 'script', 'pml', 'cxc', 'session', 'export script', 'continue in pymol', 'ray trace', 'render', 'guion', 'sesion', 'exportar a pymol'],
         a: ['In the export dialog, **PyMOL script** and **ChimeraX script** save the figure as commands: the structure, the style, every residue in the colour it has on screen (palette tuning, chain colours, highlights, the interface and values included), hidden chains, ligands and pockets, sticks, labels, measurements and the direction you are looking from.',

@@ -317,6 +317,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
 /* ── the compound drawer ── */
 #hf-drawer{position:fixed;top:0;right:0;bottom:0;width:min(500px,100%);z-index:120;display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--border2);box-shadow:var(--shadow-lg);transform:translateX(105%);transition:transform var(--dur-3) var(--ease-out);visibility:hidden;}
 #hf-drawer.open{transform:none;visibility:visible;}
+.dr-tgt{display:flex;gap:8px;flex-wrap:wrap;}
 .dr-hd{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);}
 .dr-hd h3{margin:0;font-size:var(--fs-6);font-weight:600;letter-spacing:-.2px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .dr-hd .ico-btn:hover{color:var(--text);}
@@ -2318,6 +2319,7 @@ function hfDrawerHtml(ck) {
     + '<textarea class="note-in" placeholder="A note on this compound — why you decided, what to re-test…" oninput="hfNote(\'' + esc(ck) + '\',this.value)" aria-label="Note">' + esc(d.note || '') + '</textarea><div class="sub" style="margin-top:4px">Your call is kept beside the tier. It never changes it.</div></div>'
     + '<div class="dr-sec"><h4>Why</h4><table class="dr-why"><tbody>' + rows + '</tbody></table></div>'
     + hfDrawerChem(ck)
+    + hfDrawerTarget(ck)
     + (cv ? '<div class="dr-sec"><h4>Curves</h4><div class="cv-grid">' + cv + '</div></div>' : '')
     + '<div class="dr-sec"><h4>Names</h4><div class="dr-names">' + (nm.length > 1 ? 'Spelled ' + nm.map(n => '<code>' + esc(n) + '</code>').join(', ') + ' — read as one compound.' : 'Spelled <code>' + esc(nm[0] || ck) + '</code> everywhere.') + '</div></div></div>';
 }
@@ -3252,6 +3254,29 @@ function hfRenderSeries() {
   host.innerHTML = hfSeriesHtml(sh); hfFillStructs(host);
 }
 // ── in the compound drawer ──
+// The proteins this compound was measured against in a primary screen: what "a structure of its target" has to mean.
+function hfTargetsOf(ck) {
+  const out = [], seen = new Set();
+  HF.recs.forEach(r => {
+    if (r._ck !== ck || r.Fit_Status !== 'fitted') return;
+    const a = HF.arms.get(r._arm); if (!a || a.slot !== 'primary') return;
+    const t = String(hfArmTarget(a) || '').trim(); if (t && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); out.push(t); }
+  });
+  return out.slice(0, 4);
+}
+// Ribbon is reachable only from inside the Hub, and only for someone who may open it.
+function hfRibbonOk() { try { return window.parent !== window && typeof window.parent.openApp === 'function' && (typeof window.parent._isAppAccessible !== 'function' || !!window.parent._isAppAccessible('ribbon')); } catch (e) { return false; } }
+function hfDrawerTarget(ck) {
+  if (!hfRibbonOk()) return '';
+  const ts = hfTargetsOf(ck); if (!ts.length) return '';
+  return '<div class="dr-sec"><h4>Target structure</h4><div class="dr-tgt">' + ts.map(t => '<button class="btn" data-t="' + esc(t) + '" data-c="' + esc(ck) + '" onclick="hfOpenRibbon(this.dataset.t,this.dataset.c)" title="Opens the best-resolved structure of ' + esc(t) + ' that has a ligand, with that ligand\u2019s pocket drawn">Open ' + esc(t) + ' in Ribbon</button>').join('') + '</div>'
+    + '<div class="sub" style="margin-top:6px">The pocket Ribbon draws is the one of the ligand that is in the crystal, not of this compound.</div></div>';
+}
+function hfOpenRibbon(target, ck) {
+  const nm = [...(HF.names.get(ck) || new Map()).keys()][0] || ck;
+  try { window.parent.openApp('ribbon', undefined, undefined, { source: 'hitfinder', ribbon: { query: target, pocket: true, compound: nm, from: 'Hit Finder' } }); }
+  catch (e) { hfToast('Ribbon could not be opened.', 'err'); }
+}
 function hfDrawerChem(ck) {
   if (!hfChemAny()) return '';
   const e = HF.chem.by.get(ck), c = hfChemOf(ck);
