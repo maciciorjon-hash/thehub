@@ -1031,8 +1031,94 @@ async function rb20() {
   await ctx.close();
 }
 
+// ── RB21 values: conservation, variants, a table ────────────────────────────────────────────
+const AA1 = { ALA: 'A', GLY: 'G', SER: 'S', LEU: 'L', LYS: 'K', VAL: 'V', THR: 'T', GLU: 'E', ASP: 'D', ILE: 'I', PHE: 'F', ARG: 'R', TYR: 'Y', PRO: 'P' };
+const chainAseq = () => [...Array(24)].map((_, i) => AA1[NAMES3[(i + 1) % NAMES3.length]]).join('');   // 7SEQ chain A: residue i has NAMES3[i % 14], numbered from 1
+function nodeScores(seqs) {   // the same entropy, written again here
+  return [...seqs[0]].map((_, c) => { const cnt = {}; let tot = 0; for (const s of seqs) { const x = s[c]; if (x === '-' || x === 'X') continue; cnt[x] = (cnt[x] || 0) + 1; tot++; }
+    if (!tot) return null; let H = 0; for (const k in cnt) { const p = cnt[k] / tot; H -= p * Math.log2(p); } return Math.max(0, 1 - H / Math.log2(20)) * (tot / seqs.length); });
+}
+async function rb21() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB21 ' });
+  if (!(await has3d(pg))) { skipped.push('RB21 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ'); await sleep(400);
+  await E(() => document.querySelectorAll('details.rb-sec').forEach(d => { d.open = true; }));
+  // the arithmetic
+  const a = chainAseq().split(''), s2 = a.slice(), s3 = a.slice();
+  [2, 3, 4].forEach((i, k) => { s2[i] = 'WCMH'[k]; }); s3[2] = 'N'; s3[9] = '-';
+  const seqs = [a.join(''), s2.join(''), s3.join('')], want = nodeScores(seqs);
+  const col = await E(seqs => columnScores(seqs.map(s => ({ seq: s }))), seqs);
+  check('RB21', 'column scores equal the entropy worked out here (gaps weight a column down)', col.every((v, i) => (v === null && want[i] === null) || Math.abs(v - want[i]) < 1e-9), { col: col.slice(0, 6), want: want.slice(0, 6) });
+  const spot = await E(() => columnScores([{ seq: 'AAGG-' }, { seq: 'AAGG-' }].concat([{ seq: 'AAAA-' }, { seq: 'AAAA-' }]).map(s => ({ seq: s.seq }))).map(v => v));
+  const sp2 = await E(() => columnScores(['A', 'A', 'G', 'G'].map(c => ({ seq: c + 'A' + (c === 'G' ? '-' : 'A') }))));
+  check('RB21', 'an identical column scores 1, a half-and-half column 1 − 1/log2(20), a column half gaps is halved, all gaps is nothing', spot[0] === 1 && Math.abs(spot[2] - (1 - 1 / Math.log2(20))) < 1e-9 && spot[4] === null && sp2[1] === 1 && Math.abs(sp2[2] - 0.5) < 1e-9, { spot, sp2 });
+  const fa = await E(() => parseAlignment('>a b\nMKV-\nLA\n>c\nMKVLA').map(s => s.name + ':' + s.seq).join('|'));
+  const cl = await E(() => parseAlignment('CLUSTAL W\n\nhuman   MKVLA-  6\nmouse   MKILAG  6\n\n        ** **\n').map(s => s.name + ':' + s.seq).join('|'));
+  check('RB21', 'FASTA (wrapped lines, a description) and Clustal blocks both read', fa === 'a:MKV-LA|c:MKVLA' && cl === 'human:MKVLA-|mouse:MKILAG', { fa, cl });
+  // through the panel
+  const fasta = seqs.map((s, i) => '>' + ['human', 'mouse', 'fish'][i] + '\n' + s).join('\n');
+  await E(f => { document.getElementById('alnText').value = f; document.getElementById('alnText').dispatchEvent(new Event('input')); }, fasta);
+  const sel = await E(() => ({ ref: document.getElementById('alnRef').selectedOptions[0].textContent, chain: document.getElementById('alnChain').value, n: document.getElementById('alnRef').options.length }));
+  check('RB21', 'the selects list the sequences and pick the one most like the chain', sel.n === 3 && sel.ref === 'human' && sel.chain === 'A', sel);
+  await pg.click('#alnGo'); await sleep(500);
+  const got = await E(() => ({ color: state.color, top: document.getElementById('topColor').value, data: state.values.data.A, title: state.values.title, lg: document.getElementById('legend').textContent, show: document.getElementById('legend').classList.contains('show'), card: document.getElementById('valInfo').textContent, acts: !document.getElementById('valActs').hidden }));
+  const exp = {}; want.forEach((v, i) => { if (v != null) exp[i + 1] = v; });
+  check('RB21', 'the conservation mapped to each residue equals the column score', Object.keys(exp).length === 24 && Object.keys(exp).every(k => Math.abs(got.data[k] - exp[k]) < 1e-9) && exp[10] < exp[11], { n: Object.keys(got.data).length });
+  check('RB21', 'colour mode switches to your values; the key says variable and conserved', got.color === 'values' && got.top === 'values' && got.show && /variable/.test(got.lg) && /conserved/.test(got.lg) && /Conservation \(3 sequences\)/.test(got.title) && got.acts, got);
+  const cols = await E(() => { const f = makeColorFn(), at = r => currentModel.selectedAtoms({ chain: 'A', resi: r, atom: 'CA' })[0]; const hi = Object.keys(state.values.data.A).sort((x, y) => state.values.data.A[y] - state.values.data.A[x])[0], lo = Object.keys(state.values.data.A).sort((x, y) => state.values.data.A[x] - state.values.data.A[y])[0];
+    const o = { hi: f(at(+hi)), lo: f(at(+lo)), B: f(currentModel.selectedAtoms({ chain: 'B', resi: 3, atom: 'CA' })[0]), wantHi: adjustColor(VAL_STOPS[2]), wantLo: adjustColor(valueColor(valueT(state.values.data.A[lo]))), grey: adjustColor('#c9ccd6') };
+    document.getElementById('valRev').checked = true; document.getElementById('valRev').dispatchEvent(new Event('change')); const g = makeColorFn(); o.revHi = g(at(+hi)); return o; });
+  check('RB21', 'the most conserved residue is the deep colour, the least is on the ramp, a residue with no value is grey', cols.hi === cols.wantHi && cols.lo === cols.wantLo && cols.B === cols.grey, cols);
+  check('RB21', '"Reverse the colours" swaps the ends', cols.revHi !== cols.hi);
+  await E(() => { document.getElementById('valRev').checked = false; document.getElementById('valRev').dispatchEvent(new Event('change')); });
+  check('RB21', 'the palette tuning acts on it', await (async () => { const p0 = await E(() => viewer.pngURI()); await E(() => { state.hsl.s = 10; recolorStructure(); }); const p1 = await E(() => viewer.pngURI()); await E(() => { state.hsl.s = 100; recolorStructure(); }); return p0 !== p1; })());
+  // not an alignment
+  await E(() => { document.getElementById('alnText').value = '>a\nMKVLA\n>b\nMKV'; document.getElementById('alnGo').click(); });
+  check('RB21', 'sequences of different lengths are refused with the reason', /not the same length/.test(await E(() => document.getElementById('valErr').textContent)));
+  await E(() => { document.getElementById('alnText').value = '>a\nWWWWWWWW\n>b\nWWWWWWWW'; document.getElementById('alnText').dispatchEvent(new Event('input')); document.getElementById('alnGo').click(); });
+  check('RB21', 'an alignment of another protein is refused rather than coloured at random', /almost nothing|few residues/.test(await E(() => document.getElementById('valErr').textContent)));
+  // a design keeps it, clearing puts the colour back
+  await E(() => { document.getElementById('alnText').value = ''; });
+  await E(() => { document.getElementById('designName').value = 'vals'; saveDesign(); }); await sleep(500);
+  const keep = JSON.stringify(await E(() => state.values));
+  await E(() => { clearValues(); loadDesign('vals'); }); await sleep(2800);
+  check('RB21', 'a design keeps the values and the colour mode', JSON.stringify(await E(() => state.values)) === keep && await E(() => state.color) === 'values');
+  await E(() => document.getElementById('valClear').click());
+  check('RB21', 'Clear returns to a normal colour mode and hides the key', await E(() => state.color === 'uniform' && !state.values && !document.getElementById('legend').classList.contains('show') && document.getElementById('valInfo').hidden));
+  await E(() => { document.getElementById('topColor').value = 'values'; document.getElementById('topColor').dispatchEvent(new Event('change')); });
+  check('RB21', 'choosing "Your values" with none says where to add them', /Add some values first/.test(await E(() => document.getElementById('toastMsg').textContent)) && await E(() => document.querySelector('details[data-sec=values]').open));
+  await E(() => { state.color = 'uniform'; document.getElementById('topColor').value = 'uniform'; updateColorOrOpacity(); });
+  // variants
+  const pv = await E(() => ({ a: parseVariants('R175H, A:G245S p.V5A 249 K12*').variants.map(v => [v.chain, v.wt, v.resi, v.mut, v.text].join('/')), bad: parseVariants('5!!, Q9Z, ok').bad, three: parseVariants('Arg175His').variants[0] && [parseVariants('Arg175His').variants[0].wt, parseVariants('Arg175His').variants[0].mut].join() }));
+  check('RB21', 'variants parse: one-letter, three-letter, with a chain, with p., a bare number, a stop', JSON.stringify(pv.a) === JSON.stringify(['/R/175/H/R175H', 'A/G/245/S/G245S', '/V/5/A/V5A', '//249//249', '/K/12/*/K12*']) && pv.three === 'R,H', pv);
+  check('RB21', 'what is not a variant is reported', pv.bad.join() === '5!!,Q9Z,ok', pv.bad);
+  await E(() => { document.querySelector('#valSeg button[data-v=var]').click(); document.getElementById('varText').value = 'V5A, K5A, B:S3, Z:3, 999, 5!!'; document.getElementById('varGo').click(); });
+  check('RB21', 'a variant with a bad token is refused whole, naming it', /Not a variant: 5!!/.test(await E(() => document.getElementById('valErr').textContent)) && await E(() => state.highlights.length) === 0);
+  await E(() => { document.getElementById('varText').value = 'V5A, K5A, B:S3, Z:3, 999'; document.getElementById('varGo').click(); });
+  const v = await E(() => ({ hl: state.highlights.map(h => h.sel + '|' + h.sticks + '|' + h.color), labels: state.residueLabels.map(l => l.chain + l.resi + ':' + l.text), err: document.getElementById('valErr').textContent, tags: Object.keys(labelEls).length }));
+  check('RB21', 'variants become highlights with sticks (one colour, a range per chain) and labels with their names', v.hl.length === 2 && v.hl[0].startsWith('A:5') && v.hl[1].startsWith('B:3') && v.labels.join() === 'A5:V5A,B3:S3' && v.tags === 2, v);
+  check('RB21', 'a wrong wild-type, a missing chain and a missing residue are reported, not silently placed', /different residue/i.test(v.err) && /K5A \(the structure has VAL/.test(v.err) && /Z:3|no chain Z/.test(v.err) && /999|no residue 999/.test(v.err), v.err);
+  // a table
+  const pt = await E(() => { const r = parseValueTable('residue,value\n# note\nA:3 1.5\nB 4 2\n5=0.1\n6, 3e-1\nx y z\n7 1e999'); return { data: JSON.stringify(r.data), n: r.n, bad: r.bad }; });
+  check('RB21', 'a table is read in every spelling; a header and a comment are not errors, nonsense and infinity are counted', pt.data === JSON.stringify({ A: { 3: 1.5 }, B: { 4: 2 }, '*': { 5: 0.1, 6: 0.3 } }) && pt.n === 4 && pt.bad === 2, pt);
+  await E(() => { document.querySelector('#valSeg button[data-v=tab]').click(); document.getElementById('valTitle').value = 'RMSF'; document.getElementById('valText').value = 'A:2 0.5\nA:3 1.5\nA:4 2.5'; document.getElementById('valGo').click(); }); await sleep(400);
+  const t = await E(() => ({ title: state.values.title, min: state.values.min, max: state.values.max, lg: document.getElementById('legend').textContent, color: state.color }));
+  check('RB21', 'the table colours by its own range and names itself in the key', t.title === 'RMSF' && t.min === 0.5 && t.max === 2.5 && /RMSF/.test(t.lg) && /low/.test(t.lg) && /high/.test(t.lg) && t.color === 'values', t);
+  await E(() => { document.getElementById('valText').value = 'A:900 1\nA:901 2'; document.getElementById('valGo').click(); });
+  check('RB21', 'numbers the structure does not have are refused and the old values stay', /None of those residue numbers/.test(await E(() => document.getElementById('valErr').textContent)) && await E(() => state.values.title) === 'RMSF');
+  await E(() => { document.getElementById('valText').value = 'A:1 1\n'.repeat(1000000); document.getElementById('valGo').click(); });
+  check('RB21', 'more than 5 MB of text is refused', /more than 5 MB/.test(await E(() => document.getElementById('valErr').textContent)));
+  // the export carries the key
+  await E(() => { document.getElementById('valText').value = ''; });
+  const hh = await E(() => { openExport(); const row = !document.getElementById('exLegendRow').hidden; $('exLegend').checked = false; const a = renderExport().height; $('exLegend').checked = true; const b = renderExport().height; closeExport(); return [row, a, b]; });
+  check('RB21', 'the export offers the key and adds it as a band', hh[0] && hh[2] > hh[1], hh);
+  await go('1XYZ');
+  check('RB21', 'a new structure forgets the values and goes back to a colour mode that exists', await E(() => state.values === null && state.color !== 'values'));
+  await ctx.close();
+}
+
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

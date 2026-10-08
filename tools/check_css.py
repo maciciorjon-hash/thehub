@@ -17,10 +17,15 @@ Helix and Protein Tools each used the whole type and radius scale (79 font sizes
 without ever declaring it, so every string rendered at the inherited 16px and every corner at 0.
 It looked like a design choice, and nothing anywhere said otherwise.
 
+A third: white ink literally written on a solid fill (`background:var(--accent|good|warn|danger)` with
+`color:#fff`). In the dark theme every one of those fills is a light pastel, so white on the primary
+button was 2.3:1 (1.7 on the green). Ink on a fill is `var(--on-accent)`: white in light, near-black in dark.
+
   python3 tools/check_css.py                 # every app + the shell
   python3 tools/check_css.py path.html ...
 
-Exit 1 if any stylesheet has a declaration outside a rule, or uses a token it never defines.
+Exit 1 if any stylesheet has a declaration outside a rule, uses a token it never defines, or puts white
+ink on a solid fill.
 """
 import os, re, sys, glob
 
@@ -96,6 +101,31 @@ def undefined_tokens(html):
     return sorted(((n, c) for n, c in used.items() if n not in defined), key=lambda x: -x[1])
 
 
+FILL = r'var\(--(?:accent|accent2|accent3|good|warn|danger)(?:,[^)]*)?\)'
+_BG = re.compile(r'background(?:-color)?\s*:\s*' + FILL + r'\s*(?:;|!important|$)')
+_WHITE = re.compile(r'(?<![-\w])color\s*:\s*(?:#fff(?:fff)?|white)\b', re.I)
+_INLINE = re.compile(r'background(?:-color)?:\s*' + FILL + r'(?![-\w])[^"\'`<>{}]{0,160}?(?<![-\w])color:\s*(?:#fff(?:fff)?|white)\b'
+                     r'|(?<![-\w])color:\s*(?:#fff(?:fff)?|white)\b[^"\'`<>{}]{0,160}?background(?:-color)?:\s*' + FILL + r'(?![-\w])', re.I)
+
+
+def white_on_fill(html):
+    """Rules (and inline styles built in JS strings) that write white ink on a solid colour fill."""
+    out = []
+    for start, css in stylesheets(html):
+        css = re.sub(r'/\*.*?\*/', lambda m: re.sub(r'[^\n]', ' ', m.group(0)), css, flags=re.S)
+        for m in re.finditer(r'([^{}]*)\{([^{}]*)\}', css):
+            dec = m.group(2)
+            if (_BG.search(dec.strip()) or _BG.search(dec + ';')) and _WHITE.search(dec):
+                sel = m.group(1).strip().split('\n')[-1].strip()
+                out.append((start + css.count('\n', 0, m.start(2)), sel[-60:]))
+    # inline styles built in markup or JS strings — outside the stylesheets, which were read rule by rule above
+    blank = lambda m: re.sub(r'[^\n]', ' ', m.group(0))
+    outside = re.sub(r'<style(?:\s[^>]*)?>[\s\S]*?</style>', blank, html, flags=re.I)
+    for m in _INLINE.finditer(outside):
+        out.append((html.count('\n', 0, m.start()) + 1, 'inline: ' + m.group(0)[:50]))
+    return out
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     files = [os.path.abspath(a) for a in args] if args else (
@@ -113,24 +143,30 @@ def main():
         for start, css in stylesheets(html):
             hits += orphans(css, start)
         missing = undefined_tokens(html)
-        if hits or missing:
+        inks = white_on_fill(html)
+        if hits or missing or inks:
             bad += 1
             parts = []
             if hits:
                 parts.append('%d orphan(s)' % len(hits))
             if missing:
                 parts.append('%d undefined token(s)' % len(missing))
+            if inks:
+                parts.append('%d white ink on a solid fill' % len(inks))
             print('  %s: %s' % (rel, ', '.join(parts)))
             for ln, txt in hits[:8]:
                 print('     line %-6d %s' % (ln, txt))
             for name, n in missing[:10]:
                 print('     %-18s used %d time(s), never defined' % (name, n))
+            for ln, txt in inks[:8]:
+                print('     line %-6d white on a fill: %s   -> color:var(--on-accent)' % (ln, txt))
         else:
             print('  %s: clean' % rel)
     if bad:
         sys.stderr.write('\ncheck_css.py FAILED — %d file(s) with a problem.\n'
                          'An orphan declaration is folded into the next selector and drops that rule silently;\n'
-                         'an undefined token leaves its property at the inherited or initial value.\n' % bad)
+                         'an undefined token leaves its property at the inherited or initial value;\n'
+                         'white ink on a solid fill is 2.3:1 in the dark theme (use var(--on-accent)).\n' % bad)
         return 1
     return 0
 

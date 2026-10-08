@@ -16,6 +16,9 @@
 //     the ones written in the stylesheet; this catches the ones built in JS strings.
 //   * invisible text — colour equal to the background it sits on, in either theme. That is what
 //     a half-defined dark palette looks like from the outside.
+//   * ink on a solid fill (accent, good, warn, danger) under 4.5:1 (3:1 for large text, or opts.accentInk) — the primary
+//     button, the active tab and pill, a danger button. Each fill is read as this app resolves it, so a theme that
+//     lightens it is judged on its own colour.
 //   * content wider than its scroll container, where nothing can scroll to reach it.
 //
 // Deliberately NOT reported, each a false positive first:
@@ -80,6 +83,13 @@ window.__runtimeAudit = function(opts){
     var b = getComputedStyle(document.body);
     if (b.backgroundImage && b.backgroundImage !== 'none') return null;
     return rgb(b.backgroundColor) || {r:255,g:255,b:255,a:1}; }
+  // The solid fills as this app resolves them right now (they differ per theme): ink laid on one of them is a primary
+  // button, an active tab or pill, a danger button, a "done" mark. White was fine on the light theme's blues and greens
+  // and 2.3:1 on the dark theme's, where every one of them is a light pastel.
+  var FILLS = ['accent', 'good', 'warn', 'danger'].map(function(n){
+    var p = document.createElement('i'); p.style.cssText = 'position:fixed;left:-9px;top:-9px;width:1px;height:1px;background:var(--' + n + ')';
+    document.body.appendChild(p); var c = rgb(getComputedStyle(p).backgroundColor); p.remove();
+    return c && c.a > .5 ? {n:n, c:c} : null; }).filter(Boolean);
   var texts = document.querySelectorAll('body *');
   for (var k = 0; k < texts.length; k++) {
     var el = texts[k];
@@ -99,6 +109,15 @@ window.__runtimeAudit = function(opts){
     if (cs.webkitBackgroundClip === 'text' || cs.backgroundClip === 'text') continue;
     var bg = bgOf(el); if (!bg) continue;
     var ratio = (Math.max(lum(fg), lum(bg)) + .05) / (Math.min(lum(fg), lum(bg)) + .05);
+    if (FILLS.length && !el.closest('svg')) {
+      for (var q = 0; q < FILLS.length; q++) { var F = FILLS[q].c;
+        if (Math.abs(bg.r - F.r) < 4 && Math.abs(bg.g - F.g) < 4 && Math.abs(bg.b - F.b) < 4) {
+          var fsz = parseFloat(cs.fontSize), need = (fsz >= 24 || (fsz >= 18.66 && +cs.fontWeight >= 700)) ? 3 : (opts.accentInk || 4.5);
+          if (ratio < need) add('accent-ink', (el.tagName.toLowerCase() +
+            (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\s+/).slice(0,2).join('.') : '')) +
+            ' — contrast ' + ratio.toFixed(2) + ' on the ' + FILLS[q].n + ' fill, ' + need + ' needed ("' + own.trim().slice(0, 24) + '")');
+          break; } }
+    }
     if (ratio < 1.35) add('invisible-text', (el.tagName.toLowerCase() +
         (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\s+/).slice(0,2).join('.') : '')) +
         ' — contrast ' + ratio.toFixed(2) + ' ("' + own.trim().slice(0, 24) + '")');

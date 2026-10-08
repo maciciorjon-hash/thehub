@@ -47,6 +47,9 @@ const SHOTS   = args.shots ? String(args.shots) : null;
 const JSON_OUT= args.json ? String(args.json) : null;
 const VERBOSE = !!args.verbose;
 const ESCAPE  = !!args.escape;
+// ink on a solid fill (the primary button, the active pill): 4.5:1 in the dark theme, where it was 2.3:1 and is fixed (--on-accent). The light
+// theme's white on #5e87c5 is 3.65:1 — a palette decision (docs/UI.md), so it is held at 3:1 until the blue is chosen.
+const ACCENT_INK = { dark: 4.5, light: 3 };
 // scrollers that hold a data table or a figure larger than its box on purpose (a table whose box is its only child is allowed by the audit itself)
 const ESC_OPTS = JSON.stringify({ allowScroll: '.results-tbl-scroll,.hits-scroll,.fig-shell,.crop-area,.eg-tblwrap,.eg-scroll' });
 const DESKTOP = !!args.desktop;
@@ -411,7 +414,7 @@ async function measure(page, label, ctx, frame, opts = {}) {
       await frame.evaluate(DETECT);
       await scan(frame, 'app');
       if (opts.audits !== false) for (const src of AUDITS) await frame.evaluate(src).catch(() => {});
-      const a = opts.audits === false ? [] : await frame.evaluate(() => { let o = []; try { o = o.concat((window.__runtimeAudit && window.__runtimeAudit()) || []); } catch (e) {} try { o = o.concat((window.__alignAudit && window.__alignAudit()) || []); } catch (e) {} return o; });
+      const a = opts.audits === false ? [] : await frame.evaluate(min => { let o = []; try { o = o.concat((window.__runtimeAudit && window.__runtimeAudit({ accentInk: min })) || []); } catch (e) {} try { o = o.concat((window.__alignAudit && window.__alignAudit()) || []); } catch (e) {} return o; }, ACCENT_INK[ctx.theme] || 4.5);
       // dead handlers / duplicate ids are covered by the desktop audits; here only the visual ones
       push('app', a.filter(s => /invisible|contrast|clipped|wider|align|different left|height/i.test(s)).map(s => 'audit ' + s));
       if (ESCAPE) push('app', (await frame.evaluate(ESC_SRC + ';window.__escapeAudit(' + ESC_OPTS + ')').catch(e => ['escape audit threw: ' + e.message])).map(m => 'escape: ' + m));

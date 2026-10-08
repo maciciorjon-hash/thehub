@@ -27,6 +27,7 @@ Every app declares the same names. Two scales, no loose values.
   --text:#1a1d2e; --text2:#5a5f7a; --text3:#7c8199;
 
   --accent:#5e87c5;                      /* ONE blue, every app, everything interactive */
+  --on-accent:#ffffff;                   /* ink on any solid fill (accent, good, warn, danger): white here, near-black in dark */
   --accent-dim:rgba(94,135,197,0.12); --accent-soft:rgba(94,135,197,0.22);
   --brand:<the app's own colour>;        /* its logo box and its card tint — nothing else */
 
@@ -49,6 +50,7 @@ Every app declares the same names. Two scales, no loose values.
   --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
   --text:#e8eaf2; --text2:#8b90a8; --text3:#7b8099;
   --accent:#8aaee0; --accent-dim:rgba(138,174,224,0.16); --accent-soft:rgba(138,174,224,0.26);
+  --on-accent:#0d0f14;                   /* the dark theme's fills are light pastels: white on #8aaee0 was 2.3:1, this is 8.4:1 */
   --good:#6ddca8; --warn:#f0b060; --danger:#f08a84;
   --paper:#1a1917;
   --shadow-xs:0 1px 4px rgba(0,0,0,.30);  --shadow-sm:0 2px 8px rgba(0,0,0,.40);
@@ -85,6 +87,13 @@ second.**
   drawing's viewBox and is part of the picture, not of the interface.
 - `--accent` owns everything interactive: focus rings, active tabs, links, primary buttons,
   selection. `--brand` appears in exactly two places: the 32px logo box and the app's card.
+- **Ink on a solid fill is `var(--on-accent)`, never `#fff`.** A primary button, an active tab or pill, a danger button,
+  a "done" mark: in the dark theme the accent is `#8aaee0` and the state colours are light pastels, so white on them was
+  2.3:1 (1.7 on the green, 1.9 on the amber). One dark ink serves all four fills. `tools/check_css.py` fails on a literal
+  white written beside one of those backgrounds (rules and inline styles built in JS), and `tools/audit_runtime.js` measures
+  every text run laid on a fill as the app resolves it: 4.5:1, or 3:1 for large text. **Held, not fixed:** in the light
+  theme white on `#5e87c5` is 3.65:1 (3.8 on the green, 3.5 on the amber), so the sweep holds light at 3:1 — darkening the
+  blue to about `#4b76b5` would give 4.6:1, and that is a decision about the Hub's colour, not a bug.
 - Semantic colour is `--good` / `--warn` / `--danger`, never a raw hex. The exception is a
   **print stylesheet** (`#print-root`, `@media print`): paper has one theme, so fixed values there
   are correct and theme tokens would be wrong.

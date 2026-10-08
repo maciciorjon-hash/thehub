@@ -348,8 +348,9 @@ try {
       await pg.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       const run = async tag => {
         await pg.waitForTimeout(400);
+        // ink on a solid fill: 4.5:1 in dark (fixed with --on-accent); 3:1 in light, where the palette's white on #5e87c5 is 3.65 (held, see docs/UI.md)
         const f = [].concat(await pg.evaluate(ESC + ';window.__escapeAudit({allowScroll:".tbl-wrap,.tbl-scroll,table"})').catch(x => ['escape audit crashed: ' + x.message]).then(r => r.map(x => 'ESCAPE ' + x)),
-          await pg.evaluate(RT + ';(window.__runtimeAudit||(()=>[]))()').catch(() => []).then(r => (r || []).map(x => 'RUNTIME ' + x)),
+          await pg.evaluate(RT + ';(window.__runtimeAudit||(()=>[]))({accentInk:' + (theme === 'dark' ? 4.5 : 3) + '})').catch(() => []).then(r => (r || []).map(x => 'RUNTIME ' + x)),
           await pg.evaluate(AL + ';(window.__alignAudit||(()=>[]))()').catch(() => []).then(r => (r || []).map(x => 'ALIGN ' + x)));
         f.forEach(x => bad.push(theme + ' ' + w + 'px ' + tag + ': ' + x));
       };
