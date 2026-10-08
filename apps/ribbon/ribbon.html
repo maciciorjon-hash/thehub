@@ -189,6 +189,10 @@ textarea.inp{height:auto;padding:8px 10px;resize:vertical;line-height:1.45;font-
 .design-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);
   border-radius:var(--r-2);padding:6px 6px 6px 6px;}
 .design-item:hover{border-color:var(--border2);}
+.design-item{--di-h:32px;}
+.design-item .di-main{min-height:var(--di-h);justify-content:center;}
+.design-item .ibtn{width:var(--di-h);height:var(--di-h);min-width:0;min-height:0;}
+@media (hover:none){ .design-item{--di-h:40px;} }
 .di-thumb{width:56px;height:40px;border-radius:var(--r-1);background:var(--surface3) center/cover no-repeat;border:1px solid var(--border);flex:none;}
 .di-main{min-width:0;display:flex;flex-direction:column;gap:1px;text-align:left;background:none;border:none;color:inherit;cursor:pointer;padding:0;font-family:inherit;}
 .di-name{font-size:var(--fs-3);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -311,6 +315,32 @@ textarea.inp{height:auto;padding:8px 10px;resize:vertical;line-height:1.45;font-
 .ov-body{padding:16px 18px 8px;display:flex;flex-direction:column;gap:14px;}
 .ov-body p{font-size:var(--fs-4);color:var(--text2);line-height:1.55;overflow-wrap:anywhere;}
 .ov-dim{font-size:var(--fs-2);color:var(--text2);font-family:var(--mono);line-height:1.5;}
+/* multi-panel figure */
+.pn-card{max-width:460px;}
+.pn-step{display:flex;flex-direction:column;gap:14px;}
+.pn-list{display:flex;flex-direction:column;gap:6px;max-height:min(260px,38vh);overflow:auto;overscroll-behavior-y:contain;}
+.pn-list>*{flex:none;}
+.pn-item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);padding:2px 6px;}
+.pn-item.on{border-color:var(--accent);}
+.pn-item.off{opacity:.6;}
+.pn-main{display:grid;grid-template-columns:24px auto minmax(0,1fr);align-items:center;gap:10px;background:none;border:none;color:inherit;font-family:inherit;text-align:left;cursor:pointer;padding:2px;min-height:44px;min-width:0;}
+.pn-main:disabled{cursor:not-allowed;}
+.pn-badge{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--border2);display:grid;place-items:center;font-size:var(--fs-2);font-weight:700;color:var(--on-accent);}
+.pn-item.on .pn-badge{background:var(--accent);border-color:var(--accent);}
+.pn-t{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.pn-mv{display:flex;}
+.pn-bar{height:6px;border-radius:3px;background:var(--surface3);overflow:hidden;}
+.pn-bar>i{display:block;height:100%;width:100%;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform var(--dur-3) var(--ease);}
+.pn-prev{border:1px solid var(--border);border-radius:var(--r-2);padding:8px;display:flex;justify-content:center;overflow:hidden;margin-bottom:8px;}
+.pn-prev canvas{max-width:100%;height:auto;display:block;}
+.pn-prev.white{background:#fff;}
+.pn-prev.dark{background:#13161e;}
+.pn-prev.checker{background:repeating-conic-gradient(var(--surface3) 0 25%,var(--surface) 0 50%) 0 0/16px 16px;}
+#pnStatus.warn{color:var(--danger);}
+@media (max-width:520px){
+  .pn-card .ov-foot{display:grid;grid-template-columns:1fr 1fr;}   /* a row of buttons that wraps ragged becomes a grid */
+  .pn-card .ov-foot .btn.primary{grid-column:1/-1;}
+}
 .ex-script{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--border);}
 .ex-script-h{font-size:var(--fs-3);font-weight:600;color:var(--text);}
 .ex-script-b{display:flex;gap:8px;flex-wrap:wrap;}
@@ -771,7 +801,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <button type="button" class="btn" id="saveDesignBtn">Save</button>
         </div>
         <div id="designList" class="design-list"></div>
-        <span class="hint">A design keeps the structure, colours, labels and the camera.</span>
+        <button type="button" class="btn" id="panelsBtn">Multi-panel figure…</button>
+        <span class="hint">A design keeps the structure, colours, labels and the camera. A figure puts several side by side, lettered.</span>
       </div>
     </details>
 
@@ -894,6 +925,36 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <button class="btn" type="button" id="exCopy">Copy</button>
       <button class="btn" type="button" id="exLabbook" hidden>Send to Labbook</button>
       <button class="btn primary" type="button" id="exGo">Download</button>
+    </div>
+  </div>
+</div>
+
+<!-- Multi-panel figure modal -->
+<div id="panel-modal" class="ov-modal" role="dialog" aria-modal="true" aria-labelledby="pnTitle" onclick="if(event.target===this)closePanels()">
+  <div class="ov-card pn-card">
+    <div class="ov-hdr"><span id="pnTitle">Multi-panel figure</span><button class="ibtn" type="button" onclick="closePanels()" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>
+    <div class="ov-body">
+      <div id="pnStep1" class="pn-step">
+        <div class="fld"><span>Panels, in order</span><div id="pnList" class="pn-list"></div><span class="hint" id="pnHint"></span></div>
+        <div class="fld"><span>Layout</span><div class="seg" id="pnLayout" role="group" aria-label="Layout"><button type="button" data-v="row" class="active">Row</button><button type="button" data-v="col">Column</button><button type="button" data-v="grid">Grid</button></div></div>
+        <div class="fld"><span>Panel letters</span><div class="seg" id="pnLetters" role="group" aria-label="Panel letters"><button type="button" data-v="A" class="active">A B C</button><button type="button" data-v="a">a b c</button><button type="button" data-v="none">None</button></div></div>
+        <div class="fld"><span>Background</span><div class="seg" id="pnBg" role="group" aria-label="Background"><button type="button" data-v="transparent">Transparent</button><button type="button" data-v="white" class="active">White</button><button type="button" data-v="dark">Dark</button></div></div>
+        <div class="fld"><span>Detail</span><div class="seg" id="pnRes" role="group" aria-label="Detail"><button type="button" data-v="300" class="active">Standard</button><button type="button" data-v="600">High</button></div></div>
+        <div class="range-row"><label for="pnGap">Gap</label><input type="range" id="pnGap" min="0" max="10" step="0.5" value="3"><span class="val" id="pnGapV">3%</span></div>
+        <label class="check"><input type="checkbox" id="pnLabels" checked> Include labels</label>
+      </div>
+      <div id="pnStep2" class="pn-step" hidden>
+        <div id="pnWork"><div class="pn-bar"><i id="pnBar"></i></div><div class="ov-dim" id="pnStatus" role="status" aria-live="polite"></div></div>
+        <div id="pnDone" hidden><div id="pnPrevBox" class="pn-prev"></div><div class="ov-dim" id="pnDims"></div></div>
+      </div>
+    </div>
+    <div class="ov-foot">
+      <button class="btn" type="button" id="pnCancel">Close</button>
+      <button class="btn" type="button" id="pnBack" hidden>Change</button>
+      <button class="btn" type="button" id="pnCopy" hidden>Copy</button>
+      <button class="btn" type="button" id="pnLabbook" hidden>Send to Labbook</button>
+      <button class="btn primary" type="button" id="pnSave" hidden>Download</button>
+      <button class="btn primary" type="button" id="pnGo" disabled>Make the figure</button>
     </div>
   </div>
 </div>
@@ -3296,16 +3357,203 @@ function figCaption(){
   var inf=currentInfo, t=currentPdbId+(inf&&inf.title?' — '+inf.title:'');
   var n=tagList().length; return (t+(n?' · '+n+' labels':'')).slice(0,300);
 }
+function _sendCanvasToLabbook(off,name,caption){
+  if(!hosted()){ showToast('Open Ribbon inside dHUB to send this to Labbook.'); return false; }
+  if(off.width>2400){ var k=2400/off.width, t=document.createElement('canvas'); t.width=2400; t.height=Math.max(1,Math.round(off.height*k)); t.getContext('2d').drawImage(off,0,0,t.width,t.height); off=t; }
+  var url=off.toDataURL('image/png');
+  if(url.length>13000000){ showToast('That image is too large to send. Lower the resolution.'); return false; }
+  try{
+    window.parent.openApp('labbook',undefined,undefined,{source:'ribbon',experiment:null,images:[{name:name,dataUrl:url,caption:caption}]});
+    showToast('Sent to Labbook'); return true;
+  }catch(e){ showToast('Labbook could not be reached.'); return false; }
+}
 function sendToLabbook(){
   if(!hosted()){ showToast('Open Ribbon inside dHUB to send this to Labbook.'); return; }
   var off=renderExport(); if(!off) return;
-  if(off.width>2400){ var k=2400/off.width, t=document.createElement('canvas'); t.width=2400; t.height=Math.max(1,Math.round(off.height*k)); t.getContext('2d').drawImage(off,0,0,t.width,t.height); off=t; }
-  var url=off.toDataURL('image/png');
-  if(url.length>13000000){ showToast('That image is too large to send. Lower the resolution.'); return; }
+  if(_sendCanvasToLabbook(off,_fileName().replace(/\.jpg$/,'.png'),figCaption())) closeExport();
+}
+
+// ── A figure of several panels, one per saved design ─────────────────────────────────────────
+// Panel A, B, C of a figure are usually the same structure seen three ways, or three structures drawn alike. Each panel is a saved design:
+// the composer applies it, renders it exactly as Export would, and lays the pictures out with their letters. Your own figure is put back after.
+var _pn={sel:[],layout:'row',letters:'A',bg:'white',res:'300',gap:3,labels:true,busy:false,abort:false,result:null,snap:null,_prev:null};
+function _isCurrentDesign(d){
+  var id=String(d.pdbId||'').toUpperCase();
+  return !!currentModel&&!!id&&(id===String(currentPdbId||'').toUpperCase()||id===String((currentSource&&currentSource.rid)||'').toUpperCase());
+}
+// A design that can be a panel: its structure is the one open, or it can be fetched without closing a file of yours.
+function panelDesigns(){
+  var all=getDesigns(), names=Object.keys(all).sort(function(a,b){ return (all[b].ts||0)-(all[a].ts||0); }), inFile=!!currentSource&&currentSource.kind==='file';
+  return names.map(function(n){
+    var d=all[n], src=d.source||{kind:'pdb',rid:d.pdbId}, why='';
+    if(src.kind==='file'&&!_isCurrentDesign(d)) why='its file is not open';
+    else if(inFile&&!_isCurrentDesign(d)) why='would close your file';
+    return {name:n,d:d,ok:!why,why:why};
+  });
+}
+// Show a design, fetching its structure if it is not the one on screen. Resolves when the figure is drawn that way.
+function designApplyObj(d){
+  return new Promise(function(res,rej){
+    var src=d.source||{kind:'pdb',rid:d.pdbId};
+    _pendingDesign=Object.assign({_pdb:String(d.pdbId||'').toUpperCase(),_view:d.view||null,_vp:d.vp||null},d.state);
+    if(_isCurrentDesign(d)){
+      var ps=_pendingDesign; applyPendingDesign(); buildGeometry(); applyProjection(); applyBorder(); applyBackground();
+      if(ps._view){ try{ viewer.setView(ps._view); viewer.render(); _userMoved=true; if(!sameShape(ps._vp)) ensureInView(); }catch(e){} }
+      updateAll(); res(); return;
+    }
+    if(src.kind==='file'){ _pendingDesign=null; rej(new Error('its file is not open')); return; }
+    var q=(src.kind==='af'?afAcc(src.rid||d.pdbId):(src.rid||d.pdbId))||d.pdbId, t0=Date.now();
+    $('pdbInput').value=q;
+    if(src.kind==='af') fetchAlphaFold(q); else fetchPdb(q);
+    (function wait(){
+      if(Date.now()-t0>150&&!$('fetchBtn').disabled){
+        if(_pendingDesign===null&&_isCurrentDesign(d)){ res(); return; }
+        var m=$('errText').textContent; _pendingDesign=null; rej(new Error(m||'the structure did not load')); return;
+      }
+      if(Date.now()-t0>30000){ _pendingDesign=null; rej(new Error('it took too long to load')); return; }
+      setTimeout(wait,120);
+    })();
+  });
+}
+function _pnSleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+async function _pnSettle(){   // the viewer paints on the next frames, and a surface is built asynchronously
+  await _pnSleep(500);
+  var t0=Date.now(); while(state.style==='surface'&&!currentSurfs.length&&Date.now()-t0<6000) await _pnSleep(120);
+  await _pnSleep(250);
+}
+function _renderPanelCanvas(o){   // exactly Export's picture, with this figure's options
+  var keep={bg:_exOpts.bg,res:_exOpts.res,fmt:_exOpts.fmt,lab:$('exLabels').checked,leg:$('exLegend').checked,legHid:$('exLegendRow').hidden,el:state.exportLabels};
+  _exOpts.bg=o.bg; _exOpts.res=o.res; _exOpts.fmt='png'; $('exLabels').checked=o.labels; $('exLegend').checked=false; $('exLegendRow').hidden=true;
+  try{ return renderExport(); }
+  finally{ _exOpts.bg=keep.bg; _exOpts.res=keep.res; _exOpts.fmt=keep.fmt; $('exLabels').checked=keep.lab; $('exLegend').checked=keep.leg; $('exLegendRow').hidden=keep.legHid; state.exportLabels=keep.el; }
+}
+function panelLetter(i,mode){ return mode==='A'?String.fromCharCode(65+i%26):mode==='a'?String.fromCharCode(97+i%26):''; }
+// Lay the pictures out. Row: one height. Column: one width. Grid: equal cells. Capped so a browser can still make the file.
+function composePanels(items,o){
+  var n=items.length, W=items.map(function(i){ return i.cv.width; }), H=items.map(function(i){ return i.cv.height; });
+  var med=function(a){ return a.slice().sort(function(x,y){ return x-y; })[a.length>>1]; }, mn=function(a){ return Math.min.apply(null,a); }, mx=function(a){ return Math.max.apply(null,a); };
+  var gap=Math.round(Math.max(mx(W),mx(H))*(+o.gap||0)/100), cols, rows, cell=[], pos=[], total;
+  if(o.layout==='row'){
+    var ch=mn(H), x=gap; cols=n; rows=1;
+    items.forEach(function(it,i){ var dw=Math.round(W[i]*ch/H[i]); cell.push({w:dw,h:ch,dw:dw,dh:ch,dx:0,dy:0}); pos.push({x:x,y:gap}); x+=dw+gap; });
+    total={w:x,h:ch+gap*2};
+  } else if(o.layout==='col'){
+    var cw=mn(W), y=gap; cols=1; rows=n;
+    items.forEach(function(it,i){ var dh=Math.round(H[i]*cw/W[i]); cell.push({w:cw,h:dh,dw:cw,dh:dh,dx:0,dy:0}); pos.push({x:gap,y:y}); y+=dh+gap; });
+    total={w:cw+gap*2,h:y};
+  } else {
+    cols=Math.ceil(Math.sqrt(n)); rows=Math.ceil(n/cols);
+    var gw=med(W), gh=med(H);
+    items.forEach(function(it,i){
+      var s=Math.min(gw/W[i],gh/H[i]), dw=Math.round(W[i]*s), dh=Math.round(H[i]*s);
+      cell.push({w:gw,h:gh,dw:dw,dh:dh,dx:Math.round((gw-dw)/2),dy:Math.round((gh-dh)/2)});
+      pos.push({x:gap+(i%cols)*(gw+gap),y:gap+Math.floor(i/cols)*(gh+gap)});
+    });
+    total={w:gap*2+cols*gw+(cols-1)*gap,h:gap*2+rows*gh+(rows-1)*gap};
+  }
+  var k=Math.min(1,9000/total.w,9000/total.h,Math.sqrt(64e6/(total.w*total.h)));
+  var out=document.createElement('canvas'); out.width=Math.max(1,Math.round(total.w*k)); out.height=Math.max(1,Math.round(total.h*k));
+  var x2=out.getContext('2d'); x2.imageSmoothingEnabled=true; x2.imageSmoothingQuality='high';
+  if(o.bg==='white'){ x2.fillStyle='#ffffff'; x2.fillRect(0,0,out.width,out.height); }
+  else if(o.bg==='dark'){ x2.fillStyle='#13161e'; x2.fillRect(0,0,out.width,out.height); }
+  x2.scale(k,k);
+  var ink=o.bg==='dark'?'#e8eaf2':'#1a1d2e';
+  items.forEach(function(it,i){
+    var c=cell[i], p=pos[i];
+    x2.drawImage(it.cv,0,0,W[i],H[i],p.x+c.dx,p.y+c.dy,c.dw,c.dh);
+    var L=panelLetter(i,o.letters); if(!L) return;
+    var fs=Math.max(28,Math.round(Math.min(c.w,c.h)*0.1));
+    x2.font='700 '+fs+'px '+"'IBM Plex Sans', sans-serif"; x2.textBaseline='top'; x2.textAlign='left'; x2.fillStyle=ink;
+    x2.fillText(L,p.x+Math.round(fs*0.25),p.y+Math.round(fs*0.15));
+  });
+  return {canvas:out,layout:{cols:cols,rows:rows,gap:gap,k:k,cells:cell,pos:pos,total:total}};
+}
+function _pnStatus(t,warn){ var e=$('pnStatus'); e.textContent=t; e.classList.toggle('warn',!!warn); }
+function _pnSetStep(s){   // 1 choose · 2 working · 3 result
+  $('pnStep1').hidden=s!==1; $('pnStep2').hidden=s===1;
+  $('pnWork').hidden=s!==2; $('pnDone').hidden=s!==3;
+  $('pnGo').hidden=s!==1; $('pnBack').hidden=s!==3; $('pnCopy').hidden=s!==3; $('pnSave').hidden=s!==3; $('pnLabbook').hidden=!(s===3&&hosted());
+  $('pnCancel').textContent=s===2?'Stop':'Close';
+}
+function renderPanelList(){
+  var el=$('pnList'); if(!el) return;
+  var list=panelDesigns(); _pn.sel=_pn.sel.filter(function(n){ return list.some(function(x){ return x.name===n&&x.ok; }); });
+  if(!list.length){ el.innerHTML='<div class="design-empty">No saved designs yet. Set a figure up, save it under Designs, then do it again for the next panel.</div>'; $('pnGo').disabled=true; return; }
+  el.innerHTML='';
+  list.forEach(function(x){
+    var i=_pn.sel.indexOf(x.name), on=i>=0, row=document.createElement('div'); row.className='pn-item'+(on?' on':'')+(x.ok?'':' off');
+    var th=x.d.thumb&&/^data:image\/jpeg;base64,/.test(x.d.thumb)?' style="background-image:url('+x.d.thumb+')"':'';
+    row.innerHTML='<button type="button" class="pn-main" aria-pressed="'+(on?'true':'false')+'"'+(x.ok?'':' disabled')+'><span class="pn-badge">'+(on?escapeHtml(panelLetter(i,_pn.letters)||String(i+1)):'')+'</span>'
+      +'<span class="di-thumb"'+th+'></span><span class="pn-t"><span class="di-name">'+escapeHtml(x.name)+'</span><span class="di-sub">'+escapeHtml((x.d.pdbId||'')+(x.why?' · '+x.why:''))+'</span></span></button>'
+      +'<span class="pn-mv">'+(on?'<button type="button" class="ibtn pn-up" aria-label="Move '+escapeHtml(x.name)+' earlier"'+(i===0?' disabled':'')+'><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg></button><button type="button" class="ibtn pn-dn" aria-label="Move '+escapeHtml(x.name)+' later"'+(i===_pn.sel.length-1?' disabled':'')+'><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button>':'')+'</span>';
+    row.querySelector('.pn-main').addEventListener('click',function(){ var j=_pn.sel.indexOf(x.name); if(j>=0) _pn.sel.splice(j,1); else _pn.sel.push(x.name); renderPanelList(); });
+    var up=row.querySelector('.pn-up'), dn=row.querySelector('.pn-dn');
+    if(up) up.addEventListener('click',function(){ var j=_pn.sel.indexOf(x.name); if(j>0){ _pn.sel.splice(j,1); _pn.sel.splice(j-1,0,x.name); renderPanelList(); } });
+    if(dn) dn.addEventListener('click',function(){ var j=_pn.sel.indexOf(x.name); if(j>=0&&j<_pn.sel.length-1){ _pn.sel.splice(j,1); _pn.sel.splice(j+1,0,x.name); renderPanelList(); } });
+    el.appendChild(row);
+  });
+  $('pnGo').disabled=_pn.sel.length<2;
+  $('pnHint').textContent=_pn.sel.length<2?'Pick two or more designs, in the order of the panels.':_pn.sel.length+' panels · '+(_pn.layout==='row'?'in a row':_pn.layout==='col'?'in a column':'in a grid');
+}
+function openPanels(){
+  if(!currentModel){ showToast('Load a structure and save a design first.'); return; }
+  closeExport();
+  _pn._prev=document.activeElement; _pn.result=null; _pnSetStep(1); renderPanelList();
+  $('panel-modal').classList.add('open'); var f=$('pnList').querySelector('button:not([disabled])')||$('pnCancel'); f.focus();
+}
+function closePanels(){
+  if(_pn.busy){ _pn.abort=true; _pnStatus('Stopping after this panel…'); return; }
+  $('panel-modal').classList.remove('open'); _pn.result=null;
+  if(_pn._prev&&_pn._prev.focus){ try{ _pn._prev.focus(); }catch(e){} }
+}
+async function runPanels(){
+  if(_pn.busy||_pn.sel.length<2) return;
+  var all=getDesigns(), names=_pn.sel.slice(), opts={layout:_pn.layout,letters:_pn.letters,bg:_pn.bg,res:_pn.res,gap:_pn.gap,labels:_pn.labels};
+  _pn.busy=true; _pn.abort=false; _pnSetStep(2); $('pnPrevBox').hidden=true;
+  var snap=collectDesign(), items=[], failed=null;
   try{
-    window.parent.openApp('labbook',undefined,undefined,{source:'ribbon',experiment:null,images:[{name:_fileName().replace(/\.jpg$/,'.png'),dataUrl:url,caption:figCaption()}]});
-    closeExport(); showToast('Sent to Labbook');
-  }catch(e){ showToast('Labbook could not be reached.'); }
+    for(var i=0;i<names.length;i++){
+      if(_pn.abort) break;
+      _pnStatus('Panel '+panelLetter(i,opts.letters||'A')+' · '+names[i]+' ('+(i+1)+' of '+names.length+')');
+      $('pnBar').style.transform='scaleX('+(i/names.length)+')';
+      try{ await designApplyObj(all[names[i]]); await _pnSettle(); }
+      catch(e){ failed='“'+names[i]+'” could not be shown: '+(e&&e.message||e); break; }
+      var cv=_renderPanelCanvas(opts);
+      if(!cv){ failed='The viewer is not on screen, so there is nothing to render.'; break; }
+      items.push({cv:cv,name:names[i]});
+    }
+  } finally {
+    _pnStatus('Putting your figure back…'); $('pnBar').style.transform='scaleX(.96)';
+    try{ await designApplyObj(snap); await _pnSettle(); }catch(e){ showToast('Your figure could not be put back: reload the structure.'); }
+  }
+  _pn.busy=false;
+  if(failed||_pn.abort||items.length<2){
+    var msg=failed||(_pn.abort?'Stopped.':'Not enough panels.'); _pn.abort=false; _pnSetStep(1); renderPanelList(); showToast(msg); return;
+  }
+  var out=composePanels(items,opts); _pn.result={canvas:out.canvas,names:names,opts:opts,layout:out.layout};
+  var pv=document.createElement('canvas'), s=Math.min(1,720/out.canvas.width,420/out.canvas.height); pv.width=Math.max(1,Math.round(out.canvas.width*s)); pv.height=Math.max(1,Math.round(out.canvas.height*s));
+  var px=pv.getContext('2d'); px.imageSmoothingQuality='high'; px.drawImage(out.canvas,0,0,pv.width,pv.height);
+  var box=$('pnPrevBox'); box.innerHTML=''; pv.id='pnPreview'; pv.setAttribute('role','img'); pv.setAttribute('aria-label','The composed figure: '+names.length+' panels'); box.appendChild(pv); box.hidden=false;
+  box.className='pn-prev '+(opts.bg==='dark'?'dark':opts.bg==='white'?'white':'checker');
+  $('pnBar').style.transform='scaleX(1)'; _pnSetStep(3);
+  $('pnDims').textContent=out.canvas.width+' × '+out.canvas.height+' px · '+names.length+' panels';
+}
+function _pnName(){ return (currentPdbId||'figure').replace(/[\\/:*?"<>|\s]+/g,'_')+'_panels.png'; }
+function savePanels(){
+  if(!_pn.result) return;
+  _pn.result.canvas.toBlob(function(b){ if(!b){ showToast('The image is too large for this browser. Use a lower resolution.'); return; } _saveBlob(b,_pnName()); showToast('Exported '+_pn.result.canvas.width+'×'+_pn.result.canvas.height); },'image/png');
+}
+function copyPanels(){
+  if(!_pn.result) return;
+  if(!window.ClipboardItem||!navigator.clipboard||!navigator.clipboard.write){ showToast('This browser cannot copy images — use Download.'); return; }
+  _pn.result.canvas.toBlob(function(b){
+    if(!b){ showToast('The image is too large to copy. Use a lower resolution.'); return; }
+    navigator.clipboard.write([new ClipboardItem({'image/png':b})]).then(function(){ showToast('Figure copied'); },function(){ showToast('The browser did not allow copying — use Download.'); });
+  },'image/png');
+}
+function sendPanelsToLabbook(){
+  if(!_pn.result) return;
+  if(_sendCanvasToLabbook(_pn.result.canvas,_pnName(),'Figure of '+_pn.result.names.length+' panels: '+_pn.result.names.map(function(n,i){ return (panelLetter(i,_pn.result.opts.letters)||(i+1))+' '+n; }).join(' · '))) closePanels();
 }
 
 // ── The figure as a script: PyMOL (.pml) and ChimeraX (.cxc) ─────────────────────────────────
@@ -3906,6 +4154,21 @@ function boot(){
   $('exGo').addEventListener('click',doExport);
   $('exCopy').addEventListener('click',copyImage);
   $('exLabbook').addEventListener('click',sendToLabbook);
+  function pnSeg(id,key,after){
+    document.querySelectorAll('#'+id+' button').forEach(function(b){
+      b.addEventListener('click',function(){
+        document.querySelectorAll('#'+id+' button').forEach(function(x){ x.classList.remove('active'); x.setAttribute('aria-pressed','false'); });
+        b.classList.add('active'); b.setAttribute('aria-pressed','true'); _pn[key]=b.dataset.v; if(after) after();
+      });
+    });
+  }
+  pnSeg('pnLayout','layout',renderPanelList); pnSeg('pnLetters','letters',renderPanelList); pnSeg('pnBg','bg'); pnSeg('pnRes','res');
+  $('pnGap').addEventListener('input',function(){ _pn.gap=+this.value; $('pnGapV').textContent=this.value+'%'; });
+  $('pnLabels').addEventListener('change',function(){ _pn.labels=this.checked; });
+  $('pnGo').addEventListener('click',runPanels); $('pnCancel').addEventListener('click',closePanels);
+  $('pnBack').addEventListener('click',function(){ _pnSetStep(1); renderPanelList(); });
+  $('pnSave').addEventListener('click',savePanels); $('pnCopy').addEventListener('click',copyPanels); $('pnLabbook').addEventListener('click',sendPanelsToLabbook);
+  $('panelsBtn').addEventListener('click',openPanels);
   $('exPml').addEventListener('click',function(){ exportScript('pymol'); closeExport(); });
   $('exCxc').addEventListener('click',function(){ exportScript('chimerax'); closeExport(); });
   $('exportBtn2').addEventListener('click',openExport);
@@ -4004,6 +4267,7 @@ function boot(){
     var t=e.target, typing=t&&(/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||t.isContentEditable);
     if(e.key==='Escape'){
       if($('confirm-modal').classList.contains('open')) _cfClose(false);
+      else if($('panel-modal').classList.contains('open')) closePanels();
       else if($('export-modal').classList.contains('open')) closeExport();
       else if($('opts-panel').classList.contains('open')) $('opts-panel').classList.remove('open');
       else if($('chain-popup').classList.contains('open')) closeChainPopup();
@@ -4231,6 +4495,7 @@ ctxApp(null, { canvas: false, acts: [
   { l: 'Fit to view', f: 'fitToView', k: 'F', when: function(){ return !!window.currentModel; } },
   { l: 'Export image…', f: 'openExport', when: function(){ return !!window.currentModel; } },
   { l: 'Copy image', f: 'copyImage', when: function(){ return !!window.currentModel; } },
+  { l: 'Multi-panel figure…', f: 'openPanels', when: function(){ return !!window.currentModel; } },
   { l: 'PyMOL script', f: 'exportPyMOL', when: function(){ return !!window.currentModel; } },
   { l: 'ChimeraX script', f: 'exportChimeraX', when: function(){ return !!window.currentModel; } },
   { l: 'Open file…', f: 'rbOpenFilePicker' },
@@ -4834,6 +5099,13 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
             '**Copy** puts it on the clipboard for a slide. Inside dHUB, **Send to Labbook** attaches it to an experiment. With confidence colouring there is a tick for the **colour key**.'],
         tip: 'Labels are drawn into the picture exactly where you put them, unless **Include labels** is off.',
         show: [{ sel: '#exportBtn2', say: 'Export.', miss: NEED }] },
+      { id: 'panels', t: 'A figure of several panels (A, B, C)', group: 'Export', on: ['viewer'],
+        q: ['panels', 'panel', 'multi panel', 'multipanel', 'figure', 'side by side', 'compose', 'compare views', 'letters', 'a b c', 'paneles', 'figura', 'varios paneles', 'lado a lado', 'componer'],
+        a: ['Save each view as a design (**Designs › Save**), then press **Multi-panel figure…** under the list. Pick the designs in the order of the panels, choose a **row**, a **column** or a **grid**, and press **Make the figure**.',
+            'Each panel is exported exactly as the normal export would draw it, with its own colours, labels and camera, then laid out with the letters **A B C** (or a b c, or none). Download it, copy it, or send it to Labbook.'],
+        tip: 'The designs may be of different structures: Ribbon loads each one for its picture, and puts the figure you had back afterwards. A design of a file you opened can only be a panel while that file is open.',
+        warn: 'Stop ends it after the panel being drawn. A very large figure is scaled down to fit what a browser can save.',
+        prep: open('designs'), show: [{ sel: '#panelsBtn', say: 'Multi-panel figure.', miss: NEED }] },
       { id: 'script', t: 'Take the figure into PyMOL or ChimeraX', group: 'Export', on: ['viewer'],
         q: ['pymol', 'chimerax', 'chimera', 'script', 'pml', 'cxc', 'session', 'export script', 'continue in pymol', 'ray trace', 'render', 'guion', 'sesion', 'exportar a pymol'],
         a: ['In the export dialog, **PyMOL script** and **ChimeraX script** save the figure as commands: the structure, the style, every residue in the colour it has on screen (palette tuning, chain colours, highlights, the interface and values included), hidden chains, ligands and pockets, sticks, labels, measurements and the direction you are looking from.',

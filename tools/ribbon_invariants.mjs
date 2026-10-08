@@ -1262,8 +1262,124 @@ async function rb22() {
   await c2.close();
 }
 
+// ── RB23 a figure of several panels ───────────────────────────────────────────────────────────
+const pngSize = buf => ({ w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), sig: buf.slice(1, 4).toString() });
+const readDl = async d => { const s = await d.createReadStream(); const c = []; for await (const x of s) c.push(x); return Buffer.concat(c); };
+async function rb23() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB23 ' });
+  if (!(await has3d(pg))) { skipped.push('RB23 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  // ── the layout arithmetic, on pictures of known size ──
+  const lay = await E(() => {
+    const mk = (w, h, c) => { const k = document.createElement('canvas'); k.width = w; k.height = h; const x = k.getContext('2d'); x.fillStyle = c; x.fillRect(0, 0, w, h); return { cv: k }; };
+    const items = () => [mk(400, 300, '#e36c69'), mk(200, 300, '#51c3ce'), mk(300, 150, '#5e87c5')];
+    const o = { layout: 'row', letters: 'A', bg: 'white', gap: 5 };
+    const row = composePanels(items(), o), col = composePanels(items(), Object.assign({}, o, { layout: 'col' })), grid = composePanels(items(), Object.assign({}, o, { layout: 'grid' }));
+    const none = composePanels(items(), Object.assign({}, o, { letters: 'none' })), tr = composePanels(items(), Object.assign({}, o, { bg: 'transparent', letters: 'none' }));
+    const px = (c, x, y) => Array.from(c.getContext('2d').getImageData(x, y, 1, 1).data);
+    const diff = (a, b, r) => { const A = a.getContext('2d').getImageData(r.x, r.y, r.w, r.h).data, B = b.getContext('2d').getImageData(r.x, r.y, r.w, r.h).data; let n = 0; for (let i = 0; i < A.length; i += 4) if (Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]) > 60) n++; return n; };
+    const big = composePanels([mk(8000, 8000, '#000'), mk(8000, 8000, '#000'), mk(8000, 8000, '#000'), mk(8000, 8000, '#000')], { layout: 'row', letters: 'none', bg: 'white', gap: 3 });
+    const p0 = row.layout.pos[0], c0 = row.layout.cells[0];
+    return { row: { l: row.layout, w: row.canvas.width, h: row.canvas.height }, col: { l: col.layout, w: col.canvas.width, h: col.canvas.height }, grid: { l: grid.layout, w: grid.canvas.width, h: grid.canvas.height },
+      letterPx: diff(row.canvas, none.canvas, { x: p0.x, y: p0.y, w: 60, h: 60 }), noLetterElsewhere: diff(row.canvas, none.canvas, { x: row.layout.pos[1].x + 200, y: row.layout.pos[1].y + 150, w: 40, h: 40 }),
+      gapPx: px(row.canvas, row.layout.pos[1].x - 3, 50), trGap: px(tr.canvas, tr.layout.pos[1].x - 3, 50), trIn: px(tr.canvas, tr.layout.pos[0].x + 50, 50),
+      big: { w: big.canvas.width, h: big.canvas.height, k: big.layout.k }, letters: [panelLetter(0, 'A'), panelLetter(2, 'A'), panelLetter(1, 'a'), panelLetter(1, 'none')] };
+  });
+  check('RB23', 'a row is one height: every panel the height of the shortest, side by side with the gap between', lay.row.l.cells.every(c => c.dh === 150 && c.dw > 0) && lay.row.l.cols === 3 && lay.row.l.rows === 1 && lay.row.l.cells[0].dw === 200 && lay.row.l.cells[1].dw === 100 && lay.row.l.cells[2].dw === 300 && lay.row.h === 150 + 2 * lay.row.l.gap, lay.row);
+  check('RB23', 'a column is one width, the width of the narrowest', lay.col.l.cells.every(c => c.dw === 200) && lay.col.l.cols === 1 && lay.col.l.rows === 3 && lay.col.l.cells[0].dh === 150 && lay.col.l.cells[2].dh === 100, lay.col);
+  check('RB23', 'a grid of three is two by two, equal cells, each picture centred in its cell without being stretched', lay.grid.l.cols === 2 && lay.grid.l.rows === 2 && lay.grid.l.cells.every(c => c.w === lay.grid.l.cells[0].w && c.h === lay.grid.l.cells[0].h) && lay.grid.l.cells.every((c, i) => Math.abs(c.dw / c.dh - [400 / 300, 200 / 300, 300 / 150][i]) < 0.02), lay.grid);
+  check('RB23', 'panel letters are drawn in the corner of the panel (A, B, C… / a, b, c… / none)', lay.letterPx > 40 && lay.noLetterElsewhere === 0 && lay.letters.join('') === 'AC' + 'b' + '', { n: lay.letterPx, e: lay.noLetterElsewhere, l: lay.letters });
+  check('RB23', 'the background is white where asked, and truly transparent between panels for Transparent', lay.gapPx[0] === 255 && lay.gapPx[3] === 255 && lay.trGap[3] === 0 && lay.trIn[3] === 255, { g: lay.gapPx, t: lay.trGap, i: lay.trIn });
+  check('RB23', 'a huge figure is scaled down so a browser can still make the file (at most 9000 px a side)', lay.big.w <= 9000 && lay.big.h <= 9000 && lay.big.k < 1 && lay.big.w * lay.big.h <= 64e6 + 1e5, lay.big);
+
+  // ── three designs of one structure, and one of another ──
+  await go('1XYZ');
+  await E(async () => { localStorage.removeItem('ribbon_designs'); state.color = 'ss'; state.style = 'cartoon'; syncControlsToState(); buildGeometry(); await new Promise(r => setTimeout(r, 400)); document.getElementById('designName').value = 'Other'; saveDesign(); await new Promise(r => setTimeout(r, 200)); });
+  await go('7SEQ'); await sleep(300);
+  await E(async () => {
+    const save = async (name, f) => { f(); syncControlsToState(); buildGeometry(); applyProjection(); await new Promise(r => setTimeout(r, 500)); document.getElementById('designName').value = name; saveDesign(); await new Promise(r => setTimeout(r, 250)); };
+    await save('One', () => { state.style = 'cartoon'; state.color = 'uniform'; state.uniformColor = '#e36c69'; state.bg = 'white'; viewer.rotate(30, 'y'); });
+    await save('Two', () => { state.color = 'chain'; state.chainLabels = { A: 'Alpha' }; viewer.rotate(60, 'x'); });
+    await save('Three', () => { state.style = 'stick'; state.color = 'spectrum'; state.chainLabels = {}; viewer.rotate(45, 'z'); });
+    const d = getDesigns(); d.Ghost = { pdbId: 'NOPE', source: { kind: 'pdb', rid: 'NOPE' }, ts: 1, state: { style: 'cartoon' } }; d.Mine = { pdbId: 'my.pdb', source: { kind: 'file', rid: 'my.pdb' }, ts: 2, state: { style: 'cartoon' } }; putDesigns(d);
+    state.style = 'cartoon'; state.color = 'ss'; state.bg = 'transparent'; state.chainLabels = {}; syncControlsToState(); buildGeometry(); viewer.rotate(20, 'y'); viewer.render();
+  });
+  await sleep(400);
+  const before = await E(() => ({ style: state.style, color: state.color, bg: state.bg, id: currentPdbId, view: viewer.getView(), labels: JSON.stringify(state.chainLabels), designs: Object.keys(getDesigns()).sort().join(',') }));
+  // the dialog
+  await E(() => { _exOpts.bg = 'dark'; _exOpts.res = '1200'; document.getElementById('exLabels').checked = false; });
+  const exBefore = await E(() => JSON.stringify([_exOpts, document.getElementById('exLabels').checked, document.getElementById('exLegend').checked, state.exportLabels]));
+  await pg.focus('body'); await E(() => document.getElementById('panelsBtn').click()); await sleep(300);
+  const dlg = await E(() => ({ open: document.getElementById('panel-modal').classList.contains('open'), items: [...document.querySelectorAll('#pnList .pn-item')].map(r => ({ n: r.querySelector('.di-name').textContent, off: r.classList.contains('off'), dis: r.querySelector('.pn-main').disabled, sub: r.querySelector('.di-sub').textContent })), go: document.getElementById('pnGo').disabled, inside: document.getElementById('panel-modal').contains(document.activeElement), lab: document.getElementById('pnLabbook').hidden }));
+  check('RB23', 'Multi-panel figure opens a dialog that lists the saved designs, with focus inside', dlg.open && dlg.items.length === 6 && dlg.go && dlg.inside, dlg);
+  check('RB23', 'a design whose file is not open cannot be picked, and says why; Make the figure waits for two panels', dlg.items.find(x => x.n === 'Mine').dis && /its file is not open/.test(dlg.items.find(x => x.n === 'Mine').sub) && dlg.items.filter(x => !x.dis).length === 5 && dlg.lab);
+  const pick = n => pg.click(`#pnList .pn-item:has(.di-name:text-is("${n}")) .pn-main`);
+  await pick('Two'); await pick('Three'); await pick('One');
+  let o = await E(() => ({ sel: _pn.sel.slice(), badges: [...document.querySelectorAll('#pnList .pn-item.on')].map(r => r.querySelector('.di-name').textContent + ':' + r.querySelector('.pn-badge').textContent).sort(), go: document.getElementById('pnGo').disabled, hint: document.getElementById('pnHint').textContent }));
+  check('RB23', 'picking panels numbers them in the order picked (A, B, C) and enables the button', o.sel.join() === 'Two,Three,One' && o.badges.join() === 'One:C,Three:B,Two:A' && !o.go && /3 panels/.test(o.hint), o);
+  await pg.click('#pnList .pn-item:has(.di-name:text-is("One")) .pn-up');
+  o = await E(() => ({ sel: _pn.sel.slice(), badges: [...document.querySelectorAll('#pnList .pn-item.on')].map(r => r.querySelector('.di-name').textContent + ':' + r.querySelector('.pn-badge').textContent).sort().join() }));
+  check('RB23', 'the arrow moves a panel earlier and the letters follow', o.sel.join() === 'Two,One,Three' && o.badges === 'One:B,Three:C,Two:A', o);
+  await pg.click('#pnLetters button[data-v=a]');
+  check('RB23', 'lower-case letters re-letter the list', await E(() => [...document.querySelectorAll('#pnList .pn-item.on .pn-badge')].map(b => b.textContent).sort().join('')) === 'abc');
+  await pg.click('#pnLetters button[data-v=A]');
+  // make it, in a row
+  await pg.click('#pnGo');
+  const mid = await E(() => ({ busy: _pn.busy, work: !document.getElementById('pnWork').hidden, step1: document.getElementById('pnStep1').hidden, status: document.getElementById('pnStatus').textContent }));
+  check('RB23', 'while it works the dialog shows the panel in hand and nothing to press but Stop', mid.busy && mid.work && mid.step1 && /Panel/.test(mid.status) && await E(() => document.getElementById('pnCancel').textContent) === 'Stop', mid);
+  await pg.waitForFunction(() => !document.getElementById('pnDone').hidden, null, { timeout: 90000 }).catch(() => {});
+  const res = await E(() => {
+    const r = _pn.result; if (!r) return null; const c = r.canvas;
+    const thumbs = r.layout.cells.map((cell, i) => {   // each panel's own cell, boxed down to 12 × 12 and measured
+      const p = r.layout.pos[i], k = r.layout.k, t = document.createElement('canvas'); t.width = 24; t.height = 24; const x = t.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 24, 24);
+      x.imageSmoothingQuality = 'high'; x.drawImage(c, Math.round(p.x * k), Math.round(p.y * k), Math.round(cell.w * k), Math.round(cell.h * k), 0, 0, 24, 24);
+      const d = x.getImageData(0, 0, 24, 24).data; let ink = 0; for (let j = 0; j < d.length; j += 4) if (d[j] < 235 || d[j + 1] < 235 || d[j + 2] < 235) ink++;
+      return { d: Array.from(d), ink };
+    });
+    const dist = (a, b) => { let s = 0; for (let i = 0; i < a.d.length; i += 4) s += Math.abs(a.d[i] - b.d[i]) + Math.abs(a.d[i + 1] - b.d[i + 1]) + Math.abs(a.d[i + 2] - b.d[i + 2]); return Math.round(s / 576); };
+    return { w: c.width, h: c.height, cols: r.layout.cols, rows: r.layout.rows, names: r.names, ink: thumbs.map(t => t.ink), pairs: [dist(thumbs[0], thumbs[1]), dist(thumbs[0], thumbs[2]), dist(thumbs[1], thumbs[2])], dims: document.getElementById('pnDims').textContent, prev: !!document.getElementById('pnPreview'), foot: ['pnBack', 'pnCopy', 'pnSave'].every(id => !document.getElementById(id).hidden) && document.getElementById('pnGo').hidden };
+  });
+  check('RB23', 'three panels come out as one picture, in the order chosen, with a preview and Change / Copy / Download', !!res && res.cols === 3 && res.rows === 1 && res.names.join() === 'Two,One,Three' && res.w > res.h && res.prev && res.foot && /3 panels/.test(res.dims), res);
+  check('RB23', 'each panel was drawn from its own design (three different pictures, none blank)', res && res.ink.every(n => n > 3) && res.pairs.every(p => p > 4), res && { ink: res.ink, pairs: res.pairs });
+  const after = await E(() => ({ style: state.style, color: state.color, bg: state.bg, id: currentPdbId, view: viewer.getView(), labels: JSON.stringify(state.chainLabels), designs: Object.keys(getDesigns()).sort().join(',') }));
+  check('RB23', 'your own figure is back exactly as it was: structure, style, colour, background, labels and the camera', after.id === before.id && after.style === before.style && after.color === before.color && after.bg === before.bg && after.labels === before.labels && before.view.every((v, i) => Math.abs(v - after.view[i]) < 0.05) && after.designs === before.designs, { before, after });
+  check('RB23', 'the Export dialog\'s own choices (background, resolution, labels) are left as they were', await E(() => JSON.stringify([_exOpts, document.getElementById('exLabels').checked, document.getElementById('exLegend').checked, state.exportLabels])) === exBefore, exBefore);
+  const [dl] = await Promise.all([pg.waitForEvent('download'), pg.click('#pnSave')]);
+  const png = pngSize(await readDl(dl));
+  check('RB23', 'Download saves <id>_panels.png, a real PNG the size of the figure', /_panels\.png$/.test(dl.suggestedFilename()) && png.sig === 'PNG' && png.w === res.w && png.h === res.h, { f: dl.suggestedFilename(), png, res: [res.w, res.h] });
+  // Change goes back to the choices, which were kept
+  await pg.click('#pnBack');
+  check('RB23', 'Change goes back to the choices, with the panels still picked', await E(() => !document.getElementById('pnStep1').hidden && _pn.sel.join() === 'Two,One,Three' && !document.getElementById('pnGo').disabled));
+  // a column and a grid, and white versus dark
+  await pg.click('#pnLayout button[data-v=grid]'); await pg.click('#pnBg button[data-v=dark]'); await pg.click('#pnLetters button[data-v=none]');
+  await pg.click('#pnGo'); await pg.waitForFunction(() => !document.getElementById('pnDone').hidden, null, { timeout: 90000 }).catch(() => {});
+  const g = await E(() => { const r = _pn.result; if (!r) return null; const x = r.canvas.getContext('2d').getImageData(2, 2, 1, 1).data; return { cols: r.layout.cols, rows: r.layout.rows, corner: Array.from(x), prevDark: document.getElementById('pnPrevBox').classList.contains('dark') }; });
+  check('RB23', 'a grid of three on a dark background (no letters) is made the same way', !!g && g.cols === 2 && g.rows === 2 && g.corner[0] === 0x13 && g.corner[1] === 0x16 && g.corner[2] === 0x1e && g.prevDark, g);
+  // another structure is fetched, and yours is put back
+  await pg.click('#pnBack'); await E(() => { _pn.sel = ['Other', 'Two']; renderPanelList(); }); await pg.click('#pnLayout button[data-v=row]'); await pg.click('#pnBg button[data-v=white]');
+  await pg.click('#pnGo'); await pg.waitForFunction(() => !document.getElementById('pnDone').hidden, null, { timeout: 90000 }).catch(() => {});
+  const x2 = await E(() => ({ names: _pn.result && _pn.result.names.join(), id: currentPdbId, style: state.style, color: state.color, v: viewer.getView() }));
+  check('RB23', 'a panel of another structure is fetched for its picture, and the structure you had is loaded again after', x2.names === 'Other,Two' && x2.id === before.id && x2.style === before.style && x2.color === before.color && before.view.every((v, i) => Math.abs(v - x2.v[i]) < 0.5), { x2, before: before.id });
+  // a design that cannot be shown stops the figure, names it, and puts yours back
+  await pg.click('#pnBack'); await E(() => { _pn.sel = ['Two', 'Ghost']; renderPanelList(); });
+  await pg.click('#pnGo'); await pg.waitForFunction(() => !document.getElementById('pnStep1').hidden, null, { timeout: 60000 }).catch(() => {});
+  const f = await E(() => ({ toast: document.getElementById('toastMsg').textContent, step1: !document.getElementById('pnStep1').hidden, res: !!_pn.result && !!document.getElementById('pnPreview') && !document.getElementById('pnDone').hidden, id: currentPdbId, style: state.style, color: state.color, busy: _pn.busy }));
+  check('RB23', 'a design that cannot be shown stops the figure, says which one, and leaves your figure as it was', /Ghost/.test(f.toast) && f.step1 && f.id === before.id && f.style === before.style && f.color === before.color && !f.busy, f);
+  // Stop
+  await E(() => { _pn.sel = ['One', 'Two', 'Three']; renderPanelList(); });
+  await E(() => { window.__rc = 0; const o = window._renderPanelCanvas; window._renderPanelCanvas = function () { window.__rc++; return o.apply(this, arguments); }; });
+  await pg.click('#pnGo'); await sleep(900); await pg.click('#pnCancel');
+  await pg.waitForFunction(() => !document.getElementById('pnStep1').hidden && !_pn.busy, null, { timeout: 60000 }).catch(() => {});
+  const s = await E(() => ({ step1: !document.getElementById('pnStep1').hidden, open: document.getElementById('panel-modal').classList.contains('open'), id: currentPdbId, style: state.style, color: state.color, busy: _pn.busy, toast: document.getElementById('toastMsg').textContent }));
+  const rc = await E(() => window.__rc);
+  check('RB23', 'Stop ends the figure after the panel in hand (not all three), says so, and puts your figure back', rc < 3 && s.step1 && s.open && !s.busy && s.id === before.id && s.style === before.style && s.color === before.color && /Stopped|Not enough/.test(s.toast), s);
+  // Escape closes
+  await pg.keyboard.press('Escape'); await sleep(150);
+  check('RB23', 'Escape closes the dialog', await E(() => !document.getElementById('panel-modal').classList.contains('open')));
+  await ctx.close();
+}
+
 // ── Driver ───────────────────────────────────────────────────────────────────────────────────
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;
