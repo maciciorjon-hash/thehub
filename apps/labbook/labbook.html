@@ -16502,7 +16502,10 @@ function _storageRoom(bytes){
 }
 function _attGet(id){ return _attDB().then(function(db){ return new Promise(function(res){ var t=db.transaction('att','readonly').objectStore('att').get(id); t.onsuccess=function(){res(t.result||null);}; t.onerror=function(){res(null);}; }); }).catch(function(){return null;}); }
 function _persistImgHtml(html){ if(!html || html.indexOf('lb-att')<0) return html; var t=document.createElement('div'); t.innerHTML=html; Array.prototype.forEach.call(t.querySelectorAll('img.lb-att'),function(im){ im.removeAttribute('src'); im.classList.remove('att-missing'); }); return t.innerHTML; }
-function _compressImage(file){ return new Promise(function(res,rej){ var url=URL.createObjectURL(file); var img=new Image(); img.onload=function(){ URL.revokeObjectURL(url); var max=1400,w=img.naturalWidth,h=img.naturalHeight; if(w>max||h>max){ var s=Math.min(max/w,max/h); w=Math.round(w*s); h=Math.round(h*s); } var c=document.createElement('canvas'); c.width=w||1; c.height=h||1; try{ c.getContext('2d').drawImage(img,0,0,w,h); }catch(e){ return rej(e); } var out; try{ out=c.toDataURL('image/jpeg',0.85); if(!out||out.length<40) out=c.toDataURL('image/png'); }catch(e2){ return rej(e2); } res(out); }; img.onerror=function(){ URL.revokeObjectURL(url); rej(); }; img.src=url; }); }
+// A JPEG has no transparency: drawn as it is, a transparent picture (a figure exported from Ribbon or
+// Blot, a cut-out) came out on black. Every canvas that becomes a JPEG is laid on white first — the page.
+function _jpegCtx(c){ var x=c.getContext('2d'); x.fillStyle='#ffffff'; x.fillRect(0,0,c.width,c.height); return x; }
+function _compressImage(file){ return new Promise(function(res,rej){ var url=URL.createObjectURL(file); var img=new Image(); img.onload=function(){ URL.revokeObjectURL(url); var max=1400,w=img.naturalWidth,h=img.naturalHeight; if(w>max||h>max){ var s=Math.min(max/w,max/h); w=Math.round(w*s); h=Math.round(h*s); } var c=document.createElement('canvas'); c.width=w||1; c.height=h||1; try{ _jpegCtx(c).drawImage(img,0,0,w,h); }catch(e){ return rej(e); } var out; try{ out=c.toDataURL('image/jpeg',0.85); if(!out||out.length<40) out=c.toDataURL('image/png'); }catch(e2){ return rej(e2); } res(out); }; img.onerror=function(){ URL.revokeObjectURL(url); rej(); }; img.src=url; }); }
 // Firebase Storage sync (works once Jon enables Storage in the console; degrades to
 // device-local IndexedDB otherwise). IDB stays the fast local cache; the small
 // {id:{url}} map in LB.data.attachments syncs cross-device via RTDB + appears in backups.
@@ -16863,7 +16866,7 @@ function phSave(){
   // still fits in the browser storage everything here lives in.
   var max=1600, sc=Math.min(1, max/Math.max(sw,sh));
   var out=document.createElement('canvas'); out.width=Math.round(sw*sc); out.height=Math.round(sh*sc);
-  out.getContext('2d').drawImage(R,sx,sy,sw,sh,0,0,out.width,out.height);
+  _jpegCtx(out).drawImage(R,sx,sy,sw,sh,0,0,out.width,out.height);
   var cap=(el('ph-cap')&&el('ph-cap').value||'').trim();
   // Named after the title if there is one, else after the file it came from — a camera hands
   // over "image.jpg", which says nothing, and gets the date instead.
@@ -17159,7 +17162,7 @@ function openFloatCrop(node,obj,imgObj){ var body=node.querySelector('.lf-body')
       if(!dataURL){ toast('Image not loaded yet.'); rect.remove(); bar.remove(); return; }
       var im=new Image(); im.onload=function(){ try{
         var sx=im.naturalWidth/iw, sy=im.naturalHeight/ih; var c=document.createElement('canvas'); c.width=Math.max(1,Math.round(cw*sx)); c.height=Math.max(1,Math.round(ch*sy));
-        c.getContext('2d').drawImage(im,cx*sx,cy*sy,cw*sx,ch*sy,0,0,c.width,c.height); var out=c.toDataURL('image/jpeg',0.9); var newId='att'+uid();
+        _jpegCtx(c).drawImage(im,cx*sx,cy*sy,cw*sx,ch*sy,0,0,c.width,c.height); var out=c.toDataURL('image/jpeg',0.9); var newId='att'+uid();
         _attPut(newId,out).then(function(){ _attUpload(newId,out); imgObj.attId=newId; imgObj.w=cw; imgObj.h=ch; save(); gcAttachments(); rect.remove(); bar.remove(); renderFloatLayer(node.parentNode,obj); }); }catch(e4){ toast('Could not crop this image (it may be from an external URL).'); rect.remove(); bar.remove(); } };
       im.onerror=function(){ toast('Could not crop image.'); rect.remove(); bar.remove(); }; im.src=dataURL; }); }; }
 function handleFloatImageFile(file,ctxInfo,atPoint){ if(!file||!ctxInfo||!ctxInfo.obj||!ctxInfo.layer) return; toast('Adding image…');

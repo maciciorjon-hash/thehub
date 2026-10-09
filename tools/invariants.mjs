@@ -1546,6 +1546,11 @@ async function suite(opts) {
       if (files.length !== n0 + 1) bad('B20', 'count', 'expected one new file, got ' + (files.length - n0));
       else if (last.kind !== 'image' || last.caption !== 'BRD2-01 — Raw luminescence' || last.name !== 'BRD2-01_raw.png') bad('B20', 'shape', JSON.stringify(last));
       if (files.some(f => /evil/.test(f.name))) bad('B20', 'html', 'a non-image was attached');
+      // a transparent picture (a Ribbon or Blot figure) is stored as a JPEG, which has no transparency: it must land on white, not black
+      const cv = document.createElement('canvas'); cv.width = 8; cv.height = 8; const cx = cv.getContext('2d'); cx.fillStyle = '#e53935'; cx.fillRect(3, 3, 2, 2);
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png')), url = await _compressImage(new File([blob], 'fig.png', { type: 'image/png' }));
+      const im = new Image(); im.src = url; await im.decode(); const c2 = document.createElement('canvas'); c2.width = 8; c2.height = 8; const x2 = c2.getContext('2d'); x2.drawImage(im, 0, 0); const px = x2.getImageData(0, 0, 1, 1).data;
+      if (!(px[0] > 240 && px[1] > 240 && px[2] > 240)) bad('B20', 'transparent', 'a transparent picture was stored on ' + Array.from(px).join(','));
     });
 
     // B21 — an Echo picklist is stored in the experiment, all of it, and every plate can be checked.
