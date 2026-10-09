@@ -81,7 +81,12 @@ header{border-bottom:1px solid var(--border);padding:0 18px;display:flex;
   padding:0 10px;font-family:var(--mono);font-size:var(--fs-3);color:var(--text);}
 .inp.sans{font-family:var(--sans);}
 .inp:focus{outline:none;border-color:var(--accent);}
-select.inp{font-family:var(--sans);cursor:pointer;padding:0 26px 0 8px;text-overflow:ellipsis;}   /* the text stops before the arrow */
+select.inp,.tb-select{-webkit-appearance:none;appearance:none;max-width:100%;padding:0 26px 0 8px;text-overflow:ellipsis;white-space:nowrap;overflow:hidden;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b90a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center;background-size:10px 6px;}
+/* our own arrow: Safari's native one ignores the padding, so the text ran under it, and a native select is as wide as its longest option — in a grid column it pushed its neighbour aside */
+select.inp{font-family:var(--sans);cursor:pointer;}
+.fld>select.inp{width:100%;}
 input[type=number].inp{-moz-appearance:textfield;appearance:textfield;}
 input[type=number].inp::-webkit-outer-spin-button,input[type=number].inp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 .chips{display:flex;gap:6px;flex-wrap:wrap;}
@@ -235,7 +240,7 @@ textarea.inp{height:auto;padding:8px 10px;resize:vertical;line-height:1.45;font-
 .tb-seg{flex-shrink:0;width:auto;}
 .tb-seg button{padding:0 13px;}
 .top-bar .tb-select,.top-bar .tb-seg button{height:var(--tb-h);min-height:var(--tb-h);}
-.tb-select{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-2);padding:0 8px;
+.tb-select{background-color:var(--surface2);border:1px solid var(--border2);border-radius:var(--r-2);
   font-family:var(--sans);font-size:var(--fs-3);color:var(--text);cursor:pointer;}
 .tb-select:focus{outline:none;border-color:var(--accent);}
 .tb-range{width:104px;accent-color:var(--accent);}
@@ -5978,11 +5983,13 @@ function pocketDraw(){
   _pockets.list.forEach(function(p,i){ if(_pockets.only!=null&&_pockets.only!==i) return; var step=Math.max(1,Math.ceil(p.pts.length/400));
     for(var q=0;q<p.pts.length;q+=step){ try{ _pocketShapes.push(viewer.addSphere({center:p.pts[q],radius:0.42,color:POCKET_COLS[i%POCKET_COLS.length],opacity:0.75,clickable:false})); }catch(e){} } });
 }
+// "FWZ ×2, EDO ×5", not the same name once per copy: a pocket in a crystal with ten glycerols listed them ten times
+function pocketLigText(l){ var n={}, o=[]; (l||[]).forEach(function(x){ if(!n[x]){ n[x]=0; o.push(x); } n[x]++; }); return o.map(function(x){ return n[x]>1?x+' ×'+n[x]:x; }).join(', '); }
 function renderPockets(){
   var el=$('pocketList'); if(!el) return;
   if(!_pockets){ el.innerHTML='<div class="empty-note">Press Find pockets: it takes a second or two on a large structure.</div>'; return; }
   if(!_pockets.list.length){ el.innerHTML='<div class="empty-note">No buried cavity of 30 Å³ or more in the chains shown.</div>'; return; }
-  el.innerHTML=_pockets.list.map(function(p,i){ return '<div class="li'+(_pockets.only!=null&&_pockets.only!==i?' off':'')+'" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="li-dot" style="background:'+POCKET_COLS[i%POCKET_COLS.length]+';cursor:default" aria-hidden="true"></span><button type="button" class="li-main" data-i="'+i+'"><span class="li-name">Pocket '+p.n+(p.lig.length?' <span style="font-weight:400;color:var(--text2)">· holds '+escapeHtml(p.lig.join(', '))+'</span>':'')+'</span><span class="li-meta">'+Math.round(p.vol)+' Å³ · '+p.res.length+' residues</span></button><button type="button" class="ibtn pk-sel" data-i="'+i+'" title="Select its residues" aria-label="Select the residues of pocket '+p.n+'"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 2.5"/></svg></button></div>'; }).join('');
+  el.innerHTML=_pockets.list.map(function(p,i){ return '<div class="li'+(_pockets.only!=null&&_pockets.only!==i?' off':'')+'" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="li-dot" style="background:'+POCKET_COLS[i%POCKET_COLS.length]+';cursor:default" aria-hidden="true"></span><button type="button" class="li-main" data-i="'+i+'"><span class="li-name">Pocket '+p.n+(p.lig.length?' <span style="font-weight:400;color:var(--text2)">· holds '+escapeHtml(pocketLigText(p.lig))+'</span>':'')+'</span><span class="li-meta">'+Math.round(p.vol)+' Å³ · '+p.res.length+' residues</span></button><button type="button" class="ibtn pk-sel" data-i="'+i+'" title="Select its residues" aria-label="Select the residues of pocket '+p.n+'"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 2.5"/></svg></button></div>'; }).join('');
   el.querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(){ var i=+b.dataset.i; _pockets.only=_pockets.only===i?null:i; pocketDraw(); viewer.render(); renderPockets(); var p=_pockets.list[i]; if(_pockets.only===i){ var c={x:0,y:0,z:0}; p.pts.forEach(function(q){ c.x+=q.x; c.y+=q.y; c.z+=q.z; }); _userMoved=true; var keys=p.res; selSet(keys); fitView({focus:selSpec3D(),animate:true,margin:0.2}); } }); });
   el.querySelectorAll('.pk-sel').forEach(function(b){ b.addEventListener('click',function(){ selSet(_pockets.list[+b.dataset.i].res); showToast('Selected the '+_pockets.list[+b.dataset.i].res.length+' residues lining pocket '+(+b.dataset.i+1)+'.'); }); });
 }
