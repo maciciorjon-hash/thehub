@@ -2753,7 +2753,7 @@ function _normAuditHtml(audits) {
     const rows = _normAuditLines(a).map(([k, v]) => '<tr><th>' + e(k) + '</th><td>' + e(v) + '</td></tr>').join('');
     // Folded until asked for, whatever it found: the number that matters is in the header (and warn-coloured), the
     // account is one click away and scrolls inside itself, so it never takes the results table's room.
-    return '<details class="na-box' + (dep ? ' na-warn' : '') + '"><summary>' + head + (a.assayId && audits.length > 1 ? ' <span class="na-id">' + e(a.assayId) + '</span>' : '') + '</summary>'
+    return '<details class="na-box' + (dep ? ' na-warn' : '') + '"><summary>' + head + (a.assayId && audits.length > 1 ? ' <span class="na-id">' + e(_maRunName(a.assayId)) + '</span>' : '') + '</summary>'
       + '<div class="na-body"><div class="na-tools"><button type="button" class="na-btn" onclick="naCopy(' + ai + ')" title="Copy the account of the normalisation as one Methods sentence">Copy as a sentence</button></div><table class="na-tbl">' + rows + '</table></div></details>';
   }).join('');
 }
@@ -4322,8 +4322,9 @@ var ECHO_ASSAY_LABELS = {
 };
 // Points of the normalised (0–100) scale a curve must move before its midpoint is a potency.
 const NO_EFFECT_SPAN = 20;
-function echoResultRows(){
+function echoResultRows(onlyType){
   var d = (typeof _lastResultsData !== 'undefined' && _lastResultsData) || [];
+  if (onlyType) d = d.filter(function (r) { return r._assayType === onlyType; });
   var t = window._lastAssayType || 'hibit';
   var lab = ECHO_ASSAY_LABELS[t] || ECHO_ASSAY_LABELS.hibit;
   return d.map(function(r){
@@ -4382,42 +4383,47 @@ function _echoSession(){
     return c; });
   return { v: 1, kind: 'echo', assayType: window._lastAssayType || 'hibit', assayId: window._lastAssayId || '', data: data };
 }
-function sendResultsToLabbook(){
-  var rows = echoResultRows();
-  if (!rows.length){ echoToast('No fitted results to send yet — run an analysis first.'); return; }
-  var t = window._lastAssayType || 'hibit';
-  var lab = ECHO_ASSAY_LABELS[t] || ECHO_ASSAY_LABELS.hibit;
-  // One id per analysis: pressing Send again after editing a curve updates the set in the
-  // experiment that holds it, rather than adding a second copy.
+// A multi-assay run is several result sets, one per assay type: a DC50 from HiBiT and an IC50 from CTG are
+// different numbers with different names, and one set stamped "multi" / "Potency" lost both the name and the
+// type. Each set has its own id (the analysis's id plus the type), so Update replaces each one in place.
+const _ECHO_TYPE_NAMES = { hibit: 'HiBiT', ctg: 'CTG', displacement: 'Displacement', gain: 'Gain of signal' };
+function _echoLabbookSets() {
   var lk = window._lbLink || null;
-  var setId = (lk && lk.setId) || window._lbSetId || (window._lbSetId = 'echo-' + Date.now().toString(36));
+  var base = ((lk && lk.setId) || window._lbSetId || (window._lbSetId = 'echo-' + Date.now().toString(36))).replace(/-(hibit|ctg|displacement|gain)$/, '');
+  var multi = !!(window._lastAnalysisParams && window._lastAnalysisParams.multiAssay);
+  var d = (typeof _lastResultsData !== 'undefined' && _lastResultsData) || [];
+  var types = multi ? Array.from(new Set(d.map(function (r) { return r._assayType || 'hibit'; }))) : [window._lastAssayType || 'hibit'];
+  var session = _echoSession();
+  var normText = (window._normAudits || []).map(_normAuditSentence).filter(Boolean).join(' ');
+  var normalisation = (window._normAudits || []).reduce(function (o, a) { return o.concat(_normAuditLines(a).map(function (l) { return l[0] + ': ' + l[1]; })); }, []);
+  return types.map(function (t) {
+    var rows = echoResultRows(multi ? t : null);
+    var lab = ECHO_ASSAY_LABELS[t] || ECHO_ASSAY_LABELS.hibit;
+    return {
+      id: multi ? base + '-' + t : base,
+      origin: 'echo', session: session, source: 'echo',
+      label: (lab.potency.split(' ')[0]) + (multi ? ' · ' + (_ECHO_TYPE_NAMES[t] || t) : '') + ' · ' + rows.length + ' compound' + (rows.length === 1 ? '' : 's'),
+      assay: t, potencyLabel: lab.potency, effectLabel: lab.effect,
+      // The unit travels with the number. It is nM because the source column is DC50_nM.
+      potencyUnit: 'nM', effectUnit: '%',
+      rows: rows, normText: normText, normalisation: normalisation,
+      createdAt: new Date().toISOString()
+    };
+  }).filter(function (set) { return set.rows.length; });
+}
+function sendResultsToLabbook(){
+  var sets = _echoLabbookSets();
+  if (!sets.length){ echoToast('No fitted results to send yet — run an analysis first.'); return; }
+  var lk = window._lbLink || null;
+  var names = {}; sets.forEach(function (set) { set.rows.forEach(function (r) { names[r.compound] = 1; }); });
   var ctx = {
     source:'echo', experiment: lk && lk.expId ? { id: lk.expId } : null, cellLines:[], plateMaps:[], protocols:[],
-    compounds: rows.map(function(r){ return {name:r.compound}; }),
-    results: [{
-      id: setId,
-      origin: 'echo',
-      session: _echoSession(),
-      source: 'echo',
-      label: (lab.potency.split(' ')[0]) + ' · ' + rows.length + ' compound' + (rows.length===1?'':'s'),
-      assay: t,
-      potencyLabel: lab.potency,
-      effectLabel: lab.effect,
-      // The unit travels with the number. It is nM because the source column is DC50_nM —
-      // Labbook was concatenating 'nM' on its own side, which is right only by coincidence.
-      potencyUnit: 'nM',
-      effectUnit: '%',
-      rows: rows,
-      normText: (window._normAudits || []).map(_normAuditSentence).filter(Boolean).join(' '),
-      normalisation: (window._normAudits || []).reduce(function(o,a){ return o.concat(_normAuditLines(a).map(function(l){ return l[0] + ': ' + l[1]; })); }, []),
-      createdAt: new Date().toISOString()
-    }]
+    compounds: Object.keys(names).map(function (n) { return { name: n }; }),
+    results: sets
   };
   try{
     if (window.parent && window.parent.openApp){
-      window._lbLink = { expId: lk ? lk.expId : null, setId: setId, label: lk ? lk.label : '' };
-      // The button says what the next press does, without redrawing the results under the reader.
-      document.querySelectorAll('button[onclick="sendResultsToLabbook()"]').forEach(function(b){ if (b.lastChild && b.lastChild.nodeType === 3) b.lastChild.textContent = ' Update in Labbook'; });
+      window._lbLink = { expId: lk ? lk.expId : null, setId: sets[0].id, label: lk ? lk.label : '' };
       window.parent.openApp('labbook', undefined, undefined, ctx);
     }
     else { echoToast('Open Echo Dose Response inside dHUB to send results to Labbook.'); }
@@ -4556,6 +4562,8 @@ function renderResults(data) {
 // others were silently overwritten), and two panels of the same type collided the same way. A second result
 // for the same compound in the same block opens another block ("(2)") rather than replacing the first.
 const _MA_NAMES = { hibit:'HiBiT', displacement:'Displacement', gain:'Gain-of-Signal', ctg:'CTG/Viability' };
+// A panel of a multi-assay run is analysed as "<assay id>_<type>"; people read it as the assay type.
+function _maRunName(id) { const m = /_(hibit|ctg|displacement|gain)$/.exec(String(id || '')); return m ? (_MA_NAMES[m[1]] || m[1]) : String(id || ''); }
 function _maPivot(data) {
   const types = [...new Set(data.map(r => r._assayType).filter(Boolean))];
   const groupsOf = {};
@@ -4574,7 +4582,8 @@ function _maPivot(data) {
   const blocks = [...byKey.values()].sort((a, b) =>
     (types.indexOf(a.at) - types.indexOf(b.at)) || natCmp(a.group, b.group) || (a.dup - b.dup));
   blocks.forEach(b => {
-    b.label = (_MA_NAMES[b.at] || b.at) + (groupsOf[b.at] > 1 && b.group ? ' · ' + b.group : '') + (b.dup ? ' (' + (b.dup + 1) + ')' : '');
+    // the group is named even when an assay has only one: "HiBiT" alone did not say it was BRD2 that HiBiT measured
+    b.label = (_MA_NAMES[b.at] || b.at) + (b.group ? ' · ' + b.group : '') + (b.dup ? ' (' + (b.dup + 1) + ')' : '');
   });
   return { blocks, pivot };
 }
@@ -5157,7 +5166,7 @@ function generateOutputXLSX() {
   ];
   (window._normAudits || []).forEach(function(a){
     protocolRows.push([]);
-    protocolRows.push(['─── NORMALISATION AUDIT' + (a.assayId && window._normAudits.length > 1 ? ' (' + a.assayId + ')' : '') + ' ───', '']);
+    protocolRows.push(['─── NORMALISATION AUDIT' + (a.assayId && window._normAudits.length > 1 ? ' (' + _maRunName(a.assayId) + ')' : '') + ' ───', '']);
     _normAuditLines(a).forEach(function(l){ protocolRows.push(l); });
   });
   if(_hasExclusions){
@@ -5215,7 +5224,7 @@ function generateOutputXLSX() {
   if (_rawB.length) {
     var _rawMulti = _rawB.length > 1;
     var _rawAoa = [(_rawMulti ? ['Assay'] : []).concat(['Protein','Sample_ID','Plate_Barcode','Well','Log10_Conc','Measurement','Concentration_nM','Raw_Signal','Reference_Signal','Normalisation'])];
-    _rawB.forEach(function (b) { b.aoa.forEach(function (row) { _rawAoa.push(_rawMulti ? [b.assay || ''].concat(row) : row); }); });
+    _rawB.forEach(function (b) { b.aoa.forEach(function (row) { _rawAoa.push(_rawMulti ? [_maRunName(b.assay)].concat(row) : row); }); });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_rawAoa)), 'Raw data');
   }
   // Last, so every sheet before it keeps its place. Self-describing: the Schema column names the format.
@@ -6995,9 +7004,11 @@ function _initSelectivity() {
 }
 function _selMetric() { return document.getElementById('sel-metric')?.value || 'potency'; }
 function _selPotLbl() { return ((window._bpVarLabels || {})['DC50_nM'] || 'DC50 (nM)').replace(/\s*\([^)]*\)/, ''); }
-function _selMetricLabel(m) {
+// In a multi-assay run each axis is its own assay: a HiBiT axis is a DC50, a CTG axis an IC50.
+function _selPotLblFor(k) { const i = String(k || '').indexOf('::'); if (i < 0) return _selPotLbl(); const t = k.slice(0, i); return ((ECHO_ASSAY_LABELS[t] || {}).potency || 'Potency (nM)').replace(/\s*\([^)]*\)/, ''); }
+function _selMetricLabel(m, k) {
   m = m || _selMetric();
-  return m === 'potency' ? _selPotLbl() + ' (nM)' : m === 'Dmax_pct' ? ((window._bpVarLabels || {})['Dmax_pct'] || 'Dmax (%)') : m === 'HillSlope' ? 'Hill slope' : m === 'R2' ? 'R²' : m;
+  return m === 'potency' ? (k !== undefined ? _selPotLblFor(k) : _selPotLbl()) + ' (nM)' : m === 'Dmax_pct' ? ((window._bpVarLabels || {})['Dmax_pct'] || 'Dmax (%)') : m === 'HillSlope' ? 'Hill slope' : m === 'R2' ? 'R²' : m;
 }
 function _selBound(r) {
   const f = String(r.Flag_Reason || '');
@@ -7157,7 +7168,7 @@ function _selCfg(light) {
     bgPt: v('--surface', '#ffffff'), accent: v('--accent', '#5e87c5'), r: 5.5,
     names: document.getElementById('sel-show-names')?.checked || false, hi: SEL.hi,
     title: (document.getElementById('sel-title')?.value || '').trim() || (_selKeyLabel(D.kx || '') + ' vs ' + _selKeyLabel(D.ky || '')),
-    xTitle: _selKeyLabel(D.kx || '') + ' — ' + _selMetricLabel(D.metric), yTitle: _selKeyLabel(D.ky || '') + ' — ' + _selMetricLabel(D.metric),
+    xTitle: _selKeyLabel(D.kx || '') + ' — ' + _selMetricLabel(D.metric, D.kx || ''), yTitle: _selKeyLabel(D.ky || '') + ' — ' + _selMetricLabel(D.metric, D.ky || ''),
     kx: _selKeyLabel(D.kx || 'X'), ky: _selKeyLabel(D.ky || 'Y'), legend: true };
 }
 function _selDraw() {
@@ -12144,6 +12155,10 @@ function syncMatAnalysisParams() {
   const panels = list ? [...list.querySelectorAll('[id^="mat-panel-"]')] : [];
   const _fs = 'width:100%;padding:5px 8px;border-radius:4px;border:1px solid var(--border2);background:var(--surface3);color:var(--text);font-size:11px;font-family:var(--mono);box-sizing:border-box;outline:none;';
 
+  // Keep what was typed: this panel is rebuilt whenever a panel is added, removed or retyped, and it used to come
+  // back on its defaults, silently throwing away every fit setting already set for the other panels.
+  const _kept = {};
+  container.querySelectorAll('input[id],select[id]').forEach(el => { _kept[el.id] = { v: el.value, c: el.checked, d: el.disabled }; });
   container.innerHTML = panels.map(panel => {
     const idx = parseInt(panel.id.replace('mat-panel-',''));
     const type = document.getElementById(`mat-type-${idx}`)?.value || 'hibit';
@@ -12167,6 +12182,7 @@ function syncMatAnalysisParams() {
       </div>
     </div>`;
   }).join('');
+  container.querySelectorAll('input[id],select[id]').forEach(el => { const k = _kept[el.id]; if (!k) return; if (el.type === 'checkbox') el.checked = k.c; else el.value = k.v; el.disabled = k.d; });
 }
 
 function collectMultiAssayConfigs() {

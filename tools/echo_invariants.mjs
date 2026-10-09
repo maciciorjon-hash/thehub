@@ -142,6 +142,11 @@
 //   E57 Setup lines up         Every Setup tab, with one assay and with three assay panels, at 1440 and 390 px: the alignment audit (one control
 //                             height a row, centres on one line, a checkbox on its label's first line) and the escape audit find nothing.
 //
+//   E58 a multi-assay run      Two panels (HiBiT on one prefix, CTG on another): a fit setting typed on one panel survives another being added
+//       keeps its names         and removed; every column block names its assay AND its group; the normalisation banners name the assay type,
+//                               not "<id>_hibit"; Labbook gets one result set per assay, each with its own potency name and its own id;
+//                               the Raw data sheet says which assay each row is; no tab prints NaN or undefined.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -1547,10 +1552,10 @@ if (run('E44')) await guard('E44', async () => {
     return { heads, rows, xlsx: caps[0] };
   }, '(' + MA_ROWS + ')');
   const x1 = r.rows.find(t => t[0] === 'X-1') || [];
-  check('E44', 'the table has a block per assay and group: HiBiT · BRD2, HiBiT · BRD4, CTG/Viability', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability'].every(h => r.heads.includes(h)), r.heads);
+  check('E44', 'the table has a block per assay and group: HiBiT · BRD2, HiBiT · BRD4, CTG/Viability · HEK', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability · HEK'].every(h => r.heads.includes(h)), r.heads);
   check('E44', 'compound X-1 shows BOTH HiBiT results (11.1 and 222) and the viability one', ['11.1', '222', '3333'].every(v => x1.includes(v)), x1);
   const hx = r.xlsx || [], hrow = hx[0] || [], x1x = (hx.find(t => t[0] === 'X-1') || []);
-  check('E44', 'the workbook has the same blocks and the same numbers', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability'].every(h => hrow.includes(h)) && ['11.1', '222', '3333'].every(v => x1x.map(String).includes(v)), { hrow, x1x });
+  check('E44', 'the workbook has the same blocks and the same numbers', ['HiBiT · BRD2', 'HiBiT · BRD4', 'CTG/Viability · HEK'].every(h => hrow.includes(h)) && ['11.1', '222', '3333'].every(v => x1x.map(String).includes(v)), { hrow, x1x });
   check('E44', 'a compound only fitted in one group leaves the other block empty, not copied', (r.rows.find(t => t[0] === 'X-2') || []).includes('44.4') && !(r.rows.find(t => t[0] === 'X-2') || []).includes('222'), r.rows);
 });
 
@@ -2183,6 +2188,41 @@ if (run('E57')) await guard('E57', async () => {
     }
     await c.close();
   }
+});
+
+if (run('E58')) await guard('E58', async () => {
+  const c = await browser.newContext({ viewport: { width: 1440, height: 900 } }); const q = await c.newPage(); const errs = []; q.on('pageerror', e => errs.push(e.message));
+  await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+  await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+  const kept = await q.evaluate(() => {
+    openSetupModal(); const cb = document.getElementById('multi-assay-chk'); cb.checked = true; toggleMultiAssay();
+    const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); };
+    set('mat-type-0', 'hibit'); set('mat-prefix-0', 'BRD2'); set('mat-ctrl-0', 'B12-O12'); updateMatPanel(0);
+    set('mat-type-1', 'ctg'); set('mat-prefix-1', 'BRD3'); set('mat-ctrl-1', 'B12-O12'); updateMatPanel(1);
+    document.getElementById('mat-r2-0').value = '0.77';
+    addAssayType(); removeAssayType(_matCounter - 1);
+    const v = document.getElementById('mat-r2-0').value; document.getElementById('mat-r2-0').value = '0.8'; return v;
+  });
+  check('E58', 'a fit setting typed on a panel survives another panel being added and removed', kept === '0.77', kept);
+  await q.evaluate(() => { document.getElementById('p-assay').value = 'E58MULTI'; return runPipeline(); });
+  await q.waitForFunction(() => typeof _lastResultsData !== 'undefined' && _lastResultsData && _lastResultsData.length > 0, null, { timeout: 120000 }); await q.waitForTimeout(800);
+  const r = await q.evaluate(() => {
+    const heads = [...document.querySelectorAll('#results-panel th')].map(t => t.textContent.trim()).filter(t => /HiBiT|CTG/.test(t));
+    const banners = [...document.querySelectorAll('#results-panel .na-id')].map(e => e.textContent.trim());
+    const sets = _echoLabbookSets().map(s => ({ id: s.id, assay: s.assay, pot: s.potencyLabel, n: s.rows.length, label: s.label }));
+    let wb = null; const w0 = XLSX.write; XLSX.write = (w, o) => { wb = w; return w0.call(XLSX, w, o); }; const a0 = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () {};
+    try { generateOutputXLSX(); } finally { XLSX.write = w0; HTMLAnchorElement.prototype.click = a0; }
+    const raw = wb && wb.Sheets['Raw data'] ? XLSX.utils.sheet_to_json(wb.Sheets['Raw data'], { header: 1 }) : [];
+    const bad = [];
+    for (const t of ['results', 'curves', 'scatter', 'plate', 'props']) { const b = document.querySelector('[data-tab="' + t + '"]'); if (b) b.click(); const m = document.body.innerText.match(/\bNaN\b|\bundefined\b|\[object Object\]/); if (m) bad.push(t + ': ' + m[0]); }
+    return { heads, banners, sets, rawA: [...new Set(raw.slice(1).map(x => x[0]))], bad };
+  });
+  check('E58', 'each column block names its assay and its group', r.heads.some(h => /HiBiT · BRD2/.test(h)) && r.heads.some(h => /CTG\/Viability · BRD3/.test(h)), r.heads);
+  check('E58', 'the normalisation banners name the assay type', r.banners.length === 2 && r.banners.every(b => /^(HiBiT|CTG\/Viability)$/.test(b)), r.banners);
+  check('E58', 'Labbook gets one set per assay, each with its own potency name and id', r.sets.length === 2 && r.sets.some(s => s.assay === 'hibit' && /DC50/.test(s.pot)) && r.sets.some(s => s.assay === 'ctg' && /IC50/.test(s.pot)) && new Set(r.sets.map(s => s.id)).size === 2 && r.sets.every(s => s.n > 0), r.sets);
+  check('E58', 'the Raw data sheet says which assay each row is', r.rawA.length === 2 && r.rawA.every(a => /^(HiBiT|CTG\/Viability)$/.test(a)), r.rawA);
+  check('E58', 'no tab prints NaN or undefined, and nothing throws', !r.bad.length && !errs.length, { bad: r.bad, errs });
+  await c.close();
 });
 
 await browser.close();

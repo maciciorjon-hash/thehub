@@ -4,6 +4,29 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## Echo Dose Response, multiple assays — 2026-10-09
+
+Not audited since the multi-assay pivot went in. Driven as a real run: the bundled data split into two panels (HiBiT on the
+`BRD2` plates, CTG on `BRD3`), then every tab (Results, Curves, Plots — scatter, box, selectivity — Plate maps/QC/Compare,
+Properties, History, Protocol) through the escape and runtime audits, every export read back, History saved and reloaded,
+the Labbook payload inspected, in both themes at 1440 px.
+
+| id | where | what was wrong | fixed in |
+|---|---|---|---|
+| MA-1 | Setup, multi-assay | adding or removing a panel rebuilt every panel's fit settings on their defaults — a typed Min R² on panel 1 was silently gone | `syncMatAnalysisParams` keeps what was typed |
+| MA-2 | Results bar | the multi-assay bar had no Send to Labbook at all | `_resBar()` builds both bars |
+| MA-3 | Labbook | when sent, every row was stamped `assay:'multi'` under the generic "Potency (nM)" — a DC50 and an IC50 arrived as one undifferentiated list | one result set per assay type, each with its own id, name and labels (`_echoLabbookSets`) |
+| MA-4 | Plots › Selectivity | keyed by protein only: the same protein measured in two assays overwrote one with the other | keyed `assay::protein` |
+| MA-5 | Plots export | the scatter PNG ignored the `assay::param` pivot (empty cross-assay plots) | the export is drawn by the live builder |
+| MA-6 | Results | an assay with one group was headed "HiBiT" — it did not say *what* HiBiT measured | the group is always named ("HiBiT · BRD2") |
+| MA-7 | Results, workbook | the normalisation banners and the Raw data sheet said `MULTI-AUDIT_hibit` | `_maRunName` → "HiBiT" |
+| MA-8 | Setup | the multi-assay panels mixed 24/27/29 px controls and overflowed a phone by 25 px | the Setup control rule (E57) |
+
+Checked and clean: no page error, no `NaN`/`undefined` on any tab, History keeps the run as one multi-assay version, Copy TSV
+names the assay on every row, Screen CSV carries both types, Plate › QC and Compare per prefix.
+
+Invariants: **E58** (MA-1, MA-3, MA-6, MA-7, and NaN/undefined across the tabs), **E55** (MA-4), **E54** (MA-5), **E57** (MA-8), **E53** (MA-2).
+
 ## Ribbon, eight more things — 2026-10-08
 
 Not a bug hunt: the eight suggestions from the rework, built one at a time, each with an invariant that was proven by putting its
