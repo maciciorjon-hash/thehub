@@ -139,6 +139,9 @@
 //       say something, and      fit" is signal − the compound's fitted curve at that dose, to the digit; "plate effect" finds a column planted
 //       names fit their block   15 points low; a dose series run down a column is named turned 90°, every name inside its own block.
 //
+//   E57 Setup lines up         Every Setup tab, with one assay and with three assay panels, at 1440 and 390 px: the alignment audit (one control
+//                             height a row, centres on one line, a checkbox on its label's first line) and the escape audit find nothing.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -2160,6 +2163,26 @@ if (run('E56')) await guard('E56', async () => {
   check('E56', 'the plate effect finds a column planted 15 points low', r.eff.c7 - r.eff.c7base < -10 && Math.abs(r.eff.c8) < 8, r.eff);
   check('E56', 'a series down a column is named turned 90°, inside its block, in full', r.v.n > 5 && r.v.rot === r.v.n && r.v.outside === 0 && r.v.cut === 0, r.v);
   check('E56', 'a series across a row is named across it', r.h.n > 5 && r.h.rot === 0, r.h);
+});
+
+if (run('E57')) await guard('E57', async () => {
+  const AL = fs.readFileSync(path.join(ROOT, 'tools/audit_align.js'), 'utf8'), ES = fs.readFileSync(path.join(ROOT, 'tools/audit_escape.js'), 'utf8');
+  for (const [w, h] of [[1440, 900], [390, 844]]) {
+    const c = await browser.newContext({ viewport: { width: w, height: h } }); const q = await c.newPage();
+    await q.goto('file://' + FILE); await q.waitForTimeout(1200);
+    await q.evaluate(() => { loadTestData(); }); await q.waitForTimeout(900);
+    await q.evaluate(AL); await q.evaluate(ES);
+    for (const multi of [false, true]) {
+      await q.evaluate(m => { openSetupModal(); const cb = document.getElementById('multi-assay-chk'); if (cb && cb.checked !== m) { cb.checked = m; toggleMultiAssay(); if (m) addAssayType(); } }, multi);
+      for (const t of ['files', 'assay', 'analysis', 'output', 'review']) {
+        await q.evaluate(t => switchSetupTab(t), t); await q.waitForTimeout(300);
+        const r = await q.evaluate(() => ({ a: __alignAudit(), e: __escapeAudit() }));
+        const bad = [...(r.a || []).map(x => 'align: ' + x), ...(r.e || []).map(x => 'escape: ' + (typeof x === 'string' ? x : JSON.stringify(x)))];
+        check('E57', w + 'px ' + (multi ? 'three panels' : 'one assay') + ' · ' + t, !bad.length, bad.slice(0, 4));
+      }
+    }
+    await c.close();
+  }
 });
 
 await browser.close();
