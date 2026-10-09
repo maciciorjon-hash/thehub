@@ -956,12 +956,11 @@ function seedWhenAdminReady(tries){
 function uid(){ return 'id-' + Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
 
 // ─── COLOR (cell-line families) ───────────────────────────────────────────
-// Curated pastel hue wheel. A cell-line FAMILY (the base name before the first
+// A pastel hue from a hash of the name (vialColor). A cell-line FAMILY (the base name before the first
 // comma/paren — e.g. "HCT116" in "HCT116, DCAF15 KO #15") gets one stable hue, and
 // clones within that family differ only by a small deterministic lightness shift — so
 // related lines read as a family instead of getting wildly different random colours.
 var _hueCache = {}, _baseHue = {};
-var CELL_HUES = [210, 158, 32, 340, 265, 128, 46, 192, 300, 16, 92, 238, 318, 74, 178, 355];
 // ─── WHAT IS IN A VIAL ────────────────────────────────────────────────────
 // A freezer holds more than cells. A record with no kind is a cell vial, because that is what
 // every vial written before today is — nothing migrates.
@@ -1346,6 +1345,7 @@ function setFitN(v){ UI.fitN = String(v || '').replace(/[^0-9]/g, ''); _saveUI()
 // Every box keeps a log of what left it (discarded, thawed) and what moved in or out of it. This is the
 // whole storage's log in one place, newest first, with where each vial was — and a CSV of it.
 var LOG_KINDS = { discard: 'Discarded', thaw: 'Thawed', move: 'Moved out', movein: 'Moved in' };
+var LOG_CLS = { discard: 'ev-discard', thaw: 'ev-thaw', move: 'ev-move', movein: 'ev-movein' };
 function cryoLog(boxId, entry){
   var found = null;
   storageKeys().forEach(function(sk){ (state.storages[sk].racks || []).forEach(function(r){ (r.boxes || []).forEach(function(b){ if (b.id === boxId) found = b; }); }); });
@@ -1372,7 +1372,7 @@ function renderHistoryView(tab){
     + rows.map(function(x, i){
       return '<tr onclick="openHistAt(' + i + ')"><td class="cell-date">' + esc(x.ts ? new Date(x.ts).toLocaleDateString('en-GB') : '—') + '</td>'
         + '<td class="cell-cl"><span class="sw" style="background:' + cellLineColor(x.what, x.vkind) + ';"></span>' + esc(x.what || '(unlabelled)') + (x.passage ? ' <span class="cell-passage">' + esc(/^P/i.test(String(x.passage)) ? x.passage : 'P' + x.passage) + '</span>' : '') + '</td>'
-        + '<td><span class="ev ev-' + esc(x.kind) + '">' + esc(LOG_KINDS[x.kind] || x.kind) + '</span></td>'
+        + '<td><span class="ev ' + (LOG_CLS[x.kind] || '') + '">' + esc(LOG_KINDS[x.kind] || x.kind) + '</span></td>'
         + '<td>' + esc(x.where) + '</td><td>' + esc(x.to || x.reason) + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
