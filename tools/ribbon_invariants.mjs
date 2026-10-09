@@ -1825,8 +1825,23 @@ async function rb28() {
   await ctx.close();
   const m = await open({ tag: 'RB28m ', vp: { width: 390, height: 844 }, touch: true });
   await m.go('7SEQ');
-  check('RB28', 'on a phone there is no command line (the panel does it all)', await m.E(() => getComputedStyle(document.getElementById('cmdBar')).display === 'none'));
+  check('RB28', 'on a phone the line is out of the way until the toolbar asks for it', await m.E(() => getComputedStyle(document.getElementById('cmdBar')).display === 'none' && getComputedStyle(document.getElementById('cmdBtn')).display !== 'none'));
+  await m.pg.tap('#cmdBtn'); await sleep(200);
+  const mo = await m.E(() => { const b = document.getElementById('cmdBar').getBoundingClientRect(), i = document.getElementById('cmdInput'), g = document.getElementById('cmdGhost'); return { shown: getComputedStyle(document.getElementById('cmdBar')).display !== 'none', inView: b.bottom <= innerHeight + 1 && b.top >= 0 && b.width > 300, focused: document.activeElement === i, fsI: getComputedStyle(i).fontSize, fsG: getComputedStyle(g).fontSize, insp: getComputedStyle(document.getElementById('cmdInsp')).display, go: i.getAttribute('enterkeyhint'), pressed: document.getElementById('cmdBtn').getAttribute('aria-pressed') }; });
+  check('RB28', 'the toolbar button shows the line on screen, focused, at 16px with its ghost at the same size (no zoom, no drift), "Go" on the keyboard, no inspector', mo.shown && mo.inView && mo.focused && mo.fsI === '16px' && mo.fsG === '16px' && mo.insp === 'none' && mo.go === 'go' && mo.pressed === 'true', mo);
+  await m.pg.keyboard.type('color chain A gre'); await sleep(150);
+  const pop = await m.E(() => ({ open: !document.getElementById('cmdPop').hidden, foot: document.querySelector('#cmdPop .cp-foot') && document.querySelector('#cmdPop .cp-foot').textContent, first: document.querySelector('#cmdPop .cp-it .cp-t') && document.querySelector('#cmdPop .cp-it .cp-t').textContent }));
+  check('RB28', 'suggestions open and say how to take one by touch, not with Tab', pop.open && /Tap a suggestion/.test(pop.foot) && !/Tab/.test(pop.foot), pop);
+  await m.pg.tap('#cmdPop .cp-it'); await sleep(150);
+  check('RB28', 'a tapped suggestion is taken into the line', await m.E(() => /^color chain A green $/.test(document.getElementById('cmdInput').value)), await m.E(() => document.getElementById('cmdInput').value));
+  await m.pg.keyboard.press('Enter'); await sleep(250);
+  check('RB28', 'Go runs it', await m.E(() => document.getElementById('cmdOut').classList.contains('ok')), await m.E(() => ({ out: document.getElementById('cmdOut').className + ' ' + document.getElementById('cmdOut').textContent, v: document.getElementById('cmdInput').value, lig: ligands.length })));
+  await m.pg.tap('#cmdBtn'); await sleep(150);
+  check('RB28', 'the button puts it away again', await m.E(() => getComputedStyle(document.getElementById('cmdBar')).display === 'none' && document.getElementById('cmdBtn').getAttribute('aria-pressed') === 'false'));
   await m.ctx.close();
+  const t = await open({ tag: 'RB28t ', vp: { width: 1024, height: 768 }, touch: true });
+  check('RB28', 'a tablet shows the line (a keyboard may be attached), with no toolbar button for it', await t.E(() => getComputedStyle(document.getElementById('cmdBar')).display !== 'none' && getComputedStyle(document.getElementById('cmdBtn')).display === 'none'));
+  await t.ctx.close();
 }
 
 

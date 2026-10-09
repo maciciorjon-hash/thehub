@@ -330,7 +330,9 @@ body.cmd-focus .cmd-prompt{color:var(--accent);}
 .cp-h .cp-al{grid-column:1;font:500 11px/1.2 var(--mono);color:var(--text3);}
 .cp-h>span:not(.cp-al){grid-column:2;grid-row:1;font-size:var(--fs-2);color:var(--text);}
 .cp-h code{grid-column:2;font:500 11px/1.3 var(--mono);color:var(--text2);}
-@media(max-width:760px),(hover:none) and (pointer:coarse){ .cmd-bar{display:none;} }   /* a command line is for a keyboard */
+#cmdBtn{display:none;}
+@media(max-width:760px){ .cmd-bar{display:none;} body.rb-cmd-on .cmd-bar{display:flex;} #cmdBtn{display:flex;} }   /* a phone shows the line when asked for it, from the toolbar */
+@media(hover:none){ .cmd-insp{display:none;} .cmd-ghost{font-size:16px;} .cmd-field{height:36px;} .cmd-input,.cmd-ghost{line-height:36px;} .cmd-bar{min-height:46px;} }   /* the input is 16px on touch (no zoom), so its ghost is too or the two drift apart */   /* nothing is "under the pointer" on a touch screen */
 /* ── The sequence: one row per chain, above the structure ── */
 .seq-bar{flex:none;border-bottom:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-width:0;}
 .seq-bar[hidden]{display:none;}
@@ -777,6 +779,9 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
         <button class="tb-btn" id="seqBtn" type="button" title="Sequence (Q)" aria-label="Sequence" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18"/><path d="M3 6h5M10 6h4M16 6h5"/><path d="M5 11v7M9.5 13v5M14 11v7M18.5 13v5"/></svg>
         </button>
+        <button class="tb-btn" id="cmdBtn" type="button" title="Command line" aria-label="Command line" aria-pressed="false" aria-controls="cmdBar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 7 10 12 5 17"/><line x1="12" y1="17" x2="19" y2="17"/></svg>
+        </button>
         <button class="tb-btn" id="spinBtn" type="button" title="Auto-rotate (S)" aria-label="Auto-rotate" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/><polyline points="21 3 21 9 15 9"/></svg>
         </button>
@@ -819,7 +824,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <label class="cmd-prompt" for="cmdInput" title="Command line (/)"><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="5 7 10 12 5 17"/><line x1="12" y1="17" x2="19" y2="17"/></svg></label>
       <div class="cmd-field">
         <div class="cmd-ghost" id="cmdGhost" aria-hidden="true"></div>
-        <input type="text" id="cmdInput" class="cmd-input" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Command" aria-autocomplete="list" aria-controls="cmdPop" placeholder="Type a command — color ligand yellow · select within 5 of ligand · help        ( / )">
+        <input type="text" id="cmdInput" class="cmd-input" enterkeyhint="go" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Command" aria-autocomplete="list" aria-controls="cmdPop" placeholder="Type a command — color ligand yellow · select within 5 of ligand · help        ( / )">
       </div>
       <span class="cmd-out" id="cmdOut" role="status" hidden></span>
       <span class="cmd-insp" id="cmdInsp"></span>
@@ -5410,9 +5415,10 @@ function cmdRefresh(){
   pop.innerHTML=CMD.sug.map(function(x,i){
     var sw=x.hex?'<i class="cp-sw2" style="background:'+x.hex+'"></i>':'', ic={cmd:'cmd',hist:'again',chain:'chain',lig:'ligand',word:'word',colour:'',scheme:'scheme',rep:'draw',num:'value',resn:'res',atom:'atom',thing:'show',id:'entry'}[x.k]||'';
     return '<div class="cp-it'+(i===(CMD.si>=0?CMD.si:0)?' on':'')+'" role="option" data-i="'+i+'" aria-selected="'+(i===CMD.si)+'"><span class="cp-k cp-k-'+x.k+'">'+(sw||escapeHtml(ic))+'</span><span class="cp-t">'+escapeHtml(x.t)+'</span><span class="cp-d">'+escapeHtml(x.d||'')+'</span></div>';
-  }).join('')+'<div class="cp-foot"><kbd>Tab</kbd> take · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</div>';
+  }).join('')+(_cmdTouch()?'<div class="cp-foot">Tap a suggestion to take it · <kbd>Go</kbd> runs the line</div>':'<div class="cp-foot"><kbd>Tab</kbd> take · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</div>');
   pop.hidden=false;
 }
+function _cmdTouch(){ try{ return matchMedia('(hover:none)').matches; }catch(e){ return false; } }
 function cmdTake(i){
   var inp=$('cmdInput'), x=CMD.sug[i==null?(CMD.si>=0?CMD.si:0):i]; if(!x) return false;
   inp.value=cmdApply(inp.value,x,CMD.cur); CMD.si=-1; inp.setSelectionRange(inp.value.length,inp.value.length); cmdRefresh(); return true;
@@ -5473,6 +5479,14 @@ function cmdWire(){
   });
   pop.addEventListener('mousedown',function(e){ var it=e.target.closest('.cp-it'); if(!it) return; e.preventDefault(); cmdTake(+it.dataset.i); inp.focus(); });
   _selListeners.push(inspectorPaint);
+  var cb=$('cmdBtn');   // a phone keeps the line out of the way until it is asked for
+  if(cb) cb.addEventListener('click',function(){ cmdShow(!document.body.classList.contains('rb-cmd-on')); });
+}
+function cmdShow(on){
+  document.body.classList.toggle('rb-cmd-on',!!on);
+  var cb=$('cmdBtn'); if(cb){ cb.classList.toggle('tb-active',!!on); cb.setAttribute('aria-pressed',on?'true':'false'); }
+  if(typeof fitView==='function'&&!_userMoved) setTimeout(function(){ fitView({}); },30);
+  if(on) setTimeout(function(){ cmdFocus(); },30); else { var i=$('cmdInput'); if(i) i.blur(); $('cmdPop').hidden=true; }
 }
 function cmdFocus(prefill){ var inp=$('cmdInput'); if(!inp||$('cmdBar').offsetParent===null) return false; if(prefill!=null){ inp.value=prefill; } inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length); cmdRefresh(); return true; }
 // ── Look: lighting, one-click styles, colour-blind palettes, and the helpers on the picture ─────
@@ -7422,7 +7436,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         a: ['Under the structure (**/** to get there): type what you want — `color ligand yellow`, `select within 5 of ligand`, `show sel as sticks`, `hide waters`, `label chain A "BRD4"`, `interactions MZ1`, `lysines A D`, `preset ternary`, `lighting soft`, `movie turn gif`. **Tab** takes the grey suggestion; **↑** brings back what you ran; `help` lists every command, `help color` one.',
             'Selections speak plain words and the ChimeraX and PyMOL spellings alike: `chain A`, `/A:45-60`, `A:45-60`, `:LYS`, `lys`, `name CA`, `@NZ`, `ligand`, `ions`, `waters`, `helix`, `hydrophobic`, `within 5 of ligand`, `byres`, `interface`, `pocket`, `sel`, with `and`, `or`, `not` and brackets. Join commands with `;`.'],
         tip: 'The suggestions know this structure: its chains, residue names and ligands. A line you typed before is offered first when you start it the same way.',
-        warn: 'There is no command line on a phone — the panel does everything there. In the Hub, ⌘K stays the Hub\'s search.',
+        warn: 'On a phone the line is tucked away: the **>_** button in the toolbar brings it up, a tap takes a suggestion and **Go** runs it. In the Hub, ⌘K stays the Hub\'s search.',
         show: [{ sel: '#cmdInput', say: 'Type here (or press /).', miss: NEED }] },
       { id: 'look', t: 'Lighting, styles and palettes', group: 'Look', on: ['viewer'],
         q: ['lighting', 'light', 'shadows', 'ambient occlusion', 'depth cue', 'fog', 'style', 'preset', 'look', 'publication', 'cover', 'colour blind', 'colorblind', 'okabe', 'viridis', 'iluminacion', 'sombras', 'estilos', 'daltonico', 'portada'],

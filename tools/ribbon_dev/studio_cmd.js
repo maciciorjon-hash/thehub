@@ -458,9 +458,10 @@ function cmdRefresh(){
   pop.innerHTML=CMD.sug.map(function(x,i){
     var sw=x.hex?'<i class="cp-sw2" style="background:'+x.hex+'"></i>':'', ic={cmd:'cmd',hist:'again',chain:'chain',lig:'ligand',word:'word',colour:'',scheme:'scheme',rep:'draw',num:'value',resn:'res',atom:'atom',thing:'show',id:'entry'}[x.k]||'';
     return '<div class="cp-it'+(i===(CMD.si>=0?CMD.si:0)?' on':'')+'" role="option" data-i="'+i+'" aria-selected="'+(i===CMD.si)+'"><span class="cp-k cp-k-'+x.k+'">'+(sw||escapeHtml(ic))+'</span><span class="cp-t">'+escapeHtml(x.t)+'</span><span class="cp-d">'+escapeHtml(x.d||'')+'</span></div>';
-  }).join('')+'<div class="cp-foot"><kbd>Tab</kbd> take · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</div>';
+  }).join('')+(_cmdTouch()?'<div class="cp-foot">Tap a suggestion to take it · <kbd>Go</kbd> runs the line</div>':'<div class="cp-foot"><kbd>Tab</kbd> take · <kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</div>');
   pop.hidden=false;
 }
+function _cmdTouch(){ try{ return matchMedia('(hover:none)').matches; }catch(e){ return false; } }
 function cmdTake(i){
   var inp=$('cmdInput'), x=CMD.sug[i==null?(CMD.si>=0?CMD.si:0):i]; if(!x) return false;
   inp.value=cmdApply(inp.value,x,CMD.cur); CMD.si=-1; inp.setSelectionRange(inp.value.length,inp.value.length); cmdRefresh(); return true;
@@ -521,5 +522,13 @@ function cmdWire(){
   });
   pop.addEventListener('mousedown',function(e){ var it=e.target.closest('.cp-it'); if(!it) return; e.preventDefault(); cmdTake(+it.dataset.i); inp.focus(); });
   _selListeners.push(inspectorPaint);
+  var cb=$('cmdBtn');   // a phone keeps the line out of the way until it is asked for
+  if(cb) cb.addEventListener('click',function(){ cmdShow(!document.body.classList.contains('rb-cmd-on')); });
+}
+function cmdShow(on){
+  document.body.classList.toggle('rb-cmd-on',!!on);
+  var cb=$('cmdBtn'); if(cb){ cb.classList.toggle('tb-active',!!on); cb.setAttribute('aria-pressed',on?'true':'false'); }
+  if(typeof fitView==='function'&&!_userMoved) setTimeout(function(){ fitView({}); },30);
+  if(on) setTimeout(function(){ cmdFocus(); },30); else { var i=$('cmdInput'); if(i) i.blur(); $('cmdPop').hidden=true; }
 }
 function cmdFocus(prefill){ var inp=$('cmdInput'); if(!inp||$('cmdBar').offsetParent===null) return false; if(prefill!=null){ inp.value=prefill; } inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length); cmdRefresh(); return true; }
