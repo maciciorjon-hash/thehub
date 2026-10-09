@@ -7266,8 +7266,31 @@ copy so you can keep editing: `cp apps/ribbon/ribbon.html apps/ribbon/_snap/ribb
 fixture now writes the PDB element in columns 77–78 (it was one column off, so Cl read as C). Verified in ChimeraX 1.11 and
 PyMOL: `lighting simple|soft|full|flat`, `lighting depthCue`, `set depth_cue`, `set ambient_occlusion_mode`.
 
-**Not built / limits, stated**: no command line on phones; the second structure is still not in a script; interactions are
-heavy-atom geometry (no hydrogens); the charge colouring is residue charges only; the lysine list is one pose.
+**Not built / limits, stated**: interactions are heavy-atom geometry (no hydrogens); the charge colouring is residue charges
+only; the lysine list is one pose.
+
+### After the studio (2026-10-09, second half)
+
+- **The second structure is in the scripts**: PyMOL `fetch …, second` + `cmd.transform_selection("second", [4×4], homogenous=1)`
+  (a Python line — `transform_selection` is not a PyMOL command); ChimeraX `open …` as `#2` (opened before any `#900` marker)
+  + `view matrix models #2,<12 numbers>`. The matrix is Ribbon's own fit (`ovl.res.F`). Checked in PyMOL and ChimeraX 1.11:
+  every CA within 0.0003 Å of where Ribbon draws it. A hidden one is left out and the script says so. RB20.
+- **The command line on touch**: a tablet shows it; a phone (≤760px, or held sideways: `(hover:none) and (pointer:coarse) and
+  (max-height:520px)`) brings it up from the **>_** toolbar button (`cmdShow`, `body.rb-cmd-on`), which also closes the controls
+  sheet. The ghost is 16px like the input (iOS), `enterkeyhint="go"`, suggestions are tapped. Sideways, the line hides the
+  sequence bar while it is up. RB28.
+- **Films on a transparent background are recorded on white** (a video has no alpha; it came out black — found recording an
+  MP4 in WebKit, which otherwise works). RB31.
+- **Echo › Targets in Ribbon** (`ribbonTargets`, `openTargetInRibbon`): each protein group (a mutant counts as its WT) with its
+  most potent compound, opened with `{query, pocket:true, compound}` like Hit Finder's. RB33.
+- **Labbook stores a transparent picture on white** (`_jpegCtx` before every canvas → JPEG). B20.
+- **`tools/ribbon_visual.mjs`** — the visual sweep with a busy structure (5T35, analyses, overlay, sequence, measurement): every
+  tab, the command line's suggestions and help, the chain popup, Export, the multi-panel dialog; 1440/1024/390/844×390 × both
+  themes; escape + runtime + alignment audits and `--shots`. Needs the network, so it is not in CI. What it found: labelled
+  selects squeezed to 18px (`.fld>.inp{flex:none}`, RB26 now checks every field), PDB stereo markup (`chemName`), axes text
+  outside its box, a sideways phone's toolbar on three rows (34px there), a pane animation that flashed a scrollbar, a toast over
+  a dialog's title.
+- `tools/audit_align.js` judges a list entry (a button that is a title over a subtitle) and an empty colour dot on their centre line.
 
 ## Current state
 
