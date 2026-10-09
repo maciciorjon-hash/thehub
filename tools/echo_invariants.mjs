@@ -941,6 +941,9 @@ if (run('E26')) await guard('E26', async () => {
     out.nM = parse(mod(c => { c[ci] = String(+c[ci] * 1e9); c[ui] = 'nM'; }));
     out.euro = parse(mod(c => { c[ci] = '"' + String(c[ci]).replace('.', ',') + '"'; }));
     out.cases = parse(mod(c => { if (Math.random() < 0.5) c[si] = c[si].toLowerCase(); }));
+    // Echo Dose-Response writes the compound in Sample Name and leaves Sample ID empty (NK_NEK1_D2B, 2026-10-09).
+    const hdn = hd.slice(); hdn.splice(si + 1, 0, 'Sample Name');
+    out.byName = parse(lines.map((l, i) => { if (i < hi || !l.trim()) return l; const c = l.split(','); if (i === hi) return hdn.join(','); if (c.length <= si) return l; c.splice(si + 1, 0, c[si]); c[si] = ''; return c.join(','); }).join('\n'));
     const num = ['1000,5', '1 000,5', '1.234,5', '1,234.5', '1234', 1234.5, 'OVRFLW', '', '----', '3.5e4', '-12,5'].map(v => _readerNum(v));
     // the pipeline's own message for two files whose columns differ
     return Promise.all([
@@ -953,6 +956,7 @@ if (run('E26')) await guard('E26', async () => {
   check('E26', 'a byte-order mark does not matter', same('bom'), r.bom);
   check('E26', 'concentrations given in µM or nM are converted to molar', same('uM') && same('nM'), { uM: r.uM, nM: r.nM, base: r.base });
   check('E26', 'a decimal comma in scientific notation ("2,001E-05") is read as 2.001E-05', same('euro'), { euro: r.euro, base: r.base });
+  check('E26', 'a file whose Sample ID is empty on every row reads its compounds from Sample Name', same('byName') && r.byName.ids === r.base.ids, { byName: r.byName, base: r.base });
   check('E26', 'one compound typed in two letter cases is one compound', r.cases && r.cases.ids === r.base.ids, { cases: r.cases, base: r.base });
   check('E26', 'reader cells: "1000,5" "1 000,5" "1.234,5" "1,234.5" "3.5e4" "-12,5" are numbers; OVRFLW, ---- and blank are not',
     JSON.stringify(r.num) === JSON.stringify([1000.5, 1000.5, 1234.5, 1234.5, 1234, 1234.5, null, null, null, 35000, -12.5].map(v => v === null ? null : v)) || (r.num.slice(0, 6).every((v, i) => v === [1000.5, 1000.5, 1234.5, 1234.5, 1234, 1234.5][i]) && r.num.slice(6, 9).every(Number.isNaN) && r.num[9] === 35000 && r.num[10] === -12.5), r.num);

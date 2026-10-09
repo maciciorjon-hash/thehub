@@ -38,7 +38,7 @@
           'Drop the **PHERAstar** XLS/XLSX files — **one per plate**, each named exactly like the plate barcode in the Echo file.',
           'Optionally add a **SMILES** CSV for structures and properties.',
           '**Open project** / **Save project** keep a whole setup — files, settings and what you left out — in one `.echo.json`.'],
-        ref: [['Echo CSV', 'Needs **Sample ID**, **Destination Plate Barcode**, **Destination Well** and **Destination Concentration**. The unit is read from **Destination Concentration Units** (M if absent). Comma, semicolon and tab files all work. A transfer whose **Transfer Status** is not OK never reached the plate and is left out.'],
+        ref: [['Echo CSV', 'Needs **Sample ID** (or **Sample Name** when Sample ID is empty), **Destination Plate Barcode**, **Destination Well** and **Destination Concentration**. The unit is read from **Destination Concentration Units** (M if absent). Comma, semicolon and tab files all work. A transfer whose **Transfer Status** is not OK never reached the plate and is left out.'],
           ['PHERAstar XLS / XLSX', 'The lettered grid is found automatically (or give its A01 cell on Assay). A cell that is not a number — OVRFLW, blank — is left unread; it is never counted as 0 %, and the Console says how many.'],
           ['SMILES CSV', 'Two columns, **Sample ID** and **SMILES**. Needs the chemistry toolkit (RDKit), fetched from the internet the first time — offline, only structures are unavailable.'],
           ['Load test data', 'A bundled example: one Echo CSV and six plates. It is only used when you press it.']],

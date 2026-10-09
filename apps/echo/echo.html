@@ -3162,6 +3162,9 @@ function _parseEchoCSV(text, skipRows) {
   if (hdrs.length < 4) throw new Error('The Echo transfer file header could not be split into columns (found ' + hdrs.length + '). Save it as comma-, semicolon- or tab-separated text.');
   if (delim !== ',') log('  Echo CSV: columns are separated by ' + (delim === ';' ? 'semicolons' : 'tabs'), 'info');
   const si = hdrs.findIndex(h => /sample.?id/i.test(h));
+  // Echo Dose-Response can leave Sample ID empty on every row and write the compound only in Sample Name
+  // (often its source well: "A1"). Every row was then skipped as "no Sample ID" and the merge came out empty.
+  const sni = hdrs.findIndex(h => /sample.?name/i.test(h));
   const bi = hdrs.findIndex(h => /destination.plate.barcode/i.test(h));
   // A plate that was never scanned has an empty barcode and only a Destination Plate Name ("Destination[1]",
   // "Plate 3"). That name is the plate's identity then — a row used to be skipped for having no barcode.
@@ -3181,25 +3184,26 @@ function _parseEchoCSV(text, skipRows) {
   const ti = hdrs.findIndex(h => /transfer.?status/i.test(h));
 
   // Diagnostic: report which columns were (not) found
-  if (si < 0) log('  ⚠ Echo CSV: "Sample ID" column not found — expected a column matching /sample.?id/', 'warn');
+  if (si < 0 && sni < 0) log('  ⚠ Echo CSV: "Sample ID" column not found — expected a column matching /sample.?id/', 'warn');
   if (bi < 0 && ni < 0) log('  ⚠ Echo CSV: "Destination Plate Barcode" column not found', 'warn');
   else if (bi < 0) log('  Echo CSV: no "Destination Plate Barcode" column — the "Destination Plate Name" identifies the plates', 'info');
   if (wi < 0) log('  ⚠ Echo CSV: "Destination Well" column not found', 'warn');
   if (ci < 0) log('  ⚠ Echo CSV: "Destination Concentration" column not found — all rows will be skipped', 'warn');
   // Without these four there is nothing to fit; every row would be skipped and the run would
   // end in an empty table with the reason only in the Console.
-  const _miss = [[si,'Sample ID'],[bi >= 0 ? bi : ni,'Destination Plate Barcode'],[wi,'Destination Well'],[ci,'Destination Concentration']].filter(x=>x[0]<0).map(x=>'"'+x[1]+'"');
+  const _miss = [[si >= 0 ? si : sni,'Sample ID'],[bi >= 0 ? bi : ni,'Destination Plate Barcode'],[wi,'Destination Well'],[ci,'Destination Concentration']].filter(x=>x[0]<0).map(x=>'"'+x[1]+'"');
   if (_miss.length) throw new Error('The Echo transfer file has no ' + _miss.join(', ') + ' column' + (_miss.length>1?'s':'') + '. It needs the transfer report the Echo writes after a run, not a picklist.');
-  if (si >= 0 && (bi >= 0 || ni >= 0) && wi >= 0 && ci >= 0) {
+  if ((si >= 0 || sni >= 0) && (bi >= 0 || ni >= 0) && wi >= 0 && ci >= 0) {
     log('  Columns: SampleID@' + si + ', Barcode@' + (bi >= 0 ? bi : 'name ' + ni) + ', Well@' + wi + ', Conc@' + ci, 'info');
   }
 
   const data = [], failed = [];
-  let _skipNoSid=0, _skipNoBc=0, _skipNoWell=0, _skipNoConc=0, _skipFailed=0, _byName=0;
+  let _skipNoSid=0, _skipNoBc=0, _skipNoWell=0, _skipNoConc=0, _skipFailed=0, _byName=0, _bySampleName=0;
   for (let i = headerIdx + 1; i < allLines.length; i++) {
     const line = allLines[i].trim(); if (!line) continue;
     const cols = parseRow(line);
-    const sampleId = si >= 0 ? cols[si] : '';
+    let sampleId   = si >= 0 ? cols[si] : '';
+    if (!sampleId && sni >= 0 && cols[sni]) { sampleId = cols[sni]; _bySampleName++; }
     let barcode    = bi >= 0 ? cols[bi] : '';
     if (!barcode && ni >= 0 && cols[ni]) { barcode = cols[ni]; _byName++; }
     const well     = _stdWell(wi >= 0 ? cols[wi] : '');
@@ -3223,6 +3227,7 @@ function _parseEchoCSV(text, skipRows) {
     if (isNaN(conc) || conc <= 0) { _skipNoConc++; continue; }
     data.push({ sampleId, barcode, barcodeKey: barcode.toLowerCase(), well, conc, log10Conc: Math.log10(conc) });
   }
+  if (_bySampleName) log('  ' + _bySampleName + ' transfer' + (_bySampleName === 1 ? ' has' : 's have') + ' no Sample ID — the Sample Name was used as the compound' + (_bySampleName === data.length ? ' (every transfer: compounds are named as the Echo file names them, often by source well)' : '') + '.', 'warn');
   if (_byName) log('  ' + _byName + ' transfer' + (_byName === 1 ? ' has' : 's have') + ' no Destination Plate Barcode — the Destination Plate Name was used for ' + (_byName === 1 ? 'it' : 'them') + '.', 'info');
   if (_skipFailed) log('  ' + _skipFailed + ' transfer' + (_skipFailed===1?'':'s')
     + ' skipped: Transfer Status is not OK — those wells did not receive the compound', 'warn');
@@ -3259,7 +3264,7 @@ function _parseEchoCSV(text, skipRows) {
   dedup.failed = failed;
   if (!dedup.length) {
     if (_skipFailed) log('  ⚠ ' + _skipFailed + ' rows skipped: Transfer Status was not OK', 'warn');
-    if (_skipNoSid)  log('  ⚠ ' + _skipNoSid + ' rows skipped: empty Sample ID (col ' + si + ')', 'warn');
+    if (_skipNoSid)  log('  ⚠ ' + _skipNoSid + ' rows skipped: empty Sample ID' + (sni >= 0 ? ' and Sample Name' : '') + ' (col ' + si + ')', 'warn');
     if (_skipNoBc)   log('  ⚠ ' + _skipNoBc + ' rows skipped: empty Destination Plate Barcode' + (ni >= 0 ? ' and Name' : '') + ' (col ' + (bi >= 0 ? bi : ni) + ')', 'warn');
     if (_skipNoWell) log('  ⚠ ' + _skipNoWell + ' rows skipped: empty/invalid Destination Well (col ' + wi + ')', 'warn');
     if (_skipNoConc) log('  ⚠ ' + _skipNoConc + ' rows skipped: missing or zero Destination Concentration (col ' + ci + ')', 'warn');
@@ -14882,7 +14887,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
           'Drop the **PHERAstar** XLS/XLSX files — **one per plate**, each named exactly like the plate barcode in the Echo file.',
           'Optionally add a **SMILES** CSV for structures and properties.',
           '**Open project** / **Save project** keep a whole setup — files, settings and what you left out — in one `.echo.json`.'],
-        ref: [['Echo CSV', 'Needs **Sample ID**, **Destination Plate Barcode**, **Destination Well** and **Destination Concentration**. The unit is read from **Destination Concentration Units** (M if absent). Comma, semicolon and tab files all work. A transfer whose **Transfer Status** is not OK never reached the plate and is left out.'],
+        ref: [['Echo CSV', 'Needs **Sample ID** (or **Sample Name** when Sample ID is empty), **Destination Plate Barcode**, **Destination Well** and **Destination Concentration**. The unit is read from **Destination Concentration Units** (M if absent). Comma, semicolon and tab files all work. A transfer whose **Transfer Status** is not OK never reached the plate and is left out.'],
           ['PHERAstar XLS / XLSX', 'The lettered grid is found automatically (or give its A01 cell on Assay). A cell that is not a number — OVRFLW, blank — is left unread; it is never counted as 0 %, and the Console says how many.'],
           ['SMILES CSV', 'Two columns, **Sample ID** and **SMILES**. Needs the chemistry toolkit (RDKit), fetched from the internet the first time — offline, only structures are unavailable.'],
           ['Load test data', 'A bundled example: one Echo CSV and six plates. It is only used when you press it.']],
