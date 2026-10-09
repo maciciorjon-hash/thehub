@@ -922,10 +922,10 @@ if (run('H20')) await guard('H20', async () => {
   const hfOf = hp => hp.frames().find(f => /__hf\.html/.test(f.url()));
   // ① pressed the moment the run finishes: History has not been written yet (its save is debounced), and the send has to cope
   const { hp, ef } = await sendRun(false);
-  const btn = await ef.evaluate(() => { const b = document.querySelector('.hf-send'); return b ? { text: b.textContent.trim(), svg: !!b.querySelector('svg circle') } : null; });
-  check('H20', 'inside the Hub the results carry a "Send to Hit Finder" button with the scope icon', !!btn && /Send to Hit Finder/.test(btn.text) && btn.svg, btn);
+  const btn = await ef.evaluate(() => { const b = document.getElementById('res-send-btn'); if (!b) return null; b.click(); const it = [...document.querySelectorAll('.ctx .ctx-i')].map(x => x.textContent.trim()); return { text: b.textContent.trim(), items: it }; });
+  check('H20', 'inside the Hub the results carry a "Send to" menu that lists Hit Finder', !!btn && /Send to/.test(btn.text) && btn.items.includes('Hit Finder'), btn);
   const nEcho = await ef.evaluate(() => _screenRecords().length);
-  await ef.evaluate(() => document.querySelector('.hf-send').click());
+  await ef.evaluate(() => [...document.querySelectorAll('.ctx .ctx-i')].find(x => x.textContent.trim() === 'Hit Finder').click());
   await hp.waitForFunction(() => { const f = document.getElementById('frame-hitfinder'); try { return !!(f && f.contentWindow && f.contentWindow.eval('typeof HF !== "undefined" && HF.screens.size > 0')); } catch (e) { return false; } }, null, { timeout: 30000 });
   const hf = hfOf(hp); await hf.waitForTimeout(400);
   const a = await hf.evaluate(() => ({ recs: HF.recs.length, srcs: [...HF.screens.values()].map(s => s.source), tab: HF.ui.tab, active: (document.querySelector('.tab.active') || {}).dataset && document.querySelector('.tab.active').dataset.tab, pane: [...document.querySelectorAll('.tabpane.active')].map(p => p.id), toast: (document.querySelector('.toast') || {}).textContent, hits: HF.counts && HF.counts.hit, uni: (HF.uni || []).length }));
@@ -967,8 +967,8 @@ if (run('H20')) await guard('H20', async () => {
   await r2.hp.close();
   // ⑤ outside the Hub there is nobody to send it to
   const sp = await ctx.newPage(); await sp.goto(BASE + '/apps/echo/echo.html'); await sp.waitForTimeout(1500);
-  const solo = await sp.evaluate(() => ({ ready: _hitFinderReady(), html: _screenBtns('', '') }));
-  check('H20', 'standalone Echo offers Screen CSV and no Send button', !solo.ready && /Screen CSV/.test(solo.html) && !/hf-send/.test(solo.html), solo);
+  const solo = await sp.evaluate(() => ({ ready: _hitFinderReady(), html: _resBar(), exp: _resExportItems().map(i => i.label) }));
+  check('H20', 'standalone Echo offers the Screen table under Export and no Send menu', !solo.ready && solo.exp.some(l => /Screen table/.test(l)) && !/res-send-btn/.test(solo.html), solo);
   await sp.close();
 });
 

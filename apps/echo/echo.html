@@ -160,12 +160,14 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .rv-m{flex:1;}
 .rv-fix{flex:none;border:1px solid var(--border2);background:var(--surface);color:var(--accent);border-radius:var(--r-1);padding:2px 9px;font:inherit;font-size:var(--fs-1);cursor:pointer;white-space:nowrap;}
 .rv-fix:hover{background:var(--accent-dim);}
-.hf-send{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;line-height:1.2;border-radius:5px;border:1px solid var(--accent-soft);background:var(--accent-dim);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease),transform var(--dur-1) var(--ease);}
-.hf-send:hover{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
-.hf-send:active{transform:scale(.97);}
-.hf-send:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-.hf-send svg{width:13px;height:13px;transition:transform var(--dur-2) var(--ease-out);}
-.hf-send:hover svg{transform:rotate(90deg);}
+.res-dl{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
+.rb-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:var(--r-2);border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:var(--fs-3);font-weight:500;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
+.rb-btn:hover{background:var(--surface3);color:var(--text);}
+.rb-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.rb-btn svg{width:14px;height:14px;flex:none;}
+.rb-btn.rb-send{border-color:var(--accent-soft);background:var(--accent-dim);color:var(--accent);font-weight:600;}
+.rb-btn.rb-send:hover{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.rb-caret{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:4.5px solid currentColor;margin-left:2px;opacity:.75;}
 .rv-tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-2);}
 .rv-t2{width:100%;border-collapse:collapse;font-size:var(--fs-2);}
 .rv-t2 th{padding:6px 9px;text-align:left;font-weight:600;color:var(--text3);font-size:var(--fs-1);white-space:nowrap;border-bottom:1px solid var(--border2);}
@@ -3883,7 +3885,12 @@ async function runAnalysisJS(assayId, ctrlRange, skipRows, hookThr, hookEnabled,
       !doNormalize ? 'none' : (normPlates[r.barcodeKey] ? normPlates[r.barcodeKey].mode : 'plate mean')
     ].map(_csvCell).join(',');
   });
-  downloadBlobs.push({ name: rawCsvName, bytes: _buildCsvBytes(rawHeader, rawRows), type: 'text/csv', kind: 'csv' });
+  // The same table, as cells, for the workbook's "Raw data" sheet (the CSV is no longer a button of its own).
+  const rawAoa = merged.map(r => [r.protein || '', r.sampleId || '', r.barcode || '', r.well || '',
+    +r.log10Conc.toFixed(4), r.measurement !== null && isFinite(r.measurement) ? +r.measurement.toFixed(4) : '', +(Math.pow(10, r.log10Conc) * 1e9).toPrecision(6),
+    r.measurementRaw !== null && isFinite(r.measurementRaw) ? +r.measurementRaw.toFixed(2) : '', r.ref && isFinite(r.ref) ? +r.ref.toFixed(2) : '',
+    !doNormalize ? 'none' : (normPlates[r.barcodeKey] ? normPlates[r.barcodeKey].mode : 'plate mean')]);
+  downloadBlobs.push({ name: rawCsvName, bytes: _buildCsvBytes(rawHeader, rawRows), type: 'text/csv', kind: 'csv', aoa: rawAoa, assay: assayId });
   log('Raw data CSV: ' + rawRows.length + ' rows', 'ok');
 
   // 7. Fit curves
@@ -4448,21 +4455,7 @@ function renderResults(data) {
     ...(_selCols.has('Norm') && data.some(r=>r.Norm_Method) ? [{k:'Norm_Method',l:'Normalisation',ns:true}] : []),
     ...(_selCols.has('Norm') && data.some(r=>r.Norm_Check) ? [{k:'Norm_Check',l:'vs plain mean',ns:true}] : []),
   ].filter(col => !(window._hiddenResultsCols?.has(col.k)));
-  const _rawBlob=downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
-  // Build download section
-  const _dlBtnStyle='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
-  const _dlBtnHover='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
-  let _dlSection = '<div class="res-dl" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">'
-    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="hxCompareFromResults()" title="Put this analysis beside another one, or beside an earlier version of it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M8 4v16M16 4v16M4 8l4-4 4 4M12 16l4 4 4-4"/></svg> Compare…</button>'
-    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="copyResultsTSV()" title="Copy as TSV for Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy TSV</button>'
-    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="sendResultsToLabbook()" title="'+(window._lbLink&&window._lbLink.setId?'Send this analysis back — it replaces the result set it came from':'Attach these potencies, with their curves, to the Labbook experiment')+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.4"/><circle cx="5.5" cy="17" r="2.4"/><circle cx="18.5" cy="17" r="2.4"/><path d="M10.7 8.1L6.8 14.9M13.3 8.1l3.9 6.8M8 17h8"/></svg> '+(window._lbLink&&window._lbLink.setId?'Update in Labbook':'Send to Labbook')+'</button>'
-    + '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateOutputXLSX()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg> Results XLSX</button>';
-  _dlSection += _screenBtns(_dlBtnStyle, _dlBtnHover);
-  if (_rawBlob) {
-    _dlSection += '<button style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg> Raw Data CSV</button>';
-  }
-  _dlSection += '<button id="cv-pdf-gen-btn" style="'+_dlBtnStyle+'" '+_dlBtnHover+' onclick="generateAndDownloadCurvePDFs()" title="Generate curve PDFs using current Curves Style settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg> Generate curve PDFs</button>';
-  _dlSection += '</div>';
+  const _dlSection = _resBar();
   let h = '<div class="results-meta"><div class="meta-row" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">'
     +'<div class="res-tiles" style="display:flex;gap:12px;flex-wrap:wrap;">'
     // data has one row per compound × target: 21 compounds on three targets is 63 fits, and
@@ -4566,18 +4559,7 @@ function renderMultiAssayResults(data) {
   const { blocks: _maBlocks, pivot } = _maPivot(data);
 
   const flagged = data.filter(r=>r.Flag==='Yes').length;
-  const _dlS='display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans);transition:background .15s,color .15s;white-space:nowrap;';
-  const _dlH='onmouseover="this.style.background=\'var(--surface3)\';this.style.color=\'var(--text)\'" onmouseout="this.style.background=\'var(--surface2)\';this.style.color=\'var(--text2)\'"';
-  // Build download buttons (centered row beneath meta cards)
-  const _rawBlobM = downloadBlobs.find(b=>b.kind==='csv'&&b.name.includes('Raw_Data'));
-  let _dlSectionM = '<div class="res-dl" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">'
-    + '<button style="'+_dlS+'" '+_dlH+' onclick="hxCompareFromResults()" title="Put this analysis beside another one, or beside an earlier version of it"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M8 4v16M16 4v16M4 8l4-4 4 4M12 16l4 4 4-4"/></svg> Compare…</button>'
-    + '<button style="'+_dlS+'" '+_dlH+' onclick="copyResultsTSV()" title="Copy TSV for Excel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg> Copy TSV</button>'
-    + '<button style="'+_dlS+'" '+_dlH+' onclick="generateOutputXLSX()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px;vertical-align:-2px;"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 20h16"/></svg> Results XLSX</button>';
-  _dlSectionM += _screenBtns(_dlS, _dlH);
-  if (_rawBlobM) _dlSectionM += '<button style="'+_dlS+'" '+_dlH+' onclick="downloadBlob(downloadBlobs.find(b=>b.name.includes(\'Raw_Data\')))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18M16 3v18"/></svg> Raw Data CSV</button>';
-  _dlSectionM += '<button id="cv-pdf-gen-btn" style="'+_dlS+'" '+_dlH+' onclick="generateAndDownloadCurvePDFs()" title="Generate curve PDFs using current Curves Style settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 16h6"/></svg> Generate curve PDFs</button>';
-  _dlSectionM += '</div>';
+  const _dlSectionM = _resBar();
 
   let h = '<div class="results-meta"><div class="meta-row" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">'
     +'<div style="display:flex;gap:12px;flex-wrap:wrap;">'
@@ -4790,12 +4772,50 @@ function openTargetInRibbon(ev) {
   if (typeof ctxOpen === 'function') ctxOpen([{ hd: 'Which protein?' }].concat(ts.map(function (t) { return { label: t.target + (t.best ? ' · most potent ' + t.best.Sample_ID : ''), act: function () { send(t); } }; })), b.left, b.bottom + 4);
   else send(ts[0]);
 }
-function _screenBtns(st, hov) {
-  const ico = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><circle cx="12" cy="12" r="8.6"/><path d="M12 1.8v5.2M12 17v5.2M1.8 12H7M17 12h5.2"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg>';
-  return '<button style="' + st + '" ' + hov + ' onclick="downloadScreenCsv()" title="One row per compound and assay with everything Hit Finder reads: potency qualifier, hook, coverage, replicates, normalisation, and the compounds that could not be fitted">Screen CSV</button>'
-    + (_ribbonReady() && mutantSets().length ? '<button style="' + st + '" ' + hov + ' onclick="openMutantsInRibbon(event)" title="Colour each mutated residue on the protein by how much the mutation moves the potency, in Ribbon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M4 18c3-6 5-10 8-10s5 4 8 10"/><circle cx="12" cy="8" r="2.2"/></svg> Mutants on the structure</button>' : '')
-    + (_ribbonReady() && ribbonTargets().length ? '<button style="' + st + '" ' + hov + ' onclick="openTargetInRibbon(event)" title="Open the protein in Ribbon: its best-resolved structure with a ligand, the pocket drawn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M4 7c2.5-3 5.5-3 8 0s5.5 3 8 0"/><path d="M4 12c2.5-3 5.5-3 8 0s5.5 3 8 0"/><path d="M4 17c2.5-3 5.5-3 8 0s5.5 3 8 0"/></svg> ' + (ribbonTargets().length === 1 ? esc(ribbonTargets()[0].target) + ' in Ribbon' : 'Targets in Ribbon') + '</button>' : '')
-    + (_hitFinderReady() ? '<button class="hf-send" onclick="openInHitFinder()" title="Open Hit Finder with this analysis already loaded: hits, hooks and rejections against the criteria you set there">' + ico + ' Send to Hit Finder</button>' : '');
+// The Results bar is three things, not nine: what you do here (Compare, Copy TSV), files that leave
+// (Export ▾) and apps it goes to (Send to ▾, inside the Hub only, listing only the apps that can take
+// it). The raw per-well table is a sheet of the workbook, not a button of its own.
+const _RB_ICO = {
+  cmp: '<path d="M8 4v16M16 4v16M4 8l4-4 4 4M12 16l4 4 4-4"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  exp: '<path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+  send: '<path d="M4 12h13"/><path d="M13 6l6 6-6 6"/>'
+};
+function _rbIco(k) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + _RB_ICO[k] + '</svg>'; }
+function _resSendItems() {
+  var it = [];
+  if (window.parent === window) return it;
+  it.push({ label: (window._lbLink && window._lbLink.setId) ? 'Update in Labbook' : 'Labbook', act: function () { sendResultsToLabbook(); } });
+  if (_hitFinderReady()) it.push({ label: 'Hit Finder', act: function () { openInHitFinder(); } });
+  if (_ribbonReady()) {
+    var ts = ribbonTargets();
+    if (ts.length) it.push({ label: ts.length === 1 ? ts[0].target + ' in Ribbon' : 'Targets in Ribbon', act: function () { openTargetInRibbon({ currentTarget: document.getElementById('res-send-btn') }); } });
+    if (mutantSets().length) it.push({ label: 'Mutants on the structure', act: function () { openMutantsInRibbon({ currentTarget: document.getElementById('res-send-btn') }); } });
+  }
+  return it;
+}
+function _resExportItems() {
+  return [
+    { label: 'Results workbook (XLSX)', act: function () { generateOutputXLSX(); } },
+    { label: 'Screen table (CSV)', act: function () { downloadScreenCsv(); } },
+    { label: 'Curve PDFs', act: function () { generateAndDownloadCurvePDFs(); } }
+  ];
+}
+function _resMenu(ev, items) {
+  var b = (ev && ev.currentTarget && ev.currentTarget.getBoundingClientRect) ? ev.currentTarget.getBoundingClientRect() : { left: 100, bottom: 100 };
+  if (typeof ctxOpen === 'function') ctxOpen(items, b.left, b.bottom + 4);
+}
+function resExportMenu(ev) { _resMenu(ev, _resExportItems()); }
+function resSendMenu(ev) { _resMenu(ev, _resSendItems()); }
+function _resBar() {
+  var caret = '<span class="rb-caret" aria-hidden="true"></span>';
+  var send = _resSendItems().length
+    ? '<button class="rb-btn rb-send" id="res-send-btn" aria-haspopup="menu" onclick="resSendMenu(event)" title="Open these results in another app of the Hub">' + _rbIco('send') + ' Send to' + caret + '</button>' : '';
+  return '<div class="res-dl">'
+    + '<button class="rb-btn" onclick="hxCompareFromResults()" title="Put this analysis beside another one, or beside an earlier version of it">' + _rbIco('cmp') + ' Compare…</button>'
+    + '<button class="rb-btn" onclick="copyResultsTSV()" title="Copy the table as TSV, for Excel">' + _rbIco('copy') + ' Copy TSV</button>'
+    + '<button class="rb-btn" id="cv-pdf-gen-btn" aria-haspopup="menu" onclick="resExportMenu(event)" title="Save the results: the workbook, the screen table or the curve PDFs">' + _rbIco('exp') + ' Export' + caret + '</button>'
+    + send + '</div>';
 }
 
 function _csvColMap(t){
@@ -5139,6 +5159,15 @@ function generateOutputXLSX() {
 
   // Last, so every sheet before it keeps its place. Self-describing: the Schema column names the format.
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_screenAoa())), 'Screen (Hit Finder)');
+  // Every well that went into a curve, with what its value was made from: Measurement = Raw_Signal /
+  // Reference_Signal × 100. One sheet for the whole run; a multi-assay run says which assay each row is.
+  var _rawB = downloadBlobs.filter(function (b) { return b.kind === 'csv' && /_Raw_Data\.csv$/.test(b.name) && b.aoa; });
+  if (_rawB.length) {
+    var _rawMulti = _rawB.length > 1;
+    var _rawAoa = [(_rawMulti ? ['Assay'] : []).concat(['Protein','Sample_ID','Plate_Barcode','Well','Log10_Conc','Measurement','Concentration_nM','Raw_Signal','Reference_Signal','Normalisation'])];
+    _rawB.forEach(function (b) { b.aoa.forEach(function (row) { _rawAoa.push(_rawMulti ? [b.assay || ''].concat(row) : row); }); });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_rawAoa)), 'Raw data');
+  }
 
   var wbout = XLSX.write(wb, { bookType:'xlsx', type:'array' });
   var blob = new Blob([wbout], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -14879,7 +14908,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
       'On **Assay**, name the run, say which wells are the vehicle controls (`B12-O12`) and how plates are grouped.',
       'Look at **Review** — it says how many curves will be fitted and what is wrong — then press **Run Analysis**.',
       'Read **Results**; open **Curves** to see and edit the fits; use **Plots** and **Plate** to look for patterns and plate problems.',
-      'Take the numbers out with the buttons on Results — inside dHUB, **Send to Labbook** and **Send to Hit Finder** carry them on.'],
+      'Take the numbers out with **Export** on Results — inside dHUB, **Send to** carries them to Labbook, Hit Finder or Ribbon.'],
     tabs: [
       { id: 'setup-files', label: 'Setup › Files', tag: 'Setup', sel: '.setup-stab[data-tab="files"]', go: setupGo('files'), head: false,
         lead: 'Where the data comes in. Setup opens by itself while there is nothing to look at, and comes back any time with the **Setup** button.',
@@ -14965,7 +14994,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
           ['Flag · Reason', 'Why a curve deserves a look: low R², noisy replicates, a hook, a midpoint beyond the doses tested (`EC50>range`, `EC50<range`), no effect.'],
           ['95 % CI', 'The confidence interval of the DC50.'],
           ['Normalisation · vs plain mean', 'How the 100 % reference of the curve’s plates was set, and whether the potency changes if the plain plate mean is used instead — **Same** or **Differs**.'],
-          ['Buttons', '**Copy TSV**, **Results XLSX**, **Screen CSV** (the lossless table Hit Finder reads), **Raw Data CSV**, **Generate curve PDFs** (one PDF per group), **Send to Labbook**, and inside dHUB **Send to Hit Finder**, **Compare…** (two analyses from History).']],
+          ['Buttons', '**Compare…** (two analyses from History), **Copy TSV**, **Export ▾** — the results workbook (with every well in its *Raw data* sheet), the Screen table Hit Finder reads, the curve PDFs — and inside dHUB **Send to ▾** — Labbook, Hit Finder, Ribbon.']],
         watch: [{ k: 'tip', t: 'A curve flagged *No effect* barely moves — its potency is n.d. and it is left off potency plots. A midpoint beyond the doses tested is a bound, not a value.' }],
         steps: [
           { sel: '#results-panel .results-tbl-scroll', t: 'One row per curve', place: 'top', miss: MISS,
@@ -14975,7 +15004,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
           { deep: true, sel: '#results-panel details', t: 'How it was normalised', place: 'bottom', miss: MISS,
             b: 'Every curve is also fitted with the plain plate mean as a check. **Same** means the method does not matter for it; **Differs** is worth a look before you quote the number.' },
           { deep: true, sel: withText('#results-panel', 'button', /Copy TSV/), t: 'Take the numbers out', place: 'bottom', miss: MISS,
-            b: 'Copy the table, export to Excel or CSV, make a PDF per group, or send the potencies to **Labbook** (they land on the experiment’s Results tab); inside dHUB the whole screen can go to **Hit Finder**.' }] },
+            b: 'Copy the table, or open **Export** for the workbook, the Screen table and a PDF per group. Inside dHUB, **Send to** puts the potencies on a **Labbook** experiment, the whole screen into **Hit Finder**, or a target into **Ribbon**.' }] },
 
       { id: 'curves', label: 'Curves', sel: tabSel('curves'), go: tabGo('curves'), needs: 'data',
         lead: 'Each compound’s fit, with its replicates. This is where you judge a curve and fix it: leave out a point, put a hook back, resolve a flag — the fit is redone the way the analysis did it.',

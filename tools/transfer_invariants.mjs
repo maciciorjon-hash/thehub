@@ -179,7 +179,7 @@ try {
   check('T6 Echo results arrive as a second set with curves and the analysis', S.length === 2 && !!echoSet && echoSet.hasSession && echoSet.rows.every(r => r.curve && r.curve.x.length === 20 && r.curve.p), JSON.stringify(S.map(s => s.origin)));
   await lb.evaluate(([id, sid]) => openResultInApp(id, sid, 'EDA-002'), [expId, echoSet.id]); await sleep(1500);
   check('T6 Echo is what is shown after Edit', (await cur()) === 'echo');
-  const eo = await ec.evaluate(() => ({ n: (scatterData || []).length, sel: document.getElementById('cv-compound') && document.getElementById('cv-compound').value, btn: (document.querySelector('.res-dl button[onclick*=sendResultsToLabbook]') || {}).textContent, link: window._lbLink && window._lbLink.setId }));
+  const eo = await ec.evaluate(() => ({ n: (scatterData || []).length, sel: document.getElementById('cv-compound') && document.getElementById('cv-compound').value, btn: (_resSendItems()[0] || {}).label, link: window._lbLink && window._lbLink.setId }));
   check('T6 the analysis is rebuilt on the compound clicked', eo.n === 3 && /EDA-002/.test(eo.sel || ''), JSON.stringify(eo));
   check('T6 the Send button says it updates', /Update/.test(eo.btn || '') && eo.link === echoSet.id, eo.btn);
   check('T6 Echo acks the message', (await page.evaluate(() => Object.values(window.__acks))).includes('echo'));

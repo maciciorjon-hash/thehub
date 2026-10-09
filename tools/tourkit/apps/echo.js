@@ -30,7 +30,7 @@
       'On **Assay**, name the run, say which wells are the vehicle controls (`B12-O12`) and how plates are grouped.',
       'Look at **Review** — it says how many curves will be fitted and what is wrong — then press **Run Analysis**.',
       'Read **Results**; open **Curves** to see and edit the fits; use **Plots** and **Plate** to look for patterns and plate problems.',
-      'Take the numbers out with the buttons on Results — inside dHUB, **Send to Labbook** and **Send to Hit Finder** carry them on.'],
+      'Take the numbers out with **Export** on Results — inside dHUB, **Send to** carries them to Labbook, Hit Finder or Ribbon.'],
     tabs: [
       { id: 'setup-files', label: 'Setup › Files', tag: 'Setup', sel: '.setup-stab[data-tab="files"]', go: setupGo('files'), head: false,
         lead: 'Where the data comes in. Setup opens by itself while there is nothing to look at, and comes back any time with the **Setup** button.',
@@ -116,7 +116,7 @@
           ['Flag · Reason', 'Why a curve deserves a look: low R², noisy replicates, a hook, a midpoint beyond the doses tested (`EC50>range`, `EC50<range`), no effect.'],
           ['95 % CI', 'The confidence interval of the DC50.'],
           ['Normalisation · vs plain mean', 'How the 100 % reference of the curve’s plates was set, and whether the potency changes if the plain plate mean is used instead — **Same** or **Differs**.'],
-          ['Buttons', '**Copy TSV**, **Results XLSX**, **Screen CSV** (the lossless table Hit Finder reads), **Raw Data CSV**, **Generate curve PDFs** (one PDF per group), **Send to Labbook**, and inside dHUB **Send to Hit Finder**, **Compare…** (two analyses from History).']],
+          ['Buttons', '**Compare…** (two analyses from History), **Copy TSV**, **Export ▾** — the results workbook (with every well in its *Raw data* sheet), the Screen table Hit Finder reads, the curve PDFs — and inside dHUB **Send to ▾** — Labbook, Hit Finder, Ribbon.']],
         watch: [{ k: 'tip', t: 'A curve flagged *No effect* barely moves — its potency is n.d. and it is left off potency plots. A midpoint beyond the doses tested is a bound, not a value.' }],
         steps: [
           { sel: '#results-panel .results-tbl-scroll', t: 'One row per curve', place: 'top', miss: MISS,
@@ -126,7 +126,7 @@
           { deep: true, sel: '#results-panel details', t: 'How it was normalised', place: 'bottom', miss: MISS,
             b: 'Every curve is also fitted with the plain plate mean as a check. **Same** means the method does not matter for it; **Differs** is worth a look before you quote the number.' },
           { deep: true, sel: withText('#results-panel', 'button', /Copy TSV/), t: 'Take the numbers out', place: 'bottom', miss: MISS,
-            b: 'Copy the table, export to Excel or CSV, make a PDF per group, or send the potencies to **Labbook** (they land on the experiment’s Results tab); inside dHUB the whole screen can go to **Hit Finder**.' }] },
+            b: 'Copy the table, or open **Export** for the workbook, the Screen table and a PDF per group. Inside dHUB, **Send to** puts the potencies on a **Labbook** experiment, the whole screen into **Hit Finder**, or a target into **Ribbon**.' }] },
 
       { id: 'curves', label: 'Curves', sel: tabSel('curves'), go: tabGo('curves'), needs: 'data',
         lead: 'Each compound’s fit, with its replicates. This is where you judge a curve and fix it: leave out a point, put a hook back, resolve a flag — the fit is redone the way the analysis did it.',

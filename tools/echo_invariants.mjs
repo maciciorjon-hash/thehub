@@ -73,6 +73,9 @@
 //   E40 history in the cloud Every analysis is written to the cloud store under its name (row, results, whole), versions of one name are one
 //                           analysis there, an empty browser gets it all back (results on demand), deletes travel, no name = no run.
 //   E52 History repairs itself   A database called echo_history with no (or only some) of Echo's stores — what anything that opened it first leaves behind — is repaired in place, keeps what it holds, and an analysis survives a reload (before: "object stores was not found" on every save).
+//   E53 the Results bar is      Compare · Copy TSV · Export ▾ · Send to ▾ — on a single-assay and a multi-assay run alike; every menu item
+//       three groups            calls a function that exists; standalone there is no Send menu; and the raw per-well table (no longer a button)
+//                               is the workbook's "Raw data" sheet, row for row and cell for cell the old CSV.
 //   E37 history by name    A History entry is its NAME: runs with one name are versions of one entry (any spelling, any input files), old copies merge, unnamed runs stay by dataset, rename/merge, and every way to compare is findable.
 //   E32 compare             Two analyses matched by group and compound: fold change, unmatched counted, self-compare is 1, biggest change first.
 //   E28 Properties names    The Properties tab lists a compound's potency for every group it was fitted in, not the last one.
@@ -1983,6 +1986,39 @@ if (run('E52')) await guard('E52', async () => {
     check('E52', scenario + ': after a reload the analysis, its results and its History row are still there', !b.broken && b.run && b.rows > 0 && b.tab, b);
     await c.close();
   }
+});
+
+if (run('E53')) await guard('E53', async () => {
+  await E(() => document.querySelector('[data-tab="results"]').click()); await pg.waitForTimeout(300);
+  const r = await E(() => {
+    const bars = [...document.querySelectorAll('#results-panel .res-dl')];
+    const lbls = bars.map(b => [...b.querySelectorAll('button')].map(x => x.textContent.trim()));
+    const exp = _resExportItems().map(i => ({ l: i.label, f: String(i.act) }));
+    const fnsOk = ['generateOutputXLSX', 'downloadScreenCsv', 'generateAndDownloadCurvePDFs', 'hxCompareFromResults', 'copyResultsTSV'].every(n => typeof window[n] === 'function');
+    const raw = downloadBlobs.filter(b => /_Raw_Data\.csv$/.test(b.name));
+    let wb = null; const realWrite = XLSX.write; XLSX.write = (w, o) => { wb = w; return realWrite.call(XLSX, w, o); };
+    try { generateOutputXLSX(); } finally { XLSX.write = realWrite; }
+    const sheet = wb && wb.Sheets['Raw data'] ? XLSX.utils.sheet_to_json(wb.Sheets['Raw data'], { header: 1, raw: true }) : null;
+    const csv = raw.length ? new TextDecoder().decode(raw[0].bytes).replace(/^\uFEFF/, '').split(/\r?\n/).filter(Boolean).map(l => l.split(',')) : null;
+    let same = !!(sheet && csv && sheet.length === csv.length);
+    if (same) for (let i = 1; i < csv.length && same; i++) for (let k = 0; k < csv[i].length; k++) {
+      const a = csv[i][k], b = sheet[i][k] == null ? '' : sheet[i][k];
+      if (a === '' && b === '') continue;
+      if (isFinite(+a) && a !== '' ? Math.abs(+a - +b) > 1e-9 * Math.max(1, Math.abs(+a)) : String(a) !== String(b)) { same = { i, k, a, b }; break; }
+    }
+    return { lbls, exp, fnsOk, rawN: raw.length, sheetN: sheet && sheet.length, csvN: csv && csv.length, same, sheets: wb && wb.SheetNames };
+  });
+  check('E53', 'one Results bar, reading Compare · Copy TSV · Export', r.lbls.length >= 1 && r.lbls.every(l => l.join('|') === 'Compare…|Copy TSV|Export'), r.lbls);
+  check('E53', 'no Raw Data CSV or curve-PDF button in the bar', !r.lbls.flat().some(t => /Raw Data|curve PDFs|Results XLSX|Screen CSV/.test(t)), r.lbls);
+  check('E53', 'Export lists the workbook, the Screen table and the curve PDFs', r.exp.map(x => x.l).join('|') === 'Results workbook (XLSX)|Screen table (CSV)|Curve PDFs', r.exp);
+  check('E53', 'every action the bar reaches exists', r.fnsOk);
+  check('E53', 'the workbook carries a "Raw data" sheet', (r.sheets || []).includes('Raw data'), r.sheets);
+  check('E53', 'the Raw data sheet is the old CSV, row for row and cell for cell', r.same === true, { same: r.same, sheetN: r.sheetN, csvN: r.csvN });
+  // inside a frame whose parent is the Hub, Send to lists only the apps that can take it
+  const s2 = await E(() => { const save = window.parent; let items; try { Object.defineProperty(window, 'parent', { value: { APP_INFO: { hitfinder: 1, ribbon: 1 }, openApp() {} }, configurable: true }); items = _resSendItems().map(i => i.label); const bar = _resBar(); return { items, bar: /res-send-btn/.test(bar) }; } finally { Object.defineProperty(window, 'parent', { value: save, configurable: true }); } });
+  check('E53', 'inside the Hub, Send to lists Labbook and Hit Finder', s2.bar && s2.items[0] === 'Labbook' && s2.items.includes('Hit Finder'), s2);
+  const s3 = await E(() => ({ items: _resSendItems().length, bar: /res-send-btn/.test(_resBar()) }));
+  check('E53', 'standalone there is no Send menu', s3.items === 0 && !s3.bar, s3);
 });
 
 await browser.close();
