@@ -128,7 +128,7 @@ function animRun(){
   var cv=$('viewport').querySelector('canvas'), v0=viewer.getView(), wasSpin=_spinning; if(wasSpin) toggleSpin();
   _anim={on:true,abort:false}; $('animGo').hidden=true; $('animStop').hidden=false;
   var selWas=rbExportBegin();
-  function done(msg){ _anim.on=false; $('animGo').hidden=false; $('animStop').hidden=true; rbExportEnd(selWas); try{ viewer.setView(v0); viewer.render(); }catch(e){} if(wasSpin) toggleSpin(); _animStatus(msg); }
+  function done(msg){ _anim.on=false; if(typeof applyBackground==='function') applyBackground(); $('animGo').hidden=false; $('animStop').hidden=true; rbExportEnd(selWas); try{ viewer.setView(v0); viewer.render(); }catch(e){} if(wasSpin) toggleSpin(); _animStatus(msg); }
   var name=(currentPdbId||'structure').replace(/[\\/:*?"<>|\s]+/g,'_')+'_'+kind;
   if(fmt==='gif'){
     var W=cv.width, H=cv.height, sc=Math.min(1,480/Math.max(W,H)), w=Math.round(W*sc), h=Math.round(H*sc), gifF=[], i=0, off=document.createElement('canvas'); off.width=w; off.height=h; var ox=off.getContext('2d',{willReadFrequently:true});
@@ -144,9 +144,10 @@ function animRun(){
   if(!cv.captureStream||!window.MediaRecorder){ done('This browser cannot record video. Choose GIF.'); return; }
   var mime=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm'].filter(function(m){ try{ return MediaRecorder.isTypeSupported(m); }catch(e){ return false; } })[0];
   if(!mime){ done('This browser cannot record video. Choose GIF.'); return; }
+  var onWhite=state.bg==='transparent'; if(onWhite){ _setViewerBg('white'); viewer.render(); }   // a video has no transparency: drawn as it is, the empty background records as black
   var stream=cv.captureStream(fps), rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8e6}), chunks=[], k=0, t0=performance.now();
   rec.ondataavailable=function(e){ if(e.data&&e.data.size) chunks.push(e.data); };
-  rec.onstop=function(){ if(_anim.abort&&!chunks.length){ done('Stopped.'); return; } var ext=/mp4/.test(mime)?'mp4':'webm'; var blob=new Blob(chunks,{type:mime.split(';')[0]}); _saveBlob(blob,name+'.'+ext); done('Saved a '+ext.toUpperCase()+' video: '+secs+' s.'); };
+  rec.onstop=function(){ if(_anim.abort&&!chunks.length){ done('Stopped.'); return; } var ext=/mp4/.test(mime)?'mp4':'webm'; var blob=new Blob(chunks,{type:mime.split(';')[0]}); _saveBlob(blob,name+'.'+ext); done('Saved '+(ext==='mp4'?'an':'a')+' '+ext.toUpperCase()+' video: '+secs+' s'+(onWhite?', on white (a video cannot be transparent)':'')+'.'); };
   rec.start();
   (function tick(){
     if(_anim.abort){ rec.stop(); return; }

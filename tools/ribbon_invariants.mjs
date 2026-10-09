@@ -2015,10 +2015,14 @@ async function rb31() {
     const b = gifEncode([px], w, h, 5), img = new Image(); img.src = URL.createObjectURL(new Blob([b], { type: 'image/gif' })); await img.decode(); const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, w, h).data; let bad = 0;
     for (let i = 0; i < w * h; i++) { const r = Math.round(px[i * 4] / 51) * 51, g = Math.round(Math.round(px[i * 4 + 1] / 42.5) * 255 / 6), bb = Math.round(px[i * 4 + 2] / 51) * 51; if (Math.abs(d[i * 4] - r) > 1 || Math.abs(d[i * 4 + 1] - g) > 1 || Math.abs(d[i * 4 + 2] - bb) > 1) bad++; } return bad; });
   check('RB31', 'the GIF encoder survives a full dictionary: 120,000 random pixels decode to exactly what was encoded', dec === 0, dec);
+  await E(() => { state.bg = 'transparent'; applyBackground(); const s0 = MediaRecorder.prototype.start; MediaRecorder.prototype.start = function (...a) { window.__recBg = viewer.pngURI(); return s0.apply(this, a); }; });
   await E(() => { document.getElementById('animFmt').value = 'video'; document.getElementById('animKind').value = 'rock'; });
   const vid = await Promise.all([pg.waitForEvent('download', { timeout: 60000 }), pg.click('#animGo')]).then(([d]) => d).catch(() => null);
   check('RB31', 'Record as video downloads a video file', !!vid && /\.(webm|mp4)$/.test(vid.suggestedFilename()), vid && vid.suggestedFilename());
   check('RB31', 'and the camera is back where it was', await E(() => !_anim.on));
+  const corner = async uri => E(async u => { const img = new Image(); img.src = u; await img.decode(); const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0); return [...x.getImageData(2, 2, 1, 1).data]; }, uri);
+  const recC = await corner(await E(() => window.__recBg)), afterC = await corner(await E(() => viewer.pngURI()));
+  check('RB31', 'a transparent background is recorded on white (a video has no transparency, and it came out black), then put back', recC[3] === 255 && recC[0] > 240 && afterC[3] === 0 && /on white/.test(await E(() => document.getElementById('animStatus').textContent)), { recC, afterC });
   // figure sizes
   const fs = await E(() => { state.figSize = '1col'; _exOpts.res = '300'; const a = renderExport().width; state.figSize = '2col'; _exOpts.res = '600'; const b = renderExport().width; state.figSize = 'free'; return { a, b }; });
   check('RB31', 'a one-column figure at 300 dpi is 1004 px wide; two columns at 600 dpi, 4134', fs.a === 1004 && fs.b === 4134, fs);
