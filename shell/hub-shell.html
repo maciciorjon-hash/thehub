@@ -1359,6 +1359,35 @@ function _warmFrom(node) {
   if (!id) return;
   clearTimeout(_warmT); _warmT = setTimeout(function(){ _warmApp(id); }, 90);
 }
+// Preload while the intro plays: the apps this person opens most are loaded one at a time, each on an idle slot and
+// only after the previous one has finished loading, so the first click on them is instant. The intro animates on the
+// compositor (transform and opacity only), so this work cannot make it stutter. Admin: Archive, Echo Dose Response,
+// Hit Finder, Lumina, Tempo; a visitor: the first apps they have unlocked. Two on a phone; none on Save-Data.
+var _preloadDone = {};
+function _preloadApps(){
+  var role = isAdmin ? 'admin' : 'visitor'; if (_preloadDone[role]) return; _preloadDone[role] = 1;
+  try { if (navigator.connection && navigator.connection.saveData) return; } catch(e){}
+  if (navigator.webdriver && !/[?&]preload=1/.test(location.search) && !window.__forcePreload) return;   // the test harnesses measure a quiet page
+  var list = isAdmin ? ['protocols','echo','hitfinder','lumina','tempo'] : PUBLIC_APPS.filter(function(id){ return _isAppAccessible(id); }).slice(0, 4);
+  list = list.filter(function(id){ return !loaded[id] && document.getElementById('frame-' + id) && (APP_B64[id] || APP_B64_NEW[id]) && _isAppAccessible(id); });
+  if (_hubSmall()) list = list.slice(0, 2);
+  window._preloadList = list.slice();
+  var i = 0;
+  (function next(){
+    if (i >= list.length) return;
+    var id = list[i++];
+    var go = function(){
+      if (loaded[id]) return next();
+      var f = document.getElementById('frame-' + id), fired = false;
+      var done = function(){ if (fired) return; fired = true; setTimeout(next, 250); };
+      if (f) f.addEventListener('load', done, { once: true });
+      setTimeout(done, 4000);
+      _warmed[id] = 1;
+      try { _loadApp(id); } catch(e) { done(); }
+    };
+    if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 2000 }); else setTimeout(go, 200);
+  })();
+}
 document.addEventListener('pointerover', function(e){ _warmFrom(e.target); }, {passive:true});
 document.addEventListener('focusin', function(e){ _warmFrom(e.target); });
 
@@ -2032,6 +2061,7 @@ function _showHub() {
   var h = document.getElementById('hub-home');
   if (h) h.style.opacity = '1';
   _introReady();
+  setTimeout(_preloadApps, 200);
 }
 
 // The Firebase SDK comes from four gstatic <script> tags. If any of them is blocked —
@@ -3173,6 +3203,7 @@ function wgNoteAdd(){ var i=document.getElementById('wg-note'); if(!i) return; v
   _withLb(function(w){ if(w.lbQuickNote(v)){ i.value=''; hubToast('Added to today’s Journal'); } }); }
 var _dashSubscribed = false;
 function _applyDashAdmin(){
+  if (isAdmin) setTimeout(_preloadApps, 200);
   var incubatorCard=document.querySelector('#app-grid .card[data-app-id="incubator"]');
   if(isAdmin){
     if(incubatorCard) incubatorCard.style.display='';

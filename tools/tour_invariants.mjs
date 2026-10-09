@@ -13,6 +13,8 @@
 //   G5  first time     the corner offer appears once on a fresh app, never over an app that has work in it, and never twice
 //   G6  honest         no step is a dead end: a step that cannot find its target has a reason to give (miss) or it is a
 //                      centred note; no console errors
+//   G7  it holds        when the page under a step scrolls, the spotlight moves with its target within two frames (it
+//                      used to be re-placed every 420 ms, and then glide after the target across the screen)
 //
 //   node tools/tour_invariants.mjs [--only=hitfinder,echo] [--shots=DIR] [--base=http://localhost:8791] [--file=COPY.html]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -143,6 +145,22 @@ for (const id of APP_IDS) {
         if (s.on && !(s.hole.w > 8)) bad('G2', where, 'the spotlight is empty');
         if (s.on && vp.name === 'desktop') overlap(s.card, { l: s.hole.l + 8, t: s.hole.t + 8, r: s.hole.r - 8, b: s.hole.b - 8 }) && s.hole.w < s.vw * 0.9 ? bad('G2', where, 'the card covers what it points at') : ok();
         if (shots) await page.screenshot({ path: path.join(shots, `${id}-tour-${vp.name}-${theme}-${String(n).padStart(2, '0')}.png`) });
+        if (s.on && vp.name === 'desktop' && theme === 'light' && (page.__g7 = (page.__g7 || 0) + 1) <= 4) {
+          const g7 = await page.evaluate(async () => {
+            const hole = document.querySelector('#tk-root .tk-hole'), h0 = hole.getBoundingClientRect();
+            const raw = document.elementsFromPoint(h0.left + h0.width / 2, h0.top + h0.height / 2).find(e => !e.closest('#tk-root'));
+            let sc = raw; while (sc && sc !== document.documentElement && !(sc.scrollHeight > sc.clientHeight + 100 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+            if (!sc || sc === document.documentElement) sc = document.scrollingElement;
+            // scroll the way that keeps the spotlight whole on screen (a spotlight is clamped at the window's edge)
+            const before = sc.scrollTop, dir = h0.top > 90 ? 1 : (h0.bottom < innerHeight - 90 ? -1 : 0); if (!dir) return { skip: true };
+            sc.scrollTop = before + 60 * dir; const moved = sc.scrollTop - before; if (!moved) return { skip: true };
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const h1 = hole.getBoundingClientRect(); sc.scrollTop = before;
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            return { moved, dy: h0.top - h1.top };
+          });
+          if (!g7.skip) Math.abs(g7.dy - g7.moved) <= 3 ? ok() : bad('G7', where, `the page scrolled ${g7.moved}px and the spotlight moved ${Math.round(g7.dy)}px two frames later`);
+        }
         // Back and forth once: the second step goes back to the first and returns
         if (n === 2) { await page.click('#tk-root [data-tk="back"]'); const b = await settle(page); b && /Welcome/.test(b.title) ? ok() : bad('G2', tag, 'Back from step 2 did not return to the welcome'); await page.click('#tk-root [data-tk="next"]'); await settle(page); }
         const last = m && m[1] === m[2];

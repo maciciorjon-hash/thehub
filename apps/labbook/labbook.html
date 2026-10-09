@@ -22104,11 +22104,15 @@ var TOUR_CSS='#lb-tour{position:fixed;inset:0;z-index:2147483000;font-family:var
 // point at the rail — else our own.
 function _tourDoc(){ try{ var h=lbHost(); if(h&&h.document&&window.frameElement&&h.document.body) return h.document; }catch(e){} return document; }
 function _tourOff(){ var d=_tourDoc(); if(d===document) return {x:0,y:0}; var r=window.frameElement.getBoundingClientRect(); return {x:r.left,y:r.top}; }
-function _tourTarget(st){
+function _tourNode(st){
   var d=_tourDoc(), n=null, off={x:0,y:0};
   if(st.host&&d!==document) n=d.querySelector(st.host);
-  if(!n&&st.sel){ n=(typeof st.sel==='function')?st.sel():document.querySelector(st.sel); off=_tourOff(); }
-  if(!n) return null;
+  if(!n&&st.sel){ try{ n=(typeof st.sel==='function')?st.sel():document.querySelector(st.sel); }catch(e){ n=null; } off=_tourOff(); }
+  return n?{n:n,off:off}:null;
+}
+function _tourTarget(st){
+  var d=_tourDoc(), q=_tourNode(st); if(!q) return null;
+  var n=q.n, off=q.off;
   var r=n.getBoundingClientRect(); if(r.width<4||r.height<4) return null;
   var vw=d.defaultView.innerWidth, vh=d.defaultView.innerHeight;
   // A target taller than the window (a whole page) is framed by the part you can see.
@@ -22138,7 +22142,7 @@ function tourSteps(){
     S.push({t:'An experiment is one page', go:function(){ openExp(newest.id); },
       sel:function(){ return el('sec-steps')||document.querySelector('#pane-ed .bench-row')||el('pane-ed'); },
       b:'The setup, then the steps by day: tick them, start the wait timer, attach a photo, write one line on what happened. Observations, Results and Files follow.'});
-    S.push({t:'The Report', go:function(){ openExp(newest.id); setTimeout(function(){ var n=el('sec-pub'); if(n) n.scrollIntoView({block:'center'}); },40); },
+    S.push({t:'The Report', go:function(){ openExp(newest.id); },
       sel:function(){ return el('sec-pub')||el('pane-ed'); },
       b:'At the foot of every experiment. It writes the <b>Methods</b> live from the record — change a step and it follows — and holds every export: record PDF, Methods sheet, bench sheet, Word, CSV, JSON and the plate map as a picture.'});
   }
@@ -22175,31 +22179,53 @@ function startTour(){
 function tourGo(dir){ if(!TOUR) return; var n=TOUR.i+dir;
   if(n>=TOUR.steps.length){ endTour(); return; } if(n<0) return;
   TOUR.i=n; _tourShow(); }
+// A step is shown when its target is there and has stopped moving — found, brought into view, and the same box on
+// three frames running — not after a fixed 380/160/40 ms, which was too short after a crossfade and too long
+// for nothing. The spotlight then follows its target every frame (instantly), so a scroll never leaves it behind.
 function _tourShow(){
   var T=TOUR; if(!T) return;
-  var st=T.steps[T.i], card=T.root.querySelector('.lbt-card');
-  card.classList.add('fade');
+  var st=T.steps[T.i], card=T.root.querySelector('.lbt-card'), tok=T.tok=(T.tok||0)+1;
+  card.classList.add('fade'); T.busy=true;
   _closeMenus&&_closeMenus();
   try{ if(st.go) st.go(); }catch(e){}
-  var last=T.i===T.steps.length-1;
-  // Wait for the screen the step moved to: the crossfade and the enter animation take ~300 ms,
-  // and a rect measured before them points at where the thing is going to be, not where it is.
-  clearTimeout(T.t); T.t=setTimeout(function(){
-    if(TOUR!==T) return;
+  var last=T.i===T.steps.length-1, t0=Date.now(), aimed=false, lastK='', same=0;
+  function paint(){
+    if(TOUR!==T||T.tok!==tok) return;
     card.innerHTML='<div class="lbt-k">'+(T.i+1)+' of '+T.steps.length+'</div>'
       +'<div class="lbt-t">'+esc(st.t)+'</div><div class="lbt-b">'+st.b+'</div>'
       +'<div class="lbt-f"><span class="lbt-dots">'+T.steps.map(function(_,j){ return '<i'+(j===T.i?' class="on"':'')+'></i>'; }).join('')+'</span>'
       +(last?'':'<button class="lbt-skip" data-tour="end">Skip</button>')
       +(T.i?'<button data-tour="back">Back</button>':'')
       +'<button class="go" data-tour="next">'+(last?'Done':(T.i?'Next':'Start'))+'</button></div>';
-    _tourPlace();
+    T.busy=false; T.lastK=null; _tourPlace();
     card.classList.remove('fade');
     var go=card.querySelector('.go'); if(go) try{ go.focus({preventScroll:true}); }catch(e){}
-  }, st.go?380:(T.i?160:40));
+  }
+  (function wait(){
+    if(TOUR!==T||T.tok!==tok) return;
+    var q=(st.sel||st.host)?_tourNode(st):null;
+    if(!(st.sel||st.host)) return paint();
+    if(!q){ if(Date.now()-t0>1500) return paint(); return requestAnimationFrame(wait); }
+    if(!aimed){ aimed=true;
+      var r0=q.n.getBoundingClientRect(), vh=q.n.ownerDocument.defaultView.innerHeight;
+      if(r0.top<0||r0.bottom>vh){ try{ q.n.scrollIntoView({block:r0.height>vh*0.8?'start':'center',behavior:(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)?'auto':'smooth'}); }catch(e){} } }
+    var r=q.n.getBoundingClientRect(), k=[r.left,r.top,r.width,r.height].map(Math.round).join();
+    if(k===lastK) same++; else { same=0; lastK=k; }
+    if(same>=3||Date.now()-t0>1600) return paint();
+    requestAnimationFrame(wait);
+  })();
+  if(!T.raf) (function track(){
+    if(TOUR!==T) return; T.raf=requestAnimationFrame(track);
+    if(T.busy) return; var s2=T.steps[T.i]; if(!(s2.sel||s2.host)) return;
+    var r=_tourTarget(s2), k=r?[r.l,r.t,r.w,r.h].map(Math.round).join():'none';
+    if(k!==T.lastK){ var first=T.lastK==null; T.lastK=k; if(!first) _tourPlace(true); }
+  })();
 }
-function _tourPlace(){
+function _tourPlace(instant){
   var T=TOUR; if(!T) return;
   var st=T.steps[T.i], hole=T.root.querySelector('.lbt-hole'), card=T.root.querySelector('.lbt-card');
+  var jump=!T.placed||instant;
+  if(jump){ card.style.transition='none'; hole.style.transition='none'; }
   var W=T.doc.defaultView, vw=W.innerWidth, vh=W.innerHeight, pad=6;
   var r=(st.sel||st.host)?_tourTarget(st):null;
   if(r){ hole.classList.add('on');
@@ -22217,13 +22243,12 @@ function _tourPlace(){
   else if(r.t-pad>=ch+g*2){ x=r.l; y=r.t-pad-g-ch; }
   else { x=r.l+r.w-cw-g; y=r.t+r.h-ch-g; }          // a target the size of the window: the card sits inside it, bottom right
   x=Math.max(12,Math.min(vw-cw-12,x)); y=Math.max(12,Math.min(vh-ch-12,y));
-  // The first placement is a placement, not a journey from the corner.
-  if(!T.placed){ card.style.transition='none'; hole.style.transition='none'; }
+  // The first placement is a placement, not a journey from the corner; following a scroll is instant too.
   card.style.left=x+'px'; card.style.top=y+'px';
-  if(!T.placed){ void card.offsetWidth; card.style.transition=''; hole.style.transition=''; T.placed=true; }
+  if(jump){ void card.offsetWidth; card.style.transition=''; hole.style.transition=''; T.placed=true; }
 }
 function endTour(silent){
-  var T=TOUR; if(!T) return; TOUR=null; clearTimeout(T.t);
+  var T=TOUR; if(!T) return; TOUR=null; clearTimeout(T.t); if(T.raf) cancelAnimationFrame(T.raf);
   try{ localStorage.setItem('lb_tour_done','1'); }catch(e){}
   document.removeEventListener('keydown',T.onKey,true);
   if(T.doc!==document) T.doc.removeEventListener('keydown',T.onKey,true);

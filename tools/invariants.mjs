@@ -131,6 +131,8 @@
 //   B23 the noon backup      The folder backup is due once per noon that has passed (closed at noon: the next open catches up),
 //                            is gzip JSON that restores to the same notebook, is never marked done by a snapshot or a
 //                            cloud adoption, and waits on a pill — writing nothing — when the browser wants a click.
+//   B24 the tour holds       Every step of Labbook's tour settles within 2 s with the spotlight on its target, and when the
+//                            page under a step scrolls the spotlight moves with it within two frames.
 //   S1 IndexedDB              A notebook bigger than localStorage's ~5 MB saves and survives a
 //                            reload; an older build's localStorage tree is carried over; of two
 //                            copies the newer wins. (the ~5.2 MB ceiling)
@@ -1733,6 +1735,37 @@ async function suite(opts) {
         window._parentBackup = real; _bkPill(false);
         Object.entries(keep).forEach(([k, v]) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); });
       }
+    });
+
+
+    // B24 — Labbook's own tour waits for its target and follows it.
+    if (run('B24')) await guard('B24', 'tour', async () => {
+      tick('B24');
+      const e = await mkB(); clean.push(e);
+      startTour(); const n = TOUR.steps.length; let followed = 0;
+      for (let i = 0; i < n; i++) {
+        const t0 = Date.now();
+        while (TOUR && TOUR.busy && Date.now() - t0 < 2500) await sleep(40);
+        if (!TOUR) { bad('B24', 'step ' + i, 'the tour ended by itself'); break; }
+        if (TOUR.busy) bad('B24', 'step ' + i + ' ' + TOUR.steps[i].t, 'did not settle in 2.5 s');
+        await sleep(480);   // a step change glides there (0.34 s); following a scroll is what must be instant
+        const st = TOUR.steps[i], want = (st.sel || st.host) ? _tourTarget(st) : null, hole = TOUR.root.querySelector('.lbt-hole');
+        if (want) {
+          const h = hole.getBoundingClientRect(), off = TOUR.doc === document ? { x: 0, y: 0 } : { x: 0, y: 0 };
+          if (Math.abs((h.left + 6) - want.l) > 3 || Math.abs((h.top + 6) - want.t) > 3) bad('B24', 'step ' + i + ' ' + st.t, 'the spotlight is not on its target: hole ' + Math.round(h.left + 6) + ',' + Math.round(h.top + 6) + ' target ' + Math.round(want.l) + ',' + Math.round(want.t));
+          // scroll the pane under it and look two frames later
+          const pane = document.getElementById('pane-ed');
+          if (followed < 3 && pane && pane.scrollHeight > pane.clientHeight + 200 && want.t > 120) {
+            const b0 = pane.scrollTop, h0 = hole.getBoundingClientRect().top; pane.scrollTop = b0 + 60; const moved = pane.scrollTop - b0;
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+            const nowT = _tourTarget(st);
+            if (moved && nowT && Math.abs((hole.getBoundingClientRect().top + 6) - nowT.t) > 3) bad('B24', 'step ' + i + ' ' + st.t, 'after a scroll the spotlight did not follow its target');
+            pane.scrollTop = b0; followed++; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+          }
+        }
+        if (i < n - 1) tourGo(1);
+      }
+      if (TOUR) endTour(true);
     });
 
     // B8 — a tree in the wrong shape still draws every screen.

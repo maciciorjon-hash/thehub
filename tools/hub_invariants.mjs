@@ -7,6 +7,8 @@
 //   S3  smooth changes    one landing to another cross-fades (a copy of the old one fades out, then goes); a data write
 //                         replaces the live band only, not the cards; a Cells tab switch keeps the tab bar's buttons
 //                         and fades the old frame out under the new one instead of hiding it in one frame
+//   S4  preload           while the intro plays the likely apps are loaded one after another — for a visitor, never
+//                         an app they cannot open; for the admin, Archive, Echo Dose Response, Hit Finder, Lumina, Tempo
 //
 //   node tools/hub_invariants.mjs [--shell=PATH] [--only=S1]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -114,6 +116,21 @@ if (run('S3')) {
   if (!r.gone) bad('S3', 'the old landing copy was left on the page'); else ok();
   if (!r.same) bad('S3', 'a data write re-rendered the landing cards'); else ok();
   if (r.cells && (r.cells.err || !r.cells.kept || !r.cells.oldShown || !r.cells.fading || !r.cells.oldHidden)) bad('S3', 'Cells tab switch: ' + JSON.stringify(r.cells)); else ok();
+}
+
+if (run('S4')) {
+  const r = await page.evaluate(async () => {
+    window.__forcePreload = 1;
+    isAdmin = false; try { _unlockedApps.clear(); } catch (e) {} _preloadDone = {}; _preloadApps();
+    const vis = (window._preloadList || []).slice();
+    isAdmin = true; _preloadDone = {}; _preloadApps(); const adm = (window._preloadList || []).slice();
+    const t0 = performance.now();
+    while (adm.some(id => !loaded[id]) && performance.now() - t0 < 20000) await new Promise(r => setTimeout(r, 100));
+    return { vis, adm, loaded: adm.filter(id => loaded[id]), five: ['protocols', 'echo', 'hitfinder', 'lumina', 'tempo'].filter(id => loaded[id]), admOnly: Object.keys(ADMIN_ONLY_APPS) };
+  });
+  if (r.vis.some(id => r.admOnly.includes(id))) bad('S4', 'a visitor preloads an admin app: ' + r.vis.join(', ')); else ok();
+  if (r.five.length !== 5) bad('S4', 'after the admin preload only these are loaded: ' + r.five.join(', ')); else ok();
+  if (r.loaded.length !== r.adm.length) bad('S4', 'not every preloaded app finished loading: ' + r.loaded.join(', ') + ' of ' + r.adm.join(', ')); else ok();
 }
 
 for (const e of errs) bad('page', e);

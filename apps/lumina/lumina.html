@@ -5088,7 +5088,14 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
       if (a === 'next') go(1); else if (a === 'back') go(-1); else if (a === 'end') tourEnd();
       else if (a === 'demo') loadDemo(function(){ show(); }); else if (a === 'skip') go(1);
     });
-    T.iv = setInterval(function(){ if (T && T.target && !T.busy) place(); }, 420);
+    // The spotlight follows its target every frame, instantly: a 420 ms poll let it trail behind a scroll, and the
+    // 0.34 s move transition then chased the target across the screen. A step change still glides.
+    (function track(){
+      if (!T) return; T.raf = requestAnimationFrame(track);
+      if (T.busy || !T.target) return;
+      var b = T.target.getBoundingClientRect(), k = [b.left, b.top, b.width, b.height].map(Math.round).join();
+      if (k !== T.lastK) { var first = T.lastK == null; T.lastK = k; if (!first) place(true); }
+    })();
     show();
   };
   function go(dir){
@@ -5100,7 +5107,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
     T.i = n; show();
   }
   tourEnd = function(silent){
-    var t = T; if (!t) return; T = null; clearInterval(t.iv); clearTimeout(t.t);
+    var t = T; if (!t) return; T = null; cancelAnimationFrame(t.raf); clearTimeout(t.t);
     lsSet(KEY('done'), '1');
     D.removeEventListener('keydown', t.onKey, true); window.removeEventListener('resize', t.onResize);
     if (t.root.parentNode) t.root.parentNode.removeChild(t.root);
@@ -5120,7 +5127,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
     var t0 = Date.now(), cap = DEF.data.wait || 20000;
     (function poll(){
       if (T === null && card) return;
-      if (hasData()) { if (T) T.busy = false; setTimeout(function(){ then && then(); }, 350); return; }
+      if (hasData()) { if (T) T.busy = false; requestAnimationFrame(function(){ requestAnimationFrame(function(){ then && then(); }); }); return; }
       if (Date.now() - t0 > cap) { if (T) T.busy = false; then && then(); return; }
       setTimeout(poll, 250);
     })();
@@ -5141,7 +5148,7 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
         if (el) { aim(el); stable(el, tok, function(){ paint(st, el, tok); }); } else paint(st, null, tok);
         return;
       }
-      setTimeout(wait, 70);
+      requestAnimationFrame(wait);
     })();
   }
   // Bring the target into view, then wait until it stops moving: a drawer that slides in, a smooth scroll and a tab that
@@ -5150,14 +5157,15 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
     var big = el.getBoundingClientRect().height > innerHeight * 0.8;
     try { el.scrollIntoView({ block: big ? 'start' : 'center', inline: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }); } catch (e) {}
   }
+  // Settled = the same box on three frames running (a smooth scroll moves it every frame); never longer than 1.2 s.
   function stable(el, tok, cb){
     var last = '', n = 0, t0 = Date.now();
     (function poll(){
       if (!T || T.tok !== tok) return;
       var r = el.getBoundingClientRect(), k = [r.left, r.top, r.width, r.height].map(Math.round).join();
       if (k === last) n++; else { n = 0; last = k; }
-      if (n >= 2 || Date.now() - t0 > 1400) return cb();
-      setTimeout(poll, 70);
+      if (n >= 3 || Date.now() - t0 > 1200) { if (T) T.lastK = k; return cb(); }
+      requestAnimationFrame(poll);
     })();
   }
   function paint(st, el, tok){
@@ -5200,10 +5208,12 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
     if (r.height < room && r.bottom > room) { var sp = scrollParent(el); sp.scrollTop += r.bottom - room + 12; }
     else if (r.top < 8) { var sp2 = scrollParent(el); sp2.scrollTop += r.top - 12; }
   }
-  function place(){
+  function place(instant){
     var Tn = T; if (!Tn) return;
     var hole = Tn.root.querySelector('.tk-hole'), card = Tn.root.querySelector('.tk-card'), el = Tn.target;
     var vw = innerWidth, vh = innerHeight, pad = 6, r = null;
+    var jump = !Tn.placed || instant;
+    if (jump) { card.style.transition = 'none'; hole.style.transition = 'none'; }
     if (el && vis(el)) {
       var b = el.getBoundingClientRect();
       var l = Math.max(6, b.left), t = Math.max(6, b.top), R = Math.min(vw - 6, b.right), B = Math.min(vh - 6, b.bottom);
@@ -5229,9 +5239,8 @@ var tourRegister, appTour, tourEnd, tourGuideRefresh, tourOffer;
       }
       x = Math.max(12, Math.min(vw - cw - 12, x)); y = Math.max(12, Math.min(vh - ch - 12, y));
     }
-    if (!Tn.placed) { card.style.transition = 'none'; hole.style.transition = 'none'; }
     card.style.left = x + 'px'; card.style.top = y + 'px';
-    if (!Tn.placed) { void card.offsetWidth; card.style.transition = ''; hole.style.transition = ''; Tn.placed = true; }
+    if (jump) { void card.offsetWidth; card.style.transition = ''; hole.style.transition = ''; Tn.placed = true; }
   }
 
   // ── the first-time offer: a card in the corner, never a modal, once per device ──────────────
