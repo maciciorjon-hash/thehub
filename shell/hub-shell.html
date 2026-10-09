@@ -194,6 +194,8 @@ body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);f
 @keyframes hub-tab-in{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
 @keyframes hub-frame-in{from{opacity:0;}to{opacity:1;}}
 .tab-in{animation:hub-tab-in var(--dur-2) var(--ease-out);}
+@keyframes hub-tab-out{from{opacity:1;}to{opacity:0;}}
+.tab-out{animation:hub-tab-out var(--dur-2) var(--ease) forwards;pointer-events:none;}
 iframe.tab-in{animation:hub-frame-in var(--dur-2) var(--ease);}
 .set-note{font-size:var(--fs-1);color:var(--text3);line-height:1.55;margin:2px 0 10px;}
 .opts-action-btn.danger{color:var(--danger);border-color:var(--danger);}
@@ -1664,7 +1666,7 @@ function openCells(tab, item, context){
   if (!tabs.length) { if (!_authResolved) _pendingDeepLink = 'cells'; else { try { location.hash=''; } catch(e){} } return; }
   tab = tab || _cellsTab || tabs[0].id;
   if (!tabs.some(function(t){ return t.id===tab; })) tab = tabs[0].id;
-  var switching = (currentApp === 'cells' && _cellsTab !== tab);
+  var switching = (currentApp === 'cells' && _cellsTab !== tab), prevTab = _cellsTab;
   _cellsTab = tab;
   var host = document.getElementById('cells-host');
   var small = _hubSmall();
@@ -1675,13 +1677,23 @@ function openCells(tab, item, context){
     if (!small || t.id === tab) _loadApp(t.id);
     var f = document.getElementById('frame-' + t.id);
     if (f && f.parentNode !== host) host.appendChild(f);   // move it in once, keep its state
-    if (f) f.style.display = (t.id === tab) ? '' : 'none';
-    if (f && switching && t.id === tab) _hubTabAnim(f);
+    // A switch cross-fades: the frame you are leaving stays drawn underneath and fades out while the new one
+    // fades in over it. Hiding it at once and fading the new one from nothing showed the bare background for a
+    // beat between the two — the "bump".
+    if (!f) return;
+    if (t.id === tab) { f.style.display = ''; f.style.zIndex = '1'; f.classList.remove('tab-out'); if (switching) _hubTabAnim(f); }
+    else if (switching && t.id === prevTab) { f.style.display = ''; f.style.zIndex = '0'; f.classList.add('tab-out'); clearTimeout(f._outT); f._outT = setTimeout(function(){ if (_cellsTab !== t.id) { f.style.display = 'none'; f.classList.remove('tab-out'); } }, 260); }
+    else { f.style.display = 'none'; f.classList.remove('tab-out'); }
   });
   if (small) tabs.forEach(function(t){ if (t.id !== tab && loaded[t.id]) _unloadApp(t.id); });
-  document.getElementById('cells-tabs').innerHTML = tabs.map(function(t){
-    return '<button class="cells-tab' + (t.id===tab?' on':'') + '" data-app-id="' + t.id + '" onclick="openCells(\'' + t.id + '\')">' + t.label + '</button>';
-  }).join('');
+  // The tab bar is updated in place when its tabs are the same: rebuilding it restarted the ink from nowhere.
+  var bar = document.getElementById('cells-tabs'), sig = tabs.map(function(t){ return t.id; }).join('|');
+  if (bar.dataset.sig !== sig) {
+    bar.dataset.sig = sig;
+    bar.innerHTML = tabs.map(function(t){
+      return '<button class="cells-tab' + (t.id===tab?' on':'') + '" data-app-id="' + t.id + '" onclick="openCells(\'' + t.id + '\')">' + t.label + '</button>';
+    }).join('');
+  } else bar.querySelectorAll('.cells-tab').forEach(function(b){ b.classList.toggle('on', b.dataset.appId === tab); });
   requestAnimationFrame(function(){ _hubInk(document.getElementById('cells-tabs')); });
   if (item || context){
     var m = {type:'switchTab', tab:tab, requestId:'dhub'+Date.now().toString(36)};
@@ -2845,9 +2857,28 @@ function wsGo(id){
     wsSetWhere(n.name);
     return;
   }
+  var fromApp=!!currentApp;
   if(currentApp) backToHub({plain:true});   // leave whatever app is open; the section is already set — and its card is not on the next landing
+  // One landing to another cross-fades: a copy of the one you are leaving stays where it was and fades out
+  // over the new one arriving, instead of the page being replaced in one frame.
+  if(!fromApp && _was!==id) _landingGhost();
   renderLanding(id);
   wsSetWhere(n.name);
+}
+function _landingGhost(){
+  try{
+    if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var host=document.getElementById('hub-suites'); if(!host||!host.children.length||host.style.display==='none') return;
+    var r=host.getBoundingClientRect(); if(r.height<10) return;
+    var old=document.getElementById('ld-ghost'); if(old) old.remove();
+    var g=host.cloneNode(true); g.id='ld-ghost'; g.setAttribute('aria-hidden','true'); g.inert=true;
+    g.classList.remove('ld-enter');
+    g.style.cssText='position:fixed;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;margin:0;pointer-events:none;z-index:2;opacity:1;transition:opacity 160ms var(--ease),transform 160ms var(--ease);will-change:opacity,transform;';
+    g.querySelectorAll('[id]').forEach(function(e){ e.removeAttribute('id'); });
+    document.body.appendChild(g);
+    requestAnimationFrame(function(){ g.style.opacity='0'; g.style.transform='translateY(-4px)'; });
+    setTimeout(function(){ g.remove(); }, 220);
+  }catch(e){}
 }
 function wsSetWhere(text){
   var w=document.getElementById('ws-where'); if(w) w.textContent=text||'';
@@ -3053,7 +3084,16 @@ function _homeLive(){
   var a=document.activeElement;
   if(a && a.closest && a.closest('#nav-pop')) return;
   renderNavChips();
-  if(_wsSection && LANDINGS[_wsSection] && !currentApp) renderLanding(_wsSection);
+  // A data write changes the live band, not the cards: replace the band alone. Re-rendering the whole landing on
+  // every write (a sync, a tick in another tab) re-laid every card under the pointer.
+  if(_wsSection && LANDINGS[_wsSection] && !currentApp){
+    var host=document.getElementById('hub-suites'), band=host && host.querySelector('.ld-band');
+    var html=_landingBand(_wsSection);
+    if(!host || !host.querySelector('.ld-hd')) { renderLanding(_wsSection); return; }
+    if(band && html) { var t=document.createElement('div'); t.innerHTML=html; var nb=t.firstElementChild; if(nb && nb.outerHTML!==band.outerHTML) band.replaceWith(nb); }
+    else if(band && !html) band.remove();
+    else if(!band && html) { var hd=host.querySelector('.ld-hd'); if(hd) hd.insertAdjacentHTML('afterend', html); }
+  }
 }
 
 function _renderVisitorGrid(){
