@@ -69,7 +69,7 @@
 //                            code of its type with no underscore)
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
-//                            dialog, the Journal, Visualize, the Designer — keeps the caret
+//                            dialog, the Journal, the Designer — keeps the caret
 //                            when typed into. (the Designer's own search box)
 //
 //   Report and exports — one experiment per preset, dressed with marked content:
@@ -1031,7 +1031,6 @@ async function suite(opts) {
       ['experiments list', () => { selectNode('exps'); renderAll(); }],
       ['today', () => { selectNode('today'); renderAll(); }],
       ['journal', () => { openJournalWs(); renderAll(); }],
-      ['visualize', () => { selectNode('viz'); renderAll(); }],
       ['designer surface', () => { selectNode('design'); renderAll(); }],
       ['settings', () => openSettings()],
     ];
@@ -1501,12 +1500,11 @@ async function suite(opts) {
       e.title = X('t'); e.aim = X('a'); e.code = 'C' + X('c'); e.plasmids = X('p'); e.outcome = { verdict: 'worked', text: X('o'), at: Date.now() };
       e.blocks[0].title = X('s'); e.blocks[0].log = X('l'); e.blocks[0].done = true; e.blocks[0].completedAt = Date.now();
       e.integration = { results: [{ id: 'r', source: X('src'), potencyUnit: 'nM', rows: [{ compound: X('cmp'), target: X('tg1'), potency: 5 }, { compound: 'B', target: X('tg2'), potency: 7, note: X('n') }] }] };
-      e.startDate = todayStr(); e.blocks.forEach(b => { b.date = todayStr(); });   // Visualize counts up to today
+      e.startDate = todayStr(); e.blocks.forEach(b => { b.date = todayStr(); });
       e.plate = { format: '96', title: X('pt'), types: [{ id: 'ty', name: X('ty'), color: '#f00' }], wells: { A1: { typeId: 'ty', compound: X('w'), label: X('wl'), note: X('wn') } } };
       save();
       const screens = [() => selectNode('home'), () => selectNode('exps'), () => selectNode('today'), () => selectNode('week'), () => openJournalWs(),
-        () => selectNode('viz'), () => { selectNode('viz'); try { VZ.range = 'all'; VZ.proj = ''; VZ.type = ''; } catch (x) {} renderAll(); if (!document.querySelector('.vz-tchips')) bad('B6', 'chips', 'Visualize drew no target chips (harness)'); document.querySelectorAll('.vz-tchips .vz-chip').forEach(c => c.click()); }, () => openExp(e.id),
-        () => { openExp(e.id); expTab('pub'); }, () => { openPlateEditor('exp:' + e.id); }, () => { try { closePlateEditor(); } catch (x) {} openPdfExport(); }];
+        () => openExp(e.id), () => { openExp(e.id); expTab('pub'); }, () => { openPlateEditor('exp:' + e.id); }, () => { try { closePlateEditor(); } catch (x) {} openPdfExport(); }];
       for (const s of screens) { try { s(); } catch (x) {} await sleep(60); }
       // and through an import, where rich text is expected
       const src = JSON.parse(buildExpJSON(e)); src.experiment.blocks[0].note = '<p>ok</p><img src=x onerror="__invX++"><a href="javascript:__invX++">l</a>';
@@ -1530,7 +1528,7 @@ async function suite(opts) {
       const cases = { nullResult: { results: [null] }, rowsNotList: { results: [{ rows: 'x' }] }, nullRow: { results: [{ rows: [null, { compound: 'A', potency: 'abc' }] }] },
         tableBad: { tables: [{ cols: 'x', rows: 5 }] }, plateBad: { plate: { wells: 'x' } }, infinite: { results: [{ id: 'i', potencyUnit: 'nM', rows: [{ compound: 'I', target: 'T', potency: 'Infinity' }, { compound: 'J', target: 'T', potency: 1e12 }] }] } };
       for (const [n, ctx] of Object.entries(cases)) { tick('B7');
-        try { _mergeDHubContext(Object.assign({ experiment: { id: e.id } }, ctx)); openExp(e.id); expTab('res'); renderEditor(); selectNode('home'); selectNode('viz'); }
+        try { _mergeDHubContext(Object.assign({ experiment: { id: e.id } }, ctx)); openExp(e.id); expTab('res'); renderEditor(); selectNode('home'); }
         catch (x) { bad('B7', n, 'threw: ' + x.message); }
         LB.data.experiments[e.id].integration = { results: [], tables: [] }; delete LB.data.experiments[e.id].plate; }
     });
@@ -1693,7 +1691,7 @@ async function suite(opts) {
         blocksNotList: { projects: [], experiments: { e: { id: 'e', projectId: 'p', blocks: 'oops' } } } };
       for (const [n, d] of Object.entries(shapes)) { tick('B8');
         try { LB.data = Object.assign(lbBlank(), JSON.parse(JSON.stringify(d))); _lbNormTree(LB.data);
-          ['home', 'exps', 'today', 'week', 'viz'].forEach(k => selectNode(k)); openJournalWs(); }
+          ['home', 'exps', 'today', 'week'].forEach(k => selectNode(k)); openJournalWs(); }
         catch (x) { bad('B8', n, 'threw: ' + x.message); }
       }
       LB.data = keep; selectNode('home');

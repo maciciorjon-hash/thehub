@@ -22,8 +22,8 @@
     topics: [
       { id: 'start', t: 'How Labbook fits together', group: 'Getting started', on: ['home'],
         q: ['how does it work', 'overview', 'get started', 'how to use', 'tutorial', 'where do i begin', 'planner', 'journal', 'como funciona', 'como se usa', 'empezar', 'por donde empiezo', 'primeros pasos'],
-        a: 'The unit of Labbook is the **experiment**. You design one; it expands into dated steps; each day shows the steps due that day. Four areas:',
-        steps: ['**Planner:** Home, Today, Week and Experiments — what to do and how it is going.', '**Journal:** one page per day, written from what you ticked, plus free Notes.', '**Visualize:** charts of your experiments and potencies.', '**Designer:** build an experiment out of modules and save it to reuse.'],
+        a: 'The unit of Labbook is the **experiment**. You design one; it expands into dated steps; each day shows the steps due that day. Three areas:',
+        steps: ['**Planner:** Home, Today, Week and Experiments — what to do and how it is going.', '**Journal:** one page per day, written from what you ticked, plus free Notes.', '**Designer:** build an experiment out of modules and save it to reuse.'],
         tip: 'Take the tour any time from the gear → Help.',
         go: [{ l: 'Take the tour', fn: 'startTour' }], see: ['new-exp', 'today', 'journal'] },
       { id: 'new-exp', t: 'Create an experiment', group: 'Getting started', on: ['home', 'exps', 'folder'],
@@ -195,10 +195,6 @@
         a: 'The pill at the top says exactly where your work is. **Saved on this device** means it is in this browser only (a standalone build with no account). Signed in, it says it is synced, and changes made on another device arrive live; if the same experiment was changed in both places, yours is kept and theirs is saved in its Versions.',
         warn: '**Not saved!** means the browser refused the write (usually storage is full). Back up now and free space.',
         tip: 'The status is shown honestly: it never says “saved” for something that only lives on this device.' },
-      { id: 'visualize', t: 'Charts of my experiments', group: 'Overview', on: ['viz'],
-        q: ['visualize', 'charts', 'statistics', 'dashboard', 'success rate', 'heatmap', 'timeline', 'potency landscape', 'graficos', 'estadisticas', 'panel', 'tasa de exito', 'linea de tiempo'],
-        a: '**Visualize** draws your notebook: tiles (experiments, running, success rate, steps ticked, measurements, overdue), an activity heatmap, the monthly rhythm, projects by status, verdicts per type, a timeline, and the **potency landscape** of every measurement Echo Dose Response sent. Filter by project, type and range; click any mark to open what is behind it.',
-        go: [{ l: 'Open Visualize', fn: 'selectNode', args: ['viz', '', ''] }] },
       { id: 'week', t: 'The week at a glance', group: 'Overview', on: ['week'],
         q: ['week', 'weekly planner', 'calendar', 'this week', 'semana', 'planificador', 'calendario', 'esta semana'],
         a: '**Week** lays the steps and tasks of the week out by day, across all experiments. Drag a step to another day to re-date it; the menu on a step has the rest.',
@@ -217,7 +213,7 @@
         tip: 'If you were given the installed version, use “Add to Home Screen”; it also works offline.' },
       { id: 'tour', t: 'Take the tour', group: 'Getting started',
         q: ['tour', 'walkthrough', 'guided tour', 'show me around', 'intro', 'help', 'recorrido', 'tutorial guiado', 'ensename', 'ayuda'],
-        a: 'The tour walks through the real screens and points at the real controls: Home, Today, Experiments, an experiment and its Report, the Journal, Visualize and search. It ends where you started.',
+        a: 'The tour walks through the real screens and points at the real controls: Home, Today, Experiments, an experiment and its Report, the Journal and search. It ends where you started.',
         go: [{ l: 'Take the tour', fn: 'startTour' }] }
     ]
   });

@@ -138,7 +138,7 @@ const SEED = `(function(){
   [ids[0],ids[1]].forEach(function(id){ var e=LB.data.experiments[id]; if(e&&e.blocks&&e.blocks[0]) setBlockDone(id,e.blocks[0].id,true,true); });
   // a wait on the first NB step, so the wait chip and the timer button exist
   var nb=LB.data.experiments[ids[0]]; if(nb&&nb.blocks[1]) nb.blocks[1].waitMin=45;
-  // results and a verdict, so Visualize has a potency landscape and a success rate to draw
+  // results and a verdict, so Home and the Report have a potency and an outcome to draw
   var comps=['EDA-099','JQ1','dBET6'], tg=['BRD4','BRD2'];
   [ids[1],ids[5]].forEach(function(id,k){ var e=LB.data.experiments[id]; var rows=[]; comps.forEach(function(c,ci){ tg.forEach(function(t,ti){ rows.push({compound:c,target:t,potency:Math.pow(10,ci*0.7+ti*0.3),effect:80,hill:1,r2:0.98,flag:ci===2&&ti===1}); }); }); rows[1].excluded=true;
     e.integration=e.integration||{sources:[],cellLines:[],compounds:[],plateMaps:[],protocols:[],results:[],tables:[]};
@@ -172,7 +172,6 @@ function screens(ids) {
     S('experiments-search', `selectNode('exps'); var q=document.querySelector('.xv-q'); if(q){ q.value='BRD'; q.dispatchEvent(new Event('input',{bubbles:true})); }`),
     S('journal-day',     `selectNode('journal'); if(window.DAY_VIEW!==undefined) DAY_VIEW=null; renderEditor()`),
     S('journal-week',    `selectNode('week')`),
-    S('visualize',       `selectNode('viz')`, { settle: 600 }),
     // The Experiment Designer: the surface that lists the lab's designs, then each step of the
     // wizard, then the module picker (a dialog with its own list, so its rows are menu rows).
     S('designer',        `selectNode('design')`),
@@ -192,7 +191,6 @@ function screens(ids) {
     S('designer-config-own', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.setupAdd.push({f:'abDil',t:'txt',lbl:'Antibody dilution',d:'1:1000',custom:true}); DS.step=3; DS.cur=0; dsDraw()`),
     S('designer-review-reps', `var p=LB.data.projects[0]; dsOpen({mode:'exp',pid:p.id,sid:p.sections[0].id}); dsSetType('CTG'); ['lib:seed','lib:compound-manual','lib:ctg'].forEach(function(i){ DS.mods.push(dsMod(libSpec(i))); }); DS.reps=3; DS.step=4; dsDraw()`),
     S('designer-filtered', `selectNode('design'); _setPF('default'); renderAll()`),
-    S('visualize-drill', `selectNode('viz'); var m=document.querySelector('.vz-seg[data-go]'); if(!m) throw new Error('n/a'); vizGo(m.getAttribute('data-go'))`, { optional: true, settle: 600 }),
     S('exp-default',     `openExp('${e0}')`),
     S('exp-steps',       `openExp('${e0}'); expTab('steps')`),
     S('exp-steps-inputs',`openExp('${e0}'); expTab('steps'); var b=document.querySelector('.bench .blk-calc .lean-tog'); if(b) b.click(); else throw new Error('n/a');`, { optional: true }),
