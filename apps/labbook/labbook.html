@@ -13073,7 +13073,8 @@ function filesPaneHtml(key,files){
       +'<div class="fx-acts">'
         +'<label class="fx-inc" title="Include this in the exported PDF"><input type="checkbox"'+(f.include!==false?' checked':'')+' onchange="toggleFilePdf(\''+key+'\',\''+f.id+'\',this.checked)"><span>in PDF</span></label>'
         +(f.ribbon&&lbHost()&&lbHost().openApp?('<button class="pl-btn" title="Open this figure in Ribbon as it was made, change it, and send it back — the picture here is replaced" onclick="openFigureInRibbon(\''+key+'\',\''+f.id+'\')">Edit in Ribbon</button>'):'')
-        +(f.kind==='image'&&!f.ribbon?('<button class="pl-btn" title="Straighten, crop, rotate — the stored picture is replaced" onclick="editFilePhoto(\''+key+'\',\''+f.id+'\')">Crop / edit</button>'):'')
+        +(f.blot&&lbHost()&&lbHost().openApp?('<button class="pl-btn" title="Open this figure in Blot as it was made, change it, and send it back — the picture here is replaced" onclick="openFigureInBlot(\''+key+'\',\''+f.id+'\')">Edit in Blot</button>'):'')
+        +(f.kind==='image'&&!f.ribbon&&!f.blot?('<button class="pl-btn" title="Straighten, crop, rotate — the stored picture is replaced" onclick="editFilePhoto(\''+key+'\',\''+f.id+'\')">Crop / edit</button>'):'')
         +'<button class="pl-btn" onclick="downloadFile(\''+key+'\',\''+f.id+'\')">Download</button>'
         +'<button class="pl-btn danger" onclick="removeFile(\''+key+'\',\''+f.id+'\')">Remove</button>'
       +'</div></div>';
@@ -22431,6 +22432,11 @@ function _cleanCtx(ctx){
       // A Ribbon figure keeps the design it was drawn from, so it can be opened there again. Bounded, and plain data only.
       var rf=im.ribbon; if(rf&&typeof rf==='object'&&typeof rf.id==='string'&&/^[A-Za-z0-9_-]{4,60}$/.test(rf.id)&&rf.design&&typeof rf.design==='object'){
         try{ var js=JSON.stringify(rf.design,function(k,v){ return (typeof v==='number'&&!isFinite(v))?null:v; }); if(js.length<=400000){ var dz=JSON.parse(js); if(dz&&typeof dz.state==='object') out.ribbon={id:rf.id,design:dz}; } }catch(e3){} }
+      // A Blot figure likewise: its layout, labels and a small preview per panel (the originals stay in Blot).
+      var bf=im.blot; if(bf&&typeof bf==='object'&&typeof bf.id==='string'&&/^[A-Za-z0-9_-]{4,60}$/.test(bf.id)&&bf.design&&typeof bf.design==='object'){
+        try{ var jb=JSON.stringify(bf.design,function(k,v){ return (typeof v==='number'&&!isFinite(v))?null:v; }); if(jb.length<=600000){ var db=JSON.parse(jb); if(db&&db.fig&&typeof db.fig==='object'&&Array.isArray(db.fig.panels)){
+          if(db.pv&&typeof db.pv==='object') Object.keys(db.pv).forEach(function(k){ if(typeof db.pv[k]!=='string'||!/^data:image\/(png|jpeg|webp);base64,/i.test(db.pv[k])) delete db.pv[k]; }); else db.pv={};
+          out.blot={id:bf.id,design:db}; } } }catch(e4){} }
       return out; });
   } else delete o.images;
   if(o.plate && (typeof o.plate!=='object' || !o.plate.wells || typeof o.plate.wells!=='object' || Array.isArray(o.plate.wells))) delete o.plate;
@@ -22440,7 +22446,7 @@ function _cleanCtx(ctx){
 function _findFigFile(id){
   var ks=Object.keys(LB.data.experiments||{});
   for(var i=0;i<ks.length;i++){ var x=LB.data.experiments[ks[i]], fs=x&&x.files||[];
-    for(var j=0;j<fs.length;j++) if(fs[j]&&fs[j].ribbon&&fs[j].ribbon.id===id) return {exp:x,file:fs[j]}; }
+    for(var j=0;j<fs.length;j++){ var fg=fs[j]&&(fs[j].ribbon||fs[j].blot); if(fg&&fg.id===id) return {exp:x,file:fs[j]}; } }
   return null; }
 function _replaceFigFile(own,im,u8,mime){
   var f=own.file, file=new File([u8],im.name,{type:mime});
@@ -22448,10 +22454,15 @@ function _replaceFigFile(own,im,u8,mime){
     var id='att'+uid();
     return _attPut(id,dataURL).then(function(ok){
       if(!ok) return false;
-      undoMark('Figure updated from Ribbon',['experiments.'+own.exp.id]);
-      f.attId=id; f.name=im.name||f.name; f.mime=mime; f.size=u8.length; f.updated=Date.now(); f.ribbon=im.ribbon;
+      undoMark('Figure updated from '+(im.blot?'Blot':'Ribbon'),['experiments.'+own.exp.id]);
+      f.attId=id; f.name=im.name||f.name; f.mime=mime; f.size=u8.length; f.updated=Date.now(); if(im.ribbon) f.ribbon=im.ribbon; if(im.blot) f.blot=im.blot;
       if(!String(f.caption||'').trim()) f.caption=im.caption||'';
       own.exp.updated=Date.now(); save(); _attUpload(id,dataURL); return true; }); }); }
+function openFigureInBlot(key,fid){
+  var o=_plateOwner(key), f=o&&(o.obj.files||[]).filter(function(x){ return x.id===fid; })[0], H=lbHost();
+  if(!f||!f.blot||!H||!H.openApp){ toast('That figure cannot be opened from here.'); return; }
+  try{ H.openApp('blot',undefined,undefined,{source:'labbook',open:{app:'blot',figure:f.blot,expId:o.exp.id,label:(o.exp.code||o.exp.title||'')}}); }
+  catch(e){ toast('Could not open Blot.'); } }
 function openFigureInRibbon(key,fid){
   var o=_plateOwner(key), f=o&&(o.obj.files||[]).filter(function(x){ return x.id===fid; })[0], H=lbHost();
   if(!f||!f.ribbon||!H||!H.openApp){ toast('That figure cannot be opened from here.'); return; }
@@ -22506,10 +22517,10 @@ function _mergeDHubContext(ctx){
     var ok=0, upd=0; Promise.all(imgs.map(function(im){
       var bin=atob(im.dataUrl.split(',')[1]||''), u8=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
       var mime=(im.dataUrl.match(/^data:([^;]+)/)||[])[1]||'image/png';
-      var own=im.ribbon&&_findFigFile(im.ribbon.id);
+      var fg=im.ribbon||im.blot, own=fg&&_findFigFile(fg.id);
       if(own) return _replaceFigFile(own,im,u8,mime).then(function(r){ if(r) upd++; });
-      return addFileTo('exp:'+e.id, new File([u8],im.name,{type:mime}), im.caption, im.ribbon?{ribbon:im.ribbon}:null).then(function(r){ if(r) ok++; }); }))
-    .then(function(){ if(ok||upd){ EXP_TAB='files'; renderEditor(); } toast(upd?(upd+' figure'+(upd===1?'':'s')+' updated from Ribbon'):(ok+' picture'+(ok===1?'':'s')+' added to Files on '+(e.code||e.title||'the experiment'))); });
+      return addFileTo('exp:'+e.id, new File([u8],im.name,{type:mime}), im.caption, im.ribbon?{ribbon:im.ribbon}:im.blot?{blot:im.blot}:null).then(function(r){ if(r) ok++; }); }))
+    .then(function(){ if(ok||upd){ EXP_TAB='files'; renderEditor(); } toast(upd?(upd+' figure'+(upd===1?'':'s')+' updated from '+(ctx.source==='blot'?'Blot':'Ribbon')):(ok+' picture'+(ok===1?'':'s')+' added to Files on '+(e.code||e.title||'the experiment'))); });
   }
   // What came was results: land on the experiment's Results, wherever Labbook was.
   if((ctx.results||[]).length){ if(_curExp()!==e) openExp(e.id); EXP_TAB='res'; }

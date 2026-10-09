@@ -4,6 +4,30 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## Blot — 2026-10-09
+
+Broken on purpose before anything was added: a figure with two real-size pictures, labels with markup in them, the lane
+count changed back and forth, an export watched for when it says it is done, the saved list read off the cloud on a
+device without the pictures, and the monkey over every box. Then the four additions, each under the same checks.
+
+| id | where | what was wrong | fixed in |
+|---|---|---|---|
+| BL-1 | saving | the figure kept both pictures of every panel inline in localStorage, and `save()` swallowed the quota error: with two TIFF-sized panels the figure looked saved and was gone on reload | pictures in IndexedDB by hash; the record keeps `idb:<key>` |
+| BL-2 | saved figures | every saved figure carried its full pictures, in localStorage and in `journal/blot` — one figure could be several MB of cloud | references plus a small JPEG preview per panel; the originals stay on the device |
+| BL-3 | lanes | changing the lane count made the custom widths and label offsets look reset (the arrays no longer matched the count) and brought them back when the count returned | the arrays are resized: lanes that stay keep theirs |
+| BL-4 | labels | a label is rich text inserted as HTML: `<img onerror>` in a label ran | labels are cleaned to text formatting (`_bClean`) |
+| BL-5 | export | "Exported" was said before the PNG existed, a canvas too large for the browser failed silently, every file was `blot_figure` | said when the file exists; named after the proteins; a too-large figure says so |
+| BL-6 | sync | a list saved while the cloud was unreachable stayed local until the next save | sent up when the cloud is older |
+
+Added: undo/redo, densitometry (box, local background, loading control, relative lane, saturation, CSV), kDa markers from
+six ladders, rotation/levels/invert at crop, and Send to Labbook with Edit in Blot. `tools/blot_invariants.mjs` BL1–BL12;
+eleven bugs put back, eleven caught.
+
+Not done: the cloud does not carry the original pictures (a second device opens a saved figure from its previews and asks
+for the original to re-crop). Carrying them needs a `blot/**` rule in Firebase Storage — Jon's step.
+
+---
+
 ## Echo Dose Response, multiple assays — 2026-10-09
 
 Not audited since the multi-assay pivot went in. Driven as a real run: the bundled data split into two panels (HiBiT on the

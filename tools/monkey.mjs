@@ -18,6 +18,7 @@ const APPS = {
   bca: { url: '/apps/bca/bca.html', seed: ['loadTestData()'], wait: 800, views: ['switchTab("import")', 'switchTab("standards")', 'switchTab("samples")'] },
   beacon: { url: '/apps/beacon/beacon.html', seed: ["loadTestData('gain')"], wait: 800, views: ['openSetupModal(); switchSetupTab("assay")', 'openSetupModal(); switchSetupTab("platemap")', 'switchTab("qc")', 'switchTab("dose")'] },
   lumina: { url: '/apps/lumina/lumina.html', seed: ['loadLuminaTestData()'], wait: 800 },
+  blot: { url: '/apps/western-blot/western-blot.html', seed: ["(function(){ var c=document.createElement('canvas'); c.width=600; c.height=120; var x=c.getContext('2d'); x.fillStyle='#f4f4f4'; x.fillRect(0,0,600,120); for(var i=0;i<12;i++){ x.fillStyle='rgba(0,0,0,'+(0.15+i*0.06)+')'; x.fillRect(i*50+8,55,34,10); } var u=c.toDataURL('image/png'); FIG.panels.forEach(function(p,i){ p.src=u; p.cropped=u; p.prot=['BRD4','GAPDH'][i]||''; }); save(); render(); })()"], wait: 800, views: ['render()', 'openCrop(0)', 'openQuant(0)', 'openMarkers(0)'] },
 };
 const HOSTILE = ['', ' ', '0', '-1', '1e999', '99999999999', 'abc', '0,5', '1.2.3', '<img src=x onerror=window.__mx=1>', '=1+1', '٣٢١', 'A1:A99999999', 'ZZ9:A1', 'B2:C11'];
 const BAD = /\bNaN\b|\bundefined\b|\bInfinity\b|\[object |\bnull\b(?!\s*(?:hypothesis|and void))/;
