@@ -1827,7 +1827,6 @@ function openApp(id, tab, item, context) {
   var view0 = document.getElementById('view-' + id);
   if (!view0) { try{ console.warn('openApp: no view for', id); }catch(e){} return; }
   var frame = document.getElementById('frame-' + id);
-  _pushRecent(id);   // the Data Analysis peek leads with what you actually reach for
   _loadApp(id);
   if (tab || item || context) {
     var tabMsg = {type:'switchTab', tab:tab, requestId:'dhub'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)};
@@ -2283,7 +2282,7 @@ var APP_UNLOCK_WORDS = {
 // (_suiteGrants). The apps list is LANDINGS.analysis, minus nothing — take an app out of the
 // array to keep it admin-only. Per-app visibility (Settings → Lab) still applies on top.
 var SUITE_UNLOCK_WORDS = {
-  analysis: { word:'hillslope', name:'Data Analysis', apps:['echo','hitfinder','deg','spectra','lumina','beacon'] }
+  analysis: { word:'hillslope', name:'Data Analysis', apps:['echo','hitfinder','lumina','deg','spectra','beacon'] }
 };
 
 var _unlockedApps = new Set(JSON.parse(localStorage.getItem('hub_unlocked') || '[]'));
@@ -2935,7 +2934,7 @@ function wsSetWhere(text){
 // dhub:context {lib}. Nothing new has to be taught to any app.
 var LANDINGS = {
   analysis: { title:'Data Analysis', sub:'Dose response, plates and assay readouts.',
-              apps:['echo','tempo','hitfinder','deg','spectra','lumina','beacon'] },
+              apps:['echo','hitfinder','lumina','tempo','deg','spectra','beacon'] },
   archive:  { title:'Archive', sub:'Protocols, calculators and the reagent library this lab makes or buys.',
               sections:[
                 {name:'Protocols', desc:'34 protocols with live calculators, staged by day.', go:"openApp('protocols')", brand:'#9c6e88', icon:'archive'},
@@ -2987,8 +2986,6 @@ function renderLanding(id){
     }).join('')+'</div>';
   } else {
     var apps=L.apps.filter(function(a){ return document.querySelector('#app-grid .card[data-app-id="'+a+'"]'); });
-    var rec=_recentApps();
-    apps.sort(function(a,b){ var ia=rec.indexOf(a), ib=rec.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); });
     body = '<div class="ld-grid">'+apps.map(_appCardHtml).join('')+'</div>';
   }
   host.innerHTML = '<div class="ld-hd"><div class="ld-title">'+_dashEsc(L.title)+'</div>'
@@ -3133,15 +3130,6 @@ function _homeLive(){
   renderNavChips();
   if(_wsSection && LANDINGS[_wsSection] && !currentApp) renderLanding(_wsSection);
 }
-
-// Most-recently-opened apps, so a landing leads with what you actually use.
-function _pushRecent(id){
-  try{
-    var a=_recentApps().filter(function(x){ return x!==id; });
-    a.unshift(id); localStorage.setItem('hub_recent', JSON.stringify(a.slice(0,6)));
-  }catch(e){}
-}
-function _recentApps(){ try{ var a=JSON.parse(localStorage.getItem('hub_recent')||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
 
 function _renderVisitorGrid(){
   var host=document.getElementById('hub-suites'); if(!host) return;
