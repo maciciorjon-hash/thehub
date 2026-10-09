@@ -160,6 +160,34 @@ main{display:flex;flex:1;min-height:0;overflow:hidden;}
 .rv-m{flex:1;}
 .rv-fix{flex:none;border:1px solid var(--border2);background:var(--surface);color:var(--accent);border-radius:var(--r-1);padding:2px 9px;font:inherit;font-size:var(--fs-1);cursor:pointer;white-space:nowrap;}
 .rv-fix:hover{background:var(--accent-dim);}
+.sel-bar{display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;padding:8px 2px 12px;border-bottom:1px solid var(--border);}
+.sel-f{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-2);color:var(--text2);}
+.sel-bar select,.sel-bar input[type="text"]{height:30px;box-sizing:border-box;background:var(--surface3);border:1px solid var(--border2);border-radius:var(--r-1);padding:0 8px;color:var(--text);font-family:var(--sans);font-size:var(--fs-3);outline:none;transition:border-color var(--dur-1) var(--ease);}
+.sel-bar select:focus,.sel-bar input:focus{border-color:var(--accent);}
+.sel-f select{max-width:220px;}
+.sel-vs{font-size:var(--fs-2);color:var(--text3);}
+.sel-ck{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-3);color:var(--text2);}
+.sel-title{flex:1 1 160px;min-width:120px;max-width:320px;font-size:var(--fs-3);}
+.sel-body{flex:1;min-height:360px;display:flex;gap:18px;padding-top:12px;}
+.sel-plot{position:relative;min-height:340px;min-width:0;flex:0 1 auto;width:100%;}
+.sel-plot canvas{position:absolute;inset:0;display:block;}
+.sel-list{flex:0 0 300px;min-width:0;overflow:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:14px;}
+.sel-col{display:flex;flex-direction:column;gap:2px;}
+.sel-ch{display:flex;align-items:center;gap:7px;font-size:var(--fs-3);font-weight:600;color:var(--text);padding:0 4px 6px;border-bottom:1px solid var(--border);margin-bottom:4px;}
+.sel-ch i{width:10px;height:10px;border-radius:50%;flex:none;}
+.sel-ch span{margin-left:auto;font-weight:500;color:var(--text3);font-variant-numeric:tabular-nums;}
+.sel-row{display:grid;grid-template-columns:minmax(0,1fr) 70px 52px;align-items:center;gap:8px;padding:5px 4px;border:none;background:none;border-radius:var(--r-1);cursor:pointer;text-align:left;font-family:var(--sans);color:var(--text);transition:background var(--dur-1) var(--ease);}
+.sel-row:hover,.sel-row.on{background:var(--surface2);}
+.sel-row.on{box-shadow:inset 2px 0 0 var(--accent);}
+.sel-n{font-size:var(--fs-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sel-n em{font-style:normal;font-size:var(--fs-1);color:var(--warn);}
+.sel-b{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;}
+.sel-b b{display:block;height:100%;border-radius:3px;}
+.sel-row .sel-fd{font-size:var(--fs-3);font-variant-numeric:tabular-nums;color:var(--text2);text-align:right;}
+.sel-none,.sel-more,.sel-empty{font-size:var(--fs-2);color:var(--text3);padding:4px;}
+.sel-foot{display:flex;align-items:center;gap:10px;padding-top:8px;}
+.sel-foot #sel-info{font-size:var(--fs-2);color:var(--text3);}
+@media (max-width:900px){.sel-body{flex-direction:column;}.sel-list{flex:none;}.sel-plot{min-height:min(92vw,520px);}.sel-list{overflow:visible;}}
 .res-dl{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
 .rb-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:var(--r-2);border:1px solid var(--border2);background:var(--surface2);color:var(--text2);font-size:var(--fs-3);font-weight:500;cursor:pointer;font-family:var(--sans);white-space:nowrap;transition:background var(--dur-1) var(--ease),color var(--dur-1) var(--ease),border-color var(--dur-1) var(--ease);}
 .rb-btn:hover{background:var(--surface3);color:var(--text);}
@@ -5157,8 +5185,6 @@ function generateOutputXLSX() {
   if (prismFrac.merges.length) wsPrismFrac['!merges'] = prismFrac.merges;
   XLSX.utils.book_append_sheet(wb, wsPrismFrac, 'Prism (Fraction)');
 
-  // Last, so every sheet before it keeps its place. Self-describing: the Schema column names the format.
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_screenAoa())), 'Screen (Hit Finder)');
   // Every well that went into a curve, with what its value was made from: Measurement = Raw_Signal /
   // Reference_Signal × 100. One sheet for the whole run; a multi-assay run says which assay each row is.
   var _rawB = downloadBlobs.filter(function (b) { return b.kind === 'csv' && /_Raw_Data\.csv$/.test(b.name) && b.aoa; });
@@ -5168,6 +5194,8 @@ function generateOutputXLSX() {
     _rawB.forEach(function (b) { b.aoa.forEach(function (row) { _rawAoa.push(_rawMulti ? [b.assay || ''].concat(row) : row); }); });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_rawAoa)), 'Raw data');
   }
+  // Last, so every sheet before it keeps its place. Self-describing: the Schema column names the format.
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(_sanitizeAoa(_screenAoa())), 'Screen (Hit Finder)');
 
   var wbout = XLSX.write(wb, { bookType:'xlsx', type:'array' });
   var blob = new Blob([wbout], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -5349,7 +5377,7 @@ function _placePointLabels(ctx, pts, opt) {
     ctx.fillStyle = opt.color;
     ctx.fillText(p.text, placed.x + pad, placed.y + h / 2);
   });
-  if (hidden) {
+  if (hidden && !opt.noNote) {
     ctx.font = `${fs}px 'IBM Plex Sans',sans-serif`; ctx.fillStyle = opt.color; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText(hidden + ' label' + (hidden === 1 ? '' : 's') + ' hidden — no room (hover a point, or zoom the axes)', area.right - 4 * opt.k, area.top + 4 * opt.k);
   }
@@ -5426,7 +5454,7 @@ const proteinHullPlugin = {
         x: cx + (p.x-cx)*1.12 + Math.sign(p.x-cx || 1)*pad,
         y: cy + (p.y-cy)*1.12 + Math.sign(p.y-cy || 1)*pad,
       }));
-      const c = pcolor(ds.label);
+      const c = { fg: (window._scPalMap && window._scPalMap[ds.label]) || pcolor(ds.label).fg };
       ctx.save();
       ctx.beginPath();
       if (expanded.length === 1) {
@@ -5523,7 +5551,8 @@ let bpState = {};
 function downloadBoxPNG() {
   const src = document.getElementById('bp-canvas');
   if (!src || !window._bpLast) return;
-  const W = Math.max(600, src.offsetWidth || 900), H = Math.round(W * 0.62), SC = 5;
+  // the shape on screen, so the picture is the plot you were looking at (it was always 0.62 × the width)
+  const W = Math.max(600, src.offsetWidth || 900), H = Math.round(src.offsetHeight ? W * src.offsetHeight / Math.max(1, src.offsetWidth) : W * 0.62), SC = 5;
   const off = document.createElement('canvas');
   off.width = W * SC; off.height = H * SC;
   const ctx = off.getContext('2d'); ctx.scale(SC, SC);
@@ -6126,71 +6155,28 @@ function renderScatter(data) {
     </div>
     </div>
     <div id="sc-sel-section" style="display:none;flex:1;flex-direction:column;min-height:0;">
-      <div class="scatter-toolbar">
-        <div class="strow">
-          <label style="min-width:52px;flex:none;">Protein X</label>
-          <select id="sel-prot-x" onchange="buildSelectivityChart()" style="flex:1;min-width:100px;"></select>
-          <label style="min-width:52px;flex:none;margin-left:12px;">Protein Y</label>
-          <select id="sel-prot-y" onchange="buildSelectivityChart()" style="flex:1;min-width:100px;"></select>
-          <label style="margin-left:8px;display:flex;align-items:center;gap:5px;">
-            <input type="checkbox" id="sel-show-bands" checked onchange="buildSelectivityChart()"> Bands
-          </label>
-        </div>
-        <div class="strow">
-          <label style="min-width:52px;flex:none;">X metric</label>
-          <select id="sel-metric-x" onchange="buildSelectivityChart()">
-            <option value="pDC50">pDC₅₀</option>
-            <option value="DC50_nM">log DC₅₀ (M)</option>
-            ${_selDmaxOpt}
-            <option value="HillSlope">Hill slope</option>
-            <option value="R2">R²</option>
-          </select>
-          <label style="margin-left:12px;min-width:52px;flex:none;">Y metric</label>
-          <select id="sel-metric-y" onchange="buildSelectivityChart()">
-            <option value="pDC50">pDC₅₀</option>
-            <option value="DC50_nM">log DC₅₀ (M)</option>
-            ${_selDmaxOpt}
-            <option value="HillSlope">Hill slope</option>
-            <option value="R2">R²</option>
-          </select>
-          <label style="margin-left:12px;min-width:36px;flex:none;">Title</label>
-          <input id="sel-title" type="text" placeholder="Selectivity plot…" style="flex:1;" oninput="updateSelTitle(this.value)">
-          <label style="margin-left:8px;display:flex;align-items:center;gap:5px;">
-            <input type="checkbox" id="sel-show-names" onchange="buildSelectivityChart()"> Names
-          </label>
-          <label style="margin-left:8px;display:flex;align-items:center;gap:5px;">
-            <input type="checkbox" id="sel-show-flagged" onchange="buildSelectivityChart()"> Flagged
-          </label>
-        </div>
-        <div class="strow">
-          <label style="min-width:52px;flex:none;">Dot size</label>
-          <input id="sel-dotsize" type="range" min="1" max="18" value="4" step="1" oninput="const _sv=+this.value;document.getElementById('sel-dotsize-val').textContent=_sv;if(window.selChart){window.selChart.data.datasets[0].pointRadius=_sv;window.selChart.data.datasets[0].pointHoverRadius=_sv+3;window.selChart.update('none');}else buildSelectivityChart();" style="width:100px;cursor:pointer;">
-          <span id="sel-dotsize-val" style="font-family:var(--sans);font-size:11px;color:var(--text2);min-width:18px;">4</span>
-          <label style="margin-left:10px;">Band threshold</label>
-          <select id="sel-band-thr" onchange="buildSelectivityChart()" style="font-size:11px;">
-            <option value="1">10× (1 log unit)</option>
-            <option value="2">100× (2 log units)</option>
-            <option value="0.5">~3× (0.5 log units)</option>
-          </select>
-          <span id="sel-lin-thr-wrap" style="display:none;margin-left:10px;align-items:center;gap:5px;">
-            <label>Δ Dmax band</label>
-            <input id="sel-lin-thr" type="number" min="1" step="5" value="20" onchange="buildSelectivityChart()" style="width:56px;font-size:11px;"><span style="font-size:11px;color:var(--text3);">%</span>
-          </span>
-        </div>
-        <div class="strow">
-          <label style="min-width:52px;flex:none;">Axis limits</label>
-          <input id="sel-xmin" type="number" step="any" placeholder="X min (auto)" onchange="buildSelectivityChart()" style="width:96px;font-size:11px;">
-          <input id="sel-xmax" type="number" step="any" placeholder="X max (auto)" onchange="buildSelectivityChart()" style="width:96px;font-size:11px;">
-          <input id="sel-ymin" type="number" step="any" placeholder="Y min (auto)" onchange="buildSelectivityChart()" style="width:96px;font-size:11px;margin-left:6px;">
-          <input id="sel-ymax" type="number" step="any" placeholder="Y max (auto)" onchange="buildSelectivityChart()" style="width:96px;font-size:11px;">
-          <button class="scatter-dl-btn" style="height:28px;margin-left:8px;" onclick="['sel-xmin','sel-xmax','sel-ymin','sel-ymax'].forEach(function(i){document.getElementById(i).value='';});buildSelectivityChart();">Reset axes</button>
-        </div>
+      <div class="sel-bar">
+        <label class="sel-f"><span>X</span><select id="sel-prot-x" onchange="buildSelectivityChart()"></select></label>
+        <span class="sel-vs">vs</span>
+        <label class="sel-f"><span>Y</span><select id="sel-prot-y" onchange="buildSelectivityChart()"></select></label>
+        <label class="sel-f"><span>Compare</span><select id="sel-metric" onchange="buildSelectivityChart()">
+          <option value="potency">Potency</option>
+          ${_selDmaxOpt}
+          <option value="HillSlope">Hill slope</option>
+          <option value="R2">R²</option>
+        </select></label>
+        <label class="sel-f" id="sel-thr-wrap"><span>Selective at</span><select id="sel-band-thr" onchange="buildSelectivityChart()"></select></label>
+        <label class="sel-ck"><input type="checkbox" id="sel-show-names" onchange="_selDraw()"> Names</label>
+        <label class="sel-ck"><input type="checkbox" id="sel-show-flagged" onchange="buildSelectivityChart()"> Flagged</label>
+        <input id="sel-title" type="text" class="sel-title" placeholder="Title (optional)" oninput="updateSelTitle(this.value)">
       </div>
-      <div class="scatter-wrap" id="sel-wrap" style="position:relative;flex:1;min-height:300px;"><canvas id="sel-canvas"></canvas></div>
-      <div id="sel-legend" style="padding:4px 12px;font-size:10.5px;font-family:var(--sans);color:var(--text2);display:flex;gap:14px;flex-wrap:wrap;align-items:center;flex-shrink:0;"></div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-shrink:0;">
-        <button class="scatter-dl-btn" onclick="downloadSelHiRes()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" style="vertical-align:-.15em"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"/></svg> PNG 600 DPI</button>
-        <span id="sel-info" style="font-size:11px;color:var(--text3);font-family:var(--sans);"></span>
+      <div class="sel-body">
+        <div class="sel-plot" id="sel-plot"><canvas id="sel-canvas" onmousemove="_selTip(event)" onmouseleave="_selTip({})" onclick="var p=_selHit(event);selPick(p?p.label:SEL.hi)"></canvas></div>
+        <aside class="sel-list" id="sel-list"></aside>
+      </div>
+      <div class="sel-foot">
+        <button class="scatter-dl-btn" onclick="downloadSelHiRes()"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-.15em"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> PNG</button>
+        <span id="sel-info"></span>
       </div>
     </div>
     <div id="bp-section" style="display:none;flex-direction:column;flex:1;min-height:0;padding:4px 0;">
@@ -6224,12 +6210,16 @@ function valToColor(v, vmin, vmax) {
   return `rgba(${r},${g},${b},0.85)`;
 }
 
-function buildScatterChart() {
+// One builder for the screen and the picture. With `exp` ({canvas, dpr, dark, bounds}) it draws the same chart
+// — the same points, colours, sizes, filters, labels and hulls — on an off-screen canvas at `dpr` device pixels,
+// with the axes the screen is showing, and returns it; the live chart, its zoom and its notes are left alone.
+// The export used to rebuild its own chart and lost colour-by, size-by, the filters and the zoom on the way.
+function buildScatterChart(exp) {
   _ensureChartPlugins();
-  const ctx = document.getElementById('scatter-canvas');
+  const ctx = exp ? exp.canvas : document.getElementById('scatter-canvas');
   if (!ctx) return;
-  if (typeof Chart === 'undefined') { ctx.closest?.('.scatter-wrap')?.insertAdjacentHTML?.('afterbegin','<div style="padding:20px;color:var(--text3);font-size:12px;">Chart.js failed to load — refresh to retry.</div>'); return; }
-  if (scatterChart) { scatterChart.destroy(); scatterChart = null; }
+  if (typeof Chart === 'undefined') { if (!exp) ctx.closest?.('.scatter-wrap')?.insertAdjacentHTML?.('afterbegin','<div style="padding:20px;color:var(--text3);font-size:12px;">Chart.js failed to load — refresh to retry.</div>'); return; }
+  if (!exp && scatterChart) { scatterChart.destroy(); scatterChart = null; }
 
   const xKeyRaw = document.getElementById('sc-x')?.value || 'LogIC50_M';
   const yKeyRaw = document.getElementById('sc-y')?.value || 'Dmax_pct';
@@ -6246,10 +6236,11 @@ function buildScatterChart() {
   const _xmaxEl = document.getElementById('sc-xmax');
   const _yminEl = document.getElementById('sc-ymin');
   const _ymaxEl = document.getElementById('sc-ymax');
-  const xMinV = _zoomBounds ? _zoomBounds.xMin : (_xminEl?.value ? parseFloat(_xminEl.value) : NaN);
-  const xMaxV = _zoomBounds ? _zoomBounds.xMax : (_xmaxEl?.value ? parseFloat(_xmaxEl.value) : NaN);
-  const yMinV = _zoomBounds ? _zoomBounds.yMin : (_yminEl?.value ? parseFloat(_yminEl.value) : NaN);
-  const yMaxV = _zoomBounds ? _zoomBounds.yMax : (_ymaxEl?.value ? parseFloat(_ymaxEl.value) : NaN);
+  const _bnd = exp && exp.bounds ? exp.bounds : _zoomBounds;
+  const xMinV = _bnd ? _bnd.xMin : (_xminEl?.value ? parseFloat(_xminEl.value) : NaN);
+  const xMaxV = _bnd ? _bnd.xMax : (_xmaxEl?.value ? parseFloat(_xmaxEl.value) : NaN);
+  const yMinV = _bnd ? _bnd.yMin : (_yminEl?.value ? parseFloat(_yminEl.value) : NaN);
+  const yMaxV = _bnd ? _bnd.yMax : (_ymaxEl?.value ? parseFloat(_ymaxEl.value) : NaN);
   const titleText = document.getElementById('sc-title')?.value || '';
   const searchQ = (document.getElementById('sc-search')?.value || '').toLowerCase().trim();
   const unit = document.getElementById('sc-xunit')?.value || 'M';
@@ -6286,8 +6277,8 @@ function buildScatterChart() {
   if (protFilter !== 'all') rows = rows.filter(r => r.Protein === protFilter);
 
   const proteins = [...new Set(rows.map(r=>r.Protein))].sort(natCmp);
-  window._scProteins = proteins;
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (!exp) window._scProteins = proteins;
+  const isDark = exp ? !!exp.dark : document.documentElement.getAttribute('data-theme') === 'dark';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const textColor = isDark ? '#8b90a8' : '#5a5f7a';
   const labelBg = isDark ? 'rgba(13,15,20,0.88)' : 'rgba(255,255,255,0.88)';
@@ -6295,13 +6286,13 @@ function buildScatterChart() {
   let cbMin=Infinity, cbMax=-Infinity, sbMin=Infinity, sbMax=-Infinity;
   if (colorBy) rows.forEach(r => { const v=parseFloat(r[colorBy]); if(isFinite(v)){cbMin=Math.min(cbMin,v);cbMax=Math.max(cbMax,v);} });
   if (sizeBy)  rows.forEach(r => { const v=parseFloat(r[sizeBy]);  if(isFinite(v)){sbMin=Math.min(sbMin,v);sbMax=Math.max(sbMax,v);} });
-  window._cbMin = cbMin; window._cbMax = cbMax;
+  if (!exp) { window._cbMin = cbMin; window._cbMax = cbMax; }
 
   const dotSize = parseInt(document.getElementById('sc-dotsize')?.value || '3');
   if(!window._scPalMap)window._scPalMap={};
   let _spi=Object.keys(window._scPalMap).length;
   proteins.forEach(p=>{if(!window._scPalMap[p])window._scPalMap[p]=SCATTER_PALETTE[_spi++%SCATTER_PALETTE.length];});
-  window._scNd = 0;
+  let _ndN = 0;
   const datasets = proteins.map(prot => {
     const fg=window._scPalMap[prot];
     // A compound with no value on either axis has no place on the chart: parseFloat(null)||0
@@ -6309,7 +6300,7 @@ function buildScatterChart() {
     const pts = rows.filter(r=>r.Protein===prot).filter(r=>{
       const _xv=parseFloat(r[xKey]), _yv=parseFloat(r[yKey2]);
       // a flat curve has no potency to place: it is not drawn on a potency axis, and the note says how many
-      if (_nd(r) && (_ND_COLS[String(xKey).replace(/^.*::/,'')] || _ND_COLS[String(yKey2).replace(/^.*::/,'')])) { window._scNd = (window._scNd||0) + 1; return false; }
+      if (_nd(r) && (_ND_COLS[String(xKey).replace(/^.*::/,'')] || _ND_COLS[String(yKey2).replace(/^.*::/,'')])) { _ndN++; return false; }
       return isFinite(_xv)&&isFinite(_yv);
     }).map(r => ({
       x: ((parseFloat(r[xKey])||0)+xOffset)*xConcScale,
@@ -6365,14 +6356,15 @@ function buildScatterChart() {
   const xAxisLabel = xLabelOverride || _axLblFull(xKeyRaw, xKey);
   const yAxisLabel = yLabelOverride || _axLblFull(yKeyRaw, yKey2);
 
-  { const _n = document.getElementById('sc-nd-note'); if (_n) _n.textContent = window._scNd ? window._scNd + ' curve' + (window._scNd === 1 ? '' : 's') + ' with no effect (n.d.) not shown on a potency axis' : ''; }
-  scatterChart = new Chart(ctx, {
+  if (!exp) { window._scNd = _ndN; const _n = document.getElementById('sc-nd-note'); if (_n) _n.textContent = _ndN ? _ndN + ' curve' + (_ndN === 1 ? '' : 's') + ' with no effect (n.d.) not shown on a potency axis' : ''; }
+  const _chart = new Chart(ctx, {
     type: 'scatter',
     data: { datasets },
     options: {
-      responsive: true,
+      responsive: !exp,
       maintainAspectRatio: false,
       animation: false,
+      ...(exp ? { devicePixelRatio: exp.dpr || 5, events: [] } : {}),
       onHover: (event, elements) => {
         _hoveredScatterEl = elements.length ? elements[0] : null;
       },
@@ -6430,6 +6422,8 @@ function buildScatterChart() {
       }
     }
   });
+  if (exp) return _chart;
+  scatterChart = _chart;
 
   // Force canvas to correct pixel dimensions (override any Chart.js inline style)
   const _cv = document.getElementById('scatter-canvas');
@@ -6939,351 +6933,295 @@ function renderQCCanvas() {
   }
 }
 
-var selChart = null;
-
-function _initSelectivity() {
-  if (!window._resultsData || !window._resultsData.length) return;
-  const proteins = [...new Set(window._resultsData.map(r=>r.Protein))].sort(natCmp);
-  const px = document.getElementById('sel-prot-x');
-  const py = document.getElementById('sel-prot-y');
-  if (!px || !py) return;
-  // only repopulate if empty or stale
-  if (px.children.length !== proteins.length) {
-    px.innerHTML = proteins.map((p,i)=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
-    py.innerHTML = proteins.map((p,i)=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
-    // default: pick first two distinct proteins
-    if (proteins.length >= 2) py.selectedIndex = 1;
-  }
-  buildSelectivityChart();
-}
-
-function _selMetricIsLog(metric) {
-  return ['pDC50','DC50_nM','LogIC50_M'].includes(metric);
-}
-
-function _selMetricLabel(metric) {
-  const map = {pDC50:'pDC₅₀',DC50_nM:'log DC₅₀ (M)',Dmax_pct:(window._bpVarLabels||{})['Dmax_pct']||'Dmax (%)',
-    HillSlope:'Hill slope',R2:'R²',LogIC50_M:'LogIC₅₀ (M)'};
-  return map[metric]||metric;
-}
-
+// ═══ SELECTIVITY ═══
+// Two proteins, one measure, one compound per point. One painter (_selPaint) draws the screen and the PNG, so the
+// picture is the plot. Potency sits on a log axis in nM (lower-left is more potent); the diagonal is "the same on
+// both", the shaded steps are 3×, 10× and 30× apart, and each point wears a diverging pastel by how far it sits
+// from the diagonal and on which side. The ranked lists beside it say who is most selective, with the fold.
 // Rounds a numeric axis range to a "nice" tick step (1/2/5 x10^n), e.g. 2.31 -> 5.
 function _niceAxisStep(range) {
   if (!(range > 0)) return 1;
-  const rough = range / 5; // aim for ~5 gridlines across the axis
-  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
-  const norm = rough / mag;
-  let step;
-  if (norm < 1.5) step = 1;
-  else if (norm < 3) step = 2;
-  else if (norm < 7) step = 5;
-  else step = 10;
-  return step * mag;
+  const rough = range / 5, mag = Math.pow(10, Math.floor(Math.log10(rough))), norm = rough / mag;
+  return (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
 }
-
 // A canvas cannot resolve a CSS variable reference: handed one, it silently paints black.
 function _cssVar(name, fallback) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fallback; }
+var selChart = null;          // { data:{datasets:[{data:points}]} } — the points, for anything that reads them
+var SEL = { hi: null, hover: null, last: null };
+const _SEL_X = [232, 132, 108], _SEL_Y = [96, 170, 132], _SEL_N = [184, 188, 200];   // coral · sage · grey (pastel)
+
+function _selKeyOf(r) { return (window._lastAnalysisParams && window._lastAnalysisParams.multiAssay && r._assayType ? r._assayType + '::' : '') + r.Protein; }
+const _SEL_TYPES = { hibit: 'HiBiT', ctg: 'CTG', displacement: 'Displacement', gain: 'Gain' };
+function _selKeyLabel(k) { const i = String(k).indexOf('::'); if (i < 0) return k; const t = k.slice(0, i); return (_SEL_TYPES[t] || t) + ' · ' + k.slice(i + 2); }
+function _initSelectivity() {
+  if (!window._resultsData || !window._resultsData.length) return;
+  const keys = [...new Set(window._resultsData.map(_selKeyOf))].sort(natCmp);
+  const px = document.getElementById('sel-prot-x'), py = document.getElementById('sel-prot-y');
+  if (!px || !py) return;
+  const sig = keys.join('|');
+  if (px.dataset.sig !== sig) {
+    const opts = keys.map(k => '<option value="' + esc(k) + '">' + esc(_selKeyLabel(k)) + '</option>').join('');
+    const ox = px.value, oy = py.value;
+    px.innerHTML = opts; py.innerHTML = opts; px.dataset.sig = sig;
+    if (keys.includes(ox)) px.value = ox;
+    py.value = keys.includes(oy) ? oy : (keys.find(k => k !== px.value) || keys[0]);
+  }
+  if (!SEL._ro) { const w = document.getElementById('sel-plot'); if (w && w.parentElement && window.ResizeObserver) { SEL._ro = new ResizeObserver(() => _selDraw()); SEL._ro.observe(w.parentElement); } }
+  buildSelectivityChart();
+}
+function _selMetric() { return document.getElementById('sel-metric')?.value || 'potency'; }
+function _selPotLbl() { return ((window._bpVarLabels || {})['DC50_nM'] || 'DC50 (nM)').replace(/\s*\([^)]*\)/, ''); }
+function _selMetricLabel(m) {
+  m = m || _selMetric();
+  return m === 'potency' ? _selPotLbl() + ' (nM)' : m === 'Dmax_pct' ? ((window._bpVarLabels || {})['Dmax_pct'] || 'Dmax (%)') : m === 'HillSlope' ? 'Hill slope' : m === 'R2' ? 'R²' : m;
+}
+function _selBound(r) {
+  const f = String(r.Flag_Reason || '');
+  return /EC50>range/.test(f) ? 1 : /EC50<range/.test(f) ? -1 : 0;
+}
+// The data: one point per compound measured on both, with the signed fold (positive = more selective for Y).
+function _selCompute() {
+  const kx = document.getElementById('sel-prot-x')?.value, ky = document.getElementById('sel-prot-y')?.value;
+  const metric = _selMetric();
+  const thr = Math.max(0.01, parseFloat(document.getElementById('sel-band-thr')?.value || '10') || 10);
+  const showFlagged = document.getElementById('sel-show-flagged')?.checked ?? false;
+  const D = { kx, ky, metric, thr, log: metric === 'potency', lin: metric === 'Dmax_pct', points: [], nd: 0, flaggedOut: 0 };
+  if (!kx || !ky || !window._resultsData) return D;
+  const val = r => {
+    if (metric === 'potency') { if (_nd(r)) return null; const v = +r.DC50_nM; return isFinite(v) && v > 0 ? Math.log10(v) : null; }
+    const v = +r[metric]; return r[metric] == null || !isFinite(v) ? null : v;
+  };
+  const X = {}, Y = {};
+  for (const r of _applyHitFilters(window._resultsData)) {
+    const k = _selKeyOf(r), id = r.Sample_ID;
+    if (k !== kx && k !== ky) continue;
+    const v = val(r);
+    if (v == null) { if (metric === 'potency' && _nd(r)) D.nd++; continue; }
+    const o = { v, flag: r.Flag === 'Yes', bound: metric === 'potency' ? _selBound(r) : 0 };
+    if (k === kx) X[id] = o; if (k === ky) Y[id] = o;
+  }
+  const cut = D.log ? Math.log10(thr) : thr;
+  Object.keys(X).filter(id => id in Y).sort(natCmp).forEach(id => {
+    const a = X[id], b = Y[id], flagged = a.flag || b.flag;
+    if (flagged && !showFlagged) { D.flaggedOut++; return; }
+    // positive s = selective for Y: for potency a LOWER value on Y is more potent, so s = x − y
+    const s = D.log ? a.v - b.v : D.lin ? b.v - a.v : b.v - a.v;
+    const dir = (D.log || D.lin) ? (s > cut ? 'y' : s < -cut ? 'x' : 'neutral') : 'neutral';
+    D.points.push({ label: id, x: a.v, y: b.v, s, fold: D.log ? Math.pow(10, Math.abs(s)) : null, delta: D.lin ? Math.abs(s) : null, dir, flagged, bx: a.bound, by: b.bound });
+  });
+  return D;
+}
+function _selFmtAxis(v, log) {
+  if (!log) return String(+v.toPrecision(3));
+  const n = Math.pow(10, v);
+  return n >= 1000 ? (+(n / 1000).toPrecision(3)) + ' µM' : n >= 1 ? (+n.toPrecision(3)) + ' nM' : (+(n * 1000).toPrecision(3)) + ' pM';
+}
+function _selColor(p, D, a) {
+  if (!(D.log || D.lin)) return 'rgba(' + _SEL_N.join(',') + ',' + (a == null ? 1 : a) + ')';
+  const top = D.log ? 2 : 60;   // 100-fold, or 60 points of Dmax, is the deepest shade
+  const t = Math.max(0, Math.min(1, Math.abs(p.s) / top)), to = p.s > 0 ? _SEL_Y : _SEL_X;
+  const c = _SEL_N.map((v, i) => Math.round(v + (to[i] - v) * (0.25 + 0.75 * t)));
+  return 'rgba(' + c.join(',') + ',' + (a == null ? 1 : a) + ')';
+}
+// The geometry: a square plot centred in W×H, with room for the title, the axis titles and the tick labels.
+function _selLayout(W, H, D, cfg) {
+  const fs = cfg.fs || 11, titleH = cfg.title ? fs * 2.2 : 0, legH = cfg.legend ? fs * 2.4 : 0;
+  const padL = fs * 5.6, padB = fs * 4, padT = 10 + titleH, padR = 16;
+  const side = Math.max(120, Math.min(W - padL - padR, H - padT - padB - legH));
+  const left = Math.round(padL + (cfg.center ? Math.max(0, (W - padL - padR - side) / 2) : 0)), top = Math.round(padT);
+  const vals = D.points.flatMap(p => [p.x, p.y]);
+  let lo = vals.length ? Math.min(...vals) : 0, hi = vals.length ? Math.max(...vals) : 1;
+  // half a decade of room, snapped to half decades: whole decades left the data in the middle third of the square
+  if (D.log) { lo = Math.floor((lo - 0.2) * 2) / 2; hi = Math.ceil((hi + 0.2) * 2) / 2; }
+  else { const pad = (hi - lo) * 0.08 || 1; const st = _niceAxisStep(hi - lo + 2 * pad); lo = Math.floor((lo - pad) / st) * st; hi = Math.ceil((hi + pad) / st) * st; if (D.lin) { lo = Math.min(lo, 0); } }
+  if (hi - lo < 1e-9) hi = lo + 1;
+  const X = v => left + (v - lo) / (hi - lo) * side, Y = v => top + side - (v - lo) / (hi - lo) * side;
+  return { W, H, left, top, side, lo, hi, X, Y, fs, titleH, legTop: top + side + padB - fs * 0.6 };
+}
+function _selPaint(ctx, L, D, cfg) {
+  const fs = L.fs, ink = cfg.ink, ink2 = cfg.ink2, grid = cfg.grid, font = (s, w) => (w || '') + ' ' + s + "px 'IBM Plex Sans',sans-serif";
+  const { left, top, side, lo, hi, X, Y } = L;
+  ctx.save();
+  if (cfg.bg) { ctx.fillStyle = cfg.bg; ctx.fillRect(0, 0, L.W, L.H); }
+  if (cfg.title) { ctx.fillStyle = ink; ctx.font = font(fs * 1.25, '600'); ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(cfg.title, left + side / 2, 6); }
+  // ticks and grid
+  const ticks = []; if (D.log) for (let v = Math.ceil(lo); v <= hi + 1e-9; v++) ticks.push(v); else { const st = _niceAxisStep(hi - lo); for (let v = Math.ceil(lo / st) * st; v <= hi + 1e-9; v += st) ticks.push(+v.toFixed(10)); }
+  ctx.strokeStyle = grid; ctx.lineWidth = 1; ctx.font = font(fs * 0.92); ctx.fillStyle = ink2;
+  ticks.forEach(v => {
+    const x = X(v), y = Y(v);
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + side); ctx.moveTo(left, y); ctx.lineTo(left + side, y); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(_selFmtAxis(v, D.log), x, top + side + fs * 0.5);
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(_selFmtAxis(v, D.log), left - fs * 0.5, y);
+  });
+  // bands: |fold| ≥ 3×, 10×, 30× (or the Δ in points for Dmax), one step of shade each
+  ctx.save(); ctx.beginPath(); ctx.rect(left, top, side, side); ctx.clip();
+  const steps = D.log ? [Math.log10(3), 1, Math.log10(30)] : D.lin ? [10, 20, 40] : [];
+  steps.forEach((d, i) => {
+    [[1, _SEL_Y], [-1, _SEL_X]].forEach(([sg, col]) => {
+      // selective for Y lies where y is more potent: below the diagonal for potency (lower = better), above it for Dmax
+      const off = D.log ? -sg * d : sg * d;
+      ctx.fillStyle = 'rgba(' + col.join(',') + ',0.075)';
+      ctx.beginPath(); ctx.moveTo(X(lo), Y(lo + off)); ctx.lineTo(X(hi), Y(hi + off));
+      if (off > 0) { ctx.lineTo(X(hi), top); ctx.lineTo(X(lo), top); } else { ctx.lineTo(X(hi), top + side); ctx.lineTo(X(lo), top + side); }
+      ctx.closePath(); ctx.fill();
+    });
+  });
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = ink2; ctx.globalAlpha = 0.55; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(X(lo), Y(lo)); ctx.lineTo(X(hi), Y(hi)); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+  ctx.restore();
+  // each step is labelled where its line leaves the square, just inside it
+  ctx.font = font(fs * 0.85, '600'); ctx.textBaseline = 'middle';
+  steps.forEach((d, i) => {
+    const lab = D.log ? ['3×', '10×', '30×'][i] : 'Δ' + d;
+    [[1, _SEL_Y], [-1, _SEL_X]].forEach(([sg, col]) => {
+      const off = D.log ? -sg * d : sg * d;
+      let xv = hi, yv = hi + off;            // the line y = x + off, at its right end or where it meets the top
+      if (yv > hi) { yv = hi; xv = hi - off; }
+      if (xv < lo || xv > hi || yv < lo) return;
+      const px = X(xv), py = Y(yv);
+      ctx.fillStyle = 'rgba(' + col.map(v => Math.round(v * 0.55)).join(',') + ',.95)';
+      if (off > 0) { ctx.textAlign = 'right'; ctx.fillText(lab, Math.min(px - 4, left + side - 4), py + fs * 0.8); }
+      else { ctx.textAlign = 'right'; ctx.fillText(lab, left + side - 4, py - fs * 0.7); }
+    });
+  });
+  // frame
+  ctx.strokeStyle = cfg.frame; ctx.lineWidth = 1; ctx.strokeRect(left + 0.5, top + 0.5, side - 1, side - 1);
+  // points, then the highlighted one on top
+  const r = cfg.r || 5;
+  const order = D.points.slice().sort((a, b) => Math.abs(a.s) - Math.abs(b.s));
+  order.forEach(p => {
+    const x = X(p.x), y = Y(p.y);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (p.flagged) { ctx.fillStyle = cfg.bgPt; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = _selColor(p, D); ctx.stroke(); }
+    else { ctx.fillStyle = _selColor(p, D, 0.92); ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.stroke(); }
+    // a bounded potency points the way it is off the scale
+    [[p.bx, 1], [p.by, 0]].forEach(([b, isX]) => {
+      if (!b) return; ctx.strokeStyle = ink2; ctx.lineWidth = 1.3; ctx.beginPath();
+      if (isX) { const e = x + b * (r + 7); ctx.moveTo(x + b * (r + 1), y); ctx.lineTo(e, y); ctx.moveTo(e, y); ctx.lineTo(e - b * 3, y - 3); ctx.moveTo(e, y); ctx.lineTo(e - b * 3, y + 3); }
+      else { const e = y - b * (r + 7); ctx.moveTo(x, y - b * (r + 1)); ctx.lineTo(x, e); ctx.moveTo(x, e); ctx.lineTo(x - 3, e + b * 3); ctx.moveTo(x, e); ctx.lineTo(x + 3, e + b * 3); }
+      ctx.stroke();
+    });
+  });
+  const hiP = cfg.hi && D.points.find(p => p.label === cfg.hi);
+  if (hiP) { ctx.beginPath(); ctx.arc(X(hiP.x), Y(hiP.y), r + 4, 0, Math.PI * 2); ctx.lineWidth = 2; ctx.strokeStyle = cfg.accent; ctx.stroke(); }
+  // names
+  let hidden = 0;
+  if (cfg.names || hiP) {
+    const pts = (cfg.names ? D.points : [hiP]).map(p => ({ x: X(p.x), y: Y(p.y), text: String(p.label) }));
+    hidden = _placePointLabels(ctx, pts, { fs: fs * 0.9, k: cfg.k || 1, area: { left, right: left + side, top, bottom: top + side }, pr: hiP && !cfg.names ? r + 6 : r + 1, color: ink2, halo: cfg.bgPt, leader: cfg.grid, noNote: true }) || 0;
+  }
+  // axis titles
+  ctx.fillStyle = ink; ctx.font = font(fs, '500'); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(cfg.xTitle, left + side / 2, top + side + fs * 3.2);
+  ctx.save(); ctx.translate(left - fs * 4.6, top + side / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle'; ctx.fillText(cfg.yTitle, 0, 0); ctx.restore();
+  // legend: inside the picture, so a PNG explains itself
+  if (cfg.legend) {
+    const items = (D.log || D.lin) ? [[_SEL_Y, cfg.ky + '-selective'], [_SEL_X, cfg.kx + '-selective'], [_SEL_N, 'similar']] : [];
+    let lx = left; const ly = L.legTop + fs;
+    ctx.font = font(fs * 0.9); ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    items.forEach(([c, t]) => { ctx.fillStyle = 'rgb(' + c.join(',') + ')'; ctx.beginPath(); ctx.arc(lx + 5, ly, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = ink2; ctx.fillText(t, lx + 14, ly); lx += 26 + ctx.measureText(t).width; });
+    const note = [D.flaggedOut ? D.flaggedOut + ' flagged not shown' : '', D.nd ? D.nd + ' n.d.' : '', hidden ? hidden + ' name' + (hidden === 1 ? '' : 's') + ' hidden (no room)' : ''].filter(Boolean).join(' · ');
+    if (note) { ctx.fillStyle = ink2; ctx.globalAlpha = 0.8; ctx.fillText(note, lx + 6, ly); ctx.globalAlpha = 1; }
+  }
+  ctx.restore();
+  return hidden;
+}
+function _selCfg(light) {
+  const v = (n, f) => light ? f : _cssVar(n, f);
+  const D = SEL.last || {};
+  return { ink: v('--text', '#1a1d2e'), ink2: v('--text2', '#5a5f7a'), grid: v('--border', 'rgba(0,0,0,0.07)'), frame: v('--border2', 'rgba(0,0,0,0.13)'),
+    bgPt: v('--surface', '#ffffff'), accent: v('--accent', '#5e87c5'), r: 5.5,
+    names: document.getElementById('sel-show-names')?.checked || false, hi: SEL.hi,
+    title: (document.getElementById('sel-title')?.value || '').trim() || (_selKeyLabel(D.kx || '') + ' vs ' + _selKeyLabel(D.ky || '')),
+    xTitle: _selKeyLabel(D.kx || '') + ' — ' + _selMetricLabel(D.metric), yTitle: _selKeyLabel(D.ky || '') + ' — ' + _selMetricLabel(D.metric),
+    kx: _selKeyLabel(D.kx || 'X'), ky: _selKeyLabel(D.ky || 'Y'), legend: true };
+}
+function _selDraw() {
+  const cv = document.getElementById('sel-canvas'), wrap = document.getElementById('sel-plot'), body = wrap && wrap.parentElement, D = SEL.last;
+  if (!cv || !wrap || !D) return;
+  // the plot is a square; the box is sized to it, so the ranked list sits beside the square, not across a gap
+  const H = wrap.clientHeight, list = document.getElementById('sel-list');
+  const stacked = !list || list.offsetTop > wrap.offsetTop + 10;
+  const room = stacked ? body.clientWidth : body.clientWidth - list.offsetWidth - 18;
+  const ideal = Math.round(H - 11 * (2.2 + 4 + 2.4) - 10 + 11 * 5.6 + 16);
+  wrap.style.width = stacked ? '' : Math.max(260, Math.min(room, ideal)) + 'px';
+  const W = wrap.clientWidth; if (W < 50 || H < 50) return;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  if (!D.points.length) {
+    ctx.fillStyle = _cssVar('--text3', '#7c8199'); ctx.font = "13px 'IBM Plex Sans',sans-serif"; ctx.textAlign = 'center';
+    ctx.fillText(D.kx === D.ky ? 'Pick two different proteins.' : 'No compound has a value on both.', W / 2, H / 2); SEL.L = null; return;
+  }
+  const cfg = _selCfg(false);
+  SEL.L = _selLayout(W, H, D, Object.assign({ fs: 11 }, cfg));
+  _selPaint(ctx, SEL.L, D, cfg);
+}
+function _selListHtml(D) {
+  if (!(D.log || D.lin) || !D.points.length) return '<div class="sel-empty">' + (D.points.length ? 'Selectivity is read on potency or ' + esc((window._bpVarLabels || {})['Dmax_pct'] || 'Dmax') + '.' : '') + '</div>';
+  const fmt = p => D.log ? (p.fold >= 100 ? Math.round(p.fold) : +p.fold.toPrecision(2)) + '×' : 'Δ' + Math.round(p.delta);
+  const col = (k, title) => {
+    const rows = D.points.filter(p => p.dir === k).sort((a, b) => Math.abs(b.s) - Math.abs(a.s));
+    const max = Math.max(1e-9, ...D.points.map(p => Math.abs(p.s)));
+    return '<div class="sel-col"><div class="sel-ch"><i style="background:rgb(' + (k === 'y' ? _SEL_Y : _SEL_X).join(',') + ')"></i>' + esc(title) + '<span>' + rows.length + '</span></div>'
+      + (rows.length ? rows.slice(0, 12).map(p => '<button class="sel-row' + (SEL.hi === p.label ? ' on' : '') + '" data-l="' + esc(p.label) + '" onclick="selPick(this.dataset.l)"><span class="sel-n">' + esc(p.label) + (p.flagged ? ' <em>flagged</em>' : '') + '</span><span class="sel-b"><b style="width:' + Math.round(100 * Math.abs(p.s) / max) + '%;background:' + _selColor(p, D) + '"></b></span><span class="sel-fd">' + fmt(p) + '</span></button>').join('')
+        + (rows.length > 12 ? '<div class="sel-more">+' + (rows.length - 12) + ' more</div>' : '')
+        : '<div class="sel-none">None beyond ' + (D.log ? D.thr + '×' : 'Δ' + D.thr) + '</div>') + '</div>';
+  };
+  return col('y', 'Selective for ' + _selKeyLabel(D.ky)) + col('x', 'Selective for ' + _selKeyLabel(D.kx));
+}
 function buildSelectivityChart() {
-  _ensureChartPlugins();
-  const canvas = document.getElementById('sel-canvas');
-  if (!canvas) return;
-  if (typeof Chart === 'undefined') return;
-  if (selChart) { selChart.destroy(); selChart = null; }
-
-  const protX   = document.getElementById('sel-prot-x')?.value;
-  const protY   = document.getElementById('sel-prot-y')?.value;
-  const metricX = document.getElementById('sel-metric-x')?.value || document.getElementById('sel-metric')?.value || 'pDC50';
-  const metricY = document.getElementById('sel-metric-y')?.value || document.getElementById('sel-metric')?.value || 'pDC50';
-  const onlyShared = document.getElementById('sel-only-shared')?.checked ?? true;
-  const showBands  = document.getElementById('sel-show-bands')?.checked ?? true;
-  const showNames  = document.getElementById('sel-show-names')?.checked ?? false;
-  const showFlagged= document.getElementById('sel-show-flagged')?.checked ?? false;
-  const dotSize    = parseInt(document.getElementById('sel-dotsize')?.value||'4');
-  const bandThr    = parseFloat(document.getElementById('sel-band-thr')?.value||'1');
-  const info       = document.getElementById('sel-info');
-  const legend     = document.getElementById('sel-legend');
-
-  if (!protX || !protY || !window._resultsData) return;
-
-  const _selVal = (r, metric) => {
-    if (_nd(r) && _ND_COLS[metric]) return null;   // a flat curve has no potency to compare
-    let val = r[metric];
-    if (val === undefined || val === null || isNaN(+val)) return null;
-    val = +val;
-    if (metric === 'DC50_nM') val = Math.log10(Math.max(val / 1e9, 1e-30));
-    return val;
-  };
-
-  const isLogX = _selMetricIsLog(metricX);
-  const isLogY = _selMetricIsLog(metricY);
-  const sameMetric = metricX === metricY;
-  const isLog = sameMetric && isLogX;
-  const isDmax = sameMetric && metricX === 'Dmax_pct';
-  // Selectivity can be judged on a log axis (DC50/pDC50 → fold) OR a linear axis
-  // (Dmax %, where a difference in %-max is the determining factor).
-  const bandMode = isLog ? 'log' : (isDmax ? 'linear' : 'none');
-  const linThr = Math.abs(parseFloat(document.getElementById('sel-lin-thr')?.value || '20')) || 20;
-  const bandOffset = bandMode === 'linear' ? linThr : bandThr;   // in the axis's own units
-  const bandOn = bandMode !== 'none' && showBands;
-  // Show the Δ-Dmax band control only when a Dmax axis is active.
-  const _ltWrap = document.getElementById('sel-lin-thr-wrap');
-  if (_ltWrap) _ltWrap.style.display = isDmax ? 'inline-flex' : 'none';
-  const _btSel = document.getElementById('sel-band-thr');
-  if (_btSel) _btSel.style.display = isDmax ? 'none' : '';
-  // Read per-axis manual limits (blank = auto).
-  const _num = id => { const v = parseFloat(document.getElementById(id)?.value); return isFinite(v) ? v : null; };
-  const uXMin=_num('sel-xmin'), uXMax=_num('sel-xmax'), uYMin=_num('sel-ymin'), uYMax=_num('sel-ymax');
-
-  // Build lookup: Sample_ID -> {xVal, yVal, flag}
-  const dataX = {}, dataY = {};
-  const _selFiltered = _applyHitFilters(window._resultsData);
-  for (const r of _selFiltered) {
-    const id = r.Sample_ID;
-    if (r.Protein === protX) {
-      const vx = _selVal(r, metricX);
-      if (vx !== null) dataX[id] = {val: vx, flag: r.Flag};
-    }
-    if (r.Protein === protY) {
-      const vy = _selVal(r, metricY);
-      if (vy !== null) dataY[id] = {val: vy, flag: r.Flag};
-    }
+  const D = _selCompute(); SEL.last = D;
+  selChart = { data: { datasets: [{ data: D.points }] }, destroy() {} };
+  const info = document.getElementById('sel-info');
+  if (info) info.textContent = D.points.length ? D.points.length + ' compound' + (D.points.length === 1 ? '' : 's') + ' measured on both' : '';
+  const thrSel = document.getElementById('sel-band-thr'), wrapThr = document.getElementById('sel-thr-wrap');
+  if (wrapThr) wrapThr.style.display = (D.log || D.lin) ? '' : 'none';
+  if (thrSel && thrSel.dataset.mode !== (D.lin ? 'lin' : 'log')) {
+    thrSel.dataset.mode = D.lin ? 'lin' : 'log';
+    thrSel.innerHTML = D.lin ? [10, 20, 30, 50].map(v => '<option value="' + v + '"' + (v === 20 ? ' selected' : '') + '>Δ ' + v + ' points</option>').join('')
+      : [3, 10, 30, 100].map(v => '<option value="' + v + '"' + (v === 10 ? ' selected' : '') + '>' + v + '×</option>').join('');
+    SEL.last = _selCompute(); return buildSelectivityChart();
   }
-
-  const allIds = onlyShared
-    ? Object.keys(dataX).filter(id => id in dataY)
-    : [...new Set([...Object.keys(dataX), ...Object.keys(dataY)])];
-
-  // Which way is "more potent"? Up for pDC50, down for a log DC50 — so the region above the
-  // diagonal belongs to Y for pDC50 and to X for log DC50. Reading both the pDC50 way painted
-  // every log-DC50 selectivity on the wrong protein.
-  const potSign = (sameMetric && (metricX === 'DC50_nM' || metricX === 'LogIC50_M')) ? -1 : 1;
-  const points = [];
-  for (const id of allIds) {
-    const rx = dataX[id], ry = dataY[id];
-    if (!rx || !ry) continue;
-    const isFlagged = rx.flag==='Yes' || ry.flag==='Yes';
-    if (!showFlagged && isFlagged) continue;
-    const x = rx.val, y = ry.val;
-    let fold = null, delta = null, dir = 'neutral';
-    const diff = y - x;
-    if (bandMode === 'log') {
-      fold = Math.pow(10, Math.abs(diff));
-      if (diff * potSign > bandThr) dir = 'y';
-      else if (diff * potSign < -bandThr) dir = 'x';
-    } else if (bandMode === 'linear') {
-      delta = Math.abs(diff);
-      if (diff > linThr) dir = 'y';
-      else if (diff < -linThr) dir = 'x';
-    }
-    points.push({x, y, label: id, fold, delta, dir, flagged: isFlagged});
-  }
-
-  if (info) info.textContent = points.length ? `${points.length} compound${points.length!==1?'s':''} measured on both` : `No compound has a value on both ${protX} and ${protY}`;
-
-  // color by selectivity direction
-  const colors = points.map(p => {
-    if (p.flagged) return 'rgba(245,191,123,.9)'; // soft amber = flagged
-    if (!bandOn) return 'rgba(129,155,235,.82)'; // pastel blue
-    if (p.dir === 'y') return 'rgba(129,199,132,.9)';  // pastel green = selective Y
-    if (p.dir === 'x') return 'rgba(240,138,120,.9)';  // pastel coral = selective X
-    return 'rgba(176,180,196,.82)'; // gray = near diagonal
-  });
-  const borders = points.map(p => {
-    if (p.flagged) return '#e0a04a';
-    if (!bandOn) return 'rgba(94,114,196,1)';
-    if (p.dir === 'y') return '#5aa860';
-    if (p.dir === 'x') return '#d96a54';
-    return '#9195a8';
-  });
-
-  // Legend
-  if (legend && bandOn) {
-    const thr = bandMode === 'linear'
-      ? `Δ${linThr}%`
-      : (bandThr >= 1 ? `${Math.round(Math.pow(10,bandThr))}×` : `${Math.pow(10,bandThr).toFixed(1)}×`);
-    legend.innerHTML = [
-      ['rgba(129,199,132,.9)','<b>'+esc(protY)+'</b>-selective (>'+thr+')'],
-      ['rgba(240,138,120,.9)','<b>'+esc(protX)+'</b>-selective (>'+thr+')'],
-      ['rgba(176,180,196,.82)','Near-equal (<'+thr+')'],
-      ['rgba(245,191,123,.9)','Flagged'],
-    ].map(([c,t])=>`<span style="display:inline-flex;align-items:center;gap:5px;"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0;"></span><span>${t}</span></span>`).join('');
-  } else if (legend) legend.innerHTML = '';
-
-  // Build Chart.js dataset
-  const axLabelX = _selMetricLabel(metricX);
-  const axLabelY = _selMetricLabel(metricY);
-  const axLabel = sameMetric ? axLabelX : axLabelX + ' / ' + axLabelY;
-  const titleEl = document.getElementById('sel-title');
-  const titleTxt = titleEl?.value || `${protX} vs ${protY} — ${axLabel}`;
-
-  if (!points.length) { if (selChart) { selChart.destroy(); selChart = null; } return; }
-  const minVal = Math.min(...points.map(p=>Math.min(p.x,p.y)));
-  const maxVal = Math.max(...points.map(p=>Math.max(p.x,p.y)));
-  const pad = (maxVal - minVal) * 0.10 || 0.5;
-  // Snap the axis bounds outward to a "nice" step so Chart.js's own generated
-  // ticks land exactly on min/max, instead of adding a near-duplicate label
-  // right next to the boundary (and clipping against #sel-wrap's overflow:hidden).
-  const _selStep = _niceAxisStep((maxVal + pad) - (minVal - pad));
-  const axMin = Math.floor((minVal - pad) / _selStep) * _selStep;
-  const axMax = Math.ceil((maxVal + pad) / _selStep) * _selStep;
-  // Per-axis final bounds — manual override wins, else the shared auto bound.
-  const xMin = uXMin!=null?uXMin:axMin, xMax = uXMax!=null?uXMax:axMax;
-  const yMin = uYMin!=null?uYMin:axMin, yMax = uYMax!=null?uYMax:axMax;
-
-  // diagonal + band plugin
-  const selPlugin = {
-    id: 'selDiag',
-    beforeDraw(chart) {
-      const {ctx, chartArea:{left,right,top,bottom}, scales:{x,y}} = chart;
-      const toXpx = v => x.getPixelForValue(v);
-      const toYpx = v => y.getPixelForValue(v);
-      const lo = x.min, hi = x.max;   // sweep the visible x-domain
-      ctx.save();
-      // colored selectivity bands (log fold OR linear Δ, when bands are on)
-      if (bandOn) {
-        ctx.beginPath(); ctx.rect(left, top, right-left, bottom-top); ctx.clip();
-        const _upY = potSign > 0;   // above the diagonal = selective for Y (pDC50, Dmax) or for X (log DC50)
-        // Region above the diagonal by >bandOffset
-        ctx.fillStyle=_upY?'rgba(129,199,132,.09)':'rgba(240,138,120,.09)';
-        ctx.beginPath();
-        ctx.moveTo(toXpx(lo), toYpx(lo+bandOffset));
-        ctx.lineTo(toXpx(hi), toYpx(hi+bandOffset));
-        ctx.lineTo(toXpx(hi), top);
-        ctx.lineTo(left, top);
-        ctx.closePath(); ctx.fill();
-        // Region below the diagonal by >bandOffset
-        ctx.fillStyle=_upY?'rgba(240,138,120,.09)':'rgba(129,199,132,.09)';
-        ctx.beginPath();
-        ctx.moveTo(toXpx(lo), toYpx(lo-bandOffset));
-        ctx.lineTo(toXpx(hi), toYpx(hi-bandOffset));
-        ctx.lineTo(toXpx(hi), bottom);
-        ctx.lineTo(left, bottom);
-        ctx.closePath(); ctx.fill();
-        // band lines
-        ctx.setLineDash([5,4]); ctx.lineWidth=1;
-        ctx.strokeStyle=_upY?'rgba(90,168,96,.55)':'rgba(217,106,84,.55)';
-        ctx.beginPath(); ctx.moveTo(toXpx(lo),toYpx(lo+bandOffset)); ctx.lineTo(toXpx(hi),toYpx(hi+bandOffset)); ctx.stroke();
-        ctx.strokeStyle=_upY?'rgba(217,106,84,.55)':'rgba(90,168,96,.55)';
-        ctx.beginPath(); ctx.moveTo(toXpx(lo),toYpx(lo-bandOffset)); ctx.lineTo(toXpx(hi),toYpx(hi-bandOffset)); ctx.stroke();
-      }
-      if (!bandOn) { ctx.beginPath(); ctx.rect(left, top, right-left, bottom-top); ctx.clip(); }
-      // diagonal y=x
-      ctx.setLineDash([6,4]); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(150,150,170,.70)';
-      ctx.beginPath(); ctx.moveTo(toXpx(lo),toYpx(lo)); ctx.lineTo(toXpx(hi),toYpx(hi)); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    },
-    afterDraw(chart) {
-      if (!showNames) return;
-      const {scales:{x,y}} = chart, k = chart.options._exportScale || 1;
-      const pts = chart.data.datasets[0].data.map(p => ({x: x.getPixelForValue(p.x), y: y.getPixelForValue(p.y), text: String(p.label)}))
-        .filter(p => isFinite(p.x) && isFinite(p.y));
-      _placePointLabels(chart.ctx, pts, {fs: 9, k, area: chart.chartArea, pr: dotSize + 1, color: _cssVar('--text2','#5a5f7a'),
-        halo: _cssVar('--surface','#ffffff'), leader: _cssVar('--text3','#9ca0b8')});
-    }
-  };
-
-  // One unit on X is one unit on Y, so the diagonal is at 45° and a tenfold band is as wide as
-  // it is tall. Stretched to the full panel width the bands read as a fraction of their fold.
-  const _selWrap = document.getElementById('sel-wrap');
-  if (_selWrap) {
-    _selWrap._square = (xMax - xMin) > 0 && Math.abs((xMax - xMin) - (yMax - yMin)) < 1e-9;
-    const fit = () => {
-      const h = _selWrap.clientHeight;   // flex:1 in a column: the height never depends on the width
-      if (_selWrap._square && h > 150) { _selWrap.style.maxWidth = Math.round(h - 25) + "px"; _selWrap.style.width = '100%'; _selWrap.style.margin = '0 auto'; }
-      else { _selWrap.style.maxWidth = ''; _selWrap.style.margin = ''; }
-    };
-    fit();
-    if (!_selWrap._ro && window.ResizeObserver) { _selWrap._ro = new ResizeObserver(fit); _selWrap._ro.observe(_selWrap.parentElement); }
-  }
-  selChart = new Chart(canvas, {
-    type: 'scatter',
-    data: {
-      datasets: [{
-        label: 'Compounds',
-        data: points,
-        pointBackgroundColor: colors,
-        pointBorderColor: borders,
-        pointBorderWidth: 1.5,
-        pointRadius: dotSize,
-        pointHoverRadius: dotSize+3,
-      }]
-    },
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      animation:{duration:0},
-      scales:{
-        x:{
-          title:{display:true,text:`${protX} — ${axLabelX}`,font:{size:11},color:_cssVar('--text2','#5a5f7a')},
-          min:xMin, max:xMax,
-          grid:{color:_cssVar('--border','rgba(0,0,0,0.07)')},
-          ticks:{color:_cssVar('--text2','#5a5f7a'),font:{size:10}}
-        },
-        y:{
-          title:{display:true,text:`${protY} — ${axLabelY}`,font:{size:11},color:_cssVar('--text2','#5a5f7a')},
-          min:yMin, max:yMax,
-          grid:{color:_cssVar('--border','rgba(0,0,0,0.07)')},
-          ticks:{color:_cssVar('--text2','#5a5f7a'),font:{size:10}}
-        }
-      },
-      plugins:{
-        title:{display:!!titleTxt, text:titleTxt, font:{size:13}, color:_cssVar('--text','#1a1d2e')},
-        legend:{display:false},
-        tooltip:{
-          callbacks:{
-            title: items => items[0]?.raw?.label || '',
-            label: item => {
-              const p = item.raw;
-              const lines = [
-                `${protX}: ${p.x.toFixed(3)}`,
-                `${protY}: ${p.y.toFixed(3)}`,
-              ];
-              if (bandMode==='log' && p.fold != null) {
-                const dir = p.dir==='y'?protY:p.dir==='x'?protX:'similar';
-                lines.push(`Fold selectivity: ${p.fold.toFixed(1)}× (${dir})`);
-              } else if (bandMode==='linear' && p.delta != null) {
-                const dir = p.dir==='y'?protY:p.dir==='x'?protX:'similar';
-                lines.push(`Δ Dmax: ${p.delta.toFixed(1)}% (${dir})`);
-              }
-              if (p.flagged) lines.push('⚠ Flagged');
-              return lines;
-            }
-          },
-          backgroundColor:(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue('--surface2').trim()||'#1c2030';})(),
-          titleColor:(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue('--text').trim()||'#e8eaf2';})(),
-          bodyColor:(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue('--text2').trim()||'#8b90a8';})(),
-          borderColor:(()=>{const s=getComputedStyle(document.documentElement);return s.getPropertyValue('--border2').trim()||'rgba(255,255,255,0.13)';})(),
-          borderWidth:1,
-          padding:9,
-          titleFont:{size:12,weight:'bold'},
-        }
-      }
-    },
-    plugins:[selPlugin]
-  });
+  const list = document.getElementById('sel-list'); if (list) list.innerHTML = _selListHtml(D);
+  if (SEL.hi && !D.points.some(p => p.label === SEL.hi)) SEL.hi = null;
+  _selDraw();
 }
-
-function updateSelTitle(val) {
-  if (!selChart) return;
-  selChart.options.plugins.title.display = !!val;
-  selChart.options.plugins.title.text = val;
-  selChart.update('none');
+function selPick(label) { SEL.hi = SEL.hi === label ? null : label; const list = document.getElementById('sel-list'); if (list && SEL.last) list.innerHTML = _selListHtml(SEL.last); _selDraw(); }
+function updateSelTitle() { _selDraw(); }
+function _selHit(ev) {
+  const cv = document.getElementById('sel-canvas'), L = SEL.L, D = SEL.last; if (!cv || !L || !D) return null;
+  const b = cv.getBoundingClientRect(), mx = ev.clientX - b.left, my = ev.clientY - b.top;
+  let best = null, bd = 12 * 12;
+  D.points.forEach(p => { const dx = L.X(p.x) - mx, dy = L.Y(p.y) - my, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = p; } });
+  return best;
 }
-
+function _selTip(ev) {
+  const p = _selHit(ev), tt = document.getElementById('tt'), D = SEL.last;
+  const cv = document.getElementById('sel-canvas'); if (cv) cv.style.cursor = p ? 'pointer' : '';
+  if (!tt) return;
+  if (!p) { tt.style.display = 'none'; return; }
+  const v = x => D.log ? _selFmtAxis(x, true) : String(+x.toPrecision(3));
+  tt.innerHTML = '<b style="color:var(--text);font-size:12px;">' + esc(p.label) + '</b><div style="margin-top:4px;font-size:11px;line-height:1.65;">'
+    + '<span style="color:var(--text3);">' + esc(_selKeyLabel(D.kx)) + '</span> ' + v(p.x) + '<br><span style="color:var(--text3);">' + esc(_selKeyLabel(D.ky)) + '</span> ' + v(p.y)
+    + (D.log ? '<br>' + (+p.fold.toPrecision(3)) + '× ' + (p.dir === 'neutral' ? '— similar' : 'for ' + esc(_selKeyLabel(p.dir === 'y' ? D.ky : D.kx))) : D.lin ? '<br>Δ ' + p.delta.toFixed(1) + ' points' : '')
+    + (p.flagged ? '<br><span style="color:var(--warn);">flagged</span>' : '') + '</div>';
+  tt.style.display = 'block';
+  const x = ev.clientX + 14, y = ev.clientY - 10, w = tt.offsetWidth, h = tt.offsetHeight;
+  tt.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 4)) + 'px'; tt.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 4)) + 'px';
+}
 function downloadSelHiRes() {
-  if (!selChart) return;
-  // Redraw at 5× device pixels, then lay it on the page background: the screen canvas is
-  // transparent and at screen resolution, which is not what "600 DPI" promised.
-  const prev = selChart.options.devicePixelRatio;
-  selChart.options.devicePixelRatio = 5; selChart.options._exportScale = 1;
-  selChart.resize(); selChart.update('none');
-  const src = selChart.canvas, out = document.createElement('canvas');
-  out.width = src.width; out.height = src.height;
-  const c = out.getContext('2d'); c.fillStyle = _cssVar('--bg', '#ffffff'); c.fillRect(0, 0, out.width, out.height); c.drawImage(src, 0, 0);
-  const a = document.createElement('a');
-  a.href = out.toDataURL('image/png');
-  a.download = 'selectivity_plot.png'; a.click();
-  selChart.options.devicePixelRatio = prev; selChart.resize(); selChart.update('none');
+  const D = SEL.last; if (!D || !D.points.length) { echoToast('Nothing to export: no compound is measured on both.', 'warn'); return; }
+  const wrap = document.getElementById('sel-plot');
+  const W = Math.max(520, Math.min(900, (wrap && wrap.clientWidth) || 700)), H = Math.round(W * 1.08), K = 5;
+  const out = document.createElement('canvas'); out.width = W * K; out.height = H * K;
+  const ctx = out.getContext('2d'); ctx.scale(K, K);
+  const cfg = Object.assign(_selCfg(true), { bg: '#ffffff', k: 1 });
+  const L = _selLayout(W, H, D, Object.assign({ fs: 12 }, cfg));
+  _selPaint(ctx, L, D, cfg);
+  window._selLastExport = { L, n: D.points.length, canvas: out };
+  const a = document.createElement('a'); a.href = out.toDataURL('image/png');
+  a.download = ('selectivity_' + _selKeyLabel(D.kx) + '_vs_' + _selKeyLabel(D.ky)).replace(/[^A-Za-z0-9_.-]+/g, '_') + '.png'; a.click();
 }
 
 function updateChartTitle(val) {
@@ -7292,44 +7230,14 @@ function updateChartTitle(val) {
   scatterChart.options.plugins.title.text = val;
   scatterChart.update('none');
 }
-function updateSearch(val) {
-  const searchQ = val.toLowerCase().trim();
-  const info = document.getElementById('sc-match-info');
-  const dotSize = parseInt(document.getElementById('sc-dotsize')?.value || '3');
-  if (!scatterChart) { buildScatterChart(); return; }
-  let matchCount = 0;
-  scatterChart.data.datasets.forEach(ds => {
-    if (!Array.isArray(ds.pointBackgroundColor)) ds.pointBackgroundColor = ds.data.map(() => '');
-    if (!Array.isArray(ds.pointBorderColor)) ds.pointBorderColor = ds.data.map(() => '');
-    if (!Array.isArray(ds.pointBorderWidth)) ds.pointBorderWidth = ds.data.map(() => 1.5);
-    if (!Array.isArray(ds.pointRadius)) ds.pointRadius = ds.data.map(() => dotSize);
-    ds.data.forEach((p, i) => {
-      const col = pcolor(p.protein);
-      p.matched = searchQ ? p.label.toLowerCase().includes(searchQ) : false;
-      if (p.matched) matchCount++;
-      ds.pointBackgroundColor[i] = searchQ ? (p.matched ? 'rgba(255,210,0,.88)' : col.fg+'28') : (p.flag==='Yes' ? 'rgba(240,160,0,.75)' : col.fg+'bb');
-      ds.pointBorderColor[i] = searchQ ? (p.matched ? '#ffd200' : col.fg+'33') : (p.flag==='Yes' ? '#f0a000' : col.fg);
-      ds.pointBorderWidth[i] = (searchQ && p.matched) ? 3 : 1.5;
-      ds.pointRadius[i] = (searchQ && p.matched) ? Math.min(dotSize+3, 20) : dotSize;
-    });
-  });
-  scatterChart.update('none');
-  if (info) info.textContent = searchQ ? (matchCount > 0 ? `${matchCount} match${matchCount>1?'es':''}` : 'No matches') : '';
-}
+// Search and dot size go through the builder too: patching the points by hand put back the group colours
+// (pcolor, not the plot's palette) and threw away colour-by and size-by the moment you typed.
+let _scSearchT = null;
+function updateSearch(val) { clearTimeout(_scSearchT); _scSearchT = setTimeout(buildScatterChart, 120); }
 function updateDotSize(val) {
-  const v = parseInt(val);
   const label = document.getElementById('sc-dotsize-val');
-  if (label) label.textContent = v;
-  if (!scatterChart) return;
-  const searchQ = (document.getElementById('sc-search')?.value || '').toLowerCase().trim();
-  scatterChart.data.datasets.forEach(ds => {
-    ds.data.forEach((p, i) => {
-      if (!Array.isArray(ds.pointRadius)) ds.pointRadius = [];
-      ds.pointRadius[i] = (searchQ && p.matched) ? Math.min(v+3, 20) : v;
-    });
-    ds.pointHoverRadius = v + 5;
-  });
-  scatterChart.update('none');
+  if (label) label.textContent = parseInt(val);
+  clearTimeout(_scSearchT); _scSearchT = setTimeout(buildScatterChart, 60);
 }
 function clearHitFilters() {
   ['sc-dmax-min','sc-dmax-max','sc-dc50-min','sc-dc50-max'].forEach(id=>{
@@ -7349,134 +7257,32 @@ function updateScatter() {
 }
 function updateScatterTheme() { buildScatterChart(); }
 
+// The picture is the chart on screen: drawn by buildScatterChart itself, at 5× the device pixels, the same size and
+// shape, the same axes as the view (zoom included), on white with the light palette — a figure goes on a slide.
 async function downloadScatterHiRes() {
   if (!scatterData.length) return;
-  const xKey = document.getElementById('sc-x')?.value || 'LogIC50_M';
-  const yKey = document.getElementById('sc-y')?.value || 'Dmax_pct';
-  const protFilter = document.getElementById('sc-prot')?.value || 'all';
-  const showFlags = document.getElementById('sc-flags')?.checked || false;
-  const xMinV = parseFloat(document.getElementById('sc-xmin')?.value);
-  const xMaxV = parseFloat(document.getElementById('sc-xmax')?.value);
-  const yMinV = parseFloat(document.getElementById('sc-ymin')?.value);
-  const yMaxV = parseFloat(document.getElementById('sc-ymax')?.value);
-  const titleText = document.getElementById('sc-title')?.value || '';
-  const searchQ = (document.getElementById('sc-search')?.value || '').toLowerCase().trim();
-  const assayId = document.getElementById('p-assay')?.value || 'HB';
-  const xUnit = document.getElementById('sc-xunit')?.value || 'M';
-  const xOffset = (xKey==='LogIC50_M') ? (xUnit==='uM'?6 : xUnit==='nM'?9 : 0) : 0;
-  const yOffset2DL = (yKey==='LogIC50_M') ? (xUnit==='uM'?6 : xUnit==='nM'?9 : 0) : 0;
-  const _csclDL = xUnit==='nM'?1:xUnit==='uM'?0.001:1e-6;
-  const xCScaleDL = (xKey==='DC50_nM'||xKey==='AbsDC50_nM')?_csclDL:1;
-  const yCScaleDL = (yKey==='DC50_nM'||yKey==='AbsDC50_nM')?_csclDL:1;
-  const xLabelOverride = document.getElementById('sc-xlabel')?.value.trim() || '';
-  const yLabelOverride = document.getElementById('sc-ylabel')?.value.trim() || '';
-  const _unitStrDL = xUnit==='uM'?'µM':xUnit==='nM'?'nM':'M';
-  const _optsDL = window._scatterAxisOpts||[];
-  function _dlblDL(k) { const b=_optsDL.find(o=>o.value===k)?.label||k; return (k==='LogIC50_M'||k==='DC50_nM'||k==='AbsDC50_nM')&&!k.includes('::')?b+' ('+_unitStrDL+')':b; }
-
-  let rows = scatterData;
-  if (protFilter !== 'all') rows = rows.filter(r => r.Protein === protFilter);
-  if (!showFlags) rows = rows.filter(r => r.Flag !== 'Yes');
-  const proteins = [...new Set(rows.map(r=>r.Protein))].sort(natCmp);
-
-  const SC = 5; // scale factor → ~600 DPI equivalent
-  const W = 900 * SC, H = 600 * SC;
-  const offCanvas = document.createElement('canvas');
-  offCanvas.width = W; offCanvas.height = H;
-  offCanvas.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
-  document.body.appendChild(offCanvas);
-
-  const xAxisLabelDL = xLabelOverride || _dlblDL(xKey);
-  const yAxisLabelDL = yLabelOverride || _dlblDL(yKey);
-  const _isDL = document.documentElement.getAttribute('data-theme') !== 'light';
-  const textColor = _isDL ? '#c8cde8' : '#4a4f68';
-  const gridColor = _isDL ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-  const bgColor = _isDL ? '#13161e' : '#ffffff';
-
-  const dotSize = parseInt(document.getElementById('sc-dotsize')?.value || '3');
-  const datasets = proteins.map(prot => {
-    const fg = (window._scPalMap&&window._scPalMap[prot]) || pcolor(prot).fg;
-    const pts = rows.filter(r=>r.Protein===prot && isFinite(parseFloat(r[xKey])) && isFinite(parseFloat(r[yKey]))).map(r => ({
-      x: ((parseFloat(r[xKey])||0)+xOffset)*xCScaleDL,
-      y: (()=>{const _ry=parseFloat(r[yKey]);return isFinite(_ry)?(_ry+yOffset2DL)*yCScaleDL:r[yKey];})(),
-      label: r.Sample_ID, flag: r.Flag,
-      dc50: r.DC50_nM, dmax: r.Dmax_pct, r2: r.R2, protein: prot,
-      matched: searchQ ? r.Sample_ID.toLowerCase().includes(searchQ) : false,
-    }));
-    return {
-      label: prot,
-      data: pts,
-      backgroundColor: fg + 'bb',
-      borderColor: fg,
-      borderWidth: 1.5*SC,
-      pointBackgroundColor: pts.map(p => searchQ ? (p.matched ? 'rgba(255,210,0,.88)' : fg+'28') : (p.flag==='Yes' ? 'rgba(240,160,0,.75)' : fg+'bb')),
-      pointBorderColor: pts.map(p => searchQ ? (p.matched ? '#ffd200' : fg+'33') : (p.flag==='Yes' ? '#f0a000' : fg)),
-      pointBorderWidth: pts.map(p => (searchQ && p.matched) ? 3*SC : 1.5*SC),
-      pointRadius: pts.map(p => (searchQ && p.matched) ? Math.min(dotSize+3,20)*SC : dotSize*SC),
-      pointHoverRadius: (dotSize+5)*SC,
-    };
-  });
-
-  const hiChart = new Chart(offCanvas, {
-    type: 'scatter',
-    data: { datasets },
-    options: {
-      responsive: false,
-      animation: false,
-      devicePixelRatio: 1,
-      plugins: {
-        title: {
-          display: !!titleText,
-          text: titleText,
-          color: textColor,
-          font: { family: 'sans-serif', size: 18*SC, weight: '600' },
-          padding: { bottom: 12 }
-        },
-        legend: {
-          display: proteins.length > 1,
-          labels: { color: textColor, font: { family: 'sans-serif', size: 12*SC }, boxWidth: 12*SC, padding: 16*SC }
-        },
-        tooltip: { enabled: false },
-        refLine100: { enabled: scatterState.showRefLine, scale: SC },
-        compoundLabels: { enabled: scatterState.showNames, textColor, scale: SC },
-        proteinHulls: { enabled: scatterState.groupProteins },
-      },
-      scales: {
-        x: {
-          title: { display: true, text: xAxisLabelDL, color: textColor, font: { family: 'sans-serif', size: 13*SC } },
-          grid: { color: gridColor },
-          ticks: { color: textColor, font: { family: "'IBM Plex Sans',sans-serif", size: 11*SC } },
-          ...(Number.isFinite(xMinV) ? {min: xMinV} : {}),
-          ...(Number.isFinite(xMaxV) ? {max: xMaxV} : {}),
-        },
-        y: {
-          title: { display: true, text: yAxisLabelDL, color: textColor, font: { family: 'sans-serif', size: 13*SC } },
-          grid: { color: gridColor },
-          ticks: { color: textColor, font: { family: "'IBM Plex Sans',sans-serif", size: 11*SC } },
-          ...(Number.isFinite(yMinV) ? {min: yMinV} : {}),
-          ...(Number.isFinite(yMaxV) ? {max: yMaxV} : (yKey==='Dmax_pct'&&!document.getElementById('sc-ymax')?.value?{max:110}:{})),
-        }
-      }
-    }
-  });
-
-  await new Promise(r => setTimeout(r, 120));
-
-  const finalC = document.createElement('canvas');
-  finalC.width = W; finalC.height = H;
-  const fctx = finalC.getContext('2d');
-  fctx.fillStyle = bgColor;
-  fctx.fillRect(0, 0, W, H);
-  fctx.drawImage(offCanvas, 0, 0);
-
-  const a = document.createElement('a');
-  a.download = `scatter_${assayId}_600dpi.png`;
-  a.href = finalC.toDataURL('image/png', 1.0);
-  a.click();
-
-  hiChart.destroy();
-  document.body.removeChild(offCanvas);
-  log(`Hi-res PNG exported: ${W}×${H}px (≈600 DPI)`, 'ok');
+  if (!scatterChart) buildScatterChart();
+  const live = document.getElementById('scatter-canvas');
+  const w = Math.round((live && live.clientWidth) || 900), h = Math.round((live && live.clientHeight) || 600);
+  const sx = scatterChart && scatterChart.scales && scatterChart.scales.x, sy = scatterChart && scatterChart.scales && scatterChart.scales.y;
+  const off = document.createElement('canvas');
+  off.style.cssText = 'position:fixed;left:-99999px;top:0;width:' + w + 'px;height:' + h + 'px;';
+  off.width = w; off.height = h;
+  document.body.appendChild(off);
+  let ch = null;
+  try {
+    ch = buildScatterChart({ canvas: off, dpr: 5, dark: false, bounds: sx && sy ? { xMin: sx.min, xMax: sx.max, yMin: sy.min, yMax: sy.max } : null });
+    if (!ch) return;
+    const out = document.createElement('canvas'); out.width = off.width; out.height = off.height;
+    const c = out.getContext('2d'); c.fillStyle = '#ffffff'; c.fillRect(0, 0, out.width, out.height); c.drawImage(off, 0, 0);
+    window._scLastExport = { w: out.width, h: out.height, canvas: out, chart: { datasets: ch.data.datasets.map(d => ({ label: d.label, bg: d.pointBackgroundColor, r: d.pointRadius, n: d.data.length })), x: [ch.scales.x.min, ch.scales.x.max], y: [ch.scales.y.min, ch.scales.y.max] } };
+    const assayId = document.getElementById('p-assay')?.value || 'HB';
+    const a = document.createElement('a');
+    a.download = 'scatter_' + String(assayId).replace(/[^A-Za-z0-9_-]+/g, '_') + '.png';
+    a.href = out.toDataURL('image/png');
+    a.click();
+    log('Plot PNG exported: ' + out.width + '×' + out.height + ' px', 'ok');
+  } finally { if (ch) ch.destroy(); off.remove(); }
 }
 
 // ═══ RDKIT LOADER — BEGIN (canonical in Echo; tools/sync_screen_engine.py copies it into every app that draws structures) ═══

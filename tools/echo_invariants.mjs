@@ -126,6 +126,15 @@
 //                             Echo barcode as its name (the file only identifies it), six renamed bundled files give exactly the curves and
 //                             groups of the exact names, and a picklist with no barcode is read by its Destination Plate Name.
 //
+//   E54 a plot's picture is   The Plots export is drawn by the same builder as the screen: with colour-by, size-by, a hit filter, a search and a
+//       the plot on screen    zoom set, every point's colour, size and presence, the axes' ranges and the shape match the live chart, and the
+//                             pixel under each point in the PNG is that point's colour (it used to rebuild its own chart and drop all five).
+//
+//   E55 selectivity, redrawn One painter for the screen and the PNG (the PNG has every point the screen has, on white); the plot is a square;
+//                             potency is read on a log axis in nM; names never sit on each other, on a point or outside the plot, and the
+//                             "hidden" note is outside the plot; the ranked lists hold exactly the compounds beyond the threshold, most
+//                             selective first; a multi-assay run offers each assay's protein separately instead of overwriting one with the other.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -405,12 +414,13 @@ if (run('E9')) await guard('E9', async () => {
   await pg.waitForTimeout(400);
   const r = await E(() => {
     switchPlotType('selectivity');
-    document.getElementById('sel-metric-x').value = 'DC50_nM'; document.getElementById('sel-metric-y').value = 'DC50_nM';
-    const thr = document.getElementById('sel-band-thr'); thr.add(new Option('2×', '0.3')); thr.value = '0.3';
+    document.getElementById('sel-metric').value = 'potency'; document.getElementById('sel-show-flagged').checked = true;
+    buildSelectivityChart();
+    const thr = document.getElementById('sel-band-thr'); thr.add(new Option('2×', '2')); thr.value = '2';
     buildSelectivityChart();
     const pts = selChart ? selChart.data.datasets[0].data : [];
-    // lower log DC50 = more potent: y − x > 0.3 means X is ≥2× more potent → 'x'
-    return pts.filter(p => Math.abs(p.y - p.x) > 0.3001).map(p => ({ l: p.label, want: p.y - p.x > 0 ? 'x' : 'y', got: p.dir }));
+    // lower log DC50 = more potent: y − x > log 2 means X is ≥2× more potent → 'x'
+    return pts.filter(p => Math.abs(p.y - p.x) > Math.log10(2) + 1e-4).map(p => ({ l: p.label, want: p.y - p.x > 0 ? 'x' : 'y', got: p.dir }));
   });
   const wrong = r.filter(p => p.want !== p.got);
   check('E9', 'log DC50 selectivity direction', !wrong.length, { wrong, of: r.length });
@@ -1593,22 +1603,22 @@ if (run('E46')) await guard('E46', async () => {
     const base = _lastResultsData.find(x => !/No effect|range/.test(x.Flag_Reason || ''));
     const hi = scrRecord(Object.assign({}, base, { Flag_Reason: 'EC50>range' })), lo = scrRecord(Object.assign({}, base, { Flag_Reason: 'EC50<range' }));
     const oneCsv = recs.filter(x => x.Fit_Status === 'fitted').length;
-    const btn1 = document.querySelectorAll('#results-panel button[onclick="downloadScreenCsv()"]').length;
+    const btn1 = document.querySelectorAll('#results-panel .res-dl #cv-pdf-gen-btn').length && _resExportItems().some(i => /Screen table/.test(i.label)) ? 1 : 0;
     const keepP = window._lastAnalysisParams, keepD = _lastResultsData, keepH = window.saveToHistory; window.saveToHistory = () => {};
     window._lastAnalysisParams = Object.assign({}, keepP, { multiAssay: true });
     renderMultiAssayResults(keepD.map(x => Object.assign({}, x)));
-    const btn2 = document.querySelectorAll('#results-panel button[onclick="downloadScreenCsv()"]').length;
+    const btn2 = document.querySelectorAll('#results-panel .res-dl #cv-pdf-gen-btn').length && _resExportItems().some(i => /Screen table/.test(i.label)) ? 1 : 0;
     window._lastAnalysisParams = keepP; window.saveToHistory = keepH; _lastResultsData = keepD; renderResults(scatterData);
     return { header: csv[0], cols: SCR_COLS, nCsv: csv.length - 1, nRecs: recs.length, nFit: _lastResultsData.length, nNf: (window._notFitted || []).length, schemaOK: recs.every(x => x.Schema === 'echo-screen/1'),
       same, names, ndN: nd.length, ndOk: ndRecs.length === nd.length && ndRecs.every(x => x.Potency_Qualifier === 'n.d.' && x.Potency_nM === null && x.Tested_Max_nM > 0),
-      hi: [hi.Potency_Qualifier, hi.Potency_nM, hi.Tested_Max_nM], lo: [lo.Potency_Qualifier, lo.Potency_nM, lo.Tested_Min_nM], oneCsv, btn1, btn2, hitFinderBtn: !!document.querySelector('#results-panel button[onclick="openInHitFinder()"]') };
+      hi: [hi.Potency_Qualifier, hi.Potency_nM, hi.Tested_Max_nM], lo: [lo.Potency_Qualifier, lo.Potency_nM, lo.Tested_Min_nM], oneCsv, btn1, btn2, hitFinderBtn: !!document.querySelector('#results-panel #res-send-btn') };
   });
   check('E46', 'the CSV header is SCR_COLS, Schema echo-screen/1 on every row', JSON.stringify(r.header) === JSON.stringify(r.cols) && r.schemaOK, r.header);
   check('E46', 'one row per fitted curve plus one per compound that could not be fitted', r.nCsv === r.nFit + r.nNf && r.nRecs === r.nCsv && r.nFit > 0, r);
   check('E46', 'the workbook carries the same table as its last sheet, after every existing sheet', r.same && r.names[r.names.length - 1] === 'Screen (Hit Finder)' && r.names.slice(0, 1)[0] === 'Results', r.names);
   check('E46', 'a flat curve is n.d. with the tested maximum beside it, even with the display switch off', r.ndN > 0 && r.ndOk, r);
   check('E46', 'a midpoint past the doses is a qualifier: > carries the tested maximum, < the tested minimum', r.hi[0] === '>' && r.hi[1] === r.hi[2] && r.lo[0] === '<' && r.lo[1] === r.lo[2], r);
-  check('E46', 'Screen CSV is on the single-assay and the multi-assay result views; Hit Finder only inside the Hub', r.btn1 >= 1 && r.btn2 >= 1 && !r.hitFinderBtn, { single: r.btn1, multi: r.btn2, hitFinderButton: r.hitFinderBtn });
+  check('E46', 'the Screen table is under Export on the single-assay and the multi-assay result views; Send to only inside the Hub', r.btn1 >= 1 && r.btn2 >= 1 && !r.hitFinderBtn, { single: r.btn1, multi: r.btn2, hitFinderButton: r.hitFinderBtn });
 });
 
 if (run('E47')) await guard('E47', async () => {
@@ -2019,6 +2029,92 @@ if (run('E53')) await guard('E53', async () => {
   check('E53', 'inside the Hub, Send to lists Labbook and Hit Finder', s2.bar && s2.items[0] === 'Labbook' && s2.items.includes('Hit Finder'), s2);
   const s3 = await E(() => ({ items: _resSendItems().length, bar: /res-send-btn/.test(_resBar()) }));
   check('E53', 'standalone there is no Send menu', s3.items === 0 && !s3.bar, s3);
+});
+
+if (run('E54')) await guard('E54', async () => {
+  await E(() => { document.querySelector('[data-tab="scatter"]').click(); }); await pg.waitForTimeout(900);
+  await E(() => { if (typeof switchPlotType === 'function') switchPlotType('scatter'); }); await pg.waitForTimeout(500);
+  const r = await E(async () => {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) { el.value = v; el.dataset.userSet = '1'; } return !!el; };
+    const opt = id => [...(document.getElementById(id) || { options: [] }).options].map(o => o.value).filter(Boolean);
+    const cb = opt('sc-colorby'), sb = opt('sc-sizeby');
+    set('sc-colorby', cb.includes('R2') ? 'R2' : cb[0]); set('sc-sizeby', sb.includes('HillSlope') ? 'HillSlope' : sb[1] || sb[0]);
+    set('sc-dmax-min', '30');
+    set('sc-search', 'EDA-01');
+    buildScatterChart();
+    await new Promise(r => setTimeout(r, 200));
+    const sx = scatterChart.scales.x, sy = scatterChart.scales.y;
+    _zoomBounds = { xMin: sx.min + (sx.max - sx.min) * 0.05, xMax: sx.max - (sx.max - sx.min) * 0.05, yMin: sy.min, yMax: sy.max };
+    applyZoom(); await new Promise(r => setTimeout(r, 150));
+    const live = scatterChart, L = live.data.datasets.map(d => ({ label: d.label, bg: d.pointBackgroundColor, r: d.pointRadius, n: d.data.length }));
+    const lx = [live.scales.x.min, live.scales.x.max], ly = [live.scales.y.min, live.scales.y.max];
+    const pts = []; live.data.datasets.forEach((d, di) => { live.getDatasetMeta(di).data.forEach((el, i) => { if (isFinite(el.x) && el.x > live.chartArea.left + 4 && el.x < live.chartArea.right - 4 && el.y > live.chartArea.top + 4 && el.y < live.chartArea.bottom - 4) pts.push({ x: el.x, y: el.y, c: d.pointBackgroundColor[i] }); }); });
+    const a = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () {};
+    try { await downloadScatterHiRes(); } finally { HTMLAnchorElement.prototype.click = a; }
+    const X = window._scLastExport; if (!X) return { none: true };
+    const c = X.canvas.getContext('2d'), scl = X.w / live.canvas.clientWidth;
+    const parse = s => { const m = String(s).match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/i); if (m) return [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16), m[2] ? parseInt(m[2], 16) / 255 : 1];
+      const q = String(s).match(/rgba?\(([^)]+)\)/); if (q) { const v = q[1].split(',').map(Number); return [v[0], v[1], v[2], v[3] == null ? 1 : v[3]]; } return null; };
+    let pixBad = 0, pixN = 0;
+    pts.slice(0, 40).forEach(p => { const want = parse(p.c); if (!want) return; const d = c.getImageData(Math.round(p.x * scl), Math.round(p.y * scl), 1, 1).data;
+      const exp = want.slice(0, 3).map(v => v * want[3] + 255 * (1 - want[3])); pixN++; if (exp.some((v, k) => Math.abs(v - d[k]) > 48)) pixBad++; });
+    return { L, E: X.chart.datasets, lx, ly, ex: X.chart.x, ey: X.chart.y, ratioLive: live.canvas.clientWidth / live.canvas.clientHeight, ratioExp: X.w / X.h, pixN, pixBad, cb: document.getElementById('sc-colorby').value, sb: document.getElementById('sc-sizeby').value };
+  });
+  if (r.none) { check('E54', 'the export ran', false); return; }
+  check('E54', 'colour-by and size-by were set for the test', !!r.cb && !!r.sb, r);
+  check('E54', 'the same groups, with the same number of points', JSON.stringify(r.L.map(d => [d.label, d.n])) === JSON.stringify(r.E.map(d => [d.label, d.n])), { L: r.L.map(d => [d.label, d.n]), E: r.E.map(d => [d.label, d.n]) });
+  check('E54', 'every point has the colour it has on screen', JSON.stringify(r.L.map(d => d.bg)) === JSON.stringify(r.E.map(d => d.bg)));
+  check('E54', 'every point has the size it has on screen', JSON.stringify(r.L.map(d => d.r)) === JSON.stringify(r.E.map(d => d.r)));
+  const near = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
+  check('E54', 'the axes are the ones on screen (zoom included)', near(r.lx[0], r.ex[0]) && near(r.lx[1], r.ex[1]) && near(r.ly[0], r.ey[0]) && near(r.ly[1], r.ey[1]), r);
+  check('E54', 'the picture has the shape of the plot on screen', Math.abs(r.ratioLive - r.ratioExp) < 0.02, r);
+  check('E54', 'the pixel under each point is that point\'s colour', r.pixN >= 5 && r.pixBad <= Math.ceil(r.pixN * 0.1), { n: r.pixN, bad: r.pixBad });
+  await E(() => { _zoomBounds = null; ['sc-colorby', 'sc-sizeby', 'sc-dmax-min', 'sc-search'].forEach(id => { const el = document.getElementById(id); if (el) { el.value = ''; delete el.dataset.userSet; } }); buildScatterChart(); });
+});
+
+if (run('E55')) await guard('E55', async () => {
+  await E(() => { document.querySelector('[data-tab="scatter"]').click(); }); await pg.waitForTimeout(400);
+  const r = await E(async () => {
+    switchPlotType('selectivity');
+    document.getElementById('sel-metric').value = 'potency'; document.getElementById('sel-show-flagged').checked = true; document.getElementById('sel-show-names').checked = true;
+    buildSelectivityChart(); const thr = document.getElementById('sel-band-thr'); thr.value = '3'; buildSelectivityChart();
+    await new Promise(r => setTimeout(r, 150));
+    const D = SEL.last, L = SEL.L;
+    // names: record every label box the painter places
+    const boxes = []; const real = _placePointLabels;
+    window._placePointLabels = function (ctx, pts, opt) { const ft = ctx.fillText.bind(ctx); const o = ctx.fillText; let mine = [];
+      ctx.fillText = function (t, x, y) { const w = ctx.measureText(t).width; mine.push({ t, x, y, w }); return o.apply(this, arguments); };
+      const h = real(ctx, pts, opt); ctx.fillText = o; boxes.push({ mine, area: opt.area, note: opt.noNote }); return h; };
+    _selDraw(); window._placePointLabels = real;
+    const lab = boxes[0] ? boxes[0].mine : [];
+    const area = boxes[0] && boxes[0].area;
+    const out = lab.filter(b => area && (b.x < area.left - 0.5 || b.x + b.w > area.right + 0.5)).length;
+    let overlap = 0; for (let i = 0; i < lab.length; i++) for (let j = i + 1; j < lab.length; j++) { const a = lab[i], b = lab[j]; if (a.x < b.x + b.w && a.x + a.w > b.x && Math.abs(a.y - b.y) < 9) overlap++; }
+    const a = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () {}; try { downloadSelHiRes(); } finally { HTMLAnchorElement.prototype.click = a; }
+    const X = window._selLastExport;
+    const px = X ? X.canvas.getContext('2d').getImageData(2, 2, 1, 1).data : null;
+    const want = D.points.filter(p => p.dir !== 'neutral').map(p => p.label).sort().join();
+    const listed = [...document.querySelectorAll('#sel-list .sel-row')].map(b => b.dataset.l).sort().join();
+    const ys = [...document.querySelectorAll('#sel-list .sel-col')].map(c => [...c.querySelectorAll('.sel-fd')].map(e => parseFloat(e.textContent)));
+    const sorted = ys.every(v => v.every((x, i) => i === 0 || v[i - 1] >= x));
+    // multi-assay: the same protein in two assays is two options, and neither overwrites the other
+    const save = { d: window._resultsData, p: window._lastAnalysisParams };
+    window._lastAnalysisParams = Object.assign({}, save.p, { multiAssay: true });
+    window._resultsData = [{ Sample_ID: 'C1', Protein: 'BRD4', _assayType: 'hibit', DC50_nM: 10 }, { Sample_ID: 'C1', Protein: 'BRD4', _assayType: 'ctg', DC50_nM: 1000 }, { Sample_ID: 'C2', Protein: 'BRD4', _assayType: 'hibit', DC50_nM: 5 }, { Sample_ID: 'C2', Protein: 'BRD4', _assayType: 'ctg', DC50_nM: 5 }];
+    document.getElementById('sel-prot-x').dataset.sig = ''; _initSelectivity();
+    const opts = [...document.getElementById('sel-prot-x').options].map(o => o.value);
+    document.getElementById('sel-prot-x').value = 'ctg::BRD4'; document.getElementById('sel-prot-y').value = 'hibit::BRD4'; buildSelectivityChart();
+    const mp = SEL.last.points.map(p => p.label + ':' + p.dir).join();
+    window._resultsData = save.d; window._lastAnalysisParams = save.p; document.getElementById('sel-prot-x').dataset.sig = ''; _initSelectivity();
+    return { square: !!L && L.side > 100, log: D.log, n: D.points.length, exp: X && X.n, white: px && px[0] > 250 && px[1] > 250 && px[2] > 250, nLab: lab.length, out, overlap, noteOut: boxes[0] && boxes[0].note, want, listed, sorted, opts, mp };
+  });
+  check('E55', 'the plot is a square with potency on a log axis', r.square && r.log, r);
+  check('E55', 'the PNG is the same points, on white', r.exp === r.n && r.n > 0 && r.white, r);
+  check('E55', 'names are placed, none outside the plot, none on another', r.nLab > 0 && r.out === 0 && r.overlap === 0, { n: r.nLab, out: r.out, overlap: r.overlap });
+  check('E55', 'the "hidden names" note is not drawn inside the plot', r.noteOut === true, r.noteOut);
+  check('E55', 'the ranked lists hold exactly the selective compounds, most selective first', r.want === r.listed && r.sorted, { want: r.want, listed: r.listed, sorted: r.sorted });
+  check('E55', 'a multi-assay run offers each assay\'s protein, and compares them', r.opts.includes('hibit::BRD4') && r.opts.includes('ctg::BRD4') && /C1:y/.test(r.mp) && /C2:neutral/.test(r.mp), { opts: r.opts, mp: r.mp });
+  await E(() => switchPlotType('scatter'));
 });
 
 await browser.close();
