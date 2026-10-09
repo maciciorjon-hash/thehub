@@ -1,0 +1,10 @@
+#!/bin/sh
+# Refuse a commit that the CI build job would refuse to deploy (see tools/static_checks.sh).
+# Enabled per clone with:  git config core.hooksPath .githooks
+#
+# Only runs when the commit touches something those checks read. The checks read the working tree, so
+# unfinished edits in another file can fail it too — finish or stash them, or, if you are sure the
+# commit is unrelated, `git commit --no-verify` (and expect CI to say the same thing).
+files=$(git diff --cached --name-only --diff-filter=ACMR)
+echo "$files" | grep -qE '^(apps/|shell/|tools/|embed\.py)' || exit 0
+exec sh tools/static_checks.sh
