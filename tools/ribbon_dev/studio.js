@@ -234,7 +234,7 @@ function selActClick(ev){
 // the structure → the sequence
 function rbOnHover(atom){ _inspAtom=atom; inspectorPaint(); if(SEQ.on) seqMarkHover(rKeyOf(atom)); }
 function rbOnHoverEnd(){ _inspAtom=null; inspectorPaint(); seqMarkHover(null); }
-function rbOnModel(){ _sel={}; _selN=0; _selAnchor=null; _ligAtomsCache=null; _inspAtom=null; seqBuild(); seqRender(); inspectorPaint(); }
+function rbOnModel(){ if(typeof analyseReset==='function') analyseReset(); if(typeof undoReset==='function') undoReset(); if(typeof renderViews==='function') setTimeout(renderViews,0); if(typeof analyseOnModel==='function') setTimeout(analyseOnModel,0); _sel={}; _selN=0; _selAnchor=null; _ligAtomsCache=null; _inspAtom=null; seqBuild(); seqRender(); inspectorPaint(); }
 function rbAfterRecolor(){ seqRecolor(); }
 function rbExtraRows(){
   return _selN?[{k:'sel',t:'Selection',m:selDescribe(),on:true,go:selFocus}]:[];
@@ -246,7 +246,7 @@ function studioBoot(){
   seqWire();
   $('sqActs').addEventListener('click',selActClick);
   $('seqBtn').addEventListener('click',function(){ seqToggle(); });
-  cmdWire(); if(typeof lookWire==='function') lookWire();
+  cmdWire(); if(typeof lookWire==='function') lookWire(); if(typeof analyseWire==='function') analyseWire(); if(typeof moreWire==='function') moreWire();
   var s=load('ribbon_seq'), touch=!!(window.matchMedia&&matchMedia('(hover:none) and (pointer:coarse)').matches); SEQ.on=s==null?!isPhone()&&!touch:s==='1';   // a phone needs the room for the structure
   seqToggle(SEQ.on);
 }

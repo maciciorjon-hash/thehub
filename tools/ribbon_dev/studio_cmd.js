@@ -222,7 +222,7 @@ var RB_CMDS=[
   {n:['unlabel'],d:'Take labels off residues',f:'unlabel all · unlabel A:45',
    run:function(a){ var n=needModel(); if(n) return n; if(/^(all|everything)?$/i.test(a.trim())){ state.residueLabels=[]; renderLabelTags(); renderResLblList(); return _ok('Residue labels cleared.'); }
      return applyResidueSpec(a,function(r){ var b=state.residueLabels.length; state.residueLabels=state.residueLabels.filter(function(x){ return r.keys.indexOf(rKey(x.chain,x.resi))<0; }); renderLabelTags(); renderResLblList(); return _ok((b-state.residueLabels.length)+' labels removed.'); }); }},
-  {n:['zoom','view','focus','z','center'],d:'Bring something into view; alone, fit everything',f:'zoom ligand · zoom A:45-60 · zoom sel · zoom',
+  {n:['zoom','focus','z','center','show me'],d:'Bring something into view; alone, fit everything',f:'zoom ligand · zoom A:45-60 · zoom sel · zoom',
    run:function(a){ var n=needModel(); if(n) return n; if(!a.trim()||/^(all|everything)$/i.test(a.trim())){ fitToView(); return _ok('Fitted.'); }
      var r=specAtoms(a); if(r.err) return _err(r.err); if(!r.atoms.length) return _err('Nothing matches “'+a.trim()+'”.');
      var idx=r.atoms.map(function(x){ return x.index; }); _userMoved=true; fitView({focus:{index:idx},animate:true,margin:0.16}); return _ok('Zoomed to '+r.atoms.length+' atoms.'); }},

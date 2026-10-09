@@ -40,6 +40,10 @@
 //                           every command changes what it says; Tab completes with what the structure contains; ↑, Esc, errors stay.
 //   RB29 look               Lighting, depth cue, one-click styles, palettes and value ramps change the picture and nothing in it;
 //                           a too-pale colour is named; the scale bar is its label long and is exported, the axes are not.
+//   RB30 analyse            Interactions on a structure built with known distances; salt bridges only between chains; lysines ranked by
+//                           distance to the ligase; clashes by overlap; charge and hydrophobicity; one pocket in a shell, none in a rod; the PAE.
+//   RB31 undo, modes, views, films  Undo one change at a time (a slider drag is one), never the camera; Select mode and a box;
+//                           views come back exactly; a GIF that decodes to what was encoded; a video; journal column widths.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
 //                           a label, a row; in the export only with labels; kept by a design; hidden with a chain; follows the model.
 //
@@ -72,7 +76,7 @@ function check(inv, name, ok, detail) {
 // ── synthetic structures ─────────────────────────────────────────────────────────────────────
 const f3 = (v, w) => v.toFixed(3).padStart(w);
 function atomLine(rec, n, name, resn, ch, resi, x, y, z, b = 20, elem = 'C') {
-  return rec.padEnd(6) + String(n).padStart(5) + ' ' + name.padEnd(4) + ' ' + resn.padStart(3) + ' ' + ch + String(resi).padStart(4) + '    ' + f3(x, 8) + f3(y, 8) + f3(z, 8) + '  1.00' + b.toFixed(2).padStart(6) + '           ' + elem.padStart(2);
+  return rec.padEnd(6) + String(n).padStart(5) + ' ' + name.padEnd(4) + ' ' + resn.padStart(3) + ' ' + ch + String(resi).padStart(4) + '    ' + f3(x, 8) + f3(y, 8) + f3(z, 8) + '  1.00' + b.toFixed(2).padStart(6) + '          ' + elem.padStart(2);   // element in columns 77–78
 }
 const NAMES3 = ['ALA', 'GLY', 'SER', 'LEU', 'LYS', 'VAL', 'THR', 'GLU', 'ASP', 'ILE', 'PHE', 'ARG', 'TYR', 'PRO'];
 // chains: [{id, len, shape:'helix'|'x'|'y', x0, y0, b:(i)=>number}], extras: ligand/ion/modified/waters, models
@@ -127,6 +131,34 @@ function rotatedCopy(text, o = {}) {
     return out;
   }).join('\n');
 }
+// Built for the interactions: every contact at a known distance (see RB30).
+function interPdb() {
+  const L = []; let n = 1; const A = (rec, name, resn, ch, resi, x, y, z, el) => L.push(atomLine(rec, n++, name, resn, ch, resi, x, y, z, 20, el));
+  const hex = (cx, cy, cz) => [0, 1, 2, 3, 4, 5].map(k => [cx + 1.39 * Math.cos(k * Math.PI / 3), cy + 1.39 * Math.sin(k * Math.PI / 3), cz]);
+  // chain A: a PHE ring, a SER OG, an ASN OD1, a LEU CD1, a LYS NZ, two more lysines, an ALA
+  const pr = hex(20, 0, 0); ['CG', 'CD1', 'CE1', 'CZ', 'CE2', 'CD2'].forEach((nm, k) => A('ATOM', nm, 'PHE', 'A', 30, pr[k][0], pr[k][1], pr[k][2], 'C')); A('ATOM', 'CA', 'PHE', 'A', 30, 20, -3.5, 0, 'C');
+  A('ATOM', 'CA', 'SER', 'A', 40, 24.5, 0, 8.5, 'C'); A('ATOM', 'OG', 'SER', 'A', 40, 22.8, 0, 6.6, 'O');
+  A('ATOM', 'CA', 'ASN', 'A', 50, 15.5, 0, 9.5, 'C'); A('ATOM', 'OD1', 'ASN', 'A', 50, 16.9, 0, 7.0, 'O');
+  A('ATOM', 'CA', 'LEU', 'A', 60, 18.6, 4.5, 9.5, 'C'); A('ATOM', 'CD1', 'LEU', 'A', 60, 18.6, 2.4, 7.5, 'C');
+  A('ATOM', 'CA', 'LYS', 'A', 70, 36, 0, 0, 'C'); A('ATOM', 'NZ', 'LYS', 'A', 70, 40, 0, 0, 'N');
+  A('ATOM', 'CA', 'LYS', 'A', 72, 96, 0, 0, 'C'); A('ATOM', 'NZ', 'LYS', 'A', 72, 100, 0, 0, 'N');
+  A('ATOM', 'CA', 'ALA', 'A', 91, 61.5, 0, 0, 'C');
+  // chain B: a GLU across from the lysine, an ALA on top of chain A's
+  A('ATOM', 'CA', 'GLU', 'B', 80, 47, 0, 0, 'C'); A('ATOM', 'OE1', 'GLU', 'B', 80, 43.2, 0, 0, 'O');
+  A('ATOM', 'CA', 'ALA', 'B', 90, 60, 0, 0, 'C');
+  // the ligand: a ring stacked 3.7 Å over the PHE, an N, a Cl, a lone carbon and an O
+  const first = n, lr = hex(20, 0, 3.7); lr.forEach((p, k) => A('HETATM', 'C' + (k + 1), 'LIG', 'A', 201, p[0], p[1], p[2], 'C'));
+  A('HETATM', 'N1', 'LIG', 'A', 201, 22.8, 0, 3.7, 'N'); A('HETATM', 'CL1', 'LIG', 'A', 201, 16.9, 0, 3.7, 'CL'); A('HETATM', 'C7', 'LIG', 'A', 201, 18.6, 2.4, 3.7, 'C'); A('HETATM', 'O8', 'LIG', 'A', 201, 21.4, -2.4, 3.7, 'O');
+  A('HETATM', 'MG', 'MG', 'A', 301, 21.4, -4.5, 3.7, 'MG');
+  const b = (i, j) => L.push('CONECT' + String(first + i).padStart(5) + String(first + j).padStart(5));
+  [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 0], [0, 6], [3, 7], [2, 8], [5, 9]].forEach(([i, j]) => b(i, j));
+  return L.join('\n') + '\nEND\n';
+}
+function shellPdb() {   // a closed shell of carbons round an empty middle: one pocket, about (4/3)π·5³ Å³
+  const L = []; let n = 1; const N = 520, R = 8.6;
+  for (let i = 0; i < N; i++) { const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), t = i * Math.PI * (3 - Math.sqrt(5)); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', i + 1, R * r * Math.cos(t), R * y, R * r * Math.sin(t), 20, 'C')); }
+  return L.join('\n') + '\nEND\n';
+}
 const AF_B = i => (i <= 3 ? 95 : i <= 6 ? 80 : i <= 9 ? 60 : 30);
 const STRUCTS = {
   '1XYZ': () => synPdb(),
@@ -140,6 +172,8 @@ const STRUCTS = {
   '6IFC': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 4 }] }),   // B lies 4 Å from A along its first six residues
   '6FAR': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 60 }] }),
   '7APO': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true }),   // an entry whose only ligand is glycerol
+  '9INT': () => interPdb(),
+  '9SHL': () => shellPdb(),
   '8POC': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true, ligand: true, ligandN: 14 }),   // a real ligand beside the glycerol
 };
 
@@ -176,6 +210,7 @@ async function stubs(ctx, st) {
     const u = r.request().url(); log(u);
     if (st.netDown) return r.abort();
     if (/api\/prediction\/P12345/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ modelEntityId: 'AF-P12345-F1', pdbUrl: 'https://alphafold.ebi.ac.uk/files/AF-P12345-F1-model_v4.pdb', uniprotDescription: 'Test protein', gene: 'TST', organismScientificName: 'Homo sapiens', globalMetricValue: 82.4, chainId: 'A', uniprotAccession: 'P12345' }]) });
+    if (/AF-P12345-F1-predicted_aligned_error/.test(u)) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ predicted_aligned_error: Array.from({ length: 12 }, (_, i) => Array.from({ length: 12 }, (_, j) => (i < 6) === (j < 6) ? 2 : 25)), max_predicted_aligned_error: 31.75 }]) });
     if (/files\/AF-P12345-F1-model_v4\.pdb/.test(u)) return r.fulfill({ status: 200, contentType: 'text/plain', body: synPdb({ chains: [{ id: 'A', len: 12, b: AF_B }] }) });
     return r.fulfill({ status: 404, body: '' });
   });
@@ -1834,7 +1869,135 @@ async function rb29() {
   await ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29]];
+
+// ── RB30 analyse: interactions, lysines, clashes, colours by property, pockets, the PAE ────
+async function rb30() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB30 ' });
+  if (!(await has3d(pg))) { skipped.push('RB30 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('9INT');
+  const it = await E(() => { const l = ligands.find(x => x.resn === 'LIG'); interSet('lig:' + l.key, 'protein'); return interNow().list.map(x => ({ t: x.type, a: x.a.resn + x.a.atom, b: x.b.resn + ':' + x.b.resi + ':' + x.b.atom, d: +x.d.toFixed(2) })); });
+  const has = (t, b) => it.some(x => x.t === t && (!b || x.b.startsWith(b)));
+  check('RB30', 'the ligand N 2.9 Å from SER OG is a hydrogen bond', has('hbond', 'SER:40:OG'), it);
+  check('RB30', 'the ring 3.7 Å over the PHE ring, parallel, is π-stacking', has('pi', 'PHE:30'), it);
+  check('RB30', 'the Cl 3.3 Å from an O is a halogen bond', has('halogen', 'ASN:50:OD1'), it);
+  check('RB30', 'a carbon bonded only to carbons, 3.8 Å from LEU CD1, is a hydrophobic contact', has('hydro', 'LEU:60'), it);
+  check('RB30', 'the ligand O 2.1 Å from Mg is a metal contact', has('metal', 'MG'), it);
+  check('RB30', 'a ligand makes no salt bridge (its charges are not in the file)', !has('salt'), it);
+  check('RB30', 'nothing is reported farther than its own limit', it.every(x => x.d <= ({ hbond: 3.5, halogen: 3.5, hydro: 4.0, metal: 2.8, pi: 6.5, cation: 6.0, salt: 4.0 })[x.t]), it);
+  const shapes = await E(() => _interShapes.length);
+  check('RB30', 'each interaction is drawn', shapes >= it.length, { shapes, n: it.length });
+  const off = await E(() => { state.inter.types.hydro = false; interDraw(); const n = _interShapes.length; state.inter.types.hydro = true; interDraw(); return { n, all: _interShapes.length }; });
+  check('RB30', 'a kind switched off is not drawn', off.n < off.all, off);
+  const ab = await E(() => { interSet('chain:A', 'chain:B'); return interNow().list.map(x => x.type + ':' + x.a.resn + '-' + x.b.resn); });
+  check('RB30', 'between chains, LYS NZ 3.2 Å from GLU OE1 is a salt bridge, not also a hydrogen bond', ab.includes('salt:LYS-GLU') && !ab.includes('hbond:LYS-GLU'), ab);
+  check('RB30', 'a design keeps what is shown', await E(() => collectDesign().state.inter && collectDesign().state.inter.src === 'chain:A'));
+  // lysines
+  const ly = await E(() => { lysSet('A', 'B', 30); const r = lysNow(); return r.rows.map(x => ({ k: x.resi, d: +x.dE3.toFixed(1), e: +x.exp.toFixed(2) })); });
+  check('RB30', 'lysines are ranked by their NZ’s distance to the ligase', ly.length === 2 && ly[0].k === 70 && Math.abs(ly[0].d - 3.2) < 0.05 && ly[1].k === 72 && ly[1].d > 30, ly);
+  check('RB30', 'an NZ in the open is exposed', ly[1].e > 0.6, ly);
+  const lc = await E(() => { const fn = makeColorFn({ noDim: true }); const a = currentModel.selectedAtoms({ chain: 'A', resi: 70 })[0], b = currentModel.selectedAtoms({ chain: 'A', resi: 72 })[0]; return { near: fn(a), far: fn(b) }; });
+  check('RB30', 'a reachable lysine is coloured, one out of reach is not', lc.near !== lc.far, lc);
+  // clashes
+  const cl = await E(() => { const c = clashCompute('chain:A', 'chain:B'); return { n: c.clashes.length, worst: c.clashes[0] && c.clashes[0].a.resn + c.clashes[0].a.resi + '-' + c.clashes[0].b.resn + c.clashes[0].b.resi, ov: c.clashes[0] && +c.clashes[0].ov.toFixed(2) }; });
+  check('RB30', 'two CAs 1.5 Å apart are a clash, overlapping by 1.9 Å', cl.n >= 1 && cl.worst === 'ALA91-ALA90' && Math.abs(cl.ov - 1.9) < 0.01, cl);
+  // properties
+  const pr = await E(() => { const m = elecMap(), all = currentModel.selectedAtoms({}); const nearK = all.find(a => a.resn === 'LYS' && a.resi === 72 && a.atom === 'CA'), nearE = all.find(a => a.resn === 'GLU' && a.atom === 'CA'); return { k: m[nearK.index], e: m[nearE.index], hydL: hydroColor({ resn: 'LEU' }), hydK: hydroColor({ resn: 'LYS' }) }; });
+  check('RB30', 'beside a lone lysine the potential is positive; beside a glutamate it is pulled negative', pr.k > 0 && pr.e < pr.k, pr);
+  check('RB30', 'leucine and lysine sit at the two ends of the hydrophobicity ramp', pr.hydL !== pr.hydK, pr);
+  const cs = await E(() => [runCommand('color charge', { noHistory: true }).ok && state.color === 'elec' && /Charge/.test(document.getElementById('legend').textContent), runCommand('color hydrophobicity', { noHistory: true }).ok && state.color === 'hydro']);
+  check('RB30', 'colour by charge and by hydrophobicity, each with its key', cs.every(Boolean), cs);
+  // pockets
+  await go('9SHL');
+  const pk = await E(() => { const L = pocketsFind(); return L.map(p => { const c = p.pts.reduce((s, q) => [s[0] + q.x, s[1] + q.y, s[2] + q.z], [0, 0, 0]).map(v => v / p.pts.length); return { vol: Math.round(p.vol), c: Math.hypot(...c) }; }); });
+  check('RB30', 'the empty middle of a closed shell is one pocket of about the right size, in the middle', pk.length === 1 && pk[0].vol > 250 && pk[0].vol < 800 && pk[0].c < 4, pk);
+  await go('2ROD');
+  check('RB30', 'a straight rod has no pocket', await E(() => pocketsFind().length) === 0);
+  // the AlphaFold error map
+  await E(() => { document.getElementById('pdbInput').value = 'P12345'; handleSubmit(); }); await sleep(2500);
+  await E(() => rbTab('analyse')); await sleep(400);
+  const pae = await E(() => ({ shown: !document.getElementById('paeBox').hidden, w: document.getElementById('paeCanvas').width, note: document.getElementById('paeNote').textContent }));
+  check('RB30', 'an AlphaFold model loads its error map', pae.shown && pae.w === 12 && /12 residues/.test(pae.note), pae);
+  const cb = await pg.locator('#paeCanvas').boundingBox();
+  await pg.mouse.move(cb.x + cb.width * 0.05, cb.y + cb.height * 0.05); await pg.mouse.down(); await pg.mouse.move(cb.x + cb.width * 0.45, cb.y + cb.height * 0.45, { steps: 4 }); await pg.mouse.up(); await sleep(200);
+  check('RB30', 'a box dragged on the map selects those residues', await E(() => selRangesText()) === 'A:1-6', await E(() => selRangesText()));
+  const conf = await E(() => runCommand('confident 70', { noHistory: true }).ok + '|' + state.hide.join());
+  check('RB30', 'confident 70 hides the residues AlphaFold is not sure of', /A:7-12$/.test(conf), conf);
+  check('RB30', 'and the error map is not offered for a crystal structure', await E(async () => { document.getElementById('pdbInput').value = '1XYZ'; handleSubmit(); await new Promise(r => setTimeout(r, 2500)); return getComputedStyle(document.querySelector('[data-sec=pae]')).display === 'none'; }));
+  await ctx.close();
+}
+
+
+// ── RB31 undo, click modes, views, films, figure sizes ─────────────────────────────────────
+async function rb31() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB31 ' });
+  if (!(await has3d(pg))) { skipped.push('RB31 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('7SEQ'); await sleep(500);
+  const u = await E(() => { runCommand('color chain A red', { noHistory: true }); undoFlush(); runCommand('bg dark', { noHistory: true }); undoFlush(); const s0 = state.bg + '/' + state.chainColors.A; undo(); const s1 = state.bg + '/' + state.chainColors.A; undo(); const s2 = state.bg + '/' + (state.chainColors.A || '-'); redo(); const s3 = state.bg + '/' + state.chainColors.A; return [s0, s1, s2, s3]; });
+  check('RB31', 'undo takes back one change at a time, redo puts it back', u.join() === 'dark/#e53935,transparent/#e53935,transparent/-,transparent/#e53935', u);
+  await E(() => { document.activeElement && document.activeElement.blur(); state.hsl = { h: 0, s: 100, l: 100 }; syncControlsToState(); recolorStructure(); undoFlush(); });
+  const before = await E(() => _undo.stack.length);
+  await E(async () => { const sl = document.getElementById('hslH'); for (let v = 1; v <= 40; v++) { sl.value = v; sl.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 10)); } });
+  await sleep(500);
+  check('RB31', 'a slider dragged is one step to undo, not forty', await E(() => _undo.stack.length) === before + 1, { before, after: await E(() => _undo.stack.length) });
+  await pg.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z'); await sleep(300);
+  check('RB31', '⌘Z / Ctrl+Z undoes', await E(() => state.hsl.h) === 0);
+  await pg.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z'); await sleep(300);
+  check('RB31', 'and ⌘⇧Z redoes', await E(() => state.hsl.h) === 40);
+  await E(() => cmdFocus('col')); await pg.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z'); await sleep(200);
+  check('RB31', 'in a text box ⌘Z is the box’s own undo', await E(() => state.hsl.h) === 40);
+  await E(() => document.getElementById('cmdInput').blur());
+  check('RB31', 'the camera is not an edit: turning the structure adds nothing to undo', await E(async () => { undoFlush(); const n = _undo.stack.length; viewer.rotate(40, 'y'); viewer.render(); await new Promise(r => setTimeout(r, 450)); undoFlush(); return _undo.stack.length === n; }));
+  // modes
+  await pg.click('#selBtn'); await sleep(100);
+  const md = await E(() => ({ sel: document.getElementById('selBtn').getAttribute('aria-pressed'), pick: document.getElementById('pickBtn').getAttribute('aria-pressed'), m: _mouseMode }));
+  check('RB31', 'the Select button switches the click to selecting, and says so', md.sel === 'true' && md.pick === 'false' && md.m === 'select', md);
+  const pt = await E(() => { _userMoved = true; viewer.setStyle({}, { sphere: { radius: 1.6, colorfunc: makeColorFn() } }); viewer.render(); const at = currentModel.selectedAtoms({ chain: 'A', resi: 7, atom: 'CA' })[0]; const p = viewer.modelToScreen({ x: at.x, y: at.y, z: at.z }); return { x: p.x, y: p.y }; });
+  await pg.mouse.move(pt.x - 20, pt.y - 20); await pg.mouse.move(pt.x, pt.y, { steps: 5 }); await sleep(600);
+  const under = await E(() => _hoverAtom && rKeyOf(_hoverAtom));
+  await pg.mouse.click(pt.x, pt.y); await sleep(300);
+  check('RB31', 'in Select a plain click selects the residue under the pointer (and does not open the chain popup)', !!under && await E(u => selKeys().join() === u && !document.getElementById('chain-popup').classList.contains('open'), under), { under, got: await E(() => selKeys()) });
+  await pg.keyboard.press('m'); await sleep(100);
+  check('RB31', 'M switches to measuring, and the group follows', await E(() => _measMode && document.getElementById('measBtn').getAttribute('aria-pressed') === 'true' && document.getElementById('selBtn').getAttribute('aria-pressed') === 'false'));
+  await pg.keyboard.press('Escape'); await E(() => setMouseMode('select'));
+  // a box
+  const box = await E(() => { const vp = document.getElementById('viewport').getBoundingClientRect(); const cas = currentModel.selectedAtoms({ atom: 'CA' }).map(a => viewer.modelToScreen({ x: a.x, y: a.y, z: a.z })); const xs = cas.map(p => p.x).sort((a, b) => a - b), ys = cas.map(p => p.y).sort((a, b) => a - b); return { x0: xs[0] - 6, y0: ys[0] - 6, x1: xs[xs.length - 1] + 6, y1: ys[ys.length - 1] + 6 }; });
+  await pg.keyboard.down('Shift'); await pg.mouse.move(box.x0, box.y0); await pg.mouse.down(); await pg.mouse.move((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, { steps: 3 }); await pg.mouse.move(box.x1, box.y1, { steps: 3 }); await pg.mouse.up(); await pg.keyboard.up('Shift'); await sleep(300);
+  check('RB31', 'Shift-drag in Select draws a box and selects every residue in it', await E(() => _selN) === 48, await E(() => _selN));
+  await pg.keyboard.press('Escape'); await sleep(80);
+  check('RB31', 'Esc leaves Select', await E(() => _mouseMode) === 'pick');
+  // views
+  await E(() => { rbTab('figure'); state.style = 'cartoon'; buildGeometry(); fitView(); });
+  await E(() => { document.getElementById('viewName').value = 'front'; document.getElementById('viewAdd').click(); viewer.rotate(90, 'y'); viewer.render(); runCommand('view add side', { noHistory: true }); });
+  const vw = await E(() => ({ n: viewsList().length, names: viewsList().map(v => v.name).join(), rows: document.querySelectorAll('#viewList .vw').length }));
+  check('RB31', 'views are added, named, and listed with a picture', vw.n === 2 && vw.names === 'front,side' && vw.rows === 2, vw);
+  const back = await E(async () => { const v1 = viewsList()[0].view; viewGo('front', 0); await new Promise(r => setTimeout(r, 50)); const v = viewer.getView(); return v.every((x, i) => Math.abs(x - v1[i]) < 1e-6); });
+  check('RB31', 'going to a view puts the camera back exactly', back);
+  check('RB31', 'a design keeps its views', await E(() => collectDesign().state.views.length === 2));
+  check('RB31', 'the view command goes there too', await E(() => !!runCommand('view side', { noHistory: true }).ok));
+  // a GIF and a video
+  await E(() => { document.getElementById('animKind').value = 'turn'; document.getElementById('animFmt').value = 'gif'; document.getElementById('animSecs').value = '1'; });
+  const [gif] = await Promise.all([pg.waitForEvent('download', { timeout: 60000 }), pg.click('#animGo')]);
+  const gb = await gif.createReadStream().then(st => new Promise(res => { const c = []; st.on('data', d => c.push(d)); st.on('end', () => res(Buffer.concat(c))); }));
+  const frames = (gb.toString('binary').match(/\x21\xF9\x04/g) || []).length;
+  check('RB31', 'Record as GIF downloads a GIF, one frame per 1/15 s, that loops', gb.slice(0, 6).toString() === 'GIF89a' && frames === 15 && gb.includes(Buffer.from('NETSCAPE2.0')) && /\.gif$/.test(gif.suggestedFilename()), { head: gb.slice(0, 6).toString(), frames, name: gif.suggestedFilename() });
+  const dec = await E(async () => { const w = 400, h = 300, px = new Uint8ClampedArray(w * h * 4); let seed = 7; for (let i = 0; i < px.length; i += 4) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; px[i] = seed & 255; px[i + 1] = (seed >> 8) & 255; px[i + 2] = (seed >> 16) & 255; px[i + 3] = 255; }
+    const b = gifEncode([px], w, h, 5), img = new Image(); img.src = URL.createObjectURL(new Blob([b], { type: 'image/gif' })); await img.decode(); const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, w, h).data; let bad = 0;
+    for (let i = 0; i < w * h; i++) { const r = Math.round(px[i * 4] / 51) * 51, g = Math.round(Math.round(px[i * 4 + 1] / 42.5) * 255 / 6), bb = Math.round(px[i * 4 + 2] / 51) * 51; if (Math.abs(d[i * 4] - r) > 1 || Math.abs(d[i * 4 + 1] - g) > 1 || Math.abs(d[i * 4 + 2] - bb) > 1) bad++; } return bad; });
+  check('RB31', 'the GIF encoder survives a full dictionary: 120,000 random pixels decode to exactly what was encoded', dec === 0, dec);
+  await E(() => { document.getElementById('animFmt').value = 'video'; document.getElementById('animKind').value = 'rock'; });
+  const vid = await Promise.all([pg.waitForEvent('download', { timeout: 60000 }), pg.click('#animGo')]).then(([d]) => d).catch(() => null);
+  check('RB31', 'Record as video downloads a video file', !!vid && /\.(webm|mp4)$/.test(vid.suggestedFilename()), vid && vid.suggestedFilename());
+  check('RB31', 'and the camera is back where it was', await E(() => !_anim.on));
+  // figure sizes
+  const fs = await E(() => { state.figSize = '1col'; _exOpts.res = '300'; const a = renderExport().width; state.figSize = '2col'; _exOpts.res = '600'; const b = renderExport().width; state.figSize = 'free'; return { a, b }; });
+  check('RB31', 'a one-column figure at 300 dpi is 1004 px wide; two columns at 600 dpi, 4134', fs.a === 1004 && fs.b === 4134, fs);
+  // a new structure starts a new history
+  await go('1XYZ');
+  check('RB31', 'opening another structure starts a new history', await E(() => _undo.stack.length === 0 && document.getElementById('undoBtn').disabled));
+  await ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

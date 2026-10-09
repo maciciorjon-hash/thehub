@@ -251,9 +251,33 @@ textarea.inp{height:auto;padding:8px 10px;resize:vertical;line-height:1.45;font-
 .body.panel-collapsed .rb-panel{display:none;}
 .body.panel-collapsed .rb-tab.on{background:none;color:var(--text2);}
 .body.panel-collapsed .rb-tab.on::before{display:none;}
-.tb-end{display:flex;gap:8px;align-items:center;}
+.tb-end{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.tb-pair{display:flex;gap:0;}
+.tb-pair .tb-btn{border-radius:0;margin-left:-1px;}
+.tb-pair .tb-btn:first-child{border-radius:var(--r-2) 0 0 var(--r-2);margin-left:0;}
+.tb-pair .tb-btn:last-child{border-radius:0 var(--r-2) var(--r-2) 0;}
+.tb-btn:disabled{opacity:.4;cursor:default;}
+.sel-band{position:absolute;z-index:6;border:1.5px dashed #22c55e;background:rgba(34,197,94,.08);pointer-events:none;}
 
 #viewport{flex:1;position:relative;overflow:hidden;min-height:0;}
+/* ── Views ── */
+.vw-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.vw{position:relative;display:flex;min-width:0;}
+.vw-go{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding:5px;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface);cursor:pointer;font-family:inherit;color:var(--text);text-align:left;}
+.vw-go:hover{border-color:var(--accent);}
+.vw-th{display:block;height:54px;border-radius:var(--r-1);background:var(--surface2) center/contain no-repeat;}
+.vw-n{font-size:var(--fs-2);font-weight:600;overflow-wrap:anywhere;}
+.vw-del{position:absolute;top:2px;right:2px;width:26px;height:26px;opacity:.75;}
+.vw-list:has(.empty-note){display:block;}
+/* ── Analyse ── */
+.it-chip{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 10px;border:1px solid var(--border2);border-radius:var(--r-full);background:var(--surface);color:var(--text2);font-size:var(--fs-2);cursor:pointer;font-family:inherit;}
+.it-chip i{width:10px;height:3px;border-radius:2px;}
+.it-chip b{font-family:var(--mono);color:var(--text);}
+.it-chip:not(.on){opacity:.5;}
+.mono-v{font:500 var(--fs-2)/1.2 var(--mono);color:var(--text2);white-space:nowrap;}
+.ic-line{font-size:var(--fs-3);}
+.pae-cv{width:100%;aspect-ratio:1;border-radius:var(--r-2);border:1px solid var(--border);image-rendering:pixelated;cursor:crosshair;touch-action:none;}
+body:not(.rb-af) [data-sec="pae"]{display:none;}
 /* ── Look: style cards, and the helpers on the picture ── */
 .preset-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
 .preset{display:flex;flex-direction:column;align-items:stretch;gap:5px;padding:6px;border:1px solid var(--border2);border-radius:var(--r-2);background:var(--surface);cursor:pointer;font-family:inherit;color:var(--text);text-align:left;min-width:0;}
@@ -725,6 +749,8 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
           <option value="spectrum">Rainbow N→C</option>
           <option value="ss">Secondary</option>
           <option value="conf">B-factor</option>
+          <option value="hydro">Hydrophobicity</option>
+          <option value="elec">Charge</option>
           <option value="values">Your values</option>
         </select>
       </div>
@@ -734,20 +760,28 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       </div>
       <div class="tb-spacer"></div>
       <div class="tb-end">
-        <button class="tb-btn" id="spinBtn" type="button" title="Auto-rotate (S)" aria-label="Auto-rotate" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/><polyline points="21 3 21 9 15 9"/></svg>
+        <div class="tb-group tb-pair" role="group" aria-label="Undo">
+          <button class="tb-btn" id="undoBtn" type="button" title="Undo (⌘Z)" aria-label="Undo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+          <button class="tb-btn" id="redoBtn" type="button" title="Redo (⌘⇧Z)" aria-label="Redo" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+        </div>
+        <div class="tb-group tb-pair tb-modes" role="group" aria-label="What a click does">
+          <button class="tb-btn tb-active" id="pickBtn" type="button" title="Click picks a chain — to colour and label it" aria-label="Pick chains" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3l14 8-6 1.5L9.5 19z"/></svg></button>
+          <button class="tb-btn" id="selBtn" type="button" title="Click selects a residue · Shift-drag draws a box" aria-label="Select" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2.6"/><path d="M11 11l7 3.5-3 .8-1.5 3z"/></svg></button>
+          <button class="tb-btn" id="measBtn" type="button" title="Measure a distance or an angle: click atoms (M)" aria-label="Measure" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>
         </button>
+          <button class="tb-btn" id="resTagBtn" type="button" title="Tag residues: click atoms to label them, click again to remove (T)" aria-label="Tag residues" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        </button>
+        </div>
         <button class="tb-btn" id="seqBtn" type="button" title="Sequence (Q)" aria-label="Sequence" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18"/><path d="M3 6h5M10 6h4M16 6h5"/><path d="M5 11v7M9.5 13v5M14 11v7M18.5 13v5"/></svg>
         </button>
+        <button class="tb-btn" id="spinBtn" type="button" title="Auto-rotate (S)" aria-label="Auto-rotate" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/><polyline points="21 3 21 9 15 9"/></svg>
+        </button>
         <button class="tb-btn" id="resetViewBtn" type="button" title="Fit the structure to the view (F)" aria-label="Fit to view">
           <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="8 3 3 3 3 8"/><polyline points="16 3 21 3 21 8"/><polyline points="8 21 3 21 3 16"/><polyline points="16 21 21 21 21 16"/></svg>
-        </button>
-        <button class="tb-btn" id="resTagBtn" type="button" title="Tag residues: click atoms to label them, click again to remove (T)" aria-label="Tag residues" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-        </button>
-        <button class="tb-btn" id="measBtn" type="button" title="Measure a distance or an angle: click atoms (M)" aria-label="Measure" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>
         </button>
         <button class="tb-btn" id="exportBtn2" type="button" title="Export image (⌘E)" aria-label="Export image">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -936,6 +970,70 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     </section>
     <section class="rb-pane" id="pane-analyse" data-tab="analyse" role="tabpanel" aria-labelledby="tab-analyse" hidden>
       <div class="rb-pane-hd"><h2 class="rb-pane-t">Analyse</h2><button type="button" class="link fold-all">Fold all</button></div>
+    <details class="rb-sec rb-needs" data-sec="interact">
+      <summary><span class="rb-sec-t">Interactions</span><span class="rb-sec-sum" id="sum-interact"></span></summary>
+      <div class="rb-body">
+        <div class="hint">What a ligand — or a chain — makes with the protein, from the distances and angles in the file: hydrogen bonds, hydrophobic contacts, π-stacking, cation–π, halogen bonds, metals. Salt bridges are found between chains: a ligand's charges are not in the file.</div>
+        <div class="if-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+          <div class="fld"><label for="interSrc">Between</label><select id="interSrc" class="inp"></select></div>
+          <div class="fld"><label for="interTgt">and</label><select id="interTgt" class="inp"></select></div>
+        </div>
+        <button type="button" class="btn primary" id="interGo">Find interactions</button>
+        <div class="hint" id="interSum"></div>
+        <div class="chips" id="interTypes" role="group" aria-label="Kinds of interaction shown"></div>
+        <div class="list" id="interList"></div>
+        <div class="row" id="interActs" hidden style="flex-wrap:wrap"><button type="button" class="btn sm" id="interSel">Select the residues</button><button type="button" class="btn sm" id="interLabel">Label them</button><button type="button" class="btn sm" id="interCopy">Copy table</button><button type="button" class="btn sm danger" id="interClear">Clear</button></div>
+      </div>
+    </details>
+
+    <details class="rb-sec rb-needs" data-sec="lysines">
+      <summary><span class="rb-sec-t">Reachable lysines</span><span class="rb-sec-sum" id="sum-lysines"></span></summary>
+      <div class="rb-body">
+        <div class="hint">For a degrader in a ternary complex: the target's lysines that are on the surface and face the ligase. Geometry of this one pose — which lysine is ubiquitinated also depends on the E2 and on how the complex moves.</div>
+        <div class="if-grid">
+          <div class="fld"><label for="lysTgt">Target</label><select id="lysTgt" class="inp"></select></div>
+          <div class="fld"><label for="lysE3">Ligase</label><select id="lysE3" class="inp"></select></div>
+          <div class="fld"><label for="lysCut">Within (Å)</label><input type="number" id="lysCut" class="inp sans" min="5" max="80" step="1" value="30"></div>
+        </div>
+        <button type="button" class="btn primary" id="lysGo">Find lysines</button>
+        <div class="hint" id="lysSum"></div>
+        <div class="list" id="lysList"></div>
+        <div class="row" id="lysActs" hidden style="flex-wrap:wrap"><button type="button" class="btn sm" id="lysSel">Select them</button><button type="button" class="btn sm" id="lysLabel">Label the nearest</button><button type="button" class="btn sm" id="lysCopy">Copy table</button><button type="button" class="btn sm danger" id="lysClear">Clear</button></div>
+      </div>
+    </details>
+
+    <details class="rb-sec rb-needs" data-sec="clashes">
+      <summary><span class="rb-sec-t">Clashes and contacts</span><span class="rb-sec-sum" id="sum-clashes"></span></summary>
+      <div class="rb-body">
+        <div class="hint">Atoms of two parts that overlap: a clash when their van der Waals spheres overlap by 0.6 Å or more (drawn in red), a contact from −0.4 Å.</div>
+        <div class="if-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+          <div class="fld"><label for="clA">Between</label><select id="clA" class="inp"></select></div>
+          <div class="fld"><label for="clB">and</label><select id="clB" class="inp"></select></div>
+        </div>
+        <button type="button" class="btn" id="clGo">Check</button>
+        <div class="info-card" id="clashOut" hidden></div>
+      </div>
+    </details>
+
+    <details class="rb-sec rb-needs" data-sec="pockets">
+      <summary><span class="rb-sec-t">Pockets</span><span class="rb-sec-sum" id="sum-pockets"></span></summary>
+      <div class="rb-body">
+        <div class="hint">Buried cavities in the chains shown, where a small molecule could sit: empty points with protein around them in most directions. Click one to see it alone and select the residues that line it.</div>
+        <button type="button" class="btn" id="pocketGo">Find pockets</button>
+        <div class="list" id="pocketList"></div>
+      </div>
+    </details>
+
+    <details class="rb-sec rb-needs" data-sec="pae">
+      <summary><span class="rb-sec-t">AlphaFold error map</span><span class="rb-sec-sum" id="sum-pae"></span></summary>
+      <div class="rb-body" id="paeBox" hidden>
+        <canvas id="paeCanvas" class="pae-cv" width="10" height="10" role="img" aria-label="Predicted aligned error: drag a box to select residues"></canvas>
+        <div class="hint" id="paeNote"></div>
+        <div class="hint mono-v" id="paeHover"></div>
+        <button type="button" class="btn sm" id="paeHide">Hide residues under pLDDT 70</button>
+      </div>
+    </details>
+
     <details class="rb-sec rb-needs" data-sec="measure">
       <summary><span class="rb-sec-t">Measure</span><span class="rb-sec-sum" id="sum-measure"></span></summary>
       <div class="rb-body">
@@ -992,6 +1090,28 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
     </section>
     <section class="rb-pane" id="pane-figure" data-tab="figure" role="tabpanel" aria-labelledby="tab-figure" hidden>
       <div class="rb-pane-hd"><h2 class="rb-pane-t">Figure</h2></div>
+    <details class="rb-sec rb-needs" data-sec="views">
+      <summary><span class="rb-sec-t">Views</span><span class="rb-sec-sum" id="sum-views"></span></summary>
+      <div class="rb-body">
+        <div class="hint">A view is where the camera is. Keep the angles you like, go back to them, or fly through them in a film.</div>
+        <div class="row"><input type="text" class="inp sans" id="viewName" placeholder="Name (optional)" autocomplete="off" aria-label="View name"><button type="button" class="btn" id="viewAdd">Add view</button></div>
+        <div class="vw-list" id="viewList"></div>
+      </div>
+    </details>
+
+    <details class="rb-sec rb-needs" data-sec="anim">
+      <summary><span class="rb-sec-t">Film</span><span class="rb-sec-sum" id="sum-anim"></span></summary>
+      <div class="rb-body">
+        <div class="if-grid">
+          <div class="fld"><label for="animKind">Movement</label><select id="animKind" class="inp"><option value="turn">Turn round once</option><option value="rock">Rock</option><option value="views">Through the views</option></select></div>
+          <div class="fld"><label for="animFmt">As</label><select id="animFmt" class="inp"><option value="video">Video</option><option value="gif">GIF</option></select></div>
+          <div class="fld"><label for="animSecs">Seconds</label><input type="number" id="animSecs" class="inp sans" min="1" max="30" step="1" value="6"></div>
+        </div>
+        <div class="row"><button type="button" class="btn primary" id="animGo">Record</button><button type="button" class="btn" id="animStop" hidden>Stop</button><span class="hint" id="animStatus"></span></div>
+        <div class="hint">A video is MP4 in Safari and WebM in Chrome (both play in PowerPoint and Keynote). A GIF is smaller and plays anywhere, at 480 px.</div>
+      </div>
+    </details>
+
     <details class="rb-sec rb-needs" data-sec="decor">
       <summary><span class="rb-sec-t">On the picture</span><span class="rb-sec-sum" id="sum-decor"></span></summary>
       <div class="rb-body">
@@ -1092,6 +1212,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
       <div class="fld"><span>Background</span><div class="seg" id="exBg" role="group" aria-label="Background"><button type="button" data-v="transparent" class="active">Transparent</button><button type="button" data-v="white">White</button><button type="button" data-v="dark">Dark</button></div></div>
       <div class="fld"><span>Format</span><div class="seg" id="exFmt" role="group" aria-label="Format"><button type="button" data-v="png" class="active">PNG</button><button type="button" data-v="jpeg">JPEG</button></div></div>
       <div class="fld"><span>Resolution</span><div class="seg" id="exRes" role="group" aria-label="Resolution"><button type="button" data-v="300">300&nbsp;dpi</button><button type="button" data-v="600" class="active">600&nbsp;dpi</button><button type="button" data-v="1200">1200&nbsp;dpi</button></div></div>
+      <div class="fld"><label for="figSize">Size</label><select id="figSize" class="inp"></select></div>
       <div class="ov-dim" id="exDim"></div>
       <label class="check"><input type="checkbox" id="exLabels" checked> Include labels</label>
       <label class="check" id="exLegendRow" hidden><input type="checkbox" id="exLegend" checked> Include the colour key</label>
@@ -1180,7 +1301,7 @@ var state={style:'cartoon',color:'uniform',uniformColor:'#e36c69',border:'thin',
   exportLabels:true,residueLabels:[],hiddenChains:{},showLigands:true,showWaters:false,
   highlights:[],ligColors:{},pockets:{},pocketR:5,measures:[],measColor:'#ffc107',iface:null,overlay:null,values:null,
   labelStyle:{font:'sans',size:13,bold:false,italic:false,bg:true,bgMode:'chain',bgColor:'#333333',shape:'rounded'},
-  reps:[],hide:[],lighting:'simple',fog:false,palette:'ribbon',valMap:'consurf',scalebar:false,
+  reps:[],hide:[],views:[],figSize:'free',lighting:'simple',fog:false,palette:'ribbon',valMap:'consurf',scalebar:false,
   off:{}};   // reps: residues drawn another way ({sel,rep:'stick'|'sphere'}); hide: residues not drawn. off: what the Models panel has put away without deleting (hl · meas · labels · ions)
 var chainList=[], chainInfo={}, ligands=[], ligOverflow=0, ionResn=[], ionCount=0, chainRange={}, bRange=[0,100], selectedChain=null, lastPointer={x:0,y:0}, _atomClicked=false;
 var labelEls={}, chainAnchorCache={}, _labelLoopRunning=false, _anchorDragTemp={}, _pendingDesign=null, _reqSeq=0, _searchSeq=0, _surfTok=0;
@@ -1455,7 +1576,7 @@ function buildModel(text,fmt,meta,nm){
   viewer.clear(); currentSurfs=[]; stopHover();
   Object.keys(labelEls).forEach(removeLabelEl);
   state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
-  state.residueLabels=[]; state.hiddenChains={}; state.off={}; state.reps=[]; state.hide=[]; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; state.iface=null; _if=null; state.overlay=null; ovl=null; state.values=null; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
+  state.residueLabels=[]; state.hiddenChains={}; state.off={}; state.reps=[]; state.hide=[]; state.inter=null; state.lys=null; state.views=[]; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; state.iface=null; _if=null; state.overlay=null; ovl=null; state.values=null; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
   chainAnchorCache={}; selectedChain=null; _hoverAtom=null; _frame=0; _userMoved=false; currentOpen=null;
   closeChainPopup();
   var model=viewer.addModel(text,fmt,nm>1?{multimodel:true,frames:true}:{});
@@ -1615,7 +1736,7 @@ function hlIndex(){
 function makeColorFn(opts){
   opts=opts||{};
   var hl=hlIndex(), cache={}, dimCh=(opts.noDim||selectedChain===null||chainList.length<2)?null:selectedChain, mix=darkTone()?'#13161e':'#ffffff';
-  var cc=state.chainColors, mode=state.color, uni=state.uniformColor, anyHl=Object.keys(hl).length>0, ifx=ifaceColours(), selT=opts.noDim?null:rbSelTint();
+  var cc=state.chainColors, mode=state.color, uni=state.uniformColor, anyHl=Object.keys(hl).length>0, ifx=ifaceColours(), selT=opts.noDim?null:rbSelTint(), studio=(rbStudioBegin(),true);
   function tune(h){ var v=cache[h]; return v||(cache[h]=adjustColor(h)); }
   function modeColor(a,ch){
     if(mode==='chain'){ var i=chainList.indexOf(ch), P=chainPal(); return P[(i<0?0:i)%P.length]; }
@@ -1625,6 +1746,8 @@ function makeColorFn(opts){
     }
     if(mode==='ss') return a.ss==='h'?SS_COLORS.h:a.ss==='s'?SS_COLORS.s:SS_COLORS.c;
     if(mode==='conf') return isAF()?confColor(a.b||0):bColor(a.b||0);
+    if(mode==='hydro') return hydroColor(a);
+    if(mode==='elec') return elecColor(a);
     if(mode==='values'){ var vv=valueOf(ch,a.resi); return vv==null||!state.values?'#c9ccd6':valueColor(valueT(vv)); }   // a residue with no value is grey, not a colour that means something
     return uni;
   }
@@ -1633,6 +1756,7 @@ function makeColorFn(opts){
     if(anyHl){ r=hl[ch]; if(r){ for(i=0;i<r.length;i++) if(a.resi>=r[i].lo&&a.resi<=r[i].hi){ base=r[i].c; break; } }
       if(!base&&(r=hl['*'])){ for(i=0;i<r.length;i++) if(a.resi>=r[i].lo&&a.resi<=r[i].hi){ base=r[i].c; break; } } }
     if(!base&&ifx&&ifx[ch]) base=ifx[ch][a.resi]||null;   // the interface sits under a highlight and over a chain colour
+    if(!base&&studio) base=rbStudioColour(a,ch);
     if(!base) base=cc[ch]||modeColor(a,ch);
     var c=tune(base);
     if(selT&&selT[rKeyOf(a)]){ var sk='s'+c; c=cache[sk]||(cache[sk]=_mixHex(c,SEL_COLOR,0.62)); }
@@ -1697,6 +1821,7 @@ function rebuildStyles(){
   (state.reps||[]).forEach(function(x){ var p=parseResidues(x.sel); if(!p.ranges) return; p.ranges.forEach(function(r){
     var sel={resi:r.lo===r.hi?r.lo:(r.lo+'-'+r.hi),not:{resn:WATER_RESN}}; if(r.chain!=='*') sel.chain=r.chain; if(r.chain!=='*'&&state.hiddenChains[r.chain]) return;
     viewer.addStyle(sel,x.rep==='sphere'?{sphere:{scale:0.95,colorfunc:ef}}:{stick:{radius:0.15,colorfunc:ef}}); }); });
+  rbStudioStyles(ef);
   (state.hide||[]).forEach(function(t){ var p=parseResidues(t); if(!p.ranges) return; p.ranges.forEach(function(r){ var sel={resi:r.lo===r.hi?r.lo:(r.lo+'-'+r.hi)}; if(r.chain!=='*') sel.chain=r.chain; viewer.setStyle(sel,{}); }); });
   if(!state.off.meas) state.measures.forEach(function(m){ m.pts.forEach(function(pt){ if(!state.hiddenChains[pt.c]) viewer.addStyle({chain:pt.c,resi:pt.r,not:{resn:WATER_RESN}},{stick:{radius:0.15,colorfunc:ef}}); }); });   // an atom you measured is on screen to be seen
   ligands.forEach(function(l){
@@ -1727,6 +1852,7 @@ function buildGeometry(){
   _surfTok++; viewer.removeAllSurfaces(); currentSurfs=[];
   rebuildStyles();
   if(state.style==='surface') addSurfaces();
+  rbStudioShapes();
   renderLabelTags();
   viewer.render();
 }
@@ -1737,7 +1863,7 @@ function recolorStructure(){
   if(state.style==='surface'&&currentSurfs.length) applySurfaceMaterials();
   viewer.render();
   renderLabelTags();
-  rbAfterRecolor();
+  rbAfterRecolor(); undoNote();
 }
 // Colour-mode change.
 function updateColorOrOpacity(){
@@ -1882,6 +2008,7 @@ function setupInteractions(){
     _atomClicked=true;
     if(_measMode){ addMeasurePoint(atom); return; }
     if(_resLabelMode){ addResidueLabel(atom); return; }
+    if(_selMode){ var sk=rKeyOf(atom); _selAnchor=sk; selSet([sk],ev&&ev.shiftKey?'toggle':(_selN===1&&_sel[sk]?'remove':'replace')); return; }
     selectChain(atom.chain||'');
   });
   if(currentModel.selectedAtoms({}).length<160000){
@@ -1916,6 +2043,8 @@ function chainDot(ch){
   if(m==='spectrum') return 'linear-gradient(135deg,'+adjustColor('#3050f8')+','+adjustColor('#30c0a0')+','+adjustColor('#f0c030')+','+adjustColor('#e04030')+')';
   if(m==='ss') return 'conic-gradient('+adjustColor(SS_COLORS.h)+' 0 33%,'+adjustColor(SS_COLORS.s)+' 0 66%,'+adjustColor(SS_COLORS.c)+' 0)';
   if(m==='values') return 'linear-gradient(135deg,'+valStops().map(adjustColor).join(',')+')';
+  if(m==='hydro') return 'linear-gradient(135deg,'+HYDRO_STOPS.map(adjustColor).join(',')+')';
+  if(m==='elec') return 'linear-gradient(135deg,'+ELEC_STOPS.map(adjustColor).join(',')+')';
   if(m==='conf') return 'linear-gradient(135deg,'+adjustColor(isAF()?AF_BINS[0].hex:'#2b6cb0')+','+adjustColor(isAF()?AF_BINS[2].hex:'#f2f2f2')+','+adjustColor(isAF()?AF_BINS[3].hex:'#d6453d')+')';
   return labelColor(ch);
 }
@@ -2469,7 +2598,9 @@ function toggleMeasure(force){
   _measMode=force!=null?force:!_measMode;
   if(_measMode&&_resLabelMode) toggleResLabelMode(false);
   if(!_measMode) clearMeasPending();
+  if(_measMode) _selMode=false;
   ['measBtn','measGo'].forEach(function(id){ var b=$(id); if(!b) return; b.setAttribute('aria-pressed',_measMode?'true':'false'); b.classList.toggle('tb-active',_measMode&&id==='measBtn'); });
+  if(typeof modeButtons==='function') modeButtons();
   $('viewport').style.cursor=_measMode?'crosshair':(_resLabelMode?'crosshair':'');
   var hint=$('chainHint');
   if(_measMode){ hint.textContent='Measure: click '+measNeed()+' atoms'+(measNeed()===3?' (the angle is at the middle one)':'')+' · M or Esc to stop'; hint.classList.add('show'); if(isPhone()) closeControls(); }
@@ -3121,10 +3252,12 @@ function clearValues(){
 function toggleResLabelMode(force){
   _resLabelMode=force!=null?force:!_resLabelMode;
   if(_resLabelMode&&_measMode) toggleMeasure(false);
+  if(_resLabelMode) _selMode=false;
   ['resTagBtn','resTagBtn2'].forEach(function(id){
     var b=$(id); if(!b) return;
     b.setAttribute('aria-pressed',_resLabelMode?'true':'false'); b.classList.toggle('tb-active',_resLabelMode&&id==='resTagBtn');
   });
+  if(typeof modeButtons==='function') modeButtons();
   $('viewport').style.cursor=(_resLabelMode||_measMode)?'crosshair':'';
   var hint=$('chainHint');
   if(_resLabelMode){ hint.textContent='Tag mode: click residues to label them (click again to remove) · T or Esc to stop'; hint.classList.add('show'); if(isPhone()) closeControls(); }
@@ -3340,6 +3473,8 @@ function legendSpec(){
     var vs=state.values, cons=vs.kind==='cons', st=vs.rev?valStops().slice().reverse():valStops();
     return {title:vs.title,grad:st,ends:[vs.min.toFixed(2),vs.max.toFixed(2)],lo:cons?'variable':'low',hi:cons?'conserved':'high',noData:'no value'};
   }
+  if(state.color==='hydro'&&currentModel) return {title:'Hydrophobicity (Kyte–Doolittle)',grad:HYDRO_STOPS,ends:['−4.5','4.5'],lo:'water-loving',hi:'oily'};
+  if(state.color==='elec'&&currentModel) return {title:'Charge (Coulombic, ε = 4r)',grad:ELEC_STOPS,ends:['−10','+10'],lo:'negative',hi:'positive'};
   if(state.color!=='conf'||!currentModel) return null;
   if(isAF()) return {title:'Model confidence (pLDDT)',rows:AF_BINS.map(function(b){ return {color:adjustColor(b.hex),text:b.t+'  '+b.r}; })};
   return {title:'B-factor (Å²)',grad:[bColor(bRange[0]),bColor((bRange[0]+bRange[1])/2),bColor(bRange[1])],ends:[bRange[0].toFixed(0),bRange[1].toFixed(0)]};
@@ -3354,9 +3489,9 @@ function updateLegend(){
 }
 
 // ── The panel says what is in each folded section ────────────────────────────────────────────
-var COLOR_NAMES={uniform:'Uniform',chain:'By chain',spectrum:'Rainbow',ss:'Secondary',conf:'B-factor',values:'Your values'};
+var COLOR_NAMES={uniform:'Uniform',chain:'By chain',spectrum:'Rainbow',ss:'Secondary',conf:'B-factor',values:'Your values',hydro:'Hydrophobicity',elec:'Charge'};
 function updateSummaries(){
-  renderModelExtras(); rbTabsSync();
+  renderModelExtras(); rbTabsSync(); undoNote();
   function set(id,t){ var e=$(id); if(e) e.textContent=t||''; }
   set('sum-structure',currentModel?currentPdbId:'');
   var hid=Object.keys(state.hiddenChains).length;
@@ -3365,6 +3500,10 @@ function updateSummaries(){
   set('sum-highlight',[state.highlights.length?state.highlights.length+' highlighted':'',np?np+(np===1?' pocket':' pockets'):''].filter(Boolean).join(' · '));
   set('sum-appearance',(COLOR_NAMES[state.color]||'')+(state.projection==='orthographic'?' · orthographic':''));
   set('sum-look',((LIGHTING[state.lighting]||LIGHTING.simple).n+' light')+(state.fog?' · depth cue':'')+(state.palette&&state.palette!=='ribbon'?' · '+PALETTES[state.palette].n.split(' (')[0]:''));
+  set('sum-views',(state.views||[]).length?(state.views.length+(state.views.length===1?' view':' views')):'');
+  var _ir=typeof interNow==='function'&&state.inter&&interNow(); set('sum-interact',_ir?_ir.list.length+' found':'');
+  set('sum-lysines',state.lys?state.lys.target+' → '+state.lys.ligase:'');
+  set('sum-pockets',typeof _pockets!=='undefined'&&_pockets?_pockets.list.length+(_pockets.list.length===1?' pocket':' pockets'):'');
   set('sum-decor',[state.scalebar?'scale bar':'',load('ribbon_axes')==='1'?'axes':''].filter(Boolean).join(' · '));
   var nl=tagList().filter(function(t){ return t.kind!=='meas'; }).length; set('sum-labels',nl?nl+(nl===1?' label':' labels'):'');
   var fi=state.iface, ci=fi&&fi.show&&ifaceNow(); set('sum-interface',ci?fi.a+' – '+fi.b+' · '+ci.v.pairs.length+' contacts':'');
@@ -3373,7 +3512,7 @@ function updateSummaries(){
   var nm=state.measures.length; set('sum-measure',nm?nm+(nm===1?' measurement':' measurements'):'');
   var nd=Object.keys(getDesigns()).length; set('sum-designs',nd?nd+' saved':'');
 }
-var SEC_DEFAULT={look:true,decor:false,structure:true,chains:true,highlight:true,measure:true,interface:false,compare:false,values:false,appearance:true,labels:true,designs:true};
+var SEC_DEFAULT={views:true,anim:false,interact:true,lysines:false,clashes:false,pockets:false,pae:true,look:true,decor:false,structure:true,chains:true,highlight:true,measure:true,interface:false,compare:false,values:false,appearance:true,labels:true,designs:true};
 // ── The panel's tabs ─────────────────────────────────────────────────────────────────────────
 // Each tab is a pane of sections. The open tab is remembered; clicking it again folds the pane away (the tabs stay).
 var RB_TAB_IDS=['open','models','colour','analyse','figure','designs'], _rbTab='open';
@@ -3536,7 +3675,8 @@ var _exOpts={bg:'transparent',fmt:'png',res:'600'}, _exPrev=null;
 function _resScale(r){ return r==='300'?1.5:r==='1200'?6:3; }
 function _exportDims(){
   var canvas=$('viewport').querySelector('canvas'); if(!canvas||!currentModel||canvas.width<2||canvas.height<2)return null;   // a viewer that is not on screen has no picture to export
-  var scale=_resScale(_exOpts.res);
+  var scale=_resScale(_exOpts.res), tw=figTargetWidthPx(+_exOpts.res);
+  if(tw) scale=Math.max(1,tw*1.15/canvas.width);   // a little over the target, so cropping to the structure still leaves enough
   var w=Math.round(canvas.width*scale), h=Math.round(canvas.height*scale);
   var maxEdge=8000, m=Math.max(w,h);
   if(m>maxEdge){ var k=maxEdge/m; w=Math.round(w*k); h=Math.round(h*k); scale*=k; }
@@ -3545,7 +3685,8 @@ function _exportDims(){
 function updateExDim(){
   var d=_exportDims(); if(!d)return;
   var note=(_exOpts.fmt==='jpeg'&&_exOpts.bg==='transparent')?'  ·  JPEG has no transparency (uses white)':'';
-  $('exDim').textContent='up to '+d.w+' × '+d.h+' px  ·  cropped to the structure'+note;
+  var tw=figTargetWidthPx(+_exOpts.res);
+  $('exDim').textContent=(tw?tw+' px wide (at '+_exOpts.res+' dpi)':'up to '+d.w+' × '+d.h+' px')+'  ·  cropped to the structure'+note;
 }
 function openExport(){
   if(!currentModel){showToast('Load a structure first.');return;}
@@ -3658,6 +3799,8 @@ function renderExport(){
   var cropBg=(_exOpts.fmt==='jpeg'&&_exOpts.bg==='transparent')?'white':_exOpts.bg;
   off=_cropToContent(off,cropBg);
   if($('exLegend').checked&&!$('exLegendRow').hidden) off=_withLegend(off,cropBg);
+  var tw=figTargetWidthPx(+_exOpts.res);
+  if(tw&&off.width!==tw){ var o2=document.createElement('canvas'); o2.width=tw; o2.height=Math.max(1,Math.round(off.height*tw/off.width)); var c2=o2.getContext('2d'); c2.imageSmoothingEnabled=true; c2.imageSmoothingQuality='high'; c2.drawImage(off,0,0,o2.width,o2.height); off=o2; }   // exactly the column width asked for
   return off;
 }
 function _fileName(){ return (currentPdbId||'structure').replace(/[\\/:*?"<>|\s]+/g,'_')+'_ribbon.'+(_exOpts.fmt==='jpeg'?'jpg':'png'); }
@@ -4467,13 +4610,19 @@ function rbCtxItems(e){
     items.push({hd:atomName(a)});
     items.push({label:'Select '+nm+'…',act:function(){ selectChain(ch); }});
     items.push({label:'Label this residue',act:function(){ addResidueLabel(a); }});
+    items.push({label:'Select this residue',act:function(){ selSet([rKeyOf(a)],_selN?'add':'replace'); }});
+    items.push({label:'Select '+nm,act:function(){ selSet((SEQ.chains[ch]||[]).map(function(e){ return e.k; })); }});
     items.push({label:(state.hiddenChains[ch]?'Show ':'Hide ')+nm,act:function(){ toggleChain(ch); }});
     if(chainList.length>1) items.push({label:'Show only '+nm,act:function(){ soloChain(ch); }});
     items.push({sep:true});
   }
+  items.push({label:'Undo',k:(window.CTX_MOD||'Ctrl+')+'Z',disabled:!_undo.stack.length,act:undo});
+  items.push({label:'Redo',k:(window.CTX_MOD||'Ctrl+')+'⇧Z',disabled:!_undo.redo.length,act:redo});
+  items.push({sep:true});
   items.push({label:'Fit to view',k:'F',act:fitToView});
   items.push({label:'Tag residues',k:'T',check:_resLabelMode,act:function(){ toggleResLabelMode(); }});
   items.push({label:'Measure',k:'M',check:_measMode,act:function(){ toggleMeasure(); }});
+  items.push({label:'Select residues',check:_selMode,act:function(){ setMouseMode(_selMode?'pick':'select'); }});
   items.push({label:'Auto-rotate',k:'S',check:_spinning,act:toggleSpin});
   items.push({sep:true});
   items.push({label:'Export image…',k:(window.CTX_MOD||'Ctrl+')+'E',act:openExport});
@@ -4717,7 +4866,7 @@ function selActClick(ev){
 // the structure → the sequence
 function rbOnHover(atom){ _inspAtom=atom; inspectorPaint(); if(SEQ.on) seqMarkHover(rKeyOf(atom)); }
 function rbOnHoverEnd(){ _inspAtom=null; inspectorPaint(); seqMarkHover(null); }
-function rbOnModel(){ _sel={}; _selN=0; _selAnchor=null; _ligAtomsCache=null; _inspAtom=null; seqBuild(); seqRender(); inspectorPaint(); }
+function rbOnModel(){ if(typeof analyseReset==='function') analyseReset(); if(typeof undoReset==='function') undoReset(); if(typeof renderViews==='function') setTimeout(renderViews,0); if(typeof analyseOnModel==='function') setTimeout(analyseOnModel,0); _sel={}; _selN=0; _selAnchor=null; _ligAtomsCache=null; _inspAtom=null; seqBuild(); seqRender(); inspectorPaint(); }
 function rbAfterRecolor(){ seqRecolor(); }
 function rbExtraRows(){
   return _selN?[{k:'sel',t:'Selection',m:selDescribe(),on:true,go:selFocus}]:[];
@@ -4729,7 +4878,7 @@ function studioBoot(){
   seqWire();
   $('sqActs').addEventListener('click',selActClick);
   $('seqBtn').addEventListener('click',function(){ seqToggle(); });
-  cmdWire(); if(typeof lookWire==='function') lookWire();
+  cmdWire(); if(typeof lookWire==='function') lookWire(); if(typeof analyseWire==='function') analyseWire(); if(typeof moreWire==='function') moreWire();
   var s=load('ribbon_seq'), touch=!!(window.matchMedia&&matchMedia('(hover:none) and (pointer:coarse)').matches); SEQ.on=s==null?!isPhone()&&!touch:s==='1';   // a phone needs the room for the structure
   seqToggle(SEQ.on);
 }
@@ -4957,7 +5106,7 @@ var RB_CMDS=[
   {n:['unlabel'],d:'Take labels off residues',f:'unlabel all · unlabel A:45',
    run:function(a){ var n=needModel(); if(n) return n; if(/^(all|everything)?$/i.test(a.trim())){ state.residueLabels=[]; renderLabelTags(); renderResLblList(); return _ok('Residue labels cleared.'); }
      return applyResidueSpec(a,function(r){ var b=state.residueLabels.length; state.residueLabels=state.residueLabels.filter(function(x){ return r.keys.indexOf(rKey(x.chain,x.resi))<0; }); renderLabelTags(); renderResLblList(); return _ok((b-state.residueLabels.length)+' labels removed.'); }); }},
-  {n:['zoom','view','focus','z','center'],d:'Bring something into view; alone, fit everything',f:'zoom ligand · zoom A:45-60 · zoom sel · zoom',
+  {n:['zoom','focus','z','center','show me'],d:'Bring something into view; alone, fit everything',f:'zoom ligand · zoom A:45-60 · zoom sel · zoom',
    run:function(a){ var n=needModel(); if(n) return n; if(!a.trim()||/^(all|everything)$/i.test(a.trim())){ fitToView(); return _ok('Fitted.'); }
      var r=specAtoms(a); if(r.err) return _err(r.err); if(!r.atoms.length) return _err('Nothing matches “'+a.trim()+'”.');
      var idx=r.atoms.map(function(x){ return x.index; }); _userMoved=true; fitView({focus:{index:idx},animate:true,margin:0.16}); return _ok('Zoomed to '+r.atoms.length+' atoms.'); }},
@@ -5404,6 +5553,690 @@ RB_CMDS.push(
    args:function(){ return [_cand('on','word',''),_cand('off','word','')]; },
    run:function(a){ var on=!/^(off|no|false|0)$/i.test(a.trim()); store('ribbon_axes',on?'1':'0'); $('axesChk').checked=on; decorUpdate(); return _ok('Axes '+(on?'on.':'off.')); }}
 );
+// ── Analyse: interactions, reachable lysines, clashes, surface colours, pockets, AlphaFold's PAE ──
+// Geometry only, from the coordinates in the file. Each result says how it was found, and where it cannot know something
+// (a ligand's charges, which lysine an E2 will reach) it says that instead of guessing.
+function heavy(atoms){ return atoms.filter(function(a){ var e=(a.elem||'C').toUpperCase(); return e!=='H'&&e!=='D'; }); }
+function _d(a,b){ var dx=a.x-b.x, dy=a.y-b.y, dz=a.z-b.z; return Math.sqrt(dx*dx+dy*dy+dz*dz); }
+function _v(a,b){ return [b.x-a.x,b.y-a.y,b.z-a.z]; }
+function _cross(a,b){ return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+function _dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function _norm(a){ var n=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/n,a[1]/n,a[2]/n]; }
+function _atomsByIndex(){ var m={}; currentModel.selectedAtoms({}).forEach(function(a){ m[a.index]=a; }); return m; }
+// Rings: by name in protein side chains; by the bond graph in a ligand (5- and 6-membered and flat, so aromatic in practice).
+var PROT_RINGS={PHE:[['CG','CD1','CD2','CE1','CE2','CZ']],TYR:[['CG','CD1','CD2','CE1','CE2','CZ']],HIS:[['CG','ND1','CD2','CE1','NE2']],
+  TRP:[['CD2','CE2','CE3','CZ2','CZ3','CH2'],['CG','CD1','NE1','CE2','CD2']]};
+function ringOf(atoms){
+  var c={x:0,y:0,z:0}; atoms.forEach(function(a){ c.x+=a.x; c.y+=a.y; c.z+=a.z; }); c.x/=atoms.length; c.y/=atoms.length; c.z/=atoms.length;
+  var n=[0,0,0]; for(var i=0;i<atoms.length;i++){ var a=atoms[i], b=atoms[(i+1)%atoms.length]; n[0]+=(a.y-b.y)*(a.z+b.z); n[1]+=(a.z-b.z)*(a.x+b.x); n[2]+=(a.x-b.x)*(a.y+b.y); }   // Newell
+  n=_norm(n); var dev=0; atoms.forEach(function(a){ dev=Math.max(dev,Math.abs(_dot(_v(c,a),n))); });
+  return {c:c,n:n,flat:dev<0.3,atoms:atoms};
+}
+function proteinRings(atoms){
+  var byRes={}, out=[];
+  atoms.forEach(function(a){ if(PROT_RINGS[a.resn]&&!a.hetflag){ var k=rKeyOf(a); (byRes[k]||(byRes[k]={})); byRes[k][a.atom]=a; } });
+  Object.keys(byRes).forEach(function(k){ var m=byRes[k], any=null; Object.keys(m).some(function(x){ any=m[x]; return true; });
+    PROT_RINGS[any.resn].forEach(function(names){ var A=names.map(function(n){ return m[n]; }); if(A.every(Boolean)){ var r=ringOf(A); r.res=any; out.push(r); } }); });
+  return out;
+}
+function ligandRings(atoms){
+  var idx=_atomsByIndex(), set={}, out=[], seen={};
+  atoms.forEach(function(a){ set[a.index]=a; });
+  atoms.forEach(function(a){
+    // the shortest cycle back to a through its neighbours, up to six atoms
+    var q=[[a.index]], found=null;
+    while(q.length&&!found){
+      var p=q.shift(); if(p.length>6) break;
+      var last=idx[p[p.length-1]]; (last.bonds||[]).forEach(function(j){
+        if(found||!set[j]) return;
+        if(j===a.index&&p.length>=5){ found=p; return; }
+        if(p.indexOf(j)<0&&p.length<6) q.push(p.concat([j]));
+      });
+    }
+    if(!found) return;
+    var key=found.slice().sort(function(x,y){ return x-y; }).join(); if(seen[key]) return; seen[key]=1;
+    var A=found.map(function(j){ return idx[j]; }); if(!A.every(function(x){ return /^(C|N|O|S)$/i.test(x.elem||'C'); })) return;
+    var r=ringOf(A); if(r.flat){ r.res=a; out.push(r); }
+  });
+  return out;
+}
+var HYDRO_C={ALA:['CB'],VAL:['CB','CG1','CG2'],LEU:['CB','CG','CD1','CD2'],ILE:['CB','CG1','CG2','CD1'],MET:['CB','CG','SD','CE'],PHE:['CB','CG','CD1','CD2','CE1','CE2','CZ'],
+  TRP:['CB','CG','CD2','CE3','CZ2','CZ3','CH2'],PRO:['CB','CG','CD'],TYR:['CB','CG','CD1','CD2','CE1','CE2'],CYS:['SG'],LYS:['CB','CG','CD'],ARG:['CB','CG'],THR:['CG2']};
+var POS_ATOMS={LYS:['NZ'],ARG:['NH1','NH2','NE'],HIS:['ND1','NE2']}, NEG_ATOMS={ASP:['OD1','OD2'],GLU:['OE1','OE2']};
+var INTER_TYPES={hbond:{n:'Hydrogen bonds',c:'#3e63dd',w:0.07},salt:{n:'Salt bridges',c:'#d6409f',w:0.08},hydro:{n:'Hydrophobic contacts',c:'#8b8d98',w:0.05},
+  pi:{n:'π-stacking',c:'#30a46c',w:0.08},cation:{n:'Cation–π',c:'#e5484d',w:0.08},halogen:{n:'Halogen bonds',c:'#12a594',w:0.07},metal:{n:'Metal contacts',c:'#8e4ec6',w:0.08}};
+function _isLigAtom(a){ return ligands.some(function(l){ return l.resn===a.resn&&l.chain===(a.chain||'')&&l.resi===a.resi; }); }
+function _carbonOnlyC(a,idx){ return (a.elem||'C').toUpperCase()==='C'&&(a.bonds||[]).every(function(j){ var b=idx[j]; return !b||/^(C|H)$/i.test(b.elem||'C'); }); }
+// src, tgt: atom lists. srcLig: src is a ligand (no charges known)
+function interactions(src,tgt,srcLig){
+  var out=[], idx=_atomsByIndex(), S=heavy(src), T=heavy(tgt), g=gridOf(T,6.5), add=function(type,a,b,d,pa,pb,extra){ out.push(Object.assign({type:type,a:a,b:b,d:d,pa:pa||{x:a.x,y:a.y,z:a.z},pb:pb||{x:b.x,y:b.y,z:b.z}},extra||{})); };
+  var hydroBest={};
+  S.forEach(function(a){
+    var ea=(a.elem||'C').toUpperCase();
+    gridNear(g,6.5,a.x,a.y,a.z,function(j){
+      var b=T[j]; if(rKeyOf(a)===rKeyOf(b)&&(a.chain||'')===(b.chain||'')) return;
+      var eb=(b.elem||'C').toUpperCase(), d=_d(a,b);
+      if(d>4.5) return;
+      if(/^[NO]$/.test(ea)&&/^[NO]$/.test(eb)&&d>=2.5&&d<=3.5) add('hbond',a,b,d);
+      if(/^(F|CL|BR|I)$/.test(ea)&&/^[NOS]$/.test(eb)&&d<=3.5) add('halogen',a,b,d);
+      if(!srcLig&&d<=4.0){ var pa=(POS_ATOMS[a.resn]||[]).indexOf(a.atom)>=0, na=(NEG_ATOMS[a.resn]||[]).indexOf(a.atom)>=0, pb=(POS_ATOMS[b.resn]||[]).indexOf(b.atom)>=0, nb=(NEG_ATOMS[b.resn]||[]).indexOf(b.atom)>=0;
+        if((pa&&nb)||(na&&pb)) add('salt',a,b,d); }
+      if(d<=4.0&&eb==='C'&&(HYDRO_C[b.resn]||[]).indexOf(b.atom)>=0&&(srcLig?_carbonOnlyC(a,idx):(HYDRO_C[a.resn]||[]).indexOf(a.atom)>=0)){
+        var k=rKeyOf(a)+'>'+rKeyOf(b); if(!hydroBest[k]||d<hydroBest[k].d) hydroBest[k]={a:a,b:b,d:d};
+      }
+    });
+  });
+  Object.keys(hydroBest).forEach(function(k){ var h=hydroBest[k]; add('hydro',h.a,h.b,h.d); });
+  // drop a hydrogen bond already counted as a salt bridge
+  var saltK={}; out.forEach(function(x){ if(x.type==='salt') saltK[x.a.index+'-'+x.b.index]=1; });
+  out=out.filter(function(x){ return !(x.type==='hbond'&&saltK[x.a.index+'-'+x.b.index]); });
+  // rings
+  var RS=srcLig?ligandRings(S):proteinRings(S), RT=proteinRings(T);
+  RS.forEach(function(r){ RT.forEach(function(t){
+    var d=_d(r.c,t.c); if(d>6.5) return;
+    var ang=Math.acos(Math.min(1,Math.abs(_dot(r.n,t.n))))*180/Math.PI;
+    var off=Math.sqrt(Math.max(0,d*d-Math.pow(_dot(_v(r.c,t.c),r.n),2)));
+    if((d<=5.5&&ang<30&&off<=2.0)||(d<=6.5&&ang>=60&&off<=2.0)) add('pi',r.res,t.res,d,r.c,t.c,{shape:ang<30?'parallel':'T-shaped'});
+  }); });
+  // cation–π: a protein cation over a ring
+  var cations=T.filter(function(b){ return (b.resn==='LYS'&&b.atom==='NZ')||(b.resn==='ARG'&&b.atom==='CZ'); });
+  RS.forEach(function(r){ cations.forEach(function(b){ var d=_d(r.c,b); if(d>6.0) return; var off=Math.sqrt(Math.max(0,d*d-Math.pow(_dot(_v(r.c,b),r.n),2))); if(off<=2.0) add('cation',r.res,b,d,r.c,{x:b.x,y:b.y,z:b.z}); }); });
+  if(!srcLig){ var cS=S.filter(function(b){ return (b.resn==='LYS'&&b.atom==='NZ')||(b.resn==='ARG'&&b.atom==='CZ'); }); RT.forEach(function(r){ cS.forEach(function(b){ var d=_d(r.c,b); if(d>6.0) return; var off=Math.sqrt(Math.max(0,d*d-Math.pow(_dot(_v(r.c,b),r.n),2))); if(off<=2.0) add('cation',b,r.res,d,{x:b.x,y:b.y,z:b.z},r.c); }); }); }
+  // metals coordinating the ligand
+  if(srcLig){ var ions=currentModel.selectedAtoms({}).filter(function(x){ return x.hetflag&&ionResn.indexOf(x.resn)>=0; });
+    S.forEach(function(a){ if(!/^[NOS]$/i.test(a.elem||'')) return; ions.forEach(function(m){ var d=_d(a,m); if(d<=2.8) add('metal',a,m,d); }); }); }
+  return out.sort(function(x,y){ return Object.keys(INTER_TYPES).indexOf(x.type)-Object.keys(INTER_TYPES).indexOf(y.type)||x.d-y.d; });
+}
+function _setAtoms(spec){   // 'lig:<key>' · 'chain:A' · 'sel' · 'protein'
+  if(!currentModel) return [];
+  if(spec==='sel') return currentModel.selectedAtoms({}).filter(function(a){ return _sel[rKeyOf(a)]; });
+  if(spec==='protein') return currentModel.selectedAtoms({}).filter(function(a){ return !a.hetflag&&!state.hiddenChains[a.chain||'']; });
+  var m=/^(lig|chain):(.*)$/.exec(spec||''); if(!m) return [];
+  if(m[1]==='lig'){ var l=ligands.filter(function(x){ return x.key===m[2]; })[0]; return l?currentModel.selectedAtoms(ligSel(l)):[]; }
+  return currentModel.selectedAtoms({chain:m[2]}).filter(function(a){ return !a.hetflag||!_isLigAtom(a)&&ionResn.indexOf(a.resn)<0&&WATER_RESN.indexOf(a.resn)<0; });
+}
+function _setName(spec){
+  if(spec==='sel') return 'the selection'; if(spec==='protein') return 'the protein';
+  var m=/^(lig|chain):(.*)$/.exec(spec||''); if(!m) return '';
+  if(m[1]==='lig'){ var l=ligands.filter(function(x){ return x.key===m[2]; })[0]; return l?l.resn+' ('+chainTitle(l.chain).replace('Chain ','')+' '+l.resi+')':'?'; }
+  return chainTitle(m[2]);
+}
+var _inter=null, _interShapes=[];
+function interNow(){
+  var f=state.inter; if(!f||!currentModel) return null;
+  var key=f.src+'|'+f.tgt+'|'+chainList.join()+'|'+currentPdbId+'|'+_frame;
+  if(_inter&&_inter.key===key) return _inter;
+  var S=_setAtoms(f.src), T=f.tgt==='protein'?_setAtoms('protein').filter(function(a){ return S.indexOf(a)<0&&!_isLigAtom(a); }):_setAtoms(f.tgt);
+  if(!S.length||!T.length){ _inter={key:key,list:[]}; return _inter; }
+  _inter={key:key,list:interactions(S,T,/^lig:/.test(f.src))};
+  return _inter;
+}
+function interShown(){ var f=state.inter; if(!f||!f.show) return []; var r=interNow(); return r?r.list.filter(function(x){ return f.types[x.type]!==false&&!state.hiddenChains[x.a.chain||'']&&!state.hiddenChains[x.b.chain||'']; }):[]; }
+function interDraw(){
+  if(!viewer) return;
+  _interShapes.forEach(function(s){ try{ viewer.removeShape(s); }catch(e){} }); _interShapes=[];
+  interShown().forEach(function(x){
+    var t=INTER_TYPES[x.type];
+    try{ _interShapes.push(viewer.addCylinder({start:x.pa,end:x.pb,radius:t.w,color:t.c,dashed:true,dashLength:0.28,gapLength:0.2,fromCap:1,toCap:1,clickable:false}));
+      if(x.type==='pi'||x.type==='cation') _interShapes.push(viewer.addSphere({center:x.pa,radius:0.28,color:t.c,clickable:false})); }catch(e){}
+  });
+}
+function interResidues(){   // residues on either side, for sticks and labels
+  var o={}; interShown().forEach(function(x){ [x.a,x.b].forEach(function(a){ if(!_isLigAtom(a)&&!(a.hetflag&&ionResn.indexOf(a.resn)>=0)) o[rKeyOf(a)]={chain:a.chain||'',resi:a.resi,resn:a.resn}; }); }); return o;
+}
+function _atomLabel(a){ return (a.chain&&a.chain.trim()?a.chain+':':'')+a.resn+' '+a.resi+' '+a.atom; }
+function renderInter(){
+  var el=$('interList'); if(!el) return;
+  var f=state.inter, r=f&&interNow(), L=r?r.list:[];
+  $('interSum').textContent='';
+  if(!f){ el.innerHTML='<div class="empty-note">Pick what to look at, then press Find.</div>'; $('interActs').hidden=true; return; }
+  var by={}; L.forEach(function(x){ by[x.type]=(by[x.type]||0)+1; });
+  $('interTypes').innerHTML=Object.keys(INTER_TYPES).filter(function(k){ return by[k]||k!=='metal'; }).map(function(k){ var t=INTER_TYPES[k], on=f.types[k]!==false;
+    return '<button type="button" class="it-chip'+(on?' on':'')+'" data-t="'+k+'" aria-pressed="'+on+'"><i style="background:'+t.c+'"></i>'+t.n+' <b>'+(by[k]||0)+'</b></button>'; }).join('');
+  $('interSum').textContent=L.length?L.length+' between '+_setName(f.src)+' and '+_setName(f.tgt):'None found between '+_setName(f.src)+' and '+_setName(f.tgt)+'.';
+  var shown=L.filter(function(x){ return f.types[x.type]!==false; }).slice(0,80);
+  el.innerHTML=shown.map(function(x,i){ var t=INTER_TYPES[x.type];
+    return '<div class="li" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="li-dot" style="background:'+t.c+';cursor:default" aria-hidden="true"></span><button type="button" class="li-main" data-i="'+i+'"><span class="li-name">'+escapeHtml(_atomLabel(x.b))+'</span><span class="li-meta">'+escapeHtml(t.n.replace(/s$/,'').replace(/^Hydrogen bond$/,'H-bond')+(x.shape?' ('+x.shape+')':'')+' · from '+_atomLabel(x.a))+'</span></button><span class="mono-v">'+x.d.toFixed(2)+' Å</span></div>'; }).join('')
+    +(L.length>80?'<div class="empty-note">+ '+(L.length-80)+' more in the copied table.</div>':'');
+  el.querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(){ var x=shown[+b.dataset.i]; _userMoved=true; fitView({focus:{index:[x.a.index,x.b.index]},animate:true,margin:0.3}); }); });
+  $('interActs').hidden=!L.length;
+}
+function interCopy(){
+  var r=interNow(); if(!r) return;
+  var t='Type\tFrom\tTo\tDistance (Å)\n'+r.list.map(function(x){ return INTER_TYPES[x.type].n+'\t'+_atomLabel(x.a)+'\t'+_atomLabel(x.b)+'\t'+x.d.toFixed(2); }).join('\n');
+  try{ navigator.clipboard.writeText(t).then(function(){ showToast('Copied '+r.list.length+' interactions.'); },function(){ showToast('The clipboard is not available here.'); }); }catch(e){ showToast('The clipboard is not available here.'); }
+}
+function interSet(src,tgt){
+  var old=state.inter;
+  state.inter={src:src,tgt:tgt||'protein',show:true,types:old?Object.assign({},old.types):{}};
+  _inter=null; recolorStructure(); interDraw(); viewer.render(); renderInter(); updateSummaries();
+}
+function interFill(){
+  var s=$('interSrc'), t=$('interTgt'); if(!s) return;
+  var src=ligands.map(function(l){ return '<option value="lig:'+escapeHtml(l.key)+'">Ligand '+escapeHtml(l.resn)+' · '+escapeHtml(chainTitle(l.chain).replace('Chain ',''))+' '+l.resi+'</option>'; })
+    .concat(chainList.map(function(c){ return '<option value="chain:'+escapeHtml(c)+'">'+escapeHtml(chainTitle(c))+'</option>'; }),['<option value="sel">The selection</option>']);
+  s.innerHTML=src.join(''); t.innerHTML='<option value="protein">Every protein chain</option>'+chainList.map(function(c){ return '<option value="chain:'+escapeHtml(c)+'">'+escapeHtml(chainTitle(c))+'</option>'; }).join('');
+  if(state.inter){ s.value=state.inter.src; t.value=state.inter.tgt; } else if(chainList.length>1&&!ligands.length) t.value='chain:'+chainList[1];
+}
+
+// ── Lysines a ligase can reach ──────────────────────────────────────────────────────────────
+// For a degrader in a ternary complex: which lysines of the target face the ligase, and are on the surface.
+var LIGASE_RE=/von hippel|vhl|cereblon|crbn|dcaf|ddb1|cullin|keap1|mdm2|xiap|ciap|birc|kelch|f-box|fbx|beta-trcp|btrc|ring|ligase|rbx|skp|elongin/i;
+function lysGuess(){
+  if(chainList.length<2) return null;
+  var lig=chainList.filter(function(c){ return LIGASE_RE.test((chainInfo[c]&&chainInfo[c].name)||''); });
+  var helpers=/elongin|ddb1|rbx|skp|cullin/i;
+  var e3=lig.filter(function(c){ return !helpers.test(chainInfo[c].name||''); })[0]||lig[0];
+  var near=ligands[0], tgt=null;
+  if(near){ var L=currentModel.selectedAtoms(ligSel(near)), best=-1; chainList.forEach(function(c){ if(lig.indexOf(c)>=0||chainInfo[c].type!=='protein') return; var n=0, A=polyAtoms(c), g=gridOf(A,5); L.forEach(function(a){ gridNear(g,5,a.x,a.y,a.z,function(j){ if(_d(a,A[j])<=5) n++; }); }); if(n>best){ best=n; tgt=c; } }); }
+  tgt=tgt||chainList.filter(function(c){ return lig.indexOf(c)<0&&chainInfo[c].type==='protein'; })[0]||chainList[0];
+  e3=e3||chainList.filter(function(c){ return c!==tgt; })[0];
+  return {target:tgt,ligase:e3};
+}
+function nzExposure(nz,all,g,cell){   // the fraction of NZ's solvent sphere not buried by any other heavy atom
+  var P=spherePoints(60), R=atomR(nz)+1.4, nb=[];
+  gridNear(g,cell,nz.x,nz.y,nz.z,function(j){ var b=all[j]; if(b===nz) return; var s=R+atomR(b)+1.4; if(_d(nz,b)<s) nb.push(b); });
+  var free=0; P.forEach(function(p){ var x=nz.x+R*p[0], y=nz.y+R*p[1], z=nz.z+R*p[2]; if(!nb.some(function(b){ var r=atomR(b)+1.4, dx=x-b.x, dy=y-b.y, dz=z-b.z; return dx*dx+dy*dy+dz*dz<r*r; })) free++; });
+  return free/P.length;
+}
+var _lys=null;
+function lysNow(){
+  var f=state.lys; if(!f||!currentModel) return null;
+  var key=f.target+'|'+f.ligase+'|'+currentPdbId+'|'+_frame; if(_lys&&_lys.key===key) return _lys;
+  var all=heavy(currentModel.selectedAtoms({}).filter(function(a){ return WATER_RESN.indexOf(a.resn)<0; })), cell=7, g=gridOf(all,cell);
+  var E=polyAtoms(f.ligase), deg=ligands.length?currentModel.selectedAtoms({}).filter(_isLigAtom):[];
+  var rows=currentModel.selectedAtoms({chain:f.target,resn:'LYS',atom:'NZ'}).map(function(nz){
+    var best=1e9; E.forEach(function(e){ var d=_d(nz,e); if(d<best) best=d; });
+    var dl=1e9; deg.forEach(function(e){ var d=_d(nz,e); if(d<dl) dl=d; });
+    return {resi:nz.resi,chain:f.target,nz:nz,dE3:best,dLig:deg.length?dl:null,exp:nzExposure(nz,all,g,cell)};
+  });
+  rows.sort(function(a,b){ return a.dE3-b.dE3; });
+  _lys={key:key,rows:rows}; return _lys;
+}
+function lysColours(){
+  var f=state.lys; if(!f||!f.show) return null; var r=lysNow(); if(!r) return null;
+  var o={}; o[f.target]={};
+  r.rows.forEach(function(x){ if(x.exp<0.1) return; o[f.target][x.resi]=x.dE3<=f.cut?_mixHex('#ff7a1a','#ffd27a',Math.max(0,Math.min(1,x.dE3/f.cut))):'#c9ccd6'; });
+  return o;
+}
+function renderLys(){
+  var el=$('lysList'); if(!el) return; var f=state.lys;
+  if(!f){ el.innerHTML='<div class="empty-note">Choose the target and the ligase, then press Find.</div>'; $('lysActs').hidden=true; return; }
+  var r=lysNow(), near=r.rows.filter(function(x){ return x.exp>=0.1&&x.dE3<=f.cut; });
+  $('lysSum').textContent=r.rows.length?near.length+' of '+r.rows.length+' lysines of '+chainTitle(f.target)+' are on the surface and within '+f.cut+' Å of '+chainTitle(f.ligase)+'.':chainTitle(f.target)+' has no lysines with an NZ in the model.';
+  el.innerHTML=r.rows.slice(0,60).map(function(x,i){ var on=x.exp>=0.1&&x.dE3<=f.cut;
+    return '<div class="li'+(on?'':' off')+'" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="li-dot" style="background:'+(on?_mixHex('#ff7a1a','#ffd27a',Math.min(1,x.dE3/f.cut)):'#c9ccd6')+';cursor:default" aria-hidden="true"></span><button type="button" class="li-main" data-i="'+i+'"><span class="li-name">K'+x.resi+'</span><span class="li-meta">'+Math.round(x.exp*100)+'% exposed'+(x.dLig!=null?' · '+x.dLig.toFixed(1)+' Å from the degrader':'')+'</span></button><span class="mono-v">'+x.dE3.toFixed(1)+' Å</span></div>'; }).join('');
+  el.querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(){ var x=r.rows[+b.dataset.i]; _userMoved=true; fitView({focus:{chain:x.chain,resi:x.resi},animate:true,margin:0.3}); }); });
+  $('lysActs').hidden=!near.length;
+}
+function lysSet(target,ligase,cut){
+  state.lys={target:target,ligase:ligase,cut:cut>0?cut:(state.lys&&state.lys.cut)||30,show:true}; _lys=null;
+  recolorStructure(); renderLys(); updateSummaries();
+}
+function lysFill(){
+  var t=$('lysTgt'), e=$('lysE3'); if(!t) return;
+  var o=chainList.map(function(c){ return '<option value="'+escapeHtml(c)+'">'+escapeHtml(chainTitle(c)+(chainInfo[c]&&chainInfo[c].name?' · '+chainInfo[c].name:''))+'</option>'; }).join('');
+  t.innerHTML=o; e.innerHTML=o;
+  var g=state.lys||lysGuess(); if(g){ t.value=g.target; e.value=g.ligase; }
+  if(state.lys) $('lysCut').value=state.lys.cut;
+}
+
+// ── Clashes and contacts between two parts ──────────────────────────────────────────────────
+// Overlap = the two van der Waals radii less the distance. A clash overlaps by 0.6 Å or more, a contact by −0.4 Å or more
+// (ChimeraX's defaults). Atoms of one residue, and the peptide bond between neighbours, are not counted.
+var _clash=null, _clashShapes=[];
+function clashCompute(aSpec,bSpec){
+  var A=heavy(_setAtoms(aSpec)), B=heavy(_setAtoms(bSpec)), Bi={}; B.forEach(function(b){ Bi[b.index]=1; });
+  A=A.filter(function(a){ return !Bi[a.index]; });
+  var g=gridOf(B,4.5), cl=[], ct=0;
+  A.forEach(function(a){ gridNear(g,4.5,a.x,a.y,a.z,function(j){ var b=B[j];
+    if((a.chain||'')===(b.chain||'')&&Math.abs(a.resi-b.resi)<=1) return;
+    var d=_d(a,b), ov=atomR(a)+atomR(b)-d; if(ov>=-0.4) ct++; if(ov>=0.6) cl.push({a:a,b:b,d:d,ov:ov}); }); });
+  cl.sort(function(x,y){ return y.ov-x.ov; });
+  return {a:aSpec,b:bSpec,clashes:cl,contacts:ct};
+}
+function clashDraw(){
+  if(!viewer) return; _clashShapes.forEach(function(s){ try{ viewer.removeShape(s); }catch(e){} }); _clashShapes=[];
+  if(!_clash||!_clash.show) return;
+  _clash.clashes.slice(0,300).forEach(function(x){ try{ _clashShapes.push(viewer.addCylinder({start:{x:x.a.x,y:x.a.y,z:x.a.z},end:{x:x.b.x,y:x.b.y,z:x.b.z},radius:0.09,color:'#e5484d',dashed:true,dashLength:0.2,gapLength:0.15,fromCap:1,toCap:1,clickable:false})); }catch(e){} });
+}
+function renderClash(){
+  var el=$('clashOut'); if(!el) return;
+  if(!_clash){ el.hidden=true; return; }
+  el.hidden=false;
+  el.innerHTML='<div class="ic-line"><b>'+_clash.clashes.length+'</b> '+(_clash.clashes.length===1?'clash':'clashes')+' · <b>'+_clash.contacts+'</b> contacts between '+escapeHtml(_setName(_clash.a))+' and '+escapeHtml(_setName(_clash.b))+'</div>'
+    +(_clash.clashes.length?'<div class="hint">Worst: '+_clash.clashes.slice(0,3).map(function(x){ return escapeHtml(_atomLabel(x.a)+' – '+_atomLabel(x.b))+' ('+x.ov.toFixed(2)+' Å)'; }).join(' · ')+'</div>':'<div class="hint">Nothing overlaps by 0.6 Å or more.</div>');
+}
+function clashFill(){
+  var a=$('clA'), b=$('clB'); if(!a) return;
+  var o=chainList.map(function(c){ return '<option value="chain:'+escapeHtml(c)+'">'+escapeHtml(chainTitle(c))+'</option>'; }).concat(ligands.map(function(l){ return '<option value="lig:'+escapeHtml(l.key)+'">Ligand '+escapeHtml(l.resn)+'</option>'; }),['<option value="sel">The selection</option>']).join('');
+  a.innerHTML=o; b.innerHTML=o; if(chainList.length>1) b.value='chain:'+chainList[1];
+}
+
+// ── Colouring by a property of the residue or the atom ───────────────────────────────────────
+var KD={ALA:1.8,ARG:-4.5,ASN:-3.5,ASP:-3.5,CYS:2.5,GLN:-3.5,GLU:-3.5,GLY:-0.4,HIS:-3.2,ILE:4.5,LEU:3.8,LYS:-3.9,MET:1.9,PHE:2.8,PRO:-1.6,SER:-0.8,THR:-0.7,TRP:-0.9,TYR:-1.3,VAL:4.2,MSE:1.9};
+var HYDRO_STOPS=['#2a8fbd','#f3f1f1','#d9822b'], ELEC_STOPS=['#d1342f','#f7f7f7','#2f5fd1'];
+function _ramp(stops,t){ t=Math.max(0,Math.min(1,t)); var n=stops.length-1, k=Math.min(n-1,Math.floor(t*n)); return _mixHex(stops[k],stops[k+1],t*n-k); }
+function hydroColor(a){ var v=KD[a.resn]; return v==null?'#c9ccd6':_ramp(HYDRO_STOPS,(v+4.5)/9); }
+var _elec=null;
+function atomCharge(a){
+  var r=a.resn, n=a.atom;
+  if(r==='LYS'&&n==='NZ') return 1; if(r==='ARG'&&(n==='NH1'||n==='NH2'||n==='NE')) return 1/3;
+  if(r==='ASP'&&(n==='OD1'||n==='OD2')) return -0.5; if(r==='GLU'&&(n==='OE1'||n==='OE2')) return -0.5;
+  if(n==='OXT') return -1; return 0;
+}
+function elecMap(){   // Coulomb's law with a distance-dependent dielectric (ε = 4r), from the charges of the residues alone
+  var key=currentPdbId+'|'+_frame+'|'+chainList.join(); if(_elec&&_elec.key===key) return _elec.m;
+  var all=currentModel.selectedAtoms({}), Q=[], m={}, firstN={};
+  all.forEach(function(a){ if(a.hetflag) return; var q=atomCharge(a); if(a.atom==='N'&&!firstN[a.chain||'']){ firstN[a.chain||'']=1; q=1; } if(q) Q.push({x:a.x,y:a.y,z:a.z,q:q,i:a.index}); });
+  all.forEach(function(a){ var v=0; for(var k=0;k<Q.length;k++){ var c=Q[k]; if(c.i===a.index) continue; var dx=a.x-c.x, dy=a.y-c.y, dz=a.z-c.z, r2=dx*dx+dy*dy+dz*dz; if(r2<1) r2=1; v+=83*c.q/r2; } m[a.index]=v; });
+  _elec={key:key,m:m}; return m;
+}
+function elecColor(a){ if(a.hetflag) return '#c9ccd6'; var v=elecMap()[a.index]||0; return _ramp(ELEC_STOPS,(v+10)/20); }
+
+// ── Pockets: places in the protein a small molecule could sit ───────────────────────────────
+// A grid over the visible protein; a point is a pocket point when it is outside every atom (plus a 1.4 Å probe) and protein
+// lies within 8 Å along at least 10 of 14 directions. Points that touch are one pocket; pockets are ranked by size.
+var _pockets=null, _pocketShapes=[];
+function pocketsFind(){
+  var A=heavy(currentModel.selectedAtoms({}).filter(function(a){ return !a.hetflag&&!state.hiddenChains[a.chain||'']; }));
+  if(!A.length) return [];
+  var h=1.0, x0=1e9,y0=1e9,z0=1e9,x1=-1e9,y1=-1e9,z1=-1e9;
+  A.forEach(function(a){ x0=Math.min(x0,a.x); y0=Math.min(y0,a.y); z0=Math.min(z0,a.z); x1=Math.max(x1,a.x); y1=Math.max(y1,a.y); z1=Math.max(z1,a.z); });
+  var nx=Math.ceil((x1-x0)/h)+1, ny=Math.ceil((y1-y0)/h)+1, nz=Math.ceil((z1-z0)/h)+1;
+  if(nx*ny*nz>2.5e6){ h=Math.cbrt((x1-x0)*(y1-y0)*(z1-z0)/2.5e6); nx=Math.ceil((x1-x0)/h)+1; ny=Math.ceil((y1-y0)/h)+1; nz=Math.ceil((z1-z0)/h)+1; }
+  var occ=new Uint8Array(nx*ny*nz), I=function(i,j,k){ return (k*ny+j)*nx+i; };
+  A.forEach(function(a){ var r=atomR(a)+1.4, ri=Math.ceil(r/h), ci=Math.round((a.x-x0)/h), cj=Math.round((a.y-y0)/h), ck=Math.round((a.z-z0)/h);
+    for(var i=ci-ri;i<=ci+ri;i++) for(var j=cj-ri;j<=cj+ri;j++) for(var k=ck-ri;k<=ck+ri;k++){ if(i<0||j<0||k<0||i>=nx||j>=ny||k>=nz) continue; var dx=x0+i*h-a.x, dy=y0+j*h-a.y, dz=z0+k*h-a.z; if(dx*dx+dy*dy+dz*dz<=r*r) occ[I(i,j,k)]=1; } });
+  var core=new Uint8Array(nx*ny*nz);   // atom bodies alone (no probe), for the rays
+  A.forEach(function(a){ var r=atomR(a), ri=Math.ceil(r/h), ci=Math.round((a.x-x0)/h), cj=Math.round((a.y-y0)/h), ck=Math.round((a.z-z0)/h);
+    for(var i=ci-ri;i<=ci+ri;i++) for(var j=cj-ri;j<=cj+ri;j++) for(var k=ck-ri;k<=ck+ri;k++){ if(i<0||j<0||k<0||i>=nx||j>=ny||k>=nz) continue; core[I(i,j,k)]=1; } });
+  var D=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1],[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1]], steps=Math.round(8/h);
+  var pk=new Uint8Array(nx*ny*nz), i,j,k;
+  for(k=1;k<nz-1;k++) for(j=1;j<ny-1;j++) for(i=1;i<nx-1;i++){
+    if(occ[I(i,j,k)]) continue;
+    var hits=0;
+    for(var q=0;q<14&&hits+(14-q)>=10;q++){ var d=D[q]; for(var s=1;s<=steps;s++){ var a=i+d[0]*s, b=j+d[1]*s, c=k+d[2]*s; if(a<0||b<0||c<0||a>=nx||b>=ny||c>=nz) break; if(core[I(a,b,c)]){ hits++; break; } } }
+    if(hits>=10) pk[I(i,j,k)]=1;
+  }
+  // connected pockets
+  var lab=new Int32Array(nx*ny*nz), out=[], id=0;
+  for(k=0;k<nz;k++) for(j=0;j<ny;j++) for(i=0;i<nx;i++){
+    var st=I(i,j,k); if(!pk[st]||lab[st]) continue;
+    id++; var stack=[[i,j,k]], pts=[]; lab[st]=id;
+    while(stack.length){ var p=stack.pop(); pts.push(p); [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].forEach(function(d){ var a=p[0]+d[0], b=p[1]+d[1], c=p[2]+d[2]; if(a<0||b<0||c<0||a>=nx||b>=ny||c>=nz) return; var t=I(a,b,c); if(pk[t]&&!lab[t]){ lab[t]=id; stack.push([a,b,c]); } }); }
+    if(pts.length*h*h*h>=30) out.push(pts.map(function(p){ return {x:x0+p[0]*h,y:y0+p[1]*h,z:z0+p[2]*h}; }));
+  }
+  out.sort(function(a,b){ return b.length-a.length; });
+  var gA=gridOf(A,4);
+  return out.slice(0,8).map(function(P,n){
+    var res={}; P.forEach(function(p){ gridNear(gA,4,p.x,p.y,p.z,function(t){ if(_d(p,A[t])<=4) res[rKeyOf(A[t])]=1; }); });
+    var lig=ligands.filter(function(l){ return currentModel.selectedAtoms(ligSel(l)).some(function(a){ return P.some(function(p){ return _d(p,a)<=2; }); }); }).map(function(l){ return l.resn; });
+    return {n:n+1,pts:P,vol:P.length*h*h*h,res:Object.keys(res),lig:lig};
+  });
+}
+var POCKET_COLS=['#e5484d','#3e63dd','#30a46c','#f5a524','#8e4ec6','#12a594','#d6409f','#6e56cf'];
+function pocketDraw(){
+  if(!viewer) return; _pocketShapes.forEach(function(s){ try{ viewer.removeShape(s); }catch(e){} }); _pocketShapes=[];
+  if(!_pockets||!_pockets.show) return;
+  _pockets.list.forEach(function(p,i){ if(_pockets.only!=null&&_pockets.only!==i) return; var step=Math.max(1,Math.ceil(p.pts.length/400));
+    for(var q=0;q<p.pts.length;q+=step){ try{ _pocketShapes.push(viewer.addSphere({center:p.pts[q],radius:0.42,color:POCKET_COLS[i%POCKET_COLS.length],opacity:0.75,clickable:false})); }catch(e){} } });
+}
+function renderPockets(){
+  var el=$('pocketList'); if(!el) return;
+  if(!_pockets){ el.innerHTML='<div class="empty-note">Press Find pockets: it takes a second or two on a large structure.</div>'; return; }
+  if(!_pockets.list.length){ el.innerHTML='<div class="empty-note">No buried cavity of 30 Å³ or more in the chains shown.</div>'; return; }
+  el.innerHTML=_pockets.list.map(function(p,i){ return '<div class="li'+(_pockets.only!=null&&_pockets.only!==i?' off':'')+'" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="li-dot" style="background:'+POCKET_COLS[i%POCKET_COLS.length]+';cursor:default" aria-hidden="true"></span><button type="button" class="li-main" data-i="'+i+'"><span class="li-name">Pocket '+p.n+(p.lig.length?' <span style="font-weight:400;color:var(--text2)">· holds '+escapeHtml(p.lig.join(', '))+'</span>':'')+'</span><span class="li-meta">'+Math.round(p.vol)+' Å³ · '+p.res.length+' residues</span></button><button type="button" class="ibtn pk-sel" data-i="'+i+'" title="Select its residues" aria-label="Select the residues of pocket '+p.n+'"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 2.5"/></svg></button></div>'; }).join('');
+  el.querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(){ var i=+b.dataset.i; _pockets.only=_pockets.only===i?null:i; pocketDraw(); viewer.render(); renderPockets(); var p=_pockets.list[i]; if(_pockets.only===i){ var c={x:0,y:0,z:0}; p.pts.forEach(function(q){ c.x+=q.x; c.y+=q.y; c.z+=q.z; }); _userMoved=true; var keys=p.res; selSet(keys); fitView({focus:selSpec3D(),animate:true,margin:0.2}); } }); });
+  el.querySelectorAll('.pk-sel').forEach(function(b){ b.addEventListener('click',function(){ selSet(_pockets.list[+b.dataset.i].res); showToast('Selected the '+_pockets.list[+b.dataset.i].res.length+' residues lining pocket '+(+b.dataset.i+1)+'.'); }); });
+}
+function pocketsRun(){
+  if(!currentModel) return;
+  $('pocketGo').disabled=true; $('pocketGo').textContent='Looking…';
+  setTimeout(function(){
+    var t0=performance.now(), L=[]; try{ L=pocketsFind(); }catch(e){ console.error(e); }
+    _pockets={list:L,show:true,only:null,ms:performance.now()-t0}; pocketDraw(); viewer.render(); renderPockets();
+    $('pocketGo').disabled=false; $('pocketGo').textContent='Find again'; updateSummaries();
+  },30);
+}
+
+// ── AlphaFold: the predicted aligned error ──────────────────────────────────────────────────
+// How sure the model is of where residue j sits when residue i is held in place. Two domains each confident in themselves
+// but not in each other show as two dark squares with pale off-diagonal blocks. Drag a rectangle to select those residues.
+var _pae=null;
+function paeUrl(){ var af=currentSource&&currentSource.af; if(af&&af.paeDocUrl) return af.paeDocUrl; var acc=currentSource&&currentSource.rid; return acc?'https://alphafold.ebi.ac.uk/files/AF-'+acc+'-F1-predicted_aligned_error_v4.json':null; }
+function paeLoad(){
+  var el=$('paeBox'); if(!el) return;
+  if(!isAF()){ el.hidden=true; return; } el.hidden=false;
+  if(_pae&&_pae.id===currentPdbId){ paeDraw(); return; }
+  var u=paeUrl(); if(!u){ $('paeNote').textContent='No error map for this model.'; return; }
+  $('paeNote').textContent='Loading the error map…';
+  var id=currentPdbId;
+  rbFetch(u).then(function(r){ return r.json(); }).then(function(j){
+    if(id!==currentPdbId) return;
+    var o=Array.isArray(j)?j[0]:j, M=o&&(o.predicted_aligned_error||o.pae);
+    if(!Array.isArray(M)||!M.length||!Array.isArray(M[0])) throw new Error('shape');
+    _pae={id:id,M:M,max:o.max_predicted_aligned_error||31.75}; paeDraw();
+  }).catch(function(e){ if(id!==currentPdbId) return; _pae=null; $('paeNote').textContent=e&&e.message==='shape'?'The error map could not be read.':netMessage(e,'AlphaFold DB'); });
+}
+function paeDraw(){
+  var cv=$('paeCanvas'); if(!cv||!_pae) return;
+  var M=_pae.M, N=M.length, S=Math.min(512,N); cv.width=S; cv.height=S;
+  var ctx=cv.getContext('2d'), img=ctx.createImageData(S,S), k=N/S;
+  for(var y=0;y<S;y++) for(var x=0;x<S;x++){ var v=M[Math.floor(y*k)][Math.floor(x*k)], t=Math.min(1,v/30), c=_mixHex('#0b5d1e','#ffffff',t), p=(y*S+x)*4;
+    img.data[p]=parseInt(c.slice(1,3),16); img.data[p+1]=parseInt(c.slice(3,5),16); img.data[p+2]=parseInt(c.slice(5,7),16); img.data[p+3]=255; }
+  ctx.putImageData(img,0,0);
+  if(_pae.box){ var b=_pae.box; ctx.strokeStyle='#e5484d'; ctx.lineWidth=Math.max(1,S/180); ctx.strokeRect(b.x0/k,b.y0/k,(b.x1-b.x0+1)/k,(b.y1-b.y0+1)/k); }
+  $('paeNote').textContent=N+' residues · dark = confident (0 Å), white = 30 Å or more. Drag a box to select those residues.';
+}
+function paeWire(){
+  var cv=$('paeCanvas'); if(!cv) return; var drag=null;
+  function at(e){ var r=cv.getBoundingClientRect(), N=_pae.M.length; return {i:Math.max(0,Math.min(N-1,Math.floor((e.clientX-r.left)/r.width*N))),j:Math.max(0,Math.min(N-1,Math.floor((e.clientY-r.top)/r.height*N)))}; }
+  cv.addEventListener('pointerdown',function(e){ if(!_pae) return; drag=at(e); try{ cv.setPointerCapture(e.pointerId); }catch(x){} e.preventDefault(); });
+  cv.addEventListener('pointermove',function(e){ if(!_pae) return; var p=at(e);
+    $('paeHover').textContent='residue '+(p.j+1)+' aligned on '+(p.i+1)+': '+_pae.M[p.j][p.i].toFixed(1)+' Å';
+    if(drag){ _pae.box={x0:Math.min(drag.i,p.i),x1:Math.max(drag.i,p.i),y0:Math.min(drag.j,p.j),y1:Math.max(drag.j,p.j)}; paeDraw(); } });
+  cv.addEventListener('pointerup',function(){ if(!drag||!_pae) return; drag=null; var b=_pae.box; if(!b) return;
+    var L=SEQ.chains[SEQ.order[0]]||[], keys={}; L.forEach(function(e,ix){ if((ix>=b.x0&&ix<=b.x1)||(ix>=b.y0&&ix<=b.y1)) keys[e.k]=1; });
+    selSet(Object.keys(keys)); showToast('Selected residues '+(b.x0+1)+'–'+(b.x1+1)+(b.y0!==b.x0||b.y1!==b.x1?' and '+(b.y0+1)+'–'+(b.y1+1):'')+'.'); });
+}
+var _plddtHide=null;
+function confidentOnly(cut){   // hide what AlphaFold is not sure of
+  var hide={}; currentModel.selectedAtoms({atom:'CA'}).forEach(function(a){ if((a.b||0)<cut) (hide[a.chain||'']||(hide[a.chain||'']=[])).push(a.resi); });
+  var t=Object.keys(hide).map(function(c){ return rangesText(c,hide[c]); }).filter(Boolean).join(', ');
+  state.hide=(state.hide||[]).filter(function(x){ return x!==_plddtHide; }); _plddtHide=t||null;
+  if(t) state.hide.push(t);
+  recolorStructure(); return Object.keys(hide).reduce(function(n,c){ return n+hide[c].length; },0);
+}
+
+// ── Hooks the core calls ─────────────────────────────────────────────────────────────────────
+function rbStudioColour(a,ch){   // a colour from Analyse that sits over the mode (lysines), or null
+  var lc=_lysCol; if(lc&&lc[ch]&&lc[ch][a.resi]) return lc[ch][a.resi];
+  return null;
+}
+var _lysCol=null;
+function rbStudioBegin(){ _lysCol=lysColours(); }
+function rbStudioStyles(ef){
+  var ir=interResidues(); Object.keys(ir).forEach(function(k){ var r=ir[k]; if(state.hiddenChains[r.chain]) return; viewer.addStyle({chain:r.chain,resi:r.resi,not:{resn:WATER_RESN}},{stick:{radius:0.15,colorfunc:ef}}); });
+  var f=state.lys; if(f&&f.show){ var lr=lysNow(); if(lr&&!state.hiddenChains[f.target]){ var rs=lr.rows.filter(function(x){ return x.exp>=0.1&&x.dE3<=f.cut; }).map(function(x){ return x.resi; }); if(rs.length) viewer.addStyle({chain:f.target,resi:rs,resn:'LYS'},{stick:{radius:0.17,colorfunc:ef}}); } }
+}
+function rbStudioShapes(){ interDraw(); clashDraw(); pocketDraw(); }
+function analyseReset(){ _inter=null; _lys=null; _clash=null; _pockets=null; _pae=null; _elec=null; _interShapes=[]; _clashShapes=[]; _pocketShapes=[]; }   // the viewer was cleared: the shapes went with it
+function analyseOnModel(){ document.body.classList.toggle('rb-af',isAF()); interFill(); lysFill(); clashFill(); renderInter(); renderLys(); renderClash(); renderPockets(); paeLoad(); }
+function analyseWire(){
+  $('interGo').addEventListener('click',function(){ interSet($('interSrc').value,$('interTgt').value); });
+  $('interTypes').addEventListener('click',function(e){ var b=e.target.closest('.it-chip'); if(!b||!state.inter) return; state.inter.types[b.dataset.t]=state.inter.types[b.dataset.t]===false; recolorStructure(); interDraw(); viewer.render(); renderInter(); });
+  $('interCopy').addEventListener('click',interCopy);
+  $('interLabel').addEventListener('click',function(){ var ir=interResidues(), ks=Object.keys(ir); if(!ks.length) return; var k0=Object.assign({},_sel); _sel={}; ks.forEach(function(k){ _sel[k]=1; }); _selN=ks.length; selLabel(); _sel=k0; _selN=Object.keys(_sel).length; recolorStructure(); });
+  $('interSel').addEventListener('click',function(){ selSet(Object.keys(interResidues())); });
+  $('interClear').addEventListener('click',function(){ state.inter=null; _inter=null; recolorStructure(); interDraw(); viewer.render(); renderInter(); updateSummaries(); });
+  $('lysGo').addEventListener('click',function(){ var c=parseFloat($('lysCut').value); lysSet($('lysTgt').value,$('lysE3').value,c>=5&&c<=80?c:30); });
+  $('lysCut').addEventListener('change',function(){ if(!state.lys) return; var c=parseFloat(this.value); if(c>=5&&c<=80){ state.lys.cut=c; recolorStructure(); renderLys(); } });
+  $('lysSel').addEventListener('click',function(){ var r=lysNow(), f=state.lys; if(!r) return; selSet(r.rows.filter(function(x){ return x.exp>=0.1&&x.dE3<=f.cut; }).map(function(x){ return rKey(f.target,x.resi); })); });
+  $('lysLabel').addEventListener('click',function(){ var r=lysNow(), f=state.lys; if(!r) return; var near=r.rows.filter(function(x){ return x.exp>=0.1&&x.dE3<=f.cut; }).slice(0,12);
+    near.forEach(function(x){ if(!state.residueLabels.some(function(y){ return y.chain===f.target&&y.resi===x.resi; })) state.residueLabels.push({chain:f.target,resi:x.resi,resn:'LYS',text:'K'+x.resi}); }); delete state.off.labels; renderLabelTags(); renderResLblList(); showToast('Labelled the '+near.length+' nearest.'); });
+  $('lysCopy').addEventListener('click',function(){ var r=lysNow(); if(!r) return; var t='Lysine\tDistance to ligase (Å)\tNZ exposed (%)\tDistance to degrader (Å)\n'+r.rows.map(function(x){ return 'K'+x.resi+'\t'+x.dE3.toFixed(1)+'\t'+Math.round(x.exp*100)+'\t'+(x.dLig!=null?x.dLig.toFixed(1):''); }).join('\n'); try{ navigator.clipboard.writeText(t).then(function(){ showToast('Copied.'); },function(){ showToast('The clipboard is not available here.'); }); }catch(e){} });
+  $('lysClear').addEventListener('click',function(){ state.lys=null; _lys=null; recolorStructure(); renderLys(); updateSummaries(); });
+  $('clGo').addEventListener('click',function(){ _clash=clashCompute($('clA').value,$('clB').value); _clash.show=true; clashDraw(); viewer.render(); renderClash(); updateSummaries(); });
+  $('pocketGo').addEventListener('click',pocketsRun);
+  $('paeHide').addEventListener('click',function(){ var n=confidentOnly(70); showToast(n?'Hid '+n+' residues with pLDDT under 70.':'Every residue is at 70 or more.'); });
+  paeWire();
+}
+// Design keys for what Analyse shows
+DESIGN_KEYS.push('inter','lys');
+RB_CMDS.push(
+  {n:['interactions','inter','contacts2','plip','hbonds'],d:'What a ligand (or a chain) makes with the protein: H-bonds, salt bridges, hydrophobic, π, halogen, metal',f:'interactions MZ1 · interactions A B · interactions off',
+   args:function(pos){ return pos===0?ligands.map(function(l){ return _cand(l.resn,'lig',l.name||'ligand'); }).concat(chainList.map(function(c){ return _cand(c,'chain',''); }),[_cand('sel','word','the selection'),_cand('off','word','none')]):chainList.map(function(c){ return _cand(c,'chain',''); }); },
+   run:function(a){ var n=needModel(); if(n) return n; var w=a.trim().split(/\s+/).filter(Boolean);
+     if(/^(off|none|clear)$/i.test(w[0]||'')){ state.inter=null; _inter=null; recolorStructure(); interDraw(); viewer.render(); renderInter(); return _ok('Interactions off.'); }
+     var src=null, x=(w[0]||'').toUpperCase(), l=ligands.filter(function(q){ return q.resn.toUpperCase()===x; })[0];
+     if(!w.length&&ligands.length) l=ligands[0];
+     if(l) src='lig:'+l.key; else if(chainList.indexOf(w[0])>=0) src='chain:'+w[0]; else if(/^sel/i.test(w[0]||'')) src='sel';
+     if(!src) return _err('interactions <ligand code>, interactions A B, or interactions sel');
+     var tgt=w[1]&&chainList.indexOf(w[1])>=0?'chain:'+w[1]:'protein'; interSet(src,tgt); rbOpenSec('interact'); var r=interNow(); return _ok(r.list.length+' interactions.'); }},
+  {n:['lysines','lys','ubiquitin','ub'],d:'Lysines of a target on the surface and near the ligase (for degraders)',f:'lysines A D · lysines A D 25',
+   args:function(){ return chainList.map(function(c){ return _cand(c,'chain',(chainInfo[c]&&chainInfo[c].name)||''); }); },
+   run:function(a){ var n=needModel(); if(n) return n; var w=a.trim().split(/\s+/).filter(Boolean), g=lysGuess()||{};
+     if(/^(off|none)$/i.test(w[0]||'')){ state.lys=null; _lys=null; recolorStructure(); renderLys(); return _ok('Off.'); }
+     var t=chainList.indexOf(w[0])>=0?w[0]:g.target, e=chainList.indexOf(w[1])>=0?w[1]:g.ligase, c=parseFloat(w[2]);
+     if(!t||!e||t===e) return _err('lysines <target chain> <ligase chain> [Å]'); lysSet(t,e,c>=5&&c<=80?c:30); lysFill(); rbOpenSec('lysines');
+     var r=lysNow(); return _ok(r.rows.filter(function(x){ return x.exp>=0.1&&x.dE3<=state.lys.cut; }).length+' lysines of '+t+' within '+state.lys.cut+' Å of '+e+'.'); }},
+  {n:['clashes','clash','overlaps'],d:'Atoms that overlap between two parts',f:'clashes A B · clashes MZ1 A',
+   args:function(){ return chainList.map(function(c){ return _cand(c,'chain',''); }).concat(ligands.map(function(l){ return _cand(l.resn,'lig',''); })); },
+   run:function(a){ var n=needModel(); if(n) return n; var w=a.trim().split(/\s+/).filter(Boolean);
+     function sp(t){ if(!t) return null; if(chainList.indexOf(t)>=0) return 'chain:'+t; var l=ligands.filter(function(q){ return q.resn.toUpperCase()===t.toUpperCase(); })[0]; if(l) return 'lig:'+l.key; if(/^sel/i.test(t)) return 'sel'; return null; }
+     var A=sp(w[0]), B=sp(w[1]); if(!A||!B) return _err('clashes <chain|ligand|sel> <chain|ligand|sel>');
+     _clash=clashCompute(A,B); _clash.show=true; clashDraw(); viewer.render(); clashFill(); renderClash(); rbOpenSec('clashes'); return _ok(_clash.clashes.length+' clashes, '+_clash.contacts+' contacts.'); }},
+  {n:['pockets','cavities','cavity'],d:'Find buried cavities a small molecule could sit in',f:'pockets',
+   run:function(){ var n=needModel(); if(n) return n; rbOpenSec('pockets'); pocketsRun(); return _ok('Looking for pockets…'); }},
+  {n:['confident','plddt'],d:'Hide the residues AlphaFold is not sure of',f:'confident 70 · confident off',
+   run:function(a){ var n=needModel(); if(n) return n; if(!isAF()&&!/off/i.test(a)) return _err('This is not an AlphaFold model.');
+     if(/off/i.test(a)){ state.hide=(state.hide||[]).filter(function(x){ return x!==_plddtHide; }); _plddtHide=null; recolorStructure(); return _ok('Showing every residue.'); }
+     var c=parseFloat(a)||70; var k=confidentOnly(c); return _ok('Hid '+k+' residues under '+c+'.'); }}
+);
+COLOR_SCHEMES.hydrophobicity='hydro'; COLOR_SCHEMES.hydrophobic='hydro'; COLOR_SCHEMES.hydro='hydro'; COLOR_SCHEMES.kd='hydro';
+COLOR_SCHEMES.charge='elec'; COLOR_SCHEMES.electrostatic='elec'; COLOR_SCHEMES.electrostatics='elec'; COLOR_SCHEMES.coulombic='elec'; COLOR_SCHEMES.elec='elec';
+// ── Undo and redo ───────────────────────────────────────────────────────────────────────────
+// Everything a design keeps is one snapshot; a change is recorded when things settle (a slider dragged is one step, not fifty).
+// The camera is not in it — turning the structure is not an edit — and neither is the second structure, which is a file.
+var _undo={stack:[],redo:[],last:null,t:0,busy:false};
+function undoSnap(){ if(!currentModel) return null; var st=collectDesign().state; delete st.overlay; return JSON.stringify(st); }
+function undoReset(){ _undo.stack=[]; _undo.redo=[]; _undo.last=null; clearTimeout(_undo.t); setTimeout(function(){ _undo.last=undoSnap(); undoButtons(); },0); }
+function undoNote(){ if(_undo.busy||!currentModel) return; clearTimeout(_undo.t); _undo.t=setTimeout(undoFlush,320); }
+function undoFlush(){
+  clearTimeout(_undo.t); if(_undo.busy||!currentModel) return;
+  var cur=undoSnap(); if(cur==null) return;
+  if(_undo.last==null){ _undo.last=cur; return; }
+  if(cur!==_undo.last){ _undo.stack.push(_undo.last); if(_undo.stack.length>80) _undo.stack.shift(); _undo.redo=[]; _undo.last=cur; }
+  undoButtons();
+}
+function undoApply(snap){
+  _undo.busy=true;
+  try{
+    var view=null; try{ view=viewer.getView(); }catch(e){}
+    var ov=state.overlay;
+    _pendingDesign=Object.assign({_pdb:(currentPdbId||'').toUpperCase()},JSON.parse(snap));
+    applyPendingDesign(); state.overlay=ov; _if=null; if(typeof analyseReset==='function'){ _inter=null; _lys=null; }
+    syncControlsToState(); $('topColor').value=state.color;
+    applyBackground(); applyProjection(); buildGeometry(); updateAll(); renderLabelTags(); if(SEQ.on) seqRender();
+    if(view){ try{ viewer.setView(view); viewer.render(); }catch(e){} }
+  } finally { _undo.busy=false; }
+  _undo.last=snap; undoButtons();
+}
+function undo(){ undoFlush(); if(!_undo.stack.length){ showToast('Nothing to undo.'); return false; } _undo.redo.push(_undo.last); undoApply(_undo.stack.pop()); showToast('Undone.'); return true; }
+function redo(){ undoFlush(); if(!_undo.redo.length){ showToast('Nothing to redo.'); return false; } _undo.stack.push(_undo.last); undoApply(_undo.redo.pop()); showToast('Redone.'); return true; }
+function undoButtons(){ var u=$('undoBtn'), r=$('redoBtn'); if(u) u.disabled=!_undo.stack.length; if(r) r.disabled=!_undo.redo.length; }
+
+// ── What a click on the structure does ──────────────────────────────────────────────────────
+// One mode at a time, shown in the toolbar: pick a chain (colour and label it), select residues, measure, or label residues.
+// In Select, Shift adds, and Alt-drag (or Shift-drag) draws a box; a plain drag still turns the structure.
+var _mouseMode='pick', _selMode=false;
+function setMouseMode(m){
+  if(['pick','select','measure','label'].indexOf(m)<0) m='pick';
+  if(m!=='measure'&&_measMode) toggleMeasure(false);
+  if(m!=='label'&&_resLabelMode) toggleResLabelMode(false);
+  _selMode=m==='select';
+  if(m==='measure'&&!_measMode) toggleMeasure(true);
+  if(m==='label'&&!_resLabelMode) toggleResLabelMode(true);
+  _mouseMode=m; modeButtons();
+  var hint=$('chainHint');
+  if(_selMode){ hint.textContent='Select: click a residue · Shift-click adds · Shift-drag draws a box · Esc to stop'; hint.classList.add('show'); $('viewport').style.cursor='cell'; }
+  else if(m==='pick'){ if(!_measMode&&!_resLabelMode){ hint.classList.remove('show'); $('viewport').style.cursor=''; } }
+}
+function modeButtons(){   // the two old toggles (T, M) keep working, and the group follows them
+  var m=_measMode?'measure':_resLabelMode?'label':_selMode?'select':'pick'; _mouseMode=m;
+  [['pickBtn','pick'],['selBtn','select'],['measBtn','measure'],['resTagBtn','label']].forEach(function(x){ var b=$(x[0]); if(!b) return; var on=x[1]===m; b.classList.toggle('tb-active',on); b.setAttribute('aria-pressed',on?'true':'false'); });
+}
+function boxSelectWire(){
+  var vp=$('viewport'), band=null, start=null;
+  vp.addEventListener('pointerdown',function(e){
+    if(!_selMode||!(e.shiftKey||e.altKey)||e.button!==0||!currentModel) return;
+    e.preventDefault(); e.stopPropagation();
+    var r=vp.getBoundingClientRect(); start={x:e.clientX,y:e.clientY,add:e.shiftKey&&e.altKey||e.shiftKey};
+    band=document.createElement('div'); band.className='sel-band'; vp.appendChild(band); band.style.left=(e.clientX-r.left)+'px'; band.style.top=(e.clientY-r.top)+'px';
+    try{ vp.setPointerCapture(e.pointerId); }catch(x){}
+  },true);
+  vp.addEventListener('pointermove',function(e){ if(!band) return; e.stopPropagation(); var r=vp.getBoundingClientRect(), x0=Math.min(start.x,e.clientX)-r.left, y0=Math.min(start.y,e.clientY)-r.top;
+    band.style.left=x0+'px'; band.style.top=y0+'px'; band.style.width=Math.abs(e.clientX-start.x)+'px'; band.style.height=Math.abs(e.clientY-start.y)+'px'; },true);
+  vp.addEventListener('pointerup',function(e){
+    if(!band) return; e.stopPropagation();
+    var x0=Math.min(start.x,e.clientX), x1=Math.max(start.x,e.clientX), y0=Math.min(start.y,e.clientY), y1=Math.max(start.y,e.clientY), keys={};
+    band.remove(); band=null;
+    if(x1-x0<4&&y1-y0<4) return;
+    currentModel.selectedAtoms({}).forEach(function(a){
+      if(state.hiddenChains[a.chain||'']||WATER_RESN.indexOf(a.resn)>=0) return;
+      if(!(a.atom==='CA'||a.atom==='P'||_isLigAtom(a))) return;
+      var p; try{ p=viewer.modelToScreen({x:a.x,y:a.y,z:a.z}); }catch(x){ return; }
+      if(p.x>=x0&&p.x<=x1&&p.y>=y0&&p.y<=y1) keys[rKeyOf(a)]=1;
+    });
+    selSet(Object.keys(keys),start.add&&_selN?'add':'replace');
+    showToast(Object.keys(keys).length+' residues in the box.');
+  },true);
+}
+
+// ── Views: camera positions to come back to ─────────────────────────────────────────────────
+// A view is the camera only. They are kept with a design, and used by the animation and the multi-panel figure.
+function viewsList(){ return state.views||(state.views=[]); }
+function viewAdd(name){
+  if(!viewer) return null; var v; try{ v=viewer.getView(); }catch(e){ return null; }
+  var L=viewsList(), nm=(name||'').trim()||('View '+(L.length+1)), vp=$('viewport');
+  var row={id:'v'+Date.now().toString(36),name:nm,view:v,vp:[vp.clientWidth,vp.clientHeight]};
+  var t=null; try{ var cv=vp.querySelector('canvas'), c=document.createElement('canvas'); c.width=96; c.height=64; var x=c.getContext('2d'); x.fillStyle=darkTone()?'#13161e':'#ffffff'; x.fillRect(0,0,96,64); var k=Math.min(96/cv.width,64/cv.height); x.drawImage(cv,(96-cv.width*k)/2,(64-cv.height*k)/2,cv.width*k,cv.height*k); t=c.toDataURL('image/jpeg',0.6); }catch(e){}
+  row.thumb=t; L.push(row); renderViews(); undoNote(); return row;
+}
+function viewGo(id,ms){
+  var r=viewsList().filter(function(x){ return x.id===id||x.name.toLowerCase()===String(id).toLowerCase(); })[0]; if(!r||!viewer) return false;
+  _userMoved=true;
+  if(reducedMotion()||ms===0){ viewer.setView(r.view); viewer.render(); if(!sameShape(r.vp)) ensureInView(); }
+  else animateTo(r.view,ms||700);
+  return true;
+}
+function renderViews(){
+  var el=$('viewList'); if(!el) return; var L=viewsList();
+  if(!L.length){ el.innerHTML='<div class="empty-note">No views yet. Turn the structure to an angle you like, then Add view.</div>'; return; }
+  el.innerHTML=L.map(function(r,i){ return '<div class="vw"><button type="button" class="vw-go" data-i="'+i+'" title="Go to this view"><span class="vw-th"'+(r.thumb&&/^data:image\/jpeg;base64,/.test(r.thumb)?' style="background-image:url('+r.thumb+')"':'')+'></span><span class="vw-n">'+escapeHtml(r.name)+'</span></button><button type="button" class="ibtn danger vw-del" data-i="'+i+'" aria-label="Delete view '+escapeHtml(r.name)+'" title="Delete"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div>'; }).join('');
+  el.querySelectorAll('.vw-go').forEach(function(b){ b.addEventListener('click',function(){ viewGo(L[+b.dataset.i].id); }); });
+  el.querySelectorAll('.vw-del').forEach(function(b){ b.addEventListener('click',function(){ L.splice(+b.dataset.i,1); renderViews(); undoNote(); }); });
+}
+
+// ── Animation: turn, rock, or travel through the views — as a video or a GIF ─────────────────
+// The canvas is recorded as it is drawn (MediaRecorder: WebM in Chrome, MP4 in Safari); a GIF is made frame by frame here.
+var _anim={on:false};
+function animFrames(kind,secs,fps){   // the views, in order, that make the film
+  var v0=viewer.getView(), N=Math.max(2,Math.round(secs*fps)), out=[], i;
+  function rotY(v,deg){ var a=deg*Math.PI/180, q=[0,Math.sin(a/2),0,Math.cos(a/2)], p=v.slice(4); // q ⊗ p
+    var r=[q[3]*p[0]+q[0]*p[3]+q[1]*p[2]-q[2]*p[1],q[3]*p[1]-q[0]*p[2]+q[1]*p[3]+q[2]*p[0],q[3]*p[2]+q[0]*p[1]-q[1]*p[0]+q[2]*p[3],q[3]*p[3]-q[0]*p[0]-q[1]*p[1]-q[2]*p[2]];
+    return v.slice(0,4).concat(r); }
+  if(kind==='turn') for(i=0;i<N;i++) out.push(rotY(v0,360*i/N));
+  else if(kind==='rock') for(i=0;i<N;i++) out.push(rotY(v0,25*Math.sin(2*Math.PI*i/N)));
+  else {   // the views, eased from one to the next, holding a moment on each
+    var V=viewsList().map(function(r){ return r.view; }); if(V.length<2) return null;
+    var per=Math.max(2,Math.floor(N/(V.length-1)));
+    for(var k=0;k<V.length-1;k++) for(i=0;i<per;i++){ var t=i/per, e=t<0.15?0:t>0.85?1:(t-0.15)/0.7; e=e*e*(3-2*e); var a=V[k], b=V[k+1], v=[]; for(var j=0;j<4;j++) v.push(a[j]+(b[j]-a[j])*e); out.push(v.concat(_slerp(a.slice(4),b.slice(4),e))); }
+    out.push(V[V.length-1]);
+  }
+  return out;
+}
+function _animStatus(t){ var e=$('animStatus'); if(e) e.textContent=t||''; }
+function animStop(){ _anim.abort=true; }
+function animRun(){
+  if(!currentModel||!viewer||_anim.on) return;
+  var kind=$('animKind').value, fmt=$('animFmt').value, secs=Math.max(1,Math.min(30,parseFloat($('animSecs').value)||6)), fps=fmt==='gif'?15:30;
+  var frames=animFrames(kind,secs,fps); if(!frames){ showToast('Add at least two views for a fly-through.'); return; }
+  var cv=$('viewport').querySelector('canvas'), v0=viewer.getView(), wasSpin=_spinning; if(wasSpin) toggleSpin();
+  _anim={on:true,abort:false}; $('animGo').hidden=true; $('animStop').hidden=false;
+  var selWas=rbExportBegin();
+  function done(msg){ _anim.on=false; $('animGo').hidden=false; $('animStop').hidden=true; rbExportEnd(selWas); try{ viewer.setView(v0); viewer.render(); }catch(e){} if(wasSpin) toggleSpin(); _animStatus(msg); }
+  var name=(currentPdbId||'structure').replace(/[\\/:*?"<>|\s]+/g,'_')+'_'+kind;
+  if(fmt==='gif'){
+    var W=cv.width, H=cv.height, sc=Math.min(1,480/Math.max(W,H)), w=Math.round(W*sc), h=Math.round(H*sc), gifF=[], i=0, off=document.createElement('canvas'); off.width=w; off.height=h; var ox=off.getContext('2d',{willReadFrequently:true});
+    (function step(){
+      if(_anim.abort){ done('Stopped.'); return; }
+      if(i>=frames.length){ _animStatus('Encoding the GIF…'); setTimeout(function(){ var bytes=gifEncode(gifF,w,h,Math.round(100/fps)); _saveBlob(new Blob([bytes],{type:'image/gif'}),name+'.gif'); done('Saved a GIF: '+frames.length+' frames, '+(bytes.length/1e6).toFixed(1)+' MB.'); },20); return; }
+      viewer.setView(frames[i]); viewer.render();
+      ox.fillStyle=state.bg==='dark'?'#13161e':'#ffffff'; ox.fillRect(0,0,w,h); ox.drawImage(cv,0,0,w,h); gifF.push(ox.getImageData(0,0,w,h).data);
+      i++; _animStatus('Frame '+i+' of '+frames.length); requestAnimationFrame(step);
+    })();
+    return;
+  }
+  if(!cv.captureStream||!window.MediaRecorder){ done('This browser cannot record video. Choose GIF.'); return; }
+  var mime=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm'].filter(function(m){ try{ return MediaRecorder.isTypeSupported(m); }catch(e){ return false; } })[0];
+  if(!mime){ done('This browser cannot record video. Choose GIF.'); return; }
+  var stream=cv.captureStream(fps), rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:8e6}), chunks=[], k=0, t0=performance.now();
+  rec.ondataavailable=function(e){ if(e.data&&e.data.size) chunks.push(e.data); };
+  rec.onstop=function(){ if(_anim.abort&&!chunks.length){ done('Stopped.'); return; } var ext=/mp4/.test(mime)?'mp4':'webm'; var blob=new Blob(chunks,{type:mime.split(';')[0]}); _saveBlob(blob,name+'.'+ext); done('Saved a '+ext.toUpperCase()+' video: '+secs+' s.'); };
+  rec.start();
+  (function tick(){
+    if(_anim.abort){ rec.stop(); return; }
+    var want=Math.floor((performance.now()-t0)/1000*fps);
+    if(want>=frames.length){ setTimeout(function(){ rec.stop(); },120); return; }
+    if(want!==k){ k=want; viewer.setView(frames[k]); viewer.render(); _animStatus('Recording · '+Math.round(k/fps*10)/10+' / '+secs+' s'); }
+    requestAnimationFrame(tick);
+  })();
+}
+// A small GIF89a encoder: a 6×7×6 colour cube, LZW, one frame after another. Enough for a turning protein on a flat background.
+function gifEncode(frames,w,h,delay){
+  var out=[], push=function(){ for(var i=0;i<arguments.length;i++) out.push(arguments[i]); }, u16=function(v){ push(v&255,(v>>8)&255); };
+  'GIF89a'.split('').forEach(function(c){ push(c.charCodeAt(0)); }); u16(w); u16(h); push(0xF7,0,0);   // global table of 256
+  for(var r=0;r<6;r++) for(var g=0;g<7;g++) for(var b=0;b<6;b++) push(Math.round(r*255/5),Math.round(g*255/6),Math.round(b*255/5));
+  for(var p=252;p<256;p++) push(0,0,0);
+  push(0x21,0xFF,11); 'NETSCAPE2.0'.split('').forEach(function(c){ push(c.charCodeAt(0)); }); push(3,1,0,0,0);   // loop for ever
+  frames.forEach(function(px){
+    push(0x21,0xF9,4,0,delay&255,(delay>>8)&255,0,0);
+    push(0x2C); u16(0); u16(0); u16(w); u16(h); push(0);
+    var idx=new Uint8Array(w*h);
+    for(var i=0,j=0;i<idx.length;i++,j+=4){ idx[i]=Math.round(px[j]/51)*42+Math.round(px[j+1]/42.5)*6+Math.round(px[j+2]/51); }
+    var minCode=8; push(minCode); var bytes=lzw(idx,minCode), k=0;
+    while(k<bytes.length){ var n=Math.min(255,bytes.length-k); push(n); for(var q=0;q<n;q++) push(bytes[k+q]); k+=n; }
+    push(0);
+  });
+  push(0x3B); return new Uint8Array(out);
+}
+function lzw(data,minCode){
+  var clear=1<<minCode, eoi=clear+1, size=minCode+1, next=eoi+1, dict=new Map(), out=[], cur=0, bits=0;
+  function emit(c){ cur|=c<<bits; bits+=size; while(bits>=8){ out.push(cur&255); cur>>=8; bits-=8; } }
+  emit(clear); var w=data[0];
+  for(var i=1;i<data.length;i++){ var k=data[i], key=w*4096+k, got=dict.get(key);
+    if(got!==undefined){ w=got; continue; }
+    emit(w); if(next<4096){ dict.set(key,next++); if(next>(1<<size)&&size<12) size++; } else { emit(clear); dict.clear(); size=minCode+1; next=eoi+1; }
+    w=k; }
+  emit(w); emit(eoi); if(bits>0) out.push(cur&255); return out;
+}
+
+// ── Figure sizes: the export at the size a journal asks for ─────────────────────────────────
+// Width in mm at 300 or 600 dpi; the height follows the viewer's shape. Common column widths are presets.
+var FIG_SIZES=[{id:'free',n:'As on screen'},{id:'1col',n:'One column · 85 mm',mm:85},{id:'15col',n:'One and a half columns · 120 mm',mm:120},{id:'2col',n:'Two columns · 175 mm',mm:175},{id:'slide',n:'Slide · 1920 px wide',px:1920}];
+function figTargetWidthPx(dpi){ var f=FIG_SIZES.filter(function(x){ return x.id===state.figSize; })[0]; if(!f||f.id==='free') return null; return f.px||Math.round(f.mm/25.4*(dpi||300)); }
+
+function moreWire(){
+  $('undoBtn').addEventListener('click',undo); $('redoBtn').addEventListener('click',redo);
+  $('pickBtn').addEventListener('click',function(){ setMouseMode('pick'); });
+  $('selBtn').addEventListener('click',function(){ setMouseMode(_selMode?'pick':'select'); });
+  boxSelectWire();
+  $('viewAdd').addEventListener('click',function(){ var r=viewAdd($('viewName').value); $('viewName').value=''; if(r) showToast('Saved “'+r.name+'”.'); });
+  $('viewName').addEventListener('keydown',function(e){ if(e.key==='Enter') $('viewAdd').click(); });
+  $('animGo').addEventListener('click',animRun); $('animStop').addEventListener('click',animStop);
+  $('figSize').innerHTML=FIG_SIZES.map(function(f){ return '<option value="'+f.id+'">'+escapeHtml(f.n)+'</option>'; }).join('');
+  $('figSize').addEventListener('change',function(e){ state.figSize=e.target.value; if(typeof updateExDim==='function') updateExDim(); });
+  renderViews(); undoButtons();
+}
+DESIGN_KEYS.push('views','figSize');
+RB_CMDS.push(
+  {n:['undo','u'],d:'Take back the last change (⌘Z)',f:'undo',run:function(){ return undo()?_ok('Undone.'):_err('Nothing to undo.'); }},
+  {n:['redo'],d:'Put it back (⌘⇧Z)',f:'redo',run:function(){ return redo()?_ok('Redone.'):_err('Nothing to redo.'); }},
+  {n:['mode','mouse'],d:'What a click does: pick a chain, select, measure or label',f:'mode select · mode pick',
+   args:function(){ return ['pick','select','measure','label'].map(function(x){ return _cand(x,'word',''); }); },
+   run:function(a){ var m=a.trim().toLowerCase(); if(['pick','select','measure','label'].indexOf(m)<0) return _err('mode pick · select · measure · label'); setMouseMode(m); return _ok('A click now '+({pick:'picks a chain',select:'selects a residue',measure:'measures',label:'labels a residue'})[m]+'.'); }},
+  {n:['view','views','camera','saveview'],d:'Save the camera as a view, or go back to one',f:'view add top · view top · view list',
+   args:function(pos){ return pos===0?[_cand('add','word','save the camera now')].concat(viewsList().map(function(r){ return _cand(r.name,'word','go there'); })):[]; },
+   run:function(a){ var n=needModel(); if(n) return n; var w=a.trim(), m=/^(add|save|new)\b\s*(.*)$/i.exec(w);
+     if(m){ var r=viewAdd(m[2]); return r?_ok('Saved the view “'+r.name+'”.'):_err('The viewer is not ready.'); }
+     if(!w||/^list$/i.test(w)) return viewsList().length?_ok(viewsList().map(function(r){ return r.name; }).join(' · ')):_err('No views yet: view add <name>');
+     return viewGo(w)?_ok('Gone to “'+w+'”.'):_err('No view called “'+w+'”.'); }},
+  {n:['movie','animate','record','gif','video'],d:'Record the structure turning, rocking or travelling through the views',f:'movie turn · movie rock gif · movie views',
+   args:function(pos){ return pos===0?['turn','rock','views'].map(function(x){ return _cand(x,'word',''); }):['video','gif'].map(function(x){ return _cand(x,'word',''); }); },
+   run:function(a){ var n=needModel(); if(n) return n; var w=a.trim().toLowerCase().split(/\s+/); if(w[0]&&['turn','rock','views'].indexOf(w[0])>=0) $('animKind').value=w[0]; if(w.indexOf('gif')>=0) $('animFmt').value='gif'; else if(w.indexOf('video')>=0) $('animFmt').value='video'; rbOpenSec('anim'); animRun(); return _ok('Recording…'); }}
+);
 // ═══ RIBBON STUDIO — END ═══
 
 // ── Boot ─────────────────────────────────────────────────────────────────────────────────────
@@ -5633,6 +6466,7 @@ function boot(){
       else if(_measMode) toggleMeasure(false);
       else if(_resLabelMode) toggleResLabelMode(false);
       else if(isPhone()&&$('sidebar').classList.contains('open')) closeControls();
+      else if(_selMode) setMouseMode('pick');
       else if(_selN) selClear();
       return;
     }
@@ -5647,6 +6481,10 @@ function boot(){
       return;
     }
     if((e.metaKey||e.ctrlKey)&&!e.altKey&&!e.shiftKey&&(e.key==='e'||e.key==='E')){ e.preventDefault(); openExport(); return; }
+    if((e.metaKey||e.ctrlKey)&&!e.altKey&&!typing&&!document.querySelector('.ov-modal.open')){
+      if((e.key==='z'||e.key==='Z')&&!e.shiftKey){ e.preventDefault(); undo(); return; }
+      if(((e.key==='z'||e.key==='Z')&&e.shiftKey)||e.key==='y'||e.key==='Y'){ e.preventDefault(); redo(); return; }
+    }
     if(typing||e.metaKey||e.ctrlKey||e.altKey||document.querySelector('.ov-modal.open')) return;
     var k=e.key.toLowerCase();
     if(k==='f'){ e.preventDefault(); fitToView(); }
