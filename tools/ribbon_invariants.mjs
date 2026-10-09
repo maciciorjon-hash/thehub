@@ -1081,6 +1081,17 @@ async function rb20() {
   await E(() => { removeOverlay(); loadDesign('cmp'); }); await sleep(4500);
   const re = await E(() => ({ o: JSON.stringify(state.overlay), rmsd: ovl && ovl.res && ovl.res.rmsd, n: ovl && ovl.res && ovl.res.n }));
   check('RB20', 'a design keeps the second structure, its chains and colour, and aligns it again when it loads', re.o === keep && re.n === 21 && re.rmsd < 0.002, { re, keep });
+  // the scripts carry it, superposed exactly as on screen
+  const sc = await E(() => ({ pml: buildScript('pymol'), cxc: buildScript('chimerax'), atoms: ovl.atoms.filter((a, i) => i % 7 === 0).map(a => ({ o: a._o, p: [a.x, a.y, a.z] })) }));
+  const mPy = /^cmd\.transform_selection\("second", \[([^\]]+)\], homogenous=1\)$/m.exec(sc.pml), mCx = /^view matrix models #2,(\S+)$/m.exec(sc.cxc);
+  const errOf = m => { if (!m) return 1e9; const v = m[1].split(',').map(Number); if (v.length < 12 || v.some(x => !isFinite(x))) return 1e9; let w = 0; sc.atoms.forEach(a => { for (let i = 0; i < 3; i++) w = Math.max(w, Math.abs(v[4 * i] * a.o[0] + v[4 * i + 1] * a.o[1] + v[4 * i + 2] * a.o[2] + v[4 * i + 3] - a.p[i])); }); return w; };
+  check('RB20', 'PyMOL script: the second structure is fetched and moved by the fit, landing within 0.01 Å of where Ribbon draws it', /^fetch 7mut, second, async=0$/m.test(sc.pml) && errOf(mPy) < 0.01, errOf(mPy));
+  check('RB20', 'ChimeraX script: the same, opened as #2 and placed with view matrix models', /^open 7mut$/m.test(sc.cxc) && errOf(mCx) < 0.01 && sc.cxc.indexOf('open 7mut') < sc.cxc.indexOf('# labels') + (sc.cxc.indexOf('# labels') < 0 ? 1e9 : 0), errOf(mCx));
+  check('RB20', 'its colour is the one on screen, and its lines stay off the first structure', new RegExp('^color 0x' + (await E(() => adjustColor(state.overlay.color))).replace('#', '') + ', second$', 'mi').test(sc.pml) && !/^color #1 .*#2/m.test(sc.cxc) && !/A second structure is superposed in Ribbon; it is not part/.test(sc.pml));
+  await E(() => { state.overlay.show = false; });
+  const scH = await E(() => buildScript('pymol') + buildScript('chimerax'));
+  check('RB20', 'a hidden second structure is left out of the scripts, and they say so', !/second, async=0|^open 7mut$/m.test(scH) && /superposed in Ribbon but hidden/.test(scH));
+  await E(() => { state.overlay.show = true; });
   // remove: nothing of it is left
   await E(() => document.getElementById('ovRemove').click()); await sleep(400);
   check('RB20', 'removing it leaves the first structure alone', await E(() => viewer.selectedAtoms({}).length === currentModel.selectedAtoms({}).length && !state.overlay && document.getElementById('ovBody').hidden));
@@ -1093,6 +1104,7 @@ async function rb20() {
   check('RB20', 'a file that is not a structure is refused', /does not look like a structure/.test(await E(() => document.getElementById('ovErr').textContent)) && await E(() => !state.overlay));
   await pg.setInputFiles('#ovFileInput', { name: 'copy.pdb', mimeType: 'text/plain', buffer: Buffer.from(rotatedCopy(STRUCTS['7SEQ']())) }); await sleep(1800);
   check('RB20', 'a file works as the second structure', await E(() => ovl && ovl.res && ovl.res.rmsd < 0.002 && state.overlay.kind === 'file'));
+  check('RB20', 'a second structure from a file is loaded by its name, and the script says to keep the file beside it', await E(() => /^load "copy\.pdb", second$/m.test(buildScript('pymol')) && /^open "copy\.pdb"$/m.test(buildScript('chimerax')) && /keep "copy\.pdb" next to this script too/.test(buildScript('pymol'))));
   await go('1XYZ');
   check('RB20', 'a new first structure drops the second', await E(() => !state.overlay && !ovl && viewer.selectedAtoms({}).length === currentModel.selectedAtoms({}).length));
   await ctx.close();

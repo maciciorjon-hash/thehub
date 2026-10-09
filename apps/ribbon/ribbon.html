@@ -2982,7 +2982,7 @@ function alignOverlay(){
   var P=al.pairs.map(function(p){ return B[p[1]].a._o; }), Q=al.pairs.map(function(p){ var a=A[p[0]].a; return [a.x,a.y,a.z]; });
   var fit=fitWithRejection(P,Q,5);
   ovl.atoms.forEach(function(a){ var r=xform(fit.F,a._o); a.x=r[0]; a.y=r[1]; a.z=r[2]; });
-  ovl.res={rmsd:fit.rmsd,n:fit.keep.length,total:al.pairs.length,ident:al.ident,coverage:al.coverage,ref:o.ref,mov:o.mov};
+  ovl.res={F:fit.F,rmsd:fit.rmsd,n:fit.keep.length,total:al.pairs.length,ident:al.ident,coverage:al.coverage,ref:o.ref,mov:o.mov};
   ovlSetError('');
   return true;
 }
@@ -3045,7 +3045,7 @@ function addOverlay(q,keep){
   } else {
     get=rbFetch('https://alphafold.ebi.ac.uk/api/prediction/'+encodeURIComponent(spec.rid)).then(function(r){ return r.json(); }).then(function(arr){
       var m=Array.isArray(arr)?arr[0]:null; if(!m||!m.pdbUrl) throw {kind:'notfound'};
-      spec.id=m.modelEntityId||spec.id; return rbFetch(m.pdbUrl).then(function(r){ return r.text(); }).then(function(t){ return {text:t,fmt:'pdb'}; });
+      spec.id=m.modelEntityId||spec.id; spec.url=m.pdbUrl; return rbFetch(m.pdbUrl).then(function(r){ return r.text(); }).then(function(t){ return {text:t,fmt:'pdb'}; });
     });
   }
   get.then(function(r){ done(); installOverlay(r.text,r.fmt,spec,keep); },function(e){ done(); ovlSetError(e&&e.kind==='notfound'?'There is no '+(spec.kind==='af'?'AlphaFold model':'PDB entry')+' “'+q+'”.':netMessage(e,spec.kind==='af'?'AlphaFold DB':'the Protein Data Bank')); });
@@ -4130,6 +4130,14 @@ function scriptSource(kind){   // how each program is told where the structure c
   if(s.kind==='file') return {how:'file',ref:String(currentPdbId||'structure.pdb').replace(/[\r\n"]/g,''),name:String(currentPdbId||'structure')};
   return {how:'pdb',ref:id.toLowerCase(),name:id.toUpperCase()};
 }
+function _scOverlay(){   // the second structure as a script opens it, and the fit that put it where Ribbon shows it
+  var o=state.overlay; if(!o||!ovl) return null;
+  var m=ovl.meta||{}, name=String(o.id||o.rid||'second'), how, ref;
+  if(m.kind==='af'){ how='url'; ref=m.url||('https://alphafold.ebi.ac.uk/files/'+(o.id&&/^AF-/.test(o.id)?o.id:'AF-'+o.rid+'-F1')+'-model_v4.pdb'); }
+  else if(m.kind==='file'){ how='file'; ref=String(o.rid||'second.pdb').replace(/[\r\n"]/g,''); }
+  else { how='pdb'; ref=String(o.rid||'').toLowerCase(); }
+  return {on:o.show!==false,name:name,how:how,ref:ref,hex:adjustColor(o.color),fit:ovl.res&&ovl.res.F?ovl.res:null};
+}
 function buildScript(kind){
   if(!currentModel||!viewer) return '';
   var L=[], cx=kind==='chimerax', C='#', src=scriptSource(kind), hid=chainList.filter(function(c){ return state.hiddenChains[c]; }).map(_scId).filter(Boolean);
@@ -4144,7 +4152,9 @@ function buildScript(kind){
   out('# '+src.name+(title?' — '+title:''));
   out('# Made '+new Date().toISOString().slice(0,10)+'. Each residue is in the colour it has on screen.');
   if(src.how==='file') out('# This structure was opened from a file - keep "'+_scComment(src.ref)+'" next to this script (or edit the path below).');
-  if(state.overlay) out('# A second structure is superposed in Ribbon; it is not part of this script.');
+  var ov=_scOverlay();
+  if(ov&&!ov.on) out('# A second structure ('+_scComment(ov.name)+') is superposed in Ribbon but hidden, so it is not in this script.');
+  if(ov&&ov.on&&ov.how==='file') out('# The second structure was opened from a file - keep "'+_scComment(ov.ref)+'" next to this script too.');
   if((state.hide||[]).length) out('# Hidden in Ribbon: '+_scComment(state.hide.join(', '))+'.');
   if((state.reps||[]).some(function(x){ return x.rep==='sphere'; })) out('# Drawn as spheres in Ribbon: '+_scComment(state.reps.filter(function(x){ return x.rep==='sphere'; }).map(function(x){ return x.sel; }).join(', '))+'.');
   if(_nFrames>1) out('# This is an ensemble of '+_nFrames+' models; Ribbon showed model '+(_frame+1)+'.');
@@ -4193,6 +4203,14 @@ function buildScript(kind){
       out('show '+sp+' atoms'); out('style '+sp+' stick'); out('color '+sp+' byhetero');
     });
     if(hid.length) out('hide '+hid.map(function(c){ return '/'+c; }).join(',')+' atoms,cartoons,surfaces');
+    if(ov&&ov.on){
+      out(''); out('# the second structure, '+_scComment(ov.name)+(ov.fit?', superposed as in Ribbon (RMSD '+ov.fit.rmsd.toFixed(2)+' Å over '+ov.fit.n+' CA)':', where its own file puts it'));
+      out(ov.how==='file'?'open "'+ov.ref+'"':'open '+ov.ref);
+      out('hide '+C+'2 atoms,cartoons,surfaces');
+      out('cartoon '+C+'2'); out('color '+C+'2 '+hex6(ov.hex));
+      if(lig.on){ out('show '+C+'2 & ligand atoms'); out('style '+C+'2 & ligand stick'); out('color '+C+'2 & ligand byhetero'); }
+      if(ov.fit){ var M=ov.fit.F; out('view matrix models '+C+'2,'+[0,1,2].map(function(i){ return [M.R[i][0],M.R[i][1],M.R[i][2],M.t[i]].map(_scNum).join(','); }).join(',')); }
+    }
     var any=false, nMark=0;
     labels.forEach(function(t){
       if(!t.text) return; if(!any){ out(''); out('# labels'); any=true; }
@@ -4271,6 +4289,14 @@ function buildScript(kind){
     out('show sticks, '+sp); out('set stick_radius, 0.15, '+sp); out('util.cnc '+sp);
   });
   if(hid.length) out('hide everything, structure and chain '+hid.join('+'));
+  if(ov&&ov.on){
+    out(''); out('# the second structure, '+_scComment(ov.name)+(ov.fit?', superposed as in Ribbon (RMSD '+ov.fit.rmsd.toFixed(2)+' Å over '+ov.fit.n+' CA)':', where its own file puts it'));
+    if(ov.how==='pdb') out('fetch '+ov.ref+', second, async=0'); else out('load '+(ov.how==='url'?ov.ref:'"'+ov.ref+'"')+', second');
+    out('hide everything, second');
+    out('show cartoon, second and polymer'); out('color 0x'+ov.hex.replace('#','')+', second');
+    if(lig.on){ out('show sticks, second and organic'); out('set stick_radius, 0.2, second and organic'); out('util.cnc second and organic'); }
+    if(ov.fit){ var M2=ov.fit.F; out('cmd.transform_selection("second", ['+[0,1,2].map(function(i){ return [M2.R[i][0],M2.R[i][1],M2.R[i][2],M2.t[i]].map(_scNum).join(','); }).join(', ')+', 0,0,0,1], homogenous=1)'); }
+  }
   var anyLbl=false;
   labels.forEach(function(t,i){
     if(!t.text) return; if(!anyLbl){ out(''); out('# labels'); out('set label_color, '+(dark?'white':'black')); out('set label_size, 18'); out('set label_position, (0,0,2)'); anyLbl=true; }
