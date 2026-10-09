@@ -2158,6 +2158,12 @@ if (run('E56')) await guard('E56', async () => {
     const cv = document.getElementById('pc-VERTICAL'), L = cv ? cv._labels || [] : [];
     out.v = { n: L.length, rot: L.filter(l => l.rot).length, cut: L.filter(l => /…$/.test(l.text)).length,
       outside: L.filter(l => l.x - l.w / 2 < l.box.x1 - 0.5 || l.x + l.w / 2 > l.box.x2 + 0.5 || l.y - l.h / 2 < l.box.y1 - 0.5 || l.y + l.h / 2 > l.box.y2 + 0.5).length };
+    // The same in a narrow font: on a machine without Plex (CI) a name can fit across a column at full size, and
+    // a size comparison alone then left every name level.
+    const nf = document.createElement('style'); nf.textContent = "@font-face{font-family:'IBM Plex Sans';src:local('Arial Narrow'),local('ArialNarrow'),local('Liberation Sans Narrow'),local('DejaVu Sans Condensed');font-weight:100 900;}";
+    document.head.appendChild(nf); try { await document.fonts.load("700 12px 'IBM Plex Sans'"); } catch (e) {} renderPlateTab(); await new Promise(r => setTimeout(r, 250));
+    const cvN = document.getElementById('pc-VERTICAL'), LN = cvN ? cvN._labels || [] : [];
+    out.vn = { n: LN.length, rot: LN.filter(l => l.rot).length }; nf.remove(); renderPlateTab(); await new Promise(r => setTimeout(r, 150));
     const cvH = document.getElementById('pc-' + bc.replace(/[^a-z0-9]/gi, '_')), LH = cvH ? cvH._labels || [] : [];
     out.h = { n: LH.length, rot: LH.filter(l => l.rot).length };
     window._plateData = keep; window._plateFitMap = null; window._plateUI.mode = 'signal'; window._plateUI.labels = false; renderPlateTab();
@@ -2168,6 +2174,7 @@ if (run('E56')) await guard('E56', async () => {
   check('E56', 'the plate effect finds a column planted 15 points low', r.eff.c7 - r.eff.c7base < -10 && Math.abs(r.eff.c8) < 8, r.eff);
   check('E56', 'a series down a column is named turned 90°, inside its block, in full', r.v.n > 5 && r.v.rot === r.v.n && r.v.outside === 0 && r.v.cut === 0, r.v);
   check('E56', 'a series across a row is named across it', r.h.n > 5 && r.h.rot === 0, r.h);
+  check('E56', 'a series down a column is turned 90° in a narrow font too', r.vn.n > 5 && r.vn.rot === r.vn.n, r.vn);
 });
 
 if (run('E57')) await guard('E57', async () => {

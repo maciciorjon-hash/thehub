@@ -11000,9 +11000,13 @@ function drawPlateCanvas(bc, M) {
         while (ctx.measureText(L.name).width > maxLen && size > minFs) { size -= 0.5 * px; ctx.font = `700 ${size}px 'IBM Plex Sans',sans-serif`; }
         return { size, ok: ctx.measureText(L.name).width <= maxLen && size >= minFs - 1e-9 };
       };
-      // across the block unless turning it gives a clearly larger name (a column of wells is short across)
+      // A block that is a column strip (a series down a column) is named along the column whenever the turned name is
+      // as large as the level one — it reads with the series. Any other block is named across unless turning it gives a
+      // clearly larger name. (Comparing sizes alone left a narrow font's name level in a column it fitted across.)
       let rot = false, f = fit(bw, bh);
-      if (bh > bw) { const v = fit(bh, bw); if ((v.ok && (!f.ok || v.size > f.size * 1.15)) || (!f.ok && v.size >= f.size)) { rot = true; f = v; } }
+      const strip = (L.r2 - L.r1 + 1) >= 2 * (L.c2 - L.c1 + 1);   // in wells: plate wells are wider than tall, so pixels undersell a column
+      if (bh > bw || strip) { const v = fit(bh, bw);
+        if ((v.ok && (!f.ok || (strip ? v.size >= f.size - 1e-9 : v.size > f.size * 1.15))) || (!f.ok && v.size >= f.size)) { rot = true; f = v; } }
       let t = L.name, maxLen = rot ? bh : bw;
       ctx.font = `700 ${f.size}px 'IBM Plex Sans',sans-serif`;
       if (ctx.measureText(t).width > maxLen) {
