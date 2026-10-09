@@ -172,8 +172,6 @@ UI_ICONS = {
                   '<path class="m1" d="M8.8 15l2.2 2.2 4.2-4.4" pathLength="1"/>'),
     'notebook':  ('<rect x="5" y="3" width="14" height="18" rx="2.2"/><path d="M8.5 3v18" opacity=".55"/>'
                   '<path class="m1" d="M11.5 8h4.5M11.5 11.5h4.5M11.5 15h2.8" pathLength="1"/>'),
-    'visualize': ('<path d="M3.5 20.5h17" opacity=".55"/><rect class="m1" x="5.5" y="12" width="3" height="6" rx="1"/>'
-                  '<rect class="m1" x="10.5" y="6.5" width="3" height="11.5" rx="1"/><rect class="m1" x="15.5" y="9.5" width="3" height="8.5" rx="1"/>'),
     'designer':  ('<rect class="m1" x="3.5" y="3.5" width="10" height="4" rx="1.5"/><rect class="m1" x="7" y="10" width="10" height="4" rx="1.5"/>'
                   '<rect class="m1" x="10.5" y="16.5" width="10" height="4" rx="1.5"/><path d="M6 7.5V12h1M9.5 14v4.5h1" opacity=".55"/>'),
     'analysis':  ('<path d="M4 3.5v14.5a2 2 0 0 0 2 2h14.5" opacity=".55"/>'
@@ -247,7 +245,7 @@ APP_FILES = {
     'blot':'apps/western-blot/western-blot.html',
 }
 SHELL = 'shell/hub-shell.html'
-WS_KEYS = ['planner', 'fold', 'antibody', 'primer', 'plasmid', 'notebook', 'visualize', 'designer', 'cells']
+WS_KEYS = ['planner', 'fold', 'antibody', 'primer', 'plasmid', 'notebook', 'designer', 'cells']
 SUITE_KEYS = ['analysis', 'archive', 'apps']
 
 # The tile: neutral, the faintest wash of the app's hue, the glyph in ink and one accent in the
