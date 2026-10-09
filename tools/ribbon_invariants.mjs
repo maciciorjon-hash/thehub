@@ -44,6 +44,10 @@
 //                           distance to the ligase; clashes by overlap; charge and hydrophobicity; one pocket in a shell, none in a rod; the PAE.
 //   RB31 undo, modes, views, films  Undo one change at a time (a slider drag is one), never the camera; Select mode and a box;
 //                           views come back exactly; a GIF that decodes to what was encoded; a video; journal column widths.
+//   RB32 to Labbook and back  A figure in Labbook keeps its design; Edit in Ribbon reopens it as made; sent back it replaces itself and
+//                           keeps the caption written in Labbook; a bad or oversized design is dropped.
+//   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
+//                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
 //                           a label, a row; in the export only with labels; kept by a design; hidden with a chain; follows the model.
 //
@@ -1997,7 +2001,87 @@ async function rb31() {
   await ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31]];
+
+// ── RB32 a figure goes to the notebook and comes back to be edited ──────────────────────────
+async function rb32() {
+  const { ctx, pg } = await open({ tag: 'RB32 ', pre: async c => {
+    await c.addInitScript(() => { try { localStorage.setItem('lb_backup_nudged', '1'); localStorage.setItem('lb_tour_done', '1'); } catch (e) {} });
+    await c.route(base + '__host2.html', r => r.fulfill({ contentType: 'text/html', body: HOST2.replace('/apps/ribbon/ribbon.html', '/' + (args.file || 'apps/ribbon/ribbon.html')) }));
+  } });
+  await pg.goto(base + '__host2.html'); await sleep(3000);
+  const lb = pg.frame({ url: /labbook\.html/ }), rb = pg.frame({ url: /ribbon\.html/ });
+  try { await lb.waitForFunction(() => window.LB && LB.data && LB.data.presets && Object.keys(LB.data.presets).length && (LB.data.projects || []).length, null, { timeout: 25000 }); }
+  catch (e) { skipped.push('RB32 (Labbook did not come up)'); await ctx.close(); return; }
+  if (!(await rb.evaluate(() => !!window.$3Dmol))) { skipped.push('RB32 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  const expId = await lb.evaluate(async () => {
+    const before = new Set(Object.keys(LB.data.experiments)), P = LB.data.projects.find(p => (p.sections || []).length), S0 = P.sections[0];
+    openNew(P.id, S0.id); el('nm-type').value = 'HB'; nmUpdateCode(); nmResetSetup(); nmProtos(); el('nm-date').value = '2026-10-01'; nmUpdateCode(); nmSetup(); nmProtos(); nmPreview(); createExperiment(); closeNew();
+    let e = null; for (let t = 0; t < 100 && !e; t++) { e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); if (!e) await new Promise(r => setTimeout(r, 60)); }
+    openExp(e.id); return e.id; });
+  await pg.evaluate(() => show('ribbon'));
+  await rb.evaluate(() => { document.getElementById('pdbInput').value = '4LIG'; handleSubmit(); }); await sleep(3000);
+  await rb.evaluate(() => { runCommand('color chain A red', { noHistory: true }); runCommand('label chain A "Figure one"', { noHistory: true }); runCommand('bg white', { noHistory: true }); openExport(); document.getElementById('exLabbook').click(); });
+  await sleep(2500);
+  const f1 = await lb.evaluate(id => { const f = (LB.data.experiments[id].files || [])[0]; return f && { id: f.id, att: f.attId, rid: f.ribbon && f.ribbon.id, pdb: f.ribbon && f.ribbon.design.pdbId, red: f.ribbon && f.ribbon.design.state.chainColors.A }; }, expId);
+  check('RB32', 'a figure sent to Labbook keeps the design it was drawn from', !!f1 && !!f1.rid && f1.pdb === '4LIG' && f1.red === '#e53935', f1);
+  await lb.evaluate(id => { renderEditor(); setFileCaption('exp:' + id, LB.data.experiments[id].files[0].id, 'My own caption'); }, expId);
+  check('RB32', 'its row in Files offers Edit in Ribbon', await lb.evaluate(() => [...document.querySelectorAll('.fx-row .pl-btn')].some(b => /Edit in Ribbon/.test(b.textContent))));
+  // change the figure in Ribbon, then open the one in the notebook: it comes back as it was
+  await rb.evaluate(() => { runCommand('color chain A blue', { noHistory: true }); runCommand('label chain A ""', { noHistory: true }); state.chainLabels = {}; renderLabelTags(); });
+  await lb.evaluate((id) => { const e = LB.data.experiments[id]; openFigureInRibbon('exp:' + id, e.files[0].id); }, expId); await sleep(3500);
+  const back = await rb.evaluate(() => ({ red: state.chainColors.A, lab: state.chainLabels.A, btn: document.getElementById('exLabbook').textContent, link: !!_lbFig }));
+  check('RB32', 'Edit in Ribbon opens the figure as it was made: its colours and labels', back.red === '#e53935' && back.lab === 'Figure one', back);
+  check('RB32', 'and Export now says Update in Labbook', back.btn === 'Update in Labbook' && back.link, back);
+  check('RB32', 'Ribbon is what is shown', await pg.evaluate(() => document.getElementById('frame-ribbon').style.display) === 'block');
+  await rb.evaluate(() => { runCommand('color chain B teal', { noHistory: true }); openExport(); document.getElementById('exLabbook').click(); });
+  await sleep(2500);
+  const f2 = await lb.evaluate(id => { const fs = LB.data.experiments[id].files || []; return { n: fs.length, att: fs[0].attId, teal: fs[0].ribbon.design.state.chainColors.B, cap: fs[0].caption, rid: fs[0].ribbon.id }; }, expId);
+  check('RB32', 'sent back, it replaces itself: one file, new picture, new design, same id', f2.n === 1 && f2.att !== f1.att && f2.teal && f2.rid === f1.rid, { f1, f2 });
+  check('RB32', 'and the caption you wrote in Labbook is kept', f2.cap === 'My own caption', f2.cap);
+  const hostile = await lb.evaluate(() => { const px = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='; const a = _cleanCtx({ images: [{ name: 'a.png', dataUrl: px, ribbon: { id: '<script>', design: { state: {} } } }, { name: 'b.png', dataUrl: px, ribbon: { id: 'okid01', design: { state: { x: 'y'.repeat(500000) } } } }, { name: 'c.png', dataUrl: px, ribbon: { id: 'okid02', design: { state: { n: 1 } } } }] }); return a.images.map(i => !!i.ribbon); });
+  check('RB32', 'a design with a bad id, or too large, is dropped; the picture still arrives', hostile.join() === 'false,false,true', hostile);
+  await ctx.close();
+}
+
+
+// ── RB33 a mutant scan from Echo, on the protein in Ribbon ──────────────────────────────────
+const HOST4 = `<!doctype html><meta charset=utf-8><body style="margin:0">
+<iframe id="frame-echo" src="/apps/echo/echo.html" style="width:1300px;height:850px;border:0"></iframe>
+<script>window.APP_INFO={ribbon:{name:'Ribbon'},echo:{name:'Echo'}}; window.__sent=[]; window.openApp=function(id,a,b,ctx){ window.__sent.push({id:id,ctx:ctx}); };</script>`;
+async function rb33() {
+  // Echo: which groups are mutants of which, and by how much
+  const { ctx, pg } = await open({ tag: 'RB33 ', pre: async c => { await c.route(base + '__host4.html', r => r.fulfill({ contentType: 'text/html', body: HOST4 })); } });
+  await pg.goto(base + '__host4.html'); await sleep(4000);
+  const ec = pg.frame({ url: /echo\.html/ });
+  const ms = await ec.evaluate(() => {
+    _lastResultsData = [
+      { Sample_ID: 'CPD-1', Protein: 'BRD4', DC50_nM: 10, Flag: 'No' }, { Sample_ID: 'CPD-1', Protein: 'BRD4_Y97A', DC50_nM: 80, Flag: 'No' },
+      { Sample_ID: 'CPD-1', Protein: 'BRD4-W81A', DC50_nM: 2.5, Flag: 'No' }, { Sample_ID: 'CPD-1', Protein: 'BRD4 p.N140A', DC50_nM: 5, Flag: 'No', Flag_Reason: 'No effect (span 3%)' },
+      { Sample_ID: 'CPD-2', Protein: 'VHL', DC50_nM: 30, Flag: 'No' }, { Sample_ID: 'CPD-2', Protein: 'BRD2', DC50_nM: 30, Flag: 'No' }];
+    return mutantSets().map(m => ({ t: m.target, c: m.compound, muts: m.muts.map(x => x.label + ':' + (x.lost ? 'lost' : x.fold)).join() }));
+  });
+  check('RB33', 'Echo finds the mutants of a group, by name, and the fold change against the wild type', ms.length === 1 && ms[0].t === 'BRD4' && ms[0].muts === 'Y97A:8,W81A:0.25,N140A:' + (ms[0].muts.includes('N140A:lost') ? 'lost' : '0.5'), ms);
+  const nd = await ec.evaluate(() => { const r = _lastResultsData.find(x => /N140A/.test(x.Protein)); return _nd(r); });
+  check('RB33', 'a mutant whose curve is flat is “no effect”, not a number', !nd || ms[0].muts.includes('N140A:lost'), { nd, ms });
+  await ec.evaluate(() => openMutantsInRibbon());
+  const sent = await pg.evaluate(() => window.__sent);
+  const rv = sent[0] && sent[0].ctx && sent[0].ctx.ribbon;
+  check('RB33', 'it opens Ribbon on that protein, as the AlphaFold model, with log2(mutant ÷ WT) by residue and a label each', !!rv && sent[0].id === 'ribbon' && rv.query === 'BRD4' && rv.model === 'af' && rv.values.data[97] === 3 && rv.values.data[81] === -2 && /Y97A ×8\.0/.test(rv.values.labels[97]) && /W81A ÷4\.0/.test(rv.values.labels[81]), rv);
+  check('RB33', 'groups that are not mutants of anything send nothing', await ec.evaluate(() => { _lastResultsData = [{ Sample_ID: 'A', Protein: 'BRD4', DC50_nM: 1, Flag: 'No' }, { Sample_ID: 'A', Protein: 'BRD2', DC50_nM: 2, Flag: 'No' }]; return mutantSets().length === 0; }));
+  await ctx.close();
+  // Ribbon: the numbers land on the residues they name
+  const r = await open({ tag: 'RB33r ' });
+  if (!(await has3d(r.pg))) { skipped.push('RB33 (3Dmol could not load from its CDN)'); await r.ctx.close(); return; }
+  await r.E(() => { window.__toasts = []; const o = window.showToast; window.showToast = function (m, a) { window.__toasts.push(m); return o(m, a); }; rbOpenTarget({ query: 'TST', model: 'af', from: 'Echo Dose Response', compound: 'CPD-1', values: { title: 'CPD-1 · log2 DC50 mutant ÷ WT', data: { 3: 2.5, 5: -1, 99: 1, x: 7 }, labels: { 3: 'A3V ×5.7', 5: 'S5A ÷2.0', 99: 'Q99A' } } }); });
+  await sleep(3500);
+  const v = await r.E(() => ({ id: currentPdbId, mode: state.color, data: state.values && state.values.data['*'], title: state.values && state.values.title, labels: state.residueLabels.map(x => x.resi + ':' + x.text).join('|'), sticks: (state.reps || []).map(x => x.sel).join(), toasts: window.__toasts.join(' / '), key: document.getElementById('legend').textContent }));
+  check('RB33', 'Ribbon opens the AlphaFold model and colours the residues by the values sent', /^AF-P12345/.test(v.id) && v.mode === 'values' && v.data && v.data[3] === 2.5 && v.data[5] === -1 && !('x' in v.data), v);
+  check('RB33', 'each mutated residue is labelled and drawn with its side chain; one not in the model is named, not drawn', v.labels === '3:A3V ×5.7|5:S5A ÷2.0' && v.sticks === 'A:3, A:5' && /1 of the residues are not in this model: 99/.test(v.toasts), v);
+  check('RB33', 'the colour key says what the numbers are', /log2 DC50/.test(v.key), v.key);
+  await r.ctx.close();
+}
+
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

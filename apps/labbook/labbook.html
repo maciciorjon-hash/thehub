@@ -13475,7 +13475,8 @@ function filesPaneHtml(key,files){
       +'<input class="fx-cap" value="'+esc(f.caption||'')+'" placeholder="Caption (appears in the PDF)" oninput="setFileCaption(\''+key+'\',\''+f.id+'\',this.value)"></div>'
       +'<div class="fx-acts">'
         +'<label class="fx-inc" title="Include this in the exported PDF"><input type="checkbox"'+(f.include!==false?' checked':'')+' onchange="toggleFilePdf(\''+key+'\',\''+f.id+'\',this.checked)"><span>in PDF</span></label>'
-        +(f.kind==='image'?('<button class="pl-btn" title="Straighten, crop, rotate — the stored picture is replaced" onclick="editFilePhoto(\''+key+'\',\''+f.id+'\')">Crop / edit</button>'):'')
+        +(f.ribbon&&lbHost()&&lbHost().openApp?('<button class="pl-btn" title="Open this figure in Ribbon as it was made, change it, and send it back — the picture here is replaced" onclick="openFigureInRibbon(\''+key+'\',\''+f.id+'\')">Edit in Ribbon</button>'):'')
+        +(f.kind==='image'&&!f.ribbon?('<button class="pl-btn" title="Straighten, crop, rotate — the stored picture is replaced" onclick="editFilePhoto(\''+key+'\',\''+f.id+'\')">Crop / edit</button>'):'')
         +'<button class="pl-btn" onclick="downloadFile(\''+key+'\',\''+f.id+'\')">Download</button>'
         +'<button class="pl-btn danger" onclick="removeFile(\''+key+'\',\''+f.id+'\')">Remove</button>'
       +'</div></div>';
@@ -16626,7 +16627,7 @@ function fileKind(mime,name){
 function _readAsDataURL(file){ return new Promise(function(res,rej){
   var fr=new FileReader(); fr.onload=function(){ res(fr.result); }; fr.onerror=function(){ rej(fr.error); }; fr.readAsDataURL(file); }); }
 // Accept one dropped file onto an owner ('exp:<id>' or 'blk:<expId>:<blkId>').
-function addFileTo(key,file,caption){
+function addFileTo(key,file,caption,extra){
   var o=_plateOwner(key); if(!o||!file) return Promise.resolve(false);
   if(file.size>FILE_MAX_BYTES){
     lbAlert('"'+file.name+'" is '+_fmtBytes(file.size)+'. The limit is '+_fmtBytes(FILE_MAX_BYTES)+' per file, because everything is stored in your browser and included in backups. Link to it or compress it instead.',{title:'File too large',danger:true});
@@ -16643,8 +16644,8 @@ function addFileTo(key,file,caption){
       return _attPut(id,dataURL).then(function(ok){
         if(!ok) return false;
         var arr=o.obj.files||(o.obj.files=[]);
-        arr.push({id:'f'+uid(), attId:id, name:file.name||'file', mime:file.type||'', size:file.size||0,
-                  kind:k.kind, added:Date.now(), caption:String(caption||''), include:true});
+        arr.push(Object.assign({id:'f'+uid(), attId:id, name:file.name||'file', mime:file.type||'', size:file.size||0,
+                  kind:k.kind, added:Date.now(), caption:String(caption||''), include:true},extra||{}));
         o.exp.updated=Date.now(); save();
         _attUpload(id,dataURL);
         return true;
@@ -22736,11 +22737,36 @@ function _cleanCtx(ctx){
     o.images=o.images.filter(function(im){
       if(!im||typeof im!=='object'||typeof im.dataUrl!=='string'||!/^data:image\/(png|jpeg|webp);base64,/i.test(im.dataUrl)) return false;
       room-=im.dataUrl.length; return room>=0; }).slice(0,12).map(function(im){
-      return {name:String(im.name||'image.png').replace(/[\\/:*?"<>|]+/g,'_').slice(0,120), dataUrl:im.dataUrl, caption:String(im.caption||'').slice(0,300)}; });
+      var out={name:String(im.name||'image.png').replace(/[\\/:*?"<>|]+/g,'_').slice(0,120), dataUrl:im.dataUrl, caption:String(im.caption||'').slice(0,300)};
+      // A Ribbon figure keeps the design it was drawn from, so it can be opened there again. Bounded, and plain data only.
+      var rf=im.ribbon; if(rf&&typeof rf==='object'&&typeof rf.id==='string'&&/^[A-Za-z0-9_-]{4,60}$/.test(rf.id)&&rf.design&&typeof rf.design==='object'){
+        try{ var js=JSON.stringify(rf.design,function(k,v){ return (typeof v==='number'&&!isFinite(v))?null:v; }); if(js.length<=400000){ var dz=JSON.parse(js); if(dz&&typeof dz.state==='object') out.ribbon={id:rf.id,design:dz}; } }catch(e3){} }
+      return out; });
   } else delete o.images;
   if(o.plate && (typeof o.plate!=='object' || !o.plate.wells || typeof o.plate.wells!=='object' || Array.isArray(o.plate.wells))) delete o.plate;
   else if(o.plate){ o.plate=Object.assign({},o.plate); o.plate.wells=_lbMap(o.plate.wells); }
   return o; }
+// The Files entry a Ribbon figure lives in, in any experiment.
+function _findFigFile(id){
+  var ks=Object.keys(LB.data.experiments||{});
+  for(var i=0;i<ks.length;i++){ var x=LB.data.experiments[ks[i]], fs=x&&x.files||[];
+    for(var j=0;j<fs.length;j++) if(fs[j]&&fs[j].ribbon&&fs[j].ribbon.id===id) return {exp:x,file:fs[j]}; }
+  return null; }
+function _replaceFigFile(own,im,u8,mime){
+  var f=own.file, file=new File([u8],im.name,{type:mime});
+  return _compressImage(file).catch(function(){ return _readAsDataURL(file); }).then(function(dataURL){
+    var id='att'+uid();
+    return _attPut(id,dataURL).then(function(ok){
+      if(!ok) return false;
+      undoMark('Figure updated from Ribbon',['experiments.'+own.exp.id]);
+      f.attId=id; f.name=im.name||f.name; f.mime=mime; f.size=u8.length; f.updated=Date.now(); f.ribbon=im.ribbon;
+      if(!String(f.caption||'').trim()) f.caption=im.caption||'';
+      own.exp.updated=Date.now(); save(); _attUpload(id,dataURL); return true; }); }); }
+function openFigureInRibbon(key,fid){
+  var o=_plateOwner(key), f=o&&(o.obj.files||[]).filter(function(x){ return x.id===fid; })[0], H=lbHost();
+  if(!f||!f.ribbon||!H||!H.openApp){ toast('That figure cannot be opened from here.'); return; }
+  try{ H.openApp('ribbon',undefined,undefined,{source:'labbook',open:{app:'ribbon',figure:f.ribbon,expId:o.exp.id,label:(o.exp.code||o.exp.title||'')}}); }
+  catch(e){ toast('Could not open Ribbon.'); } }
 // Which experiment already holds this result set — the same analysis sent again updates its set
 // where it lives, instead of adding a second copy or asking again which experiment it belongs to.
 function _findSetOwner(id){
@@ -22785,12 +22811,15 @@ function _mergeDHubContext(ctx){
   }
   var imgs=Array.isArray(ctx.images)?ctx.images:[];
   if(imgs.length){
-    // Each goes to the experiment's Files tab like a picture you had added there yourself.
-    var ok=0; Promise.all(imgs.map(function(im){
+    // Each goes to the experiment's Files tab like a picture you had added there yourself — and a Ribbon figure
+    // that came back after being edited replaces itself, wherever it is filed, keeping the caption you wrote.
+    var ok=0, upd=0; Promise.all(imgs.map(function(im){
       var bin=atob(im.dataUrl.split(',')[1]||''), u8=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
       var mime=(im.dataUrl.match(/^data:([^;]+)/)||[])[1]||'image/png';
-      return addFileTo('exp:'+e.id, new File([u8],im.name,{type:mime}), im.caption).then(function(r){ if(r) ok++; }); }))
-    .then(function(){ if(ok){ EXP_TAB='files'; renderEditor(); } toast(ok+' picture'+(ok===1?'':'s')+' added to Files on '+(e.code||e.title||'the experiment')); });
+      var own=im.ribbon&&_findFigFile(im.ribbon.id);
+      if(own) return _replaceFigFile(own,im,u8,mime).then(function(r){ if(r) upd++; });
+      return addFileTo('exp:'+e.id, new File([u8],im.name,{type:mime}), im.caption, im.ribbon?{ribbon:im.ribbon}:null).then(function(r){ if(r) ok++; }); }))
+    .then(function(){ if(ok||upd){ EXP_TAB='files'; renderEditor(); } toast(upd?(upd+' figure'+(upd===1?'':'s')+' updated from Ribbon'):(ok+' picture'+(ok===1?'':'s')+' added to Files on '+(e.code||e.title||'the experiment'))); });
   }
   // What came was results: land on the experiment's Results, wherever Labbook was.
   if((ctx.results||[]).length){ if(_curExp()!==e) openExp(e.id); EXP_TAB='res'; }

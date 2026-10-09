@@ -4720,9 +4720,51 @@ async function openInHitFinder() {
   } catch (e) { echoToast('Could not open Hit Finder from here. Open it from the Hub and pick this analysis under Echo.', 'warn'); }
   finally { _hfSending = false; }
 }
+// ── A mutant scan, onto the structure ──────────────────────────────────────────────────────
+// Groups named like "BRD4_Y97A" beside a group "BRD4" (or "BRD4 WT") are mutants of it. For one compound, each mutant's
+// potency against the wild type's, as log2 of the ratio, coloured on the protein in Ribbon: a residue the compound needs
+// shows up as a large shift. A mutant with no curve at all (no effect) is drawn at the top of the scale and says so.
+var MUT_RE = /^(.+?)[\s_\-:/.]+(?:p\.)?([ACDEFGHIKLMNPQRSTVWY])(\d{1,5})([ACDEFGHIKLMNPQRSTVWY])$/i;
+function mutantSets() {
+  var d = (typeof _lastResultsData !== 'undefined' && _lastResultsData) || [], by = {};
+  d.forEach(function (r) { (by[r.Sample_ID] || (by[r.Sample_ID] = [])).push(r); });
+  var out = [];
+  Object.keys(by).forEach(function (cpd) {
+    var rows = by[cpd], prot = {};
+    rows.forEach(function (r) { prot[String(r.Protein || '').trim().toLowerCase()] = r; });
+    var bases = {};
+    rows.forEach(function (r) {
+      var m = MUT_RE.exec(String(r.Protein || '').trim()); if (!m) return;
+      var base = m[1].trim(), k = base.toLowerCase(), wt = prot[k] || prot[k + ' wt'] || prot[k + '_wt'] || prot[k + '-wt'];
+      if (!wt || _nd(wt) || !(wt.DC50_nM > 0)) return;
+      var b = bases[k] || (bases[k] = { target: base, compound: cpd, wt: wt.DC50_nM, muts: [] });
+      var mut = m[2].toUpperCase() + m[3] + m[4].toUpperCase(), lost = _nd(r) || !(r.DC50_nM > 0);
+      b.muts.push({ resi: +m[3], label: mut, fold: lost ? null : r.DC50_nM / wt.DC50_nM, lost: lost });
+    });
+    Object.keys(bases).forEach(function (k) { if (bases[k].muts.length) out.push(bases[k]); });
+  });
+  return out;
+}
+function _ribbonReady() { try { return window.parent !== window && !!(window.parent.APP_INFO && window.parent.APP_INFO.ribbon); } catch (e) { return false; } }
+function openMutantsInRibbon(ev) {
+  var sets = mutantSets(); if (!sets.length) { echoToast('No mutants here: name a group like BRD4_Y97A beside a BRD4 group.', 'warn'); return; }
+  function send(m) {
+    var data = {}, labels = {}, top = 0;
+    m.muts.forEach(function (x) { if (x.fold) top = Math.max(top, Math.abs(Math.log2(x.fold))); });
+    top = Math.max(2, Math.ceil(top));
+    m.muts.forEach(function (x) { var v = x.lost ? top : Math.log2(x.fold); data[x.resi] = +v.toFixed(3); labels[x.resi] = x.label + ' ' + (x.lost ? 'no effect' : (x.fold >= 1 ? '×' + x.fold.toFixed(1) : '÷' + (1 / x.fold).toFixed(1))); });
+    try { window.parent.openApp('ribbon', undefined, undefined, { source: 'echo', ribbon: { query: m.target, pocket: false, from: 'Echo Dose Response', compound: m.compound, model: 'af', values: { title: m.compound + ' · log2 DC50 mutant ÷ WT', data: data, labels: labels } } }); }
+    catch (e) { echoToast('Could not open Ribbon.', 'err'); }
+  }
+  if (sets.length === 1) { send(sets[0]); return; }
+  var b = ev && ev.currentTarget && ev.currentTarget.getBoundingClientRect ? ev.currentTarget.getBoundingClientRect() : { left: 100, bottom: 100 };
+  if (typeof ctxOpen === 'function') ctxOpen([{ hd: 'Which compound?' }].concat(sets.map(function (m) { return { label: m.compound + ' · ' + m.target + ' · ' + m.muts.length + ' mutant' + (m.muts.length === 1 ? '' : 's'), act: function () { send(m); } }; })), b.left, b.bottom + 4);
+  else send(sets[0]);
+}
 function _screenBtns(st, hov) {
   const ico = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><circle cx="12" cy="12" r="8.6"/><path d="M12 1.8v5.2M12 17v5.2M1.8 12H7M17 12h5.2"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg>';
   return '<button style="' + st + '" ' + hov + ' onclick="downloadScreenCsv()" title="One row per compound and assay with everything Hit Finder reads: potency qualifier, hook, coverage, replicates, normalisation, and the compounds that could not be fitted">Screen CSV</button>'
+    + (_ribbonReady() && mutantSets().length ? '<button style="' + st + '" ' + hov + ' onclick="openMutantsInRibbon(event)" title="Colour each mutated residue on the protein by how much the mutation moves the potency, in Ribbon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M4 18c3-6 5-10 8-10s5 4 8 10"/><circle cx="12" cy="8" r="2.2"/></svg> Mutants on the structure</button>' : '')
     + (_hitFinderReady() ? '<button class="hf-send" onclick="openInHitFinder()" title="Open Hit Finder with this analysis already loaded: hits, hooks and rejections against the criteria you set there">' + ico + ' Send to Hit Finder</button>' : '');
 }
 
