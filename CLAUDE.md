@@ -7312,6 +7312,7 @@ The harness now reports the last call-log line of a Playwright timeout, so a CI 
 Plan: `~/.claude/plans/en-data-analysis-no-swift-summit.md`. One commit per item; `tools/hub_invariants.mjs` (S-series, in CI after the build) holds the shell's checks.
 
 - **Data Analysis has a fixed order**: Echo Dose Response · Hit Finder · Lumina · Tempo · the rest. The landing used to lead with the last apps opened (`hub_recent`, `_pushRecent`/`_recentApps` — deleted), so the cards moved under the pointer. S1.
+- **App cards are a name and one sentence.** The tag lines (`.card-foot`, "HiBiT · FP · DC50 · Dmax") are gone from all 18 cards and from every landing (`_appCardHtml` no longer copies one); each `.card-desc` is a single sentence ≤ 95 characters, at `--fs-4`, clamped to three lines; the arrow sits on the name row (`::after`). Cards are flat (`--surface`, hairline, no glass), and `.ld-card` no longer replays its entrance on every rebuild — only `_enter` animates. S2.
 
 ## Current state
 

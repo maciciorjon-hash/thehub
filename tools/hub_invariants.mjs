@@ -2,6 +2,8 @@
 //
 //   S1  fixed order       the Data Analysis landing lists its apps in the declared order, however
 //                         recently or often each was opened (it used to lead with the last opened)
+//   S2  clean cards       no app card carries a tag line ("HiBiT · FP · DC50"); each says what it is in one
+//                         sentence, and no description is cut on a landing at 1440px
 //
 //   node tools/hub_invariants.mjs [--shell=PATH] [--only=S1]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -52,6 +54,31 @@ if (run('S1')) {
   else ok();
   if (r.seen.join() !== r.want.join()) bad('S1', 'landing shows ' + r.seen.join(', ') + ' — declared ' + r.want.join(', '));
   else ok();
+}
+
+if (run('S2')) {
+  const r = await page.evaluate(async () => {
+    isAdmin = true;
+    const out = { foot: [], long: [], cut: [] };
+    document.querySelectorAll('#app-grid .card').forEach(c => {
+      const id = c.dataset.appId;
+      if (c.querySelector('.card-foot')) out.foot.push(id);
+      const d = (c.querySelector('.card-desc') || {}).textContent || '';
+      if (d.length > 95) out.long.push(id + ' (' + d.length + ')');
+    });
+    for (const L of ['analysis', 'more', 'archive', 'cells']) {
+      try { renderLanding(L); } catch (e) {}
+      await new Promise(r => setTimeout(r, 50));
+      document.querySelectorAll('#hub-suites .ld-desc').forEach(d => {
+        if (d.scrollHeight > d.clientHeight + 1) out.cut.push(L + ': ' + d.textContent.slice(0, 40));
+      });
+      if (document.querySelector('#hub-suites .ld-foot')) out.foot.push('landing ' + L);
+    }
+    return out;
+  });
+  if (r.foot.length) bad('S2', 'cards still carry a tag line: ' + r.foot.join(', ')); else ok();
+  if (r.long.length) bad('S2', 'descriptions over one sentence: ' + r.long.join(', ')); else ok();
+  if (r.cut.length) bad('S2', 'descriptions cut by the clamp at 1440px: ' + r.cut.join(' | ')); else ok();
 }
 
 for (const e of errs) bad('page', e);
