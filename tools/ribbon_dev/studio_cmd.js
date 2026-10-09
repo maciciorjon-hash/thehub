@@ -488,7 +488,7 @@ function inspectorPaint(){
   if(_inspAtom){
     var a=_inspAtom; t=(a.chain&&a.chain.trim()?a.chain+' · ':'')+a.resn+' '+a.resi+String(a.icode||'').trim()+' · '+a.atom+(typeof a.b==='number'?' · '+(isAF()?'pLDDT ':'B ')+a.b.toFixed(1):'');
     var near=nearestLigandDist(a); if(near) t+=' · '+near.d.toFixed(1)+' Å from '+near.l.resn;
-  } else if(_selN) t=selDescribe();
+  } else if(_selN) t='Selected: '+selDescribe();
   else if(currentModel) t=currentPdbId+' · '+chainList.length+(chainList.length===1?' chain':' chains')+(ligands.length?' · '+ligands.length+(ligands.length===1?' ligand':' ligands'):'');
   el.textContent=t; el.hidden=!t;
 }
@@ -527,6 +527,7 @@ function cmdWire(){
 }
 function cmdShow(on){
   document.body.classList.toggle('rb-cmd-on',!!on);
+  if(on&&typeof closeControls==='function'&&$('sidebar').classList.contains('open')) closeControls();   // the controls sheet would sit over the line
   var cb=$('cmdBtn'); if(cb){ cb.classList.toggle('tb-active',!!on); cb.setAttribute('aria-pressed',on?'true':'false'); }
   if(typeof fitView==='function'&&!_userMoved) setTimeout(function(){ fitView({}); },30);
   if(on) setTimeout(function(){ cmdFocus(); },30); else { var i=$('cmdInput'); if(i) i.blur(); $('cmdPop').hidden=true; }

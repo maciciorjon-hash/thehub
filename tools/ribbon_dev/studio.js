@@ -174,7 +174,7 @@ function seqRangeKeys(k0,k1){
 }
 function seqInfo(e){
   var t=$('sqInfo'); if(!t) return;
-  if(!e){ t.textContent=_selN?selDescribe():'Click to select · drag for a range · double-click to zoom'; return; }
+  if(!e){ t.textContent=_selN?'Selected: '+selDescribe():'Click to select · drag for a range · double-click to zoom'; return; }
   t.textContent=(e.ch.trim()?e.ch+' · ':'')+e.resn+' '+e.resi+e.ic+' · '+({h:'helix',s:'strand',c:'loop'})[e.ss];
 }
 function seqWire(){

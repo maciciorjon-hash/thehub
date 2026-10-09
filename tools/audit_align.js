@@ -22,12 +22,19 @@
 //   * a child holding more than one control — a stacked group is centred as a block on
 //     purpose, so comparing one of its controls with a single-row sibling compares nothing.
 //   * children over 90px tall — that is a layout pane, not a field row.
+//   * a button laid out as a column of a title and a subtitle (a list entry) — judged on its
+//     centre line only; it is as tall as its text, not a 32px field.
 //
 window.__alignAudit=function(){
   var R=[], seen={};
   function vis(e){ var r=e.getBoundingClientRect(); if(!(r.width>0&&r.height>0)) return false;
     var cs=getComputedStyle(e); return cs.visibility!=='hidden'&&cs.opacity!=='0'; }
   var CTL='input:not([type=hidden]),select,textarea,button';
+  /* a button laid out as a column (a title over a subtitle) is a list entry, not a field: it is as
+     tall as its text, and is judged on its centre line like a swatch */
+  /* an empty button — no text, no icon — is a colour dot or swatch: judged on its centre line */
+  function swatch(t){ return t.tagName==='BUTTON'&&!t.children.length&&!(t.textContent||'').trim(); }
+  function listEntry(t){ if(t.tagName!=='BUTTON'||t.children.length<2) return false; var c=getComputedStyle(t); return /flex|grid/.test(c.display)&&(c.display.indexOf('grid')>=0||c.flexDirection.indexOf('column')===0); }
   function ctl(e){ return (e.matches&&e.matches(CTL))?e:e.querySelector(CTL); }
   function sel(t){ if(!t) return '?';
     return t.tagName.toLowerCase()+(t.type&&t.tagName==='INPUT'?'[type='+t.type+']':'')
@@ -64,7 +71,7 @@ window.__alignAudit=function(){
       /* a checkbox, a radio, a colour swatch or any control under 20px is intrinsically small;
          it is judged on its centre line, not on matching a text field's height */
       var small=cts.map(function(t){ return /^(checkbox|radio|color|range)$/.test(t.type||'')
-        || t.getBoundingClientRect().height<22; });
+        || t.getBoundingClientRect().height<22 || listEntry(t) || swatch(t); });
       var h=cts.map(function(t){return t.getBoundingClientRect().height;});
       var hBig=h.filter(function(_,i){ return !small[i]; });
       var mid=cts.map(function(t){var r=t.getBoundingClientRect();return r.top+r.height/2;});

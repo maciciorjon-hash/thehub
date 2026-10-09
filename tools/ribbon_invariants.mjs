@@ -1598,6 +1598,9 @@ async function rb26() {
   check('RB26', 'each tab shows its own pane and only that one', Object.entries(panes).every(([k, v]) => k === v), panes);
   const where = await E(() => ({ lig: rbPaneOf(document.getElementById('ligList')), ch: rbPaneOf(document.getElementById('chainList')), hl: rbPaneOf(document.getElementById('hlInput')), meas: rbPaneOf(document.getElementById('measList')), lbl: rbPaneOf(document.getElementById('resLblList')), dsg: rbPaneOf(document.getElementById('designList')) }));
   check('RB26', 'chains and ligands live in Models; highlights in Colour; measuring in Analyse; labels in Figure', where.lig === 'models' && where.ch === 'models' && where.hl === 'colour' && where.meas === 'analyse' && where.lbl === 'figure' && where.dsg === 'designs', where);
+  // every field in every pane is a 32px box (a labelled column squeezed its selects to their text, 18px)
+  const thin = await E(() => { const bad = []; document.querySelectorAll('.rb-tab').forEach(b => { rbTab(b.dataset.tab); document.querySelectorAll('.rb-pane:not([hidden]) details.rb-sec').forEach(d => { d.open = true; }); document.querySelectorAll('.rb-pane:not([hidden]) .inp').forEach(i => { const r = i.getBoundingClientRect(); if (r.width && r.height && r.height < 27) bad.push(b.dataset.tab + ':' + (i.id || i.className) + ' ' + Math.round(r.height)); }); }); return bad; });
+  check('RB26', 'every field in every pane is a full-height box, not squeezed to its text', !thin.length, thin.slice(0, 6));
   const opened = await E(() => { rbTab('open'); rbOpenSec('values'); return { tab: _rbTab, open: document.querySelector('details[data-sec=values]').open }; });
   check('RB26', 'asking for a section opens its tab and the section', opened.tab === 'colour' && opened.open, opened);
   // things in the scene
@@ -1838,6 +1841,9 @@ async function rb28() {
   check('RB28', 'Go runs it', await m.E(() => document.getElementById('cmdOut').classList.contains('ok')), await m.E(() => ({ out: document.getElementById('cmdOut').className + ' ' + document.getElementById('cmdOut').textContent, v: document.getElementById('cmdInput').value, lig: ligands.length })));
   await m.pg.tap('#cmdBtn'); await sleep(150);
   check('RB28', 'the button puts it away again', await m.E(() => getComputedStyle(document.getElementById('cmdBar')).display === 'none' && document.getElementById('cmdBtn').getAttribute('aria-pressed') === 'false'));
+  const cov = await m.E(() => { openControls(); cmdShow(true); const r = document.getElementById('cmdInput').getBoundingClientRect(), top = document.elementFromPoint(r.left + 20, r.top + r.height / 2); return { sheet: document.getElementById('sidebar').classList.contains('open'), onTop: !!top && !!top.closest('#cmdBar') }; });
+  check('RB28', 'asking for the line closes the controls sheet, so nothing sits over it', !cov.sheet && cov.onTop, cov);
+  await m.E(() => cmdShow(false));
   await m.ctx.close();
   const t = await open({ tag: 'RB28t ', vp: { width: 1024, height: 768 }, touch: true });
   check('RB28', 'a tablet shows the line (a keyboard may be attached), with no toolbar button for it', await t.E(() => getComputedStyle(document.getElementById('cmdBar')).display !== 'none' && getComputedStyle(document.getElementById('cmdBtn')).display === 'none'));
@@ -2056,6 +2062,7 @@ async function rb32() {
   const f1 = await lb.evaluate(id => { const f = (LB.data.experiments[id].files || [])[0]; return f && { id: f.id, att: f.attId, rid: f.ribbon && f.ribbon.id, pdb: f.ribbon && f.ribbon.design.pdbId, red: f.ribbon && f.ribbon.design.state.chainColors.A }; }, expId);
   check('RB32', 'a figure sent to Labbook keeps the design it was drawn from', !!f1 && !!f1.rid && f1.pdb === '4LIG' && f1.red === '#e53935', f1);
   await lb.evaluate(id => { renderEditor(); setFileCaption('exp:' + id, LB.data.experiments[id].files[0].id, 'My own caption'); }, expId);
+  if (args.shots) { await pg.evaluate(() => show('labbook')); await lb.evaluate(() => { const r = [...document.querySelectorAll('.fx-row')][0]; if (r) r.scrollIntoView({ block: 'center' }); }); await sleep(400); await pg.screenshot({ path: path.join(String(args.shots), 'rb32-labbook-files.png') }); await pg.evaluate(() => show('ribbon')); }   // --shots=DIR: the row as a person sees it
   check('RB32', 'its row in Files offers Edit in Ribbon', await lb.evaluate(() => [...document.querySelectorAll('.fx-row .pl-btn')].some(b => /Edit in Ribbon/.test(b.textContent))));
   // change the figure in Ribbon, then open the one in the notebook: it comes back as it was
   await rb.evaluate(() => { runCommand('color chain A blue', { noHistory: true }); runCommand('label chain A ""', { noHistory: true }); state.chainLabels = {}; renderLabelTags(); });

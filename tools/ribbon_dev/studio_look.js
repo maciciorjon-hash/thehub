@@ -65,12 +65,12 @@ function decorUpdate(){
 }
 function drawAxes(){
   var el=$('axesInd'); if(!el) return;
-  var on=!!(currentModel&&viewer&&load('ribbon_axes')==='1'); el.toggleAttribute('hidden',!on); if(!on) return;   // an <svg> has no .hidden property
+  var vp=$('viewport'), on=!!(currentModel&&viewer&&load('ribbon_axes')==='1')&&(!vp||vp.clientHeight>=170); el.toggleAttribute('hidden',!on); if(!on) return;   // an <svg> has no .hidden property; a viewer too short for them goes without
   var v; try{ v=viewer.getView(); }catch(e){ return; }
   var R=_camRot(v), cols=['#e5484d','#30a46c','#3e63dd'], names=['x','y','z'], h='';
   [0,1,2].map(function(i){ return {i:i,x:R[0][i],y:R[1][i],z:R[2][i]}; }).sort(function(a,b){ return a.z-b.z; }).forEach(function(a){
-    var x=a.x*20, y=-a.y*20;
-    h+='<line x1="0" y1="0" x2="'+x.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="'+cols[a.i]+'" opacity="'+(a.z<0?0.45:1)+'"/><text x="'+(x*1.32).toFixed(1)+'" y="'+(y*1.32+3).toFixed(1)+'" text-anchor="middle" fill="'+cols[a.i]+'">'+names[a.i]+'</text>';
+    var x=a.x*18, y=-a.y*18;   // the letters sit at 1.5× the arrow, inside the 66-unit box whichever way the axis points
+    h+='<line x1="0" y1="0" x2="'+x.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="'+cols[a.i]+'" opacity="'+(a.z<0?0.45:1)+'"/><text x="'+(x*1.5).toFixed(1)+'" y="'+(y*1.5+4).toFixed(1)+'" text-anchor="middle" fill="'+cols[a.i]+'">'+names[a.i]+'</text>';
   });
   el.innerHTML=h;
 }
@@ -87,7 +87,7 @@ function scaleMeasure(){   // pixels per Å at the middle of the structure, and 
 }
 function drawScaleBar(){
   var el=$('scaleBar'); if(!el) return;
-  var on=!!(state.scalebar&&currentModel); el.hidden=!on; if(!on) return;
+  var vp=$('viewport'), on=!!(state.scalebar&&currentModel)&&(!vp||vp.clientHeight>=110); el.hidden=!on; if(!on) return;   // still in the export; on screen only where it fits
   var m=scaleMeasure(); if(!m){ el.hidden=true; return; }
   var ink=state.bg==='dark'?'#e8eaf2':state.bg==='white'?'#1a1d2e':'';   // the bar is drawn on the picture's background, not the page's
   el.style.color=ink; el.querySelector('i').style.background=ink||''; el.querySelector('i').style.width=m.px.toFixed(1)+'px'; el.querySelector('span').textContent=m.len+' Å'; el.querySelector('span').style.color=ink||'';
