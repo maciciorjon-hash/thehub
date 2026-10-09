@@ -2098,6 +2098,13 @@ async function rb33() {
   const sent = await pg.evaluate(() => window.__sent);
   const rv = sent[0] && sent[0].ctx && sent[0].ctx.ribbon;
   check('RB33', 'it opens Ribbon on that protein, as the AlphaFold model, with log2(mutant ÷ WT) by residue and a label each', !!rv && sent[0].id === 'ribbon' && rv.query === 'BRD4' && rv.model === 'af' && rv.values.data[97] === 3 && rv.values.data[81] === -2 && /Y97A ×8\.0/.test(rv.values.labels[97]) && /W81A ÷4\.0/.test(rv.values.labels[81]), rv);
+  const tg = await ec.evaluate(() => ribbonTargets().map(t => t.target + ':' + (t.best ? t.best.Sample_ID : '') + ':' + t.n).join('|'));
+  check('RB33', 'the targets in Ribbon are the groups, a mutant counted as its wild type, each with its most potent compound', tg === 'BRD2:CPD-2:1|BRD4:CPD-1:4|VHL:CPD-2:1', tg);
+  await ec.evaluate(() => { const o = window.ctxOpen; window.ctxOpen = (items) => { window.__items = items.map(i => i.label || i.hd); items.find(i => /^BRD4/.test(i.label || '')).act(); }; openTargetInRibbon(); window.ctxOpen = o; });
+  const items = await ec.evaluate(() => window.__items), sent2 = await pg.evaluate(() => window.__sent), rv2 = sent2[sent2.length - 1].ctx.ribbon;
+  check('RB33', 'with several it asks which, and opens that one with its pocket and the compound named', items[0] === 'Which protein?' && items.length === 4 && rv2.query === 'BRD4' && rv2.pocket === true && rv2.compound === 'CPD-1' && !rv2.values, { items, rv2 });
+  const btn = await ec.evaluate(() => { const h = _screenBtns('', ''); return /openTargetInRibbon/.test(h) && /Targets in Ribbon/.test(h); });
+  check('RB33', 'the button is on the results row inside the Hub', btn);
   check('RB33', 'groups that are not mutants of anything send nothing', await ec.evaluate(() => { _lastResultsData = [{ Sample_ID: 'A', Protein: 'BRD4', DC50_nM: 1, Flag: 'No' }, { Sample_ID: 'A', Protein: 'BRD2', DC50_nM: 2, Flag: 'No' }]; return mutantSets().length === 0; }));
   await ctx.close();
   // Ribbon: the numbers land on the residues they name

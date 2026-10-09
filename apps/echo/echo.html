@@ -4761,10 +4761,35 @@ function openMutantsInRibbon(ev) {
   if (typeof ctxOpen === 'function') ctxOpen([{ hd: 'Which compound?' }].concat(sets.map(function (m) { return { label: m.compound + ' · ' + m.target + ' · ' + m.muts.length + ' mutant' + (m.muts.length === 1 ? '' : 's'), act: function () { send(m); } }; })), b.left, b.bottom + 4);
   else send(sets[0]);
 }
+// The proteins the analysis measured, as structures: each group (a mutant counts as its wild type) with its most potent
+// compound, opened in Ribbon on its best-resolved entry that has a ligand, with that ligand's pocket drawn.
+function ribbonTargets() {
+  var d = (typeof _lastResultsData !== 'undefined' && _lastResultsData) || [], by = {};
+  d.forEach(function (r) {
+    var p = String(r.Protein || '').trim(); if (!p) return;
+    var m = MUT_RE.exec(p), t = (m ? m[1] : p).replace(/[\s_\-]+wt$/i, '').trim(), k = t.toLowerCase(); if (!t) return;
+    var b = by[k] || (by[k] = { target: t, n: 0, best: null });
+    b.n++;
+    if (!m && !_nd(r) && r.DC50_nM > 0 && (!b.best || r.DC50_nM < b.best.DC50_nM)) b.best = r;
+  });
+  return Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return natCmp(a.target, b.target); });
+}
+function openTargetInRibbon(ev) {
+  var ts = ribbonTargets(); if (!ts.length) { echoToast('Run an analysis first: the targets are its groups.', 'warn'); return; }
+  function send(t) {
+    try { window.parent.openApp('ribbon', undefined, undefined, { source: 'echo', ribbon: { query: t.target, pocket: true, from: 'Echo Dose Response', compound: t.best ? t.best.Sample_ID : undefined } }); }
+    catch (e) { echoToast('Could not open Ribbon.', 'err'); }
+  }
+  if (ts.length === 1) { send(ts[0]); return; }
+  var b = ev && ev.currentTarget && ev.currentTarget.getBoundingClientRect ? ev.currentTarget.getBoundingClientRect() : { left: 100, bottom: 100 };
+  if (typeof ctxOpen === 'function') ctxOpen([{ hd: 'Which protein?' }].concat(ts.map(function (t) { return { label: t.target + (t.best ? ' · most potent ' + t.best.Sample_ID : ''), act: function () { send(t); } }; })), b.left, b.bottom + 4);
+  else send(ts[0]);
+}
 function _screenBtns(st, hov) {
   const ico = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><circle cx="12" cy="12" r="8.6"/><path d="M12 1.8v5.2M12 17v5.2M1.8 12H7M17 12h5.2"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/></svg>';
   return '<button style="' + st + '" ' + hov + ' onclick="downloadScreenCsv()" title="One row per compound and assay with everything Hit Finder reads: potency qualifier, hook, coverage, replicates, normalisation, and the compounds that could not be fitted">Screen CSV</button>'
     + (_ribbonReady() && mutantSets().length ? '<button style="' + st + '" ' + hov + ' onclick="openMutantsInRibbon(event)" title="Colour each mutated residue on the protein by how much the mutation moves the potency, in Ribbon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M4 18c3-6 5-10 8-10s5 4 8 10"/><circle cx="12" cy="8" r="2.2"/></svg> Mutants on the structure</button>' : '')
+    + (_ribbonReady() && ribbonTargets().length ? '<button style="' + st + '" ' + hov + ' onclick="openTargetInRibbon(event)" title="Open the protein in Ribbon: its best-resolved structure with a ligand, the pocket drawn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M4 7c2.5-3 5.5-3 8 0s5.5 3 8 0"/><path d="M4 12c2.5-3 5.5-3 8 0s5.5 3 8 0"/><path d="M4 17c2.5-3 5.5-3 8 0s5.5 3 8 0"/></svg> ' + (ribbonTargets().length === 1 ? esc(ribbonTargets()[0].target) + ' in Ribbon' : 'Targets in Ribbon') + '</button>' : '')
     + (_hitFinderReady() ? '<button class="hf-send" onclick="openInHitFinder()" title="Open Hit Finder with this analysis already loaded: hits, hooks and rejections against the criteria you set there">' + ico + ' Send to Hit Finder</button>' : '');
 }
 
