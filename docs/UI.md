@@ -576,3 +576,17 @@ A trace chart answers *how fast, how deep, and did it come back*, so what is dra
   crystal's own ligand, not the compound that was screened).
 - **A library the page needs offline is embedded for the build that has to work offline, from a pinned file whose hash the page
   already states** — the build refuses a file that is not that one.
+
+## A `<header>` inside an app carries a class (2026-10-09)
+
+Inside dHUB the shell hides each app's own header with `header:not([class])`. Any other `<header>` an app draws
+— a History entry, a help panel — must carry a class, or it disappears in the Hub while the standalone app looks
+fine. It used to be `header{display:none}`, and every entry of Echo's History rendered as an empty bar inside the
+Hub. `tools/check_css.py` fails on a second bare `<header>` in an app.
+
+## A 3D view is drawn once per change (Ribbon, 2026-10-09)
+
+3Dmol draws the scene on every `translate`, `zoom`, `setProjection` and style call, and without a GPU one draw
+with soft or full light is ~0.4 s. Anything that moves the camera or the look in several steps runs inside
+`_noDraw(fn)` and draws once at the end (`fitView` and `applyLook` do). RB29 counts the draws.
+

@@ -17,6 +17,10 @@ Helix and Protein Tools each used the whole type and radius scale (79 font sizes
 without ever declaring it, so every string rendered at the inherited 16px and every corner at 0.
 It looked like a design choice, and nothing anywhere said otherwise.
 
+A fourth: a second bare `<header>` in an app. Inside dHUB the shell hides the app's own header with
+`header:not([class])`, so a header used inside the content must carry a class — Echo's History rows were
+plain headers once the rule was `header{display:none}` and every entry rendered empty in the Hub.
+
 A third: white ink literally written on a solid fill (`background:var(--accent|good|warn|danger)` with
 `color:#fff`). In the dark theme every one of those fills is a light pastel, so white on the primary
 button was 2.3:1 (1.7 on the green). Ink on a fill is `var(--on-accent)`: white in light, near-black in dark.
@@ -126,6 +130,14 @@ def white_on_fill(html):
     return out
 
 
+def bare_headers(html):
+    """<header> tags with no class, outside HTML comments. An app may have exactly one: its own."""
+    blank = lambda m: re.sub(r'[^\n]', ' ', m.group(0))
+    code = re.sub(r'<!--[\s\S]*?-->|<style(?:\s[^>]*)?>[\s\S]*?</style>', blank, html, flags=re.I)
+    return [html.count('\n', 0, m.start()) + 1 for m in re.finditer(r'<header(\s[^>]*)?>', code)
+            if not re.search(r'\bclass\s*=', m.group(1) or '')]
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     files = [os.path.abspath(a) for a in args] if args else (
@@ -144,7 +156,9 @@ def main():
             hits += orphans(css, start)
         missing = undefined_tokens(html)
         inks = white_on_fill(html)
-        if hits or missing or inks:
+        heads = bare_headers(html) if '/apps/' in path.replace(os.sep, '/') else []
+        heads = heads[1:]
+        if hits or missing or inks or heads:
             bad += 1
             parts = []
             if hits:
@@ -153,6 +167,8 @@ def main():
                 parts.append('%d undefined token(s)' % len(missing))
             if inks:
                 parts.append('%d white ink on a solid fill' % len(inks))
+            if heads:
+                parts.append('%d bare <header> after the app header' % len(heads))
             print('  %s: %s' % (rel, ', '.join(parts)))
             for ln, txt in hits[:8]:
                 print('     line %-6d %s' % (ln, txt))
@@ -160,13 +176,16 @@ def main():
                 print('     %-18s used %d time(s), never defined' % (name, n))
             for ln, txt in inks[:8]:
                 print('     line %-6d white on a fill: %s   -> color:var(--on-accent)' % (ln, txt))
+            for ln in heads[:8]:
+                print('     line %-6d a <header> with no class: dHUB hides it with the app header -> give it a class' % ln)
         else:
             print('  %s: clean' % rel)
     if bad:
         sys.stderr.write('\ncheck_css.py FAILED — %d file(s) with a problem.\n'
                          'An orphan declaration is folded into the next selector and drops that rule silently;\n'
                          'an undefined token leaves its property at the inherited or initial value;\n'
-                         'white ink on a solid fill is 2.3:1 in the dark theme (use var(--on-accent)).\n' % bad)
+                         'white ink on a solid fill is 2.3:1 in the dark theme (use var(--on-accent));\n'
+                         'a bare <header> inside an app is hidden by dHUB along with the app header.\n' % bad)
         return 1
     return 0
 
