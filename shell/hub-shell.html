@@ -2156,6 +2156,10 @@ window.lbBackup = (function () {
     supported: function () { return typeof window.showDirectoryPicker === 'function'; },
     pickDir: function () { if (typeof window.showDirectoryPicker !== 'function') return Promise.reject(new Error('unsupported')); return window.showDirectoryPicker({ mode: 'readwrite' }).then(function (h) { _dir = h; return idbSet(h).then(function () { return h.name; }); }); },
     dirName: function () { return ensureDir().then(function (h) { return h ? h.name : null; }); },
+    // none · granted · prompt · denied — what the folder will let a write do without asking; 'prompt' means a click is needed
+    state: function () { return ensureDir().then(function (h) { if (!h) return 'none'; if (!h.queryPermission) return 'granted'; return h.queryPermission({ mode: 'readwrite' }); }); },
+    // must run inside a click (Labbook's own, which activates this frame too)
+    allow: function () { return ensureDir().then(function (h) { if (!h) return 'none'; if (!h.requestPermission) return 'granted'; return h.requestPermission({ mode: 'readwrite' }); }); },
     writeFile: function (name, text) { return ensureDir().then(function (h) { if (!h) return Promise.reject(new Error('nodir')); return verify(h).then(function (ok) { if (!ok) return Promise.reject(new Error('denied')); return h.getFileHandle(name, { create: true }).then(function (fh) { return fh.createWritable().then(function (w) { return w.write(text).then(function () { return w.close(); }); }); }); }); }); },
     listFiles: function (prefix) { return ensureDir().then(function (h) { if (!h || !h.keys) return []; return verify(h).then(function (ok) { if (!ok) return []; return drainKeys(h.keys(), []); }).then(function (names) { return prefix ? names.filter(function (n) { return n.indexOf(prefix) === 0; }) : names; }); }); },
     removeFile: function (name) { return ensureDir().then(function (h) { if (!h || !h.removeEntry) return; return verify(h).then(function (ok) { if (!ok) return; return h.removeEntry(name).catch(function () {}); }); }); }
@@ -2634,25 +2638,35 @@ var JournalStore = (function(){
 // Mirrors Labbook's backup: dated JSON to the folder you picked (reuses window.lbBackup),
 // else a download on a manual export. Auto runs once per day; never auto-downloads.
 function _dhubDownload(name, text){ try { var b=new Blob([text],{type:'application/json'}); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(a.href); },1500); } catch(e){} }
+// The whole Hub's journal (cells, freezer, Echo history, Labbook…) to the same folder, at the same time as
+// Labbook's: noon, once a day, catching up on the next open when the Hub was closed at noon. gzip JSON.
+function _hubLastNoon(now){ var d=new Date(now); var n=new Date(d.getFullYear(),d.getMonth(),d.getDate(),12).getTime(); return now>=n?n:n-864e5; }
+function _hubGzip(text){ if (typeof CompressionStream !== 'function') return Promise.resolve(null); try { return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).blob().catch(function(){ return null; }); } catch (e) { return Promise.resolve(null); } }
+var _hubBkT = null;
 function backupJournal(manual){
   try {
+    if (!manual) { clearTimeout(_hubBkT); var nx = _hubLastNoon(Date.now()) + 864e5 + 3000; _hubBkT = setTimeout(function(){ backupJournal(false); }, Math.min(nx - Date.now(), 2147483000)); }
     var today = new Date().toISOString().slice(0,10);
-    if (!manual && localStorage.getItem('hub_journal_last_backup') === today) return;
+    var lastAt = parseInt(localStorage.getItem('hub_journal_last_backup_at') || '0', 10) || 0;
+    if (!manual && lastAt >= _hubLastNoon(Date.now())) return;
     if (!fbReady()) { if (manual) hubToast('Backup needs a connection — the Firebase SDK did not load.', 'err'); return; }
-    firebase.database().ref('journal').once('value').then(function(s){
+    var go = function(){ firebase.database().ref('journal').once('value').then(function(s){
       var data = s.val();
       if (!data) { if (manual) hubToast('Nothing to back up yet.'); return; }
-      var text = JSON.stringify({ app:'dHUB', exported:new Date().toISOString(), journal:data }, null, 2);
-      var name = 'dhub-backup-' + today + '.json';
-      function done(){ try { localStorage.setItem('hub_journal_last_backup', today); } catch(e){} }
-      if (window.lbBackup && window.lbBackup.writeFile) {
-        window.lbBackup.writeFile(name, text).then(function(){ done(); rotateBackups('dhub-backup-', 5); if (manual) hubToast('Backup saved to your backup folder:\n' + name); })
-          // The comment above this function has always said "never auto-downloads". It did:
-          // with no folder chosen, writeFile rejects with 'nodir' and this catch fired a
-          // download on the first load of every day. Only an Export you pressed may download.
-          .catch(function(){ if (manual) { _dhubDownload(name, text); done(); } });
-      } else if (manual) { _dhubDownload(name, text); done(); }
-    }).catch(function(){ if (manual) hubToast('Could not read your data to back up right now.', 'err'); });
+      var text = JSON.stringify({ app:'dHUB', exported:new Date().toISOString(), journal:data });
+      _hubGzip(text).then(function(gz){
+        var name = 'dhub-backup-' + today + (gz ? '.json.gz' : '.json'), body = gz || text;
+        function done(){ try { localStorage.setItem('hub_journal_last_backup', today); localStorage.setItem('hub_journal_last_backup_at', String(Date.now())); } catch(e){} }
+        if (window.lbBackup && window.lbBackup.writeFile) {
+          window.lbBackup.writeFile(name, body).then(function(){ done(); rotateBackups('dhub-backup-', 30); if (manual) hubToast('Backup saved to your backup folder:\n' + name); })
+            // Only an Export you pressed may download; an automatic run with no folder (or one the browser
+            // wants a click for) waits — Labbook's pill asks for that click and runs this again.
+            .catch(function(){ if (manual) { _dhubDownload(name, body); done(); } });
+        } else if (manual) { _dhubDownload(name, body); done(); }
+      });
+    }).catch(function(){ if (manual) hubToast('Could not read your data to back up right now.', 'err'); }); };
+    if (manual || !window.lbBackup || !window.lbBackup.state) return go();
+    window.lbBackup.state().then(function(st){ if (st === 'granted') go(); }).catch(function(){});
   } catch(e){}
 }
 function chooseBackupFolder(){ if (window.lbBackup && window.lbBackup.pickDir) { window.lbBackup.pickDir().then(function(n){ hubToast('Backups will be saved to: ' + n + '\nA daily backup runs automatically, and Labbook uses the same folder.'); backupJournal(true); }).catch(function(){ hubToast('Could not set a folder. A manual export will download instead.', 'err'); }); } else { hubToast('Folder backups are not supported in this browser — use Export to download instead.', 'err'); } }

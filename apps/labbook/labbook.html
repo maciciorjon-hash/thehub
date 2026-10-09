@@ -2427,6 +2427,13 @@ button.lh-lnk{background:none;border:none;font-family:var(--sans);padding:0;}
 :root[data-theme="dark"] .ic-tile.ic-tile{--ic-ac:color-mix(in oklab,var(--hue,#888) 60%,#fff);background:color-mix(in oklab,var(--hue,#888) 13%,var(--surface));}
 :root .ic-tile.ic-tile svg{width:58%;height:58%;display:block;flex:none;}
 /* ic-tile:end */
+
+/* the noon backup waiting on a click (folder permission) */
+.lb-bk-pill{position:fixed;left:16px;right:16px;margin:0 auto;width:fit-content;bottom:calc(16px + var(--lb-safe-b,0px) + var(--lb-tabbar-h,0px));z-index:420;display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;max-width:620px;box-sizing:border-box;padding:8px 8px 8px 14px;border-radius:var(--r-3);background:var(--surface);border:1px solid var(--warn,#c47818);box-shadow:var(--shadow-md);font-size:var(--fs-3);color:var(--text);}
+.lb-bk-pill span{flex:1 1 220px;min-width:0;}
+.lb-bk-pill .btn{flex:none;}
+.lb-bk-x{flex:none;width:28px;height:28px;border:none;background:none;color:var(--text3);font-size:18px;cursor:pointer;border-radius:var(--r-1);}
+.lb-bk-x:hover{background:var(--surface2);color:var(--text);}
 </style>
 <style>
 /* ══ Motion ═══════════════════════════════════════════════════════════════════════════════
@@ -3123,7 +3130,7 @@ html.theme-swap *,html.theme-swap *::before,html.theme-swap *::after{transition:
   <button class="danger" onmousedown="event.preventDefault();tblDelTable()" title="Delete table"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
 </div>
 <input type="file" id="lb-img-input" accept="image/*" multiple style="display:none" onchange="_imgInputChange(this)">
-<input type="file" id="lb-restore-input" accept=".json" style="display:none" onchange="_restoreInputChange(this)">
+<input type="file" id="lb-restore-input" accept=".json,.gz,application/json,application/gzip" style="display:none" onchange="_restoreInputChange(this)">
 <input type="file" id="lb-impexp-input" accept=".json,application/json" style="display:none" onchange="_impExpInputChange(this)">
 <input type="file" id="lb-file-input" multiple style="display:none" onchange="_fileInputChange(this)">
 <div id="print-root"></div>
@@ -21346,41 +21353,65 @@ function _verRestoreBackup(versions){
     })).then(function(){ return _verIdxSave(idx); }).then(function(){ return keys.length; });
   }).catch(function(){ return 0; });
 }
-function doBackup(manual){ var name='labbook-'+todayStr()+'.json'; var pb=_parentBackup();
-  return _buildBackupPayload().then(function(r){ return _doBackupWrite(name,JSON.stringify(r.payload),manual,r,pb); })
-    .catch(function(){ return _doBackupWrite(name,JSON.stringify({_lbBackup:3,savedAt:Date.now(),data:LB.data,blobs:{},versions:{}},null,2),manual,null,pb); });
+// The backup file is gzip-compressed JSON — the whole record, attachment bytes and versions included, at a
+// fifth to a tenth of the size — and Recover → Backup file reads it back as it is. A browser with no
+// CompressionStream writes plain JSON instead; both restore.
+var BACKUP_KEEP=30;
+function _gzipBlob(text){
+  if(typeof CompressionStream!=='function') return Promise.resolve(null);
+  try{ return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).blob().then(function(b){ return new Blob([b],{type:'application/gzip'}); }).catch(function(){ return null; }); }
+  catch(e){ return Promise.resolve(null); }
 }
-function _doBackupWrite(name,text,manual,info,pb){
-  var note=info?(' ('+info.count+' attachment'+(info.count!==1?'s':'')+', '+_fmtBytes(text.length)+')'):'';
-  var chain = pb&&pb.writeFile ? pb.writeFile(name,text).then(function(){return 'fs';})
-    : (function(){ if(typeof window.showDirectoryPicker!=='function') return Promise.reject(); return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h) return Promise.reject(); _selfDir=h; return _verify(h).then(function(v){ if(!v) return Promise.reject(); return h.getFileHandle(name,{create:true}).then(function(fh){ return fh.createWritable().then(function(w){ return w.write(text).then(function(){ return w.close(); }); }); }).then(function(){return 'fs';}); }); }); })();
-  chain.then(function(){
-      _markBackup('folder');
-      if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-',5); }catch(e){} }
-      else { _rotateSelfBackups('labbook-',5); }
-      if(manual) toast('Backup saved to folder ✓'+note); })
+function _gunzipText(buf){
+  return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+// A file the person picked: gzip by its first two bytes (1f 8b), plain text otherwise.
+function _readBackupFile(file){
+  return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); }; r.readAsArrayBuffer(file); })
+    .then(function(buf){ var u=new Uint8Array(buf); if(u.length>2&&u[0]===0x1f&&u[1]===0x8b){ if(typeof DecompressionStream!=='function') throw new Error('This browser cannot open a compressed backup.'); return _gunzipText(buf); }
+      return new TextDecoder().decode(u); });
+}
+function doBackup(manual){ var pb=_parentBackup(), day=todayStr();
+  return _buildBackupPayload().then(function(r){ var text=JSON.stringify(r.payload);
+      return _gzipBlob(text).then(function(gz){ return _doBackupWrite(gz?'labbook-'+day+'.json.gz':'labbook-'+day+'.json', gz||text, manual, Object.assign({}, r, {size:gz?gz.size:text.length, raw:text.length}), pb); }); })
+    .catch(function(){ return _doBackupWrite('labbook-'+day+'.json',JSON.stringify({_lbBackup:3,savedAt:Date.now(),data:LB.data,blobs:{},versions:{}},null,2),manual,null,pb); });
+}
+function _doBackupWrite(name,body,manual,info,pb){
+  var size=info&&info.size!=null?info.size:(body.size!=null?body.size:body.length);
+  var note=info?(' ('+info.count+' attachment'+(info.count!==1?'s':'')+', '+_fmtBytes(size)+(info.raw&&info.raw>size?' — '+_fmtBytes(info.raw)+' uncompressed':'')+')'):'';
+  var chain = pb&&pb.writeFile ? pb.writeFile(name,body).then(function(){return 'fs';})
+    : (function(){ if(typeof window.showDirectoryPicker!=='function') return Promise.reject(); return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h) return Promise.reject(); _selfDir=h; return _verify(h).then(function(v){ if(!v) return Promise.reject(); return h.getFileHandle(name,{create:true}).then(function(fh){ return fh.createWritable().then(function(w){ return w.write(body).then(function(){ return w.close(); }); }); }).then(function(){return 'fs';}); }); }); })();
+  return chain.then(function(){
+      _markBackup('folder'); _bkPill(false);
+      if(pb&&pb.writeFile){ try{ window.parent.rotateBackups && window.parent.rotateBackups('labbook-',BACKUP_KEEP); }catch(e){} }
+      else { _rotateSelfBackups('labbook-',BACKUP_KEEP); }
+      if(manual) toast('Backup saved to folder ✓'+note);
+      return true; })
     .catch(function(){
       // A file dialog you did not ask for is not a backup strategy — it is an interruption, and
       // it was appearing on the first load of every day when no folder had been chosen. Only a
       // backup you pressed the button for may download; the automatic one keeps a local
       // snapshot instead and says so once.
-      if(manual){ _download(name,text); _markBackup('download');
-        toast('Backup downloaded ✓'+note+' (Recover → Backup file to choose a folder)'); return; }
-      _snapshotBackup().then(function(ok){ if(ok) _nudgeBackupFolder(); });
+      if(manual){ _dlBlob(name,body); _markBackup('download');
+        toast('Backup downloaded ✓'+note+' (Recover → Backup file to choose a folder)'); return true; }
+      return _snapshotBackup().then(function(ok){ if(ok) _nudgeBackupFolder(); return false; });
     });
 }
+function _dlBlob(name,body){ try{ var b=body instanceof Blob?body:new Blob([body],{type:'application/json'}); var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(u); a.remove(); },500); }catch(e){} }
 function _fmtBytes(n){ if(n<1024) return n+' B'; if(n<1048576) return (n/1024).toFixed(0)+' KB';
   return (n/1048576).toFixed(n<10485760?1:0)+' MB'; }
 // ── Restore from a backup JSON (labbook-YYYY-MM-DD.json / dhub-backup-*.json) — REPLACES everything ──
 function openRestoreBackup(){ var inp=el('lb-restore-input'); if(!inp) return; inp.value=''; inp.click(); }
 function _restoreInputChange(inp){ var f=(inp.files||[])[0]; inp.value=''; var po=_restoreProjectsOnly; _restoreProjectsOnly=false; if(!f) return;
   if(!po) return restoreFromBackupFile(f);
-  var reader=new FileReader(); reader.onload=function(){ var parsed; try{ parsed=JSON.parse(reader.result); }catch(e){ toast('Could not parse that file — not valid JSON.'); return; }
+  var reader={}; _readBackupFile(f).then(function(t){ reader.result=t; reader.onload(); }).catch(function(e){ toast((e&&e.message)||'Could not read that file.'); });
+  reader.onload=function(){ var parsed; try{ parsed=JSON.parse(reader.result); }catch(e){ toast('Could not parse that file — not valid JSON.'); return; }
     var data=(parsed&&parsed._lbBackup&&parsed.data)?parsed.data:(parsed&&parsed.journal&&parsed.journal.labbook)?parsed.journal.labbook:parsed;
     if(!data||typeof data!=='object'||!('projects' in data)){ toast('That file doesn\u2019t look like a Labbook backup.'); return; }
-    restoreProjectsFrom(data,'backup'); }; reader.readAsText(f); }
+    restoreProjectsFrom(data,'backup'); }; }
 function restoreFromBackupFile(file){
-  var reader=new FileReader();
+  var reader={};
+  _readBackupFile(file).then(function(t){ reader.result=t; reader.onload(); }).catch(function(e){ toast((e&&e.message)||'Could not read that file.'); });
   reader.onload=function(){
     var parsed; try{ parsed=JSON.parse(reader.result); }catch(e){ toast('Could not parse that file — not valid JSON.'); return; }
     // Accept three shapes: the v2 backup ({_lbBackup:2, data, blobs}), a raw LB.data dump
@@ -21419,8 +21450,6 @@ function restoreFromBackupFile(file){
       });
     });
   };
-  reader.onerror=function(){ toast('Could not read that file.'); };
-  reader.readAsText(file);
 }
 // Daily safety net.
 //
@@ -21430,23 +21459,70 @@ function restoreFromBackupFile(file){
 // _download(), so a fresh install spat a JSON file into Downloads on first load with no user
 // action. Now: write to the folder if we have one, otherwise keep a rolling snapshot in
 // IndexedDB and ask (once) for somewhere real to put it.
+//
+// The backup file is written at NOON (Jon, 2026-10-09): once a day, at 12:00, to the folder chosen once. A Hub
+// that was closed at noon catches up on its next open — the rule is "no folder backup since the last noon that
+// has passed", which also covers a laptop that slept through it. A timer is armed for the next noon and
+// re-checked when the page comes back into view. A snapshot (this browser only) is still taken on the day's
+// first load; it is a different safety net and no longer counts as the day's backup.
+function _lastNoon(now){ var d=new Date(now); var n=new Date(d.getFullYear(),d.getMonth(),d.getDate(),12,0,0,0).getTime(); return now>=n?n:n-864e5; }
+function _nextNoon(now){ return _lastNoon(now)+864e5; }
+function _bkDue(now,lastFolderAt){ return !(lastFolderAt>=_lastNoon(now)); }
+function _bkLastFolderAt(){ try{ return parseInt(localStorage.getItem('lb_last_folder_backup_at')||'0',10)||0; }catch(e){ return 0; } }
+var _bkTimer=null, _bkRunning=false;
+function _bkArm(){
+  clearTimeout(_bkTimer);
+  var wait=Math.max(1000,Math.min(_nextNoon(Date.now())-Date.now()+2000,2147483000));
+  _bkTimer=setTimeout(function(){ maybeAutoBackup(); },wait);
+}
+// What the folder says about being written to: none (no folder), granted, prompt (the browser wants a click
+// before it will write again, usually after a restart), denied.
+function _bkFolderState(){
+  var pb=_parentBackup();
+  if(pb&&pb.state) return pb.state().catch(function(){ return 'none'; });
+  if(pb&&pb.dirName) return pb.dirName().then(function(n){ return n?'granted':'none'; }).catch(function(){ return 'none'; });
+  if(typeof window.showDirectoryPicker!=='function') return Promise.resolve('none');
+  return (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ if(!h) return 'none'; _selfDir=h;
+    return h.queryPermission?h.queryPermission({mode:'readwrite'}):'granted'; }).catch(function(){ return 'none'; });
+}
 function maybeAutoBackup(){
+  _bkArm();
   // Backing up a tree we could not read is how a good backup file gets rotated out by a blank
   // one. The snapshot has its own "never replaces a bigger one" rule; a written file does not.
-  if(_localReadFailed||_localLoading) return;
-  var last=''; try{ last=localStorage.getItem('lb_last_backup')||''; }catch(e){}
-  if(last===todayStr()) return;
-  var pb=_parentBackup();
-  // window.lbBackup always exposes writeFile; that says nothing about whether a folder was ever
-  // chosen. Asking dirName() first is what stops the "nodir" rejection turning into a download.
-  var haveDir = (pb && pb.dirName) ? pb.dirName().catch(function(){ return null; })
-    : (typeof window.showDirectoryPicker==='function' ? _idbGet().catch(function(){ return null; })
-                                                      : Promise.resolve(null));
-  haveDir.then(function(h){
-    if(h){ doBackup(false); return; }            // folder configured — write a real file
-    return _snapshotBackup().then(function(ok){ if(ok) _nudgeBackupFolder(); });
-  });
+  if(_localReadFailed||_localLoading||_bkRunning) return Promise.resolve(false);
+  var snapDay=''; try{ snapDay=localStorage.getItem('lb_last_snapshot')||''; }catch(e){}
+  if(snapDay!==todayStr()) _snapshotBackup();
+  if(!_bkDue(Date.now(),_bkLastFolderAt())) return Promise.resolve(false);
+  _bkRunning=true;
+  return _bkFolderState().then(function(st){
+    if(st==='granted') return doBackup(false);
+    if(st==='prompt'){ _bkPill(true); return false; }        // never a dialog: one click on the pill
+    if(snapDay!==todayStr()) _nudgeBackupFolder();
+    return false;
+  }).then(function(r){ _bkRunning=false; return r; }, function(){ _bkRunning=false; return false; });
 }
+// The browser forgets a folder's write permission across restarts unless it was granted "on every visit".
+// Asking needs a click, so the noon backup waits on this pill rather than failing in silence.
+function _bkPill(on){
+  var p=el('lb-bk-pill');
+  if(!on){ if(p) p.remove(); return; }
+  if(p) return;
+  p=document.createElement('div'); p.id='lb-bk-pill'; p.className='lb-bk-pill'; p.setAttribute('role','status');
+  p.innerHTML='<span>Daily backup is waiting: the browser needs you to allow the backup folder again.</span><button class="btn" onclick="_bkAllow()">Allow and back up</button><button class="lb-bk-x" title="Not now" aria-label="Not now" onclick="_bkPill(false)">×</button>';
+  document.body.appendChild(p);
+}
+function _bkAllow(){
+  var pb=_parentBackup();
+  var ask = pb&&pb.allow ? pb.allow()
+    : (_selfDir?Promise.resolve(_selfDir):_idbGet()).then(function(h){ return h&&h.requestPermission?h.requestPermission({mode:'readwrite'}):'denied'; });
+  return Promise.resolve(ask).then(function(st){
+    if(st!=='granted'){ toast('The folder was not allowed — the backup is still waiting.'); return false; }
+    _bkPill(false);
+    try{ if(pb&&window.parent.backupJournal) window.parent.backupJournal(false); }catch(e){}
+    return doBackup(false).then(function(ok){ if(ok) toast('Backed up ✓'); return ok; });
+  }).catch(function(){ toast('The folder was not allowed — the backup is still waiting.'); return false; });
+}
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible'&&typeof _bootSettled!=='undefined'&&_bootSettled) maybeAutoBackup(); });
 // Rolling local snapshot: not a substitute for a real backup file, but it means a browser that
 // can't write to disk still has yesterday's notebook recoverable.
 // How much notebook a payload holds. This exists for one rule: a snapshot never replaces a
@@ -21484,7 +21560,7 @@ function _snapshotBackup(){
             var extra=keys.length-7;
             for(var i=0;i<extra;i++){ try{ db.transaction('h','readwrite').objectStore('h').delete(keys[i]); }catch(e){} }
           };
-          tx.transaction.oncomplete=function(){ _markBackup('snapshot'); res(true); };
+          tx.transaction.oncomplete=function(){ try{ localStorage.setItem('lb_last_snapshot',todayStr()); if(!localStorage.getItem('lb_last_backup')) _markBackup('snapshot'); }catch(e){} res(true); };
           tx.transaction.onerror=function(){ res(false); };
         }catch(e){ res(false); }
         });
@@ -21498,18 +21574,20 @@ function _snapshotBackup(){
 function _markBackup(kind){
   try{ localStorage.setItem('lb_last_backup',todayStr());
        localStorage.setItem('lb_last_backup_kind',kind);
-       localStorage.setItem('lb_last_backup_at',String(Date.now())); }catch(e){}
+       localStorage.setItem('lb_last_backup_at',String(Date.now()));
+       if(kind==='folder') localStorage.setItem('lb_last_folder_backup_at',String(Date.now())); }catch(e){}
 }
 function backupStatus(){
   var d='',k='',at=0;
   try{ d=localStorage.getItem('lb_last_backup')||''; k=localStorage.getItem('lb_last_backup_kind')||'';
        at=parseInt(localStorage.getItem('lb_last_backup_at')||'0',10); }catch(e){}
-  if(!d) return {text:'No backup yet', detail:'No backup yet.'};
+  if(!d) return {text:'No backup yet', detail:'No backup yet. The daily backup file is written at noon to the folder you choose (Recover → Backup file).'};
   var where = k==='folder' ? 'to your backup folder'
             : k==='download' ? 'as a download'
             : 'as a snapshot in this browser only';
   var when = (d===todayStr()) ? 'today' : fmtDate(d);
-  return {text:'Last backup '+when, detail:'Saved '+when+' '+where+'.'};
+  var nx=new Date(_nextNoon(Date.now())), next=' Next backup file: '+(nx.toDateString()===new Date().toDateString()?'today':'tomorrow')+' at 12:00.';
+  return {text:'Last backup '+when, detail:'Saved '+when+' '+where+'.'+next};
 }
 function _nudgeBackupFolder(){
   try{ if(localStorage.getItem('lb_backup_nudged')==='1') return; localStorage.setItem('lb_backup_nudged','1'); }catch(e){}
@@ -21852,7 +21930,7 @@ function _recoverBody(){
     // The honest counter. Attachments added before Storage was enabled, and any whose upload
     // failed, exist in exactly one browser — and until now nothing said so or offered to fix it.
     var pend=0; try{ pend=attNeedingUpload().length; }catch(e){}
-    return '<div class="rc-note">A backup file is the only copy that leaves this machine on its own. Restoring one <b>replaces the entire notebook</b>; a v2 or v3 backup brings its attachments back with it, and v3 carries the version history too.</div>'
+    return '<div class="rc-note">A backup file is the only copy that leaves this machine on its own. One is written <b>every day at noon</b> to the folder you choose (if the notebook is closed at noon, the next time it opens) — compressed JSON (<code>.json.gz</code>) holding the whole notebook, its attachments and its recent versions; the last '+BACKUP_KEEP+' days are kept. Restoring one <b>replaces the entire notebook</b>.</div>'
       +'<div class="rc-act"><button class="btn" onclick="_lbDlgClose();openRestoreBackup()">Choose a backup file…</button>'
       +'<button class="btn ghost" onclick="_lbDlgClose();openRestoreProjectsFile()" title="Put the project list from a backup back, by id, without touching experiments, pages or notes">Projects only…</button>'
       +'<button class="btn ghost" onclick="_lbDlgClose();doBackup(true)">Back up now</button></div>'

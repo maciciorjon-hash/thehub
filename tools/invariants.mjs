@@ -128,6 +128,9 @@
 //                            experiment is laid onto the compound blocks of the user's plate map in reading order,
 //                            overflowing onto further plates with the same layout; controls, concentrations and the
 //                            vehicle are untouched; headers may be named anything, or absent.
+//   B23 the noon backup      The folder backup is due once per noon that has passed (closed at noon: the next open catches up),
+//                            is gzip JSON that restores to the same notebook, is never marked done by a snapshot or a
+//                            cloud adoption, and waits on a pill — writing nothing — when the browser wants a click.
 //   S1 IndexedDB              A notebook bigger than localStorage's ~5 MB saves and survives a
 //                            reload; an older build's localStorage tree is carried over; of two
 //                            copies the newer wins. (the ~5.2 MB ceiling)
@@ -1681,6 +1684,55 @@ async function suite(opts) {
       // a file that is neither is refused, not laid onto the plate
       const junk = parseEchoPicklist('a,b\r\n1,2\r\n');
       if (!junk.error) bad('B22', 'junk', 'an unrelated CSV was accepted');
+    });
+
+
+    // B23 — the noon backup.
+    if (run('B23')) await guard('B23', 'backup', async () => {
+      tick('B23');
+      const D = (y, m, d, h, mi) => new Date(y, m - 1, d, h, mi || 0).getTime();
+      const cases = [
+        ['before noon, backed up yesterday after noon', D(2026,10,9,11,0), D(2026,10,8,12,30), false],
+        ['just after noon, not yet today', D(2026,10,9,12,1), D(2026,10,8,12,30), true],
+        ['after noon, already backed up today after noon', D(2026,10,9,15,0), D(2026,10,9,12,0,5), false],
+        ['closed at noon yesterday, opened this morning', D(2026,10,9,9,0), D(2026,10,7,12,30), true],
+        ['closed at noon today, opened this evening', D(2026,10,9,19,0), D(2026,10,8,12,30), true],
+        ['never backed up', D(2026,10,9,9,0), 0, true]];
+      for (const [n, now, last, want] of cases) if (_bkDue(now, last) !== want) bad('B23', 'due', n + ': said ' + !want);
+      // a fake folder: what a write would put there
+      const writes = []; let state = 'granted';
+      const fake = { dirName: () => Promise.resolve('Backup'), state: () => Promise.resolve(state), allow: () => Promise.resolve('granted'),
+        writeFile: (name, body) => { writes.push({ name, body }); return Promise.resolve(); } };
+      const real = window._parentBackup; window._parentBackup = () => fake;
+      const keep = {}; ['lb_last_backup', 'lb_last_backup_at', 'lb_last_backup_kind', 'lb_last_folder_backup_at', 'lb_last_snapshot'].forEach(k => { keep[k] = localStorage.getItem(k); localStorage.removeItem(k); });
+      try {
+        // a snapshot and a cloud adoption do not count as the day's backup
+        await _snapshotBackup();
+        if (localStorage.getItem('lb_last_folder_backup_at')) bad('B23', 'snapshot', 'a snapshot marked the folder backup done');
+        if (!_bkDue(Date.now(), _bkLastFolderAt())) bad('B23', 'snapshot', 'after a snapshot the folder backup is no longer due');
+        // the browser wants a click: the pill, and nothing written
+        state = 'prompt'; await maybeAutoBackup();
+        if (!document.getElementById('lb-bk-pill')) bad('B23', 'prompt', 'no pill when the folder needs a click');
+        if (writes.length) bad('B23', 'prompt', 'a file was written without the folder being allowed');
+        // the click
+        state = 'granted'; await _bkAllow(); await sleep(200);
+        if (document.getElementById('lb-bk-pill')) bad('B23', 'allow', 'the pill stayed after the folder was allowed');
+        const w = writes.find(x => /^labbook-\d{4}-\d\d-\d\d\.json(\.gz)?$/.test(x.name));
+        if (!w) { bad('B23', 'write', 'no labbook backup was written: ' + writes.map(x => x.name).join(', ')); return; }
+        if (typeof CompressionStream === 'function' && !/\.gz$/.test(w.name)) bad('B23', 'gzip', 'written as ' + w.name);
+        const text = await _readBackupFile(new File([w.body], w.name));
+        const back = JSON.parse(text);
+        if (!back || back._lbBackup !== 3 || JSON.stringify(back.data.experiments) !== JSON.stringify(LB.data.experiments) || JSON.stringify(back.data.projects) !== JSON.stringify(LB.data.projects)) bad('B23', 'restore', 'the file does not read back as this notebook');
+        const raw = JSON.stringify((await _buildBackupPayload()).payload).length, size = w.body.size || w.body.length;
+        if (/\.gz$/.test(w.name) && !(size < raw * 0.6)) bad('B23', 'gzip', 'the compressed file is ' + size + ' bytes for ' + raw + ' of JSON');
+        if (_bkDue(Date.now(), _bkLastFolderAt())) bad('B23', 'marked', 'after the backup it is still due');
+        // and a second run the same afternoon writes nothing more
+        const n = writes.length; await maybeAutoBackup(); await sleep(100);
+        if (writes.length !== n) bad('B23', 'once', 'a second run wrote again');
+      } finally {
+        window._parentBackup = real; _bkPill(false);
+        Object.entries(keep).forEach(([k, v]) => { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); });
+      }
     });
 
     // B8 — a tree in the wrong shape still draws every screen.
