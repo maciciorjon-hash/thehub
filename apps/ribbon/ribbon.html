@@ -1950,11 +1950,28 @@ function projBox(pts,r){
   }
   return n?{x0:x0,y0:y0,x1:x1,y1:y1}:null;
 }
+// 3Dmol draws the scene on every translate, zoom, setProjection and style change. Without a GPU (a laptop on
+// software rendering, a CI runner) one draw with soft or full light costs ~0.4 s, so framing a structure (a zoomTo
+// and up to three corrections) and a style (background, projection, geometry, then the framing) froze the page for
+// 5 s. _noDraw runs fn with the drawing left out — the matrices modelToScreen reads are still brought up to date,
+// which is all the render call did that the framing needs — and the caller draws once at the end.
+var _noDrawDepth=0;
+function _noDraw(fn){
+  var R=viewer&&viewer.renderer;
+  if(!R||typeof R.render!=='function'||_noDrawDepth) return fn();
+  var real=R.render; _noDrawDepth++;
+  R.render=function(sc,cam){ try{ if(sc&&sc.updateMatrixWorld) sc.updateMatrixWorld(); if(cam&&cam.parent===undefined) cam.updateMatrixWorld(); if(cam&&cam.matrixWorldInverse) cam.matrixWorldInverse.getInverse(cam.matrixWorld); }catch(e){} };
+  try{ return fn(); } finally{ R.render=real; _noDrawDepth--; }
+}
 function fitView(opts){
   opts=opts||{};
   if(!viewer||!currentModel) return;
+  if(!_noDrawDepth){ var drew=_noDraw(function(){ return _fitView(opts); }); if(drew!==false) viewer.render(); return; }
+  return _fitView(opts);
+}
+function _fitView(opts){
   var vp=$('viewport'), W=vp.clientWidth, H=vp.clientHeight;
-  if(W<60||H<60) return;
+  if(W<60||H<60) return false;
   var pts=fitPoints(opts.focus); if(!pts.length){ viewer.zoomTo(); return; }
   var v0=viewer.getView(), margin=opts.margin!=null?opts.margin:(state.style==='surface'?0.1:0.08);
   if(opts.focus) viewer.zoomTo(opts.focus); else viewer.zoomTo();
@@ -5533,8 +5550,11 @@ function applyLook(patch,after){
   Object.keys(patch).forEach(function(k){ state[k]=typeof patch[k]==='object'&&patch[k]?_clone(patch[k]):patch[k]; });
   if(after) after();
   syncControlsToState(); $('topColor').value=state.color;
-  applyBackground(); applyProjection(); buildGeometry(); updateLegend(); renderChainList(); renderLigList(); updateSummaries(); if(SEQ.on) seqRender();
-  if(!_userMoved) fitView({animate:true});
+  _noDraw(function(){   // one draw for the whole style, not one per step (see _noDraw)
+    applyBackground(); applyProjection(); buildGeometry(); updateLegend(); renderChainList(); renderLigList(); updateSummaries(); if(SEQ.on) seqRender();
+    if(!_userMoved) fitView({animate:true});
+  });
+  viewer.render();
 }
 function applyPreset(id){
   var p=PRESETS.filter(function(x){ return x.id===id; })[0]; if(!p) return false;

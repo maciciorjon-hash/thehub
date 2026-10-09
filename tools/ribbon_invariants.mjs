@@ -1878,6 +1878,13 @@ async function rb29() {
     const r = await E(id => ({ on: document.querySelector('#presetGrid .preset[data-p=' + id + ']').getAttribute('aria-pressed'), lab: state.residueLabels.length, hl: state.highlights.length, style: state.style, light: state.lighting, bg: state.bg }), id);
     check('RB29', 'the style “' + id + '” changes the picture and keeps the labels and highlights', r.on === 'true' && r.lab === before.lab && r.hl === before.hl && await pic() !== q0, r);
   }
+  // a style is drawn once, not once per step: without a GPU each draw is ~0.4 s and a click on a style froze the page for 5 s (30 s in CI)
+  const draws = await E(() => { const R = viewer.renderer, real = R.render; let n = 0; R.render = function () { n++; return real.apply(this, arguments); };
+    try { _userMoved = false; applyPreset('clean'); const a = n; n = 0; fitView(); const b = n; n = 0; applyPreset('cover'); return { style: a, fit: b, style2: n }; } finally { R.render = real; } });
+  check('RB29', 'a style draws the picture at most twice and framing it once (each draw costs ~0.4 s without a GPU)', draws.style <= 2 && draws.style2 <= 2 && draws.fit === 1, draws);
+  const framed = await E(() => { _userMoved = false; fitView(); const vp = document.getElementById('viewport'), r = vp.getBoundingClientRect(), bb = projBox(fitPoints(), r);
+    return { ok: bb.x0 >= -2 && bb.y0 >= -2 && bb.x1 <= vp.clientWidth + 2 && bb.y1 <= vp.clientHeight + 2 && (bb.x1 - bb.x0 > vp.clientWidth * 0.6 || bb.y1 - bb.y0 > vp.clientHeight * 0.6), bb, w: vp.clientWidth, h: vp.clientHeight }; });
+  check('RB29', 'and framing without drawing still fits the structure to the viewer', framed.ok, framed);
   check('RB29', 'Ternary complex gives the ligand its own colour and its pocket', await E(() => { applyPreset('ternary'); return /^#e642c8$/i.test(ligHex(ligands[0])) && !!state.pockets[ligands[0].key]; }));
   // palettes
   const okabe = await E(() => { const s = document.getElementById('palSel'); s.value = 'okabe'; s.dispatchEvent(new Event('change')); return { mode: state.color, a: chainSolidColor('A'), want: adjustColor(PALETTES.okabe.c[0]) }; });
@@ -2139,7 +2146,7 @@ try {
   browser = await chromium.launch();
   for (const [id, fn] of SUITES) {
     if (!run(id)) continue;
-    try { await fn(); } catch (e) { out.push({ inv: id, case: 'suite', msg: 'the suite threw: ' + String(e && e.message || e).split('\n')[0] }); }
+    try { await fn(); } catch (e) { out.push({ inv: id, case: 'suite', msg: 'the suite threw: ' + (m => { const l = m.split('\n').map(x => x.trim()).filter(Boolean); return l[0] + (l.length > 1 ? ' … ' + l[l.length - 1] : ''); })(String(e && e.message || e)) }); }
   }
   await browser.close();
 } finally { srv.kill(); }
