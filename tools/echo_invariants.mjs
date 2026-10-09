@@ -135,6 +135,10 @@
 //                             "hidden" note is outside the plot; the ranked lists hold exactly the compounds beyond the threshold, most
 //                             selective first; a multi-assay run offers each assay's protein separately instead of overwriting one with the other.
 //
+//   E56 the plate's colours     Raw luminescence is not a colouring of its own (a saved choice of it opens the plate effect); "distance from the
+//       say something, and      fit" is signal − the compound's fitted curve at that dose, to the digit; "plate effect" finds a column planted
+//       names fit their block   15 points low; a dose series run down a column is named turned 90°, every name inside its own block.
+//
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
 import path from 'node:path';
@@ -478,7 +482,7 @@ if (run('E11')) await guard('E11', async () => {
 });
 
 if (run('E12')) await guard('E12', async () => {
-  await E(() => { window._plateUI = { mode: 'raw_lum', scale: 'assay', labels: false, clip: false, q: '' }; window._plateFit = true; document.querySelector('[data-tab="plate"]').click(); });
+  await E(() => { window._plateUI = { mode: 'signal', scale: 'assay', labels: false, clip: false, q: '' }; window._plateFit = true; document.querySelector('[data-tab="plate"]').click(); });
   await pg.waitForTimeout(500);
   const r = await E(() => {
     const out = {};
@@ -531,7 +535,7 @@ if (run('E12')) await guard('E12', async () => {
       }, 120);
     }, 400));
   });
-  check('E12', 'raw luminescence has a scale in the legend', /RLU/.test(r.legend) && /\d/.test(r.legend), r.legend);
+  check('E12', 'the signal map has a scale in the legend', /of control/.test(r.legend) && /\d+%/.test(r.legend), r.legend);
   check('E12', 'tooltip carries the raw reading', /Raw luminescence[\s\S]*RLU/.test(r.tip) && /Compound/.test(r.tip) && /Concentration/.test(r.tip), r.tip);
   check('E12', 'plates fill their cards', r.cvW >= r.cardW * 0.9, { cvW: r.cvW, cardW: r.cardW });
   check('E12', 'a loose query finds exactly that compound, on every plate', r.find.n === r.find.expect && r.find.other === 0 && r.find.n > 0, r.find);
@@ -541,7 +545,7 @@ if (run('E12')) await guard('E12', async () => {
   check('E12', 'colour mode and search survive a tab switch', r2.mode === 'compound' && r2.q.length > 0, r2);
   check('E12', 'compound legend carries the full name', r2.chip, r2);
   check('E12', '96-well plate is drawn as 96', r2.grid[0] === 8 && r2.grid[1] === 12 && r2.aspect < 0.75, r2);
-  await E(() => { window._plateUI = { mode: 'raw_lum', scale: 'assay', labels: false, clip: false, q: '' }; });
+  await E(() => { window._plateUI = { mode: 'signal', scale: 'assay', labels: false, clip: false, q: '' }; });
 });
 
 if (run('E13')) await guard('E13', async () => {
@@ -647,7 +651,7 @@ if (run('E17')) await guard('E17', async () => {
     const sid = bc.replace(/[^a-z0-9]/gi, '_');
     out.legend = document.getElementById('pl-' + sid).textContent; out.meta = document.getElementById('pm-' + sid).textContent;
     window._plateUI.view = 'qc'; renderPlateTab(); out.qc = document.querySelector('.pq-table')?.textContent || ''; out.cards = document.querySelector('.pq-fl')?.textContent || '';
-    keep[bc][id] = JSON.parse(saved); window._plateUI.view = 'maps'; window._plateUI.mode = 'raw_lum'; renderPlateTab();
+    keep[bc][id] = JSON.parse(saved); window._plateUI.view = 'maps'; window._plateUI.mode = 'signal'; renderPlateTab();
     return out;
   });
   check('E17', 'failed rows are kept, good ones parsed', r.n === 2 && r.failed.length === 1 && /^A0?2$/.test(r.failed[0][1]) && /Fault/.test(r.failed[0][2]), r);
@@ -2115,6 +2119,47 @@ if (run('E55')) await guard('E55', async () => {
   check('E55', 'the ranked lists hold exactly the selective compounds, most selective first', r.want === r.listed && r.sorted, { want: r.want, listed: r.listed, sorted: r.sorted });
   check('E55', 'a multi-assay run offers each assay\'s protein, and compares them', r.opts.includes('hibit::BRD4') && r.opts.includes('ctg::BRD4') && /C1:y/.test(r.mp) && /C2:neutral/.test(r.mp), { opts: r.opts, mp: r.mp });
   await E(() => switchPlotType('scatter'));
+});
+
+if (run('E56')) await guard('E56', async () => {
+  await E(() => { window._plateUI = { view: 'maps', mode: 'raw_lum', scale: 'assay', labels: false, clip: false, q: '', cmp: { a: '', b: '', match: 'dose', val: 'm' } }; window._plateFit = true; document.querySelector('[data-tab="plate"]').click(); });
+  await pg.waitForTimeout(500);
+  const r = await E(async () => {
+    const out = { mapped: document.getElementById('plate-mode').value, opts: [...document.getElementById('plate-mode').options].map(o => o.value) };
+    // residual by hand
+    const st = _plateStats, bc = st.barcodes[0], wells = _plateData[bc];
+    let checked = 0, worst = 0;
+    Object.keys(wells).forEach(id => { const w = wells[id]; if (!_plIsCpd(w) || w.m == null || w.c == null || _plExcluded(bc, w)) return; const f = _plFit(w.s, w.p, bc); if (!f || !_cvFitted(f)) return;
+      const want = w.m - (f._gainMode ? f._bot + ((f._tc ?? 100) - f._bot) / (1 + Math.pow(10, f._hill * (f._logec50 - w.c))) : f._bot + ((f._tc ?? 100) - f._bot) / (1 + Math.pow(10, f._hill * (w.c - f._logec50))));
+      const got = st.res[bc][id]; checked++; worst = Math.max(worst, Math.abs(got - want)); });
+    out.res = { checked, worst };
+    // plant a column 15 points low on a copy of a plate: the plate effect must find it
+    const keep = window._plateData, copy = JSON.parse(JSON.stringify(keep[bc]));
+    Object.keys(copy).forEach(id => { const m = /^([A-P])0*(\d+)$/.exec(id); if (m && +m[2] === 7 && copy[id].m != null) copy[id].m -= 15; });
+    window._plateData = Object.assign({}, keep, { PLANTED: copy }); window._plateFitMap = null;
+    const st2 = _plateComputeStats();
+    const col = c => { const v = Object.keys(st2.eff.PLANTED).filter(id => +(/\d+$/.exec(id)[0]) === c).map(id => st2.eff.PLANTED[id]); return v.reduce((a, b) => a + b, 0) / Math.max(1, v.length); };
+    const base = Object.keys(st2.eff[bc]).filter(id => +(/\d+$/.exec(id)[0]) === 7).map(id => st2.eff[bc][id]);
+    out.eff = { c7: col(7), c7base: base.reduce((a, b) => a + b, 0) / Math.max(1, base.length), c8: col(8) };
+    // a vertical plate: the first plate transposed, so every series runs down a column
+    const src = keep[bc], vert = {};
+    Object.keys(src).forEach(id => { const m = /^([A-P])0*(\d+)$/.exec(id); if (!m) return; const r = m[1].charCodeAt(0) - 65, c = +m[2] - 1; if (c > 15 || r > 23) return; vert[String.fromCharCode(65 + c) + ((r + 1) < 10 ? '0' + (r + 1) : (r + 1))] = src[id]; });
+    window._plateData = Object.assign({}, keep, { VERTICAL: vert });
+    window._plateUI.mode = 'compound'; window._plateUI.labels = true; renderPlateTab();
+    await new Promise(r => setTimeout(r, 250));
+    const cv = document.getElementById('pc-VERTICAL'), L = cv ? cv._labels || [] : [];
+    out.v = { n: L.length, rot: L.filter(l => l.rot).length, cut: L.filter(l => /…$/.test(l.text)).length,
+      outside: L.filter(l => l.x - l.w / 2 < l.box.x1 - 0.5 || l.x + l.w / 2 > l.box.x2 + 0.5 || l.y - l.h / 2 < l.box.y1 - 0.5 || l.y + l.h / 2 > l.box.y2 + 0.5).length };
+    const cvH = document.getElementById('pc-' + bc.replace(/[^a-z0-9]/gi, '_')), LH = cvH ? cvH._labels || [] : [];
+    out.h = { n: LH.length, rot: LH.filter(l => l.rot).length };
+    window._plateData = keep; window._plateFitMap = null; window._plateUI.mode = 'signal'; window._plateUI.labels = false; renderPlateTab();
+    return out;
+  });
+  check('E56', 'raw luminescence is no longer a colouring; a saved choice of it opens the plate effect', r.mapped === 'effect' && !r.opts.includes('raw_lum') && ['signal', 'resid', 'effect', 'ctrl'].every(v => r.opts.includes(v)), r);
+  check('E56', 'distance from the fit is signal − the fitted curve, to the digit', r.res.checked > 20 && r.res.worst < 1e-9, r.res);
+  check('E56', 'the plate effect finds a column planted 15 points low', r.eff.c7 - r.eff.c7base < -10 && Math.abs(r.eff.c8) < 8, r.eff);
+  check('E56', 'a series down a column is named turned 90°, inside its block, in full', r.v.n > 5 && r.v.rot === r.v.n && r.v.outside === 0 && r.v.cut === 0, r.v);
+  check('E56', 'a series across a row is named across it', r.h.n > 5 && r.h.rot === 0, r.h);
 });
 
 await browser.close();

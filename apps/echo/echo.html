@@ -381,6 +381,7 @@ td.nd{color:var(--text3);font-style:italic;text-decoration:underline dotted var(
 .pl-lab input[type=range]{width:72px;accent-color:var(--accent);cursor:pointer;}
 .pl-num{font-family:var(--mono);font-size:var(--fs-1);color:var(--text2);font-variant-numeric:tabular-nums;}
 .plate-toolbar .stbtn.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+.plate-hint{padding:6px 16px 0;font-size:var(--fs-2);color:var(--text3);line-height:1.45;}
 .plate-found{display:none;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--surface2);font-size:var(--fs-2);color:var(--text2);flex-shrink:0;}
 .plate-found b{color:var(--text);font-weight:600;}
 .pf-row{display:flex;flex-wrap:wrap;gap:4px;}
@@ -10435,16 +10436,66 @@ const PLATE_COLS = Array.from({length:24},(_,i)=>i+1); // 24 cols
 // where is compound X (search / click a well), what did the reader actually measure (raw
 // luminescence with its scale, and every number in the tooltip), and how do plates compare.
 // Its choices live in window._plateUI so leaving the tab and coming back does not reset them.
-window._plateUI = window._plateUI || {view:'maps', mode:'raw_lum', scale:'assay', labels:false, clip:false, q:'', cmp:{a:'', b:'', match:'dose', val:'m'}};
+window._plateUI = window._plateUI || {view:'maps', mode:'signal', scale:'assay', labels:false, clip:false, q:'', cmp:{a:'', b:'', match:'dose', val:'m'}};
+// What each colouring is FOR. Raw luminescence and signal % were one picture twice (signal is raw divided by one
+// reference per plate), so the readout is signal % — the raw count stays in the tooltip — and the quality views
+// say something the readout cannot: how far each well sits from its own curve, and what the plate's rows and
+// columns do to every well on them.
 const _PLATE_MODES = [
-  {v:'raw_lum', l:'Raw luminescence'},
-  {v:'signal',  l:'Signal intensity (%)'},
-  {v:'compound',l:'Compound'},
-  {v:'group',   l:'Group'},
-  {v:'conc',    l:'Concentration'},
-  {v:'flag',    l:'QC flag'},
-  {v:'transfer',l:'Echo transfers'}
+  {v:'signal',  l:'Signal (% of control)', g:'Readout', h:'The normalised reading of each well. The raw count is in the tooltip.'},
+  {v:'resid',   l:'Distance from the fit', g:'Quality', h:'Each well against its own fitted curve, in points of signal: an outlier well stands out, whatever its dose.'},
+  {v:'effect',  l:'Plate effect (rows · columns)', g:'Quality', h:'What the plate does to a well: the row and column trend left once every curve is taken out — edges, drift, a bad dispenser line.'},
+  {v:'ctrl',    l:'Control wells', g:'Quality', h:'The vehicle controls only, against their own mean: a dead or bright control moves every curve on the plate.'},
+  {v:'flag',    l:'QC flag', g:'Quality', h:'Wells whose compound was flagged by the fit.'},
+  {v:'transfer',l:'Echo transfers', g:'Quality', h:'What the Echo did: dosed, failed, or not dosed.'},
+  {v:'compound',l:'Compound', g:'Layout', h:'One colour per compound.'},
+  {v:'group',   l:'Group', g:'Layout', h:'One colour per group (target).'},
+  {v:'conc',    l:'Concentration', g:'Layout', h:'Dose, on a log scale.'}
 ];
+function _plModeOf(v) { return v === 'raw_lum' ? 'effect' : (_PLATE_MODES.some(m => m.v === v) ? v : 'signal'); }
+// diverging pastel: blue below, coral above, a quiet middle
+function _plDiv(t, dark) {
+  t = Math.max(-1, Math.min(1, t || 0));
+  const mid = dark ? [44, 49, 66] : [242, 243, 247], lo = dark ? [104, 146, 214] : [94, 135, 197], hi = dark ? [226, 128, 112] : [214, 110, 96];
+  const to = t < 0 ? lo : hi, a = Math.pow(Math.abs(t), 0.8);
+  return 'rgb(' + mid.map((v, i) => Math.round(v + (to[i] - v) * a)).join(',') + ')';
+}
+// Residual = signal − the compound's own fitted curve at that dose; plate effect = a two-way median polish of
+// the residuals (controls count as residuals from 100 %), so the row and column trend is what is left once
+// every compound's dose response is taken out. Computed here, never written into the plate data.
+function _plQuality(st) {
+  const pdata = window._plateData || {}, res = {}, eff = {}, ctl = {};
+  const grid = window._plateGrid || _plGrid(pdata);
+  st.barcodes.forEach(bc => {
+    const R = res[bc] = {}, wells = pdata[bc], cm = [];
+    Object.keys(wells).forEach(id => { const w = wells[id]; if (w && w.ctrl && w.raw != null) cm.push(w.raw); });
+    const cMean = cm.length ? cm.reduce((a, b) => a + b, 0) / cm.length : null;
+    const C = ctl[bc] = {};
+    Object.keys(wells).forEach(id => {
+      const w = wells[id]; if (!w) return;
+      if (w.ctrl) { if (w.raw != null && cMean) C[id] = (w.raw / cMean - 1) * 100; if (w.m != null) R[id] = w.m - 100; return; }
+      if (!_plIsCpd(w) || w.m == null || w.c == null || _plExcluded(bc, w)) return;
+      const f = _plFit(w.s, w.p, bc); if (!f || !_cvFitted(f)) return;
+      const y = _cvFitY(f, w.c); if (isFinite(y)) R[id] = w.m - y;
+    });
+    // median polish on the plate grid
+    const nR = grid.nR, nC = grid.nC, M = [];
+    for (let r = 0; r < nR; r++) { M.push([]); for (let c = 0; c < nC; c++) { const id1 = PLATE_ROWS[r] + (c + 1 < 10 ? '0' + (c + 1) : c + 1), id2 = PLATE_ROWS[r] + (c + 1); const v = R[id1] != null ? R[id1] : R[id2]; M[r].push(v != null ? v : null); } }
+    const med = a => { a = a.filter(v => v != null).sort((x, y) => x - y); return a.length ? (a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2) : 0; };
+    const re = new Array(nR).fill(0), ce = new Array(nC).fill(0);
+    for (let it = 0; it < 4; it++) {
+      for (let r = 0; r < nR; r++) { const m = med(M[r]); re[r] += m; M[r] = M[r].map(v => v == null ? null : v - m); }
+      for (let c = 0; c < nC; c++) { const m = med(M.map(row => row[c])); ce[c] += m; M.forEach(row => { if (row[c] != null) row[c] -= m; }); }
+    }
+    const E = eff[bc] = {};
+    for (let r = 0; r < nR; r++) for (let c = 0; c < nC; c++) { const n = M.map(x => x[c]).filter(v => v != null).length; if (n < 2) continue;
+      const id = PLATE_ROWS[r] + (c + 1 < 10 ? '0' + (c + 1) : c + 1); E[id] = re[r] + ce[c]; E[PLATE_ROWS[r] + (c + 1)] = E[id]; }
+  });
+  const span = (obj, floor) => { const v = []; Object.values(obj).forEach(o => Object.values(o).forEach(x => { if (isFinite(x)) v.push(Math.abs(x)); })); v.sort((a, b) => a - b); return Math.max(floor, v.length ? v[Math.floor(0.95 * (v.length - 1))] : floor); };
+  st.res = res; st.eff = eff; st.ctl = ctl;
+  st.resSpan = span(res, 10); st.effSpan = span(eff, 5); st.ctlSpan = span(ctl, 10);
+  return st;
+}
 // Digit runs compare as numbers and punctuation is ignored, so "eda-13", "EDA13" and "EDA-013"
 // are one name when you type them into the search.
 function _plKey(s) { return String(s == null ? '' : s).toLowerCase().replace(/\d+/g, m => String(+m)).replace(/[^a-z0-9]+/g, ''); }
@@ -10519,6 +10570,7 @@ function _plateComputeStats() {
   st.cIndex = new Map(st.compounds.map((c, i) => [c, i]));
   st.gIndex = new Map(st.groups.map((c, i) => [c, i]));
   window._plateStats = st;
+  try { _plQuality(st); } catch (e) { st.res = {}; st.eff = {}; st.ctl = {}; }
   return st;
 }
 // The range one plate is coloured on: per group (what the plate mostly holds), per plate, or all.
@@ -10592,7 +10644,7 @@ function _plateMapsRender(body) {
     </div>
     <span class="pl-tsep" aria-hidden="true"></span>
     <label class="pl-lab">Colour by
-      <select id="plate-mode" onchange="plateUIChanged()">${_PLATE_MODES.map(m => opt(m.v, m.l, U.mode)).join('')}</select>
+      <select id="plate-mode" onchange="plateUIChanged()">${['Readout', 'Quality', 'Layout'].map(g => '<optgroup label="' + g + '">' + _PLATE_MODES.filter(m => m.g === g).map(m => opt(m.v, m.l, _plModeOf(U.mode))).join('') + '</optgroup>').join('')}</select>
     </label>
     <label class="pl-lab" id="plate-scale-wrap" title="What the colours span: the group each plate mostly holds, that plate alone, or every plate together">Scale
       <select id="plate-scale" onchange="plateUIChanged()">${opt('assay', 'Per group', U.scale)}${opt('plate', 'Per plate', U.scale)}${opt('all', 'All plates', U.scale)}</select>
@@ -10608,6 +10660,7 @@ function _plateMapsRender(body) {
     <button class="stbtn" onclick="plateExportWells()" title="Every well shown — or only the wells your search matches — as a CSV: plate, well, compound, dose, raw and normalised reading, exclusions, transfer status">Wells CSV</button>
     ${_plInHub() ? '<button class="stbtn" onclick="plateSendImages()" title="Attach these plate maps, as they are drawn now, to an experiment in Labbook">Send to Labbook</button>' : ''}
   </div>
+  <div class="plate-hint" id="plate-hint">${esc((_PLATE_MODES.find(m => m.v === _plModeOf(U.mode)) || {}).h || '')}</div>
   <div class="plate-found" id="plate-found" role="status" aria-live="polite"></div>
   <div class="plate-wrap" id="plate-wrap">${st.barcodes.map(bc => { const id = bc.replace(/[^a-z0-9]/gi, '_'); return `
     <div class="plate-block" id="pb-${id}" data-bc="${esc(bc)}">
@@ -10683,7 +10736,9 @@ function redrawAllPlates() {
   if (!window._plateData || !document.getElementById('plate-wrap')) return;
   const st = _plateComputeStats();
   const U = window._plateUI, scaleWrap = document.getElementById('plate-scale-wrap'), clipWrap = document.getElementById('plate-clip-wrap');
-  const ranged = U.mode === 'raw_lum' || U.mode === 'signal';
+  U.mode = _plModeOf(U.mode);
+  const ranged = U.mode === 'signal';
+  const hint = document.getElementById('plate-hint'); if (hint) hint.textContent = (_PLATE_MODES.find(m => m.v === U.mode) || {}).h || '';
   if (scaleWrap) scaleWrap.style.display = ranged ? '' : 'none';
   if (clipWrap) clipWrap.style.display = ranged ? '' : 'none';
   const M = _plMatcher(U.q);
@@ -10753,6 +10808,21 @@ function _plateHit(e) {
   return {bc, row, col, wellId, w: _plWell(window._plateData[bc], row, col)};
 }
 
+// The largest axis-aligned rectangle made only of the given cells (histogram method over the block's box).
+function _plBestRect(comp) {
+  const rs = comp.map(x => x[0]), cs = comp.map(x => x[1]);
+  const r0 = Math.min(...rs), c0 = Math.min(...cs), nr = Math.max(...rs) - r0 + 1, nc = Math.max(...cs) - c0 + 1;
+  const on = new Set(comp.map(([r, c]) => (r - r0) * 1000 + (c - c0)));
+  const h = new Array(nc).fill(0); let best = { a: 0, r1: r0, r2: r0, c1: c0, c2: c0 };
+  for (let r = 0; r < nr; r++) {
+    for (let c = 0; c < nc; c++) h[c] = on.has(r * 1000 + c) ? h[c] + 1 : 0;
+    for (let c = 0; c < nc; c++) { if (!h[c]) continue; let mh = h[c];
+      for (let c2 = c; c2 < nc && h[c2]; c2++) { mh = Math.min(mh, h[c2]); const a = mh * (c2 - c + 1);
+        // prefer the larger area; on a tie, the squarer one (a name reads better on it)
+        if (a > best.a || (a === best.a && Math.abs(mh - (c2 - c + 1)) < Math.abs((best.r2 - best.r1 + 1) - (best.c2 - best.c1 + 1)))) best = { a, r1: r0 + r - mh + 1, r2: r0 + r, c1: c0 + c, c2: c0 + c2 }; } }
+  }
+  return best;
+}
 function drawPlateCanvas(bc, M) {
   const safeId = bc.replace(/[^a-z0-9]/gi, '_');
   const canvas = document.getElementById('pc-' + safeId);
@@ -10762,7 +10832,7 @@ function drawPlateCanvas(bc, M) {
   if (M === undefined) M = _plMatcher(U.q);
 
   const dpr = window.devicePixelRatio || 1;
-  const mode = U.mode, scaleMode = U.scale, showLabels = U.labels;
+  const mode = _plModeOf(U.mode), scaleMode = U.scale, showLabels = U.labels;
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   const grid = window._plateGrid || {nR: 16, nC: 24}, nRows = grid.nR, nCols = grid.nC;
 
@@ -10816,9 +10886,12 @@ function drawPlateCanvas(bc, M) {
     const cx = padL + ci * cellW + 1, cy = padT + ri * cellH + 1, rw = cellW - 2, rh = cellH - 2;
     let fill;
     if (!w) fill = empty;
+    else if (mode === 'ctrl') { const v = (st.ctl[bc] || {})[wellId]; fill = w.ctrl && v != null ? _plDiv(v / st.ctlSpan, isDark) : (isDark ? '#1f2433' : '#f1f2f6'); }
+    else if (mode === 'effect' && w.ctrl) { const v = (st.eff[bc] || {})[wellId]; fill = v != null ? _plDiv(v / st.effSpan, isDark) : nodata; }
     else if (w.ctrl) fill = isDark ? 'rgba(0,200,150,.25)' : 'rgba(0,200,150,.35)';
-    else if (mode === 'raw_lum') fill = w.raw != null ? ramp(w.raw, rMin, rMax) : nodata;
     else if (mode === 'signal') fill = w.m != null ? ramp(w.m, sMin, sMax) : nodata;
+    else if (mode === 'resid') { const v = (st.res[bc] || {})[wellId]; fill = v != null ? _plDiv(v / st.resSpan, isDark) : nodata; }
+    else if (mode === 'effect') { const v = (st.eff[bc] || {})[wellId]; fill = v != null ? _plDiv(v / st.effSpan, isDark) : nodata; }
     else if (mode === 'compound') fill = w.s ? _plNameColor(st.cIndex.get(w.s) ?? 0, isDark) : nodata;
     else if (mode === 'group') fill = w.p ? _plNameColor(st.gIndex.get(w.p) ?? 0, isDark) : nodata;
     else if (mode === 'conc') fill = w.c != null ? `rgb(${Math.round(30 + 200 * ((w.c - cMin) / (cMax - cMin || 1)))},${Math.round(100 + 80 * ((w.c - cMin) / (cMax - cMin || 1)))},${Math.round(200 - 160 * ((w.c - cMin) / (cMax - cMin || 1)))})` : nodata;
@@ -10863,6 +10936,9 @@ function drawPlateCanvas(bc, M) {
   // Names: one label per BLOCK of touching wells, sized to that block. A single label at the
   // centre of all of a compound's wells landed on other compounds' wells whenever they were
   // split across the plate, and cut every name to nine characters.
+  // Each name goes on the largest rectangle of wells inside its block (an L-shaped block is named inside itself,
+  // not over its neighbour), and turns 90° when the block is a column the name does not fit across — a dose
+  // series run down the plate used to lose its name to "…".
   const named = [];
   Object.keys(cells).sort(natCmp).forEach(name => {
     const set = new Set(cells[name].map(([r, c]) => r * 100 + c)), seen = new Set();
@@ -10873,29 +10949,45 @@ function drawPlateCanvas(bc, M) {
         const [r, c] = q.pop(); comp.push([r, c]);
         [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dr, dc]) => { const k = (r + dr) * 100 + c + dc; if (set.has(k) && !seen.has(k)) { seen.add(k); q.push([r + dr, c + dc]); } });
       }
-      const cs = comp.map(x => x[1]), rs = comp.map(x => x[0]);
-      const c1 = Math.min(...cs), c2 = Math.max(...cs), r1 = Math.min(...rs), r2 = Math.max(...rs);
-      named.push({name, x: padL + (c1 + c2 + 1) / 2 * cellW, y: padT + (r1 + r2 + 1) / 2 * cellH, maxW: (c2 - c1 + 1) * cellW - 3 * px, n: comp.length});
+      const rc = _plBestRect(comp);
+      named.push({name, r1: rc.r1, r2: rc.r2, c1: rc.c1, c2: rc.c2, n: comp.length});
     });
   });
+  const labels = [];
   if (named.length) {
-    let fs = Math.max(7 * px, Math.min(12 * px, cellW * 0.52));
+    const fs0 = Math.max(7 * px, Math.min(12 * px, cellW * 0.52)), minFs = 6.5 * px;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
     named.forEach(L => {
-      let size = fs, t = L.name;
-      ctx.font = `700 ${size}px 'IBM Plex Sans',sans-serif`;
-      while (ctx.measureText(t).width > L.maxW && size > 6.5 * px) { size -= 0.5 * px; ctx.font = `700 ${size}px 'IBM Plex Sans',sans-serif`; }
-      if (ctx.measureText(t).width > L.maxW) {
-        while (t.length > 2 && ctx.measureText(t + '…').width > L.maxW) t = t.slice(0, -1);
+      const bw = (L.c2 - L.c1 + 1) * cellW - 3 * px, bh = (L.r2 - L.r1 + 1) * cellH - 3 * px;
+      const cx = padL + (L.c1 + L.c2 + 1) / 2 * cellW, cy = padT + (L.r1 + L.r2 + 1) / 2 * cellH;
+      const fit = (maxLen, maxThick) => {   // the largest size (≤ fs0, ≤ the block's thickness) at which the name fits
+        let size = Math.min(fs0, maxThick * 0.8);
+        ctx.font = `700 ${size}px 'IBM Plex Sans',sans-serif`;
+        while (ctx.measureText(L.name).width > maxLen && size > minFs) { size -= 0.5 * px; ctx.font = `700 ${size}px 'IBM Plex Sans',sans-serif`; }
+        return { size, ok: ctx.measureText(L.name).width <= maxLen && size >= minFs - 1e-9 };
+      };
+      // across the block unless turning it gives a clearly larger name (a column of wells is short across)
+      let rot = false, f = fit(bw, bh);
+      if (bh > bw) { const v = fit(bh, bw); if ((v.ok && (!f.ok || v.size > f.size * 1.15)) || (!f.ok && v.size >= f.size)) { rot = true; f = v; } }
+      let t = L.name, maxLen = rot ? bh : bw;
+      ctx.font = `700 ${f.size}px 'IBM Plex Sans',sans-serif`;
+      if (ctx.measureText(t).width > maxLen) {
+        while (t.length > 2 && ctx.measureText(t + '…').width > maxLen) t = t.slice(0, -1);
         t = t + '…';
         if (t.length < 4) return;
       }
+      const tw = ctx.measureText(t).width;
+      ctx.save(); ctx.translate(cx, cy); if (rot) ctx.rotate(-Math.PI / 2);
       ctx.strokeStyle = isDark ? 'rgba(0,0,0,0.78)' : 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2.6 * px;
-      ctx.strokeText(t, L.x, L.y);
+      ctx.strokeText(t, 0, 0);
       ctx.fillStyle = isDark ? '#fff' : '#12131a';
-      ctx.fillText(t, L.x, L.y);
+      ctx.fillText(t, 0, 0);
+      ctx.restore();
+      labels.push({ name: L.name, text: t, rot, size: f.size, x: cx, y: cy, w: rot ? f.size : tw, h: rot ? tw : f.size,
+        box: { x1: padL + L.c1 * cellW, x2: padL + (L.c2 + 1) * cellW, y1: padT + L.r1 * cellH, y2: padT + (L.r2 + 1) * cellH } });
     });
   }
+  canvas._labels = labels;
 
   // Legend — says what the colours mean AND the numbers they span for this plate
   const wellsArr = Object.values(wells);
@@ -10907,7 +10999,10 @@ function drawPlateCanvas(bc, M) {
       + (names.length > cap ? `<span class="pl-item pl-more">+${names.length - cap} more</span>` : '');
   };
   let lg;
-  if (mode === 'raw_lum') lg = bar(_plRamp(0), _plRamp(1), _plFmtCount(rMin), _plFmtCount(rMax), 'RLU' + (U.clip ? ' · 2–98%' : '')) + ctrlChip;
+  const div3 = (span, unit) => `<div class="pl-item"><span class="pl-num">−${+span.toPrecision(2)}</span><div class="pl-bar" style="background:linear-gradient(90deg,${_plDiv(-1, isDark)},${_plDiv(0, isDark)},${_plDiv(1, isDark)});"></div><span class="pl-num">+${+span.toPrecision(2)}</span><span class="pl-unit">${unit}</span></div>`;
+  if (mode === 'resid') lg = div3(st.resSpan, 'points of signal, observed − fitted') + `<div class="pl-item"><div class="pl-swatch" style="background:${nodata};"></div> No fit / not a compound</div>`;
+  else if (mode === 'effect') lg = div3(st.effSpan, 'points, row + column trend');
+  else if (mode === 'ctrl') lg = div3(st.ctlSpan, '% vs the mean of this plate\'s controls');
   else if (mode === 'signal') lg = bar(_plRamp(0), _plRamp(1), Math.round(sMin) + '%', Math.round(sMax) + '%', 'of control' + (U.clip ? ' · 2–98%' : '')) + ctrlChip;
   else if (mode === 'compound') {
     const here = new Map(); wellsArr.forEach(w => { if (_plIsCpd(w)) here.set(w.s, (here.get(w.s) || 0) + 1); });
@@ -11333,6 +11428,9 @@ function plateMouseMove(e) {
     if (w.c != null) inner += row('Concentration', _cvFmtConc(Math.pow(10, w.c + 9)));
     if (w.raw != null) inner += row('Raw luminescence', Math.round(w.raw).toLocaleString('en-US') + ' RLU');
     if (w.m != null) inner += row('Signal', w.m + '% of control');
+    { const st = window._plateStats || {}, rv = ((st.res || {})[bc] || {})[wellId], ev = ((st.eff || {})[bc] || {})[wellId];
+      if (rv != null && !w.ctrl) inner += row('Distance from the fit', (rv >= 0 ? '+' : '−') + Math.abs(rv).toFixed(1) + ' points');
+      if (ev != null) inner += row('Plate effect here', (ev >= 0 ? '+' : '−') + Math.abs(ev).toFixed(1) + ' points'); }
     if (w.z) inner += `<span style="color:var(--text3);">0% control well</span><br>`;
     if (w.f) inner += `<span style="color:var(--accent);">Echo transfer failed</span> ${esc(w.f)}${w.fs ? ' · ' + esc(w.fs) : ''}<br>`;
     if (_plExcluded(bc, w)) inner += `<span style="color:var(--accent);">Excluded from the fit</span><br>`;
