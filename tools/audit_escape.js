@@ -84,6 +84,11 @@ window.__escapeAudit = (opts = {}) => {
   // text over text: two runs that are not nested in one another and whose boxes intersect
   // only the part of a run that is painted counts: whatever a scroll box or clip has cut off (the letters of a scrolling preview, scrolled out of it) is not on screen
   const painted = (el, r) => { let L = r.left, T0 = r.top, R = r.right, B = r.bottom; for (let a = el; a && a !== document.documentElement; a = a.parentElement) { const cs = getComputedStyle(a); if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue; const b = a.getBoundingClientRect(); if (cs.overflowX !== 'visible') { L = Math.max(L, b.left); R = Math.min(R, b.right); } if (cs.overflowY !== 'visible') { T0 = Math.max(T0, b.top); B = Math.min(B, b.bottom); } } return R - L > 0.5 && B - T0 > 0.5 ? { left: L, right: R, top: T0, bottom: B, width: R - L, height: B - T0 } : null; };
+  // a run inside a floating control (a fixed button or bar) covers the page under it by design, as long as that text can be
+  // scrolled clear of it — the sweep's own "covered" rule. At the scroller's end it must be clear, and that is still a finding.
+  const floatOf = el => { for (let a = el; a && a !== document.documentElement; a = a.parentElement) { const p = getComputedStyle(a).position; if (p === 'fixed' || p === 'sticky') return a; } return null; };
+  const scrollerOf = el => { for (let n = el.parentElement; n && n !== document.documentElement; n = n.parentElement) { const cs = getComputedStyle(n); if (/(auto|scroll)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 1) return n; } return document.scrollingElement; };
+  const scrollsClear = (el, bar) => { if (getComputedStyle(bar).position === 'sticky') return true; const sc = scrollerOf(el); if (!sc) return false; const br = bar.getBoundingClientRect(); return (br.top + br.bottom) / 2 > innerHeight / 2 ? sc.scrollTop + sc.clientHeight < sc.scrollHeight - 2 : sc.scrollTop > 2; };
   const T = items.filter(i => i._text && i.rects.length === 1).map(i => ({ el: i.el, r: painted(i.el, i.rects[0]) })).filter(t => t.r && t.r.bottom > 0 && t.r.top < innerHeight * 3);
   if (T.length < 2500) {
     T.sort((a, b) => a.r.left - b.r.left);
@@ -92,6 +97,7 @@ window.__escapeAudit = (opts = {}) => {
       const A = T[i], B = T[j]; if (B.r.left >= A.r.right - 1) break;
       if (A.el === B.el || A.el.contains(B.el) || B.el.contains(A.el)) continue;
       const LA = A.el.closest('#hf-drawer,[role=dialog],.modal,.dlg'), LB = B.el.closest('#hf-drawer,[role=dialog],.modal,.dlg'); if (LA !== LB) continue;   // a layer over the page covers it by design
+      { const FA = floatOf(A.el), FB = floatOf(B.el); if (FA !== FB && ((FA && !FB && scrollsClear(B.el, FA)) || (FB && !FA && scrollsClear(A.el, FB)))) continue; }
       const ox = Math.min(A.r.right, B.r.right) - Math.max(A.r.left, B.r.left), oy = Math.min(A.r.bottom, B.r.bottom) - Math.max(A.r.top, B.r.top);
       if (ox > 2 && oy > 3) { const cx = Math.max(A.r.left, B.r.left) + ox / 2, cy = Math.max(A.r.top, B.r.top) + oy / 2; if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) continue; const tp = document.elementFromPoint(cx, cy); if (!tp || !(A.el.contains(tp) || B.el.contains(tp))) continue; const own = t => { const x = t.r.left + t.r.width / 2, y = t.r.top + t.r.height / 2; if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false; const e = document.elementFromPoint(x, y); return !!e && (t.el.contains(e) || e.contains(t.el)); }; if (!own(A) || !own(B)) continue; const k = desc(A.el) + '|' + desc(B.el); if (seenP.has(k)) continue; seenP.add(k); out.push(`text "${txt(A.el)}" overlaps "${txt(B.el)}" by ${Math.round(ox)}×${Math.round(oy)}px (${desc(A.el)} / ${desc(B.el)})`); }
     }
