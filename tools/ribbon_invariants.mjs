@@ -2121,8 +2121,8 @@ async function rb33() {
   await ec.evaluate(() => { const o = window.ctxOpen; window.ctxOpen = (items) => { window.__items = items.map(i => i.label || i.hd); items.find(i => /^BRD4/.test(i.label || '')).act(); }; openTargetInRibbon(); window.ctxOpen = o; });
   const items = await ec.evaluate(() => window.__items), sent2 = await pg.evaluate(() => window.__sent), rv2 = sent2[sent2.length - 1].ctx.ribbon;
   check('RB33', 'with several it asks which, and opens that one with its pocket and the compound named', items[0] === 'Which protein?' && items.length === 4 && rv2.query === 'BRD4' && rv2.pocket === true && rv2.compound === 'CPD-1' && !rv2.values, { items, rv2 });
-  const btn = await ec.evaluate(() => { const h = _screenBtns('', ''); return /openTargetInRibbon/.test(h) && /Targets in Ribbon/.test(h); });
-  check('RB33', 'the button is on the results row inside the Hub', btn);
+  const btn = await ec.evaluate(() => { const l = _resSendItems().map(i => i.label); return l.includes('Targets in Ribbon') && l.includes('Mutants on the structure') && /resSendMenu/.test(_resBar()); });
+  check('RB33', 'Send to ▾ on the results row offers the targets and the mutants inside the Hub', btn);
   check('RB33', 'groups that are not mutants of anything send nothing', await ec.evaluate(() => { _lastResultsData = [{ Sample_ID: 'A', Protein: 'BRD4', DC50_nM: 1, Flag: 'No' }, { Sample_ID: 'A', Protein: 'BRD2', DC50_nM: 2, Flag: 'No' }]; return mutantSets().length === 0; }));
   await ctx.close();
   // Ribbon: the numbers land on the residues they name
