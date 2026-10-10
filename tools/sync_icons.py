@@ -35,6 +35,7 @@ ACS = 'class="ac{m}" style="stroke:var(--ic-ac,currentColor)"'               # a
 def acf(m=''): return ACF.format(m=(' '+m) if m else '')
 def acs(m=''): return ACS.format(m=(' '+m) if m else '')
 DIM = 'opacity=".45"'
+FL = 'class="fl" fill="currentColor" stroke="none" opacity=".16"'   # the rail's soft fill
 
 def _helix(a0=(5, 20), a1=(19, 4), R=4.2, turns=3, n=400):
     """An alpha helix seen side-on, the way a ribbon diagram draws one: the coil's front turns
@@ -168,24 +169,36 @@ APP_ICONS = {
 }
 
 UI_ICONS = {
-    'planner':   ('<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'
+    # The rail's eight are duotone: an outline at the rail's stroke and one soft fill (class "fl")
+    # that the rail lifts when the entry is active. Drawn to read at 20-22px, not at 19.
+    'planner':   ('<path '+FL+' d="M3.5 9.5V7.5A2.5 2.5 0 0 1 6 5h12a2.5 2.5 0 0 1 2.5 2.5v2z"/>'
+                  '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>'
                   '<path class="m1" d="M8.8 15l2.2 2.2 4.2-4.4" pathLength="1"/>'),
-    'notebook':  ('<rect x="5" y="3" width="14" height="18" rx="2.2"/><path d="M8.5 3v18" opacity=".55"/>'
-                  '<path class="m1" d="M11.5 8h4.5M11.5 11.5h4.5M11.5 15h2.8" pathLength="1"/>'),
-    'designer':  ('<rect class="m1" x="3.5" y="3.5" width="10" height="4" rx="1.5"/><rect class="m1" x="7" y="10" width="10" height="4" rx="1.5"/>'
-                  '<rect class="m1" x="10.5" y="16.5" width="10" height="4" rx="1.5"/><path d="M6 7.5V12h1M9.5 14v4.5h1" opacity=".55"/>'),
-    'analysis':  ('<path d="M4 3.5v14.5a2 2 0 0 0 2 2h14.5" opacity=".55"/>'
-                  '<path class="m1" d="M6.3 7.2h1.6c4.2 0 4.2 9.6 8.4 9.6h1.9" pathLength="1"/>'
-                  '<circle cx="8.4" cy="7.2" r="1.05" fill="currentColor" stroke="none"/>'
-                  '<circle cx="12.1" cy="12" r="1.05" fill="currentColor" stroke="none"/>'
-                  '<circle cx="16" cy="16.8" r="1.05" fill="currentColor" stroke="none"/>'),
-    'archive':   APP_ICONS['protocols'].replace(acf('m1'), 'class="m1" fill="currentColor" stroke="none"'),
-    'cells':     ('<circle class="m1" cx="8.9" cy="9.2" r="5"/><circle class="m2" cx="16.1" cy="15.9" r="3.8"/>'
-                  '<circle class="m1" cx="8.9" cy="9.2" r="1.7" fill="currentColor" stroke="none"/>'
-                  '<circle class="m2" cx="16.1" cy="15.9" r="1.3" fill="currentColor" stroke="none"/>'),
-    'apps':      ''.join('<rect class="m1" x="%s" y="%s" width="6.5" height="6.5" rx="2"/>' % (x, y)
-                         for y in (4, 13.5) for x in (4, 13.5)),
-    'fold':      '<path d="M14.5 6l-6 6 6 6"/>',
+    'notebook':  ('<path '+FL+' d="M7.2 3H9v18H7.2A2.2 2.2 0 0 1 5 18.8V5.2A2.2 2.2 0 0 1 7.2 3z"/>'
+                  '<rect x="5" y="3" width="14" height="18" rx="2.2"/><path d="M9 3v18"/>'
+                  '<path class="m1" d="M12.2 8h3.8M12.2 11.5h3.8M12.2 15h2.4" pathLength="1"/>'),
+    # modules laid out over days: a staircase of steps on a time axis
+    'designer':  ('<rect '+FL+' x="8" y="10.25" width="9" height="3.5" rx="1.5"/>'
+                  '<path d="M3.5 3.5v17" opacity=".6"/>'
+                  '<rect class="m1" x="5.5" y="4.5" width="8" height="3.5" rx="1.5"/><rect class="m1" x="8" y="10.25" width="9" height="3.5" rx="1.5"/>'
+                  '<rect class="m1" x="11.5" y="16" width="9" height="3.5" rx="1.5"/>'),
+    # a dose response in its frame
+    'analysis':  ('<rect '+FL+' x="3.5" y="3.5" width="17" height="17" rx="3.5"/>'
+                  '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/>'
+                  '<path class="m1" d="M6.5 8h1.4c3.8 0 3.4 8 7.4 8h2.2" pathLength="1"/>'),
+    'archive':   ('<path '+FL+' d="M12 6.5c-1.8-1.3-4.6-1.8-7.5-1.3v12.8c2.9-.5 5.7 0 7.5 1.3z"/>'
+                  '<path d="M12 6.5c-1.8-1.3-4.6-1.8-7.5-1.3v12.8c2.9-.5 5.7 0 7.5 1.3 1.8-1.3 4.6-1.8 7.5-1.3V5.2c-2.9-.5-5.7 0-7.5 1.3z"/>'
+                  '<path d="M12 6.5v12.8"/><path class="m1" d="M14.8 5.4v5.4l1.4-1.1 1.4 1.1V5" fill="currentColor" stroke="none"/>'),
+    'cells':     ('<circle class="fl m1" fill="currentColor" stroke="none" opacity=".16" cx="9" cy="9.3" r="5.2"/>'
+                  '<circle class="m1" cx="9" cy="9.3" r="5.2"/><circle class="m2" cx="16.2" cy="16" r="3.8"/>'
+                  '<circle class="m1" cx="9" cy="9.3" r="1.8" fill="currentColor" stroke="none"/>'
+                  '<circle class="m2" cx="16.2" cy="16" r="1.35" fill="currentColor" stroke="none"/>'),
+    'apps':      ('<rect '+FL+' x="13.5" y="4" width="6.5" height="6.5" rx="2"/>'
+                  + ''.join('<rect class="m1" x="%s" y="%s" width="6.5" height="6.5" rx="2"/>' % (x, y)
+                            for y in (4, 13.5) for x in (4, 13.5))),
+    # the rail itself: a panel, and which way it will go (the chevron, class cv, turns)
+    'fold':      ('<path '+FL+' d="M6 4.5h3v15H6a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 6 4.5z"/>'
+                  '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9 4.5v15"/><path class="cv" d="M15.5 9.5 13 12l2.5 2.5"/>'),
     'antibody':  ('<path d="M12 20.5V14L6.5 7.5M12 14l5.5-6.5"/><path class="m1" d="M5.1 10.6l2.6 3M18.9 10.6l-2.6 3" opacity=".55"/>'
                   '<circle cx="6.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="17.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/>'),
     'primer':    ('<path d="M3.5 16.5h17" opacity=".55"/><path d="M5.5 16.5v-1.8M8 16.5v-1.8M10.5 16.5v-1.8M13 16.5v-1.8M15.5 16.5v-1.8M18 16.5v-1.8" opacity=".55"/>'
