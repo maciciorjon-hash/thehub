@@ -180,7 +180,9 @@ body.mobile-drawer-open #mobile-nav-btn{opacity:0;pointer-events:none;}
 .proj-row:hover{background:var(--surface2);}
 .proj-row .chev{color:var(--text3);transition:transform .15s;display:inline-flex;align-items:center;justify-content:center;width:12px;flex-shrink:0;}
 .proj-row .chev.open{transform:rotate(90deg);}
-.proj-row .proj-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* A project's name is what you came to pick, so where the column is narrow it takes a second
+   line rather than losing its end ("Degrader Disc…"). */
+.proj-row .proj-name{flex:1;overflow:hidden;white-space:normal;line-height:1.3;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;}
 .sec-item.sub{margin-left:15px;padding-left:12px;font-size:var(--fs-3);border-left:1px solid var(--border);border-radius:0 6px 6px 0;}
 .sec-item.sub .dot{width:6px;height:6px;border-radius:50%;background:var(--text3);}
 .sec-item.sub.active .dot{background:var(--accent);}
@@ -10040,7 +10042,7 @@ function renderSections(){
     // Rename, prefix, colour, move and delete are on the row's menu (right-click, long press):
     // a × on every row was a delete button beside the thing you came to open.
     h+='<div class="proj-row'+(here?' here':'')+'" style="--pc:'+esc(p.color)+'" onclick="toggleProj(\''+p.id+'\')" oncontextmenu="ctxProject(event,\''+p.id+'\')">'
-      +'<span class="chev'+(open?' open':'')+'">'+tbIco(P_CHEV_R,11)+'</span><span class="proj-name">'+esc(p.name)+'</span></div>';
+      +'<span class="chev'+(open?' open':'')+'">'+tbIco(P_CHEV_R,11)+'</span><span class="proj-name" title="'+esc(p.name)+'">'+esc(p.name)+'</span></div>';
     if(open){
       (p.sections||[]).forEach(function(sc){ h+=secLeaf({kind:'expsec',projectId:p.id,sectionId:sc.id}, sc.name, null, null, "ctxFolder(event,'"+p.id+"','"+sc.id+"')"); });
       h+='<div class="sec-item sub quiet" onclick="addSectionPrompt(\''+p.id+'\')"><span class="dot"></span><span>+ Folder</span></div>';
@@ -15166,6 +15168,14 @@ function lbQuickNote(text,o){ o=o||{}; text=String(text||'').trim(); if(!text) r
   pg.html=(pg.html||'')+(o.title?('<p><b>'+esc(o.title)+'</b></p>'):'')+body; pg.updated=Date.now();
   save(); try{ if(lbWorkspace()==='notebook'&&SEL.page===D) renderEditor(); else if(SEL.node&&SEL.node.kind==='journal') renderEditor(); }catch(e){}
   return true; }
+// What the Hub's rail shows on the Planner: steps planned for today and not ticked, and steps from
+// earlier days still open — in experiments that are not closed. A count, not a list.
+function lbRailCounts(){
+  var T=todayStr(), due=0, over=0;
+  Object.keys(LB.data.experiments||{}).forEach(function(k){ var e=LB.data.experiments[k]; if(!e||expClosed(e)) return;
+    (e.blocks||[]).forEach(function(b){ if(!b||b.done||!b.date) return; if(b.date===T) due++; else if(b.date<T) over++; }); });
+  return {due:due, over:over};
+}
 function lbTaskCount(){ var D=todayStr(); return tasksUndated(D).concat(tasksForDate(D)).concat(tasksCarriedTo(D)).filter(function(t){ return !t.done; }).length; }
 function nbTasksHtml(D){
   var ts=tasksUndated(D).concat(tasksForDate(D)).concat(tasksCarriedTo(D));

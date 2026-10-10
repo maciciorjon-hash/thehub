@@ -199,6 +199,9 @@ UI_ICONS = {
     # the rail itself: a panel, and which way it will go (the chevron, class cv, turns)
     'fold':      ('<path '+FL+' d="M6 4.5h3v15H6a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 6 4.5z"/>'
                   '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9 4.5v15"/><path class="cv" d="M15.5 9.5 13 12l2.5 2.5"/>'),
+    # the rail's foot: is this notebook safe — synced, and backed up to a file
+    'cloud':     ('<path '+FL+' d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .4-7.58A5.4 5.4 0 0 0 6.8 9.9 4.3 4.3 0 0 0 7.5 18.5z"/>'
+                  '<path d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .4-7.58A5.4 5.4 0 0 0 6.8 9.9 4.3 4.3 0 0 0 7.5 18.5z"/>'),
     'antibody':  ('<path d="M12 20.5V14L6.5 7.5M12 14l5.5-6.5"/><path class="m1" d="M5.1 10.6l2.6 3M18.9 10.6l-2.6 3" opacity=".55"/>'
                   '<circle cx="6.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="17.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/>'),
     'primer':    ('<path d="M3.5 16.5h17" opacity=".55"/><path d="M5.5 16.5v-1.8M8 16.5v-1.8M10.5 16.5v-1.8M13 16.5v-1.8M15.5 16.5v-1.8M18 16.5v-1.8" opacity=".55"/>'
@@ -258,7 +261,7 @@ APP_FILES = {
     'blot':'apps/western-blot/western-blot.html',
 }
 SHELL = 'shell/hub-shell.html'
-WS_KEYS = ['planner', 'fold', 'antibody', 'primer', 'plasmid', 'notebook', 'designer', 'cells']
+WS_KEYS = ['planner', 'fold', 'cloud', 'antibody', 'primer', 'plasmid', 'notebook', 'designer', 'cells']
 SUITE_KEYS = ['analysis', 'archive', 'apps']
 
 # The tile: neutral, the faintest wash of the app's hue, the glyph in ink and one accent in the

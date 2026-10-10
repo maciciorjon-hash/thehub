@@ -52,7 +52,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   --text:#1a1d2e; --text2:#5a5f7a; --text3:#7c8199;
   /* The one token that means "this went wrong". The shared blue every control wears is not a
      mark, so an error drawn in --accent is not marked at all. Same values as Labbook's. */
-  --danger:#c04040;
+  --danger:#c04040; --good:#2d9462; --warn:#c47818;
   --sans:'IBM Plex Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --shadow-xs:0 1px 4px rgba(0,0,0,.04);
   --shadow-sm:0 2px 8px rgba(0,0,0,.06);
@@ -81,7 +81,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   --bg:#0d0f14; --surface:#13161e; --surface2:#1c2030; --surface3:#252a3a;
   --border:rgba(255,255,255,0.07); --border2:rgba(255,255,255,0.13);
   --text:#e8eaf2; --text2:#8b90a8; --text3:#7b8099;
-  --danger:#f08a84;
+  --danger:#f08a84; --good:#6ddca8; --warn:#f0b060;
   --shadow-xs:0 1px 4px rgba(0,0,0,.30);
   --shadow-sm:0 2px 8px rgba(0,0,0,.40);
   --shadow-md:0 6px 24px rgba(0,0,0,.50);
@@ -332,11 +332,11 @@ body.ws-wide{--rail-w:208px;}
 #ws-rail::-webkit-scrollbar{display:none;}
 body.ws #ws-rail{display:flex;}
 body.hub-announcing #ws-rail{top:calc(var(--top) + 40px + var(--hub-notice-h,0px));}
-.ws-item{display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 2px 6px;border-radius:var(--r-2);
+.ws-item{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 2px 5px;border-radius:var(--r-2);
   border:none;background:none;color:var(--text2);font-family:var(--sans);font-size:var(--fs-2);line-height:1.2;
   font-weight:500;cursor:pointer;text-align:center;width:100%;white-space:nowrap;overflow:hidden;flex-shrink:0;
   transition:color var(--dur-1) var(--ease);}
-.ws-ico{width:52px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:var(--r-full);
+.ws-ico{width:52px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:var(--r-full);
   transition:background var(--dur-1) var(--ease);}
 .ws-ico svg{width:22px;height:22px;stroke-width:1.6;}
 .ws-ico svg .fl{opacity:.1;transition:opacity var(--dur-1) var(--ease);}
@@ -355,6 +355,23 @@ body.hub-announcing #ws-rail{top:calc(var(--top) + 40px + var(--hub-notice-h,0px
 .ws-fold .ws-lbl{display:none;}
 .ws-fold .cv{transform:rotate(180deg);transition:transform .18s var(--ease);}
 
+/* counts on an entry (the Planner's steps, the Cells needing attention) */
+.ws-ico{position:relative;}
+.ws-badge{position:absolute;top:-2px;right:5px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;
+  background:var(--accent);color:var(--on-accent);font:700 10px/16px var(--mono);text-align:center;letter-spacing:0;
+  box-shadow:0 0 0 2px var(--surface);pointer-events:none;}
+.ws-badge.warn{background:var(--warn);}
+.ws-badge[hidden]{display:none;}
+/* apps you pinned or opened lately: their own drawing, their own hue on the accent */
+.ws-app .ws-ico svg{stroke-width:1.5;}
+/* the foot: sync and backup at a glance */
+.ws-health .ws-ico svg{width:20px;height:20px;}
+.ws-dot{position:absolute;right:13px;bottom:3px;width:8px;height:8px;border-radius:50%;background:var(--text3);box-shadow:0 0 0 2px var(--surface);}
+.ws-health[data-health="ok"] .ws-dot{background:var(--good);}
+.ws-health[data-health="warn"] .ws-dot{background:var(--warn);}
+.ws-health[data-health="err"] .ws-dot{background:var(--danger);}
+.ws-health[data-health="warn"],.ws-health[data-health="err"]{color:var(--text);}
+.ws-health{color:var(--text3);}
 /* wide: the icon beside the name */
 body.ws-wide #ws-rail{padding:10px 8px 8px;}
 body.ws-wide .ws-item{flex-direction:row;gap:11px;padding:7px 10px;font-size:var(--fs-4);text-align:left;
@@ -369,6 +386,9 @@ body.ws-wide .ws-lbl .l{display:inline;} body.ws-wide .ws-lbl .s{display:none;}
 body.ws-wide .ws-fold .ws-lbl{display:block;}
 body.ws-wide .ws-fold .cv{transform:none;}
 body.ws-wide .ws-sep{margin:7px 8px;}
+body.ws-wide .ws-item:not(.ws-health) .ws-ico{position:static;}
+body.ws-wide .ws-badge{top:50%;right:10px;transform:translateY(-50%);box-shadow:none;}
+body.ws-wide .ws-dot{right:-2px;bottom:0;}
 
 /* the workspace shifts everything right of the rail */
 body.ws #hub-home{margin-left:var(--rail-w);transition:margin-left .18s var(--ease);}
@@ -1461,6 +1481,7 @@ function _loadApp(id) {
     var t = localStorage.getItem('hub_theme') || 'light';
     try { frame.contentDocument.documentElement.setAttribute('data-theme', t); } catch(e) {}
     try { frame.contentWindow.postMessage('setTheme:' + t, '*'); } catch(e) {}
+    try { frame.contentDocument.addEventListener('keydown', _hubRailKey, true); } catch(e) {}
   }, {once: true});
   loaded[id] = true;
 }
@@ -1731,6 +1752,7 @@ function openCells(tab, item, context){
   if (!tabs.some(function(t){ return t.id===tab; })) tab = tabs[0].id;
   var switching = (currentApp === 'cells' && _cellsTab !== tab), prevTab = _cellsTab;
   _cellsTab = tab;
+  _railNoteApp(tab);
   var host = document.getElementById('cells-host');
   var small = _hubSmall();
   tabs.forEach(function(t){
@@ -1833,6 +1855,7 @@ function openApp(id, tab, item, context) {
   var view = view0;
   var _wasIn = currentApp;
   currentApp = id;
+  _railNoteApp(id);
   _unloadOthers(id);
   document.querySelectorAll('.app-view').forEach(function(v) {
     if (v !== view) { v.style.display = 'none'; v.style.opacity = ''; }
@@ -1853,6 +1876,7 @@ function openApp(id, tab, item, context) {
   if (_org) _expandFrom(view, _org);
   else { void view.offsetWidth; view.style.opacity = '1'; }
   setTimeout(function() { if(currentApp===id) enterAppNav(id); }, 0);
+  if (document.body.classList.contains('ws')) renderRail();
   // Push a history entry so the phone hardware back returns to the hub home
   // instead of leaving the page. _backPopping guards against re-entry. Re-opening the app
   // you are already in replaces rather than stacks, or backToHub's single history.back()
@@ -1872,6 +1896,7 @@ function backToHub(opts) {
   var view = document.getElementById('view-' + currentApp);
   currentApp = null;
   exitAppNav();
+  if (document.body.classList.contains('ws')) renderRail();
   var _shrunk = !(opts && opts.plain) && _shrinkTo(view, _id);
   if (!_shrunk) view.style.opacity = '0';
   var _home = document.getElementById('hub-home');
@@ -2839,6 +2864,7 @@ var WS_NAV = [
 ];
 // Drawn in tools/sync_icons.py and written here by it; edit them there.
 var WS_ICONS = {
+  cloud:'<svg class="ic ui-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path class="fl" fill="currentColor" stroke="none" opacity=".16" d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .4-7.58A5.4 5.4 0 0 0 6.8 9.9 4.3 4.3 0 0 0 7.5 18.5z"/><path d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .4-7.58A5.4 5.4 0 0 0 6.8 9.9 4.3 4.3 0 0 0 7.5 18.5z"/></svg>',
   planner:'<svg class="ic ui-planner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path class="fl" fill="currentColor" stroke="none" opacity=".16" d="M3.5 9.5V7.5A2.5 2.5 0 0 1 6 5h12a2.5 2.5 0 0 1 2.5 2.5v2z"/><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path class="m1" d="M8.8 15l2.2 2.2 4.2-4.4" pathLength="1"/></svg>',
   fold:'<svg class="ic ui-fold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path class="fl" fill="currentColor" stroke="none" opacity=".16" d="M6 4.5h3v15H6a2.5 2.5 0 0 1-2.5-2.5V7A2.5 2.5 0 0 1 6 4.5z"/><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9 4.5v15"/><path class="cv" d="M15.5 9.5 13 12l2.5 2.5"/></svg>',
   antibody:'<svg class="ic ui-antibody" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" shape-rendering="geometricPrecision" aria-hidden="true"><path d="M12 20.5V14L6.5 7.5M12 14l5.5-6.5"/><path class="m1" d="M5.1 10.6l2.6 3M18.9 10.6l-2.6 3" opacity=".55"/><circle cx="6.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="17.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>',
@@ -2870,21 +2896,36 @@ var _wsSection = 'planner';
 function renderRail(){
   var rail=document.getElementById('ws-rail'), tabs=document.getElementById('ws-tabs');
   if(!rail || !tabs) return;
-  // Only the section moved: switch the classes and slide the ink. Rebuilding the markup on
+  var nav=WS_NAV.filter(function(n){ return !n.sep; }), apps=_railApps(), cur=_railCurrent(apps);
+  var ids=nav.map(function(n){ return n.id; }).concat(apps.map(function(a){ return 'app:'+a.id; }));
+  // Only what is lit moved: switch the classes and slide the ink. Rebuilding the markup on
   // every click restarted the icon animation you had just set off, which read as a stutter.
-  var items=rail.querySelectorAll('.ws-item[data-ws]'), nav=WS_NAV.filter(function(n){ return !n.sep; });
-  if(items.length===nav.length && nav.every(function(n,i){ return items[i].dataset.ws===n.id; })){
-    items.forEach(function(b){ b.classList.toggle('on', b.dataset.ws===_wsSection); });
+  var items=rail.querySelectorAll('.ws-item[data-ws]');
+  if(items.length===ids.length && ids.every(function(id,i){ return items[i].dataset.ws===id; })){
+    items.forEach(function(b){ b.classList.toggle('on', b.dataset.ws===cur); });
     tabs.querySelectorAll('.ws-tab').forEach(function(b){ b.classList.toggle('on', b.dataset.ws===_wsSection); });
-    _railInk(); _hubInk(tabs,'top'); return;
+    _railInk(); _hubInk(tabs,'top'); _railBadges(); _railHealth(); return;
   }
+  var k=0;
   rail.innerHTML = WS_NAV.map(function(n){
       if(n.sep) return '<div class="ws-sep"></div>';
-      return '<button class="ws-item'+(_wsSection===n.id?' on':'')+'" data-ws="'+n.id+'" onclick="wsGo(\''+n.id+'\')" title="'+_dashEsc(n.name)+'">'
-        +'<span class="ws-ico">'+_wsIcon(n.icon)+'</span><span class="ws-lbl"><span class="l">'+_dashEsc(n.name)+'</span>'
+      k++;
+      return '<button class="ws-item'+(cur===n.id?' on':'')+'" data-ws="'+n.id+'" onclick="wsGo(\''+n.id+'\')" title="'+_dashEsc(n.name)+' · '+_altKey(k)+'">'
+        +'<span class="ws-ico">'+_wsIcon(n.icon)+(n.id==='planner'||n.id==='cells'?'<b class="ws-badge" hidden></b>':'')+'</span>'
+        +'<span class="ws-lbl"><span class="l">'+_dashEsc(n.name)+'</span>'
         +'<span class="s">'+_dashEsc(n.short||n.name)+'</span></span></button>';
     }).join('')
+    + (apps.length ? '<div class="ws-sep"></div>' : '')
+    + apps.map(function(a){ k++;
+        var info=APP_INFO[a.id]||{}, nm=info.name||a.id;
+        return '<button class="ws-item ws-app'+(a.pin?' pinned':'')+(cur==='app:'+a.id?' on':'')+'" data-ws="app:'+a.id+'" data-app="'+a.id+'" style="--ic-ac:'+(info.color||'currentColor')+'"'
+          +' onclick="wsOpenApp(\''+a.id+'\')" title="'+_dashEsc(nm)+(a.pin?' · pinned':' · recent')+(k<=9?' · '+_altKey(k):'')+'">'
+          +'<span class="ws-ico">'+_wsIcon(a.id)+'</span>'
+          +'<span class="ws-lbl"><span class="l">'+_dashEsc(nm)+'</span><span class="s">'+_dashEsc(RAIL_SHORT[a.id]||nm)+'</span></span></button>';
+      }).join('')
     + '<div class="ws-grow"></div>'
+    + '<button class="ws-item ws-health" data-health="" onclick="railHealthClick()" title="Sync and backup">'
+      +'<span class="ws-ico">'+WS_ICONS.cloud+'<i class="ws-dot"></i></span><span class="ws-lbl"><span class="l">Sync</span><span class="s">Sync</span></span></button>'
     + '<button class="ws-item ws-fold" onclick="wsToggleRail()" title="'+(_railWide()?'Narrow the rail':'Widen the rail')+'">'
       +'<span class="ws-ico">'+WS_ICONS.fold+'</span><span class="ws-lbl">Narrow</span></button>';
   tabs.innerHTML = WS_TABS.map(function(id){
@@ -2893,10 +2934,130 @@ function renderRail(){
     return '<button class="ws-tab'+(_wsSection===id?' on':'')+'" data-ws="'+id+'" onclick="wsGo(\''+id+'\')">'
       +_wsIcon(n.icon)+'<span>'+_dashEsc(short)+'</span></button>';
   }).join('');
-  _railInk(); _hubInk(tabs,'top');
+  _railInk(); _hubInk(tabs,'top'); _railBadges(); _railHealth();
   // the rail is often drawn in the same turn body.ws is set, before it has a box
   requestAnimationFrame(function(){ _railInk(); _hubInk(tabs,'top'); });
 }
+
+// ── Apps on the rail: the ones you pinned, then the last few you opened ──────────────────
+// Recent ones are added at the end and the oldest leaves from the top; an app already there
+// does not move, so the rail does not reshuffle every time you open something.
+var RAIL_SHORT = { echo:'Echo', pt:'Proteins', cellarchive:'Lines', cryo:'Freezer', spectra:'BCA', hitfinder:'Hit Finder' };
+var RAIL_PIN_MAX = 4, RAIL_RECENT_MAX = 3;
+var RAIL_NEVER = { labbook:1, cells:1, protocols:1 };   // already sections of the rail
+function _railStore(){ var v=null; try{ v=JSON.parse(localStorage.getItem('hub_rail_apps')||'null'); }catch(e){}
+  v=v&&typeof v==='object'?v:{}; return { pins:Array.isArray(v.pins)?v.pins:[], recent:Array.isArray(v.recent)?v.recent:[] }; }
+function _railSave(v){ try{ localStorage.setItem('hub_rail_apps', JSON.stringify(v)); }catch(e){} }
+function _railApps(){
+  if(!isAdmin) return [];
+  var v=_railStore(), ok=function(id){ return APP_INFO[id] && !RAIL_NEVER[id] && document.getElementById(/^(incubator|cellarchive|cryo)$/.test(id)?'view-cells':'view-'+id) && _isAppAccessible(id); };
+  var out=v.pins.filter(ok).slice(0,RAIL_PIN_MAX).map(function(id){ return {id:id, pin:true}; });
+  v.recent.filter(function(id){ return ok(id) && v.pins.indexOf(id)<0; }).slice(-RAIL_RECENT_MAX).forEach(function(id){ out.push({id:id, pin:false}); });
+  return out;
+}
+function _railNoteApp(id){
+  if(!isAdmin || !id || RAIL_NEVER[id] || !APP_INFO[id]) return;
+  var v=_railStore(); if(v.pins.indexOf(id)>=0 || v.recent.indexOf(id)>=0) return;
+  v.recent.push(id); while(v.recent.length>RAIL_RECENT_MAX) v.recent.shift(); _railSave(v);
+}
+function railPin(id, on){
+  var v=_railStore();
+  v.pins=v.pins.filter(function(x){ return x!==id; }); v.recent=v.recent.filter(function(x){ return x!==id; });
+  if(on){ if(v.pins.length>=RAIL_PIN_MAX){ hubToast('The rail holds '+RAIL_PIN_MAX+' pinned apps. Unpin one first.','err'); return; } v.pins.push(id); }
+  _railSave(v); renderRail();
+}
+function railForget(id){ var v=_railStore(); v.recent=v.recent.filter(function(x){ return x!==id; }); _railSave(v); renderRail(); }
+function _railPinned(id){ return _railStore().pins.indexOf(id)>=0; }
+// What is lit is what is on screen: an app with its own entry lights that entry, anything else
+// lights the section you are in.
+function _railCurrent(apps){
+  var on = currentApp==='cells' ? _cellsTab : currentApp;
+  if(on && (apps||_railApps()).some(function(a){ return a.id===on; })) return 'app:'+on;
+  return _wsSection;
+}
+function wsOpenApp(id){
+  var on = currentApp==='cells' ? _cellsTab : currentApp;
+  if(on===id) return;
+  openApp(id);
+  var info=APP_INFO[id]; if(info) wsSetWhere(info.name);
+}
+
+// ── Counts on the rail: the Planner's steps for today and the ones overdue, the Cells that
+// need attention. Read from the same places the header chips read; drawn in place.
+function _railBadges(){
+  var rail=document.getElementById('ws-rail'); if(!rail) return;
+  function put(id, n, warn, tip){ var it=rail.querySelector('.ws-item[data-ws="'+id+'"]'), b=it&&it.querySelector('.ws-badge'); if(!b) return;
+    b.hidden=!n; b.textContent=n>99?'99+':String(n||''); b.classList.toggle('warn',!!warn);
+    var base=(WS_NAV.filter(function(x){ return x.id===id; })[0]||{}).name||id; it.title=base+(tip?' — '+tip:'')+' · '+_altKey(WS_NAV.filter(function(x){ return !x.sep; }).map(function(x){ return x.id; }).indexOf(id)+1); }
+  if(!isAdmin){ put('planner',0); put('cells',0); return; }
+  var c=null; try{ var w=_lbWin(); c=w&&w.lbRailCounts?w.lbRailCounts():null; }catch(e){}
+  if(c){ var n=(c.due||0)+(c.over||0);
+    put('planner', n, c.over>0, [c.due?c.due+' step'+(c.due===1?'':'s')+' today':'', c.over?c.over+' overdue':''].filter(Boolean).join(' · ')); }
+  var d={}; try{ d=JournalStore.get()||{}; }catch(e){}
+  var warn=Object.keys(d.incubator||{}).filter(function(id){ return (computeCellAlerts(d.incubator[id])||[]).some(function(a){ return a.level==='warn'; }); }).length;
+  put('cells', warn, true, warn?warn+' culture'+(warn===1?'':'s')+' need'+(warn===1?'s':'')+' attention':'');
+}
+
+// ── The rail's foot: is the work safe? Synced to the account, and a backup file written. ──
+// One glance instead of Settings → Data. Green: syncing and a backup file in the last day and
+// a half. Amber: syncing, but the file is late or the browser wants a click to write it. Red:
+// not syncing at all.
+var _railHealthT=null, _railHealthState='';
+function _railBackupAt(){
+  var n=function(k){ var v=0; try{ v=parseInt(localStorage.getItem(k)||'0',10)||0; }catch(e){} return v; };
+  return Math.max(n('lb_last_folder_backup_at'), n('hub_journal_last_backup_at'));
+}
+function _railWhen(t){
+  if(!t) return 'never';
+  var d=new Date(t), now=new Date(), hm=d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  if(d.toDateString()===now.toDateString()) return 'today '+hm;
+  var y=new Date(now); y.setDate(now.getDate()-1); if(d.toDateString()===y.toDateString()) return 'yesterday '+hm;
+  return d.toLocaleDateString([], {day:'numeric', month:'short'});
+}
+function _railHealth(){
+  var el=document.querySelector('#ws-rail .ws-health'); if(!el) return;
+  clearTimeout(_railHealthT); _railHealthT=setTimeout(_railHealth, 60000);
+  var sync=hubSyncEnv(), at=_railBackupAt(), fresh=at && (Date.now()-at) < 36*3600e3;
+  var st=Promise.resolve('none'); try{ if(window.lbBackup && window.lbBackup.state) st=window.lbBackup.state(); }catch(e){}
+  st.catch(function(){ return 'none'; }).then(function(folder){
+    var lvl, l, s, tip=[];
+    tip.push(sync.short + (sync.ok ? '.' : ' — ' + (sync.fix || '')));
+    tip.push(at ? 'Last backup file: ' + _railWhen(at) + '.' : 'No backup file written yet.');
+    if(!sync.ok && sync.code!=='pending'){ lvl='err'; l='Not synced'; s='Offline'; }
+    else if(folder==='prompt'){ lvl='warn'; l='Backup waiting'; s='Backup'; tip.push('The browser needs one click to write to the backup folder. Click here to allow it.'); }
+    else if(folder==='none'){ lvl='warn'; l='No backup folder'; s='Backup'; tip.push('Choose a backup folder in Settings → Data; a file is then written every day at noon.'); }
+    else if(!fresh){ lvl='warn'; l='Backup late'; s='Backup'; tip.push('The daily file is written at noon; it has not run since.'); }
+    else if(sync.code==='pending'){ lvl='pend'; l='Connecting…'; s='Sync'; }
+    else { lvl='ok'; l='Synced · backup '+_railWhen(at).split(' ')[0]; s='Synced'; }
+    el.dataset.health=lvl; el.dataset.folder=folder; el.title=tip.join('\n');
+    var L=el.querySelector('.ws-lbl .l'), S=el.querySelector('.ws-lbl .s'); if(L) L.textContent=l; if(S) S.textContent=s;
+    if(_railHealthState!==lvl){ _railHealthState=lvl; requestAnimationFrame(_railInk); }
+  });
+}
+function railHealthClick(){
+  var el=document.querySelector('#ws-rail .ws-health');
+  if(el && el.dataset.folder==='prompt'){
+    var w=_lbWin();
+    if(w && w._bkAllow){ Promise.resolve(w._bkAllow()).then(function(){ setTimeout(_railHealth,800); }); return; }
+    if(window.lbBackup && window.lbBackup.allow){ window.lbBackup.allow().then(function(r){ if(r==='granted') backupJournal(false); setTimeout(_railHealth,800); }); return; }
+  }
+  openSettings('data');
+}
+
+// ── ⌥1…⌥9 go to the rail's entries, in order. Outside a field only: in a text box ⌥ and a
+// digit types a character (⌥8 is a bullet on a Mac). Listened for in the shell and in every
+// app's frame, since a key pressed inside an app never reaches this document.
+function _altKey(k){ return (/Mac|iPhone|iPad/.test(navigator.platform||'')?'⌥':'Alt+')+k; }
+function _hubRailKey(e){
+  if(!isAdmin || !e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  var m=/^Digit([1-9])$/.exec(e.code||''); if(!m) return;
+  var t=e.target, tag=(t&&t.tagName)||'';
+  if(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tag))) return;
+  var items=document.querySelectorAll('#ws-rail .ws-item[data-ws]'), it=items[+m[1]-1];
+  if(!it || !document.body.classList.contains('ws')) return;
+  e.preventDefault(); e.stopPropagation(); it.click();
+}
+document.addEventListener('keydown', _hubRailKey, true);
 // Compact (icon over name) is the default; wide is remembered per device. A new key on purpose:
 // the old 'hub_rail' said 'open' for anyone who had ever folded and unfolded the 180px rail.
 function _railWide(){ return document.body.classList.contains('ws-wide'); }
@@ -3117,6 +3278,7 @@ function renderSuites(){
 // popover now instead of a dashboard tile.
 var _navPop=null;
 function renderNavChips(){
+  try{ _railBadges(); _railHealth(); }catch(e){}
   var host=document.getElementById('nav-chips'); if(!host) return;
   if(!isAdmin){ host.innerHTML=''; return; }
   // A redraw while the Note popover has the caret would take the half-typed line with it.
@@ -3588,6 +3750,17 @@ function _archiveSearchEntries(){
     });
   } catch(e){ return []; }
 }
+function _spotSections(q){
+  if(!isAdmin || !document.body.classList.contains('ws')) return [];
+  q=(q||'').trim().toLowerCase().replace(/^go( to)?\s*/,'');
+  var k=0;
+  return WS_NAV.filter(function(n){ return !n.sep; }).map(function(n){ k++;
+    var nm=n.name.toLowerCase(), sh=(n.short||'').toLowerCase();
+    var lead = !!q && (nm.indexOf(q)===0 || sh.indexOf(q)===0 || nm.split(/\s+/).some(function(w){ return w.indexOf(q)===0; }));
+    if(q && !lead) return null;
+    return {ws:n, lead:lead, key:_altKey(k), svg:_wsIcon(n.icon)};
+  }).filter(Boolean);
+}
 // One ranked result set, shared by the nav box and the ⌘K spotlight.
 function hubSearchResults(q, limit){
   q=(q||'').trim();
@@ -3630,9 +3803,18 @@ function hubSearchResults(q, limit){
     var notebook=L.items.map(function(x){ return {lb:x}; }), apps=A.map(function(r){ return {app:r.item, s:r.score}; });
     // A query that names an app leads with the app; anything else leads with the notebook.
     var appsFirst=apps.length&&apps[0].s>=600;
-    RES=appsFirst?apps.concat(notebook):notebook.concat(apps); SELi=0;
+    RES=appsFirst?apps.concat(notebook):notebook.concat(apps);
+    // The rail's sections, with their keys: all of them on an empty box, and any whose name the
+    // query starts — those first, since "plan" or "cells" is a place, not a search.
+    var S=_spotSections(q), lead=S.filter(function(x){ return x.lead; });
+    RES=lead.concat(RES).concat(S.filter(function(x){ return !x.lead; })); SELi=0;
     var hint=document.getElementById('hub-spot-hint'); if(hint){ hint.innerHTML=L.hint||''; hint.style.display=L.hint?'':'none'; }
     function row(r,i){ var on=i===0?'background:var(--surface2);':'';
+      if(r.ws){ var n=r.ws;
+        return '<div class="hspot-i" data-i="'+i+'" onmousedown="event.preventDefault();window.__hubSpotPick('+i+')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;cursor:pointer;color:var(--text2);'+on+'">'
+          +'<span style="width:22px;height:22px;flex:none;display:flex;align-items:center;justify-content:center">'+(r.svg||'')+'</span>'
+          +'<span style="flex:1;font-size:13px;font-weight:600;color:var(--text)">Go to '+esc(n.name)+'</span>'
+          +'<span style="font-size:11px;color:var(--text3);font-family:var(--mono)">'+esc(r.key)+'</span></div>'; }
       if(r.lb){ var x=r.lb;
         return '<div class="hspot-i" data-i="'+i+'" onmousedown="event.preventDefault();window.__hubSpotPick('+i+')" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;cursor:pointer;'+on+'">'
           +'<span style="width:22px;height:22px;border-radius:5px;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;background:'+esc(x.c)+'">'+(x.svg||esc(x.ic))+'</span>'
@@ -3645,6 +3827,7 @@ function hubSearchResults(q, limit){
   }
   function hi(){ var ns=document.querySelectorAll('#hub-spot-res .hspot-i'); ns.forEach(function(n,i){ n.style.background=(i===SELi)?'var(--surface2)':''; if(i===SELi)n.scrollIntoView({block:'nearest'}); }); }
   window.__hubSpotPick=function(i){ var r=RES[i]; close(); if(!r) return;
+    if(r.ws){ var b=document.querySelector('#ws-rail .ws-item[data-ws="'+r.ws.id+'"]'); if(b) b.click(); else wsGo(r.ws.id); return; }
     if(r.lb){ // a notebook result runs inside Labbook, so Labbook has to be what is on screen
       if(currentApp!=='labbook'){ _wsSection='planner'; renderRail(); openApp('labbook'); wsSetWhere('Planner'); }
       try{ r.lb.run(); }catch(e){} return; }
@@ -3867,10 +4050,24 @@ ctxBind(function(e){
     return [
       { hd: nm },
       { label: 'Open ' + nm, act: function(){ if (id === 'cells') openCells(null); else openApp(id); } },
+      (isAdmin && !RAIL_NEVER[id] && APP_INFO[id]) && (_railPinned(id)
+        ? { label: 'Unpin from the rail', act: function(){ railPin(id, false); } }
+        : { label: 'Pin to the rail', act: function(){ railPin(id, true); } }),
       { label: 'Copy link to ' + nm, act: function(){
           var url = location.href.split('#')[0] + '#' + id;
           if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ hubToast('Link copied.'); }).catch(function(){ hubToast('Could not copy the link.', 'err'); });
         } },
+      { sep: true }
+    ].concat(general);
+  }
+  if (rail && rail.dataset.app) {
+    var aid = rail.dataset.app, ainfo = APP_INFO[aid] || {}, pinned = _railPinned(aid);
+    return [
+      { hd: ainfo.name || aid },
+      { label: 'Open ' + (ainfo.name || aid), act: function(){ wsOpenApp(aid); } },
+      pinned ? { label: 'Unpin from the rail', act: function(){ railPin(aid, false); } }
+             : { label: 'Pin to the rail', act: function(){ railPin(aid, true); } },
+      !pinned && { label: 'Remove from the rail', act: function(){ railForget(aid); } },
       { sep: true }
     ].concat(general);
   }

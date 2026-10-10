@@ -9783,7 +9783,9 @@ function _hxTx(names, mode, op) {
   }));
 }
 const _hxAll = n => _hxTx([n], 'readonly', s => s.getAll());
-const _hxGet = (n, k) => _hxTx([n], 'readonly', s => s.get(k));
+// A missing key reads as null: _hxTx resolves `true` when a request has no result, and a `true` here
+// was taken for a record (Re-analyse with no files kept restored nothing and said nothing).
+const _hxGet = (n, k) => _hxTx([n], 'readonly', s => s.get(k)).then(v => v === true ? null : v);
 const _hxPut = (n, v) => _hxTx([n], 'readwrite', s => s.put(v));
 const _hxDel = (n, k) => _hxTx([n], 'readwrite', s => s.delete(k));
 
@@ -9927,6 +9929,8 @@ async function _hxAdopt(tid, runs, name, rename) {
     const f = await _hxGet('files', withFiles.id).catch(() => null);
     if (f) { f.setId = tid; await _hxPut('files', f); t.filesStored = true; t.fileMeta = withFiles.fileMeta; t.fileBytes = withFiles.fileBytes; t.fk = withFiles.fk || (/^s[0-9a-z]+$/.test(withFiles.id) ? withFiles.id : null); t.filesDropped = false; }
   }
+  const withCloud = all.filter(x => x.cloudFiles).sort((a, b) => (b.cloudFiles.at || 0) - (a.cloudFiles.at || 0))[0];
+  if (withCloud && withCloud !== t && (!t.cloudFiles || (withCloud.cloudFiles.at || 0) > (t.cloudFiles.at || 0))) t.cloudFiles = withCloud.cloudFiles;
   for (const r of runs) {
     if (!r.fk && /^s[0-9a-z]+$/.test(r.setId)) r.fk = r.setId;
     r.setId = tid;
@@ -9988,7 +9992,11 @@ async function _hxDeleteRuns(ids, quiet) {
     const r = _hx.runs[id]; if (!r) continue;
     delete _hx.runs[id];
     await _hxDel('runs', id).catch(() => {}); await _hxDel('blobs', id).catch(() => {});
-    if (!_hxRunsOf(r.setId).length) { delete _hx.sets[r.setId]; await _hxDel('sets', r.setId).catch(() => {}); await _hxDel('files', r.setId).catch(() => {}); }
+    if (!_hxRunsOf(r.setId).length) {
+      const gone = _hx.sets[r.setId];
+      if (!quiet && gone && gone.cloudFiles) { const st = _ehStorage(); if (st) st.ref(gone.cloudFiles.path).delete().catch(() => {}); }
+      delete _hx.sets[r.setId]; await _hxDel('sets', r.setId).catch(() => {}); await _hxDel('files', r.setId).catch(() => {});
+    }
   }
   _hxAddTomb(ids);
   if (!quiet) { _hxUi.sel = _hxUi.sel.filter(i => !ids.includes(i)); if (_hxUi.cmp && (ids.includes(_hxUi.cmp.a) || ids.includes(_hxUi.cmp.b))) _hxUi.cmp = null; }
@@ -10071,6 +10079,71 @@ async function _hxStoreFiles(set, fk) {
   set.filesStored = true; set.filesDropped = false; set.fileMeta = _hxFileMeta();
   await _hxPut('sets', set);
   renderHistoryTab();
+  ehUploadFiles(set).catch(() => {});
+}
+// ── The input files in the cloud too (Firebase Storage, echo/<entry>/<files>.json.gz, admin-only) ──
+// The History's rows and results already travel through the database; the files did not, so
+// Re-analyse worked only in the browser that ran the analysis. One gzip JSON per entry, holding the
+// newest dataset's files; the entry's cloud record says where it is (set.cloudFiles), so another
+// device can fetch it the first time it is asked to re-analyse. Download URLs answer CORS with *.
+const _ehFilesTried = {};
+function _ehStorage() {
+  try { const P = window.parent; if (P && P.firebase && P.firebase.storage && P.firebase.auth && P.firebase.auth().currentUser) return P.firebase.storage(); } catch (e) {}
+  return null;
+}
+function _ehB64(buf) { let bin = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(bin); }
+function _ehUnB64(s) { const bin = atob(s), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
+async function _ehGz(text) {
+  if (typeof CompressionStream !== 'function') return new Blob([text], { type: 'application/json' });
+  return await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
+}
+async function _ehGunzip(blob) {
+  const h = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  if (h[0] === 0x1f && h[1] === 0x8b) {
+    if (typeof DecompressionStream !== 'function') throw new Error('this browser cannot read gzip');
+    return await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  }
+  return await blob.text();
+}
+async function ehUploadFiles(set) {
+  const st = _ehStorage(); if (!st || !set || !set.filesStored) return false;
+  const tag = String(set.fk || 'files').replace(/[^0-9A-Za-z_-]/g, '');
+  if (set.cloudFiles && set.cloudFiles.fk === tag) return true;
+  if (_ehFilesTried[set.id + '|' + tag]) return false; _ehFilesTried[set.id + '|' + tag] = 1;
+  const rec = await _hxGet('files', set.id).catch(() => null); if (!rec) return false;
+  const pack = f => f ? { name: f.name, type: f.type || '', b64: f.b64 || _ehB64(f.buf) } : null;
+  const doc = { v: 1, echo: (rec.echo || []).map(pack), readers: {}, smiles: pack(rec.smiles) };
+  Object.keys(rec.readers || {}).forEach(n => { doc.readers[n] = pack(rec.readers[n]); });
+  const blob = await _ehGz(JSON.stringify(doc));
+  const path = 'echo/' + _ehSetKey(set.id) + '/' + tag + '.json.gz';
+  try { await st.ref(path).put(blob, { contentType: 'application/gzip' }); }
+  catch (e) { set.cloudFilesErr = String((e && (e.code || e.message)) || 'upload failed').slice(0, 90); await _hxPut('sets', set).catch(() => {}); renderHistoryTab(); return false; }
+  const old = set.cloudFiles;
+  set.cloudFiles = { path, fk: tag, bytes: blob.size, at: Date.now() }; delete set.cloudFilesErr;
+  await _hxPut('sets', set).catch(() => {});
+  if (old && old.path && old.path !== path) st.ref(old.path).delete().catch(() => {});
+  renderHistoryTab(); ehSyncPush();
+  return true;
+}
+// Entries kept here whose files never reached the cloud (made before this, or while offline): sent
+// once per session, one at a time, after the History has loaded.
+async function ehUploadPending() {
+  if (!_ehStorage()) return;
+  await _hxLoad();
+  for (const s of Object.values(_hx.sets)) { if (s.filesStored && !(s.cloudFiles && s.cloudFiles.fk === String(s.fk || 'files').replace(/[^0-9A-Za-z_-]/g, ''))) { try { await ehUploadFiles(s); } catch (e) {} } }
+}
+async function ehDownloadFiles(set) {
+  const st = _ehStorage(); if (!st || !set || !set.cloudFiles) return null;
+  const url = await st.ref(set.cloudFiles.path).getDownloadURL();
+  const res = await fetch(url); if (!res.ok) throw new Error('download failed (' + res.status + ')');
+  const doc = JSON.parse(await _ehGunzip(await res.blob()));
+  const un = f => f ? { name: f.name, type: f.type || '', buf: _ehUnB64(f.b64) } : null;
+  const rec = { setId: set.id, echo: (doc.echo || []).map(un), readers: {}, smiles: un(doc.smiles) };
+  Object.keys(doc.readers || {}).forEach(n => { rec.readers[n] = un(doc.readers[n]); });
+  await _hxPut('files', rec).catch(() => {});      // kept here from now on
+  set.filesStored = true; set.filesDropped = false; if (set.cloudFiles.fk !== 'files') set.fk = set.cloudFiles.fk;
+  await _hxPut('sets', set).catch(() => {});
+  return rec;
 }
 async function _hxPrune(activeSet) {
   if (ehRoot()) return;      // the cloud keeps everything; only a browser with no cloud has to forget
@@ -10120,12 +10193,12 @@ async function renderHistoryTab() {
     shown++;
     const open = !!_hxUi.open[s.id] || (!!q && runs.length > 0 && false);
     const prevRun = (list, r) => list.filter(x => x.ver < r.ver).sort((a, b) => b.ver - a.ver)[0];
-    const last = runs[0], files = s.filesStored ? '<span class="hx-pill" title="The input files are stored on this device">files kept</span>' : (s.filesDropped ? '<span class="hx-pill off" title="Dropped to make room; the results are still here">files dropped</span>' : '');
+    const last = runs[0], cloudF = !!s.cloudFiles, files = s.filesStored ? '<span class="hx-pill" title="' + (cloudF ? 'The input files are stored on this device and in the cloud' : (s.cloudFilesErr ? 'The input files are on this device only: the cloud refused them (' + esc(s.cloudFilesErr) + ')' : 'The input files are stored on this device')) + '">files kept' + (cloudF ? ' · cloud' : '') + '</span>' : (cloudF ? '<span class="hx-pill" title="The input files are in the cloud; Re-analyse fetches them to this device">files in the cloud</span>' : (s.filesDropped ? '<span class="hx-pill off" title="Dropped to make room; the results are still here">files dropped</span>' : ''));
     const sk = esc(s.id).replace(/'/g, '');
     h += '<section class="hx-set' + (open ? ' open' : '') + '" data-set="' + sk + '"><header class="hx-sh">'
       + '<button class="hx-tg" onclick="hxToggle(\'' + sk + '\')" aria-expanded="' + open + '" aria-label="' + (open ? 'Collapse' : 'Expand') + ' ' + esc(s.name) + '">' + _I.chev + '</button>'
       + '<div class="hx-sm"' + (_hxUi.edit === s.id ? '' : ' onclick="hxToggle(\'' + sk + '\')" style="cursor:pointer" title="' + (open ? 'Hide' : 'Show') + ' the ' + runs.length + ' version' + (runs.length === 1 ? '' : 's') + '"') + '><div class="hx-name">' + (_hxUi.edit === s.id ? '<input class="hx-ren" value="' + esc(s.name) + '" aria-label="Name of this analysis" onkeydown="if(event.key===\'Enter\'){this.blur()}else if(event.key===\'Escape\'){this.dataset.x=1;this.blur()}" onblur="hxRenameDo(\'' + sk + '\',this)">' : esc(s.name) + (_hxUnnamed(s.name) ? '<span class="hx-pill off" title="Not named: each dataset is kept apart. Name it, and every analysis with that name becomes versions of one entry.">unnamed</span>' : '')) + files + '</div><div class="hx-meta">' + esc(last.groups) + ' · ' + (s.nPlates ? s.nPlates + ' plates · ' : '') + '<b>' + last.nCompounds + '</b> compounds · last ' + _hxWhen(s.updated) + '</div></div>'
-      + '<div class="hx-sa"><span class="hx-pill" title="Versions of this analysis">' + runs.length + ' version' + (runs.length === 1 ? '' : 's') + '</span><button class="hist-btn" onclick="loadHistoryEntry(' + last.id + ')" title="Open the latest version (v' + last.ver + ')">Open</button><button class="hx-ic" onclick="hxRename(\'' + sk + '\')" aria-label="Rename ' + esc(s.name) + '" title="Rename. Giving it the name of another entry merges them.">' + _I.pen + '</button>' + (s.filesStored ? '<button class="hist-btn" onclick="hxReanalyse(' + last.id + ')" title="Put these input files and the latest settings back in Setup, so you can change a setting and run again">Re-analyse…</button>' : '')
+      + '<div class="hx-sa"><span class="hx-pill" title="Versions of this analysis">' + runs.length + ' version' + (runs.length === 1 ? '' : 's') + '</span><button class="hist-btn" onclick="loadHistoryEntry(' + last.id + ')" title="Open the latest version (v' + last.ver + ')">Open</button><button class="hx-ic" onclick="hxRename(\'' + sk + '\')" aria-label="Rename ' + esc(s.name) + '" title="Rename. Giving it the name of another entry merges them.">' + _I.pen + '</button>' + ((s.filesStored || s.cloudFiles) ? '<button class="hist-btn" onclick="hxReanalyse(' + last.id + ')" title="Put these input files and the latest settings back in Setup, so you can change a setting and run again">Re-analyse…</button>' : '')
       + '<button class="hx-ic' + (s.pinned ? ' on' : '') + '" onclick="hxPinSet(\'' + sk + '\')" aria-pressed="' + !!s.pinned + '" title="' + (s.pinned ? 'Pinned: never removed to make room' : 'Pin: never remove this dataset to make room') + '" aria-label="Pin ' + esc(s.name) + '">' + (s.pinned ? _I.pin : _I.pin0) + '</button>'
       + '<button class="hx-ic del" onclick="hxDelSet(\'' + sk + '\')" aria-label="Delete ' + esc(s.name) + '" title="Delete this dataset and all its analyses">' + (_hxUi.confirm === 'set:' + s.id ? '<span class="hx-conf">Delete?</span>' : _I.x) + '</button></div></header>';
     const vis = open || _hxUi.all ? runs : [];
@@ -10231,7 +10304,12 @@ async function hxReanalyse(id) {
   const run = _hx.runs[id]; if (!run) return;
   const set = _hx.sets[run.setId];
   if (set && run.fk && set.fk && run.fk !== set.fk) { echoToast('v' + run.ver + ' was run on other input files than the ones kept for ' + run.assayId + '. Re-analyse the latest version to use the kept files.', 'warn'); return; }
-  const f = await _hxGet('files', run.setId).catch(() => null);
+  let f = await _hxGet('files', run.setId).catch(() => null);
+  if (!f && set && set.cloudFiles) {
+    if (!_ehStorage()) { echoToast('The input files of ' + run.assayId + ' are in the cloud. Open dHUB signed in to fetch them.', 'warn'); return; }
+    echoToast('Fetching the input files of ' + run.assayId + ' from the cloud…');
+    try { f = await ehDownloadFiles(set); renderHistoryTab(); } catch (e) { echoToast('Could not fetch the input files from the cloud: ' + ((e && (e.code || e.message)) || e), 'err'); return; }
+  }
   if (!f) { echoToast('The input files of this dataset were not kept (too large, or dropped to make room).', 'warn'); return; }
   const ok = await echoRestore({ v: ECHO_SESSION_V, savedAt: new Date(run.ts).toISOString(), matPanels: run.matPanels || 0, files: { echo: f.echo, readers: f.readers, smiles: f.smiles }, form: run.form || {}, qc: {}, view: {}, hadResults: false }, { run: false });
   if (ok) { openSetupModal(); switchSetupTab('analysis'); echoToast('Input files and settings of ' + run.assayId + ' v' + run.ver + ' are in Setup. Change what you want and press Run.'); }
@@ -10333,18 +10411,19 @@ function hxCompareCSV() {
 //   sets/<key>  the analysis as a whole: its name, pin, files' names
 //   deleted/<id> a deletion, so another device removes it too
 // Everything is stored as a JSON string: the real-time database refuses undefined and some key characters, and a
-// measurement table is not something to be re-shaped on the way. The input FILES stay on this device (bytes).
+// measurement table is not something to be re-shaped on the way. The input FILES are bytes, so they go to
+// Firebase Storage instead (ehUploadFiles); the entry's set.cloudFiles says where.
 const _eh = { state: 'local', err: '', at: 0, n: 0, runFp: {}, blobSig: {}, setFp: {}, tombSent: {}, flushing: false, again: false, T: null, retryT: null, tries: 0, listening: false, legacyDone: false };
 function ehRoot() { try { if (window.parent && window.parent.firebase) return window.parent.firebase.database().ref('journal/echo/store'); } catch (e) {} return null; }
 const _ehSetKey = sid => _hxHashStr(String(sid));
 const _ehRunJson = r => JSON.stringify(r);
-const _ehSetJson = s => JSON.stringify(Object.assign({}, s, { filesStored: false, filesTried: false, filesDropped: false, fk: null }));
+const _ehSetJson = s => JSON.stringify(Object.assign({}, s, { filesStored: false, filesTried: false, filesDropped: false, fk: null, cloudFilesErr: undefined }));
 function _ehSetState(st, err) { _eh.state = st; _eh.err = err || ''; if (st === 'ok') { _eh.at = Date.now(); _eh.err = ''; } try { const el = document.getElementById('hx-cloud'); if (el) el.outerHTML = ehStatusHtml(); } catch (e) {} }
 function ehStatusHtml() {
   const n = Object.keys(_hx.runs).length;
   const m = { local: ['warn', 'On this device only', 'Only the browser holds this History. Open dHUB (signed in) and a copy is kept in the cloud, per analysis.'],
     syncing: ['', 'Saving to the cloud…', 'Writing each analysis to the cloud store.'],
-    ok: ['ok', 'Backed up in the cloud', n + ' analyses · saved ' + _hxWhen(_eh.at) + '. Open from any device; the input files stay on this device.'],
+    ok: ['ok', 'Backed up in the cloud', n + ' analyses · saved ' + _hxWhen(_eh.at) + '. Open from any device; the input files go to the cloud too, so Re-analyse works anywhere.'],
     err: ['warn', 'Not backed up yet', (_eh.err || 'The cloud write failed') + ' — retrying. Your analyses are safe in this browser meanwhile.'] }[_eh.state] || ['', '', ''];
   return '<span id="hx-cloud" class="hx-cloud ' + m[0] + '" title="' + esc(m[2]) + '"><i></i>' + esc(m[1]) + '</span>';
 }
@@ -10432,6 +10511,8 @@ async function _ehAdoptCloud(v) {
       _eh.setFp[k] = _hxHashStr(v.sets[k].j);
       const ls = _hx.sets[cs.id];
       if (ls && (cs.updated || 0) > (ls.updated || 0)) { Object.assign(ls, { name: cs.name, pinned: cs.pinned, fileMeta: cs.fileMeta || ls.fileMeta, nPlates: cs.nPlates || ls.nPlates, updated: cs.updated }); await _hxPut('sets', ls); changed++; }
+      // where the input files are in the cloud travels on its own clock: an upload does not reorder the History
+      if (ls && cs.cloudFiles && (!ls.cloudFiles || (cs.cloudFiles.at || 0) > (ls.cloudFiles.at || 0))) { ls.cloudFiles = cs.cloudFiles; await _hxPut('sets', ls); changed++; }
     }
     _eh.n = Object.keys(v.runs || {}).length;
   } finally { _eh.adopting = false; }
@@ -10463,6 +10544,7 @@ function ehSyncInit() {
   } catch (e) { _ehSetState('err', String(e && e.message || e)); _ehRetry(); }
 }
 setTimeout(ehSyncInit, 400);   // once the parent Firebase is up
+setTimeout(function () { ehUploadPending().catch(function () {}); }, 9000);
 setTimeout(function () { _hxLoad().then(function () { try { renderHistoryTab(); } catch (e) {} }); }, 600);
 
 // ═══════════════════════════════════════════════════════════════

@@ -146,6 +146,9 @@
 //       keeps its names         and removed; every column block names its assay AND its group; the normalisation banners name the assay type,
 //                               not "<id>_hibit"; Labbook gets one result set per assay, each with its own potency name and its own id;
 //                               the Raw data sheet says which assay each row is; no tab prints NaN or undefined.
+//   E59 the input files go    A run's input files are written to Firebase Storage under its entry (echo/<entry>/<files>.json.gz) and the entry
+//       to the cloud too        says where; another device with no local copy gets Re-analyse, fetches them, and they are byte for byte the
+//                               ones that were run; deleting the analysis deletes the file in the cloud.
 //
 // Usage (repo root):  node tools/echo_invariants.mjs [--only=E1,E7] [--file=path/to/echo.html] [--verbose]
 import { chromium } from 'playwright';
@@ -2230,6 +2233,52 @@ if (run('E58')) await guard('E58', async () => {
   check('E58', 'the Raw data sheet says which assay each row is', r.rawA.length === 2 && r.rawA.every(a => /^(HiBiT|CTG\/Viability)$/.test(a)), r.rawA);
   check('E58', 'no tab prints NaN or undefined, and nothing throws', !r.bad.length && !errs.length, { bad: r.bad, errs });
   await c.close();
+});
+
+if (run('E59')) await guard('E59', async () => {
+  await BACK_TO_ANALYSIS();
+  // the Hub's Firebase, in memory: the database (as E40) and Storage, whose download URL is a blob: URL
+  await E(() => {
+    const tree = {}, L = [], objs = {};
+    const get = path => path.split('/').filter(Boolean).reduce((o, k) => (o === undefined || o === null) ? undefined : o[k], tree);
+    const snap = path => ({ val: () => { const v = get(path); return v === undefined ? null : JSON.parse(JSON.stringify(v)); } });
+    const setAt = (path, val) => { const ks = path.split('/').filter(Boolean); let o = tree; ks.slice(0, -1).forEach(k => { if (!o[k] || typeof o[k] !== 'object') o[k] = {}; o = o[k]; }); const last = ks[ks.length - 1]; if (val === null || val === undefined) delete o[last]; else o[last] = JSON.parse(JSON.stringify(val)); };
+    const fire = () => L.slice().forEach(l => setTimeout(() => l.cb(snap(l.path)), 0));
+    const node = path => ({ child: p => node(path + '/' + p), parent: { child: p => node(path.split('/').slice(0, -1).join('/') + '/' + p) },
+      once: async () => snap(path), set: async v => { setAt(path, v); fire(); }, remove: async () => { setAt(path, null); fire(); },
+      update: async u => { Object.keys(u).forEach(k => setAt(path + '/' + k, u[k])); fire(); },
+      on: (ev, cb) => { L.push({ path, cb }); setTimeout(() => cb(snap(path)), 0); }, off: () => { for (let i = L.length - 1; i >= 0; i--) if (L[i].path === path) L.splice(i, 1); } });
+    const sref = path => ({ put: async b => { objs[path] = b; }, getDownloadURL: async () => { if (!objs[path]) throw new Error('storage/object-not-found'); return URL.createObjectURL(objs[path]); }, delete: async () => { delete objs[path]; } });
+    window.firebase = { database: () => ({ ref: p => node(p) }), storage: () => ({ ref: p => sref(p) }), auth: () => ({ currentUser: { email: 'admin@example.org' } }) };
+    window.__objs = objs; window.__tree = tree;
+  });
+  await E(async () => { await _hxLoad(); for (const id of Object.keys(_hx.runs)) { await _hxDel('runs', +id).catch(() => {}); await _hxDel('blobs', +id).catch(() => {}); delete _hx.runs[id]; } for (const k of Object.keys(_hx.sets)) { await _hxDel('sets', k).catch(() => {}); await _hxDel('files', k).catch(() => {}); delete _hx.sets[k]; } try { localStorage.removeItem(HX_TOMB_KEY); } catch (e) {} Object.assign(_eh, { runFp: {}, blobSig: {}, setFp: {}, tombSent: {}, legacyDone: true, state: 'local' }); ehSyncInit(); });
+  await runWith({ 'p-assay': 'FILES1' }); await pg.waitForTimeout(6000);
+  const a = await E(async () => {
+    const s = _hx.sets['n:files1'], keys = Object.keys(window.__objs), f = await _hxGet('files', 'n:files1').catch(() => null);
+    const cloudSet = Object.values((window.__tree.journal && window.__tree.journal.echo && window.__tree.journal.echo.store && window.__tree.journal.echo.store.sets) || {}).map(v => JSON.parse(v.j)).find(x => x.id === 'n:files1');
+    const sizes = f ? f.echo.map(x => x.buf.byteLength).concat(Object.keys(f.readers).map(n => f.readers[n].buf.byteLength)) : [];
+    return { keys, cf: s && s.cloudFiles, cloudSays: !!(cloudSet && cloudSet.cloudFiles && cloudSet.cloudFiles.path), sizes, nReaders: f ? Object.keys(f.readers).length : 0 };
+  });
+  check('E59', 'the run\'s input files are written to Storage under the entry, as one gzip file', a.keys.length === 1 && /^echo\/[0-9a-z]+\/[0-9A-Za-z_-]+\.json\.gz$/.test(a.keys[0]) && a.cf && a.cf.path === a.keys[0], a);
+  check('E59', 'the entry\'s cloud record says where its files are', a.cloudSays, a);
+  const pill = await E(async () => { document.querySelector('.tab[data-tab="history"]').click(); await renderHistoryTab(); return document.getElementById('history-panel').innerText; });
+  check('E59', 'History says the files are kept here and in the cloud', /files kept · cloud/.test(pill), pill.slice(0, 300));
+  // another device: no files here, only the cloud record
+  const b = await E(async () => {
+    await _hxDel('files', 'n:files1'); const s = _hx.sets['n:files1']; s.filesStored = false; await _hxPut('sets', s); await renderHistoryTab();
+    const btn = !!document.querySelector('#history-panel button[onclick^="hxReanalyse"]'), txt = document.getElementById('history-panel').innerText;
+    const last = _hxRunsOf('n:files1').sort((x, y) => y.ver - x.ver)[0]; await hxReanalyse(last.id); await new Promise(r => setTimeout(r, 800));
+    const f = await _hxGet('files', 'n:files1').catch(() => null);
+    const sizes = f && f.echo ? f.echo.map(x => x.buf.byteLength).concat(Object.keys(f.readers).map(n => f.readers[n].buf.byteLength)) : [];
+    return { btn, inCloud: /files in the cloud/.test(txt), sizes, setup: !document.getElementById('setup-modal').classList.contains('hidden'), readers: Object.keys(readerFiles).length };
+  });
+  check('E59', 'with no local copy, the entry still offers Re-analyse and says its files are in the cloud', b.btn && b.inCloud, b);
+  check('E59', 'Re-analyse fetches the files: byte for byte the ones that were run, back in Setup', b.sizes.length && b.sizes.join() === a.sizes.join() && b.setup && b.readers === a.nReaders, { before: a.sizes, after: b.sizes, setup: b.setup, readers: b.readers });
+  await E(() => { try { closeSetupModal(); } catch (e) {} });
+  const c = await E(async () => { await _hxDeleteRuns(_hxRunsOf('n:files1').map(r => r.id)); await new Promise(r => setTimeout(r, 300)); return Object.keys(window.__objs).length; });
+  check('E59', 'deleting the analysis deletes its files in the cloud', c === 0, c);
+  await E(() => { delete window.firebase; });
 });
 
 await browser.close();
