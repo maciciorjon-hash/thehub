@@ -4,6 +4,39 @@ One file, newest run first. Each run is a dated section.
 
 ---
 
+## Labbook on a laptop — 2026-10-12
+
+Jon asked for the whole app measured: functions, code, visual output. Driven the way he uses it — dHUB, with his own notebook of 12 Oct
+(13 experiments, 8 projects, a day of Journal) loaded read-only into a throwaway browser — through 32 screens and dialogs at 1440×900,
+1280×720 and 1024×768 in both themes (192 measured screens), the record PDF and bench sheet of five experiments rendered to paper and
+read page by page, the hostile-input monkey over every box (26 payloads × ~100 fields, XSS included: 0 findings), 400 random clicks,
+a perf run to 520 experiments / 15 MB (every screen ≤ 45 ms, save flush 46 ms), two windows on one notebook, and the keyboard.
+The study that came out of it is `docs/LABBOOK_STUDY_2026-10-12.md`.
+
+| id | where | what was wrong | fixed in |
+|---|---|---|---|
+| LA-1 | Repeat as a replicate | the start date was free text and never checked: `banana`, `12/10/2026` (the format the UI shows everywhere), `2026-13-01` or spaces dated every step "NaN-aN-aN" and gave codes like `SP_NBbanana`, `SP_NB12/10/2026` | the date picker, and `_realDay` refuses anything that is not a day — B28 |
+| LA-2 | designs (presets) | `_presetSig` was key-order sensitive and Firebase returns keys alphabetised, so **all 20** default designs in Jon's notebook read "edited" (18 by key order alone) — and an "edited" design is never refreshed from the seed, so 14 of 20 stored designs differ from the current seed (WB 4 steps vs 8, PR 2 vs 5, NB 4 vs 7) and the next version bump would have skipped them all | signatures are written with sorted keys (`_canonJSON`) and an old stamp is re-shaped before it is compared (`_sigSame`) — I27. Effect on his notebook: 20 → 2 "edited" (NB and NB_SPARK_RTX96 really differ); of the curated ones, six change content at next load (CLONE_HIFI, NB_BIO_RTX96, CTG_TCIP96, D2B_CHEM1/SCREEN384/SEED1) and three are only re-stamped |
+| LA-3 | Methods paragraph | same class in `_pubSourceSig`: after a key reordering a hand-written paragraph read "stale — the record changed" with nothing changed (5/5 types) | same helper — I27 |
+| LA-4 | plate editor, Export PDF | on a short window (1366×680, 1280×650, or 125 % zoom) the footer — Done, Print / save PDF — hung 6–16 px below the dialog's edge: each body capped itself at a share of the window and ignored its own title and footer; the plate was sized by the same guess | `_dlgRoom` measures the room (window 88 % less padding, title, footer) and publishes it as `--pl-bodyh` / `--px-bodyh`; both refit on resize — B29 |
+| LA-5 | every dialog | Escape closed only the plate editor, the search and the Designer (not Settings, Recover, Export PDF, What you need, New experiment, Setup, any question or picker); no dialog took the keyboard when it opened, none kept Tab inside (24–40 of 45 presses landed on the page behind), none said role=dialog / aria-modal / a name | one dialog kit on the existing `.modal-back` watcher: role, name, focus in, Tab wraps, Escape closes (a menu first), focus returns to the opener — B30 |
+| LA-6 | questions that delete | `lbConfirm` focused the OK button, so for *Delete experiment* and *Restore backup — Replace everything* Enter was the destructive answer | a `danger` question starts on Cancel — B30 |
+| LA-7 | two windows | two windows on one notebook with no cloud to merge them (local `dHUB.html`, signed out, offline): the window that saved last wrote its stale whole tree over the other's edit (A edits one experiment, B another, A's edit gone after a reload, pill "Saved") | BroadcastChannel: a window that has written tells the others; a clean window takes the newer notebook at once, one that is typing or has a save pending merges it record by record (newest wins, a record in the other's recycle bin stays deleted) — B31 |
+| LA-8 | record PDF, bench sheet | a control well's caption printed "– substrat / e" in a one-well cell: `#print-root *{font-size:inherit}` is (1,0,0) and the plate caption rules were (0,x,x), so the caption's 6.5 pt never applied and it printed at the cell's 8.5 pt — the same specificity trap the 22 Sep note describes, in the plate rules that were not scoped | the caption rule is scoped to `#print-root` (6 pt, breaks at its spaces); R9 measures it at A4 width. Nine dead `pd-*` plate rules of the old renderer removed |
+| LA-9 | bench sheet | "What you need today": the category label was cut to "COMPOU…" | label column 56 → 70 px — R9 |
+| LA-10 | Week | below ~1100 px (1024 inside dHUB) the seven columns were crushed to 27 px and a step's name broke every third letter ("Tran / sfect / ion…"); an invisible snooze slot took a fifth of every chip | weekday columns ≥ 118 px (the week scrolls rather than crushes), words wrap at word boundaries, a code breaks after its underscores, the snooze icon is out of the flow — B32 |
+| LA-11 | experiment page, pickers, Recover | Setup labels cut by an ellipsis ("Smallest volume you will pi…"); a 24-compound list as a nine-line cell; "96-/well" and "86 wells / used" wrapping beside a plate's title; the Export menu's sentences cut at 40 % of a line (213 px lost); deleted experiments told apart by a title cut at the first line | labels wrap, a long list takes its row, chips do not wrap, sublabels get three lines and a tooltip, names two lines — the new desktop sweep |
+| LA-12 | experiment banner | nine actions in two rows with divider rules that ended a row ("Save as preset \|") | actions are groups with space between them: nothing can dangle |
+| LA-13 | Designer | the breadcrumb read "Planner" | `crumbHtml` has a Designer branch |
+| LA-14 | plate editor, Today, setup | well digits and "µM" sat 2 px proud of their box (line-height 1); the ⋯ of a carried step 2 px out of its button; the setup "?" 2 px out of its disc; ⌘C on a block raised an unhandled rejection when the clipboard was refused | line-heights, icon size, disc size, `.catch` |
+| LA-15 | `tools/cellcheck_invariants.mjs` C8 | red every afternoon: the stub culture "seeded half a day ago" was seeded *today* after noon, which Labbook (rightly) reads as a split logged today and ticks the task | the fixture is always seeded before midnight |
+
+Added: `tools/labbook_desktop_sweep.mjs` (19 screens and dialogs on fixtures from the presets, three window sizes, both themes, in the Hub frame; in CI beside the other Hub sweeps) and invariants I27, B28–B32, R9 in `tools/invariants.mjs`. Each was run against the unfixed code and failed there: I27 58 findings, B28 14, B29 4, B30 57, B31 3, B32 and R9 each caught with the rule put back.
+
+Not changed (Jon's call, details in the study): the accent button's white label is 3.65:1 (passes for large text, not for 12 px); `.pk-v` / `.pk-big` / `.pk-sumt` print rules are still unscoped and inert behind the reset (scoping them would change how every printed plate map looks); the Planner's *Today* opens the Journal workspace.
+
+---
+
 ## Blot — 2026-10-09
 
 Broken on purpose before anything was added: a figure with two real-size pictures, labels with markup in them, the lane

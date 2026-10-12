@@ -67,6 +67,11 @@
 //                            PREFIX_TYPEDATE[_POI], and for D2B PREFIX_[POI_]D2B_DATE — with or
 //                            without a POI. (a D2B with no POI came out D2B20260929, the only
 //                            code of its type with no underscore)
+//   I27 a signature is one   A design's "edited" stamp and a Methods paragraph's "stale" stamp are compared as text, so the
+//       string whatever the   same record with its keys in another order — what a cloud round trip returns — must still match,
+//       key order            an old stamp (insertion order) must still match, and a real change must still differ. (all 20 of
+//                            Jon's default designs read "edited", so no seed correction reached them; a hand-written paragraph
+//                            read "stale" with nothing changed)
 //   I18 no box loses focus   Every text box, number box and editor on every screen reachable
 //                            — experiments with the Report open, the plate editor, every
 //                            dialog, the Journal, the Designer — keeps the caret
@@ -90,6 +95,9 @@
 //   R8 curves                Only an experiment that holds a fitted dose response has curves (a Western blot or an MS run with a
 //                            results table gets none — no heading, switch or export box); one that does gets them in the Report and
 //                            the PDF once per non-excluded measurement, in grey ink, as pictures for Word, never in the Methods sheet.
+//   R9 words print whole    On paper (A4 width) no word of a plate map's merged control cells is broken across two lines, and no label in the
+//                            bench sheet's "What you need today" box is cut. ("– substrate" printed as "substrat / e" in the record PDF
+//                            and the bench sheet; "COMPOUNDS" printed as "COMPOU…")
 //   R7 scopes                A folder/project/all PDF carries every experiment in it; a Journal
 //                            day, month and the whole Journal carry each step done that day.
 //
@@ -138,6 +146,24 @@
 //   B27 the editor knows what it is for  A plasmid experiment (NanoBRET, reverse transfection) says so on its plate: it shows the
 //                            constructs and their roles, warns when the palette lacks conditions the setup gives, and
 //                            says what is missing when no plasmid is named; one that is not (a Western) shows none of it.
+//   B28 a typed date is a   Repeat as a biological replicate asks for a start date with the date picker and refuses anything that
+//       date                 is not a real day: no step dated "NaN-aN-aN", no code like SP_NBbanana or SP_NB12/10/2026. (it took
+//                            free text; "12/10/2026" — the format the UI shows everywhere — dated every step NaN)
+//   B29 a dialog keeps its   On a short window (1366x680, 1280x650) the plate editor, Export PDF, New experiment, Setup, What you
+//       buttons              need, Recover and Settings keep every footer button inside both the window and the dialog. (Done and
+//                            Print / save PDF hung 6–16 px below the dialog's edge: each body capped itself at a share of the window
+//                            and ignored its own title and footer)
+//   B32 words stay whole     On a small laptop window (1024 wide inside dHUB: 948 for Labbook, both rails open) no word of a Week chip is broken across lines when it
+//                            would have fitted, and the week scrolls rather than being crushed below 118 px a day. (a step's name
+//                            read "Tran / sfect / ion…" in 27 px columns)
+//   B30 a dialog is a dialog Every dialog says role=dialog, aria-modal and a name; takes the keyboard when it opens; Tab wraps inside
+//                            it (last → first, first ← shift, and from outside → in); Escape closes it (plate editor, Designer and
+//                            search have their own); the keyboard goes back to what opened it; a confirmation about deleting starts
+//                            on Cancel. (Escape did nothing on 7 of 9 dialogs and Tab walked out into the page behind)
+//   B31 two windows, one     Two windows on one notebook never lose each other's work: a window with nothing unsaved takes the other's
+//       notebook             save at once (no reload); one that is typing or has a save pending merges it in, record by record, newest
+//                            wins; a record the other window deleted stays deleted. (B's save wrote its stale copy over A's edit — A
+//                            edits one experiment, B another, and A's is gone after a reload)
 //   B23 the noon backup      The folder backup is due once per noon that has passed (closed at noon: the next open catches up),
 //                            is gzip JSON that restores to the same notebook, is never marked done by a snapshot or a
 //                            cloud adoption, and waits on a pill — writing nothing — when the browser wants a click.
@@ -186,6 +212,7 @@ async function suite(opts) {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // Quiet the app: nothing here should block on a dialog or a toast.
+  const REAL = { lbConfirm: window.lbConfirm };       // B30 needs the real question
   window.lbAlert = function () { return Promise.resolve(); };
   window.lbConfirm = function () { return Promise.resolve(true); };
 
@@ -1022,6 +1049,37 @@ async function suite(opts) {
     });
   }
 
+  // ── I27 a signature does not depend on the order of the keys ──
+  if (run('I27')) {
+    const sortKeys = v => Array.isArray(v) ? v.map(sortKeys) : (v && typeof v === 'object') ? Object.keys(v).sort().reduce((o, k) => { o[k] = sortKeys(v[k]); return o; }, {}) : v;
+    // the designs: the same record alphabetised (the cloud's answer) is not an edit; an old-style stamp still matches; a real change still reads as one
+    for (const key of KEYS) await guard('I27', 'design ' + key, async () => {
+      if (!isDefaultPreset(key) || !LB.data.presets[key]) return;
+      const orig = JSON.parse(JSON.stringify(LB.data.presets[key]));
+      try {
+        const a = JSON.parse(JSON.stringify(orig)); a._seedSig = _presetSig(a); LB.data.presets[key] = sortKeys(a); tick('I27');
+        if (presetEdited(key)) bad('I27', 'design ' + key, 'a default design whose keys were alphabetised reads "edited"');
+        const b = JSON.parse(JSON.stringify(orig)); b.blocks.forEach(x => { if (x.calc && x.calc.inputs) delete x.calc.inputs.minVolUL; });
+        b._seedSig = JSON.stringify([b.title, b.setup || null, b.blocks]);            // a stamp written the old way, in insertion order
+        const sb = sortKeys(b); sb._seedSig = b._seedSig; LB.data.presets[key] = sb; tick('I27');
+        if (presetEdited(key)) bad('I27', 'design ' + key, 'a stamp written before signatures were canonical makes an untouched design read "edited"');
+        const c = JSON.parse(JSON.stringify(orig)); c._seedSig = _presetSig(c); c.blocks[0].title += ' (mine)'; LB.data.presets[key] = sortKeys(c); tick('I27');
+        if (!presetEdited(key)) bad('I27', 'design ' + key, 'a real change to a step no longer reads "edited"');
+      } finally { LB.data.presets[key] = orig; }
+    });
+    // Methods: a hand-written paragraph is not stale because the keys moved; it is when the record did
+    for (const key of KEYS) await guard('I27', 'methods ' + key, async () => {
+      openQuick(key, {}); const e = await created(() => createExperiment()); closeNew(); if (!e) { bad('I27', 'methods ' + key, 'no experiment was made'); return; }
+      try {
+        e.pubEdited = true; e.pubReady = '<p>my own wording</p>'; e.pubSrcSig = _pubSourceSig(e);
+        const same = sortKeys(JSON.parse(JSON.stringify(e))); LB.data.experiments[e.id] = same; tick('I27');
+        if (pubIsStale(same)) bad('I27', 'methods ' + key, 'a hand-written paragraph reads stale after the record\'s keys were reordered, with nothing changed');
+        same.aim = 'changed after the paragraph was written';
+        if (!pubIsStale(same)) bad('I27', 'methods ' + key, 'a changed record no longer makes the hand-written paragraph stale');
+      } finally { cleanup(e); }
+    });
+  }
+
   // ── I18 no box anywhere loses the caret ──
   if (run('I18')) {
     const lbAlert0 = window.lbAlert, lbConfirm0 = window.lbConfirm;
@@ -1070,7 +1128,7 @@ async function suite(opts) {
   // result table with a flagged row, an excluded row and a compound whose name carries a comma
   // and quotes, an observation, an outcome, a file, a plate well, a deviation — each carrying a
   // marker. Then every way the experiment leaves the notebook is asked whether it says so.
-  const RUN_R = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8'].some(run);
+  const RUN_R = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9'].some(run);
   if (RUN_R) {
     const DL = [];                                      // everything _dl was handed
     const origDl = window._dl, origPrint = window.print;
@@ -1308,6 +1366,51 @@ async function suite(opts) {
     // appear anywhere — no heading, no switch, no box in the export dialog, no marker in the text.
     // Then a fitted curve is attached to each, whatever its type, and it must appear everywhere
     // the Report and the PDF go, once per measurement that was not excluded.
+    // ── R9 what is printed is printed whole ──
+    if (run('R9')) {
+      const mount = async html => { const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;left:-9999px;top:0;width:680px;height:1000px;border:0';
+        f.srcdoc = '<!doctype html><html><head><meta charset="utf-8">' + PRINT_CSS + LAB_CSS + '<style>html,body{margin:0;background:#fff}#print-root{display:block}</style></head><body><div id="print-root">' + html + '</div></body></html>';
+        document.body.appendChild(f); await new Promise(r => { f.onload = r; setTimeout(r, 800); }); await sleep(60); return f; };
+      // A control well that carries a flag and no block is a cell of its own, one well wide, with its caption under the number
+      // ("1 / – substrate"): the layout that printed "substrat / e". Written as the printer writes it, at A4 width, so this holds
+      // however the plate that leads to it was drawn.
+      await guard('R9', 'a one-well control cell', async () => {
+        const cols = n => Array.from({ length: n }, (_, i) => '<th>' + (i + 1) + '</th>').join('');
+        const row = ['− ligand', '− substrate', 'DMSO', 'Mock'].map(t => '<td class="pk-no1"><span class="pk-v">1</span><span class="pk-cap">' + t + '</span></td>').join('') + '<td></td>'.repeat(8);
+        const html = '<div class="pk-p"><table class="pk-g"><tr><th class="pk-rh"></th>' + cols(12) + '</tr><tr><th class="pk-rh">A</th>' + row + '</tr></table></div>';
+        const f = await mount(html); tick('R9');
+        try { const d = f.contentDocument, w = f.contentWindow, broken = [];
+          d.querySelectorAll('td .pk-cap').forEach(c => { const tn = c.firstChild; const re = /\S+/g; let m;
+            while ((m = re.exec(tn.nodeValue))) { const r = d.createRange(); r.setStart(tn, m.index); r.setEnd(tn, m.index + m[0].length);
+              if (new Set([...r.getClientRects()].map(x => Math.round(x.top))).size > 1) broken.push(m[0]); } });
+          if (broken.length) bad('R9', 'a one-well control cell', 'a caption is broken inside a word at A4 width: ' + [...new Set(broken)].join(', ')); }
+        finally { f.remove(); }
+      });
+      for (const { key, e } of made) await guard('R9', key, async () => {
+        const docs = [['record PDF', buildPrintDoc(ALLON, { kind: 'exp', id: e.id })], ['bench sheet', buildLabSheet(e)]];
+        for (const [what, html] of docs) {
+          const f = await mount(html); tick('R9');
+          try {
+            const d = f.contentDocument, w = f.contentWindow;
+            const broken = [];
+            d.querySelectorAll('td.pk-gl').forEach(td => {
+              const walker = d.createTreeWalker(td, NodeFilter.SHOW_TEXT); let n;
+              while ((n = walker.nextNode())) { const re = /\S+/g; let m;
+                while ((m = re.exec(n.nodeValue))) { const r = d.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+                  const tops = new Set([...r.getClientRects()].map(x => Math.round(x.top)));
+                  if (tops.size > 1) {   // broken — a finding only if the word would have fitted the cell on one line (a name wider than the cell has to break)
+                    const probe = d.createElement('span'); probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;left:0;top:0'; probe.textContent = m[0]; n.parentElement.appendChild(probe);
+                    const wd = probe.getBoundingClientRect().width; probe.remove(); const cs = w.getComputedStyle(td), inner = td.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+                    if (wd <= inner + 0.5) broken.push(m[0]); } } }
+            });
+            if (broken.length) bad('R9', key + ' · ' + what, 'a word is broken across two lines in a plate map cell: ' + [...new Set(broken)].slice(0, 4).join(', '));
+            const cut = [...d.querySelectorAll('.lb-ngl')].filter(x => x.scrollWidth > x.clientWidth + 1).map(x => x.textContent);
+            if (cut.length) bad('R9', key + ' · ' + what, 'a label in the needs box is cut: ' + [...new Set(cut)].join(', '));
+          } finally { f.remove(); }
+        }
+      });
+    }
+
     if (run('R8')) {
       const xs = [-5, -5.5, -6, -6.5, -7, -7.5, -8, -8.5, -9, -9.5];
       const mkCurve = (ec50, left) => { const x = [], y = []; xs.forEach(v => [0, 1].forEach(k => { x.push(v); y.push(+(5 + 95 / (1 + Math.pow(10, 1.1 * (v - Math.log10(ec50)))) + (k ? 2 : -2)).toFixed(2)); }));
@@ -1783,6 +1886,93 @@ async function suite(opts) {
       [e.type, e.setup.donors, e.setup.acceptors, e.plasmids] = keep; closePlateEditor();
     });
 
+    // B28 — a date typed into Repeat is a real day or it is refused.
+    if (run('B28')) await guard('B28', 'repeat date', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'CTG', tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {})));
+      const before0 = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'CTG', title: 'INV repeat', code: 'INV_B28_20261001', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before0.has(x.id)); clean.push(e);
+      const orig = window.lbPrompt; let asked = null;
+      try {
+        for (const v of ['banana', '12/10/2026', '2026-13-01', '2026-02-30', '  ', '2026-10-14']) {
+          const before = new Set(Object.keys(LB.data.experiments));
+          window.lbPrompt = (label, value, opts) => { asked = opts || {}; return Promise.resolve(v); };
+          repeatExperiment(e.id); await sleep(80); tick('B28');
+          const made = Object.values(LB.data.experiments).filter(x => !before.has(x.id)); made.forEach(m => clean.push(m));
+          if (!asked || asked.type !== 'date') bad('B28', JSON.stringify(v), 'Repeat does not ask with the date picker');
+          const dirty = made.some(m => !/^\d{4}-\d{2}-\d{2}$/.test(m.startDate) || (m.blocks || []).some(b => !/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) || /[\/\s]|NaN|banana/.test(m.code || ''));
+          if (dirty) bad('B28', JSON.stringify(v), 'the replicate has a step or a code that is not a real date: ' + made.map(m => m.code + ' ' + m.startDate).join(', '));
+          const real = v === '2026-10-14';
+          if (real && made.length !== 1) bad('B28', JSON.stringify(v), 'a real day made ' + made.length + ' replicates');
+          if (!real && v.trim() && made.length) bad('B28', JSON.stringify(v), 'a date that is not a day still made a replicate');
+          made.forEach(m => delete LB.data.experiments[m.id]); delete e.repGroup; delete e.repIndex;
+        }
+      } finally { window.lbPrompt = orig; }
+    });
+
+    // B30 — every dialog is a dialog to the keyboard.
+    if (run('B30')) await guard('B30', 'dialogs', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV dialogs', code: 'INV_B30', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id);
+      const key2 = (ev, o) => { const t = document.activeElement || document.body; const k = new KeyboardEvent('keydown', Object.assign({ key: ev, bubbles: true, cancelable: true }, o || {})); t.dispatchEvent(k); return k; };
+      const openId = id => { const d = document.getElementById(id); return !!d && d.classList.contains('open'); };
+      const shut = () => { document.querySelectorAll('.modal-back.open').forEach(m => m.classList.remove('open')); };
+      const DLG = [
+        ['plate editor', '#plate-modal', () => openPlateEditor('exp:' + e.id), true],
+        ['new experiment', '#new-modal', () => openNew(P.id, P.sections[0].id), true],
+        ['setup editor', '#es-modal', () => openSetupEditor(e.id), true],
+        ['Export PDF', '#lb-dialog', () => openPdfExport({ kind: 'exp', id: e.id }), true],
+        ['What you need', '#lb-dialog', () => openPrepSheet({ expId: e.id }), true],
+        ['Recover', '#lb-dialog', () => openRecover(), true],
+        ['Settings', '#lb-dialog', () => openSettings(), true],
+        ['a question', '#lb-dialog', () => { REAL.lbConfirm('Delete it?', { danger: true, title: 'Delete' }); }, true],
+        ['a picker', '#lb-dialog', () => { lbPicker('Pick', [{ id: 'a', label: 'A', sub: 'x' }, { id: 'b', label: 'B', sub: 'y' }], function () {}); }, true],
+      ];
+      shut(); await sleep(120);
+      for (const [name, sel, open, esc] of DLG) {
+        shut(); await sleep(60);
+        const opener = document.createElement('button'); opener.id = 'inv-b30-opener'; opener.textContent = 'opener'; opener.style.cssText = 'position:fixed;left:0;bottom:0;z-index:1'; document.body.appendChild(opener); opener.focus();
+        open(); await sleep(260); tick('B30');
+        const d = document.querySelector(sel); const c = d && (d.querySelector('.modal') || d.firstElementChild);
+        if (!d || !d.classList.contains('open')) { bad('B30', name, 'did not open'); opener.remove(); continue; }
+        if (!c || c.getAttribute('role') !== 'dialog' || c.getAttribute('aria-modal') !== 'true') bad('B30', name, 'no role=dialog / aria-modal');
+        if (!c || !(c.getAttribute('aria-label') || (c.getAttribute('aria-labelledby') && document.getElementById(c.getAttribute('aria-labelledby'))))) bad('B30', name, 'the dialog has no name for a screen reader');
+        if (!c.contains(document.activeElement)) bad('B30', name, 'the keyboard is not in the dialog after it opens (focus is on ' + (document.activeElement && (document.activeElement.id || document.activeElement.tagName)) + ')');
+        // Tab wraps at both ends and comes in from outside
+        const tabs = [...c.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),summary,[contenteditable="true"],[tabindex]:not([tabindex="-1"])')].filter(x => x.getClientRects().length && getComputedStyle(x).visibility !== 'hidden' && !x.closest('[hidden],[inert]'));
+        if (tabs.length) {
+          tabs[tabs.length - 1].focus(); key2('Tab');
+          if (document.activeElement !== tabs[0]) bad('B30', name, 'Tab on the last control does not wrap to the first');
+          tabs[0].focus(); key2('Tab', { shiftKey: true });
+          if (document.activeElement !== tabs[tabs.length - 1]) bad('B30', name, 'Shift+Tab on the first control does not wrap to the last');
+          opener.focus(); key2('Tab');
+          if (!c.contains(document.activeElement)) bad('B30', name, 'Tab from the page behind the dialog stays behind it');
+        }
+        // Escape: closes (a menu first; the plate editor clears a selection first and the Designer and search have their own)
+        if (esc) {
+          if (name === 'plate editor') PL.sel = {};
+          (document.activeElement && c.contains(document.activeElement) ? document.activeElement : c).focus();
+          key2('Escape'); await sleep(80);
+          if (openId(d.id) && name !== 'a question' && name !== 'a picker') bad('B30', name, 'Escape does not close it');
+          else if (openId(d.id)) bad('B30', name, 'Escape does not close it');
+          else if (document.activeElement !== opener) bad('B30', name, 'the keyboard did not go back to what opened the dialog (it is on ' + (document.activeElement && (document.activeElement.id || document.activeElement.tagName)) + ')');
+        }
+        opener.remove(); shut(); await sleep(40);
+      }
+      // a question about deleting starts on Cancel, an ordinary one on OK
+      for (const [danger, want] of [[true, 'lb-dlg-cancel'], [false, 'lb-dlg-ok']]) {
+        shut(); await sleep(40); REAL.lbConfirm('Sure?', { danger }); await sleep(180); tick('B30');
+        if ((document.activeElement || {}).id !== want) bad('B30', 'confirm ' + (danger ? 'danger' : 'plain'), 'starts on ' + ((document.activeElement || {}).id || document.activeElement.tagName) + ', expected ' + want);
+        shut(); await sleep(40);
+      }
+    });
+
     // B23 — the noon backup.
     if (run('B23')) await guard('B23', 'backup', async () => {
       tick('B23');
@@ -2031,6 +2221,108 @@ try {
     let r;
     try { r = await pg.evaluate(suite, { only: ONLY }); }
     catch (e) { r = { out: [{ inv: 'harness', case: '-', msg: 'the suite itself threw: ' + String(e && e.message || e).split('\n')[0] }], counts: {}, archive: false, presets: 0 }; }
+    // B32 — the Week at a small window: words are not broken, the columns are not crushed.
+    if (!ONLY || ONLY.includes('B32')) {
+      const b32 = (c, m) => { r.out.push({ inv: 'B32', case: c, msg: m }); };
+      try {
+        r.counts.B32 = 0;
+        await pg.setViewportSize({ width: 948, height: 768 }); await pg.waitForTimeout(250);   // a 1024 window inside dHUB: the Hub's rail takes 76 px of it
+        const out = await pg.evaluate(async () => {
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+          const P = (LB.data.projects || []).find(p => (p.sections || []).length), key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+          const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+          const before = new Set(Object.keys(LB.data.experiments));
+          buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: todayStr(), type: 'NB', title: 'INV week', code: 'INV_WK_20261012', setup: su, plate: true });
+          const e = Object.values(LB.data.experiments).find(x => !before.has(x.id));
+          selectNode('week'); await sleep(250);
+          const chips = [...document.querySelectorAll('.wk-blk')];
+          const res = { chips: chips.length, broken: [], colW: [] };
+          document.querySelectorAll('.wk-col').forEach(c => res.colW.push(Math.round(c.getBoundingClientRect().width)));
+          chips.forEach(ch => ch.querySelectorAll('.wk-code,.wk-bt').forEach(el => {
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+            while ((n = walker.nextNode())) { const re = /[^\s_]+/g; let m;
+              while ((m = re.exec(n.nodeValue))) { const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+                if (new Set([...r.getClientRects()].map(x => Math.round(x.top))).size > 1) {
+                  const probe = document.createElement('span'); probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap'; probe.textContent = m[0]; el.appendChild(probe);
+                  const wd = probe.getBoundingClientRect().width; probe.remove();
+                  if (wd <= el.clientWidth + 0.5) res.broken.push(m[0]); } } }
+          }));
+          delete LB.data.experiments[e.id]; selectNode('home');
+          return res;
+        });
+        r.counts.B32 += 1 + out.chips;
+        if (!out.chips) b32('week', 'the week showed no step chips to measure');
+        if (out.broken.length) b32('948x768', 'a word is broken across lines in a Week chip although it fits: ' + [...new Set(out.broken)].slice(0, 5).join(', '));
+        const narrow = out.colW.filter(w => w < 80);
+        if (narrow.length && out.colW.slice(0, 5).some(w => w < 118)) b32('948x768', 'the Week crushed its weekday columns to ' + out.colW.join(' / ') + ' px');
+        await pg.setViewportSize({ width: 1440, height: 900 }); await pg.waitForTimeout(150);
+      } catch (e) { b32('harness', String(e && e.message || e).split('\n')[0]); }
+    }
+    // B31 — two windows on one notebook (the same browser profile) keep each other's work. Needs a second page.
+    if (!ONLY || ONLY.includes('B31')) {
+      const b31 = (c, m) => { r.out.push({ inv: 'B31', case: c, msg: m }); };
+      let pg2 = null;
+      try {
+        r.counts.B31 = 0;
+        const ready2 = P => P.waitForFunction(() => window.LB && !(typeof _localLoading !== 'undefined' && _localLoading) && (LB.data.projects || []).length && typeof _treeOK !== 'undefined', null, { timeout: 20000 });
+        pg2 = await ctx.newPage(); pg2.on('pageerror', e => errs.push('B31 window 2: ' + String(e && e.message || e)));
+        await pg2.goto(url + (url.includes('?') ? '&' : '?') + '_b31=1', { waitUntil: 'load' }); await ready2(pg2);
+        const setup = `window.lbConfirm = () => Promise.resolve(true); window.lbAlert = () => Promise.resolve();
+          window.__mk = function (code) { const P = (LB.data.projects || []).find(p => (p.sections || []).length), key = 'CTG', tpl = LB.data.presets[key];
+            const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup || {}))); const before = new Set(Object.keys(LB.data.experiments));
+            buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'CTG', title: 'INV xw ' + code, code, setup: su, plate: true });
+            return Object.values(LB.data.experiments).find(x => !before.has(x.id)).id; };
+          window.__set = function (id, aim) { const e = LB.data.experiments[id]; e.aim = aim; e.updated = Date.now() + 1; save(); };
+          window.__aim = function (id) { const e = LB.data.experiments[id]; return e ? (e.aim || '') : null; };`;
+        await pg.evaluate(setup); await pg2.evaluate(setup);
+        const settle = ms => pg.waitForTimeout(ms);
+        const wait = async (P, fn, arg, ms = 2500) => { try { await P.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (e) { return false; } };
+        // 1 — A makes three experiments; B has them without a reload
+        const ids = await pg.evaluate(() => [__mk('INV_XW1'), __mk('INV_XW2'), __mk('INV_XW3')]);
+        r.counts.B31++;
+        if (!(await wait(pg2, ids => ids.every(id => !!LB.data.experiments[id]), ids))) b31('live', 'window B did not receive the experiments window A made, without a reload');
+        // 2 — an edit in A shows in B, an edit in B shows in A
+        await pg.evaluate(([id]) => __set(id, 'edit from A'), ids); r.counts.B31++;
+        if (!(await wait(pg2, ([id]) => __aim(id) === 'edit from A', ids))) b31('live', 'an edit made in window A did not reach window B');
+        await pg2.evaluate(([, id]) => __set(id, 'edit from B'), ids); r.counts.B31++;
+        if (!(await wait(pg, ([, id]) => __aim(id) === 'edit from B', ids))) b31('live', 'an edit made in window B did not reach window A');
+        // both edits survive a reload of each
+        await settle(500);
+        for (const [nm, P] of [['A', pg], ['B', pg2]]) {
+          await P.reload({ waitUntil: 'load' }); await ready2(P); await P.evaluate(setup); r.counts.B31++;
+          const got = await P.evaluate(ids => [__aim(ids[0]), __aim(ids[1])], ids);
+          if (got[0] !== 'edit from A' || got[1] !== 'edit from B') b31('reload', `window ${nm} after a reload holds ${JSON.stringify(got)}, expected both edits`);
+        }
+        // 3 — B is typing (a save pending) when A saves: neither is lost
+        await pg2.evaluate(([, , id]) => { window._saveP = true; const e = LB.data.experiments[id]; e.aim = 'typing in B'; e.updated = Date.now() + 5; }, ids);
+        await pg.evaluate(([id]) => __set(id, 'A while B types'), ids); r.counts.B31++;
+        await settle(700);
+        await pg2.evaluate(() => { window._saveP = false; save(); }); await settle(500);
+        const both = await pg2.evaluate(ids => [__aim(ids[0]), __aim(ids[2])], ids);
+        if (both[0] !== 'A while B types' || both[1] !== 'typing in B') b31('merge', `a window with a save pending lost one side: ${JSON.stringify(both)}`);
+        const inA = await pg.evaluate(ids => [__aim(ids[0]), __aim(ids[2])], ids);
+        if (inA[0] !== 'A while B types' || inA[1] !== 'typing in B') b31('merge', `the other window did not end with the merged notebook: ${JSON.stringify(inA)}`);
+        // 4 — both edit the same record while out of touch: the newer one wins and nothing throws
+        await pg2.evaluate(() => { window._xwBusy = true; });                    // B hears nothing for a moment
+        await pg.evaluate(([id]) => { const e = LB.data.experiments[id]; e.aim = 'older'; e.updated = Date.now() + 100; save(); }, ids);
+        await settle(400);
+        await pg2.evaluate(([id]) => { window._saveP = true; const e = LB.data.experiments[id]; e.aim = 'newer'; e.updated = Date.now() + 5000; }, ids);
+        await pg2.evaluate(() => { window._xwBusy = false; _xwSaved(); }); await settle(700); r.counts.B31++;
+        await pg2.evaluate(() => { window._saveP = false; });
+        const nw = await pg2.evaluate(([id]) => __aim(id), ids);
+        if (nw !== 'newer') b31('same record', `the newer edit did not win: ${nw}`);
+        // 5 — what A deleted stays deleted in a window that still had it and is merging
+        await pg2.evaluate(() => { window._xwBusy = true; });
+        await pg.evaluate(([, , id]) => { delExperiment(id); }, ids); await settle(500);
+        await pg2.evaluate(([id]) => { window._saveP = true; LB.data.experiments[id] && (LB.data.experiments[id].updated = LB.data.experiments[id].updated); }, ids);
+        await pg2.evaluate(() => { window._xwBusy = false; _xwSaved(); }); await settle(700); r.counts.B31++;
+        await pg2.evaluate(() => { window._saveP = false; });
+        const back = await pg2.evaluate(([, , id]) => !!LB.data.experiments[id], ids);
+        if (back) b31('deleted', 'an experiment deleted in window A came back in window B when B merged');
+        await pg.evaluate(ids => { ids.forEach(id => { delete LB.data.experiments[id]; }); save(); }, ids);
+      } catch (e) { b31('harness', String(e && e.message || e).split('\n')[0]); }
+      finally { try { if (pg2) await pg2.close(); } catch (e) {} }
+    }
     // S1 — the notebook lives in IndexedDB: bigger than localStorage can hold, it saves and comes
     // back after a reload; a tree an older build left in localStorage is carried over; of the
     // two copies the newer wins. Needs reloads, so it runs here rather than inside the suite.
@@ -2073,6 +2365,40 @@ try {
           if (!(await pg.evaluate(() => !!LB.data.experiments.S1_OLD))) s1('older', 'an older localStorage copy replaced the IndexedDB notebook');
         }
       } catch (e) { s1('harness', String(e && e.message || e).split('\n')[0]); }
+    }
+    // B29 — on a short window every dialog keeps its footer. Needs the window resized, so it runs here.
+    if (!ONLY || ONLY.includes('B29')) {
+      const b29 = (c, m) => { r.out.push({ inv: 'B29', case: c, msg: m }); };
+      try {
+        r.counts.B29 = 0;
+        for (const [w, h] of [[1366, 680], [1280, 650]]) {
+          await pg.setViewportSize({ width: w, height: h }); await pg.waitForTimeout(250);
+          const rows = await pg.evaluate(async () => {
+            const sleep = ms => new Promise(r => setTimeout(r, ms));
+            const P = (LB.data.projects || []).find(p => (p.sections || []).length), key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+            const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+            const before = new Set(Object.keys(LB.data.experiments));
+            buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV fit', code: 'INV_B29', setup: su, plate: true });
+            const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); openExp(e.id);
+            const D = [['plate editor', () => openPlateEditor('exp:' + e.id)], ['Export PDF', () => openPdfExport({ kind: 'exp', id: e.id })], ['New experiment', () => openNew(P.id, P.sections[0].id)],
+              ['Setup', () => openSetupEditor(e.id)], ['What you need', () => openPrepSheet({ expId: e.id })], ['Recover', () => openRecover()], ['Settings', () => openSettings()]];
+            const out = [];
+            for (const [name, open] of D) {
+              document.querySelectorAll('.modal-back.open').forEach(m => m.classList.remove('open')); await sleep(60);
+              open(); await sleep(350);
+              const d = [...document.querySelectorAll('.modal-back.open')].pop(); if (!d) { out.push({ name, none: true }); continue; }
+              const m = d.querySelector('.modal'), mb = m.getBoundingClientRect();
+              const btns = [...m.querySelectorAll('.modal-act button')].filter(b => b.getBoundingClientRect().width > 0);
+              const bad = btns.filter(b => { const r = b.getBoundingClientRect(); return r.bottom > innerHeight + 0.5 || r.bottom > mb.bottom + 0.5 || r.top < mb.top - 0.5; }).map(b => (b.textContent || '').trim().slice(0, 24));
+              out.push({ name, bad, n: btns.length, modalBottom: Math.round(mb.bottom), vh: innerHeight });
+            }
+            document.querySelectorAll('.modal-back.open').forEach(m => m.classList.remove('open')); delete LB.data.experiments[e.id];
+            return out;
+          });
+          for (const x of rows) { r.counts.B29++; if (x.none) b29(`${w}x${h} ${x.name}`, 'did not open'); else if (x.bad.length) b29(`${w}x${h} ${x.name}`, `the footer button${x.bad.length > 1 ? 's' : ''} ${x.bad.map(b => '"' + b + '"').join(', ')} fall outside the dialog or the window (dialog bottom ${x.modalBottom}, window ${x.vh})`); }
+        }
+        await pg.setViewportSize({ width: 1440, height: 900 }); await pg.waitForTimeout(150);
+      } catch (e) { b29('harness', String(e && e.message || e).split('\n')[0]); }
     }
     const name = path.basename(u);
     console.log(`\n${name} — ${r.presets} presets, Archive ${r.archive ? 'embedded (protocol cases run)' : 'absent (protocol cases skipped)'}, ${((Date.now() - t0) / 1000).toFixed(1)} s`);

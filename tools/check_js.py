@@ -62,6 +62,29 @@ def _blocks(html):
         yield html.count('\n', 0, m.start(2)) + 1, body
 
 
+FUNC_RE = re.compile(r'^function\s+([A-Za-z_$][\w$]*)', re.M)
+
+
+def _duplicate_functions(html):
+    """Top-level `function name(` declared twice in one app. The apps are one global scope, so the second
+    declaration silently replaces the first — harmless when they are the same (Labbook carried two identical
+    `_monthLabel`s) and a bug that shows only in the screen that called the replaced one when they are not.
+    Vendor libraries are one very long line, so lines over 2000 characters are not read."""
+    seen, dups = {}, []
+    for line, code in _blocks(html):
+        for m in FUNC_RE.finditer(code):
+            ln = line + code.count('\n', 0, m.start())
+            row = code[code.rfind('\n', 0, m.start()) + 1:code.find('\n', m.start())]
+            if len(row) > 2000:
+                continue
+            name = m.group(1)
+            if name in seen:
+                dups.append((ln, f'function {name} is declared twice (lines {seen[name]} and {ln}): the later one silently replaces the earlier'))
+            else:
+                seen[name] = ln
+    return dups
+
+
 def _node_check(code, tmpdir, tag):
     """Parse as script, then as module. Returns node's message, or None if clean."""
     err = None
@@ -140,6 +163,9 @@ def main():
                 if err:
                     bad += 1
                     failures.append((rel, line, err))
+            for ln, msg in _duplicate_functions(html):
+                bad += 1
+                failures.append((rel, ln, msg))
             if not quiet or bad:
                 n = sum(1 for _ in _blocks(html))
                 print(f'  {rel}: {n} block(s) — {"FAIL" if bad else "ok"}')

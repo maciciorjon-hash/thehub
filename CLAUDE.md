@@ -40,6 +40,7 @@ Push to `main` → Actions builds all profiles and deploys Pages (`https://macic
 - **A recorded number is never rewritten** (offer, show the diff, let the person decide). **An automatic backup never downloads.** Firebase writes only after the first cloud read has landed.
 - **No native `alert/confirm/prompt`** (use the in-app toast/note/dialog); no loose `px` for `font-size`/`border-radius` (use `--fs-*`/`--r-*`); ink on a solid fill is `var(--on-accent)`; use `> svg` for one-child illustrations; `margin-left:auto` in a wrapping row is a bug (two halves + `space-between`); clamp popovers by their measured rect, never a guessed size; no `backdrop-filter`; animate only `transform`/`opacity`, never loop at rest.
 - Standard checks: `tools/check_css.py`, `check_js`, `audit_app.py --xref`, `check_shared.py`, `audit_runtime.js`/`audit_align.js`/`audit_escape.js`. Visual standard: `docs/UI.md`.
+- Labbook on a laptop: `tools/labbook_desktop_sweep.mjs` (every screen and dialog × 3 sizes × 2 themes, in CI). Never compare `JSON.stringify` of a stored record with one built now — use `_canonJSON`/`_sigSame`; size a dialog body with `_dlgRoom`, not `70dvh`; scope a print rule to `#print-root`. Audit + study: `docs/LABBOOK_STUDY_2026-10-12.md`.
 - Never put Jon's real compound names in shipped code or fixtures. UI language is English.
 - The legacy RTDB secret in `thehub-f80ae` is accepted residual risk (Jon decided) — do not re-flag. `/journal` rules and Firebase Storage are deployed — do not re-raise.
 

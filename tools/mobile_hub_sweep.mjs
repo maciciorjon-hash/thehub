@@ -353,7 +353,7 @@ window.__hub.scrollBack = function(){
 };`;
 
 // A stand-in for the Firebase compat SDK: signs the admin in, holds nothing, accepts every write.
-const FIREBASE_STUB = `(function(){
+export const FIREBASE_STUB = `(function(){
   function snap(v){ return { val:function(){return v;}, exists:function(){return v!=null;}, forEach:function(){}, key:null, child:function(){return snap(null);} }; }
   function ref(path){ var r = {
     on:function(e,cb){ setTimeout(function(){ try{ cb(snap(null)); }catch(x){} },0); return cb; },

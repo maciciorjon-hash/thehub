@@ -30,10 +30,10 @@ const waitHttp = async u => { for (let i = 0; i < 60; i++) { try { if ((await fe
 
 const HOST = `<!doctype html><meta charset=utf-8><body style="margin:0"><iframe id=f src="/apps/labbook/labbook.html" style="width:100vw;height:100vh;border:0"></iframe>
 <script>
-var now=Date.now(), D=86400000;
+var now=Date.now(), D=86400000, SOD=new Date().setHours(0,0,0,0);   // a culture seeded 'half a day ago' was seeded TODAY after noon, which Labbook reads as a split logged today and ticks the task — so this one is always seeded before midnight
 var DATA={incubator:{
  a1:{line:'HCT116 KO',passage:12,vessel:'T75',seeded:now-3.2*D,intervalDays:3,history:[]},
- b2:{line:'HEK293T',passage:7,vessel:'6-well',seeded:now-0.5*D,intervalDays:3,history:[],mycoLast:now-D},
+ b2:{line:'HEK293T',passage:7,vessel:'6-well',seeded:Math.min(now-0.5*D,SOD-3600000),intervalDays:3,history:[],mycoLast:now-D},
  c3:{line:'Jurkat',passage:20,vessel:'T25',seeded:now-1*D,intervalDays:3,history:[],mycoLast:now-D}}};
 var subs=[]; window.__writes=[];
 window.JournalStore={get:function(){return DATA;},attach:function(){},subscribe:function(f){subs.push(f);return function(){};},
