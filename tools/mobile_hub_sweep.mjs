@@ -219,6 +219,7 @@ window.__hub.detect = function(opts){
         // a label sitting over its own control, or a transparent hit-layer, is not covering text
         var tcs = getComputedStyle(top);
         if(top.tagName==='INPUT' && top.type==='file') continue;   /* the invisible hit layer over a drop zone */
+        if(parseFloat(tcs.opacity)===0) continue;   /* a fully transparent layer paints nothing: the date field laid over the day's label so that a tap on the label opens the picker */
         if(top.tagName==='LABEL'||top.closest('label')===el.closest('label')&&el.closest('label')) continue;
         cov++; by = top; }
       if(cov>=3 && by && !isModal(by)){

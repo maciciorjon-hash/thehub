@@ -7753,6 +7753,11 @@ commit and one invariant each; each step below is added when it lands.
   bond orders in the file, the PNG uses the system sans (an SVG drawn into a canvas cannot load the page's web fonts), and the white
   ground is deliberate in both themes. **RB42** (fixture `9DGM`: a ring, an eight-carbon coil, a ring, 22 residues, nine in one wedge;
   proven by switching the relaxation and the label placement off: 16 touching pairs and atoms 0.07 of a bond apart).
+- **CI gate: the phone sweep's "covered" check** now skips a fully transparent layer (`opacity:0`): the date field laid over the day's label so a
+  tap on the label opens the picker (`.day-lblwrap .day-pick`) read as text covered by an input once Today became the landing. It had been red
+  on every complete CI run since the Home change (most runs are cancelled by the next push, so it went unseen; `gh run list` shows which
+  ran to the end). `truncated:` stays advisory: "All experiments" is cut by 11 px in the Experiments column at 844×390 behind the
+  plate dialog.
 
 ## Labbook on a laptop, audited (2026-10-12)
 
