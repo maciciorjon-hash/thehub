@@ -230,7 +230,7 @@
           '**4 Transfer plan** — for every point, the stock chosen, the volume and the concentration that results. Type a volume to override it.',
           '**5 Intermediate plate** — how much of each stock to prepare for your run size, and the pre-fill.',
           '**Export CSV** writes the transfer plan the Echo method is set up from; **Copy summary** copies a text version.'],
-        ref: [['Status', '✓ within 0.2 % of the plan, ~ within 5 %, “N % off” in red when a point cannot be reached closely.'],
+        ref: [['Status', '✓ within 0.2 % of the plan, ~ within 10 %, “N % off” in red when a point cannot be reached closely.'],
           ['Stock choice', 'For each point, the stock that lands nearest the plan; a tie goes to the more concentrated stock. Every well is backfilled to the same DMSO total, so a smaller transfer saves nothing.'],
           ['Intermediates', 'Always made in one step from Source, never from another intermediate. Editing them by hand takes them out of automatic mode; **✦ Suggest** hands them back.'],
           ['Stock volumes', 'For each compound, what each well holds, how much the run draws and what is spare — red and “short by” when it will not be enough.']],

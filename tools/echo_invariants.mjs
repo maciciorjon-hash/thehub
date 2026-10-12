@@ -2318,6 +2318,9 @@ if (run('E60')) await guard('E60', async () => {
   const one = r.n;
   const f1 = await plan({ vol: 20, dmso: 1, top: 10, unit: '1e-6', pts: 6, df: 3, force: Math.max(0, one - 1) });
   check('E60', 'the default is the fewest that put every point on plan: one fewer cannot', r.bad === 0 && (one === 0 || f1.bad > 0), { n: one, bad: r.bad, oneFewerBad: f1.bad });
+  // up to 10% off is accepted before another intermediate is added (a plan that 5% would have given two)
+  r = await plan({ vol: 20, dmso: 1, top: 10, unit: '1e-6', pts: 10, df: 2 });
+  check('E60', 'up to 10% deviation is taken before a second intermediate is added', r.n === 1 && r.bad === 0 && /within 10%/.test(r.note), { n: r.n, bad: r.bad, note: r.note.slice(0, 200) });
   r = await plan(A);
   check('E60', 'the 19 683-fold series takes two, not more', r.n === 2 && r.bad === 0 && /intermediates automatic/.test(r.lbl), { n: r.n, bad: r.bad, lbl: r.lbl });
   r = await plan({ vol: 20, dmso: 0.2, top: 1000, unit: '1e-9', pts: 10, df: 3 });
