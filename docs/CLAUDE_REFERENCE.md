@@ -7727,6 +7727,17 @@ commit and one invariant each; each step below is added when it lands.
   **the clash rule** no longer drops a ligand's contacts with the residues either side of its own number
   (`_covalentNeighbours`). `state.site` is a design key and is reset with a structure. Not done: the globals (`_inter`, `_lys`, …)
   were not folded into one object (RB30 and the commands name them). **RB40**.
+- **B7 (2/3) — Analyse: cavities, clashes, the pane from the ligand outwards.** Pane order is now Binding site · Cavities · Clashes and
+  contacts · Between any two parts · Interface · Compare · Measure · Degraders · reachable lysines · AlphaFold error map (the last two
+  show only where they apply). **Cavities** (`_pocketsGen`, a generator): the protein's occupied grid is marked once, the empty cells
+  are flood-filled from outside with a typed-array stack, and what the outside cannot reach is a cavity; each is scored
+  **volume × enclosure** (the share of its probe directions that hit protein), shows its composition (hydrophobic / polar / charged, as
+  a bar) and its lining residues, and one click shows it alone and selects the residues around it. `pocketsFind()` still returns the
+  list in one go (RB30 and the command line call it); `pocketsFindAsync` runs the same generator in ~12 ms slices so the page stays
+  alive on a large structure (it yields inside the marking passes too, RB41 with a lattice of shells). The old up-to-3200-sphere
+  drawing is one cloud per cavity. "Pocket radius" in Models is "Shell". **Clashes and contacts** is a clickable table, worst overlap
+  first, marked in 3D; exclusion is covalent adjacency only. `elecMap` goes through the grid (cutoff + cells) instead of every atom ×
+  every charge. **RB41**.
 
 ## Labbook on a laptop, audited (2026-10-12)
 

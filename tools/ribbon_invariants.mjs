@@ -62,6 +62,8 @@
 //   RB40 the binding site    Analyse picks the ligand (not an additive) and reads its interactions when it is first opened; one row per residue, nearest first, a pip per
 //                           kind; the strip (atoms, mass, rotatable bonds, burial, clashes); filters, click, Shift-click; Focus and burial colouring; no ligand says so;
 //                           a ligand between two residues of its own chain letter clashes with both.
+//   RB41 cavities and the engine  Cavities are scored volume × enclosure and say what lines them, found in slices (the page stays alive) with the same answer as the
+//                           synchronous call; the pane goes from the ligand outwards; the clash table; the integer grid returns exactly what is within the radius.
 //   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
@@ -198,6 +200,11 @@ function shellPdb() {   // a closed shell of carbons round an empty middle: one 
   for (let i = 0; i < N; i++) { const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), t = i * Math.PI * (3 - Math.sqrt(5)); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', i + 1, R * r * Math.cos(t), R * y, R * r * Math.sin(t), 20, 'C')); }
   return L.join('\n') + '\nEND\n';
 }
+function shellPdbN(N, R, K = 1, gap = 22) {   // K³ closed shells on a lattice: K³ cavities, K³·N atoms
+  const L = []; let n = 1, res = 1;
+  for (let a = 0; a < K; a++) for (let b = 0; b < K; b++) for (let c = 0; c < K; c++) for (let i = 0; i < N; i++) { const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), t = i * Math.PI * (3 - Math.sqrt(5)); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', res++, a * gap + R * r * Math.cos(t), b * gap + R * y, c * gap + R * r * Math.sin(t), 20, 'C')); }
+  return L.join('\n') + '\nEND\n';
+}
 const AF_B = i => (i <= 3 ? 95 : i <= 6 ? 80 : i <= 9 ? 60 : 30);
 const STRUCTS = {
   '1XYZ': () => synPdb(),
@@ -213,6 +220,7 @@ const STRUCTS = {
   '7APO': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true }),   // an entry whose only ligand is glycerol
   '8CAM': () => globulePdb(),
   '9INT': () => interPdb(),
+  '9BIG': () => shellPdbN(330, 7.5, 5),
   '9CLS': () => clashPdb(),
   '9SHL': () => shellPdb(),
   '8POC': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true, ligand: true, ligandN: 14 }),   // a real ligand beside the glycerol
@@ -2005,6 +2013,7 @@ async function rb30() {
   await E(() => rbTab('analyse')); await sleep(400);
   const pae = await E(() => ({ shown: !document.getElementById('paeBox').hidden, w: document.getElementById('paeCanvas').width, note: document.getElementById('paeNote').textContent }));
   check('RB30', 'an AlphaFold model loads its error map', pae.shown && pae.w === 12 && /12 residues/.test(pae.note), pae);
+  await pg.locator('#paeCanvas').scrollIntoViewIfNeeded(); await sleep(150);   // it is below the other tools now
   const cb = await pg.locator('#paeCanvas').boundingBox();
   await pg.mouse.move(cb.x + cb.width * 0.05, cb.y + cb.height * 0.05); await pg.mouse.down(); await pg.mouse.move(cb.x + cb.width * 0.45, cb.y + cb.height * 0.45, { steps: 4 }); await pg.mouse.up(); await sleep(200);
   check('RB30', 'a box dragged on the map selects those residues', await E(() => selRangesText()) === 'A:1-6', await E(() => selRangesText()));
@@ -2375,6 +2384,50 @@ async function rb40() {
   await ctx.close();
 }
 
+
+// ── RB41 cavities, the clash table, the order of the pane, the grid ─────────────────────────────────
+async function rb41() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB41 ' });
+  if (!(await has3d(pg))) { skipped.push('RB41 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('9SHL'); await sleep(300);
+  const cav = await E(() => { const L = pocketsFind(); const p = L[0]; return { n: L.length, enc: p && +p.enc.toFixed(2), score: p && Math.round(p.score), vol: p && Math.round(p.vol), scoreOk: p && Math.abs(p.score - p.vol * p.enc) < 1e-6, comp: p && +(p.comp.h + p.comp.p + p.comp.c).toFixed(2), hydro: p && p.comp.h, res: p && p.res.length }; });
+  check('RB41', 'a closed shell is one cavity, almost wholly enclosed, scored volume × enclosure, lined by what is there (all alanine: all hydrophobic)', cav.n === 1 && cav.enc > 0.7 && cav.scoreOk && cav.comp === 1 && cav.hydro === 1 && cav.res > 100, cav);
+  // it does not freeze the page: a timer runs while it works, and it finds what the synchronous call finds
+  await go('9BIG'); await sleep(300);
+  const slices = await E(() => { const g = _pocketsGen(); let n = 0, worst = 0, t = performance.now(); for (;;) { const r = g.next(), now = performance.now(); worst = Math.max(worst, now - t); t = now; if (r.done) break; n++; } return { yields: n, worstSlice: Math.round(worst) }; });
+  check('RB41', 'the work is cut into pieces that each take well under a frame or two (the longest piece between two yields)', slices.yields >= 8 && slices.worstSlice < 90, slices);
+  const async_ = await E(() => new Promise(res => { let ticks = 0, last = performance.now(), worst = 0; const iv = setInterval(() => { const t = performance.now(); worst = Math.max(worst, t - last); last = t; ticks++; }, 4);
+    pocketsFindAsync(null, (L, ms) => { clearInterval(iv); const sync = pocketsFind(); res({ ticks, worst: Math.round(worst), ms: Math.round(ms), n: L.length, nSync: sync.length, same: L.length === sync.length && L.every((p, i) => Math.abs(p.vol - sync[i].vol) < 1e-6) }); }); }));
+  check('RB41', 'finding cavities in a large structure runs in slices (the page stays alive: no gap over 120 ms) and finds what the synchronous call finds', async_.ticks > 8 && async_.worst < 120 && async_.same && async_.n >= 1, async_);
+  await go('9SHL'); await sleep(300);
+  await E(() => { rbTab('analyse'); rbOpenSec('pockets'); }); await pg.click('#pocketGo'); await sleep(2500);
+  const ui = await E(() => ({ rows: document.querySelectorAll('#pocketList .li').length, name: (document.querySelector('#pocketList .li-name') || {}).textContent, meta: (document.querySelector('#pocketList .li-meta') || {}).textContent, bar: !!document.querySelector('#pocketList .comp'), prog: document.getElementById('pocketProg').textContent, btn: document.getElementById('pocketGo').textContent }));
+  check('RB41', 'the list names the cavity, its volume, how enclosed it is and what lines it, and the button offers to find again', ui.rows === 1 && /^Cavity 1/.test(ui.name) && /Å³ · \d+ % enclosed/.test(ui.meta) && ui.bar && /1 cavity in/.test(ui.prog) && ui.btn === 'Find again', ui);
+  // the pane
+  const order = await E(() => [...document.querySelectorAll('#pane-analyse details.rb-sec')].map(d => d.dataset.sec).join());
+  const names = await E(() => [...document.querySelectorAll('#pane-analyse details.rb-sec .rb-sec-t')].map(x => x.textContent).join('|'));
+  check('RB41', 'the pane goes from the ligand outwards: Binding site · Cavities · Clashes · between any two parts · Interface · Compare · Measure · degraders · AlphaFold', order === 'site,pockets,clashes,interact,interface,compare,measure,lysines,pae' && /Binding site\|Cavities\|Clashes and contacts\|Between any two parts\|Interface\|Compare\|Measure\|Degraders · reachable lysines\|AlphaFold error map/.test(names), { order, names });
+  check('RB41', 'and Models calls its radius "Residues within" (it is not the cavities above)', await E(() => /Residues within/.test(document.querySelector('label[for=pocketR]').textContent)));
+  // the clash table
+  await go('9INT'); await sleep(300);
+  await E(() => { rbTab('analyse'); rbOpenSec('clashes'); document.getElementById('clA').value = 'chain:A'; document.getElementById('clB').value = 'chain:B'; }); await pg.click('#clGo'); await sleep(300);
+  const ct = await E(() => ({ rows: document.querySelectorAll('#clashList .li').length, first: (document.querySelector('#clashList .li-name') || {}).textContent, ov: (document.querySelector('#clashList .mono-v') || {}).textContent, copy: !!document.getElementById('clashCopy') }));
+  check('RB41', 'clashes are a table, worst first, with the overlap, and a copy button', ct.rows >= 1 && /ALA 9[01]/.test(ct.first) && /^\d\.\d\d Å$/.test(ct.ov) && ct.copy, ct);
+  await E(() => { _userMoved = false; }); await pg.click('#clashList .li-main'); await sleep(700);
+  check('RB41', 'a click on a row goes to that overlap', await E(() => _userMoved === true));
+  // the grid and the potential
+  const grid = await E(() => { let seed = 5; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, A = []; for (let i = 0; i < 700; i++) A.push({ x: rnd() * 60, y: rnd() * 40, z: rnd() * 50 });
+    let bad = 0; const g = agrid(A, 4.5); for (let t = 0; t < 120; t++) { const p = { x: rnd() * 70 - 5, y: rnd() * 50 - 5, z: rnd() * 60 - 5 }, got = new Set(); g.near(p.x, p.y, p.z, j => { if (Math.hypot(A[j].x - p.x, A[j].y - p.y, A[j].z - p.z) <= 4.5) got.add(j); });
+      const want = new Set(); A.forEach((a, j) => { if (Math.hypot(a.x - p.x, a.y - p.y, a.z - p.z) <= 4.5) want.add(j); }); if (got.size !== want.size || [...want].some(j => !got.has(j))) bad++; }
+    const e = new agrid([], 4).near ? 1 : 0; return { bad, empty: (() => { let n = 0; agrid([], 4).near(1, 1, 1, () => n++); return n; })() }; });
+  check('RB41', 'the integer grid returns exactly the atoms within the radius, for points inside and outside the box, and for no atoms at all', grid.bad === 0 && grid.empty === 0, grid);
+  await E(() => { const all = currentModel.selectedAtoms({}); window.__q = all.filter(a => !a.hetflag); });
+  const el = await E(() => { const m = elecMap(), all = currentModel.selectedAtoms({}); const Q = []; all.forEach(a => { if (a.hetflag) return; let q = atomCharge(a); if (q) Q.push({ x: a.x, y: a.y, z: a.z, q, i: a.index }); });
+    let worst = 0; all.slice(0, 40).forEach(a => { let v = 0; Q.forEach(c => { if (c.i === a.index) return; const dx = a.x - c.x, dy = a.y - c.y, dz = a.z - c.z; let r2 = dx * dx + dy * dy + dz * dz; if (r2 > 144) return; if (r2 < 1) r2 = 1; v += 83 * c.q / r2; }); worst = Math.max(worst, Math.abs(v - (m[a.index] || 0))); }); return { worst }; });
+  check('RB41', 'the potential through the grid is the potential from the charges within 12 Å, computed the long way', el.worst < 1e-6, el);
+  await ctx.close();
+}
+
 // ── RB31 undo, click modes, views, films, figure sizes ─────────────────────────────────────
 async function rb31() {
   const { ctx, pg, E, go } = await open({ tag: 'RB31 ' });
@@ -2537,7 +2590,7 @@ async function rb33() {
   await r.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38], ['RB39', rb39], ['RB40', rb40], ['RB41', rb41]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

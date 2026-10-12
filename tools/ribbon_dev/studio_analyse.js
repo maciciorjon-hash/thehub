@@ -414,8 +414,11 @@ function renderClash(){
   var el=$('clashOut'); if(!el) return;
   if(!_clash){ el.hidden=true; return; }
   el.hidden=false;
-  el.innerHTML='<div class="ic-line"><b>'+_clash.clashes.length+'</b> '+(_clash.clashes.length===1?'clash':'clashes')+' · <b>'+_clash.contacts+'</b> contacts between '+escapeHtml(_setName(_clash.a))+' and '+escapeHtml(_setName(_clash.b))+'</div>'
-    +(_clash.clashes.length?'<div class="hint">Worst: '+_clash.clashes.slice(0,3).map(function(x){ return escapeHtml(_atomLabel(x.a)+' – '+_atomLabel(x.b))+' ('+x.ov.toFixed(2)+' Å)'; }).join(' · ')+'</div>':'<div class="hint">Nothing overlaps by 0.6 Å or more.</div>');
+  var C=_clash.clashes, top=C.slice(0,30);
+  el.innerHTML='<div class="ic-line"><b>'+C.length+'</b> '+(C.length===1?'clash':'clashes')+' · <b>'+_clash.contacts+'</b> contacts between '+escapeHtml(_setName(_clash.a))+' and '+escapeHtml(_setName(_clash.b))+'</div>'
+    +(C.length?'<div class="list" id="clashList">'+top.map(function(x,i){ return '<div class="li" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="li-dot" style="background:#e5484d;cursor:default" aria-hidden="true"></span><button type="button" class="li-main" data-i="'+i+'" title="Zoom to this overlap"><span class="li-name">'+escapeHtml(_atomLabel(x.a))+'</span><span class="li-meta">with '+escapeHtml(_atomLabel(x.b))+'</span></button><span class="mono-v">'+x.ov.toFixed(2)+' Å</span></div>'; }).join('')+(C.length>30?'<div class="empty-note">+ '+(C.length-30)+' more, smaller overlaps, in the copied table.</div>':'')+'</div><div class="row"><button type="button" class="btn sm" id="clashCopy">Copy table</button></div>':'<div class="hint">Nothing overlaps by 0.6 Å or more.</div>');
+  el.querySelectorAll('#clashList .li-main').forEach(function(b){ b.addEventListener('click',function(){ var x=top[+b.dataset.i]; _userMoved=true; fitView({focus:{index:[x.a.index,x.b.index]},animate:true,margin:0.4}); }); });
+  var cp=el.querySelector('#clashCopy'); if(cp) cp.addEventListener('click',function(){ var t='Atom\tWith\tOverlap (Å)\n'+C.map(function(x){ return _atomLabel(x.a)+'\t'+_atomLabel(x.b)+'\t'+x.ov.toFixed(2); }).join('\n'); try{ navigator.clipboard.writeText(t).then(function(){ showToast('Copied '+C.length+' clashes.'); },function(){ showToast('The clipboard is not available here.'); }); }catch(e){ showToast('The clipboard is not available here.'); } });
 }
 function clashFill(){
   var a=$('clA'), b=$('clB'); if(!a) return;
@@ -435,81 +438,107 @@ function atomCharge(a){
   if(r==='ASP'&&(n==='OD1'||n==='OD2')) return -0.5; if(r==='GLU'&&(n==='OE1'||n==='OE2')) return -0.5;
   if(n==='OXT') return -1; return 0;
 }
-function elecMap(){   // Coulomb's law with a distance-dependent dielectric (ε = 4r), from the charges of the residues alone
+function elecMap(){   // Coulomb's law with a distance-dependent dielectric (ε = 4r), from the charges of the residues alone, within 12 Å
   var key=currentPdbId+'|'+_frame+'|'+chainList.join(); if(_elec&&_elec.key===key) return _elec.m;
   var all=currentModel.selectedAtoms({}), Q=[], m={}, firstN={};
   all.forEach(function(a){ if(a.hetflag) return; var q=atomCharge(a); if(a.atom==='N'&&!firstN[a.chain||'']){ firstN[a.chain||'']=1; q=1; } if(q) Q.push({x:a.x,y:a.y,z:a.z,q:q,i:a.index}); });
-  all.forEach(function(a){ var v=0; for(var k=0;k<Q.length;k++){ var c=Q[k]; if(c.i===a.index) continue; var dx=a.x-c.x, dy=a.y-c.y, dz=a.z-c.z, r2=dx*dx+dy*dy+dz*dz; if(r2<1) r2=1; v+=83*c.q/r2; } m[a.index]=v; });
+  var g=agrid(Q,12);
+  all.forEach(function(a){ var v=0; g.near(a.x,a.y,a.z,function(k){ var c=Q[k]; if(c.i===a.index) return; var dx=a.x-c.x, dy=a.y-c.y, dz=a.z-c.z, r2=dx*dx+dy*dy+dz*dz; if(r2>144) return; if(r2<1) r2=1; v+=83*c.q/r2; }); m[a.index]=v; });
   _elec={key:key,m:m}; return m;
 }
 function elecColor(a){ if(a.hetflag) return '#c9ccd6'; var v=elecMap()[a.index]||0; return _ramp(ELEC_STOPS,(v+10)/20); }
 
-// ── Pockets: places in the protein a small molecule could sit ───────────────────────────────
-// A grid over the visible protein; a point is a pocket point when it is outside every atom (plus a 1.4 Å probe) and protein
-// lies within 8 Å along at least 10 of 14 directions. Points that touch are one pocket; pockets are ranked by size.
+// ── Cavities: places in the protein a small molecule could sit ───────────────────────────────
+// A grid over the visible protein; a point is a cavity point when it is outside every atom (plus a 1.4 Å probe) and protein lies within
+// 8 Å along at least 10 of 14 directions. Points that touch are one cavity. Each is scored by volume × enclosure (how many of the 14
+// directions are closed, on average) and says what lines it: a flat ranking by volume put a shallow groove above a closed pocket.
+// It runs in slices (a generator, stepped for ~12 ms at a time) so a large structure no longer freezes the page; `pocketsFind()` runs it
+// to the end for the command line and the tests.
 var _pockets=null, _pocketShapes=[];
-function pocketsFind(){
+var HYDROPHOBIC_RES={ALA:1,VAL:1,LEU:1,ILE:1,MET:1,PHE:1,TRP:1,PRO:1,CYS:1}, CHARGED_RES={ASP:1,GLU:1,LYS:1,ARG:1};
+function* _pocketsGen(){
   var A=heavy(currentModel.selectedAtoms({}).filter(function(a){ return !a.hetflag&&!state.hiddenChains[a.chain||'']; }));
   if(!A.length) return [];
-  var h=1.0, x0=1e9,y0=1e9,z0=1e9,x1=-1e9,y1=-1e9,z1=-1e9;
+  var h=1.0, x0=1e9,y0=1e9,z0=1e9,x1=-1e9,y1=-1e9,z1=-1e9, i, j, k, q;
   A.forEach(function(a){ x0=Math.min(x0,a.x); y0=Math.min(y0,a.y); z0=Math.min(z0,a.z); x1=Math.max(x1,a.x); y1=Math.max(y1,a.y); z1=Math.max(z1,a.z); });
   var nx=Math.ceil((x1-x0)/h)+1, ny=Math.ceil((y1-y0)/h)+1, nz=Math.ceil((z1-z0)/h)+1;
   if(nx*ny*nz>2.5e6){ h=Math.cbrt((x1-x0)*(y1-y0)*(z1-z0)/2.5e6); nx=Math.ceil((x1-x0)/h)+1; ny=Math.ceil((y1-y0)/h)+1; nz=Math.ceil((z1-z0)/h)+1; }
-  var occ=new Uint8Array(nx*ny*nz), I=function(i,j,k){ return (k*ny+j)*nx+i; };
-  A.forEach(function(a){ var r=atomR(a)+1.4, ri=Math.ceil(r/h), ci=Math.round((a.x-x0)/h), cj=Math.round((a.y-y0)/h), ck=Math.round((a.z-z0)/h);
-    for(var i=ci-ri;i<=ci+ri;i++) for(var j=cj-ri;j<=cj+ri;j++) for(var k=ck-ri;k<=ck+ri;k++){ if(i<0||j<0||k<0||i>=nx||j>=ny||k>=nz) continue; var dx=x0+i*h-a.x, dy=y0+j*h-a.y, dz=z0+k*h-a.z; if(dx*dx+dy*dy+dz*dz<=r*r) occ[I(i,j,k)]=1; } });
-  var core=new Uint8Array(nx*ny*nz);   // atom bodies alone (no probe), for the rays
-  A.forEach(function(a){ var r=atomR(a), ri=Math.ceil(r/h), ci=Math.round((a.x-x0)/h), cj=Math.round((a.y-y0)/h), ck=Math.round((a.z-z0)/h);
-    for(var i=ci-ri;i<=ci+ri;i++) for(var j=cj-ri;j<=cj+ri;j++) for(var k=ck-ri;k<=ck+ri;k++){ if(i<0||j<0||k<0||i>=nx||j>=ny||k>=nz) continue; core[I(i,j,k)]=1; } });
+  var N=nx*ny*nz, occ=new Uint8Array(N), core=new Uint8Array(N), I=function(i,j,k){ return (k*ny+j)*nx+i; };
+  function* mark(arr,pad,what){   // every voxel within (atom radius + pad) of an atom
+    var cnt=0;
+    for(var ai=0;ai<A.length;ai++){ var a=A[ai], r=atomR(a)+pad, ri=Math.ceil(r/h), ci=Math.round((a.x-x0)/h), cj=Math.round((a.y-y0)/h), ck=Math.round((a.z-z0)/h);
+      for(var i=ci-ri;i<=ci+ri;i++) for(var j=cj-ri;j<=cj+ri;j++) for(var k=ck-ri;k<=ck+ri;k++){ if(i<0||j<0||k<0||i>=nx||j>=ny||k>=nz) continue; var dx=x0+i*h-a.x, dy=y0+j*h-a.y, dz=z0+k*h-a.z; if(dx*dx+dy*dy+dz*dz<=r*r) arr[I(i,j,k)]=1; }
+      if(++cnt>=1200){ cnt=0; yield what; } }
+  }
+  yield* mark(occ,1.4,'surface'); yield* mark(core,0,'atoms');
   var D=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1],[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1]], steps=Math.round(8/h);
-  var pk=new Uint8Array(nx*ny*nz), i,j,k;
-  for(k=1;k<nz-1;k++) for(j=1;j<ny-1;j++) for(i=1;i<nx-1;i++){
+  var pk=new Uint8Array(N), enc=new Uint8Array(N), seen=0;
+  for(k=1;k<nz-1;k++){ for(j=1;j<ny-1;j++) for(i=1;i<nx-1;i++){
     if(occ[I(i,j,k)]) continue;
     var hits=0;
-    for(var q=0;q<14&&hits+(14-q)>=10;q++){ var d=D[q]; for(var s=1;s<=steps;s++){ var a=i+d[0]*s, b=j+d[1]*s, c=k+d[2]*s; if(a<0||b<0||c<0||a>=nx||b>=ny||c>=nz) break; if(core[I(a,b,c)]){ hits++; break; } } }
-    if(hits>=10) pk[I(i,j,k)]=1;
+    for(q=0;q<14&&hits+(14-q)>=10;q++){ var d=D[q]; for(var st=1;st<=steps;st++){ var a=i+d[0]*st, b=j+d[1]*st, c=k+d[2]*st; if(a<0||b<0||c<0||a>=nx||b>=ny||c>=nz) break; if(core[I(a,b,c)]){ hits++; break; } } }
+    if(hits>=10){ pk[I(i,j,k)]=1; enc[I(i,j,k)]=hits; }
+    seen++; }
+    if(seen>6000){ seen=0; yield 'rays'; } }
+  var lab=new Uint8Array(N), out=[], stack=new Int32Array(N), NB=[1,-1,nx,-nx,nx*ny,-nx*ny];
+  for(var s0=0;s0<N;s0++){
+    if(!pk[s0]||lab[s0]) continue;
+    var top=0, pts=[], eSum=0; stack[top++]=s0; lab[s0]=1;
+    var pops=0;
+    while(top){ if(++pops>=30000){ pops=0; yield 'cavities'; } var u=stack[--top]; pts.push(u); eSum+=enc[u]; var ui=u%nx, uj=Math.floor(u/nx)%ny, uk=Math.floor(u/(nx*ny));
+      for(var m=0;m<6;m++){ var ni=ui+(m===0?1:m===1?-1:0), nj=uj+(m===2?1:m===3?-1:0), nk=uk+(m===4?1:m===5?-1:0); if(ni<0||nj<0||nk<0||ni>=nx||nj>=ny||nk>=nz) continue; var w=I(ni,nj,nk); if(pk[w]&&!lab[w]){ lab[w]=1; stack[top++]=w; } } }
+    if(pts.length*h*h*h>=30) out.push({idx:pts,enc:eSum/pts.length/14});
+    if(out.length%4===0) yield 'cavities';
   }
-  // connected pockets
-  var lab=new Int32Array(nx*ny*nz), out=[], id=0;
-  for(k=0;k<nz;k++) for(j=0;j<ny;j++) for(i=0;i<nx;i++){
-    var st=I(i,j,k); if(!pk[st]||lab[st]) continue;
-    id++; var stack=[[i,j,k]], pts=[]; lab[st]=id;
-    while(stack.length){ var p=stack.pop(); pts.push(p); [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]].forEach(function(d){ var a=p[0]+d[0], b=p[1]+d[1], c=p[2]+d[2]; if(a<0||b<0||c<0||a>=nx||b>=ny||c>=nz) return; var t=I(a,b,c); if(pk[t]&&!lab[t]){ lab[t]=id; stack.push([a,b,c]); } }); }
-    if(pts.length*h*h*h>=30) out.push(pts.map(function(p){ return {x:x0+p[0]*h,y:y0+p[1]*h,z:z0+p[2]*h}; }));
-  }
-  out.sort(function(a,b){ return b.length-a.length; });
-  var gA=agrid(A,4);
-  return out.slice(0,8).map(function(P,n){
-    var res={}; P.forEach(function(p){ gA.near(p.x,p.y,p.z,function(t){ if(_d(p,A[t])<=4) res[rKeyOf(A[t])]=1; }); });
-    var lig=ligands.filter(function(l){ return currentModel.selectedAtoms(ligSel(l)).some(function(a){ return P.some(function(p){ return _d(p,a)<=2; }); }); }).map(function(l){ return l.resn; });
-    return {n:n+1,pts:P,vol:P.length*h*h*h,res:Object.keys(res),lig:lig};
+  var gA=agrid(A,4), res=[];
+  out.forEach(function(o){
+    var P=o.idx.map(function(u){ var ui=u%nx, uj=Math.floor(u/nx)%ny, uk=Math.floor(u/(nx*ny)); return {x:x0+ui*h,y:y0+uj*h,z:z0+uk*h}; });
+    var vol=P.length*h*h*h; res.push({pts:P,vol:vol,enc:o.enc,score:vol*o.enc});
   });
+  res.sort(function(a,b){ return b.score-a.score; });
+  return res.slice(0,8).map(function(r,n){
+    var rs={}, names={}; r.pts.forEach(function(p){ gA.near(p.x,p.y,p.z,function(t){ if(_d(p,A[t])<=4){ var key=rKeyOf(A[t]); rs[key]=1; names[key]=A[t].resn; } }); });
+    var keys=Object.keys(rs), c={h:0,p:0,c:0}; keys.forEach(function(kk){ var rn=names[kk]; if(HYDROPHOBIC_RES[rn]) c.h++; else if(CHARGED_RES[rn]) c.c++; else c.p++; });
+    var tot=keys.length||1; c.h/=tot; c.p/=tot; c.c/=tot;
+    var lig=ligands.filter(function(l){ return currentModel.selectedAtoms(ligSel(l)).some(function(a){ return r.pts.some(function(p){ return _d(p,a)<=2; }); }); }).map(function(l){ return l.resn; });
+    return {n:n+1,pts:r.pts,vol:r.vol,enc:r.enc,score:r.score,res:keys,comp:c,lig:lig};
+  });
+}
+function pocketsFind(){ var g=_pocketsGen(), r; do{ r=g.next(); }while(!r.done); return r.value; }
+function pocketsFindAsync(onStep,done){
+  var g=_pocketsGen(), t0=performance.now();
+  (function slice(){
+    var end=performance.now()+12, r;
+    try{ do{ r=g.next(); }while(!r.done&&performance.now()<end); }catch(e){ console.error(e); done([],0); return; }
+    if(r.done){ done(r.value,performance.now()-t0); return; }
+    if(onStep) onStep(r.value); setTimeout(slice,0);
+  })();
 }
 var POCKET_COLS=['#e5484d','#3e63dd','#30a46c','#f5a524','#8e4ec6','#12a594','#d6409f','#6e56cf'];
 function pocketDraw(){
   if(!viewer) return; _pocketShapes.forEach(function(s){ try{ viewer.removeShape(s); }catch(e){} }); _pocketShapes=[];
   if(!_pockets||!_pockets.show) return;
-  _pockets.list.forEach(function(p,i){ if(_pockets.only!=null&&_pockets.only!==i) return; var step=Math.max(1,Math.ceil(p.pts.length/400));
-    for(var q=0;q<p.pts.length;q+=step){ try{ _pocketShapes.push(viewer.addSphere({center:p.pts[q],radius:0.42,color:POCKET_COLS[i%POCKET_COLS.length],opacity:0.75,clickable:false})); }catch(e){} } });
+  _pockets.list.forEach(function(p,i){ if(_pockets.only!=null&&_pockets.only!==i) return; var step=Math.max(1,Math.ceil(p.pts.length/150));
+    for(var q=0;q<p.pts.length;q+=step){ try{ _pocketShapes.push(viewer.addSphere({center:p.pts[q],radius:Math.min(0.9,0.42*Math.cbrt(step)),color:POCKET_COLS[i%POCKET_COLS.length],opacity:0.7,clickable:false})); }catch(e){} } });
 }
 // "FWZ ×2, EDO ×5", not the same name once per copy: a pocket in a crystal with ten glycerols listed them ten times
 function pocketLigText(l){ var n={}, o=[]; (l||[]).forEach(function(x){ if(!n[x]){ n[x]=0; o.push(x); } n[x]++; }); return o.map(function(x){ return n[x]>1?x+' ×'+n[x]:x; }).join(', '); }
+function _compBar(c){ return '<span class="comp" title="Lined by '+Math.round(c.h*100)+' % hydrophobic, '+Math.round(c.p*100)+' % polar, '+Math.round(c.c*100)+' % charged residues"><i style="flex:'+c.h+';background:#d9822b"></i><i style="flex:'+c.p+';background:#8b8d98"></i><i style="flex:'+c.c+';background:#3e63dd"></i></span>'; }
 function renderPockets(){
   var el=$('pocketList'); if(!el) return;
-  if(!_pockets){ el.innerHTML='<div class="empty-note">Press Find pockets: it takes a second or two on a large structure.</div>'; return; }
+  if(!_pockets){ el.innerHTML='<div class="empty-note">Press Find cavities: a large structure takes a few seconds, and the page stays usable.</div>'; return; }
   if(!_pockets.list.length){ el.innerHTML='<div class="empty-note">No buried cavity of 30 Å³ or more in the chains shown.</div>'; return; }
-  el.innerHTML=_pockets.list.map(function(p,i){ return '<div class="li'+(_pockets.only!=null&&_pockets.only!==i?' off':'')+'" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="li-dot" style="background:'+POCKET_COLS[i%POCKET_COLS.length]+';cursor:default" aria-hidden="true"></span><button type="button" class="li-main" data-i="'+i+'"><span class="li-name">Pocket '+p.n+(p.lig.length?' <span style="font-weight:400;color:var(--text2)">· holds '+escapeHtml(pocketLigText(p.lig))+'</span>':'')+'</span><span class="li-meta">'+Math.round(p.vol)+' Å³ · '+p.res.length+' residues</span></button><button type="button" class="ibtn pk-sel" data-i="'+i+'" title="Select its residues" aria-label="Select the residues of pocket '+p.n+'"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" stroke-dasharray="3 2.5"/></svg></button></div>'; }).join('');
-  el.querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(){ var i=+b.dataset.i; _pockets.only=_pockets.only===i?null:i; pocketDraw(); viewer.render(); renderPockets(); var p=_pockets.list[i]; if(_pockets.only===i){ var c={x:0,y:0,z:0}; p.pts.forEach(function(q){ c.x+=q.x; c.y+=q.y; c.z+=q.z; }); _userMoved=true; var keys=p.res; selSet(keys); fitView({focus:selSpec3D(),animate:true,margin:0.2}); } }); });
-  el.querySelectorAll('.pk-sel').forEach(function(b){ b.addEventListener('click',function(){ selSet(_pockets.list[+b.dataset.i].res); showToast('Selected the '+_pockets.list[+b.dataset.i].res.length+' residues lining pocket '+(+b.dataset.i+1)+'.'); }); });
+  el.innerHTML=_pockets.list.map(function(p,i){ return '<div class="li'+(_pockets.only!=null&&_pockets.only!==i?' off':'')+'" style="grid-template-columns:auto minmax(0,1fr) auto auto"><span class="li-dot" style="background:'+POCKET_COLS[i%POCKET_COLS.length]+';cursor:default" aria-hidden="true"></span><button type="button" class="li-main" data-i="'+i+'"><span class="li-name">Cavity '+p.n+(p.lig.length?' <span style="font-weight:400;color:var(--text2)">· holds '+escapeHtml(pocketLigText(p.lig))+'</span>':'')+'</span><span class="li-meta">'+Math.round(p.vol)+' Å³ · '+Math.round(p.enc*100)+' % enclosed · '+p.res.length+' residues</span></button>'+_compBar(p.comp)+'<button type="button" class="ibtn pk-sel" data-i="'+i+'" title="Select its residues" aria-label="Select the residues of cavity '+p.n+'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4.2 4.2L19 6.5"/></svg></button></div>'; }).join('');
+  el.querySelectorAll('.li-main').forEach(function(b){ b.addEventListener('click',function(){ var i=+b.dataset.i; _pockets.only=_pockets.only===i?null:i; pocketDraw(); viewer.render(); renderPockets(); var p=_pockets.list[i]; if(_pockets.only===i){ _userMoved=true; selSet(p.res); fitView({focus:selSpec3D(),animate:true,margin:0.2}); } }); });
+  el.querySelectorAll('.pk-sel').forEach(function(b){ b.addEventListener('click',function(){ selSet(_pockets.list[+b.dataset.i].res); showToast('Selected the '+_pockets.list[+b.dataset.i].res.length+' residues lining cavity '+(+b.dataset.i+1)+'.'); }); });
 }
 function pocketsRun(){
   if(!currentModel) return;
-  $('pocketGo').disabled=true; $('pocketGo').textContent='Looking…';
-  setTimeout(function(){
-    var t0=performance.now(), L=[]; try{ L=pocketsFind(); }catch(e){ console.error(e); }
-    _pockets={list:L,show:true,only:null,ms:performance.now()-t0}; pocketDraw(); viewer.render(); renderPockets();
-    $('pocketGo').disabled=false; $('pocketGo').textContent='Find again'; updateSummaries();
-  },30);
+  var btn=$('pocketGo'); btn.disabled=true; btn.textContent='Looking…';
+  pocketsFindAsync(function(step){ $('pocketProg').textContent='Looking… ('+step+')'; },function(L,ms){
+    _pockets={list:L,show:true,only:null,ms:ms}; pocketDraw(); viewer.render(); renderPockets();
+    btn.disabled=false; btn.textContent='Find again'; $('pocketProg').textContent=L.length?L.length+(L.length===1?' cavity':' cavities')+' in '+(ms/1000).toFixed(1)+' s.':''; updateSummaries();
+  });
 }
 
 // ── AlphaFold: the predicted aligned error ──────────────────────────────────────────────────
@@ -624,8 +653,8 @@ RB_CMDS.push(
      function sp(t){ if(!t) return null; if(chainList.indexOf(t)>=0) return 'chain:'+t; var l=ligands.filter(function(q){ return q.resn.toUpperCase()===t.toUpperCase(); })[0]; if(l) return 'lig:'+l.key; if(/^sel/i.test(t)) return 'sel'; return null; }
      var A=sp(w[0]), B=sp(w[1]); if(!A||!B) return _err('clashes <chain|ligand|sel> <chain|ligand|sel>');
      _clash=clashCompute(A,B); _clash.show=true; clashDraw(); viewer.render(); clashFill(); renderClash(); rbOpenSec('clashes'); return _ok(_clash.clashes.length+' clashes, '+_clash.contacts+' contacts.'); }},
-  {n:['pockets','cavities','cavity'],d:'Find buried cavities a small molecule could sit in',f:'pockets',
-   run:function(){ var n=needModel(); if(n) return n; rbOpenSec('pockets'); pocketsRun(); return _ok('Looking for pockets…'); }},
+  {n:['cavities','pockets','cavity'],d:'Find buried cavities a small molecule could sit in',f:'cavities',
+   run:function(){ var n=needModel(); if(n) return n; rbOpenSec('pockets'); pocketsRun(); return _ok('Looking for cavities…'); }},
   {n:['confident','plddt'],d:'Hide the residues AlphaFold is not sure of',f:'confident 70 · confident off',
    run:function(a){ var n=needModel(); if(n) return n; if(!isAF()&&!/off/i.test(a)) return _err('This is not an AlphaFold model.');
      if(/off/i.test(a)){ state.hide=(state.hide||[]).filter(function(x){ return x!==_plddtHide; }); _plddtHide=null; recolorStructure(); return _ok('Showing every residue.'); }
