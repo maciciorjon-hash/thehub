@@ -172,6 +172,13 @@ dentro (hoy son dos). Se conserva todo; baja a ~30 controles visibles.
 
 **A9. Zona de soltar archivos de 200 px cuando está vacía** (S). Un renglón que se despliega al soltar o pulsar.
 
+**A10. Pegar conserva el estilo del origen** (S, decisión tuya).
+*Evidencia*: pegando con el portapapeles real un trozo de Word, los scripts, los `onclick`/`onerror` y los `javascript:` se limpian (lo hace el
+navegador), pero `style="color:red;font-family:Calibri"`, `class="MsoNormal"` y un `<span style="font-size:48pt">` entran tal cual en el Journal, que
+es "papel" con su propia tipografía. ⌘⇧V (pegar sin formato) ya existe y está en el atlas de atajos.
+*Propuesta*: pegar limpio por defecto —se conservan negrita, cursiva, listas, tablas y enlaces— y ⇧ para pegar el formato original; o un interruptor
+en Settings → Writing. *Pregunta*: ¿pegas a menudo desde Word/Teams/Excel? Si no, no merece el cambio.
+
 ### B. Organización
 
 **B1. Dar ancho al experimento** (S–M).
@@ -207,6 +214,10 @@ probado: LB-1, B4, B13) pero está en *Plate → Bring in*, tres clics dentro de
 3. Con ≥ 2 experimentos de la misma plantilla: *Compare runs* (ver B3).
 *Pregunta*: ¿qué haces hoy con la lectura del NanoBRET —Excel, Prism, el software del lector—? De la respuesta depende si el peldaño 1 basta
 o si el peldaño 2 es lo que de verdad ahorra tiempo.
+
+**C2. La @mención no usa la búsqueda del ⌘K** (S).
+*Evidencia*: `@1012` encuentra SP_NB20261012; `@SP_NB1012` no encuentra nada (el ⌘K sí). La @mención busca contiguo; el buscador corrige y expande.
+*Propuesta*: que la @mención pida su lista a `spotResults` (ya es "una sola búsqueda" para el Hub y el ⌘K).
 
 ### D. Accesibilidad y pulido que no son opcionales
 
