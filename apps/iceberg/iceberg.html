@@ -990,22 +990,29 @@ function _pastel(hue, jitter){
   var dark = document.documentElement.getAttribute('data-theme') === 'dark';
   return dark ? 'hsl(' + hue + ', 32%, ' + (40 + jitter) + '%)' : 'hsl(' + hue + ', 55%, ' + (80 + jitter) + '%)';
 }
+function _lineHJ(name, kind){   // [hue, lightness jitter] — the one place a line's colour is decided
+  if (kind === 'cells'){
+    var suffix = String(name).slice(_cellBase(name).length), sh = _hash(suffix) % 9;   // −4 … +4
+    return [cellLineFamilyHue(name), sh - 4];
+  }
+  var base = KIND_HUES[kind] != null ? KIND_HUES[kind] : KIND_HUES.other;
+  return [(base + (_hash(name) % 25) - 12 + 360) % 360, (_hash(name + '#') % 7) - 3];
+}
 function cellLineColor(name, kind){
   if (!name) return 'var(--text3)';
   if (state.cellLineColors && state.cellLineColors[name]) return state.cellLineColors[name];
   kind = kind || _nameKind[name] || 'cells';
   var key = kind + '\u0001' + name;
   if (_hueCache[key]) return _hueCache[key];
-  var col;
-  if (kind === 'cells'){
-    var suffix = String(name).slice(_cellBase(name).length), sh = _hash(suffix) % 9;   // −4 … +4
-    col = _pastel(cellLineFamilyHue(name), sh - 4);
-  } else {
-    var base = KIND_HUES[kind] != null ? KIND_HUES[kind] : KIND_HUES.other;
-    col = _pastel((base + (_hash(name) % 25) - 12 + 360) % 360, (_hash(name + '#') % 7) - 3);
-  }
+  var hj = _lineHJ(name, kind), col = _pastel(hj[0], hj[1]);
   _hueCache[key] = col;
   return col;
+}
+// The same hue on paper: a light fill and a stronger edge, whatever theme the screen is in.
+function lineTone(name, kind){
+  var c = state.cellLineColors && state.cellLineColors[name]; if (c) return { fill: c, edge: c };
+  var hj = _lineHJ(name || '', kind || _nameKind[name] || 'cells');
+  return { fill: 'hsl(' + hj[0] + ',60%,' + (88 + hj[1]) + '%)', edge: 'hsl(' + hj[0] + ',50%,' + (52 + hj[1] * 2) + '%)' };
 }
 function vialColor(v){ var n = vialLabel(v), k = vialKind(v); if (n) _nameKind[n] = k; return cellLineColor(n, k); }
 function clearColorCache(){ _hueCache = {}; }
@@ -1541,32 +1548,101 @@ function closeBoxDetail(){
 }
 // ── The sheet that goes on the lid ─────────────────────────────────────────────────────
 // The only copy of a box map used to live on the screen, which does not go into the cold room.
-// This prints the grid at A4 landscape: rack › box, one cell per position with the vial's
-// label, passage and date, and a legend of the lines by colour.
+// boxSheetHTML() is one A4 portrait page, always one: a fixed-height flex column, the map takes what the
+// legend and the notes leave, and anything that cannot fit is counted ("+ 4 more lines") rather than spilled
+// onto a second sheet. Its colours are its own light tones (the lid is printed on paper, whatever the theme),
+// the same hue per line as everywhere else in the app. Empty positions are dashed so free space reads at a glance.
+function _shortDate(s){
+  var m=/^(\d{4})-(\d{2})-\d{2}$/.exec(String(s||'')); if(!m) return String(s||'');
+  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2]-1]+' '+m[1].slice(2);
+}
+// Runs inside the printed page, once laid out: while the map is shorter than it needs to be, drop a note or the
+// last legend row (whichever there is more of) and say how many went — the sheet is never two pages.
+var _SHEET_FIT='(function(){var m=document.querySelector(".map"),need=+m.getAttribute("data-need"),tb=document.querySelector("table"),nt=document.querySelector(".nt");'
+ +'function mm(){return m.getBoundingClientRect().height*25.4/96}'
+ +'function rowsOf(){return tb?tb.querySelectorAll("tr:not(:first-child):not(.mr)"):[]}'
+ +'function notesOf(){return nt?nt.querySelectorAll("p:not(.more)"):[]}'
+ +'var rl=0,nl=0,i=0,more0=tb&&tb.querySelector(".mr"),hid0=more0?+more0.getAttribute("data-n"):0,nmore0=nt&&nt.querySelector(".more");'
+ +'while(mm()<need&&i++<200){var r=rowsOf(),n=notesOf();'
+ +'if(n.length>0&&(n.length>=r.length/3||r.length<=3)){n[n.length-1].remove();nl++}else if(r.length>3){r[r.length-1].remove();rl++}else break}'
+ +'if(rl&&tb){var r2=rowsOf();if(r2.length>3){r2[r2.length-1].remove();rl++}}'
+ +'if(tb&&(rl||hid0)){if(more0)more0.remove();var tr=document.createElement("tr");tr.className="mr";tr.innerHTML="<td class=more colspan=6>+ "+(rl+hid0)+" more line"+(rl+hid0>1?"s":"")+" in this box \u2014 see the app</td>";tb.appendChild(tr)}'
+ +'if(nt&&(nl||nmore0)){var k=nl+(nmore0?+nmore0.getAttribute("data-n"):0);if(nmore0)nmore0.remove();var p=document.createElement("p");p.className="more";p.textContent="+ "+k+" more note"+(k>1?"s":"")+" in the app";nt.appendChild(p)}'
+ +'})();';
+function boxSheetHTML(box, storageLabel, rackName, today){
+  var R=box.rows, C=box.cols, vials=box.vials||{}, esc2=esc;
+  var groups={}, order=[], notes=[], kinds={};
+  for(var r=0;r<R;r++) for(var c=0;c<C;c++){
+    var pos=String.fromCharCode(65+r)+(c+1), v=vials[pos]; if(!v) continue;
+    var nm=vialLabel(v)||'(unlabelled)', k=vialKind(v), key=k+'\u0001'+nm;
+    var g=groups[key]||(groups[key]={name:nm,kind:k,n:0,vials:0,pass:[],dates:[],by:{}}); if(!groups[key].seen){ groups[key].seen=1; order.push(g); }
+    g.n++; g.vials+=Math.max(1,parseInt(v.vialCount,10)||1);
+    if(v.passage){ var pn=parseInt(String(v.passage).replace(/\D/g,''),10); if(!isNaN(pn)) g.pass.push(pn); }
+    if(v.freezeDate) g.dates.push(String(v.freezeDate));
+    if(v.frozenBy) g.by[String(v.frozenBy).trim()]=1;
+    kinds[k]=1;
+    if(v.notes && String(v.notes).trim()) notes.push({pos:pos,t:String(v.notes).trim()});
+  }
+  order.sort(function(a,b){ return b.n-a.n || a.name.localeCompare(b.name); });
+  var nFilled=Object.keys(vials).length, cap=R*C, pct=cap?Math.round(nFilled/cap*100):0;
+  var showKind=Object.keys(kinds).length>1;
+  var cellW=(186-5)/C, nmPt=Math.max(6,Math.min(8.5,cellW*0.36)), subPt=nmPt*0.82;
+  var mapMax=Math.round(R*cellW*1.3+5);
+  var rowMin=C>11?11.5:15;   // the least the map may have: rows tall enough for a name on three lines; the sheet's own script trims the legend and the notes to keep it
+  var cells='<i></i>'; for(var c1=1;c1<=C;c1++) cells+='<b class="ax">'+c1+'</b>';
+  for(var r1=0;r1<R;r1++){
+    cells+='<b class="ax">'+String.fromCharCode(65+r1)+'</b>';
+    for(var c2=0;c2<C;c2++){
+      var p=String.fromCharCode(65+r1)+(c2+1), v1=vials[p];
+      if(!v1){ cells+='<div class="w free"><span class="ps">'+p+'</span></div>'; continue; }
+      var t=lineTone(vialLabel(v1),vialKind(v1));
+      var sub=[v1.passage?(/^P/i.test(String(v1.passage))?v1.passage:('P'+v1.passage)):'', _shortDate(v1.freezeDate), v1.conc||''].filter(Boolean).join(' · ');
+      cells+='<div class="w" style="background:'+t.fill+';border-left-color:'+t.edge+'"><span class="ps">'+p+'</span><span class="nm">'+esc2(vialLabel(v1))+'</span>'+(sub?('<span class="sb">'+esc2(sub)+'</span>'):'')+'</div>';
+    }
+  }
+  var shown=order.slice(0,40), hidden=order.length-shown.length;
+  var rows=shown.map(function(g){
+    var t=lineTone(g.name,g.kind);
+    var pr=g.pass.length?('P'+Math.min.apply(null,g.pass)+(Math.max.apply(null,g.pass)!==Math.min.apply(null,g.pass)?'–P'+Math.max.apply(null,g.pass):'')):'';
+    var ds=g.dates.slice().sort(); var dr=ds.length?(_shortDate(ds[0])+(_shortDate(ds[ds.length-1])!==_shortDate(ds[0])?' – '+_shortDate(ds[ds.length-1]):'')):'';
+    return '<tr><td class="lg"><i style="background:'+t.fill+';border-color:'+t.edge+'"></i><b>'+esc2(g.name)+'</b></td>'
+      +(showKind?'<td>'+esc2(vialKindLabel(g.kind))+'</td>':'')
+      +'<td class="num">'+g.vials+'</td><td>'+esc2(pr)+'</td><td>'+esc2(dr)+'</td><td>'+esc2(Object.keys(g.by).join(', '))+'</td></tr>';
+  }).join('')+(hidden>0?'<tr class="mr" data-n="'+hidden+'"><td class="more" colspan="6">+ '+hidden+' more line'+(hidden>1?'s':'')+' in this box — see the app</td></tr>':'');
+  var nshown=notes.slice(0,12);
+  var noteHtml=notes.length?('<div class="nt"><h2>Notes</h2>'+nshown.map(function(n){ return '<p><b>'+n.pos+'</b> '+esc2(n.t)+'</p>'; }).join('')+(notes.length>12?'<p class="more" data-n="'+(notes.length-12)+'">+ '+(notes.length-12)+' more notes in the app</p>':'')+'</div>'):'';
+  var css='@page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;height:297mm;overflow:hidden}'
+   +'body{font:8pt/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:#1c1c1e;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+   +'.page{width:210mm;height:297mm;padding:11mm 12mm 9mm;display:flex;flex-direction:column;gap:5mm;overflow:hidden;background:#fff}'
+   +'@media screen{html,body{height:auto;overflow:auto;background:#d9d9dc}.page{margin:6mm auto;box-shadow:0 1mm 6mm rgba(0,0,0,.25)}}'
+   +'.hd{display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;padding-bottom:3.5mm;border-bottom:.6mm solid #1c1c1e}'
+   +'.eb{font-size:7pt;letter-spacing:.14em;text-transform:uppercase;color:#6b6b70;margin-bottom:1.2mm}h1{font-size:21pt;line-height:1.1;margin:0;font-weight:750;letter-spacing:-.01em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}'
+   +'.st{text-align:right;flex:none;min-width:42mm}.st .big{font-size:21pt;line-height:1;font-weight:750;font-variant-numeric:tabular-nums}.st .big small{font-size:10pt;font-weight:500;color:#6b6b70}'
+   +'.bar{height:1.6mm;background:#e4e4e8;border-radius:1mm;margin:1.6mm 0 1mm;overflow:hidden}.bar i{display:block;height:100%;background:#1c1c1e}.st .sm{font-size:7pt;color:#6b6b70}'
+   +'.map{flex:1 1 0;min-height:0;max-height:'+mapMax+'mm;display:grid;grid-template-columns:5mm repeat('+C+',1fr);grid-template-rows:4mm repeat('+R+',1fr);gap:.9mm}'
+   +'.ax{display:flex;align-items:center;justify-content:center;font-size:7pt;font-weight:600;color:#6b6b70}'
+   +'.w{position:relative;min-width:0;min-height:0;overflow:hidden;border-radius:1.2mm;border-left:1.1mm solid transparent;padding:.9mm 1mm .6mm 1.1mm;display:flex;flex-direction:column;gap:.2mm}'
+   +'.w.free{background:#fff;border:.25mm dashed #c8c8cd;padding:.9mm 1.2mm}.ps{font-size:5.2pt;line-height:1;color:#6b6b70;font-variant-numeric:tabular-nums}'
+   +'.nm{font-size:'+nmPt.toFixed(1)+'pt;line-height:1.12;font-weight:700;display:-webkit-box;-webkit-line-clamp:'+(C>11?2:3)+';-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;flex:0 1 auto;min-height:0}'
+   +'.sb{font-size:'+subPt.toFixed(1)+'pt;line-height:1.15;color:#3a3a3e;margin-top:auto;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+   +'h2{font-size:6.5pt;letter-spacing:.14em;text-transform:uppercase;color:#6b6b70;margin:0 0 1mm;font-weight:600}'
+   +'table{width:100%;border-collapse:collapse}th{font-size:6.5pt;letter-spacing:.1em;text-transform:uppercase;color:#6b6b70;font-weight:600;text-align:left;padding:0 1.5mm 1.2mm 0;border-bottom:.3mm solid #1c1c1e}th.num,td.num{text-align:right;font-variant-numeric:tabular-nums;padding-right:4mm}'
+   +'td{padding:.9mm 1.5mm .9mm 0;border-bottom:.2mm solid #e4e4e8;font-size:7.5pt;white-space:nowrap}td.lg{white-space:normal;width:44%}td.lg i{display:inline-block;width:3mm;height:3mm;border-radius:.8mm;border:.3mm solid;margin-right:1.8mm;vertical-align:-.6mm}'
+   +'td.more,.more{color:#6b6b70;font-style:italic}.nt p{margin:0 0 .8mm;font-size:7.5pt;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.nt p b{display:inline-block;min-width:7mm;font-variant-numeric:tabular-nums}'
+   +'.ft{margin-top:auto;display:flex;justify-content:space-between;font-size:6.5pt;color:#8a8a90;border-top:.2mm solid #e4e4e8;padding-top:2mm}';
+  var html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc2(box.name||'Box')+'</title><style>'+css+'</style></head><body><div class="page">'
+   +'<div class="hd"><div><div class="eb">'+esc2(storageLabel)+(rackName?' &nbsp;›&nbsp; '+esc2(rackName):'')+' &nbsp;·&nbsp; '+R+' × '+C+'</div><h1>'+esc2(box.name||'Box')+'</h1></div>'
+   +'<div class="st"><div class="big">'+nFilled+'<small> / '+cap+'</small></div><div class="bar"><i style="width:'+pct+'%"></i></div><div class="sm">'+pct+'% filled · '+(cap-nFilled)+' free</div></div></div>'
+   +'<div class="map" data-need="'+(R*rowMin+5)+'">'+cells+'</div>'
+   +(rows?('<div><h2>What is in this box</h2><table><tr><th>Line</th>'+(showKind?'<th>Type</th>':'')+'<th class="num">Vials</th><th>Passage</th><th>Frozen</th><th>By</th></tr>'+rows+'</table></div>'):'')
+   +noteHtml
+   +'<div class="ft"><span>dHUB · Freezer</span><span>Printed '+esc2(today)+'</span></div></div><script>'+_SHEET_FIT+'<\/script></body></html>';
+  return html;
+}
 function printBoxMap(){
   var box=getCurrentBox(); if(!box) return;
   var st=state.storages[currentBoxDetail.storage]||{}; var rack=(st.racks||[]).find(function(r){ return r.id===currentBoxDetail.rackId; })||{};
-  var lines={};
-  var rows='';
-  for(var r=0;r<box.rows;r++){ var tds='';
-    for(var c=0;c<box.cols;c++){ var pos=String.fromCharCode(65+r)+(c+1), v=(box.vials||{})[pos];
-      var nm=v?vialLabel(v):''; if(nm) lines[nm]=1;
-      var bg=v?vialColor(v):'#fff';
-      var sub=v?[v.passage?(/^P/i.test(String(v.passage))?v.passage:('P'+v.passage)):'', v.freezeDate||'', v.conc||''].filter(Boolean).join(' · '):'';
-      tds+='<td style="background:'+(v?bg:'#fff')+'"><div class="pm-pos">'+pos+'</div>'+(nm?('<div class="pm-nm">'+esc(nm)+'</div>'):'')+(sub?('<div class="pm-sub">'+esc(sub)+'</div>'):'')+'</td>'; }
-    rows+='<tr><th>'+String.fromCharCode(65+r)+'</th>'+tds+'</tr>'; }
-  var head='<tr><th></th>'; for(var c2=0;c2<box.cols;c2++) head+='<th>'+(c2+1)+'</th>'; head+='</tr>';
-  var leg=Object.keys(lines).sort().map(function(n){ return '<span><i style="background:'+cellLineColor(n)+'"></i>'+esc(n)+'</span>'; }).join('');
-  var nFilled=Object.keys(box.vials||{}).length;
-  var html='<!doctype html><html><head><meta charset="utf-8"><title>'+esc(box.name||'Box')+'</title><style>'
-    +'@page{size:A4 landscape;margin:12mm}body{font:10pt/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111;margin:0}'
-    +'h1{font-size:15pt;margin:0 0 2px}.crumb{font-size:9pt;color:#555;margin-bottom:8px}'
-    +'table{border-collapse:collapse;width:100%;table-layout:fixed}th{font-size:8pt;color:#444;background:#eee;border:.5pt solid #999;padding:2px}'
-    +'td{border:.5pt solid #999;height:'+Math.max(34,Math.floor(150/box.rows))+'mm;vertical-align:top;padding:2px 3px;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
-    +'.pm-pos{font-size:6.5pt;color:#666}.pm-nm{font-weight:700;font-size:8.5pt;line-height:1.15;word-break:break-word}.pm-sub{font-size:7pt;color:#333}'
-    +'.leg{margin-top:6px;font-size:8.5pt}.leg span{display:inline-block;margin-right:12px}.leg i{display:inline-block;width:9px;height:9px;border:.5pt solid #555;margin-right:4px;vertical-align:-1px}'
-    +'</style></head><body><h1>'+esc(box.name||'Box')+'</h1><div class="crumb">'+esc(st.label||currentBoxDetail.storage)+' › '+esc(rack.name||'')+' · '+box.rows+' × '+box.cols+' · '+nFilled+' / '+(box.rows*box.cols)+' filled · printed '+new Date().toISOString().slice(0,10)+'</div>'
-    +'<table>'+head+rows+'</table>'+(leg?('<div class="leg">'+leg+'</div>'):'')+'</body></html>';
+  var html=boxSheetHTML(box, st.label||currentBoxDetail.storage, rack.name||'', new Date().toISOString().slice(0,10));
   var w=null; try{ w=window.open('','_blank'); }catch(e){}
   if(!w){ toast('The browser blocked the print window — allow pop-ups for this page.'); return; }
   w.document.open(); w.document.write(html); w.document.close();

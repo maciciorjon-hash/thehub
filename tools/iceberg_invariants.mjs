@@ -13,6 +13,8 @@
 //   F8  views are local     changing the view, the box view, the search or the space filter does not save (or sync)
 //                           the inventory
 //   F9  backed up first     the inventory as it was is put aside in IndexedDB before this version saves
+//   F10 one sheet           the printed box map is ONE A4 page for any box (5x5 … 13x13, 3 or 40 lines, no notes or twelve,
+//                           empty, dark theme), carries every vial's label, and uses its own light tones, not the theme's
 //
 //   node tools/iceberg_invariants.mjs [--only=F1,F4] [--file=apps/iceberg/iceberg.html]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -185,6 +187,32 @@ if (run('F9')) await guard('F9', async () => {
   await p.waitForTimeout(300);
   const r = await p.evaluate(() => new Promise(res => { const q = indexedDB.open('iceberg_backup', 1); q.onupgradeneeded = () => q.result.createObjectStore('h'); q.onsuccess = () => { try { const g = q.result.transaction('h', 'readonly').objectStore('h').get('pre-rework'); g.onsuccess = () => res(g.result ? JSON.parse(g.result.json) : null); g.onerror = () => res(null); } catch (e) { res(null); } }; q.onerror = () => res(null); }));
   r && r.storages && r.storages.minus80.racks[0].boxes[0].vials.A1 ? ok() : bad('F9', 'the old inventory was not set aside before saving');
+  await p.context().close();
+});
+
+if (run('F10')) await guard('F10', async () => {
+  const p = await open(OLD);
+  const cases = [[9, 9, 3, 0], [9, 9, 11, 9], [13, 13, 40, 12], [5, 5, 2, 0], [8, 12, 12, 2], [9, 9, 0, 0], [16, 16, 60, 12]];
+  for (const dark of [false, true]) for (const [R, C, L, N] of cases) {
+    const html = await p.evaluate(([R, C, L, N, dark]) => {
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light'); clearColorCache();
+      const vials = {}; let n = 0;
+      if (L) for (let r = 0; r < R; r++) for (let c = 1; c <= C; c++) { vials[String.fromCharCode(65 + r) + c] = { cellLine: 'Line ' + (n % L) + ', KO #' + (n % 5) + ' Pool', passage: 'P' + (n % 30), freezeDate: '2026-0' + (1 + n % 9) + '-10', frozenBy: 'JM', vialCount: 1, notes: n < N ? 'A long note ' + 'x'.repeat(200) : '' }; n++; }
+      return boxSheetHTML({ name: 'A box with a rather long name that has to wrap onto a second line of the header', rows: R, cols: C, vials }, 'Liquid N2', 'Tank 2', '2026-10-12');
+    }, [R, C, L, N, dark]);
+    const q = await p.context().newPage(); await q.setContent(html);
+    const pdf = await q.pdf({ preferCSSPageSize: true, printBackground: true });
+    const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+    const t = await q.evaluate(() => ({ over: document.querySelector('.page').scrollHeight > document.querySelector('.page').clientHeight + 1, cells: document.querySelectorAll('.w:not(.free)').length, mapH: document.querySelector('.map').getBoundingClientRect().height * 25.4 / 96 }));
+    const tag = `${R}x${C}/${L} lines/${N} notes${dark ? '/dark' : ''}`;
+    pages === 1 ? ok() : bad('F10', `${tag}: the sheet is ${pages} pages`);
+    !t.over ? ok() : bad('F10', `${tag}: the page content overflows`);
+    t.cells === Math.min(R * C, L ? R * C : 0) ? ok() : bad('F10', `${tag}: ${t.cells} of ${L ? R * C : 0} vials drawn`);
+    ![...html.matchAll(/background:hsl\(\d+,\s*\d+%,\s*(\d+)%/g)].some(m => +m[1] < 70) ? ok() : bad('F10', `${tag}: a cell took the dark theme's tone onto paper`);
+    t.mapH >= R * 9 ? ok() : bad('F10', `${tag}: the map is squeezed to ${Math.round(t.mapH)} mm`);
+    await q.close();
+  }
+  p.errs.length ? bad('F10', 'errors: ' + p.errs.join(' | ')) : ok();
   await p.context().close();
 });
 
