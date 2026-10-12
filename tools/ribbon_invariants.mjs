@@ -55,6 +55,8 @@
 //                           structure and follows the zoom; the Perspective slider keeps the size; Pastel keeps the hue; the old names still load.
 //   RB37 styles              Twelve styles, pastel first, each the same whatever came before it; a change by hand takes the highlight off; Save look keeps, offers,
 //                           restores and deletes a look; the old names still work.
+//   RB38 the scale bar       The length is the longest 1-2-5 in a fifth of the width (nm from 100 Å); on screen it is that long; in the export it is a strip under
+//                           the cropped figure (the structure above it untouched), sized in pt from the dpi; ink, corner, and the perspective warning.
 //   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
@@ -1920,10 +1922,10 @@ async function rb29() {
   // the scale bar is the right length
   await E(() => { state.bg = 'white'; state.border = 'thin'; state.color = 'chain'; state.projection = 'orthographic'; applyProjection(); applyBackground(); recolorStructure(); });   // the bar is exact in orthographic
   await pg.check('#scaleChk'); await sleep(300);
-  const sb = await E(() => { const m = scaleMeasure(), el = document.getElementById('scaleBar'), w = el.querySelector('i').getBoundingClientRect().width;
-    const c = currentModel.selectedAtoms({ atom: 'CA' })[0], v = viewer.getView(), R = _camRot(v), a = viewer.modelToScreen(c), b = viewer.modelToScreen({ x: c.x + R[0][0] * m.len, y: c.y + R[0][1] * m.len, z: c.z + R[0][2] * m.len });
-    return { shown: !el.hidden, w, want: Math.hypot(b.x - a.x, b.y - a.y), label: el.querySelector('span').textContent, len: m.len }; });
-  check('RB29', 'the scale bar is as long as its label in Å at the structure (orthographic, so anywhere in it)', sb.shown && Math.abs(sb.w - sb.want) / sb.want < 0.06 && sb.label === sb.len + ' Å', sb);
+  const sb = await E(() => { const m = scaleMeasure(), sp = scaleBarSpec(m.ppa, document.getElementById('viewport').clientWidth, 0.2), el = document.getElementById('scaleBar'), w = el.querySelector('.sb-bar').getBBox().width;
+    const c = currentModel.selectedAtoms({ atom: 'CA' })[0], v = viewer.getView(), R = _camRot(v), a = viewer.modelToScreen(c), b = viewer.modelToScreen({ x: c.x + R[0][0] * sp.len, y: c.y + R[0][1] * sp.len, z: c.z + R[0][2] * sp.len });
+    return { shown: !el.hidden, w, want: Math.hypot(b.x - a.x, b.y - a.y), label: el.querySelector('text').textContent, spec: sp.label }; });
+  check('RB29', 'the scale bar is as long as its label in Å at the structure (orthographic, so anywhere in it)', sb.shown && Math.abs(sb.w - sb.want) / sb.want < 0.06 && sb.label === sb.spec, sb);
   const ex = await E(() => { _exOpts.res = '300'; _exOpts.bg = 'white'; const a = renderExport().toDataURL(); state.scalebar = false; const b = renderExport().toDataURL(); state.scalebar = true; return a !== b; });
   check('RB29', 'the scale bar is in the export', ex);
   await pg.check('#axesChk'); await sleep(200);
@@ -2207,6 +2209,49 @@ async function rb37() {
   await ctx.close();
 }
 
+
+// ── RB38 the scale bar ──────────────────────────────────────────────────────────────────────────
+async function rb38() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB38 ' });
+  if (!(await has3d(pg))) { skipped.push('RB38 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('8CAM'); await sleep(400);
+  const spec = await E(() => [[3, 800], [40, 800], [400, 800], [0.8, 800], [0.01, 800]].map(([p, w]) => { const s = scaleBarSpec(p, w); return [s.len, s.label, Math.round(s.px)].join('|'); }));
+  check('RB38', 'the length is the longest 1-2-5 that fits a fifth of the width, in Å, in nm from 100 Å, with a thin space (3 px/Å → 50, 40 → 2, 400 → 0.2, 0.8 → 20 nm)',
+    spec[0] === '50|50 Å|150' && spec[1] === '2|2 Å|80' && spec[2] === '0.2|0.2 Å|80' && spec[3] === '200|20 nm|160' && spec[4].startsWith('5000|500 nm'), spec);
+  await E(async () => { state.projection = 'orthographic'; state.bg = 'white'; state.border = 'thin'; state.color = 'chain'; applyProjection(); applyBackground(); recolorStructure(); fitToView(); await new Promise(r => setTimeout(r, 900)); });
+  // on screen: the bar is its length, the label is the spec's, and it is an SVG with caps, in the label font
+  await E(() => { state.scalebar = true; syncLookControls(); decorUpdate(); }); await sleep(250);
+  const sc = await E(() => { const m = scaleMeasure(), vp = document.getElementById('viewport'), sp = scaleBarSpec(m.ppa, vp.clientWidth, 0.2), el = document.getElementById('scaleBar'), bar = el.querySelector('.sb-bar');
+    return { shown: !el.hidden, w: bar.getBBox().width, want: sp.px, label: el.querySelector('text').textContent, spec: sp.label, font: el.querySelector('text').style.fontFamily, caps: (bar.getAttribute('d').match(/v/g) || []).length }; });
+  check('RB38', 'on screen the bar is as long as its length, labelled as the rule says, with a cap at each end', sc.shown && Math.abs(sc.w - sc.want) < 0.6 && sc.label === sc.spec && sc.caps === 2, sc);
+  // in the export: a strip under the structure; the structure and its crop are exactly what they were
+  const ex = await E(() => { _exOpts.res = '300'; _exOpts.bg = 'white'; _exOpts.fmt = 'png'; state.exportLabels = false; $('exLabels').checked = false;
+    state.scalebar = false; const a = renderExport(); state.scalebar = true; const b = renderExport(); const L = window.__sbLast;
+    const px = (c, x, y, w, h) => c.getContext('2d').getImageData(x, y, w, h).data;
+    const top = (() => { const A = px(a, 0, 0, a.width, a.height), B = px(b, 0, 0, a.width, a.height); for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) return false; return true; })();
+    const row = px(b, 0, Math.round(L.y), b.width, 1); let x0 = -1, x1 = -1; for (let x = 0; x < b.width; x++) { const k = x * 4; if (row[k] < 80 && row[k + 1] < 80 && row[k + 2] < 90) { if (x0 < 0) x0 = x; x1 = x; } }
+    const live = scaleMeasure().ppa, dims = _exportDims();
+    return { aw: a.width, ah: a.height, bw: b.width, bh: b.height, strip: L.stripH, top, run: x1 - x0 + 1, px: L.px, len: L.len, factor: L.ppa / live, scale: dims.scale, fs: L.fs, lw: L.lw, dpi: L.dpi, ink: L.ink, dpr: (c => c.width / c.getBoundingClientRect().width)(document.querySelector('#viewport canvas')) }; });
+  check('RB38', 'the bar is in a strip under the figure: same width, the structure above it untouched (it used to be drawn before the crop and moved it)', ex.aw === ex.bw && ex.bh === ex.ah + ex.strip && ex.top, ex);
+  check('RB38', 'the bar in the picture is its length in pixels (len × pixels per Å of that picture)', Math.abs(ex.run - ex.px) <= ex.lw + 1, ex);
+  check('RB38', 'and the pixels per Å are the screen ones times the export magnification (so the bar is true to the structure)', Math.abs(ex.factor - ex.scale * ex.dpr) < 0.02 * ex.factor, { factor: ex.factor, scale: ex.scale, dpr: ex.dpr });
+  check('RB38', 'the label is 7 pt and the line 0.9 pt at the export dpi (the type is set by the figure, not by the window)', ex.fs === Math.round(7 * ex.dpi / 72) && ex.lw === Math.max(2, Math.round(0.9 * ex.dpi / 72)), ex);
+  // the size follows the figure's width, not the window's
+  const sized = await E(() => { state.figSize = '1col'; _exOpts.res = '300'; state.scalebar = true; const c = renderExport(), L = window.__sbLast, w = c.width; state.figSize = 'free'; return { w, px: L.px, ppa: L.ppa, fs: L.fs, want: Math.round(85 / 25.4 * 300) }; });
+  check('RB38', 'at one column (85 mm, 300 dpi) the figure is that wide and the bar is measured on it', Math.abs(sized.w - sized.want) <= 2 && sized.px < 0.23 * sized.w, sized);
+  // ink and corner
+  const inks = await E(() => { const r = {}; for (const k of ['auto', 'black', 'white']) { state.scaleInk = k; _exOpts.bg = 'white'; renderExport(); r[k] = window.__sbLast.ink; } state.scaleInk = 'auto'; _exOpts.bg = 'dark'; renderExport(); r.autoDark = window.__sbLast.ink; _exOpts.bg = 'white'; state.scaleCorner = 'bl'; const c = renderExport(), L = window.__sbLast; r.left = L.x0 < c.width / 2; state.scaleCorner = 'br'; return r; });
+  check('RB38', 'ink is auto (dark on light, light on dark), black or white; the corner is left or right', inks.auto === '#1a1d2e' && inks.black === '#000000' && inks.white === '#ffffff' && inks.autoDark === '#e8eaf2' && inks.left, inks);
+  // perspective: it says so, and one click makes it exact
+  await E(() => { setPerspective(60); }); await sleep(200);
+  const pp = await E(() => ({ hint: document.getElementById('sbHint').textContent, btn: !document.getElementById('sbOrtho').hidden }));
+  check('RB38', 'in perspective it says the bar is exact only at the middle, and offers perspective: none', /only at the middle/.test(pp.hint) && pp.btn, pp);
+  await pg.click('#sbOrtho'); await sleep(250);
+  check('RB38', 'which does it', await E(() => state.projection === 'orthographic' && document.getElementById('sbOrtho').hidden && /Exact everywhere/.test(document.getElementById('sbHint').textContent)));
+  check('RB38', 'a design keeps the ink and the corner', await E(() => { state.scaleInk = 'white'; state.scaleCorner = 'bl'; const st = collectDesign().state; return st.scaleInk === 'white' && st.scaleCorner === 'bl'; }));
+  await ctx.close();
+}
+
 // ── RB31 undo, click modes, views, films, figure sizes ─────────────────────────────────────
 async function rb31() {
   const { ctx, pg, E, go } = await open({ tag: 'RB31 ' });
@@ -2369,7 +2414,7 @@ async function rb33() {
   await r.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34], ['RB35', rb35], ['RB36', rb36], ['RB37', rb37], ['RB38', rb38]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

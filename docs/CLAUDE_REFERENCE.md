@@ -7687,6 +7687,17 @@ commit and one invariant each; each step below is added when it lands.
   outline), Pastel on dark, Cover, Confidence. `clean`/`pocket` still work as names. **Save look** keeps the current light,
   depth, colours, outline, background and perspective under a name (`localStorage.ribbon_looks`, 12 at most), offered under
   *My looks* with a × to delete; changing anything by hand takes the highlight off the style. **RB37**.
+- **B5 — a scale bar fit for a paper.** It was drawn into the hi-res render *before* `_cropToContent`, so the crop took the
+  bar's corner as part of the structure; sized in screen pixels (12·factor px, 4·factor px) and resampled to the figure width, its
+  printed size depended on the window and the crop; label above on the export, below on screen; Plex Mono; lengths with no
+  sub-Å and a 25; 50–150 *screen* pixels. Now one rule, `scaleBarSpec(ppa, width, frac)`: the longest 1-2-5 length (0.1 Å … 500 nm,
+  nm from 100 Å, thin space) in 22 % of the width (20 % on screen). On screen an SVG (label over the bar, a cap at each end, the
+  label font); in the export `_withScaleBar` adds a **strip under the figure after the crop and the resize**, so the bar takes
+  no part in the crop and the structure above it is byte-identical with or without it, and sets its size in points from the
+  export dpi (7 pt label, 0.9 pt line). The pixels per Å are measured at the middle of the structure on the live view, times the
+  export magnification, times the final resample. Controls: Ink (Auto/Black/White), Corner (Right/Left), and — in perspective — a
+  hint that the bar is exact only at the middle, with *Set perspective to none*. Command `scalebar black|white|auto|left|right`.
+  `window.__sbLast` is what the last export drew, for the invariant. **RB38**. Films still carry no bar (B6).
 
 ## Labbook on a laptop, audited (2026-10-12)
 

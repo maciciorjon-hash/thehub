@@ -88,6 +88,8 @@ function syncLookControls(){
   if($('valMapSel')) $('valMapSel').value=state.valMap||'consurf';
   if($('valMapFld')) $('valMapFld').hidden=!state.values;
   if($('scaleChk')) $('scaleChk').checked=!!state.scalebar;
+  if($('sbOpts')){ var sbp=_persp()>0; $('sbOpts').hidden=!state.scalebar; _segSet('sbInk',state.scaleInk||'auto'); _segSet('sbCorner',state.scaleCorner||'br');
+    $('sbHint').textContent=sbp?'In perspective the bar is exact only at the middle of the structure: nearer parts are drawn larger and further ones smaller.':'Exact everywhere: orthographic keeps parallel lines parallel.'; $('sbOrtho').hidden=!sbp; }
   contrastCheck(); decorUpdate();
 }
 // A chain colour that nearly disappears against the background is named, so it can be changed before it reaches a slide.
@@ -119,7 +121,19 @@ function drawAxes(){
   });
   el.innerHTML=h;
 }
-function scaleMeasure(){   // pixels per Å at the middle of the structure, and a round length that makes a 50–140 px bar
+// ── The scale bar ───────────────────────────────────────────────────────────────────────────────────────────────
+// One rule for the screen, the export and a film: the longest 1-2-5 length that fits in `frac` of the width, said in Å (in nm from
+// 100 Å, with a thin space before the unit). It used to be chosen to be 50–150 *screen* pixels, so its printed size depended on the
+// window and the crop, and drawn before the crop, so the crop took the corner it sat in as part of the structure.
+var SB_LENS=[0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000,2000,5000];
+function scaleBarSpec(ppa,widthPx,frac){
+  if(!(ppa>0)||!(widthPx>0)) return null;
+  var max=(frac||0.22)*widthPx, L=SB_LENS[0], i;
+  for(i=0;i<SB_LENS.length;i++) if(SB_LENS[i]*ppa<=max) L=SB_LENS[i];
+  var big=L>=100, v=big?L/10:L;
+  return {len:L,px:L*ppa,label:(Math.abs(v-Math.round(v))<1e-9?String(Math.round(v)):String(+v.toFixed(2)))+' '+(big?'nm':'Å')};
+}
+function scaleMeasure(){   // pixels per Å at the middle of the structure (exact there; in perspective nearer parts are larger)
   if(!viewer||!currentModel) return null;
   var pts=fitPoints(); if(!pts.length) return null;
   var c={x:0,y:0,z:0}; pts.forEach(function(p){ c.x+=p.x; c.y+=p.y; c.z+=p.z; }); c.x/=pts.length; c.y/=pts.length; c.z/=pts.length;
@@ -127,22 +141,42 @@ function scaleMeasure(){   // pixels per Å at the middle of the structure, and 
   var R=_camRot(v), ax={x:R[0][0],y:R[0][1],z:R[0][2]};   // the camera's x axis, in model coordinates
   var a=viewer.modelToScreen(c), b=viewer.modelToScreen({x:c.x+ax.x*10,y:c.y+ax.y*10,z:c.z+ax.z*10});
   var ppa=Math.hypot(b.x-a.x,b.y-a.y)/10; if(!(ppa>0)) return null;
-  var L=[1,2,5,10,20,25,50,100,200,500].filter(function(x){ return x*ppa>=50&&x*ppa<=150; })[0]||[1,2,5,10,20,25,50,100,200,500].reduce(function(p,x){ return Math.abs(x*ppa-90)<Math.abs(p*ppa-90)?x:p; },10);
-  return {ppa:ppa,len:L,px:L*ppa};
+  return {ppa:ppa};
 }
+function _sbInk(bgKey){
+  if(state.scaleInk==='black') return '#000000'; if(state.scaleInk==='white') return '#ffffff';
+  var dark=bgKey==='dark'||(bgKey==='transparent'&&darkTone());   // the bar is drawn on the picture's background, not the page's
+  return dark?'#e8eaf2':'#1a1d2e';
+}
+// On screen: an SVG, the label over the bar, a cap at each end, in the label font.
 function drawScaleBar(){
   var el=$('scaleBar'); if(!el) return;
   var vp=$('viewport'), on=!!(state.scalebar&&currentModel)&&(!vp||vp.clientHeight>=110); el.hidden=!on; if(!on) return;   // still in the export; on screen only where it fits
-  var m=scaleMeasure(); if(!m){ el.hidden=true; return; }
-  var ink=state.bg==='dark'?'#e8eaf2':state.bg==='white'?'#1a1d2e':'';   // the bar is drawn on the picture's background, not the page's
-  el.style.color=ink; el.querySelector('i').style.background=ink||''; el.querySelector('i').style.width=m.px.toFixed(1)+'px'; el.querySelector('span').textContent=m.len+' Å'; el.querySelector('span').style.color=ink||'';
+  var m=scaleMeasure(), sp=m&&scaleBarSpec(m.ppa,vp.clientWidth,0.2); if(!sp){ el.hidden=true; return; }
+  var ink=_sbInk(state.bg), w=Math.ceil(sp.px)+8, h=34, x1=(4+sp.px).toFixed(2);
+  el.className='scale-bar'+(state.scaleCorner==='bl'?' bl':'');
+  el.innerHTML='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" aria-hidden="true"><text x="'+(w/2)+'" y="13" text-anchor="middle" fill="'+ink+'">'+sp.label+'</text>'
+    +'<path class="sb-bar" d="M4 25H'+x1+'M4 20v10M'+x1+' 20v10" stroke="'+ink+'" stroke-width="2" fill="none"/></svg>';
+  var t=el.querySelector('text'); t.style.font='600 13px '+_labelFontFamily();
 }
-function drawScaleBarToCtx(ctx,factor,rect,bgKey){
-  var m=scaleMeasure(); if(!m) return;
-  var dark=bgKey==='dark'||(bgKey==='transparent'&&state.bg==='dark'), ink=dark?'#e8eaf2':'#1a1d2e';
-  var w=m.px*factor, x1=ctx.canvas.width-24*factor, x0=x1-w, y=ctx.canvas.height-28*factor;
-  ctx.save(); ctx.fillStyle=ink; ctx.beginPath(); _roundRectPath(ctx,x0,y,w,4*factor,2*factor); ctx.fill();
-  ctx.font='600 '+(12*factor)+"px 'IBM Plex Mono', monospace"; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText(m.len+' Å',x0+w/2,y-4*factor); ctx.restore();
+// In the export, in a strip added under the figure after it has been cropped and brought to its width, so the bar never
+// takes part in the crop and its size is set from the figure: a 7 pt label, a 0.9 pt line, at the export's dpi.
+// ppa is the pixels per Å of THIS canvas.
+function _withScaleBar(cv,bgKey,ppa,dpi){
+  var sp=scaleBarSpec(ppa,cv.width,0.22); if(!sp) return cv;
+  dpi=dpi||300; var pt=function(v){ return v*dpi/72; };
+  var fs=Math.max(9,Math.round(pt(7))), lw=Math.max(2,Math.round(pt(0.9))), cap=Math.max(3,Math.round(pt(2.6))), pad=Math.round(pt(5)), gap=Math.round(pt(2));
+  var stripH=pad+fs+gap+cap*2+pad;
+  var out=document.createElement('canvas'); out.width=cv.width; out.height=cv.height+stripH;
+  var x=out.getContext('2d');
+  if(bgKey==='white'||bgKey==='jpeg-white'){ x.fillStyle='#fff'; x.fillRect(0,0,out.width,out.height); } else if(bgKey==='dark'){ x.fillStyle='#13161e'; x.fillRect(0,0,out.width,out.height); }
+  x.drawImage(cv,0,0);
+  var ink=_sbInk(bgKey), x0=state.scaleCorner==='bl'?pad*2:out.width-pad*2-sp.px, x1=x0+sp.px, yb=cv.height+pad+fs+gap+cap;
+  x.strokeStyle=ink; x.lineWidth=lw; x.lineCap='butt'; x.beginPath();
+  x.moveTo(x0,yb); x.lineTo(x1,yb); x.moveTo(x0,yb-cap); x.lineTo(x0,yb+cap); x.moveTo(x1,yb-cap); x.lineTo(x1,yb+cap); x.stroke();
+  x.fillStyle=ink; x.font='600 '+fs+'px '+_labelFontFamily(); x.textAlign='center'; x.textBaseline='alphabetic'; x.fillText(sp.label,(x0+x1)/2,cv.height+pad+fs*0.82);
+  window.__sbLast={ppa:ppa,len:sp.len,px:sp.px,label:sp.label,stripH:stripH,y:yb,x0:x0,x1:x1,dpi:dpi,fs:fs,lw:lw,ink:ink};   // what the last export drew, for the invariant
+  return out;
 }
 function veChips(){   // the empty viewer offers what was opened before, and two examples
   var el=$('veChips'); if(!el) return;
@@ -167,7 +201,10 @@ function lookWire(){
   $('palSel').addEventListener('change',function(e){ state.look=null; renderPresets(); state.palette=e.target.value; if(state.color!=='chain'){ state.color='chain'; $('topColor').value='chain'; } state.chainColors={}; updateColorOrOpacity(); renderChainList(); contrastCheck(); if(SEQ.on) seqRender(); });
   $('valMapSel').innerHTML=Object.keys(VAL_MAPS).map(function(k){ return '<option value="'+k+'">'+escapeHtml(VAL_MAPS[k].n)+'</option>'; }).join('');
   $('valMapSel').addEventListener('change',function(e){ state.valMap=e.target.value; recolorStructure(); updateLegend(); renderChainList(); });
-  $('scaleChk').addEventListener('change',function(e){ state.scalebar=e.target.checked; decorUpdate(); updateSummaries(); });
+  $('scaleChk').addEventListener('change',function(e){ state.scalebar=e.target.checked; syncLookControls(); decorUpdate(); updateSummaries(); });
+  segHandler('sbInk','scaleInk',function(){ decorUpdate(); });
+  segHandler('sbCorner','scaleCorner',function(){ decorUpdate(); });
+  $('sbOrtho').addEventListener('click',function(){ setPerspective(0); });
   $('axesChk').checked=load('ribbon_axes')==='1';
   $('axesChk').addEventListener('change',function(e){ store('ribbon_axes',e.target.checked?'1':'0'); decorUpdate(); });
   $('veChips').addEventListener('click',function(e){ var b=e.target.closest('.ve-chip'); if(!b) return; $('pdbInput').value=b.dataset.q; handleSubmit(); });
@@ -194,9 +231,11 @@ RB_CMDS.push(
   {n:['palette','colours','colors'],d:'The colours chains are given',f:'palette okabe · palette tol · palette pastel',
    args:function(){ return Object.keys(PALETTES).map(function(k){ return _cand(k,'word',PALETTES[k].n); }); },
    run:function(a){ var l=a.trim().toLowerCase(), k=Object.keys(PALETTES).filter(function(x){ return x===l||PALETTES[x].n.toLowerCase().indexOf(l)===0; })[0]; if(!k) return _err('palette '+Object.keys(PALETTES).join(' · ')); $('palSel').value=k; $('palSel').dispatchEvent(new Event('change')); return _ok(PALETTES[k].n+'.'); }},
-  {n:['scalebar','scale'],d:'A scale bar in Å, in the export too',f:'scalebar on · scalebar off',
-   args:function(){ return [_cand('on','word',''),_cand('off','word','')]; },
-   run:function(a){ state.scalebar=!/^(off|no|false|0)$/i.test(a.trim()); syncLookControls(); decorUpdate(); return _ok('Scale bar '+(state.scalebar?'on.':'off.')); }},
+  {n:['scalebar','scale'],d:'A scale bar in Å, in the export too; black, white or auto ink; left or right',f:'scalebar on · scalebar off · scalebar white · scalebar left',
+   args:function(){ return ['on','off','auto','black','white','left','right'].map(function(w){ return _cand(w,'word',''); }); },
+   run:function(a){ var w=a.trim().toLowerCase();
+     if(/^(black|white|auto)$/.test(w)){ state.scaleInk=w; state.scalebar=true; } else if(/^(left|right)$/.test(w)){ state.scaleCorner=w==='left'?'bl':'br'; state.scalebar=true; } else state.scalebar=!/^(off|no|false|0)$/.test(w);
+     syncLookControls(); decorUpdate(); updateSummaries(); return _ok('Scale bar '+(state.scalebar?'on.':'off.')); }},
   {n:['axes','axis'],d:'Show the x, y and z axes (screen only)',f:'axes on · axes off',
    args:function(){ return [_cand('on','word',''),_cand('off','word','')]; },
    run:function(a){ var on=!/^(off|no|false|0)$/i.test(a.trim()); store('ribbon_axes',on?'1':'0'); $('axesChk').checked=on; decorUpdate(); return _ok('Axes '+(on?'on.':'off.')); }}
