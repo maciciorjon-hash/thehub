@@ -128,6 +128,16 @@
 //                            experiment is laid onto the compound blocks of the user's plate map in reading order,
 //                            overflowing onto further plates with the same layout; controls, concentrations and the
 //                            vehicle are untouched; headers may be named anything, or absent.
+//   B25 Echo only where Echo is  The Echo picklist square is shown for an experiment with an Echo step, a stored picklist or one
+//                            added on purpose — not for every plate that has named conditions (a NanoBRET screen has no
+//                            picklist) — and it can be put away (x) and brought back (+ Echo picklist). The plate
+//                            editor offers "Import Echo picklist" only to such an experiment.
+//   B26 the plate editor fills  The plate is drawn to its column (not a fixed 34 px with half the editor empty) and stays
+//                            inside it; the panel has persistent tabs (Contents · Dilution · Compounds · Label · Plate);
+//                            a blank map opens on the Plate tab, a drawn one on Contents; selecting wells leaves Plate.
+//   B27 the editor knows what it is for  A plasmid experiment (NanoBRET, reverse transfection) says so on its plate: it shows the
+//                            constructs and their roles, warns when the palette lacks conditions the setup gives, and
+//                            says what is missing when no plasmid is named; one that is not (a Western) shows none of it.
 //   B23 the noon backup      The folder backup is due once per noon that has passed (closed at noon: the next open catches up),
 //                            is gzip JSON that restores to the same notebook, is never marked done by a snapshot or a
 //                            cloud adoption, and waits on a pill — writing nothing — when the browser wants a click.
@@ -1688,6 +1698,86 @@ async function suite(opts) {
       if (!junk.error) bad('B22', 'junk', 'an unrelated CSV was accepted');
     });
 
+
+    // B25 — the Echo square belongs to an experiment that uses an Echo.
+    if (run('B25')) await guard('B25', 'echo square', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B25', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV no echo', code: 'INV_B25', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B25');
+      const sq = () => document.querySelector('.echo-drop[data-exp="' + e.id + '"]');   // this experiment's, not one left on screen by an earlier check
+      if (!e.plate || !plateCompoundSlots(e.plate).length) { bad('B25', 'setup', 'the experiment has no named conditions to test with'); return; }
+      if (sq()) bad('B25', 'square', 'a plate with named conditions and no Echo step got the Echo picklist square');
+      openPlateEditor('exp:' + e.id); plSetMode('plate'); await sleep(60);
+      if (document.getElementById('pl-side').querySelector('[onclick*="plImportEcho"]')) bad('B25', 'import', 'the plate editor offers Import Echo picklist to an experiment without an Echo');
+      closePlateEditor();
+      // added on purpose, put away again, and the button to bring it back is there
+      if (![...document.querySelectorAll('.bench-top .lean-tog')].some(b => /Echo picklist/.test(b.textContent))) bad('B25', 'add', 'no "+ Echo picklist" on an experiment without one');
+      echoSetUse(e.id, true); await sleep(60);
+      if (!sq()) { bad('B25', 'added', 'adding the Echo picklist showed no square'); return; }
+      if (!sq().querySelector('.ed-x')) bad('B25', 'dismiss', 'the empty square has no way to put it away');
+      openPlateEditor('exp:' + e.id); plSetMode('plate'); await sleep(60);
+      if (!document.getElementById('pl-side').querySelector('[onclick*="plImportEcho"]')) bad('B25', 'import', 'an experiment with the Echo added is not offered Import Echo picklist');
+      closePlateEditor();
+      sq().querySelector('.ed-x').click(); await sleep(60);
+      if (sq() || !LB.data.experiments[e.id].noEcho) bad('B25', 'dismissed', 'the square came back after it was put away');
+    });
+
+    // B26 — the plate editor draws the plate to its column, with tabs that are always there.
+    if (run('B26')) await guard('B26', 'plate editor', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B26', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV editor', code: 'INV_B26', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B26');
+      openPlateEditor('exp:' + e.id); await sleep(80);
+      const tabs = () => [...document.querySelectorAll('#pl-side .pl-tabs button')].map(b => b.textContent);
+      const on = () => (document.querySelector('#pl-side .pl-tabs button.on') || {}).textContent;
+      if (on() !== 'Contents') bad('B26', 'opens on', 'a drawn map opened on ' + on());
+      if (tabs().length < 3 || tabs()[tabs().length - 1] !== 'Plate') bad('B26', 'tabs', 'tabs are ' + tabs().join(','));
+      const w = document.querySelector('#pl-grid .pl-w').getBoundingClientRect().width, left = document.querySelector('.pl-left').getBoundingClientRect(), g = document.getElementById('pl-grid').getBoundingClientRect();
+      if (w < 44) bad('B26', 'fills', 'a 96-well plate is drawn at ' + Math.round(w) + ' px a well in a ' + Math.round(left.width) + ' px column');
+      if (g.right > left.right + 1) bad('B26', 'inside', 'the plate runs ' + Math.round(g.right - left.right) + ' px past its column');
+      plSetMode('plate'); await sleep(40);
+      if (!document.querySelector('#pl-side select[onchange*="plSetFormat"]')) bad('B26', 'plate tab', 'the Plate tab has no format');
+      PL.sel = { A1: 1, A2: 1 }; plRender();
+      if (on() === 'Plate') bad('B26', 'selecting', 'selecting wells left the Plate tab showing');
+      closePlateEditor();
+      // a blank map opens on the Plate tab
+      const ex = LB.data.experiments[e.id]; ex.plate.wells = {}; save();
+      openPlateEditor('exp:' + e.id); await sleep(60);
+      if (on() !== 'Plate') bad('B26', 'blank', 'a blank map opened on ' + on());
+      closePlateEditor();
+    });
+
+    // B27 — the plate editor is content-aware: it reads what the experiment is made of.
+    if (run('B27')) await guard('B27', 'content aware', async () => {
+      const P = (LB.data.projects || []).find(p => (p.sections || []).length);
+      const key = 'NB_SPARK_SCREEN96', tpl = LB.data.presets[key];
+      if (!tpl) { bad('B27', 'setup', 'the SPARK screen preset is not in the notebook'); return; }
+      const su = Object.assign({}, setupDefaultsFor(key), JSON.parse(JSON.stringify(tpl.setup)));
+      const before = new Set(Object.keys(LB.data.experiments));
+      buildExperimentFrom({ pid: P.id, sid: P.sections[0].id, key, tpl, startDate: '2026-10-01', type: 'NB', title: 'INV aware', code: 'INV_B27', setup: su, plate: true });
+      const e = Object.values(LB.data.experiments).find(x => !before.has(x.id)); clean.push(e); openExp(e.id); tick('B27');
+      const ctx = () => document.querySelector('#pl-side .pl-ctx');
+      openPlateEditor('exp:' + e.id); await sleep(60);
+      if (!ctx() || ctx().classList.contains('warn') || !/donor/.test(ctx().textContent) || !/acceptor/.test(ctx().textContent)) bad('B27', 'roles', 'a NanoBRET plate does not show its donor and acceptor: ' + (ctx() && ctx().textContent));
+      e.plate.types = e.plate.types.slice(1); plRender();
+      if (!ctx() || !ctx().classList.contains('warn') || !ctx().querySelector('[onclick*="plUseExpTypes"]')) bad('B27', 'drift', 'a palette missing a condition of the setup is not flagged');
+      // a reverse transfection with no plasmid named says what it is waiting for, and with one it has a condition
+      const keep = [e.type, e.setup.donors, e.setup.acceptors, e.plasmids]; e.type = 'RTX'; e.setup.donors = ''; e.setup.acceptors = ''; e.plasmids = ''; plRender();
+      if (!ctx() || !ctx().classList.contains('warn') || !/No plasmids/.test(ctx().textContent)) bad('B27', 'no plasmids', 'a plasmid experiment with no plasmid named does not say so');
+      e.plasmids = 'pINV-1'; if (!expPlateTypes(e).some(t => t.name === 'pINV-1')) bad('B27', 'rtx', 'a reverse-transfection plasmid is not a condition of the plate');
+      // a type with no plasmids shows none of it
+      e.type = 'WB'; plRender();
+      if (ctx()) bad('B27', 'other type', 'a Western blot plate shows a plasmid panel');
+      [e.type, e.setup.donors, e.setup.acceptors, e.plasmids] = keep; closePlateEditor();
+    });
 
     // B23 — the noon backup.
     if (run('B23')) await guard('B23', 'backup', async () => {
