@@ -7357,12 +7357,11 @@ of chrome before content, and icons too thin to read on a non-Retina screen.
   (Labbook's `lbRailCounts()`; amber when anything is overdue), Cells the cultures needing
   attention (`computeCellAlerts`, as the header chip). `_railBadges()` patches them in place; it
   runs from `renderNavChips`, which Labbook already pokes on every save.
-- **Apps on the rail.** Below the sections: up to 4 **pinned** apps (right-click any app card →
-  *Pin to the rail*) and the last 3 **opened** (`localStorage['hub_rail_apps']`, `_railNoteApp`
-  from `openApp`/`openCells`). A recent app is appended and the oldest leaves from the top; one
-  already listed does not move, so the rail does not reshuffle. Labbook, Cells and Archive are
-  never listed — they are sections. What is lit is what is on screen (`_railCurrent`): an app
-  with its own entry lights it, otherwise the section.
+- **Apps on the rail.** *Removed 2026-10-12* — Jon did not want independent apps (Blueprint,
+  Echo…) pinned beside the sections. The rail carries the sections only. `hub_rail_apps` is
+  deleted at start-up (`_wsRestoreRail`), and `_railCurrent()` lights the landing an open app
+  belongs to: Data Analysis for its apps, Archive for Archive, Cells for the Cells tabs, More apps
+  for the rest, the workspace you are in for Labbook. Invariant **S5** (`tools/hub_invariants.mjs`).
 - **Keys.** ⌥1…⌥9 go to the rail's entries in order (`_hubRailKey`), listened for in the shell
   and in every app frame (added in `_loadApp`'s load handler) — never inside a field, where ⌥ and
   a digit type a character (⌥8 is •). ⌘K on an empty box lists the sections with their keys; a
@@ -7584,6 +7583,13 @@ Jon (on a NanoBRET): the plate editor was poor next to Lumina — plate small wi
 - **Echo only where Echo is** (`expUsesEcho`): stored picklist, an Echo step, or `e.echo` (added with *+ Echo picklist*); `e.noEcho` + the × on the empty square puts it away. A plate with named conditions no longer counts as evidence of an Echo. The editor offers Import Echo picklist only to such an experiment.
 - Invariants B25 (Echo square), B26 (editor fills, tabs, blank opens on Plate), B27 (content-aware).
 - Open for Jon: what else each type should show (Western, proteomics, cloning are still generic).
+
+## The 2026-10-12 round: Home goes, Experiments gets its own entry, Ribbon is reworked
+
+Approved plan: `~/.claude/plans/la-pantalla-home-en-streamed-pike.md`. Done in this order, one
+commit and one invariant each; each step below is added when it lands.
+
+- **A1 — pinned apps off the rail.** See *The rail, second pass* above (bullet *Apps on the rail*).
 
 ## Labbook on a laptop, audited (2026-10-12)
 

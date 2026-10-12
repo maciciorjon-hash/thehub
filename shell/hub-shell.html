@@ -362,8 +362,6 @@ body.hub-announcing #ws-rail{top:calc(var(--top) + 40px + var(--hub-notice-h,0px
   box-shadow:0 0 0 2px var(--surface);pointer-events:none;}
 .ws-badge.warn{background:var(--warn);}
 .ws-badge[hidden]{display:none;}
-/* apps you pinned or opened lately: their own drawing, their own hue on the accent */
-.ws-app .ws-ico svg{stroke-width:1.5;}
 /* the foot: sync and backup at a glance */
 .ws-health .ws-ico svg{width:20px;height:20px;}
 .ws-dot{position:absolute;right:13px;bottom:3px;width:8px;height:8px;border-radius:50%;background:var(--text3);box-shadow:0 0 0 2px var(--surface);}
@@ -1752,7 +1750,6 @@ function openCells(tab, item, context){
   if (!tabs.some(function(t){ return t.id===tab; })) tab = tabs[0].id;
   var switching = (currentApp === 'cells' && _cellsTab !== tab), prevTab = _cellsTab;
   _cellsTab = tab;
-  _railNoteApp(tab);
   var host = document.getElementById('cells-host');
   var small = _hubSmall();
   tabs.forEach(function(t){
@@ -1855,7 +1852,6 @@ function openApp(id, tab, item, context) {
   var view = view0;
   var _wasIn = currentApp;
   currentApp = id;
-  _railNoteApp(id);
   _unloadOthers(id);
   document.querySelectorAll('.app-view').forEach(function(v) {
     if (v !== view) { v.style.display = 'none'; v.style.opacity = ''; }
@@ -2933,8 +2929,8 @@ var _wsSection = 'planner';
 function renderRail(){
   var rail=document.getElementById('ws-rail'), tabs=document.getElementById('ws-tabs');
   if(!rail || !tabs) return;
-  var nav=WS_NAV.filter(function(n){ return !n.sep; }), apps=_railApps(), cur=_railCurrent(apps);
-  var ids=nav.map(function(n){ return n.id; }).concat(apps.map(function(a){ return 'app:'+a.id; }));
+  var nav=WS_NAV.filter(function(n){ return !n.sep; }), cur=_railCurrent();
+  var ids=nav.map(function(n){ return n.id; });
   // Only what is lit moved: switch the classes and slide the ink. Rebuilding the markup on
   // every click restarted the icon animation you had just set off, which read as a stutter.
   var items=rail.querySelectorAll('.ws-item[data-ws]');
@@ -2952,14 +2948,6 @@ function renderRail(){
         +'<span class="ws-lbl"><span class="l">'+_dashEsc(n.name)+'</span>'
         +'<span class="s">'+_dashEsc(n.short||n.name)+'</span></span></button>';
     }).join('')
-    + (apps.length ? '<div class="ws-sep"></div>' : '')
-    + apps.map(function(a){ k++;
-        var info=APP_INFO[a.id]||{}, nm=info.name||a.id;
-        return '<button class="ws-item ws-app'+(a.pin?' pinned':'')+(cur==='app:'+a.id?' on':'')+'" data-ws="app:'+a.id+'" data-app="'+a.id+'" style="--ic-ac:'+(info.color||'currentColor')+'"'
-          +' onclick="wsOpenApp(\''+a.id+'\')" title="'+_dashEsc(nm)+(a.pin?' · pinned':' · recent')+(k<=9?' · '+_altKey(k):'')+'">'
-          +'<span class="ws-ico">'+_wsIcon(a.id)+'</span>'
-          +'<span class="ws-lbl"><span class="l">'+_dashEsc(nm)+'</span><span class="s">'+_dashEsc(RAIL_SHORT[a.id]||nm)+'</span></span></button>';
-      }).join('')
     + '<div class="ws-grow"></div>'
     + '<button class="ws-item ws-health" data-health="" onclick="railHealthClick()" title="Sync and backup">'
       +'<span class="ws-ico">'+WS_ICONS.cloud+'<i class="ws-dot"></i></span><span class="ws-lbl"><span class="l">Sync</span><span class="s">Sync</span></span></button>'
@@ -2976,47 +2964,15 @@ function renderRail(){
   requestAnimationFrame(function(){ _railInk(); _hubInk(tabs,'top'); });
 }
 
-// ── Apps on the rail: the ones you pinned, then the last few you opened ──────────────────
-// Recent ones are added at the end and the oldest leaves from the top; an app already there
-// does not move, so the rail does not reshuffle every time you open something.
-var RAIL_SHORT = { echo:'Echo', pt:'Proteins', cellarchive:'Lines', cryo:'Freezer', spectra:'BCA', hitfinder:'Hit Finder' };
-var RAIL_PIN_MAX = 4, RAIL_RECENT_MAX = 3;
-var RAIL_NEVER = { labbook:1, cells:1, protocols:1 };   // already sections of the rail
-function _railStore(){ var v=null; try{ v=JSON.parse(localStorage.getItem('hub_rail_apps')||'null'); }catch(e){}
-  v=v&&typeof v==='object'?v:{}; return { pins:Array.isArray(v.pins)?v.pins:[], recent:Array.isArray(v.recent)?v.recent:[] }; }
-function _railSave(v){ try{ localStorage.setItem('hub_rail_apps', JSON.stringify(v)); }catch(e){} }
-function _railApps(){
-  if(!isAdmin) return [];
-  var v=_railStore(), ok=function(id){ return APP_INFO[id] && !RAIL_NEVER[id] && document.getElementById(/^(incubator|cellarchive|cryo)$/.test(id)?'view-cells':'view-'+id) && _isAppAccessible(id); };
-  var out=v.pins.filter(ok).slice(0,RAIL_PIN_MAX).map(function(id){ return {id:id, pin:true}; });
-  v.recent.filter(function(id){ return ok(id) && v.pins.indexOf(id)<0; }).slice(-RAIL_RECENT_MAX).forEach(function(id){ out.push({id:id, pin:false}); });
-  return out;
-}
-function _railNoteApp(id){
-  if(!isAdmin || !id || RAIL_NEVER[id] || !APP_INFO[id]) return;
-  var v=_railStore(); if(v.pins.indexOf(id)>=0 || v.recent.indexOf(id)>=0) return;
-  v.recent.push(id); while(v.recent.length>RAIL_RECENT_MAX) v.recent.shift(); _railSave(v);
-}
-function railPin(id, on){
-  var v=_railStore();
-  v.pins=v.pins.filter(function(x){ return x!==id; }); v.recent=v.recent.filter(function(x){ return x!==id; });
-  if(on){ if(v.pins.length>=RAIL_PIN_MAX){ hubToast('The rail holds '+RAIL_PIN_MAX+' pinned apps. Unpin one first.','err'); return; } v.pins.push(id); }
-  _railSave(v); renderRail();
-}
-function railForget(id){ var v=_railStore(); v.recent=v.recent.filter(function(x){ return x!==id; }); _railSave(v); renderRail(); }
-function _railPinned(id){ return _railStore().pins.indexOf(id)>=0; }
-// What is lit is what is on screen: an app with its own entry lights that entry, anything else
-// lights the section you are in.
-function _railCurrent(apps){
-  var on = currentApp==='cells' ? _cellsTab : currentApp;
-  if(on && (apps||_railApps()).some(function(a){ return a.id===on; })) return 'app:'+on;
-  return _wsSection;
-}
-function wsOpenApp(id){
-  var on = currentApp==='cells' ? _cellsTab : currentApp;
-  if(on===id) return;
-  openApp(id);
-  var info=APP_INFO[id]; if(info) wsSetWhere(info.name);
+// What is lit is what is on screen. An app has no entry of its own on the rail (pinning and
+// "recent" went: an independent app lives on the landing it belongs to), so it lights that
+// landing; the Labbook lights the workspace you are in.
+function _railCurrent(){
+  var on = currentApp==='cells' ? 'cells' : currentApp;
+  if(!on || on==='labbook') return _wsSection;
+  if(on==='protocols') return 'archive';
+  if(typeof LANDINGS!=='undefined' && LANDINGS.analysis.apps.indexOf(on)>=0) return 'analysis';
+  return 'more';
 }
 
 // ── Counts on the rail: the Planner's steps for today and the ones overdue, the Cells that
@@ -3104,7 +3060,7 @@ function wsToggleRail(){
   var f=document.querySelector('#ws-rail .ws-fold'); if(f) f.title = w ? 'Narrow the rail' : 'Widen the rail';
   _railInk(); setTimeout(_railInk, 200);   // again once the width has finished moving
 }
-function _wsRestoreRail(){ try{ if(localStorage.getItem('hub_rail_mode')==='wide') document.body.classList.add('ws-wide'); }catch(e){} }
+function _wsRestoreRail(){ try{ if(localStorage.getItem('hub_rail_mode')==='wide') document.body.classList.add('ws-wide'); localStorage.removeItem('hub_rail_apps'); }catch(e){} }
 
 // The router. Labbook sections open the Labbook frame at the right view; the rest are
 // landings rendered here.
@@ -4087,24 +4043,10 @@ ctxBind(function(e){
     return [
       { hd: nm },
       { label: 'Open ' + nm, act: function(){ if (id === 'cells') openCells(null); else openApp(id); } },
-      (isAdmin && !RAIL_NEVER[id] && APP_INFO[id]) && (_railPinned(id)
-        ? { label: 'Unpin from the rail', act: function(){ railPin(id, false); } }
-        : { label: 'Pin to the rail', act: function(){ railPin(id, true); } }),
       { label: 'Copy link to ' + nm, act: function(){
           var url = location.href.split('#')[0] + '#' + id;
           if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(function(){ hubToast('Link copied.'); }).catch(function(){ hubToast('Could not copy the link.', 'err'); });
         } },
-      { sep: true }
-    ].concat(general);
-  }
-  if (rail && rail.dataset.app) {
-    var aid = rail.dataset.app, ainfo = APP_INFO[aid] || {}, pinned = _railPinned(aid);
-    return [
-      { hd: ainfo.name || aid },
-      { label: 'Open ' + (ainfo.name || aid), act: function(){ wsOpenApp(aid); } },
-      pinned ? { label: 'Unpin from the rail', act: function(){ railPin(aid, false); } }
-             : { label: 'Pin to the rail', act: function(){ railPin(aid, true); } },
-      !pinned && { label: 'Remove from the rail', act: function(){ railForget(aid); } },
       { sep: true }
     ].concat(general);
   }

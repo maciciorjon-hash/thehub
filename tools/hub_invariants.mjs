@@ -9,6 +9,9 @@
 //                         and fades the old frame out under the new one instead of hiding it in one frame
 //   S4  preload           while the intro plays the likely apps are loaded one after another — for a visitor, never
 //                         an app they cannot open; for the admin, Archive, Echo Dose Response, Hit Finder, Lumina, Tempo
+//   S5  no pinned apps    the rail carries the sections and nothing else: opening Echo or Blueprint adds no entry to it
+//                         (it used to keep the last three opened and let you pin four), no "Pin to the rail" is offered, and an
+//                         open app lights the landing it belongs to
 //
 //   node tools/hub_invariants.mjs [--shell=PATH] [--only=S1]      exit 1 on any finding
 import { chromium } from 'playwright';
@@ -131,6 +134,33 @@ if (run('S4')) {
   if (r.vis.some(id => r.admOnly.includes(id))) bad('S4', 'a visitor preloads an admin app: ' + r.vis.join(', ')); else ok();
   if (r.five.length !== 5) bad('S4', 'after the admin preload only these are loaded: ' + r.five.join(', ')); else ok();
   if (r.loaded.length !== r.adm.length) bad('S4', 'not every preloaded app finished loading: ' + r.loaded.join(', ') + ' of ' + r.adm.join(', ')); else ok();
+}
+
+if (run('S5')) {
+  const r = await page.evaluate(async () => {
+    isAdmin = true; try { backToHub({ plain: true }); } catch (e) {}
+    const rest = () => new Promise(r => setTimeout(r, 450));   // backToHub finishes its exit after a moment; an app opened inside it is cleared
+    await rest();
+    // an old pin list left on the device is swept away at start-up, and opening apps never writes one again
+    try { localStorage.setItem('hub_rail_apps', JSON.stringify({ pins: ['echo'], recent: ['pd'] })); _wsRestoreRail(); } catch (e) {}
+    const lit = id => { try { openApp(id); } catch (e) {} return new Promise(res => setTimeout(() => { renderRail(); res((document.querySelector('#ws-rail .ws-item.on') || {}).dataset ? document.querySelector('#ws-rail .ws-item.on').dataset.ws : null); }, 150)); };
+    const echoLit = await lit('echo'); try { backToHub({ plain: true }); } catch (e) {}
+    await rest();
+    const pdLit = await lit('pd'); try { backToHub({ plain: true }); } catch (e) {}
+    await rest();
+    renderRail();
+    const items = [...document.querySelectorAll('#ws-rail .ws-item[data-ws]')].map(b => b.dataset.ws).filter(id => id !== undefined && !/^(cloud|fold)$/.test(id));
+    const nav = WS_NAV.filter(n => !n.sep).map(n => n.id);
+    const card = document.querySelector('#app-grid .card[data-app-id="echo"]');
+    if (card) card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
+    await new Promise(r => setTimeout(r, 60));
+    const menu = (document.querySelector('.ctx') || {}).textContent || ''; if (document.querySelector('.ctx')) document.querySelector('.ctx').remove();
+    return { items: items.filter(id => nav.includes(id) || /^app:/.test(id)), nav, apps: document.querySelectorAll('#ws-rail .ws-app').length, stored: localStorage.getItem('hub_rail_apps'), echoLit, pdLit, pin: /Pin to the rail|Unpin from the rail/.test(menu), hasPinFn: typeof railPin };
+  });
+  if (r.apps || r.items.join() !== r.nav.join()) bad('S5', 'the rail carries more than the sections: ' + r.items.join(', ') + ' (want ' + r.nav.join(', ') + ')'); else ok();
+  if (r.stored !== null && r.stored !== undefined) bad('S5', 'hub_rail_apps is still kept or rewritten: ' + r.stored); else ok();
+  if (r.echoLit !== 'analysis' || r.pdLit !== 'more') bad('S5', 'an open app should light its landing: Echo lit ' + r.echoLit + ' (want analysis), Blueprint lit ' + r.pdLit + ' (want more)'); else ok();
+  if (r.pin || r.hasPinFn !== 'undefined') bad('S5', 'pinning to the rail is still offered (railPin is ' + r.hasPinFn + ')'); else ok();
 }
 
 for (const e of errs) bad('page', e);
