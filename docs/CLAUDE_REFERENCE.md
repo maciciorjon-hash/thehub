@@ -7463,3 +7463,13 @@ Consequence: stop adding app surface area; invest in the loop and the science co
   both had been unreachable (no card, no `openApp()`) and together were ~3.6 MB of the bundle.
   Files remain on disk. Beacon is visible to admins inside Data Analysis but remains outside the
   public unlock flow, pending its Phase 2 absorption into Echo.
+
+## The morning check on the cell cultures (2026-10-12)
+
+Jon: *"en la tab Hoy … nada más empezar el día preguntar por las células: ok, need to split, issue. Si need to split se añade a tareas del día Split Cells."* The read-only "Cell cultures — live from Incubator" panel on Today became the question. Three calls from Jon: **one task per culture**, **Issue = flag + one line, deletes nothing**, **asked on Today, written into the Journal day**.
+
+Stored per day in `LB.data.cellCheck[D][cultureId] = {s:'ok'|'split'|'issue', at, line, note?}`, a new **`_CLOUD_MAPS` entry** (a day is its own record, so it never overwrites the day's note). The cultures themselves stay in the shell's `JournalStore.incubator`; Labbook reads them (`lbCultures()`) and writes only the Issue flag back.
+- **Split** → planner task `cell_<cultureId>_<date>` (deterministic id: twice, or from two devices, is one task), `cellId` links it to the culture. Changing the answer before it is done removes it. `cellSyncTasks()` ticks it when Incubator's "Log split" moves `seeded` to on/after the task's day.
+- **Issue** needs its line (empty save records nothing). `culture.issue={ts,day,note}` + a history entry; `computeCellAlerts` (shell **and** the copy in `apps/incubator`) returns only the issue alert while it is set, so split/myco reminders stop. Incubator has "Clear issue"; an OK on the same day clears what that day raised. A culture with an open issue from an earlier day shows "Resolved" instead of asking again.
+- A split that is due is *outlined*, never pre-selected: it is a record of what Jon saw. The card is open while anything is unanswered, then one line (Edit reopens). Rows are sorted by name, not by alert, so they do not jump while being answered. Other days show the record read-only; the Journal day page prints it (`cellsDayHtml`). Standalone Labbook has no shell, so nothing is drawn.
+- Invariants: `tools/cellcheck_invariants.mjs` (C1–C7, labbook in an iframe of a stub host), wired into the "Labbook invariants" CI job. Not done: a rail badge for unanswered checks.

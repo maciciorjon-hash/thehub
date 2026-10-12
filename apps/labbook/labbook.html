@@ -1886,6 +1886,25 @@ body.lb-bench #lb-photo-fab{display:none!important;}
 .cul-line{font-weight:600;}
 .cul-meta{font-family:var(--mono);font-size:var(--fs-2);color:var(--text3);}
 .cul-msg{margin-left:auto;color:var(--text2);font-size:var(--fs-2);text-align:right;}
+/* The morning check: dot, line, passage, what is due — and the three answers at the right. */
+.cul-row.cc{cursor:default;flex-wrap:wrap;row-gap:6px;}
+.cul-row.cc .cul-msg{margin-left:0;flex:1 1 120px;min-width:0;text-align:left;}
+.mck-open{cursor:pointer;} .mck-open:hover{color:var(--accent);}
+.mck-seg{display:flex;gap:2px;flex:none;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-2);padding:2px;}
+.mck-seg button{background:none;border:none;color:var(--text2);font-family:var(--sans);font-size:var(--fs-2);font-weight:600;padding:5px 11px;border-radius:var(--r-1);cursor:pointer;white-space:nowrap;}
+.mck-seg button:hover{color:var(--text);}
+.mck-seg button.sug{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent);}
+.mck-seg button.on{color:var(--on-accent);box-shadow:none;}
+.mck-seg button.on.mck-ok{background:var(--good);} .mck-seg button.on.mck-split{background:var(--accent);} .mck-seg button.on.mck-issue{background:var(--danger);}
+.mck-st{flex:none;font-size:var(--fs-2);font-weight:600;color:var(--text2);}
+.mck-st.mck-ok{color:var(--good);} .mck-st.mck-split{color:var(--accent);} .mck-st.mck-issue{color:var(--danger);}
+.mck-ask{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-top:2px;}
+.mck-q{font-size:var(--fs-2);color:var(--text3);margin-right:2px;}
+.mck-chip{background:var(--surface2);border:1px solid var(--border);color:var(--text2);font-family:var(--sans);font-size:var(--fs-2);border-radius:var(--r-1);padding:4px 9px;cursor:pointer;}
+.mck-chip:hover{border-color:var(--border2);color:var(--text);}
+.mck-ask input{flex:1 1 160px;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-1);color:var(--text);font-family:var(--sans);font-size:var(--fs-3);padding:5px 9px;}
+.mck-tog{margin-left:10px;background:none;border:none;color:var(--accent);font-family:var(--sans);font-size:var(--fs-2);font-weight:600;cursor:pointer;padding:0;}
+@media (max-width:640px){ .mck-seg{flex:1 1 100%;} .mck-seg button{flex:1 1 0;min-height:34px;} }
 .cul-row.warn .cul-msg{color:#e0803a;}
 .ong-list{display:flex;flex-direction:column;gap:4px;}
 .ong-row{display:flex;align-items:center;gap:10px;padding:6px 11px;border-radius:var(--r-2);
@@ -8394,7 +8413,7 @@ document.addEventListener('keydown',function(ev){
 
 // ── Store ──
 var LB={ data:null };
-function lbBlank(){ return {projects:[],generalSections:[],notebooks:[],experiments:{},pages:{},notebook:{},tags:[],presets:{},antibodies:{},attachments:{},trash:{},planner:{tasks:{}},protoDays:{},_seeded:false,updated:0}; }
+function lbBlank(){ return {projects:[],generalSections:[],notebooks:[],experiments:{},pages:{},notebook:{},tags:[],presets:{},antibodies:{},attachments:{},trash:{},planner:{tasks:{}},protoDays:{},cellCheck:{},_seeded:false,updated:0}; }
 // The local cache is the only copy of this notebook until a cloud read lands, so a read that
 // FAILS is the most important thing this app can say — and it used to go into an empty catch.
 // A blank tree here is indistinguishable from a genuinely empty notebook, and four seconds
@@ -9412,6 +9431,7 @@ function _verLabel(path){
   if(coll==='experiments'){ var e=LB.data.experiments[id]; return e?((e.code?e.code+' · ':'')+(e.title||'Untitled')):'A deleted entry'; }
   if(coll==='pages'){ var p=LB.data.pages[id]; return p?(p.title||'Untitled page'):'A deleted page'; }
   if(coll==='notebook') return fmtDate(id)+' — daily note';
+  if(coll==='cellCheck') return fmtDate(id)+' — cell culture check';
   return path;
 }
 function _verRestore(key,asCopy){
@@ -9473,7 +9493,7 @@ var _CLOUD_ROOTS=['projects','generalSections','notebooks','tags','presets','myM
 // re-set by whichever device pushed last, so two devices attaching pictures on the same day
 // erased each other's cloud copies — and a root has no live listener, so a picture uploaded on
 // the phone only became findable on the laptop after a reload. Per id, it arrives at once.
-var _CLOUD_MAPS=['experiments','notebook','pages','trash','attachments'];
+var _CLOUD_MAPS=['experiments','notebook','pages','trash','attachments','cellCheck'];
 var _cloudSkipWarned=false;
 // The fingerprint is the record AS THE CLOUD WOULD HAND IT BACK, not as it sits in memory.
 // Firebase returns an object's keys in key order, drops every null, and stores an empty array or
@@ -15091,6 +15111,7 @@ function renderDayView(host,D){
   // Viewing a day must not create it — clicking through the week planner used to litter the
   // Notebook list with empty days. setNotebook() persists it on the first real edit.
   var pg=LB.data.notebook[D]||{date:D,html:''};
+  try{ cellSyncTasks(); }catch(e){}   // a split logged in Incubator ticks its task before the list is drawn
   var work=dayWorkHtml(D);
   var isToday=(D===todayStr());
   // The date input is wrapped with a label that only a phone shows: there the native picker is
@@ -15102,7 +15123,7 @@ function renderDayView(host,D){
     +'<button class="day-arw" title="Next day" onclick="dayGo(1)">'+tbIco(P_CHEV_R,15)+'</button>'
     +(isToday?'':'<button class="day-today" onclick="dayToday()">Today</button>')+'<div class="jr-seg"><button class="on">Day</button><button onclick="selectNode(\'week\')">Week</button></div>'+'</div>';
   host.innerHTML='<div class="ed-wrap"><div class="exh exh-day"><div class="exh-top"><div class="exh-title" style="cursor:default;">'+(isToday?'Today':esc(fmtDate(D)))+'</div>'+nav+'<div class="exh-acts"><button class="exh-act exh-more" title="This day" onclick="dayActsMenu(event,\''+D+'\')">'+ICON_MORE_H+'</button><button class="exh-act exh-keep" title="Journal page &mdash; the day&rsquo;s free note, in the Notebook" onclick="openDayPage(\''+D+'\')">'+tbIco('<rect x="4.6" y="3.2" width="14.8" height="17.6" rx="2.2"/><path d="M8.4 3.2v17.6"/><path d="M11.4 8.2h5M11.4 11.8h5M11.4 15.4h3.2"/>',17)+'</button><button class="exh-act exh-keep" title="What you need &mdash; every material the steps due today consume, and where it is" onclick="openPrepSheet({date:\''+D+'\'})">'+tbIco(P_BOX,17)+'</button><button class="exh-act danger" title="Delete day" onclick="delDay(\''+D+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button></div></div><div class="exh-code">'+(isToday?esc(fmtDate(D)):'Planner \u00b7 day')+'</div></div>'
-    +work+nbTasksHtml(D)+culturesHtml()+ongoingHtml(D)
+    +culturesHtml(D)+work+nbTasksHtml(D)+ongoingHtml(D)
     +dayJournalCard(D)+'</div>';
   hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); lbWatchCultures();
 }
@@ -15182,6 +15203,7 @@ function nbTasksHtml(D){
   var rows=ts.map(function(t){
     var late=(t.date&&t.date<D)?('<span class="carry-from" title="Set for '+esc(fmtDate(t.date))+'">'+esc(fmtDate(t.date))+'</span>'):'';
     var chip='';
+    if(t.cellId&&lbCultures()) chip='<span class="nbt-lnk" onclick="openCultureLink(\''+t.cellId+'\')" title="Open this culture in Incubator">Incubator &#8599;</span>';
     if(t.expId){ var le=LB.data.experiments[t.expId];
       if(le){ var stepName='';
         if(t.blockId){ var sb=(le.blocks||[]).filter(function(x){return x.id===t.blockId;})[0]; if(sb) stepName=' · '+(sb.title||('Day '+(sb.dayOffset||0))); }
@@ -15231,6 +15253,7 @@ function renderDayPage(host,D){
     // that says nothing \u2014 the Planner's Today keeps it, because there it is the only copy.
     +(function(){ var w=dayWorkHtml(D,{noCarry:D<todayStr(),hideDone:true}); return w?('<div class="jr-work">'+w+'</div>'):''; })()
     +doneTodayHtml(D)
+    +cellsDayHtml(D)
     +'<div class="jr-sec-t">Notes</div>'
     +'<div class="rt nb-body" contenteditable="true" data-ph="Anything about the day \u2014 @ links an experiment, a protocol or an antibody; # tags it." data-ctx="notebook:'+D+'" oninput="setNotebook(this.innerHTML,\''+D+'\')" onfocus="_activeEd=this">'+(pg.html||'')+'</div></div></div></div>';
   hydrateAtt(host,{lazy:true}); hydrateFloatLayers(host); }
@@ -15531,27 +15554,135 @@ function lbCultures(){
     return (r[a.worst]-r[b.worst])||String(a.c.line||'').localeCompare(String(b.c.line||'')); });
 }
 function _daysSince(ts){ return ts?Math.floor((Date.now()-ts)/86400000):null; }
+// ── The morning check on the cell cultures ────────────────────────────────────────────────
+// Today's first question: is each culture fine, due for a split, or in trouble? One tap per
+// culture. It is a record of what you saw, so a suggestion (a split that is due) is only ever
+// outlined, never pre-selected, and an answer already given is changed by the person, not by a
+// refresh. Stored per day in `cellCheck[D][cultureId]` (a cloud map, so a day is its own
+// record and the note on the same day is not touched). The culture itself lives in the shell's
+// JournalStore; Labbook only reads it and, for an Issue, writes the flag back.
+//   need to split → one planner task per culture (id is deterministic: asking twice, or from
+//                   two devices, is the same task), ticked by itself when Incubator logs the split
+//   issue         → a one-line note, the culture goes red in Incubator, its split reminders stop,
+//                   nothing is deleted — Remove there also erases the history
+var CC_OPEN=false;   // the card stays open by choice once everything is answered
+var CC_ASK=null;     // culture whose Issue is waiting for its one line
+var CC_LABEL={ok:'OK',split:'Need to split',issue:'Issue'};
+function cellChecks(D,make){ var m=LB.data.cellCheck||(LB.data.cellCheck={}); return m[D]||(make?(m[D]={}):null); }
+function cellTaskId(cid,D){ return 'cell_'+cid+'_'+D; }
+function _dayStartMs(D){ var p=String(D).split('-'); return new Date(+p[0],+p[1]-1,+p[2]).getTime(); }
+function ccPatch(){ var n=document.getElementById('lb-cultures'); if(n) n.innerHTML=culturesInnerHtml(); }
+function ccToggle(){ CC_OPEN=!CC_OPEN; ccPatch(); }
+function ccAsk(cid){ CC_ASK=cid; ccPatch(); setTimeout(function(){ var i=document.getElementById('cc-note'); if(i) i.focus(); },30); }
+function ccCancel(){ CC_ASK=null; ccPatch(); }
+function ccChip(b){ var i=document.getElementById('cc-note'); if(!i) return; i.value=b.textContent; i.focus(); }
+function openCultureLink(cid){ var l=lbCultures(), x=l&&l.filter(function(c){ return c.id===cid; })[0]; if(x) openIncubatorLink(x.c.line||''); }
+// The Issue flag lives on the culture so Incubator can show it and stop nagging about a split.
+// Cleared only if it was raised on this same day's check, so a later "OK" cannot erase an issue
+// someone else found.
+function _ccIssue(cid,D,note){
+  var H=lbHost(); if(!H||!H.JournalStore) return;
+  var c=((H.JournalStore.get()||{}).incubator||{})[cid]; if(!c) return;
+  var hist=(c.history||[]).slice(), now=Date.now();
+  if(note){ hist.push({action:'issue',note:note,ts:now}); H.JournalStore.updateCell(cid,{issue:{ts:now,day:D,note:note},history:hist}); }
+  else if(c.issue&&c.issue.day===D){ hist.push({action:'issue cleared',ts:now}); H.JournalStore.updateCell(cid,{issue:null,history:hist}); }
+}
+function setCellCheck(cid,s){
+  var rec=cellChecks(todayStr()), prev=rec&&rec[cid];
+  if(s==='issue'){ ccAsk(cid); return; }
+  if(prev&&prev.s===s) return;
+  _ccRecord(cid,s,'');
+}
+function saveCellIssue(cid){
+  var i=document.getElementById('cc-note'), note=i?i.value.trim():'';
+  if(!note){ if(i) i.focus(); return; }
+  _ccRecord(cid,'issue',note);
+}
+function _ccRecord(cid,s,note){
+  var D=todayStr(), list=lbCultures(), cu=list&&list.filter(function(x){ return x.id===cid; })[0]; if(!cu) return;
+  var rec=cellChecks(D,true), prev=rec[cid], T=plannerTasks(), tid=cellTaskId(cid,D), now=Date.now();
+  undoMark('Cell check',['cellCheck.'+D,'planner']);
+  if(prev&&prev.s==='issue'&&s!=='issue') _ccIssue(cid,D,null);
+  var r={s:s,at:now,line:cu.c.line||''}; if(note) r.note=note; rec[cid]=r;
+  if(s==='split'){
+    if(!T[tid]) T[tid]={id:tid,date:D,text:'Split cells · '+(cu.c.line||'culture')+(cu.c.passage!=null?(' (P'+cu.c.passage+')'):''),done:false,expId:null,blockId:null,cellId:cid,created:now,updated:now};
+    else if(T[tid].dismissed){ delete T[tid].dismissed; T[tid].updated=now; }
+  } else if(T[tid]&&!T[tid].done) delete T[tid];   // the answer changed before the split was done
+  if(s==='issue') _ccIssue(cid,D,note);
+  CC_ASK=null; save(); renderEditor();
+}
+// An issue that is over: the flag goes, the history keeps the line.
+function ccResolve(cid){
+  var H=lbHost(); if(!H||!H.JournalStore) return;
+  var c=((H.JournalStore.get()||{}).incubator||{})[cid]; if(!c||!c.issue) return;
+  var hist=(c.history||[]).slice(); hist.push({action:'issue cleared',ts:Date.now()});
+  H.JournalStore.updateCell(cid,{issue:null,history:hist}); toast('Issue cleared on '+(c.line||'the culture')+'.');
+}
+// The task is done when the split is: Incubator's "Log split" moves `seeded`, and a split
+// logged on or after the day the task was set for is that split. Runs on every store change.
+function cellSyncTasks(){
+  var list=lbCultures(); if(!list) return false;
+  var T=plannerTasks(), ch=false, by={}; list.forEach(function(x){ by[x.id]=x; });
+  Object.keys(T).forEach(function(k){ var t=T[k]; if(!t||!t.cellId||t.done||t.dismissed||!t.date) return;
+    var x=by[t.cellId]; if(x&&x.c.seeded&&x.c.seeded>=_dayStartMs(t.date)){ t.done=true; t.doneAt=x.c.seeded; t.updated=Date.now(); ch=true; } });
+  if(ch) save(); return ch;
+}
+function _ccSummary(rec,list){
+  var n={ok:0,split:0,issue:0}; Object.keys(rec).forEach(function(k){ var r=rec[k]; if(r&&n[r.s]!=null) n[r.s]++; });
+  if(list) list.forEach(function(x){ if(!rec[x.id]&&x.c.issue) n.issue++; });
+  var p=[]; if(n.ok) p.push(n.ok+' OK'); if(n.split) p.push(n.split+' need to split'); if(n.issue) p.push(n.issue+' with an issue');
+  return p.join(' · ');
+}
+function _ccRow(x,r){
+  var c=x.c, id=x.id, d=_daysSince(c.seeded), msg=x.alerts.length?x.alerts[0].msg:('Split '+(d==null?'—':d+' d ago'));
+  var sug=(!r&&x.alerts.some(function(a){ return a.tag==='split'&&a.level==='warn'; }))?'split':'';
+  var head='<span class="cul-dot"></span><span class="cul-line mck-open" onclick="openCultureLink(\''+id+'\')" title="Open this culture in Incubator">'+esc(c.line||'—')+'</span>'
+    +'<span class="cul-meta">p'+esc(String(c.passage==null?'?':c.passage))+(c.vessel?(' · '+esc(c.vessel)):'')+'</span>';
+  if(c.issue&&!r) return '<div class="cul-row cc warn">'+head+'<span class="cul-msg">Issue since '+esc(fmtDate(c.issue.day||_dateKey(c.issue.ts)))+(c.issue.note?(' — '+esc(c.issue.note)):'')+'</span>'
+    +'<button class="btn ghost sm" onclick="ccResolve(\''+id+'\')">Resolved</button></div>';
+  var seg='<div class="mck-seg" role="group" aria-label="'+esc(c.line||'Culture')+'">'+['ok','split','issue'].map(function(k){
+    return '<button class="mck-'+k+((r&&r.s===k)?' on':'')+((sug===k)?' sug':'')+'" aria-pressed="'+((r&&r.s===k)?'true':'false')+'" onclick="setCellCheck(\''+id+'\',\''+k+'\')">'+CC_LABEL[k]+'</button>'; }).join('')+'</div>';
+  var ask=(CC_ASK===id)?('<div class="mck-ask"><span class="mck-q">What happened?</span>'
+    +'<button class="mck-chip" onclick="ccChip(this)">Contaminated</button><button class="mck-chip" onclick="ccChip(this)">Dead</button><button class="mck-chip" onclick="ccChip(this)">Not growing</button>'
+    +'<input id="cc-note" placeholder="One line" autocomplete="off" onkeydown="if(event.key===\'Enter\')saveCellIssue(\''+id+'\');if(event.key===\'Escape\')ccCancel();">'
+    +'<button class="btn sm" onclick="saveCellIssue(\''+id+'\')">Save issue</button><button class="btn ghost sm" onclick="ccCancel()">Cancel</button></div>'):'';
+  return '<div class="cul-row cc '+x.worst+'">'+head+'<span class="cul-msg">'+esc(r&&r.note?r.note:msg)+'</span>'+seg+ask+'</div>';
+}
+// Today's card body. Open while anything is unanswered, then one line (Edit reopens it).
 function culturesInnerHtml(){
   var list=lbCultures();
   if(!list) return '';
   if(!list.length) return '<div class="cul-empty">Nothing in culture. Add a flask in Incubator.</div>';
-  var need=list.filter(function(x){ return x.worst!=='ok'; }).length;
-  return '<div class="cul-sum">'+list.length+' in culture'
-    +(need?(' · <b class="cul-need">'+need+' need'+(need===1?'s':'')+' attention</b>'):' · all fine')+'</div>'
-    +'<div class="cul-list">'+list.map(function(x){
-      var c=x.c, d=_daysSince(c.seeded);
-      var msg=x.alerts.length?x.alerts[0].msg:('Split '+(d==null?'—':d+' d ago'));
-      return '<div class="cul-row '+x.worst+'" onclick="openIncubatorLink('+JSON.stringify(esc(c.line||'')).replace(/"/g,'&quot;')+')" title="Open this culture in Incubator">'
-        +'<span class="cul-dot"></span>'
-        +'<span class="cul-line">'+esc(c.line||'—')+'</span>'
-        +'<span class="cul-meta">p'+esc(String(c.passage==null?'?':c.passage))+(c.vessel?(' · '+esc(c.vessel)):'')+'</span>'
-        +'<span class="cul-msg">'+esc(msg)+'</span></div>';
-    }).join('')+'</div>';
+  var rec=cellChecks(todayStr())||{};
+  var todo=list.filter(function(x){ return !rec[x.id]&&!x.c.issue; }).length;
+  var open=todo>0||CC_OPEN||!!CC_ASK;
+  var sum=todo?('<b class="cul-need">'+todo+' of '+list.length+' to check</b>'):(list.length+' in culture · '+_ccSummary(rec,list));
+  return '<div class="cul-sum">'+sum+(todo?'':'<button class="mck-tog" onclick="ccToggle()">'+(open?'Hide':'Edit')+'</button>')+'</div>'
+    // By name, not by alert: lbCultures() puts the worst first, and rows that jump the moment you
+    // answer one are rows you tap the wrong button on.
+    +(open?('<div class="cul-list">'+list.slice().sort(function(a,b){ return String(a.c.line||'').localeCompare(String(b.c.line||'')); }).map(function(x){ return _ccRow(x,rec[x.id]); }).join('')+'</div>'):'');
 }
-function culturesHtml(){
+// A day other than today: what was answered then, read-only, or nothing.
+function _ccRecordHtml(D){
+  var rec=cellChecks(D); if(!rec) return '';
+  var rows=Object.keys(rec).map(function(k){ return rec[k]; }).filter(function(r){ return r&&CC_LABEL[r.s]; }).sort(function(a,b){ return (a.at||0)-(b.at||0); });
+  if(!rows.length) return '';
+  return rows.map(function(r){ return '<div class="cul-row cc mck-ro '+(r.s==='issue'?'warn':'')+'"><span class="cul-dot"></span><span class="cul-line">'+esc(r.line||'Culture')+'</span>'
+    +'<span class="mck-st mck-'+r.s+'">'+CC_LABEL[r.s]+'</span><span class="cul-msg">'+esc(r.note||'')+'</span></div>'; }).join('');
+}
+function culturesHtml(D){
+  D=D||todayStr();
+  var lbl='<div class="day-from-lbl">'+hdIcon(P_DISH)+'Cell cultures — morning check</div>';
+  if(D!==todayStr()){ var h=_ccRecordHtml(D); return h?('<div style="margin-top:16px">'+lbl+'<div class="cul-list">'+h+'</div></div>'):''; }
   if(!lbCultures()) return '';   // standalone build: no shell, no cultures — draw nothing
-  return '<div style="margin-top:16px"><div class="day-from-lbl">'+hdIcon(P_DISH)+'Cell cultures — live from Incubator</div>'
-    +'<div id="lb-cultures">'+culturesInnerHtml()+'</div></div>';
+  return '<div style="margin-top:16px">'+lbl+'<div id="lb-cultures">'+culturesInnerHtml()+'</div></div>';
+}
+// The Journal's day page writes the check from the answers, like "Done that day" from the ticks.
+function cellsDayHtml(D){
+  var h=_ccRecordHtml(D);
+  if(h) return '<div class="jr-sec-t">Cell cultures</div><div class="cul-list">'+h+'</div>';
+  if(D===todayStr()){ var l=lbCultures(); if(l&&l.length) return '<div class="jr-sec-t">Cell cultures</div><div class="jr-none">Not checked yet. <a class="nb-meta-link" onclick="selectNode(\'journal\')">Check them in Today →</a></div>'; }
+  return '';
 }
 // Subscribe once. Patch just this panel rather than re-rendering the view, or a change landing
 // from Incubator would yank the caret out of whatever you were typing.
@@ -15560,7 +15691,10 @@ function lbWatchCultures(){
   if(_cultSub) return; var H=lbHost(); if(!H||!H.JournalStore) return;
   try{ H.JournalStore.attach(); }catch(e){}
   try{ _cultSub=H.JournalStore.subscribe(function(){
-    var n=document.getElementById('lb-cultures'); if(n) n.innerHTML=culturesInnerHtml(); }); }catch(e){}
+    var ch=false; try{ ch=cellSyncTasks(); }catch(e){}
+    var a=document.activeElement, typing=a&&(a.isContentEditable||/^(INPUT|TEXTAREA)$/.test(a.tagName));
+    if(ch&&!typing&&SEL.node&&SEL.node.kind==='journal') renderEditor();
+    var n=document.getElementById('lb-cultures'); if(n&&!(CC_ASK&&n.contains(a))) n.innerHTML=culturesInnerHtml(); }); }catch(e){}
 }
 // Compact replacement for the old "Ongoing experiments" page: what is running, how far along,
 // and when its next step falls — as a strip inside the day, not a screen of its own.

@@ -499,6 +499,9 @@ var CELL_REF = {
 };
 function _localAlerts(cell, now){
   now = now || Date.now(); var DAY=86400000, out=[];
+  // An issue raised in Labbook's morning check (contaminated, dead, not growing). It is the one
+  // thing to say about the culture until it is cleared, so its split and myco reminders stop.
+  if (cell.issue) return [{level:'warn',tag:'issue',msg:'Issue — '+(cell.issue.note||'flagged')}];
   if (cell.seeded && cell.intervalDays){
     var d=(now-cell.seeded)/DAY;
     if (d>=cell.intervalDays+1) out.push({level:'warn',tag:'split',msg:'Split overdue · '+Math.floor(d)+'d since last split'});
@@ -898,6 +901,10 @@ function logMyco(id){
   STORE.updateCell(id,{mycoLast:Date.now(),history:hist});
   showToast('Mycoplasma test logged for '+(cell.line||'culture'));
 }
+// An issue is raised in Labbook's morning check. Clearing it keeps the line in the history.
+function clearIssue(id){ var cell=STORE.get().incubator[id]; if(!cell||!cell.issue) return;
+  var hist=(cell.history||[]).slice(); hist.push({action:'issue cleared',ts:Date.now()});
+  STORE.updateCell(id,{issue:null,history:hist}); showToast('Issue cleared on '+(cell.line||'culture')); renderIncubator(); paintDrawer(); }
 function askRemove(id){ _confirmRemove=id; paintDrawer(); }
 function doRemove(id){ var cell=STORE.get().incubator[id]; STORE.deleteCell(id); _confirmRemove=null; closeDrawer(); showToast('Removed '+((cell&&cell.line)||'culture')); renderIncubator(); }
 function toggleHist(id){ _histOpen[id]=!_histOpen[id]; paintDrawer(); }
@@ -1138,7 +1145,7 @@ function paintDrawer(){
     var open=_histOpen[id];
     hist='<div class="hist"><button class="btn ghost sm" onclick="toggleHist(\''+id+'\')">'+(open?'Hide':'Show')+' history ('+h.length+')</button>';
     if(open){ hist+='<div style="margin-top:10px;">'+h.map(function(e){
-      return '<div class="hist-item"><span class="ht-date">'+esc(fmtDate(e.ts))+'</span><span>'+esc(e.action)+(e.ratio?(' '+e.ratio):'')+(e.passage!=null?(' → P'+e.passage):'')+'</span></div>';
+      return '<div class="hist-item"><span class="ht-date">'+esc(fmtDate(e.ts))+'</span><span>'+esc(e.action)+(e.ratio?(' '+e.ratio):'')+(e.passage!=null?(' → P'+e.passage):'')+(e.note?(' — '+esc(e.note)):'')+'</span></div>';
     }).join('')+'</div>'; }
     hist+='</div>';
   }
@@ -1154,6 +1161,7 @@ function paintDrawer(){
     +split+confirm
     +'<div class="drw-sec">Do</div><div class="cc-actions">'
       +'<button class="btn sm" onclick="openSplit(\''+id+'\')">Log split</button>'
+      +(c.issue?'<button class="btn sm" onclick="clearIssue(\''+id+'\')" title="The issue is over: split and myco reminders come back">Clear issue</button>':'')
       +'<button class="btn ghost sm" onclick="logMyco(\''+id+'\')">Log myco test</button>'
       +'<button class="btn ghost sm" onclick="freezeCulture(\''+id+'\')" title="Bank vials of this culture into a freezer box">Freeze →</button>'
       +'<button class="btn ghost sm" onclick="openCultureInLabbook(\''+id+'\')">Open in Labbook</button>'
