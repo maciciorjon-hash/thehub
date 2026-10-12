@@ -1386,12 +1386,15 @@ details.pl-sec>*:not(summary):last-child{padding-bottom:11px;}
 .pl-idle{font-size:var(--fs-3);color:var(--text2);line-height:1.5;padding:10px 11px;margin-bottom:10px;border:1px dashed var(--border2);border-radius:var(--r-2);}
 .pl-idle b{color:var(--text);font-weight:600;}
 .pl-keys{margin-top:6px;font-size:var(--fs-2);color:var(--text3);}
-.pl-tabs{display:flex;border-bottom:1px solid var(--border);margin:0 0 12px;}
-.pl-tabs button{flex:1 1 auto;min-width:0;padding:8px 6px 9px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;background:none;color:var(--text3);font:inherit;font-size:var(--fs-3);font-weight:600;cursor:pointer;white-space:nowrap;}
+.pl-tabs{display:flex;border-bottom:1px solid var(--border);margin:0 0 12px;overflow-x:auto;scrollbar-width:none;}
+.pl-tabs::-webkit-scrollbar{display:none;}
+.pl-tabs button{flex:1 0 auto;padding:8px 8px 9px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;background:none;color:var(--text3);font:inherit;font-size:var(--fs-3);font-weight:600;cursor:pointer;white-space:nowrap;}
 .pl-tabs button:hover{color:var(--text);}
 .pl-tabs button.on{color:var(--accent);border-bottom-color:var(--accent);}
 .pl-sec-t2{margin-top:12px;}
 .pl-ctx{margin:0 0 10px;padding:8px 11px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface2);font-size:var(--fs-2);color:var(--text2);line-height:1.45;display:flex;flex-wrap:wrap;gap:4px 14px;}
+.pl-ctx-c{display:flex;flex-wrap:wrap;gap:4px 14px;}
+.pl-ctx-ed{padding:2px 9px;}
 .pl-ctx.warn{display:block;border-color:var(--warn);}
 .pl-ctx b{color:var(--text);}
 .pl-ctx i{font-style:normal;font-weight:600;color:var(--text3);margin-right:4px;text-transform:capitalize;}
@@ -7819,7 +7822,8 @@ function plUseExpTypes(){
 // switch to say otherwise for this selection. It used to show every tool at once whatever was
 // selected: the palette, the fields, the dose filler, shading, the block label, the headers and
 // the plate's setup, one card under another. The mechanics are PlateEngine's, shared with Lumina.
-var PL_MODES=[['contents','Contents'],['dil','Dilution'],['cpd','Compounds'],['label','Label']];
+// Plasmids and Compounds are contextual: the experiment's setup decides which of them exist.
+var PL_MODES=[['plasmids','Plasmids'],['contents','Contents'],['dil','Dilution'],['cpd','Compounds'],['label','Label']];
 function _plDims(p){ var d=plateDims(p); return {r:d.r, c:d.c}; }
 function _plDosing(){ return expUsesCompounds(_plExp()); }
 // A control is not a compound well: a type named for it, or a well flagged as one.
@@ -7837,14 +7841,15 @@ function _plRenumberCpds(p){ _plCpdList(p).forEach(function(c){
     var g=p.groups[c.gid]; if(!g.named) g.label='Compound '+c.no;
     c.wells.forEach(function(id){ p.wells[id].compound=g.label; }); }); }
 function _plMode(p,ids){
+  var base=_plPlasmids()?'plasmids':'contents';   // what a plate is first made of, for this experiment
   if(PL.mode) return PL.mode;
-  if(!ids.length||!_plDosing()) return 'contents';
+  if(!ids.length||!_plDosing()) return base;
   var gs=PlateEngine.uniq(ids.map(function(id){ return ((p.wells||{})[id]||{}).groupId||''; }));
   if(gs.length===1&&gs[0]&&p.groups&&p.groups[gs[0]]&&p.groups[gs[0]].cpd) return 'cpd';
-  var work=ids.filter(function(id){ return !_plIsCtl(p,id); }); if(!work.length) return 'contents';
+  var work=ids.filter(function(id){ return !_plIsCtl(p,id); }); if(!work.length) return base;
   var withC=work.filter(function(id){ return ((p.wells||{})[id]||{}).conc; }).length;
-  if(withC===work.length) return work.every(function(id){ return (p.wells[id]||{}).compound; })?'contents':'cpd';
-  if(!withC&&_plCpdList(p).length) return 'contents';   // wells off the series, compounds already made: the controls
+  if(withC===work.length) return work.every(function(id){ return (p.wells[id]||{}).compound; })?base:'cpd';
+  if(!withC&&_plCpdList(p).length) return base;   // wells off the series, compounds already made: the controls
   return 'dil'; }
 function plSetMode(m){ PL.mode=m; plRenderSide(); }
 function plSetDir(d){ PL.dir=d; plRenderSide(); }
@@ -7929,7 +7934,8 @@ function plApplyMode(){ var p=plCur(); if(!p) return; var m=_plMode(p,plSelIds()
 // What kind of plate this is, from the experiment that owns it. A NanoBRET or a reverse
 // transfection is made of plasmids, so its wells are conditions the setup names; the dose types
 // are made of compounds; the rest are only labelled.
-function _plPlasmids(){ var e=_plExp(); return !!e&&(e.type==='NB'||e.type==='RTX'); }
+function _plPlasmids(){ var e=_plExp(); if(!e) return false;
+  return e.type==='NB'||e.type==='RTX'||_plExpTypes().some(function(t){ return !/^(mock|untr|vehicle|blank)$/.test(t.id); }); }
 function _plContextHtml(p){
   var ex=_plExp(); if(!ex||!_plPlasmids()) return '';
   var want=_plExpTypes(), nm=(EXP_TYPES.filter(function(t){ return t.id===ex.type; })[0]||{}).name||'This';
@@ -7945,22 +7951,25 @@ function _plContextHtml(p){
       +esc(miss.slice(0,2).map(function(t){ return t.name; }).join(', '))+(miss.length>2?'…':'')+').'
       +'<div class="pl-row2"><button class="pl-btn primary" onclick="plUseExpTypes()">Use this experiment’s conditions</button></div></div>';
   var cs=expConstructs(ex).filter(function(c){ return c.role; });
-  return cs.length?('<div class="pl-ctx">'+cs.map(function(c){ return '<span><i>'+esc(c.role)+'</i> '+esc(c.name)+'</span>'; }).join('')+'</div>'):'';
+  return '<div class="pl-ctx"><span class="pl-ctx-c">'+(cs.length?cs.map(function(c){ return '<span><i>'+esc(c.role)+'</i> '+esc(c.name)+'</span>'; }).join(''):'<span>'+want.length+' conditions</span>')+'</span>'
+    +'<button class="pl-btn pl-ctx-ed" onclick="plOpenSetup()" title="The plasmids come from the experiment’s setup">Edit in setup</button></div>';
 }
 function plOpenSetup(){ var e=_plExp(); if(!e) return; closePlateEditor(); openSetupEditor(e.id); }
 function _plIdleHtml(p,tab){ var touch=_lbTouch();
-  var say={ contents:_plPlasmids()?((touch?'Drag a finger over':'Drag across')+' the wells that share one condition</b>, then click it — the DNA mix those wells were transfected with.'):((touch?'Drag a finger over the wells':'Drag across the wells')+'</b> you want to work on, and the panel shows what to do with them.'),
+  var say={ plasmids:(touch?'Drag a finger over':'Drag across')+' the wells that share one condition</b>, then click it — the DNA mix those wells were transfected with.',
+    contents:(touch?'Drag a finger over the wells':'Drag across the wells')+'</b> you want to work on, and the panel shows what to do with them.',
     dil:(touch?'Drag a finger over':'Drag across')+' the wells the dilution series covers.</b> Any shape, any direction — the plate is divided into as many series as it holds.',
     cpd:(touch?'Drag a finger over':'Drag across')+' the area the compounds fill.</b> It is divided into blocks of replicates, one per compound. Once they are made, name them here.',
     label:(touch?'Drag a finger over':'Drag across')+' a block</b> to write a name across it, shade it dark to light, or title its columns.' };
   return '<div class="pl-idle"><b>'+say[tab||'contents']
-    +((touch||(tab&&tab!=='contents'))?'':'<div class="pl-keys">Shift extends · ⌘/Ctrl adds · a row or column label takes the line · double-click takes a well’s block · Enter applies · Delete clears · ⌘C ⌘V copy a block · ⌘Z undo</div>')+'</div>'; }
+    +((touch||(tab&&tab!=='contents'&&tab!=='plasmids'))?'':'<div class="pl-keys">Shift extends · ⌘/Ctrl adds · a row or column label takes the line · double-click takes a well’s block · Enter applies · Delete clears · ⌘C ⌘V copy a block · ⌘Z undo</div>')+'</div>'; }
 function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return;
   var ids=plSelIds(), n=ids.length, d=plateDims(p), dosing=_plDosing();
   // A new selection is a new question: what it is for is worked out again from what it holds.
   var sig=ids.slice().sort().join(','); if(sig!==PL._selSig){ PL._selSig=sig; PL.mode=null; PL.dir=null; PL.split=null; }
   var mode=_plMode(p,ids);
-  if((mode==='dil'||mode==='cpd')&&!dosing) mode='contents';
+  if((mode==='dil'||mode==='cpd')&&!dosing) mode=_plPlasmids()?'plasmids':'contents';
+  if(mode==='plasmids'&&!_plPlasmids()) mode='contents';
   var _counts={}; Object.keys(p.wells||{}).forEach(function(k){ var w=p.wells[k]; if(w&&w.typeId) _counts[w.typeId]=(_counts[w.typeId]||0)+1; });
   var _nos=plateHasNos(p);
   var pal=plateTypes(p).map(function(t){ var c=_counts[t.id]||0;
@@ -7983,25 +7992,29 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
   // Lumina's way. A selection still picks the likeliest one for what it holds (_plMode); 'plate'
   // is the plate's own tab (format, title, layout, reader data, export) and needs no wells.
   var tab=mode;
-  var tabs=PL_MODES.filter(function(m){ return dosing||(m[0]!=='dil'&&m[0]!=='cpd'); }).concat([['plate','Plate']]);
+  var plas=_plPlasmids();
+  var tabs=PL_MODES.filter(function(m){ return m[0]==='plasmids'?plas:(dosing||(m[0]!=='dil'&&m[0]!=='cpd')); }).concat([['plate','Plate']]);
   var tabsHtml='<div class="pl-tabs" role="tablist">'+tabs.map(function(m){
     return '<button role="tab" aria-selected="'+(m[0]===tab)+'" class="'+(m[0]===tab?'on':'')+'" onclick="plSetMode(\''+m[0]+'\')">'+m[1]+'</button>'; }).join('')+'</div>';
   var body='';
   if(tab==='plate'){
     body=_plPlateTab(p,dosing);
   } else if(!n){
-    body=bar+(tab==='contents'?_plContextHtml(p):'')+_plIdleHtml(p,tab)
-      +(tab==='contents'?'<div class="pl-sec pl-sec-sel"><div class="pl-sec-t">'+(_nos?'Conditions on this plate':(_plPlasmids()?'Conditions':'Well types'))+'</div><div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div></div>':'')
+    body=bar+(tab==='plasmids'?_plContextHtml(p):'')+_plIdleHtml(p,tab)
+      +((tab==='plasmids'||(tab==='contents'&&!plas))?'<div class="pl-sec pl-sec-sel"><div class="pl-sec-t">'+(_nos?'Conditions on this plate':(plas?'Conditions':'Well types'))+'</div><div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div></div>':'')
       +(tab==='cpd'?_plNamesHtml(p):'');
   } else {
     var form='', prev='';
-    if(mode==='contents'){
+    if(mode==='plasmids'){
       var flagsHtml=_expFlags.length?('<div class="pl-flags">'+_expFlags.map(function(f){ var st=_plFlagState(p,ids,f.k);
           return '<button class="pl-flag'+(st===true?' on':(st===null?' mixed':''))+'" onclick="plToggleFlag(\''+f.k+'\')" title="'+esc(f.title)+'">'+esc(f.lbl)+'</button>'; }).join('')+'</div>'):'';
       form='<div class="pl-howto">'+(_nos?'Click the condition these wells hold':'Click what these wells are')+' — it goes on straight away.</div>'
         +'<div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div>'
-        +(flagsHtml?('<div class="pl-sub-t" style="margin-top:9px">Mark as a control</div>'+flagsHtml):'')
-        +'<div class="cc-inputs" style="margin-top:10px">'+fld('cellLine','Cell line','pl-cl')
+        +(flagsHtml?('<div class="pl-sub-t" style="margin-top:9px">Mark as a control</div>'+flagsHtml):'');
+    } else if(mode==='contents'){
+      form=(plas?'':('<div class="pl-howto">'+(_nos?'Click the condition these wells hold':'Click what these wells are')+' — it goes on straight away.</div>'
+        +'<div class="pl-types'+(_nos?' pl-conds':'')+'">'+pal+'</div>'))
+        +'<div class="cc-inputs"'+(plas?'':' style="margin-top:10px"')+'>'+fld('cellLine','Cell line','pl-cl')
         +(dosing?(fld('compound','Compound')+fld('conc','Concentration')):'')
         +fld('label','Label (override)')+fld('note','Note')+'</div>';
     } else if(mode==='dil'){
@@ -8039,7 +8052,7 @@ function plRenderSide(){ var p=plCur(), host=el('pl-side'); if(!p||!host) return
         +_plColsHtml(p,ids);
     }
     var clearable=ids.some(function(id){ return (p.wells||{})[id]; });
-    body=bar+(tab==='contents'?_plContextHtml(p):'')+'<div class="pl-sec pl-sec-sel">'+form
+    body=bar+(tab==='plasmids'?_plContextHtml(p):'')+'<div class="pl-sec pl-sec-sel">'+form
       +'<div class="pl-prev" id="pl-prev"'+(prev?'':' hidden')+'>'+prev+'</div>'
       +(clearable?'<div class="pl-row2"><button class="pl-btn danger" onclick="plEraseSel()">Clear these wells</button></div>':'')+'</div>'
       +(mode==='cpd'?_plNamesHtml(p):'');

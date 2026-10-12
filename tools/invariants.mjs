@@ -1738,7 +1738,8 @@ async function suite(opts) {
       openPlateEditor('exp:' + e.id); await sleep(80);
       const tabs = () => [...document.querySelectorAll('#pl-side .pl-tabs button')].map(b => b.textContent);
       const on = () => (document.querySelector('#pl-side .pl-tabs button.on') || {}).textContent;
-      if (on() !== 'Contents') bad('B26', 'opens on', 'a drawn map opened on ' + on());
+      if (on() !== 'Plasmids') bad('B26', 'opens on', 'a drawn NanoBRET map opened on ' + on() + ', not Plasmids');
+      if (!tabs().includes('Compounds')) bad('B26', 'compounds', 'a SPARK screen (doses compounds) has no Compounds tab');
       if (tabs().length < 3 || tabs()[tabs().length - 1] !== 'Plate') bad('B26', 'tabs', 'tabs are ' + tabs().join(','));
       const w = document.querySelector('#pl-grid .pl-w').getBoundingClientRect().width, left = document.querySelector('.pl-left').getBoundingClientRect(), g = document.getElementById('pl-grid').getBoundingClientRect();
       if (w < 44) bad('B26', 'fills', 'a 96-well plate is drawn at ' + Math.round(w) + ' px a well in a ' + Math.round(left.width) + ' px column');
@@ -1775,7 +1776,10 @@ async function suite(opts) {
       e.plasmids = 'pINV-1'; if (!expPlateTypes(e).some(t => t.name === 'pINV-1')) bad('B27', 'rtx', 'a reverse-transfection plasmid is not a condition of the plate');
       // a type with no plasmids shows none of it
       e.type = 'WB'; plRender();
-      if (ctx()) bad('B27', 'other type', 'a Western blot plate shows a plasmid panel');
+      if (ctx() || [...document.querySelectorAll('#pl-side .pl-tabs button')].some(b => b.textContent === 'Plasmids')) bad('B27', 'other type', 'a Western blot plate shows a plasmid tab or panel');
+      e.setup.doseSeries = false; plRender();
+      if ([...document.querySelectorAll('#pl-side .pl-tabs button')].some(b => /Compounds|Dilution/.test(b.textContent))) bad('B27', 'no doses', 'an experiment that doses nothing still has Compounds and Dilution tabs');
+      delete e.setup.doseSeries;
       [e.type, e.setup.donors, e.setup.acceptors, e.plasmids] = keep; closePlateEditor();
     });
 
