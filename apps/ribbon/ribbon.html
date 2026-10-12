@@ -1418,8 +1418,9 @@ function initViewer(){
   if(viewer||!window.$3Dmol) return;
   viewer=$3Dmol.createViewer($('viewport'),{backgroundColor:'white',antialias:true});
   var cv=$('viewport').querySelector('canvas');
-  if(cv){ cv.setAttribute('role','img'); cv.setAttribute('aria-label','3D structure. Drag to rotate, scroll to zoom, right-drag to move.'); }
+  if(cv){ cv.setAttribute('role','img'); cv.setAttribute('aria-label','3D structure. Drag to rotate, scroll or pinch to zoom, hold Shift and scroll to move.'); }
   try{ viewer.setHoverDuration(120); }catch(e){}
+  rbCamInit();
   lookOnViewer();
   document.body.classList.remove('rb-no3d');
   if(!currentModel){ $('emptyState').hidden=false; $('veTitle').textContent='No structure yet'; $('veSub').textContent='Type a PDB code, a UniProt id or a protein name, open a file, or drop one here.'; $('veRetry').hidden=true; }
@@ -1598,7 +1599,7 @@ function buildModel(text,fmt,meta,nm){
   Object.keys(labelEls).forEach(removeLabelEl);
   state.chainColors={}; state.chainLabels={}; state.labelOffsets={}; state.labelAnchors={};
   state.residueLabels=[]; state.hiddenChains={}; state.off={}; state.reps=[]; state.hide=[]; state.inter=null; state.lys=null; state.views=[]; state.highlights=[]; state.ligColors={}; state.pockets={}; state.measures=[]; state.iface=null; _if=null; state.overlay=null; ovl=null; state.values=null; clearMeasPending(); Object.keys(measEls).forEach(removeMeasEl);
-  chainAnchorCache={}; selectedChain=null; _hoverAtom=null; _frame=0; _userMoved=false; currentOpen=null;
+  chainAnchorCache={}; selectedChain=null; _hoverAtom=null; _frame=0; _userMoved=false; currentOpen=null; rbCamStop();
   closeChainPopup();
   var model=viewer.addModel(text,fmt,nm>1?{multimodel:true,frames:true}:{});
   if(!model||!model.selectedAtoms({}).length){ try{viewer.clear();}catch(e){} throw {kind:'parse'}; }
@@ -2019,18 +2020,136 @@ function _slerp(a,b,t){
   return q.map(function(x){ return x/n; });
 }
 function animateTo(v1,ms){
-  cancelAnimationFrame(_animRaf);
+  cancelAnimationFrame(_animRaf); rbCamStop();
   var v0=viewer.getView(), t0=performance.now();
   (function step(t){
     var k=Math.min(1,(t-t0)/ms), e=1-Math.pow(1-k,3), v=[], i;
     for(i=0;i<4;i++) v.push(v0[i]+(v1[i]-v0[i])*e);
     v=v.concat(_slerp(v0.slice(4),v1.slice(4),e));
-    viewer.setView(v); viewer.render();
+    viewer.setView(v);   // setView draws: a render() after it was a second draw per frame
     if(k<1) _animRaf=requestAnimationFrame(step);
   })(t0);
 }
 // Fit, and start following resizes again.
-function fitToView(){ _userMoved=false; fitView({animate:true}); }
+function fitToView(){ rbCamStop(); _userMoved=false; fitView({animate:true}); }
+
+// ── Camera feel ──────────────────────────────────────────────────────────────────────────────────────────────────
+// 3Dmol answers the pointer 1:1 and stops dead. Measured in the viewer (2026-10-12): a wheel notch is one jump, 26 in and
+// 14 out, so in-then-out does not come back; scrolling up zooms OUT; a line-mode wheel (Firefox) moves it by 0.3; in Safari
+// the first notch drives it to the near limit and the structure is 19,000 px wide; zoom goes to the centre, not the pointer;
+// and a trackpad has no way to move the structure at all (the right button zooms, only the middle one pans). This layer
+// sits on top and owns the wheel, Safari's pinch and the end of a drag: every move is eased, drawn once per frame, anchored
+// under the pointer, and nothing runs at rest. The numbers are in RBCAM so they can be felt and changed in one place.
+var RBCAM={ zoomPerPx:0.0035, pinchPerPx:0.011, maxStep:0.2, maxTarget:1.1, tauMs:90, inertiaHalfMs:320, minSpeed:0.0004,
+  spinRadPerMs:0.00052, spinTauMs:380, nearest:3, farthest:4000, restoreMs:160 };
+var _cz={t:0,x:0,y:0}, _cp={x:0,y:0}, _cRaf=0, _cT0=0, _cIn=null, _cSp={ax:'y',w:0,to:0}, _cDrag=null, _cLq=0, _cG=null;
+function rbCamReverse(){ try{ return localStorage.getItem('ribbon_scroll')==='reverse'; }catch(e){ return false; } }
+function _qmul(a,b){ return [a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1], a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0], a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3], a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]]; }
+function _qconj(a){ return [-a[0],-a[1],-a[2],a[3]]; }
+function _qnorm(q){ var n=Math.hypot(q[0],q[1],q[2],q[3])||1; return [q[0]/n,q[1]/n,q[2]/n,q[3]/n]; }
+// Turn the view by `ang` radians about a screen axis (ax,ay,az unit length). The same arithmetic 3Dmol uses for a drag:
+// a quaternion in the view's own frame, in front of the one the view already has.
+function rbCamRotate(ax,ay,az,ang){
+  var v=viewer.getView(), s=Math.sin(ang/2), q=_qnorm(_qmul([ax*s,ay*s,az*s,Math.cos(ang/2)],v.slice(4)));
+  viewer.setView(v.slice(0,4).concat(q));
+}
+// Move the structure by (dx,dy) screen px (the plane through its centre moves exactly that much).
+function rbCamPanBy(dx,dy){
+  var v=viewer.getView(), o=viewer.screenOffsetToModel(dx,dy); v[0]+=o.x; v[1]+=o.y; v[2]+=o.z; viewer.setView(v);
+}
+// Scale by f about the client point (cx,cy): the point of the structure under the pointer stays under it. 3Dmol's zoom
+// law (distance = CAMERA_Z - z) is exact in orthographic and what a person sees in perspective; the anchor is taken on
+// the plane through the centre of rotation, which is where screenOffsetToModel measures.
+function rbCamZoomAt(f,cx,cy){
+  if(!viewer||!currentModel||!(f>0)) return;
+  var v=viewer.getView(), Z=viewer.CAMERA_Z||150, d0=Z-v[3], d1=Math.max(RBCAM.nearest,Math.min(RBCAM.farthest,d0/f));
+  if(Math.abs(d1-d0)<1e-9) return;
+  var C={x:-v[0],y:-v[1],z:-v[2]}, sC=viewer.modelToScreen(C), o=viewer.screenOffsetToModel(cx-sC.x,cy-sC.y);
+  var A={x:C.x+o.x,y:C.y+o.y,z:C.z+o.z}, w=v.slice(); w[3]=Z-d1; viewer.setView(w);
+  var sA=viewer.modelToScreen(A), p=viewer.screenOffsetToModel(cx-sA.x,cy-sA.y); w[0]+=p.x; w[1]+=p.y; w[2]+=p.z; viewer.setView(w);
+}
+// While the camera is moving, soft and full light (a 64-sample occlusion pass per draw) cost more than a frame: the cheap
+// look is shown while it moves and the real one comes back a moment after it stops.
+function _cLow(){
+  if(!viewer) return;
+  var L=(typeof LIGHTING!=='undefined'&&LIGHTING[state.lighting])||{};
+  if(!(L.ao>0)) return;
+  if(!_cLq){ try{ viewer.setViewStyle({}); }catch(e){} }
+  clearTimeout(_cLq);
+  _cLq=setTimeout(function(){ _cLq=0; try{ applyViewStyle(); viewer.render(); }catch(e){} },RBCAM.restoreMs);
+}
+function _cKick(){ if(!_cRaf){ _cT0=0; _cRaf=requestAnimationFrame(_cFrame); } }
+function _cFrame(t){
+  _cRaf=0;
+  var dt=_cT0?Math.min(64,Math.max(1,t-_cT0)):16; _cT0=t;
+  if(!viewer||!currentModel){ _cz.t=0; _cp.x=_cp.y=0; _cIn=null; _cSp.w=_cSp.to=0; return; }
+  var k=1-Math.exp(-dt/RBCAM.tauMs), busy=false, moved=false;
+  _noDraw(function(){   // everything this frame does is one draw
+    if(_cz.t){ var s=Math.abs(_cz.t)<0.004?_cz.t:_cz.t*k; _cz.t-=s; if(Math.abs(_cz.t)<1e-4) _cz.t=0; rbCamZoomAt(Math.exp(s),_cz.x,_cz.y); moved=true; busy=busy||!!_cz.t; }
+    if(_cp.x||_cp.y){ var sx=Math.abs(_cp.x)<0.3?_cp.x:_cp.x*k, sy=Math.abs(_cp.y)<0.3?_cp.y:_cp.y*k; _cp.x-=sx; _cp.y-=sy;
+      if(Math.abs(_cp.x)<0.01) _cp.x=0; if(Math.abs(_cp.y)<0.01) _cp.y=0; rbCamPanBy(sx,sy); moved=true; busy=busy||!!(_cp.x||_cp.y); }
+    if(_cIn){ rbCamRotate(_cIn.ax,_cIn.ay,_cIn.az,_cIn.w*dt); _cIn.w*=Math.exp(-dt*Math.LN2/RBCAM.inertiaHalfMs); moved=true;
+      if(_cIn.w<RBCAM.minSpeed*0.25) _cIn=null; busy=busy||!!_cIn; }
+    if(_cSp.to||_cSp.w){ _cSp.w+=(_cSp.to-_cSp.w)*(1-Math.exp(-dt/RBCAM.spinTauMs)); if(!_cSp.to&&_cSp.w<2e-6) _cSp.w=0;
+      if(_cSp.w){ rbCamRotate(_cSp.ax==='x'?1:0,_cSp.ax==='y'?1:0,_cSp.ax==='z'?1:0,_cSp.w*dt); moved=true; } busy=busy||!!(_cSp.to||_cSp.w); }
+  });
+  if(moved){ _cLow(); viewer.render(); }
+  if(busy){ _cRaf=requestAnimationFrame(_cFrame); } else _cT0=0;
+}
+// Anything that sets the camera itself (Fit, a focus, a new structure) first stops what was in flight.
+function rbCamStop(){ _cz.t=0; _cp.x=_cp.y=0; _cIn=null; }
+function rbCamHalt(){ rbCamStop(); _cSp.w=_cSp.to=0; }
+function rbCamBusy(){ return !!(_cRaf||_cIn||_cz.t||_cp.x||_cp.y||_cSp.to||_cSp.w); }
+function rbCamSpin(axis){ if(!axis){ _cSp.to=0; } else { _cSp.ax=/^[xz]$/.test(axis)?axis:'y'; _cSp.to=RBCAM.spinRadPerMs; } _cKick(); }
+function _cWheel(e){
+  if(!viewer||!currentModel) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  _cIn=null; _userMoved=true;
+  var vp=$('viewport'), u=e.deltaMode===1?16:(e.deltaMode===2?vp.clientHeight:1), dx=e.deltaX*u, dy=e.deltaY*u;
+  if(e.shiftKey||e.altKey){ _cp.x-=dx; _cp.y-=dy; _cKick(); return; }        // the structure follows the fingers
+  var amt=-dy*(e.ctrlKey?RBCAM.pinchPerPx:RBCAM.zoomPerPx); if(rbCamReverse()) amt=-amt;
+  amt=Math.max(-RBCAM.maxStep,Math.min(RBCAM.maxStep,amt));                    // one hard flick cannot run away
+  _cz.t=Math.max(-RBCAM.maxTarget,Math.min(RBCAM.maxTarget,_cz.t+amt)); _cz.x=e.clientX; _cz.y=e.clientY; _cKick();
+}
+// Safari sends a pinch as gesture events, not as ctrl+wheel.
+function _cGestureStart(e){ e.preventDefault(); _cG={s:1}; _cIn=null; }
+function _cGestureChange(e){ e.preventDefault(); if(!_cG||!viewer||!currentModel) return;
+  var d=Math.log((e.scale||1)/_cG.s); _cG.s=e.scale||1; _userMoved=true;
+  _cz.t=Math.max(-RBCAM.maxTarget,Math.min(RBCAM.maxTarget,_cz.t+d)); _cz.x=e.clientX; _cz.y=e.clientY; _cKick(); }
+function _cGestureEnd(e){ e.preventDefault(); _cG=null; }
+// A drag that is let go while it is still turning keeps turning and settles. The speed is read from the view itself (the
+// quaternion each frame), so it is whatever 3Dmol made of the drag, and a drag that rotates nothing (select, measure) has none.
+function _cSample(){
+  if(!_cDrag) return;
+  if(viewer){ var v=viewer.getView(); _cDrag.s.push({t:performance.now(),q:v.slice(4)}); if(_cDrag.s.length>9) _cDrag.s.shift(); }
+  _cDrag.raf=requestAnimationFrame(_cSample);
+}
+function _cDown(e){
+  _cIn=null; _cz.t=0; _cp.x=_cp.y=0;
+  if(e.button===0&&!e.ctrlKey&&!_cDrag&&viewer&&currentModel){ _cDrag={s:[],raf:0}; _cSample(); }
+}
+function _cUp(e){
+  var d=_cDrag; if(!d||e.button>0) return;
+  _cDrag=null; cancelAnimationFrame(d.raf);
+  if(reducedMotion()||!viewer||!currentModel) return;
+  var S=d.s, n=S.length, now=performance.now(); if(n<3) return;
+  var last=S[n-1], ref=S[0], i; for(i=n-2;i>=0;i--) if(last.t-S[i].t>=70){ ref=S[i]; break; }
+  if(now-last.t>80) return;                                                   // it had stopped before it was let go
+  var dtm=last.t-ref.t; if(dtm<24) return;
+  var dq=_qmul(last.q,_qconj(ref.q)); if(dq[3]<0) dq=[-dq[0],-dq[1],-dq[2],-dq[3]];
+  var s=Math.hypot(dq[0],dq[1],dq[2]); if(s<1e-6) return;
+  var w=2*Math.atan2(s,dq[3])/dtm; if(w<RBCAM.minSpeed) return;
+  _cIn={ax:dq[0]/s,ay:dq[1]/s,az:dq[2]/s,w:w}; _cKick();
+}
+function rbCamInit(){
+  var vp=$('viewport'); if(!vp||vp._rbcam) return; vp._rbcam=1;
+  vp.addEventListener('wheel',_cWheel,{capture:true,passive:false});
+  vp.addEventListener('gesturestart',_cGestureStart,{capture:true,passive:false});
+  vp.addEventListener('gesturechange',_cGestureChange,{capture:true,passive:false});
+  vp.addEventListener('gestureend',_cGestureEnd,{capture:true,passive:false});
+  vp.addEventListener('pointerdown',_cDown,true);
+  document.addEventListener('pointerup',_cUp,true); document.addEventListener('pointercancel',_cUp,true);
+}
 
 // ── What the pointer can do on the structure ─────────────────────────────────────────────────
 function setupInteractions(){
@@ -3802,7 +3921,7 @@ function renderExport(){
   state.exportLabels=$('exLabels').checked;
   var prevBg=state.bg, cssW=canvas.clientWidth, cssH=canvas.clientHeight;
   var off=document.createElement('canvas'), ctx;
-  var wasSpin=_spinning; if(wasSpin) viewer.spin(false);
+  var wasSpin=_spinning; if(wasSpin) rbCamHalt();
   var selWas=rbExportBegin();   // the selection is a working state: it is never in a picture
   var restore=function(){
     rbExportEnd(selWas); selWas=false;
@@ -3810,7 +3929,7 @@ function renderExport(){
     try{viewer.resize();}catch(e){}
     _setViewerBg(prevBg);
     try{viewer.render();}catch(e){}
-    if(wasSpin) viewer.spin('y');
+    if(wasSpin) rbCamSpin('y');
   };
   try{
     // temporarily enlarge the viewport and re-render the scene at full pixel density; all synchronous, so the enlarged state is never painted
@@ -4692,7 +4811,7 @@ var _spinning=false;
 function toggleSpin(){
   _spinning=!_spinning;
   var b=$('spinBtn'); b.classList.toggle('tb-active',_spinning); b.setAttribute('aria-pressed',_spinning?'true':'false');
-  if(viewer) viewer.spin(_spinning?'y':false);
+  if(viewer) rbCamSpin(_spinning?'y':false);
 }
 function toggleTheme(){
   var d=$('theme-chk').checked;
@@ -5222,7 +5341,10 @@ var RB_CMDS=[
   {n:['turn','rotate','rot'],d:'Turn the structure about an axis of the screen',f:'turn y 90 · turn x -30',
    run:function(a){ var m=/^([xyz])\s*(-?\d+(?:\.\d+)?)?$/i.exec(a.trim()); if(!m) return _err('turn x|y|z degrees, e.g. turn y 90'); if(!viewer) return _err('The viewer is not ready.'); viewer.rotate(parseFloat(m[2]||90),m[1].toLowerCase(),reducedMotion()?0:400); _userMoved=true; return _ok('Turned '+(m[2]||90)+'° about '+m[1]+'.'); }},
   {n:['spin','rock'],d:'Turn it slowly, round and round (S)',f:'spin · spin x · spin off',
-   run:function(a){ var l=a.trim().toLowerCase(); if(l==='off'||l==='stop'){ if(_spinning) toggleSpin(); return _ok('Stopped.'); } if(!_spinning) toggleSpin(); if(/^[xz]$/.test(l)&&viewer) viewer.spin(l); return _ok('Spinning.'); }},
+   run:function(a){ var l=a.trim().toLowerCase(); if(l==='off'||l==='stop'){ if(_spinning) toggleSpin(); return _ok('Stopped.'); } if(!_spinning) toggleSpin(); if(/^[xz]$/.test(l)&&viewer) rbCamSpin(l); return _ok('Spinning.'); }},
+  {n:['scroll'],d:'Which way the wheel zooms',f:'scroll normal · scroll reverse',
+   args:function(){ return [_cand('normal','word','Scrolling up zooms in'),_cand('reverse','word','Scrolling down zooms in')]; },
+   run:function(a){ var r=/^rev/i.test(a.trim()); store('ribbon_scroll',r?'reverse':'normal'); return _ok(r?'Scrolling down now zooms in.':'Scrolling up zooms in.'); }},
   {n:['stop'],d:'Stop spinning',f:'stop',run:function(){ if(_spinning) toggleSpin(); return _ok('Stopped.'); }},
   {n:['background','bg','bgcolor'],d:'The background',f:'bg white · bg dark · bg transparent',
    run:function(a){ var l=a.trim().toLowerCase(), k=l==='black'||l==='dark'?'dark':l==='white'?'white':l==='transparent'||l==='none'||l==='clear'?'transparent':null; if(!k) return _err('bg white, bg dark or bg transparent'); state.bg=k; _segSet('bgSeg',k); applyBackground(); if(currentModel) recolorStructure(); return _ok('Background '+k+'.'); }},
@@ -6266,7 +6388,7 @@ function animRun(){
   if(!currentModel||!viewer||_anim.on) return;
   var kind=$('animKind').value, fmt=$('animFmt').value, secs=Math.max(1,Math.min(30,parseFloat($('animSecs').value)||6)), fps=fmt==='gif'?15:30;
   var frames=animFrames(kind,secs,fps); if(!frames){ showToast('Add at least two views for a fly-through.'); return; }
-  var cv=$('viewport').querySelector('canvas'), v0=viewer.getView(), wasSpin=_spinning; if(wasSpin) toggleSpin();
+  var cv=$('viewport').querySelector('canvas'), v0=viewer.getView(), wasSpin=_spinning; if(wasSpin){ toggleSpin(); rbCamHalt(); }
   _anim={on:true,abort:false}; $('animGo').hidden=true; $('animStop').hidden=false;
   var selWas=rbExportBegin();
   function done(msg){ _anim.on=false; if(typeof applyBackground==='function') applyBackground(); $('animGo').hidden=false; $('animStop').hidden=true; rbExportEnd(selWas); try{ viewer.setView(v0); viewer.render(); }catch(e){} if(wasSpin) toggleSpin(); _animStatus(msg); }
@@ -6525,7 +6647,7 @@ function boot(){
     lastPointer={x:e.clientX,y:e.clientY}; _downPos={x:e.clientX,y:e.clientY}; _atomClicked=false; hideHover();
   });
   vp.addEventListener('pointermove',function(e){
-    if(_downPos&&e.buttons&&Math.hypot(e.clientX-_downPos.x,e.clientY-_downPos.y)>4) _userMoved=true;   // any button: rotate, or the right-drag that pans
+    if(_downPos&&e.buttons&&Math.hypot(e.clientX-_downPos.x,e.clientY-_downPos.y)>4) _userMoved=true;   // any button: rotate, or the right-drag that zooms
     if(!_downPos) _hoverAt={x:e.clientX,y:e.clientY};
   });
   vp.addEventListener('wheel',function(){ _userMoved=true; },{passive:true});
@@ -6537,7 +6659,7 @@ function boot(){
       _atomClicked=false;
     },0);
   });
-  // 3Dmol keeps the right button for panning, so a right click is a menu only when the pointer did not move. macOS raises
+  // 3Dmol uses the right button to zoom (and the middle one to pan), so a right click is a menu only when the pointer did not move. macOS raises
   // the menu event when the button goes DOWN, Windows and Linux when it comes up: on a press the menu waits for the release.
   var _rActive=false;
   vp.addEventListener('mousedown',function(e){ if(e.button===2){ _rdown={x:e.clientX,y:e.clientY}; _rActive=true; } else _rdown=null; },true);
@@ -7342,7 +7464,7 @@ var assistRegister, assistOpen, assistClose, assistAsk, assistToggle;
         show: [{ sel: '#openFileBtn', say: 'Press here, or drop a file on the viewer.' }] },
       { id: 'move', t: 'Rotate, zoom and fit', group: 'The view', on: ['viewer'],
         q: ['rotate', 'zoom', 'move', 'pan', 'fit', 'reset view', 'center', 'spin', 'auto rotate', 'girar', 'zoom', 'mover', 'centrar', 'ajustar'],
-        a: ['**Drag** rotates, the **scroll wheel** (or a pinch) zooms, a **right-drag** moves the structure.', '**Fit** brings the whole structure back into view: the button with the corners, or **F**.'],
+        a: ['**Drag** rotates and keeps turning a moment if you let go while it moves. The **scroll wheel**, two fingers on a trackpad or a **pinch** zoom towards the pointer; hold **Shift** (or Option) while you scroll to move the structure. Prefer the other direction? Type `scroll reverse`.', '**Fit** brings the whole structure back into view: the button with the corners, or **F**.'],
         tip: 'Until you move it yourself, the structure re-fits when the window changes. **S** turns it slowly.',
         show: [{ sel: '#resetViewBtn', say: 'Fit to view.', miss: NEED }, { sel: '#spinBtn', say: 'Auto-rotate.', miss: NEED }] },
       { id: 'colour', t: 'Style, colour and the palette', group: 'Look', on: ['viewer'],

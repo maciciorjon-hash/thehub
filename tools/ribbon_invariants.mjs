@@ -28,8 +28,8 @@
 //   RB13 keyboard           Everything has a name, swatches are buttons, F/T/S/Esc work, a dialog keeps focus.
 //   RB14 hostile input      Markup, huge ranges, corrupt storage and odd numbers never throw or inject.
 //   RB15 ensembles          An NMR file shows its models and the slider changes the coordinates.
-//   RB16 the pointer         Hover names the atom; a right click is a menu about it and never a chain pick; a right-drag pans and
-//                           opens nothing; a left click picks the chain.
+//   RB16 the pointer         Hover names the atom; a right click is a menu about it and never a chain pick; a right-drag (it zooms in
+//                           3Dmol) opens nothing; a left click picks the chain.
 //   RB17 to the notebook    Inside the Hub, Send to Labbook puts the figure on the open experiment's Files tab, captioned,
 //                           and the experiment records that it came from Ribbon.
 //   RB26 tabs and Models    The panel is icon tabs on the right; each tab one pane; Models lists what is in the scene and its eyes
@@ -46,6 +46,9 @@
 //                           views come back exactly; a GIF that decodes to what was encoded; a video; journal column widths.
 //   RB32 to Labbook and back  A figure in Labbook keeps its design; Edit in Ribbon reopens it as made; sent back it replaces itself and
 //                           keeps the caption written in Labbook; a bad or oversized design is dropped.
+//   RB34 camera feel         The wheel zooms the web's way, eased, to the pointer, the same in and out, in pixels or lines, bounded; Safari's
+//                           pinch; Shift and scroll move it; a drag let go keeps turning and settles (not with reduced motion); the camera draws
+//                           once a frame, with the cheap look while it moves; nothing runs at rest.
 //   RB33 Echo mutants        Echo reads groups named like BRD4_Y97A as mutants of BRD4 and sends log2(DC50 ratio) per residue; Ribbon puts them
 //                           on the AlphaFold model, labelled, with side chains; a residue not in the model is named.
 //   RB18 measurements       Two atoms make a distance equal to their coordinates, three an angle at the middle one; a dashed line,
@@ -135,6 +138,17 @@ function rotatedCopy(text, o = {}) {
     return out;
   }).join('\n');
 }
+// A compact fold (a random walk kept inside a 22 Å ball), for the camera: a rod or a helix viewed end on makes the size of
+// the projection depend on depth, and the camera's laws are about the plane through the centre.
+function globulePdb() {
+  const L = []; let n = 1, seed = 7, p = [0, 0, 0]; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 1; i <= 140; i++) {
+    const th = rnd() * 6.283, ph = Math.acos(2 * rnd() - 1); p = [p[0] + 3.8 * Math.sin(ph) * Math.cos(th), p[1] + 3.8 * Math.sin(ph) * Math.sin(th), p[2] + 3.8 * Math.cos(ph)];
+    const k = Math.hypot(...p); if (k > 22) p = p.map(v => v * 22 / k);
+    L.push(atomLine('ATOM', n++, 'N', 'ALA', 'A', i, p[0] - 1.2, p[1], p[2] - 0.5, 20, 'N')); L.push(atomLine('ATOM', n++, 'CA', 'ALA', 'A', i, p[0], p[1], p[2])); L.push(atomLine('ATOM', n++, 'C', 'ALA', 'A', i, p[0] + 1.2, p[1], p[2] + 0.5));
+  }
+  return L.join('\n') + '\nEND\n';
+}
 // Built for the interactions: every contact at a known distance (see RB30).
 function interPdb() {
   const L = []; let n = 1; const A = (rec, name, resn, ch, resi, x, y, z, el) => L.push(atomLine(rec, n++, name, resn, ch, resi, x, y, z, 20, el));
@@ -176,6 +190,7 @@ const STRUCTS = {
   '6IFC': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 4 }] }),   // B lies 4 Å from A along its first six residues
   '6FAR': () => synPdb({ chains: [{ id: 'A', len: 10, shape: 'line' }, { id: 'B', len: 6, shape: 'line', y0: 60 }] }),
   '7APO': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true }),   // an entry whose only ligand is glycerol
+  '8CAM': () => globulePdb(),
   '9INT': () => interPdb(),
   '9SHL': () => shellPdb(),
   '8POC': () => synPdb({ chains: [{ id: 'A', len: 14, x0: 0 }], additive: true, ligand: true, ligandN: 14 }),   // a real ligand beside the glycerol
@@ -362,7 +377,7 @@ async function rb4() {
   let b = await boxOf(E);
   check('RB4', 'an untouched view is re-fitted when the viewer is resized', b.x0 >= -3 && b.x1 <= b.W + 3 && b.y0 >= -3 && b.y1 <= b.H + 3 && (b.x1 - b.x0) / b.W > 0.5, b);
   const box = await pg.locator('#viewport').boundingBox();
-  await pg.mouse.move(box.x + 300, box.y + 200); await pg.mouse.wheel(0, -300); await sleep(250);
+  await pg.mouse.move(box.x + 300, box.y + 200); await pg.mouse.wheel(0, -300); await sleep(900);   // the wheel is eased: let it arrive
   const z0 = await E(() => viewer.getView()[3]);
   await pg.setViewportSize({ width: 1200, height: 700 }); await sleep(600);
   const z1 = await E(() => viewer.getView()[3]);
@@ -1975,6 +1990,85 @@ async function rb30() {
 }
 
 
+
+// ── RB34 camera feel ───────────────────────────────────────────────────────────────────────────
+async function rb34() {
+  const { ctx, pg, E, go } = await open({ tag: 'RB34 ' });
+  if (!(await has3d(pg))) { skipped.push('RB34 (3Dmol could not load from its CDN)'); await ctx.close(); return; }
+  await go('8CAM'); await sleep(500);
+  const fit = async () => { await E(() => fitToView()); await sleep(900); };
+  const ext = () => E(() => { let x0 = 1e9, x1 = -1e9; currentModel.selectedAtoms({ atom: 'CA' }).forEach(a => { const p = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z }); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); }); return x1 - x0; });
+  const box = await pg.locator('#viewport').boundingBox(), cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  const wheel = (o) => E(o => { const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', Object.assign({ bubbles: true, cancelable: true }, o))); }, o);
+  await fit(); await pg.mouse.move(cx, cy);
+  // direction, and in-then-out
+  const e0 = await ext(); await pg.mouse.wheel(0, -120); await sleep(600); const e1 = await ext();
+  check('RB34', 'scrolling up zooms in (the web convention; 3Dmol zoomed out)', e1 > e0 * 1.1, { e0, e1 });
+  await pg.mouse.wheel(0, 120); await sleep(600); const e2 = await ext();
+  check('RB34', 'a notch in and a notch out come back to the same size (3Dmol: 26 in, 14 out)', Math.abs(e2 - e0) / e0 < 0.03, { e0, e2 });
+  // eased: one event is many frames, and it arrives
+  await fit();
+  const zs = await E(async () => { const c = document.querySelector('#viewport canvas'), r = c.getBoundingClientRect(); const zs = [];
+    c.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+    for (let i = 0; i < 45; i++) { await new Promise(requestAnimationFrame); zs.push(viewer.getView()[3]); } return zs; });
+  const distinct = new Set(zs.map(z => z.toFixed(3))).size, mono = zs.every((z, i) => i === 0 || z >= zs[i - 1] - 1e-9);
+  check('RB34', 'one wheel event is eased over several frames, in one direction', distinct >= 5 && mono, { distinct, mono });
+  check('RB34', 'and it arrives (it stops moving)', Math.abs(zs[zs.length - 1] - zs[zs.length - 4]) < 1e-3, zs.slice(-4));
+  check('RB34', 'nothing runs at rest: the loop has stopped', await E(() => !rbCamBusy()));
+  // a line-mode wheel (Firefox) and a hard flick (Safari)
+  await fit(); const ea = await ext(); await wheel({ deltaY: -48, deltaMode: 0, clientX: cx, clientY: cy }); await sleep(600); const eb = await ext();
+  await fit(); await wheel({ deltaY: -3, deltaMode: 1, clientX: cx, clientY: cy }); await sleep(600); const ec = await ext();
+  check('RB34', 'a wheel that counts in lines zooms as much as the same distance in pixels (3Dmol: 0.3 of 14)', Math.abs(ec - eb) / Math.max(1, eb - ea) < 0.1 && eb > ea * 1.05, { ea, eb, ec });
+  await fit(); await wheel({ deltaY: -50000, clientX: cx, clientY: cy }); await sleep(900); const ed = await ext();
+  check('RB34', 'one hard flick cannot run away (Safari took it to 19,000 px)', ed < ea * 3.2 && ed > ea, { ea, ed });
+  // to the pointer: in orthographic the point under the pointer does not move
+  const anch = await E(async () => { state.projection = 'orthographic'; applyProjection(); fitToView(); await new Promise(r => setTimeout(r, 900));
+    const vp = document.getElementById('viewport').getBoundingClientRect(), a = currentModel.selectedAtoms({ atom: 'CA' })[40], p0 = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z });
+    const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true, clientX: p0.x, clientY: p0.y }));
+    await new Promise(r => setTimeout(r, 900)); const p1 = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z }); return { p0, p1 }; });
+  check('RB34', 'zoom goes to the pointer: the atom under it stays under it', Math.hypot(anch.p1.x - anch.p0.x, anch.p1.y - anch.p0.y) < 3, anch);
+  await E(() => { state.projection = 'perspective'; applyProjection(); });
+  // Safari's pinch
+  const pin = await E(async () => { state.projection = 'orthographic'; applyProjection(); fitToView(); await new Promise(r => setTimeout(r, 900));
+    const c = document.querySelector('#viewport canvas'), ev = n => { const e = new Event(n, { bubbles: true, cancelable: true }); e.scale = 1; e.clientX = 400; e.clientY = 300; return e; };
+    const ext = () => { let x0 = 1e9, x1 = -1e9; currentModel.selectedAtoms({ atom: 'CA' }).forEach(a => { const p = viewer.modelToScreen({ x: a.x, y: a.y, z: a.z }); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); }); return x1 - x0; };
+    const e0 = ext(); const s = ev('gesturestart'); c.dispatchEvent(s); const m = ev('gesturechange'); m.scale = 1.5; c.dispatchEvent(m); await new Promise(r => setTimeout(r, 700)); const e1 = ext(); c.dispatchEvent(ev('gestureend'));
+    state.projection = 'perspective'; applyProjection(); return { ratio: e1 / e0, prevented: m.defaultPrevented }; });
+  check('RB34', 'a Safari pinch (gesture events) zooms by the pinch and is not left to the page', Math.abs(pin.ratio - 1.5) < 0.1 && pin.prevented, pin);
+  // Shift and scroll moves it
+  await fit();
+  const pan = await E(async () => { const C = (() => { const v = viewer.getView(); return { x: -v[0], y: -v[1], z: -v[2] }; })(), s0 = viewer.modelToScreen(C), z0 = viewer.getView()[3];
+    const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', { deltaX: 0, deltaY: 80, shiftKey: true, bubbles: true, cancelable: true, clientX: 400, clientY: 300 }));
+    await new Promise(r => setTimeout(r, 700)); const s1 = viewer.modelToScreen(C); return { dx: s1.x - s0.x, dy: s1.y - s0.y, dz: viewer.getView()[3] - z0 }; });
+  check('RB34', 'Shift and scroll move the structure with the fingers, and do not zoom', Math.abs(Math.abs(pan.dy) - 80) < 8 && Math.abs(pan.dx) < 2 && Math.abs(pan.dz) < 1e-6, pan);
+  // a drag let go while turning keeps turning, then settles
+  const q = () => E(() => viewer.getView().slice(4)), dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+  const flick = async (pause) => { await fit(); await pg.mouse.move(cx - 100, cy); await pg.mouse.down(); for (let i = 1; i <= 14; i++) { await pg.mouse.move(cx - 100 + i * 14, cy); await sleep(12); }
+    if (pause) await sleep(pause); const qu = await q(); await pg.mouse.up(); await sleep(160); const qa = await q(); await sleep(1300); const qb = await q(); await sleep(400); const qc = await q(); return { moved: dist(qu, qa), settle: dist(qb, qc), busy: await E(() => rbCamBusy()) }; };
+  const f1 = await flick(0);
+  check('RB34', 'a drag let go while turning keeps turning (3Dmol stops dead)', f1.moved > 0.03, f1);
+  check('RB34', 'and settles, with nothing left running', f1.settle < 1e-3 && !f1.busy, f1);
+  const f2 = await flick(250);
+  check('RB34', 'a drag that had stopped before it was let go does not drift', f2.moved < 1e-3, f2);
+  await pg.emulateMedia({ reducedMotion: 'reduce' }); const f3 = await flick(0); await pg.emulateMedia({ reducedMotion: 'no-preference' });
+  check('RB34', 'with reduced motion a let-go drag stops where it is', f3.moved < 1e-3, f3);
+  // one draw a frame, and the cheap look while it moves
+  await E(() => { state.lighting = 'soft'; applyBorder(); }); await fit();
+  const cost = await E(async () => { const R = viewer.renderer, real = R.render, calls = []; let draws = 0; R.render = function () { draws++; return real.apply(this, arguments); };
+    const so = viewer.setViewStyle.bind(viewer); viewer.setViewStyle = s => { calls.push(JSON.stringify(s)); return so(s); };
+    let frames = 0; const c = document.querySelector('#viewport canvas'); c.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true, clientX: 400, clientY: 300 }));
+    const t0 = performance.now(); while (performance.now() - t0 < 500) { await new Promise(requestAnimationFrame); frames++; }
+    await new Promise(r => setTimeout(r, 400)); R.render = real; viewer.setViewStyle = so; return { draws, frames, calls }; });
+  check('RB34', 'the camera draws once a frame', cost.draws <= cost.frames + 3, cost);
+  check('RB34', 'soft light is dropped while it moves and comes back after', cost.calls[0] === '{}' && /ambientOcclusion/.test(cost.calls[cost.calls.length - 1]), cost.calls);
+  const fr = await E(async () => { const R = viewer.renderer, real = R.render; let draws = 0, frames = 0; R.render = function () { draws++; return real.apply(this, arguments); };
+    state.lighting = 'simple'; applyBorder(); _userMoved = true; fitToView(); const t0 = performance.now(); while (performance.now() - t0 < 700) { await new Promise(requestAnimationFrame); frames++; } R.render = real; return { draws, frames }; });
+  check('RB34', 'Fit draws once a frame (it drew twice)', fr.draws <= fr.frames * 1.15 + 3, fr);
+  // Ctrl and scroll is a pinch on a trackpad (Chrome, Firefox), and does not scroll the page
+  check('RB34', 'the viewer says how to move it', await E(() => /Shift/.test(document.querySelector('#viewport canvas').getAttribute('aria-label'))));
+  await ctx.close();
+}
+
 // ── RB31 undo, click modes, views, films, figure sizes ─────────────────────────────────────
 async function rb31() {
   const { ctx, pg, E, go } = await open({ tag: 'RB31 ' });
@@ -2137,7 +2231,7 @@ async function rb33() {
   await r.ctx.close();
 }
 
-const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33]];
+const SUITES = [['RB1', rb1], ['RB2', rb2], ['RB3', rb3], ['RB4', rb4], ['RB5', rb5], ['RB6', rb6], ['RB7', rb7], ['RB8', rb8], ['RB9', rb9], ['RB10', rb10], ['RB11', rb11], ['RB12', rb12], ['RB13', rb13], ['RB14', rb14], ['RB15', rb15], ['RB16', rb16], ['RB17', rb17], ['RB18', rb18], ['RB19', rb19], ['RB20', rb20], ['RB21', rb21], ['RB22', rb22], ['RB23', rb23], ['RB24', rb24], ['RB25', rb25], ['RB26', rb26], ['RB27', rb27], ['RB28', rb28], ['RB29', rb29], ['RB30', rb30], ['RB31', rb31], ['RB32', rb32], ['RB33', rb33], ['RB34', rb34]];
 const port = await freePort();
 const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 base = `http://127.0.0.1:${port}/`;

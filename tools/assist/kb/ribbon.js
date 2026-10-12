@@ -44,7 +44,7 @@
         show: [{ sel: '#openFileBtn', say: 'Press here, or drop a file on the viewer.' }] },
       { id: 'move', t: 'Rotate, zoom and fit', group: 'The view', on: ['viewer'],
         q: ['rotate', 'zoom', 'move', 'pan', 'fit', 'reset view', 'center', 'spin', 'auto rotate', 'girar', 'zoom', 'mover', 'centrar', 'ajustar'],
-        a: ['**Drag** rotates, the **scroll wheel** (or a pinch) zooms, a **right-drag** moves the structure.', '**Fit** brings the whole structure back into view: the button with the corners, or **F**.'],
+        a: ['**Drag** rotates and keeps turning a moment if you let go while it moves. The **scroll wheel**, two fingers on a trackpad or a **pinch** zoom towards the pointer; hold **Shift** (or Option) while you scroll to move the structure. Prefer the other direction? Type `scroll reverse`.', '**Fit** brings the whole structure back into view: the button with the corners, or **F**.'],
         tip: 'Until you move it yourself, the structure re-fits when the window changes. **S** turns it slowly.',
         show: [{ sel: '#resetViewBtn', say: 'Fit to view.', miss: NEED }, { sel: '#spinBtn', say: 'Auto-rotate.', miss: NEED }] },
       { id: 'colour', t: 'Style, colour and the palette', group: 'Look', on: ['viewer'],

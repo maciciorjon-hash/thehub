@@ -7633,6 +7633,25 @@ commit and one invariant each; each step below is added when it lands.
   118 px at the narrowest: B32 caught "Transfection" breaking again, hence the 4/5 px paddings and a
   4-line clamp in a group (the code no longer takes a line). **B34** covers the grouping and the ticks.
   The printed week (`buildWeekPrintDoc`) is still flat.
+- **B0 — Ribbon's sources and its file agree.** `applyLook`'s `_noDraw` lived only in `ribbon.html` and the next
+  `inject_studio.py` would have reverted it; it is in `studio_look.js` now, and `inject_studio.py --check` (in
+  `static_checks.sh`) fails when the studio markers differ from `tools/ribbon_dev`.
+- **B1 — the camera.** Measured in the viewer before touching it (Chromium and WebKit): 3Dmol's wheel is one jump
+  (26 in, 14 out, so in-then-out does not come back), **scrolling up zooms out**, a line-mode wheel moves 0.3 of 14,
+  in WebKit a notch drives it to the near limit (19,000 px wide), zoom goes to the centre, the **right button zooms**
+  (the middle one pans, Ctrl+drag does nothing) so a trackpad could not move the structure at all, and switching to
+  orthographic shrinks it by a third. `RBCAM` (core, after `fitToView`) sits on top: it owns the wheel (capture, so
+  3Dmol never sees it), Safari's gesture events and the end of a drag. Wheel and pinch ease toward a log-zoom target
+  (`tauMs` 90) **anchored under the pointer** (the point on the plane through the centre of rotation, which is where
+  `screenOffsetToModel` measures; exact in orthographic, within 2 px in perspective), one hard flick is clamped
+  (`maxStep`, `maxTarget`), scrolling up zooms in (`scroll reverse` flips it, `ribbon_scroll`), **Shift or Option and
+  scroll** move the structure with the fingers. A drag let go while it is still turning keeps turning (half-life
+  320 ms; the speed is read from the view's own quaternion, so a drag that rotates nothing — select, measure — has
+  none), and not with reduced motion. While the camera moves the AO/outline look is dropped and comes back 160 ms
+  after (`_cLow`); every frame is one draw (`_noDraw` around the steps), and `animateTo` no longer draws twice. Spin is
+  ours too (view axes, eased in and out). Nothing runs at rest (`rbCamBusy()`). The constants are in `RBCAM` so the
+  feel can be tuned in one place — *only a real trackpad can judge it*. Invariant **RB34**; RB4 now waits for the
+  eased wheel. Notes that were wrong: the old text said a right-drag moves the structure (it zooms).
 
 ## Labbook on a laptop, audited (2026-10-12)
 

@@ -125,7 +125,7 @@ function animRun(){
   if(!currentModel||!viewer||_anim.on) return;
   var kind=$('animKind').value, fmt=$('animFmt').value, secs=Math.max(1,Math.min(30,parseFloat($('animSecs').value)||6)), fps=fmt==='gif'?15:30;
   var frames=animFrames(kind,secs,fps); if(!frames){ showToast('Add at least two views for a fly-through.'); return; }
-  var cv=$('viewport').querySelector('canvas'), v0=viewer.getView(), wasSpin=_spinning; if(wasSpin) toggleSpin();
+  var cv=$('viewport').querySelector('canvas'), v0=viewer.getView(), wasSpin=_spinning; if(wasSpin){ toggleSpin(); rbCamHalt(); }
   _anim={on:true,abort:false}; $('animGo').hidden=true; $('animStop').hidden=false;
   var selWas=rbExportBegin();
   function done(msg){ _anim.on=false; if(typeof applyBackground==='function') applyBackground(); $('animGo').hidden=false; $('animStop').hidden=true; rbExportEnd(selWas); try{ viewer.setView(v0); viewer.render(); }catch(e){} if(wasSpin) toggleSpin(); _animStatus(msg); }
